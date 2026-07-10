@@ -1,0 +1,486 @@
+import "server-only";
+
+import type Stripe from "stripe";
+
+import { recordBillingHistory } from "../history/service";
+import {
+  notifyOwnerPaymentFailed,
+  notifyUserPaymentFailed,
+} from "../notifications/service";
+import { getPlanDefinition } from "../plans/registry";
+import {
+  notifyBillingPaymentSucceeded,
+  notifyOwnerStripeWebhookFailed,
+} from "@/lib/notifications/emitters";
+import { resolveUserSubscription } from "../subscriptions/service";
+import { listUserSubscriptions } from "../subscriptions/store";
+import {
+  applyDowngradeFromWebhook,
+  applyPaidPlanFromWebhook,
+  schedulePaymentFailureGrace,
+} from "../subscriptions/lifecycle";
+import type { SubscriptionStatus } from "../subscriptions/types";
+import { mapStripePlanId } from "./checkout";
+import type { StripeWebhookEventType } from "./config";
+import { getStripeClient } from "./client";
+import { resolvePlanIdFromStripePrice } from "./config";
+import { recordStripeWebhookLog } from "@/lib/owner/billing-webhook/telemetry";
+
+function mapSubscriptionStatus(
+  status: Stripe.Subscription.Status,
+): SubscriptionStatus {
+  switch (status) {
+    case "active":
+      return "active";
+    case "trialing":
+      return "trialing";
+    case "past_due":
+      return "past_due";
+    case "canceled":
+      return "canceled";
+    case "incomplete":
+      return "incomplete";
+    case "incomplete_expired":
+      return "incomplete_expired";
+    default:
+      return "incomplete";
+  }
+}
+
+function readSubscriptionPeriod(subscription: Stripe.Subscription): {
+  currentPeriodStart: string;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+} {
+  const legacy = subscription as Stripe.Subscription & {
+    current_period_start?: number;
+    current_period_end?: number;
+    cancel_at_period_end?: boolean;
+  };
+
+  return {
+    currentPeriodStart:
+      periodIso(legacy.current_period_start) ?? new Date().toISOString(),
+    currentPeriodEnd: periodIso(legacy.current_period_end),
+    cancelAtPeriodEnd: Boolean(legacy.cancel_at_period_end),
+  };
+}
+
+export type WebhookHandleResult = {
+  handled: boolean;
+  eventType: StripeWebhookEventType | string;
+  message: string;
+  userId: string | null;
+  planId: string | null;
+  success: boolean;
+};
+
+function periodIso(unixSeconds: number | null | undefined): string | null {
+  if (!unixSeconds) return null;
+  return new Date(unixSeconds * 1000).toISOString();
+}
+
+async function fetchStripeSubscription(
+  subscriptionId: string,
+): Promise<Stripe.Subscription | null> {
+  const stripe = getStripeClient();
+  if (!stripe) return null;
+
+  try {
+    return await stripe.subscriptions.retrieve(subscriptionId);
+  } catch {
+    return null;
+  }
+}
+
+function resolvePlanFromSubscription(
+  subscription: Stripe.Subscription,
+): ReturnType<typeof mapStripePlanId> {
+  const metadataPlan = mapStripePlanId(subscription.metadata?.planId);
+  if (metadataPlan) return metadataPlan;
+
+  const priceId = subscription.items.data[0]?.price?.id ?? null;
+  return resolvePlanIdFromStripePrice(priceId);
+}
+
+function logWebhookResult(input: {
+  event: Stripe.Event;
+  status: "success" | "failure" | "skipped";
+  message: string;
+  userId?: string | null;
+  planId?: string | null;
+}): WebhookHandleResult {
+  recordStripeWebhookLog({
+    stripeEventId: input.event.id,
+    eventType: input.event.type,
+    status: input.status,
+    userId: input.userId ?? null,
+    planId: input.planId ?? null,
+    message: input.message,
+  });
+
+  if (input.status === "failure") {
+    notifyOwnerStripeWebhookFailed(
+      `${input.event.type}: ${input.message}`,
+    );
+  }
+
+  return {
+    handled: input.status !== "skipped",
+    eventType: input.event.type,
+    message: input.message,
+    userId: input.userId ?? null,
+    planId: input.planId ?? null,
+    success: input.status === "success",
+  };
+}
+
+function saveBillingSnapshot(input: {
+  userId: string;
+  planId: NonNullable<ReturnType<typeof mapStripePlanId>>;
+  status: SubscriptionStatus | "payment_failed" | "payment_succeeded";
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  cancelAtPeriodEnd?: boolean;
+  eventType: StripeWebhookEventType;
+  stripeEventId: string;
+  note?: string | null;
+}): void {
+  recordBillingHistory({
+    userId: input.userId,
+    planId: input.planId,
+    status: input.status,
+    stripeCustomerId: input.stripeCustomerId,
+    stripeSubscriptionId: input.stripeSubscriptionId,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    cancelAtPeriodEnd: input.cancelAtPeriodEnd,
+    eventType: input.eventType,
+    stripeEventId: input.stripeEventId,
+    note: input.note,
+  });
+}
+
+function readInvoiceSubscriptionId(
+  invoice: Stripe.Invoice,
+): string | null {
+  const legacy = invoice as Stripe.Invoice & {
+    subscription?: string | Stripe.Subscription | null;
+  };
+  const subscriptionRef = legacy.subscription;
+  return typeof subscriptionRef === "string"
+    ? subscriptionRef
+    : subscriptionRef?.id ?? null;
+}
+
+async function resolveUserIdFromInvoice(
+  invoice: Stripe.Invoice,
+): Promise<string | null> {
+  const subscriptionId = readInvoiceSubscriptionId(invoice);
+
+  if (subscriptionId) {
+    const subscription = await fetchStripeSubscription(subscriptionId);
+    if (subscription?.metadata?.userId) {
+      return subscription.metadata.userId;
+    }
+  }
+
+  const customerId =
+    typeof invoice.customer === "string"
+      ? invoice.customer
+      : invoice.customer?.id ?? null;
+
+  if (!customerId) return null;
+
+  const match = resolveUserSubscriptionByCustomerId(customerId);
+  return match?.userId ?? null;
+}
+
+function resolveUserSubscriptionByCustomerId(customerId: string) {
+  return listUserSubscriptions().find(
+    (record) => record.stripeCustomerId === customerId,
+  );
+}
+
+async function handleCheckoutCompleted(
+  event: Stripe.Event,
+): Promise<WebhookHandleResult> {
+  const session = event.data.object as Stripe.Checkout.Session;
+  const userId =
+    session.client_reference_id ?? session.metadata?.userId ?? null;
+  const planId = mapStripePlanId(session.metadata?.planId);
+
+  if (!userId || !planId) {
+    return logWebhookResult({
+      event,
+      status: "failure",
+      message: "Missing userId or planId on checkout session",
+      userId,
+      planId,
+    });
+  }
+
+  const subscriptionId =
+    typeof session.subscription === "string"
+      ? session.subscription
+      : session.subscription?.id ?? null;
+
+  let periodStart = new Date().toISOString();
+  let periodEnd: string | null = null;
+  let cancelAtPeriodEnd = false;
+  let status: SubscriptionStatus = "active";
+
+  if (subscriptionId) {
+    const subscription = await fetchStripeSubscription(subscriptionId);
+    if (subscription) {
+      const period = readSubscriptionPeriod(subscription);
+      periodStart = period.currentPeriodStart;
+      periodEnd = period.currentPeriodEnd;
+      cancelAtPeriodEnd = period.cancelAtPeriodEnd;
+      status = mapSubscriptionStatus(subscription.status);
+    }
+  }
+
+  applyPaidPlanFromWebhook({
+    userId,
+    stripeCustomerId: String(session.customer ?? ""),
+    stripeSubscriptionId: subscriptionId ?? "",
+    planId,
+    status,
+    currentPeriodStart: periodStart,
+    currentPeriodEnd: periodEnd,
+    cancelAtPeriodEnd,
+  });
+
+  saveBillingSnapshot({
+    userId,
+    planId,
+    status,
+    stripeCustomerId: String(session.customer ?? ""),
+    stripeSubscriptionId: subscriptionId,
+    periodStart,
+    periodEnd,
+    cancelAtPeriodEnd,
+    eventType: "checkout.session.completed",
+    stripeEventId: event.id,
+    note: "Checkout completed — plan applied",
+  });
+
+  return logWebhookResult({
+    event,
+    status: "success",
+    message: "Checkout session completed — plan applied",
+    userId,
+    planId,
+  });
+}
+
+async function handleSubscriptionUpsert(
+  event: Stripe.Event,
+): Promise<WebhookHandleResult> {
+  const subscription = event.data.object as Stripe.Subscription;
+  const userId = subscription.metadata.userId ?? null;
+  const planId = resolvePlanFromSubscription(subscription);
+
+  if (!userId || !planId) {
+    return logWebhookResult({
+      event,
+      status: "failure",
+      message: "Missing userId or planId on subscription",
+      userId,
+      planId,
+    });
+  }
+
+  const period = readSubscriptionPeriod(subscription);
+  const status = mapSubscriptionStatus(subscription.status);
+
+  applyPaidPlanFromWebhook({
+    userId,
+    stripeCustomerId: String(subscription.customer),
+    stripeSubscriptionId: subscription.id,
+    planId,
+    status,
+    currentPeriodStart: period.currentPeriodStart,
+    currentPeriodEnd: period.currentPeriodEnd,
+    cancelAtPeriodEnd: period.cancelAtPeriodEnd,
+  });
+
+  saveBillingSnapshot({
+    userId,
+    planId,
+    status,
+    stripeCustomerId: String(subscription.customer),
+    stripeSubscriptionId: subscription.id,
+    periodStart: period.currentPeriodStart,
+    periodEnd: period.currentPeriodEnd,
+    cancelAtPeriodEnd: period.cancelAtPeriodEnd,
+    eventType: event.type as StripeWebhookEventType,
+    stripeEventId: event.id,
+    note: "Subscription synced",
+  });
+
+  return logWebhookResult({
+    event,
+    status: "success",
+    message: "Subscription synced",
+    userId,
+    planId,
+  });
+}
+
+async function handleSubscriptionDeleted(
+  event: Stripe.Event,
+): Promise<WebhookHandleResult> {
+  const subscription = event.data.object as Stripe.Subscription;
+  const userId = subscription.metadata.userId ?? null;
+  const previousPlan = resolvePlanFromSubscription(subscription);
+
+  if (!userId) {
+    return logWebhookResult({
+      event,
+      status: "failure",
+      message: "Missing userId on deleted subscription",
+    });
+  }
+
+  applyDowngradeFromWebhook(userId);
+
+  saveBillingSnapshot({
+    userId,
+    planId: "free",
+    status: "canceled",
+    stripeCustomerId: String(subscription.customer),
+    stripeSubscriptionId: subscription.id,
+    periodStart: null,
+    periodEnd: new Date().toISOString(),
+    cancelAtPeriodEnd: false,
+    eventType: "customer.subscription.deleted",
+    stripeEventId: event.id,
+    note: "Subscription deleted — downgraded to Free, automations suspended",
+  });
+
+  return logWebhookResult({
+    event,
+    status: "success",
+    message: "Subscription deleted — downgraded to Free",
+    userId,
+    planId: previousPlan ?? "free",
+  });
+}
+
+async function handleInvoicePaymentSucceeded(
+  event: Stripe.Event,
+): Promise<WebhookHandleResult> {
+  const invoice = event.data.object as Stripe.Invoice;
+  const userId = await resolveUserIdFromInvoice(invoice);
+
+  if (!userId) {
+    return logWebhookResult({
+      event,
+      status: "failure",
+      message: "Could not resolve user for successful invoice payment",
+    });
+  }
+
+  const subscription = resolveUserSubscription(userId);
+  const plan = getPlanDefinition(subscription.planId);
+
+  notifyBillingPaymentSucceeded(userId, plan.name);
+
+  saveBillingSnapshot({
+    userId,
+    planId: subscription.planId,
+    status: "payment_succeeded",
+    stripeCustomerId:
+      typeof invoice.customer === "string"
+        ? invoice.customer
+        : invoice.customer?.id ?? null,
+    stripeSubscriptionId: readInvoiceSubscriptionId(invoice),
+    periodStart: subscription.currentPeriodStart,
+    periodEnd: subscription.currentPeriodEnd,
+    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    eventType: "invoice.payment_succeeded",
+    stripeEventId: event.id,
+    note: "Invoice payment succeeded",
+  });
+
+  return logWebhookResult({
+    event,
+    status: "success",
+    message: "Invoice payment succeeded",
+    userId,
+    planId: subscription.planId,
+  });
+}
+
+async function handleInvoicePaymentFailed(
+  event: Stripe.Event,
+): Promise<WebhookHandleResult> {
+  const invoice = event.data.object as Stripe.Invoice;
+  const userId = await resolveUserIdFromInvoice(invoice);
+
+  if (!userId) {
+    return logWebhookResult({
+      event,
+      status: "failure",
+      message: "Could not resolve user for failed invoice payment",
+    });
+  }
+
+  const subscription = resolveUserSubscription(userId);
+  schedulePaymentFailureGrace(userId);
+  notifyUserPaymentFailed(userId);
+  notifyOwnerPaymentFailed(userId);
+
+  saveBillingSnapshot({
+    userId,
+    planId: subscription.planId,
+    status: "payment_failed",
+    stripeCustomerId:
+      typeof invoice.customer === "string"
+        ? invoice.customer
+        : invoice.customer?.id ?? null,
+    stripeSubscriptionId: readInvoiceSubscriptionId(invoice),
+    periodStart: subscription.currentPeriodStart,
+    periodEnd: subscription.currentPeriodEnd,
+    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    eventType: "invoice.payment_failed",
+    stripeEventId: event.id,
+    note: "Payment failed — 7-day grace scheduled",
+  });
+
+  return logWebhookResult({
+    event,
+    status: "success",
+    message: "Invoice payment failed — notifications sent",
+    userId,
+    planId: subscription.planId,
+  });
+}
+
+export async function handleStripeWebhookEvent(
+  event: Stripe.Event,
+): Promise<WebhookHandleResult> {
+  switch (event.type) {
+    case "checkout.session.completed":
+      return handleCheckoutCompleted(event);
+    case "customer.subscription.created":
+    case "customer.subscription.updated":
+      return handleSubscriptionUpsert(event);
+    case "customer.subscription.deleted":
+      return handleSubscriptionDeleted(event);
+    case "invoice.payment_succeeded":
+      return handleInvoicePaymentSucceeded(event);
+    case "invoice.payment_failed":
+      return handleInvoicePaymentFailed(event);
+    default:
+      return logWebhookResult({
+        event,
+        status: "skipped",
+        message: "Unhandled event",
+      });
+  }
+}
