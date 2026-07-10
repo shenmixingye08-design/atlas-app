@@ -14,32 +14,32 @@ export const EXECUTION_LEVEL_OPTIONS: readonly ExecutionLevelOption[] = [
   {
     level: "suggest_only",
     icon: "📝",
-    label: "文章だけお願いする",
-    shortLabel: "📝 文章だけ",
-    description: "AIが文章や資料のみ作成します。",
+    label: "作成前に確認",
+    shortLabel: "作成前に確認",
+    description: "内容を作る前に、方針を確認します。",
   },
   {
     level: "draft_save",
     icon: "💾",
-    label: "準備までお願いする",
-    shortLabel: "💾 準備まで",
-    description: "文章を作成し、下書きや保存まで行います。",
+    label: "作成後に確認",
+    shortLabel: "作成後に確認",
+    description: "下書きまで作成し、その後確認します。",
   },
   {
     level: "approve_then_run",
     icon: "👀",
-    label: "確認後にお願いする",
-    shortLabel: "👀 確認後",
+    label: "最後の実行前に確認",
+    shortLabel: "実行前に確認",
     description:
-      "ATLASが準備し、ユーザーが確認した後に投稿・送信・保存します。",
+      "投稿・送信などの重要操作の前に、必ず確認します。",
   },
   {
     level: "full_auto",
-    icon: "🤖",
-    label: "最後までお願いする",
-    shortLabel: "🤖 最後まで",
+    icon: "▶",
+    label: "確認せず実行",
+    shortLabel: "確認せず実行",
     description:
-      "ATLASが作成から投稿・送信・保存まで全て自動で実行します。",
+      "重要操作がない場合のみ、確認なしで進めます。",
   },
 ] as const;
 

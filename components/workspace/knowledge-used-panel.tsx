@@ -43,13 +43,13 @@ export function KnowledgeUsedPanel({ knowledge }: KnowledgeUsedPanelProps) {
         </span>
       </div>
 
-      <div className="rounded-[var(--radius-xl)] bg-white p-4 shadow-[var(--shadow-md)] sm:p-5">
+      <div className="rounded-[var(--radius-xl)] bg-[var(--card)] p-4 shadow-[var(--shadow-md)] sm:p-5">
         <ul className="space-y-2">
           {referenceEntries.map((entry) => (
             <li key={entry.id} className="atlas-surface-subtle px-3 py-2 text-sm">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium text-foreground">{entry.title}</span>
-                <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-[var(--foreground-muted)] ring-1 ring-[var(--border)]">
+                <span className="rounded-full bg-[var(--card)] px-2 py-0.5 text-[10px] text-[var(--foreground-muted)] ring-1 ring-[var(--border)]">
                   {CATEGORY_LABELS[entry.category] ?? entry.category}
                 </span>
                 <span className="text-[10px] text-[var(--foreground-subtle)]">

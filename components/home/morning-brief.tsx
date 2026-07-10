@@ -80,7 +80,7 @@ function BriefRow({
   return (
     <div
       className={cn(
-        "rounded-[var(--radius-lg)] border border-white/40 bg-white/50 px-4 py-3.5",
+        "rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--card)]/50 px-4 py-3.5",
         className,
       )}
     >
@@ -128,7 +128,7 @@ function EmployeeChip({
   tasks: number;
 }) {
   return (
-    <li className="flex items-center gap-2 rounded-[var(--radius-md)] bg-white/60 px-2.5 py-2">
+    <li className="flex items-center gap-2 rounded-[var(--radius-md)] bg-[var(--card)]/60 px-2.5 py-2">
       <span aria-hidden>{icon}</span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs font-medium text-foreground">{role}</p>
@@ -290,7 +290,7 @@ export function MorningBrief({
       aria-labelledby="morning-brief-heading"
       className="landing-glass animate-fade-up overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] shadow-[var(--shadow-md)]"
     >
-      <div className="border-b border-white/30 px-5 py-5 sm:px-6 sm:py-6">
+      <div className="border-b border-[var(--border)] px-5 py-5 sm:px-6 sm:py-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <p className="text-xs font-medium uppercase tracking-wide text-accent">
@@ -414,7 +414,7 @@ export function MorningBrief({
         </div>
       </div>
 
-      <div className="border-t border-white/30 bg-white/30 px-5 py-5 sm:px-6">
+      <div className="border-t border-[var(--border)] bg-[var(--card)]/30 px-5 py-5 sm:px-6">
         <Button
           variant="primary"
           size="lg"

@@ -8,7 +8,7 @@ import { ui } from "@/lib/i18n";
 
 export const metadata: Metadata = {
   title: ui.metadata.automations,
-  description: ui.habits.subtitle,
+  description: ui.entrustedJobs.pageDescription,
 };
 
 export default function AutomationsPage() {

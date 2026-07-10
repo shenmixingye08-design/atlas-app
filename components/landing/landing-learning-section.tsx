@@ -6,7 +6,7 @@ export function LandingLearningSection() {
   return (
     <section
       id="learning"
-      className="border-t border-[var(--border-subtle)] bg-white px-4 py-20 sm:px-8 sm:py-28 lg:py-32"
+      className="border-t border-[var(--border-subtle)] bg-[var(--card)] px-4 py-20 sm:px-8 sm:py-28 lg:py-32"
     >
       <div className="mx-auto max-w-6xl">
         <LandingReveal className="mx-auto max-w-2xl text-center">
@@ -30,7 +30,7 @@ export function LandingLearningSection() {
         <ul className="mt-14 grid grid-cols-1 gap-4 sm:mt-16 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-6">
           {LANDING_LEARNING_CARDS.map((item, index) => (
             <LandingReveal key={item.id} delayMs={index * 60}>
-              <li className="flex h-full flex-col rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-white p-6 shadow-[var(--shadow-sm)] sm:p-7">
+              <li className="flex h-full flex-col rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-6 shadow-[var(--shadow-sm)] sm:p-7">
                 <span className="text-3xl" aria-hidden>
                   {item.icon}
                 </span>

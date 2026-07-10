@@ -22,7 +22,7 @@ export function LandingRequestExamplesSection() {
   return (
     <section
       id="examples"
-      className="border-t border-[var(--border-subtle)] bg-white px-4 py-20 sm:px-8 sm:py-28 lg:py-32"
+      className="border-t border-[var(--border-subtle)] bg-[var(--card)] px-4 py-20 sm:px-8 sm:py-28 lg:py-32"
     >
       <div className="mx-auto max-w-6xl">
         <LandingReveal className="mx-auto max-w-2xl text-center">
@@ -43,7 +43,7 @@ export function LandingRequestExamplesSection() {
         <ul className="mt-14 grid grid-cols-1 gap-4 sm:mt-16 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 lg:gap-6">
           {LANDING_REQUEST_EXAMPLES.map((item, index) => (
             <LandingReveal key={item.id} delayMs={index * 50}>
-              <li className="flex h-full flex-col rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-white p-6 shadow-[var(--shadow-sm)] sm:p-7">
+              <li className="flex h-full flex-col rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-6 shadow-[var(--shadow-sm)] sm:p-7">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <span className="text-2xl" aria-hidden>
@@ -75,7 +75,7 @@ export function LandingRequestExamplesSection() {
                     <span className="text-sm leading-none">↓</span>
                   </div>
 
-                  <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white px-4 py-3">
+                  <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] px-4 py-3">
                     <p className="text-[11px] font-medium tracking-wide text-[var(--foreground-subtle)]">
                       普段の言葉で依頼する
                     </p>

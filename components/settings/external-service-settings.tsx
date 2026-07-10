@@ -56,7 +56,7 @@ function ExternalServiceCard({
     !service.featureEnabled || busy || connection.status === "pending";
 
   return (
-    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white p-5 shadow-[var(--shadow-sm)]">
+    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex min-w-0 gap-4">
           <span
@@ -98,7 +98,7 @@ function ExternalServiceCard({
                   />
                 ) : (
                   <span
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-sm font-semibold text-foreground ring-1 ring-[var(--border)]"
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--card)] text-sm font-semibold text-foreground ring-1 ring-[var(--border)]"
                     aria-hidden
                   >
                     {connection.account.email.slice(0, 1).toUpperCase()}

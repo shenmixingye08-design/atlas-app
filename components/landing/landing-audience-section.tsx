@@ -8,7 +8,7 @@ export function LandingAudienceSection() {
   return (
     <section
       id="audience"
-      className="border-t border-[var(--border-subtle)] bg-white px-4 py-20 sm:px-8 sm:py-28 lg:py-32"
+      className="border-t border-[var(--border-subtle)] bg-[var(--card)] px-4 py-20 sm:px-8 sm:py-28 lg:py-32"
     >
       <div className="mx-auto max-w-6xl">
         <LandingReveal className="mx-auto max-w-2xl text-center">
@@ -30,7 +30,7 @@ export function LandingAudienceSection() {
               <li className="h-full">
                 <Link
                   href={item.href}
-                  className="group flex h-full flex-col rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-white p-4 shadow-[var(--shadow-sm)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 sm:p-7"
+                  className="group flex h-full flex-col rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-4 shadow-[var(--shadow-sm)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 sm:p-7"
                 >
                   <span className="text-2xl sm:text-3xl" aria-hidden>
                     {item.icon}

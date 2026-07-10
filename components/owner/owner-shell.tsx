@@ -1,17 +1,18 @@
 import Link from "next/link";
 
 import { AtlasHeaderAuth } from "@/components/layout/atlas-header-auth";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { ui } from "@/lib/i18n";
 
 type OwnerShellProps = {
   children: React.ReactNode;
 };
 
-/** Owner console — same light design system as the user app. */
+/** Owner console — same design system as the user app. */
 export function OwnerShell({ children }: OwnerShellProps) {
   return (
     <div className="relative min-h-screen bg-[var(--background)] text-foreground">
-      <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--background)]/90 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--card-glass)] backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 md:px-10 md:py-5">
           <div className="flex flex-wrap items-center gap-2 sm:gap-4">
             <Link
@@ -34,6 +35,7 @@ export function OwnerShell({ children }: OwnerShellProps) {
             >
               {ui.owner.backToApp}
             </Link>
+            <ThemeToggle />
             <AtlasHeaderAuth />
           </div>
         </div>

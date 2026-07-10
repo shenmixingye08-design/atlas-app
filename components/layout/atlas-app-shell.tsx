@@ -24,7 +24,7 @@ export function AtlasAppShell({
   width = "default",
 }: AtlasAppShellProps) {
   return (
-    <div className="relative min-h-screen bg-white text-foreground">
+    <div className="relative min-h-screen bg-[var(--background)] text-foreground">
       <AtlasBackground />
       <AtlasHeader active={active} />
       <main
@@ -50,7 +50,7 @@ export function AtlasPageShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="relative min-h-screen bg-white text-foreground">
+    <div className="relative min-h-screen bg-[var(--background)] text-foreground">
       {children}
     </div>
   );

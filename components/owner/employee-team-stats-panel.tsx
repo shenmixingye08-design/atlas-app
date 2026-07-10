@@ -27,7 +27,7 @@ export function EmployeeTeamStatsPanel({ snapshot }: EmployeeTeamStatsPanelProps
         )}
       </p>
 
-      <div className="overflow-x-auto rounded-[var(--radius-xl)] border border-[var(--border)] bg-white shadow-[var(--shadow-soft)]">
+      <div className="overflow-x-auto rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--card)] shadow-[var(--shadow-soft)]">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--border)] bg-[var(--surface-muted)] text-left">

@@ -88,7 +88,7 @@ export function IntegrationsDashboard() {
       {successMessage && <SuccessState message={successMessage} />}
       {error && <ErrorState message={error} />}
 
-      <div className="rounded-[var(--radius-2xl)] bg-white px-6 shadow-[var(--shadow-md)] sm:px-8">
+      <div className="rounded-[var(--radius-2xl)] bg-[var(--card)] px-6 shadow-[var(--shadow-md)] sm:px-8">
         {providers.map((provider) => {
           const connected = provider.connection?.connected === true;
           return (

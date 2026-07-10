@@ -146,7 +146,7 @@ export function WorkflowTimeline({ project }: WorkflowTimelineProps) {
   const items = deriveTimeline(project);
 
   return (
-    <div className="rounded-[var(--radius-2xl)] bg-white p-5 shadow-[var(--shadow-md)] sm:p-6">
+    <div className="rounded-[var(--radius-2xl)] bg-[var(--card)] p-5 shadow-[var(--shadow-md)] sm:p-6">
       <h2 className="text-overline">{ui.workflowPhases.timeline}</h2>
       <ol className="mt-4 space-y-0">
         {items.map((item, index) => (

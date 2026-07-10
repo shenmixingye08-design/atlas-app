@@ -12,7 +12,7 @@ export function ComingSoonPage({
   description = "現在準備を進めております。今しばらくお待ちください。",
 }: ComingSoonPageProps) {
   return (
-    <div className="flex min-h-screen flex-col bg-white text-foreground">
+    <div className="flex min-h-screen flex-col bg-[var(--background)] text-foreground">
       <header className="border-b border-[var(--border-subtle)] px-4 py-4 sm:px-8">
         <Link href="/" className="text-sm font-semibold tracking-tight text-foreground">
           ATLAS

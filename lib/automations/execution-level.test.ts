@@ -21,6 +21,6 @@ describe("request scope", () => {
       defaultAutomationFormState({ executionLevel: "full_auto" }),
     );
     expect(input.executionLevel).toBe("full_auto");
-    expect(getExecutionLevelShortLabel(input.executionLevel)).toBe("🤖 最後まで");
+    expect(getExecutionLevelShortLabel(input.executionLevel)).toBe("確認せず実行");
   });
 });

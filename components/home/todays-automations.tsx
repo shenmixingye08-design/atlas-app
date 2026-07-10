@@ -55,7 +55,7 @@ export function TodaysAutomations({ items }: TodaysAutomationsProps) {
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
                     completed
                       ? "bg-[var(--status-success)]/15 text-[var(--status-success)]"
-                      : "bg-white text-[var(--foreground-muted)] ring-1 ring-[var(--border-subtle)]"
+                      : "bg-[var(--card)] text-[var(--foreground-muted)] ring-1 ring-[var(--border-subtle)]"
                   }`}
                   aria-hidden
                 >

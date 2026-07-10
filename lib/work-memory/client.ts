@@ -29,8 +29,11 @@ export { WORK_MEMORY_TYPES, MAX_WORK_MEMORIES_PER_USER } from "./types";
 
 export {
   getWorkMemoryTypeLabel,
+  getWorkMemorySourceLabel,
   formatWorkMemoryConfidence,
+  formatWorkMemoryConfidencePercent,
   WORK_MEMORY_TYPE_LABELS,
+  WORK_MEMORY_SOURCE_LABELS,
 } from "./labels";
 
 export {

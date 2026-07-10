@@ -12,11 +12,12 @@ describe("bottom nav", () => {
 
   it("resolves active tab from pathname", () => {
     expect(resolveBottomNavId("/projects")).toBe("home");
-    expect(resolveBottomNavId("/workspace")).toBe("work");
-    expect(resolveBottomNavId("/chat")).toBe("work");
-    expect(resolveBottomNavId("/automations")).toBe("automations");
-    expect(resolveBottomNavId("/integrations")).toBe("integrations");
-    expect(resolveBottomNavId("/settings/billing")).toBe("settings");
-    expect(resolveBottomNavId("/settings/google/gmail")).toBe("integrations");
+    expect(resolveBottomNavId("/workspace")).toBe("request");
+    expect(resolveBottomNavId("/chat")).toBe("request");
+    expect(resolveBottomNavId("/history")).toBe("history");
+    expect(resolveBottomNavId("/settings/work-memory")).toBe("memory");
+    expect(resolveBottomNavId("/settings/learning")).toBe("analysis");
+    expect(resolveBottomNavId("/settings/billing")).toBe(null);
+    expect(resolveBottomNavId("/automations")).toBe(null);
   });
 });

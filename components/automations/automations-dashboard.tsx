@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import type { Automation } from "@/lib/automations/types";
 import { prefillFromAssignment } from "@/lib/automations/detect-recurring";
 import { defaultAutomationFormState } from "@/lib/automations/form-utils";
+import { summarizeEntrustedJobs } from "@/lib/automations/display";
 import { ui } from "@/lib/i18n";
 import {
   fetchAutomations,
@@ -15,14 +17,11 @@ import {
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 
 import { AutomationCard } from "./automation-card";
-import { AutomationLevelSettings } from "./automation-level-settings";
-import { AutomationModeSettings } from "./automation-mode-settings";
-import { AutomationWorkflowSettings } from "./automation-workflow-settings";
+import { AutomationDetailPanel } from "./automation-detail-panel";
 import { CreateAutomationForm } from "./create-automation-form";
-import { ActiveCompanyCard } from "@/components/company/active-company-card";
-import { useActiveCompany } from "@/lib/company-templates/use-active-company";
 
 function parseInitialFormFromSearchParams(
   params: URLSearchParams,
@@ -68,7 +67,7 @@ export function AutomationsDashboard() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(Boolean(initialForm));
   const [createInitialState, setCreateInitialState] = useState(initialForm);
-  const { config: activeCompany } = useActiveCompany();
+  const [selected, setSelected] = useState<Automation | null>(null);
 
   useEffect(() => {
     if (initialForm) {
@@ -81,11 +80,13 @@ export function AutomationsDashboard() {
     try {
       const items = await fetchAutomations();
       setAutomations(items);
+      setSelected((current) => {
+        if (!current) return null;
+        return items.find((item) => item.id === current.id) ?? null;
+      });
       setError(null);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : ui.error.loadFailed,
-      );
+      setError(err instanceof Error ? err.message : ui.error.loadFailed);
     } finally {
       setIsLoading(false);
     }
@@ -95,12 +96,20 @@ export function AutomationsDashboard() {
     void loadAutomations();
   }, [loadAutomations]);
 
+  const summary = useMemo(
+    () => summarizeEntrustedJobs(automations),
+    [automations],
+  );
+
   const handleToggle = async (id: string, enabled: boolean) => {
     setUpdatingId(id);
     try {
       const updated = await setAutomationEnabled(id, enabled);
       setAutomations((prev) =>
         prev.map((item) => (item.id === id ? updated : item)),
+      );
+      setSelected((current) =>
+        current?.id === id ? updated : current,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : ui.error.updateFailed);
@@ -137,33 +146,54 @@ export function AutomationsDashboard() {
     await loadAutomations();
   };
 
-  const activeCount = automations.filter((item) => item.enabled).length;
-
-  if (isLoading && !showCreate) {
+  if (isLoading && !showCreate && automations.length === 0) {
     return <LoadingState />;
   }
 
+  const summaryCards = [
+    { label: ui.entrustedJobs.summaryScheduled, value: summary.scheduled },
+    { label: ui.entrustedJobs.summaryNeedsReview, value: summary.needsReview },
+    { label: ui.entrustedJobs.summaryCompleted, value: summary.completed },
+    { label: ui.entrustedJobs.summaryPaused, value: summary.paused },
+  ] as const;
+
   return (
-    <div className="space-y-12 animate-fade-up">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-10 sm:space-y-12 animate-fade-up">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-3">
           <p className="text-sm font-medium text-accent">{ui.brand}</p>
-          <h1 className="text-display text-foreground">{ui.habits.title}</h1>
-          <p className="text-body max-w-2xl">{ui.habits.subtitle}</p>
+          <h1 className="text-display text-foreground">
+            {ui.entrustedJobs.title}
+          </h1>
+          <p className="text-body max-w-2xl text-[var(--text-secondary)]">
+            {ui.entrustedJobs.subtitle}
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="inline-flex w-fit rounded-full bg-[var(--background-subtle)] px-3 py-1.5 text-caption">
-            {ui.automations.enabled(activeCount, automations.length)}
-          </span>
-          {!showCreate && (
-            <Button variant="primary" className="w-full sm:w-auto" onClick={() => setShowCreate(true)}>
-              {ui.habits.addHabit}
-            </Button>
-          )}
-        </div>
+        <Link
+          href="/workspace"
+          className="inline-flex min-h-[48px] shrink-0 items-center justify-center self-start rounded-full bg-accent px-6 text-base font-medium text-white shadow-sm transition-all hover:bg-[var(--accent-hover)] active:scale-[0.98] focus-ring"
+        >
+          {ui.entrustedJobs.addNew}
+        </Link>
       </header>
 
-      <ActiveCompanyCard config={activeCompany} compact />
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {summaryCards.map((item) => (
+          <Card
+            key={item.label}
+            padding="md"
+            className="border border-[var(--border-subtle)] bg-[var(--card)] text-center"
+          >
+            <p className="text-xs text-[var(--text-muted)]">{item.label}</p>
+            <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+              {item.value}
+              <span className="ml-1 text-sm font-medium text-[var(--text-secondary)]">
+                {ui.entrustedJobs.countSuffix}
+              </span>
+            </p>
+          </Card>
+        ))}
+      </section>
 
       {showCreate && (
         <CreateAutomationForm
@@ -178,58 +208,68 @@ export function AutomationsDashboard() {
 
       {error && <ErrorState message={error} />}
 
-      <AutomationLevelSettings
-        automations={automations}
-        onUpdated={(updated) =>
-          setAutomations((prev) =>
-            prev.map((item) => (item.id === updated.id ? updated : item)),
-          )
-        }
-      />
-
-      <AutomationModeSettings
-        automations={automations}
-        onUpdated={(updated) =>
-          setAutomations((prev) =>
-            prev.map((item) => (item.id === updated.id ? updated : item)),
-          )
-        }
-      />
-
-      <AutomationWorkflowSettings
-        automations={automations}
-        onUpdated={(updated) =>
-          setAutomations((prev) =>
-            prev.map((item) => (item.id === updated.id ? updated : item)),
-          )
-        }
-      />
-
-      <div className="space-y-4">
+      <section className="space-y-4">
         {isLoading ? (
           <LoadingState />
-        ) : automations.length === 0 ? (
-          <p className="rounded-[var(--radius-2xl)] bg-[var(--background-subtle)] px-6 py-16 text-center text-body">
-            {ui.habits.empty}
-          </p>
-        ) : (
-          automations.map((automation, index) => (
-            <div
-              key={automation.id}
-              className="animate-fade-up"
-              style={{ animationDelay: `${index * 40}ms` }}
-            >
-              <AutomationCard
-                automation={automation}
-                onToggleEnabled={handleToggle}
-                onRunNow={handleRunNow}
-                isRunning={runningId === automation.id}
-                isUpdating={updatingId === automation.id}
-              />
+        ) : automations.length === 0 && !showCreate ? (
+          <Card
+            padding="lg"
+            className="border border-dashed border-[var(--border-subtle)] bg-[var(--surface-muted)]/40 px-6 py-14 text-center"
+          >
+            <h2 className="text-title text-foreground">
+              {ui.entrustedJobs.emptyTitle}
+            </h2>
+            <p className="mx-auto mt-3 max-w-md text-body text-[var(--text-secondary)]">
+              {ui.entrustedJobs.emptyDescription}
+            </p>
+            <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <Link
+                href="/workspace"
+                className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-accent px-6 text-sm font-medium text-white hover:bg-[var(--accent-hover)] focus-ring"
+              >
+                {ui.entrustedJobs.emptyCta}
+              </Link>
+              <Button
+                variant="secondary"
+                className="min-h-[48px]"
+                onClick={() => setShowCreate(true)}
+              >
+                {ui.entrustedJobs.registerHere}
+              </Button>
             </div>
-          ))
+          </Card>
+        ) : (
+          <ul className="space-y-4">
+            {automations.map((automation) => (
+              <li key={automation.id}>
+                <AutomationCard
+                  automation={automation}
+                  onOpen={setSelected}
+                  onToggleEnabled={(id, enabled) => void handleToggle(id, enabled)}
+                  isUpdating={updatingId === automation.id}
+                />
+              </li>
+            ))}
+          </ul>
         )}
-      </div>
+      </section>
+
+      {selected && (
+        <AutomationDetailPanel
+          automation={selected}
+          onClose={() => setSelected(null)}
+          onUpdated={(updated) => {
+            setAutomations((prev) =>
+              prev.map((item) => (item.id === updated.id ? updated : item)),
+            );
+            setSelected(updated);
+          }}
+          onRunNow={(id) => void handleRunNow(id)}
+          onToggleEnabled={(id, enabled) => void handleToggle(id, enabled)}
+          isRunning={runningId === selected.id}
+          isUpdating={updatingId === selected.id}
+        />
+      )}
     </div>
   );
 }

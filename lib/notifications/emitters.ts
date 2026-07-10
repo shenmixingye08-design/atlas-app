@@ -7,17 +7,14 @@ export function notifyAutomationCompleted(
   input: { automationId: string; name: string; templateId?: string },
 ) {
   if (!userId) return null;
-  const isSns = input.templateId === "sns_post";
   return createNotification({
     audience: "user",
     userId,
     type: "completed",
-    title: isSns ? "SNS投稿が完了しました" : `${input.name}が完了しました`,
-    message: isSns
-      ? "自動化によるSNS投稿が正常に完了しました。"
-      : `「${input.name}」の自動化が完了しました。`,
+    title: "お仕事が完了しました",
+    message: `お待たせいたしました。「${input.name}」の作成が完了しました。`,
     relatedTaskId: input.automationId,
-    relatedService: isSns ? "x" : "atlas",
+    relatedService: input.templateId === "sns_post" ? "x" : "atlas",
     actionUrl: "/automations",
   });
 }
@@ -31,8 +28,8 @@ export function notifyAutomationAwaitingReview(
     audience: "user",
     userId,
     type: "awaiting_review",
-    title: "確認待ちの仕事があります",
-    message: `「${input.name}」の確認が必要です。`,
+    title: "ご確認が必要な仕事がございます",
+    message: `「${input.name}」について、ご確認をお願いいたします。`,
     relatedTaskId: input.automationId,
     relatedService: "atlas",
     actionUrl: "/automations",
@@ -48,8 +45,8 @@ export function notifyAutomationFailed(
     audience: "user",
     userId,
     type: "automation",
-    title: `${input.name}に失敗しました`,
-    message: input.error ?? "自動化の実行中にエラーが発生しました。",
+    title: "処理を完了できませんでした",
+    message: `「${input.name}」の処理を完了できませんでした。内容をご確認ください。`,
     relatedTaskId: input.automationId,
     relatedService: "atlas",
     actionUrl: "/automations",
@@ -61,22 +58,22 @@ export function notifyXPostSuccess(userId: string, text?: string) {
     audience: "user",
     userId,
     type: "completed",
-    title: "X投稿が完了しました",
+    title: "お仕事が完了しました",
     message: text
-      ? `投稿内容: ${text.slice(0, 80)}${text.length > 80 ? "…" : ""}`
-      : "Xへの投稿が正常に完了しました。",
+      ? `お待たせいたしました。投稿の準備が完了しました。`
+      : "お待たせいたしました。投稿が完了しました。",
     relatedService: "x",
     actionUrl: "/workspace/x",
   });
 }
 
-export function notifyXPostFailed(userId: string, message: string) {
+export function notifyXPostFailed(userId: string, _message: string) {
   return createNotification({
     audience: "user",
     userId,
     type: "error",
-    title: "X投稿に失敗しました",
-    message,
+    title: "処理を完了できませんでした",
+    message: "処理を完了できませんでした。内容をご確認ください。",
     relatedService: "x",
     actionUrl: "/settings/x",
   });
@@ -87,10 +84,10 @@ export function notifyDriveSaveComplete(userId: string, fileName?: string) {
     audience: "user",
     userId,
     type: "completed",
-    title: "Google Drive保存が完了しました",
+    title: "お仕事が完了しました",
     message: fileName
-      ? `「${fileName}」をGoogle Driveに保存しました。`
-      : "成果物をGoogle Driveに保存しました。",
+      ? `お待たせいたしました。「${fileName}」の保存が完了しました。`
+      : "お待たせいたしました。資料の保存が完了しました。",
     relatedService: "google",
     actionUrl: "/workspace/drive",
   });
@@ -101,8 +98,8 @@ export function notifyGmailSummaryComplete(userId: string) {
     audience: "user",
     userId,
     type: "completed",
-    title: "Gmail要約が完了しました",
-    message: "メールの要約と返信下書きの準備ができました。",
+    title: "お仕事が完了しました",
+    message: "お待たせいたしました。メールの要約と返信案の準備が完了しました。",
     relatedService: "google",
     actionUrl: "/workspace/mail",
   });
@@ -113,8 +110,8 @@ export function notifyCalendarReminder(userId: string, title: string) {
     audience: "user",
     userId,
     type: "automation",
-    title: "カレンダー予定の通知",
-    message: title,
+    title: "次回の実行予定のご案内",
+    message: `次回の実行予定をご案内します。${title}`,
     relatedService: "google",
     actionUrl: "/workspace/calendar",
   });
@@ -125,9 +122,9 @@ export function notifyBillingPaymentFailed(userId: string) {
     audience: "user",
     userId,
     type: "billing",
-    title: "お支払いに失敗しました",
+    title: "運営からのお知らせ",
     message:
-      "お支払いの処理に失敗しました。7日以内に更新されない場合、自動化機能が停止します。",
+      "お支払いの確認ができませんでした。お手数ですが、お支払い情報をご確認ください。",
     relatedService: "stripe",
     actionUrl: "/settings/billing",
   });
@@ -138,10 +135,10 @@ export function notifyBillingPaymentSucceeded(userId: string, planLabel?: string
     audience: "user",
     userId,
     type: "billing",
-    title: "お支払いが完了しました",
+    title: "運営からのお知らせ",
     message: planLabel
-      ? `${planLabel}プランのお支払いが確認されました。`
-      : "お支払いが正常に処理されました。",
+      ? `${planLabel}プランのお支払いを確認いたしました。`
+      : "お支払いを確認いたしました。",
     relatedService: "stripe",
     actionUrl: "/settings/billing",
   });
@@ -152,8 +149,8 @@ export function notifyBillingPlanChanged(userId: string, planLabel: string) {
     audience: "user",
     userId,
     type: "billing",
-    title: "プランが更新されました",
-    message: `${planLabel}プランに変更されました。`,
+    title: "運営からのお知らせ",
+    message: `${planLabel}プランへ変更いたしました。`,
     relatedService: "stripe",
     actionUrl: "/settings/billing",
   });
@@ -164,9 +161,8 @@ export function notifyBillingPlanDowngraded(userId: string) {
     audience: "user",
     userId,
     type: "billing",
-    title: "Freeプランに変更されました",
-    message:
-      "サブスクリプションが終了したため、Freeプランに変更されました。",
+    title: "運営からのお知らせ",
+    message: "プランをFreeへ変更いたしました。",
     relatedService: "stripe",
     actionUrl: "/settings/billing",
   });
@@ -178,8 +174,8 @@ export function notifyBillingGraceScheduled(userId: string, graceEndsAt: string)
     audience: "user",
     userId,
     type: "billing",
-    title: "自動停止予定",
-    message: `お支払いが確認できない場合、${formatted} 以降に自動化機能が停止されます。`,
+    title: "運営からのお知らせ",
+    message: `お支払いが確認できない場合、${formatted} 以降に一部機能が停止する可能性がございます。`,
     relatedService: "stripe",
     actionUrl: "/settings/billing",
   });
@@ -193,8 +189,8 @@ export function notifyIntegrationError(
     audience: "user",
     userId,
     type: "integration",
-    title: `${input.service}連携エラー`,
-    message: input.message,
+    title: "処理を完了できませんでした",
+    message: "処理を完了できませんでした。連携設定をご確認ください。",
     relatedService: input.service.toLowerCase(),
     actionUrl: "/settings",
   });
@@ -205,8 +201,8 @@ export function notifyIntegrationExpiring(userId: string, service: string) {
     audience: "user",
     userId,
     type: "integration",
-    title: `${service}認証の期限が近づいています`,
-    message: "連携を維持するため、再認証をお願いします。",
+    title: "ご確認が必要な仕事がございます",
+    message: "連携を継続するため、再認証のご確認をお願いいたします。",
     relatedService: service.toLowerCase(),
     actionUrl: "/settings",
   });
@@ -220,9 +216,9 @@ export function notifyRecommendation(
     audience: "user",
     userId,
     type: "recommendation",
-    title: input.title,
-    message: input.message,
-    actionUrl: input.actionUrl ?? "/projects",
+    title: "改善のご提案がございます",
+    message: `改善できる可能性のある仕事が見つかりました。${input.message}`,
+    actionUrl: input.actionUrl ?? "/settings/learning",
   });
 }
 
@@ -235,8 +231,10 @@ export function notifyWorkCompleted(
     audience: "user",
     userId,
     type: "completed",
-    title: input.title,
-    message: input.message,
+    title: "お仕事が完了しました",
+    message: input.message
+      ? `お待たせいたしました。${input.message}`
+      : "お待たせいたしました。ご依頼の内容が完了しました。",
     actionUrl: "/workspace",
   });
 }
@@ -250,8 +248,8 @@ export function notifyWorkFailed(
     audience: "user",
     userId,
     type: "error",
-    title: input.title,
-    message: input.message,
+    title: "処理を完了できませんでした",
+    message: "処理を完了できませんでした。内容をご確認ください。",
     actionUrl: "/workspace",
   });
 }

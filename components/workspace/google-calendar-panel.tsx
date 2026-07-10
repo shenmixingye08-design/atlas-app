@@ -29,7 +29,7 @@ const RANGE_TABS: { id: CalendarRangeId; label: string }[] = [
 
 function CalendarEventCard({ event }: { event: CalendarEvent }) {
   return (
-    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white p-5 shadow-[var(--shadow-sm)]">
+    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]">
       <div className="space-y-2">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <h3 className="text-base font-semibold text-foreground">{event.title}</h3>

@@ -37,7 +37,7 @@ export function LandingHeroMockup() {
     <LandingReveal className="mx-auto mt-14 w-full max-w-5xl sm:mt-16" delayMs={200}>
       <div className="landing-glass landing-hero-mockup animate-landing-float overflow-hidden rounded-[var(--radius-2xl)] shadow-[var(--shadow-lg)]">
         {/* Browser chrome */}
-        <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] bg-white/60 px-4 py-3">
+        <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--card)]/60 px-4 py-3">
           <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
           <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
           <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
@@ -54,7 +54,7 @@ export function LandingHeroMockup() {
               </p>
             </div>
 
-            <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white/80 p-4">
+            <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card-glass)] p-4">
               <p className="text-xs font-semibold text-foreground">今日の仕事</p>
               <ul className="mt-3 space-y-2">
                 {HERO_MOCKUP.todayJobs.map((job) => (
@@ -68,7 +68,7 @@ export function LandingHeroMockup() {
                         {job.title}
                       </span>
                     </span>
-                    <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] text-[var(--foreground-muted)]">
+                    <span className="shrink-0 rounded-full bg-[var(--card)] px-2 py-0.5 text-[10px] text-[var(--foreground-muted)]">
                       {job.status}
                     </span>
                   </li>
@@ -76,7 +76,7 @@ export function LandingHeroMockup() {
               </ul>
             </div>
 
-            <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white/80 p-4">
+            <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card-glass)] p-4">
               <p className="text-xs font-semibold text-foreground">進行中の仕事</p>
               <ul className="mt-3 space-y-3">
                 {HERO_MOCKUP.inProgress.map((job) => (
@@ -96,7 +96,7 @@ export function LandingHeroMockup() {
               </ul>
             </div>
 
-            <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white/80 p-4">
+            <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card-glass)] p-4">
               <p className="text-xs font-semibold text-foreground">本日完了</p>
               <ul className="mt-2 space-y-1.5">
                 {HERO_MOCKUP.completed.map((job) => (
@@ -112,7 +112,7 @@ export function LandingHeroMockup() {
 
           {/* Right column — AI status + connections + chat */}
           <div className="space-y-4 sm:col-span-5">
-            <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white/80 p-4">
+            <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card-glass)] p-4">
               <p className="text-xs font-semibold text-foreground">AI秘書の稼働状況</p>
               <ul className="mt-3 space-y-2">
                 {HERO_MOCKUP.aiEmployees.map((emp) => (
@@ -133,13 +133,13 @@ export function LandingHeroMockup() {
               </ul>
             </div>
 
-            <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white/80 p-4">
+            <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card-glass)] p-4">
               <p className="text-xs font-semibold text-foreground">接続状態</p>
               <ul className="mt-3 flex flex-wrap gap-2">
                 {HERO_MOCKUP.connections.map((conn) => (
                   <li
                     key={conn.id}
-                    className="flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-white px-3 py-1.5 text-xs"
+                    className="flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--card)] px-3 py-1.5 text-xs"
                   >
                     <span
                       className={cn(
@@ -153,7 +153,7 @@ export function LandingHeroMockup() {
               </ul>
             </div>
 
-            <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white/80 p-4">
+            <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card-glass)] p-4">
               <p className="text-xs font-semibold text-foreground">仕事の依頼</p>
               <div className="mt-3 rounded-[var(--radius-lg)] bg-[var(--background-subtle)] px-3 py-3 text-xs text-[var(--foreground-muted)]">
                 {HERO_MOCKUP.chatPlaceholder}
@@ -162,7 +162,7 @@ export function LandingHeroMockup() {
                 <span className="rounded-full bg-accent px-3 py-1.5 text-[10px] font-medium text-white">
                   仕事を依頼
                 </span>
-                <span className="rounded-full border border-[var(--border-subtle)] bg-white px-3 py-1.5 text-[10px] text-[var(--foreground-muted)]">
+                <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--card)] px-3 py-1.5 text-[10px] text-[var(--foreground-muted)]">
                   習慣に登録
                 </span>
               </div>

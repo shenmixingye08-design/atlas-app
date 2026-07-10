@@ -231,7 +231,7 @@ export function MemorySettings() {
           onChange={(event) =>
             setCategoryFilter(event.target.value as MemoryCategory | "all")
           }
-          className="h-11 rounded-[var(--radius-lg)] border border-[var(--border)] bg-white px-3 text-sm"
+          className="h-11 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--card)] px-3 text-sm"
         >
           <option value="all">{ui.memory.allCategories}</option>
           {MEMORY_CATEGORIES.map((category) => (

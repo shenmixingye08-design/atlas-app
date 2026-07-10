@@ -184,7 +184,7 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
                       "touch-target flex w-full items-center gap-3 rounded-[var(--radius-xl)] border px-3 py-3 text-left transition-all focus:outline-none focus:ring-2 focus:ring-accent/25",
                       selectedTask === task.id
                         ? "border-accent bg-[var(--accent-muted)]"
-                        : "border-[var(--border-subtle)] bg-white/70 hover:bg-[var(--background-subtle)]",
+                        : "border-[var(--border-subtle)] bg-[var(--card)]/70 hover:bg-[var(--background-subtle)]",
                     )}
                     aria-pressed={selectedTask === task.id}
                   >
@@ -220,7 +220,7 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
                   if (event.target.value.trim()) setSelectedTask("custom");
                 }}
                 placeholder={ui.firstExperience.customPlaceholder}
-                className="mt-2 w-full rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white/80 px-4 py-3 text-sm text-foreground placeholder:text-[var(--foreground-muted)] focus:outline-none focus:ring-2 focus:ring-accent/25"
+                className="mt-2 w-full rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card-glass)] px-4 py-3 text-sm text-foreground placeholder:text-[var(--foreground-muted)] focus:outline-none focus:ring-2 focus:ring-accent/25"
               />
             </div>
 
@@ -298,7 +298,7 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
             </div>
 
             <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-[var(--radius-lg)] bg-white/60 px-3 py-3">
+              <div className="rounded-[var(--radius-lg)] bg-[var(--card)]/60 px-3 py-3">
                 <dt className="text-xs text-[var(--foreground-muted)]">
                   {ui.firstExperience.durationLabel}
                 </dt>
@@ -306,13 +306,13 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
                   {ui.firstExperience.durationValue(result.durationSec)}
                 </dd>
               </div>
-              <div className="rounded-[var(--radius-lg)] bg-white/60 px-3 py-3">
+              <div className="rounded-[var(--radius-lg)] bg-[var(--card)]/60 px-3 py-3">
                 <dt className="text-xs text-[var(--foreground-muted)]">
                   {ui.firstExperience.employeeLabel}
                 </dt>
                 <dd className="mt-1 font-semibold text-foreground">{result.leadEmployee}</dd>
               </div>
-              <div className="col-span-2 rounded-[var(--radius-lg)] bg-white/60 px-3 py-3">
+              <div className="col-span-2 rounded-[var(--radius-lg)] bg-[var(--card)]/60 px-3 py-3">
                 <dt className="text-xs text-[var(--foreground-muted)]">
                   {ui.firstExperience.saveLabel}
                 </dt>

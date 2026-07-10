@@ -23,3 +23,20 @@ export {
 } from "./service";
 
 export { resetNotificationStore } from "./store";
+
+export {
+  NOTICE_CATEGORY_LABELS,
+  NOTICE_PRIORITY_LABELS,
+  resolveNoticeCategory,
+  resolveNoticePriority,
+  formatNoticeTitle,
+  formatNoticeMessage,
+  isSafeActionUrl,
+  matchesNoticeFilter,
+} from "./display";
+export type {
+  NoticeCategory,
+  NoticePriority,
+  NoticeFilter,
+} from "./display";
+

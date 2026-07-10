@@ -52,7 +52,7 @@ export function HomeInProgressPanel({
         {activeJobs.map((job) => (
           <li
             key={job.id}
-            className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white p-4 shadow-[var(--shadow-sm)] sm:p-6"
+            className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-4 shadow-[var(--shadow-sm)] sm:p-6"
           >
             <div className="space-y-4">
               <div className="flex items-center gap-3">

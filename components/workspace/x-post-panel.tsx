@@ -45,7 +45,7 @@ function ValidationSummary({ validation }: { validation: XPostValidationSummary 
 
 function HistoryCard({ record }: { record: XPostHistoryRecord }) {
   return (
-    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white p-5 shadow-[var(--shadow-sm)]">
+    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="space-y-1">
           <p className="text-sm text-[var(--foreground-muted)]">
@@ -82,7 +82,7 @@ function HistoryCard({ record }: { record: XPostHistoryRecord }) {
 
 function ScheduledCard({ post }: { post: XScheduledPost }) {
   return (
-    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white p-5 shadow-[var(--shadow-sm)]">
+    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]">
       <p className="text-sm text-[var(--foreground-muted)]">
         {ui.xPost.scheduledForLabel}: {formatXPostedAt(post.scheduledFor)}
       </p>
@@ -261,7 +261,7 @@ export function XPostPanel() {
                 </Button>
                 <Link
                   href="/settings/x"
-                  className="inline-flex h-10 items-center rounded-[var(--radius-lg)] bg-[var(--background-subtle)] px-4 text-sm font-medium text-foreground ring-1 ring-[var(--border-subtle)] hover:bg-white"
+                  className="inline-flex h-10 items-center rounded-[var(--radius-lg)] bg-[var(--background-subtle)] px-4 text-sm font-medium text-foreground ring-1 ring-[var(--border-subtle)] hover:bg-[var(--card)]"
                 >
                   {ui.xPost.openSettings}
                 </Link>
@@ -290,7 +290,7 @@ export function XPostPanel() {
               onChange={(event) => setText(event.target.value)}
               placeholder={ui.xPost.textPlaceholder}
               rows={5}
-              className="w-full rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-white px-4 py-3 text-sm text-foreground shadow-[var(--shadow-sm)] focus:outline-none focus:ring-2 focus:ring-accent/25"
+              className="w-full rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--card)] px-4 py-3 text-sm text-foreground shadow-[var(--shadow-sm)] focus:outline-none focus:ring-2 focus:ring-accent/25"
             />
 
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
@@ -309,7 +309,7 @@ export function XPostPanel() {
                   type="datetime-local"
                   value={scheduledFor}
                   onChange={(event) => setScheduledFor(event.target.value)}
-                  className="w-full max-w-xs rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/25"
+                  className="w-full max-w-xs rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--card)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/25"
                 />
               </label>
             )}

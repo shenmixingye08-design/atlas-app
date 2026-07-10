@@ -74,7 +74,7 @@ export function QualityLoopPanel({ qualityLoop }: QualityLoopPanelProps) {
                   {Object.entries(review.criteria).map(([key, value]) => (
                     <div
                       key={key}
-                      className="flex items-center justify-between rounded-[var(--radius-md)] bg-white px-3 py-2 text-xs ring-1 ring-[var(--border)]"
+                      className="flex items-center justify-between rounded-[var(--radius-md)] bg-[var(--card)] px-3 py-2 text-xs ring-1 ring-[var(--border)]"
                     >
                       <span className="text-[var(--foreground-muted)]">
                         {CRITERIA_LABELS[key] ?? key}

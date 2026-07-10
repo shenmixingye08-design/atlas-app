@@ -3,29 +3,117 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  completeOnboarding,
-  deferOnboarding,
-  ONBOARDING_TASK_IDS,
-  seedProfileFromOnboarding,
-  getOnboardingTask,
-} from "@/lib/onboarding";
-import type { OnboardingEntryMode, OnboardingTaskId } from "@/lib/user-profile/types";
+import { deferFirstExperience } from "@/lib/first-experience";
+import { completeOnboarding } from "@/lib/onboarding";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
-
-type WizardStep = "welcome" | "guide-1" | "guide-2" | "guide-3" | "purpose";
 
 type WelcomeWizardProps = {
   onComplete: () => void;
 };
 
-const GUIDE_STEPS: WizardStep[] = ["guide-1", "guide-2", "guide-3"];
+const TOTAL_STEPS = 5;
+
+function StepIllustration({ step }: { step: number }) {
+  const common = "h-14 w-14 text-accent sm:h-16 sm:w-16";
+  switch (step) {
+    case 0:
+      return (
+        <svg className={common} viewBox="0 0 64 64" fill="none" aria-hidden>
+          <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="1.5" opacity="0.25" />
+          <path
+            d="M22 34c2.5 5 7 8 10 8s7.5-3 10-8"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+          />
+          <circle cx="24" cy="26" r="2" fill="currentColor" />
+          <circle cx="40" cy="26" r="2" fill="currentColor" />
+        </svg>
+      );
+    case 1:
+      return (
+        <svg className={common} viewBox="0 0 64 64" fill="none" aria-hidden>
+          <rect
+            x="14"
+            y="12"
+            width="36"
+            height="40"
+            rx="6"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            opacity="0.35"
+          />
+          <path
+            d="M22 24h20M22 32h16M22 40h12"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+    case 2:
+      return (
+        <svg className={common} viewBox="0 0 64 64" fill="none" aria-hidden>
+          <path
+            d="M18 40c6-14 22-14 28 0"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            opacity="0.3"
+            strokeLinecap="round"
+          />
+          <circle cx="32" cy="28" r="10" stroke="currentColor" strokeWidth="1.75" />
+          <path
+            d="M28 28l3 3 6-6"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
+    case 3:
+      return (
+        <svg className={common} viewBox="0 0 64 64" fill="none" aria-hidden>
+          <rect
+            x="16"
+            y="14"
+            width="32"
+            height="36"
+            rx="4"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            opacity="0.35"
+          />
+          <path
+            d="M24 12v4M40 12v4M16 24h32"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+          <circle cx="26" cy="34" r="2" fill="currentColor" />
+          <circle cx="32" cy="34" r="2" fill="currentColor" />
+          <circle cx="38" cy="34" r="2" fill="currentColor" opacity="0.4" />
+        </svg>
+      );
+    default:
+      return (
+        <svg className={common} viewBox="0 0 64 64" fill="none" aria-hidden>
+          <path
+            d="M18 42l10-22 8 14 4-8 6 16"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle cx="46" cy="20" r="4" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      );
+  }
+}
 
 export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
-  const [step, setStep] = useState<WizardStep>("welcome");
-  const [entryMode, setEntryMode] = useState<OnboardingEntryMode>("guide");
-  const [selectedTasks, setSelectedTasks] = useState<OnboardingTaskId[]>([]);
+  const [stepIndex, setStepIndex] = useState(0);
   const [visible, setVisible] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -47,64 +135,27 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
 
   useEffect(() => {
     dialogRef.current?.focus();
-  }, [step]);
+  }, [stepIndex]);
 
-  const toggleTask = useCallback((taskId: OnboardingTaskId) => {
-    setSelectedTasks((prev) => {
-      if (taskId === "undecided") {
-        return prev.includes("undecided") ? [] : ["undecided"];
-      }
-      const withoutUndecided = prev.filter((id) => id !== "undecided");
-      return withoutUndecided.includes(taskId)
-        ? withoutUndecided.filter((id) => id !== taskId)
-        : [...withoutUndecided, taskId];
-    });
-  }, []);
-
-  const finishOnboarding = useCallback(
-    (tasks: OnboardingTaskId[], mode: OnboardingEntryMode) => {
-      const finalTasks = tasks.length > 0 ? tasks : (["undecided"] as OnboardingTaskId[]);
-      seedProfileFromOnboarding(finalTasks);
-      completeOnboarding({ preferredTasks: finalTasks, entryMode: mode });
+  const finish = useCallback(
+    (mode: "guide" | "skip") => {
+      completeOnboarding({
+        preferredTasks: [],
+        entryMode: mode,
+      });
+      // ダミー業務・架空体験は自動起動しない
+      deferFirstExperience();
       onComplete();
     },
     [onComplete],
   );
 
-  const handleStartGuide = () => {
-    setEntryMode("guide");
-    setStep("guide-1");
-  };
-
-  const handleSkipToPurpose = () => {
-    setEntryMode("skip");
-    setStep("purpose");
-  };
-
-  const handleLater = () => {
-    deferOnboarding();
-    onComplete();
-  };
-
-  const handleGuideNext = () => {
-    const index = GUIDE_STEPS.indexOf(step);
-    if (index < GUIDE_STEPS.length - 1) {
-      setStep(GUIDE_STEPS[index + 1]!);
-      return;
-    }
-    setStep("purpose");
-  };
-
-  const handlePurposeSubmit = () => {
-    finishOnboarding(selectedTasks, entryMode);
-  };
-
-  const guideIndex = GUIDE_STEPS.indexOf(step);
-  const isGuideStep = guideIndex >= 0;
+  const step = ui.onboarding.steps[stepIndex];
+  const isLast = stepIndex === TOTAL_STEPS - 1;
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm sm:p-6"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/35 p-4 backdrop-blur-md sm:p-6"
       role="presentation"
     >
       <div
@@ -114,171 +165,99 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
         aria-labelledby="welcome-wizard-title"
         tabIndex={-1}
         className={cn(
-          "landing-glass w-full max-w-lg rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] shadow-[var(--shadow-lg)] transition-all duration-500 ease-out outline-none",
+          "relative w-full max-w-xl overflow-hidden rounded-[28px] border border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)] outline-none transition-all duration-500 ease-out",
           visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
         )}
       >
-        {step === "welcome" && (
-          <div className="px-6 py-8 sm:px-10 sm:py-10">
-            <p className="text-center text-xs font-medium text-accent">
-              {ui.onboarding.badge}
-            </p>
-            <h2
-              id="welcome-wizard-title"
-              className="mt-3 text-center text-2xl font-semibold tracking-tight text-foreground sm:text-3xl"
-            >
-              {ui.onboarding.welcomeTitle}
-            </h2>
-            <p className="mt-3 text-center text-sm text-[var(--foreground-muted)] sm:text-base">
-              {ui.onboarding.welcomeSubtitle}
-            </p>
+        <button
+          type="button"
+          onClick={() => finish("skip")}
+          className="absolute right-4 top-4 z-10 rounded-full px-3 py-1.5 text-sm text-[var(--foreground-muted)] transition-colors hover:bg-[var(--background-subtle)] hover:text-foreground focus:outline-none focus:ring-2 focus:ring-accent/25"
+        >
+          {ui.onboarding.skip}
+        </button>
 
-            <ul className="mt-8 space-y-3">
-              <li className="rounded-[var(--radius-xl)] border border-accent/25 bg-accent/[0.04] p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">
-                      {ui.onboarding.optionGuideTitle}
-                      <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-white">
-                        {ui.onboarding.recommended}
-                      </span>
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-                      {ui.onboarding.optionGuideDesc}
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  className="mt-4 w-full"
-                  onClick={handleStartGuide}
-                >
-                  {ui.onboarding.startGuide}
-                </Button>
-              </li>
-
-              <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white/70 p-4">
-                <p className="text-sm font-semibold text-foreground">
-                  {ui.onboarding.optionSkipTitle}
-                </p>
-                <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-                  {ui.onboarding.optionSkipDesc}
-                </p>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="mt-4 w-full"
-                  onClick={handleSkipToPurpose}
-                >
-                  {ui.onboarding.skipAndStart}
-                </Button>
-              </li>
-
-              <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white/50 p-4">
-                <p className="text-sm font-semibold text-foreground">
-                  {ui.onboarding.optionLaterTitle}
-                </p>
-                <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-                  {ui.onboarding.optionLaterDesc}
-                </p>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="mt-4 w-full"
-                  onClick={handleLater}
-                >
-                  {ui.onboarding.later}
-                </Button>
-              </li>
-            </ul>
-          </div>
-        )}
-
-        {isGuideStep && (
-          <div className="px-6 py-8 sm:px-10 sm:py-10">
-            <p className="text-xs font-medium text-accent">
-              {ui.onboarding.guideProgress(guideIndex + 1, GUIDE_STEPS.length)}
-            </p>
-            <h2 className="mt-3 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-              {ui.onboarding.guideSteps[guideIndex]?.title}
-            </h2>
-            <p className="mt-4 text-sm leading-relaxed text-[var(--foreground-muted)]">
-              {ui.onboarding.guideSteps[guideIndex]?.body}
-            </p>
-            <div className="mt-8 flex gap-3">
-              {guideIndex > 0 && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => setStep(GUIDE_STEPS[guideIndex - 1]!)}
-                >
-                  {ui.onboarding.back}
-                </Button>
-              )}
-              <Button
-                variant="primary"
-                size="sm"
-                className="flex-1"
-                onClick={handleGuideNext}
-              >
-                {guideIndex < GUIDE_STEPS.length - 1
-                  ? ui.onboarding.next
-                  : ui.onboarding.toPurpose}
-              </Button>
+        <div className="px-6 pb-8 pt-12 sm:px-12 sm:pb-10 sm:pt-14">
+          <div className="flex justify-center">
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[var(--background-subtle)] sm:h-28 sm:w-28">
+              <StepIllustration step={stepIndex} />
             </div>
           </div>
-        )}
 
-        {step === "purpose" && (
-          <div className="px-6 py-8 sm:px-10 sm:py-10">
-            <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-              {ui.onboarding.purposeTitle}
-            </h2>
-            <p className="mt-2 text-sm text-[var(--foreground-muted)]">
-              {ui.onboarding.purposeHint}
-            </p>
+          <p className="mt-6 text-center text-xs font-medium tracking-wide text-accent">
+            {ui.onboarding.stepLabel(stepIndex + 1, TOTAL_STEPS)}
+          </p>
 
-            <ul className="mt-6 grid gap-2 sm:grid-cols-2">
-              {ONBOARDING_TASK_IDS.map((taskId) => {
-                const task = getOnboardingTask(taskId);
-                const selected = selectedTasks.includes(taskId);
-                return (
-                  <li key={taskId}>
-                    <button
-                      type="button"
-                      onClick={() => toggleTask(taskId)}
-                      className={cn(
-                        "touch-target flex w-full items-center gap-3 rounded-[var(--radius-xl)] border px-3 py-3 text-left transition-all focus:outline-none focus:ring-2 focus:ring-accent/25 sm:px-4",
-                        selected
-                          ? "border-accent bg-[var(--accent-muted)] shadow-[var(--shadow-sm)]"
-                          : "border-[var(--border-subtle)] bg-white/70 hover:bg-[var(--background-subtle)]",
-                      )}
-                      aria-pressed={selected}
-                    >
-                      <span className="text-xl" aria-hidden>
-                        {task.icon}
-                      </span>
-                      <span className="text-sm font-medium text-foreground">
-                        {task.label}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
+          <h2
+            id="welcome-wizard-title"
+            className="mt-3 text-center text-2xl font-semibold tracking-tight text-foreground sm:text-3xl"
+          >
+            {step?.title}
+          </h2>
+
+          <p className="mx-auto mt-4 max-w-md whitespace-pre-line text-center text-sm leading-relaxed text-[var(--foreground-muted)] sm:text-base">
+            {step?.body}
+          </p>
+
+          {step?.examples && step.examples.length > 0 && (
+            <ul className="mx-auto mt-6 flex max-w-sm flex-wrap justify-center gap-2">
+              {step.examples.map((example) => (
+                <li
+                  key={example}
+                  className="rounded-full border border-[var(--border-subtle)] bg-[var(--background-subtle)] px-3 py-1.5 text-xs text-[var(--foreground-muted)] sm:text-sm"
+                >
+                  {example}
+                </li>
+              ))}
             </ul>
+          )}
 
-            <Button
-              variant="primary"
-              size="lg"
-              className="mt-8 w-full"
-              onClick={handlePurposeSubmit}
-            >
-              {ui.onboarding.finish}
-            </Button>
+          <div className="mt-8 flex items-center justify-center gap-2" aria-hidden>
+            {Array.from({ length: TOTAL_STEPS }).map((_, index) => (
+              <span
+                key={index}
+                className={cn(
+                  "h-1.5 rounded-full transition-all duration-300",
+                  index === stepIndex
+                    ? "w-6 bg-accent"
+                    : "w-1.5 bg-[var(--border-subtle)]",
+                )}
+              />
+            ))}
           </div>
-        )}
+
+          <div className="mt-8 flex gap-3">
+            {stepIndex > 0 && (
+              <Button
+                variant="secondary"
+                size="lg"
+                className="flex-1"
+                onClick={() => setStepIndex((prev) => Math.max(0, prev - 1))}
+              >
+                {ui.onboarding.back}
+              </Button>
+            )}
+            {isLast ? (
+              <Button
+                variant="primary"
+                size="lg"
+                className="flex-1"
+                onClick={() => finish("guide")}
+              >
+                {ui.onboarding.finish}
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="lg"
+                className="flex-1"
+                onClick={() => setStepIndex((prev) => Math.min(TOTAL_STEPS - 1, prev + 1))}
+              >
+                {ui.onboarding.next}
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

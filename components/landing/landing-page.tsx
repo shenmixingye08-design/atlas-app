@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { LegalFooterLinks } from "@/components/legal/legal-footer-links";
 import { AtlasLandingAuth } from "@/components/layout/atlas-header-auth";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
   LANDING_CAPABILITIES,
@@ -26,7 +27,7 @@ import { LandingWorkflowExperience } from "./landing-workflow-experience";
 
 function LandingHeader() {
   return (
-    <header className="sticky top-0 z-50 border-b border-[var(--border-subtle)] bg-white/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-[var(--border-subtle)] bg-[var(--card-glass)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-8 sm:py-4">
         <Link href="/" className="focus-ring rounded-md">
           <span className="block text-sm font-semibold tracking-tight text-foreground">
@@ -46,9 +47,11 @@ function LandingHeader() {
           <Link href="/pricing" className="text-sm text-[var(--foreground-muted)] transition-colors hover:text-foreground">
             料金
           </Link>
+          <ThemeToggle />
           <AtlasLandingAuth />
         </nav>
-        <div className="md:hidden">
+        <div className="flex items-center gap-2 md:hidden">
+          <ThemeToggle />
           <AtlasLandingAuth />
         </div>
       </div>
@@ -58,7 +61,7 @@ function LandingHeader() {
 
 function CapabilitiesSection() {
   return (
-    <section id="capabilities" className="border-t border-[var(--border-subtle)] bg-white px-4 py-20 sm:px-8 sm:py-28 lg:py-32">
+    <section id="capabilities" className="border-t border-[var(--border-subtle)] bg-[var(--card)] px-4 py-20 sm:px-8 sm:py-28 lg:py-32">
       <div className="mx-auto max-w-6xl">
         <LandingReveal className="mx-auto max-w-2xl text-center">
           <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
@@ -75,7 +78,7 @@ function CapabilitiesSection() {
         <ul className="mt-14 grid grid-cols-1 gap-4 sm:mt-16 sm:gap-5 lg:grid-cols-3 lg:gap-6">
           {LANDING_CAPABILITIES.map((item, index) => (
             <LandingReveal key={item.id} delayMs={index * 60}>
-              <li className="h-full rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-white p-6 shadow-[var(--shadow-sm)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] sm:p-8">
+              <li className="h-full rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-6 shadow-[var(--shadow-sm)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] sm:p-8">
                 <span className="text-3xl" aria-hidden>
                   {item.icon}
                 </span>
@@ -106,7 +109,7 @@ function PainSolutionsSection() {
         <ul className="mt-12 space-y-4">
           {LANDING_PAIN_SOLUTIONS.map((item, index) => (
             <LandingReveal key={item.pain} delayMs={index * 80}>
-              <li className="grid gap-4 rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-white p-6 shadow-[var(--shadow-sm)] sm:grid-cols-2 sm:items-center sm:gap-8 sm:p-8">
+              <li className="grid gap-4 rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-6 shadow-[var(--shadow-sm)] sm:grid-cols-2 sm:items-center sm:gap-8 sm:p-8">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-subtle)]">
                     悩み
@@ -148,7 +151,7 @@ function PricingSection() {
                   "flex h-full flex-col rounded-[var(--radius-2xl)] border p-6 shadow-[var(--shadow-sm)] transition-shadow hover:shadow-[var(--shadow-md)] sm:p-8",
                   plan.planId === "standard"
                     ? "border-accent bg-[var(--accent-muted)]/40 ring-1 ring-accent/20"
-                    : "border-[var(--border-subtle)] bg-white",
+                    : "border-[var(--border-subtle)] bg-[var(--card)]",
                 )}
               >
                 <div className="flex items-baseline justify-between gap-2">
@@ -219,7 +222,7 @@ function LandingFooter() {
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-white text-foreground">
+    <div className="min-h-screen bg-[var(--background)] text-foreground">
       <LandingHeader />
       <main>
         <LandingHeroSection />

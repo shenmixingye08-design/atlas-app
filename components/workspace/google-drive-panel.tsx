@@ -45,7 +45,7 @@ function DriveFileRow({
   const openUrl = file.webViewLink ?? file.webContentLink;
 
   return (
-    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white p-5 shadow-[var(--shadow-sm)]">
+    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 space-y-1">
           <h3 className="text-base font-semibold text-foreground">{file.name}</h3>
@@ -199,7 +199,7 @@ export function GoogleDrivePanel() {
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
           placeholder={ui.drive.searchPlaceholder}
-          className="min-w-[240px] flex-1 rounded-full border border-[var(--border)] bg-white px-4 py-2 text-sm focus-ring"
+          className="min-w-[240px] flex-1 rounded-full border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-sm focus-ring"
         />
         <Button type="submit" size="sm" variant="secondary">
           {ui.actions.search}
@@ -252,14 +252,14 @@ export function GoogleDrivePanel() {
                   value={deliverableId}
                   onChange={(event) => setDeliverableId(event.target.value)}
                   placeholder={ui.drive.deliverableIdPlaceholder}
-                  className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-white px-4 py-2 text-sm focus-ring"
+                  className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-sm focus-ring"
                 />
                 <select
                   value={saveCategory}
                   onChange={(event) =>
                     setSaveCategory(event.target.value as DriveCategoryId)
                   }
-                  className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-white px-4 py-2 text-sm focus-ring"
+                  className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-sm focus-ring"
                 >
                   {(
                     Object.entries(DRIVE_CATEGORY_FOLDERS) as [

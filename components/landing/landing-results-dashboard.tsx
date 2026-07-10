@@ -27,7 +27,7 @@ export function LandingResultsDashboard() {
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {LANDING_DASHBOARD_STATS.map((stat, index) => (
               <LandingReveal key={stat.id} delayMs={index * 60}>
-                <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white/70 px-4 py-5 transition-shadow hover:shadow-[var(--shadow-sm)] sm:px-5">
+                <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)]/70 px-4 py-5 transition-shadow hover:shadow-[var(--shadow-sm)] sm:px-5">
                   <p className="text-xs text-[var(--foreground-muted)]">{stat.label}</p>
                   <div className="mt-2 flex items-baseline gap-1">
                     <span className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">

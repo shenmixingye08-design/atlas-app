@@ -1,22 +1,10 @@
 /** Bottom tab identifiers — primary mobile navigation. */
 export type BottomNavId =
   | "home"
-  | "work"
-  | "automations"
-  | "integrations"
-  | "settings";
-
-const INTEGRATIONS_PREFIXES = [
-  "/integrations",
-  "/connectors",
-  "/connections",
-  "/settings/google",
-  "/settings/x",
-  "/workspace/mail",
-  "/workspace/drive",
-  "/workspace/calendar",
-  "/workspace/x",
-] as const;
+  | "request"
+  | "history"
+  | "memory"
+  | "analysis";
 
 /** Routes where the mobile bottom nav should not appear. */
 export function shouldHideBottomNav(pathname: string): boolean {
@@ -27,18 +15,19 @@ export function shouldHideBottomNav(pathname: string): boolean {
 }
 
 /** Resolve which bottom tab is active for the current path. */
-export function resolveBottomNavId(pathname: string): BottomNavId {
-  if (INTEGRATIONS_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
-    return "integrations";
-  }
-  if (pathname.startsWith("/settings")) return "settings";
-  if (pathname.startsWith("/automations")) return "automations";
+export function resolveBottomNavId(pathname: string): BottomNavId | null {
+  if (pathname.startsWith("/settings/work-memory")) return "memory";
+  if (pathname.startsWith("/settings/learning")) return "analysis";
+  if (pathname.startsWith("/history")) return "history";
   if (
     pathname.startsWith("/workspace") ||
     pathname.startsWith("/projects/") ||
     pathname.startsWith("/chat")
   ) {
-    return "work";
+    return "request";
   }
-  return "home";
+  if (pathname.startsWith("/projects") || pathname === "/notifications") {
+    return "home";
+  }
+  return null;
 }

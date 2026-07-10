@@ -48,7 +48,7 @@ export function MetricCard({ metric, className, style }: MetricCardProps) {
             {metric.trendLabel}
           </p>
         </div>
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--radius-xl)] bg-white/[0.04] text-xl ring-1 ring-[var(--border)] transition-transform duration-[var(--motion-base)] group-hover:scale-105">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--radius-xl)] bg-[var(--surface-muted)] text-xl ring-1 ring-[var(--border)] transition-transform duration-[var(--motion-base)] group-hover:scale-105">
           {metric.icon}
         </div>
       </div>

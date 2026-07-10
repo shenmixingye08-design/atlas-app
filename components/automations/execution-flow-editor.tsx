@@ -78,7 +78,7 @@ export function ExecutionFlowEditor({
 
           return (
             <li key={step.id}>
-              <label className="flex cursor-pointer items-start gap-3 rounded-[var(--radius-md)] px-2 py-2 hover:bg-white/60">
+              <label className="flex cursor-pointer items-start gap-3 rounded-[var(--radius-md)] px-2 py-2 hover:bg-[var(--card)]/60">
                 <input
                   type="checkbox"
                   className="mt-1 h-4 w-4 rounded border-[var(--border-subtle)] text-accent focus:ring-accent/25"

@@ -35,7 +35,7 @@ export function DashboardHeader({
         </div>
 
         <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--foreground-muted)]">
-          <span className="rounded-[var(--radius-lg)] bg-white/[0.04] px-3 py-2 ring-1 ring-[var(--border)] tabular-nums">
+          <span className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 ring-1 ring-[var(--border)] tabular-nums">
             {formatDashboardClock()}
           </span>
           <Badge
@@ -49,7 +49,7 @@ export function DashboardHeader({
 
       {company && (
         <div
-          className="flex flex-col gap-4 rounded-[var(--radius-2xl)] border border-[var(--border)] bg-white/[0.02] p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6"
+          className="flex flex-col gap-4 rounded-[var(--radius-2xl)] border border-[var(--border)] bg-[var(--surface-muted)] p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6"
           style={{ boxShadow: `inset 4px 0 0 0 ${company.brandColor}` }}
         >
           <div className="flex items-center gap-4">

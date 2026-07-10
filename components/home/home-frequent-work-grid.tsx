@@ -46,7 +46,7 @@ export function HomeFrequentWorkGrid({ profileVersion = 0 }: HomeFrequentWorkGri
             key={preset.id}
             type="button"
             onClick={() => handleSelect(preset)}
-            className="touch-target min-h-[72px] rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-white px-4 py-4 text-left shadow-[var(--shadow-sm)] transition-colors hover:bg-[var(--background-subtle)] focus:outline-none focus:ring-2 focus:ring-accent/25 sm:px-5 sm:py-5"
+            className="touch-target min-h-[72px] rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] px-4 py-4 text-left shadow-[var(--shadow-sm)] transition-colors hover:bg-[var(--background-subtle)] focus:outline-none focus:ring-2 focus:ring-accent/25 sm:px-5 sm:py-5"
           >
             <span className="text-2xl" aria-hidden>
               {HOME_FREQUENT_WORK_ICONS[preset.id] ?? "📋"}

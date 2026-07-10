@@ -36,7 +36,7 @@ export function SignInPageClient() {
     <Suspense
       fallback={
         <AuthShell title="ログイン" subtitle="読み込み中…">
-          <div className="h-40 animate-pulse rounded-xl bg-white/5" />
+          <div className="h-40 animate-pulse rounded-xl bg-[var(--surface-muted)]" />
         </AuthShell>
       }
     >

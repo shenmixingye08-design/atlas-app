@@ -18,10 +18,10 @@ const NAV_ITEMS: {
   icon: string;
 }[] = [
   { id: "home", href: "/projects", label: ui.nav.home, icon: "⌂" },
-  { id: "work", href: "/workspace", label: ui.nav.work, icon: "◎" },
-  { id: "automations", href: "/automations", label: ui.nav.automations, icon: "↻" },
-  { id: "integrations", href: "/integrations", label: ui.nav.integrations, icon: "⎘" },
-  { id: "settings", href: "/settings", label: ui.nav.settings, icon: "⚙" },
+  { id: "request", href: "/workspace", label: ui.nav.newRequest, icon: "＋" },
+  { id: "history", href: "/history", label: ui.nav.requestHistory, icon: "☰" },
+  { id: "memory", href: "/settings/work-memory", label: ui.nav.workMemory, icon: "◎" },
+  { id: "analysis", href: "/settings/learning", label: ui.nav.analysis, icon: "↗" },
 ];
 
 export function AtlasBottomNav() {
@@ -36,10 +36,10 @@ export function AtlasBottomNav() {
   return (
     <nav
       aria-label={ui.nav.menu}
-      className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border-subtle)] bg-white/95 backdrop-blur-xl md:hidden"
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border-subtle)] bg-[var(--card-glass)] backdrop-blur-xl md:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
-      <ul className="mx-auto flex max-w-lg items-stretch justify-around px-1 pt-1">
+      <ul className="mx-auto flex max-w-lg items-stretch justify-around px-0.5 pt-1">
         {NAV_ITEMS.map((item) => {
           const isActive = active === item.id;
           return (
@@ -47,7 +47,7 @@ export function AtlasBottomNav() {
               <Link
                 href={item.href}
                 className={cn(
-                  "touch-target flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-[var(--radius-md)] px-1 text-[11px] font-medium transition-colors focus-ring",
+                  "touch-target flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-[var(--radius-md)] px-0.5 text-[11px] font-medium leading-tight transition-colors focus-ring",
                   isActive
                     ? "text-accent"
                     : "text-[var(--foreground-muted)] hover:text-foreground",
@@ -57,7 +57,7 @@ export function AtlasBottomNav() {
                 <span className="text-lg leading-none" aria-hidden>
                   {item.icon}
                 </span>
-                <span className="leading-tight">{item.label}</span>
+                <span className="max-w-full text-center">{item.label}</span>
               </Link>
             </li>
           );

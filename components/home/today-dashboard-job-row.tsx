@@ -24,7 +24,7 @@ const STATUS_STYLES: Record<
 > = {
   not_started: {
     label: ui.todayDashboard.status.notStarted,
-    className: "bg-white text-[var(--foreground-muted)] ring-1 ring-[var(--border-subtle)]",
+    className: "bg-[var(--card)] text-[var(--foreground-muted)] ring-1 ring-[var(--border-subtle)]",
   },
   preparing: {
     label: ui.todayDashboard.status.preparing,
@@ -93,7 +93,7 @@ export function TodayDashboardJobRow({
       : job.href;
 
   return (
-    <li className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-white px-4 py-4">
+    <li className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--card)] px-4 py-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-2">

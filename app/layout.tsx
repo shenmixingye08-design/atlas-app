@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-import { atlasClerkAppearance } from "@/lib/clerk/appearance";
+import { AppProviders } from "@/components/providers/app-providers";
 import { OfflineWatcher } from "@/components/system-pages/offline-watcher";
+import { THEME_BOOT_SCRIPT } from "@/lib/theme/storage";
 import {
   ATLAS_DEFAULT_DESCRIPTION,
   ATLAS_DEFAULT_TITLE,
@@ -66,6 +66,10 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f1115" },
+  ],
 };
 
 export default function RootLayout({
@@ -77,12 +81,16 @@ export default function RootLayout({
     <html
       lang="ja"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-white text-[#1d1d1f]">
-        <ClerkProvider appearance={atlasClerkAppearance}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
+      <body className="flex min-h-full flex-col bg-[var(--background)] text-[var(--text-primary)]">
+        <AppProviders>
           {children}
           <OfflineWatcher />
-        </ClerkProvider>
+        </AppProviders>
       </body>
     </html>
   );

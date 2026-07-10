@@ -37,7 +37,7 @@ export function StatCard({
           {hint && <p className="mt-1 text-caption">{hint}</p>}
         </div>
         {icon && (
-          <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-lg)] bg-white/[0.04] text-lg ring-1 ring-[var(--border)]">
+          <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-lg)] bg-[var(--surface-muted)] text-lg ring-1 ring-[var(--border)]">
             {icon}
           </div>
         )}

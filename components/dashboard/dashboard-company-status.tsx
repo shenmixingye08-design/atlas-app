@@ -33,7 +33,7 @@ function EmployeeCard({ employee }: EmployeeCardProps) {
     >
       <div className="flex items-start gap-3">
         <div className="relative">
-          <div className="flex h-11 w-11 items-center justify-center rounded-[var(--radius-lg)] bg-white/[0.04] text-lg ring-1 ring-[var(--border)]">
+          <div className="flex h-11 w-11 items-center justify-center rounded-[var(--radius-lg)] bg-[var(--surface-muted)] text-lg ring-1 ring-[var(--border)]">
             {employee.icon}
           </div>
           <span

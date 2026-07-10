@@ -72,7 +72,7 @@ function PlanCard({
         "rounded-[var(--radius-xl)] border p-5",
         isCurrent
           ? "border-[var(--accent)] bg-[var(--accent)]/5 ring-1 ring-[var(--accent)]/20"
-          : "border-[var(--border-subtle)] bg-white",
+          : "border-[var(--border-subtle)] bg-[var(--card)]",
       )}
     >
       <div className="flex items-start justify-between gap-3">

@@ -30,7 +30,7 @@ export function SnsBatchSelector({
           className={`rounded-full px-4 py-2 text-sm font-medium ring-1 transition-colors ${
             value === null
               ? "bg-accent text-white ring-accent"
-              : "bg-white text-foreground ring-[var(--border-subtle)] hover:ring-accent/30"
+              : "bg-[var(--card)] text-foreground ring-[var(--border-subtle)] hover:ring-accent/30"
           }`}
         >
           {ui.costOptimization.snsBatchDaily}
@@ -43,7 +43,7 @@ export function SnsBatchSelector({
             className={`rounded-full px-4 py-2 text-sm font-medium ring-1 transition-colors ${
               value === option.days
                 ? "bg-accent text-white ring-accent"
-                : "bg-white text-foreground ring-[var(--border-subtle)] hover:ring-accent/30"
+                : "bg-[var(--card)] text-foreground ring-[var(--border-subtle)] hover:ring-accent/30"
             }`}
           >
             {option.label}

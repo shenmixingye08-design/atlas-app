@@ -79,7 +79,7 @@ export function HomeTodayWorkCard({ job, onRefresh }: HomeTodayWorkCardProps) {
       : normalizedJob.href;
 
   return (
-    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white p-4 shadow-[var(--shadow-sm)] sm:p-6">
+    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-4 shadow-[var(--shadow-sm)] sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-5">
         <div className="min-w-0 space-y-3">
           <div className="flex items-start gap-3">

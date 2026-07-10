@@ -15,3 +15,19 @@ export {
   runLearningAnalysisClient,
   fetchLearningReportHistory,
 } from "./client";
+
+export {
+  ANALYSIS_DISPLAY_PERIODS,
+  IMPROVEMENT_EFFECT_LABELS,
+  buildAdviceCards,
+  buildAnalysisStats,
+  buildRecommendationBuckets,
+  formatAvgDuration,
+} from "./display";
+export type {
+  AnalysisDisplayPeriod,
+  AdviceCardModel,
+  AnalysisStat,
+  ImprovementEffectKind,
+  RecommendationBucket,
+} from "./display";

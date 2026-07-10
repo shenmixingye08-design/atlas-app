@@ -8,7 +8,7 @@ import { ui } from "@/lib/i18n";
 
 export const metadata: Metadata = {
   title: ui.metadata.workspace,
-  description: "AIチームに仕事を依頼して進める",
+  description: "AI秘書へ仕事を依頼する",
 };
 
 export default function WorkspacePage() {

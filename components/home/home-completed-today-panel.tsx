@@ -52,7 +52,7 @@ export function HomeCompletedTodayPanel({
         {completedJobs.map((job) => (
           <li
             key={job.id}
-            className="flex min-w-0 items-center gap-3 rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white px-4 py-3.5 text-sm sm:px-5 sm:py-4"
+            className="flex min-w-0 items-center gap-3 rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] px-4 py-3.5 text-sm sm:px-5 sm:py-4"
           >
             <span className="text-base text-[var(--status-success)]" aria-hidden>
               ✓

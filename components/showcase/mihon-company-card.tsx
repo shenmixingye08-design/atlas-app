@@ -27,7 +27,7 @@ export function MihonCompanyCard({
   return (
     <article
       className={cn(
-        "group flex h-full flex-col rounded-[var(--radius-2xl)] bg-white p-8 shadow-[var(--shadow-md)] transition-all duration-[var(--motion-base)] animate-status-in sm:p-10",
+        "group flex h-full flex-col rounded-[var(--radius-2xl)] bg-[var(--card)] p-8 shadow-[var(--shadow-md)] transition-all duration-[var(--motion-base)] animate-status-in sm:p-10",
         !isOriginal && "atlas-lift-3 hover:shadow-[var(--shadow-lg)]",
         isOriginal && "bg-[var(--background-subtle)] shadow-[var(--shadow-sm)]",
       )}

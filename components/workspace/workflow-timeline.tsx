@@ -96,7 +96,7 @@ export function WorkflowTimeline({ stages, className }: WorkflowTimelineProps) {
                   isActive
                     ? "border-accent/30 bg-accent/5 shadow-[var(--shadow-glow)]"
                     : stage.status === "completed"
-                      ? "border-[var(--border)] bg-white/[0.02]"
+                      ? "border-[var(--border)] bg-[var(--surface-muted)]"
                       : stage.status === "error"
                         ? "border-[var(--status-error)]/25 bg-[var(--status-error-bg)]"
                         : "border-[var(--border)] bg-[var(--surface-muted)]",
@@ -109,7 +109,7 @@ export function WorkflowTimeline({ stages, className }: WorkflowTimelineProps) {
                       ? "bg-accent/15 ring-accent/40"
                       : stage.status === "completed"
                         ? "bg-[var(--status-success-bg)] ring-[var(--status-success)]/30"
-                        : "bg-white/[0.04] ring-[var(--border)]",
+                        : "bg-[var(--surface-muted)] ring-[var(--border)]",
                   )}
                 >
                   {stage.icon}

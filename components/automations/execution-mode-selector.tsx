@@ -34,7 +34,7 @@ export function ExecutionModeSelector({
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value as AutomationExecutionMode)}
-        className="h-9 max-w-[12rem] rounded-[var(--radius-lg)] bg-white px-3 text-sm text-foreground ring-1 ring-[var(--border-subtle)] focus:outline-none focus:ring-2 focus:ring-accent/25 disabled:opacity-50"
+        className="h-9 max-w-[12rem] rounded-[var(--radius-lg)] bg-[var(--card)] px-3 text-sm text-foreground ring-1 ring-[var(--border-subtle)] focus:outline-none focus:ring-2 focus:ring-accent/25 disabled:opacity-50"
         aria-label={ui.costOptimization.fieldLabel}
       >
         {options.map((option) => (
@@ -64,7 +64,7 @@ export function ExecutionModeSelector({
               className={`relative flex cursor-pointer gap-3 rounded-[var(--radius-xl)] border-2 px-4 py-4 transition-all ${
                 isSelected
                   ? "border-accent bg-accent/5 shadow-[var(--shadow-sm)]"
-                  : "border-[var(--border-subtle)] bg-white hover:border-accent/30"
+                  : "border-[var(--border-subtle)] bg-[var(--card)] hover:border-accent/30"
               } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
             >
               <input

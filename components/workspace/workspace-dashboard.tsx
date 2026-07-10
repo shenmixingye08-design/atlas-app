@@ -31,7 +31,10 @@ import { CompanyLearningPanel } from "./company-learning-panel";
 import { CompanyOperationsPanel } from "./company-operations-panel";
 import { ActionEnginePanel } from "./action-engine-panel";
 import { WorkflowInspectorPanel } from "./workflow-inspector-panel";
-import { WorkRequestForm } from "./work-request-form";
+import {
+  WorkRequestForm,
+  type WorkRequestSubmitPayload,
+} from "./work-request-form";
 import {
   WorkMemoryCandidateBanner,
   WorkMemoryUsedBanner,
@@ -58,7 +61,9 @@ export function WorkspaceDashboard() {
   const [salesMaterialConfig, setSalesMaterialConfig] =
     useState<SalesMaterialSessionConfig | null>(null);
   const [outlineOnlyText, setOutlineOnlyText] = useState<string | null>(null);
-  const [skipWorkMemory, setSkipWorkMemory] = useState(false);
+  const [requestMetadata, setRequestMetadata] = useState<
+    Readonly<Record<string, unknown>>
+  >({});
   const [workMemoryUsed, setWorkMemoryUsed] = useState<
     OrchestrationResult["workMemory"] | null
   >(null);
@@ -103,6 +108,7 @@ export function WorkspaceDashboard() {
   const runOrchestration = async (
     requestAssignment: string,
     config?: SalesMaterialSessionConfig | null,
+    extraMetadata?: Readonly<Record<string, unknown>>,
   ) => {
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -127,8 +133,9 @@ export function WorkspaceDashboard() {
         controller.signal,
         {
           metadata: {
+            ...requestMetadata,
+            ...(extraMetadata ?? {}),
             ...(config ? buildSalesMaterialMetadata(config) : {}),
-            ...(skipWorkMemory ? { skipWorkMemory: true } : {}),
           },
         },
       );
@@ -167,11 +174,13 @@ export function WorkspaceDashboard() {
     }
   };
 
-  const handleSubmit = async () => {
-    const trimmed = assignment.trim();
+  const handleSubmit = async (payload: WorkRequestSubmitPayload) => {
+    const trimmed = payload.assignment.trim();
     if (!trimmed || isLoading) return;
 
-    if (isSalesMaterialRequest(trimmed)) {
+    setRequestMetadata(payload.metadata);
+
+    if (isSalesMaterialRequest(assignment.trim()) || isSalesMaterialRequest(trimmed)) {
       if (!isAvailable("sales_material")) {
         setError(ui.featureFlags.userDisabledSalesMaterial);
         return;
@@ -184,7 +193,7 @@ export function WorkspaceDashboard() {
 
     setSalesWizardAssignment(null);
     setSalesMaterialConfig(null);
-    await runOrchestration(trimmed);
+    await runOrchestration(trimmed, null, payload.metadata);
   };
 
   const handleWizardComplete = (wizardResult: SalesMaterialWizardResult) => {
@@ -207,6 +216,7 @@ export function WorkspaceDashboard() {
 
   const handleReset = () => {
     setAssignment("");
+    setRequestMetadata({});
     setResult(null);
     setError(null);
     setSalesWizardAssignment(null);
@@ -220,20 +230,11 @@ export function WorkspaceDashboard() {
   return (
     <div className="space-y-16">
       {showForm && (
-        <header className="space-y-3">
-          <h1 className="text-display text-foreground">{ui.work.title}</h1>
-          <p className="text-body">{ui.work.intro}</p>
-        </header>
-      )}
-
-      {showForm && (
         <WorkRequestForm
           value={assignment}
           onChange={setAssignment}
-          onSubmit={() => void handleSubmit()}
+          onSubmit={(payload) => void handleSubmit(payload)}
           isLoading={isLoading}
-          skipWorkMemory={skipWorkMemory}
-          onSkipWorkMemoryChange={setSkipWorkMemory}
         />
       )}
 

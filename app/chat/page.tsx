@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 export default function ChatPage() {
   return (
-    <AtlasAppShell active="chat" width="default">
+    <AtlasAppShell active="workspace" width="default">
       <Suspense fallback={<LoadingState />}>
         <ChatInterface />
       </Suspense>

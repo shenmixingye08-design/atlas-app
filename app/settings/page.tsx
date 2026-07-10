@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
 import { OnboardingSettings } from "@/components/settings/onboarding-settings";
 import { WorkProfileSettings } from "@/components/settings/work-profile-settings";
+import { ThemeSettings } from "@/components/settings/theme-settings";
 import { CostOptimizationSettings } from "@/components/settings/cost-optimization-settings";
 import { SettingsBillingLink } from "@/components/settings/settings-billing-link";
 import { SettingsExportLink } from "@/components/settings/settings-export-link";
@@ -27,6 +28,7 @@ function SettingsContent() {
         <h1 className="text-display text-foreground">{ui.workProfile.pageTitle}</h1>
         <p className="text-body max-w-2xl">{ui.workProfile.pageSubtitle}</p>
       </header>
+      <ThemeSettings />
       <OnboardingSettings onRedo={() => router.push("/projects?welcome=1")} />
       <WorkProfileSettings />
       <SettingsWorkMemoryLink />

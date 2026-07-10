@@ -49,7 +49,7 @@ export function DashboardIntegrations({ catalog }: DashboardIntegrationsProps) {
           return (
             <Card key={provider.id} variant="default" padding="md">
               <div className="flex items-start justify-between gap-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-lg)] bg-white/[0.04] text-lg ring-1 ring-[var(--border)]">
+                <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-lg)] bg-[var(--surface-muted)] text-lg ring-1 ring-[var(--border)]">
                   {provider.icon}
                 </div>
                 <StatusChip

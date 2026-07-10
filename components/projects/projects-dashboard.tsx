@@ -9,129 +9,15 @@ import { normalizeAutomations, normalizeProjects } from "@/lib/compatibility";
 import { shouldShowFirstExperience, shouldShowFirstExperienceCard } from "@/lib/first-experience";
 import { shouldShowWelcomeWizard } from "@/lib/onboarding";
 import { useProjects } from "@/lib/projects/use-projects";
-import type { Project } from "@/lib/projects/types";
-import { ui } from "@/lib/i18n";
 import { LoadingState } from "@/components/ui/loading-state";
 import {
   HomeDashboardErrorBoundary,
   HomeWorkLoadError,
 } from "@/components/home/home-dashboard-error-boundary";
-import { HomeCollapsibleSection } from "@/components/home/home-collapsible-section";
-import {
-  HomeBriefRecommendationsSection,
-  HomeEmployeesSection,
-  HomeLearningSection,
-  HomeYesterdaySection,
-} from "@/components/home/home-daily-brief-sections";
 import { HomeFirstExperienceCard } from "@/components/home/home-first-experience-card";
-import { MorningBrief } from "@/components/home/morning-brief";
-import { HomeInProgressPanel } from "@/components/home/home-in-progress-panel";
-import { HomeMonthlyAchievements } from "@/components/home/home-monthly-achievements";
-import { HomeNotificationsBadge } from "@/components/home/home-notifications-badge";
-import { HomeNotificationsPreview } from "@/components/home/home-notifications-preview";
-import { HomeRecentHistoryPanel } from "@/components/home/home-recent-history-panel";
-import { HomeRecommendedPanel } from "@/components/home/home-recommended-panel";
-import { HomeTodayWorkPanel } from "@/components/home/home-today-work-panel";
-import { ProactiveSuggestionsPanel } from "@/components/home/proactive-suggestions-panel";
+import { SecretaryHomeDashboard } from "@/components/home/secretary-home-dashboard";
 import { FirstSuccessExperience } from "@/components/onboarding/first-success-experience";
 import { WelcomeWizard } from "@/components/onboarding/welcome-wizard";
-
-type DashboardDataProps = {
-  automations: Automation[];
-  projects: Project[];
-  profileVersion: number;
-  onStartFirstExperience: () => void;
-  showExperienceCard: boolean;
-  onAutomationRun: () => void;
-};
-
-function HomeDashboardContent({
-  automations,
-  projects,
-  profileVersion,
-  onStartFirstExperience,
-  showExperienceCard,
-  onAutomationRun,
-}: DashboardDataProps) {
-  const briefProps = { automations, projects, profileVersion };
-
-  return (
-    <div className="home-dashboard space-y-6 pb-2 sm:pb-4 animate-fade-up">
-      <MorningBrief
-        {...briefProps}
-        onAutomationRun={onAutomationRun}
-      />
-
-      <HomeTodayWorkPanel automations={automations} />
-
-      <HomeInProgressPanel automations={automations} projects={projects} />
-
-      <HomeRecentHistoryPanel />
-
-      {showExperienceCard && (
-        <HomeFirstExperienceCard onStart={onStartFirstExperience} />
-      )}
-
-      <HomeCollapsibleSection
-        id="yesterday"
-        title={ui.homeUx.collapseYesterday}
-        subtitle={ui.dailyBrief.yesterdayTitle}
-      >
-        <HomeYesterdaySection {...briefProps} />
-      </HomeCollapsibleSection>
-
-      <HomeCollapsibleSection
-        id="employees"
-        title={ui.homeUx.collapseEmployees}
-        subtitle={ui.dailyBrief.employeesTitle}
-      >
-        <HomeEmployeesSection {...briefProps} />
-      </HomeCollapsibleSection>
-
-      <HomeCollapsibleSection
-        id="recommendations"
-        title={ui.homeUx.collapseRecommendations}
-        subtitle={ui.dailyBrief.recommendationsTitle}
-      >
-        <div className="space-y-6">
-          <HomeBriefRecommendationsSection {...briefProps} />
-          <ProactiveSuggestionsPanel automations={automations} embedded />
-        </div>
-      </HomeCollapsibleSection>
-
-      <HomeCollapsibleSection
-        id="learning"
-        title={ui.homeUx.collapseLearning}
-        subtitle={ui.dailyBrief.learningLabel}
-      >
-        <HomeLearningSection {...briefProps} />
-      </HomeCollapsibleSection>
-
-      <HomeCollapsibleSection
-        id="notifications"
-        title={ui.homeUx.collapseNotifications}
-        badge={<HomeNotificationsBadge />}
-      >
-        <HomeNotificationsPreview />
-      </HomeCollapsibleSection>
-
-      <HomeCollapsibleSection
-        id="integrations"
-        title={ui.homeUx.collapseIntegrations}
-      >
-        <HomeRecommendedPanel key={profileVersion} variant="integrations" />
-      </HomeCollapsibleSection>
-
-      <HomeCollapsibleSection id="stats" title={ui.homeUx.collapseStats}>
-        <HomeMonthlyAchievements
-          projects={projects}
-          automations={automations}
-          embedded
-        />
-      </HomeCollapsibleSection>
-    </div>
-  );
-}
 
 export function ProjectsDashboard() {
   const searchParams = useSearchParams();
@@ -142,7 +28,6 @@ export function ProjectsDashboard() {
   const [showWizard, setShowWizard] = useState(false);
   const [showFirstExperience, setShowFirstExperience] = useState(false);
   const [showExperienceCard, setShowExperienceCard] = useState(false);
-  const [profileVersion, setProfileVersion] = useState(0);
 
   const reloadAutomations = useCallback(() => {
     void fetchAutomations()
@@ -162,11 +47,9 @@ export function ProjectsDashboard() {
     const forceExperience = searchParams.get("experience") === "1";
     setShowWizard(forceWelcome || shouldShowWelcomeWizard());
     setShowFirstExperience(
-      !forceWelcome &&
-        (forceExperience || shouldShowFirstExperience()),
+      !forceWelcome && (forceExperience || shouldShowFirstExperience()),
     );
     setShowExperienceCard(shouldShowFirstExperienceCard());
-    setProfileVersion((value) => value + 1);
   }, [searchParams]);
 
   useEffect(() => {
@@ -175,23 +58,19 @@ export function ProjectsDashboard() {
 
   const handleWizardComplete = useCallback(() => {
     setShowWizard(false);
-    if (shouldShowFirstExperience()) {
-      setShowFirstExperience(true);
-    }
+    // オンボーディング完了後は説明のみ。ダミー業務・架空体験は自動表示しない。
+    setShowFirstExperience(false);
     setShowExperienceCard(shouldShowFirstExperienceCard());
-    setProfileVersion((value) => value + 1);
   }, []);
 
   const handleFirstExperienceComplete = useCallback(() => {
     setShowFirstExperience(false);
     setShowExperienceCard(false);
-    setProfileVersion((value) => value + 1);
   }, []);
 
   const handleFirstExperienceDefer = useCallback(() => {
     setShowFirstExperience(false);
     setShowExperienceCard(true);
-    setProfileVersion((value) => value + 1);
   }, []);
 
   useEffect(() => {
@@ -225,14 +104,12 @@ export function ProjectsDashboard() {
           />
         </div>
       ) : (
-        <HomeDashboardContent
-          automations={automations}
-          projects={projects}
-          profileVersion={profileVersion}
-          showExperienceCard={showExperienceCard && !showFirstExperience}
-          onStartFirstExperience={() => setShowFirstExperience(true)}
-          onAutomationRun={reloadAutomations}
-        />
+        <div className="space-y-8">
+          {showExperienceCard && !showFirstExperience && (
+            <HomeFirstExperienceCard onStart={() => setShowFirstExperience(true)} />
+          )}
+          <SecretaryHomeDashboard automations={automations} projects={projects} />
+        </div>
       )}
     </HomeDashboardErrorBoundary>
   );

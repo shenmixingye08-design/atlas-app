@@ -6,7 +6,7 @@ import { ui } from "@/lib/i18n";
 
 export default function BillingSettingsPage() {
   return (
-    <AtlasAppShell active="settings" width="default">
+    <AtlasAppShell active="billing" width="default">
       <div className="space-y-8 animate-fade-up">
         <header className="space-y-3">
           <p className="text-caption">{ui.brand}</p>

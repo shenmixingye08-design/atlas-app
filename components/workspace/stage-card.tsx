@@ -41,7 +41,7 @@ export function StageCard({
         isActive
           ? "border-accent/30 bg-accent/5"
           : status === "completed"
-            ? "border-[var(--border)] bg-white shadow-[var(--shadow-sm)]"
+            ? "border-[var(--border)] bg-[var(--card)] shadow-[var(--shadow-sm)]"
             : status === "error"
               ? "border-[var(--status-error)]/25 bg-[var(--status-error-bg)]"
               : "border-[var(--border)] bg-[var(--background-subtle)]",

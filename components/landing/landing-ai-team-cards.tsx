@@ -45,13 +45,13 @@ export function LandingAiTeamCards() {
                 </div>
 
                 <dl className="mt-6 grid grid-cols-2 gap-3 border-t border-[var(--border-subtle)] pt-5">
-                  <div className="rounded-[var(--radius-lg)] bg-white/60 px-3 py-3">
+                  <div className="rounded-[var(--radius-lg)] bg-[var(--card)]/60 px-3 py-3">
                     <dt className="text-[10px] text-[var(--foreground-muted)] sm:text-xs">状態</dt>
                     <dd className="mt-1 text-sm font-semibold text-foreground">
                       {member.status === "active" ? "現在稼働中" : "待機中"}
                     </dd>
                   </div>
-                  <div className="rounded-[var(--radius-lg)] bg-white/60 px-3 py-3">
+                  <div className="rounded-[var(--radius-lg)] bg-[var(--card)]/60 px-3 py-3">
                     <dt className="text-[10px] text-[var(--foreground-muted)] sm:text-xs">今日の担当</dt>
                     <dd className="mt-1 text-sm font-semibold text-accent">
                       {member.todayTasks}件

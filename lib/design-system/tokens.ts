@@ -1,7 +1,7 @@
 /**
  * ATLAS Design Tokens — "Less, but Better."
- * Runtime values live in app/globals.css; keep these in sync.
- * All text colors meet WCAG AA (4.5:1+) on white backgrounds.
+ * Runtime values live in app/globals.css (`:root` / `html[data-theme="dark"]`).
+ * Prefer CSS variables in UI; keep these in sync for typed references.
  */
 
 export const COLORS = {
@@ -9,9 +9,9 @@ export const COLORS = {
   surface: "#ffffff",
   surfaceMuted: "#f5f5f7",
   card: "#ffffff",
-  cardGlass: "rgba(255, 255, 255, 0.94)",
+  cardGlass: "rgba(255, 255, 255, 0.86)",
 
-  textPrimary: "#1d1d1f",
+  textPrimary: "#111111",
   textSecondary: "#3a3a3c",
   textMuted: "#515154",
 
@@ -31,6 +31,35 @@ export const COLORS = {
   errorBg: "rgba(196, 0, 20, 0.06)",
 
   secondaryHover: "#e8e8ed",
+} as const;
+
+export const COLORS_DARK = {
+  background: "#0f1115",
+  surface: "#0f1115",
+  surfaceMuted: "#1c2028",
+  card: "#171a21",
+  cardGlass: "rgba(23, 26, 33, 0.88)",
+
+  textPrimary: "#ffffff",
+  textSecondary: "#c7c7cc",
+  textMuted: "#8e8e93",
+
+  border: "rgba(255, 255, 255, 0.1)",
+  borderStrong: "rgba(255, 255, 255, 0.16)",
+  borderFocus: "rgba(0, 113, 227, 0.55)",
+
+  accent: "#0071e3",
+  accentHover: "#0077ed",
+  accentMuted: "rgba(0, 113, 227, 0.18)",
+
+  success: "#30d158",
+  successBg: "rgba(48, 209, 88, 0.12)",
+  warning: "#ff9f0a",
+  warningBg: "rgba(255, 159, 10, 0.12)",
+  error: "#ff453a",
+  errorBg: "rgba(255, 69, 58, 0.12)",
+
+  secondaryHover: "#252a33",
 } as const;
 
 /** @deprecated Use COLORS — kept for backward compatibility */

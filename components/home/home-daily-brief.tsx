@@ -48,7 +48,7 @@ function YesterdayCard({ brief }: { brief: DailyBrief }) {
       {rows.map((row) => (
         <li
           key={row.label}
-          className="flex items-center justify-between rounded-[var(--radius-lg)] bg-white/60 px-3 py-2.5"
+          className="flex items-center justify-between rounded-[var(--radius-lg)] bg-[var(--card)]/60 px-3 py-2.5"
         >
           <span className="flex items-center gap-2 text-sm text-foreground">
             <span aria-hidden>{row.icon}</span>
@@ -75,7 +75,7 @@ function ScheduledItemRow({
   onRun: (item: DailyBriefScheduledItem) => void;
 }) {
   return (
-    <li className="flex flex-col gap-3 rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <li className="flex flex-col gap-3 rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)]/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-center gap-3">
         <span className="text-xl" aria-hidden>
           {item.icon}
@@ -137,7 +137,7 @@ export function HomeDailyBrief({
       aria-labelledby="daily-brief-heading"
       className="animate-fade-up landing-glass overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] shadow-[var(--shadow-md)]"
     >
-      <div className="border-b border-[var(--border-subtle)] bg-white/50 px-5 py-5 sm:px-8 sm:py-6">
+      <div className="border-b border-[var(--border-subtle)] bg-[var(--card)]/50 px-5 py-5 sm:px-8 sm:py-6">
         <p className="text-xs font-medium text-accent">{ui.dailyBrief.badge}</p>
         <h2
           id="daily-brief-heading"
@@ -191,7 +191,7 @@ export function HomeDailyBrief({
             {brief.employees.map((employee) => (
               <li
                 key={employee.id}
-                className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white/70 px-4 py-3"
+                className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)]/70 px-4 py-3"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -233,7 +233,7 @@ export function HomeDailyBrief({
                 <li key={rec.id}>
                   <Link
                     href={rec.href}
-                    className="flex items-center gap-3 rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white/70 px-4 py-3 transition-colors hover:bg-[var(--background-subtle)]"
+                    className="flex items-center gap-3 rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)]/70 px-4 py-3 transition-colors hover:bg-[var(--background-subtle)]"
                   >
                     <span className="text-lg" aria-hidden>
                       {rec.icon}
@@ -251,7 +251,7 @@ export function HomeDailyBrief({
             <p className="text-xs font-medium text-accent">{ui.dailyBrief.tipLabel}</p>
             <p className="mt-2 text-sm leading-relaxed text-foreground">{brief.dailyTip}</p>
           </div>
-          <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-white/60 px-4 py-4">
+          <div className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)]/60 px-4 py-4">
             <p className="text-xs font-medium text-[var(--foreground-muted)]">
               {ui.dailyBrief.learningLabel}
             </p>

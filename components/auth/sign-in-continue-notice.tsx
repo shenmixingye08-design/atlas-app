@@ -17,7 +17,7 @@ export function SignInContinueNotice() {
 
   return (
     <p
-      className="mb-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-center text-sm leading-relaxed text-zinc-300"
+      className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-center text-sm leading-relaxed text-[var(--text-secondary)]"
       role="status"
     >
       {ATLAS_LOGIN_CONTINUE_MESSAGE}
