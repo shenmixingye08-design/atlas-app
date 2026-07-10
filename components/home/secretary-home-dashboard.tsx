@@ -114,10 +114,10 @@ function buildSecretaryNotices(
 ): { id: string; message: string }[] {
   const notices: { id: string; message: string }[] = [];
   const hasBlog = automations.some((item) =>
-    /blog|ブログ/i.test(`${item.name} ${item.assignment}`),
+    /blog|ブログ/i.test(`${item.name} ${item.workflow?.assignment ?? ""}`),
   );
   const hasSns = automations.some((item) =>
-    /sns|投稿|x\b|instagram/i.test(`${item.name} ${item.assignment}`),
+    /sns|投稿|x\b|instagram/i.test(`${item.name} ${item.workflow?.assignment ?? ""}`),
   );
   const reviewCount = projects.filter((project) => project.status === "review").length;
   const runningCount = projects.filter((project) => project.status === "running").length;
@@ -163,7 +163,7 @@ function recentWorkItems(projects: Project[]) {
     .slice(0, 6)
     .map((project) => ({
       id: project.id,
-      title: project.name || "最近の仕事",
+      title: project.title || "最近の仕事",
       href: `/projects/${project.id}`,
       meta:
         project.status === "review"

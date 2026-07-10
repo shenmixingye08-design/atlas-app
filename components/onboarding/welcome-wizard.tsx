@@ -152,6 +152,8 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
 
   const step = ui.onboarding.steps[stepIndex];
   const isLast = stepIndex === TOTAL_STEPS - 1;
+  const examples =
+    step && "examples" in step && Array.isArray(step.examples) ? step.examples : [];
 
   return (
     <div
@@ -199,9 +201,9 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
             {step?.body}
           </p>
 
-          {step?.examples && step.examples.length > 0 && (
+          {examples.length > 0 && (
             <ul className="mx-auto mt-6 flex max-w-sm flex-wrap justify-center gap-2">
-              {step.examples.map((example) => (
+              {examples.map((example) => (
                 <li
                   key={example}
                   className="rounded-full border border-[var(--border-subtle)] bg-[var(--background-subtle)] px-3 py-1.5 text-xs text-[var(--foreground-muted)] sm:text-sm"
