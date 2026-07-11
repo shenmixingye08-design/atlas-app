@@ -80,6 +80,22 @@ export async function GET(request: Request): Promise<Response> {
     const connection = await completeGoogleAccountOAuth(userId, code, origin);
     recordGoogleIntegrationUsage();
 
+    const { recordAuditLogSafe, auditRequestContext } = await import(
+      "@/lib/owner/audit-log"
+    );
+    const ctx = auditRequestContext(request);
+    recordAuditLogSafe({
+      userId,
+      email: connection.account?.email ?? null,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      category: "integration",
+      action: "google_connect",
+      targetId: "google",
+      result: "success",
+      reason: "Google OAuth connected",
+    });
+
     return redirectToSettings(origin, {
       connected: connection.serviceId,
       account: connection.account?.email ?? connection.serviceName,
@@ -89,6 +105,20 @@ export async function GET(request: Request): Promise<Response> {
     const message =
       error instanceof Error ? error.message : GOOGLE_OAUTH_USER_ERROR;
     markGoogleConnectionError(userId, message);
+    const { recordAuditLogSafe, auditRequestContext } = await import(
+      "@/lib/owner/audit-log"
+    );
+    const ctx = auditRequestContext(request);
+    recordAuditLogSafe({
+      userId,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      category: "integration",
+      action: "google_connect",
+      targetId: "google",
+      result: "failure",
+      reason: message,
+    });
     return redirectToSettings(origin, { google_error: "1" });
   }
 }

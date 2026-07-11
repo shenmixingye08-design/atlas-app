@@ -131,5 +131,19 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const automation = await automationService.createForUser(userId, parsed);
+  const { recordAuditLogSafe, auditRequestContext } = await import(
+    "@/lib/owner/audit-log"
+  );
+  const ctx = auditRequestContext(request);
+  recordAuditLogSafe({
+    userId,
+    ip: ctx.ip,
+    userAgent: ctx.userAgent,
+    category: "automation",
+    action: "automation_create",
+    targetId: automation.id,
+    result: "success",
+    reason: automation.name,
+  });
   return Response.json(automation, { status: 201 });
 }

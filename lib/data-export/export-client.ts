@@ -110,6 +110,16 @@ export async function exportAtlasData(
 
     input.onProgress?.({ stage: "downloading", percent: 100 });
 
+    const { reportClientAuditEvent } = await import(
+      "@/lib/owner/audit-log/client"
+    );
+    reportClientAuditEvent({
+      action: "data_export",
+      targetId: fileName,
+      result: "success",
+      reason: `${input.format}:${destination}`,
+    });
+
     return { fileName, sizeBytes, historyId };
   } catch (error) {
     addBackupHistoryEntry({
@@ -122,6 +132,15 @@ export async function exportAtlasData(
       fileName,
       errorMessage:
         error instanceof Error ? error.message : "Export failed",
+    });
+    const { reportClientAuditEvent } = await import(
+      "@/lib/owner/audit-log/client"
+    );
+    reportClientAuditEvent({
+      action: "data_export",
+      targetId: fileName,
+      result: "failure",
+      reason: error instanceof Error ? error.message : "Export failed",
     });
     throw error;
   }

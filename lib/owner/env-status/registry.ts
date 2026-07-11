@@ -36,6 +36,12 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     purpose: "Clerk サーバー秘密鍵・OAuth state 署名フォールバック",
   },
   {
+    key: "CLERK_WEBHOOK_SECRET",
+    service: "clerk",
+    requirement: "recommended",
+    purpose: "Clerk Webhook（ログイン/ログアウト監査ログ）",
+  },
+  {
     key: "NEXT_PUBLIC_SITE_URL",
     service: "atlas",
     requirement: "required",

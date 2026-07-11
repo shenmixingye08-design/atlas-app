@@ -117,6 +117,21 @@ export async function POST(request: Request): Promise<Response> {
       recordLearning: true,
     });
 
+    const { recordAuditLogSafe, auditRequestContext } = await import(
+      "@/lib/owner/audit-log"
+    );
+    const ctx = auditRequestContext(request);
+    recordAuditLogSafe({
+      userId,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      category: "request",
+      action: "request_create",
+      targetId: null,
+      result: "success",
+      reason: parsed.assignment.slice(0, 200),
+    });
+
     return Response.json({
       ...run.result,
       ...(run.workMemory && { workMemory: run.workMemory }),
@@ -126,6 +141,25 @@ export async function POST(request: Request): Promise<Response> {
         }),
     });
   } catch (error) {
+    try {
+      const { userId } = await auth();
+      const { recordAuditLogSafe, auditRequestContext } = await import(
+        "@/lib/owner/audit-log"
+      );
+      const ctx = auditRequestContext(request);
+      recordAuditLogSafe({
+        userId: userId ?? null,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        category: "request",
+        action: "request_create",
+        targetId: null,
+        result: "failure",
+        reason: error instanceof Error ? error.message : "request failed",
+      });
+    } catch {
+      // ignore
+    }
     return handleError(error);
   }
 }

@@ -40,6 +40,18 @@ export class ProjectService {
 
   removeProject(id: string, current: Project[]): void {
     this.repository.save(current.filter((project) => project.id !== id));
+    void import("@/lib/owner/audit-log/client")
+      .then(({ reportClientAuditEvent }) => {
+        reportClientAuditEvent({
+          action: "request_delete",
+          targetId: id,
+          result: "success",
+          reason: "project deleted",
+        });
+      })
+      .catch(() => {
+        // best-effort
+      });
   }
 
   saveFromOrchestration(

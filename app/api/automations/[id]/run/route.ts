@@ -60,6 +60,21 @@ export async function POST(
     return Response.json({ error: "Automation not found" }, { status: 404 });
   }
 
+  const { recordAuditLogSafe, auditRequestContext } = await import(
+    "@/lib/owner/audit-log"
+  );
+  const ctx = auditRequestContext(request);
+  recordAuditLogSafe({
+    userId,
+    ip: ctx.ip,
+    userAgent: ctx.userAgent,
+    category: "automation",
+    action: "automation_run",
+    targetId: id,
+    result: result.status === "failed" ? "failure" : "success",
+    reason: result.status === "failed" ? result.error ?? "run failed" : "manual run",
+  });
+
   if (result.status === "failed") {
     return Response.json(result, { status: 500 });
   }

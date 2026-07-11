@@ -177,5 +177,27 @@ export async function PATCH(
     return Response.json({ error: "Automation not found" }, { status: 404 });
   }
 
+  const { recordAuditLogSafe, auditRequestContext } = await import(
+    "@/lib/owner/audit-log"
+  );
+  const ctx = auditRequestContext(request);
+  const action =
+    parsed.enabled === false
+      ? "automation_disable"
+      : "automation_update";
+  recordAuditLogSafe({
+    userId,
+    ip: ctx.ip,
+    userAgent: ctx.userAgent,
+    category: "automation",
+    action,
+    targetId: updated.id,
+    result: "success",
+    reason:
+      parsed.enabled === false
+        ? "Automation disabled"
+        : "Automation updated",
+  });
+
   return Response.json(updated);
 }

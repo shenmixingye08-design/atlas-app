@@ -63,6 +63,20 @@ export async function POST(request: Request): Promise<Response> {
         channels: { ...current.channels, line: true },
       });
     }
+    const { recordAuditLogSafe, auditRequestContext } = await import(
+      "@/lib/owner/audit-log"
+    );
+    const ctx = auditRequestContext(request);
+    recordAuditLogSafe({
+      userId,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      category: "integration",
+      action: "line_connect",
+      targetId: "line",
+      result: "success",
+      reason: "LINE link code issued",
+    });
     return Response.json({
       ...(await connectionPayload(userId)),
       linkCode,
@@ -74,6 +88,20 @@ export async function POST(request: Request): Promise<Response> {
     const current = getUserNotificationPreferences(userId);
     updateUserNotificationPreferences(userId, {
       channels: { ...current.channels, line: false },
+    });
+    const { recordAuditLogSafe, auditRequestContext } = await import(
+      "@/lib/owner/audit-log"
+    );
+    const ctx = auditRequestContext(request);
+    recordAuditLogSafe({
+      userId,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      category: "integration",
+      action: "line_disconnect",
+      targetId: "line",
+      result: "success",
+      reason: "LINE disconnected",
     });
     return Response.json(await connectionPayload(userId));
   }

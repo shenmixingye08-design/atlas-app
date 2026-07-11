@@ -1,3 +1,5 @@
+import { auth } from "@clerk/nextjs/server";
+
 import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
 import {
   getFeatureFlagSnapshot,
@@ -11,7 +13,7 @@ export async function GET(): Promise<Response> {
 }
 
 export async function PATCH(request: Request): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwner();
 
   let body: unknown;
   try {
@@ -26,5 +28,21 @@ export async function PATCH(request: Request): Promise<Response> {
   }
 
   const snapshot = updateFeatureFlagState(parsed.id, parsed.state);
+  const { userId } = await auth();
+  const { recordAuditLogSafe, auditRequestContext } = await import(
+    "@/lib/owner/audit-log"
+  );
+  const ctx = auditRequestContext(request);
+  recordAuditLogSafe({
+    userId: userId ?? null,
+    email: owner.email,
+    ip: ctx.ip,
+    userAgent: ctx.userAgent,
+    category: "owner",
+    action: "owner_action",
+    targetId: parsed.id,
+    result: "success",
+    reason: `feature flag → ${parsed.state}`,
+  });
   return Response.json(snapshot);
 }

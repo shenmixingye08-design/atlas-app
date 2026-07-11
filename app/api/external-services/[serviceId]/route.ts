@@ -8,7 +8,7 @@ type RouteContext = {
 };
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ): Promise<Response> {
   const { userId } = await auth();
@@ -23,5 +23,27 @@ export async function DELETE(
   }
 
   const connection = await externalServiceManager.disconnect(userId, serviceId);
+
+  const { recordAuditLogSafe, auditRequestContext } = await import(
+    "@/lib/owner/audit-log"
+  );
+  const ctx = auditRequestContext(request);
+  const action =
+    serviceId === "google"
+      ? "google_disconnect"
+      : serviceId === "dropbox"
+        ? "dropbox_disconnect"
+        : "owner_action";
+  recordAuditLogSafe({
+    userId,
+    ip: ctx.ip,
+    userAgent: ctx.userAgent,
+    category: "integration",
+    action: serviceId === "google" || serviceId === "dropbox" ? action : `${serviceId}_disconnect`,
+    targetId: serviceId,
+    result: "success",
+    reason: `${serviceId} disconnected`,
+  });
+
   return Response.json(connection);
 }

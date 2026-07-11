@@ -76,12 +76,40 @@ export async function GET(request: Request): Promise<Response> {
 
   try {
     await completeDropboxAccountOAuth(userId, code, codeVerifier, origin);
+    const { recordAuditLogSafe, auditRequestContext } = await import(
+      "@/lib/owner/audit-log"
+    );
+    const ctx = auditRequestContext(request);
+    recordAuditLogSafe({
+      userId,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      category: "integration",
+      action: "dropbox_connect",
+      targetId: "dropbox",
+      result: "success",
+      reason: "Dropbox OAuth connected",
+    });
     return redirectToFiles(origin, { connected: "dropbox" });
   } catch (error) {
     console.error("[Dropbox OAuth callback]", error);
     const message =
       error instanceof Error ? error.message : DROPBOX_OAUTH_USER_ERROR;
     markDropboxConnectionError(userId, message);
+    const { recordAuditLogSafe, auditRequestContext } = await import(
+      "@/lib/owner/audit-log"
+    );
+    const ctx = auditRequestContext(request);
+    recordAuditLogSafe({
+      userId,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      category: "integration",
+      action: "dropbox_connect",
+      targetId: "dropbox",
+      result: "failure",
+      reason: message,
+    });
     return redirectToFiles(origin, { dropbox_error: "1" });
   }
 }

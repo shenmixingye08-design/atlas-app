@@ -115,8 +115,45 @@ export async function POST(request: Request): Promise<Response> {
       request: parsed,
       userId,
     });
+    if (parsed.mode === "execute" || parsed.mode === "confirm") {
+      const { recordAuditLogSafe, auditRequestContext } = await import(
+        "@/lib/owner/audit-log"
+      );
+      const ctx = auditRequestContext(request);
+      recordAuditLogSafe({
+        userId,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        category: "commander",
+        action: "commander_run",
+        targetId: result.runId,
+        result: result.status === "failed" ? "failure" : "success",
+        reason: parsed.mode,
+      });
+    }
     return Response.json(result);
   } catch (error) {
+    if (parsed.mode === "execute" || parsed.mode === "confirm") {
+      try {
+        const { userId } = await auth();
+        const { recordAuditLogSafe, auditRequestContext } = await import(
+          "@/lib/owner/audit-log"
+        );
+        const ctx = auditRequestContext(request);
+        recordAuditLogSafe({
+          userId: userId ?? null,
+          ip: ctx.ip,
+          userAgent: ctx.userAgent,
+          category: "commander",
+          action: "commander_run",
+          targetId: null,
+          result: "failure",
+          reason: error instanceof Error ? error.message : "commander failed",
+        });
+      } catch {
+        // ignore audit failures
+      }
+    }
     return handleError(error);
   }
 }

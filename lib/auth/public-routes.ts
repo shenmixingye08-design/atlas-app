@@ -59,6 +59,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/external-services/dropbox/oauth/callback(.*)",
   "/api/integrations/oauth/google-drive/callback(.*)",
   "/api/line/webhook(.*)",
+  "/api/webhooks/clerk(.*)",
 ] as const;
 
 /** ログイン後の既定遷移先 */

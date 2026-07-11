@@ -25,6 +25,7 @@ import type { StripeWebhookEventType } from "./config";
 import { getStripeClient } from "./client";
 import { resolvePlanIdFromStripePrice } from "./config";
 import { recordStripeWebhookLog } from "@/lib/owner/billing-webhook/telemetry";
+import { recordAuditLogSafe } from "@/lib/owner/audit-log";
 
 function mapSubscriptionStatus(
   status: Stripe.Subscription.Status,
@@ -126,6 +127,35 @@ function logWebhookResult(input: {
     planId: input.planId ?? null,
     message: input.message,
   });
+
+  if (input.status !== "skipped") {
+    const type = input.event.type;
+    let action = "plan_change";
+    if (
+      type === "invoice.paid" ||
+      type === "invoice.payment_succeeded" ||
+      type === "checkout.session.completed"
+    ) {
+      action = "stripe_payment";
+    } else if (
+      type === "customer.subscription.deleted" ||
+      (type === "customer.subscription.updated" &&
+        input.message.toLowerCase().includes("cancel"))
+    ) {
+      action = "stripe_cancel";
+    } else if (type === "invoice.payment_failed") {
+      action = "stripe_payment";
+    }
+
+    recordAuditLogSafe({
+      userId: input.userId ?? null,
+      category: "billing",
+      action,
+      targetId: input.planId ?? input.event.id,
+      result: input.status === "success" ? "success" : "failure",
+      reason: input.message.slice(0, 500),
+    });
+  }
 
   if (input.status === "failure") {
     notifyOwnerStripeWebhookFailed(
