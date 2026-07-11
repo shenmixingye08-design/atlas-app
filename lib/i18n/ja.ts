@@ -180,6 +180,7 @@ export const ui = {
     lineEventMailReceived: "メール受信",
     lineEventDocumentReady: "資料完成",
     lineEventAutomationCompleted: "自動化終了",
+    lineEventConfirmationRequest: "確認依頼",
     lineEventError: "エラー",
     lineEventTodaysSchedule: "今日の予定",
     lineEventMorningBriefing: "朝のブリーフィング",

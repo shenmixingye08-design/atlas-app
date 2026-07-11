@@ -6,6 +6,8 @@ export {
   pushLineTextMessage,
   replyLineTextMessage,
   verifyLineWebhookSignature,
+  LineApiError,
+  isInvalidLineAccessTokenError,
 } from "./messaging";
 export {
   dispatchLineNotification,

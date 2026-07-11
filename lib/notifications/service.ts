@@ -58,6 +58,8 @@ function resolveLineEvent(
   switch (input.type) {
     case "completed":
       return "work_completed";
+    case "awaiting_review":
+      return "confirmation_request";
     case "error":
     case "integration":
       return "error";

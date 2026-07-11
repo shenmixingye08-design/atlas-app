@@ -47,7 +47,6 @@ export function createLineLinkCode(atlasUserId: string): LineLinkCode {
   const bucket = getBucket();
   purgeExpiredCodes(bucket);
 
-  // Remove previous codes for this user
   for (const [code, entry] of bucket.codes.entries()) {
     if (entry.atlasUserId === atlasUserId) bucket.codes.delete(code);
   }
@@ -77,15 +76,44 @@ export function consumeLineLinkCode(code: string): LineLinkCode | null {
   return entry;
 }
 
+/** Merge durable/global codes into memory (webhook multi-instance). */
+export function upsertLineLinkCode(entry: LineLinkCode): void {
+  const bucket = getBucket();
+  purgeExpiredCodes(bucket);
+  if (entry.expiresAt < Date.now()) return;
+  bucket.codes.set(entry.code, entry);
+}
+
+export function listLineLinkCodes(): LineLinkCode[] {
+  const bucket = getBucket();
+  purgeExpiredCodes(bucket);
+  return Array.from(bucket.codes.values());
+}
+
 export function saveLineUserLink(link: LineUserLink): LineUserLink {
   const bucket = getBucket();
   const previous = bucket.byAtlasUserId.get(link.atlasUserId);
   if (previous) {
     bucket.byLineUserId.delete(previous.lineUserId);
   }
+  const existingLineOwner = bucket.byLineUserId.get(link.lineUserId);
+  if (existingLineOwner && existingLineOwner.atlasUserId !== link.atlasUserId) {
+    bucket.byAtlasUserId.delete(existingLineOwner.atlasUserId);
+  }
   bucket.byAtlasUserId.set(link.atlasUserId, link);
   bucket.byLineUserId.set(link.lineUserId, link);
   return link;
+}
+
+export function replaceLineUserLinkForUser(
+  userId: string,
+  link: LineUserLink | null,
+): void {
+  if (!link) {
+    unlinkLineUser(userId);
+    return;
+  }
+  saveLineUserLink(link);
 }
 
 export function getLineLinkByAtlasUserId(
@@ -110,6 +138,18 @@ export function unlinkLineUser(atlasUserId: string): boolean {
 /** All linked LINE accounts (owner aggregation). */
 export function listLineUserLinks(): LineUserLink[] {
   return Array.from(getBucket().byAtlasUserId.values());
+}
+
+/** Replace in-memory links from durable/global snapshot (keeps active codes). */
+export function replaceAllLineUserLinks(links: LineUserLink[]): void {
+  const bucket = getBucket();
+  bucket.byAtlasUserId.clear();
+  bucket.byLineUserId.clear();
+  for (const link of links) {
+    if (!link?.atlasUserId || !link.lineUserId) continue;
+    bucket.byAtlasUserId.set(link.atlasUserId, link);
+    bucket.byLineUserId.set(link.lineUserId, link);
+  }
 }
 
 export function resetLineLinkStore(): void {

@@ -34,6 +34,7 @@ export function notifyAutomationAwaitingReview(
     relatedTaskId: input.automationId,
     relatedService: "atlas",
     actionUrl: "/automations",
+    lineEvent: "confirmation_request",
   });
 }
 

@@ -18,6 +18,7 @@ export type LineNotifyEvent =
   | "mail_received"
   | "document_ready"
   | "automation_completed"
+  | "confirmation_request"
   | "error"
   | "todays_schedule"
   | "morning_briefing";
@@ -61,6 +62,7 @@ export const DEFAULT_LINE_EVENTS: Record<LineNotifyEvent, boolean> = {
   mail_received: true,
   document_ready: true,
   automation_completed: true,
+  confirmation_request: true,
   error: true,
   todays_schedule: true,
   morning_briefing: true,

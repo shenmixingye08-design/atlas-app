@@ -57,6 +57,7 @@ const LINE_EVENT_ROWS: { id: LineNotifyEvent; label: string }[] = [
   { id: "mail_received", label: ui.notifications.lineEventMailReceived },
   { id: "document_ready", label: ui.notifications.lineEventDocumentReady },
   { id: "automation_completed", label: ui.notifications.lineEventAutomationCompleted },
+  { id: "confirmation_request", label: ui.notifications.lineEventConfirmationRequest },
   { id: "error", label: ui.notifications.lineEventError },
   { id: "todays_schedule", label: ui.notifications.lineEventTodaysSchedule },
   { id: "morning_briefing", label: ui.notifications.lineEventMorningBriefing },

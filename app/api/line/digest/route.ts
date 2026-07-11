@@ -73,7 +73,7 @@ export async function POST(): Promise<Response> {
 
   if (
     isLineEventEnabled(userId, "morning_briefing") &&
-    claimDailyDigest(userId, "morning_briefing")
+    (await claimDailyDigest(userId, "morning_briefing"))
   ) {
     notifyMorningBriefing(userId, {
       summary: [
@@ -88,7 +88,7 @@ export async function POST(): Promise<Response> {
 
   if (
     isLineEventEnabled(userId, "todays_schedule") &&
-    claimDailyDigest(userId, "todays_schedule")
+    (await claimDailyDigest(userId, "todays_schedule"))
   ) {
     notifyTodaysSchedule(userId, {
       eventCount: scheduleCount,
@@ -100,7 +100,7 @@ export async function POST(): Promise<Response> {
   if (
     unreadCount > 0 &&
     isLineEventEnabled(userId, "mail_received") &&
-    claimDailyDigest(userId, "mail_received")
+    (await claimDailyDigest(userId, "mail_received"))
   ) {
     try {
       const mail = await getGmailMessagesForUser({

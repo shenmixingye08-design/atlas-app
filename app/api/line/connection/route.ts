@@ -6,16 +6,20 @@ import {
   getLineConnectionStatus,
   getLineLinkByAtlasUserId,
   issueLineLinkCodeForUser,
+  isInvalidLineAccessTokenError,
+  LineApiError,
   pushLineTextMessage,
 } from "@/lib/integrations/line";
+import { ensureLineLinkHydrated } from "@/lib/integrations/line/link-durable";
 import {
   getUserNotificationPreferences,
   updateUserNotificationPreferences,
 } from "@/lib/notifications/service";
+import { ensureNotificationsHydrated } from "@/lib/notifications/durable";
 
-function connectionPayload(userId: string) {
+async function connectionPayload(userId: string) {
   return {
-    ...getLineConnectionStatus(userId),
+    ...(await getLineConnectionStatus(userId)),
     botBasicId: getLineBotBasicId(),
   };
 }
@@ -26,7 +30,7 @@ export async function GET(): Promise<Response> {
     return Response.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  return Response.json(connectionPayload(userId));
+  return Response.json(await connectionPayload(userId));
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -34,6 +38,9 @@ export async function POST(request: Request): Promise<Response> {
   if (!userId) {
     return Response.json({ message: "Unauthorized" }, { status: 401 });
   }
+
+  await ensureNotificationsHydrated(userId);
+  await ensureLineLinkHydrated(userId);
 
   const body = (await request.json().catch(() => null)) as {
     action?: string;
@@ -45,11 +52,11 @@ export async function POST(request: Request): Promise<Response> {
     updateUserNotificationPreferences(userId, {
       channels: { ...current.channels, line: body.enabled },
     });
-    return Response.json(connectionPayload(userId));
+    return Response.json(await connectionPayload(userId));
   }
 
   if (body?.action === "issue_code") {
-    const linkCode = issueLineLinkCodeForUser(userId);
+    const linkCode = await issueLineLinkCodeForUser(userId);
     const current = getUserNotificationPreferences(userId);
     if (!current.channels.line) {
       updateUserNotificationPreferences(userId, {
@@ -57,18 +64,18 @@ export async function POST(request: Request): Promise<Response> {
       });
     }
     return Response.json({
-      ...connectionPayload(userId),
+      ...(await connectionPayload(userId)),
       linkCode,
     });
   }
 
   if (body?.action === "disconnect") {
-    disconnectLineForUser(userId);
+    await disconnectLineForUser(userId);
     const current = getUserNotificationPreferences(userId);
     updateUserNotificationPreferences(userId, {
       channels: { ...current.channels, line: false },
     });
-    return Response.json(connectionPayload(userId));
+    return Response.json(await connectionPayload(userId));
   }
 
   if (body?.action === "test") {
@@ -77,6 +84,13 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json(
         { message: "LINE通知がOFFです。設定でONにしてください。" },
         { status: 409 },
+      );
+    }
+    const status = await getLineConnectionStatus(userId);
+    if (!status.configured) {
+      return Response.json(
+        { message: "LINE Messaging APIがサーバーに未設定です。" },
+        { status: 503 },
       );
     }
     const link = getLineLinkByAtlasUserId(userId);
@@ -92,13 +106,26 @@ export async function POST(request: Request): Promise<Response> {
         text: "【ATLAS】テスト通知です。LINE通知の接続は正常です。",
       });
       return Response.json({
-        ...connectionPayload(userId),
+        ...(await connectionPayload(userId)),
         testSent: true,
       });
     } catch (error) {
+      if (isInvalidLineAccessTokenError(error)) {
+        return Response.json(
+          {
+            message:
+              "LINEのアクセストークンが無効です。サーバーの LINE_CHANNEL_ACCESS_TOKEN を確認してください。",
+          },
+          { status: 502 },
+        );
+      }
       const message =
-        error instanceof Error ? error.message : "テスト通知の送信に失敗しました";
-      return Response.json({ message }, { status: 500 });
+        error instanceof LineApiError
+          ? "LINEへの送信に失敗しました。しばらくしてから再度お試しください。"
+          : error instanceof Error
+            ? error.message
+            : "テスト通知の送信に失敗しました";
+      return Response.json({ message }, { status: 502 });
     }
   }
 

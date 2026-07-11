@@ -1,9 +1,11 @@
 /** Once-per-day dedupe for LINE digest notifications. */
-type DigestKey = string;
+import { claimDurableDailyDigest } from "./global-durable";
 
-function getBucket(): Set<DigestKey> {
+type DigestKind = "morning_briefing" | "todays_schedule" | "mail_received";
+
+function getMemoryBucket(): Set<string> {
   const scope = globalThis as typeof globalThis & {
-    __atlasLineDigestDedupe?: Set<DigestKey>;
+    __atlasLineDigestDedupe?: Set<string>;
   };
   if (!scope.__atlasLineDigestDedupe) {
     scope.__atlasLineDigestDedupe = new Set();
@@ -15,18 +17,23 @@ function dayKey(now = new Date()): string {
   return now.toISOString().slice(0, 10);
 }
 
-export function claimDailyDigest(
+export async function claimDailyDigest(
   userId: string,
-  kind: "morning_briefing" | "todays_schedule" | "mail_received",
+  kind: DigestKind,
   now = new Date(),
-): boolean {
-  const key = `${userId}:${kind}:${dayKey(now)}`;
-  const bucket = getBucket();
-  if (bucket.has(key)) return false;
-  bucket.add(key);
+): Promise<boolean> {
+  const day = dayKey(now);
+  const memoryKey = `${userId}:${kind}:${day}`;
+  const memory = getMemoryBucket();
+  if (memory.has(memoryKey)) return false;
+
+  const claimed = await claimDurableDailyDigest(userId, kind, day);
+  if (!claimed) return false;
+
+  memory.add(memoryKey);
   return true;
 }
 
 export function resetLineDigestDedupe(): void {
-  getBucket().clear();
+  getMemoryBucket().clear();
 }
