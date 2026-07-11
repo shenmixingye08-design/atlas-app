@@ -18,6 +18,8 @@ import {
 } from "@/lib/ai/policy-engine";
 import { sanitizeResponsesApiParams } from "@/lib/ai/openai-request-params";
 import { isMockLlmEnabled, resolveMockLlmOutput } from "@/lib/ai/mock-responses";
+import { getAiBillingUsageContext } from "@/lib/billing/usage/request-context";
+import { recordUserAiUsageFromTexts } from "@/lib/billing/usage/meter";
 
 /** @deprecated Use resolveTaskPolicy('chat').model — kept for chat backward compatibility. */
 export const ATLAS_MODEL = decisionToModelPolicy(resolveTaskPolicy("chat")).model;
@@ -132,21 +134,59 @@ function buildStreamingParams(
   return buildResponseCreateParams(params, true) as ResponseCreateParamsStreaming;
 }
 
+function maybeRecordBillingUsage(input: {
+  params: AtlasResponseRequest;
+  model: string;
+  outputText: string;
+}): void {
+  const context = getAiBillingUsageContext();
+  if (!context || context.suppressAutoRecord) return;
+
+  try {
+    recordUserAiUsageFromTexts({
+      userId: context.userId,
+      api: context.api,
+      feature: context.feature,
+      model: input.model,
+      inputText: input.params.input,
+      outputText: input.outputText,
+      instructions: input.params.instructions,
+      aiTaskType: input.params.aiTaskType,
+    });
+  } catch (error) {
+    console.error("[billing] Failed to record AI usage:", error);
+  }
+}
+
 /** Creates a non-streaming response via the OpenAI Responses API. */
 export async function createAtlasResponse(
   params: AtlasResponseRequest,
 ): Promise<Response> {
   if (isMockLlmEnabled()) {
     const outputText = resolveMockLlmOutput(params.aiTaskType, params.input);
-    return {
+    const mock = {
       id: `resp_mock_${params.aiTaskType ?? "chat"}_${crypto.randomUUID()}`,
       output_text: outputText,
       status: "completed",
       model: "atlas-mock",
     } as Response;
+    maybeRecordBillingUsage({
+      params,
+      model: mock.model ?? "atlas-mock",
+      outputText,
+    });
+    return mock;
   }
 
-  return getOpenAIClient().responses.create(buildNonStreamingParams(params));
+  const response = await getOpenAIClient().responses.create(
+    buildNonStreamingParams(params),
+  );
+  maybeRecordBillingUsage({
+    params,
+    model: response.model ?? resolveRequestParams(params).model,
+    outputText: response.output_text ?? "",
+  });
+  return response;
 }
 
 /** Creates a streaming response via the OpenAI Responses API. */
@@ -156,6 +196,13 @@ export async function createAtlasResponseStream(
   if (isMockLlmEnabled()) {
     throw new Error("Streaming is disabled while ATLAS_MOCK_LLM=true");
   }
+
+  // Count the stream request up front (output tokens unknown until completion).
+  maybeRecordBillingUsage({
+    params,
+    model: resolveRequestParams(params).model,
+    outputText: "",
+  });
 
   return getOpenAIClient().responses.create(buildStreamingParams(params));
 }

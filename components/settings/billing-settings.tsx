@@ -53,6 +53,37 @@ function UsageMeter({
   );
 }
 
+function formatUsd(amount: number): string {
+  return `$${amount.toFixed(4)}`;
+}
+
+function AiUsagePeriodCard({
+  label,
+  requests,
+  totalTokens,
+  estimatedCostUsd,
+}: {
+  label: string;
+  requests: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+}) {
+  return (
+    <div className="space-y-1 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] p-4">
+      <p className="text-sm font-medium text-foreground">{label}</p>
+      <p className="text-sm text-[var(--foreground-muted)]">
+        {ui.billing.usageRequests}: {requests}
+      </p>
+      <p className="text-sm text-[var(--foreground-muted)]">
+        {ui.billing.usageTokens}: {totalTokens.toLocaleString("ja-JP")}
+      </p>
+      <p className="text-sm text-[var(--foreground-muted)]">
+        {ui.billing.usageEstimatedCost}: {formatUsd(estimatedCostUsd)}
+      </p>
+    </div>
+  );
+}
+
 function PlanCard({
   plan,
   currentPlanId,
@@ -238,6 +269,35 @@ export function BillingSettings() {
             limit={summary.usage.automationTasks.limit}
             remaining={summary.usage.automationTasks.remaining}
           />
+          {summary.usage.aiDetail && (
+            <div className="space-y-3 border-t border-[var(--border-subtle)] pt-6">
+              <h3 className="text-sm font-semibold text-foreground">
+                {ui.billing.aiUsageDetailTitle}
+              </h3>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <AiUsagePeriodCard
+                  label={ui.billing.usageToday}
+                  requests={summary.usage.aiDetail.today.requests}
+                  totalTokens={summary.usage.aiDetail.today.totalTokens}
+                  estimatedCostUsd={summary.usage.aiDetail.today.estimatedCostUsd}
+                />
+                <AiUsagePeriodCard
+                  label={ui.billing.usageMonth}
+                  requests={summary.usage.aiDetail.month.requests}
+                  totalTokens={summary.usage.aiDetail.month.totalTokens}
+                  estimatedCostUsd={summary.usage.aiDetail.month.estimatedCostUsd}
+                />
+                <AiUsagePeriodCard
+                  label={ui.billing.usageAllTime}
+                  requests={summary.usage.aiDetail.allTime.requests}
+                  totalTokens={summary.usage.aiDetail.allTime.totalTokens}
+                  estimatedCostUsd={
+                    summary.usage.aiDetail.allTime.estimatedCostUsd
+                  }
+                />
+              </div>
+            </div>
+          )}
         </Card>
       </section>
 

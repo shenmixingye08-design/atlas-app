@@ -31,6 +31,10 @@ export async function POST(request: Request): Promise<Response> {
   const category = parseDriveCategoryParam(body.category ?? null) ?? "all";
   const context = await resolveFeatureAccessContext();
 
+  const { requireBillingAiUsage } = await import("@/lib/billing/access");
+  const usageDenied = await requireBillingAiUsage(userId);
+  if (usageDenied) return usageDenied;
+
   try {
     const result = await aiSearchGoogleDriveForUser({
       userId,

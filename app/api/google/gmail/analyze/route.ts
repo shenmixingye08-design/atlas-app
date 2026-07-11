@@ -6,6 +6,7 @@ import {
   extractImportantMessages,
 } from "@/lib/integrations/google/gmail/ai-assistant";
 import { getGmailMessageForUser } from "@/lib/integrations/google/gmail/service";
+import type { GmailMessage } from "@/lib/integrations/google/gmail/types";
 import { notifyGmailSummaryComplete } from "@/lib/notifications/emitters";
 
 type RequestBody = {
@@ -45,8 +46,12 @@ export async function POST(request: Request): Promise<Response> {
 
   const context = await resolveFeatureAccessContext();
 
+  const { requireBillingAiUsage } = await import("@/lib/billing/access");
+  const usageDenied = await requireBillingAiUsage(userId);
+  if (usageDenied) return usageDenied;
+
   try {
-    const messages = [];
+    const messages: GmailMessage[] = [];
     for (const messageId of messageIds.slice(0, 20)) {
       const result = await getGmailMessageForUser({
         userId,
@@ -69,7 +74,17 @@ export async function POST(request: Request): Promise<Response> {
       messages.push(result.message);
     }
 
-    const analyses = await analyzeGmailMessages(messages);
+    const { runWithAiBillingUsage } = await import(
+      "@/lib/billing/usage/request-context"
+    );
+    const analyses = await runWithAiBillingUsage(
+      {
+        userId,
+        api: "google_gmail",
+        feature: "google_integration",
+      },
+      () => analyzeGmailMessages(messages),
+    );
     const important = extractImportantMessages(analyses);
 
     notifyGmailSummaryComplete(userId);

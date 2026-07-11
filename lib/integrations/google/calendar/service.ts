@@ -6,6 +6,7 @@ import { featureDisabledMessage } from "@/lib/feature-flags/guards";
 import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
 import { getGoogleAccountAccessToken } from "@/lib/integrations/google/token-manager";
 import { notifyCalendarReminder } from "@/lib/notifications/emitters";
+import { runWithAiBillingUsage } from "@/lib/billing/usage/request-context";
 
 import {
   organizeCalendarEventsWithAi,
@@ -234,7 +235,14 @@ export async function organizeCalendarForUser(input: {
   const listed = await getGoogleCalendarEventsForUser(input);
   if (listed.status !== "ready") return listed;
 
-  const insight = await organizeCalendarEventsWithAi(listed.snapshot.events);
+  const insight = await runWithAiBillingUsage(
+    {
+      userId: input.userId,
+      api: "google_calendar",
+      feature: "google_integration",
+    },
+    () => organizeCalendarEventsWithAi(listed.snapshot.events),
+  );
   return {
     status: "ready",
     insight,
@@ -267,11 +275,19 @@ export async function proposeMeetingsForUser(input: {
   });
   if (free.status !== "ready") return free;
 
-  const candidates = await proposeMeetingCandidatesWithAi({
-    freeSlots: free.slots,
-    durationMinutes,
-    purpose: input.purpose,
-  });
+  const candidates = await runWithAiBillingUsage(
+    {
+      userId: input.userId,
+      api: "google_calendar",
+      feature: "google_integration",
+    },
+    () =>
+      proposeMeetingCandidatesWithAi({
+        freeSlots: free.slots,
+        durationMinutes,
+        purpose: input.purpose,
+      }),
+  );
 
   return {
     status: "ready",

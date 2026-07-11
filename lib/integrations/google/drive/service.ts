@@ -6,6 +6,7 @@ import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
 import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
 import { getGoogleAccountAccessToken } from "@/lib/integrations/google/token-manager";
+import { runWithAiBillingUsage } from "@/lib/billing/usage/request-context";
 
 import {
   classifyDriveDocument,
@@ -577,7 +578,14 @@ export async function summarizeGoogleDriveFileForUser(input: {
       accessToken: access.accessToken,
       fileId: input.fileId,
     });
-    const summary = await summarizeDriveDocument(extracted);
+    const summary = await runWithAiBillingUsage(
+      {
+        userId: input.userId,
+        api: "google_drive",
+        feature: "google_integration",
+      },
+      () => summarizeDriveDocument(extracted),
+    );
     return { status: "ready", summary };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Summarize failed";
@@ -630,10 +638,18 @@ export async function aiSearchGoogleDriveForUser(input: {
     }),
   );
 
-  const hits = await searchDriveDocumentsWithAi({
-    query: input.query,
-    files: withText,
-  });
+  const hits = await runWithAiBillingUsage(
+    {
+      userId: input.userId,
+      api: "google_drive",
+      feature: "google_integration",
+    },
+    () =>
+      searchDriveDocumentsWithAi({
+        query: input.query,
+        files: withText,
+      }),
+  );
 
   return { status: "ready", hits, query: input.query };
 }
@@ -657,7 +673,14 @@ export async function classifyGoogleDriveFileForUser(input: {
       accessToken: access.accessToken,
       fileId: input.fileId,
     });
-    const classification = await classifyDriveDocument(extracted);
+    const classification = await runWithAiBillingUsage(
+      {
+        userId: input.userId,
+        api: "google_drive",
+        feature: "google_integration",
+      },
+      () => classifyDriveDocument(extracted),
+    );
     return { status: "ready", classification };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Classify failed";

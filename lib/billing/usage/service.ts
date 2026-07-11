@@ -3,6 +3,7 @@ import "server-only";
 import { getPlanDefinition } from "../plans/registry";
 import { resolveUserSubscription } from "../subscriptions/service";
 
+import { getUserAiUsageBreakdown } from "./meter";
 import {
   getUsageMonthKey,
   getUsageSnapshot,
@@ -18,6 +19,7 @@ export function getUserUsageLimitSummary(userId: string): UsageLimitSummary {
   const plan = getPlanDefinition(subscription.planId);
   const month = getUsageMonthKey();
   const usage = getUsageSnapshot(userId, month);
+  const aiDetail = getUserAiUsageBreakdown(userId);
 
   return {
     planId: subscription.planId,
@@ -40,8 +42,18 @@ export function getUserUsageLimitSummary(userId: string): UsageLimitSummary {
         plan.limits.automationTasks,
       ),
     },
+    aiDetail,
   };
 }
 
-export { getUsageSnapshot, incrementUsageCounter, setAutomationTaskCount } from "./store";
+export {
+  getUsageSnapshot,
+  incrementUsageCounter,
+  setAutomationTaskCount,
+} from "./store";
 export { getUsageMonthKey } from "./store";
+export {
+  getUserAiUsageBreakdown,
+  recordUserAiUsage,
+  recordUserAiUsageFromTexts,
+} from "./meter";

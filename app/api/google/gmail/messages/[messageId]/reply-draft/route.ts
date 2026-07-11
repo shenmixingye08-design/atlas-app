@@ -23,6 +23,11 @@ export async function POST(
   }
 
   const accessContext = await resolveFeatureAccessContext();
+
+  const { requireBillingAiUsage } = await import("@/lib/billing/access");
+  const usageDenied = await requireBillingAiUsage(userId);
+  if (usageDenied) return usageDenied;
+
   const result = await getGmailMessageForUser({
     userId,
     messageId,
@@ -42,7 +47,17 @@ export async function POST(
   }
 
   try {
-    const draft = await createGmailReplyDraft(result.message);
+    const { runWithAiBillingUsage } = await import(
+      "@/lib/billing/usage/request-context"
+    );
+    const draft = await runWithAiBillingUsage(
+      {
+        userId,
+        api: "google_gmail",
+        feature: "google_integration",
+      },
+      () => createGmailReplyDraft(result.message),
+    );
     return Response.json({ draft });
   } catch (error) {
     const message =

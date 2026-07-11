@@ -94,6 +94,7 @@ export async function runOrchestrationForUser(
       metadata: {
         ...buildCompanyOrchestrationMetadata(templateId),
         ...(input.metadata ?? {}),
+        ...(input.userId ? { userId: input.userId } : {}),
         ...(memoryMeta ?? {}),
         ...(workMemoryMeta ?? {}),
       },

@@ -5,6 +5,7 @@ import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
 import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
+import { runWithAiBillingUsage } from "@/lib/billing/usage/request-context";
 
 import {
   analyzeDropboxPdfText,
@@ -215,10 +216,18 @@ export async function summarizeDropboxFileForUser(input: {
       text = `ファイル名: ${downloaded.file.name}\n種類: ${downloaded.file.kind}`;
     }
 
-    const summary = await summarizeDropboxDocument({
-      file: downloaded.file,
-      text: text.slice(0, 8000),
-    });
+    const summary = await runWithAiBillingUsage(
+      {
+        userId: input.userId,
+        api: "dropbox",
+        feature: "content_writing",
+      },
+      () =>
+        summarizeDropboxDocument({
+          file: downloaded.file,
+          text: text.slice(0, 8000),
+        }),
+    );
     return { status: "ready", summary };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Summarize failed";
@@ -302,10 +311,18 @@ export async function analyzeDropboxPdfForUser(input: {
     }
 
     const text = extractTextFromPdfBuffer(downloaded.buffer);
-    const analysis = await analyzeDropboxPdfText({
-      file: downloaded.file,
-      text,
-    });
+    const analysis = await runWithAiBillingUsage(
+      {
+        userId: input.userId,
+        api: "dropbox",
+        feature: "content_writing",
+      },
+      () =>
+        analyzeDropboxPdfText({
+          file: downloaded.file,
+          text,
+        }),
+    );
     return { status: "ready", analysis };
   } catch (error) {
     const message = error instanceof Error ? error.message : "PDF analyze failed";

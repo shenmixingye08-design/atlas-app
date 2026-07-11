@@ -1,3 +1,5 @@
+import { auth } from "@clerk/nextjs/server";
+
 import { generateSalesMaterialOutline } from "@/lib/workspace/sales-material/generate-outline";
 import type { SalesCostMode } from "@/lib/workspace/sales-material/types";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
@@ -17,6 +19,11 @@ function parseCostMode(value: unknown): SalesCostMode {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   let body: RequestBody;
 
   try {
@@ -40,10 +47,25 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  const { requireBillingAiUsage } = await import("@/lib/billing/access");
+  const usageDenied = await requireBillingAiUsage(userId);
+  if (usageDenied) return usageDenied;
+
   try {
-    const outline = await generateSalesMaterialOutline(
-      body.assignment.trim(),
-      parseCostMode(body.costMode),
+    const { runWithAiBillingUsage } = await import(
+      "@/lib/billing/usage/request-context"
+    );
+    const outline = await runWithAiBillingUsage(
+      {
+        userId,
+        api: "sales_material",
+        feature: "content_writing",
+      },
+      () =>
+        generateSalesMaterialOutline(
+          (body.assignment as string).trim(),
+          parseCostMode(body.costMode),
+        ),
     );
     return Response.json({ outline });
   } catch (error) {

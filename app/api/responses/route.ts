@@ -179,8 +179,19 @@ export async function POST(request: Request): Promise<Response> {
   const { params, stream } = parsed;
 
   try {
+    const { runWithAiBillingUsage } = await import(
+      "@/lib/billing/usage/request-context"
+    );
+
     if (stream) {
-      const responseStream = await createAtlasResponseStream(params);
+      const responseStream = await runWithAiBillingUsage(
+        {
+          userId,
+          api: "responses",
+          feature: "content_writing",
+        },
+        () => createAtlasResponseStream(params),
+      );
 
       return new Response(createSseStream(responseStream), {
         headers: {
@@ -191,7 +202,14 @@ export async function POST(request: Request): Promise<Response> {
       });
     }
 
-    const response = await createAtlasResponse(params);
+    const response = await runWithAiBillingUsage(
+      {
+        userId,
+        api: "responses",
+        feature: "content_writing",
+      },
+      () => createAtlasResponse(params),
+    );
 
     return Response.json({
       id: response.id,

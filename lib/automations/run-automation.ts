@@ -17,6 +17,7 @@ import {
   shouldSkipRepeatedAiCalls,
 } from "@/lib/cost-optimization";
 import { recordCostRun } from "@/lib/cost-optimization/cost-savings-tracker";
+import { recordUserAiUsage } from "@/lib/billing/usage/meter";
 import {
   buildRequestCacheKey,
   getCachedOrchestrationResult,
@@ -122,6 +123,7 @@ export async function executeAutomationRun(
           automationId: automation.id,
           automationName: automation.name,
           triggerType,
+          ...(options.userId ? { userId: options.userId } : {}),
           executionFlow: {
             templateId: executionFlow.templateId,
             enabledStepIds: getEnabledStepIds(executionFlow),
@@ -148,6 +150,17 @@ export async function executeAutomationRun(
     });
 
     if (servedFromRequestCache && result.status !== "failed") {
+      if (options.userId) {
+        recordUserAiUsage({
+          userId: options.userId,
+          api: "automation",
+          feature: "content_writing",
+          model: "cache",
+          inputTokens: 0,
+          outputTokens: 0,
+          estimatedCostUsd: 0,
+        });
+      }
       recordCostFromOrchestration({
         assignment: automation.workflow.assignment,
         metadata: automation.workflow.metadata,

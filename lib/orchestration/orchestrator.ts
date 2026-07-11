@@ -15,6 +15,8 @@ import {
 } from "@/lib/ai/cost-meter";
 import { recordOpenAiUsageFromCostSummary } from "@/lib/owner/api-usage/telemetry";
 import { recordCostFromOrchestration } from "@/lib/owner/cost-ranking/telemetry";
+import { recordUserAiUsageFromCostSummary } from "@/lib/billing/usage/meter";
+import type { AiUsageApi } from "@/lib/billing/usage/types";
 import {
   recordServiceHealthSuccess,
 } from "@/lib/owner/system-status/telemetry";
@@ -391,6 +393,38 @@ function buildFailureResult(
  * Research-heavy: + Research synthesis (1) = 3 LLM calls max.
  * QA / CEO / Reviewer per-task: deterministic rules (no LLM).
  */
+function recordBillingAiUsageFromOrchestration(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+  costSummary: ReturnType<WorkflowCostMeter["getSummary"]>,
+): void {
+  const userId =
+    typeof metadata?.userId === "string" && metadata.userId.trim()
+      ? metadata.userId.trim()
+      : null;
+  if (!userId) return;
+
+  const api: AiUsageApi =
+    typeof metadata?.automationId === "string"
+      ? "automation"
+      : metadata?.commander === true
+        ? "commander"
+        : "orchestrate";
+
+  try {
+    recordUserAiUsageFromCostSummary({
+      userId,
+      api,
+      feature:
+        typeof metadata?.billingFeature === "string"
+          ? metadata.billingFeature
+          : "content_writing",
+      summary: costSummary,
+    });
+  } catch (error) {
+    console.error("[billing] Failed to record orchestration AI usage:", error);
+  }
+}
+
 export async function orchestrate(
   request: OrchestrationRequest,
 ): Promise<OrchestrationResult> {
@@ -762,6 +796,7 @@ export async function orchestrate(
     const costSummary = costMeter.getSummary();
     logCostSummary(costSummary);
     recordOpenAiUsageFromCostSummary(costSummary);
+    recordBillingAiUsageFromOrchestration(metadata, costSummary);
     recordCostFromOrchestration({
       assignment,
       metadata,
@@ -817,6 +852,7 @@ export async function orchestrate(
     const costSummary = costMeter.getSummary();
     logCostSummary(costSummary);
     recordOpenAiUsageFromCostSummary(costSummary);
+    recordBillingAiUsageFromOrchestration(metadata, costSummary);
     recordCostFromOrchestration({
       assignment,
       metadata,
