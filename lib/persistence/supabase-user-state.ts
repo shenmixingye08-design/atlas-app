@@ -64,6 +64,35 @@ export async function listSupabaseUserIdsForDomain(
   }
 }
 
+/** Delete durable domain rows for a user (account purge). */
+export async function deleteSupabaseUserDomains(
+  userId: string,
+  domains: readonly string[],
+): Promise<boolean> {
+  const client = createServiceRoleClientIfConfigured();
+  if (!client || domains.length === 0) return false;
+
+  try {
+    const { error } = await client
+      .from(ATLAS_USER_STATE_TABLE)
+      .delete()
+      .eq("user_id", userId)
+      .in("domain", [...domains]);
+
+    if (error) {
+      console.warn(
+        `[persistence] Supabase user_state delete failed:`,
+        error.message,
+      );
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn(`[persistence] Supabase user_state delete skipped:`, error);
+    return false;
+  }
+}
+
 export async function loadSupabaseUserState<T>(
   userId: string,
   domain: string,

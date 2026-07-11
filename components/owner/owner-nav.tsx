@@ -20,7 +20,8 @@ type OwnerNavProps = {
     | "anonymousUserAnalysis"
     | "billingWebhook"
     | "notifications"
-    | "employeeTeam";
+    | "employeeTeam"
+    | "accountDeletions";
 };
 const LINKS = [
   { id: "dashboard" as const, href: "/owner", label: ui.owner.navDashboard },
@@ -58,6 +59,11 @@ const LINKS = [
     id: "cancellationAnalysis" as const,
     href: "/owner/cancellation-analysis",
     label: ui.owner.navCancellationAnalysis,
+  },
+  {
+    id: "accountDeletions" as const,
+    href: "/owner/account-deletions",
+    label: ui.owner.navAccountDeletions,
   },
   {
     id: "betaUsers" as const,

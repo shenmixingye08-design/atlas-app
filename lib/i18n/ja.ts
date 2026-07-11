@@ -1233,6 +1233,7 @@ export const ui = {
     navPopularityRanking: "人気ランキング",
     navCostRanking: "コストランキング",
     navCancellationAnalysis: "解約分析",
+    navAccountDeletions: "削除予定ユーザー",
     navBetaUsers: "ベータユーザー",
     navSystemStatus: "システム状態",
     navExternalServices: "外部サービス管理",
@@ -1241,6 +1242,18 @@ export const ui = {
     navBillingWebhook: "Stripe Webhook",
     navNotifications: "運営通知",
     navEmployeeTeam: "AI秘書チーム",
+    accountDeletionsTitle: "削除予定ユーザー",
+    accountDeletionsSubtitle:
+      "退会後30日保留中のアカウントと、削除・復元期限を確認できます。",
+    accountDeletionsLoading: "削除予定を読み込み中…",
+    accountDeletionsEmpty: "削除予定のユーザーはいません。",
+    accountDeletionsPurgeDue: "期限到来を完全削除",
+    accountDeletionsUser: "ユーザー",
+    accountDeletionsPlan: "プラン",
+    accountDeletionsRequested: "退会申請日時",
+    accountDeletionsDeleteAt: "削除予定日時",
+    accountDeletionsRestoreUntil: "復元期限",
+    accountDeletionsDaysLeft: "残日数",
     simulatorEyebrow: "Profit Simulator",
     simulatorTitle: "利益シミュレーター",
     simulatorSubtitle:
@@ -1639,11 +1652,11 @@ export const ui = {
     pageTitle: "仕事の好み",
     pageSubtitle:
       "ATLASが学習したあなたの仕事の進め方を確認・編集できます。使うほど「いつもの設定」が自動で提案されます。",
-    accountRequestsTitle: "退会・データ削除",
+    accountRequestsTitle: "お問い合わせでの申請",
     accountRequestsHint:
-      "アカウント削除や個人データの削除は、お問い合わせから申請できます。有料プラン利用中は先に解約してください。",
-    accountDeletionLink: "退会を申請する",
-    dataDeletionLink: "データ削除を依頼する",
+      "サポート経由の退会・データ削除申請も受け付けています。セルフサービスは「アカウント管理」をご利用ください。",
+    accountDeletionLink: "退会を申請する（お問い合わせ）",
+    dataDeletionLink: "データ削除を依頼する（お問い合わせ）",
     homeTitle: "ATLASが学習した内容",
     homeHint: "繰り返し使った仕事から、ATLASがあなたの好みを覚えています。",
     homeEmptyHint:
@@ -1668,6 +1681,38 @@ export const ui = {
     defaultSummary: (category: string) => `${category}のいつもの設定`,
     applySuggestion: "いつもの設定を適用",
     suggestionBanner: (summary: string) => `いつもの設定: ${summary}`,
+  },
+
+  accountManagement: {
+    settingsLinkTitle: "アカウント管理",
+    settingsLinkHint: "プラン確認、サブスク解約、データエクスポート、退会、完全削除",
+    pageTitle: "アカウント管理",
+    pageSubtitle:
+      "プランの確認・解約、データのエクスポート、退会手続き、完全削除を行えます。",
+    loading: "アカウント情報を読み込み中…",
+    planSection: "プラン確認",
+    currentPlan: "現在のプラン",
+    openBilling: "プラン・請求画面へ",
+    cancelSubscription: "サブスク解約（Stripeポータル）",
+    exportSection: "データエクスポート",
+    exportHint: "退会前に、必要なデータをダウンロードしてください。",
+    openExport: "エクスポート画面へ",
+    withdrawSection: "退会",
+    withdrawHint:
+      "退会すると Stripe 解約・Automation 停止・通知停止・外部連携解除のうえ、30日後に完全削除予定となります。Billing履歴は法令に基づき保持します。",
+    withdrawButton: "退会する",
+    withdrawConfirm:
+      "退会しますか？ Automation・通知・外部連携が停止し、30日後にデータ削除予定になります。",
+    scheduledStatus: "退会手続き済み（30日保留中）",
+    deleteAfter: "削除予定日時",
+    requestedAt: "退会申請日時",
+    cancelDeletion: "削除をキャンセル（復元）",
+    purgeNow: "完全削除を実行",
+    purgeDialogTitle: "完全削除の確認",
+    purgeDialogHint:
+      "この操作は取り消せません。続行するには DELETE と入力してください。",
+    closeDialog: "閉じる",
+    confirmPurge: "完全削除する",
   },
 
   memory: {

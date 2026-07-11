@@ -47,3 +47,33 @@ export async function persistClerkPrivateMetadataKey(
     return false;
   }
 }
+
+/** Clear specific privateMetadata keys (sets null so Clerk drops them). */
+export async function clearClerkPrivateMetadataKeys(
+  userId: string,
+  keys: readonly string[],
+): Promise<boolean> {
+  if (!process.env.CLERK_SECRET_KEY?.trim() || keys.length === 0) return false;
+
+  try {
+    const client = await clerkClient();
+    const user = await client.users.getUser(userId);
+    const existing =
+      user.privateMetadata && typeof user.privateMetadata === "object"
+        ? { ...user.privateMetadata }
+        : {};
+
+    const next: Record<string, unknown> = { ...existing };
+    for (const key of keys) {
+      next[key] = null;
+    }
+
+    await client.users.updateUserMetadata(userId, {
+      privateMetadata: next,
+    });
+    return true;
+  } catch (error) {
+    console.error(`[persistence] Clerk metadata clear failed:`, error);
+    return false;
+  }
+}

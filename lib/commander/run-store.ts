@@ -242,4 +242,21 @@ export function resetCommanderRunStoreForTests(): void {
   }
 }
 
+/** Remove all commander runs for one user (account purge). */
+export function clearCommanderRunsForUser(userId: string): number {
+  const bucket = getBucket();
+  let removed = 0;
+  for (const [id, run] of [...bucket.entries()]) {
+    if (run.userId === userId) {
+      bucket.delete(id);
+      removed += 1;
+    }
+  }
+  if (removed > 0) {
+    persistLocalCache(bucket);
+  }
+  getHydratedUsers().delete(userId);
+  return removed;
+}
+
 export type { CommanderRunRecord };
