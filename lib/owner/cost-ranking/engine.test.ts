@@ -14,14 +14,16 @@ describe("cost ranking engine", () => {
     resetCostRankingStore();
   });
 
-  it("returns estimated metrics when no live data exists", () => {
+  it("returns zero metrics when no live data exists", () => {
     const snapshot = buildCostRankingSnapshot(now);
 
     expect(snapshot.rankings).toHaveLength(8);
     expect(snapshot.rankings[0]?.rank).toBe(1);
-    expect(snapshot.rankings[0]?.apiCostUsd).toBeGreaterThan(0);
-    expect(snapshot.rankings[0]?.isEstimated).toBe(true);
-    expect(snapshot.totalApiCostUsd).toBeGreaterThan(0);
+    expect(snapshot.rankings.every((row) => row.apiCostUsd === 0)).toBe(true);
+    expect(snapshot.rankings.every((row) => row.isEstimated === false)).toBe(
+      true,
+    );
+    expect(snapshot.totalApiCostUsd).toBe(0);
   });
 
   it("aggregates live cost and ranks by API cost descending", () => {

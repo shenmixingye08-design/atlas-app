@@ -89,7 +89,11 @@ export function BillingWebhookPanel() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label={ui.billingWebhook.successRate}
-          value={formatOwnerPercent(snapshot.successRatePercent)}
+          value={
+            snapshot.successRatePercent === null
+              ? "データなし"
+              : formatOwnerPercent(snapshot.successRatePercent)
+          }
           hint={ui.billingWebhook.totalEvents(snapshot.totalCount)}
         />
         <MetricCard
@@ -205,7 +209,9 @@ export function BillingWebhookSummaryCard({
         <div>
           <dt className="text-xs text-[var(--text-secondary)]">{ui.billingWebhook.successRate}</dt>
           <dd className="mt-1 text-sm font-medium">
-            {formatOwnerPercent(snapshot.successRatePercent)}
+            {snapshot.successRatePercent === null
+              ? "データなし"
+              : formatOwnerPercent(snapshot.successRatePercent)}
           </dd>
         </div>
         <div>

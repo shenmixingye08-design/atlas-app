@@ -1,4 +1,10 @@
-import type { OwnerDashboardSnapshot } from "@/lib/owner/types";
+import type {
+  OwnerCountMetric,
+  OwnerCurrencyMetric,
+  OwnerDashboardSnapshot,
+  OwnerMetricAvailability,
+  OwnerProfitMetric,
+} from "@/lib/owner/types";
 import type { ApiUsageWarning } from "@/lib/owner/api-usage";
 import {
   formatOwnerDate,
@@ -10,6 +16,64 @@ import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
 import { Card } from "@/components/ui/card";
 import Link from "next/link";
+
+function availabilityLabel(availability: OwnerMetricAvailability | "incomplete"): string {
+  switch (availability) {
+    case "disconnected":
+      return ui.owner.statusDisconnected;
+    case "unset":
+      return ui.owner.statusUnset;
+    case "empty":
+      return ui.owner.statusEmpty;
+    case "failed":
+      return ui.owner.statusFailed;
+    case "incomplete":
+      return ui.owner.statusIncomplete;
+    default:
+      return ui.owner.statusOk;
+  }
+}
+
+function formatMoneyMetric(metric: OwnerCurrencyMetric): string {
+  if (metric.availability !== "ok" || (metric.amountUsd === null && metric.amountJpy === null)) {
+    return metric.statusMessage ?? availabilityLabel(metric.availability);
+  }
+  if (metric.amountJpy !== null) return formatOwnerJpy(metric.amountJpy);
+  if (metric.amountUsd !== null) return formatOwnerUsd(metric.amountUsd, true);
+  return availabilityLabel(metric.availability);
+}
+
+function formatProfitMetric(metric: OwnerProfitMetric): string {
+  if (metric.availability === "ok") {
+    if (metric.amountJpy !== null) return formatOwnerJpy(metric.amountJpy);
+    if (metric.amountUsd !== null) return formatOwnerUsd(metric.amountUsd, true);
+  }
+  return metric.statusMessage ?? availabilityLabel(metric.availability);
+}
+
+function metricMeta(metric: {
+  periodLabel: string;
+  dataSourceLabel: string;
+  lastUpdatedAt: string | null;
+  stripeMode?: "live" | "test" | null;
+  updateFailed?: boolean;
+  statusMessage?: string | null;
+}): string {
+  const parts = [
+    metric.periodLabel,
+    metric.dataSourceLabel,
+    metric.stripeMode === "live"
+      ? ui.owner.modeLive
+      : metric.stripeMode === "test"
+        ? ui.owner.modeTest
+        : null,
+    metric.lastUpdatedAt
+      ? ui.owner.lastSynced(formatOwnerDate(metric.lastUpdatedAt))
+      : ui.owner.noSyncYet,
+    metric.updateFailed ? ui.owner.updateFailedHint : null,
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
 
 function MetricCard({
   label,
@@ -42,6 +106,20 @@ function MetricCard({
       <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
       {hint && <p className="mt-1 text-xs text-[var(--text-secondary)]">{hint}</p>}
     </Card>
+  );
+}
+
+function CountCard({ metric }: { metric: OwnerCountMetric }) {
+  const value =
+    metric.availability === "ok" && metric.value !== null
+      ? metric.value.toLocaleString("ja-JP")
+      : (metric.statusMessage ?? availabilityLabel(metric.availability));
+  return (
+    <MetricCard
+      label={metric.label}
+      value={value}
+      hint={metricMeta(metric)}
+    />
   );
 }
 
@@ -95,6 +173,13 @@ export function OwnerDashboard({
   snapshot: OwnerDashboardSnapshot;
   apiUsageWarnings?: readonly ApiUsageWarning[];
 }) {
+  const modeBadge =
+    snapshot.stripeMode === "live"
+      ? ui.owner.modeLive
+      : snapshot.stripeMode === "test"
+        ? ui.owner.modeTest
+        : ui.owner.modeUnknown;
+
   return (
     <div className="space-y-8 animate-fade-up">
       <header className="space-y-2">
@@ -102,6 +187,9 @@ export function OwnerDashboard({
         <h1 className="text-display text-foreground">{ui.owner.pageTitle}</h1>
         <p className="max-w-2xl text-body text-[var(--text-secondary)]">
           {ui.owner.pageSubtitle(snapshot.period.label)}
+        </p>
+        <p className="text-xs text-[var(--text-muted)]">
+          {modeBadge} · {ui.owner.generatedAt(formatOwnerDate(snapshot.generatedAt))}
         </p>
       </header>
 
@@ -134,38 +222,78 @@ export function OwnerDashboard({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label={snapshot.revenue.label}
-          value={formatOwnerUsd(snapshot.revenue.amountUsd)}
-          hint={
-            snapshot.revenue.isEstimated ? ui.owner.estimatedHint : undefined
-          }
+          value={formatMoneyMetric(snapshot.revenue)}
+          hint={metricMeta(snapshot.revenue)}
           accent="revenue"
         />
         <MetricCard
+          label={snapshot.refunds.label}
+          value={formatMoneyMetric(snapshot.refunds)}
+          hint={metricMeta(snapshot.refunds)}
+          accent="cost"
+        />
+        <MetricCard
+          label={snapshot.stripeFees.label}
+          value={formatMoneyMetric(snapshot.stripeFees)}
+          hint={metricMeta(snapshot.stripeFees)}
+          accent="cost"
+        />
+        <MetricCard
+          label={snapshot.netRevenue.label}
+          value={formatMoneyMetric(snapshot.netRevenue)}
+          hint={metricMeta(snapshot.netRevenue)}
+          accent="revenue"
+        />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
           label={snapshot.apiCost.label}
-          value={formatOwnerUsd(snapshot.apiCost.amountUsd, true)}
-          hint={
-            snapshot.apiCost.isEstimated ? ui.owner.estimatedHint : undefined
-          }
+          value={formatMoneyMetric(snapshot.apiCost)}
+          hint={metricMeta(snapshot.apiCost)}
           accent="cost"
         />
         <MetricCard
           label={snapshot.serverCost.label}
-          value={formatOwnerUsd(snapshot.serverCost.amountUsd)}
-          hint={
-            snapshot.serverCost.isEstimated ? ui.owner.estimatedHint : undefined
-          }
+          value={formatMoneyMetric(snapshot.serverCost)}
+          hint={metricMeta(snapshot.serverCost)}
           accent="cost"
         />
         <MetricCard
-          label={snapshot.estimatedProfit.label}
-          value={formatOwnerUsd(snapshot.estimatedProfit.amountUsd, true)}
+          label={snapshot.externalCost.label}
+          value={formatMoneyMetric(snapshot.externalCost)}
+          hint={metricMeta(snapshot.externalCost)}
+          accent="cost"
+        />
+        <MetricCard
+          label={snapshot.profit.label}
+          value={formatProfitMetric(snapshot.profit)}
           hint={
-            snapshot.estimatedProfit.isEstimated
-              ? ui.owner.estimatedHint
-              : undefined
+            snapshot.profit.availability === "incomplete"
+              ? [
+                  metricMeta(snapshot.profit),
+                  snapshot.profit.provisionalDeltaJpy !== null
+                    ? ui.owner.provisionalDelta(
+                        formatOwnerJpy(snapshot.profit.provisionalDeltaJpy),
+                      )
+                    : snapshot.profit.provisionalDeltaUsd !== null
+                      ? ui.owner.provisionalDelta(
+                          formatOwnerUsd(snapshot.profit.provisionalDeltaUsd, true),
+                        )
+                      : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : metricMeta(snapshot.profit)
           }
           accent="profit"
         />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <CountCard metric={snapshot.userMetrics.paid} />
+        <CountCard metric={snapshot.userMetrics.cancelScheduled} />
+        <CountCard metric={snapshot.userMetrics.paymentFailures} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -174,51 +302,166 @@ export function OwnerDashboard({
             <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] p-4">
               <dt className="text-xs text-[var(--text-secondary)]">{ui.owner.paidUsers}</dt>
               <dd className="mt-1 text-2xl font-semibold">
-                {snapshot.users.paid}
+                {snapshot.users.paid.toLocaleString("ja-JP")}
               </dd>
             </div>
             <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] p-4">
               <dt className="text-xs text-[var(--text-secondary)]">{ui.owner.freeUsers}</dt>
               <dd className="mt-1 text-2xl font-semibold">
-                {snapshot.users.free}
+                {snapshot.users.free.toLocaleString("ja-JP")}
               </dd>
             </div>
             <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] p-4">
               <dt className="text-xs text-[var(--text-secondary)]">{ui.owner.churnedUsers}</dt>
               <dd className="mt-1 text-2xl font-semibold">
-                {snapshot.users.churned}
+                {snapshot.users.churned.toLocaleString("ja-JP")}
               </dd>
             </div>
           </dl>
+          <p className="mt-3 text-xs text-[var(--text-muted)]">
+            {ui.owner.subscriptionStoreHint}
+          </p>
         </SectionCard>
 
+        <SectionCard title={ui.owner.aiUsageTitle}>
+          {snapshot.aiUsage.availability !== "ok" ? (
+            <p className="text-sm text-[var(--text-secondary)]">
+              {snapshot.aiUsage.statusMessage ?? ui.owner.statusEmpty}
+            </p>
+          ) : (
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <dt className="text-xs text-[var(--text-secondary)]">{ui.owner.aiRequests}</dt>
+                <dd className="mt-1 text-xl font-semibold">
+                  {snapshot.aiUsage.requests.toLocaleString("ja-JP")}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--text-secondary)]">{ui.owner.aiCost}</dt>
+                <dd className="mt-1 text-xl font-semibold">
+                  {formatOwnerUsd(snapshot.aiUsage.recordedCostUsd, true)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--text-secondary)]">{ui.owner.inputTokens}</dt>
+                <dd className="mt-1 font-medium">
+                  {snapshot.aiUsage.inputTokens.toLocaleString("ja-JP")}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--text-secondary)]">{ui.owner.outputTokens}</dt>
+                <dd className="mt-1 font-medium">
+                  {snapshot.aiUsage.outputTokens.toLocaleString("ja-JP")}
+                </dd>
+              </div>
+            </dl>
+          )}
+          <p className="mt-3 text-xs text-[var(--text-muted)]">
+            {ui.owner.pricingTableHint(
+              snapshot.aiUsage.pricingTableVersion,
+              formatOwnerDate(snapshot.aiUsage.pricingTableUpdatedAt),
+            )}
+          </p>
+        </SectionCard>
+
+        <SectionCard title={ui.owner.runCountsTitle}>
+          {snapshot.runCounts.availability !== "ok" ? (
+            <p className="text-sm text-[var(--text-secondary)]">
+              {snapshot.runCounts.statusMessage ?? ui.owner.statusEmpty}
+            </p>
+          ) : (
+            <dl className="space-y-2 text-sm">
+              <div className="flex justify-between gap-3">
+                <dt className="text-[var(--text-secondary)]">{ui.owner.aiRequests}</dt>
+                <dd className="font-semibold">
+                  {snapshot.runCounts.aiRequests.toLocaleString("ja-JP")}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-[var(--text-secondary)]">{ui.owner.automationRuns}</dt>
+                <dd className="font-semibold">
+                  {snapshot.runCounts.automationRuns.toLocaleString("ja-JP")}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-[var(--text-secondary)]">{ui.owner.commanderRuns}</dt>
+                <dd className="font-semibold">
+                  {snapshot.runCounts.commanderRuns.toLocaleString("ja-JP")}
+                </dd>
+              </div>
+            </dl>
+          )}
+          <p className="mt-3 text-xs text-[var(--text-muted)]">
+            {snapshot.runCounts.dataSourceLabel}
+          </p>
+        </SectionCard>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
         <SectionCard title={ui.owner.ecoModeTitle}>
-          <p className="text-3xl font-semibold text-[var(--success)]">
-            {formatOwnerPercent(snapshot.ecoModeReductionPercent)}
-          </p>
-          <p className="mt-2 text-sm text-[var(--text-secondary)]">
-            {ui.owner.ecoModeRuns(snapshot.ecoModeRuns)}
-          </p>
+          {snapshot.ecoModeAvailability !== "ok" ? (
+            <p className="text-sm text-[var(--text-secondary)]">{ui.owner.statusEmpty}</p>
+          ) : (
+            <>
+              <p className="text-3xl font-semibold text-[var(--success)]">
+                {formatOwnerPercent(snapshot.ecoModeReductionPercent ?? 0)}
+              </p>
+              <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                {ui.owner.ecoModeRuns(snapshot.ecoModeRuns)}
+              </p>
+            </>
+          )}
         </SectionCard>
 
         <SectionCard title={ui.owner.stripePayoutTitle}>
           <p className="text-3xl font-semibold">
-            {formatOwnerUsd(snapshot.nextStripePayout.amountUsd)}
+            {snapshot.nextStripePayout.availability === "ok"
+              ? snapshot.nextStripePayout.amountJpy !== null
+                ? formatOwnerJpy(snapshot.nextStripePayout.amountJpy)
+                : formatOwnerUsd(snapshot.nextStripePayout.amountUsd ?? 0, true)
+              : (snapshot.nextStripePayout.statusMessage ??
+                availabilityLabel(snapshot.nextStripePayout.availability))}
           </p>
-          <p className="mt-2 text-sm text-[var(--text-secondary)]">
-            {ui.owner.stripePayoutDate(
-              formatOwnerDate(snapshot.nextStripePayout.scheduledAt),
-            )}
-          </p>
+          {snapshot.nextStripePayout.scheduledAt && (
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">
+              {ui.owner.stripePayoutDate(
+                formatOwnerDate(snapshot.nextStripePayout.scheduledAt),
+              )}
+            </p>
+          )}
           <p className="mt-1 text-xs text-[var(--text-secondary)]">
             {ui.owner.stripePayoutStatus(snapshot.nextStripePayout.status)}
           </p>
+        </SectionCard>
+
+        <SectionCard title={ui.owner.webhookSummaryTitle}>
+          <dl className="space-y-2 text-sm">
+            <div className="flex justify-between gap-3">
+              <dt className="text-[var(--text-secondary)]">{ui.owner.webhookSuccessRate}</dt>
+              <dd className="font-semibold">
+                {snapshot.webhook.successRatePercent === null
+                  ? ui.owner.statusEmpty
+                  : formatOwnerPercent(snapshot.webhook.successRatePercent)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-[var(--text-secondary)]">{ui.owner.webhookLastSync}</dt>
+              <dd className="font-semibold">
+                {snapshot.webhook.lastSyncedAt
+                  ? formatOwnerDate(snapshot.webhook.lastSyncedAt)
+                  : "—"}
+              </dd>
+            </div>
+          </dl>
         </SectionCard>
       </div>
 
       <SectionCard title={ui.owner.mrrTitle}>
         <p className="text-3xl font-semibold text-[var(--success)]">
           {formatOwnerJpy(snapshot.billing.mrrJpy)}
+        </p>
+        <p className="mt-1 text-xs text-[var(--text-muted)]">
+          {ui.owner.mrrHint}
         </p>
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -255,73 +498,83 @@ export function OwnerDashboard({
 
       <div className="grid gap-4 xl:grid-cols-2">
         <SectionCard title={ui.owner.popularFeaturesTitle}>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)] text-left text-[var(--text-secondary)]">
-                  <th className="pb-3 pr-4 font-medium">{ui.owner.featureColumn}</th>
-                  <th className="pb-3 pr-4 font-medium">{ui.owner.activeUsersColumn}</th>
-                  <th className="pb-3 pr-4 font-medium">{ui.owner.usageColumn}</th>
-                  <th className="pb-3 font-medium">{ui.owner.trendColumn}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {snapshot.popularFeatures.map((feature) => (
-                  <tr
-                    key={feature.featureId}
-                    className="border-b border-[var(--border)] last:border-0"
-                  >
-                    <td className="py-3 pr-4 font-medium text-foreground">
-                      {feature.featureName}
-                    </td>
-                    <td className="py-3 pr-4 text-[var(--text-secondary)]">
-                      {feature.activeUsers}
-                    </td>
-                    <td className="py-3 pr-4 text-[var(--text-secondary)]">
-                      {feature.usageCount.toLocaleString("ja-JP")}
-                    </td>
-                    <td className="py-3">
-                      <TrendBadge trend={feature.trend} />
-                    </td>
+          {snapshot.popularFeaturesAvailability !== "ok" ||
+          snapshot.popularFeatures.length === 0 ? (
+            <p className="text-sm text-[var(--text-secondary)]">{ui.owner.statusEmpty}</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border)] text-left text-[var(--text-secondary)]">
+                    <th className="pb-3 pr-4 font-medium">{ui.owner.featureColumn}</th>
+                    <th className="pb-3 pr-4 font-medium">{ui.owner.activeUsersColumn}</th>
+                    <th className="pb-3 pr-4 font-medium">{ui.owner.usageColumn}</th>
+                    <th className="pb-3 font-medium">{ui.owner.trendColumn}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {snapshot.popularFeatures.map((feature) => (
+                    <tr
+                      key={feature.featureId}
+                      className="border-b border-[var(--border)] last:border-0"
+                    >
+                      <td className="py-3 pr-4 font-medium text-foreground">
+                        {feature.featureName}
+                      </td>
+                      <td className="py-3 pr-4 text-[var(--text-secondary)]">
+                        {feature.activeUsers}
+                      </td>
+                      <td className="py-3 pr-4 text-[var(--text-secondary)]">
+                        {feature.usageCount.toLocaleString("ja-JP")}
+                      </td>
+                      <td className="py-3">
+                        <TrendBadge trend={feature.trend} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </SectionCard>
 
         <SectionCard title={ui.owner.highCostUsersTitle}>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)] text-left text-[var(--text-secondary)]">
-                  <th className="pb-3 pr-4 font-medium">{ui.owner.userColumn}</th>
-                  <th className="pb-3 pr-4 font-medium">{ui.owner.planColumn}</th>
-                  <th className="pb-3 pr-4 font-medium">{ui.owner.costColumn}</th>
-                  <th className="pb-3 font-medium">{ui.owner.runsColumn}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {snapshot.highCostUsers.map((user) => (
-                  <tr
-                    key={user.userId}
-                    className="border-b border-[var(--border)] last:border-0"
-                  >
-                    <td className="py-3 pr-4 font-medium text-foreground">
-                      {user.displayName}
-                    </td>
-                    <td className="py-3 pr-4 uppercase text-[var(--text-secondary)]">
-                      {user.plan}
-                    </td>
-                    <td className="py-3 pr-4 text-[var(--error)]">
-                      {formatOwnerUsd(user.estimatedCostUsd, true)}
-                    </td>
-                    <td className="py-3 text-[var(--text-secondary)]">{user.runCount}</td>
+          {snapshot.highCostUsersAvailability !== "ok" ||
+          snapshot.highCostUsers.length === 0 ? (
+            <p className="text-sm text-[var(--text-secondary)]">{ui.owner.statusEmpty}</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border)] text-left text-[var(--text-secondary)]">
+                    <th className="pb-3 pr-4 font-medium">{ui.owner.userColumn}</th>
+                    <th className="pb-3 pr-4 font-medium">{ui.owner.planColumn}</th>
+                    <th className="pb-3 pr-4 font-medium">{ui.owner.costColumn}</th>
+                    <th className="pb-3 font-medium">{ui.owner.runsColumn}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {snapshot.highCostUsers.map((user) => (
+                    <tr
+                      key={user.userId}
+                      className="border-b border-[var(--border)] last:border-0"
+                    >
+                      <td className="py-3 pr-4 font-medium text-foreground">
+                        {user.displayName}
+                      </td>
+                      <td className="py-3 pr-4 uppercase text-[var(--text-secondary)]">
+                        {user.plan}
+                      </td>
+                      <td className="py-3 pr-4 text-[var(--error)]">
+                        {formatOwnerUsd(user.estimatedCostUsd, true)}
+                      </td>
+                      <td className="py-3 text-[var(--text-secondary)]">{user.runCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </SectionCard>
       </div>
 
@@ -351,9 +604,6 @@ export function OwnerDashboard({
             </li>
           ))}
         </ul>
-        <p className="mt-4 text-xs text-[var(--text-muted)]">
-          {ui.owner.generatedAt(formatOwnerDate(snapshot.generatedAt))}
-        </p>
       </SectionCard>
     </div>
   );

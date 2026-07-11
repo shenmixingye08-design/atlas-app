@@ -79,6 +79,11 @@ function ProviderUsageCard({
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-lg font-semibold text-foreground">{provider.label}</h3>
+            {!provider.hasLiveData && (
+              <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-xs text-[var(--text-muted)]">
+                データなし
+              </span>
+            )}
             {provider.isEstimated && (
               <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-xs text-[var(--text-muted)]">
                 {ui.apiUsage.estimatedBadge}
@@ -103,11 +108,19 @@ function ProviderUsageCard({
         <div className="grid w-full max-w-xl grid-cols-2 gap-4 sm:grid-cols-4">
           <UsageCell
             label={ui.apiUsage.today}
-            value={formatOwnerUsd(provider.todayUsd, true)}
+            value={
+              provider.hasLiveData
+                ? formatOwnerUsd(provider.todayUsd, true)
+                : "データなし"
+            }
           />
           <UsageCell
             label={ui.apiUsage.month}
-            value={formatOwnerUsd(provider.monthUsd, true)}
+            value={
+              provider.hasLiveData
+                ? formatOwnerUsd(provider.monthUsd, true)
+                : "データなし"
+            }
           />
           <UsageCell
             label={ui.apiUsage.remaining}

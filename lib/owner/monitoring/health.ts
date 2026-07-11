@@ -116,7 +116,11 @@ export function buildMonitorHealth(
       } else if (hasOpenError(["stripe"])) {
         level = "down";
         detail = "未解決の Stripe エラー";
-      } else if (webhook.failureCount > 0 && webhook.successRatePercent < 90) {
+      } else if (
+        webhook.failureCount > 0 &&
+        webhook.successRatePercent !== null &&
+        webhook.successRatePercent < 90
+      ) {
         level = "warn";
         detail = `Webhook 成功率 ${webhook.successRatePercent}%`;
       } else {
@@ -327,11 +331,18 @@ export function buildMonitorHealth(
     billing: () => {
       const env = envServiceConfigured("stripe");
       let level: MonitorHealthLevel = "ok";
-      let detail = `Webhook 成功率 ${webhook.successRatePercent}%`;
+      let detail =
+        webhook.successRatePercent === null
+          ? "Webhook データなし"
+          : `Webhook 成功率 ${webhook.successRatePercent}%`;
       if (env.requiredMissing) {
         level = "down";
         detail = "Billing 未設定";
-      } else if (webhook.failureCount > 3 && webhook.successRatePercent < 80) {
+      } else if (
+        webhook.failureCount > 3 &&
+        webhook.successRatePercent !== null &&
+        webhook.successRatePercent < 80
+      ) {
         level = "down";
         detail = "Webhook 障害多発";
       } else if (webhook.failureCount > 0) {

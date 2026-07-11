@@ -30,8 +30,8 @@ export function buildLiveProfitScenario(now = new Date()): ProfitSimulatorScenar
   };
 
   const apiCostJpy =
-    eco.actualCostUsd > 0 ? usdToJpy(eco.actualCostUsd) : 28_000;
-  const serverCostJpy = 13_500;
+    eco.actualCostUsd > 0 ? usdToJpy(eco.actualCostUsd) : 0;
+  const serverCostJpy = 0;
 
   const input = {
     subscribers,

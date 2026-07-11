@@ -29,4 +29,10 @@ describe("stripe webhook monitoring", () => {
     expect(snapshot.successRatePercent).toBe(50);
     expect(snapshot.latestWebhook?.eventType).toBe("invoice.payment_failed");
   });
+
+  it("does not invent 100% success when logs are empty", () => {
+    const snapshot = buildStripeWebhookMonitoringSnapshot();
+    expect(snapshot.totalCount).toBe(0);
+    expect(snapshot.successRatePercent).toBeNull();
+  });
 });

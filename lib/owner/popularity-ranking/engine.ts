@@ -103,7 +103,7 @@ export function buildPopularityRankingSnapshot(
   const monthKey = formatOwnerMonthKey(now);
   const previousMonthKey = getPreviousMonthKey(monthKey);
   const events = listPopularityUsageEvents();
-  const useEstimatedFallback = events.length === 0;
+  const useEstimatedFallback = false;
   const currentEvents = filterEventsByMonth(events, monthKey);
   const previousEvents = filterEventsByMonth(events, previousMonthKey);
 

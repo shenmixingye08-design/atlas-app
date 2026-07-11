@@ -3,9 +3,8 @@ import "server-only";
 import { getOwnerBillingMetrics } from "@/lib/billing/analytics/owner-metrics";
 
 import { formatOwnerMonthKey, formatOwnerMonthLabel } from "../format";
-import { buildEstimatedFeatureCostMetrics } from "./defaults";
 import { COST_FEATURE_IDS, getCostFeatureDefinition } from "./registry";
-import { hasCostUsageRecords, listCostUsageEvents } from "./store";
+import { listCostUsageEvents } from "./store";
 import type {
   CostFeatureId,
   CostFeatureMetrics,
@@ -105,29 +104,8 @@ function buildFeatureMetrics(
   currentEvents: readonly CostUsageEvent[],
   totalApiCostUsd: number,
   revenuePerUsageUsd: number,
-  now: Date,
-  useEstimatedFallback: boolean,
 ): CostFeatureMetrics {
   const definition = getCostFeatureDefinition(featureId);
-
-  if (useEstimatedFallback) {
-    const estimated = buildEstimatedFeatureCostMetrics(featureId, now);
-    return {
-      featureId,
-      label: definition.label,
-      apiCostUsd: estimated.apiCostUsd,
-      avgUsageTimeMs: estimated.avgUsageTimeMs,
-      profitMarginPercent: estimated.profitMarginPercent,
-      costRatioPercent: estimated.costRatioPercent,
-      warningLevel: resolveWarningLevel(
-        estimated.costRatioPercent,
-        estimated.profitMarginPercent,
-      ),
-      usageCount: estimated.usageCount,
-      rank: 0,
-      isEstimated: true,
-    };
-  }
 
   const aggregated = aggregateFeatureCost(featureId, currentEvents);
   const avgUsageTimeMs =
@@ -163,29 +141,13 @@ export function buildCostRankingSnapshot(
 ): CostRankingSnapshot {
   const monthKey = formatOwnerMonthKey(now);
   const events = listCostUsageEvents();
-  const useEstimatedFallback = !hasCostUsageRecords();
   const currentEvents = filterEventsByMonth(events, monthKey);
 
-  const totalApiCostUsd = useEstimatedFallback
-    ? roundUsd(
-        COST_FEATURE_IDS.reduce(
-          (sum, featureId) =>
-            sum +
-            buildEstimatedFeatureCostMetrics(featureId, now).apiCostUsd,
-          0,
-        ),
-      )
-    : roundUsd(
-        currentEvents.reduce((sum, event) => sum + event.costUsd, 0),
-      );
+  const totalApiCostUsd = roundUsd(
+    currentEvents.reduce((sum, event) => sum + event.costUsd, 0),
+  );
 
-  const totalUsage = useEstimatedFallback
-    ? COST_FEATURE_IDS.reduce(
-        (sum, featureId) =>
-          sum + buildEstimatedFeatureCostMetrics(featureId, now).usageCount,
-        0,
-      )
-    : currentEvents.length;
+  const totalUsage = currentEvents.length;
 
   const revenuePerUsageUsd = resolveRevenuePerUsageUsd(totalUsage);
 
@@ -195,8 +157,6 @@ export function buildCostRankingSnapshot(
       currentEvents,
       totalApiCostUsd,
       revenuePerUsageUsd,
-      now,
-      useEstimatedFallback,
     ),
   );
 

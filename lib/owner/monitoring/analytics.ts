@@ -105,14 +105,14 @@ export function buildAnalyticsKpis(
   const from = periodStart(period, now);
   const entries = listAuditLogEntries();
   const billing = getOwnerBillingMetrics();
-  const totalUsers = Math.max(
-    1,
+  const totalUsers =
     listUserSubscriptions().length ||
-      billing.paidSubscribers + billing.freeSubscribers,
-  );
+    billing.paidSubscribers + billing.freeSubscribers;
   const activeUsers = uniqueUsers(entries, from, now) || 0;
   const activeRatePercent =
-    Math.round((activeUsers / totalUsers) * 1000) / 10;
+    totalUsers > 0
+      ? Math.round((activeUsers / totalUsers) * 1000) / 10
+      : 0;
 
   const aiRuns =
     countActions(entries, ["request_create", "commander_run"], from, now) ||
@@ -132,7 +132,8 @@ export function buildAnalyticsKpis(
   );
 
   const profit = buildLiveProfitScenario(now);
-  const openAiCostJpy = Math.round(openAiCostUsd(from, now) * JPY_PER_USD);
+  const openAiCostJpyRaw = openAiCostUsd(from, now);
+  const openAiCostJpy = Math.round(openAiCostJpyRaw * JPY_PER_USD);
   const stripeRevenueJpy =
     period === "month"
       ? billing.mrrJpy
@@ -149,33 +150,17 @@ export function buildAnalyticsKpis(
     period,
     activeUsers,
     totalUsers,
-    activeRatePercent: hasLive ? activeRatePercent : 12.5,
-    aiRuns: hasLive ? aiRuns : period === "today" ? 24 : period === "week" ? 180 : 720,
-    automationRuns: hasLive
-      ? automationRuns
-      : period === "today"
-        ? 8
-        : period === "week"
-          ? 56
-          : 220,
-    commanderRuns: hasLive
-      ? commanderRuns
-      : period === "today"
-        ? 5
-        : period === "week"
-          ? 40
-          : 160,
-    notificationCount: hasLive
-      ? notificationCount(from, now)
-      : period === "today"
-        ? 3
-        : 20,
+    activeRatePercent: hasLive ? activeRatePercent : 0,
+    aiRuns,
+    automationRuns,
+    commanderRuns,
+    notificationCount: notificationCount(from, now),
     stripeRevenueJpy,
-    openAiCostJpy: hasLive ? openAiCostJpy : period === "month" ? 28_000 : 900,
+    openAiCostJpy,
     profitForecastJpy: profit.result.endOfMonthProfitForecastJpy,
-    apiErrorRatePercent: hasLive ? errorRatePercent(entries, from, now) : 1.2,
-    avgResponseMs: hasLive && avgResponseMs > 0 ? avgResponseMs : 2400,
-    isEstimated: !hasLive,
+    apiErrorRatePercent: errorRatePercent(entries, from, now),
+    avgResponseMs: avgResponseMs > 0 ? avgResponseMs : 0,
+    isEstimated: false,
   };
 }
 

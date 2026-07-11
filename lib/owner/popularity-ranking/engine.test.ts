@@ -17,12 +17,14 @@ describe("popularity ranking engine", () => {
     resetPopularityRankingStore();
   });
 
-  it("returns estimated metrics when no live data exists", () => {
+  it("returns zero metrics when no live data exists", () => {
     const snapshot = buildPopularityRankingSnapshot(now);
     expect(snapshot.rankings).toHaveLength(8);
     expect(snapshot.rankings[0]?.rank).toBe(1);
-    expect(snapshot.rankings[0]?.usageCount).toBeGreaterThan(0);
-    expect(snapshot.rankings[0]?.isEstimated).toBe(true);
+    expect(snapshot.rankings.every((row) => row.usageCount === 0)).toBe(true);
+    expect(snapshot.rankings.every((row) => row.isEstimated === false)).toBe(
+      true,
+    );
   });
 
   it("aggregates live usage and ranks by usage count", () => {

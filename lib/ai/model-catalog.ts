@@ -61,6 +61,10 @@ export const MODEL_CATALOG: Record<ModelTier, ModelCatalogEntry> = {
   },
 };
 
+/** Version stamp for Owner cost reporting (token × catalog unit price). */
+export const MODEL_PRICING_TABLE_VERSION = "2026-07-atlas-catalog-v1";
+export const MODEL_PRICING_TABLE_UPDATED_AT = "2026-07-01T00:00:00.000Z";
+
 const MODEL_CAPABILITY_BY_ID = new Map<string, ModelCapabilities>(
   Object.values(MODEL_CATALOG).map((entry) => [entry.model, entry.capabilities]),
 );

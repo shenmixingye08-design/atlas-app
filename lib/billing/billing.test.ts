@@ -120,12 +120,17 @@ describe("billing subscriptions", () => {
 });
 
 describe("owner billing metrics", () => {
-  it("exposes MRR and plan breakdown", async () => {
+  it("exposes MRR and plan breakdown without demo fillers", async () => {
+    const { resetSubscriptionStore } = await import(
+      "@/lib/billing/subscriptions/store"
+    );
+    resetSubscriptionStore();
     const { getOwnerBillingMetrics } = await import(
       "@/lib/billing/analytics/owner-metrics"
     );
     const metrics = getOwnerBillingMetrics();
-    expect(metrics.mrrJpy).toBeGreaterThan(0);
+    expect(metrics.mrrJpy).toBe(0);
+    expect(metrics.paidSubscribers).toBe(0);
     expect(metrics.planBreakdown.length).toBe(3);
   });
 });

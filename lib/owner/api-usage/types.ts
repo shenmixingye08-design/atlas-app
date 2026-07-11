@@ -32,6 +32,8 @@ export type ApiUsageProviderSnapshot = {
   usagePercent: number;
   warningLevel: ApiUsageWarningLevel;
   isEstimated: boolean;
+  /** False when no recorded usage — amounts are not live. */
+  hasLiveData: boolean;
 };
 
 export type ApiUsageWarning = {

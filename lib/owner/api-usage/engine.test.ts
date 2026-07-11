@@ -69,11 +69,12 @@ describe("api usage engine", () => {
     expect(snapshot.warningLevel).toBe("approaching");
   });
 
-  it("returns estimated values when no live records exist", () => {
+  it("returns empty values when no live records exist", () => {
     const snapshot = buildProviderSnapshot("x", now);
 
-    expect(snapshot.isEstimated).toBe(true);
-    expect(snapshot.monthUsd).toBeGreaterThan(0);
-    expect(snapshot.todayUsd).toBeGreaterThan(0);
+    expect(snapshot.isEstimated).toBe(false);
+    expect(snapshot.hasLiveData).toBe(false);
+    expect(snapshot.monthUsd).toBe(0);
+    expect(snapshot.todayUsd).toBe(0);
   });
 });

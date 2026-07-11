@@ -45,7 +45,7 @@ export function buildStripeWebhookMonitoringSnapshot(
   return {
     latestWebhook,
     successRatePercent:
-      totalCount > 0 ? Math.round((successCount / totalCount) * 100) : 100,
+      totalCount > 0 ? Math.round((successCount / totalCount) * 100) : null,
     failureCount,
     totalCount,
     lastSyncedAt,

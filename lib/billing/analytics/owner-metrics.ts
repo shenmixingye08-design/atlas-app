@@ -1,23 +1,55 @@
+import { listBillingHistoryRecords } from "../history/store";
 import { getPlanDefinition } from "../plans/registry";
 import type { PlanId } from "../plans/types";
 import { countSubscriptionsByPlan, listUserSubscriptions } from "../subscriptions/store";
+import { isPaidCapableStatus } from "../subscriptions/service";
 
+import { getConfiguredStripeMode } from "./stripe-live-metrics";
 import type { OwnerBillingMetrics, OwnerPlanBreakdown } from "./types";
 
 export type { OwnerBillingMetrics, OwnerPlanBreakdown } from "./types";
 
-export function getOwnerBillingMetrics(): OwnerBillingMetrics {
+export type OwnerBillingMetricsExtended = OwnerBillingMetrics & {
+  cancelScheduledCount: number;
+  paymentFailureCount: number;
+  hasSubscriptionRecords: boolean;
+  stripeMode: "live" | "test" | null;
+};
+
+function monthPrefix(now: Date): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Subscription-store metrics only — no demo fillers when the store is empty.
+ * Cash revenue comes from Stripe live metrics, not MRR × FX.
+ */
+export function getOwnerBillingMetrics(
+  now: Date = new Date(),
+): OwnerBillingMetricsExtended {
   const planCounts = countSubscriptionsByPlan();
   const allRecords = listUserSubscriptions();
+  const prefix = monthPrefix(now);
 
   const churnedSubscribers = allRecords.filter(
     (record) => record.status === "canceled",
   ).length;
 
-  const freeSubscribers = planCounts.free;
+  const cancelScheduledCount = allRecords.filter(
+    (record) =>
+      record.cancelAtPeriodEnd &&
+      record.planId !== "free" &&
+      isPaidCapableStatus(record.status),
+  ).length;
+
+  const paymentFailureCount = listBillingHistoryRecords().filter(
+    (record) =>
+      record.status === "payment_failed" &&
+      record.createdAt.startsWith(prefix),
+  ).length;
 
   const planBreakdown = (["light", "standard", "premium"] as const).map(
-    (planId) => {
+    (planId: Exclude<PlanId, "free">) => {
       const plan = getPlanDefinition(planId);
       const activeSubscribers = planCounts[planId];
       return {
@@ -36,32 +68,20 @@ export function getOwnerBillingMetrics(): OwnerBillingMetrics {
     0,
   );
 
-  const hasLiveData = allRecords.length > 0;
-  const monthlyRevenueJpy = hasLiveData ? mrrJpy : 6120 * 150;
-
   return {
-    monthlyRevenueJpy,
-    mrrJpy: hasLiveData ? mrrJpy : monthlyRevenueJpy,
-    paidSubscribers: hasLiveData ? paidSubscribers : 48,
-    freeSubscribers: hasLiveData ? freeSubscribers : 312,
-    churnedSubscribers: hasLiveData ? churnedSubscribers : 6,
-    planBreakdown: hasLiveData
-      ? planBreakdown
-      : (["light", "standard", "premium"] as const).map((planId) => {
-          const plan = getPlanDefinition(planId);
-          const mockCounts = { light: 18, standard: 24, premium: 6 } as const;
-          const activeSubscribers = mockCounts[planId];
-          return {
-            planId,
-            planName: plan.name,
-            monthlyPriceJpy: plan.monthlyPriceJpy,
-            activeSubscribers,
-            mrrJpy: plan.monthlyPriceJpy * activeSubscribers,
-          };
-        }),
+    monthlyRevenueJpy: mrrJpy,
+    mrrJpy,
+    paidSubscribers,
+    freeSubscribers: planCounts.free,
+    churnedSubscribers,
+    planBreakdown,
     stripeConnected: Boolean(
       process.env.STRIPE_SECRET_KEY?.trim() &&
         process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim(),
     ),
+    cancelScheduledCount,
+    paymentFailureCount,
+    hasSubscriptionRecords: allRecords.length > 0,
+    stripeMode: getConfiguredStripeMode(),
   };
 }

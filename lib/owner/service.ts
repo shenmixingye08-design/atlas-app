@@ -1,12 +1,12 @@
 import "server-only";
 
-import { mockOwnerMetricsProvider } from "./providers/mock-provider";
+import { liveOwnerMetricsProvider } from "./providers/live-provider";
 import type { OwnerMetricsProvider } from "./providers/types";
 import type { OwnerDashboardSnapshot } from "./types";
 
-let activeProvider: OwnerMetricsProvider = mockOwnerMetricsProvider;
+let activeProvider: OwnerMetricsProvider = liveOwnerMetricsProvider;
 
-/** Swap providers when Stripe / OpenAI / server billing adapters are added. */
+/** Swap providers when alternate billing adapters are added. */
 export function setOwnerMetricsProvider(provider: OwnerMetricsProvider): void {
   activeProvider = provider;
 }

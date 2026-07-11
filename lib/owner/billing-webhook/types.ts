@@ -15,7 +15,8 @@ export type StripeWebhookLogEntry = {
 
 export type StripeWebhookMonitoringSnapshot = {
   latestWebhook: StripeWebhookLogEntry | null;
-  successRatePercent: number;
+  /** Null when no webhook logs exist (do not invent 100%). */
+  successRatePercent: number | null;
   failureCount: number;
   totalCount: number;
   lastSyncedAt: string | null;

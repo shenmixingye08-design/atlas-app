@@ -1,6 +1,5 @@
 import { formatOwnerMonthKey, formatOwnerMonthLabel } from "../format";
 import { API_USAGE_PROVIDER_IDS } from "./budgets";
-import { buildEstimatedProviderUsage } from "./defaults";
 import {
   getProviderBudgetUsd,
   hasRecordedUsage,
@@ -101,16 +100,18 @@ export function buildProviderSnapshot(
 
   const todayUsd = hasLiveData
     ? sumRecords(records.filter((record) => isSameDay(record.timestamp, now)))
-    : buildEstimatedProviderUsage(providerId, now).todayUsd;
+    : 0;
 
   const monthUsd = hasLiveData
     ? sumRecords(records.filter((record) => isSameMonth(record.timestamp, now)))
-    : buildEstimatedProviderUsage(providerId, now).monthUsd;
+    : 0;
 
   const remainingUsd = roundUsd(Math.max(0, budgetUsd - monthUsd));
   const usagePercent =
     budgetUsd > 0 ? Math.round((monthUsd / budgetUsd) * 100) : 0;
-  const warningLevel = resolveWarningLevel(monthUsd, budgetUsd, now);
+  const warningLevel = hasLiveData
+    ? resolveWarningLevel(monthUsd, budgetUsd, now)
+    : "none";
 
   return {
     providerId,
@@ -121,7 +122,9 @@ export function buildProviderSnapshot(
     remainingUsd,
     usagePercent,
     warningLevel,
-    isEstimated: !hasLiveData,
+    /** False when empty — UI must show データなし, not estimated fillers. */
+    isEstimated: false,
+    hasLiveData,
   };
 }
 
