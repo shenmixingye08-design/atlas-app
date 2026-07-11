@@ -226,6 +226,7 @@ export function normalizeAutomation(raw: unknown): Automation {
 
   return {
     id: asNonEmptyString(record.id, `legacy-automation-${now}`),
+    userId: asOptionalString(record.userId),
     name,
     description: asString(record.description, ""),
     schedule: normalizeSchedule(record.schedule),
@@ -241,6 +242,11 @@ export function normalizeAutomation(raw: unknown): Automation {
     status: pickEnum(record.status, AUTOMATION_STATUSES, DEFAULT_AUTOMATION_STATUS),
     lastWorkflowRunId: asOptionalString(record.lastWorkflowRunId),
     lastError: asOptionalString(record.lastError),
+    successCount: Math.max(0, Number(record.successCount) || 0),
+    failureCount: Math.max(0, Number(record.failureCount) || 0),
+    runHistory: Array.isArray(record.runHistory)
+      ? (record.runHistory as Automation["runHistory"]).slice(0, 20)
+      : [],
     createdAt: asIsoTimestamp(record.createdAt, now),
     updatedAt: asIsoTimestamp(record.updatedAt, now),
   };

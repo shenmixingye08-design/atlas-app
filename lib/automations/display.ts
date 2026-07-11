@@ -188,3 +188,20 @@ export function describeProcedure(automation: Automation): string[] {
   if (steps.length > 0) return steps;
   return ["依頼内容を整理", "AI秘書が作業を実行", "結果を確認"];
 }
+
+/** Success rate 0–1 from durable counters. */
+export function getAutomationSuccessRate(automation: Automation): number {
+  const success = Math.max(0, automation.successCount ?? 0);
+  const failure = Math.max(0, automation.failureCount ?? 0);
+  const total = success + failure;
+  if (total === 0) return 0;
+  return success / total;
+}
+
+export function formatAutomationSuccessRate(automation: Automation): string {
+  const success = Math.max(0, automation.successCount ?? 0);
+  const failure = Math.max(0, automation.failureCount ?? 0);
+  const total = success + failure;
+  if (total === 0) return "—";
+  return `${Math.round(getAutomationSuccessRate(automation) * 100)}%（${success}/${total}）`;
+}

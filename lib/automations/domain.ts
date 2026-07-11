@@ -51,6 +51,7 @@ function seedAutomation(
     createDefaultExecutionFlow(inferWorkflowTemplate(`${name} ${assignment}`));
   return {
     id,
+    userId: null,
     name,
     description,
     schedule,
@@ -66,6 +67,9 @@ function seedAutomation(
     status: "idle",
     lastWorkflowRunId: null,
     lastError: null,
+    successCount: 0,
+    failureCount: 0,
+    runHistory: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -159,6 +163,7 @@ export function createAutomationFromInput(input: CreateAutomationInput): Automat
 
   return {
     id: crypto.randomUUID(),
+    userId: input.userId ?? null,
     name: input.name.trim(),
     description: input.description.trim(),
     schedule,
@@ -181,6 +186,9 @@ export function createAutomationFromInput(input: CreateAutomationInput): Automat
     status: "idle",
     lastWorkflowRunId: null,
     lastError: null,
+    successCount: 0,
+    failureCount: 0,
+    runHistory: [],
     createdAt: nowIso,
     updatedAt: nowIso,
   };

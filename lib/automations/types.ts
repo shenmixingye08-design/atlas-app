@@ -122,6 +122,8 @@ export type WorkExecutionFlow = {
 /** Recurring AI work definition. */
 export type Automation = {
   id: EntityId;
+  /** Owner — required for durable per-user persistence. */
+  userId: string | null;
   name: string;
   description: string;
   schedule: AutomationSchedule;
@@ -137,8 +139,22 @@ export type Automation = {
   status: AutomationStatus;
   lastWorkflowRunId: EntityId | null;
   lastError: string | null;
+  successCount: number;
+  failureCount: number;
+  /** Compact recent run ledger (durable). */
+  runHistory: AutomationRunHistoryEntry[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
+};
+
+/** Compact durable run history row (not full orchestration payload). */
+export type AutomationRunHistoryEntry = {
+  id: EntityId;
+  status: "completed" | "failed";
+  startedAt: Timestamp;
+  completedAt: Timestamp;
+  error: string | null;
+  triggerType: "manual" | "automation" | string;
 };
 
 export type CreateAutomationInput = {
@@ -152,6 +168,7 @@ export type CreateAutomationInput = {
   snsBatchDays?: SnsBatchDays | null;
   executionFlow?: WorkExecutionFlow;
   enabled?: boolean;
+  userId?: string | null;
 };
 
 export type UpdateAutomationInput = Partial<
@@ -172,6 +189,10 @@ export type UpdateAutomationInput = Partial<
     | "status"
     | "lastWorkflowRunId"
     | "lastError"
+    | "successCount"
+    | "failureCount"
+    | "runHistory"
+    | "userId"
   >
 >;
 
@@ -179,6 +200,7 @@ export type AutomationFilter = {
   enabled?: boolean;
   status?: AutomationStatus | AutomationStatus[];
   ids?: EntityId[];
+  userId?: string | null;
 };
 
 export type AutomationRunResult = {

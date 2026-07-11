@@ -11,6 +11,7 @@ import {
   getConfirmationScopeLabel,
   resolveEntrustedJobStatus,
   resolveScheduleMethod,
+  formatAutomationSuccessRate,
   type EntrustedJobStatus,
 } from "@/lib/automations/display";
 import { ui } from "@/lib/i18n";
@@ -24,6 +25,10 @@ type AutomationCardProps = {
   onToggleEnabled: (id: string, enabled: boolean) => void;
   isUpdating: boolean;
 };
+
+function formatSuccessRate(automation: Automation): string {
+  return formatAutomationSuccessRate(automation);
+}
 
 function statusToChip(status: EntrustedJobStatus): StatusVariant {
   switch (status) {
@@ -134,6 +139,31 @@ export function AutomationCard({
           </dt>
           <dd className="mt-1 font-medium text-foreground">
             {formatAutomationDateTime(automation.lastRun)}
+          </dd>
+        </div>
+        <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
+          <dt className="text-xs text-[var(--text-muted)]">
+            {ui.entrustedJobs.statusLabel}
+          </dt>
+          <dd className="mt-1 font-medium text-foreground">
+            {ENTRUSTED_JOB_STATUS_LABELS[status]}
+            {!automation.enabled ? " / OFF" : " / ON"}
+          </dd>
+        </div>
+        <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
+          <dt className="text-xs text-[var(--text-muted)]">
+            {ui.entrustedJobs.failureCount}
+          </dt>
+          <dd className="mt-1 font-medium text-foreground">
+            {automation.failureCount ?? 0}
+          </dd>
+        </div>
+        <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
+          <dt className="text-xs text-[var(--text-muted)]">
+            {ui.entrustedJobs.successRate}
+          </dt>
+          <dd className="mt-1 font-medium text-foreground">
+            {formatSuccessRate(automation)}
           </dd>
         </div>
         <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">

@@ -42,6 +42,28 @@ export async function upsertSupabaseUserState(
   }
 }
 
+/** List user ids that have a durable domain row (for cron fan-out). */
+export async function listSupabaseUserIdsForDomain(
+  domain: string,
+): Promise<string[]> {
+  const client = createServiceRoleClientIfConfigured();
+  if (!client) return [];
+
+  try {
+    const { data, error } = await client
+      .from(ATLAS_USER_STATE_TABLE)
+      .select("user_id")
+      .eq("domain", domain);
+
+    if (error || !Array.isArray(data)) return [];
+    return data
+      .map((row) => (typeof row.user_id === "string" ? row.user_id : ""))
+      .filter((id) => id.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 export async function loadSupabaseUserState<T>(
   userId: string,
   domain: string,

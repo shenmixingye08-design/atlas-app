@@ -103,8 +103,14 @@ export async function GET(
   _request: Request,
   context: RouteContext,
 ): Promise<Response> {
+  const { auth } = await import("@clerk/nextjs/server");
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await context.params;
-  const automation = await automationService.getById(id);
+  const automation = await automationService.getByIdForUser(id, userId);
 
   if (!automation) {
     return Response.json({ error: "Automation not found" }, { status: 404 });
@@ -166,7 +172,7 @@ export async function PATCH(
     if (videoDenied) return videoDenied;
   }
 
-  const updated = await automationService.update(id, parsed);
+  const updated = await automationService.updateForUser(id, userId, parsed);
   if (!updated) {
     return Response.json({ error: "Automation not found" }, { status: 404 });
   }

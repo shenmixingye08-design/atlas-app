@@ -48,8 +48,9 @@ import {
   notifyAutomationCompleted,
   notifyAutomationFailed,
 } from "@/lib/notifications/emitters";
-import type { Automation, AutomationRunResult } from "./types";
+import type { Automation, AutomationRunHistoryEntry, AutomationRunResult } from "./types";
 import { serverAutomationRepository } from "./repositories/server-automation-repository";
+import { MAX_AUTOMATION_RUN_HISTORY } from "./repositories/server-automation-repository";
 import { serverWorkflowRunRepository } from "./repositories/workflow-run-store";
 
 export type ExecuteAutomationOptions = {
@@ -57,6 +58,13 @@ export type ExecuteAutomationOptions = {
   userId?: string | null;
   requestOrigin?: string;
 };
+
+function appendRunHistory(
+  existing: AutomationRunHistoryEntry[] | undefined,
+  entry: AutomationRunHistoryEntry,
+): AutomationRunHistoryEntry[] {
+  return [entry, ...(existing ?? [])].slice(0, MAX_AUTOMATION_RUN_HISTORY);
+}
 
 /**
  * Runs one automation through the full Atlas pipeline:
@@ -263,13 +271,25 @@ export async function executeAutomationRun(
     });
 
     const nextRun = computeNextRunIso(automation.schedule, new Date(completedAt));
+    const succeeded = result.status === "completed";
+    const latest = await serverAutomationRepository.findById(automation.id);
 
     await serverAutomationRepository.update(automation.id, {
-      status: result.status === "completed" ? "success" : "failed",
+      status: succeeded ? "success" : "failed",
       lastRun: completedAt,
       nextRun,
       lastWorkflowRunId: workflowRun.id,
       lastError: result.error ?? null,
+      successCount: (latest?.successCount ?? automation.successCount ?? 0) + (succeeded ? 1 : 0),
+      failureCount: (latest?.failureCount ?? automation.failureCount ?? 0) + (succeeded ? 0 : 1),
+      runHistory: appendRunHistory(latest?.runHistory ?? automation.runHistory, {
+        id: workflowRun.id,
+        status: succeeded ? "completed" : "failed",
+        startedAt,
+        completedAt,
+        error: result.error ?? null,
+        triggerType,
+      }),
     });
 
     const flow = normalizeExecutionFlow(automation.executionFlow);
@@ -373,12 +393,22 @@ export async function executeAutomationRun(
       completedAt,
     });
 
+    const latest = await serverAutomationRepository.findById(automation.id);
     await serverAutomationRepository.update(automation.id, {
       status: "failed",
       lastRun: completedAt,
       nextRun: computeNextRunIso(automation.schedule, new Date(completedAt)),
       lastWorkflowRunId: workflowRun.id,
       lastError: message,
+      failureCount: (latest?.failureCount ?? automation.failureCount ?? 0) + 1,
+      runHistory: appendRunHistory(latest?.runHistory ?? automation.runHistory, {
+        id: workflowRun.id,
+        status: "failed",
+        startedAt,
+        completedAt,
+        error: message,
+        triggerType,
+      }),
     });
 
     notifyAutomationFailed(options.userId, {

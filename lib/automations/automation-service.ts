@@ -1,8 +1,11 @@
 import "server-only";
 
 import type { WorkflowRun } from "@/lib/memory/types/workflow-run";
+import { evaluateBillingAiUsage } from "@/lib/billing/access/snapshot";
+import { isAutomationSuspendedForUser } from "@/lib/billing/subscriptions/lifecycle";
+import { setAutomationTaskCount } from "@/lib/billing/usage/store";
 
-import { isAutomationDue } from "./schedule";
+import { isAutomationDue, computeNextRunIso } from "./schedule";
 import type {
   Automation,
   AutomationFilter,
@@ -14,6 +17,15 @@ import { executeAutomationRun } from "./run-automation";
 import type { AutomationRepository } from "./repositories/types";
 import { serverAutomationRepository } from "./repositories/server-automation-repository";
 import { serverWorkflowRunRepository } from "./repositories/workflow-run-store";
+import {
+  ensureAutomationsHydrated,
+  schedulePersistAutomations,
+} from "./durable";
+import {
+  claimAutomationTickSlot,
+  listAutomationOwnerUserIds,
+  registerAutomationUserId,
+} from "./global-durable";
 
 export type AutomationServiceOptions = {
   automations?: AutomationRepository;
@@ -32,16 +44,70 @@ export class AutomationService {
     return this.automations.list(filter);
   }
 
+  async listForUser(userId: string): Promise<Automation[]> {
+    await ensureAutomationsHydrated(userId);
+    return this.automations.list({ userId });
+  }
+
   getById(id: string): Promise<Automation | null> {
     return this.automations.findById(id);
+  }
+
+  async getByIdForUser(
+    id: string,
+    userId: string,
+  ): Promise<Automation | null> {
+    await ensureAutomationsHydrated(userId);
+    const automation = await this.automations.findById(id);
+    if (!automation || automation.userId !== userId) return null;
+    return automation;
+  }
+
+  async createForUser(
+    userId: string,
+    input: CreateAutomationInput,
+  ): Promise<Automation> {
+    await ensureAutomationsHydrated(userId);
+    const automation = await this.automations.create({
+      ...input,
+      userId,
+    });
+    await registerAutomationUserId(userId);
+    await this.syncTaskCount(userId);
+    schedulePersistAutomations(userId);
+    return automation;
   }
 
   create(input: CreateAutomationInput): Promise<Automation> {
     return this.automations.create(input);
   }
 
+  async updateForUser(
+    id: string,
+    userId: string,
+    patch: UpdateAutomationInput,
+  ): Promise<Automation | null> {
+    await ensureAutomationsHydrated(userId);
+    const existing = await this.automations.findById(id);
+    if (!existing || existing.userId !== userId) return null;
+    const updated = await this.automations.update(id, patch);
+    if (updated) {
+      await this.syncTaskCount(userId);
+      schedulePersistAutomations(userId);
+    }
+    return updated;
+  }
+
   update(id: string, patch: UpdateAutomationInput): Promise<Automation | null> {
     return this.automations.update(id, patch);
+  }
+
+  async setEnabledForUser(
+    id: string,
+    userId: string,
+    enabled: boolean,
+  ): Promise<Automation | null> {
+    return this.updateForUser(id, userId, { enabled });
   }
 
   setEnabled(id: string, enabled: boolean): Promise<Automation | null> {
@@ -52,32 +118,96 @@ export class AutomationService {
     id: string,
     options: { userId?: string | null; requestOrigin?: string } = {},
   ): Promise<AutomationRunResult | null> {
+    if (options.userId) {
+      await ensureAutomationsHydrated(options.userId);
+    }
     const automation = await this.automations.findById(id);
     if (!automation) return null;
+    if (options.userId && automation.userId !== options.userId) return null;
 
-    return executeAutomationRun(automation, {
+    const result = await executeAutomationRun(automation, {
       triggerType: "manual",
-      userId: options.userId,
+      userId: options.userId ?? automation.userId,
       requestOrigin: options.requestOrigin,
     });
+
+    const ownerId = options.userId ?? automation.userId;
+    if (ownerId) schedulePersistAutomations(ownerId);
+    return result;
   }
 
+  /**
+   * Vercel Cron due processor — hydrates each owner, claims tick slots,
+   * enforces billing, and persists results.
+   */
   async processDueAutomations(
     options: { requestOrigin?: string } = {},
   ): Promise<AutomationRunResult[]> {
-    const enabled = await this.automations.list({ enabled: true });
-    const due = enabled.filter((automation) => isAutomationDue(automation));
-
+    const ownerIds = await listAutomationOwnerUserIds();
     const results: AutomationRunResult[] = [];
 
-    for (const automation of due) {
-      if (automation.status === "running") continue;
+    // Also include any in-memory owners (single-instance / tests without Supabase).
+    const memoryOwners = new Set(
+      (await this.automations.list())
+        .map((row) => row.userId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    );
+    for (const id of ownerIds) memoryOwners.add(id);
 
-      const result = await executeAutomationRun(automation, {
-        triggerType: "automation",
-        requestOrigin: options.requestOrigin,
+    for (const userId of memoryOwners) {
+      await ensureAutomationsHydrated(userId);
+
+      if (isAutomationSuspendedForUser(userId)) {
+        continue;
+      }
+
+      const enabled = await this.automations.list({
+        enabled: true,
+        userId,
       });
-      results.push(result);
+      const due = enabled.filter((automation) => isAutomationDue(automation));
+
+      for (const automation of due) {
+        if (automation.status === "running") continue;
+
+        const claimed = await claimAutomationTickSlot(
+          userId,
+          automation.id,
+          automation.nextRun,
+        );
+        if (!claimed) continue;
+
+        const { denial } = await evaluateBillingAiUsage(userId);
+        if (denial) {
+          await this.automations.update(automation.id, {
+            lastError: denial.reason,
+            status: "failed",
+            nextRun: computeNextRunIso(automation.schedule, new Date()),
+          });
+          schedulePersistAutomations(userId);
+          continue;
+        }
+
+        // Advance nextRun before execute so a second instance skips isAutomationDue.
+        const reservedNext = computeNextRunIso(automation.schedule, new Date());
+        await this.automations.update(automation.id, {
+          status: "running",
+          nextRun: reservedNext,
+          lastError: null,
+        });
+        schedulePersistAutomations(userId);
+
+        const result = await executeAutomationRun(
+          { ...automation, nextRun: reservedNext, status: "running" },
+          {
+            triggerType: "automation",
+            userId,
+            requestOrigin: options.requestOrigin,
+          },
+        );
+        results.push(result);
+        schedulePersistAutomations(userId);
+      }
     }
 
     return results;
@@ -86,6 +216,11 @@ export class AutomationService {
   async listWorkflowRuns(automationId: string): Promise<WorkflowRun[]> {
     const page = await serverWorkflowRunRepository.list({ automationId });
     return page.items;
+  }
+
+  private async syncTaskCount(userId: string): Promise<void> {
+    const enabled = await this.automations.list({ userId, enabled: true });
+    setAutomationTaskCount(userId, enabled.length);
   }
 }
 

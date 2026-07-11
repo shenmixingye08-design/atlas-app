@@ -14,6 +14,7 @@ import {
   describeMaterialsAndMemory,
   describeProcedure,
   flowHasCriticalExternalActions,
+  formatAutomationSuccessRate,
   getConfirmationScopeLabel,
   resolveEntrustedJobStatus,
   resolveScheduleMethod,
@@ -278,14 +279,68 @@ export function AutomationDetailPanel({
             <h3 className="text-sm font-semibold text-foreground">
               {ui.entrustedJobs.runHistory}
             </h3>
+            <dl className="grid gap-2 text-sm sm:grid-cols-2">
+              <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
+                <dt className="text-xs text-[var(--text-muted)]">
+                  {ui.entrustedJobs.lastRun}
+                </dt>
+                <dd className="mt-1 font-medium text-foreground">
+                  {formatAutomationDateTime(automation.lastRun)}
+                </dd>
+              </div>
+              <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
+                <dt className="text-xs text-[var(--text-muted)]">
+                  {ui.entrustedJobs.nextRun}
+                </dt>
+                <dd className="mt-1 font-medium text-foreground">
+                  {automation.enabled
+                    ? formatAutomationDateTime(automation.nextRun)
+                    : "—"}
+                </dd>
+              </div>
+              <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
+                <dt className="text-xs text-[var(--text-muted)]">
+                  {ui.entrustedJobs.failureCount}
+                </dt>
+                <dd className="mt-1 font-medium text-foreground">
+                  {automation.failureCount ?? 0}
+                </dd>
+              </div>
+              <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
+                <dt className="text-xs text-[var(--text-muted)]">
+                  {ui.entrustedJobs.successRate}
+                </dt>
+                <dd className="mt-1 font-medium text-foreground">
+                  {formatAutomationSuccessRate(automation)}
+                </dd>
+              </div>
+              <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 sm:col-span-2">
+                <dt className="text-xs text-[var(--text-muted)]">
+                  {ui.entrustedJobs.statusLabel}
+                </dt>
+                <dd className="mt-1 font-medium text-foreground">
+                  {ENTRUSTED_JOB_STATUS_LABELS[status]}
+                  {!automation.enabled ? " / OFF" : " / ON"}
+                </dd>
+              </div>
+            </dl>
             <ul className="space-y-2">
-              <li className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-secondary)]">
-                {ui.entrustedJobs.lastRun}:{" "}
-                {formatAutomationDateTime(automation.lastRun)}
-              </li>
-              <li className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-muted)]">
-                {ui.entrustedJobs.fullHistoryComingSoon}
-              </li>
+              {(automation.runHistory ?? []).length === 0 ? (
+                <li className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-muted)]">
+                  {ui.entrustedJobs.fullHistoryComingSoon}
+                </li>
+              ) : (
+                (automation.runHistory ?? []).slice(0, 8).map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-secondary)]"
+                  >
+                    {formatAutomationDateTime(entry.completedAt)} —{" "}
+                    {entry.status === "completed" ? "成功" : "失敗"}
+                    {entry.error ? `（${entry.error}）` : ""}
+                  </li>
+                ))
+              )}
             </ul>
           </section>
 

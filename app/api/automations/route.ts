@@ -64,7 +64,12 @@ function parseCreateBody(body: unknown): CreateAutomationInput | { error: string
 }
 
 export async function GET(): Promise<Response> {
-  const automations = await automationService.list();
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const automations = await automationService.listForUser(userId);
   return Response.json(automations);
 }
 
@@ -98,7 +103,7 @@ export async function POST(request: Request): Promise<Response> {
     requireBillingFeature,
   } = await import("@/lib/billing/access");
 
-  const existing = await automationService.list();
+  const existing = await automationService.listForUser(userId);
   const taskDenied = await requireBillingAutomationTask(userId, existing.length);
   if (taskDenied) return taskDenied;
 
@@ -125,6 +130,6 @@ export async function POST(request: Request): Promise<Response> {
     if (videoDenied) return videoDenied;
   }
 
-  const automation = await automationService.create(parsed);
+  const automation = await automationService.createForUser(userId, parsed);
   return Response.json(automation, { status: 201 });
 }

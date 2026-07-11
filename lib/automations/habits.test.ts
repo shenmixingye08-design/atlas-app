@@ -9,6 +9,7 @@ import { createDefaultExecutionFlow } from "./execution-flow";
 function mockAutomation(partial: Partial<Automation>): Automation {
   return {
     id: "test",
+    userId: null,
     name: "テスト",
     description: "desc",
     schedule: {
@@ -29,6 +30,9 @@ function mockAutomation(partial: Partial<Automation>): Automation {
     status: "idle",
     lastWorkflowRunId: null,
     lastError: null,
+    successCount: 0,
+    failureCount: 0,
+    runHistory: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...partial,
