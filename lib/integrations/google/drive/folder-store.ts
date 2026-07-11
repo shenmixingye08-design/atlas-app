@@ -33,6 +33,10 @@ export function saveStoredDriveFolders(record: StoredDriveFolders): void {
   getStore().set(record.userId, record);
 }
 
+export function deleteStoredDriveFolders(userId: string): boolean {
+  return getStore().delete(userId);
+}
+
 export function resetDriveFolderStore(): void {
   getStore().clear();
 }

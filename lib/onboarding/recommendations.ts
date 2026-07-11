@@ -30,7 +30,7 @@ const SERVICE_SETTINGS_HREF: Partial<Record<ExternalServiceId, string>> = {
   google: "/settings/google/gmail",
   x: "/settings/x",
   wordpress: "/settings",
-  dropbox: "/settings",
+  dropbox: "/workspace/drive?provider=dropbox",
 };
 
 export function getPreferredOnboardingTasks(

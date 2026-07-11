@@ -39,6 +39,7 @@ import {
   WorkMemoryCandidateBanner,
   WorkMemoryUsedBanner,
 } from "./work-memory-used-banner";
+import { WorkTemplatePrompt } from "./work-template-prompt";
 import { WorkflowResults } from "./workflow-results";
 import {
   SalesMaterialWizard,
@@ -68,6 +69,7 @@ export function WorkspaceDashboard() {
     OrchestrationResult["workMemory"] | null
   >(null);
   const [workMemoryCandidateCount, setWorkMemoryCandidateCount] = useState(0);
+  const [taughtWorkflowHint, setTaughtWorkflowHint] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const { isAvailable } = useFeatureAvailability();
@@ -87,6 +89,7 @@ export function WorkspaceDashboard() {
     if (prefill?.trim()) {
       setAssignment(prefill);
     }
+    setTaughtWorkflowHint(searchParams.get("taught") === "1");
   }, [searchParams]);
 
   useEffect(() => {
@@ -229,6 +232,15 @@ export function WorkspaceDashboard() {
 
   return (
     <div className="space-y-16">
+      {showForm && taughtWorkflowHint && (
+        <section className="animate-fade-up rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card)] px-5 py-4 shadow-[var(--shadow-sm)]">
+          <p className="text-xs font-medium tracking-wide text-accent">AI秘書</p>
+          <p className="mt-2 text-sm leading-relaxed text-foreground sm:text-base">
+            前回教えていただいた流れで進めます。
+          </p>
+        </section>
+      )}
+
       {showForm && (
         <WorkRequestForm
           value={assignment}
@@ -290,6 +302,8 @@ export function WorkspaceDashboard() {
           {workMemoryCandidateCount > 0 && (
             <WorkMemoryCandidateBanner count={workMemoryCandidateCount} />
           )}
+
+          <WorkTemplatePrompt assignment={assignment} />
 
           {salesMaterialConfig && !salesMaterialConfig.skipFileGeneration && (
             <p className="text-sm text-[var(--foreground-muted)] animate-fade-in">

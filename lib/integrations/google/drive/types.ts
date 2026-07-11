@@ -5,15 +5,37 @@ export type DriveCategoryId =
   | "email"
   | "other";
 
+export type DriveDocumentKind =
+  | "folder"
+  | "pdf"
+  | "word"
+  | "excel"
+  | "powerpoint"
+  | "google_doc"
+  | "google_sheet"
+  | "google_slide"
+  | "other";
+
 export type DriveFileItem = {
   id: string;
   name: string;
   mimeType: string;
+  kind: DriveDocumentKind;
   category: DriveCategoryId;
   modifiedAt: string;
   sizeBytes: number | null;
   webViewLink: string | null;
   webContentLink: string | null;
+  parents: readonly string[];
+  isFolder: boolean;
+};
+
+export type DriveFolderItem = {
+  id: string;
+  name: string;
+  webViewLink: string | null;
+  modifiedAt: string;
+  parents: readonly string[];
 };
 
 export type DriveFolderLayout = {
@@ -30,7 +52,9 @@ export type DriveFilesSnapshot = {
   category: DriveCategoryId | "all";
   categoryLabel: string;
   query: string | null;
+  parentId: string | null;
   files: readonly DriveFileItem[];
+  folderItems: readonly DriveFolderItem[];
   folders: DriveFolderLayout;
   generatedAt: string;
 };
@@ -68,3 +92,27 @@ export type DriveFileDetailResult =
   | { status: "ready"; file: DriveFileItem }
   | { status: Exclude<DriveFetchStatus, "ready">; message: string }
   | { status: "not_found"; message: string };
+
+export type DriveAiSummary = {
+  fileId: string;
+  fileName: string;
+  kind: DriveDocumentKind;
+  summaryLines: readonly string[];
+  preview: string;
+};
+
+export type DriveAiSearchHit = {
+  fileId: string;
+  fileName: string;
+  kind: DriveDocumentKind;
+  reason: string;
+  score: number;
+};
+
+export type DriveAiClassification = {
+  fileId: string;
+  fileName: string;
+  suggestedCategory: DriveCategoryId;
+  label: string;
+  reason: string;
+};

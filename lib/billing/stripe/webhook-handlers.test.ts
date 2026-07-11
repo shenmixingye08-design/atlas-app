@@ -114,11 +114,38 @@ describe("stripe webhook handlers", () => {
         current_period_start: Math.floor(Date.now() / 1000),
         current_period_end: Math.floor(Date.now() / 1000) + 86400 * 30,
         cancel_at_period_end: false,
-        items: { data: [] },
+        items: { data: [{ price: { id: "price_premium_test" } }] },
       }),
     );
 
     expect(result.success).toBe(true);
-    expect(getUserSubscriptionView("user_upd_1").planId).toBe("premium");
+    const view = getUserSubscriptionView("user_upd_1");
+    expect(view.planId).toBe("premium");
+    expect(view.stripePriceId).toBe("price_premium_test");
+  });
+
+  it("treats invoice.paid like payment succeeded", async () => {
+    const { applySubscriptionFromStripe } = await import("../subscriptions/service");
+
+    applySubscriptionFromStripe({
+      userId: "user_paid_1",
+      stripeCustomerId: "cus_paid",
+      stripeSubscriptionId: "sub_paid",
+      planId: "light",
+      status: "past_due",
+      currentPeriodStart: new Date().toISOString(),
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+    });
+
+    const result = await handleStripeWebhookEvent(
+      buildEvent("invoice.paid", {
+        customer: "cus_paid",
+        subscription: "sub_paid",
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.userId).toBe("user_paid_1");
   });
 });

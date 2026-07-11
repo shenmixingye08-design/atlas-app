@@ -2,8 +2,14 @@ import "server-only";
 
 import { randomUUID } from "crypto";
 
+import type Stripe from "stripe";
+
 import { getPlanDefinition, isPlanId } from "../plans/registry";
 import type { PlanId } from "../plans/types";
+import {
+  getUserSubscription,
+  saveUserSubscription,
+} from "../subscriptions/store";
 
 import { getStripeClient } from "./client";
 import {
@@ -12,6 +18,7 @@ import {
   isStripeConfigured,
   resolveAppOrigin,
   resolveCheckoutUrls,
+  resolvePlanIdFromStripePrice,
 } from "./config";
 
 export type CheckoutSessionResult = {
@@ -29,11 +36,85 @@ function assertCheckoutPriceConfigured(planId: PlanId, priceId: string | null): 
   }
 }
 
+/** Only server-configured Price IDs may be used for Checkout. */
+export function assertAllowedStripePriceId(priceId: string, planId: PlanId): void {
+  const expected = getStripePriceIdForPlan(planId);
+  if (!expected || expected !== priceId) {
+    throw new Error(`Stripe price is not allowed for plan: ${planId}`);
+  }
+  if (!resolvePlanIdFromStripePrice(priceId)) {
+    throw new Error("Stripe price is not in the allowlist");
+  }
+}
+
+async function findOrCreateStripeCustomer(input: {
+  stripe: Stripe;
+  userId: string;
+  customerEmail?: string | null;
+  existingCustomerId?: string | null;
+}): Promise<string> {
+  const { stripe, userId, customerEmail, existingCustomerId } = input;
+
+  if (existingCustomerId) {
+    try {
+      const existing = await stripe.customers.retrieve(existingCustomerId);
+      if (!("deleted" in existing && existing.deleted)) {
+        return existing.id;
+      }
+    } catch {
+      // Stale ID — create or look up below.
+    }
+  }
+
+  if (customerEmail) {
+    const listed = await stripe.customers.list({
+      email: customerEmail,
+      limit: 10,
+    });
+    const owned = listed.data.find(
+      (customer) => customer.metadata?.userId === userId,
+    );
+    if (owned) return owned.id;
+  }
+
+  const created = await stripe.customers.create({
+    email: customerEmail ?? undefined,
+    metadata: { userId },
+  });
+
+  return created.id;
+}
+
+function rememberStripeCustomerId(userId: string, stripeCustomerId: string): void {
+  const current = getUserSubscription(userId);
+  if (current?.stripeCustomerId === stripeCustomerId) return;
+
+  const now = new Date().toISOString();
+  saveUserSubscription({
+    ...(current ?? {
+      userId,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      planId: "free" as PlanId,
+      status: "active" as const,
+      currentPeriodStart: now,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      updatedAt: now,
+    }),
+    userId,
+    stripeCustomerId,
+    updatedAt: now,
+  });
+}
+
 export async function createCheckoutSession(input: {
   userId: string;
   planId: PlanId;
   customerEmail?: string | null;
   origin: string;
+  existingStripeCustomerId?: string | null;
 }): Promise<CheckoutSessionResult> {
   const plan = getPlanDefinition(input.planId);
 
@@ -48,6 +129,19 @@ export async function createCheckoutSession(input: {
   const stripe = getStripeClient();
 
   if (stripe && priceId && isStripeCheckoutReadyForPlan(input.planId)) {
+    assertAllowedStripePriceId(priceId, input.planId);
+
+    const customerId = await findOrCreateStripeCustomer({
+      stripe,
+      userId: input.userId,
+      customerEmail: input.customerEmail,
+      existingCustomerId:
+        input.existingStripeCustomerId ??
+        getUserSubscription(input.userId)?.stripeCustomerId ??
+        null,
+    });
+    rememberStripeCustomerId(input.userId, customerId);
+
     const { successUrl, cancelUrl } = resolveCheckoutUrls(origin);
     const metadata: Record<string, string> = {
       userId: input.userId,
@@ -61,11 +155,11 @@ export async function createCheckoutSession(input: {
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
+      customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: successUrl,
       cancel_url: cancelUrl,
       client_reference_id: input.userId,
-      customer_email: input.customerEmail ?? undefined,
       metadata,
       subscription_data: {
         metadata: {

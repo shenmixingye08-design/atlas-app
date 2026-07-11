@@ -205,11 +205,9 @@ export function BillingSettings() {
             )}
           </div>
           <div className="flex flex-wrap gap-2">
-            {summary.billingPortalAvailable && (
-              <Button variant="secondary" size="sm" onClick={() => void handlePortal()}>
-                {ui.billing.manageBilling}
-              </Button>
-            )}
+            <Button variant="secondary" size="sm" onClick={() => void handlePortal()}>
+              {ui.billing.manageBilling}
+            </Button>
           </div>
         </div>
         <p className="mt-4 text-caption text-[var(--foreground-muted)]">

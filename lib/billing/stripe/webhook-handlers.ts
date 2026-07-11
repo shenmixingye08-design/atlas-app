@@ -38,6 +38,8 @@ function mapSubscriptionStatus(
       return "past_due";
     case "canceled":
       return "canceled";
+    case "unpaid":
+      return "unpaid";
     case "incomplete":
       return "incomplete";
     case "incomplete_expired":
@@ -93,13 +95,19 @@ async function fetchStripeSubscription(
   }
 }
 
+function resolvePriceIdFromSubscription(
+  subscription: Stripe.Subscription,
+): string | null {
+  return subscription.items.data[0]?.price?.id ?? null;
+}
+
 function resolvePlanFromSubscription(
   subscription: Stripe.Subscription,
 ): ReturnType<typeof mapStripePlanId> {
   const metadataPlan = mapStripePlanId(subscription.metadata?.planId);
   if (metadataPlan) return metadataPlan;
 
-  const priceId = subscription.items.data[0]?.price?.id ?? null;
+  const priceId = resolvePriceIdFromSubscription(subscription);
   return resolvePlanIdFromStripePrice(priceId);
 }
 
@@ -231,6 +239,7 @@ async function handleCheckoutCompleted(
   let periodEnd: string | null = null;
   let cancelAtPeriodEnd = false;
   let status: SubscriptionStatus = "active";
+  let stripePriceId: string | null = session.metadata?.priceId ?? null;
 
   if (subscriptionId) {
     const subscription = await fetchStripeSubscription(subscriptionId);
@@ -240,6 +249,8 @@ async function handleCheckoutCompleted(
       periodEnd = period.currentPeriodEnd;
       cancelAtPeriodEnd = period.cancelAtPeriodEnd;
       status = mapSubscriptionStatus(subscription.status);
+      stripePriceId =
+        resolvePriceIdFromSubscription(subscription) ?? stripePriceId;
     }
   }
 
@@ -252,6 +263,7 @@ async function handleCheckoutCompleted(
     currentPeriodStart: periodStart,
     currentPeriodEnd: periodEnd,
     cancelAtPeriodEnd,
+    stripePriceId,
   });
 
   saveBillingSnapshot({
@@ -296,6 +308,7 @@ async function handleSubscriptionUpsert(
 
   const period = readSubscriptionPeriod(subscription);
   const status = mapSubscriptionStatus(subscription.status);
+  const stripePriceId = resolvePriceIdFromSubscription(subscription);
 
   applyPaidPlanFromWebhook({
     userId,
@@ -306,6 +319,7 @@ async function handleSubscriptionUpsert(
     currentPeriodStart: period.currentPeriodStart,
     currentPeriodEnd: period.currentPeriodEnd,
     cancelAtPeriodEnd: period.cancelAtPeriodEnd,
+    stripePriceId,
   });
 
   saveBillingSnapshot({
@@ -385,24 +399,65 @@ async function handleInvoicePaymentSucceeded(
     });
   }
 
-  const subscription = resolveUserSubscription(userId);
-  const plan = getPlanDefinition(subscription.planId);
+  const subscriptionId = readInvoiceSubscriptionId(invoice);
+  let planId = resolveUserSubscription(userId).planId;
+  let status: SubscriptionStatus = "active";
+  let stripeCustomerId =
+    typeof invoice.customer === "string"
+      ? invoice.customer
+      : invoice.customer?.id ?? null;
+  let stripeSubscriptionId = subscriptionId;
+  let periodStart = resolveUserSubscription(userId).currentPeriodStart;
+  let periodEnd = resolveUserSubscription(userId).currentPeriodEnd;
+  let cancelAtPeriodEnd = resolveUserSubscription(userId).cancelAtPeriodEnd;
+  let stripePriceId = resolveUserSubscription(userId).stripePriceId ?? null;
 
+  if (subscriptionId) {
+    const subscription = await fetchStripeSubscription(subscriptionId);
+    if (subscription) {
+      const resolvedPlan = resolvePlanFromSubscription(subscription);
+      if (resolvedPlan) planId = resolvedPlan;
+      const period = readSubscriptionPeriod(subscription);
+      periodStart = period.currentPeriodStart;
+      periodEnd = period.currentPeriodEnd;
+      cancelAtPeriodEnd = period.cancelAtPeriodEnd;
+      status = mapSubscriptionStatus(subscription.status);
+      stripeCustomerId = String(subscription.customer);
+      stripeSubscriptionId = subscription.id;
+      stripePriceId = resolvePriceIdFromSubscription(subscription);
+
+      if (resolvedPlan) {
+        applyPaidPlanFromWebhook({
+          userId,
+          stripeCustomerId,
+          stripeSubscriptionId,
+          planId: resolvedPlan,
+          status,
+          currentPeriodStart: period.currentPeriodStart,
+          currentPeriodEnd: period.currentPeriodEnd,
+          cancelAtPeriodEnd: period.cancelAtPeriodEnd,
+          stripePriceId,
+        });
+      }
+    }
+  }
+
+  const plan = getPlanDefinition(planId);
   notifyBillingPaymentSucceeded(userId, plan.name);
 
   saveBillingSnapshot({
     userId,
-    planId: subscription.planId,
+    planId,
     status: "payment_succeeded",
-    stripeCustomerId:
-      typeof invoice.customer === "string"
-        ? invoice.customer
-        : invoice.customer?.id ?? null,
-    stripeSubscriptionId: readInvoiceSubscriptionId(invoice),
-    periodStart: subscription.currentPeriodStart,
-    periodEnd: subscription.currentPeriodEnd,
-    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-    eventType: "invoice.payment_succeeded",
+    stripeCustomerId,
+    stripeSubscriptionId,
+    periodStart,
+    periodEnd,
+    cancelAtPeriodEnd,
+    eventType:
+      event.type === "invoice.paid"
+        ? "invoice.paid"
+        : "invoice.payment_succeeded",
     stripeEventId: event.id,
     note: "Invoice payment succeeded",
   });
@@ -412,7 +467,7 @@ async function handleInvoicePaymentSucceeded(
     status: "success",
     message: "Invoice payment succeeded",
     userId,
-    planId: subscription.planId,
+    planId,
   });
 }
 
@@ -472,6 +527,7 @@ export async function handleStripeWebhookEvent(
       return handleSubscriptionUpsert(event);
     case "customer.subscription.deleted":
       return handleSubscriptionDeleted(event);
+    case "invoice.paid":
     case "invoice.payment_succeeded":
       return handleInvoicePaymentSucceeded(event);
     case "invoice.payment_failed":

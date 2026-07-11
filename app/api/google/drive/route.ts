@@ -20,6 +20,7 @@ export async function GET(request: Request): Promise<Response> {
   const categoryParam = url.searchParams.get("category");
   const category = parseDriveCategoryParam(categoryParam) ?? "all";
   const query = url.searchParams.get("q");
+  const parentId = url.searchParams.get("parentId");
   const context = await resolveFeatureAccessContext();
 
   try {
@@ -28,6 +29,7 @@ export async function GET(request: Request): Promise<Response> {
       category,
       context,
       query,
+      parentId,
     });
 
     if (result.status !== "ready") {

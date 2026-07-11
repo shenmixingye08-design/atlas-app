@@ -67,10 +67,12 @@ describe("Google Gmail integration", () => {
       id: "msg-1",
       subject: "見積依頼",
       sender: "Tanaka Taro",
+      fromEmail: "tanaka@example.com",
       bodyText: "見積書を送付ください。",
       isUnread: true,
     });
     expect(message?.labels).toContain("受信トレイ");
+    expect(message?.attachments).toEqual([]);
   });
 
   it("resolves Gmail search filters", () => {
@@ -166,12 +168,18 @@ describe("Google Gmail integration", () => {
     const analyses = await analyzeGmailMessages([
       {
         id: "msg-1",
+        threadId: "thread-1",
         subject: "契約更新のご相談",
         sender: "Client",
+        fromEmail: "client@example.com",
+        toHeader: "me@example.com",
+        messageIdHeader: "<msg-1@example.com>",
         receivedAt: new Date().toISOString(),
         bodyText: "来週までに返信ください。",
         isUnread: true,
         labels: ["受信トレイ"],
+        labelIds: ["INBOX", "UNREAD"],
+        attachments: [],
       },
     ]);
 
@@ -182,12 +190,18 @@ describe("Google Gmail integration", () => {
   it("creates and saves reply drafts without sending", async () => {
     const draft = await createGmailReplyDraft({
       id: "msg-1",
+      threadId: "thread-1",
       subject: "見積依頼",
       sender: "Client",
+      fromEmail: "client@example.com",
+      toHeader: "me@example.com",
+      messageIdHeader: "<msg-1@example.com>",
       receivedAt: new Date().toISOString(),
       bodyText: "見積書をください。",
       isUnread: true,
       labels: [],
+      labelIds: ["INBOX"],
+      attachments: [],
     });
 
     expect(draft.subject).toContain("Re:");

@@ -17,13 +17,15 @@ function recordError(input: {
   const serviceLabel =
     input.categoryId === "google_auth"
       ? "Google"
-      : input.categoryId === "x_post"
-        ? "X"
-        : input.categoryId === "openai"
-          ? "OpenAI"
-          : input.categoryId === "stripe"
-            ? "Stripe"
-            : "External";
+      : input.categoryId === "dropbox_auth"
+        ? "Dropbox"
+        : input.categoryId === "x_post"
+          ? "X"
+          : input.categoryId === "openai"
+            ? "OpenAI"
+            : input.categoryId === "stripe"
+              ? "Stripe"
+              : "External";
 
   notifyOwnerExternalApiError(serviceLabel, input.message);
 }
@@ -34,6 +36,17 @@ export function recordGoogleAuthFailure(
 ): void {
   recordError({
     categoryId: "google_auth",
+    message,
+    source,
+  });
+}
+
+export function recordDropboxAuthFailure(
+  message: string,
+  source = "dropbox_oauth",
+): void {
+  recordError({
+    categoryId: "dropbox_auth",
     message,
     source,
   });

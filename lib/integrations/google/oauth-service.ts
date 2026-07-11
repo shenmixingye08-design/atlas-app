@@ -14,6 +14,7 @@ import { createDefaultConnection } from "../external-services/registry";
 import { googleServiceDefinition } from "./definition";
 
 import { GOOGLE_ACCOUNT_SCOPES } from "./config";
+import { deleteStoredDriveFolders } from "./drive/folder-store";
 import {
   exchangeGoogleAccountAuthCode,
   fetchGoogleAccountUserInfo,
@@ -79,6 +80,8 @@ export async function disconnectGoogleAccount(
     }
     deleteExternalServiceCredentials(userId, "google");
   }
+
+  deleteStoredDriveFolders(userId);
 
   const disconnected: ExternalServiceConnection = {
     ...createDefaultConnection(googleServiceDefinition),

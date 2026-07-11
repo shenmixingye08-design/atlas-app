@@ -53,7 +53,9 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/feature-flags/availability(.*)",
   "/api/external-services/google/oauth/callback(.*)",
   "/api/external-services/x/oauth/callback(.*)",
+  "/api/external-services/dropbox/oauth/callback(.*)",
   "/api/integrations/oauth/google-drive/callback(.*)",
+  "/api/line/webhook(.*)",
 ] as const;
 
 /** ログイン後の既定遷移先 */

@@ -1,5 +1,6 @@
 import type { ExternalServiceConnectorModule } from "../connector-types";
-import { dropboxConnector, dropboxServiceDefinition } from "../dropbox";
+import { dropboxConnector } from "../dropbox/connector";
+import { dropboxServiceDefinition } from "../dropbox/definition";
 import { googleConnector } from "../google/connector";
 import { googleServiceDefinition } from "../google/definition";
 import { notionConnector, notionServiceDefinition } from "../notion";

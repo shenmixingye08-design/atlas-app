@@ -6,10 +6,21 @@ export {
 } from "./constants";
 export { isGmailFilterId, resolveGmailSearchQuery } from "./filters";
 export {
+  addLabelToGmailMessage,
+  archiveGmailMessage,
+  createGmailDraft,
+  createGmailLabel,
+  extractTextFromPdfBuffer,
+  fetchGmailAttachment,
   fetchGmailMessage,
   fetchGmailMessageIds,
   fetchGmailMessages,
+  listGmailLabels,
+  modifyGmailMessageLabels,
+  moveGmailMessageToSpam,
   normalizeGmailMessage,
+  sendGmailReply,
+  trashGmailMessage,
 } from "./api-client";
 export {
   fetchGmailMessagesClient,
@@ -17,10 +28,19 @@ export {
   createGmailReplyDraftClient,
   fetchGmailReplyDraftsClient,
   saveGmailReplyDraftClient,
+  sendGmailReplyClient,
+  archiveGmailMessageClient,
+  spamGmailMessageClient,
+  trashGmailMessageClient,
+  fetchGmailLabelsClient,
+  createGmailLabelClient,
+  addGmailLabelToMessageClient,
+  analyzeGmailPdfClient,
   formatGmailReceivedAt,
 } from "./client";
 export {
   analyzeGmailMessages,
+  analyzePdfAttachmentText,
   createGmailReplyDraft,
   extractImportantMessages,
 } from "./ai-assistant";
@@ -28,6 +48,17 @@ export {
   getGmailMessagesForUser,
   getGmailMessageForUser,
   parseGmailFilterParam,
+  listGmailLabelsForUser,
+  createGmailLabelForUser,
+  addLabelToMessageForUser,
+  archiveMessageForUser,
+  spamMessageForUser,
+  trashMessageForUser,
+  sendReplyForUser,
+  saveGmailDraftForUser,
+  listAttachmentsForUser,
+  getAttachmentBytesForUser,
+  analyzePdfAttachmentForUser,
 } from "./service";
 export {
   listGmailReplyDrafts,
@@ -43,4 +74,7 @@ export type {
   GmailReplyDraftContent,
   GmailSavedReplyDraft,
   GmailFetchStatus,
+  GmailLabel,
+  GmailAttachmentMeta,
+  GmailPdfAnalysis,
 } from "./types";

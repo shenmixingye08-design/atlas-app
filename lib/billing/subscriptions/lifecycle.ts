@@ -62,6 +62,7 @@ export function applyPaidPlanFromWebhook(input: {
   currentPeriodStart: string;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  stripePriceId?: string | null;
 }): UserSubscriptionRecord {
   const record = applySubscriptionFromStripe(input);
   clearSubscriptionLifecycleFlags(input.userId);

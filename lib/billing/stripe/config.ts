@@ -8,6 +8,7 @@ export type StripeWebhookEventType =
   | "customer.subscription.created"
   | "customer.subscription.updated"
   | "customer.subscription.deleted"
+  | "invoice.paid"
   | "invoice.payment_succeeded"
   | "invoice.payment_failed";
 
@@ -16,6 +17,7 @@ export const HANDLED_STRIPE_EVENTS: readonly StripeWebhookEventType[] = [
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
+  "invoice.paid",
   "invoice.payment_succeeded",
   "invoice.payment_failed",
 ];

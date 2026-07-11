@@ -160,3 +160,44 @@ export function extractImportantMessages(
 ): GmailMessageAnalysis[] {
   return analyses.filter((item) => item.isImportant);
 }
+
+export async function analyzePdfAttachmentText(input: {
+  filename: string;
+  text: string;
+}): Promise<readonly string[]> {
+  if (isMockLlmEnabled()) {
+    return [
+      `添付PDF「${input.filename}」を確認しました。`,
+      input.text
+        ? `本文の一部: ${input.text.slice(0, 80)}`
+        : "テキスト抽出が限定的でした。必要に応じて内容を目視確認してください。",
+      "重要箇所があれば返信や保存の判断材料にしてください。",
+    ];
+  }
+
+  const response = await createAtlasResponse({
+    aiTaskType: "chat",
+    instructions: GMAIL_AI_INSTRUCTIONS,
+    input: `Summarize this PDF attachment for an executive secretary. Return JSON:
+{ "summaryLines": ["...", "...", "..."] } (exactly 3 Japanese lines)
+
+Filename: ${input.filename}
+Extracted text:
+${input.text.slice(0, 8000) || "(no extractable text)"}`,
+    maxOutputTokens: 500,
+    temperature: 0.2,
+  });
+
+  const parsed = extractJsonObject(getResponseText(response)) as {
+    summaryLines?: string[];
+  };
+
+  const lines = (parsed.summaryLines ?? []).filter(Boolean).slice(0, 3);
+  if (lines.length >= 3) return lines;
+
+  return [
+    `添付PDF「${input.filename}」の要約です。`,
+    input.text.slice(0, 80) || "テキストを十分に抽出できませんでした。",
+    "詳細は原文PDFをご確認ください。",
+  ];
+}

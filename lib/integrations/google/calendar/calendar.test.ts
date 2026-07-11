@@ -13,6 +13,7 @@ import {
   saveExternalServiceConnection,
 } from "@/lib/integrations/external-services/store";
 import {
+  computeFreeSlots,
   fetchGoogleCalendarEvents,
   normalizeGoogleCalendarEvent,
 } from "@/lib/integrations/google/calendar/api-client";
@@ -56,6 +57,8 @@ describe("Google Calendar integration", () => {
       location: "Room A",
       isAllDay: false,
       description: "Daily sync",
+      meetLink: null,
+      htmlLink: null,
     });
 
     const allDay = normalizeGoogleCalendarEvent({
@@ -96,6 +99,8 @@ describe("Google Calendar integration", () => {
           location: null,
           isAllDay: false,
           description: null,
+          meetLink: null,
+          htmlLink: null,
         },
       ],
       { now, notifyMinutesBefore: 15 },
@@ -208,5 +213,24 @@ describe("Google Calendar integration", () => {
         timeMax: "2026-07-10T00:00:00.000Z",
       }),
     ).rejects.toThrow("Calendar API failed");
+  });
+
+  it("computes free slots from busy intervals", () => {
+    const slots = computeFreeSlots({
+      timeMin: "2026-07-09T00:00:00+09:00",
+      timeMax: "2026-07-09T23:59:00+09:00",
+      busy: [
+        {
+          start: "2026-07-09T10:00:00+09:00",
+          end: "2026-07-09T11:00:00+09:00",
+        },
+      ],
+      slotMinutes: 30,
+      dayStartHour: 9,
+      dayEndHour: 12,
+    });
+
+    expect(slots.length).toBeGreaterThan(0);
+    expect(slots.some((slot) => slot.durationMinutes >= 30)).toBe(true);
   });
 });

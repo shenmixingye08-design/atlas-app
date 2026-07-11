@@ -49,6 +49,7 @@ export function isStripeWebhookEventType(
     value === "customer.subscription.created" ||
     value === "customer.subscription.updated" ||
     value === "customer.subscription.deleted" ||
+    value === "invoice.paid" ||
     value === "invoice.payment_succeeded" ||
     value === "invoice.payment_failed"
   );

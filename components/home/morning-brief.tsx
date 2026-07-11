@@ -193,7 +193,7 @@ export function MorningBrief({
 
     const [calendarResult, gmailResult] = await Promise.all([
       fetchGoogleCalendarEventsClient("today").catch(() => null),
-      fetchGmailMessagesClient("unread").catch(() => null),
+      fetchGmailMessagesClient("today").catch(() => null),
     ]);
 
     setGoogleState({
@@ -205,11 +205,11 @@ export function MorningBrief({
         calendarResult?.status === "ready" ? "ready" : "unavailable",
       unreadMessages:
         gmailResult?.status === "ready"
-          ? gmailResult.snapshot.messages.filter((m) => m.isUnread).slice(0, 3)
+          ? gmailResult.snapshot.messages.slice(0, 3)
           : null,
       unreadCount:
         gmailResult?.status === "ready"
-          ? gmailResult.snapshot.messages.filter((m) => m.isUnread).length
+          ? gmailResult.snapshot.messages.length
           : 0,
       gmailStatus: gmailResult?.status === "ready" ? "ready" : "unavailable",
     });

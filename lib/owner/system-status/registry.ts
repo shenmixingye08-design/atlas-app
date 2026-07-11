@@ -7,6 +7,7 @@ export const SYSTEM_SERVICE_DEFINITIONS: readonly SystemServiceDefinition[] = [
   { id: "openai", label: "OpenAI" },
   { id: "stripe", label: "Stripe" },
   { id: "google", label: "Google" },
+  { id: "dropbox", label: "Dropbox" },
   { id: "x", label: "X" },
   { id: "wordpress", label: "WordPress" },
   { id: "server", label: "サーバー" },
@@ -21,6 +22,7 @@ const ERROR_CATEGORY_TO_SERVICE: Partial<
   openai: "openai",
   stripe: "stripe",
   google_auth: "google",
+  dropbox_auth: "dropbox",
   x_post: "x",
   webhook: "atlas",
 };

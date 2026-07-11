@@ -11,11 +11,12 @@ export function notifyAutomationCompleted(
     audience: "user",
     userId,
     type: "completed",
-    title: "お仕事が完了しました",
-    message: `お待たせいたしました。「${input.name}」の作成が完了しました。`,
+    title: "自動化が終了しました",
+    message: `お待たせいたしました。「${input.name}」の自動化が終了しました。`,
     relatedTaskId: input.automationId,
     relatedService: input.templateId === "sns_post" ? "x" : "atlas",
     actionUrl: "/automations",
+    lineEvent: "automation_completed",
   });
 }
 
@@ -50,6 +51,7 @@ export function notifyAutomationFailed(
     relatedTaskId: input.automationId,
     relatedService: "atlas",
     actionUrl: "/automations",
+    lineEvent: "error",
   });
 }
 
@@ -76,6 +78,7 @@ export function notifyXPostFailed(userId: string, _message: string) {
     message: "処理を完了できませんでした。内容をご確認ください。",
     relatedService: "x",
     actionUrl: "/settings/x",
+    lineEvent: "error",
   });
 }
 
@@ -84,12 +87,13 @@ export function notifyDriveSaveComplete(userId: string, fileName?: string) {
     audience: "user",
     userId,
     type: "completed",
-    title: "お仕事が完了しました",
+    title: "資料が完成しました",
     message: fileName
       ? `お待たせいたしました。「${fileName}」の保存が完了しました。`
       : "お待たせいたしました。資料の保存が完了しました。",
     relatedService: "google",
     actionUrl: "/workspace/drive",
+    lineEvent: "document_ready",
   });
 }
 
@@ -114,6 +118,7 @@ export function notifyCalendarReminder(userId: string, title: string) {
     message: `次回の実行予定をご案内します。${title}`,
     relatedService: "google",
     actionUrl: "/workspace/calendar",
+    lineEvent: "todays_schedule",
   });
 }
 
@@ -193,6 +198,7 @@ export function notifyIntegrationError(
     message: "処理を完了できませんでした。連携設定をご確認ください。",
     relatedService: input.service.toLowerCase(),
     actionUrl: "/settings",
+    lineEvent: "error",
   });
 }
 
@@ -236,6 +242,7 @@ export function notifyWorkCompleted(
       ? `お待たせいたしました。${input.message}`
       : "お待たせいたしました。ご依頼の内容が完了しました。",
     actionUrl: "/workspace",
+    lineEvent: "work_completed",
   });
 }
 
@@ -251,6 +258,80 @@ export function notifyWorkFailed(
     title: "処理を完了できませんでした",
     message: "処理を完了できませんでした。内容をご確認ください。",
     actionUrl: "/workspace",
+    lineEvent: "error",
+  });
+}
+
+export function notifyMailReceived(
+  userId: string,
+  input: { subject: string; sender?: string; count?: number },
+) {
+  const count = input.count ?? 1;
+  return createNotification({
+    audience: "user",
+    userId,
+    type: "automation",
+    title: "メールを受信しました",
+    message:
+      count > 1
+        ? `新着メールが${count}件あります。件名例: ${input.subject}`
+        : input.sender
+          ? `${input.sender} から「${input.subject}」を受信しました。`
+          : `「${input.subject}」を受信しました。`,
+    relatedService: "google",
+    actionUrl: "/workspace/mail",
+    lineEvent: "mail_received",
+  });
+}
+
+export function notifyDocumentReady(
+  userId: string,
+  input: { fileName: string; href?: string },
+) {
+  return createNotification({
+    audience: "user",
+    userId,
+    type: "completed",
+    title: "資料が完成しました",
+    message: `お待たせいたしました。「${input.fileName}」の準備が完了しました。`,
+    relatedService: "atlas",
+    actionUrl: input.href ?? "/workspace/drive",
+    lineEvent: "document_ready",
+  });
+}
+
+export function notifyTodaysSchedule(
+  userId: string,
+  input: { summary: string; eventCount: number },
+) {
+  return createNotification({
+    audience: "user",
+    userId,
+    type: "automation",
+    title: "今日の予定",
+    message:
+      input.eventCount === 0
+        ? "本日の予定はありません。"
+        : `本日の予定は${input.eventCount}件です。${input.summary}`,
+    relatedService: "google",
+    actionUrl: "/workspace/calendar",
+    lineEvent: "todays_schedule",
+  });
+}
+
+export function notifyMorningBriefing(
+  userId: string,
+  input: { summary: string },
+) {
+  return createNotification({
+    audience: "user",
+    userId,
+    type: "automation",
+    title: "朝のブリーフィング",
+    message: input.summary,
+    relatedService: "atlas",
+    actionUrl: "/",
+    lineEvent: "morning_briefing",
   });
 }
 

@@ -8,6 +8,20 @@ export type CalendarEvent = {
   location: string | null;
   isAllDay: boolean;
   description: string | null;
+  meetLink: string | null;
+  htmlLink: string | null;
+};
+
+export type CalendarEventInput = {
+  title: string;
+  startAt: string;
+  endAt: string;
+  description?: string | null;
+  location?: string | null;
+  isAllDay?: boolean;
+  createMeet?: boolean;
+  /** Minutes before start for Google popup/email reminder. */
+  remindMinutesBefore?: number | null;
 };
 
 export type CalendarRangeWindow = {
@@ -54,3 +68,23 @@ export type CalendarEventsResult =
       status: Exclude<CalendarFetchStatus, "ready">;
       message: string;
     };
+
+export type CalendarFreeSlot = {
+  startAt: string;
+  endAt: string;
+  durationMinutes: number;
+};
+
+export type CalendarMeetingCandidate = {
+  startAt: string;
+  endAt: string;
+  durationMinutes: number;
+  reason: string;
+  score: number;
+};
+
+export type CalendarOrganizeInsight = {
+  summaryLines: readonly string[];
+  conflicts: readonly string[];
+  suggestions: readonly string[];
+};

@@ -11,6 +11,7 @@ export { buildErrorMonitoringSnapshot } from "./service";
 
 export {
   isOpenAiRelatedError,
+  recordDropboxAuthFailure,
   recordGoogleAuthFailure,
   recordOpenAiFailure,
   recordOpenAiFailureIfApplicable,

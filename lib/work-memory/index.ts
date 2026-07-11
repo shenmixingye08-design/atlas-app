@@ -44,3 +44,17 @@ export {
   previewWorkMemoriesClient,
   submitCorrectionLearningClient,
 } from "./client";
+
+export {
+  TAUGHT_WORKFLOW_KIND,
+  TEACH_AI_OPTIONS,
+  TEACH_SERVICE_OPTIONS,
+  createEmptyTaughtStep,
+  isTaughtWorkflowData,
+  parseTaughtSteps,
+  buildTaughtAssignment,
+  buildTaughtStructuredData,
+  assignmentFromLearnedMemory,
+  serviceLabel,
+  type TaughtWorkflowStep,
+} from "./taught-workflow";

@@ -5,6 +5,7 @@ export type SubscriptionStatus =
   | "trialing"
   | "past_due"
   | "canceled"
+  | "unpaid"
   | "incomplete"
   | "incomplete_expired";
 
@@ -13,6 +14,8 @@ export type UserSubscriptionRecord = {
   userId: string;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
+  /** Stripe Price ID currently attached to the subscription. */
+  stripePriceId: string | null;
   planId: PlanId;
   status: SubscriptionStatus;
   currentPeriodStart: Timestamp | null;

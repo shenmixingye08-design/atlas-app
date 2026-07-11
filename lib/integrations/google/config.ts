@@ -1,11 +1,13 @@
-/** Google account OAuth scopes — Gmail, Calendar, Drive (+ profile). */
+/** Google account OAuth scopes — Gmail (read/write), Calendar, Drive (+ profile). */
 export const GOOGLE_ACCOUNT_SCOPES = [
   "openid",
   "email",
   "profile",
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/calendar.readonly",
-  "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/gmail.modify",
+  "https://www.googleapis.com/auth/gmail.send",
+  "https://www.googleapis.com/auth/gmail.compose",
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/drive",
 ] as const;
 
 export const GOOGLE_OAUTH_AUTHORIZE_URL =

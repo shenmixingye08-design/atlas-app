@@ -42,12 +42,31 @@ export function sanitizeStructuredData(
       continue;
     }
     if (Array.isArray(value)) {
-      const safeItems = value
-        .filter((item) => typeof item === "string")
-        .map((item) => sanitizeMemoryText(String(item)))
-        .filter((item): item is string => item !== null);
-      if (safeItems.length > 0) cleaned[key] = safeItems;
+      const items: unknown[] = [];
+      for (const item of value) {
+        if (typeof item === "string") {
+          const safe = sanitizeMemoryText(item);
+          if (safe === null && item.trim()) return null;
+          if (safe !== null) items.push(safe);
+          continue;
+        }
+        if (typeof item === "number" || typeof item === "boolean") {
+          items.push(item);
+          continue;
+        }
+        if (item && typeof item === "object" && !Array.isArray(item)) {
+          const nested = sanitizeStructuredData(item as Record<string, unknown>);
+          if (nested === null) return null;
+          items.push(nested);
+        }
+      }
+      if (items.length > 0) cleaned[key] = items;
       continue;
+    }
+    if (value && typeof value === "object") {
+      const nested = sanitizeStructuredData(value as Record<string, unknown>);
+      if (nested === null) return null;
+      cleaned[key] = nested;
     }
   }
   return cleaned;

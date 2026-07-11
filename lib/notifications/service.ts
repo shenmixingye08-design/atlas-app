@@ -2,6 +2,8 @@ import "server-only";
 
 import { randomUUID } from "crypto";
 
+import { dispatchLineNotification } from "@/lib/integrations/line/service";
+
 import {
   appendNotification,
   deleteNotification,
@@ -13,13 +15,17 @@ import {
 } from "./store";
 import type {
   CreateNotificationInput,
+  LineNotifyEvent,
   NotificationPreferences,
   NotificationRecord,
   NotificationType,
 } from "./types";
-import { DEFAULT_NOTIFICATION_PREFERENCES } from "./types";
+import {
+  DEFAULT_LINE_EVENTS,
+  DEFAULT_NOTIFICATION_PREFERENCES,
+} from "./types";
 
-function isTypeEnabled(
+function isInAppTypeEnabled(
   prefs: NotificationPreferences,
   type: NotificationType,
 ): boolean {
@@ -44,12 +50,45 @@ function isTypeEnabled(
   }
 }
 
+function resolveLineEvent(
+  input: CreateNotificationInput,
+): LineNotifyEvent | null {
+  if (input.lineEvent) return input.lineEvent;
+  switch (input.type) {
+    case "completed":
+      return "work_completed";
+    case "error":
+    case "integration":
+      return "error";
+    case "automation":
+      return "automation_completed";
+    default:
+      return null;
+  }
+}
+
 export function createNotification(
   input: CreateNotificationInput,
 ): NotificationRecord | null {
+  const lineEvent = resolveLineEvent(input);
+
+  if (input.audience === "user" && input.userId && lineEvent) {
+    void dispatchLineNotification({
+      userId: input.userId,
+      event: lineEvent,
+      title: input.title,
+      message: input.message,
+      actionUrl: input.actionUrl,
+    }).catch((error) => {
+      console.warn("[LINE notify]", error);
+    });
+  }
+
   if (input.audience === "user" && input.userId) {
     const prefs = getStoredPreferences(input.userId);
-    if (!isTypeEnabled(prefs, input.type)) return null;
+    if (!isInAppTypeEnabled(prefs, input.type)) {
+      return null;
+    }
   }
 
   return appendNotification({
@@ -64,6 +103,7 @@ export function createNotification(
     isRead: false,
     createdAt: new Date().toISOString(),
     actionUrl: input.actionUrl ?? null,
+    lineEvent,
   });
 }
 
@@ -116,13 +156,21 @@ export function getUserNotificationPreferences(
 
 export function updateUserNotificationPreferences(
   userId: string,
-  patch: Partial<NotificationPreferences>,
+  patch: Partial<NotificationPreferences> & {
+    channels?: Partial<NotificationPreferences["channels"]>;
+    lineEvents?: Partial<NotificationPreferences["lineEvents"]>;
+  },
 ): NotificationPreferences {
   const current = getStoredPreferences(userId);
   const next: NotificationPreferences = {
     ...current,
     ...patch,
     channels: { ...current.channels, ...patch.channels },
+    lineEvents: {
+      ...DEFAULT_LINE_EVENTS,
+      ...current.lineEvents,
+      ...patch.lineEvents,
+    },
   };
   return saveStoredPreferences(userId, next);
 }

@@ -67,12 +67,55 @@ describe("billing subscriptions", () => {
       currentPeriodStart: "2026-07-01T00:00:00.000Z",
       currentPeriodEnd: "2026-08-01T00:00:00.000Z",
       cancelAtPeriodEnd: false,
+      stripePriceId: "price_standard_test",
     });
 
     const view = getUserSubscriptionView("user_test_2");
     expect(view.planId).toBe("standard");
     expect(view.stripeCustomerId).toBe("cus_123");
     expect(view.stripeSubscriptionId).toBe("sub_456");
+    expect(view.stripePriceId).toBe("price_standard_test");
+    expect(view.isPaid).toBe(true);
+  });
+
+  it("treats trialing as paid-capable and past_due as not", async () => {
+    const {
+      applySubscriptionFromStripe,
+      getUserSubscriptionView,
+      isPaidCapableStatus,
+    } = await import("@/lib/billing/subscriptions/service");
+    const { evaluatePlanAccess } = await import("@/lib/billing/policy");
+
+    applySubscriptionFromStripe({
+      userId: "user_trial",
+      stripeCustomerId: "cus_trial",
+      stripeSubscriptionId: "sub_trial",
+      planId: "standard",
+      status: "trialing",
+      currentPeriodStart: new Date().toISOString(),
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+    });
+    expect(isPaidCapableStatus("trialing")).toBe(true);
+    expect(getUserSubscriptionView("user_trial").isPaid).toBe(true);
+    expect(evaluatePlanAccess("user_trial", "google_integration").allowed).toBe(
+      true,
+    );
+
+    applySubscriptionFromStripe({
+      userId: "user_past",
+      stripeCustomerId: "cus_past",
+      stripeSubscriptionId: "sub_past",
+      planId: "standard",
+      status: "past_due",
+      currentPeriodStart: new Date().toISOString(),
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+    });
+    expect(getUserSubscriptionView("user_past").isPaid).toBe(false);
+    expect(evaluatePlanAccess("user_past", "google_integration").allowed).toBe(
+      false,
+    );
   });
 });
 

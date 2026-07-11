@@ -20,7 +20,7 @@ const NAV_ITEMS: {
   { id: "home", href: "/projects", label: ui.nav.home, icon: "⌂" },
   { id: "request", href: "/workspace", label: ui.nav.newRequest, icon: "＋" },
   { id: "history", href: "/history", label: ui.nav.requestHistory, icon: "☰" },
-  { id: "memory", href: "/settings/work-memory", label: ui.nav.workMemory, icon: "◎" },
+  { id: "memory", href: "/learned-jobs", label: ui.nav.workMemory, icon: "◎" },
   { id: "analysis", href: "/settings/learning", label: ui.nav.analysis, icon: "↗" },
 ];
 

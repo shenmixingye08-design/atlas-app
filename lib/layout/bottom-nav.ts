@@ -16,7 +16,13 @@ export function shouldHideBottomNav(pathname: string): boolean {
 
 /** Resolve which bottom tab is active for the current path. */
 export function resolveBottomNavId(pathname: string): BottomNavId | null {
-  if (pathname.startsWith("/settings/work-memory")) return "memory";
+  if (
+    pathname.startsWith("/learned-jobs") ||
+    pathname.startsWith("/teach-work") ||
+    pathname.startsWith("/settings/work-memory")
+  ) {
+    return "memory";
+  }
   if (pathname.startsWith("/settings/learning")) return "analysis";
   if (pathname.startsWith("/history")) return "history";
   if (

@@ -7,6 +7,11 @@ export const ERROR_CATEGORY_DEFINITIONS: readonly ErrorCategoryDefinition[] = [
     description: "Google OAuth / アカウント連携の失敗",
   },
   {
+    id: "dropbox_auth",
+    label: "Dropbox認証失敗",
+    description: "Dropbox OAuth / ファイル連携の失敗",
+  },
+  {
     id: "x_post",
     label: "X投稿失敗",
     description: "X（旧Twitter）への投稿・SNS自動投稿の失敗",

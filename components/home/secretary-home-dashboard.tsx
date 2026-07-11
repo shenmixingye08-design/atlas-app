@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { Automation } from "@/lib/automations/types";
 import { getTodaysAutomations } from "@/lib/automations/today";
@@ -12,14 +12,27 @@ import {
   sortAutomationJobs,
   type TodayDashboardJob,
 } from "@/lib/home/today-dashboard";
+import { buildSecretaryMemoryItems } from "@/lib/home/secretary-memory";
+import { buildSecretaryProactiveItems } from "@/lib/home/secretary-proactive";
+import { buildSecretaryVoiceBrief } from "@/lib/home/secretary-voice";
 import {
   getSkippedAutomationIds,
   isAutomationSkippedToday,
 } from "@/lib/home/today-skipped-store";
+import { fetchNotifications } from "@/lib/notifications/client";
+import type { NotificationRecord } from "@/lib/notifications/types";
 import type { Project } from "@/lib/projects/types";
 import { cn } from "@/lib/design-system/cn";
 
 import { HomeTodayWorkCard } from "./home-today-work-card";
+import { FrequentLearnedJobs } from "./frequent-learned-jobs";
+import { SecretaryChatComposer } from "./secretary-chat-composer";
+import { SecretaryMemoryPanel } from "./secretary-memory-panel";
+import { SecretaryProactivePanel } from "./secretary-proactive-panel";
+import { SecretaryVoiceBriefPanel } from "./secretary-voice-brief";
+import { TodaysMailSection } from "./todays-mail-section";
+import { TodaysCalendarSection } from "./todays-calendar-section";
+import { RecentDriveSection } from "./recent-drive-section";
 
 type SecretaryHomeDashboardProps = {
   automations: Automation[];
@@ -31,14 +44,6 @@ const GREETING_BY_HOUR = {
   afternoon: "こんにちは",
   evening: "こんばんは",
 } as const;
-
-const REQUEST_ACTIONS = [
-  { id: "photo", icon: "📷", label: "写真を追加", href: "/workspace?attach=photo" },
-  { id: "pdf", icon: "📄", label: "PDFを追加", href: "/workspace?attach=pdf" },
-  { id: "video", icon: "🎬", label: "動画を追加", href: "/workspace?attach=video" },
-  { id: "file", icon: "📁", label: "資料を追加", href: "/workspace?attach=file" },
-  { id: "text", icon: "✍️", label: "文章を追加", href: "/workspace?attach=text" },
-] as const;
 
 const FALLBACK_TODAY_JOBS: TodayDashboardJob[] = [
   {
@@ -77,18 +82,6 @@ const FALLBACK_TODAY_JOBS: TodayDashboardJob[] = [
     activityLabel: null,
     href: "/workspace",
   },
-  {
-    id: "sample-mail",
-    kind: "suggestion",
-    title: "メール返信",
-    subtitle: "返信文案をご用意します",
-    status: "not_started",
-    icon: "✉️",
-    scheduledTime: null,
-    progress: 0,
-    activityLabel: null,
-    href: "/workspace",
-  },
 ];
 
 function getGreetingPrefix(now = new Date()): string {
@@ -108,51 +101,6 @@ function displayName(user: ReturnType<typeof useUser>["user"]): string {
   return first || "お客様";
 }
 
-function buildSecretaryNotices(
-  automations: Automation[],
-  projects: Project[],
-): { id: string; message: string }[] {
-  const notices: { id: string; message: string }[] = [];
-  const hasBlog = automations.some((item) =>
-    /blog|ブログ/i.test(`${item.name} ${item.workflow?.assignment ?? ""}`),
-  );
-  const hasSns = automations.some((item) =>
-    /sns|投稿|x\b|instagram/i.test(`${item.name} ${item.workflow?.assignment ?? ""}`),
-  );
-  const reviewCount = projects.filter((project) => project.status === "review").length;
-  const runningCount = projects.filter((project) => project.status === "running").length;
-
-  if (!hasBlog) {
-    notices.push({
-      id: "blog-gap",
-      message: "ブログを3日更新していません。下書き作成をご依頼いただけます。",
-    });
-  }
-  if (hasSns) {
-    notices.push({
-      id: "sns-timing",
-      message: "投稿時間を変更すると、反応率が上がる可能性があります。",
-    });
-  }
-  if (reviewCount > 0) {
-    notices.push({
-      id: "review",
-      message: `確認待ちの仕事が${reviewCount}件あります。ご確認をお願いいたします。`,
-    });
-  } else if (runningCount === 0) {
-    notices.push({
-      id: "materials",
-      message: "資料が不足している場合は、写真やPDFを追加してください。",
-    });
-  }
-  notices.push({
-    id: "improve",
-    message: "改善案があります。最近の仕事をもとに、進め方をご提案できます。",
-  });
-
-  return notices.slice(0, 4);
-}
-
 function recentWorkItems(projects: Project[]) {
   return normalizeProjects(projects)
     .filter((project) => project.status === "completed" || project.status === "review")
@@ -163,7 +111,7 @@ function recentWorkItems(projects: Project[]) {
     .slice(0, 6)
     .map((project) => ({
       id: project.id,
-      title: project.title || "最近の仕事",
+      title: project.title || "最近の依頼",
       href: `/projects/${project.id}`,
       meta:
         project.status === "review"
@@ -178,8 +126,28 @@ export function SecretaryHomeDashboard({
 }: SecretaryHomeDashboardProps) {
   const { user } = useUser();
   const [refreshKey, setRefreshKey] = useState(0);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const name = displayName(user);
   const greeting = `${getGreetingPrefix()}、${name}さん`;
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchNotifications()
+      .then((response) => {
+        if (!cancelled) setNotifications(response.notifications);
+      })
+      .catch((error) => {
+        console.error("[SecretaryHomeDashboard] Failed to load notifications:", error);
+        if (!cancelled) setNotifications([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    void fetch("/api/line/digest", { method: "POST" }).catch(() => undefined);
+  }, []);
 
   const todayJobs = useMemo(() => {
     void refreshKey;
@@ -201,31 +169,130 @@ export function SecretaryHomeDashboard({
     }
   }, [automations, refreshKey]);
 
-  const notices = useMemo(
-    () => buildSecretaryNotices(automations, projects),
+  const proactiveItems = useMemo(
+    () =>
+      buildSecretaryProactiveItems({
+        projects,
+        automations,
+        notifications,
+      }),
+    [automations, notifications, projects],
+  );
+
+  const voiceBrief = useMemo(
+    () =>
+      buildSecretaryVoiceBrief({
+        projects,
+        automations,
+      }),
     [automations, projects],
   );
+
+  const memoryItems = useMemo(
+    () =>
+      buildSecretaryMemoryItems({
+        projects,
+        automations,
+        notifications,
+      }),
+    [automations, notifications, projects],
+  );
+
   const recent = useMemo(() => recentWorkItems(projects), [projects]);
   const showingSamples = todayJobs.every((job) => job.id.startsWith("sample-"));
 
   return (
-    <div className="home-dashboard space-y-12 pb-8 sm:pb-12 animate-fade-up">
-      <header className="space-y-3">
-        <p className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+    <div className="home-dashboard space-y-10 pb-8 sm:space-y-12 sm:pb-12 animate-fade-up">
+      <SecretaryVoiceBriefPanel brief={voiceBrief} />
+
+      <SecretaryProactivePanel items={proactiveItems} />
+
+      <header className="space-y-2">
+        <p className="text-sm font-medium text-accent">あなた専属のAI秘書</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
           {greeting}
-        </p>
-        <p className="text-base text-[var(--foreground-muted)] sm:text-lg">
-          あなた専属のAI秘書が、今日の仕事を進めています。
+        </h1>
+        <p className="max-w-2xl text-sm leading-relaxed text-[var(--foreground-muted)] sm:text-base">
+          管理画面ではなく、AI秘書に話しかけるようにご依頼ください。
         </p>
       </header>
 
-      <section aria-labelledby="secretary-today-heading" className="space-y-5">
+      <SecretaryMemoryPanel items={memoryItems} />
+
+      <SecretaryChatComposer />
+
+      <TodaysCalendarSection />
+
+      <TodaysMailSection />
+
+      <RecentDriveSection />
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <Link
+          href="/teach-work"
+          className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-accent px-6 text-sm font-medium text-white shadow-[var(--shadow-sm)] transition-all hover:bg-[var(--accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+        >
+          AI秘書へ仕事を教える
+        </Link>
+        <Link
+          href="/learned-jobs"
+          className="inline-flex min-h-[48px] items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--card)] px-6 text-sm font-medium text-foreground transition-colors hover:bg-[var(--background-subtle)]"
+        >
+          AI秘書が覚えた仕事
+        </Link>
+      </div>
+
+      <FrequentLearnedJobs />
+
+      <section aria-labelledby="secretary-recent-heading" className="space-y-4">
+        <div className="flex items-end justify-between gap-3">
+          <h2
+            id="secretary-recent-heading"
+            className="text-lg font-semibold tracking-tight text-foreground sm:text-xl"
+          >
+            最近の依頼
+          </h2>
+          <Link
+            href="/history"
+            className="text-sm text-accent transition-opacity hover:opacity-80"
+          >
+            すべて見る
+          </Link>
+        </div>
+        {recent.length === 0 ? (
+          <div className="rounded-[24px] border border-dashed border-[var(--border-subtle)] bg-[var(--background-subtle)]/40 px-6 py-8 text-center">
+            <p className="text-sm text-[var(--foreground-muted)]">
+              まだ依頼はありません。上の入力欄から最初の仕事を頼んでみましょう。
+            </p>
+          </div>
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {recent.map((item) => (
+              <li key={item.id}>
+                <Link
+                  href={item.href}
+                  className="flex items-center justify-between gap-3 rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card)] px-5 py-4 shadow-[var(--shadow-sm)] transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)]"
+                >
+                  <span className="truncate text-sm font-medium text-foreground">
+                    {item.title}
+                  </span>
+                  <span className="shrink-0 text-xs text-[var(--foreground-muted)]">
+                    {item.meta}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section aria-labelledby="secretary-today-heading" className="space-y-4">
         <div>
           <h2
             id="secretary-today-heading"
-            className="text-xl font-semibold tracking-tight text-foreground"
+            className="text-lg font-semibold tracking-tight text-foreground sm:text-xl"
           >
-            今日AI秘書が担当する仕事
+            今日の仕事
           </h2>
           {showingSamples && (
             <p className="mt-2 text-sm text-[var(--foreground-muted)]">
@@ -233,7 +300,7 @@ export function SecretaryHomeDashboard({
             </p>
           )}
         </div>
-        <ul className="grid gap-4 sm:grid-cols-2">
+        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {todayJobs.map((job) => (
             <li key={job.id}>
               {job.id.startsWith("sample-") ? (
@@ -248,91 +315,6 @@ export function SecretaryHomeDashboard({
           ))}
         </ul>
       </section>
-
-      <section aria-labelledby="secretary-request-heading" className="space-y-5">
-        <div>
-          <h2
-            id="secretary-request-heading"
-            className="text-xl font-semibold tracking-tight text-foreground"
-          >
-            新しい依頼
-          </h2>
-          <p className="mt-2 text-sm text-[var(--foreground-muted)]">
-            送るだけで、AI秘書が仕事を進めます。
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {REQUEST_ACTIONS.map((action) => (
-            <Link
-              key={action.id}
-              href={action.href}
-              className="flex min-h-[120px] flex-col items-center justify-center gap-3 rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] px-4 py-6 text-center shadow-[var(--shadow-sm)] transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
-            >
-              <span className="text-3xl" aria-hidden>
-                {action.icon}
-              </span>
-              <span className="text-sm font-semibold text-foreground">
-                {action.label}
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section aria-labelledby="secretary-notices-heading" className="space-y-5">
-        <h2
-          id="secretary-notices-heading"
-          className="text-xl font-semibold tracking-tight text-foreground"
-        >
-          AI秘書からのお知らせ
-        </h2>
-        <ul className="space-y-3">
-          {notices.map((notice) => (
-            <li
-              key={notice.id}
-              className="rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] px-5 py-4 shadow-[var(--shadow-sm)]"
-            >
-              <p className="text-sm leading-relaxed text-foreground">
-                {notice.message}
-              </p>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section aria-labelledby="secretary-recent-heading" className="space-y-5">
-        <h2
-          id="secretary-recent-heading"
-          className="text-xl font-semibold tracking-tight text-foreground"
-        >
-          最近の仕事
-        </h2>
-        {recent.length === 0 ? (
-          <div className="rounded-[var(--radius-2xl)] border border-dashed border-[var(--border-subtle)] bg-[var(--background-subtle)]/50 px-6 py-10 text-center">
-            <p className="text-sm text-[var(--foreground-muted)]">
-              まだ最近の仕事はありません。上からご依頼ください。
-            </p>
-          </div>
-        ) : (
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {recent.map((item) => (
-              <li key={item.id}>
-                <Link
-                  href={item.href}
-                  className="flex items-center justify-between gap-3 rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] px-5 py-4 shadow-[var(--shadow-sm)] transition-colors hover:bg-[var(--background-subtle)]/60"
-                >
-                  <span className="text-sm font-medium text-foreground">
-                    {item.title}
-                  </span>
-                  <span className="shrink-0 text-xs text-[var(--foreground-muted)]">
-                    {item.meta}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
     </div>
   );
 }
@@ -340,7 +322,7 @@ export function SecretaryHomeDashboard({
 function SampleTodayCard({ job }: { job: TodayDashboardJob }) {
   const progress = job.progress ?? 0;
   return (
-    <div className="flex h-full flex-col rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]">
+    <div className="flex h-full flex-col rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]">
       <div className="flex items-start gap-3">
         <span className="text-2xl" aria-hidden>
           {job.icon}

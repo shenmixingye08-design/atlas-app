@@ -3,6 +3,7 @@ export type SystemServiceId =
   | "openai"
   | "stripe"
   | "google"
+  | "dropbox"
   | "x"
   | "wordpress"
   | "server";

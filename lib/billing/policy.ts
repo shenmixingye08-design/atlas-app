@@ -1,3 +1,5 @@
+import "server-only";
+
 import {
   canUseGoogleIntegration,
   canUseHighQualityMode,
@@ -7,21 +9,34 @@ import {
   checkFeatureAccess,
   checkSnsPostLimit,
 } from "./plans/policy";
-import type { BillingFeatureId, PlanCheckResult } from "./plans/types";
-import { getUserSubscriptionView } from "./subscriptions/service";
+import type { BillingFeatureId, PlanCheckResult, PlanId } from "./plans/types";
+import {
+  getUserSubscriptionView,
+  isPaidCapableStatus,
+} from "./subscriptions/service";
 import {
   enforcePaymentFailureGraceIfExpired,
   isAutomationSuspendedForUser,
 } from "./subscriptions/lifecycle";
 import { getUsageSnapshot } from "./usage/store";
 
+/**
+ * Paid plan entitlements apply only while status is trialing or active.
+ * Otherwise fall back to Free limits (existing Free policy — no new gates).
+ */
+function resolveEffectivePlanId(userId: string): PlanId {
+  const subscription = getUserSubscriptionView(userId);
+  if (subscription.planId === "free") return "free";
+  if (isPaidCapableStatus(subscription.status)) return subscription.planId;
+  return "free";
+}
+
 /** Unified plan gate — use from API routes before expensive operations. */
 export function evaluatePlanAccess(
   userId: string,
   feature: BillingFeatureId,
 ): PlanCheckResult {
-  const subscription = getUserSubscriptionView(userId);
-  return checkFeatureAccess(subscription.planId, feature);
+  return checkFeatureAccess(resolveEffectivePlanId(userId), feature);
 }
 
 export function evaluateAutomationTaskAccess(
@@ -39,36 +54,36 @@ export function evaluateAutomationTaskAccess(
     };
   }
 
-  const subscription = getUserSubscriptionView(userId);
-  return checkAutomationTaskLimit(subscription.planId, currentTaskCount);
+  return checkAutomationTaskLimit(
+    resolveEffectivePlanId(userId),
+    currentTaskCount,
+  );
 }
 
 export function evaluateExternalIntegrationAccess(
   userId: string,
   connectedCount: number,
 ): PlanCheckResult {
-  const subscription = getUserSubscriptionView(userId);
-  return checkExternalIntegrationLimit(subscription.planId, connectedCount);
+  return checkExternalIntegrationLimit(
+    resolveEffectivePlanId(userId),
+    connectedCount,
+  );
 }
 
 export function evaluateAiUsageAccess(userId: string): PlanCheckResult {
-  const subscription = getUserSubscriptionView(userId);
   const usage = getUsageSnapshot(userId);
-  return checkAiUsageLimit(subscription.planId, usage);
+  return checkAiUsageLimit(resolveEffectivePlanId(userId), usage);
 }
 
 export function evaluateSnsPostAccess(userId: string): PlanCheckResult {
-  const subscription = getUserSubscriptionView(userId);
   const usage = getUsageSnapshot(userId);
-  return checkSnsPostLimit(subscription.planId, usage);
+  return checkSnsPostLimit(resolveEffectivePlanId(userId), usage);
 }
 
 export function userCanUseGoogleIntegration(userId: string): boolean {
-  const subscription = getUserSubscriptionView(userId);
-  return canUseGoogleIntegration(subscription.planId);
+  return canUseGoogleIntegration(resolveEffectivePlanId(userId));
 }
 
 export function userCanUseHighQualityMode(userId: string): boolean {
-  const subscription = getUserSubscriptionView(userId);
-  return canUseHighQualityMode(subscription.planId);
+  return canUseHighQualityMode(resolveEffectivePlanId(userId));
 }

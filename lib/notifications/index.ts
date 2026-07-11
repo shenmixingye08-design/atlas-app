@@ -5,9 +5,13 @@ export type {
   NotificationRecord,
   NotificationPreferences,
   CreateNotificationInput,
+  LineNotifyEvent,
 } from "./types";
 
-export { DEFAULT_NOTIFICATION_PREFERENCES } from "./types";
+export {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  DEFAULT_LINE_EVENTS,
+} from "./types";
 
 export {
   createNotification,

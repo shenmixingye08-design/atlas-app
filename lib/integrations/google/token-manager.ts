@@ -21,22 +21,27 @@ export async function getGoogleAccountAccessToken(
     return credentials.accessToken;
   }
 
-  const refreshed = await refreshGoogleAccountAccessToken(
-    credentials.refreshToken,
-  );
-  const now = new Date().toISOString();
-  const expiresAt = new Date(
-    Date.now() + refreshed.expires_in * 1000,
-  ).toISOString();
+  try {
+    const refreshed = await refreshGoogleAccountAccessToken(
+      credentials.refreshToken,
+    );
+    const now = new Date().toISOString();
+    const expiresAt = new Date(
+      Date.now() + refreshed.expires_in * 1000,
+    ).toISOString();
 
-  saveExternalServiceCredentials({
-    ...credentials,
-    accessToken: refreshed.access_token,
-    refreshToken: refreshed.refresh_token ?? credentials.refreshToken,
-    expiresAt,
-    scope: refreshed.scope || credentials.scope,
-    updatedAt: now,
-  });
+    saveExternalServiceCredentials({
+      ...credentials,
+      accessToken: refreshed.access_token,
+      refreshToken: refreshed.refresh_token ?? credentials.refreshToken,
+      expiresAt,
+      scope: refreshed.scope || credentials.scope,
+      updatedAt: now,
+    });
 
-  return refreshed.access_token;
+    return refreshed.access_token;
+  } catch (error) {
+    console.warn("[Google Account] Token refresh failed:", error);
+    return null;
+  }
 }

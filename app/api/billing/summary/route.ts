@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 
 import { getUserBillingSummary } from "@/lib/billing/service";
+import { resolveUserSubscriptionDurable } from "@/lib/billing/subscriptions/store";
 
 export async function GET(): Promise<Response> {
   const { userId } = await auth();
@@ -8,5 +9,6 @@ export async function GET(): Promise<Response> {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  await resolveUserSubscriptionDurable(userId);
   return Response.json(getUserBillingSummary(userId));
 }

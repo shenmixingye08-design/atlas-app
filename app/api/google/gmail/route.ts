@@ -16,7 +16,9 @@ export async function GET(request: Request): Promise<Response> {
     );
   }
 
-  const filterParam = new URL(request.url).searchParams.get("filter");
+  const url = new URL(request.url);
+  const filterParam = url.searchParams.get("filter");
+  const searchQuery = url.searchParams.get("q");
   const filter = parseGmailFilterParam(filterParam) ?? "unread";
   const context = await resolveFeatureAccessContext();
 
@@ -25,6 +27,7 @@ export async function GET(request: Request): Promise<Response> {
       userId,
       filter,
       context,
+      searchQuery,
     });
 
     if (result.status !== "ready") {

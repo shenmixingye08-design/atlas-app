@@ -15,6 +15,8 @@ describe("bottom nav", () => {
     expect(resolveBottomNavId("/workspace")).toBe("request");
     expect(resolveBottomNavId("/chat")).toBe("request");
     expect(resolveBottomNavId("/history")).toBe("history");
+    expect(resolveBottomNavId("/learned-jobs")).toBe("memory");
+    expect(resolveBottomNavId("/teach-work")).toBe("memory");
     expect(resolveBottomNavId("/settings/work-memory")).toBe("memory");
     expect(resolveBottomNavId("/settings/learning")).toBe("analysis");
     expect(resolveBottomNavId("/settings/billing")).toBe(null);

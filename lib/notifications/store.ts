@@ -72,7 +72,19 @@ export function deleteNotification(notificationId: string): boolean {
 
 export function getStoredPreferences(userId: string): NotificationPreferences {
   const prefs = getPreferencesMap().get(userId);
-  return prefs ? { ...DEFAULT_NOTIFICATION_PREFERENCES, ...prefs } : DEFAULT_NOTIFICATION_PREFERENCES;
+  if (!prefs) return { ...DEFAULT_NOTIFICATION_PREFERENCES, lineEvents: { ...DEFAULT_NOTIFICATION_PREFERENCES.lineEvents }, channels: { ...DEFAULT_NOTIFICATION_PREFERENCES.channels } };
+  return {
+    ...DEFAULT_NOTIFICATION_PREFERENCES,
+    ...prefs,
+    channels: {
+      ...DEFAULT_NOTIFICATION_PREFERENCES.channels,
+      ...prefs.channels,
+    },
+    lineEvents: {
+      ...DEFAULT_NOTIFICATION_PREFERENCES.lineEvents,
+      ...prefs.lineEvents,
+    },
+  };
 }
 
 export function saveStoredPreferences(

@@ -3,6 +3,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { isPlanId } from "@/lib/billing/plans";
 import { createCheckoutSession } from "@/lib/billing/stripe/checkout";
 import { CHECKOUT_USER_ERROR_MESSAGE } from "@/lib/billing/stripe/errors";
+import { resolveUserSubscription } from "@/lib/billing/subscriptions/service";
 import { recordStripeFailure } from "@/lib/owner/error-monitoring/telemetry";
 
 function resolveRequestOrigin(request: Request): string {
@@ -25,7 +26,13 @@ export async function POST(request: Request): Promise<Response> {
 
   const body = (await request.json().catch(() => null)) as {
     planId?: unknown;
+    priceId?: unknown;
   } | null;
+
+  // Clients may only select a plan — never a free-form Price ID.
+  if (body?.priceId != null) {
+    return Response.json({ error: "Invalid request" }, { status: 400 });
+  }
 
   const planId = typeof body?.planId === "string" ? body.planId : null;
   if (!planId || !isPlanId(planId)) {
@@ -46,11 +53,14 @@ export async function POST(request: Request): Promise<Response> {
       user?.emailAddresses[0]?.emailAddress ??
       null;
 
+    const subscription = resolveUserSubscription(userId);
+
     const session = await createCheckoutSession({
       userId,
       planId,
       customerEmail: email,
       origin: resolveRequestOrigin(request),
+      existingStripeCustomerId: subscription.stripeCustomerId,
     });
 
     return Response.json({

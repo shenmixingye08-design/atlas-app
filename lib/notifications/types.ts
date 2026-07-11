@@ -12,6 +12,16 @@ export type NotificationAudience = "user" | "owner";
 
 export type NotificationChannel = "in_app" | "email" | "line" | "slack" | "push";
 
+/** LINE Messaging API event categories (ON/OFF per event). */
+export type LineNotifyEvent =
+  | "work_completed"
+  | "mail_received"
+  | "document_ready"
+  | "automation_completed"
+  | "error"
+  | "todays_schedule"
+  | "morning_briefing";
+
 export type NotificationRecord = {
   notificationId: string;
   userId: string | null;
@@ -24,6 +34,7 @@ export type NotificationRecord = {
   isRead: boolean;
   createdAt: string;
   actionUrl: string | null;
+  lineEvent?: LineNotifyEvent | null;
 };
 
 export type NotificationPreferences = {
@@ -34,6 +45,7 @@ export type NotificationPreferences = {
     slack: boolean;
     push: boolean;
   };
+  lineEvents: Record<LineNotifyEvent, boolean>;
   allEnabled: boolean;
   completedEnabled: boolean;
   awaitingReviewEnabled: boolean;
@@ -44,6 +56,16 @@ export type NotificationPreferences = {
   automationEnabled: boolean;
 };
 
+export const DEFAULT_LINE_EVENTS: Record<LineNotifyEvent, boolean> = {
+  work_completed: true,
+  mail_received: true,
+  document_ready: true,
+  automation_completed: true,
+  error: true,
+  todays_schedule: true,
+  morning_briefing: true,
+};
+
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   channels: {
     inApp: true,
@@ -52,6 +74,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
     slack: false,
     push: false,
   },
+  lineEvents: { ...DEFAULT_LINE_EVENTS },
   allEnabled: true,
   completedEnabled: true,
   awaitingReviewEnabled: true,
@@ -71,4 +94,5 @@ export type CreateNotificationInput = {
   relatedTaskId?: string | null;
   relatedService?: string | null;
   actionUrl?: string | null;
+  lineEvent?: LineNotifyEvent | null;
 };

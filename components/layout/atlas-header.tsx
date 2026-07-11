@@ -38,7 +38,7 @@ const PRIMARY_NAV: { id: AtlasNavPage; href: string; label: string }[] = [
   { id: "projects", href: "/projects", label: ui.nav.home },
   { id: "workspace", href: "/workspace", label: ui.nav.newRequest },
   { id: "history", href: "/history", label: ui.nav.requestHistory },
-  { id: "work-memory", href: "/settings/work-memory", label: ui.nav.workMemory },
+  { id: "work-memory", href: "/learned-jobs", label: ui.nav.workMemory },
   { id: "learning", href: "/settings/learning", label: ui.nav.analysis },
 ];
 

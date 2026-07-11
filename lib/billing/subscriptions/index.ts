@@ -9,6 +9,7 @@ export {
   cancelSubscriptionAtPeriodEnd,
   downgradeToFree,
   getUserSubscriptionView,
+  isPaidCapableStatus,
   resolveUserSubscription,
   upsertUserSubscription,
 } from "./service";

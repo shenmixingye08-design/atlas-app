@@ -8,19 +8,27 @@ import {
   DRIVE_CATEGORY_FOLDERS,
   DRIVE_LIST_MAX_RESULTS,
   DRIVE_UPLOAD_URL,
+  GOOGLE_APPS_MIME,
+  resolveDriveDocumentKind,
   sanitizeDriveFileName,
 } from "./constants";
 import {
   getStoredDriveFolders,
   saveStoredDriveFolders,
 } from "./folder-store";
-import type { DriveCategoryId, DriveFileItem, DriveFolderLayout } from "./types";
+import type {
+  DriveCategoryId,
+  DriveFileItem,
+  DriveFolderItem,
+  DriveFolderLayout,
+} from "./types";
 
 type DriveApiFile = {
   id?: string;
   name?: string;
   mimeType?: string;
   modifiedTime?: string;
+  viewedByMeTime?: string;
   size?: string;
   webViewLink?: string;
   webContentLink?: string;
@@ -32,7 +40,10 @@ type DriveListResponse = {
   error?: { message?: string };
 };
 
-async function driveFetch<T>(
+const FILE_FIELDS =
+  "id,name,mimeType,modifiedTime,viewedByMeTime,size,webViewLink,webContentLink,parents";
+
+async function driveFetchJson<T>(
   accessToken: string,
   path: string,
   init: RequestInit = {},
@@ -46,6 +57,10 @@ async function driveFetch<T>(
     cache: "no-store",
   });
 
+  if (response.status === 204) {
+    return {} as T;
+  }
+
   const payload = (await response.json()) as T & { error?: { message?: string } };
 
   if (!response.ok) {
@@ -53,6 +68,29 @@ async function driveFetch<T>(
   }
 
   return payload;
+}
+
+async function driveFetchBinary(
+  accessToken: string,
+  path: string,
+): Promise<{ buffer: Buffer; contentType: string | null }> {
+  const response = await fetch(`${DRIVE_API_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as {
+      error?: { message?: string };
+    } | null;
+    throw new Error(payload?.error?.message ?? "Google Drive download failed");
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return {
+    buffer: Buffer.from(arrayBuffer),
+    contentType: response.headers.get("content-type"),
+  };
 }
 
 function escapeDriveQuery(value: string): string {
@@ -68,10 +106,10 @@ async function findFolderByName(
     ? ` and '${escapeDriveQuery(parentId)}' in parents`
     : "";
   const query = encodeURIComponent(
-    `name='${escapeDriveQuery(name)}' and mimeType='application/vnd.google-apps.folder' and trashed=false${parentClause}`,
+    `name='${escapeDriveQuery(name)}' and mimeType='${GOOGLE_APPS_MIME.folder}' and trashed=false${parentClause}`,
   );
 
-  const result = await driveFetch<DriveListResponse>(
+  const result = await driveFetchJson<DriveListResponse>(
     accessToken,
     `/files?q=${query}&fields=files(id,name,webViewLink)&spaces=drive`,
   );
@@ -86,15 +124,19 @@ async function createFolder(
 ): Promise<DriveApiFile> {
   const metadata: Record<string, unknown> = {
     name,
-    mimeType: "application/vnd.google-apps.folder",
+    mimeType: GOOGLE_APPS_MIME.folder,
   };
   if (parentId) metadata.parents = [parentId];
 
-  return driveFetch<DriveApiFile>(accessToken, "/files?fields=id,name,webViewLink", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(metadata),
-  });
+  return driveFetchJson<DriveApiFile>(
+    accessToken,
+    `/files?fields=id,name,webViewLink`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(metadata),
+    },
+  );
 }
 
 async function findOrCreateFolder(
@@ -182,21 +224,53 @@ export async function ensureAtlasDriveFolders(input: {
   };
 }
 
-function normalizeDriveFile(
+function resolveCategoryFromParents(
+  parents: readonly string[],
+  folders: DriveFolderLayout | null,
+): DriveCategoryId {
+  if (!folders) return "other";
+  for (const categoryId of Object.keys(
+    folders.categories,
+  ) as DriveCategoryId[]) {
+    if (parents.includes(folders.categories[categoryId].folderId)) {
+      return categoryId;
+    }
+  }
+  return "other";
+}
+
+export function normalizeDriveFile(
   file: DriveApiFile,
-  category: DriveCategoryId,
+  category: DriveCategoryId = "other",
 ): DriveFileItem | null {
   if (!file.id || !file.name) return null;
+  const mimeType = file.mimeType ?? "application/octet-stream";
+  const kind = resolveDriveDocumentKind(mimeType);
+  const parents = file.parents ?? [];
 
   return {
     id: file.id,
     name: file.name,
-    mimeType: file.mimeType ?? "application/octet-stream",
+    mimeType,
+    kind,
     category,
-    modifiedAt: file.modifiedTime ?? new Date().toISOString(),
+    modifiedAt: file.modifiedTime ?? file.viewedByMeTime ?? new Date().toISOString(),
     sizeBytes: file.size ? Number.parseInt(file.size, 10) : null,
     webViewLink: file.webViewLink ?? buildDriveFileUrl(file.id),
     webContentLink: file.webContentLink ?? null,
+    parents,
+    isFolder: kind === "folder",
+  };
+}
+
+function normalizeFolderItem(file: DriveApiFile): DriveFolderItem | null {
+  if (!file.id || !file.name) return null;
+  return {
+    id: file.id,
+    name: file.name,
+    webViewLink: file.webViewLink ?? buildDriveFolderUrl(file.id),
+    modifiedAt: file.modifiedTime ?? new Date().toISOString(),
+    parents: file.parents ?? [],
   };
 }
 
@@ -210,16 +284,125 @@ export async function listDriveFiles(input: {
     ? ` and name contains '${escapeDriveQuery(input.query.trim())}'`
     : "";
   const q = encodeURIComponent(
-    `'${escapeDriveQuery(input.parentFolderId)}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'${nameClause}`,
+    `'${escapeDriveQuery(input.parentFolderId)}' in parents and trashed=false and mimeType!='${GOOGLE_APPS_MIME.folder}'${nameClause}`,
   );
 
-  const result = await driveFetch<DriveListResponse>(
+  const result = await driveFetchJson<DriveListResponse>(
     input.accessToken,
-    `/files?q=${q}&orderBy=modifiedTime desc&pageSize=${DRIVE_LIST_MAX_RESULTS}&fields=files(id,name,mimeType,modifiedTime,size,webViewLink,webContentLink)`,
+    `/files?q=${q}&orderBy=modifiedTime desc&pageSize=${DRIVE_LIST_MAX_RESULTS}&fields=files(${FILE_FIELDS})`,
   );
 
   return (result.files ?? [])
     .map((file) => normalizeDriveFile(file, input.category))
+    .filter((file): file is DriveFileItem => file !== null);
+}
+
+export async function listDriveFolders(input: {
+  accessToken: string;
+  parentFolderId: string;
+}): Promise<DriveFolderItem[]> {
+  const q = encodeURIComponent(
+    `'${escapeDriveQuery(input.parentFolderId)}' in parents and trashed=false and mimeType='${GOOGLE_APPS_MIME.folder}'`,
+  );
+
+  const result = await driveFetchJson<DriveListResponse>(
+    input.accessToken,
+    `/files?q=${q}&orderBy=name&pageSize=${DRIVE_LIST_MAX_RESULTS}&fields=files(id,name,mimeType,modifiedTime,webViewLink,parents)`,
+  );
+
+  return (result.files ?? [])
+    .map(normalizeFolderItem)
+    .filter((folder): folder is DriveFolderItem => folder !== null);
+}
+
+export async function listDriveChildren(input: {
+  accessToken: string;
+  parentFolderId: string;
+  category?: DriveCategoryId;
+  query?: string | null;
+}): Promise<{ files: DriveFileItem[]; folders: DriveFolderItem[] }> {
+  const nameClause = input.query?.trim()
+    ? ` and name contains '${escapeDriveQuery(input.query.trim())}'`
+    : "";
+  const q = encodeURIComponent(
+    `'${escapeDriveQuery(input.parentFolderId)}' in parents and trashed=false${nameClause}`,
+  );
+
+  const result = await driveFetchJson<DriveListResponse>(
+    input.accessToken,
+    `/files?q=${q}&orderBy=folder,modifiedTime desc&pageSize=${DRIVE_LIST_MAX_RESULTS}&fields=files(${FILE_FIELDS})`,
+  );
+
+  const files: DriveFileItem[] = [];
+  const folders: DriveFolderItem[] = [];
+  const category = input.category ?? "other";
+
+  for (const raw of result.files ?? []) {
+    if (raw.mimeType === GOOGLE_APPS_MIME.folder) {
+      const folder = normalizeFolderItem(raw);
+      if (folder) folders.push(folder);
+      continue;
+    }
+    const file = normalizeDriveFile(raw, category);
+    if (file) files.push(file);
+  }
+
+  return { files, folders };
+}
+
+export async function searchDriveFiles(input: {
+  accessToken: string;
+  query: string;
+  parentFolderId?: string | null;
+  folders?: DriveFolderLayout | null;
+}): Promise<DriveFileItem[]> {
+  const trimmed = input.query.trim();
+  if (!trimmed) return [];
+
+  const parentClause = input.parentFolderId
+    ? ` and '${escapeDriveQuery(input.parentFolderId)}' in parents`
+    : "";
+  const q = encodeURIComponent(
+    `fullText contains '${escapeDriveQuery(trimmed)}' and trashed=false and mimeType!='${GOOGLE_APPS_MIME.folder}'${parentClause}`,
+  );
+
+  const result = await driveFetchJson<DriveListResponse>(
+    input.accessToken,
+    `/files?q=${q}&orderBy=modifiedTime desc&pageSize=${DRIVE_LIST_MAX_RESULTS}&fields=files(${FILE_FIELDS})`,
+  );
+
+  return (result.files ?? [])
+    .map((file) =>
+      normalizeDriveFile(
+        file,
+        resolveCategoryFromParents(file.parents ?? [], input.folders ?? null),
+      ),
+    )
+    .filter((file): file is DriveFileItem => file !== null);
+}
+
+export async function listRecentDriveFiles(input: {
+  accessToken: string;
+  maxResults?: number;
+  folders?: DriveFolderLayout | null;
+}): Promise<DriveFileItem[]> {
+  const pageSize = Math.min(input.maxResults ?? 10, DRIVE_LIST_MAX_RESULTS);
+  const q = encodeURIComponent(
+    `trashed=false and mimeType!='${GOOGLE_APPS_MIME.folder}'`,
+  );
+
+  const result = await driveFetchJson<DriveListResponse>(
+    input.accessToken,
+    `/files?q=${q}&orderBy=viewedByMeTime desc&pageSize=${pageSize}&fields=files(${FILE_FIELDS})`,
+  );
+
+  return (result.files ?? [])
+    .map((file) =>
+      normalizeDriveFile(
+        file,
+        resolveCategoryFromParents(file.parents ?? [], input.folders ?? null),
+      ),
+    )
     .filter((file): file is DriveFileItem => file !== null);
 }
 
@@ -228,9 +411,9 @@ export async function getDriveFile(input: {
   fileId: string;
   category?: DriveCategoryId;
 }): Promise<DriveFileItem | null> {
-  const file = await driveFetch<DriveApiFile>(
+  const file = await driveFetchJson<DriveApiFile>(
     input.accessToken,
-    `/files/${encodeURIComponent(input.fileId)}?fields=id,name,mimeType,modifiedTime,size,webViewLink,webContentLink`,
+    `/files/${encodeURIComponent(input.fileId)}?fields=${FILE_FIELDS}`,
   );
 
   return normalizeDriveFile(file, input.category ?? "other");
@@ -296,7 +479,7 @@ export async function createDriveFile(input: {
     mimeType: input.mimeType,
     buffer: input.buffer,
     method: "POST",
-    path: "?uploadType=multipart&fields=id,name,mimeType,modifiedTime,size,webViewLink,webContentLink",
+    path: `?uploadType=multipart&fields=${FILE_FIELDS}`,
   });
 
   const normalized = normalizeDriveFile(uploaded, input.category);
@@ -323,10 +506,188 @@ export async function updateDriveFileContent(input: {
     mimeType: input.mimeType,
     buffer: input.buffer,
     method: "PATCH",
-    path: `/${encodeURIComponent(input.fileId)}?uploadType=multipart&fields=id,name,mimeType,modifiedTime,size,webViewLink,webContentLink`,
+    path: `/${encodeURIComponent(input.fileId)}?uploadType=multipart&fields=${FILE_FIELDS}`,
   });
 
   const normalized = normalizeDriveFile(uploaded, input.category);
   if (!normalized) throw new Error("Failed to normalize updated Drive file");
   return normalized;
+}
+
+export function resolveExportMimeType(mimeType: string): string | null {
+  if (mimeType === GOOGLE_APPS_MIME.document) return "text/plain";
+  if (mimeType === GOOGLE_APPS_MIME.spreadsheet) return "text/csv";
+  if (mimeType === GOOGLE_APPS_MIME.presentation) return "text/plain";
+  return null;
+}
+
+export async function downloadDriveFile(input: {
+  accessToken: string;
+  fileId: string;
+}): Promise<{
+  file: DriveFileItem;
+  buffer: Buffer;
+  contentType: string;
+  fileName: string;
+}> {
+  const file = await getDriveFile({
+    accessToken: input.accessToken,
+    fileId: input.fileId,
+  });
+  if (!file) throw new Error("File not found");
+  if (file.isFolder) throw new Error("Folders cannot be downloaded");
+
+  const exportMime = resolveExportMimeType(file.mimeType);
+  if (exportMime) {
+    const exported = await driveFetchBinary(
+      input.accessToken,
+      `/files/${encodeURIComponent(input.fileId)}/export?mimeType=${encodeURIComponent(exportMime)}`,
+    );
+    const extension =
+      exportMime === "text/csv"
+        ? ".csv"
+        : exportMime === "text/plain"
+          ? ".txt"
+          : "";
+    return {
+      file,
+      buffer: exported.buffer,
+      contentType: exportMime,
+      fileName: file.name.endsWith(extension)
+        ? file.name
+        : `${file.name}${extension}`,
+    };
+  }
+
+  const downloaded = await driveFetchBinary(
+    input.accessToken,
+    `/files/${encodeURIComponent(input.fileId)}?alt=media`,
+  );
+
+  return {
+    file,
+    buffer: downloaded.buffer,
+    contentType: downloaded.contentType ?? file.mimeType,
+    fileName: file.name,
+  };
+}
+
+export async function extractDriveFileText(input: {
+  accessToken: string;
+  fileId: string;
+  maxChars?: number;
+}): Promise<{ file: DriveFileItem; text: string }> {
+  const maxChars = input.maxChars ?? 8000;
+  const downloaded = await downloadDriveFile({
+    accessToken: input.accessToken,
+    fileId: input.fileId,
+  });
+
+  const exportMime = resolveExportMimeType(downloaded.file.mimeType);
+  const isTextLike =
+    Boolean(exportMime) ||
+    downloaded.contentType.startsWith("text/") ||
+    downloaded.file.mimeType.startsWith("text/") ||
+    downloaded.file.mimeType === "application/json" ||
+    downloaded.file.mimeType === "application/pdf";
+
+  let text = "";
+  if (isTextLike || exportMime) {
+    text = downloaded.buffer.toString("utf8");
+    // Strip obvious binary noise for PDF/Office when not exported
+    if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(text.slice(0, 200))) {
+      text = text
+        .replace(/[^\x09\x0A\x0D\x20-\x7E\u3040-\u30FF\u4E00-\u9FFF\uFF00-\uFFEF]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+  }
+
+  if (!text.trim()) {
+    text = `ファイル名: ${downloaded.file.name}\n種類: ${downloaded.file.kind}\nMIME: ${downloaded.file.mimeType}`;
+  }
+
+  return {
+    file: downloaded.file,
+    text: text.slice(0, maxChars),
+  };
+}
+
+export async function moveDriveFile(input: {
+  accessToken: string;
+  fileId: string;
+  destinationFolderId: string;
+  category?: DriveCategoryId;
+}): Promise<DriveFileItem> {
+  const current = await driveFetchJson<DriveApiFile>(
+    input.accessToken,
+    `/files/${encodeURIComponent(input.fileId)}?fields=id,parents`,
+  );
+  const previousParents = (current.parents ?? []).join(",");
+
+  const moved = await driveFetchJson<DriveApiFile>(
+    input.accessToken,
+    `/files/${encodeURIComponent(input.fileId)}?addParents=${encodeURIComponent(input.destinationFolderId)}&removeParents=${encodeURIComponent(previousParents)}&fields=${FILE_FIELDS}`,
+    { method: "PATCH", headers: { "Content-Type": "application/json" }, body: "{}" },
+  );
+
+  const normalized = normalizeDriveFile(moved, input.category ?? "other");
+  if (!normalized) throw new Error("Failed to move Drive file");
+  return normalized;
+}
+
+export async function copyDriveFile(input: {
+  accessToken: string;
+  fileId: string;
+  destinationFolderId?: string | null;
+  newName?: string | null;
+  category?: DriveCategoryId;
+}): Promise<DriveFileItem> {
+  const body: Record<string, unknown> = {};
+  if (input.newName?.trim()) {
+    body.name = sanitizeDriveFileName(input.newName.trim());
+  }
+  if (input.destinationFolderId) {
+    body.parents = [input.destinationFolderId];
+  }
+
+  const copied = await driveFetchJson<DriveApiFile>(
+    input.accessToken,
+    `/files/${encodeURIComponent(input.fileId)}/copy?fields=${FILE_FIELDS}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+
+  const normalized = normalizeDriveFile(copied, input.category ?? "other");
+  if (!normalized) throw new Error("Failed to copy Drive file");
+  return normalized;
+}
+
+export async function trashDriveFile(input: {
+  accessToken: string;
+  fileId: string;
+}): Promise<void> {
+  await driveFetchJson(
+    input.accessToken,
+    `/files/${encodeURIComponent(input.fileId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ trashed: true }),
+    },
+  );
+}
+
+export async function deleteDriveFilePermanently(input: {
+  accessToken: string;
+  fileId: string;
+}): Promise<void> {
+  await driveFetchJson(
+    input.accessToken,
+    `/files/${encodeURIComponent(input.fileId)}`,
+    { method: "DELETE" },
+  );
 }

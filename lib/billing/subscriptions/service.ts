@@ -12,10 +12,25 @@ import type { SubscriptionStatus, UserSubscriptionRecord, UserSubscriptionView }
 import { recordSubscriptionCancellation } from "@/lib/owner/cancellation-analysis/telemetry";
 import type { CancellationReasonId } from "@/lib/owner/cancellation-analysis/types";
 
+function normalizeSubscriptionRecord(
+  record: UserSubscriptionRecord,
+): UserSubscriptionRecord {
+  return {
+    ...record,
+    stripePriceId: record.stripePriceId ?? null,
+  };
+}
+
 export function resolveUserSubscription(
   userId: string,
 ): UserSubscriptionRecord {
-  return getUserSubscription(userId) ?? createDefaultSubscription(userId);
+  const existing = getUserSubscription(userId);
+  if (existing) return normalizeSubscriptionRecord(existing);
+  return createDefaultSubscription(userId);
+}
+
+export function isPaidCapableStatus(status: SubscriptionStatus): boolean {
+  return status === "active" || status === "trialing";
 }
 
 export function getUserSubscriptionView(userId: string): UserSubscriptionView {
@@ -25,7 +40,8 @@ export function getUserSubscriptionView(userId: string): UserSubscriptionView {
   return {
     ...record,
     planName: plan.name,
-    isPaid: plan.monthlyPriceJpy > 0 && record.status === "active",
+    isPaid:
+      plan.monthlyPriceJpy > 0 && isPaidCapableStatus(record.status),
   };
 }
 
@@ -56,10 +72,12 @@ export function applySubscriptionFromStripe(input: {
   currentPeriodStart: string;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  stripePriceId?: string | null;
 }): UserSubscriptionRecord {
   return upsertUserSubscription(input.userId, {
     stripeCustomerId: input.stripeCustomerId,
     stripeSubscriptionId: input.stripeSubscriptionId,
+    stripePriceId: input.stripePriceId ?? null,
     planId: input.planId,
     status: input.status,
     currentPeriodStart: input.currentPeriodStart,

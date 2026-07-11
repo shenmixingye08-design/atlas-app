@@ -5,22 +5,43 @@ import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
 import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
 import { getGoogleAccountAccessToken } from "@/lib/integrations/google/token-manager";
+import { notifyCalendarReminder } from "@/lib/notifications/emitters";
 
+import {
+  organizeCalendarEventsWithAi,
+  proposeMeetingCandidatesWithAi,
+} from "./ai-assistant";
+import {
+  computeFreeSlots,
+  createGoogleCalendarEvent,
+  deleteGoogleCalendarEvent,
+  fetchGoogleCalendarEvents,
+  fetchGoogleCalendarFreeBusy,
+  updateGoogleCalendarEvent,
+} from "./api-client";
 import { buildCalendarAutomationTriggers } from "./automation-plan";
-import { fetchGoogleCalendarEvents } from "./api-client";
 import { isCalendarRangeId, resolveCalendarRangeWindow } from "./ranges";
 import type {
+  CalendarEvent,
+  CalendarEventInput,
   CalendarEventsResult,
   CalendarEventsSnapshot,
+  CalendarFetchStatus,
+  CalendarFreeSlot,
+  CalendarMeetingCandidate,
+  CalendarOrganizeInsight,
   CalendarRangeId,
 } from "./types";
 
-export async function getGoogleCalendarEventsForUser(input: {
+type GateFailure = {
+  status: Exclude<CalendarFetchStatus, "ready">;
+  message: string;
+};
+
+async function requireCalendarAccess(input: {
   userId: string;
-  range: CalendarRangeId;
   context: FeatureAccessContext;
-  now?: Date;
-}): Promise<CalendarEventsResult> {
+}): Promise<{ accessToken: string } | GateFailure> {
   if (!isFeatureEnabled("google", input.context)) {
     return {
       status: "feature_disabled",
@@ -44,9 +65,27 @@ export async function getGoogleCalendarEventsForUser(input: {
     };
   }
 
+  return { accessToken };
+}
+
+function isGateFailure(
+  value: { accessToken: string } | GateFailure,
+): value is GateFailure {
+  return "status" in value;
+}
+
+export async function getGoogleCalendarEventsForUser(input: {
+  userId: string;
+  range: CalendarRangeId;
+  context: FeatureAccessContext;
+  now?: Date;
+}): Promise<CalendarEventsResult> {
+  const access = await requireCalendarAccess(input);
+  if (isGateFailure(access)) return access;
+
   const window = resolveCalendarRangeWindow(input.range, input.now);
   const events = await fetchGoogleCalendarEvents({
-    accessToken,
+    accessToken: access.accessToken,
     timeMin: window.timeMin,
     timeMax: window.timeMax,
   });
@@ -75,4 +114,159 @@ export function parseCalendarRangeParam(
 ): CalendarRangeId | null {
   if (!value || !isCalendarRangeId(value)) return null;
   return value;
+}
+
+export async function createCalendarEventForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  event: CalendarEventInput;
+}): Promise<{ status: "ready"; event: CalendarEvent } | GateFailure> {
+  const access = await requireCalendarAccess(input);
+  if (isGateFailure(access)) return access;
+
+  const event = await createGoogleCalendarEvent({
+    accessToken: access.accessToken,
+    event: input.event,
+  });
+
+  if (
+    typeof input.event.remindMinutesBefore === "number" &&
+    input.event.remindMinutesBefore >= 0
+  ) {
+    notifyCalendarReminder(
+      input.userId,
+      `「${event.title}」の予定を登録しました（${input.event.remindMinutesBefore}分前に通知）`,
+    );
+  }
+
+  return { status: "ready", event };
+}
+
+export async function updateCalendarEventForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  eventId: string;
+  event: CalendarEventInput;
+}): Promise<
+  | { status: "ready"; event: CalendarEvent }
+  | GateFailure
+> {
+  const access = await requireCalendarAccess(input);
+  if (isGateFailure(access)) return access;
+
+  const event = await updateGoogleCalendarEvent({
+    accessToken: access.accessToken,
+    eventId: input.eventId,
+    event: input.event,
+  });
+
+  return { status: "ready", event };
+}
+
+export async function deleteCalendarEventForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  eventId: string;
+}): Promise<{ status: "ready" } | GateFailure> {
+  const access = await requireCalendarAccess(input);
+  if (isGateFailure(access)) return access;
+
+  await deleteGoogleCalendarEvent({
+    accessToken: access.accessToken,
+    eventId: input.eventId,
+  });
+
+  return { status: "ready" };
+}
+
+export async function findFreeSlotsForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  range: CalendarRangeId;
+  slotMinutes?: number;
+  now?: Date;
+}): Promise<
+  | { status: "ready"; slots: CalendarFreeSlot[]; rangeLabel: string }
+  | GateFailure
+> {
+  const access = await requireCalendarAccess(input);
+  if (isGateFailure(access)) return access;
+
+  const window = resolveCalendarRangeWindow(input.range, input.now);
+  const busy = await fetchGoogleCalendarFreeBusy({
+    accessToken: access.accessToken,
+    timeMin: window.timeMin,
+    timeMax: window.timeMax,
+  });
+
+  const slots = computeFreeSlots({
+    timeMin: window.timeMin,
+    timeMax: window.timeMax,
+    busy,
+    slotMinutes: input.slotMinutes ?? 30,
+  });
+
+  return { status: "ready", slots, rangeLabel: window.label };
+}
+
+export async function organizeCalendarForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  range: CalendarRangeId;
+  now?: Date;
+}): Promise<
+  | {
+      status: "ready";
+      insight: CalendarOrganizeInsight;
+      events: readonly CalendarEvent[];
+    }
+  | GateFailure
+> {
+  const listed = await getGoogleCalendarEventsForUser(input);
+  if (listed.status !== "ready") return listed;
+
+  const insight = await organizeCalendarEventsWithAi(listed.snapshot.events);
+  return {
+    status: "ready",
+    insight,
+    events: listed.snapshot.events,
+  };
+}
+
+export async function proposeMeetingsForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  range: CalendarRangeId;
+  durationMinutes?: number;
+  purpose?: string;
+  now?: Date;
+}): Promise<
+  | {
+      status: "ready";
+      candidates: CalendarMeetingCandidate[];
+      freeSlots: CalendarFreeSlot[];
+    }
+  | GateFailure
+> {
+  const durationMinutes = input.durationMinutes ?? 30;
+  const free = await findFreeSlotsForUser({
+    userId: input.userId,
+    context: input.context,
+    range: input.range,
+    slotMinutes: durationMinutes,
+    now: input.now,
+  });
+  if (free.status !== "ready") return free;
+
+  const candidates = await proposeMeetingCandidatesWithAi({
+    freeSlots: free.slots,
+    durationMinutes,
+    purpose: input.purpose,
+  });
+
+  return {
+    status: "ready",
+    candidates,
+    freeSlots: free.slots,
+  };
 }

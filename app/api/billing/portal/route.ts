@@ -4,6 +4,11 @@ import { resolveUserSubscription } from "@/lib/billing/subscriptions/service";
 import { createBillingPortalSession } from "@/lib/billing/stripe/checkout";
 import { recordStripeFailure } from "@/lib/owner/error-monitoring/telemetry";
 
+const NO_CUSTOMER_MESSAGE =
+  "お支払い情報が見つかりません。先にプランを選択して決済を完了してください。";
+const PORTAL_USER_ERROR_MESSAGE =
+  "請求ポータルを開けませんでした。しばらくしてから再度お試しください。";
+
 function resolveOrigin(request: Request): string {
   const host =
     request.headers.get("x-forwarded-host") ?? request.headers.get("host");
@@ -24,12 +29,10 @@ export async function POST(request: Request): Promise<Response> {
 
   const subscription = resolveUserSubscription(userId);
   if (!subscription.stripeCustomerId) {
-    return Response.json(
-      { error: "No Stripe customer on file" },
-      { status: 400 },
-    );
+    return Response.json({ error: NO_CUSTOMER_MESSAGE }, { status: 400 });
   }
 
+  // Ownership: only the authenticated user's own Customer ID is used.
   try {
     const portal = await createBillingPortalSession({
       stripeCustomerId: subscription.stripeCustomerId,
@@ -41,6 +44,6 @@ export async function POST(request: Request): Promise<Response> {
     const message =
       error instanceof Error ? error.message : "Failed to open billing portal";
     recordStripeFailure(message, "billing_portal");
-    return Response.json({ error: message }, { status: 500 });
+    return Response.json({ error: PORTAL_USER_ERROR_MESSAGE }, { status: 500 });
   }
 }

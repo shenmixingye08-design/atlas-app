@@ -6,7 +6,10 @@ import {
   fetchNotificationPreferences,
   updateNotificationPreferences,
 } from "@/lib/notifications/client";
-import type { NotificationPreferences } from "@/lib/notifications/types";
+import type {
+  LineNotifyEvent,
+  NotificationPreferences,
+} from "@/lib/notifications/types";
 import { DEFAULT_NOTIFICATION_PREFERENCES } from "@/lib/notifications/types";
 import { ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -40,15 +43,46 @@ function ToggleRow({ label, description, checked, disabled, onChange }: ToggleRo
   );
 }
 
+type LineConnectionState = {
+  configured: boolean;
+  linked: boolean;
+  displayName: string | null;
+  lineEnabled: boolean;
+  botBasicId: string | null;
+  linkCode?: { code: string; expiresAt: string };
+};
+
+const LINE_EVENT_ROWS: { id: LineNotifyEvent; label: string }[] = [
+  { id: "work_completed", label: ui.notifications.lineEventWorkCompleted },
+  { id: "mail_received", label: ui.notifications.lineEventMailReceived },
+  { id: "document_ready", label: ui.notifications.lineEventDocumentReady },
+  { id: "automation_completed", label: ui.notifications.lineEventAutomationCompleted },
+  { id: "error", label: ui.notifications.lineEventError },
+  { id: "todays_schedule", label: ui.notifications.lineEventTodaysSchedule },
+  { id: "morning_briefing", label: ui.notifications.lineEventMorningBriefing },
+];
+
 export function NotificationSettings() {
   const [prefs, setPrefs] = useState<NotificationPreferences>(
     DEFAULT_NOTIFICATION_PREFERENCES,
   );
+  const [line, setLine] = useState<LineConnectionState | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [lineBusy, setLineBusy] = useState(false);
+  const [lineMessage, setLineMessage] = useState<string | null>(null);
 
   useEffect(() => {
     void fetchNotificationPreferences().then(setPrefs).catch(() => undefined);
+    void fetch("/api/line/connection")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (data) setLine(data as LineConnectionState);
+      })
+      .catch(() => undefined);
+
+    // Fire once-per-day LINE digests when settings/home loads with LINE on
+    void fetch("/api/line/digest", { method: "POST" }).catch(() => undefined);
   }, []);
 
   const save = async (patch: Partial<NotificationPreferences>) => {
@@ -63,7 +97,40 @@ export function NotificationSettings() {
     }
   };
 
+  const runLineAction = async (action: string, enabled?: boolean) => {
+    setLineBusy(true);
+    setLineMessage(null);
+    try {
+      const response = await fetch("/api/line/connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, enabled }),
+      });
+      const data = (await response.json()) as LineConnectionState & {
+        message?: string;
+        linkCode?: { code: string; expiresAt: string };
+      };
+      if (!response.ok) {
+        setLineMessage(data.message ?? ui.notifications.lineActionFailed);
+        return;
+      }
+      setLine(data);
+      if (data.linkCode) {
+        setLineMessage(ui.notifications.lineCodeIssued(data.linkCode.code));
+      } else if (action === "test") {
+        setLineMessage(ui.notifications.lineTestSent);
+      }
+      const nextPrefs = await fetchNotificationPreferences();
+      setPrefs(nextPrefs);
+    } catch {
+      setLineMessage(ui.notifications.lineActionFailed);
+    } finally {
+      setLineBusy(false);
+    }
+  };
+
   const masterDisabled = !prefs.allEnabled;
+  const lineEventsDisabled = masterDisabled || !prefs.channels.line;
 
   return (
     <Card padding="lg" className="space-y-6">
@@ -96,10 +163,16 @@ export function NotificationSettings() {
         />
         <ToggleRow
           label={ui.notifications.channelLine}
-          description={ui.notifications.channelComingSoon}
+          description={
+            line?.linked
+              ? ui.notifications.lineLinked
+              : ui.notifications.lineConnectHint
+          }
           checked={prefs.channels.line}
-          disabled
-          onChange={() => undefined}
+          onChange={(checked) => {
+            void save({ channels: { ...prefs.channels, line: checked } });
+            void runLineAction("set_enabled", checked);
+          }}
         />
         <ToggleRow
           label={ui.notifications.channelSlack}
@@ -115,6 +188,73 @@ export function NotificationSettings() {
           disabled
           onChange={() => undefined}
         />
+      </div>
+
+      <div className="space-y-3 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] p-4">
+        <h3 className="text-sm font-semibold text-foreground">
+          {ui.notifications.lineSetupTitle}
+        </h3>
+        <p className="text-xs text-[var(--foreground-muted)]">
+          {ui.notifications.lineSetupDesc}
+        </p>
+        {!line?.configured && (
+          <p className="text-xs text-[var(--foreground-muted)]">
+            {ui.notifications.lineNotConfigured}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={lineBusy || !line?.configured}
+            onClick={() => void runLineAction("issue_code")}
+          >
+            {ui.notifications.lineIssueCode}
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={lineBusy || !line?.linked || !prefs.channels.line}
+            onClick={() => void runLineAction("test")}
+          >
+            {ui.notifications.lineSendTest}
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={lineBusy || !line?.linked}
+            onClick={() => void runLineAction("disconnect")}
+          >
+            {ui.notifications.lineDisconnect}
+          </Button>
+        </div>
+        {line?.botBasicId && (
+          <p className="text-xs text-[var(--foreground-muted)]">
+            {ui.notifications.lineBotId(line.botBasicId)}
+          </p>
+        )}
+        {lineMessage && (
+          <p className="text-sm text-[var(--status-success)]">{lineMessage}</p>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">
+          {ui.notifications.lineEventsTitle}
+        </h3>
+        {LINE_EVENT_ROWS.map((row) => (
+          <ToggleRow
+            key={row.id}
+            label={row.label}
+            checked={prefs.lineEvents[row.id]}
+            disabled={lineEventsDisabled}
+            onChange={(checked) =>
+              void save({
+                lineEvents: { ...prefs.lineEvents, [row.id]: checked },
+              })
+            }
+          />
+        ))}
       </div>
 
       <div className="space-y-3">

@@ -17,14 +17,28 @@ export async function processStripeWebhookRequest(
   const webhookSecret = getStripeWebhookSecret();
   const stripe = getStripeClient();
 
-  let event: Stripe.Event;
+  if (!stripe || !webhookSecret) {
+    return {
+      status: 503,
+      body: { error: "Stripe webhook is not configured" },
+    };
+  }
 
-  if (stripe && webhookSecret && signature) {
+  if (!signature) {
+    return {
+      status: 400,
+      body: { error: "Missing Stripe signature" },
+    };
+  }
+
+  let event: Stripe.Event;
+  try {
     event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
-  } else if (process.env.NODE_ENV === "production") {
-    throw new Error("Stripe webhook signature verification is required");
-  } else {
-    event = JSON.parse(rawBody) as Stripe.Event;
+  } catch {
+    return {
+      status: 400,
+      body: { error: "Invalid Stripe signature" },
+    };
   }
 
   if (hasProcessedStripeEvent(event.id)) {

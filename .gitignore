@@ -30,6 +30,9 @@
 .temp/
 *.local.json
 
+# local billing persistence (subscriptions / webhook idempotency)
+.data/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

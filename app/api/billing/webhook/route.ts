@@ -16,6 +16,6 @@ export async function POST(request: Request): Promise<Response> {
     const message =
       error instanceof Error ? error.message : "Webhook processing failed";
     recordWebhookFailure(message, "billing_webhook");
-    return Response.json({ error: message }, { status: 400 });
+    return Response.json({ error: "Webhook processing failed" }, { status: 400 });
   }
 }

@@ -4,6 +4,7 @@ export {
   SUPPORTED_DRIVE_FORMATS,
   buildDriveFileUrl,
   buildDriveFolderUrl,
+  resolveDriveDocumentKind,
 } from "./constants";
 export {
   isDriveCategoryId,
@@ -16,15 +17,33 @@ export {
 export {
   ensureAtlasDriveFolders,
   listDriveFiles,
+  listDriveFolders,
+  listRecentDriveFiles,
+  searchDriveFiles,
   getDriveFile,
   createDriveFile,
   updateDriveFileContent,
+  downloadDriveFile,
+  moveDriveFile,
+  copyDriveFile,
+  trashDriveFile,
 } from "./api-client";
 export {
   fetchGoogleDriveFilesClient,
+  fetchRecentGoogleDriveFilesClient,
+  searchGoogleDriveClient,
   saveDeliverableToDriveClient,
+  uploadGoogleDriveFileClient,
+  getGoogleDriveDownloadUrl,
+  moveGoogleDriveFileClient,
+  copyGoogleDriveFileClient,
+  deleteGoogleDriveFileClient,
+  summarizeGoogleDriveFileClient,
+  aiSearchGoogleDriveClient,
+  classifyGoogleDriveFileClient,
   formatDriveModifiedAt,
   formatDriveFileSize,
+  formatDriveKindLabel,
 } from "./client";
 export {
   buildDriveAutomationSaveTrigger,
@@ -33,8 +52,18 @@ export {
 export {
   getGoogleDriveFilesForUser,
   getGoogleDriveFileForUser,
+  getRecentGoogleDriveFilesForUser,
+  searchGoogleDriveForUser,
   saveDeliverableToGoogleDriveForUser,
+  uploadFileToGoogleDriveForUser,
   ensureGoogleDriveFoldersForUser,
+  downloadGoogleDriveFileForUser,
+  moveGoogleDriveFileForUser,
+  copyGoogleDriveFileForUser,
+  deleteGoogleDriveFileForUser,
+  summarizeGoogleDriveFileForUser,
+  aiSearchGoogleDriveForUser,
+  classifyGoogleDriveFileForUser,
 } from "./service";
 export {
   getStoredDriveFolders,
@@ -42,11 +71,16 @@ export {
 } from "./folder-store";
 export type {
   DriveCategoryId,
+  DriveDocumentKind,
   DriveFileItem,
   DriveFilesResult,
   DriveFilesSnapshot,
+  DriveFolderItem,
   DriveFolderLayout,
   DriveSaveResult,
   DriveAutomationSaveTrigger,
   DriveFileDetailResult,
+  DriveAiSummary,
+  DriveAiSearchHit,
+  DriveAiClassification,
 } from "./types";

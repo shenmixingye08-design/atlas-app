@@ -1,6 +1,7 @@
 /** Owner-monitored error categories. */
 export type ErrorCategoryId =
   | "google_auth"
+  | "dropbox_auth"
   | "x_post"
   | "webhook"
   | "openai"

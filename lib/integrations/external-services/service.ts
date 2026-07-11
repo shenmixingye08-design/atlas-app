@@ -17,6 +17,9 @@ import type {
   ExternalServiceConnection,
   ExternalServiceId,
 } from "./types";
+import { buildDropboxAuthorizeUrl } from "../dropbox/oauth";
+import { disconnectDropboxAccount } from "../dropbox/oauth-service";
+import { markDropboxConnectionPending } from "../dropbox/pending";
 import { buildGoogleAccountAuthorizeUrl } from "../google/oauth";
 import { disconnectGoogleAccount } from "../google/oauth-service";
 import { markGoogleConnectionPending } from "../google/pending";
@@ -123,6 +126,22 @@ export class ExternalServiceManager {
       };
     }
 
+    if (serviceId === "dropbox") {
+      if (!requestOrigin) {
+        throw new Error("Request origin is required for Dropbox OAuth");
+      }
+
+      markDropboxConnectionPending(userId);
+      const pending = getExternalServiceConnection(userId, "dropbox");
+      const authorizeUrl = buildDropboxAuthorizeUrl(requestOrigin, userId);
+
+      return {
+        connection: pending,
+        message: "Dropbox認証画面へ移動します",
+        authorizeUrl,
+      };
+    }
+
     const definition = getExternalServiceDefinition(serviceId);
     const connector = getExternalServiceConnector(serviceId);
 
@@ -162,6 +181,10 @@ export class ExternalServiceManager {
 
     if (serviceId === "x") {
       return disconnectXAccount(userId);
+    }
+
+    if (serviceId === "dropbox") {
+      return disconnectDropboxAccount(userId);
     }
 
     const connector = getExternalServiceConnector(serviceId);

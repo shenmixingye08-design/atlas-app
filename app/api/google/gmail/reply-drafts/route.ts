@@ -1,5 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
+import { saveGmailDraftForUser } from "@/lib/integrations/google/gmail/service";
 import type { GmailReplyDraftContent } from "@/lib/integrations/google/gmail/types";
 import {
   listGmailReplyDrafts,
@@ -49,6 +51,26 @@ export async function POST(request: Request): Promise<Response> {
     to: body.to.trim(),
     body: body.body.trim(),
   });
+
+  try {
+    const context = await resolveFeatureAccessContext();
+    const gmailDraft = await saveGmailDraftForUser({
+      userId,
+      context,
+      messageId: draft.messageId,
+      draft: {
+        messageId: draft.messageId,
+        subject: draft.subject,
+        to: draft.to,
+        body: draft.body,
+      },
+    });
+    if (gmailDraft.status === "ready") {
+      draft.gmailDraftId = gmailDraft.gmailDraftId;
+    }
+  } catch {
+    // Local save already succeeded; Gmail draft is best-effort.
+  }
 
   return Response.json({ draft });
 }
