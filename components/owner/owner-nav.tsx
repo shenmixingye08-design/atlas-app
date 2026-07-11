@@ -16,12 +16,12 @@ type OwnerNavProps = {
     | "betaUsers"
     | "systemStatus"
     | "externalServices"
+    | "envStatus"
     | "anonymousUserAnalysis"
     | "billingWebhook"
     | "notifications"
     | "employeeTeam";
 };
-
 const LINKS = [
   { id: "dashboard" as const, href: "/owner", label: ui.owner.navDashboard },
   {
@@ -73,6 +73,11 @@ const LINKS = [
     id: "externalServices" as const,
     href: "/owner/external-services",
     label: ui.owner.navExternalServices,
+  },
+  {
+    id: "envStatus" as const,
+    href: "/owner/env-status",
+    label: ui.owner.navEnvStatus,
   },
   {
     id: "anonymousUserAnalysis" as const,

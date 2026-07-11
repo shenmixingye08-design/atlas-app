@@ -1232,6 +1232,7 @@ export const ui = {
     navBetaUsers: "ベータユーザー",
     navSystemStatus: "システム状態",
     navExternalServices: "外部サービス管理",
+    navEnvStatus: "環境変数",
     navAnonymousUserAnalysis: "匿名ユーザー分析",
     navBillingWebhook: "Stripe Webhook",
     navNotifications: "運営通知",
@@ -1501,6 +1502,31 @@ export const ui = {
     generatedAt: (date: string) =>
       `最終更新: ${new Date(date).toLocaleString("ja-JP")}`,
     note: "再接続は既存の OAuth フローを再利用します。新しい認証方式は追加していません。GitHub / Slack / Discord / Microsoft は実装準備中です。",
+  },
+
+  ownerEnvStatus: {
+    eyebrow: "Environment",
+    title: "環境変数ステータス",
+    subtitle:
+      "本番に必要な環境変数の設定有無だけを表示します。値は一切表示しません（****** のみ）。オーナーのみ閲覧できます。",
+    loading: "読み込み中…",
+    loadError: "環境変数ステータスの取得に失敗しました。",
+    configured: "設定済み",
+    notConfigured: "未設定",
+    required: "必須",
+    recommended: "推奨",
+    optional: "任意",
+    summaryTotal: "項目数",
+    summaryConfigured: "設定済み",
+    summaryMissing: "未設定",
+    summaryRequiredMissing: "必須の未設定",
+    columnKey: "変数名",
+    columnPurpose: "用途",
+    columnRequirement: "区分",
+    columnStatus: "状態",
+    columnValue: "値",
+    refresh: "再読み込み",
+    generatedAt: (date: string) => `最終更新: ${date}`,
   },
 
   anonymousUserAnalysis: {

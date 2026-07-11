@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isEnvPresent, areEnvGroupsPresent } from "@/lib/env/presence";
 import {
   getStripePublishableKey,
   getStripeSecretKey,
@@ -25,11 +26,11 @@ import type {
 } from "./types";
 
 function envPresent(...keys: string[]): boolean {
-  return keys.some((key) => Boolean(process.env[key]?.trim()));
+  return isEnvPresent(...keys);
 }
 
 function envAllPresent(groups: string[][]): boolean {
-  return groups.every((group) => envPresent(...group));
+  return areEnvGroupsPresent(groups);
 }
 
 function isFlagApiEnabled(flagId: FeatureFlagId): boolean {
