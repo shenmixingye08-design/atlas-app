@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
 import { completeMockCheckout } from "@/lib/billing/service";
 import { isPlanId } from "@/lib/billing/plans";
+import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -24,7 +25,12 @@ export default async function BillingSuccessPage({ searchParams }: PageProps) {
   const mode = typeof params.mode === "string" ? params.mode : null;
   const planParam = typeof params.plan === "string" ? params.plan : null;
 
-  if (mode === "mock" && planParam && isPlanId(planParam)) {
+  if (
+    mode === "mock" &&
+    planParam &&
+    isPlanId(planParam) &&
+    !isAtlasProduction()
+  ) {
     completeMockCheckout(userId, planParam);
   }
 

@@ -11,7 +11,7 @@ export type BillingHistoryRecord = {
   id: string;
   userId: string;
   planId: PlanId;
-  status: SubscriptionStatus | "payment_failed" | "payment_succeeded";
+  status: SubscriptionStatus | "payment_failed" | "payment_succeeded" | "refunded";
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   periodStart: string | null;

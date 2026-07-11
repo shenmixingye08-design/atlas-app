@@ -104,6 +104,75 @@ describe("stripe webhook handlers", () => {
     expect(view.status).toBe("past_due");
   });
 
+  it("keeps payment grace when subscription.updated reports past_due", async () => {
+    const { applySubscriptionFromStripe } = await import("../subscriptions/service");
+    const { schedulePaymentFailureGrace } = await import(
+      "../subscriptions/lifecycle"
+    );
+
+    applySubscriptionFromStripe({
+      userId: "user_grace_1",
+      stripeCustomerId: "cus_grace",
+      stripeSubscriptionId: "sub_grace",
+      planId: "standard",
+      status: "active",
+      currentPeriodStart: new Date().toISOString(),
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+    });
+    schedulePaymentFailureGrace("user_grace_1");
+    const graceBefore =
+      getUserSubscriptionView("user_grace_1").paymentFailureGraceEndsAt;
+
+    await handleStripeWebhookEvent(
+      buildEvent("customer.subscription.updated", {
+        id: "sub_grace",
+        customer: "cus_grace",
+        metadata: { userId: "user_grace_1", planId: "standard" },
+        status: "past_due",
+        current_period_start: Math.floor(Date.now() / 1000),
+        current_period_end: Math.floor(Date.now() / 1000) + 86400 * 30,
+        cancel_at_period_end: false,
+        items: { data: [{ price: { id: "price_standard_test" } }] },
+      }),
+    );
+
+    const view = getUserSubscriptionView("user_grace_1");
+    expect(view.status).toBe("past_due");
+    expect(view.paymentFailureGraceEndsAt).toBe(graceBefore);
+  });
+
+  it("records charge.refunded in billing history without auto-downgrade", async () => {
+    const { applySubscriptionFromStripe } = await import("../subscriptions/service");
+
+    applySubscriptionFromStripe({
+      userId: "user_refund_1",
+      stripeCustomerId: "cus_refund",
+      stripeSubscriptionId: "sub_refund",
+      planId: "light",
+      status: "active",
+      currentPeriodStart: new Date().toISOString(),
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+    });
+
+    const result = await handleStripeWebhookEvent(
+      buildEvent("charge.refunded", {
+        customer: "cus_refund",
+        amount: 1000,
+        amount_refunded: 1000,
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(getUserSubscriptionView("user_refund_1").planId).toBe("light");
+    expect(
+      listBillingHistoryRecords("user_refund_1").some(
+        (row) => row.eventType === "charge.refunded",
+      ),
+    ).toBe(true);
+  });
+
   it("syncs subscription updates", async () => {
     const result = await handleStripeWebhookEvent(
       buildEvent("customer.subscription.updated", {

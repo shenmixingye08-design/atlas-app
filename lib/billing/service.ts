@@ -8,6 +8,7 @@ import { applySubscriptionFromStripe, getUserSubscriptionView } from "./subscrip
 import { isStripeLiveMode } from "./stripe/checkout";
 import { getUserUsageLimitSummary } from "./usage/service";
 import type { UserBillingSummary } from "./types";
+import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 export type { UserBillingSummary } from "./types";
 
@@ -35,6 +36,10 @@ export function completeMockCheckout(
   userId: string,
   planId: PlanId,
 ): UserBillingSummary {
+  if (isAtlasProduction()) {
+    throw new Error("Mock checkout is disabled in production");
+  }
+
   const now = new Date();
   const periodEnd = new Date(now);
   periodEnd.setMonth(periodEnd.getMonth() + 1);

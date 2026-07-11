@@ -65,9 +65,15 @@ export function applyPaidPlanFromWebhook(input: {
   stripePriceId?: string | null;
 }): UserSubscriptionRecord {
   const record = applySubscriptionFromStripe(input);
-  clearSubscriptionLifecycleFlags(input.userId);
+
+  // Only clear payment-failure grace when Stripe reports a healthy subscription.
+  // past_due / unpaid / incomplete must keep grace set by invoice.payment_failed.
+  if (input.status === "active" || input.status === "trialing") {
+    clearSubscriptionLifecycleFlags(input.userId);
+    notifyUserPlanChanged(input.userId, getPlanDefinition(input.planId).name);
+  }
+
   syncUserPlanProfile(input.userId, input.planId);
-  notifyUserPlanChanged(input.userId, getPlanDefinition(input.planId).name);
   return record;
 }
 

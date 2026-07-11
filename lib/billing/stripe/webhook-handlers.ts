@@ -146,7 +146,7 @@ function logWebhookResult(input: {
 function saveBillingSnapshot(input: {
   userId: string;
   planId: NonNullable<ReturnType<typeof mapStripePlanId>>;
-  status: SubscriptionStatus | "payment_failed" | "payment_succeeded";
+  status: SubscriptionStatus | "payment_failed" | "payment_succeeded" | "refunded";
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
   periodStart?: string | null;
@@ -516,6 +516,57 @@ async function handleInvoicePaymentFailed(
   });
 }
 
+async function handleChargeRefunded(
+  event: Stripe.Event,
+): Promise<WebhookHandleResult> {
+  const charge = event.data.object as Stripe.Charge;
+  const customerId =
+    typeof charge.customer === "string"
+      ? charge.customer
+      : charge.customer?.id ?? null;
+
+  if (!customerId) {
+    return logWebhookResult({
+      event,
+      status: "skipped",
+      message: "Refund charge has no customer — nothing to sync",
+    });
+  }
+
+  const match = resolveUserSubscriptionByCustomerId(customerId);
+  if (!match) {
+    return logWebhookResult({
+      event,
+      status: "skipped",
+      message: "Refund customer not linked to an ATLAS user",
+    });
+  }
+
+  // Record only — plan changes still come from subscription.deleted / Dashboard cancel.
+  // Auto-downgrade on refund would surprise operators who refund without canceling.
+  saveBillingSnapshot({
+    userId: match.userId,
+    planId: match.planId,
+    status: "refunded",
+    stripeCustomerId: customerId,
+    stripeSubscriptionId: match.stripeSubscriptionId,
+    periodStart: match.currentPeriodStart,
+    periodEnd: match.currentPeriodEnd,
+    cancelAtPeriodEnd: match.cancelAtPeriodEnd,
+    eventType: "charge.refunded",
+    stripeEventId: event.id,
+    note: `Refund recorded (amount=${charge.amount_refunded}/${charge.amount})`,
+  });
+
+  return logWebhookResult({
+    event,
+    status: "success",
+    message: "Charge refund recorded in billing history",
+    userId: match.userId,
+    planId: match.planId,
+  });
+}
+
 export async function handleStripeWebhookEvent(
   event: Stripe.Event,
 ): Promise<WebhookHandleResult> {
@@ -532,6 +583,8 @@ export async function handleStripeWebhookEvent(
       return handleInvoicePaymentSucceeded(event);
     case "invoice.payment_failed":
       return handleInvoicePaymentFailed(event);
+    case "charge.refunded":
+      return handleChargeRefunded(event);
     default:
       return logWebhookResult({
         event,

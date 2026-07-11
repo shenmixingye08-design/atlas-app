@@ -10,7 +10,8 @@ export type StripeWebhookEventType =
   | "customer.subscription.deleted"
   | "invoice.paid"
   | "invoice.payment_succeeded"
-  | "invoice.payment_failed";
+  | "invoice.payment_failed"
+  | "charge.refunded";
 
 export const HANDLED_STRIPE_EVENTS: readonly StripeWebhookEventType[] = [
   "checkout.session.completed",
@@ -20,6 +21,7 @@ export const HANDLED_STRIPE_EVENTS: readonly StripeWebhookEventType[] = [
   "invoice.paid",
   "invoice.payment_succeeded",
   "invoice.payment_failed",
+  "charge.refunded",
 ];
 
 export function getStripeSecretKey(): string | null {

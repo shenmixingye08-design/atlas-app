@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 
 import type { PlanId } from "../plans/types";
 import type { SubscriptionStatus } from "../subscriptions/types";
-import type { StripeWebhookEventType } from "../stripe/config";
+import { HANDLED_STRIPE_EVENTS, type StripeWebhookEventType } from "../stripe/config";
 
 import { appendBillingHistoryRecord } from "./store";
 import type { BillingHistoryEventType, BillingHistoryRecord } from "./types";
@@ -12,7 +12,7 @@ import type { BillingHistoryEventType, BillingHistoryRecord } from "./types";
 export function recordBillingHistory(input: {
   userId: string;
   planId: PlanId;
-  status: SubscriptionStatus | "payment_failed" | "payment_succeeded";
+  status: SubscriptionStatus | "payment_failed" | "payment_succeeded" | "refunded";
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
   periodStart?: string | null;
@@ -44,13 +44,5 @@ export type { BillingHistoryRecord } from "./types";
 export function isStripeWebhookEventType(
   value: string,
 ): value is StripeWebhookEventType {
-  return (
-    value === "checkout.session.completed" ||
-    value === "customer.subscription.created" ||
-    value === "customer.subscription.updated" ||
-    value === "customer.subscription.deleted" ||
-    value === "invoice.paid" ||
-    value === "invoice.payment_succeeded" ||
-    value === "invoice.payment_failed"
-  );
+  return (HANDLED_STRIPE_EVENTS as readonly string[]).includes(value);
 }
