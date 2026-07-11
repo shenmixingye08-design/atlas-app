@@ -7,7 +7,7 @@ import {
 import { loadClerkPrivateMetadataKey } from "@/lib/persistence/clerk-private-metadata";
 import { createProjectFromOrchestration } from "@/lib/projects/domain";
 import { mapProjectToRow, PROJECTS_TABLE } from "@/lib/projects/repositories/project-row";
-import { createClientIfConfigured } from "@/lib/supabase/client";
+import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 
 import type { CommanderPlan, CommanderRunRecord } from "./types";
@@ -225,7 +225,7 @@ export async function loadCommanderRunsFromClerk(
 }
 
 /**
- * Best-effort project row upsert when Supabase is configured.
+ * Best-effort project row upsert via service role (RLS denies anon).
  * Complements durable commander history for recent-work / briefing inputs.
  */
 export async function persistCommanderResultAsProject(input: {
@@ -233,7 +233,7 @@ export async function persistCommanderResultAsProject(input: {
   assignment: string;
   result: OrchestrationResult;
 }): Promise<string | null> {
-  const client = createClientIfConfigured();
+  const client = createServiceRoleClientIfConfigured();
   if (!client) return null;
 
   try {

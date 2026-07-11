@@ -1,0 +1,8 @@
+-- Apply order for production Supabase (SQL editor or CLI).
+-- 1) 20260711_atlas_user_state.sql
+-- 2) 20260711_atlas_user_state_rls_lockdown.sql  (safe if already applied)
+-- 3) 20260711_projects.sql
+-- 4) 20260711_projects_rls_lockdown.sql         (safe if already applied)
+--
+-- Required app env: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+-- Anon clients cannot read/write either table (RLS deny). Service role bypasses RLS.

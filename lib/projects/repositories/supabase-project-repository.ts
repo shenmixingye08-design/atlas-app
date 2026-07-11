@@ -27,7 +27,10 @@ export type SupabaseProjectRepositoryOptions = {
  * hydrated and persisted asynchronously. Call {@link hydrate} before relying
  * on `list()` when this backend is active.
  *
- * Requires the `projects` table (see migration SQL in project docs).
+ * Requires the `projects` table + RLS lockdown migrations.
+ * Browser anon key is denied by RLS — hydrate/persist will no-op until a
+ * Clerk JWT bridge or server API exists. Server Commander upserts use the
+ * service role client instead. Prefer localStorage as the client cache.
  */
 export class SupabaseProjectRepository implements ProjectRepository {
   private cache: Project[] | null = null;
