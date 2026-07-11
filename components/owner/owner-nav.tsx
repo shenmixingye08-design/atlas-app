@@ -22,7 +22,8 @@ type OwnerNavProps = {
     | "notifications"
     | "employeeTeam"
     | "accountDeletions"
-    | "auditLog";
+    | "auditLog"
+    | "disasterRecovery";
 };
 const LINKS = [
   { id: "dashboard" as const, href: "/owner", label: ui.owner.navDashboard },
@@ -70,6 +71,11 @@ const LINKS = [
     id: "auditLog" as const,
     href: "/owner/audit-log",
     label: ui.owner.navAuditLog,
+  },
+  {
+    id: "disasterRecovery" as const,
+    href: "/owner/disaster-recovery",
+    label: ui.owner.navDisasterRecovery,
   },
   {
     id: "betaUsers" as const,

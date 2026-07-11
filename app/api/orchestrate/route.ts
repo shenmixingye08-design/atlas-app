@@ -102,6 +102,23 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const { isTargetInFallback, gracefulDegradedResponse, enqueueDisasterJob } =
+      await import("@/lib/owner/disaster-recovery");
+    if (isTargetInFallback("openai")) {
+      enqueueDisasterJob({
+        kind: "openai",
+        targetId: "openai",
+        message: "Orchestrate deferred — OpenAI degraded",
+        userId,
+        source: "orchestrate",
+      });
+      const degraded = gracefulDegradedResponse({
+        targetId: "openai",
+        feature: "新しい依頼",
+      });
+      return Response.json(degraded.body, { status: degraded.status });
+    }
+
     const { requireBillingForAssignment } = await import("@/lib/billing/access");
     const billingDenied = await requireBillingForAssignment(userId, parsed);
     if (billingDenied) return billingDenied;

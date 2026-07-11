@@ -18,6 +18,7 @@ import {
   recordCronTickSuccess,
 } from "./store";
 import type { MonitorTargetId, RecordIncidentInput } from "./types";
+import { handleDisasterIncident } from "@/lib/owner/disaster-recovery/policy";
 
 const TARGET_TO_SYSTEM: Partial<Record<MonitorTargetId, SystemServiceId>> = {
   openai: "openai",
@@ -75,6 +76,7 @@ export function recordMonitoringIncident(input: RecordIncidentInput): void {
     reason: sanitizeAuditReason(input.message),
   });
   schedulePersistAuditLog();
+  handleDisasterIncident(input);
 
   if (input.targetId !== "api") {
     const systemId = TARGET_TO_SYSTEM[input.targetId];
