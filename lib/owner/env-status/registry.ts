@@ -42,6 +42,12 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     purpose: "Clerk Webhook（ログイン/ログアウト監査ログ）",
   },
   {
+    key: "ATLAS_OWNER_LINE_USER_ID",
+    service: "line",
+    requirement: "optional",
+    purpose: "重大障害時の Owner LINE 通知先",
+  },
+  {
     key: "NEXT_PUBLIC_SITE_URL",
     service: "atlas",
     requirement: "required",

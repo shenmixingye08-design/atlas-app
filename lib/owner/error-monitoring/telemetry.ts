@@ -5,6 +5,28 @@ import { notifyOwnerExternalApiError } from "@/lib/notifications/emitters";
 import { recordOwnerError } from "./store";
 import type { ErrorCategoryId } from "./types";
 import { recordServiceHealthFromErrorCategory } from "@/lib/owner/system-status/telemetry";
+import { recordMonitoringIncident } from "@/lib/owner/monitoring/incidents";
+import type { MonitorTargetId } from "@/lib/owner/monitoring/types";
+
+function mapCategoryToIncident(categoryId: ErrorCategoryId): {
+  kind: string;
+  targetId: MonitorTargetId | "api";
+} {
+  switch (categoryId) {
+    case "openai":
+      return { kind: "openai_failure", targetId: "openai" };
+    case "stripe":
+      return { kind: "stripe_failure", targetId: "stripe" };
+    case "google_auth":
+      return { kind: "google_failure", targetId: "google" };
+    case "dropbox_auth":
+      return { kind: "dropbox_failure", targetId: "dropbox" };
+    case "webhook":
+      return { kind: "api_500", targetId: "billing" };
+    default:
+      return { kind: "api_500", targetId: "api" };
+  }
+}
 
 function recordError(input: {
   categoryId: ErrorCategoryId;
@@ -28,6 +50,16 @@ function recordError(input: {
               : "External";
 
   notifyOwnerExternalApiError(serviceLabel, input.message);
+
+  const mapped = mapCategoryToIncident(input.categoryId);
+  recordMonitoringIncident({
+    kind: mapped.kind,
+    targetId: mapped.targetId,
+    message: input.message,
+    // Owner already notified via notifyOwnerExternalApiError above.
+    critical: false,
+    source: input.source,
+  });
 }
 
 export function recordGoogleAuthFailure(

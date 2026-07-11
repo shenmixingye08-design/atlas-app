@@ -25,8 +25,8 @@ describe("system status engine", () => {
       new Date("2026-07-08T12:00:00.000Z"),
     );
 
-    expect(snapshot.services).toHaveLength(7);
-    expect(snapshot.operationalCount).toBe(7);
+    expect(snapshot.services).toHaveLength(8);
+    expect(snapshot.operationalCount).toBe(8);
     expect(snapshot.services[0]?.status).toBe("operational");
     expect(snapshot.services[0]?.uptimePercent).toBeGreaterThan(99);
     expect(snapshot.services[0]?.isEstimated).toBe(true);

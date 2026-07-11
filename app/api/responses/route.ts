@@ -6,7 +6,7 @@ import {
   createAtlasResponseStream,
   type AtlasResponseRequest,
 } from "@/lib/openai";
-import { recordOpenAiFailureIfApplicable } from "@/lib/owner/error-monitoring/telemetry";
+import { recordOpenAiFailureIfApplicable, isOpenAiRelatedError } from "@/lib/owner/error-monitoring/telemetry";
 import { enforceAiRateLimit } from "@/lib/http/enforce-ai-rate-limit";
 
 type RequestBody = {
@@ -112,6 +112,18 @@ function handleError(error: unknown): Response {
   console.error("[Atlas /api/responses]", error);
 
   recordOpenAiFailureIfApplicable(error, "responses");
+  if (!isOpenAiRelatedError(error)) {
+    void import("@/lib/owner/monitoring").then(({ recordMonitoringIncident }) => {
+      recordMonitoringIncident({
+        kind: "api_500",
+        targetId: "api",
+        message:
+          error instanceof Error ? error.message : "Responses API 500",
+        critical: true,
+        source: "responses",
+      });
+    });
+  }
   return Response.json(
     { error: "An unexpected error occurred" },
     { status: 500 },

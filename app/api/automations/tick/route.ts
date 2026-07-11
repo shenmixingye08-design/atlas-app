@@ -20,23 +20,49 @@ function resolveOrigin(request: Request): string {
 export async function POST(request: Request): Promise<Response> {
   const gate = await authorizeAutomationTick(request);
   if (!gate.ok) {
+    const { recordCronTickOutcome } = await import("@/lib/owner/monitoring");
+    recordCronTickOutcome(false, gate.error);
     return Response.json({ error: gate.error }, { status: gate.status });
   }
 
-  const origin = resolveOrigin(request);
-  const results = await automationService.processDueAutomations({
-    requestOrigin: origin,
-  });
-  const scheduledXPosts = await processScheduledXPostsFromAutomationTick();
+  try {
+    const origin = resolveOrigin(request);
+    const results = await automationService.processDueAutomations({
+      requestOrigin: origin,
+    });
+    const scheduledXPosts = await processScheduledXPostsFromAutomationTick();
 
-  return Response.json({
-    processed: results.length,
-    results,
-    scheduledXPosts: {
-      processed: scheduledXPosts.length,
-      results: scheduledXPosts,
-    },
-  });
+    const { recordCronTickOutcome, recordMonitoringIncident } = await import(
+      "@/lib/owner/monitoring"
+    );
+    recordCronTickOutcome(true);
+
+    const failed = results.filter((r) => r.status === "failed");
+    for (const row of failed.slice(0, 5)) {
+      recordMonitoringIncident({
+        kind: "automation_failure",
+        targetId: "automation",
+        message: row.error ?? "Automation run failed",
+        critical: true,
+        source: "automation_tick",
+      });
+    }
+
+    return Response.json({
+      processed: results.length,
+      results,
+      scheduledXPosts: {
+        processed: scheduledXPosts.length,
+        results: scheduledXPosts,
+      },
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Automation tick failed";
+    const { recordCronTickOutcome } = await import("@/lib/owner/monitoring");
+    recordCronTickOutcome(false, message);
+    return Response.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function GET(request: Request): Promise<Response> {

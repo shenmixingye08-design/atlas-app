@@ -130,6 +130,19 @@ export async function POST(request: Request): Promise<Response> {
         result: result.status === "failed" ? "failure" : "success",
         reason: parsed.mode,
       });
+      if (result.status === "failed") {
+        const { recordMonitoringIncident } = await import(
+          "@/lib/owner/monitoring"
+        );
+        recordMonitoringIncident({
+          kind: "commander_failure",
+          targetId: "commander",
+          message: result.report?.summary ?? "Commander run failed",
+          userId,
+          critical: true,
+          source: "commander",
+        });
+      }
     }
     return Response.json(result);
   } catch (error) {
@@ -149,6 +162,18 @@ export async function POST(request: Request): Promise<Response> {
           targetId: null,
           result: "failure",
           reason: error instanceof Error ? error.message : "commander failed",
+        });
+        const { recordMonitoringIncident } = await import(
+          "@/lib/owner/monitoring"
+        );
+        recordMonitoringIncident({
+          kind: "commander_failure",
+          targetId: "commander",
+          message:
+            error instanceof Error ? error.message : "commander failed",
+          userId: userId ?? null,
+          critical: true,
+          source: "commander",
         });
       } catch {
         // ignore audit failures

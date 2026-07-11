@@ -317,6 +317,17 @@ export async function executeAutomationRun(
         result.error ?? "Automation orchestration failed",
         "automation_run",
       );
+      const { recordMonitoringIncident } = await import(
+        "@/lib/owner/monitoring"
+      );
+      recordMonitoringIncident({
+        kind: "automation_failure",
+        targetId: "automation",
+        message: result.error ?? "Automation orchestration failed",
+        userId: options.userId ?? null,
+        critical: true,
+        source: "automation_run",
+      });
       if (executionFlow.templateId === "sns_post") {
         recordXPostFailure(
           result.error ?? "SNS post automation failed",
@@ -359,6 +370,17 @@ export async function executeAutomationRun(
     const message =
       error instanceof Error ? error.message : "Automation execution failed";
     recordOpenAiFailureIfApplicable(error, "automation_run");
+    const { recordMonitoringIncident } = await import(
+      "@/lib/owner/monitoring"
+    );
+    recordMonitoringIncident({
+      kind: "automation_failure",
+      targetId: "automation",
+      message,
+      userId: options.userId ?? null,
+      critical: true,
+      source: "automation_run",
+    });
     if (normalizeExecutionFlow(automation.executionFlow).templateId === "sns_post") {
       recordXPostFailure(message, "automation_sns_post");
     }
