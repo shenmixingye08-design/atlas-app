@@ -66,6 +66,25 @@ export function saveExternalServiceConnection(
   return connection;
 }
 
+/** All persisted connections across users (owner aggregation — no secrets). */
+export function listAllExternalServiceConnections(): Array<{
+  userId: string;
+  connection: ExternalServiceConnection;
+}> {
+  const results: Array<{
+    userId: string;
+    connection: ExternalServiceConnection;
+  }> = [];
+
+  for (const [userId, bucket] of getStore().entries()) {
+    for (const connection of bucket.values()) {
+      results.push({ userId, connection });
+    }
+  }
+
+  return results;
+}
+
 export function resetExternalServiceStore(): void {
   getStore().clear();
 }

@@ -14,6 +14,7 @@ import { AtlasHeaderAuth } from "./atlas-header-auth";
 export type AtlasNavPage =
   | "projects"
   | "workspace"
+  | "commander"
   | "history"
   | "work-memory"
   | "learning"
@@ -37,6 +38,7 @@ type AtlasHeaderProps = {
 const PRIMARY_NAV: { id: AtlasNavPage; href: string; label: string }[] = [
   { id: "projects", href: "/projects", label: ui.nav.home },
   { id: "workspace", href: "/workspace", label: ui.nav.newRequest },
+  { id: "commander", href: "/commander", label: ui.nav.commander },
   { id: "history", href: "/history", label: ui.nav.requestHistory },
   { id: "work-memory", href: "/learned-jobs", label: ui.nav.workMemory },
   { id: "learning", href: "/settings/learning", label: ui.nav.analysis },

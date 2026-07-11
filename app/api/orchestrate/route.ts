@@ -1,12 +1,8 @@
 import OpenAI from "openai";
 import { auth } from "@clerk/nextjs/server";
 
-import { orchestrate } from "@/lib/orchestration/orchestrator";
-import { sanitizeOrchestrationResultForClient } from "@/lib/orchestration/sanitize-response";
+import { runOrchestrationForUser } from "@/lib/orchestration/run-for-user";
 import { formatUserFacingErrorText, toUserFacingError } from "@/lib/orchestration/user-errors";
-import { buildCompanyOrchestrationMetadata } from "@/lib/company-templates/loader";
-import { resolveCompanyTemplateIdFromMetadata } from "@/lib/company-templates/context";
-import { getServerActiveCompanyState } from "@/lib/company-templates/store";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import {
   featureDisabledMessage,
@@ -14,27 +10,6 @@ import {
   resolveOrchestrationFeatureFlag,
 } from "@/lib/feature-flags/guards";
 import { recordOpenAiFailureIfApplicable } from "@/lib/owner/error-monitoring/telemetry";
-import { recordPopularityFromOrchestration } from "@/lib/owner/popularity-ranking/telemetry";
-import { recordAnonymousUserActivity } from "@/lib/owner/anonymous-user-analysis/telemetry";
-import { notifyWorkCompleted, notifyWorkFailed } from "@/lib/notifications/emitters";
-import { recordEmployeeTeamTelemetry } from "@/lib/team-collaboration/telemetry";
-import { buildAtlasMemoryMetadata } from "@/lib/user-memory/metadata";
-import {
-  getMemoriesForAssignment,
-  learnFromOrchestration,
-} from "@/lib/user-memory/service";
-import {
-  buildWorkMemoryMetadata,
-  shouldSkipWorkMemory,
-  summarizeWorkMemoriesForClient,
-} from "@/lib/work-memory/metadata";
-import {
-  getWorkMemoriesForAssignment,
-  isWorkMemoryEnabled,
-  learnFromOrchestrationWorkMemory,
-  markWorkMemoriesUsed,
-} from "@/lib/work-memory/service";
-import { recordLearningEventFromOrchestration } from "@/lib/learning-engine/service";
 
 type RequestBody = {
   assignment?: unknown;
@@ -121,126 +96,23 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const templateId =
-      resolveCompanyTemplateIdFromMetadata(parsed.metadata) ??
-      getServerActiveCompanyState().templateId;
-
     const { userId } = await auth();
-
-    const skipWorkMemory = shouldSkipWorkMemory(parsed.metadata);
-    const workMemoryEnabled = userId != null && isWorkMemoryEnabled(userId);
-    const usedWorkMemories =
-      userId != null && workMemoryEnabled && !skipWorkMemory
-        ? getWorkMemoriesForAssignment(userId, parsed.assignment)
-        : [];
-
-    if (userId && usedWorkMemories.length > 0) {
-      markWorkMemoriesUsed(
-        userId,
-        usedWorkMemories.map((memory) => memory.id),
-      );
-    }
-
-    const memoryMeta =
-      userId != null
-        ? buildAtlasMemoryMetadata(
-            getMemoriesForAssignment(userId, parsed.assignment),
-          )
-        : null;
-
-    const workMemoryMeta =
-      usedWorkMemories.length > 0
-        ? buildWorkMemoryMetadata(usedWorkMemories)
-        : null;
-
-    const result = sanitizeOrchestrationResultForClient(
-      await orchestrate({
-        assignment: parsed.assignment,
-        metadata: {
-          ...buildCompanyOrchestrationMetadata(templateId),
-          ...(parsed.metadata ?? {}),
-          ...(memoryMeta ?? {}),
-          ...(workMemoryMeta ?? {}),
-        },
-      }),
-    );
-
-    const enrichedResult = {
-      ...result,
-      ...(usedWorkMemories.length > 0 && {
-        workMemory: {
-          message: "過去の仕事の進め方を反映しています。",
-          used: summarizeWorkMemoriesForClient(usedWorkMemories),
-        },
-      }),
-    };
-
-    if (result.status === "failed") {
-      notifyWorkFailed(userId, {
-        title: "仕事の実行に失敗しました",
-        message: result.error ?? "処理中にエラーが発生しました。",
-      });
-      return Response.json(enrichedResult);
-    }
-
-    notifyWorkCompleted(userId, {
-      title: "仕事が完了しました",
-      message: "ATLASが依頼した仕事を完了しました。",
-    });
-
-    recordPopularityFromOrchestration({
+    const run = await runOrchestrationForUser({
       assignment: parsed.assignment,
+      userId: userId ?? null,
       metadata: parsed.metadata,
-      deliverableType: result.deliverable?.type,
-      userId,
-    });
-    recordAnonymousUserActivity({
-      userId,
-      assignment: parsed.assignment,
-      metadata: parsed.metadata,
-      deliverableType: result.deliverable?.type,
-      costUsd: result.costDebug?.estimatedCostUsd ?? 0.01,
-      source: "orchestration",
+      notify: true,
+      recordLearning: true,
     });
 
-    if (userId) {
-      learnFromOrchestration({
-        userId,
-        assignment: parsed.assignment,
-        deliverableType: result.deliverable?.type,
-        metadata: parsed.metadata,
-      });
-
-      const candidates = learnFromOrchestrationWorkMemory({
-        userId,
-        assignment: parsed.assignment,
-        deliverableType: result.deliverable?.type,
-        finalResponse: result.finalResponse,
-        metadata: parsed.metadata,
-      });
-
-      recordLearningEventFromOrchestration({
-        userId,
-        assignment: parsed.assignment,
-        deliverableType: result.deliverable?.type,
-        durationMs: result.totalDurationMs,
-        memoriesUsedCount: usedWorkMemories.length,
-        memoryTypesUsed: usedWorkMemories.map((m) => m.type),
-        correctionApplied:
-          typeof parsed.metadata?.correctionBefore === "string" &&
-          typeof parsed.metadata?.correctionAfter === "string",
-        completed: true,
-      });
-
-      recordEmployeeTeamTelemetry(result);
-
-      return Response.json({
-        ...enrichedResult,
-        ...(candidates.length > 0 && { workMemoryCandidates: candidates }),
-      });
-    }
-
-    return Response.json(enrichedResult);
+    return Response.json({
+      ...run.result,
+      ...(run.workMemory && { workMemory: run.workMemory }),
+      ...(run.workMemoryCandidates &&
+        run.workMemoryCandidates.length > 0 && {
+          workMemoryCandidates: run.workMemoryCandidates,
+        }),
+    });
   } catch (error) {
     return handleError(error);
   }

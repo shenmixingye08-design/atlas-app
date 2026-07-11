@@ -107,6 +107,11 @@ export function unlinkLineUser(atlasUserId: string): boolean {
   return true;
 }
 
+/** All linked LINE accounts (owner aggregation). */
+export function listLineUserLinks(): LineUserLink[] {
+  return Array.from(getBucket().byAtlasUserId.values());
+}
+
 export function resetLineLinkStore(): void {
   const bucket = getBucket();
   bucket.byAtlasUserId.clear();

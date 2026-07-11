@@ -29,6 +29,7 @@ export const ATLAS_PROTECTED_PAGE_MATCHERS = [
   "/settings(.*)",
   "/projects(.*)",
   "/workspace(.*)",
+  "/commander(.*)",
   "/automations(.*)",
   "/connections(.*)",
   "/connectors(.*)",

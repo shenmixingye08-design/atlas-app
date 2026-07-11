@@ -15,6 +15,7 @@ type OwnerNavProps = {
     | "cancellationAnalysis"
     | "betaUsers"
     | "systemStatus"
+    | "externalServices"
     | "anonymousUserAnalysis"
     | "billingWebhook"
     | "notifications"
@@ -67,6 +68,11 @@ const LINKS = [
     id: "systemStatus" as const,
     href: "/owner/system-status",
     label: ui.owner.navSystemStatus,
+  },
+  {
+    id: "externalServices" as const,
+    href: "/owner/external-services",
+    label: ui.owner.navExternalServices,
   },
   {
     id: "anonymousUserAnalysis" as const,
