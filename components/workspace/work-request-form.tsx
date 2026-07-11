@@ -52,16 +52,17 @@ const ATTACHMENT_OPTIONS: {
   label: string;
   icon: string;
   accept: string;
+  contentReadable: boolean;
 }[] = [
-  { kind: "photo", label: "写真", icon: "📷", accept: "image/*" },
-  { kind: "pdf", label: "PDF", icon: "📄", accept: "application/pdf,.pdf" },
-  { kind: "video", label: "動画", icon: "🎬", accept: "video/*" },
+  { kind: "photo", label: "画像", icon: "📷", accept: "image/*", contentReadable: false },
+  { kind: "pdf", label: "PDF", icon: "📄", accept: "application/pdf,.pdf", contentReadable: false },
   {
     kind: "word",
     label: "Word",
     icon: "📝",
     accept:
       ".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    contentReadable: false,
   },
   {
     kind: "excel",
@@ -69,6 +70,7 @@ const ATTACHMENT_OPTIONS: {
     icon: "📊",
     accept:
       ".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    contentReadable: false,
   },
   {
     kind: "powerpoint",
@@ -76,8 +78,16 @@ const ATTACHMENT_OPTIONS: {
     icon: "📑",
     accept:
       ".ppt,.pptx,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    contentReadable: false,
   },
-  { kind: "other", label: "その他資料", icon: "📁", accept: "*/*" },
+  { kind: "video", label: "動画", icon: "🎬", accept: "video/*", contentReadable: false },
+  {
+    kind: "other",
+    label: "CSV",
+    icon: "📑",
+    accept: ".csv,text/csv",
+    contentReadable: false,
+  },
 ];
 
 const EXECUTION_OPTIONS: {
@@ -156,6 +166,9 @@ function buildAssignmentText(input: {
         `- ${item.file.name}（${item.kind} / ${formatFileSize(item.file.size)}）`,
       );
     }
+    lines.push(
+      "【添付注意】ファイルの中身はまだ自動取得できません。ファイル名を参考に作業してください。",
+    );
   }
 
   return lines.join("\n");
@@ -251,7 +264,13 @@ export function WorkRequestForm({
           kind: item.kind,
           mimeType: item.file.type || null,
           size: item.file.size,
+          contentAvailable: false,
+          note: "ファイル名のみ受け取りました。中身の自動読取は未対応です。",
         })),
+        attachmentContentNote:
+          attachments.length > 0
+            ? "添付ファイルの中身はまだ取得できません。ファイル名を参考に作業します。"
+            : null,
         skipWorkMemory: false,
       },
     });

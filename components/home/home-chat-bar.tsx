@@ -21,7 +21,7 @@ export function HomeChatBar() {
   const submitToWork = () => {
     const trimmed = input.trim();
     if (!trimmed) return;
-    router.push(`/workspace?assignment=${encodeURIComponent(trimmed)}`);
+    router.push(`/commander?assignment=${encodeURIComponent(trimmed)}`);
   };
 
   return (

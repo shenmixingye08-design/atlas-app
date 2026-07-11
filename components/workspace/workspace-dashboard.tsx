@@ -11,7 +11,12 @@ import {
   buildLoadingPhases,
   createInitialPhases,
 } from "@/lib/workspace/constants";
-import { submitWorkRequest } from "@/lib/workspace/orchestrate-client";
+import {
+  CommanderConfirmationRequiredError,
+  confirmWorkRequest,
+  submitWorkRequest,
+} from "@/lib/workspace/orchestrate-client";
+import type { CommanderRunResult } from "@/lib/commander/types";
 import { isSalesMaterialRequest } from "@/lib/workspace/sales-material/detect";
 import { buildSalesMaterialMetadata } from "@/lib/workspace/sales-material/metadata";
 import type { SalesMaterialSessionConfig } from "@/lib/workspace/sales-material/types";
@@ -70,6 +75,8 @@ export function WorkspaceDashboard() {
   >(null);
   const [workMemoryCandidateCount, setWorkMemoryCandidateCount] = useState(0);
   const [taughtWorkflowHint, setTaughtWorkflowHint] = useState(false);
+  const [pendingCommander, setPendingCommander] =
+    useState<CommanderRunResult | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const { isAvailable } = useFeatureAvailability();
@@ -122,6 +129,7 @@ export function WorkspaceDashboard() {
     setOutlineOnlyText(null);
     setWorkMemoryUsed(null);
     setWorkMemoryCandidateCount(0);
+    setPendingCommander(null);
     setIsLoading(true);
     setLoadingStepIndex(0);
     setLoadingPhases(buildLoadingPhases(0));
@@ -159,6 +167,12 @@ export function WorkspaceDashboard() {
       }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
+      if (err instanceof CommanderConfirmationRequiredError) {
+        setPendingCommander(err.commander);
+        setIsLoading(false);
+        abortRef.current = null;
+        return;
+      }
       const message =
         err instanceof Error
           ? err.message
@@ -174,6 +188,35 @@ export function WorkspaceDashboard() {
     } finally {
       setIsLoading(false);
       abortRef.current = null;
+    }
+  };
+
+  const handleConfirmPending = async () => {
+    if (!pendingCommander?.runId || isLoading) return;
+    const runId = pendingCommander.runId;
+    const requestAssignment =
+      pendingCommander.plan.assignment || assignment.trim();
+    setPendingCommander(null);
+    setIsLoading(true);
+    setError(null);
+    try {
+      const orchestrationResult = await confirmWorkRequest(runId, undefined, {
+        metadata: requestMetadata,
+      });
+      setResult(orchestrationResult);
+      setWorkMemoryUsed(orchestrationResult.workMemory ?? null);
+      setWorkMemoryCandidateCount(
+        orchestrationResult.workMemoryCandidates?.length ?? 0,
+      );
+      projectService.saveFromOrchestration(requestAssignment, orchestrationResult);
+    } catch (err) {
+      if (err instanceof CommanderConfirmationRequiredError) {
+        setPendingCommander(err.commander);
+        return;
+      }
+      setError(err instanceof Error ? err.message : ui.error.generic);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -228,7 +271,11 @@ export function WorkspaceDashboard() {
   };
 
   const showForm =
-    !isLoading && !result && !salesWizardAssignment && !outlineOnlyText;
+    !isLoading &&
+    !result &&
+    !salesWizardAssignment &&
+    !outlineOnlyText &&
+    !pendingCommander;
 
   return (
     <div className="space-y-16">
@@ -248,6 +295,36 @@ export function WorkspaceDashboard() {
           onSubmit={(payload) => void handleSubmit(payload)}
           isLoading={isLoading}
         />
+      )}
+
+      {pendingCommander && !isLoading && (
+        <Card padding="lg" className="space-y-4 border-amber-400/30 bg-amber-500/10">
+          <h2 className="text-lg font-semibold text-foreground">
+            {ui.commander.statusAwaiting}
+          </h2>
+          <p className="text-sm text-[var(--text-secondary)]">
+            {pendingCommander.report.summary}
+          </p>
+          {pendingCommander.confirmationReasons.length > 0 && (
+            <ul className="list-disc space-y-1 pl-5 text-sm text-amber-50/90">
+              {pendingCommander.confirmationReasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          )}
+          <div className="flex flex-wrap gap-3">
+            <Button type="button" onClick={() => void handleConfirmPending()}>
+              {ui.commander.confirmExecute}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setPendingCommander(null)}
+            >
+              {ui.commander.cancelRun}
+            </Button>
+          </div>
+        </Card>
       )}
 
       {salesWizardAssignment && !isLoading && !result && (

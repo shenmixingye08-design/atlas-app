@@ -133,18 +133,24 @@ export function inferRequiredExternalServices(
   }
 
   if (/gmail|メール|mail/i.test(assignment)) {
+    const mustSend = /送信|送って|send\s*(the\s*)?(mail|email)/i.test(assignment);
     add({
       serviceId: "google",
       label: "Gmail / Google",
-      required: true,
-      reason: "依頼文にメール関連の要件があります",
+      required: mustSend,
+      reason: mustSend
+        ? "依頼文にメール送信の要件があります"
+        : "依頼文にメール文面作成の要件があります（送信は含みません）",
     });
   }
   if (/calendar|予定|カレンダー/i.test(assignment)) {
+    const mustMutate =
+      /削除|キャンセル|変更して|追加して|作成して/.test(assignment) &&
+      !/確認|教えて|一覧|見て/.test(assignment);
     add({
       serviceId: "google",
       label: "Google Calendar",
-      required: true,
+      required: mustMutate,
       reason: "依頼文にカレンダー関連の要件があります",
     });
   }
@@ -152,7 +158,7 @@ export function inferRequiredExternalServices(
     add({
       serviceId: "google",
       label: "Google Drive",
-      required: true,
+      required: /保存|アップロード|upload|save/i.test(assignment),
       reason: "依頼文に Drive 保存の要件があります",
     });
   }

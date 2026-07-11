@@ -37,8 +37,7 @@ type AtlasHeaderProps = {
 
 const PRIMARY_NAV: { id: AtlasNavPage; href: string; label: string }[] = [
   { id: "projects", href: "/projects", label: ui.nav.home },
-  { id: "workspace", href: "/workspace", label: ui.nav.newRequest },
-  { id: "commander", href: "/commander", label: ui.nav.commander },
+  { id: "commander", href: "/commander", label: ui.nav.newRequest },
   { id: "history", href: "/history", label: ui.nav.requestHistory },
   { id: "work-memory", href: "/learned-jobs", label: ui.nav.workMemory },
   { id: "learning", href: "/settings/learning", label: ui.nav.analysis },
@@ -54,7 +53,7 @@ const MORE_NAV: { id: AtlasNavPage; href: string; label: string }[] = [
 ];
 
 function resolvePrimaryActive(active?: AtlasNavPage): AtlasNavPage | undefined {
-  if (active === "chat") return "workspace";
+  if (active === "chat" || active === "workspace") return "commander";
   return active;
 }
 

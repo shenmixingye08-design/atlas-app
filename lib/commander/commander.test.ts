@@ -48,6 +48,17 @@ describe("commander confirmation", () => {
     expect(decision.reasons.length).toBeGreaterThan(0);
   });
 
+  it("requires confirmation for habit remember requests", () => {
+    const assignment =
+      "毎週月曜日に先週の仕事をまとめる作業として覚えてください";
+    const plan = buildCommanderPlan({ assignment, userId: null });
+    const decision = evaluateCommanderConfirmation(assignment, plan);
+    expect(decision.required).toBe(true);
+    expect(decision.reasons.some((reason) => reason.includes("習慣"))).toBe(
+      true,
+    );
+  });
+
   it("does not require confirmation for a simple draft request", () => {
     const assignment = "週次レポートの下書きを作って";
     const plan = buildCommanderPlan({ assignment, userId: null });

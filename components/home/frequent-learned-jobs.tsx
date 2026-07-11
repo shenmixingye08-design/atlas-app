@@ -68,7 +68,7 @@ export function FrequentLearnedJobs() {
                   ? "&taught=1"
                   : "";
                 router.push(
-                  `/workspace?assignment=${encodeURIComponent(assignment)}${taught}`,
+                  `/commander?assignment=${encodeURIComponent(assignment)}${taught}`,
                 );
               }}
               className="rounded-full border border-[var(--border-subtle)] bg-[var(--card)] px-4 py-2.5 text-sm font-medium text-foreground shadow-[var(--shadow-sm)] transition-all hover:-translate-y-0.5 hover:border-accent/30 hover:shadow-[var(--shadow-md)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25"

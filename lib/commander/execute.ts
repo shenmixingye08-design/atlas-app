@@ -17,9 +17,15 @@ import {
   notifyWorkFailed,
 } from "@/lib/notifications/emitters";
 import { runLearningAnalysis } from "@/lib/learning-engine/service";
+import { detectMemorySignals } from "@/lib/work-memory/learning";
+import { createWorkMemoryCandidate } from "@/lib/work-memory/service";
 
 import { isRecurringAssignment } from "./classify";
-import { evaluateCommanderConfirmation } from "./confirmation";
+import {
+  evaluateCommanderConfirmation,
+  isRememberHabitAssignment,
+} from "./confirmation";
+import { persistCommanderResultAsProject } from "./durable-store";
 import { buildCommanderPlan, COMMANDER_MAX_RETRIES } from "./plan";
 import {
   createCommanderRun,
@@ -158,6 +164,107 @@ function toRunResult(input: {
   };
 }
 
+async function executeRememberHabitRun(input: {
+  runId: string;
+  userId: string;
+  plan: CommanderPlan;
+  confirmationReasons: string[];
+  externalMessages: string[];
+}): Promise<CommanderRunResult> {
+  updateCommanderRun(input.runId, input.userId, { status: "running" });
+
+  const signals = detectMemorySignals({ assignment: input.plan.assignment });
+  const habitSignals = signals.filter((signal) => signal.type === "habit");
+  const toSave =
+    habitSignals.length > 0
+      ? habitSignals
+      : [
+          {
+            trigger: "explicit_save" as const,
+            type: "habit" as const,
+            title: "定期作業の習慣候補",
+            summary: input.plan.assignment.slice(0, 200),
+            structuredData: {
+              cadenceHint: "weekly",
+              scheduleNotEnabled: true,
+              note: "定期実行は未設定です。任せている仕事で確認してください。",
+            },
+            sourceType: "user_explicit" as const,
+            confidence: 0.85,
+            reason: "ユーザーが習慣として覚えるよう依頼しました",
+          },
+        ];
+
+  const candidates = toSave
+    .map((signal) => createWorkMemoryCandidate(input.userId, signal))
+    .filter((candidate): candidate is NonNullable<typeof candidate> =>
+      Boolean(candidate),
+    );
+
+  const summary =
+    `習慣候補を ${candidates.length} 件作成しました。` +
+    `定期実行はまだ開始していません。覚えた仕事で確認・保存し、必要なら「任せている仕事」でスケジュールを設定してください。`;
+
+  const syntheticResult: OrchestrationResult = {
+    assignment: input.plan.assignment,
+    status: "completed",
+    workflow: hydrateWorkflowState({ status: "completed", approved: true }),
+    ceo: null,
+    plannerPlan: null,
+    plannerTasks: null,
+    tasks: [],
+    executions: [],
+    deliverable: emptyDeliverable("document"),
+    reviewComments: "",
+    approved: true,
+    finalResponse: summary,
+    totalDurationMs: 0,
+    workMemoryCandidates: candidates,
+  };
+
+  updateCommanderRun(input.runId, input.userId, {
+    status: "completed",
+    result: syntheticResult,
+    attempts: [
+      {
+        attempt: 1,
+        status: "completed",
+        error: null,
+        durationMs: 0,
+      },
+    ],
+  });
+
+  await persistCommanderResultAsProject({
+    userId: input.userId,
+    assignment: input.plan.assignment,
+    result: syntheticResult,
+  });
+
+  notifyWorkCompleted(input.userId, {
+    title: "習慣候補を作成しました",
+    message: summary,
+  });
+
+  return toRunResult({
+    runId: input.runId,
+    status: "completed",
+    plan: input.plan,
+    result: syntheticResult,
+    attempts: [
+      {
+        attempt: 1,
+        status: "completed",
+        error: null,
+        durationMs: 0,
+      },
+    ],
+    confirmationReasons: input.confirmationReasons,
+    externalMessages: input.externalMessages,
+    workMemoryCandidates: candidates,
+  });
+}
+
 async function executeStoredRun(input: {
   runId: string;
   userId: string;
@@ -170,6 +277,16 @@ async function executeStoredRun(input: {
 
   const plan = run.plan;
   const external = await runExternalPreflightParallel(plan);
+
+  if (isRememberHabitAssignment(plan.assignment)) {
+    return executeRememberHabitRun({
+      runId: input.runId,
+      userId: input.userId,
+      plan,
+      confirmationReasons: run.confirmationReasons,
+      externalMessages: external.messages,
+    });
+  }
 
   if (!external.ok) {
     const blocked = updateCommanderRun(input.runId, input.userId, {
@@ -351,6 +468,13 @@ async function executeStoredRun(input: {
       title: "AIオーケストレーター完了報告",
       message: `「${plan.classification.summary}」が完了しました。`,
     });
+    if (lastResult) {
+      await persistCommanderResultAsProject({
+        userId: input.userId,
+        assignment: plan.assignment,
+        result: lastResult,
+      });
+    }
     try {
       runLearningAnalysis(input.userId, { periodDays: 30 });
     } catch (error) {
@@ -361,6 +485,13 @@ async function executeStoredRun(input: {
       title: "AIオーケストレーター一部完了",
       message: "一部の成果は保存できます。内容を確認してください。",
     });
+    if (lastResult) {
+      await persistCommanderResultAsProject({
+        userId: input.userId,
+        assignment: plan.assignment,
+        result: lastResult,
+      });
+    }
   } else if (finalStatus === "cancelled") {
     notifyWorkFailed(input.userId, {
       title: "AIオーケストレーターを中止しました",

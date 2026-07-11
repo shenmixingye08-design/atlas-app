@@ -3,12 +3,26 @@ import {
   formatUserFacingErrorText,
   toUserFacingError,
 } from "@/lib/orchestration/user-errors";
-import { buildCompanyOrchestrationMetadata } from "@/lib/company-templates/loader";
-import { getClientActiveCompanyState } from "@/lib/company-templates/store";
+import { submitCommanderRequest } from "@/lib/commander/client";
+import type { CommanderRunResult } from "@/lib/commander/types";
 
-/** Client-side timeout — slightly above server step budget. */
-export const ORCHESTRATE_CLIENT_TIMEOUT_MS = 120_000;
+/** Client-side timeout — covers commander retries. */
+export const ORCHESTRATE_CLIENT_TIMEOUT_MS = 180_000;
 
+export class CommanderConfirmationRequiredError extends Error {
+  readonly commander: CommanderRunResult;
+
+  constructor(commander: CommanderRunResult) {
+    super("CONFIRMATION_REQUIRED");
+    this.name = "CommanderConfirmationRequiredError";
+    this.commander = commander;
+  }
+}
+
+/**
+ * Main work request entry — routes through Commander (plan/confirm/execute)
+ * then returns the underlying OrchestrationResult for existing workspace UI.
+ */
 export async function submitWorkRequest(
   assignment: string,
   signal?: AbortSignal,
@@ -16,52 +30,62 @@ export async function submitWorkRequest(
     metadata?: Readonly<Record<string, unknown>>;
   },
 ): Promise<OrchestrationResult> {
-  const { templateId } = getClientActiveCompanyState();
-  const timeoutController = new AbortController();
-  const timeoutId = window.setTimeout(
-    () => timeoutController.abort(new DOMException("Request timed out", "TimeoutError")),
-    ORCHESTRATE_CLIENT_TIMEOUT_MS,
-  );
+  const commander = await submitCommanderRequest(assignment, {
+    signal,
+    mode: "execute",
+    metadata: options?.metadata,
+  });
 
-  const combinedSignal = signal
-    ? AbortSignal.any([signal, timeoutController.signal])
-    : timeoutController.signal;
-
-  try {
-    const response = await fetch("/api/orchestrate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        assignment,
-        metadata: {
-          ...buildCompanyOrchestrationMetadata(templateId),
-          ...options?.metadata,
-        },
-      }),
-      signal: combinedSignal,
-    });
-
-    const data = (await response.json()) as OrchestrationResult & {
-      error?: string;
-    };
-
-    if (data.status === "failed" || !response.ok) {
-      if ("executions" in data && Array.isArray(data.executions)) {
-        return data as OrchestrationResult;
-      }
-
-      throw new Error(
-        data.error ?? formatUserFacingErrorText(toUserFacingError(data.error)),
-      );
-    }
-
-    return data;
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(formatUserFacingErrorText(toUserFacingError(error)));
-    }
-    throw error;
-  } finally {
-    window.clearTimeout(timeoutId);
+  if (commander.status === "awaiting_confirmation") {
+    throw new CommanderConfirmationRequiredError(commander);
   }
+
+  if (commander.status === "cancelled") {
+    throw new Error("依頼を中止しました。");
+  }
+
+  if (!commander.result) {
+    throw new Error(
+      commander.report.summary ||
+        formatUserFacingErrorText(toUserFacingError("実行結果がありません")),
+    );
+  }
+
+  return {
+    ...commander.result,
+    ...(commander.workMemory && { workMemory: commander.workMemory }),
+    ...(commander.workMemoryCandidates && {
+      workMemoryCandidates: commander.workMemoryCandidates as OrchestrationResult["workMemoryCandidates"],
+    }),
+  };
+}
+
+export async function confirmWorkRequest(
+  runId: string,
+  signal?: AbortSignal,
+  options?: { metadata?: Readonly<Record<string, unknown>> },
+): Promise<OrchestrationResult> {
+  const commander = await submitCommanderRequest("", {
+    signal,
+    mode: "confirm",
+    runId,
+    confirmed: true,
+    metadata: options?.metadata,
+  });
+
+  if (commander.status === "awaiting_confirmation") {
+    throw new CommanderConfirmationRequiredError(commander);
+  }
+
+  if (!commander.result) {
+    throw new Error(commander.report.summary || "確認後の実行に失敗しました。");
+  }
+
+  return {
+    ...commander.result,
+    ...(commander.workMemory && { workMemory: commander.workMemory }),
+    ...(commander.workMemoryCandidates && {
+      workMemoryCandidates: commander.workMemoryCandidates as OrchestrationResult["workMemoryCandidates"],
+    }),
+  };
 }

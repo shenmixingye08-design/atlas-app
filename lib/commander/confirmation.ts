@@ -52,8 +52,13 @@ export function evaluateCommanderConfirmation(
     }),
   };
 
+  // Only treat enabled external publish/send steps as critical when present.
   if (flowHasCriticalExternalActions(withRequiredExternals)) {
-    reasons.push("外部公開・送信・投稿など重要な外部アクションが含まれます");
+    const hasSendIntent =
+      /送信|投稿して|公開して|共有リンク|決済|削除/.test(assignment);
+    if (hasSendIntent) {
+      reasons.push("外部公開・送信・投稿など重要な外部アクションが含まれます");
+    }
   }
 
   for (const pattern of CRITICAL_ASSIGNMENT_PATTERNS) {
@@ -77,6 +82,12 @@ export function evaluateCommanderConfirmation(
     );
   }
 
+  if (/覚えて|記憶して|習慣として/.test(assignment)) {
+    reasons.push(
+      "習慣・記憶として保存するには確認が必要です（定期実行は自動では開始しません）",
+    );
+  }
+
   const level = clampConfirmationLevel("full_auto", withRequiredExternals);
   const required = reasons.length > 0 || level === "approve_then_run";
 
@@ -85,4 +96,13 @@ export function evaluateCommanderConfirmation(
     reasons: [...new Set(reasons)],
     confirmationLevel: required ? "approve_then_run" : "full_auto",
   };
+}
+
+/** True when the user mainly asks ATLAS to remember a recurring habit. */
+export function isRememberHabitAssignment(assignment: string): boolean {
+  return (
+    /覚えて|記憶して|習慣として/.test(assignment) &&
+    (/毎週|毎日|毎月|定期|習慣|作業として/.test(assignment) ||
+      /まとめる|振り返|レポート/.test(assignment))
+  );
 }

@@ -9,7 +9,7 @@ import type {
   CommanderRunRecord,
   CommanderRunStatus,
 } from "./types";
-import type { OrchestrationResult } from "@/lib/orchestration/types";
+import { persistCommanderRunToClerk } from "./durable-store";
 
 const DATA_DIR = path.join(process.cwd(), ".data", "commander");
 const RUNS_FILE = path.join(DATA_DIR, "runs.json");
@@ -49,10 +49,10 @@ function loadFromDisk(): RunBucket {
   }
 }
 
-function persistToDisk(bucket: RunBucket): void {
+/** Local/dev cache only — production durability is Clerk (+ optional Supabase). */
+function persistLocalCache(bucket: RunBucket): void {
   try {
     ensureDataDir();
-    // Keep recent runs only to bound file size.
     const sorted = [...bucket.entries()].sort(
       (a, b) =>
         new Date(b[1].updatedAt).getTime() - new Date(a[1].updatedAt).getTime(),
@@ -63,12 +63,16 @@ function persistToDisk(bucket: RunBucket): void {
       runs: Object.fromEntries(trimmed),
     };
     writeFileSync(RUNS_FILE, JSON.stringify(payload), "utf8");
-    // Reflect trim in memory too.
     bucket.clear();
     for (const [id, run] of trimmed) bucket.set(id, run);
-  } catch (error) {
-    console.error("[commander] Failed to persist runs:", error);
+  } catch {
+    // Non-fatal on serverless read-only filesystems.
   }
+}
+
+function persistDurable(run: CommanderRunRecord): void {
+  persistLocalCache(getBucket());
+  void persistCommanderRunToClerk(run);
 }
 
 export function createCommanderRun(input: {
@@ -94,9 +98,8 @@ export function createCommanderRun(input: {
     createdAt: now,
     updatedAt: now,
   };
-  const bucket = getBucket();
-  bucket.set(record.id, record);
-  persistToDisk(bucket);
+  getBucket().set(record.id, record);
+  persistDurable(record);
   return record;
 }
 
@@ -147,9 +150,8 @@ export function updateCommanderRun(
     ...patch,
     updatedAt: new Date().toISOString(),
   };
-  const bucket = getBucket();
-  bucket.set(runId, updated);
-  persistToDisk(bucket);
+  getBucket().set(runId, updated);
+  persistDurable(updated);
   return updated;
 }
 
