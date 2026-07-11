@@ -33,14 +33,24 @@ export async function connectExternalService(
   const response = await fetch(`/api/external-services/${serviceId}/connect`, {
     method: "POST",
   });
+  const body = (await response.json().catch(() => null)) as
+    | (ExternalServiceConnectResult & {
+        error?: string;
+        message?: string;
+        requiredPlanName?: string;
+      })
+    | null;
+
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(body?.error ?? "Failed to connect external service");
+    const { formatPlanAccessErrorMessage, isPlanAccessErrorPayload } =
+      await import("@/lib/billing/client-errors");
+    if (isPlanAccessErrorPayload(body)) {
+      throw new Error(formatPlanAccessErrorMessage(body));
+    }
+    throw new Error(body?.error ?? body?.message ?? "Failed to connect external service");
   }
 
-  const result = (await response.json()) as ExternalServiceConnectResult;
+  const result = body as ExternalServiceConnectResult;
 
   if (result.authorizeUrl && typeof window !== "undefined") {
     window.location.assign(result.authorizeUrl);

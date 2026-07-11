@@ -5,6 +5,10 @@ import {
 } from "@/lib/orchestration/user-errors";
 import { buildCompanyOrchestrationMetadata } from "@/lib/company-templates/loader";
 import { getClientActiveCompanyState } from "@/lib/company-templates/store";
+import {
+  formatPlanAccessErrorMessage,
+  isPlanAccessErrorPayload,
+} from "@/lib/billing/client-errors";
 
 export const COMMANDER_CLIENT_TIMEOUT_MS = 180_000;
 
@@ -49,17 +53,20 @@ export async function submitCommanderRequest(
       signal: combinedSignal,
     });
 
-    const data = (await response.json()) as CommanderRunResult & {
-      error?: string;
-    };
+    const data = (await response.json()) as unknown;
 
     if (!response.ok) {
+      if (isPlanAccessErrorPayload(data)) {
+        throw new Error(formatPlanAccessErrorMessage(data));
+      }
+      const payload = data as { error?: string };
       throw new Error(
-        data.error ?? formatUserFacingErrorText(toUserFacingError(data.error)),
+        payload.error ??
+          formatUserFacingErrorText(toUserFacingError(payload.error)),
       );
     }
 
-    return data;
+    return data as CommanderRunResult;
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(formatUserFacingErrorText(toUserFacingError(error)));

@@ -53,6 +53,16 @@ export async function POST(request: Request): Promise<Response> {
   const mode = parsePostMode(body.mode) ?? "immediate";
   const context = await resolveFeatureAccessContext();
 
+  const { requireBillingFeature, requireBillingSnsPost } = await import(
+    "@/lib/billing/access"
+  );
+  const snsFeature =
+    mode === "immediate" ? ("sns_assist" as const) : ("sns_auto_post" as const);
+  const featureDenied = await requireBillingFeature(userId, snsFeature);
+  if (featureDenied) return featureDenied;
+  const snsLimitDenied = await requireBillingSnsPost(userId);
+  if (snsLimitDenied) return snsLimitDenied;
+
   const automationId =
     typeof body.automationId === "string" && body.automationId.trim()
       ? body.automationId.trim()

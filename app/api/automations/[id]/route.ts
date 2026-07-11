@@ -117,6 +117,12 @@ export async function PATCH(
   request: Request,
   context: RouteContext,
 ): Promise<Response> {
+  const { auth } = await import("@clerk/nextjs/server");
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await context.params;
 
   let body: unknown;
@@ -135,6 +141,29 @@ export async function PATCH(
   const featureError = validateAutomationFeatureAccess(parsed, accessContext);
   if (featureError) {
     return Response.json({ error: featureError }, { status: 403 });
+  }
+
+  const { requireBillingFeature } = await import("@/lib/billing/access");
+  if (parsed.executionMode === "high_quality") {
+    const hqDenied = await requireBillingFeature(userId, "high_quality_mode");
+    if (hqDenied) return hqDenied;
+  }
+  if (parsed.executionMode === "eco") {
+    const ecoDenied = await requireBillingFeature(userId, "eco_mode");
+    if (ecoDenied) return ecoDenied;
+  }
+  const templateId = parsed.executionFlow?.templateId;
+  if (templateId === "sns_post") {
+    const snsDenied = await requireBillingFeature(userId, "sns_auto_post");
+    if (snsDenied) return snsDenied;
+  }
+  if (templateId === "blog") {
+    const blogDenied = await requireBillingFeature(userId, "blog_creation");
+    if (blogDenied) return blogDenied;
+  }
+  if (templateId === "video") {
+    const videoDenied = await requireBillingFeature(userId, "video_generation");
+    if (videoDenied) return videoDenied;
   }
 
   const updated = await automationService.update(id, parsed);

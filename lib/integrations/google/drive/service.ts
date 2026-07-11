@@ -65,6 +65,18 @@ async function resolveGoogleDriveAccess(input: {
     };
   }
 
+  const { getBillingFeatureDenial } = await import("@/lib/billing/access");
+  const denial = await getBillingFeatureDenial(
+    input.userId,
+    "google_integration",
+  );
+  if (denial) {
+    return {
+      status: "plan_required",
+      message: denial.reason,
+    };
+  }
+
   const connection = getExternalServiceConnection(input.userId, "google");
   if (connection.status !== "connected") {
     return {

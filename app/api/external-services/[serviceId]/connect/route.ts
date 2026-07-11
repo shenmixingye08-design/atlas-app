@@ -43,6 +43,32 @@ export async function POST(
   try {
     await ensureExternalAuthHydrated(userId);
     const accessContext = await resolveFeatureAccessContext();
+
+    const {
+      requireBillingExternalIntegration,
+      requireBillingFeature,
+    } = await import("@/lib/billing/access");
+    const { listExternalServiceConnections } = await import(
+      "@/lib/integrations/external-services/store"
+    );
+    const connectedCount = listExternalServiceConnections(userId).filter(
+      (row) => row.status === "connected",
+    ).length;
+
+    if (serviceId === "google") {
+      const googleDenied = await requireBillingFeature(
+        userId,
+        "google_integration",
+      );
+      if (googleDenied) return googleDenied;
+    }
+
+    const limitDenied = await requireBillingExternalIntegration(
+      userId,
+      connectedCount,
+    );
+    if (limitDenied) return limitDenied;
+
     const origin = resolveOrigin(request);
     const result = await externalServiceManager.connect(
       userId,

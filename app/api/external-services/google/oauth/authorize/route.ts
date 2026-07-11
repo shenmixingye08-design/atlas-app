@@ -44,6 +44,37 @@ export async function GET(request: Request): Promise<Response> {
       return redirectToSettings(origin, { google_error: "1" });
     }
 
+    const { requireBillingFeature, requireBillingExternalIntegration } =
+      await import("@/lib/billing/access");
+    const { listExternalServiceConnections } = await import(
+      "@/lib/integrations/external-services/store"
+    );
+    const googleDenied = await requireBillingFeature(
+      userId,
+      "google_integration",
+    );
+    if (googleDenied) {
+      return redirectToSettings(origin, {
+        google_error: "1",
+        plan: "standard",
+      });
+    }
+    const connectedCount = listExternalServiceConnections(userId).filter(
+      (row) => row.status === "connected",
+    ).length;
+    const googleConnected = listExternalServiceConnections(userId).some(
+      (row) => row.serviceId === "google" && row.status === "connected",
+    );
+    if (!googleConnected) {
+      const limitDenied = await requireBillingExternalIntegration(
+        userId,
+        connectedCount,
+      );
+      if (limitDenied) {
+        return redirectToSettings(origin, { google_error: "1", plan: "limit" });
+      }
+    }
+
     const authorizeUrl = buildGoogleAccountAuthorizeUrl(origin, userId);
     return Response.redirect(authorizeUrl, 302);
   } catch (error) {

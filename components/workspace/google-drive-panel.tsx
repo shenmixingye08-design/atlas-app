@@ -486,6 +486,16 @@ export function GoogleDrivePanel({ embedded = false }: { embedded?: boolean }) {
         <Card padding="sm">
           <p className="text-sm text-[var(--foreground-muted)]">{result.message}</p>
         </Card>
+      ) : result?.status === "plan_required" ? (
+        <Card padding="md" className="space-y-3 text-center">
+          <p className="text-body text-foreground">{result.message}</p>
+          <Link
+            href="/settings/billing"
+            className="inline-block text-sm font-medium text-accent hover:underline"
+          >
+            プランを確認する
+          </Link>
+        </Card>
       ) : result?.status === "google_not_connected" ? (
         <Card padding="md" className="text-center">
           <div className="mx-auto max-w-md space-y-4">

@@ -56,6 +56,7 @@ export type CalendarFetchStatus =
   | "ready"
   | "google_not_connected"
   | "feature_disabled"
+  | "plan_required"
   | "unauthorized";
 
 export type CalendarEventsResult =

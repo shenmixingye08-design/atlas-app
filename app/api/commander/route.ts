@@ -100,6 +100,13 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     if (parsed.mode === "execute" || parsed.mode === "confirm") {
+      const { requireBillingForAssignment } = await import("@/lib/billing/access");
+      const billingDenied = await requireBillingForAssignment(userId, {
+        assignment: parsed.assignment || "commander",
+        metadata: parsed.metadata,
+      });
+      if (billingDenied) return billingDenied;
+
       const limited = enforceAiRateLimit(userId);
       if (limited) return limited;
     }

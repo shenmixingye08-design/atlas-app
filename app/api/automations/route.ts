@@ -2,6 +2,7 @@ import type { CreateAutomationInput } from "@/lib/automations/types";
 import { automationService } from "@/lib/automations/automation-service";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { validateAutomationFeatureAccess } from "@/lib/feature-flags/guards";
+import { auth } from "@clerk/nextjs/server";
 
 function parseCreateBody(body: unknown): CreateAutomationInput | { error: string } {
   if (typeof body !== "object" || body === null) {
@@ -68,6 +69,11 @@ export async function GET(): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   let body: unknown;
 
   try {
@@ -85,6 +91,38 @@ export async function POST(request: Request): Promise<Response> {
   const featureError = validateAutomationFeatureAccess(parsed, accessContext);
   if (featureError) {
     return Response.json({ error: featureError }, { status: 403 });
+  }
+
+  const {
+    requireBillingAutomationTask,
+    requireBillingFeature,
+  } = await import("@/lib/billing/access");
+
+  const existing = await automationService.list();
+  const taskDenied = await requireBillingAutomationTask(userId, existing.length);
+  if (taskDenied) return taskDenied;
+
+  if (parsed.executionMode === "high_quality") {
+    const hqDenied = await requireBillingFeature(userId, "high_quality_mode");
+    if (hqDenied) return hqDenied;
+  }
+  if (parsed.executionMode === "eco") {
+    const ecoDenied = await requireBillingFeature(userId, "eco_mode");
+    if (ecoDenied) return ecoDenied;
+  }
+
+  const templateId = parsed.executionFlow?.templateId;
+  if (templateId === "sns_post") {
+    const snsDenied = await requireBillingFeature(userId, "sns_auto_post");
+    if (snsDenied) return snsDenied;
+  }
+  if (templateId === "blog") {
+    const blogDenied = await requireBillingFeature(userId, "blog_creation");
+    if (blogDenied) return blogDenied;
+  }
+  if (templateId === "video") {
+    const videoDenied = await requireBillingFeature(userId, "video_generation");
+    if (videoDenied) return videoDenied;
   }
 
   const automation = await automationService.create(parsed);

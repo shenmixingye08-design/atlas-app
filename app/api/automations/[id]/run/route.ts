@@ -37,6 +37,20 @@ export async function POST(
 
   const origin = resolveOrigin(request);
   const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { requireBillingAiUsage, requireBillingFeature } = await import(
+    "@/lib/billing/access"
+  );
+  if (automation.executionMode === "high_quality") {
+    const hqDenied = await requireBillingFeature(userId, "high_quality_mode");
+    if (hqDenied) return hqDenied;
+  }
+  const usageDenied = await requireBillingAiUsage(userId);
+  if (usageDenied) return usageDenied;
+
   const result = await automationService.runNow(id, {
     requestOrigin: origin,
     userId,

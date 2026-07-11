@@ -15,6 +15,10 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  const { requireBillingFeature } = await import("@/lib/billing/access");
+  const denied = await requireBillingFeature(userId, "sns_assist");
+  if (denied) return denied;
+
   let body: RequestBody;
   try {
     body = (await request.json()) as RequestBody;

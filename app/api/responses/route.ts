@@ -151,6 +151,14 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const { requireBillingFeature, requireBillingAiUsage } = await import(
+    "@/lib/billing/access"
+  );
+  const featureDenied = await requireBillingFeature(userId, "content_writing");
+  if (featureDenied) return featureDenied;
+  const usageDenied = await requireBillingAiUsage(userId);
+  if (usageDenied) return usageDenied;
+
   const limited = enforceAiRateLimit(userId);
   if (limited) return limited;
 

@@ -50,6 +50,14 @@ function resolveProjectName(body: RequestBody): string {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const { auth } = await import("@clerk/nextjs/server");
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { requireBillingForAssignment } = await import("@/lib/billing/access");
+
   let body: RequestBody;
 
   try {
@@ -64,6 +72,11 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400 },
     );
   }
+
+  const billingDenied = await requireBillingForAssignment(userId, {
+    assignment: body.assignment.trim(),
+  });
+  if (billingDenied) return billingDenied;
 
   if (
     typeof body.finalDeliverable !== "string" ||
