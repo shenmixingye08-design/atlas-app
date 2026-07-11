@@ -7,7 +7,24 @@ function getGlobalScope() {
   return globalThis as typeof globalThis & {
     __atlasLearningEventStore?: Map<string, EventBucket>;
     __atlasLearningReportStore?: Map<string, ReportBucket>;
+    __atlasLearningHydratedUsers?: Set<string>;
   };
+}
+
+function getHydratedUsers(): Set<string> {
+  const scope = getGlobalScope();
+  if (!scope.__atlasLearningHydratedUsers) {
+    scope.__atlasLearningHydratedUsers = new Set();
+  }
+  return scope.__atlasLearningHydratedUsers;
+}
+
+export function isLearningHydrated(userId: string): boolean {
+  return getHydratedUsers().has(userId);
+}
+
+export function markLearningHydrated(userId: string): void {
+  getHydratedUsers().add(userId);
 }
 
 function getEventBucket(userId: string): EventBucket {
@@ -92,7 +109,20 @@ export function findLatestLearningReport(
   );
 }
 
+export function replaceLearningState(
+  userId: string,
+  state: { events: LearningEvent[]; reports: LearningReport[] },
+): void {
+  const events = getEventBucket(userId);
+  const reports = getReportBucket(userId);
+  events.length = 0;
+  reports.length = 0;
+  events.push(...state.events.slice(0, 500));
+  reports.push(...state.reports.slice(0, 20));
+}
+
 export function resetLearningStores(userId: string): void {
   getEventBucket(userId).length = 0;
   getReportBucket(userId).length = 0;
+  getHydratedUsers().delete(userId);
 }

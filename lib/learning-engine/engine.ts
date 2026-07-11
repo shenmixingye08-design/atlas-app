@@ -13,6 +13,7 @@ import {
   hasSufficientLearningData,
 } from "./analytics";
 import { inferLearningDomain } from "./domains";
+import { schedulePersistLearning } from "./durable";
 import {
   appendLearningEvent,
   appendLearningReport,
@@ -99,6 +100,7 @@ export function runLearningAnalysis(
   };
 
   appendLearningReport(userId, report);
+  schedulePersistLearning(userId);
   return report;
 }
 
@@ -146,7 +148,9 @@ export function recordLearningEventFromOrchestration(input: {
     createdAt: new Date().toISOString(),
   };
 
-  return appendLearningEvent(input.userId, event);
+  const saved = appendLearningEvent(input.userId, event);
+  schedulePersistLearning(input.userId);
+  return saved;
 }
 
 export { INSUFFICIENT_MESSAGE };

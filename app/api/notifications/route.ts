@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { ensureNotificationsHydrated } from "@/lib/notifications/durable";
 import {
   countUnreadUserNotifications,
   listUserNotifications,
@@ -12,6 +13,7 @@ export async function GET(): Promise<Response> {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  await ensureNotificationsHydrated(userId);
   await syncRecommendationNotifications(userId);
 
   const notifications = listUserNotifications(userId);

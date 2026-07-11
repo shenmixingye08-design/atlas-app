@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { ensureLearningHydrated } from "@/lib/learning-engine/durable";
 import {
   getLatestLearningReport,
   runLearningAnalysis,
@@ -23,6 +24,8 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  await ensureLearningHydrated(userId);
+
   const url = new URL(request.url);
   const periodDays = parsePeriod(url.searchParams.get("periodDays"));
   if (!periodDays) {
@@ -38,6 +41,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  await ensureLearningHydrated(userId);
 
   let body: { periodDays?: unknown };
   try {

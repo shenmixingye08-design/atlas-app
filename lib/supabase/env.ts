@@ -44,10 +44,19 @@ export function isSupabaseConfigured(scope: "server" | "browser" = "browser"): b
     : getBrowserSupabaseEnv() !== null;
 }
 
-/** Project persistence backend selector (defaults to localStorage). */
+/** Project persistence backend selector. */
 export type ProjectStorageBackend = "localStorage" | "supabase";
 
+/**
+ * Resolve the active project repository from env or explicit options.
+ *
+ * - `NEXT_PUBLIC_ATLAS_PROJECT_STORAGE=localStorage` → localStorage only
+ * - `supabase` → Supabase primary
+ * - unset → Supabase when configured, otherwise localStorage (cache/fallback)
+ */
 export function resolveProjectStorageBackend(): ProjectStorageBackend {
   const value = readEnv("NEXT_PUBLIC_ATLAS_PROJECT_STORAGE");
-  return value === "supabase" ? "supabase" : "localStorage";
+  if (value === "localStorage") return "localStorage";
+  if (value === "supabase") return "supabase";
+  return isSupabaseConfigured("browser") ? "supabase" : "localStorage";
 }

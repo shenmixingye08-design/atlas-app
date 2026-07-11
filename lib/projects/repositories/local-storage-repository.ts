@@ -21,7 +21,7 @@ function persistIfChanged(
 
 /**
  * Browser localStorage implementation of {@link ProjectRepository}.
- * Swap for a Supabase repository without changing UI or service callers.
+ * Used as primary only when Supabase is not configured; otherwise cache-only.
  */
 export class LocalStorageProjectRepository implements ProjectRepository {
   list(): Project[] {

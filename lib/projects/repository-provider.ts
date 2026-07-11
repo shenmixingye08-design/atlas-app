@@ -21,8 +21,8 @@ export type ProjectRepositoryFactoryOptions = {
 /**
  * Resolve the active project repository from env or explicit options.
  *
- * `NEXT_PUBLIC_ATLAS_PROJECT_STORAGE=supabase` selects Supabase;
- * anything else defaults to localStorage (current production behavior).
+ * Supabase is preferred when configured (see `resolveProjectStorageBackend`).
+ * localStorage remains available as cache/fallback.
  */
 export function createProjectRepository(
   options: ProjectRepositoryFactoryOptions = {},

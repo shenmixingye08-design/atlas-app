@@ -20,7 +20,24 @@ function getGlobalScope() {
     __atlasWorkMemoryCandidatesStore?: Map<string, CandidateBucket>;
     __atlasWorkMemorySettingsStore?: Map<string, WorkMemorySettings>;
     __atlasWorkMemoryRequestHistoryStore?: Map<string, RequestHistoryEntry[]>;
+    __atlasWorkMemoryHydratedUsers?: Set<string>;
   };
+}
+
+function getHydratedUsers(): Set<string> {
+  const scope = getGlobalScope();
+  if (!scope.__atlasWorkMemoryHydratedUsers) {
+    scope.__atlasWorkMemoryHydratedUsers = new Set();
+  }
+  return scope.__atlasWorkMemoryHydratedUsers;
+}
+
+export function isWorkMemoryHydrated(userId: string): boolean {
+  return getHydratedUsers().has(userId);
+}
+
+export function markWorkMemoryHydrated(userId: string): void {
+  getHydratedUsers().add(userId);
 }
 
 function getMemoryBucket(userId: string): MemoryBucket {
@@ -220,4 +237,35 @@ export function getRequestFingerprintCount(
     getRequestHistoryBucket(userId).find((entry) => entry.fingerprint === fingerprint)
       ?.count ?? 0
   );
+}
+
+export function getRequestHistorySnapshot(userId: string): RequestHistoryEntry[] {
+  return [...getRequestHistoryBucket(userId)];
+}
+
+export function replaceRequestHistory(
+  userId: string,
+  entries: RequestHistoryEntry[],
+): void {
+  const bucket = getRequestHistoryBucket(userId);
+  bucket.length = 0;
+  bucket.push(...entries.slice(0, 100));
+}
+
+export function replaceStoredWorkMemories(
+  userId: string,
+  memories: WorkMemoryRecord[],
+): void {
+  const bucket = getMemoryBucket(userId);
+  bucket.length = 0;
+  bucket.push(...memories);
+}
+
+export function replaceStoredCandidates(
+  userId: string,
+  candidates: WorkMemoryCandidate[],
+): void {
+  const bucket = getCandidateBucket(userId);
+  bucket.length = 0;
+  bucket.push(...candidates);
 }

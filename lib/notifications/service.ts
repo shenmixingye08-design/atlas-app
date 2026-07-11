@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 
 import { dispatchLineNotification } from "@/lib/integrations/line/service";
 
+import { schedulePersistNotifications } from "./durable";
 import {
   appendNotification,
   deleteNotification,
@@ -91,7 +92,7 @@ export function createNotification(
     }
   }
 
-  return appendNotification({
+  const record = appendNotification({
     notificationId: `ntf_${randomUUID()}`,
     userId: input.userId,
     audience: input.audience,
@@ -105,6 +106,8 @@ export function createNotification(
     actionUrl: input.actionUrl ?? null,
     lineEvent,
   });
+  if (input.userId) schedulePersistNotifications(input.userId);
+  return record;
 }
 
 export function listUserNotifications(userId: string): NotificationRecord[] {
@@ -125,7 +128,9 @@ export function markNotificationRead(
 ): NotificationRecord | null {
   const record = findNotification(notificationId);
   if (!record || record.userId !== userId) return null;
-  return updateNotification(notificationId, { isRead: true });
+  const updated = updateNotification(notificationId, { isRead: true });
+  schedulePersistNotifications(userId);
+  return updated;
 }
 
 export function markAllUserNotificationsRead(userId: string): number {
@@ -136,6 +141,7 @@ export function markAllUserNotificationsRead(userId: string): number {
       count += 1;
     }
   }
+  if (count > 0) schedulePersistNotifications(userId);
   return count;
 }
 
@@ -145,7 +151,9 @@ export function removeUserNotification(
 ): boolean {
   const record = findNotification(notificationId);
   if (!record || record.userId !== userId) return false;
-  return deleteNotification(notificationId);
+  const removed = deleteNotification(notificationId);
+  if (removed) schedulePersistNotifications(userId);
+  return removed;
 }
 
 export function getUserNotificationPreferences(
@@ -172,11 +180,18 @@ export function updateUserNotificationPreferences(
       ...patch.lineEvents,
     },
   };
-  return saveStoredPreferences(userId, next);
+  const saved = saveStoredPreferences(userId, next);
+  schedulePersistNotifications(userId);
+  return saved;
 }
 
 export function resetUserNotificationPreferences(
   userId: string,
 ): NotificationPreferences {
-  return saveStoredPreferences(userId, DEFAULT_NOTIFICATION_PREFERENCES);
+  const saved = saveStoredPreferences(
+    userId,
+    DEFAULT_NOTIFICATION_PREFERENCES,
+  );
+  schedulePersistNotifications(userId);
+  return saved;
 }

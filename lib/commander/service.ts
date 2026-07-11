@@ -1,5 +1,7 @@
 import "server-only";
 
+import { ensureWorkMemoryHydrated } from "@/lib/work-memory/durable";
+
 import {
   cancelCommanderRun,
   confirmCommanderRun,
@@ -7,7 +9,11 @@ import {
   planCommander,
 } from "./execute";
 import { buildCommanderPlan } from "./plan";
-import { getCommanderRun, listCommanderRunsForUser } from "./run-store";
+import {
+  ensureCommanderRunsHydrated,
+  getCommanderRun,
+  listCommanderRunsForUser,
+} from "./run-store";
 import type { CommanderRequest, CommanderRunResult } from "./types";
 
 export function parseCommanderRequest(body: unknown):
@@ -84,6 +90,9 @@ export async function runCommanderRequest(input: {
   if (!input.userId) {
     throw new Error("Unauthorized");
   }
+
+  await ensureCommanderRunsHydrated(input.userId);
+  await ensureWorkMemoryHydrated(input.userId);
 
   if (input.request.mode === "plan") {
     return planCommander({

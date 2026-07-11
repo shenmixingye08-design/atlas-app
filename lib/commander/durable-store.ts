@@ -1,23 +1,27 @@
 import "server-only";
 
-import { clerkClient } from "@clerk/nextjs/server";
-
+import {
+  loadDurableDomain,
+  persistDurableDomain,
+} from "@/lib/persistence/durable-domain";
+import { loadClerkPrivateMetadataKey } from "@/lib/persistence/clerk-private-metadata";
 import { createProjectFromOrchestration } from "@/lib/projects/domain";
 import { mapProjectToRow, PROJECTS_TABLE } from "@/lib/projects/repositories/project-row";
 import { createClientIfConfigured } from "@/lib/supabase/client";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 
-import type { CommanderRunRecord } from "./types";
+import type { CommanderPlan, CommanderRunRecord } from "./types";
 
-const CLERK_COMMANDER_KEY = "atlasCommanderRuns";
-const MAX_CLERK_RUNS = 40;
+export const COMMANDER_DOMAIN_KEY = "atlasCommanderRuns";
+const MAX_DURABLE_RUNS = 40;
 
-/** Compact durable snapshot — fits Clerk privateMetadata limits. */
+/** Durable snapshot — includes plan so confirm/resume survives cold starts. */
 export type DurableCommanderRunSnapshot = {
   id: string;
   userId: string;
   assignment: string;
   status: CommanderRunRecord["status"];
+  plan?: CommanderPlan;
   planSummary: string;
   templateLabel: string;
   confirmationReasons: string[];
@@ -28,11 +32,42 @@ export type DurableCommanderRunSnapshot = {
   workMemoryTitles: string[];
   workflowRunId: string | null;
   projectId: string | null;
+  cancelRequested?: boolean;
   createdAt: string;
   updatedAt: string;
   startedAt: string;
   endedAt: string | null;
 };
+
+function stubPlan(snapshot: DurableCommanderRunSnapshot): CommanderPlan {
+  return {
+    assignment: snapshot.assignment,
+    classification: {
+      deliverableType: "document",
+      templateId: "generic",
+      summary: snapshot.planSummary || snapshot.assignment.slice(0, 120),
+      keywords: [],
+    },
+    requiredAis: [],
+    requiredExternalServices: [],
+    requiredTemplate: {
+      templateId: "generic",
+      label: snapshot.templateLabel || "汎用",
+      stepIds: [],
+      stepLabels: [],
+    },
+    requiredMemory: {
+      workMemoryIds: snapshot.workMemoryIds ?? [],
+      workMemoryTitles: snapshot.workMemoryTitles ?? [],
+      workMemoryTypes: [],
+      learningKeys: [],
+      summary: "",
+    },
+    executionOrder: [],
+    maxRetries: 2,
+    generatedAt: snapshot.createdAt,
+  };
+}
 
 function toSnapshot(run: CommanderRunRecord): DurableCommanderRunSnapshot {
   return {
@@ -40,8 +75,9 @@ function toSnapshot(run: CommanderRunRecord): DurableCommanderRunSnapshot {
     userId: run.userId,
     assignment: run.assignment.slice(0, 2000),
     status: run.status,
-    planSummary: run.plan.classification.summary,
-    templateLabel: run.plan.requiredTemplate.label,
+    plan: run.plan,
+    planSummary: run.plan.classification.summary.slice(0, 400),
+    templateLabel: run.plan.requiredTemplate.label.slice(0, 120),
     confirmationReasons: run.confirmationReasons.slice(0, 8),
     attemptCount: run.attempts.length,
     error: run.error ? run.error.slice(0, 500) : null,
@@ -52,6 +88,7 @@ function toSnapshot(run: CommanderRunRecord): DurableCommanderRunSnapshot {
     workMemoryTitles: run.plan.requiredMemory.workMemoryTitles.slice(0, 20),
     workflowRunId: run.workflowRunId,
     projectId: null,
+    cancelRequested: run.cancelRequested,
     createdAt: run.createdAt,
     updatedAt: run.updatedAt,
     startedAt: run.createdAt,
@@ -76,51 +113,112 @@ function isSnapshot(value: unknown): value is DurableCommanderRunSnapshot {
   );
 }
 
-/** Persist compact run list to Clerk (survives Vercel cold starts). */
+/** Reconstruct an in-memory run from a durable snapshot (result body omitted). */
+export function snapshotToCommanderRun(
+  snapshot: DurableCommanderRunSnapshot,
+): CommanderRunRecord {
+  return {
+    id: snapshot.id,
+    userId: snapshot.userId,
+    assignment: snapshot.assignment,
+    status: snapshot.status,
+    plan: snapshot.plan ?? stubPlan(snapshot),
+    confirmationReasons: snapshot.confirmationReasons ?? [],
+    attempts: Array.from({ length: snapshot.attemptCount || 0 }, (_, index) => ({
+      attempt: index + 1,
+      status:
+        snapshot.status === "failed"
+          ? "failed"
+          : snapshot.status === "partial"
+            ? "partial"
+            : snapshot.status === "cancelled"
+              ? "cancelled"
+              : "completed",
+      error: index === (snapshot.attemptCount || 1) - 1 ? snapshot.error : null,
+      durationMs: 0,
+    })),
+    result: null,
+    error: snapshot.error,
+    workflowRunId: snapshot.workflowRunId,
+    cancelRequested: Boolean(snapshot.cancelRequested),
+    createdAt: snapshot.createdAt,
+    updatedAt: snapshot.updatedAt,
+  };
+}
+
+function compactRuns(runs: DurableCommanderRunSnapshot[]): DurableCommanderRunSnapshot[] {
+  return runs.slice(0, 20).map((run) => ({
+    ...run,
+    assignment: run.assignment.slice(0, 800),
+    planSummary: run.planSummary.slice(0, 200),
+    resultPreview: run.resultPreview ? run.resultPreview.slice(0, 200) : null,
+    plan: run.plan
+      ? {
+          ...run.plan,
+          assignment: run.plan.assignment.slice(0, 800),
+          requiredAis: run.plan.requiredAis.slice(0, 12),
+          requiredExternalServices: run.plan.requiredExternalServices.slice(0, 8),
+          executionOrder: run.plan.executionOrder.slice(0, 16),
+        }
+      : undefined,
+  }));
+}
+
+type DurableCommanderState = {
+  runs: DurableCommanderRunSnapshot[];
+};
+
+async function loadSnapshots(userId: string): Promise<DurableCommanderRunSnapshot[]> {
+  const fromDomain = await loadDurableDomain<DurableCommanderState>(
+    userId,
+    COMMANDER_DOMAIN_KEY,
+  );
+  if (fromDomain && Array.isArray(fromDomain.runs)) {
+    return fromDomain.runs.filter(isSnapshot);
+  }
+
+  // Legacy: raw array written before envelope format.
+  const legacy = await loadClerkPrivateMetadataKey<unknown>(
+    userId,
+    COMMANDER_DOMAIN_KEY,
+  );
+  if (Array.isArray(legacy)) {
+    return legacy.filter(isSnapshot).filter((item) => item.userId === userId);
+  }
+
+  return [];
+}
+
+/** Persist run list (Clerk-first; Supabase only when payload exceeds Clerk limits). */
 export async function persistCommanderRunToClerk(
   run: CommanderRunRecord,
 ): Promise<void> {
   if (!process.env.CLERK_SECRET_KEY?.trim()) return;
 
   try {
-    const client = await clerkClient();
-    const user = await client.users.getUser(run.userId);
-    const existingMeta =
-      user.privateMetadata && typeof user.privateMetadata === "object"
-        ? { ...user.privateMetadata }
-        : {};
-    const previous = Array.isArray(existingMeta[CLERK_COMMANDER_KEY])
-      ? (existingMeta[CLERK_COMMANDER_KEY] as unknown[]).filter(isSnapshot)
-      : [];
-
+    const previous = await loadSnapshots(run.userId);
     const snapshot = toSnapshot(run);
     const next = [
       snapshot,
       ...previous.filter((item) => item.id !== snapshot.id),
-    ].slice(0, MAX_CLERK_RUNS);
+    ].slice(0, MAX_DURABLE_RUNS);
 
-    await client.users.updateUserMetadata(run.userId, {
-      privateMetadata: {
-        ...existingMeta,
-        [CLERK_COMMANDER_KEY]: next,
-      },
-    });
+    await persistDurableDomain(
+      run.userId,
+      COMMANDER_DOMAIN_KEY,
+      { runs: next } satisfies DurableCommanderState,
+      { compact: (state) => ({ runs: compactRuns(state.runs) }) },
+    );
   } catch (error) {
-    console.error("[commander] Failed to persist run to Clerk:", error);
+    console.error("[commander] Failed to persist run:", error);
   }
 }
 
 export async function loadCommanderRunsFromClerk(
   userId: string,
 ): Promise<DurableCommanderRunSnapshot[]> {
-  if (!process.env.CLERK_SECRET_KEY?.trim()) return [];
-
   try {
-    const client = await clerkClient();
-    const user = await client.users.getUser(userId);
-    const raw = user.privateMetadata?.[CLERK_COMMANDER_KEY];
-    if (!Array.isArray(raw)) return [];
-    return raw.filter(isSnapshot).filter((item) => item.userId === userId);
+    return (await loadSnapshots(userId)).filter((item) => item.userId === userId);
   } catch {
     return [];
   }
@@ -128,7 +226,7 @@ export async function loadCommanderRunsFromClerk(
 
 /**
  * Best-effort project row upsert when Supabase is configured.
- * Does not replace client localStorage history — supplements it for production.
+ * Complements durable commander history for recent-work / briefing inputs.
  */
 export async function persistCommanderResultAsProject(input: {
   userId: string;

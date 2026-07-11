@@ -8,7 +8,24 @@ function getGlobalScope() {
   return globalThis as typeof globalThis & {
     __atlasNotificationStore?: NotificationBucket;
     __atlasNotificationPreferences?: PreferencesMap;
+    __atlasNotificationHydratedUsers?: Set<string>;
   };
+}
+
+function getHydratedUsers(): Set<string> {
+  const scope = getGlobalScope();
+  if (!scope.__atlasNotificationHydratedUsers) {
+    scope.__atlasNotificationHydratedUsers = new Set();
+  }
+  return scope.__atlasNotificationHydratedUsers;
+}
+
+export function isUserHydrated(userId: string): boolean {
+  return getHydratedUsers().has(userId);
+}
+
+export function markUserHydrated(userId: string): void {
+  getHydratedUsers().add(userId);
 }
 
 function getBucket(): NotificationBucket {
@@ -95,7 +112,27 @@ export function saveStoredPreferences(
   return prefs;
 }
 
+/** Replace one user's in-app notifications (used when hydrating from durable store). */
+export function replaceUserNotifications(
+  userId: string,
+  records: NotificationRecord[],
+): void {
+  const bucket = getBucket();
+  const kept = bucket.filter(
+    (record) => !(record.audience === "user" && record.userId === userId),
+  );
+  bucket.length = 0;
+  bucket.push(
+    ...records.filter((r) => r.userId === userId && r.audience === "user"),
+    ...kept,
+  );
+  if (bucket.length > MAX_NOTIFICATIONS) {
+    bucket.length = MAX_NOTIFICATIONS;
+  }
+}
+
 export function resetNotificationStore(): void {
   getBucket().length = 0;
   getPreferencesMap().clear();
+  getHydratedUsers().clear();
 }

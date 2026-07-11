@@ -9,7 +9,11 @@ import type {
   CommanderRunRecord,
   CommanderRunStatus,
 } from "./types";
-import { persistCommanderRunToClerk } from "./durable-store";
+import {
+  loadCommanderRunsFromClerk,
+  persistCommanderRunToClerk,
+  snapshotToCommanderRun,
+} from "./durable-store";
 
 const DATA_DIR = path.join(process.cwd(), ".data", "commander");
 const RUNS_FILE = path.join(DATA_DIR, "runs.json");
@@ -20,6 +24,16 @@ type RunsFileShape = {
 };
 
 type RunBucket = Map<string, CommanderRunRecord>;
+
+function getHydratedUsers(): Set<string> {
+  const scope = globalThis as typeof globalThis & {
+    __atlasCommanderHydratedUsers?: Set<string>;
+  };
+  if (!scope.__atlasCommanderHydratedUsers) {
+    scope.__atlasCommanderHydratedUsers = new Set();
+  }
+  return scope.__atlasCommanderHydratedUsers;
+}
 
 function getBucket(): RunBucket {
   const scope = globalThis as typeof globalThis & {
@@ -113,6 +127,23 @@ export function getCommanderRun(
   return run;
 }
 
+/** Hydrate durable Clerk/Supabase snapshots into the hot memory bucket. */
+export async function ensureCommanderRunsHydrated(userId: string): Promise<void> {
+  if (getHydratedUsers().has(userId)) return;
+  getHydratedUsers().add(userId);
+
+  const hasUserRuns = [...getBucket().values()].some((run) => run.userId === userId);
+  if (hasUserRuns) return;
+
+  const snapshots = await loadCommanderRunsFromClerk(userId);
+  const bucket = getBucket();
+  for (const snapshot of snapshots) {
+    if (bucket.has(snapshot.id)) continue;
+    bucket.set(snapshot.id, snapshotToCommanderRun(snapshot));
+  }
+  persistLocalCache(bucket);
+}
+
 export function listCommanderRunsForUser(
   userId: string,
   limit = 20,
@@ -201,6 +232,7 @@ export function isCommanderCancelRequested(
 export function resetCommanderRunStoreForTests(): void {
   const bucket = getBucket();
   bucket.clear();
+  getHydratedUsers().clear();
   try {
     if (existsSync(RUNS_FILE)) {
       writeFileSync(RUNS_FILE, JSON.stringify({ version: 1, runs: {} }), "utf8");

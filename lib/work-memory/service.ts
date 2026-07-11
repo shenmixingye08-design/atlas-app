@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "crypto";
 
+import { schedulePersistWorkMemory } from "./durable";
 import {
   appendStoredCandidate,
   appendStoredWorkMemory,
@@ -84,7 +85,9 @@ export function setWorkMemoryEnabled(
   userId: string,
   enabled: boolean,
 ): WorkMemorySettings {
-  return writeWorkMemorySettings(userId, { enabled });
+  const settings = writeWorkMemorySettings(userId, { enabled });
+  schedulePersistWorkMemory(userId);
+  return settings;
 }
 
 export function listWorkMemories(
@@ -132,7 +135,7 @@ export function createWorkMemory(
   trimMemoryBucket(userId);
   const timestamp = nowIso();
 
-  return appendStoredWorkMemory(userId, {
+  const memory = appendStoredWorkMemory(userId, {
     id: `wm_${randomUUID()}`,
     userId,
     type: input.type,
@@ -150,6 +153,8 @@ export function createWorkMemory(
     isActive: true,
     isUserConfirmed: input.isUserConfirmed ?? true,
   });
+  schedulePersistWorkMemory(userId);
+  return memory;
 }
 
 export function updateWorkMemory(
@@ -174,7 +179,7 @@ export function updateWorkMemory(
       ? (sanitizeStructuredData(patch.structuredData) ?? existing.structuredData)
       : existing.structuredData;
 
-  return updateStoredWorkMemory(userId, id, {
+  const updated = updateStoredWorkMemory(userId, id, {
     ...patch,
     title,
     summary,
@@ -185,6 +190,8 @@ export function updateWorkMemory(
         : existing.confidence,
     updatedAt: nowIso(),
   });
+  if (updated) schedulePersistWorkMemory(userId);
+  return updated;
 }
 
 export function deactivateWorkMemory(
@@ -197,7 +204,9 @@ export function deactivateWorkMemory(
 export function deleteWorkMemory(userId: string, id: string): boolean {
   const existing = getWorkMemory(userId, id);
   if (!existing) return false;
-  return deleteStoredWorkMemory(userId, id);
+  const removed = deleteStoredWorkMemory(userId, id);
+  if (removed) schedulePersistWorkMemory(userId);
+  return removed;
 }
 
 export function resetWorkMemories(
@@ -205,7 +214,9 @@ export function resetWorkMemories(
   type?: WorkMemoryType,
 ): number {
   resetStoredCandidates(userId);
-  return resetStoredWorkMemories(userId, type);
+  const count = resetStoredWorkMemories(userId, type);
+  schedulePersistWorkMemory(userId);
+  return count;
 }
 
 export function searchWorkMemories(
@@ -237,6 +248,7 @@ export function markWorkMemoriesUsed(
   memoryIds: readonly string[],
 ): void {
   const timestamp = nowIso();
+  let touched = false;
   for (const id of memoryIds) {
     const existing = getWorkMemory(userId, id);
     if (!existing) continue;
@@ -245,7 +257,9 @@ export function markWorkMemoriesUsed(
       usageCount: existing.usageCount + 1,
       updatedAt: timestamp,
     });
+    touched = true;
   }
+  if (touched) schedulePersistWorkMemory(userId);
 }
 
 export function previewWorkMemoriesForAssignment(
@@ -271,7 +285,7 @@ function createCandidateFromSignal(
 
   trimCandidateBucket(userId);
 
-  return appendStoredCandidate(userId, {
+  const candidate = appendStoredCandidate(userId, {
     candidateId: `wmc_${randomUUID()}`,
     userId,
     type: signal.type,
@@ -285,6 +299,8 @@ function createCandidateFromSignal(
     reason: signal.reason,
     createdAt: nowIso(),
   });
+  schedulePersistWorkMemory(userId);
+  return candidate;
 }
 
 export function createWorkMemoryCandidate(
@@ -315,7 +331,10 @@ export function confirmWorkMemoryCandidate(
     isUserConfirmed: true,
   });
 
-  if (memory) deleteStoredCandidate(userId, candidateId);
+  if (memory) {
+    deleteStoredCandidate(userId, candidateId);
+    schedulePersistWorkMemory(userId);
+  }
   return memory;
 }
 
@@ -325,7 +344,9 @@ export function rejectWorkMemoryCandidate(
 ): boolean {
   const candidate = findStoredCandidate(userId, candidateId);
   if (!candidate || candidate.userId !== userId) return false;
-  return deleteStoredCandidate(userId, candidateId);
+  const removed = deleteStoredCandidate(userId, candidateId);
+  if (removed) schedulePersistWorkMemory(userId);
+  return removed;
 }
 
 export function learnFromOrchestrationWorkMemory(input: {
@@ -395,6 +416,7 @@ export function learnFromOrchestrationWorkMemory(input: {
     });
   }
 
+  schedulePersistWorkMemory(input.userId);
   return created;
 }
 

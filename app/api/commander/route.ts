@@ -5,7 +5,7 @@ import {
   parseCommanderRequest,
   runCommanderRequest,
 } from "@/lib/commander/service";
-import { listCommanderRunsForUser } from "@/lib/commander/run-store";
+import { listCommanderRunsForUser, ensureCommanderRunsHydrated } from "@/lib/commander/run-store";
 import { formatUserFacingErrorText, toUserFacingError } from "@/lib/orchestration/user-errors";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import {
@@ -57,6 +57,7 @@ export async function GET(): Promise<Response> {
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+  await ensureCommanderRunsHydrated(userId);
   return Response.json({ runs: listCommanderRunsForUser(userId) });
 }
 
