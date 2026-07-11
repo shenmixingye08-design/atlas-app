@@ -372,6 +372,9 @@ export function resolveMockLlmOutput(
   }
 }
 
+import { isAtlasProduction } from "@/lib/runtime/is-production";
+
 export function isMockLlmEnabled(): boolean {
+  if (isAtlasProduction()) return false;
   return process.env.ATLAS_MOCK_LLM === "true";
 }

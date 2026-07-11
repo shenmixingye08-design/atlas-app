@@ -3,6 +3,9 @@ import "server-only";
 import { timingSafeEqual } from "crypto";
 import { auth } from "@clerk/nextjs/server";
 
+import { checkAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { isAtlasProduction } from "@/lib/runtime/is-production";
+
 function readCronSecret(): string | null {
   const value = process.env.CRON_SECRET?.trim();
   return value && value.length > 0 ? value : null;
@@ -15,7 +18,11 @@ function safeEqualString(a: string, b: string): boolean {
   return timingSafeEqual(left, right);
 }
 
-/** Accept Vercel Cron Bearer secret or a signed-in Clerk user (UI tick). */
+/**
+ * Accept Vercel Cron Bearer secret.
+ * In non-production, any signed-in user may tick (local UI).
+ * In production, only CRON_SECRET or an ATLAS owner may tick.
+ */
 export async function authorizeAutomationTick(
   request: Request,
 ): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
@@ -31,6 +38,18 @@ export async function authorizeAutomationTick(
     if (headerSecret && safeEqualString(headerSecret, secret)) {
       return { ok: true };
     }
+  }
+
+  if (isAtlasProduction()) {
+    if (!secret) {
+      return {
+        ok: false,
+        status: 503,
+        error: "CRON_SECRET is not configured",
+      };
+    }
+    if (await checkAtlasOwner()) return { ok: true };
+    return { ok: false, status: 401, error: "Unauthorized" };
   }
 
   const { userId } = await auth();

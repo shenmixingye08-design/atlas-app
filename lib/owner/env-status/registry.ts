@@ -54,6 +54,30 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     purpose: "オーナー管理画面の許可メール一覧",
   },
   {
+    key: "ATLAS_OPERATOR_BUSINESS_NAME",
+    service: "atlas",
+    requirement: "required",
+    purpose: "特商法・販売事業者名",
+  },
+  {
+    key: "ATLAS_OPERATOR_REPRESENTATIVE_NAME",
+    service: "atlas",
+    requirement: "required",
+    purpose: "特商法・運営責任者名",
+  },
+  {
+    key: "ATLAS_OPERATOR_ADDRESS",
+    service: "atlas",
+    requirement: "required",
+    purpose: "特商法・公開用所在地",
+  },
+  {
+    key: "ATLAS_OPERATOR_CONTACT_EMAIL",
+    service: "atlas",
+    requirement: "required",
+    purpose: "特商法・公開問い合わせメール",
+  },
+  {
     key: "CRON_SECRET",
     service: "vercel_cron",
     requirement: "required",

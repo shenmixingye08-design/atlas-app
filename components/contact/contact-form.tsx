@@ -1,11 +1,16 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
-import { CONTACT_CATEGORIES, type ContactCategoryId, type ContactValidationError } from "@/lib/contact";
+import {
+  CONTACT_CATEGORIES,
+  isContactCategoryId,
+  type ContactCategoryId,
+  type ContactValidationError,
+} from "@/lib/contact";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 
@@ -35,6 +40,7 @@ function fieldError(
 }
 
 export function ContactForm({ className }: { className?: string }) {
+  const searchParams = useSearchParams();
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [fieldErrors, setFieldErrors] = useState<ContactValidationError[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
@@ -42,6 +48,13 @@ export function ContactForm({ className }: { className?: string }) {
   const [submitting, setSubmitting] = useState(false);
 
   const categoryOptions = useMemo(() => CONTACT_CATEGORIES, []);
+
+  useEffect(() => {
+    const raw = searchParams.get("category");
+    if (raw && isContactCategoryId(raw)) {
+      setForm((prev) => ({ ...prev, category: raw }));
+    }
+  }, [searchParams]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

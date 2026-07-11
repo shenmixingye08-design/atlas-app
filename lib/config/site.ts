@@ -1,7 +1,9 @@
 /**
  * Public site / operator configuration.
- * Update these values when incorporating or changing legal entity details.
+ * Prefer env vars in production so 特商法 fields are never shipped as placeholders.
  */
+
+import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 export type SitePaymentMethod = {
   id: string;
@@ -21,14 +23,16 @@ export type SiteOperatorConfig = {
   contactPath: string;
 };
 
+const FALLBACK_OPERATOR = {
+  businessName: "ATLAS",
+  representativeName: "（運営責任者名を設定してください）",
+  address: "（公開用住所を設定してください）",
+  contactEmail: "support@atlas.app",
+  contactPath: "/contact",
+} as const satisfies SiteOperatorConfig;
+
 export const siteConfig = {
-  operator: {
-    businessName: "ATLAS",
-    representativeName: "（運営責任者名を設定してください）",
-    address: "（公開用住所を設定してください）",
-    contactEmail: "support@atlas.app",
-    contactPath: "/contact",
-  } satisfies SiteOperatorConfig,
+  operator: FALLBACK_OPERATOR,
 
   /** Landing pricing section anchor */
   pricingPagePath: "/#pricing",
@@ -47,6 +51,42 @@ export const siteConfig = {
   ] satisfies readonly SitePaymentMethod[],
 } as const;
 
+function readEnv(name: string): string | null {
+  const value = process.env[name]?.trim();
+  return value && value.length > 0 ? value : null;
+}
+
+/** True when 特商法に必要な公開事業者情報が揃っている。 */
+export function isSiteOperatorConfigured(): boolean {
+  const operator = getSiteOperator();
+  return (
+    !operator.representativeName.includes("設定してください") &&
+    !operator.address.includes("設定してください") &&
+    Boolean(operator.businessName.trim()) &&
+    Boolean(operator.contactEmail.trim()) &&
+    !operator.contactEmail.endsWith("@atlas.app")
+  );
+}
+
 export function getSiteOperator(): SiteOperatorConfig {
-  return siteConfig.operator;
+  return {
+    businessName:
+      readEnv("ATLAS_OPERATOR_BUSINESS_NAME") ?? FALLBACK_OPERATOR.businessName,
+    representativeName:
+      readEnv("ATLAS_OPERATOR_REPRESENTATIVE_NAME") ??
+      FALLBACK_OPERATOR.representativeName,
+    address: readEnv("ATLAS_OPERATOR_ADDRESS") ?? FALLBACK_OPERATOR.address,
+    contactEmail:
+      readEnv("ATLAS_OPERATOR_CONTACT_EMAIL") ?? FALLBACK_OPERATOR.contactEmail,
+    contactPath: FALLBACK_OPERATOR.contactPath,
+  };
+}
+
+/** Soft warning for operators — does not crash the app. */
+export function warnIfOperatorIncompleteInProduction(): void {
+  if (!isAtlasProduction()) return;
+  if (isSiteOperatorConfigured()) return;
+  console.warn(
+    "[ATLAS] 特商法公開情報が未設定です。ATLAS_OPERATOR_BUSINESS_NAME / REPRESENTATIVE_NAME / ADDRESS / CONTACT_EMAIL を設定してください。",
+  );
 }

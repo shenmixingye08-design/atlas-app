@@ -10,6 +10,8 @@ export const CONTACT_CATEGORIES: readonly ContactCategoryOption[] = [
   { id: "bug", label: "不具合報告" },
   { id: "billing", label: "請求/支払い" },
   { id: "cancellation", label: "解約" },
+  { id: "account_deletion", label: "退会・アカウント削除" },
+  { id: "data_deletion", label: "データ削除依頼" },
   { id: "integration", label: "外部連携" },
   { id: "enterprise", label: "法人利用" },
   { id: "other", label: "その他" },

@@ -1629,6 +1629,11 @@ export const ui = {
     pageTitle: "仕事の好み",
     pageSubtitle:
       "ATLASが学習したあなたの仕事の進め方を確認・編集できます。使うほど「いつもの設定」が自動で提案されます。",
+    accountRequestsTitle: "退会・データ削除",
+    accountRequestsHint:
+      "アカウント削除や個人データの削除は、お問い合わせから申請できます。有料プラン利用中は先に解約してください。",
+    accountDeletionLink: "退会を申請する",
+    dataDeletionLink: "データ削除を依頼する",
     homeTitle: "ATLASが学習した内容",
     homeHint: "繰り返し使った仕事から、ATLASがあなたの好みを覚えています。",
     homeEmptyHint:

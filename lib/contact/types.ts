@@ -6,6 +6,8 @@ export type ContactCategoryId =
   | "bug"
   | "billing"
   | "cancellation"
+  | "account_deletion"
+  | "data_deletion"
   | "integration"
   | "enterprise"
   | "other";

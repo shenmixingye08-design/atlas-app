@@ -5,7 +5,11 @@
 
 import { formatPlanPriceJpy } from "@/lib/billing/client";
 import { listPlanDefinitions } from "@/lib/billing/plans/registry";
-import { siteConfig } from "@/lib/config/site";
+import {
+  getSiteOperator,
+  siteConfig,
+  warnIfOperatorIncompleteInProduction,
+} from "@/lib/config/site";
 
 import type { LegalArticle, LegalDocumentMeta } from "./types";
 
@@ -69,7 +73,8 @@ function buildPaymentMethodBlocks(): LegalArticle["blocks"] {
   return blocks;
 }
 
-const operator = siteConfig.operator;
+const operator = getSiteOperator();
+warnIfOperatorIncompleteInProduction();
 
 export const LEGAL_ITEMS: LegalArticle[] = [
   {

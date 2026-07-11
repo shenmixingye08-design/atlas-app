@@ -8,6 +8,7 @@ import { OnboardingSettings } from "@/components/settings/onboarding-settings";
 import { WorkProfileSettings } from "@/components/settings/work-profile-settings";
 import { ThemeSettings } from "@/components/settings/theme-settings";
 import { CostOptimizationSettings } from "@/components/settings/cost-optimization-settings";
+import { SettingsAccountRequestsLink } from "@/components/settings/settings-account-requests-link";
 import { SettingsBillingLink } from "@/components/settings/settings-billing-link";
 import { SettingsExportLink } from "@/components/settings/settings-export-link";
 import { SettingsMemoryLink } from "@/components/settings/settings-memory-link";
@@ -35,6 +36,7 @@ function SettingsContent() {
       <SettingsLearningLink />
       <SettingsMemoryLink />
       <SettingsExportLink />
+      <SettingsAccountRequestsLink />
       <SettingsBillingLink />
       <SettingsNotificationsLink />
       <CostOptimizationSettings />

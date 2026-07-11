@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { ContactForm } from "@/components/contact/contact-form";
 import { LegalFooterLinks } from "@/components/legal/legal-footer-links";
@@ -33,7 +34,9 @@ export function ContactPage() {
         </div>
 
         <div className="contact-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--terms-bg)] p-5 shadow-[var(--shadow-sm)] sm:p-8">
-          <ContactForm />
+          <Suspense fallback={null}>
+            <ContactForm />
+          </Suspense>
         </div>
 
         <LegalFooterLinks
