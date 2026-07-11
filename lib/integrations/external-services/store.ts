@@ -66,6 +66,16 @@ export function saveExternalServiceConnection(
   return connection;
 }
 
+export function replaceExternalServiceConnectionsForUser(
+  userId: string,
+  connections: ExternalServiceConnection[],
+): void {
+  const bucket = getUserBucket(userId);
+  for (const connection of connections) {
+    bucket.set(connection.serviceId, connection);
+  }
+}
+
 /** All persisted connections across users (owner aggregation — no secrets). */
 export function listAllExternalServiceConnections(): Array<{
   userId: string;

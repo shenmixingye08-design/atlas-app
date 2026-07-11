@@ -20,12 +20,17 @@ import {
   fetchGoogleAccountUserInfo,
   revokeGoogleAccountToken,
 } from "./oauth";
+import {
+  ensureExternalAuthHydrated,
+  schedulePersistExternalAuth,
+} from "../external-services/durable";
 
 export async function completeGoogleAccountOAuth(
   userId: string,
   code: string,
   requestOrigin: string,
 ): Promise<ExternalServiceConnection> {
+  await ensureExternalAuthHydrated(userId);
   const token = await exchangeGoogleAccountAuthCode(code, requestOrigin);
 
   if (!token.refresh_token) {
@@ -65,18 +70,25 @@ export async function completeGoogleAccountOAuth(
   };
 
   saveExternalServiceConnection(userId, connection);
+  schedulePersistExternalAuth(userId);
   return connection;
 }
 
 export async function disconnectGoogleAccount(
   userId: string,
 ): Promise<ExternalServiceConnection> {
+  await ensureExternalAuthHydrated(userId);
   const credentials = getExternalServiceCredentials(userId, "google");
   if (credentials) {
     try {
+      await revokeGoogleAccountToken(credentials.refreshToken);
+    } catch (error) {
+      console.warn("[Google Account] Refresh token revoke failed:", error);
+    }
+    try {
       await revokeGoogleAccountToken(credentials.accessToken);
     } catch (error) {
-      console.warn("[Google Account] Token revoke failed:", error);
+      console.warn("[Google Account] Access token revoke failed:", error);
     }
     deleteExternalServiceCredentials(userId, "google");
   }
@@ -95,5 +107,6 @@ export async function disconnectGoogleAccount(
   };
 
   saveExternalServiceConnection(userId, disconnected);
+  schedulePersistExternalAuth(userId);
   return disconnected;
 }

@@ -23,7 +23,7 @@ export async function connectIntegration(
   name?: string,
 ): Promise<Integration | void> {
   if (provider === "google_drive") {
-    window.location.href = "/api/integrations/oauth/google-drive/authorize";
+    window.location.href = "/api/external-services/google/oauth/authorize";
     return;
   }
 
@@ -66,7 +66,7 @@ export function formatIntegrationTimestamp(iso: string | null): string {
 }
 
 export function getGoogleDriveAuthorizePath(): string {
-  return "/api/integrations/oauth/google-drive/authorize";
+  return "/api/external-services/google/oauth/authorize";
 }
 
 export { INTEGRATION_ACTION_LABELS } from "./actions";

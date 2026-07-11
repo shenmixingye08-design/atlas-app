@@ -4,13 +4,18 @@ import {
   getExternalServiceCredentials,
   saveExternalServiceCredentials,
 } from "../external-services/credential-store";
+import {
+  ensureExternalAuthHydrated,
+  schedulePersistExternalAuth,
+} from "../external-services/durable";
 
 import { refreshGoogleAccountAccessToken } from "./oauth";
 
-/** Returns a valid access token, refreshing when expired. For future Gmail/Calendar/Drive APIs. */
+/** Returns a valid access token, refreshing when expired. */
 export async function getGoogleAccountAccessToken(
   userId: string,
 ): Promise<string | null> {
+  await ensureExternalAuthHydrated(userId);
   const credentials = getExternalServiceCredentials(userId, "google");
   if (!credentials) return null;
 
@@ -38,6 +43,7 @@ export async function getGoogleAccountAccessToken(
       scope: refreshed.scope || credentials.scope,
       updatedAt: now,
     });
+    schedulePersistExternalAuth(userId);
 
     return refreshed.access_token;
   } catch (error) {

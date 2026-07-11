@@ -1,3 +1,5 @@
+import { isAtlasProduction } from "@/lib/runtime/is-production";
+
 /** Google account OAuth scopes — Gmail (read/write), Calendar, Drive (+ profile). */
 export const GOOGLE_ACCOUNT_SCOPES = [
   "openid",
@@ -43,5 +45,12 @@ export function getGoogleAccountRedirectUri(requestOrigin: string): string {
     process.env.GOOGLE_REDIRECT_URI?.trim() ||
     process.env.GOOGLE_ACCOUNT_REDIRECT_URI?.trim();
   if (configured) return configured;
+
+  if (isAtlasProduction()) {
+    throw new Error(
+      "GOOGLE_REDIRECT_URI (or GOOGLE_ACCOUNT_REDIRECT_URI) must be set in production. Do not derive redirect_uri from the request Host.",
+    );
+  }
+
   return `${requestOrigin.replace(/\/$/, "")}/api/external-services/google/oauth/callback`;
 }

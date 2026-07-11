@@ -6,6 +6,7 @@ import {
   getExternalServiceConnection,
   saveExternalServiceConnection,
 } from "@/lib/integrations/external-services/store";
+import { schedulePersistExternalAuth } from "@/lib/integrations/external-services/durable";
 import { googleServiceDefinition } from "@/lib/integrations/google/definition";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
 import { notifyIntegrationError } from "@/lib/notifications/emitters";
@@ -50,6 +51,7 @@ function markGoogleConnectionError(userId: string, message: string): void {
     features: [...googleServiceDefinition.plannedFeatures],
     errorMessage: GOOGLE_OAUTH_USER_ERROR,
   });
+  schedulePersistExternalAuth(userId);
 }
 
 export async function GET(request: Request): Promise<Response> {

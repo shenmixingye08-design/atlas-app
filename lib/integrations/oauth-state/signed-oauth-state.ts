@@ -13,9 +13,21 @@ type SignedOAuthPayload = {
 };
 
 function resolveOAuthStateSecret(): string {
+  const dedicated = process.env.OAUTH_STATE_SECRET?.trim();
+  if (dedicated) return dedicated;
+
+  const clerk = process.env.CLERK_SECRET_KEY?.trim();
+  if (clerk) return clerk;
+
+  // Local/dev only — never sign CSRF state with provider client secrets in production.
+  if (
+    process.env.VERCEL_ENV === "production" ||
+    process.env.NODE_ENV === "production"
+  ) {
+    return "";
+  }
+
   return (
-    process.env.OAUTH_STATE_SECRET?.trim() ||
-    process.env.CLERK_SECRET_KEY?.trim() ||
     process.env.GOOGLE_CLIENT_SECRET?.trim() ||
     process.env.DROPBOX_APP_SECRET?.trim() ||
     ""

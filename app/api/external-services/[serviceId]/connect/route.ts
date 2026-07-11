@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 
 import { isExternalServiceId } from "@/lib/integrations/external-services/registry";
 import { externalServiceManager } from "@/lib/integrations/external-services/service";
+import { ensureExternalAuthHydrated } from "@/lib/integrations/external-services/durable";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import {
   recordDropboxIntegrationUsage,
@@ -40,6 +41,7 @@ export async function POST(
   }
 
   try {
+    await ensureExternalAuthHydrated(userId);
     const accessContext = await resolveFeatureAccessContext();
     const origin = resolveOrigin(request);
     const result = await externalServiceManager.connect(
