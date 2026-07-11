@@ -5,7 +5,11 @@ import {
   parseCommanderRequest,
   runCommanderRequest,
 } from "@/lib/commander/service";
-import { listCommanderRunsForUser, ensureCommanderRunsHydrated } from "@/lib/commander/run-store";
+import {
+  ensureCommanderRunsHydrated,
+  listCommanderRunsForUser,
+} from "@/lib/commander/run-store";
+import { enforceAiRateLimit } from "@/lib/http/enforce-ai-rate-limit";
 import { formatUserFacingErrorText, toUserFacingError } from "@/lib/orchestration/user-errors";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import {
@@ -91,9 +95,18 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const { userId } = await auth();
+    if (!userId) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (parsed.mode === "execute" || parsed.mode === "confirm") {
+      const limited = enforceAiRateLimit(userId);
+      if (limited) return limited;
+    }
+
     const result = await runCommanderRequest({
       request: parsed,
-      userId: userId ?? null,
+      userId,
     });
     return Response.json(result);
   } catch (error) {

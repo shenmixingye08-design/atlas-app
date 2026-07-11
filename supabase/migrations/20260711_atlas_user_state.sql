@@ -11,10 +11,13 @@ create table if not exists public.atlas_user_state (
 
 alter table public.atlas_user_state enable row level security;
 
--- Anon key writes are used by the app today (same pattern as projects).
--- Tighten policies once Clerk JWT ↔ Supabase auth bridging is enabled.
-create policy "atlas_user_state_all"
+-- Revoke open access. Server writes must use the service role key
+-- (bypasses RLS). Anon / authenticated clients cannot read or write.
+drop policy if exists "atlas_user_state_all" on public.atlas_user_state;
+
+create policy "atlas_user_state_deny_anon"
   on public.atlas_user_state
   for all
-  using (true)
-  with check (true);
+  to anon, authenticated
+  using (false)
+  with check (false);

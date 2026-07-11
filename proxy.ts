@@ -2,7 +2,10 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import { getClerkUserPrimaryEmail } from "@/lib/auth/get-clerk-user-email";
-import { isAtlasOwnerEmail } from "@/lib/auth/is-atlas-owner";
+import {
+  assertOwnerEmailsConfiguredForProduction,
+  isAtlasOwnerEmail,
+} from "@/lib/auth/is-atlas-owner";
 import {
   ATLAS_LOGIN_CONTINUE_NOTICE,
   ATLAS_PROTECTED_PAGE_MATCHERS,
@@ -51,6 +54,20 @@ export default clerkMiddleware(async (auth, request) => {
   }
 
   if (isOwnerRoute(request)) {
+    try {
+      assertOwnerEmailsConfiguredForProduction();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Owner emails not configured";
+      if (request.nextUrl.pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: message }, { status: 503 });
+      }
+      return new NextResponse(message, {
+        status: 503,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+
     await auth.protect();
 
     const { userId } = await auth();

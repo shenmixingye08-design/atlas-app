@@ -10,6 +10,7 @@ import {
   resolveOrchestrationFeatureFlag,
 } from "@/lib/feature-flags/guards";
 import { recordOpenAiFailureIfApplicable } from "@/lib/owner/error-monitoring/telemetry";
+import { enforceAiRateLimit } from "@/lib/http/enforce-ai-rate-limit";
 
 type RequestBody = {
   assignment?: unknown;
@@ -97,9 +98,16 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const { userId } = await auth();
+    if (!userId) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const limited = enforceAiRateLimit(userId);
+    if (limited) return limited;
+
     const run = await runOrchestrationForUser({
       assignment: parsed.assignment,
-      userId: userId ?? null,
+      userId,
       metadata: parsed.metadata,
       notify: true,
       recordLearning: true,

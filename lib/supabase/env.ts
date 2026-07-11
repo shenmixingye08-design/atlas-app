@@ -10,6 +10,11 @@ export type SupabaseEnv = {
   anonKey: string;
 };
 
+export type SupabaseServiceEnv = {
+  url: string;
+  serviceRoleKey: string;
+};
+
 function readEnv(name: string): string | undefined {
   const value = process.env[name];
   return value && value.trim().length > 0 ? value.trim() : undefined;
@@ -26,6 +31,15 @@ export function getServerSupabaseEnv(): SupabaseEnv | null {
 
   if (!url || !anonKey) return null;
   return { url, anonKey };
+}
+
+/** Service-role credentials for server-only durable writes (bypasses RLS). */
+export function getSupabaseServiceRoleEnv(): SupabaseServiceEnv | null {
+  const url =
+    readEnv("SUPABASE_URL") ?? readEnv("NEXT_PUBLIC_SUPABASE_URL") ?? null;
+  const serviceRoleKey = readEnv("SUPABASE_SERVICE_ROLE_KEY") ?? null;
+  if (!url || !serviceRoleKey) return null;
+  return { url, serviceRoleKey };
 }
 
 /** Browser Supabase credentials (`NEXT_PUBLIC_*` only). */

@@ -40,6 +40,8 @@ export const ATLAS_PROTECTED_PAGE_MATCHERS = [
   "/notifications(.*)",
   "/billing(.*)",
   "/owner(.*)",
+  "/teach-work(.*)",
+  "/learned-jobs(.*)",
 ] as const;
 
 /** ミドルウェアで認証を強制しない公開 API */

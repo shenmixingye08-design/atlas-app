@@ -1,57 +1,20 @@
-import { randomUUID } from "crypto";
+import {
+  consumeSignedOAuthState,
+  createSignedOAuthState,
+} from "@/lib/integrations/oauth-state/signed-oauth-state";
 
-type OAuthStateEntry = {
-  createdAt: number;
-  userId: string;
-};
-
-type OAuthStateBucket = Map<string, OAuthStateEntry>;
-
-const STATE_TTL_MS = 1000 * 60 * 10;
-
-function getStateBucket(): OAuthStateBucket {
-  const globalScope = globalThis as typeof globalThis & {
-    __atlasGoogleOAuthStateStore?: OAuthStateBucket;
-  };
-
-  if (!globalScope.__atlasGoogleOAuthStateStore) {
-    globalScope.__atlasGoogleOAuthStateStore = new Map();
-  }
-
-  return globalScope.__atlasGoogleOAuthStateStore;
-}
-
-function purgeExpiredStates(bucket: OAuthStateBucket): void {
-  const cutoff = Date.now() - STATE_TTL_MS;
-  for (const [state, entry] of bucket.entries()) {
-    if (entry.createdAt < cutoff) bucket.delete(state);
-  }
-}
-
+/** Create durable Google OAuth CSRF state (multi-instance safe). */
 export function createOAuthState(userId: string): string {
-  const bucket = getStateBucket();
-  purgeExpiredStates(bucket);
-
-  const state = randomUUID();
-  bucket.set(state, { createdAt: Date.now(), userId });
-  return state;
+  return createSignedOAuthState(userId);
 }
 
 export function consumeOAuthState(state: string): { userId: string } | null {
-  const bucket = getStateBucket();
-  purgeExpiredStates(bucket);
-
-  const entry = bucket.get(state);
-  if (!entry) return null;
-  if (Date.now() - entry.createdAt > STATE_TTL_MS) {
-    bucket.delete(state);
-    return null;
-  }
-
-  bucket.delete(state);
-  return { userId: entry.userId };
+  const parsed = consumeSignedOAuthState(state);
+  if (!parsed) return null;
+  return { userId: parsed.subject };
 }
 
+/** @deprecated Signed state has no in-memory store to reset. */
 export function resetOAuthStateStore(): void {
-  getStateBucket().clear();
+  // no-op — kept for test compatibility
 }

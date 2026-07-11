@@ -20,6 +20,7 @@ import {
   resolveCheckoutUrls,
   resolvePlanIdFromStripePrice,
 } from "./config";
+import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 export type CheckoutSessionResult = {
   sessionId: string;
@@ -186,6 +187,12 @@ export async function createCheckoutSession(input: {
     throw new Error(`Stripe checkout is not ready for plan: ${input.planId}`);
   }
 
+  if (isAtlasProduction()) {
+    throw new Error(
+      "Stripe is not configured for production checkout. Set STRIPE_SECRET_KEY, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, and STRIPE_PRICE_*.",
+    );
+  }
+
   const mockSessionId = `mock_cs_${randomUUID()}`;
   const mockUrl = new URL("/billing/success", origin);
   mockUrl.searchParams.set("session_id", mockSessionId);
@@ -214,6 +221,12 @@ export async function createBillingPortalSession(input: {
     });
 
     return { url: session.url, mode: "live" };
+  }
+
+  if (isAtlasProduction()) {
+    throw new Error(
+      "Stripe is not configured for production billing portal. Set STRIPE_SECRET_KEY.",
+    );
   }
 
   return {

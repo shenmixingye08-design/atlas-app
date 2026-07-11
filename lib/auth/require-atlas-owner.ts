@@ -4,9 +4,14 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
 import { getClerkUserPrimaryEmail } from "./get-clerk-user-email";
-import { isAtlasOwnerEmail } from "./is-atlas-owner";
+import {
+  assertOwnerEmailsConfiguredForProduction,
+  isAtlasOwnerEmail,
+} from "./is-atlas-owner";
 
 export async function requireAtlasOwner(): Promise<{ email: string }> {
+  assertOwnerEmailsConfiguredForProduction();
+
   const { userId } = await auth();
 
   if (!userId) {

@@ -1,4 +1,5 @@
 import { automationService } from "@/lib/automations/automation-service";
+import { authorizeAutomationTick } from "@/lib/automations/tick-auth";
 import { processScheduledXPostsFromAutomationTick } from "@/lib/integrations/x/post/automation";
 
 function resolveOrigin(request: Request): string {
@@ -14,9 +15,14 @@ function resolveOrigin(request: Request): string {
 
 /**
  * Process automations whose nextRun is due.
- * Future: invoke from Vercel Cron, GitHub Actions, or external scheduler.
+ * Auth: `Authorization: Bearer $CRON_SECRET` (Vercel Cron) or signed-in Clerk session.
  */
 export async function POST(request: Request): Promise<Response> {
+  const gate = await authorizeAutomationTick(request);
+  if (!gate.ok) {
+    return Response.json({ error: gate.error }, { status: gate.status });
+  }
+
   const origin = resolveOrigin(request);
   const results = await automationService.processDueAutomations({
     requestOrigin: origin,

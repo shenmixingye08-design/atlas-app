@@ -1,11 +1,13 @@
 import OpenAI from "openai";
 import type { ResponseStreamEvent } from "openai/resources/responses/responses";
+import { auth } from "@clerk/nextjs/server";
 import {
   createAtlasResponse,
   createAtlasResponseStream,
   type AtlasResponseRequest,
 } from "@/lib/openai";
 import { recordOpenAiFailureIfApplicable } from "@/lib/owner/error-monitoring/telemetry";
+import { enforceAiRateLimit } from "@/lib/http/enforce-ai-rate-limit";
 
 type RequestBody = {
   input?: unknown;
@@ -144,6 +146,14 @@ function createSseStream(
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const limited = enforceAiRateLimit(userId);
+  if (limited) return limited;
+
   let body: RequestBody;
 
   try {

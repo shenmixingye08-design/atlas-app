@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createClientIfConfigured } from "@/lib/supabase/client";
+import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
 export const ATLAS_USER_STATE_TABLE = "atlas_user_state" as const;
 
@@ -11,13 +11,13 @@ type UserStateRow = {
   updated_at: string;
 };
 
-/** Full payload upsert when Clerk privateMetadata is insufficient. */
+/** Full payload upsert via service role (RLS denies anon). */
 export async function upsertSupabaseUserState(
   userId: string,
   domain: string,
   payload: unknown,
 ): Promise<boolean> {
-  const client = createClientIfConfigured();
+  const client = createServiceRoleClientIfConfigured();
   if (!client) return false;
 
   try {
@@ -46,7 +46,7 @@ export async function loadSupabaseUserState<T>(
   userId: string,
   domain: string,
 ): Promise<{ payload: T; updatedAt: string } | null> {
-  const client = createClientIfConfigured();
+  const client = createServiceRoleClientIfConfigured();
   if (!client) return null;
 
   try {
