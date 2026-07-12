@@ -38,8 +38,8 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
   {
     key: "CLERK_WEBHOOK_SECRET",
     service: "clerk",
-    requirement: "recommended",
-    purpose: "Clerk Webhook（ログイン/ログアウト監査ログ）",
+    requirement: "required",
+    purpose: "Clerk Webhook（session.created / session.ended 監査ログ）",
   },
   {
     key: "ATLAS_OWNER_LINE_USER_ID",

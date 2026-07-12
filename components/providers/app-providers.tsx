@@ -10,7 +10,12 @@ function ThemedClerkProvider({ children }: { children: ReactNode }) {
   const { resolved } = useTheme();
 
   return (
-    <ClerkProvider appearance={getAtlasClerkAppearance(resolved)}>
+    <ClerkProvider
+      appearance={getAtlasClerkAppearance(resolved)}
+      afterSignOutUrl="/"
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
+    >
       {children}
     </ClerkProvider>
   );

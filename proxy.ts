@@ -1,6 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
+import { assertClerkSafeForProduction } from "@/lib/auth/clerk-production-guard";
 import { getClerkUserPrimaryEmail } from "@/lib/auth/get-clerk-user-email";
 import {
   assertOwnerEmailsConfiguredForProduction,
@@ -24,12 +25,36 @@ const isApiRoute = createRouteMatcher(["/api(.*)"]);
 /** Owner dashboard and owner APIs — ATLAS operators only. */
 const isOwnerRoute = createRouteMatcher(["/owner(.*)", "/api/owner(.*)"]);
 
+function productionConfigErrorResponse(
+  request: Request,
+  message: string,
+): NextResponse {
+  const pathname = new URL(request.url).pathname;
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: message }, { status: 503 });
+  }
+  return new NextResponse(message, {
+    status: 503,
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
+}
+
 export default clerkMiddleware(async (auth, request) => {
   const pathname = request.nextUrl.pathname;
 
   // ホームページ等の公開ページは protect しない（表示速度を優先）
   if (pathname === "/" || pathname.startsWith("/_next")) {
     return;
+  }
+
+  try {
+    assertClerkSafeForProduction();
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Clerk is not configured for production";
+    return productionConfigErrorResponse(request, message);
   }
 
   if (isPublicApi(request)) {
@@ -59,13 +84,7 @@ export default clerkMiddleware(async (auth, request) => {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Owner emails not configured";
-      if (request.nextUrl.pathname.startsWith("/api/")) {
-        return NextResponse.json({ error: message }, { status: 503 });
-      }
-      return new NextResponse(message, {
-        status: 503,
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
-      });
+      return productionConfigErrorResponse(request, message);
     }
 
     await auth.protect();
@@ -73,6 +92,7 @@ export default clerkMiddleware(async (auth, request) => {
     const { userId } = await auth();
     const email = userId ? await getClerkUserPrimaryEmail(userId) : null;
 
+    // null / missing primary email → deny (same as non-owner)
     if (!isAtlasOwnerEmail(email)) {
       if (request.nextUrl.pathname.startsWith("/api/")) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
