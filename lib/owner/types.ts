@@ -148,6 +148,8 @@ export type OwnerWebhookSummary = {
 
 /** Full owner dashboard snapshot — real data only (no demo / estimate fillers). */
 export type OwnerDashboardSnapshot = {
+  /** Always "live" — mock provider no longer exists as a data source. */
+  metricsProvider: "live";
   period: {
     month: OwnerMonthKey;
     label: string;

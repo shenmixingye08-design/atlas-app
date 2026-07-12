@@ -6,6 +6,7 @@ import {
 import { listAiUsageEvents } from "@/lib/billing/usage/store";
 import { getOwnerBillingMetrics } from "@/lib/billing/analytics/owner-metrics";
 import { fetchStripeLiveMonthMetrics } from "@/lib/billing/analytics/stripe-live-metrics";
+import { fetchStripeSubscriptionLiveMetrics } from "@/lib/billing/analytics/stripe-subscription-metrics";
 import {
   MODEL_PRICING_TABLE_UPDATED_AT,
   MODEL_PRICING_TABLE_VERSION,
@@ -13,8 +14,11 @@ import {
 import { getMonthlyCostSavingsSummary } from "@/lib/cost-optimization/cost-savings-tracker";
 import { listAuditLogEntries } from "@/lib/owner/audit-log";
 import { buildStripeWebhookMonitoringSnapshot } from "@/lib/owner/billing-webhook/telemetry";
+import { listApiUsageRecords } from "@/lib/owner/api-usage/store";
 import { listPopularityUsageEvents } from "@/lib/owner/popularity-ranking/store";
 import { buildPopularityRankingSnapshot } from "@/lib/owner/popularity-ranking/engine";
+import { getSupabaseServiceRoleEnv } from "@/lib/supabase/env";
+import { ensureBillingUsageHydrated } from "@/lib/billing/usage/durable";
 import {
   formatOwnerMonthKey,
   formatOwnerMonthLabel,
@@ -222,12 +226,34 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
   async getDashboardSnapshot(now = new Date()): Promise<OwnerDashboardSnapshot> {
     const periodLabel = formatOwnerMonthLabel(now);
     const monthKey = formatOwnerMonthKey(now);
-    const billing = getOwnerBillingMetrics(now);
-    const stripe = await fetchStripeLiveMonthMetrics(now);
-    const stripeMode = stripe.mode ?? billing.stripeMode;
+    await ensureBillingUsageHydrated();
+
+    const localBilling = getOwnerBillingMetrics(now);
+    const [stripe, stripeSubs] = await Promise.all([
+      fetchStripeLiveMonthMetrics(now),
+      fetchStripeSubscriptionLiveMetrics(),
+    ]);
+
+    const billing =
+      stripeSubs.availability === "ok" && stripeSubs.metrics
+        ? {
+            ...stripeSubs.metrics,
+            // Keep local payment-failure count when Stripe list has none
+            // (webhook history is still the source for failures).
+          }
+        : localBilling;
+
+    const cancelScheduled =
+      stripeSubs.availability === "ok"
+        ? stripeSubs.cancelScheduledCount
+        : localBilling.cancelScheduledCount;
+    const paymentFailures = localBilling.paymentFailureCount;
+
+    const stripeMode = stripe.mode ?? localBilling.stripeMode;
     const modeText = modeLabel(stripeMode);
-    const periodWithMode = `${modeText}・${periodLabel}`;
+    const periodWithMode = `${modeText}·${periodLabel}`;
     const stripeSourceLabel = `${modeText} API（Invoice / Refund / BalanceTransaction）`;
+    const supabaseServiceConfigured = Boolean(getSupabaseServiceRoleEnv());
 
     const stripeAvailability: OwnerMetricAvailability =
       stripe.availability === "ok"
@@ -301,7 +327,17 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
     const aiEvents = listAiUsageEvents();
     const aiBreakdown = summarizeAiUsageEvents(aiEvents, now);
     const monthAi = aiBreakdown.month;
-    const hasAiData = aiEvents.length > 0;
+    const apiUsageOpenAiUsd = listApiUsageRecords()
+      .filter(
+        (row) =>
+          row.providerId === "openai" && row.timestamp.startsWith(monthKey),
+      )
+      .reduce((sum, row) => sum + row.amountUsd, 0);
+    const recordedOpenAiUsd =
+      monthAi.estimatedCostUsd > 0
+        ? monthAi.estimatedCostUsd
+        : apiUsageOpenAiUsd;
+    const hasAiData = aiEvents.length > 0 || apiUsageOpenAiUsd > 0;
     const latestAiAt =
       aiEvents.length > 0
         ? aiEvents.reduce(
@@ -314,13 +350,16 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
     const apiCost: OwnerCurrencyMetric = hasAiData
       ? {
           label: "今月OpenAI原価",
-          amountUsd: Math.round(monthAi.estimatedCostUsd * 100) / 100,
+          amountUsd: Math.round(recordedOpenAiUsd * 100) / 100,
           amountJpy: null,
           source: "ai_usage",
           availability: "ok",
           isEstimated: false,
           periodLabel: periodLabel,
-          dataSourceLabel: `AI利用台帳 × 料金表 ${MODEL_PRICING_TABLE_VERSION}`,
+          dataSourceLabel:
+            monthAi.estimatedCostUsd > 0
+              ? `AI利用台帳 × 料金表 ${MODEL_PRICING_TABLE_VERSION}`
+              : "Owner API usage 台帳（OpenAI）",
           lastUpdatedAt: latestAiAt,
           stripeMode: null,
           statusMessage: null,
@@ -334,7 +373,7 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
           availability: "empty",
           isEstimated: false,
           periodLabel: periodLabel,
-          dataSourceLabel: "recordUserAiUsage / AI利用台帳",
+          dataSourceLabel: "recordUserAiUsage / Supabase atlasBillingUsage",
           lastUpdatedAt: null,
           stripeMode: null,
           statusMessage: "利用データなし",
@@ -463,6 +502,7 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
       listAiUsageEvents().length > 0 ? generatedAt : generatedAt;
 
     return {
+      metricsProvider: "live",
       period: {
         month: monthKey,
         label: periodLabel,
@@ -481,29 +521,41 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
         paid: billing.paidSubscribers,
         free: billing.freeSubscribers,
         churned: billing.churnedSubscribers,
-        cancelScheduled: billing.cancelScheduledCount,
-        paymentFailures: billing.paymentFailureCount,
+        cancelScheduled,
+        paymentFailures,
       },
       userMetrics: {
         paid: countMetric({
           label: "有料契約者数",
           value: billing.paidSubscribers,
           periodLabel: periodLabel,
-          dataSourceLabel: "Subscription store（Webhook同期）",
-          lastUpdatedAt: subUpdatedAt,
+          dataSourceLabel:
+            stripeSubs.availability === "ok"
+              ? "Stripe Subscriptions API"
+              : "Subscription store（Webhook同期）",
+          lastUpdatedAt: stripeSubs.fetchedAt ?? subUpdatedAt,
           stripeMode,
+          statusMessage:
+            stripeSubs.availability === "failed"
+              ? "取得失敗"
+              : stripeSubs.availability === "disconnected"
+                ? "Stripe未接続（ローカル契約ストア）"
+                : null,
         }),
         cancelScheduled: countMetric({
           label: "解約予定数",
-          value: billing.cancelScheduledCount,
+          value: cancelScheduled,
           periodLabel: periodLabel,
-          dataSourceLabel: "cancelAtPeriodEnd",
-          lastUpdatedAt: subUpdatedAt,
+          dataSourceLabel:
+            stripeSubs.availability === "ok"
+              ? "Stripe cancel_at_period_end"
+              : "cancelAtPeriodEnd",
+          lastUpdatedAt: stripeSubs.fetchedAt ?? subUpdatedAt,
           stripeMode,
         }),
         paymentFailures: countMetric({
           label: "支払い失敗数（今月）",
-          value: billing.paymentFailureCount,
+          value: paymentFailures,
           periodLabel: periodLabel,
           dataSourceLabel: "Billing history",
           lastUpdatedAt: subUpdatedAt,
@@ -517,7 +569,7 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
         inputTokens: monthAi.inputTokens,
         outputTokens: monthAi.outputTokens,
         totalTokens: monthAi.totalTokens,
-        recordedCostUsd: Math.round(monthAi.estimatedCostUsd * 100) / 100,
+        recordedCostUsd: Math.round(recordedOpenAiUsd * 100) / 100,
         pricingTableVersion: MODEL_PRICING_TABLE_VERSION,
         pricingTableUpdatedAt: MODEL_PRICING_TABLE_UPDATED_AT,
         lastUpdatedAt: latestAiAt,
@@ -598,11 +650,16 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
         },
         {
           id: "subscriptions",
-          label: "契約ストア",
-          connected: billing.hasSubscriptionRecords,
-          note: billing.hasSubscriptionRecords
-            ? "Webhook同期の契約数"
-            : "データなし",
+          label: "契約（Stripe / store）",
+          connected:
+            stripeSubs.availability === "ok" ||
+            localBilling.hasSubscriptionRecords,
+          note:
+            stripeSubs.availability === "ok"
+              ? "Stripe Subscriptions API"
+              : localBilling.hasSubscriptionRecords
+                ? "Webhook同期の契約ストア"
+                : "データなし",
         },
         {
           id: "webhook_log",
@@ -615,9 +672,11 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
         },
         {
           id: "server",
-          label: "サーバー費用",
-          connected: false,
-          note: "自動取得不可",
+          label: "Supabase（永続化）",
+          connected: supabaseServiceConfigured,
+          note: supabaseServiceConfigured
+            ? "SERVICE_ROLE で atlas_user_state 書き込み可"
+            : "SUPABASE_SERVICE_ROLE_KEY 未設定（Production で必須）",
         },
         {
           id: "external_api",

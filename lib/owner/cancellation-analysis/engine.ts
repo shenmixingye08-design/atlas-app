@@ -1,17 +1,15 @@
 import { getOwnerBillingMetrics } from "@/lib/billing/analytics/owner-metrics";
 
 import { formatOwnerMonthKey, formatOwnerMonthLabel } from "../format";
-import { buildEstimatedCancellationMetrics, ESTIMATED_REASON_SHARES } from "./defaults";
 import {
   CANCELLATION_REASON_IDS,
   getCancellationReasonDefinition,
 } from "./registry";
-import { hasCancellationRecords, listCancellationEvents } from "./store";
+import { listCancellationEvents } from "./store";
 import type {
   CancellationAnalysisSnapshot,
   CancellationEvent,
   CancellationReasonBreakdown,
-  CancellationReasonId,
 } from "./types";
 
 function getPreviousMonthKey(monthKey: string): string {
@@ -75,40 +73,12 @@ function buildReasonBreakdown(
   });
 }
 
-function buildEstimatedReasonBreakdown(
-  reasonCounts: Record<CancellationReasonId, number>,
-  totalCanceled: number,
-  previousCanceledCount: number,
-): CancellationReasonBreakdown[] {
-  return CANCELLATION_REASON_IDS.map((reasonId) => {
-    const definition = getCancellationReasonDefinition(reasonId);
-    const count = reasonCounts[reasonId] ?? 0;
-    const sharePercent =
-      totalCanceled > 0 ? Math.round((count / totalCanceled) * 100) : 0;
-    const previousCount = Math.max(
-      0,
-      Math.round(
-        previousCanceledCount * (ESTIMATED_REASON_SHARES[reasonId] ?? 0),
-      ),
-    );
-
-    return {
-      reasonId,
-      label: definition.label,
-      count,
-      sharePercent,
-      momChangePercent: computeMomChangePercent(count, previousCount),
-    };
-  });
-}
-
 export function buildCancellationAnalysisSnapshot(
   now: Date = new Date(),
 ): CancellationAnalysisSnapshot {
   const monthKey = formatOwnerMonthKey(now);
   const previousMonthKey = getPreviousMonthKey(monthKey);
   const events = listCancellationEvents();
-  const useEstimatedFallback = !hasCancellationRecords();
   const currentEvents = filterEventsByMonth(events, monthKey);
   const previousEvents = filterEventsByMonth(events, previousMonthKey);
 
@@ -117,31 +87,6 @@ export function buildCancellationAnalysisSnapshot(
     Number(previousMonthKey.slice(5, 7)) - 1,
     1,
   );
-
-  if (useEstimatedFallback) {
-    const estimated = buildEstimatedCancellationMetrics(now);
-    return {
-      period: {
-        month: monthKey,
-        monthLabel: formatOwnerMonthLabel(now),
-        previousMonth: previousMonthKey,
-        previousMonthLabel: formatOwnerMonthLabel(previousMonthDate),
-      },
-      canceledCount: estimated.canceledCount,
-      churnRatePercent: estimated.churnRatePercent,
-      momChangePercent: computeMomChangePercent(
-        estimated.canceledCount,
-        estimated.previousCanceledCount,
-      ),
-      reasons: buildEstimatedReasonBreakdown(
-        estimated.reasonCounts,
-        estimated.canceledCount,
-        estimated.previousCanceledCount,
-      ),
-      isEstimated: true,
-      generatedAt: now.toISOString(),
-    };
-  }
 
   const canceledCount = currentEvents.length;
   const billing = getOwnerBillingMetrics();

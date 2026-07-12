@@ -5,10 +5,9 @@ import type { PopularityFeatureId } from "@/lib/owner/popularity-ranking/types";
 
 import { formatOwnerMonthKey, formatOwnerMonthLabel } from "../format";
 import {
-  ESTIMATED_FEATURE_LABELS,
+  FEATURE_LABELS,
   HIGH_COST_API_USD_THRESHOLD,
   HIGH_COST_MARGIN_THRESHOLD,
-  buildEstimatedAnonymousUserRows,
 } from "./defaults";
 import { hasAnonymousUsageRecords, listAnonymousUsageEvents } from "./store";
 import type {
@@ -17,7 +16,12 @@ import type {
   AnonymousUserRow,
 } from "./types";
 
-const JPY_PER_USD = 150;
+/** Margin display only — uses ATLAS_USD_JPY_RATE when set; otherwise null margin. */
+function usdFromJpy(jpy: number): number | null {
+  const rate = Number(process.env.ATLAS_USD_JPY_RATE ?? "");
+  if (!Number.isFinite(rate) || rate <= 0) return null;
+  return jpy / rate;
+}
 
 function filterEventsByMonth(
   events: readonly AnonymousUsageEvent[],
@@ -31,7 +35,7 @@ function resolveFeatureLabel(featureId: PopularityFeatureId | null): string | nu
   try {
     return getPopularityFeatureDefinition(featureId).label;
   } catch {
-    return ESTIMATED_FEATURE_LABELS[featureId] ?? featureId;
+    return FEATURE_LABELS[featureId] ?? featureId;
   }
 }
 
@@ -42,8 +46,8 @@ function computeProfitMarginPercent(
   const plan = getPlanDefinition(planId);
   if (plan.monthlyPriceJpy <= 0) return null;
 
-  const revenueUsd = plan.monthlyPriceJpy / JPY_PER_USD;
-  if (revenueUsd <= 0) return null;
+  const revenueUsd = usdFromJpy(plan.monthlyPriceJpy);
+  if (revenueUsd === null || revenueUsd <= 0) return null;
 
   const margin = ((revenueUsd - apiCostUsd) / revenueUsd) * 100;
   return Math.round(margin);
@@ -120,21 +124,7 @@ export function buildAnonymousUserAnalysisSnapshot(
   const allEvents = listAnonymousUsageEvents();
   const events = filterEventsByMonth(allEvents, monthKey);
 
-  if (!hasAnonymousUsageRecords()) {
-    const users = buildEstimatedAnonymousUserRows();
-    return {
-      period: {
-        month: monthKey,
-        monthLabel: formatOwnerMonthLabel(now),
-      },
-      users,
-      highCostCount: users.filter((user) => user.isHighCost).length,
-      isEstimated: true,
-      generatedAt: now.toISOString(),
-    };
-  }
-
-  if (events.length === 0) {
+  if (!hasAnonymousUsageRecords() || events.length === 0) {
     return {
       period: {
         month: monthKey,

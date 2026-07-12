@@ -17,14 +17,14 @@ describe("cancellation analysis engine", () => {
     resetCancellationAnalysisStore();
   });
 
-  it("returns estimated metrics when no live data exists", () => {
+  it("returns empty metrics when no live data exists", () => {
     const snapshot = buildCancellationAnalysisSnapshot(now);
 
-    expect(snapshot.canceledCount).toBeGreaterThan(0);
-    expect(snapshot.churnRatePercent).toBeGreaterThan(0);
+    expect(snapshot.canceledCount).toBe(0);
+    expect(snapshot.churnRatePercent).toBeNull();
     expect(snapshot.reasons).toHaveLength(4);
-    expect(snapshot.reasons[0]?.count).toBeGreaterThanOrEqual(0);
-    expect(snapshot.isEstimated).toBe(true);
+    expect(snapshot.reasons.every((row) => row.count === 0)).toBe(true);
+    expect(snapshot.isEstimated).toBe(false);
   });
 
   it("aggregates live cancellations and reason breakdown", () => {

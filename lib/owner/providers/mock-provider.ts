@@ -1,2 +1,5 @@
-/** @deprecated Prefer liveOwnerMetricsProvider — kept for import compatibility. */
-export { liveOwnerMetricsProvider as mockOwnerMetricsProvider } from "./live-provider";
+/** @deprecated Alias only — always resolves to liveOwnerMetricsProvider. */
+export {
+  liveOwnerMetricsProvider,
+  liveOwnerMetricsProvider as mockOwnerMetricsProvider,
+} from "./live-provider";

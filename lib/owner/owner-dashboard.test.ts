@@ -19,6 +19,25 @@ vi.mock("@/lib/billing/analytics/stripe-live-metrics", async () => {
   };
 });
 
+vi.mock("@/lib/billing/analytics/stripe-subscription-metrics", () => {
+  return {
+    fetchStripeSubscriptionLiveMetrics: async () => ({
+      connected: false,
+      availability: "disconnected" as const,
+      statusMessage: "Stripe未接続",
+      fetchedAt: null,
+      metrics: null,
+      cancelScheduledCount: 0,
+      paymentFailureCount: 0,
+    }),
+  };
+});
+
+vi.mock("@/lib/billing/usage/durable", () => ({
+  ensureBillingUsageHydrated: vi.fn().mockResolvedValue(undefined),
+  BILLING_USAGE_DOMAIN_KEY: "atlasBillingUsage",
+}));
+
 describe("isAtlasOwnerEmail", () => {
   beforeEach(() => {
     vi.stubEnv("ATLAS_OWNER_EMAILS", "owner@atlas.test, admin@atlas.test");
@@ -82,6 +101,7 @@ describe("owner dashboard real metrics", () => {
 
   it("shows Stripe未接続 without inventing revenue", async () => {
     const snapshot = await getOwnerDashboardSnapshot(new Date("2026-07-12"));
+    expect(snapshot.metricsProvider).toBe("live");
     expect(snapshot.revenue.availability).toBe("disconnected");
     expect(snapshot.revenue.amountJpy).toBeNull();
     expect(snapshot.revenue.amountUsd).toBeNull();

@@ -35,12 +35,16 @@ function availabilityLabel(availability: OwnerMetricAvailability | "incomplete")
 }
 
 function formatMoneyMetric(metric: OwnerCurrencyMetric): string {
-  if (metric.availability !== "ok" || (metric.amountUsd === null && metric.amountJpy === null)) {
+  // Never render demo/estimated amounts. Only real ok values (including $0).
+  if (metric.isEstimated) {
+    return availabilityLabel("empty");
+  }
+  if (metric.availability !== "ok") {
     return metric.statusMessage ?? availabilityLabel(metric.availability);
   }
   if (metric.amountJpy !== null) return formatOwnerJpy(metric.amountJpy);
   if (metric.amountUsd !== null) return formatOwnerUsd(metric.amountUsd, true);
-  return availabilityLabel(metric.availability);
+  return availabilityLabel("empty");
 }
 
 function formatProfitMetric(metric: OwnerProfitMetric): string {
@@ -189,7 +193,8 @@ export function OwnerDashboard({
           {ui.owner.pageSubtitle(snapshot.period.label)}
         </p>
         <p className="text-xs text-[var(--text-muted)]">
-          {modeBadge} · {ui.owner.generatedAt(formatOwnerDate(snapshot.generatedAt))}
+          {modeBadge} · provider:{snapshot.metricsProvider} ·{" "}
+          {ui.owner.generatedAt(formatOwnerDate(snapshot.generatedAt))}
         </p>
       </header>
 

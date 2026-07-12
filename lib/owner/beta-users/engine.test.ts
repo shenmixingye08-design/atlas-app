@@ -21,15 +21,14 @@ describe("beta user management engine", () => {
     vi.unstubAllEnvs();
   });
 
-  it("returns estimated metrics when no live beta or billing data", () => {
+  it("returns live beta counts without estimated fillers", () => {
     const snapshot = buildBetaUserManagementSnapshot(
       new Date("2026-07-08T12:00:00.000Z"),
     );
 
-    expect(snapshot.isEstimated).toBe(true);
-    expect(snapshot.betaParticipantCount).toBeGreaterThan(0);
-    expect(snapshot.generalUserCount).toBeGreaterThan(0);
-    expect(snapshot.participationRatePercent).toBeGreaterThan(0);
+    expect(snapshot.isEstimated).toBe(false);
+    expect(snapshot.betaParticipantCount).toBe(0);
+    expect(snapshot.totalUserCount).toBeGreaterThanOrEqual(0);
   });
 
   it("lists beta features from feature flag store", () => {
@@ -53,6 +52,7 @@ describe("beta user management engine", () => {
     expect(snapshot.betaParticipantCount).toBe(2);
     expect(snapshot.betaUsers).toHaveLength(2);
     expect(snapshot.isEstimated).toBe(false);
-    expect(snapshot.participationRatePercent).not.toBeNull();
+    // Rate is null when subscription store has no users (no invented denominator).
+    expect(snapshot.participationRatePercent).toBeNull();
   });
 });

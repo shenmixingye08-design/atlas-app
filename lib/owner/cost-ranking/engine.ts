@@ -13,11 +13,29 @@ import type {
   CostWarningLevel,
 } from "./types";
 
-const JPY_PER_USD = 150;
+const usdJpyRate = (): number => {
+  const rate = Number(process.env.ATLAS_USD_JPY_RATE ?? "");
+  return Number.isFinite(rate) && rate > 0 ? rate : 0;
+};
+
 const HIGH_COST_RATIO_THRESHOLD = 25;
 const APPROACHING_COST_RATIO_THRESHOLD = 18;
 const LOW_MARGIN_CRITICAL = 5;
 const LOW_MARGIN_APPROACHING = 15;
+
+function resolveRevenuePerUsageUsd(totalUsage: number): number {
+  if (totalUsage <= 0) return 0;
+
+  try {
+    const billing = getOwnerBillingMetrics();
+    const rate = usdJpyRate();
+    if (billing.mrrJpy <= 0 || rate <= 0) return 0;
+    const mrrUsd = billing.mrrJpy / rate;
+    return mrrUsd / totalUsage;
+  } catch {
+    return 0;
+  }
+}
 
 function roundUsd(value: number): number {
   return Math.round(value * 100) / 100;
@@ -48,18 +66,6 @@ function aggregateFeatureCost(
     totalDurationMs,
     usageCount: featureEvents.length,
   };
-}
-
-function resolveRevenuePerUsageUsd(totalUsage: number): number {
-  if (totalUsage <= 0) return 0;
-
-  try {
-    const billing = getOwnerBillingMetrics();
-    const mrrUsd = billing.mrrJpy / JPY_PER_USD;
-    return mrrUsd / totalUsage;
-  } catch {
-    return 0.15;
-  }
 }
 
 function computeProfitMarginPercent(

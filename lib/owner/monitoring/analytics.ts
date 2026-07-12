@@ -4,6 +4,7 @@ import { getOwnerBillingMetrics } from "@/lib/billing/analytics/owner-metrics";
 import { listAuditLogEntries } from "@/lib/owner/audit-log";
 import type { AuditLogEntry } from "@/lib/owner/audit-log/types";
 import { listApiUsageRecords } from "@/lib/owner/api-usage/store";
+import { listAiUsageEvents } from "@/lib/billing/usage/store";
 import { getCostRankingSnapshot } from "@/lib/owner/cost-ranking";
 import { listOwnerNotifications } from "@/lib/notifications";
 import { listUserSubscriptions } from "@/lib/billing/subscriptions/store";
@@ -15,8 +16,6 @@ import type {
   AnalyticsPeriod,
   AnalyticsSeriesPoint,
 } from "./types";
-
-const JPY_PER_USD = 150;
 
 function startOfUtcDay(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -67,12 +66,17 @@ function uniqueUsers(
 }
 
 function openAiCostUsd(from: Date, to: Date): number {
-  return listApiUsageRecords()
+  const fromApiUsage = listApiUsageRecords()
     .filter(
       (row) =>
         row.providerId === "openai" && inRange(row.timestamp, from, to),
     )
     .reduce((sum, row) => sum + row.amountUsd, 0);
+  if (fromApiUsage > 0) return fromApiUsage;
+
+  return listAiUsageEvents()
+    .filter((row) => inRange(row.timestamp, from, to))
+    .reduce((sum, row) => sum + row.estimatedCostUsd, 0);
 }
 
 function notificationCount(from: Date, to: Date): number {
@@ -132,8 +136,14 @@ export function buildAnalyticsKpis(
   );
 
   const profit = buildLiveProfitScenario(now);
-  const openAiCostJpyRaw = openAiCostUsd(from, now);
-  const openAiCostJpy = Math.round(openAiCostJpyRaw * JPY_PER_USD);
+  const openAiCostUsdRaw = openAiCostUsd(from, now);
+  const usdJpyRate = Number(process.env.ATLAS_USD_JPY_RATE ?? "");
+  const openAiCostJpy =
+    openAiCostUsdRaw <= 0
+      ? 0
+      : Number.isFinite(usdJpyRate) && usdJpyRate > 0
+        ? Math.round(openAiCostUsdRaw * usdJpyRate)
+        : 0;
   const stripeRevenueJpy =
     period === "month"
       ? billing.mrrJpy
@@ -198,11 +208,16 @@ function buildBucketSeries(
       (r) => r.action === "commander_run",
     ).length;
     const errors = scoped.filter((r) => r.result === "failure").length;
-    const openAiCostJpy = Math.round(
-      usage
-        .filter((r) => r.providerId === "openai" && match(r.timestamp))
-        .reduce((s, r) => s + r.amountUsd, 0) * JPY_PER_USD,
-    );
+    const usdJpyRate = Number(process.env.ATLAS_USD_JPY_RATE ?? "");
+    const openAiCostUsd = usage
+      .filter((r) => r.providerId === "openai" && match(r.timestamp))
+      .reduce((s, r) => s + r.amountUsd, 0);
+    const openAiCostJpy =
+      openAiCostUsd <= 0
+        ? 0
+        : Number.isFinite(usdJpyRate) && usdJpyRate > 0
+          ? Math.round(openAiCostUsd * usdJpyRate)
+          : 0;
 
     return {
       key,

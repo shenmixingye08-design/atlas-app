@@ -20,7 +20,7 @@ describe("system status engine", () => {
     resetErrorMonitoringStore();
   });
 
-  it("returns estimated operational metrics when no live probes exist", () => {
+  it("returns zero uptime when no live probes exist", () => {
     const snapshot = buildSystemStatusSnapshot(
       new Date("2026-07-08T12:00:00.000Z"),
     );
@@ -28,8 +28,8 @@ describe("system status engine", () => {
     expect(snapshot.services).toHaveLength(8);
     expect(snapshot.operationalCount).toBe(8);
     expect(snapshot.services[0]?.status).toBe("operational");
-    expect(snapshot.services[0]?.uptimePercent).toBeGreaterThan(99);
-    expect(snapshot.services[0]?.isEstimated).toBe(true);
+    expect(snapshot.services[0]?.uptimePercent).toBe(0);
+    expect(snapshot.services[0]?.isEstimated).toBe(false);
   });
 
   it("marks services as outage when unresolved errors exist", () => {

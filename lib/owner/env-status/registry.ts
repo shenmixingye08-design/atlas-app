@@ -158,6 +158,12 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     purpose: "サーバー専用（atlas_user_state 書き込み / RLS バイパス）",
   },
   {
+    key: "ATLAS_USD_JPY_RATE",
+    service: "atlas",
+    requirement: "optional",
+    purpose: "Owner 分析の USD→JPY 換算（未設定時は円換算しない）",
+  },
+  {
     key: "NEXT_PUBLIC_ATLAS_PROJECT_STORAGE",
     service: "supabase",
     requirement: "optional",

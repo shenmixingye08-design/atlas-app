@@ -23,13 +23,12 @@ describe("anonymous user analysis engine", () => {
     resetSubscriptionStore();
   });
 
-  it("returns estimated rows without PII when no live data exists", () => {
+  it("returns empty rows without PII when no live data exists", () => {
     const snapshot = buildAnonymousUserAnalysisSnapshot(now);
     const serialized = JSON.stringify(snapshot);
 
-    expect(snapshot.isEstimated).toBe(true);
-    expect(snapshot.users.length).toBeGreaterThan(0);
-    expect(snapshot.users[0]?.anonymousUserId.startsWith("anon_")).toBe(true);
+    expect(snapshot.isEstimated).toBe(false);
+    expect(snapshot.users).toHaveLength(0);
     expect(serialized).not.toMatch(/@/);
     expect(serialized).not.toMatch(/email/i);
     expect(serialized).not.toMatch(/user_[a-z]/i);

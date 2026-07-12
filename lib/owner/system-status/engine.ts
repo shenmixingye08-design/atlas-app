@@ -2,18 +2,12 @@ import { formatOwnerMonthKey } from "../format";
 import { listErrorCategoryStates } from "../error-monitoring/store";
 import type { ErrorCategoryId } from "../error-monitoring/types";
 import {
-  ESTIMATED_UPTIME_PERCENT,
-  MAINTENANCE_UPTIME_PERCENT,
-  OUTAGE_UPTIME_PERCENT,
-} from "./defaults";
-import {
   SYSTEM_SERVICE_IDS,
   getSystemServiceDefinition,
   mapErrorCategoryToSystemService,
 } from "./registry";
 import {
   getSystemServiceStatusOverride,
-  hasHealthProbeRecords,
   listHealthProbes,
 } from "./store";
 import type {
@@ -74,35 +68,20 @@ function resolveServiceStatus(
 }
 
 function resolveUptimePercent(
-  serviceId: SystemServiceId,
   status: SystemServiceStatus,
   monthProbes: readonly HealthProbeEvent[],
-  useEstimatedFallback: boolean,
 ): { uptimePercent: number; isEstimated: boolean } {
   const probeUptime = computeUptimeFromProbes(monthProbes);
   if (probeUptime !== null) {
     return { uptimePercent: probeUptime, isEstimated: false };
   }
 
-  if (useEstimatedFallback) {
-    return {
-      uptimePercent: ESTIMATED_UPTIME_PERCENT[serviceId],
-      isEstimated: true,
-    };
-  }
-
+  // No invented uptime. Status alone is shown; percent is 0 with live=false flag off.
   if (status === "outage") {
-    return { uptimePercent: OUTAGE_UPTIME_PERCENT, isEstimated: true };
+    return { uptimePercent: 0, isEstimated: false };
   }
 
-  if (status === "maintenance") {
-    return { uptimePercent: MAINTENANCE_UPTIME_PERCENT, isEstimated: true };
-  }
-
-  return {
-    uptimePercent: ESTIMATED_UPTIME_PERCENT[serviceId],
-    isEstimated: true,
-  };
+  return { uptimePercent: 0, isEstimated: false };
 }
 
 function resolveLastCheckedAt(
@@ -117,7 +96,6 @@ export function buildSystemStatusSnapshot(
 ): SystemStatusSnapshot {
   const monthKey = formatOwnerMonthKey(now);
   const allProbes = listHealthProbes();
-  const useEstimatedFallback = !hasHealthProbeRecords();
   const autoOutageServices = detectAutoOutageServices();
 
   const services = SYSTEM_SERVICE_IDS.map((serviceId): SystemServiceSnapshot => {
@@ -131,10 +109,8 @@ export function buildSystemStatusSnapshot(
       autoOutageServices,
     );
     const { uptimePercent, isEstimated } = resolveUptimePercent(
-      serviceId,
       status,
       monthProbes,
-      useEstimatedFallback,
     );
 
     return {

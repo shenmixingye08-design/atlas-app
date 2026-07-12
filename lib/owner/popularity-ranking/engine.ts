@@ -1,5 +1,4 @@
 import { formatOwnerMonthKey, formatOwnerMonthLabel } from "../format";
-import { buildEstimatedFeatureMetrics } from "./defaults";
 import {
   getPopularityFeatureDefinition,
   POPULARITY_FEATURE_IDS,
@@ -59,27 +58,8 @@ function buildFeatureMetrics(
   featureId: PopularityFeatureId,
   currentEvents: readonly PopularityUsageEvent[],
   previousEvents: readonly PopularityUsageEvent[],
-  now: Date,
-  useEstimatedFallback: boolean,
 ): PopularityFeatureMetrics {
   const definition = getPopularityFeatureDefinition(featureId);
-
-  if (useEstimatedFallback) {
-    const estimated = buildEstimatedFeatureMetrics(featureId, now);
-    return {
-      featureId,
-      label: definition.label,
-      activeUsers: estimated.activeUsers,
-      usageCount: estimated.usageCount,
-      momChangePercent: computeMomChangePercent(
-        estimated.usageCount,
-        estimated.previousUsageCount,
-      ),
-      rank: 0,
-      isEstimated: true,
-    };
-  }
-
   const current = aggregateFeatureMetrics(featureId, currentEvents);
   const previous = aggregateFeatureMetrics(featureId, previousEvents);
 
@@ -103,7 +83,6 @@ export function buildPopularityRankingSnapshot(
   const monthKey = formatOwnerMonthKey(now);
   const previousMonthKey = getPreviousMonthKey(monthKey);
   const events = listPopularityUsageEvents();
-  const useEstimatedFallback = false;
   const currentEvents = filterEventsByMonth(events, monthKey);
   const previousEvents = filterEventsByMonth(events, previousMonthKey);
 
@@ -114,13 +93,7 @@ export function buildPopularityRankingSnapshot(
   );
 
   const metrics = POPULARITY_FEATURE_IDS.map((featureId) =>
-    buildFeatureMetrics(
-      featureId,
-      currentEvents,
-      previousEvents,
-      now,
-      useEstimatedFallback,
-    ),
+    buildFeatureMetrics(featureId, currentEvents, previousEvents),
   );
 
   const sorted = [...metrics].sort((a, b) => b.usageCount - a.usageCount);
