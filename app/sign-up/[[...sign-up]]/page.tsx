@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { SignUp } from "@clerk/nextjs";
 
 import { AuthShell } from "@/components/auth/auth-shell";
-import { atlasClerkAppearance } from "@/lib/clerk/appearance";
 import { ATLAS_APP_HOME_PATH } from "@/lib/auth/public-routes";
 
 export const metadata: Metadata = {
@@ -18,7 +17,6 @@ export default function SignUpPage() {
       subtitle="無料でATLASアカウントを作成"
     >
       <SignUp
-        appearance={atlasClerkAppearance}
         routing="path"
         path="/sign-up"
         signInUrl="/sign-in"
