@@ -14,6 +14,7 @@ alter table public.atlas_user_state enable row level security;
 -- Revoke open access. Server writes must use the service role key
 -- (bypasses RLS). Anon / authenticated clients cannot read or write.
 drop policy if exists "atlas_user_state_all" on public.atlas_user_state;
+drop policy if exists "atlas_user_state_deny_anon" on public.atlas_user_state;
 
 create policy "atlas_user_state_deny_anon"
   on public.atlas_user_state
