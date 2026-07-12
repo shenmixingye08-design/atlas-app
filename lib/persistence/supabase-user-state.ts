@@ -1,5 +1,6 @@
 import "server-only";
 
+import { warnIfProductionSupabaseServiceRoleMissing } from "@/lib/persistence/production-guard";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
 export const ATLAS_USER_STATE_TABLE = "atlas_user_state" as const;
@@ -18,7 +19,10 @@ export async function upsertSupabaseUserState(
   payload: unknown,
 ): Promise<boolean> {
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return false;
+  if (!client) {
+    warnIfProductionSupabaseServiceRoleMissing(`atlas_user_state:${domain}`);
+    return false;
+  }
 
   try {
     const row: UserStateRow = {

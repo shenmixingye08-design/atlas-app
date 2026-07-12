@@ -42,6 +42,9 @@ export function appendMonitoringIncident(
   if (bucket.incidents.length > 500) {
     bucket.incidents.length = 500;
   }
+  void import("./durable")
+    .then((mod) => mod.schedulePersistMonitoring())
+    .catch(() => undefined);
   return incident;
 }
 
@@ -53,6 +56,9 @@ export function recordCronTickSuccess(at = new Date().toISOString()): void {
   const cron = getBucket().cron;
   cron.lastSuccessAt = at;
   cron.lastError = null;
+  void import("./durable")
+    .then((mod) => mod.schedulePersistMonitoring())
+    .catch(() => undefined);
 }
 
 export function recordCronTickFailure(
@@ -62,10 +68,22 @@ export function recordCronTickFailure(
   const cron = getBucket().cron;
   cron.lastFailureAt = at;
   cron.lastError = message.slice(0, 500);
+  void import("./durable")
+    .then((mod) => mod.schedulePersistMonitoring())
+    .catch(() => undefined);
 }
 
 export function getCronTickState(): CronTickState {
   return { ...getBucket().cron };
+}
+
+export function replaceMonitoringState(input: {
+  incidents: MonitoringIncident[];
+  cron: CronTickState;
+}): void {
+  const bucket = getBucket();
+  bucket.incidents = [...input.incidents].slice(0, 500);
+  bucket.cron = { ...input.cron };
 }
 
 export function resetMonitoringStoreForTests(): void {

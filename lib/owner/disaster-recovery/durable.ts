@@ -50,11 +50,16 @@ function buildPayload(): DrDurablePayload {
 
 export async function persistDisasterRecoveryNow(): Promise<void> {
   const payload = buildPayload();
-  await upsertSupabaseUserState(DR_GLOBAL_USER_ID, DR_DOMAIN_KEY, {
+  const ok = await upsertSupabaseUserState(DR_GLOBAL_USER_ID, DR_DOMAIN_KEY, {
     version: 1,
     updatedAt: payload.updatedAt,
     payload,
   });
+  if (!ok) {
+    console.warn(
+      "[disaster-recovery] durable Supabase persist skipped or failed (not treated as saved).",
+    );
+  }
 }
 
 export function schedulePersistDisasterRecovery(): void {

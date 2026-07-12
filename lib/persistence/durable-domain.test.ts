@@ -56,6 +56,30 @@ describe("durable-domain", () => {
     expect(persistClerk).toHaveBeenCalled();
   });
 
+  it("does not pretend success with clerk_compact in production when Supabase fails", async () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    upsertSb.mockResolvedValue(false);
+    const huge = { blob: "x".repeat(CLERK_DOMAIN_SAFE_BYTES + 100) };
+    const result = await persistDurableDomain("user_1", "atlasTest", huge, {
+      compact: () => ({ blob: "tiny" }),
+    });
+    expect(result).toBe("skipped");
+    expect(persistClerk).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
+  });
+
+  it("allows clerk_compact only outside production when Supabase fails", async () => {
+    vi.stubEnv("VERCEL_ENV", "development");
+    vi.stubEnv("NODE_ENV", "development");
+    upsertSb.mockResolvedValue(false);
+    const huge = { blob: "x".repeat(CLERK_DOMAIN_SAFE_BYTES + 100) };
+    const result = await persistDurableDomain("user_1", "atlasTest", huge, {
+      compact: () => ({ blob: "tiny" }),
+    });
+    expect(result).toBe("clerk_compact");
+    vi.unstubAllEnvs();
+  });
+
   it("loads Supabase payload when Clerk marks storedInSupabase", async () => {
     loadClerk.mockResolvedValue({
       version: 1,

@@ -1,9 +1,12 @@
 import "server-only";
 
+import { isAtlasProduction } from "@/lib/runtime/is-production";
+
 import {
   loadClerkPrivateMetadataKey,
   persistClerkPrivateMetadataKey,
 } from "./clerk-private-metadata";
+import { warnIfProductionSupabaseServiceRoleMissing } from "./production-guard";
 import {
   loadSupabaseUserState,
   upsertSupabaseUserState,
@@ -35,6 +38,9 @@ function byteLength(value: unknown): number {
 /**
  * Clerk-first durable write.
  * Uses Supabase only when the full payload cannot fit Clerk privateMetadata.
+ *
+ * In production, truncated Clerk-only fallback is not treated as success when
+ * Supabase overflow write fails — returns `"skipped"` instead of `"clerk_compact"`.
  */
 export async function persistDurableDomain<T>(
   userId: string,
@@ -69,7 +75,20 @@ export async function persistDurableDomain<T>(
     return "supabase";
   }
 
-  // Supabase unavailable — keep best-effort compact Clerk copy.
+  // Supabase unavailable for overflow.
+  if (isAtlasProduction()) {
+    warnIfProductionSupabaseServiceRoleMissing(`${domainKey} overflow`);
+    console.error(
+      `[persistence] Production refuse truncated Clerk fallback for ${domainKey} ` +
+        `(user=${userId}). Full payload was not durable-saved.`,
+    );
+    return "skipped";
+  }
+
+  // Development only — keep best-effort compact Clerk copy.
+  console.warn(
+    `[persistence] Dev compact Clerk fallback for ${domainKey} (Supabase overflow unavailable).`,
+  );
   compactEnvelope.storedInSupabase = false;
   const ok = await persistClerkPrivateMetadataKey(
     userId,

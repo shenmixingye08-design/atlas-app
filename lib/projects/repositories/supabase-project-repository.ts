@@ -95,9 +95,20 @@ export class SupabaseProjectRepository implements ProjectRepository {
     const client = createClientIfConfigured();
     if (!client) {
       console.warn(
-        "[SupabaseProjectRepository] Supabase env vars missing — persist skipped.",
+        "[SupabaseProjectRepository] Supabase env vars missing — persist skipped (not a durable save).",
       );
       return;
+    }
+
+    // RLS deny-anon: browser upserts will fail. Do not treat in-memory cache as Supabase success.
+    if (
+      process.env.VERCEL_ENV === "production" ||
+      process.env.NODE_ENV === "production"
+    ) {
+      console.warn(
+        "[SupabaseProjectRepository] Browser anon cannot write projects under RLS. " +
+          "Cache-only until a service-role server path persists the row.",
+      );
     }
 
     const rows = projects.map((project) =>

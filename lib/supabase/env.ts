@@ -65,12 +65,25 @@ export type ProjectStorageBackend = "localStorage" | "supabase";
  * Resolve the active project repository from env or explicit options.
  *
  * - `NEXT_PUBLIC_ATLAS_PROJECT_STORAGE=localStorage` → localStorage only
- * - `supabase` → Supabase primary
- * - unset → Supabase when configured, otherwise localStorage (cache/fallback)
+ * - `supabase` → Supabase primary (browser anon is RLS-denied; treat as cache unless service role server path writes)
+ * - unset → Supabase when configured, otherwise localStorage (dev cache/fallback)
+ *
+ * Production: localStorage is warned — it does not survive multi-instance / redeploy as shared truth.
  */
 export function resolveProjectStorageBackend(): ProjectStorageBackend {
   const value = readEnv("NEXT_PUBLIC_ATLAS_PROJECT_STORAGE");
-  if (value === "localStorage") return "localStorage";
+  if (value === "localStorage") {
+    if (
+      process.env.VERCEL_ENV === "production" ||
+      process.env.NODE_ENV === "production"
+    ) {
+      console.error(
+        "[projects] Production uses localStorage project backend — data is not shared durable storage. " +
+          "Prefer service-role Commander upserts + apply projects migrations; do not treat browser cache as saved.",
+      );
+    }
+    return "localStorage";
+  }
   if (value === "supabase") return "supabase";
   return isSupabaseConfigured("browser") ? "supabase" : "localStorage";
 }

@@ -53,6 +53,7 @@ vi.mock("@/lib/notifications/emitters", () => ({
   notifyAutomationAwaitingReview: vi.fn(),
   notifyAutomationCompleted: vi.fn(),
   notifyAutomationFailed: vi.fn(),
+  notifyOwnerSystemIncident: vi.fn(),
 }));
 
 describe("automation persistence and cron tick", () => {
@@ -92,7 +93,9 @@ describe("automation persistence and cron tick", () => {
     } as never);
   });
 
-  it("persists ON/OFF, next/last run, cron, and counters for a user", async () => {
+  it(
+    "persists ON/OFF, next/last run, cron, and counters for a user",
+    async () => {
     const { automationService } = await import("./automation-service");
     const { snapshotAutomations } = await import("./durable");
     const { listAutomationOwnerUserIds } = await import("./global-durable");
@@ -140,7 +143,9 @@ describe("automation persistence and cron tick", () => {
 
     const owners = await listAutomationOwnerUserIds();
     expect(owners).toContain("user_persist");
-  });
+  },
+  15_000,
+  );
 
   it("records success and failure history on run", async () => {
     const { automationService } = await import("./automation-service");

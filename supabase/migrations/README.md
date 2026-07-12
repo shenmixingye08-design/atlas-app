@@ -4,5 +4,20 @@
 -- 3) 20260711_projects.sql
 -- 4) 20260711_projects_rls_lockdown.sql         (safe if already applied)
 --
--- Required app env: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
--- Anon clients cannot read/write either table (RLS deny). Service role bypasses RLS.
+-- Required app env (Vercel Production):
+--   SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)
+--   SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY) — browser/server anon
+--   SUPABASE_SERVICE_ROLE_KEY — server only (never NEXT_PUBLIC_*)
+-- Optional:
+--   NEXT_PUBLIC_ATLAS_PROJECT_STORAGE=supabase|localStorage
+--
+-- Anon / authenticated clients cannot read/write either table (RLS deny-all).
+-- Service role bypasses RLS and is the only writer for atlas_user_state domains
+-- (Work Memory, Learning, Notifications, Automations, Audit, DR, Monitoring,
+-- Billing usage, External auth overflow, LINE/Automation global indexes).
+--
+-- projects: Commander durable upserts use service role. Browser SupabaseProjectRepository
+-- is cache-oriented under current RLS (anon denied) — do not treat client upsert as saved.
+--
+-- Dashboard apply status cannot be inferred from the repo — verify tables/policies in
+-- Supabase → Table Editor / Authentication → Policies after running the SQL files.

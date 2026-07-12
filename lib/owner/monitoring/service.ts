@@ -11,6 +11,8 @@ export async function getMonitoringSnapshot(
   now: Date = new Date(),
 ): Promise<MonitoringSnapshot> {
   await ensureAuditLogHydrated();
+  const { ensureMonitoringHydrated } = await import("./durable");
+  await ensureMonitoringHydrated();
 
   const health = buildMonitorHealth(now);
   const series = buildAnalyticsSeries(now);

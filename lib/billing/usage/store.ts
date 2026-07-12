@@ -36,6 +36,13 @@ function getBucket(): UsageBucket {
   if (!globalScope.__atlasBillingUsageHydrated) {
     hydrateFromDisk(globalScope.__atlasBillingUsageStore);
     globalScope.__atlasBillingUsageHydrated = true;
+    if (!(globalScope as { __atlasBillingUsageSbHydrateStarted?: boolean }).__atlasBillingUsageSbHydrateStarted) {
+      (globalScope as { __atlasBillingUsageSbHydrateStarted?: boolean }).__atlasBillingUsageSbHydrateStarted =
+        true;
+      void import("./durable")
+        .then((mod) => mod.ensureBillingUsageHydrated())
+        .catch(() => undefined);
+    }
   }
 
   return globalScope.__atlasBillingUsageStore;
@@ -100,6 +107,38 @@ function persistToDisk(): void {
   } catch (error) {
     console.error("[billing] Failed to persist usage to disk:", error);
   }
+
+  // Durable path (Supabase) — fire-and-forget; disk is local/dev only.
+  void import("./durable")
+    .then((mod) => {
+      mod.schedulePersistBillingUsage();
+    })
+    .catch(() => {
+      // durable module is server-only; ignore if unavailable in odd contexts
+    });
+}
+
+/** Snapshot map for durable serialization (no secrets). */
+export function serializeUsageSnapshots(): Record<string, UsageSnapshot> {
+  return Object.fromEntries(getBucket().entries());
+}
+
+/** Replace in-memory usage from durable hydrate (keeps disk as secondary cache). */
+export function replaceUsageDurableState(input: {
+  snapshots: Record<string, UsageSnapshot>;
+  events: AiUsageEvent[];
+}): void {
+  const bucket = getBucket();
+  bucket.clear();
+  for (const [key, snapshot] of Object.entries(input.snapshots)) {
+    if (snapshot?.userId && snapshot?.month) {
+      bucket.set(key, snapshot);
+    }
+  }
+  const globalScope = globalThis as typeof globalThis & {
+    __atlasBillingAiUsageEvents?: AiUsageEvent[];
+  };
+  globalScope.__atlasBillingAiUsageEvents = input.events.slice(-5000);
 }
 
 export function getUsageMonthKey(now: Date = new Date()): UsageMonthKey {

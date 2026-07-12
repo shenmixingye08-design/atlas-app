@@ -72,8 +72,8 @@ function unwrapPayload(loaded: unknown): AuditDurablePayload | null {
   return null;
 }
 
-async function writeDurable(payload: AuditDurablePayload): Promise<void> {
-  await upsertSupabaseUserState(AUDIT_LOG_GLOBAL_USER_ID, AUDIT_LOG_DOMAIN_KEY, {
+async function writeDurable(payload: AuditDurablePayload): Promise<boolean> {
+  return upsertSupabaseUserState(AUDIT_LOG_GLOBAL_USER_ID, AUDIT_LOG_DOMAIN_KEY, {
     version: 1,
     updatedAt: payload.updatedAt,
     payload,
@@ -82,7 +82,12 @@ async function writeDurable(payload: AuditDurablePayload): Promise<void> {
 
 export async function persistAuditLogNow(): Promise<void> {
   pendingPersist = false;
-  await writeDurable(buildPayload());
+  const ok = await writeDurable(buildPayload());
+  if (!ok) {
+    console.warn(
+      "[audit-log] durable Supabase persist skipped or failed (not treated as saved).",
+    );
+  }
 }
 
 export function schedulePersistAuditLog(): void {
