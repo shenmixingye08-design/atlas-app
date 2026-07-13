@@ -6,6 +6,7 @@ import { listUserBillingNotifications } from "./notifications/service";
 import { isAutomationSuspendedForUser } from "./subscriptions/lifecycle";
 import { applySubscriptionFromStripe, getUserSubscriptionView } from "./subscriptions/service";
 import { isStripeLiveMode } from "./stripe/checkout";
+import { getStripeSecretDiagnostics } from "./stripe/config";
 import { getUserUsageLimitSummary } from "./usage/service";
 import type { UserBillingSummary } from "./types";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
@@ -16,12 +17,16 @@ export function getUserBillingSummary(userId: string): UserBillingSummary {
   const subscription = getUserSubscriptionView(userId);
   const usage = getUserUsageLimitSummary(userId);
   const plan = getPlanDefinition(subscription.planId);
+  const secretDiagnostics = getStripeSecretDiagnostics();
 
   return {
     subscription,
     usage,
     plan,
     stripeLiveMode: isStripeLiveMode(),
+    secretConfigured: secretDiagnostics.secretConfigured,
+    secretLength: secretDiagnostics.secretLength,
+    secretPrefixValid: secretDiagnostics.secretPrefixValid,
     billingPortalAvailable: Boolean(subscription.stripeCustomerId),
     automationsSuspended: isAutomationSuspendedForUser(userId),
     notifications: listUserBillingNotifications(userId).slice(0, 5),

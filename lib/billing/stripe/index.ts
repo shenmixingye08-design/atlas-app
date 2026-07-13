@@ -1,6 +1,7 @@
 export {
   getStripePriceIdForPlan,
   getStripePublishableKey,
+  getStripeSecretDiagnostics,
   getStripeSecretKey,
   getStripeWebhookSecret,
   getConfiguredAppUrl,
@@ -10,6 +11,7 @@ export {
   HANDLED_STRIPE_EVENTS,
   isStripeConfigured,
   resolveCheckoutUrls,
+  sanitizeStripeEnvValue,
   STRIPE_CHECKOUT_CANCEL_PATH,
   STRIPE_CHECKOUT_SUCCESS_PATH,
 } from "./config";

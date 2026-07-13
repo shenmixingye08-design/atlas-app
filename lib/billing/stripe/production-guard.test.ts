@@ -29,6 +29,16 @@ describe("stripe production guard", () => {
     expect(usesStripeLiveSecretKey()).toBe(true);
   });
 
+  it("detects live mode when secret is wrapped in quotes or BOM", () => {
+    vi.stubEnv("STRIPE_SECRET_KEY", '"sk_live_abc"');
+    vi.stubEnv("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", '"pk_live_abc"');
+    expect(usesStripeLiveSecretKey()).toBe(true);
+    expect(usesStripeTestKeys()).toBe(false);
+
+    vi.stubEnv("STRIPE_SECRET_KEY", "\uFEFFsk_live_abc\r");
+    expect(usesStripeLiveSecretKey()).toBe(true);
+  });
+
   it("detects live/test key mode mismatch", () => {
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_live_abc");
     vi.stubEnv("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", "pk_test_abc");

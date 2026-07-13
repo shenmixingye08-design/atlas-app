@@ -24,19 +24,49 @@ export const HANDLED_STRIPE_EVENTS: readonly StripeWebhookEventType[] = [
   "charge.refunded",
 ];
 
-export function getStripeSecretKey(): string | null {
-  const value = process.env.STRIPE_SECRET_KEY?.trim();
+/**
+ * Normalize Stripe env values from Vercel/Dashboard paste artifacts.
+ * Strips BOM, surrounding quotes, and whitespace — never logs the value.
+ */
+export function sanitizeStripeEnvValue(
+  raw: string | null | undefined,
+): string | null {
+  if (raw == null) return null;
+  let value = raw.replace(/^\uFEFF/, "").trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
+  value = value.trim();
   return value || null;
+}
+
+export function getStripeSecretKey(): string | null {
+  return sanitizeStripeEnvValue(process.env.STRIPE_SECRET_KEY);
 }
 
 export function getStripePublishableKey(): string | null {
-  const value = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim();
-  return value || null;
+  return sanitizeStripeEnvValue(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY);
 }
 
 export function getStripeWebhookSecret(): string | null {
-  const value = process.env.STRIPE_WEBHOOK_SECRET?.trim();
-  return value || null;
+  return sanitizeStripeEnvValue(process.env.STRIPE_WEBHOOK_SECRET);
+}
+
+/** Safe diagnostics for billing summary — never includes the secret. */
+export function getStripeSecretDiagnostics(): {
+  secretConfigured: boolean;
+  secretLength: number;
+  secretPrefixValid: boolean;
+} {
+  const secret = getStripeSecretKey();
+  return {
+    secretConfigured: Boolean(secret),
+    secretLength: secret?.length ?? 0,
+    secretPrefixValid: secret?.startsWith("sk_live_") ?? false,
+  };
 }
 
 export function getConfiguredAppUrl(): string | null {

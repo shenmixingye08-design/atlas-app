@@ -83,6 +83,20 @@ describe("isStripeLiveMode", () => {
     expect(isStripeLiveMode()).toBe(false);
     restoreEnv(saved);
   });
+
+  it("is true for quoted or BOM-prefixed sk_live_ secrets", () => {
+    const saved = snapshotEnv();
+    process.env.STRIPE_SECRET_KEY = '"sk_live_example"';
+    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = '"pk_live_example"';
+    expect(isStripeLiveMode()).toBe(true);
+
+    process.env.STRIPE_SECRET_KEY = "\uFEFFsk_live_example";
+    expect(isStripeLiveMode()).toBe(true);
+
+    process.env.STRIPE_SECRET_KEY = "'sk_test_example'";
+    expect(isStripeLiveMode()).toBe(false);
+    restoreEnv(saved);
+  });
 });
 
 describe("createCheckoutSession", () => {
