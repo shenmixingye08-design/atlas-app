@@ -16,22 +16,35 @@ import {
   formatExternalServiceTimestamp,
 } from "@/lib/integrations/external-services";
 import type { ExternalServiceView } from "@/lib/integrations/external-services";
+import {
+  createXPostClient,
+  fetchXConnectionStatusClient,
+} from "@/lib/integrations/x/post";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 
 function XConnectionCard({
   service,
   busy,
+  checking,
   onConnect,
   onDisconnect,
+  onCheck,
+  onTestPost,
+  onReconnect,
 }: {
   service: ExternalServiceView;
   busy: boolean;
+  checking: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
+  onCheck: () => void;
+  onTestPost: () => void;
+  onReconnect: () => void;
 }) {
   const { connection } = service;
   const isConnected = connection.status === "connected";
+  const needsReconnect = connection.status === "error";
   const connectDisabled =
     !service.featureEnabled || busy || connection.status === "pending";
   const username =
@@ -59,16 +72,20 @@ function XConnectionCard({
                   "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset",
                   isConnected
                     ? "bg-[var(--status-success-bg)] text-[var(--status-success)] ring-[var(--status-success)]/30"
-                    : "bg-[var(--status-neutral-bg)] text-[var(--status-neutral)] ring-[var(--status-neutral)]/25",
+                    : needsReconnect
+                      ? "bg-[var(--status-error-bg)] text-[var(--status-error)] ring-[var(--status-error)]/30"
+                      : "bg-[var(--status-neutral-bg)] text-[var(--status-neutral)] ring-[var(--status-neutral)]/25",
                 )}
               >
                 {isConnected
                   ? ui.xSettings.statusConnected
-                  : ui.externalServices.status[connection.status]}
+                  : needsReconnect
+                    ? ui.xSettings.statusError
+                    : ui.externalServices.status[connection.status]}
               </span>
             </div>
 
-            {isConnected && username && (
+            {(isConnected || needsReconnect) && username && (
               <div className="space-y-1 text-sm">
                 <p className="text-foreground">
                   <span className="font-medium">{ui.xSettings.usernameLabel}:</span>{" "}
@@ -85,6 +102,14 @@ function XConnectionCard({
                   </span>{" "}
                   {formatExternalServiceTimestamp(connection.connectedAt)}
                 </p>
+                {connection.lastUsedAt && (
+                  <p className="text-[var(--foreground-muted)]">
+                    <span className="font-medium">
+                      {ui.xSettings.lastUsedLabel}:
+                    </span>{" "}
+                    {formatExternalServiceTimestamp(connection.lastUsedAt)}
+                  </p>
+                )}
               </div>
             )}
 
@@ -104,8 +129,35 @@ function XConnectionCard({
 
         <div className="flex flex-wrap gap-2">
           {isConnected ? (
-            <Button variant="secondary" disabled={busy} onClick={onDisconnect}>
-              {ui.actions.disconnect}
+            <>
+              <Button
+                variant="secondary"
+                disabled={busy || checking}
+                onClick={onCheck}
+              >
+                {checking ? ui.xSettings.checking : ui.xSettings.checkConnection}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={busy || checking}
+                onClick={onTestPost}
+              >
+                {ui.xSettings.testPostButton}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={busy}
+                onClick={onReconnect}
+              >
+                {ui.xSettings.reconnect}
+              </Button>
+              <Button variant="secondary" disabled={busy} onClick={onDisconnect}>
+                {ui.actions.disconnect}
+              </Button>
+            </>
+          ) : needsReconnect ? (
+            <Button disabled={connectDisabled} onClick={onReconnect}>
+              {busy ? ui.xSettings.connecting : ui.xSettings.reconnect}
             </Button>
           ) : (
             <Button disabled={connectDisabled} onClick={onConnect}>
@@ -123,6 +175,7 @@ export function XConnectionSettings() {
   const [service, setService] = useState<ExternalServiceView | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -185,6 +238,60 @@ export function XConnectionSettings() {
     }
   };
 
+  const handleCheck = async () => {
+    setChecking(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await fetchXConnectionStatusClient();
+      if (result.status === "ready") {
+        setSuccess(
+          result.permissionsOk
+            ? `${ui.xSettings.checkSuccess}（${ui.xSettings.checkPermissionsOk}）`
+            : `${ui.xSettings.checkSuccess}（${ui.xSettings.checkPermissionsMissing}）`,
+        );
+        await load();
+      } else if ("message" in result) {
+        setError(result.message);
+        await load();
+      } else {
+        setError(ui.xSettings.connectError);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : ui.xSettings.connectError);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleTestPost = async () => {
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await createXPostClient({ text: "", mode: "test" });
+      if (result.status === "ready") {
+        setSuccess(ui.xSettings.testPostSuccess);
+        if (result.history?.tweetUrl) {
+          setSuccess(
+            `${ui.xSettings.testPostSuccess}: ${result.history.tweetUrl}`,
+          );
+        }
+      } else if (result.status === "x_not_connected") {
+        setError(result.message);
+        await load();
+      } else if ("message" in result) {
+        setError(result.message);
+      } else {
+        setError(ui.xSettings.testPostFailed);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : ui.xSettings.testPostFailed);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (isLoading) {
     return <LoadingState message={ui.loading} />;
   }
@@ -205,8 +312,12 @@ export function XConnectionSettings() {
           <XConnectionCard
             service={service}
             busy={busy}
+            checking={checking}
             onConnect={() => void handleConnect()}
             onDisconnect={() => void handleDisconnect()}
+            onCheck={() => void handleCheck()}
+            onTestPost={() => void handleTestPost()}
+            onReconnect={() => void handleConnect()}
           />
           {service.connection.status === "connected" && (
             <p className="text-sm">

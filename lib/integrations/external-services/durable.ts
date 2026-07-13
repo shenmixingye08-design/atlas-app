@@ -18,6 +18,9 @@ import {
 
 export const EXTERNAL_AUTH_DOMAIN_KEY = "atlasExternalAuth";
 
+/** Services whose tokens live in dedicated Supabase tables — never Clerk overflow. */
+const SUPABASE_BACKED_SERVICE_IDS = new Set(["google", "x", "wordpress"]);
+
 export type DurableExternalAuthState = {
   credentials: ExternalServiceCredentialRecord[];
   connections: ExternalServiceConnection[];
@@ -31,6 +34,11 @@ function getHydratedUsers(): Set<string> {
     scope.__atlasExternalAuthHydratedUsers = new Set();
   }
   return scope.__atlasExternalAuthHydratedUsers;
+}
+
+/** Test helper — clears in-memory hydrate cache. */
+export function resetExternalAuthHydration(): void {
+  getHydratedUsers().clear();
 }
 
 function compactAuth(
@@ -57,8 +65,11 @@ function compactAuth(
 }
 
 export function snapshotExternalAuth(userId: string): DurableExternalAuthState {
+  // Google/X tokens live in dedicated Supabase tables — never Clerk overflow.
   return {
-    credentials: listExternalServiceCredentialsForUser(userId),
+    credentials: listExternalServiceCredentialsForUser(userId).filter(
+      (row) => !SUPABASE_BACKED_SERVICE_IDS.has(row.serviceId),
+    ),
     connections: listExternalServiceConnections(userId),
   };
 }
@@ -76,7 +87,41 @@ export async function ensureExternalAuthHydrated(userId: string): Promise<void> 
   if (getHydratedUsers().has(userId)) return;
   getHydratedUsers().add(userId);
 
-  if (listExternalServiceCredentialsForUser(userId).length > 0) return;
+  const { saveExternalServiceCredentials } = await import("./credential-store");
+  const { saveExternalServiceConnection } = await import("./store");
+
+  // Google tokens: prefer dedicated Supabase table (never stripped on Clerk overflow).
+  const { loadGoogleAuthFromSupabase } = await import(
+    "@/lib/integrations/google/credential-persistence"
+  );
+  const googleAuth = await loadGoogleAuthFromSupabase(userId);
+  if (googleAuth) {
+    saveExternalServiceCredentials(googleAuth.credentials);
+    saveExternalServiceConnection(userId, googleAuth.connection);
+  }
+
+  // X tokens: same durable Supabase pattern as Google.
+  const { loadXAuthFromSupabase } = await import(
+    "@/lib/integrations/x/credential-persistence"
+  );
+  const xAuth = await loadXAuthFromSupabase(userId);
+  if (xAuth) {
+    saveExternalServiceCredentials(xAuth.credentials);
+    saveExternalServiceConnection(userId, xAuth.connection);
+  }
+
+  // WordPress Application Passwords: encrypted Supabase table (never Clerk overflow).
+  const { loadWordPressAuthFromSupabase } = await import(
+    "@/lib/integrations/wordpress/credential-persistence"
+  );
+  const { saveWordPressCredentials } = await import(
+    "@/lib/integrations/wordpress/credential-store"
+  );
+  const wordpressAuth = await loadWordPressAuthFromSupabase(userId);
+  if (wordpressAuth) {
+    saveWordPressCredentials(wordpressAuth.credentials);
+    saveExternalServiceConnection(userId, wordpressAuth.connection);
+  }
 
   const loaded = await loadDurableDomain<DurableExternalAuthState>(
     userId,
@@ -89,12 +134,41 @@ export async function ensureExternalAuthHydrated(userId: string): Promise<void> 
       (row) =>
         row.userId === userId &&
         typeof row.refreshToken === "string" &&
-        row.refreshToken.length > 0,
+        row.refreshToken.length > 0 &&
+        // Never overwrite durable Google/X/WP tokens with stripped Clerk overflow empties.
+        !SUPABASE_BACKED_SERVICE_IDS.has(row.serviceId),
     );
-    replaceExternalServiceCredentialsForUser(userId, usable);
+    const existing = listExternalServiceCredentialsForUser(userId);
+    const durableRows = existing.filter((row) =>
+      SUPABASE_BACKED_SERVICE_IDS.has(row.serviceId),
+    );
+    replaceExternalServiceCredentialsForUser(userId, [
+      ...usable,
+      ...durableRows,
+    ]);
   }
 
   if (Array.isArray(loaded.connections)) {
-    replaceExternalServiceConnectionsForUser(userId, loaded.connections);
+    const connections = loaded.connections.map((row) => {
+      if (googleAuth && row.serviceId === "google") return googleAuth.connection;
+      if (xAuth && row.serviceId === "x") return xAuth.connection;
+      if (wordpressAuth && row.serviceId === "wordpress") {
+        return wordpressAuth.connection;
+      }
+      return row;
+    });
+    if (googleAuth && !connections.some((row) => row.serviceId === "google")) {
+      connections.push(googleAuth.connection);
+    }
+    if (xAuth && !connections.some((row) => row.serviceId === "x")) {
+      connections.push(xAuth.connection);
+    }
+    if (
+      wordpressAuth &&
+      !connections.some((row) => row.serviceId === "wordpress")
+    ) {
+      connections.push(wordpressAuth.connection);
+    }
+    replaceExternalServiceConnectionsForUser(userId, connections);
   }
 }

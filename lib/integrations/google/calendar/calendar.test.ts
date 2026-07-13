@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/billing/access", () => ({
+  getBillingFeatureDenial: vi.fn(async () => null),
+}));
 
 import { resetFeatureFlagStore, setFeatureFlagState } from "@/lib/feature-flags/store";
 import {
@@ -111,6 +114,56 @@ describe("Google Calendar integration", () => {
     expect(triggers[1]?.kind).toBe("post_event_work");
   });
 
+  it("lists calendars for connected users", async () => {
+    const { listGoogleCalendarsForUser } = await import(
+      "@/lib/integrations/google/calendar/service"
+    );
+    const connection = getExternalServiceConnection(TEST_USER_ID, "google");
+    saveExternalServiceConnection(TEST_USER_ID, {
+      ...connection,
+      status: "connected",
+      connectedAt: new Date().toISOString(),
+      account: {
+        email: "user@example.com",
+        name: "User",
+        pictureUrl: null,
+      },
+    });
+
+    saveExternalServiceCredentials({
+      userId: TEST_USER_ID,
+      serviceId: "google",
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      scope: "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly",
+      updatedAt: new Date().toISOString(),
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          items: [
+            { id: "primary", summary: "Main", primary: true, accessRole: "owner" },
+            { id: "work", summary: "Work", primary: false, accessRole: "reader" },
+          ],
+        }),
+      ),
+    );
+
+    const result = await listGoogleCalendarsForUser({
+      userId: TEST_USER_ID,
+      context: { email: "beta@example.com", isOwner: false, isBetaUser: true },
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") {
+      expect(result.calendars).toHaveLength(2);
+      expect(result.calendars[0]?.primary).toBe(true);
+    }
+  });
+
   it("returns google_not_connected when account is missing", async () => {
     const result = await getGoogleCalendarEventsForUser({
       userId: TEST_USER_ID,
@@ -155,7 +208,7 @@ describe("Google Calendar integration", () => {
       accessToken: "access-token",
       refreshToken: "refresh-token",
       expiresAt: new Date(Date.now() + 3600_000).toISOString(),
-      scope: "calendar.readonly",
+      scope: "https://www.googleapis.com/auth/calendar.events",
       updatedAt: new Date().toISOString(),
     });
 

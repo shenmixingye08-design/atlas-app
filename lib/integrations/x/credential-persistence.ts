@@ -1,0 +1,216 @@
+import "server-only";
+
+import { isAtlasProduction } from "@/lib/runtime/is-production";
+import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
+
+import type { ExternalServiceCredentialRecord } from "../external-services/credential-store";
+import type { ExternalServiceConnection } from "../external-services/types";
+import { createDefaultConnection } from "../external-services/registry";
+import { xServiceDefinition } from "./definition";
+
+const TABLE = "atlas_x_oauth_credentials" as const;
+
+type XCredentialRow = {
+  user_id: string;
+  access_token: string;
+  refresh_token: string;
+  expires_at: string;
+  scope: string;
+  connection_status: string;
+  connected_at: string | null;
+  last_used_at: string | null;
+  account_email: string | null;
+  account_name: string | null;
+  account_picture_url: string | null;
+  account_username: string | null;
+  provider_user_id: string | null;
+  error_message: string | null;
+  updated_at: string;
+};
+
+export type XPersistedAuth = {
+  credentials: ExternalServiceCredentialRecord;
+  connection: ExternalServiceConnection;
+};
+
+export function isXOAuthSupabaseConfigured(): boolean {
+  return createServiceRoleClientIfConfigured() !== null;
+}
+
+function isConnectionStatus(
+  value: string,
+): value is ExternalServiceConnection["status"] {
+  return (
+    value === "disconnected" ||
+    value === "pending" ||
+    value === "connected" ||
+    value === "error"
+  );
+}
+
+function rowToPersisted(row: XCredentialRow): XPersistedAuth | null {
+  if (
+    !row.user_id ||
+    !row.access_token ||
+    !row.refresh_token ||
+    !row.expires_at
+  ) {
+    return null;
+  }
+
+  const status = isConnectionStatus(row.connection_status)
+    ? row.connection_status
+    : "disconnected";
+
+  const scopes = row.scope
+    ? row.scope.split(/[\s,]+/).filter(Boolean)
+    : [...xServiceDefinition.plannedScopes];
+
+  const username =
+    row.account_username ??
+    (row.account_email?.startsWith("@")
+      ? row.account_email.slice(1)
+      : null);
+
+  const connection: ExternalServiceConnection = {
+    ...createDefaultConnection(xServiceDefinition),
+    status,
+    connectedAt: row.connected_at,
+    lastUsedAt: row.last_used_at,
+    scopes,
+    features: [...xServiceDefinition.plannedFeatures],
+    errorMessage: row.error_message,
+    account:
+      row.account_email || username || row.provider_user_id
+        ? {
+            email: row.account_email ?? (username ? `@${username}` : ""),
+            name: row.account_name,
+            pictureUrl: row.account_picture_url,
+            providerUserId: row.provider_user_id ?? undefined,
+            username: username ?? undefined,
+          }
+        : undefined,
+  };
+
+  return {
+    credentials: {
+      userId: row.user_id,
+      serviceId: "x",
+      accessToken: row.access_token,
+      refreshToken: row.refresh_token,
+      expiresAt: row.expires_at,
+      scope: row.scope ?? "",
+      updatedAt: row.updated_at,
+    },
+    connection,
+  };
+}
+
+function toRow(
+  credentials: ExternalServiceCredentialRecord,
+  connection: ExternalServiceConnection,
+): XCredentialRow {
+  return {
+    user_id: credentials.userId,
+    access_token: credentials.accessToken,
+    refresh_token: credentials.refreshToken,
+    expires_at: credentials.expiresAt,
+    scope: credentials.scope ?? "",
+    connection_status: connection.status,
+    connected_at: connection.connectedAt,
+    last_used_at: connection.lastUsedAt,
+    account_email: connection.account?.email ?? null,
+    account_name: connection.account?.name ?? null,
+    account_picture_url: connection.account?.pictureUrl ?? null,
+    account_username: connection.account?.username ?? null,
+    provider_user_id: connection.account?.providerUserId ?? null,
+    error_message: connection.errorMessage,
+    updated_at: credentials.updatedAt || new Date().toISOString(),
+  };
+}
+
+/** Load X OAuth credentials + connection metadata for one user. */
+export async function loadXAuthFromSupabase(
+  userId: string,
+): Promise<XPersistedAuth | null> {
+  const client = createServiceRoleClientIfConfigured();
+  if (!client) return null;
+
+  try {
+    const { data, error } = await client
+      .from(TABLE)
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("[X OAuth] Supabase credential load failed:", error.message);
+      return null;
+    }
+    if (!data) return null;
+    return rowToPersisted(data as XCredentialRow);
+  } catch (error) {
+    console.warn("[X OAuth] Supabase credential load skipped");
+    if (error instanceof Error) {
+      console.warn("[X OAuth] Load detail:", error.message);
+    }
+    return null;
+  }
+}
+
+/**
+ * Persist X tokens + connection metadata.
+ * Returns false when Supabase is unavailable (dev may still use memory).
+ */
+export async function persistXAuthToSupabase(
+  credentials: ExternalServiceCredentialRecord,
+  connection: ExternalServiceConnection,
+): Promise<boolean> {
+  const client = createServiceRoleClientIfConfigured();
+  if (!client) {
+    if (isAtlasProduction()) {
+      console.error(
+        "[X OAuth] Production refuse token persist without SUPABASE_SERVICE_ROLE_KEY",
+      );
+    }
+    return false;
+  }
+
+  try {
+    const { error } = await client
+      .from(TABLE)
+      .upsert(toRow(credentials, connection), { onConflict: "user_id" });
+
+    if (error) {
+      console.warn("[X OAuth] Supabase credential upsert failed:", error.message);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn("[X OAuth] Supabase credential upsert skipped");
+    if (error instanceof Error) {
+      console.warn("[X OAuth] Upsert detail:", error.message);
+    }
+    return false;
+  }
+}
+
+export async function deleteXAuthFromSupabase(userId: string): Promise<boolean> {
+  const client = createServiceRoleClientIfConfigured();
+  if (!client) return false;
+
+  try {
+    const { error } = await client.from(TABLE).delete().eq("user_id", userId);
+    if (error) {
+      console.warn("[X OAuth] Supabase credential delete failed:", error.message);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn("[X OAuth] Supabase credential delete skipped");
+    if (error instanceof Error) {
+      console.warn("[X OAuth] Delete detail:", error.message);
+    }
+    return false;
+  }
+}

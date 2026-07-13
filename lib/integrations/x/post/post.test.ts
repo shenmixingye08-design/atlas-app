@@ -12,23 +12,31 @@ import {
   resetExternalServiceStore,
   saveExternalServiceConnection,
 } from "@/lib/integrations/external-services/store";
+import { resetExternalAuthHydration } from "@/lib/integrations/external-services/durable";
 import { buildTweetUrl } from "@/lib/integrations/x/post/api-client";
+import { resetXDraftPostStore } from "@/lib/integrations/x/post/draft-store";
 import { resetXPostHistoryStore } from "@/lib/integrations/x/post/history-store";
 import {
   resetXScheduledPostsStore,
   saveXScheduledPost,
 } from "@/lib/integrations/x/post/schedule-store";
 import {
+  getXDraftPostsForUser,
   getXPostHistoryForUser,
+  getXPostResultForUser,
   postTweetNowForUser,
+  postTweetTestForUser,
   processDueScheduledXPosts,
+  saveXDraftForUser,
   scheduleTweetForUser,
+  TEST_POST_PREFIX,
 } from "@/lib/integrations/x/post/service";
 import {
   isTweetTextValid,
   validateTweetText,
   X_TWEET_MAX_CHARS,
 } from "@/lib/integrations/x/post/validate";
+import { checkXConnectionForUser } from "@/lib/integrations/x/connection-status";
 
 const TEST_USER_ID = "user_x_post_test";
 const TEST_CONTEXT = { email: "test@example.com", isOwner: false, isBetaUser: true };
@@ -39,6 +47,7 @@ function connectXAccount(): void {
     ...connection,
     status: "connected",
     connectedAt: new Date().toISOString(),
+    scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
     account: {
       email: "@atlas_user",
       name: "ATLAS User",
@@ -54,7 +63,7 @@ function connectXAccount(): void {
     accessToken: "x-access-token",
     refreshToken: "x-refresh-token",
     expiresAt: new Date(Date.now() + 3600_000).toISOString(),
-    scope: "tweet.write",
+    scope: "tweet.read tweet.write users.read offline.access",
     updatedAt: new Date().toISOString(),
   });
 }
@@ -89,9 +98,11 @@ describe("X post service", () => {
   beforeEach(() => {
     resetExternalServiceStore();
     resetExternalServiceCredentialStore();
+    resetExternalAuthHydration();
     resetFeatureFlagStore();
     resetXPostHistoryStore();
     resetXScheduledPostsStore();
+    resetXDraftPostStore();
     setFeatureFlagState("x", "on");
     vi.restoreAllMocks();
   });
@@ -157,6 +168,133 @@ describe("X post service", () => {
     expect(history.records).toHaveLength(1);
   });
 
+  it("records failure history when X API errors", async () => {
+    connectXAccount();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({ errors: [{ detail: "Rate limit exceeded" }] }),
+          { status: 429 },
+        ),
+      ),
+    );
+
+    const result = await postTweetNowForUser({
+      userId: TEST_USER_ID,
+      text: "Hello",
+      context: TEST_CONTEXT,
+    });
+
+    expect(result.status).toBe("error");
+    if (result.status !== "error") return;
+    expect(result.message).toContain("Rate limit");
+
+    const history = await getXPostHistoryForUser({
+      userId: TEST_USER_ID,
+      context: TEST_CONTEXT,
+    });
+    expect(history.status).toBe("ready");
+    if (history.status !== "ready") return;
+    expect(history.records[0]?.status).toBe("failed");
+  });
+
+  it("posts a test tweet with prefix", async () => {
+    connectXAccount();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({ data: { id: "test-1", text: "test" } }),
+          { status: 201 },
+        ),
+      ),
+    );
+
+    const result = await postTweetTestForUser({
+      userId: TEST_USER_ID,
+      context: TEST_CONTEXT,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") return;
+    expect(result.mode).toBe("test");
+    expect(result.history?.text.startsWith(TEST_POST_PREFIX)).toBe(true);
+  });
+
+  it("saves and lists drafts without calling X API", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await saveXDraftForUser({
+      userId: TEST_USER_ID,
+      text: "下書き本文",
+      context: TEST_CONTEXT,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") return;
+    expect(result.draft?.text).toBe("下書き本文");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const drafts = await getXDraftPostsForUser({
+      userId: TEST_USER_ID,
+      context: TEST_CONTEXT,
+    });
+    expect(drafts.status).toBe("ready");
+    if (drafts.status !== "ready") return;
+    expect(drafts.drafts).toHaveLength(1);
+  });
+
+  it("fetches post result by history id with user isolation", async () => {
+    connectXAccount();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/tweets/") && !url.endsWith("/tweets")) {
+          return new Response(
+            JSON.stringify({ data: { id: "999", text: "Hello X" } }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({ data: { id: "999", text: "Hello X" } }),
+          { status: 201 },
+        );
+      }),
+    );
+
+    const posted = await postTweetNowForUser({
+      userId: TEST_USER_ID,
+      text: "Hello X",
+      context: TEST_CONTEXT,
+    });
+    expect(posted.status).toBe("ready");
+    if (posted.status !== "ready" || !posted.history) return;
+
+    const otherUser = await getXPostResultForUser({
+      userId: "other_user",
+      historyId: posted.history.id,
+      context: TEST_CONTEXT,
+    });
+    expect(otherUser.status).toBe("not_found");
+
+    const own = await getXPostResultForUser({
+      userId: TEST_USER_ID,
+      historyId: posted.history.id,
+      context: TEST_CONTEXT,
+      includeLive: true,
+    });
+    expect(own.status).toBe("ready");
+    if (own.status !== "ready") return;
+    expect(own.history.tweetId).toBe("999");
+    expect(own.liveTweet?.tweetId).toBe("999");
+  });
+
   it("schedules a post for future processing", async () => {
     connectXAccount();
 
@@ -199,5 +337,37 @@ describe("X post service", () => {
     expect(processed).toHaveLength(1);
     expect(processed[0]?.scheduledId).toBe(scheduled.id);
     expect(processed[0]?.result.status).toBe("ready");
+  });
+
+  it("checks connection and permissions", async () => {
+    connectXAccount();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              id: "123",
+              username: "atlas_user",
+              name: "ATLAS User",
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const result = await checkXConnectionForUser({
+      userId: TEST_USER_ID,
+      context: TEST_CONTEXT,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") return;
+    expect(result.connected).toBe(true);
+    expect(result.tokenValid).toBe(true);
+    expect(result.permissionsOk).toBe(true);
+    expect(JSON.stringify(result)).not.toContain("x-access-token");
   });
 });

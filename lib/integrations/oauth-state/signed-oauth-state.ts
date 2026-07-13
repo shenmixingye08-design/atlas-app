@@ -30,6 +30,7 @@ function resolveOAuthStateSecret(): string {
   return (
     process.env.GOOGLE_CLIENT_SECRET?.trim() ||
     process.env.DROPBOX_APP_SECRET?.trim() ||
+    process.env.X_CLIENT_SECRET?.trim() ||
     ""
   );
 }

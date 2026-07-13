@@ -11,7 +11,10 @@ import { Tabs } from "@/components/ui/tabs";
 import { connectExternalService } from "@/lib/integrations/external-services";
 import {
   createXPostClient,
+  deleteXDraftClient,
+  fetchXDraftPostsClient,
   fetchXPostHistoryClient,
+  fetchXPostResultClient,
   fetchXScheduledPostsClient,
   formatXPostedAt,
   formatXPostMode,
@@ -19,6 +22,7 @@ import {
   X_TWEET_MAX_CHARS,
 } from "@/lib/integrations/x/post";
 import type {
+  XDraftPost,
   XPostHistoryRecord,
   XPostMode,
   XPostValidationSummary,
@@ -29,6 +33,8 @@ import { ui } from "@/lib/i18n";
 const MODE_TABS: { id: XPostMode; label: string }[] = [
   { id: "immediate", label: ui.xPost.modeImmediate },
   { id: "scheduled", label: ui.xPost.modeScheduled },
+  { id: "draft", label: ui.xPost.modeDraft },
+  { id: "test", label: ui.xPost.modeTest },
 ];
 
 function ValidationSummary({ validation }: { validation: XPostValidationSummary }) {
@@ -43,7 +49,13 @@ function ValidationSummary({ validation }: { validation: XPostValidationSummary 
   );
 }
 
-function HistoryCard({ record }: { record: XPostHistoryRecord }) {
+function HistoryCard({
+  record,
+  onViewResult,
+}: {
+  record: XPostHistoryRecord;
+  onViewResult: (id: string) => void;
+}) {
   return (
     <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -61,21 +73,57 @@ function HistoryCard({ record }: { record: XPostHistoryRecord }) {
             {record.status === "success" ? ui.xPost.statusSuccess : ui.xPost.statusFailed}
           </span>
         </div>
-        {record.tweetUrl && (
-          <a
-            href={record.tweetUrl}
-            target="_blank"
-            rel="noreferrer"
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onViewResult(record.id)}
             className="text-sm font-medium text-accent hover:underline"
           >
-            {ui.xPost.openTweet}
-          </a>
-        )}
+            {ui.xPost.viewResult}
+          </button>
+          {record.tweetUrl && (
+            <a
+              href={record.tweetUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm font-medium text-accent hover:underline"
+            >
+              {ui.xPost.openTweet}
+            </a>
+          )}
+        </div>
       </div>
       <p className="mt-3 whitespace-pre-wrap text-sm text-foreground">{record.text}</p>
       {record.errorMessage && (
         <p className="mt-2 text-sm text-[var(--status-error)]">{record.errorMessage}</p>
       )}
+    </li>
+  );
+}
+
+function DraftCard({
+  draft,
+  onUse,
+  onDelete,
+}: {
+  draft: XDraftPost;
+  onUse: (draft: XDraftPost) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]">
+      <p className="text-sm text-[var(--foreground-muted)]">
+        {formatXPostedAt(draft.updatedAt)}
+      </p>
+      <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{draft.text}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button variant="secondary" onClick={() => onUse(draft)}>
+          {ui.xPost.useDraft}
+        </Button>
+        <Button variant="secondary" onClick={() => onDelete(draft.id)}>
+          {ui.xPost.deleteDraft}
+        </Button>
+      </div>
     </li>
   );
 }
@@ -87,6 +135,9 @@ function ScheduledCard({ post }: { post: XScheduledPost }) {
         {ui.xPost.scheduledForLabel}: {formatXPostedAt(post.scheduledFor)}
       </p>
       <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{post.text}</p>
+      {post.errorMessage && (
+        <p className="mt-2 text-sm text-[var(--status-error)]">{post.errorMessage}</p>
+      )}
     </li>
   );
 }
@@ -94,10 +145,12 @@ function ScheduledCard({ post }: { post: XScheduledPost }) {
 export function XPostPanel() {
   const [mode, setMode] = useState<XPostMode>("immediate");
   const [text, setText] = useState("");
+  const [draftId, setDraftId] = useState<string | null>(null);
   const [scheduledFor, setScheduledFor] = useState("");
   const [validation, setValidation] = useState<XPostValidationSummary | null>(null);
   const [history, setHistory] = useState<XPostHistoryRecord[]>([]);
   const [scheduled, setScheduled] = useState<XScheduledPost[]>([]);
+  const [drafts, setDrafts] = useState<XDraftPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -105,6 +158,7 @@ export function XPostPanel() {
   const [featureDisabled, setFeatureDisabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [resultDetail, setResultDetail] = useState<string | null>(null);
 
   const charCount = useMemo(() => [...text].length, [text]);
 
@@ -115,9 +169,10 @@ export function XPostPanel() {
     setFeatureDisabled(false);
 
     try {
-      const [historyResult, scheduledResult] = await Promise.all([
+      const [historyResult, scheduledResult, draftsResult] = await Promise.all([
         fetchXPostHistoryClient(),
         fetchXScheduledPostsClient(),
+        fetchXDraftPostsClient(),
       ]);
 
       if (historyResult.status === "feature_disabled") {
@@ -131,9 +186,13 @@ export function XPostPanel() {
       if (scheduledResult.status === "ready") {
         setScheduled(scheduledResult.posts);
       }
+
+      if (draftsResult.status === "ready") {
+        setDrafts(draftsResult.drafts);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : ui.error.loadFailed;
-      if (message.includes("Xを接続")) {
+      if (message.includes("Xを接続") || message.includes("再接続")) {
         setNeedsConnect(true);
       } else {
         setError(message);
@@ -149,7 +208,7 @@ export function XPostPanel() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      if (!text.trim()) {
+      if (!text.trim() || mode === "test") {
         setValidation(null);
         return;
       }
@@ -159,7 +218,7 @@ export function XPostPanel() {
     }, 300);
 
     return () => window.clearTimeout(timer);
-  }, [text]);
+  }, [text, mode]);
 
   const handleConnect = async () => {
     setIsConnecting(true);
@@ -172,16 +231,44 @@ export function XPostPanel() {
     }
   };
 
+  const handleViewResult = async (historyId: string) => {
+    setResultDetail(null);
+    setError(null);
+    try {
+      const result = await fetchXPostResultClient(historyId, { live: true });
+      if (result.status === "ready") {
+        const live = result.liveTweet
+          ? ` / ライブ: ${result.liveTweet.text}`
+          : "";
+        setResultDetail(
+          `${ui.xPost.resultTitle}: ${result.history.status === "success" ? ui.xPost.statusSuccess : ui.xPost.statusFailed}${
+            result.history.tweetUrl ? ` — ${result.history.tweetUrl}` : ""
+          }${
+            result.history.errorMessage
+              ? `（${result.history.errorMessage}）`
+              : ""
+          }${live}`,
+        );
+      } else if ("message" in result) {
+        setError(result.message);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : ui.error.loadFailed);
+    }
+  };
+
   const handleSubmit = async () => {
     setIsSubmitting(true);
     setError(null);
     setNotice(null);
+    setResultDetail(null);
 
     try {
       const result = await createXPostClient({
         text,
         mode,
         scheduledFor: mode === "scheduled" ? scheduledFor : null,
+        draftId: mode === "draft" ? draftId : null,
       });
 
       if (result.status === "x_not_connected") {
@@ -205,11 +292,30 @@ export function XPostPanel() {
         return;
       }
 
-      setNotice(
-        mode === "scheduled" ? ui.xPost.scheduleSuccess : ui.xPost.postSuccess,
-      );
-      setText("");
-      setScheduledFor("");
+      if (mode === "scheduled") {
+        setNotice(ui.xPost.scheduleSuccess);
+      } else if (mode === "draft") {
+        setNotice(ui.xPost.draftSuccess);
+        setDraftId(result.draft?.id ?? null);
+      } else if (mode === "test") {
+        setNotice(
+          result.history?.tweetUrl
+            ? `${ui.xPost.testSuccess}: ${result.history.tweetUrl}`
+            : ui.xPost.testSuccess,
+        );
+      } else {
+        setNotice(
+          result.history?.tweetUrl
+            ? `${ui.xPost.postSuccess}: ${result.history.tweetUrl}`
+            : ui.xPost.postSuccess,
+        );
+      }
+
+      if (mode !== "draft") {
+        setText("");
+        setDraftId(null);
+        setScheduledFor("");
+      }
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : ui.xPost.postFailed);
@@ -218,11 +324,42 @@ export function XPostPanel() {
     }
   };
 
+  const handleUseDraft = (draft: XDraftPost) => {
+    setText(draft.text);
+    setDraftId(draft.id);
+    setMode("draft");
+  };
+
+  const handleDeleteDraft = async (id: string) => {
+    setError(null);
+    try {
+      await deleteXDraftClient(id);
+      if (draftId === id) {
+        setDraftId(null);
+      }
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : ui.error.loadFailed);
+    }
+  };
+
   const submitDisabled =
     isSubmitting ||
-    !text.trim() ||
+    (mode !== "test" && !text.trim()) ||
     (validation?.errors.length ?? 0) > 0 ||
     (mode === "scheduled" && !scheduledFor);
+
+  const submitLabel = (() => {
+    if (isSubmitting) {
+      if (mode === "scheduled") return ui.xPost.scheduling;
+      if (mode === "draft") return ui.xPost.drafting;
+      return ui.xPost.posting;
+    }
+    if (mode === "scheduled") return ui.xPost.scheduleButton;
+    if (mode === "draft") return ui.xPost.draftButton;
+    if (mode === "test") return ui.xPost.testButton;
+    return ui.xPost.postButton;
+  })();
 
   return (
     <div className="space-y-8">
@@ -237,6 +374,11 @@ export function XPostPanel() {
       {notice && (
         <p className="rounded-[var(--radius-lg)] bg-[var(--status-success-bg)] px-4 py-3 text-sm text-[var(--status-success)]">
           {notice}
+        </p>
+      )}
+      {resultDetail && (
+        <p className="rounded-[var(--radius-lg)] bg-[var(--background-subtle)] px-4 py-3 text-sm text-foreground">
+          {resultDetail}
         </p>
       )}
 
@@ -285,20 +427,30 @@ export function XPostPanel() {
               onChange={(value) => setMode(value as XPostMode)}
             />
 
-            <textarea
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              placeholder={ui.xPost.textPlaceholder}
-              rows={5}
-              className="w-full rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--card)] px-4 py-3 text-sm text-foreground shadow-[var(--shadow-sm)] focus:outline-none focus:ring-2 focus:ring-accent/25"
-            />
+            {mode !== "test" && (
+              <textarea
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                placeholder={ui.xPost.textPlaceholder}
+                rows={5}
+                className="w-full rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--card)] px-4 py-3 text-sm text-foreground shadow-[var(--shadow-sm)] focus:outline-none focus:ring-2 focus:ring-accent/25"
+              />
+            )}
 
-            <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-              <span className="text-[var(--foreground-muted)]">
-                {ui.xPost.charCount(charCount, X_TWEET_MAX_CHARS)}
-              </span>
-              {validation && <ValidationSummary validation={validation} />}
-            </div>
+            {mode === "test" && (
+              <p className="text-sm text-[var(--foreground-muted)]">
+                接続確認用の短い投稿をXへ送信します。任意で本文を入力することもできます。
+              </p>
+            )}
+
+            {mode !== "test" && (
+              <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                <span className="text-[var(--foreground-muted)]">
+                  {ui.xPost.charCount(charCount, X_TWEET_MAX_CHARS)}
+                </span>
+                {validation && <ValidationSummary validation={validation} />}
+              </div>
+            )}
 
             {mode === "scheduled" && (
               <label className="block space-y-2 text-sm">
@@ -315,13 +467,7 @@ export function XPostPanel() {
             )}
 
             <Button disabled={submitDisabled} onClick={() => void handleSubmit()}>
-              {isSubmitting
-                ? mode === "scheduled"
-                  ? ui.xPost.scheduling
-                  : ui.xPost.posting
-                : mode === "scheduled"
-                  ? ui.xPost.scheduleButton
-                  : ui.xPost.postButton}
+              {submitLabel}
             </Button>
           </Card>
 
@@ -333,6 +479,28 @@ export function XPostPanel() {
               {ui.xPost.automationHint}
             </p>
           </Card>
+
+          <section className="space-y-4">
+            <h2 className="text-lg font-semibold text-foreground">
+              {ui.xPost.draftsTitle}
+            </h2>
+            {drafts.length === 0 ? (
+              <p className="text-sm text-[var(--foreground-muted)]">
+                {ui.xPost.draftsEmpty}
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {drafts.map((draft) => (
+                  <DraftCard
+                    key={draft.id}
+                    draft={draft}
+                    onUse={handleUseDraft}
+                    onDelete={(id) => void handleDeleteDraft(id)}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
 
           <section className="space-y-4">
             <h2 className="text-lg font-semibold text-foreground">
@@ -362,7 +530,11 @@ export function XPostPanel() {
             ) : (
               <ul className="space-y-3">
                 {history.map((record) => (
-                  <HistoryCard key={record.id} record={record} />
+                  <HistoryCard
+                    key={record.id}
+                    record={record}
+                    onViewResult={(id) => void handleViewResult(id)}
+                  />
                 ))}
               </ul>
             )}

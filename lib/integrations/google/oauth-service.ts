@@ -14,6 +14,10 @@ import { createDefaultConnection } from "../external-services/registry";
 import { googleServiceDefinition } from "./definition";
 
 import { GOOGLE_ACCOUNT_SCOPES } from "./config";
+import {
+  deleteGoogleAuthFromSupabase,
+  persistGoogleAuthToSupabase,
+} from "./credential-persistence";
 import { deleteStoredDriveFolders } from "./drive/folder-store";
 import {
   exchangeGoogleAccountAuthCode,
@@ -24,6 +28,25 @@ import {
   ensureExternalAuthHydrated,
   schedulePersistExternalAuth,
 } from "../external-services/durable";
+import { isAtlasProduction } from "@/lib/runtime/is-production";
+
+async function persistGoogleAuthDurable(
+  userId: string,
+  connection: ExternalServiceConnection,
+): Promise<void> {
+  const credentials = getExternalServiceCredentials(userId, "google");
+  if (credentials) {
+    const ok = await persistGoogleAuthToSupabase(credentials, connection);
+    if (!ok && isAtlasProduction()) {
+      throw new Error(
+        "Google連携の保存に失敗しました。しばらくしてから再度お試しください",
+      );
+    }
+  } else {
+    await deleteGoogleAuthFromSupabase(userId);
+  }
+  schedulePersistExternalAuth(userId);
+}
 
 export async function completeGoogleAccountOAuth(
   userId: string,
@@ -59,7 +82,9 @@ export async function completeGoogleAccountOAuth(
     status: "connected",
     connectedAt: now,
     lastUsedAt: null,
-    scopes: [...GOOGLE_ACCOUNT_SCOPES],
+    scopes: token.scope
+      ? token.scope.split(/[\s,]+/).filter(Boolean)
+      : [...GOOGLE_ACCOUNT_SCOPES],
     features: [...googleServiceDefinition.plannedFeatures],
     errorMessage: null,
     account: {
@@ -70,7 +95,7 @@ export async function completeGoogleAccountOAuth(
   };
 
   saveExternalServiceConnection(userId, connection);
-  schedulePersistExternalAuth(userId);
+  await persistGoogleAuthDurable(userId, connection);
   return connection;
 }
 
@@ -83,17 +108,25 @@ export async function disconnectGoogleAccount(
     try {
       await revokeGoogleAccountToken(credentials.refreshToken);
     } catch (error) {
-      console.warn("[Google Account] Refresh token revoke failed:", error);
+      console.warn("[Google Account] Refresh token revoke failed");
+      if (error instanceof Error && error.message) {
+        // Avoid logging token material — message only.
+        console.warn("[Google Account] Revoke detail:", error.message);
+      }
     }
     try {
       await revokeGoogleAccountToken(credentials.accessToken);
     } catch (error) {
-      console.warn("[Google Account] Access token revoke failed:", error);
+      console.warn("[Google Account] Access token revoke failed");
+      if (error instanceof Error && error.message) {
+        console.warn("[Google Account] Revoke detail:", error.message);
+      }
     }
     deleteExternalServiceCredentials(userId, "google");
   }
 
   deleteStoredDriveFolders(userId);
+  await deleteGoogleAuthFromSupabase(userId);
 
   const disconnected: ExternalServiceConnection = {
     ...createDefaultConnection(googleServiceDefinition),
@@ -109,4 +142,30 @@ export async function disconnectGoogleAccount(
   saveExternalServiceConnection(userId, disconnected);
   schedulePersistExternalAuth(userId);
   return disconnected;
+}
+
+/** Mark Google connection as needing reconnect (token refresh / auth failure). */
+export function markGoogleConnectionNeedsReconnect(
+  userId: string,
+  message: string,
+): ExternalServiceConnection {
+  const current = getExternalServiceConnection(userId, "google");
+  const next: ExternalServiceConnection = {
+    ...createDefaultConnection(googleServiceDefinition),
+    status: "error",
+    connectedAt: current.connectedAt,
+    lastUsedAt: current.lastUsedAt,
+    scopes: current.scopes,
+    features: [...googleServiceDefinition.plannedFeatures],
+    errorMessage: message,
+    account: current.account,
+  };
+  saveExternalServiceConnection(userId, next);
+
+  const credentials = getExternalServiceCredentials(userId, "google");
+  if (credentials) {
+    void persistGoogleAuthToSupabase(credentials, next);
+  }
+  schedulePersistExternalAuth(userId);
+  return next;
 }

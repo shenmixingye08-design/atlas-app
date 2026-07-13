@@ -6,10 +6,13 @@ import type Stripe from "stripe";
 
 import { getPlanDefinition, isPlanId } from "../plans/registry";
 import type { PlanId } from "../plans/types";
+import { isPaidCapableStatus } from "../subscriptions/service";
 import {
   getUserSubscription,
+  resolveUserSubscriptionDurable,
   saveUserSubscription,
 } from "../subscriptions/store";
+import type { UserSubscriptionRecord } from "../subscriptions/types";
 
 import { getStripeClient } from "./client";
 import {
@@ -20,6 +23,16 @@ import {
   resolveCheckoutUrls,
   resolvePlanIdFromStripePrice,
 } from "./config";
+import {
+  CHECKOUT_ALREADY_SAME_PLAN_MESSAGE,
+  CHECKOUT_PRICE_MISMATCH_MESSAGE,
+  CHECKOUT_USE_PORTAL_FOR_PLAN_CHANGE_MESSAGE,
+  CheckoutBlockedError,
+} from "./errors";
+import {
+  assertStripeSafeForProduction,
+  usesStripeLiveSecretKey,
+} from "./production-guard";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 export type CheckoutSessionResult = {
@@ -45,6 +58,153 @@ export function assertAllowedStripePriceId(priceId: string, planId: PlanId): voi
   }
   if (!resolvePlanIdFromStripePrice(priceId)) {
     throw new Error("Stripe price is not in the allowlist");
+  }
+}
+
+/**
+ * Verify Stripe Price matches ATLAS plan amount.
+ * JPY is a zero-decimal currency in Stripe → unit_amount === yen (980, not 98000).
+ */
+export async function assertStripePriceMatchesPlan(
+  stripe: Stripe,
+  priceId: string,
+  planId: PlanId,
+): Promise<void> {
+  const plan = getPlanDefinition(planId);
+  let price: Stripe.Price;
+  try {
+    price = await stripe.prices.retrieve(priceId);
+  } catch {
+    throw new CheckoutBlockedError(
+      "price_mismatch",
+      CHECKOUT_PRICE_MISMATCH_MESSAGE,
+    );
+  }
+
+  const currency = price.currency.toLowerCase();
+  if (currency !== "jpy") {
+    console.error(
+      `[billing] Stripe price currency mismatch for ${planId}: expected jpy, got ${currency}`,
+    );
+    throw new CheckoutBlockedError(
+      "price_mismatch",
+      CHECKOUT_PRICE_MISMATCH_MESSAGE,
+    );
+  }
+
+  // Fail closed: unit_amount must equal monthlyPriceJpy for JPY.
+  if (price.unit_amount == null || price.unit_amount !== plan.monthlyPriceJpy) {
+    console.error(
+      `[billing] Stripe price amount mismatch for ${planId}: expected ${plan.monthlyPriceJpy}, got ${price.unit_amount}`,
+    );
+    throw new CheckoutBlockedError(
+      "price_mismatch",
+      CHECKOUT_PRICE_MISMATCH_MESSAGE,
+    );
+  }
+
+  if (price.type === "recurring" && price.recurring?.interval !== "month") {
+    console.error(
+      `[billing] Stripe price interval mismatch for ${planId}: expected month`,
+    );
+    throw new CheckoutBlockedError(
+      "price_mismatch",
+      CHECKOUT_PRICE_MISMATCH_MESSAGE,
+    );
+  }
+}
+
+function isBlockingSubscriptionStatus(
+  status: UserSubscriptionRecord["status"],
+): boolean {
+  return (
+    isPaidCapableStatus(status) ||
+    status === "past_due" ||
+    status === "unpaid"
+  );
+}
+
+function resolvePlanFromStripeSubscription(
+  subscription: Stripe.Subscription,
+): PlanId | null {
+  const metadataPlan = subscription.metadata?.planId;
+  if (metadataPlan && isPlanId(metadataPlan)) return metadataPlan;
+
+  const priceId = subscription.items.data[0]?.price?.id ?? null;
+  return resolvePlanIdFromStripePrice(priceId);
+}
+
+/**
+ * Reject duplicate Checkout when the user already has an active paid sub.
+ * Prefer Billing Portal for plan changes (safer than accidental double subs).
+ */
+export async function assertNoDuplicatePaidSubscription(input: {
+  userId: string;
+  planId: PlanId;
+  stripe: Stripe | null;
+  stripeCustomerId?: string | null;
+}): Promise<void> {
+  const local = await resolveUserSubscriptionDurable(input.userId);
+  if (
+    local.planId !== "free" &&
+    isBlockingSubscriptionStatus(local.status)
+  ) {
+    if (local.planId === input.planId) {
+      throw new CheckoutBlockedError(
+        "already_same_plan",
+        CHECKOUT_ALREADY_SAME_PLAN_MESSAGE,
+      );
+    }
+    throw new CheckoutBlockedError(
+      "use_portal_for_plan_change",
+      CHECKOUT_USE_PORTAL_FOR_PLAN_CHANGE_MESSAGE,
+    );
+  }
+
+  const customerId = input.stripeCustomerId ?? local.stripeCustomerId;
+  if (!input.stripe || !customerId) return;
+
+  try {
+    const listed = await input.stripe.subscriptions.list({
+      customer: customerId,
+      status: "all",
+      limit: 20,
+    });
+
+    const blocking = listed.data.filter(
+      (sub) =>
+        sub.status === "active" ||
+        sub.status === "trialing" ||
+        sub.status === "past_due" ||
+        sub.status === "unpaid",
+    );
+
+    for (const sub of blocking) {
+      const existingPlan = resolvePlanFromStripeSubscription(sub);
+      if (existingPlan === input.planId) {
+        throw new CheckoutBlockedError(
+          "already_same_plan",
+          CHECKOUT_ALREADY_SAME_PLAN_MESSAGE,
+        );
+      }
+      if (existingPlan && existingPlan !== "free") {
+        throw new CheckoutBlockedError(
+          "use_portal_for_plan_change",
+          CHECKOUT_USE_PORTAL_FOR_PLAN_CHANGE_MESSAGE,
+        );
+      }
+      // Unknown price mapping but still a live Stripe sub — block to be safe.
+      throw new CheckoutBlockedError(
+        "use_portal_for_plan_change",
+        CHECKOUT_USE_PORTAL_FOR_PLAN_CHANGE_MESSAGE,
+      );
+    }
+  } catch (error) {
+    if (error instanceof CheckoutBlockedError) throw error;
+    console.warn(
+      "[billing] Stripe subscription list failed during duplicate check:",
+      error instanceof Error ? error.message : "unknown",
+    );
   }
 }
 
@@ -117,6 +277,8 @@ export async function createCheckoutSession(input: {
   origin: string;
   existingStripeCustomerId?: string | null;
 }): Promise<CheckoutSessionResult> {
+  assertStripeSafeForProduction();
+
   const plan = getPlanDefinition(input.planId);
 
   if (plan.monthlyPriceJpy <= 0) {
@@ -131,6 +293,7 @@ export async function createCheckoutSession(input: {
 
   if (stripe && priceId && isStripeCheckoutReadyForPlan(input.planId)) {
     assertAllowedStripePriceId(priceId, input.planId);
+    await assertStripePriceMatchesPlan(stripe, priceId, input.planId);
 
     const customerId = await findOrCreateStripeCustomer({
       stripe,
@@ -138,10 +301,17 @@ export async function createCheckoutSession(input: {
       customerEmail: input.customerEmail,
       existingCustomerId:
         input.existingStripeCustomerId ??
-        getUserSubscription(input.userId)?.stripeCustomerId ??
+        (await resolveUserSubscriptionDurable(input.userId)).stripeCustomerId ??
         null,
     });
     rememberStripeCustomerId(input.userId, customerId);
+
+    await assertNoDuplicatePaidSubscription({
+      userId: input.userId,
+      planId: input.planId,
+      stripe,
+      stripeCustomerId: customerId,
+    });
 
     const { successUrl, cancelUrl } = resolveCheckoutUrls(origin);
     const metadata: Record<string, string> = {
@@ -193,6 +363,14 @@ export async function createCheckoutSession(input: {
     );
   }
 
+  // Local/dev mock still checks durable local state for duplicate guidance.
+  await assertNoDuplicatePaidSubscription({
+    userId: input.userId,
+    planId: input.planId,
+    stripe: null,
+    stripeCustomerId: input.existingStripeCustomerId ?? null,
+  });
+
   const mockSessionId = `mock_cs_${randomUUID()}`;
   const mockUrl = new URL("/billing/success", origin);
   mockUrl.searchParams.set("session_id", mockSessionId);
@@ -207,10 +385,17 @@ export async function createCheckoutSession(input: {
   };
 }
 
+/**
+ * Opens Stripe Customer Portal for the authenticated user's own customer ID.
+ * Card change / invoices / cancel / plan change are Portal Dashboard features —
+ * the app only creates a portal session; it does not collect card data.
+ */
 export async function createBillingPortalSession(input: {
   stripeCustomerId: string;
   origin: string;
 }): Promise<{ url: string; mode: "live" | "mock" }> {
+  assertStripeSafeForProduction();
+
   const stripe = getStripeClient();
 
   if (stripe) {
@@ -240,6 +425,7 @@ export function mapStripePlanId(value: string | null | undefined): PlanId | null
   return value;
 }
 
+/** True when the configured secret key is live mode (sk_live_). */
 export function isStripeLiveMode(): boolean {
-  return isStripeConfigured();
+  return usesStripeLiveSecretKey();
 }

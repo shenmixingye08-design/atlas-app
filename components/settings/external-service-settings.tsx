@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import type {
   ExternalServiceStatus,
@@ -139,11 +140,35 @@ function ExternalServiceCard({
               </ul>
             </div>
 
+            {service.serviceId === "google" && (
+              <p className="text-caption text-[var(--foreground-muted)]">
+                {ui.externalServices.googleClerkDistinctHint}
+              </p>
+            )}
+
             {connection.errorMessage && (
               <p className="text-sm text-[var(--status-error)]">
                 {service.serviceId === "google"
-                  ? ui.externalServices.googleConnectError
+                  ? connection.errorMessage || ui.externalServices.googleConnectError
                   : connection.errorMessage}
+              </p>
+            )}
+
+            {service.serviceId === "google" &&
+              (connection.status === "error" || connection.status === "connected") && (
+                <p className="text-caption text-[var(--foreground-muted)]">
+                  {ui.externalServices.googleReconnectHint}
+                </p>
+              )}
+
+            {service.serviceId === "wordpress" && (
+              <p className="text-caption text-[var(--foreground-muted)]">
+                <Link
+                  href="/settings/wordpress"
+                  className="font-medium text-accent hover:underline"
+                >
+                  {ui.wordpressSettings.openSettings}
+                </Link>
               </p>
             )}
 
@@ -157,15 +182,62 @@ function ExternalServiceCard({
 
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap lg:flex-col lg:items-end">
           {isConnected ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full sm:w-auto"
-              disabled={busy}
-              onClick={onDisconnect}
-            >
-              {ui.actions.disconnect}
-            </Button>
+            <>
+              {service.serviceId === "google" && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  disabled={busy}
+                  isLoading={busy}
+                  onClick={onConnect}
+                >
+                  {ui.externalServices.googleReconnect}
+                </Button>
+              )}
+              {service.serviceId === "wordpress" && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  disabled={busy}
+                  onClick={onConnect}
+                >
+                  {ui.wordpressSettings.openSettings}
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full sm:w-auto"
+                disabled={busy}
+                onClick={onDisconnect}
+              >
+                {ui.actions.disconnect}
+              </Button>
+            </>
+          ) : connection.status === "error" && service.serviceId === "google" ? (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="w-full sm:w-auto"
+                disabled={connectDisabled}
+                isLoading={busy}
+                onClick={onConnect}
+              >
+                {ui.externalServices.googleReconnect}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full sm:w-auto"
+                disabled={busy}
+                onClick={onDisconnect}
+              >
+                {ui.actions.disconnect}
+              </Button>
+            </>
           ) : (
             <Button
               variant="secondary"
@@ -186,6 +258,7 @@ function ExternalServiceCard({
 
 export function ExternalServiceSettings() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [services, setServices] = useState<ExternalServiceView[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -228,12 +301,17 @@ export function ExternalServiceSettings() {
   }, [searchParams, loadCatalog]);
 
   const handleConnect = async (serviceId: ExternalServiceView["serviceId"]) => {
+    if (serviceId === "wordpress") {
+      router.push("/settings/wordpress");
+      return;
+    }
+
     setBusyId(serviceId);
     setError(null);
     setSuccessMessage(null);
     try {
       await connectExternalService(serviceId);
-      if (serviceId !== "google") {
+      if (serviceId !== "google" && serviceId !== "x") {
         await loadCatalog();
       }
     } catch (err) {

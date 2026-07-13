@@ -1,20 +1,45 @@
-import type { ExternalServiceDefinition } from "../external-services/types";
-import {
-  stubConnectService,
-  stubDisconnectService,
-  type ExternalServiceConnectorModule,
-} from "../connector-types";
+export { wordpressServiceDefinition } from "./definition";
+export { wordpressConnector } from "./connector";
 
-export const wordpressServiceDefinition: ExternalServiceDefinition = {
-  serviceId: "wordpress",
-  serviceName: "WordPress",
-  icon: "🌐",
-  purposes: ["ブログ投稿"],
-  plannedScopes: ["posts:create", "posts:edit"],
-  plannedFeatures: ["下書き保存", "記事の公開", "カテゴリ設定"],
-};
+export type {
+  WordPressCategory,
+  WordPressConnectInput,
+  WordPressConnectionCheckResult,
+  WordPressConnectionStatus,
+  WordPressCredentialRecord,
+  WordPressMediaUploadResult,
+  WordPressPersistedAuth,
+  WordPressPostPayload,
+  WordPressPostResult,
+  WordPressPostStatus,
+  WordPressPublicSiteInfo,
+  WordPressTag,
+} from "./types";
 
-export const wordpressConnector: ExternalServiceConnectorModule = {
-  connect: stubConnectService,
-  disconnect: stubDisconnectService,
-};
+export {
+  connectWordPressAccount,
+  disconnectWordPressAccount,
+  getWordPressAuthContext,
+  markWordPressAuthFailure,
+  touchWordPressConnectionLastUsed,
+} from "./connection-service";
+
+export { checkWordPressConnectionForUser } from "./connection-status";
+
+export {
+  createWordPressPostForUser,
+  fetchWordPressCategoriesForUser,
+  fetchWordPressTagsForUser,
+  updateWordPressPostForUser,
+} from "./post/service";
+
+export {
+  connectWordPressClient,
+  createWordPressPostClient,
+  disconnectWordPressClient,
+  fetchWordPressCategoriesClient,
+  fetchWordPressConnectionStatusClient,
+  fetchWordPressTagsClient,
+  updateWordPressPostClient,
+  verifyWordPressConnectionClient,
+} from "./client";

@@ -18,17 +18,24 @@ async function parseGmailErrorResponse(
     status?: string;
   } | null;
 
-  if (body?.status === "google_not_connected") {
+  if (
+    body?.status === "google_not_connected" ||
+    body?.status === "feature_disabled" ||
+    body?.status === "plan_required" ||
+    body?.status === "insufficient_permission" ||
+    body?.status === "needs_reconnect"
+  ) {
     return {
-      status: "google_not_connected",
-      message: body.message ?? "Googleを接続してください",
-    };
-  }
-
-  if (body?.status === "feature_disabled") {
-    return {
-      status: "feature_disabled",
-      message: body.message ?? "Google連携は現在ご利用いただけません",
+      status: body.status,
+      message:
+        body.message ??
+        (body.status === "google_not_connected"
+          ? "Googleを接続してください"
+          : body.status === "insufficient_permission"
+            ? "必要なGoogle権限が不足しています。再接続して権限を許可してください"
+            : body.status === "needs_reconnect"
+              ? "Google連携の有効期限が切れました。再接続してください"
+              : "Google連携は現在ご利用いただけません"),
     };
   }
 

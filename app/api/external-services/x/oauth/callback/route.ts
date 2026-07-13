@@ -1,12 +1,9 @@
 import { consumeXOAuthState } from "@/lib/integrations/x/oauth-state";
-import { completeXAccountOAuth } from "@/lib/integrations/x/oauth-service";
-import { X_OAUTH_USER_ERROR } from "@/lib/integrations/x/errors";
-import { createDefaultConnection } from "@/lib/integrations/external-services/registry";
 import {
-  getExternalServiceConnection,
-  saveExternalServiceConnection,
-} from "@/lib/integrations/external-services/store";
-import { xServiceDefinition } from "@/lib/integrations/x/definition";
+  completeXAccountOAuth,
+  markXConnectionNeedsReconnect,
+} from "@/lib/integrations/x/oauth-service";
+import { X_OAUTH_USER_ERROR } from "@/lib/integrations/x/errors";
 import { recordXAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
 import { notifyIntegrationError } from "@/lib/notifications/emitters";
 
@@ -39,16 +36,7 @@ function markXConnectionError(userId: string, message: string): void {
     service: "X",
     message: X_OAUTH_USER_ERROR,
   });
-  const current = getExternalServiceConnection(userId, "x");
-  saveExternalServiceConnection(userId, {
-    ...createDefaultConnection(xServiceDefinition),
-    status: "error",
-    connectedAt: current.connectedAt,
-    lastUsedAt: current.lastUsedAt,
-    scopes: [...xServiceDefinition.plannedScopes],
-    features: [...xServiceDefinition.plannedFeatures],
-    errorMessage: X_OAUTH_USER_ERROR,
-  });
+  markXConnectionNeedsReconnect(userId, X_OAUTH_USER_ERROR);
 }
 
 export async function GET(request: Request): Promise<Response> {
@@ -86,8 +74,9 @@ export async function GET(request: Request): Promise<Response> {
       username: connection.account?.username ?? connection.account?.email ?? "",
     });
   } catch (error) {
-    console.error("[X OAuth callback]", error);
     const message = error instanceof Error ? error.message : X_OAUTH_USER_ERROR;
+    // Never log tokens / auth codes — message only.
+    console.error("[X OAuth callback]", message);
     markXConnectionError(userId, message);
     return redirectToSettings(origin, { x_error: "1" });
   }

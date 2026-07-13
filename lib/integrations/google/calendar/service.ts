@@ -3,8 +3,16 @@ import "server-only";
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
+import { getExternalServiceCredentials } from "@/lib/integrations/external-services/credential-store";
 import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
-import { getGoogleAccountAccessToken } from "@/lib/integrations/google/token-manager";
+import { getGoogleAccountAccessTokenResult } from "@/lib/integrations/google/token-manager";
+import {
+  GOOGLE_INSUFFICIENT_PERMISSION_MESSAGE,
+  GOOGLE_NOT_CONNECTED_MESSAGE,
+  GOOGLE_RECONNECT_REQUIRED_MESSAGE,
+  hasGoogleCapability,
+  resolveGrantedGoogleScope,
+} from "@/lib/integrations/google/scopes";
 import { notifyCalendarReminder } from "@/lib/notifications/emitters";
 import { runWithAiBillingUsage } from "@/lib/billing/usage/request-context";
 
@@ -18,6 +26,7 @@ import {
   deleteGoogleCalendarEvent,
   fetchGoogleCalendarEvents,
   fetchGoogleCalendarFreeBusy,
+  listGoogleCalendars,
   updateGoogleCalendarEvent,
 } from "./api-client";
 import { buildCalendarAutomationTriggers } from "./automation-plan";
@@ -29,6 +38,7 @@ import type {
   CalendarEventsSnapshot,
   CalendarFetchStatus,
   CalendarFreeSlot,
+  CalendarListResult,
   CalendarMeetingCandidate,
   CalendarOrganizeInsight,
   CalendarRangeId,
@@ -60,22 +70,46 @@ async function requireCalendarAccess(input: {
   }
 
   const connection = getExternalServiceConnection(input.userId, "google");
+  if (connection.status === "error") {
+    return {
+      status: "needs_reconnect",
+      message: connection.errorMessage ?? GOOGLE_RECONNECT_REQUIRED_MESSAGE,
+    };
+  }
   if (connection.status !== "connected") {
     return {
       status: "google_not_connected",
-      message: "Googleを接続してください",
+      message: GOOGLE_NOT_CONNECTED_MESSAGE,
     };
   }
 
-  const accessToken = await getGoogleAccountAccessToken(input.userId);
-  if (!accessToken) {
+  const credentials = getExternalServiceCredentials(input.userId, "google");
+  const grantedScope = resolveGrantedGoogleScope(
+    credentials?.scope,
+    connection.scopes,
+  );
+  if (!hasGoogleCapability(grantedScope, "calendar")) {
+    return {
+      status: "insufficient_permission",
+      message: GOOGLE_INSUFFICIENT_PERMISSION_MESSAGE,
+    };
+  }
+
+  const tokenResult = await getGoogleAccountAccessTokenResult(input.userId);
+  if (tokenResult.status === "refresh_failed") {
+    return {
+      status: "needs_reconnect",
+      message: tokenResult.message,
+    };
+  }
+  if (tokenResult.status !== "ready") {
     return {
       status: "google_not_connected",
-      message: "Googleを接続してください",
+      message: GOOGLE_NOT_CONNECTED_MESSAGE,
     };
   }
 
-  return { accessToken };
+  return { accessToken: tokenResult.accessToken };
 }
 
 function isGateFailure(
@@ -117,6 +151,34 @@ export async function getGoogleCalendarEventsForUser(input: {
     snapshot,
     automationTriggers,
   };
+}
+
+export async function listGoogleCalendarsForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+}): Promise<CalendarListResult> {
+  const access = await requireCalendarAccess(input);
+  if (isGateFailure(access)) return access;
+
+  try {
+    const calendars = await listGoogleCalendars({
+      accessToken: access.accessToken,
+    });
+    return { status: "ready", calendars };
+  } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    if (
+      message.includes("insufficient") ||
+      message.includes("permission") ||
+      message.includes("scope")
+    ) {
+      return {
+        status: "insufficient_permission",
+        message: GOOGLE_INSUFFICIENT_PERMISSION_MESSAGE,
+      };
+    }
+    throw error;
+  }
 }
 
 export function parseCalendarRangeParam(

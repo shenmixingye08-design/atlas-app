@@ -1,6 +1,7 @@
 export { CALENDAR_API_BASE, DEFAULT_CALENDAR_NOTIFY_MINUTES_BEFORE } from "./constants";
 export { CALENDAR_TIMEZONE, isCalendarRangeId, resolveCalendarRangeWindow } from "./ranges";
 export {
+  listGoogleCalendars,
   normalizeGoogleCalendarEvent,
   fetchGoogleCalendarEvents,
   createGoogleCalendarEvent,
@@ -11,6 +12,7 @@ export {
 } from "./api-client";
 export {
   fetchGoogleCalendarEventsClient,
+  fetchGoogleCalendarsClient,
   createGoogleCalendarEventClient,
   updateGoogleCalendarEventClient,
   deleteGoogleCalendarEventClient,
@@ -26,6 +28,7 @@ export {
 } from "./ai-assistant";
 export {
   getGoogleCalendarEventsForUser,
+  listGoogleCalendarsForUser,
   parseCalendarRangeParam,
   createCalendarEventForUser,
   updateCalendarEventForUser,
@@ -43,6 +46,8 @@ export type {
   CalendarEventsSnapshot,
   CalendarFetchStatus,
   CalendarFreeSlot,
+  CalendarListEntry,
+  CalendarListResult,
   CalendarMeetingCandidate,
   CalendarOrganizeInsight,
   CalendarRangeId,

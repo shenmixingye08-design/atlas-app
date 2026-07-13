@@ -4,7 +4,15 @@ export { markGoogleConnectionPending } from "./pending";
 
 export { completeGoogleAccountOAuth, disconnectGoogleAccount } from "./oauth-service";
 export { buildGoogleAccountAuthorizeUrl } from "./oauth";
-export { getGoogleAccountAccessToken } from "./token-manager";
+export {
+  getGoogleAccountAccessToken,
+  getGoogleAccountAccessTokenResult,
+} from "./token-manager";
+export {
+  hasGoogleCapability,
+  GOOGLE_INSUFFICIENT_PERMISSION_MESSAGE,
+  GOOGLE_RECONNECT_REQUIRED_MESSAGE,
+} from "./scopes";
 
 export {
   getGoogleCalendarEventsForUser,

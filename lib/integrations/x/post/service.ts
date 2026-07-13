@@ -4,7 +4,12 @@ import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
 import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
-import { getXAccountAccessToken } from "@/lib/integrations/x/oauth-service";
+import {
+  getXAccountAccessToken,
+  getXAccountAccessTokenResult,
+} from "@/lib/integrations/x/token-manager";
+import { touchXConnectionLastUsed } from "@/lib/integrations/x/oauth-service";
+import { X_RECONNECT_REQUIRED_MESSAGE } from "@/lib/integrations/x/errors";
 import {
   recordXAuthFailure,
   recordXPostFailure,
@@ -14,9 +19,18 @@ import {
   notifyXPostSuccess,
 } from "@/lib/notifications/emitters";
 
-import { buildTweetUrl, createTweet } from "./api-client";
+import { buildTweetUrl, createTweet, fetchTweetById } from "./api-client";
+import {
+  deleteXDraftPost,
+  getXDraftPost,
+  listXDraftPosts,
+  saveXDraftPost,
+} from "./draft-store";
 import { savePostTextToGoogleDriveIfEnabled } from "./drive-backup";
-import { listXPostHistory, saveXPostHistoryRecord } from "./history-store";
+import {
+  listXPostHistory,
+  saveXPostHistoryRecord,
+} from "./history-store";
 import {
   listDueXScheduledPosts,
   listXScheduledPosts,
@@ -24,20 +38,27 @@ import {
   updateXScheduledPost,
 } from "./schedule-store";
 import type {
+  XDraftPostsResult,
   XPostHistoryRecord,
   XPostHistoryResult,
+  XPostLookupResult,
   XPostMode,
   XPostResult,
   XScheduledPostsResult,
 } from "./types";
 import { validateTweetText } from "./validate";
 
+const TEST_POST_PREFIX = "【ATLASテスト投稿】";
+
 async function resolveXPostAccess(input: {
   userId: string;
   context: FeatureAccessContext;
 }): Promise<
   | { status: "ready"; accessToken: string; username: string | null }
-  | { status: Exclude<XPostResult["status"], "ready" | "validation_failed">; message: string }
+  | {
+      status: Exclude<XPostResult["status"], "ready" | "validation_failed">;
+      message: string;
+    }
 > {
   if (!isFeatureEnabled("x", input.context)) {
     return {
@@ -50,16 +71,22 @@ async function resolveXPostAccess(input: {
   if (connection.status !== "connected") {
     return {
       status: "x_not_connected",
-      message: "Xを接続してください",
+      message:
+        connection.status === "error"
+          ? connection.errorMessage ?? X_RECONNECT_REQUIRED_MESSAGE
+          : "Xを接続してください",
     };
   }
 
-  const accessToken = await getXAccountAccessToken(input.userId);
-  if (!accessToken) {
+  const tokenResult = await getXAccountAccessTokenResult(input.userId);
+  if (tokenResult.status !== "ready") {
     recordXAuthFailure("X access token unavailable", "x_post");
     return {
       status: "x_not_connected",
-      message: "Xを接続してください",
+      message:
+        tokenResult.status === "refresh_failed"
+          ? tokenResult.message
+          : "Xを接続してください",
     };
   }
 
@@ -68,7 +95,7 @@ async function resolveXPostAccess(input: {
     connection.account?.email?.replace(/^@/, "") ??
     null;
 
-  return { status: "ready", accessToken, username };
+  return { status: "ready", accessToken: tokenResult.accessToken, username };
 }
 
 function buildHistoryRecord(input: {
@@ -140,10 +167,18 @@ async function executeTweetPost(input: {
       userId: input.userId,
       text: input.text.trim(),
       context: input.context,
-      fileNamePrefix: input.mode === "auto" ? "x-auto-post" : "x-post",
+      fileNamePrefix:
+        input.mode === "auto"
+          ? "x-auto-post"
+          : input.mode === "test"
+            ? "x-test-post"
+            : "x-post",
     });
   } catch (error) {
-    console.warn("[X Post] Drive backup failed:", error);
+    console.warn("[X Post] Drive backup failed");
+    if (error instanceof Error) {
+      console.warn("[X Post] Drive backup detail:", error.message);
+    }
   }
 
   try {
@@ -171,11 +206,13 @@ async function executeTweetPost(input: {
       }),
     );
 
+    await touchXConnectionLastUsed(input.userId);
     notifyXPostSuccess(input.userId, input.text.trim());
 
     return { status: "ready", mode: input.mode, history };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Xへの投稿に失敗しました";
+    const message =
+      error instanceof Error ? error.message : "Xへの投稿に失敗しました";
     recordXPostFailure(message, "x_post");
 
     saveXPostHistoryRecord(
@@ -215,6 +252,108 @@ export async function postTweetNowForUser(input: {
     mode: "immediate",
     context: input.context,
   });
+}
+
+/** Post a short verification tweet to confirm write permissions. */
+export async function postTweetTestForUser(input: {
+  userId: string;
+  text?: string;
+  context: FeatureAccessContext;
+}): Promise<XPostResult> {
+  if (!isFeatureEnabled("x", input.context)) {
+    return {
+      status: "feature_disabled",
+      message: featureDisabledMessage("x"),
+    };
+  }
+
+  const custom = input.text?.trim();
+  const text = custom
+    ? custom.startsWith(TEST_POST_PREFIX)
+      ? custom
+      : `${TEST_POST_PREFIX} ${custom}`
+    : `${TEST_POST_PREFIX} ${new Date().toLocaleString("ja-JP")} — 接続確認`;
+
+  return executeTweetPost({
+    userId: input.userId,
+    text,
+    mode: "test",
+    context: input.context,
+  });
+}
+
+export async function saveXDraftForUser(input: {
+  userId: string;
+  text: string;
+  draftId?: string;
+  context: FeatureAccessContext;
+}): Promise<XPostResult> {
+  if (!isFeatureEnabled("x", input.context)) {
+    return {
+      status: "feature_disabled",
+      message: featureDisabledMessage("x"),
+    };
+  }
+
+  const validation = validateTweetText(input.text);
+  // Allow empty drafts only when updating existing? Prefer requiring non-empty.
+  if (validation.errors.length > 0) {
+    return {
+      status: "validation_failed",
+      message: validation.errors.join(" / "),
+      validation,
+    };
+  }
+
+  const draft = saveXDraftPost({
+    userId: input.userId,
+    text: input.text,
+    id: input.draftId,
+  });
+
+  return { status: "ready", mode: "draft", draft };
+}
+
+export async function getXDraftPostsForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+}): Promise<XDraftPostsResult> {
+  if (!isFeatureEnabled("x", input.context)) {
+    return {
+      status: "feature_disabled",
+      message: featureDisabledMessage("x"),
+    };
+  }
+
+  return {
+    status: "ready",
+    drafts: listXDraftPosts(input.userId),
+  };
+}
+
+export async function deleteXDraftForUser(input: {
+  userId: string;
+  draftId: string;
+  context: FeatureAccessContext;
+}): Promise<
+  | { status: "ready" }
+  | { status: "feature_disabled"; message: string }
+  | { status: "not_found"; message: string }
+> {
+  if (!isFeatureEnabled("x", input.context)) {
+    return {
+      status: "feature_disabled",
+      message: featureDisabledMessage("x"),
+    };
+  }
+
+  const existing = getXDraftPost(input.userId, input.draftId);
+  if (!existing) {
+    return { status: "not_found", message: "下書きが見つかりません" };
+  }
+
+  deleteXDraftPost(input.userId, input.draftId);
+  return { status: "ready" };
 }
 
 export async function scheduleTweetForUser(input: {
@@ -338,6 +477,49 @@ export async function getXPostHistoryForUser(input: {
   };
 }
 
+/** Fetch a single post result by history id (IDOR-safe: user-scoped). */
+export async function getXPostResultForUser(input: {
+  userId: string;
+  historyId: string;
+  context: FeatureAccessContext;
+  includeLive?: boolean;
+}): Promise<XPostLookupResult> {
+  if (!isFeatureEnabled("x", input.context)) {
+    return {
+      status: "feature_disabled",
+      message: featureDisabledMessage("x"),
+    };
+  }
+
+  const history = listXPostHistory(input.userId).find(
+    (record) => record.id === input.historyId,
+  );
+  if (!history) {
+    return { status: "not_found", message: "投稿結果が見つかりません" };
+  }
+
+  if (!input.includeLive || !history.tweetId || history.status !== "success") {
+    return { status: "ready", history, liveTweet: null };
+  }
+
+  const accessToken = await getXAccountAccessToken(input.userId);
+  if (!accessToken) {
+    return { status: "ready", history, liveTweet: null };
+  }
+
+  try {
+    const liveTweet = await fetchTweetById({
+      accessToken,
+      tweetId: history.tweetId,
+    });
+    return { status: "ready", history, liveTweet };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "投稿結果の取得に失敗しました";
+    return { status: "error", message };
+  }
+}
+
 export async function getXScheduledPostsForUser(input: {
   userId: string;
   context: FeatureAccessContext;
@@ -351,8 +533,11 @@ export async function getXScheduledPostsForUser(input: {
 
   return {
     status: "ready",
-    posts: listXScheduledPosts(input.userId).filter((post) => post.status === "pending"),
+    posts: listXScheduledPosts(input.userId).filter(
+      (post) => post.status === "pending",
+    ),
   };
 }
 
 export { validateTweetText, isTweetTextValid } from "./validate";
+export { TEST_POST_PREFIX };

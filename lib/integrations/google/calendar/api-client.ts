@@ -33,6 +33,19 @@ type GoogleCalendarListResponse = {
   error?: { message?: string };
 };
 
+type GoogleCalendarDirectoryItem = {
+  id?: string;
+  summary?: string;
+  primary?: boolean;
+  accessRole?: string;
+  backgroundColor?: string;
+};
+
+type GoogleCalendarDirectoryResponse = {
+  items?: GoogleCalendarDirectoryItem[];
+  error?: { message?: string };
+};
+
 type GoogleFreeBusyResponse = {
   calendars?: {
     primary?: {
@@ -189,6 +202,39 @@ export async function fetchGoogleCalendarEvents(input: {
       (a, b) =>
         new Date(a.startAt).getTime() - new Date(b.startAt).getTime(),
     );
+}
+
+export async function listGoogleCalendars(input: {
+  accessToken: string;
+}): Promise<
+  {
+    id: string;
+    summary: string;
+    primary: boolean;
+    accessRole: string | null;
+    backgroundColor: string | null;
+  }[]
+> {
+  const payload = await calendarFetch<GoogleCalendarDirectoryResponse>(
+    input.accessToken,
+    "/users/me/calendarList?maxResults=250&minAccessRole=reader",
+  );
+
+  return (payload.items ?? [])
+    .filter((item): item is GoogleCalendarDirectoryItem & { id: string } =>
+      Boolean(item.id),
+    )
+    .map((item) => ({
+      id: item.id,
+      summary: item.summary?.trim() || item.id,
+      primary: Boolean(item.primary),
+      accessRole: item.accessRole?.trim() || null,
+      backgroundColor: item.backgroundColor?.trim() || null,
+    }))
+    .sort((a, b) => {
+      if (a.primary === b.primary) return a.summary.localeCompare(b.summary, "ja");
+      return a.primary ? -1 : 1;
+    });
 }
 
 export async function createGoogleCalendarEvent(input: {

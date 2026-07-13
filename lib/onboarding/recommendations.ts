@@ -29,7 +29,7 @@ export type RecommendedAutomation = {
 const SERVICE_SETTINGS_HREF: Partial<Record<ExternalServiceId, string>> = {
   google: "/settings/google/gmail",
   x: "/settings/x",
-  wordpress: "/settings",
+  wordpress: "/settings/wordpress",
   dropbox: "/workspace/drive?provider=dropbox",
 };
 

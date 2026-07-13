@@ -11,15 +11,42 @@ import {
 } from "../external-services/store";
 import type { ExternalServiceConnection } from "../external-services/types";
 import { createDefaultConnection } from "../external-services/registry";
+import {
+  ensureExternalAuthHydrated,
+  schedulePersistExternalAuth,
+} from "../external-services/durable";
+import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 import { X_OAUTH_SCOPES } from "./config";
+import {
+  deleteXAuthFromSupabase,
+  persistXAuthToSupabase,
+} from "./credential-persistence";
 import { xServiceDefinition } from "./definition";
+import { X_RECONNECT_REQUIRED_MESSAGE } from "./errors";
 import {
   exchangeXAuthCode,
   fetchXUserProfile,
-  refreshXAccessToken,
   revokeXToken,
 } from "./oauth";
+
+async function persistXAuthDurable(
+  userId: string,
+  connection: ExternalServiceConnection,
+): Promise<void> {
+  const credentials = getExternalServiceCredentials(userId, "x");
+  if (credentials) {
+    const ok = await persistXAuthToSupabase(credentials, connection);
+    if (!ok && isAtlasProduction()) {
+      throw new Error(
+        "X連携の保存に失敗しました。しばらくしてから再度お試しください",
+      );
+    }
+  } else {
+    await deleteXAuthFromSupabase(userId);
+  }
+  schedulePersistExternalAuth(userId);
+}
 
 export async function completeXAccountOAuth(
   userId: string,
@@ -27,6 +54,7 @@ export async function completeXAccountOAuth(
   codeVerifier: string,
   requestOrigin: string,
 ): Promise<ExternalServiceConnection> {
+  await ensureExternalAuthHydrated(userId);
   const token = await exchangeXAuthCode(code, codeVerifier, requestOrigin);
 
   if (!token.refresh_token) {
@@ -68,21 +96,28 @@ export async function completeXAccountOAuth(
   };
 
   saveExternalServiceConnection(userId, connection);
+  await persistXAuthDurable(userId, connection);
   return connection;
 }
 
 export async function disconnectXAccount(
   userId: string,
 ): Promise<ExternalServiceConnection> {
+  await ensureExternalAuthHydrated(userId);
   const credentials = getExternalServiceCredentials(userId, "x");
   if (credentials) {
     try {
       await revokeXToken(credentials.accessToken);
     } catch (error) {
-      console.warn("[X Account] Token revoke failed:", error);
+      console.warn("[X Account] Token revoke failed");
+      if (error instanceof Error && error.message) {
+        console.warn("[X Account] Revoke detail:", error.message);
+      }
     }
     deleteExternalServiceCredentials(userId, "x");
   }
+
+  await deleteXAuthFromSupabase(userId);
 
   const disconnected: ExternalServiceConnection = {
     ...createDefaultConnection(xServiceDefinition),
@@ -96,36 +131,49 @@ export async function disconnectXAccount(
   };
 
   saveExternalServiceConnection(userId, disconnected);
+  schedulePersistExternalAuth(userId);
   return disconnected;
 }
 
-export async function getXAccountAccessToken(
+/** Mark X connection as needing reconnect (token refresh / auth failure). */
+export function markXConnectionNeedsReconnect(
   userId: string,
-): Promise<string | null> {
+  message: string = X_RECONNECT_REQUIRED_MESSAGE,
+): ExternalServiceConnection {
+  const current = getExternalServiceConnection(userId, "x");
+  const next: ExternalServiceConnection = {
+    ...createDefaultConnection(xServiceDefinition),
+    status: "error",
+    connectedAt: current.connectedAt,
+    lastUsedAt: current.lastUsedAt,
+    scopes: current.scopes,
+    features: [...xServiceDefinition.plannedFeatures],
+    errorMessage: message,
+    account: current.account,
+  };
+  saveExternalServiceConnection(userId, next);
+
   const credentials = getExternalServiceCredentials(userId, "x");
-  if (!credentials) return null;
-
-  const expiresAtMs = new Date(credentials.expiresAt).getTime();
-  const bufferMs = 60_000;
-
-  if (Date.now() < expiresAtMs - bufferMs) {
-    return credentials.accessToken;
+  if (credentials) {
+    void persistXAuthToSupabase(credentials, next);
   }
+  schedulePersistExternalAuth(userId);
+  return next;
+}
 
-  const refreshed = await refreshXAccessToken(credentials.refreshToken);
-  const now = new Date().toISOString();
-  const expiresAt = new Date(
-    Date.now() + refreshed.expires_in * 1000,
-  ).toISOString();
+export async function touchXConnectionLastUsed(userId: string): Promise<void> {
+  const connection = getExternalServiceConnection(userId, "x");
+  if (connection.status !== "connected") return;
 
-  saveExternalServiceCredentials({
-    ...credentials,
-    accessToken: refreshed.access_token,
-    refreshToken: refreshed.refresh_token ?? credentials.refreshToken,
-    expiresAt,
-    scope: refreshed.scope || credentials.scope,
-    updatedAt: now,
-  });
+  const next: ExternalServiceConnection = {
+    ...connection,
+    lastUsedAt: new Date().toISOString(),
+  };
+  saveExternalServiceConnection(userId, next);
 
-  return refreshed.access_token;
+  const credentials = getExternalServiceCredentials(userId, "x");
+  if (credentials) {
+    void persistXAuthToSupabase(credentials, next);
+  }
+  schedulePersistExternalAuth(userId);
 }

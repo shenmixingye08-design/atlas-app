@@ -28,6 +28,8 @@ export type AuditActionName =
   | "google_disconnect"
   | "dropbox_connect"
   | "dropbox_disconnect"
+  | "x_connect"
+  | "x_disconnect"
   | "line_connect"
   | "line_disconnect"
   | "automation_create"

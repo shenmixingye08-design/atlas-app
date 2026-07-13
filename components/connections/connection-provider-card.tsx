@@ -104,8 +104,23 @@ export function ConnectionProviderCard({ provider }: ConnectionProviderCardProps
               {oauthReadinessLabel(provider.oauthReadiness)}
             </p>
           </div>
-          <Button variant="secondary" disabled>
-            {ui.connections.connectFuture}
+          <Button
+            variant="secondary"
+            disabled={provider.id !== "google"}
+            onClick={() => {
+              if (provider.id === "google" && typeof window !== "undefined") {
+                window.location.assign(
+                  "/api/external-services/google/oauth/authorize",
+                );
+              }
+            }}
+          >
+            {provider.connectionStatus === "connected" ||
+            provider.connectionStatus === "needs_reconnect"
+              ? ui.connections.reconnect
+              : provider.id === "google"
+                ? ui.actions.connect
+                : ui.connections.connectFuture}
           </Button>
         </div>
       </div>

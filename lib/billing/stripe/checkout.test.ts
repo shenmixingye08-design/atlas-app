@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   resolveAppOrigin,
@@ -6,7 +6,17 @@ import {
   STRIPE_CHECKOUT_CANCEL_PATH,
   STRIPE_CHECKOUT_SUCCESS_PATH,
 } from "./config";
-import { createCheckoutSession } from "./checkout";
+import {
+  assertNoDuplicatePaidSubscription,
+  createCheckoutSession,
+  isStripeLiveMode,
+} from "./checkout";
+import {
+  CHECKOUT_ALREADY_SAME_PLAN_MESSAGE,
+  CHECKOUT_USE_PORTAL_FOR_PLAN_CHANGE_MESSAGE,
+  CheckoutBlockedError,
+} from "./errors";
+import { resetSubscriptionStore, saveUserSubscription } from "../subscriptions/store";
 
 const ENV_KEYS = [
   "STRIPE_SECRET_KEY",
@@ -58,9 +68,30 @@ describe("stripe checkout config", () => {
   });
 });
 
+describe("isStripeLiveMode", () => {
+  it("is true only for sk_live_ secret keys", () => {
+    const saved = snapshotEnv();
+    process.env.STRIPE_SECRET_KEY = "sk_test_example";
+    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_test_example";
+    expect(isStripeLiveMode()).toBe(false);
+
+    process.env.STRIPE_SECRET_KEY = "sk_live_example";
+    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_live_example";
+    expect(isStripeLiveMode()).toBe(true);
+
+    delete process.env.STRIPE_SECRET_KEY;
+    expect(isStripeLiveMode()).toBe(false);
+    restoreEnv(saved);
+  });
+});
+
 describe("createCheckoutSession", () => {
+  beforeEach(() => {
+    resetSubscriptionStore();
+  });
+
   afterEach(() => {
-    // Vitest runs tests in parallel — each test restores its own snapshot in afterEach
+    resetSubscriptionStore();
   });
 
   it("rejects Free plan checkout", async () => {
@@ -111,5 +142,87 @@ describe("createCheckoutSession", () => {
     ).rejects.toThrow("Stripe price is not configured for plan: light");
 
     restoreEnv(saved);
+  });
+
+  it("blocks checkout when the same paid plan is already active", async () => {
+    const saved = snapshotEnv();
+    for (const key of ENV_KEYS) delete process.env[key];
+
+    const now = new Date().toISOString();
+    saveUserSubscription({
+      userId: "user_dup_same",
+      stripeCustomerId: "cus_dup",
+      stripeSubscriptionId: "sub_dup",
+      stripePriceId: "price_light",
+      planId: "light",
+      status: "active",
+      currentPeriodStart: now,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      updatedAt: now,
+    });
+
+    await expect(
+      createCheckoutSession({
+        userId: "user_dup_same",
+        planId: "light",
+        origin: "http://localhost:3000",
+      }),
+    ).rejects.toBeInstanceOf(CheckoutBlockedError);
+
+    await expect(
+      createCheckoutSession({
+        userId: "user_dup_same",
+        planId: "light",
+        origin: "http://localhost:3000",
+      }),
+    ).rejects.toThrow(CHECKOUT_ALREADY_SAME_PLAN_MESSAGE);
+
+    restoreEnv(saved);
+  });
+
+  it("blocks checkout for a different paid plan and guides to portal", async () => {
+    const saved = snapshotEnv();
+    for (const key of ENV_KEYS) delete process.env[key];
+
+    const now = new Date().toISOString();
+    saveUserSubscription({
+      userId: "user_dup_other",
+      stripeCustomerId: "cus_other",
+      stripeSubscriptionId: "sub_other",
+      stripePriceId: "price_standard",
+      planId: "standard",
+      status: "trialing",
+      currentPeriodStart: now,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      updatedAt: now,
+    });
+
+    await expect(
+      createCheckoutSession({
+        userId: "user_dup_other",
+        planId: "premium",
+        origin: "http://localhost:3000",
+      }),
+    ).rejects.toThrow(CHECKOUT_USE_PORTAL_FOR_PLAN_CHANGE_MESSAGE);
+
+    restoreEnv(saved);
+  });
+});
+
+describe("assertNoDuplicatePaidSubscription", () => {
+  beforeEach(() => {
+    resetSubscriptionStore();
+  });
+
+  it("allows checkout when user is on free", async () => {
+    await expect(
+      assertNoDuplicatePaidSubscription({
+        userId: "user_free",
+        planId: "light",
+        stripe: null,
+      }),
+    ).resolves.toBeUndefined();
   });
 });

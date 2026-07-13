@@ -1,6 +1,9 @@
 export type {
+  XDraftPost,
+  XDraftPostsResult,
   XPostHistoryRecord,
   XPostHistoryResult,
+  XPostLookupResult,
   XPostMode,
   XPostResult,
   XPostValidationSummary,
@@ -10,7 +13,11 @@ export type {
 
 export {
   createXPostClient,
+  deleteXDraftClient,
+  fetchXConnectionStatusClient,
+  fetchXDraftPostsClient,
   fetchXPostHistoryClient,
+  fetchXPostResultClient,
   fetchXScheduledPostsClient,
   formatXPostedAt,
   formatXPostMode,

@@ -3,6 +3,7 @@ import type {
   CalendarEventInput,
   CalendarEventsResult,
   CalendarFreeSlot,
+  CalendarListResult,
   CalendarMeetingCandidate,
   CalendarOrganizeInsight,
   CalendarRangeId,
@@ -24,17 +25,24 @@ export async function fetchGoogleCalendarEventsClient(
       status?: string;
     } | null;
 
-    if (body?.status === "google_not_connected") {
+    if (
+      body?.status === "google_not_connected" ||
+      body?.status === "feature_disabled" ||
+      body?.status === "plan_required" ||
+      body?.status === "insufficient_permission" ||
+      body?.status === "needs_reconnect"
+    ) {
       return {
-        status: "google_not_connected",
-        message: body.message ?? "Googleを接続してください",
-      };
-    }
-
-    if (body?.status === "feature_disabled") {
-      return {
-        status: "feature_disabled",
-        message: body.message ?? "Google連携は現在ご利用いただけません",
+        status: body.status,
+        message:
+          body.message ??
+          (body.status === "google_not_connected"
+            ? "Googleを接続してください"
+            : body.status === "insufficient_permission"
+              ? "必要なGoogle権限が不足しています。再接続して権限を許可してください"
+              : body.status === "needs_reconnect"
+                ? "Google連携の有効期限が切れました。再接続してください"
+                : "Google連携は現在ご利用いただけません"),
       };
     }
 
@@ -42,6 +50,36 @@ export async function fetchGoogleCalendarEventsClient(
   }
 
   return response.json() as Promise<CalendarEventsResult>;
+}
+
+export async function fetchGoogleCalendarsClient(): Promise<CalendarListResult> {
+  const response = await fetch("/api/google/calendar/calendars", {
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as {
+      message?: string;
+      status?: string;
+    } | null;
+
+    if (
+      body?.status === "google_not_connected" ||
+      body?.status === "feature_disabled" ||
+      body?.status === "plan_required" ||
+      body?.status === "insufficient_permission" ||
+      body?.status === "needs_reconnect"
+    ) {
+      return {
+        status: body.status,
+        message: body.message ?? "カレンダー一覧を取得できません",
+      };
+    }
+
+    throw new Error(body?.message ?? "Failed to list calendars");
+  }
+
+  return response.json() as Promise<CalendarListResult>;
 }
 
 export async function createGoogleCalendarEventClient(

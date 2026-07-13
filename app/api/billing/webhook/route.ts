@@ -13,9 +13,11 @@ export async function POST(request: Request): Promise<Response> {
     }
     return Response.json(result.body, { status: result.status });
   } catch (error) {
+    // Return 5xx so Stripe retries on unexpected failures.
     const message =
       error instanceof Error ? error.message : "Webhook processing failed";
     recordWebhookFailure(message, "billing_webhook");
-    return Response.json({ error: "Webhook processing failed" }, { status: 400 });
+    console.error("[billing:webhook] route exception:", message);
+    return Response.json({ error: "Webhook processing failed" }, { status: 500 });
   }
 }

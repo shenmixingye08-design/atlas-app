@@ -26,6 +26,7 @@ import { markGoogleConnectionPending } from "../google/pending";
 import { buildXAuthorizeUrl } from "../x/oauth";
 import { disconnectXAccount } from "../x/oauth-service";
 import { markXConnectionPending } from "../x/pending";
+import { disconnectWordPressAccount } from "../wordpress/connection-service";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import {
   featureDisabledMessage,
@@ -90,10 +91,7 @@ export class ExternalServiceManager {
 
     const current = getExternalServiceConnection(userId, serviceId);
 
-    if (current.status === "connected") {
-      return { connection: current, message: "すでに接続済みです" };
-    }
-
+    // Google: always allow connect/reconnect (consent refresh, scope upgrade).
     if (serviceId === "google") {
       if (!requestOrigin) {
         throw new Error("Request origin is required for Google OAuth");
@@ -102,14 +100,19 @@ export class ExternalServiceManager {
       markGoogleConnectionPending(userId);
       const pending = getExternalServiceConnection(userId, "google");
       const authorizeUrl = buildGoogleAccountAuthorizeUrl(requestOrigin, userId);
+      const isReconnect =
+        current.status === "connected" || current.status === "error";
 
       return {
         connection: pending,
-        message: "Google認証画面へ移動します",
+        message: isReconnect
+          ? "Google再認証画面へ移動します"
+          : "Google認証画面へ移動します",
         authorizeUrl,
       };
     }
 
+    // X: always allow connect/reconnect (token expiry / scope refresh).
     if (serviceId === "x") {
       if (!requestOrigin) {
         throw new Error("Request origin is required for X OAuth");
@@ -118,12 +121,36 @@ export class ExternalServiceManager {
       markXConnectionPending(userId);
       const pending = getExternalServiceConnection(userId, "x");
       const authorizeUrl = buildXAuthorizeUrl(requestOrigin, userId);
+      const isReconnect =
+        current.status === "connected" || current.status === "error";
 
       return {
         connection: pending,
-        message: "X認証画面へ移動します",
+        message: isReconnect
+          ? "X再認証画面へ移動します"
+          : "X認証画面へ移動します",
         authorizeUrl,
       };
+    }
+
+    // WordPress: Application Password — dedicated settings UI (no OAuth).
+    if (serviceId === "wordpress") {
+      if (!requestOrigin) {
+        throw new Error("Request origin is required for WordPress connection");
+      }
+      const isReconnect =
+        current.status === "connected" || current.status === "error";
+      return {
+        connection: current,
+        message: isReconnect
+          ? "WordPress再接続設定へ移動します"
+          : "WordPress接続設定へ移動します",
+        authorizeUrl: `${requestOrigin}/settings/wordpress`,
+      };
+    }
+
+    if (current.status === "connected") {
+      return { connection: current, message: "すでに接続済みです" };
     }
 
     if (serviceId === "dropbox") {
@@ -181,6 +208,10 @@ export class ExternalServiceManager {
 
     if (serviceId === "x") {
       return disconnectXAccount(userId);
+    }
+
+    if (serviceId === "wordpress") {
+      return disconnectWordPressAccount(userId);
     }
 
     if (serviceId === "dropbox") {

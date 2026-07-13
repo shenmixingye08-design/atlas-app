@@ -1,6 +1,11 @@
 import "server-only";
 
+import { warnIfProductionSupabaseServiceRoleMissing } from "@/lib/persistence/production-guard";
+
 import {
+  hasProcessedWebhookEventInSupabase,
+  isBillingSupabaseConfigured,
+  markWebhookEventProcessedInSupabase,
   readProcessedWebhookEventsFromDisk,
   writeProcessedWebhookEventsToDisk,
 } from "../subscriptions/persistence";
@@ -27,14 +32,40 @@ function getBucket(): ProcessedEventBucket {
   return globalScope.__atlasStripeProcessedWebhookEvents;
 }
 
-export function hasProcessedStripeEvent(eventId: string): boolean {
-  return getBucket().has(eventId);
+/**
+ * Durable-first idempotency check.
+ * Memory/disk are process-local; Supabase is the production source of truth.
+ */
+export async function hasProcessedStripeEvent(eventId: string): Promise<boolean> {
+  if (getBucket().has(eventId)) return true;
+
+  const durable = await hasProcessedWebhookEventInSupabase(eventId);
+  if (durable) {
+    getBucket().add(eventId);
+    return true;
+  }
+
+  return false;
 }
 
-export function markStripeEventProcessed(eventId: string): void {
+/**
+ * Mark after successful handler (allows Stripe retries on failure).
+ * Writes Supabase when configured; disk only in non-production fallback.
+ */
+export async function markStripeEventProcessed(
+  eventId: string,
+  eventType?: string | null,
+): Promise<void> {
   const bucket = getBucket();
   bucket.add(eventId);
   writeProcessedWebhookEventsToDisk(bucket);
+
+  if (!isBillingSupabaseConfigured()) {
+    warnIfProductionSupabaseServiceRoleMissing("atlas_stripe_webhook_events");
+    return;
+  }
+
+  await markWebhookEventProcessedInSupabase(eventId, eventType);
 }
 
 export function resetProcessedStripeEvents(): void {

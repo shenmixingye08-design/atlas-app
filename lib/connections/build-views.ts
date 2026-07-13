@@ -100,9 +100,15 @@ function permissionStateForService(
     if (serviceId === "google_drive" && ctx.googleDriveConnected) return "granted";
     if (serviceId === "google_docs" && ctx.googleDriveConnected) return "granted";
     if (serviceId === "google_sheets" && ctx.googleDriveConnected) return "granted";
-    if (serviceId === "google_calendar" && ctx.googleDriveConnected) return "missing";
+    // Unified Google OAuth grants Calendar with the same account connection.
+    if (
+      serviceId === "google_calendar" &&
+      (ctx.googleDriveConnected || ctx.gmailConnected)
+    ) {
+      return "granted";
+    }
     if (serviceId === "gmail" && ctx.gmailConnected) return "granted";
-    if (serviceId === "gmail" && ctx.googleDriveConnected) return "missing";
+    if (serviceId === "gmail" && ctx.googleDriveConnected) return "granted";
     return "missing";
   }
 
@@ -171,12 +177,22 @@ export function buildConnectionCenterViews(
 
     const services = provider.services.map((service) => {
       let status = service.status;
-      if (
-        provider.id === "google" &&
-        service.id === "google_drive" &&
-        ctx.googleDriveConnected
-      ) {
-        status = "connected";
+      if (provider.id === "google") {
+        if (
+          (service.id === "google_drive" ||
+            service.id === "google_docs" ||
+            service.id === "google_sheets" ||
+            service.id === "google_calendar") &&
+          (ctx.googleDriveConnected || ctx.gmailConnected)
+        ) {
+          status = "connected";
+        }
+        if (
+          service.id === "gmail" &&
+          (ctx.gmailConnected || ctx.googleDriveConnected)
+        ) {
+          status = "connected";
+        }
       }
       return { id: service.id, name: service.name, status };
     });

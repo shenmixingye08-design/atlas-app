@@ -40,6 +40,9 @@ export async function GET(request: Request): Promise<Response> {
     const message =
       error instanceof Error ? error.message : "Failed to load Gmail messages";
     recordGoogleAuthFailure(message, "google_gmail_list");
-    return Response.json({ status: "error", message }, { status: 500 });
+    return Response.json(
+      { status: "error", message: "メールの取得に失敗しました" },
+      { status: 500 },
+    );
   }
 }

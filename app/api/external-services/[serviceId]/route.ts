@@ -33,13 +33,18 @@ export async function DELETE(
       ? "google_disconnect"
       : serviceId === "dropbox"
         ? "dropbox_disconnect"
-        : "owner_action";
+        : serviceId === "x"
+          ? "x_disconnect"
+          : "owner_action";
   recordAuditLogSafe({
     userId,
     ip: ctx.ip,
     userAgent: ctx.userAgent,
     category: "integration",
-    action: serviceId === "google" || serviceId === "dropbox" ? action : `${serviceId}_disconnect`,
+    action:
+      serviceId === "google" || serviceId === "dropbox" || serviceId === "x"
+        ? action
+        : `${serviceId}_disconnect`,
     targetId: serviceId,
     result: "success",
     reason: `${serviceId} disconnected`,

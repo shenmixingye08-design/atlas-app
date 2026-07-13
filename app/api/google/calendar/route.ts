@@ -77,7 +77,10 @@ export async function GET(request: Request): Promise<Response> {
     const message =
       error instanceof Error ? error.message : "Failed to load calendar";
     recordGoogleAuthFailure(message, "google_calendar_list");
-    return Response.json({ status: "error", message }, { status: 500 });
+    return Response.json(
+      { status: "error", message: "予定の取得に失敗しました" },
+      { status: 500 },
+    );
   }
 }
 

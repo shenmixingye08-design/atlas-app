@@ -1,5 +1,5 @@
 /** How the post was triggered. */
-export type XPostMode = "immediate" | "scheduled" | "auto";
+export type XPostMode = "immediate" | "scheduled" | "auto" | "test" | "draft";
 
 export type XPostStatus = "success" | "failed";
 
@@ -39,12 +39,21 @@ export type XScheduledPost = {
   errorMessage: string | null;
 };
 
+export type XDraftPost = {
+  id: string;
+  userId: string;
+  text: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type XPostResult =
   | {
       status: "ready";
       mode: XPostMode;
       history?: XPostHistoryRecord;
       scheduled?: XScheduledPost;
+      draft?: XDraftPost;
     }
   | {
       status: "feature_disabled";
@@ -81,5 +90,37 @@ export type XScheduledPostsResult =
     }
   | {
       status: "feature_disabled";
+      message: string;
+    };
+
+export type XDraftPostsResult =
+  | {
+      status: "ready";
+      drafts: XDraftPost[];
+    }
+  | {
+      status: "feature_disabled";
+      message: string;
+    };
+
+export type XPostLookupResult =
+  | {
+      status: "ready";
+      history: XPostHistoryRecord;
+      liveTweet?: {
+        tweetId: string;
+        text: string;
+      } | null;
+    }
+  | {
+      status: "feature_disabled";
+      message: string;
+    }
+  | {
+      status: "not_found";
+      message: string;
+    }
+  | {
+      status: "error";
       message: string;
     };

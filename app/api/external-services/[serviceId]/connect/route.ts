@@ -63,11 +63,23 @@ export async function POST(
       if (googleDenied) return googleDenied;
     }
 
-    const limitDenied = await requireBillingExternalIntegration(
-      userId,
-      connectedCount,
-    );
-    if (limitDenied) return limitDenied;
+    // Reconnect for an already-connected Google/X/WordPress account does not consume a new slot.
+    const reconnectExempt =
+      (serviceId === "google" ||
+        serviceId === "x" ||
+        serviceId === "wordpress") &&
+      listExternalServiceConnections(userId).some(
+        (row) =>
+          row.serviceId === serviceId &&
+          (row.status === "connected" || row.status === "error"),
+      );
+    if (!reconnectExempt) {
+      const limitDenied = await requireBillingExternalIntegration(
+        userId,
+        connectedCount,
+      );
+      if (limitDenied) return limitDenied;
+    }
 
     const origin = resolveOrigin(request);
     const result = await externalServiceManager.connect(

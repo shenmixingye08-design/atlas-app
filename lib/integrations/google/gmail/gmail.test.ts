@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/billing/access", () => ({
+  getBillingFeatureDenial: vi.fn(async () => null),
+}));
 
 import { resetFeatureFlagStore, setFeatureFlagState } from "@/lib/feature-flags/store";
 import {
@@ -100,6 +103,39 @@ describe("Google Gmail integration", () => {
     expect(result.status).toBe("google_not_connected");
   });
 
+  it("returns insufficient_permission when gmail scopes are missing", async () => {
+    const connection = getExternalServiceConnection(TEST_USER_ID, "google");
+    saveExternalServiceConnection(TEST_USER_ID, {
+      ...connection,
+      status: "connected",
+      connectedAt: new Date().toISOString(),
+      scopes: ["email", "profile"],
+      account: {
+        email: "user@example.com",
+        name: "User",
+        pictureUrl: null,
+      },
+    });
+
+    saveExternalServiceCredentials({
+      userId: TEST_USER_ID,
+      serviceId: "google",
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      scope: "email profile",
+      updatedAt: new Date().toISOString(),
+    });
+
+    const result = await getGmailMessagesForUser({
+      userId: TEST_USER_ID,
+      filter: "unread",
+      context: { email: "beta@example.com", isOwner: false, isBetaUser: true },
+    });
+
+    expect(result.status).toBe("insufficient_permission");
+  });
+
   it("fetches Gmail messages for connected users", async () => {
     const connection = getExternalServiceConnection(TEST_USER_ID, "google");
     saveExternalServiceConnection(TEST_USER_ID, {
@@ -119,7 +155,7 @@ describe("Google Gmail integration", () => {
       accessToken: "access-token",
       refreshToken: "refresh-token",
       expiresAt: new Date(Date.now() + 3600_000).toISOString(),
-      scope: "gmail.readonly",
+      scope: "https://www.googleapis.com/auth/gmail.modify",
       updatedAt: new Date().toISOString(),
     });
 

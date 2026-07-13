@@ -160,3 +160,102 @@ describe("Google account OAuth service", () => {
     ).rejects.toThrow(/refresh token/i);
   });
 });
+
+describe("Google account access token refresh", () => {
+  beforeEach(() => {
+    resetExternalServiceStore();
+    resetExternalServiceCredentialStore();
+    vi.stubEnv("GOOGLE_CLIENT_ID", "test-client-id");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "test-client-secret");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("refreshes expired access tokens", async () => {
+    const { saveExternalServiceCredentials } = await import(
+      "@/lib/integrations/external-services/credential-store"
+    );
+    const { saveExternalServiceConnection, getExternalServiceConnection } =
+      await import("@/lib/integrations/external-services/store");
+    const { getGoogleAccountAccessTokenResult } = await import(
+      "@/lib/integrations/google/token-manager"
+    );
+
+    const connection = getExternalServiceConnection(TEST_USER_ID, "google");
+    saveExternalServiceConnection(TEST_USER_ID, {
+      ...connection,
+      status: "connected",
+      connectedAt: new Date().toISOString(),
+    });
+    saveExternalServiceCredentials({
+      userId: TEST_USER_ID,
+      serviceId: "google",
+      accessToken: "old-access",
+      refreshToken: "refresh-token-456",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      scope: "https://www.googleapis.com/auth/gmail.modify",
+      updatedAt: new Date().toISOString(),
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          access_token: "new-access",
+          expires_in: 3600,
+          scope: "https://www.googleapis.com/auth/gmail.modify",
+          token_type: "Bearer",
+        }),
+      ),
+    );
+
+    const result = await getGoogleAccountAccessTokenResult(TEST_USER_ID);
+    expect(result).toEqual({ status: "ready", accessToken: "new-access" });
+  });
+
+  it("marks connection for reconnect when refresh fails", async () => {
+    const { saveExternalServiceCredentials } = await import(
+      "@/lib/integrations/external-services/credential-store"
+    );
+    const { saveExternalServiceConnection, getExternalServiceConnection } =
+      await import("@/lib/integrations/external-services/store");
+    const { getGoogleAccountAccessTokenResult } = await import(
+      "@/lib/integrations/google/token-manager"
+    );
+
+    const connection = getExternalServiceConnection(TEST_USER_ID, "google");
+    saveExternalServiceConnection(TEST_USER_ID, {
+      ...connection,
+      status: "connected",
+      connectedAt: new Date().toISOString(),
+    });
+    saveExternalServiceCredentials({
+      userId: TEST_USER_ID,
+      serviceId: "google",
+      accessToken: "old-access",
+      refreshToken: "bad-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      scope: "https://www.googleapis.com/auth/gmail.modify",
+      updatedAt: new Date().toISOString(),
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          { error: "invalid_grant", error_description: "Token has been expired or revoked." },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    const result = await getGoogleAccountAccessTokenResult(TEST_USER_ID);
+    expect(result.status).toBe("refresh_failed");
+    expect(getExternalServiceConnection(TEST_USER_ID, "google").status).toBe(
+      "error",
+    );
+  });
+});

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("server-only", () => ({}));
+
 import {
-  deleteExternalServiceCredentials,
   getExternalServiceCredentials,
   resetExternalServiceCredentialStore,
 } from "@/lib/integrations/external-services/credential-store";
@@ -9,9 +10,11 @@ import {
   getExternalServiceConnection,
   resetExternalServiceStore,
 } from "@/lib/integrations/external-services/store";
+import { resetExternalAuthHydration } from "@/lib/integrations/external-services/durable";
 import {
   completeXAccountOAuth,
   disconnectXAccount,
+  markXConnectionNeedsReconnect,
 } from "@/lib/integrations/x/oauth-service";
 import {
   generatePkceCodeChallenge,
@@ -22,10 +25,22 @@ import {
   createXOAuthState,
   resetXOAuthStateStore,
 } from "@/lib/integrations/x/oauth-state";
+import {
+  getXAccountAccessTokenResult,
+} from "@/lib/integrations/x/token-manager";
 
 const TEST_USER_ID = "user_x_oauth_test";
 
 describe("X OAuth PKCE", () => {
+  beforeEach(() => {
+    vi.stubEnv("OAUTH_STATE_SECRET", "test-oauth-state-secret-for-x");
+    resetXOAuthStateStore();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("generates verifier and S256 challenge", () => {
     const verifier = generatePkceCodeVerifier();
     const challenge = generatePkceCodeChallenge(verifier);
@@ -35,14 +50,12 @@ describe("X OAuth PKCE", () => {
     expect(challenge).toMatch(/^[A-Za-z0-9_-]+$/);
   });
 
-  it("stores and consumes oauth state with code verifier", () => {
-    resetXOAuthStateStore();
+  it("stores and consumes signed oauth state with code verifier", () => {
     const verifier = generatePkceCodeVerifier();
     const state = createXOAuthState(TEST_USER_ID, verifier);
     const payload = consumeXOAuthState(state);
 
     expect(payload).toEqual({ userId: TEST_USER_ID, codeVerifier: verifier });
-    expect(consumeXOAuthState(state)).toBeNull();
   });
 });
 
@@ -50,9 +63,11 @@ describe("X account OAuth service", () => {
   beforeEach(() => {
     resetExternalServiceStore();
     resetExternalServiceCredentialStore();
+    resetExternalAuthHydration();
     resetXOAuthStateStore();
     vi.stubEnv("X_CLIENT_ID", "test-x-client-id");
     vi.stubEnv("X_CLIENT_SECRET", "test-x-client-secret");
+    vi.stubEnv("OAUTH_STATE_SECRET", "test-oauth-state-secret-for-x");
   });
 
   afterEach(() => {
@@ -111,6 +126,8 @@ describe("X account OAuth service", () => {
       providerUserId: "123456789",
       username: "atlas_user",
     });
+    expect(JSON.stringify(connection)).not.toContain("x-access-token");
+    expect(JSON.stringify(connection)).not.toContain("x-refresh-token");
     expect(connection.connectedAt).toBeTruthy();
 
     const credentials = getExternalServiceCredentials(TEST_USER_ID, "x");
@@ -164,6 +181,97 @@ describe("X account OAuth service", () => {
     expect(getExternalServiceCredentials(TEST_USER_ID, "x")).toBeNull();
     expect(getExternalServiceConnection(TEST_USER_ID, "x").status).toBe(
       "disconnected",
+    );
+  });
+
+  it("refreshes expired access tokens", async () => {
+    const { saveExternalServiceCredentials } = await import(
+      "@/lib/integrations/external-services/credential-store"
+    );
+    const { saveExternalServiceConnection } = await import(
+      "@/lib/integrations/external-services/store"
+    );
+
+    saveExternalServiceCredentials({
+      userId: TEST_USER_ID,
+      serviceId: "x",
+      accessToken: "old-access",
+      refreshToken: "x-refresh-token",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      scope: "tweet.write",
+      updatedAt: new Date().toISOString(),
+    });
+    saveExternalServiceConnection(TEST_USER_ID, {
+      ...getExternalServiceConnection(TEST_USER_ID, "x"),
+      status: "connected",
+      connectedAt: new Date().toISOString(),
+    });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("oauth2/token")) {
+        return new Response(
+          JSON.stringify({
+            access_token: "new-access",
+            refresh_token: "new-refresh",
+            expires_in: 7200,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getXAccountAccessTokenResult(TEST_USER_ID);
+    expect(result).toEqual({ status: "ready", accessToken: "new-access" });
+    expect(getExternalServiceCredentials(TEST_USER_ID, "x")?.accessToken).toBe(
+      "new-access",
+    );
+  });
+
+  it("marks reconnect required when refresh fails", async () => {
+    const { saveExternalServiceCredentials } = await import(
+      "@/lib/integrations/external-services/credential-store"
+    );
+    const { saveExternalServiceConnection } = await import(
+      "@/lib/integrations/external-services/store"
+    );
+
+    saveExternalServiceCredentials({
+      userId: TEST_USER_ID,
+      serviceId: "x",
+      accessToken: "old-access",
+      refreshToken: "bad-refresh",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      scope: "tweet.write",
+      updatedAt: new Date().toISOString(),
+    });
+    saveExternalServiceConnection(TEST_USER_ID, {
+      ...getExternalServiceConnection(TEST_USER_ID, "x"),
+      status: "connected",
+      connectedAt: new Date().toISOString(),
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ error: "invalid_grant" }), {
+          status: 400,
+        }),
+      ),
+    );
+
+    const result = await getXAccountAccessTokenResult(TEST_USER_ID);
+    expect(result.status).toBe("refresh_failed");
+    expect(getExternalServiceConnection(TEST_USER_ID, "x").status).toBe("error");
+  });
+
+  it("markXConnectionNeedsReconnect sets error status", () => {
+    markXConnectionNeedsReconnect(TEST_USER_ID, "再接続が必要です");
+    expect(getExternalServiceConnection(TEST_USER_ID, "x").status).toBe("error");
+    expect(getExternalServiceConnection(TEST_USER_ID, "x").errorMessage).toBe(
+      "再接続が必要です",
     );
   });
 });

@@ -63,7 +63,9 @@ export async function GET(request: Request): Promise<Response> {
       (row) => row.status === "connected",
     ).length;
     const googleConnected = listExternalServiceConnections(userId).some(
-      (row) => row.serviceId === "google" && row.status === "connected",
+      (row) =>
+        row.serviceId === "google" &&
+        (row.status === "connected" || row.status === "error"),
     );
     if (!googleConnected) {
       const limitDenied = await requireBillingExternalIntegration(

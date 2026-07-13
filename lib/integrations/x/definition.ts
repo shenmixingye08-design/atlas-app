@@ -8,5 +8,11 @@ export const xServiceDefinition: ExternalServiceDefinition = {
   icon: "✖️",
   purposes: ["SNS投稿", "自動投稿"],
   plannedScopes: [...X_OAUTH_SCOPES],
-  plannedFeatures: ["投稿文案の公開", "予約投稿の実行"],
+  plannedFeatures: [
+    "投稿文案の公開",
+    "予約投稿の実行",
+    "下書き保存",
+    "テスト投稿",
+    "接続確認",
+  ],
 };

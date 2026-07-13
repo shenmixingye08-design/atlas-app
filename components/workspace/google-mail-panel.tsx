@@ -8,7 +8,10 @@ import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Tabs } from "@/components/ui/tabs";
-import { connectExternalService } from "@/lib/integrations/external-services";
+import {
+  connectExternalService,
+  disconnectExternalService,
+} from "@/lib/integrations/external-services";
 import {
   addGmailLabelToMessageClient,
   analyzeGmailMessagesClient,
@@ -341,6 +344,7 @@ export function GoogleMailPanel() {
   const [busyMessageId, setBusyMessageId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   const analysisById = useMemo(
@@ -405,6 +409,25 @@ export function GoogleMailPanel() {
         err instanceof Error ? err.message : ui.externalServices.googleConnectError,
       );
       setIsConnecting(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    setIsDisconnecting(true);
+    setError(null);
+    try {
+      await disconnectExternalService("google");
+      setSaveNotice(ui.gmail.disconnectSuccess);
+      setResult({
+        status: "google_not_connected",
+        message: "Googleを接続してください",
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : ui.gmail.disconnectFailed,
+      );
+    } finally {
+      setIsDisconnecting(false);
     }
   };
 
@@ -664,6 +687,41 @@ export function GoogleMailPanel() {
         <Card padding="sm">
           <p className="text-sm text-[var(--foreground-muted)]">{result.message}</p>
         </Card>
+      ) : result?.status === "plan_required" ? (
+        <Card padding="md" className="space-y-3 text-center">
+          <p className="text-body text-foreground">{result.message}</p>
+          <a
+            href="/settings/billing"
+            className="inline-block text-sm font-medium text-accent hover:underline"
+          >
+            プランを確認する
+          </a>
+        </Card>
+      ) : result?.status === "insufficient_permission" ||
+        result?.status === "needs_reconnect" ? (
+        <Card padding="md" className="text-center">
+          <div className="mx-auto max-w-md space-y-4">
+            <p className="text-body text-foreground">{result.message}</p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Button onClick={() => void handleConnect()} disabled={isConnecting}>
+                {isConnecting ? ui.gmail.connecting : ui.gmail.reconnect}
+              </Button>
+              <Button
+                variant="ghost"
+                disabled={isDisconnecting}
+                onClick={() => void handleDisconnect()}
+              >
+                {ui.gmail.disconnect}
+              </Button>
+              <Link
+                href="/settings"
+                className="text-sm text-accent hover:underline"
+              >
+                {ui.gmail.openSettings}
+              </Link>
+            </div>
+          </div>
+        </Card>
       ) : result?.status === "google_not_connected" ? (
         <Card padding="md" className="text-center">
           <div className="mx-auto max-w-md space-y-4">
@@ -732,6 +790,17 @@ export function GoogleMailPanel() {
               ))}
             </ul>
           )}
+
+          <div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-4">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={isDisconnecting}
+              onClick={() => void handleDisconnect()}
+            >
+              {ui.gmail.disconnect}
+            </Button>
+          </div>
         </div>
       ) : null}
     </div>

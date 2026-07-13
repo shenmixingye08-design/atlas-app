@@ -69,6 +69,174 @@ export type Database = {
         };
         Relationships: [];
       };
+      atlas_billing_subscriptions: {
+        Row: {
+          user_id: string;
+          stripe_customer_id: string | null;
+          stripe_subscription_id: string | null;
+          stripe_price_id: string | null;
+          plan_id: string;
+          status: string;
+          current_period_start: string | null;
+          current_period_end: string | null;
+          cancel_at_period_end: boolean;
+          updated_at: string;
+          automations_suspended: boolean | null;
+          payment_failure_grace_ends_at: string | null;
+          plan_profile_synced_at: string | null;
+        };
+        Insert: {
+          user_id: string;
+          stripe_customer_id?: string | null;
+          stripe_subscription_id?: string | null;
+          stripe_price_id?: string | null;
+          plan_id: string;
+          status: string;
+          current_period_start?: string | null;
+          current_period_end?: string | null;
+          cancel_at_period_end?: boolean;
+          updated_at?: string;
+          automations_suspended?: boolean | null;
+          payment_failure_grace_ends_at?: string | null;
+          plan_profile_synced_at?: string | null;
+        };
+        Update: {
+          user_id?: string;
+          stripe_customer_id?: string | null;
+          stripe_subscription_id?: string | null;
+          stripe_price_id?: string | null;
+          plan_id?: string;
+          status?: string;
+          current_period_start?: string | null;
+          current_period_end?: string | null;
+          cancel_at_period_end?: boolean;
+          updated_at?: string;
+          automations_suspended?: boolean | null;
+          payment_failure_grace_ends_at?: string | null;
+          plan_profile_synced_at?: string | null;
+        };
+        Relationships: [];
+      };
+      atlas_stripe_webhook_events: {
+        Row: {
+          event_id: string;
+          event_type: string | null;
+          processed_at: string;
+        };
+        Insert: {
+          event_id: string;
+          event_type?: string | null;
+          processed_at?: string;
+        };
+        Update: {
+          event_id?: string;
+          event_type?: string | null;
+          processed_at?: string;
+        };
+        Relationships: [];
+      };
+      atlas_google_oauth_credentials: {
+        Row: {
+          user_id: string;
+          access_token: string;
+          refresh_token: string;
+          expires_at: string;
+          scope: string;
+          connection_status: string;
+          connected_at: string | null;
+          last_used_at: string | null;
+          account_email: string | null;
+          account_name: string | null;
+          account_picture_url: string | null;
+          error_message: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          access_token: string;
+          refresh_token: string;
+          expires_at: string;
+          scope?: string;
+          connection_status?: string;
+          connected_at?: string | null;
+          last_used_at?: string | null;
+          account_email?: string | null;
+          account_name?: string | null;
+          account_picture_url?: string | null;
+          error_message?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          access_token?: string;
+          refresh_token?: string;
+          expires_at?: string;
+          scope?: string;
+          connection_status?: string;
+          connected_at?: string | null;
+          last_used_at?: string | null;
+          account_email?: string | null;
+          account_name?: string | null;
+          account_picture_url?: string | null;
+          error_message?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      atlas_x_oauth_credentials: {
+        Row: {
+          user_id: string;
+          access_token: string;
+          refresh_token: string;
+          expires_at: string;
+          scope: string;
+          connection_status: string;
+          connected_at: string | null;
+          last_used_at: string | null;
+          account_email: string | null;
+          account_name: string | null;
+          account_picture_url: string | null;
+          account_username: string | null;
+          provider_user_id: string | null;
+          error_message: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          access_token: string;
+          refresh_token: string;
+          expires_at: string;
+          scope?: string;
+          connection_status?: string;
+          connected_at?: string | null;
+          last_used_at?: string | null;
+          account_email?: string | null;
+          account_name?: string | null;
+          account_picture_url?: string | null;
+          account_username?: string | null;
+          provider_user_id?: string | null;
+          error_message?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          access_token?: string;
+          refresh_token?: string;
+          expires_at?: string;
+          scope?: string;
+          connection_status?: string;
+          connected_at?: string | null;
+          last_used_at?: string | null;
+          account_email?: string | null;
+          account_name?: string | null;
+          account_picture_url?: string | null;
+          account_username?: string | null;
+          provider_user_id?: string | null;
+          error_message?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

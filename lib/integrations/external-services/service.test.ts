@@ -38,3 +38,22 @@ describe("externalServiceManager Google connect", () => {
     ).rejects.toThrow(/origin/i);
   });
 });
+
+describe("externalServiceManager WordPress connect", () => {
+  beforeEach(() => {
+    resetExternalServiceStore();
+  });
+
+  it("redirects to WordPress settings for Application Password setup", async () => {
+    const context = buildFeatureAccessContext(null);
+    const result = await externalServiceManager.connect(
+      "user_wp_connect_test",
+      "wordpress",
+      "http://localhost:3000",
+      context,
+    );
+
+    expect(result.authorizeUrl).toBe("http://localhost:3000/settings/wordpress");
+    expect(result.message).toContain("WordPress");
+  });
+});

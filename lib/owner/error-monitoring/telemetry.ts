@@ -117,11 +117,20 @@ export function recordOpenAiFailure(message: string, source = "openai"): void {
 }
 
 export function recordStripeFailure(message: string, source = "stripe"): void {
-  recordError({
-    categoryId: "stripe",
-    message,
-    source,
-  });
+  try {
+    recordError({
+      categoryId: "stripe",
+      message,
+      source,
+    });
+  } catch (error) {
+    // Never let owner telemetry turn a handled billing failure into an opaque 500.
+    console.error("[telemetry] recordStripeFailure failed", {
+      source,
+      message:
+        error instanceof Error ? error.message : "unknown telemetry error",
+    });
+  }
 }
 
 export function recordOwnerErrorFromUnknown(

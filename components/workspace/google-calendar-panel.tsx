@@ -8,11 +8,15 @@ import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Tabs } from "@/components/ui/tabs";
-import { connectExternalService } from "@/lib/integrations/external-services";
+import {
+  connectExternalService,
+  disconnectExternalService,
+} from "@/lib/integrations/external-services";
 import {
   createGoogleCalendarEventClient,
   deleteGoogleCalendarEventClient,
   fetchCalendarFreeSlotsClient,
+  fetchGoogleCalendarsClient,
   fetchGoogleCalendarEventsClient,
   formatCalendarEventWhen,
   organizeCalendarClient,
@@ -25,6 +29,7 @@ import type {
   CalendarEventInput,
   CalendarEventsResult,
   CalendarFreeSlot,
+  CalendarListEntry,
   CalendarMeetingCandidate,
   CalendarOrganizeInsight,
   CalendarRangeId,
@@ -184,6 +189,7 @@ export function GoogleCalendarPanel() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -191,13 +197,26 @@ export function GoogleCalendarPanel() {
   const [freeSlots, setFreeSlots] = useState<CalendarFreeSlot[]>([]);
   const [candidates, setCandidates] = useState<CalendarMeetingCandidate[]>([]);
   const [meetingPurpose, setMeetingPurpose] = useState("");
+  const [calendars, setCalendars] = useState<CalendarListEntry[]>([]);
 
   const load = useCallback(async (nextRange: CalendarRangeId) => {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await fetchGoogleCalendarEventsClient(nextRange);
+      const [data, calendarList] = await Promise.all([
+        fetchGoogleCalendarEventsClient(nextRange),
+        fetchGoogleCalendarsClient().catch(() => null),
+      ]);
       setResult(data);
+      if (calendarList?.status === "ready") {
+        setCalendars([...calendarList.calendars]);
+      } else if (
+        data.status === "google_not_connected" ||
+        data.status === "needs_reconnect" ||
+        data.status === "insufficient_permission"
+      ) {
+        setCalendars([]);
+      }
     } catch (err) {
       setResult(null);
       setError(err instanceof Error ? err.message : ui.error.loadFailed);
@@ -220,6 +239,26 @@ export function GoogleCalendarPanel() {
         err instanceof Error ? err.message : ui.externalServices.googleConnectError,
       );
       setIsConnecting(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    setIsDisconnecting(true);
+    setError(null);
+    try {
+      await disconnectExternalService("google");
+      setNotice(ui.calendar.disconnectSuccess);
+      setCalendars([]);
+      setResult({
+        status: "google_not_connected",
+        message: "Googleを接続してください",
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : ui.calendar.disconnectFailed,
+      );
+    } finally {
+      setIsDisconnecting(false);
     }
   };
 
@@ -409,6 +448,31 @@ export function GoogleCalendarPanel() {
             プランを確認する
           </a>
         </Card>
+      ) : result?.status === "insufficient_permission" ||
+        result?.status === "needs_reconnect" ? (
+        <Card padding="md" className="text-center">
+          <div className="mx-auto max-w-md space-y-4">
+            <p className="text-body text-foreground">{result.message}</p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Button onClick={() => void handleConnect()} disabled={isConnecting}>
+                {isConnecting ? ui.calendar.connecting : ui.calendar.reconnect}
+              </Button>
+              <Button
+                variant="ghost"
+                disabled={isDisconnecting}
+                onClick={() => void handleDisconnect()}
+              >
+                {ui.calendar.disconnect}
+              </Button>
+              <Link
+                href="/settings"
+                className="text-sm text-accent hover:underline"
+              >
+                {ui.calendar.openSettings}
+              </Link>
+            </div>
+          </div>
+        </Card>
       ) : result?.status === "google_not_connected" ? (
         <Card padding="md" className="text-center">
           <div className="mx-auto max-w-md space-y-4">
@@ -428,6 +492,24 @@ export function GoogleCalendarPanel() {
         </Card>
       ) : result?.status === "ready" ? (
         <div className="space-y-6">
+          {calendars.length > 0 && (
+            <Card padding="sm" className="border border-[var(--border-subtle)]">
+              <h2 className="text-sm font-semibold text-foreground">
+                {ui.calendar.calendarsTitle}
+              </h2>
+              <ul className="mt-3 flex flex-wrap gap-2">
+                {calendars.map((calendar) => (
+                  <li
+                    key={calendar.id}
+                    className="rounded-full bg-[var(--background-subtle)] px-2.5 py-0.5 text-xs text-[var(--foreground-muted)]"
+                  >
+                    {calendar.summary}
+                    {calendar.primary ? `（${ui.calendar.primaryCalendar}）` : ""}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           <Card padding="sm" className="border border-[var(--border-subtle)]">
             <div className="space-y-3">
               <h2 className="text-sm font-semibold text-foreground">
@@ -729,6 +811,25 @@ export function GoogleCalendarPanel() {
               ))}
             </ul>
           )}
+
+          <div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-4">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={isConnecting}
+              onClick={() => void handleConnect()}
+            >
+              {isConnecting ? ui.calendar.connecting : ui.calendar.reconnect}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={isDisconnecting}
+              onClick={() => void handleDisconnect()}
+            >
+              {ui.calendar.disconnect}
+            </Button>
+          </div>
         </div>
       ) : null}
     </div>

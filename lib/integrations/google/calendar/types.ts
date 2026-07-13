@@ -52,12 +52,32 @@ export type CalendarAutomationTrigger = {
   eventEndAt: string;
 };
 
+export type CalendarListEntry = {
+  id: string;
+  summary: string;
+  primary: boolean;
+  accessRole: string | null;
+  backgroundColor: string | null;
+};
+
 export type CalendarFetchStatus =
   | "ready"
   | "google_not_connected"
+  | "insufficient_permission"
+  | "needs_reconnect"
   | "feature_disabled"
   | "plan_required"
   | "unauthorized";
+
+export type CalendarListResult =
+  | {
+      status: "ready";
+      calendars: readonly CalendarListEntry[];
+    }
+  | {
+      status: Exclude<CalendarFetchStatus, "ready">;
+      message: string;
+    };
 
 export type CalendarEventsResult =
   | {

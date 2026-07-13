@@ -18,4 +18,6 @@ export {
   countSubscriptionsByPlan,
   listUserSubscriptions,
   resetSubscriptionStore,
+  resolveUserSubscriptionDurable,
+  findSubscriptionByStripeCustomerId,
 } from "./store";

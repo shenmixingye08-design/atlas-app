@@ -13,7 +13,10 @@ import {
   notifyOwnerStripeWebhookFailed,
 } from "@/lib/notifications/emitters";
 import { resolveUserSubscription } from "../subscriptions/service";
-import { listUserSubscriptions } from "../subscriptions/store";
+import {
+  findSubscriptionByStripeCustomerId,
+  listUserSubscriptions,
+} from "../subscriptions/store";
 import {
   applyDowngradeFromWebhook,
   applyPaidPlanFromWebhook,
@@ -232,13 +235,19 @@ async function resolveUserIdFromInvoice(
 
   if (!customerId) return null;
 
-  const match = resolveUserSubscriptionByCustomerId(customerId);
+  const match = await resolveUserSubscriptionByCustomerId(customerId);
   return match?.userId ?? null;
 }
 
-function resolveUserSubscriptionByCustomerId(customerId: string) {
-  return listUserSubscriptions().find(
-    (record) => record.stripeCustomerId === customerId,
+async function resolveUserSubscriptionByCustomerId(customerId: string) {
+  const fromStore = await findSubscriptionByStripeCustomerId(customerId);
+  if (fromStore) return fromStore;
+
+  // Fallback for in-memory-only rows (tests / cold path before Supabase hydrate).
+  return (
+    listUserSubscriptions().find(
+      (record) => record.stripeCustomerId === customerId,
+    ) ?? null
   );
 }
 
@@ -563,7 +572,7 @@ async function handleChargeRefunded(
     });
   }
 
-  const match = resolveUserSubscriptionByCustomerId(customerId);
+  const match = await resolveUserSubscriptionByCustomerId(customerId);
   if (!match) {
     return logWebhookResult({
       event,
