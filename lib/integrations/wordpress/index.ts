@@ -1,3 +1,8 @@
+/**
+ * Client-safe WordPress integration surface.
+ * Server-only modules (connection-service, credential-*, post/service, etc.)
+ * must be imported from their concrete paths — never re-exported here.
+ */
 export { wordpressServiceDefinition } from "./definition";
 export { wordpressConnector } from "./connector";
 
@@ -15,23 +20,6 @@ export type {
   WordPressPublicSiteInfo,
   WordPressTag,
 } from "./types";
-
-export {
-  connectWordPressAccount,
-  disconnectWordPressAccount,
-  getWordPressAuthContext,
-  markWordPressAuthFailure,
-  touchWordPressConnectionLastUsed,
-} from "./connection-service";
-
-export { checkWordPressConnectionForUser } from "./connection-status";
-
-export {
-  createWordPressPostForUser,
-  fetchWordPressCategoriesForUser,
-  fetchWordPressTagsForUser,
-  updateWordPressPostForUser,
-} from "./post/service";
 
 export {
   connectWordPressClient,
