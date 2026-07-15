@@ -1865,6 +1865,10 @@ export const ui = {
       "決済画面を開けませんでした。時間をおいてもう一度お試しください。",
     successTitle: "お支払いが完了しました",
     successSubtitle: "プランが更新されました。引き続きATLASをご利用ください。",
+    checkoutSuccessBanner: (planName: string) =>
+      `${planName}プランへの変更が完了しました`,
+    checkoutCancelledBanner:
+      "お支払いがキャンセルされました。プランは変更されていません。",
     cancelTitle: "お支払いがキャンセルされました",
     cancelSubtitle: "プランは変更されていません。いつでも再度お試しください。",
     backToBilling: "プラン・請求に戻る",

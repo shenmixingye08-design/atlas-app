@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  ATLAS_CANONICAL_ORIGIN,
+  BILLING_SETTINGS_PATH,
   resolveAppOrigin,
   resolveCheckoutUrls,
-  STRIPE_CHECKOUT_CANCEL_PATH,
   STRIPE_CHECKOUT_SUCCESS_PATH,
 } from "./config";
 import {
@@ -29,6 +30,8 @@ const ENV_KEYS = [
   "NEXT_PUBLIC_APP_URL",
   "NEXT_PUBLIC_SITE_URL",
   "VERCEL_URL",
+  "VERCEL_ENV",
+  "NODE_ENV",
 ] as const;
 
 function snapshotEnv(): Record<(typeof ENV_KEYS)[number], string | undefined> {
@@ -50,18 +53,49 @@ function restoreEnv(values: Record<(typeof ENV_KEYS)[number], string | undefined
 }
 
 describe("stripe checkout config", () => {
-  it("builds success and cancel URLs from app origin", () => {
+  it("builds success and cancel URLs from app origin in non-production", () => {
+    const saved = snapshotEnv();
+    delete process.env.VERCEL_ENV;
+    process.env.NODE_ENV = "development";
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.VERCEL_URL;
+
     const urls = resolveCheckoutUrls("https://app.example.com");
     expect(urls.successUrl).toBe(
       `https://app.example.com${STRIPE_CHECKOUT_SUCCESS_PATH}?session_id={CHECKOUT_SESSION_ID}`,
     );
     expect(urls.cancelUrl).toBe(
-      `https://app.example.com${STRIPE_CHECKOUT_CANCEL_PATH}`,
+      `https://app.example.com${BILLING_SETTINGS_PATH}?checkout=cancelled`,
     );
+
+    restoreEnv(saved);
   });
 
-  it("prefers NEXT_PUBLIC_APP_URL over request origin", () => {
+  it("pins production checkout URLs to atlasapp.jp (never vercel.app)", () => {
     const saved = snapshotEnv();
+    process.env.VERCEL_ENV = "production";
+    process.env.VERCEL_URL = "atlas-something.vercel.app";
+    process.env.NEXT_PUBLIC_APP_URL = "https://atlas-something.vercel.app";
+
+    const urls = resolveCheckoutUrls("https://atlas-something.vercel.app");
+    expect(urls.successUrl).toBe(
+      `${ATLAS_CANONICAL_ORIGIN}${STRIPE_CHECKOUT_SUCCESS_PATH}?session_id={CHECKOUT_SESSION_ID}`,
+    );
+    expect(urls.cancelUrl).toBe(
+      `${ATLAS_CANONICAL_ORIGIN}${BILLING_SETTINGS_PATH}?checkout=cancelled`,
+    );
+    expect(resolveAppOrigin("https://atlas-something.vercel.app")).toBe(
+      ATLAS_CANONICAL_ORIGIN,
+    );
+
+    restoreEnv(saved);
+  });
+
+  it("prefers NEXT_PUBLIC_APP_URL over request origin outside production", () => {
+    const saved = snapshotEnv();
+    delete process.env.VERCEL_ENV;
+    process.env.NODE_ENV = "development";
     process.env.NEXT_PUBLIC_APP_URL = "https://atlas.example.com/";
 
     expect(resolveAppOrigin("http://localhost:3000")).toBe("https://atlas.example.com");

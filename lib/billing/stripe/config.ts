@@ -1,7 +1,20 @@
+import { isAtlasProduction } from "@/lib/runtime/is-production";
+
 import type { PlanId } from "../plans/types";
 
 export const STRIPE_CHECKOUT_SUCCESS_PATH = "/billing/success";
 export const STRIPE_CHECKOUT_CANCEL_PATH = "/billing/cancel";
+
+/**
+ * Canonical production host. Post-checkout redirects MUST land here so Clerk
+ * session cookies (scoped to atlasapp.jp) are present — a *.vercel.app redirect
+ * has no cookie and bounces the user to /sign-in. Never emit *.vercel.app in
+ * success_url / cancel_url / portal return_url for production.
+ */
+export const ATLAS_CANONICAL_ORIGIN = "https://atlasapp.jp";
+
+/** Settings page users are returned to after a completed/cancelled checkout. */
+export const BILLING_SETTINGS_PATH = "/settings/billing";
 
 export type StripeWebhookEventType =
   | "checkout.session.completed"
@@ -99,24 +112,57 @@ export function getStripeSecretDiagnostics(): {
   };
 }
 
+function isVercelAppHost(urlOrHost: string): boolean {
+  try {
+    const host = urlOrHost.includes("://")
+      ? new URL(urlOrHost).hostname
+      : urlOrHost.replace(/^https?:\/\//, "").split("/")[0] ?? "";
+    return host === "vercel.app" || host.endsWith(".vercel.app");
+  } catch {
+    return urlOrHost.includes(".vercel.app");
+  }
+}
+
+/**
+ * Public origin for redirects. Production ALWAYS prefers atlasapp.jp and never
+ * returns *.vercel.app (Clerk cookies are scoped to the custom domain).
+ */
 export function getConfiguredAppUrl(): string | null {
+  if (isAtlasProduction()) {
+    const preferred =
+      readRuntimeEnv("NEXT_PUBLIC_APP_URL")?.trim() ||
+      readRuntimeEnv("NEXT_PUBLIC_SITE_URL")?.trim() ||
+      "";
+    const normalized = preferred.replace(/\/$/, "");
+    if (normalized && !isVercelAppHost(normalized)) {
+      return normalized;
+    }
+    return ATLAS_CANONICAL_ORIGIN;
+  }
+
   const value =
     readRuntimeEnv("NEXT_PUBLIC_APP_URL")?.trim() ||
     readRuntimeEnv("NEXT_PUBLIC_SITE_URL")?.trim() ||
     "";
   if (value) return value.replace(/\/$/, "");
 
-  const vercel = readRuntimeEnv("VERCEL_URL")?.trim();
-  if (vercel) {
-    return `https://${vercel.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
-  }
-
   return null;
 }
 
-/** Prefer configured public URL; fall back to the incoming request origin. */
+/** Prefer configured public URL; never fall back to *.vercel.app in production. */
 export function resolveAppOrigin(fallbackOrigin: string): string {
-  return getConfiguredAppUrl() ?? fallbackOrigin.replace(/\/$/, "");
+  if (isAtlasProduction()) {
+    return getConfiguredAppUrl() ?? ATLAS_CANONICAL_ORIGIN;
+  }
+
+  const configured = getConfiguredAppUrl();
+  if (configured) return configured;
+
+  const fallback = fallbackOrigin.replace(/\/$/, "");
+  if (isVercelAppHost(fallback)) {
+    return ATLAS_CANONICAL_ORIGIN;
+  }
+  return fallback;
 }
 
 export function isStripeConfigured(): boolean {
@@ -169,12 +215,20 @@ export function resolvePlanIdFromStripePrice(
   return null;
 }
 
-export function resolveCheckoutUrls(origin: string): {
+/**
+ * Checkout return URLs. Production is hard-pinned to atlasapp.jp so Stripe never
+ * sends users to a *.vercel.app host (no Clerk session cookie → /sign-in bounce).
+ */
+export function resolveCheckoutUrls(fallbackOrigin?: string): {
   successUrl: string;
   cancelUrl: string;
 } {
+  const origin = isAtlasProduction()
+    ? ATLAS_CANONICAL_ORIGIN
+    : resolveAppOrigin(fallbackOrigin ?? "http://localhost:3000");
+
   return {
     successUrl: `${origin}${STRIPE_CHECKOUT_SUCCESS_PATH}?session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${origin}${STRIPE_CHECKOUT_CANCEL_PATH}`,
+    cancelUrl: `${origin}${BILLING_SETTINGS_PATH}?checkout=cancelled`,
   };
 }

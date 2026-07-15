@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { PlanDefinition, PlanId, UserBillingSummary } from "@/lib/billing";
 import {
   fetchBillingSummary,
   fetchPlanCatalog,
   formatPlanPriceJpy,
+  isPlanId,
   openBillingPortal,
   startCheckout,
 } from "@/lib/billing";
@@ -153,6 +155,10 @@ function PlanCard({
 }
 
 export function BillingSettings() {
+  const searchParams = useSearchParams();
+  const checkoutState = searchParams.get("checkout");
+  const checkoutPlanParam = searchParams.get("plan");
+
   const [summary, setSummary] = useState<UserBillingSummary | null>(null);
   const [plans, setPlans] = useState<readonly PlanDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -178,6 +184,18 @@ export function BillingSettings() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const checkoutSuccessMessage = useMemo(() => {
+    if (checkoutState !== "success" || !summary) return null;
+    const planId =
+      checkoutPlanParam && isPlanId(checkoutPlanParam)
+        ? checkoutPlanParam
+        : summary.subscription.planId;
+    const planName =
+      plans.find((plan) => plan.planId === planId)?.name ??
+      summary.plan.name;
+    return ui.billing.checkoutSuccessBanner(planName);
+  }, [checkoutState, checkoutPlanParam, plans, summary]);
 
   const handleCheckout = async (planId: PlanId) => {
     setBusyPlanId(planId);
@@ -212,6 +230,24 @@ export function BillingSettings() {
   return (
     <div className="space-y-8">
       {error && <ErrorState message={error} />}
+
+      {checkoutSuccessMessage && (
+        <p
+          className="rounded-[var(--radius-lg)] border border-[var(--status-success)]/30 bg-[var(--status-success-bg)] px-4 py-3 text-sm text-[var(--status-success)]"
+          role="status"
+        >
+          {checkoutSuccessMessage}
+        </p>
+      )}
+
+      {checkoutState === "cancelled" && (
+        <p
+          className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--background-subtle)] px-4 py-3 text-sm text-[var(--foreground-muted)]"
+          role="status"
+        >
+          {ui.billing.checkoutCancelledBanner}
+        </p>
+      )}
 
       <Card padding="lg" className="shadow-[var(--shadow-soft)]">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

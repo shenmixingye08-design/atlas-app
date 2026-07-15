@@ -1,7 +1,8 @@
-import Link from "next/link";
+import { Suspense } from "react";
 
 import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
 import { BillingSettings } from "@/components/settings/billing-settings";
+import { LoadingState } from "@/components/ui/loading-state";
 import { ui } from "@/lib/i18n";
 
 export default function BillingSettingsPage() {
@@ -13,7 +14,9 @@ export default function BillingSettingsPage() {
           <h1 className="text-display text-foreground">{ui.billing.pageTitle}</h1>
           <p className="text-body max-w-2xl">{ui.billing.pageSubtitle}</p>
         </header>
-        <BillingSettings />
+        <Suspense fallback={<LoadingState message={ui.billing.loadingPlans} />}>
+          <BillingSettings />
+        </Suspense>
       </div>
     </AtlasAppShell>
   );

@@ -379,6 +379,7 @@ export async function createCheckoutSession(input: {
     });
 
     const { successUrl, cancelUrl } = resolveCheckoutUrls(origin);
+    // Production pins these to https://atlasapp.jp (never *.vercel.app).
     const metadata: Record<string, string> = {
       userId: input.userId,
       planId: input.planId,
@@ -467,6 +468,7 @@ export async function createBillingPortalSession(input: {
     const origin = resolveAppOrigin(input.origin);
     const session = await stripe.billingPortal.sessions.create({
       customer: input.stripeCustomerId,
+      // Same canonical host as Checkout — avoid *.vercel.app cookie loss.
       return_url: `${origin}/settings/billing`,
     });
 
