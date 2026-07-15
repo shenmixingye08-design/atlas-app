@@ -97,6 +97,13 @@ export async function assertStripePriceMatchesPlan(
     console.error(
       `[billing] Stripe price amount mismatch for ${planId}: expected ${plan.monthlyPriceJpy}, got ${price.unit_amount}`,
     );
+    console.error({
+      stripePriceId: price.id,
+      stripeAmount: price.unit_amount,
+      stripeCurrency: price.currency,
+      stripeInterval: price.recurring?.interval,
+      expectedAmount: plan.monthlyPriceJpy,
+    });
     throw new CheckoutBlockedError(
       "price_mismatch",
       CHECKOUT_PRICE_MISMATCH_MESSAGE,
