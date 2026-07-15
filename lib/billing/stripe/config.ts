@@ -50,7 +50,8 @@ function stripeWebhookEnvName(): string {
 /**
  * Normalize Stripe env values from Vercel/Dashboard paste artifacts.
  * Strips BOM, surrounding quotes, and whitespace — never logs the value.
- * Never truncates a valid sk_/pk_/whsec_ credential body.
+ * Applies to secret/publishable/webhook keys and Price IDs (STRIPE_PRICE_*).
+ * Never truncates a valid sk_/pk_/whsec_/price_ credential body.
  */
 export function sanitizeStripeEnvValue(
   raw: string | null | undefined,
@@ -134,7 +135,22 @@ export function getStripePriceIdForPlan(planId: PlanId): string | null {
     | "STRIPE_PRICE_STANDARD"
     | "STRIPE_PRICE_PREMIUM";
 
-  return readRuntimeEnv(envKey)?.trim() || null;
+  // Same paste-artifact sanitization as secret keys (BOM / quotes / whitespace).
+  return sanitizeStripeEnvValue(readRuntimeEnv(envKey));
+}
+
+/** Safe Price ID diagnostics — never includes the raw env value. */
+export function getStripePriceIdDiagnostics(planId: PlanId): {
+  configured: boolean;
+  length: number;
+  prefixValid: boolean;
+} {
+  const priceId = getStripePriceIdForPlan(planId);
+  return {
+    configured: Boolean(priceId),
+    length: priceId?.length ?? 0,
+    prefixValid: priceId?.startsWith("price_") ?? false,
+  };
 }
 
 const PAID_PLAN_IDS = ["light", "standard", "premium"] as const;

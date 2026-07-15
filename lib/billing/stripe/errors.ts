@@ -72,8 +72,10 @@ export function classifyCheckoutRouteError(error: unknown): {
   userMessage: string;
 } {
   if (isCheckoutBlockedError(error)) {
+    // Duplicate / portal guidance = conflict (409).
+    // price_mismatch = bad/misconfigured Price vs registry (400), not a conflict.
     return {
-      status: 409,
+      status: error.code === "price_mismatch" ? 400 : 409,
       code: error.code,
       logMessage: error.message,
       userMessage: error.userMessage,

@@ -137,13 +137,16 @@ export async function POST(request: Request): Promise<Response> {
     });
   } catch (error) {
     if (isCheckoutBlockedError(error)) {
+      // Delegate status: already_same_plan / use_portal → 409; price_mismatch → 400
+      const classified = classifyCheckoutRouteError(error);
       console.info("[billing/checkout] blocked", {
-        code: error.code,
-        message: error.message,
+        code: classified.code,
+        status: classified.status,
+        message: classified.logMessage,
       });
       return Response.json(
-        { error: error.userMessage, code: error.code },
-        { status: 409 },
+        { error: classified.userMessage, code: classified.code },
+        { status: classified.status },
       );
     }
 

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   resolveAppOrigin,
@@ -8,11 +8,13 @@ import {
 } from "./config";
 import {
   assertNoDuplicatePaidSubscription,
+  assertStripePriceMatchesPlan,
   createCheckoutSession,
   isStripeLiveMode,
 } from "./checkout";
 import {
   CHECKOUT_ALREADY_SAME_PLAN_MESSAGE,
+  CHECKOUT_PRICE_MISMATCH_MESSAGE,
   CHECKOUT_USE_PORTAL_FOR_PLAN_CHANGE_MESSAGE,
   CheckoutBlockedError,
 } from "./errors";
@@ -238,5 +240,89 @@ describe("assertNoDuplicatePaidSubscription", () => {
         stripe: null,
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("assertStripePriceMatchesPlan retrieve errors", () => {
+  it("logs Stripe error diagnostics and throws price_mismatch on retrieve failure", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const retrieveError = Object.assign(new Error("No such price: 'price_bad'"), {
+      type: "StripeInvalidRequestError",
+      code: "resource_missing",
+      statusCode: 404,
+    });
+    const stripe = {
+      prices: {
+        retrieve: vi.fn().mockRejectedValue(retrieveError),
+      },
+    };
+
+    await expect(
+      assertStripePriceMatchesPlan(
+        stripe as never,
+        "price_bad",
+        "light",
+      ),
+    ).rejects.toMatchObject({
+      name: "CheckoutBlockedError",
+      code: "price_mismatch",
+      userMessage: CHECKOUT_PRICE_MISMATCH_MESSAGE,
+    });
+
+    expect(stripe.prices.retrieve).toHaveBeenCalledWith("price_bad");
+
+    const retrieveFailLog = errorSpy.mock.calls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes("Stripe prices.retrieve failed"),
+    );
+    expect(retrieveFailLog).toBeDefined();
+    expect(retrieveFailLog?.[1]).toMatchObject({
+      planId: "light",
+      priceId: "price_bad",
+      stripeErrorType: "StripeInvalidRequestError",
+      stripeErrorCode: "resource_missing",
+      stripeStatusCode: 404,
+      stripeErrorMessage: "No such price: 'price_bad'",
+      stripeAmount: null,
+      stripeCurrency: null,
+      stripeInterval: null,
+      resourceMissing: true,
+      expectedAmount: 980,
+    });
+
+    errorSpy.mockRestore();
+  });
+
+  it("throws price_mismatch when retrieved amount does not match registry", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stripe = {
+      prices: {
+        retrieve: vi.fn().mockResolvedValue({
+          id: "price_light",
+          currency: "jpy",
+          unit_amount: 999,
+          type: "recurring",
+          recurring: { interval: "month" },
+        }),
+      },
+    };
+
+    await expect(
+      assertStripePriceMatchesPlan(stripe as never, "price_light", "light"),
+    ).rejects.toBeInstanceOf(CheckoutBlockedError);
+
+    const afterRetrieve = errorSpy.mock.calls.find(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0].includes("price_mismatch after retrieve"),
+    );
+    expect(afterRetrieve?.[1]).toMatchObject({
+      reason: "amount_mismatch",
+      stripeAmount: 999,
+      expectedAmount: 980,
+    });
+
+    errorSpy.mockRestore();
   });
 });

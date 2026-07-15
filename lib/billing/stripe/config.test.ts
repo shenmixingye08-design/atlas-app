@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getStripePriceIdDiagnostics,
+  getStripePriceIdForPlan,
   getStripePublishableKey,
   getStripeSecretDiagnostics,
   getStripeSecretKey,
@@ -96,6 +98,53 @@ describe("getStripeSecretKey sanitization", () => {
       secretConfigured: false,
       secretLength: 0,
       secretPrefixValid: false,
+    });
+  });
+});
+
+describe("getStripePriceIdForPlan sanitization", () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("strips surrounding quotes from Price IDs", () => {
+    vi.stubEnv("STRIPE_PRICE_LIGHT", '"price_1TsI2E3erKCSPXWZODFWWQ8z"');
+    expect(getStripePriceIdForPlan("light")).toBe(
+      "price_1TsI2E3erKCSPXWZODFWWQ8z",
+    );
+  });
+
+  it("strips BOM and whitespace from Price IDs", () => {
+    vi.stubEnv(
+      "STRIPE_PRICE_STANDARD",
+      "\uFEFF  price_1StandardExampleJPYMonth  \r\n",
+    );
+    expect(getStripePriceIdForPlan("standard")).toBe(
+      "price_1StandardExampleJPYMonth",
+    );
+  });
+
+  it("exposes safe price diagnostics without the raw id", () => {
+    vi.stubEnv("STRIPE_PRICE_PREMIUM", "'price_1PremiumExample'");
+    const diagnostics = getStripePriceIdDiagnostics("premium");
+    expect(diagnostics).toEqual({
+      configured: true,
+      length: "price_1PremiumExample".length,
+      prefixValid: true,
+    });
+    expect(JSON.stringify(diagnostics)).not.toContain("price_1PremiumExample");
+  });
+
+  it("reports prefixValid false when id does not start with price_", () => {
+    vi.stubEnv("STRIPE_PRICE_LIGHT", '"prod_notAPriceId"');
+    expect(getStripePriceIdDiagnostics("light")).toEqual({
+      configured: true,
+      length: "prod_notAPriceId".length,
+      prefixValid: false,
     });
   });
 });

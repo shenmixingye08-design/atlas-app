@@ -1,5 +1,6 @@
 export {
   getStripePriceIdForPlan,
+  getStripePriceIdDiagnostics,
   getStripePublishableKey,
   getStripeSecretDiagnostics,
   getStripeSecretKey,

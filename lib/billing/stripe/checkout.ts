@@ -61,49 +61,100 @@ export function assertAllowedStripePriceId(priceId: string, planId: PlanId): voi
   }
 }
 
+/** Safe subset of Stripe API errors — never includes secrets. */
+function stripeErrorDiagnostics(error: unknown): {
+  type: string | null;
+  code: string | null;
+  statusCode: number | null;
+  message: string | null;
+} {
+  if (!error || typeof error !== "object") {
+    return {
+      type: null,
+      code: null,
+      statusCode: null,
+      message: error instanceof Error ? error.message : null,
+    };
+  }
+  const err = error as {
+    type?: unknown;
+    code?: unknown;
+    statusCode?: unknown;
+    message?: unknown;
+  };
+  return {
+    type: typeof err.type === "string" ? err.type : null,
+    code: typeof err.code === "string" ? err.code : null,
+    statusCode: typeof err.statusCode === "number" ? err.statusCode : null,
+    message: typeof err.message === "string" ? err.message : null,
+  };
+}
+
 /**
  * Verify Stripe Price matches ATLAS plan amount.
  * JPY is a zero-decimal currency in Stripe → unit_amount === yen (980, not 98000).
+ *
+ * IMPORTANT: null amount/currency/interval in logs means retrieve never succeeded
+ * (catch path). Always log Stripe err.type/code/statusCode — do not swallow.
  */
 export async function assertStripePriceMatchesPlan(
   stripe: Stripe,
   priceId: string,
   planId: PlanId,
 ): Promise<void> {
-  console.error("[billing] assertStripePriceMatchesPlan enter", { priceId, planId });
   const plan = getPlanDefinition(planId);
-  let price: Stripe.Price | undefined;
+  console.error("[billing] assertStripePriceMatchesPlan enter", {
+    planId,
+    priceId,
+    priceIdLength: priceId.length,
+    priceIdPrefixValid: priceId.startsWith("price_"),
+    expectedAmount: plan.monthlyPriceJpy,
+  });
 
-  const logPriceMismatchDebug = () => {
-    const fields = {
-      stripePriceId: price?.id ?? priceId,
-      stripeAmount: price?.unit_amount ?? null,
-      stripeCurrency: price?.currency ?? null,
-      stripeInterval: price?.recurring?.interval ?? null,
-      expectedAmount: plan.monthlyPriceJpy,
-    };
-    console.error(fields);
-    console.error(
-      "[billing] price_mismatch debug " + JSON.stringify(fields),
-    );
-  };
+  let price: Stripe.Price;
 
   try {
     price = await stripe.prices.retrieve(priceId);
-  } catch {
-    logPriceMismatchDebug();
+  } catch (error) {
+    const stripeErr = stripeErrorDiagnostics(error);
+    console.error("[billing] Stripe prices.retrieve failed", {
+      planId,
+      priceId,
+      priceIdLength: priceId.length,
+      priceIdPrefixValid: priceId.startsWith("price_"),
+      stripeErrorType: stripeErr.type,
+      stripeErrorCode: stripeErr.code,
+      stripeStatusCode: stripeErr.statusCode,
+      stripeErrorMessage: stripeErr.message,
+      // Explicitly null — retrieve did not succeed; do not imply a Price object.
+      stripeAmount: null,
+      stripeCurrency: null,
+      stripeInterval: null,
+      expectedAmount: plan.monthlyPriceJpy,
+      resourceMissing: stripeErr.code === "resource_missing",
+    });
     throw new CheckoutBlockedError(
       "price_mismatch",
       CHECKOUT_PRICE_MISMATCH_MESSAGE,
     );
   }
 
+  const logPriceMismatchDebug = (reason: string) => {
+    const fields = {
+      reason,
+      planId,
+      stripePriceId: price.id,
+      stripeAmount: price.unit_amount ?? null,
+      stripeCurrency: price.currency ?? null,
+      stripeInterval: price.recurring?.interval ?? null,
+      expectedAmount: plan.monthlyPriceJpy,
+    };
+    console.error("[billing] price_mismatch after retrieve", fields);
+  };
+
   const currency = price.currency.toLowerCase();
   if (currency !== "jpy") {
-    console.error(
-      `[billing] Stripe price currency mismatch for ${planId}: expected jpy, got ${currency}`,
-    );
-    logPriceMismatchDebug();
+    logPriceMismatchDebug("currency_mismatch");
     throw new CheckoutBlockedError(
       "price_mismatch",
       CHECKOUT_PRICE_MISMATCH_MESSAGE,
@@ -112,10 +163,7 @@ export async function assertStripePriceMatchesPlan(
 
   // Fail closed: unit_amount must equal monthlyPriceJpy for JPY.
   if (price.unit_amount == null || price.unit_amount !== plan.monthlyPriceJpy) {
-    console.error(
-      `[billing] Stripe price amount mismatch for ${planId}: expected ${plan.monthlyPriceJpy}, got ${price.unit_amount}`,
-    );
-    logPriceMismatchDebug();
+    logPriceMismatchDebug("amount_mismatch");
     throw new CheckoutBlockedError(
       "price_mismatch",
       CHECKOUT_PRICE_MISMATCH_MESSAGE,
@@ -123,10 +171,7 @@ export async function assertStripePriceMatchesPlan(
   }
 
   if (price.type === "recurring" && price.recurring?.interval !== "month") {
-    console.error(
-      `[billing] Stripe price interval mismatch for ${planId}: expected month`,
-    );
-    logPriceMismatchDebug();
+    logPriceMismatchDebug("interval_mismatch");
     throw new CheckoutBlockedError(
       "price_mismatch",
       CHECKOUT_PRICE_MISMATCH_MESSAGE,
