@@ -70,11 +70,28 @@ export async function assertStripePriceMatchesPlan(
   priceId: string,
   planId: PlanId,
 ): Promise<void> {
+  console.error("[billing] assertStripePriceMatchesPlan enter", { priceId, planId });
   const plan = getPlanDefinition(planId);
-  let price: Stripe.Price;
+  let price: Stripe.Price | undefined;
+
+  const logPriceMismatchDebug = () => {
+    const fields = {
+      stripePriceId: price?.id ?? priceId,
+      stripeAmount: price?.unit_amount ?? null,
+      stripeCurrency: price?.currency ?? null,
+      stripeInterval: price?.recurring?.interval ?? null,
+      expectedAmount: plan.monthlyPriceJpy,
+    };
+    console.error(fields);
+    console.error(
+      "[billing] price_mismatch debug " + JSON.stringify(fields),
+    );
+  };
+
   try {
     price = await stripe.prices.retrieve(priceId);
   } catch {
+    logPriceMismatchDebug();
     throw new CheckoutBlockedError(
       "price_mismatch",
       CHECKOUT_PRICE_MISMATCH_MESSAGE,
@@ -86,6 +103,7 @@ export async function assertStripePriceMatchesPlan(
     console.error(
       `[billing] Stripe price currency mismatch for ${planId}: expected jpy, got ${currency}`,
     );
+    logPriceMismatchDebug();
     throw new CheckoutBlockedError(
       "price_mismatch",
       CHECKOUT_PRICE_MISMATCH_MESSAGE,
@@ -97,13 +115,7 @@ export async function assertStripePriceMatchesPlan(
     console.error(
       `[billing] Stripe price amount mismatch for ${planId}: expected ${plan.monthlyPriceJpy}, got ${price.unit_amount}`,
     );
-    console.error({
-      stripePriceId: price.id,
-      stripeAmount: price.unit_amount,
-      stripeCurrency: price.currency,
-      stripeInterval: price.recurring?.interval,
-      expectedAmount: plan.monthlyPriceJpy,
-    });
+    logPriceMismatchDebug();
     throw new CheckoutBlockedError(
       "price_mismatch",
       CHECKOUT_PRICE_MISMATCH_MESSAGE,
@@ -114,6 +126,7 @@ export async function assertStripePriceMatchesPlan(
     console.error(
       `[billing] Stripe price interval mismatch for ${planId}: expected month`,
     );
+    logPriceMismatchDebug();
     throw new CheckoutBlockedError(
       "price_mismatch",
       CHECKOUT_PRICE_MISMATCH_MESSAGE,
