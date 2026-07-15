@@ -4,6 +4,10 @@ import type { PlanId } from "../plans/types";
 import { countSubscriptionsByPlan, listUserSubscriptions } from "../subscriptions/store";
 import { isPaidCapableStatus } from "../subscriptions/service";
 
+import {
+  getStripePublishableKey,
+  getStripeSecretKey,
+} from "../stripe/config";
 import { getConfiguredStripeMode } from "./stripe-live-metrics";
 import type { OwnerBillingMetrics, OwnerPlanBreakdown } from "./types";
 
@@ -76,8 +80,7 @@ export function getOwnerBillingMetrics(
     churnedSubscribers,
     planBreakdown,
     stripeConnected: Boolean(
-      process.env.STRIPE_SECRET_KEY?.trim() &&
-        process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim(),
+      getStripeSecretKey() && getStripePublishableKey(),
     ),
     cancelScheduledCount,
     paymentFailureCount,

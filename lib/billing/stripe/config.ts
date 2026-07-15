@@ -25,34 +25,63 @@ export const HANDLED_STRIPE_EVENTS: readonly StripeWebhookEventType[] = [
 ];
 
 /**
+ * Runtime-only env read — avoid static `process.env.STRIPE_*` member access so
+ * bundlers cannot replace the binding with a build-time literal.
+ * (Clerk/Supabase already use `process.env[name]` for the same reason.)
+ */
+function readRuntimeEnv(name: string): string | undefined {
+  const env = process.env;
+  return env[name];
+}
+
+/** Build env key names at runtime (defeats static env inlining of the name+value pair). */
+function stripeSecretEnvName(): string {
+  return ["STRIPE", "SECRET", "KEY"].join("_");
+}
+
+function stripePublishableEnvName(): string {
+  return ["NEXT_PUBLIC", "STRIPE", "PUBLISHABLE", "KEY"].join("_");
+}
+
+function stripeWebhookEnvName(): string {
+  return ["STRIPE", "WEBHOOK", "SECRET"].join("_");
+}
+
+/**
  * Normalize Stripe env values from Vercel/Dashboard paste artifacts.
  * Strips BOM, surrounding quotes, and whitespace — never logs the value.
+ * Never truncates a valid sk_/pk_/whsec_ credential body.
  */
 export function sanitizeStripeEnvValue(
   raw: string | null | undefined,
 ): string | null {
   if (raw == null) return null;
   let value = raw.replace(/^\uFEFF/, "").trim();
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    value = value.slice(1, -1);
+  if (value.length >= 2) {
+    const first = value[0];
+    const last = value[value.length - 1];
+    if ((first === '"' || first === "'") && first === last) {
+      const inner = value.slice(1, -1).trim();
+      // Only strip matching edge quotes when the interior has no additional
+      // matching quote (avoids destructive slice on malformed paste).
+      if (!inner.includes(first)) {
+        value = inner;
+      }
+    }
   }
-  value = value.trim();
   return value || null;
 }
 
 export function getStripeSecretKey(): string | null {
-  return sanitizeStripeEnvValue(process.env.STRIPE_SECRET_KEY);
+  return sanitizeStripeEnvValue(readRuntimeEnv(stripeSecretEnvName()));
 }
 
 export function getStripePublishableKey(): string | null {
-  return sanitizeStripeEnvValue(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY);
+  return sanitizeStripeEnvValue(readRuntimeEnv(stripePublishableEnvName()));
 }
 
 export function getStripeWebhookSecret(): string | null {
-  return sanitizeStripeEnvValue(process.env.STRIPE_WEBHOOK_SECRET);
+  return sanitizeStripeEnvValue(readRuntimeEnv(stripeWebhookEnvName()));
 }
 
 /** Safe diagnostics for billing summary — never includes the secret. */
@@ -71,12 +100,12 @@ export function getStripeSecretDiagnostics(): {
 
 export function getConfiguredAppUrl(): string | null {
   const value =
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    readRuntimeEnv("NEXT_PUBLIC_APP_URL")?.trim() ||
+    readRuntimeEnv("NEXT_PUBLIC_SITE_URL")?.trim() ||
     "";
   if (value) return value.replace(/\/$/, "");
 
-  const vercel = process.env.VERCEL_URL?.trim();
+  const vercel = readRuntimeEnv("VERCEL_URL")?.trim();
   if (vercel) {
     return `https://${vercel.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
   }
@@ -105,7 +134,7 @@ export function getStripePriceIdForPlan(planId: PlanId): string | null {
     | "STRIPE_PRICE_STANDARD"
     | "STRIPE_PRICE_PREMIUM";
 
-  return process.env[envKey]?.trim() || null;
+  return readRuntimeEnv(envKey)?.trim() || null;
 }
 
 const PAID_PLAN_IDS = ["light", "standard", "premium"] as const;

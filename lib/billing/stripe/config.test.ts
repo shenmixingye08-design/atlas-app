@@ -28,6 +28,23 @@ describe("sanitizeStripeEnvValue", () => {
       "sk_live_abc",
     );
   });
+
+  it("does not truncate long sk_live_ keys", () => {
+    const longKey = `sk_live_${"a".repeat(100)}`;
+    expect(sanitizeStripeEnvValue(longKey)).toBe(longKey);
+    expect(sanitizeStripeEnvValue(`"${longKey}"`)).toBe(longKey);
+    expect(sanitizeStripeEnvValue(longKey)?.length).toBe(108);
+  });
+
+  it("does not strip when only one side has a quote", () => {
+    expect(sanitizeStripeEnvValue('"sk_live_abc')).toBe('"sk_live_abc');
+    expect(sanitizeStripeEnvValue("sk_live_abc\"")).toBe("sk_live_abc\"");
+  });
+
+  it("does not strip when the interior contains the same quote", () => {
+    const weird = `"sk_live_xx"yy"`;
+    expect(sanitizeStripeEnvValue(weird)).toBe(weird);
+  });
 });
 
 describe("getStripeSecretKey sanitization", () => {
