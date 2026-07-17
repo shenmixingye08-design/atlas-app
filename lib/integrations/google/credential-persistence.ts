@@ -1,7 +1,7 @@
 import "server-only";
 
-import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
+import { warnIfProductionSupabaseServiceRoleMissing } from "@/lib/persistence/production-guard";
 
 import type { ExternalServiceCredentialRecord } from "../external-services/credential-store";
 import type { ExternalServiceConnection } from "../external-services/types";
@@ -155,11 +155,9 @@ export async function persistGoogleAuthToSupabase(
 ): Promise<boolean> {
   const client = createServiceRoleClientIfConfigured();
   if (!client) {
-    if (isAtlasProduction()) {
-      console.error(
-        "[Google OAuth] Production refuse token persist without SUPABASE_SERVICE_ROLE_KEY",
-      );
-    }
+    // Accurate diagnostic: the missing piece is usually SUPABASE_URL
+    // (or NEXT_PUBLIC_SUPABASE_URL), not only the service-role key.
+    warnIfProductionSupabaseServiceRoleMissing("atlas_google_oauth_credentials");
     return false;
   }
 
