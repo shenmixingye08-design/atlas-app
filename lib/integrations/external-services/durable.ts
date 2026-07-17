@@ -40,12 +40,10 @@ function getHydratedUsers(): Set<string> {
 export function resetExternalAuthHydration(): void {
   getHydratedUsers().clear();
 }
-function sanitizeConnectionForClerk(
+function compactConnectionForClerk(
   connection: ExternalServiceConnection,
 ): ExternalServiceConnection {
-  if (connection.serviceId !== "x") {
-    return connection;
-  }
+  
 
   return {
     serviceId: connection.serviceId,
@@ -62,30 +60,40 @@ function sanitizeConnectionForClerk(
 function compactAuth(
   state: DurableExternalAuthState,
 ): DurableExternalAuthState {
-  // Never put raw tokens or X account information into Clerk metadata.
   return {
-    connections: state.connections.map((connection) => {
-      const sanitized = sanitizeConnectionForClerk(connection);
-
-      return {
-        ...sanitized,
-        account: sanitized.account
-          ? {
-              email: sanitized.account.email,
-              name: sanitized.account.name,
-              pictureUrl: null,
-            }
-          : undefined,
-      };
-    }),
-    credentials: state.credentials.map((credential) => ({
-      ...credential,
-      accessToken: "",
-      refreshToken: "",
-    })),
+    connections: state.connections.map(compactConnectionForClerk),
+    credentials: [],
   };
 }
 
+export function snapshotExternalAuth(
+
+   function compactConnectionForClerk(
+  connection: ExternalServiceConnection,
+): ExternalServiceConnection {
+  return {
+    serviceId: connection.serviceId,
+    serviceName: connection.serviceName,
+    status: connection.status,
+    connectedAt: null,
+    lastUsedAt: null,
+    scopes: [],
+    features: [],
+    errorMessage: null,
+    account: undefined,
+  };
+}
+
+function compactAuth(
+  state: DurableExternalAuthState,
+): DurableExternalAuthState {
+  return {
+    connections: state.connections.map(compactConnectionForClerk),
+    credentials: [],
+  };
+}
+
+export function snapshotExternalAuth(
 export function snapshotExternalAuth(userId: string): DurableExternalAuthState {
   // Google/X tokens live in dedicated Supabase tables — never Clerk overflow.
   return {
@@ -103,8 +111,12 @@ export function schedulePersistExternalAuth(userId: string): void {
     userId,
     EXTERNAL_AUTH_DOMAIN_KEY,
     snapshotExternalAuth(userId),
-    { compact: compactAuth },
+    {
+      compact: compactAuth,
+      forceSupabase: true,
+    },
   );
+}
 }
 
 export async function ensureExternalAuthHydrated(userId: string): Promise<void> {
