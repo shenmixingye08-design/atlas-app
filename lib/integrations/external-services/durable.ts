@@ -40,22 +40,44 @@ function getHydratedUsers(): Set<string> {
 export function resetExternalAuthHydration(): void {
   getHydratedUsers().clear();
 }
+function sanitizeConnectionForClerk(
+  connection: ExternalServiceConnection,
+): ExternalServiceConnection {
+  if (connection.serviceId !== "x") {
+    return connection;
+  }
 
+  return {
+    serviceId: connection.serviceId,
+    serviceName: connection.serviceName,
+    status: connection.status,
+    connectedAt: null,
+    lastUsedAt: null,
+    scopes: [],
+    features: [],
+    errorMessage: null,
+    account: undefined,
+  };
+}
 function compactAuth(
   state: DurableExternalAuthState,
 ): DurableExternalAuthState {
-  // Never put raw tokens into a Clerk overflow compact blob.
+  // Never put raw tokens or X account information into Clerk metadata.
   return {
-    connections: state.connections.map((connection) => ({
-      ...connection,
-      account: connection.account
-        ? {
-            email: connection.account.email,
-            name: connection.account.name,
-            pictureUrl: null,
-          }
-        : undefined,
-    })),
+    connections: state.connections.map((connection) => {
+      const sanitized = sanitizeConnectionForClerk(connection);
+
+      return {
+        ...sanitized,
+        account: sanitized.account
+          ? {
+              email: sanitized.account.email,
+              name: sanitized.account.name,
+              pictureUrl: null,
+            }
+          : undefined,
+      };
+    }),
     credentials: state.credentials.map((credential) => ({
       ...credential,
       accessToken: "",
@@ -70,7 +92,9 @@ export function snapshotExternalAuth(userId: string): DurableExternalAuthState {
     credentials: listExternalServiceCredentialsForUser(userId).filter(
       (row) => !SUPABASE_BACKED_SERVICE_IDS.has(row.serviceId),
     ),
-    connections: listExternalServiceConnections(userId),
+    connections: listExternalServiceConnections(userId).map(
+  sanitizeConnectionForClerk,
+),
   };
 }
 
