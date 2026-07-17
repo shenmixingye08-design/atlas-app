@@ -42,8 +42,6 @@ export function resetExternalAuthHydration(): void {
 }
 function compactConnectionForClerk(
   connection: ExternalServiceConnection,
-function compactConnectionForClerk(
-  connection: ExternalServiceConnection,
 ): ExternalServiceConnection {
   return {
     serviceId: connection.serviceId,
