@@ -29,6 +29,8 @@ export type DurableDomainEnvelope<T> = {
 export type PersistDurableDomainOptions<T> = {
   /** Shrink payload until it fits Clerk; used when full JSON exceeds safe bytes. */
   compact: (payload: T) => T;
+   /** Always store the full payload in Supabase, regardless of its byte size. */
+  forceSupabase?: boolean;
 };
 
 function byteLength(value: unknown): number {
@@ -55,7 +57,10 @@ export async function persistDurableDomain<T>(
     payload,
   };
 
-  if (byteLength(full) <= CLERK_DOMAIN_SAFE_BYTES) {
+if (
+  !options.forceSupabase &&
+  byteLength(full) <= CLERK_DOMAIN_SAFE_BYTES
+) {
     const ok = await persistClerkPrivateMetadataKey(userId, domainKey, full);
     return ok ? "clerk" : "skipped";
   }
