@@ -42,33 +42,7 @@ export function resetExternalAuthHydration(): void {
 }
 function compactConnectionForClerk(
   connection: ExternalServiceConnection,
-): ExternalServiceConnection {
-  
-
-  return {
-    serviceId: connection.serviceId,
-    serviceName: connection.serviceName,
-    status: connection.status,
-    connectedAt: null,
-    lastUsedAt: null,
-    scopes: [],
-    features: [],
-    errorMessage: null,
-    account: undefined,
-  };
-}
-function compactAuth(
-  state: DurableExternalAuthState,
-): DurableExternalAuthState {
-  return {
-    connections: state.connections.map(compactConnectionForClerk),
-    credentials: [],
-  };
-}
-
-export function snapshotExternalAuth(
-
-   function compactConnectionForClerk(
+function compactConnectionForClerk(
   connection: ExternalServiceConnection,
 ): ExternalServiceConnection {
   return {
@@ -94,15 +68,13 @@ function compactAuth(
 }
 
 export function snapshotExternalAuth(
-export function snapshotExternalAuth(userId: string): DurableExternalAuthState {
-  // Google/X tokens live in dedicated Supabase tables — never Clerk overflow.
+  userId: string,
+): DurableExternalAuthState {
   return {
     credentials: listExternalServiceCredentialsForUser(userId).filter(
       (row) => !SUPABASE_BACKED_SERVICE_IDS.has(row.serviceId),
     ),
-    connections: listExternalServiceConnections(userId).map(
-  sanitizeConnectionForClerk,
-),
+    connections: listExternalServiceConnections(userId),
   };
 }
 
@@ -116,10 +88,7 @@ export function schedulePersistExternalAuth(userId: string): void {
       forceSupabase: true,
     },
   );
-}
-}
-
-export async function ensureExternalAuthHydrated(userId: string): Promise<void> {
+}export async function ensureExternalAuthHydrated(userId: string): Promise<void> {
   if (getHydratedUsers().has(userId)) return;
   getHydratedUsers().add(userId);
 
