@@ -357,39 +357,43 @@ function PricingSection() {
   ))}
 </ul>
 
-<Link href="/sign-up" className="relative mt-7 block">
-  <Button
-    size="sm"
-    className={cn(
-      "min-h-11 w-full rounded-full text-xs font-semibold transition-all duration-300",
-      isPopular
-        ? "bg-[#74172A]/10 text-[#74172A] hover:-translate-y-0.5 hover:bg-[#FFF7F8]"
-        : "border border-[#74172A]/15 bg-[#74172A] text-white hover:-translate-y-0.5 hover:bg-[#5D1020]",
-    )}
-  >
-    {plan.planId === "free"
-      ? "無料で始める"
-      : "このプランで始める"}
-  </Button>
-</Link>
+                  <Link href="/sign-up" className="relative mt-7 block">
+                    <Button
+                      size="sm"
+                      className={cn(
+                        "min-h-11 w-full rounded-full text-xs font-semibold transition-all duration-300",
+                        isPopular
+                          ? "bg-[#74172A]/10 text-[#74172A] hover:-translate-y-0.5 hover:bg-[#FFF7F8]"
+                          : "border border-[#74172A]/15 bg-[#74172A] text-white hover:-translate-y-0.5 hover:bg-[#5D1020]",
+                      )}
+                    >
+                      {plan.planId === "free"
+                        ? "無料で始める"
+                        : "このプランで始める"}
+                    </Button>
+                  </Link>
+                </li>
+              </LandingReveal>
+            );
+          })}
+        </ul>
 
-       <LandingReveal className="mt-8 text-center" delayMs={200}>
-  <p className="text-xs text-[#8B7E81]">
-    契約中のプランと請求情報は、ログイン後の{" "}
-    <Link
-      href="/settings/billing"
-      className="mx-1 font-medium text-[#74172A] hover:underline"
-    >
-      プラン・請求
-    </Link>
-    から確認できます。
-  </p>
-</LandingReveal>
+        <LandingReveal className="mt-8 text-center" delayMs={200}>
+          <p className="text-xs text-[#8B7E81]">
+            契約中のプランと請求情報は、ログイン後の{" "}
+            <Link
+              href="/settings/billing"
+              className="mx-1 font-medium text-[#74172A] hover:underline"
+            >
+              プラン・請求
+            </Link>
+            から確認できます。
+          </p>
+        </LandingReveal>
       </div>
     </section>
   );
 }
-
 function LandingFooter() {
   return (
     <footer className="border-t border-[#74172A]/8 bg-[#FFFDFB] px-4 py-10 sm:px-8">
