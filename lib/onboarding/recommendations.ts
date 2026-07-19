@@ -5,10 +5,9 @@ import { getExternalServiceDefinition } from "@/lib/integrations/external-servic
 import type { OnboardingTaskId, UserWorkProfile } from "@/lib/user-profile/types";
 import type { ProactiveSuggestion } from "@/lib/proactive-suggestions/types";
 
-import { getOnboardingState } from "./store";
-import { getOnboardingTask } from "./tasks";
-import { getFirstExperiencePriorityCategory } from "@/lib/first-experience/store";
 
+import { getOnboardingTask } from "./tasks";
+import { DEFAULT_ONBOARDING_STATE } from "./normalize";
 export type RecommendedIntegration = {
   serviceId: ExternalServiceId;
   serviceName: string;
@@ -36,7 +35,7 @@ const SERVICE_SETTINGS_HREF: Partial<Record<ExternalServiceId, string>> = {
 export function getPreferredOnboardingTasks(
   profile: UserWorkProfile,
 ): OnboardingTaskId[] {
-  const onboarding = getOnboardingState(profile);
+  const onboarding = profile.onboarding ?? DEFAULT_ONBOARDING_STATE;
   const firstTaskId = onboarding.firstExperienceTaskId;
   if (firstTaskId && firstTaskId !== "custom" && firstTaskId !== "undecided") {
     const fromExperience = firstTaskId as OnboardingTaskId;
@@ -46,7 +45,7 @@ export function getPreferredOnboardingTasks(
     return [fromExperience, ...rest];
   }
 
-  const firstCategory = getFirstExperiencePriorityCategory(profile);
+ const firstCategory = onboarding.firstTaskCategory ?? null;
   if (firstCategory) {
     const fromCategory: OnboardingTaskId | null =
       firstCategory === "sns_post"
