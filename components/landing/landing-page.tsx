@@ -10,7 +10,6 @@ import {
   formatLandingPrice,
   getLandingPlans,
 } from "@/lib/landing/content";
-import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
 
 import { LandingAudienceSection } from "./landing-audience-section";
@@ -25,31 +24,70 @@ import { LandingReveal } from "./landing-reveal";
 import { LandingTrustSection } from "./landing-trust-section";
 import { LandingWorkflowExperience } from "./landing-workflow-experience";
 
+function MinervotLogo() {
+  return (
+    <span className="flex items-center gap-3">
+      <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-[#b58b4f]/25 bg-[#74172a] shadow-[0_10px_28px_rgba(116,23,42,0.2)]">
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.24),transparent_48%)]"
+        />
+        <span className="relative text-xs font-semibold tracking-[-0.05em] text-white">
+          M
+        </span>
+      </span>
+
+      <span>
+        <span className="block text-sm font-semibold tracking-[0.08em] text-[#74172a] dark:text-[#efc6cf]">
+          MINERVOT
+        </span>
+        <span className="block text-[9px] font-medium uppercase tracking-[0.18em] text-[#9a8d90]">
+          Personal AI Secretary
+        </span>
+      </span>
+    </span>
+  );
+}
+
 function LandingHeader() {
   return (
-    <header className="sticky top-0 z-50 border-b border-[var(--border-subtle)] bg-[var(--card-glass)] backdrop-blur-xl">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-8 sm:py-4">
-        <Link href="/" className="focus-ring rounded-md">
-          <span className="block text-sm font-semibold tracking-tight text-foreground">
-            {ui.brand}
-          </span>
-          <span className="block text-[10px] text-[var(--foreground-muted)]">
-            {ui.brandTagline}
-          </span>
+    <header className="sticky top-0 z-50 border-b border-[#74172a]/8 bg-[#fffdfb]/85 backdrop-blur-2xl dark:border-white/10 dark:bg-[#0c0809]/85">
+      <div className="mx-auto flex max-w-[1240px] items-center justify-between px-4 py-3 sm:px-8">
+        <Link
+          href="/"
+          className="rounded-xl outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-[#74172a]/30"
+        >
+          <MinervotLogo />
         </Link>
-        <nav className="hidden items-center gap-8 md:flex">
-          <Link href="/capabilities" className="text-sm text-[var(--foreground-muted)] transition-colors hover:text-foreground">
+
+        <nav className="hidden items-center gap-7 md:flex">
+          <a
+            href="#capabilities"
+            className="text-xs font-medium text-[#6f6265] transition-colors hover:text-[#74172a] dark:text-[#b9adb0] dark:hover:text-white"
+          >
             できること
-          </Link>
-          <a href="#workflow" className="text-sm text-[var(--foreground-muted)] transition-colors hover:text-foreground">
+          </a>
+
+          <a
+            href="#workflow"
+            className="text-xs font-medium text-[#6f6265] transition-colors hover:text-[#74172a] dark:text-[#b9adb0] dark:hover:text-white"
+          >
             仕組み
           </a>
-          <Link href="/pricing" className="text-sm text-[var(--foreground-muted)] transition-colors hover:text-foreground">
+
+          <a
+            href="#pricing"
+            className="text-xs font-medium text-[#6f6265] transition-colors hover:text-[#74172a] dark:text-[#b9adb0] dark:hover:text-white"
+          >
             料金
-          </Link>
+          </a>
+
+          <span className="h-5 w-px bg-[#74172a]/10 dark:bg-white/10" />
+
           <ThemeToggle />
           <AtlasLandingAuth />
         </nav>
+
         <div className="flex items-center gap-2 md:hidden">
           <ThemeToggle />
           <AtlasLandingAuth />
@@ -59,35 +97,74 @@ function LandingHeader() {
   );
 }
 
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="inline-flex items-center gap-3">
+      <span className="h-px w-7 bg-[#b58b4f]" />
+      <span className="text-[10px] font-semibold uppercase tracking-[0.25em] text-[#91703d] dark:text-[#d7b477]">
+        {children}
+      </span>
+    </div>
+  );
+}
+
 function CapabilitiesSection() {
   return (
-    <section id="capabilities" className="border-t border-[var(--border-subtle)] bg-[var(--card)] px-4 py-20 sm:px-8 sm:py-28 lg:py-32">
-      <div className="mx-auto max-w-6xl">
-        <LandingReveal className="mx-auto max-w-2xl text-center">
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            ATLASができること
+    <section
+      id="capabilities"
+      className="relative overflow-hidden border-t border-[#74172a]/8 bg-white px-4 py-20 sm:px-8 sm:py-28 lg:py-32 dark:border-white/10 dark:bg-[#0c0809]"
+    >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute left-1/2 top-0 h-96 w-[800px] -translate-x-1/2 bg-[radial-gradient(circle,rgba(116,23,42,0.07),transparent_68%)] blur-3xl"
+      />
+
+      <div className="relative mx-auto max-w-[1240px]">
+        <LandingReveal className="mx-auto max-w-3xl text-center">
+          <SectionLabel>Capabilities</SectionLabel>
+
+          <h2 className="mt-6 text-3xl font-semibold tracking-[-0.045em] text-[#26191c] sm:text-4xl lg:text-5xl dark:text-white">
+            あなたの仕事を、
+            <br />
+            MINERVOTが引き受けます。
           </h2>
-          <p className="mt-6 text-base leading-relaxed text-[var(--foreground-muted)] sm:mt-8 sm:text-lg sm:leading-relaxed">
-            仕事を覚え、
-            <br />
-            繰り返し作業を減らし、
-            <br />
-            あなたの時間を生み出します。
+
+          <p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-[#75686b] sm:text-base sm:leading-8 dark:text-[#b9adb0]">
+            単に質問へ答えるだけではありません。
+            <br className="hidden sm:block" />
+            仕事を覚え、実行し、結果を分析して、次の改善まで提案します。
           </p>
         </LandingReveal>
-        <ul className="mt-14 grid grid-cols-1 gap-4 sm:mt-16 sm:gap-5 lg:grid-cols-3 lg:gap-6">
+
+        <ul className="mt-14 grid grid-cols-1 gap-4 sm:mt-16 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5">
           {LANDING_CAPABILITIES.map((item, index) => (
             <LandingReveal key={item.id} delayMs={index * 60}>
-              <li className="h-full rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-6 shadow-[var(--shadow-sm)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] sm:p-8">
-                <span className="text-3xl" aria-hidden>
-                  {item.icon}
-                </span>
-                <h3 className="mt-4 text-lg font-semibold tracking-tight text-foreground">
-                  {item.title}
-                </h3>
-                <p className="mt-3 text-sm leading-relaxed text-[var(--foreground-muted)]">
-                  {item.description}
-                </p>
+              <li className="group relative h-full overflow-hidden rounded-[24px] border border-[#74172a]/8 bg-[#fffdfb] p-6 shadow-[0_18px_55px_rgba(70,20,31,0.05)] transition-all duration-300 hover:-translate-y-1 hover:border-[#b58b4f]/30 hover:shadow-[0_25px_70px_rgba(70,20,31,0.1)] sm:p-7 dark:border-white/10 dark:bg-white/[0.035]">
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute right-[-40px] top-[-40px] h-28 w-28 rounded-full bg-[#74172a]/5 blur-2xl transition-transform duration-500 group-hover:scale-150"
+                />
+
+                <div className="relative">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#b58b4f]/20 bg-white text-2xl shadow-sm dark:border-white/10 dark:bg-white/[0.05]">
+                    {item.icon}
+                  </span>
+
+                  <h3 className="mt-6 text-lg font-semibold tracking-[-0.025em] text-[#302125] dark:text-white">
+                    {item.title}
+                  </h3>
+
+                  <p className="mt-3 text-sm leading-7 text-[#76696c] dark:text-[#b9adb0]">
+                    {item.description}
+                  </p>
+
+                  <div className="mt-6 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9a7137] opacity-70 transition-opacity group-hover:opacity-100">
+                    MINERVOT executes
+                    <span className="transition-transform duration-300 group-hover:translate-x-1">
+                      →
+                    </span>
+                  </div>
+                </div>
               </li>
             </LandingReveal>
           ))}
@@ -99,26 +176,40 @@ function CapabilitiesSection() {
 
 function PainSolutionsSection() {
   return (
-    <section className="border-t border-[var(--border-subtle)] bg-[var(--background-subtle)]/50 px-4 py-20 sm:px-8 sm:py-28">
-      <div className="mx-auto max-w-6xl">
-        <LandingReveal className="mx-auto max-w-2xl text-center">
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            よくある悩みを、ATLASが解決
+    <section className="relative overflow-hidden border-t border-[#74172a]/8 bg-[#faf6f5] px-4 py-20 sm:px-8 sm:py-28 dark:border-white/10 dark:bg-[#100a0c]">
+      <div className="mx-auto max-w-[1100px]">
+        <LandingReveal className="mx-auto max-w-3xl text-center">
+          <SectionLabel>Problem solving</SectionLabel>
+
+          <h2 className="mt-6 text-3xl font-semibold tracking-[-0.04em] text-[#26191c] sm:text-4xl dark:text-white">
+            面倒な仕事を、抱え続けない。
           </h2>
+
+          <p className="mt-5 text-sm leading-7 text-[#75686b] sm:text-base dark:text-[#b9adb0]">
+            いつもの悩みを、専属AI秘書が実行可能な仕事へ変えます。
+          </p>
         </LandingReveal>
+
         <ul className="mt-12 space-y-4">
           {LANDING_PAIN_SOLUTIONS.map((item, index) => (
-            <LandingReveal key={item.pain} delayMs={index * 80}>
-              <li className="grid gap-4 rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-6 shadow-[var(--shadow-sm)] sm:grid-cols-2 sm:items-center sm:gap-8 sm:p-8">
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-subtle)]">
-                    悩み
+            <LandingReveal key={item.pain} delayMs={index * 70}>
+              <li className="grid overflow-hidden rounded-[24px] border border-[#74172a]/8 bg-white shadow-[0_16px_50px_rgba(70,20,31,0.05)] sm:grid-cols-[0.9fr_1.1fr] dark:border-white/10 dark:bg-white/[0.035]">
+                <div className="p-6 sm:p-8">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-[#a39498]">
+                    Before
                   </p>
-                  <p className="mt-2 text-base font-medium text-foreground">{item.pain}</p>
+                  <p className="mt-3 text-sm font-medium leading-7 text-[#49373c] sm:text-base dark:text-white">
+                    {item.pain}
+                  </p>
                 </div>
-                <div className="rounded-[var(--radius-xl)] bg-[var(--accent-muted)] px-5 py-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-accent">解決</p>
-                  <p className="mt-2 text-sm leading-relaxed text-foreground">{item.solution}</p>
+
+                <div className="border-t border-[#b58b4f]/15 bg-[linear-gradient(135deg,#fff9ef,#fffdfb)] p-6 sm:border-l sm:border-t-0 sm:p-8 dark:bg-[linear-gradient(135deg,rgba(181,139,79,0.08),rgba(255,255,255,0.025))]">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-[#9a7137] dark:text-[#d7b477]">
+                    With MINERVOT
+                  </p>
+                  <p className="mt-3 text-sm leading-7 text-[#49373c] sm:text-base dark:text-[#e4dadd]">
+                    {item.solution}
+                  </p>
                 </div>
               </li>
             </LandingReveal>
@@ -133,69 +224,166 @@ function PricingSection() {
   const plans = getLandingPlans();
 
   return (
-    <section id="pricing" className="px-4 py-20 sm:px-8 sm:py-28">
-      <div className="mx-auto max-w-6xl">
-        <LandingReveal className="mx-auto max-w-2xl text-center">
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            料金プラン
+    <section
+      id="pricing"
+      className="relative overflow-hidden border-t border-[#74172a]/8 bg-white px-4 py-20 sm:px-8 sm:py-28 dark:border-white/10 dark:bg-[#0c0809]"
+    >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute left-1/2 top-20 h-80 w-[700px] -translate-x-1/2 bg-[radial-gradient(circle,rgba(181,139,79,0.1),transparent_70%)] blur-3xl"
+      />
+
+      <div className="relative mx-auto max-w-[1240px]">
+        <LandingReveal className="mx-auto max-w-3xl text-center">
+          <SectionLabel>Pricing</SectionLabel>
+
+          <h2 className="mt-6 text-3xl font-semibold tracking-[-0.04em] text-[#26191c] sm:text-4xl dark:text-white">
+            あなたに合ったAI秘書を。
           </h2>
-          <p className="mt-4 text-base text-[var(--foreground-muted)]">
-            無料から始められます。仕事の量に合わせてプランを選べます。
+
+          <p className="mt-5 text-sm leading-7 text-[#75686b] sm:text-base dark:text-[#b9adb0]">
+            無料から始めて、仕事量に合わせてアップグレードできます。
           </p>
         </LandingReveal>
+
         <ul className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-          {plans.map((plan, index) => (
-            <LandingReveal key={plan.planId} delayMs={index * 60}>
-              <li
-                className={cn(
-                  "flex h-full flex-col rounded-[var(--radius-2xl)] border p-6 shadow-[var(--shadow-sm)] transition-shadow hover:shadow-[var(--shadow-md)] sm:p-8",
-                  plan.planId === "standard"
-                    ? "border-accent bg-[var(--accent-muted)]/40 ring-1 ring-accent/20"
-                    : "border-[var(--border-subtle)] bg-[var(--card)]",
-                )}
-              >
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="text-lg font-semibold text-foreground">{plan.name}</h3>
-                  {plan.planId === "standard" && (
-                    <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-white">
-                      人気
-                    </span>
+          {plans.map((plan, index) => {
+            const isPopular = plan.planId === "standard";
+
+            return (
+              <LandingReveal key={plan.planId} delayMs={index * 60}>
+                <li
+                  className={cn(
+                    "relative flex h-full flex-col overflow-hidden rounded-[24px] border p-6 transition-all duration-300 hover:-translate-y-1 sm:p-7",
+                    isPopular
+                      ? "border-[#74172a] bg-[linear-gradient(160deg,#801b30,#56101f)] text-white shadow-[0_28px_70px_rgba(116,23,42,0.25)]"
+                      : "border-[#74172a]/8 bg-[#fffdfb] shadow-[0_16px_50px_rgba(70,20,31,0.05)] hover:border-[#b58b4f]/30 hover:shadow-[0_22px_65px_rgba(70,20,31,0.1)] dark:border-white/10 dark:bg-white/[0.035]",
                   )}
-                </div>
-                <p className="mt-3 text-2xl font-semibold text-foreground">
-                  {formatLandingPrice(plan.monthlyPriceJpy)}
-                  {plan.monthlyPriceJpy > 0 && (
-                    <span className="text-sm font-normal text-[var(--foreground-muted)]"> / 月</span>
+                >
+                  {isPopular && (
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute right-[-40px] top-[-50px] h-40 w-40 rounded-full bg-[#d5ad70]/20 blur-3xl"
+                    />
                   )}
-                </p>
-                <p className="mt-2 text-sm text-[var(--foreground-muted)]">{plan.description}</p>
-                <ul className="mt-5 flex-1 space-y-2">
-                  {plan.highlights.map((highlight) => (
-                    <li key={highlight} className="text-sm text-[var(--foreground-muted)]">
-                      · {highlight}
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/sign-up" className="mt-6 block">
-                  <Button
-                    variant={plan.planId === "free" ? "primary" : "secondary"}
-                    size="sm"
-                    className="w-full"
+
+                  <div className="relative flex items-center justify-between gap-3">
+                    <h3
+                      className={cn(
+                        "text-lg font-semibold",
+                        isPopular
+                          ? "text-white"
+                          : "text-[#34252a] dark:text-white",
+                      )}
+                    >
+                      {plan.name}
+                    </h3>
+
+                    {isPopular && (
+                      <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-white">
+                        Popular
+                      </span>
+                    )}
+                  </div>
+
+                  <p
+                    className={cn(
+                      "relative mt-5 text-3xl font-semibold tracking-[-0.04em]",
+                      isPopular
+                        ? "text-white"
+                        : "text-[#74172a] dark:text-[#efc6cf]",
+                    )}
                   >
-                    {plan.planId === "free" ? "無料で始める" : "このプランで始める"}
-                  </Button>
-                </Link>
-              </li>
-            </LandingReveal>
-          ))}
+                    {formatLandingPrice(plan.monthlyPriceJpy)}
+                    {plan.monthlyPriceJpy > 0 && (
+                      <span
+                        className={cn(
+                          "ml-1 text-xs font-normal",
+                          isPopular
+                            ? "text-white/60"
+                            : "text-[#8b7e81]",
+                        )}
+                      >
+                        / 月
+                      </span>
+                    )}
+                  </p>
+
+                  <p
+                    className={cn(
+                      "relative mt-3 min-h-12 text-sm leading-6",
+                      isPopular
+                        ? "text-white/70"
+                        : "text-[#786b6e] dark:text-[#b9adb0]",
+                    )}
+                  >
+                    {plan.description}
+                  </p>
+
+                  <div
+                    className={cn(
+                      "relative my-5 h-px",
+                      isPopular ? "bg-white/15" : "bg-[#74172a]/8",
+                    )}
+                  />
+
+                  <ul className="relative flex-1 space-y-3">
+                    {plan.highlights.map((highlight) => (
+                      <li
+                        key={highlight}
+                        className={cn(
+                          "flex items-start gap-2 text-xs leading-5",
+                          isPopular
+                            ? "text-white/78"
+                            : "text-[#716468] dark:text-[#c1b5b8]",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[8px]",
+                            isPopular
+                              ? "bg-white/15 text-white"
+                              : "bg-[#fff4df] text-[#9a7137] dark:bg-[#b58b4f]/10",
+                          )}
+                        >
+                          ✓
+                        </span>
+                        {highlight}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <Link href="/sign-up" className="relative mt-7 block">
+                    <Button
+                      size="sm"
+                      className={cn(
+                        "min-h-11 w-full rounded-full text-xs font-semibold transition-all duration-300",
+                        isPopular
+                          ? "bg-white text-[#74172a] hover:-translate-y-0.5 hover:bg-[#fff7f8]"
+                          : "border border-[#74172a]/15 bg-[#74172a] text-white hover:-translate-y-0.5 hover:bg-[#5d1020]",
+                      )}
+                    >
+                      {plan.planId === "free"
+                        ? "無料で始める"
+                        : "このプランで始める"}
+                    </Button>
+                  </Link>
+                </li>
+              </LandingReveal>
+            );
+          })}
         </ul>
+
         <LandingReveal className="mt-8 text-center" delayMs={200}>
-          <p className="text-sm text-[var(--foreground-muted)]">
-            詳細・請求管理は
-            <Link href="/settings/billing" className="text-accent hover:underline">
+          <p className="text-xs text-[#8b7e81] dark:text-[#a99ca0]">
+            契約中のプランと請求情報は、ログイン後の
+            <Link
+              href="/settings/billing"
+              className="mx-1 font-medium text-[#74172a] hover:underline dark:text-[#efc6cf]"
+            >
               プラン・請求
             </Link>
-            から確認できます（要ログイン）。
+            から確認できます。
           </p>
         </LandingReveal>
       </div>
@@ -205,15 +393,16 @@ function PricingSection() {
 
 function LandingFooter() {
   return (
-    <footer className="border-t border-[var(--border-subtle)] px-4 py-10 sm:px-8">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
-        <div>
-          <p className="text-sm font-semibold text-foreground">{ui.brand}</p>
-          <p className="text-xs text-[var(--foreground-muted)]">{ui.brandTagline}</p>
-        </div>
+    <footer className="border-t border-[#74172a]/8 bg-[#fffdfb] px-4 py-10 dark:border-white/10 dark:bg-[#0c0809] sm:px-8">
+      <div className="mx-auto flex max-w-[1240px] flex-col items-center justify-between gap-6 sm:flex-row">
+        <Link href="/" className="transition-opacity hover:opacity-80">
+          <MinervotLogo />
+        </Link>
+
         <LegalFooterLinks variant="light" />
-        <p className="text-xs text-[var(--foreground-muted)]">
-          © {new Date().getFullYear()} ATLAS. All rights reserved.
+
+        <p className="text-[10px] text-[#918589] dark:text-[#a99ca0]">
+          © {new Date().getFullYear()} MINERVOT. All rights reserved.
         </p>
       </div>
     </footer>
@@ -222,8 +411,9 @@ function LandingFooter() {
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-[var(--background)] text-foreground">
+    <div className="min-h-screen bg-[#fffdfb] text-[#281a1e] selection:bg-[#74172a] selection:text-white dark:bg-[#0c0809] dark:text-white">
       <LandingHeader />
+
       <main>
         <LandingHeroSection />
         <LandingAudienceSection />
@@ -239,6 +429,7 @@ export function LandingPage() {
         <PricingSection />
         <LandingCtaSection />
       </main>
+
       <LandingFooter />
     </div>
   );
