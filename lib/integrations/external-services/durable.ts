@@ -56,12 +56,10 @@ function compactConnectionForClerk(
   };
 }
 
-function compactAuth(
-  state: DurableExternalAuthState,
-): DurableExternalAuthState {
+function compactAuth(): DurableExternalAuthState {
   return {
-    connections: state.connections.map(compactConnectionForClerk),
     credentials: [],
+    connections: [],
   };
 }
 
