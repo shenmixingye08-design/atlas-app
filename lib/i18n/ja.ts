@@ -3,12 +3,12 @@
  * Future locales can add `en.ts` and switch via `lib/i18n/index.ts`.
  */
 export const ui = {
-  brand: "ATLAS",
+  brand: "MINERVOT",
   brandTagline: "あなた専属のAI秘書",
   brandMission:
-    "仕事を覚え、繰り返し作業を減らし、あなたの時間を生み出します。",
+    "仕事を覚え、実行し、分析し、改善まで提案。あなた専属のAI秘書があなたの時間を生み出します。",
   brandPhilosophy:
-    "ATLASはAIチャットサービスではありません。会話ではなく、お客様の時間を生み出すことを目的とした専属AI秘書です。",
+    "MINERVOTはAIチャットサービスではありません。あなたの仕事を覚え、実行し、分析し、改善まで行う専属AI秘書です。",
 
   theme: {
     title: "テーマ",
@@ -93,7 +93,7 @@ export const ui = {
   home: {
     welcomeTitle: "おかえりなさい。",
     welcomeHeadline: "専属AI秘書が今日の仕事を準備しました。",
-    welcomeHint: "あなたが働いている間も、ATLASは仕事を覚えて続けます。",
+    welcomeHint: "あなたが働いている間も、MINERVOTは仕事を覚えて続けます。",
     subtitle:
       "ATLASはあなた専属のAI秘書です。仕事を記憶し、繰り返し作業を減らし、あなたの時間を生み出します。",
     todaysAutomations: "今日の自動化",
@@ -113,7 +113,7 @@ export const ui = {
   },
 
   proactiveSuggestions: {
-    title: "ATLASからの提案",
+    title: "MINERVOTからの提案",
     subtitle: "習慣と利用履歴から、AI秘書が次に進める仕事を提案します。",
     badge: "AI秘書からの提案",
     runNow: "今すぐ実行",
@@ -213,8 +213,8 @@ export const ui = {
     stepLabel: (current: number, total: number) => `${current} / ${total}`,
     steps: [
       {
-        title: "ようこそATLASへ",
-        body: "ATLASはあなた専属のAI秘書です。\n毎日の仕事を覚え、\n繰り返し作業を減らします。",
+        title: "ようこそMINERVOTへ",
+        body: "MINERVOTはあなた専属のAI秘書です。\n毎日の仕事を覚え、\n繰り返し作業を減らします。",
       },
       {
         title: "最初の仕事を依頼",
@@ -234,14 +234,14 @@ export const ui = {
         body: "AI秘書は仕事を分析し、\n改善案も提案します。",
       },
     ],
-    welcomeTitle: "ようこそATLASへ",
-    welcomeSubtitle: "ATLASはあなた専属のAI秘書です。",
+    welcomeTitle: "ようこそMINERVOTへ",
+    welcomeSubtitle: "MINERVOTはあなた専属のAI秘書です。",
     recommended: "推奨",
     optionGuideTitle: "ガイドを受ける",
-    optionGuideDesc: "約3分でATLASの使い方を案内します。",
+    optionGuideDesc: "約3分でMINERVOTの使い方を案内します。",
     startGuide: "ガイドを開始",
     optionSkipTitle: "自分で始める",
-    optionSkipDesc: "すぐにATLASを利用開始します。",
+    optionSkipDesc: "すぐにMINERVOTを利用開始します。",
     skipAndStart: "スキップして始める",
     optionLaterTitle: "あとで見る",
     optionLaterDesc: "設定からいつでも再表示できます。",
@@ -251,7 +251,7 @@ export const ui = {
     guideSteps: [
       {
         title: "繰り返し作業を、任せて減らす。",
-        body: "ATLASは仕事を記憶し、毎日・毎週・毎月の業務を自動で進めます。あなたは確認するだけで時間を取り戻せます。",
+        body: "MINERVOTは仕事を記憶し、毎日・毎週・毎月の業務を自動で進めます。あなたは確認するだけで時間を取り戻せます。",
       },
       {
         title: "専属AI秘書が仕事を覚える。",
@@ -265,9 +265,9 @@ export const ui = {
     back: "戻る",
     next: "次へ",
     toPurpose: "利用目的へ",
-    purposeTitle: "ATLASで最初に自動化したい仕事は？",
+    purposeTitle: "MINERVOTで最初に自動化したいことは？",
     purposeHint: "複数選択できます。あとから設定画面で変更できます。",
-    finish: "ATLASを始める",
+    finish: "MINERVOTを始める",
     recommendedTitle: "あなたへのおすすめ",
     recommendedHint: "初回設定と利用履歴に基づいて、優先的に表示しています。",
     recommendedIntegrations: "おすすめ外部連携",
@@ -283,17 +283,17 @@ export const ui = {
 
   firstExperience: {
     introTitle: "準備ができました！",
-    introSubtitle: "最後にATLASへ最初の仕事を任せてみましょう。",
+    introSubtitle: "最後にMINERVOTへ最初の仕事を任せてみましょう。",
     startSelect: "最初の仕事を選ぶ",
     defer: "あとで体験する",
     selectTitle: "お試し仕事",
     customLabel: "または自由入力",
-    customPlaceholder: "ATLASにお願いしたい仕事を書いてください",
-    delegate: "ATLASに任せる",
-    runningTitle: "ATLASが仕事を実行中",
+    customPlaceholder: "MINERVOTにお願いしたい仕事を書いてください",
+    delegate: "MINERVOTに任せる",
+    runningTitle: "MINERVOTが仕事を実行中",
     progressHeading: "進行状況",
     progressLabel: (filled: number, total: number) => `進行 ${filled}/${total}`,
-    completeTitle: "ATLASが仕事を完了しました。",
+    completeTitle: "MINERVOTが仕事を完了しました。",
     deliverableLabel: "成果物",
     durationLabel: "完了時間",
     durationValue: (sec: number) => `${sec}秒`,
@@ -302,14 +302,14 @@ export const ui = {
     nextRecommendLabel: "次におすすめ",
     goHome: "ホームへ進む",
     cardBadge: "初回体験",
-    cardTitle: "ATLASを体験",
-    cardHint: "3分以内に、ATLASが仕事を最後まで終わらせる体験ができます。",
+    cardTitle: "MINERVOTを体験",
+    cardHint: "3分以内に、MINERVOTが仕事を最後まで終わらせる体験ができます。",
     cardCta: "体験を始める",
   },
 
   dailyBrief: {
     badge: "毎日のレポート",
-    title: "今日のATLASレポート",
+    title: "今日のMINERVOTレポート",
     greeting: {
       morning: "おはようございます。",
       afternoon: "こんにちは。",
@@ -345,7 +345,7 @@ export const ui = {
     calendar: "Google予定",
     calendarEmpty: "今日の予定はありません",
     calendarConnect: "Googleカレンダーを連携",
-    atlasWork: "今日のATLAS仕事",
+    atlasWork: "今日のMINERVOT仕事",
     atlasWorkEmpty: "今日予定の仕事はまだありません",
     unreadMail: "今日のメール",
     unreadMailEmpty: "今日の受信メールはありません",
@@ -440,9 +440,9 @@ export const ui = {
 
   todayDashboard: {
     title: "今日の仕事",
-    subtitle: "ATLASが今日やる仕事です。",
+    subtitle: "MINERVOTが今日やる仕事です。",
     heroSubtitle:
-      "今日ATLASが何をしてくれるか、ここで確認してそのまま進められます。",
+      "今日MINERVOTが何をしてくれるか、ここで確認してそのまま進められます。",
     sections: {
       automations: "今日の仕事",
       inProgress: "進行中の仕事",
@@ -473,7 +473,7 @@ export const ui = {
       suggestions: "現在、新しい提案はありません",
     },
     chatTitle: "相談・追加の依頼",
-    chatHint: "例のように書くだけで、ATLASに仕事を任せられます。",
+    chatHint: "例のように書くだけで、MINERVOTに仕事を任せられます。",
     chatPlaceholder: "例）営業資料を作る / 毎日18時にXへ投稿 / ブログを書いてWordPressへ投稿",
     chatExamples: [
       "営業資料を作る",
@@ -487,7 +487,7 @@ export const ui = {
     frequentWorkTitle: "よく使う仕事",
     frequentWorkHint: "タップするだけで、すぐに仕事を登録できます。",
     monthlyTitle: "今月の成果",
-    monthlyHoursSaved: (hours: number) => `ATLASが節約した時間 ${hours}時間`,
+    monthlyHoursSaved: (hours: number) => `MINERVOTが節約した時間 ${hours}時間`,
     monthlyCount: (count: number) => `${count}件`,
   },
 
@@ -506,7 +506,7 @@ export const ui = {
     deadlineLabel: "期限",
     deadlineHint: "任意です。急ぎの場合は優先度とあわせて指定してください。",
     submitRequest: "AI秘書へ依頼する",
-    submitHint: "依頼後、ATLASが内容を整理して進めます。",
+    submitHint: "依頼後、MINERVOTが内容を整理して進めます。",
     quickRequestHeading: "任せられる仕事",
     quickRequestHint: "選ぶと依頼文が入力欄に入ります。内容はそのまま編集できます。",
     currentStage: "現在のステップ",
@@ -549,7 +549,7 @@ export const ui = {
 
   aiEmployees: {
     panelTitle: "AI秘書が仕事を進めています",
-    panelHint: "ATLASは複数のAI秘書が協力して、あなたの依頼を進めます。",
+    panelHint: "MINERVOTは複数のAI秘書が協力して、あなたの依頼を進めます。",
     status: {
       waiting: "待機中",
       running: "作業中",
@@ -671,7 +671,7 @@ export const ui = {
 
   marketplace: {
     title: "業務テンプレートの見本",
-    subtitle: "ATLASで作れる業務テンプレートです。",
+    subtitle: "MINERVOTで作れる業務テンプレートです。",
     recommended: "おすすめの業務テンプレート",
     departments: "部門",
     workflowPresets: "ワークフロー",
@@ -773,7 +773,7 @@ export const ui = {
     viewDetail: "詳細を見る",
     emptyTitle: "まだ任せている仕事はありません",
     emptyDescription:
-      "繰り返し行っている仕事をATLASへ依頼すると、次回以降の負担を減らせます。",
+      "繰り返し行っている仕事をMINERVOTへ依頼すると、次回以降の負担を減らせます。",
     emptyCta: "新しい仕事を依頼する",
     registerHere: "この画面で定期登録",
     purpose: "仕事の目的",
@@ -800,7 +800,7 @@ export const ui = {
   habits: {
     title: "AI秘書に任せている仕事",
     subtitle:
-      "毎日・毎週・毎月の繰り返し作業を、ATLASが継続してお手伝いします。",
+      "毎日・毎週・毎月の繰り返し作業を、MINERVOTが継続してお手伝いします。",
     homePrimaryCta: "＋ 仕事を任せる",
     addHabit: "＋ 仕事を任せる",
     registerFirst: "最初の仕事を任せる",
@@ -831,7 +831,7 @@ export const ui = {
 
   requestScope: {
     fieldLabel: "AI秘書への依頼範囲",
-    fieldHint: "ATLASにどこまで任せるかを選びます。",
+    fieldHint: "MINERVOTにどこまで任せるかを選びます。",
     settingsTitle: "依頼範囲の設定",
     settingsHint: "仕事ごとに、AI秘書への依頼範囲をいつでも変更できます。",
     currentLabel: "現在",
@@ -1010,7 +1010,7 @@ export const ui = {
     savedDraftNotice: "下書きを保存しました",
     savedDraftsTitle: "保存済み返信下書き",
     savedDraftsHint:
-      "ATLAS上の候補と、接続時はGmailの下書きにも保存されます。",
+      "MINERVOT上の候補と、接続時はGmailの下書きにも保存されます。",
     sendReply: "返信を送信",
     sendConfirm: "この内容で返信を送信しますか？",
     sendFailed: "返信の送信に失敗しました",
@@ -1158,7 +1158,7 @@ export const ui = {
   xSettings: {
     title: "X連携",
     subtitle:
-      "XアカウントをOAuth2（PKCE）で接続し、ATLASから投稿できる状態にします。",
+      "XアカウントをOAuth2（PKCE）で接続し、MINERVOTから投稿できる状態にします。",
     statusConnected: "接続済み",
     statusError: "再接続が必要",
     usernameLabel: "ユーザー名",
@@ -1186,7 +1186,7 @@ export const ui = {
   wordpressSettings: {
     title: "WordPress連携",
     subtitle:
-      "サイトURLとアプリケーションパスワードで接続し、下書き・公開・更新・アイキャッチ設定までATLASから行えます。",
+      "サイトURLとアプリケーションパスワードで接続し、下書き・公開・更新・アイキャッチ設定までMINERVOTから行えます。",
     statusConnected: "接続済み",
     statusError: "エラー",
     statusAuthFailure: "認証失敗",
@@ -1239,7 +1239,7 @@ export const ui = {
   xPost: {
     title: "X投稿",
     subtitle:
-      "ATLASが作成した投稿文をXへ投稿します。今すぐ投稿・予約投稿・下書き・テスト投稿に対応し、投稿履歴を保持します。",
+      "MINERVOTが作成した投稿文をXへ投稿します。今すぐ投稿・予約投稿・下書き・テスト投稿に対応し、投稿履歴を保持します。",
     loading: "読み込み中…",
     openSettings: "設定でX連携を管理",
     connecting: "接続中…",
@@ -1285,7 +1285,7 @@ export const ui = {
 
   owner: {
     navLink: "運営管理",
-    shellTitle: "ATLAS Owner",
+    shellTitle: "MINERVOT Owner",
     ownerOnlyBadge: "運営者専用",
     backToApp: "ユーザー画面へ",
     mobileHint: "PC表示推奨 · 横スクロールで全メニュー",
@@ -1422,7 +1422,7 @@ export const ui = {
     monitoringCsvAudit: "CSV（監査失敗）",
     drTitle: "障害復旧",
     drSubtitle:
-      "Retry / Queue / Fallback / Maintenance とバックアップ復元で、サービス停止時も ATLAS を維持します。",
+      "Retry / Queue / Fallback / Maintenance とバックアップ復元で、サービス停止時も MINERVOT を維持します。",
     drLoading: "障害復旧データを読み込み中…",
     drProcessQueue: "Queue を処理",
     drCreateBackup: "バックアップ作成",
@@ -1883,11 +1883,11 @@ export const ui = {
 
   executionFlow: {
     fieldLabel: "実行フロー",
-    fieldHint: "ATLASが担当する工程を選びます。OFFにした工程はスキップされます。",
+    fieldHint: "MINERVOTが担当する工程を選びます。OFFにした工程はスキップされます。",
     templateLabel: "フローの種類",
     externalStepHint: "外部連携（将来対応）",
     settingsTitle: "実行フロー設定",
-    settingsHint: "仕事ごとに、ATLASが担当する工程をいつでも変更できます。",
+    settingsHint: "仕事ごとに、MINERVOTが担当する工程をいつでも変更できます。",
     cardLabel: "現在のフロー",
     expandEdit: "フローを編集",
     collapseEdit: "閉じる",
@@ -1896,13 +1896,13 @@ export const ui = {
   workProfile: {
     pageTitle: "仕事の好み",
     pageSubtitle:
-      "ATLASが学習したあなたの仕事の進め方を確認・編集できます。使うほど「いつもの設定」が自動で提案されます。",
+      "MINERVOTが学習したあなたの仕事の進め方を確認・編集できます。使うほど「いつもの設定」が自動で提案されます。",
     accountRequestsTitle: "お問い合わせでの申請",
     accountRequestsHint:
       "サポート経由の退会・データ削除申請も受け付けています。セルフサービスは「アカウント管理」をご利用ください。",
     accountDeletionLink: "退会を申請する（お問い合わせ）",
     dataDeletionLink: "データ削除を依頼する（お問い合わせ）",
-    homeTitle: "ATLASが学習した内容",
+    homeTitle: "MINERVOTが学習した内容",
     homeHint: "繰り返し使った仕事から、ATLASがあなたの好みを覚えています。",
     homeEmptyHint:
       "仕事を登録・実行すると、ATLASがあなたの好みを学習し始めます。",
@@ -1961,15 +1961,15 @@ export const ui = {
   },
 
   memory: {
-    pageTitle: "ATLAS Memory",
+    pageTitle: "MINERVOT Memory",
     pageSubtitle:
-      "ATLASが長期記憶したあなたの仕事スタイル・好み・習慣です。使うほど、あなた専属のAI秘書へ成長します。",
-    settingsLinkTitle: "ATLAS Memory",
+      "MINERVOTが長期記憶したあなたの仕事スタイル・好み・習慣です。使うほど、あなた専属のAI秘書へ成長します。",
+    settingsLinkTitle: "MINERVOT Memory",
     settingsLinkHint: "長期記憶の確認・編集・固定・削除",
     loading: "記憶を読み込み中…",
     loadError: "記憶を読み込めませんでした",
     saveError: "保存に失敗しました",
-    suggestionsTitle: "ATLASが学習した内容",
+    suggestionsTitle: "MINERVOTが学習した内容",
     suggestionsHint: "利用履歴からATLASが読み取った傾向です。",
     recentTitle: "最近覚えたこと",
     recentHint: "直近に学習・更新された記憶です。",
@@ -2111,7 +2111,7 @@ export const ui = {
     avgDuration: (label: string) => `平均作業時間: ${label}`,
     workMemoryLink: "仕事の記憶を確認",
     philosophy:
-      "ATLASは仕事を覚え、仕事を改善し、時間を生み出すAI秘書です。",
+      "MINERVOTは仕事を覚え、仕事を改善し、時間を生み出すAI秘書です。",
     adviceTitle: "改善提案",
     adviceHint: "AI秘書からのアドバイスです。数値の詳細効果は順次対応します。",
     analysisTitle: "AI秘書の分析",
@@ -2196,24 +2196,24 @@ export const ui = {
   },
 
   metadata: {
-    home: "ATLAS — あなた専属のAI秘書",
-    projects: "ホーム — ATLAS",
-    workspace: "新しい依頼 — ATLAS",
-    commander: "AIオーケストレーター — ATLAS",
-    marketplace: "見本 — ATLAS",
-    mihon: "業務テンプレートの見本 — ATLAS",
-    integrations: "連携 — ATLAS",
-    connectors: "連携サービス — ATLAS",
-    connections: "接続管理 — ATLAS",
-    automations: "任せている仕事 — ATLAS",
-    calendar: "Googleカレンダー — ATLAS",
-    gmail: "Gmail — ATLAS",
-    drive: "Google Drive — ATLAS",
-    xSettings: "X連携 — ATLAS",
-    xPost: "X投稿 — ATLAS",
-    wordpressSettings: "WordPress連携 — ATLAS",
-    company: "業務テンプレート — ATLAS",
-    chat: "追加依頼 — ATLAS",
+    home: "MINERVOT — あなた専属のAI秘書",
+    projects: "ホーム — MINERVOT",
+    workspace: "新しい依頼 — MINERVOT",
+    commander: "AIオーケストレーター — MINERVOT",
+    marketplace: "見本 — MINERVOT",
+    mihon: "業務テンプレートの見本 — MINERVOT",
+    integrations: "連携 — MINERVOT",
+    connectors: "連携サービス — MINERVOT",
+    connections: "接続管理 — MINERVOT",
+    automations: "任せている仕事 — MINERVOT",
+    calendar: "Googleカレンダー — MINERVOT",
+    gmail: "Gmail — MINERVOT",
+    drive: "Google Drive — MINERVOT",
+    xSettings: "X連携 — MINERVOT",
+    xPost: "X投稿 — MINERVOT",
+    wordpressSettings: "WordPress連携 — MINERVOT",
+    company: "業務テンプレート — MINERVOT",
+    chat: "追加依頼 — MINERVOT",
   },
 
   project: {
@@ -2253,9 +2253,9 @@ export const ui = {
     pastMistakes: "過去のミス",
     referencedEntries: "参照エントリ",
     entriesReferenced: (n: number) => `${n} 件を参照`,
-    emptyHint: "この依頼に一致する過去ナレッジはまだありません。完了後、学習内容がナレッジに追加されます。",
+    emptyHint: "この依頼に一致する過去情報はまだありません。完了後、学習内容が情報欄に追加されます。",
     titles: {
-      finalDeliverable: "最終成果物",
+      finalDeliverable: "最終成果",
       researchReport: "調査レポート",
       qaImprovement: "品質改善ポイント",
       revisionLessons: "修正から学んだこと",
@@ -2485,7 +2485,7 @@ export const ui = {
 
   learning: {
     sectionTitle: "会社の学習",
-    savedNote: "この学習は会社ナレッジに記録されます",
+    savedNote: "この学習は会社情報に記録されます",
     workedLabel: "うまくいったこと",
     notWorkedLabel: "うまくいかなかったこと",
     recommendationLabel: "今後の推奨",
@@ -2624,8 +2624,8 @@ export const ui = {
     serviceEmail: "Email",
     serviceGoogleDrive: "Google Drive",
     serviceNotion: "Notion",
-    serviceAtlas: "ATLAS",
-    serviceAtlasKnowledge: "ATLAS Knowledge",
+    serviceAtlas: "MINERVOT",
+    serviceAtlasKnowledge: "MINERVOT Knowledge",
     summaryEmpty: "実行待ちのアクションはありません。",
     summary: (ready: number, waiting: number, completed: number, total: number) =>
       `${total}件のアクションをキューに登録しました（Ready ${ready} · Waiting ${waiting} · Completed ${completed}）。`,
@@ -2785,15 +2785,15 @@ export const ui = {
     termsBadge: "Legal",
     privacyBadge: "Privacy",
     termsIntro:
-      "ATLAS のご利用にあたって、以下の利用規約をお読みください。本規約は、サービスの提供条件およびユーザーと当社との権利義務関係を定めます。",
+      "MINERVOT のご利用にあたって、以下の利用規約をお読みください。本規約は、サービスの提供条件およびユーザーと当社との権利義務関係を定めます。",
     privacyIntro:
-      "ATLAS はユーザーのプライバシーを尊重し、個人情報を適切に取り扱います。本ポリシーでは、取得する情報、利用目的、保存期間、お問い合わせ方法等を説明します。",
-    termsMetaTitle: "利用規約 — ATLAS",
-    privacyMetaTitle: "プライバシーポリシー — ATLAS",
+      "MINERVOT はユーザーのプライバシーを尊重し、個人情報を適切に取り扱います。本ポリシーでは、取得する情報、利用目的、保存期間、お問い合わせ方法等を説明します。",
+    termsMetaTitle: "利用規約 — MINERVOT",
+    privacyMetaTitle: "プライバシーポリシー — MINERVOT",
     termsMetaDescription:
-      "ATLAS サービスの利用規約。アカウント、料金、AI生成物、禁止事項、免責事項等について定めています。",
+      "MINERVOT サービスの利用規約。アカウント、料金、AI生成物、禁止事項、免責事項等について定めています。",
     privacyMetaDescription:
-      "ATLAS のプライバシーポリシー。個人情報の取得・利用目的、Google 連携、AI 処理、保存期間、Cookie、セキュリティ等について定めています。",
+      "MINERVOT のプライバシーポリシー。個人情報の取得・利用目的、Google 連携、AI 処理、保存期間、Cookie、セキュリティ等について定めています。",
     tocLabel: "目次",
     print: "印刷",
     lastUpdatedLabel: "最終更新日",
@@ -2807,10 +2807,10 @@ export const ui = {
     commercialTitle: "特定商取引法に基づく表記",
     commercialBadge: "Commercial",
     commercialIntro:
-      "ATLAS の有料プランおよびサービス提供に関する法定表示事項です。販売事業者情報・料金・支払方法・解約・返金等について記載しています。",
-    commercialMetaTitle: "特定商取引法に基づく表記 — ATLAS",
+      "MINERVOT の有料プランおよびサービス提供に関する法定表示事項です。販売事業者情報・料金・支払方法・解約・返金等について記載しています。",
+    commercialMetaTitle: "特定商取引法に基づく表記 — MINERVOT",
     commercialMetaDescription:
-      "ATLAS の特定商取引法に基づく表記。販売事業者、料金、支払方法、解約、返金ポリシー等を掲載しています。",
+      "MINERVOT の特定商取引法に基づく表記。販売事業者、料金、支払方法、解約、返金ポリシー等を掲載しています。",
     commercialFooterNote:
       "表示内容は予告なく変更される場合があります。法人化等により事業者情報が変更された際は、本ページを更新します。",
     billingNote:
@@ -2824,7 +2824,7 @@ export const ui = {
     title: "お問い合わせ",
     intro:
       "サービス全般、不具合、請求・解約、外部連携、法人利用など、お気軽にお問い合わせください。",
-    metaTitle: "お問い合わせ — ATLAS",
+    metaTitle: "お問い合わせ — MINERVOT",
     metaDescription:
       "ATLAS 運営へのお問い合わせフォーム。バグ報告、請求・解約相談、外部連携、法人利用のご相談を受け付けています。",
     nameLabel: "お名前",
@@ -2849,7 +2849,7 @@ export const ui = {
     nav: "履歴",
     pageTitle: "AI実行履歴",
     pageSubtitle: "過去の依頼を検索・再利用できます。",
-    metaTitle: "AI実行履歴 — ATLAS",
+    metaTitle: "AI実行履歴 — MINERVOT",
     empty: "履歴がありません",
     emptyHint: "仕事を始めると、ここに実行履歴が表示されます。",
     loading: "履歴を読み込み中…",
@@ -2908,7 +2908,7 @@ export const ui = {
     pageTitle: "データのバックアップ",
     pageSubtitle:
       "ATLAS内のデータをいつでもバックアップ・ダウンロードできます。将来の復元に備えた形式で保存されます。",
-    metaTitle: "データのバックアップ — ATLAS",
+    metaTitle: "データのバックアップ — MINERVOT",
     loading: "準備中…",
     exportTitle: "エクスポート",
     exportHint: "保存するデータと形式を選んでください。",
@@ -2971,18 +2971,18 @@ export const ui = {
     notFoundTitle: "ページが見つかりません",
     notFoundDescription:
       "お探しのページは移動または削除された可能性があります。URLをご確認ください。",
-    notFoundMetaTitle: "ページが見つかりません — ATLAS",
+    notFoundMetaTitle: "ページが見つかりません — MINERVOT",
     internalErrorBadge: "500",
     internalErrorTitle: "一時的なエラーが発生しました",
     internalErrorDescription:
       "ご不便をおかけして申し訳ありません。しばらくしてから再度お試しください。",
-    internalErrorMetaTitle: "エラー — ATLAS",
+    internalErrorMetaTitle: "エラー — MINERVOT",
     errorIdLabel: "エラーID",
     maintenanceBadge: "Maintenance",
     maintenanceTitle: "現在メンテナンス中です",
     maintenanceDefaultMessage:
       "現在メンテナンス中です。ご不便をおかけして申し訳ありません。",
-    maintenanceMetaTitle: "メンテナンス — ATLAS",
+    maintenanceMetaTitle: "メンテナンス — MINERVOT",
     recoveryEstimate: "復旧予定",
     recoveryUnknown: "未定（状況に応じて更新します）",
     operatorAnnouncement: "運営からのお知らせ",
@@ -2992,7 +2992,7 @@ export const ui = {
     offlineDescription: "インターネット接続を確認してください。",
     offlineCacheNote:
       "接続が復旧するまで、キャッシュされている一部の画面のみ表示できる場合があります。",
-    offlineMetaTitle: "オフライン — ATLAS",
+    offlineMetaTitle: "オフライン — MINERVOT",
     offlineBanner: "ネットワークに接続されていません",
     offlineDetails: "詳細",
     reconnect: "再接続",
@@ -3007,10 +3007,10 @@ export const ui = {
     popularDemo: "デモ",
     statusBadge: "Status",
     statusTitle: "システムステータス",
-    statusIntro: "ATLAS および連携サービスの稼働状況です。",
+    statusIntro: "MINERVOT および連携サービスの稼働状況です。",
     statusMetaTitle: "システムステータス — ATLAS",
     statusMetaDescription:
-      "ATLAS、OpenAI、Google、Stripe、X、WordPress、サーバーの稼働状況と稼働率。",
+      "MINERVOT、OpenAI、Google、Stripe、X、WordPress、サーバーの稼働状況と稼働率。",
     statusOperational: "正常",
     statusOutage: "障害",
     statusMaintenance: "メンテナンス",
@@ -3036,9 +3036,9 @@ export const ui = {
 
   generated: {
     imagePlaceholder: "画像プレースホルダー",
-    deliverableTitle: "ATLAS 成果物",
+    deliverableTitle: "MINERVOT 成果物",
     content: "内容",
-    completedBy: "ATLAS AI チームが成果物を完成しました",
+    completedBy: "MINERVOT AI チームが成果物を完成しました",
     tableOfContents: "目次",
     contents: "目次",
     agenda: "アジェンダ",
@@ -3046,7 +3046,7 @@ export const ui = {
     summaryCont: "サマリー（続き）",
     thankYou: "ありがとうございました",
     page: "ページ",
-    engine: "ATLAS 成果物エンジンにより生成",
+    engine: "MINERVOT 成果物エンジンにより生成",
   },
 } as const;
 
