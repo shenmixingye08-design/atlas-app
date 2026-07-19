@@ -6,8 +6,8 @@ import { AppProviders } from "@/components/providers/app-providers";
 import { OfflineWatcher } from "@/components/system-pages/offline-watcher";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme/storage";
 import {
-  ATLAS_DEFAULT_DESCRIPTION,
-  ATLAS_DEFAULT_TITLE,
+  MINERVOT_DEFAULT_DESCRIPTION,
+  MINERVOT_DEFAULT_TITLE,
   getSiteOrigin,
 } from "@/lib/seo/site";
 
@@ -26,32 +26,32 @@ const siteOrigin = getSiteOrigin();
 export const metadata: Metadata = {
   metadataBase: new URL(siteOrigin),
   title: {
-    default: ATLAS_DEFAULT_TITLE,
-    template: "%s — ATLAS",
+    default: MINERVOT_DEFAULT_TITLE,
+    template: "%s — MINERVOT",
   },
-  description: ATLAS_DEFAULT_DESCRIPTION,
-  applicationName: "ATLAS",
+  description: MINERVOT_DEFAULT_DESCRIPTION,
+  applicationName: "MINERVOT",
   keywords: [
-    "ATLAS",
-    "AI秘書",
-    "仕事の記憶",
-    "自動化",
-    "資料作成",
-    "習慣",
+    "AIアシスタント",
+    "AI自動化",
+    "タスク管理",
+    "メール自動化",
+    "SNS自動投稿",
+    "仕事効率化",
   ],
-  authors: [{ name: "ATLAS" }],
+  authors: [{ name: "MINERVOT" }],
   openGraph: {
     type: "website",
     locale: "ja_JP",
     url: siteOrigin,
-    siteName: "ATLAS",
-    title: ATLAS_DEFAULT_TITLE,
-    description: ATLAS_DEFAULT_DESCRIPTION,
+    siteName: "MINERVOT",
+    title: MINERVOT_DEFAULT_TITLE,
+    description: MINERVOT_DEFAULT_DESCRIPTION,
   },
   twitter: {
     card: "summary_large_image",
-    title: ATLAS_DEFAULT_TITLE,
-    description: ATLAS_DEFAULT_DESCRIPTION,
+    title: MINERVOT_DEFAULT_TITLE,
+    description: MINERVOT_DEFAULT_DESCRIPTION,
   },
   robots: {
     index: true,
