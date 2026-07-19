@@ -251,7 +251,7 @@ function PricingSection() {
           </p>
         </LandingReveal>
 
-        <ul className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+              <ul className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           {plans.map((plan, index) => {
             const isPopular = plan.planId === "standard";
 
@@ -261,7 +261,7 @@ function PricingSection() {
                   className={cn(
                     "relative flex h-full flex-col overflow-hidden rounded-[24px] border p-6 transition-all duration-300 hover:-translate-y-1 sm:p-7",
                     isPopular
-                      ? "scale-[1.03] border-2 border-[#B58B4F] bg-[#fffdfb] shadow-[0_28px_80px_rgba(116,23,42,0.12)]"
+                      ? "scale-[1.03] border-2 border-[#B58B4F] bg-[#FFFDFB] shadow-[0_28px_80px_rgba(116,23,42,0.12)]"
                       : "border-[#74172A]/10 bg-white shadow-[0_16px_50px_rgba(70,20,31,0.05)] hover:border-[#B58B4F]/40 hover:shadow-[0_22px_65px_rgba(70,20,31,0.10)]",
                   )}
                 >
@@ -281,81 +281,74 @@ function PricingSection() {
                     >
                       {plan.name}
                     </h3>
-<div className="relative flex items-center justify-between gap-3">
-  <h3
-    className={cn(
-      "text-lg font-semibold",
-      isPopular ? "text-[#74172A]" : "text-[#34252A]",
-    )}
-  >
-    {plan.name}
-  </h3>
 
-  {isPopular && (
-    <span className="rounded-full bg-[#74172A] px-3 py-1 text-[10px] font-semibold tracking-[0.12em] text-white">
-      人気 No.1
-    </span>
-  )}
-</div>
+                    {isPopular && (
+                      <span className="rounded-full bg-[#74172A] px-3 py-1 text-[10px] font-semibold tracking-[0.12em] text-white">
+                        人気 No.1
+                      </span>
+                    )}
+                  </div>
 
-<p
-  className={cn(
-    "relative mt-5 text-3xl font-semibold tracking-[-0.04em]",
-    isPopular ? "text-[#74172A]" : "text-[#74172A]",
-  )}
->
-  {plan.monthlyPriceJpy > 0 && (
-    <span
-      className={cn(
-        "text-base font-medium",
-        isPopular ? "text-[#74172A]" : "text-[#8B7E81]",
-      )}
-    >
-      ／月
-    </span>
-  )}
-</p>
+                  <p
+                    className={cn(
+                      "relative mt-5 text-3xl font-semibold tracking-[-0.04em]",
+                      isPopular ? "text-[#74172A]" : "text-[#34252A]",
+                    )}
+                  >
+                    {formatLandingPrice(plan.monthlyPriceJpy)}
 
-<p
-  className={cn(
-    "relative mt-3 min-h-12 text-sm leading-6",
-    isPopular ? "text-[#74172A]" : "text-[#786B6E]",
-  )}
->
-  {plan.description}
-</p>
+                    {plan.monthlyPriceJpy > 0 && (
+                      <span
+                        className={cn(
+                          "ml-1 text-base font-medium",
+                          isPopular ? "text-[#74172A]" : "text-[#8B7E81]",
+                        )}
+                      >
+                        ／月
+                      </span>
+                    )}
+                  </p>
 
-<div
-  className={cn(
-    "relative my-5 h-px",
-    isPopular ? "bg-[#E8D8B5]" : "bg-[#74172A]/10",
-  )}
-/>
+                  <p
+                    className={cn(
+                      "relative mt-3 min-h-12 text-sm leading-6",
+                      isPopular ? "text-[#74172A]" : "text-[#786B6E]",
+                    )}
+                  >
+                    {plan.description}
+                  </p>
 
-<ul className="relative flex-1 space-y-3">
-  {plan.highlights.map((highlight) => (
-    <li
-      key={highlight}
-      className={cn(
-        "flex items-start gap-2 text-xs leading-5",
-        isPopular ? "text-[#5B1A26]" : "text-[#716468]",
-      )}
-    >
-      <span
-        className={cn(
-          "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[8px]",
-          isPopular
-            ? "bg-[#E5E7EB] text-white"
-            : "bg-[#FFF4DF] text-[#9A7137]",
-        )}
-      >
-        ✓
-      </span>
+                  <div
+                    className={cn(
+                      "relative my-5 h-px",
+                      isPopular ? "bg-[#E8D8B5]" : "bg-[#74172A]/10",
+                    )}
+                  />
 
-      {highlight}
-    </li>
-  ))}
-</ul>
+                  <ul className="relative flex-1 space-y-3">
+                    {plan.highlights.map((highlight) => (
+                      <li
+                        key={highlight}
+                        className={cn(
+                          "flex items-start gap-2 text-xs leading-5",
+                          isPopular ? "text-[#5B1A26]" : "text-[#716468]",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[8px]",
+                            isPopular
+                              ? "bg-[#74172A] text-white"
+                              : "bg-[#FFF4DF] text-[#9A7137]",
+                          )}
+                        >
+                          ✓
+                        </span>
+
+                        <span>{highlight}</span>
+                      </li>
+                    ))}
+                  </ul>
 
                   <Link href="/sign-up" className="relative mt-7 block">
                     <Button
@@ -363,7 +356,7 @@ function PricingSection() {
                       className={cn(
                         "min-h-11 w-full rounded-full text-xs font-semibold transition-all duration-300",
                         isPopular
-                          ? "bg-[#74172A]/10 text-[#74172A] hover:-translate-y-0.5 hover:bg-[#FFF7F8]"
+                          ? "bg-[#74172A] text-white hover:-translate-y-0.5 hover:bg-[#5D1020]"
                           : "border border-[#74172A]/15 bg-[#74172A] text-white hover:-translate-y-0.5 hover:bg-[#5D1020]",
                       )}
                     >
