@@ -27,35 +27,35 @@ import { LandingWorkflowExperience } from "./landing-workflow-experience";
 function MinervotLogo() {
   return (
     <span className="flex items-center gap-3">
-      <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-[#b58b4f]/25 bg-[#74172a] shadow-[0_10px_28px_rgba(116,23,42,0.2)]">
+      <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-[#B58B4F]/25 bg-[#74172A] shadow-[0_10px_28px_rgba(116,23,42,0.2)]">
         <span
           aria-hidden="true"
           className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.24),transparent_48%)]"
         />
+
         <span className="relative text-xs font-semibold tracking-[-0.05em] text-white">
           M
         </span>
       </span>
 
       <span>
-        <span className="block text-sm font-semibold tracking-[0.08em] text-[#74172a] dark:text-[#efc6cf]">
+        <span className="block text-sm font-semibold tracking-[0.08em] text-[#74172A]">
           MINERVOT
         </span>
-        <span className="block text-[9px] font-medium uppercase tracking-[0.18em] text-[#9a8d90]">
+
+        <span className="block text-[9px] font-medium uppercase tracking-[0.18em] text-[#9A8D90]">
           Personal AI Secretary
         </span>
       </span>
     </span>
   );
-}
-
 function LandingHeader() {
   return (
-    <header className="sticky top-0 z-50 border-b border-[#74172a]/8 bg-[#fffdfb]/85 backdrop-blur-2xl dark:border-white/10 dark:bg-[#0c0809]/85">
+    <header className="sticky top-0 z-50 border-b border-[#74172A]/8 bg-[#fffdfb]/85 backdrop-blur-2xl">
       <div className="mx-auto flex max-w-[1240px] items-center justify-between px-4 py-3 sm:px-8">
         <Link
           href="/"
-          className="rounded-xl outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-[#74172a]/30"
+          className="rounded-xl outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-[#74172A]/30"
         >
           <MinervotLogo />
         </Link>
@@ -63,26 +63,26 @@ function LandingHeader() {
         <nav className="hidden items-center gap-7 md:flex">
           <a
             href="#capabilities"
-            className="text-xs font-medium text-[#6f6265] transition-colors hover:text-[#74172a] dark:text-[#b9adb0] dark:hover:text-white"
+            className="text-xs font-medium text-[#6F6265] transition-colors hover:text-[#74172A]"
           >
             できること
           </a>
 
           <a
             href="#workflow"
-            className="text-xs font-medium text-[#6f6265] transition-colors hover:text-[#74172a] dark:text-[#b9adb0] dark:hover:text-white"
+            className="text-xs font-medium text-[#6F6265] transition-colors hover:text-[#74172A]"
           >
             仕組み
           </a>
 
           <a
             href="#pricing"
-            className="text-xs font-medium text-[#6f6265] transition-colors hover:text-[#74172a] dark:text-[#b9adb0] dark:hover:text-white"
+            className="text-xs font-medium text-[#6F6265] transition-colors hover:text-[#74172A]"
           >
             料金
           </a>
 
-          <span className="h-5 w-px bg-[#74172a]/10 dark:bg-white/10" />
+          <span className="h-5 w-px bg-[#74172A]/10" />
 
           <ThemeToggle />
           <AtlasLandingAuth />
@@ -97,22 +97,26 @@ function LandingHeader() {
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function SectionLabel({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <div className="inline-flex items-center gap-3">
-      <span className="h-px w-7 bg-[#b58b4f]" />
-      <span className="text-[10px] font-semibold uppercase tracking-[0.25em] text-[#91703d] dark:text-[#d7b477]">
+      <span className="h-px w-7 bg-[#B58B4F]" />
+
+      <span className="text-[10px] font-semibold uppercase tracking-[0.25em] text-[#91703D]">
         {children}
       </span>
     </div>
   );
 }
-
 function CapabilitiesSection() {
   return (
     <section
       id="capabilities"
-      className="relative overflow-hidden border-t border-[#74172a]/8 bg-white px-4 py-20 sm:px-8 sm:py-28 lg:py-32 dark:border-white/10 dark:bg-[#0c0809]"
+      className="relative overflow-hidden border-t border-[#74172A]/8 bg-white px-4 py-20 sm:px-8 sm:py-28 lg:py-32"
     >
       <div
         aria-hidden="true"
@@ -123,13 +127,13 @@ function CapabilitiesSection() {
         <LandingReveal className="mx-auto max-w-3xl text-center">
           <SectionLabel>Capabilities</SectionLabel>
 
-          <h2 className="mt-6 text-3xl font-semibold tracking-[-0.045em] text-[#26191c] sm:text-4xl lg:text-5xl dark:text-white">
+          <h2 className="mt-6 text-3xl font-semibold tracking-[-0.045em] text-[#26191C] sm:text-4xl lg:text-5xl">
             あなたの仕事を、
             <br />
             MINERVOTが引き受けます。
           </h2>
 
-          <p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-[#75686b] sm:text-base sm:leading-8 dark:text-[#b9adb0]">
+          <p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-[#75686B] sm:text-base sm:leading-8">
             単に質問へ答えるだけではありません。
             <br className="hidden sm:block" />
             仕事を覚え、実行し、結果を分析して、次の改善まで提案します。
@@ -139,26 +143,26 @@ function CapabilitiesSection() {
         <ul className="mt-14 grid grid-cols-1 gap-4 sm:mt-16 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5">
           {LANDING_CAPABILITIES.map((item, index) => (
             <LandingReveal key={item.id} delayMs={index * 60}>
-              <li className="group relative h-full overflow-hidden rounded-[24px] border border-[#74172a]/8 bg-[#fffdfb] p-6 shadow-[0_18px_55px_rgba(70,20,31,0.05)] transition-all duration-300 hover:-translate-y-1 hover:border-[#b58b4f]/30 hover:shadow-[0_25px_70px_rgba(70,20,31,0.1)] sm:p-7 dark:border-white/10 dark:bg-white/[0.035]">
+              <li className="group relative h-full overflow-hidden rounded-[24px] border border-[#74172A]/8 bg-[#fffdfb] p-6 shadow-[0_18px_55px_rgba(70,20,31,0.05)] transition-all duration-300 hover:-translate-y-1 hover:border-[#B58B4F]/30 hover:shadow-[0_25px_70px_rgba(70,20,31,0.1)] sm:p-7">
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute right-[-40px] top-[-40px] h-28 w-28 rounded-full bg-[#74172a]/5 blur-2xl transition-transform duration-500 group-hover:scale-150"
+                  className="pointer-events-none absolute right-[-40px] top-[-40px] h-28 w-28 rounded-full bg-[#74172A]/5 blur-2xl transition-transform duration-500 group-hover:scale-150"
                 />
 
                 <div className="relative">
-                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#b58b4f]/20 bg-white text-2xl shadow-sm dark:border-white/10 dark:bg-white/[0.05]">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#B58B4F]/20 bg-white text-2xl shadow-sm">
                     {item.icon}
                   </span>
 
-                  <h3 className="mt-6 text-lg font-semibold tracking-[-0.025em] text-[#302125] dark:text-white">
+                  <h3 className="mt-6 text-lg font-semibold tracking-[-0.025em] text-[#302125]">
                     {item.title}
                   </h3>
 
-                  <p className="mt-3 text-sm leading-7 text-[#76696c] dark:text-[#b9adb0]">
+                  <p className="mt-3 text-sm leading-7 text-[#76696C]">
                     {item.description}
                   </p>
 
-                  <div className="mt-6 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9a7137] opacity-70 transition-opacity group-hover:opacity-100">
+                  <div className="mt-6 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9A7137] opacity-70 transition-opacity group-hover:opacity-100">
                     MINERVOT executes
                     <span className="transition-transform duration-300 group-hover:translate-x-1">
                       →
@@ -173,19 +177,18 @@ function CapabilitiesSection() {
     </section>
   );
 }
-
 function PainSolutionsSection() {
   return (
-    <section className="relative overflow-hidden border-t border-[#74172a]/8 bg-[#faf6f5] px-4 py-20 sm:px-8 sm:py-28 dark:border-white/10 dark:bg-[#100a0c]">
+    <section className="relative overflow-hidden border-t border-[#74172A]/8 bg-[#faf6f5] px-4 py-20 sm:px-8 sm:py-28">
       <div className="mx-auto max-w-[1100px]">
         <LandingReveal className="mx-auto max-w-3xl text-center">
           <SectionLabel>Problem solving</SectionLabel>
 
-          <h2 className="mt-6 text-3xl font-semibold tracking-[-0.04em] text-[#26191c] sm:text-4xl dark:text-white">
+          <h2 className="mt-6 text-3xl font-semibold tracking-[-0.04em] text-[#26191C] sm:text-4xl">
             面倒な仕事を、抱え続けない。
           </h2>
 
-          <p className="mt-5 text-sm leading-7 text-[#75686b] sm:text-base dark:text-[#b9adb0]">
+          <p className="mt-5 text-sm leading-7 text-[#75686B] sm:text-base">
             いつもの悩みを、専属AI秘書が実行可能な仕事へ変えます。
           </p>
         </LandingReveal>
@@ -193,21 +196,23 @@ function PainSolutionsSection() {
         <ul className="mt-12 space-y-4">
           {LANDING_PAIN_SOLUTIONS.map((item, index) => (
             <LandingReveal key={item.pain} delayMs={index * 70}>
-              <li className="grid overflow-hidden rounded-[24px] border border-[#74172a]/8 bg-white shadow-[0_16px_50px_rgba(70,20,31,0.05)] sm:grid-cols-[0.9fr_1.1fr] dark:border-white/10 dark:bg-white/[0.035]">
+              <li className="grid overflow-hidden rounded-[24px] border border-[#74172A]/8 bg-white shadow-[0_16px_50px_rgba(70,20,31,0.05)] sm:grid-cols-[0.9fr_1.1fr]">
                 <div className="p-6 sm:p-8">
-                  <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-[#a39498]">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-[#A39498]">
                     Before
                   </p>
-                  <p className="mt-3 text-sm font-medium leading-7 text-[#49373c] sm:text-base dark:text-white">
+
+                  <p className="mt-3 text-sm font-medium leading-7 text-[#49373C] sm:text-base">
                     {item.pain}
                   </p>
                 </div>
 
-                <div className="border-t border-[#b58b4f]/15 bg-[linear-gradient(135deg,#fff9ef,#fffdfb)] p-6 sm:border-l sm:border-t-0 sm:p-8 dark:bg-[linear-gradient(135deg,rgba(181,139,79,0.08),rgba(255,255,255,0.025))]">
-                  <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-[#9a7137] dark:text-[#d7b477]">
+                <div className="border-t border-[#B58B4F]/15 bg-[linear-gradient(135deg,#fff9ef,#fffdfb)] p-6 sm:border-l sm:border-t-0 sm:p-8">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-[#9A7137]">
                     With MINERVOT
                   </p>
-                  <p className="mt-3 text-sm leading-7 text-[#49373c] sm:text-base dark:text-[#e4dadd]">
+
+                  <p className="mt-3 text-sm leading-7 text-[#49373C] sm:text-base">
                     {item.solution}
                   </p>
                 </div>
@@ -226,7 +231,7 @@ function PricingSection() {
   return (
     <section
       id="pricing"
-      className="relative overflow-hidden border-t border-[#74172a]/8 bg-white px-4 py-20 sm:px-8 sm:py-28 dark:border-white/10 dark:bg-[#0c0809]"
+      className="relative overflow-hidden border-t border-[#74172A]/8 bg-white px-4 py-20 sm:px-8 sm:py-28"
     >
       <div
         aria-hidden="true"
@@ -237,11 +242,11 @@ function PricingSection() {
         <LandingReveal className="mx-auto max-w-3xl text-center">
           <SectionLabel>Pricing</SectionLabel>
 
-          <h2 className="mt-6 text-3xl font-semibold tracking-[-0.04em] text-[#26191c] sm:text-4xl dark:text-white">
+          <h2 className="mt-6 text-3xl font-semibold tracking-[-0.04em] text-[#26191C] sm:text-4xl">
             あなたに合ったAI秘書を。
           </h2>
 
-          <p className="mt-5 text-sm leading-7 text-[#75686b] sm:text-base dark:text-[#b9adb0]">
+          <p className="mt-5 text-sm leading-7 text-[#75686B] sm:text-base">
             無料から始めて、仕事量に合わせてアップグレードできます。
           </p>
         </LandingReveal>
@@ -256,14 +261,14 @@ function PricingSection() {
                   className={cn(
                     "relative flex h-full flex-col overflow-hidden rounded-[24px] border p-6 transition-all duration-300 hover:-translate-y-1 sm:p-7",
                     isPopular
-                      ? "border-[#74172a] bg-[linear-gradient(160deg,#801b30,#56101f)] text-white shadow-[0_28px_70px_rgba(116,23,42,0.25)]"
-                      : "border-[#74172a]/8 bg-[#fffdfb] shadow-[0_16px_50px_rgba(70,20,31,0.05)] hover:border-[#b58b4f]/30 hover:shadow-[0_22px_65px_rgba(70,20,31,0.1)] dark:border-white/10 dark:bg-white/[0.035]",
+                      ? "scale-[1.03] border-2 border-[#B58B4F] bg-[#fffdfb] shadow-[0_28px_80px_rgba(116,23,42,0.12)]"
+                      : "border-[#74172A]/10 bg-white shadow-[0_16px_50px_rgba(70,20,31,0.05)] hover:border-[#B58B4F]/40 hover:shadow-[0_22px_65px_rgba(70,20,31,0.10)]",
                   )}
                 >
                   {isPopular && (
                     <div
                       aria-hidden="true"
-                      className="pointer-events-none absolute right-[-40px] top-[-50px] h-40 w-40 rounded-full bg-[#d5ad70]/20 blur-3xl"
+                      className="pointer-events-none absolute right-[-40px] top-[-50px] h-40 w-40 rounded-full bg-[#D5AD70]/20 blur-3xl"
                     />
                   )}
 
@@ -271,121 +276,115 @@ function PricingSection() {
                     <h3
                       className={cn(
                         "text-lg font-semibold",
-                        isPopular
-                          ? "text-white"
-                          : "text-[#34252a] dark:text-white",
+                        isPopular ? "text-[#74172A]" : "text-[#34252A]",
                       )}
                     >
                       {plan.name}
                     </h3>
+<div className="relative flex items-center justify-between gap-3">
+  <h3
+    className={cn(
+      "text-lg font-semibold",
+      isPopular ? "text-[#74172A]" : "text-[#34252A]",
+    )}
+  >
+    {plan.name}
+  </h3>
 
-                    {isPopular && (
-                      <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-white">
-                        Popular
-                      </span>
-                    )}
-                  </div>
+  {isPopular && (
+    <span className="rounded-full bg-[#74172A] px-3 py-1 text-[10px] font-semibold tracking-[0.12em] text-white">
+      人気 No.1
+    </span>
+  )}
+</div>
 
-                  <p
-                    className={cn(
-                      "relative mt-5 text-3xl font-semibold tracking-[-0.04em]",
-                      isPopular
-                        ? "text-white"
-                        : "text-[#74172a] dark:text-[#efc6cf]",
-                    )}
-                  >
-                    {formatLandingPrice(plan.monthlyPriceJpy)}
-                    {plan.monthlyPriceJpy > 0 && (
-                      <span
-                        className={cn(
-                          "ml-1 text-xs font-normal",
-                          isPopular
-                            ? "text-white/60"
-                            : "text-[#8b7e81]",
-                        )}
-                      >
-                        / 月
-                      </span>
-                    )}
-                  </p>
+<p
+  className={cn(
+    "relative mt-5 text-3xl font-semibold tracking-[-0.04em]",
+    isPopular ? "text-[#74172A]" : "text-[#74172A]",
+  )}
+>
+  {plan.monthlyPriceJpy > 0 && (
+    <span
+      className={cn(
+        "text-base font-medium",
+        isPopular ? "text-[#74172A]" : "text-[#8B7E81]",
+      )}
+    >
+      ／月
+    </span>
+  )}
+</p>
 
-                  <p
-                    className={cn(
-                      "relative mt-3 min-h-12 text-sm leading-6",
-                      isPopular
-                        ? "text-white/70"
-                        : "text-[#786b6e] dark:text-[#b9adb0]",
-                    )}
-                  >
-                    {plan.description}
-                  </p>
+<p
+  className={cn(
+    "relative mt-3 min-h-12 text-sm leading-6",
+    isPopular ? "text-[#74172A]" : "text-[#786B6E]",
+  )}
+>
+  {plan.description}
+</p>
 
-                  <div
-                    className={cn(
-                      "relative my-5 h-px",
-                      isPopular ? "bg-white/15" : "bg-[#74172a]/8",
-                    )}
-                  />
+<div
+  className={cn(
+    "relative my-5 h-px",
+    isPopular ? "bg-[#E8D8B5]" : "bg-[#74172A]/10",
+  )}
+/>
 
-                  <ul className="relative flex-1 space-y-3">
-                    {plan.highlights.map((highlight) => (
-                      <li
-                        key={highlight}
-                        className={cn(
-                          "flex items-start gap-2 text-xs leading-5",
-                          isPopular
-                            ? "text-white/78"
-                            : "text-[#716468] dark:text-[#c1b5b8]",
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[8px]",
-                            isPopular
-                              ? "bg-white/15 text-white"
-                              : "bg-[#fff4df] text-[#9a7137] dark:bg-[#b58b4f]/10",
-                          )}
-                        >
-                          ✓
-                        </span>
-                        {highlight}
-                      </li>
-                    ))}
-                  </ul>
+<ul className="relative flex-1 space-y-3">
+  {plan.highlights.map((highlight) => (
+    <li
+      key={highlight}
+      className={cn(
+        "flex items-start gap-2 text-xs leading-5",
+        isPopular ? "text-[#5B1A26]" : "text-[#716468]",
+      )}
+    >
+      <span
+        className={cn(
+          "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[8px]",
+          isPopular
+            ? "bg-[#E5E7EB] text-white"
+            : "bg-[#FFF4DF] text-[#9A7137]",
+        )}
+      >
+        ✓
+      </span>
 
-                  <Link href="/sign-up" className="relative mt-7 block">
-                    <Button
-                      size="sm"
-                      className={cn(
-                        "min-h-11 w-full rounded-full text-xs font-semibold transition-all duration-300",
-                        isPopular
-                          ? "bg-white text-[#74172a] hover:-translate-y-0.5 hover:bg-[#fff7f8]"
-                          : "border border-[#74172a]/15 bg-[#74172a] text-white hover:-translate-y-0.5 hover:bg-[#5d1020]",
-                      )}
-                    >
-                      {plan.planId === "free"
-                        ? "無料で始める"
-                        : "このプランで始める"}
-                    </Button>
-                  </Link>
-                </li>
-              </LandingReveal>
-            );
-          })}
-        </ul>
+      {highlight}
+    </li>
+  ))}
+</ul>
 
-        <LandingReveal className="mt-8 text-center" delayMs={200}>
-          <p className="text-xs text-[#8b7e81] dark:text-[#a99ca0]">
-            契約中のプランと請求情報は、ログイン後の
-            <Link
-              href="/settings/billing"
-              className="mx-1 font-medium text-[#74172a] hover:underline dark:text-[#efc6cf]"
-            >
-              プラン・請求
-            </Link>
-            から確認できます。
-          </p>
-        </LandingReveal>
+<Link href="/sign-up" className="relative mt-7 block">
+  <Button
+    size="sm"
+    className={cn(
+      "min-h-11 w-full rounded-full text-xs font-semibold transition-all duration-300",
+      isPopular
+        ? "bg-[#74172A]/10 text-[#74172A] hover:-translate-y-0.5 hover:bg-[#FFF7F8]"
+        : "border border-[#74172A]/15 bg-[#74172A] text-white hover:-translate-y-0.5 hover:bg-[#5D1020]",
+    )}
+  >
+    {plan.planId === "free"
+      ? "無料で始める"
+      : "このプランで始める"}
+  </Button>
+</Link>
+
+       <LandingReveal className="mt-8 text-center" delayMs={200}>
+  <p className="text-xs text-[#8B7E81]">
+    契約中のプランと請求情報は、ログイン後の{" "}
+    <Link
+      href="/settings/billing"
+      className="mx-1 font-medium text-[#74172A] hover:underline"
+    >
+      プラン・請求
+    </Link>
+    から確認できます。
+  </p>
+</LandingReveal>
       </div>
     </section>
   );
@@ -393,7 +392,7 @@ function PricingSection() {
 
 function LandingFooter() {
   return (
-    <footer className="border-t border-[#74172a]/8 bg-[#fffdfb] px-4 py-10 dark:border-white/10 dark:bg-[#0c0809] sm:px-8">
+    <footer className="border-t border-[#74172A]/8 bg-[#FFFDFB] px-4 py-10 sm:px-8">
       <div className="mx-auto flex max-w-[1240px] flex-col items-center justify-between gap-6 sm:flex-row">
         <Link href="/" className="transition-opacity hover:opacity-80">
           <MinervotLogo />
@@ -401,7 +400,7 @@ function LandingFooter() {
 
         <LegalFooterLinks variant="light" />
 
-        <p className="text-[10px] text-[#918589] dark:text-[#a99ca0]">
+        <p className="text-[10px] text-[#918589]">
           © {new Date().getFullYear()} MINERVOT. All rights reserved.
         </p>
       </div>
@@ -411,7 +410,7 @@ function LandingFooter() {
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#fffdfb] text-[#281a1e] selection:bg-[#74172a] selection:text-white dark:bg-[#0c0809] dark:text-white">
+    <div className="min-h-screen bg-[#FFFDFB] text-[#281A1E] selection:bg-[#74172A] selection:text-white">
       <LandingHeader />
 
       <main>
