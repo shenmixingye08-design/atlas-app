@@ -47,8 +47,10 @@ function MinervotLogo() {
           Personal AI Secretary
         </span>
       </span>
-    </span>
+     </span>
   );
+}
+
 function LandingHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-[#74172A]/8 bg-[#fffdfb]/85 backdrop-blur-2xl">
