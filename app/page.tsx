@@ -2,27 +2,45 @@ import type { Metadata } from "next";
 
 import { LandingPage } from "@/components/landing/landing-page";
 import {
-  ATLAS_DEFAULT_DESCRIPTION,
-  ATLAS_DEFAULT_TITLE,
+  MINERVOT_DEFAULT_DESCRIPTION,
+  MINERVOT_DEFAULT_TITLE,
   getSiteOrigin,
 } from "@/lib/seo/site";
 
+const siteOrigin = getSiteOrigin();
+
 export const metadata: Metadata = {
   title: {
-    absolute: ATLAS_DEFAULT_TITLE,
+    absolute: MINERVOT_DEFAULT_TITLE,
   },
-  description: ATLAS_DEFAULT_DESCRIPTION,
+
+  description: MINERVOT_DEFAULT_DESCRIPTION,
+
   alternates: {
-    canonical: getSiteOrigin(),
+    canonical: siteOrigin,
   },
+
   openGraph: {
-    title: ATLAS_DEFAULT_TITLE,
-    description: ATLAS_DEFAULT_DESCRIPTION,
-    url: getSiteOrigin(),
+    type: "website",
+    locale: "ja_JP",
+    url: siteOrigin,
+    siteName: "MINERVOT",
+    title: MINERVOT_DEFAULT_TITLE,
+    description: MINERVOT_DEFAULT_DESCRIPTION,
+  },
+
+  twitter: {
+    card: "summary_large_image",
+    title: MINERVOT_DEFAULT_TITLE,
+    description: MINERVOT_DEFAULT_DESCRIPTION,
+  },
+
+  robots: {
+    index: true,
+    follow: true,
   },
 };
 
-/** 公開ホームページ。認証 protect はかけない（proxy.ts）。 */
-export default function Home() {
+export default function Page() {
   return <LandingPage />;
 }
