@@ -371,7 +371,7 @@ function PricingSection() {
           })}
         </ul>
 
-        <LandingReveal className="mt-8 text-center" delayMs={200}>
+              <LandingReveal className="mt-8 text-center" delayMs={200}>
           <p className="text-xs text-[#8B7E81]">
             契約中のプランと請求情報は、ログイン後の{" "}
             <Link
@@ -387,6 +387,7 @@ function PricingSection() {
     </section>
   );
 }
+
 function LandingFooter() {
   return (
     <footer className="border-t border-[#74172A]/8 bg-[#FFFDFB] px-4 py-10 sm:px-8">
