@@ -6,11 +6,11 @@ import {
 import type { Automation } from "@/lib/automations/types";
 import { inferJobCategory } from "@/lib/user-profile/categories";
 import type { UserWorkProfile } from "@/lib/user-profile/types";
+import { getOnboardingTask } from "@/lib/onboarding/tasks";
 import {
   applyOnboardingPriorityBoost,
-  getOnboardingTask,
   getPreferredOnboardingTasks,
-} from "@/lib/onboarding";
+} from "@/lib/onboarding/recommendations";
 
 import { buildSuggestionTimeContext, minutesUntilScheduledTime } from "./context";
 import {
