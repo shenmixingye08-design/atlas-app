@@ -10,17 +10,20 @@ export function LandingWorkflowExperience() {
     >
       <div className="mx-auto max-w-6xl">
         <LandingReveal className="mx-auto max-w-2xl text-center">
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            ATLASの使い方
+          <p className="text-sm font-semibold tracking-[0.18em] text-[#74172A]">
+            SIMPLE WORKFLOW
+          </p>
+
+          <h2 className="mt-4 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl lg:text-4xl">
+            MINERVOTの使い方
           </h2>
+
           <p className="mt-6 text-base leading-relaxed text-[var(--foreground-muted)] sm:mt-8 sm:text-lg sm:leading-relaxed">
             複雑な設定や、専門的なプロンプトは必要ありません。
             <br className="hidden sm:inline" />
-            <span className="mt-2 block sm:mt-0 sm:inline">
-              ご依頼内容と必要な資料を送るだけで、
-              <br className="hidden sm:inline" />
-              ATLASが仕事を整理し、進めます。
-            </span>
+            ご依頼内容と必要な資料を送るだけで、
+            <br className="hidden sm:inline" />
+            MINERVOTが仕事を整理し、実行まで進めます。
           </p>
         </LandingReveal>
 
@@ -30,27 +33,31 @@ export function LandingWorkflowExperience() {
               <li className="relative h-full">
                 {index < LANDING_WORKFLOW_STEPS.length - 1 && (
                   <span
-                    className="pointer-events-none absolute -right-3 top-10 z-10 hidden text-sm text-[var(--border-strong)] lg:block"
+                    className="pointer-events-none absolute -right-3 top-10 z-10 hidden text-sm text-[#B58B4F]/70 lg:block"
                     aria-hidden
                   >
                     →
                   </span>
                 )}
-                <div className="flex h-full flex-col rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-6 shadow-[var(--shadow-sm)] sm:p-7">
+
+                <div className="group flex h-full flex-col rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-6 shadow-[var(--shadow-sm)] transition-all duration-300 hover:-translate-y-1 hover:border-[#74172A]/30 hover:shadow-[var(--shadow-md)] sm:p-7">
                   <div className="flex items-center gap-3">
                     <span
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-xl)] bg-[var(--background-subtle)] text-xl"
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-xl)] bg-[#74172A]/8 text-xl transition-transform duration-300 group-hover:scale-105"
                       aria-hidden
                     >
                       {step.icon}
                     </span>
-                    <p className="text-xs font-medium tracking-wide text-[var(--foreground-subtle)]">
+
+                    <p className="text-xs font-semibold tracking-[0.12em] text-[#74172A]">
                       STEP {index + 1}
                     </p>
                   </div>
+
                   <h3 className="mt-5 text-lg font-semibold tracking-tight text-foreground">
                     {step.label}
                   </h3>
+
                   <p className="mt-3 flex-1 text-sm leading-relaxed text-[var(--foreground-muted)]">
                     {step.detail}
                   </p>
@@ -60,15 +67,19 @@ export function LandingWorkflowExperience() {
           ))}
         </ol>
 
-        <LandingReveal className="mx-auto mt-14 max-w-2xl text-center sm:mt-16" delayMs={200}>
-          <div className="rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--background-subtle)]/60 px-6 py-8 sm:px-10 sm:py-10">
-            <p className="text-base font-medium leading-relaxed text-foreground sm:text-lg">
+        <LandingReveal
+          className="mx-auto mt-14 max-w-3xl text-center sm:mt-16"
+          delayMs={200}
+        >
+          <div className="rounded-[var(--radius-2xl)] border border-[#B58B4F]/25 bg-gradient-to-br from-[#74172A]/5 via-transparent to-[#B58B4F]/10 px-6 py-8 sm:px-10 sm:py-10">
+            <p className="text-base font-semibold leading-relaxed text-foreground sm:text-lg">
               毎回、細かい指示を入力する必要はありません。
             </p>
-            <p className="mt-4 text-sm leading-relaxed text-[var(--foreground-muted)] sm:text-base sm:leading-relaxed">
-              ATLASは、お客様の仕事の進め方や習慣を学習し、
+
+            <p className="mt-4 text-sm leading-relaxed text-[var(--foreground-muted)] sm:text-base">
+              MINERVOTは、あなたの仕事の進め方や習慣を学習し、
               <br className="hidden sm:inline" />
-              使うほどお客様に合わせたAI秘書へ成長します。
+              使うほど、あなた専属のAI秘書として成長します。
             </p>
           </div>
         </LandingReveal>
