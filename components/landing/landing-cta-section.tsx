@@ -46,7 +46,7 @@ export function LandingCtaSection() {
                 <Link href="/sign-in">
                   <Button
                     size="lg"
-                    variant="outline"
+                    variant="secondary"
                     className="min-w-[220px] rounded-full border-[#74172A]/20 bg-white text-[#74172A] hover:bg-[#FAF6F5]"
                   >
                     ログイン
