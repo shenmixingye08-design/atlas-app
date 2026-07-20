@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { slug } = await params;
   const label = SOLUTION_TITLES[slug] ?? "ソリューション";
   return {
-    title: `${label} — MINERVOT（準備中）`,
+    title: `${label}（準備中）`,
     description: "このページは現在準備中です。",
     robots: { index: false, follow: true },
   };

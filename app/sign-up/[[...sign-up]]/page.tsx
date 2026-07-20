@@ -6,7 +6,7 @@ import { ATLAS_APP_HOME_PATH } from "@/lib/auth/public-routes";
 import { atlasClerkAppearance } from "@/lib/clerk/appearance";
 
 export const metadata: Metadata = {
-  title: "新規登録 — MINERVOT",
+  title: "新規登録",
   description: "無料でMINERVOTアカウントを作成し、あなた専属のAI秘書を始めましょう。",
   robots: { index: false, follow: true },
 };
