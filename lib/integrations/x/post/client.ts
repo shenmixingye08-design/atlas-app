@@ -1,3 +1,4 @@
+import { notifyBillingUsageChanged } from "@/lib/billing/refresh-events";
 import type { XConnectionCheckResult } from "@/lib/integrations/x/connection-types";
 import type {
   XDraftPost,
@@ -87,7 +88,12 @@ export async function createXPostClient(input: {
     throw new Error("Xへの投稿に失敗しました");
   }
 
-  return response.json() as Promise<XPostResult>;
+  const result = (await response.json()) as XPostResult;
+  // A published/scheduled post may change SNS usage — signal usage meters.
+  if (result.status === "ready") {
+    notifyBillingUsageChanged();
+  }
+  return result;
 }
 
 export async function fetchXConnectionStatusClient(): Promise<XConnectionCheckResult> {

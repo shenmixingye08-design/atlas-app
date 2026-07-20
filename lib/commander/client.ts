@@ -9,6 +9,7 @@ import {
   formatPlanAccessErrorMessage,
   isPlanAccessErrorPayload,
 } from "@/lib/billing/client-errors";
+import { notifyBillingUsageChanged } from "@/lib/billing/refresh-events";
 
 export const COMMANDER_CLIENT_TIMEOUT_MS = 180_000;
 
@@ -66,7 +67,17 @@ export async function submitCommanderRequest(
       );
     }
 
-    return data as CommanderRunResult;
+    const result = data as CommanderRunResult;
+    // A run that actually executed may have consumed plan usage — signal any
+    // usage meters to refetch without a full page reload.
+    if (
+      result.status === "completed" ||
+      result.status === "partial" ||
+      result.status === "failed"
+    ) {
+      notifyBillingUsageChanged();
+    }
+    return result;
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(formatUserFacingErrorText(toUserFacingError(error)));

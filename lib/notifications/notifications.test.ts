@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   notifyAutomationCompleted,
+  notifyWorkCompleted,
   notifyXPostSuccess,
 } from "./emitters";
+import { isSafeActionUrl } from "./display";
 import {
   createNotification,
   listUserNotifications,
@@ -58,6 +60,50 @@ describe("notifications", () => {
 
     expect(record).toBeNull();
     expect(listUserNotifications(TEST_USER)).toHaveLength(0);
+  });
+
+  it("deep-links a completed automation to its detail panel", () => {
+    const record = notifyAutomationCompleted(TEST_USER, {
+      automationId: "auto_42",
+      name: "テスト自動化",
+    });
+
+    expect(record?.actionUrl).toBe("/automations?id=auto_42");
+    expect(record?.relatedTaskId).toBe("auto_42");
+    expect(isSafeActionUrl(record?.actionUrl)).toBe(true);
+  });
+
+  it("deep-links a successful X post to the exact post result", () => {
+    const record = notifyXPostSuccess(TEST_USER, "hello", {
+      historyId: "hist_7",
+    });
+
+    expect(record?.actionUrl).toBe("/workspace/x?historyId=hist_7");
+    expect(record?.relatedTaskId).toBe("hist_7");
+    expect(isSafeActionUrl(record?.actionUrl)).toBe(true);
+  });
+
+  it("deep-links completed work to the saved result via a provided actionUrl", () => {
+    const actionUrl = "/history?item=project-commander-run_9";
+    const record = notifyWorkCompleted(TEST_USER, {
+      title: "完了",
+      message: "完了しました",
+      actionUrl,
+      relatedTaskId: "commander-run_9",
+    });
+
+    expect(record?.actionUrl).toBe(actionUrl);
+    expect(record?.relatedTaskId).toBe("commander-run_9");
+    expect(isSafeActionUrl(record?.actionUrl)).toBe(true);
+  });
+
+  it("falls back to /workspace when no deep link is provided", () => {
+    const record = notifyWorkCompleted(TEST_USER, {
+      title: "完了",
+      message: "完了しました",
+    });
+
+    expect(record?.actionUrl).toBe("/workspace");
   });
 
   it("creates owner notifications without user preferences", () => {

@@ -232,12 +232,18 @@ export async function persistCommanderResultAsProject(input: {
   userId: string;
   assignment: string;
   result: OrchestrationResult;
+  /** Stable id shared with the client save + notification deep link. */
+  projectId?: string;
 }): Promise<string | null> {
   const client = createServiceRoleClientIfConfigured();
   if (!client) return null;
 
   try {
-    const project = createProjectFromOrchestration(input.assignment, input.result);
+    const project = createProjectFromOrchestration(
+      input.assignment,
+      input.result,
+      input.projectId,
+    );
     const row = mapProjectToRow(project, input.userId);
     const { error } = await client.from(PROJECTS_TABLE).upsert(row);
     if (error) {

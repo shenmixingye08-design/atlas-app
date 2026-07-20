@@ -1,4 +1,5 @@
 import { ui } from "@/lib/i18n";
+import { notifyBillingUsageChanged } from "@/lib/billing/refresh-events";
 
 import type {
   Automation,
@@ -83,7 +84,10 @@ export async function runAutomationNow(
     throw new Error(body.error ?? ui.error.runFailed);
   }
 
-  return response.json() as Promise<AutomationRunResult>;
+  const result = (await response.json()) as AutomationRunResult;
+  // Running an automation consumes plan usage — signal usage meters to refetch.
+  notifyBillingUsageChanged();
+  return result;
 }
 
 export async function tickAutomations(): Promise<{

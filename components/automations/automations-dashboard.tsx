@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import type { Automation } from "@/lib/automations/types";
@@ -55,6 +55,8 @@ function parseInitialFormFromSearchParams(
 
 export function AutomationsDashboard() {
   const searchParams = useSearchParams();
+  const selectedIdParam = searchParams.get("id");
+  const openedIdRef = useRef<string | null>(null);
   const initialForm = useMemo(
     () => parseInitialFormFromSearchParams(searchParams),
     [searchParams],
@@ -95,6 +97,18 @@ export function AutomationsDashboard() {
   useEffect(() => {
     void loadAutomations();
   }, [loadAutomations]);
+
+  // Notification deep link (/automations?id=...) opens the exact automation's
+  // detail panel once loaded, so「結果を見る」lands on the right item.
+  useEffect(() => {
+    if (!selectedIdParam || automations.length === 0) return;
+    if (openedIdRef.current === selectedIdParam) return;
+    const match = automations.find((item) => item.id === selectedIdParam);
+    if (match) {
+      openedIdRef.current = selectedIdParam;
+      setSelected(match);
+    }
+  }, [selectedIdParam, automations]);
 
   const summary = useMemo(
     () => summarizeEntrustedJobs(automations),

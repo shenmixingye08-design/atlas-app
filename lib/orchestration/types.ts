@@ -194,6 +194,12 @@ export type OrchestrationResult = {
   workflow: import("./workflow-state").WorkflowStateRecord;
   /** Dev/debug cache & knowledge isolation metrics (non-production only). */
   isolationDebug?: WorkflowIsolationDebug;
+  /**
+   * Commander run id when this result was routed through Commander. Used by the
+   * client to save the project under a stable id that matches the completion
+   * notification's deep link. Not part of the AI pipeline output.
+   */
+  commanderRunId?: string | null;
 };
 
 /** Cache and knowledge isolation diagnostics for Workflow Inspector. */

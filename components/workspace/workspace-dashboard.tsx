@@ -156,7 +156,13 @@ export function WorkspaceDashboard() {
       setWorkMemoryCandidateCount(
         orchestrationResult.workMemoryCandidates?.length ?? 0,
       );
-      projectService.saveFromOrchestration(requestAssignment, orchestrationResult);
+      projectService.saveFromOrchestration(
+        requestAssignment,
+        orchestrationResult,
+        orchestrationResult.commanderRunId
+          ? `commander-${orchestrationResult.commanderRunId}`
+          : undefined,
+      );
 
       if (orchestrationResult.status === "failed" && orchestrationResult.error) {
         setError(
@@ -208,7 +214,13 @@ export function WorkspaceDashboard() {
       setWorkMemoryCandidateCount(
         orchestrationResult.workMemoryCandidates?.length ?? 0,
       );
-      projectService.saveFromOrchestration(requestAssignment, orchestrationResult);
+      projectService.saveFromOrchestration(
+        requestAssignment,
+        orchestrationResult,
+        orchestrationResult.commanderRunId
+          ? `commander-${orchestrationResult.commanderRunId}`
+          : undefined,
+      );
     } catch (err) {
       if (err instanceof CommanderConfirmationRequiredError) {
         setPendingCommander(err.commander);

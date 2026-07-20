@@ -12,6 +12,7 @@ import {
   isPlanId,
   openBillingPortal,
   startCheckout,
+  subscribeBillingUsageChanged,
 } from "@/lib/billing";
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
@@ -184,6 +185,30 @@ export function BillingSettings() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Quietly refetch just the usage/plan summary (no full-screen loading) so the
+  // meters stay current after a completion or when the tab regains focus.
+  const refreshSummary = useCallback(async () => {
+    try {
+      const billing = await fetchBillingSummary();
+      setSummary(billing);
+      setError(null);
+    } catch {
+      // Keep the previously loaded summary on a transient refresh failure.
+    }
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeBillingUsageChanged(() => {
+      void refreshSummary();
+    });
+    const onFocus = () => void refreshSummary();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refreshSummary]);
 
   const checkoutSuccessMessage = useMemo(() => {
     if (checkoutState !== "success" || !summary) return null;

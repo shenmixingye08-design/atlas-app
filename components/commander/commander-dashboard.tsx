@@ -201,9 +201,12 @@ export function CommanderDashboard() {
       result.result &&
       (result.status === "completed" || result.status === "partial")
     ) {
+      // Same deterministic id the server used, so the completion notification's
+      // deep link (/history?item=project-commander-<runId>) resolves to this save.
       const project = projectService.saveFromOrchestration(
         sourceAssignment.trim() || result.plan.assignment,
         result.result,
+        result.runId ? `commander-${result.runId}` : undefined,
       );
       setSavedProjectId(project.id);
     }

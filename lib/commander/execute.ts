@@ -236,15 +236,19 @@ async function executeRememberHabitRun(input: {
     ],
   });
 
+  const habitProjectId = `commander-${input.runId}`;
   await persistCommanderResultAsProject({
     userId: input.userId,
     assignment: input.plan.assignment,
     result: syntheticResult,
+    projectId: habitProjectId,
   });
 
   notifyWorkCompleted(input.userId, {
     title: "習慣候補を作成しました",
     message: summary,
+    actionUrl: `/history?item=project-${encodeURIComponent(habitProjectId)}`,
+    relatedTaskId: habitProjectId,
   });
 
   return toRunResult({
@@ -503,39 +507,52 @@ async function executeStoredRun(input: {
         : null,
   });
 
+  // Deterministic id shared by the server persist, the client save, and the
+  // notification deep link so「結果を見る」lands on the exact saved result.
+  const resultProjectId = `commander-${input.runId}`;
+  const resultDeepLink = `/history?item=project-${encodeURIComponent(resultProjectId)}`;
+
   if (finalStatus === "completed") {
-    notifyWorkCompleted(input.userId, {
-      title: "AIオーケストレーター完了報告",
-      message: snsPublishedTweetUrl
-        ? `「${plan.classification.summary}」が完了し、Xへ投稿しました。${snsPublishedTweetUrl}`
-        : `「${plan.classification.summary}」が完了しました。`,
-    });
+    // Persist first so the notification can deep-link straight to the saved
+    // result (成果物) instead of a generic workspace page.
     if (lastResult) {
       await persistCommanderResultAsProject({
         userId: input.userId,
         assignment: plan.assignment,
         result: lastResult,
+        projectId: resultProjectId,
       });
     }
+    notifyWorkCompleted(input.userId, {
+      title: "AIオーケストレーター完了報告",
+      message: snsPublishedTweetUrl
+        ? `「${plan.classification.summary}」が完了し、Xへ投稿しました。${snsPublishedTweetUrl}`
+        : `「${plan.classification.summary}」が完了しました。`,
+      actionUrl: lastResult ? resultDeepLink : "/workspace",
+      relatedTaskId: lastResult ? resultProjectId : null,
+    });
     try {
       runLearningAnalysis(input.userId, { periodDays: 30 });
     } catch (error) {
       console.warn("[commander] Learning analysis failed:", error);
     }
   } else if (finalStatus === "partial") {
-    notifyWorkCompleted(input.userId, {
-      title: "AIオーケストレーター一部完了",
-      message: snsPublishReason
-        ? `投稿文は準備できましたが、Xへの投稿に失敗しました: ${snsPublishReason}`
-        : "一部の成果は保存できます。内容を確認してください。",
-    });
     if (lastResult) {
       await persistCommanderResultAsProject({
         userId: input.userId,
         assignment: plan.assignment,
         result: lastResult,
+        projectId: resultProjectId,
       });
     }
+    notifyWorkCompleted(input.userId, {
+      title: "AIオーケストレーター一部完了",
+      message: snsPublishReason
+        ? `投稿文は準備できましたが、Xへの投稿に失敗しました: ${snsPublishReason}`
+        : "一部の成果は保存できます。内容を確認してください。",
+      actionUrl: lastResult ? resultDeepLink : "/workspace",
+      relatedTaskId: lastResult ? resultProjectId : null,
+    });
   } else if (finalStatus === "cancelled") {
     notifyWorkFailed(input.userId, {
       title: "AIオーケストレーターを中止しました",

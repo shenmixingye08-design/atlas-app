@@ -53,6 +53,7 @@ export async function submitWorkRequest(
 
   return {
     ...commander.result,
+    ...(commander.runId ? { commanderRunId: commander.runId } : {}),
     ...(commander.workMemory && { workMemory: commander.workMemory }),
     ...(commander.workMemoryCandidates && {
       workMemoryCandidates: commander.workMemoryCandidates as OrchestrationResult["workMemoryCandidates"],
@@ -83,6 +84,7 @@ export async function confirmWorkRequest(
 
   return {
     ...commander.result,
+    ...(commander.runId ? { commanderRunId: commander.runId } : {}),
     ...(commander.workMemory && { workMemory: commander.workMemory }),
     ...(commander.workMemoryCandidates && {
       workMemoryCandidates: commander.workMemoryCandidates as OrchestrationResult["workMemoryCandidates"],

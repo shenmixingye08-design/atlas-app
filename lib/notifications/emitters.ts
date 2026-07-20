@@ -2,6 +2,11 @@ import "server-only";
 
 import { createNotification } from "./service";
 
+/** Deep link that opens the exact automation in its detail panel. */
+function automationActionUrl(automationId: string): string {
+  return `/automations?id=${encodeURIComponent(automationId)}`;
+}
+
 export function notifyAutomationCompleted(
   userId: string | null | undefined,
   input: { automationId: string; name: string; templateId?: string },
@@ -15,7 +20,7 @@ export function notifyAutomationCompleted(
     message: `お待たせいたしました。「${input.name}」の自動化が終了しました。`,
     relatedTaskId: input.automationId,
     relatedService: input.templateId === "sns_post" ? "x" : "atlas",
-    actionUrl: "/automations",
+    actionUrl: automationActionUrl(input.automationId),
     lineEvent: "automation_completed",
   });
 }
@@ -33,7 +38,7 @@ export function notifyAutomationAwaitingReview(
     message: `「${input.name}」について、ご確認をお願いいたします。`,
     relatedTaskId: input.automationId,
     relatedService: "atlas",
-    actionUrl: "/automations",
+    actionUrl: automationActionUrl(input.automationId),
     lineEvent: "confirmation_request",
   });
 }
@@ -51,12 +56,17 @@ export function notifyAutomationFailed(
     message: `「${input.name}」の処理を完了できませんでした。内容をご確認ください。`,
     relatedTaskId: input.automationId,
     relatedService: "atlas",
-    actionUrl: "/automations",
+    actionUrl: automationActionUrl(input.automationId),
     lineEvent: "error",
   });
 }
 
-export function notifyXPostSuccess(userId: string, text?: string) {
+export function notifyXPostSuccess(
+  userId: string,
+  text?: string,
+  options?: { historyId?: string | null },
+) {
+  const historyId = options?.historyId ?? null;
   return createNotification({
     audience: "user",
     userId,
@@ -65,8 +75,11 @@ export function notifyXPostSuccess(userId: string, text?: string) {
     message: text
       ? `お待たせいたしました。投稿の準備が完了しました。`
       : "お待たせいたしました。投稿が完了しました。",
+    relatedTaskId: historyId,
     relatedService: "x",
-    actionUrl: "/workspace/x",
+    actionUrl: historyId
+      ? `/workspace/x?historyId=${encodeURIComponent(historyId)}`
+      : "/workspace/x",
   });
 }
 
@@ -245,7 +258,14 @@ export function notifyRecommendation(
 
 export function notifyWorkCompleted(
   userId: string | null | undefined,
-  input: { title: string; message: string },
+  input: {
+    title: string;
+    message: string;
+    /** Deep link to the exact result (e.g. `/history?item=project-...`). */
+    actionUrl?: string | null;
+    /** Related resource id used for deep-link targeting. */
+    relatedTaskId?: string | null;
+  },
 ) {
   if (!userId) return null;
   return createNotification({
@@ -256,14 +276,20 @@ export function notifyWorkCompleted(
     message: input.message
       ? `お待たせいたしました。${input.message}`
       : "お待たせいたしました。ご依頼の内容が完了しました。",
-    actionUrl: "/workspace",
+    relatedTaskId: input.relatedTaskId ?? null,
+    actionUrl: input.actionUrl ?? "/workspace",
     lineEvent: "work_completed",
   });
 }
 
 export function notifyWorkFailed(
   userId: string | null | undefined,
-  input: { title: string; message: string },
+  input: {
+    title: string;
+    message: string;
+    actionUrl?: string | null;
+    relatedTaskId?: string | null;
+  },
 ) {
   if (!userId) return null;
   return createNotification({
@@ -272,7 +298,8 @@ export function notifyWorkFailed(
     type: "error",
     title: "処理を完了できませんでした",
     message: "処理を完了できませんでした。内容をご確認ください。",
-    actionUrl: "/workspace",
+    relatedTaskId: input.relatedTaskId ?? null,
+    actionUrl: input.actionUrl ?? "/workspace",
     lineEvent: "error",
   });
 }

@@ -85,12 +85,18 @@ function computePartialProgress(result: OrchestrationResult): number {
 export function createProjectFromOrchestration(
   workRequest: string,
   result: OrchestrationResult,
+  /**
+   * Optional stable id so the same run maps to one project across the server
+   * persist path, the client save, and notification deep links (avoids the
+   * server/client id mismatch that broke「結果を見る」navigation).
+   */
+  id?: string,
 ): Project {
   const now = new Date().toISOString();
   const { status, progress } = statusAndProgressFromOrchestration(result);
 
   return {
-    id: crypto.randomUUID(),
+    id: id ?? crypto.randomUUID(),
     title: deriveProjectTitle(workRequest),
     workRequest: workRequest.trim(),
     status,

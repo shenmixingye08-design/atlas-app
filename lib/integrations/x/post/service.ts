@@ -214,7 +214,9 @@ async function executeTweetPost(input: {
     );
 
     await touchXConnectionLastUsed(input.userId);
-    notifyXPostSuccess(input.userId, input.text.trim());
+    notifyXPostSuccess(input.userId, input.text.trim(), {
+      historyId: history.id,
+    });
 
     return { status: "ready", mode: input.mode, history };
   } catch (error) {

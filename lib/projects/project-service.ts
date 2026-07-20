@@ -57,9 +57,13 @@ export class ProjectService {
   saveFromOrchestration(
     workRequest: string,
     result: OrchestrationResult,
+    /** Optional stable id — dedupes when the same run is saved again. */
+    id?: string,
   ): Project {
-    const project = createProjectFromOrchestration(workRequest, result);
-    const existing = this.repository.list();
+    const project = createProjectFromOrchestration(workRequest, result, id);
+    const existing = this.repository
+      .list()
+      .filter((item) => item.id !== project.id);
     this.repository.save([project, ...existing]);
     return project;
   }

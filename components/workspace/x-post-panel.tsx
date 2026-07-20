@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -143,6 +144,9 @@ function ScheduledCard({ post }: { post: XScheduledPost }) {
 }
 
 export function XPostPanel() {
+  const searchParams = useSearchParams();
+  const deepLinkHistoryId = searchParams.get("historyId");
+  const openedResultRef = useRef<string | null>(null);
   const [mode, setMode] = useState<XPostMode>("immediate");
   const [text, setText] = useState("");
   const [draftId, setDraftId] = useState<string | null>(null);
@@ -256,6 +260,15 @@ export function XPostPanel() {
       setError(err instanceof Error ? err.message : ui.error.loadFailed);
     }
   };
+
+  // Notification deep link (/workspace/x?historyId=...) opens the exact post
+  // result once the panel has loaded, so「結果を見る」lands on the content.
+  useEffect(() => {
+    if (isLoading || !deepLinkHistoryId) return;
+    if (openedResultRef.current === deepLinkHistoryId) return;
+    openedResultRef.current = deepLinkHistoryId;
+    void handleViewResult(deepLinkHistoryId);
+  }, [isLoading, deepLinkHistoryId]);
 
   const handleSubmit = async () => {
     setIsSubmitting(true);

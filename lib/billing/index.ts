@@ -30,6 +30,12 @@ export {
 } from "./client";
 
 export {
+  BILLING_USAGE_CHANGED_EVENT,
+  notifyBillingUsageChanged,
+  subscribeBillingUsageChanged,
+} from "./refresh-events";
+
+export {
   getPaidPlans,
   getPlanDefinition,
   isPlanId,
