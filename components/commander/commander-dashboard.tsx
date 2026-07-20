@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -191,50 +191,70 @@ export function CommanderDashboard() {
   const [run, setRun] = useState<CommanderRunResult | null>(null);
   const [savedProjectId, setSavedProjectId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const autoStartedRef = useRef(false);
+  const isLoadingRef = useRef(false);
   const searchParams = useSearchParams();
 
-  useEffect(() => {
-    const prefill = searchParams.get("assignment");
-    if (prefill?.trim()) setAssignment(prefill);
-  }, [searchParams]);
-
-  function maybeSaveProject(result: CommanderRunResult) {
+  function maybeSaveProject(result: CommanderRunResult, sourceAssignment: string) {
     if (
       result.result &&
       (result.status === "completed" || result.status === "partial")
     ) {
       const project = projectService.saveFromOrchestration(
-        assignment.trim() || result.plan.assignment,
+        sourceAssignment.trim() || result.plan.assignment,
         result.result,
       );
       setSavedProjectId(project.id);
     }
   }
 
-  async function handleSubmit(mode: "plan" | "execute") {
-    const trimmed = assignment.trim();
-    if (!trimmed || isLoading) return;
+  const runAssignment = useCallback(
+    async (text: string, mode: "plan" | "execute") => {
+      const trimmed = text.trim();
+      if (!trimmed || isLoadingRef.current) return;
 
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-    setIsLoading(true);
-    setError(null);
-    setSavedProjectId(null);
+      isLoadingRef.current = true;
+      setIsLoading(true);
+      setError(null);
+      setSavedProjectId(null);
 
-    try {
-      const result = await submitCommanderRequest(trimmed, {
-        signal: controller.signal,
-        mode,
-      });
-      setRun(result);
-      maybeSaveProject(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : ui.error.generic);
-    } finally {
-      setIsLoading(false);
+      try {
+        const result = await submitCommanderRequest(trimmed, {
+          signal: controller.signal,
+          mode,
+        });
+        setRun(result);
+        maybeSaveProject(result, trimmed);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : ui.error.generic);
+      } finally {
+        isLoadingRef.current = false;
+        setIsLoading(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const prefill = searchParams.get("assignment");
+    if (prefill?.trim()) setAssignment(prefill);
+    // ホームから「送る」で届いた依頼は、確認不要ですぐに実行する（クリック削減）。
+    if (
+      searchParams.get("autostart") === "1" &&
+      prefill?.trim() &&
+      !autoStartedRef.current
+    ) {
+      autoStartedRef.current = true;
+      void runAssignment(prefill, "execute");
     }
+  }, [runAssignment, searchParams]);
+
+  async function handleSubmit(mode: "plan" | "execute") {
+    await runAssignment(assignment, mode);
   }
 
   async function handleConfirm() {
@@ -244,7 +264,7 @@ export function CommanderDashboard() {
     try {
       const result = await confirmCommanderRequest(run.runId);
       setRun(result);
-      maybeSaveProject(result);
+      maybeSaveProject(result, assignment || result.plan.assignment);
     } catch (err) {
       setError(err instanceof Error ? err.message : ui.error.generic);
     } finally {
