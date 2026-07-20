@@ -15,6 +15,9 @@ import {
   listExternalServiceConnections,
   replaceExternalServiceConnectionsForUser,
 } from "./store";
+import type { GooglePersistedAuth } from "@/lib/integrations/google/credential-persistence";
+import type { XPersistedAuth } from "@/lib/integrations/x/credential-persistence";
+import type { WordPressPersistedAuth } from "@/lib/integrations/wordpress/types";
 
 export const EXTERNAL_AUTH_DOMAIN_KEY = "atlasExternalAuth";
 
@@ -33,6 +36,15 @@ export type DurableExternalAuthState = {
  * state forever — the user then appears to need re-connecting on every visit.
  */
 const HYDRATION_TTL_MS = 60_000;
+
+/**
+ * When a hydration pass applies no durable state (transient Supabase/Clerk
+ * failure, or a genuinely un-connected user) we only suppress re-hydration for
+ * this short window. Without it, a single failed load would pin a connected
+ * account to "disconnected" for the full TTL — the reported "Google asks to
+ * re-login every time" symptom.
+ */
+const HYDRATION_NEGATIVE_TTL_MS = 5_000;
 
 function getHydratedUsers(): Map<string, number> {
   const scope = globalThis as typeof globalThis & {
@@ -100,49 +112,90 @@ export async function ensureExternalAuthHydrated(userId: string): Promise<void> 
   if (lastHydratedAt !== undefined && Date.now() - lastHydratedAt < HYDRATION_TTL_MS) {
     return;
   }
+  // Tentatively mark now to dedup concurrent hydrations in the same tick. If
+  // nothing durable is applied we shorten this below so a transient store
+  // failure cannot pin a connected account to "disconnected" for the full TTL.
   hydratedUsers.set(userId, Date.now());
+  let appliedDurable = false;
 
-  const { saveExternalServiceCredentials } = await import("./credential-store");
-  const { saveExternalServiceConnection } = await import("./store");
+  try {
+    const { saveExternalServiceCredentials } = await import(
+      "./credential-store"
+    );
+    const { saveExternalServiceConnection } = await import("./store");
 
-  // Google tokens: prefer dedicated Supabase table (never stripped on Clerk overflow).
-  const { loadGoogleAuthFromSupabase } = await import(
-    "@/lib/integrations/google/credential-persistence"
-  );
-  const googleAuth = await loadGoogleAuthFromSupabase(userId);
-  if (googleAuth) {
-    saveExternalServiceCredentials(googleAuth.credentials);
-    saveExternalServiceConnection(userId, googleAuth.connection);
+    // Google tokens: prefer dedicated Supabase table (never stripped on Clerk overflow).
+    const { loadGoogleAuthFromSupabase } = await import(
+      "@/lib/integrations/google/credential-persistence"
+    );
+    const googleAuth = await loadGoogleAuthFromSupabase(userId);
+    if (googleAuth) {
+      saveExternalServiceCredentials(googleAuth.credentials);
+      saveExternalServiceConnection(userId, googleAuth.connection);
+      appliedDurable = true;
+    }
+
+    // X tokens: same durable Supabase pattern as Google.
+    const { loadXAuthFromSupabase } = await import(
+      "@/lib/integrations/x/credential-persistence"
+    );
+    const xAuth = await loadXAuthFromSupabase(userId);
+    if (xAuth) {
+      saveExternalServiceCredentials(xAuth.credentials);
+      saveExternalServiceConnection(userId, xAuth.connection);
+      appliedDurable = true;
+    }
+
+    // WordPress Application Passwords: encrypted Supabase table (never Clerk overflow).
+    const { loadWordPressAuthFromSupabase } = await import(
+      "@/lib/integrations/wordpress/credential-persistence"
+    );
+    const { saveWordPressCredentials } = await import(
+      "@/lib/integrations/wordpress/credential-store"
+    );
+    const wordpressAuth = await loadWordPressAuthFromSupabase(userId);
+    if (wordpressAuth) {
+      saveWordPressCredentials(wordpressAuth.credentials);
+      saveExternalServiceConnection(userId, wordpressAuth.connection);
+      appliedDurable = true;
+    }
+
+    const loaded = await loadDurableDomain<DurableExternalAuthState>(
+      userId,
+      EXTERNAL_AUTH_DOMAIN_KEY,
+    );
+    if (loaded) {
+      appliedDurable = true;
+      hydrateDurableDomain(userId, loaded, {
+        googleAuth,
+        xAuth,
+        wordpressAuth,
+      });
+    }
+  } catch (error) {
+    console.warn("[external-auth] Hydration failed:", error);
+  } finally {
+    if (!appliedDurable) {
+      // Allow a quick retry instead of caching a possibly-stale disconnected
+      // state for the whole TTL.
+      hydratedUsers.set(
+        userId,
+        Date.now() - (HYDRATION_TTL_MS - HYDRATION_NEGATIVE_TTL_MS),
+      );
+    }
   }
+}
 
-  // X tokens: same durable Supabase pattern as Google.
-  const { loadXAuthFromSupabase } = await import(
-    "@/lib/integrations/x/credential-persistence"
-  );
-  const xAuth = await loadXAuthFromSupabase(userId);
-  if (xAuth) {
-    saveExternalServiceCredentials(xAuth.credentials);
-    saveExternalServiceConnection(userId, xAuth.connection);
-  }
-
-  // WordPress Application Passwords: encrypted Supabase table (never Clerk overflow).
-  const { loadWordPressAuthFromSupabase } = await import(
-    "@/lib/integrations/wordpress/credential-persistence"
-  );
-  const { saveWordPressCredentials } = await import(
-    "@/lib/integrations/wordpress/credential-store"
-  );
-  const wordpressAuth = await loadWordPressAuthFromSupabase(userId);
-  if (wordpressAuth) {
-    saveWordPressCredentials(wordpressAuth.credentials);
-    saveExternalServiceConnection(userId, wordpressAuth.connection);
-  }
-
-  const loaded = await loadDurableDomain<DurableExternalAuthState>(
-    userId,
-    EXTERNAL_AUTH_DOMAIN_KEY,
-  );
-  if (!loaded) return;
+function hydrateDurableDomain(
+  userId: string,
+  loaded: DurableExternalAuthState,
+  applied: {
+    googleAuth: GooglePersistedAuth | null;
+    xAuth: XPersistedAuth | null;
+    wordpressAuth: WordPressPersistedAuth | null;
+  },
+): void {
+  const { googleAuth, xAuth, wordpressAuth } = applied;
 
   if (Array.isArray(loaded.credentials)) {
     const usable = loaded.credentials.filter(

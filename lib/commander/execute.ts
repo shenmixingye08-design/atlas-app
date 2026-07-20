@@ -19,6 +19,7 @@ import {
 import { runLearningAnalysis } from "@/lib/learning-engine/service";
 import { detectMemorySignals } from "@/lib/work-memory/learning";
 import { createWorkMemoryCandidate } from "@/lib/work-memory/service";
+import { maybeAutoPostToXAfterCommander } from "@/lib/integrations/x/post/automation";
 
 import { isRecurringAssignment } from "./classify";
 import {
@@ -416,6 +417,45 @@ async function executeStoredRun(input: {
     }
   }
 
+  // Actually publish to X for one-off SNS post requests. Orchestration only
+  // prepares the copy (the「投稿」step is skipped in flow context), so without
+  // this the run reports「完了」while nothing ever reaches X.
+  let snsPublishReason: string | null = null;
+  let snsPublishedTweetUrl: string | null = null;
+  if (finalStatus === "completed" && lastResult) {
+    try {
+      const autoPost = await maybeAutoPostToXAfterCommander({
+        userId: input.userId,
+        templateId: flow.templateId,
+        assignment: plan.assignment,
+        deliverable: lastResult.deliverable,
+        finalResponse: lastResult.finalResponse,
+      });
+      if (autoPost.attempted && autoPost.mode === "publish") {
+        const postResult = autoPost.result;
+        if (postResult.status !== "ready") {
+          snsPublishReason = postResult.message;
+        } else if (postResult.history?.status !== "success") {
+          snsPublishReason =
+            postResult.history?.errorMessage ?? "Xへの投稿に失敗しました";
+        } else {
+          snsPublishedTweetUrl = postResult.history?.tweetUrl ?? null;
+        }
+      }
+    } catch (error) {
+      snsPublishReason =
+        error instanceof Error ? error.message : "Xへの投稿に失敗しました";
+    }
+
+    // A prepared-but-not-posted SNS run must not report a clean「完了」.
+    if (snsPublishReason) {
+      finalStatus = "partial";
+      if (lastResult) {
+        lastResult = { ...lastResult, error: snsPublishReason };
+      }
+    }
+  }
+
   // Persist full attempt list
   updateCommanderRun(input.runId, input.userId, {
     attempts,
@@ -466,7 +506,9 @@ async function executeStoredRun(input: {
   if (finalStatus === "completed") {
     notifyWorkCompleted(input.userId, {
       title: "AIオーケストレーター完了報告",
-      message: `「${plan.classification.summary}」が完了しました。`,
+      message: snsPublishedTweetUrl
+        ? `「${plan.classification.summary}」が完了し、Xへ投稿しました。${snsPublishedTweetUrl}`
+        : `「${plan.classification.summary}」が完了しました。`,
     });
     if (lastResult) {
       await persistCommanderResultAsProject({
@@ -483,7 +525,9 @@ async function executeStoredRun(input: {
   } else if (finalStatus === "partial") {
     notifyWorkCompleted(input.userId, {
       title: "AIオーケストレーター一部完了",
-      message: "一部の成果は保存できます。内容を確認してください。",
+      message: snsPublishReason
+        ? `投稿文は準備できましたが、Xへの投稿に失敗しました: ${snsPublishReason}`
+        : "一部の成果は保存できます。内容を確認してください。",
     });
     if (lastResult) {
       await persistCommanderResultAsProject({

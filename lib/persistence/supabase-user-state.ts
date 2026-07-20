@@ -1,6 +1,7 @@
 import "server-only";
 
 import { warnIfProductionSupabaseServiceRoleMissing } from "@/lib/persistence/production-guard";
+import { withPersistenceTimeout } from "@/lib/persistence/with-timeout";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
 export const ATLAS_USER_STATE_TABLE = "atlas_user_state" as const;
@@ -24,26 +25,28 @@ export async function upsertSupabaseUserState(
     return false;
   }
 
-  try {
-    const row: UserStateRow = {
-      user_id: userId,
-      domain,
-      payload,
-      updated_at: new Date().toISOString(),
-    };
-    const { error } = await client.from(ATLAS_USER_STATE_TABLE).upsert(row);
-    if (error) {
-      console.warn(
-        `[persistence] Supabase user_state upsert failed (${domain}):`,
-        error.message,
-      );
+  return withPersistenceTimeout(async () => {
+    try {
+      const row: UserStateRow = {
+        user_id: userId,
+        domain,
+        payload,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await client.from(ATLAS_USER_STATE_TABLE).upsert(row);
+      if (error) {
+        console.warn(
+          `[persistence] Supabase user_state upsert failed (${domain}):`,
+          error.message,
+        );
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.warn(`[persistence] Supabase user_state skipped (${domain}):`, error);
       return false;
     }
-    return true;
-  } catch (error) {
-    console.warn(`[persistence] Supabase user_state skipped (${domain}):`, error);
-    return false;
-  }
+  }, false);
 }
 
 /** List user ids that have a durable domain row (for cron fan-out). */
@@ -104,20 +107,25 @@ export async function loadSupabaseUserState<T>(
   const client = createServiceRoleClientIfConfigured();
   if (!client) return null;
 
-  try {
-    const { data, error } = await client
-      .from(ATLAS_USER_STATE_TABLE)
-      .select("payload, updated_at")
-      .eq("user_id", userId)
-      .eq("domain", domain)
-      .maybeSingle();
+  return withPersistenceTimeout<{ payload: T; updatedAt: string } | null>(
+    async () => {
+      try {
+        const { data, error } = await client
+          .from(ATLAS_USER_STATE_TABLE)
+          .select("payload, updated_at")
+          .eq("user_id", userId)
+          .eq("domain", domain)
+          .maybeSingle();
 
-    if (error || !data) return null;
-    return {
-      payload: data.payload as T,
-      updatedAt: data.updated_at,
-    };
-  } catch {
-    return null;
-  }
+        if (error || !data) return null;
+        return {
+          payload: data.payload as T,
+          updatedAt: data.updated_at,
+        };
+      } catch {
+        return null;
+      }
+    },
+    null,
+  );
 }

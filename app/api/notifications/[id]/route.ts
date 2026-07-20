@@ -1,6 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 
-import { ensureNotificationsHydrated } from "@/lib/notifications/durable";
+import {
+  ensureNotificationsHydrated,
+  persistNotificationsNow,
+} from "@/lib/notifications/durable";
 import { removeUserNotification } from "@/lib/notifications/service";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -22,6 +25,9 @@ export async function DELETE(
   if (!removed) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
+
+  // Await durable write so the deletion survives serverless cold starts.
+  await persistNotificationsNow(userId);
 
   return Response.json({ ok: true });
 }

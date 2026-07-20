@@ -59,6 +59,25 @@ export function schedulePersistNotifications(userId: string): void {
   );
 }
 
+/**
+ * Awaitable durable write. Serverless instances can freeze the moment a route
+ * returns its Response, so fire-and-forget persistence ({@link
+ * schedulePersistNotifications}) may never reach Supabase — the mutation then
+ * "does nothing" after the next cold start. API routes that mutate must await
+ * this before responding so read/mark-all/delete actually stick.
+ */
+export async function persistNotificationsNow(userId: string): Promise<void> {
+  await persistDurableDomain(
+    userId,
+    NOTIFICATIONS_DOMAIN_KEY,
+    snapshotNotifications(userId),
+    {
+      compact: compactNotifications,
+      forceSupabase: true,
+    },
+  );
+}
+
 export async function ensureNotificationsHydrated(
   userId: string,
 ): Promise<void> {

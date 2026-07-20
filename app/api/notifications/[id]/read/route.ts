@@ -1,6 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 
-import { ensureNotificationsHydrated } from "@/lib/notifications/durable";
+import {
+  ensureNotificationsHydrated,
+  persistNotificationsNow,
+} from "@/lib/notifications/durable";
 import { markNotificationRead } from "@/lib/notifications/service";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -24,6 +27,10 @@ export async function PATCH(
   if (!record) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
+
+  // Await durable write: serverless may freeze before fire-and-forget persist
+  // completes, otherwise the read state is lost on the next cold start.
+  await persistNotificationsNow(userId);
 
   return Response.json(record);
 }

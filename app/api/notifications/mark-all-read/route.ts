@@ -1,6 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 
-import { ensureNotificationsHydrated } from "@/lib/notifications/durable";
+import {
+  ensureNotificationsHydrated,
+  persistNotificationsNow,
+} from "@/lib/notifications/durable";
 import { markAllUserNotificationsRead } from "@/lib/notifications/service";
 
 export async function POST(): Promise<Response> {
@@ -13,5 +16,8 @@ export async function POST(): Promise<Response> {
   await ensureNotificationsHydrated(userId);
 
   const count = markAllUserNotificationsRead(userId);
+  if (count > 0) {
+    await persistNotificationsNow(userId);
+  }
   return Response.json({ marked: count });
 }

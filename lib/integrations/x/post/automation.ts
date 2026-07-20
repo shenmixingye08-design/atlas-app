@@ -6,6 +6,8 @@ import {
   normalizeExecutionFlow,
 } from "@/lib/automations/execution-flow";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
+import type { Deliverable } from "@/lib/orchestration/deliverable-types";
+import { getSocialPostCards } from "@/lib/orchestration/deliverable-display";
 
 import { resolveFeatureContextForUser } from "./drive-backup";
 import { postTweetAutoForUser, scheduleTweetForUser } from "./service";
@@ -68,6 +70,78 @@ export async function maybeAutoPostToXAfterAutomation(input: {
   }
 
   return { attempted: false };
+}
+
+/**
+ * Best tweet text for a completed SNS deliverable. Prefers the clean post
+ * card(s) shown to the user, then the structured `snsPost` field, and finally
+ * the raw final response. This is what actually reaches X.
+ */
+export function resolveTweetTextForPublish(input: {
+  deliverable?: Deliverable | null;
+  finalResponse?: string | null;
+}): string {
+  if (input.deliverable) {
+    try {
+      const cards = getSocialPostCards(input.deliverable);
+      const firstCard = cards.find((card) => card.trim());
+      if (firstCard) return firstCard.trim();
+    } catch {
+      // Fall through to metadata / final response below.
+    }
+    const snsPost = input.deliverable.metadata?.snsPost?.trim();
+    if (snsPost) return snsPost;
+  }
+  return (input.finalResponse ?? "").trim();
+}
+
+/** True when the request text asks to actually publish (not just draft copy). */
+export function hasXPublishIntent(assignment: string): boolean {
+  const text = assignment.toLowerCase();
+  const publish =
+    /投稿|ポスト|つぶや|ツイート|tweet|post/.test(text) &&
+    /投稿|ポスト|つぶや|ツイート|tweet|post|して|する|上げ|公開/.test(assignment);
+  const draftOnly =
+    /下書き|ドラフト|草案|文面だけ|文面のみ|作成だけ|作成のみ|準備だけ|保存だけ|案を(作|考)/.test(
+      assignment,
+    );
+  return publish && !draftOnly;
+}
+
+/**
+ * Publish an SNS deliverable to X after a one-off Commander run completes.
+ * Unlike {@link maybeAutoPostToXAfterAutomation}, this path has no saved
+ * execution flow — publish intent is inferred from the request text. Returns
+ * `attempted: false` for non-SNS work or copy-only ("下書き") requests.
+ */
+export async function maybeAutoPostToXAfterCommander(input: {
+  userId: string | null | undefined;
+  templateId: string;
+  assignment: string;
+  deliverable?: Deliverable | null;
+  finalResponse?: string | null;
+  context?: FeatureAccessContext;
+}): Promise<MaybeAutoPostResult> {
+  if (!input.userId) return { attempted: false };
+  if (input.templateId !== "sns_post") return { attempted: false };
+  if (!hasXPublishIntent(input.assignment)) return { attempted: false };
+
+  const text = resolveTweetTextForPublish({
+    deliverable: input.deliverable,
+    finalResponse: input.finalResponse,
+  });
+  if (!text) return { attempted: false };
+
+  const context =
+    input.context ?? (await resolveFeatureContextForUser(input.userId));
+
+  const result = await postTweetAutoForUser({
+    userId: input.userId,
+    text,
+    context,
+  });
+
+  return { attempted: true, mode: "publish", result };
 }
 
 export async function processScheduledXPostsFromAutomationTick(): Promise<
