@@ -4,6 +4,7 @@ import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
 import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
+import { ensureExternalAuthHydrated } from "@/lib/integrations/external-services/durable";
 import {
   getXAccountAccessToken,
   getXAccountAccessTokenResult,
@@ -66,6 +67,12 @@ async function resolveXPostAccess(input: {
       message: featureDisabledMessage("x"),
     };
   }
+
+  // Hydrate the Supabase-backed source of truth first. On a cold serverless
+  // instance the in-memory connection store is empty, so reading it before
+  // hydration would wrongly report "x_not_connected" and short-circuit a user
+  // who actually has valid tokens persisted in Supabase.
+  await ensureExternalAuthHydrated(input.userId);
 
   const connection = getExternalServiceConnection(input.userId, "x");
   if (connection.status !== "connected") {
