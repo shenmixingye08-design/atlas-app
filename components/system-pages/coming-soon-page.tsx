@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { ui } from "@/lib/i18n";
 
 type ComingSoonPageProps = {
   title: string;
@@ -15,7 +16,7 @@ export function ComingSoonPage({
     <div className="flex min-h-screen flex-col bg-[var(--background)] text-foreground">
       <header className="border-b border-[var(--border-subtle)] px-4 py-4 sm:px-8">
         <Link href="/" className="text-sm font-semibold tracking-tight text-foreground">
-          ATLAS
+          {ui.brand}
         </Link>
       </header>
       <main className="mx-auto flex w-full max-w-lg flex-1 flex-col items-center justify-center px-4 py-20 text-center">

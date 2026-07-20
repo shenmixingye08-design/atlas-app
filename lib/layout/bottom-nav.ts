@@ -26,6 +26,7 @@ export function resolveBottomNavId(pathname: string): BottomNavId | null {
   if (pathname.startsWith("/settings/learning")) return "analysis";
   if (pathname.startsWith("/history")) return "history";
   if (
+    pathname.startsWith("/commander") ||
     pathname.startsWith("/workspace") ||
     pathname.startsWith("/projects/") ||
     pathname.startsWith("/chat")
