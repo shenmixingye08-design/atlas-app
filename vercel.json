@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/automations/tick",
-      "schedule": "0 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
