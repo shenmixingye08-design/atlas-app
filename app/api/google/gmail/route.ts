@@ -9,6 +9,7 @@ import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry"
 
 export async function GET(request: Request): Promise<Response> {
   const { userId } = await auth();
+
   if (!userId) {
     return Response.json(
       { status: "unauthorized", message: "Unauthorized" },
@@ -39,9 +40,16 @@ export async function GET(request: Request): Promise<Response> {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to load Gmail messages";
+
+    console.error("[Google Gmail API] Failed to load messages:", error);
+
     recordGoogleAuthFailure(message, "google_gmail_list");
+
     return Response.json(
-      { status: "error", message: "メールの取得に失敗しました" },
+      {
+        status: "error",
+        message,
+      },
       { status: 500 },
     );
   }
