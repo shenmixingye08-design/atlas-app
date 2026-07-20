@@ -115,7 +115,13 @@ function NoticeCard({
 
         <div className="mt-4 flex flex-wrap gap-2">
           {actionUrl && (
-            <Link href={actionUrl} onClick={onNavigate}>
+            <Link
+              href={actionUrl}
+              onClick={() => {
+                if (!item.isRead) onMarkRead(item.notificationId);
+                onNavigate?.();
+              }}
+            >
               <Button variant="primary" size="sm" className="min-h-[44px]">
                 {getNoticeActionLabel(category)}
               </Button>

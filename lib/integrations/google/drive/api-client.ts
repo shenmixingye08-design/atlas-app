@@ -1,5 +1,7 @@
 import "server-only";
 
+import { fetchWithTimeout } from "@/lib/http/fetch-with-timeout";
+
 import {
   ATLAS_DRIVE_ROOT,
   buildDriveFileUrl,
@@ -48,7 +50,7 @@ async function driveFetchJson<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(`${DRIVE_API_BASE}${path}`, {
+  const response = await fetchWithTimeout(`${DRIVE_API_BASE}${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -74,7 +76,7 @@ async function driveFetchBinary(
   accessToken: string,
   path: string,
 ): Promise<{ buffer: Buffer; contentType: string | null }> {
-  const response = await fetch(`${DRIVE_API_BASE}${path}`, {
+  const response = await fetchWithTimeout(`${DRIVE_API_BASE}${path}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
@@ -440,14 +442,20 @@ async function uploadMultipart(input: {
   const closing = Buffer.from(closeDelimiter, "utf8");
   const body = Buffer.concat([preamble, input.buffer, closing]);
 
-  const response = await fetch(`${DRIVE_UPLOAD_URL}${input.path}`, {
-    method: input.method,
-    headers: {
-      Authorization: `Bearer ${input.accessToken}`,
-      "Content-Type": `multipart/related; boundary=${boundary}`,
+  // Uploads carry a payload, so allow a longer budget than plain JSON calls
+  // while still bounding the request so it can never hang indefinitely.
+  const response = await fetchWithTimeout(
+    `${DRIVE_UPLOAD_URL}${input.path}`,
+    {
+      method: input.method,
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body,
     },
-    body,
-  });
+    60_000,
+  );
 
   const payload = (await response.json()) as DriveApiFile & {
     error?: { message?: string };

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { fetchWithTimeout } from "@/lib/http/fetch-with-timeout";
+
 import {
   buildXBasicAuthHeader,
   getXClientId,
@@ -61,7 +63,7 @@ export async function exchangeXAuthCode(
     code_verifier: codeVerifier,
   });
 
-  const response = await fetch(X_OAUTH_TOKEN_URL, {
+  const response = await fetchWithTimeout(X_OAUTH_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -98,7 +100,7 @@ export async function refreshXAccessToken(
     grant_type: "refresh_token",
   });
 
-  const response = await fetch(X_OAUTH_TOKEN_URL, {
+  const response = await fetchWithTimeout(X_OAUTH_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -126,7 +128,7 @@ export async function refreshXAccessToken(
 export async function fetchXUserProfile(
   accessToken: string,
 ): Promise<XUserProfile> {
-  const response = await fetch(X_USERS_ME_URL, {
+  const response = await fetchWithTimeout(X_USERS_ME_URL, {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
@@ -156,7 +158,7 @@ export async function revokeXToken(token: string): Promise<void> {
     token_type_hint: "access_token",
   });
 
-  const response = await fetch(X_OAUTH_REVOKE_URL, {
+  const response = await fetchWithTimeout(X_OAUTH_REVOKE_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

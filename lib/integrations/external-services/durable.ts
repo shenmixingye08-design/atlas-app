@@ -26,12 +26,20 @@ export type DurableExternalAuthState = {
   connections: ExternalServiceConnection[];
 };
 
-function getHydratedUsers(): Set<string> {
+/**
+ * Re-hydrate the Supabase-backed source of truth at most once per this window
+ * per instance. Without a TTL, a serverless instance that cached hydration
+ * *before* the user connected an account keeps serving a stale "disconnected"
+ * state forever — the user then appears to need re-connecting on every visit.
+ */
+const HYDRATION_TTL_MS = 60_000;
+
+function getHydratedUsers(): Map<string, number> {
   const scope = globalThis as typeof globalThis & {
-    __atlasExternalAuthHydratedUsers?: Set<string>;
+    __atlasExternalAuthHydratedUsers?: Map<string, number>;
   };
   if (!scope.__atlasExternalAuthHydratedUsers) {
-    scope.__atlasExternalAuthHydratedUsers = new Set();
+    scope.__atlasExternalAuthHydratedUsers = new Map();
   }
   return scope.__atlasExternalAuthHydratedUsers;
 }
@@ -84,9 +92,15 @@ export function schedulePersistExternalAuth(userId: string): void {
       forceSupabase: true,
     },
   );
-}export async function ensureExternalAuthHydrated(userId: string): Promise<void> {
-  if (getHydratedUsers().has(userId)) return;
-  getHydratedUsers().add(userId);
+}
+
+export async function ensureExternalAuthHydrated(userId: string): Promise<void> {
+  const hydratedUsers = getHydratedUsers();
+  const lastHydratedAt = hydratedUsers.get(userId);
+  if (lastHydratedAt !== undefined && Date.now() - lastHydratedAt < HYDRATION_TTL_MS) {
+    return;
+  }
+  hydratedUsers.set(userId, Date.now());
 
   const { saveExternalServiceCredentials } = await import("./credential-store");
   const { saveExternalServiceConnection } = await import("./store");

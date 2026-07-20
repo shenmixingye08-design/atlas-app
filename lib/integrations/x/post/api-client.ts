@@ -1,5 +1,7 @@
 import "server-only";
 
+import { fetchWithTimeout } from "@/lib/http/fetch-with-timeout";
+
 export const X_TWEETS_API_URL = "https://api.twitter.com/2/tweets";
 
 export type CreateTweetResponse = {
@@ -22,7 +24,7 @@ export async function createTweet(input: {
   accessToken: string;
   text: string;
 }): Promise<{ tweetId: string; text: string }> {
-  const response = await fetch(X_TWEETS_API_URL, {
+  const response = await fetchWithTimeout(X_TWEETS_API_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${input.accessToken}`,
@@ -58,7 +60,7 @@ export async function fetchTweetById(input: {
   tweetId: string;
 }): Promise<{ tweetId: string; text: string }> {
   const url = `${X_TWEETS_API_URL}/${encodeURIComponent(input.tweetId)}?tweet.fields=text`;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     headers: { Authorization: `Bearer ${input.accessToken}` },
     cache: "no-store",
   });

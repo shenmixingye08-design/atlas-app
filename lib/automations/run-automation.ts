@@ -201,18 +201,38 @@ export async function executeAutomationRun(
       });
     }
 
+    // Tracks a real SNS publish failure so we never report "投稿完了" when
+    // nothing actually reached X. Holds the user-facing reason on failure.
+    let snsPostFailure: string | null = null;
+
     if (result.status === "completed" && result.finalResponse.trim()) {
       try {
-        await maybeAutoPostToXAfterAutomation({
+        const autoPost = await maybeAutoPostToXAfterAutomation({
           userId: options.userId,
           automation,
           content: result.finalResponse,
         });
+
+        // Only immediate "publish" posts hit X during this run; a "schedule"
+        // result is a successful reservation, not a completed post.
+        if (autoPost.attempted && autoPost.mode === "publish") {
+          const postResult = autoPost.result;
+          if (postResult.status !== "ready") {
+            snsPostFailure = postResult.message;
+          } else if (postResult.history?.status !== "success") {
+            snsPostFailure =
+              postResult.history?.errorMessage ?? "Xへの投稿に失敗しました";
+          }
+        }
       } catch (postError) {
         console.error(
           `[executeAutomationRun] X auto-post failed for ${automation.id}:`,
           postError,
         );
+        snsPostFailure =
+          postError instanceof Error
+            ? postError.message
+            : "Xへの投稿に失敗しました";
       }
     }
 
@@ -259,19 +279,25 @@ export async function executeAutomationRun(
     const preview = previewFinalResponse(result.finalResponse);
     const completedAt = new Date().toISOString();
 
+    // A completed orchestration whose SNS publish failed must be surfaced as a
+    // failure — otherwise the user sees "投稿完了" while nothing reached X.
+    const effectiveStatus: typeof result.status =
+      snsPostFailure && result.status === "completed" ? "failed" : result.status;
+    const effectiveError = snsPostFailure ?? result.error ?? null;
+
     await serverWorkflowRunRepository.complete({
       id: workflowRun.id,
-      status: result.status,
-      approved: result.approved,
+      status: effectiveStatus,
+      approved: result.approved && !snsPostFailure,
       totalDurationMs: result.totalDurationMs,
       result,
       finalResponsePreview: preview,
-      error: result.error ?? null,
+      error: effectiveError,
       completedAt,
     });
 
     const nextRun = computeNextRunIso(automation.schedule, new Date(completedAt));
-    const succeeded = result.status === "completed";
+    const succeeded = effectiveStatus === "completed";
     const latest = await serverAutomationRepository.findById(automation.id);
 
     await serverAutomationRepository.update(automation.id, {
@@ -279,7 +305,7 @@ export async function executeAutomationRun(
       lastRun: completedAt,
       nextRun,
       lastWorkflowRunId: workflowRun.id,
-      lastError: result.error ?? null,
+      lastError: effectiveError,
       successCount: (latest?.successCount ?? automation.successCount ?? 0) + (succeeded ? 1 : 0),
       failureCount: (latest?.failureCount ?? automation.failureCount ?? 0) + (succeeded ? 0 : 1),
       runHistory: appendRunHistory(latest?.runHistory ?? automation.runHistory, {
@@ -287,24 +313,24 @@ export async function executeAutomationRun(
         status: succeeded ? "completed" : "failed",
         startedAt,
         completedAt,
-        error: result.error ?? null,
+        error: effectiveError,
         triggerType,
       }),
     });
 
     const flow = normalizeExecutionFlow(automation.executionFlow);
-    if (result.status === "failed") {
+    if (effectiveStatus === "failed") {
       notifyAutomationFailed(options.userId, {
         automationId: automation.id,
         name: automation.name,
-        error: result.error ?? undefined,
+        error: effectiveError ?? undefined,
       });
-    } else if (result.status === "completed" && !result.approved) {
+    } else if (effectiveStatus === "completed" && !result.approved) {
       notifyAutomationAwaitingReview(options.userId, {
         automationId: automation.id,
         name: automation.name,
       });
-    } else if (result.status === "completed") {
+    } else if (effectiveStatus === "completed") {
       notifyAutomationCompleted(options.userId, {
         automationId: automation.id,
         name: automation.name,
@@ -312,9 +338,9 @@ export async function executeAutomationRun(
       });
     }
 
-    if (result.status === "failed") {
+    if (effectiveStatus === "failed") {
       recordOpenAiFailureIfApplicable(
-        result.error ?? "Automation orchestration failed",
+        effectiveError ?? "Automation orchestration failed",
         "automation_run",
       );
       const { recordMonitoringIncident } = await import(
@@ -323,14 +349,14 @@ export async function executeAutomationRun(
       recordMonitoringIncident({
         kind: "automation_failure",
         targetId: "automation",
-        message: result.error ?? "Automation orchestration failed",
+        message: effectiveError ?? "Automation orchestration failed",
         userId: options.userId ?? null,
         critical: true,
         source: "automation_run",
       });
       if (executionFlow.templateId === "sns_post") {
         recordXPostFailure(
-          result.error ?? "SNS post automation failed",
+          effectiveError ?? "SNS post automation failed",
           "automation_sns_post",
         );
       }
@@ -358,12 +384,12 @@ export async function executeAutomationRun(
     return {
       automationId: automation.id,
       workflowRunId: workflowRun.id,
-      status: result.status === "completed" ? "completed" : "failed",
+      status: effectiveStatus === "completed" ? "completed" : "failed",
       orchestrationStatus: result.status,
-      approved: result.approved,
+      approved: result.approved && !snsPostFailure,
       totalDurationMs: result.totalDurationMs,
       finalResponsePreview: preview,
-      error: result.error ?? null,
+      error: effectiveError,
       deliverableCount,
     };
   } catch (error) {

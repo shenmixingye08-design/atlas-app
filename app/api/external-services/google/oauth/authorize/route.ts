@@ -49,6 +49,12 @@ export async function GET(request: Request): Promise<Response> {
     const { listExternalServiceConnections } = await import(
       "@/lib/integrations/external-services/store"
     );
+    // Load durable state first so the connection count / "already connected"
+    // check reflects reality on a cold instance (avoids false limit blocks).
+    const { ensureExternalAuthHydrated } = await import(
+      "@/lib/integrations/external-services/durable"
+    );
+    await ensureExternalAuthHydrated(userId);
     const googleDenied = await requireBillingFeature(
       userId,
       "google_integration",

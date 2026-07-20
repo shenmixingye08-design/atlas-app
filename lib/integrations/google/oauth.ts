@@ -1,5 +1,7 @@
 import "server-only";
 
+import { fetchWithTimeout } from "@/lib/http/fetch-with-timeout";
+
 import { createOAuthState } from "../google-drive/oauth-state";
 
 import {
@@ -57,7 +59,7 @@ export async function exchangeGoogleAccountAuthCode(
     grant_type: "authorization_code",
   });
 
-  const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
+  const response = await fetchWithTimeout(GOOGLE_OAUTH_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -93,7 +95,7 @@ export async function refreshGoogleAccountAccessToken(
     grant_type: "refresh_token",
   });
 
-  const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
+  const response = await fetchWithTimeout(GOOGLE_OAUTH_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -118,7 +120,7 @@ export async function refreshGoogleAccountAccessToken(
 export async function fetchGoogleAccountUserInfo(
   accessToken: string,
 ): Promise<GoogleUserInfo> {
-  const response = await fetch(GOOGLE_USERINFO_URL, {
+  const response = await fetchWithTimeout(GOOGLE_USERINFO_URL, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
@@ -140,7 +142,7 @@ export async function fetchGoogleAccountUserInfo(
 }
 
 export async function revokeGoogleAccountToken(token: string): Promise<void> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`,
     {
       method: "POST",
