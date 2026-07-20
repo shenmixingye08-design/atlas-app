@@ -2,7 +2,7 @@ export type LandingAiStatus = "active" | "idle";
 
 export const HERO_MOCKUP = {
   greeting: "おかえりなさい。",
-  headline: "ATLASが今日の仕事を準備しました。",
+  headline: "MINERVOTが今日の仕事を準備しました。",
   todayJobs: [
     { id: "1", icon: "📱", title: "X投稿（18:00）", status: "未開始" as const },
     { id: "2", icon: "📝", title: "ブログ下書き", status: "準備中" as const },

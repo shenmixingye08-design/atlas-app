@@ -3,7 +3,7 @@ import type { ErrorCategoryId } from "@/lib/owner/error-monitoring/types";
 import type { SystemServiceDefinition, SystemServiceId } from "./types";
 
 export const SYSTEM_SERVICE_DEFINITIONS: readonly SystemServiceDefinition[] = [
-  { id: "atlas", label: "ATLAS" },
+  { id: "atlas", label: "MINERVOT" },
   { id: "openai", label: "OpenAI" },
   { id: "stripe", label: "Stripe" },
   { id: "google", label: "Google" },

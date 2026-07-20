@@ -28,7 +28,7 @@ export function bundleToJson(bundle: AtlasExportBundle): string {
 
 export function bundleToMarkdown(bundle: AtlasExportBundle): string {
   const lines: string[] = [
-    "# ATLAS データエクスポート",
+    "# MINERVOT データエクスポート",
     "",
     `- エクスポート日時: ${bundle.exportedAt}`,
     `- スキーマバージョン: ${bundle.schemaVersion}`,
@@ -182,7 +182,7 @@ export function bundleToZip(bundle: AtlasExportBundle): Uint8Array {
     {
       name: "README.txt",
       data: encoder.encode(
-        "ATLAS data export archive.\nImport support is planned for a future release.\n",
+        "MINERVOT data export archive.\nImport support is planned for a future release.\n",
       ),
     },
   ]);

@@ -248,7 +248,7 @@ export function parseWorkerDeliverablePayload(
     markdown: trimmed,
     html: "",
     plainText: trimmed.replace(/[#*_`>-]/g, " ").replace(/\s+/g, " ").trim(),
-    tags: inferredType === "blog" || isBlogRelatedRequest(assignment) ? ["ブログ", "ATLAS"] : [],
+    tags: inferredType === "blog" || isBlogRelatedRequest(assignment) ? ["ブログ", "MINERVOT"] : [],
     seo: {
       title,
       description: trimmed.slice(0, 160),

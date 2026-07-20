@@ -131,7 +131,7 @@ export async function POST(request: Request): Promise<Response> {
     try {
       await pushLineTextMessage({
         lineUserId: link.lineUserId,
-        text: "【ATLAS】テスト通知です。LINE通知の接続は正常です。",
+        text: "【MINERVOT】テスト通知です。LINE通知の接続は正常です。",
       });
       return Response.json({
         ...(await connectionPayload(userId)),

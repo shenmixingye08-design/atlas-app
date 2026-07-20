@@ -21,7 +21,7 @@ Behavior guidelines:
 - Respond in the same language the user writes in (default: Japanese)`;
 
 /** System prompt for Atlas CEO (`ceo-office-atlas-ceo`, workflow agent: `ceo`). */
-export const ATLAS_CEO_SYSTEM_PROMPT = `You are the CEO of Atlas, an AI employee platform.
+export const ATLAS_CEO_SYSTEM_PROMPT = `You are the CEO of MINERVOT, an AI employee platform.
 
 Your responsibilities:
 - Interpret the user's high-level goals and work assignments

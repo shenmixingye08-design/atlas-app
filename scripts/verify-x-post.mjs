@@ -14,7 +14,7 @@
 // The script NEVER prints the token. On success it prints the tweet id + URL.
 
 const X_TWEETS_API_URL = "https://api.twitter.com/2/tweets";
-const TEST_MARKER = "【ATLASテスト投稿】";
+const TEST_MARKER = "【MINERVOTテスト投稿】";
 
 async function main() {
   const token = process.env.X_TEST_ACCESS_TOKEN?.trim();

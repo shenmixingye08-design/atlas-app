@@ -47,7 +47,7 @@ function extractServices(text: string, result: OrchestrationResult | null): stri
   const found = SERVICE_PATTERNS.filter((entry) => entry.pattern.test(haystack)).map(
     (entry) => entry.label,
   );
-  return found.length > 0 ? found : ["ATLAS"];
+  return found.length > 0 ? found : ["MINERVOT"];
 }
 
 function extractEmployees(result: OrchestrationResult | null): string[] {

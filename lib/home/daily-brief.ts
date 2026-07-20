@@ -87,7 +87,7 @@ const DAILY_TIPS = [
   "専属AI秘書の準備が完了しています。",
   "SNS担当が新しいアイデアを用意しています。",
   "営業資料担当がテンプレートを学習しました。",
-  "今日もATLASが仕事を進めます。",
+  "今日もMINERVOTが仕事を進めます。",
   "昨日の成果を踏まえ、今日の仕事を最適化しました。",
   "あなたの仕事の好みを反映した提案を用意しています。",
 ] as const;
@@ -332,7 +332,7 @@ export function getDailyTip(now: Date = new Date()): string {
 export function buildLearningInsight(profile = loadUserWorkProfile()): string {
   const top = getTopFrequentJobs(profile, 2);
   if (top.length === 0) {
-    return "仕事を登録すると、ATLASがあなたの傾向を学習します。";
+    return "仕事を登録すると、MINERVOTがあなたの傾向を学習します。";
   }
 
   const primary = top[0]!;
@@ -398,7 +398,7 @@ export function buildHeadline(
     return `今日は${todayScheduled.length}件の仕事を予定しています。`;
   }
 
-  return "今日もATLASが仕事を進めます。";
+  return "今日もMINERVOTが仕事を進めます。";
 }
 
 export function buildDailyBrief(input: {

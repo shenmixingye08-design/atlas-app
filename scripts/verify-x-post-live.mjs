@@ -24,7 +24,7 @@ import { readFileSync } from "node:fs";
 const X_TWEETS_API_URL = "https://api.twitter.com/2/tweets";
 const X_OAUTH_TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
 const TABLE = "atlas_x_oauth_credentials";
-const TEST_MARKER = "【ATLASテスト投稿】";
+const TEST_MARKER = "【MINERVOTテスト投稿】";
 const REFRESH_BUFFER_MS = 60_000;
 
 function loadEnvFile(path) {

@@ -211,7 +211,7 @@ export function SalesMaterialWizard({
     return (
       <Card padding="lg" className="space-y-6 animate-fade-in">
         <div className="space-y-2">
-          <p className="text-sm font-medium text-accent">ATLAS</p>
+          <p className="text-sm font-medium text-accent">MINERVOT</p>
           <h2 className="text-title text-foreground">営業資料を作成します</h2>
           <p className="text-body">
             前回と同じ形式（{label}）で作成しますか？
@@ -252,7 +252,7 @@ export function SalesMaterialWizard({
     return (
       <Card padding="lg" className="space-y-6 animate-fade-in">
         <div className="space-y-2">
-          <p className="text-sm font-medium text-accent">ATLAS</p>
+          <p className="text-sm font-medium text-accent">MINERVOT</p>
           <h2 className="text-title text-foreground">
             どの形式で作成しますか？
           </h2>
@@ -322,7 +322,7 @@ export function SalesMaterialWizard({
     return (
       <Card padding="lg" className="space-y-6 animate-fade-in">
         <div className="space-y-2">
-          <p className="text-sm font-medium text-[var(--status-warning)]">ATLAS</p>
+          <p className="text-sm font-medium text-[var(--status-warning)]">MINERVOT</p>
           <h2 className="text-title text-foreground">コスト確認</h2>
           <p className="text-body">
             選択された設定（
@@ -346,7 +346,7 @@ export function SalesMaterialWizard({
   if (step === "outline_loading") {
     return (
       <Card padding="lg" className="space-y-4 animate-fade-in">
-        <p className="text-sm font-medium text-accent">ATLAS</p>
+        <p className="text-sm font-medium text-accent">MINERVOT</p>
         <h2 className="text-title text-foreground">構成案を作成しています…</h2>
         <p className="animate-soft-pulse text-caption">
           いきなりファイルは作りません。まず低コストで全体構成を整理します。
@@ -359,7 +359,7 @@ export function SalesMaterialWizard({
     return (
       <Card padding="lg" className="space-y-6 animate-fade-in">
         <div className="space-y-2">
-          <p className="text-sm font-medium text-accent">ATLAS</p>
+          <p className="text-sm font-medium text-accent">MINERVOT</p>
           <h2 className="text-title text-foreground">
             構成案を作成しました。確認してください。
           </h2>

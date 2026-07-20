@@ -28,7 +28,7 @@ export async function syncRecommendationNotifications(
   if (!top) return;
 
   notifyRecommendation(userId, {
-    title: "ATLASからのおすすめ",
+    title: "MINERVOTからのおすすめ",
     message: top.message,
     actionUrl: top.action.automationId ? "/automations" : "/workspace",
   });

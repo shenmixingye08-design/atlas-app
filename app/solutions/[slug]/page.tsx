@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { slug } = await params;
   const label = SOLUTION_TITLES[slug] ?? "ソリューション";
   return {
-    title: `${label} — ATLAS（準備中）`,
+    title: `${label} — MINERVOT（準備中）`,
     description: "このページは現在準備中です。",
     robots: { index: false, follow: true },
   };
@@ -34,7 +34,7 @@ export default async function SolutionComingSoonPage({ params }: PageProps) {
   return (
     <ComingSoonPage
       title={`${label}の詳細ページ`}
-      description="専用のご案内ページを準備しています。ホームページでATLASの概要をご覧いただけます。"
+      description="専用のご案内ページを準備しています。ホームページでMINERVOTの概要をご覧いただけます。"
     />
   );
 }

@@ -179,22 +179,22 @@ ${MOCK_SALES_EMAIL_WORKER.content.replace(/^件名：.+?\n\n/, "")}`;
 
 const MOCK_SOCIAL_POSTS_WORKER = {
   type: "social_post",
-  title: "ATLAS X投稿",
-  summary: "ATLASサービス告知用X投稿5件",
+  title: "MINERVOT X投稿",
+  summary: "MINERVOTサービス告知用X投稿5件",
   posts: [
-    "AIチームが24時間動く新しい働き方、ATLAS。依頼を入れるだけで企画から制作まで一気通貫。中小企業の業務効率化に。 #ATLAS #AI #業務効率化",
-    "「メール1通書くだけ」で営業文・紹介文・SNS投稿まで。ATLASはAI組織をワンクリックで起動します。無料トライアル受付中。 #SaaS #マーケティング",
-    "制作物の品質チェックもAI QAが担当。人が最終確認する前に、抜け漏れを自動検知。ATLASで安心の納品体験を。 #品質管理",
-    "建設・不動産・士業まで。業界別テンプレートで初日から使える。ATLASが短時間でプロ品質の成果物を届けます。 #DX",
-    "チーム全員が同じ品質基準で動く。CEO→Planner→Workerの役割分担で、属人化しない制作フローを実現。詳細はプロフィールから。 #ATLAS",
+    "AIチームが24時間動く新しい働き方、MINERVOT。依頼を入れるだけで企画から制作まで一気通貫。中小企業の業務効率化に。 #MINERVOT #AI #業務効率化",
+    "「メール1通書くだけ」で営業文・紹介文・SNS投稿まで。MINERVOTはAI組織をワンクリックで起動します。無料トライアル受付中。 #SaaS #マーケティング",
+    "制作物の品質チェックもAI QAが担当。人が最終確認する前に、抜け漏れを自動検知。MINERVOTで安心の納品体験を。 #品質管理",
+    "建設・不動産・士業まで。業界別テンプレートで初日から使える。MINERVOTが短時間でプロ品質の成果物を届けます。 #DX",
+    "チーム全員が同じ品質基準で動く。CEO→Planner→Workerの役割分担で、属人化しない制作フローを実現。詳細はプロフィールから。 #MINERVOT",
   ],
   content: "",
   markdown: "",
   html: "",
   plainText: "",
-  tags: ["ATLAS", "X", "SNS"],
+  tags: ["MINERVOT", "X", "SNS"],
   audience: "X（Twitter）フォロワー",
-  topic: "ATLASサービス紹介",
+  topic: "MINERVOTサービス紹介",
 };
 
 MOCK_SOCIAL_POSTS_WORKER.content = MOCK_SOCIAL_POSTS_WORKER.posts
@@ -207,13 +207,13 @@ MOCK_SOCIAL_POSTS_WORKER.plainText = MOCK_SOCIAL_POSTS_WORKER.content;
 
 const MOCK_SHORT_DOCUMENT_WORKER = {
   type: "short_document",
-  title: "ATLASサービス紹介",
-  summary: "ATLASの主要機能と導入メリットを300文字程度で紹介",
-  content: `ATLASは、依頼を入力するだけでAI組織（CEO・Planner・Worker）が連携し、営業メール・SNS投稿・紹介文などの成果物を自動生成するワークスペースです。品質チェック機能付きで、誰でもプロ品質の制作物を短時間で得られます。中小企業のマーケ・営業・広報担当者に最適。`,
+  title: "MINERVOTサービス紹介",
+  summary: "MINERVOTの主要機能と導入メリットを300文字程度で紹介",
+  content: `MINERVOTは、依頼を入力するだけでAI組織（CEO・Planner・Worker）が連携し、営業メール・SNS投稿・紹介文などの成果物を自動生成するワークスペースです。品質チェック機能付きで、誰でもプロ品質の制作物を短時間で得られます。中小企業のマーケ・営業・広報担当者に最適。`,
   markdown: "",
   html: "",
   plainText: "",
-  tags: ["ATLAS", "紹介"],
+  tags: ["MINERVOT", "紹介"],
   topic: "サービス紹介",
   audience: "見込み顧客",
 };

@@ -39,7 +39,7 @@ export function formatLineNotificationText(input: {
   message: string;
   actionUrl?: string | null;
 }): string {
-  const lines = [`【ATLAS】${input.title}`, input.message];
+  const lines = [`【MINERVOT】${input.title}`, input.message];
   if (input.actionUrl) {
     const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "";
     if (origin) {
@@ -174,7 +174,7 @@ export async function handleLineWebhookEvents(
       try {
         await replyLineTextMessage({
           replyToken: event.replyToken,
-          text: "ATLAS公式アカウントへようこそ。設定画面の6桁コードをこのトークに送信すると、通知連携が完了します。",
+          text: "MINERVOT公式アカウントへようこそ。設定画面の6桁コードをこのトークに送信すると、通知連携が完了します。",
         });
       } catch (error) {
         console.warn("[LINE webhook] follow reply failed:", error);
@@ -194,7 +194,7 @@ export async function handleLineWebhookEvents(
         try {
           await replyLineTextMessage({
             replyToken: event.replyToken,
-            text: "連携するには、ATLAS設定画面に表示される6桁コードを送信してください。",
+            text: "連携するには、MINERVOT設定画面に表示される6桁コードを送信してください。",
           });
         } catch (error) {
           console.warn("[LINE webhook] reply failed:", error);
@@ -231,7 +231,7 @@ export async function handleLineWebhookEvents(
       try {
         await replyLineTextMessage({
           replyToken: event.replyToken,
-          text: "ATLASとのLINE通知連携が完了しました。仕事完了や朝のブリーフィングなどをお届けします。",
+          text: "MINERVOTとのLINE通知連携が完了しました。仕事完了や朝のブリーフィングなどをお届けします。",
         });
       } catch (error) {
         console.warn("[LINE webhook] link reply failed:", error);

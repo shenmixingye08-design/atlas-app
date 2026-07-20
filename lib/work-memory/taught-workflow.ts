@@ -16,7 +16,7 @@ export type TaughtWorkflowStep = {
 export const TAUGHT_WORKFLOW_KIND = "taught_workflow" as const;
 
 export const TEACH_AI_OPTIONS = [
-  "ATLAS",
+  "MINERVOT",
   "資料作成",
   "文章作成",
   "分析",
@@ -24,7 +24,7 @@ export const TEACH_AI_OPTIONS = [
 ] as const;
 
 export const TEACH_SERVICE_OPTIONS = [
-  { id: "atlas", label: "ATLAS" },
+  { id: "atlas", label: "MINERVOT" },
   { id: "google_drive", label: "Google Drive" },
   { id: "gmail", label: "Gmail" },
   { id: "google_calendar", label: "Google Calendar" },
@@ -39,7 +39,7 @@ export function createEmptyTaughtStep(
     id: `step-${Date.now()}-${index}`,
     title: "",
     description: "",
-    ai: "ATLAS",
+    ai: "MINERVOT",
     service: "atlas",
     needsReview: false,
     canAutoRun: true,
@@ -73,7 +73,7 @@ export function parseTaughtSteps(
         title,
         description:
           typeof row.description === "string" ? row.description.trim() : "",
-        ai: typeof row.ai === "string" && row.ai.trim() ? row.ai : "ATLAS",
+        ai: typeof row.ai === "string" && row.ai.trim() ? row.ai : "MINERVOT",
         service:
           typeof row.service === "string" && row.service.trim()
             ? row.service

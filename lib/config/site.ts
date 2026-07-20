@@ -24,7 +24,7 @@ export type SiteOperatorConfig = {
 };
 
 const FALLBACK_OPERATOR = {
-  businessName: "ATLAS",
+  businessName: "MINERVOT",
   representativeName: "（運営責任者名を設定してください）",
   address: "（公開用住所を設定してください）",
   contactEmail: "support@atlas.app",

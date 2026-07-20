@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
-export const alt = "ATLAS — あなた専属のAI秘書";
+export const alt = "MINERVOT — あなた専属のAI秘書";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -22,7 +22,7 @@ export default function OpenGraphImage() {
         }}
       >
         <div style={{ fontSize: 28, fontWeight: 600, letterSpacing: 2, color: "#0071e3" }}>
-          ATLAS
+          MINERVOT
         </div>
         <div style={{ marginTop: 28, fontSize: 64, fontWeight: 650, lineHeight: 1.15 }}>
           あなた専属のAI秘書

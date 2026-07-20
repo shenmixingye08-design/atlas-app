@@ -49,7 +49,7 @@ import type {
 } from "./types";
 import { validateTweetText } from "./validate";
 
-const TEST_POST_PREFIX = "【ATLASテスト投稿】";
+const TEST_POST_PREFIX = "【MINERVOTテスト投稿】";
 
 async function resolveXPostAccess(input: {
   userId: string;

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AtlasBackground } from "@/components/atlas-background";
 import { LegalFooterLinks } from "@/components/legal/legal-footer-links";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { ui } from "@/lib/i18n";
 
 type AuthShellProps = {
   children: React.ReactNode;
@@ -19,18 +20,24 @@ export function AuthShell({ children, title, subtitle }: AuthShellProps) {
           <Link
             href="/"
             className="flex items-center gap-2.5 transition-opacity hover:opacity-80"
+            aria-label={`${ui.brand} ホームへ`}
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent shadow-[var(--shadow-md)]">
-              <span className="text-sm font-bold text-white">A</span>
+              <span className="text-sm font-bold text-white">M</span>
             </div>
-            <span className="text-base font-semibold tracking-tight">ATLAS</span>
+            <span className="text-base font-semibold tracking-tight">
+              {ui.brand}
+            </span>
           </Link>
           <ThemeToggle />
         </div>
 
         <div className="flex flex-1 flex-col justify-center">
           <div className="mb-6 text-center">
-            <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-3xl">
+            <p className="text-xs font-medium uppercase tracking-[0.24em] text-accent">
+              {ui.brandTagline}
+            </p>
+            <h1 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-3xl">
               {title}
             </h1>
             <p className="mt-2 text-sm text-[var(--text-secondary)]">{subtitle}</p>

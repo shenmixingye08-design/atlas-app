@@ -9,7 +9,7 @@ export const ENV_SERVICE_LABELS: Record<EnvServiceId, string> = {
   dropbox: "Dropbox",
   line: "LINE",
   vercel_cron: "Vercel Cron",
-  atlas: "ATLAS",
+  atlas: "MINERVOT",
 };
 
 /**

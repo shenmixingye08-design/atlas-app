@@ -338,7 +338,7 @@ export function WorkspaceDashboard() {
       {outlineOnlyText && !isLoading && !result && (
         <section className="space-y-6 animate-fade-in">
           <div>
-            <p className="text-sm font-medium text-accent">ATLAS</p>
+            <p className="text-sm font-medium text-accent">MINERVOT</p>
             <h2 className="mt-1 text-title text-foreground">
               構成案のみで完了しました
             </h2>

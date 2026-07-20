@@ -183,7 +183,7 @@ function buildOnboardingPreferenceSuggestions(
     results.push({
       id,
       kind: "profile_habit",
-      message: `${task.label}を優先して進めましょう。ATLASが最後まで担当します。`,
+      message: `${task.label}を優先して進めましょう。MINERVOTが最後まで担当します。`,
       action: {
         workspaceAssignment: `${task.seedText}の仕事を進めてください。`,
       },

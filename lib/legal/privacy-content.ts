@@ -1,5 +1,5 @@
 /**
- * ATLAS Privacy Policy — structured content for /privacy.
+ * MINERVOT Privacy Policy — structured content for /privacy.
  * Update version + lastUpdated when publishing revisions.
  */
 
@@ -22,7 +22,7 @@ export const PRIVACY_ARTICLES: LegalArticle[] = [
     blocks: [
       {
         type: "paragraph",
-        text: "ATLAS（以下「当社」）は、本サービスをご利用いただくユーザーのプライバシーを尊重し、個人情報および関連データを適切に取り扱います。",
+        text: "MINERVOT（以下「当社」）は、本サービスをご利用いただくユーザーのプライバシーを尊重し、個人情報および関連データを適切に取り扱います。",
       },
       {
         type: "paragraph",
@@ -51,7 +51,7 @@ export const PRIVACY_ARTICLES: LegalArticle[] = [
           "AI 利用履歴（チャット、ワークフロー、成果物生成等）",
           "自動化履歴（習慣・自動化タスクの実行記録）",
           "通知設定および通知履歴",
-          "ATLAS Memory（長期学習データ、ユーザー設定に基づく記憶情報）",
+          "MINERVOT Memory（長期学習データ、ユーザー設定に基づく記憶情報）",
           "仕事の記憶（Work Memory — 再利用可能な業務情報のみ。会話全体は保存しません）",
           "Google 連携情報（接続状態、OAuth トークン、連携スコープ）",
           "Stripe Customer ID および請求関連の識別子",
@@ -180,7 +180,7 @@ export const PRIVACY_ARTICLES: LegalArticle[] = [
       },
       {
         type: "subheading",
-        text: "ATLAS Memory",
+        text: "MINERVOT Memory",
       },
       {
         type: "paragraph",

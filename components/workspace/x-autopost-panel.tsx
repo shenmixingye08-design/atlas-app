@@ -238,7 +238,7 @@ export function XAutoPostPanel() {
       <header className="space-y-3">
         <h1 className="text-display text-foreground">X自動投稿</h1>
         <p className="text-body max-w-2xl text-[var(--foreground-muted)]">
-          目的やテーマ、トーンを一度だけご設定いただければ、以降はATLASが投稿文を作成し、
+          目的やテーマ、トーンを一度だけご設定いただければ、以降はMINERVOTが投稿文を作成し、
           ご指定の時間に自動で投稿いたします。会話ではなく、お客様の時間を生み出すための機能です。
         </p>
       </header>

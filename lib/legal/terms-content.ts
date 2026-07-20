@@ -1,5 +1,5 @@
 /**
- * ATLAS Terms of Service — structured content for /terms.
+ * MINERVOT Terms of Service — structured content for /terms.
  * Update version + lastUpdated when publishing revisions.
  */
 
@@ -23,7 +23,7 @@ export const TERMS_ARTICLES: TermsArticle[] = [
     blocks: [
       {
         type: "paragraph",
-        text: "本利用規約（以下「本規約」）は、ATLAS（以下「当社」）が提供するウェブサービス「ATLAS」（以下「本サービス」）の利用条件を定めるものです。",
+        text: "本利用規約（以下「本規約」）は、MINERVOT（以下「当社」）が提供するウェブサービス「MINERVOT」（以下「本サービス」）の利用条件を定めるものです。",
       },
       {
         type: "paragraph",
@@ -47,7 +47,7 @@ export const TERMS_ARTICLES: TermsArticle[] = [
       {
         type: "bullets",
         items: [
-          "「本サービス」とは、当社が提供する ATLAS プラットフォームおよび関連する機能・API・ドキュメント等の総称をいいます。",
+          "「本サービス」とは、当社が提供する MINERVOT プラットフォームおよび関連する機能・API・ドキュメント等の総称をいいます。",
           "「ユーザー」とは、本規約に同意のうえ本サービスを利用する個人または法人をいいます。",
           "「アカウント」とは、本サービスの利用のためにユーザーが作成する認証情報および関連プロフィールをいいます。",
           "「コンテンツ」とは、ユーザーが本サービスを通じて入力・アップロード・生成・保存するテキスト、画像、動画、ファイルその他一切のデータをいいます。",

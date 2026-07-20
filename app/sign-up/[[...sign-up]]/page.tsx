@@ -3,10 +3,11 @@ import { SignUp } from "@clerk/nextjs";
 
 import { AuthShell } from "@/components/auth/auth-shell";
 import { ATLAS_APP_HOME_PATH } from "@/lib/auth/public-routes";
+import { atlasClerkAppearance } from "@/lib/clerk/appearance";
 
 export const metadata: Metadata = {
-  title: "新規登録 — ATLAS",
-  description: "無料でATLASアカウントを作成し、専属AI秘書を始めましょう。",
+  title: "新規登録 — MINERVOT",
+  description: "無料でMINERVOTアカウントを作成し、あなた専属のAI秘書を始めましょう。",
   robots: { index: false, follow: true },
 };
 
@@ -14,9 +15,10 @@ export default function SignUpPage() {
   return (
     <AuthShell
       title="新規登録"
-      subtitle="無料でATLASアカウントを作成"
+      subtitle="Googleまたはメールアドレスで、無料でMINERVOTアカウントを作成できます"
     >
       <SignUp
+        appearance={atlasClerkAppearance}
         routing="path"
         path="/sign-up"
         signInUrl="/sign-in"

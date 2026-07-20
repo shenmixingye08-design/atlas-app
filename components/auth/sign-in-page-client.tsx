@@ -16,7 +16,7 @@ function SignInContent() {
   return (
     <AuthShell
       title="ログイン"
-      subtitle="ATLASアカウントでサインインしてください"
+      subtitle="Googleまたはメールアドレスで、MINERVOTアカウントにサインインしてください"
     >
       <SignInContinueNotice />
       <SignIn

@@ -98,7 +98,7 @@ export function recordMonitoringIncident(input: RecordIncidentInput): void {
         if (!process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim()) return;
         await pushLineTextMessage({
           lineUserId: ownerLineUserId,
-          text: `【ATLAS障害】${input.kind}\n${input.message}`.slice(0, 900),
+          text: `【MINERVOT障害】${input.kind}\n${input.message}`.slice(0, 900),
         });
       })
       .catch(() => {

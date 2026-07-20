@@ -129,7 +129,7 @@ export async function runOrchestrationForUser(
   if (notify) {
     notifyWorkCompleted(input.userId, {
       title: "仕事が完了しました",
-      message: "ATLASが依頼した仕事を完了しました。",
+      message: "MINERVOTが依頼した仕事を完了しました。",
     });
   }
 

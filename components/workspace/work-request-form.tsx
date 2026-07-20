@@ -108,7 +108,7 @@ const EXECUTION_OPTIONS: {
   {
     value: "delegate",
     label: "AI秘書に任せる",
-    hint: "進め方はATLASにお任せください",
+    hint: "進め方はMINERVOTにお任せください",
   },
 ];
 

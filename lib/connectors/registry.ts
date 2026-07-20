@@ -102,7 +102,7 @@ function resolveAtlas(
   return {
     providerId: "atlas",
     serviceId,
-    providerName: "ATLAS",
+    providerName: "MINERVOT",
     serviceName,
     permissions: ["internal.execute"],
   };

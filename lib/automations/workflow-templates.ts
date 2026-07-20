@@ -50,7 +50,7 @@ export const WORKFLOW_TEMPLATES: Record<WorkflowTemplateId, WorkflowTemplate> = 
     label: "動画",
     steps: [
       { id: "user_produces", label: "動画は自分で作る", integration: "manual" },
-      { id: "upload_to_atlas", label: "ATLASへアップロード", integration: "atlas" },
+      { id: "upload_to_atlas", label: "MINERVOTへアップロード", integration: "atlas" },
       { id: "title", label: "タイトル作成", integration: "atlas" },
       { id: "description", label: "説明文作成", integration: "atlas" },
       { id: "sns_post", label: "SNS投稿", integration: "sns" },

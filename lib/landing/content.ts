@@ -62,7 +62,7 @@ export const LANDING_WORKFLOW_STEPS = [
   {
     id: "progress",
     icon: "⚙️",
-    label: "ATLASが進める",
+    label: "MINERVOTが進める",
     detail:
       "ご依頼内容と資料を理解し、整理・作成・分析など、必要な仕事を進めます。",
   },
@@ -220,7 +220,7 @@ export const LANDING_REASONS = [
     id: "one-secretary",
     icon: "👤",
     title: "一人のAI秘書",
-    description: "仕事が変わっても、同じATLASが継続してサポートします。",
+    description: "仕事が変わっても、同じMINERVOTが継続してサポートします。",
   },
   {
     id: "work-memory",
@@ -252,7 +252,7 @@ export const LANDING_REASONS = [
 export const LANDING_PAIN_SOLUTIONS = [
   {
     pain: "毎日のSNS投稿が負担になっている",
-    solution: "ATLASが投稿文案を毎日自動で用意。承認後に投稿まで実行します。",
+    solution: "MINERVOTが投稿文案を毎日自動で用意。承認後に投稿まで実行します。",
   },
   {
     pain: "資料・ブログ作成に何時間もかかる",
@@ -264,7 +264,7 @@ export const LANDING_PAIN_SOLUTIONS = [
   },
   {
     pain: "ツールを何個も行き来している",
-    solution: "依頼・実行・保存・投稿をATLASひとつに集約。切り替えは不要です。",
+    solution: "依頼・実行・保存・投稿をMINERVOTひとつに集約。切り替えは不要です。",
   },
 ] as const;
 
