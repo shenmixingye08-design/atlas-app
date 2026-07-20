@@ -1,6 +1,9 @@
 import { automationService } from "@/lib/automations/automation-service";
 import { authorizeAutomationTick } from "@/lib/automations/tick-auth";
-import { processScheduledXPostsFromAutomationTick } from "@/lib/integrations/x/post/automation";
+import {
+  processDueAutoPostsFromAutomationTick,
+  processScheduledXPostsFromAutomationTick,
+} from "@/lib/integrations/x/post/automation";
 
 function resolveOrigin(request: Request): string {
   const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
@@ -31,6 +34,7 @@ export async function POST(request: Request): Promise<Response> {
       requestOrigin: origin,
     });
     const scheduledXPosts = await processScheduledXPostsFromAutomationTick();
+    const autoPosts = await processDueAutoPostsFromAutomationTick();
 
     const { recordCronTickOutcome, recordMonitoringIncident } = await import(
       "@/lib/owner/monitoring"
@@ -54,6 +58,10 @@ export async function POST(request: Request): Promise<Response> {
       scheduledXPosts: {
         processed: scheduledXPosts.length,
         results: scheduledXPosts,
+      },
+      autoPosts: {
+        processedUsers: autoPosts.length,
+        results: autoPosts,
       },
     });
   } catch (error) {

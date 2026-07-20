@@ -364,9 +364,12 @@ export function XPostPanel() {
   return (
     <div className="space-y-8">
       <header className="space-y-3">
-        <h1 className="text-display text-foreground">{ui.xPost.title}</h1>
+        <h2 className="text-xl font-semibold text-foreground">
+          必要なときだけ使う手動投稿
+        </h2>
         <p className="text-body max-w-2xl text-[var(--foreground-muted)]">
-          {ui.xPost.subtitle}
+          自動投稿とは別に、その場で投稿したいときにご利用いただける手動の投稿欄です。
+          今すぐ投稿・予約投稿・下書き・テスト投稿に対応しています。
         </p>
       </header>
 

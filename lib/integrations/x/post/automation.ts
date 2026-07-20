@@ -158,3 +158,30 @@ export async function processScheduledXPostsFromAutomationTick(): Promise<
     status: item.result.status,
   }));
 }
+
+/**
+ * Run the AI auto-post ("秘書おまかせ投稿") scheduled job from the cron tick.
+ * Selects users with auto-post enabled and processes their due slots. The whole
+ * schedule/idempotency layer is normal code; AI is used only for the copy.
+ */
+export async function processDueAutoPostsFromAutomationTick(): Promise<
+  Array<{ userId: string; posted: number; drafted: number; skipped: number; failed: number }>
+> {
+  const { processDueAutoPosts } = await import("./autopost-runner");
+
+  const outcomes = await processDueAutoPosts({
+    resolveContext: resolveFeatureContextForUser,
+  });
+
+  return outcomes.map((outcome) => {
+    const count = (status: string) =>
+      outcome.slots.filter((slot) => slot.status === status).length;
+    return {
+      userId: outcome.userId,
+      posted: count("posted"),
+      drafted: count("drafted"),
+      skipped: count("skipped"),
+      failed: count("failed"),
+    };
+  });
+}

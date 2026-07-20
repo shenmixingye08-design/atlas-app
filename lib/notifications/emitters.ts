@@ -83,6 +83,20 @@ export function notifyXPostFailed(userId: string, _message: string) {
   });
 }
 
+export function notifyXAutoPostDrafted(userId: string) {
+  return createNotification({
+    audience: "user",
+    userId,
+    type: "awaiting_review",
+    title: "ご確認が必要な投稿がございます",
+    message:
+      "自動投稿の下書きをご用意しました。内容をご確認のうえ、投稿をお願いいたします。",
+    relatedService: "x",
+    actionUrl: "/workspace/x",
+    lineEvent: "confirmation_request",
+  });
+}
+
 export function notifyDriveSaveComplete(userId: string, fileName?: string) {
   return createNotification({
     audience: "user",
