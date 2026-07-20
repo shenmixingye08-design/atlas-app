@@ -16,12 +16,14 @@ const NAV_ITEMS: {
   href: string;
   label: string;
   icon: string;
+  /** Primary "send" action — rendered as a raised gold button. */
+  primary?: boolean;
 }[] = [
   { id: "home", href: "/projects", label: ui.nav.home, icon: "⌂" },
-  { id: "request", href: "/commander", label: ui.nav.newRequest, icon: "＋" },
-  { id: "history", href: "/history", label: ui.nav.requestHistory, icon: "☰" },
-  { id: "memory", href: "/learned-jobs", label: ui.nav.workMemory, icon: "◎" },
-  { id: "analysis", href: "/settings/learning", label: ui.nav.analysis, icon: "↗" },
+  { id: "history", href: "/history", label: ui.nav.history, icon: "☰" },
+  { id: "request", href: "/commander", label: ui.nav.send, icon: "＋", primary: true },
+  { id: "automation", href: "/automations", label: ui.nav.automation, icon: "↻" },
+  { id: "settings", href: "/settings", label: ui.nav.settings, icon: "⚙" },
 ];
 
 export function AtlasBottomNav() {
@@ -42,6 +44,29 @@ export function AtlasBottomNav() {
       <ul className="mx-auto flex max-w-lg items-stretch justify-around px-0.5 pt-1">
         {NAV_ITEMS.map((item) => {
           const isActive = active === item.id;
+
+          if (item.primary) {
+            return (
+              <li key={item.id} className="flex-1">
+                <Link
+                  href={item.href}
+                  className="touch-target flex min-h-[56px] flex-col items-center justify-center gap-1 px-0.5 text-[11px] font-medium leading-tight focus-ring"
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  <span
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-lg leading-none text-[var(--accent-foreground)] shadow-[var(--shadow-glow)]"
+                    aria-hidden
+                  >
+                    {item.icon}
+                  </span>
+                  <span className="max-w-full text-center text-accent">
+                    {item.label}
+                  </span>
+                </Link>
+              </li>
+            );
+          }
+
           return (
             <li key={item.id} className="flex-1">
               <Link

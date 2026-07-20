@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
 import { ErrorState } from "@/components/ui/error-state";
+import { SecretaryProgress } from "@/components/home/secretary-progress";
 
 function statusLabel(status: CommanderRunStatus): string {
   switch (status) {
@@ -55,7 +56,7 @@ function StatusPill({
       className={cn(
         "inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset",
         ok
-          ? "bg-[var(--success-bg)] text-emerald-100 ring-[var(--success)]/25"
+          ? "bg-[var(--success-bg)] text-[var(--success)] ring-[var(--success)]/30"
           : "bg-[var(--surface-muted)] text-[var(--text-secondary)] ring-[var(--border)]",
       )}
     >
@@ -127,7 +128,7 @@ function PlanPanel({ plan }: { plan: CommanderPlan }) {
                   }
                 />
                 {service.required && (
-                  <span className="text-xs text-amber-200">
+                  <span className="text-xs text-[var(--warning)]">
                     {ui.commander.required}
                   </span>
                 )}
@@ -291,7 +292,7 @@ export function CommanderDashboard() {
   return (
     <div className="space-y-8 animate-fade-up">
       <header className="space-y-3">
-        <p className="text-xs font-medium uppercase tracking-[0.2em] text-sky-300/80">
+        <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent">
           {ui.commander.eyebrow}
         </p>
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
@@ -338,6 +339,8 @@ export function CommanderDashboard() {
         </div>
       </Card>
 
+      {isLoading && !run && <SecretaryProgress />}
+
       {error && <ErrorState message={error} />}
 
       {run && (
@@ -362,12 +365,12 @@ export function CommanderDashboard() {
             </p>
 
             {run.status === "awaiting_confirmation" && (
-              <div className="mt-4 space-y-3 rounded-[var(--radius-lg)] border border-amber-400/30 bg-amber-500/10 p-4">
-                <p className="text-sm text-amber-100">
+              <div className="mt-4 space-y-3 rounded-[var(--radius-lg)] border border-[var(--warning)]/30 bg-[var(--warning-bg)] p-4">
+                <p className="text-sm text-[var(--text-primary)]">
                   {ui.commander.confirmHint}
                 </p>
                 {run.confirmationReasons.length > 0 && (
-                  <ul className="list-disc space-y-1 pl-5 text-sm text-amber-50/90">
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--text-secondary)]">
                     {run.confirmationReasons.map((reason) => (
                       <li key={reason}>{reason}</li>
                     ))}
@@ -408,7 +411,7 @@ export function CommanderDashboard() {
               )}
 
             {run.report.automationHint && (
-              <p className="mt-3 text-sm text-amber-100">
+              <p className="mt-3 text-sm text-[var(--text-secondary)]">
                 {run.report.automationHint}{" "}
                 <Link
                   href="/automations"

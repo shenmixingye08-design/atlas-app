@@ -1,10 +1,13 @@
-/** Bottom tab identifiers — primary mobile navigation. */
+/**
+ * Bottom tab identifiers — primary mobile navigation.
+ * Aligned with the simplified header: ホーム / 履歴 / 送る / 自動化 / 設定.
+ */
 export type BottomNavId =
   | "home"
-  | "request"
   | "history"
-  | "memory"
-  | "analysis";
+  | "request"
+  | "automation"
+  | "settings";
 
 /** Routes where the mobile bottom nav should not appear. */
 export function shouldHideBottomNav(pathname: string): boolean {
@@ -16,20 +19,16 @@ export function shouldHideBottomNav(pathname: string): boolean {
 
 /** Resolve which bottom tab is active for the current path. */
 export function resolveBottomNavId(pathname: string): BottomNavId | null {
-  if (
-    pathname.startsWith("/learned-jobs") ||
-    pathname.startsWith("/teach-work") ||
-    pathname.startsWith("/settings/work-memory")
-  ) {
-    return "memory";
-  }
-  if (pathname.startsWith("/settings/learning")) return "analysis";
+  if (pathname.startsWith("/automations")) return "automation";
+  if (pathname.startsWith("/settings")) return "settings";
   if (pathname.startsWith("/history")) return "history";
   if (
     pathname.startsWith("/commander") ||
     pathname.startsWith("/workspace") ||
     pathname.startsWith("/projects/") ||
-    pathname.startsWith("/chat")
+    pathname.startsWith("/chat") ||
+    pathname.startsWith("/learned-jobs") ||
+    pathname.startsWith("/teach-work")
   ) {
     return "request";
   }

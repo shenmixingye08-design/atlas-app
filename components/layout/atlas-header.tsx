@@ -5,7 +5,6 @@ import { useState } from "react";
 
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { OwnerNavLink } from "@/components/owner/owner-nav-link";
-import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
 
@@ -37,23 +36,22 @@ type AtlasHeaderProps = {
 
 const PRIMARY_NAV: { id: AtlasNavPage; href: string; label: string }[] = [
   { id: "projects", href: "/projects", label: ui.nav.home },
-  { id: "commander", href: "/commander", label: ui.nav.newRequest },
-  { id: "history", href: "/history", label: ui.nav.requestHistory },
-  { id: "work-memory", href: "/learned-jobs", label: ui.nav.workMemory },
-  { id: "learning", href: "/settings/learning", label: ui.nav.analysis },
+  { id: "history", href: "/history", label: ui.nav.history },
+  { id: "automations", href: "/automations", label: ui.nav.automation },
+  { id: "settings", href: "/settings", label: ui.nav.settings },
 ];
 
 /** Secondary routes under 「その他」— desktop dropdown / mobile overflow. */
 const MORE_NAV: { id: AtlasNavPage; href: string; label: string }[] = [
-  { id: "automations", href: "/automations", label: ui.nav.entrustedJobs },
-  { id: "settings", href: "/settings", label: ui.nav.settings },
+  { id: "commander", href: "/commander", label: ui.nav.newRequest },
+  { id: "work-memory", href: "/learned-jobs", label: ui.nav.workMemory },
+  { id: "learning", href: "/settings/learning", label: ui.nav.analysis },
   { id: "billing", href: "/settings/billing", label: ui.nav.billingCredits },
   { id: "contact", href: "/contact", label: ui.nav.contact },
   { id: "help", href: "/capabilities", label: ui.nav.help },
 ];
 
 function resolvePrimaryActive(active?: AtlasNavPage): AtlasNavPage | undefined {
-  if (active === "chat" || active === "workspace") return "commander";
   return active;
 }
 
@@ -122,7 +120,6 @@ export function AtlasHeader({ active }: AtlasHeaderProps) {
 
         <div className="flex items-center gap-2 sm:gap-3">
           <NotificationBell />
-          <ThemeToggle />
           <AtlasHeaderAuth />
           <button
             type="button"

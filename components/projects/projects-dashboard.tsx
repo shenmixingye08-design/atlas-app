@@ -9,6 +9,7 @@ import { normalizeAutomations, normalizeProjects } from "@/lib/compatibility";
 import { shouldShowFirstExperience } from "@/lib/first-experience";
 import { shouldShowWelcomeWizard } from "@/lib/onboarding";
 import { useProjects } from "@/lib/projects/use-projects";
+import { ui } from "@/lib/i18n";
 import { LoadingState } from "@/components/ui/loading-state";
 import {
   HomeDashboardErrorBoundary,
@@ -72,7 +73,7 @@ export function ProjectsDashboard() {
   }, [reloadAutomations]);
 
   if (!isReady) {
-    return <LoadingState />;
+    return <LoadingState message={ui.secretaryProgress.preparing} />;
   }
 
   return (

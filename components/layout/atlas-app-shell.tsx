@@ -1,5 +1,4 @@
 import { AtlasBackground } from "@/components/atlas-background";
-import { HomeQuickActionsBar } from "@/components/home/home-quick-actions-bar";
 import { cn } from "@/lib/design-system/cn";
 
 import { AtlasBottomNav } from "./atlas-bottom-nav";
@@ -24,19 +23,17 @@ export function AtlasAppShell({
   width = "default",
 }: AtlasAppShellProps) {
   return (
-    <div className="relative min-h-screen bg-[var(--background)] text-foreground">
+    <div className="minervot-lux relative min-h-screen bg-[var(--background)] text-foreground">
       <AtlasBackground />
       <AtlasHeader active={active} />
       <main
         className={cn(
           "app-shell-main mx-auto w-full px-4 pt-6 sm:px-6 sm:pt-10 md:px-10 md:pt-14 animate-page",
-          active === "projects" && "app-shell-main--home",
           MAIN_WIDTH[width],
         )}
       >
         {children}
       </main>
-      {active === "projects" && <HomeQuickActionsBar />}
       <AtlasBottomNav />
     </div>
   );

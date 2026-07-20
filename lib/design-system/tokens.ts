@@ -62,6 +62,46 @@ export const COLORS_DARK = {
   secondaryHover: "#252a33",
 } as const;
 
+/**
+ * MINERVOT Luxury Shell — dark concierge palette.
+ * Runtime values live in `.minervot-lux` (app/globals.css) and are scoped to
+ * the post-login AtlasAppShell. Gold = primary/success, dark red = notice.
+ * Keep in sync for typed references.
+ */
+export const COLORS_LUX = {
+  background: "#0e0f13",
+  surface: "#0e0f13",
+  surfaceElevated: "#171a20",
+  surfaceMuted: "#1b1f27",
+  card: "#171a20",
+  cardGlass: "rgba(14, 15, 19, 0.82)",
+
+  textPrimary: "#f4f2ec",
+  textSecondary: "#b9bec7",
+  textMuted: "#868c96",
+
+  border: "#2a2f38",
+  borderStrong: "#3a414d",
+  borderFocus: "rgba(212, 175, 55, 0.55)",
+
+  accent: "#d4af37",
+  accentHover: "#e6c458",
+  accentMuted: "rgba(212, 175, 55, 0.12)",
+  accentForeground: "#12130f",
+
+  accentRed: "#7b1124",
+  accentRedStrong: "#9a1c33",
+
+  success: "#d4af37",
+  successBg: "rgba(212, 175, 55, 0.12)",
+  warning: "#c9a227",
+  warningBg: "rgba(201, 162, 39, 0.12)",
+  error: "#d24359",
+  errorBg: "rgba(123, 17, 36, 0.22)",
+
+  secondaryHover: "#232833",
+} as const;
+
 /** @deprecated Use COLORS — kept for backward compatibility */
 export const ATLAS_PHILOSOPHY = {
   accent: COLORS.accent,

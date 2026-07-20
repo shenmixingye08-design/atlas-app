@@ -268,80 +268,100 @@ export function SecretaryUploadHero() {
         {phase === "idle" || phase === "understanding" ? (
           <div
             className={cn(
-              "rounded-[28px] border-2 border-dashed bg-[var(--card)] px-6 py-10 text-center shadow-[var(--shadow-md)] transition-all duration-300 sm:px-10 sm:py-14",
+              "rounded-[28px] border-2 border-dashed bg-[var(--card)] px-6 py-12 text-center shadow-[var(--shadow-lg)] transition-all duration-300 sm:px-12 sm:py-16",
               dragging
-                ? "border-accent bg-accent/[0.05] ring-2 ring-accent/20"
+                ? "lux-dropzone-active scale-[1.01]"
                 : "border-[var(--border-subtle)]",
             )}
           >
-            <div
-              className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-accent/10 text-accent"
-              aria-hidden
-            >
-              <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none">
-                <path
-                  d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
-
             {phase === "understanding" ? (
-              <p className="mt-5 text-base font-medium text-accent">
-                {t.understanding}
-              </p>
+              <div className="flex flex-col items-center">
+                <span className="lux-spinner h-14 w-14" aria-hidden />
+                <p className="mt-6 text-base font-medium text-accent">
+                  {t.understanding}
+                </p>
+              </div>
             ) : (
               <>
-                <p className="mt-5 text-lg font-semibold text-foreground">
+                <div
+                  className={cn(
+                    "mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-accent/10 text-accent transition-transform duration-300",
+                    dragging && "scale-110",
+                  )}
+                  aria-hidden
+                >
+                  <svg viewBox="0 0 24 24" className="h-10 w-10" fill="none">
+                    <path
+                      d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </div>
+
+                <p className="mt-6 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                   {dragging ? t.dropActive : t.dropzoneTitle}
                 </p>
-                <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+                <p className="mt-2 text-sm text-[var(--foreground-muted)]">
                   {t.dropzoneHint}
                 </p>
+
+                <div className="mt-7 flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onClick={() => imageInputRef.current?.click()}
+                  >
+                    {t.selectImage}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    onClick={() => cameraInputRef.current?.click()}
+                  >
+                    {t.takePhoto}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {t.selectFile}
+                  </Button>
+                </div>
               </>
             )}
-
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-2 sm:gap-3">
-              <Button
-                variant="primary"
-                size="md"
-                onClick={() => imageInputRef.current?.click()}
-              >
-                {t.selectImage}
-              </Button>
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={() => cameraInputRef.current?.click()}
-              >
-                {t.takePhoto}
-              </Button>
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {t.selectFile}
-              </Button>
-            </div>
           </div>
         ) : null}
 
         {phase === "autostart" && classification ? (
-          <div className="rounded-[28px] border border-accent/30 bg-accent/[0.05] px-6 py-10 text-center shadow-[var(--shadow-md)] sm:px-10">
-            <p className="text-4xl" aria-hidden>
+          <div className="rounded-[28px] border border-accent/30 bg-accent/[0.06] px-6 py-10 text-center shadow-[var(--shadow-glow)] sm:px-10">
+            <span
+              className="animate-check-in mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-accent text-[var(--accent-foreground)]"
+              aria-hidden
+            >
+              <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none">
+                <path
+                  d="M5 12.5l4.5 4.5L19 7"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <p className="mt-4 text-2xl" aria-hidden>
               {classification.intent.emoji}
             </p>
-            <p className="mt-4 text-lg font-semibold text-foreground">
+            <p className="mt-3 text-lg font-semibold text-foreground">
               {classification.intent.statement}
             </p>
             <p className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-accent">

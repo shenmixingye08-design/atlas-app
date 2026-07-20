@@ -32,7 +32,11 @@
   --accent-hover: #0077ed;
   --accent-muted: rgba(0, 113, 227, 0.1);
   --accent-glow: transparent;
+  --accent-foreground: #ffffff;
   --secondary-hover: #e8e8ed;
+
+  /* Shimmer mid-tone (light) */
+  --shimmer-mid: #ececee;
 
   /* Borders */
   --border: rgba(0, 0, 0, 0.08);
@@ -121,7 +125,9 @@ html[data-theme="dark"] {
   --accent-hover: #0077ed;
   --accent-muted: rgba(0, 113, 227, 0.18);
   --accent-glow: transparent;
+  --accent-foreground: #ffffff;
   --secondary-hover: #252a33;
+  --shimmer-mid: #262b33;
 
   --border: rgba(255, 255, 255, 0.1);
   --border-strong: rgba(255, 255, 255, 0.16);
@@ -142,6 +148,106 @@ html[data-theme="dark"] {
   --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.5);
   --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+
+/* ─── MINERVOT Luxury Shell ───
+   Dark concierge palette scoped to the post-login app shell.
+   Concierge hotel + luxury car interior + Apple restraint.
+   Gold (#D4AF37) = primary action / success · Dark red (#7B1124) = notice.
+   Applied via .minervot-lux on AtlasAppShell — auth/landing stay untouched.
+   ─────────────────────────────────────────────────────────────── */
+.minervot-lux {
+  color-scheme: dark;
+
+  --background: #0e0f13;
+  --surface: #0e0f13;
+  --surface-elevated: #171a20;
+  --surface-muted: #1b1f27;
+  --card: #171a20;
+  --card-glass: rgba(14, 15, 19, 0.82);
+
+  --text-primary: #f4f2ec;
+  --text-secondary: #b9bec7;
+  --text-muted: #868c96;
+
+  --foreground: var(--text-primary);
+  --foreground-muted: var(--text-secondary);
+  --foreground-subtle: var(--text-muted);
+  --background-elevated: var(--surface-elevated);
+  --background-subtle: var(--surface-muted);
+  --background-muted: var(--surface-muted);
+
+  /* Gold — primary CTA (送る / 実行 / 開始) & success */
+  --accent: #d4af37;
+  --accent-hover: #e6c458;
+  --accent-muted: rgba(212, 175, 55, 0.12);
+  --accent-glow: rgba(212, 175, 55, 0.35);
+  --accent-foreground: #12130f;
+  --secondary-hover: #232833;
+
+  /* Accent red — notices / destructive */
+  --accent-red: #7b1124;
+  --accent-red-strong: #9a1c33;
+
+  --border: #2a2f38;
+  --border-strong: #3a414d;
+  --border-focus: rgba(212, 175, 55, 0.55);
+  --border-subtle: var(--border);
+
+  /* Success = gold · Notification / error = dark red */
+  --success: #d4af37;
+  --success-bg: rgba(212, 175, 55, 0.12);
+  --warning: #c9a227;
+  --warning-bg: rgba(201, 162, 39, 0.12);
+  --error: #d24359;
+  --error-bg: rgba(123, 17, 36, 0.22);
+
+  --status-success: var(--success);
+  --status-success-bg: var(--success-bg);
+  --status-warning: var(--warning);
+  --status-warning-bg: var(--warning-bg);
+  --status-error: var(--error);
+  --status-error-bg: var(--error-bg);
+  --status-info: var(--accent);
+  --status-info-bg: var(--accent-muted);
+  --status-neutral: var(--text-muted);
+  --status-neutral-bg: rgba(255, 255, 255, 0.05);
+  --status-running: var(--accent);
+
+  --glass-bg: var(--card);
+  --glass-bg-strong: var(--card);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 6px 28px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 14px 48px rgba(0, 0, 0, 0.62);
+  --shadow-soft: 0 2px 14px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 0 1px rgba(212, 175, 55, 0.25), 0 8px 40px rgba(212, 175, 55, 0.14);
+
+  --shimmer-mid: #2a2f38;
+}
+
+/* Gold-glow dropzone while dragging files onto the upload hero */
+.lux-dropzone-active {
+  border-color: var(--accent) !important;
+  background: var(--accent-muted);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 34px 2px var(--accent-glow);
+}
+
+@keyframes lux-spin {
+  to { transform: rotate(360deg); }
+}
+
+.lux-spinner {
+  border-radius: 9999px;
+  border: 2px solid var(--accent-muted);
+  border-top-color: var(--accent);
+  animation: lux-spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lux-spinner { animation-duration: 0.01ms; }
 }
 
 @theme inline {
@@ -321,7 +427,7 @@ html[data-theme-transitioning] *::after {
   background: linear-gradient(
     90deg,
     var(--background-subtle) 0%,
-    #ececee 50%,
+    var(--shimmer-mid) 50%,
     var(--background-subtle) 100%
   );
   background-size: 200% 100%;

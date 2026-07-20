@@ -11,7 +11,7 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   primary:
-    "bg-accent text-white hover:bg-[var(--accent-hover)] active:scale-[0.98] shadow-sm",
+    "bg-accent text-[var(--accent-foreground)] hover:bg-[var(--accent-hover)] active:scale-[0.98] shadow-sm",
   secondary:
     "bg-[var(--surface-muted)] text-foreground hover:bg-[var(--secondary-hover)]",
   ghost:

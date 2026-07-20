@@ -26,8 +26,11 @@ export const ui = {
   nav: {
     home: "ホーム",
     newRequest: "新しい依頼",
+    send: "送る",
+    automation: "自動化",
     commander: "AIオーケストレーター",
     requestHistory: "ご依頼履歴",
+    history: "履歴",
     workMemory: "覚えた仕事",
     analysis: "分析・改善",
     work: "仕事",
@@ -114,9 +117,9 @@ export const ui = {
 
   uploadHome: {
     brand: "MINERVOT",
-    title: "画像を送ってください",
+    title: "何でも送ってください。",
     subtitle:
-      "画像・PDF・文章・音声を送るだけ。MINERVOTが内容を理解し、最適な仕事を最後まで自動で行います。",
+      "画像・PDF・文章・音声を送るだけ。MINERVOTが内容を理解し、最後まで仕事を行います。",
     dropzoneTitle: "ここにドラッグ＆ドロップ",
     dropzoneHint: "または下のボタンから送ってください",
     dropActive: "ここにドロップして送る",
@@ -150,6 +153,30 @@ export const ui = {
       { emoji: "🏞", label: "現場写真", arrow: "報告書作成" },
       { emoji: "💬", label: "SNS画像", arrow: "X投稿文を自動作成" },
     ],
+    processing: "内容を理解しています",
+    ready: "準備ができました",
+  },
+
+  /* AI秘書の進行状況フレーズ（読み込み表示に使用・AI不使用の固定文言） */
+  secretaryProgress: {
+    understanding: "AI秘書が内容を理解しています",
+    thinking: "最適な処理を考えています",
+    executing: "仕事を実行しています",
+    preparing: "AI秘書が準備しています",
+  },
+
+  /* ホーム「AI秘書の現在状況」パネル（実データのみ・空状態は上品に） */
+  secretaryStatus: {
+    heading: "AI秘書の現在状況",
+    idleTitle: "AI秘書は待機しています",
+    idleHint: "お仕事をお送りいただければ、こちらに進行状況を表示いたします。",
+    metricInReview: "確認待ち",
+    metricInProgress: "進行中",
+    metricCompleted: "完了した仕事",
+    metricHabits: "登録した習慣",
+    unit: "件",
+    viewHistory: "履歴を見る",
+    viewAutomations: "自動化を見る",
   },
 
   proactiveSuggestions: {
