@@ -39,7 +39,11 @@ const SAMPLE_ITEMS: ActivityHistoryItem[] = [
     deliverableType: null,
     result: null,
     error: null,
-    metadata: {},
+    metadata: {
+      favorite: false,
+      memoryLearned: false,
+      templateId: null,
+    },
   },
 ];
 
