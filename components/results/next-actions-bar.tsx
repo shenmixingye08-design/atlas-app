@@ -108,6 +108,9 @@ export function NextActionsBar({
         return;
       }
       if (result.status === "error") {
+        if (result.reconnectRequired) {
+          setNeedsConnect(true);
+        }
         setError(result.message);
         return;
       }

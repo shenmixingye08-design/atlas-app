@@ -62,6 +62,7 @@ export type XPostResult =
   | {
       status: "x_not_connected";
       message: string;
+      reconnectRequired?: boolean;
     }
   | {
       status: "validation_failed";
@@ -71,6 +72,7 @@ export type XPostResult =
   | {
       status: "error";
       message: string;
+      reconnectRequired?: boolean;
     };
 
 export type XPostHistoryResult =

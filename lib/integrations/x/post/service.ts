@@ -6,11 +6,16 @@ import { featureDisabledMessage } from "@/lib/feature-flags/guards";
 import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
 import { ensureExternalAuthHydrated } from "@/lib/integrations/external-services/durable";
 import {
+  getExternalServiceCredentials,
+} from "@/lib/integrations/external-services/credential-store";
+import {
   getXAccountAccessToken,
   getXAccountAccessTokenResult,
 } from "@/lib/integrations/x/token-manager";
-import { touchXConnectionLastUsed } from "@/lib/integrations/x/oauth-service";
+import { touchXConnectionLastUsed, markXConnectionNeedsReconnect } from "@/lib/integrations/x/oauth-service";
+import { XApiError, xWriteScopeMissingMessage } from "@/lib/integrations/x/api-error";
 import { X_RECONNECT_REQUIRED_MESSAGE } from "@/lib/integrations/x/errors";
+import { hasXWriteScope, parseXGrantedScopes } from "@/lib/integrations/x/scopes";
 import {
   recordXAuthFailure,
   recordXPostFailure,
@@ -59,6 +64,7 @@ async function resolveXPostAccess(input: {
   | {
       status: Exclude<XPostResult["status"], "ready" | "validation_failed">;
       message: string;
+      reconnectRequired?: boolean;
     }
 > {
   if (!isFeatureEnabled("x", input.context)) {
@@ -94,6 +100,19 @@ async function resolveXPostAccess(input: {
         tokenResult.status === "refresh_failed"
           ? tokenResult.message
           : "Xを接続してください",
+      reconnectRequired: tokenResult.status === "refresh_failed",
+    };
+  }
+
+  const credentials = getExternalServiceCredentials(input.userId, "x");
+  const scopeSource =
+    credentials?.scope?.trim() ? credentials.scope : connection.scopes;
+  const grantedScopes = parseXGrantedScopes(scopeSource);
+  if (!hasXWriteScope(grantedScopes)) {
+    return {
+      status: "x_not_connected",
+      message: xWriteScopeMissingMessage(),
+      reconnectRequired: true,
     };
   }
 
@@ -165,7 +184,11 @@ async function executeTweetPost(input: {
 
   const access = await resolveXPostAccess(input);
   if (access.status !== "ready") {
-    return { status: access.status, message: access.message };
+    return {
+      status: access.status,
+      message: access.message,
+      reconnectRequired: access.reconnectRequired,
+    };
   }
 
   let driveFileUrl: string | null = null;
@@ -220,6 +243,34 @@ async function executeTweetPost(input: {
 
     return { status: "ready", mode: input.mode, history };
   } catch (error) {
+    if (error instanceof XApiError) {
+      if (error.resolution.reconnectRequired) {
+        markXConnectionNeedsReconnect(input.userId, error.message);
+      }
+      recordXPostFailure(error.resolution.logSummary, "x_post");
+
+      saveXPostHistoryRecord(
+        buildHistoryRecord({
+          userId: input.userId,
+          text: input.text,
+          mode: input.mode,
+          status: "failed",
+          errorMessage: error.message,
+          automationId: input.automationId,
+          scheduledFor: input.scheduledFor,
+          driveFileUrl,
+        }),
+      );
+
+      notifyXPostFailed(input.userId, error.message);
+
+      return {
+        status: "error",
+        message: error.message,
+        reconnectRequired: error.resolution.reconnectRequired,
+      };
+    }
+
     const message =
       error instanceof Error ? error.message : "Xへの投稿に失敗しました";
     recordXPostFailure(message, "x_post");
@@ -390,7 +441,11 @@ export async function scheduleTweetForUser(input: {
 
   const access = await resolveXPostAccess(input);
   if (access.status !== "ready") {
-    return { status: access.status, message: access.message };
+    return {
+      status: access.status,
+      message: access.message,
+      reconnectRequired: access.reconnectRequired,
+    };
   }
 
   const scheduledForMs = new Date(input.scheduledFor).getTime();

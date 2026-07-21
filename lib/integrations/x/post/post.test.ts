@@ -175,7 +175,7 @@ describe("X post service", () => {
       "fetch",
       vi.fn(async () =>
         new Response(
-          JSON.stringify({ errors: [{ detail: "Rate limit exceeded" }] }),
+          JSON.stringify({ errors: [{ detail: "Rate limit exceeded", code: 88 }] }),
           { status: 429 },
         ),
       ),
@@ -189,7 +189,7 @@ describe("X post service", () => {
 
     expect(result.status).toBe("error");
     if (result.status !== "error") return;
-    expect(result.message).toContain("Rate limit");
+    expect(result.message).toContain("利用上限");
 
     const history = await getXPostHistoryForUser({
       userId: TEST_USER_ID,
@@ -198,6 +198,63 @@ describe("X post service", () => {
     expect(history.status).toBe("ready");
     if (history.status !== "ready") return;
     expect(history.records[0]?.status).toBe("failed");
+  });
+
+  it("blocks posting when OAuth scope lacks tweet.write", async () => {
+    connectXAccount();
+    saveExternalServiceCredentials({
+      userId: TEST_USER_ID,
+      serviceId: "x",
+      accessToken: "x-access-token",
+      refreshToken: "x-refresh-token",
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      scope: "tweet.read users.read offline.access",
+      updatedAt: new Date().toISOString(),
+    });
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await postTweetNowForUser({
+      userId: TEST_USER_ID,
+      text: "Hello",
+      context: TEST_CONTEXT,
+    });
+
+    expect(result.status).toBe("x_not_connected");
+    if (result.status !== "x_not_connected") return;
+    expect(result.message).toContain("Write");
+    expect(result.reconnectRequired).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("maps X API 403 insufficient scope to Japanese reconnect guidance", async () => {
+    connectXAccount();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            title: "Forbidden",
+            detail: "Missing required OAuth2 scope: tweet.write",
+            status: 403,
+          }),
+          { status: 403 },
+        ),
+      ),
+    );
+
+    const result = await postTweetNowForUser({
+      userId: TEST_USER_ID,
+      text: "Hello",
+      context: TEST_CONTEXT,
+    });
+
+    expect(result.status).toBe("error");
+    if (result.status !== "error") return;
+    expect(result.message).toContain("Write");
+    expect(result.reconnectRequired).toBe(true);
   });
 
   it("posts a test tweet with prefix", async () => {

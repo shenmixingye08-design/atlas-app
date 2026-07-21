@@ -160,8 +160,8 @@ async function processSlotForUser(input: {
     errorMessage: message,
   });
 
-  // executeTweetPost only notifies on X API errors; surface connection issues.
-  if (result.status === "x_not_connected") {
+  // executeTweetPost notifies on X API errors; surface connection issues too.
+  if (result.status === "x_not_connected" || result.status === "error") {
     notifyXPostFailed(userId, message);
   }
 

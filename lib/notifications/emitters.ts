@@ -92,13 +92,16 @@ export function notifyXPostSuccess(
   });
 }
 
-export function notifyXPostFailed(userId: string, _message: string) {
+export function notifyXPostFailed(userId: string, message: string) {
+  const detail =
+    message.trim() ||
+    "Xへの投稿に失敗しました。内容をご確認のうえ、設定画面からX連携をご確認ください。";
   return createNotification({
     audience: "user",
     userId,
     type: "error",
-    title: "処理を完了できませんでした",
-    message: "処理を完了できませんでした。内容をご確認ください。",
+    title: "Xへの投稿に失敗しました",
+    message: detail,
     relatedService: "x",
     actionUrl: "/settings/x",
     lineEvent: "error",

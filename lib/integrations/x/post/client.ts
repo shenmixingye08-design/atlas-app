@@ -35,12 +35,14 @@ async function parseXPostErrorResponse(
     message?: string;
     status?: string;
     validation?: XPostValidationSummary;
+    reconnectRequired?: boolean;
   } | null;
 
   if (body?.status === "x_not_connected") {
     return {
       status: "x_not_connected",
       message: body.message ?? "Xを接続してください",
+      reconnectRequired: body.reconnectRequired,
     };
   }
 
@@ -63,6 +65,7 @@ async function parseXPostErrorResponse(
     return {
       status: "error",
       message: body.message ?? "Xへの投稿に失敗しました",
+      reconnectRequired: body.reconnectRequired,
     };
   }
 

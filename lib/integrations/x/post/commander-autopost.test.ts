@@ -213,6 +213,6 @@ describe("maybeAutoPostToXAfterCommander", () => {
     if (!result.attempted) return;
     expect(result.result.status).toBe("error");
     if (result.result.status !== "error") return;
-    expect(result.result.message).toContain("temporarily locked");
+    expect(result.result.message).toContain("制限");
   });
 });

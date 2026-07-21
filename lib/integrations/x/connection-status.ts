@@ -2,6 +2,7 @@ import "server-only";
 
 import { X_OAUTH_SCOPES } from "./config";
 import { X_RECONNECT_REQUIRED_MESSAGE } from "./errors";
+import { parseXGrantedScopes } from "./scopes";
 import { fetchXUserProfile } from "./oauth";
 import {
   getExternalServiceConnection,
@@ -28,12 +29,7 @@ const REQUIRED_SCOPES = [
 ] as const;
 
 function resolveGrantedScopes(raw: string | readonly string[]): string[] {
-  if (Array.isArray(raw)) {
-    return raw.flatMap((scope) => scope.split(/[\s,]+/)).filter(Boolean);
-  }
-  return String(raw)
-    .split(/[\s,]+/)
-    .filter(Boolean);
+  return parseXGrantedScopes(raw);
 }
 
 /**

@@ -17,6 +17,7 @@ import { persistXAuthToSupabase } from "./credential-persistence";
 import { X_RECONNECT_REQUIRED_MESSAGE } from "./errors";
 import { refreshXAccessToken } from "./oauth";
 import { markXConnectionNeedsReconnect } from "./oauth-service";
+import { parseXGrantedScopes } from "./scopes";
 
 export type XAccessTokenResult =
   | { status: "ready"; accessToken: string }
@@ -68,14 +69,21 @@ export async function getXAccountAccessTokenResult(
     saveExternalServiceCredentials(nextCredentials);
 
     const connection = getExternalServiceConnection(userId, "x");
+    const refreshedScopes = refreshed.scope
+      ? parseXGrantedScopes(refreshed.scope)
+      : connection.scopes;
     const healthyConnection =
       connection.status === "error"
         ? {
             ...connection,
             status: "connected" as const,
             errorMessage: null,
+            scopes: refreshedScopes,
           }
-        : connection;
+        : {
+            ...connection,
+            scopes: refreshedScopes,
+          };
     if (healthyConnection !== connection) {
       saveExternalServiceConnection(userId, healthyConnection);
     }

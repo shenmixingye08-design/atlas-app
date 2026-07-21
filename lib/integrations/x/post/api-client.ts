@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createXApiError } from "@/lib/integrations/x/api-error";
 import { fetchWithTimeout } from "@/lib/http/fetch-with-timeout";
 
 export const X_TWEETS_API_URL = "https://api.twitter.com/2/tweets";
@@ -9,16 +10,14 @@ export type CreateTweetResponse = {
     id: string;
     text: string;
   };
-  errors?: Array<{ message?: string; detail?: string }>;
+  errors?: Array<{ message?: string; detail?: string; code?: number | string }>;
+  title?: string;
+  detail?: string;
+  type?: string;
+  status?: number;
 };
 
-export type FetchTweetResponse = {
-  data?: {
-    id: string;
-    text: string;
-  };
-  errors?: Array<{ message?: string; detail?: string }>;
-};
+export type FetchTweetResponse = CreateTweetResponse;
 
 export async function createTweet(input: {
   accessToken: string;
@@ -36,11 +35,7 @@ export async function createTweet(input: {
   const payload = (await response.json().catch(() => ({}))) as CreateTweetResponse;
 
   if (!response.ok) {
-    const message =
-      payload.errors?.[0]?.detail ??
-      payload.errors?.[0]?.message ??
-      `X API error (${response.status})`;
-    throw new Error(message);
+    throw createXApiError(response.status, payload);
   }
 
   const tweetId = payload.data?.id;
@@ -68,11 +63,7 @@ export async function fetchTweetById(input: {
   const payload = (await response.json().catch(() => ({}))) as FetchTweetResponse;
 
   if (!response.ok) {
-    const message =
-      payload.errors?.[0]?.detail ??
-      payload.errors?.[0]?.message ??
-      `X API error (${response.status})`;
-    throw new Error(message);
+    throw createXApiError(response.status, payload);
   }
 
   const tweetId = payload.data?.id;

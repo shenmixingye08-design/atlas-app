@@ -18,6 +18,7 @@ import {
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 import { X_OAUTH_SCOPES } from "./config";
+import { parseXGrantedScopes } from "./scopes";
 import {
   deleteXAuthFromSupabase,
   persistXAuthToSupabase,
@@ -67,6 +68,7 @@ export async function completeXAccountOAuth(
 
   const now = new Date().toISOString();
   const expiresAt = new Date(Date.now() + token.expires_in * 1000).toISOString();
+  const grantedScopes = parseXGrantedScopes(token.scope ?? "");
 
   saveExternalServiceCredentials({
     userId,
@@ -74,7 +76,7 @@ export async function completeXAccountOAuth(
     accessToken: token.access_token,
     refreshToken: token.refresh_token,
     expiresAt,
-    scope: token.scope ?? X_OAUTH_SCOPES.join(" "),
+    scope: token.scope ?? grantedScopes.join(" "),
     updatedAt: now,
   });
 
@@ -83,7 +85,7 @@ export async function completeXAccountOAuth(
     status: "connected",
     connectedAt: now,
     lastUsedAt: null,
-    scopes: [...X_OAUTH_SCOPES],
+    scopes: grantedScopes.length > 0 ? grantedScopes : [...X_OAUTH_SCOPES],
     features: [...xServiceDefinition.plannedFeatures],
     errorMessage: null,
     account: {
