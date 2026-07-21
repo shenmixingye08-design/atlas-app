@@ -1351,6 +1351,47 @@ export const ui = {
       "SNS投稿テンプレートの「投稿」工程が有効な場合、自動化実行後にXへ自動投稿します。予約工程のみ有効な場合は次回実行時刻に予約されます。",
   },
 
+  secretaryResult: {
+    back: "戻る",
+    completedAt: (time: string) => `完了: ${time}`,
+    contentHeading: "内容",
+    postsHeading: "投稿文",
+    postAltLabel: (n: number) => `別案 ${n}`,
+    charCount: (count: number, max: number) => `${count} / ${max} 文字`,
+    // Primary / secondary next actions
+    postNow: "投稿する",
+    posting: "投稿中…",
+    editText: "修正する",
+    editDone: "修正を反映",
+    scheduleToggle: "予約投稿",
+    scheduleLabel: "投稿日時",
+    scheduleConfirm: "この日時で予約する",
+    scheduling: "予約中…",
+    saveDraft: "下書き保存",
+    savingDraft: "保存中…",
+    regenerate: "作り直す",
+    regenerating: "作り直しています…",
+    copy: "コピーする",
+    copied: "コピーしました",
+    cancel: "やめる",
+    // Post success
+    postedTitle: "Xへの投稿が完了しました",
+    postedAt: (time: string) => `投稿日時: ${time}`,
+    openOnX: "Xで確認する",
+    scheduledTitle: "予約投稿を登録しました",
+    scheduledFor: (time: string) => `投稿予定: ${time}`,
+    draftSavedTitle: "下書きに保存しました",
+    openDrafts: "下書きを確認する",
+    // Connection / errors
+    connectNeeded: "Xを接続すると、この画面から投稿できます。",
+    connect: "Xを接続する",
+    connecting: "接続中…",
+    openXSettings: "X連携の設定を開く",
+    postFailed: "Xへの投稿に失敗しました",
+    // Related saves (documents)
+    filesHeading: "資料として保存",
+  },
+
   owner: {
     navLink: "運営管理",
     shellTitle: "MINERVOT Owner",

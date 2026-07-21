@@ -18,7 +18,8 @@ import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/ui/loading-state";
 import { SectionHeader } from "@/components/ui/section-header";
 
-import { DeliverableResultView } from "./deliverable-result-view";
+import { SecretaryResultView } from "@/components/results/secretary-result-view";
+
 import { DeliverableStateNotice } from "./deliverable-state-notice";
 import { ProjectStatusBadge } from "./project-status-badge";
 
@@ -97,6 +98,29 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
     }
   };
 
+  // Completed result → secretary-style result view (natural title, content,
+  // next actions; no internal org / timeline / status badges).
+  if (displayState.kind === "ready") {
+    return (
+      <div className="space-y-6">
+        <SecretaryResultView
+          project={project}
+          backHref="/projects"
+          backLabel={ui.project.backToList}
+        />
+        {isLocal && (
+          <div>
+            <Button variant="ghost" size="sm" onClick={handleDelete}>
+              {ui.actions.remove}
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Not-yet-ready states (pending / running / failed) keep their explanatory
+  // notice so the user always knows the current situation.
   return (
     <div className="space-y-8">
       <Link
@@ -118,20 +142,11 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
                 </Button>
               </Link>
             )}
-            {isLocal && (
-              <Button variant="danger" size="sm" onClick={handleDelete}>
-                {ui.actions.remove}
-              </Button>
-            )}
           </div>
         }
       />
 
-      {displayState.kind === "ready" ? (
-        <DeliverableResultView project={project} />
-      ) : (
-        <DeliverableStateNotice state={displayState} />
-      )}
+      <DeliverableStateNotice state={displayState} />
     </div>
   );
 }

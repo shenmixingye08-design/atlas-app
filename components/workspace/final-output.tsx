@@ -34,6 +34,12 @@ type FinalOutputProps = {
   deliverablesError?: string | null;
   /** When set, only show download buttons for these formats. */
   expectedFormats?: GeneratedFile["format"][];
+  /**
+   * Override the section heading. Defaults to the internal 「成果物」 label used
+   * by the legacy workspace; the user-facing secretary result view passes a
+   * natural, contextual title instead (e.g. 「レポートができました」).
+   */
+  heading?: string;
 };
 
 const TYPE_LABELS: Record<DeliverableType, string> = {
@@ -322,6 +328,7 @@ export function FinalOutput({
   isGeneratingDeliverables = false,
   deliverablesError = null,
   expectedFormats,
+  heading,
 }: FinalOutputProps) {
   const [copied, setCopied] = useState(false);
   const [driveSaved, setDriveSaved] = useState(false);
@@ -379,7 +386,7 @@ export function FinalOutput({
     return (
       <section className="space-y-4 animate-fade-in" aria-labelledby="output-heading">
         <h2 id="output-heading" className="text-title text-foreground">
-          {ui.work.deliverableTitle}
+          {heading ?? ui.work.deliverableTitle}
         </h2>
         <Card padding="lg">
           {failedStage && (
@@ -412,7 +419,7 @@ export function FinalOutput({
     <section className="space-y-6 animate-fade-in" aria-labelledby="output-heading">
       <div>
         <h2 id="output-heading" className="text-title text-foreground">
-          {ui.work.deliverableTitle}
+          {heading ?? ui.work.deliverableTitle}
         </h2>
         {!result.approved && (
           <p className="mt-1 text-caption text-[var(--status-warning)]">

@@ -4,11 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { DeliverableResultView } from "@/components/projects/deliverable-result-view";
 import { ProjectDetailView } from "@/components/projects/project-detail-view";
-import { ProjectStatusBadge } from "@/components/projects/project-status-badge";
+import { SecretaryResultView } from "@/components/results/secretary-result-view";
 import { LoadingState } from "@/components/ui/loading-state";
-import { SectionHeader } from "@/components/ui/section-header";
 import { fetchNotificationResult, type NotificationResult } from "@/lib/results/client";
 import { readDevResultTarget } from "@/lib/results/dev-preview";
 
@@ -93,14 +91,11 @@ export function ResultsView({ notificationId }: ResultsViewProps) {
 
   if (result.status === "deliverable") {
     return (
-      <div className="space-y-8">
-        {backLink}
-        <SectionHeader
-          title={result.project.title}
-          action={<ProjectStatusBadge status={result.project.status} />}
-        />
-        <DeliverableResultView project={result.project} />
-      </div>
+      <SecretaryResultView
+        project={result.project}
+        backHref="/notifications"
+        backLabel="通知一覧"
+      />
     );
   }
 
