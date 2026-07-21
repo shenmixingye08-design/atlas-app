@@ -7,28 +7,12 @@ import { NotificationBell } from "@/components/notifications/notification-bell";
 import { OwnerNavLink } from "@/components/owner/owner-nav-link";
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
+import type { AtlasNavPage } from "@/lib/layout/nav-types";
 
 import { AtlasHeaderAuth } from "./atlas-header-auth";
 
-export type AtlasNavPage =
-  | "projects"
-  | "workspace"
-  | "commander"
-  | "history"
-  | "work-memory"
-  | "learning"
-  | "settings"
-  | "billing"
-  | "contact"
-  | "help"
-  /** Legacy page ids — kept for existing routes; not shown in general nav. */
-  | "mihon"
-  | "automations"
-  | "company"
-  | "integrations"
-  | "connectors"
-  | "connections"
-  | "chat";
+/** @deprecated Horizontal header replaced by AtlasSidebar. Kept for reference / gradual migration. */
+export type { AtlasNavPage } from "@/lib/layout/nav-types";
 
 type AtlasHeaderProps = {
   active?: AtlasNavPage;
@@ -41,7 +25,6 @@ const PRIMARY_NAV: { id: AtlasNavPage; href: string; label: string }[] = [
   { id: "settings", href: "/settings", label: ui.nav.settings },
 ];
 
-/** Secondary routes under 「その他」— desktop dropdown / mobile overflow. */
 const MORE_NAV: { id: AtlasNavPage; href: string; label: string }[] = [
   { id: "commander", href: "/commander", label: ui.nav.newRequest },
   { id: "work-memory", href: "/learned-jobs", label: ui.nav.workMemory },
@@ -55,6 +38,7 @@ function resolvePrimaryActive(active?: AtlasNavPage): AtlasNavPage | undefined {
   return active;
 }
 
+/** @deprecated Use AtlasSidebar instead. */
 export function AtlasHeader({ active }: AtlasHeaderProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

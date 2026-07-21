@@ -102,6 +102,41 @@ export const COLORS_LUX = {
   secondaryHover: "#232833",
 } as const;
 
+/** MINERVOT warm light shell — ライト（赤ゴールド） */
+export const COLORS_LUX_WARM = {
+  background: "#f7f2eb",
+  surface: "#f7f2eb",
+  surfaceElevated: "#fff7f0",
+  surfaceMuted: "#efe6d8",
+  card: "#fff7f0",
+  cardGlass: "rgba(255, 247, 240, 0.92)",
+
+  textPrimary: "#2a2a2a",
+  textSecondary: "#5c4f42",
+  textMuted: "#8a7b6a",
+
+  border: "rgba(90, 70, 45, 0.14)",
+  borderStrong: "rgba(90, 70, 45, 0.22)",
+  borderFocus: "rgba(184, 134, 11, 0.55)",
+
+  accent: "#b8860b",
+  accentHover: "#c89a2b",
+  accentMuted: "rgba(184, 134, 11, 0.14)",
+  accentForeground: "#fffaf3",
+
+  accentRed: "#9a1c33",
+  accentRedStrong: "#7b1124",
+
+  success: "#b8860b",
+  successBg: "rgba(184, 134, 11, 0.12)",
+  warning: "#c89a2b",
+  warningBg: "rgba(200, 154, 43, 0.14)",
+  error: "#9a1c33",
+  errorBg: "rgba(154, 28, 51, 0.1)",
+
+  secondaryHover: "#efe6d8",
+} as const;
+
 /** @deprecated Use COLORS — kept for backward compatibility */
 export const ATLAS_PHILOSOPHY = {
   accent: COLORS.accent,

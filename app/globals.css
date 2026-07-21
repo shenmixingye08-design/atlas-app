@@ -98,13 +98,15 @@
   /* Aliases used across home / settings components */
   --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.05);
 
-  /* Mobile shell — bottom tab bar + safe area */
+  /* Mobile shell — sidebar drawer + safe area */
+  --sidebar-width: 15rem;
+  --mobile-top-bar-height: 3.5rem;
   --bottom-nav-height: 4.25rem;
   --home-quick-actions-height: 4.5rem;
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
-  --app-shell-pad-bottom-mobile: calc(var(--bottom-nav-height) + var(--safe-area-bottom) + 1rem);
+  --app-shell-pad-bottom-mobile: calc(var(--safe-area-bottom) + 1.5rem);
   --app-shell-pad-bottom-home-mobile: calc(
-    var(--bottom-nav-height) + var(--home-quick-actions-height) + var(--safe-area-bottom) + 1rem
+    var(--home-quick-actions-height) + var(--safe-area-bottom) + 1.5rem
   );
 }
 
@@ -148,6 +150,48 @@ html[data-theme="dark"] {
   --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.5);
   --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+
+/* ── Warm light theme (赤ゴールド) ── */
+html[data-theme="light-warm"] {
+  --background: #f7f2eb;
+  --surface: #f7f2eb;
+  --surface-elevated: #fff7f0;
+  --surface-muted: #efe6d8;
+  --card: #fff7f0;
+  --card-glass: rgba(255, 247, 240, 0.9);
+
+  --text-primary: #2a2a2a;
+  --text-secondary: #5c4f42;
+  --text-muted: #8a7b6a;
+
+  --accent: #b8860b;
+  --accent-hover: #c89a2b;
+  --accent-muted: rgba(184, 134, 11, 0.14);
+  --accent-glow: rgba(184, 134, 11, 0.28);
+  --accent-foreground: #fffaf3;
+  --secondary-hover: #efe6d8;
+  --shimmer-mid: #e8ddd0;
+
+  --border: rgba(90, 70, 45, 0.12);
+  --border-strong: rgba(90, 70, 45, 0.2);
+  --border-focus: rgba(184, 134, 11, 0.55);
+  --border-subtle: var(--border);
+
+  --success: #8b6914;
+  --success-bg: rgba(184, 134, 11, 0.12);
+  --warning: #a67c00;
+  --warning-bg: rgba(200, 154, 43, 0.14);
+  --error: #9a1c33;
+  --error-bg: rgba(154, 28, 51, 0.1);
+
+  --status-neutral: var(--text-muted);
+  --status-neutral-bg: rgba(90, 70, 45, 0.06);
+
+  --shadow-sm: 0 1px 3px rgba(90, 70, 45, 0.08);
+  --shadow-md: 0 4px 24px rgba(90, 70, 45, 0.1);
+  --shadow-lg: 0 8px 40px rgba(90, 70, 45, 0.12);
+  --shadow-soft: 0 2px 12px rgba(90, 70, 45, 0.08);
 }
 
 /* ─── MINERVOT Luxury Shell ───
@@ -224,6 +268,127 @@ html[data-theme="dark"] {
   --shadow-glow: 0 0 0 1px rgba(212, 175, 55, 0.25), 0 8px 40px rgba(212, 175, 55, 0.14);
 
   --shimmer-mid: #2a2f38;
+}
+
+/* Warm ivory luxury shell — ライト（赤ゴールド） */
+html[data-theme="light-warm"] .minervot-lux {
+  color-scheme: light;
+
+  --background: #f7f2eb;
+  --surface: #f7f2eb;
+  --surface-elevated: #fff7f0;
+  --surface-muted: #efe6d8;
+  --card: #fff7f0;
+  --card-glass: rgba(255, 247, 240, 0.92);
+
+  --text-primary: #2a2a2a;
+  --text-secondary: #5c4f42;
+  --text-muted: #8a7b6a;
+
+  --foreground: var(--text-primary);
+  --foreground-muted: var(--text-secondary);
+  --foreground-subtle: var(--text-muted);
+  --background-elevated: var(--surface-elevated);
+  --background-subtle: var(--surface-muted);
+  --background-muted: var(--surface-muted);
+
+  --accent: #b8860b;
+  --accent-hover: #c89a2b;
+  --accent-muted: rgba(184, 134, 11, 0.14);
+  --accent-glow: rgba(184, 134, 11, 0.28);
+  --accent-foreground: #fffaf3;
+  --secondary-hover: #efe6d8;
+
+  --accent-red: #9a1c33;
+  --accent-red-strong: #7b1124;
+
+  --border: rgba(90, 70, 45, 0.14);
+  --border-strong: rgba(90, 70, 45, 0.22);
+  --border-focus: rgba(184, 134, 11, 0.55);
+  --border-subtle: var(--border);
+
+  --success: #b8860b;
+  --success-bg: rgba(184, 134, 11, 0.12);
+  --warning: #c89a2b;
+  --warning-bg: rgba(200, 154, 43, 0.14);
+  --error: #9a1c33;
+  --error-bg: rgba(154, 28, 51, 0.1);
+
+  --status-success: var(--success);
+  --status-success-bg: var(--success-bg);
+  --status-warning: var(--warning);
+  --status-warning-bg: var(--warning-bg);
+  --status-error: var(--error);
+  --status-error-bg: var(--error-bg);
+  --status-info: var(--accent);
+  --status-info-bg: var(--accent-muted);
+  --status-neutral: var(--text-muted);
+  --status-neutral-bg: rgba(90, 70, 45, 0.06);
+  --status-running: var(--accent);
+
+  --shadow-sm: 0 1px 3px rgba(90, 70, 45, 0.08);
+  --shadow-md: 0 6px 28px rgba(90, 70, 45, 0.1);
+  --shadow-lg: 0 14px 48px rgba(90, 70, 45, 0.12);
+  --shadow-soft: 0 2px 14px rgba(90, 70, 45, 0.08);
+  --shadow-glow: 0 0 0 1px rgba(184, 134, 11, 0.22), 0 8px 40px rgba(184, 134, 11, 0.12);
+
+  --shimmer-mid: #e8ddd0;
+}
+
+/* Standard light inside luxury shell — gold accent, not pure white */
+html[data-theme="light"] .minervot-lux {
+  color-scheme: light;
+
+  --background: #f5f5f7;
+  --surface: #f5f5f7;
+  --surface-elevated: #ffffff;
+  --surface-muted: #ececee;
+  --card: #ffffff;
+  --card-glass: rgba(255, 255, 255, 0.9);
+
+  --text-primary: #111111;
+  --text-secondary: #3a3a3c;
+  --text-muted: #515154;
+
+  --foreground: var(--text-primary);
+  --foreground-muted: var(--text-secondary);
+  --foreground-subtle: var(--text-muted);
+  --background-elevated: var(--surface-elevated);
+  --background-subtle: var(--surface-muted);
+  --background-muted: var(--surface-muted);
+
+  --accent: #b8860b;
+  --accent-hover: #c89a2b;
+  --accent-muted: rgba(184, 134, 11, 0.12);
+  --accent-glow: rgba(184, 134, 11, 0.2);
+  --accent-foreground: #fffaf3;
+  --secondary-hover: #e8e8ed;
+
+  --accent-red: #7b1124;
+  --accent-red-strong: #9a1c33;
+
+  --border: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.12);
+  --border-focus: rgba(184, 134, 11, 0.5);
+  --border-subtle: var(--border);
+
+  --success: #8b6914;
+  --success-bg: rgba(184, 134, 11, 0.1);
+  --warning: #a67c00;
+  --warning-bg: rgba(200, 154, 43, 0.12);
+  --error: #9a1c33;
+  --error-bg: rgba(154, 28, 51, 0.08);
+
+  --status-neutral: var(--text-muted);
+  --status-neutral-bg: rgba(0, 0, 0, 0.04);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.08);
+  --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.05);
+  --shadow-glow: 0 0 0 1px rgba(184, 134, 11, 0.18), 0 8px 40px rgba(184, 134, 11, 0.08);
+
+  --shimmer-mid: #ececee;
 }
 
 /* Gold-glow dropzone while dragging files onto the upload hero */

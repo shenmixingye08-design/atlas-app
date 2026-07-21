@@ -13,6 +13,11 @@ const OPTIONS: { value: ThemePreference; label: string; hint: string }[] = [
     hint: ui.theme.lightHint,
   },
   {
+    value: "light-warm",
+    label: ui.theme.lightWarm,
+    hint: ui.theme.lightWarmHint,
+  },
+  {
     value: "dark",
     label: ui.theme.dark,
     hint: ui.theme.darkHint,

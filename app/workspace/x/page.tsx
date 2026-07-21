@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 export default function WorkspaceXPage() {
   return (
-    <AtlasAppShell active="workspace" width="default">
+    <AtlasAppShell active="x-autopost" width="default">
       <Suspense fallback={<LoadingState />}>
         <div className="space-y-14">
           <XAutoPostPanel />

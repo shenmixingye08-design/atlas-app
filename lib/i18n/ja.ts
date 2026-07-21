@@ -17,6 +17,8 @@ export const ui = {
     dark: "ダーク",
     system: "システムに合わせる",
     lightHint: "明るい背景で表示します",
+    lightWarm: "ライト（赤ゴールド）",
+    lightWarmHint: "アイボリーと赤ゴールドの落ち着いた明るいテーマ",
     darkHint: "暗い背景で表示します",
     systemHint: "端末の設定に自動で合わせます",
     switchToLight: "ライトモードに切り替え",
@@ -53,7 +55,11 @@ export const ui = {
     company: "業務テンプレート",
     chat: "追加依頼",
     more: "その他",
+    integrationsPost: "連携・投稿",
+    xAutopost: "X自動投稿",
     menu: "メニュー",
+    closeSidebar: "メニューを閉じる",
+    openSidebar: "メニューを開く",
   },
 
   actions: {

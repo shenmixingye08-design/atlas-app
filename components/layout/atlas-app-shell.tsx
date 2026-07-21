@@ -1,8 +1,8 @@
 import { AtlasBackground } from "@/components/atlas-background";
 import { cn } from "@/lib/design-system/cn";
+import type { AtlasNavPage } from "@/lib/layout/nav-types";
 
-import { AtlasBottomNav } from "./atlas-bottom-nav";
-import { AtlasHeader, type AtlasNavPage } from "./atlas-header";
+import { AtlasSidebar } from "./atlas-sidebar";
 
 type AtlasAppShellProps = {
   active?: AtlasNavPage;
@@ -25,16 +25,17 @@ export function AtlasAppShell({
   return (
     <div className="minervot-lux relative min-h-screen bg-[var(--background)] text-foreground">
       <AtlasBackground />
-      <AtlasHeader active={active} />
-      <main
-        className={cn(
-          "app-shell-main mx-auto w-full px-4 pt-6 sm:px-6 sm:pt-10 md:px-10 md:pt-14 animate-page",
-          MAIN_WIDTH[width],
-        )}
-      >
-        {children}
-      </main>
-      <AtlasBottomNav />
+      <AtlasSidebar active={active} />
+      <div className="app-shell-content md:pl-[var(--sidebar-width)]">
+        <main
+          className={cn(
+            "app-shell-main mx-auto w-full px-4 pt-[calc(var(--mobile-top-bar-height)+1rem)] sm:px-6 md:px-10 md:pt-10 animate-page",
+            MAIN_WIDTH[width],
+          )}
+        >
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
@@ -52,3 +53,5 @@ export function AtlasPageShell({
     </div>
   );
 }
+
+export type { AtlasNavPage } from "@/lib/layout/nav-types";
