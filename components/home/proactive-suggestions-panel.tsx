@@ -86,14 +86,9 @@ export function ProactiveSuggestionsPanel({
   if (suggestions.length === 0 && !error) {
     if (embedded) {
       return (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">
-            {ui.proactiveSuggestions.title}
-          </h3>
-          <p className="mt-2 text-sm text-[var(--foreground-muted)]">
-            {ui.todayDashboard.empty.suggestions}
-          </p>
-        </div>
+        <p className="text-sm text-[var(--foreground-muted)] sm:text-base">
+          {ui.todayDashboard.empty.suggestions}
+        </p>
       );
     }
     return null;
@@ -166,9 +161,6 @@ export function ProactiveSuggestionsPanel({
   if (embedded) {
     return (
       <div>
-        <h3 className="mb-3 text-sm font-semibold text-foreground">
-          {ui.proactiveSuggestions.title}
-        </h3>
         {content}
       </div>
     );

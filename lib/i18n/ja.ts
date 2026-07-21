@@ -185,6 +185,35 @@ export const ui = {
     viewAutomations: "自動化を見る",
   },
 
+  secretaryHome: {
+    brandTagline: "仕事を終わらせるAI秘書",
+    todayWorkTitle: "今日の仕事",
+    todayWorkSubtitle: "AIが今日処理している仕事の全体像です。",
+    summaryRunning: "AI実行中",
+    summaryCompleted: "完了",
+    summaryWaiting: "待機中",
+    summaryError: "エラー",
+    deskIdleTitle: "デスクは整っています",
+    deskIdleHint:
+      "定期仕事を登録するか、下の欄から追加の指示を送ると、AI秘書が仕事を始めます。",
+    activityTitle: "AIの現在の行動",
+    activityIdle: "現在、新しい作業はありません。次の仕事を待っています。",
+    activityMore: (count: number) =>
+      count > 0 ? `他 ${count} 件の作業も進行中です` : "",
+    outcomesTitle: "今日の成果",
+    outcomesEmpty: "今日はまだ完了した仕事がありません。AIが仕事を終えると、ここに表示されます。",
+    outcomeCompletedTasks: "完了タスク",
+    outcomeHoursSaved: "削減時間",
+    outcomePosts: "投稿数",
+    outcomeEmails: "送信メール",
+    outcomeMaterials: "生成資料",
+    unitTasks: "件",
+    unitHours: "時間",
+    unitItems: "件",
+    nextUpTitle: "次におすすめ",
+    nextUpSubtitle: "次はこれを実行します。ワンタップで仕事を進められます。",
+  },
+
   proactiveSuggestions: {
     title: "MINERVOTからの提案",
     subtitle: "習慣と利用履歴から、AI秘書が次に進める仕事を提案します。",
@@ -546,8 +575,8 @@ export const ui = {
       completed: "今日完了した仕事はまだありません",
       suggestions: "現在、新しい提案はありません",
     },
-    chatTitle: "相談・追加の依頼",
-    chatHint: "例のように書くだけで、MINERVOTに仕事を任せられます。",
+    chatTitle: "追加の指示",
+    chatHint: "普段の仕事以外に、追加で任せたいことがあればこちらから。",
     chatPlaceholder: "例）営業資料を作る / 毎日18時にXへ投稿 / ブログを書いてWordPressへ投稿",
     chatExamples: [
       "営業資料を作る",
