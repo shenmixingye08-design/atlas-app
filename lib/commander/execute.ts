@@ -249,6 +249,8 @@ async function executeRememberHabitRun(input: {
     message: summary,
     actionUrl: `/projects/${encodeURIComponent(habitProjectId)}`,
     relatedTaskId: habitProjectId,
+    deliverableId: habitProjectId,
+    requestId: input.runId,
   });
 
   return toRunResult({
@@ -533,6 +535,9 @@ async function executeStoredRun(input: {
         : `「${plan.classification.summary}」が完了しました。`,
       actionUrl: lastResult ? resultDeepLink : "/workspace",
       relatedTaskId: lastResult ? resultProjectId : null,
+      deliverableId: lastResult ? resultProjectId : null,
+      workflowRunId: workflowRun.id,
+      requestId: input.runId,
     });
     try {
       runLearningAnalysis(input.userId, { periodDays: 30 });
@@ -555,6 +560,9 @@ async function executeStoredRun(input: {
         : "一部の成果は保存できます。内容を確認してください。",
       actionUrl: lastResult ? resultDeepLink : "/workspace",
       relatedTaskId: lastResult ? resultProjectId : null,
+      deliverableId: lastResult ? resultProjectId : null,
+      workflowRunId: workflowRun.id,
+      requestId: input.runId,
     });
   } else if (finalStatus === "cancelled") {
     notifyWorkFailed(input.userId, {
@@ -598,6 +606,9 @@ async function executeStoredRun(input: {
       message: failureReason,
       actionUrl: resultDeepLink,
       relatedTaskId: resultProjectId,
+      deliverableId: resultProjectId,
+      workflowRunId: workflowRun.id,
+      requestId: input.runId,
     });
   }
 

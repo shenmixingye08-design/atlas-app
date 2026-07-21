@@ -197,6 +197,7 @@ export const ui = {
     bellLabel: (count: number) =>
       count > 0 ? `お知らせ 未読${count}件` : "お知らせ",
     viewAll: "すべてのお知らせを見る",
+    close: "お知らせを閉じる",
     empty: "新しいお知らせはありません",
     emptyTitle: "新しいお知らせはありません",
     emptyDescription:

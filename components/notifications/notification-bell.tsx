@@ -1,14 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Show } from "@clerk/nextjs";
 
 import { fetchNotifications } from "@/lib/notifications/client";
+import { subscribeNotificationsChanged } from "@/lib/notifications/refresh-events";
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
 
 import { NotificationList } from "./notification-list";
+import { NotificationPanelShell } from "./notification-panel-shell";
 
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
@@ -27,7 +28,16 @@ export function NotificationBell() {
   useEffect(() => {
     void refreshCount();
     const interval = window.setInterval(() => void refreshCount(), 60_000);
-    return () => window.clearInterval(interval);
+    // Real-time: update the badge immediately on in-app changes (mark read /
+    // new notice) and when the tab regains focus — no full page reload.
+    const unsubscribe = subscribeNotificationsChanged(() => void refreshCount());
+    const onFocus = () => void refreshCount();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(interval);
+      unsubscribe();
+      window.removeEventListener("focus", onFocus);
+    };
   }, [refreshCount]);
 
   useEffect(() => {
@@ -37,8 +47,15 @@ export function NotificationBell() {
         setOpen(false);
       }
     };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
   }, [open]);
 
   return (
@@ -64,33 +81,14 @@ export function NotificationBell() {
         </button>
 
         {open && (
-          <div className="absolute right-0 top-full z-50 mt-2 w-[min(100vw-2rem,24rem)] rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] py-3 shadow-[var(--shadow-lg)]">
-            <div className="border-b border-[var(--border-subtle)] px-4 pb-3">
-              <p className="text-sm font-semibold text-foreground">
-                {ui.notifications.title}
-              </p>
-              <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                {ui.notifications.panelHint}
-              </p>
-            </div>
-
+          <NotificationPanelShell onClose={() => setOpen(false)}>
             <NotificationList
               compact
               limit={5}
               onUpdate={() => void refreshCount()}
               onNavigate={() => setOpen(false)}
             />
-
-            <div className="border-t border-[var(--border-subtle)] px-4 pt-3">
-              <Link
-                href="/notifications"
-                className="flex min-h-[44px] items-center justify-center rounded-full bg-[var(--surface-muted)] text-sm font-medium text-foreground hover:bg-[var(--secondary-hover)] focus-ring"
-                onClick={() => setOpen(false)}
-              >
-                {ui.notifications.viewAll}
-              </Link>
-            </div>
-          </div>
+          </NotificationPanelShell>
         )}
       </div>
     </Show>

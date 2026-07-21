@@ -83,6 +83,54 @@ describe("notifications", () => {
     expect(isSafeActionUrl(record?.actionUrl)).toBe(true);
   });
 
+  it("gives an X post a task-type-specific title (not the generic one)", () => {
+    const record = notifyXPostSuccess(TEST_USER, "hello", {
+      historyId: "hist_8",
+    });
+
+    expect(record?.title).toBe("X自動投稿が完了しました");
+    expect(record?.title).not.toBe("お仕事が完了しました");
+  });
+
+  it("keeps the caller's task-type title on completed work", () => {
+    const record = notifyWorkCompleted(TEST_USER, {
+      title: "レポートを作成しました",
+      message: "ご確認をお願いいたします。",
+      actionUrl: "/projects/commander-run_x",
+      relatedTaskId: "commander-run_x",
+    });
+
+    expect(record?.title).toBe("レポートを作成しました");
+  });
+
+  it("persists deep-link targeting IDs on completed work", () => {
+    const record = notifyWorkCompleted(TEST_USER, {
+      title: "レポートを作成しました",
+      message: "完了しました。",
+      actionUrl: "/projects/commander-run_ids",
+      relatedTaskId: "commander-run_ids",
+      deliverableId: "commander-run_ids",
+      workflowRunId: "wfr_42",
+      requestId: "run_42",
+    });
+
+    expect(record?.deliverableId).toBe("commander-run_ids");
+    expect(record?.workflowRunId).toBe("wfr_42");
+    expect(record?.requestId).toBe("run_42");
+  });
+
+  it("derives the deep link from deliverableId when actionUrl is omitted", () => {
+    const record = notifyWorkCompleted(TEST_USER, {
+      title: "資料を作成しました",
+      message: "完了しました。",
+      deliverableId: "commander-run_auto",
+    });
+
+    expect(record?.actionUrl).toBe("/projects/commander-run_auto");
+    expect(isSafeActionUrl(record?.actionUrl)).toBe(true);
+    expect(record?.deliverableId).toBe("commander-run_auto");
+  });
+
   it("deep-links completed work to the durable /projects result page", () => {
     const actionUrl = "/projects/commander-run_9";
     const record = notifyWorkCompleted(TEST_USER, {

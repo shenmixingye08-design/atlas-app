@@ -7,6 +7,11 @@ function automationActionUrl(automationId: string): string {
   return `/automations?id=${encodeURIComponent(automationId)}`;
 }
 
+/** Deep link that opens the exact 成果物 (durable project detail) by id. */
+function deliverableActionUrl(deliverableId: string): string {
+  return `/projects/${encodeURIComponent(deliverableId)}`;
+}
+
 export function notifyAutomationCompleted(
   userId: string | null | undefined,
   input: { automationId: string; name: string; templateId?: string },
@@ -21,6 +26,7 @@ export function notifyAutomationCompleted(
     relatedTaskId: input.automationId,
     relatedService: input.templateId === "sns_post" ? "x" : "atlas",
     actionUrl: automationActionUrl(input.automationId),
+    automationId: input.automationId,
     lineEvent: "automation_completed",
   });
 }
@@ -39,6 +45,7 @@ export function notifyAutomationAwaitingReview(
     relatedTaskId: input.automationId,
     relatedService: "atlas",
     actionUrl: automationActionUrl(input.automationId),
+    automationId: input.automationId,
     lineEvent: "confirmation_request",
   });
 }
@@ -57,6 +64,7 @@ export function notifyAutomationFailed(
     relatedTaskId: input.automationId,
     relatedService: "atlas",
     actionUrl: automationActionUrl(input.automationId),
+    automationId: input.automationId,
     lineEvent: "error",
   });
 }
@@ -71,7 +79,7 @@ export function notifyXPostSuccess(
     audience: "user",
     userId,
     type: "completed",
-    title: "お仕事が完了しました",
+    title: "X自動投稿が完了しました",
     message: text
       ? `お待たせいたしました。投稿の準備が完了しました。`
       : "お待たせいたしました。投稿が完了しました。",
@@ -80,6 +88,7 @@ export function notifyXPostSuccess(
     actionUrl: historyId
       ? `/workspace/x?historyId=${encodeURIComponent(historyId)}`
       : "/workspace/x",
+    requestId: historyId,
   });
 }
 
@@ -130,7 +139,7 @@ export function notifyGmailSummaryComplete(userId: string) {
     audience: "user",
     userId,
     type: "completed",
-    title: "お仕事が完了しました",
+    title: "メールの要約が完了しました",
     message: "お待たせいたしました。メールの要約と返信案の準備が完了しました。",
     relatedService: "google",
     actionUrl: "/workspace/mail",
@@ -265,19 +274,36 @@ export function notifyWorkCompleted(
     actionUrl?: string | null;
     /** Related resource id used for deep-link targeting. */
     relatedTaskId?: string | null;
+    /** Durable 成果物 id — the exact project the deep link opens. */
+    deliverableId?: string | null;
+    /** Workflow run id that produced this result. */
+    workflowRunId?: string | null;
+    /** Originating request/run id. */
+    requestId?: string | null;
   },
 ) {
   if (!userId) return null;
+  const deliverableId = input.deliverableId ?? input.relatedTaskId ?? null;
+  // Always land on THAT deliverable, never a list page. Prefer an explicit deep
+  // link; otherwise reconstruct one from the deliverable id.
+  const actionUrl =
+    input.actionUrl ??
+    (deliverableId ? deliverableActionUrl(deliverableId) : "/workspace");
   return createNotification({
     audience: "user",
     userId,
     type: "completed",
-    title: "お仕事が完了しました",
+    // Keep the caller's task-type title (e.g.「レポートを作成しました」). The display
+    // layer upgrades generic / internal-sounding titles automatically.
+    title: input.title?.trim() || "お仕事が完了しました",
     message: input.message
       ? `お待たせいたしました。${input.message}`
       : "お待たせいたしました。ご依頼の内容が完了しました。",
-    relatedTaskId: input.relatedTaskId ?? null,
-    actionUrl: input.actionUrl ?? "/workspace",
+    relatedTaskId: input.relatedTaskId ?? deliverableId,
+    actionUrl,
+    deliverableId,
+    workflowRunId: input.workflowRunId ?? null,
+    requestId: input.requestId ?? null,
     lineEvent: "work_completed",
   });
 }
@@ -289,17 +315,35 @@ export function notifyWorkFailed(
     message: string;
     actionUrl?: string | null;
     relatedTaskId?: string | null;
+    deliverableId?: string | null;
+    workflowRunId?: string | null;
+    requestId?: string | null;
   },
 ) {
   if (!userId) return null;
+  const deliverableId = input.deliverableId ?? input.relatedTaskId ?? null;
+  // A failed run still deep-links to its own result page so「確認する」shows
+  // 生成に失敗しました + reason instead of a dead list.
+  const actionUrl =
+    input.actionUrl ??
+    (deliverableId ? deliverableActionUrl(deliverableId) : "/workspace");
   return createNotification({
     audience: "user",
     userId,
+    // Store the caller title + reason so the display layer can derive a
+    // task-type failed title (e.g.「契約書の処理を完了できませんでした」). The visible
+    // message stays sanitized/generic; the full reason shows on the deep-link
+    // result page (生成に失敗しました + reason).
     type: "error",
-    title: "処理を完了できませんでした",
-    message: "処理を完了できませんでした。内容をご確認ください。",
-    relatedTaskId: input.relatedTaskId ?? null,
-    actionUrl: input.actionUrl ?? "/workspace",
+    title: input.title?.trim() || "処理を完了できませんでした",
+    message: input.message?.trim()
+      ? `処理を完了できませんでした。${input.message.trim()}`
+      : "処理を完了できませんでした。内容をご確認ください。",
+    relatedTaskId: input.relatedTaskId ?? deliverableId,
+    actionUrl,
+    deliverableId,
+    workflowRunId: input.workflowRunId ?? null,
+    requestId: input.requestId ?? null,
     lineEvent: "error",
   });
 }

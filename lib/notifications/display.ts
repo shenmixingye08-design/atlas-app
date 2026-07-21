@@ -58,6 +58,31 @@ export function isSafeActionUrl(url: string | null | undefined): url is string {
   );
 }
 
+/**
+ * The URL「結果を見る」/「確認する」should open. Prefers an explicit, safe
+ * `actionUrl`; otherwise reconstructs a deep link from the stored targeting IDs
+ * so an older / partially-populated row still reaches THAT result instead of a
+ * list page. Returns null only when nothing can be reached.
+ */
+export function resolveNoticeActionUrl(
+  notification: NotificationRecord,
+): string | null {
+  if (isSafeActionUrl(notification.actionUrl)) return notification.actionUrl;
+
+  const deliverableId = notification.deliverableId ?? notification.relatedTaskId;
+  if (deliverableId) {
+    const url = `/projects/${encodeURIComponent(deliverableId)}`;
+    if (isSafeActionUrl(url)) return url;
+  }
+
+  if (notification.automationId) {
+    const url = `/automations?id=${encodeURIComponent(notification.automationId)}`;
+    if (isSafeActionUrl(url)) return url;
+  }
+
+  return null;
+}
+
 export function resolveNoticeCategory(
   notification: NotificationRecord,
 ): NoticeCategory {
@@ -120,11 +145,170 @@ export function resolveNoticePriority(
   return "normal";
 }
 
+/**
+ * Stored titles too generic to show as-is. When the emitter (or a legacy row)
+ * only stored one of these, we upgrade it to a task-type-specific title so the
+ * user understands the notification without opening it.
+ */
+const GENERIC_TITLES = new Set<string>([
+  "お仕事が完了しました",
+  "仕事が完了しました",
+  "お知らせ",
+  "完了",
+  "完了報告",
+  "自動化が終了しました",
+  "資料が完成しました",
+  "処理を完了できませんでした",
+  "ご確認が必要な仕事がございます",
+  "仕事の実行に失敗しました",
+  // Internal-sounding titles that must never surface to the user (ATLAS rule 10:
+  // 内部技術・複数エージェント構成を過度に見せない).
+  "AIオーケストレーター完了報告",
+  "AIオーケストレーター一部完了",
+  "AIオーケストレーター失敗報告",
+  "AIオーケストレーターを中止しました",
+]);
+
+/**
+ * Keyword → task-type title rules. Ordered by priority (first match wins) so
+ * more specific kinds (契約書, ブログ, 画像解析) win over generic ones (資料).
+ */
+const DELIVERABLE_KIND_RULES: {
+  pattern: RegExp;
+  completed: string;
+  failed: string;
+}[] = [
+  {
+    pattern: /契約書|規約|利用規約/,
+    completed: "契約書の要約が完了しました",
+    failed: "契約書の処理を完了できませんでした",
+  },
+  {
+    pattern: /画像.*(解析|認識|分析)|写真.*(解析|分析)/,
+    completed: "画像解析が完了しました",
+    failed: "画像解析を完了できませんでした",
+  },
+  {
+    pattern: /家計簿|経費|レシート|支出|入出金/,
+    completed: "家計簿へ登録しました",
+    failed: "家計簿への登録を完了できませんでした",
+  },
+  {
+    pattern: /ブログ|記事/,
+    completed: "ブログ記事を作成しました",
+    failed: "ブログ記事の作成を完了できませんでした",
+  },
+  {
+    pattern: /議事録/,
+    completed: "議事録を作成しました",
+    failed: "議事録の作成を完了できませんでした",
+  },
+  {
+    pattern: /翻訳/,
+    completed: "翻訳が完了しました",
+    failed: "翻訳を完了できませんでした",
+  },
+  {
+    pattern: /要約|まとめ/,
+    completed: "要約が完了しました",
+    failed: "要約を完了できませんでした",
+  },
+  {
+    pattern: /レポート|報告書|分析/,
+    completed: "レポートを作成しました",
+    failed: "レポートの作成を完了できませんでした",
+  },
+  {
+    pattern: /プレゼン|スライド|提案書|企画書/,
+    completed: "資料を作成しました",
+    failed: "資料の作成を完了できませんでした",
+  },
+  {
+    pattern: /画像(生成|作成)|イラスト/,
+    completed: "画像を生成しました",
+    failed: "画像の生成を完了できませんでした",
+  },
+  {
+    pattern: /動画/,
+    completed: "動画を作成しました",
+    failed: "動画の作成を完了できませんでした",
+  },
+  {
+    pattern: /メール|返信|gmail/i,
+    completed: "メールの準備が完了しました",
+    failed: "メールの処理を完了できませんでした",
+  },
+  {
+    pattern: /資料|ドキュメント|文書|保存/,
+    completed: "資料の作成が完了しました",
+    failed: "資料の処理を完了できませんでした",
+  },
+];
+
+function isGenericTitle(title: string): boolean {
+  if (!title) return true;
+  return GENERIC_TITLES.has(title);
+}
+
+/**
+ * Build a task-type-specific title from job intent / deliverable kind / service
+ * so「結果を見る」前に内容が分かる. Returns null when nothing more specific than
+ * the category default fits.
+ */
+export function deriveTaskTypeTitle(
+  notification: NotificationRecord,
+  category: NoticeCategory = resolveNoticeCategory(notification),
+): string | null {
+  const text = `${notification.title} ${notification.message}`;
+  const service = (notification.relatedService ?? "").toLowerCase();
+  const jobName = extractJobName(notification);
+  const rule = DELIVERABLE_KIND_RULES.find((item) => item.pattern.test(text));
+  const looksFailed = /失敗|できませんでした|エラー|停止/.test(text);
+
+  if (category === "completed") {
+    // Guard: a「完了」category row whose body says it failed (e.g. partial SNS
+    // run) must not claim success.
+    if (looksFailed) return null;
+    if (service === "x" || /X(自動)?投稿|ツイート|ポスト|SNS投稿/.test(text)) {
+      return "X自動投稿が完了しました";
+    }
+    if (rule) return rule.completed;
+    if (jobName) return `「${jobName}」が完了しました`;
+    return null;
+  }
+
+  if (category === "error") {
+    if (service === "x" || /X(自動)?投稿|ツイート|ポスト/.test(text)) {
+      return "X投稿を完了できませんでした";
+    }
+    if (rule) return rule.failed;
+    if (jobName) return `「${jobName}」を完了できませんでした`;
+    return null;
+  }
+
+  if (category === "needs_review" && jobName) {
+    return `「${jobName}」のご確認をお願いいたします`;
+  }
+
+  return null;
+}
+
 /** Soften stored copy into secretary tone for display (does not mutate storage). */
 export function formatNoticeTitle(
   notification: NotificationRecord,
   category: NoticeCategory = resolveNoticeCategory(notification),
 ): string {
+  // 1) Prefer a derived task-type title — it is guaranteed clean (no internal
+  //    terms) and specific (「契約書の要約が完了しました」等) so the user understands
+  //    the notification without opening it.
+  const derived = deriveTaskTypeTitle(notification, category);
+  if (derived) return derived;
+
+  // 2) Otherwise keep a specific stored title (e.g. 「メールを受信しました」).
+  const stored = sanitizeUserFacingText(notification.title);
+  if (stored && !isGenericTitle(stored)) return stored;
+
+  // 3) Secretary-tone category defaults as the last resort (never blank).
   switch (category) {
     case "needs_review":
       return "ご確認が必要な仕事がございます";
@@ -141,7 +325,7 @@ export function formatNoticeTitle(
     case "ops":
       return "運営からのお知らせ";
     default:
-      return sanitizeUserFacingText(notification.title) || "お知らせ";
+      return stored || "お知らせ";
   }
 }
 

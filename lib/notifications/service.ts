@@ -107,6 +107,10 @@ export function createNotification(
     createdAt: new Date().toISOString(),
     actionUrl: input.actionUrl ?? null,
     lineEvent,
+    workflowRunId: input.workflowRunId ?? null,
+    deliverableId: input.deliverableId ?? null,
+    requestId: input.requestId ?? null,
+    automationId: input.automationId ?? null,
   });
   if (input.userId) schedulePersistNotifications(input.userId);
   return record;

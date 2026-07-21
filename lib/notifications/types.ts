@@ -36,6 +36,15 @@ export type NotificationRecord = {
   createdAt: string;
   actionUrl: string | null;
   lineEvent?: LineNotifyEvent | null;
+  /**
+   * Deep-link targeting IDs. Stored so「結果を見る」can always reach the exact
+   * result even if `actionUrl` is stale/missing (e.g. re-hydrated older rows) —
+   * the client can reconstruct `/projects/<deliverableId>` etc. from these.
+   */
+  workflowRunId?: string | null;
+  deliverableId?: string | null;
+  requestId?: string | null;
+  automationId?: string | null;
 };
 
 export type NotificationPreferences = {
@@ -97,4 +106,8 @@ export type CreateNotificationInput = {
   relatedService?: string | null;
   actionUrl?: string | null;
   lineEvent?: LineNotifyEvent | null;
+  workflowRunId?: string | null;
+  deliverableId?: string | null;
+  requestId?: string | null;
+  automationId?: string | null;
 };

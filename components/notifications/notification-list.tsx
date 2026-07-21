@@ -9,6 +9,10 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "@/lib/notifications/client";
+import {
+  notifyNotificationsChanged,
+  subscribeNotificationsChanged,
+} from "@/lib/notifications/refresh-events";
 import type { NotificationRecord } from "@/lib/notifications/types";
 import {
   NOTICE_CATEGORY_LABELS,
@@ -18,8 +22,8 @@ import {
   formatNoticeMessage,
   formatNoticeTitle,
   getNoticeActionLabel,
-  isSafeActionUrl,
   matchesNoticeFilter,
+  resolveNoticeActionUrl,
   resolveNoticeCategory,
   resolveNoticePriority,
   type NoticeFilter,
@@ -43,6 +47,12 @@ type NotificationListProps = {
   limit?: number;
   onUpdate?: () => void;
   onNavigate?: () => void;
+  /**
+   * Fixture notifications. When provided, the list renders these directly and
+   * skips fetching / mutations — used by the DEV panel preview to prove layout
+   * (mobile fit) with the real card component when auth blocks production E2E.
+   */
+  items?: NotificationRecord[];
 };
 
 function NoticeCard({
@@ -63,7 +73,7 @@ function NoticeCard({
   const title = formatNoticeTitle(item, category);
   const message = formatNoticeMessage(item, category);
   const jobName = extractJobName(item);
-  const actionUrl = isSafeActionUrl(item.actionUrl) ? item.actionUrl : null;
+  const actionUrl = resolveNoticeActionUrl(item);
 
   return (
     <li>
@@ -158,12 +168,17 @@ export function NotificationList({
   limit,
   onUpdate,
   onNavigate,
+  items,
 }: NotificationListProps) {
-  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const isFixture = items != null;
+  const [notifications, setNotifications] = useState<NotificationRecord[]>(
+    items ?? [],
+  );
+  const [loading, setLoading] = useState(!isFixture);
   const [filter, setFilter] = useState<NoticeFilter>("all");
 
   const reload = useCallback(async () => {
+    if (isFixture) return;
     setLoading(true);
     try {
       const data = await fetchNotifications();
@@ -172,11 +187,25 @@ export function NotificationList({
     } finally {
       setLoading(false);
     }
-  }, [onUpdate]);
+  }, [onUpdate, isFixture]);
 
   useEffect(() => {
+    if (isFixture) return;
     void reload();
-  }, [reload]);
+  }, [reload, isFixture]);
+
+  // Real-time: refetch when any tab / component signals a change (mark read,
+  // new notice) and when the window regains focus — no full page reload.
+  useEffect(() => {
+    if (isFixture) return;
+    const unsubscribe = subscribeNotificationsChanged(() => void reload());
+    const onFocus = () => void reload();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [reload, isFixture]);
 
   const visible = useMemo(() => {
     const filtered = notifications.filter((item) =>
@@ -188,16 +217,19 @@ export function NotificationList({
 
   const handleMarkRead = async (id: string) => {
     await markNotificationRead(id);
+    notifyNotificationsChanged();
     await reload();
   };
 
   const handleMarkAll = async () => {
     await markAllNotificationsRead();
+    notifyNotificationsChanged();
     await reload();
   };
 
   const handleDelete = async (id: string) => {
     await deleteNotification(id);
+    notifyNotificationsChanged();
     await reload();
   };
 
@@ -265,12 +297,7 @@ export function NotificationList({
           {ui.notifications.emptyFiltered}
         </p>
       ) : (
-        <ul
-          className={cn(
-            "space-y-3",
-            compact ? "max-h-96 overflow-y-auto px-3" : "",
-          )}
-        >
+        <ul className={cn("space-y-3", compact ? "px-3" : "")}>
           {visible.map((item) => (
             <NoticeCard
               key={item.notificationId}

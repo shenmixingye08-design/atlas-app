@@ -30,6 +30,29 @@ import { recordPopularityFromOrchestration } from "@/lib/owner/popularity-rankin
 import { recordAnonymousUserActivity } from "@/lib/owner/anonymous-user-analysis/telemetry";
 import { recordEmployeeTeamTelemetry } from "@/lib/team-collaboration/telemetry";
 
+/**
+ * Task-type-specific completed titles so the notification is understandable
+ * without opening it (ATLAS: reduce clicks / show intent up front). No internal
+ * terms — user-facing wording only.
+ */
+const COMPLETED_TITLE_BY_TYPE: Record<string, string> = {
+  blog: "ブログ記事を作成しました",
+  report: "レポートを作成しました",
+  proposal: "提案書を作成しました",
+  presentation: "資料を作成しました",
+  research: "調査レポートを作成しました",
+  email: "メールの準備が完了しました",
+  social_post: "SNS投稿を作成しました",
+  short_document: "資料を作成しました",
+  document: "資料を作成しました",
+};
+
+function completedTitleForDeliverable(
+  type: string | null | undefined,
+): string {
+  return (type && COMPLETED_TITLE_BY_TYPE[type]) || "ご依頼の仕事が完了しました";
+}
+
 export type RunOrchestrationForUserInput = {
   assignment: string;
   userId: string | null;
@@ -138,6 +161,8 @@ export async function runOrchestrationForUser(
         ...(deepLink && {
           actionUrl: deepLink,
           relatedTaskId: deepLinkProjectId,
+          deliverableId: deepLinkProjectId,
+          requestId: deepLinkProjectId,
         }),
       });
     }
@@ -158,12 +183,15 @@ export async function runOrchestrationForUser(
     });
   }
   if (notify) {
+    const completedTitle = completedTitleForDeliverable(result.deliverable?.type);
     notifyWorkCompleted(input.userId, {
-      title: "仕事が完了しました",
-      message: "MINERVOTが依頼した仕事を完了しました。",
+      title: completedTitle,
+      message: `${completedTitle}。ご確認をお願いいたします。`,
       ...(deepLink && {
         actionUrl: deepLink,
         relatedTaskId: deepLinkProjectId,
+        deliverableId: deepLinkProjectId,
+        requestId: deepLinkProjectId,
       }),
     });
   }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { fetchNotifications } from "@/lib/notifications/client";
+import { subscribeNotificationsChanged } from "@/lib/notifications/refresh-events";
 import { ui } from "@/lib/i18n";
 
 export function HomeNotificationsBadge() {
@@ -19,6 +20,17 @@ export function HomeNotificationsBadge() {
 
   useEffect(() => {
     void reload();
+    // Real-time: refresh the count on in-app changes, focus, and a slow poll —
+    // no full page reload.
+    const interval = window.setInterval(() => void reload(), 60_000);
+    const unsubscribe = subscribeNotificationsChanged(() => void reload());
+    const onFocus = () => void reload();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(interval);
+      unsubscribe();
+      window.removeEventListener("focus", onFocus);
+    };
   }, [reload]);
 
   if (unreadCount <= 0) return null;
