@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { NextActionsBar } from "@/components/results/next-actions-bar";
 import { Button } from "@/components/ui/button";
@@ -49,16 +50,17 @@ function resolveXPostText(project: Project): string {
 }
 
 /**
- * User-facing result screen — 成果を見せる完了UI.
+ * User-facing result screen — 仕事を最後まで終わらせた完了UI.
  *
- * Shows: 今回やった仕事 / 成果物 / 成果物リンク / 使用AI / 実行時間 / 次回おすすめ
- * Plus the finished content and next actions. Never internal pipeline jargon.
+ * Shows: 今回完了した仕事 / 処理時間 / AIが行った内容 / 成果物一覧 /
+ * ワンタップ再実行 / テンプレート保存 / 次回以降自動化
  */
 export function SecretaryResultView({
   project,
   backHref = "/history",
   backLabel = ui.secretaryResult.back,
 }: SecretaryResultViewProps) {
+  const router = useRouter();
   const [postedOverride, setPostedOverride] = useState(false);
 
   const targetType = useMemo(() => deriveTargetType(project), [project]);
@@ -83,7 +85,6 @@ export function SecretaryResultView({
     return xPostText ? [xPostText] : [];
   })();
 
-  // Only documents/emails offer downloadable files; X posts do not.
   const { deliverables, deliverablesError, isGeneratingDeliverables } =
     useDeliverableFiles(project.result ?? null, {
       skipFileGeneration: targetType === "x_post",
@@ -92,6 +93,13 @@ export function SecretaryResultView({
   const { regenerate, isRegenerating, error: regenerateError } = useRegenerate(
     project.workRequest ?? "",
   );
+
+  const templateHref = `/workspace?assignment=${encodeURIComponent(
+    (project.workRequest ?? project.title ?? "").trim(),
+  )}`;
+  const automateHref = `/automations?from=${encodeURIComponent(project.id)}&assignment=${encodeURIComponent(
+    (project.workRequest ?? "").trim(),
+  )}`;
 
   return (
     <div className="space-y-10">
@@ -125,36 +133,13 @@ export function SecretaryResultView({
           </p>
         </Card>
 
-        <Card padding="lg" className="space-y-2 shadow-[var(--shadow-soft)] sm:col-span-2">
+        <Card padding="lg" className="space-y-2 shadow-[var(--shadow-soft)]">
           <p className="text-xs font-semibold tracking-wide text-accent">
-            {ui.secretaryResult.deliverableHeading}
+            {ui.secretaryResult.durationHeading}
           </p>
-          <p className="text-base font-medium text-foreground">
-            {outcome.deliverableTitle}
+          <p className="text-2xl font-semibold tracking-tight text-foreground">
+            {outcome.durationLabel}
           </p>
-          {outcome.deliverablePreview ? (
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground-muted)]">
-              {outcome.deliverablePreview}
-            </p>
-          ) : null}
-        </Card>
-
-        <Card padding="lg" className="space-y-3 shadow-[var(--shadow-soft)]">
-          <p className="text-xs font-semibold tracking-wide text-accent">
-            {ui.secretaryResult.deliverableLinksHeading}
-          </p>
-          <ul className="space-y-2">
-            {outcome.deliverableLinks.map((link) => (
-              <li key={link.href}>
-                <Link
-                  href={link.href}
-                  className="text-sm font-medium text-foreground underline-offset-4 hover:underline focus-ring rounded"
-                >
-                  {link.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
         </Card>
 
         <Card padding="lg" className="space-y-3 shadow-[var(--shadow-soft)]">
@@ -173,31 +158,87 @@ export function SecretaryResultView({
           </ul>
         </Card>
 
-        <Card padding="lg" className="space-y-2 shadow-[var(--shadow-soft)]">
+        <Card padding="lg" className="space-y-3 shadow-[var(--shadow-soft)] sm:col-span-2">
           <p className="text-xs font-semibold tracking-wide text-accent">
-            {ui.secretaryResult.durationHeading}
+            {ui.secretaryResult.aiActionsHeading}
           </p>
-          <p className="text-2xl font-semibold tracking-tight text-foreground">
-            {outcome.durationLabel}
-          </p>
-        </Card>
-
-        <Card padding="lg" className="space-y-3 shadow-[var(--shadow-soft)]">
-          <p className="text-xs font-semibold tracking-wide text-accent">
-            {ui.secretaryResult.nextRecommendHeading}
-          </p>
-          <ul className="space-y-2">
-            {outcome.nextRecommendations.map((tip) => (
+          <ol className="space-y-2">
+            {outcome.aiActions.map((action) => (
               <li
-                key={tip}
+                key={action}
                 className="text-sm leading-relaxed text-[var(--foreground-muted)]"
               >
-                ・{tip}
+                ・{action}
+              </li>
+            ))}
+          </ol>
+        </Card>
+
+        <Card padding="lg" className="space-y-3 shadow-[var(--shadow-soft)] sm:col-span-2">
+          <p className="text-xs font-semibold tracking-wide text-accent">
+            {ui.secretaryResult.deliverablesListHeading}
+          </p>
+          <ul className="space-y-4">
+            {outcome.deliverables.map((item) => (
+              <li key={`${item.title}-${item.preview.slice(0, 24)}`} className="space-y-1">
+                <p className="text-base font-medium text-foreground">{item.title}</p>
+                {item.preview ? (
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground-muted)]">
+                    {item.preview}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <ul className="flex flex-wrap gap-3 pt-1">
+            {outcome.deliverableLinks.map((link) => (
+              <li key={link.href}>
+                <Link
+                  href={link.href}
+                  className="text-sm font-medium text-foreground underline-offset-4 hover:underline focus-ring rounded"
+                >
+                  {link.label}
+                </Link>
               </li>
             ))}
           </ul>
         </Card>
       </section>
+
+      <section
+        aria-label="次のアクション"
+        className="flex flex-col gap-3 sm:flex-row sm:flex-wrap"
+      >
+        <Button
+          variant="primary"
+          size="lg"
+          className="w-full sm:w-auto"
+          disabled={isRegenerating}
+          onClick={() => void regenerate()}
+        >
+          {isRegenerating
+            ? ui.secretaryResult.regenerating
+            : ui.secretaryResult.rerunOneTap}
+        </Button>
+        <Button
+          variant="secondary"
+          size="lg"
+          className="w-full sm:w-auto"
+          onClick={() => router.push(templateHref)}
+        >
+          {ui.secretaryResult.saveTemplate}
+        </Button>
+        <Button
+          variant="secondary"
+          size="lg"
+          className="w-full sm:w-auto"
+          onClick={() => router.push(automateHref)}
+        >
+          {ui.secretaryResult.automateNext}
+        </Button>
+      </section>
+
+      {regenerateError && <ErrorState message={regenerateError} />}
 
       {targetType === "x_post" ? (
         <div className="space-y-8">
@@ -224,32 +265,14 @@ export function SecretaryResultView({
           />
         </div>
       ) : (
-        <div className="space-y-6">
-          <FinalOutput
-            heading={ui.secretaryResult.contentHeading}
-            result={project.result}
-            isLoading={false}
-            deliverables={deliverables}
-            isGeneratingDeliverables={isGeneratingDeliverables}
-            deliverablesError={deliverablesError}
-          />
-
-          {regenerateError && <ErrorState message={regenerateError} />}
-
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Button
-              variant="secondary"
-              size="lg"
-              className="w-full sm:w-auto"
-              disabled={isRegenerating}
-              onClick={() => void regenerate()}
-            >
-              {isRegenerating
-                ? ui.secretaryResult.regenerating
-                : ui.secretaryResult.regenerate}
-            </Button>
-          </div>
-        </div>
+        <FinalOutput
+          heading={ui.secretaryResult.contentHeading}
+          result={project.result}
+          isLoading={false}
+          deliverables={deliverables}
+          isGeneratingDeliverables={isGeneratingDeliverables}
+          deliverablesError={deliverablesError}
+        />
       )}
     </div>
   );

@@ -65,12 +65,14 @@ function sampleProject(overrides?: Partial<Project>): Project {
 }
 
 describe("buildWorkOutcomeSummary", () => {
-  it("surfaces work done, deliverable, AI, duration, and next tips", () => {
+  it("surfaces work done, deliverable, AI actions, duration, and next tips", () => {
     const summary = buildWorkOutcomeSummary(sampleProject());
     expect(summary.workDone).toContain("イベント告知");
     expect(summary.deliverableTitle).toBeTruthy();
     expect(summary.deliverablePreview).toContain("イベント");
     expect(summary.usedAi.length).toBeGreaterThan(0);
+    expect(summary.aiActions.length).toBeGreaterThan(0);
+    expect(summary.deliverables.length).toBeGreaterThan(0);
     expect(summary.durationLabel).toContain("分");
     expect(summary.nextRecommendations.length).toBeGreaterThan(0);
     expect(summary.deliverableLinks[0]?.href).toContain("/projects/");

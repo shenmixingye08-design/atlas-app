@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import type { Automation } from "@/lib/automations/types";
@@ -148,11 +149,9 @@ export function HomeAiActivityPanel({ automations, projects }: HomeAiActivityPan
     return () => window.clearInterval(timer);
   }, [activeJobs.length]);
 
-  useEffect(() => {
-    setActiveIndex(0);
-  }, [activeJobs.length]);
-
-  const currentJob = activeJobs[activeIndex] ?? null;
+  const safeIndex =
+    activeJobs.length === 0 ? 0 : activeIndex % activeJobs.length;
+  const currentJob = activeJobs[safeIndex] ?? null;
   const isWorking = activeJobs.some((job) => job.status !== "completed");
 
   return (
@@ -228,16 +227,31 @@ export function HomeAiActivityPanel({ automations, projects }: HomeAiActivityPan
                 {ui.secretaryHome.activityMore(activeJobs.length - 1)}
               </p>
             )}
+
+            <Link
+              href="/work-progress"
+              className="inline-flex text-sm font-medium text-foreground underline-offset-4 hover:underline focus-ring rounded"
+            >
+              {ui.workProgress.logHeading}
+            </Link>
           </div>
         ) : (
-          <div className="flex items-center gap-3">
-            <span
-              className="h-2.5 w-2.5 rounded-full bg-[var(--foreground-muted)]/40"
-              aria-hidden
-            />
-            <p className="text-base text-[var(--foreground-muted)] sm:text-lg">
-              {ui.secretaryHome.activityIdle}
-            </p>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <span
+                className="h-2.5 w-2.5 rounded-full bg-[var(--foreground-muted)]/40"
+                aria-hidden
+              />
+              <p className="text-base text-[var(--foreground-muted)] sm:text-lg">
+                {ui.secretaryHome.activityIdle}
+              </p>
+            </div>
+            <Link
+              href="/work-progress"
+              className="inline-flex text-sm font-medium text-foreground underline-offset-4 hover:underline focus-ring rounded"
+            >
+              {ui.workProgress.logHeading}
+            </Link>
           </div>
         )}
       </div>
