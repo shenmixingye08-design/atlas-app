@@ -184,15 +184,31 @@ describe("notification display", () => {
     ).toBe("メールを受信しました");
   });
 
-  it("reconstructs a deep link from IDs when actionUrl is missing", () => {
-    // Missing actionUrl but has a deliverable id → rebuild /projects/<id>.
+  it("routes a resolvable result target through the unified /results route", () => {
+    // A deliverable target → the self-resolving results page (not a stale
+    // /projects deep link that can dead-end).
     expect(
       resolveNoticeActionUrl(
         sample({ actionUrl: null, deliverableId: "commander-run_1" }),
       ),
-    ).toBe("/projects/commander-run_1");
+    ).toBe("/results/ntf_1");
 
-    // Unsafe stored actionUrl but automation id present → rebuild automations link.
+    // Even a stale /projects actionUrl is upgraded to /results when a target id
+    // is present (legacy rows self-heal).
+    expect(
+      resolveNoticeActionUrl(
+        sample({ actionUrl: "/projects/commander-run_1", deliverableId: "commander-run_1" }),
+      ),
+    ).toBe("/results/ntf_1");
+
+    // An already-canonical /results link is preserved as-is.
+    expect(
+      resolveNoticeActionUrl(
+        sample({ actionUrl: "/results/ntf_1", targetType: "deliverable", targetId: "commander-run_1" }),
+      ),
+    ).toBe("/results/ntf_1");
+
+    // Unsafe stored actionUrl, automation-only → keep the working panel link.
     expect(
       resolveNoticeActionUrl(
         sample({
@@ -204,10 +220,10 @@ describe("notification display", () => {
       ),
     ).toBe("/automations?id=auto_9");
 
-    // A safe explicit actionUrl is preserved.
+    // A safe explicit actionUrl with no result target is preserved.
     expect(
-      resolveNoticeActionUrl(sample({ actionUrl: "/projects/abc" })),
-    ).toBe("/projects/abc");
+      resolveNoticeActionUrl(sample({ actionUrl: "/workspace/x?historyId=h1" })),
+    ).toBe("/workspace/x?historyId=h1");
   });
 
   it("blocks unsafe action urls", () => {

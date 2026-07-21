@@ -75,13 +75,28 @@ export function createNotification(
 ): NotificationRecord | null {
   const lineEvent = resolveLineEvent(input);
 
+  // The notification id is the canonical key of the unified results route. When
+  // a result target is present, the button MUST open `/results/<id>` (which
+  // resolves the exact 成果物 from the notification alone) — not a stale
+  // `/projects/<id>` deep link that can dead-end.
+  const notificationId = `ntf_${randomUUID()}`;
+  const targetType = input.targetType ?? null;
+  const targetId = input.targetId ?? null;
+  const canonicalActionUrl =
+    targetType && targetId
+      ? `/results/${encodeURIComponent(notificationId)}`
+      : (input.actionUrl ?? null);
+
+  // Send the LINE message with the same canonical link the in-app button uses.
+  // LINE dispatch is independent of the in-app channel preference (each channel
+  // is gated separately inside the LINE service).
   if (input.audience === "user" && input.userId && lineEvent) {
     void dispatchLineNotification({
       userId: input.userId,
       event: lineEvent,
       title: input.title,
       message: input.message,
-      actionUrl: input.actionUrl,
+      actionUrl: canonicalActionUrl,
     }).catch((error) => {
       console.warn("[LINE notify]", error);
     });
@@ -95,7 +110,7 @@ export function createNotification(
   }
 
   const record = appendNotification({
-    notificationId: `ntf_${randomUUID()}`,
+    notificationId,
     userId: input.userId,
     audience: input.audience,
     type: input.type,
@@ -105,8 +120,10 @@ export function createNotification(
     relatedService: input.relatedService ?? null,
     isRead: false,
     createdAt: new Date().toISOString(),
-    actionUrl: input.actionUrl ?? null,
+    actionUrl: canonicalActionUrl,
     lineEvent,
+    targetType,
+    targetId,
     workflowRunId: input.workflowRunId ?? null,
     deliverableId: input.deliverableId ?? null,
     requestId: input.requestId ?? null,

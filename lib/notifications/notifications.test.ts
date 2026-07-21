@@ -117,41 +117,50 @@ describe("notifications", () => {
     expect(record?.deliverableId).toBe("commander-run_ids");
     expect(record?.workflowRunId).toBe("wfr_42");
     expect(record?.requestId).toBe("run_42");
+    // Canonical result target is set so /results/<id> can resolve it.
+    expect(record?.targetType).toBe("deliverable");
+    expect(record?.targetId).toBe("commander-run_ids");
   });
 
-  it("derives the deep link from deliverableId when actionUrl is omitted", () => {
+  it("canonicalizes completed work to the unified /results/<id> route", () => {
+    // Even with a deliverableId (and NO explicit actionUrl) the button opens the
+    // self-resolving results page keyed by the notification id.
     const record = notifyWorkCompleted(TEST_USER, {
       title: "資料を作成しました",
       message: "完了しました。",
       deliverableId: "commander-run_auto",
     });
 
-    expect(record?.actionUrl).toBe("/projects/commander-run_auto");
+    expect(record?.actionUrl).toBe(`/results/${record?.notificationId}`);
+    expect(record?.actionUrl?.startsWith("/results/")).toBe(true);
     expect(isSafeActionUrl(record?.actionUrl)).toBe(true);
     expect(record?.deliverableId).toBe("commander-run_auto");
   });
 
-  it("deep-links completed work to the durable /projects result page", () => {
-    const actionUrl = "/projects/commander-run_9";
+  it("overrides a stale /projects deep link with the canonical /results link", () => {
+    // Callers may still pass a /projects actionUrl; the service upgrades it so
+    // the result never dead-ends on a missing project row.
     const record = notifyWorkCompleted(TEST_USER, {
       title: "完了",
       message: "完了しました",
-      actionUrl,
+      actionUrl: "/projects/commander-run_9",
       relatedTaskId: "commander-run_9",
     });
 
-    expect(record?.actionUrl).toBe(actionUrl);
+    expect(record?.actionUrl).toBe(`/results/${record?.notificationId}`);
     expect(record?.relatedTaskId).toBe("commander-run_9");
+    expect(record?.targetId).toBe("commander-run_9");
     expect(isSafeActionUrl(record?.actionUrl)).toBe(true);
   });
 
-  it("falls back to /workspace when no deep link is provided", () => {
+  it("falls back to /workspace when no deep link / target is provided", () => {
     const record = notifyWorkCompleted(TEST_USER, {
       title: "完了",
       message: "完了しました",
     });
 
     expect(record?.actionUrl).toBe("/workspace");
+    expect(record?.targetType ?? null).toBeNull();
   });
 
   it("creates owner notifications without user preferences", () => {

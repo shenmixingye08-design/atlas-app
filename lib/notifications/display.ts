@@ -1,3 +1,4 @@
+import { hasResolvableResultTarget } from "./result-target";
 import type { NotificationRecord, NotificationType } from "./types";
 
 /** User-facing notice categories for the secretary inbox. */
@@ -39,6 +40,7 @@ export type NoticeFilter =
   | "error";
 
 const ALLOWED_ACTION_PREFIXES = [
+  "/results",
   "/workspace",
   "/automations",
   "/projects",
@@ -67,6 +69,23 @@ export function isSafeActionUrl(url: string | null | undefined): url is string {
 export function resolveNoticeActionUrl(
   notification: NotificationRecord,
 ): string | null {
+  // 1) Canonical: an already-stored `/results/<id>` link (new rows).
+  if (
+    isSafeActionUrl(notification.actionUrl) &&
+    notification.actionUrl.startsWith("/results/")
+  ) {
+    return notification.actionUrl;
+  }
+
+  // 2) Any resolvable result target → the unified, self-resolving results page.
+  //    This upgrades legacy rows (deliverableId + stale `/projects` link) so
+  //   「結果を見る」reaches THAT 成果物 via `/results/<notificationId>` instead of a
+  //    deep link that can dead-end.
+  if (hasResolvableResultTarget(notification)) {
+    return `/results/${encodeURIComponent(notification.notificationId)}`;
+  }
+
+  // 3) Otherwise keep any other safe explicit link (billing / settings / X / …).
   if (isSafeActionUrl(notification.actionUrl)) return notification.actionUrl;
 
   const deliverableId = notification.deliverableId ?? notification.relatedTaskId;

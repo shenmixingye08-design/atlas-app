@@ -12,6 +12,22 @@ export type NotificationAudience = "user" | "owner";
 
 export type NotificationChannel = "in_app" | "email" | "line" | "slack" | "push";
 
+/**
+ * Kind of result a notification points at. Drives which renderer the unified
+ * `/results/<notificationId>` route uses to show the exact 成果物 / outcome.
+ *
+ * Every new「結果を見る」notification MUST carry a `targetType` + `targetId` so the
+ * result can be resolved from the notification alone — never a list page.
+ */
+export type NotificationTargetType =
+  | "deliverable"
+  | "workflow_run"
+  | "automation_run"
+  | "x_post"
+  | "analysis"
+  | "request"
+  | "accounting_entry";
+
 /** LINE Messaging API event categories (ON/OFF per event). */
 export type LineNotifyEvent =
   | "work_completed"
@@ -37,9 +53,17 @@ export type NotificationRecord = {
   actionUrl: string | null;
   lineEvent?: LineNotifyEvent | null;
   /**
+   * Canonical result target. `targetType` + `targetId` uniquely identify the
+   * outcome so `/results/<notificationId>` can render it directly. Prefer these
+   * on all new notifications; the more specific ids below are kept for
+   * backward-compatible resolution of older rows.
+   */
+  targetType?: NotificationTargetType | null;
+  targetId?: string | null;
+  /**
    * Deep-link targeting IDs. Stored so「結果を見る」can always reach the exact
    * result even if `actionUrl` is stale/missing (e.g. re-hydrated older rows) —
-   * the client can reconstruct `/projects/<deliverableId>` etc. from these.
+   * the resolver can reconstruct the target from any of these.
    */
   workflowRunId?: string | null;
   deliverableId?: string | null;
@@ -106,6 +130,8 @@ export type CreateNotificationInput = {
   relatedService?: string | null;
   actionUrl?: string | null;
   lineEvent?: LineNotifyEvent | null;
+  targetType?: NotificationTargetType | null;
+  targetId?: string | null;
   workflowRunId?: string | null;
   deliverableId?: string | null;
   requestId?: string | null;

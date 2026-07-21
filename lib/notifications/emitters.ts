@@ -284,8 +284,9 @@ export function notifyWorkCompleted(
 ) {
   if (!userId) return null;
   const deliverableId = input.deliverableId ?? input.relatedTaskId ?? null;
-  // Always land on THAT deliverable, never a list page. Prefer an explicit deep
-  // link; otherwise reconstruct one from the deliverable id.
+  // Fallback deep link only for rows with no deliverable id (rare). When a
+  // deliverable id exists, `createNotification` canonicalizes the link to
+  // `/results/<notificationId>` so「結果を見る」self-resolves the exact 成果物.
   const actionUrl =
     input.actionUrl ??
     (deliverableId ? deliverableActionUrl(deliverableId) : "/workspace");
@@ -301,6 +302,8 @@ export function notifyWorkCompleted(
       : "お待たせいたしました。ご依頼の内容が完了しました。",
     relatedTaskId: input.relatedTaskId ?? deliverableId,
     actionUrl,
+    targetType: deliverableId ? "deliverable" : null,
+    targetId: deliverableId,
     deliverableId,
     workflowRunId: input.workflowRunId ?? null,
     requestId: input.requestId ?? null,
@@ -322,8 +325,9 @@ export function notifyWorkFailed(
 ) {
   if (!userId) return null;
   const deliverableId = input.deliverableId ?? input.relatedTaskId ?? null;
-  // A failed run still deep-links to its own result page so「確認する」shows
-  // 生成に失敗しました + reason instead of a dead list.
+  // A failed run still resolves to its own result page so「確認する」shows
+  // 成果物の生成に失敗しました + reason instead of a dead list. When a deliverable id
+  // exists the link is canonicalized to `/results/<notificationId>`.
   const actionUrl =
     input.actionUrl ??
     (deliverableId ? deliverableActionUrl(deliverableId) : "/workspace");
@@ -332,8 +336,8 @@ export function notifyWorkFailed(
     userId,
     // Store the caller title + reason so the display layer can derive a
     // task-type failed title (e.g.「契約書の処理を完了できませんでした」). The visible
-    // message stays sanitized/generic; the full reason shows on the deep-link
-    // result page (生成に失敗しました + reason).
+    // message stays sanitized/generic; the full reason shows on the result page
+    // (成果物の生成に失敗しました + reason).
     type: "error",
     title: input.title?.trim() || "処理を完了できませんでした",
     message: input.message?.trim()
@@ -341,6 +345,8 @@ export function notifyWorkFailed(
       : "処理を完了できませんでした。内容をご確認ください。",
     relatedTaskId: input.relatedTaskId ?? deliverableId,
     actionUrl,
+    targetType: deliverableId ? "deliverable" : null,
+    targetId: deliverableId,
     deliverableId,
     workflowRunId: input.workflowRunId ?? null,
     requestId: input.requestId ?? null,
