@@ -83,8 +83,8 @@ describe("notifications", () => {
     expect(isSafeActionUrl(record?.actionUrl)).toBe(true);
   });
 
-  it("deep-links completed work to the saved result via a provided actionUrl", () => {
-    const actionUrl = "/history?item=project-commander-run_9";
+  it("deep-links completed work to the durable /projects result page", () => {
+    const actionUrl = "/projects/commander-run_9";
     const record = notifyWorkCompleted(TEST_USER, {
       title: "完了",
       message: "完了しました",

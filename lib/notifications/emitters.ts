@@ -261,7 +261,7 @@ export function notifyWorkCompleted(
   input: {
     title: string;
     message: string;
-    /** Deep link to the exact result (e.g. `/history?item=project-...`). */
+    /** Deep link to the exact result (durable page, e.g. `/projects/<id>`). */
     actionUrl?: string | null;
     /** Related resource id used for deep-link targeting. */
     relatedTaskId?: string | null;

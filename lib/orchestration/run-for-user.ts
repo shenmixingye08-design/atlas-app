@@ -7,6 +7,7 @@ import { buildCompanyOrchestrationMetadata } from "@/lib/company-templates/loade
 import { resolveCompanyTemplateIdFromMetadata } from "@/lib/company-templates/context";
 import { getServerActiveCompanyState } from "@/lib/company-templates/store";
 import { notifyWorkCompleted, notifyWorkFailed } from "@/lib/notifications/emitters";
+import { persistCommanderResultAsProject } from "@/lib/commander/durable-store";
 import { buildAtlasMemoryMetadata } from "@/lib/user-memory/metadata";
 import {
   getMemoriesForAssignment,
@@ -111,11 +112,33 @@ export async function runOrchestrationForUser(
 
   const memoryTypesUsed = usedWorkMemories.map((memory) => memory.type);
 
+  // Stable id shared by the durable persist and the notification deep link so
+  //「結果を見る」/「確認する」opens the exact 成果物 from the server on any device.
+  // Only used when this call owns notifications (Commander sets notify:false and
+  // manages its own persist + deep link under a commander-<runId> id).
+  const deepLinkProjectId =
+    notify && input.userId ? `orchestrate-${crypto.randomUUID()}` : null;
+  const deepLink = deepLinkProjectId
+    ? `/projects/${encodeURIComponent(deepLinkProjectId)}`
+    : null;
+
   if (result.status === "failed") {
+    if (notify && input.userId && deepLinkProjectId) {
+      await persistCommanderResultAsProject({
+        userId: input.userId,
+        assignment: input.assignment,
+        result,
+        projectId: deepLinkProjectId,
+      });
+    }
     if (notify) {
       notifyWorkFailed(input.userId, {
         title: "仕事の実行に失敗しました",
         message: result.error ?? "処理中にエラーが発生しました。",
+        ...(deepLink && {
+          actionUrl: deepLink,
+          relatedTaskId: deepLinkProjectId,
+        }),
       });
     }
     return {
@@ -126,10 +149,22 @@ export async function runOrchestrationForUser(
     };
   }
 
+  if (notify && input.userId && deepLinkProjectId) {
+    await persistCommanderResultAsProject({
+      userId: input.userId,
+      assignment: input.assignment,
+      result,
+      projectId: deepLinkProjectId,
+    });
+  }
   if (notify) {
     notifyWorkCompleted(input.userId, {
       title: "仕事が完了しました",
       message: "MINERVOTが依頼した仕事を完了しました。",
+      ...(deepLink && {
+        actionUrl: deepLink,
+        relatedTaskId: deepLinkProjectId,
+      }),
     });
   }
 

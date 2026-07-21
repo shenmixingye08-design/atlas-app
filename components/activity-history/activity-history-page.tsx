@@ -23,6 +23,7 @@ export function ActivityHistoryPageContent() {
     getItem,
   } = useActivityHistory();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [deepLinkMiss, setDeepLinkMiss] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const selected = selectedId ? getItem(selectedId) : null;
 
@@ -31,8 +32,20 @@ export function ActivityHistoryPageContent() {
     if (!itemId || !isReady) return;
     if (items.some((entry) => entry.id === itemId)) {
       setSelectedId(itemId);
+      setDeepLinkMiss(null);
+    } else {
+      // The requested result is not in this browser's local list (other device
+      // / cold start / server-triggered run). Never fail silently — surface a
+      // link to the durable /projects/<id> page, which loads it from the server.
+      setDeepLinkMiss(itemId);
     }
   }, [searchParams, items, isReady]);
+
+  // Map an activity-history item id (`project-<projectId>`) to the durable
+  // project id used by the /projects/<id> deep-link page.
+  const deepLinkProjectId = deepLinkMiss?.startsWith("project-")
+    ? deepLinkMiss.slice("project-".length)
+    : null;
 
   return (
     <div className="activity-history-page space-y-6 pb-8">
@@ -43,6 +56,25 @@ export function ActivityHistoryPageContent() {
           {ui.activityHistory.pageSubtitle}
         </p>
       </header>
+
+      {isReady && deepLinkMiss ? (
+        <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-5 py-4">
+          <p className="text-sm font-medium text-foreground">
+            ご指定の結果はこの端末の履歴に見つかりませんでした。
+          </p>
+          <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+            別の端末で実行された可能性があります。保存済みの結果を直接開きます。
+          </p>
+          {deepLinkProjectId ? (
+            <Link
+              href={`/projects/${encodeURIComponent(deepLinkProjectId)}`}
+              className="mt-3 inline-block text-[var(--accent)] hover:underline"
+            >
+              結果を開く →
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
 
       <ActivityHistoryFiltersBar
         filters={filters}

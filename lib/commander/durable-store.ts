@@ -6,7 +6,13 @@ import {
 } from "@/lib/persistence/durable-domain";
 import { loadClerkPrivateMetadataKey } from "@/lib/persistence/clerk-private-metadata";
 import { createProjectFromOrchestration } from "@/lib/projects/domain";
-import { mapProjectToRow, PROJECTS_TABLE } from "@/lib/projects/repositories/project-row";
+import {
+  mapProjectToRow,
+  mapRowToProject,
+  PROJECTS_TABLE,
+  type ProjectRow,
+} from "@/lib/projects/repositories/project-row";
+import type { Project } from "@/lib/projects/types";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 
@@ -254,5 +260,53 @@ export async function persistCommanderResultAsProject(input: {
   } catch (error) {
     console.warn("[commander] Supabase project persist skipped:", error);
     return null;
+  }
+}
+
+/**
+ * Durable read of a single persisted project (deliverable) by its stable id,
+ * scoped to the owning user. Uses the service role client so the deep-link
+ * result view resolves the exact 成果物 from ANY device or after a cold start —
+ * not just the browser tab that originally ran the request.
+ *
+ * Returns `null` only when Supabase is unconfigured (dev) or on read error.
+ * A confirmed "no such row" resolves to `{ project: null, found: false }`.
+ */
+export async function loadPersistedProjectById(input: {
+  userId: string;
+  projectId: string;
+}): Promise<{ project: Project | null; found: boolean; durable: boolean }> {
+  const client = createServiceRoleClientIfConfigured();
+  if (!client) {
+    // No durable backend (local dev without Supabase): caller falls back to
+    // client cache. Signal "not durable" so the UI does not claim not-found.
+    return { project: null, found: false, durable: false };
+  }
+
+  try {
+    const { data, error } = await client
+      .from(PROJECTS_TABLE)
+      .select("*")
+      .eq("id", input.projectId)
+      .eq("user_id", input.userId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("[commander] project read failed:", error.message);
+      return { project: null, found: false, durable: false };
+    }
+
+    if (!data) {
+      return { project: null, found: false, durable: true };
+    }
+
+    return {
+      project: mapRowToProject(data as ProjectRow),
+      found: true,
+      durable: true,
+    };
+  } catch (error) {
+    console.warn("[commander] project read skipped:", error);
+    return { project: null, found: false, durable: false };
   }
 }

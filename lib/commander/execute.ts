@@ -247,7 +247,7 @@ async function executeRememberHabitRun(input: {
   notifyWorkCompleted(input.userId, {
     title: "習慣候補を作成しました",
     message: summary,
-    actionUrl: `/history?item=project-${encodeURIComponent(habitProjectId)}`,
+    actionUrl: `/projects/${encodeURIComponent(habitProjectId)}`,
     relatedTaskId: habitProjectId,
   });
 
@@ -509,8 +509,11 @@ async function executeStoredRun(input: {
 
   // Deterministic id shared by the server persist, the client save, and the
   // notification deep link so「結果を見る」lands on the exact saved result.
+  // The deep link targets the durable /projects/<id> detail page, which loads
+  // the 成果物 from the server store by id — so it resolves on any device / cold
+  // start, not only the browser tab that ran the request.
   const resultProjectId = `commander-${input.runId}`;
-  const resultDeepLink = `/history?item=project-${encodeURIComponent(resultProjectId)}`;
+  const resultDeepLink = `/projects/${encodeURIComponent(resultProjectId)}`;
 
   if (finalStatus === "completed") {
     // Persist first so the notification can deep-link straight to the saved
@@ -559,9 +562,42 @@ async function executeStoredRun(input: {
       message: "実行はユーザー操作により中止されました。",
     });
   } else {
+    // Persist the failed run (with its error) so「確認する」deep-links to a page
+    // that explains 生成に失敗しました + reason instead of a dead/blank list.
+    const failureReason =
+      lastResult?.error ?? attempts.at(-1)?.error ?? "実行に失敗しました。";
+    const failedResult: OrchestrationResult = lastResult
+      ? { ...lastResult, status: "failed", error: failureReason }
+      : {
+          assignment: plan.assignment,
+          status: "failed",
+          workflow: hydrateWorkflowState({ status: "failed" }),
+          ceo: null,
+          plannerPlan: null,
+          plannerTasks: null,
+          tasks: [],
+          executions: [],
+          deliverable: emptyDeliverable(),
+          reviewComments: "",
+          approved: false,
+          finalResponse: "",
+          totalDurationMs: attempts.reduce(
+            (sum, item) => sum + item.durationMs,
+            0,
+          ),
+          error: failureReason,
+        };
+    await persistCommanderResultAsProject({
+      userId: input.userId,
+      assignment: plan.assignment,
+      result: failedResult,
+      projectId: resultProjectId,
+    });
     notifyWorkFailed(input.userId, {
       title: "AIオーケストレーター失敗報告",
-      message: attempts.at(-1)?.error ?? "実行に失敗しました。",
+      message: failureReason,
+      actionUrl: resultDeepLink,
+      relatedTaskId: resultProjectId,
     });
   }
 
