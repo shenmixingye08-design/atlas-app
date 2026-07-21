@@ -64,7 +64,7 @@ export function ActivityHistoryFiltersBar({
                 period: event.target.value as ActivityHistoryFilters["period"],
               })
             }
-            className="h-11 w-full rounded-[var(--radius-lg)] bg-[var(--surface)] px-3 text-sm text-foreground"
+            className="minervot-form-control h-11 w-full rounded-[var(--radius-lg)] border border-[var(--form-control-border,var(--border))] bg-[var(--form-control-bg,var(--surface))] px-3 text-sm text-[var(--form-control-text,var(--text-primary))] transition-colors hover:bg-[var(--form-control-hover,var(--secondary-hover))] focus:border-[var(--form-control-focus,var(--border-focus))] focus:outline-none focus:ring-2 focus:ring-[var(--form-control-focus,var(--accent))]/25"
           >
             {PERIODS.map((period) => (
               <option key={period} value={period}>
@@ -86,7 +86,7 @@ export function ActivityHistoryFiltersBar({
                 category: event.target.value as ActivityHistoryFilters["category"],
               })
             }
-            className="h-11 w-full rounded-[var(--radius-lg)] bg-[var(--surface)] px-3 text-sm text-foreground"
+            className="minervot-form-control h-11 w-full rounded-[var(--radius-lg)] border border-[var(--form-control-border,var(--border))] bg-[var(--form-control-bg,var(--surface))] px-3 text-sm text-[var(--form-control-text,var(--text-primary))] transition-colors hover:bg-[var(--form-control-hover,var(--secondary-hover))] focus:border-[var(--form-control-focus,var(--border-focus))] focus:outline-none focus:ring-2 focus:ring-[var(--form-control-focus,var(--accent))]/25"
           >
             {CATEGORIES.map((category) => (
               <option key={category} value={category}>
@@ -107,7 +107,7 @@ export function ActivityHistoryFiltersBar({
             onChange={(event) =>
               onChange({ ...filters, employee: event.target.value })
             }
-            className="h-11 w-full rounded-[var(--radius-lg)] bg-[var(--surface)] px-3 text-sm text-foreground"
+            className="minervot-form-control h-11 w-full rounded-[var(--radius-lg)] border border-[var(--form-control-border,var(--border))] bg-[var(--form-control-bg,var(--surface))] px-3 text-sm text-[var(--form-control-text,var(--text-primary))] transition-colors hover:bg-[var(--form-control-hover,var(--secondary-hover))] focus:border-[var(--form-control-focus,var(--border-focus))] focus:outline-none focus:ring-2 focus:ring-[var(--form-control-focus,var(--accent))]/25"
           >
             <option value="all">{ui.activityHistory.employeeAll}</option>
             {employees.map((employee) => (
@@ -118,14 +118,14 @@ export function ActivityHistoryFiltersBar({
           </select>
         </label>
 
-        <label className="flex items-end gap-2 pb-1 text-sm">
+        <label className="flex min-h-[44px] items-end gap-2 pb-1 text-sm text-[var(--text-secondary)]">
           <input
             type="checkbox"
             checked={filters.favoritesOnly}
             onChange={(event) =>
               onChange({ ...filters, favoritesOnly: event.target.checked })
             }
-            className="h-4 w-4"
+            className="minervot-form-control h-4 w-4 accent-[var(--form-control-focus,var(--accent))]"
           />
           {ui.activityHistory.favoritesOnly}
         </label>

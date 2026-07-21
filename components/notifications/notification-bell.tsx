@@ -65,7 +65,7 @@ export function NotificationBell() {
           type="button"
           onClick={() => setOpen((value) => !value)}
           className={cn(
-            "touch-target relative flex h-10 w-10 items-center justify-center rounded-full",
+            "touch-target relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full",
             "text-lg transition-colors hover:bg-[var(--surface-muted)] focus-ring",
           )}
           aria-label={ui.notifications.bellLabel(unreadCount)}

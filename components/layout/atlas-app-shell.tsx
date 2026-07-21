@@ -3,6 +3,7 @@ import { cn } from "@/lib/design-system/cn";
 import type { AtlasNavPage } from "@/lib/layout/nav-types";
 
 import { AtlasSidebar } from "./atlas-sidebar";
+import { AtlasTopActions } from "./atlas-top-actions";
 
 type AtlasAppShellProps = {
   active?: AtlasNavPage;
@@ -26,10 +27,17 @@ export function AtlasAppShell({
     <div className="minervot-lux relative min-h-screen bg-[var(--background)] text-foreground">
       <AtlasBackground />
       <AtlasSidebar active={active} />
+      {/* Desktop: fixed bell + account top-right */}
+      <div
+        className="fixed top-0 z-[60] hidden h-14 items-center justify-end gap-2 border-b border-[var(--border-subtle)] bg-[var(--card-glass)] px-6 backdrop-blur-xl md:flex md:left-[var(--sidebar-width)] md:right-0"
+        aria-label="アカウントと通知"
+      >
+        <AtlasTopActions />
+      </div>
       <div className="app-shell-content md:pl-[var(--sidebar-width)]">
         <main
           className={cn(
-            "app-shell-main mx-auto w-full px-4 pt-[calc(var(--mobile-top-bar-height)+1rem)] sm:px-6 md:px-10 md:pt-10 animate-page",
+            "app-shell-main mx-auto w-full px-4 pt-[calc(var(--mobile-top-bar-height)+1rem)] sm:px-6 md:px-10 md:pt-[calc(3.5rem+1.5rem)] animate-page",
             MAIN_WIDTH[width],
           )}
         >

@@ -274,6 +274,14 @@ html[data-theme="light-warm"] {
 html[data-theme="light-warm"] .minervot-lux {
   color-scheme: light;
 
+  --form-control-bg: #fff9f2;
+  --form-control-surface: #f7f1e8;
+  --form-control-text: #2b2118;
+  --form-control-muted: #6b5a49;
+  --form-control-border: #d8c3a5;
+  --form-control-focus: #b8860b;
+  --form-control-hover: #f3e4cf;
+
   --background: #f7f2eb;
   --surface: #f7f2eb;
   --surface-elevated: #fff7f0;
@@ -339,6 +347,14 @@ html[data-theme="light-warm"] .minervot-lux {
 html[data-theme="light"] .minervot-lux {
   color-scheme: light;
 
+  --form-control-bg: #fff9f2;
+  --form-control-surface: #f7f1e8;
+  --form-control-text: #2b2118;
+  --form-control-muted: #6b5a49;
+  --form-control-border: #d8c3a5;
+  --form-control-focus: #b8860b;
+  --form-control-hover: #f3e4cf;
+
   --background: #f5f5f7;
   --surface: #f5f5f7;
   --surface-elevated: #ffffff;
@@ -389,6 +405,57 @@ html[data-theme="light"] .minervot-lux {
   --shadow-glow: 0 0 0 1px rgba(184, 134, 11, 0.18), 0 8px 40px rgba(184, 134, 11, 0.08);
 
   --shimmer-mid: #ececee;
+}
+
+/* Dark luxury shell — native controls follow dark palette */
+html[data-theme="dark"] .minervot-lux {
+  --form-control-bg: var(--surface-muted);
+  --form-control-surface: var(--surface-elevated);
+  --form-control-text: var(--text-primary);
+  --form-control-muted: var(--text-muted);
+  --form-control-border: var(--border);
+  --form-control-focus: var(--accent);
+  --form-control-hover: var(--secondary-hover);
+}
+
+/* Light-theme form controls inside the app shell */
+html[data-theme="light"] .minervot-lux .minervot-form-control,
+html[data-theme="light-warm"] .minervot-lux .minervot-form-control,
+html[data-theme="light"] .minervot-lux input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+html[data-theme="light-warm"] .minervot-lux input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+html[data-theme="light"] .minervot-lux select,
+html[data-theme="light-warm"] .minervot-lux select,
+html[data-theme="light"] .minervot-lux textarea,
+html[data-theme="light-warm"] .minervot-lux textarea {
+  background-color: var(--form-control-bg);
+  color: var(--form-control-text);
+  border-color: var(--form-control-border);
+}
+
+html[data-theme="light"] .minervot-lux select option,
+html[data-theme="light-warm"] .minervot-lux select option {
+  background-color: var(--form-control-bg);
+  color: var(--form-control-text);
+}
+
+html[data-theme="light"] .minervot-lux input::placeholder,
+html[data-theme="light-warm"] .minervot-lux input::placeholder,
+html[data-theme="light"] .minervot-lux textarea::placeholder,
+html[data-theme="light-warm"] .minervot-lux textarea::placeholder {
+  color: var(--form-control-muted);
+}
+
+html[data-theme="light"] .minervot-lux input[type="checkbox"],
+html[data-theme="light-warm"] .minervot-lux input[type="checkbox"],
+html[data-theme="light"] .minervot-lux input[type="radio"],
+html[data-theme="light-warm"] .minervot-lux input[type="radio"] {
+  accent-color: var(--form-control-focus);
+}
+
+html[data-theme="light"] .minervot-lux .activity-history-filters,
+html[data-theme="light-warm"] .minervot-lux .activity-history-filters {
+  background: var(--form-control-surface);
+  border-color: var(--form-control-border);
 }
 
 /* Gold-glow dropzone while dragging files onto the upload hero */
@@ -850,18 +917,10 @@ html[data-theme-transitioning] *::after {
   --history-surface: var(--surface, #ffffff);
 }
 
-@media (prefers-color-scheme: dark) {
-  .activity-history-page {
-    --history-surface: #1c1c1e;
-    --surface: #1c1c1e;
-    --surface-muted: rgba(255, 255, 255, 0.06);
-    --border-subtle: rgba(255, 255, 255, 0.1);
-    --border-strong: rgba(255, 255, 255, 0.16);
-    --text-secondary: #d2d2d7;
-    --text-muted: #86868b;
-  }
+html[data-theme="dark"] .activity-history-page {
+  --history-surface: var(--surface-elevated);
+}
 
-  .activity-history-detail {
-    background: var(--history-surface);
-  }
+html[data-theme="dark"] .activity-history-detail {
+  background: var(--history-surface);
 }

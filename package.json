@@ -11,6 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@clerk/localizations": "^4.13.5",
     "@clerk/nextjs": "^7.5.13",
     "@fontsource-variable/noto-sans-jp": "^5.2.10",
     "@fontsource/noto-sans-jp": "^5.2.9",

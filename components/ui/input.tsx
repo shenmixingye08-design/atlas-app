@@ -28,7 +28,7 @@ export function Input({
       <input
         id={inputId}
         className={cn(
-          "h-11 w-full rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-4 text-base text-foreground placeholder:text-[var(--text-muted)] transition-colors duration-[var(--motion-fast)] focus:outline-none focus:ring-2 focus:ring-accent/30",
+          "minervot-form-control h-11 w-full rounded-[var(--radius-lg)] border border-[var(--form-control-border,var(--border))] bg-[var(--form-control-bg,var(--surface-muted))] px-4 text-base text-[var(--form-control-text,var(--text-primary))] placeholder:text-[var(--form-control-muted,var(--text-muted))] transition-colors duration-[var(--motion-fast)] focus:border-[var(--form-control-focus,var(--accent))] focus:outline-none focus:ring-2 focus:ring-[var(--form-control-focus,var(--accent))]/25",
           error && "ring-2 ring-[var(--status-error)]/25",
           className,
         )}
@@ -66,7 +66,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
         ref={ref}
         id={inputId}
         className={cn(
-          "min-h-[120px] w-full resize-y rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-4 py-3 text-base leading-relaxed text-foreground placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-accent/30",
+          "minervot-form-control min-h-[120px] w-full resize-y rounded-[var(--radius-xl)] border border-[var(--form-control-border,var(--border))] bg-[var(--form-control-bg,var(--surface-muted))] px-4 py-3 text-base leading-relaxed text-[var(--form-control-text,var(--text-primary))] placeholder:text-[var(--form-control-muted,var(--text-muted))] focus:border-[var(--form-control-focus,var(--accent))] focus:outline-none focus:ring-2 focus:ring-[var(--form-control-focus,var(--accent))]/25",
           error && "ring-2 ring-[var(--status-error)]/25",
           className,
         )}

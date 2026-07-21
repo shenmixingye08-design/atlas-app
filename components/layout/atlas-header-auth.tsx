@@ -8,17 +8,33 @@ import {
 } from "@clerk/nextjs";
 import Link from "next/link";
 
+import { useTheme } from "@/components/theme/theme-provider";
 import { ATLAS_APP_HOME_PATH } from "@/lib/auth/public-routes";
-import { atlasClerkAppearance } from "@/lib/clerk/appearance";
+import { getAtlasClerkAppearance } from "@/lib/clerk/appearance";
+import { cn } from "@/lib/design-system/cn";
 
-export function AtlasHeaderAuth() {
+type AtlasHeaderAuthProps = {
+  /** shell = post-login top bar (theme tokens); landing = marketing nav */
+  variant?: "shell" | "landing";
+};
+
+export function AtlasHeaderAuth({ variant = "landing" }: AtlasHeaderAuthProps) {
+  const { resolved } = useTheme();
+  const isShell = variant === "shell";
+  const appearance = getAtlasClerkAppearance(resolved);
+
   return (
-    <div className="flex items-center gap-2 sm:gap-3">
+    <div className="flex items-center gap-1 sm:gap-2">
       <Show when="signed-out">
         <SignInButton mode="redirect">
           <button
             type="button"
-            className="rounded-full px-3 py-1.5 text-xs text-[#75686B] transition-colors duration-200 hover:text-[#74172A] sm:px-4 sm:py-2 sm:text-sm focus-ring"
+            className={cn(
+              "touch-target rounded-full px-3 py-1.5 text-xs transition-colors duration-200 focus-ring sm:px-4 sm:py-2 sm:text-sm",
+              isShell
+                ? "text-[var(--text-secondary)] hover:bg-[var(--accent-muted)] hover:text-[var(--accent)]"
+                : "text-[#75686B] hover:text-[#74172A]",
+            )}
           >
             ログイン
           </button>
@@ -27,7 +43,12 @@ export function AtlasHeaderAuth() {
         <SignUpButton mode="redirect">
           <button
             type="button"
-            className="hidden rounded-full border border-[#74172A] bg-[#74172A] px-3 py-1.5 text-xs font-medium text-white shadow-[0_10px_28px_rgba(116,23,42,0.2)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#5F1222] hover:shadow-[0_14px_34px_rgba(116,23,42,0.28)] active:scale-[0.98] sm:inline-flex sm:px-4 sm:py-2 sm:text-sm focus-ring"
+            className={cn(
+              "touch-target rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-300 focus-ring sm:px-4 sm:py-2 sm:text-sm",
+              isShell
+                ? "hidden border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)] shadow-[var(--shadow-sm)] hover:bg-[var(--accent-hover)] sm:inline-flex"
+                : "hidden border border-[#74172A] bg-[#74172A] text-white shadow-[0_10px_28px_rgba(116,23,42,0.2)] hover:-translate-y-0.5 hover:bg-[#5F1222] hover:shadow-[0_14px_34px_rgba(116,23,42,0.28)] active:scale-[0.98] sm:inline-flex",
+            )}
           >
             新規登録
           </button>
@@ -35,7 +56,7 @@ export function AtlasHeaderAuth() {
       </Show>
 
       <Show when="signed-in">
-        <UserButton appearance={atlasClerkAppearance} />
+        <UserButton appearance={appearance} />
       </Show>
     </div>
   );
@@ -43,6 +64,9 @@ export function AtlasHeaderAuth() {
 
 /** Compact auth links for the landing page nav. */
 export function AtlasLandingAuth() {
+  const { resolved } = useTheme();
+  const appearance = getAtlasClerkAppearance(resolved);
+
   return (
     <div className="flex items-center gap-2 sm:gap-3">
       <Show when="signed-out">
@@ -73,7 +97,7 @@ export function AtlasLandingAuth() {
           MINERVOTを開く
         </Link>
 
-        <UserButton appearance={atlasClerkAppearance} />
+        <UserButton appearance={appearance} />
       </Show>
     </div>
   );

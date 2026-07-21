@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import { NotificationBell } from "@/components/notifications/notification-bell";
 import { OwnerNavLink } from "@/components/owner/owner-nav-link";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
@@ -20,7 +19,7 @@ import {
   resolveSidebarActiveId,
 } from "@/lib/layout/sidebar-nav";
 
-import { AtlasHeaderAuth } from "./atlas-header-auth";
+import { AtlasTopActions } from "./atlas-top-actions";
 
 type AtlasSidebarProps = {
   active?: AtlasNavPage;
@@ -183,13 +182,6 @@ function SidebarPanel({
           onNavigate={onNavigate}
         />
       </nav>
-
-      <div className="border-t border-[var(--border-subtle)] px-4 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <NotificationBell />
-          <AtlasHeaderAuth />
-        </div>
-      </div>
     </div>
   );
 }
@@ -226,11 +218,11 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
   return (
     <>
       {/* Mobile top bar */}
-      <header className="fixed inset-x-0 top-0 z-40 flex h-[var(--mobile-top-bar-height)] items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--card-glass)] px-4 backdrop-blur-xl md:hidden">
+      <header className="fixed inset-x-0 top-0 z-40 flex h-[var(--mobile-top-bar-height)] items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--card-glass)] px-3 backdrop-blur-xl md:hidden">
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
-          className="touch-target flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] text-lg text-[var(--text-secondary)] transition-colors hover:bg-[var(--accent-muted)] hover:text-[var(--accent)] focus-ring"
+          className="touch-target flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] text-lg text-[var(--text-secondary)] transition-colors hover:bg-[var(--accent-muted)] hover:text-[var(--accent)] focus-ring"
           aria-label={ui.nav.openSidebar}
           aria-expanded={mobileOpen}
         >
@@ -238,10 +230,13 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
         </button>
         <Link
           href="/projects"
-          className="text-sm font-semibold tracking-tight text-foreground focus-ring rounded-md"
+          className="min-w-0 truncate text-sm font-semibold tracking-tight text-foreground focus-ring rounded-md"
         >
           {ui.brand}
         </Link>
+        <div className="ml-auto shrink-0">
+          <AtlasTopActions />
+        </div>
       </header>
 
       {/* Desktop sidebar */}

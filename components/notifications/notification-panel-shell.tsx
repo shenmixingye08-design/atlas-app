@@ -37,7 +37,7 @@ export function NotificationPanelShell({
       aria-label={ui.notifications.title}
       data-testid="notification-panel"
       className={cn(
-        "z-50 flex flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)]",
+        "z-[70] flex flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)]",
         inline
           ? "relative w-full max-h-[70vh]"
           : cn(
@@ -46,12 +46,13 @@ export function NotificationPanelShell({
               "fixed",
               "left-[max(0.75rem,env(safe-area-inset-left))]",
               "right-[max(0.75rem,env(safe-area-inset-right))]",
-              "top-[calc(env(safe-area-inset-top,0px)+3.75rem)]",
-              "max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-4.75rem)]",
-              // Desktop: anchored dropdown under the bell.
-              "sm:absolute sm:inset-x-auto sm:left-auto sm:right-0 sm:top-full sm:mt-2",
-              "sm:w-96 sm:max-w-[calc(100vw-2rem)]",
-              "sm:max-h-[min(32rem,calc(100dvh-6rem))]",
+              "top-[calc(env(safe-area-inset-top,0px)+var(--mobile-top-bar-height)+0.25rem)]",
+              "max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-var(--mobile-top-bar-height)-1rem)]",
+              "w-auto max-w-none",
+              // Desktop: anchored dropdown under the bell in the top bar.
+              "md:absolute md:inset-x-auto md:left-auto md:right-0 md:top-full md:mt-2",
+              "md:w-96 md:max-w-[min(24rem,calc(100vw-var(--sidebar-width)-2rem))]",
+              "md:max-h-[min(32rem,calc(100dvh-5rem))]",
             ),
       )}
     >

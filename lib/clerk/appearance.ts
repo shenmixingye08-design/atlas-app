@@ -7,14 +7,14 @@ type ClerkAppearance = {
 
 const LIGHT: ClerkAppearance = {
   variables: {
-    colorBackground: "#FFFFFF",
-    colorText: "#111111",
-    colorTextSecondary: "#3a3a3c",
-    colorPrimary: "#0071e3",
-    colorDanger: "#c40014",
-    colorSuccess: "#1d7a34",
-    colorInputBackground: "#f5f5f7",
-    colorInputText: "#111111",
+    colorBackground: "#FFF7F0",
+    colorText: "#2B2118",
+    colorTextSecondary: "#6B5A49",
+    colorPrimary: "#B8860B",
+    colorDanger: "#9A1C33",
+    colorSuccess: "#8B6914",
+    colorInputBackground: "#FFF9F2",
+    colorInputText: "#2B2118",
     borderRadius: "12px",
   },
   elements: {
@@ -77,5 +77,6 @@ export const atlasClerkAppearance = LIGHT;
 export function getAtlasClerkAppearance(
   resolved: ResolvedTheme = "light",
 ): ClerkAppearance {
-  return resolved === "dark" ? DARK : LIGHT;
+  if (resolved === "dark") return DARK;
+  return LIGHT;
 }
