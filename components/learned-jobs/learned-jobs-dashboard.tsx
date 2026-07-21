@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { cn } from "@/lib/design-system/cn";
+import { ui } from "@/lib/i18n";
 import {
   assignmentFromLearnedMemory,
   deleteWorkMemoryClient,
@@ -134,6 +136,14 @@ export function LearnedJobsDashboard() {
         </h1>
         <p className="max-w-2xl text-sm leading-relaxed text-[var(--foreground-muted)] sm:text-base">
           一度行った仕事をテンプレートとして再利用できます。
+        </p>
+        <p className="text-sm text-[var(--foreground-muted)]">
+          <Link
+            href="/commander"
+            className="font-medium text-accent underline-offset-4 hover:underline"
+          >
+            {ui.entrustedJobs.openOrchestra}
+          </Link>
         </p>
       </header>
 

@@ -5,7 +5,9 @@ import { resolveSidebarActiveId, isSidebarMoreActive } from "@/lib/layout/sideba
 describe("sidebar nav", () => {
   it("resolves primary routes", () => {
     expect(resolveSidebarActiveId("/projects")).toBe("projects");
-    expect(resolveSidebarActiveId("/commander")).toBe("commander");
+    expect(resolveSidebarActiveId("/workspace")).toBe("workspace");
+    // AIオーケストラは自動化導線として扱う
+    expect(resolveSidebarActiveId("/commander")).toBe("automations");
     expect(resolveSidebarActiveId("/history")).toBe("history");
     expect(resolveSidebarActiveId("/automations")).toBe("automations");
     expect(resolveSidebarActiveId("/settings")).toBe("settings");

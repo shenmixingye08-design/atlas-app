@@ -14,12 +14,15 @@ const ALL_SIDEBAR_ITEMS = [
 /** Resolve sidebar active id from pathname when `active` prop is not passed. */
 export function resolveSidebarActiveId(pathname: string): AtlasNavPage | null {
   if (pathname.startsWith("/workspace/x")) return "x-autopost";
+  // 依頼作成画面（/workspace）— X連携などサブルート以外
+  if (pathname === "/workspace") return "workspace";
   if (pathname.startsWith("/automations")) return "automations";
   if (pathname.startsWith("/settings/learning")) return "learning";
   if (pathname.startsWith("/settings/billing")) return "billing";
   if (pathname.startsWith("/settings")) return "settings";
   if (pathname.startsWith("/history")) return "history";
-  if (pathname.startsWith("/commander")) return "commander";
+  // AIオーケストラは自動化・ワークフロー専用。ナビ上は自動化として扱う。
+  if (pathname.startsWith("/commander")) return "automations";
   if (pathname.startsWith("/learned-jobs") || pathname.startsWith("/teach-work")) {
     return "work-memory";
   }

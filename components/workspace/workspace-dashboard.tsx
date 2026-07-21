@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import type { OrchestrationResult } from "@/lib/orchestration/types";
@@ -23,6 +23,19 @@ import type { SalesMaterialSessionConfig } from "@/lib/workspace/sales-material/
 import { useFeatureAvailability } from "@/lib/feature-flags";
 import { useDeliverableFiles } from "@/lib/workspace/use-deliverable-files";
 import type { WorkflowPhaseState } from "@/lib/workspace/types";
+import {
+  EXECUTION_MAX_RETRIES,
+  EXECUTION_TIMEOUT_MS,
+  appendExecutionLog,
+  formatFailureReason,
+  getExecutionState,
+  markExecutionPhase,
+  startExecutionState,
+  startTimeoutMonitor,
+  updateExecutionState,
+  withExecutionRetry,
+  type ExecutionStateRecord,
+} from "@/lib/execution-reliability";
 import { ErrorState } from "@/components/ui/error-state";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,6 +65,8 @@ import {
   formatsForWizardConfig,
   type SalesMaterialWizardResult,
 } from "./sales-material-wizard";
+import { ExecutionReliabilityNotice } from "./execution-reliability-notice";
+import { WorkspaceCompletionSummary } from "./workspace-completion-summary";
 
 export function WorkspaceDashboard() {
   const [assignment, setAssignment] = useState("");
@@ -77,8 +92,13 @@ export function WorkspaceDashboard() {
   const [taughtWorkflowHint, setTaughtWorkflowHint] = useState(false);
   const [pendingCommander, setPendingCommander] =
     useState<CommanderRunResult | null>(null);
+  const [executionState, setExecutionState] =
+    useState<ExecutionStateRecord | null>(null);
+  const [failureReason, setFailureReason] = useState<string | null>(null);
+  const [savedProjectId, setSavedProjectId] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
+  const autoStartedRef = useRef(false);
   const { isAvailable } = useFeatureAvailability();
   const deliverableOptions = salesMaterialConfig
     ? {
@@ -115,7 +135,7 @@ export function WorkspaceDashboard() {
     }
   }, [loadingStepIndex, isLoading]);
 
-  const runOrchestration = async (
+  const runOrchestration = useCallback(async (
     requestAssignment: string,
     config?: SalesMaterialSessionConfig | null,
     extraMetadata?: Readonly<Record<string, unknown>>,
@@ -125,11 +145,13 @@ export function WorkspaceDashboard() {
     abortRef.current = controller;
 
     setError(null);
+    setFailureReason(null);
     setResult(null);
     setOutlineOnlyText(null);
     setWorkMemoryUsed(null);
     setWorkMemoryCandidateCount(0);
     setPendingCommander(null);
+    setSavedProjectId(null);
     setIsLoading(true);
     setLoadingStepIndex(0);
     setLoadingPhases(buildLoadingPhases(0));
@@ -138,15 +160,60 @@ export function WorkspaceDashboard() {
       setSalesMaterialConfig(config);
     }
 
+    const execution = startExecutionState({
+      assignment: requestAssignment,
+      maxAttempts: EXECUTION_MAX_RETRIES + 1,
+      timeoutMs: EXECUTION_TIMEOUT_MS,
+    });
+    setExecutionState(execution);
+
+    const timeoutMonitor = startTimeoutMonitor(() => {
+      appendExecutionLog(execution.id, {
+        level: "error",
+        message: "クライアント側タイムアウトを検知しました",
+      });
+      updateExecutionState(execution.id, {
+        phase: "timed_out",
+        timedOut: true,
+        failureReason: formatFailureReason({ timedOut: true }),
+      });
+      setFailureReason(formatFailureReason({ timedOut: true }));
+      setExecutionState(getExecutionState(execution.id));
+      controller.abort();
+    });
+
     try {
-      const orchestrationResult = await submitWorkRequest(
-        requestAssignment,
-        controller.signal,
+      const orchestrationResult = await withExecutionRetry(
+        async (attempt) => {
+          if (attempt > 1) {
+            updateExecutionState(execution.id, {
+              phase: "retrying",
+              attempt,
+            });
+            appendExecutionLog(execution.id, {
+              level: "warn",
+              message: `自動リトライ ${attempt} 回目`,
+            });
+            setExecutionState(getExecutionState(execution.id));
+          }
+          return submitWorkRequest(requestAssignment, controller.signal, {
+            metadata: {
+              ...requestMetadata,
+              ...(extraMetadata ?? {}),
+              ...(config ? buildSalesMaterialMetadata(config) : {}),
+              executionReliabilityId: execution.id,
+              executionAttempt: attempt,
+            },
+          });
+        },
         {
-          metadata: {
-            ...requestMetadata,
-            ...(extraMetadata ?? {}),
-            ...(config ? buildSalesMaterialMetadata(config) : {}),
+          maxAttempts: EXECUTION_MAX_RETRIES + 1,
+          delayMs: (attempt) => Math.min(1000 * attempt, 3000),
+          shouldRetry: (err) => {
+            if (err instanceof CommanderConfirmationRequiredError) return false;
+            if (err instanceof Error && err.name === "AbortError") return false;
+            if (timeoutMonitor.didTimeout()) return false;
+            return true;
           },
         },
       );
@@ -156,46 +223,89 @@ export function WorkspaceDashboard() {
       setWorkMemoryCandidateCount(
         orchestrationResult.workMemoryCandidates?.length ?? 0,
       );
-      projectService.saveFromOrchestration(
+      const saved = projectService.saveFromOrchestration(
         requestAssignment,
         orchestrationResult,
         orchestrationResult.commanderRunId
           ? `commander-${orchestrationResult.commanderRunId}`
           : undefined,
       );
+      setSavedProjectId(saved.id);
 
       if (orchestrationResult.status === "failed" && orchestrationResult.error) {
-        setError(
-          formatUserFacingErrorText(
-            toUserFacingError(orchestrationResult.error, orchestrationResult),
-          ),
+        const reason = formatUserFacingErrorText(
+          toUserFacingError(orchestrationResult.error, orchestrationResult),
         );
+        setError(reason);
+        setFailureReason(reason);
+        markExecutionPhase(execution.id, "failed", reason);
+        updateExecutionState(execution.id, {
+          failureReason: reason,
+          projectId: saved.id,
+        });
+      } else {
+        markExecutionPhase(execution.id, "completed", "実行が完了しました");
+        updateExecutionState(execution.id, {
+          projectId: saved.id,
+          notificationGuaranteed: true,
+        });
       }
+      setExecutionState(getExecutionState(execution.id));
     } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return;
+      if (err instanceof Error && err.name === "AbortError") {
+        if (timeoutMonitor.didTimeout()) {
+          const reason = formatFailureReason({ timedOut: true });
+          setError(reason);
+          setFailureReason(reason);
+        }
+        return;
+      }
       if (err instanceof CommanderConfirmationRequiredError) {
+        markExecutionPhase(execution.id, "queued", "確認待ちに移行しました");
         setPendingCommander(err.commander);
         setIsLoading(false);
         abortRef.current = null;
+        setExecutionState(getExecutionState(execution.id));
         return;
       }
       const message =
         err instanceof Error
           ? err.message
           : formatUserFacingErrorText(toUserFacingError(err));
-      setError(message);
+      const reason = formatFailureReason({ error: message });
+      setError(reason);
+      setFailureReason(reason);
+      markExecutionPhase(execution.id, "failed", reason);
+      updateExecutionState(execution.id, { failureReason: reason });
+      setExecutionState(getExecutionState(execution.id));
       setLoadingPhases((prev) =>
         prev.map((phase) =>
           phase.status === "running"
-            ? { ...phase, status: "error", errorMessage: message }
+            ? { ...phase, status: "error", errorMessage: reason }
             : phase,
         ),
       );
     } finally {
+      timeoutMonitor.clear();
       setIsLoading(false);
       abortRef.current = null;
     }
-  };
+  }, [requestMetadata]);
+
+  // ホーム等から autostart=1 で届いた依頼は、確認クリックなしで開始する。
+  useEffect(() => {
+    const prefill = searchParams.get("assignment");
+    if (
+      searchParams.get("autostart") === "1" &&
+      prefill?.trim() &&
+      !autoStartedRef.current &&
+      !isLoading &&
+      !result
+    ) {
+      autoStartedRef.current = true;
+      void runOrchestration(prefill.trim(), null, {});
+    }
+  }, [searchParams, runOrchestration, isLoading, result]);
 
   const handleConfirmPending = async () => {
     if (!pendingCommander?.runId || isLoading) return;
@@ -277,6 +387,9 @@ export function WorkspaceDashboard() {
     setRequestMetadata({});
     setResult(null);
     setError(null);
+    setFailureReason(null);
+    setExecutionState(null);
+    setSavedProjectId(null);
     setSalesWizardAssignment(null);
     setSalesMaterialConfig(null);
     setOutlineOnlyText(null);
@@ -371,6 +484,11 @@ export function WorkspaceDashboard() {
         </section>
       )}
 
+      <ExecutionReliabilityNotice
+        state={executionState}
+        failureReason={failureReason}
+      />
+
       {error && !result && !outlineOnlyText && <ErrorState message={error} />}
 
       {(isLoading || result) && isLoading && (
@@ -384,6 +502,12 @@ export function WorkspaceDashboard() {
 
       {result && !isLoading && (
         <>
+          <WorkspaceCompletionSummary
+            assignment={assignment}
+            result={result}
+            projectId={savedProjectId}
+          />
+
           {workMemoryUsed && workMemoryUsed.used.length > 0 && (
             <WorkMemoryUsedBanner used={workMemoryUsed.used} />
           )}
@@ -431,6 +555,12 @@ export function WorkspaceDashboard() {
           <CompanyOperationsPanel result={result} />
           <ActionEnginePanel result={result} />
           <WorkflowInspectorPanel result={result} />
+
+          <div className="pt-2">
+            <Button variant="secondary" onClick={handleReset}>
+              {ui.secretaryResult.newRequestAgain}
+            </Button>
+          </div>
         </>
       )}
     </div>
