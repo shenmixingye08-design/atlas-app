@@ -45,9 +45,12 @@ export function DeliverableStateNotice({ state }: DeliverableStateNoticeProps) {
         action={
           <div className="flex flex-col items-center gap-3">
             {reason && (
-              <p className="max-w-md rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-[var(--text-secondary)]">
-                {reason}
-              </p>
+              <div className="max-w-md space-y-1 rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-4 py-3 text-left">
+                <p className="text-xs font-semibold tracking-wide text-accent">
+                  失敗理由
+                </p>
+                <p className="text-sm text-[var(--text-secondary)]">{reason}</p>
+              </div>
             )}
             <div className="flex flex-wrap justify-center gap-2">
               <Link href="/history">

@@ -78,7 +78,7 @@ export function SecretaryChatComposer() {
         ? `\n\n（添付予定: ${files.map((item) => item.file.name).join("、")}）`
         : "";
     const assignment = `${trimmed || "添付資料の整理をお願いします。"}${fileNote}`;
-    router.push(`/commander?assignment=${encodeURIComponent(assignment)}`);
+    router.push(`/workspace?assignment=${encodeURIComponent(assignment)}`);
   }, [files, router, text]);
 
   const toggleVoice = useCallback(() => {

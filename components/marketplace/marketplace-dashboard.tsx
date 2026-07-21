@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { applyCompanyTemplateClient } from "@/lib/company-templates/client";
@@ -58,9 +59,17 @@ export function MarketplaceDashboard() {
 
   return (
     <div className="space-y-16 animate-fade-up">
-      <header className="space-y-3">
-        <h1 className="text-display text-foreground">{ui.marketplace.title}</h1>
-        <p className="text-body">{ui.marketplace.subtitle}</p>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-3">
+          <h1 className="text-display text-foreground">{ui.marketplace.title}</h1>
+          <p className="text-body">{ui.marketplace.subtitle}</p>
+        </div>
+        <Link
+          href="/commander"
+          className="inline-flex min-h-[48px] shrink-0 items-center justify-center self-start rounded-full border border-[var(--border-subtle)] bg-[var(--card)] px-5 text-sm font-medium text-foreground transition-colors hover:border-accent/40 focus-ring"
+        >
+          {ui.nav.commander}
+        </Link>
       </header>
 
       {error && <ErrorState message={error} />}

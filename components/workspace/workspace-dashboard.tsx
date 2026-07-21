@@ -79,6 +79,7 @@ export function WorkspaceDashboard() {
     useState<CommanderRunResult | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
+  const autoStartedRef = useRef(false);
   const { isAvailable } = useFeatureAvailability();
   const deliverableOptions = salesMaterialConfig
     ? {
@@ -253,6 +254,38 @@ export function WorkspaceDashboard() {
     setSalesMaterialConfig(null);
     await runOrchestration(trimmed, null, payload.metadata);
   };
+
+  // ホーム等から「すぐ実行」で届いた依頼は、確認クリックなしで開始する。
+  useEffect(() => {
+    const prefill = searchParams.get("assignment");
+    if (
+      searchParams.get("autostart") !== "1" ||
+      !prefill?.trim() ||
+      autoStartedRef.current ||
+      isLoading ||
+      result
+    ) {
+      return;
+    }
+
+    autoStartedRef.current = true;
+    const metadata = {
+      requestUi: "secretary_v1",
+      executionPreference: "once",
+      priority: "normal",
+      skipWorkMemory: false,
+    } as const;
+    setRequestMetadata(metadata);
+
+    if (isSalesMaterialRequest(prefill) && isAvailable("sales_material")) {
+      setSalesWizardAssignment(prefill);
+      return;
+    }
+
+    void runOrchestration(prefill, null, metadata);
+    // One-shot landing behavior; avoid re-running when handlers recreate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, isAvailable, isLoading, result]);
 
   const handleWizardComplete = (wizardResult: SalesMaterialWizardResult) => {
     setSalesWizardAssignment(null);

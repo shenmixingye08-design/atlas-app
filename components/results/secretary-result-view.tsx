@@ -21,6 +21,7 @@ import {
   deriveResultIntent,
   deriveTargetType,
 } from "@/lib/results/completion";
+import { buildWorkOutcomeSummary } from "@/lib/results/work-outcome-summary";
 import { useRegenerate } from "@/lib/results/use-regenerate";
 import { useDeliverableFiles } from "@/lib/workspace/use-deliverable-files";
 
@@ -48,12 +49,10 @@ function resolveXPostText(project: Project): string {
 }
 
 /**
- * User-facing result screen: 「結果確認 → 次の実行」.
+ * User-facing result screen — 成果を見せる完了UI.
  *
- * Shows only what the user cares about — a natural completion title, the
- * finished content, and the next actions — and never the old ATLAS internal org
- * structure (CEO / departments / owners / handoffs / progress timeline / step
- * timings / status badges). One AI secretary, one clear result.
+ * Shows: 今回やった仕事 / 成果物 / 成果物リンク / 使用AI / 実行時間 / 次回おすすめ
+ * Plus the finished content and next actions. Never internal pipeline jargon.
  */
 export function SecretaryResultView({
   project,
@@ -69,6 +68,7 @@ export function SecretaryResultView({
   );
   const derivedTitle = useMemo(() => deriveCompletionTitle(project), [project]);
   const title = postedOverride ? ui.secretaryResult.postedTitle : derivedTitle;
+  const outcome = useMemo(() => buildWorkOutcomeSummary(project), [project]);
 
   const xPostText = useMemo(
     () => (targetType === "x_post" ? resolveXPostText(project) : ""),
@@ -94,7 +94,7 @@ export function SecretaryResultView({
   );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       <div className="space-y-4">
         <Link
           href={backHref}
@@ -111,6 +111,93 @@ export function SecretaryResultView({
           </p>
         </div>
       </div>
+
+      <section
+        aria-label="成果サマリー"
+        className="grid gap-3 sm:grid-cols-2"
+      >
+        <Card padding="lg" className="space-y-2 shadow-[var(--shadow-soft)] sm:col-span-2">
+          <p className="text-xs font-semibold tracking-wide text-accent">
+            {ui.secretaryResult.workDoneHeading}
+          </p>
+          <p className="text-base leading-relaxed text-foreground sm:text-lg">
+            {outcome.workDone}
+          </p>
+        </Card>
+
+        <Card padding="lg" className="space-y-2 shadow-[var(--shadow-soft)] sm:col-span-2">
+          <p className="text-xs font-semibold tracking-wide text-accent">
+            {ui.secretaryResult.deliverableHeading}
+          </p>
+          <p className="text-base font-medium text-foreground">
+            {outcome.deliverableTitle}
+          </p>
+          {outcome.deliverablePreview ? (
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground-muted)]">
+              {outcome.deliverablePreview}
+            </p>
+          ) : null}
+        </Card>
+
+        <Card padding="lg" className="space-y-3 shadow-[var(--shadow-soft)]">
+          <p className="text-xs font-semibold tracking-wide text-accent">
+            {ui.secretaryResult.deliverableLinksHeading}
+          </p>
+          <ul className="space-y-2">
+            {outcome.deliverableLinks.map((link) => (
+              <li key={link.href}>
+                <Link
+                  href={link.href}
+                  className="text-sm font-medium text-foreground underline-offset-4 hover:underline focus-ring rounded"
+                >
+                  {link.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+
+        <Card padding="lg" className="space-y-3 shadow-[var(--shadow-soft)]">
+          <p className="text-xs font-semibold tracking-wide text-accent">
+            {ui.secretaryResult.usedAiHeading}
+          </p>
+          <ul className="flex flex-wrap gap-2">
+            {outcome.usedAi.map((name) => (
+              <li
+                key={name}
+                className="rounded-full border border-[var(--border-subtle)] px-3 py-1 text-sm text-foreground"
+              >
+                {name}
+              </li>
+            ))}
+          </ul>
+        </Card>
+
+        <Card padding="lg" className="space-y-2 shadow-[var(--shadow-soft)]">
+          <p className="text-xs font-semibold tracking-wide text-accent">
+            {ui.secretaryResult.durationHeading}
+          </p>
+          <p className="text-2xl font-semibold tracking-tight text-foreground">
+            {outcome.durationLabel}
+          </p>
+        </Card>
+
+        <Card padding="lg" className="space-y-3 shadow-[var(--shadow-soft)]">
+          <p className="text-xs font-semibold tracking-wide text-accent">
+            {ui.secretaryResult.nextRecommendHeading}
+          </p>
+          <ul className="space-y-2">
+            {outcome.nextRecommendations.map((tip) => (
+              <li
+                key={tip}
+                className="text-sm leading-relaxed text-[var(--foreground-muted)]"
+              >
+                ・{tip}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </section>
 
       {targetType === "x_post" ? (
         <div className="space-y-8">

@@ -86,7 +86,7 @@ export function SecretaryUploadHero() {
       const trimmed = assignment.trim();
       if (!trimmed) return;
       router.push(
-        `/commander?assignment=${encodeURIComponent(trimmed)}&autostart=1`,
+        `/workspace?assignment=${encodeURIComponent(trimmed)}&autostart=1`,
       );
     },
     [router],

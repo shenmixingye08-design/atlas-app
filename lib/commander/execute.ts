@@ -8,6 +8,14 @@ import {
   emptyDeliverable,
   getDeliverablePreviewText,
 } from "@/lib/orchestration/deliverable-types";
+import {
+  appendExecutionLog,
+  ensureNotificationDelivery,
+  formatFailureReason,
+  isRetryableFailure,
+  monitorTimeout,
+  persistExecutionState,
+} from "@/lib/orchestration/execution-reliability";
 import { runOrchestrationForUser } from "@/lib/orchestration/run-for-user";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import { hydrateWorkflowState } from "@/lib/orchestration/workflow-state";
@@ -346,8 +354,63 @@ async function executeStoredRun(input: {
   let finalStatus: CommanderRunStatus = "failed";
 
   const maxAttempts = COMMANDER_MAX_RETRIES + 1;
+  // Hard wall-clock budget across retries — prevents "never finishes" UX.
+  const RUN_BUDGET_MS = 1000 * 60 * 8;
+  const runStartedAtMs = Date.now();
+
+  persistExecutionState({
+    runId: input.runId,
+    userId: input.userId,
+    status: "running",
+    attempt: attempts.length,
+    maxAttempts,
+    lastError: null,
+    timedOut: false,
+  });
+  appendExecutionLog({
+    runId: input.runId,
+    userId: input.userId,
+    level: "info",
+    event: "run_started",
+    message: "依頼の実行を開始しました",
+    attempt: attempts.length,
+  });
 
   for (let attempt = attempts.length + 1; attempt <= maxAttempts; attempt += 1) {
+    const timeout = monitorTimeout({
+      startedAtMs: runStartedAtMs,
+      budgetMs: RUN_BUDGET_MS,
+    });
+    if (timeout.timedOut) {
+      finalStatus = "failed";
+      const reason = formatFailureReason("処理が時間内に終わりませんでした。");
+      attempts.push({
+        attempt,
+        status: "failed",
+        error: reason,
+        durationMs: timeout.elapsedMs,
+      });
+      persistExecutionState({
+        runId: input.runId,
+        userId: input.userId,
+        status: "failed",
+        attempt,
+        maxAttempts,
+        lastError: reason,
+        timedOut: true,
+      });
+      appendExecutionLog({
+        runId: input.runId,
+        userId: input.userId,
+        level: "error",
+        event: "run_timeout",
+        message: reason,
+        attempt,
+        timedOut: true,
+      });
+      break;
+    }
+
     if (isCommanderCancelRequested(input.runId, input.userId)) {
       finalStatus = "cancelled";
       attempts.push({
@@ -356,10 +419,29 @@ async function executeStoredRun(input: {
         error: "Cancelled by user",
         durationMs: 0,
       });
+      persistExecutionState({
+        runId: input.runId,
+        userId: input.userId,
+        status: "cancelled",
+        attempt,
+        maxAttempts,
+        lastError: "Cancelled by user",
+        timedOut: false,
+      });
       break;
     }
 
     const started = Date.now();
+    persistExecutionState({
+      runId: input.runId,
+      userId: input.userId,
+      status: attempt > 1 ? "retrying" : "running",
+      attempt,
+      maxAttempts,
+      lastError: null,
+      timedOut: false,
+    });
+
     try {
       const orchestration = await runOrchestrationForUser({
         assignment,
@@ -388,6 +470,14 @@ async function executeStoredRun(input: {
           durationMs: Date.now() - started,
         });
         finalStatus = "completed";
+        appendExecutionLog({
+          runId: input.runId,
+          userId: input.userId,
+          level: "info",
+          event: "attempt_completed",
+          message: "実行が完了しました",
+          attempt,
+        });
         break;
       }
 
@@ -395,10 +485,13 @@ async function executeStoredRun(input: {
         orchestration.result.deliverable != null &&
         deliverableHasContent(orchestration.result.deliverable);
 
+      const failureReason = formatFailureReason(
+        orchestration.result.error ?? "Orchestration failed",
+      );
       attempts.push({
         attempt,
         status: partial ? "partial" : "failed",
-        error: orchestration.result.error ?? "Orchestration failed",
+        error: failureReason,
         durationMs: Date.now() - started,
       });
 
@@ -407,12 +500,36 @@ async function executeStoredRun(input: {
         break;
       }
       if (partial && attempt < maxAttempts) {
-        // One more retry for partial; if last retry keep partial.
+        appendExecutionLog({
+          runId: input.runId,
+          userId: input.userId,
+          level: "warn",
+          event: "auto_retry",
+          message: `一部完了のため自動リトライします（${attempt}/${maxAttempts}）`,
+          attempt,
+        });
         continue;
       }
+
+      if (!partial && attempt < maxAttempts && isRetryableFailure(failureReason)) {
+        appendExecutionLog({
+          runId: input.runId,
+          userId: input.userId,
+          level: "warn",
+          event: "auto_retry",
+          message: `失敗したため自動リトライします（${attempt}/${maxAttempts}）: ${failureReason}`,
+          attempt,
+        });
+        continue;
+      }
+
+      finalStatus = "failed";
+      break;
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Commander execution failed";
+      const message = formatFailureReason(
+        error instanceof Error ? error.message : "Commander execution failed",
+      );
+      const timedOut = /タイムアウト|timeout/i.test(message);
       attempts.push({
         attempt,
         status: "failed",
@@ -420,8 +537,60 @@ async function executeStoredRun(input: {
         durationMs: Date.now() - started,
       });
       lastResult = null;
+      persistExecutionState({
+        runId: input.runId,
+        userId: input.userId,
+        status: attempt < maxAttempts ? "retrying" : "failed",
+        attempt,
+        maxAttempts,
+        lastError: message,
+        timedOut,
+      });
+      appendExecutionLog({
+        runId: input.runId,
+        userId: input.userId,
+        level: "error",
+        event: "attempt_failed",
+        message,
+        attempt,
+        timedOut,
+      });
+
+      if (attempt < maxAttempts && isRetryableFailure(error)) {
+        appendExecutionLog({
+          runId: input.runId,
+          userId: input.userId,
+          level: "warn",
+          event: "auto_retry",
+          message: `例外発生のため自動リトライします（${attempt}/${maxAttempts}）`,
+          attempt,
+        });
+        continue;
+      }
+      finalStatus = "failed";
+      break;
     }
   }
+
+  persistExecutionState({
+    runId: input.runId,
+    userId: input.userId,
+    status:
+      finalStatus === "completed"
+        ? "completed"
+        : finalStatus === "partial"
+          ? "partial"
+          : finalStatus === "cancelled"
+            ? "cancelled"
+            : "failed",
+    attempt: attempts.length,
+    maxAttempts,
+    lastError:
+      finalStatus === "completed"
+        ? null
+        : (lastResult?.error ?? attempts.at(-1)?.error ?? null),
+    timedOut: Boolean(attempts.at(-1)?.error?.match(/タイムアウト|timeout/i)),
+  });
 
   // Actually publish to X for one-off SNS post requests. Orchestration only
   // prepares the copy (the「投稿」step is skipped in flow context), so without
@@ -528,17 +697,21 @@ async function executeStoredRun(input: {
         projectId: resultProjectId,
       });
     }
-    notifyWorkCompleted(input.userId, {
-      title: "AIオーケストレーター完了報告",
-      message: snsPublishedTweetUrl
-        ? `「${plan.classification.summary}」が完了し、Xへ投稿しました。${snsPublishedTweetUrl}`
-        : `「${plan.classification.summary}」が完了しました。`,
-      actionUrl: lastResult ? resultDeepLink : "/workspace",
-      relatedTaskId: lastResult ? resultProjectId : null,
-      deliverableId: lastResult ? resultProjectId : null,
-      workflowRunId: workflowRun.id,
-      requestId: input.runId,
-    });
+    ensureNotificationDelivery(
+      () =>
+        notifyWorkCompleted(input.userId, {
+          title: "AIオーケストレーター完了報告",
+          message: snsPublishedTweetUrl
+            ? `「${plan.classification.summary}」が完了し、Xへ投稿しました。${snsPublishedTweetUrl}`
+            : `「${plan.classification.summary}」が完了しました。`,
+          actionUrl: lastResult ? resultDeepLink : "/workspace",
+          relatedTaskId: lastResult ? resultProjectId : null,
+          deliverableId: lastResult ? resultProjectId : null,
+          workflowRunId: workflowRun.id,
+          requestId: input.runId,
+        }),
+      { runId: input.runId, userId: input.userId, kind: "completed" },
+    );
     try {
       runLearningAnalysis(input.userId, { periodDays: 30 });
     } catch (error) {
@@ -553,27 +726,36 @@ async function executeStoredRun(input: {
         projectId: resultProjectId,
       });
     }
-    notifyWorkCompleted(input.userId, {
-      title: "AIオーケストレーター一部完了",
-      message: snsPublishReason
-        ? `投稿文は準備できましたが、Xへの投稿に失敗しました: ${snsPublishReason}`
-        : "一部の成果は保存できます。内容を確認してください。",
-      actionUrl: lastResult ? resultDeepLink : "/workspace",
-      relatedTaskId: lastResult ? resultProjectId : null,
-      deliverableId: lastResult ? resultProjectId : null,
-      workflowRunId: workflowRun.id,
-      requestId: input.runId,
-    });
+    ensureNotificationDelivery(
+      () =>
+        notifyWorkCompleted(input.userId, {
+          title: "AIオーケストレーター一部完了",
+          message: snsPublishReason
+            ? `投稿文は準備できましたが、Xへの投稿に失敗しました: ${formatFailureReason(snsPublishReason)}`
+            : "一部の成果は保存できます。内容を確認してください。",
+          actionUrl: lastResult ? resultDeepLink : "/workspace",
+          relatedTaskId: lastResult ? resultProjectId : null,
+          deliverableId: lastResult ? resultProjectId : null,
+          workflowRunId: workflowRun.id,
+          requestId: input.runId,
+        }),
+      { runId: input.runId, userId: input.userId, kind: "partial" },
+    );
   } else if (finalStatus === "cancelled") {
-    notifyWorkFailed(input.userId, {
-      title: "AIオーケストレーターを中止しました",
-      message: "実行はユーザー操作により中止されました。",
-    });
+    ensureNotificationDelivery(
+      () =>
+        notifyWorkFailed(input.userId, {
+          title: "AIオーケストレーターを中止しました",
+          message: "実行はユーザー操作により中止されました。",
+        }),
+      { runId: input.runId, userId: input.userId, kind: "cancelled" },
+    );
   } else {
     // Persist the failed run (with its error) so「確認する」deep-links to a page
     // that explains 生成に失敗しました + reason instead of a dead/blank list.
-    const failureReason =
-      lastResult?.error ?? attempts.at(-1)?.error ?? "実行に失敗しました。";
+    const failureReason = formatFailureReason(
+      lastResult?.error ?? attempts.at(-1)?.error ?? "実行に失敗しました。",
+    );
     const failedResult: OrchestrationResult = lastResult
       ? { ...lastResult, status: "failed", error: failureReason }
       : {
@@ -601,15 +783,19 @@ async function executeStoredRun(input: {
       result: failedResult,
       projectId: resultProjectId,
     });
-    notifyWorkFailed(input.userId, {
-      title: "AIオーケストレーター失敗報告",
-      message: failureReason,
-      actionUrl: resultDeepLink,
-      relatedTaskId: resultProjectId,
-      deliverableId: resultProjectId,
-      workflowRunId: workflowRun.id,
-      requestId: input.runId,
-    });
+    ensureNotificationDelivery(
+      () =>
+        notifyWorkFailed(input.userId, {
+          title: "AIオーケストレーター失敗報告",
+          message: failureReason,
+          actionUrl: resultDeepLink,
+          relatedTaskId: resultProjectId,
+          deliverableId: resultProjectId,
+          workflowRunId: workflowRun.id,
+          requestId: input.runId,
+        }),
+      { runId: input.runId, userId: input.userId, kind: "failed" },
+    );
   }
 
   return toRunResult({

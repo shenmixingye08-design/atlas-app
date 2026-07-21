@@ -12,6 +12,7 @@ describe("bottom nav", () => {
 
   it("resolves active tab from pathname", () => {
     expect(resolveBottomNavId("/projects")).toBe("home");
+    // AI Orchestra remains reachable, but primary「送る」lands on /workspace.
     expect(resolveBottomNavId("/commander")).toBe("request");
     expect(resolveBottomNavId("/workspace")).toBe("request");
     expect(resolveBottomNavId("/chat")).toBe("request");

@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
+import { QUICK_REQUEST_PRESETS } from "@/lib/workspace/quick-request-presets";
 
 export type RequestExecutionMode = "once" | "recurring" | "delegate";
 export type RequestPriority = "low" | "normal" | "high";
@@ -38,14 +39,6 @@ type AttachmentItem = {
   kind: AttachmentKind;
   file: File;
 };
-
-const EXAMPLE_PROMPTS = [
-  "毎日Instagramへ投稿",
-  "このPDFを要約",
-  "この写真を整理",
-  "毎週ブログを書いて",
-  "毎月請求書をまとめて",
-] as const;
 
 const ATTACHMENT_OPTIONS: {
   kind: AttachmentKind;
@@ -300,6 +293,54 @@ export function WorkRequestForm({
         </p>
       </header>
 
+      <section className="space-y-4" aria-labelledby="work-templates-heading">
+        <div className="space-y-1">
+          <h2
+            id="work-templates-heading"
+            className="text-lg font-semibold text-foreground sm:text-xl"
+          >
+            {ui.work.templatesLabel}
+          </h2>
+          <p className="text-sm text-[var(--text-secondary)]">
+            {ui.work.templatesHint}
+          </p>
+        </div>
+        <div
+          className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
+          role="group"
+          aria-label={ui.work.templatesLabel}
+        >
+          {QUICK_REQUEST_PRESETS.map((preset) => {
+            const selected = value.trim() === preset.prompt.trim();
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                disabled={isLoading}
+                onClick={() => {
+                  onChange(preset.prompt);
+                  requestAnimationFrame(() => {
+                    const textarea = textareaRef.current;
+                    if (!textarea) return;
+                    textarea.focus();
+                    const len = preset.prompt.length;
+                    textarea.setSelectionRange(len, len);
+                  });
+                }}
+                className={cn(
+                  "touch-target flex min-h-[72px] items-center justify-center rounded-[20px] border px-3 py-4 text-center text-sm font-medium transition-all focus-ring sm:min-h-[80px] sm:text-base",
+                  selected
+                    ? "border-accent bg-accent/10 text-foreground shadow-[var(--shadow-sm)]"
+                    : "border-[var(--border-subtle)] bg-[var(--card)] text-foreground hover:border-accent/40 hover:shadow-[var(--shadow-sm)]",
+                )}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
       <section className="space-y-4">
         <div className="space-y-1">
           <h2 className="text-lg font-semibold text-foreground">
@@ -324,40 +365,6 @@ export function WorkRequestForm({
             className="min-h-[200px] resize-y border-none bg-transparent px-0 py-0 text-lg leading-relaxed shadow-none focus:ring-0"
           />
         </Card>
-
-        <div className="space-y-3">
-          <p className="text-sm text-[var(--text-secondary)]">{ui.work.examplesLabel}</p>
-          <div
-            className="flex flex-wrap gap-2"
-            role="group"
-            aria-label={ui.work.examplesLabel}
-          >
-            {EXAMPLE_PROMPTS.map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                disabled={isLoading}
-                onClick={() => {
-                  onChange(prompt);
-                  requestAnimationFrame(() => {
-                    const textarea = textareaRef.current;
-                    if (!textarea) return;
-                    textarea.focus();
-                    textarea.setSelectionRange(prompt.length, prompt.length);
-                  });
-                }}
-                className={cn(
-                  "rounded-full border px-4 py-2.5 text-sm transition-colors",
-                  value.trim() === prompt
-                    ? "border-accent bg-accent/10 font-medium text-foreground"
-                    : "border-[var(--border-subtle)] bg-[var(--card)] text-[var(--text-secondary)] hover:border-accent/40 hover:text-foreground",
-                )}
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
-        </div>
       </section>
 
       <section className="space-y-4">

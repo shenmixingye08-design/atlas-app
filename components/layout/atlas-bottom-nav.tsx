@@ -21,7 +21,7 @@ const NAV_ITEMS: {
 }[] = [
   { id: "home", href: "/projects", label: ui.nav.home, icon: "⌂" },
   { id: "history", href: "/history", label: ui.nav.history, icon: "☰" },
-  { id: "request", href: "/commander", label: ui.nav.send, icon: "＋", primary: true },
+  { id: "request", href: "/workspace", label: ui.nav.send, icon: "＋", primary: true },
   { id: "automation", href: "/automations", label: ui.nav.automation, icon: "↻" },
   { id: "settings", href: "/settings", label: ui.nav.settings, icon: "⚙" },
 ];
