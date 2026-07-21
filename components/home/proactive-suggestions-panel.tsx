@@ -63,7 +63,7 @@ export function ProactiveSuggestionsPanel({
 
       const assignment = suggestion.action.workspaceAssignment;
       if (assignment) {
-        router.push(`/commander?assignment=${encodeURIComponent(assignment)}`);
+        router.push(`/workspace?assignment=${encodeURIComponent(assignment)}`);
         hideLocally(suggestion.id);
       }
     } catch (err) {

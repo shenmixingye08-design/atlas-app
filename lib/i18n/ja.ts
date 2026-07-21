@@ -196,17 +196,26 @@ export const ui = {
     deskIdleTitle: "デスクは整っています",
     deskIdleHint:
       "定期仕事を登録するか、下の欄から追加の指示を送ると、AI秘書が仕事を始めます。",
-    activityTitle: "AIの現在の行動",
+    activityTitle: "AI Activity",
+    activitySubtitle: "AIがいま進めている仕事です。",
     activityIdle: "現在、新しい作業はありません。次の仕事を待っています。",
     activityMore: (count: number) =>
       count > 0 ? `他 ${count} 件の作業も進行中です` : "",
-    outcomesTitle: "今日の成果",
+    activityStatusPosting: "投稿中",
+    activityStatusImage: "画像生成中",
+    activityStatusResearch: "調査中",
+    activityStatusEmail: "メール送信中",
+    activityStatusWorking: "作業中",
+    activityStatusCompleted: "完了",
+    outcomesTitle: "Today's Results",
+    outcomesSubtitle: "AIが今日何を終わらせたかが一目で分かります。",
     outcomesEmpty: "今日はまだ完了した仕事がありません。AIが仕事を終えると、ここに表示されます。",
-    outcomeCompletedTasks: "完了タスク",
-    outcomeHoursSaved: "削減時間",
+    outcomeCompletedTasks: "完了タスク数",
+    outcomeAiRunning: "AI稼働中",
+    outcomeHoursSaved: "今日削減した推定時間",
     outcomePosts: "投稿数",
-    outcomeEmails: "送信メール",
-    outcomeMaterials: "生成資料",
+    outcomeEmails: "メール送信数",
+    outcomeMaterials: "作成資料数",
     unitTasks: "件",
     unitHours: "時間",
     unitItems: "件",
@@ -539,6 +548,9 @@ export const ui = {
     openAutomations: "任せている仕事へ",
     attemptsLabel: (attempts: number, retries: number) =>
       `試行 ${attempts} 回（再試行 ${retries} 回）`,
+    automationOnlyHint:
+      "この画面は自動化・ワークフロー・AIルール作成専用です。通常の依頼は依頼作成画面からどうぞ。",
+    goToNewRequest: "新しい依頼へ",
   },
 
   todayDashboard: {
@@ -596,10 +608,12 @@ export const ui = {
 
   work: {
     title: "新しい依頼",
-    intro: "AI秘書へ仕事を依頼します。",
+    intro: "AI秘書へ仕事を依頼します。よく使うテンプレートから選ぶと、書き方がすぐ分かります。",
     placeholder: "何をお願いしたいですか？",
     requestContentLabel: "依頼内容",
     requestContentHint: "やりたいことをそのまま書いてください。あとから添付や期限も指定できます。",
+    templatesLabel: "よく使うテンプレート",
+    templatesHint: "タップするとプロンプト例が入力されます。そのまま送るか、内容を編集できます。",
     examplesLabel: "例",
     attachmentsLabel: "添付",
     attachmentsHint: "写真・PDF・動画・Office資料などを追加できます。",
@@ -856,6 +870,7 @@ export const ui = {
     pageDescription:
       "毎日・毎週・毎月の繰り返し作業を、MINERVOTが継続してお手伝いします。",
     addNew: "＋ 新しい仕事を任せる",
+    openOrchestra: "AIオーケストラで自動化を設計",
     countSuffix: "件",
     summaryScheduled: "実行予定",
     summaryNeedsReview: "確認待ち",
@@ -1389,6 +1404,20 @@ export const ui = {
   secretaryResult: {
     back: "戻る",
     completedAt: (time: string) => `完了: ${time}`,
+    workDoneHeading: "今回やった仕事",
+    deliverableHeading: "成果物",
+    deliverableLinkHeading: "成果物リンク",
+    openDeliverable: "成果物を開く",
+    usedAiHeading: "使用AI",
+    usedAiDefault: "MINERVOT（AI秘書）",
+    durationHeading: "実行時間",
+    durationUnknown: "計測中",
+    durationSeconds: (seconds: number) => `${seconds}秒`,
+    durationMinutes: (minutes: number, seconds: number) =>
+      seconds > 0 ? `${minutes}分${seconds}秒` : `${minutes}分`,
+    nextRecommendHeading: "次回おすすめ",
+    nextRecommendHint: "同じ流れで次の仕事も任せられます。",
+    newRequestAgain: "新しい依頼を作る",
     contentHeading: "内容",
     postsHeading: "投稿文",
     postAltLabel: (n: number) => `別案 ${n}`,
@@ -1425,6 +1454,7 @@ export const ui = {
     postFailed: "Xへの投稿に失敗しました",
     // Related saves (documents)
     filesHeading: "資料として保存",
+    failureReasonHeading: "失敗理由",
   },
 
   owner: {

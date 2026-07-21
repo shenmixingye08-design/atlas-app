@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 
 export default function CommanderPage() {
   return (
-    <AtlasAppShell active="commander" width="default">
+    <AtlasAppShell active="automations" width="default">
       <Suspense fallback={<LoadingState />}>
         <CommanderDashboard />
       </Suspense>

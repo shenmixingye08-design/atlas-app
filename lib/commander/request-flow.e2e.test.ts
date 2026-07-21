@@ -53,6 +53,19 @@ vi.mock("@/lib/notifications/emitters", () => ({
   notifyAutomationAwaitingReview: vi.fn(),
 }));
 
+vi.mock("@/lib/execution-reliability/notify-guarantee", () => ({
+  notifyWorkCompletedGuaranteed: vi.fn(() => ({
+    notification: { id: "n1" },
+    guaranteed: true,
+    attempts: 1,
+  })),
+  notifyWorkFailedGuaranteed: vi.fn(() => ({
+    notification: { id: "n2" },
+    guaranteed: true,
+    attempts: 1,
+  })),
+}));
+
 vi.mock("@/lib/automations/repositories/workflow-run-store", () => ({
   serverWorkflowRunRepository: {
     start: vi.fn(async () => ({ id: "wr_test" })),

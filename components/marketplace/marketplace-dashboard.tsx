@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 
 import { applyCompanyTemplateClient } from "@/lib/company-templates/client";
 import {
@@ -61,6 +62,14 @@ export function MarketplaceDashboard() {
       <header className="space-y-3">
         <h1 className="text-display text-foreground">{ui.marketplace.title}</h1>
         <p className="text-body">{ui.marketplace.subtitle}</p>
+        <p className="text-sm text-[var(--text-secondary)]">
+          <Link
+            href="/commander"
+            className="font-medium text-accent underline-offset-4 hover:underline"
+          >
+            {ui.entrustedJobs.openOrchestra}
+          </Link>
+        </p>
       </header>
 
       {error && <ErrorState message={error} />}

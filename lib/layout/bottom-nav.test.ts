@@ -12,7 +12,7 @@ describe("bottom nav", () => {
 
   it("resolves active tab from pathname", () => {
     expect(resolveBottomNavId("/projects")).toBe("home");
-    expect(resolveBottomNavId("/commander")).toBe("request");
+    expect(resolveBottomNavId("/commander")).toBe("automation");
     expect(resolveBottomNavId("/workspace")).toBe("request");
     expect(resolveBottomNavId("/chat")).toBe("request");
     expect(resolveBottomNavId("/learned-jobs")).toBe("request");

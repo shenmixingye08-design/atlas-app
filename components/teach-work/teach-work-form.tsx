@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import {
   createEmptyTaughtStep,
   type TaughtWorkflowStep,
 } from "@/lib/work-memory/taught-workflow";
+import { ui } from "@/lib/i18n";
 
 export function TeachWorkForm() {
   const router = useRouter();
@@ -81,6 +83,14 @@ export function TeachWorkForm() {
         </h1>
         <p className="max-w-2xl text-sm leading-relaxed text-[var(--foreground-muted)] sm:text-base">
           一度だけ流れを教えると、次回から同じ手順で進められます。
+        </p>
+        <p className="text-sm text-[var(--foreground-muted)]">
+          <Link
+            href="/commander"
+            className="font-medium text-accent underline-offset-4 hover:underline"
+          >
+            {ui.entrustedJobs.openOrchestra}
+          </Link>
         </p>
       </header>
 

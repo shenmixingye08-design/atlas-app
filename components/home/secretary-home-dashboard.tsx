@@ -18,7 +18,7 @@ type SecretaryHomeDashboardProps = {
 
 /**
  * Post-login home — 「仕事を終わらせるAI秘書」
- * Priority: 今日の仕事 → AIの行動 → 今日の成果 → 次におすすめ → 追加の指示
+ * Priority: Today's Results → AI Activity → 今日の仕事 → 次におすすめ → 追加の指示
  */
 export function SecretaryHomeDashboard({
   automations,
@@ -33,14 +33,14 @@ export function SecretaryHomeDashboard({
         <HomeGreetingHeader automations={automations} projects={projects} />
       </header>
 
-      {/* ① 今日の仕事 */}
-      <HomeTodayWorkSummary automations={automations} projects={projects} />
+      {/* ① Today's Results — AIが今日何を終わらせたか */}
+      <HomeTodayOutcomes automations={automations} projects={projects} />
 
-      {/* ② AIの現在の行動 */}
+      {/* ② AI Activity — いま動いている仕事 */}
       <HomeAiActivityPanel automations={automations} projects={projects} />
 
-      {/* ③ 今日の成果 */}
-      <HomeTodayOutcomes automations={automations} projects={projects} />
+      {/* ③ 今日の仕事 */}
+      <HomeTodayWorkSummary automations={automations} projects={projects} />
 
       {/* ④ 次におすすめ */}
       <section aria-labelledby="next-recommendation-heading" className="space-y-5">

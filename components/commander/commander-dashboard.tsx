@@ -304,6 +304,15 @@ export function CommanderDashboard() {
         <p className="max-w-2xl text-sm leading-relaxed text-[var(--text-secondary)]">
           {ui.commander.subtitle}
         </p>
+        <p className="max-w-2xl text-sm leading-relaxed text-[var(--text-muted)]">
+          {ui.commander.automationOnlyHint}{" "}
+          <Link
+            href="/workspace"
+            className="font-medium text-accent underline-offset-4 hover:underline"
+          >
+            {ui.commander.goToNewRequest}
+          </Link>
+        </p>
       </header>
 
       <Card

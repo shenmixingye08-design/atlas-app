@@ -19,6 +19,8 @@ function isUpdatedToday(iso: string, now: Date): boolean {
 
 export type TodayOutcomeStats = {
   completedTasks: number;
+  /** Number of AI jobs currently running / in progress. */
+  aiRunning: number;
   hoursSaved: number;
   snsPosts: number;
   emailSent: number;
@@ -83,8 +85,13 @@ export function computeTodayOutcomes(
       ? Math.max(1, Math.round(completedTasks * 0.5 + snsPosts * 0.25 + emailSent * 0.15))
       : 0;
 
+  const aiRunning =
+    projects.filter((project) => project.status === "running").length +
+    automations.filter((automation) => automation.status === "running").length;
+
   return {
     completedTasks,
+    aiRunning,
     hoursSaved,
     snsPosts,
     emailSent,

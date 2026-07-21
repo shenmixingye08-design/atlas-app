@@ -42,7 +42,7 @@ export function useRegenerate(workRequest: string) {
       }
 
       if (result.status === "awaiting_confirmation") {
-        router.push(`/commander?assignment=${encodeURIComponent(trimmed)}`);
+        router.push(`/workspace?assignment=${encodeURIComponent(trimmed)}`);
         return;
       }
 

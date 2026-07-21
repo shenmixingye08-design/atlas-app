@@ -26,7 +26,7 @@ const PRIMARY_NAV: { id: AtlasNavPage; href: string; label: string }[] = [
 ];
 
 const MORE_NAV: { id: AtlasNavPage; href: string; label: string }[] = [
-  { id: "commander", href: "/commander", label: ui.nav.newRequest },
+  { id: "workspace", href: "/workspace", label: ui.nav.newRequest },
   { id: "work-memory", href: "/learned-jobs", label: ui.nav.workMemory },
   { id: "learning", href: "/settings/learning", label: ui.nav.analysis },
   { id: "billing", href: "/settings/billing", label: ui.nav.billingCredits },

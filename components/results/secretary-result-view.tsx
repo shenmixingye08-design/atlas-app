@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { CompletionSummaryCard } from "@/components/results/completion-summary-card";
 import { NextActionsBar } from "@/components/results/next-actions-bar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -21,6 +22,7 @@ import {
   deriveResultIntent,
   deriveTargetType,
 } from "@/lib/results/completion";
+import { buildCompletionSummary } from "@/lib/results/completion-summary";
 import { useRegenerate } from "@/lib/results/use-regenerate";
 import { useDeliverableFiles } from "@/lib/workspace/use-deliverable-files";
 
@@ -48,12 +50,10 @@ function resolveXPostText(project: Project): string {
 }
 
 /**
- * User-facing result screen: 「結果確認 → 次の実行」.
+ * User-facing result screen: 「成果確認 → 次の実行」.
  *
- * Shows only what the user cares about — a natural completion title, the
- * finished content, and the next actions — and never the old ATLAS internal org
- * structure (CEO / departments / owners / handoffs / progress timeline / step
- * timings / status badges). One AI secretary, one clear result.
+ * Shows what the user cares about — work done, deliverable, links, used AI,
+ * duration, and next recommendation — never internal org structure.
  */
 export function SecretaryResultView({
   project,
@@ -69,6 +69,7 @@ export function SecretaryResultView({
   );
   const derivedTitle = useMemo(() => deriveCompletionTitle(project), [project]);
   const title = postedOverride ? ui.secretaryResult.postedTitle : derivedTitle;
+  const summary = useMemo(() => buildCompletionSummary(project), [project]);
 
   const xPostText = useMemo(
     () => (targetType === "x_post" ? resolveXPostText(project) : ""),
@@ -83,7 +84,6 @@ export function SecretaryResultView({
     return xPostText ? [xPostText] : [];
   })();
 
-  // Only documents/emails offer downloadable files; X posts do not.
   const { deliverables, deliverablesError, isGeneratingDeliverables } =
     useDeliverableFiles(project.result ?? null, {
       skipFileGeneration: targetType === "x_post",
@@ -111,6 +111,8 @@ export function SecretaryResultView({
           </p>
         </div>
       </div>
+
+      <CompletionSummaryCard summary={summary} />
 
       {targetType === "x_post" ? (
         <div className="space-y-8">

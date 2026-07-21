@@ -20,10 +20,11 @@ export function shouldHideBottomNav(pathname: string): boolean {
 /** Resolve which bottom tab is active for the current path. */
 export function resolveBottomNavId(pathname: string): BottomNavId | null {
   if (pathname.startsWith("/automations")) return "automation";
+  // AIオーケストラは自動化専用導線
+  if (pathname.startsWith("/commander")) return "automation";
   if (pathname.startsWith("/settings")) return "settings";
   if (pathname.startsWith("/history")) return "history";
   if (
-    pathname.startsWith("/commander") ||
     pathname.startsWith("/workspace") ||
     pathname.startsWith("/projects/") ||
     pathname.startsWith("/chat") ||

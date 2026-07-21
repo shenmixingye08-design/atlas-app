@@ -11,11 +11,11 @@ import {
 import { runOrchestrationForUser } from "@/lib/orchestration/run-for-user";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import { hydrateWorkflowState } from "@/lib/orchestration/workflow-state";
+import { notifyAutomationAwaitingReview } from "@/lib/notifications/emitters";
 import {
-  notifyAutomationAwaitingReview,
-  notifyWorkCompleted,
-  notifyWorkFailed,
-} from "@/lib/notifications/emitters";
+  notifyWorkCompletedGuaranteed,
+  notifyWorkFailedGuaranteed,
+} from "@/lib/execution-reliability/notify-guarantee";
 import { runLearningAnalysis } from "@/lib/learning-engine/service";
 import { detectMemorySignals } from "@/lib/work-memory/learning";
 import { createWorkMemoryCandidate } from "@/lib/work-memory/service";
@@ -244,7 +244,7 @@ async function executeRememberHabitRun(input: {
     projectId: habitProjectId,
   });
 
-  notifyWorkCompleted(input.userId, {
+  notifyWorkCompletedGuaranteed(input.userId, {
     title: "習慣候補を作成しました",
     message: summary,
     actionUrl: `/projects/${encodeURIComponent(habitProjectId)}`,
@@ -528,7 +528,7 @@ async function executeStoredRun(input: {
         projectId: resultProjectId,
       });
     }
-    notifyWorkCompleted(input.userId, {
+    notifyWorkCompletedGuaranteed(input.userId, {
       title: "AIオーケストレーター完了報告",
       message: snsPublishedTweetUrl
         ? `「${plan.classification.summary}」が完了し、Xへ投稿しました。${snsPublishedTweetUrl}`
@@ -553,7 +553,7 @@ async function executeStoredRun(input: {
         projectId: resultProjectId,
       });
     }
-    notifyWorkCompleted(input.userId, {
+    notifyWorkCompletedGuaranteed(input.userId, {
       title: "AIオーケストレーター一部完了",
       message: snsPublishReason
         ? `投稿文は準備できましたが、Xへの投稿に失敗しました: ${snsPublishReason}`
@@ -565,7 +565,7 @@ async function executeStoredRun(input: {
       requestId: input.runId,
     });
   } else if (finalStatus === "cancelled") {
-    notifyWorkFailed(input.userId, {
+    notifyWorkFailedGuaranteed(input.userId, {
       title: "AIオーケストレーターを中止しました",
       message: "実行はユーザー操作により中止されました。",
     });
@@ -601,7 +601,7 @@ async function executeStoredRun(input: {
       result: failedResult,
       projectId: resultProjectId,
     });
-    notifyWorkFailed(input.userId, {
+    notifyWorkFailedGuaranteed(input.userId, {
       title: "AIオーケストレーター失敗報告",
       message: failureReason,
       actionUrl: resultDeepLink,
