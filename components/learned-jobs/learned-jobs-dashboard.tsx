@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -8,6 +9,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { cn } from "@/lib/design-system/cn";
+import { ui } from "@/lib/i18n";
 import {
   assignmentFromLearnedMemory,
   deleteWorkMemoryClient,
@@ -127,14 +129,22 @@ export function LearnedJobsDashboard() {
 
   return (
     <div className="space-y-8 animate-fade-up">
-      <header className="space-y-2">
-        <p className="text-sm font-medium text-accent">AI秘書</p>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-          AI秘書が覚えた仕事
-        </h1>
-        <p className="max-w-2xl text-sm leading-relaxed text-[var(--foreground-muted)] sm:text-base">
-          一度行った仕事をテンプレートとして再利用できます。
-        </p>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-accent">AI秘書</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            AI秘書が覚えた仕事
+          </h1>
+          <p className="max-w-2xl text-sm leading-relaxed text-[var(--foreground-muted)] sm:text-base">
+            一度行った仕事をテンプレートとして再利用できます。AIルール作成はオーケストレーターから進められます。
+          </p>
+        </div>
+        <Link
+          href="/commander"
+          className="inline-flex min-h-[48px] shrink-0 items-center justify-center self-start rounded-full border border-[var(--border-subtle)] bg-[var(--card)] px-5 text-sm font-medium text-foreground transition-colors hover:border-accent/40 focus-ring"
+        >
+          {ui.nav.commander}
+        </Link>
       </header>
 
       {error && <ErrorState message={error} />}

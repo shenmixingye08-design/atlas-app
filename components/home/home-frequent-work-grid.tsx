@@ -27,7 +27,7 @@ export function HomeFrequentWorkGrid({ profileVersion = 0 }: HomeFrequentWorkGri
       router.push(preset.href);
       return;
     }
-    router.push(`/commander?assignment=${encodeURIComponent(preset.prompt)}`);
+    router.push(`/workspace?assignment=${encodeURIComponent(preset.prompt)}`);
   };
 
   return (

@@ -7,10 +7,10 @@ import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 
 const ACTIONS = [
-  { id: "add-work", href: "/commander", label: ui.homeUx.quickAddWork, icon: "＋" },
-  { id: "commander", href: "/commander", label: ui.nav.commander, icon: "◈" },
+  { id: "add-work", href: "/workspace", label: ui.homeUx.quickAddWork, icon: "＋" },
   { id: "automations", href: "/automations", label: ui.homeUx.quickAutomation, icon: "↻" },
-  { id: "search", href: "/commander", label: ui.homeUx.quickSearch, icon: "⌕" },
+  { id: "workflow", href: "/marketplace", label: ui.nav.marketplace, icon: "◈" },
+  { id: "search", href: "/workspace", label: ui.homeUx.quickSearch, icon: "⌕" },
 ] as const;
 
 export function HomeQuickActionsBar() {
