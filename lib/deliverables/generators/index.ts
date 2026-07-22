@@ -1,17 +1,11 @@
 import type { DeliverableFormat, DeliverableGenerator } from "../types";
 
 import { CsvDeliverableGenerator } from "./csv-generator";
-import {
-  DocxDeliverableGenerator,
-  DocxPlaceholderGenerator,
-} from "./docx-generator";
+import { DocxDeliverableGenerator } from "./docx-generator";
 import { MarkdownDeliverableGenerator } from "./markdown-generator";
 import { PdfDeliverableGenerator } from "./pdf-generator";
 import { PlainTextDeliverableGenerator } from "./plain-text-generator";
-import {
-  PptxDeliverableGenerator,
-  PptxPlaceholderGenerator,
-} from "./pptx-generator";
+import { PptxDeliverableGenerator } from "./pptx-generator";
 import { XlsxDeliverableGenerator } from "./xlsx-generator";
 
 export { createDeliverableFile, formatGeneratedDate } from "./shared";

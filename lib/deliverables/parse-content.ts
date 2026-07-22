@@ -71,6 +71,11 @@ function isTableRow(line: string): boolean {
   return line.includes("|") && !TABLE_SEPARATOR_PATTERN.test(line.trim());
 }
 
+function isTableLine(line: string): boolean {
+  const trimmed = line.trim();
+  return isTableRow(trimmed) || TABLE_SEPARATOR_PATTERN.test(trimmed);
+}
+
 function isPlaceholderSrc(src: string): boolean {
   return /^(?:placeholder|image-placeholder|#)$/i.test(src.trim());
 }
@@ -120,9 +125,9 @@ function parseBlocks(lines: string[]): ContentBlock[] {
       continue;
     }
 
-    if (isTableRow(line)) {
+    if (isTableLine(line)) {
       const tableLines: string[] = [];
-      while (index < lines.length && isTableRow(lines[index] ?? "")) {
+      while (index < lines.length && isTableLine(lines[index] ?? "")) {
         if (!TABLE_SEPARATOR_PATTERN.test(lines[index]?.trim() ?? "")) {
           tableLines.push(lines[index]!);
         }
@@ -169,7 +174,7 @@ function parseBlocks(lines: string[]): ContentBlock[] {
       !HEADING_PATTERN.test(lines[index]!.trim()) &&
       !BULLET_PATTERN.test(lines[index]!.trim()) &&
       !NUMBERED_PATTERN.test(lines[index]!.trim()) &&
-      !isTableRow(lines[index]!.trim()) &&
+      !isTableLine(lines[index]!.trim()) &&
       !IMAGE_MD_PATTERN.test(lines[index]!.trim()) &&
       !IMAGE_PLACEHOLDER_PATTERN.test(lines[index]!.trim()) &&
       !HORIZONTAL_RULE.test(lines[index]!.trim())

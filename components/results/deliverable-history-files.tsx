@@ -87,7 +87,9 @@ export function DeliverableHistoryFiles({
 }: DeliverableHistoryFilesProps) {
   const history = useMemo(
     () => getDeliverableHistory(projectId),
-    [projectId, liveDeliverables],
+    // Re-read when live files change (history may have been saved in the same tick).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional refresh signal
+    [projectId, liveDeliverables.length],
   );
   const files = useMemo(
     () => mergeFiles(history, liveDeliverables),

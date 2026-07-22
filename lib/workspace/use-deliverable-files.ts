@@ -26,12 +26,29 @@ export function useDeliverableFiles(
   const [deliverablesError, setDeliverablesError] = useState<string | null>(null);
   const [isGeneratingDeliverables, setIsGeneratingDeliverables] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const requestKey = [
+    result?.workflow?.workflowId ?? "",
+    result?.assignment ?? "",
+    options?.formats?.join(",") ?? "",
+    options?.skipFileGeneration ? "1" : "0",
+    options?.projectId ?? "",
+  ].join("|");
 
   useEffect(() => {
-    if (!result) {
-      setDeliverables([]);
-      setDeliverablesError(null);
-      return;
+    let cancelled = false;
+    abortRef.current?.abort();
+
+    if (!result || options?.skipFileGeneration) {
+      const timer = window.setTimeout(() => {
+        if (cancelled) return;
+        setDeliverables([]);
+        setDeliverablesError(null);
+        setIsGeneratingDeliverables(false);
+      }, 0);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+      };
     }
 
     const previewContent = result.deliverable
@@ -39,25 +56,20 @@ export function useDeliverableFiles(
       : "";
 
     if (!previewContent) {
-      setDeliverables([]);
-      setDeliverablesError(null);
-      return;
+      const timer = window.setTimeout(() => {
+        if (cancelled) return;
+        setDeliverables([]);
+        setDeliverablesError(null);
+        setIsGeneratingDeliverables(false);
+      }, 0);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+      };
     }
 
-    if (options?.skipFileGeneration) {
-      setDeliverables([]);
-      setDeliverablesError(null);
-      setIsGeneratingDeliverables(false);
-      return;
-    }
-
-    abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-
-    setIsGeneratingDeliverables(true);
-    setDeliverablesError(null);
-    setDeliverables([]);
 
     const title =
       result.deliverable &&
@@ -66,49 +78,59 @@ export function useDeliverableFiles(
         ? String(result.deliverable.title ?? "").trim() || undefined
         : undefined;
 
-    void requestDeliverables(
-      {
-        assignment: result.assignment,
-        finalDeliverable: previewContent,
-        title,
-        projectName: result.assignment.trim().slice(0, 80),
-        workflowId: result.knowledge?.workflowId,
-        formats:
-          options?.formats && options.formats.length > 0
-            ? options.formats
-            : undefined,
-      },
-      controller.signal,
-    )
-      .then((response) => {
-        setDeliverables(response.deliverables);
-        if (options?.projectId && response.deliverables.length > 0) {
-          saveDeliverableHistory({
-            projectId: options.projectId,
-            assignment: result.assignment,
-            title: title ?? result.assignment.slice(0, 80),
-            contentHash: hashDeliverableText(previewContent),
-            deliverables: response.deliverables,
-          });
-        }
-      })
-      .catch((err) => {
-        if (err instanceof Error && err.name === "AbortError") return;
-        setDeliverablesError(
-          err instanceof Error ? err.message : "ファイル生成に失敗しました",
-        );
-      })
-      .finally(() => {
-        setIsGeneratingDeliverables(false);
-      });
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      setIsGeneratingDeliverables(true);
+      setDeliverablesError(null);
+      setDeliverables([]);
 
-    return () => controller.abort();
-  }, [
-    result,
-    options?.formats,
-    options?.skipFileGeneration,
-    options?.projectId,
-  ]);
+      void requestDeliverables(
+        {
+          assignment: result.assignment,
+          finalDeliverable: previewContent,
+          title,
+          projectName: result.assignment.trim().slice(0, 80),
+          workflowId: result.knowledge?.workflowId,
+          formats:
+            options?.formats && options.formats.length > 0
+              ? options.formats
+              : undefined,
+        },
+        controller.signal,
+      )
+        .then((response) => {
+          if (cancelled) return;
+          setDeliverables(response.deliverables);
+          if (options?.projectId && response.deliverables.length > 0) {
+            saveDeliverableHistory({
+              projectId: options.projectId,
+              assignment: result.assignment,
+              title: title ?? result.assignment.slice(0, 80),
+              contentHash: hashDeliverableText(previewContent),
+              deliverables: response.deliverables,
+            });
+          }
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          if (err instanceof Error && err.name === "AbortError") return;
+          setDeliverablesError(
+            err instanceof Error ? err.message : "ファイル生成に失敗しました",
+          );
+        })
+        .finally(() => {
+          if (!cancelled) setIsGeneratingDeliverables(false);
+        });
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+    // requestKey captures result + options used above
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stable request fingerprint
+  }, [requestKey]);
 
   return { deliverables, deliverablesError, isGeneratingDeliverables };
 }

@@ -409,14 +409,15 @@ export function FinalOutput({
   const [driveSaved, setDriveSaved] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState("");
-  const [localDeliverables, setLocalDeliverables] = useState<GeneratedFile[]>(deliverables);
+  const [editedDeliverables, setEditedDeliverables] = useState<GeneratedFile[] | null>(
+    null,
+  );
   const [isRegeneratingFiles, setIsRegeneratingFiles] = useState(false);
   const [reeditError, setReeditError] = useState<string | null>(null);
   const showDebug = isAtlasClientDebugEnabled();
 
-  useEffect(() => {
-    setLocalDeliverables(deliverables);
-  }, [deliverables]);
+  // Prefer locally re-edited files; otherwise use server-generated list.
+  const localDeliverables = editedDeliverables ?? deliverables;
 
   const workspaceDeliverable = result?.deliverable ?? null;
   const exportText = useMemo(
@@ -559,7 +560,7 @@ export function FinalOutput({
         projectId,
         formats: expectedFormats,
       });
-      setLocalDeliverables(files);
+      setEditedDeliverables(files);
       onDeliverablesChange?.(files);
       setIsEditing(false);
     } catch (error) {
