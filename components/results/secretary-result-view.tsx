@@ -84,10 +84,16 @@ export function SecretaryResultView({
   })();
 
   // Only documents/emails offer downloadable files; X posts do not.
-  const { deliverables, deliverablesError, isGeneratingDeliverables } =
-    useDeliverableFiles(project.result ?? null, {
-      skipFileGeneration: targetType === "x_post",
-    });
+  const {
+    deliverables,
+    deliverablesError,
+    isGeneratingDeliverables,
+    documentOutline,
+    designTemplate,
+    setDesignTemplate,
+  } = useDeliverableFiles(project.result ?? null, {
+    skipFileGeneration: targetType === "x_post",
+  });
 
   const { regenerate, isRegenerating, error: regenerateError } = useRegenerate(
     project.workRequest ?? "",
@@ -232,6 +238,9 @@ export function SecretaryResultView({
             deliverables={deliverables}
             isGeneratingDeliverables={isGeneratingDeliverables}
             deliverablesError={deliverablesError}
+            designTemplate={designTemplate}
+            onDesignTemplateChange={setDesignTemplate}
+            documentOutline={documentOutline}
           />
 
           {regenerateError && <ErrorState message={regenerateError} />}

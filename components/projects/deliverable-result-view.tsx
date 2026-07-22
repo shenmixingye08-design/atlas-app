@@ -31,8 +31,14 @@ type DeliverableResultViewProps = {
  * a real result. Requires `project.result` to be present.
  */
 export function DeliverableResultView({ project }: DeliverableResultViewProps) {
-  const { deliverables, deliverablesError, isGeneratingDeliverables } =
-    useDeliverableFiles(project.result ?? null);
+  const {
+    deliverables,
+    deliverablesError,
+    isGeneratingDeliverables,
+    documentOutline,
+    designTemplate,
+    setDesignTemplate,
+  } = useDeliverableFiles(project.result ?? null);
 
   return (
     <div className="space-y-8">
@@ -65,6 +71,9 @@ export function DeliverableResultView({ project }: DeliverableResultViewProps) {
             deliverables={deliverables}
             isGeneratingDeliverables={isGeneratingDeliverables}
             deliverablesError={deliverablesError}
+            designTemplate={designTemplate}
+            onDesignTemplateChange={setDesignTemplate}
+            documentOutline={documentOutline}
           />
           <WorkflowResults
             result={project.result}

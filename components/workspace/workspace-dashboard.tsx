@@ -87,8 +87,14 @@ export function WorkspaceDashboard() {
         skipFileGeneration: salesMaterialConfig.skipFileGeneration,
       }
     : undefined;
-  const { deliverables, deliverablesError, isGeneratingDeliverables } =
-    useDeliverableFiles(result, deliverableOptions);
+  const {
+    deliverables,
+    deliverablesError,
+    isGeneratingDeliverables,
+    documentOutline,
+    designTemplate,
+    setDesignTemplate,
+  } = useDeliverableFiles(result, deliverableOptions);
 
   const searchParams = useSearchParams();
 
@@ -443,6 +449,9 @@ export function WorkspaceDashboard() {
             isGeneratingDeliverables={isGeneratingDeliverables}
             deliverablesError={deliverablesError}
             expectedFormats={salesMaterialConfig?.formats}
+            designTemplate={designTemplate}
+            onDesignTemplateChange={setDesignTemplate}
+            documentOutline={documentOutline}
           />
 
           <KnowledgeUsedPanel knowledge={result.knowledge} />

@@ -32,9 +32,12 @@ const IMAGE_PLACEHOLDER_PATTERN =
   /^!\[(.*?)\]\((?:placeholder|image-placeholder|#)\)|^\[(Image(?: placeholder)?(?:[:\s].*)?)\]$/i;
 const HORIZONTAL_RULE = /^-{3,}$/;
 
-/** Section headings produced by {@link buildExportMarkdown} — never treat as subtitle. */
+/** Section headings that must never be treated as a document subtitle. */
 const EXPORT_SECTION_LABELS = new Set([
   "概要",
+  "要約",
+  "サマリー",
+  "エグゼクティブサマリー",
   "本文",
   "件名",
   "タグ",
@@ -45,6 +48,44 @@ const EXPORT_SECTION_LABELS = new Set([
   "スライド内容",
   "調査結果",
   "メール本文",
+  "背景",
+  "課題",
+  "目的",
+  "提案内容",
+  "ご提案",
+  "メリット",
+  "実施方法",
+  "スケジュール",
+  "費用",
+  "費用・必要リソース",
+  "リスク",
+  "次のアクション",
+  "結論",
+  "推奨事項",
+  "調査目的",
+  "調査方法",
+  "結果",
+  "分析",
+  "考察",
+  "会議情報",
+  "議題",
+  "決定事項",
+  "保留事項",
+  "アクション項目",
+  "次回予定",
+  "対象者",
+  "事前準備",
+  "手順",
+  "注意事項",
+  "完了条件",
+  "トラブル対応",
+  "比較",
+  "比較表",
+  "見積明細",
+  "注記",
+  "要点",
+  "導入メリット",
+  "ご提案内容",
 ]);
 
 function stripTaskPrefix(title: string): string {
