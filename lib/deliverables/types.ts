@@ -1,5 +1,12 @@
-/** Supported downloadable deliverable formats (v1). */
-export type DeliverableFormat = "pdf" | "docx" | "pptx" | "md" | "txt";
+/** Supported downloadable deliverable formats. */
+export type DeliverableFormat =
+  | "pdf"
+  | "docx"
+  | "pptx"
+  | "xlsx"
+  | "md"
+  | "txt"
+  | "csv";
 
 /** ISO timestamp string. */
 export type DeliverableTimestamp = string;
@@ -15,6 +22,11 @@ export interface Deliverable {
   /** True when a stub generator was used — swap for production implementation. */
   isPlaceholder: boolean;
   downloadUrl: string;
+  /**
+   * Base64 file bytes for serverless-safe client download.
+   * Included for Word/PDF so downloads do not depend on ephemeral in-memory store.
+   */
+  contentBase64?: string;
 }
 
 /** Input to the deliverables engine. */
@@ -54,8 +66,10 @@ export const DELIVERABLE_FORMAT_LABELS: Record<DeliverableFormat, string> = {
   pdf: "PDF",
   docx: "Word (.docx)",
   pptx: "PowerPoint (.pptx)",
+  xlsx: "Excel (.xlsx)",
   md: "Markdown (.md)",
   txt: "テキスト (.txt)",
+  csv: "CSV (.csv)",
 };
 
 export const DELIVERABLE_MIME_TYPES: Record<DeliverableFormat, string> = {
@@ -64,14 +78,39 @@ export const DELIVERABLE_MIME_TYPES: Record<DeliverableFormat, string> = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   pptx:
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   md: "text/markdown; charset=utf-8",
   txt: "text/plain; charset=utf-8",
+  csv: "text/csv; charset=utf-8",
 };
 
 export const DELIVERABLE_EXTENSIONS: Record<DeliverableFormat, string> = {
   pdf: ".pdf",
   docx: ".docx",
   pptx: ".pptx",
+  xlsx: ".xlsx",
   md: ".md",
   txt: ".txt",
+  csv: ".csv",
 };
+
+/** Preferred display order on the deliverable screen. */
+export const DELIVERABLE_DOWNLOAD_ORDER: readonly DeliverableFormat[] = [
+  "docx",
+  "xlsx",
+  "pdf",
+  "pptx",
+  "md",
+  "txt",
+  "csv",
+] as const;
+
+export const ALL_DELIVERABLE_FORMATS: readonly DeliverableFormat[] = [
+  "pdf",
+  "docx",
+  "pptx",
+  "xlsx",
+  "md",
+  "txt",
+  "csv",
+] as const;

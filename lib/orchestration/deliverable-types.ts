@@ -108,20 +108,20 @@ export function emptyDeliverable(type: DeliverableType = "document"): Deliverabl
 export function defaultDownloads(type: DeliverableType): DeliverableDownload[] {
   switch (type) {
     case "blog":
-      return downloadsFor(["md", "docx", "pdf"]);
+      return downloadsFor(["md", "docx", "pdf", "txt"]);
     case "presentation":
-      return downloadsFor(["pptx", "pdf", "md"]);
+      return downloadsFor(["pptx", "pdf", "docx", "md"]);
     case "report":
     case "proposal":
     case "research":
-      return downloadsFor(["pdf", "docx", "md"]);
+      return downloadsFor(["docx", "pdf", "xlsx", "pptx", "md"]);
     case "email":
-      return downloadsFor(["md", "docx", "pdf"]);
+      return downloadsFor(["md", "docx", "pdf", "txt"]);
     case "social_post":
     case "short_document":
       return downloadsFor(["md", "txt", "pdf"]);
     default:
-      return downloadsFor(["md", "pdf", "docx", "txt"]);
+      return downloadsFor(["docx", "pdf", "xlsx", "md", "txt", "csv"]);
   }
 }
 
@@ -131,6 +131,8 @@ function downloadsFor(formats: (DeliverableFormat | "html")[]): DeliverableDownl
     pdf: "PDF",
     docx: "Word",
     pptx: "PowerPoint",
+    xlsx: "Excel",
+    csv: "CSV",
     txt: "Text",
     html: "HTML",
   };

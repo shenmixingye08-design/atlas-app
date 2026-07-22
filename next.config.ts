@@ -36,6 +36,13 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_ATLAS_DEBUG: process.env.NEXT_PUBLIC_ATLAS_DEBUG ?? "false",
   },
+  // Word/PDF: keep Japanese font files inside the serverless function bundle.
+  outputFileTracingIncludes: {
+    "/api/deliverables/**/*": [
+      "./node_modules/@fontsource/noto-sans-jp/**/*",
+    ],
+  },
+  serverExternalPackages: ["docx", "pdf-lib", "@pdf-lib/fontkit"],
   async headers() {
     return [
       {

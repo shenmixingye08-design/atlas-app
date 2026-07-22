@@ -6,7 +6,12 @@ export type ContentBlock =
   | { type: "bulletList"; items: string[] }
   | { type: "numberedList"; items: string[] }
   | { type: "table"; headers: string[]; rows: string[][] }
-  | { type: "imagePlaceholder"; caption: string };
+  | {
+      type: "imagePlaceholder";
+      caption: string;
+      /** Optional image source (data URI or https URL). */
+      src?: string;
+    };
 
 /** A logical section (usually from `##` headings). */
 export type ParsedSection = {
@@ -28,9 +33,11 @@ const HEADING_PATTERN = /^(#{1,3})\s+(.+)$/;
 const BULLET_PATTERN = /^[-*•]\s+(.+)$/;
 const NUMBERED_PATTERN = /^\d+[.)]\s+(.+)$/;
 const TABLE_SEPARATOR_PATTERN = /^\|?[\s:-]+\|[\s|:-]+$/;
+const IMAGE_MD_PATTERN = /^!\[(.*?)\]\((.+?)\)$/;
 const IMAGE_PLACEHOLDER_PATTERN =
-  /^!\[(.*?)\]\((?:placeholder|image-placeholder|#)\)|^\[(Image(?: placeholder)?(?:[:\s].*)?)\]$/i;
+  /^\[(Image(?: placeholder)?(?:[:\s].*)?)\]$/i;
 const HORIZONTAL_RULE = /^-{3,}$/;
+const ICON_PATTERN = /^:icon:([a-zA-Z0-9_-]+):\s*(.*)$/;
 
 /** Section headings produced by {@link buildExportMarkdown} — never treat as subtitle. */
 const EXPORT_SECTION_LABELS = new Set([
@@ -64,6 +71,15 @@ function isTableRow(line: string): boolean {
   return line.includes("|") && !TABLE_SEPARATOR_PATTERN.test(line.trim());
 }
 
+function isTableLine(line: string): boolean {
+  const trimmed = line.trim();
+  return isTableRow(trimmed) || TABLE_SEPARATOR_PATTERN.test(trimmed);
+}
+
+function isPlaceholderSrc(src: string): boolean {
+  return /^(?:placeholder|image-placeholder|#)$/i.test(src.trim());
+}
+
 function parseBlocks(lines: string[]): ContentBlock[] {
   const blocks: ContentBlock[] = [];
   let index = 0;
@@ -72,6 +88,19 @@ function parseBlocks(lines: string[]): ContentBlock[] {
     const line = lines[index]?.trim() ?? "";
 
     if (!line || HORIZONTAL_RULE.test(line)) {
+      index += 1;
+      continue;
+    }
+
+    const imageMd = line.match(IMAGE_MD_PATTERN);
+    if (imageMd) {
+      const caption = imageMd[1]?.trim() || ui.generated.imagePlaceholder;
+      const src = imageMd[2]?.trim();
+      blocks.push({
+        type: "imagePlaceholder",
+        caption,
+        src: src && !isPlaceholderSrc(src) ? src : undefined,
+      });
       index += 1;
       continue;
     }
@@ -86,9 +115,19 @@ function parseBlocks(lines: string[]): ContentBlock[] {
       continue;
     }
 
-    if (isTableRow(line)) {
+    const iconMatch = line.match(ICON_PATTERN);
+    if (iconMatch) {
+      blocks.push({
+        type: "paragraph",
+        text: `◆ ${iconMatch[2]?.trim() || iconMatch[1]}`,
+      });
+      index += 1;
+      continue;
+    }
+
+    if (isTableLine(line)) {
       const tableLines: string[] = [];
-      while (index < lines.length && isTableRow(lines[index] ?? "")) {
+      while (index < lines.length && isTableLine(lines[index] ?? "")) {
         if (!TABLE_SEPARATOR_PATTERN.test(lines[index]?.trim() ?? "")) {
           tableLines.push(lines[index]!);
         }
@@ -135,7 +174,8 @@ function parseBlocks(lines: string[]): ContentBlock[] {
       !HEADING_PATTERN.test(lines[index]!.trim()) &&
       !BULLET_PATTERN.test(lines[index]!.trim()) &&
       !NUMBERED_PATTERN.test(lines[index]!.trim()) &&
-      !isTableRow(lines[index]!.trim()) &&
+      !isTableLine(lines[index]!.trim()) &&
+      !IMAGE_MD_PATTERN.test(lines[index]!.trim()) &&
       !IMAGE_PLACEHOLDER_PATTERN.test(lines[index]!.trim()) &&
       !HORIZONTAL_RULE.test(lines[index]!.trim())
     ) {
@@ -151,7 +191,7 @@ function parseBlocks(lines: string[]): ContentBlock[] {
 
 /**
  * Parse markdown-like final deliverable text into a structured document model.
- * Shared by Word and PowerPoint generators.
+ * Shared by Word, PowerPoint, Excel, and PDF generators.
  */
 export function parseDeliverableContent(content: string): ParsedDeliverable {
   const lines = content.replace(/\r\n/g, "\n").split("\n");

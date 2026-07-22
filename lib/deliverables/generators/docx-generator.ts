@@ -2,7 +2,10 @@ import {
   AlignmentType,
   Document,
   Footer,
+  Header,
   HeadingLevel,
+  ImageRun,
+  PageBreak,
   PageNumber,
   Packer,
   Paragraph,
@@ -13,6 +16,7 @@ import {
   TableRow,
   TextRun,
   WidthType,
+  BorderStyle,
 } from "docx";
 
 import { ui } from "@/lib/i18n";
@@ -20,9 +24,9 @@ import { parseDeliverableContent } from "../parse-content";
 import type { ContentBlock, ParsedDeliverable } from "../parse-content";
 import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
 
-import { MarkdownDeliverableGenerator } from "./markdown-generator";
-import { createDeliverableFile } from "./shared";
+import { createDeliverableFile, formatGeneratedDate } from "./shared";
 
+/** Prefer fonts widely available on JP Windows / Office. */
 const FONT = "Yu Gothic";
 const EAST_ASIA_FONT = "Yu Gothic";
 const BODY_SIZE = 22;
@@ -56,7 +60,12 @@ function headingParagraph(
   level: (typeof HeadingLevel)[keyof typeof HeadingLevel],
   size: number,
 ): Paragraph {
-  const spacingBefore = level === HeadingLevel.HEADING_1 ? 360 : level === HeadingLevel.HEADING_2 ? 280 : 200;
+  const spacingBefore =
+    level === HeadingLevel.HEADING_1
+      ? 360
+      : level === HeadingLevel.HEADING_2
+        ? 280
+        : 200;
   return new Paragraph({
     heading: level,
     spacing: { before: spacingBefore, after: 140 },
@@ -94,6 +103,17 @@ function numberedListBlock(items: string[]): Paragraph[] {
 
 function tableBlock(headers: string[], rows: string[][]): Table {
   const columnCount = Math.max(headers.length, 1);
+  const thinBorder = {
+    style: BorderStyle.SINGLE,
+    size: 4,
+    color: "B0B8C4",
+  };
+  const borders = {
+    top: thinBorder,
+    bottom: thinBorder,
+    left: thinBorder,
+    right: thinBorder,
+  };
 
   const headerRow = new TableRow({
     tableHeader: true,
@@ -102,6 +122,7 @@ function tableBlock(headers: string[], rows: string[][]): Table {
         new TableCell({
           width: { size: 100 / columnCount, type: WidthType.PERCENTAGE },
           shading: { fill: ATLAS_BLUE, type: ShadingType.CLEAR },
+          borders,
           margins: { top: 80, bottom: 80, left: 120, right: 120 },
           children: [
             new Paragraph({
@@ -122,6 +143,7 @@ function tableBlock(headers: string[], rows: string[][]): Table {
           return new TableCell({
             width: { size: 100 / columnCount, type: WidthType.PERCENTAGE },
             shading: { fill: zebra, type: ShadingType.CLEAR },
+            borders,
             margins: { top: 60, bottom: 60, left: 120, right: 120 },
             children: [
               new Paragraph({
@@ -140,7 +162,43 @@ function tableBlock(headers: string[], rows: string[][]): Table {
   });
 }
 
-function imagePlaceholderBlock(caption: string): Paragraph[] {
+function decodeDataUri(src: string): { bytes: Uint8Array; type: "png" | "jpg" } | null {
+  const match = src.match(/^data:image\/(png|jpeg|jpg);base64,(.+)$/i);
+  if (!match) return null;
+  const kind = match[1]!.toLowerCase() === "png" ? "png" : "jpg";
+  try {
+    const bytes = Buffer.from(match[2]!, "base64");
+    return { bytes: new Uint8Array(bytes), type: kind };
+  } catch {
+    return null;
+  }
+}
+
+function imageBlock(caption: string, src?: string): Array<Paragraph | Table> {
+  if (src) {
+    const decoded = decodeDataUri(src);
+    if (decoded) {
+      return [
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 160, after: 80 },
+          children: [
+            new ImageRun({
+              type: decoded.type,
+              data: decoded.bytes,
+              transformation: { width: 480, height: 270 },
+            }),
+          ],
+        }),
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 160 },
+          children: [bodyText(caption, { size: CAPTION_SIZE, color: "666666" })],
+        }),
+      ];
+    }
+  }
+
   return [
     new Paragraph({
       spacing: { before: 160, after: 80 },
@@ -153,7 +211,10 @@ function imagePlaceholderBlock(caption: string): Paragraph[] {
       },
       alignment: AlignmentType.CENTER,
       children: [
-        bodyText(`[ ${ui.generated.imagePlaceholder} ]`, { color: "888888", bold: true }),
+        bodyText(`[ ${ui.generated.imagePlaceholder} ]`, {
+          color: "888888",
+          bold: true,
+        }),
       ],
     }),
     new Paragraph({
@@ -183,7 +244,7 @@ function blocksToDocxChildren(blocks: ContentBlock[]): Array<Paragraph | Table> 
         children.push(new Paragraph({ spacing: { after: 160 }, children: [] }));
         break;
       case "imagePlaceholder":
-        children.push(...imagePlaceholderBlock(block.caption));
+        children.push(...imageBlock(block.caption, block.src));
         break;
     }
   }
@@ -192,6 +253,7 @@ function blocksToDocxChildren(blocks: ContentBlock[]): Array<Paragraph | Table> 
 }
 
 function buildTitlePage(parsed: ParsedDeliverable): Paragraph[] {
+  const createdAt = formatGeneratedDate();
   return [
     new Paragraph({
       spacing: { before: 400, after: 200 },
@@ -202,13 +264,22 @@ function buildTitlePage(parsed: ParsedDeliverable): Paragraph[] {
     ...(parsed.subtitle
       ? [
           new Paragraph({
-            spacing: { after: 300 },
+            spacing: { after: 200 },
             children: [
               bodyText(parsed.subtitle, { size: SUBTITLE_SIZE, color: "444444" }),
             ],
           }),
         ]
       : []),
+    new Paragraph({
+      spacing: { after: 320 },
+      children: [
+        bodyText(`作成日時: ${createdAt}`, {
+          size: CAPTION_SIZE,
+          color: "666666",
+        }),
+      ],
+    }),
   ];
 }
 
@@ -228,6 +299,7 @@ function buildSectionChildren(parsed: ParsedDeliverable): Array<Paragraph | Tabl
     );
   }
 
+  let isFirstSection = true;
   for (const section of parsed.sections) {
     const headingLevel =
       section.level === 1
@@ -239,11 +311,33 @@ function buildSectionChildren(parsed: ParsedDeliverable): Array<Paragraph | Tabl
     const headingSize =
       section.level === 1 ? H1_SIZE : section.level === 2 ? H2_SIZE : H3_SIZE;
 
+    // Page break before each major section after the first for proposal-style docs.
+    if (!isFirstSection && section.level === 1) {
+      children.push(new Paragraph({ children: [new PageBreak()] }));
+    }
+
     children.push(headingParagraph(section.title, headingLevel, headingSize));
     children.push(...blocksToDocxChildren(section.blocks));
+    isFirstSection = false;
   }
 
   return children;
+}
+
+function buildHeader(title: string): Header {
+  return new Header({
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.RIGHT,
+        border: {
+          bottom: { color: "D0D7E2", space: 8, style: "single", size: 6 },
+        },
+        children: [
+          bodyText(title, { size: CAPTION_SIZE, color: "666666" }),
+        ],
+      }),
+    ],
+  });
 }
 
 function buildFooter(): Footer {
@@ -251,10 +345,24 @@ function buildFooter(): Footer {
     children: [
       new Paragraph({
         alignment: AlignmentType.CENTER,
+        border: {
+          top: { color: "D0D7E2", space: 8, style: "single", size: 6 },
+        },
         children: [
-          bodyText("Atlas · Page ", { size: CAPTION_SIZE, color: "666666" }),
+          bodyText("MINERVOT · ", { size: CAPTION_SIZE, color: "666666" }),
           new TextRun({
-            children: ["", PageNumber.CURRENT],
+            children: [PageNumber.CURRENT],
+            font: {
+              ascii: FONT,
+              eastAsia: EAST_ASIA_FONT,
+              hAnsi: FONT,
+            },
+            size: CAPTION_SIZE,
+            color: "666666",
+          }),
+          bodyText(" / ", { size: CAPTION_SIZE, color: "666666" }),
+          new TextRun({
+            children: [PageNumber.TOTAL_PAGES],
             font: {
               ascii: FONT,
               eastAsia: EAST_ASIA_FONT,
@@ -271,9 +379,9 @@ function buildFooter(): Footer {
 
 async function buildDocxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
   const doc = new Document({
-    creator: "Atlas",
+    creator: "MINERVOT",
     title: parsed.title,
-    description: ui.generated.engine,
+    description: `${ui.generated.engine} / ${formatGeneratedDate()}`,
     styles: {
       default: {
         document: {
@@ -298,6 +406,9 @@ async function buildDocxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
             margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
           },
         },
+        headers: {
+          default: buildHeader(parsed.title),
+        },
         footers: {
           default: buildFooter(),
         },
@@ -309,7 +420,7 @@ async function buildDocxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
   return Buffer.from(await Packer.toBuffer(doc));
 }
 
-/** Production Word (.docx) generator using the `docx` library. */
+/** Production Word (.docx) generator using the `docx` library (real OOXML). */
 export class DocxDeliverableGenerator implements DeliverableGenerator {
   readonly format = "docx" as const;
 
@@ -317,14 +428,12 @@ export class DocxDeliverableGenerator implements DeliverableGenerator {
     content: string,
     baseFileName: string,
   ): Promise<GeneratedDeliverableFile> {
-    try {
-      const parsed = parseDeliverableContent(content);
-      const buffer = await buildDocxBuffer(parsed);
-      return createDeliverableFile("docx", baseFileName, buffer, false);
-    } catch (error) {
-      console.error("[DocxDeliverableGenerator] Falling back to Markdown:", error);
-      return new MarkdownDeliverableGenerator().generate(content, baseFileName);
+    const parsed = parseDeliverableContent(content);
+    const buffer = await buildDocxBuffer(parsed);
+    if (buffer.byteLength < 64 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
+      throw new Error("DOCX生成結果が不正です（OOXMLシグネチャなし）。");
     }
+    return createDeliverableFile("docx", baseFileName, buffer, false);
   }
 }
 

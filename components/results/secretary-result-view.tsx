@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { DeliverableHistoryFiles } from "@/components/results/deliverable-history-files";
 import { NextActionsBar } from "@/components/results/next-actions-bar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -84,9 +85,11 @@ export function SecretaryResultView({
   })();
 
   // Only documents/emails offer downloadable files; X posts do not.
+  // History re-open regenerates files from stored text (no AI).
   const { deliverables, deliverablesError, isGeneratingDeliverables } =
     useDeliverableFiles(project.result ?? null, {
       skipFileGeneration: targetType === "x_post",
+      projectId: project.id,
     });
 
   const { regenerate, isRegenerating, error: regenerateError } = useRegenerate(
@@ -232,6 +235,12 @@ export function SecretaryResultView({
             deliverables={deliverables}
             isGeneratingDeliverables={isGeneratingDeliverables}
             deliverablesError={deliverablesError}
+            projectId={project.id}
+          />
+
+          <DeliverableHistoryFiles
+            projectId={project.id}
+            liveDeliverables={deliverables}
           />
 
           {regenerateError && <ErrorState message={regenerateError} />}

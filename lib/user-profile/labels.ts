@@ -6,6 +6,7 @@ const FORMAT_LABELS: Record<DeliverableFormatPreference, string> = {
   pptx: "PowerPointのみ",
   pdf: "PDFのみ",
   docx: "Wordのみ",
+  xlsx: "Excelのみ",
   md: "Markdown",
   txt: "テキスト",
   pptx_pdf: "PowerPoint + PDF",

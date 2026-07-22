@@ -2,6 +2,9 @@ import { generateDeliverables } from "@/lib/deliverables/engine";
 import { uploadDeliverablesAfterGeneration } from "@/lib/integrations/deliverable-bridge";
 import type { IntegrationUploadSummary } from "@/lib/integrations/types";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 type RequestBody = {
   assignment?: unknown;
   finalDeliverable?: unknown;
@@ -11,7 +14,15 @@ type RequestBody = {
   formats?: unknown;
 };
 
-const VALID_FORMATS = new Set(["pdf", "docx", "pptx", "md", "txt"]);
+const VALID_FORMATS = new Set([
+  "pdf",
+  "docx",
+  "pptx",
+  "xlsx",
+  "md",
+  "txt",
+  "csv",
+]);
 
 function parseFormats(value: unknown): import("@/lib/deliverables/types").DeliverableFormat[] | undefined {
   if (!Array.isArray(value)) return undefined;

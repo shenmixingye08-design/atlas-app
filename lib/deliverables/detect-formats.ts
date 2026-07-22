@@ -22,8 +22,28 @@ const FORMAT_RULES: readonly FormatRule[] = [
       "プレゼン資料",
       "提案資料",
       "スライド",
+      "パワーポイント",
+      "powerpoint",
     ],
-    formats: ["pptx", "pdf"],
+    formats: ["pptx", "pdf", "docx"],
+  },
+  {
+    id: "spreadsheet",
+    keywords: [
+      "エクセル",
+      "excel",
+      "スプレッドシート",
+      "売上管理",
+      "営業管理",
+      "予算表",
+      "実績表",
+      "一覧表",
+      "管理表",
+      "CSV",
+      "集計表",
+      "数値表",
+    ],
+    formats: ["xlsx", "csv", "pdf"],
   },
   {
     id: "contract",
@@ -40,7 +60,7 @@ const FORMAT_RULES: readonly FormatRule[] = [
   {
     id: "blog",
     keywords: ["ブログ", "blog post", "blog", "記事", "コラム"],
-    formats: ["md", "docx"],
+    formats: ["md", "docx", "pdf"],
   },
   {
     id: "minutes",
@@ -51,21 +71,27 @@ const FORMAT_RULES: readonly FormatRule[] = [
       "ミーティングメモ",
       "会議録",
     ],
-    formats: ["docx", "pdf"],
+    formats: ["docx", "pdf", "md"],
   },
   {
     id: "report",
-    keywords: ["報告書", "レポート", "report", "whitepaper", "白書"],
-    formats: ["pdf", "docx"],
+    keywords: ["報告書", "レポート", "report", "whitepaper", "白書", "企画書"],
+    formats: ["docx", "pdf", "pptx"],
   },
   {
     id: "readme",
     keywords: ["readme", "documentation", "ドキュメント", "仕様書"],
-    formats: ["md", "txt", "pdf"],
+    formats: ["md", "txt", "pdf", "docx"],
   },
 ] as const;
 
-const DEFAULT_FORMATS: readonly DeliverableFormat[] = ["md", "txt", "pdf"];
+/** Business default: Word + PDF + Markdown + Text for general work handoff. */
+const DEFAULT_FORMATS: readonly DeliverableFormat[] = [
+  "docx",
+  "pdf",
+  "md",
+  "txt",
+];
 
 function normalizeHaystack(value: string): string {
   return value.toLowerCase();
