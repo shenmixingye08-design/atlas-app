@@ -7,7 +7,7 @@ import {
   extractSummaryPoints,
   parseDeliverableContent,
 } from "../parse-content";
-import type { ContentBlock, ParsedDeliverable, ParsedSection } from "../parse-content";
+import type { ContentBlock, ParsedDeliverable } from "../parse-content";
 import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
 
 import { MarkdownDeliverableGenerator } from "./markdown-generator";
@@ -17,6 +17,15 @@ const ATLAS_BLUE = "1F4E79";
 const ATLAS_LIGHT = "D9E2F3";
 const TEXT_DARK = "222222";
 const TEXT_MUTED = "666666";
+const FONT_FACE = "Yu Gothic";
+
+/** pptxgenjs exposes ShapeType on instances; keep string fallbacks for ESM interop. */
+function shape(
+  pptx: pptxgen,
+  name: "rect" | "ellipse" | "line",
+): pptxgen.ShapeType {
+  return (pptx.ShapeType?.[name] ?? name) as pptxgen.ShapeType;
+}
 
 type SlideTextOptions = {
   x?: number;
@@ -31,12 +40,53 @@ type SlideTextOptions = {
   lineSpacing?: number;
 };
 
+function addPageNumber(slide: pptxgen.Slide, page: number, total: number): void {
+  slide.addText(`${page} / ${total}`, {
+    x: 8.2,
+    y: 5.15,
+    w: 1.4,
+    h: 0.3,
+    fontSize: 10,
+    color: TEXT_MUTED,
+    align: "right",
+    fontFace: FONT_FACE,
+  });
+}
+
+function addIconBadge(
+  pptx: pptxgen,
+  slide: pptxgen.Slide,
+  label: string,
+  x = 0.6,
+  y = 1.25,
+): void {
+  slide.addShape(shape(pptx, "ellipse"), {
+    x,
+    y,
+    w: 0.42,
+    h: 0.42,
+    fill: { color: ATLAS_BLUE },
+  });
+  slide.addText(label.slice(0, 1).toUpperCase(), {
+    x,
+    y: y + 0.05,
+    w: 0.42,
+    h: 0.32,
+    fontSize: 12,
+    bold: true,
+    color: "FFFFFF",
+    align: "center",
+    fontFace: FONT_FACE,
+  });
+}
+
 function addSlideTitle(
+  pptx: pptxgen,
   slide: pptxgen.Slide,
   title: string,
   subtitle?: string,
 ): void {
-  slide.addShape(pptxgen.ShapeType.rect, {
+  slide.addShape(shape(pptx, "rect"), {
     x: 0,
     y: 0,
     w: "100%",
@@ -53,7 +103,7 @@ function addSlideTitle(
     bold: true,
     color: ATLAS_BLUE,
     align: "center",
-    fontFace: "Calibri",
+    fontFace: FONT_FACE,
   });
 
   if (subtitle) {
@@ -65,13 +115,17 @@ function addSlideTitle(
       fontSize: 16,
       color: TEXT_MUTED,
       align: "center",
-      fontFace: "Calibri",
+      fontFace: FONT_FACE,
     });
   }
 }
 
-function addSectionDivider(slide: pptxgen.Slide, title: string): void {
-  slide.addShape(pptxgen.ShapeType.rect, {
+function addSectionDivider(
+  pptx: pptxgen,
+  slide: pptxgen.Slide,
+  title: string,
+): void {
+  slide.addShape(shape(pptx, "rect"), {
     x: 0,
     y: 0,
     w: "100%",
@@ -87,11 +141,15 @@ function addSectionDivider(slide: pptxgen.Slide, title: string): void {
     bold: true,
     color: "FFFFFF",
     align: "center",
-    fontFace: "Calibri",
+    fontFace: FONT_FACE,
   });
 }
 
-function addContentHeading(slide: pptxgen.Slide, title: string): void {
+function addContentHeading(
+  pptx: pptxgen,
+  slide: pptxgen.Slide,
+  title: string,
+): void {
   slide.addText(title, {
     x: 0.6,
     y: 0.35,
@@ -100,9 +158,9 @@ function addContentHeading(slide: pptxgen.Slide, title: string): void {
     fontSize: 24,
     bold: true,
     color: ATLAS_BLUE,
-    fontFace: "Calibri",
+    fontFace: FONT_FACE,
   });
-  slide.addShape(pptxgen.ShapeType.line, {
+  slide.addShape(shape(pptx, "line"), {
     x: 0.6,
     y: 1.05,
     w: 8.8,
@@ -120,20 +178,25 @@ function addBodyText(
     x: options.x ?? 0.8,
     y: options.y ?? 1.3,
     w: options.w ?? 8.4,
-    h: options.h ?? 4.5,
+    h: options.h ?? 3.6,
     fontSize: options.fontSize ?? 16,
     bold: options.bold,
     color: options.color ?? TEXT_DARK,
     align: options.align ?? "left",
     bullet: options.bullet,
     lineSpacing: options.lineSpacing ?? 22,
-    fontFace: "Calibri",
+    fontFace: FONT_FACE,
     valign: "top",
   });
 }
 
-function addImagePlaceholder(slide: pptxgen.Slide, caption: string, y = 2.0): void {
-  slide.addShape(pptxgen.ShapeType.rect, {
+function addImagePlaceholder(
+  pptx: pptxgen,
+  slide: pptxgen.Slide,
+  caption: string,
+  y = 2.0,
+): void {
+  slide.addShape(shape(pptx, "rect"), {
     x: 1.2,
     y,
     w: 7.6,
@@ -149,7 +212,7 @@ function addImagePlaceholder(slide: pptxgen.Slide, caption: string, y = 2.0): vo
     fontSize: 14,
     color: "888888",
     align: "center",
-    fontFace: "Calibri",
+    fontFace: FONT_FACE,
   });
   slide.addText(caption, {
     x: 1.2,
@@ -159,7 +222,55 @@ function addImagePlaceholder(slide: pptxgen.Slide, caption: string, y = 2.0): vo
     fontSize: 12,
     color: TEXT_MUTED,
     align: "center",
-    fontFace: "Calibri",
+    fontFace: FONT_FACE,
+  });
+}
+
+function addTableSlide(
+  pptx: pptxgen,
+  slide: pptxgen.Slide,
+  title: string,
+  headers: string[],
+  rows: string[][],
+): void {
+  addContentHeading(pptx, slide, title);
+  const tableRows: pptxgen.TableRow[] = [
+    headers.map((header) => ({
+      text: header,
+      options: {
+        bold: true,
+        color: "FFFFFF",
+        fill: { color: ATLAS_BLUE },
+        align: "center",
+        fontFace: FONT_FACE,
+        fontSize: 12,
+      },
+    })),
+    ...rows.slice(0, 8).map((row) =>
+      headers.map((_, index) => ({
+        text: row[index] ?? "",
+        options: {
+          color: TEXT_DARK,
+          fill: { color: "FFFFFF" },
+          fontFace: FONT_FACE,
+          fontSize: 11,
+        },
+      })),
+    ),
+  ];
+
+  slide.addTable(tableRows, {
+    x: 0.5,
+    y: 1.3,
+    w: 9.0,
+    colW: headers.map(() => 9.0 / Math.max(headers.length, 1)),
+    border: [
+      { pt: 0.5, color: "B0B8C4" },
+      { pt: 0.5, color: "B0B8C4" },
+      { pt: 0.5, color: "B0B8C4" },
+      { pt: 0.5, color: "B0B8C4" },
+    ],
+    fontFace: FONT_FACE,
   });
 }
 
@@ -178,11 +289,6 @@ function blocksToSlideText(blocks: ContentBlock[]): string {
         parts.push(...block.items.map((item, index) => `${index + 1}. ${item}`));
         break;
       case "table":
-        parts.push(
-          [block.headers.join(" | "), ...block.rows.map((row) => row.join(" | "))].join(
-            "\n",
-          ),
-        );
         break;
       case "imagePlaceholder":
         parts.push(`[Image: ${block.caption}]`);
@@ -218,69 +324,19 @@ function chunkBulletItems(items: string[], maxPerSlide = 6): string[][] {
   return chunks.length > 0 ? chunks : [[]];
 }
 
-function addSectionSlides(pptx: pptxgen, section: ParsedSection): void {
-  const divider = pptx.addSlide();
-  addSectionDivider(divider, section.title);
-
-  const textBlocks = section.blocks.filter(
-    (block) => block.type !== "imagePlaceholder",
-  );
-  const imageBlocks = section.blocks.filter(
-    (block) => block.type === "imagePlaceholder",
-  );
-
-  const body = blocksToSlideText(textBlocks);
-  const chunks = chunkText(body);
-
-  chunks.forEach((chunk, index) => {
-    const slide = pptx.addSlide();
-    addContentHeading(
-      slide,
-      index === 0 ? section.title : `${section.title} (cont.)`,
-    );
-    addBodyText(slide, chunk || " ", { y: 1.35, lineSpacing: 24 });
-  });
-
-  for (const block of section.blocks) {
-    if (block.type === "bulletList") {
-      const bulletChunks = chunkBulletItems(block.items);
-      bulletChunks.forEach((items, index) => {
-        const slide = pptx.addSlide();
-        addContentHeading(
-          slide,
-          index === 0
-            ? `${section.title} — Key points`
-            : `${section.title} — Key points (cont.)`,
-        );
-        addBodyText(slide, items.join("\n"), {
-          y: 1.4,
-          bullet: true,
-          fontSize: 17,
-          lineSpacing: 26,
-        });
-      });
-    }
-  }
-
-  for (const imageBlock of imageBlocks) {
-    if (imageBlock.type !== "imagePlaceholder") continue;
-    const slide = pptx.addSlide();
-    addContentHeading(slide, section.title);
-    addImagePlaceholder(slide, imageBlock.caption);
-  }
-}
-
 async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
   const pptx = new pptxgen();
 
   pptx.layout = "LAYOUT_16x9";
-  pptx.author = "Atlas";
+  pptx.author = "MINERVOT";
   pptx.title = parsed.title;
   pptx.subject = ui.generated.engine;
 
+  const slides: pptxgen.Slide[] = [];
+
   const titleSlide = pptx.addSlide();
-  addSlideTitle(titleSlide, parsed.title, parsed.subtitle);
-  titleSlide.addText(`Generated by Atlas · ${formatGeneratedDate()}`, {
+  addSlideTitle(pptx, titleSlide, parsed.title, parsed.subtitle);
+  titleSlide.addText(`Generated by MINERVOT · ${formatGeneratedDate()}`, {
     x: 0.6,
     y: 4.8,
     w: 8.8,
@@ -288,45 +344,118 @@ async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
     fontSize: 12,
     color: TEXT_MUTED,
     align: "center",
-    fontFace: "Calibri",
+    fontFace: FONT_FACE,
   });
+  slides.push(titleSlide);
 
   const agendaSlide = pptx.addSlide();
-  addContentHeading(agendaSlide, ui.generated.agenda);
+  addContentHeading(pptx, agendaSlide, ui.generated.agenda);
+  addIconBadge(pptx, agendaSlide, "A");
   addBodyText(
     agendaSlide,
     parsed.sections.map((section) => section.title).join("\n"),
-    { y: 1.4, bullet: true, fontSize: 18 },
+    { y: 1.8, bullet: true, fontSize: 18 },
   );
+  slides.push(agendaSlide);
 
   for (const section of parsed.sections) {
-    addSectionSlides(pptx, section);
+    const divider = pptx.addSlide();
+    addSectionDivider(pptx, divider, section.title);
+    slides.push(divider);
+
+    const textBlocks = section.blocks.filter(
+      (block) => block.type !== "imagePlaceholder" && block.type !== "table",
+    );
+    const imageBlocks = section.blocks.filter(
+      (block) => block.type === "imagePlaceholder",
+    );
+    const tableBlocks = section.blocks.filter(
+      (block) => block.type === "table",
+    );
+
+    const body = blocksToSlideText(textBlocks);
+    const chunks = chunkText(body);
+
+    if (body.trim()) {
+      chunks.forEach((chunk, index) => {
+        const slide = pptx.addSlide();
+        addContentHeading(
+          pptx,
+          slide,
+          index === 0 ? section.title : `${section.title} (続き)`,
+        );
+        addIconBadge(pptx, slide, String(index + 1));
+        addBodyText(slide, chunk || " ", { y: 1.85, lineSpacing: 24 });
+        slides.push(slide);
+      });
+    }
+
+    for (const block of section.blocks) {
+      if (block.type !== "bulletList") continue;
+      const bulletChunks = chunkBulletItems(block.items);
+      bulletChunks.forEach((items, index) => {
+        const slide = pptx.addSlide();
+        addContentHeading(
+          pptx,
+          slide,
+          index === 0
+            ? `${section.title} — 要点`
+            : `${section.title} — 要点 (続き)`,
+        );
+        addIconBadge(pptx, slide, "•");
+        addBodyText(slide, items.join("\n"), {
+          y: 1.85,
+          bullet: true,
+          fontSize: 17,
+          lineSpacing: 26,
+        });
+        slides.push(slide);
+      });
+    }
+
+    for (const table of tableBlocks) {
+      if (table.type !== "table") continue;
+      const slide = pptx.addSlide();
+      addTableSlide(pptx, slide, section.title, table.headers, table.rows);
+      slides.push(slide);
+    }
+
+    for (const imageBlock of imageBlocks) {
+      if (imageBlock.type !== "imagePlaceholder") continue;
+      const slide = pptx.addSlide();
+      addContentHeading(pptx, slide, section.title);
+      addImagePlaceholder(pptx, slide, imageBlock.caption);
+      slides.push(slide);
+    }
   }
 
   const summarySlide = pptx.addSlide();
-  addContentHeading(summarySlide, ui.generated.summary);
+  addContentHeading(pptx, summarySlide, ui.generated.summary);
+  addIconBadge(pptx, summarySlide, "S");
   const summaryPoints = extractSummaryPoints(parsed);
   const summaryChunks = chunkBulletItems(summaryPoints, 5);
   addBodyText(
     summarySlide,
     summaryChunks[0]?.join("\n") ?? " ",
-    { y: 1.4, bullet: true, fontSize: 18, lineSpacing: 26 },
+    { y: 1.85, bullet: true, fontSize: 18, lineSpacing: 26 },
   );
+  slides.push(summarySlide);
 
   if (summaryChunks.length > 1) {
     for (let i = 1; i < summaryChunks.length; i += 1) {
       const slide = pptx.addSlide();
-      addContentHeading(slide, ui.generated.summaryCont);
+      addContentHeading(pptx, slide, ui.generated.summaryCont);
       addBodyText(slide, summaryChunks[i]!.join("\n"), {
         y: 1.4,
         bullet: true,
         fontSize: 18,
       });
+      slides.push(slide);
     }
   }
 
   const closingSlide = pptx.addSlide();
-  addSectionDivider(closingSlide, ui.generated.thankYou);
+  addSectionDivider(pptx, closingSlide, ui.generated.thankYou);
   closingSlide.addText(parsed.title, {
     x: 0.6,
     y: 3.5,
@@ -335,7 +464,14 @@ async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
     fontSize: 14,
     color: "FFFFFF",
     align: "center",
-    fontFace: "Calibri",
+    fontFace: FONT_FACE,
+  });
+  slides.push(closingSlide);
+
+  const total = slides.length;
+  slides.forEach((slide, index) => {
+    if (index === 0 || index === total - 1) return;
+    addPageNumber(slide, index + 1, total);
   });
 
   const output = await pptx.write({ outputType: "nodebuffer" });

@@ -5,6 +5,7 @@ export type SalesFormatPreset =
   | "pptx"
   | "pdf"
   | "docx"
+  | "xlsx"
   | "md"
   | "txt"
   | "pptx_pdf"

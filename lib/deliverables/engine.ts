@@ -1,10 +1,15 @@
 import "server-only";
 
+import { buildDeliverableContentHash } from "./content-hash";
 import { detectDeliverableFormats } from "./detect-formats";
 import { buildDeliverableBaseName } from "./filename";
 import { getDeliverableGenerator } from "./generators";
 import { resolveGenerationFormats } from "./resolve-formats";
-import { saveDeliverableFile, toDeliverableMetadata } from "./store";
+import {
+  getStoredDeliverableByHash,
+  saveDeliverableFile,
+  toDeliverableMetadata,
+} from "./store";
 import type {
   Deliverable,
   GenerateDeliverablesInput,
@@ -18,9 +23,7 @@ export type GenerateDeliverablesResult = {
 /**
  * Deliverables Engine — runs after orchestration completes.
  * Converts the final deliverable text into downloadable files server-side.
- *
- * Future: call `dispatchDeliverablesToIntegrations()` from
- * `@/lib/integrations/deliverable-bridge` when delivery rules are configured.
+ * No LLM calls — deterministic template conversion only.
  */
 export async function generateDeliverables(
   input: GenerateDeliverablesInput,
@@ -35,7 +38,11 @@ export async function generateDeliverables(
     };
   }
 
-  const detection = resolveGenerationFormats(input.assignment, input.formats);
+  const detection = resolveGenerationFormats(
+    input.assignment,
+    input.formats,
+    content,
+  );
   const formats = detection.formats;
   const baseFileName = buildDeliverableBaseName(
     input.assignment,
@@ -48,8 +55,19 @@ export async function generateDeliverables(
     const generator = getDeliverableGenerator(format);
     if (!generator) continue;
 
+    const contentHash = buildDeliverableContentHash(
+      content,
+      format,
+      baseFileName,
+    );
+    const cached = getStoredDeliverableByHash(contentHash);
+    if (cached) {
+      deliverables.push(toDeliverableMetadata(cached, requestOrigin));
+      continue;
+    }
+
     const file = await generator.generate(content, baseFileName);
-    const stored = saveDeliverableFile(file);
+    const stored = saveDeliverableFile(file, contentHash);
     deliverables.push(toDeliverableMetadata(stored, requestOrigin));
   }
 

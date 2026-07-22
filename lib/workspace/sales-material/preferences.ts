@@ -14,6 +14,7 @@ function isSalesFormatPreset(value: unknown): value is SalesFormatPreset {
     value === "pptx" ||
     value === "pdf" ||
     value === "docx" ||
+    value === "xlsx" ||
     value === "md" ||
     value === "txt" ||
     value === "pptx_pdf" ||

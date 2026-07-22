@@ -61,10 +61,17 @@ export const SALES_FORMAT_OPTIONS: readonly SalesFormatOption[] = [
     generatesFiles: true,
   },
   {
+    id: "xlsx",
+    label: "Excel",
+    description: "表・数値管理向け",
+    formats: ["xlsx", "csv"],
+    generatesFiles: true,
+  },
+  {
     id: "all",
     label: "すべて作成",
     description: "全形式（時間・コスト大）",
-    formats: ["pptx", "pdf", "docx", "md"],
+    formats: ["pptx", "pdf", "docx", "xlsx", "md", "txt", "csv"],
     generatesFiles: true,
   },
 ] as const;
