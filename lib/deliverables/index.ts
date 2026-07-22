@@ -24,6 +24,7 @@ export {
   PlainTextDeliverableGenerator,
   PptxDeliverableGenerator,
   PptxPlaceholderGenerator,
+  XlsxDeliverableGenerator,
   defaultDeliverableGenerators,
   getDeliverableGenerator,
 } from "./generators";
@@ -34,6 +35,13 @@ export type {
   ParsedDeliverable,
   ParsedSection,
 } from "./parse-content";
+
+export {
+  buildExcelBaseName,
+  buildTimestampExcelBaseName,
+  isExcelIntent,
+} from "./excel-intent";
+export { coerceExcelCellValue, extractExcelSheets } from "./excel-tables";
 
 export type { GenerateDeliverablesResult } from "./engine";
 export { generateDeliverables } from "./engine";

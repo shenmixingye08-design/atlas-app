@@ -634,7 +634,7 @@ export const ui = {
     deliverableNeedsReview: "要確認 — 成果物の内容を確認してください",
     copy: "コピー",
     copied: "コピーしました",
-    saveMarkdown: "Markdownで保存",
+    saveMarkdown: "Markdown",
     saveToDrive: "Google Driveへ保存",
     driveSaved: "保存しました",
     driveSandboxSaved:
@@ -2341,6 +2341,7 @@ export const ui = {
     pptx: "PowerPoint (.pptx)",
     md: "Markdown (.md)",
     txt: "テキスト (.txt)",
+    xlsx: "Excel (.xlsx)",
   } as Record<string, string>,
 
   workflowPhases: {

@@ -86,12 +86,19 @@ function parseBlocks(lines: string[]): ContentBlock[] {
       continue;
     }
 
-    if (isTableRow(line)) {
+    if (isTableRow(line) || TABLE_SEPARATOR_PATTERN.test(line)) {
       const tableLines: string[] = [];
-      while (index < lines.length && isTableRow(lines[index] ?? "")) {
-        if (!TABLE_SEPARATOR_PATTERN.test(lines[index]?.trim() ?? "")) {
-          tableLines.push(lines[index]!);
+      // Keep consuming separator rows (`| --- | --- |`) so they do not split
+      // a single markdown table into multiple blocks.
+      while (index < lines.length) {
+        const current = lines[index] ?? "";
+        const trimmedCurrent = current.trim();
+        if (TABLE_SEPARATOR_PATTERN.test(trimmedCurrent)) {
+          index += 1;
+          continue;
         }
+        if (!isTableRow(trimmedCurrent)) break;
+        tableLines.push(current);
         index += 1;
       }
 

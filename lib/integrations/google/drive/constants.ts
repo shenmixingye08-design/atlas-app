@@ -23,6 +23,7 @@ export const SUPPORTED_DRIVE_FORMATS = [
   "pptx",
   "md",
   "txt",
+  "xlsx",
 ] as const;
 
 export type SupportedDriveFormat = (typeof SUPPORTED_DRIVE_FORMATS)[number];
@@ -35,6 +36,7 @@ export const DRIVE_FORMAT_MIME_TYPES: Record<SupportedDriveFormat, string> = {
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   md: "text/markdown; charset=utf-8",
   txt: "text/plain; charset=utf-8",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 };
 
 export const GOOGLE_APPS_MIME = {

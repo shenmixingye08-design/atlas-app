@@ -36,6 +36,8 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_ATLAS_DEBUG: process.env.NEXT_PUBLIC_ATLAS_DEBUG ?? "false",
   },
+  // exceljs (and its native-leaning deps) should stay external on the server.
+  serverExternalPackages: ["exceljs"],
   async headers() {
     return [
       {
