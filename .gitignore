@@ -29,6 +29,7 @@
 # local-only / temp
 .tmp/
 .temp/
+/tmp/
 *.local.json
 
 # local billing persistence (subscriptions / webhook idempotency)
