@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+
+import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
 import type { Deliverable } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { ui } from "@/lib/i18n";
@@ -13,6 +16,44 @@ type DeliverablesPanelProps = {
   error: string | null;
   matchedRule: string | null;
 };
+
+function DeliverableDownloadButton({ item }: { item: Deliverable }) {
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  const handleDownload = async () => {
+    setDownloadError(null);
+    setIsDownloading(true);
+    try {
+      await downloadDeliverableFile({
+        url: item.downloadUrl,
+        fileName: item.fileName,
+        mimeType: item.mimeType,
+      });
+    } catch (error) {
+      setDownloadError(
+        error instanceof Error ? error.message : ui.work.downloadFailed,
+      );
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  return (
+    <div className="mt-6 space-y-2">
+      <Button
+        variant="primary"
+        size="lg"
+        className="w-full"
+        disabled={isDownloading}
+        onClick={() => void handleDownload()}
+      >
+        {isDownloading ? ui.work.downloadingFile : ui.actions.download}
+      </Button>
+      {downloadError ? <ErrorState message={downloadError} /> : null}
+    </div>
+  );
+}
 
 export function DeliverablesPanel({
   deliverables,
@@ -47,11 +88,7 @@ export function DeliverablesPanel({
               </p>
             </div>
 
-            <a href={item.downloadUrl} download={item.fileName} className="mt-6 block">
-              <Button variant="primary" size="lg" className="w-full">
-                {ui.actions.download}
-              </Button>
-            </a>
+            <DeliverableDownloadButton item={item} />
           </Card>
         ))}
       </div>
