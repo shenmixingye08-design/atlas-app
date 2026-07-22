@@ -14,6 +14,12 @@ export type GenerateDeliverablesRequest = {
 export type GenerateDeliverablesResponse = {
   deliverables: Deliverable[];
   matchedRule: string | null;
+  documentModelId?: string | null;
+  formatRecommendation?: {
+    recommended: "docx" | "pdf" | "xlsx";
+    alternatives: ("docx" | "pdf" | "xlsx")[];
+    reason: string;
+  } | null;
   uploads?: IntegrationUploadSummary;
 };
 

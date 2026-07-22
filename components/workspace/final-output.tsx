@@ -73,6 +73,7 @@ function findGeneratedFile(
 
 const DOWNLOAD_FORMAT_ORDER: GeneratedFile["format"][] = [
   "pptx",
+  "xlsx",
   "pdf",
   "docx",
   "md",
@@ -91,9 +92,11 @@ function FormatDownloadButton({
   const shortLabel =
     format === "docx"
       ? "Word"
-      : format === "pptx"
-        ? "PowerPoint"
-        : DELIVERABLE_FORMAT_LABELS[format].split(" ")[0];
+      : format === "xlsx"
+        ? "Excel"
+        : format === "pptx"
+          ? "PowerPoint"
+          : DELIVERABLE_FORMAT_LABELS[format].split(" ")[0];
 
   if (file) {
     return (

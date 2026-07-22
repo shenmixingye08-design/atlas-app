@@ -54,6 +54,21 @@ const FORMAT_RULES: readonly FormatRule[] = [
     formats: ["docx", "pdf"],
   },
   {
+    id: "comparison-table",
+    keywords: ["比較表", "comparison", "見積比較", "一覧表"],
+    formats: ["xlsx", "docx", "pdf"],
+  },
+  {
+    id: "estimate",
+    keywords: ["見積", "見積書", "estimate", "quotation"],
+    formats: ["xlsx", "pdf", "docx"],
+  },
+  {
+    id: "schedule",
+    keywords: ["スケジュール", "日程表", "schedule", "工程表"],
+    formats: ["xlsx", "pdf"],
+  },
+  {
     id: "report",
     keywords: ["報告書", "レポート", "report", "whitepaper", "白書"],
     formats: ["pdf", "docx"],

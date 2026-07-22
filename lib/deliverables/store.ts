@@ -34,14 +34,14 @@ function purgeExpiredEntries(store: StoreBucket): void {
 }
 
 export function saveDeliverableFile(
-  file: GeneratedDeliverableFile,
+  file: GeneratedDeliverableFile & { id?: string },
 ): StoredDeliverable {
   const store = getStoreBucket();
   purgeExpiredEntries(store);
 
   const stored: StoredDeliverable = {
     ...file,
-    id: crypto.randomUUID(),
+    id: file.id ?? crypto.randomUUID(),
     generatedAt: new Date().toISOString(),
   };
 
@@ -68,5 +68,10 @@ export function toDeliverableMetadata(
     sizeBytes: stored.buffer.byteLength,
     isPlaceholder: stored.isPlaceholder,
     downloadUrl: `${requestOrigin}/api/deliverables/${stored.id}`,
+    documentModelId: stored.documentModelId,
+    templateId: stored.templateId,
+    validationPassed: stored.validationPassed,
+    pageCount: stored.pageCount ?? null,
+    sheetCount: stored.sheetCount ?? null,
   };
 }

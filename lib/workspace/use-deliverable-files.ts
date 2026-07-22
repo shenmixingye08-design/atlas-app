@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { Deliverable, DeliverableFormat } from "@/lib/deliverables/types";
-import { requestDeliverables } from "@/lib/deliverables/client";
+import {
+  requestDeliverables,
+  type GenerateDeliverablesResponse,
+} from "@/lib/deliverables/client";
 import { getDeliverableExportText } from "@/lib/orchestration/final-deliverable";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 
@@ -19,6 +22,11 @@ export function useDeliverableFiles(
   const [deliverables, setDeliverables] = useState<Deliverable[]>([]);
   const [deliverablesError, setDeliverablesError] = useState<string | null>(null);
   const [isGeneratingDeliverables, setIsGeneratingDeliverables] = useState(false);
+  const [documentModelId, setDocumentModelId] = useState<string | null>(null);
+  const [formatRecommendation, setFormatRecommendation] = useState<
+    GenerateDeliverablesResponse["formatRecommendation"] | null
+  >(null);
+  const [isRerendering, setIsRerendering] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -74,6 +82,8 @@ export function useDeliverableFiles(
     )
       .then((response) => {
         setDeliverables(response.deliverables);
+        setDocumentModelId(response.documentModelId ?? null);
+        setFormatRecommendation(response.formatRecommendation ?? null);
       })
       .catch((err) => {
         if (err instanceof Error && err.name === "AbortError") return;
@@ -88,5 +98,48 @@ export function useDeliverableFiles(
     return () => controller.abort();
   }, [result, options?.formats, options?.skipFileGeneration]);
 
-  return { deliverables, deliverablesError, isGeneratingDeliverables };
+  const rerender = async (formats: ("docx" | "pdf" | "xlsx")[]) => {
+    if (!documentModelId || !result) return;
+    setIsRerendering(true);
+    setDeliverablesError(null);
+    try {
+      const response = await fetch(`/api/documents/${documentModelId}/render`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          formats,
+          assignment: result.assignment,
+        }),
+      });
+      const data = (await response.json()) as {
+        deliverables?: Deliverable[];
+        error?: string;
+        nextStep?: string;
+      };
+      if (!response.ok) {
+        throw new Error(
+          [data.error, data.nextStep].filter(Boolean).join(" — ") || "再生成に失敗しました",
+        );
+      }
+      if (data.deliverables) {
+        setDeliverables(data.deliverables);
+      }
+    } catch (err) {
+      setDeliverablesError(
+        err instanceof Error ? err.message : "再生成に失敗しました",
+      );
+    } finally {
+      setIsRerendering(false);
+    }
+  };
+
+  return {
+    deliverables,
+    deliverablesError,
+    isGeneratingDeliverables,
+    documentModelId,
+    formatRecommendation,
+    isRerendering,
+    rerender,
+  };
 }

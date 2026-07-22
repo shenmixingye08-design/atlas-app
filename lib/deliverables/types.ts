@@ -1,5 +1,5 @@
-/** Supported downloadable deliverable formats (v1). */
-export type DeliverableFormat = "pdf" | "docx" | "pptx" | "md" | "txt";
+/** Supported downloadable deliverable formats (v1 + Phase 2 xlsx). */
+export type DeliverableFormat = "pdf" | "docx" | "xlsx" | "pptx" | "md" | "txt";
 
 /** ISO timestamp string. */
 export type DeliverableTimestamp = string;
@@ -15,6 +15,12 @@ export interface Deliverable {
   /** True when a stub generator was used — swap for production implementation. */
   isPlaceholder: boolean;
   downloadUrl: string;
+  /** Phase 2 — persisted IR reference for re-render without AI. */
+  documentModelId?: string;
+  templateId?: string;
+  validationPassed?: boolean;
+  pageCount?: number | null;
+  sheetCount?: number | null;
 }
 
 /** Input to the deliverables engine. */
@@ -24,6 +30,10 @@ export type GenerateDeliverablesInput = {
   title?: string;
   /** When set, only these formats are generated (skips auto-detection). */
   formats?: DeliverableFormat[];
+  userId?: string | null;
+  jobId?: string | null;
+  templateId?: import("@/lib/documents/schema/enums").TemplateId;
+  documentModelId?: string;
 };
 
 /** Result of format detection. */
@@ -39,6 +49,11 @@ export type GeneratedDeliverableFile = {
   mimeType: string;
   buffer: Buffer;
   isPlaceholder: boolean;
+  documentModelId?: string;
+  templateId?: string;
+  validationPassed?: boolean;
+  pageCount?: number | null;
+  sheetCount?: number | null;
 };
 
 /** Generator contract — replace placeholders with production libraries later. */
@@ -53,6 +68,7 @@ export interface DeliverableGenerator {
 export const DELIVERABLE_FORMAT_LABELS: Record<DeliverableFormat, string> = {
   pdf: "PDF",
   docx: "Word (.docx)",
+  xlsx: "Excel (.xlsx)",
   pptx: "PowerPoint (.pptx)",
   md: "Markdown (.md)",
   txt: "テキスト (.txt)",
@@ -62,6 +78,8 @@ export const DELIVERABLE_MIME_TYPES: Record<DeliverableFormat, string> = {
   pdf: "application/pdf",
   docx:
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx:
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   pptx:
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   md: "text/markdown; charset=utf-8",
@@ -71,6 +89,7 @@ export const DELIVERABLE_MIME_TYPES: Record<DeliverableFormat, string> = {
 export const DELIVERABLE_EXTENSIONS: Record<DeliverableFormat, string> = {
   pdf: ".pdf",
   docx: ".docx",
+  xlsx: ".xlsx",
   pptx: ".pptx",
   md: ".md",
   txt: ".txt",

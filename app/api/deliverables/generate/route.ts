@@ -9,9 +9,12 @@ type RequestBody = {
   workflowId?: unknown;
   projectName?: unknown;
   formats?: unknown;
+  templateId?: unknown;
+  documentModelId?: unknown;
+  jobId?: unknown;
 };
 
-const VALID_FORMATS = new Set(["pdf", "docx", "pptx", "md", "txt"]);
+const VALID_FORMATS = new Set(["pdf", "docx", "xlsx", "pptx", "md", "txt"]);
 
 function parseFormats(value: unknown): import("@/lib/deliverables/types").DeliverableFormat[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -108,6 +111,14 @@ export async function POST(request: Request): Promise<Response> {
         finalDeliverable: body.finalDeliverable,
         title: typeof body.title === "string" ? body.title : undefined,
         formats: parseFormats(body.formats),
+        userId,
+        jobId: typeof body.jobId === "string" ? body.jobId : undefined,
+        templateId:
+          typeof body.templateId === "string"
+            ? (body.templateId as import("@/lib/documents/schema/enums").TemplateId)
+            : undefined,
+        documentModelId:
+          typeof body.documentModelId === "string" ? body.documentModelId : undefined,
       },
       origin,
     );
@@ -133,6 +144,8 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({
       deliverables: result.deliverables,
       matchedRule: result.detection.matchedRule,
+      documentModelId: result.documentModelId,
+      formatRecommendation: result.formatRecommendation,
       uploads,
     });
   } catch (error) {

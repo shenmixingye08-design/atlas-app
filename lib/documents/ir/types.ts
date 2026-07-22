@@ -1,33 +1,16 @@
-/** Document Intermediate Representation — normalize AI output once. */
+/** @deprecated Use `@/lib/documents/schema/enums` and `@/lib/documents/schema/document-model.zod`. */
+export type {
+  DocumentType,
+  TemplateId,
+  OutputFormat as RenderFormat,
+} from "@/lib/documents/schema/enums";
 
-export type DocumentType =
-  | "business"
-  | "simple"
-  | "report"
-  | "proposal"
-  | "minutes"
-  | "procedure";
+export type {
+  DocumentModel as DocumentIR,
+  DocumentSection,
+  SectionBlock,
+} from "@/lib/documents/schema/document-model.zod";
 
-export type DocumentSection = {
-  heading: string;
-  level: 1 | 2 | 3;
-  paragraphs: string[];
-  bullets?: string[];
-};
-
-export type DocumentTable = {
-  title?: string;
-  headers: string[];
-  rows: string[][];
-};
-
-export type DocumentIR = {
-  documentType: DocumentType;
-  title: string;
-  subtitle?: string;
-  sections: DocumentSection[];
-  tables: DocumentTable[];
-  metadata?: Record<string, string>;
-};
-
-export type RenderFormat = "docx" | "pdf" | "xlsx";
+export { normalizeToDocumentModel as parseLegacyDocumentText } from "@/lib/documents/normalize";
+export { documentModelToMarkdown as renderDocumentIRToText } from "@/lib/documents/normalize";
+export { templateForDocumentType as getDocumentTemplateId } from "@/lib/documents/templates/registry";

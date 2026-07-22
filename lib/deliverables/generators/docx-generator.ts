@@ -269,7 +269,7 @@ function buildFooter(): Footer {
   });
 }
 
-async function buildDocxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
+export async function buildDocxBufferFromParsed(parsed: ParsedDeliverable): Promise<Buffer> {
   const doc = new Document({
     creator: "Atlas",
     title: parsed.title,
@@ -319,7 +319,7 @@ export class DocxDeliverableGenerator implements DeliverableGenerator {
   ): Promise<GeneratedDeliverableFile> {
     try {
       const parsed = parseDeliverableContent(content);
-      const buffer = await buildDocxBuffer(parsed);
+      const buffer = await buildDocxBufferFromParsed(parsed);
       return createDeliverableFile("docx", baseFileName, buffer, false);
     } catch (error) {
       console.error("[DocxDeliverableGenerator] Falling back to Markdown:", error);

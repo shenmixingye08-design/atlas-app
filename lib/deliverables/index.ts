@@ -36,4 +36,4 @@ export type {
 } from "./parse-content";
 
 export type { GenerateDeliverablesResult } from "./engine";
-export { generateDeliverables } from "./engine";
+export { generateDeliverables, rerenderDeliverables } from "./engine";

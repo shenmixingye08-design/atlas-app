@@ -174,7 +174,10 @@ async function drawBlocks(params: {
   return cursorY;
 }
 
-async function buildJapanesePdf(parsed: ParsedDeliverable, sourceText: string): Promise<Buffer> {
+export async function buildPdfBufferFromParsed(
+  parsed: ParsedDeliverable,
+  sourceText: string,
+): Promise<Buffer> {
   const pdfDoc = await PDFDocument.create();
   const fonts: PdfFonts = new Map();
 
@@ -255,7 +258,7 @@ export class PdfDeliverableGenerator implements DeliverableGenerator {
     baseFileName: string,
   ): Promise<GeneratedDeliverableFile> {
     const parsed = parseDeliverableContent(content);
-    const buffer = await buildJapanesePdf(parsed, content);
+    const buffer = await buildPdfBufferFromParsed(parsed, content);
     return createDeliverableFile("pdf", baseFileName, buffer, false);
   }
 }
