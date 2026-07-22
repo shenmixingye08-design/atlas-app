@@ -35,7 +35,11 @@ export async function generateDeliverables(
     };
   }
 
-  const detection = resolveGenerationFormats(input.assignment, input.formats);
+  const detection = resolveGenerationFormats(
+    input.assignment,
+    input.formats,
+    content,
+  );
   const formats = detection.formats;
   const baseFileName = buildDeliverableBaseName(
     input.assignment,
