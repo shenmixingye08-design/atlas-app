@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/design-system/cn";
+import { uploadWorkAttachments } from "@/lib/attachments/upload-client";
+import { savePendingAttachments } from "@/lib/attachments/session";
+import { IMAGE_FETCH_FAILED_MESSAGE } from "@/lib/attachments/types";
 
 type SpeechRecognitionLike = {
   lang: string;
@@ -46,6 +49,8 @@ export function SecretaryChatComposer() {
   const [listening, setListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceHint, setVoiceHint] = useState<string | null>(null);
+  const [uploadHint, setUploadHint] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const dragDepthRef = useRef(0);
@@ -69,17 +74,43 @@ export function SecretaryChatComposer() {
     setFiles((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
-  const submit = useCallback(() => {
+  const submit = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed && files.length === 0) return;
+    if ((!trimmed && files.length === 0) || isUploading) return;
 
-    const fileNote =
-      files.length > 0
-        ? `\n\n（添付予定: ${files.map((item) => item.file.name).join("、")}）`
-        : "";
-    const assignment = `${trimmed || "添付資料の整理をお願いします。"}${fileNote}`;
-    router.push(`/workspace?assignment=${encodeURIComponent(assignment)}`);
-  }, [files, router, text]);
+    setUploadHint(null);
+    setIsUploading(true);
+    try {
+      let attachmentKey = "";
+      if (files.length > 0) {
+        setUploadHint("画像をアップロードしています…");
+        const meta = await uploadWorkAttachments(
+          files.map((item) => ({ file: item.file, kind: "photo" })),
+        );
+        if (meta.every((item) => item.fetchFailed)) {
+          setUploadHint(IMAGE_FETCH_FAILED_MESSAGE);
+          return;
+        }
+        attachmentKey = savePendingAttachments(meta);
+      }
+
+      const fileNote =
+        files.length > 0
+          ? `\n\n【添付】${files.map((item) => item.file.name).join("、")}`
+          : "";
+      const assignment = `${trimmed || "添付画像を解析して適切な成果物を作成してください。"}${fileNote}`;
+      const params = new URLSearchParams({ assignment });
+      if (attachmentKey) {
+        params.set("attachments", attachmentKey);
+        params.set("autostart", "1");
+      }
+      router.push(`/workspace?${params.toString()}`);
+    } catch {
+      setUploadHint(IMAGE_FETCH_FAILED_MESSAGE);
+    } finally {
+      setIsUploading(false);
+    }
+  }, [files, isUploading, router, text]);
 
   const toggleVoice = useCallback(() => {
     const Ctor = getSpeechRecognitionCtor();
@@ -264,22 +295,24 @@ export function SecretaryChatComposer() {
           <Button
             variant="primary"
             size="lg"
-            onClick={submit}
-            disabled={!text.trim() && files.length === 0}
+            onClick={() => void submit()}
+            disabled={isUploading || (!text.trim() && files.length === 0)}
             className="w-full sm:w-auto"
           >
             AI秘書へ依頼する
           </Button>
         </div>
 
-        {(dragging || voiceHint) && (
+        {(dragging || voiceHint || uploadHint) && (
           <p
             className={cn(
               "mt-4 text-center text-sm",
               dragging ? "font-medium text-accent" : "text-[var(--foreground-muted)]",
             )}
           >
-            {dragging ? "ここにドロップして資料を追加" : voiceHint}
+            {dragging
+              ? "ここにドロップして資料を追加"
+              : uploadHint || voiceHint}
           </p>
         )}
       </div>

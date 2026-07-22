@@ -11,6 +11,8 @@ export {
   DELIVERABLE_EXTENSIONS,
   DELIVERABLE_FORMAT_LABELS,
   DELIVERABLE_MIME_TYPES,
+  DELIVERABLE_DOWNLOAD_ORDER,
+  ALL_DELIVERABLE_FORMATS,
 } from "./types";
 
 export { detectDeliverableFormats } from "./detect-formats";
@@ -24,6 +26,8 @@ export {
   PlainTextDeliverableGenerator,
   PptxDeliverableGenerator,
   PptxPlaceholderGenerator,
+  XlsxDeliverableGenerator,
+  CsvDeliverableGenerator,
   defaultDeliverableGenerators,
   getDeliverableGenerator,
 } from "./generators";

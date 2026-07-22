@@ -9,9 +9,18 @@ type RequestBody = {
   workflowId?: unknown;
   projectName?: unknown;
   formats?: unknown;
+  imageAnalysis?: unknown;
 };
 
-const VALID_FORMATS = new Set(["pdf", "docx", "pptx", "md", "txt"]);
+const VALID_FORMATS = new Set([
+  "pdf",
+  "docx",
+  "pptx",
+  "xlsx",
+  "md",
+  "txt",
+  "csv",
+]);
 
 function parseFormats(value: unknown): import("@/lib/deliverables/types").DeliverableFormat[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -78,9 +87,13 @@ export async function POST(request: Request): Promise<Response> {
   });
   if (billingDenied) return billingDenied;
 
+  const hasImageAnalysis =
+    body.imageAnalysis != null && typeof body.imageAnalysis === "object";
+
   if (
-    typeof body.finalDeliverable !== "string" ||
-    !body.finalDeliverable.trim()
+    (typeof body.finalDeliverable !== "string" ||
+      !body.finalDeliverable.trim()) &&
+    !hasImageAnalysis
   ) {
     return Response.json(
       { error: "finalDeliverable is required and must be a non-empty string" },
@@ -105,9 +118,15 @@ export async function POST(request: Request): Promise<Response> {
     const result = await generateDeliverables(
       {
         assignment: body.assignment.trim(),
-        finalDeliverable: body.finalDeliverable,
+        finalDeliverable:
+          typeof body.finalDeliverable === "string"
+            ? body.finalDeliverable
+            : "",
         title: typeof body.title === "string" ? body.title : undefined,
         formats: parseFormats(body.formats),
+        imageAnalysis: hasImageAnalysis
+          ? (body.imageAnalysis as import("@/lib/image-analysis/types").ImageAnalysisResult)
+          : null,
       },
       origin,
     );

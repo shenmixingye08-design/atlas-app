@@ -28,6 +28,7 @@ import { runLearningAnalysis } from "@/lib/learning-engine/service";
 import { detectMemorySignals } from "@/lib/work-memory/learning";
 import { createWorkMemoryCandidate } from "@/lib/work-memory/service";
 import { maybeAutoPostToXAfterCommander } from "@/lib/integrations/x/post/automation";
+import { maybeRunImageDocumentPipeline } from "@/lib/image-analysis/pipeline";
 
 import { isRecurringAssignment } from "./classify";
 import {
@@ -298,6 +299,75 @@ async function executeStoredRun(input: {
       runId: input.runId,
       userId: input.userId,
       plan,
+      confirmationReasons: run.confirmationReasons,
+      externalMessages: external.messages,
+    });
+  }
+
+  const imagePipeline = await maybeRunImageDocumentPipeline({
+    assignment: plan.assignment,
+    metadata: input.metadata,
+  });
+  if (imagePipeline.handled) {
+    const imageResult = {
+      ...imagePipeline.result,
+      commanderRunId: input.runId,
+    };
+    const completed = imagePipeline.status === "completed";
+    updateCommanderRun(input.runId, input.userId, {
+      status: completed ? "completed" : "failed",
+      result: imageResult,
+      error: completed ? null : imageResult.error ?? "image analysis failed",
+      attempts: [
+        {
+          attempt: 1,
+          status: completed ? "completed" : "failed",
+          error: completed ? null : imageResult.error ?? null,
+          durationMs: 0,
+        },
+      ],
+    });
+
+    const projectId = `commander-${input.runId}`;
+    await persistCommanderResultAsProject({
+      userId: input.userId,
+      assignment: plan.assignment,
+      result: imageResult,
+      projectId,
+    });
+
+    if (completed) {
+      notifyWorkCompleted(input.userId, {
+        title: imageResult.deliverable.title || "画像解析が完了しました",
+        message: imageResult.finalResponse,
+        actionUrl: `/projects/${encodeURIComponent(projectId)}`,
+        relatedTaskId: projectId,
+        deliverableId: projectId,
+        requestId: input.runId,
+      });
+    } else {
+      notifyWorkFailed(input.userId, {
+        title: "画像解析を完了できませんでした",
+        message: imageResult.error ?? imageResult.finalResponse,
+        actionUrl: `/projects/${encodeURIComponent(projectId)}`,
+        relatedTaskId: projectId,
+        requestId: input.runId,
+      });
+    }
+
+    return toRunResult({
+      runId: input.runId,
+      status: completed ? "completed" : "failed",
+      plan,
+      result: imageResult,
+      attempts: [
+        {
+          attempt: 1,
+          status: completed ? "completed" : "failed",
+          error: completed ? null : imageResult.error ?? null,
+          durationMs: 0,
+        },
+      ],
       confirmationReasons: run.confirmationReasons,
       externalMessages: external.messages,
     });

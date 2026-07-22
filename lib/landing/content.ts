@@ -135,7 +135,7 @@ export const LANDING_REQUEST_EXAMPLES = [
     input: "PDF・画像・各種資料",
     request: "内容をExcelへ分かりやすく整理してください",
     result: "必要な情報を抽出し、表形式にまとめます。",
-    // DeliverableFormat に xlsx なし、PDF/画像入力パースなし、excel connector は coming_soon
+    // Excel/CSV は画像解析の構造化JSONから生成。Google Sheets connector は別途 coming_soon
     status: "upcoming" as const satisfies LandingExampleStatus,
   },
   {

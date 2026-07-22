@@ -200,6 +200,13 @@ export type OrchestrationResult = {
    * notification's deep link. Not part of the AI pipeline output.
    */
   commanderRunId?: string | null;
+  /**
+   * Structured image-document extraction (receipt / invoice / table / card / memo).
+   * Present when the image analysis pipeline handled the request.
+   */
+  imageAnalysis?: import("@/lib/image-analysis/types").ImageAnalysisResult;
+  /** User-facing image analysis status label key. */
+  imageAnalysisStatus?: import("@/lib/image-analysis/types").ImageAnalysisStatus;
 };
 
 /** Cache and knowledge isolation diagnostics for Workflow Inspector. */

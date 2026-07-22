@@ -31,8 +31,9 @@ export function useDeliverableFiles(
     const previewContent = result.deliverable
       ? getDeliverableExportText(result.deliverable).trim()
       : "";
+    const imageAnalysis = result.imageAnalysis ?? null;
 
-    if (!previewContent) {
+    if (!previewContent && !imageAnalysis) {
       setDeliverables([]);
       setDeliverablesError(null);
       return;
@@ -56,7 +57,7 @@ export function useDeliverableFiles(
     void requestDeliverables(
       {
         assignment: result.assignment,
-        finalDeliverable: previewContent,
+        finalDeliverable: previewContent || JSON.stringify(imageAnalysis),
         title:
           result.deliverable &&
           typeof result.deliverable === "object" &&
@@ -68,7 +69,15 @@ export function useDeliverableFiles(
         formats:
           options?.formats && options.formats.length > 0
             ? options.formats
-            : undefined,
+            : imageAnalysis
+              ? result.deliverable.downloads
+                  .map((item) => item.format)
+                  .filter(
+                    (format): format is import("@/lib/deliverables/types").DeliverableFormat =>
+                      format !== "html",
+                  )
+              : undefined,
+        imageAnalysis,
       },
       controller.signal,
     )

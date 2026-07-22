@@ -6,6 +6,13 @@ import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
+import {
+  buildAttachmentContentNote,
+  buildAttachmentsMetadataPayload,
+  type AttachmentKind,
+  type AttachmentMetadataItem,
+} from "@/lib/attachments";
+import { uploadWorkAttachments } from "@/lib/attachments/upload-client";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 import { QUICK_REQUEST_PRESETS } from "@/lib/workspace/quick-request-presets";
@@ -25,15 +32,6 @@ type WorkRequestFormProps = {
   isLoading: boolean;
 };
 
-type AttachmentKind =
-  | "photo"
-  | "pdf"
-  | "video"
-  | "word"
-  | "excel"
-  | "powerpoint"
-  | "other";
-
 type AttachmentItem = {
   id: string;
   kind: AttachmentKind;
@@ -47,7 +45,7 @@ const ATTACHMENT_OPTIONS: {
   accept: string;
   contentReadable: boolean;
 }[] = [
-  { kind: "photo", label: "画像", icon: "📷", accept: "image/*", contentReadable: false },
+  { kind: "photo", label: "画像", icon: "📷", accept: "image/*", contentReadable: true },
   { kind: "pdf", label: "PDF", icon: "📄", accept: "application/pdf,.pdf", contentReadable: false },
   {
     kind: "word",
@@ -134,6 +132,7 @@ function buildAssignmentText(input: {
   priority: RequestPriority;
   deadline: string;
   attachments: AttachmentItem[];
+  attachmentMeta: AttachmentMetadataItem[];
 }): string {
   const lines = [input.text.trim()];
 
@@ -154,14 +153,22 @@ function buildAssignmentText(input: {
 
   if (input.attachments.length > 0) {
     lines.push("【添付】");
-    for (const item of input.attachments) {
+    for (const item of input.attachmentMeta) {
+      const status =
+        item.contentAvailable
+          ? "画像本体あり"
+          : item.fetchFailed
+            ? "取得失敗"
+            : item.kind;
       lines.push(
-        `- ${item.file.name}（${item.kind} / ${formatFileSize(item.file.size)}）`,
+        `- ${item.name}（${status} / ${formatFileSize(item.size)}）`,
       );
     }
-    lines.push(
-      "【添付注意】ファイルの中身はまだ自動取得できません。ファイル名を参考に作業してください。",
-    );
+  }
+
+  const failureNote = buildAttachmentContentNote(input.attachmentMeta);
+  if (failureNote) {
+    lines.push(`【添付注意】${failureNote}`);
   }
 
   return lines.join("\n");
@@ -184,6 +191,8 @@ export function WorkRequestForm({
   const [deadline, setDeadline] = useState("");
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const addFiles = useCallback((files: FileList | File[], kind: AttachmentKind) => {
     const list = Array.from(files);
@@ -233,40 +242,45 @@ export function WorkRequestForm({
     addFiles(event.dataTransfer.files, "other");
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const trimmed = value.trim();
-    if (!trimmed || isLoading) return;
+    if (!trimmed || isLoading || isUploading) return;
 
-    const assignment = buildAssignmentText({
-      text: trimmed,
-      executionMode,
-      priority,
-      deadline,
-      attachments,
-    });
+    setUploadError(null);
+    setIsUploading(true);
 
-    onSubmit({
-      assignment,
-      metadata: {
-        requestUi: "secretary_v1",
-        executionPreference: executionMode,
+    try {
+      const attachmentMeta = await uploadWorkAttachments(
+        attachments.map((item) => ({ file: item.file, kind: item.kind })),
+      );
+
+      const assignment = buildAssignmentText({
+        text: trimmed,
+        executionMode,
         priority,
-        ...(deadline ? { deadline } : {}),
-        attachments: attachments.map((item) => ({
-          name: item.file.name,
-          kind: item.kind,
-          mimeType: item.file.type || null,
-          size: item.file.size,
-          contentAvailable: false,
-          note: "ファイル名のみ受け取りました。中身の自動読取は未対応です。",
-        })),
-        attachmentContentNote:
-          attachments.length > 0
-            ? "添付ファイルの中身はまだ取得できません。ファイル名を参考に作業します。"
-            : null,
-        skipWorkMemory: false,
-      },
-    });
+        deadline,
+        attachments,
+        attachmentMeta,
+      });
+
+      onSubmit({
+        assignment,
+        metadata: {
+          requestUi: "secretary_v1",
+          executionPreference: executionMode,
+          priority,
+          ...(deadline ? { deadline } : {}),
+          ...buildAttachmentsMetadataPayload(attachmentMeta),
+          skipWorkMemory: false,
+        },
+      });
+    } catch {
+      setUploadError(
+        "画像を読み込めませんでした。通信環境を確認し、画像をもう一度添付してください。",
+      );
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -276,7 +290,7 @@ export function WorkRequestForm({
     }
   };
 
-  const canSubmit = value.trim().length > 0 && !isLoading;
+  const canSubmit = value.trim().length > 0 && !isLoading && !isUploading;
 
   const attachmentSummary = useMemo(() => {
     if (attachments.length === 0) return null;
@@ -543,16 +557,24 @@ export function WorkRequestForm({
         <Button
           variant="primary"
           size="lg"
-          onClick={handleSubmit}
+          onClick={() => {
+            void handleSubmit();
+          }}
           disabled={!canSubmit}
-          isLoading={isLoading}
+          isLoading={isLoading || isUploading}
           className="h-14 w-full rounded-full text-base sm:h-16 sm:text-lg"
         >
-          {ui.work.submitRequest}
+          {isUploading ? "画像を準備しています…" : ui.work.submitRequest}
         </Button>
-        <p className="mt-3 text-center text-caption text-[var(--text-secondary)]">
-          {ui.work.submitHint}
-        </p>
+        {uploadError ? (
+          <p className="mt-3 text-center text-sm text-[var(--status-error)]" role="alert">
+            {uploadError}
+          </p>
+        ) : (
+          <p className="mt-3 text-center text-caption text-[var(--text-secondary)]">
+            {ui.work.submitHint}
+          </p>
+        )}
       </div>
     </div>
   );
