@@ -72,6 +72,7 @@ export function isSupportedDriveFormat(
     format === "docx" ||
     format === "pptx" ||
     format === "md" ||
-    format === "txt"
+    format === "txt" ||
+    format === "xlsx"
   );
 }

@@ -73,9 +73,10 @@ CEO final approval standards:
 - On NEEDS_REVISION: give executive guidance that QA and Workers can execute
 - Never approve placeholder language, repetition, or "consulting speak" without substance`;
 
-export const DELIVERABLE_FORMAT_GUIDANCE = `When producing content that will become Word/PowerPoint/PDF deliverables:
+export const DELIVERABLE_FORMAT_GUIDANCE = `When producing content that will become Word/PowerPoint/PDF/Excel deliverables:
 - Use ## for major sections and ### for subsections
 - Use markdown tables for comparisons and data (| Header | Header |)
+- When the user asks for Excel / xlsx / 表 / 一覧 / spreadsheet / OCR-to-Excel, put the extracted rows in a markdown table (or JSON {headers, rows}) so Excel export can use structured data directly — do not leave data only as prose
 - Use bullet lists for recommendations; numbered lists for sequential steps
 - Keep section titles concise and client-facing
 - Include an executive summary at the top when the deliverable is long`;

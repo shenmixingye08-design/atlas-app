@@ -67,7 +67,9 @@ export function useDeliverableFiles(
         workflowId: result.knowledge?.workflowId,
         formats:
           options?.formats && options.formats.length > 0
-            ? options.formats
+            ? options.formats.includes("xlsx")
+              ? options.formats
+              : [...options.formats, "xlsx"]
             : undefined,
       },
       controller.signal,

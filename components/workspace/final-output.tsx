@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { isExcelIntent } from "@/lib/deliverables/excel-intent";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
@@ -75,8 +76,26 @@ const DOWNLOAD_FORMAT_ORDER: GeneratedFile["format"][] = [
   "pptx",
   "pdf",
   "docx",
+  "xlsx",
   "md",
 ];
+
+function formatButtonLabel(format: GeneratedFile["format"]): string {
+  if (format === "docx") return "Word";
+  if (format === "pptx") return "PowerPoint";
+  if (format === "xlsx") return "Excel (.xlsx)";
+  return DELIVERABLE_FORMAT_LABELS[format].split(" ")[0];
+}
+
+function triggerBrowserDownload(url: string, fileName: string): void {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
 
 function FormatDownloadButton({
   format,
@@ -88,12 +107,7 @@ function FormatDownloadButton({
   isGeneratingDeliverables: boolean;
 }) {
   const file = findGeneratedFile(deliverables, format);
-  const shortLabel =
-    format === "docx"
-      ? "Word"
-      : format === "pptx"
-        ? "PowerPoint"
-        : DELIVERABLE_FORMAT_LABELS[format].split(" ")[0];
+  const shortLabel = formatButtonLabel(format);
 
   if (file) {
     return (
@@ -333,6 +347,7 @@ export function FinalOutput({
   const [copied, setCopied] = useState(false);
   const [driveSaved, setDriveSaved] = useState(false);
   const showDebug = isAtlasClientDebugEnabled();
+  const autoExcelDownloadedRef = useRef<string | null>(null);
 
   const workspaceDeliverable = result?.deliverable ?? null;
   const exportText = useMemo(
@@ -346,13 +361,23 @@ export function FinalOutput({
     () => (workspaceDeliverable ? deliverableHasContent(workspaceDeliverable) : false),
     [workspaceDeliverable],
   );
-  const fileFormatsToShow = useMemo(() => {
-    if (expectedFormats && expectedFormats.length > 0) {
-      return DOWNLOAD_FORMAT_ORDER.filter((format) =>
-        expectedFormats.includes(format),
-      );
+  const wantsExcel = useMemo(
+    () => (result?.assignment ? isExcelIntent(result.assignment) : false),
+    [result?.assignment],
+  );
+  const fileFormatsToShow = useMemo((): GeneratedFile["format"][] => {
+    const ordered =
+      expectedFormats && expectedFormats.length > 0
+        ? DOWNLOAD_FORMAT_ORDER.filter((format) =>
+            expectedFormats.includes(format),
+          )
+        : (["pdf", "docx", "xlsx"] satisfies GeneratedFile["format"][]);
+
+    // Save row always exposes Excel alongside PDF/Word.
+    if (!ordered.includes("xlsx")) {
+      return [...ordered, "xlsx"];
     }
-    return ["pdf", "docx"] as GeneratedFile["format"][];
+    return ordered;
   }, [expectedFormats]);
 
   useEffect(() => {
@@ -368,6 +393,17 @@ export function FinalOutput({
       });
     }
   }, [result]);
+
+  // Image/table → Excel requests: structured data is already in the deliverable;
+  // auto-download .xlsx once generation finishes (PC + mobile same-origin link).
+  useEffect(() => {
+    if (!result || !wantsExcel) return;
+    const file = findGeneratedFile(deliverables, "xlsx");
+    if (!file) return;
+    if (autoExcelDownloadedRef.current === file.id) return;
+    autoExcelDownloadedRef.current = file.id;
+    triggerBrowserDownload(file.downloadUrl, file.fileName);
+  }, [deliverables, result, wantsExcel]);
 
   if (isLoading || !result) {
     return null;

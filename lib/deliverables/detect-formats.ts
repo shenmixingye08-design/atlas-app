@@ -1,5 +1,6 @@
 import { detectCompanyDeliverableFormats } from "@/lib/company-templates/context";
 
+import { isExcelIntent } from "./excel-intent";
 import type {
   DeliverableFormat,
   DeliverableFormatDetection,
@@ -65,20 +66,48 @@ const FORMAT_RULES: readonly FormatRule[] = [
   },
 ] as const;
 
-const DEFAULT_FORMATS: readonly DeliverableFormat[] = ["md", "txt", "pdf"];
+const DEFAULT_FORMATS: readonly DeliverableFormat[] = [
+  "md",
+  "txt",
+  "pdf",
+  "docx",
+  "xlsx",
+];
+
+const EXCEL_FLOW_FORMATS: readonly DeliverableFormat[] = [
+  "xlsx",
+  "pdf",
+  "docx",
+  "md",
+];
 
 function normalizeHaystack(value: string): string {
   return value.toLowerCase();
+}
+
+function withXlsx(formats: readonly DeliverableFormat[]): DeliverableFormat[] {
+  if (formats.includes("xlsx")) return [...formats];
+  return [...formats, "xlsx"];
 }
 
 /** Infer which file formats to produce from the user's assignment text. */
 export function detectDeliverableFormats(
   assignment: string,
 ): DeliverableFormatDetection {
+  if (isExcelIntent(assignment)) {
+    return {
+      formats: [...EXCEL_FLOW_FORMATS],
+      matchedRule: "excel-spreadsheet",
+    };
+  }
+
   const companyDetection = detectCompanyDeliverableFormats(assignment);
 
   if (companyDetection.matchedRule && !companyDetection.matchedRule.endsWith(":default")) {
-    return companyDetection;
+    return {
+      formats: withXlsx(companyDetection.formats),
+      matchedRule: companyDetection.matchedRule,
+    };
   }
 
   const haystack = normalizeHaystack(assignment);
@@ -90,14 +119,17 @@ export function detectDeliverableFormats(
 
     if (matched) {
       return {
-        formats: [...rule.formats],
+        formats: withXlsx(rule.formats),
         matchedRule: rule.id,
       };
     }
   }
 
   if (companyDetection.formats.length > 0) {
-    return companyDetection;
+    return {
+      formats: withXlsx(companyDetection.formats),
+      matchedRule: companyDetection.matchedRule,
+    };
   }
 
   return {
