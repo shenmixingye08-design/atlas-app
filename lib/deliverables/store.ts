@@ -101,7 +101,7 @@ export function toDeliverableMetadata(
   stored: StoredDeliverable,
   requestOrigin: string,
 ): Deliverable {
-  return {
+  const metadata: Deliverable = {
     id: stored.id,
     fileName: stored.fileName,
     format: stored.format,
@@ -111,6 +111,16 @@ export function toDeliverableMetadata(
     isPlaceholder: stored.isPlaceholder,
     downloadUrl: `${requestOrigin}/api/deliverables/${stored.id}`,
   };
+
+  // Word/PDF: embed bytes so client can download even when GET /:id hits another instance.
+  if (
+    (stored.format === "docx" || stored.format === "pdf") &&
+    stored.buffer.byteLength > 0
+  ) {
+    metadata.contentBase64 = stored.buffer.toString("base64");
+  }
+
+  return metadata;
 }
 
 export function listStoredDeliverableFormats(): DeliverableFormat[] {

@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
+import {
+  downloadFromBase64,
+  downloadOfficeViaExportApi,
+  isOfficeDownloadFormat,
+  type OfficeDownloadFormat,
+} from "@/lib/deliverables/client-download";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import {
   DELIVERABLE_DOWNLOAD_ORDER,
@@ -110,15 +116,75 @@ function FormatDownloadButton({
   isGeneratingDeliverables,
   exportText,
   baseName,
+  assignment,
+  title,
+  onOfficeError,
 }: {
   format: GeneratedFile["format"];
   deliverables: readonly GeneratedFile[];
   isGeneratingDeliverables: boolean;
   exportText: string;
   baseName: string;
+  assignment: string;
+  title?: string;
+  onOfficeError: (error: {
+    format: OfficeDownloadFormat;
+    message: string;
+    cause?: string;
+  } | null) => void;
 }) {
   const file = findGeneratedFile(deliverables, format);
   const label = shortFormatLabel(format);
+  const [busy, setBusy] = useState(false);
+
+  if (isOfficeDownloadFormat(format)) {
+    const handleOfficeDownload = async () => {
+      setBusy(true);
+      onOfficeError(null);
+      try {
+        if (file?.contentBase64) {
+          downloadFromBase64({
+            base64: file.contentBase64,
+            fileName: file.fileName,
+            mimeType: file.mimeType,
+          });
+          return;
+        }
+
+        await downloadOfficeViaExportApi({
+          format,
+          content: exportText,
+          assignment,
+          title,
+        });
+      } catch (error) {
+        const message =
+          format === "docx" ? ui.work.wordGenerateFailed : ui.work.pdfGenerateFailed;
+        const cause =
+          error && typeof error === "object" && "cause" in error
+            ? String((error as { cause?: unknown }).cause ?? "")
+            : error instanceof Error
+              ? error.message
+              : undefined;
+        console.error(`[FinalOutput] ${format} download failed`, error);
+        onOfficeError({ format, message, cause });
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    return (
+      <Button
+        variant="secondary"
+        size="sm"
+        type="button"
+        disabled={busy || !exportText.trim()}
+        onClick={() => void handleOfficeDownload()}
+      >
+        {busy ? ui.work.downloadingOffice : label}
+      </Button>
+    );
+  }
 
   if (file) {
     return (
@@ -414,6 +480,12 @@ export function FinalOutput({
   );
   const [isRegeneratingFiles, setIsRegeneratingFiles] = useState(false);
   const [reeditError, setReeditError] = useState<string | null>(null);
+  const [officeError, setOfficeError] = useState<{
+    format: OfficeDownloadFormat;
+    message: string;
+    cause?: string;
+  } | null>(null);
+  const [officeRetryKey, setOfficeRetryKey] = useState(0);
   const showDebug = isAtlasClientDebugEnabled();
 
   // Prefer locally re-edited files; otherwise use server-generated list.
@@ -443,17 +515,20 @@ export function FinalOutput({
       localDeliverables.some((item) => item.format === format),
     );
 
-    if (fromServer.length > 0) {
-      // Always surface text formats too for immediate download
-      const withText = new Set([
-        ...fromServer,
-        "md" as const,
-        "txt" as const,
-      ]);
-      return DELIVERABLE_DOWNLOAD_ORDER.filter((format) => withText.has(format));
+    // Always expose Word/PDF — they download via on-demand export (Vercel-safe).
+    const required = new Set<GeneratedFile["format"]>([
+      ...fromServer,
+      "docx",
+      "pdf",
+      "md",
+      "txt",
+    ]);
+
+    if (fromServer.length === 0) {
+      return ["docx", "xlsx", "pdf", "pptx", "md", "txt", "csv"] as GeneratedFile["format"][];
     }
 
-    return ["docx", "xlsx", "pdf", "pptx", "md", "txt", "csv"] as GeneratedFile["format"][];
+    return DELIVERABLE_DOWNLOAD_ORDER.filter((format) => required.has(format));
   }, [expectedFormats, localDeliverables]);
 
   useEffect(() => {
@@ -610,7 +685,7 @@ export function FinalOutput({
 
         <div className="space-y-3">
           <StepLabel step={2} label={ui.work.downloadStep} />
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3" key={officeRetryKey}>
             {fileFormatsToShow.map((format) => (
               <FormatDownloadButton
                 key={format}
@@ -621,12 +696,74 @@ export function FinalOutput({
                 }
                 exportText={isEditing ? editText : exportText}
                 baseName={baseName}
+                assignment={result.assignment}
+                title={workspaceDeliverable.title || undefined}
+                onOfficeError={setOfficeError}
               />
             ))}
           </div>
           <p className="text-caption text-[var(--foreground-muted)]">
             {ui.work.downloadHintBusiness}
           </p>
+          {officeError && (
+            <div className="space-y-2 rounded-[var(--radius-lg)] border border-[var(--status-warning)]/40 bg-[var(--background-muted)]/40 px-4 py-3">
+              <ErrorState
+                message={[officeError.message, officeError.cause]
+                  .filter(Boolean)
+                  .join(" — ")}
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                type="button"
+                onClick={() => {
+                  const failedFormat = officeError.format;
+                  setOfficeError(null);
+                  setOfficeRetryKey((value) => value + 1);
+                  void (async () => {
+                    try {
+                      const file = findGeneratedFile(
+                        localDeliverables,
+                        failedFormat,
+                      );
+                      if (file?.contentBase64) {
+                        downloadFromBase64({
+                          base64: file.contentBase64,
+                          fileName: file.fileName,
+                          mimeType: file.mimeType,
+                        });
+                        return;
+                      }
+                      await downloadOfficeViaExportApi({
+                        format: failedFormat,
+                        content: isEditing ? editText : exportText,
+                        assignment: result.assignment,
+                        title: workspaceDeliverable.title || undefined,
+                      });
+                    } catch (error) {
+                      const message =
+                        failedFormat === "docx"
+                          ? ui.work.wordGenerateFailed
+                          : ui.work.pdfGenerateFailed;
+                      const cause =
+                        error && typeof error === "object" && "cause" in error
+                          ? String((error as { cause?: unknown }).cause ?? "")
+                          : error instanceof Error
+                            ? error.message
+                            : undefined;
+                      console.error(
+                        `[FinalOutput] ${failedFormat} retry failed`,
+                        error,
+                      );
+                      setOfficeError({ format: failedFormat, message, cause });
+                    }
+                  })();
+                }}
+              >
+                {ui.work.downloadRetry}
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="space-y-3">

@@ -461,8 +461,18 @@ export class PdfDeliverableGenerator implements DeliverableGenerator {
     content: string,
     baseFileName: string,
   ): Promise<GeneratedDeliverableFile> {
-    const parsed = parseDeliverableContent(content);
-    const buffer = await buildJapanesePdf(parsed, content);
-    return createDeliverableFile("pdf", baseFileName, buffer, false);
+    try {
+      const parsed = parseDeliverableContent(content);
+      const buffer = await buildJapanesePdf(parsed, content);
+      if (buffer.byteLength < 64 || buffer.subarray(0, 4).toString("utf-8") !== "%PDF") {
+        throw new Error("PDF生成結果が不正です（マジックヘッダなし）。");
+      }
+      return createDeliverableFile("pdf", baseFileName, buffer, false);
+    } catch (error) {
+      console.error("[PdfDeliverableGenerator] failed", error);
+      throw error instanceof Error
+        ? error
+        : new Error("PDF生成に失敗しました");
+    }
   }
 }

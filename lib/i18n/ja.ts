@@ -663,6 +663,10 @@ export const ui = {
     historyRedownload: "履歴から再ダウンロード",
     historyRedownloadHint:
       "以前生成した Word / Excel / PDF / PowerPoint などを、いつでも同じ内容から再取得できます。",
+    wordGenerateFailed: "Word生成に失敗しました",
+    pdfGenerateFailed: "PDF生成に失敗しました",
+    downloadRetry: "再試行",
+    downloadingOffice: "ファイルを作成しています…",
   },
 
   workflow: {

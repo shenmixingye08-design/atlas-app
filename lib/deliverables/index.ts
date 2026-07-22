@@ -47,3 +47,10 @@ export type {
 
 export type { GenerateDeliverablesResult } from "./engine";
 export { generateDeliverables } from "./engine";
+
+export {
+  assertNonEmptyFile,
+  exportOfficeDeliverable,
+  isExportableOfficeFormat,
+} from "./export-file";
+export { buildContentDisposition } from "./http-headers";

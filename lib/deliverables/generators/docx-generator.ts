@@ -5,6 +5,7 @@ import {
   Header,
   HeadingLevel,
   ImageRun,
+  PageBreak,
   PageNumber,
   Packer,
   Paragraph,
@@ -23,9 +24,9 @@ import { parseDeliverableContent } from "../parse-content";
 import type { ContentBlock, ParsedDeliverable } from "../parse-content";
 import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
 
-import { MarkdownDeliverableGenerator } from "./markdown-generator";
-import { createDeliverableFile } from "./shared";
+import { createDeliverableFile, formatGeneratedDate } from "./shared";
 
+/** Prefer fonts widely available on JP Windows / Office. */
 const FONT = "Yu Gothic";
 const EAST_ASIA_FONT = "Yu Gothic";
 const BODY_SIZE = 22;
@@ -252,6 +253,7 @@ function blocksToDocxChildren(blocks: ContentBlock[]): Array<Paragraph | Table> 
 }
 
 function buildTitlePage(parsed: ParsedDeliverable): Paragraph[] {
+  const createdAt = formatGeneratedDate();
   return [
     new Paragraph({
       spacing: { before: 400, after: 200 },
@@ -262,13 +264,22 @@ function buildTitlePage(parsed: ParsedDeliverable): Paragraph[] {
     ...(parsed.subtitle
       ? [
           new Paragraph({
-            spacing: { after: 300 },
+            spacing: { after: 200 },
             children: [
               bodyText(parsed.subtitle, { size: SUBTITLE_SIZE, color: "444444" }),
             ],
           }),
         ]
       : []),
+    new Paragraph({
+      spacing: { after: 320 },
+      children: [
+        bodyText(`作成日時: ${createdAt}`, {
+          size: CAPTION_SIZE,
+          color: "666666",
+        }),
+      ],
+    }),
   ];
 }
 
@@ -288,6 +299,7 @@ function buildSectionChildren(parsed: ParsedDeliverable): Array<Paragraph | Tabl
     );
   }
 
+  let isFirstSection = true;
   for (const section of parsed.sections) {
     const headingLevel =
       section.level === 1
@@ -299,8 +311,14 @@ function buildSectionChildren(parsed: ParsedDeliverable): Array<Paragraph | Tabl
     const headingSize =
       section.level === 1 ? H1_SIZE : section.level === 2 ? H2_SIZE : H3_SIZE;
 
+    // Page break before each major section after the first for proposal-style docs.
+    if (!isFirstSection && section.level === 1) {
+      children.push(new Paragraph({ children: [new PageBreak()] }));
+    }
+
     children.push(headingParagraph(section.title, headingLevel, headingSize));
     children.push(...blocksToDocxChildren(section.blocks));
+    isFirstSection = false;
   }
 
   return children;
@@ -363,7 +381,7 @@ async function buildDocxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
   const doc = new Document({
     creator: "MINERVOT",
     title: parsed.title,
-    description: ui.generated.engine,
+    description: `${ui.generated.engine} / ${formatGeneratedDate()}`,
     styles: {
       default: {
         document: {
@@ -402,7 +420,7 @@ async function buildDocxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
   return Buffer.from(await Packer.toBuffer(doc));
 }
 
-/** Production Word (.docx) generator using the `docx` library. */
+/** Production Word (.docx) generator using the `docx` library (real OOXML). */
 export class DocxDeliverableGenerator implements DeliverableGenerator {
   readonly format = "docx" as const;
 
@@ -410,14 +428,12 @@ export class DocxDeliverableGenerator implements DeliverableGenerator {
     content: string,
     baseFileName: string,
   ): Promise<GeneratedDeliverableFile> {
-    try {
-      const parsed = parseDeliverableContent(content);
-      const buffer = await buildDocxBuffer(parsed);
-      return createDeliverableFile("docx", baseFileName, buffer, false);
-    } catch (error) {
-      console.error("[DocxDeliverableGenerator] Falling back to Markdown:", error);
-      return new MarkdownDeliverableGenerator().generate(content, baseFileName);
+    const parsed = parseDeliverableContent(content);
+    const buffer = await buildDocxBuffer(parsed);
+    if (buffer.byteLength < 64 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
+      throw new Error("DOCX生成結果が不正です（OOXMLシグネチャなし）。");
     }
+    return createDeliverableFile("docx", baseFileName, buffer, false);
   }
 }
 
