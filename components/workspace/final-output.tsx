@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { triggerBlobDownload } from "@/lib/browser/trigger-blob-download";
+import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
@@ -56,12 +58,7 @@ const TYPE_LABELS: Record<DeliverableType, string> = {
 
 function downloadMarkdown(content: string, fileName: string): void {
   const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  void triggerBlobDownload(blob, fileName);
 }
 
 function findGeneratedFile(
@@ -88,6 +85,8 @@ function FormatDownloadButton({
   isGeneratingDeliverables: boolean;
 }) {
   const file = findGeneratedFile(deliverables, format);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const shortLabel =
     format === "docx"
       ? "Word"
@@ -95,20 +94,48 @@ function FormatDownloadButton({
         ? "PowerPoint"
         : DELIVERABLE_FORMAT_LABELS[format].split(" ")[0];
 
-  if (file) {
+  if (!file) {
     return (
-      <a href={file.downloadUrl} download={file.fileName}>
-        <Button variant="secondary" size="sm" type="button">
-          {shortLabel}
-        </Button>
-      </a>
+      <Button variant="secondary" size="sm" disabled={isGeneratingDeliverables}>
+        {shortLabel}
+      </Button>
     );
   }
 
+  const handleDownload = async () => {
+    setError(null);
+    setIsDownloading(true);
+    try {
+      await downloadDeliverableFile({
+        url: file.downloadUrl,
+        fileName: file.fileName,
+        mimeType: file.mimeType,
+      });
+    } catch (downloadError) {
+      setError(
+        downloadError instanceof Error
+          ? downloadError.message
+          : ui.work.downloadFailed,
+      );
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   return (
-    <Button variant="secondary" size="sm" disabled={isGeneratingDeliverables}>
-      {shortLabel}
-    </Button>
+    <span className="inline-flex flex-col items-start gap-1">
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={isGeneratingDeliverables || isDownloading}
+        onClick={() => void handleDownload()}
+      >
+        {isDownloading ? ui.work.downloadingFile : shortLabel}
+      </Button>
+      {error ? (
+        <span className="max-w-[16rem] text-xs text-[var(--error)]">{error}</span>
+      ) : null}
+    </span>
   );
 }
 
