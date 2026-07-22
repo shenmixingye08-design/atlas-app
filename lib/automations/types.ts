@@ -207,10 +207,12 @@ export type AutomationRunResult = {
   automationId: EntityId;
   workflowRunId: EntityId;
   status: "completed" | "failed";
-  orchestrationStatus: "completed" | "failed";
+  orchestrationStatus: "completed" | "failed" | string;
   approved: boolean;
   totalDurationMs: number;
   finalResponsePreview: string | null;
   error: string | null;
   deliverableCount: number;
+  /** True when idempotency claim prevented duplicate execution. */
+  dedupeSkipped?: boolean;
 };

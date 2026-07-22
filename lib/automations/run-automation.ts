@@ -48,7 +48,8 @@ import {
   notifyAutomationCompleted,
   notifyAutomationFailed,
 } from "@/lib/notifications/emitters";
-import { getJobRecord, markJobCompleted, markJobFailed, markJobRunning } from "@/lib/jobs/reliability";
+import { getJobRecord, heartbeatJob, markJobCompleted, markJobFailed, markJobRunning } from "@/lib/jobs/reliability";
+import { evaluateCompletionEvidence } from "@/lib/jobs/completion-evidence";
 import type { Automation, AutomationRunHistoryEntry, AutomationRunResult } from "./types";
 import { serverAutomationRepository } from "./repositories/server-automation-repository";
 import { MAX_AUTOMATION_RUN_HISTORY } from "./repositories/server-automation-repository";
@@ -58,6 +59,8 @@ export type ExecuteAutomationOptions = {
   triggerType?: WorkflowRunTriggerType;
   userId?: string | null;
   requestOrigin?: string;
+  jobId?: string;
+  scheduledAt?: string | null;
 };
 
 function appendRunHistory(
@@ -93,9 +96,11 @@ export async function executeAutomationRun(
     triggerType,
   });
 
+  const jobId = options.jobId ?? workflowRun.id;
+
   if (options.userId) {
-    markJobRunning({
-      jobId: workflowRun.id,
+    await markJobRunning({
+      jobId,
       userId: options.userId,
       automationId: automation.id,
       step: "orchestrate",
@@ -214,8 +219,18 @@ export async function executeAutomationRun(
     // Tracks a real SNS publish failure so we never report "投稿完了" when
     // nothing actually reached X. Holds the user-facing reason on failure.
     let snsPostFailure: string | null = null;
+    let tweetId: string | null = null;
+    let tweetUrl: string | null = null;
 
     if (result.status === "completed" && result.finalResponse.trim()) {
+      if (options.userId) {
+        await heartbeatJob({
+          jobId,
+          userId: options.userId,
+          step: "x_post",
+          progressPercent: 60,
+        });
+      }
       try {
         const autoPost = await maybeAutoPostToXAfterAutomation({
           userId: options.userId,
@@ -232,6 +247,9 @@ export async function executeAutomationRun(
           } else if (postResult.history?.status !== "success") {
             snsPostFailure =
               postResult.history?.errorMessage ?? "Xへの投稿に失敗しました";
+          } else {
+            tweetId = postResult.history.tweetId ?? null;
+            tweetUrl = postResult.history.tweetUrl ?? null;
           }
         }
       } catch (postError) {
@@ -247,12 +265,21 @@ export async function executeAutomationRun(
     }
 
     let deliverableCount = 0;
+    let storageUrl: string | null = null;
 
     if (
       result.status === "completed" &&
       getDeliverablePreviewText(result.deliverable) &&
       options.requestOrigin
     ) {
+      if (options.userId) {
+        await heartbeatJob({
+          jobId,
+          userId: options.userId,
+          step: "deliverables",
+          progressPercent: 75,
+        });
+      }
       try {
         const generated = await generateDeliverables(
           {
@@ -266,11 +293,23 @@ export async function executeAutomationRun(
 
         if (generated.deliverables.length > 0) {
           try {
-            await uploadDeliverablesAfterGeneration({
+            const uploadResult = await uploadDeliverablesAfterGeneration({
               deliverables: generated.deliverables,
               projectName: automation.name,
               workflowId: workflowRun.id,
             });
+            storageUrl =
+              uploadResult?.folderUrl ??
+              uploadResult?.uploads?.find((u) => u.success)?.driveUrl ??
+              null;
+            if (options.userId) {
+              await heartbeatJob({
+                jobId,
+                userId: options.userId,
+                step: "upload",
+                progressPercent: 90,
+              });
+            }
           } catch (uploadError) {
             console.error(
               `[executeAutomationRun] Drive upload failed for ${automation.id}:`,
@@ -329,11 +368,23 @@ export async function executeAutomationRun(
     });
 
     const flow = normalizeExecutionFlow(automation.executionFlow);
+    const evidence = evaluateCompletionEvidence({
+      templateId: flow.templateId,
+      orchestrationStatus: effectiveStatus,
+      approved: result.approved && !snsPostFailure,
+      deliverableCount,
+      snsPostFailure,
+      tweetId,
+      tweetUrl,
+      artifactId: workflowRun.id,
+      storageUrl,
+    });
+
     if (effectiveStatus === "failed") {
       const priorJob =
         options.userId != null
-          ? markJobFailed({
-              jobId: workflowRun.id,
+          ? await markJobFailed({
+              jobId,
               userId: options.userId,
               error: effectiveError ?? "failed",
               automationId: automation.id,
@@ -346,19 +397,37 @@ export async function executeAutomationRun(
           error: effectiveError ?? undefined,
         });
       }
-    } else if (effectiveStatus === "completed" && !result.approved) {
+    } else if (evidence.status === "waiting_for_approval") {
       notifyAutomationAwaitingReview(options.userId, {
         automationId: automation.id,
         name: automation.name,
       });
-    } else if (effectiveStatus === "completed") {
-      const autoRecovered =
-        options.userId != null &&
-        (getJobRecord(workflowRun.id, options.userId)?.retryCount ?? 0) > 0;
       if (options.userId) {
-        markJobCompleted({
-          jobId: workflowRun.id,
+        await markJobCompleted({
+          jobId,
           userId: options.userId,
+          status: "waiting_for_approval",
+          resultSummary: evidence.resultSummary,
+          artifactId: evidence.artifactId,
+        });
+      }
+    } else if (
+      evidence.status === "completed" ||
+      evidence.status === "partially_completed"
+    ) {
+      const prior = options.userId
+        ? await getJobRecord(jobId, options.userId)
+        : null;
+      const autoRecovered = (prior?.attemptCount ?? 0) > 0;
+      if (options.userId) {
+        await markJobCompleted({
+          jobId,
+          userId: options.userId,
+          status: evidence.status,
+          artifactId: evidence.artifactId,
+          externalResultId: evidence.externalResultId,
+          externalResultUrl: evidence.externalResultUrl,
+          resultSummary: evidence.resultSummary,
           autoRecovered,
         });
       }
@@ -492,8 +561,8 @@ export async function executeAutomationRun(
 
     const failureState =
       options.userId != null
-        ? markJobFailed({
-            jobId: workflowRun.id,
+        ? await markJobFailed({
+            jobId,
             userId: options.userId,
             error: message,
             automationId: automation.id,

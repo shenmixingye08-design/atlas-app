@@ -30,6 +30,25 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const origin = resolveOrigin(request);
+
+    let reliability: {
+      retriesProcessed: number;
+      hangsDetected: number;
+      dedupeSkips: number;
+    } = {
+      retriesProcessed: 0,
+      hangsDetected: 0,
+      dedupeSkips: 0,
+    };
+    try {
+      const { processJobReliabilityTick } = await import(
+        "@/lib/jobs/tick-processor"
+      );
+      reliability = await processJobReliabilityTick({ requestOrigin: origin });
+    } catch (error) {
+      console.warn("[automation tick] job reliability skipped:", error);
+    }
+
     const results = await automationService.processDueAutomations({
       requestOrigin: origin,
     });
@@ -75,6 +94,7 @@ export async function POST(request: Request): Promise<Response> {
         results: autoPosts,
       },
       dailyReports,
+      reliability,
     });
   } catch (error) {
     const message =

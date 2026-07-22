@@ -202,6 +202,12 @@ describe("automation persistence and cron tick", () => {
       error: "boom",
     } as never);
 
+    const { resetAutomationJobStoreForTests } = await import("@/lib/jobs/job-store");
+    resetAutomationJobStoreForTests();
+
+    const minuteLater = 60_001;
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + minuteLater);
+
     const failed = await automationService.runNow(created.id, {
       userId: "user_run",
     });

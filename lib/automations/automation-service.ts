@@ -116,7 +116,14 @@ export class AutomationService {
 
   async runNow(
     id: string,
-    options: { userId?: string | null; requestOrigin?: string } = {},
+    options: {
+      userId?: string | null;
+      requestOrigin?: string;
+      triggerType?: "manual" | "automation";
+      scheduledAt?: string | null;
+      skipIdempotencyClaim?: boolean;
+      existingJobId?: string;
+    } = {},
   ): Promise<AutomationRunResult | null> {
     if (options.userId) {
       await ensureAutomationsHydrated(options.userId);
@@ -125,13 +132,58 @@ export class AutomationService {
     if (!automation) return null;
     if (options.userId && automation.userId !== options.userId) return null;
 
+    const userId = options.userId ?? automation.userId;
+    const triggerType = options.triggerType ?? "manual";
+
+    if (userId && !options.skipIdempotencyClaim) {
+      const { claimAutomationJob } = await import("@/lib/jobs/job-store");
+      const { buildAutomationIdempotencyKey } = await import(
+        "@/lib/jobs/idempotency"
+      );
+      const jobId = crypto.randomUUID();
+      const idempotencyKey = buildAutomationIdempotencyKey({
+        userId,
+        automationId: automation.id,
+        triggerType,
+        scheduledAt: options.scheduledAt ?? automation.nextRun,
+      });
+      const claim = await claimAutomationJob({
+        id: jobId,
+        userId,
+        automationId: automation.id,
+        idempotencyKey,
+        scheduledAt: options.scheduledAt ?? automation.nextRun,
+      });
+      if (claim.action === "skip") {
+        return {
+          automationId: automation.id,
+          workflowRunId: claim.record.id,
+          status:
+            claim.record.status === "completed" ||
+            claim.record.status === "partially_completed"
+              ? "completed"
+              : "failed",
+          orchestrationStatus: claim.record.status,
+          approved: true,
+          totalDurationMs: 0,
+          finalResponsePreview: claim.record.resultSummary,
+          error: claim.record.lastErrorMessage,
+          deliverableCount: 0,
+          dedupeSkipped: true,
+        };
+      }
+      options.existingJobId = claim.record.id;
+    }
+
     const result = await executeAutomationRun(automation, {
-      triggerType: "manual",
-      userId: options.userId ?? automation.userId,
+      triggerType,
+      userId,
       requestOrigin: options.requestOrigin,
+      jobId: options.existingJobId,
+      scheduledAt: options.scheduledAt ?? automation.nextRun,
     });
 
-    const ownerId = options.userId ?? automation.userId;
+    const ownerId = userId;
     if (ownerId) schedulePersistAutomations(ownerId);
     return result;
   }
@@ -197,14 +249,14 @@ export class AutomationService {
         });
         schedulePersistAutomations(userId);
 
-        const result = await executeAutomationRun(
-          { ...automation, nextRun: reservedNext, status: "running" },
-          {
-            triggerType: "automation",
-            userId,
-            requestOrigin: options.requestOrigin,
-          },
-        );
+        const result = await this.runNow(automation.id, {
+          userId,
+          requestOrigin: options.requestOrigin,
+          triggerType: "automation",
+          scheduledAt: automation.nextRun,
+        });
+        if (!result) continue;
+        if (result.dedupeSkipped) continue;
         results.push(result);
         schedulePersistAutomations(userId);
       }
