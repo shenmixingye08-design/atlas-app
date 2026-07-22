@@ -16,6 +16,7 @@ const FORMAT_VALUES: DeliverableFormatPreference[] = [
   "pptx",
   "pdf",
   "docx",
+  "xlsx",
   "md",
   "txt",
   "pptx_pdf",

@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
-import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
+import {
+  DELIVERABLE_DOWNLOAD_ORDER,
+  DELIVERABLE_FORMAT_LABELS,
+} from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
 import {
   deliverableHasContent,
@@ -22,6 +25,7 @@ import {
 import { getDeliverableExportText } from "@/lib/orchestration/final-deliverable";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import { ui } from "@/lib/i18n";
+import { regenerateDeliverableFiles } from "@/lib/workspace/use-deliverable-files";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
@@ -40,6 +44,10 @@ type FinalOutputProps = {
    * natural, contextual title instead (e.g. 「レポートができました」).
    */
   heading?: string;
+  /** Persist regenerated files into history when re-editing. */
+  projectId?: string;
+  /** Called when local file list is refreshed after re-edit. */
+  onDeliverablesChange?: (files: GeneratedFile[]) => void;
 };
 
 const TYPE_LABELS: Record<DeliverableType, string> = {
@@ -54,8 +62,12 @@ const TYPE_LABELS: Record<DeliverableType, string> = {
   document: "ドキュメント",
 };
 
-function downloadMarkdown(content: string, fileName: string): void {
-  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+function downloadTextFile(
+  content: string,
+  fileName: string,
+  mime: string,
+): void {
+  const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -71,43 +83,95 @@ function findGeneratedFile(
   return deliverables.find((item) => item.format === format);
 }
 
-const DOWNLOAD_FORMAT_ORDER: GeneratedFile["format"][] = [
-  "pptx",
-  "pdf",
-  "docx",
-  "md",
-];
+function shortFormatLabel(format: GeneratedFile["format"]): string {
+  switch (format) {
+    case "docx":
+      return "Word";
+    case "xlsx":
+      return "Excel";
+    case "pptx":
+      return "PowerPoint";
+    case "pdf":
+      return "PDF";
+    case "md":
+      return "Markdown";
+    case "txt":
+      return "テキスト";
+    case "csv":
+      return "CSV";
+    default:
+      return DELIVERABLE_FORMAT_LABELS[format];
+  }
+}
 
 function FormatDownloadButton({
   format,
   deliverables,
   isGeneratingDeliverables,
+  exportText,
+  baseName,
 }: {
   format: GeneratedFile["format"];
   deliverables: readonly GeneratedFile[];
   isGeneratingDeliverables: boolean;
+  exportText: string;
+  baseName: string;
 }) {
   const file = findGeneratedFile(deliverables, format);
-  const shortLabel =
-    format === "docx"
-      ? "Word"
-      : format === "pptx"
-        ? "PowerPoint"
-        : DELIVERABLE_FORMAT_LABELS[format].split(" ")[0];
+  const label = shortFormatLabel(format);
 
   if (file) {
     return (
       <a href={file.downloadUrl} download={file.fileName}>
         <Button variant="secondary" size="sm" type="button">
-          {shortLabel}
+          {label}
         </Button>
       </a>
     );
   }
 
+  // Client-side fallback for text formats while server files prepare
+  if (format === "md") {
+    return (
+      <Button
+        variant="secondary"
+        size="sm"
+        type="button"
+        onClick={() =>
+          downloadTextFile(
+            exportText,
+            `${baseName}.md`,
+            "text/markdown;charset=utf-8",
+          )
+        }
+      >
+        {label}
+      </Button>
+    );
+  }
+
+  if (format === "txt") {
+    return (
+      <Button
+        variant="secondary"
+        size="sm"
+        type="button"
+        onClick={() =>
+          downloadTextFile(
+            exportText,
+            `${baseName}.txt`,
+            "text/plain;charset=utf-8",
+          )
+        }
+      >
+        {label}
+      </Button>
+    );
+  }
+
   return (
     <Button variant="secondary" size="sm" disabled={isGeneratingDeliverables}>
-      {shortLabel}
+      {label}
     </Button>
   );
 }
@@ -321,6 +385,14 @@ function DeliverableDebugPanel({ deliverable }: { deliverable: WorkspaceDelivera
   );
 }
 
+function StepLabel({ step, label }: { step: number; label: string }) {
+  return (
+    <p className="text-xs font-semibold tracking-wide text-accent">
+      {step}. {label}
+    </p>
+  );
+}
+
 export function FinalOutput({
   result,
   isLoading,
@@ -329,10 +401,22 @@ export function FinalOutput({
   deliverablesError = null,
   expectedFormats,
   heading,
+  projectId,
+  onDeliverablesChange,
 }: FinalOutputProps) {
   const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false);
   const [driveSaved, setDriveSaved] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState("");
+  const [localDeliverables, setLocalDeliverables] = useState<GeneratedFile[]>(deliverables);
+  const [isRegeneratingFiles, setIsRegeneratingFiles] = useState(false);
+  const [reeditError, setReeditError] = useState<string | null>(null);
   const showDebug = isAtlasClientDebugEnabled();
+
+  useEffect(() => {
+    setLocalDeliverables(deliverables);
+  }, [deliverables]);
 
   const workspaceDeliverable = result?.deliverable ?? null;
   const exportText = useMemo(
@@ -346,14 +430,30 @@ export function FinalOutput({
     () => (workspaceDeliverable ? deliverableHasContent(workspaceDeliverable) : false),
     [workspaceDeliverable],
   );
+
   const fileFormatsToShow = useMemo(() => {
     if (expectedFormats && expectedFormats.length > 0) {
-      return DOWNLOAD_FORMAT_ORDER.filter((format) =>
+      return DELIVERABLE_DOWNLOAD_ORDER.filter((format) =>
         expectedFormats.includes(format),
       );
     }
-    return ["pdf", "docx"] as GeneratedFile["format"][];
-  }, [expectedFormats]);
+
+    const fromServer = DELIVERABLE_DOWNLOAD_ORDER.filter((format) =>
+      localDeliverables.some((item) => item.format === format),
+    );
+
+    if (fromServer.length > 0) {
+      // Always surface text formats too for immediate download
+      const withText = new Set([
+        ...fromServer,
+        "md" as const,
+        "txt" as const,
+      ]);
+      return DELIVERABLE_DOWNLOAD_ORDER.filter((format) => withText.has(format));
+    }
+
+    return ["docx", "xlsx", "pdf", "pptx", "md", "txt", "csv"] as GeneratedFile["format"][];
+  }, [expectedFormats, localDeliverables]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production" || !result) return;
@@ -402,8 +502,11 @@ export function FinalOutput({
     );
   }
 
-  const markdownFile = findGeneratedFile(deliverables, "md");
-  const baseName = markdownFile?.fileName ?? `${workspaceDeliverable.type}-deliverable.md`;
+  const markdownFile = findGeneratedFile(localDeliverables, "md");
+  const baseName = (markdownFile?.fileName ?? `${workspaceDeliverable.type}-deliverable`).replace(
+    /\.(md|txt)$/i,
+    "",
+  );
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(exportText);
@@ -411,8 +514,61 @@ export function FinalOutput({
     window.setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleShare = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: workspaceDeliverable.title || ui.work.deliverableTitle,
+          text: exportText.slice(0, 4000),
+        });
+        setShared(true);
+        window.setTimeout(() => setShared(false), 2000);
+        return;
+      }
+      await navigator.clipboard.writeText(exportText);
+      setShared(true);
+      window.setTimeout(() => setShared(false), 2000);
+    } catch {
+      // User cancelled share sheet — ignore.
+    }
+  };
+
   const handleDriveSave = () => {
     setDriveSaved(true);
+  };
+
+  const handleStartEdit = () => {
+    setEditText(exportText);
+    setIsEditing(true);
+    setReeditError(null);
+  };
+
+  const handleApplyEdit = async () => {
+    if (!editText.trim()) {
+      setReeditError(ui.work.reeditEmpty);
+      return;
+    }
+
+    setIsRegeneratingFiles(true);
+    setReeditError(null);
+    try {
+      const files = await regenerateDeliverableFiles({
+        assignment: result.assignment,
+        content: editText,
+        title: workspaceDeliverable.title || undefined,
+        projectId,
+        formats: expectedFormats,
+      });
+      setLocalDeliverables(files);
+      onDeliverablesChange?.(files);
+      setIsEditing(false);
+    } catch (error) {
+      setReeditError(
+        error instanceof Error ? error.message : ui.work.reeditFailed,
+      );
+    } finally {
+      setIsRegeneratingFiles(false);
+    }
   };
 
   return (
@@ -428,65 +584,124 @@ export function FinalOutput({
         )}
       </div>
 
-      <Card padding="lg" className="shadow-[var(--shadow-soft)]">
-        <div className="max-h-[560px] overflow-auto rounded-[var(--radius-xl)] bg-[var(--background-subtle)] px-6 py-8">
-          <DeliverablePreview deliverable={workspaceDeliverable} />
+      <Card padding="lg" className="space-y-8 shadow-[var(--shadow-soft)]">
+        <div className="space-y-3">
+          <StepLabel step={1} label={ui.work.previewStep} />
+          <div className="max-h-[560px] overflow-auto rounded-[var(--radius-xl)] bg-[var(--background-subtle)] px-6 py-8">
+            {isEditing ? (
+              <textarea
+                value={editText}
+                onChange={(event) => setEditText(event.target.value)}
+                className="min-h-[360px] w-full resize-y rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-background px-4 py-3 font-mono text-sm leading-relaxed text-foreground focus-ring"
+                aria-label={ui.work.reeditLabel}
+              />
+            ) : (
+              <DeliverablePreview deliverable={workspaceDeliverable} />
+            )}
+          </div>
         </div>
 
         {showDebug && (
-          <div className="mt-4">
+          <div>
             <DeliverableDebugPanel deliverable={workspaceDeliverable} />
           </div>
         )}
 
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Button variant="secondary" size="sm" onClick={() => void handleCopy()}>
-            {copied ? ui.work.copied : ui.work.copy}
-          </Button>
-
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => downloadMarkdown(exportText, baseName)}
-          >
-            {ui.work.saveMarkdown}
-          </Button>
-
-          {fileFormatsToShow.map((format) => (
-            <FormatDownloadButton
-              key={format}
-              format={format}
-              deliverables={deliverables}
-              isGeneratingDeliverables={isGeneratingDeliverables}
-            />
-          ))}
-
-          <Button variant="secondary" size="sm" onClick={handleDriveSave}>
-            {driveSaved ? ui.work.driveSaved : ui.work.saveToDrive}
-          </Button>
+        <div className="space-y-3">
+          <StepLabel step={2} label={ui.work.downloadStep} />
+          <div className="flex flex-wrap gap-3">
+            {fileFormatsToShow.map((format) => (
+              <FormatDownloadButton
+                key={format}
+                format={format}
+                deliverables={localDeliverables}
+                isGeneratingDeliverables={
+                  isGeneratingDeliverables || isRegeneratingFiles
+                }
+                exportText={isEditing ? editText : exportText}
+                baseName={baseName}
+              />
+            ))}
+          </div>
+          <p className="text-caption text-[var(--foreground-muted)]">
+            {ui.work.downloadHintBusiness}
+          </p>
         </div>
 
-        {driveSaved && (
-          <p className="mt-4 text-sm text-[var(--foreground-muted)] animate-fade-in">
-            {ui.work.driveSandboxSaved}
-          </p>
-        )}
+        <div className="space-y-3">
+          <StepLabel step={3} label={ui.work.shareStep} />
+          <div className="flex flex-wrap gap-3">
+            <Button variant="secondary" size="sm" onClick={() => void handleCopy()}>
+              {copied ? ui.work.copied : ui.work.copy}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => void handleShare()}>
+              {shared ? ui.work.shared : ui.work.share}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={handleDriveSave}>
+              {driveSaved ? ui.work.driveSaved : ui.work.saveToDrive}
+            </Button>
+          </div>
+          {driveSaved && (
+            <p className="text-sm text-[var(--foreground-muted)] animate-fade-in">
+              {ui.work.driveSandboxSaved}
+            </p>
+          )}
+        </div>
 
-        {isGeneratingDeliverables && (
-          <p className="mt-4 animate-soft-pulse text-caption">
+        <div className="space-y-3">
+          <StepLabel step={4} label={ui.work.reeditStep} />
+          <div className="flex flex-wrap gap-3">
+            {!isEditing ? (
+              <Button variant="secondary" size="sm" onClick={handleStartEdit}>
+                {ui.work.reedit}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={isRegeneratingFiles}
+                  onClick={() => void handleApplyEdit()}
+                >
+                  {isRegeneratingFiles
+                    ? ui.work.reediting
+                    : ui.work.applyReedit}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={isRegeneratingFiles}
+                  onClick={() => {
+                    setIsEditing(false);
+                    setReeditError(null);
+                  }}
+                >
+                  {ui.actions.cancel}
+                </Button>
+              </>
+            )}
+          </div>
+          <p className="text-caption text-[var(--foreground-muted)]">
+            {ui.work.reeditHint}
+          </p>
+          {reeditError && <ErrorState message={reeditError} />}
+        </div>
+
+        {(isGeneratingDeliverables || isRegeneratingFiles) && (
+          <p className="animate-soft-pulse text-caption">
             {ui.work.preparingFiles}
           </p>
         )}
 
         {deliverablesError && (
-          <div className="mt-4">
+          <div>
             <ErrorState message={deliverablesError} />
           </div>
         )}
 
-        {deliverables.length > 0 && (
-          <p className="mt-4 text-caption">
-            {deliverables
+        {localDeliverables.length > 0 && (
+          <p className="text-caption">
+            {localDeliverables
               .map((item) => DELIVERABLE_FORMAT_LABELS[item.format])
               .join(" · ")}
           </p>

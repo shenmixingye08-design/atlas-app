@@ -16,6 +16,7 @@ export type DeliverableFormatPreference =
   | "pptx"
   | "pdf"
   | "docx"
+  | "xlsx"
   | "md"
   | "txt"
   | "pptx_pdf"

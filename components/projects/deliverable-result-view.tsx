@@ -32,7 +32,7 @@ type DeliverableResultViewProps = {
  */
 export function DeliverableResultView({ project }: DeliverableResultViewProps) {
   const { deliverables, deliverablesError, isGeneratingDeliverables } =
-    useDeliverableFiles(project.result ?? null);
+    useDeliverableFiles(project.result ?? null, { projectId: project.id });
 
   return (
     <div className="space-y-8">
@@ -65,6 +65,7 @@ export function DeliverableResultView({ project }: DeliverableResultViewProps) {
             deliverables={deliverables}
             isGeneratingDeliverables={isGeneratingDeliverables}
             deliverablesError={deliverablesError}
+            projectId={project.id}
           />
           <WorkflowResults
             result={project.result}

@@ -634,6 +634,8 @@ export const ui = {
     deliverableNeedsReview: "要確認 — 成果物の内容を確認してください",
     copy: "コピー",
     copied: "コピーしました",
+    share: "共有",
+    shared: "共有しました",
     saveMarkdown: "Markdownで保存",
     saveToDrive: "Google Driveへ保存",
     driveSaved: "保存しました",
@@ -644,6 +646,23 @@ export const ui = {
     hideDetails: "詳細を閉じる",
     generatedAt: (time: string) => `生成: ${time}`,
     downloadHint: "クリックでダウンロード",
+    previewStep: "プレビュー",
+    downloadStep: "ダウンロード",
+    shareStep: "共有",
+    reeditStep: "再編集",
+    downloadHintBusiness:
+      "Word / Excel / PDF / PowerPoint / Markdown / テキスト / CSV でそのまま納品できます。",
+    reedit: "内容を再編集",
+    reeditLabel: "成果物の再編集",
+    applyReedit: "ファイルを作り直す",
+    reediting: "ファイルを更新しています…",
+    reeditHint:
+      "文章だけ直して、AIを呼び出さずに各形式へ再変換します。",
+    reeditEmpty: "内容が空のため、ファイルを作れません。",
+    reeditFailed: "ファイルの再作成に失敗しました。",
+    historyRedownload: "履歴から再ダウンロード",
+    historyRedownloadHint:
+      "以前生成した Word / Excel / PDF / PowerPoint などを、いつでも同じ内容から再取得できます。",
   },
 
   workflow: {
@@ -1443,6 +1462,7 @@ export const ui = {
     postFailed: "Xへの投稿に失敗しました",
     // Related saves (documents)
     filesHeading: "資料として保存",
+    historyFilesHeading: "履歴から再ダウンロード",
   },
 
   owner: {
@@ -2339,8 +2359,10 @@ export const ui = {
     pdf: "PDF",
     docx: "Word (.docx)",
     pptx: "PowerPoint (.pptx)",
+    xlsx: "Excel (.xlsx)",
     md: "Markdown (.md)",
     txt: "テキスト (.txt)",
+    csv: "CSV (.csv)",
   } as Record<string, string>,
 
   workflowPhases: {
