@@ -19,6 +19,10 @@ import {
   resolveEntrustedJobStatus,
   resolveScheduleMethod,
 } from "@/lib/automations/display";
+import {
+  metricsLast30Days,
+  isTestRun,
+} from "@/lib/automations/pause-resume";
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
 import { Button } from "@/components/ui/button";
@@ -56,6 +60,7 @@ export function AutomationDetailPanel({
   const schedule = resolveScheduleMethod(automation.schedule);
   const critical = flowHasCriticalExternalActions(automation.executionFlow);
   const procedure = describeProcedure(automation);
+  const metrics30d = metricsLast30Days(automation);
 
   const handleLevelChange = async (level: AutomationExecutionLevel) => {
     setSavingLevel(true);
@@ -277,6 +282,28 @@ export function AutomationDetailPanel({
 
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-foreground">
+              直近30日（{metrics30d.label}）
+            </h3>
+            <dl className="grid gap-2 text-sm sm:grid-cols-3">
+              <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
+                <dt className="text-xs text-[var(--text-muted)]">完了</dt>
+                <dd className="mt-1 font-medium">{metrics30d.completed}件</dd>
+              </div>
+              <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
+                <dt className="text-xs text-[var(--text-muted)]">失敗</dt>
+                <dd className="mt-1 font-medium">{metrics30d.failed}件</dd>
+              </div>
+              <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
+                <dt className="text-xs text-[var(--text-muted)]">削減時間（推定）</dt>
+                <dd className="mt-1 font-medium">
+                  {Math.round(metrics30d.timeSavedMinutesEstimate / 60 * 10) / 10}時間
+                </dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-foreground">
               {ui.entrustedJobs.runHistory}
             </h3>
             <dl className="grid gap-2 text-sm sm:grid-cols-2">
@@ -336,6 +363,7 @@ export function AutomationDetailPanel({
                     className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-secondary)]"
                   >
                     {formatAutomationDateTime(entry.completedAt)} —{" "}
+                    {isTestRun(entry) ? "テスト · " : ""}
                     {entry.status === "completed" ? "成功" : "失敗"}
                     {entry.error ? `（${entry.error}）` : ""}
                   </li>
