@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
 import fontkit from "@pdf-lib/fontkit";
@@ -21,11 +21,23 @@ function parseCodePoint(token: string): number {
 }
 
 function buildSubsetRanges(): SubsetRange[] {
-  const raw = JSON.parse(readFileSync(UNICODE_MAP_PATH, "utf8")) as Record<string, string>;
+  if (!existsSync(UNICODE_MAP_PATH)) {
+    throw new Error(
+      `日本語PDFフォント定義が見つかりません: ${UNICODE_MAP_PATH}. ` +
+        "@fontsource/noto-sans-jp がデプロイ成果物に含まれているか確認してください。",
+    );
+  }
+
+  const raw = JSON.parse(readFileSync(UNICODE_MAP_PATH, "utf8")) as Record<
+    string,
+    string
+  >;
   const ranges: SubsetRange[] = [];
 
   for (const [key, value] of Object.entries(raw)) {
     const index = Number.parseInt(key.replace(/[[\]]/g, ""), 10);
+    if (!Number.isFinite(index)) continue;
+
     for (const part of value.split(",")) {
       const trimmed = part.trim();
       if (!trimmed) continue;
@@ -33,8 +45,8 @@ function buildSubsetRanges(): SubsetRange[] {
         const [startToken, endToken] = trimmed.split("-");
         ranges.push({
           index,
-          start: parseCodePoint(startToken),
-          end: parseCodePoint(endToken),
+          start: parseCodePoint(startToken!),
+          end: parseCodePoint(endToken!),
         });
       } else {
         const codePoint = parseCodePoint(trimmed);
@@ -43,13 +55,24 @@ function buildSubsetRanges(): SubsetRange[] {
     }
   }
 
+  if (ranges.length === 0) {
+    throw new Error("日本語PDFフォントの unicode 範囲が空です。");
+  }
+
   return ranges;
 }
 
-const SUBSET_RANGES = buildSubsetRanges();
+let cachedRanges: SubsetRange[] | null = null;
+
+function getSubsetRanges(): SubsetRange[] {
+  if (!cachedRanges) {
+    cachedRanges = buildSubsetRanges();
+  }
+  return cachedRanges;
+}
 
 export function subsetIndexForCodePoint(codePoint: number): number | null {
-  for (const range of SUBSET_RANGES) {
+  for (const range of getSubsetRanges()) {
     if (codePoint >= range.start && codePoint <= range.end) {
       return range.index;
     }
@@ -59,6 +82,17 @@ export function subsetIndexForCodePoint(codePoint: number): number | null {
 
 function subsetFontPath(index: number): string {
   return join(FONT_DIR, `noto-sans-jp-${index}-400-normal.woff2`);
+}
+
+function readSubsetFontBytes(index: number): Buffer {
+  const path = subsetFontPath(index);
+  if (!existsSync(path)) {
+    throw new Error(
+      `日本語PDFフォントファイルが見つかりません: ${path}. ` +
+        "Vercel の outputFileTracingIncludes に @fontsource/noto-sans-jp が含まれているか確認してください。",
+    );
+  }
+  return readFileSync(path);
 }
 
 export type JapanesePdfFontSet = {
@@ -86,7 +120,7 @@ export async function embedJapanesePdfFonts(
   }
 
   for (const index of neededIndexes) {
-    const bytes = readFileSync(subsetFontPath(index));
+    const bytes = readSubsetFontBytes(index);
     const font = await pdfDoc.embedFont(bytes, { subset: true });
     cache.set(index, font);
   }
@@ -107,7 +141,9 @@ export async function embedJapanesePdfFonts(
   };
 }
 
-export function splitTextBySubset(text: string): Array<{ text: string; index: number | null }> {
+export function splitTextBySubset(
+  text: string,
+): Array<{ text: string; index: number | null }> {
   if (!text) return [];
 
   const runs: Array<{ text: string; index: number | null }> = [];
@@ -143,7 +179,7 @@ export async function loadPdfFontForSubset(
   if (cached) return cached;
 
   pdfDoc.registerFontkit(fontkit);
-  const bytes = readFileSync(subsetFontPath(resolvedIndex));
+  const bytes = readSubsetFontBytes(resolvedIndex);
   const font = await pdfDoc.embedFont(bytes, { subset: true });
   cache.set(resolvedIndex, font);
   return font;

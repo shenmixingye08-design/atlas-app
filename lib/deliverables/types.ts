@@ -15,6 +15,11 @@ export interface Deliverable {
   /** True when a stub generator was used — swap for production implementation. */
   isPlaceholder: boolean;
   downloadUrl: string;
+  /**
+   * Base64 file bytes for serverless-safe client download.
+   * Included for Word/PDF so downloads do not depend on ephemeral in-memory store.
+   */
+  contentBase64?: string;
 }
 
 /** Input to the deliverables engine. */
