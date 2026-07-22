@@ -1,5 +1,10 @@
 import "server-only";
 
+import {
+  DEFAULT_DESIGN_TEMPLATE,
+  buildDocumentOutline,
+  type DesignTemplateId,
+} from "./document-model";
 import { detectDeliverableFormats } from "./detect-formats";
 import { buildDeliverableBaseName } from "./filename";
 import { getDeliverableGenerator } from "./generators";
@@ -13,6 +18,8 @@ import type {
 export type GenerateDeliverablesResult = {
   deliverables: Deliverable[];
   detection: ReturnType<typeof detectDeliverableFormats>;
+  documentOutline: ReturnType<typeof buildDocumentOutline>;
+  designTemplate: DesignTemplateId;
 };
 
 /**
@@ -27,11 +34,19 @@ export async function generateDeliverables(
   requestOrigin: string,
 ): Promise<GenerateDeliverablesResult> {
   const content = input.finalDeliverable.trim();
+  const designTemplate = input.designTemplate ?? DEFAULT_DESIGN_TEMPLATE;
 
   if (!content) {
     return {
       deliverables: [],
       detection: detectDeliverableFormats(input.assignment),
+      documentOutline: buildDocumentOutline({
+        content: "",
+        assignment: input.assignment,
+        title: input.title,
+        designTemplate,
+      }),
+      designTemplate,
     };
   }
 
@@ -41,14 +56,26 @@ export async function generateDeliverables(
     input.assignment,
     input.title,
   );
+  const documentOutline = buildDocumentOutline({
+    content,
+    assignment: input.assignment,
+    title: input.title,
+    designTemplate,
+  });
 
   const deliverables: Deliverable[] = [];
+  const generateOptions = {
+    assignment: input.assignment,
+    title: input.title,
+    designTemplate,
+    authorLabel: "MINERVOT",
+  };
 
   for (const format of formats) {
     const generator = getDeliverableGenerator(format);
     if (!generator) continue;
 
-    const file = await generator.generate(content, baseFileName);
+    const file = await generator.generate(content, baseFileName, generateOptions);
     const stored = saveDeliverableFile(file);
     deliverables.push(toDeliverableMetadata(stored, requestOrigin));
   }
@@ -56,5 +83,7 @@ export async function generateDeliverables(
   return {
     deliverables,
     detection,
+    documentOutline,
+    designTemplate,
   };
 }

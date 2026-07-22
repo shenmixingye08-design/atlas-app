@@ -640,6 +640,11 @@ export const ui = {
     driveSandboxSaved:
       "Saved successfully. Generated folder Marketing Reports（サンドボックス実行）",
     preparingFiles: "ファイルを準備しています…",
+    designTemplateLabel: "デザインテンプレート",
+    designTemplateHint:
+      "Word・PDFの見た目を切り替えます。初期値はビジネスです。",
+    documentPreviewLabel: "文書構成プレビュー",
+    documentPreviewPending: "構成プレビューを準備しています…",
     viewDetails: "詳細を見る",
     hideDetails: "詳細を閉じる",
     generatedAt: (time: string) => `生成: ${time}`,

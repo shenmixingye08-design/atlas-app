@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
+import type { DocumentOutlineResponse } from "@/lib/deliverables/client";
+import type { DesignTemplateId } from "@/lib/deliverables/document-model";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
@@ -25,6 +27,7 @@ import { ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
+import { DocumentLayoutControls } from "@/components/workspace/document-layout-controls";
 
 type FinalOutputProps = {
   result: OrchestrationResult | null;
@@ -40,6 +43,9 @@ type FinalOutputProps = {
    * natural, contextual title instead (e.g. 「レポートができました」).
    */
   heading?: string;
+  designTemplate?: DesignTemplateId;
+  onDesignTemplateChange?: (template: DesignTemplateId) => void;
+  documentOutline?: DocumentOutlineResponse | null;
 };
 
 const TYPE_LABELS: Record<DeliverableType, string> = {
@@ -329,6 +335,9 @@ export function FinalOutput({
   deliverablesError = null,
   expectedFormats,
   heading,
+  designTemplate,
+  onDesignTemplateChange,
+  documentOutline = null,
 }: FinalOutputProps) {
   const [copied, setCopied] = useState(false);
   const [driveSaved, setDriveSaved] = useState(false);
@@ -432,6 +441,17 @@ export function FinalOutput({
         <div className="max-h-[560px] overflow-auto rounded-[var(--radius-xl)] bg-[var(--background-subtle)] px-6 py-8">
           <DeliverablePreview deliverable={workspaceDeliverable} />
         </div>
+
+        {designTemplate && onDesignTemplateChange ? (
+          <div className="mt-6">
+            <DocumentLayoutControls
+              designTemplate={designTemplate}
+              onDesignTemplateChange={onDesignTemplateChange}
+              documentOutline={documentOutline}
+              disabled={isGeneratingDeliverables}
+            />
+          </div>
+        ) : null}
 
         {showDebug && (
           <div className="mt-4">
