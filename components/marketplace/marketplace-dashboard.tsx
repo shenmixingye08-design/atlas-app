@@ -65,10 +65,10 @@ export function MarketplaceDashboard() {
           <p className="text-body">{ui.marketplace.subtitle}</p>
         </div>
         <Link
-          href="/commander"
+          href="/automations"
           className="inline-flex min-h-[48px] shrink-0 items-center justify-center self-start rounded-full border border-[var(--border-subtle)] bg-[var(--card)] px-5 text-sm font-medium text-foreground transition-colors hover:border-accent/40 focus-ring"
         >
-          {ui.nav.commander}
+          {ui.nav.automation}
         </Link>
       </header>
 

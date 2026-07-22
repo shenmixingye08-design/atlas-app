@@ -4,6 +4,7 @@ import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 import { ui } from "@/lib/i18n";
 
+import { HomeActionSummary } from "./home-action-summary";
 import { HomeAiActivityPanel } from "./home-ai-activity-panel";
 import { HomeChatBar } from "./home-chat-bar";
 import { HomeGreetingHeader } from "./home-greeting-header";
@@ -18,8 +19,7 @@ type SecretaryHomeDashboardProps = {
 };
 
 /**
- * Post-login home — 「AIが今日何を終わらせたか」が分かる画面。
- * Priority: Today's Results → AI Activity → 今日の仕事 → 次におすすめ → 追加の指示
+ * Post-login home — action-first: CTAs → alerts → today counts → outcomes → activity.
  */
 export function SecretaryHomeDashboard({
   automations,
@@ -35,14 +35,13 @@ export function SecretaryHomeDashboard({
         <HomePrimaryCtas />
       </header>
 
-      {/* ① Today's Results — 成果が最上部 */}
+      <HomeActionSummary automations={automations} projects={projects} />
+
+      <HomeTodayWorkSummary automations={automations} projects={projects} />
+
       <HomeTodayOutcomes automations={automations} projects={projects} />
 
-      {/* ② AI Activity — いま動いている仕事 */}
       <HomeAiActivityPanel automations={automations} projects={projects} />
-
-      {/* ③ 今日の仕事の全体像 */}
-      <HomeTodayWorkSummary automations={automations} projects={projects} />
 
       {/* ④ 次におすすめ */}
       <section aria-labelledby="next-recommendation-heading" className="space-y-5">

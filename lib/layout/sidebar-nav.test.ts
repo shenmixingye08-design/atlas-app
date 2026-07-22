@@ -5,16 +5,16 @@ import { resolveSidebarActiveId, isSidebarMoreActive } from "@/lib/layout/sideba
 describe("sidebar nav", () => {
   it("resolves primary routes", () => {
     expect(resolveSidebarActiveId("/projects")).toBe("projects");
-    expect(resolveSidebarActiveId("/workspace")).toBe("workspace");
-    expect(resolveSidebarActiveId("/commander")).toBe("commander");
+    expect(resolveSidebarActiveId("/workspace")).toBe("history");
     expect(resolveSidebarActiveId("/history")).toBe("history");
     expect(resolveSidebarActiveId("/automations")).toBe("automations");
+    expect(resolveSidebarActiveId("/deliverables")).toBe("deliverables");
     expect(resolveSidebarActiveId("/settings")).toBe("settings");
   });
 
   it("resolves X autopost route without colliding with request creation", () => {
     expect(resolveSidebarActiveId("/workspace/x")).toBe("x-autopost");
-    expect(resolveSidebarActiveId("/workspace")).toBe("workspace");
+    expect(resolveSidebarActiveId("/workspace")).toBe("history");
   });
 
   it("detects more section active state", () => {

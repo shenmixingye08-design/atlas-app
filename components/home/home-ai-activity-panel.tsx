@@ -62,19 +62,19 @@ function statusLabel(status: ActivityStatus): string {
 function activitySentence(status: ActivityStatus, fallback: string | null): string {
   switch (status) {
     case "posting":
-      return "X投稿を作成しています";
+      return ui.secretaryHome.activitySentencePosting;
     case "image":
-      return "画像を生成しています";
+      return ui.secretaryHome.activitySentenceImage;
     case "research":
-      return "調査を進めています";
+      return ui.secretaryHome.activitySentenceResearch;
     case "email":
-      return "メールを送信しています";
+      return ui.secretaryHome.activitySentenceEmail;
     case "completed":
-      return "完了しました";
+      return ui.secretaryHome.activitySentenceCompleted;
     default:
       return fallback?.endsWith("中")
         ? fallback.replace(/中$/, "しています")
-        : fallback || "仕事を進めています";
+        : fallback || ui.secretaryHome.activitySentenceWorking;
   }
 }
 

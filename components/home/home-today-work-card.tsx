@@ -4,40 +4,21 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { runAutomationNow } from "@/lib/automations/client";
+import { getTodayJobStatusStyle } from "@/lib/home/status-labels";
 import type { TodayDashboardJob, TodayJobStatus } from "@/lib/home/today-dashboard";
 import { normalizeDashboardJob } from "@/lib/compatibility";
 import { ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 
-const STATUS_STYLES: Record<
-  TodayJobStatus,
-  { label: string; className: string }
-> = {
-  not_started: {
-    label: ui.todayDashboard.status.notStarted,
-    className: "bg-[var(--background-subtle)] text-[var(--foreground-muted)] ring-1 ring-[var(--border-subtle)]",
-  },
-  preparing: {
-    label: ui.todayDashboard.status.preparing,
-    className: "bg-sky-500/10 text-sky-700 ring-1 ring-sky-500/20",
-  },
-  running: {
-    label: ui.todayDashboard.status.running,
-    className: "bg-[var(--status-running)]/15 text-[var(--status-running)] ring-1 ring-[var(--status-running)]/25",
-  },
-  awaiting_review: {
-    label: ui.todayDashboard.status.awaitingReview,
-    className: "bg-amber-500/10 text-amber-700 ring-1 ring-amber-500/20",
-  },
-  completed: {
-    label: ui.todayDashboard.status.completed,
-    className: "bg-[var(--status-success)]/15 text-[var(--status-success)] ring-1 ring-[var(--status-success)]/25",
-  },
-  skipped: {
-    label: ui.todayDashboard.status.skipped,
-    className: "bg-[var(--background-subtle)] text-[var(--foreground-muted)]",
-  },
-};
+const STATUS_STYLES: Record<TodayJobStatus, { label: string; className: string }> =
+  {
+    not_started: getTodayJobStatusStyle("not_started"),
+    preparing: getTodayJobStatusStyle("preparing"),
+    running: getTodayJobStatusStyle("running"),
+    awaiting_review: getTodayJobStatusStyle("awaiting_review"),
+    completed: getTodayJobStatusStyle("completed"),
+    skipped: getTodayJobStatusStyle("skipped"),
+  };
 
 type HomeTodayWorkCardProps = {
   job: TodayDashboardJob;

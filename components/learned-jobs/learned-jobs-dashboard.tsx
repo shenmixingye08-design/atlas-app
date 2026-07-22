@@ -136,14 +136,14 @@ export function LearnedJobsDashboard() {
             AI秘書が覚えた仕事
           </h1>
           <p className="max-w-2xl text-sm leading-relaxed text-[var(--foreground-muted)] sm:text-base">
-            一度行った仕事をテンプレートとして再利用できます。AIルール作成はオーケストレーターから進められます。
+            一度行った仕事をテンプレートとして再利用できます。定期実行は自動化から設定できます。
           </p>
         </div>
         <Link
-          href="/commander"
+          href="/automations/new"
           className="inline-flex min-h-[48px] shrink-0 items-center justify-center self-start rounded-full border border-[var(--border-subtle)] bg-[var(--card)] px-5 text-sm font-medium text-foreground transition-colors hover:border-accent/40 focus-ring"
         >
-          {ui.nav.commander}
+          {ui.phase3.secondaryCtaAutomation}
         </Link>
       </header>
 

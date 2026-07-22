@@ -4,7 +4,7 @@ import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
 import { ResultsView } from "@/components/results/results-view";
 
 export const metadata: Metadata = {
-  title: "結果 | ATLAS",
+  title: "結果 | MINERVOT",
   description: "通知から成果物・実行結果を表示します",
 };
 

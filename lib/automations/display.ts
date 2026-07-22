@@ -22,11 +22,11 @@ export type EntrustedJobStatus =
 
 export const ENTRUSTED_JOB_STATUS_LABELS: Record<EntrustedJobStatus, string> = {
   scheduled: "実行予定",
-  running: "処理中",
-  needs_review: "確認待ち",
+  running: "実行中",
+  needs_review: "承認待ち",
   completed: "完了",
   paused: "停止中",
-  error: "エラー",
+  error: "失敗",
 };
 
 /** Confirmation scope mapped onto existing executionLevel values. */

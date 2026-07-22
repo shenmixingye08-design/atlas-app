@@ -7,6 +7,7 @@ import { dispatchWebPushNotification } from "@/lib/push/dispatch";
 import { resolvePushEventCategory, resolvePushSeverity } from "@/lib/push/categories";
 
 import { schedulePersistNotifications } from "./durable";
+import { countUnreadNotifications } from "./unread-rules";
 import {
   appendNotification,
   deleteNotification,
@@ -176,7 +177,7 @@ export function listOwnerNotifications(): NotificationRecord[] {
 }
 
 export function countUnreadUserNotifications(userId: string): number {
-  return listUserNotifications(userId).filter((n) => !n.isRead).length;
+  return countUnreadNotifications(listUserNotifications(userId));
 }
 
 export function markNotificationRead(

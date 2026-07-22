@@ -53,7 +53,7 @@ export type FavoriteExportItem = {
 export type AtlasExportBundle = {
   schemaVersion: number;
   exportedAt: string;
-  app: "ATLAS";
+  app: "MINERVOT" | "ATLAS";
   sections: {
     workHistory: {
       projects: Project[];

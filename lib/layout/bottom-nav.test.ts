@@ -12,17 +12,14 @@ describe("bottom nav", () => {
 
   it("resolves active tab from pathname", () => {
     expect(resolveBottomNavId("/projects")).toBe("home");
-    // AI Orchestra remains reachable, but primary「送る」lands on /workspace.
-    expect(resolveBottomNavId("/commander")).toBe("request");
-    expect(resolveBottomNavId("/workspace")).toBe("request");
-    expect(resolveBottomNavId("/chat")).toBe("request");
-    expect(resolveBottomNavId("/learned-jobs")).toBe("request");
-    expect(resolveBottomNavId("/teach-work")).toBe("request");
-    expect(resolveBottomNavId("/history")).toBe("history");
+    expect(resolveBottomNavId("/notifications")).toBe("home");
+    expect(resolveBottomNavId("/workspace")).toBe("work");
+    expect(resolveBottomNavId("/history")).toBe("work");
+    expect(resolveBottomNavId("/learned-jobs")).toBe("work");
+    expect(resolveBottomNavId("/teach-work")).toBe("work");
     expect(resolveBottomNavId("/automations")).toBe("automation");
+    expect(resolveBottomNavId("/deliverables")).toBe("deliverables");
     expect(resolveBottomNavId("/settings")).toBe("settings");
-    expect(resolveBottomNavId("/settings/work-memory")).toBe("settings");
-    expect(resolveBottomNavId("/settings/learning")).toBe("settings");
     expect(resolveBottomNavId("/settings/billing")).toBe("settings");
   });
 });

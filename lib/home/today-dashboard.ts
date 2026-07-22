@@ -107,7 +107,7 @@ export function automationToDashboardJob(
     status,
     icon: getWorkCategoryIcon(category),
     scheduledTime: formatAutomationScheduledTime(automation),
-    progress: status === "running" ? 65 : null,
+    progress: null,
     activityLabel: status === "running" ? getWorkActivityLabel(category) : null,
     automationId: automation.id,
     href: "/automations",
@@ -127,10 +127,7 @@ export function projectToDashboardJob(projectInput: Project): TodayDashboardJob 
     status,
     icon: getWorkCategoryIcon(category),
     scheduledTime: null,
-    progress:
-      status === "running"
-        ? Math.max(10, Math.min(95, project.progress || 35))
-        : null,
+    progress: null,
     activityLabel: status === "running" ? getWorkActivityLabel(category) : null,
     projectId: project.id,
     href: `/projects/${project.id}`,

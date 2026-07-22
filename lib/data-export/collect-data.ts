@@ -171,7 +171,7 @@ export async function collectAtlasExportData(input?: {
   const bundle: AtlasExportBundle = {
     schemaVersion: EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
-    app: "ATLAS",
+    app: "MINERVOT",
     sections: {
       workHistory: {
         projects,

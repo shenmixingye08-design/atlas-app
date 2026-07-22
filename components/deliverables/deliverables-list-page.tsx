@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { projectService } from "@/lib/projects/project-service";
+import { filterCompletedDeliverableProjects } from "@/lib/deliverables/completed-filter";
 import type { Project } from "@/lib/projects/types";
 import { ui } from "@/lib/i18n";
 import { Card } from "@/components/ui/card";
@@ -20,9 +21,7 @@ export function DeliverablesListPage() {
 
   if (loading) return <LoadingState message={ui.phase3.deliverablesLoading} />;
 
-  const withResults = projects.filter(
-    (p) => p.status === "completed" || p.result,
-  );
+  const withResults = filterCompletedDeliverableProjects(projects);
 
   return (
     <div className="space-y-8 animate-fade-up">

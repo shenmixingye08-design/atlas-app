@@ -12,7 +12,7 @@ import { EXPORT_SCHEMA_VERSION, type AtlasExportBundle } from "./types";
 const sampleBundle: AtlasExportBundle = {
   schemaVersion: EXPORT_SCHEMA_VERSION,
   exportedAt: "2026-07-10T00:00:00.000Z",
-  app: "ATLAS",
+  app: "MINERVOT",
   sections: {
     workHistory: {
       projects: [
@@ -75,13 +75,13 @@ describe("data-export formatters", () => {
   it("creates valid JSON export", () => {
     const json = bundleToJson(sampleBundle);
     const parsed = JSON.parse(json) as AtlasExportBundle;
-    expect(parsed.app).toBe("ATLAS");
+    expect(parsed.app).toBe("MINERVOT");
     expect(parsed.sections.workHistory.projects).toHaveLength(1);
   });
 
   it("creates markdown export", () => {
     const markdown = bundleToMarkdown(sampleBundle);
-    expect(markdown).toContain("# ATLAS データエクスポート");
+    expect(markdown).toContain("# MINERVOT データエクスポート");
     expect(markdown).toContain("Test");
   });
 

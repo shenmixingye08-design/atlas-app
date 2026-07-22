@@ -86,7 +86,7 @@ export function AutomationCard({
 
         <label className="flex min-h-[48px] shrink-0 items-center gap-3 self-start rounded-full bg-[var(--surface-muted)] px-3 py-2">
           <span className="text-xs font-medium text-[var(--text-secondary)]">
-            {automation.enabled ? "ON" : "OFF"}
+            {automation.enabled ? ui.phase4.toggleEnabled : ui.phase4.toggleDisabled}
           </span>
           <input
             type="checkbox"
@@ -147,7 +147,9 @@ export function AutomationCard({
           </dt>
           <dd className="mt-1 font-medium text-foreground">
             {ENTRUSTED_JOB_STATUS_LABELS[status]}
-            {!automation.enabled ? " / OFF" : " / ON"}
+            {!automation.enabled
+              ? ` / ${ui.phase4.toggleDisabled}`
+              : ` / ${ui.phase4.toggleEnabled}`}
           </dd>
         </div>
         <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
