@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 
 import { automationService } from "@/lib/automations/automation-service";
+import { enforceAutomationTestRunRateLimit } from "@/lib/http/enforce-action-rate-limit";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -22,8 +23,12 @@ export async function POST(
   context: RouteContext,
 ): Promise<Response> {
   const { id } = await context.params;
-  const automation = await automationService.getById(id);
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
+  const automation = await automationService.getByIdForUser(id, userId);
   if (!automation) {
     return Response.json({ error: "Automation not found" }, { status: 404 });
   }
@@ -36,10 +41,6 @@ export async function POST(
   }
 
   const origin = resolveOrigin(request);
-  const { userId } = await auth();
-  if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
 
   let triggerType: "manual" | "automation" | "test" = "manual";
   let skipExternalPublish = false;
@@ -52,6 +53,11 @@ export async function POST(
     if (body.skipExternalPublish) skipExternalPublish = true;
   } catch {
     // Empty body — manual run
+  }
+
+  if (triggerType === "test") {
+    const rateLimited = enforceAutomationTestRunRateLimit(userId);
+    if (rateLimited) return rateLimited;
   }
 
   const { requireBillingAiUsage, requireBillingFeature } = await import(
@@ -102,6 +108,16 @@ export async function GET(
   context: RouteContext,
 ): Promise<Response> {
   const { id } = await context.params;
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const automation = await automationService.getByIdForUser(id, userId);
+  if (!automation) {
+    return Response.json({ error: "Automation not found" }, { status: 404 });
+  }
+
   const runs = await automationService.listWorkflowRuns(id);
   return Response.json({ runs });
 }

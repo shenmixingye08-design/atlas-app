@@ -188,7 +188,7 @@ export function summarizeAiUsageEvents(
   };
 
   for (const event of events) {
-    const day = event.timestamp.slice(0, 10);
+    const day = getUsageDayKey(new Date(event.timestamp));
     const month = event.timestamp.slice(0, 7);
     addToPeriod(breakdown.allTime, event);
     if (month === monthKey) addToPeriod(breakdown.month, event);

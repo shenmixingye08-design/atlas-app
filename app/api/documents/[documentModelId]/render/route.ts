@@ -4,6 +4,8 @@ import { getDocumentModel } from "@/lib/documents/storage/document-store";
 import { renderDocumentModelToHtml } from "@/lib/documents/render/render-to-html";
 import type { OutputFormat, TemplateId } from "@/lib/documents/schema/enums";
 import { OUTPUT_FORMATS, TEMPLATE_IDS } from "@/lib/documents/schema/enums";
+import { enforceDocumentRenderRateLimit } from "@/lib/http/enforce-action-rate-limit";
+import { assertDocumentModelAccess } from "@/lib/security/resource-ownership";
 
 export const runtime = "nodejs";
 
@@ -47,6 +49,11 @@ export async function GET(
   }
 
   const { documentModelId } = await context.params;
+  const access = assertDocumentModelAccess({ documentModelId, userId });
+  if (!access.ok) {
+    return Response.json({ error: access.error }, { status: access.status });
+  }
+
   const stored = getDocumentModel(documentModelId);
   if (!stored) {
     return Response.json({ error: "Not found" }, { status: 404 });
@@ -67,7 +74,15 @@ export async function POST(
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const rateLimited = enforceDocumentRenderRateLimit(userId);
+  if (rateLimited) return rateLimited;
+
   const { documentModelId } = await context.params;
+  const access = assertDocumentModelAccess({ documentModelId, userId });
+  if (!access.ok) {
+    return Response.json({ error: access.error }, { status: access.status });
+  }
+
   const stored = getDocumentModel(documentModelId);
   if (!stored) {
     return Response.json({ error: "Not found" }, { status: 404 });

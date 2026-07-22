@@ -5,6 +5,8 @@ import type { Deliverable, GeneratedDeliverableFile } from "./types";
 export type StoredDeliverable = GeneratedDeliverableFile & {
   id: string;
   generatedAt: string;
+  /** Owner for download auth — null only for legacy in-memory rows. */
+  userId?: string | null;
 };
 
 const TTL_MS = 1000 * 60 * 60;
@@ -34,7 +36,7 @@ function purgeExpiredEntries(store: StoreBucket): void {
 }
 
 export function saveDeliverableFile(
-  file: GeneratedDeliverableFile & { id?: string },
+  file: GeneratedDeliverableFile & { id?: string; userId?: string | null },
 ): StoredDeliverable {
   const store = getStoreBucket();
   purgeExpiredEntries(store);

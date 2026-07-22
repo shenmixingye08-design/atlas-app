@@ -130,6 +130,7 @@ export async function generateDeliverables(
         const stored = saveDeliverableFile({
           ...file,
           id: artifact.id,
+          userId: input.userId ?? null,
         });
         deliverables.push(toDeliverableMetadata(stored, requestOrigin));
       } catch (error) {
@@ -151,7 +152,7 @@ export async function generateDeliverables(
     const file = await generator.generate(exportText, baseFileName);
     file.documentModelId = storedModel.id;
     file.templateId = templateId;
-    const stored = saveDeliverableFile(file);
+    const stored = saveDeliverableFile({ ...file, userId: input.userId ?? null });
     deliverables.push(toDeliverableMetadata(stored, requestOrigin));
   }
 
@@ -211,7 +212,11 @@ export async function rerenderDeliverables(
       validation,
     });
 
-    const storedFile = saveDeliverableFile({ ...file, id: artifact.id });
+    const storedFile = saveDeliverableFile({
+      ...file,
+      id: artifact.id,
+      userId: options.userId ?? null,
+    });
     deliverables.push(toDeliverableMetadata(storedFile, options.requestOrigin));
   }
 

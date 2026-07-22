@@ -121,9 +121,19 @@ export async function dispatchWebPushNotification(input: {
   severity?: PushSeverity | null;
   autoRecovered?: boolean;
   jobName?: string | null;
+  /** When set, job-level push dedupe uses atlas_automation_jobs.push_status. */
+  jobId?: string | null;
 }): Promise<{ sent: number; failed: number }> {
   if (!ensureVapidConfigured()) {
     return { sent: 0, failed: 0 };
+  }
+
+  if (input.jobId) {
+    const { getJobRecord, setJobPushStatus } = await import("@/lib/jobs/reliability");
+    const job = await getJobRecord(input.jobId, input.userId);
+    if (job?.pushStatus === "sent" || job?.pushStatus === "skipped") {
+      return { sent: 0, failed: 0 };
+    }
   }
 
   const eventCategory =
@@ -225,6 +235,11 @@ export async function dispatchWebPushNotification(input: {
     eventCategory,
   });
   schedulePersistNotifications(input.userId);
+
+  if (input.jobId && sent > 0) {
+    const { setJobPushStatus } = await import("@/lib/jobs/reliability");
+    await setJobPushStatus(input.jobId, input.userId, "sent").catch(() => undefined);
+  }
 
   return { sent, failed };
 }

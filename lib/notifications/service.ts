@@ -160,6 +160,7 @@ export function createNotification(
       severity: record.severity ?? null,
       autoRecovered: input.autoRecovered,
       jobName: input.jobName ?? null,
+      jobId: input.workflowRunId ?? null,
     }).catch((error) => {
       console.warn("[push notify]", error);
     });

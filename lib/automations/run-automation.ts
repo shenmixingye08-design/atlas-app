@@ -449,6 +449,7 @@ export async function executeAutomationRun(
         automationId: automation.id,
         name: automation.name,
         templateId: flow.templateId,
+        jobId,
       });
     }
 

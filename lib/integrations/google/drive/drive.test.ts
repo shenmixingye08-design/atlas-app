@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/billing/access", () => ({
+  getBillingFeatureDenial: vi.fn(async () => null),
+}));
+
+vi.mock("@/lib/billing/access", () => ({
+  getBillingFeatureDenial: vi.fn(async () => null),
+}));
 
 import { saveDeliverableFile } from "@/lib/deliverables/store";
 import { resetFeatureFlagStore, setFeatureFlagState } from "@/lib/feature-flags/store";

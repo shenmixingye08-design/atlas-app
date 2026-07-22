@@ -14,7 +14,7 @@ function deliverableActionUrl(deliverableId: string): string {
 
 export function notifyAutomationCompleted(
   userId: string | null | undefined,
-  input: { automationId: string; name: string; templateId?: string },
+  input: { automationId: string; name: string; templateId?: string; jobId?: string | null },
 ) {
   if (!userId) return null;
   return createNotification({
@@ -27,6 +27,7 @@ export function notifyAutomationCompleted(
     relatedService: input.templateId === "sns_post" ? "x" : "atlas",
     actionUrl: automationActionUrl(input.automationId),
     automationId: input.automationId,
+    workflowRunId: input.jobId ?? null,
     lineEvent: "automation_completed",
   });
 }

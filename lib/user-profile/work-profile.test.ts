@@ -81,7 +81,7 @@ describe("user work profile", () => {
     });
 
     const suggestion = getSuggestionForText("ブログ記事");
-    expect(suggestion?.summary).toContain("確認後");
+    expect(suggestion?.summary).toContain("実行前に確認");
   });
 
   it("tracks frequently used jobs", () => {
