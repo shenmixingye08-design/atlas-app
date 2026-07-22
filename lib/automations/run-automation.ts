@@ -48,6 +48,7 @@ import {
   notifyAutomationCompleted,
   notifyAutomationFailed,
 } from "@/lib/notifications/emitters";
+import { getJobRecord, markJobCompleted, markJobFailed, markJobRunning } from "@/lib/jobs/reliability";
 import type { Automation, AutomationRunHistoryEntry, AutomationRunResult } from "./types";
 import { serverAutomationRepository } from "./repositories/server-automation-repository";
 import { MAX_AUTOMATION_RUN_HISTORY } from "./repositories/server-automation-repository";
@@ -91,6 +92,15 @@ export async function executeAutomationRun(
     automationId: automation.id,
     triggerType,
   });
+
+  if (options.userId) {
+    markJobRunning({
+      jobId: workflowRun.id,
+      userId: options.userId,
+      automationId: automation.id,
+      step: "orchestrate",
+    });
+  }
 
   try {
     const executionFlow = normalizeExecutionFlow(automation.executionFlow);
@@ -320,17 +330,38 @@ export async function executeAutomationRun(
 
     const flow = normalizeExecutionFlow(automation.executionFlow);
     if (effectiveStatus === "failed") {
-      notifyAutomationFailed(options.userId, {
-        automationId: automation.id,
-        name: automation.name,
-        error: effectiveError ?? undefined,
-      });
+      const priorJob =
+        options.userId != null
+          ? markJobFailed({
+              jobId: workflowRun.id,
+              userId: options.userId,
+              error: effectiveError ?? "failed",
+              automationId: automation.id,
+            })
+          : null;
+      if (!priorJob?.willRetry) {
+        notifyAutomationFailed(options.userId, {
+          automationId: automation.id,
+          name: automation.name,
+          error: effectiveError ?? undefined,
+        });
+      }
     } else if (effectiveStatus === "completed" && !result.approved) {
       notifyAutomationAwaitingReview(options.userId, {
         automationId: automation.id,
         name: automation.name,
       });
     } else if (effectiveStatus === "completed") {
+      const autoRecovered =
+        options.userId != null &&
+        (getJobRecord(workflowRun.id, options.userId)?.retryCount ?? 0) > 0;
+      if (options.userId) {
+        markJobCompleted({
+          jobId: workflowRun.id,
+          userId: options.userId,
+          autoRecovered,
+        });
+      }
       notifyAutomationCompleted(options.userId, {
         automationId: automation.id,
         name: automation.name,
@@ -459,11 +490,23 @@ export async function executeAutomationRun(
       }),
     });
 
-    notifyAutomationFailed(options.userId, {
-      automationId: automation.id,
-      name: automation.name,
-      error: message,
-    });
+    const failureState =
+      options.userId != null
+        ? markJobFailed({
+            jobId: workflowRun.id,
+            userId: options.userId,
+            error: message,
+            automationId: automation.id,
+          })
+        : null;
+
+    if (!failureState?.willRetry) {
+      notifyAutomationFailed(options.userId, {
+        automationId: automation.id,
+        name: automation.name,
+        error: message,
+      });
+    }
 
     return {
       automationId: automation.id,

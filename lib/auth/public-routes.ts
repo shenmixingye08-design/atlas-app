@@ -38,6 +38,7 @@ export const ATLAS_PROTECTED_PAGE_MATCHERS = [
   "/marketplace(.*)",
   "/mihon(.*)",
   "/notifications(.*)",
+  "/reports(.*)",
   "/billing(.*)",
   "/owner(.*)",
   "/teach-work(.*)",

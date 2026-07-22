@@ -36,6 +36,17 @@ export async function POST(request: Request): Promise<Response> {
     const scheduledXPosts = await processScheduledXPostsFromAutomationTick();
     const autoPosts = await processDueAutoPostsFromAutomationTick();
 
+    let dailyReports: { processed: number } = { processed: 0 };
+    try {
+      const { dispatchDailyReportsForDueUsers } = await import(
+        "@/lib/reports/daily-dispatch"
+      );
+      const reportResults = await dispatchDailyReportsForDueUsers();
+      dailyReports = { processed: reportResults.filter((r) => r.sent).length };
+    } catch (error) {
+      console.warn("[automation tick] daily reports skipped:", error);
+    }
+
     const { recordCronTickOutcome, recordMonitoringIncident } = await import(
       "@/lib/owner/monitoring"
     );
@@ -63,6 +74,7 @@ export async function POST(request: Request): Promise<Response> {
         processedUsers: autoPosts.length,
         results: autoPosts,
       },
+      dailyReports,
     });
   } catch (error) {
     const message =

@@ -1,3 +1,10 @@
+import type {
+  PushEventCategory,
+  PushPreferences,
+  PushSeverity,
+} from "@/lib/push/types";
+import { DEFAULT_PUSH_PREFERENCES } from "@/lib/push/types";
+
 /** User-facing notification categories. */
 export type NotificationType =
   | "completed"
@@ -69,6 +76,13 @@ export type NotificationRecord = {
   deliverableId?: string | null;
   requestId?: string | null;
   automationId?: string | null;
+  /** Unified push + in-app metadata */
+  severity?: PushSeverity | null;
+  eventCategory?: PushEventCategory | null;
+  pushSentAt?: string | null;
+  pushFailedAt?: string | null;
+  pushFailureReason?: string | null;
+  readAt?: string | null;
 };
 
 export type NotificationPreferences = {
@@ -88,6 +102,7 @@ export type NotificationPreferences = {
   billingEnabled: boolean;
   integrationEnabled: boolean;
   automationEnabled: boolean;
+  push: PushPreferences;
 };
 
 export const DEFAULT_LINE_EVENTS: Record<LineNotifyEvent, boolean> = {
@@ -118,6 +133,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   billingEnabled: true,
   integrationEnabled: true,
   automationEnabled: true,
+  push: { ...DEFAULT_PUSH_PREFERENCES },
 };
 
 export type CreateNotificationInput = {
@@ -136,4 +152,8 @@ export type CreateNotificationInput = {
   deliverableId?: string | null;
   requestId?: string | null;
   automationId?: string | null;
+  severity?: PushSeverity | null;
+  eventCategory?: PushEventCategory | null;
+  autoRecovered?: boolean;
+  jobName?: string | null;
 };

@@ -1,5 +1,6 @@
 import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
 import { NotificationSettings } from "@/components/settings/notification-settings";
+import { PushNotificationSettings } from "@/components/settings/push-notification-settings";
 import { ui } from "@/lib/i18n";
 
 export default function NotificationSettingsPage() {
@@ -14,6 +15,7 @@ export default function NotificationSettingsPage() {
           </p>
         </header>
         <NotificationSettings />
+        <PushNotificationSettings />
       </div>
     </AtlasAppShell>
   );

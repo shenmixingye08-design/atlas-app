@@ -71,7 +71,7 @@ export function findNotification(notificationId: string): NotificationRecord | n
 
 export function updateNotification(
   notificationId: string,
-  patch: Partial<Pick<NotificationRecord, "isRead">>,
+  patch: Partial<NotificationRecord>,
 ): NotificationRecord | null {
   const record = findNotification(notificationId);
   if (!record) return null;
@@ -89,7 +89,18 @@ export function deleteNotification(notificationId: string): boolean {
 
 export function getStoredPreferences(userId: string): NotificationPreferences {
   const prefs = getPreferencesMap().get(userId);
-  if (!prefs) return { ...DEFAULT_NOTIFICATION_PREFERENCES, lineEvents: { ...DEFAULT_NOTIFICATION_PREFERENCES.lineEvents }, channels: { ...DEFAULT_NOTIFICATION_PREFERENCES.channels } };
+  if (!prefs) {
+    return {
+      ...DEFAULT_NOTIFICATION_PREFERENCES,
+      lineEvents: { ...DEFAULT_NOTIFICATION_PREFERENCES.lineEvents },
+      channels: { ...DEFAULT_NOTIFICATION_PREFERENCES.channels },
+      push: {
+        ...DEFAULT_NOTIFICATION_PREFERENCES.push,
+        events: { ...DEFAULT_NOTIFICATION_PREFERENCES.push.events },
+        severities: { ...DEFAULT_NOTIFICATION_PREFERENCES.push.severities },
+      },
+    };
+  }
   return {
     ...DEFAULT_NOTIFICATION_PREFERENCES,
     ...prefs,
@@ -100,6 +111,18 @@ export function getStoredPreferences(userId: string): NotificationPreferences {
     lineEvents: {
       ...DEFAULT_NOTIFICATION_PREFERENCES.lineEvents,
       ...prefs.lineEvents,
+    },
+    push: {
+      ...DEFAULT_NOTIFICATION_PREFERENCES.push,
+      ...prefs.push,
+      events: {
+        ...DEFAULT_NOTIFICATION_PREFERENCES.push.events,
+        ...prefs.push?.events,
+      },
+      severities: {
+        ...DEFAULT_NOTIFICATION_PREFERENCES.push.severities,
+        ...prefs.push?.severities,
+      },
     },
   };
 }
