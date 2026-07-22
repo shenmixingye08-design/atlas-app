@@ -133,6 +133,8 @@ function downloadsFor(formats: (DeliverableFormat | "html")[]): DeliverableDownl
     pptx: "PowerPoint",
     txt: "Text",
     html: "HTML",
+    xlsx: "Excel",
+    csv: "CSV",
   };
 
   return formats.map((format) => ({

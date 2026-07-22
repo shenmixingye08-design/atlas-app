@@ -11,6 +11,9 @@ import {
   type UploadClassification,
   type UploadIntent,
 } from "@/lib/home/upload-intent";
+import { uploadWorkAttachments } from "@/lib/attachments/upload-client";
+import { savePendingAttachments } from "@/lib/attachments/session";
+import { IMAGE_FETCH_FAILED_MESSAGE } from "@/lib/attachments/types";
 
 type SpeechRecognitionLike = {
   lang: string;
@@ -65,6 +68,8 @@ export function SecretaryUploadHero() {
   const [listening, setListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceHint, setVoiceHint] = useState<string | null>(null);
+  const [uploadHint, setUploadHint] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const imageInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -72,6 +77,11 @@ export function SecretaryUploadHero() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const dragDepthRef = useRef(0);
   const autoStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const filesRef = useRef<PendingFile[]>([]);
+
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
 
   useEffect(() => {
     setVoiceSupported(Boolean(getSpeechRecognitionCtor()));
@@ -82,14 +92,43 @@ export function SecretaryUploadHero() {
   }, []);
 
   const startWork = useCallback(
-    (assignment: string) => {
+    async (assignment: string) => {
       const trimmed = assignment.trim();
-      if (!trimmed) return;
-      router.push(
-        `/workspace?assignment=${encodeURIComponent(trimmed)}&autostart=1`,
-      );
+      if (!trimmed || isUploading) return;
+
+      setUploadHint(null);
+      setIsUploading(true);
+      try {
+        const pending = filesRef.current;
+        let attachmentKey = "";
+        if (pending.length > 0) {
+          setUploadHint("画像をアップロードしています…");
+          const meta = await uploadWorkAttachments(
+            pending.map((item) => ({ file: item.file, kind: "photo" })),
+          );
+          const failed = meta.filter((item) => item.fetchFailed);
+          if (failed.length > 0 && meta.every((item) => item.fetchFailed)) {
+            setUploadHint(IMAGE_FETCH_FAILED_MESSAGE);
+            setPhase("idle");
+            return;
+          }
+          attachmentKey = savePendingAttachments(meta);
+        }
+
+        const params = new URLSearchParams({
+          assignment: trimmed,
+          autostart: "1",
+        });
+        if (attachmentKey) params.set("attachments", attachmentKey);
+        router.push(`/workspace?${params.toString()}`);
+      } catch {
+        setUploadHint(IMAGE_FETCH_FAILED_MESSAGE);
+        setPhase("idle");
+      } finally {
+        setIsUploading(false);
+      }
     },
-    [router],
+    [isUploading, router],
   );
 
   const cancelAutoStart = useCallback(() => {
@@ -127,7 +166,7 @@ export function SecretaryUploadHero() {
       if (result.confidence === "high") {
         setPhase("autostart");
         autoStartTimerRef.current = setTimeout(() => {
-          startWork(result.intent.buildAssignment(fileNames));
+          void startWork(result.intent.buildAssignment(fileNames));
         }, AUTO_START_DELAY_MS);
       } else {
         setPhase("choose");
@@ -139,7 +178,7 @@ export function SecretaryUploadHero() {
   const chooseIntent = useCallback(
     (intent: UploadIntent) => {
       const fileNames = files.map((item) => item.file.name);
-      startWork(intent.buildAssignment(fileNames));
+      void startWork(intent.buildAssignment(fileNames));
     },
     [files, startWork],
   );
@@ -147,7 +186,7 @@ export function SecretaryUploadHero() {
   const sendText = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    startWork(trimmed);
+    void startWork(trimmed);
   }, [startWork, text]);
 
   const toggleVoice = useCallback(() => {
@@ -191,7 +230,8 @@ export function SecretaryUploadHero() {
     recognition.start();
   }, [listening, t.voiceError, t.voiceUnsupported]);
 
-  const busy = phase === "understanding" || phase === "autostart";
+  const busy =
+    phase === "understanding" || phase === "autostart" || isUploading;
 
   return (
     <section aria-labelledby="upload-hero-title" className="animate-fade-up">
@@ -454,6 +494,11 @@ export function SecretaryUploadHero() {
             </Button>
           </div>
         </div>
+        {uploadHint && (
+          <p className="mt-2 text-center text-xs text-[var(--foreground-muted)]">
+            {uploadHint}
+          </p>
+        )}
         {voiceHint && (
           <p className="mt-2 text-center text-xs text-[var(--foreground-muted)]">
             {voiceHint}

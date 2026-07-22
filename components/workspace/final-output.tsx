@@ -25,6 +25,9 @@ import { ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
+import { ImageAnalysisReview } from "@/components/results/image-analysis-review";
+import { requestDeliverables } from "@/lib/deliverables/client";
+import type { ImageAnalysisResult } from "@/lib/image-analysis/types";
 
 type FinalOutputProps = {
   result: OrchestrationResult | null;
@@ -71,12 +74,39 @@ function findGeneratedFile(
   return deliverables.find((item) => item.format === format);
 }
 
-const DOWNLOAD_FORMAT_ORDER: GeneratedFile["format"][] = [
-  "pptx",
+const DEFAULT_DOWNLOAD_FORMAT_ORDER: GeneratedFile["format"][] = [
+  "xlsx",
+  "csv",
   "pdf",
   "docx",
   "md",
+  "pptx",
 ];
+
+function resolveDownloadOrder(
+  result: OrchestrationResult | null,
+): GeneratedFile["format"][] {
+  const type = result?.imageAnalysis?.documentType;
+  if (type === "business_card") {
+    return ["csv", "xlsx", "pdf", "docx", "md", "pptx"];
+  }
+  if (type === "handwritten") {
+    return ["docx", "pdf", "md", "xlsx", "csv", "pptx"];
+  }
+  if (type === "receipt" || type === "invoice" || type === "estimate" || type === "table") {
+    return ["xlsx", "csv", "pdf", "docx", "md", "pptx"];
+  }
+  return DEFAULT_DOWNLOAD_FORMAT_ORDER;
+}
+
+function formatShortLabel(format: GeneratedFile["format"]): string {
+  if (format === "docx") return "Word";
+  if (format === "pptx") return "PowerPoint";
+  if (format === "xlsx") return "Excel";
+  if (format === "csv") return "CSV";
+  if (format === "md") return "Markdown";
+  return DELIVERABLE_FORMAT_LABELS[format].split(" ")[0] ?? format;
+}
 
 function FormatDownloadButton({
   format,
@@ -88,16 +118,20 @@ function FormatDownloadButton({
   isGeneratingDeliverables: boolean;
 }) {
   const file = findGeneratedFile(deliverables, format);
-  const shortLabel =
-    format === "docx"
-      ? "Word"
-      : format === "pptx"
-        ? "PowerPoint"
-        : DELIVERABLE_FORMAT_LABELS[format].split(" ")[0];
+  const shortLabel = formatShortLabel(format);
+
+  // Only show buttons that can actually download (or are actively generating).
+  if (!file && !isGeneratingDeliverables) {
+    return null;
+  }
 
   if (file) {
     return (
-      <a href={file.downloadUrl} download={file.fileName}>
+      <a
+        href={file.downloadUrl}
+        download={file.fileName}
+        className="inline-flex min-h-11 min-w-11 items-center"
+      >
         <Button variant="secondary" size="sm" type="button">
           {shortLabel}
         </Button>
@@ -106,8 +140,13 @@ function FormatDownloadButton({
   }
 
   return (
-    <Button variant="secondary" size="sm" disabled={isGeneratingDeliverables}>
-      {shortLabel}
+    <Button
+      variant="secondary"
+      size="sm"
+      disabled
+      className="min-h-11"
+    >
+      {format === "xlsx" ? "Excelを作成しています" : shortLabel}
     </Button>
   );
 }
@@ -332,8 +371,18 @@ export function FinalOutput({
 }: FinalOutputProps) {
   const [copied, setCopied] = useState(false);
   const [driveSaved, setDriveSaved] = useState(false);
+  const [localAnalysis, setLocalAnalysis] = useState<ImageAnalysisResult | null>(
+    null,
+  );
+  const [localDeliverables, setLocalDeliverables] = useState<GeneratedFile[] | null>(
+    null,
+  );
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [regenError, setRegenError] = useState<string | null>(null);
   const showDebug = isAtlasClientDebugEnabled();
 
+  const effectiveAnalysis = localAnalysis ?? result?.imageAnalysis ?? null;
+  const effectiveDeliverables = localDeliverables ?? deliverables;
   const workspaceDeliverable = result?.deliverable ?? null;
   const exportText = useMemo(
     () =>
@@ -346,14 +395,47 @@ export function FinalOutput({
     () => (workspaceDeliverable ? deliverableHasContent(workspaceDeliverable) : false),
     [workspaceDeliverable],
   );
+  const downloadOrder = useMemo(
+    () =>
+      resolveDownloadOrder(
+        effectiveAnalysis
+          ? ({ ...result, imageAnalysis: effectiveAnalysis } as OrchestrationResult)
+          : result,
+      ),
+    [result, effectiveAnalysis],
+  );
+
+  const generating = isGeneratingDeliverables || isRegenerating;
+
   const fileFormatsToShow = useMemo(() => {
-    if (expectedFormats && expectedFormats.length > 0) {
-      return DOWNLOAD_FORMAT_ORDER.filter((format) =>
-        expectedFormats.includes(format),
+    const available = new Set(effectiveDeliverables.map((item) => item.format));
+    const fromDeliverable = (result?.deliverable?.downloads ?? [])
+      .map((item) => item.format)
+      .filter(
+        (format): format is GeneratedFile["format"] => format !== "html",
       );
-    }
-    return ["pdf", "docx"] as GeneratedFile["format"][];
-  }, [expectedFormats]);
+
+    const candidate =
+      expectedFormats && expectedFormats.length > 0
+        ? expectedFormats
+        : fromDeliverable.length > 0
+          ? fromDeliverable
+          : available.size > 0
+            ? [...available]
+            : (["pdf", "docx"] as GeneratedFile["format"][]);
+
+    return downloadOrder.filter((format) => {
+      if (!candidate.includes(format)) return false;
+      if (generating) return true;
+      return available.has(format);
+    });
+  }, [
+    expectedFormats,
+    downloadOrder,
+    effectiveDeliverables,
+    generating,
+    result?.deliverable?.downloads,
+  ]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production" || !result) return;
@@ -402,7 +484,7 @@ export function FinalOutput({
     );
   }
 
-  const markdownFile = findGeneratedFile(deliverables, "md");
+  const markdownFile = findGeneratedFile(effectiveDeliverables, "md");
   const baseName = markdownFile?.fileName ?? `${workspaceDeliverable.type}-deliverable.md`;
 
   const handleCopy = async () => {
@@ -413,6 +495,35 @@ export function FinalOutput({
 
   const handleDriveSave = () => {
     setDriveSaved(true);
+  };
+
+  const handleApplyAnalysis = async (next: ImageAnalysisResult) => {
+    if (!result) return;
+    setLocalAnalysis(next);
+    setIsRegenerating(true);
+    setRegenError(null);
+    try {
+      const response = await requestDeliverables({
+        assignment: result.assignment,
+        finalDeliverable: exportText,
+        title: next.title,
+        imageAnalysis: next,
+        formats: result.deliverable.downloads
+          .map((item) => item.format)
+          .filter(
+            (format): format is GeneratedFile["format"] => format !== "html",
+          ),
+      });
+      setLocalDeliverables(response.deliverables);
+    } catch (error) {
+      setRegenError(
+        error instanceof Error
+          ? error.message
+          : "Excelの作成に失敗しました。もう一度お試しください。",
+      );
+    } finally {
+      setIsRegenerating(false);
+    }
   };
 
   return (
@@ -439,32 +550,74 @@ export function FinalOutput({
           </div>
         )}
 
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Button variant="secondary" size="sm" onClick={() => void handleCopy()}>
+        <div className="mt-6 flex max-w-full flex-wrap gap-3 pb-[env(safe-area-inset-bottom)]">
+          {fileFormatsToShow.map((format) => (
+            <FormatDownloadButton
+              key={format}
+              format={format}
+              deliverables={effectiveDeliverables}
+              isGeneratingDeliverables={generating}
+            />
+          ))}
+
+          <Button
+            variant="secondary"
+            size="sm"
+            className="min-h-11"
+            onClick={() => downloadMarkdown(exportText, baseName)}
+          >
+            {ui.work.saveMarkdown}
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            className="min-h-11"
+            onClick={() => void handleCopy()}
+          >
             {copied ? ui.work.copied : ui.work.copy}
           </Button>
 
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => downloadMarkdown(exportText, baseName)}
+            className="min-h-11"
+            onClick={handleDriveSave}
           >
-            {ui.work.saveMarkdown}
-          </Button>
-
-          {fileFormatsToShow.map((format) => (
-            <FormatDownloadButton
-              key={format}
-              format={format}
-              deliverables={deliverables}
-              isGeneratingDeliverables={isGeneratingDeliverables}
-            />
-          ))}
-
-          <Button variant="secondary" size="sm" onClick={handleDriveSave}>
             {driveSaved ? ui.work.driveSaved : ui.work.saveToDrive}
           </Button>
         </div>
+
+        {generating && (
+          <p className="mt-4 animate-soft-pulse text-caption">
+            {effectiveAnalysis ? "Excelを作成しています" : ui.work.preparingFiles}
+          </p>
+        )}
+
+        {!generating &&
+          Boolean(findGeneratedFile(effectiveDeliverables, "xlsx")) && (
+            <p className="mt-4 text-caption text-[var(--status-success)]">
+              Excelの準備ができました
+            </p>
+          )}
+
+        {!generating &&
+          effectiveAnalysis &&
+          !findGeneratedFile(effectiveDeliverables, "xlsx") &&
+          Boolean(deliverablesError || regenError) && (
+            <p className="mt-4 text-sm text-[var(--status-danger)]">
+              Excelの作成に失敗しました。もう一度お試しください。
+            </p>
+          )}
+
+        {effectiveAnalysis && (
+          <ImageAnalysisReview
+            analysis={effectiveAnalysis}
+            onApply={(next) => {
+              void handleApplyAnalysis(next);
+            }}
+          />
+        )}
 
         {driveSaved && (
           <p className="mt-4 text-sm text-[var(--foreground-muted)] animate-fade-in">
@@ -472,21 +625,15 @@ export function FinalOutput({
           </p>
         )}
 
-        {isGeneratingDeliverables && (
-          <p className="mt-4 animate-soft-pulse text-caption">
-            {ui.work.preparingFiles}
-          </p>
-        )}
-
-        {deliverablesError && (
+        {(deliverablesError || regenError) && (
           <div className="mt-4">
-            <ErrorState message={deliverablesError} />
+            <ErrorState message={regenError ?? deliverablesError ?? ""} />
           </div>
         )}
 
-        {deliverables.length > 0 && (
+        {effectiveDeliverables.length > 0 && (
           <p className="mt-4 text-caption">
-            {deliverables
+            {effectiveDeliverables
               .map((item) => DELIVERABLE_FORMAT_LABELS[item.format])
               .join(" · ")}
           </p>

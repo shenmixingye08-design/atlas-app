@@ -52,6 +52,10 @@ import {
   formatsForWizardConfig,
   type SalesMaterialWizardResult,
 } from "./sales-material-wizard";
+import {
+  buildMetadataFromPendingAttachments,
+  clearPendingAttachments,
+} from "@/lib/attachments/session";
 
 export function WorkspaceDashboard() {
   const [assignment, setAssignment] = useState("");
@@ -269,11 +273,15 @@ export function WorkspaceDashboard() {
     }
 
     autoStartedRef.current = true;
+    const attachmentKey = searchParams.get("attachments");
+    const attachmentMeta = buildMetadataFromPendingAttachments(attachmentKey);
+    clearPendingAttachments(attachmentKey);
     const metadata = {
       requestUi: "secretary_v1",
       executionPreference: "once",
       priority: "normal",
       skipWorkMemory: false,
+      ...attachmentMeta,
     } as const;
     setRequestMetadata(metadata);
 

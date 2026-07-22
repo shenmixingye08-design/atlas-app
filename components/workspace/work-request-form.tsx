@@ -275,7 +275,9 @@ export function WorkRequestForm({
         },
       });
     } catch {
-      setUploadError("画像の取得に失敗しました");
+      setUploadError(
+        "画像を読み込めませんでした。通信環境を確認し、画像をもう一度添付してください。",
+      );
     } finally {
       setIsUploading(false);
     }

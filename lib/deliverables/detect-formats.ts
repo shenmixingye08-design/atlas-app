@@ -13,6 +13,30 @@ type FormatRule = {
 
 const FORMAT_RULES: readonly FormatRule[] = [
   {
+    id: "image-spreadsheet",
+    keywords: [
+      "excel",
+      "xlsx",
+      "エクセル",
+      "スプレッドシート",
+      "家計簿",
+      "レシート",
+      "請求書",
+      "見積書",
+      "名刺",
+      "一覧",
+      "集計",
+      "表にして",
+      "ランキング",
+    ],
+    formats: ["xlsx", "csv", "pdf", "docx", "md"],
+  },
+  {
+    id: "handwritten-memo",
+    keywords: ["手書き", "ホワイトボード", "文字起こし", "ToDoにして", "todoにして"],
+    formats: ["docx", "pdf", "md"],
+  },
+  {
     id: "sales-deck",
     keywords: [
       "営業資料",

@@ -5,6 +5,7 @@ import type {
 import {
   ATTACHMENT_CONTENT_NOTE_KEY,
   ATTACHMENTS_METADATA_KEY,
+  IMAGE_FETCH_FAILED_MESSAGE,
   MAX_VISION_IMAGES,
 } from "./types";
 
@@ -93,7 +94,7 @@ export function buildAttachmentContentNote(
     (item) => isImageAttachment(item) && item.fetchFailed,
   );
   if (failedImages.length > 0) {
-    return "画像の取得に失敗しました";
+    return IMAGE_FETCH_FAILED_MESSAGE;
   }
   return null;
 }

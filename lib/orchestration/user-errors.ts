@@ -42,6 +42,30 @@ export function toUserFacingError(
 
   const raw = error instanceof Error ? error.message : String(error ?? "");
 
+  if (
+    /画像を読み込めませんでした|image_fetch_failed|添付画像/i.test(raw) ||
+    /画像を読み込めませんでした/.test(result?.error ?? "")
+  ) {
+    return {
+      title: "画像取得失敗",
+      message:
+        "画像を読み込めませんでした。通信環境を確認し、画像をもう一度添付してください。",
+      action: "通信環境を確認し、画像をもう一度添付してください。",
+    };
+  }
+
+  if (
+    /解析結果を正しく生成できませんでした|analysis_failed|画像の解析/i.test(raw) ||
+    /解析結果を正しく生成できませんでした/.test(result?.error ?? "")
+  ) {
+    return {
+      title: "解析失敗",
+      message:
+        "画像の解析結果を正しく生成できませんでした。もう一度お試しください。",
+      action: "画像をはっきり撮影し直して、もう一度依頼してください。",
+    };
+  }
+
   if (/timed out|timeout/i.test(raw)) {
     return {
       title: "処理がタイムアウトしました",

@@ -1,4 +1,5 @@
 import type { Deliverable, DeliverableFormat } from "@/lib/deliverables/types";
+import type { ImageAnalysisResult } from "@/lib/image-analysis/types";
 import type { IntegrationUploadSummary } from "@/lib/integrations/types";
 
 export type GenerateDeliverablesRequest = {
@@ -9,6 +10,8 @@ export type GenerateDeliverablesRequest = {
   projectName?: string;
   /** Generate only these formats; omit to auto-detect from assignment. */
   formats?: DeliverableFormat[];
+  /** Structured image analysis JSON for Excel/CSV generation. */
+  imageAnalysis?: ImageAnalysisResult | null;
 };
 
 export type GenerateDeliverablesResponse = {

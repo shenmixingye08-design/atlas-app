@@ -1,5 +1,6 @@
 import type { DeliverableFormat, DeliverableGenerator } from "../types";
 
+import { CsvDeliverableGenerator } from "./csv-generator";
 import {
   DocxDeliverableGenerator,
   DocxPlaceholderGenerator,
@@ -11,6 +12,7 @@ import {
   PptxDeliverableGenerator,
   PptxPlaceholderGenerator,
 } from "./pptx-generator";
+import { XlsxDeliverableGenerator } from "./xlsx-generator";
 
 export { createDeliverableFile, formatGeneratedDate } from "./shared";
 export { MarkdownDeliverableGenerator } from "./markdown-generator";
@@ -24,6 +26,8 @@ export {
   PptxDeliverableGenerator,
   PptxPlaceholderGenerator,
 } from "./pptx-generator";
+export { XlsxDeliverableGenerator, generateXlsxFromImageAnalysis } from "./xlsx-generator";
+export { CsvDeliverableGenerator, generateCsvFromImageAnalysis } from "./csv-generator";
 
 export const defaultDeliverableGenerators: readonly DeliverableGenerator[] = [
   new PlainTextDeliverableGenerator(),
@@ -31,6 +35,8 @@ export const defaultDeliverableGenerators: readonly DeliverableGenerator[] = [
   new PdfDeliverableGenerator(),
   new DocxDeliverableGenerator(),
   new PptxDeliverableGenerator(),
+  new XlsxDeliverableGenerator(),
+  new CsvDeliverableGenerator(),
 ];
 
 const generatorMap = new Map<DeliverableFormat, DeliverableGenerator>(

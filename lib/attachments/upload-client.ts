@@ -1,5 +1,10 @@
 import type { AttachmentKind, AttachmentMetadataItem } from "./types";
-import { MAX_IMAGE_UPLOAD_BYTES } from "./types";
+import {
+  IMAGE_FETCH_FAILED_MESSAGE,
+  IMAGE_TOO_LARGE_MESSAGE,
+  MAX_IMAGE_UPLOAD_BYTES,
+  UNSUPPORTED_IMAGE_TYPE_MESSAGE,
+} from "./types";
 import { isImageMimeType } from "./metadata";
 
 export type UploadedAttachmentResult =
@@ -20,6 +25,13 @@ type UploadApiSuccess = {
   sizeBytes: number;
   kind: string;
   url: string;
+  signedUrl?: string;
+};
+
+type UploadApiError = {
+  status?: string;
+  code?: string;
+  message?: string;
 };
 
 function guessKind(file: File, fallback: AttachmentKind): AttachmentKind {
@@ -66,9 +78,9 @@ export async function uploadWorkAttachment(input: {
         ...base,
         kind: "photo",
         fetchFailed: true,
-        note: "画像の取得に失敗しました",
+        note: IMAGE_TOO_LARGE_MESSAGE,
       },
-      error: "画像サイズが上限を超えています",
+      error: IMAGE_TOO_LARGE_MESSAGE,
     };
   }
 
@@ -83,15 +95,23 @@ export async function uploadWorkAttachment(input: {
     });
 
     if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as UploadApiError | null;
+      const message =
+        payload?.message ||
+        (response.status === 415
+          ? UNSUPPORTED_IMAGE_TYPE_MESSAGE
+          : response.status === 413
+            ? IMAGE_TOO_LARGE_MESSAGE
+            : IMAGE_FETCH_FAILED_MESSAGE);
       return {
         ok: false,
         item: {
           ...base,
           kind: "photo",
           fetchFailed: true,
-          note: "画像の取得に失敗しました",
+          note: message,
         },
-        error: `upload failed (${response.status})`,
+        error: message,
       };
     }
 
@@ -117,9 +137,9 @@ export async function uploadWorkAttachment(input: {
         ...base,
         kind: "photo",
         fetchFailed: true,
-        note: "画像の取得に失敗しました",
+        note: IMAGE_FETCH_FAILED_MESSAGE,
       },
-      error: "画像の取得に失敗しました",
+      error: IMAGE_FETCH_FAILED_MESSAGE,
     };
   }
 }
