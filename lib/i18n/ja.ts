@@ -644,6 +644,10 @@ export const ui = {
     hideDetails: "詳細を閉じる",
     generatedAt: (time: string) => `生成: ${time}`,
     downloadHint: "クリックでダウンロード",
+    wordGenerateFailed: "Word生成に失敗しました",
+    pdfGenerateFailed: "PDF生成に失敗しました",
+    downloadRetry: "再試行",
+    downloadingOffice: "ファイルを作成しています…",
   },
 
   workflow: {

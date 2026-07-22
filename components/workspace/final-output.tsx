@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
+import {
+  downloadFromBase64,
+  downloadOfficeViaExportApi,
+  isOfficeDownloadFormat,
+  type OfficeDownloadFormat,
+} from "@/lib/deliverables/client-download";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
@@ -82,10 +88,22 @@ function FormatDownloadButton({
   format,
   deliverables,
   isGeneratingDeliverables,
+  exportText,
+  assignment,
+  title,
+  onOfficeError,
 }: {
   format: GeneratedFile["format"];
   deliverables: readonly GeneratedFile[];
   isGeneratingDeliverables: boolean;
+  exportText: string;
+  assignment: string;
+  title?: string;
+  onOfficeError: (error: {
+    format: OfficeDownloadFormat;
+    message: string;
+    cause?: string;
+  } | null) => void;
 }) {
   const file = findGeneratedFile(deliverables, format);
   const shortLabel =
@@ -94,6 +112,58 @@ function FormatDownloadButton({
       : format === "pptx"
         ? "PowerPoint"
         : DELIVERABLE_FORMAT_LABELS[format].split(" ")[0];
+  const [busy, setBusy] = useState(false);
+
+  if (isOfficeDownloadFormat(format)) {
+    const handleOfficeDownload = async () => {
+      setBusy(true);
+      onOfficeError(null);
+      try {
+        if (file?.contentBase64) {
+          downloadFromBase64({
+            base64: file.contentBase64,
+            fileName: file.fileName,
+            mimeType: file.mimeType,
+          });
+          return;
+        }
+
+        await downloadOfficeViaExportApi({
+          format,
+          content: exportText,
+          assignment,
+          title,
+        });
+      } catch (error) {
+        const message =
+          format === "docx"
+            ? ui.work.wordGenerateFailed
+            : ui.work.pdfGenerateFailed;
+        const cause =
+          error && typeof error === "object" && "cause" in error
+            ? String((error as { cause?: unknown }).cause ?? "")
+            : error instanceof Error
+              ? error.message
+              : undefined;
+        console.error(`[FinalOutput] ${format} download failed`, error);
+        onOfficeError({ format, message, cause });
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    return (
+      <Button
+        variant="secondary"
+        size="sm"
+        type="button"
+        disabled={busy || !exportText.trim()}
+        onClick={() => void handleOfficeDownload()}
+      >
+        {busy ? ui.work.downloadingOffice : shortLabel}
+      </Button>
+    );
+  }
 
   if (file) {
     return (
@@ -332,6 +402,11 @@ export function FinalOutput({
 }: FinalOutputProps) {
   const [copied, setCopied] = useState(false);
   const [driveSaved, setDriveSaved] = useState(false);
+  const [officeError, setOfficeError] = useState<{
+    format: OfficeDownloadFormat;
+    message: string;
+    cause?: string;
+  } | null>(null);
   const showDebug = isAtlasClientDebugEnabled();
 
   const workspaceDeliverable = result?.deliverable ?? null;
@@ -458,6 +533,10 @@ export function FinalOutput({
               format={format}
               deliverables={deliverables}
               isGeneratingDeliverables={isGeneratingDeliverables}
+              exportText={exportText}
+              assignment={result.assignment}
+              title={workspaceDeliverable.title || undefined}
+              onOfficeError={setOfficeError}
             />
           ))}
 
@@ -465,6 +544,62 @@ export function FinalOutput({
             {driveSaved ? ui.work.driveSaved : ui.work.saveToDrive}
           </Button>
         </div>
+
+        {officeError && (
+          <div className="mt-4 space-y-2 rounded-[var(--radius-lg)] border border-[var(--status-warning)]/40 bg-[var(--background-muted)]/40 px-4 py-3">
+            <ErrorState
+              message={[officeError.message, officeError.cause]
+                .filter(Boolean)
+                .join(" — ")}
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              type="button"
+              onClick={() => {
+                const failedFormat = officeError.format;
+                setOfficeError(null);
+                void (async () => {
+                  try {
+                    const file = findGeneratedFile(deliverables, failedFormat);
+                    if (file?.contentBase64) {
+                      downloadFromBase64({
+                        base64: file.contentBase64,
+                        fileName: file.fileName,
+                        mimeType: file.mimeType,
+                      });
+                      return;
+                    }
+                    await downloadOfficeViaExportApi({
+                      format: failedFormat,
+                      content: exportText,
+                      assignment: result.assignment,
+                      title: workspaceDeliverable.title || undefined,
+                    });
+                  } catch (error) {
+                    const message =
+                      failedFormat === "docx"
+                        ? ui.work.wordGenerateFailed
+                        : ui.work.pdfGenerateFailed;
+                    const cause =
+                      error && typeof error === "object" && "cause" in error
+                        ? String((error as { cause?: unknown }).cause ?? "")
+                        : error instanceof Error
+                          ? error.message
+                          : undefined;
+                    console.error(
+                      `[FinalOutput] ${failedFormat} retry failed`,
+                      error,
+                    );
+                    setOfficeError({ format: failedFormat, message, cause });
+                  }
+                })();
+              }}
+            >
+              {ui.work.downloadRetry}
+            </Button>
+          </div>
+        )}
 
         {driveSaved && (
           <p className="mt-4 text-sm text-[var(--foreground-muted)] animate-fade-in">
