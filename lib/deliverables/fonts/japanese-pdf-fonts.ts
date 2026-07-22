@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
 import fontkit from "@pdf-lib/fontkit";
@@ -16,40 +16,58 @@ type SubsetRange = {
   end: number;
 };
 
+let subsetRangesCache: SubsetRange[] | null = null;
+let subsetRangesUnavailable = false;
+
 function parseCodePoint(token: string): number {
   return Number.parseInt(token.replace(/^U\+/i, ""), 16);
 }
 
 function buildSubsetRanges(): SubsetRange[] {
-  const raw = JSON.parse(readFileSync(UNICODE_MAP_PATH, "utf8")) as Record<string, string>;
-  const ranges: SubsetRange[] = [];
+  if (subsetRangesUnavailable) return [];
+  if (subsetRangesCache) return subsetRangesCache;
 
-  for (const [key, value] of Object.entries(raw)) {
-    const index = Number.parseInt(key.replace(/[[\]]/g, ""), 10);
-    for (const part of value.split(",")) {
-      const trimmed = part.trim();
-      if (!trimmed) continue;
-      if (trimmed.includes("-")) {
-        const [startToken, endToken] = trimmed.split("-");
-        ranges.push({
-          index,
-          start: parseCodePoint(startToken),
-          end: parseCodePoint(endToken),
-        });
-      } else {
-        const codePoint = parseCodePoint(trimmed);
-        ranges.push({ index, start: codePoint, end: codePoint });
+  try {
+    if (!existsSync(UNICODE_MAP_PATH)) {
+      throw new Error(`Missing font unicode map at ${UNICODE_MAP_PATH}`);
+    }
+
+    const raw = JSON.parse(readFileSync(UNICODE_MAP_PATH, "utf8")) as Record<string, string>;
+    const ranges: SubsetRange[] = [];
+
+    for (const [key, value] of Object.entries(raw)) {
+      const index = Number.parseInt(key.replace(/[[\]]/g, ""), 10);
+      for (const part of value.split(",")) {
+        const trimmed = part.trim();
+        if (!trimmed) continue;
+        if (trimmed.includes("-")) {
+          const [startToken, endToken] = trimmed.split("-");
+          ranges.push({
+            index,
+            start: parseCodePoint(startToken),
+            end: parseCodePoint(endToken),
+          });
+        } else {
+          const codePoint = parseCodePoint(trimmed);
+          ranges.push({ index, start: codePoint, end: codePoint });
+        }
       }
     }
-  }
 
-  return ranges;
+    subsetRangesCache = ranges;
+    return ranges;
+  } catch (error) {
+    subsetRangesUnavailable = true;
+    console.warn(
+      "[japanese-pdf-fonts] Japanese PDF font subset map unavailable:",
+      error instanceof Error ? error.message : error,
+    );
+    return [];
+  }
 }
 
-const SUBSET_RANGES = buildSubsetRanges();
-
 export function subsetIndexForCodePoint(codePoint: number): number | null {
-  for (const range of SUBSET_RANGES) {
+  for (const range of buildSubsetRanges()) {
     if (codePoint >= range.start && codePoint <= range.end) {
       return range.index;
     }
@@ -59,6 +77,14 @@ export function subsetIndexForCodePoint(codePoint: number): number | null {
 
 function subsetFontPath(index: number): string {
   return join(FONT_DIR, `noto-sans-jp-${index}-400-normal.woff2`);
+}
+
+function readSubsetFontBytes(index: number): Uint8Array {
+  const path = subsetFontPath(index);
+  if (!existsSync(path)) {
+    throw new Error(`Japanese PDF font subset missing at ${path}`);
+  }
+  return readFileSync(path);
 }
 
 export type JapanesePdfFontSet = {
@@ -86,7 +112,7 @@ export async function embedJapanesePdfFonts(
   }
 
   for (const index of neededIndexes) {
-    const bytes = readFileSync(subsetFontPath(index));
+    const bytes = readSubsetFontBytes(index);
     const font = await pdfDoc.embedFont(bytes, { subset: true });
     cache.set(index, font);
   }
@@ -143,7 +169,7 @@ export async function loadPdfFontForSubset(
   if (cached) return cached;
 
   pdfDoc.registerFontkit(fontkit);
-  const bytes = readFileSync(subsetFontPath(resolvedIndex));
+  const bytes = readSubsetFontBytes(resolvedIndex);
   const font = await pdfDoc.embedFont(bytes, { subset: true });
   cache.set(resolvedIndex, font);
   return font;

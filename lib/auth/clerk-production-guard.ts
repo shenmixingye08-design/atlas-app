@@ -1,3 +1,4 @@
+import { isNextBuildPhase } from "@/lib/runtime/is-next-build";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 function readEnv(name: string): string {
@@ -33,6 +34,7 @@ export function usesClerkDevelopmentKeys(): boolean {
  */
 export function assertClerkSafeForProduction(): void {
   if (!isAtlasProduction()) return;
+  if (isNextBuildPhase()) return;
 
   if (!isClerkConfigured()) {
     throw new Error(

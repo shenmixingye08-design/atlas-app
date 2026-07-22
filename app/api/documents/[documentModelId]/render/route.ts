@@ -5,6 +5,8 @@ import { renderDocumentModelToHtml } from "@/lib/documents/render/render-to-html
 import type { OutputFormat, TemplateId } from "@/lib/documents/schema/enums";
 import { OUTPUT_FORMATS, TEMPLATE_IDS } from "@/lib/documents/schema/enums";
 
+export const runtime = "nodejs";
+
 type RenderBody = {
   formats?: unknown;
   templateId?: unknown;

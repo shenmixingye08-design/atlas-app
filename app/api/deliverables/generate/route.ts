@@ -2,6 +2,8 @@ import { generateDeliverables } from "@/lib/deliverables/engine";
 import { uploadDeliverablesAfterGeneration } from "@/lib/integrations/deliverable-bridge";
 import type { IntegrationUploadSummary } from "@/lib/integrations/types";
 
+export const runtime = "nodejs";
+
 type RequestBody = {
   assignment?: unknown;
   finalDeliverable?: unknown;

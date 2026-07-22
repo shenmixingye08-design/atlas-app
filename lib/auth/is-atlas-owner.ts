@@ -1,3 +1,4 @@
+import { isNextBuildPhase } from "@/lib/runtime/is-next-build";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 /** Parse ATLAS_OWNER_EMAILS env (comma-separated, case-insensitive). */
@@ -14,6 +15,7 @@ export function parseAtlasOwnerEmails(): readonly string[] {
 /** Production must define at least one owner email. */
 export function assertOwnerEmailsConfiguredForProduction(): void {
   if (!isAtlasProduction()) return;
+  if (isNextBuildPhase()) return;
   if (parseAtlasOwnerEmails().length > 0) return;
   throw new Error(
     "ATLAS_OWNER_EMAILS must be set in production (comma-separated owner emails)",
