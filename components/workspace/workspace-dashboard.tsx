@@ -40,6 +40,7 @@ import {
   WorkRequestForm,
   type WorkRequestSubmitPayload,
 } from "./work-request-form";
+import { NewRequestEntry } from "./new-request-entry";
 import {
   WorkMemoryCandidateBanner,
   WorkMemoryUsedBanner,
@@ -77,6 +78,7 @@ export function WorkspaceDashboard() {
   const [taughtWorkflowHint, setTaughtWorkflowHint] = useState(false);
   const [pendingCommander, setPendingCommander] =
     useState<CommanderRunResult | null>(null);
+  const [showAdvancedForm, setShowAdvancedForm] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const autoStartedRef = useRef(false);
@@ -96,6 +98,7 @@ export function WorkspaceDashboard() {
     const prefill = searchParams.get("assignment");
     if (prefill?.trim()) {
       setAssignment(prefill);
+      setShowAdvancedForm(true);
     }
     setTaughtWorkflowHint(searchParams.get("taught") === "1");
   }, [searchParams]);
@@ -313,6 +316,13 @@ export function WorkspaceDashboard() {
     setSalesWizardAssignment(null);
     setSalesMaterialConfig(null);
     setOutlineOnlyText(null);
+    setShowAdvancedForm(false);
+  };
+
+  const handleQuickRequest = (text: string) => {
+    setAssignment(text);
+    setShowAdvancedForm(true);
+    void handleSubmit({ assignment: text, metadata: {} });
   };
 
   const showForm =
@@ -333,7 +343,11 @@ export function WorkspaceDashboard() {
         </section>
       )}
 
-      {showForm && (
+      {showForm && !showAdvancedForm && !assignment.trim() && (
+        <NewRequestEntry onSubmitOnce={handleQuickRequest} />
+      )}
+
+      {showForm && (showAdvancedForm || assignment.trim()) && (
         <WorkRequestForm
           value={assignment}
           onChange={setAssignment}

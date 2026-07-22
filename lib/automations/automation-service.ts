@@ -107,7 +107,13 @@ export class AutomationService {
     userId: string,
     enabled: boolean,
   ): Promise<Automation | null> {
-    return this.updateForUser(id, userId, { enabled });
+    await ensureAutomationsHydrated(userId);
+    const existing = await this.automations.findById(id);
+    if (!existing || existing.userId !== userId) return null;
+
+    const { buildPauseResumePatch } = await import("./pause-resume");
+    const patch = buildPauseResumePatch(existing, enabled);
+    return this.updateForUser(id, userId, patch);
   }
 
   setEnabled(id: string, enabled: boolean): Promise<Automation | null> {
@@ -119,10 +125,11 @@ export class AutomationService {
     options: {
       userId?: string | null;
       requestOrigin?: string;
-      triggerType?: "manual" | "automation";
+      triggerType?: "manual" | "automation" | "test";
       scheduledAt?: string | null;
       skipIdempotencyClaim?: boolean;
       existingJobId?: string;
+      skipExternalPublish?: boolean;
     } = {},
   ): Promise<AutomationRunResult | null> {
     if (options.userId) {
@@ -181,6 +188,7 @@ export class AutomationService {
       requestOrigin: options.requestOrigin,
       jobId: options.existingJobId,
       scheduledAt: options.scheduledAt ?? automation.nextRun,
+      skipExternalPublish: options.skipExternalPublish,
     });
 
     const ownerId = userId;

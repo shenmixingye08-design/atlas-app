@@ -74,9 +74,17 @@ export async function setAutomationEnabled(
 
 export async function runAutomationNow(
   id: string,
+  options: { mode?: "test" | "manual"; livePublish?: boolean } = {},
 ): Promise<AutomationRunResult> {
+  const triggerType =
+    options.mode === "test" ? "test" : ("manual" as const);
+  const skipExternalPublish =
+    options.mode === "test" ? !options.livePublish : false;
+
   const response = await fetch(`/api/automations/${id}/run`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ triggerType, skipExternalPublish }),
   });
 
   if (!response.ok) {

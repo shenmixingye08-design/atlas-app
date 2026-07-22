@@ -41,6 +41,19 @@ export async function POST(
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  let triggerType: "manual" | "automation" | "test" = "manual";
+  let skipExternalPublish = false;
+  try {
+    const body = (await request.json()) as {
+      triggerType?: "manual" | "automation" | "test";
+      skipExternalPublish?: boolean;
+    };
+    if (body.triggerType) triggerType = body.triggerType;
+    if (body.skipExternalPublish) skipExternalPublish = true;
+  } catch {
+    // Empty body — manual run
+  }
+
   const { requireBillingAiUsage, requireBillingFeature } = await import(
     "@/lib/billing/access"
   );
@@ -54,6 +67,8 @@ export async function POST(
   const result = await automationService.runNow(id, {
     requestOrigin: origin,
     userId,
+    triggerType,
+    skipExternalPublish,
   });
 
   if (!result) {

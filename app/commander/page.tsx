@@ -1,22 +1,28 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
+import { redirect } from "next/navigation";
+import { currentUser } from "@clerk/nextjs/server";
 
-import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
-import { CommanderDashboard } from "@/components/commander/commander-dashboard";
-import { LoadingState } from "@/components/ui/loading-state";
+import { isAtlasOwnerEmail } from "@/lib/auth/is-atlas-owner";
 import { ui } from "@/lib/i18n";
 
 export const metadata: Metadata = {
-  title: ui.metadata.commander,
-  description: "AIオーケストレーター — 一回の依頼で分類から完了報告まで自動実行",
+  title: ui.phase3.executionStatus,
+  description: ui.phase3.executionStatus,
 };
 
-export default function CommanderPage() {
-  return (
-    <AtlasAppShell active="commander" width="default">
-      <Suspense fallback={<LoadingState />}>
-        <CommanderDashboard />
-      </Suspense>
-    </AtlasAppShell>
+/**
+ * AI Orchestra is internal — normal users land on 仕事 (history).
+ * Owners retain access for debugging.
+ */
+export default async function CommanderPage() {
+  const user = await currentUser();
+  const email = user?.primaryEmailAddress?.emailAddress;
+  if (!user || !isAtlasOwnerEmail(email)) {
+    redirect("/history");
+  }
+
+  const { default: CommanderClientPage } = await import(
+    "./commander-client"
   );
+  return <CommanderClientPage />;
 }

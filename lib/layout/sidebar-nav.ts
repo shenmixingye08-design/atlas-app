@@ -14,9 +14,9 @@ const ALL_SIDEBAR_ITEMS = [
 /** Resolve sidebar active id from pathname when `active` prop is not passed. */
 export function resolveSidebarActiveId(pathname: string): AtlasNavPage | null {
   if (pathname.startsWith("/workspace/x")) return "x-autopost";
-  // Request-creation and related workspace tools (not AI Orchestra).
-  if (pathname.startsWith("/workspace")) return "workspace";
+  if (pathname.startsWith("/workspace")) return "history";
   if (pathname.startsWith("/automations")) return "automations";
+  if (pathname.startsWith("/deliverables")) return "deliverables";
   if (pathname.startsWith("/settings/learning")) return "learning";
   if (pathname.startsWith("/settings/billing")) return "billing";
   if (pathname.startsWith("/settings")) return "settings";

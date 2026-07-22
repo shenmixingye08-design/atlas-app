@@ -2,20 +2,20 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
-import { WorkspaceDashboard } from "@/components/workspace/workspace-dashboard";
+import { AutomationWizard } from "@/components/automations/automation-wizard";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ui } from "@/lib/i18n";
 
 export const metadata: Metadata = {
-  title: ui.metadata.workspace,
-  description: "AI秘書へ仕事を依頼する",
+  title: ui.phase3.wizardTitle,
+  description: ui.phase3.wizardSubtitle,
 };
 
-export default function WorkspacePage() {
+export default function NewAutomationPage() {
   return (
-    <AtlasAppShell active="history" width="default">
+    <AtlasAppShell active="automations" width="narrow">
       <Suspense fallback={<LoadingState />}>
-        <WorkspaceDashboard />
+        <AutomationWizard />
       </Suspense>
     </AtlasAppShell>
   );

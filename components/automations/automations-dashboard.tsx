@@ -185,16 +185,16 @@ export function AutomationsDashboard() {
         </div>
         <div className="flex shrink-0 flex-col gap-2 self-start sm:items-end">
           <Link
-            href="/workspace"
+            href="/automations/new"
             className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-accent px-6 text-base font-medium text-white shadow-sm transition-all hover:bg-[var(--accent-hover)] active:scale-[0.98] focus-ring"
           >
-            {ui.entrustedJobs.addNew}
+            {ui.phase3.secondaryCtaAutomation}
           </Link>
           <Link
-            href="/commander"
+            href="/workspace"
             className="inline-flex min-h-[40px] items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--card)] px-4 text-sm font-medium text-foreground transition-colors hover:border-accent/40 focus-ring"
           >
-            {ui.nav.commander}
+            {ui.phase3.primaryCtaRequest}
           </Link>
         </div>
       </header>

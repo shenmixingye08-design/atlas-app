@@ -2,6 +2,7 @@ import { AtlasBackground } from "@/components/atlas-background";
 import { cn } from "@/lib/design-system/cn";
 import type { AtlasNavPage } from "@/lib/layout/nav-types";
 
+import { AtlasBottomNav } from "./atlas-bottom-nav";
 import { AtlasSidebar } from "./atlas-sidebar";
 import { AtlasTopActions } from "./atlas-top-actions";
 
@@ -38,12 +39,14 @@ export function AtlasAppShell({
         <main
           className={cn(
             "app-shell-main mx-auto w-full px-4 pt-[calc(var(--mobile-top-bar-height)+1rem)] sm:px-6 md:px-10 md:pt-[calc(3.5rem+1.5rem)] animate-page",
+            "pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] md:pb-10",
             MAIN_WIDTH[width],
           )}
         >
           {children}
         </main>
       </div>
+      <AtlasBottomNav />
     </div>
   );
 }

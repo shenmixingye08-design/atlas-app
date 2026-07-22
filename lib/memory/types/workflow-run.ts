@@ -6,6 +6,7 @@ import type { EntityId, Timestamp, UserId } from "./common";
 export type WorkflowRunTriggerType =
   | "manual"
   | "automation"
+  | "test"
   | "webhook"
   | "email"
   | "calendar";

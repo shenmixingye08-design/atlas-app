@@ -61,6 +61,8 @@ export type ExecuteAutomationOptions = {
   requestOrigin?: string;
   jobId?: string;
   scheduledAt?: string | null;
+  /** When true, skip X/email/WP live publish (test preview only). */
+  skipExternalPublish?: boolean;
 };
 
 function appendRunHistory(
@@ -222,7 +224,11 @@ export async function executeAutomationRun(
     let tweetId: string | null = null;
     let tweetUrl: string | null = null;
 
-    if (result.status === "completed" && result.finalResponse.trim()) {
+    if (
+      result.status === "completed" &&
+      result.finalResponse.trim() &&
+      !options.skipExternalPublish
+    ) {
       if (options.userId) {
         await heartbeatJob({
           jobId,
@@ -345,9 +351,13 @@ export async function executeAutomationRun(
       completedAt,
     });
 
-    const nextRun = computeNextRunIso(automation.schedule, new Date(completedAt));
+    const isTestRun = triggerType === "test";
+    const nextRun = isTestRun
+      ? automation.nextRun
+      : computeNextRunIso(automation.schedule, new Date(completedAt));
     const succeeded = effectiveStatus === "completed";
     const latest = await serverAutomationRepository.findById(automation.id);
+    const countMetrics = !isTestRun;
 
     await serverAutomationRepository.update(automation.id, {
       status: succeeded ? "success" : "failed",
@@ -355,8 +365,12 @@ export async function executeAutomationRun(
       nextRun,
       lastWorkflowRunId: workflowRun.id,
       lastError: effectiveError,
-      successCount: (latest?.successCount ?? automation.successCount ?? 0) + (succeeded ? 1 : 0),
-      failureCount: (latest?.failureCount ?? automation.failureCount ?? 0) + (succeeded ? 0 : 1),
+      successCount:
+        (latest?.successCount ?? automation.successCount ?? 0) +
+        (countMetrics && succeeded ? 1 : 0),
+      failureCount:
+        (latest?.failureCount ?? automation.failureCount ?? 0) +
+        (countMetrics && !succeeded ? 1 : 0),
       runHistory: appendRunHistory(latest?.runHistory ?? automation.runHistory, {
         id: workflowRun.id,
         status: succeeded ? "completed" : "failed",

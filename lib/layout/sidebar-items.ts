@@ -18,10 +18,9 @@ export type SidebarNavGroup = {
 /** Primary sidebar destinations — always visible in the main list. */
 export const SIDEBAR_PRIMARY_NAV: SidebarNavItem[] = [
   { id: "projects", href: "/projects", label: ui.nav.home, icon: "🏠" },
-  // 「新しい依頼」は依頼作成画面へ。AIオーケストラ(/commander)は自動化・ワークフロー専用。
-  { id: "workspace", href: "/workspace", label: ui.nav.newRequest, icon: "📝" },
-  { id: "history", href: "/history", label: ui.nav.history, icon: "📋" },
+  { id: "history", href: "/history", label: ui.nav.work, icon: "📋" },
   { id: "automations", href: "/automations", label: ui.nav.automation, icon: "🤖" },
+  { id: "deliverables", href: "/deliverables", label: ui.nav.deliverables, icon: "📁" },
   { id: "settings", href: "/settings", label: ui.nav.settings, icon: "⚙️" },
 ];
 

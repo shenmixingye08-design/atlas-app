@@ -4,6 +4,7 @@ export type AtlasNavPage =
   | "commander"
   | "history"
   | "automations"
+  | "deliverables"
   | "settings"
   | "x-autopost"
   | "workspace"

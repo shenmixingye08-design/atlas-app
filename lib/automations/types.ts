@@ -154,7 +154,7 @@ export type AutomationRunHistoryEntry = {
   startedAt: Timestamp;
   completedAt: Timestamp;
   error: string | null;
-  triggerType: "manual" | "automation" | string;
+  triggerType: "manual" | "automation" | "test" | string;
 };
 
 export type CreateAutomationInput = {

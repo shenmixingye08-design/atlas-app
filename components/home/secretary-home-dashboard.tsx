@@ -7,6 +7,7 @@ import { ui } from "@/lib/i18n";
 import { HomeAiActivityPanel } from "./home-ai-activity-panel";
 import { HomeChatBar } from "./home-chat-bar";
 import { HomeGreetingHeader } from "./home-greeting-header";
+import { HomePrimaryCtas } from "./home-primary-ctas";
 import { HomeTodayOutcomes } from "./home-today-outcomes";
 import { HomeTodayWorkSummary } from "./home-today-work-summary";
 import { ProactiveSuggestionsPanel } from "./proactive-suggestions-panel";
@@ -26,11 +27,12 @@ export function SecretaryHomeDashboard({
 }: SecretaryHomeDashboardProps) {
   return (
     <div className="home-dashboard mx-auto w-full max-w-3xl space-y-14 pb-10 pt-2 sm:space-y-16 sm:pb-14 sm:pt-4">
-      <header className="space-y-3">
+      <header className="space-y-5">
         <p className="text-sm font-medium tracking-wide text-accent">
           {ui.secretaryHome.brandTagline}
         </p>
         <HomeGreetingHeader automations={automations} projects={projects} />
+        <HomePrimaryCtas />
       </header>
 
       {/* ① Today's Results — 成果が最上部 */}
