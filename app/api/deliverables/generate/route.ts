@@ -11,7 +11,7 @@ type RequestBody = {
   formats?: unknown;
 };
 
-const VALID_FORMATS = new Set(["pdf", "docx", "pptx", "md", "txt"]);
+const VALID_FORMATS = new Set(["pdf", "docx", "pptx", "md", "txt", "xlsx"]);
 
 function parseFormats(value: unknown): import("@/lib/deliverables/types").DeliverableFormat[] | undefined {
   if (!Array.isArray(value)) return undefined;
