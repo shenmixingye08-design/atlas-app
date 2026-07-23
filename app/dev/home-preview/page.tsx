@@ -39,6 +39,8 @@ function sampleAutomation(
     lastError: null,
     lastResultSummary: null,
     currentAttempt: 0,
+    nextRetryAt: null,
+    activeSlotKey: null,
     successCount: 0,
     failureCount: 0,
     runHistory: [],

@@ -39,6 +39,8 @@ function baseAutomation(overrides: Partial<Automation> = {}): Automation {
     lastError: null,
     lastResultSummary: null,
     currentAttempt: 0,
+    nextRetryAt: null,
+    activeSlotKey: null,
     userId: null,
     successCount: 0,
     failureCount: 0,

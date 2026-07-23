@@ -41,6 +41,8 @@ function automation(partial: Partial<Automation> & Pick<Automation, "id" | "name
     lastError: null,
     lastResultSummary: null,
     currentAttempt: 0,
+    nextRetryAt: null,
+    activeSlotKey: null,
     userId: null,
     successCount: 0,
     failureCount: 0,

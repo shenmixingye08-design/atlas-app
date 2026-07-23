@@ -20,6 +20,21 @@ async function fetchSnapshot(): Promise<AutomationExecutionLogSnapshot> {
   return (await response.json()) as AutomationExecutionLogSnapshot;
 }
 
+function eventLabel(event: string): string {
+  switch (event) {
+    case "started":
+      return "開始";
+    case "retry_scheduled":
+      return "リトライ予約";
+    case "completed":
+      return "成功";
+    case "failed":
+      return "失敗";
+    default:
+      return event;
+  }
+}
+
 export function AutomationExecutionLogPanel() {
   const [snapshot, setSnapshot] = useState<AutomationExecutionLogSnapshot | null>(
     null,
@@ -56,7 +71,7 @@ export function AutomationExecutionLogPanel() {
         <div>
           <h1 className="text-title text-foreground">繰り返し仕事の実行ログ</h1>
           <p className="mt-2 text-sm text-[var(--text-secondary)]">
-            AIが何を行ったか、何秒かかったか、どのAPIを使ったか、成功率を確認できます。
+            ジョブ起動・AI実行・X API呼び出し・停止箇所を確認できます。
           </p>
         </div>
         <Button variant="secondary" size="sm" onClick={() => void load()}>
@@ -110,20 +125,30 @@ export function AutomationExecutionLogPanel() {
                         {entry.automationName}
                       </p>
                       <p className="text-xs text-[var(--text-muted)]">
-                        {entry.startedAt} → {entry.completedAt} ·{" "}
+                        {eventLabel(entry.event)} · {entry.startedAt}
+                        {entry.completedAt ? ` → ${entry.completedAt}` : ""} ·{" "}
                         {formatDurationMs(entry.durationMs)} · 試行
                         {entry.attempt}
                       </p>
                     </div>
                     <span className="text-sm font-medium text-foreground">
                       {entry.status === "completed"
-                        ? "完了"
+                        ? "成功"
                         : entry.status === "retrying"
                           ? "リトライ中"
-                          : "失敗"}
+                          : entry.status === "running"
+                            ? "実行中"
+                            : "失敗"}
                     </span>
                   </div>
                   <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                    ジョブ起動: はい / AI実行: {entry.aiRan ? "はい" : "いいえ"} /
+                    X API: {entry.xApiCalled ? "はい" : "いいえ"}
+                  </p>
+                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                    停止箇所: {entry.stoppedAtStage ?? "—"}
+                  </p>
+                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
                     実施内容:{" "}
                     {entry.actions.length > 0
                       ? entry.actions.join(" → ")
@@ -135,9 +160,20 @@ export function AutomationExecutionLogPanel() {
                       ? entry.apisUsed.join(", ")
                       : "—"}
                   </p>
-                  {entry.artifactUrls.length > 0 && (
+                  {entry.generatedContent && (
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--text-secondary)]">
+                      生成内容: {entry.generatedContent.slice(0, 280)}
+                      {entry.generatedContent.length > 280 ? "…" : ""}
+                    </p>
+                  )}
+                  {(entry.tweetUrl || entry.artifactUrls.length > 0) && (
                     <p className="mt-1 break-all text-sm text-accent">
-                      {entry.artifactUrls.join(" · ")}
+                      {entry.tweetUrl ?? entry.artifactUrls.join(" · ")}
+                    </p>
+                  )}
+                  {entry.nextRetryAt && (
+                    <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                      次回リトライ: {entry.nextRetryAt}
                     </p>
                   )}
                   {entry.error && (

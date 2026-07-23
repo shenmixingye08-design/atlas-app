@@ -17,7 +17,7 @@ export const AUTOMATION_EXECUTION_STATE_LABELS: Record<
 > = {
   waiting: "待機中",
   running: "実行中",
-  completed: "完了",
+  completed: "成功",
   failed: "失敗",
   retrying: "リトライ中",
 };

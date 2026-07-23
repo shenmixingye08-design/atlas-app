@@ -8,7 +8,6 @@ import type { WorkflowRun } from "@/lib/memory/types/workflow-run";
 import {
   ensureAutomationsHydrated,
   persistAutomationsNow,
-  schedulePersistAutomations,
 } from "./durable";
 import {
   claimAutomationTickSlot,
@@ -265,6 +264,3 @@ export function createAutomationService(
 ): AutomationService {
   return new AutomationService(options.automations);
 }
-
-// Keep schedulePersistAutomations imported usage for any callers that still fire-and-forget.
-void schedulePersistAutomations;

@@ -34,7 +34,7 @@ export const ENTRUSTED_JOB_STATUS_LABELS: Record<EntrustedJobStatus, string> = {
   running: "実行中",
   retrying: "リトライ中",
   needs_review: "確認待ち",
-  completed: "完了",
+  completed: "成功",
   paused: "停止中",
   error: "失敗",
 };
@@ -170,6 +170,12 @@ export function resolveScheduleMethod(
       return {
         kind: "monthly",
         label: schedule.label || "毎月",
+        supported: true,
+      };
+    case "once":
+      return {
+        kind: "datetime",
+        label: schedule.label || "指定日時",
         supported: true,
       };
     default:

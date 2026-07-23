@@ -6,5 +6,5 @@ export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const limitRaw = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
   const limit = Number.isFinite(limitRaw) ? limitRaw : 100;
-  return Response.json(getAutomationExecutionLogSnapshot(limit));
+  return Response.json(await getAutomationExecutionLogSnapshot(limit));
 }
