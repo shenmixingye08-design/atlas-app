@@ -138,6 +138,7 @@ export function CreateAutomationForm({
             <option value="daily">{ui.habits.frequencyDaily}</option>
             <option value="weekly">{ui.habits.frequencyWeekly}</option>
             <option value="monthly">{ui.habits.frequencyMonthly}</option>
+            <option value="once">{ui.habits.frequencyOnce}</option>
           </select>
         </div>
 
@@ -173,24 +174,36 @@ export function CreateAutomationForm({
           />
         )}
 
-        <Input
-          label={ui.habits.fieldTime}
-          type="time"
-          value={`${String(form.hour).padStart(2, "0")}:${String(form.minute).padStart(2, "0")}`}
-          onChange={(e) => {
-            const [hour, minute] = e.target.value.split(":").map(Number);
-            update("hour", hour ?? 9);
-            update("minute", minute ?? 0);
-          }}
-        />
+        {form.frequency === "once" ? (
+          <Input
+            label={ui.habits.fieldOnceAt}
+            type="datetime-local"
+            value={form.onceAt}
+            onChange={(e) => update("onceAt", e.target.value)}
+          />
+        ) : (
+          <Input
+            label={ui.habits.fieldTime}
+            type="time"
+            value={`${String(form.hour).padStart(2, "0")}:${String(form.minute).padStart(2, "0")}`}
+            onChange={(e) => {
+              const [hour, minute] = e.target.value.split(":").map(Number);
+              update("hour", hour ?? 9);
+              update("minute", minute ?? 0);
+            }}
+          />
+        )}
 
+        {form.frequency !== "once" && (
         <Input
           label={ui.habits.fieldStartDate}
           type="date"
           value={form.startDate}
           onChange={(e) => update("startDate", e.target.value)}
         />
+        )}
 
+        {form.frequency !== "once" && (
         <div>
           <label className="mb-2 block text-sm text-[var(--foreground-muted)]">
             {ui.habits.fieldEndCondition}
@@ -207,8 +220,9 @@ export function CreateAutomationForm({
             <option value="occurrence_count">{ui.habits.endOccurrences}</option>
           </select>
         </div>
+        )}
 
-        {form.endType === "until_date" && (
+        {form.frequency !== "once" && form.endType === "until_date" && (
           <Input
             label={ui.habits.fieldEndDate}
             type="date"
@@ -217,7 +231,7 @@ export function CreateAutomationForm({
           />
         )}
 
-        {form.endType === "occurrence_count" && (
+        {form.frequency !== "once" && form.endType === "occurrence_count" && (
           <Input
             label={ui.habits.fieldMaxOccurrences}
             type="number"

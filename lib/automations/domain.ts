@@ -5,6 +5,7 @@ import { normalizeExecutionMode } from "@/lib/cost-optimization/execution-mode";
 import { normalizeSnsBatchDays } from "@/lib/cost-optimization/sns-batch";
 import {
   createDefaultExecutionFlow,
+  applyExternalPublishIntent,
   inferWorkflowTemplate,
   normalizeExecutionFlow,
 } from "./execution-flow";
@@ -49,6 +50,10 @@ function seedAutomation(
   const flow =
     executionFlow ??
     createDefaultExecutionFlow(inferWorkflowTemplate(`${name} ${assignment}`));
+  const withPublish = applyExternalPublishIntent(
+    normalizeExecutionFlow(flow),
+    `${name} ${assignment}`,
+  );
   return {
     id,
     userId: null,
@@ -60,13 +65,17 @@ function seedAutomation(
     executionLevel,
     executionMode,
     snsBatchDays,
-    executionFlow: normalizeExecutionFlow(flow),
+    executionFlow: withPublish,
     enabled: true,
     lastRun: null,
     nextRun: computeNextRunIso(schedule),
+    nextRetryAt: null,
+    activeSlotKey: null,
     status: "idle",
     lastWorkflowRunId: null,
     lastError: null,
+    lastResultSummary: null,
+    currentAttempt: 0,
     successCount: 0,
     failureCount: 0,
     runHistory: [],
@@ -82,7 +91,7 @@ export const SEED_AUTOMATIONS: Automation[] = [
     "SNS投稿",
     "毎日18時にXへ投稿する文案を作成します。",
     buildSchedule({ type: "daily", hour: 18, minute: 0 }, "毎日 18:00"),
-    "X（Twitter）に投稿する文章を作成してください。トーンはプロフェッショナルかつ親しみやすく、140字前後でお願いします。",
+    "X（Twitter）に投稿してください。トーンはプロフェッショナルかつ親しみやすく、140字前後でお願いします。",
     "full_auto",
     "eco",
     7,
@@ -172,20 +181,27 @@ export function createAutomationFromInput(input: CreateAutomationInput): Automat
     executionLevel: normalizeExecutionLevel(input.executionLevel),
     executionMode: normalizeExecutionMode(input.executionMode),
     snsBatchDays: normalizeSnsBatchDays(input.snsBatchDays),
-    executionFlow: normalizeExecutionFlow(
-      input.executionFlow ??
-        createDefaultExecutionFlow(
-          inferWorkflowTemplate(
-            `${input.name} ${input.workflow.assignment}`,
+    executionFlow: applyExternalPublishIntent(
+      normalizeExecutionFlow(
+        input.executionFlow ??
+          createDefaultExecutionFlow(
+            inferWorkflowTemplate(
+              `${input.name} ${input.workflow.assignment}`,
+            ),
           ),
-        ),
+      ),
+      `${input.name} ${input.workflow.assignment}`,
     ),
     enabled: input.enabled ?? true,
     lastRun: null,
     nextRun: computeNextRunIso(schedule, nextRunFrom),
+    nextRetryAt: null,
+    activeSlotKey: null,
     status: "idle",
     lastWorkflowRunId: null,
     lastError: null,
+    lastResultSummary: null,
+    currentAttempt: 0,
     successCount: 0,
     failureCount: 0,
     runHistory: [],

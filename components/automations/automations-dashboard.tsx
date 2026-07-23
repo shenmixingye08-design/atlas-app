@@ -98,6 +98,18 @@ export function AutomationsDashboard() {
     void loadAutomations();
   }, [loadAutomations]);
 
+  // While AI is working, refresh so status / nextRun / lastResult stay live.
+  useEffect(() => {
+    const hasActive = automations.some(
+      (item) => item.status === "running" || item.status === "retrying",
+    );
+    if (!hasActive) return;
+    const timer = window.setInterval(() => {
+      void loadAutomations();
+    }, 4_000);
+    return () => window.clearInterval(timer);
+  }, [automations, loadAutomations]);
+
   // Notification deep link (/automations?id=...) opens the exact automation's
   // detail panel once loaded, so「結果を見る」lands on the right item.
   useEffect(() => {
@@ -138,7 +150,13 @@ export function AutomationsDashboard() {
 
     setAutomations((prev) =>
       prev.map((item) =>
-        item.id === id ? { ...item, status: "running" as const } : item,
+        item.id === id
+          ? {
+              ...item,
+              status: "running" as const,
+              lastResultSummary: ui.entrustedJobs.workingNow,
+            }
+          : item,
       ),
     );
 
@@ -166,7 +184,7 @@ export function AutomationsDashboard() {
 
   const summaryCards = [
     { label: ui.entrustedJobs.summaryScheduled, value: summary.scheduled },
-    { label: ui.entrustedJobs.summaryNeedsReview, value: summary.needsReview },
+    { label: ui.entrustedJobs.summaryRunning, value: summary.running },
     { label: ui.entrustedJobs.summaryCompleted, value: summary.completed },
     { label: ui.entrustedJobs.summaryPaused, value: summary.paused },
   ] as const;

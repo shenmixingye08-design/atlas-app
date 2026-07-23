@@ -50,10 +50,23 @@ vi.mock("@/lib/billing/subscriptions/lifecycle", () => ({
 }));
 
 vi.mock("@/lib/notifications/emitters", () => ({
+  notifyAutomationStarted: vi.fn(),
   notifyAutomationAwaitingReview: vi.fn(),
   notifyAutomationCompleted: vi.fn(),
   notifyAutomationFailed: vi.fn(),
+  notifyAutomationRetry: vi.fn(),
   notifyOwnerSystemIncident: vi.fn(),
+}));
+
+vi.mock("@/lib/integrations/x/post/automation", () => ({
+  maybeAutoPostToXAfterAutomation: vi.fn(async () => ({ attempted: false })),
+  resolveTweetTextForPublish: vi.fn(() => ""),
+  processScheduledXPostsFromAutomationTick: vi.fn(async () => []),
+  processDueAutoPostsFromAutomationTick: vi.fn(async () => []),
+}));
+
+vi.mock("./execution-log", () => ({
+  recordAutomationExecutionLog: vi.fn(),
 }));
 
 describe("automation persistence and cron tick", () => {
@@ -179,17 +192,17 @@ describe("automation persistence and cron tick", () => {
     expect(afterOk?.lastRun).toBeTruthy();
     expect(afterOk?.runHistory[0]?.status).toBe("completed");
 
-    vi.mocked(orchestrate).mockResolvedValueOnce({
+    const failedPayload = {
       assignment: "実行して",
-      status: "failed",
-      workflow: { status: "failed" },
+      status: "failed" as const,
+      workflow: { status: "failed" as const },
       ceo: null,
       plannerPlan: null,
       plannerTasks: null,
       tasks: [],
       executions: [],
       deliverable: {
-        type: "generic",
+        type: "generic" as const,
         title: "",
         summary: "",
         sections: [],
@@ -200,12 +213,49 @@ describe("automation persistence and cron tick", () => {
       finalResponse: "",
       totalDurationMs: 5,
       error: "boom",
-    } as never);
+    };
+    vi.mocked(orchestrate).mockResolvedValue(failedPayload as never);
 
-    const failed = await automationService.runNow(created.id, {
+    const scheduledRetry = await automationService.runNow(created.id, {
       userId: "user_run",
     });
-    expect(failed?.status).toBe("failed");
+    expect(scheduledRetry?.status).toBe("retrying");
+    expect(scheduledRetry?.attempt).toBe(1);
+    expect(scheduledRetry?.nextRetryAt).toBeTruthy();
+
+    const afterScheduledRetry = await automationService.getByIdForUser(
+      created.id,
+      "user_run",
+    );
+    expect(afterScheduledRetry?.failureCount).toBe(0);
+    expect(afterScheduledRetry?.status).toBe("retrying");
+    expect(afterScheduledRetry?.runHistory[0]?.status).toBe("retrying");
+    expect(afterScheduledRetry?.runHistory[0]?.attempt).toBe(1);
+
+    const { serverAutomationRepository } = await import(
+      "./repositories/server-automation-repository"
+    );
+
+    await serverAutomationRepository.update(created.id, {
+      nextRetryAt: "2020-01-01T00:00:00.000Z",
+    });
+    const retry2 = await automationService.processDueAutomations();
+    expect(retry2[0]?.status).toBe("retrying");
+    expect(retry2[0]?.attempt).toBe(2);
+
+    await serverAutomationRepository.update(created.id, {
+      nextRetryAt: "2020-01-01T00:00:00.000Z",
+    });
+    const retry3 = await automationService.processDueAutomations();
+    expect(retry3[0]?.status).toBe("retrying");
+    expect(retry3[0]?.attempt).toBe(3);
+
+    await serverAutomationRepository.update(created.id, {
+      nextRetryAt: "2020-01-01T00:00:00.000Z",
+    });
+    const finalFailure = await automationService.processDueAutomations();
+    expect(finalFailure[0]?.status).toBe("failed");
+    expect(finalFailure[0]?.attempt).toBe(4);
 
     const afterFail = await automationService.getByIdForUser(
       created.id,
@@ -214,7 +264,9 @@ describe("automation persistence and cron tick", () => {
     expect(afterFail?.failureCount).toBe(1);
     expect(afterFail?.successCount).toBe(1);
     expect(afterFail?.status).toBe("failed");
-  });
+    expect(afterFail?.nextRetryAt).toBeNull();
+    expect(afterFail?.runHistory[0]?.attempt).toBe(4);
+  }, 20_000);
 
   it("prevents double tick claims for the same nextRun slot", async () => {
     const { claimAutomationTickSlot } = await import("./global-durable");

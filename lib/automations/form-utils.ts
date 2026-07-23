@@ -14,13 +14,14 @@ import { DEFAULT_EXECUTION_LEVEL } from "./execution-level";
 import { DEFAULT_EXECUTION_MODE } from "@/lib/cost-optimization/execution-mode";
 import {
   createDefaultExecutionFlow,
+  applyExternalPublishIntent,
   inferWorkflowTemplate,
   normalizeExecutionFlow,
 } from "./execution-flow";
 import { DEFAULT_AUTOMATION_TIMEZONE, presetToCron } from "./schedule";
 import { DEFAULT_AUTOMATION_TIMING } from "./timing-defaults";
 
-export type FrequencyOption = "daily" | "weekly" | "monthly";
+export type FrequencyOption = "daily" | "weekly" | "monthly" | "once";
 
 export type AutomationFormState = {
   title: string;
@@ -31,6 +32,8 @@ export type AutomationFormState = {
   dayOfMonth: number;
   hour: number;
   minute: number;
+  /** Local datetime string for one-shot runs (`YYYY-MM-DDTHH:mm`). */
+  onceAt: string;
   startDate: string;
   endType: AutomationEndCondition["type"];
   endDate: string;
@@ -63,6 +66,7 @@ export function defaultAutomationFormState(
     dayOfMonth: 1,
     hour: 9,
     minute: 0,
+    onceAt: "",
     startDate: "",
     endType: "never",
     endDate: "",
@@ -84,6 +88,12 @@ export function buildScheduleLabel(state: AutomationFormState): string {
       return `毎週${WEEKDAY_LABELS[state.dayOfWeek]} ${time}`;
     case "monthly":
       return `毎月${state.dayOfMonth}日 ${time}`;
+    case "once": {
+      if (!state.onceAt) return "指定日時";
+      const at = new Date(state.onceAt);
+      if (!Number.isFinite(at.getTime())) return `指定日時 ${state.onceAt}`;
+      return `指定日時 ${at.toLocaleString("ja-JP", { timeZone: DEFAULT_AUTOMATION_TIMEZONE })}`;
+    }
   }
 }
 
@@ -105,6 +115,16 @@ export function buildSchedulePreset(state: AutomationFormState): SchedulePreset 
         hour: state.hour,
         minute: state.minute,
       };
+    case "once": {
+      const raw = state.onceAt.trim();
+      const at = raw ? new Date(raw) : new Date();
+      return {
+        type: "once",
+        at: Number.isFinite(at.getTime())
+          ? at.toISOString()
+          : new Date().toISOString(),
+      };
+    }
   }
 }
 
@@ -157,7 +177,10 @@ export function buildCreateInputFromForm(
     executionLevel: state.executionLevel,
     executionMode: state.executionMode,
     snsBatchDays: state.snsBatchDays,
-    executionFlow: normalizeExecutionFlow(state.executionFlow),
+    executionFlow: applyExternalPublishIntent(
+      normalizeExecutionFlow(state.executionFlow),
+      `${state.title} ${state.assignment}`,
+    ),
     enabled: true,
   };
 }
@@ -196,8 +219,23 @@ export function formStateFromCreateInput(
     frequency: preset.type,
     dayOfWeek: preset.type === "weekly" ? preset.dayOfWeek : base.dayOfWeek,
     dayOfMonth: preset.type === "monthly" ? preset.dayOfMonth : base.dayOfMonth,
-    hour: preset.hour,
-    minute: preset.minute,
+    hour:
+      preset.type === "once"
+        ? new Date(preset.at).getHours()
+        : preset.hour,
+    minute:
+      preset.type === "once"
+        ? new Date(preset.at).getMinutes()
+        : preset.minute,
+    onceAt:
+      preset.type === "once"
+        ? (() => {
+            const at = new Date(preset.at);
+            if (!Number.isFinite(at.getTime())) return "";
+            const pad = (n: number) => String(n).padStart(2, "0");
+            return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}`;
+          })()
+        : "",
     startDate: timing.startDate
       ? new Date(timing.startDate).toISOString().slice(0, 10)
       : "",
@@ -231,12 +269,16 @@ export function syncExecutionFlowFromJobText(
     `${state.title} ${state.assignment}`,
   ) as WorkflowTemplateId;
 
-  if (state.executionFlow.templateId === templateId) {
-    return state;
-  }
+  const baseFlow =
+    state.executionFlow.templateId === templateId
+      ? state.executionFlow
+      : createDefaultExecutionFlow(templateId);
 
   return {
     ...state,
-    executionFlow: createDefaultExecutionFlow(templateId),
+    executionFlow: applyExternalPublishIntent(
+      normalizeExecutionFlow(baseFlow),
+      `${state.title} ${state.assignment}`,
+    ),
   };
 }

@@ -9,11 +9,13 @@ import {
   ENTRUSTED_JOB_STATUS_LABELS,
   describeMaterialsAndMemory,
   getConfirmationScopeLabel,
+  getLastResultLabel,
   resolveEntrustedJobStatus,
   resolveScheduleMethod,
   formatAutomationSuccessRate,
   type EntrustedJobStatus,
 } from "@/lib/automations/display";
+import { formatDurationMs } from "@/lib/automations/execution-status";
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
 import { Card } from "@/components/ui/card";
@@ -33,6 +35,7 @@ function formatSuccessRate(automation: Automation): string {
 function statusToChip(status: EntrustedJobStatus): StatusVariant {
   switch (status) {
     case "running":
+    case "retrying":
       return "running";
     case "completed":
       return "completed";
@@ -41,10 +44,20 @@ function statusToChip(status: EntrustedJobStatus): StatusVariant {
     case "needs_review":
       return "warning";
     case "paused":
+    case "waiting":
       return "waiting";
     default:
       return "info";
   }
+}
+
+function reassuranceMessage(status: EntrustedJobStatus): string | null {
+  if (status === "running") return ui.entrustedJobs.workingNow;
+  if (status === "retrying") return ui.entrustedJobs.retryingNow;
+  if (status === "waiting" || status === "scheduled") {
+    return ui.entrustedJobs.waitingNext;
+  }
+  return null;
 }
 
 export function AutomationCard({
@@ -55,6 +68,8 @@ export function AutomationCard({
 }: AutomationCardProps) {
   const status = resolveEntrustedJobStatus(automation);
   const schedule = resolveScheduleMethod(automation.schedule);
+  const reassurance = reassuranceMessage(status);
+  const latest = automation.runHistory?.[0];
 
   return (
     <Card
@@ -62,6 +77,8 @@ export function AutomationCard({
       className={cn(
         "border border-[var(--border-subtle)] bg-[var(--card)] transition-shadow hover:shadow-[var(--shadow-md)]",
         !automation.enabled && "opacity-80",
+        (status === "running" || status === "retrying") &&
+          "ring-1 ring-accent/30",
       )}
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -82,6 +99,18 @@ export function AutomationCard({
           <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
             {automation.description || automation.workflow.assignment}
           </p>
+          {reassurance && (
+            <p
+              className={cn(
+                "mt-2 text-sm font-medium",
+                status === "running" || status === "retrying"
+                  ? "text-accent"
+                  : "text-[var(--text-secondary)]",
+              )}
+            >
+              {reassurance}
+            </p>
+          )}
         </button>
 
         <label className="flex min-h-[48px] shrink-0 items-center gap-3 self-start rounded-full bg-[var(--surface-muted)] px-3 py-2">
@@ -92,7 +121,11 @@ export function AutomationCard({
             type="checkbox"
             className="peer sr-only"
             checked={automation.enabled}
-            disabled={isUpdating || automation.status === "running"}
+            disabled={
+              isUpdating ||
+              automation.status === "running" ||
+              automation.status === "retrying"
+            }
             onChange={(event) =>
               onToggleEnabled(automation.id, event.target.checked)
             }
@@ -135,19 +168,32 @@ export function AutomationCard({
         </div>
         <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
           <dt className="text-xs text-[var(--text-muted)]">
-            {ui.entrustedJobs.lastRun}
-          </dt>
-          <dd className="mt-1 font-medium text-foreground">
-            {formatAutomationDateTime(automation.lastRun)}
-          </dd>
-        </div>
-        <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
-          <dt className="text-xs text-[var(--text-muted)]">
-            {ui.entrustedJobs.statusLabel}
+            {ui.entrustedJobs.currentState}
           </dt>
           <dd className="mt-1 font-medium text-foreground">
             {ENTRUSTED_JOB_STATUS_LABELS[status]}
             {!automation.enabled ? " / OFF" : " / ON"}
+          </dd>
+        </div>
+        <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
+          <dt className="text-xs text-[var(--text-muted)]">
+            {ui.entrustedJobs.lastRun}
+          </dt>
+          <dd className="mt-1 font-medium text-foreground">
+            {formatAutomationDateTime(automation.lastRun)}
+            {latest?.durationMs != null && (
+              <span className="mt-0.5 block text-xs font-normal text-[var(--text-secondary)]">
+                {formatDurationMs(latest.durationMs)}
+              </span>
+            )}
+          </dd>
+        </div>
+        <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3 sm:col-span-2">
+          <dt className="text-xs text-[var(--text-muted)]">
+            {ui.entrustedJobs.lastResult}
+          </dt>
+          <dd className="mt-1 font-medium text-foreground break-all">
+            {getLastResultLabel(automation)}
           </dd>
         </div>
         <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
