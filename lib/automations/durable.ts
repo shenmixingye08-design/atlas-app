@@ -42,8 +42,20 @@ function compactAutomations(
       runHistory: (row.runHistory ?? []).slice(0, 8).map((entry) => ({
         ...entry,
         error: entry.error?.slice(0, 160) ?? null,
+        deliverablePreview: entry.deliverablePreview?.slice(0, 160) ?? null,
+        actions: (entry.actions ?? []).slice(0, 8),
+        apisUsed: (entry.apisUsed ?? []).slice(0, 8),
+        artifacts: entry.artifacts
+          ? {
+              tweetUrl: entry.artifacts.tweetUrl?.slice(0, 200) ?? null,
+              tweetId: entry.artifacts.tweetId?.slice(0, 64) ?? null,
+              deliverableCount: entry.artifacts.deliverableCount,
+              preview: entry.artifacts.preview?.slice(0, 160) ?? null,
+            }
+          : null,
       })),
       lastError: row.lastError?.slice(0, 200) ?? null,
+      lastResultSummary: row.lastResultSummary?.slice(0, 240) ?? null,
     })),
   };
 }

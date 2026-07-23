@@ -35,6 +35,7 @@ import {
 import { recordCostFromOrchestration } from "@/lib/owner/cost-ranking/telemetry";
 import { recordAnonymousUserActivity } from "@/lib/owner/anonymous-user-analysis/telemetry";
 import {
+  applyExternalPublishIntent,
   buildExecutionFlowContext,
   getEnabledStepIds,
   normalizeExecutionFlow,
@@ -42,13 +43,30 @@ import {
 import { computeNextRunIso } from "./schedule";
 import { buildCompanyOrchestrationMetadata } from "@/lib/company-templates/loader";
 import { getServerActiveCompanyState } from "@/lib/company-templates/store";
-import { maybeAutoPostToXAfterAutomation } from "@/lib/integrations/x/post/automation";
+import {
+  maybeAutoPostToXAfterAutomation,
+  resolveTweetTextForPublish,
+} from "@/lib/integrations/x/post/automation";
 import {
   notifyAutomationAwaitingReview,
   notifyAutomationCompleted,
   notifyAutomationFailed,
+  notifyAutomationStarted,
 } from "@/lib/notifications/emitters";
-import type { Automation, AutomationRunHistoryEntry, AutomationRunResult } from "./types";
+import { recordAutomationExecutionLog } from "./execution-log";
+import {
+  AUTOMATION_MAX_ATTEMPTS,
+  isFinalAutomationAttempt,
+  retryBackoffMs,
+  shouldRetryAutomationAttempt,
+} from "./retry-policy";
+import { describeLastRunResult } from "./execution-status";
+import type {
+  Automation,
+  AutomationRunArtifacts,
+  AutomationRunHistoryEntry,
+  AutomationRunResult,
+} from "./types";
 import { serverAutomationRepository } from "./repositories/server-automation-repository";
 import { MAX_AUTOMATION_RUN_HISTORY } from "./repositories/server-automation-repository";
 import { serverWorkflowRunRepository } from "./repositories/workflow-run-store";
@@ -59,6 +77,22 @@ export type ExecuteAutomationOptions = {
   requestOrigin?: string;
 };
 
+type AttemptOutcome = {
+  workflowRunId: string;
+  status: "completed" | "failed";
+  orchestrationStatus: "completed" | "failed";
+  approved: boolean;
+  totalDurationMs: number;
+  finalResponsePreview: string | null;
+  error: string | null;
+  deliverableCount: number;
+  artifacts: AutomationRunArtifacts | null;
+  actions: string[];
+  apisUsed: string[];
+  startedAt: string;
+  completedAt: string;
+};
+
 function appendRunHistory(
   existing: AutomationRunHistoryEntry[] | undefined,
   entry: AutomationRunHistoryEntry,
@@ -66,20 +100,41 @@ function appendRunHistory(
   return [entry, ...(existing ?? [])].slice(0, MAX_AUTOMATION_RUN_HISTORY);
 }
 
+function sleep(ms: number): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildResultSummary(outcome: AttemptOutcome): string {
+  if (outcome.status === "completed") {
+    if (outcome.artifacts?.tweetUrl) {
+      return `完了 · 投稿URL: ${outcome.artifacts.tweetUrl}`;
+    }
+    if (outcome.finalResponsePreview) {
+      return `完了 · ${outcome.finalResponsePreview.slice(0, 120)}`;
+    }
+    return "完了しました";
+  }
+  return outcome.error?.trim() || "失敗しました";
+}
+
 /**
- * Runs one automation through the full Atlas pipeline:
- * orchestrate → deliverables → WorkflowRun history.
- * Does NOT duplicate AI logic — reuses existing modules.
+ * Single orchestration attempt for one automation.
+ * Retries are handled by {@link executeAutomationRun}.
  */
-export async function executeAutomationRun(
+async function runAutomationAttempt(
   automation: Automation,
-  options: ExecuteAutomationOptions = {},
-): Promise<AutomationRunResult> {
+  options: ExecuteAutomationOptions,
+  attempt: number,
+): Promise<AttemptOutcome> {
   const triggerType = options.triggerType ?? "automation";
   const startedAt = new Date().toISOString();
+  const actions: string[] = [];
+  const apisUsed: string[] = [];
 
   await serverAutomationRepository.update(automation.id, {
-    status: "running",
+    status: attempt > 1 ? "retrying" : "running",
+    currentAttempt: attempt,
     lastError: null,
   });
 
@@ -93,7 +148,10 @@ export async function executeAutomationRun(
   });
 
   try {
-    const executionFlow = normalizeExecutionFlow(automation.executionFlow);
+    const executionFlow = applyExternalPublishIntent(
+      normalizeExecutionFlow(automation.executionFlow),
+      `${automation.name} ${automation.workflow.assignment}`,
+    );
     const flowContext = buildExecutionFlowContext(executionFlow);
     const executionMode = resolveAutomationExecutionMode(automation);
     const snsBatchDays =
@@ -118,10 +176,15 @@ export async function executeAutomationRun(
       if (cached) {
         result = cached;
         servedFromRequestCache = true;
+        actions.push("キャッシュから結果を再利用");
+        apisUsed.push("request_cache");
       }
     }
 
     if (!result) {
+      actions.push("AIエージェント起動");
+      actions.push(`ワークフロー実行（${executionFlow.templateId}）`);
+      apisUsed.push("openai");
       result = await orchestrate({
         assignment,
         metadata: {
@@ -131,6 +194,7 @@ export async function executeAutomationRun(
           automationId: automation.id,
           automationName: automation.name,
           triggerType,
+          attempt,
           ...(options.userId ? { userId: options.userId } : {}),
           executionFlow: {
             templateId: executionFlow.templateId,
@@ -147,6 +211,7 @@ export async function executeAutomationRun(
       if (executionMode !== "high_quality") {
         setCachedOrchestrationResult(cacheKey, result, executionMode);
       }
+      actions.push("文章・成果物を生成");
     }
 
     recordCostRun({
@@ -199,30 +264,47 @@ export async function executeAutomationRun(
         batchDays: snsBatchDays,
         content: result.finalResponse,
       });
+      actions.push(`SNS ${snsBatchDays}日分の予約下書きを保存`);
     }
 
-    // Tracks a real SNS publish failure so we never report "投稿完了" when
-    // nothing actually reached X. Holds the user-facing reason on failure.
     let snsPostFailure: string | null = null;
+    let artifacts: AutomationRunArtifacts | null = null;
 
-    if (result.status === "completed" && result.finalResponse.trim()) {
+    const publishText =
+      resolveTweetTextForPublish({
+        deliverable: result.deliverable,
+        finalResponse: result.finalResponse,
+      }) || result.finalResponse.trim();
+
+    if (result.status === "completed" && publishText) {
       try {
         const autoPost = await maybeAutoPostToXAfterAutomation({
           userId: options.userId,
-          automation,
-          content: result.finalResponse,
+          automation: { ...automation, executionFlow },
+          content: publishText,
         });
 
-        // Only immediate "publish" posts hit X during this run; a "schedule"
-        // result is a successful reservation, not a completed post.
         if (autoPost.attempted && autoPost.mode === "publish") {
+          actions.push("X APIへ投稿");
+          apisUsed.push("x_api");
           const postResult = autoPost.result;
           if (postResult.status !== "ready") {
             snsPostFailure = postResult.message;
           } else if (postResult.history?.status !== "success") {
             snsPostFailure =
               postResult.history?.errorMessage ?? "Xへの投稿に失敗しました";
+          } else {
+            artifacts = {
+              tweetUrl: postResult.history.tweetUrl,
+              tweetId: postResult.history.tweetId,
+              preview: publishText.slice(0, 160),
+            };
+            actions.push("投稿URL取得");
+            actions.push("投稿成功を確認");
           }
+        } else if (autoPost.attempted && autoPost.mode === "schedule") {
+          actions.push("X投稿を予約");
+          apisUsed.push("x_api");
         }
       } catch (postError) {
         console.error(
@@ -233,6 +315,8 @@ export async function executeAutomationRun(
           postError instanceof Error
             ? postError.message
             : "Xへの投稿に失敗しました";
+        apisUsed.push("x_api");
+        actions.push("X投稿に失敗");
       }
     }
 
@@ -244,6 +328,8 @@ export async function executeAutomationRun(
       options.requestOrigin
     ) {
       try {
+        actions.push("成果物ファイルを生成");
+        apisUsed.push("deliverables");
         const generated = await generateDeliverables(
           {
             assignment: automation.workflow.assignment,
@@ -253,6 +339,13 @@ export async function executeAutomationRun(
           options.requestOrigin,
         );
         deliverableCount = generated.deliverables.length;
+        artifacts = {
+          ...(artifacts ?? {}),
+          deliverableCount,
+          preview:
+            artifacts?.preview ??
+            previewFinalResponse(result.finalResponse, 160),
+        };
 
         if (generated.deliverables.length > 0) {
           try {
@@ -261,6 +354,7 @@ export async function executeAutomationRun(
               projectName: automation.name,
               workflowId: workflowRun.id,
             });
+            actions.push("成果物をクラウドへ保存");
           } catch (uploadError) {
             console.error(
               `[executeAutomationRun] Drive upload failed for ${automation.id}:`,
@@ -278,12 +372,13 @@ export async function executeAutomationRun(
 
     const preview = previewFinalResponse(result.finalResponse);
     const completedAt = new Date().toISOString();
-
-    // A completed orchestration whose SNS publish failed must be surfaced as a
-    // failure — otherwise the user sees "投稿完了" while nothing reached X.
     const effectiveStatus: typeof result.status =
       snsPostFailure && result.status === "completed" ? "failed" : result.status;
     const effectiveError = snsPostFailure ?? result.error ?? null;
+
+    if (effectiveStatus === "completed") {
+      actions.push("完了");
+    }
 
     await serverWorkflowRunRepository.complete({
       id: workflowRun.id,
@@ -296,64 +391,11 @@ export async function executeAutomationRun(
       completedAt,
     });
 
-    const nextRun = computeNextRunIso(automation.schedule, new Date(completedAt));
-    const succeeded = effectiveStatus === "completed";
-    const latest = await serverAutomationRepository.findById(automation.id);
-
-    await serverAutomationRepository.update(automation.id, {
-      status: succeeded ? "success" : "failed",
-      lastRun: completedAt,
-      nextRun,
-      lastWorkflowRunId: workflowRun.id,
-      lastError: effectiveError,
-      successCount: (latest?.successCount ?? automation.successCount ?? 0) + (succeeded ? 1 : 0),
-      failureCount: (latest?.failureCount ?? automation.failureCount ?? 0) + (succeeded ? 0 : 1),
-      runHistory: appendRunHistory(latest?.runHistory ?? automation.runHistory, {
-        id: workflowRun.id,
-        status: succeeded ? "completed" : "failed",
-        startedAt,
-        completedAt,
-        error: effectiveError,
-        triggerType,
-      }),
-    });
-
-    const flow = normalizeExecutionFlow(automation.executionFlow);
-    if (effectiveStatus === "failed") {
-      notifyAutomationFailed(options.userId, {
-        automationId: automation.id,
-        name: automation.name,
-        error: effectiveError ?? undefined,
-      });
-    } else if (effectiveStatus === "completed" && !result.approved) {
-      notifyAutomationAwaitingReview(options.userId, {
-        automationId: automation.id,
-        name: automation.name,
-      });
-    } else if (effectiveStatus === "completed") {
-      notifyAutomationCompleted(options.userId, {
-        automationId: automation.id,
-        name: automation.name,
-        templateId: flow.templateId,
-      });
-    }
-
     if (effectiveStatus === "failed") {
       recordOpenAiFailureIfApplicable(
         effectiveError ?? "Automation orchestration failed",
         "automation_run",
       );
-      const { recordMonitoringIncident } = await import(
-        "@/lib/owner/monitoring"
-      );
-      recordMonitoringIncident({
-        kind: "automation_failure",
-        targetId: "automation",
-        message: effectiveError ?? "Automation orchestration failed",
-        userId: options.userId ?? null,
-        critical: true,
-        source: "automation_run",
-      });
       if (executionFlow.templateId === "sns_post") {
         recordXPostFailure(
           effectiveError ?? "SNS post automation failed",
@@ -382,7 +424,6 @@ export async function executeAutomationRun(
     }
 
     return {
-      automationId: automation.id,
       workflowRunId: workflowRun.id,
       status: effectiveStatus === "completed" ? "completed" : "failed",
       orchestrationStatus: result.status,
@@ -391,27 +432,22 @@ export async function executeAutomationRun(
       finalResponsePreview: preview,
       error: effectiveError,
       deliverableCount,
+      artifacts,
+      actions,
+      apisUsed: [...new Set(apisUsed)],
+      startedAt,
+      completedAt,
     };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Automation execution failed";
     recordOpenAiFailureIfApplicable(error, "automation_run");
-    const { recordMonitoringIncident } = await import(
-      "@/lib/owner/monitoring"
-    );
-    recordMonitoringIncident({
-      kind: "automation_failure",
-      targetId: "automation",
-      message,
-      userId: options.userId ?? null,
-      critical: true,
-      source: "automation_run",
-    });
     if (normalizeExecutionFlow(automation.executionFlow).templateId === "sns_post") {
       recordXPostFailure(message, "automation_sns_post");
     }
     const completedAt = new Date().toISOString();
     const durationMs = Date.now() - new Date(startedAt).getTime();
+    actions.push("実行中に例外が発生");
 
     const failedResult = {
       assignment: automation.workflow.assignment,
@@ -441,40 +477,215 @@ export async function executeAutomationRun(
       completedAt,
     });
 
-    const latest = await serverAutomationRepository.findById(automation.id);
-    await serverAutomationRepository.update(automation.id, {
-      status: "failed",
-      lastRun: completedAt,
-      nextRun: computeNextRunIso(automation.schedule, new Date(completedAt)),
-      lastWorkflowRunId: workflowRun.id,
-      lastError: message,
-      failureCount: (latest?.failureCount ?? automation.failureCount ?? 0) + 1,
-      runHistory: appendRunHistory(latest?.runHistory ?? automation.runHistory, {
-        id: workflowRun.id,
-        status: "failed",
-        startedAt,
-        completedAt,
-        error: message,
-        triggerType,
-      }),
-    });
-
-    notifyAutomationFailed(options.userId, {
-      automationId: automation.id,
-      name: automation.name,
-      error: message,
-    });
-
     return {
-      automationId: automation.id,
       workflowRunId: workflowRun.id,
       status: "failed",
       orchestrationStatus: "failed",
       approved: false,
-      totalDurationMs: Date.now() - new Date(startedAt).getTime(),
+      totalDurationMs: durationMs,
       finalResponsePreview: null,
       error: message,
       deliverableCount: 0,
+      artifacts: null,
+      actions,
+      apisUsed: [...new Set(apisUsed.length > 0 ? apisUsed : ["openai"])],
+      startedAt,
+      completedAt,
     };
   }
+}
+
+/**
+ * Runs one automation through the full Atlas pipeline with up to 3 attempts:
+ * orchestrate → deliverables → optional X publish → WorkflowRun history.
+ * Does NOT duplicate AI logic — reuses existing modules.
+ */
+export async function executeAutomationRun(
+  automation: Automation,
+  options: ExecuteAutomationOptions = {},
+): Promise<AutomationRunResult> {
+  const triggerType = options.triggerType ?? "automation";
+  const runStartedAt = new Date().toISOString();
+
+  notifyAutomationStarted(options.userId, {
+    automationId: automation.id,
+    name: automation.name,
+  });
+
+  let lastOutcome: AttemptOutcome | null = null;
+
+  for (let attempt = 1; attempt <= AUTOMATION_MAX_ATTEMPTS; attempt += 1) {
+    if (attempt > 1) {
+      await serverAutomationRepository.update(automation.id, {
+        status: "retrying",
+        currentAttempt: attempt,
+        lastError: lastOutcome?.error ?? null,
+        lastResultSummary: `リトライ中（${attempt}/${AUTOMATION_MAX_ATTEMPTS}）`,
+      });
+      await sleep(retryBackoffMs(attempt - 1));
+    } else {
+      await serverAutomationRepository.update(automation.id, {
+        status: "running",
+        currentAttempt: 1,
+        lastError: null,
+        lastResultSummary: "AI秘書が現在仕事を進めています",
+      });
+    }
+
+    lastOutcome = await runAutomationAttempt(automation, options, attempt);
+
+    const historyEntry: AutomationRunHistoryEntry = {
+      id: lastOutcome.workflowRunId,
+      status: lastOutcome.status,
+      startedAt: lastOutcome.startedAt,
+      completedAt: lastOutcome.completedAt,
+      durationMs: lastOutcome.totalDurationMs,
+      error: lastOutcome.error,
+      triggerType,
+      attempt,
+      deliverablePreview: lastOutcome.finalResponsePreview,
+      artifacts: lastOutcome.artifacts,
+      actions: lastOutcome.actions,
+      apisUsed: lastOutcome.apisUsed,
+    };
+
+    const latest = await serverAutomationRepository.findById(automation.id);
+    const nextHistory = appendRunHistory(
+      latest?.runHistory ?? automation.runHistory,
+      historyEntry,
+    );
+
+    recordAutomationExecutionLog({
+      userId: options.userId ?? automation.userId ?? null,
+      automationId: automation.id,
+      automationName: automation.name,
+      workflowRunId: lastOutcome.workflowRunId,
+      triggerType,
+      status: lastOutcome.status,
+      attempt,
+      startedAt: lastOutcome.startedAt,
+      completedAt: lastOutcome.completedAt,
+      durationMs: lastOutcome.totalDurationMs,
+      actions: lastOutcome.actions,
+      apisUsed: lastOutcome.apisUsed,
+      templateId: normalizeExecutionFlow(automation.executionFlow).templateId,
+      error: lastOutcome.error,
+      artifactUrls: [
+        lastOutcome.artifacts?.tweetUrl,
+      ].filter((url): url is string => Boolean(url)),
+    });
+
+    const succeeded = lastOutcome.status === "completed";
+
+    if (succeeded || !shouldRetryAutomationAttempt(attempt, succeeded)) {
+      const completedAt = lastOutcome.completedAt;
+      const nextRun = computeNextRunIso(automation.schedule, new Date(completedAt));
+      const resultSummary = buildResultSummary(lastOutcome);
+
+      await serverAutomationRepository.update(automation.id, {
+        status: succeeded ? "success" : "failed",
+        lastRun: completedAt,
+        nextRun,
+        lastWorkflowRunId: lastOutcome.workflowRunId,
+        lastError: lastOutcome.error,
+        lastResultSummary: resultSummary,
+        currentAttempt: attempt,
+        successCount:
+          (latest?.successCount ?? automation.successCount ?? 0) +
+          (succeeded ? 1 : 0),
+        failureCount:
+          (latest?.failureCount ?? automation.failureCount ?? 0) +
+          (succeeded ? 0 : 1),
+        runHistory: nextHistory,
+      });
+
+      if (!succeeded) {
+        const { recordMonitoringIncident } = await import(
+          "@/lib/owner/monitoring"
+        );
+        recordMonitoringIncident({
+          kind: "automation_failure",
+          targetId: "automation",
+          message: lastOutcome.error ?? "Automation orchestration failed",
+          userId: options.userId ?? null,
+          critical: true,
+          source: "automation_run",
+        });
+        // Notify only after all retries are exhausted.
+        if (isFinalAutomationAttempt(attempt) || !shouldRetryAutomationAttempt(attempt, false)) {
+          notifyAutomationFailed(options.userId, {
+            automationId: automation.id,
+            name: automation.name,
+            error: lastOutcome.error ?? undefined,
+          });
+        }
+      } else {
+        const flow = normalizeExecutionFlow(automation.executionFlow);
+        if (!lastOutcome.approved) {
+          notifyAutomationAwaitingReview(options.userId, {
+            automationId: automation.id,
+            name: automation.name,
+          });
+        } else {
+          notifyAutomationCompleted(options.userId, {
+            automationId: automation.id,
+            name: automation.name,
+            templateId: flow.templateId,
+            tweetUrl: lastOutcome.artifacts?.tweetUrl,
+          });
+        }
+      }
+
+      return {
+        automationId: automation.id,
+        workflowRunId: lastOutcome.workflowRunId,
+        status: succeeded ? "completed" : "failed",
+        orchestrationStatus: lastOutcome.orchestrationStatus,
+        approved: lastOutcome.approved,
+        totalDurationMs: Date.now() - new Date(runStartedAt).getTime(),
+        finalResponsePreview: lastOutcome.finalResponsePreview,
+        error: lastOutcome.error,
+        deliverableCount: lastOutcome.deliverableCount,
+        attempt,
+        artifacts: lastOutcome.artifacts,
+        actions: lastOutcome.actions,
+        apisUsed: lastOutcome.apisUsed,
+      };
+    }
+
+    // Persist intermediate retry state before next attempt.
+    await serverAutomationRepository.update(automation.id, {
+      status: "retrying",
+      currentAttempt: attempt,
+      lastError: lastOutcome.error,
+      lastResultSummary: `リトライ中（${attempt + 1}/${AUTOMATION_MAX_ATTEMPTS}）`,
+      lastWorkflowRunId: lastOutcome.workflowRunId,
+      runHistory: nextHistory,
+    });
+  }
+
+  // Unreachable — loop always returns — keep TypeScript satisfied.
+  const fallbackError = lastOutcome?.error ?? "Automation execution failed";
+  return {
+    automationId: automation.id,
+    workflowRunId: lastOutcome?.workflowRunId ?? automation.id,
+    status: "failed",
+    orchestrationStatus: "failed",
+    approved: false,
+    totalDurationMs: Date.now() - new Date(runStartedAt).getTime(),
+    finalResponsePreview: null,
+    error: fallbackError,
+    deliverableCount: 0,
+    attempt: AUTOMATION_MAX_ATTEMPTS,
+    artifacts: null,
+    actions: lastOutcome?.actions ?? [],
+    apisUsed: lastOutcome?.apisUsed ?? [],
+  };
+}
+
+/** @internal test helper */
+export function __testDescribeLastRunResult(
+  automation: Parameters<typeof describeLastRunResult>[0],
+) {
+  return describeLastRunResult(automation);
 }

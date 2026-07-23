@@ -14,6 +14,7 @@ import { DEFAULT_EXECUTION_LEVEL } from "./execution-level";
 import { DEFAULT_EXECUTION_MODE } from "@/lib/cost-optimization/execution-mode";
 import {
   createDefaultExecutionFlow,
+  applyExternalPublishIntent,
   inferWorkflowTemplate,
   normalizeExecutionFlow,
 } from "./execution-flow";
@@ -157,7 +158,10 @@ export function buildCreateInputFromForm(
     executionLevel: state.executionLevel,
     executionMode: state.executionMode,
     snsBatchDays: state.snsBatchDays,
-    executionFlow: normalizeExecutionFlow(state.executionFlow),
+    executionFlow: applyExternalPublishIntent(
+      normalizeExecutionFlow(state.executionFlow),
+      `${state.title} ${state.assignment}`,
+    ),
     enabled: true,
   };
 }
@@ -231,12 +235,16 @@ export function syncExecutionFlowFromJobText(
     `${state.title} ${state.assignment}`,
   ) as WorkflowTemplateId;
 
-  if (state.executionFlow.templateId === templateId) {
-    return state;
-  }
+  const baseFlow =
+    state.executionFlow.templateId === templateId
+      ? state.executionFlow
+      : createDefaultExecutionFlow(templateId);
 
   return {
     ...state,
-    executionFlow: createDefaultExecutionFlow(templateId),
+    executionFlow: applyExternalPublishIntent(
+      normalizeExecutionFlow(baseFlow),
+      `${state.title} ${state.assignment}`,
+    ),
   };
 }

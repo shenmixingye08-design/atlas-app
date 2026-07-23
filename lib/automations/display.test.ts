@@ -33,10 +33,12 @@ function baseAutomation(overrides: Partial<Automation> = {}): Automation {
     },
     enabled: true,
     lastRun: null,
-    nextRun: null,
+    nextRun: "2026-07-24T00:00:00.000Z",
     status: "idle",
     lastWorkflowRunId: null,
     lastError: null,
+    lastResultSummary: null,
+    currentAttempt: 0,
     userId: null,
     successCount: 0,
     failureCount: 0,
@@ -56,12 +58,15 @@ describe("entrusted job display helpers", () => {
       resolveEntrustedJobStatus(baseAutomation({ status: "running" })),
     ).toBe("running");
     expect(
+      resolveEntrustedJobStatus(baseAutomation({ status: "retrying" })),
+    ).toBe("retrying");
+    expect(
       resolveEntrustedJobStatus(baseAutomation({ status: "failed" })),
     ).toBe("error");
     expect(
       resolveEntrustedJobStatus(baseAutomation({ status: "success" })),
     ).toBe("completed");
-    expect(resolveEntrustedJobStatus(baseAutomation())).toBe("scheduled");
+    expect(resolveEntrustedJobStatus(baseAutomation())).toBe("waiting");
   });
 
   it("summarizes without inventing needs_review counts", () => {
@@ -69,9 +74,11 @@ describe("entrusted job display helpers", () => {
       baseAutomation({ id: "1", enabled: true, status: "idle" }),
       baseAutomation({ id: "2", enabled: false, status: "idle" }),
       baseAutomation({ id: "3", enabled: true, status: "success" }),
+      baseAutomation({ id: "4", enabled: true, status: "running" }),
     ]);
     expect(summary).toEqual({
       scheduled: 1,
+      running: 1,
       needsReview: 0,
       completed: 1,
       paused: 1,

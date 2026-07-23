@@ -123,6 +123,41 @@ export function setExecutionFlowTemplate(
   return createDefaultExecutionFlow(templateId);
 }
 
+/** True when the job text asks to actually publish (not just draft copy). */
+export function hasPublishIntent(text: string): boolean {
+  const normalized = text.toLowerCase();
+  const publish =
+    /投稿|ポスト|つぶや|ツイート|tweet|post/.test(normalized) &&
+    /投稿|ポスト|つぶや|ツイート|tweet|post|して|する|上げ|公開/.test(text);
+  const draftOnly =
+    /下書き|ドラフト|草案|文面だけ|文面のみ|作成だけ|作成のみ|準備だけ|保存だけ|案を(作|考)/.test(
+      text,
+    );
+  return publish && !draftOnly;
+}
+
+/**
+ * For SNS jobs with explicit publish intent, enable the publish step so the
+ * schedule tick can complete X投稿 end-to-end. Does not change executionLevel.
+ */
+export function applyExternalPublishIntent(
+  flow: WorkExecutionFlow,
+  jobText: string,
+): WorkExecutionFlow {
+  const normalized = normalizeExecutionFlow(flow);
+  if (normalized.templateId !== "sns_post") return normalized;
+  if (!hasPublishIntent(jobText)) return normalized;
+  return {
+    ...normalized,
+    steps: normalized.steps.map((step) => {
+      if (step.id === "publish") return { ...step, enabled: true };
+      // Prefer immediate publish over schedule_post when intent is clear.
+      if (step.id === "schedule_post") return { ...step, enabled: false };
+      return step;
+    }),
+  };
+}
+
 /** Compact one-line summary for cards and lists. */
 export function formatExecutionFlowSummary(flow: WorkExecutionFlow): string {
   const labels = getEnabledStepLabels(flow);

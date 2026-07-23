@@ -39,6 +39,7 @@ import {
 const AUTOMATION_STATUSES = [
   "idle",
   "running",
+  "retrying",
   "success",
   "failed",
 ] as const satisfies readonly AutomationStatus[];
@@ -242,6 +243,8 @@ export function normalizeAutomation(raw: unknown): Automation {
     status: pickEnum(record.status, AUTOMATION_STATUSES, DEFAULT_AUTOMATION_STATUS),
     lastWorkflowRunId: asOptionalString(record.lastWorkflowRunId),
     lastError: asOptionalString(record.lastError),
+    lastResultSummary: asOptionalString(record.lastResultSummary),
+    currentAttempt: Math.max(0, Number(record.currentAttempt) || 0),
     successCount: Math.max(0, Number(record.successCount) || 0),
     failureCount: Math.max(0, Number(record.failureCount) || 0),
     runHistory: Array.isArray(record.runHistory)

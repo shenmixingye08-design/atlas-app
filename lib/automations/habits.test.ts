@@ -30,6 +30,8 @@ function mockAutomation(partial: Partial<Automation>): Automation {
     status: "idle",
     lastWorkflowRunId: null,
     lastError: null,
+    lastResultSummary: null,
+    currentAttempt: 0,
     successCount: 0,
     failureCount: 0,
     runHistory: [],

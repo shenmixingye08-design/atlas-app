@@ -16,6 +16,8 @@ import { normalizeExecutionMode } from "@/lib/cost-optimization/execution-mode";
 import { normalizeSnsBatchDays } from "@/lib/cost-optimization/sns-batch";
 import { normalizeExecutionFlow } from "../execution-flow";
 import { DEFAULT_AUTOMATION_TIMING } from "../timing-defaults";
+import { normalizeRunHistory } from "../normalize-run-history";
+import { isActiveExecutionStatus } from "../execution-status";
 
 import type { AutomationRepository } from "./types";
 
@@ -84,12 +86,10 @@ function matchesFilter(automation: Automation, filter?: AutomationFilter): boole
 export function withAutomationDefaults(automation: Automation): Automation {
   const successCount = Math.max(0, automation.successCount ?? 0);
   const failureCount = Math.max(0, automation.failureCount ?? 0);
-  const runHistory = Array.isArray(automation.runHistory)
-    ? automation.runHistory.slice(0, MAX_RUN_HISTORY)
-    : [];
+  const runHistory = normalizeRunHistory(automation.runHistory, MAX_RUN_HISTORY);
 
   let status = automation.status;
-  if (status === "running") {
+  if (isActiveExecutionStatus(status)) {
     const updatedAt = new Date(automation.updatedAt).getTime();
     if (
       Number.isFinite(updatedAt) &&
@@ -111,6 +111,8 @@ export function withAutomationDefaults(automation: Automation): Automation {
     failureCount,
     runHistory,
     status,
+    lastResultSummary: automation.lastResultSummary ?? null,
+    currentAttempt: Math.max(0, automation.currentAttempt ?? 0),
     lastError:
       status === "failed" && !automation.lastError
         ? "実行がタイムアウトした可能性があります"

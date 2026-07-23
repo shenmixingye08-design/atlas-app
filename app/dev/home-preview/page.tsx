@@ -37,6 +37,8 @@ function sampleAutomation(
     nextRun: now,
     lastWorkflowRunId: null,
     lastError: null,
+    lastResultSummary: null,
+    currentAttempt: 0,
     successCount: 0,
     failureCount: 0,
     runHistory: [],

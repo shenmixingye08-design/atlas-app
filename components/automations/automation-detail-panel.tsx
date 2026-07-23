@@ -16,9 +16,11 @@ import {
   flowHasCriticalExternalActions,
   formatAutomationSuccessRate,
   getConfirmationScopeLabel,
+  getLastResultLabel,
   resolveEntrustedJobStatus,
   resolveScheduleMethod,
 } from "@/lib/automations/display";
+import { formatDurationMs } from "@/lib/automations/execution-status";
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
 import { Button } from "@/components/ui/button";
@@ -128,19 +130,26 @@ export function AutomationDetailPanel({
             <div className="mt-2">
               <StatusChip
                 status={
-                  status === "running"
+                  status === "running" || status === "retrying"
                     ? "running"
                     : status === "completed"
                       ? "completed"
                       : status === "error"
                         ? "error"
-                        : status === "paused"
+                        : status === "paused" || status === "waiting"
                           ? "waiting"
                           : "info"
                 }
                 label={ENTRUSTED_JOB_STATUS_LABELS[status]}
               />
             </div>
+            {(status === "running" || status === "retrying") && (
+              <p className="mt-2 text-sm font-medium text-accent">
+                {status === "retrying"
+                  ? ui.entrustedJobs.retryingNow
+                  : ui.entrustedJobs.workingNow}
+              </p>
+            )}
           </div>
           <Button variant="ghost" size="sm" onClick={onClose}>
             {ui.actions.close}
@@ -298,6 +307,14 @@ export function AutomationDetailPanel({
                     : "—"}
                 </dd>
               </div>
+              <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 sm:col-span-2">
+                <dt className="text-xs text-[var(--text-muted)]">
+                  {ui.entrustedJobs.lastResult}
+                </dt>
+                <dd className="mt-1 font-medium text-foreground break-all">
+                  {getLastResultLabel(automation)}
+                </dd>
+              </div>
               <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
                 <dt className="text-xs text-[var(--text-muted)]">
                   {ui.entrustedJobs.failureCount}
@@ -316,7 +333,7 @@ export function AutomationDetailPanel({
               </div>
               <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 sm:col-span-2">
                 <dt className="text-xs text-[var(--text-muted)]">
-                  {ui.entrustedJobs.statusLabel}
+                  {ui.entrustedJobs.currentState}
                 </dt>
                 <dd className="mt-1 font-medium text-foreground">
                   {ENTRUSTED_JOB_STATUS_LABELS[status]}
@@ -327,17 +344,77 @@ export function AutomationDetailPanel({
             <ul className="space-y-2">
               {(automation.runHistory ?? []).length === 0 ? (
                 <li className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-muted)]">
-                  {ui.entrustedJobs.fullHistoryComingSoon}
+                  {ui.entrustedJobs.noHistoryYet}
                 </li>
               ) : (
-                (automation.runHistory ?? []).slice(0, 8).map((entry) => (
+                (automation.runHistory ?? []).slice(0, 12).map((entry) => (
                   <li
-                    key={entry.id}
-                    className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-secondary)]"
+                    key={`${entry.id}-${entry.attempt}-${entry.startedAt}`}
+                    className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-3 text-sm text-[var(--text-secondary)]"
                   >
-                    {formatAutomationDateTime(entry.completedAt)} —{" "}
-                    {entry.status === "completed" ? "成功" : "失敗"}
-                    {entry.error ? `（${entry.error}）` : ""}
+                    <div className="flex flex-wrap items-center gap-2 font-medium text-foreground">
+                      <span>
+                        {entry.status === "completed"
+                          ? ui.entrustedJobs.statusCompleted
+                          : entry.status === "retrying"
+                            ? ui.entrustedJobs.statusRetrying
+                            : ui.entrustedJobs.statusFailed}
+                      </span>
+                      <span className="text-xs font-normal text-[var(--text-muted)]">
+                        {ui.entrustedJobs.historyAttempt} {entry.attempt ?? 1}
+                      </span>
+                    </div>
+                    <dl className="mt-2 grid gap-1 text-xs sm:grid-cols-2">
+                      <div>
+                        <dt className="text-[var(--text-muted)]">
+                          {ui.entrustedJobs.historyStart}
+                        </dt>
+                        <dd>{formatAutomationDateTime(entry.startedAt)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[var(--text-muted)]">
+                          {ui.entrustedJobs.historyEnd}
+                        </dt>
+                        <dd>{formatAutomationDateTime(entry.completedAt)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[var(--text-muted)]">
+                          {ui.entrustedJobs.historyDuration}
+                        </dt>
+                        <dd>{formatDurationMs(entry.durationMs)}</dd>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <dt className="text-[var(--text-muted)]">
+                          {ui.entrustedJobs.historyDeliverable}
+                        </dt>
+                        <dd className="break-all">
+                          {entry.artifacts?.tweetUrl ? (
+                            <a
+                              href={entry.artifacts.tweetUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-accent hover:underline"
+                            >
+                              {entry.artifacts.tweetUrl}
+                            </a>
+                          ) : (
+                            entry.deliverablePreview ||
+                            entry.artifacts?.preview ||
+                            "—"
+                          )}
+                        </dd>
+                      </div>
+                      {entry.error && (
+                        <div className="sm:col-span-2">
+                          <dt className="text-[var(--text-muted)]">
+                            {ui.entrustedJobs.historyError}
+                          </dt>
+                          <dd className="text-[var(--status-error)]">
+                            {entry.error}
+                          </dd>
+                        </div>
+                      )}
+                    </dl>
                   </li>
                 ))
               )}

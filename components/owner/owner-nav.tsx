@@ -9,6 +9,7 @@ type OwnerNavProps = {
     | "simulator"
     | "featureFlags"
     | "apiUsage"
+    | "automationExecutionLogs"
     | "errorMonitoring"
     | "popularityRanking"
     | "costRanking"
@@ -41,6 +42,11 @@ const LINKS = [
     id: "apiUsage" as const,
     href: "/owner/api-usage",
     label: ui.owner.navApiUsage,
+  },
+  {
+    id: "automationExecutionLogs" as const,
+    href: "/owner/automation-execution-logs",
+    label: ui.owner.navAutomationExecutionLogs,
   },
   {
     id: "errorMonitoring" as const,

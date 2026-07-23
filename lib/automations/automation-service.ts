@@ -168,7 +168,9 @@ export class AutomationService {
       const due = enabled.filter((automation) => isAutomationDue(automation));
 
       for (const automation of due) {
-        if (automation.status === "running") continue;
+        if (automation.status === "running" || automation.status === "retrying") {
+          continue;
+        }
 
         const claimed = await claimAutomationTickSlot(
           userId,

@@ -12,17 +12,43 @@ function deliverableActionUrl(deliverableId: string): string {
   return `/projects/${encodeURIComponent(deliverableId)}`;
 }
 
-export function notifyAutomationCompleted(
+export function notifyAutomationStarted(
   userId: string | null | undefined,
-  input: { automationId: string; name: string; templateId?: string },
+  input: { automationId: string; name: string },
 ) {
   if (!userId) return null;
   return createNotification({
     audience: "user",
     userId,
+    type: "automation",
+    title: "AI秘書が仕事を開始しました",
+    message: `「${input.name}」の作業を開始いたしました。完了までお任せください。`,
+    relatedTaskId: input.automationId,
+    relatedService: "atlas",
+    actionUrl: automationActionUrl(input.automationId),
+    automationId: input.automationId,
+  });
+}
+
+export function notifyAutomationCompleted(
+  userId: string | null | undefined,
+  input: {
+    automationId: string;
+    name: string;
+    templateId?: string;
+    tweetUrl?: string | null;
+  },
+) {
+  if (!userId) return null;
+  const tweetHint = input.tweetUrl
+    ? ` 投稿URL: ${input.tweetUrl}`
+    : "";
+  return createNotification({
+    audience: "user",
+    userId,
     type: "completed",
     title: "自動化が終了しました",
-    message: `お待たせいたしました。「${input.name}」の自動化が終了しました。`,
+    message: `お待たせいたしました。「${input.name}」の自動化が終了しました。${tweetHint}`.trim(),
     relatedTaskId: input.automationId,
     relatedService: input.templateId === "sns_post" ? "x" : "atlas",
     actionUrl: automationActionUrl(input.automationId),

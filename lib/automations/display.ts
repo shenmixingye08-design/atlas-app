@@ -3,6 +3,12 @@ import {
   normalizeExecutionFlow,
 } from "./execution-flow";
 import { getExecutionLevelLabel } from "./execution-level";
+import {
+  AUTOMATION_EXECUTION_STATE_LABELS,
+  describeLastRunResult,
+  resolveAutomationExecutionState,
+  type AutomationExecutionState,
+} from "./execution-status";
 import { isExternalIntegration, getStepDefinition } from "./workflow-templates";
 import type {
   Automation,
@@ -14,7 +20,9 @@ import type {
 /** User-facing job status for the entrusted-work screen. */
 export type EntrustedJobStatus =
   | "scheduled"
+  | "waiting"
   | "running"
+  | "retrying"
   | "needs_review"
   | "completed"
   | "paused"
@@ -22,11 +30,13 @@ export type EntrustedJobStatus =
 
 export const ENTRUSTED_JOB_STATUS_LABELS: Record<EntrustedJobStatus, string> = {
   scheduled: "実行予定",
-  running: "処理中",
+  waiting: "待機中",
+  running: "実行中",
+  retrying: "リトライ中",
   needs_review: "確認待ち",
   completed: "完了",
   paused: "停止中",
-  error: "エラー",
+  error: "失敗",
 };
 
 /** Confirmation scope mapped onto existing executionLevel values. */
@@ -70,14 +80,37 @@ export function resolveEntrustedJobStatus(
   automation: Automation,
 ): EntrustedJobStatus {
   if (!automation.enabled) return "paused";
-  if (automation.status === "running") return "running";
-  if (automation.status === "failed") return "error";
-  if (automation.status === "success") return "completed";
-  return "scheduled";
+  const execution = resolveAutomationExecutionState(automation);
+  switch (execution) {
+    case "running":
+      return "running";
+    case "retrying":
+      return "retrying";
+    case "failed":
+      return "error";
+    case "completed":
+      return "completed";
+    case "waiting":
+    default:
+      return automation.nextRun ? "waiting" : "scheduled";
+  }
+}
+
+export function getExecutionStateLabel(
+  automation: Automation,
+): string {
+  return AUTOMATION_EXECUTION_STATE_LABELS[
+    resolveAutomationExecutionState(automation)
+  ];
+}
+
+export function getLastResultLabel(automation: Automation): string {
+  return describeLastRunResult(automation);
 }
 
 export type EntrustedJobSummary = {
   scheduled: number;
+  running: number;
   needsReview: number;
   completed: number;
   paused: number;
@@ -88,6 +121,7 @@ export function summarizeEntrustedJobs(
 ): EntrustedJobSummary {
   const summary: EntrustedJobSummary = {
     scheduled: 0,
+    running: 0,
     needsReview: 0,
     completed: 0,
     paused: 0,
@@ -95,10 +129,10 @@ export function summarizeEntrustedJobs(
 
   for (const automation of automations) {
     const status = resolveEntrustedJobStatus(automation);
-    if (status === "scheduled") summary.scheduled += 1;
+    if (status === "scheduled" || status === "waiting") summary.scheduled += 1;
+    if (status === "running" || status === "retrying") summary.running += 1;
     if (status === "completed") summary.completed += 1;
     if (status === "paused") summary.paused += 1;
-    // needs_review is not stored as a dedicated status yet.
   }
 
   return summary;
@@ -205,3 +239,5 @@ export function formatAutomationSuccessRate(automation: Automation): string {
   if (total === 0) return "—";
   return `${Math.round(getAutomationSuccessRate(automation) * 100)}%（${success}/${total}）`;
 }
+
+export type { AutomationExecutionState };

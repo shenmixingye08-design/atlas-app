@@ -50,10 +50,22 @@ vi.mock("@/lib/billing/subscriptions/lifecycle", () => ({
 }));
 
 vi.mock("@/lib/notifications/emitters", () => ({
+  notifyAutomationStarted: vi.fn(),
   notifyAutomationAwaitingReview: vi.fn(),
   notifyAutomationCompleted: vi.fn(),
   notifyAutomationFailed: vi.fn(),
   notifyOwnerSystemIncident: vi.fn(),
+}));
+
+vi.mock("@/lib/integrations/x/post/automation", () => ({
+  maybeAutoPostToXAfterAutomation: vi.fn(async () => ({ attempted: false })),
+  resolveTweetTextForPublish: vi.fn(() => ""),
+  processScheduledXPostsFromAutomationTick: vi.fn(async () => []),
+  processDueAutoPostsFromAutomationTick: vi.fn(async () => []),
+}));
+
+vi.mock("./execution-log", () => ({
+  recordAutomationExecutionLog: vi.fn(),
 }));
 
 describe("automation persistence and cron tick", () => {
@@ -179,17 +191,17 @@ describe("automation persistence and cron tick", () => {
     expect(afterOk?.lastRun).toBeTruthy();
     expect(afterOk?.runHistory[0]?.status).toBe("completed");
 
-    vi.mocked(orchestrate).mockResolvedValueOnce({
+    const failedPayload = {
       assignment: "実行して",
-      status: "failed",
-      workflow: { status: "failed" },
+      status: "failed" as const,
+      workflow: { status: "failed" as const },
       ceo: null,
       plannerPlan: null,
       plannerTasks: null,
       tasks: [],
       executions: [],
       deliverable: {
-        type: "generic",
+        type: "generic" as const,
         title: "",
         summary: "",
         sections: [],
@@ -200,12 +212,18 @@ describe("automation persistence and cron tick", () => {
       finalResponse: "",
       totalDurationMs: 5,
       error: "boom",
-    } as never);
+    };
+    // Auto-retry up to 3 attempts — all must fail for a durable failure.
+    vi.mocked(orchestrate)
+      .mockResolvedValueOnce(failedPayload as never)
+      .mockResolvedValueOnce(failedPayload as never)
+      .mockResolvedValueOnce(failedPayload as never);
 
     const failed = await automationService.runNow(created.id, {
       userId: "user_run",
     });
     expect(failed?.status).toBe("failed");
+    expect(failed?.attempt).toBe(3);
 
     const afterFail = await automationService.getByIdForUser(
       created.id,
@@ -214,7 +232,8 @@ describe("automation persistence and cron tick", () => {
     expect(afterFail?.failureCount).toBe(1);
     expect(afterFail?.successCount).toBe(1);
     expect(afterFail?.status).toBe("failed");
-  });
+    expect(afterFail?.runHistory[0]?.attempt).toBe(3);
+  }, 20_000);
 
   it("prevents double tick claims for the same nextRun slot", async () => {
     const { claimAutomationTickSlot } = await import("./global-durable");
