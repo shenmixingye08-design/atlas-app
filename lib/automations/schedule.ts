@@ -11,6 +11,11 @@ export function presetToCron(preset: SchedulePreset): string {
       return `${preset.minute} ${preset.hour} * * ${preset.dayOfWeek}`;
     case "monthly":
       return `${preset.minute} ${preset.hour} ${preset.dayOfMonth} * *`;
+    case "once": {
+      const at = new Date(preset.at);
+      if (!Number.isFinite(at.getTime())) return "0 0 1 1 *";
+      return `${at.getUTCMinutes()} ${at.getUTCHours()} ${at.getUTCDate()} ${at.getUTCMonth() + 1} *`;
+    }
   }
 }
 
@@ -93,10 +98,17 @@ function computeNextFromPreset(
   preset: SchedulePreset,
   timeZone: string,
   from: Date,
-): Date {
+): Date | null {
   const now = getZonedParts(from, timeZone);
 
   switch (preset.type) {
+    case "once": {
+      const at = new Date(preset.at);
+      if (!Number.isFinite(at.getTime())) return null;
+      // One-shot: only fire if still in the future (or due now).
+      return at.getTime() > from.getTime() ? at : at;
+    }
+
     case "daily": {
       let candidate = zonedTimeToUtc(
         now.year,
@@ -198,12 +210,42 @@ export function isSameCalendarDayInZone(
   return a.year === b.year && a.month === b.month && a.day === b.day;
 }
 
+/** True when the schedule fires only once. */
+export function isOneShotSchedule(schedule: AutomationSchedule): boolean {
+  return schedule.kind === "schedule" && schedule.preset.type === "once";
+}
+
+/**
+ * After a successful run, compute the next occurrence.
+ * One-shot schedules return null (no further runs).
+ */
+export function computeNextRunAfterSuccess(
+  schedule: AutomationSchedule,
+  from: Date = new Date(),
+): Date | null {
+  if (isOneShotSchedule(schedule)) return null;
+  return computeNextRun(schedule, from);
+}
+
+export function computeNextRunAfterSuccessIso(
+  schedule: AutomationSchedule,
+  from: Date = new Date(),
+): Timestamp | null {
+  const next = computeNextRunAfterSuccess(schedule, from);
+  return next ? next.toISOString() : null;
+}
+
 /** Compute the next scheduled run time. Returns null for non-schedule triggers. */
 export function computeNextRun(
   schedule: AutomationSchedule,
   from: Date = new Date(),
 ): Date | null {
   if (schedule.kind !== "schedule") return null;
+
+  if (schedule.preset.type === "once") {
+    const at = new Date(schedule.preset.at);
+    return Number.isFinite(at.getTime()) ? at : null;
+  }
 
   return computeNextFromPreset(
     schedule.preset,
@@ -224,11 +266,24 @@ export function isAutomationDue(
   automation: {
     enabled: boolean;
     nextRun: Timestamp | null;
+    nextRetryAt?: Timestamp | null;
+    status?: string;
     timing?: import("./types").AutomationTiming;
   },
   now: Date = new Date(),
 ): boolean {
-  if (!automation.enabled || !automation.nextRun) return false;
+  if (!automation.enabled) return false;
+
+  // Deferred retries are due independently of nextRun.
+  if (
+    automation.status === "retrying" &&
+    automation.nextRetryAt &&
+    new Date(automation.nextRetryAt).getTime() <= now.getTime()
+  ) {
+    return true;
+  }
+
+  if (!automation.nextRun) return false;
 
   const timing = automation.timing;
   if (timing?.startDate && new Date(timing.startDate).getTime() > now.getTime()) {
@@ -243,6 +298,11 @@ export function isAutomationDue(
     end?.type === "occurrence_count" &&
     end.completedOccurrences >= end.maxOccurrences
   ) {
+    return false;
+  }
+
+  // While actively retrying a slot, do not treat nextRun as a fresh due.
+  if (automation.status === "retrying" || automation.status === "running") {
     return false;
   }
 

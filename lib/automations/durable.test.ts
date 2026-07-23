@@ -54,6 +54,7 @@ vi.mock("@/lib/notifications/emitters", () => ({
   notifyAutomationAwaitingReview: vi.fn(),
   notifyAutomationCompleted: vi.fn(),
   notifyAutomationFailed: vi.fn(),
+  notifyAutomationRetry: vi.fn(),
   notifyOwnerSystemIncident: vi.fn(),
 }));
 
@@ -213,17 +214,48 @@ describe("automation persistence and cron tick", () => {
       totalDurationMs: 5,
       error: "boom",
     };
-    // Auto-retry up to 3 attempts — all must fail for a durable failure.
-    vi.mocked(orchestrate)
-      .mockResolvedValueOnce(failedPayload as never)
-      .mockResolvedValueOnce(failedPayload as never)
-      .mockResolvedValueOnce(failedPayload as never);
+    vi.mocked(orchestrate).mockResolvedValue(failedPayload as never);
 
-    const failed = await automationService.runNow(created.id, {
+    const scheduledRetry = await automationService.runNow(created.id, {
       userId: "user_run",
     });
-    expect(failed?.status).toBe("failed");
-    expect(failed?.attempt).toBe(3);
+    expect(scheduledRetry?.status).toBe("retrying");
+    expect(scheduledRetry?.attempt).toBe(1);
+    expect(scheduledRetry?.nextRetryAt).toBeTruthy();
+
+    const afterScheduledRetry = await automationService.getByIdForUser(
+      created.id,
+      "user_run",
+    );
+    expect(afterScheduledRetry?.failureCount).toBe(0);
+    expect(afterScheduledRetry?.status).toBe("retrying");
+    expect(afterScheduledRetry?.runHistory[0]?.status).toBe("retrying");
+    expect(afterScheduledRetry?.runHistory[0]?.attempt).toBe(1);
+
+    const { serverAutomationRepository } = await import(
+      "./repositories/server-automation-repository"
+    );
+
+    await serverAutomationRepository.update(created.id, {
+      nextRetryAt: "2020-01-01T00:00:00.000Z",
+    });
+    const retry2 = await automationService.processDueAutomations();
+    expect(retry2[0]?.status).toBe("retrying");
+    expect(retry2[0]?.attempt).toBe(2);
+
+    await serverAutomationRepository.update(created.id, {
+      nextRetryAt: "2020-01-01T00:00:00.000Z",
+    });
+    const retry3 = await automationService.processDueAutomations();
+    expect(retry3[0]?.status).toBe("retrying");
+    expect(retry3[0]?.attempt).toBe(3);
+
+    await serverAutomationRepository.update(created.id, {
+      nextRetryAt: "2020-01-01T00:00:00.000Z",
+    });
+    const finalFailure = await automationService.processDueAutomations();
+    expect(finalFailure[0]?.status).toBe("failed");
+    expect(finalFailure[0]?.attempt).toBe(4);
 
     const afterFail = await automationService.getByIdForUser(
       created.id,
@@ -232,7 +264,8 @@ describe("automation persistence and cron tick", () => {
     expect(afterFail?.failureCount).toBe(1);
     expect(afterFail?.successCount).toBe(1);
     expect(afterFail?.status).toBe("failed");
-    expect(afterFail?.runHistory[0]?.attempt).toBe(3);
+    expect(afterFail?.nextRetryAt).toBeNull();
+    expect(afterFail?.runHistory[0]?.attempt).toBe(4);
   }, 20_000);
 
   it("prevents double tick claims for the same nextRun slot", async () => {

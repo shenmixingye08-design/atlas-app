@@ -1,5 +1,6 @@
 export type {
   AutomationExecutionLogEntry,
+  AutomationExecutionLogEvent,
   AutomationExecutionLogSnapshot,
 } from "./types";
 export {

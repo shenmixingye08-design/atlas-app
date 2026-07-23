@@ -1,24 +1,13 @@
 import "server-only";
 
-import type { WorkflowRun } from "@/lib/memory/types/workflow-run";
 import { evaluateBillingAiUsage } from "@/lib/billing/access/snapshot";
 import { isAutomationSuspendedForUser } from "@/lib/billing/subscriptions/lifecycle";
 import { setAutomationTaskCount } from "@/lib/billing/usage/store";
+import type { WorkflowRun } from "@/lib/memory/types/workflow-run";
 
-import { isAutomationDue, computeNextRunIso } from "./schedule";
-import type {
-  Automation,
-  AutomationFilter,
-  AutomationRunResult,
-  CreateAutomationInput,
-  UpdateAutomationInput,
-} from "./types";
-import { executeAutomationRun } from "./run-automation";
-import type { AutomationRepository } from "./repositories/types";
-import { serverAutomationRepository } from "./repositories/server-automation-repository";
-import { serverWorkflowRunRepository } from "./repositories/workflow-run-store";
 import {
   ensureAutomationsHydrated,
+  persistAutomationsNow,
   schedulePersistAutomations,
 } from "./durable";
 import {
@@ -26,6 +15,18 @@ import {
   listAutomationOwnerUserIds,
   registerAutomationUserId,
 } from "./global-durable";
+import { executeAutomationRun } from "./run-automation";
+import { isAutomationDue, computeNextRunAfterSuccessIso } from "./schedule";
+import type {
+  Automation,
+  AutomationFilter,
+  AutomationRunResult,
+  CreateAutomationInput,
+  UpdateAutomationInput,
+} from "./types";
+import type { AutomationRepository } from "./repositories/types";
+import { serverAutomationRepository } from "./repositories/server-automation-repository";
+import { serverWorkflowRunRepository } from "./repositories/workflow-run-store";
 
 export type AutomationServiceOptions = {
   automations?: AutomationRepository;
@@ -74,7 +75,7 @@ export class AutomationService {
     });
     await registerAutomationUserId(userId);
     await this.syncTaskCount(userId);
-    schedulePersistAutomations(userId);
+    await persistAutomationsNow(userId);
     return automation;
   }
 
@@ -93,7 +94,7 @@ export class AutomationService {
     const updated = await this.automations.update(id, patch);
     if (updated) {
       await this.syncTaskCount(userId);
-      schedulePersistAutomations(userId);
+      await persistAutomationsNow(userId);
     }
     return updated;
   }
@@ -129,16 +130,17 @@ export class AutomationService {
       triggerType: "manual",
       userId: options.userId ?? automation.userId,
       requestOrigin: options.requestOrigin,
+      attempt: 1,
     });
 
     const ownerId = options.userId ?? automation.userId;
-    if (ownerId) schedulePersistAutomations(ownerId);
+    if (ownerId) await persistAutomationsNow(ownerId);
     return result;
   }
 
   /**
    * Vercel Cron due processor — hydrates each owner, claims tick slots,
-   * enforces billing, and persists results.
+   * runs due schedules + deferred retries, and awaits durable persist.
    */
   async processDueAutomations(
     options: { requestOrigin?: string } = {},
@@ -146,7 +148,6 @@ export class AutomationService {
     const ownerIds = await listAutomationOwnerUserIds();
     const results: AutomationRunResult[] = [];
 
-    // Also include any in-memory owners (single-instance / tests without Supabase).
     const memoryOwners = new Set(
       (await this.automations.list())
         .map((row) => row.userId)
@@ -168,14 +169,23 @@ export class AutomationService {
       const due = enabled.filter((automation) => isAutomationDue(automation));
 
       for (const automation of due) {
-        if (automation.status === "running" || automation.status === "retrying") {
-          continue;
-        }
+        const isRetry =
+          automation.status === "retrying" &&
+          Boolean(automation.nextRetryAt) &&
+          new Date(automation.nextRetryAt!).getTime() <= Date.now();
+
+        if (automation.status === "running") continue;
+
+        const slotKey = isRetry
+          ? `retry:${automation.id}:${automation.currentAttempt + 1}:${automation.nextRetryAt}`
+          : automation.nextRun;
+
+        if (!slotKey) continue;
 
         const claimed = await claimAutomationTickSlot(
           userId,
           automation.id,
-          automation.nextRun,
+          slotKey,
         );
         if (!claimed) continue;
 
@@ -184,31 +194,53 @@ export class AutomationService {
           await this.automations.update(automation.id, {
             lastError: denial.reason,
             status: "failed",
-            nextRun: computeNextRunIso(automation.schedule, new Date()),
+            nextRetryAt: null,
+            activeSlotKey: null,
+            nextRun: computeNextRunAfterSuccessIso(
+              automation.schedule,
+              new Date(),
+            ),
           });
-          schedulePersistAutomations(userId);
+          await persistAutomationsNow(userId);
           continue;
         }
 
-        // Advance nextRun before execute so a second instance skips isAutomationDue.
-        const reservedNext = computeNextRunIso(automation.schedule, new Date());
+        const attempt = isRetry
+          ? Math.max(1, (automation.currentAttempt ?? 1) + 1)
+          : 1;
+
+        // Do NOT advance nextRun before execute — claim + status prevent doubles.
+        // nextRun advances only on terminal success/failure inside the runner.
         await this.automations.update(automation.id, {
-          status: "running",
-          nextRun: reservedNext,
+          status: isRetry ? "retrying" : "running",
+          currentAttempt: attempt,
+          activeSlotKey: slotKey,
+          nextRetryAt: null,
           lastError: null,
+          lastResultSummary: isRetry
+            ? `リトライ中（試行${attempt}）`
+            : "AI秘書が現在仕事を進めています",
         });
-        schedulePersistAutomations(userId);
+        await persistAutomationsNow(userId);
 
         const result = await executeAutomationRun(
-          { ...automation, nextRun: reservedNext, status: "running" },
+          {
+            ...automation,
+            status: isRetry ? "retrying" : "running",
+            currentAttempt: attempt,
+            activeSlotKey: slotKey,
+            nextRetryAt: null,
+          },
           {
             triggerType: "automation",
             userId,
             requestOrigin: options.requestOrigin,
+            attempt,
+            skipStartNotification: isRetry,
           },
         );
         results.push(result);
-        schedulePersistAutomations(userId);
+        await persistAutomationsNow(userId);
       }
     }
 
@@ -233,3 +265,6 @@ export function createAutomationService(
 ): AutomationService {
   return new AutomationService(options.automations);
 }
+
+// Keep schedulePersistAutomations imported usage for any callers that still fire-and-forget.
+void schedulePersistAutomations;

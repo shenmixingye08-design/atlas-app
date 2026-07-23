@@ -43,8 +43,10 @@ function compactAutomations(
         ...entry,
         error: entry.error?.slice(0, 160) ?? null,
         deliverablePreview: entry.deliverablePreview?.slice(0, 160) ?? null,
+        generatedContent: entry.generatedContent?.slice(0, 400) ?? null,
         actions: (entry.actions ?? []).slice(0, 8),
         apisUsed: (entry.apisUsed ?? []).slice(0, 8),
+        stoppedAtStage: entry.stoppedAtStage ?? null,
         artifacts: entry.artifacts
           ? {
               tweetUrl: entry.artifacts.tweetUrl?.slice(0, 200) ?? null,
@@ -67,19 +69,26 @@ export function snapshotAutomations(userId: string): DurableAutomationsState {
 }
 
 export function schedulePersistAutomations(userId: string): void {
-  void persistDurableDomain(
+  void persistAutomationsNow(userId);
+}
+
+/**
+ * Awaitable durable write. Serverless can freeze when a route returns, so
+ * mutations must await this before responding so schedules survive restarts.
+ */
+export async function persistAutomationsNow(userId: string): Promise<void> {
+  await persistDurableDomain(
     userId,
     AUTOMATIONS_DOMAIN_KEY,
     snapshotAutomations(userId),
     { compact: compactAutomations },
-  ).then(async () => {
-    const rows = listStoredAutomationsForUser(userId);
-    if (rows.length > 0) {
-      await registerAutomationUserId(userId);
-    } else {
-      await unregisterAutomationUserIdIfEmpty(userId);
-    }
-  });
+  );
+  const rows = listStoredAutomationsForUser(userId);
+  if (rows.length > 0) {
+    await registerAutomationUserId(userId);
+  } else {
+    await unregisterAutomationUserIdIfEmpty(userId);
+  }
 }
 
 export async function ensureAutomationsHydrated(userId: string): Promise<void> {

@@ -26,7 +26,8 @@ export type AutomationTriggerKind =
 export type SchedulePreset =
   | { type: "daily"; hour: number; minute: number }
   | { type: "weekly"; dayOfWeek: number; hour: number; minute: number }
-  | { type: "monthly"; dayOfMonth: number; hour: number; minute: number };
+  | { type: "monthly"; dayOfMonth: number; hour: number; minute: number }
+  | { type: "once"; at: Timestamp };
 
 /** Schedule configuration — cron string stored for future external schedulers. */
 export type AutomationSchedule =
@@ -145,12 +146,19 @@ export type Automation = {
   enabled: boolean;
   lastRun: Timestamp | null;
   nextRun: Timestamp | null;
+  /** When status is retrying, cron picks the job up at this time. */
+  nextRetryAt: Timestamp | null;
+  /**
+   * The due slot currently being executed / retried (ISO). Used for
+   * idempotent claims so nextRun can stay until the run finishes.
+   */
+  activeSlotKey: string | null;
   status: AutomationStatus;
   lastWorkflowRunId: EntityId | null;
   lastError: string | null;
   /** Short human-readable last outcome for list UX. */
   lastResultSummary: string | null;
-  /** Current retry attempt while status is retrying/running (1–3). */
+  /** Current attempt while running/retrying (1–4 = initial + 3 retries). */
   currentAttempt: number;
   successCount: number;
   failureCount: number;
@@ -178,15 +186,33 @@ export type AutomationRunHistoryEntry = {
   durationMs: number;
   error: string | null;
   triggerType: "manual" | "automation" | string;
-  /** 1-based attempt number (max 3 with auto-retry). */
+  /** 1-based attempt number (max 4 = initial + 3 deferred retries). */
   attempt: number;
   deliverablePreview: string | null;
+  /** AI-generated content preview (tweet copy, article body, etc.). */
+  generatedContent: string | null;
   artifacts: AutomationRunArtifacts | null;
   /** What the AI/system did (e.g. 文章生成, X投稿). */
   actions: string[];
   /** APIs used this run (openai, x_api, ...). */
   apisUsed: string[];
+  /** Last pipeline stage reached (for admin debug). */
+  stoppedAtStage: AutomationDebugStage | null;
 };
+
+/** Pipeline stages for owner debug — where a run started / stopped. */
+export type AutomationDebugStage =
+  | "queued"
+  | "started"
+  | "ai_started"
+  | "ai_completed"
+  | "ai_cached"
+  | "deliverables"
+  | "x_api"
+  | "persisted"
+  | "completed"
+  | "failed"
+  | "retry_scheduled";
 
 export type CreateAutomationInput = {
   name: string;
@@ -217,6 +243,8 @@ export type UpdateAutomationInput = Partial<
     | "enabled"
     | "lastRun"
     | "nextRun"
+    | "nextRetryAt"
+    | "activeSlotKey"
     | "status"
     | "lastWorkflowRunId"
     | "lastError"
@@ -239,7 +267,7 @@ export type AutomationFilter = {
 export type AutomationRunResult = {
   automationId: EntityId;
   workflowRunId: EntityId;
-  status: "completed" | "failed";
+  status: "completed" | "failed" | "retrying";
   orchestrationStatus: "completed" | "failed";
   approved: boolean;
   totalDurationMs: number;
@@ -250,4 +278,7 @@ export type AutomationRunResult = {
   artifacts: AutomationRunArtifacts | null;
   actions: string[];
   apisUsed: string[];
+  nextRetryAt: string | null;
+  stoppedAtStage: AutomationDebugStage | null;
+  generatedContent: string | null;
 };

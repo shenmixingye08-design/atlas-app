@@ -65,7 +65,14 @@ export type CompatibilityPresetType =
 /** Coerce unknown preset.type values — unknown becomes `"custom"`. */
 export function normalizePresetType(raw: unknown): CompatibilityPresetType {
   const type = asString(raw, "custom");
-  if (type === "daily" || type === "weekly" || type === "monthly") return type;
+  if (
+    type === "daily" ||
+    type === "weekly" ||
+    type === "monthly" ||
+    type === "once"
+  ) {
+    return type;
+  }
   return "custom";
 }
 
@@ -100,6 +107,13 @@ export function normalizeSchedulePreset(raw: unknown): SchedulePreset | null {
         hour,
         minute,
       };
+    case "once": {
+      const at = asOptionalString(record.at);
+      if (at && !Number.isNaN(Date.parse(at))) {
+        return { type: "once", at };
+      }
+      return null;
+    }
     default:
       return null;
   }
@@ -245,6 +259,8 @@ export function normalizeAutomation(raw: unknown): Automation {
     lastError: asOptionalString(record.lastError),
     lastResultSummary: asOptionalString(record.lastResultSummary),
     currentAttempt: Math.max(0, Number(record.currentAttempt) || 0),
+    nextRetryAt: asOptionalString(record.nextRetryAt),
+    activeSlotKey: asOptionalString(record.activeSlotKey),
     successCount: Math.max(0, Number(record.successCount) || 0),
     failureCount: Math.max(0, Number(record.failureCount) || 0),
     runHistory: Array.isArray(record.runHistory)

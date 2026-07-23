@@ -113,6 +113,8 @@ export function withAutomationDefaults(automation: Automation): Automation {
     status,
     lastResultSummary: automation.lastResultSummary ?? null,
     currentAttempt: Math.max(0, automation.currentAttempt ?? 0),
+    nextRetryAt: automation.nextRetryAt ?? null,
+    activeSlotKey: automation.activeSlotKey ?? null,
     lastError:
       status === "failed" && !automation.lastError
         ? "実行がタイムアウトした可能性があります"

@@ -1,4 +1,5 @@
 import type { AutomationRunArtifacts, AutomationRunHistoryEntry } from "./types";
+import { AUTOMATION_MAX_ATTEMPTS } from "./retry-policy";
 
 /** Normalize legacy/partial history rows from durable storage. */
 export function normalizeRunHistoryEntry(
@@ -47,10 +48,12 @@ export function normalizeRunHistoryEntry(
     triggerType: typeof raw.triggerType === "string" ? raw.triggerType : "automation",
     attempt:
       typeof raw.attempt === "number" && raw.attempt >= 1
-        ? Math.min(3, Math.floor(raw.attempt))
+        ? Math.min(AUTOMATION_MAX_ATTEMPTS, Math.floor(raw.attempt))
         : 1,
     deliverablePreview:
       typeof raw.deliverablePreview === "string" ? raw.deliverablePreview : null,
+    generatedContent:
+      typeof raw.generatedContent === "string" ? raw.generatedContent : null,
     artifacts,
     actions: Array.isArray(raw.actions)
       ? raw.actions.filter((a): a is string => typeof a === "string").slice(0, 20)
@@ -58,6 +61,10 @@ export function normalizeRunHistoryEntry(
     apisUsed: Array.isArray(raw.apisUsed)
       ? raw.apisUsed.filter((a): a is string => typeof a === "string").slice(0, 20)
       : [],
+    stoppedAtStage:
+      typeof raw.stoppedAtStage === "string"
+        ? (raw.stoppedAtStage as AutomationRunHistoryEntry["stoppedAtStage"])
+        : null,
   };
 }
 

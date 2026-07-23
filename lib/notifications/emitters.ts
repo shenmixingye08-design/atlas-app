@@ -30,6 +30,34 @@ export function notifyAutomationStarted(
   });
 }
 
+export function notifyAutomationRetry(
+  userId: string | null | undefined,
+  input: {
+    automationId: string;
+    name: string;
+    attempt: number;
+    nextRetryAt: string;
+    error?: string;
+    delayLabel?: string;
+  },
+) {
+  if (!userId) return null;
+  const when = input.delayLabel ?? input.nextRetryAt;
+  return createNotification({
+    audience: "user",
+    userId,
+    type: "automation",
+    title: "AI秘書が再試行します",
+    message: `「${input.name}」の処理に失敗したため、${when}に再試行いたします（試行${input.attempt}）。${
+      input.error ? `理由: ${input.error}` : ""
+    }`.trim(),
+    relatedTaskId: input.automationId,
+    relatedService: "atlas",
+    actionUrl: automationActionUrl(input.automationId),
+    automationId: input.automationId,
+  });
+}
+
 export function notifyAutomationCompleted(
   userId: string | null | undefined,
   input: {
