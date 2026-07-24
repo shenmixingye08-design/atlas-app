@@ -24,9 +24,18 @@ export {
   PlainTextDeliverableGenerator,
   PptxDeliverableGenerator,
   PptxPlaceholderGenerator,
+  XlsxDeliverableGenerator,
   defaultDeliverableGenerators,
   getDeliverableGenerator,
 } from "./generators";
+
+export {
+  assignmentIsImageToExcel,
+  assignmentRequestsExcel,
+  contentHasMarkdownTable,
+  extractExcelSheets,
+  shouldGenerateXlsx,
+} from "./excel-data";
 
 export { parseDeliverableContent } from "./parse-content";
 export type {

@@ -2341,6 +2341,7 @@ export const ui = {
     pptx: "PowerPoint (.pptx)",
     md: "Markdown (.md)",
     txt: "テキスト (.txt)",
+    xlsx: "Excel (.xlsx)",
   } as Record<string, string>,
 
   workflowPhases: {

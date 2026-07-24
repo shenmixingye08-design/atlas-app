@@ -13,6 +13,23 @@ type FormatRule = {
 
 const FORMAT_RULES: readonly FormatRule[] = [
   {
+    id: "excel",
+    keywords: [
+      "excel",
+      "xlsx",
+      "エクセル",
+      "表計算",
+      "スプレッドシート",
+      "spreadsheet",
+      "一覧表",
+      "家計簿",
+      "経費精算",
+      "表にまと",
+      "表形式",
+    ],
+    formats: ["xlsx", "pdf", "docx"],
+  },
+  {
     id: "sales-deck",
     keywords: [
       "営業資料",

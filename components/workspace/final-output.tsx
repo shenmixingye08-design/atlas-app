@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
+import {
+  assignmentIsImageToExcel,
+  assignmentRequestsExcel,
+} from "@/lib/deliverables/excel-data";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
@@ -75,8 +79,16 @@ const DOWNLOAD_FORMAT_ORDER: GeneratedFile["format"][] = [
   "pptx",
   "pdf",
   "docx",
+  "xlsx",
   "md",
 ];
+
+function formatDownloadLabel(format: GeneratedFile["format"]): string {
+  if (format === "docx") return "Word";
+  if (format === "pptx") return "PowerPoint";
+  if (format === "xlsx") return "📊 Excel (.xlsx)";
+  return DELIVERABLE_FORMAT_LABELS[format].split(" ")[0] ?? format;
+}
 
 function FormatDownloadButton({
   format,
@@ -88,12 +100,7 @@ function FormatDownloadButton({
   isGeneratingDeliverables: boolean;
 }) {
   const file = findGeneratedFile(deliverables, format);
-  const shortLabel =
-    format === "docx"
-      ? "Word"
-      : format === "pptx"
-        ? "PowerPoint"
-        : DELIVERABLE_FORMAT_LABELS[format].split(" ")[0];
+  const shortLabel = formatDownloadLabel(format);
 
   if (file) {
     return (
@@ -347,13 +354,27 @@ export function FinalOutput({
     [workspaceDeliverable],
   );
   const fileFormatsToShow = useMemo(() => {
+    const assignment = result?.assignment ?? "";
+    const generated = new Set(deliverables.map((item) => item.format));
+    const wantsExcel =
+      assignmentRequestsExcel(assignment) ||
+      assignmentIsImageToExcel(assignment) ||
+      generated.has("xlsx");
+
     if (expectedFormats && expectedFormats.length > 0) {
-      return DOWNLOAD_FORMAT_ORDER.filter((format) =>
-        expectedFormats.includes(format),
-      );
+      const allowed = new Set<GeneratedFile["format"]>(expectedFormats);
+      if (wantsExcel) allowed.add("xlsx");
+      for (const format of generated) allowed.add(format);
+      return DOWNLOAD_FORMAT_ORDER.filter((format) => allowed.has(format));
     }
-    return ["pdf", "docx"] as GeneratedFile["format"][];
-  }, [expectedFormats]);
+
+    const base = new Set<GeneratedFile["format"]>(["pdf", "docx"]);
+    if (wantsExcel) base.add("xlsx");
+    for (const format of generated) {
+      if (DOWNLOAD_FORMAT_ORDER.includes(format)) base.add(format);
+    }
+    return DOWNLOAD_FORMAT_ORDER.filter((format) => base.has(format));
+  }, [expectedFormats, deliverables, result?.assignment]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production" || !result) return;
