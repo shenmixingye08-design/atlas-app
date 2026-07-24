@@ -319,6 +319,48 @@ export const ui = {
     },
   },
 
+  push: {
+    settingsTitle: "スマホ通知",
+    settingsDesc:
+      "自動化の完了や確認依頼を、スマホのプッシュ通知でお知らせします。アプリを開かなくても結果が届きます。",
+    statusTitle: "通知の状態",
+    statusUnsupported: "このブラウザではプッシュ通知に対応していません。",
+    statusDenied: "通知が拒否されています。",
+    statusDeniedGuide:
+      "ブラウザの設定で MINERVOT の通知を許可してください（Android: サイト設定 / iPhone: 設定アプリ）。",
+    statusGranted: "通知が許可されています。",
+    statusDefault: "通知はまだ有効化されていません。",
+    statusUnregistered: "この端末は未登録です。",
+    iosInstallGuide:
+      "iPhone では Safari で「共有 → ホーム画面に追加」してから通知を有効にしてください。",
+    enableButton: "スマホ通知を有効にする",
+    unregisterButton: "この端末の登録を解除",
+    sendTest: "テスト通知を送信",
+    permissionExplain:
+      "仕事の完了・確認依頼・エラーをスマホに通知します。不要なときはいつでもOFFにできます。",
+    permissionAllow: "通知を許可する",
+    subscribeSuccess: "スマホ通知を有効にしました",
+    subscribeFailed: (code: string) => `登録に失敗しました（${code}）`,
+    unregistered: "端末の登録を解除しました",
+    testSent: "テスト通知を送信しました",
+    testFailed: "テスト通知の送信に失敗しました",
+    devicesTitle: "登録端末",
+    eventsTitle: "通知する内容",
+    eventFinalSuccess: "完了",
+    eventFinalFailure: "失敗（最終）",
+    eventApprovalNeeded: "確認依頼",
+    eventConnectionBroken: "連携エラー",
+    eventDailyReport: "日次まとめ",
+    eventAutoRecovered: "自動復旧",
+    severityTitle: "重要度",
+    severityCritical: "緊急",
+    severityImportant: "重要",
+    severitySummary: "まとめ",
+    severityInfo: "情報（既定OFF）",
+    quietStart: "おやすみ開始",
+    quietEnd: "おやすみ終了",
+  },
+
   onboarding: {
     badge: "はじめての方へ",
     skip: "スキップ",
@@ -640,8 +682,6 @@ export const ui = {
     driveSandboxSaved:
       "Saved successfully. Generated folder Marketing Reports（サンドボックス実行）",
     preparingFiles: "ファイルを準備しています…",
-    downloadingFile: "ダウンロード中…",
-    downloadFailed: "ダウンロードに失敗しました。もう一度お試しください。",
     viewDetails: "詳細を見る",
     hideDetails: "詳細を閉じる",
     generatedAt: (time: string) => `生成: ${time}`,
@@ -2343,7 +2383,6 @@ export const ui = {
     pptx: "PowerPoint (.pptx)",
     md: "Markdown (.md)",
     txt: "テキスト (.txt)",
-    xlsx: "Excel (.xlsx)",
   } as Record<string, string>,
 
   workflowPhases: {

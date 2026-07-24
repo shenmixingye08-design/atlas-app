@@ -223,4 +223,22 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     requirement: "optional",
     purpose: "LINE Bot Basic ID（友だち追加案内）",
   },
+  {
+    key: "VAPID_PUBLIC_KEY",
+    service: "atlas",
+    requirement: "optional",
+    purpose: "Web Push VAPID 公開鍵（クライアント subscription 用）",
+  },
+  {
+    key: "VAPID_PRIVATE_KEY",
+    service: "atlas",
+    requirement: "optional",
+    purpose: "Web Push VAPID 秘密鍵（サーバー送信専用）",
+  },
+  {
+    key: "VAPID_SUBJECT",
+    service: "atlas",
+    requirement: "optional",
+    purpose: "Web Push VAPID subject（mailto: または https:// URL）",
+  },
 ] as const;

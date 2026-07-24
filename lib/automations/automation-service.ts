@@ -1,9 +1,14 @@
 import "server-only";
 
-import type { WorkflowRun } from "@/lib/memory/types/workflow-run";
+import type {
+  WorkflowRun,
+  WorkflowRunTriggerType,
+} from "@/lib/memory/types/workflow-run";
 import { evaluateBillingAiUsage } from "@/lib/billing/access/snapshot";
 import { isAutomationSuspendedForUser } from "@/lib/billing/subscriptions/lifecycle";
 import { setAutomationTaskCount } from "@/lib/billing/usage/store";
+import { claimAutomationJob } from "@/lib/jobs/job-store";
+import { buildAutomationIdempotencyKey } from "@/lib/jobs/idempotency";
 
 import { isAutomationDue, computeNextRunIso } from "./schedule";
 import type {
@@ -116,7 +121,14 @@ export class AutomationService {
 
   async runNow(
     id: string,
-    options: { userId?: string | null; requestOrigin?: string } = {},
+    options: {
+      userId?: string | null;
+      requestOrigin?: string;
+      triggerType?: WorkflowRunTriggerType;
+      scheduledAt?: string | null;
+      skipIdempotencyClaim?: boolean;
+      existingJobId?: string;
+    } = {},
   ): Promise<AutomationRunResult | null> {
     if (options.userId) {
       await ensureAutomationsHydrated(options.userId);
@@ -125,14 +137,57 @@ export class AutomationService {
     if (!automation) return null;
     if (options.userId && automation.userId !== options.userId) return null;
 
+    const userId = options.userId ?? automation.userId;
+    const triggerType = options.triggerType ?? "manual";
+    const scheduledAt = options.scheduledAt ?? automation.nextRun;
+    let jobId = options.existingJobId;
+
+    if (userId && !options.skipIdempotencyClaim) {
+      const idempotencyKey = buildAutomationIdempotencyKey({
+        userId,
+        automationId: automation.id,
+        triggerType,
+        scheduledAt,
+      });
+      const claim = await claimAutomationJob({
+        id: crypto.randomUUID(),
+        userId,
+        automationId: automation.id,
+        idempotencyKey,
+        scheduledAt,
+      });
+
+      if (claim.action === "skip") {
+        return {
+          automationId: automation.id,
+          workflowRunId: claim.record.id,
+          status:
+            claim.record.status === "completed" ||
+            claim.record.status === "partially_completed"
+              ? "completed"
+              : "failed",
+          orchestrationStatus: claim.record.status,
+          approved: true,
+          totalDurationMs: 0,
+          finalResponsePreview: claim.record.resultSummary,
+          error: claim.record.lastErrorMessage,
+          deliverableCount: 0,
+          dedupeSkipped: true,
+        };
+      }
+
+      jobId = claim.record.id;
+    }
+
     const result = await executeAutomationRun(automation, {
-      triggerType: "manual",
-      userId: options.userId ?? automation.userId,
+      triggerType,
+      userId,
       requestOrigin: options.requestOrigin,
+      jobId,
+      scheduledAt,
     });
 
-    const ownerId = options.userId ?? automation.userId;
-    if (ownerId) schedulePersistAutomations(ownerId);
+    if (userId) schedulePersistAutomations(userId);
     return result;
   }
 
@@ -197,14 +252,14 @@ export class AutomationService {
         });
         schedulePersistAutomations(userId);
 
-        const result = await executeAutomationRun(
-          { ...automation, nextRun: reservedNext, status: "running" },
-          {
-            triggerType: "automation",
-            userId,
-            requestOrigin: options.requestOrigin,
-          },
-        );
+        const result = await this.runNow(automation.id, {
+          userId,
+          requestOrigin: options.requestOrigin,
+          triggerType: "automation",
+          scheduledAt: automation.nextRun,
+        });
+        if (!result) continue;
+        if (result.dedupeSkipped) continue;
         results.push(result);
         schedulePersistAutomations(userId);
       }

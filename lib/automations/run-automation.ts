@@ -46,6 +46,14 @@ import {
   maybeAutoPostToXAfterAutomation,
   resolveTweetTextForPublish,
 } from "@/lib/integrations/x/post/automation";
+import { evaluateCompletionEvidence } from "@/lib/jobs/completion-evidence";
+import {
+  getJobRecord,
+  heartbeatJob,
+  markJobCompleted,
+  markJobFailed,
+  markJobRunning,
+} from "@/lib/jobs/reliability";
 import {
   notifyAutomationAwaitingReview,
   notifyAutomationCompleted,
@@ -75,6 +83,8 @@ export type ExecuteAutomationOptions = {
   triggerType?: WorkflowRunTriggerType;
   userId?: string | null;
   requestOrigin?: string;
+  jobId?: string;
+  scheduledAt?: string | null;
 };
 
 function appendRunHistory(
@@ -124,6 +134,16 @@ export async function executeAutomationRun(
     automationId: automation.id,
     triggerType,
   });
+  const jobId = options.jobId;
+
+  if (options.userId && jobId) {
+    await markJobRunning({
+      jobId,
+      userId: options.userId,
+      automationId: automation.id,
+      step: "orchestrate",
+    });
+  }
 
   try {
     const executionFlow = normalizeExecutionFlow(automation.executionFlow);
@@ -242,7 +262,7 @@ export async function executeAutomationRun(
     let xPostUrl: string | null = null;
     let awaitingXApproval = false;
     let generatedTweetText = "";
-    const scheduledAt = automation.nextRun ?? startedAt;
+    const scheduledAt = options.scheduledAt ?? automation.nextRun ?? startedAt;
 
     const executionLog = recordAutomationExecutionLog({
       automationId: automation.id,
@@ -271,6 +291,14 @@ export async function executeAutomationRun(
         shouldAutoPublishToX(automation) || shouldAwaitXPostApproval(automation);
 
       if (wantsX && options.userId) {
+        if (jobId) {
+          await heartbeatJob({
+            jobId,
+            userId: options.userId,
+            step: "x_post",
+            progressPercent: 60,
+          });
+        }
         if (
           hasRecurringSlotAlreadyHandled({
             userId: options.userId,
@@ -346,6 +374,14 @@ export async function executeAutomationRun(
         }
       } else if (result.finalResponse.trim()) {
         // Legacy SNS flows without destination=x still use the previous path.
+        if (options.userId && jobId) {
+          await heartbeatJob({
+            jobId,
+            userId: options.userId,
+            step: "x_post",
+            progressPercent: 60,
+          });
+        }
         try {
           const autoPost = await maybeAutoPostToXAfterAutomation({
             userId: options.userId,
@@ -382,12 +418,21 @@ export async function executeAutomationRun(
     }
 
     let deliverableCount = 0;
+    let storageUrl: string | null = null;
 
     if (
       result.status === "completed" &&
       getDeliverablePreviewText(result.deliverable) &&
       options.requestOrigin
     ) {
+      if (options.userId && jobId) {
+        await heartbeatJob({
+          jobId,
+          userId: options.userId,
+          step: "deliverables",
+          progressPercent: 75,
+        });
+      }
       try {
         const generated = await generateDeliverables(
           {
@@ -401,11 +446,23 @@ export async function executeAutomationRun(
 
         if (generated.deliverables.length > 0) {
           try {
-            await uploadDeliverablesAfterGeneration({
+            const uploadResult = await uploadDeliverablesAfterGeneration({
               deliverables: generated.deliverables,
               projectName: automation.name,
               workflowId: workflowRun.id,
             });
+            storageUrl =
+              uploadResult.folderUrl ??
+              uploadResult.uploads.find((upload) => upload.success)?.driveUrl ??
+              null;
+            if (options.userId && jobId) {
+              await heartbeatJob({
+                jobId,
+                userId: options.userId,
+                step: "upload",
+                progressPercent: 90,
+              });
+            }
           } catch (uploadError) {
             console.error(
               `[executeAutomationRun] Drive upload failed for ${automation.id}:`,
@@ -511,6 +568,42 @@ export async function executeAutomationRun(
     });
 
     const flow = normalizeExecutionFlow(automation.executionFlow);
+    const evidence = evaluateCompletionEvidence({
+      templateId: flow.templateId,
+      orchestrationStatus: snsPostFailure ? "failed" : result.status,
+      approved: effectiveStatus === "completed" && result.approved && !snsPostFailure,
+      deliverableCount,
+      snsPostFailure,
+      tweetId: xPostId,
+      tweetUrl: xPostUrl,
+      artifactId: workflowRun.id,
+      storageUrl,
+    });
+
+    if (options.userId && jobId) {
+      if (effectiveStatus === "failed" || evidence.status === "failed") {
+        await markJobFailed({
+          jobId,
+          userId: options.userId,
+          error: effectiveError ?? evidence.lastErrorMessage ?? "failed",
+          automationId: automation.id,
+          errorCode: snsErrorCode,
+        });
+      } else {
+        const priorJob = await getJobRecord(jobId, options.userId);
+        await markJobCompleted({
+          jobId,
+          userId: options.userId,
+          status: evidence.status,
+          artifactId: evidence.artifactId,
+          externalResultId: evidence.externalResultId,
+          externalResultUrl: evidence.externalResultUrl,
+          resultSummary: evidence.resultSummary ?? preview,
+          autoRecovered: (priorJob?.attemptCount ?? 0) > 0,
+        });
+      }
+    }
+
     if (effectiveStatus === "failed") {
       if (shouldAutoPublishToX(automation) || shouldAwaitXPostApproval(automation)) {
         notifyXRecurringPostFailed(options.userId, {
@@ -631,6 +724,7 @@ export async function executeAutomationRun(
     }
     const completedAt = new Date().toISOString();
     const durationMs = Date.now() - new Date(startedAt).getTime();
+    const scheduledAt = options.scheduledAt ?? automation.nextRun ?? startedAt;
 
     const failedResult = {
       assignment: automation.workflow.assignment,
@@ -675,8 +769,18 @@ export async function executeAutomationRun(
         completedAt,
         error: message,
         triggerType,
+        scheduledAt,
       }),
     });
+
+    if (options.userId && jobId) {
+      await markJobFailed({
+        jobId,
+        userId: options.userId,
+        error: message,
+        automationId: automation.id,
+      });
+    }
 
     notifyAutomationFailed(options.userId, {
       automationId: automation.id,

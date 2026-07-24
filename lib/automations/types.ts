@@ -220,7 +220,7 @@ export type AutomationRunResult = {
   automationId: EntityId;
   workflowRunId: EntityId;
   status: "completed" | "failed" | "awaiting_approval";
-  orchestrationStatus: "completed" | "failed";
+  orchestrationStatus: "completed" | "failed" | string;
   approved: boolean;
   totalDurationMs: number;
   finalResponsePreview: string | null;
@@ -229,4 +229,5 @@ export type AutomationRunResult = {
   xPostId?: string | null;
   xPostUrl?: string | null;
   errorCode?: string | null;
+  dedupeSkipped?: boolean;
 };

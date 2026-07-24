@@ -30,11 +30,41 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const origin = resolveOrigin(request);
+
+    let reliability: {
+      retriesProcessed: number;
+      hangsDetected: number;
+      dedupeSkips: number;
+    } = {
+      retriesProcessed: 0,
+      hangsDetected: 0,
+      dedupeSkips: 0,
+    };
+    try {
+      const { processJobReliabilityTick } = await import(
+        "@/lib/jobs/tick-processor"
+      );
+      reliability = await processJobReliabilityTick({ requestOrigin: origin });
+    } catch (error) {
+      console.warn("[automation tick] job reliability skipped:", error);
+    }
+
     const results = await automationService.processDueAutomations({
       requestOrigin: origin,
     });
     const scheduledXPosts = await processScheduledXPostsFromAutomationTick();
     const autoPosts = await processDueAutoPostsFromAutomationTick();
+
+    let dailyReports: { processed: number } = { processed: 0 };
+    try {
+      const { dispatchDailyReportsForDueUsers } = await import(
+        "@/lib/reports/daily-dispatch"
+      );
+      const reportResults = await dispatchDailyReportsForDueUsers();
+      dailyReports = { processed: reportResults.filter((row) => row.sent).length };
+    } catch (error) {
+      console.warn("[automation tick] daily reports skipped:", error);
+    }
 
     const { recordCronTickOutcome, recordMonitoringIncident } = await import(
       "@/lib/owner/monitoring"
@@ -74,6 +104,8 @@ export async function POST(request: Request): Promise<Response> {
         processedUsers: autoPosts.length,
         results: autoPosts,
       },
+      dailyReports,
+      reliability,
     });
   } catch (error) {
     const message =

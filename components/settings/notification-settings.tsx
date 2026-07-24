@@ -184,10 +184,12 @@ export function NotificationSettings() {
         />
         <ToggleRow
           label={ui.notifications.channelPush}
-          description={ui.notifications.channelComingSoon}
+          description={ui.push.settingsDesc}
           checked={prefs.channels.push}
-          disabled
-          onChange={() => undefined}
+          disabled={masterDisabled}
+          onChange={(checked) =>
+            void save({ channels: { ...prefs.channels, push: checked } })
+          }
         />
       </div>
 
