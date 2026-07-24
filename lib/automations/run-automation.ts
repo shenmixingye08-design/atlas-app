@@ -423,9 +423,10 @@ export async function executeAutomationRun(
     if (
       result.status === "completed" &&
       getDeliverablePreviewText(result.deliverable) &&
-      options.requestOrigin
+      options.requestOrigin &&
+      options.userId
     ) {
-      if (options.userId && jobId) {
+      if (jobId) {
         await heartbeatJob({
           jobId,
           userId: options.userId,
@@ -441,6 +442,7 @@ export async function executeAutomationRun(
             title: automation.name,
           },
           options.requestOrigin,
+          { userId: options.userId },
         );
         deliverableCount = generated.deliverables.length;
 

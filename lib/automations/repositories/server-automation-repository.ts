@@ -160,8 +160,20 @@ export class ServerAutomationRepository implements AutomationRepository {
       updated.nextRun = computeNextRunIso(updated.schedule);
     }
 
-    if (patch.enabled === false && updated.status !== "running") {
-      updated.status = "idle";
+    // Pause: stop scheduling new due work and hide next-run in UI.
+    if (patch.enabled === false) {
+      updated.nextRun = null;
+      if (updated.status !== "running") {
+        updated.status = "idle";
+      }
+    }
+
+    // Resume: only schedule the next future slot — never catch up a backlog.
+    if (patch.enabled === true && existing.enabled === false) {
+      updated.nextRun = computeNextRunIso(updated.schedule, new Date());
+      if (updated.status !== "running") {
+        updated.status = "idle";
+      }
     }
 
     if (Array.isArray(updated.runHistory)) {

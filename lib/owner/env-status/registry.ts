@@ -96,6 +96,13 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     purpose: "自動化 tick（/api/automations/tick）の Cron 認証",
   },
   {
+    key: "ENABLE_SCHEDULED_CRON",
+    service: "vercel_cron",
+    requirement: "optional",
+    purpose:
+      "false で due 自動処理をスキップ（Hobby/Preview の誤実行抑制。既定は有効）",
+  },
+  {
     key: "OAUTH_STATE_SECRET",
     service: "atlas",
     requirement: "recommended",
@@ -226,19 +233,19 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
   {
     key: "VAPID_PUBLIC_KEY",
     service: "atlas",
-    requirement: "optional",
+    requirement: "recommended",
     purpose: "Web Push VAPID 公開鍵（クライアント subscription 用）",
   },
   {
     key: "VAPID_PRIVATE_KEY",
     service: "atlas",
-    requirement: "optional",
+    requirement: "recommended",
     purpose: "Web Push VAPID 秘密鍵（サーバー送信専用）",
   },
   {
     key: "VAPID_SUBJECT",
     service: "atlas",
-    requirement: "optional",
+    requirement: "recommended",
     purpose: "Web Push VAPID subject（mailto: または https:// URL）",
   },
 ] as const;

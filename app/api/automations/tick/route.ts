@@ -18,7 +18,10 @@ function resolveOrigin(request: Request): string {
 
 /**
  * Process automations whose nextRun is due.
- * Auth: `Authorization: Bearer $CRON_SECRET` (Vercel Cron) or signed-in Clerk session.
+ * Auth: `Authorization: Bearer $CRON_SECRET` (Vercel Cron) or ATLAS owner session.
+ *
+ * Hobby: vercel.json keeps daily cron (`0 0 * * *`). Minute cron is for Pro
+ * only (see vercel.cron.pro.json). Owner/secret manual ticks remain available.
  */
 export async function POST(request: Request): Promise<Response> {
   const gate = await authorizeAutomationTick(request);
@@ -26,6 +29,18 @@ export async function POST(request: Request): Promise<Response> {
     const { recordCronTickOutcome } = await import("@/lib/owner/monitoring");
     recordCronTickOutcome(false, gate.error);
     return Response.json({ error: gate.error }, { status: gate.status });
+  }
+
+  // Optional kill-switch for Preview / emergency freeze. Default: enabled.
+  const scheduledCronEnabled =
+    process.env.ENABLE_SCHEDULED_CRON?.trim().toLowerCase() !== "false";
+  if (!scheduledCronEnabled) {
+    return Response.json({
+      skipped: true,
+      reason: "ENABLE_SCHEDULED_CRON=false",
+      processed: 0,
+      results: [],
+    });
   }
 
   try {

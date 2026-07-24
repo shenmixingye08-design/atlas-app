@@ -37,22 +37,28 @@ export function AutomationExecutionLogPanel() {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tickBusy, setTickBusy] = useState(false);
+  const [tickMessage, setTickMessage] = useState<string | null>(null);
+
+  async function loadLogs() {
+    const response = await fetch("/api/owner/automation-execution-logs", {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error("実行ログの取得に失敗しました");
+    }
+    const body = (await response.json()) as {
+      cron: CronDebug;
+      logs: LogRow[];
+    };
+    setCron(body.cron);
+    setLogs(body.logs);
+  }
 
   useEffect(() => {
     void (async () => {
       try {
-        const response = await fetch("/api/owner/automation-execution-logs", {
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error("実行ログの取得に失敗しました");
-        }
-        const body = (await response.json()) as {
-          cron: CronDebug;
-          logs: LogRow[];
-        };
-        setCron(body.cron);
-        setLogs(body.logs);
+        await loadLogs();
       } catch (err) {
         setError(err instanceof Error ? err.message : "取得に失敗しました");
       } finally {
@@ -61,13 +67,62 @@ export function AutomationExecutionLogPanel() {
     })();
   }, []);
 
+  async function runManualTick() {
+    setTickBusy(true);
+    setTickMessage(null);
+    try {
+      const response = await fetch("/api/automations/tick", {
+        method: "POST",
+        cache: "no-store",
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        skipped?: boolean;
+        reason?: string;
+        processed?: number;
+      };
+      if (!response.ok) {
+        throw new Error(body.error ?? "手動 tick に失敗しました");
+      }
+      if (body.skipped) {
+        setTickMessage(`スキップ: ${body.reason ?? "ENABLE_SCHEDULED_CRON=false"}`);
+      } else {
+        setTickMessage(`手動 tick 完了（処理 ${body.processed ?? 0} 件）`);
+      }
+      await loadLogs();
+    } catch (err) {
+      setTickMessage(err instanceof Error ? err.message : "手動 tick に失敗しました");
+    } finally {
+      setTickBusy(false);
+    }
+  }
+
   if (loading) return <LoadingState />;
   if (error) return <ErrorState message={error} />;
 
   return (
     <div className="space-y-6">
       <Card padding="lg" className="space-y-3">
-        <h2 className="text-title text-foreground">Cron / スケジューラ</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-title text-foreground">Cron / スケジューラ</h2>
+          <button
+            type="button"
+            onClick={() => void runManualTick()}
+            disabled={tickBusy}
+            className="min-h-11 rounded-[var(--radius-lg)] bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-foreground)] disabled:opacity-60"
+          >
+            {tickBusy ? "実行中…" : "予定実行を手動シミュレーション"}
+          </button>
+        </div>
+        <p className="text-xs text-[var(--text-muted)]">
+          Hobby では毎日1回 Cron です。毎分実行は Pro 移行後に有効化してください。Owner
+          認証付き手動 tick で予定実行ロジックを検証できます。
+        </p>
+        {tickMessage ? (
+          <p className="text-sm text-foreground" role="status">
+            {tickMessage}
+          </p>
+        ) : null}
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-[var(--text-muted)]">Cron最終起動日時</dt>

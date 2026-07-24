@@ -149,13 +149,16 @@ describe("Google Drive integration", () => {
       updatedAt: new Date().toISOString(),
     });
 
-    const stored = saveDeliverableFile({
-      format: "pdf",
-      fileName: "report.pdf",
-      mimeType: "application/pdf",
-      buffer: Buffer.from("pdf-content"),
-      isPlaceholder: false,
-    });
+    const stored = saveDeliverableFile(
+      {
+        format: "pdf",
+        fileName: "report.pdf",
+        mimeType: "application/pdf",
+        buffer: Buffer.from("pdf-content"),
+        isPlaceholder: false,
+      },
+      "user_drive_test",
+    );
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);

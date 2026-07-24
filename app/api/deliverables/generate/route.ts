@@ -113,6 +113,7 @@ export async function POST(request: Request): Promise<Response> {
         formats: parseFormats(body.formats),
       },
       origin,
+      { userId },
     );
 
     let uploads: IntegrationUploadSummary = {

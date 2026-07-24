@@ -186,6 +186,8 @@ export function createAutomationFromInput(input: CreateAutomationInput): Automat
           )),
   );
 
+  const enabled = input.enabled ?? true;
+
   return {
     id: crypto.randomUUID(),
     userId: input.userId ?? null,
@@ -199,9 +201,10 @@ export function createAutomationFromInput(input: CreateAutomationInput): Automat
     snsBatchDays: normalizeSnsBatchDays(input.snsBatchDays),
     executionFlow,
     destination,
-    enabled: input.enabled ?? true,
+    enabled,
     lastRun: null,
-    nextRun: computeNextRunIso(schedule, nextRunFrom),
+    // Paused / disabled automations must not advertise a next run.
+    nextRun: enabled ? computeNextRunIso(schedule, nextRunFrom) : null,
     status: "idle",
     lastWorkflowRunId: null,
     lastError: null,

@@ -1,9 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const authMock = vi.fn();
+
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: () => authMock(),
+}));
 
 import { GET } from "@/app/api/deliverables/[id]/route";
 import { DocxDeliverableGenerator } from "@/lib/deliverables/generators/docx-generator";
 import { PdfDeliverableGenerator } from "@/lib/deliverables/generators/pdf-generator";
 import { saveDeliverableFile, toDeliverableMetadata } from "@/lib/deliverables/store";
+
+const OWNER = "user_owner_a";
+const OTHER = "user_other_b";
 
 const LONG_JA = `# 長文レポート
 
@@ -22,12 +31,17 @@ ${"日本語の本文です。表や見出しを含む長文をダウンロー�
 `;
 
 describe("deliverables download API", () => {
+  beforeEach(() => {
+    authMock.mockReset();
+    authMock.mockResolvedValue({ userId: OWNER });
+  });
+
   it("returns Word with correct headers and non-zero body", async () => {
     const generated = await new DocxDeliverableGenerator().generate(
       LONG_JA,
       "日本語長文レポート",
     );
-    const stored = saveDeliverableFile(generated);
+    const stored = saveDeliverableFile(generated, OWNER);
     const meta = toDeliverableMetadata(stored);
 
     expect(meta.downloadUrl).toBe(`/api/deliverables/${stored.id}`);
@@ -58,7 +72,7 @@ describe("deliverables download API", () => {
       LONG_JA,
       "日本語長文レポート",
     );
-    const stored = saveDeliverableFile(generated);
+    const stored = saveDeliverableFile(generated, OWNER);
     const meta = toDeliverableMetadata(stored);
 
     const response = await GET(new Request(`http://localhost${meta.downloadUrl}`), {
@@ -75,5 +89,31 @@ describe("deliverables download API", () => {
     expect(body.byteLength).toBeGreaterThan(3000);
     expect(body.toString("latin1").startsWith("%PDF")).toBe(true);
     expect(body.toString("latin1")).toContain("%%EOF");
+  });
+
+  it("rejects unauthenticated download", async () => {
+    authMock.mockResolvedValue({ userId: null });
+    const generated = await new DocxDeliverableGenerator().generate("短文", "短文");
+    const stored = saveDeliverableFile(generated, OWNER);
+
+    const response = await GET(
+      new Request(`http://localhost/api/deliverables/${stored.id}`),
+      { params: Promise.resolve({ id: stored.id }) },
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects download by a different user", async () => {
+    authMock.mockResolvedValue({ userId: OTHER });
+    const generated = await new DocxDeliverableGenerator().generate("短文", "短文");
+    const stored = saveDeliverableFile(generated, OWNER);
+
+    const response = await GET(
+      new Request(`http://localhost/api/deliverables/${stored.id}`),
+      { params: Promise.resolve({ id: stored.id }) },
+    );
+
+    expect(response.status).toBe(404);
   });
 });

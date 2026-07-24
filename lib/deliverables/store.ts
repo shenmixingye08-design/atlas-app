@@ -5,6 +5,8 @@ import type { Deliverable, GeneratedDeliverableFile } from "./types";
 export type StoredDeliverable = GeneratedDeliverableFile & {
   id: string;
   generatedAt: string;
+  /** Clerk user id that owns this generated file. Required for download auth. */
+  userId: string;
 };
 
 const TTL_MS = 1000 * 60 * 60;
@@ -35,7 +37,12 @@ function purgeExpiredEntries(store: StoreBucket): void {
 
 export function saveDeliverableFile(
   file: GeneratedDeliverableFile,
+  userId: string,
 ): StoredDeliverable {
+  if (!userId.trim()) {
+    throw new Error("userId is required to store a deliverable");
+  }
+
   const store = getStoreBucket();
   purgeExpiredEntries(store);
 
@@ -43,6 +50,7 @@ export function saveDeliverableFile(
     ...file,
     id: crypto.randomUUID(),
     generatedAt: new Date().toISOString(),
+    userId,
   };
 
   store.set(stored.id, stored);
@@ -53,6 +61,16 @@ export function getStoredDeliverable(id: string): StoredDeliverable | null {
   const store = getStoreBucket();
   purgeExpiredEntries(store);
   return store.get(id) ?? null;
+}
+
+/** Returns the file only when the requester owns it. */
+export function getStoredDeliverableForUser(
+  id: string,
+  userId: string,
+): StoredDeliverable | null {
+  const stored = getStoredDeliverable(id);
+  if (!stored || stored.userId !== userId) return null;
+  return stored;
 }
 
 export function toDeliverableMetadata(

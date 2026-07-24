@@ -1,5 +1,7 @@
+import { auth } from "@clerk/nextjs/server";
+
 import { buildAttachmentContentDisposition } from "@/lib/http/content-disposition";
-import { getStoredDeliverable } from "@/lib/deliverables/store";
+import { getStoredDeliverableForUser } from "@/lib/deliverables/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,10 +14,16 @@ export async function GET(
   _request: Request,
   context: RouteContext,
 ): Promise<Response> {
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await context.params;
-  const stored = getStoredDeliverable(id);
+  const stored = getStoredDeliverableForUser(id, userId);
 
   if (!stored) {
+    // Same message for missing and non-owned — avoid id enumeration.
     return Response.json({ error: "Deliverable not found or expired" }, { status: 404 });
   }
 
