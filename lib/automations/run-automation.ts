@@ -42,16 +42,34 @@ import {
 import { computeNextRunIso } from "./schedule";
 import { buildCompanyOrchestrationMetadata } from "@/lib/company-templates/loader";
 import { getServerActiveCompanyState } from "@/lib/company-templates/store";
-import { maybeAutoPostToXAfterAutomation } from "@/lib/integrations/x/post/automation";
+import {
+  maybeAutoPostToXAfterAutomation,
+  resolveTweetTextForPublish,
+} from "@/lib/integrations/x/post/automation";
 import {
   notifyAutomationAwaitingReview,
   notifyAutomationCompleted,
   notifyAutomationFailed,
+  notifyXRecurringPostFailed,
+  notifyXRecurringPostSuccess,
 } from "@/lib/notifications/emitters";
 import type { Automation, AutomationRunHistoryEntry, AutomationRunResult } from "./types";
 import { serverAutomationRepository } from "./repositories/server-automation-repository";
 import { MAX_AUTOMATION_RUN_HISTORY } from "./repositories/server-automation-repository";
 import { serverWorkflowRunRepository } from "./repositories/workflow-run-store";
+import {
+  recordAutomationExecutionLog,
+  updateAutomationExecutionLog,
+} from "./execution-log";
+import {
+  shouldAutoPublishToX,
+  shouldAwaitXPostApproval,
+} from "./x-recurring/destination";
+import { getXRecurringError } from "./x-recurring/errors";
+import { hasRecurringSlotAlreadyHandled } from "./x-recurring/idempotency";
+import { savePendingXPost } from "./x-recurring/pending-store";
+import { gateXRecurringConnection } from "./x-recurring/connection-gate";
+import { resolveFeatureContextForUser } from "@/lib/integrations/x/post/drive-backup";
 
 export type ExecuteAutomationOptions = {
   triggerType?: WorkflowRunTriggerType;
@@ -64,6 +82,21 @@ function appendRunHistory(
   entry: AutomationRunHistoryEntry,
 ): AutomationRunHistoryEntry[] {
   return [entry, ...(existing ?? [])].slice(0, MAX_AUTOMATION_RUN_HISTORY);
+}
+
+function mapXPostFailureCode(message: string | null | undefined): string {
+  const text = (message ?? "").toLowerCase();
+  if (!message?.trim()) return "internal_error";
+  if (/未連携|接続してください|xを接続/.test(message)) return "x_not_connected";
+  if (/再連携/.test(message)) return "x_reconnect_required";
+  if (/権限|scope|tweet\.write/.test(text)) return "x_permission_missing";
+  if (/rate|制限/.test(text)) return "x_rate_limited";
+  if (/長すぎ|too long|280/.test(text)) return "x_text_too_long";
+  if (/空|empty/.test(text)) return "x_text_empty";
+  if (/refresh|トークン/.test(text)) return "x_refresh_failed";
+  if (/auth|401|403/.test(text)) return "x_auth_failed";
+  if (/limit|上限/.test(text)) return "x_post_limit";
+  return "internal_error";
 }
 
 /**
@@ -204,35 +237,147 @@ export async function executeAutomationRun(
     // Tracks a real SNS publish failure so we never report "投稿完了" when
     // nothing actually reached X. Holds the user-facing reason on failure.
     let snsPostFailure: string | null = null;
+    let snsErrorCode: string | null = null;
+    let xPostId: string | null = null;
+    let xPostUrl: string | null = null;
+    let awaitingXApproval = false;
+    let generatedTweetText = "";
+    const scheduledAt = automation.nextRun ?? startedAt;
 
-    if (result.status === "completed" && result.finalResponse.trim()) {
-      try {
-        const autoPost = await maybeAutoPostToXAfterAutomation({
-          userId: options.userId,
-          automation,
-          content: result.finalResponse,
-        });
+    const executionLog = recordAutomationExecutionLog({
+      automationId: automation.id,
+      userId: options.userId ?? automation.userId,
+      scheduledAt,
+      startedAt,
+      completedAt: null,
+      status: "running",
+      generatedText: null,
+      xPostId: null,
+      xPostUrl: null,
+      errorCode: null,
+      errorMessage: null,
+      retryCount: 0,
+      xApiSummary: null,
+      triggerType,
+    });
 
-        // Only immediate "publish" posts hit X during this run; a "schedule"
-        // result is a successful reservation, not a completed post.
-        if (autoPost.attempted && autoPost.mode === "publish") {
-          const postResult = autoPost.result;
-          if (postResult.status !== "ready") {
-            snsPostFailure = postResult.message;
-          } else if (postResult.history?.status !== "success") {
+    if (result.status === "completed") {
+      generatedTweetText = resolveTweetTextForPublish({
+        deliverable: result.deliverable,
+        finalResponse: result.finalResponse,
+      });
+
+      const wantsX =
+        shouldAutoPublishToX(automation) || shouldAwaitXPostApproval(automation);
+
+      if (wantsX && options.userId) {
+        if (
+          hasRecurringSlotAlreadyHandled({
+            userId: options.userId,
+            automationId: automation.id,
+            scheduledAt,
+          })
+        ) {
+          snsPostFailure = getXRecurringError("duplicate_execution").message;
+          snsErrorCode = "duplicate_execution";
+        } else if (!generatedTweetText.trim()) {
+          snsPostFailure = getXRecurringError("x_text_empty").message;
+          snsErrorCode = "x_text_empty";
+        } else {
+          try {
+            const context = await resolveFeatureContextForUser(options.userId);
+            const gate = await gateXRecurringConnection({
+              userId: options.userId,
+              context,
+            });
+
+            if (!gate.ok) {
+              snsPostFailure = gate.error.message;
+              snsErrorCode = gate.error.code;
+            } else if (shouldAwaitXPostApproval(automation)) {
+              savePendingXPost({
+                automationId: automation.id,
+                userId: options.userId,
+                scheduledAt,
+                generatedText: generatedTweetText,
+                accountUsername: gate.username,
+              });
+              awaitingXApproval = true;
+            } else if (shouldAutoPublishToX(automation)) {
+              const autoPost = await maybeAutoPostToXAfterAutomation({
+                userId: options.userId,
+                automation,
+                content: generatedTweetText,
+                context,
+                allowPublish: true,
+              });
+
+              if (autoPost.attempted && autoPost.mode === "publish") {
+                const postResult = autoPost.result;
+                if (postResult.status !== "ready") {
+                  snsPostFailure = postResult.message;
+                  snsErrorCode = mapXPostFailureCode(postResult.message);
+                } else if (postResult.history?.status !== "success") {
+                  snsPostFailure =
+                    postResult.history?.errorMessage ??
+                    "Xへの投稿に失敗しました";
+                  snsErrorCode = mapXPostFailureCode(snsPostFailure);
+                } else {
+                  xPostId = postResult.history.tweetId ?? null;
+                  xPostUrl = postResult.history.tweetUrl ?? null;
+                }
+              } else if (!autoPost.attempted) {
+                snsPostFailure =
+                  "Xへの投稿処理を開始できませんでした。投稿先設定をご確認ください。";
+                snsErrorCode = "internal_error";
+              }
+            }
+          } catch (postError) {
+            console.error(
+              `[executeAutomationRun] X auto-post failed for ${automation.id}:`,
+              postError instanceof Error ? postError.name : "unknown",
+            );
             snsPostFailure =
-              postResult.history?.errorMessage ?? "Xへの投稿に失敗しました";
+              postError instanceof Error
+                ? postError.message
+                : getXRecurringError("internal_error").message;
+            snsErrorCode = mapXPostFailureCode(snsPostFailure);
           }
         }
-      } catch (postError) {
-        console.error(
-          `[executeAutomationRun] X auto-post failed for ${automation.id}:`,
-          postError,
-        );
-        snsPostFailure =
-          postError instanceof Error
-            ? postError.message
-            : "Xへの投稿に失敗しました";
+      } else if (result.finalResponse.trim()) {
+        // Legacy SNS flows without destination=x still use the previous path.
+        try {
+          const autoPost = await maybeAutoPostToXAfterAutomation({
+            userId: options.userId,
+            automation,
+            content: generatedTweetText || result.finalResponse,
+          });
+
+          if (autoPost.attempted && autoPost.mode === "publish") {
+            const postResult = autoPost.result;
+            if (postResult.status !== "ready") {
+              snsPostFailure = postResult.message;
+              snsErrorCode = mapXPostFailureCode(postResult.message);
+            } else if (postResult.history?.status !== "success") {
+              snsPostFailure =
+                postResult.history?.errorMessage ?? "Xへの投稿に失敗しました";
+              snsErrorCode = mapXPostFailureCode(snsPostFailure);
+            } else {
+              xPostId = postResult.history.tweetId ?? null;
+              xPostUrl = postResult.history.tweetUrl ?? null;
+            }
+          }
+        } catch (postError) {
+          console.error(
+            `[executeAutomationRun] X auto-post failed for ${automation.id}:`,
+            postError instanceof Error ? postError.name : "unknown",
+          );
+          snsPostFailure =
+            postError instanceof Error
+              ? postError.message
+              : "Xへの投稿に失敗しました";
+          snsErrorCode = mapXPostFailureCode(snsPostFailure);
+        }
       }
     }
 
@@ -276,19 +421,30 @@ export async function executeAutomationRun(
       }
     }
 
-    const preview = previewFinalResponse(result.finalResponse);
+    const preview = previewFinalResponse(
+      generatedTweetText || result.finalResponse,
+    );
     const completedAt = new Date().toISOString();
 
     // A completed orchestration whose SNS publish failed must be surfaced as a
     // failure — otherwise the user sees "投稿完了" while nothing reached X.
-    const effectiveStatus: typeof result.status =
-      snsPostFailure && result.status === "completed" ? "failed" : result.status;
+    // Approval-wait is a successful run that intentionally did not post yet.
+    const effectiveStatus: "completed" | "failed" | "awaiting_approval" =
+      snsPostFailure && result.status === "completed"
+        ? "failed"
+        : awaitingXApproval && result.status === "completed"
+          ? "awaiting_approval"
+          : result.status === "completed"
+            ? "completed"
+            : "failed";
     const effectiveError = snsPostFailure ?? result.error ?? null;
 
     await serverWorkflowRunRepository.complete({
       id: workflowRun.id,
-      status: effectiveStatus,
-      approved: result.approved && !snsPostFailure,
+      status:
+        effectiveStatus === "awaiting_approval" ? "completed" : effectiveStatus,
+      approved:
+        effectiveStatus === "completed" && result.approved && !snsPostFailure,
       totalDurationMs: result.totalDurationMs,
       result,
       finalResponsePreview: preview,
@@ -298,32 +454,86 @@ export async function executeAutomationRun(
 
     const nextRun = computeNextRunIso(automation.schedule, new Date(completedAt));
     const succeeded = effectiveStatus === "completed";
+    const awaiting = effectiveStatus === "awaiting_approval";
     const latest = await serverAutomationRepository.findById(automation.id);
 
     await serverAutomationRepository.update(automation.id, {
-      status: succeeded ? "success" : "failed",
+      status: succeeded || awaiting ? "success" : "failed",
       lastRun: completedAt,
       nextRun,
       lastWorkflowRunId: workflowRun.id,
       lastError: effectiveError,
-      successCount: (latest?.successCount ?? automation.successCount ?? 0) + (succeeded ? 1 : 0),
-      failureCount: (latest?.failureCount ?? automation.failureCount ?? 0) + (succeeded ? 0 : 1),
+      successCount:
+        (latest?.successCount ?? automation.successCount ?? 0) +
+        (succeeded ? 1 : 0),
+      failureCount:
+        (latest?.failureCount ?? automation.failureCount ?? 0) +
+        (succeeded || awaiting ? 0 : 1),
       runHistory: appendRunHistory(latest?.runHistory ?? automation.runHistory, {
         id: workflowRun.id,
-        status: succeeded ? "completed" : "failed",
+        status: awaiting
+          ? "awaiting_approval"
+          : succeeded
+            ? "completed"
+            : "failed",
         startedAt,
         completedAt,
         error: effectiveError,
         triggerType,
+        scheduledAt,
+        generatedText: generatedTweetText || null,
+        xPostId,
+        xPostUrl,
+        errorCode: snsErrorCode,
+        retryCount: 0,
       }),
+    });
+
+    updateAutomationExecutionLog(executionLog.id, {
+      completedAt,
+      status: awaiting
+        ? "awaiting_approval"
+        : succeeded
+          ? "success"
+          : "failed",
+      generatedText: generatedTweetText || null,
+      xPostId,
+      xPostUrl,
+      errorCode: snsErrorCode,
+      errorMessage: effectiveError,
+      xApiSummary: xPostId
+        ? `posted tweetId=${xPostId}`
+        : awaiting
+          ? "awaiting_user_approval"
+          : snsErrorCode
+            ? `error=${snsErrorCode}`
+            : null,
     });
 
     const flow = normalizeExecutionFlow(automation.executionFlow);
     if (effectiveStatus === "failed") {
-      notifyAutomationFailed(options.userId, {
+      if (shouldAutoPublishToX(automation) || shouldAwaitXPostApproval(automation)) {
+        notifyXRecurringPostFailed(options.userId, {
+          automationId: automation.id,
+          executionId: workflowRun.id,
+          errorMessage: effectiveError ?? undefined,
+        });
+      } else {
+        notifyAutomationFailed(options.userId, {
+          automationId: automation.id,
+          name: automation.name,
+          error: effectiveError ?? undefined,
+        });
+      }
+    } else if (awaiting) {
+      notifyAutomationAwaitingReview(options.userId, {
         automationId: automation.id,
         name: automation.name,
-        error: effectiveError ?? undefined,
+      });
+    } else if (effectiveStatus === "completed" && xPostId) {
+      notifyXRecurringPostSuccess(options.userId, {
+        automationId: automation.id,
+        executionId: workflowRun.id,
       });
     } else if (effectiveStatus === "completed" && !result.approved) {
       notifyAutomationAwaitingReview(options.userId, {
@@ -384,13 +594,22 @@ export async function executeAutomationRun(
     return {
       automationId: automation.id,
       workflowRunId: workflowRun.id,
-      status: effectiveStatus === "completed" ? "completed" : "failed",
+      status:
+        effectiveStatus === "awaiting_approval"
+          ? "awaiting_approval"
+          : effectiveStatus === "completed"
+            ? "completed"
+            : "failed",
       orchestrationStatus: result.status,
-      approved: result.approved && !snsPostFailure,
+      approved:
+        effectiveStatus === "completed" && result.approved && !snsPostFailure,
       totalDurationMs: result.totalDurationMs,
       finalResponsePreview: preview,
       error: effectiveError,
       deliverableCount,
+      xPostId,
+      xPostUrl,
+      errorCode: snsErrorCode,
     };
   } catch (error) {
     const message =

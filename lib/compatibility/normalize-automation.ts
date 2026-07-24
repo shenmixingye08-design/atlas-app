@@ -20,6 +20,7 @@ import type {
   SnsBatchDays,
   WorkExecutionFlow,
 } from "@/lib/automations/types";
+import { normalizeAutomationDestination } from "@/lib/automations/x-recurring/destination";
 import { normalizeExecutionMode } from "@/lib/cost-optimization/execution-mode";
 import { normalizeSnsBatchDays } from "@/lib/cost-optimization/sns-batch";
 
@@ -236,6 +237,10 @@ export function normalizeAutomation(raw: unknown): Automation {
     executionMode: normalizeExecutionModeField(record.executionMode),
     snsBatchDays: normalizeSnsBatchDaysField(record.snsBatchDays),
     executionFlow: normalizeExecutionFlowField(record.executionFlow, fallbackText),
+    destination: normalizeAutomationDestination(
+      record.destination ??
+        (isRecord(workflow.metadata) ? workflow.metadata.destination : undefined),
+    ),
     enabled: asBoolean(record.enabled, true),
     lastRun: asOptionalString(record.lastRun),
     nextRun: asOptionalString(record.nextRun),

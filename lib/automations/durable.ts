@@ -35,13 +35,29 @@ function compactAutomations(
     automations: state.automations.slice(0, MAX_CLERK_AUTOMATIONS).map((row) => ({
       ...withAutomationDefaults(row),
       description: row.description.slice(0, 240),
+      destination: row.destination ?? "none",
       workflow: {
         assignment: row.workflow.assignment.slice(0, 800),
-        metadata: undefined,
+        metadata: row.workflow.metadata
+          ? {
+              destination:
+                typeof row.workflow.metadata.destination === "string"
+                  ? row.workflow.metadata.destination
+                  : row.destination,
+            }
+          : row.destination
+            ? { destination: row.destination }
+            : undefined,
       },
       runHistory: (row.runHistory ?? []).slice(0, 8).map((entry) => ({
         ...entry,
         error: entry.error?.slice(0, 160) ?? null,
+        generatedText: entry.generatedText?.slice(0, 280) ?? null,
+        xPostId: entry.xPostId ?? null,
+        xPostUrl: entry.xPostUrl ?? null,
+        errorCode: entry.errorCode ?? null,
+        scheduledAt: entry.scheduledAt ?? null,
+        retryCount: entry.retryCount ?? 0,
       })),
       lastError: row.lastError?.slice(0, 200) ?? null,
     })),

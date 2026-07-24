@@ -39,9 +39,20 @@ export async function POST(request: Request): Promise<Response> {
     const { recordCronTickOutcome, recordMonitoringIncident } = await import(
       "@/lib/owner/monitoring"
     );
+    const { recordAutomationCronDebug } = await import(
+      "@/lib/automations/execution-log"
+    );
     recordCronTickOutcome(true);
 
     const failed = results.filter((r) => r.status === "failed");
+    const succeeded = results.filter((r) => r.status === "completed");
+    recordAutomationCronDebug({
+      ok: true,
+      dueCount: results.length,
+      successCount: succeeded.length,
+      failureCount: failed.length,
+    });
+
     for (const row of failed.slice(0, 5)) {
       recordMonitoringIncident({
         kind: "automation_failure",
@@ -68,7 +79,11 @@ export async function POST(request: Request): Promise<Response> {
     const message =
       error instanceof Error ? error.message : "Automation tick failed";
     const { recordCronTickOutcome } = await import("@/lib/owner/monitoring");
+    const { recordAutomationCronDebug } = await import(
+      "@/lib/automations/execution-log"
+    );
     recordCronTickOutcome(false, message);
+    recordAutomationCronDebug({ ok: false, error: message });
     return Response.json({ error: message }, { status: 500 });
   }
 }

@@ -236,6 +236,16 @@ async function executeTweetPost(input: {
       }),
     );
 
+    // Safe operational log for Vercel Runtime Logs — never includes tokens.
+    console.info("[X Post] tweet created", {
+      mode: input.mode,
+      tweetId: tweet.tweetId,
+      tweetUrl,
+      automationId: input.automationId ?? null,
+      textChars: input.text.trim().length,
+      endpoint: "https://api.twitter.com/2/tweets",
+    });
+
     await touchXConnectionLastUsed(input.userId);
     notifyXPostSuccess(input.userId, input.text.trim(), {
       historyId: history.id,
