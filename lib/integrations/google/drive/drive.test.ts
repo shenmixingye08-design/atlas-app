@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+vi.mock("@/lib/billing/access", () => ({
+  getBillingFeatureDenial: vi.fn(async () => null),
+}));
+
+import { getBillingFeatureDenial } from "@/lib/billing/access";
 import { saveDeliverableFile } from "@/lib/deliverables/store";
 import { resetFeatureFlagStore, setFeatureFlagState } from "@/lib/feature-flags/store";
 import {
@@ -34,6 +39,7 @@ describe("Google Drive integration", () => {
     resetDriveFolderStore();
     setFeatureFlagState("google", "on");
     vi.restoreAllMocks();
+    vi.mocked(getBillingFeatureDenial).mockResolvedValue(null);
   });
 
   afterEach(() => {

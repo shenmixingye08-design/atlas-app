@@ -5,7 +5,7 @@
 
 ## 40-item structured summary
 
-1. **総合判定案: B〜C。** コード上の安全策は増えているが、live verification と remote migration apply が未確認のため A 判定は不可。
+1. **総合判定案: C。** production build と unit test suite は成功しているが、live verification と remote migration apply が未確認のため B/A 判定は不可。
 2. **Hobby cron approach adopted.** `vercel.json` は `/api/automations/tick` を `0 0 * * *` の1日1回に固定している。
 3. **Pro cron path is documented.** `vercel.cron.pro.json` は Pro 移行後の毎分 cron 用テンプレートとして分離されている。
 4. **Hobby limitation remains.** X定期投稿や retry を分単位で保証するには Hobby cron だけでは不足する。
@@ -44,10 +44,13 @@
 37. **P0 remaining: Cron/tick production behavior.** Confirm Hobby daily cron fires, manual tick works with secret/Owner, unauthorized tick is rejected, and `ENABLE_SCHEDULED_CRON=false` skips due work.
 38. **P1 remaining: X and automation reliability.** Confirm connected X user token refresh, scheduled slot idempotency, no duplicate post, failed-job retry, stale-running recovery, and owner incident visibility.
 39. **P1 remaining: Push and mobile UX.** Confirm web push subscription/save/send on HTTPS with at least one Android device and one iPhone/Safari-supported path as applicable.
-40. **Release recommendation.** If env and remote migrations remain unverified, treat billing readiness as **C**. If env/migrations plus Stripe test checkout+webhook and Clerk login are verified, upgrade to **B**. Reserve **A** only after live-domain, live-mode-safe, device, cron, and rollback evidence exists.
+40. **Release recommendation.** Current local/code-side evidence supports **C**: production build and full unit suite pass, but live X / Android / Clerk UI / Stripe Test Mode / remote migrations remain unverified. Upgrade to **B** only after live env and remote migration checks are verified with evidence. Reserve **A** only after live-domain, live-mode-safe, device, cron, and rollback evidence exists.
 
 ## What was fixed / code reality observed
 
+- Production build: **SUCCESS** after the SSR push fix (`npm run build` succeeded in this agent).
+- Focused ownership / pause-resume / deliverable / xlsx / x-post / billing unit tests: **passing** in the current code-side verification set; the full suite also passes.
+- Full suite after stale expectation fixes: **passing** (`npm test`: 118 test files, 616 tests).
 - Hobby cron is intentionally daily in `vercel.json`; every-minute cron is isolated to `vercel.cron.pro.json`.
 - `/api/automations/tick` keeps authenticated manual execution and has a scheduled-processing kill-switch.
 - Stripe production guard rejects missing/test/mismatched keys.
@@ -63,14 +66,16 @@
 - X live post creation/confirmation/deletion.
 - Android device or iPhone real Web Push permission and delivery.
 - Clerk login UI with real hosted credentials/session.
-- Stripe test mode or live mode Checkout, Portal, invoice, webhook delivery.
+- Stripe Test Mode or live mode Checkout, Portal, invoice, webhook delivery.
 - Remote Supabase migration apply status, table policies, or service-role writes.
 - Vercel Hobby cron actually firing after deployment.
 - Production environment variable presence in Vercel/Clerk/Stripe/Supabase dashboards.
 
 ## Honest billing judgment
 
-- **Current evidence supports B or C, not A.**
-- Choose **C** if the only evidence is repository code and local/static review.
+- **Current evidence supports C, not B or A.**
+- Code-side checks now passing: production build; focused ownership/pause-resume/deliverable/xlsx/x-post/billing unit tests; full `npm test` suite.
+- Live X, Android/iPhone push, Clerk UI, Stripe Test Mode, and remote Supabase migrations are still unverified in this agent environment.
+- Choose **C** while live env and remote migration evidence is missing.
 - Choose **B** only after production/preview env presence, remote Supabase migrations, Clerk login, and Stripe test checkout+webhook are verified with logs/screenshots.
 - Choose **A** only with live-domain end-to-end evidence, rollback notes, no secret exposure, and explicit confirmation that no unintended live charges/posts occurred.

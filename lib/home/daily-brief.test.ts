@@ -23,7 +23,7 @@ describe("daily brief", () => {
   });
 
   it("builds daily brief with headline and employees", () => {
-    const now = new Date("2026-07-09T10:00:00+09:00");
+    const now = new Date("2026-07-09T10:00:00");
     const brief = buildDailyBrief({
       automations: SEED_AUTOMATIONS,
       projects: [],
