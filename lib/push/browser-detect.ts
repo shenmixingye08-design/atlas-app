@@ -8,7 +8,8 @@ export type PushBrowserInfo = {
 };
 
 export function detectPushBrowser(): PushBrowserInfo {
-  if (typeof navigator === "undefined") {
+  // SSR / Node: never touch window/navigator browser APIs.
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
     return {
       platform: "unknown",
       browser: "unknown",

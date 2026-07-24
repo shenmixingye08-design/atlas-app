@@ -75,9 +75,10 @@ export function PushNotificationSettings() {
   const [devices, setDevices] = useState<
     Awaited<ReturnType<typeof fetchPushDevices>>
   >([]);
-  const browser = detectPushBrowser();
-  const permission =
-    typeof Notification !== "undefined" ? Notification.permission : undefined;
+  const [browser, setBrowser] = useState(() => detectPushBrowser());
+  const [permission, setPermission] = useState<
+    NotificationPermission | undefined
+  >(undefined);
   const registered = devices.some((d) => d.isActive);
   const permissionState = resolvePushPermissionState(
     permission,
@@ -95,6 +96,10 @@ export function PushNotificationSettings() {
   };
 
   useEffect(() => {
+    setBrowser(detectPushBrowser());
+    setPermission(
+      typeof Notification !== "undefined" ? Notification.permission : undefined,
+    );
     void refresh().catch(() => undefined);
   }, []);
 
