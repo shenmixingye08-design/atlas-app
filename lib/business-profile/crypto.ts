@@ -46,6 +46,44 @@ export function decryptBusinessSecret(payload: string): string {
   return decrypted.toString("utf8");
 }
 
+export type EncryptedSecret = {
+  encrypted: string | null;
+  last4: string | null;
+};
+
+export function extractLast4(value: string | null | undefined): string | null {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (!digits) return null;
+  return digits.slice(-4);
+}
+
+export function maskLast4(last4: string | null | undefined): string | null {
+  if (!last4) return null;
+  return `••••${last4}`;
+}
+
+export function encryptSecretValue(
+  value: string | null | undefined,
+): EncryptedSecret {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return { encrypted: null, last4: null };
+  return {
+    encrypted: encryptBusinessSecret(normalized),
+    last4: extractLast4(normalized),
+  };
+}
+
+export function decryptSecretValue(
+  encrypted: string | null | undefined,
+): string | null {
+  if (!encrypted) return null;
+  try {
+    return decryptBusinessSecret(encrypted);
+  } catch {
+    return null;
+  }
+}
+
 export function isEncryptedPayload(payload: string): boolean {
   const parts = payload.split(":");
   if (parts.length !== 3) return false;
