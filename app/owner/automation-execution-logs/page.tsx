@@ -1,7 +1,12 @@
+import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
 import { AutomationExecutionLogPanel } from "@/components/owner/automation-execution-log-panel";
 import { OwnerNav } from "@/components/owner/owner-nav";
 
-export default function OwnerAutomationExecutionLogsPage() {
+export const dynamic = "force-dynamic";
+
+export default async function OwnerAutomationExecutionLogsPage() {
+  await requireAtlasOwner();
+
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8 px-4 py-8">
       <OwnerNav active="automationExecutionLogs" />
