@@ -1,15 +1,9 @@
 "use client";
 
+import { triggerBlobDownload } from "@/lib/browser/trigger-blob-download";
+
 export function downloadBlob(blob: Blob, fileName: string): void {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.rel = "noopener";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+  void triggerBlobDownload(blob, fileName);
 }
 
 export function uint8ArrayToBase64(data: Uint8Array): string {

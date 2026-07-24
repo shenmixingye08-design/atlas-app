@@ -57,7 +57,7 @@ export function getStoredDeliverable(id: string): StoredDeliverable | null {
 
 export function toDeliverableMetadata(
   stored: StoredDeliverable,
-  requestOrigin: string,
+  _requestOrigin?: string,
 ): Deliverable {
   return {
     id: stored.id,
@@ -67,6 +67,8 @@ export function toDeliverableMetadata(
     generatedAt: stored.generatedAt,
     sizeBytes: stored.buffer.byteLength,
     isPlaceholder: stored.isPlaceholder,
-    downloadUrl: `${requestOrigin}/api/deliverables/${stored.id}`,
+    // Same-origin relative path — avoids absolute-origin mismatches on mobile
+    // (http/https, forwarded host) that break <a download> / cookie scope.
+    downloadUrl: `/api/deliverables/${stored.id}`,
   };
 }

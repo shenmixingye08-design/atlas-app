@@ -640,6 +640,8 @@ export const ui = {
     driveSandboxSaved:
       "Saved successfully. Generated folder Marketing Reports（サンドボックス実行）",
     preparingFiles: "ファイルを準備しています…",
+    downloadingFile: "ダウンロード中…",
+    downloadFailed: "ダウンロードに失敗しました。もう一度お試しください。",
     viewDetails: "詳細を見る",
     hideDetails: "詳細を閉じる",
     generatedAt: (time: string) => `生成: ${time}`,
