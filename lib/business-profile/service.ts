@@ -203,3 +203,15 @@ export async function deleteField(
 ): Promise<boolean> {
   return businessProfileRepository.deleteField(ownerUserId, profileId, fieldKey);
 }
+
+export async function purgeBusinessProfileData(ownerUserId: string): Promise<{
+  profiles: number;
+  fields: number;
+  contacts: number;
+  cases: number;
+  caseContacts: number;
+  artifactBindings: number;
+  usageLogs: number;
+}> {
+  return businessProfileRepository.purgeUserBusinessData(ownerUserId);
+}

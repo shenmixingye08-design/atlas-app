@@ -51,6 +51,7 @@ type LooseQueryBuilder = {
   single: (...args: unknown[]) => LooseQueryBuilder;
   insert: (...args: unknown[]) => LooseQueryBuilder;
   update: (...args: unknown[]) => LooseQueryBuilder;
+  delete: (...args: unknown[]) => LooseQueryBuilder;
   upsert: (...args: unknown[]) => LooseQueryBuilder;
 };
 
@@ -1357,6 +1358,95 @@ export class BusinessProfileRepository {
           fieldKeys: row.field_keys ?? [],
           createdAt: row.created_at,
         }));
+  }
+
+  async purgeUserBusinessData(ownerUserId: string): Promise<{
+    profiles: number;
+    fields: number;
+    contacts: number;
+    cases: number;
+    caseContacts: number;
+    artifactBindings: number;
+    usageLogs: number;
+  }> {
+    const buckets = getBuckets();
+    const counts = {
+      profiles: 0,
+      fields: 0,
+      contacts: 0,
+      cases: 0,
+      caseContacts: 0,
+      artifactBindings: 0,
+      usageLogs: 0,
+    };
+
+    for (const [id, profile] of buckets.profiles) {
+      if (profile.ownerUserId === ownerUserId) {
+        buckets.profiles.delete(id);
+        counts.profiles += 1;
+      }
+    }
+    for (const [id, field] of buckets.fields) {
+      if (field.ownerUserId === ownerUserId) {
+        buckets.fields.delete(id);
+        counts.fields += 1;
+      }
+    }
+    for (const [id, contact] of buckets.contacts) {
+      if (contact.ownerUserId === ownerUserId) {
+        buckets.contacts.delete(id);
+        counts.contacts += 1;
+      }
+    }
+    for (const [id, item] of buckets.cases) {
+      if (item.ownerUserId === ownerUserId) {
+        buckets.cases.delete(id);
+        counts.cases += 1;
+      }
+    }
+    for (const [id, link] of buckets.caseContacts) {
+      if (link.ownerUserId === ownerUserId) {
+        buckets.caseContacts.delete(id);
+        counts.caseContacts += 1;
+      }
+    }
+    for (const [id, binding] of buckets.artifactBindings) {
+      if (binding.ownerUserId === ownerUserId) {
+        buckets.artifactBindings.delete(id);
+        counts.artifactBindings += 1;
+      }
+    }
+    for (const [id, log] of buckets.usageLogs) {
+      if (log.ownerUserId === ownerUserId) {
+        buckets.usageLogs.delete(id);
+        counts.usageLogs += 1;
+      }
+    }
+
+    const client = getClient();
+    if (!client) return counts;
+
+    const deletes: Array<[string, keyof typeof counts]> = [
+      [CASE_CONTACTS_TABLE, "caseContacts"],
+      [ARTIFACT_BINDINGS_TABLE, "artifactBindings"],
+      [USAGE_LOGS_TABLE, "usageLogs"],
+      [FIELDS_TABLE, "fields"],
+      [CONTACTS_TABLE, "contacts"],
+      [CASES_TABLE, "cases"],
+      [PROFILES_TABLE, "profiles"],
+    ];
+
+    for (const [table, key] of deletes) {
+      const result = await (client
+        .from(table)
+        .delete()
+        .eq("owner_user_id", ownerUserId) as unknown as Promise<DbResult<unknown[]>>);
+      warnDurable(`purge ${table}`, result.error);
+      if (!result.error) continue;
+      counts[key] = 0;
+    }
+
+    return counts;
   }
 }
 

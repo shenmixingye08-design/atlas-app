@@ -1,55 +1,81 @@
--- ATLAS Phase 6 business profiles: durable structured business data.
--- Apply in Supabase SQL editor when SUPABASE_SERVICE_ROLE_KEY is configured.
--- Writes use the service role key (bypasses RLS). Anon / authenticated cannot access.
--- Secrets are stored encrypted; logs and bindings keep field names only, not raw values.
+-- ATLAS Phase 6 business profiles.
+-- Source of truth: lib/business-profile/repository.ts table constants and Row types.
+-- All browser roles are denied by RLS; server writes use the Supabase service role.
+
+create extension if not exists pgcrypto;
 
 create table if not exists public.atlas_business_profiles (
   id uuid primary key default gen_random_uuid(),
   owner_user_id text not null,
-  organization_id text,
-  name text not null,
-  profile_kind text not null default 'general',
+  kind text,
   display_name text,
-  full_name text,
-  full_name_kana text,
   company_name text,
-  trade_name text,
+  legal_name text,
   department text,
-  role_title text,
-  representative_name text,
   postal_code text,
-  address text,
-  phone_main text,
-  phone_direct text,
-  fax text,
+  address_line1 text,
+  address_line2 text,
+  phone text,
   email text,
-  website text,
-  business_hours text,
-  signature_text text,
-  greeting_text text,
-  notice_text text,
-  logo_path text,
-  brand_color text,
-  default_tone text,
-  default_language text not null default 'ja',
-  corporate_number text,
+  website_url text,
   invoice_registration_number text,
-  license_number text,
-  qualification_number text,
-  registration_number text,
-  bank_account_holder text,
+  corporate_number text,
   bank_name text,
-  bank_branch text,
+  bank_branch_name text,
   bank_account_type text,
-  bank_account_number_ciphertext text,
-  is_default boolean not null default false,
-  is_active boolean not null default true,
-  version int not null default 1,
-  last_used_at timestamptz,
-  deleted_at timestamptz,
+  bank_account_number_encrypted text,
+  bank_account_number_last4 text,
+  bank_account_holder text,
+  notes text,
+  is_default boolean default false,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
+
+alter table public.atlas_business_profiles
+  add column if not exists owner_user_id text,
+  add column if not exists kind text,
+  add column if not exists display_name text,
+  add column if not exists company_name text,
+  add column if not exists legal_name text,
+  add column if not exists department text,
+  add column if not exists postal_code text,
+  add column if not exists address_line1 text,
+  add column if not exists address_line2 text,
+  add column if not exists phone text,
+  add column if not exists email text,
+  add column if not exists website_url text,
+  add column if not exists invoice_registration_number text,
+  add column if not exists corporate_number text,
+  add column if not exists bank_name text,
+  add column if not exists bank_branch_name text,
+  add column if not exists bank_account_type text,
+  add column if not exists bank_account_number_encrypted text,
+  add column if not exists bank_account_number_last4 text,
+  add column if not exists bank_account_holder text,
+  add column if not exists notes text,
+  add column if not exists is_default boolean default false,
+  add column if not exists created_at timestamptz default now(),
+  add column if not exists updated_at timestamptz default now(),
+  add column if not exists deleted_at timestamptz;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'atlas_business_profiles'
+      and column_name = 'name'
+  ) then
+    alter table public.atlas_business_profiles alter column name drop not null;
+  end if;
+end $$;
+
+alter table public.atlas_business_profiles
+  alter column owner_user_id set not null,
+  alter column created_at set not null,
+  alter column updated_at set not null;
 
 create unique index if not exists atlas_business_profiles_default_per_owner_idx
   on public.atlas_business_profiles (owner_user_id)
@@ -58,18 +84,17 @@ create unique index if not exists atlas_business_profiles_default_per_owner_idx
 create index if not exists atlas_business_profiles_owner_user_id_idx
   on public.atlas_business_profiles (owner_user_id);
 
-create index if not exists atlas_business_profiles_organization_id_idx
-  on public.atlas_business_profiles (organization_id);
-
 create index if not exists atlas_business_profiles_deleted_at_idx
   on public.atlas_business_profiles (deleted_at);
 
 alter table public.atlas_business_profiles enable row level security;
 
+drop policy if exists atlas_business_profiles_deny_all
+  on public.atlas_business_profiles;
 drop policy if exists "atlas_business_profiles_deny_anon"
   on public.atlas_business_profiles;
 
-create policy "atlas_business_profiles_deny_anon"
+create policy atlas_business_profiles_deny_all
   on public.atlas_business_profiles
   for all
   to anon, authenticated
@@ -78,37 +103,96 @@ create policy "atlas_business_profiles_deny_anon"
 
 create table if not exists public.atlas_business_profile_fields (
   id uuid primary key default gen_random_uuid(),
-  profile_id uuid not null references public.atlas_business_profiles(id) on delete cascade,
   owner_user_id text not null,
+  profile_id uuid not null references public.atlas_business_profiles(id) on delete cascade,
+  field_key text not null,
   label text not null,
-  key text not null,
-  value_ciphertext text,
-  value_plain text,
-  value_type text not null,
-  sensitivity_level text not null default 'internal',
-  ai_usage_allowed boolean not null default false,
-  document_usage_allowed boolean not null default true,
-  automation_usage_allowed boolean not null default false,
-  external_send_allowed boolean not null default false,
-  require_confirmation boolean not null default false,
-  usage_forbidden boolean not null default false,
-  display_order int not null default 0,
-  encryption_version int not null default 1,
-  deleted_at timestamptz,
+  value_text text,
+  secret_value_encrypted text,
+  has_secret_value boolean default false,
+  value_type text,
+  sensitivity text,
+  ai_usage_allowed boolean default true,
+  document_usage_allowed boolean default true,
+  usage_forbidden boolean default false,
+  source_kind text,
+  source_detail text,
+  sort_order integer default 0,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
 
-create unique index if not exists atlas_business_profile_fields_profile_key_idx
-  on public.atlas_business_profile_fields (profile_id, key)
-  where deleted_at is null;
+alter table public.atlas_business_profile_fields
+  add column if not exists owner_user_id text,
+  add column if not exists profile_id uuid,
+  add column if not exists field_key text,
+  add column if not exists label text,
+  add column if not exists value_text text,
+  add column if not exists secret_value_encrypted text,
+  add column if not exists has_secret_value boolean default false,
+  add column if not exists value_type text,
+  add column if not exists sensitivity text,
+  add column if not exists ai_usage_allowed boolean default true,
+  add column if not exists document_usage_allowed boolean default true,
+  add column if not exists usage_forbidden boolean default false,
+  add column if not exists source_kind text,
+  add column if not exists source_detail text,
+  add column if not exists sort_order integer default 0,
+  add column if not exists created_at timestamptz default now(),
+  add column if not exists updated_at timestamptz default now(),
+  add column if not exists deleted_at timestamptz;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'atlas_business_profile_fields'
+      and column_name = 'key'
+  ) then
+    alter table public.atlas_business_profile_fields alter column key drop not null;
+  end if;
+end $$;
+
+alter table public.atlas_business_profile_fields
+  alter column owner_user_id set not null,
+  alter column profile_id set not null,
+  alter column field_key set not null,
+  alter column label set not null,
+  alter column created_at set not null,
+  alter column updated_at set not null;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'atlas_business_profile_fields_profile_id_fkey'
+      and conrelid = 'public.atlas_business_profile_fields'::regclass
+  ) then
+    alter table public.atlas_business_profile_fields
+      add constraint atlas_business_profile_fields_profile_id_fkey
+      foreign key (profile_id)
+      references public.atlas_business_profiles(id)
+      on delete cascade;
+  end if;
+end $$;
+
+drop index if exists atlas_business_profile_fields_profile_key_idx;
+create unique index if not exists atlas_business_profile_fields_owner_profile_key_idx
+  on public.atlas_business_profile_fields (owner_user_id, profile_id, field_key);
+
+create index if not exists atlas_business_profile_fields_owner_profile_idx
+  on public.atlas_business_profile_fields (owner_user_id, profile_id);
 
 alter table public.atlas_business_profile_fields enable row level security;
 
+drop policy if exists atlas_business_profile_fields_deny_all
+  on public.atlas_business_profile_fields;
 drop policy if exists "atlas_business_profile_fields_deny_anon"
   on public.atlas_business_profile_fields;
 
-create policy "atlas_business_profile_fields_deny_anon"
+create policy atlas_business_profile_fields_deny_all
   on public.atlas_business_profile_fields
   for all
   to anon, authenticated
@@ -118,39 +202,76 @@ create policy "atlas_business_profile_fields_deny_anon"
 create table if not exists public.atlas_business_contacts (
   id uuid primary key default gen_random_uuid(),
   owner_user_id text not null,
-  organization_id text,
-  full_name text,
-  full_name_kana text,
+  profile_id uuid references public.atlas_business_profiles(id) on delete set null,
+  kind text,
+  display_name text,
   company_name text,
   department text,
-  role_title text,
-  phone text,
+  title text,
   email text,
-  postal_code text,
+  phone text,
   address text,
-  contact_kind text,
-  memo text,
-  source text,
-  confidence numeric,
-  last_confirmed_at timestamptz,
-  version int not null default 1,
-  deleted_at timestamptz,
+  notes text,
+  is_primary boolean default false,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
+
+alter table public.atlas_business_contacts
+  add column if not exists owner_user_id text,
+  add column if not exists profile_id uuid,
+  add column if not exists kind text,
+  add column if not exists display_name text,
+  add column if not exists company_name text,
+  add column if not exists department text,
+  add column if not exists title text,
+  add column if not exists email text,
+  add column if not exists phone text,
+  add column if not exists address text,
+  add column if not exists notes text,
+  add column if not exists is_primary boolean default false,
+  add column if not exists created_at timestamptz default now(),
+  add column if not exists updated_at timestamptz default now(),
+  add column if not exists deleted_at timestamptz;
+
+alter table public.atlas_business_contacts
+  alter column owner_user_id set not null,
+  alter column created_at set not null,
+  alter column updated_at set not null;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'atlas_business_contacts_profile_id_fkey'
+      and conrelid = 'public.atlas_business_contacts'::regclass
+  ) then
+    alter table public.atlas_business_contacts
+      add constraint atlas_business_contacts_profile_id_fkey
+      foreign key (profile_id)
+      references public.atlas_business_profiles(id)
+      on delete set null;
+  end if;
+end $$;
 
 create index if not exists atlas_business_contacts_owner_user_id_idx
   on public.atlas_business_contacts (owner_user_id);
 
-create index if not exists atlas_business_contacts_owner_full_name_idx
-  on public.atlas_business_contacts (owner_user_id, full_name);
+create index if not exists atlas_business_contacts_profile_id_idx
+  on public.atlas_business_contacts (profile_id);
+
+create index if not exists atlas_business_contacts_deleted_at_idx
+  on public.atlas_business_contacts (deleted_at);
 
 alter table public.atlas_business_contacts enable row level security;
 
+drop policy if exists atlas_business_contacts_deny_all
+  on public.atlas_business_contacts;
 drop policy if exists "atlas_business_contacts_deny_anon"
   on public.atlas_business_contacts;
 
-create policy "atlas_business_contacts_deny_anon"
+create policy atlas_business_contacts_deny_all
   on public.atlas_business_contacts
   for all
   to anon, authenticated
@@ -160,30 +281,86 @@ create policy "atlas_business_contacts_deny_anon"
 create table if not exists public.atlas_business_cases (
   id uuid primary key default gen_random_uuid(),
   owner_user_id text not null,
-  organization_id text,
-  name text not null,
-  reference_number text,
-  case_kind text,
+  profile_id uuid references public.atlas_business_profiles(id) on delete set null,
+  kind text,
+  title text,
+  client_name text,
+  description text,
   status text,
-  location text,
-  start_date date,
-  due_date date,
-  assignee_name text,
-  related_profile_id uuid references public.atlas_business_profiles(id) on delete set null,
-  memo text,
-  custom_fields jsonb not null default '{}'::jsonb,
-  version int not null default 1,
-  deleted_at timestamptz,
+  start_date text,
+  end_date text,
+  budget text,
+  notes text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
+
+alter table public.atlas_business_cases
+  add column if not exists owner_user_id text,
+  add column if not exists profile_id uuid,
+  add column if not exists kind text,
+  add column if not exists title text,
+  add column if not exists client_name text,
+  add column if not exists description text,
+  add column if not exists status text,
+  add column if not exists start_date text,
+  add column if not exists end_date text,
+  add column if not exists budget text,
+  add column if not exists notes text,
+  add column if not exists created_at timestamptz default now(),
+  add column if not exists updated_at timestamptz default now(),
+  add column if not exists deleted_at timestamptz;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'atlas_business_cases'
+      and column_name = 'name'
+  ) then
+    alter table public.atlas_business_cases alter column name drop not null;
+  end if;
+end $$;
+
+alter table public.atlas_business_cases
+  alter column owner_user_id set not null,
+  alter column created_at set not null,
+  alter column updated_at set not null;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'atlas_business_cases_profile_id_fkey'
+      and conrelid = 'public.atlas_business_cases'::regclass
+  ) then
+    alter table public.atlas_business_cases
+      add constraint atlas_business_cases_profile_id_fkey
+      foreign key (profile_id)
+      references public.atlas_business_profiles(id)
+      on delete set null;
+  end if;
+end $$;
+
+create index if not exists atlas_business_cases_owner_user_id_idx
+  on public.atlas_business_cases (owner_user_id);
+
+create index if not exists atlas_business_cases_profile_id_idx
+  on public.atlas_business_cases (profile_id);
+
+create index if not exists atlas_business_cases_deleted_at_idx
+  on public.atlas_business_cases (deleted_at);
 
 alter table public.atlas_business_cases enable row level security;
 
+drop policy if exists atlas_business_cases_deny_all
+  on public.atlas_business_cases;
 drop policy if exists "atlas_business_cases_deny_anon"
   on public.atlas_business_cases;
 
-create policy "atlas_business_cases_deny_anon"
+create policy atlas_business_cases_deny_all
   on public.atlas_business_cases
   for all
   to anon, authenticated
@@ -191,19 +368,78 @@ create policy "atlas_business_cases_deny_anon"
   with check (false);
 
 create table if not exists public.atlas_business_case_contacts (
+  id uuid primary key default gen_random_uuid(),
+  owner_user_id text not null,
   case_id uuid not null references public.atlas_business_cases(id) on delete cascade,
   contact_id uuid not null references public.atlas_business_contacts(id) on delete cascade,
-  owner_user_id text not null,
-  relation_label text,
-  primary key (case_id, contact_id)
+  role text,
+  created_at timestamptz not null default now()
 );
+
+alter table public.atlas_business_case_contacts
+  add column if not exists id uuid default gen_random_uuid(),
+  add column if not exists owner_user_id text,
+  add column if not exists case_id uuid,
+  add column if not exists contact_id uuid,
+  add column if not exists role text,
+  add column if not exists created_at timestamptz default now();
+
+alter table public.atlas_business_case_contacts
+  alter column owner_user_id set not null,
+  alter column case_id set not null,
+  alter column contact_id set not null,
+  alter column created_at set not null;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'atlas_business_case_contacts_id_key'
+      and conrelid = 'public.atlas_business_case_contacts'::regclass
+  ) then
+    alter table public.atlas_business_case_contacts
+      add constraint atlas_business_case_contacts_id_key unique (id);
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'atlas_business_case_contacts_case_id_fkey'
+      and conrelid = 'public.atlas_business_case_contacts'::regclass
+  ) then
+    alter table public.atlas_business_case_contacts
+      add constraint atlas_business_case_contacts_case_id_fkey
+      foreign key (case_id)
+      references public.atlas_business_cases(id)
+      on delete cascade;
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'atlas_business_case_contacts_contact_id_fkey'
+      and conrelid = 'public.atlas_business_case_contacts'::regclass
+  ) then
+    alter table public.atlas_business_case_contacts
+      add constraint atlas_business_case_contacts_contact_id_fkey
+      foreign key (contact_id)
+      references public.atlas_business_contacts(id)
+      on delete cascade;
+  end if;
+end $$;
+
+create unique index if not exists atlas_business_case_contacts_case_contact_idx
+  on public.atlas_business_case_contacts (case_id, contact_id);
+
+create index if not exists atlas_business_case_contacts_owner_user_id_idx
+  on public.atlas_business_case_contacts (owner_user_id);
 
 alter table public.atlas_business_case_contacts enable row level security;
 
+drop policy if exists atlas_business_case_contacts_deny_all
+  on public.atlas_business_case_contacts;
 drop policy if exists "atlas_business_case_contacts_deny_anon"
   on public.atlas_business_case_contacts;
 
-create policy "atlas_business_case_contacts_deny_anon"
+create policy atlas_business_case_contacts_deny_all
   on public.atlas_business_case_contacts
   for all
   to anon, authenticated
@@ -217,17 +453,38 @@ create table if not exists public.atlas_artifact_data_bindings (
   profile_id uuid references public.atlas_business_profiles(id) on delete set null,
   contact_id uuid references public.atlas_business_contacts(id) on delete set null,
   case_id uuid references public.atlas_business_cases(id) on delete set null,
-  field_keys text[] not null default '{}'::text[],
-  sources jsonb not null default '[]'::jsonb,
+  field_keys text[],
   created_at timestamptz not null default now()
 );
 
+alter table public.atlas_artifact_data_bindings
+  add column if not exists owner_user_id text,
+  add column if not exists artifact_id text,
+  add column if not exists profile_id uuid,
+  add column if not exists contact_id uuid,
+  add column if not exists case_id uuid,
+  add column if not exists field_keys text[],
+  add column if not exists created_at timestamptz default now();
+
+alter table public.atlas_artifact_data_bindings
+  alter column owner_user_id set not null,
+  alter column artifact_id set not null,
+  alter column created_at set not null;
+
+create index if not exists atlas_artifact_data_bindings_owner_user_id_idx
+  on public.atlas_artifact_data_bindings (owner_user_id);
+
+create index if not exists atlas_artifact_data_bindings_artifact_id_idx
+  on public.atlas_artifact_data_bindings (artifact_id);
+
 alter table public.atlas_artifact_data_bindings enable row level security;
 
+drop policy if exists atlas_artifact_data_bindings_deny_all
+  on public.atlas_artifact_data_bindings;
 drop policy if exists "atlas_artifact_data_bindings_deny_anon"
   on public.atlas_artifact_data_bindings;
 
-create policy "atlas_artifact_data_bindings_deny_anon"
+create policy atlas_artifact_data_bindings_deny_all
   on public.atlas_artifact_data_bindings
   for all
   to anon, authenticated
@@ -237,51 +494,44 @@ create policy "atlas_artifact_data_bindings_deny_anon"
 create table if not exists public.atlas_profile_usage_logs (
   id uuid primary key default gen_random_uuid(),
   owner_user_id text not null,
-  used_at timestamptz not null default now(),
   profile_id uuid references public.atlas_business_profiles(id) on delete set null,
   contact_id uuid references public.atlas_business_contacts(id) on delete set null,
   case_id uuid references public.atlas_business_cases(id) on delete set null,
   artifact_id text,
-  artifact_label text,
-  field_keys text[] not null default '{}'::text[],
-  external_send boolean not null default false
+  purpose text,
+  field_keys text[],
+  created_at timestamptz not null default now()
 );
+
+alter table public.atlas_profile_usage_logs
+  add column if not exists owner_user_id text,
+  add column if not exists profile_id uuid,
+  add column if not exists contact_id uuid,
+  add column if not exists case_id uuid,
+  add column if not exists artifact_id text,
+  add column if not exists purpose text,
+  add column if not exists field_keys text[],
+  add column if not exists created_at timestamptz default now();
+
+alter table public.atlas_profile_usage_logs
+  alter column owner_user_id set not null,
+  alter column created_at set not null;
+
+create index if not exists atlas_profile_usage_logs_owner_user_id_idx
+  on public.atlas_profile_usage_logs (owner_user_id);
+
+create index if not exists atlas_profile_usage_logs_created_at_idx
+  on public.atlas_profile_usage_logs (created_at desc);
 
 alter table public.atlas_profile_usage_logs enable row level security;
 
+drop policy if exists atlas_profile_usage_logs_deny_all
+  on public.atlas_profile_usage_logs;
 drop policy if exists "atlas_profile_usage_logs_deny_anon"
   on public.atlas_profile_usage_logs;
 
-create policy "atlas_profile_usage_logs_deny_anon"
+create policy atlas_profile_usage_logs_deny_all
   on public.atlas_profile_usage_logs
-  for all
-  to anon, authenticated
-  using (false)
-  with check (false);
-
-create table if not exists public.atlas_extracted_document_fields (
-  id uuid primary key default gen_random_uuid(),
-  owner_user_id text not null,
-  case_id uuid references public.atlas_business_cases(id) on delete set null,
-  contact_id uuid references public.atlas_business_contacts(id) on delete set null,
-  source_file_name text,
-  field_key text not null,
-  field_value text,
-  confidence numeric,
-  page_number int,
-  quote_snippet text,
-  status text not null default 'pending_review',
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-alter table public.atlas_extracted_document_fields enable row level security;
-
-drop policy if exists "atlas_extracted_document_fields_deny_anon"
-  on public.atlas_extracted_document_fields;
-
-create policy "atlas_extracted_document_fields_deny_anon"
-  on public.atlas_extracted_document_fields
   for all
   to anon, authenticated
   using (false)

@@ -12,6 +12,7 @@ import { SettingsAccountLink } from "@/components/settings/settings-account-link
 import { SettingsAccountRequestsLink } from "@/components/settings/settings-account-requests-link";
 import { SettingsBillingLink } from "@/components/settings/settings-billing-link";
 import { SettingsExportLink } from "@/components/settings/settings-export-link";
+import { SettingsBusinessProfileLink } from "@/components/settings/settings-business-profile-link";
 import { SettingsMemoryLink } from "@/components/settings/settings-memory-link";
 import { SettingsWorkMemoryLink } from "@/components/settings/settings-work-memory-link";
 import { SettingsLearningLink } from "@/components/settings/settings-learning-link";
@@ -33,6 +34,7 @@ function SettingsContent() {
       <ThemeSettings />
       <OnboardingSettings onRedo={() => router.push("/projects?welcome=1")} />
       <WorkProfileSettings />
+      <SettingsBusinessProfileLink />
       <SettingsWorkMemoryLink />
       <SettingsLearningLink />
       <SettingsMemoryLink />

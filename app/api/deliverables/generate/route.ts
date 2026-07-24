@@ -1,6 +1,19 @@
 import { generateDeliverables } from "@/lib/deliverables/engine";
 import { uploadDeliverablesAfterGeneration } from "@/lib/integrations/deliverable-bridge";
 import type { IntegrationUploadSummary } from "@/lib/integrations/types";
+import {
+  applyTemplateVariables,
+  createNeedsInputRequest,
+  resolveArtifactContext,
+  sanitizeContextForAI,
+} from "@/lib/business-profile";
+import { recordProfileUsage } from "@/lib/business-profile/usage-log";
+
+import {
+  asOptionalString,
+  asStringArray,
+  asStringRecord,
+} from "../../business-profile-utils";
 
 type RequestBody = {
   assignment?: unknown;
@@ -9,6 +22,12 @@ type RequestBody = {
   workflowId?: unknown;
   projectName?: unknown;
   formats?: unknown;
+  profileId?: unknown;
+  contactId?: unknown;
+  contactIds?: unknown;
+  caseId?: unknown;
+  requiredFields?: unknown;
+  oneTimeFields?: unknown;
 };
 
 const VALID_FORMATS = new Set(["pdf", "docx", "pptx", "md", "txt"]);
@@ -102,10 +121,35 @@ export async function POST(request: Request): Promise<Response> {
     const workflowId =
       typeof body.workflowId === "string" ? body.workflowId : null;
 
+    const context = await resolveArtifactContext({
+      ownerUserId: userId,
+      profileId: asOptionalString(body.profileId),
+      contactId: asOptionalString(body.contactId),
+      contactIds: asStringArray(body.contactIds),
+      caseId: asOptionalString(body.caseId),
+      template: body.finalDeliverable,
+      requiredVariables: asStringArray(body.requiredFields),
+      currentRequestFields: asStringRecord(body.oneTimeFields),
+    });
+
+    if (context.needsInput.status === "needs_input") {
+      const needsInput = createNeedsInputRequest(context);
+      return Response.json(
+        { status: "needs_input", ...(needsInput ?? {}) },
+        { status: 422 },
+      );
+    }
+
+    const finalDeliverable = applyTemplateVariables(
+      body.finalDeliverable,
+      context,
+      { requiredVariables: asStringArray(body.requiredFields) },
+    );
+
     const result = await generateDeliverables(
       {
         assignment: body.assignment.trim(),
-        finalDeliverable: body.finalDeliverable,
+        finalDeliverable,
         title: typeof body.title === "string" ? body.title : undefined,
         formats: parseFormats(body.formats),
       },
@@ -130,10 +174,27 @@ export async function POST(request: Request): Promise<Response> {
       });
     }
 
+    const usedFieldKeys = context.usedFields.map((field) => field.key);
+    if (usedFieldKeys.length > 0) {
+      await recordProfileUsage({
+        ownerUserId: userId,
+        profileId: context.profile?.id ?? null,
+        contactId: context.contacts[0]?.id ?? null,
+        caseId: context.project?.id ?? null,
+        artifactId: result.deliverables[0]?.id ?? null,
+        purpose: "deliverable_generation",
+        fieldKeys: usedFieldKeys,
+      });
+    }
+
     return Response.json({
       deliverables: result.deliverables,
       matchedRule: result.detection.matchedRule,
       uploads,
+      businessProfile: {
+        usedFieldKeys,
+        aiPreview: sanitizeContextForAI(context),
+      },
     });
   } catch (error) {
     console.error("[Atlas /api/deliverables/generate]", error);
