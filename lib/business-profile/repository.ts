@@ -1284,6 +1284,51 @@ export class BusinessProfileRepository {
     );
   }
 
+  async createArtifactDataBinding(input: {
+    ownerUserId: string;
+    artifactId: string;
+    profileId?: string | null;
+    contactId?: string | null;
+    caseId?: string | null;
+    fieldKeys: string[];
+  }): Promise<ArtifactDataBinding> {
+    const binding: ArtifactDataBinding = {
+      id: randomUUID(),
+      ownerUserId: input.ownerUserId,
+      artifactId: input.artifactId,
+      profileId: input.profileId ?? null,
+      contactId: input.contactId ?? null,
+      caseId: input.caseId ?? null,
+      fieldKeys: [...new Set(input.fieldKeys)].sort(),
+      createdAt: nowIso(),
+    };
+    const client = getClient();
+    if (!client) {
+      getBuckets().artifactBindings.set(binding.id, binding);
+      return binding;
+    }
+    const row: ArtifactBindingRow = {
+      id: binding.id,
+      owner_user_id: binding.ownerUserId,
+      artifact_id: binding.artifactId,
+      profile_id: binding.profileId,
+      contact_id: binding.contactId,
+      case_id: binding.caseId,
+      field_keys: binding.fieldKeys,
+      created_at: binding.createdAt,
+    };
+    const result = await (client
+      .from(ARTIFACT_BINDINGS_TABLE)
+      .insert(row)
+      .select("*")
+      .single() as unknown as Promise<DbResult<ArtifactBindingRow>>);
+    warnDurable("create artifact binding", result.error);
+    if (result.error) {
+      getBuckets().artifactBindings.set(binding.id, binding);
+    }
+    return binding;
+  }
+
   async recordUsageLog(input: {
     ownerUserId: string;
     profileId?: string | null;

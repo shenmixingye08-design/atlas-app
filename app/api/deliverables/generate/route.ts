@@ -3,6 +3,7 @@ import { uploadDeliverablesAfterGeneration } from "@/lib/integrations/deliverabl
 import type { IntegrationUploadSummary } from "@/lib/integrations/types";
 import {
   applyTemplateVariables,
+  createArtifactDataBindings,
   createNeedsInputRequest,
   resolveArtifactContext,
   sanitizeContextForAI,
@@ -175,16 +176,27 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const usedFieldKeys = context.usedFields.map((field) => field.key);
+    const artifactId = result.deliverables[0]?.id ?? null;
     if (usedFieldKeys.length > 0) {
       await recordProfileUsage({
         ownerUserId: userId,
         profileId: context.profile?.id ?? null,
         contactId: context.contacts[0]?.id ?? null,
         caseId: context.project?.id ?? null,
-        artifactId: result.deliverables[0]?.id ?? null,
+        artifactId,
         purpose: "deliverable_generation",
         fieldKeys: usedFieldKeys,
       });
+      if (artifactId) {
+        await createArtifactDataBindings({
+          ownerUserId: userId,
+          artifactId,
+          profileId: context.profile?.id ?? null,
+          contactId: context.contacts[0]?.id ?? null,
+          caseId: context.project?.id ?? null,
+          fieldKeys: usedFieldKeys,
+        });
+      }
     }
 
     return Response.json({
@@ -193,6 +205,11 @@ export async function POST(request: Request): Promise<Response> {
       uploads,
       businessProfile: {
         usedFieldKeys,
+        unusedFieldKeys: context.unusedFields.map((field) => field.key),
+        sources: context.usedFields.map((field) => ({
+          key: field.key,
+          sourceKind: field.sourceKind,
+        })),
         aiPreview: sanitizeContextForAI(context),
       },
     });

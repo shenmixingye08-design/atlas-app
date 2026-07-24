@@ -52,6 +52,14 @@ type FieldForm = {
   value: string;
 };
 
+type UsageLog = {
+  id: string;
+  purpose: string;
+  fieldKeys: string[];
+  createdAt: string;
+  artifactId: string | null;
+};
+
 const EMPTY_PROFILE_FORM: ProfileForm = {
   companyName: "",
   displayName: "",
@@ -124,6 +132,7 @@ export function BusinessProfileSettings() {
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BusinessProfile | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [usageLogs, setUsageLogs] = useState<UsageLog[]>([]);
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === selectedId) ?? null,
@@ -137,6 +146,15 @@ export function BusinessProfileSettings() {
     const body = (await response.json()) as { profiles: BusinessProfile[] };
     setProfiles(body.profiles);
     setSelectedId((current) => current ?? body.profiles[0]?.id ?? null);
+  }, []);
+
+  const loadUsageLogs = useCallback(async () => {
+    const response = await fetch("/api/business-profiles/usage", {
+      cache: "no-store",
+    });
+    if (!response.ok) return;
+    const body = (await response.json()) as { logs: UsageLog[] };
+    setUsageLogs(body.logs);
   }, []);
 
   const loadFields = useCallback(async (profileId: string | null) => {
@@ -155,7 +173,7 @@ export function BusinessProfileSettings() {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    loadProfiles()
+    Promise.all([loadProfiles(), loadUsageLogs()])
       .catch((err: unknown) => {
         if (active) setError(err instanceof Error ? err.message : String(err));
       })
@@ -165,7 +183,7 @@ export function BusinessProfileSettings() {
     return () => {
       active = false;
     };
-  }, [loadProfiles]);
+  }, [loadProfiles, loadUsageLogs]);
 
   useEffect(() => {
     let active = true;
@@ -599,6 +617,42 @@ export function BusinessProfileSettings() {
           </Card>
         </section>
       </div>
+
+      <Card padding="md" className="space-y-3">
+        <div>
+          <h2 className="text-title text-foreground">
+            {ui.businessProfile.historyTitle}
+          </h2>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+            {ui.businessProfile.historyHint}
+          </p>
+        </div>
+        {usageLogs.length === 0 ? (
+          <p className="text-sm text-[var(--text-muted)]">
+            {ui.businessProfile.historyEmpty}
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {usageLogs.slice(0, 20).map((log) => (
+              <li
+                key={log.id}
+                className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] px-3 py-3 text-sm"
+              >
+                <p className="text-[var(--text-muted)]">
+                  {new Date(log.createdAt).toLocaleString("ja-JP")}
+                </p>
+                <p className="mt-1 text-foreground">
+                  {ui.businessProfile.historyPurpose}: {log.purpose}
+                </p>
+                <p className="mt-1 text-[var(--text-secondary)]">
+                  {ui.businessProfile.historyFields}:{" "}
+                  {log.fieldKeys.join("、") || "—"}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       {deleteTarget && (
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/30 p-4 sm:items-center">

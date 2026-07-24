@@ -2258,6 +2258,12 @@ export const ui = {
     usageTitle: "使われ方",
     usageHint:
       "資料やメールのテンプレートに必要な項目だけを差し込みます。AIに渡す情報は許可済みの項目に限定されます。",
+    historyTitle: "利用履歴",
+    historyHint:
+      "どの項目名がいつ使われたかだけを記録します。値そのものは保存しません。",
+    historyEmpty: "利用履歴はまだありません。",
+    historyPurpose: "用途",
+    historyFields: "使用項目",
     createTitle: "新しいプロフィール",
     editTitle: "プロフィールを編集",
     fieldsTitle: "カスタム項目",

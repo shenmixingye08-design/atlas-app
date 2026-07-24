@@ -8,6 +8,7 @@ export * from "./resolve-context";
 export * from "./needs-input";
 export * from "./template-vars";
 export * from "./usage-log";
+export * from "./bindings";
 export * from "./service";
 export * from "./store";
 export * as businessContacts from "./contacts/service";
