@@ -16,6 +16,7 @@ import { normalizeExecutionMode } from "@/lib/cost-optimization/execution-mode";
 import { normalizeSnsBatchDays } from "@/lib/cost-optimization/sns-batch";
 import { normalizeExecutionFlow } from "../execution-flow";
 import { DEFAULT_AUTOMATION_TIMING } from "../timing-defaults";
+import { normalizeAutomationDestination } from "../x-recurring/destination";
 
 import type { AutomationRepository } from "./types";
 
@@ -107,6 +108,7 @@ export function withAutomationDefaults(automation: Automation): Automation {
     executionMode: normalizeExecutionMode(automation.executionMode),
     snsBatchDays: normalizeSnsBatchDays(automation.snsBatchDays),
     executionFlow: normalizeExecutionFlow(automation.executionFlow),
+    destination: normalizeAutomationDestination(automation.destination),
     successCount,
     failureCount,
     runHistory,

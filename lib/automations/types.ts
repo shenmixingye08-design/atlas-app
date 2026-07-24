@@ -119,6 +119,9 @@ export type WorkExecutionFlow = {
   steps: WorkflowStepState[];
 };
 
+/** Where recurring work should publish when finished. */
+export type AutomationDestination = "none" | "x";
+
 /** Recurring AI work definition. */
 export type Automation = {
   id: EntityId;
@@ -133,6 +136,8 @@ export type Automation = {
   executionMode: AutomationExecutionMode;
   snsBatchDays: SnsBatchDays | null;
   executionFlow: WorkExecutionFlow;
+  /** Publish target — `x` enables real X posting for this recurring job. */
+  destination: AutomationDestination;
   enabled: boolean;
   lastRun: Timestamp | null;
   nextRun: Timestamp | null;
@@ -150,11 +155,17 @@ export type Automation = {
 /** Compact durable run history row (not full orchestration payload). */
 export type AutomationRunHistoryEntry = {
   id: EntityId;
-  status: "completed" | "failed";
+  status: "completed" | "failed" | "awaiting_approval";
   startedAt: Timestamp;
   completedAt: Timestamp;
   error: string | null;
   triggerType: "manual" | "automation" | string;
+  scheduledAt?: Timestamp | null;
+  generatedText?: string | null;
+  xPostId?: string | null;
+  xPostUrl?: string | null;
+  errorCode?: string | null;
+  retryCount?: number;
 };
 
 export type CreateAutomationInput = {
@@ -167,6 +178,7 @@ export type CreateAutomationInput = {
   executionMode?: AutomationExecutionMode;
   snsBatchDays?: SnsBatchDays | null;
   executionFlow?: WorkExecutionFlow;
+  destination?: AutomationDestination;
   enabled?: boolean;
   userId?: string | null;
 };
@@ -183,6 +195,7 @@ export type UpdateAutomationInput = Partial<
     | "executionMode"
     | "snsBatchDays"
     | "executionFlow"
+    | "destination"
     | "enabled"
     | "lastRun"
     | "nextRun"
@@ -206,11 +219,14 @@ export type AutomationFilter = {
 export type AutomationRunResult = {
   automationId: EntityId;
   workflowRunId: EntityId;
-  status: "completed" | "failed";
+  status: "completed" | "failed" | "awaiting_approval";
   orchestrationStatus: "completed" | "failed";
   approved: boolean;
   totalDurationMs: number;
   finalResponsePreview: string | null;
   error: string | null;
   deliverableCount: number;
+  xPostId?: string | null;
+  xPostUrl?: string | null;
+  errorCode?: string | null;
 };

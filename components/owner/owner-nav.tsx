@@ -23,7 +23,8 @@ type OwnerNavProps = {
     | "employeeTeam"
     | "accountDeletions"
     | "auditLog"
-    | "disasterRecovery";
+    | "disasterRecovery"
+    | "automationExecutionLogs";
 };
 const LINKS = [
   { id: "dashboard" as const, href: "/owner", label: ui.owner.navDashboard },
@@ -46,6 +47,11 @@ const LINKS = [
     id: "errorMonitoring" as const,
     href: "/owner/error-monitoring",
     label: ui.owner.navErrorMonitoring,
+  },
+  {
+    id: "automationExecutionLogs" as const,
+    href: "/owner/automation-execution-logs",
+    label: "定期実行ログ",
   },
   {
     id: "popularityRanking" as const,

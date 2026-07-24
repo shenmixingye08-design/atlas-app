@@ -32,6 +32,7 @@ function sampleAutomation(
     executionMode: "standard",
     snsBatchDays: null,
     executionFlow: { templateId: "generic", steps: [] },
+    destination: "none",
     enabled: true,
     lastRun: now,
     nextRun: now,

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -29,6 +28,7 @@ function parseInitialFormFromSearchParams(
   if (params.get("create") !== "1") return null;
 
   const assignment = params.get("assignment") ?? "";
+  const destinationParam = params.get("destination");
   const base = assignment
     ? prefillFromAssignment(assignment)
     : defaultAutomationFormState();
@@ -37,9 +37,15 @@ function parseInitialFormFromSearchParams(
     ...base,
     title: params.get("title") ?? base.title,
     assignment: assignment || base.assignment,
+    destination: destinationParam === "x" ? "x" : base.destination,
     frequency:
-      (params.get("frequency") as "daily" | "weekly" | "monthly" | null) ??
-      base.frequency,
+      (params.get("frequency") as
+        | "daily"
+        | "weekly"
+        | "monthly"
+        | "weekday"
+        | "custom"
+        | null) ?? base.frequency,
     hour: params.get("hour") ? Number.parseInt(params.get("hour")!, 10) : base.hour,
     minute: params.get("minute")
       ? Number.parseInt(params.get("minute")!, 10)
@@ -50,6 +56,12 @@ function parseInitialFormFromSearchParams(
     dayOfMonth: params.get("dayOfMonth")
       ? Number.parseInt(params.get("dayOfMonth")!, 10)
       : base.dayOfMonth,
+    executionLevel:
+      (params.get("approval") as
+        | "full_auto"
+        | "approve_then_run"
+        | "draft_save"
+        | null) ?? base.executionLevel,
   });
 }
 
@@ -184,18 +196,28 @@ export function AutomationsDashboard() {
           </p>
         </div>
         <div className="flex shrink-0 flex-col gap-2 self-start sm:items-end">
-          <Link
-            href="/workspace"
-            className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-accent px-6 text-base font-medium text-white shadow-sm transition-all hover:bg-[var(--accent-hover)] active:scale-[0.98] focus-ring"
+          <Button
+            variant="primary"
+            className="min-h-[48px] rounded-full px-6"
+            onClick={() => {
+              setCreateInitialState(
+                defaultAutomationFormState({ destination: "x" }),
+              );
+              setShowCreate(true);
+            }}
+          >
+            {ui.entrustedJobs.registerHere}
+          </Button>
+          <Button
+            variant="secondary"
+            className="min-h-[40px] rounded-full px-4"
+            onClick={() => {
+              setCreateInitialState(defaultAutomationFormState());
+              setShowCreate(true);
+            }}
           >
             {ui.entrustedJobs.addNew}
-          </Link>
-          <Link
-            href="/commander"
-            className="inline-flex min-h-[40px] items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--card)] px-4 text-sm font-medium text-foreground transition-colors hover:border-accent/40 focus-ring"
-          >
-            {ui.nav.commander}
-          </Link>
+          </Button>
         </div>
       </header>
 
@@ -245,18 +267,27 @@ export function AutomationsDashboard() {
               {ui.entrustedJobs.emptyDescription}
             </p>
             <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <Link
-                href="/workspace"
-                className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-accent px-6 text-sm font-medium text-white hover:bg-[var(--accent-hover)] focus-ring"
+              <Button
+                variant="primary"
+                className="min-h-[48px]"
+                onClick={() => {
+                  setCreateInitialState(
+                    defaultAutomationFormState({ destination: "x" }),
+                  );
+                  setShowCreate(true);
+                }}
               >
-                {ui.entrustedJobs.emptyCta}
-              </Link>
+                {ui.entrustedJobs.registerHere}
+              </Button>
               <Button
                 variant="secondary"
                 className="min-h-[48px]"
-                onClick={() => setShowCreate(true)}
+                onClick={() => {
+                  setCreateInitialState(defaultAutomationFormState());
+                  setShowCreate(true);
+                }}
               >
-                {ui.entrustedJobs.registerHere}
+                {ui.entrustedJobs.emptyCta}
               </Button>
             </div>
           </Card>
