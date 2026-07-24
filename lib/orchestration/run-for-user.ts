@@ -19,6 +19,10 @@ import {
   summarizeWorkMemoriesForClient,
 } from "@/lib/work-memory/metadata";
 import {
+  resolveArtifactContext,
+  sanitizeContextForAI,
+} from "@/lib/business-profile";
+import {
   getWorkMemoriesForAssignment,
   isWorkMemoryEnabled,
   learnFromOrchestrationWorkMemory,
@@ -57,6 +61,11 @@ export type RunOrchestrationForUserInput = {
   assignment: string;
   userId: string | null;
   metadata?: Readonly<Record<string, unknown>>;
+  profileId?: string | null;
+  contactId?: string | null;
+  caseId?: string | null;
+  requiredFields?: string[];
+  oneTimeFields?: Record<string, string | null | undefined>;
   /** When false, caller owns notifications (e.g. Commander report). Default true. */
   notify?: boolean;
   /** When false, skip learning / work-memory candidate writes. Default true. */
@@ -70,6 +79,118 @@ export type RunOrchestrationForUserResult = {
   usedWorkMemoryCount: number;
   memoryTypesUsed: WorkMemoryType[];
 };
+
+type BusinessProfileMetadataOptions = {
+  profileId?: string | null;
+  contactId?: string | null;
+  caseId?: string | null;
+  requiredFields?: string[];
+  oneTimeFields?: Record<string, string | null | undefined>;
+};
+
+const MAX_BUSINESS_PROFILE_CONTEXT_CHARS = 1_200;
+
+function stringOrNull(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function stringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const values = value.filter((item): item is string => typeof item === "string");
+  return values.length > 0 ? values : undefined;
+}
+
+function stringRecord(
+  value: unknown,
+): Record<string, string | null | undefined> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const output: Record<string, string | null | undefined> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (item === null || item === undefined) {
+      output[key] = null;
+    } else if (
+      typeof item === "string" ||
+      typeof item === "number" ||
+      typeof item === "boolean"
+    ) {
+      output[key] = String(item);
+    }
+  }
+  return output;
+}
+
+function readBusinessProfileOptions(
+  input: RunOrchestrationForUserInput,
+): BusinessProfileMetadataOptions {
+  const metadata = input.metadata ?? {};
+  const nested =
+    metadata.businessProfile &&
+    typeof metadata.businessProfile === "object" &&
+    !Array.isArray(metadata.businessProfile)
+      ? (metadata.businessProfile as Readonly<Record<string, unknown>>)
+      : {};
+
+  return {
+    profileId: input.profileId ?? stringOrNull(nested.profileId ?? metadata.profileId),
+    contactId: input.contactId ?? stringOrNull(nested.contactId ?? metadata.contactId),
+    caseId: input.caseId ?? stringOrNull(nested.caseId ?? metadata.caseId),
+    requiredFields:
+      input.requiredFields ??
+      stringArray(nested.requiredFields ?? metadata.requiredFields),
+    oneTimeFields:
+      input.oneTimeFields ??
+      stringRecord(nested.oneTimeFields ?? metadata.oneTimeFields),
+  };
+}
+
+function hasBusinessProfileOptions(options: BusinessProfileMetadataOptions): boolean {
+  return Boolean(
+    options.profileId !== undefined ||
+      options.contactId !== undefined ||
+      options.caseId !== undefined ||
+      (options.requiredFields && options.requiredFields.length > 0) ||
+      (options.oneTimeFields && Object.keys(options.oneTimeFields).length > 0),
+  );
+}
+
+async function buildBusinessProfileMetadata(
+  input: RunOrchestrationForUserInput,
+): Promise<Record<string, string> | null> {
+  if (!input.userId) return null;
+  const options = readBusinessProfileOptions(input);
+  if (!hasBusinessProfileOptions(options)) return null;
+
+  const context = await resolveArtifactContext({
+    ownerUserId: input.userId,
+    profileId: options.profileId,
+    contactId: options.contactId,
+    caseId: options.caseId,
+    requiredVariables: options.requiredFields,
+    currentRequestFields: options.oneTimeFields,
+  });
+  const sanitized = sanitizeContextForAI(context);
+  if (sanitized.fields.length === 0) return null;
+
+  const lines = sanitized.fields.map(
+    (field) => `- ${field.label} (${field.key}): ${field.value}`,
+  );
+  const body = [
+    "業務プロフィール（AI利用が許可された項目のみ）:",
+    "口座番号・秘密情報・AI利用不可の項目は含めないこと。",
+    ...lines,
+  ].join("\n");
+
+  return {
+    businessProfileContext:
+      body.length <= MAX_BUSINESS_PROFILE_CONTEXT_CHARS
+        ? body
+        : `${body.slice(0, MAX_BUSINESS_PROFILE_CONTEXT_CHARS)}\n[...truncated]`,
+  };
+}
 
 /**
  * Shared orchestration entry used by `/api/orchestrate` and Commander.
@@ -111,6 +232,7 @@ export async function runOrchestrationForUser(
     usedWorkMemories.length > 0
       ? buildWorkMemoryMetadata(usedWorkMemories)
       : null;
+  const businessProfileMeta = await buildBusinessProfileMetadata(input);
 
   const result = sanitizeOrchestrationResultForClient(
     await orchestrate({
@@ -121,6 +243,7 @@ export async function runOrchestrationForUser(
         ...(input.userId ? { userId: input.userId } : {}),
         ...(memoryMeta ?? {}),
         ...(workMemoryMeta ?? {}),
+        ...(businessProfileMeta ?? {}),
       },
     }),
   );
