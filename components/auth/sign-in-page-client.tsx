@@ -16,7 +16,7 @@ function SignInContent() {
   return (
     <AuthShell
       title="ログイン"
-      subtitle="Googleまたはメールアドレスで、MINERVOTアカウントにサインインしてください"
+      subtitle="Clerkで有効な方法（メールなど）で、MINERVOTアカウントにサインインしてください"
     >
       <SignInContinueNotice />
       <SignIn

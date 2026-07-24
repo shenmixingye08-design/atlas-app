@@ -8,8 +8,13 @@ import {
   inferWorkflowTemplate,
   normalizeExecutionFlow,
 } from "./execution-flow";
+import {
+  buildXDestinationExecutionFlow,
+  normalizeAutomationDestination,
+} from "./x-recurring/destination";
 import type {
   Automation,
+  AutomationDestination,
   AutomationExecutionLevel,
   AutomationExecutionMode,
   AutomationSchedule,
@@ -44,11 +49,15 @@ function seedAutomation(
   executionMode: AutomationExecutionMode = "eco",
   snsBatchDays: SnsBatchDays | null = null,
   executionFlow?: WorkExecutionFlow,
+  destination: AutomationDestination = "none",
 ): Automation {
   const now = "2026-01-01T00:00:00.000Z";
+  const level = normalizeExecutionLevel(executionLevel);
   const flow =
     executionFlow ??
-    createDefaultExecutionFlow(inferWorkflowTemplate(`${name} ${assignment}`));
+    (destination === "x"
+      ? buildXDestinationExecutionFlow(level)
+      : createDefaultExecutionFlow(inferWorkflowTemplate(`${name} ${assignment}`)));
   return {
     id,
     userId: null,
@@ -57,10 +66,11 @@ function seedAutomation(
     schedule,
     workflow: { assignment },
     timing: DEFAULT_AUTOMATION_TIMING,
-    executionLevel,
+    executionLevel: level,
     executionMode,
     snsBatchDays,
     executionFlow: normalizeExecutionFlow(flow),
+    destination,
     enabled: true,
     lastRun: null,
     nextRun: computeNextRunIso(schedule),
@@ -86,6 +96,8 @@ export const SEED_AUTOMATIONS: Automation[] = [
     "full_auto",
     "eco",
     7,
+    undefined,
+    "x",
   ),
   seedAutomation(
     "habit-blog",
@@ -161,6 +173,21 @@ export function createAutomationFromInput(input: CreateAutomationInput): Automat
       ? new Date(normalizedTiming.startDate)
       : now;
 
+  const destination = normalizeAutomationDestination(input.destination);
+  const executionLevel = normalizeExecutionLevel(input.executionLevel);
+  const executionFlow = normalizeExecutionFlow(
+    input.executionFlow ??
+      (destination === "x"
+        ? buildXDestinationExecutionFlow(executionLevel)
+        : createDefaultExecutionFlow(
+            inferWorkflowTemplate(
+              `${input.name} ${input.workflow.assignment}`,
+            ),
+          )),
+  );
+
+  const enabled = input.enabled ?? true;
+
   return {
     id: crypto.randomUUID(),
     userId: input.userId ?? null,
@@ -169,20 +196,15 @@ export function createAutomationFromInput(input: CreateAutomationInput): Automat
     schedule,
     workflow: input.workflow,
     timing: normalizedTiming,
-    executionLevel: normalizeExecutionLevel(input.executionLevel),
+    executionLevel,
     executionMode: normalizeExecutionMode(input.executionMode),
     snsBatchDays: normalizeSnsBatchDays(input.snsBatchDays),
-    executionFlow: normalizeExecutionFlow(
-      input.executionFlow ??
-        createDefaultExecutionFlow(
-          inferWorkflowTemplate(
-            `${input.name} ${input.workflow.assignment}`,
-          ),
-        ),
-    ),
-    enabled: input.enabled ?? true,
+    executionFlow,
+    destination,
+    enabled,
     lastRun: null,
-    nextRun: computeNextRunIso(schedule, nextRunFrom),
+    // Paused / disabled automations must not advertise a next run.
+    nextRun: enabled ? computeNextRunIso(schedule, nextRunFrom) : null,
     status: "idle",
     lastWorkflowRunId: null,
     lastError: null,

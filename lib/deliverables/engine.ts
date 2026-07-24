@@ -25,6 +25,7 @@ export type GenerateDeliverablesResult = {
 export async function generateDeliverables(
   input: GenerateDeliverablesInput,
   requestOrigin: string,
+  options: { userId: string },
 ): Promise<GenerateDeliverablesResult> {
   const content = input.finalDeliverable.trim();
 
@@ -35,7 +36,15 @@ export async function generateDeliverables(
     };
   }
 
-  const detection = resolveGenerationFormats(input.assignment, input.formats);
+  if (!options.userId.trim()) {
+    throw new Error("userId is required to generate deliverables");
+  }
+
+  const detection = resolveGenerationFormats(
+    input.assignment,
+    input.formats,
+    content,
+  );
   const formats = detection.formats;
   const baseFileName = buildDeliverableBaseName(
     input.assignment,
@@ -49,7 +58,7 @@ export async function generateDeliverables(
     if (!generator) continue;
 
     const file = await generator.generate(content, baseFileName);
-    const stored = saveDeliverableFile(file);
+    const stored = saveDeliverableFile(file, options.userId);
     deliverables.push(toDeliverableMetadata(stored, requestOrigin));
   }
 

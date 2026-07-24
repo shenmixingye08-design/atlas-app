@@ -21,8 +21,13 @@ export async function POST(
   request: Request,
   context: RouteContext,
 ): Promise<Response> {
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await context.params;
-  const automation = await automationService.getById(id);
+  const automation = await automationService.getByIdForUser(id, userId);
 
   if (!automation) {
     return Response.json({ error: "Automation not found" }, { status: 404 });
@@ -36,10 +41,6 @@ export async function POST(
   }
 
   const origin = resolveOrigin(request);
-  const { userId } = await auth();
-  if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
 
   const { requireBillingAiUsage, requireBillingFeature } = await import(
     "@/lib/billing/access"
@@ -83,10 +84,20 @@ export async function POST(
 }
 
 export async function GET(
-  request: Request,
+  _request: Request,
   context: RouteContext,
 ): Promise<Response> {
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await context.params;
+  const automation = await automationService.getByIdForUser(id, userId);
+  if (!automation) {
+    return Response.json({ error: "Automation not found" }, { status: 404 });
+  }
+
   const runs = await automationService.listWorkflowRuns(id);
   return Response.json({ runs });
 }

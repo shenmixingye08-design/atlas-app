@@ -236,6 +236,19 @@ async function executeTweetPost(input: {
       }),
     );
 
+    // Only log "tweet created" when a real X API tweet id exists.
+    // Never use this wording for dry-run / preview paths that skip external post.
+    if (tweet.tweetId) {
+      console.info("[X Post] tweet created", {
+        mode: input.mode,
+        tweetId: tweet.tweetId,
+        tweetUrl,
+        automationId: input.automationId ?? null,
+        textChars: input.text.trim().length,
+        endpoint: "https://api.twitter.com/2/tweets",
+      });
+    }
+
     await touchXConnectionLastUsed(input.userId);
     notifyXPostSuccess(input.userId, input.text.trim(), {
       historyId: history.id,
@@ -369,6 +382,13 @@ export async function saveXDraftForUser(input: {
     userId: input.userId,
     text: input.text,
     id: input.draftId,
+  });
+
+  // Draft / preview path — no external X post. Do not log "tweet created".
+  console.info("[X Post] preview generated", {
+    mode: "draft",
+    draftId: draft.id,
+    textChars: input.text.trim().length,
   });
 
   return { status: "ready", mode: "draft", draft };

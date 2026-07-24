@@ -108,6 +108,54 @@ export function notifyXPostFailed(userId: string, message: string) {
   });
 }
 
+/** Recurring X post success — deep-links to the automation execution history. */
+export function notifyXRecurringPostSuccess(
+  userId: string | null | undefined,
+  input: { automationId: string; executionId: string },
+) {
+  if (!userId) return null;
+  return createNotification({
+    audience: "user",
+    userId,
+    type: "completed",
+    title: "Xへの定期投稿が完了しました",
+    message: "お待たせいたしました。Xへの定期投稿が完了しました。",
+    relatedTaskId: input.executionId,
+    relatedService: "x",
+    actionUrl: `/automations?id=${encodeURIComponent(input.automationId)}&executionId=${encodeURIComponent(input.executionId)}`,
+    automationId: input.automationId,
+    requestId: input.executionId,
+    lineEvent: "automation_completed",
+  });
+}
+
+/** Recurring X post failure — deep-links to the automation execution history. */
+export function notifyXRecurringPostFailed(
+  userId: string | null | undefined,
+  input: {
+    automationId: string;
+    executionId: string;
+    errorMessage?: string;
+  },
+) {
+  if (!userId) return null;
+  return createNotification({
+    audience: "user",
+    userId,
+    type: "error",
+    title: "Xへの定期投稿に失敗しました。対応が必要です",
+    message:
+      input.errorMessage?.trim() ||
+      "Xへの定期投稿に失敗しました。外部連携と実行履歴をご確認ください。",
+    relatedTaskId: input.executionId,
+    relatedService: "x",
+    actionUrl: `/automations?id=${encodeURIComponent(input.automationId)}&executionId=${encodeURIComponent(input.executionId)}`,
+    automationId: input.automationId,
+    requestId: input.executionId,
+    lineEvent: "error",
+  });
+}
+
 export function notifyXAutoPostDrafted(userId: string) {
   return createNotification({
     audience: "user",

@@ -42,18 +42,18 @@ export const CONFIRMATION_SCOPE_OPTIONS: {
   },
   {
     level: "draft_save",
-    label: "作成後に確認",
-    hint: "下書きまで作成し、その後確認します",
+    label: "下書きのみ作成",
+    hint: "投稿文の下書きだけ作成し、自動投稿しません",
   },
   {
     level: "approve_then_run",
-    label: "最後の実行前に確認",
-    hint: "投稿・送信などの前に必ず確認します",
+    label: "投稿前に確認",
+    hint: "投稿文を用意したあと、投稿前に必ず確認します",
   },
   {
     level: "full_auto",
-    label: "確認せず実行",
-    hint: "重要操作がない場合のみ自動で進めます",
+    label: "完全自動投稿",
+    hint: "指定時刻に生成し、確認なしでXへ投稿します",
   },
 ];
 
@@ -155,12 +155,28 @@ export function flowHasCriticalExternalActions(
   });
 }
 
-/** Important external actions cannot run without final confirmation. */
+/**
+ * Clamp confirmation level for unsafe defaults.
+ *
+ * X destination + explicit「完全自動投稿」(full_auto) must NOT be forced into
+ * approve_then_run — that was the root cause of recurring X posts never
+ * publishing. Other critical externals still default to confirmation.
+ */
 export function clampConfirmationLevel(
   level: AutomationExecutionLevel,
   flow: WorkExecutionFlow,
+  options?: { destination?: "none" | "x"; allowFullAutoExternal?: boolean },
 ): AutomationExecutionLevel {
   if (level !== "full_auto") return level;
+  if (options?.allowFullAutoExternal) return level;
+  if (options?.destination === "x") return level;
+  const normalized = normalizeExecutionFlow(flow);
+  if (
+    normalized.templateId === "sns_post" &&
+    normalized.steps.some((step) => step.id === "publish" && step.enabled)
+  ) {
+    return level;
+  }
   if (flowHasCriticalExternalActions(flow)) return "approve_then_run";
   return level;
 }
