@@ -12,6 +12,8 @@ export type WorkOutcomeSummary = {
   deliverableTitle: string;
   deliverablePreview: string;
   deliverableLinks: Array<{ label: string; href: string }>;
+  deliverables: Array<{ title: string; preview: string }>;
+  aiActions: string[];
   usedAi: string[];
   durationLabel: string;
   nextRecommendations: string[];
@@ -94,6 +96,51 @@ function nextRecommendations(project: Project): string[] {
   ];
 }
 
+function collectAiActions(project: Project): string[] {
+  const actions: string[] = [];
+  const request = project.workRequest?.trim() || project.title || "";
+  if (request) actions.push(`依頼「${request.slice(0, 80)}」を受け付けて分析`);
+
+  const result = project.result;
+  if (result?.ceo) actions.push("方針を整理");
+  if (result?.plannerPlan || result?.plannerTasks) actions.push("実行計画を作成");
+  if ((result?.executions?.length ?? 0) > 0) actions.push("内容を作成・実行");
+  if (result?.deliverable) actions.push("成果物を生成");
+  if (result?.approved) actions.push("最終確認のうえ納品");
+
+  if (actions.length <= 1) {
+    actions.push("内容を作成", "成果物を整えて納品");
+  }
+  return [...new Set(actions)].slice(0, 8);
+}
+
+function collectDeliverables(project: Project): Array<{ title: string; preview: string }> {
+  const items: Array<{ title: string; preview: string }> = [];
+  const deliverable = project.result?.deliverable ?? null;
+  if (deliverable) {
+    const title =
+      deliverable.title?.trim() ||
+      deliverable.type ||
+      deriveCompletionTitle(project);
+    const preview = deliverablePreviewText(project);
+    items.push({ title, preview });
+
+    const cards = getSocialPostCards(deliverable).filter((card) => card.trim());
+    cards.slice(1, 4).forEach((card, index) => {
+      items.push({
+        title: `別案 ${index + 2}`,
+        preview: card.trim().slice(0, 200),
+      });
+    });
+  } else if (project.result?.finalResponse?.trim()) {
+    items.push({
+      title: deriveCompletionTitle(project),
+      preview: project.result.finalResponse.trim().slice(0, 280),
+    });
+  }
+  return items;
+}
+
 /**
  * Build a results-first summary for the completion screen.
  * Pure helper — safe for unit tests and client components.
@@ -116,6 +163,8 @@ export function buildWorkOutcomeSummary(project: Project): WorkOutcomeSummary {
     deliverableTitle,
     deliverablePreview: deliverablePreviewText(project),
     deliverableLinks: links,
+    deliverables: collectDeliverables(project),
+    aiActions: collectAiActions(project),
     usedAi: collectUsedAi(project),
     durationLabel: formatDuration(project.result?.totalDurationMs),
     nextRecommendations: nextRecommendations(project),

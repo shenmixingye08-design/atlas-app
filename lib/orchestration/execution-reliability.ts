@@ -8,7 +8,10 @@
  * - Durable execution logs
  * - Completion / failure notification guarantee
  * - Clear failure reasons for the UI
+ * - 6-stage progress metadata for the trust UX
  */
+
+import type { WorkProgressStageId } from "@/lib/work-progress/stages";
 
 export type ExecutionLogLevel = "info" | "warn" | "error";
 
@@ -22,6 +25,7 @@ export type ExecutionLogEntry = {
   message: string;
   attempt?: number;
   timedOut?: boolean;
+  stage?: WorkProgressStageId;
   metadata?: Readonly<Record<string, unknown>>;
 };
 
@@ -42,6 +46,9 @@ export type PersistedExecutionState = {
   timedOut: boolean;
   updatedAt: string;
   startedAt: string;
+  /** User-facing 6-stage progress. */
+  stage: WorkProgressStageId;
+  stoppedAtStage: WorkProgressStageId | null;
 };
 
 const MAX_LOGS = 2000;
@@ -87,6 +94,7 @@ export function appendExecutionLog(
     message: input.message,
     ...(input.attempt != null ? { attempt: input.attempt } : {}),
     ...(input.timedOut != null ? { timedOut: input.timedOut } : {}),
+    ...(input.stage ? { stage: input.stage } : {}),
     ...(input.metadata ? { metadata: input.metadata } : {}),
   };
 
@@ -114,12 +122,22 @@ export function listExecutionLogs(filter: {
 }
 
 export function persistExecutionState(
-  input: Omit<PersistedExecutionState, "updatedAt" | "startedAt"> & {
+  input: Omit<PersistedExecutionState, "updatedAt" | "startedAt" | "stage" | "stoppedAtStage"> & {
     startedAt?: string;
+    stage?: WorkProgressStageId;
+    stoppedAtStage?: WorkProgressStageId | null;
   },
 ): PersistedExecutionState {
   const key = stateKey(input.runId, input.userId);
   const existing = getStates().get(key);
+  const stage =
+    input.stage ??
+    existing?.stage ??
+    (input.status === "completed"
+      ? "delivered"
+      : input.status === "queued"
+        ? "accepted"
+        : "executing");
   const next: PersistedExecutionState = {
     runId: input.runId,
     userId: input.userId,
@@ -130,6 +148,13 @@ export function persistExecutionState(
     timedOut: input.timedOut,
     startedAt: input.startedAt ?? existing?.startedAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    stage,
+    stoppedAtStage:
+      input.stoppedAtStage !== undefined
+        ? input.stoppedAtStage
+        : input.status === "failed"
+          ? stage
+          : (existing?.stoppedAtStage ?? null),
   };
   getStates().set(key, next);
 
@@ -147,13 +172,58 @@ export function persistExecutionState(
     message: `実行状態を保存しました: ${input.status}`,
     attempt: input.attempt,
     timedOut: input.timedOut,
+    stage,
     metadata: {
       maxAttempts: input.maxAttempts,
       lastError: input.lastError,
+      stage,
+      stoppedAtStage: next.stoppedAtStage,
     },
   });
 
   return next;
+}
+
+/** Advance the user-facing stage and append a readable log line. */
+export function advanceExecutionStage(input: {
+  runId: string;
+  userId: string;
+  stage: WorkProgressStageId;
+  message: string;
+  attempt?: number;
+  status?: PersistedExecutionState["status"];
+}): PersistedExecutionState {
+  const existing = getExecutionState(input.runId, input.userId);
+  const state = persistExecutionState({
+    runId: input.runId,
+    userId: input.userId,
+    status: input.status ?? existing?.status ?? "running",
+    attempt: input.attempt ?? existing?.attempt ?? 1,
+    maxAttempts: existing?.maxAttempts ?? 3,
+    lastError: existing?.lastError ?? null,
+    timedOut: existing?.timedOut ?? false,
+    stage: input.stage,
+    stoppedAtStage: null,
+  });
+  appendExecutionLog({
+    runId: input.runId,
+    userId: input.userId,
+    level: "info",
+    event: "stage_advanced",
+    message: input.message,
+    attempt: state.attempt,
+    stage: input.stage,
+  });
+  return state;
+}
+
+export function listExecutionStatesForUser(userId: string): PersistedExecutionState[] {
+  return [...getStates().values()]
+    .filter((state) => state.userId === userId)
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
 }
 
 export function getExecutionState(

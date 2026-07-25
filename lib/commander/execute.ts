@@ -9,6 +9,7 @@ import {
   getDeliverablePreviewText,
 } from "@/lib/orchestration/deliverable-types";
 import {
+  advanceExecutionStage,
   appendExecutionLog,
   ensureNotificationDelivery,
   formatFailureReason,
@@ -16,6 +17,7 @@ import {
   monitorTimeout,
   persistExecutionState,
 } from "@/lib/orchestration/execution-reliability";
+import { defaultMessagesForStage } from "@/lib/work-progress/action-logs";
 import { runOrchestrationForUser } from "@/lib/orchestration/run-for-user";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import { hydrateWorkflowState } from "@/lib/orchestration/workflow-state";
@@ -366,13 +368,24 @@ async function executeStoredRun(input: {
     maxAttempts,
     lastError: null,
     timedOut: false,
+    stage: "accepted",
   });
   appendExecutionLog({
     runId: input.runId,
     userId: input.userId,
     level: "info",
     event: "run_started",
-    message: "依頼の実行を開始しました",
+    message: defaultMessagesForStage("accepted", plan.assignment)[0] ?? "依頼を受け付けました",
+    attempt: attempts.length,
+    stage: "accepted",
+  });
+  advanceExecutionStage({
+    runId: input.runId,
+    userId: input.userId,
+    stage: "analyzing",
+    message:
+      defaultMessagesForStage("analyzing", plan.assignment)[0] ??
+      "依頼内容を分析しています",
     attempt: attempts.length,
   });
 
@@ -398,6 +411,8 @@ async function executeStoredRun(input: {
         maxAttempts,
         lastError: reason,
         timedOut: true,
+        stage: "executing",
+        stoppedAtStage: "executing",
       });
       appendExecutionLog({
         runId: input.runId,
@@ -407,6 +422,7 @@ async function executeStoredRun(input: {
         message: reason,
         attempt,
         timedOut: true,
+        stage: "executing",
       });
       break;
     }
@@ -427,6 +443,8 @@ async function executeStoredRun(input: {
         maxAttempts,
         lastError: "Cancelled by user",
         timedOut: false,
+        stage: "executing",
+        stoppedAtStage: "executing",
       });
       break;
     }
@@ -440,6 +458,19 @@ async function executeStoredRun(input: {
       maxAttempts,
       lastError: null,
       timedOut: false,
+      stage: "executing",
+    });
+    advanceExecutionStage({
+      runId: input.runId,
+      userId: input.userId,
+      stage: "executing",
+      message:
+        attempt > 1
+          ? `自動リトライして再実行しています（${attempt}/${maxAttempts}）`
+          : (defaultMessagesForStage("executing", plan.assignment)[0] ??
+            "仕事を実行しています"),
+      attempt,
+      status: attempt > 1 ? "retrying" : "running",
     });
 
     try {
@@ -462,7 +493,26 @@ async function executeStoredRun(input: {
       workMemory = orchestration.workMemory;
       workMemoryCandidates = orchestration.workMemoryCandidates;
 
+      advanceExecutionStage({
+        runId: input.runId,
+        userId: input.userId,
+        stage: "generating",
+        message:
+          defaultMessagesForStage("generating", plan.assignment)[0] ??
+          "成果物を生成しています",
+        attempt,
+      });
+
       if (orchestration.result.status === "completed") {
+        advanceExecutionStage({
+          runId: input.runId,
+          userId: input.userId,
+          stage: "reviewing",
+          message:
+            defaultMessagesForStage("reviewing", plan.assignment)[0] ??
+            "最終確認をしています",
+          attempt,
+        });
         attempts.push({
           attempt,
           status: "completed",
@@ -475,8 +525,11 @@ async function executeStoredRun(input: {
           userId: input.userId,
           level: "info",
           event: "attempt_completed",
-          message: "実行が完了しました",
+          message:
+            defaultMessagesForStage("delivered", plan.assignment)[0] ??
+            "納品が完了しました",
           attempt,
+          stage: "delivered",
         });
         break;
       }
@@ -545,6 +598,8 @@ async function executeStoredRun(input: {
         maxAttempts,
         lastError: message,
         timedOut,
+        stage: "executing",
+        stoppedAtStage: "executing",
       });
       appendExecutionLog({
         runId: input.runId,
@@ -554,6 +609,7 @@ async function executeStoredRun(input: {
         message,
         attempt,
         timedOut,
+        stage: "executing",
       });
 
       if (attempt < maxAttempts && isRetryableFailure(error)) {
@@ -564,6 +620,7 @@ async function executeStoredRun(input: {
           event: "auto_retry",
           message: `例外発生のため自動リトライします（${attempt}/${maxAttempts}）`,
           attempt,
+          stage: "executing",
         });
         continue;
       }
@@ -590,6 +647,11 @@ async function executeStoredRun(input: {
         ? null
         : (lastResult?.error ?? attempts.at(-1)?.error ?? null),
     timedOut: Boolean(attempts.at(-1)?.error?.match(/タイムアウト|timeout/i)),
+    stage: finalStatus === "completed" ? "delivered" : "executing",
+    stoppedAtStage:
+      finalStatus === "completed" || finalStatus === "partial"
+        ? null
+        : "executing",
   });
 
   // Actually publish to X for one-off SNS post requests. Orchestration only
