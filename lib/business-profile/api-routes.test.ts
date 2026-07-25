@@ -59,7 +59,10 @@ describe("business profile API ownership", () => {
     authState.userId = "user_b";
     const otherList = await getProfiles();
     expect(otherList.status).toBe(200);
-    expect(await otherList.json()).toEqual({ profiles: [] });
+    expect(await otherList.json()).toEqual({
+      profiles: [],
+      storage: { ok: true },
+    });
 
     authState.userId = "user_a";
     const ownerList = await getProfiles();

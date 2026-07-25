@@ -1,6 +1,6 @@
 import {
   createProfile,
-  listProfiles,
+  listProfilesWithStorage,
 } from "@/lib/business-profile";
 import { parseCreateProfileBody } from "@/lib/business-profile/validation";
 
@@ -15,8 +15,8 @@ export async function GET(): Promise<Response> {
   const auth = await requireUserId();
   if (!auth.ok) return auth.response;
 
-  const profiles = await listProfiles(auth.userId);
-  return Response.json({ profiles });
+  const { profiles, storage } = await listProfilesWithStorage(auth.userId);
+  return Response.json({ profiles, storage });
 }
 
 export async function POST(request: Request): Promise<Response> {

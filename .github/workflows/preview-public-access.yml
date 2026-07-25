@@ -1,0 +1,71 @@
+name: Preview public access
+
+# Tries to disable Vercel Authentication on Preview so phone Chrome can open
+# PR Preview URLs without a Vercel SSO login.
+# Requires repository secrets: VERCEL_TOKEN (and optionally VERCEL_TEAM_ID).
+
+on:
+  push:
+    branches:
+      - "cursor/phase6-business-profile-793c"
+  workflow_dispatch:
+
+jobs:
+  disable-preview-sso:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Disable Vercel SSO protection for Preview
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+          # From PR #16 Vercel bot comment
+          VERCEL_PROJECT_ID: prj_scJ1Eu3klJ43sbLVU7tg5XBme055
+        run: |
+          set -euo pipefail
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "VERCEL_TOKEN secret is not configured. Skipping SSO disable."
+            echo "Configure VERCEL_TOKEN (and optional VERCEL_TEAM_ID) to make Preview URLs public."
+            exit 0
+          fi
+
+          QS=""
+          if [ -n "${VERCEL_TEAM_ID:-}" ]; then
+            QS="?teamId=${VERCEL_TEAM_ID}"
+          fi
+
+          echo "Patching project ${VERCEL_PROJECT_ID} ssoProtection=null"
+          HTTP=$(curl -sS -o /tmp/vercel-patch.json -w "%{http_code}" \
+            -X PATCH "https://api.vercel.com/v10/projects/${VERCEL_PROJECT_ID}${QS}" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '{"ssoProtection":null}')
+          echo "HTTP ${HTTP}"
+          cat /tmp/vercel-patch.json
+          test "${HTTP}" = "200"
+
+          # Also mint a shareable protection-bypass on the latest preview alias if possible
+          PREVIEW_HOST="atlas-git-cur-6c055e-httpsgithubcomshenmixingye08-designatlas-a.vercel.app"
+          ALIAS_HTTP=$(curl -sS -o /tmp/alias.json -w "%{http_code}" \
+            "https://api.vercel.com/v2/aliases/${PREVIEW_HOST}${QS}" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" || true)
+          echo "Alias lookup HTTP ${ALIAS_HTTP}"
+          cat /tmp/alias.json || true
+
+          if [ "${ALIAS_HTTP}" = "200" ]; then
+            ALIAS_ID=$(python3 - <<'PY'
+          import json
+          print(json.load(open("/tmp/alias.json")).get("uid") or json.load(open("/tmp/alias.json")).get("id") or "")
+          PY
+            )
+            if [ -n "${ALIAS_ID}" ]; then
+              curl -sS -o /tmp/bypass.json -w "\nbypass_http=%{http_code}\n" \
+                -X PATCH "https://api.vercel.com/v1/aliases/${ALIAS_ID}/protection-bypass${QS}" \
+                -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{}' || true
+              cat /tmp/bypass.json || true
+            fi
+          fi

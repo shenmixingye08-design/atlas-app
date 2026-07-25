@@ -1,6 +1,7 @@
 import "server-only";
 
 import { encryptSecretValue } from "./crypto";
+import { BusinessProfileError } from "./errors";
 import { detectForbiddenSecretInput } from "./forbidden";
 import { businessProfileRepository } from "./repository";
 import { mergeUsageFlags, usageForSensitivity } from "./usage-policy";
@@ -12,15 +13,7 @@ import type {
   UpdateBusinessProfileInput,
 } from "./types";
 
-export class BusinessProfileError extends Error {
-  readonly code: string;
-
-  constructor(code: string, message: string) {
-    super(message);
-    this.name = "BusinessProfileError";
-    this.code = code;
-  }
-}
+export { BusinessProfileError } from "./errors";
 
 function assertNoForbiddenInput(fields: Array<{
   label: string;
@@ -50,6 +43,10 @@ function profileFieldsForForbiddenCheck(
 
 export async function listProfiles(ownerUserId: string): Promise<BusinessProfile[]> {
   return businessProfileRepository.listProfiles(ownerUserId);
+}
+
+export async function listProfilesWithStorage(ownerUserId: string) {
+  return businessProfileRepository.listProfilesWithStorage(ownerUserId);
 }
 
 export async function getProfileForUser(

@@ -131,6 +131,7 @@ export function BusinessProfileSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BusinessProfile | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [usageLogs, setUsageLogs] = useState<UsageLog[]>([]);
@@ -144,9 +145,19 @@ export function BusinessProfileSettings() {
     setError(null);
     const response = await fetch("/api/business-profiles", { cache: "no-store" });
     if (!response.ok) throw new Error(await readError(response));
-    const body = (await response.json()) as { profiles: BusinessProfile[] };
+    const body = (await response.json()) as {
+      profiles: BusinessProfile[];
+      storage?: { ok: boolean; message?: string };
+    };
     setProfiles(body.profiles);
     setSelectedId((current) => current ?? body.profiles[0]?.id ?? null);
+    if (body.storage && body.storage.ok === false) {
+      setStorageWarning(
+        body.storage.message ?? ui.businessProfile.storageWarningHint,
+      );
+    } else {
+      setStorageWarning(null);
+    }
   }, []);
 
   const loadUsageLogs = useCallback(async () => {
@@ -362,6 +373,12 @@ export function BusinessProfileSettings() {
       </header>
 
       {loading && <LoadingState message={ui.businessProfile.loading} />}
+      {!loading && storageWarning && (
+        <ErrorState
+          title={ui.businessProfile.storageWarningTitle}
+          message={storageWarning}
+        />
+      )}
       {!loading && error && <ErrorState title="エラー" message={error} />}
       {!loading && (
         <>

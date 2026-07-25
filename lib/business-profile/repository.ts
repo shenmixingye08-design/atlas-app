@@ -6,6 +6,11 @@ import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role
 
 import { DEFAULT_ALLOWED_USAGE } from "./constants";
 import { maskLast4 } from "./crypto";
+import {
+  storageStatusFromError,
+  throwIfDurableWriteFailed,
+  type BusinessProfileStorageStatus,
+} from "./durable-errors";
 import { mergeUsageFlags, usageForSensitivity } from "./usage-policy";
 import type {
   ArtifactDataBinding,
@@ -38,7 +43,12 @@ const CASE_CONTACTS_TABLE = "atlas_business_case_contacts";
 const ARTIFACT_BINDINGS_TABLE = "atlas_artifact_data_bindings";
 const USAGE_LOGS_TABLE = "atlas_profile_usage_logs";
 
-type DbError = { message?: string };
+type DbError = {
+  message?: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+};
 type DbResult<T> = { data: T; error: DbError | null };
 
 type LooseQueryBuilder = {
@@ -570,9 +580,24 @@ function sortProfiles(items: StoredBusinessProfile[]): StoredBusinessProfile[] {
 
 export class BusinessProfileRepository {
   async listProfiles(ownerUserId: string): Promise<BusinessProfile[]> {
+    const listed = await this.listProfilesWithStorage(ownerUserId);
+    return listed.profiles;
+  }
+
+  /**
+   * List profiles without throwing on missing Migration.
+   * Callers can surface `storage` as a non-fatal banner.
+   */
+  async listProfilesWithStorage(ownerUserId: string): Promise<{
+    profiles: BusinessProfile[];
+    storage: BusinessProfileStorageStatus;
+  }> {
     const client = getClient();
     if (!client) {
-      return sortProfiles(activeProfilesForUser(ownerUserId)).map(publicProfile);
+      return {
+        profiles: sortProfiles(activeProfilesForUser(ownerUserId)).map(publicProfile),
+        storage: { ok: true },
+      };
     }
 
     const result = await (client
@@ -585,7 +610,16 @@ export class BusinessProfileRepository {
       DbResult<ProfileRow[]>
     >);
     warnDurable("list profiles", result.error);
-    return result.error ? [] : result.data.map(mapProfileRow).map(publicProfile);
+    if (result.error) {
+      return {
+        profiles: [],
+        storage: storageStatusFromError(result.error),
+      };
+    }
+    return {
+      profiles: result.data.map(mapProfileRow).map(publicProfile),
+      storage: { ok: true },
+    };
   }
 
   async getProfileForUser(
@@ -674,7 +708,8 @@ export class BusinessProfileRepository {
       .select("*")
       .single() as unknown as Promise<DbResult<ProfileRow>>);
     warnDurable("create profile", result.error);
-    return publicProfile(result.error ? profile : mapProfileRow(result.data));
+    throwIfDurableWriteFailed("create profile", result.error);
+    return publicProfile(mapProfileRow(result.data));
   }
 
   async updateProfile(
@@ -714,7 +749,7 @@ export class BusinessProfileRepository {
       .select("*")
       .single() as unknown as Promise<DbResult<ProfileRow>>);
     warnDurable("update profile", result.error);
-    if (result.error) return null;
+    throwIfDurableWriteFailed("update profile", result.error);
     if (patch.isDefault === true) return this.setDefaultProfile(ownerUserId, profileId);
     return publicProfile(mapProfileRow(result.data));
   }
@@ -742,7 +777,8 @@ export class BusinessProfileRepository {
       .eq("owner_user_id", ownerUserId)
       .is("deleted_at", null) as unknown as Promise<DbResult<ProfileRow[]>>);
     warnDurable("delete profile", result.error);
-    return !result.error;
+    throwIfDurableWriteFailed("delete profile", result.error);
+    return true;
   }
 
   async setDefaultProfile(
@@ -777,7 +813,8 @@ export class BusinessProfileRepository {
       .select("*")
       .single() as unknown as Promise<DbResult<ProfileRow>>);
     warnDurable("set default profile", result.error);
-    return result.error ? null : publicProfile(mapProfileRow(result.data));
+    throwIfDurableWriteFailed("set default profile", result.error);
+    return publicProfile(mapProfileRow(result.data));
   }
 
   async listFields(
@@ -865,7 +902,8 @@ export class BusinessProfileRepository {
       .select("*")
       .single() as unknown as Promise<DbResult<FieldRow>>);
     warnDurable("upsert field", result.error);
-    return result.error ? null : publicField(mapFieldRow(result.data));
+    throwIfDurableWriteFailed("upsert field", result.error);
+    return publicField(mapFieldRow(result.data));
   }
 
   async deleteField(
@@ -897,7 +935,8 @@ export class BusinessProfileRepository {
       .eq("field_key", fieldKey)
       .is("deleted_at", null) as unknown as Promise<DbResult<FieldRow[]>>);
     warnDurable("delete field", result.error);
-    return !result.error;
+    throwIfDurableWriteFailed("delete field", result.error);
+    return true;
   }
 
   async listContacts(

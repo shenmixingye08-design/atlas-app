@@ -58,7 +58,16 @@ export function businessProfileErrorResponse(error: BusinessProfileError): Respo
 
 export function unknownErrorResponse(error: unknown, scope: string): Response {
   if (error instanceof BusinessProfileError) {
-    return businessProfileErrorResponse(error);
+    const status =
+      error.code === "schema_missing" || error.code === "storage_unavailable"
+        ? 503
+        : error.code === "switch_required" || error.code === "invalid_switch"
+          ? 409
+          : 400;
+    return Response.json(
+      { error: error.message, code: error.code },
+      { status },
+    );
   }
   console.error(`[Atlas ${scope}]`, error);
   return Response.json({ error: "Internal server error" }, { status: 500 });

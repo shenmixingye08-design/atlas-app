@@ -2251,6 +2251,9 @@ export const ui = {
     settingsLinkHint:
       "会社名、連絡先、署名などを登録すると、資料やメールへ自動入力できます",
     backToSettings: "設定一覧へ戻る",
+    storageWarningTitle: "保存先の準備が未完了です",
+    storageWarningHint:
+      "画面は開けますが、データベース設定（Migration）が終わるまで保存できません。保存を押すと理由が表示されます。",
     trustItems: [
       "登録情報は必要な範囲でのみ使用",
       "作成前に確認可",
