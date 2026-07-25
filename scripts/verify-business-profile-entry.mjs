@@ -68,11 +68,10 @@ async function main() {
           NODE_ENV: "development",
           NEXT_TELEMETRY_DISABLED: "1",
           // Minimal placeholders so Clerk middleware can boot in dev
+          // /dev routes are excluded from Clerk middleware; keys are unused there.
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
-            process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ||
-            "pk_test_local-preview-placeholder",
-          CLERK_SECRET_KEY:
-            process.env.CLERK_SECRET_KEY || "sk_test_local-preview-placeholder",
+            process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "",
+          CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY || "",
         },
       },
     );
