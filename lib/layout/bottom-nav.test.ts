@@ -24,5 +24,6 @@ describe("bottom nav", () => {
     expect(resolveBottomNavId("/settings/work-memory")).toBe("settings");
     expect(resolveBottomNavId("/settings/learning")).toBe("settings");
     expect(resolveBottomNavId("/settings/billing")).toBe("settings");
+    expect(resolveBottomNavId("/settings/business-profile")).toBe("settings");
   });
 });

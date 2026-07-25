@@ -12,6 +12,14 @@ describe("sidebar nav", () => {
     expect(resolveSidebarActiveId("/settings")).toBe("settings");
   });
 
+  it("resolves business profile under settings without colliding with settings hub", () => {
+    expect(resolveSidebarActiveId("/settings/business-profile")).toBe(
+      "business-profile",
+    );
+    expect(resolveSidebarActiveId("/settings")).toBe("settings");
+    expect(isSidebarMoreActive("business-profile")).toBe(true);
+  });
+
   it("resolves X autopost route without colliding with request creation", () => {
     expect(resolveSidebarActiveId("/workspace/x")).toBe("x-autopost");
     expect(resolveSidebarActiveId("/workspace")).toBe("workspace");

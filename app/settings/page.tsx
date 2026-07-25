@@ -12,6 +12,7 @@ import { SettingsAccountLink } from "@/components/settings/settings-account-link
 import { SettingsAccountRequestsLink } from "@/components/settings/settings-account-requests-link";
 import { SettingsBillingLink } from "@/components/settings/settings-billing-link";
 import { SettingsExportLink } from "@/components/settings/settings-export-link";
+import { SettingsBusinessProfileLink } from "@/components/settings/settings-business-profile-link";
 import { SettingsMemoryLink } from "@/components/settings/settings-memory-link";
 import { SettingsWorkMemoryLink } from "@/components/settings/settings-work-memory-link";
 import { SettingsLearningLink } from "@/components/settings/settings-learning-link";
@@ -30,6 +31,8 @@ function SettingsContent() {
         <h1 className="text-display text-foreground">{ui.workProfile.pageTitle}</h1>
         <p className="text-body max-w-2xl">{ui.workProfile.pageSubtitle}</p>
       </header>
+      {/* モバイルでは折りたたみ前の先頭に置き、業務プロフィールへすぐ到達できるようにする */}
+      <SettingsBusinessProfileLink />
       <ThemeSettings />
       <OnboardingSettings onRedo={() => router.push("/projects?welcome=1")} />
       <WorkProfileSettings />

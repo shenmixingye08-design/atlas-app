@@ -5,6 +5,7 @@ export type AtlasNavPage =
   | "history"
   | "automations"
   | "settings"
+  | "business-profile"
   | "x-autopost"
   | "workspace"
   | "work-memory"
