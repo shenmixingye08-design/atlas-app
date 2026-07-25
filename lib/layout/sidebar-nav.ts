@@ -19,6 +19,7 @@ export function resolveSidebarActiveId(pathname: string): AtlasNavPage | null {
   if (pathname.startsWith("/automations")) return "automations";
   if (pathname.startsWith("/settings/learning")) return "learning";
   if (pathname.startsWith("/settings/billing")) return "billing";
+  if (pathname.startsWith("/settings/business-profile")) return "business-profile";
   if (pathname.startsWith("/settings")) return "settings";
   if (pathname.startsWith("/history")) return "history";
   // AI Orchestra — only reached from automation / workflow / AI-rules entry points.

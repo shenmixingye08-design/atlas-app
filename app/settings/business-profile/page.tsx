@@ -3,7 +3,7 @@ import { BusinessProfileSettings } from "@/components/settings/business-profile-
 
 export default function BusinessProfileSettingsPage() {
   return (
-    <AtlasAppShell active="settings" width="wide">
+    <AtlasAppShell active="business-profile" width="wide">
       <BusinessProfileSettings />
     </AtlasAppShell>
   );

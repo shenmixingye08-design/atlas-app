@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -334,11 +335,17 @@ export function BusinessProfileSettings() {
     URL.revokeObjectURL(url);
   }
 
-  if (loading) return <LoadingState message={ui.businessProfile.loading} />;
-
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 animate-fade-up">
       <header className="space-y-3">
+        <p className="text-caption">
+          <Link
+            href="/settings"
+            className="text-[var(--accent)] hover:underline"
+          >
+            ← {ui.businessProfile.backToSettings}
+          </Link>
+        </p>
         <p className="text-caption">{ui.brand}</p>
         <h1 className="text-display text-foreground">{ui.businessProfile.title}</h1>
         <p className="max-w-2xl text-body">{ui.businessProfile.subtitle}</p>
@@ -354,8 +361,10 @@ export function BusinessProfileSettings() {
         </ul>
       </header>
 
-      {error && <ErrorState title="エラー" message={error} />}
-
+      {loading && <LoadingState message={ui.businessProfile.loading} />}
+      {!loading && error && <ErrorState title="エラー" message={error} />}
+      {!loading && (
+        <>
       <Card padding="md" className="space-y-2 border border-[var(--border-subtle)]">
         <h2 className="text-title text-foreground">{ui.businessProfile.usageTitle}</h2>
         <p className="text-sm leading-relaxed text-[var(--text-secondary)]">
@@ -695,6 +704,8 @@ export function BusinessProfileSettings() {
             </div>
           </Card>
         </div>
+      )}
+        </>
       )}
     </div>
   );

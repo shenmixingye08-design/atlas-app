@@ -36,6 +36,12 @@ export const SIDEBAR_CHANNEL_NAV: SidebarNavItem[] = [
 /** Secondary routes grouped under 「その他」. */
 export const SIDEBAR_MORE_NAV: SidebarNavItem[] = [
   { id: "work-memory", href: "/learned-jobs", label: ui.nav.workMemory, icon: "📚" },
+  {
+    id: "business-profile",
+    href: "/settings/business-profile",
+    label: ui.nav.businessProfile,
+    icon: "🏢",
+  },
   { id: "learning", href: "/settings/learning", label: ui.nav.analysis, icon: "📊" },
   { id: "billing", href: "/settings/billing", label: ui.nav.billingCredits, icon: "💳" },
   { id: "contact", href: "/contact", label: ui.nav.contact, icon: "✉️" },

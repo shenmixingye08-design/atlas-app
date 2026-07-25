@@ -48,6 +48,7 @@ export const ui = {
     entrustedJobs: "任せている仕事",
     knowledge: "ナレッジ",
     settings: "設定",
+    businessProfile: "業務プロフィール",
     billing: "プラン・請求",
     billingCredits: "料金・クレジット",
     contact: "お問い合わせ",
@@ -2247,7 +2248,9 @@ export const ui = {
     subtitle:
       "会社名、連絡先、署名などを登録すると、資料やメールへ自動入力できます。",
     settingsLinkTitle: "業務プロフィール",
-    settingsLinkHint: "会社情報・連絡先・署名の自動入力",
+    settingsLinkHint:
+      "会社名、連絡先、署名などを登録すると、資料やメールへ自動入力できます",
+    backToSettings: "設定一覧へ戻る",
     trustItems: [
       "登録情報は必要な範囲でのみ使用",
       "作成前に確認可",

@@ -31,10 +31,11 @@ function SettingsContent() {
         <h1 className="text-display text-foreground">{ui.workProfile.pageTitle}</h1>
         <p className="text-body max-w-2xl">{ui.workProfile.pageSubtitle}</p>
       </header>
+      {/* モバイルでは折りたたみ前の先頭に置き、業務プロフィールへすぐ到達できるようにする */}
+      <SettingsBusinessProfileLink />
       <ThemeSettings />
       <OnboardingSettings onRedo={() => router.push("/projects?welcome=1")} />
       <WorkProfileSettings />
-      <SettingsBusinessProfileLink />
       <SettingsWorkMemoryLink />
       <SettingsLearningLink />
       <SettingsMemoryLink />
