@@ -1,8 +1,11 @@
 import {
   AlignmentType,
+  BorderStyle,
   Document,
   Footer,
+  Header,
   HeadingLevel,
+  PageBreak,
   PageNumber,
   Packer,
   Paragraph,
@@ -16,8 +19,14 @@ import {
 } from "docx";
 
 import { ui } from "@/lib/i18n";
-import { parseDeliverableContent } from "../parse-content";
-import type { ContentBlock, ParsedDeliverable } from "../parse-content";
+import {
+  buildStructuredDocument,
+  getDocumentTheme,
+  type DesignTemplateId,
+  type DocumentBlock,
+  type DocumentTheme,
+  type StructuredDocument,
+} from "../document-model";
 import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
 
 import { MarkdownDeliverableGenerator } from "./markdown-generator";
@@ -25,243 +34,405 @@ import { createDeliverableFile } from "./shared";
 
 const FONT = "Yu Gothic";
 const EAST_ASIA_FONT = "Yu Gothic";
-const BODY_SIZE = 22;
-const H1_SIZE = 32;
-const H2_SIZE = 28;
-const H3_SIZE = 24;
-const TITLE_SIZE = 44;
-const SUBTITLE_SIZE = 26;
-const CAPTION_SIZE = 18;
-const ATLAS_BLUE = "1F4E79";
 
-function bodyText(
+export type DocxGenerateOptions = {
+  assignment?: string;
+  title?: string;
+  designTemplate?: DesignTemplateId;
+  authorLabel?: string;
+};
+
+function run(
   text: string,
+  theme: DocumentTheme,
   options?: { bold?: boolean; size?: number; color?: string },
 ): TextRun {
   return new TextRun({
     text,
-    font: {
-      ascii: FONT,
-      eastAsia: EAST_ASIA_FONT,
-      hAnsi: FONT,
-    },
-    size: options?.size ?? BODY_SIZE,
+    font: { ascii: FONT, eastAsia: EAST_ASIA_FONT, hAnsi: FONT },
+    size: options?.size ?? theme.bodySize,
     bold: options?.bold,
-    color: options?.color,
+    color: options?.color ?? theme.textHex,
+  });
+}
+
+function emptyParagraph(after = 120): Paragraph {
+  return new Paragraph({ spacing: { after }, children: [] });
+}
+
+function paragraphBlock(text: string, theme: DocumentTheme): Paragraph {
+  return new Paragraph({
+    spacing: { after: 200, line: theme.lineSpacing },
+    children: [run(text, theme)],
   });
 }
 
 function headingParagraph(
   text: string,
-  level: (typeof HeadingLevel)[keyof typeof HeadingLevel],
-  size: number,
+  level: 1 | 2 | 3,
+  theme: DocumentTheme,
 ): Paragraph {
-  const spacingBefore = level === HeadingLevel.HEADING_1 ? 360 : level === HeadingLevel.HEADING_2 ? 280 : 200;
+  const heading =
+    level === 1
+      ? HeadingLevel.HEADING_1
+      : level === 2
+        ? HeadingLevel.HEADING_2
+        : HeadingLevel.HEADING_3;
+  const size =
+    level === 1 ? theme.h1Size : level === 2 ? theme.h2Size : theme.h3Size;
   return new Paragraph({
-    heading: level,
-    spacing: { before: spacingBefore, after: 140 },
-    children: [bodyText(text, { bold: true, size, color: ATLAS_BLUE })],
+    heading,
+    spacing: {
+      before: level === 1 ? 360 : 280,
+      after: 160,
+      line: theme.lineSpacing,
+    },
+    border:
+      level === 1
+        ? {
+            bottom: {
+              color: theme.lineHex,
+              space: 8,
+              style: BorderStyle.SINGLE,
+              size: 8,
+            },
+          }
+        : undefined,
+    children: [run(text, theme, { bold: true, size, color: theme.accentHex })],
   });
 }
 
-function paragraphBlock(text: string): Paragraph {
-  return new Paragraph({
-    spacing: { after: 180, line: 288 },
-    children: [bodyText(text)],
-  });
-}
-
-function bulletListBlock(items: string[]): Paragraph[] {
+function bulletList(items: string[], theme: DocumentTheme): Paragraph[] {
   return items.map(
     (item) =>
       new Paragraph({
-        spacing: { after: 80 },
+        spacing: { after: 80, line: theme.lineSpacing },
         bullet: { level: 0 },
-        children: [bodyText(item)],
+        children: [run(item, theme)],
       }),
   );
 }
 
-function numberedListBlock(items: string[]): Paragraph[] {
+function numberedList(items: string[], theme: DocumentTheme): Paragraph[] {
   return items.map(
     (item, index) =>
       new Paragraph({
-        spacing: { after: 80 },
-        children: [bodyText(`${index + 1}. ${item}`)],
+        spacing: { after: 100, line: theme.lineSpacing },
+        children: [run(`${index + 1}. ${item}`, theme)],
       }),
   );
 }
 
-function tableBlock(headers: string[], rows: string[][]): Table {
+function calloutBlock(
+  variant: "note" | "important" | "warning",
+  text: string,
+  theme: DocumentTheme,
+): Paragraph[] {
+  const label =
+    variant === "important" ? "重要" : variant === "warning" ? "注意" : "注記";
+  return [
+    new Paragraph({
+      spacing: { before: 120, after: 160, line: theme.lineSpacing },
+      shading: { fill: theme.calloutFillHex, type: ShadingType.CLEAR },
+      border: {
+        left: {
+          color: theme.accentHex,
+          space: 10,
+          style: BorderStyle.SINGLE,
+          size: 24,
+        },
+      },
+      children: [
+        run(`【${label}】`, theme, {
+          bold: true,
+          color: theme.accentHex,
+          size: theme.bodySize,
+        }),
+        run(` ${text}`, theme),
+      ],
+    }),
+  ];
+}
+
+function keyCardBlock(
+  title: string,
+  items: string[],
+  theme: DocumentTheme,
+): Array<Paragraph | Table> {
+  const rows = items.map(
+    (item) =>
+      new TableRow({
+        children: [
+          new TableCell({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            shading: { fill: theme.calloutFillHex, type: ShadingType.CLEAR },
+            borders: {
+              top: { style: BorderStyle.SINGLE, size: 4, color: theme.lineHex },
+              bottom: { style: BorderStyle.SINGLE, size: 4, color: theme.lineHex },
+              left: { style: BorderStyle.SINGLE, size: 12, color: theme.accentHex },
+              right: { style: BorderStyle.SINGLE, size: 4, color: theme.lineHex },
+            },
+            margins: { top: 80, bottom: 80, left: 140, right: 140 },
+            children: [
+              new Paragraph({
+                spacing: { after: 0, line: theme.lineSpacing },
+                children: [run(`・${item}`, theme)],
+              }),
+            ],
+          }),
+        ],
+      }),
+  );
+
+  return [
+    new Paragraph({
+      spacing: { before: 120, after: 80 },
+      children: [run(title, theme, { bold: true, color: theme.accentHex })],
+    }),
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows,
+    }),
+    emptyParagraph(160),
+  ];
+}
+
+function tableBlock(
+  headers: string[],
+  rows: string[][],
+  theme: DocumentTheme,
+): Array<Paragraph | Table> {
   const columnCount = Math.max(headers.length, 1);
+  const width = Math.floor(100 / columnCount);
 
   const headerRow = new TableRow({
     tableHeader: true,
     children: headers.map(
       (header) =>
         new TableCell({
-          width: { size: 100 / columnCount, type: WidthType.PERCENTAGE },
-          shading: { fill: ATLAS_BLUE, type: ShadingType.CLEAR },
-          margins: { top: 80, bottom: 80, left: 120, right: 120 },
+          width: { size: width, type: WidthType.PERCENTAGE },
+          shading: { fill: theme.headerFillHex, type: ShadingType.CLEAR },
+          margins: { top: 80, bottom: 80, left: 100, right: 100 },
           children: [
             new Paragraph({
               spacing: { after: 0 },
-              children: [bodyText(header, { bold: true, color: "FFFFFF" })],
+              children: [
+                run(header || " ", theme, { bold: true, color: "FFFFFF" }),
+              ],
             }),
           ],
         }),
     ),
   });
 
-  const bodyRows = rows.map(
-    (row, rowIndex) =>
-      new TableRow({
-        children: Array.from({ length: columnCount }, (_, columnIndex) => {
-          const cell = row[columnIndex] ?? "";
-          const zebra = rowIndex % 2 === 1 ? "F7F9FC" : "FFFFFF";
-          return new TableCell({
-            width: { size: 100 / columnCount, type: WidthType.PERCENTAGE },
-            shading: { fill: zebra, type: ShadingType.CLEAR },
-            margins: { top: 60, bottom: 60, left: 120, right: 120 },
-            children: [
-              new Paragraph({
-                spacing: { after: 0, line: 260 },
-                children: [bodyText(cell)],
-              }),
-            ],
-          });
-        }),
+  const bodyRows = rows.map((row, rowIndex) => {
+    const zebra = rowIndex % 2 === 1 ? theme.zebraFillHex : "FFFFFF";
+    return new TableRow({
+      children: Array.from({ length: columnCount }, (_, columnIndex) => {
+        const cell = (row[columnIndex] ?? "").trim() || "—";
+        return new TableCell({
+          width: { size: width, type: WidthType.PERCENTAGE },
+          shading: { fill: zebra, type: ShadingType.CLEAR },
+          margins: { top: 60, bottom: 60, left: 100, right: 100 },
+          children: [
+            new Paragraph({
+              spacing: { after: 0, line: 260 },
+              children: [run(cell, theme, { size: theme.bodySize - 1 })],
+            }),
+          ],
+        });
       }),
-  );
-
-  return new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    rows: [headerRow, ...bodyRows],
+    });
   });
-}
 
-function imagePlaceholderBlock(caption: string): Paragraph[] {
   return [
-    new Paragraph({
-      spacing: { before: 160, after: 80 },
-      shading: { fill: "F2F2F2", type: ShadingType.CLEAR },
-      border: {
-        top: { color: "CCCCCC", size: 6, style: "single" },
-        bottom: { color: "CCCCCC", size: 6, style: "single" },
-        left: { color: "CCCCCC", size: 6, style: "single" },
-        right: { color: "CCCCCC", size: 6, style: "single" },
-      },
-      alignment: AlignmentType.CENTER,
-      children: [
-        bodyText(`[ ${ui.generated.imagePlaceholder} ]`, { color: "888888", bold: true }),
-      ],
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [headerRow, ...bodyRows],
     }),
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 160 },
-      children: [bodyText(caption, { size: CAPTION_SIZE, color: "666666" })],
-    }),
+    emptyParagraph(180),
   ];
 }
 
-function blocksToDocxChildren(blocks: ContentBlock[]): Array<Paragraph | Table> {
+function blocksToChildren(
+  blocks: DocumentBlock[],
+  theme: DocumentTheme,
+): Array<Paragraph | Table> {
   const children: Array<Paragraph | Table> = [];
-
   for (const block of blocks) {
     switch (block.type) {
       case "paragraph":
-        children.push(paragraphBlock(block.text));
+        children.push(paragraphBlock(block.text, theme));
         break;
       case "bulletList":
-        children.push(...bulletListBlock(block.items));
+        children.push(...bulletList(block.items, theme));
+        children.push(emptyParagraph(80));
         break;
       case "numberedList":
-        children.push(...numberedListBlock(block.items));
+        children.push(...numberedList(block.items, theme));
+        children.push(emptyParagraph(80));
         break;
       case "table":
-        children.push(tableBlock(block.headers, block.rows));
-        children.push(new Paragraph({ spacing: { after: 160 }, children: [] }));
+        children.push(...tableBlock(block.headers, block.rows, theme));
+        break;
+      case "callout":
+        children.push(...calloutBlock(block.variant, block.text, theme));
+        break;
+      case "keyCard":
+        children.push(...keyCardBlock(block.title, block.items, theme));
         break;
       case "imagePlaceholder":
-        children.push(...imagePlaceholderBlock(block.caption));
+        children.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 160 },
+            children: [
+              run(`[${block.caption || ui.generated.imagePlaceholder}]`, theme, {
+                color: theme.mutedHex,
+              }),
+            ],
+          }),
+        );
         break;
     }
   }
-
   return children;
 }
 
-function buildTitlePage(parsed: ParsedDeliverable): Paragraph[] {
-  return [
+function buildCover(doc: StructuredDocument, theme: DocumentTheme): Paragraph[] {
+  const spacer = (before: number) =>
+    new Paragraph({ spacing: { before, after: 0 }, children: [] });
+
+  const lines: Paragraph[] = [
+    spacer(theme.coverStyle === "minimal" ? 600 : 1200),
     new Paragraph({
-      spacing: { before: 400, after: 200 },
+      spacing: { after: 120 },
       children: [
-        bodyText(parsed.title, { bold: true, size: TITLE_SIZE, color: ATLAS_BLUE }),
+        run(doc.meta.documentTypeLabel, theme, {
+          size: 20,
+          color: theme.accentHex,
+          bold: true,
+        }),
       ],
     }),
-    ...(parsed.subtitle
-      ? [
-          new Paragraph({
-            spacing: { after: 300 },
-            children: [
-              bodyText(parsed.subtitle, { size: SUBTITLE_SIZE, color: "444444" }),
-            ],
-          }),
-        ]
-      : []),
+    new Paragraph({
+      spacing: { after: 200 },
+      border: {
+        bottom: {
+          color: theme.accentHex,
+          space: 12,
+          style: BorderStyle.SINGLE,
+          size: 18,
+        },
+      },
+      children: [
+        run(doc.title, theme, {
+          bold: true,
+          size: theme.titleSize,
+          color: theme.accentHex,
+        }),
+      ],
+    }),
   ];
-}
 
-function buildSectionChildren(parsed: ParsedDeliverable): Array<Paragraph | Table> {
-  const children: Array<Paragraph | Table> = [];
-
-  if (parsed.includeTableOfContents) {
-    children.push(
+  if (doc.subtitle) {
+    lines.push(
       new Paragraph({
-        spacing: { after: 200 },
-        children: [bodyText(ui.generated.tableOfContents, { bold: true, size: H2_SIZE })],
-      }),
-      new TableOfContents(ui.generated.contents, {
-        hyperlink: true,
-        headingStyleRange: "1-3",
+        spacing: { before: 200, after: 400 },
+        children: [
+          run(doc.subtitle, theme, { size: 26, color: theme.mutedHex }),
+        ],
       }),
     );
   }
 
-  for (const section of parsed.sections) {
-    const headingLevel =
-      section.level === 1
-        ? HeadingLevel.HEADING_1
-        : section.level === 2
-          ? HeadingLevel.HEADING_2
-          : HeadingLevel.HEADING_3;
+  lines.push(
+    new Paragraph({
+      spacing: { before: 200, after: 80 },
+      children: [
+        run(`作成日：${doc.meta.createdAtLabel}`, theme, {
+          size: 20,
+          color: theme.mutedHex,
+        }),
+      ],
+    }),
+    new Paragraph({
+      spacing: { after: 80 },
+      children: [
+        run(`作成：${doc.meta.authorLabel}`, theme, {
+          size: 20,
+          color: theme.mutedHex,
+        }),
+      ],
+    }),
+  );
 
-    const headingSize =
-      section.level === 1 ? H1_SIZE : section.level === 2 ? H2_SIZE : H3_SIZE;
+  for (const field of doc.meta.fields) {
+    lines.push(
+      new Paragraph({
+        spacing: { after: 60 },
+        children: [
+          run(`${field.label}：${field.value}`, theme, {
+            size: 20,
+            color: theme.mutedHex,
+          }),
+        ],
+      }),
+    );
+  }
 
-    children.push(headingParagraph(section.title, headingLevel, headingSize));
-    children.push(...blocksToDocxChildren(section.blocks));
+  lines.push(
+    new Paragraph({
+      children: [new PageBreak()],
+    }),
+  );
+
+  return lines;
+}
+
+function buildBody(doc: StructuredDocument, theme: DocumentTheme): Array<Paragraph | Table> {
+  const children: Array<Paragraph | Table> = [];
+
+  if (doc.includeTableOfContents && theme.showToc) {
+    children.push(
+      headingParagraph(ui.generated.tableOfContents, 1, theme),
+      new TableOfContents(ui.generated.contents, {
+        hyperlink: true,
+        headingStyleRange: "1-3",
+      }),
+      new Paragraph({ children: [new PageBreak()] }),
+    );
+  }
+
+  for (const section of doc.sections) {
+    if (section.pageBreakBefore) {
+      children.push(new Paragraph({ children: [new PageBreak()] }));
+    }
+    children.push(headingParagraph(section.title, section.level, theme));
+    children.push(...blocksToChildren(section.blocks, theme));
   }
 
   return children;
 }
 
-function buildFooter(): Footer {
-  return new Footer({
+function buildHeader(doc: StructuredDocument, theme: DocumentTheme): Header {
+  return new Header({
     children: [
       new Paragraph({
-        alignment: AlignmentType.CENTER,
+        alignment: AlignmentType.RIGHT,
+        border: {
+          bottom: {
+            color: theme.lineHex,
+            space: 6,
+            style: BorderStyle.SINGLE,
+            size: 6,
+          },
+        },
+        spacing: { after: 80 },
         children: [
-          bodyText("Atlas · Page ", { size: CAPTION_SIZE, color: "666666" }),
-          new TextRun({
-            children: ["", PageNumber.CURRENT],
-            font: {
-              ascii: FONT,
-              eastAsia: EAST_ASIA_FONT,
-              hAnsi: FONT,
-            },
-            size: CAPTION_SIZE,
-            color: "666666",
+          run(`${doc.title} ｜ ${doc.meta.documentTypeLabel}`, theme, {
+            size: 16,
+            color: theme.mutedHex,
           }),
         ],
       }),
@@ -269,57 +440,153 @@ function buildFooter(): Footer {
   });
 }
 
-async function buildDocxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
-  const doc = new Document({
-    creator: "Atlas",
-    title: parsed.title,
+function buildFooter(theme: DocumentTheme): Footer {
+  return new Footer({
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        border: {
+          top: {
+            color: theme.lineHex,
+            space: 6,
+            style: BorderStyle.SINGLE,
+            size: 6,
+          },
+        },
+        spacing: { before: 80 },
+        children: [
+          run("MINERVOT  ", theme, { size: 16, color: theme.mutedHex }),
+          run("—  ", theme, { size: 16, color: theme.mutedHex }),
+          new TextRun({
+            children: [PageNumber.CURRENT],
+            font: { ascii: FONT, eastAsia: EAST_ASIA_FONT, hAnsi: FONT },
+            size: 16,
+            color: theme.mutedHex,
+          }),
+          run(" / ", theme, { size: 16, color: theme.mutedHex }),
+          new TextRun({
+            children: [PageNumber.TOTAL_PAGES],
+            font: { ascii: FONT, eastAsia: EAST_ASIA_FONT, hAnsi: FONT },
+            size: 16,
+            color: theme.mutedHex,
+          }),
+        ],
+      }),
+    ],
+  });
+}
+
+async function buildDocxBuffer(doc: StructuredDocument): Promise<Buffer> {
+  const theme = getDocumentTheme(doc.designTemplate);
+
+  const document = new Document({
+    creator: doc.meta.authorLabel,
+    title: doc.title,
     description: ui.generated.engine,
     styles: {
       default: {
         document: {
           run: {
-            font: {
-              ascii: FONT,
-              eastAsia: EAST_ASIA_FONT,
-              hAnsi: FONT,
-            },
-            size: BODY_SIZE,
+            font: { ascii: FONT, eastAsia: EAST_ASIA_FONT, hAnsi: FONT },
+            size: theme.bodySize,
+            color: theme.textHex,
           },
           paragraph: {
-            spacing: { line: 276 },
+            spacing: { line: theme.lineSpacing, after: 120 },
           },
         },
       },
+      paragraphStyles: [
+        {
+          id: "Heading1",
+          name: "Heading 1",
+          basedOn: "Normal",
+          next: "Normal",
+          paragraph: {
+            spacing: { before: 360, after: 160 },
+            outlineLevel: 0,
+          },
+          run: {
+            font: { ascii: FONT, eastAsia: EAST_ASIA_FONT, hAnsi: FONT },
+            size: theme.h1Size,
+            bold: true,
+            color: theme.accentHex,
+          },
+        },
+        {
+          id: "Heading2",
+          name: "Heading 2",
+          basedOn: "Normal",
+          next: "Normal",
+          paragraph: {
+            spacing: { before: 280, after: 140 },
+            outlineLevel: 1,
+          },
+          run: {
+            font: { ascii: FONT, eastAsia: EAST_ASIA_FONT, hAnsi: FONT },
+            size: theme.h2Size,
+            bold: true,
+            color: theme.accentHex,
+          },
+        },
+        {
+          id: "Heading3",
+          name: "Heading 3",
+          basedOn: "Normal",
+          next: "Normal",
+          paragraph: {
+            spacing: { before: 220, after: 120 },
+            outlineLevel: 2,
+          },
+          run: {
+            font: { ascii: FONT, eastAsia: EAST_ASIA_FONT, hAnsi: FONT },
+            size: theme.h3Size,
+            bold: true,
+            color: theme.accentHex,
+          },
+        },
+      ],
     },
     sections: [
       {
         properties: {
           page: {
-            margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
+            margin: {
+              top: theme.marginDxa.top,
+              right: theme.marginDxa.right,
+              bottom: theme.marginDxa.bottom,
+              left: theme.marginDxa.left,
+            },
           },
         },
-        footers: {
-          default: buildFooter(),
-        },
-        children: [...buildTitlePage(parsed), ...buildSectionChildren(parsed)],
+        headers: { default: buildHeader(doc, theme) },
+        footers: { default: buildFooter(theme) },
+        children: [...buildCover(doc, theme), ...buildBody(doc, theme)],
       },
     ],
   });
 
-  return Buffer.from(await Packer.toBuffer(doc));
+  return Buffer.from(await Packer.toBuffer(document));
 }
 
-/** Production Word (.docx) generator using the `docx` library. */
+/** Production Word (.docx) generator with document-type templates. */
 export class DocxDeliverableGenerator implements DeliverableGenerator {
   readonly format = "docx" as const;
 
   async generate(
     content: string,
     baseFileName: string,
+    options?: DocxGenerateOptions,
   ): Promise<GeneratedDeliverableFile> {
     try {
-      const parsed = parseDeliverableContent(content);
-      const buffer = await buildDocxBuffer(parsed);
+      const structured = buildStructuredDocument({
+        content,
+        assignment: options?.assignment,
+        title: options?.title,
+        designTemplate: options?.designTemplate,
+        authorLabel: options?.authorLabel,
+      });
+      const buffer = await buildDocxBuffer(structured);
       return createDeliverableFile("docx", baseFileName, buffer, false);
     } catch (error) {
       console.error("[DocxDeliverableGenerator] Falling back to Markdown:", error);

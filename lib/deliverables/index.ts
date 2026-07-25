@@ -2,6 +2,7 @@ export type {
   Deliverable,
   DeliverableFormat,
   DeliverableFormatDetection,
+  DeliverableGenerateOptions,
   DeliverableGenerator,
   GenerateDeliverablesInput,
   GeneratedDeliverableFile,
@@ -43,6 +44,22 @@ export type {
   ParsedDeliverable,
   ParsedSection,
 } from "./parse-content";
+
+export {
+  DEFAULT_DESIGN_TEMPLATE,
+  DESIGN_TEMPLATE_IDS,
+  DOCUMENT_TYPE_LABELS,
+  buildDocumentOutline,
+  buildStructuredDocument,
+  detectDocumentType,
+  getDocumentTheme,
+  listDocumentThemes,
+} from "./document-model";
+export type {
+  DesignTemplateId,
+  DocumentType,
+  StructuredDocument,
+} from "./document-model";
 
 export type { GenerateDeliverablesResult } from "./engine";
 export { generateDeliverables } from "./engine";

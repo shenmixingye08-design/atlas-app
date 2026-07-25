@@ -1,7 +1,11 @@
 import ExcelJS from "exceljs";
 
 import { extractExcelSheets } from "../excel-data";
-import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
+import type {
+  DeliverableGenerateOptions,
+  DeliverableGenerator,
+  GeneratedDeliverableFile,
+} from "../types";
 import { createDeliverableFile } from "./shared";
 
 const THIN_BORDER: Partial<ExcelJS.Borders> = {
@@ -45,8 +49,9 @@ function applySheetFormatting(
   if (columnCount < 1 || rowCount < 1) return;
 
   const header = sheet.getRow(1);
-  header.font = { bold: true, name: "Yu Gothic", size: 11 };
+  header.font = { bold: true, name: "Yu Gothic", size: 11, color: { argb: "FFFFFFFF" } };
   header.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+  header.height = 22;
 
   for (let row = 1; row <= rowCount; row += 1) {
     const excelRow = sheet.getRow(row);
@@ -55,6 +60,10 @@ function applySheetFormatting(
       name: excelRow.font?.name ?? "Yu Gothic",
       size: excelRow.font?.size ?? 11,
       bold: row === 1 ? true : excelRow.font?.bold,
+      color:
+        row === 1
+          ? { argb: "FFFFFFFF" }
+          : excelRow.font?.color,
     };
     for (let col = 1; col <= columnCount; col += 1) {
       const cell = excelRow.getCell(col);
@@ -64,6 +73,19 @@ function applySheetFormatting(
         horizontal: "left",
         wrapText: true,
       };
+      if (row === 1) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FF1F4E79" },
+        };
+      } else if (row % 2 === 0) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFF7F9FC" },
+        };
+      }
     }
   }
 
@@ -84,6 +106,7 @@ export class XlsxDeliverableGenerator implements DeliverableGenerator {
   async generate(
     content: string,
     baseFileName: string,
+    _options?: DeliverableGenerateOptions,
   ): Promise<GeneratedDeliverableFile> {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "MINERVOT";

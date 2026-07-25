@@ -688,6 +688,16 @@ export const ui = {
     hideDetails: "詳細を閉じる",
     generatedAt: (time: string) => `生成: ${time}`,
     downloadHint: "クリックでダウンロード",
+    designTemplateLabel: "デザインテンプレート",
+    designTemplateHint:
+      "Word / PDF の見た目を切り替えられます。内容はそのままです。",
+    documentPreviewLabel: "文書構成プレビュー",
+    documentPreviewPending: "構成プレビューを準備しています…",
+    downloadSectionTitle: "ダウンロード",
+    downloadSectionHint:
+      "仕事で提出できる形式でご用意しました。画面プレビューと同じ品質です。",
+    artifactSuggestionsTitle: "MINERVOTからのご提案",
+    artifactReadyLabel: (label: string) => `${label}をご用意いたしました`,
   },
 
   workflow: {

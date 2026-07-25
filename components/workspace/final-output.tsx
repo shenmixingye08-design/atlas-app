@@ -2,12 +2,17 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { triggerBlobDownload } from "@/lib/browser/trigger-blob-download";
+import { ArtifactDocumentPreview } from "@/components/workspace/artifact-document-preview";
+import { ArtifactDownloadPanel } from "@/components/workspace/artifact-download-panel";
+import { ArtifactSuggestionsPanel } from "@/components/workspace/artifact-suggestions-panel";
+import { DocumentLayoutControls } from "@/components/workspace/document-layout-controls";
+import type { ArtifactSuggestion } from "@/lib/artifact-engine/types";
+import type { DocumentOutlineResponse } from "@/lib/deliverables/client";
 import {
   assignmentIsImageToExcel,
   assignmentRequestsExcel,
 } from "@/lib/deliverables/excel-data";
-import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
+import type { DesignTemplateId } from "@/lib/deliverables/document-model";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
@@ -46,6 +51,12 @@ type FinalOutputProps = {
    * natural, contextual title instead (e.g. 「レポートができました」).
    */
   heading?: string;
+  documentOutline?: DocumentOutlineResponse | null;
+  designTemplate?: DesignTemplateId;
+  onDesignTemplateChange?: (template: DesignTemplateId) => void;
+  artifactLabel?: string | null;
+  suggestions?: ArtifactSuggestion[];
+  onRequestExcel?: () => void;
 };
 
 const TYPE_LABELS: Record<DeliverableType, string> = {
@@ -60,91 +71,13 @@ const TYPE_LABELS: Record<DeliverableType, string> = {
   document: "ドキュメント",
 };
 
-function downloadMarkdown(content: string, fileName: string): void {
-  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-  void triggerBlobDownload(blob, fileName);
-}
-
-function findGeneratedFile(
-  deliverables: readonly GeneratedFile[],
-  format: GeneratedFile["format"],
-): GeneratedFile | undefined {
-  return deliverables.find((item) => item.format === format);
-}
-
 const DOWNLOAD_FORMAT_ORDER: GeneratedFile["format"][] = [
-  "pptx",
-  "pdf",
   "docx",
+  "pdf",
   "xlsx",
+  "pptx",
   "md",
 ];
-
-function formatDownloadLabel(format: GeneratedFile["format"]): string {
-  if (format === "docx") return "Word";
-  if (format === "pptx") return "PowerPoint";
-  if (format === "xlsx") return "Excel";
-  return DELIVERABLE_FORMAT_LABELS[format].split(" ")[0] ?? format;
-}
-
-function FormatDownloadButton({
-  format,
-  deliverables,
-  isGeneratingDeliverables,
-}: {
-  format: GeneratedFile["format"];
-  deliverables: readonly GeneratedFile[];
-  isGeneratingDeliverables: boolean;
-}) {
-  const file = findGeneratedFile(deliverables, format);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const shortLabel = formatDownloadLabel(format);
-
-  if (!file) {
-    return (
-      <Button variant="secondary" size="sm" disabled={isGeneratingDeliverables}>
-        {shortLabel}
-      </Button>
-    );
-  }
-
-  const handleDownload = async () => {
-    setError(null);
-    setIsDownloading(true);
-    try {
-      await downloadDeliverableFile({
-        url: file.downloadUrl,
-        fileName: file.fileName,
-        mimeType: file.mimeType,
-      });
-    } catch (downloadError) {
-      setError(
-        downloadError instanceof Error
-          ? downloadError.message
-          : ui.work.downloadFailed,
-      );
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  return (
-    <span className="inline-flex flex-col items-start gap-1">
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={isGeneratingDeliverables || isDownloading}
-        onClick={() => void handleDownload()}
-      >
-        {isDownloading ? ui.work.downloadingFile : shortLabel}
-      </Button>
-      {error ? (
-        <span className="max-w-[16rem] text-xs text-[var(--error)]">{error}</span>
-      ) : null}
-    </span>
-  );
-}
 
 function DocumentHeading({ children }: { children: ReactNode }) {
   return (
@@ -239,36 +172,6 @@ function EmailPreview({ deliverable }: { deliverable: WorkspaceDeliverable }) {
   );
 }
 
-function BlogPreview({ deliverable }: { deliverable: WorkspaceDeliverable }) {
-  const normalized = normalizeDeliverableForDisplay(deliverable);
-  const body = getDocumentBody(normalized);
-  const tags = getBlogTags(normalized);
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <TypeBadge type="blog" />
-      </div>
-      <DocumentHeading>{normalized.title || "タイトル"}</DocumentHeading>
-      {normalized.summary && (
-        <DocumentSection title="概要">
-          <BodyBlock text={normalized.summary} />
-        </DocumentSection>
-      )}
-      {body && (
-        <DocumentSection title="本文">
-          <BodyBlock text={body} />
-        </DocumentSection>
-      )}
-      {tags.length > 0 && (
-        <DocumentSection title="Tags">
-          <p className="text-sm text-[var(--foreground-muted)]">{tags.join(" · ")}</p>
-        </DocumentSection>
-      )}
-    </div>
-  );
-}
-
 function SocialPostPreview({ deliverable }: { deliverable: WorkspaceDeliverable }) {
   const posts = getSocialPostCards(deliverable);
 
@@ -292,57 +195,14 @@ function SocialPostPreview({ deliverable }: { deliverable: WorkspaceDeliverable 
   );
 }
 
-function StructuredDocumentPreview({
-  deliverable,
-}: {
-  deliverable: WorkspaceDeliverable;
-}) {
-  const normalized = normalizeDeliverableForDisplay(deliverable);
-  const body = getDocumentBody(normalized);
-
+function BlogTagsFooter({ deliverable }: { deliverable: WorkspaceDeliverable }) {
+  const tags = getBlogTags(deliverable);
+  if (tags.length === 0) return null;
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <TypeBadge type={normalized.type} />
-      </div>
-      {normalized.title && <DocumentHeading>{normalized.title}</DocumentHeading>}
-      {normalized.summary && (
-        <DocumentSection title="概要">
-          <BodyBlock text={normalized.summary} />
-        </DocumentSection>
-      )}
-      {body && (
-        <DocumentSection title="本文">
-          <BodyBlock text={body} />
-        </DocumentSection>
-      )}
-    </div>
+    <p className="mt-6 text-sm text-[var(--foreground-muted)]">
+      Tags: {tags.join(" · ")}
+    </p>
   );
-}
-
-function DeliverablePreview({ deliverable }: { deliverable: WorkspaceDeliverable }) {
-  const normalized = useMemo(
-    () => normalizeDeliverableForDisplay(deliverable),
-    [deliverable],
-  );
-
-  switch (normalized.type) {
-    case "email":
-      return <EmailPreview deliverable={normalized} />;
-    case "blog":
-      return <BlogPreview deliverable={normalized} />;
-    case "social_post":
-      return <SocialPostPreview deliverable={normalized} />;
-    case "proposal":
-    case "report":
-    case "document":
-    case "presentation":
-    case "research":
-    case "short_document":
-      return <StructuredDocumentPreview deliverable={normalized} />;
-    default:
-      return <StructuredDocumentPreview deliverable={normalized} />;
-  }
 }
 
 function DeliverableDebugPanel({ deliverable }: { deliverable: WorkspaceDeliverable }) {
@@ -363,6 +223,12 @@ export function FinalOutput({
   deliverablesError = null,
   expectedFormats,
   heading,
+  documentOutline = null,
+  designTemplate,
+  onDesignTemplateChange,
+  artifactLabel = null,
+  suggestions = [],
+  onRequestExcel,
 }: FinalOutputProps) {
   const [copied, setCopied] = useState(false);
   const [driveSaved, setDriveSaved] = useState(false);
@@ -395,13 +261,19 @@ export function FinalOutput({
       return DOWNLOAD_FORMAT_ORDER.filter((format) => allowed.has(format));
     }
 
-    const base = new Set<GeneratedFile["format"]>(["pdf", "docx"]);
+    const base = new Set<GeneratedFile["format"]>(["docx", "pdf"]);
     if (wantsExcel) base.add("xlsx");
     for (const format of generated) {
       if (DOWNLOAD_FORMAT_ORDER.includes(format)) base.add(format);
     }
     return DOWNLOAD_FORMAT_ORDER.filter((format) => base.has(format));
   }, [expectedFormats, deliverables, result?.assignment]);
+
+  const useStructuredPreview = useMemo(() => {
+    if (!workspaceDeliverable) return false;
+    const type = normalizeDeliverableForDisplay(workspaceDeliverable).type;
+    return type !== "email" && type !== "social_post";
+  }, [workspaceDeliverable]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production" || !result) return;
@@ -450,8 +322,9 @@ export function FinalOutput({
     );
   }
 
-  const markdownFile = findGeneratedFile(deliverables, "md");
+  const markdownFile = deliverables.find((item) => item.format === "md");
   const baseName = markdownFile?.fileName ?? `${workspaceDeliverable.type}-deliverable.md`;
+  const normalized = normalizeDeliverableForDisplay(workspaceDeliverable);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(exportText);
@@ -469,6 +342,11 @@ export function FinalOutput({
         <h2 id="output-heading" className="text-title text-foreground">
           {heading ?? ui.work.deliverableTitle}
         </h2>
+        {artifactLabel ? (
+          <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+            {ui.work.artifactReadyLabel(artifactLabel)}
+          </p>
+        ) : null}
         {!result.approved && (
           <p className="mt-1 text-caption text-[var(--status-warning)]">
             {ui.work.deliverableNeedsReview}
@@ -478,7 +356,22 @@ export function FinalOutput({
 
       <Card padding="lg" className="shadow-[var(--shadow-soft)]">
         <div className="max-h-[560px] overflow-auto rounded-[var(--radius-xl)] bg-[var(--background-subtle)] px-6 py-8">
-          <DeliverablePreview deliverable={workspaceDeliverable} />
+          {useStructuredPreview ? (
+            <>
+              <ArtifactDocumentPreview
+                assignment={result.assignment}
+                content={exportText || getDocumentBody(normalized)}
+                title={normalized.title}
+              />
+              {normalized.type === "blog" ? (
+                <BlogTagsFooter deliverable={normalized} />
+              ) : null}
+            </>
+          ) : normalized.type === "email" ? (
+            <EmailPreview deliverable={normalized} />
+          ) : (
+            <SocialPostPreview deliverable={normalized} />
+          )}
         </div>
 
         {showDebug && (
@@ -487,31 +380,33 @@ export function FinalOutput({
           </div>
         )}
 
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Button variant="secondary" size="sm" onClick={() => void handleCopy()}>
-            {copied ? ui.work.copied : ui.work.copy}
-          </Button>
-
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => downloadMarkdown(exportText, baseName)}
-          >
-            {ui.work.saveMarkdown}
-          </Button>
-
-          {fileFormatsToShow.map((format) => (
-            <FormatDownloadButton
-              key={format}
-              format={format}
-              deliverables={deliverables}
-              isGeneratingDeliverables={isGeneratingDeliverables}
+        {designTemplate && onDesignTemplateChange ? (
+          <div className="mt-6">
+            <DocumentLayoutControls
+              designTemplate={designTemplate}
+              onDesignTemplateChange={onDesignTemplateChange}
+              documentOutline={documentOutline}
+              disabled={isGeneratingDeliverables}
             />
-          ))}
+          </div>
+        ) : null}
 
-          <Button variant="secondary" size="sm" onClick={handleDriveSave}>
-            {driveSaved ? ui.work.driveSaved : ui.work.saveToDrive}
-          </Button>
+        <div className="mt-6 space-y-4">
+          <div className="flex flex-wrap gap-3">
+            <Button variant="secondary" size="sm" onClick={() => void handleCopy()}>
+              {copied ? ui.work.copied : ui.work.copy}
+            </Button>
+          </div>
+
+          <ArtifactDownloadPanel
+            deliverables={deliverables}
+            isGeneratingDeliverables={isGeneratingDeliverables}
+            exportText={exportText}
+            markdownFileName={baseName}
+            formatsToShow={fileFormatsToShow}
+            onDriveSave={handleDriveSave}
+            driveSaved={driveSaved}
+          />
         </div>
 
         {driveSaved && (
@@ -539,6 +434,13 @@ export function FinalOutput({
               .join(" · ")}
           </p>
         )}
+
+        <div className="mt-6">
+          <ArtifactSuggestionsPanel
+            suggestions={suggestions}
+            onRequestExcel={onRequestExcel}
+          />
+        </div>
       </Card>
     </section>
   );

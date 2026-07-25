@@ -1,4 +1,6 @@
 import { generateDeliverables } from "@/lib/deliverables/engine";
+import { DESIGN_TEMPLATE_IDS } from "@/lib/deliverables/document-model";
+import type { DesignTemplateId } from "@/lib/deliverables/document-model";
 import { uploadDeliverablesAfterGeneration } from "@/lib/integrations/deliverable-bridge";
 import type { IntegrationUploadSummary } from "@/lib/integrations/types";
 
@@ -12,6 +14,7 @@ type RequestBody = {
   workflowId?: unknown;
   projectName?: unknown;
   formats?: unknown;
+  designTemplate?: unknown;
 };
 
 const VALID_FORMATS = new Set(["pdf", "docx", "pptx", "md", "txt", "xlsx"]);
@@ -23,6 +26,13 @@ function parseFormats(value: unknown): import("@/lib/deliverables/types").Delive
       typeof item === "string" && VALID_FORMATS.has(item),
   );
   return formats.length > 0 ? formats : undefined;
+}
+
+function parseDesignTemplate(value: unknown): DesignTemplateId | undefined {
+  if (typeof value !== "string") return undefined;
+  return (DESIGN_TEMPLATE_IDS as readonly string[]).includes(value)
+    ? (value as DesignTemplateId)
+    : undefined;
 }
 
 function resolveOrigin(request: Request): string {
@@ -111,6 +121,7 @@ export async function POST(request: Request): Promise<Response> {
         finalDeliverable: body.finalDeliverable,
         title: typeof body.title === "string" ? body.title : undefined,
         formats: parseFormats(body.formats),
+        designTemplate: parseDesignTemplate(body.designTemplate),
       },
       origin,
       { userId },
@@ -138,6 +149,11 @@ export async function POST(request: Request): Promise<Response> {
       deliverables: result.deliverables,
       matchedRule: result.detection.matchedRule,
       uploads,
+      designTemplate: result.designTemplate,
+      documentOutline: result.documentOutline,
+      artifactType: result.artifactType,
+      artifactLabel: result.artifactLabel,
+      suggestions: result.suggestions,
     });
   } catch (error) {
     console.error("[Atlas /api/deliverables/generate]", error);

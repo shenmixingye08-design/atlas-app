@@ -8,7 +8,11 @@ import {
   parseDeliverableContent,
 } from "../parse-content";
 import type { ContentBlock, ParsedDeliverable, ParsedSection } from "../parse-content";
-import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
+import type {
+  DeliverableGenerateOptions,
+  DeliverableGenerator,
+  GeneratedDeliverableFile,
+} from "../types";
 
 import { MarkdownDeliverableGenerator } from "./markdown-generator";
 import { createDeliverableFile, formatGeneratedDate } from "./shared";
@@ -349,6 +353,7 @@ export class PptxDeliverableGenerator implements DeliverableGenerator {
   async generate(
     content: string,
     baseFileName: string,
+    _options?: DeliverableGenerateOptions,
   ): Promise<GeneratedDeliverableFile> {
     try {
       const parsed = parseDeliverableContent(content);

@@ -26,7 +26,23 @@ const FORMAT_RULES: readonly FormatRule[] = [
       "経費精算",
       "表にまと",
       "表形式",
+      "ランキング",
+      "比較表",
+      "売上",
+      "在庫",
+      "顧客一覧",
+      "住所一覧",
+      "請求書",
+      "請求",
+      "スケジュール",
+      "日程表",
+      "名簿",
     ],
+    formats: ["xlsx", "pdf", "docx"],
+  },
+  {
+    id: "invoice",
+    keywords: ["請求書", "invoice", "請求明細", "御請求"],
     formats: ["xlsx", "pdf", "docx"],
   },
   {
@@ -40,7 +56,7 @@ const FORMAT_RULES: readonly FormatRule[] = [
       "提案資料",
       "スライド",
     ],
-    formats: ["pptx", "pdf"],
+    formats: ["pptx", "pdf", "docx"],
   },
   {
     id: "contract",
@@ -73,7 +89,7 @@ const FORMAT_RULES: readonly FormatRule[] = [
   {
     id: "report",
     keywords: ["報告書", "レポート", "report", "whitepaper", "白書"],
-    formats: ["pdf", "docx"],
+    formats: ["pdf", "docx", "md"],
   },
   {
     id: "readme",
@@ -82,7 +98,7 @@ const FORMAT_RULES: readonly FormatRule[] = [
   },
 ] as const;
 
-const DEFAULT_FORMATS: readonly DeliverableFormat[] = ["md", "txt", "pdf"];
+const DEFAULT_FORMATS: readonly DeliverableFormat[] = ["docx", "pdf", "md"];
 
 function normalizeHaystack(value: string): string {
   return value.toLowerCase();

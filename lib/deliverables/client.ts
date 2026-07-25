@@ -1,4 +1,6 @@
+import type { DesignTemplateId } from "@/lib/deliverables/document-model";
 import type { Deliverable, DeliverableFormat } from "@/lib/deliverables/types";
+import type { ArtifactSuggestion } from "@/lib/artifact-engine/types";
 import type { IntegrationUploadSummary } from "@/lib/integrations/types";
 
 export type GenerateDeliverablesRequest = {
@@ -9,12 +11,28 @@ export type GenerateDeliverablesRequest = {
   projectName?: string;
   /** Generate only these formats; omit to auto-detect from assignment. */
   formats?: DeliverableFormat[];
+  /** Word/PDF design preset. Defaults to business on the server. */
+  designTemplate?: DesignTemplateId;
+};
+
+export type DocumentOutlineResponse = {
+  documentType: string;
+  documentTypeLabel: string;
+  designTemplate: DesignTemplateId;
+  title: string;
+  subtitle?: string;
+  sectionTitles: string[];
 };
 
 export type GenerateDeliverablesResponse = {
   deliverables: Deliverable[];
   matchedRule: string | null;
   uploads?: IntegrationUploadSummary;
+  designTemplate?: DesignTemplateId;
+  documentOutline?: DocumentOutlineResponse;
+  artifactType?: string;
+  artifactLabel?: string;
+  suggestions?: ArtifactSuggestion[];
 };
 
 export async function requestDeliverables(
