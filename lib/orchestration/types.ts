@@ -122,6 +122,10 @@ export type QualityLoopResult = {
   currentScore: number | null;
   passed: boolean;
   ceoApproval: CeoApprovalRecord | null;
+  /** Extended delivery status for QA / missing-info gates (additive). */
+  deliveryStatus?: import("@/lib/deliverable-quality").DeliveryStatus;
+  majorErrors?: string[];
+  enhancedScore?: number;
 };
 
 /** Worker + Reviewer results for one task. */
@@ -186,6 +190,19 @@ export type OrchestrationResult = {
   workMemory?: import("@/lib/work-memory/types").WorkMemoryUsedContext;
   /** Memory candidates created after this run (optional). */
   workMemoryCandidates?: import("@/lib/work-memory/types").WorkMemoryCandidate[];
+  /** Hierarchical memory applied / saved (optional). */
+  hierarchicalMemory?: {
+    usedIds: string[];
+    savedIds: string[];
+    assumptions: string[];
+    promptPreview: string;
+  };
+  /** Missing-info assessment when generation waits for the user. */
+  missingInfo?: import("@/lib/hierarchical-memory").MissingInfoAssessment;
+  /** Extended delivery status beyond legacy completed/failed. */
+  deliveryStatus?: import("@/lib/deliverable-quality").DeliveryStatus;
+  /** QA audit trail (scores, revisions, memory ids) — no full deliverable body. */
+  qualityAssurance?: import("@/lib/deliverable-quality").QualityAssuranceAudit;
   /** Dev/debug cost breakdown (non-production only). */
   costDebug?: import("@/lib/ai/cost-meter").WorkflowCostSummary;
   /** Dev/debug pipeline stage report (non-production only). */

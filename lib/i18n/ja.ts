@@ -2166,6 +2166,43 @@ export const ui = {
     confirmPurge: "完全削除する",
   },
 
+  hierarchicalMemory: {
+    title: "階層メモリ（仕事の覚え方）",
+    subtitle:
+      "ユーザー全体 / プロジェクト / 仕事・自動化 / 一時情報に分けて管理します。今回の指示が最優先です。",
+    loading: "記憶を読み込み中…",
+    empty: "まだ階層メモリはありません。「今後は」「毎回」などの指示から自動で候補が作られます。",
+    edit: "編集",
+    delete: "削除",
+    disable: "今後は使わない",
+    scopeJobOnly: "この仕事だけに変更",
+    save: "保存",
+    cancel: "キャンセル",
+  },
+
+  qualityMemorySummary: {
+    heading: "品質と記憶の反映",
+    qualityStatus: "品質ステータス",
+    score: "最終品質スコア",
+    revisions: "自動修正回数",
+    usedMemory: "使用した記憶",
+    savedMemory: "今回保存した設定",
+    countItems: (n: number) => `${n}件`,
+    needsAttention: "要確認事項",
+    assumptions: "今回使った前提",
+    missingQuestions: "追加で教えてほしいこと",
+    temporaryNote:
+      "「今日だけ」「今回だけ」の条件は一時情報として扱い、期限後は次回へ残しません。",
+    statusCompleted: "納品可能",
+    statusNeedsReview: "要確認",
+    statusWaiting: "追加情報待ち",
+    statusFailed: "失敗",
+    statusRevising: "自動修正中",
+    statusReviewing: "品質確認中",
+    statusProcessing: "処理中",
+    statusUnknown: "—",
+  },
+
   memory: {
     pageTitle: "MINERVOT Memory",
     pageSubtitle:

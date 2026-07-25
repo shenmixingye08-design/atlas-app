@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { NextActionsBar } from "@/components/results/next-actions-bar";
+import { QualityMemorySummary } from "@/components/results/quality-memory-summary";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
@@ -197,6 +198,8 @@ export function SecretaryResultView({
             ))}
           </ul>
         </Card>
+
+        <QualityMemorySummary result={project.result} />
       </section>
 
       {targetType === "x_post" ? (

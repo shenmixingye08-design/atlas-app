@@ -5,6 +5,10 @@ import { uploadDeliverablesAfterGeneration } from "@/lib/integrations/deliverabl
 import type { WorkflowRunTriggerType } from "@/lib/memory/types/workflow-run";
 import { getDeliverablePreviewText } from "@/lib/orchestration/deliverable-types";
 import { emptyDeliverable } from "@/lib/orchestration/deliverable-types";
+import {
+  hydrateHierarchicalMemory,
+  prepareMemoryForGeneration,
+} from "@/lib/hierarchical-memory";
 import { orchestrate } from "@/lib/orchestration/orchestrator";
 import { hydrateWorkflowState } from "@/lib/orchestration/workflow-state";
 
@@ -175,6 +179,28 @@ export async function executeAutomationRun(
     }
 
     if (!result) {
+      let hierarchicalMeta: Record<string, string> = {};
+      if (options.userId) {
+        await hydrateHierarchicalMemory(options.userId);
+        const prep = prepareMemoryForGeneration({
+          userId: options.userId,
+          assignment,
+          automationId: automation.id,
+          jobId: automation.id,
+          projectId:
+            typeof automation.workflow.metadata?.projectId === "string"
+              ? automation.workflow.metadata.projectId
+              : null,
+        });
+        if (!prep.missing.canProceed) {
+          throw new Error(
+            prep.missing.questions.map((q) => q.question).join(" / ") ||
+              prep.missing.reason,
+          );
+        }
+        hierarchicalMeta = prep.metadata;
+      }
+
       result = await orchestrate({
         assignment,
         metadata: {
@@ -194,6 +220,7 @@ export async function executeAutomationRun(
             costMode: executionModeToCostSavingMode(executionMode),
           },
           ...(automation.workflow.metadata ?? {}),
+          ...hierarchicalMeta,
         },
       });
 
@@ -422,6 +449,9 @@ export async function executeAutomationRun(
 
     if (
       result.status === "completed" &&
+      result.approved &&
+      result.deliveryStatus !== "needs_review" &&
+      result.qualityLoop?.deliveryStatus !== "needs_review" &&
       getDeliverablePreviewText(result.deliverable) &&
       options.requestOrigin &&
       options.userId
@@ -488,15 +518,30 @@ export async function executeAutomationRun(
     // A completed orchestration whose SNS publish failed must be surfaced as a
     // failure — otherwise the user sees "投稿完了" while nothing reached X.
     // Approval-wait is a successful run that intentionally did not post yet.
+    // Quality needs_review / unapproved must not become a silent success.
+    const qualityNeedsReview =
+      result.deliveryStatus === "needs_review" ||
+      result.qualityLoop?.deliveryStatus === "needs_review" ||
+      (result.status === "completed" && !result.approved);
     const effectiveStatus: "completed" | "failed" | "awaiting_approval" =
       snsPostFailure && result.status === "completed"
         ? "failed"
         : awaitingXApproval && result.status === "completed"
           ? "awaiting_approval"
-          : result.status === "completed"
-            ? "completed"
-            : "failed";
-    const effectiveError = snsPostFailure ?? result.error ?? null;
+          : qualityNeedsReview && result.status === "completed"
+            ? "awaiting_approval"
+            : result.status === "completed"
+              ? "completed"
+              : "failed";
+    const effectiveError =
+      snsPostFailure ??
+      (qualityNeedsReview
+        ? result.qualityLoop?.ceoApproval?.comments ||
+          result.error ||
+          "品質チェックで要確認となりました"
+        : null) ??
+      result.error ??
+      null;
 
     await serverWorkflowRunRepository.complete({
       id: workflowRun.id,

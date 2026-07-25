@@ -7,8 +7,8 @@ export const COST_CONFIRMATION_MESSAGE =
 export const WORKFLOW_LIMITS = {
   /** Max LLM API calls per workflow run (planner + worker + research + reviewer fallback + 1 retry). */
   maxLlmCalls: 5,
-  /** Max worker revision retries after deterministic QA failure. */
-  maxWorkerRetries: 1,
+  /** Max worker revision retries after deterministic QA failure (通常成果物). */
+  maxWorkerRetries: 2,
   /** Max estimated workflow cost (USD) before stopping with 要確認. */
   maxEstimatedCostUsd: 1.5,
   /** Max total output tokens budget across all calls. */

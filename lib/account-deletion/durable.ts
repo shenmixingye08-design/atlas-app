@@ -26,6 +26,7 @@ export const ACCOUNT_DELETION_GLOBAL_DOMAIN_KEY = "atlasAccountDeletionGlobal";
 /** Durable user domains wiped on purge (billing history intentionally excluded). */
 export const ACCOUNT_WIPE_DOMAIN_KEYS = [
   "atlasWorkMemory",
+  "atlasHierarchicalMemory",
   "atlasLearning",
   "atlasNotifications",
   "atlasAutomations",

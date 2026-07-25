@@ -3,10 +3,16 @@ import "server-only";
 import { orchestrate } from "@/lib/orchestration/orchestrator";
 import { sanitizeOrchestrationResultForClient } from "@/lib/orchestration/sanitize-response";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
+import { emptyDeliverable } from "@/lib/orchestration/deliverable-types";
+import { hydrateWorkflowState } from "@/lib/orchestration/workflow-state";
 import { buildCompanyOrchestrationMetadata } from "@/lib/company-templates/loader";
 import { resolveCompanyTemplateIdFromMetadata } from "@/lib/company-templates/context";
 import { getServerActiveCompanyState } from "@/lib/company-templates/store";
-import { notifyWorkCompleted, notifyWorkFailed } from "@/lib/notifications/emitters";
+import {
+  notifyWorkCompleted,
+  notifyWorkFailed,
+  notifyWorkNeedsReview,
+} from "@/lib/notifications/emitters";
 import { persistCommanderResultAsProject } from "@/lib/commander/durable-store";
 import { buildAtlasMemoryMetadata } from "@/lib/user-memory/metadata";
 import {
@@ -25,6 +31,12 @@ import {
   markWorkMemoriesUsed,
 } from "@/lib/work-memory/service";
 import type { WorkMemoryType } from "@/lib/work-memory/types";
+import {
+  hydrateHierarchicalMemory,
+  learnFromApprovedDeliverable,
+  prepareMemoryForGeneration,
+} from "@/lib/hierarchical-memory";
+import { ensureWorkMemoryHydrated } from "@/lib/work-memory/durable";
 import { recordLearningEventFromOrchestration } from "@/lib/learning-engine/service";
 import { recordPopularityFromOrchestration } from "@/lib/owner/popularity-ranking/telemetry";
 import { recordAnonymousUserActivity } from "@/lib/owner/anonymous-user-analysis/telemetry";
@@ -85,6 +97,11 @@ export async function runOrchestrationForUser(
     resolveCompanyTemplateIdFromMetadata(input.metadata) ??
     getServerActiveCompanyState().templateId;
 
+  if (input.userId) {
+    await ensureWorkMemoryHydrated(input.userId);
+    await hydrateHierarchicalMemory(input.userId);
+  }
+
   const skipWorkMemory = shouldSkipWorkMemory(input.metadata);
   const workMemoryEnabled =
     input.userId != null && isWorkMemoryEnabled(input.userId);
@@ -112,6 +129,75 @@ export async function runOrchestrationForUser(
       ? buildWorkMemoryMetadata(usedWorkMemories)
       : null;
 
+  const hierarchicalPrep =
+    input.userId != null
+      ? prepareMemoryForGeneration({
+          userId: input.userId,
+          assignment: input.assignment,
+          projectId:
+            typeof input.metadata?.projectId === "string"
+              ? input.metadata.projectId
+              : null,
+          jobId:
+            typeof input.metadata?.jobId === "string" ? input.metadata.jobId : null,
+          automationId:
+            typeof input.metadata?.automationId === "string"
+              ? input.metadata.automationId
+              : null,
+        })
+      : null;
+
+  // Critical missing info → do not fake a completed deliverable
+  if (hierarchicalPrep && !hierarchicalPrep.missing.canProceed) {
+    const waiting: OrchestrationResult = {
+      assignment: input.assignment,
+      status: "failed",
+      ceo: null,
+      plannerPlan: null,
+      plannerTasks: null,
+      tasks: [],
+      executions: [],
+      deliverable: emptyDeliverable("document"),
+      reviewComments: "",
+      approved: false,
+      finalResponse: hierarchicalPrep.missing.reason,
+      totalDurationMs: 0,
+      error: hierarchicalPrep.missing.questions.map((q) => q.question).join(" / "),
+      warnings: hierarchicalPrep.missing.assumptions,
+      deliveryStatus: "waiting_for_user",
+      missingInfo: hierarchicalPrep.missing,
+      hierarchicalMemory: {
+        usedIds: hierarchicalPrep.bundle.usedIds,
+        savedIds: hierarchicalPrep.savedFromAssignment.map((m) => m.id),
+        assumptions: hierarchicalPrep.missing.assumptions,
+        promptPreview: hierarchicalPrep.bundle.promptBlock.slice(0, 400),
+      },
+      qualityAssurance: {
+        generationCount: 0,
+        evaluationCount: 0,
+        revisionCount: 0,
+        overallScore: null,
+        majorErrors: [],
+        usedMemoryIds: hierarchicalPrep.bundle.usedIds,
+        savedMemoryIds: hierarchicalPrep.savedFromAssignment.map((m) => m.id),
+      },
+      workflow: hydrateWorkflowState({ status: "failed", approved: false }),
+    };
+
+    if (notify) {
+      notifyWorkFailed(input.userId, {
+        title: "追加情報が必要です",
+        message: hierarchicalPrep.missing.questions.map((q) => q.question).join(" "),
+      });
+    }
+
+    return {
+      result: waiting,
+      usedWorkMemoryCount: usedWorkMemories.length,
+      memoryTypesUsed: usedWorkMemories.map((memory) => memory.type),
+    };
+  }
+
   const result = sanitizeOrchestrationResultForClient(
     await orchestrate({
       assignment: input.assignment,
@@ -121,9 +207,36 @@ export async function runOrchestrationForUser(
         ...(input.userId ? { userId: input.userId } : {}),
         ...(memoryMeta ?? {}),
         ...(workMemoryMeta ?? {}),
+        ...(hierarchicalPrep?.metadata ?? {}),
       },
     }),
   );
+
+  if (hierarchicalPrep) {
+    result.hierarchicalMemory = {
+      usedIds: hierarchicalPrep.bundle.usedIds,
+      savedIds: hierarchicalPrep.savedFromAssignment.map((m) => m.id),
+      assumptions: hierarchicalPrep.missing.assumptions,
+      promptPreview: hierarchicalPrep.bundle.promptBlock.slice(0, 400),
+    };
+    result.deliveryStatus =
+      result.qualityLoop?.deliveryStatus ??
+      (result.status === "failed"
+        ? "failed"
+        : result.approved
+          ? "completed"
+          : "needs_review");
+    result.qualityAssurance = {
+      generationCount: 1,
+      evaluationCount: result.qualityLoop?.reviews.length ?? 0,
+      revisionCount: result.qualityLoop?.revisionCount ?? 0,
+      overallScore: result.qualityLoop?.enhancedScore ?? result.qualityLoop?.currentScore ?? null,
+      majorErrors: (result.qualityLoop?.majorErrors ?? []) as import("@/lib/deliverable-quality").MajorErrorCode[],
+      usedMemoryIds: hierarchicalPrep.bundle.usedIds,
+      savedMemoryIds: hierarchicalPrep.savedFromAssignment.map((m) => m.id),
+      durationMs: result.totalDurationMs,
+    };
+  }
 
   const workMemory =
     usedWorkMemories.length > 0
@@ -145,7 +258,18 @@ export async function runOrchestrationForUser(
     ? `/projects/${encodeURIComponent(deepLinkProjectId)}`
     : null;
 
-  if (result.status === "failed") {
+  const deliveryStatus =
+    result.deliveryStatus ?? result.qualityLoop?.deliveryStatus;
+  const isSuccessfulDelivery =
+    result.status !== "failed" &&
+    result.approved &&
+    (deliveryStatus === "completed" || deliveryStatus == null);
+  const needsReview =
+    deliveryStatus === "needs_review" ||
+    deliveryStatus === "waiting_for_user" ||
+    (!isSuccessfulDelivery && result.status !== "failed");
+
+  if (result.status === "failed" && deliveryStatus !== "needs_review") {
     if (notify && input.userId && deepLinkProjectId) {
       await persistCommanderResultAsProject({
         userId: input.userId,
@@ -183,17 +307,33 @@ export async function runOrchestrationForUser(
     });
   }
   if (notify) {
-    const completedTitle = completedTitleForDeliverable(result.deliverable?.type);
-    notifyWorkCompleted(input.userId, {
-      title: completedTitle,
-      message: `${completedTitle}。ご確認をお願いいたします。`,
-      ...(deepLink && {
-        actionUrl: deepLink,
-        relatedTaskId: deepLinkProjectId,
-        deliverableId: deepLinkProjectId,
-        requestId: deepLinkProjectId,
-      }),
-    });
+    if (needsReview) {
+      notifyWorkNeedsReview(input.userId, {
+        title: "ご確認が必要な成果物があります",
+        message:
+          result.qualityLoop?.ceoApproval?.comments ||
+          result.error ||
+          "自動品質チェックで要確認となりました。内容をご確認ください。",
+        ...(deepLink && {
+          actionUrl: deepLink,
+          relatedTaskId: deepLinkProjectId,
+          deliverableId: deepLinkProjectId,
+          requestId: deepLinkProjectId,
+        }),
+      });
+    } else {
+      const completedTitle = completedTitleForDeliverable(result.deliverable?.type);
+      notifyWorkCompleted(input.userId, {
+        title: completedTitle,
+        message: `${completedTitle}。ご確認をお願いいたします。`,
+        ...(deepLink && {
+          actionUrl: deepLink,
+          relatedTaskId: deepLinkProjectId,
+          deliverableId: deepLinkProjectId,
+          requestId: deepLinkProjectId,
+        }),
+      });
+    }
   }
 
   recordPopularityFromOrchestration({
@@ -229,6 +369,33 @@ export async function runOrchestrationForUser(
       metadata: input.metadata,
     });
 
+    if (result.approved && result.deliverable && deliveryStatus === "completed") {
+      const approvedLearned = learnFromApprovedDeliverable({
+        userId: input.userId,
+        assignment: input.assignment,
+        deliverable: result.deliverable,
+        projectId:
+          typeof input.metadata?.projectId === "string"
+            ? input.metadata.projectId
+            : null,
+        jobId:
+          typeof input.metadata?.jobId === "string" ? input.metadata.jobId : null,
+        automationId:
+          typeof input.metadata?.automationId === "string"
+            ? input.metadata.automationId
+            : null,
+      });
+      if (result.hierarchicalMemory && approvedLearned.length > 0) {
+        result.hierarchicalMemory = {
+          ...result.hierarchicalMemory,
+          savedIds: [
+            ...result.hierarchicalMemory.savedIds,
+            ...approvedLearned.map((memory) => memory.id),
+          ],
+        };
+      }
+    }
+
     recordLearningEventFromOrchestration({
       userId: input.userId,
       assignment: input.assignment,
@@ -239,7 +406,7 @@ export async function runOrchestrationForUser(
       correctionApplied:
         typeof input.metadata?.correctionBefore === "string" &&
         typeof input.metadata?.correctionAfter === "string",
-      completed: true,
+      completed: result.approved && deliveryStatus === "completed",
     });
 
     recordEmployeeTeamTelemetry(result);
