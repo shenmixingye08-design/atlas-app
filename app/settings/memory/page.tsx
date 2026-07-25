@@ -1,4 +1,5 @@
 import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
+import { HierarchicalMemorySettings } from "@/components/settings/hierarchical-memory-settings";
 import { MemorySettings } from "@/components/settings/memory-settings";
 import { ui } from "@/lib/i18n";
 
@@ -13,6 +14,7 @@ export default function MemorySettingsPage() {
             {ui.memory.pageSubtitle}
           </p>
         </header>
+        <HierarchicalMemorySettings />
         <MemorySettings />
       </div>
     </AtlasAppShell>

@@ -362,6 +362,43 @@ export function notifyWorkCompleted(
   });
 }
 
+/** Deliverable exists but QA / revision cap → not a success completion. */
+export function notifyWorkNeedsReview(
+  userId: string | null | undefined,
+  input: {
+    title?: string;
+    message: string;
+    actionUrl?: string | null;
+    relatedTaskId?: string | null;
+    deliverableId?: string | null;
+    workflowRunId?: string | null;
+    requestId?: string | null;
+  },
+) {
+  if (!userId) return null;
+  const deliverableId = input.deliverableId ?? input.relatedTaskId ?? null;
+  const actionUrl =
+    input.actionUrl ??
+    (deliverableId ? deliverableActionUrl(deliverableId) : "/workspace");
+  return createNotification({
+    audience: "user",
+    userId,
+    type: "awaiting_review",
+    title: input.title?.trim() || "ご確認が必要な成果物があります",
+    message: input.message?.trim()
+      ? input.message.trim()
+      : "自動修正の上限に達したか、要確認事項があります。内容をご確認ください。",
+    relatedTaskId: input.relatedTaskId ?? deliverableId,
+    actionUrl,
+    targetType: deliverableId ? "deliverable" : null,
+    targetId: deliverableId,
+    deliverableId,
+    workflowRunId: input.workflowRunId ?? null,
+    requestId: input.requestId ?? null,
+    lineEvent: "confirmation_request",
+  });
+}
+
 export function notifyWorkFailed(
   userId: string | null | undefined,
   input: {

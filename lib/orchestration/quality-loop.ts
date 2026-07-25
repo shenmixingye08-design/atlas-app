@@ -12,6 +12,11 @@ import type { AiTaskType } from "@/lib/ai/model-policy";
 import type { WorkflowCostMeter } from "@/lib/ai/cost-meter";
 import { WORKFLOW_LIMITS, WorkflowLimitError } from "@/lib/ai/workflow-limits";
 
+import {
+  evaluateDeliverableQuality,
+  mergeQualityIntoDeterministicFeedback,
+} from "@/lib/deliverable-quality";
+
 import { buildDeterministicCeoApproval } from "./ceo-routing";
 import { runDeterministicQa } from "./deterministic-qa";
 import { runDeterministicTaskReview } from "./deterministic-reviewer";
@@ -132,10 +137,14 @@ async function executeUnifiedWorkerRevision(
   params: QualityLoopParams,
   feedback: string,
   primaryEmployeeId: EmployeeId,
-  existingWorker: AgentPhaseResult | null,
 ): Promise<AgentPhaseResult> {
   params.trackStep("worker", 1);
   params.costMeter.assertWithinLimits();
+
+  const memoryKnowledge =
+    typeof params.metadata?.hierarchicalMemory === "string"
+      ? params.metadata.hierarchicalMemory
+      : null;
 
   return params.runPhase(
     "worker",
@@ -147,6 +156,7 @@ async function executeUnifiedWorkerRevision(
       planSummary: params.planSummary,
       researchSummary: params.researchSummary,
       qualityRequirements: feedback,
+      workerKnowledge: memoryKnowledge,
     }),
     params.metadata,
     primaryEmployeeId,
@@ -175,21 +185,31 @@ export async function runQualityLoop(
   });
 
   let deterministicQa = runDeterministicQa(workflowDeliverable);
-  let latestFeedback = deterministicQa.feedback;
+  let enhanced = evaluateDeliverableQuality({
+    deliverable: workflowDeliverable,
+    assignment: params.assignment,
+    baseScore: deterministicQa.overallScore,
+    baseFailedChecks: deterministicQa.failedChecks,
+  });
+  let latestFeedback = mergeQualityIntoDeterministicFeedback(
+    enhanced,
+    deterministicQa.feedback,
+  );
+  let qaPassed = deterministicQa.passed && enhanced.passed;
 
   reviews.push({
     attempt: 1,
     revisionNumber: 0,
-    score: deterministicQa.overallScore,
+    score: enhanced.overallScore,
     criteria: deterministicQa.criteria,
-    passed: deterministicQa.passed,
-    feedback: deterministicQa.feedback,
+    passed: qaPassed,
+    feedback: latestFeedback,
     tasksRevised: [],
     qa: null,
     qaStatus: "completed",
   });
 
-  if (!deterministicQa.passed && revisionCount < WORKFLOW_LIMITS.maxWorkerRetries) {
+  while (!qaPassed && revisionCount < WORKFLOW_LIMITS.maxWorkerRetries) {
     try {
       params.costMeter.assertWithinLimits();
       params.workflowState?.transition(WorkflowState.Generating, "worker revision");
@@ -198,9 +218,8 @@ export async function runQualityLoop(
 
       const workerPhase = await executeUnifiedWorkerRevision(
         params,
-        deterministicQa.feedback,
+        latestFeedback,
         primaryEmployeeId,
-        executions[0]?.worker ?? null,
       );
 
       executions = params.tasks.map((task, index) => ({
@@ -220,7 +239,7 @@ export async function runQualityLoop(
         params.deliverableType as Deliverable["type"],
       );
 
-      revisionCount = 1;
+      revisionCount += 1;
       workflowDeliverable = buildDeliverable({
         assignment: params.assignment,
         executions,
@@ -230,26 +249,36 @@ export async function runQualityLoop(
       });
 
       deterministicQa = runDeterministicQa(workflowDeliverable);
-      latestFeedback = deterministicQa.feedback;
+      enhanced = evaluateDeliverableQuality({
+        deliverable: workflowDeliverable,
+        assignment: params.assignment,
+        baseScore: deterministicQa.overallScore,
+        baseFailedChecks: deterministicQa.failedChecks,
+      });
+      latestFeedback = mergeQualityIntoDeterministicFeedback(
+        enhanced,
+        deterministicQa.feedback,
+      );
+      qaPassed = deterministicQa.passed && enhanced.passed;
       params.workflowState?.transition(WorkflowState.QA, "qa re-run after revision");
 
       reviews.push({
-        attempt: 2,
-        revisionNumber: 1,
-        score: deterministicQa.overallScore,
+        attempt: revisionCount + 1,
+        revisionNumber: revisionCount,
+        score: enhanced.overallScore,
         criteria: deterministicQa.criteria,
-        passed: deterministicQa.passed,
-        feedback: deterministicQa.feedback,
+        passed: qaPassed,
+        feedback: latestFeedback,
         tasksRevised: params.tasks.map((t) => t.id),
         qa: null,
         qaStatus: "completed",
       });
     } catch (error) {
       if (error instanceof WorkflowLimitError) {
-        latestFeedback = `${deterministicQa.feedback}\n\n${error.message} — 要確認`;
-      } else {
-        throw error;
+        latestFeedback = `${latestFeedback}\n\n${error.message} — 要確認`;
+        break;
       }
+      throw error;
     }
   }
 
@@ -296,32 +325,61 @@ export async function runQualityLoop(
 
   params.trackStep("ceo_approval");
   params.workflowState?.transitionForStep("ceo_approval");
+  // Re-evaluate after ensure/validation path may have changed content
+  enhanced = evaluateDeliverableQuality({
+    deliverable: workflowDeliverable,
+    assignment: params.assignment,
+    baseScore: deterministicQa.overallScore,
+    baseFailedChecks: [
+      ...deterministicQa.failedChecks,
+      ...(!deliverableValidation.valid
+        ? deliverableValidation.missingFields.map((f) => `missing:${f}`)
+        : []),
+    ],
+  });
+  qaPassed = deterministicQa.passed && enhanced.passed && deliverableValidation.valid;
+
   const ceoApprovalResult = buildDeterministicCeoApproval(
     params.assignment,
-    deterministicQa.overallScore,
-    deterministicQa.passed && deliverableValidation.valid,
+    enhanced.overallScore,
+    qaPassed,
   );
 
+  const hitRevisionCap = !qaPassed && revisionCount >= WORKFLOW_LIMITS.maxWorkerRetries;
+  const deliveryStatus =
+    enhanced.deliveryStatus === "failed"
+      ? "failed"
+      : hitRevisionCap || enhanced.majorErrors.length > 0 || !qaPassed
+        ? "needs_review"
+        : "completed";
+
   const ceoApproval: CeoApprovalRecord = {
-    approved:
-      ceoApprovalResult.approved &&
-      deterministicQa.passed &&
-      deliverableValidation.valid,
+    approved: ceoApprovalResult.approved && qaPassed && deliveryStatus === "completed",
     ceo: ceoApprovalResult.phase,
     status: "completed",
-    comments: deliverableValidation.valid
-      ? ceoApprovalResult.comments
-      : `${ceoApprovalResult.comments}\n\n要確認 — required deliverable fields missing: ${deliverableValidation.missingFields.join(", ")}`,
+    comments: [
+      ceoApprovalResult.comments,
+      !deliverableValidation.valid
+        ? `要確認 — required deliverable fields missing: ${deliverableValidation.missingFields.join(", ")}`
+        : null,
+      hitRevisionCap ? "自動修正上限に達したため要確認です。" : null,
+      enhanced.majorErrors.length > 0
+        ? `重大エラー: ${enhanced.majorErrors.join(", ")}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
   };
 
   const reviewComments = buildReviewComments(executions);
   const taskReviewsApproved = executions.every((exec) => exec.approved !== false);
 
   const pipelineApproved =
-    deterministicQa.passed &&
+    qaPassed &&
     taskReviewsApproved &&
     ceoApproval.approved &&
-    deliverableValidation.valid;
+    deliverableValidation.valid &&
+    deliveryStatus === "completed";
 
   const finalResponse = buildFinalResponseSummary(workflowDeliverable);
   const approved =
@@ -330,16 +388,21 @@ export async function runQualityLoop(
   if (deliverableHasContent(workflowDeliverable)) {
     params.workflowState?.transition(
       WorkflowState.DeliverableReady,
-      "deliverable validated after approval",
+      deliveryStatus === "completed"
+        ? "deliverable validated after approval"
+        : "deliverable ready for user review",
     );
   }
 
   const qualityLoop: QualityLoopResult = {
     reviews,
     revisionCount,
-    currentScore: deterministicQa.overallScore,
-    passed: deterministicQa.passed && deliverableValidation.valid,
+    currentScore: enhanced.overallScore,
+    passed: qaPassed,
     ceoApproval,
+    deliveryStatus,
+    majorErrors: enhanced.majorErrors,
+    enhancedScore: enhanced.overallScore,
   };
 
   return {

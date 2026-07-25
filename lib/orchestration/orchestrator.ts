@@ -511,12 +511,20 @@ export async function orchestrate(
 
     const atlasMemory = readAtlasMemoryFromMetadata(metadata);
     const workMemory = readWorkMemoryFromMetadata(metadata);
+    const hierarchicalMemory =
+      typeof metadata?.hierarchicalMemory === "string"
+        ? metadata.hierarchicalMemory.trim()
+        : null;
     const plannerKnowledge = [
       retrieval.plannerContext.similarProjects,
       retrieval.plannerContext.successfulStrategies,
+      hierarchicalMemory,
       atlasMemory,
       workMemory,
     ]
+      .filter(Boolean)
+      .join("\n\n");
+    const workerMemoryKnowledge = [hierarchicalMemory, workMemory, atlasMemory]
       .filter(Boolean)
       .join("\n\n");
 
@@ -697,7 +705,9 @@ export async function orchestrate(
           deliverableType,
           planSummary,
           researchSummary: resolvedResearchSummary,
-          workerKnowledge: retrieval.workerContext ?? null,
+          workerKnowledge: [retrieval.workerContext, workerMemoryKnowledge]
+            .filter(Boolean)
+            .join("\n\n") || null,
         }),
         metadata,
         workerAssignments[0]?.employeeId ?? "development-senior-dev",
