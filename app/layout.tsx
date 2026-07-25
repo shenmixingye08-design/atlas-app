@@ -88,6 +88,13 @@ export const metadata: Metadata = {
 
   icons: {
     icon: "/favicon.ico",
+    apple: "/icons/icon-192.svg",
+  },
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "MINERVOT",
+    statusBarStyle: "default",
   },
 };
 

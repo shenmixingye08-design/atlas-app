@@ -19,7 +19,11 @@ function project(partial: Partial<Project> & Pick<Project, "id" | "title" | "sta
 }
 
 function automation(partial: Partial<Automation> & Pick<Automation, "id" | "name">): Automation {
+  const { id, name, ...rest } = partial;
   return {
+    id,
+    userId: null,
+    name,
     description: "",
     schedule: {
       kind: "schedule",
@@ -27,21 +31,25 @@ function automation(partial: Partial<Automation> & Pick<Automation, "id" | "name
       timezone: "Asia/Tokyo",
       label: "毎日 9:00",
     },
-    workflow: { assignment: partial.workflow?.assignment ?? "習慣の仕事" },
+    workflow: { assignment: rest.workflow?.assignment ?? "習慣の仕事" },
     timing: { startDate: null, endCondition: { type: "never" } },
     executionLevel: "draft_save",
     executionMode: "standard",
     snsBatchDays: null,
     executionFlow: { templateId: "generic", steps: [] },
+    destination: "none",
     enabled: true,
     lastRun: null,
     nextRun: "2026-07-11T00:00:00.000Z",
     status: "idle",
     lastWorkflowRunId: null,
     lastError: null,
+    successCount: 0,
+    failureCount: 0,
+    runHistory: [],
     createdAt: "2026-07-01T00:00:00.000Z",
     updatedAt: "2026-07-01T00:00:00.000Z",
-    ...partial,
+    ...rest,
   };
 }
 

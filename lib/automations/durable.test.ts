@@ -129,6 +129,7 @@ describe("automation persistence and cron tick", () => {
       false,
     );
     expect(disabled?.enabled).toBe(false);
+    expect(disabled?.nextRun).toBeNull();
 
     const enabled = await automationService.setEnabledForUser(
       created.id,
@@ -136,6 +137,8 @@ describe("automation persistence and cron tick", () => {
       true,
     );
     expect(enabled?.enabled).toBe(true);
+    expect(enabled?.nextRun).toBeTruthy();
+    expect(new Date(enabled!.nextRun!).getTime()).toBeGreaterThan(Date.now() - 1000);
 
     const snap = snapshotAutomations("user_persist");
     expect(snap.automations).toHaveLength(1);

@@ -5,6 +5,10 @@ import {
   getEnabledStepIds,
   normalizeExecutionFlow,
 } from "@/lib/automations/execution-flow";
+import {
+  automationPostsToX,
+  shouldAutoPublishToX,
+} from "@/lib/automations/x-recurring/destination";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import type { Deliverable } from "@/lib/orchestration/deliverable-types";
 import { getSocialPostCards } from "@/lib/orchestration/deliverable-display";
@@ -30,6 +34,8 @@ export async function maybeAutoPostToXAfterAutomation(input: {
   automation: Automation;
   content: string;
   context?: FeatureAccessContext;
+  /** When false, do not call X even if publish step is enabled. */
+  allowPublish?: boolean;
 }): Promise<MaybeAutoPostResult> {
   if (!input.userId) return { attempted: false };
 
@@ -37,13 +43,27 @@ export async function maybeAutoPostToXAfterAutomation(input: {
   if (!text) return { attempted: false };
 
   const flow = normalizeExecutionFlow(input.automation.executionFlow);
-  if (flow.templateId !== "sns_post") return { attempted: false };
+  const isXJob =
+    automationPostsToX(input.automation) || flow.templateId === "sns_post";
+  if (!isXJob) return { attempted: false };
+
+  // Full-auto X destination posts even when older saved flows left publish off.
+  const forcePublish =
+    shouldAutoPublishToX(input.automation) && input.allowPublish !== false;
 
   const enabledStepIds = getEnabledStepIds(flow);
-  const publishEnabled = enabledStepIds.includes("publish");
-  const scheduleEnabled = enabledStepIds.includes("schedule_post");
+  const publishEnabled =
+    forcePublish || enabledStepIds.includes("publish");
+  const scheduleEnabled =
+    !forcePublish && enabledStepIds.includes("schedule_post");
 
   if (!publishEnabled && !scheduleEnabled) return { attempted: false };
+  if (input.allowPublish === false) return { attempted: false };
+
+  // Never auto-publish when the job is not full_auto.
+  if (publishEnabled && !shouldAutoPublishToX(input.automation)) {
+    return { attempted: false };
+  }
 
   const context =
     input.context ?? (await resolveFeatureContextForUser(input.userId));

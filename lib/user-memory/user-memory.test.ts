@@ -48,7 +48,7 @@ describe("user memory", () => {
 
     const memories = listUserMemories("user_test_memory_2").memories;
     const formatted = formatMemoriesForPlanner(memories);
-    expect(formatted).toContain("ATLAS Memory");
+    expect(formatted).toContain("MINERVOT Memory");
 
     const suggestions = buildMemorySuggestions(memories);
     expect(suggestions.length).toBeGreaterThan(0);

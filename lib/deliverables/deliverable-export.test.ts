@@ -4,6 +4,7 @@ import { buildDeliverableBaseName } from "@/lib/deliverables/filename";
 import { DocxDeliverableGenerator } from "@/lib/deliverables/generators/docx-generator";
 import { MarkdownDeliverableGenerator } from "@/lib/deliverables/generators/markdown-generator";
 import { PdfDeliverableGenerator } from "@/lib/deliverables/generators/pdf-generator";
+import { XlsxDeliverableGenerator } from "@/lib/deliverables/generators/xlsx-generator";
 import { emptyDeliverable } from "@/lib/orchestration/deliverable-types";
 import {
   buildExportMarkdown,
@@ -99,5 +100,23 @@ describe("deliverable generators", () => {
     expect(pdfText.includes("%%EOF")).toBe(true);
     expect(file.buffer.length).toBeGreaterThan(3000);
     expect(pdfText).not.toContain("Helvetica");
+  });
+
+  it("still generates Word/PDF alongside Excel for table markdown", async () => {
+    const tableMarkdown = `# 一覧
+
+| 名前 | 値 |
+| --- | --- |
+| A | 1 |
+`;
+    const docx = await new DocxDeliverableGenerator().generate(tableMarkdown, "一覧");
+    const pdf = await new PdfDeliverableGenerator().generate(tableMarkdown, "一覧");
+    const xlsx = await new XlsxDeliverableGenerator().generate(tableMarkdown, "一覧");
+    expect(docx.fileName).toBe("一覧.docx");
+    expect(pdf.fileName).toBe("一覧.pdf");
+    expect(xlsx.fileName).toBe("一覧.xlsx");
+    expect(docx.buffer.subarray(0, 2).toString("utf8")).toBe("PK");
+    expect(pdf.buffer.toString("latin1").startsWith("%PDF")).toBe(true);
+    expect(xlsx.buffer.subarray(0, 2).toString("utf8")).toBe("PK");
   });
 });

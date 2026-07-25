@@ -81,7 +81,7 @@ describe("data-export formatters", () => {
 
   it("creates markdown export", () => {
     const markdown = bundleToMarkdown(sampleBundle);
-    expect(markdown).toContain("# ATLAS データエクスポート");
+    expect(markdown).toContain("# MINERVOT データエクスポート");
     expect(markdown).toContain("Test");
   });
 

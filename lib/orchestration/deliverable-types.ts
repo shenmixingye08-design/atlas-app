@@ -131,6 +131,7 @@ function downloadsFor(formats: (DeliverableFormat | "html")[]): DeliverableDownl
     pdf: "PDF",
     docx: "Word",
     pptx: "PowerPoint",
+    xlsx: "Excel",
     txt: "Text",
     html: "HTML",
   };

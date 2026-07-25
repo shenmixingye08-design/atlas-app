@@ -60,7 +60,7 @@ describe("LINE notifications", () => {
       message: "資料が完成しました",
       actionUrl: "/workspace",
     });
-    expect(text).toContain("【ATLAS】仕事完了");
+    expect(text).toContain("【MINERVOT】仕事完了");
     expect(text).toContain("資料が完成しました");
   });
 

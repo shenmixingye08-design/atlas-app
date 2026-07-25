@@ -24,6 +24,7 @@ function mockAutomation(partial: Partial<Automation>): Automation {
     executionMode: "eco",
     snsBatchDays: null,
     executionFlow: createDefaultExecutionFlow(),
+    destination: "none",
     enabled: true,
     lastRun: null,
     nextRun: null,

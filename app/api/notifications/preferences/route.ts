@@ -30,6 +30,7 @@ export async function PATCH(request: Request): Promise<Response> {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  await ensureNotificationsHydrated(userId);
   const updated = updateUserNotificationPreferences(userId, body);
   return Response.json(updated);
 }

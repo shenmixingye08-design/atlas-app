@@ -3,6 +3,8 @@ import "server-only";
 import { randomUUID } from "crypto";
 
 import { dispatchLineNotification } from "@/lib/integrations/line/service";
+import { dispatchWebPushNotification } from "@/lib/push/dispatch";
+import { resolvePushEventCategory, resolvePushSeverity } from "@/lib/push/categories";
 
 import { schedulePersistNotifications } from "./durable";
 import {
@@ -128,8 +130,40 @@ export function createNotification(
     deliverableId: input.deliverableId ?? null,
     requestId: input.requestId ?? null,
     automationId: input.automationId ?? null,
+    severity:
+      input.severity ??
+      resolvePushSeverity({
+        type: input.type,
+        severity: input.severity ?? null,
+        eventCategory: input.eventCategory ?? null,
+      }),
+    eventCategory:
+      input.eventCategory ??
+      resolvePushEventCategory({
+        type: input.type,
+        eventCategory: input.eventCategory ?? null,
+        autoRecovered: input.autoRecovered,
+      }),
+    pushSentAt: null,
+    pushFailedAt: null,
+    pushFailureReason: null,
+    readAt: null,
   });
   if (input.userId) schedulePersistNotifications(input.userId);
+
+  if (input.audience === "user" && input.userId) {
+    void dispatchWebPushNotification({
+      userId: input.userId,
+      record,
+      eventCategory: record.eventCategory ?? null,
+      severity: record.severity ?? null,
+      autoRecovered: input.autoRecovered,
+      jobName: input.jobName ?? null,
+    }).catch((error) => {
+      console.warn("[push notify]", error);
+    });
+  }
+
   return record;
 }
 
@@ -151,7 +185,10 @@ export function markNotificationRead(
 ): NotificationRecord | null {
   const record = findNotification(notificationId);
   if (!record || record.userId !== userId) return null;
-  const updated = updateNotification(notificationId, { isRead: true });
+  const updated = updateNotification(notificationId, {
+    isRead: true,
+    readAt: new Date().toISOString(),
+  });
   schedulePersistNotifications(userId);
   return updated;
 }
@@ -160,7 +197,10 @@ export function markAllUserNotificationsRead(userId: string): number {
   let count = 0;
   for (const record of listUserNotifications(userId)) {
     if (!record.isRead) {
-      updateNotification(record.notificationId, { isRead: true });
+      updateNotification(record.notificationId, {
+        isRead: true,
+        readAt: new Date().toISOString(),
+      });
       count += 1;
     }
   }
@@ -201,6 +241,12 @@ export function updateUserNotificationPreferences(
       ...DEFAULT_LINE_EVENTS,
       ...current.lineEvents,
       ...patch.lineEvents,
+    },
+    push: {
+      ...current.push,
+      ...patch.push,
+      events: { ...current.push.events, ...patch.push?.events },
+      severities: { ...current.push.severities, ...patch.push?.severities },
     },
   };
   const saved = saveStoredPreferences(userId, next);
