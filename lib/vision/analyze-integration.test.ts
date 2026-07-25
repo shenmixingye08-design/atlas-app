@@ -43,8 +43,13 @@ describe("vision analyze integration (mock LLM)", () => {
   let dataRoot: string;
   let prevCwd: string;
 
+  const prevStorage = process.env.ATLAS_ATTACHMENT_STORAGE;
+  const prevVercelEnv = process.env.VERCEL_ENV;
+
   beforeEach(() => {
     process.env.ATLAS_MOCK_LLM = "true";
+    process.env.ATLAS_ATTACHMENT_STORAGE = "local";
+    delete process.env.VERCEL_ENV;
     dataRoot = mkdtempSync(path.join(tmpdir(), "atlas-vision-"));
     prevCwd = process.cwd();
     // store uses process.cwd()/.data — chdir into temp workspace
@@ -55,6 +60,10 @@ describe("vision analyze integration (mock LLM)", () => {
     process.chdir(prevCwd);
     if (prevCwdData === undefined) delete process.env.ATLAS_MOCK_LLM;
     else process.env.ATLAS_MOCK_LLM = prevCwdData;
+    if (prevStorage === undefined) delete process.env.ATLAS_ATTACHMENT_STORAGE;
+    else process.env.ATLAS_ATTACHMENT_STORAGE = prevStorage;
+    if (prevVercelEnv === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = prevVercelEnv;
     rmSync(dataRoot, { recursive: true, force: true });
   });
 
@@ -90,7 +99,7 @@ describe("vision analyze integration (mock LLM)", () => {
       mimeType: "image/png",
       buffer: png,
     });
-    expect(getImageAttachmentForUser("user_b", uploaded.attachment.id)).toBeNull();
+    expect(await getImageAttachmentForUser("user_b", uploaded.attachment.id)).toBeNull();
   });
 
   it("skips vision when no attachmentIds (text-only)", async () => {

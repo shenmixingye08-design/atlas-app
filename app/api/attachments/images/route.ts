@@ -47,15 +47,25 @@ export async function POST(request: Request): Promise<Response> {
     );
 
     const preferReadableText = form.get("preferReadableText") === "true";
+    const jobIdRaw = form.get("jobId");
+    const jobId =
+      typeof jobIdRaw === "string" && jobIdRaw.trim() ? jobIdRaw.trim() : null;
+    const retentionRaw = form.get("retentionPolicy");
+    const retentionPolicy =
+      retentionRaw === "retained" ? ("retained" as const) : ("temporary" as const);
+
     const { results, warnings } = await uploadUserImages({
       userId,
       files: buffers,
       preferReadableText,
+      jobId,
+      retentionPolicy,
     });
 
     return Response.json({
       attachments: results.map((result) => ({
         id: result.attachment.id,
+        jobId: result.attachment.jobId,
         fileName: result.attachment.originalFileName,
         mimeType: result.attachment.mimeType,
         originalBytes: result.attachment.originalBytes,
@@ -65,6 +75,8 @@ export async function POST(request: Request): Promise<Response> {
         contentHash: result.attachment.contentHash,
         createdAt: result.attachment.createdAt,
         expiresAt: result.attachment.expiresAt,
+        retentionPolicy: result.attachment.retentionPolicy,
+        storageBackend: result.attachment.storageBackend,
         warnings: result.warnings,
       })),
       warnings,

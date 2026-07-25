@@ -1,3 +1,5 @@
+import type { AttachmentRetentionPolicy } from "./constants";
+
 export const SUPPORTED_IMAGE_MIME_TYPES = [
   "image/jpeg",
   "image/jpg",
@@ -19,21 +21,43 @@ export const ATTACHMENT_LIMITS = {
 export type StoredImageAttachment = {
   id: string;
   userId: string;
+  /** Commander/job scope; used in Storage path. Defaults to pending. */
+  jobId: string;
   originalFileName: string;
   mimeType: string;
+  originalMimeType?: string | null;
   originalBytes: number;
   processedBytes: number;
   width: number;
   height: number;
   contentHash: string;
   createdAt: string;
-  expiresAt: string;
-  /** Relative path under attachment root. */
+  /** Null when retentionPolicy is retained (no TTL purge). */
+  expiresAt: string | null;
+  retentionPolicy: AttachmentRetentionPolicy;
+  /** Storage object key or local absolute path for original bytes. */
   originalPath: string;
+  /** Storage object key or local absolute path for processed bytes. */
   processedPath: string;
+  /** Where bytes are stored. */
+  storageBackend: "local" | "supabase";
 };
 
 export type AttachmentUploadResult = {
   attachment: StoredImageAttachment;
   warnings: string[];
+};
+
+export type SaveImageAttachmentInput = {
+  userId: string;
+  jobId?: string | null;
+  originalFileName: string;
+  mimeType: string;
+  originalBuffer: Buffer;
+  processedBuffer: Buffer;
+  processedMimeType: string;
+  width: number;
+  height: number;
+  contentHash: string;
+  retentionPolicy?: AttachmentRetentionPolicy;
 };

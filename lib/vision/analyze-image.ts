@@ -33,7 +33,7 @@ export async function analyzeUserImage(input: {
   provider?: VisionProvider;
   jobId?: string | null;
 }): Promise<VisionAnalysisResult> {
-  const meta = getImageAttachmentForUser(input.userId, input.attachmentId);
+  const meta = await getImageAttachmentForUser(input.userId, input.attachmentId);
   if (!meta) {
     throw new VisionError("not_found", "画像が見つからないか、アクセスできません");
   }
@@ -66,12 +66,13 @@ export async function analyzeUserImage(input: {
     }
   }
 
-  const bytes = readProcessedImageBytes(input.userId, input.attachmentId);
+  const bytes = await readProcessedImageBytes(input.userId, input.attachmentId);
   if (!bytes) {
     throw new VisionError("storage_failed", "解析用画像の読み込みに失敗しました");
   }
 
-  // Prefer base64 data URL so OpenAI never needs access to private storage URLs.
+  // Download from private Storage (or local) on the server, then Base64 for OpenAI.
+  // Never pass non-public Supabase object URLs that the model cannot fetch.
   const imageUrl = toDataUrl(bytes.mimeType, bytes.buffer);
   const provider = input.provider ?? openAiVisionProvider;
   const started = Date.now();

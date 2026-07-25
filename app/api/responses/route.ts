@@ -209,7 +209,7 @@ export async function POST(request: Request): Promise<Response> {
       const { buildMultimodalChatInput } = await import(
         "@/lib/vision/build-multimodal-chat-input"
       );
-      const multimodal = buildMultimodalChatInput({
+      const multimodal = await buildMultimodalChatInput({
         userId,
         text: typeof params.input === "string" ? params.input : "",
         attachmentIds,

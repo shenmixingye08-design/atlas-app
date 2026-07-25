@@ -39,8 +39,13 @@ describe("vision sample artifact generation (mock)", () => {
   let dataRoot: string;
   let prevCwd: string;
 
+  const prevStorage = process.env.ATLAS_ATTACHMENT_STORAGE;
+  const prevVercelEnv = process.env.VERCEL_ENV;
+
   beforeEach(() => {
     process.env.ATLAS_MOCK_LLM = "true";
+    process.env.ATLAS_ATTACHMENT_STORAGE = "local";
+    delete process.env.VERCEL_ENV;
     dataRoot = mkdtempSync(path.join(tmpdir(), "atlas-vision-samples-"));
     prevCwd = process.cwd();
     process.chdir(dataRoot);
@@ -50,6 +55,10 @@ describe("vision sample artifact generation (mock)", () => {
     process.chdir(prevCwd);
     if (prev === undefined) delete process.env.ATLAS_MOCK_LLM;
     else process.env.ATLAS_MOCK_LLM = prev;
+    if (prevStorage === undefined) delete process.env.ATLAS_ATTACHMENT_STORAGE;
+    else process.env.ATLAS_ATTACHMENT_STORAGE = prevStorage;
+    if (prevVercelEnv === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = prevVercelEnv;
     rmSync(dataRoot, { recursive: true, force: true });
   });
 

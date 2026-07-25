@@ -11,6 +11,7 @@ import {
   findAttachmentByHash,
   saveImageAttachment,
 } from "./store";
+import type { AttachmentRetentionPolicy } from "./constants";
 import type { AttachmentUploadResult } from "./types";
 
 export async function uploadUserImage(input: {
@@ -19,6 +20,8 @@ export async function uploadUserImage(input: {
   mimeType: string;
   buffer: Buffer;
   preferReadableText?: boolean;
+  jobId?: string | null;
+  retentionPolicy?: AttachmentRetentionPolicy;
 }): Promise<AttachmentUploadResult> {
   const mime = assertSupportedImage({
     mimeType: input.mimeType,
@@ -27,7 +30,7 @@ export async function uploadUserImage(input: {
   });
 
   const contentHash = hashImageBytes(input.buffer);
-  const existing = findAttachmentByHash(input.userId, contentHash);
+  const existing = await findAttachmentByHash(input.userId, contentHash);
   if (existing) {
     return { attachment: existing, warnings: ["同一画像のため既存添付を再利用しました"] };
   }
@@ -49,8 +52,9 @@ export async function uploadUserImage(input: {
     throw error;
   }
 
-  const attachment = saveImageAttachment({
+  const attachment = await saveImageAttachment({
     userId: input.userId,
+    jobId: input.jobId,
     originalFileName: input.fileName,
     mimeType: mime,
     originalBuffer: input.buffer,
@@ -59,6 +63,7 @@ export async function uploadUserImage(input: {
     width: processed.width,
     height: processed.height,
     contentHash,
+    retentionPolicy: input.retentionPolicy ?? "temporary",
   });
 
   return { attachment, warnings: processed.warnings };
@@ -68,6 +73,8 @@ export async function uploadUserImages(input: {
   userId: string;
   files: Array<{ fileName: string; mimeType: string; buffer: Buffer }>;
   preferReadableText?: boolean;
+  jobId?: string | null;
+  retentionPolicy?: AttachmentRetentionPolicy;
 }): Promise<{ results: AttachmentUploadResult[]; warnings: string[] }> {
   assertImageBatchLimits(
     input.files.length,
@@ -83,6 +90,8 @@ export async function uploadUserImages(input: {
       mimeType: file.mimeType,
       buffer: file.buffer,
       preferReadableText: input.preferReadableText,
+      jobId: input.jobId,
+      retentionPolicy: input.retentionPolicy,
     });
     results.push(result);
     warnings.push(...result.warnings);

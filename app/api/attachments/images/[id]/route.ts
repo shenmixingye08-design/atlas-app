@@ -21,7 +21,7 @@ export async function GET(
   }
 
   const { id } = await context.params;
-  const bytes = readProcessedImageBytes(userId, id);
+  const bytes = await readProcessedImageBytes(userId, id);
   if (!bytes) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
@@ -46,11 +46,14 @@ export async function DELETE(
   }
 
   const { id } = await context.params;
-  const existing = getImageAttachmentForUser(userId, id);
+  const existing = await getImageAttachmentForUser(userId, id);
   if (!existing) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  deleteImageAttachment(userId, id);
+  const deleted = await deleteImageAttachment(userId, id);
+  if (!deleted) {
+    return Response.json({ error: "削除に失敗しました" }, { status: 500 });
+  }
   return Response.json({ ok: true });
 }
