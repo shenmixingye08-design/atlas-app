@@ -15,6 +15,7 @@ export type VisionAnalyzeImageInput = {
   pageIndex: number;
   pageCount: number;
   jobId?: string | null;
+  diagnosticId?: string | null;
 };
 
 export type VisionProviderResult = {

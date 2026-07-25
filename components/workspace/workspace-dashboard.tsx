@@ -15,8 +15,14 @@ import {
   CommanderConfirmationRequiredError,
   confirmWorkRequest,
   submitWorkRequest,
+  VisionGateClientError,
 } from "@/lib/workspace/orchestrate-client";
-import type { CommanderRunResult } from "@/lib/commander/types";
+import type {
+  CommanderRunResult,
+  CommanderVisionGate,
+} from "@/lib/commander/types";
+import { VisionFailurePanel } from "@/components/vision/vision-failure-panel";
+import { VisionDiagnosticsPanel } from "@/components/vision/vision-diagnostics-panel";
 import { isSalesMaterialRequest } from "@/lib/workspace/sales-material/detect";
 import { buildSalesMaterialMetadata } from "@/lib/workspace/sales-material/metadata";
 import type { SalesMaterialSessionConfig } from "@/lib/workspace/sales-material/types";
@@ -78,6 +84,8 @@ export function WorkspaceDashboard() {
   const [taughtWorkflowHint, setTaughtWorkflowHint] = useState(false);
   const [pendingCommander, setPendingCommander] =
     useState<CommanderRunResult | null>(null);
+  const [visionGate, setVisionGate] = useState<CommanderVisionGate | null>(null);
+  const [showVisionDiagnostics, setShowVisionDiagnostics] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const autoStartedRef = useRef(false);
@@ -143,6 +151,7 @@ export function WorkspaceDashboard() {
     setWorkMemoryUsed(null);
     setWorkMemoryCandidateCount(0);
     setPendingCommander(null);
+    setVisionGate(null);
     setIsLoading(true);
     setLoadingStepIndex(0);
     setLoadingPhases(buildLoadingPhases(0));
@@ -188,6 +197,14 @@ export function WorkspaceDashboard() {
       if (err instanceof Error && err.name === "AbortError") return;
       if (err instanceof CommanderConfirmationRequiredError) {
         setPendingCommander(err.commander);
+        setIsLoading(false);
+        abortRef.current = null;
+        return;
+      }
+      if (err instanceof VisionGateClientError) {
+        setVisionGate(err.gate);
+        setError(null);
+        setResult(null);
         setIsLoading(false);
         abortRef.current = null;
         return;
@@ -327,6 +344,8 @@ export function WorkspaceDashboard() {
     setSalesWizardAssignment(null);
     setSalesMaterialConfig(null);
     setOutlineOnlyText(null);
+    setVisionGate(null);
+    setShowVisionDiagnostics(false);
   };
 
   const showForm =
@@ -334,10 +353,55 @@ export function WorkspaceDashboard() {
     !result &&
     !salesWizardAssignment &&
     !outlineOnlyText &&
-    !pendingCommander;
+    !pendingCommander &&
+    !visionGate;
 
   return (
     <div className="space-y-16">
+      {visionGate && !isLoading && (
+        <section className="space-y-4 animate-fade-up">
+          <VisionFailurePanel
+            gate={visionGate}
+            onRetryAnalyze={() => {
+              const meta = {
+                ...requestMetadata,
+                visionReuse: false,
+                forceVisionRefresh: true,
+              };
+              setVisionGate(null);
+              void runOrchestration(assignment, null, {
+                ...meta,
+                forceRefresh: true,
+              });
+            }}
+            onRetake={() => {
+              setVisionGate(null);
+              setRequestMetadata((prev) => {
+                const next = { ...prev };
+                delete next.attachmentIds;
+                return next;
+              });
+            }}
+            onPickAnother={() => {
+              setVisionGate(null);
+              setRequestMetadata((prev) => {
+                const next = { ...prev };
+                delete next.attachmentIds;
+                return next;
+              });
+            }}
+          />
+          {visionGate.diagnosticId && (
+            <VisionDiagnosticsPanel
+              diagnosticId={visionGate.diagnosticId}
+              enabled={showVisionDiagnostics}
+              showToggle
+              onToggle={() => setShowVisionDiagnostics((value) => !value)}
+            />
+          )}
+        </section>
+      )}
+
       {showForm && taughtWorkflowHint && (
         <section className="animate-fade-up rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card)] px-5 py-4 shadow-[var(--shadow-sm)]">
           <p className="text-xs font-medium tracking-wide text-accent">AI秘書</p>

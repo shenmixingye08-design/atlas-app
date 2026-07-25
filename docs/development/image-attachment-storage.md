@@ -28,8 +28,23 @@
 1. Clerk 認証ユーザーの所有確認
 2. Service Role で Storage から processed 画像をダウンロード
 3. Base64 data URL に変換して Responses API `input_image` へ渡す
+4. モデルは `OPENAI_VISION_MODEL`（未設定時は strong カタログ既定）。Planner/Worker と混同しない
 
 署名付きURLは短時間（60秒）ヘルパーのみ。OpenAI経路では使わない。
+
+## Vision 失敗時の停止（成果物禁止）
+
+画像付き依頼では、次をすべて満たすまで Artifact Engine / Commander 実行へ進まない。
+
+- attachment `uploaded` かつ processed bytes > 0
+- Vision API 成功 + Zod 検証成功
+- 依頼の必須抽出項目が画像内から取得できた（または「画像内に無い」と分析成功で判定）
+
+失敗時は `vision_failed` / `needs_image_retry` / `needs_input` / `config_missing` で停止し、
+「画像確認要」などの仮成果物は生成しない。
+
+Preview/Production で `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` が無い場合は
+`config_missing` として停止（一般論の成果物へフォールバックしない）。
 
 ## バックエンド切替
 

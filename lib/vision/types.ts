@@ -133,7 +133,10 @@ export type VisionErrorCode =
   | "table_extract_failed"
   | "artifact_failed"
   | "forbidden"
-  | "not_found";
+  | "not_found"
+  | "config_missing"
+  | "empty_image"
+  | "invalid_data_url";
 
 export class VisionError extends Error {
   readonly code: VisionErrorCode;
@@ -144,5 +147,13 @@ export class VisionError extends Error {
     this.name = "VisionError";
   }
 }
+
+export type VisionGatePayload = {
+  status: "vision_failed" | "needs_image_retry" | "needs_input" | "config_missing";
+  analysisSuccess: boolean;
+  message: string;
+  userCode: string;
+  diagnosticId?: string | null;
+};
 
 export const VISION_PROMPT_VERSION = "v1";

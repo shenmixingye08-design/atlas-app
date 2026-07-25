@@ -112,6 +112,47 @@ describe("vision analyze integration (mock LLM)", () => {
     expect(prepared.assignment).toBe("週次報告を書いて");
   });
 
+  it("returns vision gate and does not enrich when required extract fields are absent", async () => {
+    const png = await makePng("NO NAME ADDRESS");
+    const uploaded = await uploadUserImage({
+      userId: "user_a",
+      fileName: "blank.png",
+      mimeType: "image/png",
+      buffer: png,
+    });
+
+    const prepared = await prepareAssignmentWithVision({
+      userId: "user_a",
+      assignment: "氏名と住所を抽出してください",
+      metadata: { attachmentIds: [uploaded.attachment.id] },
+    });
+
+    expect(prepared.gate).toBeTruthy();
+    expect(prepared.gate?.analysisSuccess).toBe(true);
+    expect(prepared.gate?.status).toBe("needs_input");
+    expect(prepared.assignment).not.toMatch(/自動取得できなかった|画像確認要/);
+    // analysis succeeded; required fields absent in image → block artifact, not "vision failed"
+    expect(prepared.metadata.visionStatus).toBe("needs_input");
+  });
+
+  it("returns config_missing gate on Preview without Supabase (no artifact path)", async () => {
+    process.env.VERCEL_ENV = "preview";
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+    const prepared = await prepareAssignmentWithVision({
+      userId: "user_a",
+      assignment: "この画像の会社名を抽出して",
+      metadata: { attachmentIds: ["img_missing"] },
+    });
+
+    expect(prepared.gate).toBeTruthy();
+    expect(prepared.gate?.status).toBe("config_missing");
+    expect(prepared.gate?.analysisSuccess).toBe(false);
+    expect(prepared.batch).toBeNull();
+  });
+
   it("rejects unsupported image type", async () => {
     await expect(
       uploadUserImage({

@@ -129,6 +129,14 @@ export type CommanderRunRecord = {
   updatedAt: string;
 };
 
+export type CommanderVisionGate = {
+  status: "vision_failed" | "needs_image_retry" | "needs_input" | "config_missing";
+  analysisSuccess: boolean;
+  message: string;
+  userCode: string;
+  diagnosticId?: string | null;
+};
+
 export type CommanderRunResult = {
   runId: string | null;
   status: CommanderRunStatus;
@@ -139,6 +147,8 @@ export type CommanderRunResult = {
   confirmationReasons: string[];
   workMemory?: OrchestrationResult["workMemory"];
   workMemoryCandidates?: unknown[];
+  /** Present when image-attached work was blocked before Artifact Engine. */
+  visionGate?: CommanderVisionGate;
 };
 
 export type CommanderRequest = {

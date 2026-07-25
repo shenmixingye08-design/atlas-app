@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prepareAssignmentWithVision } from "@/lib/vision/prepare-assignment";
+import { stripVisionPoisonText } from "@/lib/vision/gate";
 import { ensureWorkMemoryHydrated } from "@/lib/work-memory/durable";
 
 import {
@@ -15,7 +16,50 @@ import {
   getCommanderRun,
   listCommanderRunsForUser,
 } from "./run-store";
-import type { CommanderRequest, CommanderRunResult } from "./types";
+import type {
+  CommanderRequest,
+  CommanderRunResult,
+  CommanderVisionGate,
+} from "./types";
+
+function blockedVisionResult(input: {
+  assignment: string;
+  userId: string;
+  gate: CommanderVisionGate;
+}): CommanderRunResult {
+  const plan = buildCommanderPlan({
+    assignment: stripVisionPoisonText(input.assignment),
+    userId: input.userId,
+  });
+  const title =
+    input.gate.status === "needs_input"
+      ? "画像の確認が必要です"
+      : "画像の内容を解析できませんでした";
+  return {
+    runId: null,
+    status: "failed",
+    plan,
+    result: null,
+    attempts: [],
+    confirmationReasons: [],
+    visionGate: input.gate,
+    report: {
+      status: "failed",
+      title,
+      summary: input.gate.message,
+      classification: plan.classification.summary,
+      aisUsed: [],
+      externalServices: [],
+      templateLabel: plan.requiredTemplate.label,
+      memoryUsedCount: 0,
+      attempts: 0,
+      retriesUsed: 0,
+      projectHint: "",
+      automationHint: null,
+      confirmationReasons: [],
+    },
+  };
+}
 
 async function maybeEnrichWithVision(input: {
   userId: string;
@@ -24,36 +68,52 @@ async function maybeEnrichWithVision(input: {
 }): Promise<{
   assignment: string;
   metadata?: Readonly<Record<string, unknown>>;
+  gate?: CommanderVisionGate;
 }> {
   const attachmentIds = input.metadata?.attachmentIds;
-  if (!Array.isArray(attachmentIds) || attachmentIds.length === 0) {
-    return { assignment: input.assignment, metadata: input.metadata };
+  const hasAttachments =
+    Array.isArray(attachmentIds) &&
+    attachmentIds.some((id) => typeof id === "string" && id.trim().length > 0);
+
+  if (!hasAttachments) {
+    return {
+      assignment: stripVisionPoisonText(input.assignment),
+      metadata: input.metadata,
+    };
   }
 
-  try {
-    const prepared = await prepareAssignmentWithVision({
-      userId: input.userId,
-      assignment: input.assignment,
-      metadata: input.metadata,
-    });
+  const prepared = await prepareAssignmentWithVision({
+    userId: input.userId,
+    assignment: input.assignment,
+    metadata: input.metadata,
+  });
+
+  if (prepared.gate) {
     return {
       assignment: prepared.assignment,
       metadata: prepared.metadata,
+      gate: prepared.gate,
     };
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "画像解析に失敗しました。再試行してください";
+  }
+
+  // Hard safety: never proceed with poison fallback language when images are attached.
+  if (!prepared.metadata.visionAnalysisSuccess) {
     return {
-      assignment: input.assignment,
-      metadata: {
-        ...(input.metadata ?? {}),
-        visionStatus: "failed",
-        visionError: message,
+      assignment: prepared.assignment,
+      metadata: prepared.metadata,
+      gate: {
+        status: "vision_failed",
+        analysisSuccess: false,
+        message: "画像の内容を解析できませんでした",
+        userCode: "image_analyze_failed",
       },
     };
   }
+
+  return {
+    assignment: prepared.assignment,
+    metadata: prepared.metadata,
+  };
 }
 
 export function parseCommanderRequest(body: unknown):
@@ -140,6 +200,13 @@ export async function runCommanderRequest(input: {
       assignment: input.request.assignment,
       metadata: input.request.metadata,
     });
+    if (enriched.gate) {
+      return blockedVisionResult({
+        assignment: enriched.assignment,
+        userId: input.userId,
+        gate: enriched.gate,
+      });
+    }
     return planCommander({
       assignment: enriched.assignment,
       userId: input.userId,
@@ -166,6 +233,15 @@ export async function runCommanderRequest(input: {
     assignment: input.request.assignment,
     metadata: input.request.metadata,
   });
+
+  if (enriched.gate) {
+    // CRITICAL: do not run Artifact Engine / orchestration without successful vision.
+    return blockedVisionResult({
+      assignment: enriched.assignment,
+      userId: input.userId,
+      gate: enriched.gate,
+    });
+  }
 
   return executeCommander({
     assignment: enriched.assignment,

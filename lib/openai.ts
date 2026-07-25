@@ -121,8 +121,14 @@ function resolveRequestParams(params: AtlasResponseRequest): {
 } {
   if (params.aiTaskType) {
     const decision = resolveTaskPolicy(params.aiTaskType);
+    // Vision: allow explicit model override (OPENAI_VISION_MODEL via caller) without
+    // mixing planner/worker routing. Prefer params.model when set for vision_analyze.
+    const model =
+      params.aiTaskType === "vision_analyze" && params.model?.trim()
+        ? params.model.trim()
+        : decision.model;
     return {
-      model: decision.model,
+      model,
       max_output_tokens: decision.maxOutputTokens,
       temperature: decision.temperature,
       reasoningLevel: decision.reasoningLevel,

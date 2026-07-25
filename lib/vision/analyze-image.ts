@@ -1,5 +1,6 @@
 import "server-only";
 
+import { assertAttachmentBackendReady } from "@/lib/attachments/backend";
 import { toDataUrl } from "@/lib/attachments/preprocess";
 import { getImageAttachmentForUser, readProcessedImageBytes } from "@/lib/attachments/store";
 import { getCachedVisionAnalysis, setCachedVisionAnalysis } from "@/lib/vision/cache";
@@ -10,6 +11,10 @@ import {
   estimateVisionCostUsd,
   recordVisionBillingUsage,
 } from "@/lib/vision/cost";
+import {
+  appendVisionDiagnosticStage,
+  createVisionDiagnostic,
+} from "@/lib/vision/diagnostics";
 import { openAiVisionProvider } from "@/lib/vision/openai-vision-provider";
 import type { VisionProvider } from "@/lib/vision/provider";
 import {
@@ -19,6 +24,17 @@ import {
   type VisionDetailLevel,
   type VisionDetectedType,
 } from "@/lib/vision/types";
+
+function mapStorageConfigError(error: unknown): VisionError {
+  const message = error instanceof Error ? error.message : "";
+  if (/supabase|service role|SUPABASE_/i.test(message)) {
+    return new VisionError(
+      "config_missing",
+      "画像保存の設定が不足しています。管理者に連絡してください",
+    );
+  }
+  return new VisionError("storage_failed", "解析用画像の読み込みに失敗しました");
+}
 
 export async function analyzeUserImage(input: {
   userId: string;
@@ -32,11 +48,38 @@ export async function analyzeUserImage(input: {
   forceRefresh?: boolean;
   provider?: VisionProvider;
   jobId?: string | null;
-}): Promise<VisionAnalysisResult> {
+  diagnosticId?: string | null;
+}): Promise<VisionAnalysisResult & { diagnosticId?: string }> {
+  let diagnosticId = input.diagnosticId ?? null;
+  if (!diagnosticId) {
+    diagnosticId = createVisionDiagnostic({
+      userId: input.userId,
+      attachmentId: input.attachmentId,
+      jobId: input.jobId,
+    }).id;
+  }
+
+  try {
+    assertAttachmentBackendReady();
+  } catch (error) {
+    appendVisionDiagnosticStage(diagnosticId, "storage_download", false, {
+      analysisSuccess: false,
+    });
+    throw mapStorageConfigError(error);
+  }
+
   const meta = await getImageAttachmentForUser(input.userId, input.attachmentId);
   if (!meta) {
+    appendVisionDiagnosticStage(diagnosticId, "storage_download", false, {
+      analysisSuccess: false,
+    });
     throw new VisionError("not_found", "画像が見つからないか、アクセスできません");
   }
+
+  appendVisionDiagnosticStage(diagnosticId, "upload", true, {
+    downloadedByteLength: meta.processedBytes,
+    mimeType: meta.mimeType,
+  });
 
   const hintType =
     input.hintType ?? classifyImagePurposeFromText(input.userText, "unknown");
@@ -57,23 +100,54 @@ export async function analyzeUserImage(input: {
       promptVersion: VISION_PROMPT_VERSION,
     });
     if (cached) {
+      appendVisionDiagnosticStage(diagnosticId, "vision_response", true, {
+        model: cached.model,
+        analysisSuccess: true,
+      });
       return {
         ...cached,
         attachmentId: input.attachmentId,
         cached: true,
         pageIndex: input.pageIndex ?? cached.pageIndex,
+        diagnosticId,
       };
     }
   }
 
-  const bytes = await readProcessedImageBytes(input.userId, input.attachmentId);
-  if (!bytes) {
-    throw new VisionError("storage_failed", "解析用画像の読み込みに失敗しました");
+  let bytes;
+  try {
+    bytes = await readProcessedImageBytes(input.userId, input.attachmentId);
+  } catch (error) {
+    appendVisionDiagnosticStage(diagnosticId, "storage_download", false);
+    throw mapStorageConfigError(error);
   }
 
-  // Download from private Storage (or local) on the server, then Base64 for OpenAI.
-  // Never pass non-public Supabase object URLs that the model cannot fetch.
+  if (!bytes || bytes.buffer.length <= 0) {
+    appendVisionDiagnosticStage(diagnosticId, "storage_download", false, {
+      downloadedByteLength: 0,
+    });
+    throw new VisionError("empty_image", "画像取得失敗：解析用画像が空です");
+  }
+
+  appendVisionDiagnosticStage(diagnosticId, "storage_download", true, {
+    downloadedByteLength: bytes.buffer.length,
+    mimeType: bytes.mimeType,
+  });
+
   const imageUrl = toDataUrl(bytes.mimeType, bytes.buffer);
+  if (!imageUrl.includes(";base64,") || imageUrl.length < 64) {
+    appendVisionDiagnosticStage(diagnosticId, "data_url", false, {
+      base64Length: imageUrl.length,
+      mimeType: bytes.mimeType,
+    });
+    throw new VisionError("invalid_data_url", "画像データの生成に失敗しました");
+  }
+
+  appendVisionDiagnosticStage(diagnosticId, "data_url", true, {
+    base64Length: imageUrl.length,
+    mimeType: bytes.mimeType,
+  });
+
   const provider = input.provider ?? openAiVisionProvider;
   const started = Date.now();
 
@@ -88,6 +162,7 @@ export async function analyzeUserImage(input: {
       pageIndex: input.pageIndex ?? 0,
       pageCount: input.pageCount ?? 1,
       jobId: input.jobId,
+      diagnosticId,
     });
 
     const resolvedInputTokens =
@@ -111,7 +186,7 @@ export async function analyzeUserImage(input: {
       jobId: input.jobId ?? null,
       imageCount: 1,
       originalBytes: meta.originalBytes,
-      processedBytes: meta.processedBytes,
+      processedBytes: bytes.buffer.length,
       detailLevel: detail,
       model,
       inputTokens: resolvedInputTokens,
@@ -132,14 +207,19 @@ export async function analyzeUserImage(input: {
       cached: false,
     });
 
-    return result;
+    appendVisionDiagnosticStage(diagnosticId, "artifact_handoff", true, {
+      analysisSuccess: true,
+      model,
+    });
+
+    return { ...result, diagnosticId };
   } catch (error) {
     await appendVisionCostRecord({
       userId: input.userId,
       jobId: input.jobId ?? null,
       imageCount: 1,
       originalBytes: meta.originalBytes,
-      processedBytes: meta.processedBytes,
+      processedBytes: bytes.buffer.length,
       detailLevel: detail,
       model: "unknown",
       inputTokens: 0,
@@ -149,6 +229,9 @@ export async function analyzeUserImage(input: {
       success: false,
       cached: false,
       createdAt: new Date().toISOString(),
+    });
+    appendVisionDiagnosticStage(diagnosticId, "blocked", false, {
+      analysisSuccess: false,
     });
     if (error instanceof VisionError) throw error;
     throw new VisionError("openai_failed", "画像解析に失敗しました。再試行してください");

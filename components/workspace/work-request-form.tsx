@@ -165,9 +165,8 @@ function buildAssignmentText(input: {
         `- ${item.file.name}（${item.kind} / ${formatFileSize(item.file.size)}）`,
       );
     }
-    lines.push(
-      "【添付注意】ファイルの中身はまだ自動取得できません。ファイル名を参考に作業してください。",
-    );
+    // Never tell the model that image bytes are unavailable when images are attached.
+    // Vision analysis supplies structured content server-side before orchestration.
   }
 
   return lines.join("\n");
@@ -308,16 +307,17 @@ export function WorkRequestForm({
             note:
               item.kind === "photo"
                 ? "画像は上の画像添付欄から送ってください"
-                : "ファイル名のみ受け取りました。中身の自動読取は未対応です。",
+                : "非画像ファイルはファイル名のみ参考にします",
           })),
         ],
         attachmentContentNote:
           attachmentIds.length > 0
-            ? "添付画像はAI画像理解の入力として利用します。"
+            ? "添付画像はサーバー側でAI画像理解へ渡します。"
             : attachments.length > 0
               ? "非画像添付はファイル名のみ参考にします。"
               : null,
         skipWorkMemory: false,
+        requireVisionSuccess: attachmentIds.length > 0,
       },
     });
   };

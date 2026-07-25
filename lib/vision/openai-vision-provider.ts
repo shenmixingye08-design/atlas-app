@@ -2,16 +2,44 @@ import "server-only";
 
 import { createAtlasResponse } from "@/lib/openai";
 import {
+  appendVisionDiagnosticStage,
+} from "@/lib/vision/diagnostics";
+import {
   buildVisionAnalyzeInstructions,
   buildVisionAnalyzeUserText,
 } from "@/lib/vision/prompts/analyze";
 import { parseVisionModelPayload } from "@/lib/vision/parse-model-json";
+import { resolveVisionModel } from "@/lib/vision/resolve-vision-model";
 import type { VisionProvider, VisionProviderResult } from "@/lib/vision/provider";
 import { VisionError, type VisionAnalysisResult } from "@/lib/vision/types";
 
+function assertDataUrl(imageUrl: string): void {
+  if (!imageUrl.startsWith("data:image/")) {
+    throw new VisionError("invalid_data_url", "画像データの形式が不正です");
+  }
+  if (!/^data:image\/(png|jpeg|jpg|webp);base64,/i.test(imageUrl)) {
+    throw new VisionError(
+      "invalid_data_url",
+      "対応する画像データ形式ではありません",
+    );
+  }
+  const comma = imageUrl.indexOf(",");
+  const payload = comma >= 0 ? imageUrl.slice(comma + 1) : "";
+  if (payload.length < 32) {
+    throw new VisionError("empty_image", "画像データが空です");
+  }
+}
+
 function mapOpenAiError(error: unknown): VisionError {
+  if (error instanceof VisionError) return error;
   const message = error instanceof Error ? error.message : "画像解析に失敗しました";
   const lower = message.toLowerCase();
+  if (lower.includes("api key") || lower.includes("not configured")) {
+    return new VisionError(
+      "config_missing",
+      "AI画像解析の設定が不足しています",
+    );
+  }
   if (lower.includes("rate") || lower.includes("429")) {
     return new VisionError(
       "rate_limited",
@@ -28,6 +56,9 @@ export const openAiVisionProvider: VisionProvider = {
   id: "openai-responses",
 
   async analyzeImage(input): Promise<VisionProviderResult> {
+    assertDataUrl(input.imageUrl);
+
+    const model = resolveVisionModel();
     const userText = buildVisionAnalyzeUserText({
       userText: input.userText,
       hintType: input.hintType,
@@ -36,31 +67,74 @@ export const openAiVisionProvider: VisionProvider = {
       pageCount: input.pageCount,
     });
 
+    const multimodalInput = [
+      {
+        role: "user" as const,
+        content: [
+          { type: "input_text" as const, text: userText },
+          {
+            type: "input_image" as const,
+            image_url: input.imageUrl,
+            detail: input.detail,
+          },
+        ],
+      },
+    ];
+
+    const diagnosticId = input.diagnosticId ?? null;
+
+    if (diagnosticId) {
+      appendVisionDiagnosticStage(diagnosticId, "vision_request", true, {
+        model,
+        inputImageIncluded: true,
+        base64Length: input.imageUrl.length,
+      });
+    }
+
     let response;
     try {
       response = await createAtlasResponse({
         aiTaskType: "vision_analyze",
+        model,
         instructions: buildVisionAnalyzeInstructions(),
-        input: [
-          {
-            role: "user",
-            content: [
-              { type: "input_text", text: userText },
-              {
-                type: "input_image",
-                image_url: input.imageUrl,
-                detail: input.detail,
-              },
-            ],
-          },
-        ],
+        input: multimodalInput,
       });
     } catch (error) {
-      throw mapOpenAiError(error);
+      const mapped = mapOpenAiError(error);
+      if (diagnosticId) {
+        appendVisionDiagnosticStage(diagnosticId, "vision_response", false, {
+          model,
+          openaiErrorCode: mapped.code,
+          openaiErrorType: mapped.name,
+        });
+      }
+      throw mapped;
     }
 
     const rawText = response.output_text ?? "";
-    const payload = parseVisionModelPayload(rawText);
+    if (diagnosticId) {
+      appendVisionDiagnosticStage(diagnosticId, "vision_response", true, {
+        model: response.model ?? model,
+      });
+    }
+
+    let payload;
+    try {
+      payload = parseVisionModelPayload(rawText);
+      if (diagnosticId) {
+        appendVisionDiagnosticStage(diagnosticId, "schema_validation", true, {
+          analysisSuccess: true,
+        });
+      }
+    } catch (error) {
+      if (diagnosticId) {
+        appendVisionDiagnosticStage(diagnosticId, "schema_validation", false, {
+          analysisSuccess: false,
+        });
+      }
+      throw error;
+    }
+
     const usage = (response as { usage?: { input_tokens?: number; output_tokens?: number } })
       .usage;
 
@@ -85,7 +159,7 @@ export const openAiVisionProvider: VisionProvider = {
       missingFields: payload.missingFields ?? [],
       recommendedActions: payload.recommendedActions ?? [],
       artifactSuggestions: payload.artifactSuggestions ?? [],
-      model: response.model ?? "unknown",
+      model: response.model ?? model,
       detailLevel: input.detail,
       createdAt: new Date().toISOString(),
       pageIndex: input.pageIndex,

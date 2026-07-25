@@ -72,6 +72,7 @@ export async function analyzeUserImageBatch(input: {
 
   const images: VisionAnalysisResult[] = [];
   const failures: string[] = [];
+  let firstDiagnosticId: string | null = null;
 
   for (let i = 0; i < input.attachmentIds.length; i += 1) {
     const attachmentId = input.attachmentIds[i]!;
@@ -89,8 +90,23 @@ export async function analyzeUserImageBatch(input: {
         provider: input.provider,
         jobId: input.jobId,
       });
+      if (!firstDiagnosticId && "diagnosticId" in result) {
+        firstDiagnosticId =
+          (result as VisionAnalysisResult & { diagnosticId?: string }).diagnosticId ??
+          null;
+      }
       images.push(result);
     } catch (error) {
+      // Config / empty-image failures must not be swallowed into soft partial success.
+      if (
+        error instanceof VisionError &&
+        (error.code === "config_missing" ||
+          error.code === "empty_image" ||
+          error.code === "storage_failed" ||
+          error.code === "not_found")
+      ) {
+        throw error;
+      }
       const message =
         error instanceof VisionError
           ? error.message
@@ -100,11 +116,12 @@ export async function analyzeUserImageBatch(input: {
   }
 
   if (images.length === 0) {
-    throw new VisionError(
-      "openai_failed",
-      failures[0] ?? "画像解析に失敗しました。再試行してください",
-    );
+    const first = failures[0] ?? "画像解析に失敗しました。再試行してください";
+    throw new VisionError("openai_failed", first);
   }
+
+  // Stash diagnostic id for gate/UI via commonFields (no PII).
+  void firstDiagnosticId;
 
   const dominant = majorityType(images);
   const allMissing = Array.from(
@@ -136,6 +153,7 @@ export async function analyzeUserImageBatch(input: {
     commonFields: {
       detectedType: dominant,
       imageCount: images.length,
+      ...(firstDiagnosticId ? { diagnosticId: firstDiagnosticId } : {}),
     },
     differences: failures,
     mergedTables,

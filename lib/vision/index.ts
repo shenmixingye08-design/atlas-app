@@ -22,3 +22,9 @@ export { openAiVisionProvider } from "./openai-vision-provider";
 export type { VisionProvider } from "./provider";
 export { visionAnalysisResultSchema, visionModelPayloadSchema } from "./schemas";
 export { getVisionUsageMeter } from "./cost";
+export {
+  stripVisionPoisonText,
+  evaluateVisionBatchGate,
+  inferRequiredVisionFields,
+} from "./gate";
+export { resolveVisionModel } from "./resolve-vision-model";
