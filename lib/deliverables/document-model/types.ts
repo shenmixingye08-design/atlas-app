@@ -13,13 +13,23 @@ export type DocumentType =
   | "general"; // 一般文書
 
 /** Visual design presets for Word/PDF rendering. */
-export type DesignTemplateId = "standard" | "simple" | "business" | "report";
+export type DesignTemplateId =
+  | "standard"
+  | "simple"
+  | "business"
+  | "report"
+  | "proposal"
+  | "a4_leaflet"
+  | "table_focus";
 
 export const DESIGN_TEMPLATE_IDS: readonly DesignTemplateId[] = [
   "standard",
   "simple",
   "business",
   "report",
+  "proposal",
+  "a4_leaflet",
+  "table_focus",
 ] as const;
 
 export const DEFAULT_DESIGN_TEMPLATE: DesignTemplateId = "business";
@@ -65,4 +75,8 @@ export type BuildStructuredDocumentInput = {
   title?: string;
   designTemplate?: DesignTemplateId;
   authorLabel?: string;
+  /** Override automatic TOC decision when provided. */
+  includeTableOfContents?: boolean;
+  /** Force cover-like title treatment off for leaflet templates. */
+  forceNoCover?: boolean;
 };

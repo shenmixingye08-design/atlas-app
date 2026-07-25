@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import type { ArtifactDocument } from "@/lib/artifact-engine/document";
 import type { ArtifactSuggestion } from "@/lib/artifact-engine/types";
+import {
+  DEFAULT_ARTIFACT_TEMPLATE,
+  type ArtifactTemplateId,
+} from "@/lib/artifact-engine/templates/types";
 import type { DocumentOutlineResponse } from "@/lib/deliverables/client";
 import { requestDeliverables } from "@/lib/deliverables/client";
-import {
-  DEFAULT_DESIGN_TEMPLATE,
-  type DesignTemplateId,
-} from "@/lib/deliverables/document-model";
 import type { Deliverable, DeliverableFormat } from "@/lib/deliverables/types";
 import { getDeliverableExportText } from "@/lib/orchestration/final-deliverable";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
@@ -27,11 +28,20 @@ export function useDeliverableFiles(
   const [isGeneratingDeliverables, setIsGeneratingDeliverables] = useState(false);
   const [documentOutline, setDocumentOutline] =
     useState<DocumentOutlineResponse | null>(null);
-  const [designTemplate, setDesignTemplate] = useState<DesignTemplateId>(
-    DEFAULT_DESIGN_TEMPLATE,
+  const [designTemplate, setDesignTemplate] = useState<ArtifactTemplateId>(
+    DEFAULT_ARTIFACT_TEMPLATE,
   );
+  const [recommendedTemplate, setRecommendedTemplate] =
+    useState<ArtifactTemplateId | null>(null);
   const [artifactLabel, setArtifactLabel] = useState<string | null>(null);
+  const [templateLabel, setTemplateLabel] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<ArtifactSuggestion[]>([]);
+  const [artifactDocument, setArtifactDocument] =
+    useState<ArtifactDocument | null>(null);
+  const [completionStatus, setCompletionStatus] = useState<
+    ArtifactDocument["completionStatus"] | null
+  >(null);
+  const userPickedTemplateRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -51,7 +61,10 @@ export function useDeliverableFiles(
         setDeliverablesError(null);
         setDocumentOutline(null);
         setArtifactLabel(null);
+        setTemplateLabel(null);
         setSuggestions([]);
+        setArtifactDocument(null);
+        setCompletionStatus(null);
         setIsGeneratingDeliverables(false);
         return;
       }
@@ -76,7 +89,9 @@ export function useDeliverableFiles(
               options?.formats && options.formats.length > 0
                 ? options.formats
                 : undefined,
-            designTemplate,
+            designTemplate: userPickedTemplateRef.current
+              ? designTemplate
+              : undefined,
           },
           controller.signal,
         );
@@ -84,7 +99,19 @@ export function useDeliverableFiles(
         setDeliverables(response.deliverables);
         setDocumentOutline(response.documentOutline ?? null);
         setArtifactLabel(response.artifactLabel ?? null);
+        setTemplateLabel(response.templateLabel ?? null);
         setSuggestions(response.suggestions ?? []);
+        setArtifactDocument(response.artifactDocument ?? null);
+        setCompletionStatus(response.completionStatus ?? null);
+
+        const serverTemplate =
+          response.designTemplate ??
+          response.artifactDocument?.designId ??
+          DEFAULT_ARTIFACT_TEMPLATE;
+        setRecommendedTemplate(serverTemplate);
+        if (!userPickedTemplateRef.current) {
+          setDesignTemplate(serverTemplate);
+        }
       } catch (err) {
         if (cancelled) return;
         if (err instanceof Error && err.name === "AbortError") return;
@@ -102,14 +129,23 @@ export function useDeliverableFiles(
     };
   }, [result, options?.formats, options?.skipFileGeneration, designTemplate]);
 
+  const setDesignTemplateFromUser = (template: ArtifactTemplateId) => {
+    userPickedTemplateRef.current = true;
+    setDesignTemplate(template);
+  };
+
   return {
     deliverables,
     deliverablesError,
     isGeneratingDeliverables,
     documentOutline,
     designTemplate,
-    setDesignTemplate,
+    setDesignTemplate: setDesignTemplateFromUser,
+    recommendedTemplate,
     artifactLabel,
+    templateLabel,
     suggestions,
+    artifactDocument,
+    completionStatus,
   };
 }

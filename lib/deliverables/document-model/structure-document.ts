@@ -222,7 +222,15 @@ function orderSections(
 }
 
 function resolveDesignTemplate(value?: DesignTemplateId): DesignTemplateId {
-  if (value === "standard" || value === "simple" || value === "business" || value === "report") {
+  if (
+    value === "standard" ||
+    value === "simple" ||
+    value === "business" ||
+    value === "report" ||
+    value === "proposal" ||
+    value === "a4_leaflet" ||
+    value === "table_focus"
+  ) {
     return value;
   }
   return DEFAULT_DESIGN_TEMPLATE;
@@ -248,10 +256,25 @@ export function buildStructuredDocument(
   const designTemplate = resolveDesignTemplate(input.designTemplate);
   const maxTableCols = Math.max(0, ...sections.map((section) => countTableWidth(section.blocks)));
 
-  const includeTableOfContents =
-    sections.filter((section) => section.level <= 2).length >= 3 &&
+  const headingCount = sections.filter((section) => section.level <= 2).length;
+  const estimatedPages = Math.max(
+    1,
+    Math.ceil(cleaned.length / 900),
+    Math.ceil(headingCount / 2),
+  );
+
+  const autoToc =
+    estimatedPages >= 3 &&
+    headingCount >= 3 &&
     documentType !== "minutes" &&
-    documentType !== "manual";
+    designTemplate !== "a4_leaflet" &&
+    designTemplate !== "table_focus" &&
+    designTemplate !== "simple";
+
+  const includeTableOfContents =
+    typeof input.includeTableOfContents === "boolean"
+      ? input.includeTableOfContents
+      : autoToc;
 
   return {
     documentType,
@@ -266,7 +289,7 @@ export function buildStructuredDocument(
     },
     sections,
     includeTableOfContents,
-    preferLandscapeTables: maxTableCols >= 6,
+    preferLandscapeTables: maxTableCols >= 6 || designTemplate === "table_focus",
   };
 }
 

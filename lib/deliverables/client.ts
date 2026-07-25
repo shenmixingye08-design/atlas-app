@@ -1,6 +1,7 @@
-import type { DesignTemplateId } from "@/lib/deliverables/document-model";
-import type { Deliverable, DeliverableFormat } from "@/lib/deliverables/types";
+import type { ArtifactDocument } from "@/lib/artifact-engine/document";
 import type { ArtifactSuggestion } from "@/lib/artifact-engine/types";
+import type { ArtifactTemplateId } from "@/lib/artifact-engine/templates/types";
+import type { Deliverable, DeliverableFormat } from "@/lib/deliverables/types";
 import type { IntegrationUploadSummary } from "@/lib/integrations/types";
 
 export type GenerateDeliverablesRequest = {
@@ -9,16 +10,14 @@ export type GenerateDeliverablesRequest = {
   title?: string;
   workflowId?: string;
   projectName?: string;
-  /** Generate only these formats; omit to auto-detect from assignment. */
   formats?: DeliverableFormat[];
-  /** Word/PDF design preset. Defaults to business on the server. */
-  designTemplate?: DesignTemplateId;
+  designTemplate?: ArtifactTemplateId;
 };
 
 export type DocumentOutlineResponse = {
   documentType: string;
   documentTypeLabel: string;
-  designTemplate: DesignTemplateId;
+  designTemplate: ArtifactTemplateId;
   title: string;
   subtitle?: string;
   sectionTitles: string[];
@@ -28,11 +27,15 @@ export type GenerateDeliverablesResponse = {
   deliverables: Deliverable[];
   matchedRule: string | null;
   uploads?: IntegrationUploadSummary;
-  designTemplate?: DesignTemplateId;
+  designTemplate?: ArtifactTemplateId;
   documentOutline?: DocumentOutlineResponse;
   artifactType?: string;
   artifactLabel?: string;
+  templateLabel?: string;
   suggestions?: ArtifactSuggestion[];
+  artifactDocument?: ArtifactDocument;
+  completionStatus?: ArtifactDocument["completionStatus"];
+  formatStates?: ArtifactDocument["formatStates"];
 };
 
 export async function requestDeliverables(

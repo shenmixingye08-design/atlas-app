@@ -1,6 +1,6 @@
+import { ARTIFACT_TEMPLATE_IDS } from "@/lib/artifact-engine/templates/types";
+import type { ArtifactTemplateId } from "@/lib/artifact-engine/templates/types";
 import { generateDeliverables } from "@/lib/deliverables/engine";
-import { DESIGN_TEMPLATE_IDS } from "@/lib/deliverables/document-model";
-import type { DesignTemplateId } from "@/lib/deliverables/document-model";
 import { uploadDeliverablesAfterGeneration } from "@/lib/integrations/deliverable-bridge";
 import type { IntegrationUploadSummary } from "@/lib/integrations/types";
 
@@ -28,10 +28,10 @@ function parseFormats(value: unknown): import("@/lib/deliverables/types").Delive
   return formats.length > 0 ? formats : undefined;
 }
 
-function parseDesignTemplate(value: unknown): DesignTemplateId | undefined {
+function parseDesignTemplate(value: unknown): ArtifactTemplateId | undefined {
   if (typeof value !== "string") return undefined;
-  return (DESIGN_TEMPLATE_IDS as readonly string[]).includes(value)
-    ? (value as DesignTemplateId)
+  return (ARTIFACT_TEMPLATE_IDS as readonly string[]).includes(value)
+    ? (value as ArtifactTemplateId)
     : undefined;
 }
 
@@ -153,7 +153,11 @@ export async function POST(request: Request): Promise<Response> {
       documentOutline: result.documentOutline,
       artifactType: result.artifactType,
       artifactLabel: result.artifactLabel,
+      templateLabel: result.templateLabel,
       suggestions: result.suggestions,
+      artifactDocument: result.artifactDocument,
+      completionStatus: result.completionStatus,
+      formatStates: result.formatStates,
     });
   } catch (error) {
     console.error("[Atlas /api/deliverables/generate]", error);

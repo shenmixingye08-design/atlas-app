@@ -16,9 +16,12 @@ export function artifactTypeToLearningDomain(
       return "sales_material";
     case "household":
     case "invoice":
+    case "estimate":
       return "bookkeeping";
     case "sns":
       return "social_post";
+    case "youtube_script":
+      return "video_production";
     case "blog":
     case "report":
     case "plan":
@@ -35,7 +38,7 @@ export function artifactTypeToLearningDomain(
   }
 }
 
-/** Hint payload for UI / future learning assist hooks. */
+/** Hint payload for UI / learning assist hooks. */
 export type ArtifactLearningHint = {
   domain: LearningDomain;
   artifactType: ArtifactType;

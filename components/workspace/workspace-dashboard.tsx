@@ -91,11 +91,14 @@ export function WorkspaceDashboard() {
     deliverables,
     deliverablesError,
     isGeneratingDeliverables,
-    documentOutline,
     designTemplate,
     setDesignTemplate,
+    recommendedTemplate,
     artifactLabel,
+    templateLabel,
     suggestions,
+    artifactDocument,
+    completionStatus,
   } = useDeliverableFiles(result, deliverableOptions);
 
   const searchParams = useSearchParams();
@@ -451,11 +454,14 @@ export function WorkspaceDashboard() {
             isGeneratingDeliverables={isGeneratingDeliverables}
             deliverablesError={deliverablesError}
             expectedFormats={salesMaterialConfig?.formats}
-            documentOutline={documentOutline}
             designTemplate={designTemplate}
+            recommendedTemplate={recommendedTemplate}
             onDesignTemplateChange={setDesignTemplate}
             artifactLabel={artifactLabel}
+            templateLabel={templateLabel}
             suggestions={suggestions}
+            artifactDocument={artifactDocument}
+            completionStatus={completionStatus}
           />
 
           <KnowledgeUsedPanel knowledge={result.knowledge} />

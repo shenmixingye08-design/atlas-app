@@ -23,14 +23,24 @@ const RULES: readonly Rule[] = [
     patterns: [/請求書/, /invoice/, /請求明細/, /御請求/, /請求一覧/],
   },
   {
+    type: "estimate",
+    weight: 8,
+    patterns: [/見積書/, /お見積/, /見積もり/, /estimate/],
+  },
+  {
     type: "contract",
     weight: 8,
     patterns: [/契約書/, /contract/, /秘密保持/, /nda/, /利用規約/, / agreement/i],
   },
   {
+    type: "youtube_script",
+    weight: 8,
+    patterns: [/youtube|ユーチューブ|台本|動画脚本|チャンネル登録/i],
+  },
+  {
     type: "ranking",
     weight: 7,
-    patterns: [/ランキング/, /ranking/, /順位表/, /人気ランキング/, /トップ\s*\d+/],
+    patterns: [/ランキング/, /ranking/, /順位表/, /人気ランキング/, /トップ\s*\d+/, /人気の遊び/],
   },
   {
     type: "household",
@@ -72,13 +82,21 @@ const RULES: readonly Rule[] = [
   },
   {
     type: "sales_material",
-    weight: 5,
-    patterns: [/営業資料/, /セールス資料/, /サービス紹介/, /sales deck/],
+    weight: 6,
+    patterns: [
+      /営業資料/,
+      /セールス資料/,
+      /サービス紹介/,
+      /sales deck/,
+      /土地活用/,
+      /投函/,
+      /地主/,
+    ],
   },
   {
     type: "minutes",
     weight: 6,
-    patterns: [/議事録/, /meeting minutes/, /会議録/, /ミーティングメモ/],
+    patterns: [/議事録/, /meeting minutes/, /会議録/, /ミーティングメモ/, /会議の議事/],
   },
   {
     type: "manual",
@@ -88,7 +106,7 @@ const RULES: readonly Rule[] = [
   {
     type: "research",
     weight: 5,
-    patterns: [/調査レポート/, /調査報告/, /市場調査/, /ホワイトペーパー/],
+    patterns: [/調査レポート/, /調査報告/, /市場調査/, /ホワイトペーパー/, /調査資料/],
   },
   {
     type: "report",
@@ -114,6 +132,7 @@ const ARTIFACT_TO_DOCUMENT: Record<ArtifactType, DocumentType> = {
   report: "report",
   contract: "general",
   invoice: "estimate",
+  estimate: "estimate",
   minutes: "minutes",
   ranking: "estimate",
   list: "general",
@@ -123,6 +142,7 @@ const ARTIFACT_TO_DOCUMENT: Record<ArtifactType, DocumentType> = {
   manual: "manual",
   blog: "general",
   sns: "general",
+  youtube_script: "general",
   presentation: "sales",
   general: "general",
 };
@@ -135,7 +155,6 @@ function scoreRule(haystack: string, rule: Rule): number {
   return score;
 }
 
-/** Map layout DocumentType → ArtifactType when keyword rules are inconclusive. */
 function fromDocumentType(documentType: DocumentType): ArtifactType {
   switch (documentType) {
     case "sales":

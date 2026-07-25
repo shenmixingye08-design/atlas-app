@@ -84,6 +84,7 @@ describe("XlsxDeliverableGenerator", () => {
     const file = await new XlsxDeliverableGenerator().generate(
       TABLE_MARKDOWN,
       "家計簿",
+      { assignment: "家計簿をExcelで", artifactType: "household", title: "家計簿" },
     );
     expect(file.format).toBe("xlsx");
     expect(file.fileName).toBe("家計簿.xlsx");

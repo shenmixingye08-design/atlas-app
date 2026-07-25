@@ -88,11 +88,14 @@ export function SecretaryResultView({
     deliverables,
     deliverablesError,
     isGeneratingDeliverables,
-    documentOutline,
     designTemplate,
     setDesignTemplate,
+    recommendedTemplate,
     artifactLabel,
+    templateLabel,
     suggestions,
+    artifactDocument,
+    completionStatus,
   } = useDeliverableFiles(project.result ?? null, {
     skipFileGeneration: targetType === "x_post",
   });
@@ -240,11 +243,14 @@ export function SecretaryResultView({
             deliverables={deliverables}
             isGeneratingDeliverables={isGeneratingDeliverables}
             deliverablesError={deliverablesError}
-            documentOutline={documentOutline}
             designTemplate={designTemplate}
+            recommendedTemplate={recommendedTemplate}
             onDesignTemplateChange={setDesignTemplate}
             artifactLabel={artifactLabel}
+            templateLabel={templateLabel}
             suggestions={suggestions}
+            artifactDocument={artifactDocument}
+            completionStatus={completionStatus}
           />
 
           {regenerateError && <ErrorState message={regenerateError} />}

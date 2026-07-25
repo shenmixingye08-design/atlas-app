@@ -35,11 +35,14 @@ export function DeliverableResultView({ project }: DeliverableResultViewProps) {
     deliverables,
     deliverablesError,
     isGeneratingDeliverables,
-    documentOutline,
     designTemplate,
     setDesignTemplate,
+    recommendedTemplate,
     artifactLabel,
+    templateLabel,
     suggestions,
+    artifactDocument,
+    completionStatus,
   } = useDeliverableFiles(project.result ?? null);
 
   return (
@@ -73,11 +76,14 @@ export function DeliverableResultView({ project }: DeliverableResultViewProps) {
             deliverables={deliverables}
             isGeneratingDeliverables={isGeneratingDeliverables}
             deliverablesError={deliverablesError}
-            documentOutline={documentOutline}
             designTemplate={designTemplate}
+            recommendedTemplate={recommendedTemplate}
             onDesignTemplateChange={setDesignTemplate}
             artifactLabel={artifactLabel}
+            templateLabel={templateLabel}
             suggestions={suggestions}
+            artifactDocument={artifactDocument}
+            completionStatus={completionStatus}
           />
           <WorkflowResults
             result={project.result}

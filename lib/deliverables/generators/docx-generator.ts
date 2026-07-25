@@ -40,6 +40,8 @@ export type DocxGenerateOptions = {
   title?: string;
   designTemplate?: DesignTemplateId;
   authorLabel?: string;
+  includeTableOfContents?: boolean;
+  artifactType?: string;
 };
 
 function run(
@@ -585,6 +587,7 @@ export class DocxDeliverableGenerator implements DeliverableGenerator {
         title: options?.title,
         designTemplate: options?.designTemplate,
         authorLabel: options?.authorLabel,
+        includeTableOfContents: options?.includeTableOfContents,
       });
       const buffer = await buildDocxBuffer(structured);
       return createDeliverableFile("docx", baseFileName, buffer, false);

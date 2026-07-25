@@ -1,42 +1,66 @@
-import { contentHasMarkdownTable } from "@/lib/deliverables/excel-data";
 import type { DeliverableFormat } from "@/lib/deliverables/types";
 
-import type {
-  ArtifactSuggestion,
-  ArtifactType,
-} from "./types";
+import type { ArtifactDocument } from "./document";
+import type { ArtifactSuggestion, ArtifactType } from "./types";
 
 export type BuildArtifactSuggestionsInput = {
   artifactType: ArtifactType;
   assignment: string;
   content: string;
   generatedFormats: readonly DeliverableFormat[];
-  /** When false, suggest registering company / work profile. */
   hasWorkProfile?: boolean;
   excelRecommended?: boolean;
+  excelNotApplicable?: boolean;
+  document?: ArtifactDocument;
 };
 
 /**
  * Post-completion suggestions — rule-based, no LLM.
- * Surfaces Excel / learning / company-profile assists after a deliverable is ready.
  */
 export function buildArtifactSuggestions(
   input: BuildArtifactSuggestionsInput,
 ): ArtifactSuggestion[] {
   const generated = new Set(input.generatedFormats);
   const suggestions: ArtifactSuggestion[] = [];
-  const hasTable =
-    input.excelRecommended || contentHasMarkdownTable(input.content);
+  const doc = input.document;
 
-  if (!generated.has("xlsx") && hasTable) {
+  if (doc && doc.missingFields.length > 0) {
+    suggestions.push({
+      id: "suggest-quality-gaps",
+      kind: "quality_gap",
+      title: "この情報を登録すると、次回からより実用的な成果物を作れます",
+      message: doc.missingFields.map((field) => field.label).slice(0, 6).join("・"),
+      actionLabel: "成果物画面で入力",
+      priority: 100,
+      fieldKeys: doc.missingFields.map((field) => field.key),
+    });
+  }
+
+  if (
+    !generated.has("xlsx") &&
+    input.excelRecommended &&
+    !input.excelNotApplicable
+  ) {
     suggestions.push({
       id: "suggest-excel",
       kind: "excel",
       title: "Excelでもご利用いただけます",
       message:
-        "この成果物には表データが含まれています。Excel（.xlsx）でも生成できます。生成しますか？",
+        "この成果物には表データが含まれています。Excel（.xlsx）でも生成できます。",
       actionLabel: "Excelを生成",
       priority: 90,
+    });
+  }
+
+  if (input.excelNotApplicable && /excel|エクセル/.test(input.assignment)) {
+    suggestions.push({
+      id: "excel-not-applicable",
+      kind: "excel",
+      title: "Excel向けの構造ではありません",
+      message:
+        input.document?.excelNotApplicableReason ||
+        "この成果物はExcel向けの構造ではありません",
+      priority: 40,
     });
   }
 
@@ -44,20 +68,20 @@ export function buildArtifactSuggestions(
     (input.artifactType === "sales_material" ||
       input.artifactType === "proposal" ||
       input.artifactType === "presentation") &&
-    !generated.has("pptx")
+    !generated.has("pptx") &&
+    doc?.recommendedFormats.includes("pptx")
   ) {
     suggestions.push({
       id: "suggest-pptx",
       kind: "powerpoint",
       title: "PowerPoint向けレイアウトもご用意できます",
-      message:
-        "営業・提案系の成果物です。スライド形式での出力にも対応しています。",
+      message: "スライド形式での説明資料としてもご利用いただけます。",
       actionLabel: "PowerPointを確認",
       priority: 70,
     });
   }
 
-  if (input.hasWorkProfile === false) {
+  if (input.hasWorkProfile === false && !doc?.missingFields.length) {
     suggestions.push({
       id: "suggest-company-profile",
       kind: "company_profile",
@@ -69,10 +93,7 @@ export function buildArtifactSuggestions(
     });
   }
 
-  if (
-    input.artifactType !== "sns" &&
-    input.artifactType !== "general"
-  ) {
+  if (input.artifactType !== "sns" && input.artifactType !== "general") {
     suggestions.push({
       id: "suggest-learning-template",
       kind: "learning_template",
@@ -84,22 +105,5 @@ export function buildArtifactSuggestions(
     });
   }
 
-  if (
-    (input.artifactType === "report" ||
-      input.artifactType === "proposal" ||
-      input.artifactType === "plan" ||
-      input.artifactType === "research") &&
-    !/#\s*目次|table of contents/i.test(input.content)
-  ) {
-    suggestions.push({
-      id: "suggest-toc",
-      kind: "toc",
-      title: "目次を自動付与しています",
-      message:
-        "Word / PDF には見出しから目次を自動生成しています。画面プレビューでも構成をご確認ください。",
-      priority: 30,
-    });
-  }
-
-  return suggestions.sort((a, b) => b.priority - a.priority).slice(0, 4);
+  return suggestions.sort((a, b) => b.priority - a.priority).slice(0, 5);
 }

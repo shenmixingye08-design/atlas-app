@@ -96,11 +96,55 @@ const REPORT: DocumentTheme = {
   showToc: true,
 };
 
+const PROPOSAL: DocumentTheme = {
+  ...BUSINESS,
+  id: "proposal",
+  label: "提案書",
+  description: "提案・企画向けの説得力ある体裁",
+  accentHex: "1B4F72",
+  accentRgb: { r: 0.11, g: 0.31, b: 0.45 },
+  headerFillHex: "1B4F72",
+  coverStyle: "full",
+  showToc: true,
+  titleSize: 50,
+};
+
+const A4_LEAFLET: DocumentTheme = {
+  ...BUSINESS,
+  id: "a4_leaflet",
+  label: "A4片面",
+  description: "投函・案内向け片面資料",
+  accentHex: "7B2D1A",
+  accentRgb: { r: 0.48, g: 0.18, b: 0.1 },
+  headerFillHex: "7B2D1A",
+  coverStyle: "minimal",
+  showToc: false,
+  titleSize: 36,
+  marginPt: { top: 48, right: 40, bottom: 48, left: 40 },
+  marginDxa: { top: 1008, right: 864, bottom: 1008, left: 864 },
+  lineSpacing: 276,
+};
+
+const TABLE_FOCUS: DocumentTheme = {
+  ...SIMPLE,
+  id: "table_focus",
+  label: "表中心",
+  description: "一覧・ランキング・明細向け",
+  accentHex: "1F4E79",
+  accentRgb: { r: 0.12, g: 0.31, b: 0.47 },
+  headerFillHex: "1F4E79",
+  showToc: false,
+  coverStyle: "minimal",
+};
+
 const THEMES: Record<DesignTemplateId, DocumentTheme> = {
   business: BUSINESS,
   standard: STANDARD,
   simple: SIMPLE,
   report: REPORT,
+  proposal: PROPOSAL,
+  a4_leaflet: A4_LEAFLET,
+  table_focus: TABLE_FOCUS,
 };
 
 export function getDocumentTheme(id: DesignTemplateId): DocumentTheme {
@@ -108,5 +152,5 @@ export function getDocumentTheme(id: DesignTemplateId): DocumentTheme {
 }
 
 export function listDocumentThemes(): DocumentTheme[] {
-  return [BUSINESS, STANDARD, SIMPLE, REPORT];
+  return [BUSINESS, SIMPLE, REPORT, PROPOSAL, A4_LEAFLET, TABLE_FOCUS];
 }

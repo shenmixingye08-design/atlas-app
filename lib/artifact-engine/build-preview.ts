@@ -1,101 +1,54 @@
-import {
-  DOCUMENT_TYPE_LABELS,
-  buildStructuredDocument,
-  type DocumentBlock,
-} from "@/lib/deliverables/document-model";
-
-import { detectArtifactType } from "./detect-artifact-type";
-import type {
-  ArtifactPreviewBlock,
-  ArtifactPreviewModel,
-  ArtifactPreviewSection,
-} from "./types";
-
-function toPreviewBlock(block: DocumentBlock): ArtifactPreviewBlock | null {
-  switch (block.type) {
-    case "paragraph":
-      if (!block.text.trim()) return null;
-      return { type: "paragraph", text: block.text.trim() };
-    case "bulletList": {
-      const items = block.items.map((item) => item.trim()).filter(Boolean);
-      return items.length ? { type: "bulletList", items } : null;
-    }
-    case "numberedList": {
-      const items = block.items.map((item) => item.trim()).filter(Boolean);
-      return items.length ? { type: "numberedList", items } : null;
-    }
-    case "table":
-      return {
-        type: "table",
-        headers: block.headers,
-        rows: block.rows,
-      };
-    case "callout":
-      return {
-        type: "callout",
-        variant: block.variant,
-        text: block.text.trim(),
-      };
-    case "imagePlaceholder":
-      return {
-        type: "imagePlaceholder",
-        caption: block.caption.trim() || "画像",
-      };
-    case "keyCard":
-      return {
-        type: "keyCard",
-        title: block.title,
-        items: block.items.map((item) => item.trim()).filter(Boolean),
-      };
-    default:
-      return null;
-  }
-}
+import { buildArtifactDocument } from "./build-document";
+import type { OrgAssistProfile } from "./org-assist-store";
+import type { ArtifactTemplateId } from "./templates/types";
+import type { ArtifactPreviewModel, ArtifactPreviewSection } from "./types";
 
 /**
  * Build a screen preview model from deliverable text.
- * Strips Markdown chrome via the layout engine — safe for client use.
+ * Uses ArtifactDocument IR — never raw Markdown / JSON.
  */
 export function buildArtifactPreview(input: {
   assignment: string;
   content: string;
   title?: string;
+  templateOverride?: ArtifactTemplateId;
+  orgProfile?: OrgAssistProfile | null;
 }): ArtifactPreviewModel {
-  const detection = detectArtifactType({
+  const document = buildArtifactDocument({
     assignment: input.assignment,
     content: input.content,
     title: input.title,
+    templateOverride: input.templateOverride,
+    orgProfile: input.orgProfile,
   });
 
-  const structured = buildStructuredDocument({
-    content: input.content,
-    assignment: input.assignment,
-    title: input.title,
-    authorLabel: "MINERVOT",
-  });
-
-  const sections: ArtifactPreviewSection[] = structured.sections.map(
-    (section) => ({
-      title: section.title,
-      level: section.level,
-      blocks: section.blocks
-        .map(toPreviewBlock)
-        .filter((block): block is ArtifactPreviewBlock => Boolean(block)),
-    }),
-  );
+  const sections: ArtifactPreviewSection[] = document.sections.map((section) => ({
+    title: section.title,
+    level: section.level,
+    pageBreakBefore: section.pageBreakBefore,
+    blocks: section.blocks,
+  }));
 
   return {
-    artifactType: detection.artifactType,
-    artifactLabel: detection.label,
-    documentTypeLabel: DOCUMENT_TYPE_LABELS[structured.documentType],
-    title: structured.title,
-    subtitle: structured.subtitle,
-    metaFields: structured.meta.fields,
-    toc: structured.includeTableOfContents
-      ? structured.sections
+    artifactType: document.artifactType,
+    artifactLabel: document.artifactLabel,
+    documentTypeLabel: document.templateCategory,
+    templateLabel: document.templateLabel,
+    designId: document.designId,
+    title: document.title,
+    subtitle: document.subtitle,
+    summary: document.summary,
+    metaFields: document.metadata.fields,
+    toc: document.structure.toc
+      ? document.sections
           .filter((section) => section.level <= 2)
           .map((section) => section.title)
       : [],
+    showCover: document.structure.cover,
+    showHeader: document.structure.header,
+    showFooter: document.structure.footer,
+    showPageNumbers: document.structure.pageNumbers,
     sections,
+    completionStatus: document.completionStatus,
   };
 }

@@ -1,16 +1,11 @@
-import {
-  DEFAULT_DESIGN_TEMPLATE,
-  type DesignTemplateId,
-} from "@/lib/deliverables/document-model";
-import {
-  contentHasMarkdownTable,
-  shouldGenerateXlsx,
-} from "@/lib/deliverables/excel-data";
 import type { DeliverableFormat } from "@/lib/deliverables/types";
 
+import { buildArtifactDocument } from "./build-document";
 import { buildArtifactSuggestions } from "./build-suggestions";
 import { detectArtifactType } from "./detect-artifact-type";
-import { recommendArtifactFormats } from "./recommend-formats";
+import type { ArtifactDocument } from "./document";
+import type { OrgAssistProfile } from "./org-assist-store";
+import type { ArtifactTemplateId } from "./templates/types";
 import type {
   ArtifactDetection,
   ArtifactSuggestion,
@@ -21,19 +16,27 @@ export type AnalyzeArtifactInput = {
   content: string;
   title?: string;
   formatsOverride?: DeliverableFormat[];
-  designTemplate?: DesignTemplateId;
+  designTemplate?: ArtifactTemplateId;
   hasWorkProfile?: boolean;
   generatedFormats?: readonly DeliverableFormat[];
+  generatedFiles?: Array<{
+    format: DeliverableFormat;
+    downloadUrl?: string;
+    fileName?: string;
+    sizeBytes?: number;
+  }>;
+  failedFormats?: DeliverableFormat[];
+  orgProfile?: OrgAssistProfile | null;
 };
 
 export type AnalyzeArtifactResult = {
   detection: ArtifactDetection;
   suggestions: ArtifactSuggestion[];
+  document: ArtifactDocument;
 };
 
 /**
- * Artifact Generation Engine — analyze step.
- * Parses intent, chooses formats, and prepares post-completion suggestions.
+ * Artifact Generation Engine — analyze + structure step.
  * No AI calls.
  */
 export function analyzeArtifact(
@@ -45,37 +48,58 @@ export function analyzeArtifact(
     title: input.title,
   });
 
-  const formatPlan = recommendArtifactFormats({
-    artifactType: detected.artifactType,
+  const document = buildArtifactDocument({
     assignment: input.assignment,
     content: input.content,
-    override: input.formatsOverride,
+    title: input.title,
+    templateOverride: input.designTemplate,
+    orgProfile: input.orgProfile,
+    generatedFiles:
+      input.generatedFiles ??
+      input.generatedFormats?.map((format) => ({ format })),
+    failedFormats: input.failedFormats,
   });
 
-  const excelRecommended =
-    shouldGenerateXlsx(input.assignment, input.content) ||
-    contentHasMarkdownTable(input.content) ||
-    ["ranking", "list", "household", "schedule", "invoice"].includes(
-      detected.artifactType,
-    );
+  if (input.formatsOverride && input.formatsOverride.length > 0) {
+    document.recommendedFormats = [...input.formatsOverride];
+    document.otherFormats = [];
+    document.formatStates = document.formatStates.map((state) => ({
+      ...state,
+      recommended: input.formatsOverride!.includes(state.format),
+    }));
+  }
 
   const detection: ArtifactDetection = {
-    artifactType: detected.artifactType,
-    label: detected.label,
+    artifactType: document.artifactType,
+    label: document.artifactLabel,
     documentType: detected.documentType,
-    formatPlan,
-    designTemplate: input.designTemplate ?? DEFAULT_DESIGN_TEMPLATE,
-    excelRecommended,
+    formatPlan: {
+      formats: [...document.recommendedFormats, ...document.otherFormats],
+      recommended: document.recommendedFormats,
+      other: document.otherFormats,
+      matchedRule: `template:${document.templateId}`,
+    },
+    designTemplate: document.designId,
+    templateLabel: document.templateLabel,
+    excelRecommended: !document.excelNotApplicable,
+    excelNotApplicable: document.excelNotApplicable,
+    excelNotApplicableReason: document.excelNotApplicableReason,
   };
 
   const suggestions = buildArtifactSuggestions({
-    artifactType: detected.artifactType,
+    artifactType: document.artifactType,
     assignment: input.assignment,
     content: input.content,
-    generatedFormats: input.generatedFormats ?? formatPlan.formats,
+    generatedFormats:
+      input.generatedFormats ??
+      document.formatStates
+        .filter((state) => state.status === "ready")
+        .map((state) => state.format),
     hasWorkProfile: input.hasWorkProfile,
-    excelRecommended,
+    excelRecommended: !document.excelNotApplicable,
+    excelNotApplicable: document.excelNotApplicable,
+    document,
   });
 
-  return { detection, suggestions };
+  return { detection, suggestions, document };
 }

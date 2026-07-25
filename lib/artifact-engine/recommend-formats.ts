@@ -1,35 +1,29 @@
-import {
-  contentHasMarkdownTable,
-  shouldGenerateXlsx,
-} from "@/lib/deliverables/excel-data";
 import type { DeliverableFormat } from "@/lib/deliverables/types";
 
-import type { ArtifactFormatPlan, ArtifactType } from "./types";
+import type { ArtifactType } from "./types";
 
-const BASE_BY_TYPE: Record<
-  ArtifactType,
-  { formats: DeliverableFormat[]; upcoming: Array<"pptx"> }
-> = {
-  sales_material: { formats: ["pptx", "pdf", "docx"], upcoming: [] },
-  presentation: { formats: ["pptx", "pdf"], upcoming: [] },
-  proposal: { formats: ["docx", "pdf"], upcoming: ["pptx"] },
-  plan: { formats: ["docx", "pdf"], upcoming: [] },
-  report: { formats: ["pdf", "docx"], upcoming: [] },
-  contract: { formats: ["docx", "pdf"], upcoming: [] },
-  invoice: { formats: ["xlsx", "pdf", "docx"], upcoming: [] },
-  minutes: { formats: ["docx", "pdf"], upcoming: [] },
-  ranking: { formats: ["xlsx", "docx", "pdf"], upcoming: [] },
-  list: { formats: ["xlsx", "docx", "pdf"], upcoming: [] },
-  household: { formats: ["xlsx", "pdf"], upcoming: [] },
-  schedule: { formats: ["xlsx", "docx", "pdf"], upcoming: [] },
-  research: { formats: ["pdf", "docx"], upcoming: [] },
-  manual: { formats: ["docx", "pdf"], upcoming: [] },
-  blog: { formats: ["md", "docx"], upcoming: [] },
-  sns: { formats: ["md", "txt"], upcoming: [] },
-  general: { formats: ["docx", "pdf", "md"], upcoming: [] },
+const VALID: ReadonlySet<string> = new Set([
+  "pdf",
+  "docx",
+  "pptx",
+  "md",
+  "txt",
+  "xlsx",
+]);
+
+export type ArtifactFormatRecommendation = {
+  recommended: DeliverableFormat[];
+  other: DeliverableFormat[];
+  formats: DeliverableFormat[];
+  matchedRule: string;
 };
 
-function uniqueFormats(formats: DeliverableFormat[]): DeliverableFormat[] {
+function asFormats(values: readonly string[] | undefined): DeliverableFormat[] {
+  if (!values) return [];
+  return values.filter((value): value is DeliverableFormat => VALID.has(value));
+}
+
+function unique(formats: DeliverableFormat[]): DeliverableFormat[] {
   const seen = new Set<DeliverableFormat>();
   const result: DeliverableFormat[] = [];
   for (const format of formats) {
@@ -40,61 +34,106 @@ function uniqueFormats(formats: DeliverableFormat[]): DeliverableFormat[] {
   return result;
 }
 
-function withXlsx(formats: DeliverableFormat[]): DeliverableFormat[] {
-  if (formats.includes("xlsx")) return formats;
-  return ["xlsx", ...formats];
-}
+const TYPE_FALLBACK: Record<
+  ArtifactType,
+  { recommended: DeliverableFormat[]; other: DeliverableFormat[] }
+> = {
+  sales_material: { recommended: ["docx", "pdf", "pptx"], other: ["md"] },
+  presentation: { recommended: ["pptx", "pdf"], other: ["docx"] },
+  proposal: { recommended: ["docx", "pdf"], other: ["pptx", "md"] },
+  plan: { recommended: ["docx", "pdf"], other: ["pptx", "md"] },
+  report: { recommended: ["pdf", "docx"], other: ["md"] },
+  contract: { recommended: ["docx", "pdf"], other: [] },
+  invoice: { recommended: ["xlsx", "pdf"], other: ["docx"] },
+  minutes: { recommended: ["docx", "pdf"], other: ["md"] },
+  ranking: { recommended: ["docx", "pdf", "xlsx"], other: ["md"] },
+  list: { recommended: ["xlsx"], other: ["pdf", "docx"] },
+  household: { recommended: ["xlsx"], other: ["pdf"] },
+  schedule: { recommended: ["xlsx", "docx", "pdf"], other: [] },
+  research: { recommended: ["pdf", "docx"], other: ["md", "xlsx"] },
+  manual: { recommended: ["docx", "pdf"], other: ["md"] },
+  blog: { recommended: ["md", "docx"], other: ["pdf"] },
+  sns: { recommended: ["md", "txt"], other: [] },
+  youtube_script: { recommended: ["docx", "md"], other: ["pdf"] },
+  estimate: { recommended: ["xlsx", "pdf", "docx"], other: [] },
+  general: { recommended: ["docx", "pdf"], other: ["md"] },
+};
 
 /**
- * Choose downloadable formats from artifact type + content shape.
- * Deterministic — no AI.
+ * Recommend primary vs other download formats.
+ * Never blindly list every format.
  */
 export function recommendArtifactFormats(input: {
   artifactType: ArtifactType;
   assignment: string;
   content: string;
   override?: DeliverableFormat[];
-}): ArtifactFormatPlan {
+  templateFormats?: {
+    recommended: DeliverableFormat[];
+    other: DeliverableFormat[];
+  };
+  excelApplicable?: boolean;
+}): ArtifactFormatRecommendation {
   if (input.override && input.override.length > 0) {
-    const formats = shouldGenerateXlsx(input.assignment, input.content)
-      ? withXlsx(input.override)
-      : [...input.override];
     return {
-      formats: uniqueFormats(formats),
+      recommended: unique(input.override),
+      other: [],
+      formats: unique(input.override),
       matchedRule: "user_selected_formats",
-      upcomingFormats: [],
     };
   }
 
-  const base = BASE_BY_TYPE[input.artifactType];
-  let formats = [...base.formats];
-  let matchedRule = `artifact:${input.artifactType}`;
+  const fallback = TYPE_FALLBACK[input.artifactType] ?? TYPE_FALLBACK.general;
+  let recommended = asFormats(input.templateFormats?.recommended);
+  let other = asFormats(input.templateFormats?.other);
 
-  const wantsExcel =
-    shouldGenerateXlsx(input.assignment, input.content) ||
-    contentHasMarkdownTable(input.content) ||
-    ["ranking", "list", "household", "schedule", "invoice"].includes(
-      input.artifactType,
-    );
-
-  if (wantsExcel) {
-    formats = withXlsx(formats);
-    matchedRule = `${matchedRule}+xlsx`;
+  if (recommended.length === 0) {
+    recommended = [...fallback.recommended];
+    other = [...fallback.other];
   }
 
-  // Always offer Markdown as an internal/export option for document-like work
-  // (kept off SNS-only flows to avoid clutter).
-  if (
-    input.artifactType !== "sns" &&
-    !formats.includes("md") &&
-    !formats.includes("txt")
+  if (input.excelApplicable === false) {
+    recommended = recommended.filter((format) => format !== "xlsx");
+    other = other.filter((format) => format !== "xlsx");
+  } else if (
+    input.excelApplicable === true &&
+    !recommended.includes("xlsx") &&
+    !other.includes("xlsx")
   ) {
-    formats = [...formats, "md"];
+    if (
+      ["ranking", "list", "household", "schedule", "invoice", "estimate"].includes(
+        input.artifactType,
+      )
+    ) {
+      recommended = unique(["xlsx", ...recommended]);
+    }
   }
+
+  // PowerPoint only when slide-oriented
+  const slideOk =
+    input.artifactType === "sales_material" ||
+    input.artifactType === "presentation" ||
+    input.artifactType === "proposal" ||
+    input.artifactType === "plan" ||
+    /スライド|写真付き|パワーポイント|営業資料|土地活用/.test(input.assignment);
+
+  if (!slideOk) {
+    recommended = recommended.filter((format) => format !== "pptx");
+    other = other.filter((format) => format !== "pptx");
+  }
+
+  // SNS: keep copy/markdown only
+  if (input.artifactType === "sns") {
+    recommended = ["md", "txt"];
+    other = [];
+  }
+
+  other = other.filter((format) => !recommended.includes(format));
 
   return {
-    formats: uniqueFormats(formats),
-    matchedRule,
-    upcomingFormats: base.upcoming,
+    recommended: unique(recommended),
+    other: unique(other),
+    formats: unique([...recommended, ...other]),
+    matchedRule: `artifact:${input.artifactType}`,
   };
 }

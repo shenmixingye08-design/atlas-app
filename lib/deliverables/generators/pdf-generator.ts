@@ -24,6 +24,8 @@ export type PdfGenerateOptions = {
   title?: string;
   designTemplate?: DesignTemplateId;
   authorLabel?: string;
+  includeTableOfContents?: boolean;
+  artifactType?: string;
 };
 
 const A4_PORTRAIT = { width: 595.28, height: 841.89 };
@@ -622,6 +624,7 @@ export class PdfDeliverableGenerator implements DeliverableGenerator {
       title: options?.title,
       designTemplate: options?.designTemplate,
       authorLabel: options?.authorLabel,
+      includeTableOfContents: options?.includeTableOfContents,
     });
     const buffer = await buildJapanesePdf(structured);
     return createDeliverableFile("pdf", baseFileName, buffer, false);
