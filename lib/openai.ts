@@ -5,6 +5,7 @@ import type {
   Response,
   ResponseCreateParamsNonStreaming,
   ResponseCreateParamsStreaming,
+  ResponseInput,
   ResponseStreamEvent,
 } from "openai/resources/responses/responses";
 
@@ -18,6 +19,7 @@ import {
 } from "@/lib/ai/policy-engine";
 import { sanitizeResponsesApiParams } from "@/lib/ai/openai-request-params";
 import { isMockLlmEnabled, resolveMockLlmOutput } from "@/lib/ai/mock-responses";
+import { summarizeInputAsText } from "@/lib/attachments/to-response-input";
 import { getAiBillingUsageContext } from "@/lib/billing/usage/request-context";
 import { recordUserAiUsageFromTexts } from "@/lib/billing/usage/meter";
 
@@ -59,8 +61,11 @@ export function getOpenAIClient(): OpenAI {
 }
 
 export type AtlasResponseRequest = {
-  /** User message or task description. */
-  input: string;
+  /**
+   * User message or multimodal Responses API input.
+   * Use `ResponseInput` with `input_image` parts when images are attached.
+   */
+  input: string | ResponseInput;
   /** Optional system-level instructions for this request. */
   instructions?: string;
   /** Continue a prior Responses API conversation. */
@@ -148,7 +153,7 @@ function maybeRecordBillingUsage(input: {
       api: context.api,
       feature: context.feature,
       model: input.model,
-      inputText: input.params.input,
+      inputText: summarizeInputAsText(input.params.input),
       outputText: input.outputText,
       instructions: input.params.instructions,
       aiTaskType: input.params.aiTaskType,
@@ -163,7 +168,10 @@ export async function createAtlasResponse(
   params: AtlasResponseRequest,
 ): Promise<Response> {
   if (isMockLlmEnabled()) {
-    const outputText = resolveMockLlmOutput(params.aiTaskType, params.input);
+    const outputText = resolveMockLlmOutput(
+      params.aiTaskType,
+      summarizeInputAsText(params.input),
+    );
     const mock = {
       id: `resp_mock_${params.aiTaskType ?? "chat"}_${crypto.randomUUID()}`,
       output_text: outputText,

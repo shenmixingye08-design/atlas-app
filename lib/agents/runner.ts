@@ -1,8 +1,12 @@
 import "server-only";
 
 import type { Stream } from "openai/streaming";
-import type { ResponseStreamEvent } from "openai/resources/responses/responses";
+import type {
+  ResponseInput,
+  ResponseStreamEvent,
+} from "openai/resources/responses/responses";
 
+import { buildMultimodalResponseInput } from "@/lib/attachments/to-response-input";
 import {
   createAtlasResponse,
   createAtlasResponseStream,
@@ -28,7 +32,7 @@ function formatPriorOutputs(outputs: readonly AgentPriorOutput[]): string {
 }
 
 /**
- * Builds the full prompt sent to the Responses API for a given agent run.
+ * Builds the full prompt text sent to the Responses API for a given agent run.
  * Separates workflow context from the agent's specific task.
  */
 export function buildAgentInput(
@@ -55,6 +59,18 @@ export function buildAgentInput(
 }
 
 /**
+ * Builds Responses API `input`, attaching available images as `input_image`
+ * when attachment metadata references stored image bytes.
+ */
+export function buildAgentResponseInput(
+  task: string,
+  context?: AgentContext,
+): string | ResponseInput {
+  const promptText = buildAgentInput(task, context);
+  return buildMultimodalResponseInput(promptText, context?.metadata);
+}
+
+/**
  * Runs any agent definition against the OpenAI Responses API.
  * This is the single execution entry point until orchestration is built.
  */
@@ -62,7 +78,7 @@ export async function runAgent(
   agent: AgentDefinition,
   input: AgentRunInput,
 ): Promise<AgentRunResult> {
-  const promptInput = buildAgentInput(input.task, input.context);
+  const promptInput = buildAgentResponseInput(input.task, input.context);
 
   const response = await createAtlasResponse({
     input: promptInput,
@@ -99,7 +115,7 @@ export async function runAgentStream(
   input: AgentRunInput,
 ): Promise<Stream<ResponseStreamEvent>> {
   return createAtlasResponseStream({
-    input: buildAgentInput(input.task, input.context),
+    input: buildAgentResponseInput(input.task, input.context),
     instructions: agent.instructions,
     previousResponseId: input.previousResponseId,
     aiTaskType: input.aiTaskType ?? "chat",
