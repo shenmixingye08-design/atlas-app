@@ -1,0 +1,227 @@
+"use client";
+
+import { useCallback, useRef, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { ImagePreviewList } from "@/components/vision/image-preview-list";
+import {
+  filterImageFiles,
+  uploadImagesToAtlas,
+  type UploadedAttachmentClient,
+} from "@/lib/attachments/client-upload";
+import { ATTACHMENT_LIMITS } from "@/lib/attachments/types";
+import { cn } from "@/lib/design-system/cn";
+
+export type LocalImageDraft = {
+  localId: string;
+  file: File;
+  previewUrl: string;
+  status: "pending" | "uploading" | "uploaded" | "failed";
+  progress: number;
+  error?: string;
+  uploaded?: UploadedAttachmentClient;
+};
+
+type ImageAttachmentPickerProps = {
+  value: LocalImageDraft[];
+  onChange: (next: LocalImageDraft[]) => void;
+  disabled?: boolean;
+  className?: string;
+  preferReadableText?: boolean;
+};
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+export function getUploadedAttachmentIds(drafts: LocalImageDraft[]): string[] {
+  return drafts
+    .filter((item) => item.status === "uploaded" && item.uploaded)
+    .map((item) => item.uploaded!.id);
+}
+
+export function ImageAttachmentPicker({
+  value,
+  onChange,
+  disabled,
+  className,
+  preferReadableText = true,
+}: ImageAttachmentPickerProps) {
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const addFiles = useCallback(
+    (list: FileList | File[]) => {
+      if (disabled) return;
+      const images = filterImageFiles(Array.from(list));
+      if (images.length === 0) return;
+      const remaining = ATTACHMENT_LIMITS.maxImagesPerRequest - value.length;
+      if (remaining <= 0) return;
+
+      const nextDrafts: LocalImageDraft[] = images.slice(0, remaining).map((file) => ({
+        localId: `local_${crypto.randomUUID()}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        status: "pending",
+        progress: 0,
+      }));
+
+      let current = [...value, ...nextDrafts];
+      onChange(current);
+
+      void (async () => {
+        for (const draft of nextDrafts) {
+          current = current.map((item) =>
+            item.localId === draft.localId
+              ? { ...item, status: "uploading" as const, progress: 40 }
+              : item,
+          );
+          onChange(current);
+          try {
+            const result = await uploadImagesToAtlas([draft.file], {
+              preferReadableText,
+            });
+            const uploaded = result.attachments[0];
+            if (!uploaded) throw new Error("画像のアップロードに失敗しました");
+            current = current.map((item) =>
+              item.localId === draft.localId
+                ? {
+                    ...item,
+                    status: "uploaded" as const,
+                    progress: 100,
+                    uploaded,
+                  }
+                : item,
+            );
+          } catch (error) {
+            const message =
+              error instanceof Error
+                ? error.message
+                : "画像のアップロードに失敗しました";
+            current = current.map((item) =>
+              item.localId === draft.localId
+                ? {
+                    ...item,
+                    status: "failed" as const,
+                    progress: 0,
+                    error: message,
+                  }
+                : item,
+            );
+          }
+          onChange(current);
+        }
+      })();
+    },
+    [disabled, onChange, preferReadableText, value],
+  );
+
+  const remove = (localId: string) => {
+    const target = value.find((item) => item.localId === localId);
+    if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+    onChange(value.filter((item) => item.localId !== localId));
+  };
+
+  const retry = (localId: string) => {
+    const target = value.find((item) => item.localId === localId);
+    if (!target) return;
+    addFiles([target.file]);
+    onChange(value.filter((item) => item.localId !== localId));
+  };
+
+  const uploadedCount = getUploadedAttachmentIds(value).length;
+
+  return (
+    <div className={cn("space-y-3", className)}>
+      <div
+        className={cn(
+          "rounded-xl border border-dashed border-[var(--border-subtle)] p-4 transition",
+          isDragging && "border-accent bg-accent/5",
+        )}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          setIsDragging(false);
+          addFiles(event.dataTransfer.files);
+        }}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={disabled}
+            onClick={() => galleryRef.current?.click()}
+          >
+            画像を選ぶ
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={disabled}
+            onClick={() => cameraRef.current?.click()}
+          >
+            カメラで撮影
+          </Button>
+          <p className="text-xs text-[var(--text-secondary)]">
+            JPEG / PNG / WEBP（最大{ATTACHMENT_LIMITS.maxImagesPerRequest}枚・
+            {Math.round(ATTACHMENT_LIMITS.maxOriginalBytes / (1024 * 1024))}MB）
+            ／ HEICは変換可能な場合のみ
+          </p>
+        </div>
+        <input
+          ref={galleryRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic"
+          multiple
+          className="hidden"
+          disabled={disabled}
+          onChange={(event) => {
+            if (event.target.files) addFiles(event.target.files);
+            event.target.value = "";
+          }}
+        />
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          disabled={disabled}
+          onChange={(event) => {
+            if (event.target.files) addFiles(event.target.files);
+            event.target.value = "";
+          }}
+        />
+      </div>
+
+      <ImagePreviewList
+        items={value.map((item) => ({
+          id: item.localId,
+          previewUrl: item.previewUrl,
+          fileName: item.file.name,
+          sizeLabel: formatBytes(item.file.size),
+          status: item.status,
+          progress: item.progress,
+          error: item.error,
+        }))}
+        onRemove={remove}
+        onRetry={retry}
+      />
+
+      {uploadedCount > 0 && (
+        <p className="text-xs text-[var(--text-secondary)]">
+          アップロード済み {uploadedCount} 枚（文章を入力して送信すると解析します）
+        </p>
+      )}
+    </div>
+  );
+}

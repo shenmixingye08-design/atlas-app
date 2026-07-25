@@ -366,6 +366,213 @@ export function resolveMockLlmOutput(
       });
     case "reviewer_fallback":
       return "APPROVED\n\nMock reviewer fallback — deliverable meets minimum requirements.";
+    case "vision_analyze": {
+      const isReceipt = /レシート|家計簿|receipt/i.test(input);
+      const isInvoice = /請求書|invoice/i.test(input);
+      const isTable = /表|Excel|エクセル|table/i.test(input);
+      const isMemo = /手書き|メモ|文字にして/i.test(input);
+      const isCard = /名刺|連絡先|business\s*card/i.test(input);
+      const isSales = /営業|資料|改善|チラシ|sales/i.test(input);
+
+      if (isReceipt) {
+        return JSON.stringify({
+          detectedType: "receipt",
+          confidence: 0.92,
+          summary: "コンビニのレシート。合計1,280円。",
+          extractedText: "MINERVOT MART\n2026/07/25\nお茶 150\n弁当 980\n合計 1,280\n現金",
+          language: "ja",
+          fields: {
+            storeName: "MINERVOT MART",
+            date: "2026-07-25",
+            items: [
+              { name: "お茶", amount: 150, category: "飲料" },
+              { name: "弁当", amount: 980, category: "食料品" },
+            ],
+            subtotal: 1130,
+            tax: 150,
+            total: 1280,
+            paymentMethod: "現金",
+          },
+          tables: [],
+          visualElements: ["店名", "合計金額"],
+          layout: { hierarchy: "単票", readability: "良好" },
+          styleSignals: null,
+          warnings: [],
+          missingFields: [],
+          recommendedActions: ["家計簿Excelを生成"],
+          artifactSuggestions: ["household_excel"],
+        });
+      }
+
+      if (isInvoice) {
+        return JSON.stringify({
+          detectedType: "invoice",
+          confidence: 0.9,
+          summary: "請求書。合計110,000円。",
+          extractedText: "請求書\n株式会社サンプル\n請求番号 INV-001\n合計 110,000",
+          language: "ja",
+          fields: {
+            issuer: "株式会社サンプル",
+            recipient: "株式会社テスト",
+            invoiceNumber: "INV-001",
+            issueDate: "2026-07-01",
+            dueDate: null,
+            lineItems: [{ name: "コンサルティング", quantity: 1, unitPrice: 100000, amount: 100000 }],
+            subtotal: 100000,
+            tax: 10000,
+            total: 110000,
+            bankDetails: null,
+          },
+          tables: [],
+          visualElements: ["社印"],
+          layout: { hierarchy: "帳票", readability: "良好" },
+          styleSignals: null,
+          warnings: ["支払期限が読めません", "振込先が見切れています"],
+          missingFields: ["dueDate", "bankDetails"],
+          recommendedActions: ["不足項目を確認してExcel化"],
+          artifactSuggestions: ["invoice_excel"],
+        });
+      }
+
+      if (isTable) {
+        return JSON.stringify({
+          detectedType: "table",
+          confidence: 0.88,
+          summary: "3列の表スクリーンショット",
+          extractedText: "品目 数量 金額\nA 2 1000\nB 1 500",
+          language: "ja",
+          fields: {},
+          tables: [
+            {
+              headers: ["品目", "数量", "金額"],
+              rows: [
+                ["A", 2, 1000],
+                ["B", 1, 500],
+              ],
+              notes: null,
+            },
+          ],
+          visualElements: ["表"],
+          layout: { hierarchy: "表", readability: "良好" },
+          styleSignals: null,
+          warnings: [],
+          missingFields: [],
+          recommendedActions: ["Excelを生成"],
+          artifactSuggestions: ["table_excel"],
+        });
+      }
+
+      if (isMemo) {
+        return JSON.stringify({
+          detectedType: "handwritten_note",
+          confidence: 0.8,
+          summary: "手書きの打合せメモ",
+          extractedText: "明日10時 見積送付",
+          language: "ja",
+          fields: {
+            rawText: "明日10時 見積送付",
+            cleanedText: "明日の10時に見積を送付する。",
+            summary: "見積送付の予定メモ",
+          },
+          tables: [],
+          visualElements: ["手書き文字"],
+          layout: null,
+          styleSignals: null,
+          warnings: ["一部が不鮮明"],
+          missingFields: ["担当者名"],
+          recommendedActions: ["原文・整形・要約を分けて提示"],
+          artifactSuggestions: ["memo_text"],
+        });
+      }
+
+      if (isCard) {
+        return JSON.stringify({
+          detectedType: "business_card",
+          confidence: 0.91,
+          summary: "名刺情報",
+          extractedText: "山田太郎\n株式会社サンプル",
+          language: "ja",
+          fields: {
+            personName: "山田太郎",
+            companyName: "株式会社サンプル",
+            department: "営業部",
+            title: "主任",
+            phone: "03-1234-5678",
+            email: "taro@example.com",
+            address: "東京都",
+            website: "https://example.com",
+          },
+          tables: [],
+          visualElements: ["ロゴ"],
+          layout: null,
+          styleSignals: null,
+          warnings: [],
+          missingFields: [],
+          recommendedActions: ["連絡先として整理（保存は承認後）"],
+          artifactSuggestions: ["contact_card"],
+        });
+      }
+
+      if (isSales) {
+        return JSON.stringify({
+          detectedType: "sales_material",
+          confidence: 0.86,
+          summary: "太陽光の営業チラシ。CTAが弱い。",
+          extractedText: "今ならお得\nお問い合わせください",
+          language: "ja",
+          fields: {
+            title: "太陽光発電のご提案",
+            targetAudience: "戸建て住宅オーナー",
+            keyMessage: "電気代削減と安心施工",
+            benefits: "初期費用の見える化、保証付き",
+            callToAction: "お問い合わせください",
+            contactInfo: null,
+            weaknesses: ["CTAが弱い", "問い合わせ先がない", "対象読者が不明瞭"],
+          },
+          tables: [],
+          visualElements: ["写真", "見出し"],
+          layout: {
+            hierarchy: "見出し→本文→CTA",
+            readability: "文字量がやや多い",
+            colorTendency: "青基調",
+            logoPosition: "左上",
+            ctaPlacement: "下部",
+          },
+          styleSignals: {
+            tone: "丁寧",
+            politeness: "ですます",
+            sentenceLength: "やや長め",
+            headingStyle: "短い名詞見出し",
+            frequentPhrases: ["安心", "お得"],
+            ctaStyle: "一般的なお問い合わせ誘導",
+            structure: "課題→提案→CTA",
+            designTendency: "写真多め",
+            forbiddenCandidates: [],
+          },
+          warnings: ["問い合わせ先がない"],
+          missingFields: ["contactInfo"],
+          recommendedActions: ["改善版資料を生成", "CTAと連絡先を強化"],
+          artifactSuggestions: ["improved_sales_doc"],
+        });
+      }
+
+      return JSON.stringify({
+        detectedType: "general_photo",
+        confidence: 0.6,
+        summary: "一般写真として解析しました",
+        extractedText: null,
+        language: "ja",
+        fields: {},
+        tables: [],
+        visualElements: [],
+        layout: null,
+        styleSignals: null,
+        warnings: [],
+        missingFields: [],
+        recommendedActions: ["用途を指定してください"],
+        artifactSuggestions: [],
+      });
+    }
     case "chat":
     default:
       return "Mock Atlas response (ATLAS_MOCK_LLM=true). No API call was made.";

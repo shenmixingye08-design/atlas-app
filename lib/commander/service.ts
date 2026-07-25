@@ -1,5 +1,6 @@
 import "server-only";
 
+import { prepareAssignmentWithVision } from "@/lib/vision/prepare-assignment";
 import { ensureWorkMemoryHydrated } from "@/lib/work-memory/durable";
 
 import {
@@ -15,6 +16,45 @@ import {
   listCommanderRunsForUser,
 } from "./run-store";
 import type { CommanderRequest, CommanderRunResult } from "./types";
+
+async function maybeEnrichWithVision(input: {
+  userId: string;
+  assignment: string;
+  metadata?: Readonly<Record<string, unknown>>;
+}): Promise<{
+  assignment: string;
+  metadata?: Readonly<Record<string, unknown>>;
+}> {
+  const attachmentIds = input.metadata?.attachmentIds;
+  if (!Array.isArray(attachmentIds) || attachmentIds.length === 0) {
+    return { assignment: input.assignment, metadata: input.metadata };
+  }
+
+  try {
+    const prepared = await prepareAssignmentWithVision({
+      userId: input.userId,
+      assignment: input.assignment,
+      metadata: input.metadata,
+    });
+    return {
+      assignment: prepared.assignment,
+      metadata: prepared.metadata,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "画像解析に失敗しました。再試行してください";
+    return {
+      assignment: input.assignment,
+      metadata: {
+        ...(input.metadata ?? {}),
+        visionStatus: "failed",
+        visionError: message,
+      },
+    };
+  }
+}
 
 export function parseCommanderRequest(body: unknown):
   | CommanderRequest
@@ -95,8 +135,13 @@ export async function runCommanderRequest(input: {
   await ensureWorkMemoryHydrated(input.userId);
 
   if (input.request.mode === "plan") {
-    return planCommander({
+    const enriched = await maybeEnrichWithVision({
+      userId: input.userId,
       assignment: input.request.assignment,
+      metadata: input.request.metadata,
+    });
+    return planCommander({
+      assignment: enriched.assignment,
       userId: input.userId,
     });
   }
@@ -116,10 +161,16 @@ export async function runCommanderRequest(input: {
     });
   }
 
-  return executeCommander({
-    assignment: input.request.assignment,
+  const enriched = await maybeEnrichWithVision({
     userId: input.userId,
+    assignment: input.request.assignment,
     metadata: input.request.metadata,
+  });
+
+  return executeCommander({
+    assignment: enriched.assignment,
+    userId: input.userId,
+    metadata: enriched.metadata,
     confirmed: input.request.confirmed,
     runId: input.request.runId,
   });

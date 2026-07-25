@@ -69,7 +69,7 @@ export function SecretaryChatComposer() {
     setFiles((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
-  const submit = useCallback(() => {
+  const submit = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed && files.length === 0) return;
 
@@ -78,7 +78,30 @@ export function SecretaryChatComposer() {
         ? `\n\n（添付予定: ${files.map((item) => item.file.name).join("、")}）`
         : "";
     const assignment = `${trimmed || "添付資料の整理をお願いします。"}${fileNote}`;
-    router.push(`/workspace?assignment=${encodeURIComponent(assignment)}`);
+
+    const { filterImageFiles, uploadImagesToAtlas } = await import(
+      "@/lib/attachments/client-upload"
+    );
+    const { stashPendingAttachmentIds } = await import(
+      "@/lib/attachments/pending-session"
+    );
+    const images = filterImageFiles(files.map((item) => item.file));
+    if (images.length > 0) {
+      try {
+        const uploaded = await uploadImagesToAtlas(images, {
+          preferReadableText: true,
+        });
+        stashPendingAttachmentIds(uploaded.attachments.map((item) => item.id));
+      } catch {
+        stashPendingAttachmentIds([]);
+      }
+    } else {
+      stashPendingAttachmentIds([]);
+    }
+
+    router.push(
+      `/workspace?assignment=${encodeURIComponent(assignment)}&autostart=1`,
+    );
   }, [files, router, text]);
 
   const toggleVoice = useCallback(() => {

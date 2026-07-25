@@ -73,6 +73,14 @@ export const TASK_POLICY_TEMPLATES: Record<AiTaskType, TaskPolicyTemplate> = {
     reasoningLevel: "medium",
     costPriority: "balanced",
   },
+  vision_analyze: {
+    taskType: "vision_analyze",
+    tier: "strong",
+    maxOutputTokens: 4_096,
+    temperature: 0.2,
+    reasoningLevel: "low",
+    costPriority: "quality",
+  },
 };
 
 export function getTaskPolicyTemplate(taskType: AiTaskType): TaskPolicyTemplate {

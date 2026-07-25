@@ -20,6 +20,7 @@ import type { CommanderRunResult } from "@/lib/commander/types";
 import { isSalesMaterialRequest } from "@/lib/workspace/sales-material/detect";
 import { buildSalesMaterialMetadata } from "@/lib/workspace/sales-material/metadata";
 import type { SalesMaterialSessionConfig } from "@/lib/workspace/sales-material/types";
+import { consumePendingAttachmentIds } from "@/lib/attachments/pending-session";
 import { useFeatureAvailability } from "@/lib/feature-flags";
 import { useDeliverableFiles } from "@/lib/workspace/use-deliverable-files";
 import type { WorkflowPhaseState } from "@/lib/workspace/types";
@@ -280,11 +281,13 @@ export function WorkspaceDashboard() {
     }
 
     autoStartedRef.current = true;
+    const attachmentIds = consumePendingAttachmentIds();
     const metadata = {
       requestUi: "secretary_v1",
       executionPreference: "once",
       priority: "normal",
       skipWorkMemory: false,
+      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
     } as const;
     setRequestMetadata(metadata);
 

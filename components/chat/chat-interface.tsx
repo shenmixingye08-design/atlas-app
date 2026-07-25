@@ -11,6 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { AutomationSuggestionCard } from "@/components/automations/automation-suggestion-card";
+import {
+  getUploadedAttachmentIds,
+  ImageAttachmentPicker,
+  type LocalImageDraft,
+} from "@/components/vision/image-attachment-picker";
+import { VisionStatus } from "@/components/vision/vision-status";
 
 function createId(): string {
   return crypto.randomUUID();
@@ -29,6 +35,7 @@ function LoadingDots() {
 export function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [imageDrafts, setImageDrafts] = useState<LocalImageDraft[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recurringSuggestion, setRecurringSuggestion] = useState<
@@ -56,9 +63,20 @@ export function ChatInterface() {
   const handleSend = async () => {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
+    if (imageDrafts.some((item) => item.status === "uploading" || item.status === "pending")) {
+      setError("画像のアップロード完了をお待ちください");
+      return;
+    }
+    if (imageDrafts.some((item) => item.status === "failed")) {
+      setError("失敗した画像を削除するか再試行してください");
+      return;
+    }
+
+    const attachmentIds = getUploadedAttachmentIds(imageDrafts);
 
     setError(null);
     setInput("");
+    setImageDrafts([]);
 
     const recurring = detectRecurringIntent(trimmed);
     setRecurringSuggestion(recurring.detected ? recurring : null);
@@ -66,7 +84,10 @@ export function ChatInterface() {
     const userMessage: ChatMessage = {
       id: createId(),
       role: "user",
-      content: trimmed,
+      content:
+        attachmentIds.length > 0
+          ? `${trimmed}\n（画像 ${attachmentIds.length} 枚を添付）`
+          : trimmed,
     };
 
     const assistantId = createId();
@@ -85,6 +106,7 @@ export function ChatInterface() {
     try {
       await streamChatResponse({
         input: trimmed,
+        attachmentIds,
         signal: controller.signal,
         onDelta: (delta) => {
           setMessages((prev) =>
@@ -177,7 +199,15 @@ export function ChatInterface() {
 
       {error && <ErrorState message={error} className="mb-3" />}
 
-      <Card padding="sm" className="mb-2 shrink-0">
+      <Card padding="sm" className="mb-2 shrink-0 space-y-3">
+        <ImageAttachmentPicker
+          value={imageDrafts}
+          onChange={setImageDrafts}
+          disabled={isLoading}
+        />
+        {imageDrafts.some((item) => item.status === "uploading") && (
+          <VisionStatus analyzing status="uploading" />
+        )}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <textarea
             value={input}
