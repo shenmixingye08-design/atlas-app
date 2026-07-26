@@ -54,18 +54,37 @@ export async function generateDeliverables(
     input.title,
   );
 
+  // Normalize once so all formats share the same structured source.
+  const { normalizeToStructuredDocument, structuredDocumentToMarkdown } =
+    await import("@/lib/deliverables/document");
+  const normalized = normalizeToStructuredDocument(content, {
+    titleHint: baseFileName,
+  });
+  const canonicalSource = structuredDocumentToMarkdown(normalized.document);
+
   const deliverables: Deliverable[] = [];
 
   for (const format of formats) {
     const generator = getDeliverableGenerator(format);
     if (!generator) continue;
 
-    const file = await generator.generate(content, baseFileName);
-    const stored = await saveDeliverableFileDurable(file, options.userId, {
-      sourceContent: content,
-      baseFileName,
-    });
-    deliverables.push(toDeliverableMetadata(stored, requestOrigin));
+    try {
+      const file = await generator.generate(canonicalSource, baseFileName);
+      const stored = await saveDeliverableFileDurable(file, options.userId, {
+        sourceContent: canonicalSource,
+        baseFileName,
+      });
+      deliverables.push(toDeliverableMetadata(stored, requestOrigin));
+    } catch (error) {
+      console.error(
+        `[generateDeliverables] ${format} failed — skipping broken file`,
+        error,
+      );
+      // Markdown should still succeed for the user when Word/PDF fail.
+      if (format === "md") {
+        throw error;
+      }
+    }
   }
 
   return {

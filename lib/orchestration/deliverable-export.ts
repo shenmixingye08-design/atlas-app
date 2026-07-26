@@ -1,3 +1,8 @@
+import {
+  normalizeToStructuredDocument,
+  structuredDocumentToMarkdown,
+} from "@/lib/deliverables/document";
+
 import type { Deliverable } from "./deliverable-types";
 import { getDeliverablePreviewText } from "./deliverable-types";
 import {
@@ -74,11 +79,25 @@ export function buildExportMarkdown(deliverable: Deliverable): string {
 export function getDeliverableExportText(deliverable: Deliverable | unknown): string {
   if (deliverable && typeof deliverable === "object" && "type" in deliverable) {
     const markdown = buildExportMarkdown(deliverable as Deliverable);
-    if (markdown.trim()) return markdown;
+    if (markdown.trim()) {
+      // Run through Structured Document normalizer so JSON / \\n never leak.
+      const normalized = normalizeToStructuredDocument(markdown, {
+        artifactType: (deliverable as Deliverable).type,
+        titleHint: (deliverable as Deliverable).title,
+      });
+      if (normalized.normalizedSuccessfully) {
+        return structuredDocumentToMarkdown(normalized.document);
+      }
+      return markdown;
+    }
   }
 
   const fallback = sanitizeBodyTextForDisplay(getDeliverablePreviewText(deliverable));
   if (fallback && !isDeliverableJsonText(fallback)) {
+    const normalized = normalizeToStructuredDocument(fallback);
+    if (normalized.normalizedSuccessfully) {
+      return structuredDocumentToMarkdown(normalized.document);
+    }
     return `${fallback.trimEnd()}\n`;
   }
 

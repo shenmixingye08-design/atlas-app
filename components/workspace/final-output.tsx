@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { StructuredDocumentView } from "@/components/results/structured-document-view";
 import { triggerBlobDownload } from "@/lib/browser/trigger-blob-download";
 import {
   assignmentIsImageToExcel,
@@ -193,11 +194,8 @@ function BodyBlock({ text }: { text: string }) {
   const safeText = sanitizeBodyTextForDisplay(text);
   if (!safeText || isDeliverableJsonText(safeText)) return null;
 
-  return (
-    <div className="whitespace-pre-wrap font-sans text-base leading-relaxed text-foreground">
-      {safeText}
-    </div>
-  );
+  // Structured render — never show raw JSON / literal \\n blobs.
+  return <StructuredDocumentView source={safeText} variant="body" />;
 }
 
 function CollapsibleSection({
@@ -317,23 +315,23 @@ function StructuredDocumentPreview({
 }) {
   const normalized = normalizeDeliverableForDisplay(deliverable);
   const body = getDocumentBody(normalized);
+  const source = [
+    normalized.title ? `# ${normalized.title}` : "",
+    normalized.summary ? `## 概要\n\n${normalized.summary}` : "",
+    body,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
         <TypeBadge type={normalized.type} />
       </div>
-      {normalized.title && <DocumentHeading>{normalized.title}</DocumentHeading>}
-      {normalized.summary && (
-        <DocumentSection title="概要">
-          <BodyBlock text={normalized.summary} />
-        </DocumentSection>
-      )}
-      {body && (
-        <DocumentSection title="本文">
-          <BodyBlock text={body} />
-        </DocumentSection>
-      )}
+      <StructuredDocumentView
+        source={source || body || normalized.title}
+        titleHint={normalized.title}
+      />
     </div>
   );
 }
@@ -364,6 +362,10 @@ function DeliverablePreview({ deliverable }: { deliverable: WorkspaceDeliverable
 }
 
 function DeliverableDebugPanel({ deliverable }: { deliverable: WorkspaceDeliverable }) {
+  // Owner / debug only — never shown to end users in production UI.
+  if (process.env.NODE_ENV === "production" && !isAtlasClientDebugEnabled()) {
+    return null;
+  }
   return (
     <CollapsibleSection title="Deliverable JSON (debug)">
       <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs text-[var(--foreground-muted)]">

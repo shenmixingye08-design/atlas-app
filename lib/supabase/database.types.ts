@@ -396,6 +396,9 @@ export type Database = {
           generated_at: string;
           expires_at: string;
           created_at: string;
+          normalized_document: unknown | null;
+          canonical_html: string | null;
+          normalization_version: string | null;
         };
         Insert: {
           id: string;
@@ -411,6 +414,9 @@ export type Database = {
           generated_at: string;
           expires_at: string;
           created_at?: string;
+          normalized_document?: unknown | null;
+          canonical_html?: string | null;
+          normalization_version?: string | null;
         };
         Update: {
           id?: string;
@@ -422,6 +428,9 @@ export type Database = {
           source_content?: string;
           base_file_name?: string;
           size_bytes?: number | null;
+          normalized_document?: unknown | null;
+          canonical_html?: string | null;
+          normalization_version?: string | null;
           content_base64?: string | null;
           generated_at?: string;
           expires_at?: string;

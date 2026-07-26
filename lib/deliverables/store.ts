@@ -1,6 +1,12 @@
 import "server-only";
 
 import {
+  normalizeToStructuredDocument,
+  renderCanonicalHtml,
+  STRUCTURED_DOCUMENT_VERSION,
+} from "@/lib/deliverables/document";
+
+import {
   loadDurableDeliverable,
   persistDurableDeliverable,
   type DurableDeliverableRow,
@@ -63,6 +69,23 @@ function toDurableRow(stored: StoredDeliverable): DurableDeliverableRow {
     stored.buffer.byteLength <= MAX_BASE64_CACHE_BYTES
       ? stored.buffer.toString("base64")
       : null;
+
+  let normalizedDocument: unknown = null;
+  let canonicalHtml: string | null = null;
+  let normalizationVersion: string | null = null;
+  if (stored.sourceContent.trim()) {
+    try {
+      const normalized = normalizeToStructuredDocument(stored.sourceContent, {
+        titleHint: stored.baseFileName,
+      });
+      normalizedDocument = normalized.document;
+      canonicalHtml = renderCanonicalHtml(normalized.document).html;
+      normalizationVersion = STRUCTURED_DOCUMENT_VERSION;
+    } catch {
+      // Best-effort enrichment only.
+    }
+  }
+
   return {
     id: stored.id,
     userId: stored.userId,
@@ -76,6 +99,9 @@ function toDurableRow(stored: StoredDeliverable): DurableDeliverableRow {
     contentBase64,
     generatedAt: stored.generatedAt,
     expiresAt,
+    normalizedDocument,
+    canonicalHtml,
+    normalizationVersion,
   };
 }
 

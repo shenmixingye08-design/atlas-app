@@ -164,10 +164,14 @@ describe("deliverables download API", () => {
 
   it("rejects unauthenticated download", async () => {
     authMock.mockResolvedValue({ userId: null });
-    const generated = await new DocxDeliverableGenerator().generate("短文", "短文");
+    const sample = "# 権限確認\n\nこれは認証拒否の確認用本文です。";
+    const generated = await new DocxDeliverableGenerator().generate(
+      sample,
+      "権限確認",
+    );
     const stored = await saveDeliverableFileDurable(generated, OWNER, {
-      sourceContent: "短文",
-      baseFileName: "短文",
+      sourceContent: sample,
+      baseFileName: "権限確認",
     });
 
     const response = await GET(
@@ -180,10 +184,14 @@ describe("deliverables download API", () => {
 
   it("rejects download by a different user", async () => {
     authMock.mockResolvedValue({ userId: OTHER });
-    const generated = await new DocxDeliverableGenerator().generate("短文", "短文");
+    const sample = "# 権限確認\n\nこれは他ユーザー拒否の確認用本文です。";
+    const generated = await new DocxDeliverableGenerator().generate(
+      sample,
+      "権限確認",
+    );
     const stored = await saveDeliverableFileDurable(generated, OWNER, {
-      sourceContent: "短文",
-      baseFileName: "短文",
+      sourceContent: sample,
+      baseFileName: "権限確認",
     });
 
     const response = await GET(

@@ -17,6 +17,9 @@ export type DurableDeliverableRow = {
   contentBase64: string | null;
   generatedAt: string;
   expiresAt: string;
+  normalizedDocument?: unknown | null;
+  canonicalHtml?: string | null;
+  normalizationVersion?: string | null;
 };
 
 type MemoryDurableBucket = Map<string, DurableDeliverableRow>;
@@ -61,6 +64,9 @@ export async function persistDurableDeliverable(
       generated_at: row.generatedAt,
       expires_at: row.expiresAt,
       created_at: row.generatedAt,
+      normalized_document: row.normalizedDocument ?? null,
+      canonical_html: row.canonicalHtml ?? null,
+      normalization_version: row.normalizationVersion ?? null,
     } as never);
     if (error) {
       console.error("[atlas_deliverable_files] upsert failed", error.message);

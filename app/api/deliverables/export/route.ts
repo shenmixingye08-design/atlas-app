@@ -1,5 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 
+import {
+  normalizeToStructuredDocument,
+  structuredDocumentToMarkdown,
+} from "@/lib/deliverables/document";
 import { buildAttachmentContentDisposition } from "@/lib/http/content-disposition";
 import { buildDeliverableBaseName } from "@/lib/deliverables/filename";
 import { getDeliverableGenerator } from "@/lib/deliverables/generators";
@@ -70,7 +74,11 @@ export async function POST(request: Request): Promise<Response> {
         );
 
   try {
-    const file = await generator.generate(content, baseFileName);
+    const normalized = normalizeToStructuredDocument(content, {
+      titleHint: baseFileName,
+    });
+    const canonicalSource = structuredDocumentToMarkdown(normalized.document);
+    const file = await generator.generate(canonicalSource, baseFileName);
     if (file.buffer.byteLength === 0) {
       return Response.json({ error: "Deliverable file is empty" }, { status: 500 });
     }
