@@ -32,6 +32,7 @@ export const ACCOUNT_WIPE_DOMAIN_KEYS = [
   "atlasCommanderRuns",
   "atlasExternalAuth",
   "atlasLineLink",
+  "atlasHouseholdLedger",
   "atlasAccountDeletion",
 ] as const;
 
