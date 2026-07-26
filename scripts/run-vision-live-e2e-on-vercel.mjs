@@ -20,12 +20,8 @@ const apiKey = process.env.OPENAI_API_KEY?.trim();
 const onVercel = process.env.VERCEL === "1";
 const outDir = path.join(process.cwd(), ".atlas-vision-live-e2e");
 const publicOut = path.join(process.cwd(), "public", "__atlas", "vision-live-e2e.json");
-// Temporary report channel so Cloud Agent can read Preview build results behind SSO.
-const REPORT_URL =
-  process.env.ATLAS_VISION_E2E_REPORT_URL?.trim() ||
-  (onVercel
-    ? "https://webhook.site/baeb7fe5-f0ad-46c4-9f04-d78c98a3adb8"
-    : "");
+// Optional report channel (e.g. webhook) when Preview SSO blocks artifact fetch.
+const REPORT_URL = process.env.ATLAS_VISION_E2E_REPORT_URL?.trim() || "";
 
 async function report(payload) {
   if (!REPORT_URL) return;
