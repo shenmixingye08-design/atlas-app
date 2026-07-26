@@ -18,10 +18,9 @@ export type SidebarNavGroup = {
 /** Primary sidebar destinations — always visible in the main list. */
 export const SIDEBAR_PRIMARY_NAV: SidebarNavItem[] = [
   { id: "projects", href: "/projects", label: ui.nav.home, icon: "🏠" },
-  // 「新しい依頼」は依頼作成画面へ。AIオーケストラ(/commander)は自動化・ワークフロー専用。
   { id: "workspace", href: "/workspace", label: ui.nav.newRequest, icon: "📝" },
   { id: "history", href: "/history", label: ui.nav.history, icon: "📋" },
-  { id: "automations", href: "/automations", label: ui.nav.automation, icon: "🤖" },
+  { id: "automations", href: "/automations", label: ui.nav.automation, icon: "↻" },
   { id: "settings", href: "/settings", label: ui.nav.settings, icon: "⚙️" },
 ];
 
@@ -33,13 +32,10 @@ export const SIDEBAR_CHANNEL_NAV: SidebarNavItem[] = [
   { id: "x-autopost", href: "/workspace/x", label: ui.nav.xAutopost, icon: "𝕏" },
 ];
 
-/** Secondary routes grouped under 「その他」. */
+/** Secondary routes grouped under 「その他」 — keep short; no analysis / memory consoles. */
 export const SIDEBAR_MORE_NAV: SidebarNavItem[] = [
-  { id: "work-memory", href: "/learned-jobs", label: ui.nav.workMemory, icon: "📚" },
-  { id: "learning", href: "/settings/learning", label: ui.nav.analysis, icon: "📊" },
   { id: "billing", href: "/settings/billing", label: ui.nav.billingCredits, icon: "💳" },
   { id: "contact", href: "/contact", label: ui.nav.contact, icon: "✉️" },
-  { id: "help", href: "/capabilities", label: ui.nav.help, icon: "❓" },
 ];
 
 /** Extensible 「その他」 section — channels first, then secondary routes. */

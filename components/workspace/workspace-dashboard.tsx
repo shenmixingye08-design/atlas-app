@@ -29,22 +29,10 @@ import { Button } from "@/components/ui/button";
 import { ui } from "@/lib/i18n";
 
 import { FinalOutput } from "./final-output";
-import { KnowledgeUsedPanel } from "./knowledge-used-panel";
-import { PrReviewPanel } from "./pr-review-panel";
-import { GrowthReviewPanel } from "./growth-review-panel";
-import { CompanyLearningPanel } from "./company-learning-panel";
-import { CompanyOperationsPanel } from "./company-operations-panel";
-import { ActionEnginePanel } from "./action-engine-panel";
-import { WorkflowInspectorPanel } from "./workflow-inspector-panel";
 import {
   WorkRequestForm,
   type WorkRequestSubmitPayload,
 } from "./work-request-form";
-import {
-  WorkMemoryCandidateBanner,
-  WorkMemoryUsedBanner,
-} from "./work-memory-used-banner";
-import { WorkTemplatePrompt } from "./work-template-prompt";
 import { WorkflowResults } from "./workflow-results";
 import {
   SalesMaterialWizard,
@@ -70,10 +58,10 @@ export function WorkspaceDashboard() {
   const [requestMetadata, setRequestMetadata] = useState<
     Readonly<Record<string, unknown>>
   >({});
-  const [workMemoryUsed, setWorkMemoryUsed] = useState<
+  const [, setWorkMemoryUsed] = useState<
     OrchestrationResult["workMemory"] | null
   >(null);
-  const [workMemoryCandidateCount, setWorkMemoryCandidateCount] = useState(0);
+  const [, setWorkMemoryCandidateCount] = useState(0);
   const [taughtWorkflowHint, setTaughtWorkflowHint] = useState(false);
   const [pendingCommander, setPendingCommander] =
     useState<CommanderRunResult | null>(null);
@@ -326,9 +314,9 @@ export function WorkspaceDashboard() {
     <div className="space-y-16">
       {showForm && taughtWorkflowHint && (
         <section className="animate-fade-up rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card)] px-5 py-4 shadow-[var(--shadow-sm)]">
-          <p className="text-xs font-medium tracking-wide text-accent">AI秘書</p>
+          <p className="text-xs font-medium tracking-wide text-accent">MINERVOT</p>
           <p className="mt-2 text-sm leading-relaxed text-foreground sm:text-base">
-            前回教えていただいた流れで進めます。
+            以前お伺いした進め方で、そのまま取りかかります。
           </p>
         </section>
       )}
@@ -343,15 +331,15 @@ export function WorkspaceDashboard() {
       )}
 
       {pendingCommander && !isLoading && (
-        <Card padding="lg" className="space-y-4 border-amber-400/30 bg-amber-500/10">
+        <Card padding="lg" className="space-y-4 border-accent/20 bg-accent/5">
           <h2 className="text-lg font-semibold text-foreground">
-            {ui.commander.statusAwaiting}
+            確認が必要です
           </h2>
           <p className="text-sm text-[var(--text-secondary)]">
-            {pendingCommander.report.summary}
+            このまま進めてよいか、ご確認ください。
           </p>
           {pendingCommander.confirmationReasons.length > 0 && (
-            <ul className="list-disc space-y-1 pl-5 text-sm text-amber-50/90">
+            <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--text-secondary)]">
               {pendingCommander.confirmationReasons.map((reason) => (
                 <li key={reason}>{reason}</li>
               ))}
@@ -359,14 +347,14 @@ export function WorkspaceDashboard() {
           )}
           <div className="flex flex-wrap gap-3">
             <Button type="button" onClick={() => void handleConfirmPending()}>
-              {ui.commander.confirmExecute}
+              このまま進める
             </Button>
             <Button
               type="button"
               variant="secondary"
               onClick={() => setPendingCommander(null)}
             >
-              {ui.commander.cancelRun}
+              やめる
             </Button>
           </div>
         </Card>
@@ -416,25 +404,16 @@ export function WorkspaceDashboard() {
       )}
 
       {result && !isLoading && (
-        <>
-          {workMemoryUsed && workMemoryUsed.used.length > 0 && (
-            <WorkMemoryUsedBanner used={workMemoryUsed.used} />
-          )}
-
-          {workMemoryCandidateCount > 0 && (
-            <WorkMemoryCandidateBanner count={workMemoryCandidateCount} />
-          )}
-
-          <WorkTemplatePrompt assignment={assignment} />
-
-          {salesMaterialConfig && !salesMaterialConfig.skipFileGeneration && (
-            <p className="text-sm text-[var(--foreground-muted)] animate-fade-in">
-              選択された形式で資料を作成しました。
-              {salesMaterialConfig.formats.includes("pptx") &&
-                !salesMaterialConfig.formats.includes("pdf") &&
-                " PDFも必要であれば形式を変更して再実行できます。"}
+        <section className="space-y-6 animate-fade-up">
+          <header className="space-y-2 text-center">
+            <p className="text-sm font-medium text-accent">MINERVOT</p>
+            <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+              すべて完了しました
+            </h2>
+            <p className="text-sm text-[var(--foreground-muted)] sm:text-base">
+              成果物をご確認ください。必要ならすぐ別の形式でもお渡しできます。
             </p>
-          )}
+          </header>
 
           <FinalOutput
             result={result}
@@ -445,26 +424,12 @@ export function WorkspaceDashboard() {
             expectedFormats={salesMaterialConfig?.formats}
           />
 
-          <KnowledgeUsedPanel knowledge={result.knowledge} />
-
-          <WorkflowResults
-            result={result}
-            loadingPhases={loadingPhases}
-            isLoading={false}
-            error={error}
-          />
-
-          <PrReviewPanel
-            result={result}
-            showGrowthReview={false}
-            showCompanyLearning={false}
-          />
-          <GrowthReviewPanel result={result} />
-          <CompanyLearningPanel result={result} />
-          <CompanyOperationsPanel result={result} />
-          <ActionEnginePanel result={result} />
-          <WorkflowInspectorPanel result={result} />
-        </>
+          <div className="flex justify-center pt-2">
+            <Button type="button" variant="secondary" onClick={handleReset}>
+              別のお願いをする
+            </Button>
+          </div>
+        </section>
       )}
     </div>
   );

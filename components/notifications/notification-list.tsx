@@ -35,11 +35,9 @@ import { Card } from "@/components/ui/card";
 
 const FILTERS: { id: NoticeFilter; label: string }[] = [
   { id: "all", label: ui.notifications.filterAll },
-  { id: "unread", label: ui.notifications.filterUnread },
+  { id: "error", label: ui.notifications.filterImportant ?? "重要" },
   { id: "needs_review", label: ui.notifications.filterNeedsReview },
   { id: "completed", label: ui.notifications.filterCompleted },
-  { id: "improvement", label: ui.notifications.filterImprovement },
-  { id: "error", label: ui.notifications.filterError },
 ];
 
 type NotificationListProps = {

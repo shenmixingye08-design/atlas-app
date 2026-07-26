@@ -44,25 +44,25 @@ export function toUserFacingError(
 
   if (/timed out|timeout/i.test(raw)) {
     return {
-      title: "処理がタイムアウトしました",
-      message: "AIチームの処理に時間がかかりすぎました。",
-      action: "依頼を短く分けて、もう一度実行してください。",
+      title: "もう少し時間がかかりそうです",
+      message: "自動で再試行しています。しばらくしてからもう一度お試しください。",
+      action: "内容を短くして送り直すと、より確実です。",
     };
   }
 
   if (/limit exceeded|workflow_limit|quota|rate limit|429/i.test(raw)) {
     return {
-      title: "利用上限に達しました",
-      message: "この依頼は処理上限に達したため、安全のため停止しました。",
-      action: "しばらく待ってから再実行するか、依頼内容を短くしてください。",
+      title: "少し休憩が必要です",
+      message: "安全のため、いったん作業を止めました。",
+      action: "しばらくしてから、もう一度お試しください。",
     };
   }
 
   if (/OPENAI_API_KEY|AI service is not configured/i.test(raw)) {
     return {
-      title: "AIサービス未設定",
-      message: "AIサービスが設定されていないため、処理を開始できません。",
-      action: "管理者に OPENAI_API_KEY の設定を依頼してください。",
+      title: "確認が必要です",
+      message: "ただいま準備の整っていない状態です。自動で復旧を試しています。",
+      action: "しばらくしてからもう一度お試しください。",
     };
   }
 
