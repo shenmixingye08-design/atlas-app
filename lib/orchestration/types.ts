@@ -205,6 +205,11 @@ export type OrchestrationResult = {
    * notification's deep link. Not part of the AI pipeline output.
    */
   commanderRunId?: string | null;
+  /**
+   * Secretary Intelligence Core plan (owner/internal).
+   * Never render internal structure to end users — use userFacing only.
+   */
+  secretaryIntelligence?: import("@/lib/secretary-intelligence").SecretaryIntelligencePlan;
 };
 
 /** Cache and knowledge isolation diagnostics for Workflow Inspector. */

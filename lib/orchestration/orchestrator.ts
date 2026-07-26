@@ -65,6 +65,11 @@ import {
 } from "./pipeline-diagnostics";
 import { readAtlasMemoryFromMetadata } from "@/lib/user-memory/metadata";
 import { readWorkMemoryFromMetadata } from "@/lib/work-memory/metadata";
+import {
+  analyzeSecretaryWork,
+  recordSecretaryIntelligence,
+  type SecretaryIntelligencePlan,
+} from "@/lib/secretary-intelligence";
 import { retrieveExecutiveMemory } from "./knowledge-stage";
 import { parseUnifiedPlannerOutput } from "./parse-unified-planner";
 import { parseTasksFromPlannerOutput } from "./parse-tasks";
@@ -214,6 +219,7 @@ function buildSuccessResult(
   costDebug?: OrchestrationResult["costDebug"],
   pipelineDebug?: OrchestrationResult["pipelineDebug"],
   isolationDebug?: WorkflowIsolationDebug,
+  secretaryIntelligence?: SecretaryIntelligencePlan,
 ): OrchestrationResult {
   const sortedExecutions = [...qualityOutput.executions].sort(
     (a, b) => a.task.id - b.task.id,
@@ -286,6 +292,9 @@ function buildSuccessResult(
     ...(costDebug ? { costDebug } : {}),
     ...(pipelineDebug ? { pipelineDebug } : {}),
     ...(isolationDebug ? { isolationDebug } : {}),
+    ...(secretaryIntelligence
+      ? { secretaryIntelligence }
+      : {}),
   };
 }
 
@@ -444,7 +453,7 @@ export async function orchestrate(
       "依頼内容が長すぎます。8,000文字以内に分割して再試行してください。",
     );
   }
-  const metadata = request.metadata;
+  let metadata = request.metadata;
   const warnings: string[] = [];
   const costMeter = createWorkflowCostMeter();
 
@@ -459,6 +468,7 @@ export async function orchestrate(
   let currentTaskId: number | undefined;
   let workflowStateManager: WorkflowStateManager | null = null;
   let isolationDebug: WorkflowIsolationDebug | undefined;
+  let secretaryPlan: SecretaryIntelligencePlan | undefined;
 
   const trackStep = (step: OrchestrationStep, taskId?: number) => {
     currentStep = step;
@@ -492,6 +502,94 @@ export async function orchestrate(
     const deliverableType = classifyDeliverableType(assignment);
     const retrieval = await retrieveExecutiveMemory(assignment, workflowId, deliverableType);
     knowledgeUsed = { workflowId, retrieval };
+
+    // Secretary Intelligence Core (rules only, 0 extra LLM) — before research/planner/QE
+    secretaryPlan = analyzeSecretaryWork({
+      assignment,
+      metadata,
+      hasBusinessProfile: Boolean(
+        metadata?.businessProfileSummary ||
+          metadata?.businessProfile ||
+          metadata?.companyProfile,
+      ),
+      hasReference:
+        (Array.isArray(metadata?.attachments) &&
+          metadata.attachments.length > 0) ||
+        Boolean(metadata?.referenceSpecified),
+      hasTemplate: Boolean(
+        resolveCompanyTemplateIdFromMetadata(metadata) ||
+          metadata?.templateHints,
+      ),
+      hasKnowledge: Boolean(
+        retrieval.plannerContext.similarProjects ||
+          retrieval.workerContext ||
+          retrieval.plannerContext.successfulStrategies,
+      ),
+      knownFacts: [
+        retrieval.plannerContext.similarProjects,
+        retrieval.plannerContext.successfulStrategies,
+        typeof metadata?.businessProfileSummary === "string"
+          ? metadata.businessProfileSummary
+          : "",
+      ].filter(Boolean),
+    });
+    recordSecretaryIntelligence({
+      userId: typeof metadata?.userId === "string" ? metadata.userId : null,
+      assignmentHint: assignment.slice(0, 120),
+      plan: secretaryPlan,
+    });
+    metadata = {
+      ...(metadata ?? {}),
+      secretaryIntelligence: secretaryPlan,
+      secretaryUserFacing: secretaryPlan.userFacing,
+      skipWebResearch: !secretaryPlan.executionPlan.useWebResearch,
+      forceWebResearch: secretaryPlan.executionPlan.useWebResearch,
+    };
+
+    if (secretaryPlan.pauseForQuestions && secretaryPlan.questions.length > 0) {
+      trackStep("ceo");
+      ceo = buildDeterministicCeoPhase(assignment, retrieval, deliverableType);
+      // Walk legal transitions to QA without LLM stages.
+      trackStep("planner_plan");
+      trackStep("worker");
+      trackStep("reviewer");
+      trackStep("quality_assurance");
+      const questionBody = [
+        secretaryPlan.userFacing.detail,
+        "",
+        ...secretaryPlan.questions.map((q, i) => `${i + 1}. ${q.prompt}`),
+      ].join("\n");
+      const clarifyDeliverable = {
+        ...emptyDeliverable(deliverableType),
+        title: secretaryPlan.userFacing.headline,
+        content: questionBody,
+        markdown: `# ${secretaryPlan.userFacing.headline}\n\n${questionBody}`,
+        summary: secretaryPlan.userFacing.detail,
+      };
+      workflowStateManager.finalize({
+        hasDeliverable: true,
+        approved: false,
+      });
+      warnings.push("秘書判断: 不足情報の確認が必要（Writer未実行・追加LLMなし）");
+      return {
+        assignment,
+        status: legacyOrchestrationStatus(workflowStateManager.getState()),
+        workflow: workflowStateManager.getSnapshot(),
+        ceo,
+        plannerPlan: null,
+        plannerTasks: null,
+        tasks: [],
+        executions: [],
+        deliverable: clarifyDeliverable,
+        reviewComments: "",
+        approved: false,
+        finalResponse: questionBody,
+        totalDurationMs: Date.now() - pipelineStart,
+        warnings,
+        ...(knowledgeUsed ? { knowledge: knowledgeUsed } : {}),
+        secretaryIntelligence: secretaryPlan,
+      };
+    }
 
     const cacheKeyInput = {
       assignment,
@@ -861,6 +959,7 @@ export async function orchestrate(
       costDebug,
       undefined,
       attachDebugMetrics ? isolationDebug : undefined,
+      secretaryPlan,
     );
 
     if (attachDebugMetrics) {

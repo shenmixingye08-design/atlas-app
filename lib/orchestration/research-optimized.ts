@@ -103,7 +103,25 @@ export async function runOptimizedResearchStage(
     params;
 
   trackStep("research_assessment");
-  const assessment = assessResearchNeedRules(assignment, cacheKeyInput.deliverableType);
+  // Secretary Intelligence can force skip/require without extra LLM.
+  const secretarySkip = params.metadata?.skipWebResearch === true;
+  const secretaryForce = params.metadata?.forceWebResearch === true;
+  let assessment = assessResearchNeedRules(assignment, cacheKeyInput.deliverableType);
+  if (secretarySkip && !secretaryForce) {
+    assessment = {
+      required: false,
+      categories: [],
+      rationale:
+        "Secretary Intelligence: Web research not needed for this request.",
+    };
+  } else if (secretaryForce && !assessment.required) {
+    assessment = {
+      required: true,
+      categories: ["web_research"],
+      rationale:
+        "Secretary Intelligence: Web research recommended for this request.",
+    };
+  }
   const assessmentPhase = buildSyntheticAssessmentPhase(assessment);
 
   if (!assessment.required) {
