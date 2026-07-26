@@ -8,6 +8,7 @@ export type {
   QualityReviewerResult,
   QualityEngineStageTiming,
   KnowledgeUsageTelemetry,
+  SmartContextTelemetrySnapshot,
   QualityEngineTelemetry,
   QualityEngineRunResult,
   QualityKindStats,
@@ -75,6 +76,7 @@ export {
 
 export {
   KNOWLEDGE_MERGE_PRIORITY,
+  collectKnowledgeCandidates,
   mergeKnowledgeForWriter,
   formatMergedKnowledgeForPrompt,
   listRegistryKnowledge,
@@ -83,3 +85,15 @@ export {
   type KnowledgeLayerId,
   type KnowledgeEntry,
 } from "./knowledge";
+
+export {
+  selectSmartContext,
+  getContextTokenBudget,
+  CONTEXT_TOKEN_BUDGETS,
+  invalidateSmartContextCache,
+  resetSmartContextCacheForTests,
+  isInformationGapFeedback,
+  pickRefillCandidateIds,
+  type SmartContextTelemetry,
+  type SmartContextSelectionResult,
+} from "./context";

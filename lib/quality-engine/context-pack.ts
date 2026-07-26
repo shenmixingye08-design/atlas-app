@@ -2,8 +2,14 @@ import { resolveCompanyTemplateIdFromMetadata } from "@/lib/company-templates/co
 import type { KnowledgeRetrievalResult } from "@/lib/knowledge/types";
 
 import {
+  buildSmartContextTelemetry,
+  selectSmartContext,
+  toMergedKnowledgePack,
+  type SmartContextTelemetry,
+} from "./context";
+import {
+  collectKnowledgeCandidates,
   formatMergedKnowledgeForPrompt,
-  mergeKnowledgeForWriter,
   type KnowledgeUsage,
   type MergedKnowledgePack,
 } from "./knowledge";
@@ -25,10 +31,12 @@ export type QualityContextPack = {
   reference: ReferenceInsights;
   /** Deliverable kind used to select registry knowledge. */
   promptKind: QualityPromptKind;
-  /** Knowledge Engine merged pack for Writer. */
+  /** Knowledge Engine merged pack for Writer (Smart Context selected). */
   knowledgePack: MergedKnowledgePack;
   /** Owner/telemetry usage flags. */
   knowledgeUsage: KnowledgeUsage;
+  /** Smart Context Engine selection telemetry (owner-only). */
+  smartContext: SmartContextTelemetry;
 };
 
 function asTrimmedString(value: unknown, max = 1_200): string {
@@ -51,9 +59,24 @@ function readNestedString(
   return "";
 }
 
+function readScopeIds(meta: Record<string, unknown>): {
+  userId: string;
+  organizationId: string | null;
+} {
+  const userId =
+    (typeof meta.userId === "string" && meta.userId) ||
+    (typeof meta.progressUserId === "string" && meta.progressUserId) ||
+    "";
+  const organizationId =
+    (typeof meta.organizationId === "string" && meta.organizationId) ||
+    (typeof meta.orgId === "string" && meta.orgId) ||
+    null;
+  return { userId, organizationId };
+}
+
 /**
- * Assemble Writer Context Pack via Knowledge Engine (no LLM).
- * Merges Business Profile → Reference → 会社 → 業界 → 成果物 → Template …
+ * Assemble Writer Context Pack via Knowledge Engine + Smart Context (no LLM).
+ * Collects candidates, then selects/compresses within token budget.
  */
 export function buildQualityContextPack(input: {
   assignment?: string;
@@ -61,6 +84,9 @@ export function buildQualityContextPack(input: {
   metadata?: Readonly<Record<string, unknown>> | null;
   knowledge?: KnowledgeRetrievalResult | null;
   promptKind?: QualityPromptKind;
+  /** Force-include knowledge ids (info-gap refill). */
+  forceIncludeIds?: readonly string[];
+  bypassCache?: boolean;
 }): QualityContextPack {
   const meta = (input.metadata ?? {}) as Record<string, unknown>;
   const knowledge = input.knowledge ?? null;
@@ -115,8 +141,10 @@ export function buildQualityContextPack(input: {
     readNestedString(meta, ["templateHints", "deliverableTemplate"]) ||
     asTrimmedString(knowledge?.plannerContext.preferredFormats, 600);
 
-  const knowledgePack = mergeKnowledgeForWriter({
+  const assignment = input.assignment ?? "";
+  const candidates = collectKnowledgeCandidates({
     promptKind,
+    assignment,
     metadata: meta,
     knowledge,
     reference,
@@ -126,6 +154,39 @@ export function buildQualityContextPack(input: {
     pastDeliverableHints,
     templateId,
     templateHints,
+  });
+
+  const { userId, organizationId } = readScopeIds(meta);
+  const language =
+    typeof meta.locale === "string"
+      ? meta.locale
+      : typeof meta.language === "string"
+        ? meta.language
+        : "ja";
+
+  const selection = selectSmartContext({
+    candidates,
+    promptKind,
+    assignment,
+    userId,
+    organizationId,
+    language,
+    forceIncludeIds: input.forceIncludeIds,
+    bypassCache: input.bypassCache || Boolean(input.forceIncludeIds?.length),
+  });
+
+  const knowledgePack = toMergedKnowledgePack(selection, {
+    businessProfile: Boolean(businessProfileSummary.trim()),
+    reference: reference.hasReferences,
+    template: Boolean(templateHints.trim() || templateId),
+    vision: Boolean(visionSummary.trim()),
+    pastDeliverables: Boolean(pastDeliverableHints.trim()),
+    userSettings: Boolean(userSettingsSummary.trim()),
+  });
+
+  const smartContext = buildSmartContextTelemetry({
+    stats: selection.stats,
+    scored: selection.scored,
   });
 
   return {
@@ -139,12 +200,17 @@ export function buildQualityContextPack(input: {
     promptKind,
     knowledgePack,
     knowledgeUsage: knowledgePack.usage,
+    smartContext,
   };
 }
 
 /** Compact block injected into Writer / Reviewer contexts. */
 export function formatContextPackForPrompt(pack: QualityContextPack): string {
-  const merged = formatMergedKnowledgeForPrompt(pack.knowledgePack, 4_500);
+  const maxChars = Math.max(
+    2_000,
+    Math.min(48_000, (pack.smartContext?.budgetTokens ?? 6_000) * 4),
+  );
+  const merged = formatMergedKnowledgeForPrompt(pack.knowledgePack, maxChars);
   if (merged) return merged;
 
   // Fallback if merge produced empty (should be rare — registry always has rules).
@@ -165,5 +231,5 @@ export function formatContextPackForPrompt(pack: QualityContextPack): string {
     pack.reference.summary ? pack.reference.summary : "",
   ].filter(Boolean);
 
-  return lines.join("\n\n").slice(0, 4_000);
+  return lines.join("\n\n").slice(0, maxChars);
 }

@@ -341,8 +341,9 @@ describe("judge / reviewer / formatter", () => {
 });
 
 describe("knowledge engine", () => {
-  it("keeps merge priority Business Profile → Reference → company → … → template", () => {
-    expect(KNOWLEDGE_MERGE_PRIORITY.slice(0, 6)).toEqual([
+  it("keeps merge priority user instruction → Business Profile → Reference → …", () => {
+    expect(KNOWLEDGE_MERGE_PRIORITY.slice(0, 7)).toEqual([
+      "user_instruction",
       "business_profile",
       "reference",
       "company",
@@ -380,7 +381,12 @@ describe("knowledge engine", () => {
     expect(pack.knowledgeUsage.template).toBe(true);
     expect(pack.knowledgeUsage.knowledge).toBe(true);
     expect(pack.knowledgeUsage.contextChars).toBeGreaterThan(100);
-    expect(pack.knowledgeUsage.layersUsed[0]).toBe("business_profile");
+    expect(pack.knowledgeUsage.layersUsed).toContain("business_profile");
+    expect(pack.smartContext.extraLlmCalls).toBe(0);
+    expect(pack.smartContext.selectedCount).toBeGreaterThan(0);
+    expect(pack.smartContext.selectedCount).toBeLessThanOrEqual(
+      pack.smartContext.candidateCount,
+    );
 
     const prompt = formatContextPackForPrompt(pack);
     expect(prompt).toContain("Knowledge Engine Context Pack");

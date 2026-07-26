@@ -193,10 +193,13 @@ export function runRulesQualityJudge(input: {
     missingSections.length
       ? `不足セクション: ${missingSections.join(", ")}`
       : "主要セクションは揃っています。",
+    criteria.information < 70
+      ? "情報不足: 必要な事実・条件・Contextが不足している可能性があります。"
+      : "",
     overallScore >= QUALITY_JUDGE_PASS_SCORE
       ? `${specialist.judgeFocus}の観点で専門家水準に近い完成度です。`
       : `${specialist.judgeFocus}を中心に改善してください。`,
-  ];
+  ].filter(Boolean);
 
   return {
     overallScore,
