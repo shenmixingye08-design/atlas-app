@@ -4,19 +4,23 @@ import type { QualityCriterionScores } from "@/lib/orchestration/parse-quality";
 /** How aggressively the Quality Engine runs AI polish. */
 export type QualityEngineTier = "fast" | "enhanced" | "full";
 
-/** Prompt family aligned to user-facing deliverable kinds. */
+/** Prompt family / specialist AI kind. */
 export type QualityPromptKind =
   | "sales_material"
-  | "contract"
-  | "invoice"
-  | "report"
   | "proposal"
+  | "planning"
+  | "contract"
+  | "estimate"
+  | "invoice"
+  | "word"
+  | "excel"
+  | "pdf"
   | "blog"
   | "sns"
-  | "excel"
-  | "word"
-  | "pdf"
   | "receipt"
+  | "minutes"
+  | "email"
+  | "report"
   | "generic";
 
 /** Writer brief assembled from Planner output + profile/context (Planner does not write prose). */
@@ -34,6 +38,8 @@ export type WriterBrief = {
   userSettingsSummary: string;
   templateId: string | null;
   pastDeliverableHints: string;
+  /** Reference Engine insights (never verbatim copy). */
+  referenceSummary: string;
 };
 
 export type QualitySectionDef = {
@@ -43,7 +49,7 @@ export type QualitySectionDef = {
   guidance: string;
 };
 
-/** Judge criteria (0–100 each) — user-facing quality dimensions. */
+/** Judge criteria (0–100 each) — shared dimensions, weighted per specialist. */
 export type QualityJudgeCriteria = {
   completeness: number;
   readability: number;
@@ -60,6 +66,8 @@ export type QualityJudgeResult = {
   criteria: QualityJudgeCriteria;
   /** Mapped into legacy QualityCriterionScores for existing UI/history. */
   legacyCriteria: QualityCriterionScores;
+  /** Specialist focus label e.g. 営業力 / SEO (owner/internal). */
+  focus: string;
   passed: boolean;
   feedback: string;
   weakSections: readonly string[];
@@ -73,6 +81,8 @@ export type QualityReviewerResult = {
   feedback: string;
   durationMs: number;
   usedLlm: boolean;
+  /** Specialist reviewer id (owner/internal). */
+  specialistLabel: string;
 };
 
 export type QualityEngineStageTiming = {
@@ -88,8 +98,12 @@ export type QualityEngineStageTiming = {
 export type QualityEngineTelemetry = {
   tier: QualityEngineTier;
   promptKind: QualityPromptKind;
+  specialistLabel: string;
   improveCount: number;
+  /** How many Reviewer passes ran (rules and/or LLM). */
+  reviewerCount: number;
   finalScore: number | null;
+  judgeFocus: string;
   passed: boolean;
   timings: QualityEngineStageTiming;
   reviewerUsedLlm: boolean;
@@ -105,4 +119,14 @@ export type QualityEngineRunResult = {
   /** Markdown/content after deterministic Formatter. */
   formattedMarkdown: string;
   formattedContent: string;
+};
+
+/** Owner analytics row per deliverable kind. */
+export type QualityKindStats = {
+  promptKind: QualityPromptKind;
+  specialistLabel: string;
+  sampleCount: number;
+  avgScore: number | null;
+  avgImproveCount: number;
+  avgReviewerCount: number;
 };

@@ -2,6 +2,7 @@ import type { Deliverable } from "@/lib/orchestration/deliverable-types";
 import type { QualityCriterionScores } from "@/lib/orchestration/parse-quality";
 
 import { QUALITY_JUDGE_PASS_SCORE } from "./policy";
+import { getSpecialistProfile } from "./specialists";
 import type {
   QualityJudgeCriteria,
   QualityJudgeResult,
@@ -16,6 +17,20 @@ function clamp(n: number): number {
 function average(values: number[]): number {
   if (values.length === 0) return 0;
   return clamp(values.reduce((a, b) => a + b, 0) / values.length);
+}
+
+function weightedAverage(
+  criteria: QualityJudgeCriteria,
+  weights: Readonly<Partial<Record<keyof QualityJudgeCriteria, number>>>,
+): number {
+  let sum = 0;
+  let weightSum = 0;
+  (Object.keys(criteria) as (keyof QualityJudgeCriteria)[]).forEach((key) => {
+    const w = weights[key] ?? 1;
+    sum += criteria[key] * w;
+    weightSum += w;
+  });
+  return weightSum === 0 ? 0 : clamp(sum / weightSum);
 }
 
 function headingCount(markdown: string): number {
@@ -46,7 +61,76 @@ function extractJson(output: string): Record<string, unknown> | null {
   }
 }
 
-/** Deterministic Quality Judge — no LLM. Used for all tiers; LLM may refine on full. */
+function applySpecialistBoosts(
+  kind: QualityPromptKind,
+  body: string,
+  md: string,
+  base: QualityJudgeCriteria,
+): QualityJudgeCriteria {
+  const next = { ...base };
+  switch (kind) {
+    case "sales_material":
+      if (/CTA|お問い合わせ|ご相談|次のステップ|ご連絡/i.test(body)) {
+        next.persuasiveness = clamp(next.persuasiveness + 8);
+      }
+      if (/課題|解決|メリット/.test(body)) {
+        next.structure = clamp(next.structure + 6);
+      }
+      break;
+    case "blog":
+      if (body.length > 200 && headingCount(md) >= 3) {
+        next.readability = clamp(next.readability + 6);
+        next.structure = clamp(next.structure + 6);
+      }
+      break;
+    case "contract":
+      if (/第\s*\d+\s*条|第[一二三四五六七八九十]+条/.test(body)) {
+        next.structure = clamp(next.structure + 10);
+        next.expertise = clamp(next.expertise + 6);
+      }
+      break;
+    case "excel":
+      if (/列|数式|=SUM|テーブル/i.test(body)) {
+        next.structure = clamp(next.structure + 10);
+        next.information = clamp(next.information + 8);
+      }
+      break;
+    case "word":
+      if (headingCount(md) >= 3 && (/^\s*[-*]\s/m.test(md) || /\|/.test(md))) {
+        next.design = clamp(next.design + 8);
+        next.structure = clamp(next.structure + 6);
+      }
+      break;
+    case "pdf":
+      if (/表紙|まとめ|印刷/.test(body) || headingCount(md) >= 2) {
+        next.design = clamp(next.design + 8);
+      }
+      break;
+    case "email":
+      if (/件名|いつもお世話|よろしく/.test(body) && body.length < 1_200) {
+        next.naturalness = clamp(next.naturalness + 8);
+        next.readability = clamp(next.readability + 6);
+      }
+      break;
+    case "minutes":
+      if (/決定|宿題|アクション|担当/.test(body)) {
+        next.completeness = clamp(next.completeness + 8);
+      }
+      break;
+    case "estimate":
+    case "invoice":
+      if (/合計|明細|税/.test(body)) {
+        next.completeness = clamp(next.completeness + 8);
+        next.information = clamp(next.information + 6);
+      }
+      break;
+    default:
+      break;
+  }
+  return next;
+}
+
+/** Deterministic Quality Judge — specialist-weighted. */
 export function runRulesQualityJudge(input: {
   deliverable: Deliverable;
   kind: QualityPromptKind;
@@ -55,6 +139,7 @@ export function runRulesQualityJudge(input: {
   hasVision?: boolean;
 }): QualityJudgeResult {
   const started = Date.now();
+  const specialist = getSpecialistProfile(input.kind);
   const body = (input.deliverable.content || input.deliverable.markdown).trim();
   const md = input.deliverable.markdown.trim() || body;
   const titles = input.requiredSectionTitles ?? [];
@@ -81,7 +166,7 @@ export function runRulesQualityJudge(input: {
   const persuasivenessScore =
     input.kind === "sns" || input.kind === "blog"
       ? readabilityScore
-      : /提案|メリット|効果|結論|おすすめ/.test(body)
+      : /提案|メリット|効果|結論|おすすめ|CTA/.test(body)
         ? 84
         : 68;
   const completenessScore =
@@ -89,11 +174,7 @@ export function runRulesQualityJudge(input: {
       ? clamp(lengthScore + (input.deliverable.title.trim() ? 5 : -15))
       : clamp(55 - missingSections.length * 8);
 
-  if (input.hasVision && /矛盾|不一致/.test(body)) {
-    // light penalty only — Vision contradiction wording in body is rare
-  }
-
-  const criteria: QualityJudgeCriteria = {
+  let criteria: QualityJudgeCriteria = {
     completeness: clamp(completenessScore),
     readability: clamp(readabilityScore),
     persuasiveness: clamp(persuasivenessScore),
@@ -103,22 +184,25 @@ export function runRulesQualityJudge(input: {
     structure: clamp(structureScore),
     information: clamp(informationScore),
   };
+  criteria = applySpecialistBoosts(input.kind, body, md, criteria);
 
-  const overallScore = average(Object.values(criteria));
+  const overallScore = weightedAverage(criteria, specialist.judgeWeights);
   const feedbackParts = [
+    `${specialist.label} / 評価観点: ${specialist.judgeFocus}`,
     `品質スコア: ${overallScore}/100`,
     missingSections.length
       ? `不足セクション: ${missingSections.join(", ")}`
       : "主要セクションは揃っています。",
     overallScore >= QUALITY_JUDGE_PASS_SCORE
-      ? "専門家水準に近い完成度です。"
-      : "読みやすさ・構成・情報量を中心に改善してください。",
+      ? `${specialist.judgeFocus}の観点で専門家水準に近い完成度です。`
+      : `${specialist.judgeFocus}を中心に改善してください。`,
   ];
 
   return {
     overallScore,
     criteria,
     legacyCriteria: toLegacyCriteria(criteria),
+    focus: specialist.judgeFocus,
     passed: overallScore >= QUALITY_JUDGE_PASS_SCORE && missingSections.length <= 1,
     feedback: feedbackParts.join("\n"),
     weakSections: missingSections.slice(0, 5),
@@ -130,11 +214,18 @@ export function runRulesQualityJudge(input: {
 export function parseLlmQualityJudge(
   output: string,
   fallback: QualityJudgeResult,
+  kind?: QualityPromptKind,
 ): QualityJudgeResult {
   const started = Date.now();
   const parsed = extractJson(output);
+  const specialist = getSpecialistProfile(kind ?? "generic");
   if (!parsed) {
-    return { ...fallback, source: "hybrid", durationMs: fallback.durationMs + (Date.now() - started) };
+    return {
+      ...fallback,
+      focus: specialist.judgeFocus,
+      source: "hybrid",
+      durationMs: fallback.durationMs + (Date.now() - started),
+    };
   }
 
   const rawCriteria = (parsed.criteria ?? {}) as Record<string, unknown>;
@@ -151,7 +242,9 @@ export function parseLlmQualityJudge(
     information: clamp(Number(rawCriteria.information ?? fallback.criteria.information)),
   };
   const overallScore = clamp(
-    Number(parsed.overallScore ?? average(Object.values(criteria))),
+    Number(
+      parsed.overallScore ?? weightedAverage(criteria, specialist.judgeWeights),
+    ),
   );
   const weakSections = Array.isArray(parsed.weakSections)
     ? parsed.weakSections.map(String).slice(0, 8)
@@ -161,6 +254,7 @@ export function parseLlmQualityJudge(
     overallScore,
     criteria,
     legacyCriteria: toLegacyCriteria(criteria),
+    focus: specialist.judgeFocus,
     passed: overallScore >= QUALITY_JUDGE_PASS_SCORE,
     feedback:
       typeof parsed.feedback === "string" && parsed.feedback.trim()
