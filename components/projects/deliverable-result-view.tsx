@@ -68,7 +68,6 @@ export function DeliverableResultView({ project }: DeliverableResultViewProps) {
           />
           <WorkflowResults
             result={project.result}
-            loadingPhases={[]}
             isLoading={false}
             error={project.error ?? null}
           />

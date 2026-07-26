@@ -37,6 +37,10 @@ import { buildSlimPlannerContext, buildSlimWorkerContext } from "./slim-context"
 import { OrchestrationTimeoutError, withStepTimeout } from "./timeout";
 import { assignWorkersToTasks } from "./worker-assignment";
 import {
+  orchestrationStepToUserIndex,
+  reportProgressFromMetadata,
+} from "@/lib/workspace/user-progress";
+import {
   assertWorkerStageExecuted,
   assertWorkersProducedDeliverables,
 } from "./worker-validation";
@@ -180,6 +184,11 @@ export async function orchestrateCore(
   const trackStep = (step: OrchestrationStep) => {
     currentStep = step;
     workflowStateManager?.transitionForStep(step);
+    reportProgressFromMetadata(
+      metadata,
+      step,
+      orchestrationStepToUserIndex(step),
+    );
   };
 
   try {
