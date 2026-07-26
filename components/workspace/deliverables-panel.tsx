@@ -29,6 +29,7 @@ function DeliverableDownloadButton({ item }: { item: Deliverable }) {
         url: item.downloadUrl,
         fileName: item.fileName,
         mimeType: item.mimeType,
+        format: item.format,
       });
     } catch (error) {
       setDownloadError(
