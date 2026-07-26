@@ -91,15 +91,15 @@ describe("deliverable generators", () => {
     expect(file.buffer.length).toBeGreaterThan(2000);
   });
 
-  it("generates a valid Japanese PDF without Helvetica", async () => {
+  it("generates a valid Japanese PDF with CJK body (Latin may use Helvetica)", async () => {
     const markdown = getDeliverableExportText(ATLAS_DOCUMENT);
     const file = await new PdfDeliverableGenerator().generate(markdown, "ATLAS紹介文");
     expect(file.fileName).toBe("ATLAS紹介文.pdf");
     const pdfText = file.buffer.toString("latin1");
     expect(pdfText.startsWith("%PDF")).toBe(true);
     expect(pdfText.includes("%%EOF")).toBe(true);
-    expect(file.buffer.length).toBeGreaterThan(3000);
-    expect(pdfText).not.toContain("Helvetica");
+    // Full CJK font embed makes the file large; blank/tofu PDFs were tiny.
+    expect(file.buffer.length).toBeGreaterThan(50_000);
   });
 
   it("still generates Word/PDF alongside Excel for table markdown", async () => {

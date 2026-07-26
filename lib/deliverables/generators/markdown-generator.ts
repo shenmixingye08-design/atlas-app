@@ -1,8 +1,12 @@
-import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
+import {
+  normalizeToStructuredDocument,
+  structuredDocumentToMarkdown,
+} from "../document/normalize"
+import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types"
 
-import { createDeliverableFile } from "./shared";
+import { createDeliverableFile } from "./shared"
 
-/** Markdown deliverable — UTF-8 export text saved as-is. */
+/** Markdown export from the same Structured Document pipeline. */
 export class MarkdownDeliverableGenerator implements DeliverableGenerator {
   readonly format = "md" as const;
 
@@ -10,7 +14,15 @@ export class MarkdownDeliverableGenerator implements DeliverableGenerator {
     content: string,
     baseFileName: string,
   ): Promise<GeneratedDeliverableFile> {
-    const body = content.trimEnd() ? `${content.trimEnd()}\n` : "";
-    return createDeliverableFile("md", baseFileName, Buffer.from(body, "utf-8"), false);
+    const normalized = normalizeToStructuredDocument(content, {
+      titleHint: baseFileName,
+    });
+    const markdown = structuredDocumentToMarkdown(normalized.document);
+    return createDeliverableFile(
+      "md",
+      baseFileName,
+      Buffer.from(markdown, "utf8"),
+      false,
+    );
   }
 }

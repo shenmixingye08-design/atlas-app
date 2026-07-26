@@ -2,12 +2,16 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { StructuredDocumentView } from "@/components/results/structured-document-view";
 import { triggerBlobDownload } from "@/lib/browser/trigger-blob-download";
 import {
   assignmentIsImageToExcel,
   assignmentRequestsExcel,
 } from "@/lib/deliverables/excel-data";
-import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
+import {
+  downloadDeliverableFile,
+  exportDeliverableFile,
+} from "@/lib/deliverables/download-client";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
@@ -91,17 +95,21 @@ function FormatDownloadButton({
   format,
   deliverables,
   isGeneratingDeliverables,
+  fallbackContent,
 }: {
   format: GeneratedFile["format"];
   deliverables: readonly GeneratedFile[];
   isGeneratingDeliverables: boolean;
+  /** Source text so Word/PDF can regenerate if stored id is missing on another instance. */
+  fallbackContent: string;
 }) {
   const file = findGeneratedFile(deliverables, format);
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const shortLabel = formatDownloadLabel(format);
+  const canExportOnDemand = fallbackContent.trim().length > 0;
 
-  if (!file) {
+  if (!file && !canExportOnDemand) {
     return (
       <Button variant="secondary" size="sm" disabled={isGeneratingDeliverables}>
         {shortLabel}
@@ -113,11 +121,20 @@ function FormatDownloadButton({
     setError(null);
     setIsDownloading(true);
     try {
-      await downloadDeliverableFile({
-        url: file.downloadUrl,
-        fileName: file.fileName,
-        mimeType: file.mimeType,
-      });
+      if (file) {
+        await downloadDeliverableFile({
+          url: file.downloadUrl,
+          fileName: file.fileName,
+          mimeType: file.mimeType,
+          format,
+          fallbackContent,
+        });
+      } else {
+        await exportDeliverableFile({
+          format,
+          content: fallbackContent,
+        });
+      }
     } catch (downloadError) {
       setError(
         downloadError instanceof Error
@@ -134,7 +151,9 @@ function FormatDownloadButton({
       <Button
         variant="secondary"
         size="sm"
-        disabled={isGeneratingDeliverables || isDownloading}
+        disabled={
+          (isGeneratingDeliverables && !canExportOnDemand) || isDownloading
+        }
         onClick={() => void handleDownload()}
       >
         {isDownloading ? ui.work.downloadingFile : shortLabel}
@@ -175,11 +194,8 @@ function BodyBlock({ text }: { text: string }) {
   const safeText = sanitizeBodyTextForDisplay(text);
   if (!safeText || isDeliverableJsonText(safeText)) return null;
 
-  return (
-    <div className="whitespace-pre-wrap font-sans text-base leading-relaxed text-foreground">
-      {safeText}
-    </div>
-  );
+  // Structured render — never show raw JSON / literal \\n blobs.
+  return <StructuredDocumentView source={safeText} variant="body" />;
 }
 
 function CollapsibleSection({
@@ -299,23 +315,23 @@ function StructuredDocumentPreview({
 }) {
   const normalized = normalizeDeliverableForDisplay(deliverable);
   const body = getDocumentBody(normalized);
+  const source = [
+    normalized.title ? `# ${normalized.title}` : "",
+    normalized.summary ? `## 概要\n\n${normalized.summary}` : "",
+    body,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
         <TypeBadge type={normalized.type} />
       </div>
-      {normalized.title && <DocumentHeading>{normalized.title}</DocumentHeading>}
-      {normalized.summary && (
-        <DocumentSection title="概要">
-          <BodyBlock text={normalized.summary} />
-        </DocumentSection>
-      )}
-      {body && (
-        <DocumentSection title="本文">
-          <BodyBlock text={body} />
-        </DocumentSection>
-      )}
+      <StructuredDocumentView
+        source={source || body || normalized.title}
+        titleHint={normalized.title}
+      />
     </div>
   );
 }
@@ -346,6 +362,10 @@ function DeliverablePreview({ deliverable }: { deliverable: WorkspaceDeliverable
 }
 
 function DeliverableDebugPanel({ deliverable }: { deliverable: WorkspaceDeliverable }) {
+  // Owner / debug only — never shown to end users in production UI.
+  if (process.env.NODE_ENV === "production" && !isAtlasClientDebugEnabled()) {
+    return null;
+  }
   return (
     <CollapsibleSection title="Deliverable JSON (debug)">
       <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs text-[var(--foreground-muted)]">
@@ -506,6 +526,7 @@ export function FinalOutput({
               format={format}
               deliverables={deliverables}
               isGeneratingDeliverables={isGeneratingDeliverables}
+              fallbackContent={exportText}
             />
           ))}
 

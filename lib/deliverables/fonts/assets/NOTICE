@@ -1,0 +1,4 @@
+DroidSansFallbackFull.ttf
+Source: Android Open Source Project (DroidSansFallback)
+License: Apache License 2.0
+Purpose: Embed CJK glyphs in pdf-lib PDF export so Japanese body text is visible.
