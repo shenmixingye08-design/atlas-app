@@ -8,6 +8,7 @@ import { ui } from "@/lib/i18n";
 
 export type OwnerNavActive =
   | "dashboard"
+  | "aiAssistant"
   | "aiCost"
   | "deliverableCost"
   | "profitAnalysis"
@@ -58,6 +59,11 @@ const GROUPS: readonly NavGroup[] = [
     title: "経営",
     items: [
       { id: "dashboard", href: "/owner", label: "経営ダッシュボード" },
+      {
+        id: "aiAssistant",
+        href: "/owner/ai-assistant",
+        label: "AI経営アシスタント",
+      },
       { id: "analytics", href: "/owner/analytics", label: "分析グラフ" },
       { id: "stripe", href: "/owner/stripe", label: "Stripe管理" },
       { id: "profitAnalysis", href: "/owner/profit-analysis", label: "利益分析" },
