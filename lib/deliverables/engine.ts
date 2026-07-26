@@ -1,5 +1,9 @@
 import "server-only";
 
+import {
+  assertSafeExportText,
+  logDeliverableNormalizeDebug,
+} from "@/lib/orchestration/normalize-deliverable-payload";
 import { recordReliabilityEvent } from "@/lib/reliability";
 
 import { detectDeliverableFormats } from "./detect-formats";
@@ -92,14 +96,30 @@ export async function generateDeliverables(
     };
   }
 
+  const exportGuard = assertSafeExportText(content);
+  if (!exportGuard.ok) {
+    logDeliverableNormalizeDebug({
+      stage: "generateDeliverables",
+      parseSucceeded: false,
+      validationSucceeded: false,
+      rejectedReason: exportGuard.rejectedReason,
+    });
+    return {
+      deliverables: [],
+      detection: detectDeliverableFormats(input.assignment),
+      failures: [{ format: "*", reasons: [exportGuard.rejectedReason] }],
+    };
+  }
+
   if (!options.userId.trim()) {
     throw new Error("userId is required to generate deliverables");
   }
 
+  const safeContent = exportGuard.text;
   const detection = resolveGenerationFormats(
     input.assignment,
     input.formats,
-    content,
+    safeContent,
   );
   const formats = detection.formats;
   const baseFileName = buildDeliverableBaseName(
@@ -113,7 +133,7 @@ export async function generateDeliverables(
   for (const format of formats) {
     const { file, reasons } = await generateVerifiedFile(
       format,
-      content,
+      safeContent,
       baseFileName,
     );
     if (!file) {

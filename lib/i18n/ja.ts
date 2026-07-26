@@ -684,6 +684,8 @@ export const ui = {
     deliverableTitle: "成果物",
     deliverableEmpty:
       "成果物を作成できませんでした。\nもう一度実行するか、依頼内容を少し具体的にしてください。",
+    deliverableDisplayFailed:
+      "成果物を正しく表示できませんでした。再生成をお試しください。",
     workerDeliverableFailed: "成果物をうまく作れませんでした。もう一度お試しください。",
     workerNotExecuted: "作業を開始できませんでした。もう一度お試しください。",
     deliverableNeedsReview: "要確認 — 成果物の内容を確認してください",

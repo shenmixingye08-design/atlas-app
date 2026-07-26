@@ -17,6 +17,7 @@ import {
   type DeliverableType,
 } from "@/lib/orchestration/deliverable-types";
 import {
+  deliverableIsDisplaySafe,
   getBlogTags,
   getDocumentBody,
   getEmailDisplayFields,
@@ -26,6 +27,10 @@ import {
   sanitizeBodyTextForDisplay,
 } from "@/lib/orchestration/deliverable-display";
 import { getDeliverableExportText } from "@/lib/orchestration/final-deliverable";
+import {
+  assertSafeExportText,
+  isForbiddenTitle,
+} from "@/lib/orchestration/normalize-deliverable-payload";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import { ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -46,6 +51,9 @@ type FinalOutputProps = {
    * natural, contextual title instead (e.g. 「レポートができました」).
    */
   heading?: string;
+  /** Optional regenerate handler shown when display normalization fails. */
+  onRegenerate?: () => void;
+  isRegenerating?: boolean;
 };
 
 const TYPE_LABELS: Record<DeliverableType, string> = {
@@ -101,12 +109,21 @@ function FormatDownloadButton({
   const [error, setError] = useState<string | null>(null);
   const shortLabel = formatDownloadLabel(format);
 
+  // Do not render disabled mystery buttons for formats that were never generated.
   if (!file) {
-    return (
-      <Button variant="secondary" size="sm" disabled={isGeneratingDeliverables}>
-        {shortLabel}
-      </Button>
-    );
+    if (isGeneratingDeliverables) {
+      return (
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled
+          className="min-h-11 min-w-[5.5rem] touch-manipulation"
+        >
+          {shortLabel}
+        </Button>
+      );
+    }
+    return null;
   }
 
   const handleDownload = async () => {
@@ -131,25 +148,33 @@ function FormatDownloadButton({
   };
 
   return (
-    <span className="inline-flex flex-col items-start gap-1">
+    <span className="inline-flex min-w-0 flex-col items-stretch gap-1 sm:items-start">
       <Button
         variant="secondary"
         size="sm"
+        className="min-h-11 min-w-[5.5rem] touch-manipulation"
         disabled={isGeneratingDeliverables || isDownloading}
         onClick={() => void handleDownload()}
       >
         {isDownloading ? ui.work.downloadingFile : shortLabel}
       </Button>
       {error ? (
-        <span className="max-w-[16rem] text-xs text-[var(--error)]">{error}</span>
+        <span className="max-w-full break-words text-xs text-[var(--error)]">{error}</span>
       ) : null}
     </span>
   );
 }
 
 function DocumentHeading({ children }: { children: ReactNode }) {
+  if (typeof children === "string") {
+    const title = children.trim();
+    if (!title || isForbiddenTitle(title) || isDeliverableJsonText(title)) {
+      return null;
+    }
+  }
+
   return (
-    <h1 className="border-b border-[var(--border-subtle)] pb-4 text-2xl font-semibold tracking-tight text-foreground">
+    <h1 className="break-words border-b border-[var(--border-subtle)] pb-4 text-2xl font-semibold tracking-tight text-foreground">
       {children}
     </h1>
   );
@@ -177,7 +202,7 @@ function BodyBlock({ text }: { text: string }) {
   if (!safeText || isDeliverableJsonText(safeText)) return null;
 
   return (
-    <div className="whitespace-pre-wrap font-sans text-base leading-relaxed text-foreground">
+    <div className="whitespace-pre-wrap break-words font-sans text-base leading-relaxed text-foreground">
       {safeText}
     </div>
   );
@@ -271,14 +296,15 @@ function BlogPreview({ deliverable }: { deliverable: WorkspaceDeliverable }) {
 }
 
 function SocialPostPreview({ deliverable }: { deliverable: WorkspaceDeliverable }) {
-  const posts = getSocialPostCards(deliverable);
+  const normalized = normalizeDeliverableForDisplay(deliverable);
+  const posts = getSocialPostCards(normalized);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
         <TypeBadge type="social_post" />
       </div>
-      {deliverable.title && <DocumentHeading>{deliverable.title}</DocumentHeading>}
+      {normalized.title && <DocumentHeading>{normalized.title}</DocumentHeading>}
       <div className="grid gap-4">
         {posts.map((post, index) => (
           <Card key={`post-${index + 1}`} padding="md" className="bg-background">
@@ -364,23 +390,42 @@ export function FinalOutput({
   deliverablesError = null,
   expectedFormats,
   heading,
+  onRegenerate,
+  isRegenerating = false,
 }: FinalOutputProps) {
   const [copied, setCopied] = useState(false);
   const [driveSaved, setDriveSaved] = useState(false);
+  const [driveError, setDriveError] = useState<string | null>(null);
   // Never surface debug JSON to end users — secretary UX forbids internal panels.
   const showDebug = false && isAtlasClientDebugEnabled();
 
   const workspaceDeliverable = result?.deliverable ?? null;
-  const exportText = useMemo(
+  const normalizedDeliverable = useMemo(
     () =>
       workspaceDeliverable
-        ? getDeliverableExportText(workspaceDeliverable)
-        : "",
+        ? normalizeDeliverableForDisplay(workspaceDeliverable)
+        : null,
     [workspaceDeliverable],
   );
+  const exportText = useMemo(() => {
+    if (!normalizedDeliverable) return "";
+    const text = getDeliverableExportText(normalizedDeliverable);
+    const guarded = assertSafeExportText(text);
+    return guarded.ok ? guarded.text : "";
+  }, [normalizedDeliverable]);
+  const isDisplaySafe = useMemo(
+    () =>
+      workspaceDeliverable
+        ? deliverableIsDisplaySafe(workspaceDeliverable) && Boolean(exportText)
+        : false,
+    [workspaceDeliverable, exportText],
+  );
   const isReady = useMemo(
-    () => (workspaceDeliverable ? deliverableHasContent(workspaceDeliverable) : false),
-    [workspaceDeliverable],
+    () =>
+      workspaceDeliverable
+        ? deliverableHasContent(workspaceDeliverable) && isDisplaySafe
+        : false,
+    [workspaceDeliverable, isDisplaySafe],
   );
   const fileFormatsToShow = useMemo(() => {
     const assignment = result?.assignment ?? "";
@@ -423,10 +468,21 @@ export function FinalOutput({
     return null;
   }
 
-  if (!isReady || !workspaceDeliverable) {
+  if (!isReady || !workspaceDeliverable || !normalizedDeliverable) {
     const pipelineReason = result.isolationDebug?.pipeline?.needsReviewReason?.trim();
     const failedStage = result.isolationDebug?.pipeline?.failedStage ?? result.stepError?.step;
+    const raw = workspaceDeliverable;
+    const hasUnsafeJson = Boolean(
+      raw &&
+        (isForbiddenTitle(raw.title) ||
+          isDeliverableJsonText(raw.title) ||
+          isDeliverableJsonText(raw.summary) ||
+          isDeliverableJsonText(raw.content) ||
+          isDeliverableJsonText(raw.markdown) ||
+          isDeliverableJsonText(raw.plainText)),
+    );
     const failureMessage =
+      (hasUnsafeJson || (raw && !isDisplaySafe) ? ui.work.deliverableDisplayFailed : "") ||
       pipelineReason ||
       result.error?.trim() ||
       (result.stepError?.step === "worker" ? ui.work.workerDeliverableFailed : "") ||
@@ -434,39 +490,78 @@ export function FinalOutput({
       ui.work.deliverableEmpty;
 
     return (
-      <section className="space-y-4 animate-fade-in" aria-labelledby="output-heading">
+      <section
+        className="space-y-4 animate-fade-in pb-[env(safe-area-inset-bottom)]"
+        aria-labelledby="output-heading"
+      >
         <h2 id="output-heading" className="text-title text-foreground">
           {heading ?? ui.work.deliverableTitle}
         </h2>
         <Card padding="lg">
-          {failedStage && (
+          {failedStage && !hasUnsafeJson && (
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--status-warning)]">
               失敗ステージ: {failedStage}
             </p>
           )}
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground-muted)]">
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--foreground-muted)]">
             {failureMessage}
           </p>
+          {onRegenerate ? (
+            <div className="mt-4">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="min-h-11 touch-manipulation"
+                disabled={isRegenerating}
+                onClick={onRegenerate}
+              >
+                {isRegenerating ? ui.secretaryResult.regenerating : "再生成する"}
+              </Button>
+            </div>
+          ) : null}
         </Card>
       </section>
     );
   }
 
   const markdownFile = findGeneratedFile(deliverables, "md");
-  const baseName = markdownFile?.fileName ?? `${workspaceDeliverable.type}-deliverable.md`;
+  const baseName = markdownFile?.fileName ?? `${normalizedDeliverable.type}-deliverable.md`;
 
   const handleCopy = async () => {
+    if (!exportText) return;
     await navigator.clipboard.writeText(exportText);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleMarkdownSave = () => {
+    if (!exportText) return;
+    downloadMarkdown(exportText, baseName);
+  };
+
   const handleDriveSave = () => {
+    setDriveError(null);
+    if (!exportText) {
+      setDriveError(ui.work.deliverableDisplayFailed);
+      return;
+    }
+    const guarded = assertSafeExportText(exportText);
+    if (!guarded.ok) {
+      setDriveError(guarded.safeMessage);
+      return;
+    }
     setDriveSaved(true);
   };
 
+  const readyFormats = fileFormatsToShow.filter(
+    (format) => findGeneratedFile(deliverables, format) || isGeneratingDeliverables,
+  );
+
   return (
-    <section className="space-y-6 animate-fade-in" aria-labelledby="output-heading">
+    <section
+      className="space-y-6 animate-fade-in overflow-x-hidden pb-[env(safe-area-inset-bottom)]"
+      aria-labelledby="output-heading"
+    >
       <div>
         <h2 id="output-heading" className="text-title text-foreground">
           {heading ?? ui.work.deliverableTitle}
@@ -479,30 +574,38 @@ export function FinalOutput({
       </div>
 
       <Card padding="lg" className="shadow-[var(--shadow-soft)]">
-        <div className="max-h-[560px] overflow-auto rounded-[var(--radius-xl)] bg-[var(--background-subtle)] px-6 py-8">
-          <DeliverablePreview deliverable={workspaceDeliverable} />
+        <div className="max-h-[560px] overflow-x-hidden overflow-y-auto rounded-[var(--radius-xl)] bg-[var(--background-subtle)] px-4 py-6 sm:px-6 sm:py-8">
+          <DeliverablePreview deliverable={normalizedDeliverable} />
         </div>
 
         {showDebug && (
           <div className="mt-4">
-            <DeliverableDebugPanel deliverable={workspaceDeliverable} />
+            <DeliverableDebugPanel deliverable={normalizedDeliverable} />
           </div>
         )}
 
         <div className="mt-6 flex flex-wrap gap-3">
-          <Button variant="secondary" size="sm" onClick={() => void handleCopy()}>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="min-h-11 touch-manipulation"
+            disabled={!exportText}
+            onClick={() => void handleCopy()}
+          >
             {copied ? ui.work.copied : ui.work.copy}
           </Button>
 
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => downloadMarkdown(exportText, baseName)}
+            className="min-h-11 touch-manipulation"
+            disabled={!exportText}
+            onClick={handleMarkdownSave}
           >
             {ui.work.saveMarkdown}
           </Button>
 
-          {fileFormatsToShow.map((format) => (
+          {readyFormats.map((format) => (
             <FormatDownloadButton
               key={format}
               format={format}
@@ -511,7 +614,13 @@ export function FinalOutput({
             />
           ))}
 
-          <Button variant="secondary" size="sm" onClick={handleDriveSave}>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="min-h-11 touch-manipulation"
+            disabled={!exportText}
+            onClick={handleDriveSave}
+          >
             {driveSaved ? ui.work.driveSaved : ui.work.saveToDrive}
           </Button>
         </div>
@@ -520,6 +629,12 @@ export function FinalOutput({
           <p className="mt-4 text-sm text-[var(--foreground-muted)] animate-fade-in">
             {ui.work.driveSandboxSaved}
           </p>
+        )}
+
+        {driveError && (
+          <div className="mt-4">
+            <ErrorState message={driveError} />
+          </div>
         )}
 
         {isGeneratingDeliverables && (
@@ -533,14 +648,6 @@ export function FinalOutput({
             <ErrorState message={deliverablesError} />
           </div>
         )}
-
-        {deliverables.length > 0 && (
-          <p className="mt-4 text-caption">
-            {deliverables
-              .map((item) => DELIVERABLE_FORMAT_LABELS[item.format])
-              .join(" · ")}
-          </p>
-        )}
       </Card>
     </section>
   );
@@ -549,6 +656,7 @@ export function FinalOutput({
 export function useFinalOutputReady(result: OrchestrationResult | null): boolean {
   return useMemo(() => {
     if (!result?.deliverable) return false;
-    return deliverableHasContent(result.deliverable);
+    if (!deliverableHasContent(result.deliverable)) return false;
+    return deliverableIsDisplaySafe(result.deliverable);
   }, [result]);
 }
