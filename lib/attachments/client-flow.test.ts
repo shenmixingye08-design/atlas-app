@@ -192,10 +192,17 @@ describe("attachment client flow", () => {
       "utf8",
     );
 
-    expect(picker).toContain("画像を選ぶ");
-    expect(picker).toContain("カメラで撮る");
+    expect(picker).toContain("attachPickImage");
+    expect(picker).toContain("attachTakePhoto");
     expect(picker).toContain('capture="environment"');
-    expect(docs).toContain("ファイルを選ぶ");
+    expect(docs).toContain("attachPickFile");
+    const i18n = readFileSync(
+      path.join(process.cwd(), "lib/i18n/ja.ts"),
+      "utf8",
+    );
+    expect(i18n).toContain('attachPickImage: "画像を選ぶ"');
+    expect(i18n).toContain('attachTakePhoto: "カメラで撮る"');
+    expect(i18n).toContain('attachPickFile: "ファイルを選ぶ"');
     expect(home).toContain("ImageAttachmentPicker");
     expect(home).toContain("RequestDocumentPicker");
     expect(work).toContain("attachmentIds");

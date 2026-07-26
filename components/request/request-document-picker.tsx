@@ -10,6 +10,7 @@ import {
 } from "@/lib/attachments/documents/client-upload";
 import { DOCUMENT_ATTACHMENT_LIMITS } from "@/lib/attachments/documents/types";
 import { cn } from "@/lib/design-system/cn";
+import { ui } from "@/lib/i18n";
 
 type RequestDocumentPickerProps = {
   value: DocumentExtractClient[];
@@ -89,9 +90,9 @@ export function RequestDocumentPicker({
           disabled={disabled || busy}
           isLoading={busy}
           onClick={() => inputRef.current?.click()}
-          aria-label="ファイルを選ぶ"
+          aria-label={ui.work.attachPickFile}
         >
-          ファイルを選ぶ
+          {ui.work.attachPickFile}
         </Button>
         <p className="self-center text-xs text-[var(--text-secondary)]">
           PDF / Word / Excel / CSV / PowerPoint / テキスト（最大

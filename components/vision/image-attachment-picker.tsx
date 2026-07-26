@@ -17,6 +17,7 @@ import {
 } from "@/lib/attachments/client-upload";
 import { ATTACHMENT_LIMITS } from "@/lib/attachments/types";
 import { cn } from "@/lib/design-system/cn";
+import { ui } from "@/lib/i18n";
 
 export type LocalImageDraft = {
   localId: string;
@@ -185,9 +186,9 @@ export function ImageAttachmentPicker({
             className="min-h-11 touch-manipulation"
             disabled={disabled}
             onClick={() => galleryRef.current?.click()}
-            aria-label="画像を選ぶ"
+            aria-label={ui.work.attachPickImage}
           >
-            画像を選ぶ
+            {ui.work.attachPickImage}
           </Button>
           <Button
             type="button"
@@ -196,9 +197,9 @@ export function ImageAttachmentPicker({
             className="min-h-11 touch-manipulation"
             disabled={disabled}
             onClick={() => cameraRef.current?.click()}
-            aria-label="カメラで撮る"
+            aria-label={ui.work.attachTakePhoto}
           >
-            カメラで撮る
+            {ui.work.attachTakePhoto}
           </Button>
           <p className="text-xs text-[var(--text-secondary)]">
             JPEG / PNG / WEBP（最大{ATTACHMENT_LIMITS.maxImagesPerRequest}枚・
