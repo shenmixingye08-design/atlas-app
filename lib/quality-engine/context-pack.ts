@@ -2,9 +2,17 @@ import { resolveCompanyTemplateIdFromMetadata } from "@/lib/company-templates/co
 import type { KnowledgeRetrievalResult } from "@/lib/knowledge/types";
 
 import {
+  formatMergedKnowledgeForPrompt,
+  mergeKnowledgeForWriter,
+  type KnowledgeUsage,
+  type MergedKnowledgePack,
+} from "./knowledge";
+import { resolveQualityPromptKind } from "./policy";
+import {
   buildReferenceInsights,
   type ReferenceInsights,
 } from "./reference-engine";
+import type { QualityPromptKind } from "./types";
 
 export type QualityContextPack = {
   businessProfileSummary: string;
@@ -15,6 +23,12 @@ export type QualityContextPack = {
   templateHints: string;
   /** Reference Engine insights from attachments. */
   reference: ReferenceInsights;
+  /** Deliverable kind used to select registry knowledge. */
+  promptKind: QualityPromptKind;
+  /** Knowledge Engine merged pack for Writer. */
+  knowledgePack: MergedKnowledgePack;
+  /** Owner/telemetry usage flags. */
+  knowledgeUsage: KnowledgeUsage;
 };
 
 function asTrimmedString(value: unknown, max = 1_200): string {
@@ -38,16 +52,26 @@ function readNestedString(
 }
 
 /**
- * Assemble Writer context without LLM.
- * Uses metadata + knowledge retrieval already available in the pipeline.
+ * Assemble Writer Context Pack via Knowledge Engine (no LLM).
+ * Merges Business Profile → Reference → 会社 → 業界 → 成果物 → Template …
  */
 export function buildQualityContextPack(input: {
+  assignment?: string;
+  deliverableType?: string;
   metadata?: Readonly<Record<string, unknown>> | null;
   knowledge?: KnowledgeRetrievalResult | null;
+  promptKind?: QualityPromptKind;
 }): QualityContextPack {
   const meta = (input.metadata ?? {}) as Record<string, unknown>;
   const knowledge = input.knowledge ?? null;
   const reference = buildReferenceInsights(meta);
+  const promptKind =
+    input.promptKind ??
+    resolveQualityPromptKind({
+      assignment: input.assignment ?? "",
+      deliverableType: input.deliverableType ?? "document",
+      metadata: meta,
+    });
 
   const businessProfileSummary =
     readNestedString(meta, [
@@ -91,6 +115,19 @@ export function buildQualityContextPack(input: {
     readNestedString(meta, ["templateHints", "deliverableTemplate"]) ||
     asTrimmedString(knowledge?.plannerContext.preferredFormats, 600);
 
+  const knowledgePack = mergeKnowledgeForWriter({
+    promptKind,
+    metadata: meta,
+    knowledge,
+    reference,
+    businessProfileSummary,
+    visionSummary,
+    userSettingsSummary,
+    pastDeliverableHints,
+    templateId,
+    templateHints,
+  });
+
   return {
     businessProfileSummary,
     visionSummary,
@@ -99,11 +136,18 @@ export function buildQualityContextPack(input: {
     templateId,
     templateHints,
     reference,
+    promptKind,
+    knowledgePack,
+    knowledgeUsage: knowledgePack.usage,
   };
 }
 
 /** Compact block injected into Writer / Reviewer contexts. */
 export function formatContextPackForPrompt(pack: QualityContextPack): string {
+  const merged = formatMergedKnowledgeForPrompt(pack.knowledgePack, 4_500);
+  if (merged) return merged;
+
+  // Fallback if merge produced empty (should be rare — registry always has rules).
   const lines = [
     pack.businessProfileSummary
       ? `Business Profile:\n${pack.businessProfileSummary}`
@@ -118,9 +162,7 @@ export function formatContextPackForPrompt(pack: QualityContextPack): string {
     pack.pastDeliverableHints
       ? `過去成果物の参考（コピー禁止・品質参考のみ）:\n${pack.pastDeliverableHints}`
       : "",
-    pack.reference.summary
-      ? pack.reference.summary
-      : "",
+    pack.reference.summary ? pack.reference.summary : "",
   ].filter(Boolean);
 
   return lines.join("\n\n").slice(0, 4_000);

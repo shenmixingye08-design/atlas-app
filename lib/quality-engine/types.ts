@@ -94,6 +94,17 @@ export type QualityEngineStageTiming = {
   improveMs: number;
 };
 
+/** Owner-only Knowledge Engine usage flags on each run. */
+export type KnowledgeUsageTelemetry = {
+  businessProfile: boolean;
+  reference: boolean;
+  template: boolean;
+  knowledge: boolean;
+  contextChars: number;
+  layersUsed: readonly string[];
+  entryCount: number;
+};
+
 /** Owner-only telemetry — never shown to end users. */
 export type QualityEngineTelemetry = {
   tier: QualityEngineTier;
@@ -108,6 +119,8 @@ export type QualityEngineTelemetry = {
   timings: QualityEngineStageTiming;
   reviewerUsedLlm: boolean;
   judgeSource: QualityJudgeResult["source"];
+  /** Knowledge Engine usage (Phase3). */
+  knowledgeUsage?: KnowledgeUsageTelemetry;
   recordedAt: string;
 };
 

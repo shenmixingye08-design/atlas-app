@@ -7,6 +7,7 @@ export type {
   QualityJudgeResult,
   QualityReviewerResult,
   QualityEngineStageTiming,
+  KnowledgeUsageTelemetry,
   QualityEngineTelemetry,
   QualityEngineRunResult,
   QualityKindStats,
@@ -71,3 +72,14 @@ export {
   listSpecialistProfiles,
   type SpecialistProfile,
 } from "./specialists";
+
+export {
+  KNOWLEDGE_MERGE_PRIORITY,
+  mergeKnowledgeForWriter,
+  formatMergedKnowledgeForPrompt,
+  listRegistryKnowledge,
+  type KnowledgeUsage,
+  type MergedKnowledgePack,
+  type KnowledgeLayerId,
+  type KnowledgeEntry,
+} from "./knowledge";
