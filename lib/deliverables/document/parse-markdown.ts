@@ -39,7 +39,7 @@ export function parseMarkdownToSections(markdown: string): {
     const line = raw.trimEnd()
     const trimmed = line.trim()
 
-    if (!trimmed || HR.test(trimmed)) {
+    if (!trimmed || HR.test(trimmed) || TABLE_SEP.test(trimmed)) {
       i += 1
       continue
     }
@@ -72,9 +72,15 @@ export function parseMarkdownToSections(markdown: string): {
 
     if (isTableRow(trimmed)) {
       const tableLines: string[] = []
-      while (i < lines.length && isTableRow((lines[i] ?? "").trim())) {
-        const row = lines[i]!.trim()
-        if (!TABLE_SEP.test(row)) tableLines.push(row)
+      while (i < lines.length) {
+        const row = (lines[i] ?? "").trim()
+        if (!row) break
+        if (TABLE_SEP.test(row)) {
+          i += 1
+          continue
+        }
+        if (!isTableRow(row)) break
+        tableLines.push(row)
         i += 1
       }
       if (tableLines.length > 0) {

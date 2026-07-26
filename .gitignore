@@ -13,6 +13,7 @@
 # testing
 /coverage
 /e2e/screenshots/
+/artifacts/
 
 # next.js
 /.next/

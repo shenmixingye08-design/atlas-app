@@ -45,7 +45,10 @@ export function validateWordExport(input: {
 
   if (fileSize < 1_500) reasons.push("file_too_small")
   if (!hasTitle) reasons.push("missing_title")
-  if (input.textLength < 10) reasons.push("text_too_short")
+  // Short tables (e.g. 一覧 + 2x2) are valid; only fail when body is empty
+  // or clearly lost relative to a longer source document.
+  if (input.textLength < 1) reasons.push("text_too_short")
+  if (sourceLen >= 20 && input.textLength < 10) reasons.push("text_too_short")
   if (input.paragraphCount < 1) reasons.push("no_paragraphs")
   if (sourceLen > 80 && input.textLength < Math.min(20, sourceLen * 0.05)) {
     reasons.push("text_loss")
