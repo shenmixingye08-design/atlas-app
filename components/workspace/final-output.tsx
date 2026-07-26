@@ -7,7 +7,10 @@ import {
   assignmentIsImageToExcel,
   assignmentRequestsExcel,
 } from "@/lib/deliverables/excel-data";
-import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
+import {
+  downloadDeliverableFile,
+  exportDeliverableFile,
+} from "@/lib/deliverables/download-client";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
@@ -91,17 +94,21 @@ function FormatDownloadButton({
   format,
   deliverables,
   isGeneratingDeliverables,
+  fallbackContent,
 }: {
   format: GeneratedFile["format"];
   deliverables: readonly GeneratedFile[];
   isGeneratingDeliverables: boolean;
+  /** Source text so Word/PDF can regenerate if stored id is missing on another instance. */
+  fallbackContent: string;
 }) {
   const file = findGeneratedFile(deliverables, format);
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const shortLabel = formatDownloadLabel(format);
+  const canExportOnDemand = fallbackContent.trim().length > 0;
 
-  if (!file) {
+  if (!file && !canExportOnDemand) {
     return (
       <Button variant="secondary" size="sm" disabled={isGeneratingDeliverables}>
         {shortLabel}
@@ -113,11 +120,20 @@ function FormatDownloadButton({
     setError(null);
     setIsDownloading(true);
     try {
-      await downloadDeliverableFile({
-        url: file.downloadUrl,
-        fileName: file.fileName,
-        mimeType: file.mimeType,
-      });
+      if (file) {
+        await downloadDeliverableFile({
+          url: file.downloadUrl,
+          fileName: file.fileName,
+          mimeType: file.mimeType,
+          format,
+          fallbackContent,
+        });
+      } else {
+        await exportDeliverableFile({
+          format,
+          content: fallbackContent,
+        });
+      }
     } catch (downloadError) {
       setError(
         downloadError instanceof Error
@@ -134,7 +150,9 @@ function FormatDownloadButton({
       <Button
         variant="secondary"
         size="sm"
-        disabled={isGeneratingDeliverables || isDownloading}
+        disabled={
+          (isGeneratingDeliverables && !canExportOnDemand) || isDownloading
+        }
         onClick={() => void handleDownload()}
       >
         {isDownloading ? ui.work.downloadingFile : shortLabel}
@@ -506,6 +524,7 @@ export function FinalOutput({
               format={format}
               deliverables={deliverables}
               isGeneratingDeliverables={isGeneratingDeliverables}
+              fallbackContent={exportText}
             />
           ))}
 

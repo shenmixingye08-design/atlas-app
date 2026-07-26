@@ -4,7 +4,10 @@ import { detectDeliverableFormats } from "./detect-formats";
 import { buildDeliverableBaseName } from "./filename";
 import { getDeliverableGenerator } from "./generators";
 import { resolveGenerationFormats } from "./resolve-formats";
-import { saveDeliverableFile, toDeliverableMetadata } from "./store";
+import {
+  saveDeliverableFileDurable,
+  toDeliverableMetadata,
+} from "./store";
 import type {
   Deliverable,
   GenerateDeliverablesInput,
@@ -58,7 +61,10 @@ export async function generateDeliverables(
     if (!generator) continue;
 
     const file = await generator.generate(content, baseFileName);
-    const stored = saveDeliverableFile(file, options.userId);
+    const stored = await saveDeliverableFileDurable(file, options.userId, {
+      sourceContent: content,
+      baseFileName,
+    });
     deliverables.push(toDeliverableMetadata(stored, requestOrigin));
   }
 
