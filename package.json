@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/run-vision-live-e2e-on-vercel.mjs && next build",
+    "test:vision-live": "node scripts/vision-live-e2e.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",

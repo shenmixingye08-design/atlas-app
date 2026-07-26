@@ -2,7 +2,7 @@
 /**
  * Real OpenAI Vision E2E (NOT mock).
  *
- * Generates a PNG that contains ONLY:
+ * Loads scripts/fixtures/minervot-contact.png which contains ONLY:
  *   株式会社MINERVOT
  *   TEL 090-1234-5678
  * then calls OpenAI Responses API with input_image (Base64 data URL)
@@ -14,10 +14,13 @@
  *   OPENAI_VISION_MODEL=gpt-5.5
  *   ATLAS_LIVE_E2E_OUT=/opt/cursor/artifacts/vision-live-e2e
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import OpenAI from "openai";
-import sharp from "sharp";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const FIXTURE = path.join(__dirname, "fixtures", "minervot-contact.png");
 
 const COMPANY = "株式会社MINERVOT";
 const PHONE = "090-1234-5678";
@@ -52,18 +55,6 @@ function fieldPresent(fields, keys) {
   return null;
 }
 
-async function buildTestPng() {
-  // Text is rendered into pixels — not present in filename or API prompt beyond the ask.
-  const svg = `
-<svg width="900" height="420" xmlns="http://www.w3.org/2000/svg">
-  <rect width="100%" height="100%" fill="#f7f4ef"/>
-  <rect x="40" y="40" width="820" height="340" rx="8" fill="#ffffff" stroke="#222" stroke-width="2"/>
-  <text x="80" y="160" font-family="Droid Sans Fallback, WenQuanYi Micro Hei, sans-serif" font-size="44" fill="#111">${COMPANY}</text>
-  <text x="80" y="250" font-family="Droid Sans Fallback, WenQuanYi Micro Hei, sans-serif" font-size="40" fill="#111">TEL ${PHONE}</text>
-</svg>`;
-  return sharp(Buffer.from(svg)).png().toBuffer();
-}
-
 async function main() {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -76,9 +67,9 @@ async function main() {
   }
 
   mkdirSync(OUT_DIR, { recursive: true });
-  const png = await buildTestPng();
+  const png = readFileSync(FIXTURE);
   const imagePath = path.join(OUT_DIR, "minervot-contact.png");
-  writeFileSync(imagePath, png);
+  copyFileSync(FIXTURE, imagePath);
 
   const dataUrl = `data:image/png;base64,${png.toString("base64")}`;
   if (!dataUrl.startsWith("data:image/png;base64,") || dataUrl.length < 64) {
@@ -123,7 +114,6 @@ async function main() {
     },
   ];
 
-  // Prove input_image is in the request without logging Base64 payload.
   const requestMeta = {
     model,
     hasInputImage: input[0].content.some((p) => p.type === "input_image"),
@@ -131,6 +121,7 @@ async function main() {
     downloadedByteLength: png.length,
     base64Length: dataUrl.length,
     detail: "high",
+    fixture: "scripts/fixtures/minervot-contact.png",
     promptContainsCompanyLiteral: USER_TEXT.includes(COMPANY),
     promptContainsPhoneLiteral: USER_TEXT.includes(PHONE),
   };
