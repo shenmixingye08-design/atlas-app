@@ -164,6 +164,8 @@ export type QualityEngineTelemetry = {
   knowledgeUsage?: KnowledgeUsageTelemetry;
   /** Smart Context Engine usage (Phase4). */
   smartContext?: SmartContextTelemetrySnapshot;
+  /** Owner-only quality gate warning (Phase5). Never shown to end users. */
+  qualityGateWarning?: string;
   recordedAt: string;
 };
 
