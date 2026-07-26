@@ -1,0 +1,46 @@
+name: Vision Live E2E
+
+# Real OpenAI Responses API image read — not mock.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cursor/artifact-generation-engine-193d
+    paths:
+      - "scripts/vision-live-e2e.mjs"
+      - ".github/workflows/vision-live-e2e.yml"
+      - "lib/vision/**"
+
+jobs:
+  vision-live-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install CJK fonts for test image
+        run: sudo apt-get update && sudo apt-get install -y fonts-droid-fallback fonts-wqy-microhei
+
+      - name: Run live OpenAI Vision E2E
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_VISION_MODEL: ${{ vars.OPENAI_VISION_MODEL }}
+          ATLAS_LIVE_E2E_OUT: ${{ runner.temp }}/vision-live-e2e
+          ATLAS_MOCK_LLM: "false"
+        run: node scripts/vision-live-e2e.mjs
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vision-live-e2e
+          path: ${{ runner.temp }}/vision-live-e2e/
+          if-no-files-found: ignore
