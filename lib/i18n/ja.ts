@@ -165,9 +165,9 @@ export const ui = {
 
   /* AI秘書の進行状況フレーズ（読み込み表示に使用・AI不使用の固定文言） */
   secretaryProgress: {
-    understanding: "AI秘書が内容を理解しています",
-    thinking: "最適な処理を考えています",
-    executing: "仕事を実行しています",
+    understanding: "内容を確認しています",
+    thinking: "必要情報を整理しています",
+    executing: "最適な流れで進めています",
     preparing: "AI秘書が準備しています",
   },
 

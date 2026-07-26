@@ -13,9 +13,34 @@ type QualityEngineLogEntry = QualityEngineTelemetry & {
   assignmentHint: string;
 };
 
+type SecretaryLogEntry = {
+  userId: string | null;
+  assignmentHint: string;
+  recordedAt: string;
+  plan: {
+    ownerSummary: {
+      intentLabel: string;
+      missingCount: number;
+      questionCount: number;
+      research: boolean;
+      riskDisposition: string;
+      autonomyLevel: number;
+      pauseForQuestions: boolean;
+    };
+    confirmationReasons: string[];
+    questions: Array<{ prompt: string }>;
+    executionPlan: { notes: string[] };
+    risk: { actions: string[]; disposition: string; reasons: string[] };
+    autonomyLevel: number;
+    extraLlmCalls: number;
+    userFacing: { headline: string; detail: string };
+  };
+};
+
 type ApiResponse = {
   entries: QualityEngineLogEntry[];
   byKind?: QualityKindStats[];
+  secretaryIntelligence?: SecretaryLogEntry[];
 };
 
 function pct(part: number, total: number): string {
@@ -36,6 +61,7 @@ function formatCost(value: number | null | undefined): string {
 export function QualityEnginePanel() {
   const [entries, setEntries] = useState<QualityEngineLogEntry[]>([]);
   const [byKind, setByKind] = useState<QualityKindStats[]>([]);
+  const [secretaryLogs, setSecretaryLogs] = useState<SecretaryLogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [expandedAt, setExpandedAt] = useState<string | null>(null);
 
@@ -50,6 +76,7 @@ export function QualityEnginePanel() {
         if (!cancelled) {
           setEntries(data.entries ?? []);
           setByKind(data.byKind ?? []);
+          setSecretaryLogs(data.secretaryIntelligence ?? []);
         }
       })
       .catch(() => {
@@ -111,6 +138,71 @@ export function QualityEnginePanel() {
         <Card padding="md">
           <p className="text-sm text-[var(--status-error)]">{error}</p>
         </Card>
+      )}
+
+      {!error && secretaryLogs.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-medium text-foreground">
+            Secretary Intelligence
+          </h2>
+          <p className="text-xs text-[var(--text-muted)]">
+            Intent / 不足情報 / Research / Risk / Autonomy（一般ユーザーには非表示）
+          </p>
+          <div className="overflow-x-auto rounded-2xl border border-[var(--border)]">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-[var(--surface-muted)] text-[var(--text-muted)]">
+                <tr>
+                  <th className="px-3 py-2">時刻</th>
+                  <th className="px-3 py-2">Intent</th>
+                  <th className="px-3 py-2">不足</th>
+                  <th className="px-3 py-2">質問</th>
+                  <th className="px-3 py-2">Research</th>
+                  <th className="px-3 py-2">Risk</th>
+                  <th className="px-3 py-2">Autonomy</th>
+                  <th className="px-3 py-2">確認理由</th>
+                  <th className="px-3 py-2">追加LLM</th>
+                </tr>
+              </thead>
+              <tbody>
+                {secretaryLogs.slice(0, 30).map((row, i) => (
+                  <tr
+                    key={`${row.recordedAt}-${i}`}
+                    className="border-t border-[var(--border)]"
+                  >
+                    <td className="px-3 py-2 tabular-nums text-[var(--text-secondary)]">
+                      {new Date(row.recordedAt).toLocaleString("ja-JP")}
+                    </td>
+                    <td className="px-3 py-2">{row.plan.ownerSummary.intentLabel}</td>
+                    <td className="px-3 py-2 tabular-nums">
+                      {row.plan.ownerSummary.missingCount}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">
+                      {row.plan.ownerSummary.questionCount}
+                    </td>
+                    <td className="px-3 py-2">
+                      {row.plan.ownerSummary.research ? "実施" : "不要"}
+                    </td>
+                    <td className="px-3 py-2">
+                      {row.plan.risk.disposition}
+                      {row.plan.risk.actions.length
+                        ? ` (${row.plan.risk.actions.join(",")})`
+                        : ""}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">
+                      L{row.plan.autonomyLevel}
+                    </td>
+                    <td className="px-3 py-2 max-w-xs truncate">
+                      {row.plan.confirmationReasons.join(" / ") || "—"}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">
+                      {row.plan.extraLlmCalls}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {!error && knowledgeStats && (
