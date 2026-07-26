@@ -7,6 +7,7 @@ import {
   assertSupportedImage,
   ImageValidationError,
 } from "./image-security";
+import { AttachmentStorageError } from "./errors";
 import {
   findAttachmentByHash,
   saveImageAttachment,
@@ -49,7 +50,12 @@ export async function uploadUserImage(input: {
         "このHEIC画像は変換できませんでした。JPEGまたはPNGで送り直してください",
       );
     }
-    throw error;
+    throw new AttachmentStorageError({
+      code: "preprocess_failed",
+      stage: "preprocess.sharp",
+      providerMessage: error instanceof Error ? error.message : undefined,
+      cause: error,
+    });
   }
 
   const attachment = await saveImageAttachment({

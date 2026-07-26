@@ -37,3 +37,12 @@ export {
   purgeExpiredAttachments,
 } from "./store";
 export { uploadUserImage, uploadUserImages } from "./image-upload";
+export {
+  AttachmentStorageError,
+  type AttachmentErrorCode,
+} from "./errors";
+export {
+  ensureAttachmentInfrastructure,
+  assertAttachmentInfrastructureReady,
+  type AttachmentInfrastructureStatus,
+} from "./ensure-infrastructure";

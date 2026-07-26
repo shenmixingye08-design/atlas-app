@@ -162,7 +162,15 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     key: "SUPABASE_SERVICE_ROLE_KEY",
     service: "supabase",
     requirement: "recommended",
-    purpose: "サーバー専用（atlas_user_state 書き込み / RLS バイパス）",
+    purpose:
+      "サーバー専用（atlas_user_state / 画像Storage atlas-image-attachments 書き込み / RLS バイパス）",
+  },
+  {
+    key: "ATLAS_ATTACHMENT_STORAGE",
+    service: "supabase",
+    requirement: "optional",
+    purpose:
+      "画像保存先（local / supabase）。Vercel production/preview では常に supabase",
   },
   {
     key: "ATLAS_USD_JPY_RATE",

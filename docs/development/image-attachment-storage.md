@@ -6,6 +6,18 @@
 - 公開: **非公開**（`public = false`）
 - 適用SQL: `supabase/migrations/20260726_atlas_image_attachments.sql`
 
+## アップロード失敗時の診断
+
+1. ログイン状態で `GET /api/attachments/diagnostics` を開く  
+   - `serviceRoleConfigured` / `bucketExists` / `tableExists` / `blockingCode` を確認
+2. Owner なら `POST /api/owner/attachments/ensure` でバケット自動作成を試行
+3. `table_missing` の場合は Supabase SQL エディタで migration を適用
+4. CLI（SERVICE_ROLE 設定済み環境）:
+   `node scripts/apply-image-attachments-migration.mjs`
+
+アップロード API（`/api/attachments/images`）は **Vision より前**で失敗します。  
+レスポンスに `code` / `stage` / `providerCode` が含まれるので、推測せず特定できます。
+
 ## オブジェクトパス
 
 ```

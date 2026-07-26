@@ -8,6 +8,11 @@ import {
   ATTACHMENT_SIGNED_URL_TTL_SECONDS,
 } from "./constants";
 import {
+  AttachmentStorageError,
+  classifySupabaseError,
+} from "./errors";
+import { assertAttachmentInfrastructureReady } from "./ensure-infrastructure";
+import {
   ATTACHMENT_LIMITS,
   type SaveImageAttachmentInput,
   type StoredImageAttachment,
@@ -35,9 +40,10 @@ type AttachmentRow = {
 function requireClient() {
   const client = createServiceRoleClientIfConfigured();
   if (!client) {
-    throw new Error(
-      "Supabase service role is not configured for image storage",
-    );
+    throw new AttachmentStorageError({
+      code: "config_missing",
+      stage: "supabase.client",
+    });
   }
   return client;
 }
@@ -101,7 +107,7 @@ async function downloadObject(path: string): Promise<Buffer> {
     .from(ATLAS_IMAGE_ATTACHMENTS_BUCKET)
     .download(path);
   if (error || !data) {
-    throw new Error("画像の読み込みに失敗しました");
+    throw classifySupabaseError(error, "storage.download");
   }
   const arrayBuffer = await data.arrayBuffer();
   return Buffer.from(arrayBuffer);
@@ -122,6 +128,7 @@ async function removeObjects(paths: string[]): Promise<void> {
 export async function supabaseSaveImageAttachment(
   input: SaveImageAttachmentInput,
 ): Promise<StoredImageAttachment> {
+  await assertAttachmentInfrastructureReady();
   const client = requireClient();
   const id = `img_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
   const jobId = sanitizeSegment(input.jobId?.trim() || "pending");
@@ -150,7 +157,7 @@ export async function supabaseSaveImageAttachment(
       upsert: false,
     });
   if (originalUpload.error) {
-    throw new Error("画像の保存に失敗しました");
+    throw classifySupabaseError(originalUpload.error, "storage.upload.original");
   }
 
   const processedUpload = await client.storage
@@ -161,7 +168,7 @@ export async function supabaseSaveImageAttachment(
     });
   if (processedUpload.error) {
     await removeObjects([originalPath]);
-    throw new Error("画像の保存に失敗しました");
+    throw classifySupabaseError(processedUpload.error, "storage.upload.processed");
   }
 
   const now = new Date();
@@ -211,7 +218,7 @@ export async function supabaseSaveImageAttachment(
 
   if (error) {
     await removeObjects([originalPath, processedPath]);
-    throw new Error("画像メタデータの保存に失敗しました");
+    throw classifySupabaseError(error, "db.insert");
   }
 
   return rowToMeta(row);
@@ -288,7 +295,13 @@ export async function supabaseFindAttachmentByHash(
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error || !data) return null;
+  if (error) {
+    const classified = classifySupabaseError(error, "db.findByHash");
+    // Missing table must fail closed (do not pretend "not found").
+    if (classified.code === "table_missing") throw classified;
+    return null;
+  }
+  if (!data) return null;
   const meta = rowToMeta(data as AttachmentRow);
   if (isExpired(meta)) {
     await supabaseDeleteImageAttachment(userId, meta.id);
