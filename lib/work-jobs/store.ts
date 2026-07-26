@@ -21,6 +21,11 @@ export type WorkJobRecord = {
   assignment: string;
   /** Stable key — same job must execute once. */
   idempotencyKey: string;
+  /**
+   * Request metadata (attachmentIds, documentExtracts, vision flags, etc.).
+   * Never trust client userId — always overwrite from Clerk on write.
+   */
+  metadata: Readonly<Record<string, unknown>>;
   status: WorkJobStatus;
   attemptCount: number;
   maxAttempts: number;
@@ -39,19 +44,28 @@ function getBucket(): Bucket {
   return g.__atlasWorkJobs;
 }
 
+function normalizeWorkJob(job: WorkJobRecord): WorkJobRecord {
+  return {
+    ...job,
+    metadata: job.metadata && typeof job.metadata === "object" ? job.metadata : {},
+  };
+}
+
 export function saveWorkJob(job: WorkJobRecord): WorkJobRecord {
-  getBucket().set(job.id, job);
-  persistWorkJob(job);
-  return job;
+  const normalized = normalizeWorkJob(job);
+  getBucket().set(normalized.id, normalized);
+  persistWorkJob(normalized);
+  return normalized;
 }
 
 export function getWorkJob(id: string, userId: string): WorkJobRecord | null {
   const job = getBucket().get(id) ?? null;
-  if (job && job.userId === userId) return job;
+  if (job && job.userId === userId) return normalizeWorkJob(job);
   const fromDisk = loadWorkJobFromDisk(id, userId);
   if (fromDisk) {
-    getBucket().set(fromDisk.id, fromDisk);
-    return fromDisk;
+    const normalized = normalizeWorkJob(fromDisk);
+    getBucket().set(normalized.id, normalized);
+    return normalized;
   }
   return null;
 }
