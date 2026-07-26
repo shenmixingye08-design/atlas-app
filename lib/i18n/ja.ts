@@ -1490,13 +1490,13 @@ export const ui = {
   },
 
   owner: {
-    navLink: "運営管理",
-    shellTitle: "MINERVOT Owner",
-    ownerOnlyBadge: "運営者専用",
+    navLink: "経営ダッシュボード",
+    shellTitle: "MINERVOT 経営ダッシュボード",
+    ownerOnlyBadge: "オーナー専用",
     backToApp: "ユーザー画面へ",
-    mobileHint: "PC表示推奨 · 横スクロールで全メニュー",
-    pageEyebrow: "Owner Console",
-    pageTitle: "運営ダッシュボード",
+    mobileHint: "サイドバーから全メニューへ",
+    pageEyebrow: "MINERVOT Executive",
+    pageTitle: "経営ダッシュボード",
     pageSubtitle: (month: string) =>
       `${month}の実データのみを表示します（未取得項目は推定しません）。`,
     estimatedHint: "実データのみ",

@@ -31,6 +31,56 @@ export const ERROR_CATEGORY_DEFINITIONS: readonly ErrorCategoryDefinition[] = [
     label: "Stripe失敗",
     description: "Stripe決済・請求APIの失敗",
   },
+  {
+    id: "vision",
+    label: "Vision失敗",
+    description: "画像認識・Vision APIの失敗",
+  },
+  {
+    id: "pdf",
+    label: "PDF失敗",
+    description: "PDF生成・変換の失敗",
+  },
+  {
+    id: "word",
+    label: "Word失敗",
+    description: "Word文書生成の失敗",
+  },
+  {
+    id: "excel",
+    label: "Excel失敗",
+    description: "Excel生成の失敗",
+  },
+  {
+    id: "wordpress",
+    label: "WordPress失敗",
+    description: "WordPress投稿・連携の失敗",
+  },
+  {
+    id: "supabase",
+    label: "Supabase失敗",
+    description: "Supabase読み書き・接続の失敗",
+  },
+  {
+    id: "auth",
+    label: "認証失敗",
+    description: "Clerk / 認証まわりの失敗",
+  },
+  {
+    id: "image_generation",
+    label: "画像生成失敗",
+    description: "画像生成APIの失敗",
+  },
+  {
+    id: "scheduler",
+    label: "Scheduler失敗",
+    description: "Cron / スケジューラ実行の失敗",
+  },
+  {
+    id: "automation",
+    label: "Automation失敗",
+    description: "Automationジョブ実行の失敗",
+  },
 ] as const;
 
 export const ERROR_CATEGORY_IDS: readonly ErrorCategoryId[] =

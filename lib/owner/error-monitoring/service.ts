@@ -3,6 +3,7 @@ import "server-only";
 import { getErrorCategoryDefinition, isErrorCategoryId } from "./registry";
 import {
   listErrorCategoryStates,
+  listErrorEvents,
   recordOwnerError,
   setErrorCategoryResolution,
 } from "./store";
@@ -27,6 +28,7 @@ export function buildErrorMonitoringSnapshot(
 
   return {
     categories,
+    recentEvents: listErrorEvents().slice(0, 100),
     openCount: categories.filter(
       (category) =>
         category.resolutionStatus === "open" && category.occurrenceCount > 0,

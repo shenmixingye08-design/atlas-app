@@ -9,7 +9,7 @@ import type {
 type CategoryBucket = Map<ErrorCategoryId, ErrorCategoryState>;
 type EventBucket = ErrorEventRecord[];
 
-const MAX_EVENTS = 100;
+const MAX_EVENTS = 500;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -23,6 +23,7 @@ function createDefaultState(categoryId: ErrorCategoryId): ErrorCategoryState {
     resolutionStatus: "resolved",
     resolvedAt: null,
     lastMessage: null,
+    lastStackTrace: null,
   };
 }
 
@@ -37,6 +38,16 @@ function getCategoryBucket(): CategoryBucket {
       initial.set(id, createDefaultState(id));
     }
     globalScope.__atlasErrorMonitoringCategories = initial;
+  } else {
+    // Ensure newly added categories exist on hot reload.
+    for (const id of ERROR_CATEGORY_IDS) {
+      if (!globalScope.__atlasErrorMonitoringCategories.has(id)) {
+        globalScope.__atlasErrorMonitoringCategories.set(
+          id,
+          createDefaultState(id),
+        );
+      }
+    }
   }
 
   return globalScope.__atlasErrorMonitoringCategories;
@@ -59,18 +70,21 @@ export function recordOwnerError(input: {
   message?: string;
   source?: string;
   timestamp?: string;
+  stackTrace?: string | null;
 }): ErrorCategoryState {
   getErrorCategoryDefinition(input.categoryId);
 
   const timestamp = input.timestamp ?? nowIso();
   const message = input.message?.trim() || "Unknown error";
   const source = input.source ?? "system";
+  const stackTrace = input.stackTrace?.trim() || null;
 
   getEventBucket().push({
     categoryId: input.categoryId,
     message,
     timestamp,
     source,
+    stackTrace,
   });
 
   if (getEventBucket().length > MAX_EVENTS) {
@@ -88,6 +102,7 @@ export function recordOwnerError(input: {
     resolutionStatus: "open",
     resolvedAt: null,
     lastMessage: message,
+    lastStackTrace: stackTrace,
   };
 
   getCategoryBucket().set(input.categoryId, next);
@@ -121,8 +136,8 @@ export function listErrorCategoryStates(): ErrorCategoryState[] {
 
 export function listErrorEvents(categoryId?: ErrorCategoryId): ErrorEventRecord[] {
   const events = getEventBucket();
-  if (!categoryId) return [...events];
-  return events.filter((event) => event.categoryId === categoryId);
+  if (!categoryId) return [...events].reverse();
+  return events.filter((event) => event.categoryId === categoryId).reverse();
 }
 
 export function resetErrorMonitoringStore(): void {
