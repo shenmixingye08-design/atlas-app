@@ -234,13 +234,19 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     key: "VAPID_PUBLIC_KEY",
     service: "atlas",
     requirement: "recommended",
-    purpose: "Web Push VAPID 公開鍵（クライアント subscription 用）",
+    purpose: "Web Push VAPID 公開鍵（サーバー。未設定時は NEXT_PUBLIC_VAPID_PUBLIC_KEY）",
+  },
+  {
+    key: "NEXT_PUBLIC_VAPID_PUBLIC_KEY",
+    service: "atlas",
+    requirement: "optional",
+    purpose: "Web Push VAPID 公開鍵（クライアント埋め込み用・公開情報のみ）",
   },
   {
     key: "VAPID_PRIVATE_KEY",
     service: "atlas",
     requirement: "recommended",
-    purpose: "Web Push VAPID 秘密鍵（サーバー送信専用）",
+    purpose: "Web Push VAPID 秘密鍵（サーバー送信専用・クライアント禁止）",
   },
   {
     key: "VAPID_SUBJECT",

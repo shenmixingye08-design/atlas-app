@@ -115,6 +115,24 @@ export async function ensureNotificationsHydrated(
         ...DEFAULT_NOTIFICATION_PREFERENCES.lineEvents,
         ...loaded.preferences.lineEvents,
       },
+      push: {
+        ...DEFAULT_NOTIFICATION_PREFERENCES.push,
+        ...loaded.preferences.push,
+        events: {
+          ...DEFAULT_NOTIFICATION_PREFERENCES.push.events,
+          ...loaded.preferences.push?.events,
+        },
+        severities: {
+          ...DEFAULT_NOTIFICATION_PREFERENCES.push.severities,
+          ...loaded.preferences.push?.severities,
+        },
+        quietHoursStart:
+          loaded.preferences.push?.quietHoursStart ??
+          DEFAULT_NOTIFICATION_PREFERENCES.push.quietHoursStart,
+        quietHoursEnd:
+          loaded.preferences.push?.quietHoursEnd ??
+          DEFAULT_NOTIFICATION_PREFERENCES.push.quietHoursEnd,
+      },
     });
   }
 }
