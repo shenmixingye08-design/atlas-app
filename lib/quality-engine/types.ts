@@ -105,6 +105,47 @@ export type KnowledgeUsageTelemetry = {
   entryCount: number;
 };
 
+/** Owner-only Smart Context Engine snapshot (Phase4). */
+export type SmartContextTelemetrySnapshot = {
+  candidateCount: number;
+  selectedCount: number;
+  excludedCount: number;
+  requiredCount: number;
+  budgetTokens: number;
+  estimatedInputTokens: number;
+  preCompressChars: number;
+  postCompressChars: number;
+  reductionRate: number;
+  usedCategories: readonly string[];
+  usedLayers: readonly string[];
+  usedReferenceCount: number;
+  usedTemplate: boolean;
+  usedPastArtifactCount: number;
+  cacheHit: boolean;
+  selectionMs: number;
+  extraLlmCalls: number;
+  refillUsed: boolean;
+  actualInputTokens: number;
+  outputTokens: number;
+  aiCallCount: number;
+  model: string;
+  estimatedApiCostUsd: number | null;
+  knowledgeEntryCount: number;
+  referenceCount: number;
+  qualityScore: number | null;
+  improveCount: number;
+  decisions?: readonly {
+    id: string;
+    title: string;
+    layer: string;
+    selected: boolean;
+    score: number;
+    required: boolean;
+    reasons: readonly string[];
+    exclusionReasons: readonly string[];
+  }[];
+};
+
 /** Owner-only telemetry — never shown to end users. */
 export type QualityEngineTelemetry = {
   tier: QualityEngineTier;
@@ -121,6 +162,8 @@ export type QualityEngineTelemetry = {
   judgeSource: QualityJudgeResult["source"];
   /** Knowledge Engine usage (Phase3). */
   knowledgeUsage?: KnowledgeUsageTelemetry;
+  /** Smart Context Engine usage (Phase4). */
+  smartContext?: SmartContextTelemetrySnapshot;
   recordedAt: string;
 };
 

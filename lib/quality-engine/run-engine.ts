@@ -19,6 +19,10 @@ import { buildSlimWorkerContext } from "@/lib/orchestration/slim-context";
 import { resolveWorkerPolicy } from "@/lib/ai/policy-engine";
 
 import {
+  isInformationGapFeedback,
+  pickRefillIdsFromDecisions,
+} from "./context";
+import {
   buildQualityContextPack,
   formatContextPackForPrompt,
   type QualityContextPack,
@@ -107,7 +111,7 @@ export async function runQualityEngine(
     deliverableType: input.deliverableType,
     metadata: input.metadata,
   });
-  const contextPack =
+  let contextPack =
     input.contextPack ??
     buildQualityContextPack({
       assignment: input.assignment,
@@ -116,7 +120,7 @@ export async function runQualityEngine(
       knowledge: input.knowledge,
       promptKind,
     });
-  const brief =
+  let brief =
     input.writerBrief ??
     buildWriterBrief({
       assignment: input.assignment,
@@ -141,6 +145,7 @@ export async function runQualityEngine(
   let reviewerCount = 0;
   let reviewer: QualityReviewerResult | null = null;
   let judge: QualityJudgeResult;
+  let contextRefillUsed = false;
 
   // --- Specialist Reviewer ---
   input.trackStep("reviewer");
@@ -309,6 +314,84 @@ export async function runQualityEngine(
     timings.judgeMs += judge.durationMs;
   }
 
+  // --- Smart Context info-gap refill (max 1, only when Judge says 情報不足) ---
+  if (
+    !contextRefillUsed &&
+    isInformationGapFeedback(judge!.feedback) &&
+    canCallLlm(input.costMeter)
+  ) {
+    const refillIds = pickRefillIdsFromDecisions(
+      contextPack.smartContext.decisions ?? [],
+      3,
+    );
+    if (refillIds.length > 0) {
+      contextRefillUsed = true;
+      contextPack = buildQualityContextPack({
+        assignment: input.assignment,
+        deliverableType: input.deliverableType,
+        metadata: input.metadata,
+        knowledge: input.knowledge,
+        promptKind,
+        forceIncludeIds: refillIds,
+        bypassCache: true,
+      });
+      brief = buildWriterBrief({
+        assignment: input.assignment,
+        deliverableType: input.deliverableType,
+        planSummary: input.planSummary,
+        metadata: input.metadata,
+        contextPack,
+      });
+      const refillStarted = Date.now();
+      try {
+        input.costMeter.assertWithinLimits();
+        input.trackStep("worker", 1);
+        const feedback = [
+          judge!.feedback,
+          "情報不足のため、除外されていた関連Contextを補充して再生成します。",
+          formatContextPackForPrompt(contextPack),
+        ].join("\n\n");
+        const workerPhase = await input.runPhase(
+          "worker",
+          "worker",
+          buildQualityImprovePrompt({
+            kind: promptKind,
+            feedback,
+            weakSections: judge!.weakSections,
+          }),
+          buildSlimWorkerContext({
+            assignment: input.assignment,
+            deliverableType: deliverable.type,
+            planSummary: input.planSummary,
+            researchSummary: input.researchSummary,
+            qualityRequirements: feedback.slice(0, 1_500),
+            workerKnowledge: formatContextPackForPrompt(contextPack),
+          }),
+          input.metadata,
+          input.primaryEmployeeId,
+          resolveWorkerPolicy({
+            deliverableType: input.deliverableType,
+            revision: true,
+          }).taskType,
+        );
+        deliverable = input.rebuildDeliverable(workerPhase);
+        improveCount += 1;
+        judge = runRulesQualityJudge({
+          deliverable,
+          kind: promptKind,
+          requiredSectionTitles: sectionTitles,
+          hasBusinessProfile: Boolean(contextPack.businessProfileSummary),
+          hasVision: Boolean(contextPack.visionSummary),
+        });
+        timings.judgeMs += judge.durationMs;
+      } catch {
+        // keep previous deliverable / judge
+      } finally {
+        timings.improveMs += Date.now() - refillStarted;
+      }
+    }
+  }
+
   // --- Formatter ---
   input.trackStep("final_deliverable");
   const formatted = applyFormatterToDeliverable(deliverable);
@@ -316,6 +399,25 @@ export async function runQualityEngine(
   timings.formatterMs = formatted.durationMs;
 
   const usage = contextPack.knowledgeUsage;
+  const costSummary = input.costMeter.getSummary();
+  const primaryModel =
+    costSummary.calls.find((c) => !c.cached)?.model ??
+    costSummary.calls[0]?.model ??
+    "";
+  const smartContext = {
+    ...contextPack.smartContext,
+    refillUsed: contextRefillUsed || contextPack.smartContext.refillUsed,
+    extraLlmCalls: 0,
+    actualInputTokens: costSummary.estimatedInputTokens,
+    outputTokens: costSummary.estimatedOutputTokens,
+    aiCallCount: costSummary.llmCallCount,
+    model: primaryModel,
+    estimatedApiCostUsd: costSummary.estimatedCostUsd,
+    qualityScore: judge!.overallScore,
+    improveCount,
+    knowledgeEntryCount: contextPack.smartContext.selectedCount,
+    referenceCount: contextPack.smartContext.usedReferenceCount,
+  };
   const result: QualityEngineRunResult = {
     telemetry: {
       tier,
@@ -338,6 +440,7 @@ export async function runQualityEngine(
         layersUsed: [...usage.layersUsed],
         entryCount: usage.entryCount,
       },
+      smartContext,
       recordedAt: new Date().toISOString(),
     },
     judge: judge!,

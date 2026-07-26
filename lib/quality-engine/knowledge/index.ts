@@ -1,16 +1,22 @@
 export type {
   KnowledgeLayerId,
   KnowledgeEntry,
+  KnowledgeEntryMeta,
+  NormalizedKnowledgeEntry,
   KnowledgeUsageFlags,
   KnowledgeUsage,
   MergedKnowledgePack,
 } from "./types";
 
+export { normalizeKnowledgeEntry } from "./normalize";
+
 export {
   KNOWLEDGE_MERGE_PRIORITY,
+  collectKnowledgeCandidates,
   mergeKnowledgeForWriter,
   buildKnowledgeUsage,
   formatMergedKnowledgeForPrompt,
+  buildMergedTextFromEntries,
 } from "./merge";
 
 export {

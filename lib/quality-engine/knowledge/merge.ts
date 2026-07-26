@@ -2,16 +2,19 @@ import type { KnowledgeRetrievalResult } from "@/lib/knowledge/types";
 
 import type { ReferenceInsights } from "../reference-engine";
 import type { QualityPromptKind } from "../types";
+import { normalizeKnowledgeEntry } from "./normalize";
 import { listRegistryKnowledge } from "./registry";
 import type {
   KnowledgeEntry,
   KnowledgeLayerId,
   KnowledgeUsage,
   MergedKnowledgePack,
+  NormalizedKnowledgeEntry,
 } from "./types";
 
 /** Merge priority for Writer Context Pack (first = highest). */
 export const KNOWLEDGE_MERGE_PRIORITY: readonly KnowledgeLayerId[] = [
+  "user_instruction",
   "business_profile",
   "reference",
   "company",
@@ -27,6 +30,7 @@ export const KNOWLEDGE_MERGE_PRIORITY: readonly KnowledgeLayerId[] = [
 ] as const;
 
 const LAYER_TITLE: Record<KnowledgeLayerId, string> = {
+  user_instruction: "ユーザー明示指示",
   business_profile: "会社概要 / Business Profile",
   reference: "参考資料 (Reference Engine)",
   company: "会社Knowledge",
@@ -52,23 +56,17 @@ function asString(value: unknown, max = 1_200): string {
   return trim(value, max);
 }
 
-function pushEntry(
-  bucket: KnowledgeEntry[],
-  entry: KnowledgeEntry,
-): void {
+function pushEntry(bucket: KnowledgeEntry[], entry: KnowledgeEntry): void {
   if (!entry.body.trim()) return;
   bucket.push({
     ...entry,
-    body: trim(entry.body, 1_800),
+    body: trim(entry.body, 2_400),
   });
 }
 
-/**
- * Collect runtime + registry knowledge, then merge in priority order
- * into a Writer-ready Context Pack payload.
- */
-export function mergeKnowledgeForWriter(input: {
+export type CollectKnowledgeInput = {
   promptKind: QualityPromptKind;
+  assignment?: string;
   metadata?: Readonly<Record<string, unknown>> | null;
   knowledge?: KnowledgeRetrievalResult | null;
   reference: ReferenceInsights;
@@ -78,12 +76,33 @@ export function mergeKnowledgeForWriter(input: {
   pastDeliverableHints: string;
   templateId: string | null;
   templateHints: string;
-  maxMergedChars?: number;
-}): MergedKnowledgePack {
+};
+
+/** Collect all Knowledge candidates (no selection / no LLM). */
+export function collectKnowledgeCandidates(
+  input: CollectKnowledgeInput,
+): NormalizedKnowledgeEntry[] {
   const meta = (input.metadata ?? {}) as Record<string, unknown>;
   const entries: KnowledgeEntry[] = [];
+  const assignment = (input.assignment ?? "").trim();
 
-  // --- Runtime layers (highest priority sources) ---
+  if (assignment) {
+    pushEntry(entries, {
+      id: "runtime.user_instruction",
+      layer: "user_instruction",
+      title: "今回のユーザー明示指示",
+      body: assignment.slice(0, 1_500),
+      meta: {
+        required: true,
+        priority: 100,
+        confidence: 100,
+        sourceType: "user",
+        category: "user_instruction",
+        tags: ["user", "required"],
+      },
+    });
+  }
+
   if (input.businessProfileSummary.trim()) {
     pushEntry(entries, {
       id: "runtime.business_profile",
@@ -96,15 +115,29 @@ export function mergeKnowledgeForWriter(input: {
       ]
         .filter(Boolean)
         .join("\n"),
+      meta: {
+        required: true,
+        priority: 95,
+        sourceType: "runtime",
+        tags: ["company", "brand", "required"],
+      },
     });
   }
 
   if (input.reference.hasReferences && input.reference.summary.trim()) {
+    const explicitRef = Boolean(meta.referenceSpecified || meta.forceReference);
     pushEntry(entries, {
       id: "runtime.reference",
       layer: "reference",
       title: "Reference Engine",
       body: input.reference.summary,
+      meta: {
+        required: explicitRef || input.reference.attachmentCount > 0,
+        priority: explicitRef ? 92 : 75,
+        sourceType: "reference",
+        tags: ["reference", ...input.reference.kinds],
+        confidence: 80,
+      },
     });
   }
 
@@ -117,6 +150,7 @@ export function mergeKnowledgeForWriter(input: {
       layer: "company",
       title: "会社独自ナレッジ",
       body: companyExtra,
+      meta: { sourceType: "runtime", priority: 70, tags: ["company"] },
     });
   }
 
@@ -127,10 +161,12 @@ export function mergeKnowledgeForWriter(input: {
       layer: "industry",
       title: "業界ナレッジ（指定）",
       body: industryExtra,
+      meta: { sourceType: "runtime", priority: 65, tags: ["industry"] },
     });
   }
 
   if (input.templateHints.trim() || input.templateId) {
+    const forced = Boolean(meta.templateSpecified || meta.forceTemplate);
     pushEntry(entries, {
       id: "runtime.template",
       layer: "template",
@@ -141,6 +177,12 @@ export function mergeKnowledgeForWriter(input: {
       ]
         .filter(Boolean)
         .join("\n"),
+      meta: {
+        required: forced || Boolean(input.templateId),
+        priority: forced ? 90 : 68,
+        sourceType: "template",
+        tags: ["template"],
+      },
     });
   }
 
@@ -150,6 +192,7 @@ export function mergeKnowledgeForWriter(input: {
       layer: "vision",
       title: "Vision",
       body: `${input.visionSummary}\n（Visionと矛盾する記述は禁止）`,
+      meta: { sourceType: "runtime", priority: 72, tags: ["vision"] },
     });
   }
 
@@ -159,6 +202,7 @@ export function mergeKnowledgeForWriter(input: {
       layer: "user_settings",
       title: "ユーザー設定",
       body: input.userSettingsSummary,
+      meta: { sourceType: "runtime", priority: 60, tags: ["settings"] },
     });
   }
 
@@ -168,10 +212,15 @@ export function mergeKnowledgeForWriter(input: {
       layer: "past_deliverables",
       title: "過去成果物",
       body: `${input.pastDeliverableHints}\n（コピー禁止・品質参考のみ）`,
+      meta: {
+        sourceType: "retrieval",
+        priority: 45,
+        tags: ["past", input.promptKind],
+        confidence: 60,
+      },
     });
   }
 
-  // Company knowledge retrieval snippets as company layer supplement
   const retrievalCompany = [
     input.knowledge?.plannerContext.similarProjects,
     input.knowledge?.plannerContext.successfulStrategies,
@@ -184,22 +233,43 @@ export function mergeKnowledgeForWriter(input: {
       layer: "company",
       title: "会社ナレッジ（検索）",
       body: retrievalCompany,
+      meta: { sourceType: "retrieval", priority: 55, tags: ["company", "past"] },
     });
   }
 
-  // --- Static registry ---
   for (const entry of listRegistryKnowledge(input.promptKind)) {
-    pushEntry(entries, entry);
+    pushEntry(entries, {
+      ...entry,
+      meta: {
+        ...entry.meta,
+        sourceType: "registry",
+        artifactTypes: entry.kinds ?? [],
+        tags: entry.meta?.tags ?? [entry.layer, ...(entry.kinds ?? [])],
+      },
+    });
   }
 
-  // Merge by priority
+  // Brand forbidden expressions as required when present in registry
+  return entries
+    .filter((e) => e.body.trim())
+    .map((e) => normalizeKnowledgeEntry(e));
+}
+
+/**
+ * Collect + naive priority merge (Phase3 compat).
+ * Smart Context Engine should select from `candidates` instead of using full merge.
+ */
+export function mergeKnowledgeForWriter(
+  input: CollectKnowledgeInput & { maxMergedChars?: number },
+): MergedKnowledgePack {
+  const candidates = collectKnowledgeCandidates(input);
   const maxChars = input.maxMergedChars ?? 5_500;
   const sections: MergedKnowledgePack["sections"][number][] = [];
   const layersUsed: KnowledgeLayerId[] = [];
   let merged = "";
 
   for (const layer of KNOWLEDGE_MERGE_PRIORITY) {
-    const layerEntries = entries.filter((e) => e.layer === layer);
+    const layerEntries = candidates.filter((e) => e.layer === layer && e.meta.enabled);
     if (layerEntries.length === 0) continue;
     layersUsed.push(layer);
     const body = layerEntries
@@ -210,11 +280,7 @@ export function mergeKnowledgeForWriter(input: {
     if (merged.length + chunk.length + 2 > maxChars) {
       const remain = maxChars - merged.length - 32;
       if (remain > 80) {
-        sections.push({
-          title,
-          body: trim(body, remain),
-          layer,
-        });
+        sections.push({ title, body: trim(body, remain), layer });
         merged = `${merged}\n\n## ${title}\n${trim(body, remain)}`.trim();
       }
       break;
@@ -225,7 +291,7 @@ export function mergeKnowledgeForWriter(input: {
 
   const usage = buildKnowledgeUsage({
     layersUsed,
-    entryCount: entries.length,
+    entryCount: candidates.length,
     contextChars: merged.length,
     businessProfile: Boolean(input.businessProfileSummary.trim()),
     reference: input.reference.hasReferences,
@@ -239,6 +305,7 @@ export function mergeKnowledgeForWriter(input: {
     sections,
     mergedText: merged,
     usage,
+    candidates,
   };
 }
 
@@ -280,8 +347,32 @@ export function formatMergedKnowledgeForPrompt(
 ): string {
   if (!pack.mergedText.trim()) return "";
   return [
-    "Knowledge Engine Context Pack（優先順位どおり統合済み）",
-    "Business Profile → Reference → 会社 → 業界 → 成果物 → Template → …",
+    "Knowledge Engine Context Pack（Smart Context選定済み）",
+    "必須情報を保持しつつ、関連度の高い知識のみを渡しています。",
     trim(pack.mergedText, max),
   ].join("\n\n");
+}
+
+export function buildMergedTextFromEntries(
+  selected: readonly NormalizedKnowledgeEntry[],
+): { mergedText: string; sections: MergedKnowledgePack["sections"]; layersUsed: KnowledgeLayerId[] } {
+  const sections: MergedKnowledgePack["sections"][number][] = [];
+  const layersUsed: KnowledgeLayerId[] = [];
+  const parts: string[] = [];
+
+  for (const layer of KNOWLEDGE_MERGE_PRIORITY) {
+    const layerEntries = selected.filter((e) => e.layer === layer);
+    if (layerEntries.length === 0) continue;
+    layersUsed.push(layer);
+    const body = layerEntries.map((e) => `### ${e.title}\n${e.body}`).join("\n\n");
+    const title = LAYER_TITLE[layer];
+    sections.push({ title, body, layer });
+    parts.push(`## ${title}\n${body}`);
+  }
+
+  return {
+    mergedText: parts.join("\n\n"),
+    sections,
+    layersUsed,
+  };
 }
