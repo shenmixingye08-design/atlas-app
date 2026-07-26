@@ -97,6 +97,9 @@ export type BenchmarkUsageInfo = {
   editDistance: MeasurableNumber
   finalUsed: boolean | null
   failureReason: string | null
+  /** Thumbs feedback reasons (Experience Engine / Owner analytics). */
+  positiveReasons?: readonly string[] | null
+  negativeReasons?: readonly string[] | null
 }
 
 export type RuleEvaluationIssue = {
@@ -152,6 +155,10 @@ export type UserEvaluation = {
   reasons: readonly string[]
   otherText: string | null
   ratedAt: string
+  /** Thumbs rating bridge from artifact-feedback (optional). */
+  ratingType?: "positive" | "negative"
+  positiveReasons?: readonly string[]
+  negativeReasons?: readonly string[]
 }
 
 export type BenchmarkRecord = {
