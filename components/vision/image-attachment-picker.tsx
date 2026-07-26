@@ -182,18 +182,10 @@ export function ImageAttachmentPicker({
             type="button"
             variant="secondary"
             size="sm"
+            className="min-h-11 touch-manipulation"
             disabled={disabled}
             onClick={() => galleryRef.current?.click()}
-            aria-label="画像を添付"
-          >
-            添付
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={disabled}
-            onClick={() => galleryRef.current?.click()}
+            aria-label="画像を選ぶ"
           >
             画像を選ぶ
           </Button>
@@ -201,10 +193,12 @@ export function ImageAttachmentPicker({
             type="button"
             variant="secondary"
             size="sm"
+            className="min-h-11 touch-manipulation"
             disabled={disabled}
             onClick={() => cameraRef.current?.click()}
+            aria-label="カメラで撮る"
           >
-            写真を撮る
+            カメラで撮る
           </Button>
           <p className="text-xs text-[var(--text-secondary)]">
             JPEG / PNG / WEBP（最大{ATTACHMENT_LIMITS.maxImagesPerRequest}枚・

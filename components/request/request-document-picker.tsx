@@ -85,11 +85,13 @@ export function RequestDocumentPicker({
           type="button"
           variant="secondary"
           size="sm"
+          className="min-h-11 touch-manipulation"
           disabled={disabled || busy}
           isLoading={busy}
           onClick={() => inputRef.current?.click()}
+          aria-label="ファイルを選ぶ"
         >
-          ファイルを添付
+          ファイルを選ぶ
         </Button>
         <p className="self-center text-xs text-[var(--text-secondary)]">
           PDF / Word / Excel / CSV / PowerPoint / テキスト（最大
