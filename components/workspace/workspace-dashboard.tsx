@@ -63,6 +63,7 @@ export function WorkspaceDashboard() {
   >(null);
   const [, setWorkMemoryCandidateCount] = useState(0);
   const [taughtWorkflowHint, setTaughtWorkflowHint] = useState(false);
+  const [backgroundAccepted, setBackgroundAccepted] = useState(false);
   const [pendingCommander, setPendingCommander] =
     useState<CommanderRunResult | null>(null);
 
@@ -89,13 +90,22 @@ export function WorkspaceDashboard() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!isLoading) return;
+    if (!isLoading) {
+      setBackgroundAccepted(false);
+      return;
+    }
+    const acceptedTimer = window.setTimeout(() => {
+      setBackgroundAccepted(true);
+    }, 3_000);
     const interval = setInterval(() => {
       setLoadingStepIndex((prev) =>
         Math.min(prev + 1, loadingPhases.length - 1),
       );
     }, LOADING_STEP_INTERVAL_MS);
-    return () => clearInterval(interval);
+    return () => {
+      window.clearTimeout(acceptedTimer);
+      clearInterval(interval);
+    };
   }, [isLoading, loadingPhases.length]);
 
   useEffect(() => {
@@ -107,12 +117,8 @@ export function WorkspaceDashboard() {
   const runOrchestration = async (
     requestAssignment: string,
     config?: SalesMaterialSessionConfig | null,
-    extraMetadata?: Readonly<Record<string, unknown>>,
+    _extraMetadata?: Readonly<Record<string, unknown>>,
   ) => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     setError(null);
     setResult(null);
     setOutlineOnlyText(null);
@@ -120,6 +126,7 @@ export function WorkspaceDashboard() {
     setWorkMemoryCandidateCount(0);
     setPendingCommander(null);
     setIsLoading(true);
+    setBackgroundAccepted(false);
     setLoadingStepIndex(0);
     setLoadingPhases(buildLoadingPhases(0));
 
@@ -128,44 +135,100 @@ export function WorkspaceDashboard() {
     }
 
     try {
-      const orchestrationResult = await submitWorkRequest(
-        requestAssignment,
-        controller.signal,
-        {
-          metadata: {
-            ...requestMetadata,
-            ...(extraMetadata ?? {}),
-            ...(config ? buildSalesMaterialMetadata(config) : {}),
-          },
-        },
-      );
-
-      setResult(orchestrationResult);
-      setWorkMemoryUsed(orchestrationResult.workMemory ?? null);
-      setWorkMemoryCandidateCount(
-        orchestrationResult.workMemoryCandidates?.length ?? 0,
-      );
-      projectService.saveFromOrchestration(
-        requestAssignment,
-        orchestrationResult,
-        orchestrationResult.commanderRunId
-          ? `commander-${orchestrationResult.commanderRunId}`
-          : undefined,
-      );
-
-      if (orchestrationResult.status === "failed" && orchestrationResult.error) {
-        setError(
-          formatUserFacingErrorText(
-            toUserFacingError(orchestrationResult.error, orchestrationResult),
-          ),
+      // Server job — browser does not hold the long orchestration connection.
+      const accept = await fetch("/api/work/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assignment: requestAssignment,
+          // Prevent double-submit of the same request (job runs once).
+          idempotencyKey:
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random()}`,
+        }),
+      });
+      const acceptBody = (await accept.json().catch(() => ({}))) as {
+        jobId?: string;
+        error?: string;
+        message?: string;
+      };
+      if (!accept.ok || !acceptBody.jobId) {
+        throw new Error(
+          acceptBody.error ||
+            acceptBody.message ||
+            "依頼を受け付けられませんでした。",
         );
       }
+
+      setBackgroundAccepted(true);
+      const jobId = acceptBody.jobId;
+
+      // Poll until completed / failed / confirmation.
+      for (let i = 0; i < 240; i += 1) {
+        await new Promise((r) => setTimeout(r, 2_000));
+        const poll = await fetch(`/api/work/jobs/${encodeURIComponent(jobId)}`, {
+          cache: "no-store",
+        });
+        const body = (await poll.json().catch(() => ({}))) as {
+          status?: string;
+          result?: OrchestrationResult | null;
+          error?: string;
+          message?: string;
+        };
+        if (!poll.ok) {
+          throw new Error(body.error || "状況を確認できませんでした。");
+        }
+        if (body.status === "awaiting_confirmation") {
+          // Fall back to interactive confirm via classic path when needed.
+          setIsLoading(false);
+          setBackgroundAccepted(false);
+          const orchestrationResult = await submitWorkRequest(
+            requestAssignment,
+            undefined,
+            { metadata: requestMetadata },
+          );
+          setResult(orchestrationResult);
+          projectService.saveFromOrchestration(
+            requestAssignment,
+            orchestrationResult,
+            orchestrationResult.commanderRunId
+              ? `commander-${orchestrationResult.commanderRunId}`
+              : undefined,
+          );
+          return;
+        }
+        if (body.status === "completed" && body.result) {
+          setResult(body.result);
+          setWorkMemoryUsed(body.result.workMemory ?? null);
+          projectService.saveFromOrchestration(
+            requestAssignment,
+            body.result,
+            body.result.commanderRunId
+              ? `commander-${body.result.commanderRunId}`
+              : undefined,
+          );
+          if (body.result.status === "failed" && body.result.error) {
+            setError(
+              formatUserFacingErrorText(
+                toUserFacingError(body.result.error, body.result),
+              ),
+            );
+          }
+          return;
+        }
+        if (body.status === "failed") {
+          throw new Error(body.error || body.message || "確認が必要です。");
+        }
+      }
+      throw new Error(
+        "まだ準備中です。しばらくしてから履歴をご確認ください。",
+      );
     } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return;
       if (err instanceof CommanderConfirmationRequiredError) {
         setPendingCommander(err.commander);
         setIsLoading(false);
-        abortRef.current = null;
+        setBackgroundAccepted(false);
         return;
       }
       const message =
@@ -173,16 +236,9 @@ export function WorkspaceDashboard() {
           ? err.message
           : formatUserFacingErrorText(toUserFacingError(err));
       setError(message);
-      setLoadingPhases((prev) =>
-        prev.map((phase) =>
-          phase.status === "running"
-            ? { ...phase, status: "error", errorMessage: message }
-            : phase,
-        ),
-      );
     } finally {
       setIsLoading(false);
-      abortRef.current = null;
+      setBackgroundAccepted(false);
     }
   };
 
@@ -394,7 +450,19 @@ export function WorkspaceDashboard() {
 
       {error && !result && !outlineOnlyText && <ErrorState message={error} />}
 
-      {(isLoading || result) && isLoading && (
+      {isLoading && backgroundAccepted && (
+        <section className="mx-auto max-w-lg space-y-4 py-16 text-center animate-fade-in">
+          <p className="text-sm font-medium text-accent">MINERVOT</p>
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+            依頼を受け付けました
+          </h2>
+          <p className="text-base text-[var(--foreground-muted)]">
+            バックグラウンドで処理しています。完了次第、成果物をお渡しします。
+          </p>
+        </section>
+      )}
+
+      {isLoading && !backgroundAccepted && (
         <WorkflowResults
           result={result}
           loadingPhases={loadingPhases}

@@ -1,5 +1,7 @@
-import type { OrchestrationResult } from "./types";
+import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 import { ui } from "@/lib/i18n";
+
+import type { OrchestrationResult } from "./types";
 
 export type UserFacingError = {
   title: string;
@@ -83,12 +85,14 @@ export function toUserFacingError(
   }
 
   return {
-    title: "予期しないエラー",
-    message: "処理中に問題が発生しました。",
-    action: "もう一度実行してください。改善しない場合はサポートへ連絡してください。",
+    title: "確認が必要です",
+    message: toHumanReliabilityMessage(raw || "unknown"),
+    action: "そのままお待ちいただくか、もう一度お試しください。",
   };
 }
 
 export function formatUserFacingErrorText(error: UserFacingError): string {
-  return `${error.message}\n\n${error.action}`;
+  const message = toHumanReliabilityMessage(error.message);
+  const action = toHumanReliabilityMessage(error.action);
+  return `${message}\n\n${action}`;
 }

@@ -11,7 +11,8 @@ import {
 } from "@/lib/billing/client-errors";
 import { notifyBillingUsageChanged } from "@/lib/billing/refresh-events";
 
-export const COMMANDER_CLIENT_TIMEOUT_MS = 180_000;
+/** Aligned with server RUN_BUDGET — UI shows background-accepted after 3s. */
+export const COMMANDER_CLIENT_TIMEOUT_MS = 8 * 60_000;
 
 export async function submitCommanderRequest(
   assignment: string,

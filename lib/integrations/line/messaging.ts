@@ -2,6 +2,13 @@ import "server-only";
 
 import { createHmac, timingSafeEqual } from "crypto";
 
+import { fetchWithTimeout } from "@/lib/http/fetch-with-timeout";
+import {
+  RELIABILITY_TIMEOUTS,
+  withCircuitBreaker,
+  withRetry,
+} from "@/lib/reliability";
+
 import {
   getLineChannelAccessToken,
   getLineChannelSecret,
@@ -56,18 +63,29 @@ export async function pushLineTextMessage(input: {
     ],
   };
 
-  const response = await fetch(LINE_PUSH_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
+  await withCircuitBreaker("line", () =>
+    withRetry(async () => {
+      const response = await fetchWithTimeout(
+        LINE_PUSH_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(body),
+        },
+        RELIABILITY_TIMEOUTS.line,
+      );
 
-  if (!response.ok) {
-    throw new LineApiError(await readLineErrorMessage(response), response.status);
-  }
+      if (!response.ok) {
+        throw new LineApiError(
+          await readLineErrorMessage(response),
+          response.status,
+        );
+      }
+    }, { maxAttempts: 3 }),
+  );
 }
 
 export async function replyLineTextMessage(input: {

@@ -1,5 +1,12 @@
 import "server-only";
 
+import { fetchWithTimeout } from "@/lib/http/fetch-with-timeout";
+import {
+  RELIABILITY_TIMEOUTS,
+  withCircuitBreaker,
+  withRetry,
+} from "@/lib/reliability";
+
 import {
   buildWordPressRestBase,
   normalizeApplicationPassword,
@@ -93,12 +100,22 @@ async function wpFetch(
     headers.set("Content-Type", "application/json");
   }
 
-  return fetch(url, {
-    ...init,
-    headers,
-    body: init?.rawBody !== undefined ? init.rawBody : init?.body,
-    cache: "no-store",
-  });
+  return withCircuitBreaker("wordpress", () =>
+    withRetry(
+      () =>
+        fetchWithTimeout(
+          url,
+          {
+            ...init,
+            headers,
+            body: init?.rawBody !== undefined ? init.rawBody : init?.body,
+            cache: "no-store",
+          },
+          RELIABILITY_TIMEOUTS.wordpress,
+        ),
+      { maxAttempts: 3 },
+    ),
+  );
 }
 
 async function assertOk(

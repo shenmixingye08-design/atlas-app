@@ -24,7 +24,8 @@ type OwnerNavProps = {
     | "accountDeletions"
     | "auditLog"
     | "disasterRecovery"
-    | "automationExecutionLogs";
+    | "automationExecutionLogs"
+    | "reliability";
 };
 const LINKS = [
   { id: "dashboard" as const, href: "/owner", label: ui.owner.navDashboard },
@@ -92,6 +93,11 @@ const LINKS = [
     id: "systemStatus" as const,
     href: "/owner/system-status",
     label: ui.owner.navSystemStatus,
+  },
+  {
+    id: "reliability" as const,
+    href: "/owner/reliability",
+    label: "Reliability (SRE)",
   },
   {
     id: "externalServices" as const,

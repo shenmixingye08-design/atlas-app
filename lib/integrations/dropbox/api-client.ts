@@ -1,5 +1,12 @@
 import "server-only";
 
+import { fetchWithTimeout } from "@/lib/http/fetch-with-timeout";
+import {
+  RELIABILITY_TIMEOUTS,
+  withCircuitBreaker,
+  withRetry,
+} from "@/lib/reliability";
+
 import { DROPBOX_API_BASE, DROPBOX_CONTENT_BASE } from "./config";
 import type { DropboxEntryKind, DropboxFileItem } from "./types";
 
@@ -71,24 +78,32 @@ async function dropboxRpc<T>(
   path: string,
   body: unknown,
 ): Promise<T> {
-  const response = await fetch(`${DROPBOX_API_BASE}${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
+  return withCircuitBreaker("dropbox", () =>
+    withRetry(async () => {
+      const response = await fetchWithTimeout(
+        `${DROPBOX_API_BASE}${path}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+          cache: "no-store",
+        },
+        RELIABILITY_TIMEOUTS.dropbox,
+      );
 
-  const payload = (await response.json()) as T & { error_summary?: string };
-  if (!response.ok) {
-    throw new Error(
-      (payload as { error_summary?: string }).error_summary ??
-        "Dropbox API request failed",
-    );
-  }
-  return payload;
+      const payload = (await response.json()) as T & { error_summary?: string };
+      if (!response.ok) {
+        throw new Error(
+          (payload as { error_summary?: string }).error_summary ??
+            "Dropbox API request failed",
+        );
+      }
+      return payload;
+    }, { maxAttempts: 3 }),
+  );
 }
 
 export async function listDropboxFolder(input: {
@@ -159,20 +174,24 @@ export async function uploadDropboxFile(input: {
   buffer: Buffer;
   mode?: "add" | "overwrite";
 }): Promise<DropboxFileItem> {
-  const response = await fetch(`${DROPBOX_CONTENT_BASE}/files/upload`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${input.accessToken}`,
-      "Content-Type": "application/octet-stream",
-      "Dropbox-API-Arg": JSON.stringify({
-        path: input.path,
-        mode: input.mode ?? "add",
-        autorename: true,
-        mute: false,
-      }),
+  const response = await fetchWithTimeout(
+    `${DROPBOX_CONTENT_BASE}/files/upload`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        "Content-Type": "application/octet-stream",
+        "Dropbox-API-Arg": JSON.stringify({
+          path: input.path,
+          mode: input.mode ?? "add",
+          autorename: true,
+          mute: false,
+        }),
+      },
+      body: new Uint8Array(input.buffer),
     },
-    body: new Uint8Array(input.buffer),
-  });
+    RELIABILITY_TIMEOUTS.dropbox,
+  );
 
   const payload = (await response.json()) as DropboxMetadata & {
     error_summary?: string;
@@ -203,13 +222,17 @@ export async function downloadDropboxFile(input: {
   accessToken: string;
   path: string;
 }): Promise<{ file: DropboxFileItem; buffer: Buffer }> {
-  const response = await fetch(`${DROPBOX_CONTENT_BASE}/files/download`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${input.accessToken}`,
-      "Dropbox-API-Arg": JSON.stringify({ path: input.path }),
+  const response = await fetchWithTimeout(
+    `${DROPBOX_CONTENT_BASE}/files/download`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        "Dropbox-API-Arg": JSON.stringify({ path: input.path }),
+      },
     },
-  });
+    RELIABILITY_TIMEOUTS.dropbox,
+  );
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as {
@@ -234,7 +257,7 @@ export async function createDropboxSharedLink(input: {
   accessToken: string;
   path: string;
 }): Promise<{ url: string; file: DropboxFileItem }> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${DROPBOX_API_BASE}/sharing/create_shared_link_with_settings`,
     {
       method: "POST",
@@ -251,6 +274,7 @@ export async function createDropboxSharedLink(input: {
         },
       }),
     },
+    RELIABILITY_TIMEOUTS.dropbox,
   );
 
   const payload = (await response.json()) as DropboxSharedLinkResponse & {

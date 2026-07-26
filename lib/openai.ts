@@ -25,6 +25,7 @@ import { recordUserAiUsageFromTexts } from "@/lib/billing/usage/meter";
 export const ATLAS_MODEL = decisionToModelPolicy(resolveTaskPolicy("chat")).model;
 
 import { ATLAS_CHAT_INSTRUCTIONS } from "@/lib/atlas-personality";
+import { withCircuitBreaker, withRetry } from "@/lib/reliability";
 
 /** Base system instructions for chat and default Responses API calls. */
 export const DEFAULT_INSTRUCTIONS = ATLAS_CHAT_INSTRUCTIONS;
@@ -52,7 +53,8 @@ export function isOpenAIConfigured(): boolean {
  */
 export function getOpenAIClient(): OpenAI {
   if (!client) {
-    client = new OpenAI({ apiKey: getApiKey(), maxRetries: 0 });
+    // Reliability: retry transient 429/5xx at the SDK layer (max 3).
+    client = new OpenAI({ apiKey: getApiKey(), maxRetries: 3, timeout: 60_000 });
   }
 
   return client;
@@ -178,8 +180,12 @@ export async function createAtlasResponse(
     return mock;
   }
 
-  const response = await getOpenAIClient().responses.create(
-    buildNonStreamingParams(params),
+  const response = await withCircuitBreaker("openai", () =>
+    withRetry(
+      () =>
+        getOpenAIClient().responses.create(buildNonStreamingParams(params)),
+      { maxAttempts: 3 },
+    ),
   );
   maybeRecordBillingUsage({
     params,
