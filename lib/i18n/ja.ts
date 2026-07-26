@@ -137,7 +137,8 @@ export const ui = {
     voiceUnsupported: "このブラウザでは音声入力に対応していません。",
     voiceError: "音声を取得できませんでした。もう一度お試しください。",
     textLabel: "文章で伝える",
-    textPlaceholder: "例：このPDFを要約して / 今日のSNS投稿を作成して",
+    textPlaceholder:
+      "例：家計簿にして / このPDFを要約して / 今日のSNS投稿を作成して",
     send: "送る",
     examplesTitle: "こんなものを送れます",
     flowSend: "送る",
@@ -149,6 +150,8 @@ export const ui = {
     chooseTitle: "以下のどちらですか？",
     chooseHint: "念のため確認させてください。選ぶとすぐに作業を始めます。",
     otherFile: "別のファイルを送る",
+    receiptProcessing: "レシートを読み取り、家計簿を作成しています…",
+    receiptFailed: "レシートを家計簿にできませんでした",
     examples: [
       { emoji: "📸", label: "レシート", arrow: "家計簿へ登録" },
       { emoji: "📄", label: "契約書", arrow: "要約・期限抽出" },
@@ -161,6 +164,39 @@ export const ui = {
     ],
     processing: "内容を理解しています",
     ready: "準備ができました",
+  },
+
+  household: {
+    title: "家計簿",
+    subtitle:
+      "レシート画像から登録した支出です。月次分析とExcel出力ができます。",
+    loading: "家計簿を読み込み中…",
+    loadError: "家計簿を読み込めませんでした",
+    saveError: "カテゴリの保存に失敗しました",
+    empty: "まだ登録がありません。ホームからレシート画像を送ってください。",
+    monthlyHeading: (ym: string) => `${ym} の支出`,
+    deltaLabel: (pct: number) =>
+      pct === 0 ? "先月比 ±0%" : pct > 0 ? `先月比 +${pct}%` : `先月比 ${pct}%`,
+    suggestionsHeading: "秘書からの提案",
+    exportExcel: "Excelをダウンロード",
+    entriesHeading: "登録一覧",
+    categoryLabel: "カテゴリ",
+    confirmTitle: "確認が必要な項目があります",
+    confirmSubtitle: "読み取りが不確かな項目だけ教えてください。",
+    lowConfidence: (label: string) =>
+      `${label}を正確に読み取れませんでした`,
+    manualInput: "入力する",
+    confirmSubmit: "家計簿へ登録",
+    confirming: "登録中…",
+    confirmError: "確認に失敗しました",
+    expenseQuestion: "経費として登録しますか？",
+    expenseYes: "はい、経費にする",
+    expenseNo: "いいえ、個人用",
+    failedTitle: "家計簿を作成できませんでした",
+    registeredTitle: "家計簿へ登録しました",
+    registeredBody: (n: number) => `${n}件の明細を登録しました。`,
+    openLedger: "家計簿を見る",
+    pageTitle: "家計簿 — MINERVOT",
   },
 
   /* AI秘書の進行状況フレーズ（読み込み表示に使用・AI不使用の固定文言） */
@@ -2420,6 +2456,7 @@ export const ui = {
     wordpressSettings: "WordPress連携 — MINERVOT",
     company: "業務テンプレート — MINERVOT",
     chat: "追加依頼 — MINERVOT",
+    household: "家計簿 — MINERVOT",
   },
 
   project: {

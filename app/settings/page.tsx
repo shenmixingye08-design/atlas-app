@@ -15,6 +15,7 @@ import { SettingsExportLink } from "@/components/settings/settings-export-link";
 import { SettingsMemoryLink } from "@/components/settings/settings-memory-link";
 import { SettingsWorkMemoryLink } from "@/components/settings/settings-work-memory-link";
 import { SettingsLearningLink } from "@/components/settings/settings-learning-link";
+import { SettingsHouseholdLink } from "@/components/settings/settings-household-link";
 import { SettingsNotificationsLink } from "@/components/settings/settings-notifications-link";
 import { ExternalServiceSettings } from "@/components/settings/external-service-settings";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -33,6 +34,7 @@ function SettingsContent() {
       <ThemeSettings />
       <OnboardingSettings onRedo={() => router.push("/projects?welcome=1")} />
       <WorkProfileSettings />
+      <SettingsHouseholdLink />
       <SettingsWorkMemoryLink />
       <SettingsLearningLink />
       <SettingsMemoryLink />

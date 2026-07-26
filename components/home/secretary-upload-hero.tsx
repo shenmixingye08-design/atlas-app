@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { ReceiptSessionPanel } from "@/components/receipt/receipt-session-panel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
@@ -11,6 +12,7 @@ import {
   type UploadClassification,
   type UploadIntent,
 } from "@/lib/home/upload-intent";
+import type { ReceiptSession } from "@/lib/receipt/types";
 
 type SpeechRecognitionLike = {
   lang: string;
@@ -33,9 +35,23 @@ type PendingFile = {
   file: File;
 };
 
-type Phase = "idle" | "understanding" | "autostart" | "choose";
+type Phase =
+  | "idle"
+  | "understanding"
+  | "autostart"
+  | "choose"
+  | "receipt_processing"
+  | "receipt_result";
 
 const AUTO_START_DELAY_MS = 1600;
+
+function wantsHouseholdLedger(text: string): boolean {
+  return /家計簿|レシート|領収/.test(text);
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith("image/") || /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(file.name);
+}
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
   if (typeof window === "undefined") return null;
@@ -62,6 +78,10 @@ export function SecretaryUploadHero() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [classification, setClassification] =
     useState<UploadClassification | null>(null);
+  const [receiptSession, setReceiptSession] = useState<ReceiptSession | null>(
+    null,
+  );
+  const [receiptError, setReceiptError] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceHint, setVoiceHint] = useState<string | null>(null);
@@ -72,14 +92,18 @@ export function SecretaryUploadHero() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const dragDepthRef = useRef(0);
   const autoStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [, startTransition] = useTransition();
 
   useEffect(() => {
-    setVoiceSupported(Boolean(getSpeechRecognitionCtor()));
+    const supported = Boolean(getSpeechRecognitionCtor());
+    startTransition(() => {
+      setVoiceSupported(supported);
+    });
     return () => {
       recognitionRef.current?.stop();
       if (autoStartTimerRef.current) clearTimeout(autoStartTimerRef.current);
     };
-  }, []);
+  }, [startTransition]);
 
   const startWork = useCallback(
     (assignment: string) => {
@@ -100,7 +124,48 @@ export function SecretaryUploadHero() {
     setPhase("idle");
     setClassification(null);
     setFiles([]);
+    setReceiptSession(null);
+    setReceiptError(null);
   }, []);
+
+  const runReceiptPipeline = useCallback(
+    async (pendingFiles: PendingFile[], hint: string) => {
+      const images = pendingFiles
+        .map((item) => item.file)
+        .filter(isImageFile);
+      if (images.length === 0) {
+        setReceiptError(ui.uploadHome.receiptFailed);
+        setPhase("idle");
+        return;
+      }
+      setPhase("receipt_processing");
+      setReceiptError(null);
+      try {
+        const form = new FormData();
+        for (const file of images) form.append("images", file);
+        if (hint.trim()) form.append("hint", hint.trim());
+        const response = await fetch("/api/receipt/process", {
+          method: "POST",
+          body: form,
+        });
+        const body = (await response.json()) as {
+          session?: ReceiptSession;
+          error?: string;
+        };
+        if (!response.ok || !body.session) {
+          throw new Error(body.error ?? ui.uploadHome.receiptFailed);
+        }
+        setReceiptSession(body.session);
+        setPhase("receipt_result");
+      } catch (err) {
+        setReceiptError(
+          err instanceof Error ? err.message : ui.uploadHome.receiptFailed,
+        );
+        setPhase("idle");
+      }
+    },
+    [],
+  );
 
   const handleFiles = useCallback(
     (list: FileList | File[]) => {
@@ -110,6 +175,8 @@ export function SecretaryUploadHero() {
       const pending = incoming.map((file) => ({ id: makeFileId(file), file }));
       setFiles(pending);
       setPhase("understanding");
+      setReceiptSession(null);
+      setReceiptError(null);
 
       const result = classifyUploads(
         pending.map((item) => ({
@@ -123,32 +190,45 @@ export function SecretaryUploadHero() {
       }
       setClassification(result);
 
-      const fileNames = pending.map((item) => item.file.name);
       if (result.confidence === "high") {
         setPhase("autostart");
         autoStartTimerRef.current = setTimeout(() => {
-          startWork(result.intent.buildAssignment(fileNames));
+          if (result.intent.id === "receipt") {
+            void runReceiptPipeline(pending, text || "家計簿にして");
+            return;
+          }
+          startWork(
+            result.intent.buildAssignment(pending.map((item) => item.file.name)),
+          );
         }, AUTO_START_DELAY_MS);
       } else {
         setPhase("choose");
       }
     },
-    [startWork],
+    [runReceiptPipeline, startWork, text],
   );
 
   const chooseIntent = useCallback(
     (intent: UploadIntent) => {
+      if (intent.id === "receipt") {
+        void runReceiptPipeline(files, text || "家計簿にして");
+        return;
+      }
       const fileNames = files.map((item) => item.file.name);
       startWork(intent.buildAssignment(fileNames));
     },
-    [files, startWork],
+    [files, runReceiptPipeline, startWork, text],
   );
 
   const sendText = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed) return;
+    if (wantsHouseholdLedger(trimmed) && files.some((item) => isImageFile(item.file))) {
+      void runReceiptPipeline(files, trimmed);
+      return;
+    }
     startWork(trimmed);
-  }, [startWork, text]);
+  }, [files, runReceiptPipeline, startWork, text]);
 
   const toggleVoice = useCallback(() => {
     const Ctor = getSpeechRecognitionCtor();
@@ -191,7 +271,10 @@ export function SecretaryUploadHero() {
     recognition.start();
   }, [listening, t.voiceError, t.voiceUnsupported]);
 
-  const busy = phase === "understanding" || phase === "autostart";
+  const busy =
+    phase === "understanding" ||
+    phase === "autostart" ||
+    phase === "receipt_processing";
 
   return (
     <section aria-labelledby="upload-hero-title" className="animate-fade-up">
@@ -410,6 +493,35 @@ export function SecretaryUploadHero() {
               </Button>
             </div>
           </div>
+        ) : null}
+
+        {phase === "receipt_processing" ? (
+          <div className="rounded-[28px] border border-accent/30 bg-accent/[0.06] px-6 py-10 text-center shadow-[var(--shadow-glow)] sm:px-10">
+            <span className="lux-spinner mx-auto h-14 w-14" aria-hidden />
+            <p className="mt-6 text-base font-medium text-accent">
+              {t.receiptProcessing}
+            </p>
+          </div>
+        ) : null}
+
+        {phase === "receipt_result" && receiptSession ? (
+          <div className="space-y-4">
+            <ReceiptSessionPanel
+              session={receiptSession}
+              onUpdated={(next) => setReceiptSession(next)}
+            />
+            <div className="text-center">
+              <Button variant="ghost" size="sm" onClick={cancelAutoStart}>
+                {t.otherFile}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {receiptError ? (
+          <p className="mt-4 text-center text-sm text-[var(--status-error)]">
+            {receiptError}
+          </p>
         ) : null}
       </div>
 

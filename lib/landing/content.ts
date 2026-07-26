@@ -125,8 +125,8 @@ export const LANDING_REQUEST_EXAMPLES = [
     input: "レシートの写真",
     request: "今月の家計簿へ追加してください",
     result: "支出内容を読み取り、分類して記録します。",
-    // 家計簿モジュール・OCR・写真入力なし（domains/user-memory の分類スタブのみ）
-    status: "upcoming" as const satisfies LandingExampleStatus,
+    // Receipt Pipeline: Vision抽出 → 家計簿登録 → Excel / 月次分析
+    status: "available" as const satisfies LandingExampleStatus,
   },
   {
     id: "pdf-to-excel",
