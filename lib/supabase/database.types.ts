@@ -336,6 +336,66 @@ export type Database = {
         };
         Relationships: [];
       };
+      atlas_image_attachments: {
+        Row: {
+          id: string;
+          user_id: string;
+          job_id: string;
+          original_file_name: string;
+          mime_type: string;
+          original_mime_type: string | null;
+          original_bytes: number;
+          processed_bytes: number;
+          width: number;
+          height: number;
+          content_hash: string;
+          original_storage_path: string;
+          processed_storage_path: string;
+          retention_policy: string;
+          expires_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          user_id: string;
+          job_id?: string;
+          original_file_name: string;
+          mime_type: string;
+          original_mime_type?: string | null;
+          original_bytes: number;
+          processed_bytes: number;
+          width?: number;
+          height?: number;
+          content_hash: string;
+          original_storage_path: string;
+          processed_storage_path: string;
+          retention_policy?: string;
+          expires_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          job_id?: string;
+          original_file_name?: string;
+          mime_type?: string;
+          original_mime_type?: string | null;
+          original_bytes?: number;
+          processed_bytes?: number;
+          width?: number;
+          height?: number;
+          content_hash?: string;
+          original_storage_path?: string;
+          processed_storage_path?: string;
+          retention_policy?: string;
+          expires_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       atlas_push_subscriptions: {
         Row: {
           id: string;

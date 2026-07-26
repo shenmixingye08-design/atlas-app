@@ -1,0 +1,265 @@
+import type { ArtifactTemplateDefinition, ArtifactTemplateId } from "./types";
+import { DEFAULT_ARTIFACT_TEMPLATE } from "./types";
+
+/**
+ * Template registry — add new templates here.
+ * Selection scores definitions; avoid proliferating switch/case trees.
+ */
+export const ARTIFACT_TEMPLATES: readonly ArtifactTemplateDefinition[] = [
+  {
+    id: "a4_leaflet",
+    category: "sales",
+    label: "A4片面",
+    description: "投函・案内向けの片面営業資料",
+    baseWeight: 12,
+    patterns: [
+      /a4片面/,
+      /片面/,
+      /投函/,
+      /土地活用/,
+      /地主/,
+      /dm/,
+      /チラシ/,
+      /案内資料/,
+    ],
+    preferredArtifactTypes: ["sales_material", "presentation"],
+    structureDefaults: {
+      cover: false,
+      toc: "never",
+      summary: true,
+      contact: true,
+      signature: false,
+      imageFrames: true,
+      charts: false,
+      pageBreaks: false,
+      cta: true,
+      pageNumbers: false,
+      header: true,
+      footer: true,
+    },
+    recommendedFormats: ["docx", "pdf", "pptx"],
+    otherFormats: ["md"],
+  },
+  {
+    id: "proposal",
+    category: "proposal",
+    label: "提案書",
+    description: "表紙・概要・提案・効果・進行",
+    baseWeight: 8,
+    patterns: [/提案書/, /ご提案/, /導入提案/, /ソリューション/],
+    preferredArtifactTypes: ["proposal", "plan"],
+    structureDefaults: {
+      cover: true,
+      toc: "auto",
+      summary: true,
+      contact: true,
+      signature: false,
+      imageFrames: false,
+      charts: false,
+      pageBreaks: true,
+      cta: true,
+      pageNumbers: true,
+      header: true,
+      footer: true,
+    },
+    recommendedFormats: ["docx", "pdf"],
+    otherFormats: ["pptx", "md"],
+  },
+  {
+    id: "report",
+    category: "report",
+    label: "レポート",
+    description: "報告書・調査向けの堅い体裁",
+    baseWeight: 7,
+    patterns: [/報告書/, /レポート/, /調査報告/, /実績報告/],
+    preferredArtifactTypes: ["report", "research"],
+    structureDefaults: {
+      cover: true,
+      toc: "auto",
+      summary: true,
+      contact: false,
+      signature: false,
+      imageFrames: false,
+      charts: true,
+      pageBreaks: true,
+      cta: false,
+      pageNumbers: true,
+      header: true,
+      footer: true,
+    },
+    recommendedFormats: ["pdf", "docx"],
+    otherFormats: ["md", "xlsx"],
+  },
+  {
+    id: "table_focus",
+    category: "spreadsheet",
+    label: "表中心",
+    description: "ランキング・一覧・家計簿・スケジュール",
+    baseWeight: 9,
+    patterns: [
+      /ランキング/,
+      /一覧/,
+      /家計簿/,
+      /スケジュール/,
+      /比較表/,
+      /顧客一覧/,
+      /順位表/,
+    ],
+    preferredArtifactTypes: [
+      "ranking",
+      "list",
+      "household",
+      "schedule",
+      "invoice",
+    ],
+    structureDefaults: {
+      cover: false,
+      toc: "never",
+      summary: true,
+      contact: false,
+      signature: false,
+      imageFrames: false,
+      charts: true,
+      pageBreaks: false,
+      cta: false,
+      pageNumbers: true,
+      header: true,
+      footer: true,
+    },
+    recommendedFormats: ["xlsx", "pdf", "docx"],
+    otherFormats: ["md"],
+  },
+  {
+    id: "business",
+    category: "business",
+    label: "ビジネス",
+    description: "提出向けの清潔な業務資料",
+    baseWeight: 4,
+    patterns: [/営業資料/, /業務/, /ビジネス/],
+    preferredArtifactTypes: [
+      "sales_material",
+      "contract",
+      "minutes",
+      "manual",
+      "general",
+    ],
+    structureDefaults: {
+      cover: true,
+      toc: "auto",
+      summary: true,
+      contact: false,
+      signature: false,
+      imageFrames: false,
+      charts: false,
+      pageBreaks: true,
+      cta: false,
+      pageNumbers: true,
+      header: true,
+      footer: true,
+    },
+    recommendedFormats: ["docx", "pdf"],
+    otherFormats: ["pptx", "md", "xlsx"],
+  },
+  {
+    id: "simple",
+    category: "simple",
+    label: "シンプル",
+    description: "余白多めのシンプルな体裁",
+    baseWeight: 2,
+    patterns: [/シンプル/, /簡易/],
+    preferredArtifactTypes: ["sns", "blog", "general"],
+    structureDefaults: {
+      cover: false,
+      toc: "never",
+      summary: false,
+      contact: false,
+      signature: false,
+      imageFrames: false,
+      charts: false,
+      pageBreaks: false,
+      cta: false,
+      pageNumbers: true,
+      header: false,
+      footer: true,
+    },
+    recommendedFormats: ["docx", "pdf", "md"],
+    otherFormats: ["txt"],
+  },
+  {
+    id: "standard",
+    category: "business",
+    label: "スタンダード",
+    description: "標準的な文書レイアウト",
+    baseWeight: 1,
+    patterns: [],
+    preferredArtifactTypes: [],
+    structureDefaults: {
+      cover: true,
+      toc: "auto",
+      summary: true,
+      contact: false,
+      signature: false,
+      imageFrames: false,
+      charts: false,
+      pageBreaks: true,
+      cta: false,
+      pageNumbers: true,
+      header: true,
+      footer: true,
+    },
+    recommendedFormats: ["docx", "pdf", "md"],
+    otherFormats: [],
+  },
+] as const;
+
+/** Category-level defaults for artifact types not covered by a design id. */
+export const CATEGORY_BY_ARTIFACT_TYPE: Record<string, ArtifactTemplateDefinition["category"]> = {
+  sales_material: "sales",
+  proposal: "proposal",
+  plan: "proposal",
+  report: "report",
+  contract: "contract",
+  invoice: "invoice",
+  minutes: "meeting",
+  ranking: "ranking",
+  list: "spreadsheet",
+  household: "spreadsheet",
+  schedule: "spreadsheet",
+  research: "research",
+  manual: "manual",
+  blog: "creator",
+  sns: "creator",
+  youtube_script: "creator",
+  presentation: "sales",
+  estimate: "estimate",
+  general: "business",
+};
+
+const templateMap = new Map(
+  ARTIFACT_TEMPLATES.map((template) => [template.id, template]),
+);
+
+export function getArtifactTemplate(
+  id: ArtifactTemplateId,
+): ArtifactTemplateDefinition {
+  return templateMap.get(id) ?? templateMap.get(DEFAULT_ARTIFACT_TEMPLATE)!;
+}
+
+export function listArtifactTemplates(): ArtifactTemplateDefinition[] {
+  return [...ARTIFACT_TEMPLATES];
+}
+
+/** Design chips shown in the UI (user-facing subset). */
+export function listSelectableTemplates(): ArtifactTemplateDefinition[] {
+  const order: ArtifactTemplateId[] = [
+    "business",
+    "simple",
+    "report",
+    "proposal",
+    "a4_leaflet",
+    "table_focus",
+  ];
+  return order
+    .map((id) => templateMap.get(id))
+    .filter((item): item is ArtifactTemplateDefinition => Boolean(item));
+}

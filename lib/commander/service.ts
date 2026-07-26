@@ -1,6 +1,12 @@
 import "server-only";
 
+import { prepareAssignmentWithVision } from "@/lib/vision/prepare-assignment";
+import {
+  evaluateMissingAttachmentIdsGate,
+  stripVisionPoisonText,
+} from "@/lib/vision/gate";
 import { ensureWorkMemoryHydrated } from "@/lib/work-memory/durable";
+import { bindAttachmentsToJob } from "@/lib/attachments/store";
 
 import {
   cancelCommanderRun,
@@ -14,7 +20,135 @@ import {
   getCommanderRun,
   listCommanderRunsForUser,
 } from "./run-store";
-import type { CommanderRequest, CommanderRunResult } from "./types";
+import type {
+  CommanderRequest,
+  CommanderRunResult,
+  CommanderVisionGate,
+} from "./types";
+
+function blockedVisionResult(input: {
+  assignment: string;
+  userId: string;
+  gate: CommanderVisionGate;
+}): CommanderRunResult {
+  const plan = buildCommanderPlan({
+    assignment: stripVisionPoisonText(input.assignment),
+    userId: input.userId,
+  });
+  const title =
+    input.gate.status === "needs_input"
+      ? "画像の確認が必要です"
+      : "画像の内容を解析できませんでした";
+  return {
+    runId: null,
+    status: "failed",
+    plan,
+    result: null,
+    attempts: [],
+    confirmationReasons: [],
+    visionGate: input.gate,
+    report: {
+      status: "failed",
+      title,
+      summary: input.gate.message,
+      classification: plan.classification.summary,
+      aisUsed: [],
+      externalServices: [],
+      templateLabel: plan.requiredTemplate.label,
+      memoryUsedCount: 0,
+      attempts: 0,
+      retriesUsed: 0,
+      projectHint: "",
+      automationHint: null,
+      confirmationReasons: [],
+    },
+  };
+}
+
+function readAttachmentIds(metadata: Readonly<Record<string, unknown>> | undefined): string[] {
+  const raw = metadata?.attachmentIds;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+}
+
+async function maybeEnrichWithVision(input: {
+  userId: string;
+  assignment: string;
+  metadata?: Readonly<Record<string, unknown>>;
+}): Promise<{
+  assignment: string;
+  metadata?: Readonly<Record<string, unknown>>;
+  gate?: CommanderVisionGate;
+}> {
+  const cleanedAssignment = stripVisionPoisonText(input.assignment);
+  const attachmentIds = readAttachmentIds(input.metadata);
+
+  const missingGate = evaluateMissingAttachmentIdsGate({
+    assignment: cleanedAssignment,
+    attachmentIds,
+    metadataAttachments: input.metadata?.attachments,
+  });
+  if (missingGate) {
+    return {
+      assignment: cleanedAssignment,
+      metadata: {
+        ...(input.metadata ?? {}),
+        visionStatus: "needs_image_retry",
+        visionAnalysisSuccess: false,
+        visionUserCode: missingGate.userCode,
+      },
+      gate: {
+        status: "needs_image_retry",
+        analysisSuccess: false,
+        message: missingGate.message,
+        userCode: missingGate.userCode,
+      },
+    };
+  }
+
+  if (attachmentIds.length === 0) {
+    return {
+      assignment: cleanedAssignment,
+      metadata: input.metadata,
+    };
+  }
+
+  const prepared = await prepareAssignmentWithVision({
+    userId: input.userId,
+    assignment: cleanedAssignment,
+    metadata: {
+      ...(input.metadata ?? {}),
+      attachmentIds,
+    },
+  });
+
+  if (prepared.gate) {
+    return {
+      assignment: prepared.assignment,
+      metadata: prepared.metadata,
+      gate: prepared.gate,
+    };
+  }
+
+  // Hard safety: never proceed with poison fallback language when images are attached.
+  if (!prepared.metadata.visionAnalysisSuccess) {
+    return {
+      assignment: prepared.assignment,
+      metadata: prepared.metadata,
+      gate: {
+        status: "vision_failed",
+        analysisSuccess: false,
+        message: "画像の内容を解析できませんでした",
+        userCode: "image_analyze_failed",
+      },
+    };
+  }
+
+  return {
+    assignment: prepared.assignment,
+    metadata: prepared.metadata,
+  };
+}
 
 export function parseCommanderRequest(body: unknown):
   | CommanderRequest
@@ -95,8 +229,20 @@ export async function runCommanderRequest(input: {
   await ensureWorkMemoryHydrated(input.userId);
 
   if (input.request.mode === "plan") {
-    return planCommander({
+    const enriched = await maybeEnrichWithVision({
+      userId: input.userId,
       assignment: input.request.assignment,
+      metadata: input.request.metadata,
+    });
+    if (enriched.gate) {
+      return blockedVisionResult({
+        assignment: enriched.assignment,
+        userId: input.userId,
+        gate: enriched.gate,
+      });
+    }
+    return planCommander({
+      assignment: enriched.assignment,
       userId: input.userId,
     });
   }
@@ -116,10 +262,58 @@ export async function runCommanderRequest(input: {
     });
   }
 
-  return executeCommander({
-    assignment: input.request.assignment,
+  const enriched = await maybeEnrichWithVision({
     userId: input.userId,
+    assignment: input.request.assignment,
     metadata: input.request.metadata,
+  });
+
+  if (enriched.gate) {
+    // CRITICAL: do not run Artifact Engine / orchestration without successful vision.
+    return blockedVisionResult({
+      assignment: enriched.assignment,
+      userId: input.userId,
+      gate: enriched.gate,
+    });
+  }
+
+  const attachmentIds = readAttachmentIds(enriched.metadata);
+  let metadata = enriched.metadata;
+  if (attachmentIds.length > 0) {
+    const jobId =
+      (typeof enriched.metadata?.jobId === "string" &&
+        enriched.metadata.jobId.trim()) ||
+      `job_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const bind = await bindAttachmentsToJob(
+      input.userId,
+      attachmentIds,
+      jobId,
+    );
+    if (bind.failed.length > 0) {
+      return blockedVisionResult({
+        assignment: enriched.assignment,
+        userId: input.userId,
+        gate: {
+          status: "needs_image_retry",
+          analysisSuccess: false,
+          message: "画像の内容を解析できませんでした",
+          userCode: "image_fetch_failed",
+        },
+      });
+    }
+    metadata = {
+      ...(enriched.metadata ?? {}),
+      jobId,
+      attachmentIds,
+      attachmentBindStatus: "bound",
+      visionPayloadAttachmentIds: attachmentIds,
+    };
+  }
+
+  return executeCommander({
+    assignment: enriched.assignment,
+    userId: input.userId,
+    metadata,
     confirmed: input.request.confirmed,
     runId: input.request.runId,
   });

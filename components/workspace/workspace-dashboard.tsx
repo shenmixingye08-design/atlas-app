@@ -27,6 +27,8 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ui } from "@/lib/i18n";
+import { consumePendingAttachmentIds } from "@/lib/attachments/pending-session";
+import type { DocumentExtractClient } from "@/lib/attachments/documents/client-upload";
 
 import { FinalOutput } from "./final-output";
 import {
@@ -70,12 +72,23 @@ export function WorkspaceDashboard() {
   const abortRef = useRef<AbortController | null>(null);
   const autoStartedRef = useRef(false);
   const { isAvailable } = useFeatureAvailability();
+  const preferredFormat = requestMetadata.preferredDeliverableFormat;
+  const preferredFormats =
+    preferredFormat === "xlsx" ||
+    preferredFormat === "docx" ||
+    preferredFormat === "pdf" ||
+    preferredFormat === "txt"
+      ? ([preferredFormat] as Array<"xlsx" | "docx" | "pdf" | "txt">)
+      : undefined;
+
   const deliverableOptions = salesMaterialConfig
     ? {
         formats: formatsForWizardConfig(salesMaterialConfig),
         skipFileGeneration: salesMaterialConfig.skipFileGeneration,
       }
-    : undefined;
+    : preferredFormats
+      ? { formats: preferredFormats }
+      : undefined;
   const { deliverables, deliverablesError, isGeneratingDeliverables } =
     useDeliverableFiles(result, deliverableOptions);
 
@@ -117,7 +130,7 @@ export function WorkspaceDashboard() {
   const runOrchestration = async (
     requestAssignment: string,
     config?: SalesMaterialSessionConfig | null,
-    _extraMetadata?: Readonly<Record<string, unknown>>,
+    extraMetadata?: Readonly<Record<string, unknown>>,
   ) => {
     setError(null);
     setResult(null);
@@ -134,6 +147,13 @@ export function WorkspaceDashboard() {
       setSalesMaterialConfig(config);
     }
 
+    const mergedMetadata = {
+      ...requestMetadata,
+      ...(extraMetadata ?? {}),
+      ...(config ? buildSalesMaterialMetadata(config) : {}),
+    };
+    setRequestMetadata(mergedMetadata);
+
     try {
       // Server job — browser does not hold the long orchestration connection.
       const accept = await fetch("/api/work/jobs", {
@@ -141,6 +161,7 @@ export function WorkspaceDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           assignment: requestAssignment,
+          metadata: mergedMetadata,
           // Prevent double-submit of the same request (job runs once).
           idempotencyKey:
             typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -313,12 +334,60 @@ export function WorkspaceDashboard() {
     }
 
     autoStartedRef.current = true;
-    const metadata = {
-      requestUi: "secretary_v1",
+
+    const attachmentIds = consumePendingAttachmentIds();
+    let documents: DocumentExtractClient[] = [];
+    try {
+      const raw = sessionStorage.getItem("atlas.pendingDocumentExtracts");
+      sessionStorage.removeItem("atlas.pendingDocumentExtracts");
+      if (raw) {
+        const parsed = JSON.parse(raw) as unknown;
+        if (Array.isArray(parsed)) {
+          documents = parsed.filter(
+            (item): item is DocumentExtractClient =>
+              Boolean(item) &&
+              typeof item === "object" &&
+              typeof (item as DocumentExtractClient).extractedText === "string",
+          );
+        }
+      }
+    } catch {
+      documents = [];
+    }
+
+    const documentBlock =
+      documents.length > 0
+        ? [
+            "",
+            "【添付ファイルの抽出テキスト】",
+            ...documents.map((doc, index) =>
+              [
+                `--- ファイル${index + 1}: ${doc.fileName} (${doc.mimeType}) ---`,
+                doc.extractedText,
+              ].join("\n"),
+            ),
+          ].join("\n")
+        : "";
+
+    const metadata: Record<string, unknown> = {
+      requestUi: "secretary_zero_friction_v1",
       executionPreference: "once",
       priority: "normal",
       skipWorkMemory: false,
-    } as const;
+      requireVisionSuccess: attachmentIds.length > 0,
+      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
+      ...(documents.length > 0
+        ? {
+            documentExtracts: documents.map((doc) => ({
+              id: doc.id,
+              fileName: doc.fileName,
+              mimeType: doc.mimeType,
+              bytes: doc.bytes,
+              pageOrSheetCount: doc.pageOrSheetCount,
+            })),
+          }
+        : {}),
+    };
     setRequestMetadata(metadata);
 
     if (isSalesMaterialRequest(prefill) && isAvailable("sales_material")) {
@@ -326,7 +395,7 @@ export function WorkspaceDashboard() {
       return;
     }
 
-    void runOrchestration(prefill, null, metadata);
+    void runOrchestration(`${prefill}${documentBlock}`, null, metadata);
     // One-shot landing behavior; avoid re-running when handlers recreate.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, isAvailable, isLoading, result]);

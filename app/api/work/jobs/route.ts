@@ -54,6 +54,19 @@ export async function POST(request: Request): Promise<Response> {
       ? (body as { idempotencyKey: string }).idempotencyKey.trim()
       : null;
 
+  const rawMetadata =
+    body &&
+    typeof body === "object" &&
+    (body as { metadata?: unknown }).metadata &&
+    typeof (body as { metadata?: unknown }).metadata === "object"
+      ? ((body as { metadata: Record<string, unknown> }).metadata ?? {})
+      : {};
+
+  // Never trust client-supplied user identity fields.
+  const safeMetadata = { ...(rawMetadata as Record<string, unknown>) };
+  delete safeMetadata.userId;
+  delete safeMetadata.user_id;
+
   if (!assignment) {
     return Response.json(
       { error: "何をしてほしいかを書いてください。" },
@@ -100,6 +113,7 @@ export async function POST(request: Request): Promise<Response> {
     userId,
     assignment,
     idempotencyKey,
+    metadata: safeMetadata,
     status: "queued",
     attemptCount: 0,
     maxAttempts: MAX_IMMEDIATE_RETRIES,

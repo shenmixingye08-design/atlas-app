@@ -6,7 +6,8 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=()",
+    // Allow camera for mobile receipt / document capture on this origin only.
+    value: "camera=(self), microphone=(), geolocation=()",
   },
   {
     key: "Strict-Transport-Security",
