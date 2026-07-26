@@ -40,6 +40,7 @@ import {
 } from "./prompts";
 import { parseLlmQualityReviewer, runRulesQualityReviewer } from "./reviewer";
 import { getSectionsForKind } from "./sections";
+import { getSpecialistProfile } from "./specialists";
 import { recordQualityEngineTelemetry } from "./telemetry-store";
 import type {
   QualityEngineRunResult,
@@ -121,6 +122,7 @@ export async function runQualityEngine(
       metadata: input.metadata,
       contextPack,
     });
+  const specialist = getSpecialistProfile(promptKind);
 
   const timings: QualityEngineStageTiming = {
     plannerMs: input.priorTimings?.plannerMs ?? 0,
@@ -133,10 +135,11 @@ export async function runQualityEngine(
 
   let deliverable = input.deliverable;
   let improveCount = 0;
+  let reviewerCount = 0;
   let reviewer: QualityReviewerResult | null = null;
   let judge: QualityJudgeResult;
 
-  // --- Reviewer ---
+  // --- Specialist Reviewer ---
   input.trackStep("reviewer");
   const rulesReviewer = runRulesQualityReviewer({
     deliverable,
@@ -145,6 +148,7 @@ export async function runQualityEngine(
     contextPack,
   });
   reviewer = rulesReviewer;
+  reviewerCount += 1;
   timings.reviewerMs = rulesReviewer.durationMs;
 
   if (
@@ -179,6 +183,7 @@ export async function runQualityEngine(
         "reviewer_fallback",
       );
       reviewer = parseLlmQualityReviewer(phase.result.outputText, rulesReviewer);
+      reviewerCount += 1;
       timings.reviewerMs += Date.now() - started;
     } catch {
       reviewer = rulesReviewer;
@@ -226,7 +231,11 @@ export async function runQualityEngine(
           undefined,
           "reviewer_fallback",
         );
-        judge = parseLlmQualityJudge(phase.result.outputText, rulesJudge);
+        judge = parseLlmQualityJudge(
+          phase.result.outputText,
+          rulesJudge,
+          promptKind,
+        );
         timings.judgeMs += Date.now() - started;
       } catch {
         judge = rulesJudge;
@@ -307,8 +316,11 @@ export async function runQualityEngine(
     telemetry: {
       tier,
       promptKind,
+      specialistLabel: specialist.label,
       improveCount,
+      reviewerCount,
       finalScore: judge!.overallScore,
+      judgeFocus: judge!.focus,
       passed: judge!.passed,
       timings,
       reviewerUsedLlm: Boolean(reviewer?.usedLlm),

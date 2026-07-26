@@ -1,6 +1,7 @@
 import { readEffectiveCostSavingMode } from "@/lib/cost-optimization/metadata";
 import type { DeliverableType } from "@/lib/orchestration/deliverable-types";
 
+import { ALL_QUALITY_PROMPT_KINDS } from "./specialists";
 import type { QualityEngineTier, QualityPromptKind } from "./types";
 
 /** Judge pass threshold for auto-improve (user requirement). */
@@ -50,7 +51,7 @@ export function resolveQualityEngineTier(input: {
   if (
     costMode === "high" ||
     FULL_TYPES.has(type) ||
-    /営業資料|提案書|契約|請求|プレゼン/i.test(assignment)
+    /営業資料|提案書|企画書|契約|請求|見積|プレゼン/i.test(assignment)
   ) {
     return "full";
   }
@@ -58,7 +59,7 @@ export function resolveQualityEngineTier(input: {
   return "enhanced";
 }
 
-/** Map assignment + deliverable type → dedicated prompt family. */
+/** Map assignment + deliverable type → dedicated specialist kind. */
 export function resolveQualityPromptKind(input: {
   assignment: string;
   deliverableType: DeliverableType | string;
@@ -66,34 +67,35 @@ export function resolveQualityPromptKind(input: {
 }): QualityPromptKind {
   const meta = input.metadata ?? {};
   const explicit = meta.qualityPromptKind;
-  if (typeof explicit === "string") {
-    const allowed: QualityPromptKind[] = [
-      "sales_material",
-      "contract",
-      "invoice",
-      "report",
-      "proposal",
-      "blog",
-      "sns",
-      "excel",
-      "word",
-      "pdf",
-      "receipt",
-      "generic",
-    ];
-    if (allowed.includes(explicit as QualityPromptKind)) {
-      return explicit as QualityPromptKind;
-    }
+  if (
+    typeof explicit === "string" &&
+    ALL_QUALITY_PROMPT_KINDS.includes(explicit as QualityPromptKind)
+  ) {
+    return explicit as QualityPromptKind;
   }
 
   const a = input.assignment;
   if (/レシート|領収書|家計簿/i.test(a)) return "receipt";
   if (/契約書|NDA|秘密保持|利用規約/i.test(a)) return "contract";
-  if (/請求書|invoice|見積書/i.test(a)) return "invoice";
+  if (/見積書|お見積|quotation|estimate/i.test(a)) return "estimate";
+  if (/請求書|invoice/i.test(a)) return "invoice";
+  if (/議事録|ミーティングメモ|会議録/i.test(a)) return "minutes";
+  if (/企画書|事業計画|プロジェクト企画/i.test(a)) return "planning";
+  if (
+    /メール|mail|メール文|挨拶メール|お礼メール/i.test(a) ||
+    input.deliverableType === "email"
+  ) {
+    return "email";
+  }
   if (/sns|ツイート|投稿文|instagram|x投稿/i.test(a)) return "sns";
   if (/excel|エクセル|xlsx|表計算/i.test(a)) return "excel";
-  if (/\bpdf\b|PDF/i.test(a) && !/営業|提案|プレゼン/i.test(a)) return "pdf";
-  if (/word|ワード|docx|文書/i.test(a) && !/営業|提案|ブログ/i.test(a)) {
+  if (/\bpdf\b|PDF/i.test(a) && !/営業|提案|プレゼン|企画/i.test(a)) {
+    return "pdf";
+  }
+  if (
+    /word|ワード|docx/i.test(a) &&
+    !/営業|提案|ブログ|企画|契約|議事/i.test(a)
+  ) {
     return "word";
   }
   if (/営業資料|提案資料|スライド|プレゼン/i.test(a)) return "sales_material";
@@ -110,6 +112,8 @@ export function resolveQualityPromptKind(input: {
       return "blog";
     case "social_post":
       return "sns";
+    case "email":
+      return "email";
     case "report":
     case "research":
       return "report";

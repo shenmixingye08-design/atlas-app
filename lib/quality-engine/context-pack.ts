@@ -1,6 +1,11 @@
 import { resolveCompanyTemplateIdFromMetadata } from "@/lib/company-templates/context";
 import type { KnowledgeRetrievalResult } from "@/lib/knowledge/types";
 
+import {
+  buildReferenceInsights,
+  type ReferenceInsights,
+} from "./reference-engine";
+
 export type QualityContextPack = {
   businessProfileSummary: string;
   visionSummary: string;
@@ -8,6 +13,8 @@ export type QualityContextPack = {
   pastDeliverableHints: string;
   templateId: string | null;
   templateHints: string;
+  /** Reference Engine insights from attachments. */
+  reference: ReferenceInsights;
 };
 
 function asTrimmedString(value: unknown, max = 1_200): string {
@@ -40,6 +47,7 @@ export function buildQualityContextPack(input: {
 }): QualityContextPack {
   const meta = (input.metadata ?? {}) as Record<string, unknown>;
   const knowledge = input.knowledge ?? null;
+  const reference = buildReferenceInsights(meta);
 
   const businessProfileSummary =
     readNestedString(meta, [
@@ -90,6 +98,7 @@ export function buildQualityContextPack(input: {
     pastDeliverableHints,
     templateId,
     templateHints,
+    reference,
   };
 }
 
@@ -109,7 +118,10 @@ export function formatContextPackForPrompt(pack: QualityContextPack): string {
     pack.pastDeliverableHints
       ? `過去成果物の参考（コピー禁止・品質参考のみ）:\n${pack.pastDeliverableHints}`
       : "",
+    pack.reference.summary
+      ? pack.reference.summary
+      : "",
   ].filter(Boolean);
 
-  return lines.join("\n\n").slice(0, 3_500);
+  return lines.join("\n\n").slice(0, 4_000);
 }

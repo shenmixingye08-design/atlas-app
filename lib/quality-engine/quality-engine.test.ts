@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 
 import { emptyDeliverable } from "@/lib/orchestration/deliverable-types";
 
+import { buildQualityKindStats } from "./analytics";
 import { buildQualityContextPack } from "./context-pack";
 import { applyFormatterToDeliverable } from "./formatter";
 import { runRulesQualityJudge } from "./judge";
@@ -12,10 +13,16 @@ import {
   resolveQualityEngineTier,
   resolveQualityPromptKind,
 } from "./policy";
-import { buildSectionedWriterPrompt } from "./prompts";
+import { buildSectionedWriterPrompt, buildQualityReviewerPrompt } from "./prompts";
+import { buildReferenceInsights } from "./reference-engine";
 import { runRulesQualityReviewer } from "./reviewer";
 import { getSectionsForKind } from "./sections";
-import { resetQualityEngineTelemetryForTests } from "./telemetry-store";
+import { getSpecialistProfile } from "./specialists";
+import {
+  recordQualityEngineTelemetry,
+  resetQualityEngineTelemetryForTests,
+  listQualityEngineTelemetry,
+} from "./telemetry-store";
 import { buildWriterBrief } from "./writer-brief";
 
 describe("quality engine policy", () => {
@@ -61,8 +68,8 @@ describe("quality engine policy", () => {
   });
 });
 
-describe("prompt kind + sections", () => {
-  it("resolves dedicated kinds", () => {
+describe("specialist kinds + sections", () => {
+  it("resolves dedicated kinds including phase2", () => {
     expect(
       resolveQualityPromptKind({
         assignment: "契約書を作って",
@@ -77,13 +84,37 @@ describe("prompt kind + sections", () => {
     ).toBe("invoice");
     expect(
       resolveQualityPromptKind({
+        assignment: "見積書を作成",
+        deliverableType: "document",
+      }),
+    ).toBe("estimate");
+    expect(
+      resolveQualityPromptKind({
+        assignment: "企画書をまとめて",
+        deliverableType: "document",
+      }),
+    ).toBe("planning");
+    expect(
+      resolveQualityPromptKind({
+        assignment: "議事録を書いて",
+        deliverableType: "document",
+      }),
+    ).toBe("minutes");
+    expect(
+      resolveQualityPromptKind({
+        assignment: "お礼メールを作成",
+        deliverableType: "email",
+      }),
+    ).toBe("email");
+    expect(
+      resolveQualityPromptKind({
         assignment: "ブログ記事",
         deliverableType: "blog",
       }),
     ).toBe("blog");
   });
 
-  it("defines sales material chapter flow", () => {
+  it("defines sales material chapter flow with CTA", () => {
     const titles = getSectionsForKind("sales_material").map((s) => s.title);
     expect(titles).toEqual([
       "表紙",
@@ -92,11 +123,19 @@ describe("prompt kind + sections", () => {
       "提案内容",
       "メリット",
       "料金",
-      "まとめ",
+      "まとめ・CTA",
     ]);
   });
 
-  it("builds sectioned writer prompt without AI role leakage to users", () => {
+  it("registers specialist profiles with distinct judge focus", () => {
+    expect(getSpecialistProfile("sales_material").judgeFocus).toBe("営業力");
+    expect(getSpecialistProfile("blog").judgeFocus).toBe("SEO");
+    expect(getSpecialistProfile("contract").judgeFocus).toBe("整合性");
+    expect(getSpecialistProfile("excel").judgeFocus).toBe("実用性");
+    expect(getSpecialistProfile("email").judgeFocus).toBe("返信しやすさ");
+  });
+
+  it("builds specialist writer/reviewer prompts", () => {
     const pack = buildQualityContextPack({
       metadata: { businessProfileSummary: "株式会社サンプル" },
     });
@@ -105,15 +144,55 @@ describe("prompt kind + sections", () => {
       deliverableType: "presentation",
       contextPack: pack,
     });
-    const prompt = buildSectionedWriterPrompt({
+    const writer = buildSectionedWriterPrompt({
       kind: "sales_material",
       tasks: [{ id: 1, title: "資料", description: "営業資料" }],
       brief,
       contextPack: pack,
     });
-    expect(prompt).toContain("SECTION BY SECTION");
-    expect(prompt).toContain("表紙");
-    expect(prompt).toContain("Business Profile");
+    expect(writer).toContain("営業資料AI");
+    expect(writer).toContain("課題→解決→メリット→CTA");
+    expect(writer).toContain("SECTION BY SECTION");
+
+    const reviewer = buildQualityReviewerPrompt({
+      kind: "blog",
+      markdown: "## 導入\n本文",
+      brief,
+      contextPack: pack,
+    });
+    expect(reviewer).toContain("ブログAI");
+    expect(reviewer).toContain("SEO");
+  });
+});
+
+describe("reference engine", () => {
+  it("extracts reference hints from attachments without copying", () => {
+    const insights = buildReferenceInsights({
+      attachments: [
+        {
+          name: "sample-deck.pdf",
+          kind: "pdf",
+          mimeType: "application/pdf",
+        },
+        {
+          name: "logo.png",
+          kind: "image",
+          mimeType: "image/png",
+        },
+        {
+          name: "data.xlsx",
+          mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+      ],
+      visionAnalysis: "青い基調の資料",
+    });
+    expect(insights.hasReferences).toBe(true);
+    expect(insights.attachmentCount).toBe(3);
+    expect(insights.summary).toContain("コピー禁止");
+    expect(insights.summary).toContain("構成");
+    expect(insights.kinds).toEqual(
+      expect.arrayContaining(["pdf", "image", "excel"]),
+    );
   });
 });
 
@@ -122,7 +201,7 @@ describe("judge / reviewer / formatter", () => {
     resetQualityEngineTelemetryForTests();
   });
 
-  it("scores deliverables and uses 90 as pass threshold", () => {
+  it("scores deliverables with specialist focus and 90 pass threshold", () => {
     const deliverable = {
       ...emptyDeliverable("presentation"),
       title: "提案資料",
@@ -131,7 +210,7 @@ describe("judge / reviewer / formatter", () => {
       markdown: [
         "# 提案資料",
         "## 表紙",
-        "概要",
+        "興味を引く一言",
         "## 会社紹介",
         "株式会社サンプル",
         "## 課題",
@@ -142,8 +221,8 @@ describe("judge / reviewer / formatter", () => {
         "効果。",
         "## 料金",
         "要確認",
-        "## まとめ",
-        "次の一歩。",
+        "## まとめ・CTA",
+        "ご相談ください。",
       ].join("\n\n"),
     };
 
@@ -156,43 +235,34 @@ describe("judge / reviewer / formatter", () => {
       hasBusinessProfile: true,
     });
 
+    expect(judge.focus).toBe("営業力");
     expect(judge.overallScore).toBeGreaterThan(50);
     expect(QUALITY_JUDGE_PASS_SCORE).toBe(90);
-    expect(Object.keys(judge.criteria)).toEqual(
-      expect.arrayContaining([
-        "completeness",
-        "readability",
-        "persuasiveness",
-        "naturalness",
-        "expertise",
-        "design",
-        "structure",
-        "information",
-      ]),
-    );
+    expect(judge.feedback).toContain("営業力");
   });
 
-  it("flags placeholder issues in reviewer", () => {
+  it("uses contract specialist reviewer checks", () => {
     const deliverable = {
       ...emptyDeliverable("document"),
-      title: "下書き",
-      content: "TODO: ここに記入してください",
-      markdown: "TODO: ここに記入してください",
+      title: "契約書案",
+      content: "簡単な契約の文章だけ",
+      markdown: "# 契約\n\n簡単な契約の文章だけ",
     };
     const pack = buildQualityContextPack({});
     const brief = buildWriterBrief({
-      assignment: "文書",
+      assignment: "契約書",
       deliverableType: "document",
       contextPack: pack,
     });
     const review = runRulesQualityReviewer({
       deliverable,
-      kind: "generic",
+      kind: "contract",
       brief,
       contextPack: pack,
     });
+    expect(review.specialistLabel).toBe("契約書AI");
     expect(review.approved).toBe(false);
-    expect(review.issues.length).toBeGreaterThan(0);
+    expect(review.issues.some((i) => /条項/.test(i))).toBe(true);
   });
 
   it("formats markdown without LLM", () => {
@@ -205,5 +275,63 @@ describe("judge / reviewer / formatter", () => {
     const { deliverable: formatted } = applyFormatterToDeliverable(deliverable);
     expect(formatted.markdown).toContain("# タイトル");
     expect(formatted.markdown).not.toMatch(/\n{3,}/);
+  });
+
+  it("aggregates owner stats by kind", () => {
+    recordQualityEngineTelemetry({
+      tier: "full",
+      promptKind: "sales_material",
+      specialistLabel: "営業資料AI",
+      improveCount: 2,
+      reviewerCount: 2,
+      finalScore: 88,
+      judgeFocus: "営業力",
+      passed: false,
+      timings: {
+        plannerMs: 10,
+        writerMs: 20,
+        reviewerMs: 5,
+        judgeMs: 5,
+        formatterMs: 1,
+        improveMs: 10,
+      },
+      reviewerUsedLlm: true,
+      judgeSource: "rules",
+      recordedAt: new Date().toISOString(),
+      userId: "u1",
+      assignmentHint: "営業資料",
+    });
+    recordQualityEngineTelemetry({
+      tier: "enhanced",
+      promptKind: "blog",
+      specialistLabel: "ブログAI",
+      improveCount: 0,
+      reviewerCount: 1,
+      finalScore: 92,
+      judgeFocus: "SEO",
+      passed: true,
+      timings: {
+        plannerMs: 8,
+        writerMs: 15,
+        reviewerMs: 4,
+        judgeMs: 3,
+        formatterMs: 1,
+        improveMs: 0,
+      },
+      reviewerUsedLlm: false,
+      judgeSource: "rules",
+      recordedAt: new Date().toISOString(),
+      userId: "u1",
+      assignmentHint: "ブログ",
+    });
+
+    const stats = buildQualityKindStats(listQualityEngineTelemetry(50));
+    const sales = stats.find((s) => s.promptKind === "sales_material");
+    const blog = stats.find((s) => s.promptKind === "blog");
+    expect(sales?.avgScore).toBe(88);
+    expect(sales?.avgImproveCount).toBe(2);
+    expect(sales?.avgReviewerCount).toBe(2);
+    expect(blog?.avgScore).toBe(92);
+    expect(blog?.specialistLabel).toBe("ブログAI");
   });
 });

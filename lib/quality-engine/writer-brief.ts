@@ -13,7 +13,10 @@ function inferAudience(assignment: string): string {
   return "依頼内容の想定読者";
 }
 
-function inferTone(assignment: string): string {
+function inferTone(assignment: string, kind: WriterBrief["deliverableKind"]): string {
+  if (kind === "email") return "宛先に合わせた丁寧な敬語";
+  if (kind === "contract") return "正確で自然な法務調";
+  if (kind === "sns") return "媒体に合うテンポの良い文体";
   if (/フォーマル|堅い|公式/i.test(assignment)) return "フォーマル";
   if (/カジュアル|親しみ/i.test(assignment)) return "カジュアル";
   if (/営業|提案|説得/i.test(assignment)) return "説得力のあるビジネストーン";
@@ -21,16 +24,40 @@ function inferTone(assignment: string): string {
   return "プロフェッショナルで自然な日本語";
 }
 
-function inferPurpose(assignment: string, kind: WriterBrief["deliverableKind"]): string {
-  if (kind === "sales_material" || kind === "proposal") {
-    return "意思決定・商談を前進させる";
+function inferPurpose(
+  assignment: string,
+  kind: WriterBrief["deliverableKind"],
+): string {
+  switch (kind) {
+    case "sales_material":
+    case "proposal":
+      return "意思決定・商談を前進させる";
+    case "planning":
+      return "企画の合意と実行準備";
+    case "blog":
+      return "読者に価値ある情報を届ける";
+    case "contract":
+      return "権利義務を明確にする";
+    case "estimate":
+      return "見積条件を明確に伝える";
+    case "invoice":
+      return "請求内容を正確に伝える";
+    case "sns":
+      return "反応を得られる投稿を用意する";
+    case "receipt":
+      return "家計・経費記録を正確にする";
+    case "minutes":
+      return "決定事項と宿題を正確に残す";
+    case "email":
+      return "用件を伝え、返信しやすくする";
+    case "excel":
+      return "実務で使える表を用意する";
+    case "word":
+    case "pdf":
+      return "読みやすい文書を完成させる";
+    default:
+      return assignment.trim().slice(0, 120) || "依頼を完了する";
   }
-  if (kind === "blog") return "読者に価値ある情報を届ける";
-  if (kind === "contract") return "権利義務を明確にする";
-  if (kind === "invoice") return "請求内容を正確に伝える";
-  if (kind === "sns") return "反応を得られる投稿を用意する";
-  if (kind === "receipt") return "家計・経費記録を正確にする";
-  return assignment.trim().slice(0, 120) || "依頼を完了する";
 }
 
 /**
@@ -50,7 +77,6 @@ export function buildWriterBrief(input: {
     metadata: input.metadata,
   });
   const sections = getSectionsForKind(kind);
-  const plan = input.planSummary?.trim() ?? "";
 
   return {
     assignmentSummary: input.assignment.trim().slice(0, 500),
@@ -58,7 +84,7 @@ export function buildWriterBrief(input: {
     deliverableType: input.deliverableType as DeliverableType,
     purpose: inferPurpose(input.assignment, kind),
     audience: inferAudience(input.assignment),
-    tone: inferTone(input.assignment),
+    tone: inferTone(input.assignment, kind),
     pageStructure: sections.map((s) => s.title),
     requiredSections: sections.map((s) => s.id),
     businessProfileSummary: input.contextPack.businessProfileSummary,
@@ -66,6 +92,7 @@ export function buildWriterBrief(input: {
     userSettingsSummary: input.contextPack.userSettingsSummary,
     templateId: input.contextPack.templateId,
     pastDeliverableHints: input.contextPack.pastDeliverableHints,
+    referenceSummary: input.contextPack.reference.summary,
   };
 }
 
@@ -90,6 +117,9 @@ export function formatWriterBriefForPrompt(brief: WriterBrief): string {
       : "",
     brief.pastDeliverableHints
       ? `過去成果物参考: ${brief.pastDeliverableHints.slice(0, 500)}`
+      : "",
+    brief.referenceSummary
+      ? `参考資料: ${brief.referenceSummary.slice(0, 700)}`
       : "",
   ]
     .filter(Boolean)

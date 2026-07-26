@@ -9,6 +9,7 @@ export type {
   QualityEngineStageTiming,
   QualityEngineTelemetry,
   QualityEngineRunResult,
+  QualityKindStats,
 } from "./types";
 
 export {
@@ -26,6 +27,12 @@ export {
   formatContextPackForPrompt,
   type QualityContextPack,
 } from "./context-pack";
+
+export {
+  buildReferenceInsights,
+  type ReferenceInsights,
+  type ReferenceAttachmentKind,
+} from "./reference-engine";
 
 export { buildWriterBrief, formatWriterBriefForPrompt } from "./writer-brief";
 export { getSectionsForKind, formatSectionsForPrompt } from "./sections";
@@ -57,3 +64,10 @@ export {
   resetQualityEngineTelemetryForTests,
   type QualityEngineLogEntry,
 } from "./telemetry-store";
+export { buildQualityKindStats } from "./analytics";
+export {
+  ALL_QUALITY_PROMPT_KINDS,
+  getSpecialistProfile,
+  listSpecialistProfiles,
+  type SpecialistProfile,
+} from "./specialists";
