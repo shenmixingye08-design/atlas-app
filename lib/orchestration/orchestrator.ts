@@ -7,6 +7,11 @@ import { buildCompactUnifiedWorkerTaskPrompt } from "@/lib/prompts/workflow/comp
 import { buildCompactPlannerTaskPrompt } from "@/lib/prompts/workflow/compact-prompts";
 import { resolvePlannerPolicy, resolveWorkerPolicy } from "@/lib/ai/policy-engine";
 import { readEffectiveCostSavingMode } from "@/lib/cost-optimization/metadata";
+import {
+  buildSectionedWriterPrompt,
+  formatContextPackForPrompt,
+  prepareQualityWriterBundle,
+} from "@/lib/quality-engine";
 import { assignmentWithinLimit } from "@/lib/ai/token-limits";
 import {
   createWorkflowCostMeter,
@@ -688,16 +693,41 @@ export async function orchestrate(
         durationMs: 0,
       };
     } else {
+      const writerBundle = prepareQualityWriterBundle({
+        assignment,
+        deliverableType,
+        planSummary,
+        metadata,
+        knowledge: retrieval,
+      });
+      const useSectionedWriter = writerBundle.tier !== "fast";
+      const workerPrompt = useSectionedWriter
+        ? buildSectionedWriterPrompt({
+            kind: writerBundle.promptKind,
+            tasks,
+            brief: writerBundle.brief,
+            contextPack: writerBundle.contextPack,
+          })
+        : buildCompactUnifiedWorkerTaskPrompt(tasks, deliverableType);
+      const contextExtras = [
+        retrieval.workerContext ?? "",
+        useSectionedWriter
+          ? formatContextPackForPrompt(writerBundle.contextPack)
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
       workerPhase = await runPhaseBound(
         "worker",
         "worker",
-        buildCompactUnifiedWorkerTaskPrompt(tasks, deliverableType),
+        workerPrompt,
         buildSlimWorkerContext({
           assignment,
           deliverableType,
           planSummary,
           researchSummary: resolvedResearchSummary,
-          workerKnowledge: retrieval.workerContext ?? null,
+          workerKnowledge: contextExtras || null,
         }),
         metadata,
         workerAssignments[0]?.employeeId ?? "development-senior-dev",
@@ -768,6 +798,11 @@ export async function orchestrate(
       researchSummary: resolvedResearchSummary,
       planSummary,
       metadata,
+      knowledge: retrieval,
+      priorStageTimings: {
+        plannerMs: plannerPlan?.durationMs ?? 0,
+        writerMs: workerPhase?.durationMs ?? 0,
+      },
       runPhase: runPhaseBound,
       trackStep,
       costMeter,

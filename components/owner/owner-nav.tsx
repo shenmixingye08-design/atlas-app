@@ -12,6 +12,7 @@ type OwnerNavProps = {
     | "errorMonitoring"
     | "popularityRanking"
     | "costRanking"
+    | "qualityEngine"
     | "cancellationAnalysis"
     | "betaUsers"
     | "systemStatus"
@@ -64,8 +65,12 @@ const LINKS = [
     label: ui.owner.navCostRanking,
   },
   {
-    id: "cancellationAnalysis" as const,
-    href: "/owner/cancellation-analysis",
+    id: "qualityEngine" as const,
+    href: "/owner/quality-engine",
+    label: "Quality Engine",
+  },
+  {
+    id: "cancellationAnalysis" as const,    href: "/owner/cancellation-analysis",
     label: ui.owner.navCancellationAnalysis,
   },
   {

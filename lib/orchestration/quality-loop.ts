@@ -11,6 +11,12 @@ import type { EmployeeId } from "@/lib/employees/types";
 import type { AiTaskType } from "@/lib/ai/model-policy";
 import type { WorkflowCostMeter } from "@/lib/ai/cost-meter";
 import { WORKFLOW_LIMITS, WorkflowLimitError } from "@/lib/ai/workflow-limits";
+import type { KnowledgeRetrievalResult } from "@/lib/knowledge/types";
+import {
+  rebuildDeliverableFromWorkerPhase,
+  resolveQualityEngineTier,
+  runQualityEngine,
+} from "@/lib/quality-engine";
 
 import { buildDeterministicCeoApproval } from "./ceo-routing";
 import { runDeterministicQa } from "./deterministic-qa";
@@ -61,6 +67,12 @@ export type QualityLoopParams = {
   researchSummary?: string | null;
   planSummary: string;
   metadata?: Readonly<Record<string, unknown>>;
+  knowledge?: KnowledgeRetrievalResult | null;
+  /** Optional prior stage timings for owner Quality Engine logs. */
+  priorStageTimings?: {
+    plannerMs?: number;
+    writerMs?: number;
+  };
   runPhase: RunPhaseFn;
   trackStep: (step: OrchestrationStep, taskId?: number) => void;
   costMeter: WorkflowCostMeter;
@@ -132,7 +144,6 @@ async function executeUnifiedWorkerRevision(
   params: QualityLoopParams,
   feedback: string,
   primaryEmployeeId: EmployeeId,
-  existingWorker: AgentPhaseResult | null,
 ): Promise<AgentPhaseResult> {
   params.trackStep("worker", 1);
   params.costMeter.assertWithinLimits();
@@ -150,12 +161,14 @@ async function executeUnifiedWorkerRevision(
     }),
     params.metadata,
     primaryEmployeeId,
-    resolveWorkerPolicy({ deliverableType: params.deliverableType, revision: true }).taskType,
+    resolveWorkerPolicy({ deliverableType: params.deliverableType, revision: true })
+      .taskType,
   );
 }
 
 /**
- * Optimized quality loop: deterministic QA + optional worker-only retry + rules CEO approval.
+ * Quality loop: structural deterministic QA + Quality Engine (Reviewer/Judge/improve/Formatter)
+ * + rules CEO approval.
  */
 export async function runQualityLoop(
   params: QualityLoopParams,
@@ -189,18 +202,19 @@ export async function runQualityLoop(
     qaStatus: "completed",
   });
 
+  const primaryEmployeeId =
+    params.workerAssignments[0]?.employeeId ?? "development-senior-dev";
+
+  // Structural repair before Quality Engine (keeps empty/broken bodies from reaching Judge).
   if (!deterministicQa.passed && revisionCount < WORKFLOW_LIMITS.maxWorkerRetries) {
     try {
       params.costMeter.assertWithinLimits();
       params.workflowState?.transition(WorkflowState.Generating, "worker revision");
-      const primaryEmployeeId =
-        params.workerAssignments[0]?.employeeId ?? "development-senior-dev";
 
       const workerPhase = await executeUnifiedWorkerRevision(
         params,
         deterministicQa.feedback,
         primaryEmployeeId,
-        executions[0]?.worker ?? null,
       );
 
       executions = params.tasks.map((task, index) => ({
@@ -253,7 +267,89 @@ export async function runQualityLoop(
     }
   }
 
-  await runReviewerFallbackIfNeeded(workflowDeliverable, params.tasks, params);
+  const engineTier = resolveQualityEngineTier({
+    deliverableType: params.deliverableType,
+    metadata: params.metadata,
+    assignment: params.assignment,
+  });
+
+  // Legacy fallback only on fast tier — enhanced/full use Quality Engine Reviewer.
+  if (engineTier === "fast") {
+    await runReviewerFallbackIfNeeded(workflowDeliverable, params.tasks, params);
+  }
+
+  // --- Quality Engine (Reviewer / Judge / improve / Formatter) ---
+  let engineTelemetry: import("@/lib/quality-engine").QualityEngineTelemetry | undefined;
+  try {
+    const engine = await runQualityEngine({
+      assignment: params.assignment,
+      deliverable: workflowDeliverable,
+      deliverableType: params.deliverableType,
+      tasks: params.tasks,
+      planSummary: params.planSummary,
+      researchSummary: params.researchSummary,
+      research: params.research,
+      plannerPlan: params.plannerPlan,
+      metadata: params.metadata,
+      knowledge: params.knowledge,
+      primaryEmployeeId,
+      runPhase: params.runPhase,
+      trackStep: params.trackStep,
+      costMeter: params.costMeter,
+      priorTimings: {
+        plannerMs: params.priorStageTimings?.plannerMs ?? 0,
+        writerMs: params.priorStageTimings?.writerMs ?? 0,
+      },
+      rebuildDeliverable: (workerPhase) =>
+        rebuildDeliverableFromWorkerPhase({
+          assignment: params.assignment,
+          workerPhase,
+          tasks: params.tasks,
+          research: params.research,
+          plannerPlan: params.plannerPlan,
+          deliverableType: params.deliverableType,
+          primaryEmployeeId,
+        }),
+    });
+
+    workflowDeliverable = engine.deliverable;
+    revisionCount += engine.improveCount;
+    engineTelemetry = engine.telemetry;
+
+    reviews.push({
+      attempt: reviews.length + 1,
+      revisionNumber: revisionCount,
+      score: engine.judge.overallScore,
+      criteria: engine.judge.legacyCriteria,
+      passed: engine.judge.passed,
+      feedback: [
+        engine.judge.feedback,
+        engine.reviewer && !engine.reviewer.approved
+          ? engine.reviewer.feedback
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+      tasksRevised: engine.improveCount > 0 ? params.tasks.map((t) => t.id) : [],
+      qa: null,
+      qaStatus: "completed",
+    });
+
+    // Surface Judge score for telemetry/history; structural QA still gates approval
+    // so a sub-90 score after max improves does not block delivery.
+    deterministicQa = {
+      overallScore: engine.judge.overallScore,
+      criteria: engine.judge.legacyCriteria,
+      passed: deterministicQa.passed,
+      feedback: [deterministicQa.feedback, engine.judge.feedback]
+        .filter(Boolean)
+        .join("\n\n"),
+      failedChecks: deterministicQa.failedChecks,
+    };
+    latestFeedback = deterministicQa.feedback;
+  } catch {
+    // Engine must not break the pipeline — keep structural QA result.
+  }
 
   const ensured = ensureDeliverable({
     assignment: params.assignment,
@@ -340,7 +436,10 @@ export async function runQualityLoop(
     currentScore: deterministicQa.overallScore,
     passed: deterministicQa.passed && deliverableValidation.valid,
     ceoApproval,
+    ...(engineTelemetry ? { qualityEngine: engineTelemetry } : {}),
   };
+
+  void latestFeedback;
 
   return {
     executions,
