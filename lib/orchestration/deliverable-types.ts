@@ -143,20 +143,35 @@ function downloadsFor(formats: (DeliverableFormat | "html")[]): DeliverableDownl
   }));
 }
 
+function looksLikeInternalJsonText(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) return true;
+  if (/```json/i.test(trimmed)) return true;
+  if (/["']type["']\s*:/.test(trimmed) && /["'](?:title|summary|content|markdown)["']\s*:/.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
 /** Best text for preview/export from a structured or legacy deliverable value. */
 export function getDeliverablePreviewText(deliverable: unknown): string {
   if (typeof deliverable === "string") {
-    return deliverable.trim();
+    const trimmed = deliverable.trim();
+    // Never treat internal JSON blobs as preview content.
+    if (!trimmed || looksLikeInternalJsonText(trimmed)) return "";
+    return trimmed;
   }
 
   if (deliverable && typeof deliverable === "object") {
     const record = deliverable as Partial<Deliverable>;
-    return (
-      record.markdown?.trim() ||
-      record.content?.trim() ||
-      record.plainText?.trim() ||
-      ""
-    );
+    for (const candidate of [
+      record.markdown?.trim() || "",
+      record.content?.trim() || "",
+      record.plainText?.trim() || "",
+    ]) {
+      if (candidate && !looksLikeInternalJsonText(candidate)) return candidate;
+    }
   }
 
   return "";

@@ -41,11 +41,10 @@ export type UploadClassification = {
   alternatives: UploadIntent[];
 };
 
-function joinFileNames(fileNames: string[]): string {
-  const names = fileNames.filter((name) => name.trim().length > 0);
-  if (names.length === 0) return "添付ファイル";
-  if (names.length === 1) return `「${names[0]}」`;
-  return `「${names[0]}」ほか${names.length - 1}件`;
+function attachmentNoun(fileNames: string[]): string {
+  const count = fileNames.filter((name) => name.trim().length > 0).length;
+  if (count <= 1) return "添付画像";
+  return `添付画像（${count}枚）`;
 }
 
 export const UPLOAD_INTENTS: Record<UploadIntentId, UploadIntent> = {
@@ -54,8 +53,9 @@ export const UPLOAD_INTENTS: Record<UploadIntentId, UploadIntent> = {
     emoji: "📸",
     statement: "レシートですね。家計簿へ登録します。",
     optionLabel: "レシート → 家計簿へ登録",
+    // Never put filenames in the assignment — Vision must read image bytes.
     buildAssignment: (files) =>
-      `${joinFileNames(files)}はレシートです。日付・店名・金額・品目を読み取り、家計簿（支出）へ登録してください。`,
+      `${attachmentNoun(files)}はレシートです。日付・店名・金額・品目を読み取り、家計簿（支出）へ登録してください。`,
   },
   contract: {
     id: "contract",
@@ -63,7 +63,7 @@ export const UPLOAD_INTENTS: Record<UploadIntentId, UploadIntent> = {
     statement: "契約書ですね。要約と期限の抽出を行います。",
     optionLabel: "契約書 → 要約・期限抽出",
     buildAssignment: (files) =>
-      `${joinFileNames(files)}は契約書です。内容を要約し、契約期間・更新日・支払期日などの重要な期限を抽出してまとめてください。`,
+      `${attachmentNoun(files)}は契約書です。内容を要約し、契約期間・更新日・支払期日などの重要な期限を抽出してまとめてください。`,
   },
   business_card: {
     id: "business_card",
@@ -71,7 +71,7 @@ export const UPLOAD_INTENTS: Record<UploadIntentId, UploadIntent> = {
     statement: "名刺ですね。連絡先へ登録します。",
     optionLabel: "名刺 → 連絡先へ登録",
     buildAssignment: (files) =>
-      `${joinFileNames(files)}は名刺です。氏名・会社名・役職・電話番号・メールアドレスを読み取り、連絡先へ登録してください。`,
+      `${attachmentNoun(files)}は名刺です。氏名・会社名・役職・電話番号・メールアドレスを読み取り、連絡先へ登録してください。`,
   },
   meeting: {
     id: "meeting",
@@ -79,7 +79,7 @@ export const UPLOAD_INTENTS: Record<UploadIntentId, UploadIntent> = {
     statement: "会議資料ですね。要約してPowerPointを作成します。",
     optionLabel: "会議資料 → 要約・PowerPoint作成",
     buildAssignment: (files) =>
-      `${joinFileNames(files)}は会議資料です。要点を要約し、共有用のPowerPoint（スライド）を作成してください。`,
+      `${attachmentNoun(files)}は会議資料です。要点を要約し、共有用のPowerPoint（スライド）を作成してください。`,
   },
   invoice: {
     id: "invoice",
@@ -87,7 +87,7 @@ export const UPLOAD_INTENTS: Record<UploadIntentId, UploadIntent> = {
     statement: "請求書ですね。経費へ登録します。",
     optionLabel: "請求書 → 経費登録",
     buildAssignment: (files) =>
-      `${joinFileNames(files)}は請求書です。請求元・金額・支払期日・品目を読み取り、経費として登録してください。`,
+      `${attachmentNoun(files)}は請求書です。請求元・金額・支払期日・品目を読み取り、経費として登録してください。`,
   },
   screenshot: {
     id: "screenshot",
@@ -95,7 +95,7 @@ export const UPLOAD_INTENTS: Record<UploadIntentId, UploadIntent> = {
     statement: "スクリーンショットですね。内容を解析して修正案を作成します。",
     optionLabel: "スクリーンショット → 内容を解析して修正案を作成",
     buildAssignment: (files) =>
-      `${joinFileNames(files)}はスクリーンショットです。表示内容を解析し、問題点や改善点を洗い出して修正案を作成してください。`,
+      `${attachmentNoun(files)}はスクリーンショットです。表示内容を解析し、問題点や改善点を洗い出して修正案を作成してください。`,
   },
   site_photo: {
     id: "site_photo",
@@ -103,7 +103,7 @@ export const UPLOAD_INTENTS: Record<UploadIntentId, UploadIntent> = {
     statement: "現場写真ですね。報告書を作成します。",
     optionLabel: "現場写真 → 報告書作成",
     buildAssignment: (files) =>
-      `${joinFileNames(files)}は現場写真です。写っている状況を整理し、報告書としてまとめてください。`,
+      `${attachmentNoun(files)}は現場写真です。写っている状況を整理し、報告書としてまとめてください。`,
   },
   sns: {
     id: "sns",
@@ -111,7 +111,7 @@ export const UPLOAD_INTENTS: Record<UploadIntentId, UploadIntent> = {
     statement: "SNS用の画像ですね。X投稿文を自動で作成します。",
     optionLabel: "SNS画像 → X投稿文を自動作成",
     buildAssignment: (files) =>
-      `${joinFileNames(files)}はSNS投稿用の画像です。画像に合ったX（旧Twitter）の投稿文を自動で作成してください。`,
+      `${attachmentNoun(files)}はSNS投稿用の画像です。画像に合ったX（旧Twitter）の投稿文を自動で作成してください。`,
   },
   document: {
     id: "document",
@@ -119,7 +119,7 @@ export const UPLOAD_INTENTS: Record<UploadIntentId, UploadIntent> = {
     statement: "資料ですね。内容を要約して整理します。",
     optionLabel: "資料 → 要約・整理",
     buildAssignment: (files) =>
-      `${joinFileNames(files)}の内容を読み取り、要点を要約して分かりやすく整理してください。`,
+      `${attachmentNoun(files)}の内容を読み取り、要点を要約して分かりやすく整理してください。`,
   },
   generic: {
     id: "generic",
@@ -127,7 +127,7 @@ export const UPLOAD_INTENTS: Record<UploadIntentId, UploadIntent> = {
     statement: "資料を受け取りました。内容を理解して最適な仕事を進めます。",
     optionLabel: "内容を解析して最適な作業を進める",
     buildAssignment: (files) =>
-      `${joinFileNames(files)}を受け取りました。内容を理解し、最も適切な仕事を最後まで進めてください。`,
+      `${attachmentNoun(files)}を受け取りました。内容を理解し、最も適切な仕事を最後まで進めてください。`,
   },
 };
 

@@ -9,6 +9,11 @@ import {
   normalizeDeliverableForDisplay,
   sanitizeBodyTextForDisplay,
 } from "./deliverable-display";
+import {
+  assertSafeExportText,
+  isForbiddenTitle,
+  looksLikeDeliverableJson,
+} from "./normalize-deliverable-payload";
 
 function exportSection(title: string, body: string): string[] {
   const trimmed = body.trim();
@@ -73,13 +78,29 @@ export function buildExportMarkdown(deliverable: Deliverable): string {
 /** Single export source for copy, markdown, Word, and PDF. */
 export function getDeliverableExportText(deliverable: Deliverable | unknown): string {
   if (deliverable && typeof deliverable === "object" && "type" in deliverable) {
-    const markdown = buildExportMarkdown(deliverable as Deliverable);
-    if (markdown.trim()) return markdown;
+    const typed = deliverable as Deliverable;
+    if (
+      isForbiddenTitle(typed.title) ||
+      looksLikeDeliverableJson(typed.summary) ||
+      looksLikeDeliverableJson(typed.content) ||
+      looksLikeDeliverableJson(typed.markdown)
+    ) {
+      const normalized = normalizeDeliverableForDisplay(typed);
+      const markdown = buildExportMarkdown(normalized);
+      const guarded = assertSafeExportText(markdown);
+      return guarded.ok ? `${guarded.text}\n` : "";
+    }
+
+    const markdown = buildExportMarkdown(typed);
+    const guarded = assertSafeExportText(markdown);
+    if (guarded.ok) return `${guarded.text}\n`;
+    return "";
   }
 
   const fallback = sanitizeBodyTextForDisplay(getDeliverablePreviewText(deliverable));
   if (fallback && !isDeliverableJsonText(fallback)) {
-    return `${fallback.trimEnd()}\n`;
+    const guarded = assertSafeExportText(fallback);
+    return guarded.ok ? `${guarded.text}\n` : "";
   }
 
   return "";

@@ -50,6 +50,7 @@ export async function executeWorkJob(
             mode: "execute",
             metadata: {
               requestUi: "secretary_zero_friction_v1",
+              ...(existing.metadata ?? {}),
               workJobId: jobId,
               idempotencyKey: existing.idempotencyKey,
             },
@@ -70,6 +71,23 @@ export async function executeWorkJob(
       });
     }
 
+    // Vision / attachment hard failures must surface as failed jobs — never "completed".
+    if (commander.visionGate && !commander.visionGate.analysisSuccess) {
+      recordReliabilityEvent("work_job", "failure", 1, {
+        durationMs: Date.now() - startedAt,
+        errorMessage: commander.visionGate.message,
+      });
+      return saveWorkJob({
+        ...existing,
+        status: "failed",
+        attemptCount: existing.attemptCount + 1,
+        error: commander.visionGate.message,
+        result: null,
+        updatedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      });
+    }
+
     if (commander.status === "failed" || !commander.result) {
       recordReliabilityEvent("work_job", "failure", 1, {
         durationMs: Date.now() - startedAt,
@@ -80,7 +98,9 @@ export async function executeWorkJob(
         status: "failed",
         attemptCount: existing.attemptCount + 1,
         error: toHumanReliabilityMessage(
-          commander.report?.summary ?? "failed",
+          commander.visionGate?.message ??
+            commander.report?.summary ??
+            "failed",
         ),
         result: commander.result ?? null,
         updatedAt: new Date().toISOString(),

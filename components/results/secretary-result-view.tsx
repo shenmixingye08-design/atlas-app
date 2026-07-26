@@ -138,6 +138,8 @@ export function SecretaryResultView({
             deliverables={deliverables}
             isGeneratingDeliverables={isGeneratingDeliverables}
             deliverablesError={deliverablesError}
+            onRegenerate={() => void regenerate()}
+            isRegenerating={isRegenerating}
           />
 
           {regenerateError && <ErrorState message={regenerateError} />}
@@ -146,7 +148,7 @@ export function SecretaryResultView({
             <Button
               variant="secondary"
               size="lg"
-              className="w-full sm:w-auto"
+              className="min-h-11 w-full touch-manipulation sm:w-auto"
               disabled={isRegenerating}
               onClick={() => void regenerate()}
             >

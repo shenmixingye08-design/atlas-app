@@ -1,136 +1,21 @@
 import { extractSocialPosts } from "./core-workflow";
-import type { Deliverable, DeliverableType } from "./deliverable-types";
+import type { Deliverable } from "./deliverable-types";
 import { extractEmailParts } from "./email-deliverable";
-import { tryParseStoredDeliverable } from "./worker-output";
+import {
+  isForbiddenTitle,
+  looksLikeDeliverableJson,
+  normalizeDeliverablePayload,
+  sanitizeUserVisibleText,
+} from "./normalize-deliverable-payload";
 
-const DISPLAY_TYPES = new Set<string>([
-  "email",
-  "blog",
-  "social_post",
-  "proposal",
-  "report",
-  "document",
-  "presentation",
-  "research",
-  "short_document",
-]);
-
-function asString(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function asStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim())
-    .filter(Boolean);
+// Re-export sanitize helper used by display/export with a stable name.
+function sanitizeUserVisibleTextLocal(text: string): string {
+  return sanitizeUserVisibleText(text);
 }
 
 /** True when text looks like a serialized Deliverable / worker JSON object. */
 export function isDeliverableJsonText(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith("{")) return false;
-
-  try {
-    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-    const type = asString(parsed.type).toLowerCase();
-    return DISPLAY_TYPES.has(type) || "title" in parsed || "content" in parsed || "body" in parsed;
-  } catch {
-    return false;
-  }
-}
-
-function parseDeliverableJsonRecord(text: string): Record<string, unknown> | null {
-  if (!isDeliverableJsonText(text)) return null;
-  try {
-    return JSON.parse(text.trim()) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-function metadataFromRecord(
-  record: Record<string, unknown>,
-  base: Deliverable["metadata"],
-): Deliverable["metadata"] {
-  const metadataObj =
-    record.metadata && typeof record.metadata === "object"
-      ? (record.metadata as Record<string, unknown>)
-      : null;
-
-  const tags = metadataObj
-    ? asStringArray(metadataObj.tags).length
-      ? asStringArray(metadataObj.tags)
-      : asStringArray(record.tags)
-    : asStringArray(record.tags);
-
-  const posts = metadataObj
-    ? asStringArray(metadataObj.posts).length
-      ? asStringArray(metadataObj.posts)
-      : asStringArray(record.posts)
-    : asStringArray(record.posts);
-
-  return {
-    ...base,
-    tags: tags.length > 0 ? tags : base.tags,
-    posts: posts.length > 0 ? posts : base.posts,
-    snsPost: asString(metadataObj?.snsPost) || asString(record.snsPost) || base.snsPost,
-    topic: asString(metadataObj?.topic) || asString(record.topic) || base.topic,
-    audience: asString(metadataObj?.audience) || asString(record.audience) || base.audience,
-    subject: asString(metadataObj?.subject) || asString(record.subject) || base.subject,
-    purpose: asString(metadataObj?.purpose) || asString(record.purpose) || base.purpose,
-    cta: asString(metadataObj?.cta) || asString(record.cta) || base.cta,
-  };
-}
-
-function bodyFromRecord(record: Record<string, unknown>): string {
-  return (
-    asString(record.content) ||
-    asString(record.body) ||
-    asString(record.markdown) ||
-    asString(record.plainText)
-  );
-}
-
-function mergeDeliverableFromJson(base: Deliverable, record: Record<string, unknown>): Deliverable {
-  const stored = tryParseStoredDeliverable(JSON.stringify(record));
-  if (stored && !isDeliverableJsonText(stored.content) && !isDeliverableJsonText(stored.markdown)) {
-    const storedTags = stored.metadata.tags ?? [];
-    const storedPosts = stored.metadata.posts ?? [];
-    return {
-      ...stored,
-      title: stored.title || base.title,
-      summary: stored.summary || base.summary,
-      metadata: {
-        ...stored.metadata,
-        tags: storedTags.length > 0 ? storedTags : base.metadata.tags,
-        posts: storedPosts.length > 0 ? storedPosts : base.metadata.posts,
-      },
-    };
-  }
-
-  const typeRaw = asString(record.type).toLowerCase();
-  const type = (DISPLAY_TYPES.has(typeRaw) ? typeRaw : base.type) as DeliverableType;
-  const body = bodyFromRecord(record);
-  const resolvedBody = isDeliverableJsonText(body) ? sanitizeBodyTextForDisplay(body) : body;
-
-  return {
-    ...base,
-    type,
-    title: asString(record.title) || base.title,
-    summary: asString(record.summary) || base.summary,
-    content: resolvedBody || base.content,
-    markdown:
-      asString(record.markdown) && !isDeliverableJsonText(asString(record.markdown))
-        ? asString(record.markdown)
-        : resolvedBody || base.markdown,
-    plainText:
-      asString(record.plainText) && !isDeliverableJsonText(asString(record.plainText))
-        ? asString(record.plainText)
-        : base.plainText,
-    metadata: metadataFromRecord(record, base.metadata),
-  };
+  return looksLikeDeliverableJson(text);
 }
 
 /** Strip embedded deliverable JSON from a body field before rendering. */
@@ -138,26 +23,68 @@ export function sanitizeBodyTextForDisplay(text: string): string {
   const trimmed = text.trim();
   if (!trimmed) return "";
 
-  if (isDeliverableJsonText(trimmed)) {
-    const record = parseDeliverableJsonRecord(trimmed);
-    if (!record) return "";
-    const body = bodyFromRecord(record);
-    if (body && !isDeliverableJsonText(body)) return body;
+  if (looksLikeDeliverableJson(trimmed)) {
+    const normalized = normalizeDeliverablePayload(trimmed);
+    if (!normalized.ok) return "";
+    const body =
+      normalized.deliverable.content ||
+      normalized.deliverable.markdown ||
+      normalized.deliverable.plainText;
+    if (body && !looksLikeDeliverableJson(body)) return body;
     return "";
   }
 
+  return sanitizeUserVisibleTextLocal(trimmed);
+}
+
+function sanitizeTitleForDisplay(title: string): string {
+  const trimmed = title.trim();
+  if (!trimmed) return "";
+  if (isForbiddenTitle(trimmed) || looksLikeDeliverableJson(trimmed)) return "";
   return trimmed;
+}
+
+function sanitizeSummaryForDisplay(summary: string): string {
+  return sanitizeBodyTextForDisplay(summary);
 }
 
 /** Coalesce fields when worker output was left as JSON inside content/markdown. */
 export function normalizeDeliverableForDisplay(deliverable: Deliverable): Deliverable {
-  let next = deliverable;
+  const normalized = normalizeDeliverablePayload(deliverable);
+  let next = normalized.ok ? normalized.deliverable : deliverable;
 
-  for (const field of ["content", "markdown", "plainText"] as const) {
-    const value = next[field]?.trim() ?? "";
-    if (!isDeliverableJsonText(value)) continue;
-    const record = parseDeliverableJsonRecord(value);
-    if (record) next = mergeDeliverableFromJson(next, record);
+  // Extra display hardening even if normalize partially failed.
+  next = {
+    ...next,
+    title: sanitizeTitleForDisplay(next.title) || (next.type === "email" ? "営業メール" : "成果物"),
+    summary: sanitizeSummaryForDisplay(next.summary),
+    content: sanitizeBodyTextForDisplay(next.content),
+    markdown: sanitizeBodyTextForDisplay(next.markdown),
+    plainText: sanitizeBodyTextForDisplay(next.plainText),
+  };
+
+  // If title was a brace leftover and body fields still hold JSON, try once more.
+  if (
+    (!next.content && !next.markdown) ||
+    looksLikeDeliverableJson(deliverable.content) ||
+    looksLikeDeliverableJson(deliverable.markdown)
+  ) {
+    const repaired = normalizeDeliverablePayload({
+      ...deliverable,
+      title: isForbiddenTitle(deliverable.title) ? "" : deliverable.title,
+    });
+    if (repaired.ok) {
+      next = {
+        ...repaired.deliverable,
+        title:
+          sanitizeTitleForDisplay(repaired.deliverable.title) ||
+          (repaired.deliverable.type === "email" ? "営業メール" : "成果物"),
+        summary: sanitizeSummaryForDisplay(repaired.deliverable.summary),
+        content: sanitizeBodyTextForDisplay(repaired.deliverable.content),
+        markdown: sanitizeBodyTextForDisplay(repaired.deliverable.markdown),
+        plainText: sanitizeBodyTextForDisplay(repaired.deliverable.plainText),
+      };
+    }
   }
 
   if (next.type === "email") {
@@ -195,9 +122,9 @@ export function getEmailDisplayFields(deliverable: Deliverable): EmailDisplayFie
     sanitizeBodyTextForDisplay(normalized.markdown);
 
   return {
-    subject,
+    subject: sanitizeTitleForDisplay(subject) || (!looksLikeDeliverableJson(subject) ? subject : ""),
     body,
-    summary: normalized.summary.trim(),
+    summary: sanitizeSummaryForDisplay(normalized.summary),
   };
 }
 
@@ -221,4 +148,20 @@ export function getBlogTags(deliverable: Deliverable): string[] {
   const tags = normalized.metadata.tags.filter(Boolean);
   if (tags.length > 0) return tags;
   return normalized.metadata.seo.keywords.filter(Boolean);
+}
+
+/** True when a deliverable can be shown as a completed result card. */
+export function deliverableIsDisplaySafe(deliverable: Deliverable): boolean {
+  const normalized = normalizeDeliverableForDisplay(deliverable);
+  if (isForbiddenTitle(normalized.title) && looksLikeDeliverableJson(deliverable.title)) {
+    return false;
+  }
+  const body = getDocumentBody(normalized);
+  if (normalized.type === "social_post") {
+    return getSocialPostCards(normalized).length > 0;
+  }
+  if (normalized.type === "email") {
+    return Boolean(getEmailDisplayFields(normalized).body.trim());
+  }
+  return Boolean(body.trim()) && !looksLikeDeliverableJson(body);
 }

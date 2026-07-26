@@ -1,10 +1,16 @@
 import type { Deliverable, DeliverableType } from "./deliverable-types";
 import {
   deliverableHasContent,
+  emptyDeliverable,
   getDeliverablePreviewText,
   isBlogRelatedRequest,
 } from "./deliverable-types";
 import { buildDeliverable, buildFinalResponseSummary } from "./deliverable-builder";
+import {
+  assertSafeDeliverableForPersistence,
+  isJsonLikeForbiddenFallback,
+  logDeliverableNormalizeDebug,
+} from "./normalize-deliverable-payload";
 import type {
   AgentPhaseResult,
   OrchestrationResult,
@@ -75,15 +81,15 @@ export function resolveFinalOutputPreview(result: OrchestrationResult): {
 } {
   const { content, markdown, plainText } = readDeliverableSources(result.deliverable);
 
-  if (markdown) {
+  if (markdown && !isJsonLikeForbiddenFallback(markdown)) {
     return { content: markdown, source: "deliverable.markdown" };
   }
 
-  if (content) {
+  if (content && !isJsonLikeForbiddenFallback(content)) {
     return { content, source: "deliverable.content" };
   }
 
-  if (plainText) {
+  if (plainText && !isJsonLikeForbiddenFallback(plainText)) {
     return { content: plainText, source: "deliverable.content" };
   }
 
@@ -93,6 +99,7 @@ export function resolveFinalOutputPreview(result: OrchestrationResult): {
 export function hasMeaningfulContent(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
+  if (isJsonLikeForbiddenFallback(trimmed)) return false;
   if (trimmed.length >= MIN_MEANINGFUL_LENGTH) return true;
   if (/^#{1,3}\s/m.test(trimmed) && trimmed.length >= 80) return true;
   return false;
@@ -120,11 +127,27 @@ export function finalizeOrchestrationDeliverable(
   approved: boolean;
   validation: FinalDeliverableValidation;
 } {
-  const deliverable = buildDeliverable({
+  const built = buildDeliverable({
     assignment: input.assignment,
     executions: input.executions,
     research: input.research,
     plannerPlan: input.plannerPlan,
+  });
+
+  const persist = assertSafeDeliverableForPersistence(built, {
+    assignment: input.assignment,
+    expectedType: built.type,
+  });
+  const deliverable = persist.ok
+    ? persist.deliverable
+    : emptyDeliverable(built.type);
+
+  logDeliverableNormalizeDebug({
+    stage: "finalizeOrchestrationDeliverable",
+    parseSucceeded: persist.ok,
+    validationSucceeded: persist.ok,
+    rejectedReason: persist.ok ? undefined : persist.rejectedReason,
+    deliverableType: deliverable.type,
   });
 
   const workerOutputCount = input.executions.filter(
@@ -135,7 +158,9 @@ export function finalizeOrchestrationDeliverable(
     deliverable.markdown || deliverable.content || deliverable.plainText;
 
   const validation: FinalDeliverableValidation = {
-    ready: deliverableHasContent(deliverable) || hasMeaningfulContent(previewText),
+    ready:
+      persist.ok &&
+      (deliverableHasContent(deliverable) || hasMeaningfulContent(previewText)),
     workerOutputCount,
     contentLength: previewText.trim().length,
     format: deliverableHasContent(deliverable) ? deliverable.type : "empty",
@@ -150,7 +175,7 @@ export function finalizeOrchestrationDeliverable(
   });
 
   return {
-    finalResponse: buildFinalResponseSummary(deliverable),
+    finalResponse: validation.ready ? buildFinalResponseSummary(deliverable) : "",
     deliverable,
     approved,
     validation,
