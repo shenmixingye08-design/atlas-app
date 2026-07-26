@@ -115,10 +115,37 @@ export function ImageAttachmentPicker({
                 : item,
             );
           } catch (error) {
-            const message =
+            let message =
               error instanceof Error
                 ? error.message
                 : "画像のアップロードに失敗しました";
+            // Surface server diagnostics for infra failures (table/bucket/config).
+            if (
+              message.includes("table_missing") ||
+              message.includes("config_missing") ||
+              message.includes("bucket_missing")
+            ) {
+              try {
+                const diag = await fetch("/api/attachments/diagnostics");
+                if (diag.ok) {
+                  const body = (await diag.json()) as {
+                    blockingCode?: string | null;
+                    migrationHint?: string | null;
+                  };
+                  if (body.blockingCode || body.migrationHint) {
+                    message = [
+                      message,
+                      body.blockingCode ? `原因: ${body.blockingCode}` : null,
+                      body.migrationHint ?? null,
+                    ]
+                      .filter(Boolean)
+                      .join(" / ");
+                  }
+                }
+              } catch {
+                /* keep original message */
+              }
+            }
             current = current.map((item) =>
               item.localId === draft.localId
                 ? {

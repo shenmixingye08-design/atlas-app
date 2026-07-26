@@ -55,12 +55,17 @@ export async function uploadImagesToAtlas(
 
   const payload = (await response.json().catch(() => ({}))) as {
     error?: string;
+    code?: string;
+    stage?: string;
+    providerCode?: string | null;
     attachments?: UploadedAttachmentClient[];
     warnings?: string[];
   };
 
   if (!response.ok) {
-    throw new Error(payload.error || "画像のアップロードに失敗しました");
+    const detail = [payload.code, payload.stage].filter(Boolean).join("@");
+    const base = payload.error || "画像のアップロードに失敗しました";
+    throw new Error(detail ? `${base}（${detail}）` : base);
   }
 
   return {

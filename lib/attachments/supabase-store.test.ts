@@ -9,6 +9,21 @@ const selectEqMock = vi.fn();
 const deleteEqMock = vi.fn();
 const updateEqMock = vi.fn();
 
+vi.mock("@/lib/attachments/ensure-infrastructure", () => ({
+  assertAttachmentInfrastructureReady: vi.fn(async () => ({
+    ready: true,
+    backend: "supabase",
+    bucketExists: true,
+    tableExists: true,
+  })),
+  ensureAttachmentInfrastructure: vi.fn(async () => ({
+    ready: true,
+    backend: "supabase",
+    bucketExists: true,
+    tableExists: true,
+  })),
+}));
+
 vi.mock("@/lib/supabase/service-role", () => ({
   createServiceRoleClientIfConfigured: () => ({
     storage: {
@@ -18,6 +33,10 @@ vi.mock("@/lib/supabase/service-role", () => ({
         download: downloadMock,
         createSignedUrl: createSignedUrlMock,
       }),
+      listBuckets: async () => ({
+        data: [{ name: "atlas-image-attachments" }],
+        error: null,
+      }),
     },
     from: () => ({
       insert: (payload: unknown) => {
@@ -25,6 +44,7 @@ vi.mock("@/lib/supabase/service-role", () => ({
         return Promise.resolve({ error: null });
       },
       select: () => ({
+        limit: async () => ({ data: [], error: null }),
         eq: (...args: unknown[]) => {
           selectEqMock(...args);
           return {

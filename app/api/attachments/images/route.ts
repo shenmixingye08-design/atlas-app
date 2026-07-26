@@ -5,6 +5,10 @@ import {
   ImageValidationError,
   uploadUserImages,
 } from "@/lib/attachments";
+import {
+  AttachmentStorageError,
+  logAttachmentError,
+} from "@/lib/attachments/errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,15 +16,20 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request): Promise<Response> {
   const { userId } = await auth();
   if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized", code: "unauthorized" }, { status: 401 });
   }
 
   let form: FormData;
   try {
     form = await request.formData();
-  } catch {
+  } catch (error) {
+    logAttachmentError(error, { stage: "http.formData", userId });
     return Response.json(
-      { error: "画像のアップロードに失敗しました", code: "upload_failed" },
+      {
+        error: "画像の受信に失敗しました（FormData）",
+        code: "formdata_failed",
+        stage: "http.formData",
+      },
       { status: 400 },
     );
   }
@@ -32,7 +41,7 @@ export async function POST(request: Request): Promise<Response> {
 
   if (files.length === 0) {
     return Response.json(
-      { error: "画像ファイルがありません", code: "empty" },
+      { error: "画像ファイルがありません", code: "empty", stage: "http.files" },
       { status: 400 },
     );
   }
@@ -86,15 +95,44 @@ export async function POST(request: Request): Promise<Response> {
       },
     });
   } catch (error) {
+    logAttachmentError(error, { stage: "http.uploadUserImages", userId });
+
     if (error instanceof ImageValidationError) {
       return Response.json(
-        { error: error.message, code: error.code },
+        { error: error.message, code: error.code, stage: "validation" },
         { status: 400 },
       );
     }
-    console.error("[attachments] upload failed");
+
+    if (error instanceof AttachmentStorageError) {
+      const status =
+        error.code === "config_missing" ||
+        error.code === "table_missing" ||
+        error.code === "bucket_missing"
+          ? 503
+          : 500;
+      return Response.json(
+        {
+          error: error.message,
+          code: error.code,
+          stage: error.stage,
+          providerCode: error.providerCode ?? null,
+        },
+        { status },
+      );
+    }
+
+    const message =
+      error instanceof Error && error.message.includes("画像を読み取れませんでした")
+        ? error.message
+        : "画像のアップロードに失敗しました";
+
     return Response.json(
-      { error: "画像のアップロードに失敗しました", code: "upload_failed" },
+      {
+        error: message,
+        code: "upload_failed",
+        stage: "http.uploadUserImages",
+      },
       { status: 500 },
     );
   }
