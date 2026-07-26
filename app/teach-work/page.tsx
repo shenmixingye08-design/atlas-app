@@ -1,10 +1,6 @@
-import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
-import { TeachWorkForm } from "@/components/teach-work/teach-work-form";
+import { redirect } from "next/navigation";
 
+/** Teach-work builder removed from first-time path. */
 export default function TeachWorkPage() {
-  return (
-    <AtlasAppShell active="work-memory" width="default">
-      <TeachWorkForm />
-    </AtlasAppShell>
-  );
+  redirect("/workspace");
 }

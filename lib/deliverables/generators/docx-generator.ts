@@ -20,7 +20,6 @@ import { parseDeliverableContent } from "../parse-content";
 import type { ContentBlock, ParsedDeliverable } from "../parse-content";
 import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
 
-import { MarkdownDeliverableGenerator } from "./markdown-generator";
 import { createDeliverableFile } from "./shared";
 
 const FONT = "Yu Gothic";
@@ -317,14 +316,10 @@ export class DocxDeliverableGenerator implements DeliverableGenerator {
     content: string,
     baseFileName: string,
   ): Promise<GeneratedDeliverableFile> {
-    try {
-      const parsed = parseDeliverableContent(content);
-      const buffer = await buildDocxBuffer(parsed);
-      return createDeliverableFile("docx", baseFileName, buffer, false);
-    } catch (error) {
-      console.error("[DocxDeliverableGenerator] Falling back to Markdown:", error);
-      return new MarkdownDeliverableGenerator().generate(content, baseFileName);
-    }
+    // Never silent-fallback to Markdown — Word success must mean a real .docx.
+    const parsed = parseDeliverableContent(content);
+    const buffer = await buildDocxBuffer(parsed);
+    return createDeliverableFile("docx", baseFileName, buffer, false);
   }
 }
 

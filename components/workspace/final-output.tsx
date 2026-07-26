@@ -366,7 +366,8 @@ export function FinalOutput({
 }: FinalOutputProps) {
   const [copied, setCopied] = useState(false);
   const [driveSaved, setDriveSaved] = useState(false);
-  const showDebug = isAtlasClientDebugEnabled();
+  // Never surface debug JSON to end users — secretary UX forbids internal panels.
+  const showDebug = false && isAtlasClientDebugEnabled();
 
   const workspaceDeliverable = result?.deliverable ?? null;
   const exportText = useMemo(

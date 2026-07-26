@@ -381,6 +381,132 @@ export type Database = {
         };
         Relationships: [];
       };
+      atlas_deliverable_files: {
+        Row: {
+          id: string;
+          user_id: string;
+          file_name: string;
+          format: string;
+          mime_type: string;
+          is_placeholder: boolean;
+          source_content: string;
+          base_file_name: string;
+          size_bytes: number | null;
+          content_base64: string | null;
+          generated_at: string;
+          expires_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          user_id: string;
+          file_name: string;
+          format: string;
+          mime_type: string;
+          is_placeholder?: boolean;
+          source_content: string;
+          base_file_name: string;
+          size_bytes?: number | null;
+          content_base64?: string | null;
+          generated_at: string;
+          expires_at: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          file_name?: string;
+          format?: string;
+          mime_type?: string;
+          is_placeholder?: boolean;
+          source_content?: string;
+          base_file_name?: string;
+          size_bytes?: number | null;
+          content_base64?: string | null;
+          generated_at?: string;
+          expires_at?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      atlas_reliability_events: {
+        Row: {
+          id: string;
+          metric_key: string;
+          outcome: string;
+          duration_ms: number | null;
+          error_code: string | null;
+          error_message: string | null;
+          metadata: unknown;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          metric_key: string;
+          outcome: string;
+          duration_ms?: number | null;
+          error_code?: string | null;
+          error_message?: string | null;
+          metadata?: unknown;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          metric_key?: string;
+          outcome?: string;
+          duration_ms?: number | null;
+          error_code?: string | null;
+          error_message?: string | null;
+          metadata?: unknown;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      atlas_notification_dlq: {
+        Row: {
+          id: string;
+          notification_id: string;
+          user_id: string;
+          channel: string;
+          title: string;
+          message: string;
+          attempt_count: number;
+          last_error: string | null;
+          payload: unknown;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          notification_id: string;
+          user_id: string;
+          channel: string;
+          title: string;
+          message: string;
+          attempt_count?: number;
+          last_error?: string | null;
+          payload?: unknown;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          notification_id?: string;
+          user_id?: string;
+          channel?: string;
+          title?: string;
+          message?: string;
+          attempt_count?: number;
+          last_error?: string | null;
+          payload?: unknown;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       atlas_automation_jobs: {
         Row: {
           id: string;

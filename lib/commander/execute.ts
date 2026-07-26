@@ -700,7 +700,7 @@ async function executeStoredRun(input: {
     ensureNotificationDelivery(
       () =>
         notifyWorkCompleted(input.userId, {
-          title: "AIオーケストレーター完了報告",
+          title: "お仕事が完了しました",
           message: snsPublishedTweetUrl
             ? `「${plan.classification.summary}」が完了し、Xへ投稿しました。${snsPublishedTweetUrl}`
             : `「${plan.classification.summary}」が完了しました。`,
@@ -729,7 +729,7 @@ async function executeStoredRun(input: {
     ensureNotificationDelivery(
       () =>
         notifyWorkCompleted(input.userId, {
-          title: "AIオーケストレーター一部完了",
+          title: "確認が必要です",
           message: snsPublishReason
             ? `投稿文は準備できましたが、Xへの投稿に失敗しました: ${formatFailureReason(snsPublishReason)}`
             : "一部の成果は保存できます。内容を確認してください。",
@@ -745,8 +745,8 @@ async function executeStoredRun(input: {
     ensureNotificationDelivery(
       () =>
         notifyWorkFailed(input.userId, {
-          title: "AIオーケストレーターを中止しました",
-          message: "実行はユーザー操作により中止されました。",
+          title: "作業を止めました",
+          message: "ご指示により、作業を中止しました。",
         }),
       { runId: input.runId, userId: input.userId, kind: "cancelled" },
     );
@@ -786,8 +786,8 @@ async function executeStoredRun(input: {
     ensureNotificationDelivery(
       () =>
         notifyWorkFailed(input.userId, {
-          title: "AIオーケストレーター失敗報告",
-          message: failureReason,
+          title: "確認が必要です",
+          message: "自動で修正を試しました。内容をご確認のうえ、もう一度お試しください。",
           actionUrl: resultDeepLink,
           relatedTaskId: resultProjectId,
           deliverableId: resultProjectId,

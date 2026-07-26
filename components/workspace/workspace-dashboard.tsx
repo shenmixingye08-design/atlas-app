@@ -29,22 +29,10 @@ import { Button } from "@/components/ui/button";
 import { ui } from "@/lib/i18n";
 
 import { FinalOutput } from "./final-output";
-import { KnowledgeUsedPanel } from "./knowledge-used-panel";
-import { PrReviewPanel } from "./pr-review-panel";
-import { GrowthReviewPanel } from "./growth-review-panel";
-import { CompanyLearningPanel } from "./company-learning-panel";
-import { CompanyOperationsPanel } from "./company-operations-panel";
-import { ActionEnginePanel } from "./action-engine-panel";
-import { WorkflowInspectorPanel } from "./workflow-inspector-panel";
 import {
   WorkRequestForm,
   type WorkRequestSubmitPayload,
 } from "./work-request-form";
-import {
-  WorkMemoryCandidateBanner,
-  WorkMemoryUsedBanner,
-} from "./work-memory-used-banner";
-import { WorkTemplatePrompt } from "./work-template-prompt";
 import { WorkflowResults } from "./workflow-results";
 import {
   SalesMaterialWizard,
@@ -70,11 +58,12 @@ export function WorkspaceDashboard() {
   const [requestMetadata, setRequestMetadata] = useState<
     Readonly<Record<string, unknown>>
   >({});
-  const [workMemoryUsed, setWorkMemoryUsed] = useState<
+  const [, setWorkMemoryUsed] = useState<
     OrchestrationResult["workMemory"] | null
   >(null);
-  const [workMemoryCandidateCount, setWorkMemoryCandidateCount] = useState(0);
+  const [, setWorkMemoryCandidateCount] = useState(0);
   const [taughtWorkflowHint, setTaughtWorkflowHint] = useState(false);
+  const [backgroundAccepted, setBackgroundAccepted] = useState(false);
   const [pendingCommander, setPendingCommander] =
     useState<CommanderRunResult | null>(null);
 
@@ -101,13 +90,22 @@ export function WorkspaceDashboard() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!isLoading) return;
+    if (!isLoading) {
+      setBackgroundAccepted(false);
+      return;
+    }
+    const acceptedTimer = window.setTimeout(() => {
+      setBackgroundAccepted(true);
+    }, 3_000);
     const interval = setInterval(() => {
       setLoadingStepIndex((prev) =>
         Math.min(prev + 1, loadingPhases.length - 1),
       );
     }, LOADING_STEP_INTERVAL_MS);
-    return () => clearInterval(interval);
+    return () => {
+      window.clearTimeout(acceptedTimer);
+      clearInterval(interval);
+    };
   }, [isLoading, loadingPhases.length]);
 
   useEffect(() => {
@@ -119,12 +117,8 @@ export function WorkspaceDashboard() {
   const runOrchestration = async (
     requestAssignment: string,
     config?: SalesMaterialSessionConfig | null,
-    extraMetadata?: Readonly<Record<string, unknown>>,
+    _extraMetadata?: Readonly<Record<string, unknown>>,
   ) => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     setError(null);
     setResult(null);
     setOutlineOnlyText(null);
@@ -132,6 +126,7 @@ export function WorkspaceDashboard() {
     setWorkMemoryCandidateCount(0);
     setPendingCommander(null);
     setIsLoading(true);
+    setBackgroundAccepted(false);
     setLoadingStepIndex(0);
     setLoadingPhases(buildLoadingPhases(0));
 
@@ -140,44 +135,100 @@ export function WorkspaceDashboard() {
     }
 
     try {
-      const orchestrationResult = await submitWorkRequest(
-        requestAssignment,
-        controller.signal,
-        {
-          metadata: {
-            ...requestMetadata,
-            ...(extraMetadata ?? {}),
-            ...(config ? buildSalesMaterialMetadata(config) : {}),
-          },
-        },
-      );
-
-      setResult(orchestrationResult);
-      setWorkMemoryUsed(orchestrationResult.workMemory ?? null);
-      setWorkMemoryCandidateCount(
-        orchestrationResult.workMemoryCandidates?.length ?? 0,
-      );
-      projectService.saveFromOrchestration(
-        requestAssignment,
-        orchestrationResult,
-        orchestrationResult.commanderRunId
-          ? `commander-${orchestrationResult.commanderRunId}`
-          : undefined,
-      );
-
-      if (orchestrationResult.status === "failed" && orchestrationResult.error) {
-        setError(
-          formatUserFacingErrorText(
-            toUserFacingError(orchestrationResult.error, orchestrationResult),
-          ),
+      // Server job — browser does not hold the long orchestration connection.
+      const accept = await fetch("/api/work/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assignment: requestAssignment,
+          // Prevent double-submit of the same request (job runs once).
+          idempotencyKey:
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random()}`,
+        }),
+      });
+      const acceptBody = (await accept.json().catch(() => ({}))) as {
+        jobId?: string;
+        error?: string;
+        message?: string;
+      };
+      if (!accept.ok || !acceptBody.jobId) {
+        throw new Error(
+          acceptBody.error ||
+            acceptBody.message ||
+            "依頼を受け付けられませんでした。",
         );
       }
+
+      setBackgroundAccepted(true);
+      const jobId = acceptBody.jobId;
+
+      // Poll until completed / failed / confirmation.
+      for (let i = 0; i < 240; i += 1) {
+        await new Promise((r) => setTimeout(r, 2_000));
+        const poll = await fetch(`/api/work/jobs/${encodeURIComponent(jobId)}`, {
+          cache: "no-store",
+        });
+        const body = (await poll.json().catch(() => ({}))) as {
+          status?: string;
+          result?: OrchestrationResult | null;
+          error?: string;
+          message?: string;
+        };
+        if (!poll.ok) {
+          throw new Error(body.error || "状況を確認できませんでした。");
+        }
+        if (body.status === "awaiting_confirmation") {
+          // Fall back to interactive confirm via classic path when needed.
+          setIsLoading(false);
+          setBackgroundAccepted(false);
+          const orchestrationResult = await submitWorkRequest(
+            requestAssignment,
+            undefined,
+            { metadata: requestMetadata },
+          );
+          setResult(orchestrationResult);
+          projectService.saveFromOrchestration(
+            requestAssignment,
+            orchestrationResult,
+            orchestrationResult.commanderRunId
+              ? `commander-${orchestrationResult.commanderRunId}`
+              : undefined,
+          );
+          return;
+        }
+        if (body.status === "completed" && body.result) {
+          setResult(body.result);
+          setWorkMemoryUsed(body.result.workMemory ?? null);
+          projectService.saveFromOrchestration(
+            requestAssignment,
+            body.result,
+            body.result.commanderRunId
+              ? `commander-${body.result.commanderRunId}`
+              : undefined,
+          );
+          if (body.result.status === "failed" && body.result.error) {
+            setError(
+              formatUserFacingErrorText(
+                toUserFacingError(body.result.error, body.result),
+              ),
+            );
+          }
+          return;
+        }
+        if (body.status === "failed") {
+          throw new Error(body.error || body.message || "確認が必要です。");
+        }
+      }
+      throw new Error(
+        "まだ準備中です。しばらくしてから履歴をご確認ください。",
+      );
     } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return;
       if (err instanceof CommanderConfirmationRequiredError) {
         setPendingCommander(err.commander);
         setIsLoading(false);
-        abortRef.current = null;
+        setBackgroundAccepted(false);
         return;
       }
       const message =
@@ -185,16 +236,9 @@ export function WorkspaceDashboard() {
           ? err.message
           : formatUserFacingErrorText(toUserFacingError(err));
       setError(message);
-      setLoadingPhases((prev) =>
-        prev.map((phase) =>
-          phase.status === "running"
-            ? { ...phase, status: "error", errorMessage: message }
-            : phase,
-        ),
-      );
     } finally {
       setIsLoading(false);
-      abortRef.current = null;
+      setBackgroundAccepted(false);
     }
   };
 
@@ -326,9 +370,9 @@ export function WorkspaceDashboard() {
     <div className="space-y-16">
       {showForm && taughtWorkflowHint && (
         <section className="animate-fade-up rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card)] px-5 py-4 shadow-[var(--shadow-sm)]">
-          <p className="text-xs font-medium tracking-wide text-accent">AI秘書</p>
+          <p className="text-xs font-medium tracking-wide text-accent">MINERVOT</p>
           <p className="mt-2 text-sm leading-relaxed text-foreground sm:text-base">
-            前回教えていただいた流れで進めます。
+            以前お伺いした進め方で、そのまま取りかかります。
           </p>
         </section>
       )}
@@ -343,15 +387,15 @@ export function WorkspaceDashboard() {
       )}
 
       {pendingCommander && !isLoading && (
-        <Card padding="lg" className="space-y-4 border-amber-400/30 bg-amber-500/10">
+        <Card padding="lg" className="space-y-4 border-accent/20 bg-accent/5">
           <h2 className="text-lg font-semibold text-foreground">
-            {ui.commander.statusAwaiting}
+            確認が必要です
           </h2>
           <p className="text-sm text-[var(--text-secondary)]">
-            {pendingCommander.report.summary}
+            このまま進めてよいか、ご確認ください。
           </p>
           {pendingCommander.confirmationReasons.length > 0 && (
-            <ul className="list-disc space-y-1 pl-5 text-sm text-amber-50/90">
+            <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--text-secondary)]">
               {pendingCommander.confirmationReasons.map((reason) => (
                 <li key={reason}>{reason}</li>
               ))}
@@ -359,14 +403,14 @@ export function WorkspaceDashboard() {
           )}
           <div className="flex flex-wrap gap-3">
             <Button type="button" onClick={() => void handleConfirmPending()}>
-              {ui.commander.confirmExecute}
+              このまま進める
             </Button>
             <Button
               type="button"
               variant="secondary"
               onClick={() => setPendingCommander(null)}
             >
-              {ui.commander.cancelRun}
+              やめる
             </Button>
           </div>
         </Card>
@@ -406,7 +450,19 @@ export function WorkspaceDashboard() {
 
       {error && !result && !outlineOnlyText && <ErrorState message={error} />}
 
-      {(isLoading || result) && isLoading && (
+      {isLoading && backgroundAccepted && (
+        <section className="mx-auto max-w-lg space-y-4 py-16 text-center animate-fade-in">
+          <p className="text-sm font-medium text-accent">MINERVOT</p>
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+            依頼を受け付けました
+          </h2>
+          <p className="text-base text-[var(--foreground-muted)]">
+            バックグラウンドで処理しています。完了次第、成果物をお渡しします。
+          </p>
+        </section>
+      )}
+
+      {isLoading && !backgroundAccepted && (
         <WorkflowResults
           result={result}
           loadingPhases={loadingPhases}
@@ -416,25 +472,16 @@ export function WorkspaceDashboard() {
       )}
 
       {result && !isLoading && (
-        <>
-          {workMemoryUsed && workMemoryUsed.used.length > 0 && (
-            <WorkMemoryUsedBanner used={workMemoryUsed.used} />
-          )}
-
-          {workMemoryCandidateCount > 0 && (
-            <WorkMemoryCandidateBanner count={workMemoryCandidateCount} />
-          )}
-
-          <WorkTemplatePrompt assignment={assignment} />
-
-          {salesMaterialConfig && !salesMaterialConfig.skipFileGeneration && (
-            <p className="text-sm text-[var(--foreground-muted)] animate-fade-in">
-              選択された形式で資料を作成しました。
-              {salesMaterialConfig.formats.includes("pptx") &&
-                !salesMaterialConfig.formats.includes("pdf") &&
-                " PDFも必要であれば形式を変更して再実行できます。"}
+        <section className="space-y-6 animate-fade-up">
+          <header className="space-y-2 text-center">
+            <p className="text-sm font-medium text-accent">MINERVOT</p>
+            <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+              すべて完了しました
+            </h2>
+            <p className="text-sm text-[var(--foreground-muted)] sm:text-base">
+              成果物をご確認ください。必要ならすぐ別の形式でもお渡しできます。
             </p>
-          )}
+          </header>
 
           <FinalOutput
             result={result}
@@ -445,26 +492,12 @@ export function WorkspaceDashboard() {
             expectedFormats={salesMaterialConfig?.formats}
           />
 
-          <KnowledgeUsedPanel knowledge={result.knowledge} />
-
-          <WorkflowResults
-            result={result}
-            loadingPhases={loadingPhases}
-            isLoading={false}
-            error={error}
-          />
-
-          <PrReviewPanel
-            result={result}
-            showGrowthReview={false}
-            showCompanyLearning={false}
-          />
-          <GrowthReviewPanel result={result} />
-          <CompanyLearningPanel result={result} />
-          <CompanyOperationsPanel result={result} />
-          <ActionEnginePanel result={result} />
-          <WorkflowInspectorPanel result={result} />
-        </>
+          <div className="flex justify-center pt-2">
+            <Button type="button" variant="secondary" onClick={handleReset}>
+              別のお願いをする
+            </Button>
+          </div>
+        </section>
       )}
     </div>
   );

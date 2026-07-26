@@ -2,10 +2,9 @@ import "server-only";
 
 import { randomUUID } from "crypto";
 
-import { dispatchLineNotification } from "@/lib/integrations/line/service";
-import { dispatchWebPushNotification } from "@/lib/push/dispatch";
 import { resolvePushEventCategory, resolvePushSeverity } from "@/lib/push/categories";
 
+import { deliverLineWithAck, deliverWebPushWithAck } from "./delivery";
 import { schedulePersistNotifications } from "./durable";
 import {
   appendNotification,
@@ -74,6 +73,7 @@ function resolveLineEvent(
 
 export function createNotification(
   input: CreateNotificationInput,
+  options?: { skipDelivery?: boolean },
 ): NotificationRecord | null {
   const lineEvent = resolveLineEvent(input);
 
@@ -89,24 +89,9 @@ export function createNotification(
       ? `/results/${encodeURIComponent(notificationId)}`
       : (input.actionUrl ?? null);
 
-  // Send the LINE message with the same canonical link the in-app button uses.
-  // LINE dispatch is independent of the in-app channel preference (each channel
-  // is gated separately inside the LINE service).
-  if (input.audience === "user" && input.userId && lineEvent) {
-    void dispatchLineNotification({
-      userId: input.userId,
-      event: lineEvent,
-      title: input.title,
-      message: input.message,
-      actionUrl: canonicalActionUrl,
-    }).catch((error) => {
-      console.warn("[LINE notify]", error);
-    });
-  }
-
   if (input.audience === "user" && input.userId) {
     const prefs = getStoredPreferences(input.userId);
-    if (!isInAppTypeEnabled(prefs, input.type)) {
+    if (!isInAppTypeEnabled(prefs, input.type) && !lineEvent) {
       return null;
     }
   }
@@ -151,20 +136,66 @@ export function createNotification(
   });
   if (input.userId) schedulePersistNotifications(input.userId);
 
-  if (input.audience === "user" && input.userId) {
-    void dispatchWebPushNotification({
-      userId: input.userId,
-      record,
-      eventCategory: record.eventCategory ?? null,
-      severity: record.severity ?? null,
-      autoRecovered: input.autoRecovered,
-      jobName: input.jobName ?? null,
-    }).catch((error) => {
-      console.warn("[push notify]", error);
-    });
+  if (!options?.skipDelivery) {
+    // Delivery with ACK → Retry → DLQ. Scheduled (not blocking create), but never
+    // counted as success until deliver*WithAck completes.
+    if (input.audience === "user" && input.userId && lineEvent) {
+      void deliverLineWithAck({
+        notificationId,
+        userId: input.userId,
+        event: lineEvent,
+        title: input.title,
+        message: input.message,
+        actionUrl: canonicalActionUrl,
+      }).catch((error) => console.warn("[LINE notify]", error));
+    }
+
+    if (input.audience === "user" && input.userId) {
+      void deliverWebPushWithAck({
+        record,
+        autoRecovered: input.autoRecovered,
+        jobName: input.jobName ?? null,
+      }).catch((error) => console.warn("[push notify]", error));
+    }
   }
 
   return record;
+}
+
+/** Awaited notification create for E2E reliability harnesses. */
+export async function createNotificationWithDelivery(
+  input: CreateNotificationInput,
+): Promise<{
+  record: NotificationRecord | null;
+  lineOk: boolean | null;
+  pushOk: boolean | null;
+}> {
+  const lineEvent = resolveLineEvent(input);
+  const record = createNotification(input, { skipDelivery: true });
+  if (!record || !input.userId) {
+    return { record, lineOk: null, pushOk: null };
+  }
+
+  let lineOk: boolean | null = null;
+  let pushOk: boolean | null = null;
+  if (lineEvent) {
+    const line = await deliverLineWithAck({
+      notificationId: record.notificationId,
+      userId: input.userId,
+      event: lineEvent,
+      title: input.title,
+      message: input.message,
+      actionUrl: record.actionUrl,
+    });
+    lineOk = line.ok;
+  }
+  const push = await deliverWebPushWithAck({
+    record,
+    autoRecovered: input.autoRecovered,
+    jobName: input.jobName ?? null,
+  });
+  pushOk = push.ok;
+  return { record, lineOk, pushOk };
 }
 
 export function listUserNotifications(userId: string): NotificationRecord[] {

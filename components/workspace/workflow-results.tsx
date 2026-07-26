@@ -1,71 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
-
-import { mapWorkflowPhasesToAiEmployees } from "@/lib/ai-employees";
-import { mapExecutionsToAiEmployees } from "@/lib/team-collaboration";
-import { buildTeamCollaborationSnapshot } from "@/lib/team-collaboration";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
-import { hasMeaningfulContent } from "@/lib/orchestration/final-deliverable";
-import { getDeliverablePreviewText } from "@/lib/orchestration/deliverable-types";
-import {
-  buildInternalMessagesFromPhases,
-  buildInternalMessagesFromResult,
-} from "@/lib/workspace/internal-messages";
 import type { WorkflowPhaseState } from "@/lib/workspace/types";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
-
-import { AiEmployeesPanel } from "./ai-employees-panel";
-import { InternalCommunicationTimeline } from "./internal-communication-timeline";
-import { TeamCollaborationPanel } from "./team-collaboration-panel";
-import { WorkflowResultsDetail } from "./workflow-results-detail";
-
-type PeacefulStage = {
-  id: string;
-  label: string;
-  activeLabel: string;
-  status: "done" | "current" | "upcoming";
-};
-
-const STAGE_ORDER = [
-  { id: "research", label: ui.workflow.research, activeLabel: ui.workflow.researchActive },
-  { id: "planning", label: ui.workflow.planning, activeLabel: ui.workflow.planningActive },
-  { id: "working", label: ui.workflow.working, activeLabel: ui.workflow.workingActive },
-  { id: "review", label: ui.workflow.review, activeLabel: ui.workflow.reviewActive },
-  { id: "completed", label: ui.workflow.completed, activeLabel: ui.workflow.completed },
-];
-
-function mapPhaseToStageIndex(phaseId: string): number {
-  if (phaseId.includes("research")) return 0;
-  if (phaseId.includes("planner")) return 1;
-  if (phaseId.includes("worker")) return 2;
-  if (phaseId.includes("reviewer") || phaseId.includes("quality")) return 3;
-  return 4;
-}
-
-function buildPeacefulStages(
-  phases: WorkflowPhaseState[],
-  isComplete: boolean,
-): PeacefulStage[] {
-  if (isComplete) {
-    return STAGE_ORDER.map((s) => ({ ...s, status: "done" as const }));
-  }
-
-  const runningIndex = phases.findIndex((p) => p.status === "running");
-  const activeIndex =
-    runningIndex >= 0
-      ? mapPhaseToStageIndex(phases[runningIndex]!.id)
-      : phases.findIndex((p) => p.status === "waiting");
-
-  return STAGE_ORDER.map((stage, index) => {
-    if (index < activeIndex) return { ...stage, status: "done" as const };
-    if (index === activeIndex) return { ...stage, status: "current" as const };
-    return { ...stage, status: "upcoming" as const };
-  });
-}
 
 type WorkflowResultsProps = {
   result: OrchestrationResult | null;
@@ -74,121 +14,84 @@ type WorkflowResultsProps = {
   error: string | null;
 };
 
+/**
+ * Waiting UI for first-time users — human progress only.
+ * No CEO / Planner / QA / employees / debug / internal chat.
+ */
 export function WorkflowResults({
-  result,
   loadingPhases,
   isLoading,
   error,
 }: WorkflowResultsProps) {
-  const [expanded, setExpanded] = useState(false);
-
-  const internalMessages = useMemo(() => {
-    if (result) {
-      return buildInternalMessagesFromResult(result);
-    }
-    return buildInternalMessagesFromPhases(loadingPhases);
-  }, [result, loadingPhases]);
-
-  const isWorkComplete =
-    !isLoading &&
-    result !== null &&
-    result.status !== "failed" &&
-    hasMeaningfulContent(getDeliverablePreviewText(result.deliverable)) &&
-    result.approved;
-
-  const aiEmployees = useMemo(() => {
-    if (result) {
-      return mapExecutionsToAiEmployees(result, { isComplete: isWorkComplete });
-    }
-    return mapWorkflowPhasesToAiEmployees(loadingPhases, {
-      isComplete: isWorkComplete,
-    });
-  }, [result, loadingPhases, isWorkComplete]);
-
-  const teamSnapshot = useMemo(
-    () => (result ? buildTeamCollaborationSnapshot(result) : null),
-    [result],
-  );
-
-  if (!result && !isLoading) {
-    return null;
+  if (!isLoading) {
+    return error ? <ErrorState message={error} /> : null;
   }
 
-  const stages = buildPeacefulStages(loadingPhases, isWorkComplete);
-  const current = stages.find((s) => s.status === "current");
-
-  const headline =
-    isLoading && !result
-      ? (current?.activeLabel ?? ui.workflow.workingActive)
-      : result?.status === "failed"
-        ? ui.workflow.reviewActive
-        : result && !hasMeaningfulContent(getDeliverablePreviewText(result.deliverable))
-          ? ui.workflow.needsReview
-          : result && !result.approved
-            ? ui.workflow.needsReview
-            : ui.workflow.completed;
+  const runningIndex = Math.max(
+    0,
+    loadingPhases.findIndex((p) => p.status === "running"),
+  );
+  const total = Math.max(loadingPhases.length, 1);
+  const filled = Math.min(runningIndex + 1, total);
+  const current = loadingPhases[runningIndex] ?? loadingPhases[0];
+  const remaining = loadingPhases
+    .slice(runningIndex + 1)
+    .map((p) => p.label)
+    .filter(Boolean);
 
   return (
-    <div className="space-y-10 animate-fade-in">
-      <AiEmployeesPanel employees={aiEmployees} compact={isWorkComplete} />
+    <div className="mx-auto max-w-lg space-y-8 animate-fade-in py-10">
+      <Card padding="lg" className="space-y-8 text-center shadow-[var(--shadow-md)]">
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-accent">MINERVOT</p>
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            {current?.label ?? ui.secretaryProgress.write}
+          </h2>
+          <p className="text-sm text-[var(--foreground-muted)] sm:text-base">
+            {current?.subtitle ?? ui.secretaryProgress.writeHint}
+          </p>
+        </div>
 
-      {teamSnapshot && result && (
-        <TeamCollaborationPanel snapshot={teamSnapshot} />
-      )}
+        <div
+          className="mx-auto h-3 w-full max-w-sm overflow-hidden rounded-full bg-[var(--surface-muted)]"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-valuenow={filled}
+          aria-label={current?.label ?? "進捗"}
+        >
+          <div
+            className="h-full rounded-full bg-accent transition-all duration-500"
+            style={{ width: `${Math.round((filled / total) * 100)}%` }}
+          />
+        </div>
 
-      {!isWorkComplete && (
-        <Card padding="lg" className="text-center">
-          <p className="text-caption">{ui.work.currentStage}</p>
-          <p className="mt-3 text-display text-foreground">{headline}</p>
+        <ol className="space-y-2 text-left text-sm text-[var(--foreground-muted)]">
+          {loadingPhases.map((phase, index) => (
+            <li
+              key={phase.id}
+              className={cn(
+                "flex items-center gap-3 rounded-2xl px-3 py-2",
+                index < runningIndex && "text-[var(--status-success)]",
+                index === runningIndex && "bg-accent/5 font-medium text-foreground",
+              )}
+            >
+              <span aria-hidden className="w-5 text-center">
+                {index < runningIndex ? "✓" : index === runningIndex ? "●" : "○"}
+              </span>
+              <span>{phase.label}</span>
+            </li>
+          ))}
+        </ol>
 
-          <ol className="mx-auto mt-10 flex max-w-md justify-between gap-2">
-            {stages.map((stage) => (
-              <li key={stage.id} className="flex flex-1 flex-col items-center gap-2">
-                <span
-                  className={cn(
-                    "h-2 w-2 rounded-full transition-colors duration-[var(--motion-base)]",
-                    stage.status === "done" && "bg-[var(--status-success)]",
-                    stage.status === "current" && "bg-accent animate-soft-pulse",
-                    stage.status === "upcoming" && "bg-[var(--background-subtle)]",
-                  )}
-                  aria-hidden="true"
-                />
-                <span
-                  className={cn(
-                    "text-[10px] sm:text-xs",
-                    stage.status === "current"
-                      ? "font-medium text-foreground"
-                      : "text-[var(--foreground-subtle)]",
-                  )}
-                >
-                  {stage.status === "current" ? stage.activeLabel : stage.label}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </Card>
-      )}
-
-      <InternalCommunicationTimeline messages={internalMessages} />
+        {remaining.length > 0 && (
+          <p className="text-xs text-[var(--foreground-muted)]">
+            残り: {remaining.join(" → ")}
+          </p>
+        )}
+      </Card>
 
       {error && <ErrorState message={error} />}
-
-      {result && (
-        <div>
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="text-sm text-accent hover:underline focus-ring rounded"
-          >
-            {expanded ? ui.work.hideDetails : ui.work.viewDetails}
-          </button>
-          {expanded && (
-            <div className="mt-8 animate-fade-up">
-              <WorkflowResultsDetail result={result} error={error} />
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
