@@ -97,3 +97,14 @@ export {
   type SmartContextTelemetry,
   type SmartContextSelectionResult,
 } from "./context";
+
+export {
+  QUALITY_ENGINE_VERSION,
+  recordBenchmarkFromEngine,
+  listBenchmarkRecords,
+  listBenchmarkCases,
+  createAndExecuteBenchmarkRun,
+  buildBenchmarkOverview,
+  exportBenchmarkCsv,
+  resetBenchmarkStoreForTests,
+} from "./benchmark";

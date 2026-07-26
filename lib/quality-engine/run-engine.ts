@@ -19,6 +19,10 @@ import { buildSlimWorkerContext } from "@/lib/orchestration/slim-context";
 import { resolveWorkerPolicy } from "@/lib/ai/policy-engine";
 
 import {
+  evaluateQualityGate,
+  recordBenchmarkFromEngine,
+} from "./benchmark";
+import {
   isInformationGapFeedback,
   pickRefillIdsFromDecisions,
 } from "./context";
@@ -418,6 +422,12 @@ export async function runQualityEngine(
     knowledgeEntryCount: contextPack.smartContext.selectedCount,
     referenceCount: contextPack.smartContext.usedReferenceCount,
   };
+
+  const gate = evaluateQualityGate({
+    artifactType: promptKind,
+    qualityScore: judge!.overallScore,
+  });
+
   const result: QualityEngineRunResult = {
     telemetry: {
       tier,
@@ -441,6 +451,8 @@ export async function runQualityEngine(
         entryCount: usage.entryCount,
       },
       smartContext,
+      qualityGateWarning:
+        gate.belowThreshold && gate.message ? gate.message : undefined,
       recordedAt: new Date().toISOString(),
     },
     judge: judge!,
@@ -450,15 +462,47 @@ export async function runQualityEngine(
     formattedContent: deliverable.content,
   };
 
+  const userId =
+    typeof input.metadata?.userId === "string"
+      ? input.metadata.userId
+      : typeof input.metadata?.progressUserId === "string"
+        ? input.metadata.progressUserId
+        : null;
+  const organizationId =
+    typeof input.metadata?.organizationId === "string"
+      ? input.metadata.organizationId
+      : typeof input.metadata?.orgId === "string"
+        ? input.metadata.orgId
+        : null;
+
   recordQualityEngineTelemetry({
     ...result.telemetry,
-    userId:
-      typeof input.metadata?.userId === "string"
-        ? input.metadata.userId
-        : typeof input.metadata?.progressUserId === "string"
-          ? input.metadata.progressUserId
-          : null,
+    userId,
     assignmentHint: input.assignment.slice(0, 120),
+  });
+
+  // Phase5: persist Benchmark Record from existing run data (no extra LLM).
+  recordBenchmarkFromEngine({
+    telemetry: result.telemetry,
+    judge: judge!,
+    reviewer,
+    contextPack,
+    assignment: input.assignment,
+    deliverableTitle: deliverable.title,
+    deliverableContent: deliverable.markdown || deliverable.content,
+    artifactId:
+      typeof input.metadata?.artifactId === "string"
+        ? input.metadata.artifactId
+        : typeof input.metadata?.deliverableId === "string"
+          ? input.metadata.deliverableId
+          : null,
+    jobId:
+      typeof input.metadata?.jobId === "string" ? input.metadata.jobId : null,
+    userId,
+    organizationId,
+    templateId: contextPack.templateId,
+    model: primaryModel || null,
+    extraLlmCallsFromSelection: 0,
   });
 
   return { ...result, deliverable };

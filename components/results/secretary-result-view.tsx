@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { DeliverableFeedbackCard } from "@/components/results/deliverable-feedback-card";
 import { NextActionsBar } from "@/components/results/next-actions-bar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -249,6 +250,8 @@ export function SecretaryResultView({
                 : ui.secretaryResult.regenerate}
             </Button>
           </div>
+
+          <DeliverableFeedbackCard artifactId={project.id} />
         </div>
       )}
     </div>
