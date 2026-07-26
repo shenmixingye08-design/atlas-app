@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Deliverable, DeliverableFormat } from "@/lib/deliverables/types";
 import { requestDeliverables } from "@/lib/deliverables/client";
 import { getDeliverableExportText } from "@/lib/orchestration/final-deliverable";
+import { assertSafeExportText } from "@/lib/orchestration/normalize-deliverable-payload";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 
 export type DeliverableFileOptions = {
@@ -28,13 +29,17 @@ export function useDeliverableFiles(
       return;
     }
 
-    const previewContent = result.deliverable
+    const rawExport = result.deliverable
       ? getDeliverableExportText(result.deliverable).trim()
       : "";
+    const guarded = rawExport ? assertSafeExportText(rawExport) : null;
+    const previewContent = guarded?.ok ? guarded.text : "";
 
     if (!previewContent) {
       setDeliverables([]);
-      setDeliverablesError(null);
+      setDeliverablesError(
+        rawExport && guarded && !guarded.ok ? guarded.safeMessage : null,
+      );
       return;
     }
 

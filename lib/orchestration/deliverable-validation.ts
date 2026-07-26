@@ -3,6 +3,11 @@ import { deliverableHasContent, emptyDeliverable } from "./deliverable-types";
 import { detectEmailSubject } from "./email-deliverable";
 import { buildDeliverable } from "./deliverable-builder";
 import type { AgentPhaseResult, ResearchStageResult, TaskExecutionResult } from "./types";
+import {
+  assertSafeDeliverableForPersistence,
+  isForbiddenTitle,
+  looksLikeDeliverableJson,
+} from "./normalize-deliverable-payload";
 import { parseWorkerDeliverablePayload, tryParseStoredDeliverable } from "./worker-output";
 
 const REQUIRED_DELIVERABLE_TYPES: DeliverableType[] = [
@@ -43,6 +48,17 @@ export type EnsureDeliverableResult = {
   recoverySource: "none" | "worker_output" | "stored_deliverable";
 };
 
+function pushJsonLikeIssues(deliverable: Deliverable, issues: DeliverableFieldIssue[]): void {
+  if (isForbiddenTitle(deliverable.title) || looksLikeDeliverableJson(deliverable.title)) {
+    issues.push({ field: "title", reason: "title looks like internal JSON" });
+  }
+  for (const field of ["summary", "content", "markdown", "plainText"] as const) {
+    if (looksLikeDeliverableJson(deliverable[field])) {
+      issues.push({ field, reason: `${field} looks like internal JSON` });
+    }
+  }
+}
+
 /** Verify all required deliverable fields exist before approval. */
 export function validateDeliverableFields(deliverable: Deliverable): DeliverableValidationResult {
   if (deliverable.type === "email") {
@@ -71,6 +87,13 @@ export function validateDeliverableFields(deliverable: Deliverable): Deliverable
   }
   if (!deliverable.metadata || typeof deliverable.metadata !== "object") {
     issues.push({ field: "metadata", reason: "metadata is missing" });
+  }
+
+  pushJsonLikeIssues(deliverable, issues);
+
+  const persist = assertSafeDeliverableForPersistence(deliverable);
+  if (!persist.ok) {
+    issues.push({ field: "deliverable", reason: persist.rejectedReason });
   }
 
   return {
@@ -102,6 +125,13 @@ function validateEmailDeliverableFields(deliverable: Deliverable): DeliverableVa
   const subject = detectEmailSubject(deliverable);
   if (!subject.trim()) {
     issues.push({ field: "metadata.subject", reason: "email subject (件名) is missing" });
+  }
+
+  pushJsonLikeIssues(deliverable, issues);
+
+  const persist = assertSafeDeliverableForPersistence(deliverable);
+  if (!persist.ok) {
+    issues.push({ field: "deliverable", reason: persist.rejectedReason });
   }
 
   return {

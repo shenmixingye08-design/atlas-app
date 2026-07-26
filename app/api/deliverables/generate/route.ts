@@ -1,6 +1,10 @@
 import { generateDeliverables } from "@/lib/deliverables/engine";
 import { uploadDeliverablesAfterGeneration } from "@/lib/integrations/deliverable-bridge";
 import type { IntegrationUploadSummary } from "@/lib/integrations/types";
+import {
+  assertSafeExportText,
+  needsRegenerationResponse,
+} from "@/lib/orchestration/normalize-deliverable-payload";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -88,6 +92,17 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(
       { error: "finalDeliverable is required and must be a non-empty string" },
       { status: 400 },
+    );
+  }
+
+  const exportGuard = assertSafeExportText(body.finalDeliverable);
+  if (!exportGuard.ok) {
+    return Response.json(
+      {
+        ...needsRegenerationResponse(),
+        error: needsRegenerationResponse().message,
+      },
+      { status: 422 },
     );
   }
 
