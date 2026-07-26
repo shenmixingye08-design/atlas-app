@@ -194,13 +194,13 @@ export function ExecutiveDashboard({
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
+          { href: "/owner/ai-assistant", label: "AI経営アシスタント" },
           { href: "/owner/users", label: "ユーザー管理" },
           { href: "/owner/stripe", label: "Stripe管理" },
           { href: "/owner/error-monitoring", label: "エラーセンター" },
           { href: "/owner/system-status", label: "システム監視" },
           { href: "/owner/profit-analysis", label: "利益分析" },
           { href: "/owner/deliverable-cost", label: "成果物原価" },
-          { href: "/owner/deliverable-analytics", label: "成果物分析" },
           { href: "/owner/analytics", label: "日次・週次・月次・年次" },
         ].map((link) => (
           <Link
