@@ -5,6 +5,11 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["lib/**/*.test.ts"],
+    // Heavy measured gates — run via npm run test:reliability-1000
+    exclude: [
+      "lib/reliability/e2e-1000.test.ts",
+      "lib/reliability/x-post-1000.test.ts",
+    ],
   },
   resolve: {
     alias: {
