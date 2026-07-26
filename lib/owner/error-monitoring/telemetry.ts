@@ -32,6 +32,7 @@ function recordError(input: {
   categoryId: ErrorCategoryId;
   message: string;
   source?: string;
+  stackTrace?: string | null;
 }): void {
   recordOwnerError(input);
   recordServiceHealthFromErrorCategory(input.categoryId, input.source);
@@ -140,12 +141,70 @@ export function recordOwnerErrorFromUnknown(
 ): void {
   const message =
     error instanceof Error ? error.message : "Unknown error occurred";
+  const stackTrace = error instanceof Error ? error.stack ?? null : null;
 
   recordError({
     categoryId,
     message,
     source,
+    stackTrace,
   });
+}
+
+export function recordVisionFailure(
+  message: string,
+  source = "vision",
+  stackTrace?: string | null,
+): void {
+  recordError({ categoryId: "vision", message, source, stackTrace });
+}
+
+export function recordPdfFailure(
+  message: string,
+  source = "pdf",
+  stackTrace?: string | null,
+): void {
+  recordError({ categoryId: "pdf", message, source, stackTrace });
+}
+
+export function recordWordFailure(
+  message: string,
+  source = "word",
+  stackTrace?: string | null,
+): void {
+  recordError({ categoryId: "word", message, source, stackTrace });
+}
+
+export function recordExcelFailure(
+  message: string,
+  source = "excel",
+  stackTrace?: string | null,
+): void {
+  recordError({ categoryId: "excel", message, source, stackTrace });
+}
+
+export function recordWordPressFailure(
+  message: string,
+  source = "wordpress",
+  stackTrace?: string | null,
+): void {
+  recordError({ categoryId: "wordpress", message, source, stackTrace });
+}
+
+export function recordSupabaseFailure(
+  message: string,
+  source = "supabase",
+  stackTrace?: string | null,
+): void {
+  recordError({ categoryId: "supabase", message, source, stackTrace });
+}
+
+export function recordAuthFailure(
+  message: string,
+  source = "auth",
+  stackTrace?: string | null,
+): void {
+  recordError({ categoryId: "auth", message, source, stackTrace });
 }
 
 export function isOpenAiRelatedError(error: unknown): boolean {

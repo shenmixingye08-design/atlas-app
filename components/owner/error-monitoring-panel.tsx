@@ -86,6 +86,11 @@ function ErrorCategoryRow({
           {category.lastMessage && hasErrors && (
             <p className="text-xs text-[var(--text-muted)]">{category.lastMessage}</p>
           )}
+          {category.lastStackTrace && hasErrors && (
+            <pre className="mt-2 max-h-28 overflow-auto rounded-lg bg-[var(--surface-muted)] p-2 text-[10px] leading-relaxed text-[var(--text-muted)]">
+              {category.lastStackTrace}
+            </pre>
+          )}
         </div>
       </td>
       <td className="py-4 pr-4 align-top text-[var(--text-secondary)]">
@@ -170,10 +175,10 @@ export function ErrorMonitoringPanel() {
           {ui.errorMonitoring.eyebrow}
         </p>
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-          {ui.errorMonitoring.title}
+          エラーセンター
         </h1>
         <p className="max-w-2xl text-sm leading-relaxed text-[var(--text-secondary)]">
-          {ui.errorMonitoring.subtitle}
+          OpenAI / Vision / PDF / Word / Excel / X / WordPress / Stripe / Supabase / 認証 / Webhook など、すべての運用エラーとスタックトレースを確認できます。
         </p>
       </header>
 
@@ -237,6 +242,33 @@ export function ErrorMonitoringPanel() {
           </div>
         )}
       </Card>
+
+      {snapshot && snapshot.recentEvents.length > 0 && (
+        <Card padding="lg" className="border-[var(--border)] bg-[var(--card)] shadow-none">
+          <h2 className="text-lg font-semibold">最近のエラー（スタックトレース付き）</h2>
+          <ul className="mt-4 space-y-3">
+            {snapshot.recentEvents.slice(0, 30).map((event, index) => (
+              <li
+                key={`${event.timestamp}-${event.categoryId}-${index}`}
+                className="rounded-xl border border-[var(--border)] px-3 py-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span className="font-medium">{event.categoryId}</span>
+                  <span className="text-xs text-[var(--text-muted)]">
+                    {formatOwnerDate(event.timestamp)} · {event.source}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">{event.message}</p>
+                {event.stackTrace && (
+                  <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-[var(--surface-muted)] p-2 text-[10px] leading-relaxed text-[var(--text-muted)]">
+                    {event.stackTrace}
+                  </pre>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <p className="text-xs text-[var(--text-muted)]">{ui.errorMonitoring.note}</p>
     </div>

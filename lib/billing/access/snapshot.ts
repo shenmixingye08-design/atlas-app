@@ -4,6 +4,7 @@ import { getClerkUserPrimaryEmail } from "@/lib/auth/get-clerk-user-email";
 import { isAtlasOwnerEmail } from "@/lib/auth/is-atlas-owner";
 import { isAtlasBetaUserEmail } from "@/lib/feature-flags/access";
 import { siteConfig } from "@/lib/config/site";
+import { isOwnerAccountSuspended } from "@/lib/owner/user-admin/store";
 
 import { getPlanDefinition, listPlanDefinitions } from "../plans/registry";
 import type { BillingFeatureId, PlanId } from "../plans/types";
@@ -98,6 +99,21 @@ export type BillingDenial = {
  * Owners bypass plan gates for operations (ATLAS_OWNER_EMAILS).
  * Beta users do not bypass billing — only feature flags.
  */
+function suspensionDenial(
+  snapshot: BillingAccessSnapshot,
+): BillingDenial {
+  return {
+    kind: "plan",
+    status: 403,
+    reason: "このアカウントは運営により一時停止されています。",
+    currentPlan: snapshot.effectivePlanId,
+    currentPlanName: snapshot.effectivePlanName,
+    requiredPlan: null,
+    requiredPlanName: null,
+    upgradePath: BILLING_UPGRADE_PATH,
+  };
+}
+
 export async function evaluateBillingFeature(
   userId: string,
   feature: BillingFeatureId,
@@ -105,6 +121,9 @@ export async function evaluateBillingFeature(
   const snapshot = await getBillingAccessSnapshot(userId);
   if (snapshot.isOwner) {
     return { snapshot, denial: null };
+  }
+  if (isOwnerAccountSuspended(userId)) {
+    return { snapshot, denial: suspensionDenial(snapshot) };
   }
 
   const check = evaluatePlanAccess(userId, feature);
@@ -136,6 +155,9 @@ export async function evaluateBillingAiUsage(
 ): Promise<{ snapshot: BillingAccessSnapshot; denial: BillingDenial | null }> {
   const snapshot = await getBillingAccessSnapshot(userId);
   if (snapshot.isOwner) return { snapshot, denial: null };
+  if (isOwnerAccountSuspended(userId)) {
+    return { snapshot, denial: suspensionDenial(snapshot) };
+  }
 
   // Touch usage so limit uses hydrated subscription plan
   void getUsageSnapshot(userId);

@@ -5,7 +5,17 @@ export type ErrorCategoryId =
   | "x_post"
   | "webhook"
   | "openai"
-  | "stripe";
+  | "stripe"
+  | "vision"
+  | "pdf"
+  | "word"
+  | "excel"
+  | "wordpress"
+  | "supabase"
+  | "auth"
+  | "image_generation"
+  | "scheduler"
+  | "automation";
 
 export type ErrorResolutionStatus = "open" | "resolved";
 
@@ -20,6 +30,8 @@ export type ErrorEventRecord = {
   message: string;
   timestamp: string;
   source: string;
+  /** Optional stack trace for Error Center drill-down. */
+  stackTrace: string | null;
 };
 
 export type ErrorCategoryState = {
@@ -29,6 +41,7 @@ export type ErrorCategoryState = {
   resolutionStatus: ErrorResolutionStatus;
   resolvedAt: string | null;
   lastMessage: string | null;
+  lastStackTrace: string | null;
 };
 
 export type ErrorCategorySnapshot = ErrorCategoryState & {
@@ -38,6 +51,7 @@ export type ErrorCategorySnapshot = ErrorCategoryState & {
 
 export type ErrorMonitoringSnapshot = {
   categories: readonly ErrorCategorySnapshot[];
+  recentEvents: readonly ErrorEventRecord[];
   openCount: number;
   generatedAt: string;
 };

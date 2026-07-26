@@ -19,4 +19,11 @@ export {
   recordWebhookFailure,
   recordXPostFailure,
   recordXAuthFailure,
+  recordVisionFailure,
+  recordPdfFailure,
+  recordWordFailure,
+  recordExcelFailure,
+  recordWordPressFailure,
+  recordSupabaseFailure,
+  recordAuthFailure,
 } from "./telemetry";

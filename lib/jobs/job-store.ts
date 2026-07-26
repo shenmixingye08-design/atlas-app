@@ -370,6 +370,50 @@ export async function listStaleRunningJobs(
   return data.map((row) => rowToRecord(row as DbRow));
 }
 
+/** Recent jobs for owner job monitor (real store / Supabase only). */
+export async function listRecentJobs(input?: {
+  limit?: number;
+  statuses?: readonly JobStatus[];
+}): Promise<JobRecord[]> {
+  const limit = Math.min(Math.max(input?.limit ?? 100, 1), 300);
+  const statuses = input?.statuses;
+  const client = createServiceRoleClientIfConfigured();
+
+  if (!client) {
+    let rows = [...getMemoryStore().values()];
+    if (statuses && statuses.length > 0) {
+      const allowed = new Set(statuses);
+      rows = rows.filter((row) => allowed.has(row.status));
+    }
+    return rows
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, limit);
+  }
+
+  let query = client
+    .from(TABLE)
+    .select("*")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+
+  if (statuses && statuses.length > 0) {
+    query = query.in("status", [...statuses]);
+  }
+
+  const { data, error } = await query;
+  if (error || !Array.isArray(data)) {
+    let rows = [...getMemoryStore().values()];
+    if (statuses && statuses.length > 0) {
+      const allowed = new Set(statuses);
+      rows = rows.filter((row) => allowed.has(row.status));
+    }
+    return rows
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, limit);
+  }
+  return data.map((row) => rowToRecord(row as DbRow));
+}
+
 export async function getJobMetrics24h(): Promise<JobMetrics24h> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const client = createServiceRoleClientIfConfigured();

@@ -924,3 +924,41 @@ html[data-theme="dark"] .activity-history-page {
 html[data-theme="dark"] .activity-history-detail {
   background: var(--history-surface);
 }
+
+/* ─── MINERVOT Owner executive console motion ─── */
+@keyframes owner-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.owner-brand-enter,
+.owner-aside-enter,
+.owner-main-enter,
+.owner-nav-enter,
+.owner-card-enter {
+  animation: owner-fade-up 0.45s ease-out both;
+}
+
+.owner-aside-enter {
+  animation-delay: 40ms;
+}
+
+.owner-main-enter {
+  animation-delay: 80ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .owner-brand-enter,
+  .owner-aside-enter,
+  .owner-main-enter,
+  .owner-nav-enter,
+  .owner-card-enter {
+    animation: none;
+  }
+}

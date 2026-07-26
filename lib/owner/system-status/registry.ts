@@ -20,11 +20,21 @@ const ERROR_CATEGORY_TO_SERVICE: Partial<
   Record<ErrorCategoryId, SystemServiceId>
 > = {
   openai: "openai",
+  vision: "openai",
+  image_generation: "openai",
   stripe: "stripe",
   google_auth: "google",
   dropbox_auth: "dropbox",
   x_post: "x",
+  wordpress: "wordpress",
   webhook: "atlas",
+  pdf: "atlas",
+  word: "atlas",
+  excel: "atlas",
+  supabase: "server",
+  auth: "atlas",
+  scheduler: "atlas",
+  automation: "atlas",
 };
 
 export function getSystemServiceDefinition(
