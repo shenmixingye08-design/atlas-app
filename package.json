@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/run-vision-live-e2e-on-vercel.mjs && next build",
+    "test:vision-live": "node scripts/vision-live-e2e.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
@@ -28,8 +29,10 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "server-only": "^0.0.1",
+    "sharp": "^0.35.3",
     "stripe": "^22.3.0",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -37,12 +40,12 @@
     "@types/pdfkit": "^0.17.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "playwright": "^1.61.1",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^3.2.7",
-    "@types/web-push": "^3.6.4"
+    "vitest": "^3.2.7"
   }
 }

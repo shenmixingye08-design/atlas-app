@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/design-system/cn";
+import { filterImageFiles, uploadImagesToAtlas } from "@/lib/attachments/client-upload";
+import { stashPendingAttachmentIds } from "@/lib/attachments/pending-session";
 import { ui } from "@/lib/i18n";
 import {
   classifyUploads,
@@ -82,9 +84,40 @@ export function SecretaryUploadHero() {
   }, []);
 
   const startWork = useCallback(
-    (assignment: string) => {
+    async (assignment: string, pendingFiles: File[] = []) => {
       const trimmed = assignment.trim();
       if (!trimmed) return;
+
+      const images = filterImageFiles(pendingFiles);
+      if (images.length > 0) {
+        try {
+          setPhase("understanding");
+          const uploaded = await uploadImagesToAtlas(images, {
+            preferReadableText: true,
+          });
+          const ids = uploaded.attachments.map((item) => item.id).filter(Boolean);
+          if (ids.length === 0) {
+            stashPendingAttachmentIds([]);
+            setPhase("idle");
+            setVoiceHint(
+              "画像の添付に失敗しました。別の画像を選ぶか、撮り直してからもう一度お試しください。",
+            );
+            return;
+          }
+          stashPendingAttachmentIds(ids);
+        } catch {
+          // Never continue with filename-only assignment — Vision cannot run.
+          stashPendingAttachmentIds([]);
+          setPhase("idle");
+          setVoiceHint(
+            "画像のアップロードに失敗しました。画像添付エラーのため仕事を開始していません。",
+          );
+          return;
+        }
+      } else {
+        stashPendingAttachmentIds([]);
+      }
+
       router.push(
         `/workspace?assignment=${encodeURIComponent(trimmed)}&autostart=1`,
       );
@@ -127,7 +160,10 @@ export function SecretaryUploadHero() {
       if (result.confidence === "high") {
         setPhase("autostart");
         autoStartTimerRef.current = setTimeout(() => {
-          startWork(result.intent.buildAssignment(fileNames));
+          void startWork(
+            result.intent.buildAssignment(fileNames),
+            pending.map((item) => item.file),
+          );
         }, AUTO_START_DELAY_MS);
       } else {
         setPhase("choose");
@@ -139,7 +175,10 @@ export function SecretaryUploadHero() {
   const chooseIntent = useCallback(
     (intent: UploadIntent) => {
       const fileNames = files.map((item) => item.file.name);
-      startWork(intent.buildAssignment(fileNames));
+      void startWork(
+        intent.buildAssignment(fileNames),
+        files.map((item) => item.file),
+      );
     },
     [files, startWork],
   );
@@ -147,7 +186,7 @@ export function SecretaryUploadHero() {
   const sendText = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    startWork(trimmed);
+    void startWork(trimmed);
   }, [startWork, text]);
 
   const toggleVoice = useCallback(() => {

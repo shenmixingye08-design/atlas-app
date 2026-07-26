@@ -1,0 +1,105 @@
+name: Vision Live E2E
+
+# Proves OpenAI Responses API can read image pixels (not mock).
+# 1) Prefer OPENAI_API_KEY in Actions secrets (direct call).
+# 2) Else wait for Vercel Preview deploy (key present there via build hook)
+#    and fetch /__atlas/vision-live-e2e.json with protection bypass.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cursor/artifact-generation-engine-193d
+    paths:
+      - "scripts/vision-live-e2e.mjs"
+      - "scripts/run-vision-live-e2e-on-vercel.mjs"
+      - "scripts/fixtures/**"
+      - "package.json"
+      - ".github/workflows/vision-live-e2e.yml"
+      - "lib/vision/**"
+  deployment_status:
+
+jobs:
+  vision-live-direct:
+    if: github.event_name != 'deployment_status'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run live OpenAI Vision E2E (direct)
+        id: direct
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_VISION_MODEL: ${{ vars.OPENAI_VISION_MODEL }}
+          ATLAS_LIVE_E2E_OUT: ${{ runner.temp }}/vision-live-e2e
+          ATLAS_MOCK_LLM: "false"
+        run: node scripts/vision-live-e2e.mjs
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vision-live-e2e-direct
+          path: ${{ runner.temp }}/vision-live-e2e/
+          if-no-files-found: ignore
+
+      - name: Require pass when OPENAI_API_KEY is configured
+        if: steps.direct.outcome == 'failure'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -n "${OPENAI_API_KEY:-}" ]; then
+            echo "Direct live E2E failed while OPENAI_API_KEY was present"
+            exit 1
+          fi
+          echo "OPENAI_API_KEY secret not set in Actions — will rely on Vercel build + deployment_status job"
+
+  vision-live-from-preview:
+    if: github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Preview'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch Vision live E2E result from Preview
+        env:
+          PREVIEW_URL: ${{ github.event.deployment_status.target_url }}
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -euo pipefail
+          echo "Preview: ${PREVIEW_URL}"
+          mkdir -p "${RUNNER_TEMP}/vision-live-e2e"
+          HDR=()
+          if [ -n "${BYPASS:-}" ]; then
+            HDR+=(-H "x-vercel-protection-bypass: ${BYPASS}")
+            HDR+=(-H "x-vercel-set-bypass-cookie: true")
+          fi
+          CODE=$(curl -sS "${HDR[@]}" -o "${RUNNER_TEMP}/vision-live-e2e/result.json" -w "%{http_code}" \
+            "${PREVIEW_URL%/}/__atlas/vision-live-e2e.json" || true)
+          echo "HTTP ${CODE}"
+          cat "${RUNNER_TEMP}/vision-live-e2e/result.json" || true
+          test "${CODE}" = "200"
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP + "/vision-live-e2e/result.json","utf8"));
+            console.log("extracted", r.extracted);
+            if (!r.ok) process.exit(2);
+            if (!String(r.extracted?.companyName||"").includes("MINERVOT")) process.exit(3);
+            if (String(r.extracted?.phone||"").replace(/\D/g,"") !== "09012345678") process.exit(4);
+            console.log("PASS real OpenAI Vision E2E");
+          '
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vision-live-e2e-preview
+          path: ${{ runner.temp }}/vision-live-e2e/
+          if-no-files-found: ignore

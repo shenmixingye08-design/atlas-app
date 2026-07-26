@@ -5,6 +5,9 @@ import {
 } from "@/lib/orchestration/user-errors";
 import { submitCommanderRequest } from "@/lib/commander/client";
 import type { CommanderRunResult } from "@/lib/commander/types";
+import { VisionGateClientError } from "@/lib/workspace/vision-gate-error";
+
+export { VisionGateClientError };
 
 /** Client-side timeout — covers commander retries. */
 export const ORCHESTRATE_CLIENT_TIMEOUT_MS = 180_000;
@@ -42,6 +45,10 @@ export async function submitWorkRequest(
 
   if (commander.status === "cancelled") {
     throw new Error("依頼を中止しました。");
+  }
+
+  if (commander.visionGate) {
+    throw new VisionGateClientError(commander.visionGate);
   }
 
   if (!commander.result) {

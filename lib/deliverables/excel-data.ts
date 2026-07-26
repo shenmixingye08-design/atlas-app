@@ -9,7 +9,7 @@ export type ExcelSheetData = {
 const TABLE_SEPARATOR_PATTERN = /^\|?[\s:-]+\|[\s|:-]+$/;
 
 const EXCEL_KEYWORDS =
-  /excel|\.xlsx|エクセル|表計算|スプレッドシート|spreadsheet|一覧表|家計簿|経費精算/i;
+  /excel|\.xlsx|エクセル|表計算|スプレッドシート|spreadsheet|一覧表|家計簿|経費精算|ランキング|比較表|売上|在庫|顧客一覧|住所一覧|請求|請求書|スケジュール|日程表|データ一覧|名簿/i;
 
 const IMAGE_KEYWORDS =
   /画像|写真|スクショ|スクリーンショット|レシート|領収|名刺|現場写真|image|photo|screenshot|添付/i;

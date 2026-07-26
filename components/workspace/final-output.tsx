@@ -1,23 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { triggerBlobDownload } from "@/lib/browser/trigger-blob-download";
-import {
-  assignmentIsImageToExcel,
-  assignmentRequestsExcel,
-} from "@/lib/deliverables/excel-data";
-import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
+import { ArtifactDocumentPreview } from "@/components/workspace/artifact-document-preview";
+import { ArtifactDownloadPanel } from "@/components/workspace/artifact-download-panel";
+import { ArtifactQualityAssistPanel } from "@/components/workspace/artifact-quality-assist-panel";
+import { ArtifactSuggestionsPanel } from "@/components/workspace/artifact-suggestions-panel";
+import { DocumentLayoutControls } from "@/components/workspace/document-layout-controls";
+import type { ArtifactDocument } from "@/lib/artifact-engine/document";
+import type { OrgAssistProfile } from "@/lib/artifact-engine/org-assist-store";
+import { loadOrgAssistProfile } from "@/lib/artifact-engine/org-assist-store";
+import type { ArtifactTemplateId } from "@/lib/artifact-engine/templates/types";
+import type { ArtifactSuggestion } from "@/lib/artifact-engine/types";
+import type { DocumentOutlineResponse } from "@/lib/deliverables/client";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
-import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
 import {
   deliverableHasContent,
   type Deliverable as WorkspaceDeliverable,
-  type DeliverableType,
 } from "@/lib/orchestration/deliverable-types";
 import {
-  getBlogTags,
   getDocumentBody,
   getEmailDisplayFields,
   getSocialPostCards,
@@ -38,321 +40,88 @@ type FinalOutputProps = {
   deliverables?: GeneratedFile[];
   isGeneratingDeliverables?: boolean;
   deliverablesError?: string | null;
-  /** When set, only show download buttons for these formats. */
   expectedFormats?: GeneratedFile["format"][];
-  /**
-   * Override the section heading. Defaults to the internal 「成果物」 label used
-   * by the legacy workspace; the user-facing secretary result view passes a
-   * natural, contextual title instead (e.g. 「レポートができました」).
-   */
   heading?: string;
+  documentOutline?: DocumentOutlineResponse | null;
+  designTemplate?: ArtifactTemplateId;
+  recommendedTemplate?: ArtifactTemplateId | null;
+  onDesignTemplateChange?: (template: ArtifactTemplateId) => void;
+  artifactLabel?: string | null;
+  templateLabel?: string | null;
+  suggestions?: ArtifactSuggestion[];
+  artifactDocument?: ArtifactDocument | null;
+  completionStatus?: ArtifactDocument["completionStatus"] | null;
+  onRequestExcel?: () => void;
 };
-
-const TYPE_LABELS: Record<DeliverableType, string> = {
-  blog: "ブログ",
-  report: "レポート",
-  proposal: "提案書",
-  presentation: "プレゼン",
-  research: "調査",
-  email: "メール",
-  social_post: "SNS投稿",
-  short_document: "短文",
-  document: "ドキュメント",
-};
-
-function downloadMarkdown(content: string, fileName: string): void {
-  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-  void triggerBlobDownload(blob, fileName);
-}
-
-function findGeneratedFile(
-  deliverables: readonly GeneratedFile[],
-  format: GeneratedFile["format"],
-): GeneratedFile | undefined {
-  return deliverables.find((item) => item.format === format);
-}
-
-const DOWNLOAD_FORMAT_ORDER: GeneratedFile["format"][] = [
-  "pptx",
-  "pdf",
-  "docx",
-  "xlsx",
-  "md",
-];
-
-function formatDownloadLabel(format: GeneratedFile["format"]): string {
-  if (format === "docx") return "Word";
-  if (format === "pptx") return "PowerPoint";
-  if (format === "xlsx") return "Excel";
-  return DELIVERABLE_FORMAT_LABELS[format].split(" ")[0] ?? format;
-}
-
-function FormatDownloadButton({
-  format,
-  deliverables,
-  isGeneratingDeliverables,
-}: {
-  format: GeneratedFile["format"];
-  deliverables: readonly GeneratedFile[];
-  isGeneratingDeliverables: boolean;
-}) {
-  const file = findGeneratedFile(deliverables, format);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const shortLabel = formatDownloadLabel(format);
-
-  if (!file) {
-    return (
-      <Button variant="secondary" size="sm" disabled={isGeneratingDeliverables}>
-        {shortLabel}
-      </Button>
-    );
-  }
-
-  const handleDownload = async () => {
-    setError(null);
-    setIsDownloading(true);
-    try {
-      await downloadDeliverableFile({
-        url: file.downloadUrl,
-        fileName: file.fileName,
-        mimeType: file.mimeType,
-      });
-    } catch (downloadError) {
-      setError(
-        downloadError instanceof Error
-          ? downloadError.message
-          : ui.work.downloadFailed,
-      );
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  return (
-    <span className="inline-flex flex-col items-start gap-1">
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={isGeneratingDeliverables || isDownloading}
-        onClick={() => void handleDownload()}
-      >
-        {isDownloading ? ui.work.downloadingFile : shortLabel}
-      </Button>
-      {error ? (
-        <span className="max-w-[16rem] text-xs text-[var(--error)]">{error}</span>
-      ) : null}
-    </span>
-  );
-}
-
-function DocumentHeading({ children }: { children: ReactNode }) {
-  return (
-    <h1 className="border-b border-[var(--border-subtle)] pb-4 text-2xl font-semibold tracking-tight text-foreground">
-      {children}
-    </h1>
-  );
-}
-
-function DocumentSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="space-y-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--foreground-muted)]">
-        {title}
-      </h2>
-      <div className="text-base leading-relaxed text-foreground">{children}</div>
-    </section>
-  );
-}
-
-function BodyBlock({ text }: { text: string }) {
-  const safeText = sanitizeBodyTextForDisplay(text);
-  if (!safeText || isDeliverableJsonText(safeText)) return null;
-
-  return (
-    <div className="whitespace-pre-wrap font-sans text-base leading-relaxed text-foreground">
-      {safeText}
-    </div>
-  );
-}
 
 function CollapsibleSection({
   title,
   children,
-  defaultOpen = false,
 }: {
   title: string;
-  children: ReactNode;
-  defaultOpen?: boolean;
+  children: React.ReactNode;
 }) {
   return (
-    <details
-      className="group rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--background-muted)]/40 px-4 py-3"
-      open={defaultOpen}
-    >
-      <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-[var(--foreground-muted)] marker:content-none">
-        <span className="inline-flex items-center gap-2">
-          <span className="text-xs transition-transform group-open:rotate-90">▸</span>
-          {title}
-        </span>
+    <details className="group rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--background-muted)]/40 px-4 py-3">
+      <summary className="cursor-pointer text-sm font-semibold text-[var(--foreground-muted)]">
+        {title}
       </summary>
       <div className="mt-3 text-base leading-relaxed text-foreground">{children}</div>
     </details>
   );
 }
 
-function TypeBadge({ type }: { type: DeliverableType }) {
-  return (
-    <span className="rounded-full bg-[var(--background-muted)] px-3 py-1 text-xs font-medium text-[var(--foreground-muted)]">
-      {TYPE_LABELS[type]}
-    </span>
-  );
-}
-
 function EmailPreview({ deliverable }: { deliverable: WorkspaceDeliverable }) {
   const { subject, body, summary } = getEmailDisplayFields(deliverable);
-
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <TypeBadge type="email" />
-      </div>
-      <DocumentHeading>営業メール</DocumentHeading>
-      <DocumentSection title="件名">
-        <BodyBlock text={subject || "（件名なし）"} />
-      </DocumentSection>
-      <DocumentSection title="本文">
-        <BodyBlock text={body} />
-      </DocumentSection>
-      {summary && (
-        <CollapsibleSection title="概要">
-          <BodyBlock text={summary} />
-        </CollapsibleSection>
-      )}
-    </div>
-  );
-}
-
-function BlogPreview({ deliverable }: { deliverable: WorkspaceDeliverable }) {
-  const normalized = normalizeDeliverableForDisplay(deliverable);
-  const body = getDocumentBody(normalized);
-  const tags = getBlogTags(normalized);
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <TypeBadge type="blog" />
-      </div>
-      <DocumentHeading>{normalized.title || "タイトル"}</DocumentHeading>
-      {normalized.summary && (
-        <DocumentSection title="概要">
-          <BodyBlock text={normalized.summary} />
-        </DocumentSection>
-      )}
-      {body && (
-        <DocumentSection title="本文">
-          <BodyBlock text={body} />
-        </DocumentSection>
-      )}
-      {tags.length > 0 && (
-        <DocumentSection title="Tags">
-          <p className="text-sm text-[var(--foreground-muted)]">{tags.join(" · ")}</p>
-        </DocumentSection>
-      )}
+    <div className="space-y-4">
+      <h1 className="text-2xl font-semibold text-foreground">営業メール</h1>
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-[var(--foreground-muted)]">件名</h2>
+        <p className="whitespace-pre-wrap text-base">{sanitizeBodyTextForDisplay(subject) || "（件名なし）"}</p>
+      </section>
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-[var(--foreground-muted)]">本文</h2>
+        <p className="whitespace-pre-wrap text-base leading-relaxed">
+          {sanitizeBodyTextForDisplay(body)}
+        </p>
+      </section>
+      {summary ? (
+        <p className="text-sm text-[var(--foreground-muted)]">
+          {sanitizeBodyTextForDisplay(summary)}
+        </p>
+      ) : null}
     </div>
   );
 }
 
 function SocialPostPreview({ deliverable }: { deliverable: WorkspaceDeliverable }) {
   const posts = getSocialPostCards(deliverable);
-
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <TypeBadge type="social_post" />
-      </div>
-      {deliverable.title && <DocumentHeading>{deliverable.title}</DocumentHeading>}
-      <div className="grid gap-4">
-        {posts.map((post, index) => (
-          <Card key={`post-${index + 1}`} padding="md" className="bg-background">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--foreground-muted)]">
-              投稿 {index + 1}
-            </p>
-            <BodyBlock text={post} />
-          </Card>
-        ))}
-      </div>
+    <div className="space-y-4">
+      {deliverable.title ? (
+        <h1 className="text-2xl font-semibold text-foreground">{deliverable.title}</h1>
+      ) : null}
+      {posts.map((post, index) => (
+        <Card key={`post-${index + 1}`} padding="md">
+          <p className="mb-2 text-xs font-semibold text-[var(--foreground-muted)]">
+            投稿 {index + 1}
+          </p>
+          <p className="whitespace-pre-wrap text-base leading-relaxed">
+            {sanitizeBodyTextForDisplay(post)}
+          </p>
+        </Card>
+      ))}
     </div>
   );
 }
 
-function StructuredDocumentPreview({
-  deliverable,
-}: {
-  deliverable: WorkspaceDeliverable;
-}) {
-  const normalized = normalizeDeliverableForDisplay(deliverable);
-  const body = getDocumentBody(normalized);
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <TypeBadge type={normalized.type} />
-      </div>
-      {normalized.title && <DocumentHeading>{normalized.title}</DocumentHeading>}
-      {normalized.summary && (
-        <DocumentSection title="概要">
-          <BodyBlock text={normalized.summary} />
-        </DocumentSection>
-      )}
-      {body && (
-        <DocumentSection title="本文">
-          <BodyBlock text={body} />
-        </DocumentSection>
-      )}
-    </div>
-  );
-}
-
-function DeliverablePreview({ deliverable }: { deliverable: WorkspaceDeliverable }) {
-  const normalized = useMemo(
-    () => normalizeDeliverableForDisplay(deliverable),
-    [deliverable],
-  );
-
-  switch (normalized.type) {
-    case "email":
-      return <EmailPreview deliverable={normalized} />;
-    case "blog":
-      return <BlogPreview deliverable={normalized} />;
-    case "social_post":
-      return <SocialPostPreview deliverable={normalized} />;
-    case "proposal":
-    case "report":
-    case "document":
-    case "presentation":
-    case "research":
-    case "short_document":
-      return <StructuredDocumentPreview deliverable={normalized} />;
-    default:
-      return <StructuredDocumentPreview deliverable={normalized} />;
-  }
-}
-
-function DeliverableDebugPanel({ deliverable }: { deliverable: WorkspaceDeliverable }) {
-  return (
-    <CollapsibleSection title="Deliverable JSON (debug)">
-      <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs text-[var(--foreground-muted)]">
-        {JSON.stringify(deliverable, null, 2)}
-      </pre>
-    </CollapsibleSection>
-  );
+function statusLabel(status: ArtifactDocument["completionStatus"] | null | undefined): string {
+  if (status === "ready") return "完成";
+  if (status === "needs_input") return "入力不足あり";
+  if (status === "partial") return "一部完成";
+  if (status === "failed") return "要確認";
+  return "準備中";
 }
 
 export function FinalOutput({
@@ -361,11 +130,22 @@ export function FinalOutput({
   deliverables = [],
   isGeneratingDeliverables = false,
   deliverablesError = null,
-  expectedFormats,
   heading,
+  designTemplate,
+  recommendedTemplate = null,
+  onDesignTemplateChange,
+  artifactLabel = null,
+  templateLabel = null,
+  suggestions = [],
+  artifactDocument = null,
+  completionStatus = null,
+  onRequestExcel,
 }: FinalOutputProps) {
   const [copied, setCopied] = useState(false);
   const [driveSaved, setDriveSaved] = useState(false);
+  const [orgProfile, setOrgProfile] = useState<OrgAssistProfile>(() =>
+    loadOrgAssistProfile(),
+  );
   const showDebug = isAtlasClientDebugEnabled();
 
   const workspaceDeliverable = result?.deliverable ?? null;
@@ -380,28 +160,21 @@ export function FinalOutput({
     () => (workspaceDeliverable ? deliverableHasContent(workspaceDeliverable) : false),
     [workspaceDeliverable],
   );
-  const fileFormatsToShow = useMemo(() => {
-    const assignment = result?.assignment ?? "";
-    const generated = new Set(deliverables.map((item) => item.format));
-    const wantsExcel =
-      assignmentRequestsExcel(assignment) ||
-      assignmentIsImageToExcel(assignment) ||
-      generated.has("xlsx");
 
-    if (expectedFormats && expectedFormats.length > 0) {
-      const allowed = new Set<GeneratedFile["format"]>(expectedFormats);
-      if (wantsExcel) allowed.add("xlsx");
-      for (const format of generated) allowed.add(format);
-      return DOWNLOAD_FORMAT_ORDER.filter((format) => allowed.has(format));
-    }
+  const normalized = useMemo(
+    () =>
+      workspaceDeliverable
+        ? normalizeDeliverableForDisplay(workspaceDeliverable)
+        : null,
+    [workspaceDeliverable],
+  );
 
-    const base = new Set<GeneratedFile["format"]>(["pdf", "docx"]);
-    if (wantsExcel) base.add("xlsx");
-    for (const format of generated) {
-      if (DOWNLOAD_FORMAT_ORDER.includes(format)) base.add(format);
-    }
-    return DOWNLOAD_FORMAT_ORDER.filter((format) => base.has(format));
-  }, [expectedFormats, deliverables, result?.assignment]);
+  const useStructuredPreview =
+    normalized &&
+    normalized.type !== "email" &&
+    normalized.type !== "social_post";
+
+  const formatStates = artifactDocument?.formatStates ?? [];
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production" || !result) return;
@@ -417,11 +190,9 @@ export function FinalOutput({
     }
   }, [result]);
 
-  if (isLoading || !result) {
-    return null;
-  }
+  if (isLoading || !result) return null;
 
-  if (!isReady || !workspaceDeliverable) {
+  if (!isReady || !workspaceDeliverable || !normalized) {
     const pipelineReason = result.isolationDebug?.pipeline?.needsReviewReason?.trim();
     const failedStage = result.isolationDebug?.pipeline?.failedStage ?? result.stepError?.step;
     const failureMessage =
@@ -437,11 +208,6 @@ export function FinalOutput({
           {heading ?? ui.work.deliverableTitle}
         </h2>
         <Card padding="lg">
-          {failedStage && (
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--status-warning)]">
-              失敗ステージ: {failedStage}
-            </p>
-          )}
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground-muted)]">
             {failureMessage}
           </p>
@@ -450,95 +216,149 @@ export function FinalOutput({
     );
   }
 
-  const markdownFile = findGeneratedFile(deliverables, "md");
-  const baseName = markdownFile?.fileName ?? `${workspaceDeliverable.type}-deliverable.md`;
+  // Guard: never show raw JSON as the main body
+  const rawBody = getDocumentBody(normalized);
+  const safeExport =
+    isDeliverableJsonText(exportText) || isDeliverableJsonText(rawBody)
+      ? ""
+      : exportText || rawBody;
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(exportText);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleDriveSave = () => {
-    setDriveSaved(true);
-  };
+  const markdownFile = deliverables.find((item) => item.format === "md");
+  const baseName = markdownFile?.fileName ?? `${normalized.type}-deliverable.md`;
+  const recommendedLabels = (
+    artifactDocument?.recommendedFormats ?? []
+  ).map((format) => {
+    if (format === "docx") return "Word";
+    if (format === "xlsx") return "Excel";
+    if (format === "pptx") return "PowerPoint";
+    return format.toUpperCase();
+  });
 
   return (
     <section className="space-y-6 animate-fade-in" aria-labelledby="output-heading">
-      <div>
+      {/* 1. Title */}
+      <div className="space-y-2">
         <h2 id="output-heading" className="text-title text-foreground">
-          {heading ?? ui.work.deliverableTitle}
+          {heading ?? artifactDocument?.title ?? ui.work.deliverableTitle}
         </h2>
+        {/* 2. Type + recommended formats */}
+        <p className="text-sm text-[var(--foreground-muted)]">
+          {[
+            artifactLabel || artifactDocument?.artifactLabel,
+            templateLabel || artifactDocument?.templateLabel,
+            recommendedLabels.length > 0
+              ? `推奨: ${recommendedLabels.join(" / ")}`
+              : null,
+            statusLabel(completionStatus ?? artifactDocument?.completionStatus),
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
         {!result.approved && (
-          <p className="mt-1 text-caption text-[var(--status-warning)]">
+          <p className="text-caption text-[var(--status-warning)]">
             {ui.work.deliverableNeedsReview}
           </p>
         )}
+        {(completionStatus ?? artifactDocument?.completionStatus) === "needs_input" ? (
+          <p className="text-sm text-[var(--status-warning)]">
+            必要な情報が不足しています。下の品質向上から入力してください。
+          </p>
+        ) : null}
       </div>
 
-      <Card padding="lg" className="shadow-[var(--shadow-soft)]">
-        <div className="max-h-[560px] overflow-auto rounded-[var(--radius-xl)] bg-[var(--background-subtle)] px-6 py-8">
-          <DeliverablePreview deliverable={workspaceDeliverable} />
-        </div>
-
-        {showDebug && (
-          <div className="mt-4">
-            <DeliverableDebugPanel deliverable={workspaceDeliverable} />
-          </div>
-        )}
-
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Button variant="secondary" size="sm" onClick={() => void handleCopy()}>
-            {copied ? ui.work.copied : ui.work.copy}
-          </Button>
-
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => downloadMarkdown(exportText, baseName)}
-          >
-            {ui.work.saveMarkdown}
-          </Button>
-
-          {fileFormatsToShow.map((format) => (
-            <FormatDownloadButton
-              key={format}
-              format={format}
-              deliverables={deliverables}
-              isGeneratingDeliverables={isGeneratingDeliverables}
+      <Card padding="lg" className="space-y-6 shadow-[var(--shadow-soft)]">
+        {/* 3. Preview */}
+        <div className="rounded-[var(--radius-xl)] bg-[var(--background-subtle)] px-3 py-4 sm:px-6 sm:py-6">
+          {useStructuredPreview ? (
+            <ArtifactDocumentPreview
+              assignment={result.assignment}
+              content={safeExport}
+              title={normalized.title}
+              templateOverride={designTemplate}
+              orgProfile={orgProfile}
             />
-          ))}
-
-          <Button variant="secondary" size="sm" onClick={handleDriveSave}>
-            {driveSaved ? ui.work.driveSaved : ui.work.saveToDrive}
-          </Button>
+          ) : normalized.type === "email" ? (
+            <EmailPreview deliverable={normalized} />
+          ) : (
+            <SocialPostPreview deliverable={normalized} />
+          )}
         </div>
 
-        {driveSaved && (
-          <p className="mt-4 text-sm text-[var(--foreground-muted)] animate-fade-in">
+        {showDebug ? (
+          <CollapsibleSection title="Deliverable JSON (debug)">
+            <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs text-[var(--foreground-muted)]">
+              {JSON.stringify(workspaceDeliverable, null, 2)}
+            </pre>
+          </CollapsibleSection>
+        ) : null}
+
+        {/* 4. Template switch */}
+        {designTemplate && onDesignTemplateChange ? (
+          <DocumentLayoutControls
+            designTemplate={designTemplate}
+            recommendedTemplate={recommendedTemplate}
+            onDesignTemplateChange={onDesignTemplateChange}
+            disabled={isGeneratingDeliverables}
+          />
+        ) : null}
+
+        {/* 5. Quality assist */}
+        {artifactDocument && artifactDocument.missingFields.length > 0 ? (
+          <ArtifactQualityAssistPanel
+            missingFields={artifactDocument.missingFields}
+            onProfileChange={setOrgProfile}
+          />
+        ) : null}
+
+        <ArtifactSuggestionsPanel
+          suggestions={suggestions.filter((item) => item.kind !== "quality_gap")}
+          onRequestExcel={onRequestExcel}
+        />
+
+        {/* 6-7. Download + Drive */}
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                void navigator.clipboard.writeText(safeExport || exportText);
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 2000);
+              }}
+            >
+              {copied ? ui.work.copied : "コピー"}
+            </Button>
+          </div>
+
+          <ArtifactDownloadPanel
+            deliverables={deliverables}
+            formatStates={formatStates}
+            isGeneratingDeliverables={isGeneratingDeliverables}
+            exportText={safeExport || exportText}
+            markdownFileName={baseName}
+            onDriveSave={() => setDriveSaved(true)}
+            driveSaved={driveSaved}
+          />
+        </div>
+
+        {driveSaved ? (
+          <p className="text-sm text-[var(--foreground-muted)]">
             {ui.work.driveSandboxSaved}
           </p>
-        )}
+        ) : null}
 
-        {isGeneratingDeliverables && (
-          <p className="mt-4 animate-soft-pulse text-caption">
-            {ui.work.preparingFiles}
+        {isGeneratingDeliverables ? (
+          <p className="animate-soft-pulse text-caption">{ui.work.preparingFiles}</p>
+        ) : null}
+
+        {deliverablesError ? <ErrorState message={deliverablesError} /> : null}
+
+        {artifactDocument?.excelNotApplicable ? (
+          <p className="text-sm text-[var(--foreground-muted)]">
+            Excel: 対象外 — {artifactDocument.excelNotApplicableReason}
           </p>
-        )}
-
-        {deliverablesError && (
-          <div className="mt-4">
-            <ErrorState message={deliverablesError} />
-          </div>
-        )}
-
-        {deliverables.length > 0 && (
-          <p className="mt-4 text-caption">
-            {deliverables
-              .map((item) => DELIVERABLE_FORMAT_LABELS[item.format])
-              .join(" · ")}
-          </p>
-        )}
+        ) : null}
       </Card>
     </section>
   );

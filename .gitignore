@@ -56,3 +56,6 @@ next-env.d.ts
 
 .vercel
 .env*
+tmp/deliverable-quality-samples/
+tmp/artifact-engine-samples/
+tmp/

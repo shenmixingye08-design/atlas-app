@@ -3,6 +3,11 @@
 -- 2) 20260711_atlas_user_state_rls_lockdown.sql  (safe if already applied)
 -- 3) 20260711_projects.sql
 -- 4) 20260711_projects_rls_lockdown.sql         (safe if already applied)
+-- ...
+-- N) 20260726_atlas_image_attachments.sql
+--      - table: atlas_image_attachments (metadata + expires_at TTL)
+--      - private Storage bucket: atlas-image-attachments
+--      - anon/authenticated deny-all (service role only)
 --
 -- Required app env (Vercel Production):
 --   SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)

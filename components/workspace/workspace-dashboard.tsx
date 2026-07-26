@@ -15,11 +15,19 @@ import {
   CommanderConfirmationRequiredError,
   confirmWorkRequest,
   submitWorkRequest,
+  VisionGateClientError,
 } from "@/lib/workspace/orchestrate-client";
-import type { CommanderRunResult } from "@/lib/commander/types";
+import type {
+  CommanderRunResult,
+  CommanderVisionGate,
+} from "@/lib/commander/types";
+import { VisionFailurePanel } from "@/components/vision/vision-failure-panel";
+import { VisionDiagnosticsPanel } from "@/components/vision/vision-diagnostics-panel";
 import { isSalesMaterialRequest } from "@/lib/workspace/sales-material/detect";
 import { buildSalesMaterialMetadata } from "@/lib/workspace/sales-material/metadata";
 import type { SalesMaterialSessionConfig } from "@/lib/workspace/sales-material/types";
+import { consumePendingAttachmentIds } from "@/lib/attachments/pending-session";
+import { assignmentImpliesImageWork } from "@/lib/vision/gate";
 import { useFeatureAvailability } from "@/lib/feature-flags";
 import { useDeliverableFiles } from "@/lib/workspace/use-deliverable-files";
 import type { WorkflowPhaseState } from "@/lib/workspace/types";
@@ -77,6 +85,8 @@ export function WorkspaceDashboard() {
   const [taughtWorkflowHint, setTaughtWorkflowHint] = useState(false);
   const [pendingCommander, setPendingCommander] =
     useState<CommanderRunResult | null>(null);
+  const [visionGate, setVisionGate] = useState<CommanderVisionGate | null>(null);
+  const [showVisionDiagnostics, setShowVisionDiagnostics] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const autoStartedRef = useRef(false);
@@ -87,8 +97,19 @@ export function WorkspaceDashboard() {
         skipFileGeneration: salesMaterialConfig.skipFileGeneration,
       }
     : undefined;
-  const { deliverables, deliverablesError, isGeneratingDeliverables } =
-    useDeliverableFiles(result, deliverableOptions);
+  const {
+    deliverables,
+    deliverablesError,
+    isGeneratingDeliverables,
+    designTemplate,
+    setDesignTemplate,
+    recommendedTemplate,
+    artifactLabel,
+    templateLabel,
+    suggestions,
+    artifactDocument,
+    completionStatus,
+  } = useDeliverableFiles(result, deliverableOptions);
 
   const searchParams = useSearchParams();
 
@@ -131,6 +152,7 @@ export function WorkspaceDashboard() {
     setWorkMemoryUsed(null);
     setWorkMemoryCandidateCount(0);
     setPendingCommander(null);
+    setVisionGate(null);
     setIsLoading(true);
     setLoadingStepIndex(0);
     setLoadingPhases(buildLoadingPhases(0));
@@ -176,6 +198,14 @@ export function WorkspaceDashboard() {
       if (err instanceof Error && err.name === "AbortError") return;
       if (err instanceof CommanderConfirmationRequiredError) {
         setPendingCommander(err.commander);
+        setIsLoading(false);
+        abortRef.current = null;
+        return;
+      }
+      if (err instanceof VisionGateClientError) {
+        setVisionGate(err.gate);
+        setError(null);
+        setResult(null);
         setIsLoading(false);
         abortRef.current = null;
         return;
@@ -269,12 +299,26 @@ export function WorkspaceDashboard() {
     }
 
     autoStartedRef.current = true;
+    const attachmentIds = consumePendingAttachmentIds();
+    if (assignmentImpliesImageWork(prefill) && attachmentIds.length === 0) {
+      setAssignment(prefill);
+      setVisionGate({
+        status: "needs_image_retry",
+        analysisSuccess: false,
+        message: "画像の内容を解析できませんでした",
+        userCode: "missing_attachment_ids",
+      });
+      return;
+    }
     const metadata = {
       requestUi: "secretary_v1",
       executionPreference: "once",
       priority: "normal",
       skipWorkMemory: false,
+      requireVisionSuccess: attachmentIds.length > 0,
+      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
     } as const;
+    setAssignment(prefill);
     setRequestMetadata(metadata);
 
     if (isSalesMaterialRequest(prefill) && isAvailable("sales_material")) {
@@ -313,6 +357,8 @@ export function WorkspaceDashboard() {
     setSalesWizardAssignment(null);
     setSalesMaterialConfig(null);
     setOutlineOnlyText(null);
+    setVisionGate(null);
+    setShowVisionDiagnostics(false);
   };
 
   const showForm =
@@ -320,10 +366,55 @@ export function WorkspaceDashboard() {
     !result &&
     !salesWizardAssignment &&
     !outlineOnlyText &&
-    !pendingCommander;
+    !pendingCommander &&
+    !visionGate;
 
   return (
     <div className="space-y-16">
+      {visionGate && !isLoading && (
+        <section className="space-y-4 animate-fade-up">
+          <VisionFailurePanel
+            gate={visionGate}
+            onRetryAnalyze={() => {
+              const meta = {
+                ...requestMetadata,
+                visionReuse: false,
+                forceVisionRefresh: true,
+              };
+              setVisionGate(null);
+              void runOrchestration(assignment, null, {
+                ...meta,
+                forceRefresh: true,
+              });
+            }}
+            onRetake={() => {
+              setVisionGate(null);
+              setRequestMetadata((prev) => {
+                const next = { ...prev };
+                delete next.attachmentIds;
+                return next;
+              });
+            }}
+            onPickAnother={() => {
+              setVisionGate(null);
+              setRequestMetadata((prev) => {
+                const next = { ...prev };
+                delete next.attachmentIds;
+                return next;
+              });
+            }}
+          />
+          {visionGate.diagnosticId && (
+            <VisionDiagnosticsPanel
+              diagnosticId={visionGate.diagnosticId}
+              enabled={showVisionDiagnostics}
+              showToggle
+              onToggle={() => setShowVisionDiagnostics((value) => !value)}
+            />
+          )}
+        </section>
+      )}
+
       {showForm && taughtWorkflowHint && (
         <section className="animate-fade-up rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card)] px-5 py-4 shadow-[var(--shadow-sm)]">
           <p className="text-xs font-medium tracking-wide text-accent">AI秘書</p>
@@ -443,6 +534,14 @@ export function WorkspaceDashboard() {
             isGeneratingDeliverables={isGeneratingDeliverables}
             deliverablesError={deliverablesError}
             expectedFormats={salesMaterialConfig?.formats}
+            designTemplate={designTemplate}
+            recommendedTemplate={recommendedTemplate}
+            onDesignTemplateChange={setDesignTemplate}
+            artifactLabel={artifactLabel}
+            templateLabel={templateLabel}
+            suggestions={suggestions}
+            artifactDocument={artifactDocument}
+            completionStatus={completionStatus}
           />
 
           <KnowledgeUsedPanel knowledge={result.knowledge} />

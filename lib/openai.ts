@@ -58,9 +58,32 @@ export function getOpenAIClient(): OpenAI {
   return client;
 }
 
+/** Multimodal content parts for OpenAI Responses API (`input_text` / `input_image`). */
+export type AtlasInputImagePart = {
+  type: "input_image";
+  image_url?: string;
+  file_id?: string;
+  detail?: "low" | "auto" | "high";
+};
+
+export type AtlasInputTextPart = {
+  type: "input_text";
+  text: string;
+};
+
+export type AtlasInputContentPart = AtlasInputTextPart | AtlasInputImagePart;
+
+export type AtlasInputMessage = {
+  role: "user" | "assistant" | "system" | "developer";
+  content: string | AtlasInputContentPart[];
+};
+
+/** String prompt or Responses API multimodal message list. */
+export type AtlasResponseInput = string | AtlasInputMessage[];
+
 export type AtlasResponseRequest = {
-  /** User message or task description. */
-  input: string;
+  /** User message, or multimodal Responses API input (text + images). */
+  input: AtlasResponseInput;
   /** Optional system-level instructions for this request. */
   instructions?: string;
   /** Continue a prior Responses API conversation. */
@@ -73,6 +96,23 @@ export type AtlasResponseRequest = {
   temperature?: number;
 };
 
+/** Extract plain text from multimodal input for mocks / token estimates (never logs image bytes). */
+export function extractTextFromAtlasInput(input: AtlasResponseInput): string {
+  if (typeof input === "string") return input;
+  const parts: string[] = [];
+  for (const message of input) {
+    if (typeof message.content === "string") {
+      parts.push(message.content);
+      continue;
+    }
+    for (const part of message.content) {
+      if (part.type === "input_text") parts.push(part.text);
+      if (part.type === "input_image") parts.push("[image]");
+    }
+  }
+  return parts.join("\n");
+}
+
 function resolveRequestParams(params: AtlasResponseRequest): {
   model: string;
   max_output_tokens?: number;
@@ -81,8 +121,14 @@ function resolveRequestParams(params: AtlasResponseRequest): {
 } {
   if (params.aiTaskType) {
     const decision = resolveTaskPolicy(params.aiTaskType);
+    // Vision: allow explicit model override (OPENAI_VISION_MODEL via caller) without
+    // mixing planner/worker routing. Prefer params.model when set for vision_analyze.
+    const model =
+      params.aiTaskType === "vision_analyze" && params.model?.trim()
+        ? params.model.trim()
+        : decision.model;
     return {
-      model: decision.model,
+      model,
       max_output_tokens: decision.maxOutputTokens,
       temperature: decision.temperature,
       reasoningLevel: decision.reasoningLevel,
@@ -148,7 +194,7 @@ function maybeRecordBillingUsage(input: {
       api: context.api,
       feature: context.feature,
       model: input.model,
-      inputText: input.params.input,
+      inputText: extractTextFromAtlasInput(input.params.input),
       outputText: input.outputText,
       instructions: input.params.instructions,
       aiTaskType: input.params.aiTaskType,
@@ -163,7 +209,10 @@ export async function createAtlasResponse(
   params: AtlasResponseRequest,
 ): Promise<Response> {
   if (isMockLlmEnabled()) {
-    const outputText = resolveMockLlmOutput(params.aiTaskType, params.input);
+    const outputText = resolveMockLlmOutput(
+      params.aiTaskType,
+      extractTextFromAtlasInput(params.input),
+    );
     const mock = {
       id: `resp_mock_${params.aiTaskType ?? "chat"}_${crypto.randomUUID()}`,
       output_text: outputText,

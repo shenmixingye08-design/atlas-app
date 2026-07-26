@@ -24,6 +24,10 @@ export type GenerateDeliverablesInput = {
   title?: string;
   /** When set, only these formats are generated (skips auto-detection). */
   formats?: DeliverableFormat[];
+  /** Word/PDF design preset. Defaults to business. */
+  designTemplate?:
+    | import("./document-model").DesignTemplateId
+    | import("@/lib/artifact-engine/templates/types").ArtifactTemplateId;
 };
 
 /** Result of format detection. */
@@ -41,12 +45,23 @@ export type GeneratedDeliverableFile = {
   isPlaceholder: boolean;
 };
 
-/** Generator contract — replace placeholders with production libraries later. */
+/** Options forwarded into Word/PDF layout (ignored by md/txt when unused). */
+export type DeliverableGenerateOptions = {
+  assignment?: string;
+  title?: string;
+  designTemplate?: import("./document-model").DesignTemplateId;
+  authorLabel?: string;
+  includeTableOfContents?: boolean;
+  artifactType?: string;
+};
+
+/** Generator contract — production libraries for each format. */
 export interface DeliverableGenerator {
   readonly format: DeliverableFormat;
   generate(
     content: string,
     baseFileName: string,
+    options?: DeliverableGenerateOptions,
   ): Promise<GeneratedDeliverableFile>;
 }
 

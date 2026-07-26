@@ -11,7 +11,8 @@ export type AiTaskType =
   | "worker_revision"
   | "research_synthesis"
   | "reviewer_fallback"
-  | "chat";
+  | "chat"
+  | "vision_analyze";
 
 export type ReasoningLevel = "none" | "low" | "medium" | "high";
 

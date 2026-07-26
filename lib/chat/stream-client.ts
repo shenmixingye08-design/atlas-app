@@ -49,21 +49,30 @@ export type StreamChatOptions = {
   input: string;
   onDelta: (delta: string) => void;
   signal?: AbortSignal;
+  attachmentIds?: string[];
 };
 
 /**
  * Streams a chat response from /api/responses.
  * Invokes onDelta for each text chunk received.
+ * When attachmentIds are provided, the server sends images as OpenAI input_image.
  */
 export async function streamChatResponse({
   input,
   onDelta,
   signal,
+  attachmentIds,
 }: StreamChatOptions): Promise<void> {
   const response = await fetch("/api/responses", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ input, stream: true }),
+    body: JSON.stringify({
+      input,
+      stream: true,
+      ...(attachmentIds && attachmentIds.length > 0
+        ? { attachmentIds }
+        : {}),
+    }),
     signal,
   });
 

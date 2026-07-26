@@ -1,4 +1,8 @@
-import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
+import type {
+  DeliverableGenerateOptions,
+  DeliverableGenerator,
+  GeneratedDeliverableFile,
+} from "../types";
 
 import { createDeliverableFile } from "./shared";
 
@@ -9,6 +13,7 @@ export class PlainTextDeliverableGenerator implements DeliverableGenerator {
   async generate(
     content: string,
     baseFileName: string,
+    _options?: DeliverableGenerateOptions,
   ): Promise<GeneratedDeliverableFile> {
     return createDeliverableFile(
       "txt",

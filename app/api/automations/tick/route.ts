@@ -81,6 +81,18 @@ export async function POST(request: Request): Promise<Response> {
       console.warn("[automation tick] daily reports skipped:", error);
     }
 
+    let imageAttachmentPurge: { backend: string; purged: number } = {
+      backend: "skipped",
+      purged: 0,
+    };
+    try {
+      const { purgeExpiredAttachments } = await import("@/lib/attachments");
+      imageAttachmentPurge = await purgeExpiredAttachments();
+    } catch (error) {
+      console.warn("[automation tick] image attachment TTL purge skipped");
+      void error;
+    }
+
     const { recordCronTickOutcome, recordMonitoringIncident } = await import(
       "@/lib/owner/monitoring"
     );
@@ -121,6 +133,7 @@ export async function POST(request: Request): Promise<Response> {
       },
       dailyReports,
       reliability,
+      imageAttachmentPurge,
     });
   } catch (error) {
     const message =
