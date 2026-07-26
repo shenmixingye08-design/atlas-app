@@ -74,9 +74,10 @@
 | `LINE_MESSAGING_CHANNEL_ACCESS_TOKEN` | LINE access token alias | 任意 / alias | alias利用時 | alias利用時 | はい | LINE Developers | 未確認 | `LINE_CHANNEL_ACCESS_TOKEN` 未設定時のみ利用 |
 | `LINE_MESSAGING_CHANNEL_SECRET` | LINE channel secret alias | 任意 / alias | alias利用時 | alias利用時 | はい | LINE Developers | 未確認 | `LINE_CHANNEL_SECRET` 未設定時のみ利用 |
 | `ATLAS_OWNER_LINE_USER_ID` | 重大障害 Owner LINE 通知先 | 任意 | Owner通知検証時 | 運用時推奨 | 個人情報（非公開） | LINE / 運営設定 | 未確認 | Owner LINE incident push をスキップ |
-| `VAPID_PUBLIC_KEY` | Web Push public key | Push利用時必須 | Push Previewで必要 | Push利用時必須 | いいえ | `web-push` key generation | 未確認 | Web Push configured=false。public key は null |
-| `VAPID_PRIVATE_KEY` | Web Push private key | Push利用時必須 | Push Previewで必要 | Push利用時必須 | はい | `web-push` key generation | 未確認 | Push送信不可 |
-| `VAPID_SUBJECT` | Web Push VAPID subject | Push利用時必須 | Push Previewで必要 | Push利用時必須 | いいえ（連絡先） | 運営設定 | 未確認 | Push送信不可 |
+| `VAPID_PUBLIC_KEY` | Web Push public key | Push利用時必須 | Push Previewで必要 | Push利用時必須 | いいえ | `npx web-push generate-vapid-keys` / `node scripts/generate-vapid-keys.mjs` | 未確認 | `vapid_public_key_missing`。`NEXT_PUBLIC_VAPID_PUBLIC_KEY` でも可 |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Web Push public key (client) | 任意（公開鍵の代替） | 任意 | 任意 | いいえ（公開） | 同上 | 未確認 | `VAPID_PUBLIC_KEY` 未設定時のフォールバック |
+| `VAPID_PRIVATE_KEY` | Web Push private key | Push利用時必須 | Push Previewで必要 | Push利用時必須 | はい | 同上 | 未確認 | `vapid_private_key_missing` / 送信不可 |
+| `VAPID_SUBJECT` | Web Push VAPID subject | Push利用時必須 | Push Previewで必要 | Push利用時必須 | いいえ（連絡先） | 運営設定（mailto:） | 未確認 | `vapid_subject_missing` / 送信不可 |
 | `ATLAS_MOCK_LLM` | 非Production mock LLM | ローカル任意 | 通常不要 | 不要 | いいえ | local env | 未確認 | 実OpenAIを使用。Productionでは無効 |
 | `ATLAS_DEBUG` | server/client debug inspector gate | ローカル任意 | Previewでは慎重 | Production不要 | いいえ（ただし情報露出注意） | local/Vercel env | 未確認 | debug payload/logなし |
 | `NEXT_PUBLIC_ATLAS_DEBUG` | client debug gate / Next env exposure | ローカル任意 | Previewでは慎重 | Production不要 | いいえ（公開） | local/Vercel env | 未確認 | debug UIなし。`next.config.ts` default false |

@@ -23,10 +23,12 @@ export type PushSubscriptionRecord = {
   platform: string | null;
   browser: string | null;
   deviceName: string | null;
+  userAgent: string | null;
   failureCount: number;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  lastUsedAt: string | null;
 };
 
 export type PushDeviceStatus =

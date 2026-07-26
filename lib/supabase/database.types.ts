@@ -346,10 +346,12 @@ export type Database = {
           platform: string | null;
           browser: string | null;
           device_name: string | null;
+          user_agent: string | null;
           failure_count: number;
           is_active: boolean;
           created_at: string;
           updated_at: string;
+          last_used_at: string | null;
         };
         Insert: {
           id?: string;
@@ -360,10 +362,12 @@ export type Database = {
           platform?: string | null;
           browser?: string | null;
           device_name?: string | null;
+          user_agent?: string | null;
           failure_count?: number;
           is_active?: boolean;
           created_at?: string;
           updated_at?: string;
+          last_used_at?: string | null;
         };
         Update: {
           id?: string;
@@ -374,10 +378,12 @@ export type Database = {
           platform?: string | null;
           browser?: string | null;
           device_name?: string | null;
+          user_agent?: string | null;
           failure_count?: number;
           is_active?: boolean;
           created_at?: string;
           updated_at?: string;
+          last_used_at?: string | null;
         };
         Relationships: [];
       };

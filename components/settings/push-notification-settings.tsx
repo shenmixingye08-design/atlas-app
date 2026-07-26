@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -15,6 +15,8 @@ import {
   detectPushBrowser,
   resolvePushPermissionState,
 } from "@/lib/push/browser-detect";
+import type { PushErrorCode } from "@/lib/push/errors";
+import { pushErrorMessageJa } from "@/lib/push/errors";
 import type { PushEventCategory, PushSeverity } from "@/lib/push/types";
 import {
   fetchNotificationPreferences,
@@ -33,7 +35,7 @@ type ToggleRowProps = {
 
 function ToggleRow({ label, description, checked, disabled, onChange }: ToggleRowProps) {
   return (
-    <label className="flex cursor-pointer items-start justify-between gap-4 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] px-4 py-3">
+    <label className="flex min-h-[44px] cursor-pointer items-start justify-between gap-4 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] px-4 py-3">
       <div>
         <p className="text-sm font-medium text-foreground">{label}</p>
         {description && (
@@ -45,7 +47,7 @@ function ToggleRow({ label, description, checked, disabled, onChange }: ToggleRo
         checked={checked}
         disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
-        className="mt-1 h-4 w-4 accent-accent"
+        className="mt-1 h-5 w-5 accent-accent"
       />
     </label>
   );
@@ -67,11 +69,18 @@ const SEVERITY_ROWS: { id: PushSeverity; label: string }[] = [
   { id: "info", label: ui.push.severityInfo },
 ];
 
+type Feedback = {
+  kind: "success" | "error" | "info";
+  text: string;
+  code?: string;
+};
+
 export function PushNotificationSettings() {
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
-  const [showExplain, setShowExplain] = useState(false);
+  const [draft, setDraft] = useState<NotificationPreferences["push"] | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [savingPrefs, setSavingPrefs] = useState(false);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [devices, setDevices] = useState<
     Awaited<ReturnType<typeof fetchPushDevices>>
   >([]);
@@ -79,6 +88,8 @@ export function PushNotificationSettings() {
   const [permission, setPermission] = useState<
     NotificationPermission | undefined
   >(undefined);
+  const subscribeLock = useRef(false);
+
   const registered = devices.some((d) => d.isActive);
   const permissionState = resolvePushPermissionState(
     permission,
@@ -86,79 +97,158 @@ export function PushNotificationSettings() {
     browser.supportsPush,
   );
 
+  const refreshPermission = () => {
+    setBrowser(detectPushBrowser());
+    setPermission(
+      typeof Notification !== "undefined" ? Notification.permission : undefined,
+    );
+  };
+
   const refresh = async () => {
     const [nextPrefs, nextDevices] = await Promise.all([
       fetchNotificationPreferences(),
       fetchPushDevices(),
     ]);
     setPrefs(nextPrefs);
+    setDraft(nextPrefs.push);
     setDevices(nextDevices);
+    refreshPermission();
   };
 
   useEffect(() => {
-    setBrowser(detectPushBrowser());
-    setPermission(
-      typeof Notification !== "undefined" ? Notification.permission : undefined,
-    );
+    refreshPermission();
     void refresh().catch(() => undefined);
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        refreshPermission();
+        void fetchPushDevices().then(setDevices).catch(() => undefined);
+      }
+    };
+    const onFocus = () => {
+      refreshPermission();
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
-  const savePushPatch = async (
-    patch: Partial<NotificationPreferences["push"]>,
-  ) => {
-    if (!prefs) return;
-    setBusy(true);
+  const savePreferences = async () => {
+    if (!prefs || !draft) return;
+    setSavingPrefs(true);
+    setFeedback(null);
     try {
       const next = await updateNotificationPreferences({
-        push: { ...prefs.push, ...patch },
+        push: draft,
       });
       setPrefs(next);
+      setDraft(next.push);
+
+      if (!registered || permission !== "granted") {
+        setFeedback({
+          kind: "info",
+          text: ui.push.settingsSavedPushInactive,
+        });
+      } else {
+        setFeedback({ kind: "success", text: ui.push.settingsSaved });
+      }
+    } catch {
+      setFeedback({ kind: "error", text: ui.push.settingsSaveFailed });
     } finally {
-      setBusy(false);
+      setSavingPrefs(false);
     }
   };
 
-  const enablePush = async () => {
-    setShowExplain(true);
-  };
-
   const requestPermissionAndSubscribe = async () => {
+    if (subscribeLock.current || busy) return;
+    if (permission === "denied" || !browser.supportsPush) return;
+
+    subscribeLock.current = true;
     setBusy(true);
-    setMessage(null);
+    setFeedback(null);
     try {
       if (typeof Notification === "undefined") {
-        setMessage(ui.push.statusUnsupported);
+        setFeedback({
+          kind: "error",
+          text: ui.push.statusUnsupported,
+          code: "push_not_supported",
+        });
         return;
       }
-      const result = await Notification.requestPermission();
-      if (result !== "granted") {
-        setMessage(ui.push.statusDenied);
+
+      let nextPermission = Notification.permission;
+      if (nextPermission === "default") {
+        nextPermission = await Notification.requestPermission();
+      }
+      setPermission(nextPermission);
+
+      if (nextPermission === "denied") {
+        setFeedback({
+          kind: "error",
+          text: pushErrorMessageJa("permission_denied"),
+          code: "permission_denied",
+        });
         return;
       }
+      if (nextPermission !== "granted") {
+        setFeedback({
+          kind: "error",
+          text: pushErrorMessageJa("permission_dismissed"),
+          code: "permission_dismissed",
+        });
+        return;
+      }
+
       const sub = await subscribeToPush();
       if (!sub.ok) {
-        setMessage(ui.push.subscribeFailed(sub.error ?? ""));
+        const code = (sub.error ?? "push_subscription_failed") as PushErrorCode;
+        setFeedback({
+          kind: "error",
+          text: pushErrorMessageJa(code),
+          code,
+        });
         return;
       }
-      await updateNotificationPreferences({
-        channels: { ...prefs!.channels, push: true },
+
+      if (!prefs) {
+        setFeedback({
+          kind: "error",
+          text: pushErrorMessageJa("authentication_required"),
+          code: "authentication_required",
+        });
+        return;
+      }
+
+      const next = await updateNotificationPreferences({
+        channels: { ...prefs.channels, push: true },
+        push: draft ?? prefs.push,
       });
-      setMessage(ui.push.subscribeSuccess);
+      setPrefs(next);
+      setDraft(next.push);
+      setFeedback({ kind: "success", text: ui.push.subscribeSuccess });
       await refresh();
     } finally {
       setBusy(false);
-      setShowExplain(false);
+      subscribeLock.current = false;
     }
   };
 
   const disablePush = async () => {
     setBusy(true);
+    setFeedback(null);
     try {
       await unsubscribeFromPush();
-      await updateNotificationPreferences({
-        channels: { ...prefs!.channels, push: false },
-      });
-      setMessage(ui.push.unregistered);
+      if (prefs) {
+        const next = await updateNotificationPreferences({
+          channels: { ...prefs.channels, push: false },
+        });
+        setPrefs(next);
+      }
+      setFeedback({ kind: "info", text: ui.push.unregistered });
       await refresh();
     } finally {
       setBusy(false);
@@ -167,21 +257,43 @@ export function PushNotificationSettings() {
 
   const runTest = async () => {
     setBusy(true);
-    setMessage(null);
+    setFeedback(null);
     try {
       const result = await sendTestPush();
-      setMessage(result.ok ? ui.push.testSent : (result.message ?? ui.push.testFailed));
+      if (result.ok) {
+        setFeedback({ kind: "success", text: ui.push.testSent });
+      } else {
+        const code = result.code ?? "delivery_failed";
+        setFeedback({
+          kind: "error",
+          text: pushErrorMessageJa(code),
+          code,
+        });
+      }
     } finally {
       setBusy(false);
     }
   };
 
-  if (!prefs) return null;
+  if (!prefs || !draft) {
+    return (
+      <Card padding="lg" className="space-y-3">
+        <p className="text-sm text-[var(--foreground-muted)]">{ui.push.loading}</p>
+      </Card>
+    );
+  }
 
-  const pushDisabled = !prefs.allEnabled || !prefs.channels.push;
+  const prefsDisabled = !prefs.allEnabled;
+  const showEnableButton =
+    browser.supportsPush &&
+    permissionState !== "denied" &&
+    permissionState !== "unsupported" &&
+    (permissionState === "default" ||
+      permissionState === "unregistered" ||
+      !registered);
 
   return (
-    <Card padding="lg" className="space-y-6">
+    <Card padding="lg" className="space-y-6 overflow-x-hidden">
       <div>
         <h2 className="text-lg font-semibold text-foreground">{ui.push.settingsTitle}</h2>
         <p className="mt-2 text-sm text-[var(--foreground-muted)]">
@@ -193,11 +305,38 @@ export function PushNotificationSettings() {
         <p className="font-medium text-foreground">{ui.push.statusTitle}</p>
         <p className="mt-1 text-[var(--foreground-muted)]">
           {permissionState === "unsupported" && ui.push.statusUnsupported}
-          {permissionState === "denied" && ui.push.statusDeniedGuide}
+          {permissionState === "denied" && ui.push.statusDenied}
           {permissionState === "granted" && ui.push.statusGranted}
           {permissionState === "default" && ui.push.statusDefault}
           {permissionState === "unregistered" && ui.push.statusUnregistered}
         </p>
+
+        {permissionState === "default" && (
+          <p className="mt-2 text-sm text-foreground">{ui.push.permissionPrompt}</p>
+        )}
+
+        {permissionState === "granted" && registered && (
+          <p className="mt-2 text-xs text-[var(--foreground-muted)]">
+            {ui.push.registeredDeviceHint}
+          </p>
+        )}
+
+        {permissionState === "denied" && (
+          <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs text-[var(--foreground-muted)]">
+            <li>{ui.push.deniedStep1}</li>
+            <li>{ui.push.deniedStep2}</li>
+            <li>{ui.push.deniedStep3}</li>
+            <li>{ui.push.deniedStep4}</li>
+            <li>{ui.push.deniedStep5}</li>
+            <li>{ui.push.deniedStep6}</li>
+          </ol>
+        )}
+        {permissionState === "denied" && (
+          <p className="mt-2 text-xs text-[var(--foreground-muted)]">
+            {ui.push.deniedFallback}
+          </p>
+        )}
+
         {browser.isIos && !browser.isStandalone && (
           <p className="mt-2 text-xs text-[var(--foreground-muted)]">
             {ui.push.iosInstallGuide}
@@ -206,35 +345,53 @@ export function PushNotificationSettings() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {!prefs.channels.push ? (
-          <Button size="sm" disabled={busy || !browser.supportsPush} onClick={() => void enablePush()}>
+        {showEnableButton && (
+          <Button
+            size="md"
+            disabled={busy || permissionState === "denied"}
+            isLoading={busy}
+            onClick={() => void requestPermissionAndSubscribe()}
+          >
             {ui.push.enableButton}
           </Button>
-        ) : (
+        )}
+
+        {permissionState === "granted" && registered && (
           <>
-            <Button size="sm" variant="secondary" disabled={busy} onClick={() => void runTest()}>
+            <Button
+              size="md"
+              variant="secondary"
+              disabled={busy}
+              isLoading={busy}
+              onClick={() => void runTest()}
+            >
               {ui.push.sendTest}
             </Button>
-            <Button size="sm" variant="secondary" disabled={busy} onClick={() => void disablePush()}>
+            <Button
+              size="md"
+              variant="secondary"
+              disabled={busy}
+              onClick={() => void disablePush()}
+            >
               {ui.push.unregisterButton}
             </Button>
           </>
         )}
-      </div>
 
-      {showExplain && (
-        <div className="space-y-3 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4">
-          <p className="text-sm text-foreground">{ui.push.permissionExplain}</p>
-          <div className="flex gap-2">
-            <Button size="sm" disabled={busy} onClick={() => void requestPermissionAndSubscribe()}>
-              {ui.push.permissionAllow}
+        {feedback?.kind === "error" &&
+          feedback.code &&
+          feedback.code !== "permission_denied" &&
+          feedback.code !== "push_not_supported" && (
+            <Button
+              size="md"
+              variant="secondary"
+              disabled={busy}
+              onClick={() => void requestPermissionAndSubscribe()}
+            >
+              {ui.push.retry}
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => setShowExplain(false)}>
-              {ui.actions.cancel}
-            </Button>
-          </div>
-        </div>
-      )}
+          )}
+      </div>
 
       {devices.length > 0 && (
         <div className="space-y-2">
@@ -258,15 +415,17 @@ export function PushNotificationSettings() {
 
       <div className="space-y-3">
         <h3 className="text-sm font-semibold text-foreground">{ui.push.eventsTitle}</h3>
+        <p className="text-xs text-[var(--foreground-muted)]">{ui.push.eventsHint}</p>
         {EVENT_ROWS.map((row) => (
           <ToggleRow
             key={row.id}
             label={row.label}
-            checked={prefs.push.events[row.id]}
-            disabled={pushDisabled}
+            checked={draft.events[row.id]}
+            disabled={prefsDisabled || savingPrefs}
             onChange={(checked) =>
-              void savePushPatch({
-                events: { ...prefs.push.events, [row.id]: checked },
+              setDraft({
+                ...draft,
+                events: { ...draft.events, [row.id]: checked },
               })
             }
           />
@@ -275,15 +434,17 @@ export function PushNotificationSettings() {
 
       <div className="space-y-3">
         <h3 className="text-sm font-semibold text-foreground">{ui.push.severityTitle}</h3>
+        <p className="text-xs text-[var(--foreground-muted)]">{ui.push.severityHint}</p>
         {SEVERITY_ROWS.map((row) => (
           <ToggleRow
             key={row.id}
             label={row.label}
-            checked={prefs.push.severities[row.id]}
-            disabled={pushDisabled}
+            checked={draft.severities[row.id]}
+            disabled={prefsDisabled || savingPrefs}
             onChange={(checked) =>
-              void savePushPatch({
-                severities: { ...prefs.push.severities, [row.id]: checked },
+              setDraft({
+                ...draft,
+                severities: { ...draft.severities, [row.id]: checked },
               })
             }
           />
@@ -295,11 +456,12 @@ export function PushNotificationSettings() {
           <span className="font-medium text-foreground">{ui.push.quietStart}</span>
           <input
             type="time"
-            className="mt-1 w-full rounded border border-[var(--border-subtle)] px-3 py-2"
-            value={prefs.push.quietHoursStart ?? ""}
-            disabled={pushDisabled}
+            className="mt-1 min-h-[44px] w-full rounded border border-[var(--border-subtle)] px-3 py-2"
+            value={draft.quietHoursStart ?? ""}
+            disabled={prefsDisabled || savingPrefs}
             onChange={(e) =>
-              void savePushPatch({
+              setDraft({
+                ...draft,
                 quietHoursStart: e.target.value || null,
               })
             }
@@ -309,20 +471,47 @@ export function PushNotificationSettings() {
           <span className="font-medium text-foreground">{ui.push.quietEnd}</span>
           <input
             type="time"
-            className="mt-1 w-full rounded border border-[var(--border-subtle)] px-3 py-2"
-            value={prefs.push.quietHoursEnd ?? ""}
-            disabled={pushDisabled}
+            className="mt-1 min-h-[44px] w-full rounded border border-[var(--border-subtle)] px-3 py-2"
+            value={draft.quietHoursEnd ?? ""}
+            disabled={prefsDisabled || savingPrefs}
             onChange={(e) =>
-              void savePushPatch({
+              setDraft({
+                ...draft,
                 quietHoursEnd: e.target.value || null,
               })
             }
           />
         </label>
       </div>
+      <p className="text-xs text-[var(--foreground-muted)]">{ui.push.quietHint}</p>
 
-      {message && (
-        <p className="text-sm text-[var(--status-success)]">{message}</p>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="md"
+          variant="secondary"
+          disabled={prefsDisabled || savingPrefs}
+          isLoading={savingPrefs}
+          onClick={() => void savePreferences()}
+        >
+          {ui.push.saveSettings}
+        </Button>
+      </div>
+
+      {feedback && (
+        <div
+          className={
+            feedback.kind === "error"
+              ? "rounded-[var(--radius-lg)] border border-[var(--error)]/30 bg-[var(--error-bg)] px-4 py-3 text-sm text-[var(--error)]"
+              : feedback.kind === "info"
+                ? "rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-foreground"
+                : "rounded-[var(--radius-lg)] border border-[var(--status-success)]/30 px-4 py-3 text-sm text-[var(--status-success)]"
+          }
+        >
+          <p>{feedback.text}</p>
+          {feedback.code && (
+            <p className="mt-1 text-[10px] opacity-70">{feedback.code}</p>
+          )}
+        </div>
       )}
     </Card>
   );

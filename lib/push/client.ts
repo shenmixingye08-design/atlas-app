@@ -1,6 +1,8 @@
 "use client";
 
 import { detectPushBrowser } from "./browser-detect";
+import type { PushErrorCode } from "./errors";
+import { isPushErrorCode } from "./errors";
 
 function urlBase64ToUint8Array(base64String: string): BufferSource {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -17,52 +19,117 @@ function urlBase64ToUint8Array(base64String: string): BufferSource {
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!("serviceWorker" in navigator)) return null;
 
-  const existing = await navigator.serviceWorker.getRegistration("/sw.js");
-  if (existing) return existing;
+  try {
+    const existing = await navigator.serviceWorker.getRegistration("/");
+    if (existing?.active || existing?.waiting || existing?.installing) {
+      if (existing.waiting) {
+        existing.waiting.postMessage({ type: "SKIP_WAITING" });
+      }
+      return existing;
+    }
 
-  const registration = await navigator.serviceWorker.register("/sw.js", {
-    scope: "/",
-    updateViaCache: "none",
-  });
+    const registration = await navigator.serviceWorker.register("/sw.js", {
+      scope: "/",
+      updateViaCache: "none",
+    });
 
-  if (registration.waiting) {
-    registration.waiting.postMessage({ type: "SKIP_WAITING" });
+    if (registration.waiting) {
+      registration.waiting.postMessage({ type: "SKIP_WAITING" });
+    }
+
+    await navigator.serviceWorker.ready;
+    return registration;
+  } catch {
+    return null;
   }
-
-  return registration;
 }
 
-export async function fetchVapidPublicKey(): Promise<string | null> {
-  const response = await fetch("/api/push/vapid-key");
-  if (!response.ok) return null;
-  const data = (await response.json()) as { publicKey?: string };
-  return data.publicKey ?? null;
+export type VapidKeyResponse = {
+  publicKey: string | null;
+  configured: boolean;
+  errorCode?: PushErrorCode | null;
+};
+
+export async function fetchVapidPublicKey(): Promise<{
+  publicKey: string | null;
+  errorCode: PushErrorCode | null;
+}> {
+  // Prefer build-time public key when present (never private key).
+  const embedded = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();
+  if (embedded) {
+    return { publicKey: embedded, errorCode: null };
+  }
+
+  try {
+    const response = await fetch("/api/push/vapid-key");
+    if (!response.ok) {
+      return { publicKey: null, errorCode: "vapid_public_key_missing" };
+    }
+    const data = (await response.json()) as VapidKeyResponse;
+    if (data.publicKey) {
+      return { publicKey: data.publicKey, errorCode: null };
+    }
+    const code =
+      data.errorCode && isPushErrorCode(data.errorCode)
+        ? data.errorCode
+        : "vapid_public_key_missing";
+    return { publicKey: null, errorCode: code };
+  } catch {
+    return { publicKey: null, errorCode: "vapid_public_key_missing" };
+  }
 }
 
 export async function subscribeToPush(input?: {
   deviceName?: string;
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{ ok: boolean; error?: PushErrorCode }> {
   const info = detectPushBrowser();
   if (!info.supportsPush) {
-    return { ok: false, error: "unsupported" };
+    return { ok: false, error: "push_not_supported" };
   }
 
-  const publicKey = await fetchVapidPublicKey();
+  if (typeof Notification === "undefined") {
+    return { ok: false, error: "push_not_supported" };
+  }
+
+  if (Notification.permission === "denied") {
+    return { ok: false, error: "permission_denied" };
+  }
+
+  const { publicKey, errorCode } = await fetchVapidPublicKey();
   if (!publicKey) {
-    return { ok: false, error: "not_configured" };
+    return { ok: false, error: errorCode ?? "vapid_public_key_missing" };
   }
 
   const registration = await registerServiceWorker();
-  if (!registration) {
-    return { ok: false, error: "sw_failed" };
+  if (!registration?.pushManager) {
+    return { ok: false, error: "service_worker_failed" };
   }
 
-  let subscription = await registration.pushManager.getSubscription();
+  let subscription: PushSubscription | null = null;
+  try {
+    subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+    }
+  } catch {
+    // Existing subscription may have been created with a different VAPID key.
+    try {
+      const stale = await registration.pushManager.getSubscription();
+      if (stale) await stale.unsubscribe();
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+    } catch {
+      return { ok: false, error: "push_subscription_failed" };
+    }
+  }
+
   if (!subscription) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
-    });
+    return { ok: false, error: "push_subscription_failed" };
   }
 
   const json = subscription.toJSON();
@@ -80,43 +147,78 @@ export async function subscribeToPush(input?: {
       platform: info.platform,
       browser: info.browser,
       deviceName: input?.deviceName ?? null,
+      userAgent:
+        typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 300) : null,
     }),
   });
 
   if (!response.ok) {
-    const data = (await response.json().catch(() => ({}))) as { error?: string };
-    return { ok: false, error: data.error ?? "subscribe_failed" };
+    const data = (await response.json().catch(() => ({}))) as {
+      code?: string;
+      error?: string;
+    };
+    if (response.status === 401) {
+      return { ok: false, error: "authentication_required" };
+    }
+    if (data.code && isPushErrorCode(data.code)) {
+      return { ok: false, error: data.code };
+    }
+    if (data.error === "Persistence unavailable") {
+      return { ok: false, error: "persistence_unavailable" };
+    }
+    return { ok: false, error: "subscription_save_failed" };
   }
 
   return { ok: true };
 }
 
 export async function unsubscribeFromPush(): Promise<boolean> {
-  const registration = await navigator.serviceWorker.getRegistration("/sw.js");
-  const subscription = await registration?.pushManager.getSubscription();
-  if (!subscription) return true;
+  try {
+    const registration = await navigator.serviceWorker.getRegistration("/");
+    const subscription = await registration?.pushManager.getSubscription();
+    if (!subscription) return true;
 
-  const endpoint = subscription.endpoint;
-  await subscription.unsubscribe();
+    const endpoint = subscription.endpoint;
+    await subscription.unsubscribe();
 
-  await fetch("/api/push/unsubscribe", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ endpoint }),
-  });
+    await fetch("/api/push/unsubscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint }),
+    });
 
-  return true;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-export async function sendTestPush(): Promise<{ ok: boolean; message?: string }> {
+export async function sendTestPush(): Promise<{
+  ok: boolean;
+  message?: string;
+  code?: PushErrorCode;
+}> {
   const response = await fetch("/api/push/test", { method: "POST" });
   const data = (await response.json().catch(() => ({}))) as {
     ok?: boolean;
     message?: string;
     error?: string;
+    code?: string;
   };
   if (!response.ok) {
-    return { ok: false, message: data.error ?? data.message ?? "failed" };
+    const code =
+      data.code && isPushErrorCode(data.code)
+        ? data.code
+        : response.status === 401
+          ? "authentication_required"
+          : response.status === 429
+            ? "rate_limit_exceeded"
+            : "delivery_failed";
+    return {
+      ok: false,
+      message: data.error ?? data.message ?? "failed",
+      code,
+    };
   }
   return { ok: true, message: data.message };
 }
