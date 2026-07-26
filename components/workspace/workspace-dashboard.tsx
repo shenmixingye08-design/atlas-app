@@ -4,13 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import type { OrchestrationResult } from "@/lib/orchestration/types";
+import { getDeliverableExportText } from "@/lib/orchestration/final-deliverable";
 import { formatUserFacingErrorText, toUserFacingError } from "@/lib/orchestration/user-errors";
 import { projectService } from "@/lib/projects/project-service";
-import {
-  LOADING_STEP_INTERVAL_MS,
-  buildLoadingPhases,
-  createInitialPhases,
-} from "@/lib/workspace/constants";
 import {
   CommanderConfirmationRequiredError,
   confirmWorkRequest,
@@ -22,7 +18,11 @@ import { buildSalesMaterialMetadata } from "@/lib/workspace/sales-material/metad
 import type { SalesMaterialSessionConfig } from "@/lib/workspace/sales-material/types";
 import { useFeatureAvailability } from "@/lib/feature-flags";
 import { useDeliverableFiles } from "@/lib/workspace/use-deliverable-files";
-import type { WorkflowPhaseState } from "@/lib/workspace/types";
+import {
+  patchClientProgressSession,
+  startClientProgressSession,
+  useUserFacingProgressPoll,
+} from "@/lib/workspace/user-progress/client";
 import { ErrorState } from "@/components/ui/error-state";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,7 @@ import {
 } from "./work-memory-used-banner";
 import { WorkTemplatePrompt } from "./work-template-prompt";
 import { WorkflowResults } from "./workflow-results";
+import { UserFacingProgress } from "./user-facing-progress";
 import {
   SalesMaterialWizard,
   formatOutlineAsDisplayText,
@@ -56,11 +57,12 @@ import {
 export function WorkspaceDashboard() {
   const [assignment, setAssignment] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingPhases, setLoadingPhases] =
-    useState<WorkflowPhaseState[]>(createInitialPhases);
   const [result, setResult] = useState<OrchestrationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loadingStepIndex, setLoadingStepIndex] = useState(0);
+  const [progressSessionId, setProgressSessionId] = useState<string | null>(
+    null,
+  );
+  const [progressUiComplete, setProgressUiComplete] = useState(false);
   const [salesWizardAssignment, setSalesWizardAssignment] = useState<string | null>(
     null,
   );
@@ -91,6 +93,35 @@ export function WorkspaceDashboard() {
     useDeliverableFiles(result, deliverableOptions);
 
   const searchParams = useSearchParams();
+  const skipFileGeneration = Boolean(salesMaterialConfig?.skipFileGeneration);
+  const exportPreview = result?.deliverable
+    ? getDeliverableExportText(result.deliverable).trim()
+    : "";
+  const willGenerateFiles =
+    Boolean(result) &&
+    !skipFileGeneration &&
+    exportPreview.length > 0 &&
+    result?.status !== "failed";
+  const filesSettled =
+    !willGenerateFiles ||
+    deliverables.length > 0 ||
+    Boolean(deliverablesError);
+  const shouldPollProgress =
+    Boolean(progressSessionId) &&
+    !progressUiComplete &&
+    (isLoading || isGeneratingDeliverables || Boolean(result));
+
+  const progressSnapshot = useUserFacingProgressPoll(
+    progressSessionId,
+    shouldPollProgress,
+  );
+
+  const showUserProgress =
+    Boolean(progressSessionId) &&
+    !progressUiComplete &&
+    (isLoading ||
+      isGeneratingDeliverables ||
+      (Boolean(result) && !filesSettled));
 
   useEffect(() => {
     const prefill = searchParams.get("assignment");
@@ -100,21 +131,45 @@ export function WorkspaceDashboard() {
     setTaughtWorkflowHint(searchParams.get("taught") === "1");
   }, [searchParams]);
 
+  // Sync file-generation phase from real deliverable API state (no dummy timer).
   useEffect(() => {
-    if (!isLoading) return;
-    const interval = setInterval(() => {
-      setLoadingStepIndex((prev) =>
-        Math.min(prev + 1, loadingPhases.length - 1),
-      );
-    }, LOADING_STEP_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [isLoading, loadingPhases.length]);
+    if (!progressSessionId || isLoading || progressUiComplete) return;
 
-  useEffect(() => {
-    if (isLoading) {
-      setLoadingPhases(buildLoadingPhases(loadingStepIndex));
+    if (result?.status === "failed") {
+      void patchClientProgressSession({
+        sessionId: progressSessionId,
+        action: "failed",
+      }).finally(() => setProgressUiComplete(true));
+      return;
     }
-  }, [loadingStepIndex, isLoading]);
+
+    if (!result) return;
+
+    if (isGeneratingDeliverables) {
+      void patchClientProgressSession({
+        sessionId: progressSessionId,
+        action: "file_generating",
+      });
+      return;
+    }
+
+    // Wait until file generation has either finished or been skipped —
+    // never complete during the gap before useDeliverableFiles starts.
+    if (willGenerateFiles && !filesSettled) return;
+
+    void patchClientProgressSession({
+      sessionId: progressSessionId,
+      action: "file_done",
+    }).finally(() => setProgressUiComplete(true));
+  }, [
+    progressSessionId,
+    isGeneratingDeliverables,
+    result,
+    isLoading,
+    willGenerateFiles,
+    filesSettled,
+    progressUiComplete,
+  ]);
 
   const runOrchestration = async (
     requestAssignment: string,
@@ -132,8 +187,21 @@ export function WorkspaceDashboard() {
     setWorkMemoryCandidateCount(0);
     setPendingCommander(null);
     setIsLoading(true);
-    setLoadingStepIndex(0);
-    setLoadingPhases(buildLoadingPhases(0));
+    setProgressUiComplete(false);
+
+    const sessionId = crypto.randomUUID();
+    setProgressSessionId(sessionId);
+    const mergedMetadata = {
+      ...requestMetadata,
+      ...(extraMetadata ?? {}),
+      ...(config ? buildSalesMaterialMetadata(config) : {}),
+      progressSessionId: sessionId,
+    };
+    void startClientProgressSession({
+      sessionId,
+      assignment: requestAssignment,
+      metadata: mergedMetadata,
+    });
 
     if (config) {
       setSalesMaterialConfig(config);
@@ -144,11 +212,7 @@ export function WorkspaceDashboard() {
         requestAssignment,
         controller.signal,
         {
-          metadata: {
-            ...requestMetadata,
-            ...(extraMetadata ?? {}),
-            ...(config ? buildSalesMaterialMetadata(config) : {}),
-          },
+          metadata: mergedMetadata,
         },
       );
 
@@ -185,13 +249,12 @@ export function WorkspaceDashboard() {
           ? err.message
           : formatUserFacingErrorText(toUserFacingError(err));
       setError(message);
-      setLoadingPhases((prev) =>
-        prev.map((phase) =>
-          phase.status === "running"
-            ? { ...phase, status: "error", errorMessage: message }
-            : phase,
-        ),
-      );
+      if (sessionId) {
+        void patchClientProgressSession({
+          sessionId,
+          action: "failed",
+        });
+      }
     } finally {
       setIsLoading(false);
       abortRef.current = null;
@@ -206,9 +269,21 @@ export function WorkspaceDashboard() {
     setPendingCommander(null);
     setIsLoading(true);
     setError(null);
+    setProgressUiComplete(false);
+    const sessionId = crypto.randomUUID();
+    setProgressSessionId(sessionId);
+    const confirmMetadata = {
+      ...requestMetadata,
+      progressSessionId: sessionId,
+    };
+    void startClientProgressSession({
+      sessionId,
+      assignment: requestAssignment,
+      metadata: confirmMetadata,
+    });
     try {
       const orchestrationResult = await confirmWorkRequest(runId, undefined, {
-        metadata: requestMetadata,
+        metadata: confirmMetadata,
       });
       setResult(orchestrationResult);
       setWorkMemoryUsed(orchestrationResult.workMemory ?? null);
@@ -310,6 +385,8 @@ export function WorkspaceDashboard() {
     setRequestMetadata({});
     setResult(null);
     setError(null);
+    setProgressSessionId(null);
+    setProgressUiComplete(false);
     setSalesWizardAssignment(null);
     setSalesMaterialConfig(null);
     setOutlineOnlyText(null);
@@ -318,6 +395,7 @@ export function WorkspaceDashboard() {
   const showForm =
     !isLoading &&
     !result &&
+    !showUserProgress &&
     !salesWizardAssignment &&
     !outlineOnlyText &&
     !pendingCommander;
@@ -404,18 +482,15 @@ export function WorkspaceDashboard() {
         </section>
       )}
 
-      {error && !result && !outlineOnlyText && <ErrorState message={error} />}
-
-      {(isLoading || result) && isLoading && (
-        <WorkflowResults
-          result={result}
-          loadingPhases={loadingPhases}
-          isLoading={isLoading}
-          error={error}
-        />
+      {error && !result && !outlineOnlyText && !showUserProgress && (
+        <ErrorState message={error} />
       )}
 
-      {result && !isLoading && (
+      {showUserProgress && (
+        <UserFacingProgress snapshot={progressSnapshot} />
+      )}
+
+      {result && !isLoading && !showUserProgress && (
         <>
           {workMemoryUsed && workMemoryUsed.used.length > 0 && (
             <WorkMemoryUsedBanner used={workMemoryUsed.used} />
@@ -449,7 +524,6 @@ export function WorkspaceDashboard() {
 
           <WorkflowResults
             result={result}
-            loadingPhases={loadingPhases}
             isLoading={false}
             error={error}
           />

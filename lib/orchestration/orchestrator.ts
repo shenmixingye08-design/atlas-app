@@ -89,6 +89,10 @@ import {
   WorkflowState,
   WorkflowStateManager,
 } from "./workflow-state";
+import {
+  orchestrationStepToUserIndex,
+  reportProgressFromMetadata,
+} from "@/lib/workspace/user-progress";
 import type {
   AgentPhaseResult,
   KnowledgeUsedResult,
@@ -459,6 +463,12 @@ export async function orchestrate(
     currentStep = step;
     currentTaskId = taskId;
     workflowStateManager?.transitionForStep(step);
+    // Display-only: publish user-facing progress (no pipeline behavior change).
+    reportProgressFromMetadata(
+      metadata,
+      step,
+      orchestrationStepToUserIndex(step),
+    );
   };
 
   const runPhaseBound = (

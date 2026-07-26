@@ -643,6 +643,10 @@ html[data-theme-transitioning] *::after {
   animation: fade-in 0.2s ease both;
 }
 
+.user-progress-enter {
+  animation: fade-up 0.28s cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+
 .animate-soft-pulse {
   animation: soft-pulse 1.8s ease-in-out infinite;
 }

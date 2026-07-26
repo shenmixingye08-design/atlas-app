@@ -28,6 +28,12 @@ import { runLearningAnalysis } from "@/lib/learning-engine/service";
 import { detectMemorySignals } from "@/lib/work-memory/learning";
 import { createWorkMemoryCandidate } from "@/lib/work-memory/service";
 import { maybeAutoPostToXAfterCommander } from "@/lib/integrations/x/post/automation";
+import {
+  completeUserProgressSession,
+  reportUserProgressOrchestrationStep,
+  resolveUserProgressKind,
+  startUserProgressSession,
+} from "@/lib/workspace/user-progress";
 
 import { isRecurringAssignment } from "./classify";
 import {
@@ -343,6 +349,21 @@ async function executeStoredRun(input: {
     workflowRunId: workflowRun.id,
   });
 
+  const progressSessionId =
+    typeof input.metadata?.progressSessionId === "string" &&
+    input.metadata.progressSessionId.trim()
+      ? input.metadata.progressSessionId.trim()
+      : input.runId;
+  const progressKind = resolveUserProgressKind({
+    assignment: plan.assignment,
+    metadata: input.metadata,
+  });
+  startUserProgressSession({
+    userId: input.userId,
+    sessionId: progressSessionId,
+    kind: progressKind,
+  });
+
   const flow = createDefaultExecutionFlow(plan.classification.templateId);
   const flowContext = buildExecutionFlowContext(flow);
   const assignment = `${plan.assignment}\n\n${flowContext}`;
@@ -453,6 +474,9 @@ async function executeStoredRun(input: {
           commanderAttempt: attempt,
           commanderTemplateId: plan.requiredTemplate.templateId,
           selectedEmployeeIds: plan.requiredAis.map((ai) => ai.employeeId),
+          progressSessionId,
+          progressUserId: input.userId,
+          userProgressKind: progressKind,
         },
         notify: false,
         recordLearning: true,
@@ -638,6 +662,27 @@ async function executeStoredRun(input: {
     status: finalStatus,
     error: lastResult?.error ?? attempts.at(-1)?.error ?? null,
   });
+
+  // Orchestration finished — keep session open for client-side file generation
+  // unless the run failed. Final "✅ 完成" is marked by the client API.
+  if (
+    finalStatus === "failed" ||
+    finalStatus === "cancelled" ||
+    lastResult?.status === "failed"
+  ) {
+    completeUserProgressSession({
+      userId: input.userId,
+      sessionId: progressSessionId,
+      failed: true,
+    });
+  } else {
+    reportUserProgressOrchestrationStep({
+      userId: input.userId,
+      sessionId: progressSessionId,
+      step: "final_deliverable",
+      stepIndex: 2,
+    });
+  }
 
   const preview =
     lastResult?.finalResponse?.slice(0, 280) ??
