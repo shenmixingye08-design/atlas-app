@@ -319,6 +319,22 @@ export class DocxDeliverableGenerator implements DeliverableGenerator {
     // Never silent-fallback to Markdown — Word success must mean a real .docx.
     const parsed = parseDeliverableContent(content);
     const buffer = await buildDocxBuffer(parsed);
+    // Refuse mid-pipeline / text / XML dumps — completed OOXML zip only.
+    if (
+      buffer.byteLength < 1_500 ||
+      buffer[0] !== 0x50 ||
+      buffer[1] !== 0x4b
+    ) {
+      throw new Error("Word生成失敗: Packer output is not a completed .docx zip");
+    }
+    const head = buffer.subarray(0, 64).toString("utf8");
+    if (
+      head.includes('"type":') ||
+      head.includes("<!DOCTYPE") ||
+      head.trimStart().startsWith("{")
+    ) {
+      throw new Error("Word生成失敗: refused JSON/HTML payload");
+    }
     return createDeliverableFile("docx", baseFileName, buffer, false);
   }
 }

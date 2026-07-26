@@ -117,6 +117,7 @@ function FormatDownloadButton({
         url: file.downloadUrl,
         fileName: file.fileName,
         mimeType: file.mimeType,
+        format: file.format,
       });
     } catch (downloadError) {
       setError(

@@ -1,8 +1,13 @@
 import { auth } from "@clerk/nextjs/server";
 
-import { buildAttachmentContentDisposition } from "@/lib/http/content-disposition";
+import {
+  assertOfficeBinaryOrThrow,
+  ensureFormatFileName,
+  mimeTypeForFormat,
+} from "@/lib/deliverables/binary-guards";
 import { markDeliverableDownloaded } from "@/lib/deliverables/durable-store";
 import { getStoredDeliverableForUser } from "@/lib/deliverables/store";
+import { buildAttachmentContentDisposition } from "@/lib/http/content-disposition";
 import { recordReliabilityEvent } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 
@@ -38,7 +43,15 @@ export async function GET(
     );
   }
 
-  const body = new Uint8Array(stored.buffer);
+  // Force canonical MIME by format — never trust a stale/wrong stored mimeType
+  // that could become text/plain or application/octet-stream in the browser.
+  const contentType = mimeTypeForFormat(stored.format);
+  const fileName = ensureFormatFileName(stored.fileName, stored.format);
+
+  // Copy into a standalone Uint8Array (completed binary only).
+  const body = new Uint8Array(stored.buffer.byteLength);
+  body.set(stored.buffer);
+
   if (body.byteLength === 0) {
     recordReliabilityEvent("deliverable_download", "failure");
     return Response.json(
@@ -47,7 +60,37 @@ export async function GET(
     );
   }
 
-  // Success = user received bytes (download), not merely generation.
+  try {
+    assertOfficeBinaryOrThrow(stored.format, body);
+  } catch {
+    recordReliabilityEvent("deliverable_download", "failure", 1, {
+      errorCode: "invalid_binary",
+      errorMessage: `format=${stored.format}`,
+    });
+    return Response.json(
+      {
+        error:
+          stored.format === "docx"
+            ? "Word生成失敗: 完成した.docxではありません。再生成してください。"
+            : "成果物ファイルが壊れていました。再生成してください。",
+      },
+      { status: 500 },
+    );
+  }
+
+  // Forbidden MIME types must never leave this route for Office files.
+  if (
+    contentType === "text/plain" ||
+    contentType === "application/json" ||
+    contentType === "application/octet-stream"
+  ) {
+    recordReliabilityEvent("deliverable_download", "failure");
+    return Response.json(
+      { error: "Word生成失敗: 不正なContent-Typeです。" },
+      { status: 500 },
+    );
+  }
+
   markDeliverableDownloaded(stored.id, userId);
   recordReliabilityEvent("deliverable_download", "success");
   recordReliabilityEvent("deliverable_generate", "success");
@@ -55,8 +98,8 @@ export async function GET(
   return new Response(body, {
     status: 200,
     headers: {
-      "Content-Type": stored.mimeType,
-      "Content-Disposition": buildAttachmentContentDisposition(stored.fileName),
+      "Content-Type": contentType,
+      "Content-Disposition": buildAttachmentContentDisposition(fileName),
       "Content-Length": String(body.byteLength),
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
