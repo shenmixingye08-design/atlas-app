@@ -20,15 +20,23 @@ export async function GET(
   }
 
   const { id } = await context.params;
-  const stored = getStoredDeliverableForUser(id, userId);
+  const stored = await getStoredDeliverableForUser(id, userId);
 
   if (!stored) {
+    console.warn("[Atlas /api/deliverables/:id] not found or expired", {
+      id,
+      userId,
+    });
     // Same message for missing and non-owned — avoid id enumeration.
-    return Response.json({ error: "Deliverable not found or expired" }, { status: 404 });
+    return Response.json(
+      { error: "Deliverable not found or expired" },
+      { status: 404 },
+    );
   }
 
   const body = new Uint8Array(stored.buffer);
   if (body.byteLength === 0) {
+    console.error("[Atlas /api/deliverables/:id] empty buffer", { id });
     return Response.json({ error: "Deliverable file is empty" }, { status: 500 });
   }
 

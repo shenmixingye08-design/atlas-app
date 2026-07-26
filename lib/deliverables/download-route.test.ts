@@ -7,9 +7,16 @@ vi.mock("@clerk/nextjs/server", () => ({
 }));
 
 import { GET } from "@/app/api/deliverables/[id]/route";
+import { POST as exportPost } from "@/app/api/deliverables/export/route";
 import { DocxDeliverableGenerator } from "@/lib/deliverables/generators/docx-generator";
 import { PdfDeliverableGenerator } from "@/lib/deliverables/generators/pdf-generator";
-import { saveDeliverableFile, toDeliverableMetadata } from "@/lib/deliverables/store";
+import { resetDurableDeliverableStoreForTests } from "@/lib/deliverables/durable-store";
+import {
+  getStoredDeliverableForUser,
+  resetDeliverableMemoryStoreForTests,
+  saveDeliverableFileDurable,
+  toDeliverableMetadata,
+} from "@/lib/deliverables/store";
 
 const OWNER = "user_owner_a";
 const OTHER = "user_other_b";
@@ -34,6 +41,8 @@ describe("deliverables download API", () => {
   beforeEach(() => {
     authMock.mockReset();
     authMock.mockResolvedValue({ userId: OWNER });
+    resetDeliverableMemoryStoreForTests();
+    resetDurableDeliverableStoreForTests();
   });
 
   it("returns Word with correct headers and non-zero body", async () => {
@@ -41,7 +50,10 @@ describe("deliverables download API", () => {
       LONG_JA,
       "日本語長文レポート",
     );
-    const stored = saveDeliverableFile(generated, OWNER);
+    const stored = await saveDeliverableFileDurable(generated, OWNER, {
+      sourceContent: LONG_JA,
+      baseFileName: "日本語長文レポート",
+    });
     const meta = toDeliverableMetadata(stored);
 
     expect(meta.downloadUrl).toBe(`/api/deliverables/${stored.id}`);
@@ -72,7 +84,10 @@ describe("deliverables download API", () => {
       LONG_JA,
       "日本語長文レポート",
     );
-    const stored = saveDeliverableFile(generated, OWNER);
+    const stored = await saveDeliverableFileDurable(generated, OWNER, {
+      sourceContent: LONG_JA,
+      baseFileName: "日本語長文レポート",
+    });
     const meta = toDeliverableMetadata(stored);
 
     const response = await GET(new Request(`http://localhost${meta.downloadUrl}`), {
@@ -91,10 +106,69 @@ describe("deliverables download API", () => {
     expect(body.toString("latin1")).toContain("%%EOF");
   });
 
+  it("hydrates Word/PDF after process memory is cleared (serverless miss)", async () => {
+    const generated = await new DocxDeliverableGenerator().generate(
+      LONG_JA,
+      "cross-instance",
+    );
+    const stored = await saveDeliverableFileDurable(generated, OWNER, {
+      sourceContent: LONG_JA,
+      baseFileName: "cross-instance",
+    });
+
+    // Simulate another serverless instance: binary memory empty, durable remains.
+    resetDeliverableMemoryStoreForTests();
+    expect(await getStoredDeliverableForUser(stored.id, OWNER)).toBeTruthy();
+
+    const response = await GET(
+      new Request(`http://localhost/api/deliverables/${stored.id}`),
+      { params: Promise.resolve({ id: stored.id }) },
+    );
+    expect(response.status).toBe(200);
+    const body = Buffer.from(await response.arrayBuffer());
+    expect(body.subarray(0, 2).toString("utf8")).toBe("PK");
+    expect(body.byteLength).toBeGreaterThan(2000);
+  });
+
+  it("exports Word/PDF on demand without a stored id", async () => {
+    const docx = await exportPost(
+      new Request("http://localhost/api/deliverables/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          format: "docx",
+          content: LONG_JA,
+          title: "オンデマンド",
+        }),
+      }),
+    );
+    expect(docx.status).toBe(200);
+    const docxBody = Buffer.from(await docx.arrayBuffer());
+    expect(docxBody.subarray(0, 2).toString("utf8")).toBe("PK");
+
+    const pdf = await exportPost(
+      new Request("http://localhost/api/deliverables/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          format: "pdf",
+          content: LONG_JA,
+          title: "オンデマンド",
+        }),
+      }),
+    );
+    expect(pdf.status).toBe(200);
+    const pdfBody = Buffer.from(await pdf.arrayBuffer());
+    expect(pdfBody.toString("latin1").startsWith("%PDF")).toBe(true);
+  });
+
   it("rejects unauthenticated download", async () => {
     authMock.mockResolvedValue({ userId: null });
     const generated = await new DocxDeliverableGenerator().generate("短文", "短文");
-    const stored = saveDeliverableFile(generated, OWNER);
+    const stored = await saveDeliverableFileDurable(generated, OWNER, {
+      sourceContent: "短文",
+      baseFileName: "短文",
+    });
 
     const response = await GET(
       new Request(`http://localhost/api/deliverables/${stored.id}`),
@@ -107,7 +181,10 @@ describe("deliverables download API", () => {
   it("rejects download by a different user", async () => {
     authMock.mockResolvedValue({ userId: OTHER });
     const generated = await new DocxDeliverableGenerator().generate("短文", "短文");
-    const stored = saveDeliverableFile(generated, OWNER);
+    const stored = await saveDeliverableFileDurable(generated, OWNER, {
+      sourceContent: "短文",
+      baseFileName: "短文",
+    });
 
     const response = await GET(
       new Request(`http://localhost/api/deliverables/${stored.id}`),
