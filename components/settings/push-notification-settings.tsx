@@ -87,7 +87,9 @@ export function PushNotificationSettings() {
   const [browser, setBrowser] = useState(() => detectPushBrowser());
   const [permission, setPermission] = useState<
     NotificationPermission | undefined
-  >(undefined);
+  >(() =>
+    typeof Notification !== "undefined" ? Notification.permission : undefined,
+  );
   const subscribeLock = useRef(false);
 
   const registered = devices.some((d) => d.isActive);
@@ -116,22 +118,56 @@ export function PushNotificationSettings() {
   };
 
   useEffect(() => {
-    refreshPermission();
-    void refresh().catch(() => undefined);
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const [nextPrefs, nextDevices] = await Promise.all([
+          fetchNotificationPreferences(),
+          fetchPushDevices(),
+        ]);
+        if (cancelled) return;
+        setPrefs(nextPrefs);
+        setDraft(nextPrefs.push);
+        setDevices(nextDevices);
+        setBrowser(detectPushBrowser());
+        setPermission(
+          typeof Notification !== "undefined"
+            ? Notification.permission
+            : undefined,
+        );
+      } catch {
+        /* ignore initial load errors; UI stays on loading card */
+      }
+    })();
 
     const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        refreshPermission();
-        void fetchPushDevices().then(setDevices).catch(() => undefined);
-      }
+      if (document.visibilityState !== "visible") return;
+      setBrowser(detectPushBrowser());
+      setPermission(
+        typeof Notification !== "undefined"
+          ? Notification.permission
+          : undefined,
+      );
+      void fetchPushDevices()
+        .then((next) => {
+          if (!cancelled) setDevices(next);
+        })
+        .catch(() => undefined);
     };
     const onFocus = () => {
-      refreshPermission();
+      setBrowser(detectPushBrowser());
+      setPermission(
+        typeof Notification !== "undefined"
+          ? Notification.permission
+          : undefined,
+      );
     };
 
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onFocus);
     return () => {
+      cancelled = true;
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onFocus);
     };
@@ -348,7 +384,7 @@ export function PushNotificationSettings() {
         {showEnableButton && (
           <Button
             size="md"
-            disabled={busy || permissionState === "denied"}
+            disabled={busy}
             isLoading={busy}
             onClick={() => void requestPermissionAndSubscribe()}
           >
