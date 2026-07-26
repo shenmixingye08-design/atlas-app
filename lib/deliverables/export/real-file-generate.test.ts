@@ -22,7 +22,7 @@ describe("real file generation artifacts", () => {
     const normalized = normalizeToStructuredDocument(REAL_FILE_SOURCE, {
       titleHint: REAL_FILE_TITLE,
     })
-    expect(normalized.plainText.replace(/\s+/g, "").length).toBeGreaterThan(500)
+    expect(normalized.plainText.replace(/\s+/g, "").length).toBeGreaterThanOrEqual(1000)
 
     const markdown = structuredDocumentToMarkdown(normalized.document)
     const html = renderCanonicalHtml(normalized.document)

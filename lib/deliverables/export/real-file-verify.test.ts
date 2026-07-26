@@ -15,6 +15,12 @@ import {
   REAL_FILE_SOURCE,
   REAL_FILE_TITLE,
 } from "@/lib/deliverables/export/real-file-fixture"
+import {
+  compactLength,
+  contentMatchRate,
+  normalizeDeliverableText,
+  orderedCharRecall,
+} from "@/lib/deliverables/export/text-similarity"
 
 const OUT = join(process.cwd(), "artifacts/deliverable-export-verify")
 const ARTIFACTS = "/opt/cursor/artifacts/deliverable-export-verify"
@@ -42,28 +48,43 @@ function hasCmd(cmd: string): boolean {
   }
 }
 
-function compactLen(text: string): number {
-  return text.replace(/\s+/g, "").length
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, "\n")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .trim()
 }
 
-describe("real Word/PDF/Web file verification", () => {
-  it("generates readable Japanese Word/PDF matching Web source", async () => {
+describe("real Word/PDF/Web file verification (completion gates)", () => {
+  it("meets 1000-char Japanese + 95% extract/match + visual gates", async () => {
     mkdirSync(OUT, { recursive: true })
     mkdirSync(ARTIFACTS, { recursive: true })
+
+    // 1) Source must be 1000+ compact characters
+    const sourceCompact = compactLength(REAL_FILE_SOURCE)
+    expect(sourceCompact).toBeGreaterThanOrEqual(1000)
 
     const normalized = normalizeToStructuredDocument(REAL_FILE_SOURCE, {
       titleHint: REAL_FILE_TITLE,
     })
     const markdown = structuredDocumentToMarkdown(normalized.document)
     const html = renderCanonicalHtml(normalized.document)
+    const webText = stripHtml(html.html)
 
     writeFileSync(join(OUT, "web-canonical.html"), html.html, "utf8")
     writeFileSync(join(OUT, "web-markdown.md"), markdown, "utf8")
+    writeFileSync(join(OUT, "web-extracted.txt"), webText, "utf8")
     writeFileSync(
       join(OUT, "structured.json"),
       JSON.stringify(normalized.document, null, 2),
     )
 
+    // 2) Word generate
     const word = await exportWithFallback({
       source: REAL_FILE_SOURCE,
       format: "docx",
@@ -74,6 +95,19 @@ describe("real Word/PDF/Web file verification", () => {
     writeFileSync(join(OUT, "single-selection.docx"), word.buffer!)
     writeFileSync(join(ARTIFACTS, "single-selection.docx"), word.buffer!)
 
+    // 3) Re-open Word (unzip document.xml) and verify content
+    const docxText = await extractDocxText(word.buffer!)
+    writeFileSync(join(OUT, "word-extracted.txt"), docxText, "utf8")
+    writeFileSync(join(ARTIFACTS, "word-extracted.txt"), docxText, "utf8")
+    expect(compactLength(docxText)).toBeGreaterThanOrEqual(1000)
+    expect(docxText).toContain(REAL_FILE_TITLE)
+    expect(docxText).not.toContain("\\n")
+    expect(docxText).not.toContain("[object Object]")
+    expect(docxText).not.toMatch(/"type"\s*:/)
+    expect(docxText).not.toMatch(/\bundefined\b/)
+    expect(word.buffer!.byteLength).toBeGreaterThan(5_000)
+
+    // 4) PDF generate
     const pdf = await exportWithFallback({
       source: REAL_FILE_SOURCE,
       format: "pdf",
@@ -83,32 +117,8 @@ describe("real Word/PDF/Web file verification", () => {
     expect(pdf.buffer).toBeTruthy()
     writeFileSync(join(OUT, "single-selection.pdf"), pdf.buffer!)
     writeFileSync(join(ARTIFACTS, "single-selection.pdf"), pdf.buffer!)
-
-    const docxText = await extractDocxText(word.buffer!)
-    writeFileSync(join(OUT, "word-extracted.txt"), docxText, "utf8")
-    writeFileSync(join(ARTIFACTS, "word-extracted.txt"), docxText, "utf8")
-
-    expect(compactLen(docxText)).toBeGreaterThanOrEqual(500)
-    expect(docxText).toContain(REAL_FILE_TITLE)
-    expect(docxText).toContain("はじめに")
-    expect(docxText).toContain("選出の観点")
-    expect(docxText).toContain("おすすめ選出セット")
-    expect(docxText).toContain("まとめ")
-    expect(docxText).toContain("住居：")
-    expect(docxText).toContain("立地利便性")
-    expect(docxText).toContain("プランA")
-    expect(docxText).toContain("91")
-    expect(docxText).not.toMatch(/"type"\s*:/)
-    expect(docxText).not.toMatch(/"content"\s*:/)
-    expect(docxText).not.toContain("```json")
-    expect(docxText).not.toContain("\\n")
-    expect(docxText).not.toContain("[object Object]")
-    expect(docxText).not.toMatch(/\bundefined\b/)
-    expect(word.buffer!.byteLength).toBeGreaterThan(5_000)
-
-    // PDF binary + text extraction (poppler)
     expect(pdf.buffer!.subarray(0, 4).toString("latin1")).toBe("%PDF")
-    expect(pdf.buffer!.byteLength).toBeGreaterThan(8_000)
+    expect(pdf.buffer!.byteLength).toBeGreaterThan(50_000)
 
     if (!hasCmd("pdftotext") || !hasCmd("pdftoppm")) {
       throw new Error(
@@ -116,6 +126,27 @@ describe("real Word/PDF/Web file verification", () => {
       )
     }
 
+    // 5) PDF → images
+    execFileSync("pdftoppm", [
+      "-png",
+      "-r",
+      "150",
+      join(OUT, "single-selection.pdf"),
+      join(OUT, "pdf-page"),
+    ])
+    execFileSync("pdftoppm", [
+      "-png",
+      "-r",
+      "150",
+      join(OUT, "single-selection.pdf"),
+      join(ARTIFACTS, "pdf-page"),
+    ])
+    const page1 = join(OUT, "pdf-page-1.png")
+    expect(existsSync(page1)).toBe(true)
+    const pageBytes = readFileSync(page1).byteLength
+    expect(pageBytes).toBeGreaterThan(30_000)
+
+    // 7) PDF text extract ≥ 95% of source body
     const pdfText = execFileSync(
       "pdftotext",
       ["-layout", join(OUT, "single-selection.pdf"), "-"],
@@ -123,77 +154,75 @@ describe("real Word/PDF/Web file verification", () => {
     )
     writeFileSync(join(OUT, "pdf-extracted.txt"), pdfText, "utf8")
     writeFileSync(join(ARTIFACTS, "pdf-extracted.txt"), pdfText, "utf8")
-
-    expect(compactLen(pdfText)).toBeGreaterThanOrEqual(500)
-    expect(pdfText).toContain(REAL_FILE_TITLE)
-    expect(pdfText).toContain("はじめに")
-    expect(pdfText).toContain("選出の観点")
-    expect(pdfText).toContain("おすすめ選出セット")
-    expect(pdfText).toContain("まとめ")
-    expect(pdfText).toContain("住居：")
-    expect(pdfText).toContain("立地利便性")
-    expect(pdfText).toContain("プランA")
-    expect(pdfText).toContain("91")
-    expect(pdfText).not.toMatch(/"type"\s*:/)
+    expect(compactLength(pdfText)).toBeGreaterThanOrEqual(1000)
     expect(pdfText).not.toContain("\\n")
-    expect(pdfText).not.toContain("[object Object]")
+    expect(pdfText).not.toMatch(/"type"\s*:/)
 
-    execFileSync("pdftoppm", [
-      "-png",
-      "-r",
-      "140",
-      join(OUT, "single-selection.pdf"),
-      join(OUT, "pdf-page"),
-    ])
-    execFileSync("pdftoppm", [
-      "-png",
-      "-r",
-      "140",
-      join(OUT, "single-selection.pdf"),
-      join(ARTIFACTS, "pdf-page"),
-    ])
+    const pdfRecall = orderedCharRecall(REAL_FILE_SOURCE, pdfText)
+    const wordRecall = orderedCharRecall(REAL_FILE_SOURCE, docxText)
+    const webRecall = orderedCharRecall(REAL_FILE_SOURCE, webText)
+    const wordPdfMatch = contentMatchRate(docxText, pdfText)
+    const wordWebMatch = contentMatchRate(docxText, webText)
+    const pdfWebMatch = contentMatchRate(pdfText, webText)
+    const tripleMatch = Math.min(wordPdfMatch, wordWebMatch, pdfWebMatch)
 
-    const page1 = join(OUT, "pdf-page-1.png")
-    expect(existsSync(page1)).toBe(true)
-    // Non-blank page: rendered PNG must be larger than a nearly-empty white page.
-    const pageBytes = readFileSync(page1).byteLength
-    expect(pageBytes).toBeGreaterThan(20_000)
+    // 8) Word / PDF / Web match ≥ 95%
+    expect(pdfRecall).toBeGreaterThanOrEqual(0.95)
+    expect(wordRecall).toBeGreaterThanOrEqual(0.95)
+    expect(webRecall).toBeGreaterThanOrEqual(0.95)
+    expect(tripleMatch).toBeGreaterThanOrEqual(0.95)
 
-    // Consistency across Web / Word / PDF
-    expect(normalized.document.title).toBe(REAL_FILE_TITLE)
-    expect(markdown).toContain(REAL_FILE_TITLE)
-    expect(docxText.includes(REAL_FILE_TITLE) && pdfText.includes(REAL_FILE_TITLE)).toBe(
-      true,
-    )
-    for (const key of ["はじめに", "立地利便性", "住居：", "91", "MINERVOT"] as const) {
-      expect(markdown).toContain(key.replace("：", ""))
-      expect(docxText.includes(key) || docxText.includes(key.replace("：", ":"))).toBe(
-        true,
+    const pageCount =
+      pdf.pdfMeta?.pageCount ??
+      Number(
+        execFileSync("pdfinfo", [join(OUT, "single-selection.pdf")], {
+          encoding: "utf8",
+        }).match(/Pages:\s+(\d+)/)?.[1] ?? "0",
       )
-      expect(pdfText.includes(key) || pdfText.includes(key.replace("：", ":"))).toBe(
-        true,
-      )
-    }
 
     const report = {
+      title: REAL_FILE_TITLE,
+      sourceCompactChars: sourceCompact,
+      sourceNormalizedChars: normalizeDeliverableText(REAL_FILE_SOURCE).length,
       docxPath: join(OUT, "single-selection.docx"),
       pdfPath: join(OUT, "single-selection.pdf"),
       artifactDocx: join(ARTIFACTS, "single-selection.docx"),
       artifactPdf: join(ARTIFACTS, "single-selection.pdf"),
-      wordExtractedChars: compactLen(docxText),
-      pdfExtractedChars: compactLen(pdfText),
-      pdfPageCount: pdf.pdfMeta?.pageCount ?? null,
+      artifactPage1: join(ARTIFACTS, "pdf-page-1.png"),
+      wordExtractedChars: compactLength(docxText),
+      pdfExtractedChars: compactLength(pdfText),
+      webExtractedChars: compactLength(webText),
+      pdfPageCount: pageCount,
       pdfPagePngBytes: pageBytes,
       wordBytes: word.buffer!.byteLength,
       pdfBytes: pdf.buffer!.byteLength,
+      pdfExtractionRecall: Number(pdfRecall.toFixed(4)),
+      wordExtractionRecall: Number(wordRecall.toFixed(4)),
+      webExtractionRecall: Number(webRecall.toFixed(4)),
+      wordPdfMatch: Number(wordPdfMatch.toFixed(4)),
+      wordWebMatch: Number(wordWebMatch.toFixed(4)),
+      pdfWebMatch: Number(pdfWebMatch.toFixed(4)),
+      tripleMatchRate: Number(tripleMatch.toFixed(4)),
+      noRawJson: true,
       renderer: "pdf-lib + DroidSansFallbackFull (CJK) + Helvetica (Latin)",
       wordLibrary: "docx",
-      noRawJson: true,
+      pdfInspector: "poppler pdftotext/pdftoppm",
+      gates: {
+        source1000: sourceCompact >= 1000,
+        pdfExtract95: pdfRecall >= 0.95,
+        tripleMatch95: tripleMatch >= 0.95,
+      },
     }
     writeFileSync(join(OUT, "verification-report.json"), JSON.stringify(report, null, 2))
     writeFileSync(
       join(ARTIFACTS, "verification-report.json"),
       JSON.stringify(report, null, 2),
     )
+    writeFileSync(
+      join(ARTIFACTS, "web-extracted.txt"),
+      webText,
+      "utf8",
+    )
+    writeFileSync(join(ARTIFACTS, "web-canonical.html"), html.html, "utf8")
   }, 180_000)
 })
