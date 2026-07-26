@@ -95,10 +95,24 @@ export function SecretaryUploadHero() {
           const uploaded = await uploadImagesToAtlas(images, {
             preferReadableText: true,
           });
-          stashPendingAttachmentIds(uploaded.attachments.map((item) => item.id));
+          const ids = uploaded.attachments.map((item) => item.id).filter(Boolean);
+          if (ids.length === 0) {
+            stashPendingAttachmentIds([]);
+            setPhase("idle");
+            setVoiceHint(
+              "画像の添付に失敗しました。別の画像を選ぶか、撮り直してからもう一度お試しください。",
+            );
+            return;
+          }
+          stashPendingAttachmentIds(ids);
         } catch {
+          // Never continue with filename-only assignment — Vision cannot run.
           stashPendingAttachmentIds([]);
-          setVoiceHint("画像のアップロードに失敗しました。文章だけ先に送ります。");
+          setPhase("idle");
+          setVoiceHint(
+            "画像のアップロードに失敗しました。画像添付エラーのため仕事を開始していません。",
+          );
+          return;
         }
       } else {
         stashPendingAttachmentIds([]);

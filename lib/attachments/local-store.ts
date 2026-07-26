@@ -186,6 +186,31 @@ export async function localMarkAttachmentRetained(
   return null;
 }
 
+/** Update logical jobId without moving storage paths (paths may stay under pending/). */
+export async function localBindAttachmentToJob(
+  userId: string,
+  id: string,
+  jobId: string,
+): Promise<StoredImageAttachment | null> {
+  const nextJobId = jobId.trim();
+  if (!nextJobId) return null;
+  for (const file of listAllMetaFiles()) {
+    const meta = readMetaFile(file);
+    if (!meta || meta.id !== id || meta.userId !== userId) continue;
+    if (isExpired(meta)) {
+      rmSync(path.dirname(file), { recursive: true, force: true });
+      return null;
+    }
+    const next: StoredImageAttachment = {
+      ...meta,
+      jobId: nextJobId,
+    };
+    writeFileSync(file, JSON.stringify(next));
+    return next;
+  }
+  return null;
+}
+
 export async function localPurgeExpiredAttachments(): Promise<number> {
   let purged = 0;
   for (const file of listAllMetaFiles()) {

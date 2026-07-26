@@ -317,6 +317,34 @@ export async function supabaseMarkAttachmentRetained(
   return rowToMeta(data as AttachmentRow);
 }
 
+/** Update logical job_id without moving storage objects. */
+export async function supabaseBindAttachmentToJob(
+  userId: string,
+  id: string,
+  jobId: string,
+): Promise<StoredImageAttachment | null> {
+  const nextJobId = jobId.trim();
+  if (!nextJobId) return null;
+  const client = requireClient();
+  const { data, error } = await client
+    .from("atlas_image_attachments")
+    .update({
+      job_id: nextJobId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("user_id", userId)
+    .select("*")
+    .maybeSingle();
+  if (error || !data) return null;
+  const meta = rowToMeta(data as AttachmentRow);
+  if (isExpired(meta)) {
+    await supabaseDeleteImageAttachment(userId, id);
+    return null;
+  }
+  return meta;
+}
+
 export async function supabasePurgeExpiredAttachments(
   limit = 100,
 ): Promise<number> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type MutableRefObject } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ImagePreviewList } from "@/components/vision/image-preview-list";
@@ -28,6 +28,8 @@ type ImageAttachmentPickerProps = {
   disabled?: boolean;
   className?: string;
   preferReadableText?: boolean;
+  /** Lets parent route image drops from other UI zones into this uploader. */
+  addFilesRef?: MutableRefObject<((files: FileList | File[]) => void) | null>;
 };
 
 function formatBytes(bytes: number): string {
@@ -48,17 +50,21 @@ export function ImageAttachmentPicker({
   disabled,
   className,
   preferReadableText = true,
+  addFilesRef,
 }: ImageAttachmentPickerProps) {
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const valueRef = useRef(value);
+  valueRef.current = value;
 
   const addFiles = useCallback(
     (list: FileList | File[]) => {
       if (disabled) return;
       const images = filterImageFiles(Array.from(list));
       if (images.length === 0) return;
-      const remaining = ATTACHMENT_LIMITS.maxImagesPerRequest - value.length;
+      const remaining =
+        ATTACHMENT_LIMITS.maxImagesPerRequest - valueRef.current.length;
       if (remaining <= 0) return;
 
       const nextDrafts: LocalImageDraft[] = images.slice(0, remaining).map((file) => ({
@@ -69,7 +75,7 @@ export function ImageAttachmentPicker({
         progress: 0,
       }));
 
-      let current = [...value, ...nextDrafts];
+      let current = [...valueRef.current, ...nextDrafts];
       onChange(current);
 
       void (async () => {
@@ -85,7 +91,9 @@ export function ImageAttachmentPicker({
               preferReadableText,
             });
             const uploaded = result.attachments[0];
-            if (!uploaded) throw new Error("画像のアップロードに失敗しました");
+            if (!uploaded?.id) {
+              throw new Error("画像のアップロードに失敗しました");
+            }
             current = current.map((item) =>
               item.localId === draft.localId
                 ? {
@@ -116,8 +124,12 @@ export function ImageAttachmentPicker({
         }
       })();
     },
-    [disabled, onChange, preferReadableText, value],
+    [disabled, onChange, preferReadableText],
   );
+
+  if (addFilesRef) {
+    addFilesRef.current = addFiles;
+  }
 
   const remove = (localId: string) => {
     const target = value.find((item) => item.localId === localId);

@@ -139,7 +139,8 @@ function buildAssignmentText(input: {
   executionMode: RequestExecutionMode;
   priority: RequestPriority;
   deadline: string;
-  attachments: AttachmentItem[];
+  imageCount: number;
+  nonImageCount: number;
 }): string {
   const lines = [input.text.trim()];
 
@@ -158,18 +159,22 @@ function buildAssignmentText(input: {
     lines.push(`【期限】${input.deadline.replace("T", " ")}`);
   }
 
-  if (input.attachments.length > 0) {
-    lines.push("【添付】");
-    for (const item of input.attachments) {
-      lines.push(
-        `- ${item.file.name}（${item.kind} / ${formatFileSize(item.file.size)}）`,
-      );
-    }
-    // Never tell the model that image bytes are unavailable when images are attached.
-    // Vision analysis supplies structured content server-side before orchestration.
+  // Never put filenames into the assignment — Vision uses attachmentIds server-side.
+  if (input.imageCount > 0) {
+    lines.push(`【添付画像】${input.imageCount}枚（サーバー側で内容を解析します）`);
+  }
+  if (input.nonImageCount > 0) {
+    lines.push(`【その他添付】${input.nonImageCount}件`);
   }
 
   return lines.join("\n");
+}
+
+function isImageLikeFile(file: File): boolean {
+  const type = file.type.toLowerCase();
+  if (type.startsWith("image/")) return true;
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  return ["jpg", "jpeg", "png", "webp", "heic", "heif"].includes(ext ?? "");
 }
 
 export function WorkRequestForm({
@@ -192,16 +197,34 @@ export function WorkRequestForm({
   const [visionDetectedType, setVisionDetectedType] = useState<string>("");
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const imagePickerAddRef = useRef<((files: FileList | File[]) => void) | null>(
+    null,
+  );
 
   const addFiles = useCallback((files: FileList | File[], kind: AttachmentKind) => {
     const list = Array.from(files);
     if (list.length === 0) return;
 
+    // Images must go through ImageAttachmentPicker so attachmentIds are created.
+    const imageFiles = list.filter(isImageLikeFile);
+    const otherFiles = list.filter((file) => !isImageLikeFile(file));
+    if (imageFiles.length > 0) {
+      if (imagePickerAddRef.current) {
+        imagePickerAddRef.current(imageFiles);
+      } else {
+        setAttachmentError(
+          "画像は上の「画像を添付」から選んでください。ファイル名だけでは解析できません。",
+        );
+      }
+    }
+    if (otherFiles.length === 0) return;
+
     setAttachments((prev) => [
       ...prev,
-      ...list.map((file) => ({
+      ...otherFiles.map((file) => ({
         id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
-        kind,
+        kind: kind === "photo" ? "other" : kind,
         file,
       })),
     ]);
@@ -244,6 +267,7 @@ export function WorkRequestForm({
   const handleSubmit = () => {
     const trimmed = value.trim();
     if (!trimmed || isLoading || isUploadingImages) return;
+    setAttachmentError(null);
 
     const uploading = imageDrafts.some(
       (item) => item.status === "uploading" || item.status === "pending",
@@ -255,19 +279,28 @@ export function WorkRequestForm({
     setIsUploadingImages(false);
 
     const failedImages = imageDrafts.filter((item) => item.status === "failed");
-    if (failedImages.length > 0) return;
+    if (failedImages.length > 0) {
+      setAttachmentError("画像のアップロードに失敗しています。撮り直すか別の画像を選んでください。");
+      return;
+    }
 
     const attachmentIds = getUploadedAttachmentIds(imageDrafts);
+    if (imageDrafts.length > 0 && attachmentIds.length === 0) {
+      setAttachmentError(
+        "画像添付エラー: attachmentId がありません。画像を選び直してください。",
+      );
+      return;
+    }
+
     const imageMeta = imageDrafts
       .filter((item) => item.status === "uploaded" && item.uploaded)
       .map((item) => ({
+        attachmentId: item.uploaded!.id,
         id: item.uploaded!.id,
-        name: item.file.name,
         kind: "photo" as const,
         mimeType: item.uploaded!.mimeType,
         size: item.uploaded!.originalBytes,
-        contentAvailable: true,
-        note: "画像はサーバーに保存され、送信時にAI画像理解へ渡されます",
+        visionStatus: "uploaded",
       }));
 
     const assignment = buildAssignmentText({
@@ -275,14 +308,8 @@ export function WorkRequestForm({
       executionMode,
       priority,
       deadline,
-      attachments: [
-        ...attachments,
-        ...imageDrafts.map((item) => ({
-          id: item.localId,
-          kind: "photo" as const,
-          file: item.file,
-        })),
-      ],
+      imageCount: attachmentIds.length,
+      nonImageCount: attachments.length,
     });
 
     onSubmit({
@@ -299,23 +326,11 @@ export function WorkRequestForm({
         attachments: [
           ...imageMeta,
           ...attachments.map((item) => ({
-            name: item.file.name,
             kind: item.kind,
             mimeType: item.file.type || null,
             size: item.file.size,
-            contentAvailable: false,
-            note:
-              item.kind === "photo"
-                ? "画像は上の画像添付欄から送ってください"
-                : "非画像ファイルはファイル名のみ参考にします",
           })),
         ],
-        attachmentContentNote:
-          attachmentIds.length > 0
-            ? "添付画像はサーバー側でAI画像理解へ渡します。"
-            : attachments.length > 0
-              ? "非画像添付はファイル名のみ参考にします。"
-              : null,
         skipWorkMemory: false,
         requireVisionSuccess: attachmentIds.length > 0,
       },
@@ -440,7 +455,11 @@ export function WorkRequestForm({
           onChange={setImageDrafts}
           disabled={isLoading}
           preferReadableText
+          addFilesRef={imagePickerAddRef}
         />
+        {attachmentError && (
+          <p className="text-sm text-[var(--error)]">{attachmentError}</p>
+        )}
         {(imagesBusy || isUploadingImages) && (
           <VisionStatus analyzing status="uploading" />
         )}

@@ -26,9 +26,11 @@ export function VisionFailurePanel({
   const detail =
     gate.status === "needs_input"
       ? "画像は読み取れましたが、依頼の必須項目を確認できませんでした。成果物はまだ作成していません。"
-      : gate.analysisSuccess
-        ? null
-        : "成果物の生成は停止しました。画像を確認してから再試行してください。";
+      : gate.userCode === "missing_attachment_ids"
+        ? "画像の添付IDが送信されていません。ファイル名だけでは解析できません。画像を選び直してください。"
+        : gate.analysisSuccess
+          ? null
+          : "成果物の生成は停止しました。画像を確認してから再試行してください。";
 
   return (
     <div className="space-y-3 rounded-xl border border-amber-300/70 bg-amber-50/50 p-4">

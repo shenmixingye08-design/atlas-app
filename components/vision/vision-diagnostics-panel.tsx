@@ -11,6 +11,9 @@ type Diagnostic = {
   base64Length: number | null;
   inputImageIncluded: boolean | null;
   analysisSuccess: boolean | null;
+  payloadAttachmentIdCount?: number | null;
+  detectedType?: string | null;
+  artifactGate?: string | null;
 };
 
 type VisionDiagnosticsPanelProps = {
@@ -132,6 +135,11 @@ export function VisionDiagnosticsPanel({
                   ? "success"
                   : "failed"}
             </li>
+            <li>
+              Payload attachmentIds: {row.payloadAttachmentIdCount ?? "—"}
+            </li>
+            <li>detectedType: {row.detectedType ?? "—"}</li>
+            <li>Artifact gate: {row.artifactGate ?? "—"}</li>
           </ul>
         </div>
       )}

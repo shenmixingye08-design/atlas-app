@@ -25,6 +25,8 @@ export { getVisionUsageMeter } from "./cost";
 export {
   stripVisionPoisonText,
   evaluateVisionBatchGate,
+  evaluateMissingAttachmentIdsGate,
+  assignmentImpliesImageWork,
   inferRequiredVisionFields,
 } from "./gate";
 export { resolveVisionModel } from "./resolve-vision-model";

@@ -5,6 +5,7 @@ import {
   resolveAttachmentStorageBackend,
 } from "./backend";
 import {
+  localBindAttachmentToJob,
   localDeleteImageAttachment,
   localFindAttachmentByHash,
   localGetImageAttachmentForUser,
@@ -14,6 +15,7 @@ import {
   localSaveImageAttachment,
 } from "./local-store";
 import {
+  supabaseBindAttachmentToJob,
   supabaseDeleteImageAttachment,
   supabaseFindAttachmentByHash,
   supabaseGetImageAttachmentForUser,
@@ -94,6 +96,35 @@ export async function markAttachmentRetained(
     return supabaseMarkAttachmentRetained(userId, id);
   }
   return localMarkAttachmentRetained(userId, id);
+}
+
+export async function bindAttachmentToJob(
+  userId: string,
+  id: string,
+  jobId: string,
+): Promise<StoredImageAttachment | null> {
+  const backend = resolveAttachmentStorageBackend();
+  if (backend === "supabase") {
+    assertAttachmentBackendReady(backend);
+    return supabaseBindAttachmentToJob(userId, id, jobId);
+  }
+  return localBindAttachmentToJob(userId, id, jobId);
+}
+
+/** Bind many attachments to a job. Fails closed if any id cannot be bound. */
+export async function bindAttachmentsToJob(
+  userId: string,
+  attachmentIds: string[],
+  jobId: string,
+): Promise<{ bound: string[]; failed: string[] }> {
+  const bound: string[] = [];
+  const failed: string[] = [];
+  for (const id of attachmentIds) {
+    const row = await bindAttachmentToJob(userId, id, jobId);
+    if (row) bound.push(id);
+    else failed.push(id);
+  }
+  return { bound, failed };
 }
 
 /** Purge temporary attachments past expiresAt (cron / tick). */

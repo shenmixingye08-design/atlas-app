@@ -27,6 +27,7 @@ import { isSalesMaterialRequest } from "@/lib/workspace/sales-material/detect";
 import { buildSalesMaterialMetadata } from "@/lib/workspace/sales-material/metadata";
 import type { SalesMaterialSessionConfig } from "@/lib/workspace/sales-material/types";
 import { consumePendingAttachmentIds } from "@/lib/attachments/pending-session";
+import { assignmentImpliesImageWork } from "@/lib/vision/gate";
 import { useFeatureAvailability } from "@/lib/feature-flags";
 import { useDeliverableFiles } from "@/lib/workspace/use-deliverable-files";
 import type { WorkflowPhaseState } from "@/lib/workspace/types";
@@ -299,13 +300,25 @@ export function WorkspaceDashboard() {
 
     autoStartedRef.current = true;
     const attachmentIds = consumePendingAttachmentIds();
+    if (assignmentImpliesImageWork(prefill) && attachmentIds.length === 0) {
+      setAssignment(prefill);
+      setVisionGate({
+        status: "needs_image_retry",
+        analysisSuccess: false,
+        message: "画像の内容を解析できませんでした",
+        userCode: "missing_attachment_ids",
+      });
+      return;
+    }
     const metadata = {
       requestUi: "secretary_v1",
       executionPreference: "once",
       priority: "normal",
       skipWorkMemory: false,
+      requireVisionSuccess: attachmentIds.length > 0,
       ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
     } as const;
+    setAssignment(prefill);
     setRequestMetadata(metadata);
 
     if (isSalesMaterialRequest(prefill) && isAvailable("sales_material")) {

@@ -135,6 +135,8 @@ export type CommanderVisionGate = {
   message: string;
   userCode: string;
   diagnosticId?: string | null;
+  /** Safe debug only — never includes filenames as content substitutes. */
+  payloadAttachmentIds?: string[];
 };
 
 export type CommanderRunResult = {

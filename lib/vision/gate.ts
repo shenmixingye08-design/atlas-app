@@ -20,6 +20,7 @@ export type VisionGateDecision = {
     | "schema_failed"
     | "config_missing"
     | "needs_input"
+    | "missing_attachment_ids"
     | "ok";
   requiredFields: string[];
   missingRequiredFields: string[];
@@ -28,8 +29,31 @@ export type VisionGateDecision = {
 const POISON_PATTERNS = [
   /ファイルの中身はまだ自動取得できません/,
   /添付画像の中身を自動取得できなかった/,
-  /ファイル名を参考に作業/,
+  /添付画像（.+）が自動取得できない/,
+  /自動取得できない/,
+  /画像が未取得/,
+  /画像確認要/,
+  /ファイル名を参考/,
+  /確認テンプレート/,
   /contentAvailable:\s*false/i,
+  /^【添付】\s*$/,
+  /^- .+\.(jpe?g|png|webp|heic|gif)\b/i,
+];
+
+const IMAGE_WORK_PATTERNS = [
+  /レシート/,
+  /領収書/,
+  /家計簿/,
+  /請求書/,
+  /名刺/,
+  /手書き/,
+  /画像を/,
+  /写真を/,
+  /添付画像/,
+  /読み取/,
+  /OCR/i,
+  /\.(jpe?g|png|webp|heic)\b/i,
+  /「[^」]+\.(jpe?g|png|webp|heic)」/i,
 ];
 
 /** Remove legacy client notes that instruct the model to ignore image content. */
@@ -38,8 +62,16 @@ export function stripVisionPoisonText(assignment: string): string {
     .split("\n")
     .filter((line) => !POISON_PATTERNS.some((re) => re.test(line)))
     .join("\n")
+    // Home upload used to embed 「4830.jpg」はレシートです — strip quoted image filenames.
+    .replace(/「[^」]+\.(jpe?g|png|webp|heic|gif)」/gi, "添付画像")
+    .replace(/\b[\w.-]+\.(jpe?g|png|webp|heic|gif)\b/gi, "添付画像")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/** True when the request clearly depends on image content. */
+export function assignmentImpliesImageWork(text: string): boolean {
+  return IMAGE_WORK_PATTERNS.some((re) => re.test(text));
 }
 
 /**
@@ -64,6 +96,9 @@ function fieldPresent(fields: Record<string, unknown>, key: string): boolean {
     companyName: ["companyName", "company", "会社名", "issuer"],
     phone: ["phone", "tel", "電話", "telephone"],
     email: ["email", "mail", "メール"],
+    storeName: ["storeName", "store", "shopName", "店名"],
+    date: ["date", "purchaseDate", "issueDate", "購入日", "日付"],
+    total: ["total", "amount", "合計", "totalAmount"],
   };
   const keys = aliases[key] ?? [key];
   for (const candidate of keys) {
@@ -75,6 +110,53 @@ function fieldPresent(fields: Record<string, unknown>, key: string): boolean {
     if (typeof value === "number") return true;
   }
   return false;
+}
+
+function receiptSignalCount(fields: Record<string, unknown>): number {
+  let count = 0;
+  if (fieldPresent(fields, "storeName")) count += 1;
+  if (fieldPresent(fields, "date")) count += 1;
+  if (fieldPresent(fields, "total")) count += 1;
+  const items = fields.items;
+  if (Array.isArray(items) && items.length > 0) count += 1;
+  return count;
+}
+
+export function evaluateMissingAttachmentIdsGate(input: {
+  assignment: string;
+  attachmentIds: string[];
+  metadataAttachments?: unknown;
+}): VisionGateDecision | null {
+  if (input.attachmentIds.length > 0) return null;
+
+  const metaList = Array.isArray(input.metadataAttachments)
+    ? input.metadataAttachments
+    : [];
+  const hasImageMeta = metaList.some((item) => {
+    if (!item || typeof item !== "object") return false;
+    const row = item as { kind?: unknown; mimeType?: unknown; name?: unknown };
+    if (row.kind === "photo") return true;
+    if (typeof row.mimeType === "string" && row.mimeType.startsWith("image/")) {
+      return true;
+    }
+    if (typeof row.name === "string" && /\.(jpe?g|png|webp|heic|gif)$/i.test(row.name)) {
+      return true;
+    }
+    return false;
+  });
+
+  if (!hasImageMeta && !assignmentImpliesImageWork(input.assignment)) {
+    return null;
+  }
+
+  return {
+    status: "needs_image_retry",
+    analysisSuccess: false,
+    message: "画像の内容を解析できませんでした",
+    userCode: "missing_attachment_ids",
+    requiredFields: [],
+    missingRequiredFields: [],
+  };
 }
 
 export function evaluateVisionBatchGate(input: {
@@ -97,6 +179,24 @@ export function evaluateVisionBatchGate(input: {
   const mergedFields: Record<string, unknown> = {};
   for (const image of images) {
     Object.assign(mergedFields, image.fields);
+  }
+
+  const isReceiptWork =
+    /レシート|家計簿|領収書/i.test(input.userText) ||
+    images.some((image) => image.detectedType === "receipt") ||
+    input.batch.recommendedArtifactType === "household_excel";
+
+  if (isReceiptWork && receiptSignalCount(mergedFields) < 2) {
+    return {
+      status: "needs_input",
+      analysisSuccess: true,
+      message: "画像内に該当情報を確認できませんでした",
+      userCode: "needs_input",
+      requiredFields: ["storeName", "date", "total"],
+      missingRequiredFields: ["storeName", "date", "total"].filter(
+        (key) => !fieldPresent(mergedFields, key),
+      ),
+    };
   }
 
   const missingRequiredFields = requiredFields.filter(

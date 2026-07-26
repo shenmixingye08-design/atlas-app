@@ -74,6 +74,33 @@ describe("local attachment store", () => {
       .toBuffer();
   }
 
+  it("binds temporary attachments to a job id without losing ownership", async () => {
+    const { bindAttachmentsToJob, getImageAttachmentForUser, saveImageAttachment } =
+      await import("./store");
+    const sharp = (await import("sharp")).default;
+    const png = await sharp({
+      create: { width: 32, height: 32, channels: 3, background: "#eee" },
+    })
+      .png()
+      .toBuffer();
+    const saved = await saveImageAttachment({
+      userId: "user_bind",
+      jobId: "pending",
+      originalFileName: "r.png",
+      mimeType: "image/png",
+      originalBuffer: png,
+      processedBuffer: png,
+      processedMimeType: "image/png",
+      width: 32,
+      height: 32,
+      contentHash: "hash_bind_1",
+    });
+    const result = await bindAttachmentsToJob("user_bind", [saved.id], "job_live_1");
+    expect(result.failed).toEqual([]);
+    const bound = await getImageAttachmentForUser("user_bind", saved.id);
+    expect(bound?.jobId).toBe("job_live_1");
+  });
+
   it("stores under userId/jobId/attachmentId and blocks other users", async () => {
     const buffer = await png();
     const saved = await saveImageAttachment({

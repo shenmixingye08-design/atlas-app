@@ -27,6 +27,9 @@ export type VisionDiagnosticRecord = {
   base64Length: number | null;
   inputImageIncluded: boolean | null;
   analysisSuccess: boolean | null;
+  payloadAttachmentIds: string[] | null;
+  detectedType: string | null;
+  artifactGate: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -80,6 +83,9 @@ export function createVisionDiagnostic(input: {
     base64Length: null,
     inputImageIncluded: null,
     analysisSuccess: null,
+    payloadAttachmentIds: null,
+    detectedType: null,
+    artifactGate: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -118,6 +124,19 @@ export function appendVisionDiagnosticStage(
   }
   if (typeof detail?.analysisSuccess === "boolean") {
     record.analysisSuccess = detail.analysisSuccess;
+  }
+  if (typeof detail?.detectedType === "string") {
+    record.detectedType = detail.detectedType;
+  }
+  if (typeof detail?.artifactGate === "string") {
+    record.artifactGate = detail.artifactGate;
+  }
+  if (typeof detail?.payloadAttachmentIdCount === "number") {
+    // Count only — never store filename substitutes.
+    record.payloadAttachmentIds = Array.from(
+      { length: detail.payloadAttachmentIdCount },
+      (_, index) => `id_${index + 1}`,
+    );
   }
   record.updatedAt = new Date().toISOString();
   logVisionStage({

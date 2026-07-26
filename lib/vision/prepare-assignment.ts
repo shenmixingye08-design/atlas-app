@@ -7,6 +7,10 @@ import {
   evaluateVisionBatchGate,
   stripVisionPoisonText,
 } from "@/lib/vision/gate";
+import {
+  appendVisionDiagnosticStage,
+  createVisionDiagnostic,
+} from "@/lib/vision/diagnostics";
 import { isVisionDetectedType } from "@/lib/vision/schemas";
 import type {
   VisionBatchResult,
@@ -108,7 +112,20 @@ export async function prepareAssignmentWithVision(input: {
 }): Promise<VisionPrepareResult> {
   const cleanAssignment = stripVisionPoisonText(input.assignment);
   const attachmentIds = readAttachmentIds(input.metadata);
+  const diagnosticId = createVisionDiagnostic({
+    userId: input.userId,
+    attachmentId: attachmentIds[0] ?? null,
+    jobId: typeof input.metadata?.jobId === "string" ? input.metadata.jobId : null,
+  }).id;
+  appendVisionDiagnosticStage(diagnosticId, "upload", attachmentIds.length > 0, {
+    payloadAttachmentIdCount: attachmentIds.length,
+  });
+
   if (attachmentIds.length === 0) {
+    appendVisionDiagnosticStage(diagnosticId, "blocked", false, {
+      artifactGate: "missing_attachment_ids",
+      analysisSuccess: false,
+    });
     return {
       assignment: cleanAssignment,
       metadata: { ...(input.metadata ?? {}) },
@@ -181,12 +198,21 @@ export async function prepareAssignmentWithVision(input: {
       userText: cleanAssignment,
     });
 
-    const diagnosticId =
+    const batchDiagnosticId =
       typeof batch.commonFields.diagnosticId === "string"
         ? batch.commonFields.diagnosticId
-        : null;
+        : diagnosticId;
 
     if (gate.status !== "ok") {
+      appendVisionDiagnosticStage(batchDiagnosticId, "blocked", false, {
+        artifactGate: gate.status,
+        analysisSuccess: gate.analysisSuccess,
+        detectedType:
+          typeof batch.commonFields.detectedType === "string"
+            ? batch.commonFields.detectedType
+            : null,
+        payloadAttachmentIdCount: attachmentIds.length,
+      });
       return {
         assignment: cleanAssignment,
         metadata: {
@@ -197,7 +223,7 @@ export async function prepareAssignmentWithVision(input: {
           visionNeedsInput: batch.needsInput ?? null,
           visionWarnings: batch.warnings,
           visionBatchId: batch.id,
-          visionDiagnosticId: diagnosticId,
+          visionDiagnosticId: batchDiagnosticId,
         },
         batch,
         skipped: false,
@@ -206,10 +232,20 @@ export async function prepareAssignmentWithVision(input: {
           gate.message,
           gate.userCode,
           gate.analysisSuccess,
-          diagnosticId,
+          batchDiagnosticId,
         ),
       };
     }
+
+    appendVisionDiagnosticStage(batchDiagnosticId, "artifact_handoff", true, {
+      artifactGate: "ok",
+      analysisSuccess: true,
+      detectedType:
+        typeof batch.commonFields.detectedType === "string"
+          ? batch.commonFields.detectedType
+          : null,
+      payloadAttachmentIdCount: attachmentIds.length,
+    });
 
     const enriched = buildVisionEnrichedAssignment({
       assignment: cleanAssignment,
@@ -224,6 +260,7 @@ export async function prepareAssignmentWithVision(input: {
         visionBatchId: batch.id,
         visionStatus: "analyzed",
         visionAnalysisSuccess: true,
+        visionDiagnosticId: batchDiagnosticId,
         visionDetectedType: batch.commonFields.detectedType,
         visionLabel:
           typeof batch.images[0]?.detectedType === "string"

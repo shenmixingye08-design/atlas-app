@@ -32,6 +32,8 @@ export {
   deleteImageAttachment,
   findAttachmentByHash,
   markAttachmentRetained,
+  bindAttachmentToJob,
+  bindAttachmentsToJob,
   purgeExpiredAttachments,
 } from "./store";
 export { uploadUserImage, uploadUserImages } from "./image-upload";
