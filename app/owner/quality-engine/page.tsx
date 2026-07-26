@@ -1,3 +1,4 @@
+import { ArtifactFeedbackPanel } from "@/components/owner/artifact-feedback-panel";
 import { QualityBenchmarkPanel } from "@/components/owner/quality-benchmark/benchmark-panel";
 import { QualityEnginePanel } from "@/components/owner/quality-engine-panel";
 import { OwnerNav } from "@/components/owner/owner-nav";
@@ -13,6 +14,7 @@ export default async function OwnerQualityEnginePage() {
         <OwnerNav active="qualityEngine" />
         <QualityEnginePanel />
         <QualityBenchmarkPanel />
+        <ArtifactFeedbackPanel />
       </div>
     </OwnerShell>
   );
