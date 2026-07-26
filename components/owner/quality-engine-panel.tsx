@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type {
   QualityEngineTelemetry,
@@ -17,6 +17,11 @@ type ApiResponse = {
   entries: QualityEngineLogEntry[];
   byKind?: QualityKindStats[];
 };
+
+function pct(part: number, total: number): string {
+  if (total <= 0) return "—";
+  return `${Math.round((part / total) * 100)}%`;
+}
 
 /**
  * Owner-only panel. Shows Planner/Writer/Reviewer/Judge timings,
@@ -48,12 +53,31 @@ export function QualityEnginePanel() {
     };
   }, []);
 
+  const knowledgeStats = useMemo(() => {
+    const withUsage = entries.filter((e) => e.knowledgeUsage);
+    const n = withUsage.length;
+    if (n === 0) return null;
+    const count = (key: "businessProfile" | "reference" | "template" | "knowledge") =>
+      withUsage.filter((e) => e.knowledgeUsage?.[key]).length;
+    const avgContext = Math.round(
+      withUsage.reduce((s, e) => s + (e.knowledgeUsage?.contextChars ?? 0), 0) / n,
+    );
+    return {
+      n,
+      businessProfile: count("businessProfile"),
+      reference: count("reference"),
+      template: count("template"),
+      knowledge: count("knowledge"),
+      avgContext,
+    };
+  }, [entries]);
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Quality Engine</h1>
         <p className="mt-2 text-sm text-[var(--text-secondary)]">
-          成果物専門AIの品質スコア・改善回数・Reviewer回数（一般ユーザーには非表示）
+          成果物専門AI・Knowledge Engine の品質指標（一般ユーザーには非表示）
         </p>
       </div>
 
@@ -61,6 +85,60 @@ export function QualityEnginePanel() {
         <Card padding="md">
           <p className="text-sm text-[var(--status-error)]">{error}</p>
         </Card>
+      )}
+
+      {!error && knowledgeStats && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-medium text-foreground">
+            Knowledge 利用状況
+          </h2>
+          <div className="overflow-x-auto rounded-2xl border border-[var(--border)]">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-[var(--surface-muted)] text-[var(--text-muted)]">
+                <tr>
+                  <th className="px-3 py-2 font-medium">指標</th>
+                  <th className="px-3 py-2 font-medium">値</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-t border-[var(--border)]">
+                  <td className="px-3 py-2">Business Profile使用</td>
+                  <td className="px-3 py-2 tabular-nums">
+                    {pct(knowledgeStats.businessProfile, knowledgeStats.n)}（
+                    {knowledgeStats.businessProfile}/{knowledgeStats.n}）
+                  </td>
+                </tr>
+                <tr className="border-t border-[var(--border)]">
+                  <td className="px-3 py-2">Reference使用</td>
+                  <td className="px-3 py-2 tabular-nums">
+                    {pct(knowledgeStats.reference, knowledgeStats.n)}（
+                    {knowledgeStats.reference}/{knowledgeStats.n}）
+                  </td>
+                </tr>
+                <tr className="border-t border-[var(--border)]">
+                  <td className="px-3 py-2">Template使用</td>
+                  <td className="px-3 py-2 tabular-nums">
+                    {pct(knowledgeStats.template, knowledgeStats.n)}（
+                    {knowledgeStats.template}/{knowledgeStats.n}）
+                  </td>
+                </tr>
+                <tr className="border-t border-[var(--border)]">
+                  <td className="px-3 py-2">Knowledge使用</td>
+                  <td className="px-3 py-2 tabular-nums">
+                    {pct(knowledgeStats.knowledge, knowledgeStats.n)}（
+                    {knowledgeStats.knowledge}/{knowledgeStats.n}）
+                  </td>
+                </tr>
+                <tr className="border-t border-[var(--border)]">
+                  <td className="px-3 py-2">平均Contextサイズ</td>
+                  <td className="px-3 py-2 tabular-nums">
+                    {knowledgeStats.avgContext.toLocaleString()} 文字
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {!error && byKind.length > 0 && (
@@ -127,9 +205,11 @@ export function QualityEnginePanel() {
                   <th className="px-3 py-2 font-medium">スコア</th>
                   <th className="px-3 py-2 font-medium">改善</th>
                   <th className="px-3 py-2 font-medium">Reviewer</th>
-                  <th className="px-3 py-2 font-medium">Planner</th>
-                  <th className="px-3 py-2 font-medium">Writer</th>
-                  <th className="px-3 py-2 font-medium">Judge</th>
+                  <th className="px-3 py-2 font-medium">BP</th>
+                  <th className="px-3 py-2 font-medium">Ref</th>
+                  <th className="px-3 py-2 font-medium">Tpl</th>
+                  <th className="px-3 py-2 font-medium">Know</th>
+                  <th className="px-3 py-2 font-medium">Ctx</th>
                 </tr>
               </thead>
               <tbody>
@@ -154,14 +234,21 @@ export function QualityEnginePanel() {
                     <td className="px-3 py-2 tabular-nums">
                       {entry.reviewerCount ?? (entry.reviewerUsedLlm ? 2 : 1)}
                     </td>
-                    <td className="px-3 py-2 tabular-nums">
-                      {entry.timings.plannerMs}ms
+                    <td className="px-3 py-2">
+                      {entry.knowledgeUsage?.businessProfile ? "✓" : "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      {entry.knowledgeUsage?.reference ? "✓" : "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      {entry.knowledgeUsage?.template ? "✓" : "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      {entry.knowledgeUsage?.knowledge ? "✓" : "—"}
                     </td>
                     <td className="px-3 py-2 tabular-nums">
-                      {entry.timings.writerMs}ms
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">
-                      {entry.timings.judgeMs}ms
+                      {entry.knowledgeUsage?.contextChars?.toLocaleString() ??
+                        "—"}
                     </td>
                   </tr>
                 ))}

@@ -3,9 +3,13 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { emptyDeliverable } from "@/lib/orchestration/deliverable-types";
 
 import { buildQualityKindStats } from "./analytics";
-import { buildQualityContextPack } from "./context-pack";
+import { buildQualityContextPack, formatContextPackForPrompt } from "./context-pack";
 import { applyFormatterToDeliverable } from "./formatter";
 import { runRulesQualityJudge } from "./judge";
+import {
+  KNOWLEDGE_MERGE_PRIORITY,
+  listRegistryKnowledge,
+} from "./knowledge";
 import {
   QUALITY_ENGINE_MAX_IMPROVE,
   QUALITY_JUDGE_PASS_SCORE,
@@ -333,5 +337,54 @@ describe("judge / reviewer / formatter", () => {
     expect(sales?.avgReviewerCount).toBe(2);
     expect(blog?.avgScore).toBe(92);
     expect(blog?.specialistLabel).toBe("ブログAI");
+  });
+});
+
+describe("knowledge engine", () => {
+  it("keeps merge priority Business Profile → Reference → company → … → template", () => {
+    expect(KNOWLEDGE_MERGE_PRIORITY.slice(0, 6)).toEqual([
+      "business_profile",
+      "reference",
+      "company",
+      "industry",
+      "deliverable",
+      "template",
+    ]);
+  });
+
+  it("loads deliverable-specific registry knowledge", () => {
+    const sales = listRegistryKnowledge("sales_material");
+    expect(sales.some((e) => e.id === "sales.cta")).toBe(true);
+    const blog = listRegistryKnowledge("blog");
+    expect(blog.some((e) => e.id === "blog.seo")).toBe(true);
+    const contract = listRegistryKnowledge("contract");
+    expect(contract.some((e) => e.id === "contract.legal")).toBe(true);
+    expect(contract.some((e) => e.id === "sales.cta")).toBe(false);
+  });
+
+  it("builds Context Pack with merged knowledge and usage flags", () => {
+    const pack = buildQualityContextPack({
+      assignment: "営業資料を作成して",
+      deliverableType: "presentation",
+      metadata: {
+        businessProfileSummary: "株式会社サンプル / SaaS",
+        companyTemplateId: "default",
+        templateHints: "提案スライド標準",
+        attachments: [{ name: "ref.pdf", mimeType: "application/pdf" }],
+      },
+    });
+
+    expect(pack.promptKind).toBe("sales_material");
+    expect(pack.knowledgeUsage.businessProfile).toBe(true);
+    expect(pack.knowledgeUsage.reference).toBe(true);
+    expect(pack.knowledgeUsage.template).toBe(true);
+    expect(pack.knowledgeUsage.knowledge).toBe(true);
+    expect(pack.knowledgeUsage.contextChars).toBeGreaterThan(100);
+    expect(pack.knowledgeUsage.layersUsed[0]).toBe("business_profile");
+
+    const prompt = formatContextPackForPrompt(pack);
+    expect(prompt).toContain("Knowledge Engine Context Pack");
+    expect(prompt).toContain("営業構成");
+    expect(prompt).toContain("Business Profile");
   });
 });

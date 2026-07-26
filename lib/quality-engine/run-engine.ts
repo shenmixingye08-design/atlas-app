@@ -110,8 +110,11 @@ export async function runQualityEngine(
   const contextPack =
     input.contextPack ??
     buildQualityContextPack({
+      assignment: input.assignment,
+      deliverableType: input.deliverableType,
       metadata: input.metadata,
       knowledge: input.knowledge,
+      promptKind,
     });
   const brief =
     input.writerBrief ??
@@ -312,6 +315,7 @@ export async function runQualityEngine(
   deliverable = formatted.deliverable;
   timings.formatterMs = formatted.durationMs;
 
+  const usage = contextPack.knowledgeUsage;
   const result: QualityEngineRunResult = {
     telemetry: {
       tier,
@@ -325,6 +329,15 @@ export async function runQualityEngine(
       timings,
       reviewerUsedLlm: Boolean(reviewer?.usedLlm),
       judgeSource: judge!.source,
+      knowledgeUsage: {
+        businessProfile: usage.businessProfile,
+        reference: usage.reference,
+        template: usage.template,
+        knowledge: usage.knowledge,
+        contextChars: usage.contextChars,
+        layersUsed: [...usage.layersUsed],
+        entryCount: usage.entryCount,
+      },
       recordedAt: new Date().toISOString(),
     },
     judge: judge!,
@@ -372,8 +385,11 @@ export function prepareQualityWriterBundle(input: {
     metadata: input.metadata,
   });
   const contextPack = buildQualityContextPack({
+    assignment: input.assignment,
+    deliverableType: input.deliverableType,
     metadata: input.metadata,
     knowledge: input.knowledge,
+    promptKind,
   });
   const brief = buildWriterBrief({
     assignment: input.assignment,
