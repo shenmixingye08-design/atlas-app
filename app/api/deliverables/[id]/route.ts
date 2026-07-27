@@ -6,7 +6,10 @@ import {
   mimeTypeForFormat,
 } from "@/lib/deliverables/binary-guards";
 import { markDeliverableDownloaded } from "@/lib/deliverables/durable-store";
-import { getStoredDeliverableForUser } from "@/lib/deliverables/store";
+import {
+  getStoredDeliverableForUser,
+  isDeliverableOwnedByOtherUser,
+} from "@/lib/deliverables/store";
 import { buildAttachmentContentDisposition } from "@/lib/http/content-disposition";
 import { recordReliabilityEvent } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
@@ -31,6 +34,15 @@ export async function GET(
   }
 
   const { id } = await context.params;
+
+  if (isDeliverableOwnedByOtherUser(id, userId)) {
+    recordReliabilityEvent("deliverable_download", "failure");
+    return Response.json(
+      { error: "この成果物へのアクセス権がありません。" },
+      { status: 403 },
+    );
+  }
+
   const stored = await getStoredDeliverableForUser(id, userId);
 
   if (!stored) {

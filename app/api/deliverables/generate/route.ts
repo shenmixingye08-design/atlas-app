@@ -14,8 +14,10 @@ type RequestBody = {
   finalDeliverable?: unknown;
   title?: unknown;
   workflowId?: unknown;
+  jobId?: unknown;
   projectName?: unknown;
   formats?: unknown;
+  generationAttempt?: unknown;
 };
 
 const VALID_FORMATS = new Set(["pdf", "docx", "pptx", "md", "txt", "xlsx"]);
@@ -114,11 +116,22 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "workflowId must be a string" }, { status: 400 });
   }
 
+  if (body.jobId !== undefined && typeof body.jobId !== "string") {
+    return Response.json({ error: "jobId must be a string" }, { status: 400 });
+  }
+
   try {
     const origin = resolveOrigin(request);
     const projectName = resolveProjectName(body);
     const workflowId =
       typeof body.workflowId === "string" ? body.workflowId : null;
+    const jobId = typeof body.jobId === "string" ? body.jobId : null;
+    const generationAttempt =
+      typeof body.generationAttempt === "number" &&
+      Number.isFinite(body.generationAttempt) &&
+      body.generationAttempt >= 1
+        ? Math.floor(body.generationAttempt)
+        : 1;
 
     const result = await generateDeliverables(
       {
@@ -128,7 +141,7 @@ export async function POST(request: Request): Promise<Response> {
         formats: parseFormats(body.formats),
       },
       origin,
-      { userId, workflowId },
+      { userId, workflowId, jobId, generationAttempt },
     );
 
     let uploads: IntegrationUploadSummary = {

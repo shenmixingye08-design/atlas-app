@@ -14,8 +14,33 @@ type DeliverablesPanelProps = {
   deliverables: Deliverable[];
   isGenerating: boolean;
   error: string | null;
-  matchedRule: string | null;
+  matchedRule?: string | null;
+  sourceText?: string | null;
 };
+
+function formatBytes(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatGeneratedAt(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ja-JP", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function formatBadge(format: Deliverable["format"]): string {
+  if (format === "docx") return ".docx";
+  if (format === "pptx") return ".pptx";
+  if (format === "xlsx") return ".xlsx";
+  if (format === "pdf") return ".pdf";
+  if (format === "md") return ".md";
+  return ".txt";
+}
 
 function DeliverableDownloadButton({ item }: { item: Deliverable }) {
   const [isDownloading, setIsDownloading] = useState(false);
@@ -41,11 +66,11 @@ function DeliverableDownloadButton({ item }: { item: Deliverable }) {
   };
 
   return (
-    <div className="mt-6 space-y-2">
+    <div className="mt-4 space-y-2">
       <Button
         variant="primary"
         size="lg"
-        className="w-full"
+        className="w-full min-h-11 touch-manipulation"
         disabled={isDownloading}
         onClick={() => void handleDownload()}
       >
@@ -60,13 +85,14 @@ export function DeliverablesPanel({
   deliverables,
   isGenerating,
   error,
+  sourceText,
 }: DeliverablesPanelProps) {
   if (!isGenerating && deliverables.length === 0 && !error) {
     return null;
   }
 
   return (
-    <section className="space-y-8 animate-fade-in" aria-labelledby="deliverables-heading">
+    <section className="space-y-6 animate-fade-in" aria-labelledby="deliverables-heading">
       <h2 id="deliverables-heading" className="text-title text-foreground">
         {ui.work.deliverables}
       </h2>
@@ -80,16 +106,62 @@ export function DeliverablesPanel({
       <div className="space-y-6">
         {deliverables.map((item) => (
           <Card key={item.id} padding="lg">
-            <div className="rounded-[var(--radius-xl)] bg-[var(--background-subtle)] px-6 py-12 text-center">
-              <p className="text-sm text-[var(--foreground-muted)]">
-                {DELIVERABLE_FORMAT_LABELS[item.format]}
-              </p>
-              <p className="mt-2 text-base font-medium text-foreground truncate">
-                {item.fileName}
-              </p>
+            <div className="flex items-start gap-4">
+              <div
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--radius-lg)] bg-[var(--background-subtle)] text-sm font-semibold text-foreground"
+                aria-hidden
+              >
+                {item.format === "docx"
+                  ? "W"
+                  : item.format === "pdf"
+                    ? "P"
+                    : item.format === "xlsx"
+                      ? "X"
+                      : item.format.toUpperCase().slice(0, 1)}
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="truncate text-base font-medium text-foreground">
+                  {item.fileName}
+                </p>
+                <p className="text-sm text-[var(--foreground-muted)]">
+                  {DELIVERABLE_FORMAT_LABELS[item.format]} · {formatBadge(item.format)}
+                </p>
+                <p className="text-caption text-[var(--foreground-muted)]">
+                  {formatGeneratedAt(item.generatedAt)} · {formatBytes(item.sizeBytes)}
+                </p>
+              </div>
             </div>
 
             <DeliverableDownloadButton item={item} />
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {sourceText?.trim() ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="min-h-11 touch-manipulation"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(sourceText);
+                  }}
+                >
+                  {ui.work.copy}
+                </Button>
+              ) : null}
+              <Button
+                variant="secondary"
+                size="sm"
+                className="min-h-11 touch-manipulation"
+                onClick={() => {
+                  void navigator.clipboard.writeText(
+                    typeof window !== "undefined"
+                      ? `${window.location.origin}${item.downloadUrl}`
+                      : item.downloadUrl,
+                  );
+                }}
+              >
+                共有リンクをコピー
+              </Button>
+            </div>
           </Card>
         ))}
       </div>

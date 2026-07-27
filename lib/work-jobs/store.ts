@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Deliverable } from "@/lib/deliverables/types";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 
 import {
@@ -14,6 +15,12 @@ export type WorkJobStatus =
   | "completed"
   | "failed"
   | "awaiting_confirmation";
+
+export type WorkJobFileDeliverableStatus =
+  | "pending"
+  | "completed"
+  | "failed"
+  | "skipped";
 
 export type WorkJobRecord = {
   id: string;
@@ -31,6 +38,15 @@ export type WorkJobRecord = {
   maxAttempts: number;
   error: string | null;
   result: OrchestrationResult | null;
+  /** Server-generated downloadable files (source of truth after AI). */
+  fileDeliverables: Deliverable[] | null;
+  fileDeliverableFailures: Array<{
+    format: string;
+    reasons: string[];
+    stage?: string;
+  }> | null;
+  fileDeliverableStatus: WorkJobFileDeliverableStatus | null;
+  fileDeliverableMatchedRule: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -48,6 +64,10 @@ function normalizeWorkJob(job: WorkJobRecord): WorkJobRecord {
   return {
     ...job,
     metadata: job.metadata && typeof job.metadata === "object" ? job.metadata : {},
+    fileDeliverables: job.fileDeliverables ?? null,
+    fileDeliverableFailures: job.fileDeliverableFailures ?? null,
+    fileDeliverableStatus: job.fileDeliverableStatus ?? null,
+    fileDeliverableMatchedRule: job.fileDeliverableMatchedRule ?? null,
   };
 }
 
@@ -101,6 +121,11 @@ export function findWorkJobByIdempotencyKey(
     }
   }
   return null;
+}
+
+export function resetWorkJobsForTests(): void {
+  const g = globalThis as typeof globalThis & { __atlasWorkJobs?: Bucket };
+  g.__atlasWorkJobs = new Map();
 }
 
 /** Build minute-bucket idempotency key to prevent double-submit of the same request. */

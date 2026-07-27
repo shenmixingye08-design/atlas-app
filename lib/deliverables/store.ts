@@ -287,6 +287,16 @@ export async function getStoredDeliverableForUser(
   return hydrated;
 }
 
+/** True when a deliverable id exists but belongs to another user. */
+export function isDeliverableOwnedByOtherUser(
+  id: string,
+  userId: string,
+): boolean {
+  const memory = getStoredDeliverable(id);
+  if (memory) return memory.userId !== userId;
+  return false;
+}
+
 export function toDeliverableMetadata(
   stored: StoredDeliverable,
   _requestOrigin?: string,

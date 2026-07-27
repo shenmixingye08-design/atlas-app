@@ -20,6 +20,7 @@ import { logDocxStage, logDocxStageFailure } from "../docx-stage-log";
 import { parseDeliverableContent } from "../parse-content";
 import type { ContentBlock, ParsedDeliverable } from "../parse-content";
 import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
+import { logWorkPipeline, logWorkPipelineFailure } from "../work-pipeline-log";
 
 import { createDeliverableFile } from "./shared";
 
@@ -320,19 +321,29 @@ export class DocxDeliverableGenerator implements DeliverableGenerator {
     // Never silent-fallback to Markdown — Word success must mean a real .docx.
     try {
       logDocxStage("DOCX_PARSE_STARTED", {}, { baseFileName });
+      logWorkPipeline("DOCX_PARSE_STARTED", { format: "docx" }, { baseFileName });
       const parsed = parseDeliverableContent(content);
       logDocxStage("DOCX_PARSE_COMPLETED", {}, {
         baseFileName,
         sectionCount: parsed.sections.length,
         title: parsed.title,
       });
+      logWorkPipeline("DOCX_PARSE_COMPLETED", { format: "docx" }, {
+        baseFileName,
+        sectionCount: parsed.sections.length,
+      });
 
       logDocxStage("DOCX_PACK_STARTED", {}, { baseFileName });
+      logWorkPipeline("DOCX_PACK_STARTED", { format: "docx" }, { baseFileName });
       const buffer = await buildDocxBuffer(parsed);
       logDocxStage("DOCX_PACK_COMPLETED", {}, {
         baseFileName,
         sizeBytes: buffer.byteLength,
       });
+      logWorkPipeline("DOCX_PACK_COMPLETED", {
+        format: "docx",
+        generatedFileSize: buffer.byteLength,
+      }, { baseFileName });
 
       // Refuse mid-pipeline / text / XML dumps — completed OOXML zip only.
       if (
@@ -353,6 +364,9 @@ export class DocxDeliverableGenerator implements DeliverableGenerator {
       return createDeliverableFile("docx", baseFileName, buffer, false);
     } catch (error) {
       logDocxStageFailure("DOCX_PACK_STARTED", error, {}, { baseFileName });
+      logWorkPipelineFailure("DOCX_PACK_STARTED", error, { format: "docx" }, {
+        baseFileName,
+      });
       throw error;
     }
   }

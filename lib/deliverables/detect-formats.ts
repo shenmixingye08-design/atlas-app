@@ -4,6 +4,10 @@ import type {
   DeliverableFormat,
   DeliverableFormatDetection,
 } from "./types";
+import {
+  isExplicitWordRequest,
+  normalizeAssignmentForFormatDetection,
+} from "./word-intent";
 
 type FormatRule = {
   id: string;
@@ -89,25 +93,30 @@ const FORMAT_RULES: readonly FormatRule[] = [
 
 const DEFAULT_FORMATS: readonly DeliverableFormat[] = ["md", "txt", "pdf"];
 
-function normalizeHaystack(value: string): string {
-  return value.toLowerCase();
-}
-
 /** Infer which file formats to produce from the user's assignment text. */
 export function detectDeliverableFormats(
   assignment: string,
 ): DeliverableFormatDetection {
+  // Explicit Word / ワード / .docx requests win over content-type heuristics
+  // so「営業報告書をWordで」does not silently become PDF-first or lose docx.
+  if (isExplicitWordRequest(assignment)) {
+    return {
+      formats: ["docx"],
+      matchedRule: "word_explicit",
+    };
+  }
+
   const companyDetection = detectCompanyDeliverableFormats(assignment);
 
   if (companyDetection.matchedRule && !companyDetection.matchedRule.endsWith(":default")) {
     return companyDetection;
   }
 
-  const haystack = normalizeHaystack(assignment);
+  const haystack = normalizeAssignmentForFormatDetection(assignment);
 
   for (const rule of FORMAT_RULES) {
     const matched = rule.keywords.some((keyword) =>
-      haystack.includes(keyword.toLowerCase()),
+      haystack.includes(normalizeAssignmentForFormatDetection(keyword)),
     );
 
     if (matched) {

@@ -11,6 +11,10 @@ import type { OrchestrationResult } from "@/lib/orchestration/types";
 export type DeliverableFileOptions = {
   formats?: DeliverableFormat[];
   skipFileGeneration?: boolean;
+  /** Work job id — enables server idempotency and skips duplicate client packs. */
+  jobId?: string | null;
+  /** Server-persisted files from work job poll (source of truth after refresh). */
+  serverDeliverables?: Deliverable[] | null;
 };
 
 export function useDeliverableFiles(
@@ -37,10 +41,14 @@ export function useDeliverableFiles(
     return { previewContent: guarded.text, guardError: null as string | null };
   }, [result]);
 
+  const serverFiles = options?.serverDeliverables ?? null;
+  const hasServerFiles = Boolean(serverFiles && serverFiles.length > 0);
+
   const shouldGenerate = Boolean(
     result &&
       exportGuard.previewContent &&
-      !options?.skipFileGeneration,
+      !options?.skipFileGeneration &&
+      !hasServerFiles,
   );
 
   useEffect(() => {
@@ -70,6 +78,7 @@ export function useDeliverableFiles(
                 : undefined,
             projectName: result.assignment.trim().slice(0, 80),
             workflowId: result.knowledge?.workflowId,
+            jobId: options?.jobId ?? undefined,
             formats:
               options?.formats && options.formats.length > 0
                 ? options.formats
@@ -99,9 +108,11 @@ export function useDeliverableFiles(
     exportGuard.previewContent,
     options?.formats,
     options?.skipFileGeneration,
+    options?.jobId,
+    hasServerFiles,
   ]);
 
-  if (!shouldGenerate) {
+  if (!shouldGenerate && !hasServerFiles) {
     return {
       deliverables: [] as Deliverable[],
       deliverablesError: exportGuard.guardError,
@@ -109,5 +120,9 @@ export function useDeliverableFiles(
     };
   }
 
-  return { deliverables, deliverablesError, isGeneratingDeliverables };
+  return {
+    deliverables: hasServerFiles && serverFiles ? serverFiles : deliverables,
+    deliverablesError: hasServerFiles ? null : deliverablesError,
+    isGeneratingDeliverables: hasServerFiles ? false : isGeneratingDeliverables,
+  };
 }

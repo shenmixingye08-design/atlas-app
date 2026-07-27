@@ -30,9 +30,14 @@ export function ensureFormatFileName(
 ): string {
   const ext = DELIVERABLE_EXTENSIONS[format];
   const trimmed = fileName.trim() || `document${ext}`;
-  if (trimmed.toLowerCase().endsWith(ext)) return trimmed;
+  // Collapse duplicated extensions (e.g. report.docx.docx → report.docx).
+  const collapsed = trimmed.replace(
+    new RegExp(`(?:\\${ext}){2,}$`, "i"),
+    ext,
+  );
+  if (collapsed.toLowerCase().endsWith(ext)) return collapsed;
   // Strip a wrong trailing extension then append the correct one.
-  const withoutExt = trimmed.replace(/\.[^.]+$/, "");
+  const withoutExt = collapsed.replace(/\.[^.]+$/, "");
   return `${withoutExt || "document"}${ext}`;
 }
 

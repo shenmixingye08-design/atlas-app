@@ -108,6 +108,13 @@ export async function POST(request: Request): Promise<Response> {
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+  const { logWorkPipeline } = await import("@/lib/deliverables/work-pipeline-log");
+  logWorkPipeline("WORK_REQUEST_RECEIVED", {
+    jobId: id,
+    userId,
+  }, {
+    assignmentLength: assignment.length,
+  });
   saveWorkJob({
     id,
     userId,
@@ -119,6 +126,10 @@ export async function POST(request: Request): Promise<Response> {
     maxAttempts: MAX_IMMEDIATE_RETRIES,
     error: null,
     result: null,
+    fileDeliverables: null,
+    fileDeliverableFailures: null,
+    fileDeliverableStatus: "pending",
+    fileDeliverableMatchedRule: null,
     createdAt: now,
     updatedAt: now,
     completedAt: null,

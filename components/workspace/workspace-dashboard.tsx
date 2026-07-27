@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
+import type { Deliverable } from "@/lib/deliverables/types";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import { formatUserFacingErrorText, toUserFacingError } from "@/lib/orchestration/user-errors";
 import { projectService } from "@/lib/projects/project-service";
@@ -43,6 +44,8 @@ import {
   type SalesMaterialWizardResult,
 } from "./sales-material-wizard";
 
+const ACTIVE_WORK_JOB_KEY = "minervot.activeWorkJobId";
+
 export function WorkspaceDashboard() {
   const [assignment, setAssignment] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -68,8 +71,11 @@ export function WorkspaceDashboard() {
   const [backgroundAccepted, setBackgroundAccepted] = useState(false);
   const [pendingCommander, setPendingCommander] =
     useState<CommanderRunResult | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [serverDeliverables, setServerDeliverables] = useState<Deliverable[] | null>(
+    null,
+  );
 
-  const abortRef = useRef<AbortController | null>(null);
   const autoStartedRef = useRef(false);
   const { isAvailable } = useFeatureAvailability();
   const preferredFormat = requestMetadata.preferredDeliverableFormat;
@@ -85,10 +91,14 @@ export function WorkspaceDashboard() {
     ? {
         formats: formatsForWizardConfig(salesMaterialConfig),
         skipFileGeneration: salesMaterialConfig.skipFileGeneration,
+        jobId: activeJobId,
+        serverDeliverables,
       }
-    : preferredFormats
-      ? { formats: preferredFormats }
-      : undefined;
+    : {
+        ...(preferredFormats ? { formats: preferredFormats } : {}),
+        jobId: activeJobId,
+        serverDeliverables,
+      };
   const { deliverables, deliverablesError, isGeneratingDeliverables } =
     useDeliverableFiles(result, deliverableOptions);
 
@@ -101,6 +111,85 @@ export function WorkspaceDashboard() {
     }
     setTaughtWorkflowHint(searchParams.get("taught") === "1");
   }, [searchParams]);
+
+  // Restore in-flight / completed work job after refresh or Android background resume.
+  useEffect(() => {
+    const storedJobId =
+      typeof window !== "undefined"
+        ? window.sessionStorage.getItem(ACTIVE_WORK_JOB_KEY)
+        : null;
+    if (!storedJobId?.trim()) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const poll = await fetch(
+          `/api/work/jobs/${encodeURIComponent(storedJobId)}`,
+          { cache: "no-store" },
+        );
+        if (!poll.ok || cancelled) return;
+        const body = (await poll.json().catch(() => ({}))) as {
+          status?: string;
+          result?: OrchestrationResult | null;
+          error?: string;
+          fileDeliverables?: Deliverable[];
+          jobId?: string;
+        };
+        if (cancelled) return;
+        setActiveJobId(body.jobId ?? storedJobId);
+        if (Array.isArray(body.fileDeliverables) && body.fileDeliverables.length > 0) {
+          setServerDeliverables(body.fileDeliverables);
+        }
+        if (body.result) {
+          setResult(body.result);
+        }
+        if (body.status === "queued" || body.status === "running") {
+          setIsLoading(true);
+          setBackgroundAccepted(true);
+          for (let i = 0; i < 240; i += 1) {
+            if (cancelled) return;
+            await new Promise((r) => setTimeout(r, 2_000));
+            const next = await fetch(
+              `/api/work/jobs/${encodeURIComponent(storedJobId)}`,
+              { cache: "no-store" },
+            );
+            const nextBody = (await next.json().catch(() => ({}))) as {
+              status?: string;
+              result?: OrchestrationResult | null;
+              error?: string;
+              fileDeliverables?: Deliverable[];
+            };
+            if (!next.ok) continue;
+            if (
+              Array.isArray(nextBody.fileDeliverables) &&
+              nextBody.fileDeliverables.length > 0
+            ) {
+              setServerDeliverables(nextBody.fileDeliverables);
+            }
+            if (nextBody.status === "completed" && nextBody.result) {
+              setResult(nextBody.result);
+              setIsLoading(false);
+              setBackgroundAccepted(false);
+              return;
+            }
+            if (nextBody.status === "failed") {
+              setError(nextBody.error || "確認が必要です。");
+              if (nextBody.result) setResult(nextBody.result);
+              setIsLoading(false);
+              setBackgroundAccepted(false);
+              return;
+            }
+          }
+        }
+      } catch {
+        // Ignore restore errors — user can resubmit.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isLoading) {
@@ -138,6 +227,8 @@ export function WorkspaceDashboard() {
     setWorkMemoryUsed(null);
     setWorkMemoryCandidateCount(0);
     setPendingCommander(null);
+    setServerDeliverables(null);
+    setActiveJobId(null);
     setIsLoading(true);
     setBackgroundAccepted(false);
     setLoadingStepIndex(0);
@@ -184,6 +275,10 @@ export function WorkspaceDashboard() {
 
       setBackgroundAccepted(true);
       const jobId = acceptBody.jobId;
+      setActiveJobId(jobId);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(ACTIVE_WORK_JOB_KEY, jobId);
+      }
 
       // Poll until completed / failed / confirmation.
       for (let i = 0; i < 240; i += 1) {
@@ -196,9 +291,16 @@ export function WorkspaceDashboard() {
           result?: OrchestrationResult | null;
           error?: string;
           message?: string;
+          fileDeliverables?: Deliverable[];
         };
         if (!poll.ok) {
           throw new Error(body.error || "状況を確認できませんでした。");
+        }
+        if (
+          Array.isArray(body.fileDeliverables) &&
+          body.fileDeliverables.length > 0
+        ) {
+          setServerDeliverables(body.fileDeliverables);
         }
         if (body.status === "awaiting_confirmation") {
           // Fall back to interactive confirm via classic path when needed.
@@ -222,6 +324,12 @@ export function WorkspaceDashboard() {
         if (body.status === "completed" && body.result) {
           setResult(body.result);
           setWorkMemoryUsed(body.result.workMemory ?? null);
+          if (
+            Array.isArray(body.fileDeliverables) &&
+            body.fileDeliverables.length > 0
+          ) {
+            setServerDeliverables(body.fileDeliverables);
+          }
           projectService.saveFromOrchestration(
             requestAssignment,
             body.result,
@@ -239,6 +347,15 @@ export function WorkspaceDashboard() {
           return;
         }
         if (body.status === "failed") {
+          if (body.result) {
+            setResult(body.result);
+          }
+          if (
+            Array.isArray(body.fileDeliverables) &&
+            body.fileDeliverables.length > 0
+          ) {
+            setServerDeliverables(body.fileDeliverables);
+          }
           throw new Error(body.error || body.message || "確認が必要です。");
         }
       }
@@ -426,6 +543,11 @@ export function WorkspaceDashboard() {
     setSalesWizardAssignment(null);
     setSalesMaterialConfig(null);
     setOutlineOnlyText(null);
+    setActiveJobId(null);
+    setServerDeliverables(null);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(ACTIVE_WORK_JOB_KEY);
+    }
   };
 
   const showForm =

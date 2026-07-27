@@ -35,6 +35,10 @@ export async function GET(
     status: job.status,
     error: job.error,
     result: job.result,
+    fileDeliverables: job.fileDeliverables ?? [],
+    fileDeliverableFailures: job.fileDeliverableFailures ?? [],
+    fileDeliverableStatus: job.fileDeliverableStatus,
+    fileDeliverableMatchedRule: job.fileDeliverableMatchedRule,
     completedAt: job.completedAt,
     message:
       job.status === "queued" || job.status === "running"

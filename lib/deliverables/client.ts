@@ -1,12 +1,16 @@
 import type { Deliverable, DeliverableFormat } from "@/lib/deliverables/types";
 import type { IntegrationUploadSummary } from "@/lib/integrations/types";
 
+import { classifyDeliverableFailureReason } from "./failure-messages";
+
 export type GenerateDeliverablesRequest = {
   assignment: string;
   finalDeliverable: string;
   title?: string;
   workflowId?: string;
+  jobId?: string;
   projectName?: string;
+  generationAttempt?: number;
   /** Generate only these formats; omit to auto-detect from assignment. */
   formats?: DeliverableFormat[];
 };
@@ -45,7 +49,14 @@ export async function requestDeliverables(
   ) {
     const wordFailure = data.failures.find((item) => item.format === "docx");
     const primary = wordFailure ?? data.failures[0]!;
-    throw new Error(primary.reasons.join(" / ") || "ファイル生成に失敗しました");
+    const classified = classifyDeliverableFailureReason(
+      primary.reasons[0] ?? "",
+    );
+    throw new Error(
+      classified.userMessage ||
+        primary.reasons.join(" / ") ||
+        "ファイル生成に失敗しました",
+    );
   }
 
   return data;

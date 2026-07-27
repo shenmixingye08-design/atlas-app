@@ -36,6 +36,7 @@ import { ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
+import { DeliverablesPanel } from "@/components/workspace/deliverables-panel";
 
 type FinalOutputProps = {
   result: OrchestrationResult | null;
@@ -649,6 +650,15 @@ export function FinalOutput({
           </div>
         )}
       </Card>
+
+      {(deliverables.length > 0 || isGeneratingDeliverables || deliverablesError) && (
+        <DeliverablesPanel
+          deliverables={[...deliverables]}
+          isGenerating={isGeneratingDeliverables}
+          error={deliverablesError}
+          sourceText={exportText}
+        />
+      )}
     </section>
   );
 }

@@ -114,6 +114,6 @@ describe("deliverables download API", () => {
       { params: Promise.resolve({ id: stored.id }) },
     );
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(403);
   });
 });

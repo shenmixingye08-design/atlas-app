@@ -222,7 +222,7 @@ describe("Word (.docx) sales report pipeline", () => {
       new Request(`http://localhost/api/deliverables/${stored.id}`),
       { params: Promise.resolve({ id: stored.id }) },
     );
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(403);
     const payload = (await response.json()) as { error?: string };
     expect(payload.error).toBeTruthy();
   });
