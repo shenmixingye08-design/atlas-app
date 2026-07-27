@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { assertExportPathHasNoAiRegenerate } from "@/lib/deliverables/ai-export-policy";
 import { generateDeliverables } from "@/lib/deliverables/engine";
 import {
   getStoredDeliverableForUser,
@@ -228,6 +229,9 @@ export async function POST(request: Request): Promise<Response> {
     });
     if (billingDenied) return billingDenied;
 
+    // Word-only re-render from sourceContent — never re-call AI for quality.
+    assertExportPathHasNoAiRegenerate(undefined);
+
     const result = await generateDeliverables(
       {
         assignment: title,
@@ -244,6 +248,7 @@ export async function POST(request: Request): Promise<Response> {
         versionGroupId: group.groupId,
         revisionReason,
         cost: { regenerateCount: 1 },
+        allowAiContentRetry: false,
       },
     );
 

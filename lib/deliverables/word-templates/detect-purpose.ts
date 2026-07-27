@@ -54,6 +54,32 @@ const PURPOSE_RULES: PurposeRule[] = [
     ],
   },
   {
+    purpose: "estimate",
+    templateId: "estimate",
+    weight: 6,
+    patterns: [
+      /見積書/,
+      /御見積/,
+      /お見積/,
+      /見積(?:を|もり|明細)/,
+      /見積にして/,
+      /見積りを?(?:Word|ワード)?で/,
+    ],
+  },
+  {
+    purpose: "contract",
+    templateId: "contract",
+    weight: 6,
+    patterns: [
+      /契約書/,
+      /契約関連/,
+      /合意書/,
+      /契約の?(?:たたき台|草案|ドラフト)/,
+      /契約条件/,
+      /覚書/,
+    ],
+  },
+  {
     purpose: "proposal",
     templateId: "proposal",
     weight: 5,
@@ -176,6 +202,18 @@ export function detectWordPurpose(input: {
       templateId: "sales-report",
       confidence: "high",
       matchedRule: "disambiguate_sales_vs_business",
+    };
+  }
+
+  if (
+    best.rule.purpose === "estimate" &&
+    /比較|見積比較|プラン比較|料金比較/.test(haystack)
+  ) {
+    return {
+      purpose: "comparison",
+      templateId: "comparison-table",
+      confidence: "high",
+      matchedRule: "disambiguate_comparison_vs_estimate",
     };
   }
 

@@ -172,6 +172,59 @@ async function drawBlocks(params: {
         }
         params.cursor.y -= 4;
         break;
+      case "table": {
+        const headers = block.headers.filter(Boolean);
+        const rows = block.rows;
+        if (headers.length === 0 && rows.length === 0) break;
+        const headerLine = (headers.length > 0 ? headers : ["項目"]).join(" | ");
+        await drawWrappedText({
+          pdfDoc: params.pdfDoc,
+          cursor: params.cursor,
+          fonts: params.fonts,
+          text: headerLine,
+          x: MARGIN,
+          size: 10,
+          lineHeight: 14,
+        });
+        await drawWrappedText({
+          pdfDoc: params.pdfDoc,
+          cursor: params.cursor,
+          fonts: params.fonts,
+          text: "-".repeat(Math.min(48, headerLine.length + 8)),
+          x: MARGIN,
+          size: 9,
+          lineHeight: 12,
+        });
+        for (const row of rows) {
+          const cells = Array.from(
+            { length: Math.max(headers.length, row.length, 1) },
+            (_, i) => row[i] ?? "",
+          );
+          await drawWrappedText({
+            pdfDoc: params.pdfDoc,
+            cursor: params.cursor,
+            fonts: params.fonts,
+            text: cells.join(" | "),
+            x: MARGIN,
+            size: 10,
+            lineHeight: 14,
+          });
+        }
+        params.cursor.y -= 8;
+        break;
+      }
+      case "imagePlaceholder":
+        await drawWrappedText({
+          pdfDoc: params.pdfDoc,
+          cursor: params.cursor,
+          fonts: params.fonts,
+          text: `[画像: ${block.caption || "画像"}]`,
+          x: MARGIN,
+          size: 10,
+          lineHeight: 14,
+        });
+        params.cursor.y -= 6;
+        break;
       default:
         break;
     }

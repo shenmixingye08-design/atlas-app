@@ -270,8 +270,8 @@ describe("Word Stage 4 templates / model / versions", () => {
     mkdirSync(LOAD_OUT, { recursive: true });
   });
 
-  it("lists all 8 word templates", () => {
-    expect(listWordTemplates()).toHaveLength(8);
+  it("lists all 10 word templates", () => {
+    expect(listWordTemplates()).toHaveLength(10);
     expect(WORD_TEMPLATE_IDS).toEqual([
       "standard-document",
       "business-report",
@@ -281,6 +281,8 @@ describe("Word Stage 4 templates / model / versions", () => {
       "comparison-table",
       "manual",
       "customer-letter",
+      "contract",
+      "estimate",
     ]);
   });
 
@@ -1054,7 +1056,7 @@ describe("Word Stage 4 templates / model / versions", () => {
     process.stdout.write(
       `${JSON.stringify({ type: "word-stage4-template-report", reports }, null, 2)}\n`,
     );
-    expect(reports).toHaveLength(8);
+    expect(reports).toHaveLength(10);
     for (const report of reports) {
       expect(report.PK).toBe(true);
       expect(report.OOXML).toBe(true);
