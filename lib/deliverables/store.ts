@@ -28,6 +28,7 @@ import type {
   DeliverableMetadata,
   GeneratedDeliverableFile,
 } from "./types";
+import { isWordTemplateId } from "./word-templates";
 
 export type StoredDeliverable = GeneratedDeliverableFile & {
   id: string;
@@ -241,10 +242,18 @@ async function regenerateFromSource(
   }
 
   try {
-    const file = await generator.generate(
-      durable.sourceContent,
-      durable.baseFileName,
-    );
+    const templateId =
+      durable.metadata?.templateId && isWordTemplateId(durable.metadata.templateId)
+        ? durable.metadata.templateId
+        : null;
+    const file =
+      durable.format === "docx"
+        ? await generator.generate(durable.sourceContent, durable.baseFileName, {
+            assignment: durable.baseFileName,
+            title: durable.baseFileName,
+            templateId,
+          })
+        : await generator.generate(durable.sourceContent, durable.baseFileName);
     const integrity = buildIntegritySnapshot({
       buffer: file.buffer,
       format: file.format,

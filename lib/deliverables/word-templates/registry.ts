@@ -12,6 +12,8 @@ export const WORD_TEMPLATE_IDS = [
   "comparison-table",
   "manual",
   "customer-letter",
+  "contract",
+  "estimate",
 ] as const;
 
 export type WordTemplateId = (typeof WORD_TEMPLATE_IDS)[number];
@@ -24,7 +26,9 @@ export type WordPurpose =
   | "proposal"
   | "comparison"
   | "manual"
-  | "customer_letter";
+  | "customer_letter"
+  | "contract"
+  | "estimate";
 
 export type WordDateFormat = "ja-long" | "ja-slash" | "iso";
 
@@ -321,6 +325,70 @@ export const WORD_TEMPLATES: Record<WordTemplateId, WordTemplateDefinition> = {
     includeToc: false,
     orientation: "portrait",
     tableHeaderRepeat: false,
+    preferCompactCover: true,
+  },
+  contract: {
+    id: "contract",
+    displayName: "契約関連たたき台",
+    description: "契約条件・当事者・署名欄向けの控えめで読みやすい書式",
+    purposes: ["contract"],
+    typography: {
+      ...BASE_TYPOGRAPHY,
+      bodyHalfPoints: 20,
+      titleHalfPoints: 36,
+      lineSpacing: 300,
+      paragraphSpacingAfter: 140,
+      firstLineIndentDxa: 0,
+    },
+    colors: {
+      ...BASE_COLORS,
+      accentHex: "1A1A1A",
+      headerFillHex: "333333",
+      zebraFillHex: "F5F5F5",
+    },
+    marginsDxa: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
+    showHeader: true,
+    showFooter: true,
+    showPageNumbers: true,
+    hidePageNumberOnFirstPage: false,
+    showLogo: false,
+    showCompanyInfo: true,
+    dateFormat: "ja-long",
+    pageBreakRule: "before_major_sections",
+    includeToc: false,
+    orientation: "portrait",
+    tableHeaderRepeat: true,
+    preferCompactCover: true,
+  },
+  estimate: {
+    id: "estimate",
+    displayName: "見積書",
+    description: "見積明細・合計・注記向け。横長表に対応",
+    purposes: ["estimate"],
+    typography: {
+      ...BASE_TYPOGRAPHY,
+      bodyHalfPoints: 20,
+      titleHalfPoints: 40,
+      paragraphSpacingAfter: 120,
+    },
+    colors: {
+      ...BASE_COLORS,
+      accentHex: "0E4D3A",
+      headerFillHex: "0E4D3A",
+      zebraFillHex: "F3F8F5",
+    },
+    marginsDxa: { top: 1008, right: 864, bottom: 1008, left: 864 },
+    showHeader: true,
+    showFooter: true,
+    showPageNumbers: true,
+    hidePageNumberOnFirstPage: false,
+    showLogo: true,
+    showCompanyInfo: true,
+    dateFormat: "ja-slash",
+    pageBreakRule: "none",
+    includeToc: false,
+    orientation: "auto",
+    tableHeaderRepeat: true,
     preferCompactCover: true,
   },
 };

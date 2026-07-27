@@ -10,13 +10,18 @@ import {
 import type { ContentBlock, ParsedDeliverable, ParsedSection } from "../parse-content";
 import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
 
-import { MarkdownDeliverableGenerator } from "./markdown-generator";
 import { createDeliverableFile, formatGeneratedDate } from "./shared";
 
 const ATLAS_BLUE = "1F4E79";
 const ATLAS_LIGHT = "D9E2F3";
 const TEXT_DARK = "222222";
 const TEXT_MUTED = "666666";
+
+/** pptxgenjs shape names (string form is portable across CJS/ESM). */
+const SHAPE = {
+  rect: "rect",
+  line: "line",
+} as const;
 
 type SlideTextOptions = {
   x?: number;
@@ -36,7 +41,7 @@ function addSlideTitle(
   title: string,
   subtitle?: string,
 ): void {
-  slide.addShape(pptxgen.ShapeType.rect, {
+  slide.addShape(SHAPE.rect, {
     x: 0,
     y: 0,
     w: "100%",
@@ -71,7 +76,7 @@ function addSlideTitle(
 }
 
 function addSectionDivider(slide: pptxgen.Slide, title: string): void {
-  slide.addShape(pptxgen.ShapeType.rect, {
+  slide.addShape(SHAPE.rect, {
     x: 0,
     y: 0,
     w: "100%",
@@ -102,7 +107,7 @@ function addContentHeading(slide: pptxgen.Slide, title: string): void {
     color: ATLAS_BLUE,
     fontFace: "Calibri",
   });
-  slide.addShape(pptxgen.ShapeType.line, {
+  slide.addShape(SHAPE.line, {
     x: 0.6,
     y: 1.05,
     w: 8.8,
@@ -133,7 +138,7 @@ function addBodyText(
 }
 
 function addImagePlaceholder(slide: pptxgen.Slide, caption: string, y = 2.0): void {
-  slide.addShape(pptxgen.ShapeType.rect, {
+  slide.addShape(SHAPE.rect, {
     x: 1.2,
     y,
     w: 7.6,
@@ -218,28 +223,84 @@ function chunkBulletItems(items: string[], maxPerSlide = 6): string[][] {
   return chunks.length > 0 ? chunks : [[]];
 }
 
+function addTableSlide(
+  pptx: pptxgen,
+  sectionTitle: string,
+  headers: string[],
+  rows: string[][],
+): void {
+  const slide = pptx.addSlide();
+  addContentHeading(slide, sectionTitle);
+  const colCount = Math.max(headers.length, ...rows.map((r) => r.length), 1);
+  const normalizedHeaders = Array.from({ length: colCount }, (_, i) =>
+    headers[i]?.trim() || `列${i + 1}`,
+  );
+  const tableRows: pptxgen.TableRow[] = [
+    normalizedHeaders.map((cell) => ({
+      text: cell,
+      options: { bold: true, color: "FFFFFF", fill: { color: ATLAS_BLUE } },
+    })),
+    ...rows.map((row) =>
+      Array.from({ length: colCount }, (_, i) => ({
+        text: row[i] ?? "",
+        options: { color: TEXT_DARK },
+      })),
+    ),
+  ];
+  try {
+    slide.addTable(tableRows, {
+      x: 0.5,
+      y: 1.3,
+      w: 9.0,
+      colW: Array.from({ length: colCount }, () => 9.0 / colCount),
+      border: { type: "solid", pt: 0.5, color: "CCCCCC" },
+      fontFace: "Calibri",
+      fontSize: 12,
+      color: TEXT_DARK,
+      align: "left",
+      valign: "middle",
+    });
+  } catch {
+    const fallback = [
+      normalizedHeaders.join(" | "),
+      ...rows.map((row) =>
+        Array.from({ length: colCount }, (_, i) => row[i] ?? "").join(" | "),
+      ),
+    ].join("\n");
+    addBodyText(slide, fallback, { y: 1.35, fontSize: 14, lineSpacing: 20 });
+  }
+}
+
 function addSectionSlides(pptx: pptxgen, section: ParsedSection): void {
   const divider = pptx.addSlide();
   addSectionDivider(divider, section.title);
 
-  const textBlocks = section.blocks.filter(
-    (block) => block.type !== "imagePlaceholder",
-  );
+  const tableBlocks = section.blocks.filter((block) => block.type === "table");
   const imageBlocks = section.blocks.filter(
     (block) => block.type === "imagePlaceholder",
   );
+  const textBlocks = section.blocks.filter(
+    (block) => block.type !== "imagePlaceholder" && block.type !== "table",
+  );
+
+  for (const block of tableBlocks) {
+    if (block.type !== "table") continue;
+    addTableSlide(pptx, section.title, block.headers, block.rows);
+  }
 
   const body = blocksToSlideText(textBlocks);
   const chunks = chunkText(body);
 
-  chunks.forEach((chunk, index) => {
-    const slide = pptx.addSlide();
-    addContentHeading(
-      slide,
-      index === 0 ? section.title : `${section.title} (cont.)`,
-    );
-    addBodyText(slide, chunk || " ", { y: 1.35, lineSpacing: 24 });
-  });
+  if (chunks.length > 0 && body.trim()) {
+    chunks.forEach((chunk, index) => {
+      const slide = pptx.addSlide();
+      addContentHeading(
+        slide,
+        index === 0 ? section.title : `${section.title} (cont.)`,
+      );
+      addBodyText(slide, chunk || " ", { y: 1.35, lineSpacing: 24 });
+    });
+  }
 
   for (const block of section.blocks) {
     if (block.type === "bulletList") {
@@ -342,6 +403,17 @@ async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
   return Buffer.from(output as ArrayBuffer);
 }
 
+async function buildFallbackPptxBuffer(title: string, notice: string): Promise<Buffer> {
+  const pptx = new pptxgen();
+  pptx.layout = "LAYOUT_16x9";
+  pptx.author = "Atlas";
+  pptx.title = title;
+  const slide = pptx.addSlide();
+  addSlideTitle(slide, title || "資料", notice.slice(0, 120));
+  const output = await pptx.write({ outputType: "nodebuffer" });
+  return Buffer.from(output as ArrayBuffer);
+}
+
 /** Production PowerPoint (.pptx) generator using pptxgenjs. */
 export class PptxDeliverableGenerator implements DeliverableGenerator {
   readonly format = "pptx" as const;
@@ -355,8 +427,15 @@ export class PptxDeliverableGenerator implements DeliverableGenerator {
       const buffer = await buildPptxBuffer(parsed);
       return createDeliverableFile("pptx", baseFileName, buffer, false);
     } catch (error) {
-      console.error("[PptxDeliverableGenerator] Falling back to Markdown:", error);
-      return new MarkdownDeliverableGenerator().generate(content, baseFileName);
+      console.error(
+        "[PptxDeliverableGenerator] keeping pptx format with fallback slide:",
+        error,
+      );
+      const buffer = await buildFallbackPptxBuffer(
+        baseFileName || "資料",
+        "スライドの一部を簡略化して作成しました。",
+      );
+      return createDeliverableFile("pptx", baseFileName, buffer, false);
     }
   }
 }

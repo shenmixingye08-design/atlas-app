@@ -11,6 +11,14 @@ import {
   validateWordSourceContent,
 } from "./content-quality";
 import { detectDeliverableFormats } from "./detect-formats";
+import { applyDeterministicStructureRepair } from "./deterministic-repair";
+import {
+  brandFingerprintFromBrand,
+  buildExportCacheKey,
+  getExportCacheEntry,
+  setExportCacheEntry,
+} from "./export-cache";
+import { resolveAiExportRetryMode } from "./ai-export-policy";
 import {
   metricKeyForFormat,
   verifyGeneratedExportAsync,
@@ -66,12 +74,41 @@ async function generateVerifiedFile(
   content: string,
   baseFileName: string,
   docxOptions?: DocxGenerateOptions,
+  cacheContext?: {
+    templateId?: string | null;
+    brandFingerprint?: string | null;
+  },
 ): Promise<{
   file: GeneratedDeliverableFile | null;
   reasons: string[];
   attempts: number;
   timings: { generateMs: number; verifyMs: number };
+  cacheHit: boolean;
 }> {
+  const cacheKey = buildExportCacheKey({
+    content,
+    format,
+    templateId: cacheContext?.templateId,
+    brandFingerprint: cacheContext?.brandFingerprint,
+    baseFileName,
+  });
+  const cached = getExportCacheEntry(cacheKey);
+  if (cached && cached.format === format) {
+    return {
+      file: {
+        format: cached.format,
+        fileName: cached.fileName,
+        mimeType: cached.mimeType,
+        buffer: cached.buffer,
+        isPlaceholder: false,
+      },
+      reasons: [],
+      attempts: 0,
+      timings: { generateMs: 0, verifyMs: 0 },
+      cacheHit: true,
+    };
+  }
+
   const generator = getDeliverableGenerator(format);
   if (!generator) {
     return {
@@ -82,6 +119,7 @@ async function generateVerifiedFile(
           : ["generator_missing"],
       attempts: 0,
       timings: { generateMs: 0, verifyMs: 0 },
+      cacheHit: false,
     };
   }
 
@@ -92,6 +130,7 @@ async function generateVerifiedFile(
   let verifyMs = 0;
 
   // Attempt + one automatic regenerate on verify failure (blank PDF forbidden).
+  // Deterministic render retry only — never an AI call.
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     attempts = attempt;
     try {
@@ -131,11 +170,25 @@ async function generateVerifiedFile(
           }
         }
         recordReliabilityEvent(metric, "success");
+        setExportCacheEntry({
+          key: cacheKey,
+          format: file.format,
+          buffer: file.buffer,
+          fileName: file.fileName,
+          mimeType: file.mimeType,
+          contentSha256: buildIntegritySnapshot({
+            buffer: file.buffer,
+            format: file.format,
+            fileName: file.fileName,
+          }).sha256,
+          createdAt: Date.now(),
+        });
         return {
           file,
           reasons: [],
           attempts,
           timings: { generateMs, verifyMs },
+          cacheHit: false,
         };
       }
       lastReasons = verified.reasons;
@@ -161,6 +214,7 @@ async function generateVerifiedFile(
     reasons: lastReasons,
     attempts,
     timings: { generateMs, verifyMs },
+    cacheHit: false,
   };
 }
 
@@ -173,6 +227,11 @@ export type GenerateDeliverablesOptions = {
     strategy: "same_model" | "simplified_prompt" | "fallback_model",
     attempt: number,
   ) => Promise<string>;
+  /**
+   * Explicit opt-in to AI content retry on hard failures only.
+   * Default false — export path never re-calls AI on success or soft issues.
+   */
+  allowAiContentRetry?: boolean;
   /** Explicit Word template override. */
   templateId?: string | null;
   companyName?: string;
@@ -394,6 +453,17 @@ export async function generateDeliverables(
   const job = claim.ok ? claim.job : null;
 
   let safeContent = exportGuard.text;
+  // Deterministic structure repair (no AI): add 要確認 stubs for missing sections.
+  const repaired = applyDeterministicStructureRepair({
+    content: safeContent,
+    assignment: input.assignment,
+    templateId:
+      options.templateId && isWordTemplateId(options.templateId)
+        ? options.templateId
+        : null,
+  });
+  safeContent = repaired.content;
+
   const detection = resolveGenerationFormats(
     input.assignment,
     input.formats,
@@ -403,13 +473,21 @@ export async function generateDeliverables(
   const needsWord = formats.includes("docx");
 
   // AI content quality gate — only before Word conversion.
+  // Default: validate only. AI retry requires explicit allowAiContentRetry.
   if (needsWord) {
     if (!stageReached(job?.stage ?? "REQUEST_RECEIVED", "AI_CONTENT_COMPLETED")) {
       await advanceWordJobStage(jobId, "AI_CONTENT_STARTED");
       const modelStarted = Date.now();
+      const retryMode = resolveAiExportRetryMode({
+        allowAiContentRetry: options.allowAiContentRetry === true,
+        regenerateProvided: typeof options.regenerateContent === "function",
+      });
       const quality = await generateQualityWordContent({
         initialContent: safeContent,
-        regenerate: options.regenerateContent,
+        regenerate:
+          retryMode === "hard_failures_only"
+            ? options.regenerateContent
+            : undefined,
       });
       recordWordMetric("model_ms", Date.now() - modelStarted);
       if (!quality.ok) {
@@ -601,12 +679,30 @@ export async function generateDeliverables(
     }
 
     const genStarted = Date.now();
-    const { file, reasons, attempts, timings } = await generateVerifiedFile(
+    const { file, reasons, attempts, timings, cacheHit } = await generateVerifiedFile(
       format,
       safeContent,
       baseFileName,
       format === "docx" ? docxOptions : undefined,
+      {
+        templateId: purpose?.templateId ?? null,
+        brandFingerprint: brandFingerprintFromBrand(brand),
+      },
     );
+    if (cacheHit) {
+      trackWordEvent({
+        name: "generate_success",
+        userId: options.userId,
+        jobId,
+        templateId: purpose?.templateId,
+        purpose: purpose?.purpose,
+        format,
+        stage: "export_cache_hit",
+        success: true,
+        durationMs: Date.now() - genStarted,
+        sizeBytes: file?.buffer.byteLength,
+      });
+    }
 
     if (!file) {
       if (format === "docx") {

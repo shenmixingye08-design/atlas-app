@@ -1,3 +1,4 @@
+import { assertExportPathHasNoAiRegenerate } from "@/lib/deliverables/ai-export-policy";
 import {
   assertWordContentLimits,
   assertWordTableLimits,
@@ -168,6 +169,9 @@ export async function POST(request: Request): Promise<Response> {
     const workflowId =
       typeof body.workflowId === "string" ? body.workflowId : null;
 
+    // Export path: never attach AI regenerators. Word-only re-render uses sourceContent.
+    assertExportPathHasNoAiRegenerate(undefined);
+
     const result = await generateDeliverables(
       {
         assignment: body.assignment.trim(),
@@ -187,6 +191,7 @@ export async function POST(request: Request): Promise<Response> {
         author: typeof body.author === "string" ? body.author.trim() : undefined,
         createdAt:
           typeof body.createdAt === "string" ? body.createdAt.trim() : undefined,
+        allowAiContentRetry: false,
       },
     );
 

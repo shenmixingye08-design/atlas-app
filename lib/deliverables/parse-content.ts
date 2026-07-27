@@ -25,7 +25,7 @@ export type ParsedDeliverable = {
 };
 
 const HEADING_PATTERN = /^(#{1,3})\s+(.+)$/;
-const BULLET_PATTERN = /^[-*•]\s+(.+)$/;
+const BULLET_PATTERN = /^[-*•・●＊]\s*(.+)$/;
 const NUMBERED_PATTERN = /^\d+[.)]\s+(.+)$/;
 const TABLE_SEPARATOR_PATTERN = /^\|?[\s:-]+\|[\s|:-]+$/;
 const IMAGE_PLACEHOLDER_PATTERN =
@@ -86,12 +86,17 @@ function parseBlocks(lines: string[]): ContentBlock[] {
       continue;
     }
 
-    if (isTableRow(line)) {
+    if (isTableRow(line) || TABLE_SEPARATOR_PATTERN.test(line)) {
       const tableLines: string[] = [];
-      while (index < lines.length && isTableRow(lines[index] ?? "")) {
-        if (!TABLE_SEPARATOR_PATTERN.test(lines[index]?.trim() ?? "")) {
-          tableLines.push(lines[index]!);
+      while (index < lines.length) {
+        const current = lines[index]?.trim() ?? "";
+        if (!current) break;
+        if (TABLE_SEPARATOR_PATTERN.test(current)) {
+          index += 1;
+          continue;
         }
+        if (!isTableRow(current)) break;
+        tableLines.push(lines[index]!);
         index += 1;
       }
 
@@ -149,6 +154,16 @@ function parseBlocks(lines: string[]): ContentBlock[] {
   return blocks;
 }
 
+function hasBodyUntilNextHeading(lines: string[], startIndex: number): boolean {
+  for (let i = startIndex; i < lines.length; i += 1) {
+    const trimmed = lines[i]?.trim() ?? "";
+    if (!trimmed) continue;
+    if (HEADING_PATTERN.test(trimmed)) return false;
+    return true;
+  }
+  return false;
+}
+
 /**
  * Parse markdown-like final deliverable text into a structured document model.
  * Shared by Word and PowerPoint generators.
@@ -183,7 +198,9 @@ export function parseDeliverableContent(content: string): ParsedDeliverable {
       sections.length === 0 &&
       !currentSection &&
       !EXPORT_SECTION_LABELS.has(headingText) &&
-      !/^投稿\s*\d+$/i.test(headingText)
+      !/^投稿\s*\d+$/i.test(headingText) &&
+      // Only treat as subtitle when this heading has no own body (otherwise content is lost).
+      !hasBodyUntilNextHeading(lines, index + 1)
     ) {
       subtitle = headingText;
       bodyStartIndex = index + 1;

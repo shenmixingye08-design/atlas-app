@@ -45,16 +45,24 @@ const HTML_ERROR_PATTERNS = [
   /application error/i,
 ];
 
-function stripMarkdownNoise(text: string): string {
+function bodyTextForQuality(text: string): string {
   return text
-    .replace(/^#{1,6}\s+.+$/gm, "")
-    .replace(/^[-*+]\s+/gm, "")
+    .replace(/^#{1,6}\s+.+$/gm, " ")
+    .replace(/^[-*•・●＊]\s+/gm, "")
     .replace(/^\d+[.)]\s+/gm, "")
     .replace(/\|/g, " ")
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/`[^`]+`/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function countStructureSignals(text: string): number {
+  const headings = (text.match(/^#{1,6}\s+/gm) ?? []).length;
+  const lists = (text.match(/^[-*•・●＊]\s+/gm) ?? []).length;
+  const numbered = (text.match(/^\d+[.)]\s+/gm) ?? []).length;
+  const tables = (text.match(/\|.+\|/g) ?? []).length;
+  return headings + lists + numbered + tables;
 }
 
 function looksLikeJsonOnly(text: string): boolean {
@@ -130,8 +138,10 @@ function headingsOnly(text: string): boolean {
     .filter(Boolean);
   if (lines.length === 0) return true;
   const bodyLines = lines.filter((l) => !/^#{1,6}\s+/.test(l) && !/^[-*_]{3,}$/.test(l));
-  const body = stripMarkdownNoise(bodyLines.join("\n"));
-  return body.length < WORD_CONTENT_MIN_CHARS;
+  const body = bodyTextForQuality(bodyLines.join("\n"));
+  // Structured docs (複数見出し・リスト・表) may be short but still valid.
+  if (countStructureSignals(text) >= 3 && body.length >= 12) return false;
+  return body.length < Math.min(20, WORD_CONTENT_MIN_CHARS);
 }
 
 function hasRequiredLanguage(text: string): boolean {
@@ -143,7 +153,8 @@ function hasRequiredLanguage(text: string): boolean {
 
 /**
  * Gate AI body quality BEFORE Word conversion starts.
- * Failures must trigger AI content retry — not a broken docx.
+ * Soft quality issues fail closed without AI on the export path.
+ * AI retry (if any) is only allowed when the caller opts in explicitly.
  */
 export function validateWordSourceContent(raw: string): ContentQualityResult {
   const text = raw?.trim() ?? "";
@@ -185,8 +196,12 @@ export function validateWordSourceContent(raw: string): ContentQualityResult {
   if (looksTruncated(text)) issues.push("truncated");
   if (headingsOnly(text)) issues.push("headings_only");
 
-  const body = stripMarkdownNoise(text);
-  if (body.length < WORD_CONTENT_MIN_CHARS) {
+  const body = bodyTextForQuality(text);
+  const softMin =
+    countStructureSignals(text) >= 3
+      ? Math.min(20, WORD_CONTENT_MIN_CHARS)
+      : WORD_CONTENT_MIN_CHARS;
+  if (body.length < softMin) {
     if (!issues.includes("headings_only") && !issues.includes("too_short")) {
       issues.push("too_short");
     }
@@ -219,8 +234,8 @@ export function contentRetryStrategyForAttempt(
 export const WORD_CONTENT_RETRY_LIMIT = WORD_CONTENT_MAX_RETRIES;
 
 /**
- * Retry AI content generation until quality passes or attempts exhausted.
- * `regenerate` is provided by the caller (orchestration / test harness).
+ * Validate Word source content. Optional `regenerate` is ONLY for hard failures
+ * when the caller explicitly opts in — success path never re-calls AI.
  */
 export async function generateQualityWordContent(input: {
   initialContent: string;

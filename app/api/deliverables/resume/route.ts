@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { assertExportPathHasNoAiRegenerate } from "@/lib/deliverables/ai-export-policy";
 import { generateDeliverables } from "@/lib/deliverables/engine";
 import {
   claimWordJob,
@@ -88,6 +89,8 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const origin = new URL(request.url).origin;
+    // Resume reuses stored sourceContent — no AI re-call on export path.
+    assertExportPathHasNoAiRegenerate(undefined);
     const result = await generateDeliverables(
       {
         assignment: existing.assignment || "Word成果物の再開",
@@ -96,7 +99,7 @@ export async function POST(request: Request): Promise<Response> {
         formats: ["docx"],
       },
       origin,
-      { userId, jobId },
+      { userId, jobId, allowAiContentRetry: false },
     );
 
     const docx = result.deliverables.find((d) => d.format === "docx");
