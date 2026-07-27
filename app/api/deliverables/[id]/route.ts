@@ -71,7 +71,7 @@ export async function GET(
       {
         error:
           stored.format === "docx"
-            ? "Word生成失敗: 完成した.docxではありません。再生成してください。"
+            ? "保存されたWordファイルが壊れていました。再生成してください。"
             : "成果物ファイルが壊れていました。再生成してください。",
       },
       { status: 500 },
@@ -86,7 +86,7 @@ export async function GET(
   ) {
     recordReliabilityEvent("deliverable_download", "failure");
     return Response.json(
-      { error: "Word生成失敗: 不正なContent-Typeです。" },
+      { error: "WordファイルのContent-Typeが不正です。" },
       { status: 500 },
     );
   }

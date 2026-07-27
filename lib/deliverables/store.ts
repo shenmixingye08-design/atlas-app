@@ -93,10 +93,10 @@ export type SaveDeliverableOptions = {
 };
 
 /**
- * Persist a generated file in process memory and durable storage.
- * Durable row enables Word/PDF GET across serverless instances.
+ * Put a generated file into process memory only (no durable I/O).
+ * Shared by sync save and durable save to avoid double-persist races.
  */
-export function saveDeliverableFile(
+function putDeliverableInMemory(
   file: GeneratedDeliverableFile,
   userId: string,
   options?: SaveDeliverableOptions,
@@ -123,17 +123,41 @@ export function saveDeliverableFile(
   };
 
   store.set(stored.id, stored);
+  return stored;
+}
+
+/**
+ * Persist a generated file in process memory and durable storage.
+ * Durable row enables Word/PDF GET across serverless instances.
+ *
+ * Sync callers get a single fire-and-forget durable write.
+ * Prefer {@link saveDeliverableFileDurable} when the response must wait.
+ */
+export function saveDeliverableFile(
+  file: GeneratedDeliverableFile,
+  userId: string,
+  options?: SaveDeliverableOptions,
+): StoredDeliverable {
+  const stored = putDeliverableInMemory(file, userId, options);
+  // Exactly one durable write for the sync path (disk + optional Supabase).
   void persistDurableDeliverable(toDurableRow(stored), stored.buffer);
   return stored;
 }
 
-/** Awaitable save — use when the caller must ensure durable write before respond. */
+/**
+ * Awaitable save — use when the caller must ensure durable write before respond.
+ *
+ * IMPORTANT: Does NOT call {@link saveDeliverableFile} (which would double-write
+ * via void + await). Memory put once, then a single awaited durable persist.
+ * Supabase being unconfigured must not fail Word generation — disk/memory
+ * remain available for download.
+ */
 export async function saveDeliverableFileDurable(
   file: GeneratedDeliverableFile,
   userId: string,
   options: SaveDeliverableOptions,
 ): Promise<StoredDeliverable> {
-  const stored = saveDeliverableFile(file, userId, options);
+  const stored = putDeliverableInMemory(file, userId, options);
   await persistDurableDeliverable(toDurableRow(stored), stored.buffer);
   return stored;
 }

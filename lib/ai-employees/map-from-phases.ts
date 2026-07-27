@@ -10,6 +10,7 @@ import type {
 
 /** Maps orchestration loading phase IDs to user-facing AI employee departments. */
 const PHASE_TO_DEPARTMENT: Readonly<Record<string, AiEmployeeDepartmentId>> = {
+  // Legacy orchestration phase ids
   ceo: "sales",
   research: "sales",
   "planner-plan": "materials",
@@ -18,6 +19,11 @@ const PHASE_TO_DEPARTMENT: Readonly<Record<string, AiEmployeeDepartmentId>> = {
   "quality-assurance": "quality",
   "ceo-approval": "quality",
   "final-deliverable": "delivery",
+  // Current secretary loading phases (understand → write → polish → done)
+  understand: "sales",
+  write: "materials",
+  polish: "quality",
+  done: "delivery",
 };
 
 function resolveDepartmentForPhase(phaseId: string): AiEmployeeDepartmentId {

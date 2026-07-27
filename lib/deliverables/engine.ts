@@ -8,6 +8,11 @@ import { recordReliabilityEvent } from "@/lib/reliability";
 
 import { detectDeliverableFormats } from "./detect-formats";
 import {
+  logDocxStage,
+  logDocxStageFailure,
+  type DocxStageContext,
+} from "./docx-stage-log";
+import {
   metricKeyForFormat,
   verifyGeneratedExportAsync,
 } from "./export-verify";
@@ -31,6 +36,7 @@ async function generateVerifiedFile(
   format: GeneratedDeliverableFile["format"],
   content: string,
   baseFileName: string,
+  stageContext: DocxStageContext,
 ): Promise<{ file: GeneratedDeliverableFile | null; reasons: string[] }> {
   const generator = getDeliverableGenerator(format);
   if (!generator) {
@@ -50,7 +56,20 @@ async function generateVerifiedFile(
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       const file = await generator.generate(content, baseFileName);
+      if (format === "docx") {
+        logDocxStage("DOCX_VERIFY_STARTED", stageContext, {
+          attempt,
+          sizeBytes: file.buffer.byteLength,
+        });
+      }
       const verified = await verifyGeneratedExportAsync(file);
+      if (format === "docx") {
+        logDocxStage("DOCX_VERIFY_COMPLETED", stageContext, {
+          attempt,
+          ok: verified.ok,
+          reasons: verified.reasons,
+        });
+      }
       if (verified.ok) {
         recordReliabilityEvent(metric, "success");
         return { file, reasons: [] };
@@ -64,6 +83,11 @@ async function generateVerifiedFile(
       lastReasons = [
         format === "docx" ? `Word生成失敗: ${message}` : message,
       ];
+      if (format === "docx") {
+        logDocxStageFailure("DOCX_VERIFY_STARTED", error, stageContext, {
+          attempt,
+        });
+      }
       recordReliabilityEvent(metric, "retry");
       recordReliabilityEvent("retry", "retry");
     }
@@ -79,14 +103,20 @@ async function generateVerifiedFile(
 /**
  * Deliverables Engine — runs after orchestration completes.
  * Success for exports requires verifyGeneratedExportAsync; otherwise regenerate once.
- * Files are durably persisted (Supabase + disk) before metadata is returned.
+ * Files are durably persisted (disk + optional Supabase) before metadata is returned.
+ * Generation success + store failure is reported as「Word生成成功・保存失敗」.
  */
 export async function generateDeliverables(
   input: GenerateDeliverablesInput,
   requestOrigin: string,
-  options: { userId: string },
+  options: { userId: string; jobId?: string | null; workflowId?: string | null },
 ): Promise<GenerateDeliverablesResult> {
   const content = input.finalDeliverable.trim();
+  const stageContext: DocxStageContext = {
+    userId: options.userId,
+    jobId: options.jobId ?? null,
+    workflowId: options.workflowId ?? null,
+  };
 
   if (!content) {
     return {
@@ -135,16 +165,60 @@ export async function generateDeliverables(
       format,
       safeContent,
       baseFileName,
+      stageContext,
     );
     if (!file) {
       failures.push({ format, reasons });
       continue;
     }
-    const stored = await saveDeliverableFileDurable(file, options.userId, {
-      sourceContent: content,
-      baseFileName,
-    });
-    deliverables.push(toDeliverableMetadata(stored, requestOrigin));
+
+    try {
+      if (format === "docx") {
+        logDocxStage("DOCX_STORE_STARTED", stageContext, {
+          sizeBytes: file.buffer.byteLength,
+          fileName: file.fileName,
+        });
+      }
+      const stored = await saveDeliverableFileDurable(file, options.userId, {
+        sourceContent: content,
+        baseFileName,
+      });
+      if (format === "docx") {
+        logDocxStage("DOCX_STORE_COMPLETED", stageContext, {
+          deliverableId: stored.id,
+          sizeBytes: stored.buffer.byteLength,
+        });
+      }
+      const meta = toDeliverableMetadata(stored, requestOrigin);
+      if (format === "docx") {
+        logDocxStage("DOCX_METADATA_CREATED", stageContext, {
+          deliverableId: meta.id,
+          downloadUrl: meta.downloadUrl,
+        });
+        logDocxStage("DOCX_DOWNLOAD_READY", stageContext, {
+          deliverableId: meta.id,
+          downloadUrl: meta.downloadUrl,
+        });
+      }
+      deliverables.push(meta);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error ?? "unknown");
+      if (format === "docx") {
+        logDocxStageFailure("DOCX_STORE_STARTED", error, stageContext, {
+          fileName: file.fileName,
+        });
+        failures.push({
+          format,
+          reasons: [`Word生成成功・保存失敗: ${message}`],
+        });
+      } else {
+        failures.push({
+          format,
+          reasons: [`生成成功・保存失敗: ${message}`],
+        });
+      }
+    }
   }
 
   return {

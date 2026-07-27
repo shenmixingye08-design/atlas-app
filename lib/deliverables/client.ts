@@ -14,6 +14,7 @@ export type GenerateDeliverablesRequest = {
 export type GenerateDeliverablesResponse = {
   deliverables: Deliverable[];
   matchedRule: string | null;
+  failures?: Array<{ format: string; reasons: string[] }>;
   uploads?: IntegrationUploadSummary;
 };
 
@@ -34,6 +35,17 @@ export async function requestDeliverables(
 
   if (!response.ok) {
     throw new Error(data.error ?? `Deliverables request failed (${response.status})`);
+  }
+
+  // Surface Word/PDF generation or store failures instead of silently returning [].
+  if (
+    (!data.deliverables || data.deliverables.length === 0) &&
+    data.failures &&
+    data.failures.length > 0
+  ) {
+    const wordFailure = data.failures.find((item) => item.format === "docx");
+    const primary = wordFailure ?? data.failures[0]!;
+    throw new Error(primary.reasons.join(" / ") || "ファイル生成に失敗しました");
   }
 
   return data;

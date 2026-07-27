@@ -47,7 +47,7 @@ function statusToProgress(status: StepStatus, explicit?: number): number {
 
 function StageElapsedTimer({ running }: { running: boolean }) {
   const [elapsed, setElapsed] = useState(0);
-  const startRef = useRef(Date.now());
+  const startRef = useRef(0);
 
   useEffect(() => {
     if (!running) return;

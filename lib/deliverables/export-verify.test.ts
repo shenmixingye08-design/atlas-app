@@ -41,4 +41,20 @@ describe("verifyGeneratedExport", () => {
     });
     expect(result.ok).toBe(true);
   });
+
+  it("does not false-positive on real docx binary containing \\n bytes", async () => {
+    // Stress: previously OOXML zip bytes matching `\n` failed verify as forbidden:\n
+    const { DocxDeliverableGenerator } = await import(
+      "./generators/docx-generator"
+    );
+    const gen = new DocxDeliverableGenerator();
+    let failures = 0;
+    for (let i = 0; i < 20; i += 1) {
+      const body = `# 報告書${i}\n\n## 本文\n${"日本語テスト内容 ".repeat(30 + i)}\n\n・項目A\n・項目B\n\n1.手順一\n2.手順二\n`;
+      const file = await gen.generate(body, `報告書${i}`);
+      const result = verifyGeneratedExport(file);
+      if (!result.ok) failures += 1;
+    }
+    expect(failures).toBe(0);
+  });
 });

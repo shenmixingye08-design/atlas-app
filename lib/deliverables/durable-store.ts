@@ -79,7 +79,7 @@ export function resetDurableDeliverableStoreForTests(): void {
   scope.__atlasDeliverableDurable = new Map();
 }
 
-function persistToDisk(row: DurableDeliverableRow, buffer?: Buffer): void {
+function persistToDisk(row: DurableDeliverableRow, buffer?: Buffer): boolean {
   try {
     const dir = userDir(row.userId);
     mkdirSync(dir, { recursive: true });
@@ -106,8 +106,10 @@ function persistToDisk(row: DurableDeliverableRow, buffer?: Buffer): void {
         Buffer.from(row.contentBase64, "base64"),
       );
     }
+    return true;
   } catch (error) {
     console.warn("[deliverables] disk persist failed", error);
+    return false;
   }
 }
 
@@ -186,13 +188,16 @@ export function markDeliverableDownloaded(id: string, userId: string): boolean {
 export async function persistDurableDeliverable(
   row: DurableDeliverableRow,
   buffer?: Buffer,
-): Promise<void> {
+): Promise<{ diskOk: boolean; supabaseOk: boolean | null }> {
   getDurableMemory().set(row.id, row);
-  persistToDisk(row, buffer);
+  const diskOk = persistToDisk(row, buffer);
 
   try {
     const client = createServiceRoleClientIfConfigured();
-    if (!client) return;
+    if (!client) {
+      // Supabase unconfigured: Word generation must still succeed via disk/memory.
+      return { diskOk, supabaseOk: null };
+    }
     const { error } = await client.from("atlas_deliverable_files").upsert({
       id: row.id,
       user_id: row.userId,
@@ -210,9 +215,13 @@ export async function persistDurableDeliverable(
     } as never);
     if (error) {
       console.error("[atlas_deliverable_files] upsert failed", error.message);
+      // Disk/memory remain valid — do not fail Word generation for Supabase alone.
+      return { diskOk, supabaseOk: false };
     }
+    return { diskOk, supabaseOk: true };
   } catch (error) {
     console.error("[atlas_deliverable_files] upsert error", error);
+    return { diskOk, supabaseOk: false };
   }
 }
 

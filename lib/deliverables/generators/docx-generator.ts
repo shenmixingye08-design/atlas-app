@@ -16,6 +16,7 @@ import {
 } from "docx";
 
 import { ui } from "@/lib/i18n";
+import { logDocxStage, logDocxStageFailure } from "../docx-stage-log";
 import { parseDeliverableContent } from "../parse-content";
 import type { ContentBlock, ParsedDeliverable } from "../parse-content";
 import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
@@ -317,25 +318,43 @@ export class DocxDeliverableGenerator implements DeliverableGenerator {
     baseFileName: string,
   ): Promise<GeneratedDeliverableFile> {
     // Never silent-fallback to Markdown — Word success must mean a real .docx.
-    const parsed = parseDeliverableContent(content);
-    const buffer = await buildDocxBuffer(parsed);
-    // Refuse mid-pipeline / text / XML dumps — completed OOXML zip only.
-    if (
-      buffer.byteLength < 1_500 ||
-      buffer[0] !== 0x50 ||
-      buffer[1] !== 0x4b
-    ) {
-      throw new Error("Word生成失敗: Packer output is not a completed .docx zip");
+    try {
+      logDocxStage("DOCX_PARSE_STARTED", {}, { baseFileName });
+      const parsed = parseDeliverableContent(content);
+      logDocxStage("DOCX_PARSE_COMPLETED", {}, {
+        baseFileName,
+        sectionCount: parsed.sections.length,
+        title: parsed.title,
+      });
+
+      logDocxStage("DOCX_PACK_STARTED", {}, { baseFileName });
+      const buffer = await buildDocxBuffer(parsed);
+      logDocxStage("DOCX_PACK_COMPLETED", {}, {
+        baseFileName,
+        sizeBytes: buffer.byteLength,
+      });
+
+      // Refuse mid-pipeline / text / XML dumps — completed OOXML zip only.
+      if (
+        buffer.byteLength < 1_500 ||
+        buffer[0] !== 0x50 ||
+        buffer[1] !== 0x4b
+      ) {
+        throw new Error("Word生成失敗: Packer output is not a completed .docx zip");
+      }
+      const head = buffer.subarray(0, 64).toString("utf8");
+      if (
+        head.includes('"type":') ||
+        head.includes("<!DOCTYPE") ||
+        head.trimStart().startsWith("{")
+      ) {
+        throw new Error("Word生成失敗: refused JSON/HTML payload");
+      }
+      return createDeliverableFile("docx", baseFileName, buffer, false);
+    } catch (error) {
+      logDocxStageFailure("DOCX_PACK_STARTED", error, {}, { baseFileName });
+      throw error;
     }
-    const head = buffer.subarray(0, 64).toString("utf8");
-    if (
-      head.includes('"type":') ||
-      head.includes("<!DOCTYPE") ||
-      head.trimStart().startsWith("{")
-    ) {
-      throw new Error("Word生成失敗: refused JSON/HTML payload");
-    }
-    return createDeliverableFile("docx", baseFileName, buffer, false);
   }
 }
 

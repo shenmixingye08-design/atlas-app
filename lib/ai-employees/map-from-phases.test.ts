@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildLoadingPhases, createInitialPhases } from "@/lib/workspace/constants";
+import { buildLoadingPhases } from "@/lib/workspace/constants";
 
 import { mapWorkflowPhasesToAiEmployees } from "./map-from-phases";
 
@@ -13,6 +13,7 @@ describe("mapWorkflowPhasesToAiEmployees", () => {
   }
 
   it("starts with sales department running", () => {
+    // Phase 0 = understand → sales
     const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(0));
 
     expect(employees.map((employee) => employee.id)).toEqual([
@@ -34,7 +35,8 @@ describe("mapWorkflowPhasesToAiEmployees", () => {
   });
 
   it("maps planner phases to materials department", () => {
-    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(2));
+    // Phase 1 = write → materials
+    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(1));
 
     expect(byId(employees, "materials")).toMatchObject({
       id: "materials",
@@ -49,7 +51,7 @@ describe("mapWorkflowPhasesToAiEmployees", () => {
   });
 
   it("maps worker phases to materials department", () => {
-    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(4));
+    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(1));
 
     expect(byId(employees, "materials")).toMatchObject({
       id: "materials",
@@ -59,39 +61,37 @@ describe("mapWorkflowPhasesToAiEmployees", () => {
   });
 
   it("maps reviewer and qa phases to quality department", () => {
-    const reviewer = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(8));
-    const qa = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(9));
+    // Phase 2 = polish → quality
+    const polish = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(2));
 
-    expect(byId(reviewer, "quality")).toMatchObject({
+    expect(byId(polish, "quality")).toMatchObject({
       id: "quality",
       icon: "🧐",
       name: "品質管理部",
       task: "内容確認中",
       status: "running",
     });
-    expect(byId(qa, "quality")?.status).toBe("running");
   });
 
   it("maps final deliverable phase to delivery department", () => {
-    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(11));
+    // Phase 3 = done → delivery
+    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(3));
 
     expect(byId(employees, "delivery")).toMatchObject({
       id: "delivery",
       icon: "📦",
       name: "納品部",
-      task: "成果物準備中",
       status: "running",
     });
   });
 
   it("marks all departments completed when work is done", () => {
-    const employees = mapWorkflowPhasesToAiEmployees(createInitialPhases(), {
+    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(3), {
       isComplete: true,
     });
 
-    expect(employees.every((employee) => employee.status === "completed")).toBe(
-      true,
-    );
-    expect(byId(employees, "delivery")?.task).toBe("成果物準備完了");
+    expect(
+      employees.every((employee) => employee.status === "completed"),
+    ).toBe(true);
   });
 });

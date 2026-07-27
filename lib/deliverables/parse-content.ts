@@ -25,8 +25,10 @@ export type ParsedDeliverable = {
 };
 
 const HEADING_PATTERN = /^(#{1,3})\s+(.+)$/;
-const BULLET_PATTERN = /^[-*•]\s+(.+)$/;
-const NUMBERED_PATTERN = /^\d+[.)]\s+(.+)$/;
+/** Include Japanese middle-dot lists (・) used in business reports. */
+const BULLET_PATTERN = /^[-*•・]\s*(.+)$/;
+/** Allow `1.項目` without a space (common in Japanese reports). */
+const NUMBERED_PATTERN = /^\d+[.)]\s*(.+)$/;
 const TABLE_SEPARATOR_PATTERN = /^\|?[\s:-]+\|[\s|:-]+$/;
 const IMAGE_PLACEHOLDER_PATTERN =
   /^!\[(.*?)\]\((?:placeholder|image-placeholder|#)\)|^\[(Image(?: placeholder)?(?:[:\s].*)?)\]$/i;
@@ -45,6 +47,15 @@ const EXPORT_SECTION_LABELS = new Set([
   "スライド内容",
   "調査結果",
   "メール本文",
+  "エグゼクティブサマリー",
+  "サマリー",
+  "要約",
+  "まとめ",
+  "次のアクション",
+  "課題",
+  "背景",
+  "提案内容",
+  "比較",
 ]);
 
 function stripTaskPrefix(title: string): string {

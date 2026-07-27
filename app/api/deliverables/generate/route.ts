@@ -128,7 +128,7 @@ export async function POST(request: Request): Promise<Response> {
         formats: parseFormats(body.formats),
       },
       origin,
-      { userId },
+      { userId, workflowId },
     );
 
     let uploads: IntegrationUploadSummary = {
@@ -152,6 +152,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({
       deliverables: result.deliverables,
       matchedRule: result.detection.matchedRule,
+      failures: result.failures,
       uploads,
     });
   } catch (error) {

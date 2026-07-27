@@ -91,7 +91,9 @@ export function createNotification(
 
   if (input.audience === "user" && input.userId) {
     const prefs = getStoredPreferences(input.userId);
-    if (!isInAppTypeEnabled(prefs, input.type) && !lineEvent) {
+    // Always honor in-app type / master preferences. Auto-resolved LINE events
+    // must not bypass the user's OFF setting.
+    if (!isInAppTypeEnabled(prefs, input.type)) {
       return null;
     }
   }
