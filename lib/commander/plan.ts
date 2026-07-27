@@ -36,7 +36,7 @@ import type {
   CommanderSelectedAi,
 } from "./types";
 
-export const COMMANDER_MAX_RETRIES = 2;
+export const COMMANDER_MAX_RETRIES = 3;
 
 const EXTERNAL_SERVICE_IDS: readonly ExternalServiceId[] = [
   "google",

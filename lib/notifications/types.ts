@@ -4,6 +4,7 @@ import type {
   PushSeverity,
 } from "@/lib/push/types";
 import { DEFAULT_PUSH_PREFERENCES } from "@/lib/push/types";
+import type { FailureClass } from "@/lib/reliability/error-classification";
 
 /** User-facing notification categories. */
 export type NotificationType =
@@ -46,6 +47,51 @@ export type LineNotifyEvent =
   | "todays_schedule"
   | "morning_briefing";
 
+/** Pipeline / recovery state shown on the notification card. */
+export type JobProgressState =
+  | "queued"
+  | "running"
+  | "retrying"
+  | "confirming"
+  | "saving"
+  | "notifying"
+  | "completed"
+  | "partial"
+  | "failed"
+  | "cancelled";
+
+/** Actions available when a job completed successfully. */
+export type NotificationResultActions = {
+  previewUrl?: string | null;
+  downloadUrl?: string | null;
+  shareUrl?: string | null;
+  copyText?: string | null;
+  reeditUrl?: string | null;
+};
+
+/**
+ * Structured job progress attached to notifications so the UI never falls back
+ * to a generic「処理を完了できませんでした」.
+ */
+export type NotificationJobProgress = {
+  jobName?: string | null;
+  jobState?: JobProgressState | null;
+  currentStep?: string | null;
+  failureClass?: FailureClass | null;
+  failureReason?: string | null;
+  nextAction?: string | null;
+  retryCount?: number | null;
+  maxRetries?: number | null;
+  retrying?: boolean | null;
+  etaSeconds?: number | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  supportContextId?: string | null;
+  retryActionUrl?: string | null;
+  processLogSummary?: string | null;
+  resultActions?: NotificationResultActions | null;
+};
+
 export type NotificationRecord = {
   notificationId: string;
   userId: string | null;
@@ -83,6 +129,8 @@ export type NotificationRecord = {
   pushFailedAt?: string | null;
   pushFailureReason?: string | null;
   readAt?: string | null;
+  /** Structured job progress for reliability / recovery UI. */
+  jobProgress?: NotificationJobProgress | null;
 };
 
 export type NotificationPreferences = {
@@ -156,4 +204,5 @@ export type CreateNotificationInput = {
   eventCategory?: PushEventCategory | null;
   autoRecovered?: boolean;
   jobName?: string | null;
+  jobProgress?: NotificationJobProgress | null;
 };

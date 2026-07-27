@@ -78,7 +78,7 @@ export function toUserFacingError(
 
   if (result?.error) {
     return {
-      title: "処理を完了できませんでした",
+      title: "処理中にエラーが発生しました",
       message: ui.work.deliverableEmpty,
       action: "もう一度実行するか、依頼内容を具体化してください。",
     };

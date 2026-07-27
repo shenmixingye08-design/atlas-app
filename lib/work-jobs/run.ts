@@ -2,6 +2,8 @@ import "server-only";
 
 import { runCommanderRequest } from "@/lib/commander/service";
 import { recordReliabilityEvent, withRetry } from "@/lib/reliability";
+import { recordDeveloperError } from "@/lib/reliability/developer-log";
+import { classifyFailure } from "@/lib/reliability/error-classification";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 
 import { getWorkJob, saveWorkJob, type WorkJobRecord } from "./store";
@@ -57,7 +59,22 @@ export async function executeWorkJob(
           },
         });
       },
-      { maxAttempts: existing.maxAttempts },
+      {
+        maxAttempts: existing.maxAttempts,
+        onRetry: (error, attempt, delayMs, meta) => {
+          recordDeveloperError({
+            userId,
+            jobId,
+            step: "execute",
+            attempt,
+            maxAttempts: existing.maxAttempts,
+            error,
+            failureClass: meta.failureClass,
+            durationMs: meta.durationMs ?? null,
+            processLog: `work_job auto_retry delayMs=${delayMs}`,
+          });
+        },
+      },
     );
 
     if (commander.status === "awaiting_confirmation") {
@@ -77,6 +94,17 @@ export async function executeWorkJob(
         durationMs: Date.now() - startedAt,
         errorMessage: commander.visionGate.message,
       });
+      recordDeveloperError({
+        userId,
+        jobId,
+        commanderRunId: commander.runId,
+        step: "execute",
+        attempt: existing.attemptCount + 1,
+        maxAttempts: existing.maxAttempts,
+        error: commander.visionGate.message,
+        durationMs: Date.now() - startedAt,
+        processLog: "vision_gate_failed",
+      });
       return saveWorkJob({
         ...existing,
         status: "failed",
@@ -89,19 +117,31 @@ export async function executeWorkJob(
     }
 
     if (commander.status === "failed" || !commander.result) {
+      const reason =
+        commander.visionGate?.message ??
+        commander.report?.summary ??
+        "failed";
       recordReliabilityEvent("work_job", "failure", 1, {
         durationMs: Date.now() - startedAt,
-        errorMessage: commander.report?.summary ?? "failed",
+        errorMessage: reason,
+      });
+      recordDeveloperError({
+        userId,
+        jobId,
+        commanderRunId: commander.runId,
+        step: "execute",
+        attempt: existing.attemptCount + 1,
+        maxAttempts: existing.maxAttempts,
+        error: reason,
+        failureClass: classifyFailure(reason),
+        durationMs: Date.now() - startedAt,
+        processLog: "commander_failed",
       });
       return saveWorkJob({
         ...existing,
         status: "failed",
         attemptCount: existing.attemptCount + 1,
-        error: toHumanReliabilityMessage(
-          commander.visionGate?.message ??
-            commander.report?.summary ??
-            "failed",
-        ),
+        error: toHumanReliabilityMessage(reason),
         result: commander.result ?? null,
         updatedAt: new Date().toISOString(),
         completedAt: new Date().toISOString(),
@@ -125,12 +165,24 @@ export async function executeWorkJob(
     });
   } catch (error) {
     const message = toHumanReliabilityMessage(error);
-    const isTimeout = /timeout|ETIMEDOUT|aborted/i.test(message);
+    const failureClass = classifyFailure(error);
+    const isTimeout = failureClass === "timeout";
     recordReliabilityEvent("work_job", isTimeout ? "timeout" : "failure", 1, {
       durationMs: Date.now() - startedAt,
       errorMessage: message,
     });
     if (isTimeout) recordReliabilityEvent("timeout", "timeout");
+    recordDeveloperError({
+      userId,
+      jobId,
+      step: "execute",
+      attempt: existing.attemptCount + 1,
+      maxAttempts: existing.maxAttempts,
+      error,
+      failureClass,
+      durationMs: Date.now() - startedAt,
+      processLog: "work_job_exception",
+    });
     return saveWorkJob({
       ...existing,
       status: "failed",

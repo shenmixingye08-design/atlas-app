@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   notifyAutomationCompleted,
   notifyWorkCompleted,
+  notifyWorkFailed,
   notifyXPostSuccess,
 } from "./emitters";
 import { isSafeActionUrl } from "./display";
@@ -161,6 +162,43 @@ describe("notifications", () => {
 
     expect(record?.actionUrl).toBe("/workspace");
     expect(record?.targetType ?? null).toBeNull();
+  });
+
+  it("creates detailed failure notifications without banned generic copy", () => {
+    const record = notifyWorkFailed(TEST_USER, {
+      jobName: "Word資料",
+      step: "word",
+      failureClass: "timeout",
+      failureReason: "AI応答タイムアウト",
+      retryCount: 1,
+      maxRetries: 3,
+      retrying: true,
+      requestId: "job_99",
+    });
+
+    expect(record?.title).toContain("エラーが発生しました");
+    expect(record?.title).not.toContain("処理を完了できませんでした");
+    expect(record?.message).toContain("再試行回数 1 / 3");
+    expect(record?.message).toContain("AI応答タイムアウト");
+    expect(record?.message).not.toContain("処理を完了できませんでした");
+    expect(record?.jobProgress?.retrying).toBe(true);
+    expect(record?.jobProgress?.failureClass).toBe("timeout");
+    expect(record?.requestId).toBe("job_99");
+  });
+
+  it("attaches result actions on completed work", () => {
+    const record = notifyWorkCompleted(TEST_USER, {
+      title: "資料を作成しました",
+      message: "完了しました。",
+      deliverableId: "commander-run_actions",
+      jobName: "資料",
+      previewText: "本文プレビュー",
+    });
+
+    expect(record?.jobProgress?.jobState).toBe("completed");
+    expect(record?.jobProgress?.resultActions?.copyText).toContain("プレビュー");
+    expect(record?.message).toContain("プレビュー");
+    expect(record?.message).not.toBe("完了しました");
   });
 
   it("creates owner notifications without user preferences", () => {

@@ -9,17 +9,18 @@ describe("withRetry", () => {
     expect(op).toHaveBeenCalledTimes(1);
   });
 
-  it("retries timeout-like failures up to 3 times", async () => {
+  it("retries timeout-like failures up to 4 times (3 retries)", async () => {
     const op = vi
       .fn()
       .mockRejectedValueOnce(new Error("timeout"))
       .mockRejectedValueOnce(new Error("503"))
+      .mockRejectedValueOnce(new Error("network"))
       .mockResolvedValueOnce("recovered");
 
     await expect(
-      withRetry(op, { backoffMs: [1, 1, 1] }),
+      withRetry(op, { backoffMs: [1, 1, 1, 1] }),
     ).resolves.toBe("recovered");
-    expect(op).toHaveBeenCalledTimes(3);
+    expect(op).toHaveBeenCalledTimes(4);
   });
 
   it("does not retry auth failures", async () => {

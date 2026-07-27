@@ -155,9 +155,14 @@ export async function runOrchestrationForUser(
       });
     }
     if (notify) {
+      const jobName = input.assignment.slice(0, 40).trim() || "ご依頼の仕事";
       notifyWorkFailed(input.userId, {
-        title: "仕事の実行に失敗しました",
-        message: result.error ?? "処理中にエラーが発生しました。",
+        jobName,
+        step: "execute",
+        failureReason: result.error ?? "処理中にエラーが発生しました。",
+        retryCount: 0,
+        maxRetries: 3,
+        retrying: false,
         ...(deepLink && {
           actionUrl: deepLink,
           relatedTaskId: deepLinkProjectId,
