@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 
 import { generateDeliverables } from "@/lib/deliverables/engine";
 import {
-  claimWordJob,
+  failWordJobIfStillRunning,
   getWordJob,
   nextResumeStage,
 } from "@/lib/deliverables/word-job-stages";
@@ -23,6 +23,10 @@ type Body = {
 /**
  * Resume a Word deliverable job from the last successful stage.
  * Same jobId — no duplicate completed deliverable.
+ *
+ * IMPORTANT: Do not claim the lease here. `generateDeliverables` owns the
+ * claim with a stable workerId. A pre-claim + engine claim caused permanent
+ * `running` (owned_by_other) while the API falsely returned failed.
  */
 export async function POST(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -63,20 +67,16 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
-  const claim = await claimWordJob({
-    jobId,
-    userId,
-    assignment: existing.assignment,
-    sourceContent: existing.sourceContent,
-    baseFileName: existing.baseFileName,
-    format: existing.format,
-  });
-
-  if (!claim.ok && claim.reason === "owned_by_other") {
+  const leaseValid =
+    existing.status === "running" &&
+    existing.leaseOwner &&
+    existing.leaseExpiresAt &&
+    new Date(existing.leaseExpiresAt).getTime() > Date.now();
+  if (leaseValid) {
     return Response.json(
       {
         status: "running",
-        stage: claim.job.stage,
+        stage: existing.stage,
         message: "同じ依頼は現在処理中です。",
         actions: ["retry"],
       },
@@ -84,7 +84,8 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const resumeFrom = nextResumeStage(claim.ok ? claim.job : existing);
+  const resumeFrom = nextResumeStage(existing);
+  const workerId = `resume_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
   try {
     const origin = new URL(request.url).origin;
@@ -96,12 +97,15 @@ export async function POST(request: Request): Promise<Response> {
         formats: ["docx"],
       },
       origin,
-      { userId, jobId },
+      { userId, jobId, workerId },
     );
 
     const docx = result.deliverables.find((d) => d.format === "docx");
     if (!docx) {
-      const reason = result.failures.map((f) => f.reasons.join(",")).join(";") || "resume_failed";
+      const reason =
+        result.failures.map((f) => f.reasons.join(",")).join(";") ||
+        "resume_failed";
+      await failWordJobIfStillRunning(jobId, resumeFrom, reason);
       const kind = classifyDeliverableError(reason);
       return Response.json(
         {
@@ -125,8 +129,12 @@ export async function POST(request: Request): Promise<Response> {
     });
   } catch (error) {
     console.error("[Atlas /api/deliverables/resume]", error);
+    const message =
+      error instanceof Error ? error.message : "resume_failed";
+    await failWordJobIfStillRunning(jobId, resumeFrom, message);
     return Response.json(
       {
+        status: "failed",
         error: userMessageForFailure("unknown"),
         actions: recoveryActionsForFailure("unknown"),
       },

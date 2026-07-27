@@ -54,8 +54,16 @@ export type WordJobRecord = {
   updatedAt: string;
 };
 
-const LEASE_MS = 1000 * 60 * 2; // 2 minutes
+/** Match route maxDuration (300s) so leases do not expire mid-flight. */
+export const WORD_JOB_LEASE_MS = 1000 * 60 * 5.5;
+const LEASE_MS = WORD_JOB_LEASE_MS;
+/** Running jobs older than this with an expired lease are forced to failed. */
+export const WORD_JOB_STALE_RUNNING_MS = WORD_JOB_LEASE_MS + 30_000;
 const STAGE_INDEX = new Map(WORD_JOB_STAGES.map((s, i) => [s, i]));
+
+export function isWordJobTerminal(status: WordJobStatus): boolean {
+  return status === "completed" || status === "failed";
+}
 
 type JobBucket = Map<string, WordJobRecord>;
 
@@ -355,9 +363,12 @@ export async function failWordJob(
 ): Promise<WordJobRecord | null> {
   const current = await getWordJob(jobId);
   if (!current) return null;
+  // Never downgrade a completed job (parallel reclaim / late fail).
+  if (current.status === "completed") return current;
   const updated: WordJobRecord = {
     ...current,
-    status: "awaiting_resume",
+    // Terminal failure — resume reclaims via claimWordJob (lease cleared).
+    status: "failed",
     lastErrorStage: stage,
     lastErrorMessage: message.slice(0, 500),
     leaseOwner: null,
@@ -369,12 +380,56 @@ export async function failWordJob(
   return updated;
 }
 
+/**
+ * Fail only when still non-terminal (running / awaiting_resume).
+ * Used by finally blocks so completed jobs are never overwritten.
+ */
+export async function failWordJobIfStillRunning(
+  jobId: string,
+  stage: WordJobStage,
+  message: string,
+): Promise<WordJobRecord | null> {
+  const current = await getWordJob(jobId);
+  if (!current) return null;
+  if (isWordJobTerminal(current.status)) return current;
+  return failWordJob(jobId, stage, message);
+}
+
 export async function completeWordJob(
   jobId: string,
   deliverableId: string,
 ): Promise<WordJobRecord | null> {
+  const current = await getWordJob(jobId);
+  if (current?.status === "completed" && current.deliverableId) {
+    return current;
+  }
   return advanceWordJobStage(jobId, "COMPLETED", {
     deliverableId,
     status: "completed",
   });
+}
+
+/**
+ * Force stale `running` Word jobs to `failed` so UI never stays on 処理中.
+ * Safe to call from resume / generate / owner ticks.
+ */
+export async function failStaleRunningWordJobs(
+  nowMs = Date.now(),
+): Promise<number> {
+  let count = 0;
+  for (const job of getJobBucket().values()) {
+    if (job.status !== "running") continue;
+    const leaseExpired =
+      !job.leaseExpiresAt ||
+      new Date(job.leaseExpiresAt).getTime() <= nowMs;
+    const ageMs = nowMs - new Date(job.updatedAt).getTime();
+    if (!leaseExpired && ageMs < WORD_JOB_STALE_RUNNING_MS) continue;
+    await failWordJob(
+      job.id,
+      job.stage,
+      "stale_running_timeout:処理が中断されたため失敗として記録しました。再開できます。",
+    );
+    count += 1;
+  }
+  return count;
 }

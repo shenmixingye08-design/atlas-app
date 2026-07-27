@@ -172,7 +172,7 @@ describe("Word Stage 3 production hardening", () => {
     await failWordJob(jobId, "DOCX_STORAGE_STARTED", "storage_failed");
 
     const stopped = await getWordJob(jobId);
-    expect(stopped?.status).toBe("awaiting_resume");
+    expect(stopped?.status).toBe("failed");
     expect(stageReached(stopped!.stage, "DOCX_GENERATION_COMPLETED")).toBe(true);
 
     // Resume from last success — should not require AI again

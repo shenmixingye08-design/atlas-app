@@ -7,9 +7,34 @@ import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 import { getWorkJob, saveWorkJob, type WorkJobRecord } from "./store";
 
 /**
+ * Just over route maxDuration (300s). If a serverless after() is killed,
+ * the job stays `running` with an old updatedAt — reclaim after this window.
+ */
+export const WORK_JOB_STALE_RUNNING_MS = 310_000;
+
+export function isStaleWorkJobRunning(
+  job: WorkJobRecord,
+  nowMs = Date.now(),
+): boolean {
+  if (job.status !== "running") return false;
+  const updatedMs = new Date(job.updatedAt).getTime();
+  if (Number.isNaN(updatedMs)) return true;
+  return nowMs - updatedMs > WORK_JOB_STALE_RUNNING_MS;
+}
+
+export function isWorkJobTerminal(status: WorkJobRecord["status"]): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "awaiting_confirmation"
+  );
+}
+
+/**
  * Execute a queued work job on the server (not in the browser).
  * Retries transient failures up to maxAttempts with backoff.
- * Idempotent: completed / running jobs are not re-executed.
+ * Idempotent: completed jobs are not re-executed.
+ * Stale `running` jobs are reclaimed so work never stays 処理中 forever.
  */
 export async function executeWorkJob(
   jobId: string,
@@ -20,12 +45,33 @@ export async function executeWorkJob(
     throw new Error("job_not_found");
   }
 
-  // Duplicate execution forbidden.
-  if (existing.status === "completed" || existing.status === "awaiting_confirmation") {
+  // Duplicate execution forbidden for terminal / confirmation states.
+  if (
+    existing.status === "completed" ||
+    existing.status === "awaiting_confirmation"
+  ) {
     return existing;
   }
-  if (existing.status === "running") {
+
+  // Fresh running lease — another worker is actively processing.
+  if (existing.status === "running" && !isStaleWorkJobRunning(existing)) {
     return existing;
+  }
+
+  // Stale running past maxAttempts → force failed (never leave 処理中).
+  if (
+    existing.status === "running" &&
+    isStaleWorkJobRunning(existing) &&
+    existing.attemptCount >= existing.maxAttempts
+  ) {
+    return saveWorkJob({
+      ...existing,
+      status: "failed",
+      error:
+        "処理が長時間停止したため失敗として記録しました。もう一度送ってください。",
+      updatedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    });
   }
 
   const startedAt = Date.now();
@@ -42,6 +88,14 @@ export async function executeWorkJob(
         if (attempt > 1) {
           recordReliabilityEvent("retry", "retry");
           recordReliabilityEvent("work_job", "retry");
+        }
+        // Heartbeat so long runs are not mistaken for stale hangs.
+        const current = getWorkJob(jobId, userId);
+        if (current?.status === "running") {
+          saveWorkJob({
+            ...current,
+            updatedAt: new Date().toISOString(),
+          });
         }
         return runCommanderRequest({
           userId,

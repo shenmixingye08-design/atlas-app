@@ -51,6 +51,11 @@ import {
   claimWordJob,
   completeWordJob,
   failWordJob,
+  failWordJobIfStillRunning,
+  failStaleRunningWordJobs,
+  getWordJob,
+  heartbeatWordJob,
+  isWordJobTerminal,
   stageReached,
 } from "./word-job-stages";
 
@@ -168,6 +173,11 @@ export type GenerateDeliverablesOptions = {
   userId: string;
   /** Idempotency / resume key. Same jobId will not double-generate. */
   jobId?: string;
+  /**
+   * Stable worker id for lease ownership.
+   * Resume must pass the same id used for any prior claim to avoid double-claim deadlocks.
+   */
+  workerId?: string;
   /** Optional AI content regenerator for quality retries. */
   regenerateContent?: (
     strategy: "same_model" | "simplified_prompt" | "fallback_model",
@@ -343,6 +353,47 @@ export async function generateDeliverables(
     input.title,
   );
 
+  // Resolve formats before claiming — only Word jobs enter the stage machine.
+  let safeContent = exportGuard.text;
+  const detection = resolveGenerationFormats(
+    input.assignment,
+    input.formats,
+    safeContent,
+  );
+  const formats = detection.formats;
+  const needsWord = formats.includes("docx");
+
+  await failStaleRunningWordJobs();
+
+  const workerId =
+    options.workerId?.trim() ||
+    `worker_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+
+  // Non-docx exports do not create a Word job (avoids permanent `running`).
+  if (!needsWord) {
+    const deliverables: Deliverable[] = [];
+    const failures: Array<{ format: string; reasons: string[] }> = [];
+    for (const format of formats) {
+      const { file, reasons } = await generateVerifiedFile(
+        format,
+        safeContent,
+        baseFileName,
+      );
+      if (!file) {
+        failures.push({ format, reasons });
+        continue;
+      }
+      const { stored } = await saveDeliverableFileDurableDetailed(
+        file,
+        options.userId,
+        { sourceContent: safeContent, baseFileName },
+      );
+      deliverables.push(toDeliverableMetadata(stored, requestOrigin));
+    }
+    recordWordMetric("total_ms", Date.now() - startedAt);
+    return { deliverables, detection, failures, jobId };
+  }
+
   // Claim job lease (prevents duplicate generation for the same jobId).
   const claim = await claimWordJob({
     jobId,
@@ -351,11 +402,11 @@ export async function generateDeliverables(
     sourceContent: exportGuard.text,
     baseFileName,
     format: "docx",
+    workerId,
   });
 
   if (!claim.ok && claim.reason === "already_completed" && claim.job.deliverableId) {
     recordWordMetric("dedupe_hit");
-    // Return empty failures — caller should reload deliverable by id.
     return {
       deliverables: [
         {
@@ -370,7 +421,7 @@ export async function generateDeliverables(
           downloadUrl: `/api/deliverables/${claim.job.deliverableId}`,
         },
       ],
-      detection: detectDeliverableFormats(input.assignment),
+      detection,
       failures: [],
       jobId,
     };
@@ -380,7 +431,7 @@ export async function generateDeliverables(
     recordWordMetric("dedupe_hit");
     return {
       deliverables: [],
-      detection: detectDeliverableFormats(input.assignment),
+      detection,
       failures: [
         {
           format: "*",
@@ -393,19 +444,11 @@ export async function generateDeliverables(
 
   const job = claim.ok ? claim.job : null;
 
-  let safeContent = exportGuard.text;
-  const detection = resolveGenerationFormats(
-    input.assignment,
-    input.formats,
-    safeContent,
-  );
-  const formats = detection.formats;
-  const needsWord = formats.includes("docx");
-
-  // AI content quality gate — only before Word conversion.
-  if (needsWord) {
+  try {
+    // AI content quality gate — only before Word conversion.
     if (!stageReached(job?.stage ?? "REQUEST_RECEIVED", "AI_CONTENT_COMPLETED")) {
       await advanceWordJobStage(jobId, "AI_CONTENT_STARTED");
+      await heartbeatWordJob(jobId);
       const modelStarted = Date.now();
       const quality = await generateQualityWordContent({
         initialContent: safeContent,
@@ -494,48 +537,29 @@ export async function generateDeliverables(
     } else if (job?.sourceContent) {
       safeContent = job.sourceContent;
     }
-  }
 
-  const deliverables: Deliverable[] = [];
-  const failures: Array<{ format: string; reasons: string[] }> = [];
+    const deliverables: Deliverable[] = [];
+    const failures: Array<{ format: string; reasons: string[] }> = [];
 
-  const brand = needsWord
-    ? await getWordCompanyBrand(options.userId)
-    : null;
-  const explicitTemplateId =
-    options.templateId && isWordTemplateId(options.templateId)
-      ? options.templateId
-      : null;
-  const defaultTemplateId =
-    !explicitTemplateId &&
-    brand?.defaultTemplateId &&
-    isWordTemplateId(brand.defaultTemplateId)
-      ? brand.defaultTemplateId
-      : null;
-  const purposeStarted = Date.now();
-  const purpose = needsWord
-    ? detectWordPurpose({
-        assignment: input.assignment,
-        title: input.title,
-        content: safeContent,
-        explicitTemplateId: explicitTemplateId ?? defaultTemplateId,
-      })
-    : null;
-  if (needsWord) {
-    recordWordMetric("purpose_ms", Date.now() - purposeStarted);
-  }
-
-  if (purpose) {
-    recordWordMetric("request");
-    trackWordEvent({
-      name: "word_request",
-      userId: options.userId,
-      jobId,
-      templateId: purpose.templateId,
-      purpose: purpose.purpose,
-      format: "docx",
-      stage: "purpose",
+    const brand = await getWordCompanyBrand(options.userId);
+    const explicitTemplateId =
+      options.templateId && isWordTemplateId(options.templateId)
+        ? options.templateId
+        : null;
+    const defaultTemplateId =
+      !explicitTemplateId &&
+      brand?.defaultTemplateId &&
+      isWordTemplateId(brand.defaultTemplateId)
+        ? brand.defaultTemplateId
+        : null;
+    const purposeStarted = Date.now();
+    const purpose = detectWordPurpose({
+      assignment: input.assignment,
+      title: input.title,
+      content: safeContent,
+      explicitTemplateId: explicitTemplateId ?? defaultTemplateId,
     });
+    recordWordMetric("purpose_ms", Date.now() - purposeStarted);
     trackWordEvent({
       name: "purpose_detected",
       userId: options.userId,
@@ -553,159 +577,276 @@ export async function generateDeliverables(
       templateId: purpose.templateId,
       purpose: purpose.purpose,
       format: "docx",
-      stage: explicitTemplateId ? "explicit" : defaultTemplateId ? "brand_default" : "auto",
+      stage: explicitTemplateId
+        ? "explicit"
+        : defaultTemplateId
+          ? "brand_default"
+          : "auto",
       success: true,
     });
     await advanceWordJobStage(jobId, job?.stage ?? "REQUEST_RECEIVED", {
       sourceContent: safeContent,
     });
-  }
 
-  const docxOptions: DocxGenerateOptions | undefined = needsWord
-    ? {
-        assignment: input.assignment,
-        title: input.title,
-        templateId: purpose?.templateId,
-        brand,
-        author: options.author ?? brand?.contactName,
-        companyName: options.companyName ?? brand?.companyName,
-        recipient: options.recipient,
-        createdAt: options.createdAt,
-        footerNote: brand?.footerText,
+    const docxOptions: DocxGenerateOptions = {
+      assignment: input.assignment,
+      title: input.title,
+      templateId: purpose.templateId,
+      brand,
+      author: options.author ?? brand?.contactName,
+      companyName: options.companyName ?? brand?.companyName,
+      recipient: options.recipient,
+      createdAt: options.createdAt,
+      footerNote: brand?.footerText,
+    };
+
+    for (const format of formats) {
+      await heartbeatWordJob(jobId);
+
+      // Resume: skip generation if already stored for this job.
+      if (
+        format === "docx" &&
+        job?.deliverableId &&
+        stageReached(job.stage, "DOWNLOAD_READY")
+      ) {
+        deliverables.push({
+          id: job.deliverableId,
+          fileName: `${job.baseFileName}.docx`,
+          format: "docx",
+          mimeType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          generatedAt: job.updatedAt,
+          sizeBytes: 0,
+          isPlaceholder: false,
+          downloadUrl: `/api/deliverables/${job.deliverableId}`,
+        });
+        // Must reach a terminal state — previously left `running`.
+        await completeWordJob(jobId, job.deliverableId);
+        continue;
       }
-    : undefined;
 
-  for (const format of formats) {
-    // Resume: skip generation if already stored for this job.
-    if (
-      format === "docx" &&
-      job?.deliverableId &&
-      stageReached(job.stage, "DOWNLOAD_READY")
-    ) {
-      deliverables.push({
-        id: job.deliverableId,
-        fileName: `${job.baseFileName}.docx`,
-        format: "docx",
-        mimeType:
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        generatedAt: job.updatedAt,
-        sizeBytes: 0,
-        isPlaceholder: false,
-        downloadUrl: `/api/deliverables/${job.deliverableId}`,
-      });
-      continue;
-    }
-
-    if (format === "docx") {
-      await advanceWordJobStage(jobId, "DOCX_GENERATION_STARTED");
-    }
-
-    const genStarted = Date.now();
-    const { file, reasons, attempts, timings } = await generateVerifiedFile(
-      format,
-      safeContent,
-      baseFileName,
-      format === "docx" ? docxOptions : undefined,
-    );
-
-    if (!file) {
       if (format === "docx") {
-        recordWordMetric("word_convert_failure");
+        await advanceWordJobStage(jobId, "DOCX_GENERATION_STARTED");
+      }
+
+      const genStarted = Date.now();
+      const { file, reasons, attempts, timings } = await generateVerifiedFile(
+        format,
+        safeContent,
+        baseFileName,
+        format === "docx" ? docxOptions : undefined,
+      );
+
+      if (!file) {
+        if (format === "docx") {
+          recordWordMetric("word_convert_failure");
+          recordWordMetric("docx_ms", timings.generateMs);
+          recordWordMetric("verify_ms", timings.verifyMs);
+          trackWordEvent({
+            name: "generate_failure",
+            userId: options.userId,
+            jobId,
+            templateId: purpose.templateId,
+            purpose: purpose.purpose,
+            format: "docx",
+            stage: "docx",
+            success: false,
+            durationMs: Date.now() - genStarted,
+          });
+          recordWordCost({
+            userId: options.userId,
+            assignment: input.assignment,
+            content: safeContent,
+            options,
+            templateId: purpose.templateId,
+            purpose: purpose.purpose,
+            success: false,
+            durationMs: Date.now() - genStarted,
+            storageBytes: 0,
+            retryCount: Math.max(0, attempts - 1),
+          });
+          await failWordJob(
+            jobId,
+            "DOCX_GENERATION_STARTED",
+            reasons.join(",") || "word_convert_failed",
+          );
+        }
+        failures.push({ format, reasons });
+        continue;
+      }
+
+      if (format === "docx") {
+        recordWordMetric("generate_ms", Date.now() - genStarted);
         recordWordMetric("docx_ms", timings.generateMs);
         recordWordMetric("verify_ms", timings.verifyMs);
-        trackWordEvent({
-          name: "generate_failure",
-          userId: options.userId,
-          jobId,
-          templateId: purpose?.templateId,
-          purpose: purpose?.purpose,
-          format: "docx",
-          stage: "docx",
-          success: false,
-          durationMs: Date.now() - genStarted,
-        });
-        recordWordCost({
-          userId: options.userId,
-          assignment: input.assignment,
-          content: safeContent,
-          options,
-          templateId: purpose?.templateId,
-          purpose: purpose?.purpose,
-          success: false,
-          durationMs: Date.now() - genStarted,
-          storageBytes: 0,
-          retryCount: Math.max(0, attempts - 1),
-        });
-        await failWordJob(
-          jobId,
-          "DOCX_GENERATION_STARTED",
-          reasons.join(",") || "word_convert_failed",
-        );
+        await advanceWordJobStage(jobId, "DOCX_GENERATION_COMPLETED");
+        await advanceWordJobStage(jobId, "DOCX_VERIFY_COMPLETED");
+        await advanceWordJobStage(jobId, "DOCX_STORAGE_STARTED");
       }
-      failures.push({ format, reasons });
-      continue;
-    }
 
-    if (format === "docx") {
-      recordWordMetric("generate_ms", Date.now() - genStarted);
-      recordWordMetric("docx_ms", timings.generateMs);
-      recordWordMetric("verify_ms", timings.verifyMs);
-      await advanceWordJobStage(jobId, "DOCX_GENERATION_COMPLETED");
-      await advanceWordJobStage(jobId, "DOCX_VERIFY_COMPLETED");
-      await advanceWordJobStage(jobId, "DOCX_STORAGE_STARTED");
-    }
+      const versionGroupBeforeSave =
+        format === "docx" && options.versionGroupId
+          ? listDeliverableVersions(options.versionGroupId)
+          : [];
+      const fallbackVersion =
+        format === "docx" && options.versionGroupId
+          ? versionGroupBeforeSave.reduce(
+              (max, item) => Math.max(max, item.version),
+              0,
+            ) + 1
+          : 1;
+      const metadata =
+        format === "docx"
+          ? buildWordMetadata({
+              purpose: purpose.purpose ?? null,
+              templateId: purpose.templateId ?? null,
+              versionRecord: null,
+              fallbackVersion,
+              parentDeliverableId: options.parentDeliverableId ?? null,
+              versionGroupId: options.versionGroupId ?? null,
+            })
+          : null;
 
-    const versionGroupBeforeSave =
-      format === "docx" && options.versionGroupId
-        ? listDeliverableVersions(options.versionGroupId)
-        : [];
-    const fallbackVersion =
-      format === "docx" && options.versionGroupId
-        ? versionGroupBeforeSave.reduce(
-            (max, item) => Math.max(max, item.version),
-            0,
-          ) + 1
-        : 1;
-    const metadata =
-      format === "docx"
-        ? buildWordMetadata({
-            purpose: purpose?.purpose ?? null,
-            templateId: purpose?.templateId ?? null,
-            versionRecord: null,
-            fallbackVersion,
-            parentDeliverableId: options.parentDeliverableId ?? null,
-            versionGroupId: options.versionGroupId ?? null,
-          })
-        : null;
+      const persistStarted = Date.now();
+      const { stored, persist } = await saveDeliverableFileDurableDetailed(
+        file,
+        options.userId,
+        {
+          sourceContent: safeContent,
+          baseFileName,
+          deliverableId: job?.deliverableId ?? undefined,
+          metadata,
+        },
+      );
 
-    const persistStarted = Date.now();
-    const { stored, persist } = await saveDeliverableFileDurableDetailed(
-      file,
-      options.userId,
-      {
-        sourceContent: safeContent,
-        baseFileName,
-        deliverableId: job?.deliverableId ?? undefined,
-        metadata,
-      },
-    );
+      if (format === "docx") {
+        recordWordMetric("persist_ms", Date.now() - persistStarted);
+        recordWordMetric("save_ms", Date.now() - persistStarted);
+        if (!persist.durable) {
+          recordWordMetric("storage_failure");
+          trackWordEvent({
+            name: "persist_failure",
+            userId: options.userId,
+            jobId,
+            deliverableId: stored.id,
+            templateId: purpose.templateId,
+            purpose: purpose.purpose,
+            format: "docx",
+            stage: "save",
+            success: false,
+            durationMs: Date.now() - persistStarted,
+            sizeBytes: stored.buffer.byteLength,
+          });
+          recordWordCost({
+            userId: options.userId,
+            assignment: input.assignment,
+            content: safeContent,
+            options,
+            templateId: purpose.templateId,
+            purpose: purpose.purpose,
+            success: false,
+            durationMs: Date.now() - genStarted,
+            storageBytes: stored.buffer.byteLength,
+            retryCount: Math.max(0, attempts - 1),
+          });
+          await failWordJob(
+            jobId,
+            "DOCX_STORAGE_STARTED",
+            persist.storageError ?? "storage_failed",
+          );
+          failures.push({
+            format,
+            reasons: [
+              `storage_failed:${persist.storageError ?? "unknown"}`,
+              "Wordファイルは完成しましたが、保存できませんでした。",
+            ],
+          });
+          continue;
+        }
+        await advanceWordJobStage(jobId, "DOCX_STORAGE_COMPLETED", {
+          deliverableId: stored.id,
+        });
+        await advanceWordJobStage(jobId, "METADATA_CREATED", {
+          deliverableId: stored.id,
+        });
+        await advanceWordJobStage(jobId, "DOWNLOAD_READY", {
+          deliverableId: stored.id,
+        });
+        const notifyStarted = Date.now();
+        await advanceWordJobStage(jobId, "NOTIFICATION_SENT", {
+          deliverableId: stored.id,
+        });
+        recordWordMetric("notify_ms", Date.now() - notifyStarted);
+        await completeWordJob(jobId, stored.id);
 
-    if (format === "docx") {
-      recordWordMetric("persist_ms", Date.now() - persistStarted);
-      recordWordMetric("save_ms", Date.now() - persistStarted);
-      if (!persist.durable) {
-        recordWordMetric("storage_failure");
+        let versionRecord: DeliverableVersionRecord | null = null;
+        if (options.versionGroupId && options.parentDeliverableId) {
+          versionRecord = addDeliverableVersion({
+            groupId: options.versionGroupId,
+            newDeliverableId: stored.id,
+            parentDeliverableId: options.parentDeliverableId,
+            createdBy: options.userId,
+            displayName: buildVersionedDisplayName(
+              baseFileName,
+              fallbackVersion,
+            ),
+            internalFileName: buildVersionedInternalFileName(
+              stored.fileName,
+              fallbackVersion,
+            ),
+            revisionReason: options.revisionReason ?? null,
+            jobId,
+            diffSummary: "regenerated",
+          });
+        } else if (!findVersionGroupByDeliverableId(stored.id)) {
+          versionRecord = createVersionGroup({
+            deliverableId: stored.id,
+            createdBy: options.userId,
+            displayName: baseFileName,
+            internalFileName: stored.fileName,
+            jobId,
+          });
+        } else {
+          versionRecord =
+            findVersionGroupByDeliverableId(stored.id)?.record ?? null;
+        }
+        stored.metadata = buildWordMetadata({
+          purpose: purpose.purpose ?? null,
+          templateId: purpose.templateId ?? null,
+          versionRecord,
+          fallbackVersion,
+          parentDeliverableId: options.parentDeliverableId ?? null,
+          versionGroupId: options.versionGroupId ?? null,
+        });
+        await updateStoredDeliverableMetadata(
+          stored.id,
+          options.userId,
+          stored.metadata,
+        );
         trackWordEvent({
-          name: "persist_failure",
+          name: "persist_success",
           userId: options.userId,
           jobId,
           deliverableId: stored.id,
-          templateId: purpose?.templateId,
-          purpose: purpose?.purpose,
+          templateId: purpose.templateId,
+          purpose: purpose.purpose,
           format: "docx",
           stage: "save",
-          success: false,
+          success: true,
           durationMs: Date.now() - persistStarted,
+          sizeBytes: stored.buffer.byteLength,
+        });
+        trackWordEvent({
+          name: "generate_success",
+          userId: options.userId,
+          jobId,
+          deliverableId: stored.id,
+          templateId: purpose.templateId,
+          purpose: purpose.purpose,
+          format: "docx",
+          stage: "completed",
+          success: true,
+          durationMs: Date.now() - genStarted,
           sizeBytes: stored.buffer.byteLength,
         });
         recordWordCost({
@@ -713,135 +854,58 @@ export async function generateDeliverables(
           assignment: input.assignment,
           content: safeContent,
           options,
-          templateId: purpose?.templateId,
-          purpose: purpose?.purpose,
-          success: false,
+          templateId: purpose.templateId,
+          purpose: purpose.purpose,
+          success: true,
           durationMs: Date.now() - genStarted,
           storageBytes: stored.buffer.byteLength,
           retryCount: Math.max(0, attempts - 1),
         });
-        await failWordJob(
-          jobId,
-          "DOCX_STORAGE_STARTED",
-          persist.storageError ?? "storage_failed",
-        );
-        failures.push({
-          format,
-          reasons: [
-            `storage_failed:${persist.storageError ?? "unknown"}`,
-            "Wordファイルは完成しましたが、保存できませんでした。",
-          ],
-        });
-        // Keep generated binary in memory for resume_from_last_stage, but do not
-        // mark the job completed.
-        continue;
+        recordWordMetric("success");
       }
-      await advanceWordJobStage(jobId, "DOCX_STORAGE_COMPLETED", {
-        deliverableId: stored.id,
-      });
-      await advanceWordJobStage(jobId, "METADATA_CREATED", {
-        deliverableId: stored.id,
-      });
-      await advanceWordJobStage(jobId, "DOWNLOAD_READY", {
-        deliverableId: stored.id,
-      });
-      const notifyStarted = Date.now();
-      await advanceWordJobStage(jobId, "NOTIFICATION_SENT", {
-        deliverableId: stored.id,
-      });
-      recordWordMetric("notify_ms", Date.now() - notifyStarted);
-      await completeWordJob(jobId, stored.id);
 
-      let versionRecord: DeliverableVersionRecord | null = null;
-      if (options.versionGroupId && options.parentDeliverableId) {
-        versionRecord = addDeliverableVersion({
-          groupId: options.versionGroupId,
-          newDeliverableId: stored.id,
-          parentDeliverableId: options.parentDeliverableId,
-          createdBy: options.userId,
-          displayName: buildVersionedDisplayName(baseFileName, fallbackVersion),
-          internalFileName: buildVersionedInternalFileName(
-            stored.fileName,
-            fallbackVersion,
-          ),
-          revisionReason: options.revisionReason ?? null,
-          jobId,
-          diffSummary: "regenerated",
-        });
-      } else if (!findVersionGroupByDeliverableId(stored.id)) {
-        versionRecord = createVersionGroup({
-          deliverableId: stored.id,
-          createdBy: options.userId,
-          displayName: baseFileName,
-          internalFileName: stored.fileName,
-          jobId,
-        });
-      } else {
-        versionRecord = findVersionGroupByDeliverableId(stored.id)?.record ?? null;
-      }
-      stored.metadata = buildWordMetadata({
-        purpose: purpose?.purpose ?? null,
-        templateId: purpose?.templateId ?? null,
-        versionRecord,
-        fallbackVersion,
-        parentDeliverableId: options.parentDeliverableId ?? null,
-        versionGroupId: options.versionGroupId ?? null,
-      });
-      await updateStoredDeliverableMetadata(
-        stored.id,
-        options.userId,
-        stored.metadata,
-      );
-      trackWordEvent({
-        name: "persist_success",
-        userId: options.userId,
-        jobId,
-        deliverableId: stored.id,
-        templateId: purpose?.templateId,
-        purpose: purpose?.purpose,
-        format: "docx",
-        stage: "save",
-        success: true,
-        durationMs: Date.now() - persistStarted,
-        sizeBytes: stored.buffer.byteLength,
-      });
-      trackWordEvent({
-        name: "generate_success",
-        userId: options.userId,
-        jobId,
-        deliverableId: stored.id,
-        templateId: purpose?.templateId,
-        purpose: purpose?.purpose,
-        format: "docx",
-        stage: "completed",
-        success: true,
-        durationMs: Date.now() - genStarted,
-        sizeBytes: stored.buffer.byteLength,
-      });
-      recordWordCost({
-        userId: options.userId,
-        assignment: input.assignment,
-        content: safeContent,
-        options,
-        templateId: purpose?.templateId,
-        purpose: purpose?.purpose,
-        success: true,
-        durationMs: Date.now() - genStarted,
-        storageBytes: stored.buffer.byteLength,
-        retryCount: Math.max(0, attempts - 1),
-      });
-      recordWordMetric("success");
+      deliverables.push(toDeliverableMetadata(stored, requestOrigin));
     }
 
-    deliverables.push(toDeliverableMetadata(stored, requestOrigin));
+    // Safety net: every claimed Word job must leave as completed|failed.
+    const settled = await getWordJob(jobId);
+    if (settled && !isWordJobTerminal(settled.status)) {
+      const docx = deliverables.find((d) => d.format === "docx");
+      if (docx) {
+        await completeWordJob(jobId, docx.id);
+      } else {
+        await failWordJob(
+          jobId,
+          settled.stage,
+          failures.map((f) => f.reasons.join(",")).join(";") ||
+            "docx_not_produced",
+        );
+      }
+    }
+
+    recordWordMetric("total_ms", Date.now() - startedAt);
+
+    return {
+      deliverables,
+      detection,
+      failures,
+      jobId,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "generate_deliverables_aborted";
+    await failWordJobIfStillRunning(
+      jobId,
+      job?.stage ?? "REQUEST_RECEIVED",
+      message,
+    );
+    throw error;
+  } finally {
+    await failWordJobIfStillRunning(
+      jobId,
+      job?.stage ?? "REQUEST_RECEIVED",
+      "unterminated_job:処理が完了ステータスに到達しませんでした",
+    );
   }
-
-  recordWordMetric("total_ms", Date.now() - startedAt);
-
-  return {
-    deliverables,
-    detection,
-    failures,
-    jobId,
-  };
 }
+

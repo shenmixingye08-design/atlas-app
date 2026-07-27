@@ -82,7 +82,12 @@ export async function POST(request: Request): Promise<Response> {
 
   const existing = findWorkJobByIdempotencyKey(userId, idempotencyKey);
   if (existing) {
-    if (existing.status === "queued" || existing.status === "failed") {
+    const { isStaleWorkJobRunning } = await import("@/lib/work-jobs/run");
+    const shouldRestart =
+      existing.status === "queued" ||
+      existing.status === "failed" ||
+      (existing.status === "running" && isStaleWorkJobRunning(existing));
+    if (shouldRestart) {
       after(async () => {
         try {
           await executeWorkJob(existing.id, userId);

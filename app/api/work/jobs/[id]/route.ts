@@ -1,9 +1,16 @@
+import { after } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 
+import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
+import {
+  executeWorkJob,
+  isStaleWorkJobRunning,
+} from "@/lib/work-jobs/run";
 import { getWorkJobDurable } from "@/lib/work-jobs/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -21,12 +28,25 @@ export async function GET(
   }
 
   const { id } = await context.params;
-  const job = await getWorkJobDurable(id, userId);
+  let job = await getWorkJobDurable(id, userId);
   if (!job) {
     return Response.json(
       { error: "依頼が見つかりません。もう一度送ってください。" },
       { status: 404 },
     );
+  }
+
+  // Stale running must not stay 処理中 — reclaim on poll.
+  if (job.status === "running" && isStaleWorkJobRunning(job)) {
+    after(async () => {
+      try {
+        await executeWorkJob(id, userId);
+      } catch (error) {
+        console.warn("[work-jobs/poll]", toHumanReliabilityMessage(error));
+      }
+    });
+    // Re-read after scheduling recovery (may already be failed if max attempts).
+    job = (await getWorkJobDurable(id, userId)) ?? job;
   }
 
   return Response.json({
