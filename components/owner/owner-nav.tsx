@@ -25,7 +25,8 @@ type OwnerNavProps = {
     | "auditLog"
     | "disasterRecovery"
     | "automationExecutionLogs"
-    | "reliability";
+    | "reliability"
+    | "wordDownloadDiagnostics";
 };
 const LINKS = [
   { id: "dashboard" as const, href: "/owner", label: ui.owner.navDashboard },
@@ -98,6 +99,11 @@ const LINKS = [
     id: "reliability" as const,
     href: "/owner/reliability",
     label: "Reliability (SRE)",
+  },
+  {
+    id: "wordDownloadDiagnostics" as const,
+    href: "/owner/diagnostics/word-download",
+    label: "Word DL診断",
   },
   {
     id: "externalServices" as const,

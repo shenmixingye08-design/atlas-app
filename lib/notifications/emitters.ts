@@ -1,6 +1,11 @@
 import "server-only";
 
 import { createNotification } from "./service";
+import {
+  listStoredNotifications,
+  updateNotification,
+} from "./store";
+import type { NotificationRecord } from "./types";
 
 /** Deep link that opens the exact automation in its detail panel. */
 function automationActionUrl(automationId: string): string {
@@ -316,6 +321,38 @@ export function notifyRecommendation(
   });
 }
 
+/**
+ * Same requestId/jobId → update latest notification instead of creating duplicates.
+ * Completing a deliverable must not leave an older failure as the "latest" state.
+ */
+function upsertWorkNotificationByRequestId(input: {
+  userId: string;
+  requestId: string | null | undefined;
+  build: () => NotificationRecord | null;
+  patch: (existing: NotificationRecord) => Partial<NotificationRecord>;
+}): NotificationRecord | null {
+  const requestId = input.requestId?.trim() || null;
+  if (requestId) {
+    const existing = listStoredNotifications({
+      audience: "user",
+      userId: input.userId,
+    }).find(
+      (n) =>
+        n.requestId === requestId ||
+        n.relatedTaskId === requestId ||
+        n.workflowRunId === requestId,
+    );
+    if (existing) {
+      const updated = updateNotification(
+        existing.notificationId,
+        input.patch(existing),
+      );
+      return updated;
+    }
+  }
+  return input.build();
+}
+
 export function notifyWorkCompleted(
   userId: string | null | undefined,
   input: {
@@ -341,24 +378,43 @@ export function notifyWorkCompleted(
   const actionUrl =
     input.actionUrl ??
     (deliverableId ? deliverableActionUrl(deliverableId) : "/workspace");
-  return createNotification({
-    audience: "user",
+  const title = input.title?.trim() || "お仕事が完了しました";
+  const message = input.message
+    ? `お待たせいたしました。${input.message}`
+    : "お待たせいたしました。ご依頼の内容が完了しました。";
+
+  return upsertWorkNotificationByRequestId({
     userId,
-    type: "completed",
-    // Keep the caller's task-type title (e.g.「レポートを作成しました」). The display
-    // layer upgrades generic / internal-sounding titles automatically.
-    title: input.title?.trim() || "お仕事が完了しました",
-    message: input.message
-      ? `お待たせいたしました。${input.message}`
-      : "お待たせいたしました。ご依頼の内容が完了しました。",
-    relatedTaskId: input.relatedTaskId ?? deliverableId,
-    actionUrl,
-    targetType: deliverableId ? "deliverable" : null,
-    targetId: deliverableId,
-    deliverableId,
-    workflowRunId: input.workflowRunId ?? null,
-    requestId: input.requestId ?? null,
-    lineEvent: "work_completed",
+    requestId: input.requestId ?? input.workflowRunId ?? deliverableId,
+    build: () =>
+      createNotification({
+        audience: "user",
+        userId,
+        type: "completed",
+        title,
+        message,
+        relatedTaskId: input.relatedTaskId ?? deliverableId,
+        actionUrl,
+        targetType: deliverableId ? "deliverable" : null,
+        targetId: deliverableId,
+        deliverableId,
+        workflowRunId: input.workflowRunId ?? null,
+        requestId: input.requestId ?? null,
+        lineEvent: "work_completed",
+      }),
+    patch: () => ({
+      type: "completed" as const,
+      title,
+      message,
+      deliverableId,
+      targetType: deliverableId ? ("deliverable" as const) : null,
+      targetId: deliverableId,
+      relatedTaskId: input.relatedTaskId ?? deliverableId,
+      workflowRunId: input.workflowRunId ?? null,
+      requestId: input.requestId ?? null,
+      lineEvent: "work_completed" as const,
+      isRead: false,
+    }),
   });
 }
 
@@ -382,26 +438,50 @@ export function notifyWorkFailed(
   const actionUrl =
     input.actionUrl ??
     (deliverableId ? deliverableActionUrl(deliverableId) : "/workspace");
-  return createNotification({
-    audience: "user",
+  const title = input.title?.trim() || "処理を完了できませんでした";
+  const message = input.message?.trim()
+    ? `処理を完了できませんでした。${input.message.trim()}`
+    : "処理を完了できませんでした。内容をご確認ください。";
+
+  return upsertWorkNotificationByRequestId({
     userId,
-    // Store the caller title + reason so the display layer can derive a
-    // task-type failed title (e.g.「契約書の処理を完了できませんでした」). The visible
-    // message stays sanitized/generic; the full reason shows on the result page
-    // (成果物の生成に失敗しました + reason).
-    type: "error",
-    title: input.title?.trim() || "処理を完了できませんでした",
-    message: input.message?.trim()
-      ? `処理を完了できませんでした。${input.message.trim()}`
-      : "処理を完了できませんでした。内容をご確認ください。",
-    relatedTaskId: input.relatedTaskId ?? deliverableId,
-    actionUrl,
-    targetType: deliverableId ? "deliverable" : null,
-    targetId: deliverableId,
-    deliverableId,
-    workflowRunId: input.workflowRunId ?? null,
-    requestId: input.requestId ?? null,
-    lineEvent: "error",
+    requestId: input.requestId ?? input.workflowRunId ?? deliverableId,
+    build: () =>
+      createNotification({
+        audience: "user",
+        userId,
+        type: "error",
+        title,
+        message,
+        relatedTaskId: input.relatedTaskId ?? deliverableId,
+        actionUrl,
+        targetType: deliverableId ? "deliverable" : null,
+        targetId: deliverableId,
+        deliverableId,
+        workflowRunId: input.workflowRunId ?? null,
+        requestId: input.requestId ?? null,
+        lineEvent: "error",
+      }),
+    patch: (existing) => {
+      // Never downgrade a completed deliverable notification to failed
+      // when only a side-channel (e.g. notify) failed after success.
+      if (existing.type === "completed" && existing.deliverableId) {
+        return {};
+      }
+      return {
+        type: "error" as const,
+        title,
+        message,
+        deliverableId,
+        targetType: deliverableId ? ("deliverable" as const) : null,
+        targetId: deliverableId,
+        relatedTaskId: input.relatedTaskId ?? deliverableId,
+        workflowRunId: input.workflowRunId ?? null,
+        requestId: input.requestId ?? null,
+        lineEvent: "error" as const,
+        isRead: false,
+      };
+    },
   });
 }
 

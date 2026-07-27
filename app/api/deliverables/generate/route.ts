@@ -8,6 +8,8 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** Word/PDF multi-format generation can exceed default serverless limits. */
+export const maxDuration = 300;
 
 type RequestBody = {
   assignment?: unknown;
