@@ -116,6 +116,7 @@ describe("Owner email gate", () => {
 describe("auth route matchers", () => {
   it("keeps sign-in/up public via page list and clerk webhook public", () => {
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain("/api/webhooks/clerk(.*)");
+    expect(ATLAS_PUBLIC_API_MATCHERS).toContain("/api/health/version(.*)");
     expect(ATLAS_PROTECTED_PAGE_MATCHERS).toContain("/owner(.*)");
     expect(ATLAS_PROTECTED_PAGE_MATCHERS).toContain("/projects(.*)");
     expect(ATLAS_APP_HOME_PATH).toBe("/projects");
