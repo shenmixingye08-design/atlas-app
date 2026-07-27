@@ -4,6 +4,9 @@ import { checkAtlasOwner } from "@/lib/auth/require-atlas-owner";
 import { getClerkUserPrimaryEmail } from "@/lib/auth/get-clerk-user-email";
 import { probeDeliverableStorage } from "@/lib/deliverables/object-storage";
 import { getWordMetricsSnapshot } from "@/lib/deliverables/word-metrics";
+import { evaluateWordAlerts } from "@/lib/deliverables/word-alerts";
+import { getWordCostSnapshot } from "@/lib/deliverables/word-cost";
+import { summarizeWordAnalytics } from "@/lib/deliverables/word-analytics";
 import { resolveDeliverableStorageBackend } from "@/lib/deliverables/storage-backend";
 import { ATLAS_DELIVERABLE_FILES_BUCKET } from "@/lib/deliverables/constants";
 import { getSupabaseServiceRoleEnv } from "@/lib/supabase/env";
@@ -25,6 +28,9 @@ export async function buildWordDiagnosticsOverview(input: {
   userEmailHost: string | null;
   storage: Awaited<ReturnType<typeof probeDeliverableStorage>>;
   metrics: ReturnType<typeof getWordMetricsSnapshot>;
+  alerts: Awaited<ReturnType<typeof evaluateWordAlerts>>;
+  cost: ReturnType<typeof getWordCostSnapshot>;
+  wordQuality: ReturnType<typeof summarizeWordAnalytics>;
   env: WordDiagnosticsEnv[];
   warnings: Array<{ severity: "critical" | "warn"; message: string }>;
   androidUnverified: string[];
@@ -47,6 +53,9 @@ export async function buildWordDiagnosticsOverview(input: {
         severity: "critical",
       },
       metrics: getWordMetricsSnapshot(),
+      alerts: [],
+      cost: getWordCostSnapshot(),
+      wordQuality: summarizeWordAnalytics(),
       env: [],
       warnings: [{ severity: "critical", message: "管理者のみ閲覧できます。" }],
       androidUnverified: [],
@@ -55,6 +64,9 @@ export async function buildWordDiagnosticsOverview(input: {
 
   const storage = await probeDeliverableStorage();
   const metrics = getWordMetricsSnapshot();
+  const alerts = await evaluateWordAlerts();
+  const cost = getWordCostSnapshot();
+  const wordQuality = summarizeWordAnalytics();
   const supabase = getSupabaseServiceRoleEnv();
 
   const env: WordDiagnosticsEnv[] = [
@@ -131,6 +143,9 @@ export async function buildWordDiagnosticsOverview(input: {
     userEmailHost,
     storage,
     metrics,
+    alerts,
+    cost,
+    wordQuality,
     env,
     warnings,
     androidUnverified: [

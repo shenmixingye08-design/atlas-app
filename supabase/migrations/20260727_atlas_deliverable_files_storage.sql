@@ -1,4 +1,4 @@
--- Stage 3: Supabase Storage-backed deliverable binaries + integrity metadata.
+-- Stage 3/4: Supabase Storage-backed deliverable binaries + integrity metadata.
 -- Extends atlas_deliverable_files without dropping legacy content_base64.
 
 alter table public.atlas_deliverable_files
@@ -13,6 +13,7 @@ alter table public.atlas_deliverable_files
   add column if not exists last_downloaded_at timestamptz,
   add column if not exists deletion_reason text,
   add column if not exists deleted_at timestamptz,
+  add column if not exists deliverable_metadata jsonb,
   add column if not exists updated_at timestamptz not null default now();
 
 create index if not exists atlas_deliverable_files_storage_path_idx
@@ -58,5 +59,60 @@ drop policy if exists "atlas_deliverable_jobs_deny_anon"
   on public.atlas_deliverable_jobs;
 create policy "atlas_deliverable_jobs_deny_anon"
   on public.atlas_deliverable_jobs
+  for all to anon, authenticated
+  using (false) with check (false);
+
+-- Version groups (each version = unique deliverable id).
+create table if not exists public.atlas_deliverable_versions (
+  group_id text not null,
+  deliverable_id uuid not null,
+  parent_deliverable_id uuid,
+  version integer not null,
+  is_latest boolean not null default false,
+  revision_reason text,
+  created_by text not null,
+  created_at timestamptz not null default now(),
+  job_id text,
+  display_name text not null,
+  internal_file_name text not null,
+  diff_summary text,
+  primary key (group_id, version)
+);
+
+create index if not exists atlas_deliverable_versions_deliverable_idx
+  on public.atlas_deliverable_versions (deliverable_id);
+
+alter table public.atlas_deliverable_versions enable row level security;
+drop policy if exists "atlas_deliverable_versions_deny_anon"
+  on public.atlas_deliverable_versions;
+create policy "atlas_deliverable_versions_deny_anon"
+  on public.atlas_deliverable_versions
+  for all to anon, authenticated
+  using (false) with check (false);
+
+-- Per-user Word company / brand settings.
+create table if not exists public.atlas_word_company_brand (
+  user_id text primary key,
+  company_name text,
+  department_name text,
+  contact_name text,
+  postal_code text,
+  address text,
+  phone text,
+  email text,
+  website text,
+  logo_data_url text,
+  brand_color_hex text,
+  footer_text text,
+  default_font text,
+  default_template_id text,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.atlas_word_company_brand enable row level security;
+drop policy if exists "atlas_word_company_brand_deny_anon"
+  on public.atlas_word_company_brand;
+create policy "atlas_word_company_brand_deny_anon"
+  on public.atlas_word_company_brand
   for all to anon, authenticated
   using (false) with check (false);

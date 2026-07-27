@@ -26,3 +26,14 @@ export {
   listDocumentThemes,
   type DocumentTheme,
 } from "./themes";
+export {
+  documentModelSchema,
+  parseDocumentModel,
+  type DocumentModel,
+  type DocumentModelBlock,
+  type DocumentModelSection,
+} from "./document-model-schema";
+export {
+  documentModelFromMarkdown,
+  resolveDocumentModel,
+} from "./normalize-document-model";

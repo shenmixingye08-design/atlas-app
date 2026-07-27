@@ -10,6 +10,7 @@ import {
   loadDeliverableFromDisk,
   loadDurableDeliverable,
   persistDurableDeliverable,
+  updateDurableDeliverableMetadata,
   type DurableDeliverableRow,
   type PersistDurableResult,
 } from "./durable-store";
@@ -21,7 +22,12 @@ import {
   sha256Hex,
 } from "./integrity";
 import { allowDeliverableDiskFallback } from "./storage-backend";
-import type { Deliverable, DeliverableFormat, GeneratedDeliverableFile } from "./types";
+import type {
+  Deliverable,
+  DeliverableFormat,
+  DeliverableMetadata,
+  GeneratedDeliverableFile,
+} from "./types";
 
 export type StoredDeliverable = GeneratedDeliverableFile & {
   id: string;
@@ -33,6 +39,7 @@ export type StoredDeliverable = GeneratedDeliverableFile & {
   baseFileName: string;
   contentSha256?: string | null;
   storageStatus?: string | null;
+  metadata?: DeliverableMetadata | null;
 };
 
 export { DELIVERABLE_TTL_MS, DELIVERABLE_MEMORY_TTL_MS, DELIVERABLE_METADATA_TTL_MS };
@@ -104,6 +111,7 @@ function toDurableRow(stored: StoredDeliverable): DurableDeliverableRow {
     lastDownloadedAt: null,
     deletionReason: null,
     deletedAt: null,
+    metadata: stored.metadata ?? null,
     generatedAt: stored.generatedAt,
     expiresAt,
   };
@@ -121,6 +129,7 @@ export type SaveDeliverableOptions = {
   baseFileName?: string;
   /** Stable id for resume / idempotent retries (defaults to random UUID). */
   deliverableId?: string;
+  metadata?: DeliverableMetadata | null;
 };
 
 /**
@@ -158,6 +167,7 @@ export function saveDeliverableFile(
     sourceContent,
     baseFileName,
     contentSha256: integrity.sha256,
+    metadata: options?.metadata ?? null,
   };
 
   store.set(stored.id, stored);
@@ -249,6 +259,7 @@ async function regenerateFromSource(
       baseFileName: durable.baseFileName,
       contentSha256: integrity.sha256,
       storageStatus: "regenerated",
+      metadata: durable.metadata,
     };
     cacheInMemory(stored);
     const row = toDurableRow(stored);
@@ -281,6 +292,7 @@ async function hydrateFromDurable(id: string): Promise<StoredDeliverable | null>
       baseFileName: durable.baseFileName,
       contentSha256: durable.contentSha256 ?? sha256Hex(fromStorage),
       storageStatus: durable.storageStatus,
+      metadata: durable.metadata,
     };
     return cacheInMemory(stored);
   }
@@ -386,6 +398,7 @@ export async function getStoredDeliverableForUser(
           lastDownloadedAt: null,
           deletionReason: null,
           deletedAt: null,
+          metadata: fromDisk.metadata ?? null,
           generatedAt: fromDisk.generatedAt,
           expiresAt: new Date(
             new Date(fromDisk.generatedAt).getTime() + DELIVERABLE_METADATA_TTL_MS,
@@ -428,6 +441,7 @@ export async function recoverDeliverableBinary(
       baseFileName: durable.baseFileName,
       contentSha256: durable.contentSha256 ?? sha256Hex(fromStorage),
       storageStatus: durable.storageStatus,
+      metadata: durable.metadata,
     };
     if (integrityOk(stored, durable.contentSha256)) {
       return cacheInMemory(stored);
@@ -438,6 +452,18 @@ export async function recoverDeliverableBinary(
   if (!regenerated) return null;
   if (!integrityOk(regenerated, regenerated.contentSha256)) return null;
   return regenerated;
+}
+
+export async function updateStoredDeliverableMetadata(
+  id: string,
+  userId: string,
+  metadata: DeliverableMetadata,
+): Promise<void> {
+  const memory = getStoredDeliverable(id);
+  if (memory && memory.userId === userId) {
+    getStoreBucket().set(id, { ...memory, metadata });
+  }
+  await updateDurableDeliverableMetadata({ id, userId, metadata });
 }
 
 export function toDeliverableMetadata(
@@ -457,5 +483,6 @@ export function toDeliverableMetadata(
     // Same-origin relative path — avoids absolute-origin mismatches on mobile
     // (http/https, forwarded host) that break <a download> / cookie scope.
     downloadUrl: `/api/deliverables/${stored.id}`,
+    metadata: stored.metadata ?? undefined,
   };
 }

@@ -17,7 +17,11 @@ import {
   uploadDeliverableObject,
 } from "./object-storage";
 import { allowDeliverableDiskFallback } from "./storage-backend";
-import type { DeliverableFormat, GeneratedDeliverableFile } from "./types";
+import type {
+  DeliverableFormat,
+  DeliverableMetadata,
+  GeneratedDeliverableFile,
+} from "./types";
 
 type DiskStoredDeliverable = GeneratedDeliverableFile & {
   id: string;
@@ -26,6 +30,7 @@ type DiskStoredDeliverable = GeneratedDeliverableFile & {
   sourceContent: string;
   baseFileName: string;
   contentSha256?: string | null;
+  metadata?: DeliverableMetadata | null;
 };
 
 export type DurableDeliverableRow = {
@@ -50,6 +55,7 @@ export type DurableDeliverableRow = {
   lastDownloadedAt: string | null;
   deletionReason: DeliverableDeletionReason;
   deletedAt: string | null;
+  metadata: DeliverableMetadata | null;
   generatedAt: string;
   expiresAt: string;
 };
@@ -70,6 +76,7 @@ type DurableMeta = {
   contentSha256: string | null;
   downloadedAt: string | null;
   downloadCount: number;
+  metadata: DeliverableMetadata | null;
 };
 
 const ROOT = join(process.cwd(), ".data", "deliverables");
@@ -126,6 +133,7 @@ function persistToDisk(row: DurableDeliverableRow, buffer?: Buffer): void {
       contentSha256: row.contentSha256,
       downloadedAt: row.lastDownloadedAt,
       downloadCount: row.downloadCount,
+      metadata: row.metadata,
     };
     writeFileSync(metaPath(row.userId, row.id), JSON.stringify(meta));
     if (buffer && buffer.byteLength > 0) {
@@ -171,6 +179,7 @@ export function loadDeliverableFromDisk(
       sourceContent: meta.sourceContent ?? "",
       baseFileName: meta.baseFileName ?? meta.fileName,
       contentSha256: meta.contentSha256 ?? null,
+      metadata: meta.metadata ?? null,
     };
   } catch {
     return null;
@@ -208,6 +217,7 @@ export function persistDeliverableToDisk(stored: DiskStoredDeliverable): void {
       lastDownloadedAt: null,
       deletionReason: null,
       deletedAt: null,
+      metadata: stored.metadata ?? null,
       generatedAt: stored.generatedAt,
       expiresAt,
     },
@@ -367,6 +377,7 @@ export async function persistDurableDeliverable(
         last_downloaded_at: next.lastDownloadedAt,
         deletion_reason: next.deletionReason,
         deleted_at: next.deletedAt,
+        deliverable_metadata: next.metadata,
         generated_at: next.generatedAt,
         expires_at: next.expiresAt,
         created_at: next.generatedAt,
@@ -455,6 +466,7 @@ export async function loadDurableDeliverable(
       last_downloaded_at?: string | null;
       deletion_reason?: string | null;
       deleted_at?: string | null;
+      deliverable_metadata?: DeliverableMetadata | null;
       generated_at: string;
       expires_at: string;
     };
@@ -492,6 +504,7 @@ export async function loadDurableDeliverable(
       lastDownloadedAt: row.last_downloaded_at ?? null,
       deletionReason: (row.deletion_reason as DeliverableDeletionReason) ?? null,
       deletedAt: row.deleted_at ?? null,
+      metadata: row.deliverable_metadata ?? null,
       generatedAt: row.generated_at,
       expiresAt: row.expires_at,
     };
@@ -503,6 +516,37 @@ export async function loadDurableDeliverable(
   } catch (error) {
     console.error("[atlas_deliverable_files] select error", error);
     return null;
+  }
+}
+
+export async function updateDurableDeliverableMetadata(input: {
+  id: string;
+  userId: string;
+  metadata: DeliverableMetadata;
+}): Promise<void> {
+  const current = getDurableMemory().get(input.id);
+  if (current && current.userId === input.userId) {
+    const updated: DurableDeliverableRow = {
+      ...current,
+      metadata: input.metadata,
+    };
+    getDurableMemory().set(input.id, updated);
+    persistToDisk(updated);
+  }
+
+  try {
+    const client = createServiceRoleClientIfConfigured();
+    if (!client) return;
+    await client
+      .from("atlas_deliverable_files")
+      .update({
+        deliverable_metadata: input.metadata,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", input.id)
+      .eq("user_id", input.userId);
+  } catch {
+    /* metadata update is non-fatal; binary is already durable */
   }
 }
 

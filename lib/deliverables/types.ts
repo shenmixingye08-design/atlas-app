@@ -5,6 +5,14 @@ export type DeliverableFormat = "pdf" | "docx" | "pptx" | "md" | "txt" | "xlsx";
 export type DeliverableTimestamp = string;
 
 /** Metadata returned to the client after server-side generation. */
+export type DeliverableMetadata = {
+  purpose?: string | null;
+  templateId?: string | null;
+  version?: number | null;
+  parentDeliverableId?: string | null;
+  versionGroupId?: string | null;
+};
+
 export interface Deliverable {
   id: string;
   fileName: string;
@@ -15,6 +23,7 @@ export interface Deliverable {
   /** True when a stub generator was used — swap for production implementation. */
   isPlaceholder: boolean;
   downloadUrl: string;
+  metadata?: DeliverableMetadata;
 }
 
 /** Input to the deliverables engine. */
@@ -47,6 +56,7 @@ export interface DeliverableGenerator {
   generate(
     content: string,
     baseFileName: string,
+    options?: Record<string, unknown>,
   ): Promise<GeneratedDeliverableFile>;
 }
 
