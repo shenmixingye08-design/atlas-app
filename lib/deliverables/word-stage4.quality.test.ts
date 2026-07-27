@@ -8,6 +8,7 @@ import {
   DocxDeliverableGenerator,
   DocxPlaceholderGenerator,
 } from "@/lib/deliverables/generators/docx-generator";
+import { generateDeliverables } from "@/lib/deliverables/engine";
 import { PdfDeliverableGenerator } from "@/lib/deliverables/generators/pdf-generator";
 import { PptxDeliverableGenerator } from "@/lib/deliverables/generators/pptx-generator";
 import { XlsxDeliverableGenerator } from "@/lib/deliverables/generators/xlsx-generator";
@@ -526,6 +527,69 @@ describe("Word Stage 4 templates / model / versions", () => {
     // Old URL still resolves to v1 binary
     const old = await getStoredDeliverableForUser(v1.id, OWNER);
     expect(old?.id).toBe(v1.id);
+  });
+
+  it("engine attaches purpose template and linked version metadata", async () => {
+    const first = await generateDeliverables(
+      {
+        assignment: "議事録にして",
+        finalDeliverable: richTemplateBody("meeting-minutes"),
+        title: "議事録",
+        formats: ["docx"],
+      },
+      "http://localhost",
+      {
+        userId: OWNER,
+        jobId: "stage4_engine_metadata_v1",
+        templateId: "proposal",
+      },
+    );
+    const firstDocx = first.deliverables.find((item) => item.format === "docx");
+    expect(firstDocx?.metadata).toMatchObject({
+      purpose: "proposal",
+      templateId: "proposal",
+      version: 1,
+      parentDeliverableId: null,
+    });
+    expect(firstDocx?.metadata?.versionGroupId).toBeTruthy();
+    const firstStored = firstDocx
+      ? await getStoredDeliverableForUser(firstDocx.id, OWNER)
+      : null;
+    expect(firstStored?.metadata?.templateId).toBe("proposal");
+
+    const versionGroupId = firstDocx?.metadata?.versionGroupId;
+    expect(versionGroupId).toBeTruthy();
+    if (!firstDocx || !versionGroupId) {
+      throw new Error("missing first version metadata");
+    }
+
+    const second = await generateDeliverables(
+      {
+        assignment: "作業手順書として再生成",
+        finalDeliverable: richTemplateBody("manual"),
+        title: "議事録",
+        formats: ["docx"],
+      },
+      "http://localhost",
+      {
+        userId: OWNER,
+        jobId: "stage4_engine_metadata_v2",
+        templateId: "manual",
+        parentDeliverableId: firstDocx.id,
+        versionGroupId,
+        revisionReason: "テンプレート変更",
+        cost: { regenerateCount: 1 },
+      },
+    );
+    const secondDocx = second.deliverables.find((item) => item.format === "docx");
+    expect(secondDocx?.metadata).toMatchObject({
+      purpose: "manual",
+      templateId: "manual",
+      version: 2,
+      parentDeliverableId: firstDocx.id,
+      versionGroupId,
+    });
+    expect(listDeliverableVersions(versionGroupId)).toHaveLength(2);
   });
 
   it(
