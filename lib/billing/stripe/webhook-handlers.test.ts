@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import type Stripe from "stripe";
 
 import { listBillingHistoryRecords, resetBillingHistoryStore } from "../history/store";
 import { resetBillingNotificationStore } from "../notifications/store";
@@ -13,11 +14,18 @@ function buildEvent<T extends string>(
   object: Record<string, unknown>,
   id = `evt_${type}`,
 ): Parameters<typeof handleStripeWebhookEvent>[0] {
-  return {
+  const event = {
     id,
+    object: "event",
+    api_version: "2026-07-27.preview",
+    created: 1_783_083_600,
+    livemode: false,
+    pending_webhooks: 0,
+    request: null,
     type,
     data: { object },
-  } as Parameters<typeof handleStripeWebhookEvent>[0];
+  };
+  return event as unknown as Stripe.Event;
 }
 
 describe("stripe webhook handlers", () => {

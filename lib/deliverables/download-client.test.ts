@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const triggerMock = vi.fn(async () => undefined);
+const triggerMock = vi.fn<(blob: Blob, fileName: string) => Promise<void>>(
+  async () => undefined,
+);
 
 vi.mock("@/lib/browser/trigger-blob-download", () => ({
-  triggerBlobDownload: (...args: unknown[]) => triggerMock(...args),
+  triggerBlobDownload: (blob: Blob, fileName: string) =>
+    triggerMock(blob, fileName),
 }));
 
 import { downloadDeliverableFile } from "./download-client";
@@ -51,11 +54,11 @@ describe("downloadDeliverableFile client guards", () => {
     const [blob, name] = triggerMock.mock.calls[0]!;
     expect(name).toBe("report.docx");
     expect(blob).toBeInstanceOf(Blob);
-    expect((blob as Blob).type).toBe(
+    expect(blob.type).toBe(
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     );
-    expect((blob as Blob).type).not.toBe("application/octet-stream");
-    expect((blob as Blob).type).not.toBe("text/plain");
+    expect(blob.type).not.toBe("application/octet-stream");
+    expect(blob.type).not.toBe("text/plain");
   });
 
   it("rejects text/plain Content-Type for Word", async () => {

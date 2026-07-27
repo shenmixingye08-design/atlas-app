@@ -45,18 +45,22 @@ function restoreEnv(values: Record<(typeof ENV_KEYS)[number], string | undefined
   for (const key of ENV_KEYS) {
     const value = values[key];
     if (value === undefined) {
-      delete process.env[key];
+      Reflect.deleteProperty(process.env, key);
     } else {
-      process.env[key] = value;
+      Reflect.set(process.env, key, value);
     }
   }
+}
+
+function setEnv(key: (typeof ENV_KEYS)[number], value: string): void {
+  Reflect.set(process.env, key, value);
 }
 
 describe("stripe checkout config", () => {
   it("builds success and cancel URLs from app origin in non-production", () => {
     const saved = snapshotEnv();
     delete process.env.VERCEL_ENV;
-    process.env.NODE_ENV = "development";
+    setEnv("NODE_ENV", "development");
     delete process.env.NEXT_PUBLIC_APP_URL;
     delete process.env.NEXT_PUBLIC_SITE_URL;
     delete process.env.VERCEL_URL;
@@ -95,7 +99,7 @@ describe("stripe checkout config", () => {
   it("prefers NEXT_PUBLIC_APP_URL over request origin outside production", () => {
     const saved = snapshotEnv();
     delete process.env.VERCEL_ENV;
-    process.env.NODE_ENV = "development";
+    setEnv("NODE_ENV", "development");
     process.env.NEXT_PUBLIC_APP_URL = "https://atlas.example.com/";
 
     expect(resolveAppOrigin("http://localhost:3000")).toBe("https://atlas.example.com");

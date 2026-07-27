@@ -5,34 +5,55 @@ import {
   subscribeBillingUsageChanged,
 } from "./refresh-events";
 
-type MutableGlobal = typeof globalThis & {
-  window?: unknown;
-  CustomEvent?: unknown;
-};
-
-const g = globalThis as MutableGlobal;
-const originalWindow = g.window;
+const originalWindowDescriptor = Object.getOwnPropertyDescriptor(
+  globalThis,
+  "window",
+);
 
 // Node 20 ships EventTarget globally; provide a minimal CustomEvent shim only
 // if the runtime lacks it so the module's dispatch call works under vitest.
-if (typeof g.CustomEvent === "undefined") {
-  class CustomEventShim<T> extends Event {
-    detail: T | null;
-    constructor(type: string, init?: { detail?: T }) {
-      super(type);
-      this.detail = init?.detail ?? null;
+if (typeof globalThis.CustomEvent === "undefined") {
+  class CustomEventShim<T = unknown> extends Event implements CustomEvent<T> {
+    readonly detail: T;
+
+    constructor(type: string, init?: CustomEventInit<T>) {
+      super(type, init);
+      this.detail = init && "detail" in init ? (init.detail as T) : (null as T);
     }
+
+    initCustomEvent(): void {}
   }
-  g.CustomEvent = CustomEventShim as unknown;
+
+  Object.defineProperty(globalThis, "CustomEvent", {
+    configurable: true,
+    writable: true,
+    value: CustomEventShim,
+  });
+}
+
+function stubWindow(value: EventTarget | undefined): void {
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+
+function restoreWindow(): void {
+  if (originalWindowDescriptor) {
+    Object.defineProperty(globalThis, "window", originalWindowDescriptor);
+  } else {
+    Reflect.deleteProperty(globalThis, "window");
+  }
 }
 
 describe("billing refresh events", () => {
   afterEach(() => {
-    g.window = originalWindow;
+    restoreWindow();
   });
 
   it("no-ops safely without a window (SSR)", () => {
-    g.window = undefined;
+    stubWindow(undefined);
     const unsubscribe = subscribeBillingUsageChanged(() => {});
     expect(typeof unsubscribe).toBe("function");
     expect(() => notifyBillingUsageChanged()).not.toThrow();
@@ -40,7 +61,7 @@ describe("billing refresh events", () => {
   });
 
   it("notifies subscribers when usage changes and stops after unsubscribe", () => {
-    g.window = new EventTarget();
+    stubWindow(new EventTarget());
     const handler = vi.fn();
     const unsubscribe = subscribeBillingUsageChanged(handler);
 

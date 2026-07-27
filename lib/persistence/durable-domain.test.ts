@@ -1,18 +1,39 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const persistClerk = vi.fn(async () => true);
-const loadClerk = vi.fn(async () => null);
-const upsertSb = vi.fn(async () => false);
-const loadSb = vi.fn(async () => null);
+const persistClerk = vi.fn(
+  async (_userId: string, _key: string, _value: unknown) => true,
+);
+const loadClerk = vi.fn(
+  async (_userId: string, _key: string): Promise<unknown | null> => null,
+);
+const upsertSb = vi.fn(
+  async (_userId: string, _domain: string, _payload: unknown) => false,
+);
+const loadSb = vi.fn(
+  async (
+    _userId: string,
+    _domain: string,
+  ): Promise<{ payload: unknown; updatedAt: string } | null> => null,
+);
 
 vi.mock("@/lib/persistence/clerk-private-metadata", () => ({
-  persistClerkPrivateMetadataKey: (...args: unknown[]) => persistClerk(...args),
-  loadClerkPrivateMetadataKey: (...args: unknown[]) => loadClerk(...args),
+  persistClerkPrivateMetadataKey: (
+    userId: string,
+    key: string,
+    value: unknown,
+  ) => persistClerk(userId, key, value),
+  loadClerkPrivateMetadataKey: (userId: string, key: string) =>
+    loadClerk(userId, key),
 }));
 
 vi.mock("@/lib/persistence/supabase-user-state", () => ({
-  upsertSupabaseUserState: (...args: unknown[]) => upsertSb(...args),
-  loadSupabaseUserState: (...args: unknown[]) => loadSb(...args),
+  upsertSupabaseUserState: (
+    userId: string,
+    domain: string,
+    payload: unknown,
+  ) => upsertSb(userId, domain, payload),
+  loadSupabaseUserState: (userId: string, domain: string) =>
+    loadSb(userId, domain),
 }));
 
 import {

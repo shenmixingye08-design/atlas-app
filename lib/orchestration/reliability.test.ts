@@ -9,11 +9,21 @@ import { validateDeliverableFields } from "@/lib/orchestration/deliverable-valid
 import { sanitizeOrchestrationResultForClient } from "@/lib/orchestration/sanitize-response";
 import { migrateOrchestrationResult } from "@/lib/projects/migrate-result";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
+import type { WorkflowStateRecord } from "@/lib/orchestration/workflow-state";
 import { assertWorkersProducedDeliverables } from "@/lib/orchestration/worker-validation";
 import { tryParseStoredDeliverable } from "@/lib/orchestration/worker-output";
 import { emptyDeliverable } from "@/lib/orchestration/deliverable-types";
 
 const BLOG_WORKER_JSON = resolveMockLlmOutput("worker_deliverable", "ブログ記事");
+
+function completedWorkflow(workflowId: string): WorkflowStateRecord {
+  return {
+    workflowId,
+    state: "completed",
+    transitions: [],
+    updatedAt: new Date(0).toISOString(),
+  };
+}
 
 describe("reliability: mock blog worker", () => {
   it("returns structured JSON with required fields", () => {
@@ -171,6 +181,7 @@ describe("reliability: persistence migration", () => {
       plannerTasks: null,
       tasks: [],
       executions: [],
+      workflow: completedWorkflow("wf_legacy_hydrate"),
     } as OrchestrationResult;
 
     const migrated = migrateOrchestrationResult(legacy);
@@ -193,7 +204,18 @@ describe("reliability: client response sanitization", () => {
       plannerTasks: null,
       tasks: [],
       executions: [],
-      costDebug: { llmCallCount: 2 },
+      workflow: completedWorkflow("wf_sanitize"),
+      costDebug: {
+        llmCallCount: 2,
+        cacheHits: 0,
+        cacheMisses: 2,
+        estimatedInputTokens: 0,
+        estimatedOutputTokens: 0,
+        estimatedCostUsd: 0,
+        departmentBreakdown: {},
+        calls: [],
+        limitsReached: false,
+      },
       pipelineDebug: { stages: [], failureStage: null, deliverableReady: false, approved: false },
     } as OrchestrationResult;
 

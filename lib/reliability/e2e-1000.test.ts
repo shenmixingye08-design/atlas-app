@@ -202,7 +202,7 @@ async function oneIteration(i: number): Promise<IterResult> {
         actionUrl: null,
         lineEvent: "work_completed",
         severity: "info",
-        eventCategory: "work_completed",
+        eventCategory: "final_success",
         pushSentAt: null,
         pushFailedAt: null,
         pushFailureReason: null,

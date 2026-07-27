@@ -212,17 +212,18 @@ describe("Google Calendar integration", () => {
       updatedAt: new Date().toISOString(),
     });
 
-    const fetchMock = vi.fn(async () =>
-      Response.json({
-        items: [
-          {
-            id: "evt-1",
-            summary: "Review",
-            start: { dateTime: "2026-07-09T05:00:00.000Z" },
-            end: { dateTime: "2026-07-09T06:00:00.000Z" },
-          },
-        ],
-      }),
+    const fetchMock = vi.fn<typeof fetch>(
+      async (_input, _init) =>
+        Response.json({
+          items: [
+            {
+              id: "evt-1",
+              summary: "Review",
+              start: { dateTime: "2026-07-09T05:00:00.000Z" },
+              end: { dateTime: "2026-07-09T06:00:00.000Z" },
+            },
+          ],
+        }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -241,9 +242,9 @@ describe("Google Calendar integration", () => {
     }
 
     expect(fetchMock).toHaveBeenCalled();
-    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(String(url)).toContain("googleapis.com/calendar/v3");
-    expect((init as RequestInit).headers).toMatchObject({
+    expect(init?.headers).toMatchObject({
       Authorization: "Bearer access-token",
     });
   });
