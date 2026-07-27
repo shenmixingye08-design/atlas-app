@@ -40,6 +40,31 @@ type DiagnosticsPayload = {
     lastErrorStage: string | null;
     lastErrorAt: string | null;
   };
+  alerts: Array<{
+    id: string;
+    severity: "critical" | "warn";
+    title: string;
+    message: string;
+    metric: string;
+    value: number | string | null;
+    threshold: number | string | null;
+  }>;
+  cost: {
+    generations: number;
+    totalEstimatedCost: number | null;
+    averageCost: number | null;
+    failedCost: number | null;
+    retryCost: number | null;
+    currency: "USD" | "JPY" | null;
+    storageBytes: number;
+    costKnown: boolean;
+  };
+  wordQuality: {
+    byEvent: Record<string, number>;
+    byTemplate: Record<string, number>;
+    byPurpose: Record<string, number>;
+    affectedUsers: number;
+  };
   env: Array<{
     key: string;
     configured: boolean;
@@ -76,6 +101,28 @@ function fmtRate(rate: number | null): string {
 function fmtMs(ms: number | null): string {
   if (ms == null) return "—";
   return `${Math.round(ms)} ms`;
+}
+
+function fmtBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function fmtCost(value: number | null, currency: "USD" | "JPY" | null): string {
+  if (value == null || !currency) return "推定不能";
+  if (currency === "JPY") return `約 ${Math.round(value).toLocaleString("ja-JP")} 円`;
+  return `約 ${value.toFixed(4)} USD`;
+}
+
+function fmtDiagnosticValue(value: number | string | null): string {
+  if (value == null) return "—";
+  if (typeof value === "number") return String(value);
+  return value;
+}
+
+function sortedEntries(record: Record<string, number>): Array<[string, number]> {
+  return Object.entries(record).sort((a, b) => b[1] - a[1]);
 }
 
 export function WordDownloadDiagnosticsPanel() {
@@ -121,6 +168,9 @@ export function WordDownloadDiagnosticsPanel() {
         warnings: data.warnings,
         downloadProbe: data.downloadProbe,
         androidUnverified: data.androidUnverified,
+        alerts: data.alerts,
+        cost: data.cost,
+        wordQuality: data.wordQuality,
       },
       null,
       2,
@@ -138,9 +188,11 @@ export function WordDownloadDiagnosticsPanel() {
         </p>
       </header>
 
-      {error ? (
-        <p className="text-sm text-red-700">{error}</p>
-      ) : null}
+      <div aria-live="polite" aria-atomic="true">
+        {error ? (
+          <p className="text-sm text-red-700">{error}</p>
+        ) : null}
+      </div>
 
       {!data ? (
         <div className="space-y-3">
@@ -149,8 +201,9 @@ export function WordDownloadDiagnosticsPanel() {
           </p>
           <button
             type="button"
-            className="rounded bg-[var(--surface-muted)] px-4 py-2 text-sm font-medium ring-1 ring-[var(--border-strong)] disabled:opacity-50"
+            className="min-h-11 rounded bg-[var(--surface-muted)] px-4 py-2 text-sm font-medium ring-1 ring-[var(--border-strong)] disabled:opacity-50"
             disabled={busy}
+            aria-label="Wordダウンロード診断を開始"
             onClick={() => void load()}
           >
             {busy ? "読み込み中…" : "診断を開始"}
@@ -174,6 +227,48 @@ export function WordDownloadDiagnosticsPanel() {
                     }
                   >
                     [{w.severity}] {w.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="space-y-2">
+            <h2 className="text-lg font-medium">Stage4 アラート</h2>
+            {data.alerts.length === 0 ? (
+              <p className="text-sm text-[var(--text-secondary)]">
+                アラートはありません
+              </p>
+            ) : (
+              <ul className="space-y-3 text-sm">
+                {data.alerts.map((alert) => (
+                  <li
+                    key={alert.id}
+                    className="rounded border border-[var(--border-subtle)] bg-[var(--card)] p-3"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-xs font-medium">
+                        重要度: {alert.severity}
+                      </span>
+                      <strong>{alert.title}</strong>
+                    </div>
+                    <p className="mt-1 text-[var(--text-secondary)]">
+                      {alert.message}
+                    </p>
+                    <dl className="mt-2 grid gap-1 sm:grid-cols-3">
+                      <div>
+                        <dt className="font-medium">metric</dt>
+                        <dd>{alert.metric}</dd>
+                      </div>
+                      <div>
+                        <dt className="font-medium">value</dt>
+                        <dd>{fmtDiagnosticValue(alert.value)}</dd>
+                      </div>
+                      <div>
+                        <dt className="font-medium">threshold</dt>
+                        <dd>{fmtDiagnosticValue(alert.threshold)}</dd>
+                      </div>
+                    </dl>
                   </li>
                 ))}
               </ul>
@@ -219,6 +314,77 @@ export function WordDownloadDiagnosticsPanel() {
           </section>
 
           <section className="space-y-2">
+            <h2 className="text-lg font-medium">コストスナップショット</h2>
+            <div className="grid gap-2 text-sm sm:grid-cols-3">
+              <div>生成数: {data.cost.generations}</div>
+              <div>
+                推定合計:{" "}
+                {fmtCost(data.cost.totalEstimatedCost, data.cost.currency)}
+              </div>
+              <div>
+                平均推定: {fmtCost(data.cost.averageCost, data.cost.currency)}
+              </div>
+              <div>
+                失敗分推定: {fmtCost(data.cost.failedCost, data.cost.currency)}
+              </div>
+              <div>
+                再試行分推定: {fmtCost(data.cost.retryCost, data.cost.currency)}
+              </div>
+              <div>保存サイズ: {fmtBytes(data.cost.storageBytes)}</div>
+              <div>推定可否: {data.cost.costKnown ? "推定可能" : "推定不能"}</div>
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-lg font-medium">Word品質 / 分析サマリー</h2>
+            <div className="text-sm">影響ユーザー数: {data.wordQuality.affectedUsers}</div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <h3 className="text-sm font-medium">イベント数</h3>
+                {sortedEntries(data.wordQuality.byEvent).length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {sortedEntries(data.wordQuality.byEvent).map(([key, value]) => (
+                      <li key={key}>
+                        {key}: {value}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-[var(--text-secondary)]">—</p>
+                )}
+              </div>
+              <div>
+                <h3 className="text-sm font-medium">テンプレート数</h3>
+                {sortedEntries(data.wordQuality.byTemplate).length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {sortedEntries(data.wordQuality.byTemplate).map(([key, value]) => (
+                      <li key={key}>
+                        {key}: {value}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-[var(--text-secondary)]">—</p>
+                )}
+              </div>
+              <div>
+                <h3 className="text-sm font-medium">目的数</h3>
+                {sortedEntries(data.wordQuality.byPurpose).length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {sortedEntries(data.wordQuality.byPurpose).map(([key, value]) => (
+                      <li key={key}>
+                        {key}: {value}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-[var(--text-secondary)]">—</p>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-2">
             <h2 className="text-lg font-medium">環境変数（有無のみ）</h2>
             <ul className="space-y-1 text-sm">
               {data.env.map((item) => (
@@ -234,23 +400,26 @@ export function WordDownloadDiagnosticsPanel() {
             <h2 className="text-lg font-medium">成果物プローブ</h2>
             <div className="flex flex-wrap gap-2">
               <input
-                className="min-w-[16rem] flex-1 rounded border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
+                className="min-h-11 min-w-[16rem] flex-1 rounded border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
                 placeholder="deliverable id"
+                aria-label="プローブ対象のdeliverable id"
                 value={deliverableId}
                 onChange={(e) => setDeliverableId(e.target.value)}
               />
               <button
                 type="button"
-                className="rounded bg-[var(--surface-muted)] px-4 py-2 text-sm font-medium ring-1 ring-[var(--border-strong)] disabled:opacity-50"
+                className="min-h-11 rounded bg-[var(--surface-muted)] px-4 py-2 text-sm font-medium ring-1 ring-[var(--border-strong)] disabled:opacity-50"
                 disabled={busy || !deliverableId.trim()}
+                aria-label="入力したdeliverable idで診断を実行"
                 onClick={() => void load(deliverableId.trim())}
               >
                 診断実行
               </button>
               <button
                 type="button"
-                className="rounded px-4 py-2 text-sm ring-1 ring-[var(--border)]"
+                className="min-h-11 rounded px-4 py-2 text-sm ring-1 ring-[var(--border)]"
                 disabled={busy}
+                aria-label="Wordダウンロード診断を再読み込み"
                 onClick={() => void load()}
               >
                 再読み込み
@@ -290,7 +459,8 @@ export function WordDownloadDiagnosticsPanel() {
               <h2 className="text-lg font-medium">診断ログ</h2>
               <button
                 type="button"
-                className="rounded px-3 py-1.5 text-sm ring-1 ring-[var(--border)]"
+                className="min-h-11 rounded px-3 py-1.5 text-sm ring-1 ring-[var(--border)]"
+                aria-label="診断ログをクリップボードにコピー"
                 onClick={() => void navigator.clipboard.writeText(logText)}
               >
                 コピー
