@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 import type { Project } from "@/lib/projects/types";
 import { fetchProjectById } from "@/lib/projects/client";
+import { detectDeliverableFormats } from "@/lib/deliverables/detect-formats";
 import {
   notFoundDisplayState,
   resolveDeliverableDisplayState,
@@ -42,13 +43,20 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
   // server-triggered run), resolve the exact 成果物 from the durable store so
   //「結果を見る」never dead-ends.
   useEffect(() => {
-    if (!isReady || clientProject || server.phase !== "idle") return;
+    if (!isReady || clientProject) return;
 
     let cancelled = false;
-    setServer({ phase: "loading" });
+    const loadingTimer = window.setTimeout(() => {
+      if (!cancelled) {
+        setServer((current) =>
+          current.phase === "idle" ? { phase: "loading" } : current,
+        );
+      }
+    }, 0);
 
     void fetchProjectById(projectId).then((result) => {
       if (cancelled) return;
+      window.clearTimeout(loadingTimer);
       if (result.status === "found") {
         setServer({ phase: "done", project: result.project, missing: false });
       } else if (result.status === "not_found") {
@@ -61,8 +69,9 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
 
     return () => {
       cancelled = true;
+      window.clearTimeout(loadingTimer);
     };
-  }, [isReady, clientProject, projectId, server.phase]);
+  }, [isReady, clientProject, projectId]);
 
   const project =
     clientProject ?? (server.phase === "done" ? server.project : null);
@@ -89,6 +98,9 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
 
   const displayState = resolveDeliverableDisplayState(project);
   const isLocal = Boolean(clientProject);
+  const showWordProgress =
+    displayState.kind === "generating" &&
+    detectDeliverableFormats(project.workRequest ?? "").formats.includes("docx");
 
   const handleDelete = () => {
     if (!isLocal) return;
@@ -146,7 +158,10 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
         }
       />
 
-      <DeliverableStateNotice state={displayState} />
+      <DeliverableStateNotice
+        state={displayState}
+        showWordProgress={showWordProgress}
+      />
     </div>
   );
 }

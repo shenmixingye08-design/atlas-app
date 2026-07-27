@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
 import type { DeliverableDisplayState } from "@/lib/projects/deliverable-state";
 import { ui } from "@/lib/i18n";
 
@@ -12,6 +13,7 @@ type NonReadyState = Exclude<DeliverableDisplayState, { kind: "ready" }>;
 
 type DeliverableStateNoticeProps = {
   state: DeliverableDisplayState;
+  showWordProgress?: boolean;
 };
 
 const ICONS: Record<NonReadyState["kind"], string> = {
@@ -31,10 +33,14 @@ const TITLES: Record<NonReadyState["kind"], string> = {
  * 「結果を見る」 click resolves to a deliverable OR one of these states with a
  * clear Japanese reason and a way forward.
  */
-export function DeliverableStateNotice({ state }: DeliverableStateNoticeProps) {
+export function DeliverableStateNotice({
+  state,
+  showWordProgress = false,
+}: DeliverableStateNoticeProps) {
   if (state.kind === "ready") return null;
 
   const reason = state.kind === "failed" ? state.reason : null;
+  const wordProgress = showWordProgress && state.kind === "generating";
 
   return (
     <Card variant="elevated" padding="lg">
@@ -44,6 +50,9 @@ export function DeliverableStateNotice({ state }: DeliverableStateNoticeProps) {
         description={state.message}
         action={
           <div className="flex flex-col items-center gap-3">
+            {wordProgress ? (
+              <WordProgressStatus className="animate-soft-pulse text-sm text-[var(--foreground-muted)]" />
+            ) : null}
             {reason && (
               <div className="max-w-md space-y-1 rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-4 py-3 text-left">
                 <p className="text-xs font-semibold tracking-wide text-accent">

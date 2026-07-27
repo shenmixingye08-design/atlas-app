@@ -163,7 +163,7 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     service: "supabase",
     requirement: "recommended",
     purpose:
-      "サーバー専用（atlas_user_state / 画像Storage atlas-image-attachments 書き込み / RLS バイパス）",
+      "サーバー専用（atlas_user_state / 画像Storage atlas-image-attachments / 成果物Storage atlas-deliverable-files 書き込み / RLS バイパス）",
   },
   {
     key: "ATLAS_ATTACHMENT_STORAGE",
@@ -171,6 +171,13 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     requirement: "optional",
     purpose:
       "画像保存先（local / supabase）。Vercel production/preview では常に supabase",
+  },
+  {
+    key: "ATLAS_DELIVERABLE_STORAGE",
+    service: "supabase",
+    requirement: "optional",
+    purpose:
+      "成果物バイナリ保存先（local / supabase）。Vercel production/preview では常に supabase（bucket: atlas-deliverable-files）",
   },
   {
     key: "ATLAS_USD_JPY_RATE",

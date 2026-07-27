@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import { formatUserFacingErrorText, toUserFacingError } from "@/lib/orchestration/user-errors";
+import { detectDeliverableFormats } from "@/lib/deliverables/detect-formats";
 import { projectService } from "@/lib/projects/project-service";
 import {
   LOADING_STEP_INTERVAL_MS,
@@ -29,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { ui } from "@/lib/i18n";
 import { consumePendingAttachmentIds } from "@/lib/attachments/pending-session";
 import type { DocumentExtractClient } from "@/lib/attachments/documents/client-upload";
+import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
 
 import { FinalOutput } from "./final-output";
 import {
@@ -69,8 +71,8 @@ export function WorkspaceDashboard() {
   const [pendingCommander, setPendingCommander] =
     useState<CommanderRunResult | null>(null);
 
-  const abortRef = useRef<AbortController | null>(null);
   const autoStartedRef = useRef(false);
+  const requestMetadataRef = useRef<Readonly<Record<string, unknown>>>({});
   const { isAvailable } = useFeatureAvailability();
   const preferredFormat = requestMetadata.preferredDeliverableFormat;
   const preferredFormats =
@@ -89,6 +91,9 @@ export function WorkspaceDashboard() {
     : preferredFormats
       ? { formats: preferredFormats }
       : undefined;
+  const likelyFormats = detectDeliverableFormats(assignment).formats;
+  const showWordProgress =
+    deliverableOptions?.formats?.includes("docx") ?? likelyFormats.includes("docx");
   const { deliverables, deliverablesError, isGeneratingDeliverables } =
     useDeliverableFiles(result, deliverableOptions);
 
@@ -96,16 +101,21 @@ export function WorkspaceDashboard() {
 
   useEffect(() => {
     const prefill = searchParams.get("assignment");
-    if (prefill?.trim()) {
-      setAssignment(prefill);
-    }
-    setTaughtWorkflowHint(searchParams.get("taught") === "1");
+    const timer = window.setTimeout(() => {
+      if (prefill?.trim()) {
+        setAssignment(prefill);
+      }
+      setTaughtWorkflowHint(searchParams.get("taught") === "1");
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [searchParams]);
 
   useEffect(() => {
     if (!isLoading) {
-      setBackgroundAccepted(false);
-      return;
+      const resetTimer = window.setTimeout(() => {
+        setBackgroundAccepted(false);
+      }, 0);
+      return () => window.clearTimeout(resetTimer);
     }
     const acceptedTimer = window.setTimeout(() => {
       setBackgroundAccepted(true);
@@ -123,11 +133,15 @@ export function WorkspaceDashboard() {
 
   useEffect(() => {
     if (isLoading) {
-      setLoadingPhases(buildLoadingPhases(loadingStepIndex));
+      const timer = window.setTimeout(() => {
+        setLoadingPhases(buildLoadingPhases(loadingStepIndex));
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [loadingStepIndex, isLoading]);
 
-  const runOrchestration = async (
+  const runOrchestration = useCallback(async (
     requestAssignment: string,
     config?: SalesMaterialSessionConfig | null,
     extraMetadata?: Readonly<Record<string, unknown>>,
@@ -148,10 +162,11 @@ export function WorkspaceDashboard() {
     }
 
     const mergedMetadata = {
-      ...requestMetadata,
+      ...requestMetadataRef.current,
       ...(extraMetadata ?? {}),
       ...(config ? buildSalesMaterialMetadata(config) : {}),
     };
+    requestMetadataRef.current = mergedMetadata;
     setRequestMetadata(mergedMetadata);
 
     try {
@@ -207,7 +222,7 @@ export function WorkspaceDashboard() {
           const orchestrationResult = await submitWorkRequest(
             requestAssignment,
             undefined,
-            { metadata: requestMetadata },
+            { metadata: requestMetadataRef.current },
           );
           setResult(orchestrationResult);
           projectService.saveFromOrchestration(
@@ -261,7 +276,7 @@ export function WorkspaceDashboard() {
       setIsLoading(false);
       setBackgroundAccepted(false);
     }
-  };
+  }, []);
 
   const handleConfirmPending = async () => {
     if (!pendingCommander?.runId || isLoading) return;
@@ -273,7 +288,7 @@ export function WorkspaceDashboard() {
     setError(null);
     try {
       const orchestrationResult = await confirmWorkRequest(runId, undefined, {
-        metadata: requestMetadata,
+        metadata: requestMetadataRef.current,
       });
       setResult(orchestrationResult);
       setWorkMemoryUsed(orchestrationResult.workMemory ?? null);
@@ -302,6 +317,7 @@ export function WorkspaceDashboard() {
     const trimmed = payload.assignment.trim();
     if (!trimmed || isLoading) return;
 
+    requestMetadataRef.current = payload.metadata;
     setRequestMetadata(payload.metadata);
 
     if (isSalesMaterialRequest(assignment.trim()) || isSalesMaterialRequest(trimmed)) {
@@ -388,17 +404,21 @@ export function WorkspaceDashboard() {
           }
         : {}),
     };
+    requestMetadataRef.current = metadata;
     setRequestMetadata(metadata);
 
     if (isSalesMaterialRequest(prefill) && isAvailable("sales_material")) {
-      setSalesWizardAssignment(prefill);
-      return;
+      const timer = window.setTimeout(() => {
+        setSalesWizardAssignment(prefill);
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
 
-    void runOrchestration(`${prefill}${documentBlock}`, null, metadata);
-    // One-shot landing behavior; avoid re-running when handlers recreate.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, isAvailable, isLoading, result]);
+    const timer = window.setTimeout(() => {
+      void runOrchestration(`${prefill}${documentBlock}`, null, metadata);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [searchParams, isAvailable, isLoading, result, runOrchestration]);
 
   const handleWizardComplete = (wizardResult: SalesMaterialWizardResult) => {
     setSalesWizardAssignment(null);
@@ -420,6 +440,7 @@ export function WorkspaceDashboard() {
 
   const handleReset = () => {
     setAssignment("");
+    requestMetadataRef.current = {};
     setRequestMetadata({});
     setResult(null);
     setError(null);
@@ -528,6 +549,9 @@ export function WorkspaceDashboard() {
           <p className="text-base text-[var(--foreground-muted)]">
             バックグラウンドで処理しています。完了次第、成果物をお渡しします。
           </p>
+          {showWordProgress ? (
+            <WordProgressStatus className="animate-soft-pulse text-sm text-[var(--foreground-muted)]" />
+          ) : null}
         </section>
       )}
 

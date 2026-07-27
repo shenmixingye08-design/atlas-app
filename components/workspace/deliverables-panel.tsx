@@ -6,6 +6,7 @@ import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
 import type { Deliverable } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { ui } from "@/lib/i18n";
+import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
@@ -16,6 +17,8 @@ type DeliverablesPanelProps = {
   error: string | null;
   matchedRule: string | null;
 };
+
+const WORD_RULES = new Set(["excel", "contract", "blog", "minutes", "report"]);
 
 function DeliverableDownloadButton({ item }: { item: Deliverable }) {
   const [isDownloading, setIsDownloading] = useState(false);
@@ -60,6 +63,7 @@ export function DeliverablesPanel({
   deliverables,
   isGenerating,
   error,
+  matchedRule,
 }: DeliverablesPanelProps) {
   if (!isGenerating && deliverables.length === 0 && !error) {
     return null;
@@ -72,7 +76,13 @@ export function DeliverablesPanel({
       </h2>
 
       {isGenerating && (
-        <p className="animate-soft-pulse text-body">{ui.work.preparingFiles}</p>
+        WORD_RULES.has(matchedRule ?? "") ? (
+          <WordProgressStatus className="animate-soft-pulse text-body" />
+        ) : (
+          <p className="animate-soft-pulse text-body" aria-live="polite">
+            {ui.work.preparingFiles}
+          </p>
+        )
       )}
 
       {error && <ErrorState message={error} />}

@@ -7,10 +7,14 @@ import {
   assignmentIsImageToExcel,
   assignmentRequestsExcel,
 } from "@/lib/deliverables/excel-data";
+import { detectDeliverableFormats } from "@/lib/deliverables/detect-formats";
 import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
+import { WordPreviewPanel } from "@/components/deliverables/word-preview-panel";
+import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
+import { WordRevisionPanel } from "@/components/deliverables/word-revision-panel";
 import {
   deliverableHasContent,
   type Deliverable as WorkspaceDeliverable,
@@ -525,6 +529,7 @@ export function FinalOutput({
   }
 
   const markdownFile = findGeneratedFile(deliverables, "md");
+  const docxFile = findGeneratedFile(deliverables, "docx");
   const baseName = markdownFile?.fileName ?? `${normalizedDeliverable.type}-deliverable.md`;
 
   const handleCopy = async () => {
@@ -556,6 +561,12 @@ export function FinalOutput({
   const readyFormats = fileFormatsToShow.filter(
     (format) => findGeneratedFile(deliverables, format) || isGeneratingDeliverables,
   );
+  const assignmentFormats = detectDeliverableFormats(result.assignment).formats;
+  const isGeneratingWord =
+    isGeneratingDeliverables &&
+    (expectedFormats?.includes("docx") ||
+      deliverables.some((item) => item.format === "docx") ||
+      assignmentFormats.includes("docx"));
 
   return (
     <section
@@ -638,9 +649,13 @@ export function FinalOutput({
         )}
 
         {isGeneratingDeliverables && (
-          <p className="mt-4 animate-soft-pulse text-caption">
-            {ui.work.preparingFiles}
-          </p>
+          isGeneratingWord ? (
+            <WordProgressStatus className="mt-4 animate-soft-pulse text-caption" />
+          ) : (
+            <p className="mt-4 animate-soft-pulse text-caption" aria-live="polite">
+              {ui.work.preparingFiles}
+            </p>
+          )
         )}
 
         {deliverablesError && (
@@ -648,6 +663,39 @@ export function FinalOutput({
             <ErrorState message={deliverablesError} />
           </div>
         )}
+
+        {docxFile ? (
+          <div className="mt-6 space-y-3">
+            <details className="group rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--background-muted)]/40 px-4 py-2">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-semibold text-foreground focus-ring">
+                <span className="text-xs transition-transform group-open:rotate-90" aria-hidden="true">
+                  ▸
+                </span>
+                プレビュー
+              </summary>
+              <div className="py-3">
+                <WordPreviewPanel deliverableId={docxFile.id} />
+              </div>
+            </details>
+
+            <details className="group rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--background-muted)]/40 px-4 py-2">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-semibold text-foreground focus-ring">
+                <span className="text-xs transition-transform group-open:rotate-90" aria-hidden="true">
+                  ▸
+                </span>
+                Wordを編集して再生成
+              </summary>
+              <div className="py-3">
+                <WordRevisionPanel
+                  parentDeliverableId={docxFile.id}
+                  initialTitle={normalizedDeliverable.title || docxFile.fileName}
+                  initialContent={exportText}
+                  initialTemplateId={docxFile.metadata?.templateId ?? null}
+                />
+              </div>
+            </details>
+          </div>
+        ) : null}
       </Card>
     </section>
   );

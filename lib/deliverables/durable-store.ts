@@ -5,7 +5,23 @@ import { join } from "path";
 
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
-import type { DeliverableFormat, GeneratedDeliverableFile } from "./types";
+import {
+  DELIVERABLE_METADATA_TTL_MS,
+  type DeliverableDeletionReason,
+  type DeliverableStorageStatus,
+  MAX_BASE64_CACHE_BYTES,
+} from "./constants";
+import { consumeWordFault } from "./fault-inject";
+import {
+  downloadDeliverableObject,
+  uploadDeliverableObject,
+} from "./object-storage";
+import { allowDeliverableDiskFallback } from "./storage-backend";
+import type {
+  DeliverableFormat,
+  DeliverableMetadata,
+  GeneratedDeliverableFile,
+} from "./types";
 
 type DiskStoredDeliverable = GeneratedDeliverableFile & {
   id: string;
@@ -13,6 +29,8 @@ type DiskStoredDeliverable = GeneratedDeliverableFile & {
   userId: string;
   sourceContent: string;
   baseFileName: string;
+  contentSha256?: string | null;
+  metadata?: DeliverableMetadata | null;
 };
 
 export type DurableDeliverableRow = {
@@ -26,6 +44,18 @@ export type DurableDeliverableRow = {
   baseFileName: string;
   sizeBytes: number | null;
   contentBase64: string | null;
+  contentSha256: string | null;
+  storageBucket: string | null;
+  storagePath: string | null;
+  storageStatus: DeliverableStorageStatus;
+  storageError: string | null;
+  hasPkHeader: boolean | null;
+  ooxmlVerified: boolean | null;
+  downloadCount: number;
+  lastDownloadedAt: string | null;
+  deletionReason: DeliverableDeletionReason;
+  deletedAt: string | null;
+  metadata: DeliverableMetadata | null;
   generatedAt: string;
   expiresAt: string;
 };
@@ -43,8 +73,10 @@ type DurableMeta = {
   isPlaceholder: boolean;
   sourceContent: string;
   baseFileName: string;
+  contentSha256: string | null;
   downloadedAt: string | null;
   downloadCount: number;
+  metadata: DeliverableMetadata | null;
 };
 
 const ROOT = join(process.cwd(), ".data", "deliverables");
@@ -80,6 +112,10 @@ export function resetDurableDeliverableStoreForTests(): void {
 }
 
 function persistToDisk(row: DurableDeliverableRow, buffer?: Buffer): void {
+  if (!allowDeliverableDiskFallback()) {
+    // Still attempt best-effort local cache on the same instance, but never
+    // treat disk as the durable source of truth in production.
+  }
   try {
     const dir = userDir(row.userId);
     mkdirSync(dir, { recursive: true });
@@ -94,8 +130,10 @@ function persistToDisk(row: DurableDeliverableRow, buffer?: Buffer): void {
       isPlaceholder: row.isPlaceholder,
       sourceContent: row.sourceContent,
       baseFileName: row.baseFileName,
-      downloadedAt: null,
-      downloadCount: 0,
+      contentSha256: row.contentSha256,
+      downloadedAt: row.lastDownloadedAt,
+      downloadCount: row.downloadCount,
+      metadata: row.metadata,
     };
     writeFileSync(metaPath(row.userId, row.id), JSON.stringify(meta));
     if (buffer && buffer.byteLength > 0) {
@@ -115,6 +153,10 @@ export function loadDeliverableFromDisk(
   id: string,
   userId: string,
 ): DiskStoredDeliverable | null {
+  if (!allowDeliverableDiskFallback()) {
+    // Production: disk is not authoritative. Still allow same-instance read
+    // as a last-resort cache only when the file exists — callers decide order.
+  }
   try {
     const metaFile = metaPath(userId, id);
     const dataFile = binPath(userId, id);
@@ -136,6 +178,8 @@ export function loadDeliverableFromDisk(
       buffer,
       sourceContent: meta.sourceContent ?? "",
       baseFileName: meta.baseFileName ?? meta.fileName,
+      contentSha256: meta.contentSha256 ?? null,
+      metadata: meta.metadata ?? null,
     };
   } catch {
     return null;
@@ -145,7 +189,7 @@ export function loadDeliverableFromDisk(
 /** @deprecated Prefer persistDurableDeliverable — kept for local disk sync. */
 export function persistDeliverableToDisk(stored: DiskStoredDeliverable): void {
   const expiresAt = new Date(
-    new Date(stored.generatedAt).getTime() + 1000 * 60 * 60,
+    new Date(stored.generatedAt).getTime() + DELIVERABLE_METADATA_TTL_MS,
   ).toISOString();
   persistToDisk(
     {
@@ -162,6 +206,18 @@ export function persistDeliverableToDisk(stored: DiskStoredDeliverable): void {
         stored.buffer.byteLength > 0
           ? stored.buffer.toString("base64")
           : null,
+      contentSha256: stored.contentSha256 ?? null,
+      storageBucket: null,
+      storagePath: null,
+      storageStatus: "pending",
+      storageError: null,
+      hasPkHeader: null,
+      ooxmlVerified: null,
+      downloadCount: 0,
+      lastDownloadedAt: null,
+      deletionReason: null,
+      deletedAt: null,
+      metadata: stored.metadata ?? null,
       generatedAt: stored.generatedAt,
       expiresAt,
     },
@@ -171,8 +227,16 @@ export function persistDeliverableToDisk(stored: DiskStoredDeliverable): void {
 
 export function markDeliverableDownloaded(id: string, userId: string): boolean {
   try {
+    const mem = getDurableMemory().get(id);
+    if (mem && mem.userId === userId) {
+      mem.downloadCount = (mem.downloadCount ?? 0) + 1;
+      mem.lastDownloadedAt = new Date().toISOString();
+      getDurableMemory().set(id, mem);
+      void updateDownloadStatsRemote(mem);
+    }
+
     const metaFile = metaPath(userId, id);
-    if (!existsSync(metaFile)) return false;
+    if (!existsSync(metaFile)) return Boolean(mem);
     const meta = JSON.parse(readFileSync(metaFile, "utf8")) as DurableMeta;
     meta.downloadedAt = new Date().toISOString();
     meta.downloadCount = (meta.downloadCount ?? 0) + 1;
@@ -183,37 +247,169 @@ export function markDeliverableDownloaded(id: string, userId: string): boolean {
   }
 }
 
-export async function persistDurableDeliverable(
-  row: DurableDeliverableRow,
-  buffer?: Buffer,
-): Promise<void> {
-  getDurableMemory().set(row.id, row);
-  persistToDisk(row, buffer);
-
+async function updateDownloadStatsRemote(row: DurableDeliverableRow): Promise<void> {
   try {
     const client = createServiceRoleClientIfConfigured();
     if (!client) return;
-    const { error } = await client.from("atlas_deliverable_files").upsert({
-      id: row.id,
-      user_id: row.userId,
-      file_name: row.fileName,
+    await client
+      .from("atlas_deliverable_files")
+      .update({
+        download_count: row.downloadCount,
+        last_downloaded_at: row.lastDownloadedAt,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", row.id)
+      .eq("user_id", row.userId);
+  } catch {
+    /* non-fatal */
+  }
+}
+
+export type PersistDurableResult = {
+  ok: boolean;
+  durable: boolean;
+  storageStatus: DeliverableStorageStatus;
+  storageError: string | null;
+  row: DurableDeliverableRow;
+};
+
+/**
+ * Persist metadata + binary.
+ * Durable success in production requires Storage upload success.
+ * Dev/local keeps memory/disk/base64 fallback.
+ */
+export async function persistDurableDeliverable(
+  row: DurableDeliverableRow,
+  buffer?: Buffer,
+): Promise<PersistDurableResult> {
+  let next: DurableDeliverableRow = { ...row };
+  let storageError: string | null = null;
+
+  if (buffer && buffer.byteLength > 0 && row.contentSha256) {
+    const uploaded = await uploadDeliverableObject({
+      userId: row.userId,
+      deliverableId: row.id,
       format: row.format,
-      mime_type: row.mimeType,
-      is_placeholder: row.isPlaceholder,
-      source_content: row.sourceContent,
-      base_file_name: row.baseFileName,
-      size_bytes: row.sizeBytes,
-      content_base64: row.contentBase64,
-      generated_at: row.generatedAt,
-      expires_at: row.expiresAt,
-      created_at: row.generatedAt,
-    } as never);
-    if (error) {
-      console.error("[atlas_deliverable_files] upsert failed", error.message);
+      mimeType: row.mimeType,
+      sha256: row.contentSha256,
+      buffer,
+    });
+
+    if (uploaded.ok && uploaded.backend === "supabase") {
+      next = {
+        ...next,
+        storageBucket: uploaded.bucket,
+        storagePath: uploaded.path,
+        storageStatus: "stored",
+        storageError: null,
+        // Prefer Storage over large base64 in Postgres.
+        contentBase64:
+          buffer.byteLength <= MAX_BASE64_CACHE_BYTES
+            ? buffer.toString("base64")
+            : null,
+      };
+    } else if (uploaded.ok && uploaded.backend === "local") {
+      next = {
+        ...next,
+        storageBucket: null,
+        storagePath: null,
+        storageStatus: buffer.byteLength <= MAX_BASE64_CACHE_BYTES
+          ? "legacy_base64"
+          : "pending",
+        storageError: null,
+        contentBase64:
+          buffer.byteLength <= MAX_BASE64_CACHE_BYTES
+            ? buffer.toString("base64")
+            : next.contentBase64,
+      };
+    } else if (!uploaded.ok) {
+      storageError = uploaded.error;
+      next = {
+        ...next,
+        storageStatus: "failed",
+        storageError,
+        // Keep small base64 as emergency fallback outside strict production Storage.
+        contentBase64:
+          allowDeliverableDiskFallback() &&
+          buffer.byteLength <= MAX_BASE64_CACHE_BYTES
+            ? buffer.toString("base64")
+            : next.contentBase64,
+      };
+    }
+  }
+
+  getDurableMemory().set(next.id, next);
+  persistToDisk(next, buffer);
+
+  if (consumeWordFault("db_upsert")) {
+    return {
+      ok: false,
+      durable: false,
+      storageStatus: next.storageStatus,
+      storageError: "fault_inject:db_upsert",
+      row: next,
+    };
+  }
+
+  let dbOk = true;
+  try {
+    const client = createServiceRoleClientIfConfigured();
+    if (client) {
+      const { error } = await client.from("atlas_deliverable_files").upsert({
+        id: next.id,
+        user_id: next.userId,
+        file_name: next.fileName,
+        format: next.format,
+        mime_type: next.mimeType,
+        is_placeholder: next.isPlaceholder,
+        source_content: next.sourceContent,
+        base_file_name: next.baseFileName,
+        size_bytes: next.sizeBytes,
+        content_base64: next.contentBase64,
+        content_sha256: next.contentSha256,
+        storage_bucket: next.storageBucket,
+        storage_path: next.storagePath,
+        storage_status: next.storageStatus,
+        storage_error: next.storageError,
+        has_pk_header: next.hasPkHeader,
+        ooxml_verified: next.ooxmlVerified,
+        download_count: next.downloadCount,
+        last_downloaded_at: next.lastDownloadedAt,
+        deletion_reason: next.deletionReason,
+        deleted_at: next.deletedAt,
+        deliverable_metadata: next.metadata,
+        generated_at: next.generatedAt,
+        expires_at: next.expiresAt,
+        created_at: next.generatedAt,
+        updated_at: new Date().toISOString(),
+      } as never);
+      if (error) {
+        dbOk = false;
+        console.error("[atlas_deliverable_files] upsert failed", error.message);
+      }
     }
   } catch (error) {
+    dbOk = false;
     console.error("[atlas_deliverable_files] upsert error", error);
   }
+
+  const storageOk =
+    next.storageStatus === "stored" ||
+    next.storageStatus === "legacy_base64" ||
+    (allowDeliverableDiskFallback() && Boolean(buffer?.byteLength));
+
+  // Production: Storage success is required for durable=true.
+  const durable = allowDeliverableDiskFallback()
+    ? storageOk || Boolean(next.contentBase64) || Boolean(buffer?.byteLength)
+    : next.storageStatus === "stored" && dbOk;
+
+  return {
+    ok: durable,
+    durable,
+    storageStatus: next.storageStatus,
+    storageError: next.storageError ?? storageError,
+    row: next,
+  };
 }
 
 export async function loadDurableDeliverable(
@@ -221,7 +417,13 @@ export async function loadDurableDeliverable(
 ): Promise<DurableDeliverableRow | null> {
   const mem = getDurableMemory().get(id);
   if (mem) {
-    if (new Date(mem.expiresAt).getTime() < Date.now()) {
+    if (mem.deletedAt) return null;
+    // Memory cache of the durable ROW is fine past binary memory TTL.
+    // Only hard-hide when explicitly deleted.
+    if (
+      new Date(mem.expiresAt).getTime() < Date.now() &&
+      !mem.sourceContent.trim()
+    ) {
       getDurableMemory().delete(id);
     } else {
       return mem;
@@ -253,11 +455,29 @@ export async function loadDurableDeliverable(
       base_file_name: string;
       size_bytes: number | null;
       content_base64: string | null;
+      content_sha256?: string | null;
+      storage_bucket?: string | null;
+      storage_path?: string | null;
+      storage_status?: string | null;
+      storage_error?: string | null;
+      has_pk_header?: boolean | null;
+      ooxml_verified?: boolean | null;
+      download_count?: number | null;
+      last_downloaded_at?: string | null;
+      deletion_reason?: string | null;
+      deleted_at?: string | null;
+      deliverable_metadata?: DeliverableMetadata | null;
       generated_at: string;
       expires_at: string;
     };
 
-    if (new Date(row.expires_at).getTime() < Date.now()) {
+    if (row.deleted_at) {
+      return null;
+    }
+
+    const expired = new Date(row.expires_at).getTime() < Date.now();
+    // Expired WITHOUT source → gone. Expired WITH source → regeneratable.
+    if (expired && !row.source_content?.trim()) {
       void client.from("atlas_deliverable_files").delete().eq("id", id);
       return null;
     }
@@ -273,14 +493,77 @@ export async function loadDurableDeliverable(
       baseFileName: row.base_file_name,
       sizeBytes: row.size_bytes,
       contentBase64: row.content_base64,
+      contentSha256: row.content_sha256 ?? null,
+      storageBucket: row.storage_bucket ?? null,
+      storagePath: row.storage_path ?? null,
+      storageStatus: (row.storage_status as DeliverableStorageStatus) ?? "pending",
+      storageError: row.storage_error ?? null,
+      hasPkHeader: row.has_pk_header ?? null,
+      ooxmlVerified: row.ooxml_verified ?? null,
+      downloadCount: row.download_count ?? 0,
+      lastDownloadedAt: row.last_downloaded_at ?? null,
+      deletionReason: (row.deletion_reason as DeliverableDeletionReason) ?? null,
+      deletedAt: row.deleted_at ?? null,
+      metadata: row.deliverable_metadata ?? null,
       generatedAt: row.generated_at,
       expiresAt: row.expires_at,
     };
     getDurableMemory().set(mapped.id, mapped);
-    persistToDisk(mapped);
+    if (allowDeliverableDiskFallback()) {
+      persistToDisk(mapped);
+    }
     return mapped;
   } catch (error) {
     console.error("[atlas_deliverable_files] select error", error);
     return null;
   }
+}
+
+export async function updateDurableDeliverableMetadata(input: {
+  id: string;
+  userId: string;
+  metadata: DeliverableMetadata;
+}): Promise<void> {
+  const current = getDurableMemory().get(input.id);
+  if (current && current.userId === input.userId) {
+    const updated: DurableDeliverableRow = {
+      ...current,
+      metadata: input.metadata,
+    };
+    getDurableMemory().set(input.id, updated);
+    persistToDisk(updated);
+  }
+
+  try {
+    const client = createServiceRoleClientIfConfigured();
+    if (!client) return;
+    await client
+      .from("atlas_deliverable_files")
+      .update({
+        deliverable_metadata: input.metadata,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", input.id)
+      .eq("user_id", input.userId);
+  } catch {
+    /* metadata update is non-fatal; binary is already durable */
+  }
+}
+
+/** Load binary bytes from Storage using durable row pointers. */
+export async function loadBinaryFromDurableStorage(
+  row: DurableDeliverableRow,
+): Promise<Buffer | null> {
+  if (row.storageBucket && row.storagePath) {
+    const downloaded = await downloadDeliverableObject({
+      bucket: row.storageBucket,
+      path: row.storagePath,
+    });
+    if (downloaded.ok) return downloaded.buffer;
+  }
+  if (row.contentBase64) {
+    const buffer = Buffer.from(row.contentBase64, "base64");
+    if (buffer.byteLength > 0) return buffer;
+  }
+  return null;
 }

@@ -214,6 +214,16 @@ export async function downloadDeliverableFile(
     throw new Error("PDFファイルが壊れています。再生成してください。");
   }
 
+  const expectedLengthHeader = response.headers.get("Content-Length");
+  if (expectedLengthHeader) {
+    const expected = Number(expectedLengthHeader);
+    if (Number.isFinite(expected) && expected > 0 && expected !== bytes.byteLength) {
+      throw new Error(
+        "ダウンロードサイズが一致しません。もう一度お試しください。",
+      );
+    }
+  }
+
   // Copy into a fresh ArrayBuffer-backed Uint8Array so the Blob owns binary bytes.
   const binaryCopy = new Uint8Array(bytes.byteLength);
   binaryCopy.set(bytes);
