@@ -13,6 +13,7 @@ import {
   ensureNotificationDelivery,
   formatFailureReason,
   isRetryableFailure,
+  listExecutionLogs,
   monitorTimeout,
   persistExecutionState,
 } from "@/lib/orchestration/execution-reliability";
@@ -24,10 +25,13 @@ import {
   notifyWorkCompleted,
   notifyWorkFailed,
 } from "@/lib/notifications/emitters";
+import { estimateRetryEtaSeconds } from "@/lib/notifications/job-progress";
 import { runLearningAnalysis } from "@/lib/learning-engine/service";
 import { detectMemorySignals } from "@/lib/work-memory/learning";
 import { createWorkMemoryCandidate } from "@/lib/work-memory/service";
 import { maybeAutoPostToXAfterCommander } from "@/lib/integrations/x/post/automation";
+import { classifyFailure } from "@/lib/reliability/error-classification";
+import { recordDeveloperError } from "@/lib/reliability/developer-log";
 
 import { isRecurringAssignment } from "./classify";
 import {
@@ -354,9 +358,16 @@ async function executeStoredRun(input: {
   let finalStatus: CommanderRunStatus = "failed";
 
   const maxAttempts = COMMANDER_MAX_RETRIES + 1;
+  const maxRetries = COMMANDER_MAX_RETRIES;
   // Hard wall-clock budget across retries — prevents "never finishes" UX.
   const RUN_BUDGET_MS = 1000 * 60 * 8;
   const runStartedAtMs = Date.now();
+  const runStartedAtIso = new Date(runStartedAtMs).toISOString();
+  const jobName = plan.classification.summary || "ご依頼の仕事";
+  const workJobId =
+    typeof input.metadata?.workJobId === "string"
+      ? input.metadata.workJobId
+      : null;
 
   persistExecutionState({
     runId: input.runId,
@@ -366,14 +377,16 @@ async function executeStoredRun(input: {
     maxAttempts,
     lastError: null,
     timedOut: false,
+    startedAt: runStartedAtIso,
   });
   appendExecutionLog({
     runId: input.runId,
     userId: input.userId,
     level: "info",
     event: "run_started",
-    message: "依頼の実行を開始しました",
+    message: "依頼の実行を開始しました（execute → confirm → save → notify）",
     attempt: attempts.length,
+    metadata: { jobName, maxAttempts, workJobId },
   });
 
   for (let attempt = attempts.length + 1; attempt <= maxAttempts; attempt += 1) {
@@ -485,14 +498,42 @@ async function executeStoredRun(input: {
         orchestration.result.deliverable != null &&
         deliverableHasContent(orchestration.result.deliverable);
 
-      const failureReason = formatFailureReason(
-        orchestration.result.error ?? "Orchestration failed",
-      );
+      const rawError = orchestration.result.error ?? "Orchestration failed";
+      const failureClass = classifyFailure(rawError);
+      const failureReason = formatFailureReason(rawError);
+      const durationMs = Date.now() - started;
       attempts.push({
         attempt,
         status: partial ? "partial" : "failed",
         error: failureReason,
-        durationMs: Date.now() - started,
+        durationMs,
+      });
+      recordDeveloperError({
+        userId: input.userId,
+        jobId: workJobId,
+        workflowId: workflowRun.id,
+        commanderRunId: input.runId,
+        step: partial ? "confirm" : "execute",
+        attempt,
+        maxAttempts,
+        error: rawError,
+        failureClass,
+        durationMs,
+        processLog: `attempt=${attempt} status=${partial ? "partial" : "failed"} durationMs=${durationMs} reason=${failureReason}`,
+        metadata: { jobName, partial },
+      });
+      appendExecutionLog({
+        runId: input.runId,
+        userId: input.userId,
+        level: "error",
+        event: "attempt_failed",
+        message: failureReason,
+        attempt,
+        metadata: {
+          failureClass,
+          durationMs,
+          partial,
+        },
       });
 
       if (partial && attempt >= maxAttempts) {
@@ -507,11 +548,12 @@ async function executeStoredRun(input: {
           event: "auto_retry",
           message: `一部完了のため自動リトライします（${attempt}/${maxAttempts}）`,
           attempt,
+          metadata: { failureClass, durationMs },
         });
         continue;
       }
 
-      if (!partial && attempt < maxAttempts && isRetryableFailure(failureReason)) {
+      if (!partial && attempt < maxAttempts && isRetryableFailure(rawError)) {
         appendExecutionLog({
           runId: input.runId,
           userId: input.userId,
@@ -519,6 +561,7 @@ async function executeStoredRun(input: {
           event: "auto_retry",
           message: `失敗したため自動リトライします（${attempt}/${maxAttempts}）: ${failureReason}`,
           attempt,
+          metadata: { failureClass, durationMs },
         });
         continue;
       }
@@ -526,17 +569,33 @@ async function executeStoredRun(input: {
       finalStatus = "failed";
       break;
     } catch (error) {
+      const failureClass = classifyFailure(error);
       const message = formatFailureReason(
         error instanceof Error ? error.message : "Commander execution failed",
       );
-      const timedOut = /タイムアウト|timeout/i.test(message);
+      const timedOut = failureClass === "timeout";
+      const durationMs = Date.now() - started;
       attempts.push({
         attempt,
         status: "failed",
         error: message,
-        durationMs: Date.now() - started,
+        durationMs,
       });
       lastResult = null;
+      recordDeveloperError({
+        userId: input.userId,
+        jobId: workJobId,
+        workflowId: workflowRun.id,
+        commanderRunId: input.runId,
+        step: "execute",
+        attempt,
+        maxAttempts,
+        error,
+        failureClass,
+        durationMs,
+        processLog: `attempt=${attempt} exception durationMs=${durationMs} reason=${message}`,
+        metadata: { jobName },
+      });
       persistExecutionState({
         runId: input.runId,
         userId: input.userId,
@@ -554,6 +613,7 @@ async function executeStoredRun(input: {
         message,
         attempt,
         timedOut,
+        metadata: { failureClass, durationMs },
       });
 
       if (attempt < maxAttempts && isRetryableFailure(error)) {
@@ -564,6 +624,7 @@ async function executeStoredRun(input: {
           event: "auto_retry",
           message: `例外発生のため自動リトライします（${attempt}/${maxAttempts}）`,
           attempt,
+          metadata: { failureClass, durationMs },
         });
         continue;
       }
@@ -685,37 +746,150 @@ async function executeStoredRun(input: {
   // start, not only the browser tab that ran the request.
   const resultProjectId = `commander-${input.runId}`;
   const resultDeepLink = `/projects/${encodeURIComponent(resultProjectId)}`;
+  const endedAtIso = new Date().toISOString();
+  const processLogSummary = listExecutionLogs({
+    runId: input.runId,
+    userId: input.userId,
+    limit: 8,
+  })
+    .map(
+      (entry) =>
+        `${entry.at} [${entry.event}] ${entry.message}${
+          entry.attempt != null ? ` (attempt ${entry.attempt})` : ""
+        }`,
+    )
+    .join(" | ")
+    .slice(0, 800);
 
   if (finalStatus === "completed") {
-    // Persist first so the notification can deep-link straight to the saved
-    // result (成果物) instead of a generic workspace page.
+    // Pipeline: execute → confirm → save → notify. Save must succeed before
+    // a completed notification is sent.
+    appendExecutionLog({
+      runId: input.runId,
+      userId: input.userId,
+      level: "info",
+      event: "pipeline_confirm",
+      message: "成果物の確認工程を完了しました",
+    });
+    let saveResult: { projectId: string; persisted: boolean } | null = null;
     if (lastResult) {
-      await persistCommanderResultAsProject({
+      appendExecutionLog({
+        runId: input.runId,
+        userId: input.userId,
+        level: "info",
+        event: "pipeline_save",
+        message: "成果物の保存を開始しました",
+      });
+      saveResult = await persistCommanderResultAsProject({
         userId: input.userId,
         assignment: plan.assignment,
         result: lastResult,
         projectId: resultProjectId,
       });
     }
-    ensureNotificationDelivery(
-      () =>
-        notifyWorkCompleted(input.userId, {
-          title: "お仕事が完了しました",
-          message: snsPublishedTweetUrl
-            ? `「${plan.classification.summary}」が完了し、Xへ投稿しました。${snsPublishedTweetUrl}`
-            : `「${plan.classification.summary}」が完了しました。`,
-          actionUrl: lastResult ? resultDeepLink : "/workspace",
-          relatedTaskId: lastResult ? resultProjectId : null,
-          deliverableId: lastResult ? resultProjectId : null,
-          workflowRunId: workflowRun.id,
-          requestId: input.runId,
-        }),
-      { runId: input.runId, userId: input.userId, kind: "completed" },
-    );
-    try {
-      runLearningAnalysis(input.userId, { periodDays: 30 });
-    } catch (error) {
-      console.warn("[commander] Learning analysis failed:", error);
+
+    // null = configured store failed. { persisted:false } = store unconfigured (dev).
+    if (lastResult && saveResult === null) {
+      const saveError = new Error("成果物の保存に失敗しました");
+      recordDeveloperError({
+        userId: input.userId,
+        jobId: workJobId,
+        workflowId: workflowRun.id,
+        commanderRunId: input.runId,
+        step: "save",
+        attempt: attempts.length,
+        maxAttempts,
+        error: saveError,
+        failureClass: "save_failure",
+        processLog: processLogSummary,
+        metadata: { jobName },
+      });
+      // Retry save up to 3 times before failing the run.
+      for (
+        let saveAttempt = 1;
+        saveAttempt <= 3 && saveResult === null;
+        saveAttempt += 1
+      ) {
+        saveResult = await persistCommanderResultAsProject({
+          userId: input.userId,
+          assignment: plan.assignment,
+          result: lastResult,
+          projectId: resultProjectId,
+        });
+        appendExecutionLog({
+          runId: input.runId,
+          userId: input.userId,
+          level: saveResult ? "info" : "warn",
+          event: saveResult ? "pipeline_save" : "auto_retry",
+          message: saveResult
+            ? "成果物の保存に成功しました"
+            : `成果物の保存再試行（${saveAttempt}/3）`,
+          attempt: saveAttempt,
+        });
+      }
+    }
+
+    if (lastResult && saveResult === null) {
+      finalStatus = "failed";
+      updateCommanderRun(input.runId, input.userId, {
+        status: "failed",
+        error: "成果物の保存に失敗しました",
+      });
+      ensureNotificationDelivery(
+        () =>
+          notifyWorkFailed(input.userId, {
+            jobName,
+            step: "save",
+            failureClass: "save_failure",
+            failureReason: "成果物の保存に失敗しました",
+            retryCount: maxRetries,
+            maxRetries,
+            retrying: false,
+            startedAt: runStartedAtIso,
+            endedAt: endedAtIso,
+            processLogSummary,
+            supportContextId: input.runId,
+            requestId: workJobId ?? input.runId,
+            workflowRunId: workflowRun.id,
+            deliverableId: resultProjectId,
+            relatedTaskId: resultProjectId,
+            actionUrl: resultDeepLink,
+            nextAction: "再実行して保存を完了してください。",
+          }),
+        { runId: input.runId, userId: input.userId, kind: "failed" },
+      );
+    } else {
+      appendExecutionLog({
+        runId: input.runId,
+        userId: input.userId,
+        level: "info",
+        event: "pipeline_notify",
+        message: "完了通知を送信します",
+      });
+      ensureNotificationDelivery(
+        () =>
+          notifyWorkCompleted(input.userId, {
+            title: `「${jobName}」が完了しました`,
+            message: snsPublishedTweetUrl
+              ? `「${jobName}」が完了し、Xへ投稿しました。${snsPublishedTweetUrl}`
+              : `「${jobName}」が完了しました。`,
+            actionUrl: resultDeepLink,
+            relatedTaskId: resultProjectId,
+            deliverableId: resultProjectId,
+            workflowRunId: workflowRun.id,
+            requestId: input.runId,
+            jobName,
+            startedAt: runStartedAtIso,
+            endedAt: endedAtIso,
+            previewText: preview,
+          }),
+        { runId: input.runId, userId: input.userId, kind: "completed" },
+      );
+      try {
+        runLearningAnalysis(input.userId, { periodDays: 30 });
+      } catch (error) {
+        console.warn("[commander] Learning analysis failed:", error);
+      }
     }
   } else if (finalStatus === "partial") {
     if (lastResult) {
@@ -738,6 +912,10 @@ async function executeStoredRun(input: {
           deliverableId: lastResult ? resultProjectId : null,
           workflowRunId: workflowRun.id,
           requestId: input.runId,
+          jobName,
+          startedAt: runStartedAtIso,
+          endedAt: endedAtIso,
+          previewText: preview,
         }),
       { runId: input.runId, userId: input.userId, kind: "partial" },
     );
@@ -745,17 +923,27 @@ async function executeStoredRun(input: {
     ensureNotificationDelivery(
       () =>
         notifyWorkFailed(input.userId, {
-          title: "作業を止めました",
-          message: "ご指示により、作業を中止しました。",
+          jobName,
+          step: "execute",
+          failureClass: "cancelled",
+          failureReason: "ご指示により、作業を中止しました。",
+          retryCount: Math.max(0, attempts.length - 1),
+          maxRetries,
+          retrying: false,
+          startedAt: runStartedAtIso,
+          endedAt: endedAtIso,
+          nextAction: "必要であれば、もう一度ご依頼ください。",
+          requestId: workJobId ?? input.runId,
         }),
       { runId: input.runId, userId: input.userId, kind: "cancelled" },
     );
   } else {
     // Persist the failed run (with its error) so「確認する」deep-links to a page
-    // that explains 生成に失敗しました + reason instead of a dead/blank list.
-    const failureReason = formatFailureReason(
-      lastResult?.error ?? attempts.at(-1)?.error ?? "実行に失敗しました。",
-    );
+    // that explains the failure instead of a dead/blank list.
+    const rawFailure =
+      lastResult?.error ?? attempts.at(-1)?.error ?? "実行に失敗しました。";
+    const failureClass = classifyFailure(rawFailure);
+    const failureReason = formatFailureReason(rawFailure);
     const failedResult: OrchestrationResult = lastResult
       ? { ...lastResult, status: "failed", error: failureReason }
       : {
@@ -783,16 +971,41 @@ async function executeStoredRun(input: {
       result: failedResult,
       projectId: resultProjectId,
     });
+    recordDeveloperError({
+      userId: input.userId,
+      jobId: workJobId,
+      workflowId: workflowRun.id,
+      commanderRunId: input.runId,
+      step: "execute",
+      attempt: attempts.length,
+      maxAttempts,
+      error: rawFailure,
+      failureClass,
+      durationMs: attempts.reduce((sum, item) => sum + item.durationMs, 0),
+      processLog: processLogSummary,
+      metadata: { jobName, attempts },
+    });
     ensureNotificationDelivery(
       () =>
         notifyWorkFailed(input.userId, {
-          title: "確認が必要です",
-          message: "自動で修正を試しました。内容をご確認のうえ、もう一度お試しください。",
-          actionUrl: resultDeepLink,
-          relatedTaskId: resultProjectId,
-          deliverableId: resultProjectId,
+          jobName,
+          step: "execute",
+          failureClass,
+          failureReason,
+          retryCount: Math.max(0, attempts.length - 1),
+          maxRetries,
+          retrying: false,
+          startedAt: runStartedAtIso,
+          endedAt: endedAtIso,
+          etaSeconds: estimateRetryEtaSeconds(attempts.length),
+          processLogSummary,
+          supportContextId: input.runId,
+          requestId: workJobId ?? input.runId,
           workflowRunId: workflowRun.id,
-          requestId: input.runId,
+          deliverableId: resultProjectId,
+          relatedTaskId: resultProjectId,
+          actionUrl: resultDeepLink,
+          nextAction: "再実行するか、サポートへ状況をお送りください。",
         }),
       { runId: input.runId, userId: input.userId, kind: "failed" },
     );

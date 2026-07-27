@@ -16,13 +16,16 @@ describe("buildPushCopy", () => {
     expect(copy.body).toContain("週次レポート");
   });
 
-  it("uses failure template", () => {
+  it("uses failure template without banned generic copy", () => {
     const copy = buildPushCopy({
       type: "error",
-      title: "x",
-      message: "y",
+      title: "処理を完了できませんでした",
+      message: "処理を完了できませんでした。内容をご確認ください。",
       eventCategory: "final_failure",
+      jobName: "契約書",
     });
-    expect(copy.title).toBe("処理を完了できませんでした");
+    expect(copy.title).toContain("エラーが発生しました");
+    expect(copy.title).not.toBe("処理を完了できませんでした");
+    expect(copy.body).not.toContain("処理を完了できませんでした");
   });
 });

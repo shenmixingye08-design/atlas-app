@@ -1,6 +1,19 @@
 import "server-only";
 
+import {
+  classifyFailure,
+  type FailureClass,
+} from "@/lib/reliability/error-classification";
+
+import {
+  buildCompletedMessage,
+  buildCompletedProgress,
+  buildFailureMessage,
+  buildFailureProgress,
+  buildFailureTitle,
+} from "./job-progress";
 import { createNotification } from "./service";
+import type { NotificationJobProgress } from "./types";
 
 /** Deep link that opens the exact automation in its detail panel. */
 function automationActionUrl(automationId: string): string {
@@ -21,12 +34,18 @@ export function notifyAutomationCompleted(
     audience: "user",
     userId,
     type: "completed",
-    title: "自動化が終了しました",
-    message: `お待たせいたしました。「${input.name}」の自動化が終了しました。`,
+    title: `「${input.name}」が完了しました`,
+    message: `お待たせいたしました。「${input.name}」の自動化が終了しました。プレビュー・再実行がご利用いただけます。`,
     relatedTaskId: input.automationId,
     relatedService: input.templateId === "sns_post" ? "x" : "atlas",
     actionUrl: automationActionUrl(input.automationId),
     automationId: input.automationId,
+    jobName: input.name,
+    jobProgress: buildCompletedProgress({
+      jobName: input.name,
+      step: "notify",
+      reeditUrl: automationActionUrl(input.automationId),
+    }),
     lineEvent: "automation_completed",
   });
 }
@@ -46,25 +65,67 @@ export function notifyAutomationAwaitingReview(
     relatedService: "atlas",
     actionUrl: automationActionUrl(input.automationId),
     automationId: input.automationId,
+    jobName: input.name,
     lineEvent: "confirmation_request",
   });
 }
 
 export function notifyAutomationFailed(
   userId: string | null | undefined,
-  input: { automationId: string; name: string; error?: string },
+  input: {
+    automationId: string;
+    name: string;
+    error?: string;
+    step?: string | null;
+    failureClass?: FailureClass;
+    retryCount?: number;
+    maxRetries?: number;
+    retrying?: boolean;
+    startedAt?: string | null;
+    supportContextId?: string | null;
+  },
 ) {
   if (!userId) return null;
+  const failureClass =
+    input.failureClass ?? classifyFailure(input.error ?? "automation_failed");
+  const retryCount = input.retryCount ?? 0;
+  const maxRetries = input.maxRetries ?? 3;
+  const retrying = Boolean(input.retrying);
+  const progress = buildFailureProgress({
+    jobName: input.name,
+    step: input.step ?? "execute",
+    failureClass,
+    failureReason: input.error ?? null,
+    retryCount,
+    maxRetries,
+    retrying,
+    startedAt: input.startedAt ?? null,
+    supportContextId: input.supportContextId ?? null,
+    retryActionUrl: automationActionUrl(input.automationId),
+  });
   return createNotification({
     audience: "user",
     userId,
     type: "automation",
-    title: "処理を完了できませんでした",
-    message: `「${input.name}」の処理を完了できませんでした。内容をご確認ください。`,
+    title: buildFailureTitle({
+      jobName: input.name,
+      step: input.step ?? "execute",
+    }),
+    message: buildFailureMessage({
+      jobName: input.name,
+      step: input.step ?? "execute",
+      failureClass,
+      failureReason: input.error ?? null,
+      retryCount,
+      maxRetries,
+      retrying,
+    }),
     relatedTaskId: input.automationId,
     relatedService: "atlas",
     actionUrl: automationActionUrl(input.automationId),
     automationId: input.automationId,
+    jobName: input.name,
+    jobProgress: progress,
     lineEvent: "error",
   });
 }
@@ -81,18 +142,28 @@ export function notifyXPostSuccess(
     type: "completed",
     title: "X自動投稿が完了しました",
     message: text
-      ? `お待たせいたしました。投稿の準備が完了しました。`
-      : "お待たせいたしました。投稿が完了しました。",
+      ? "お待たせいたしました。投稿の準備が完了しました。プレビュー・共有・再編集がご利用いただけます。"
+      : "お待たせいたしました。投稿が完了しました。プレビュー・共有・再編集がご利用いただけます。",
     relatedTaskId: historyId,
     relatedService: "x",
     actionUrl: historyId
       ? `/workspace/x?historyId=${encodeURIComponent(historyId)}`
       : "/workspace/x",
     requestId: historyId,
+    jobName: "X自動投稿",
+    jobProgress: buildCompletedProgress({
+      jobName: "X自動投稿",
+      copyText: text ?? null,
+      reeditUrl: "/workspace/x",
+      shareUrl: historyId
+        ? `/workspace/x?historyId=${encodeURIComponent(historyId)}`
+        : "/workspace/x",
+    }),
   });
 }
 
 export function notifyXPostFailed(userId: string, message: string) {
+  const failureClass = classifyFailure(message);
   const detail =
     message.trim() ||
     "Xへの投稿に失敗しました。内容をご確認のうえ、設定画面からX連携をご確認ください。";
@@ -100,10 +171,30 @@ export function notifyXPostFailed(userId: string, message: string) {
     audience: "user",
     userId,
     type: "error",
-    title: "Xへの投稿に失敗しました",
-    message: detail,
+    title: buildFailureTitle({ jobName: "X投稿", step: "execute" }),
+    message: buildFailureMessage({
+      jobName: "X投稿",
+      step: "execute",
+      failureClass,
+      failureReason: detail,
+      retryCount: 0,
+      maxRetries: 3,
+      retrying: false,
+      nextAction: "設定画面からX連携をご確認のうえ、再実行してください。",
+    }),
     relatedService: "x",
     actionUrl: "/settings/x",
+    jobName: "X投稿",
+    jobProgress: buildFailureProgress({
+      jobName: "X投稿",
+      step: "execute",
+      failureClass,
+      failureReason: detail,
+      retryCount: 0,
+      maxRetries: 3,
+      retrying: false,
+      retryActionUrl: "/workspace/x",
+    }),
     lineEvent: "error",
   });
 }
@@ -119,12 +210,18 @@ export function notifyXRecurringPostSuccess(
     userId,
     type: "completed",
     title: "Xへの定期投稿が完了しました",
-    message: "お待たせいたしました。Xへの定期投稿が完了しました。",
+    message:
+      "お待たせいたしました。Xへの定期投稿が完了しました。プレビュー・共有・再編集がご利用いただけます。",
     relatedTaskId: input.executionId,
     relatedService: "x",
     actionUrl: `/automations?id=${encodeURIComponent(input.automationId)}&executionId=${encodeURIComponent(input.executionId)}`,
     automationId: input.automationId,
     requestId: input.executionId,
+    jobName: "X定期投稿",
+    jobProgress: buildCompletedProgress({
+      jobName: "X定期投稿",
+      reeditUrl: `/automations?id=${encodeURIComponent(input.automationId)}`,
+    }),
     lineEvent: "automation_completed",
   });
 }
@@ -139,19 +236,42 @@ export function notifyXRecurringPostFailed(
   },
 ) {
   if (!userId) return null;
+  const failureClass = classifyFailure(
+    input.errorMessage ?? "x_recurring_failed",
+  );
+  const reason =
+    input.errorMessage?.trim() ||
+    "Xへの定期投稿に失敗しました。外部連携と実行履歴をご確認ください。";
   return createNotification({
     audience: "user",
     userId,
     type: "error",
-    title: "Xへの定期投稿に失敗しました。対応が必要です",
-    message:
-      input.errorMessage?.trim() ||
-      "Xへの定期投稿に失敗しました。外部連携と実行履歴をご確認ください。",
+    title: buildFailureTitle({ jobName: "X定期投稿", step: "execute" }),
+    message: buildFailureMessage({
+      jobName: "X定期投稿",
+      step: "execute",
+      failureClass,
+      failureReason: reason,
+      retryCount: 0,
+      maxRetries: 3,
+      retrying: false,
+    }),
     relatedTaskId: input.executionId,
     relatedService: "x",
     actionUrl: `/automations?id=${encodeURIComponent(input.automationId)}&executionId=${encodeURIComponent(input.executionId)}`,
     automationId: input.automationId,
     requestId: input.executionId,
+    jobName: "X定期投稿",
+    jobProgress: buildFailureProgress({
+      jobName: "X定期投稿",
+      step: "execute",
+      failureClass,
+      failureReason: reason,
+      retryCount: 0,
+      maxRetries: 3,
+      retrying: false,
+      retryActionUrl: `/automations?id=${encodeURIComponent(input.automationId)}`,
+    }),
     lineEvent: "error",
   });
 }
@@ -175,12 +295,19 @@ export function notifyDriveSaveComplete(userId: string, fileName?: string) {
     audience: "user",
     userId,
     type: "completed",
-    title: "資料が完成しました",
+    title: fileName
+      ? `「${fileName}」の保存が完了しました`
+      : "資料の保存が完了しました",
     message: fileName
-      ? `お待たせいたしました。「${fileName}」の保存が完了しました。`
-      : "お待たせいたしました。資料の保存が完了しました。",
+      ? `お待たせいたしました。「${fileName}」の保存が完了しました。プレビュー・ダウンロードがご利用いただけます。`
+      : "お待たせいたしました。資料の保存が完了しました。プレビュー・ダウンロードがご利用いただけます。",
     relatedService: "google",
     actionUrl: "/workspace/drive",
+    jobName: fileName ?? "資料保存",
+    jobProgress: buildCompletedProgress({
+      jobName: fileName ?? "資料保存",
+      downloadUrl: "/workspace/drive",
+    }),
     lineEvent: "document_ready",
   });
 }
@@ -191,9 +318,15 @@ export function notifyGmailSummaryComplete(userId: string) {
     userId,
     type: "completed",
     title: "メールの要約が完了しました",
-    message: "お待たせいたしました。メールの要約と返信案の準備が完了しました。",
+    message:
+      "お待たせいたしました。メールの要約と返信案の準備が完了しました。プレビュー・コピー・再編集がご利用いただけます。",
     relatedService: "google",
     actionUrl: "/workspace/mail",
+    jobName: "メール要約",
+    jobProgress: buildCompletedProgress({
+      jobName: "メール要約",
+      reeditUrl: "/workspace/mail",
+    }),
   });
 }
 
@@ -223,7 +356,10 @@ export function notifyBillingPaymentFailed(userId: string) {
   });
 }
 
-export function notifyBillingPaymentSucceeded(userId: string, planLabel?: string) {
+export function notifyBillingPaymentSucceeded(
+  userId: string,
+  planLabel?: string,
+) {
   return createNotification({
     audience: "user",
     userId,
@@ -261,7 +397,10 @@ export function notifyBillingPlanDowngraded(userId: string) {
   });
 }
 
-export function notifyBillingGraceScheduled(userId: string, graceEndsAt: string) {
+export function notifyBillingGraceScheduled(
+  userId: string,
+  graceEndsAt: string,
+) {
   const formatted = new Date(graceEndsAt).toLocaleString("ja-JP");
   return createNotification({
     audience: "user",
@@ -278,14 +417,39 @@ export function notifyIntegrationError(
   userId: string,
   input: { service: string; message: string },
 ) {
+  const failureClass = classifyFailure(input.message || "integration_error");
+  const serviceLabel = input.service || "外部連携";
   return createNotification({
     audience: "user",
     userId,
     type: "integration",
-    title: "処理を完了できませんでした",
-    message: "処理を完了できませんでした。連携設定をご確認ください。",
+    title: buildFailureTitle({
+      jobName: `${serviceLabel}連携`,
+      step: "execute",
+    }),
+    message: buildFailureMessage({
+      jobName: `${serviceLabel}連携`,
+      step: "execute",
+      failureClass,
+      failureReason: input.message || "連携設定をご確認ください。",
+      retryCount: 0,
+      maxRetries: 3,
+      retrying: false,
+      nextAction: "設定画面から連携状態をご確認ください。",
+    }),
     relatedService: input.service.toLowerCase(),
     actionUrl: "/settings",
+    jobName: `${serviceLabel}連携`,
+    jobProgress: buildFailureProgress({
+      jobName: `${serviceLabel}連携`,
+      step: "execute",
+      failureClass,
+      failureReason: input.message || "連携設定をご確認ください。",
+      retryCount: 0,
+      maxRetries: 3,
+      retrying: false,
+      retryActionUrl: "/settings",
+    }),
     lineEvent: "error",
   });
 }
@@ -331,26 +495,47 @@ export function notifyWorkCompleted(
     workflowRunId?: string | null;
     /** Originating request/run id. */
     requestId?: string | null;
+    jobName?: string | null;
+    startedAt?: string | null;
+    endedAt?: string | null;
+    previewText?: string | null;
+    jobProgress?: NotificationJobProgress | null;
   },
 ) {
   if (!userId) return null;
   const deliverableId = input.deliverableId ?? input.relatedTaskId ?? null;
-  // Fallback deep link only for rows with no deliverable id (rare). When a
-  // deliverable id exists, `createNotification` canonicalizes the link to
-  // `/results/<notificationId>` so「結果を見る」self-resolves the exact 成果物.
   const actionUrl =
     input.actionUrl ??
     (deliverableId ? deliverableActionUrl(deliverableId) : "/workspace");
+  const jobName =
+    input.jobName?.trim() ||
+    input.title.match(/「([^」]+)」/)?.[1] ||
+    "ご依頼の仕事";
+  const progress =
+    input.jobProgress ??
+    buildCompletedProgress({
+      jobName,
+      startedAt: input.startedAt ?? null,
+      endedAt: input.endedAt ?? new Date().toISOString(),
+      previewText: input.previewText ?? null,
+      downloadUrl: actionUrl,
+      shareUrl: actionUrl,
+      copyText: input.previewText ?? input.message ?? null,
+      reeditUrl: "/",
+    });
   return createNotification({
     audience: "user",
     userId,
     type: "completed",
-    // Keep the caller's task-type title (e.g.「レポートを作成しました」). The display
-    // layer upgrades generic / internal-sounding titles automatically.
-    title: input.title?.trim() || "お仕事が完了しました",
-    message: input.message
-      ? `お待たせいたしました。${input.message}`
-      : "お待たせいたしました。ご依頼の内容が完了しました。",
+    title: input.title?.trim() || `「${jobName}」が完了しました`,
+    message: buildCompletedMessage({
+      jobName,
+      previewText: input.previewText ?? input.message ?? null,
+      downloadUrl: actionUrl,
+      shareUrl: actionUrl,
+      copyText: input.previewText ?? null,
+      reeditUrl: "/",
+    }),
     relatedTaskId: input.relatedTaskId ?? deliverableId,
     actionUrl,
     targetType: deliverableId ? "deliverable" : null,
@@ -358,6 +543,8 @@ export function notifyWorkCompleted(
     deliverableId,
     workflowRunId: input.workflowRunId ?? null,
     requestId: input.requestId ?? null,
+    jobName,
+    jobProgress: progress,
     lineEvent: "work_completed",
   });
 }
@@ -365,35 +552,82 @@ export function notifyWorkCompleted(
 export function notifyWorkFailed(
   userId: string | null | undefined,
   input: {
-    title: string;
-    message: string;
+    title?: string;
+    message?: string;
     actionUrl?: string | null;
     relatedTaskId?: string | null;
     deliverableId?: string | null;
     workflowRunId?: string | null;
     requestId?: string | null;
+    jobName?: string | null;
+    step?: string | null;
+    failureClass?: FailureClass;
+    failureReason?: string | null;
+    retryCount?: number;
+    maxRetries?: number;
+    retrying?: boolean;
+    startedAt?: string | null;
+    endedAt?: string | null;
+    etaSeconds?: number | null;
+    nextAction?: string | null;
+    supportContextId?: string | null;
+    retryActionUrl?: string | null;
+    processLogSummary?: string | null;
+    jobProgress?: NotificationJobProgress | null;
   },
 ) {
   if (!userId) return null;
   const deliverableId = input.deliverableId ?? input.relatedTaskId ?? null;
-  // A failed run still resolves to its own result page so「確認する」shows
-  // 成果物の生成に失敗しました + reason instead of a dead list. When a deliverable id
-  // exists the link is canonicalized to `/results/<notificationId>`.
   const actionUrl =
     input.actionUrl ??
     (deliverableId ? deliverableActionUrl(deliverableId) : "/workspace");
+  const jobName = input.jobName?.trim() || "ご依頼の仕事";
+  const failureClass =
+    input.failureClass ??
+    classifyFailure(input.failureReason ?? input.message ?? "work_failed");
+  const retryCount = input.retryCount ?? 0;
+  const maxRetries = input.maxRetries ?? 3;
+  const retrying = Boolean(input.retrying);
+  const progress =
+    input.jobProgress ??
+    buildFailureProgress({
+      jobName,
+      step: input.step ?? "execute",
+      failureClass,
+      failureReason: input.failureReason ?? input.message ?? null,
+      retryCount,
+      maxRetries,
+      retrying,
+      startedAt: input.startedAt ?? null,
+      endedAt: input.endedAt ?? null,
+      etaSeconds: input.etaSeconds ?? null,
+      nextAction: input.nextAction ?? null,
+      supportContextId: input.supportContextId ?? null,
+      retryActionUrl:
+        input.retryActionUrl ??
+        (input.requestId
+          ? `/api/work/jobs/${encodeURIComponent(input.requestId)}/retry`
+          : actionUrl),
+      processLogSummary: input.processLogSummary ?? null,
+    });
+
   return createNotification({
     audience: "user",
     userId,
-    // Store the caller title + reason so the display layer can derive a
-    // task-type failed title (e.g.「契約書の処理を完了できませんでした」). The visible
-    // message stays sanitized/generic; the full reason shows on the result page
-    // (成果物の生成に失敗しました + reason).
     type: "error",
-    title: input.title?.trim() || "処理を完了できませんでした",
-    message: input.message?.trim()
-      ? `処理を完了できませんでした。${input.message.trim()}`
-      : "処理を完了できませんでした。内容をご確認ください。",
+    title:
+      input.title?.trim() ||
+      buildFailureTitle({ jobName, step: input.step ?? "execute" }),
+    message: buildFailureMessage({
+      jobName,
+      step: input.step ?? "execute",
+      failureClass,
+      failureReason: input.failureReason ?? input.message ?? null,
+      retryCount,
+      maxRetries,
+      retrying,
+      nextAction: input.nextAction ?? null,
+    }),
     relatedTaskId: input.relatedTaskId ?? deliverableId,
     actionUrl,
     targetType: deliverableId ? "deliverable" : null,
@@ -401,6 +635,8 @@ export function notifyWorkFailed(
     deliverableId,
     workflowRunId: input.workflowRunId ?? null,
     requestId: input.requestId ?? null,
+    jobName,
+    jobProgress: progress,
     lineEvent: "error",
   });
 }
@@ -435,10 +671,16 @@ export function notifyDocumentReady(
     audience: "user",
     userId,
     type: "completed",
-    title: "資料が完成しました",
-    message: `お待たせいたしました。「${input.fileName}」の準備が完了しました。`,
+    title: `「${input.fileName}」の準備が完了しました`,
+    message: `お待たせいたしました。「${input.fileName}」の準備が完了しました。プレビュー・ダウンロード・共有がご利用いただけます。`,
     relatedService: "atlas",
     actionUrl: input.href ?? "/workspace/drive",
+    jobName: input.fileName,
+    jobProgress: buildCompletedProgress({
+      jobName: input.fileName,
+      downloadUrl: input.href ?? "/workspace/drive",
+      shareUrl: input.href ?? "/workspace/drive",
+    }),
     lineEvent: "document_ready",
   });
 }

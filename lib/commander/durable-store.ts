@@ -240,23 +240,26 @@ export async function persistCommanderResultAsProject(input: {
   result: OrchestrationResult;
   /** Stable id shared with the client save + notification deep link. */
   projectId?: string;
-}): Promise<string | null> {
+}): Promise<{ projectId: string; persisted: boolean } | null> {
+  const project = createProjectFromOrchestration(
+    input.assignment,
+    input.result,
+    input.projectId,
+  );
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return null;
+  if (!client) {
+    // Dev / unconfigured: still return the stable id so notifications can deep-link.
+    return { projectId: project.id, persisted: false };
+  }
 
   try {
-    const project = createProjectFromOrchestration(
-      input.assignment,
-      input.result,
-      input.projectId,
-    );
     const row = mapProjectToRow(project, input.userId);
     const { error } = await client.from(PROJECTS_TABLE).upsert(row);
     if (error) {
       console.warn("[commander] Supabase project upsert failed:", error.message);
       return null;
     }
-    return project.id;
+    return { projectId: project.id, persisted: true };
   } catch (error) {
     console.warn("[commander] Supabase project persist skipped:", error);
     return null;

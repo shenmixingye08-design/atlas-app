@@ -29,3 +29,19 @@ export {
   type CircuitState,
 } from "./circuit-breaker";
 export { toHumanReliabilityMessage } from "./human-errors";
+export {
+  classifyFailure,
+  failureClassCause,
+  failureClassLabel,
+  isRetryableClassifiedFailure,
+  isRetryableFailureClass,
+  FAILURE_CLASSES,
+  FAILURE_CLASS_LABELS,
+  type FailureClass,
+} from "./error-classification";
+export {
+  recordDeveloperError,
+  listDeveloperErrorLogs,
+  resetDeveloperErrorLogsForTests,
+  type DeveloperErrorLog,
+} from "./developer-log";

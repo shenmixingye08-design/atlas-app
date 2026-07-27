@@ -62,7 +62,10 @@ vi.mock("@/lib/automations/repositories/workflow-run-store", () => ({
 
 vi.mock("@/lib/commander/durable-store", () => ({
   persistCommanderRunToClerk: vi.fn(),
-  persistCommanderResultAsProject: vi.fn(async () => "proj_test"),
+  persistCommanderResultAsProject: vi.fn(async () => ({
+    projectId: "proj_test",
+    persisted: true,
+  })),
   loadCommanderRunsFromClerk: vi.fn(async () => []),
 }));
 

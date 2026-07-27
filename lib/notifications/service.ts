@@ -91,10 +91,21 @@ export function createNotification(
 
   if (input.audience === "user" && input.userId) {
     const prefs = getStoredPreferences(input.userId);
-    if (!isInAppTypeEnabled(prefs, input.type) && !lineEvent) {
+    // Always honor in-app type / master preferences. LINE/push delivery is
+    // gated separately after the record is created.
+    if (!isInAppTypeEnabled(prefs, input.type)) {
       return null;
     }
   }
+
+  const jobProgress = input.jobProgress
+    ? {
+        ...input.jobProgress,
+        jobName: input.jobProgress.jobName ?? input.jobName ?? null,
+      }
+    : input.jobName
+      ? { jobName: input.jobName }
+      : null;
 
   const record = appendNotification({
     notificationId,
@@ -133,6 +144,7 @@ export function createNotification(
     pushFailedAt: null,
     pushFailureReason: null,
     readAt: null,
+    jobProgress,
   });
   if (input.userId) schedulePersistNotifications(input.userId);
 

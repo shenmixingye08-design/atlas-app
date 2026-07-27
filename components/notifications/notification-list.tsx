@@ -28,6 +28,10 @@ import {
   resolveNoticePriority,
   type NoticeFilter,
 } from "@/lib/notifications/display";
+import {
+  failureClassLabel,
+} from "@/lib/reliability/error-classification";
+import { jobStateLabel } from "@/lib/notifications/job-progress";
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
 import { Button } from "@/components/ui/button";
@@ -53,18 +57,34 @@ type NotificationListProps = {
   items?: NotificationRecord[];
 };
 
+function formatEta(seconds: number | null | undefined): string | null {
+  if (seconds == null || seconds <= 0) return null;
+  if (seconds < 60) return `約${seconds}秒`;
+  return `約${Math.ceil(seconds / 60)}分`;
+}
+
+async function resumeBackgroundJobs(): Promise<void> {
+  try {
+    await fetch("/api/work/jobs/recover", { method: "POST" });
+  } catch {
+    // Best-effort recovery on focus — never block the UI.
+  }
+}
+
 function NoticeCard({
   item,
   compact,
   onMarkRead,
   onDelete,
   onNavigate,
+  onRetried,
 }: {
   item: NotificationRecord;
   compact?: boolean;
   onMarkRead: (id: string) => void;
   onDelete: (id: string) => void;
   onNavigate?: () => void;
+  onRetried?: () => void;
 }) {
   const category = resolveNoticeCategory(item);
   const priority = resolveNoticePriority(item, category);
@@ -72,6 +92,83 @@ function NoticeCard({
   const message = formatNoticeMessage(item, category);
   const jobName = extractJobName(item);
   const actionUrl = resolveNoticeActionUrl(item);
+  const progress = item.jobProgress;
+  const [retrying, setRetrying] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const supportHref = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("topic", "work_error");
+    if (progress?.supportContextId) {
+      params.set("context", progress.supportContextId);
+    } else if (item.requestId) {
+      params.set("context", item.requestId);
+    }
+    if (jobName) params.set("job", jobName);
+    if (progress?.failureReason) params.set("reason", progress.failureReason);
+    return `/contact?${params.toString()}`;
+  }, [progress, item.requestId, jobName]);
+
+  const handleRetry = async () => {
+    const jobId = item.requestId;
+    if (!jobId) {
+      window.location.href = "/";
+      return;
+    }
+    setRetrying(true);
+    try {
+      const res = await fetch(
+        `/api/work/jobs/${encodeURIComponent(jobId)}/retry`,
+        { method: "POST" },
+      );
+      if (!res.ok) {
+        // Fallback: open home for a fresh request.
+        window.location.href = "/";
+        return;
+      }
+      onRetried?.();
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const handleCopy = async () => {
+    const text =
+      progress?.resultActions?.copyText ||
+      item.message ||
+      title;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleShare = async () => {
+    const url =
+      progress?.resultActions?.shareUrl ||
+      actionUrl ||
+      window.location.origin;
+    const absolute =
+      url.startsWith("http") ? url : `${window.location.origin}${url}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, url: absolute });
+        return;
+      } catch {
+        // fall through to clipboard
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(absolute);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
 
   return (
     <li>
@@ -105,20 +202,97 @@ function NoticeCard({
               {ui.notifications.unread}
             </span>
           )}
+          {progress?.retrying ? (
+            <span className="rounded-full bg-[var(--warning-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--warning)]">
+              {ui.notifications.retrying}
+            </span>
+          ) : null}
           <span className="text-[11px] text-[var(--text-muted)]">
             {formatNoticeDateTime(item.createdAt)}
           </span>
         </div>
 
         <p className="mt-3 text-sm font-semibold text-foreground">{title}</p>
-        <p className="mt-1 text-sm leading-relaxed text-[var(--text-secondary)]">
-          {compact && message.length > 72 ? `${message.slice(0, 72)}…` : message}
+        <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-[var(--text-secondary)]">
+          {compact && message.length > 120 ? `${message.slice(0, 120)}…` : message}
         </p>
 
-        {!compact && jobName && (
-          <p className="mt-2 text-xs text-[var(--text-muted)]">
-            {ui.notifications.relatedJob}: {jobName}
-          </p>
+        {!compact && (
+          <dl className="mt-3 grid gap-1.5 text-xs text-[var(--text-muted)] sm:grid-cols-2">
+            {(jobName || progress?.jobName) && (
+              <div>
+                <dt className="inline text-[var(--text-secondary)]">
+                  {ui.notifications.jobNameLabel}：
+                </dt>
+                <dd className="inline text-foreground">
+                  {progress?.jobName || jobName}
+                </dd>
+              </div>
+            )}
+            {progress?.jobState && (
+              <div>
+                <dt className="inline text-[var(--text-secondary)]">
+                  {ui.notifications.stateLabel}：
+                </dt>
+                <dd className="inline text-foreground">
+                  {jobStateLabel(progress.jobState)}
+                </dd>
+              </div>
+            )}
+            {progress?.startedAt && (
+              <div>
+                <dt className="inline text-[var(--text-secondary)]">
+                  {ui.notifications.startedAtLabel}：
+                </dt>
+                <dd className="inline text-foreground">
+                  {formatNoticeDateTime(progress.startedAt)}
+                </dd>
+              </div>
+            )}
+            {progress?.endedAt && (
+              <div>
+                <dt className="inline text-[var(--text-secondary)]">
+                  {ui.notifications.endedAtLabel}：
+                </dt>
+                <dd className="inline text-foreground">
+                  {formatNoticeDateTime(progress.endedAt)}
+                </dd>
+              </div>
+            )}
+            {progress?.failureReason && (
+              <div className="sm:col-span-2">
+                <dt className="inline text-[var(--text-secondary)]">
+                  {ui.notifications.errorReasonLabel}：
+                </dt>
+                <dd className="inline text-foreground">
+                  {progress.failureReason}
+                  {progress.failureClass
+                    ? `（${failureClassLabel(progress.failureClass)}）`
+                    : ""}
+                </dd>
+              </div>
+            )}
+            {progress?.retryCount != null && progress.maxRetries != null && (
+              <div>
+                <dt className="inline text-[var(--text-secondary)]">
+                  {ui.notifications.retryCountLabel}：
+                </dt>
+                <dd className="inline text-foreground">
+                  {progress.retryCount} / {progress.maxRetries}
+                </dd>
+              </div>
+            )}
+            {formatEta(progress?.etaSeconds) && (
+              <div>
+                <dt className="inline text-[var(--text-secondary)]">
+                  {ui.notifications.etaLabel}：
+                </dt>
+                <dd className="inline text-foreground">
+                  {formatEta(progress?.etaSeconds)}
+                </dd>
+              </div>
+            )}
+          </dl>
         )}
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -131,10 +305,74 @@ function NoticeCard({
               }}
             >
               <Button variant="primary" size="sm" className="min-h-[44px]">
-                {getNoticeActionLabel(category)}
+                {category === "completed"
+                  ? ui.notifications.previewAction
+                  : getNoticeActionLabel(category)}
               </Button>
             </Link>
           )}
+
+          {category === "completed" && (
+            <>
+              {(progress?.resultActions?.downloadUrl || actionUrl) && (
+                <Link
+                  href={progress?.resultActions?.downloadUrl || actionUrl || "/"}
+                  onClick={() => {
+                    if (!item.isRead) onMarkRead(item.notificationId);
+                  }}
+                >
+                  <Button variant="secondary" size="sm" className="min-h-[44px]">
+                    {ui.notifications.downloadAction}
+                  </Button>
+                </Link>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                className="min-h-[44px]"
+                onClick={() => void handleShare()}
+              >
+                {ui.notifications.shareAction}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="min-h-[44px]"
+                onClick={() => void handleCopy()}
+              >
+                {copied
+                  ? ui.notifications.copiedAction
+                  : ui.notifications.copyAction}
+              </Button>
+              <Link href={progress?.resultActions?.reeditUrl || "/"}>
+                <Button variant="secondary" size="sm" className="min-h-[44px]">
+                  {ui.notifications.reeditAction}
+                </Button>
+              </Link>
+            </>
+          )}
+
+          {(category === "error" || progress?.jobState === "failed") && (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="min-h-[44px]"
+                disabled={retrying}
+                onClick={() => void handleRetry()}
+              >
+                {retrying
+                  ? ui.notifications.retryingAction
+                  : ui.notifications.retryAction}
+              </Button>
+              <Link href={supportHref}>
+                <Button variant="secondary" size="sm" className="min-h-[44px]">
+                  {ui.notifications.supportAction}
+                </Button>
+              </Link>
+            </>
+          )}
+
           {!item.isRead && (
             <Button
               variant="secondary"
@@ -193,12 +431,17 @@ export function NotificationList({
   }, [reload, isFixture]);
 
   // Real-time: refetch when any tab / component signals a change (mark read,
-  // new notice) and when the window regains focus — no full page reload.
+  // new notice) and when the window regains focus — also resume hung jobs so
+  // browser refresh / disconnect does not leave work stuck.
   useEffect(() => {
     if (isFixture) return;
     const unsubscribe = subscribeNotificationsChanged(() => void reload());
-    const onFocus = () => void reload();
+    const onFocus = () => {
+      void resumeBackgroundJobs();
+      void reload();
+    };
     window.addEventListener("focus", onFocus);
+    void resumeBackgroundJobs();
     return () => {
       unsubscribe();
       window.removeEventListener("focus", onFocus);
@@ -304,6 +547,7 @@ export function NotificationList({
               onMarkRead={(id) => void handleMarkRead(id)}
               onDelete={(id) => void handleDelete(id)}
               onNavigate={onNavigate}
+              onRetried={() => void reload()}
             />
           ))}
         </ul>

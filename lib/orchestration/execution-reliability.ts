@@ -1,3 +1,8 @@
+import {
+  classifyFailure,
+  isRetryableClassifiedFailure,
+} from "@/lib/reliability/error-classification";
+
 /**
  * Execution reliability helpers for MINERVOT work runs.
  *
@@ -163,27 +168,14 @@ export function getExecutionState(
   return getStates().get(stateKey(runId, userId)) ?? null;
 }
 
-/** True when a failure should be retried (timeouts / transient infra). */
+/** True when a failure should be retried (classified transient failures). */
 export function isRetryableFailure(error: unknown): boolean {
   if (!error) return false;
-  const message =
-    typeof error === "string"
-      ? error
-      : error instanceof Error
-        ? error.message
-        : String(error);
-
-  if (/cancel/i.test(message)) return false;
-  if (/unauthorized|forbidden|認証|権限/i.test(message)) return false;
-
-  return (
-    /timeout|timed?\s*out|ETIMEDOUT|ECONNRESET|429|503|502|一時|タイムアウト|ネットワーク/i.test(
-      message,
-    ) || /failed|error|失敗|エラー/i.test(message)
-  );
+  return isRetryableClassifiedFailure(error);
 }
 
 export function formatFailureReason(error: unknown): string {
+  const failureClass = classifyFailure(error);
   const raw =
     typeof error === "string"
       ? error
@@ -198,8 +190,23 @@ export function formatFailureReason(error: unknown): string {
     .trim();
 
   if (!cleaned) return "実行に失敗しました。内容をご確認ください。";
-  if (/timeout|timed?\s*out|タイムアウト/i.test(cleaned)) {
+  if (failureClass === "timeout") {
     return "処理が時間内に終わりませんでした。自動で再試行しています。";
+  }
+  if (failureClass === "network") {
+    return "通信エラーが発生しました。自動で再試行しています。";
+  }
+  if (failureClass === "openai") {
+    return "AI応答でエラーが発生しました。自動で再試行しています。";
+  }
+  if (failureClass === "json_parse") {
+    return "成果物データの解析に失敗しました。自動で再試行しています。";
+  }
+  if (failureClass === "save_failure") {
+    return "成果物の保存に失敗しました。自動で再試行しています。";
+  }
+  if (failureClass === "generation_failure") {
+    return "成果物の生成に失敗しました。自動で再試行しています。";
   }
   return cleaned.slice(0, 240);
 }
@@ -218,7 +225,7 @@ export function ensureNotificationDelivery<T>(
     maxAttempts?: number;
   },
 ): T | null {
-  const maxAttempts = context.maxAttempts ?? 3;
+  const maxAttempts = context.maxAttempts ?? 4;
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -250,6 +257,7 @@ export function ensureNotificationDelivery<T>(
       metadata: {
         kind: context.kind,
         error: formatFailureReason(lastError),
+        failureClass: classifyFailure(lastError),
       },
     });
   }
@@ -263,6 +271,7 @@ export function ensureNotificationDelivery<T>(
     metadata: {
       kind: context.kind,
       error: formatFailureReason(lastError),
+      failureClass: classifyFailure(lastError),
     },
   });
   return null;

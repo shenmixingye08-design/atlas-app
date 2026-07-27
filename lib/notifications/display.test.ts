@@ -56,7 +56,8 @@ describe("notification display", () => {
         sample({
           type: "error",
           title: "失敗",
-          message: "処理を完了できませんでした",
+          message: "処理中にエラーが発生しました",
+          jobProgress: { jobState: "failed" },
         }),
       ),
     ).toBe("urgent");
@@ -70,7 +71,10 @@ describe("notification display", () => {
       formatNoticeTitle(sample({ type: "awaiting_review" })),
     ).toContain("ご確認");
     expect(formatNoticeMessage(sample({ type: "error" }))).toContain(
-      "ご確認ください",
+      "エラーが発生しました",
+    );
+    expect(formatNoticeMessage(sample({ type: "error" }))).not.toContain(
+      "処理を完了できませんでした",
     );
   });
 
@@ -169,7 +173,32 @@ describe("notification display", () => {
           message: "処理を完了できませんでした。契約書の読み取りに失敗しました。",
         }),
       ),
-    ).toBe("契約書の処理を完了できませんでした");
+    ).toBe("契約書の処理中にエラーが発生しました");
+  });
+
+  it("renders structured failure details from jobProgress", () => {
+    const message = formatNoticeMessage(
+      sample({
+        type: "error",
+        title: "処理を完了できませんでした",
+        message: "処理を完了できませんでした",
+        jobProgress: {
+          jobName: "Word資料",
+          jobState: "retrying",
+          currentStep: "word",
+          failureClass: "timeout",
+          failureReason: "AI応答タイムアウト",
+          retryCount: 1,
+          maxRetries: 3,
+          retrying: true,
+          nextAction: "自動再試行を継続しています",
+        },
+      }),
+    );
+    expect(message).toContain("Word生成中にエラーが発生しました");
+    expect(message).toContain("再試行回数 1 / 3");
+    expect(message).toContain("AI応答タイムアウト");
+    expect(message).not.toContain("処理を完了できませんでした");
   });
 
   it("preserves a specific stored title when no derivation applies", () => {

@@ -1,5 +1,17 @@
+import {
+  failureClassCause,
+  failureClassLabel,
+} from "@/lib/reliability/error-classification";
+
+import {
+  formatStepLabel,
+  jobStateLabel,
+} from "./job-progress";
 import { hasResolvableResultTarget } from "./result-target";
 import type { NotificationRecord, NotificationType } from "./types";
+
+/** Banned generic failure copy — never show this to users. */
+export const BANNED_GENERIC_FAILURE = "処理を完了できませんでした";
 
 /** User-facing notice categories for the secretary inbox. */
 export type NoticeCategory =
@@ -144,7 +156,8 @@ export function resolveNoticePriority(
 
   if (
     category === "error" &&
-    /停止|失敗しました|処理を完了できません|決済失敗|お支払いに失敗/.test(text)
+    (/停止|失敗しました|決済失敗|お支払いに失敗|エラーが発生/.test(text) ||
+      notification.jobProgress?.jobState === "failed")
   ) {
     return "urgent";
   }
@@ -178,6 +191,7 @@ const GENERIC_TITLES = new Set<string>([
   "自動化が終了しました",
   "資料が完成しました",
   "処理を完了できませんでした",
+  "処理できませんでした",
   "ご確認が必要な仕事がございます",
   "仕事の実行に失敗しました",
   // Internal-sounding titles that must never surface to the user.
@@ -201,67 +215,72 @@ const DELIVERABLE_KIND_RULES: {
   {
     pattern: /契約書|規約|利用規約/,
     completed: "契約書の要約が完了しました",
-    failed: "契約書の処理を完了できませんでした",
+    failed: "契約書の処理中にエラーが発生しました",
   },
   {
     pattern: /画像.*(解析|認識|分析)|写真.*(解析|分析)/,
     completed: "画像解析が完了しました",
-    failed: "画像解析を完了できませんでした",
+    failed: "画像解析中にエラーが発生しました",
   },
   {
     pattern: /家計簿|経費|レシート|支出|入出金/,
     completed: "家計簿へ登録しました",
-    failed: "家計簿への登録を完了できませんでした",
+    failed: "家計簿への登録中にエラーが発生しました",
   },
   {
     pattern: /ブログ|記事/,
     completed: "ブログ記事を作成しました",
-    failed: "ブログ記事の作成を完了できませんでした",
+    failed: "ブログ記事の作成中にエラーが発生しました",
   },
   {
     pattern: /議事録/,
     completed: "議事録を作成しました",
-    failed: "議事録の作成を完了できませんでした",
+    failed: "議事録の作成中にエラーが発生しました",
   },
   {
     pattern: /翻訳/,
     completed: "翻訳が完了しました",
-    failed: "翻訳を完了できませんでした",
+    failed: "翻訳中にエラーが発生しました",
   },
   {
     pattern: /要約|まとめ/,
     completed: "要約が完了しました",
-    failed: "要約を完了できませんでした",
+    failed: "要約中にエラーが発生しました",
   },
   {
     pattern: /レポート|報告書|分析/,
     completed: "レポートを作成しました",
-    failed: "レポートの作成を完了できませんでした",
+    failed: "レポートの作成中にエラーが発生しました",
   },
   {
     pattern: /プレゼン|スライド|提案書|企画書/,
     completed: "資料を作成しました",
-    failed: "資料の作成を完了できませんでした",
+    failed: "資料の作成中にエラーが発生しました",
   },
   {
     pattern: /画像(生成|作成)|イラスト/,
     completed: "画像を生成しました",
-    failed: "画像の生成を完了できませんでした",
+    failed: "画像の生成中にエラーが発生しました",
   },
   {
     pattern: /動画/,
     completed: "動画を作成しました",
-    failed: "動画の作成を完了できませんでした",
+    failed: "動画の作成中にエラーが発生しました",
   },
   {
     pattern: /メール|返信|gmail/i,
     completed: "メールの準備が完了しました",
-    failed: "メールの処理を完了できませんでした",
+    failed: "メールの処理中にエラーが発生しました",
+  },
+  {
+    pattern: /Word|ワード|docx/i,
+    completed: "Word資料の作成が完了しました",
+    failed: "Word生成中にエラーが発生しました",
   },
   {
     pattern: /資料|ドキュメント|文書|保存/,
     completed: "資料の作成が完了しました",
-    failed: "資料の処理を完了できませんでした",
+    failed: "資料の処理中にエラーが発生しました",
   },
 ];
 
@@ -298,11 +317,15 @@ export function deriveTaskTypeTitle(
   }
 
   if (category === "error") {
+    const progress = notification.jobProgress;
+    if (progress?.jobName && progress.currentStep) {
+      return `「${progress.jobName}」の${formatStepLabel(progress.currentStep)}中にエラーが発生しました`;
+    }
     if (service === "x" || /X(自動)?投稿|ツイート|ポスト/.test(text)) {
-      return "X投稿を完了できませんでした";
+      return "X投稿中にエラーが発生しました";
     }
     if (rule) return rule.failed;
-    if (jobName) return `「${jobName}」を完了できませんでした`;
+    if (jobName) return `「${jobName}」の処理中にエラーが発生しました`;
     return null;
   }
 
@@ -341,7 +364,7 @@ export function formatNoticeTitle(
     case "needs_material":
       return "追加の資料が必要です";
     case "error":
-      return "処理を完了できませんでした";
+      return "処理中にエラーが発生しました";
     case "ops":
       return "運営からのお知らせ";
     default:
@@ -355,6 +378,55 @@ export function formatNoticeMessage(
 ): string {
   const original = sanitizeUserFacingText(notification.message);
   const jobName = extractJobName(notification);
+  const progress = notification.jobProgress;
+
+  // Prefer structured progress message for errors / retries (never generic ban).
+  if (category === "error" && progress) {
+    const step = formatStepLabel(progress.currentStep);
+    const cause =
+      progress.failureReason?.trim() ||
+      (progress.failureClass
+        ? failureClassCause(progress.failureClass)
+        : "一時的な処理エラー");
+    const classLabel = progress.failureClass
+      ? failureClassLabel(progress.failureClass)
+      : null;
+    const retryCount = progress.retryCount ?? 0;
+    const maxRetries = progress.maxRetries ?? 3;
+    const retrying = Boolean(progress.retrying);
+    const state = progress.jobState
+      ? jobStateLabel(progress.jobState)
+      : retrying
+        ? "再試行中"
+        : "失敗";
+    const next =
+      progress.nextAction?.trim() ||
+      (retrying
+        ? "自動で再試行を続けます"
+        : "再実行するか、サポートへ状況をお送りください");
+    return [
+      `${step}中にエラーが発生しました。`,
+      retrying
+        ? "現在AIが自動で再試行しています。"
+        : "自動再試行の上限に達しました。",
+      `再試行回数 ${retryCount} / ${maxRetries}`,
+      `推定原因 ・${cause}${classLabel ? `（${classLabel}）` : ""}`,
+      `現在の状況 ${state}`,
+      `次の対応 ・${next}`,
+    ].join("\n");
+  }
+
+  // Detailed stored messages (multi-line / structured) should surface as-is.
+  if (
+    category === "error" &&
+    original &&
+    !original.includes(BANNED_GENERIC_FAILURE) &&
+    !original.includes("処理できませんでした") &&
+    (/エラーが発生|再試行回数|推定原因|現在の状況|次の対応/.test(original) ||
+      original.includes("\n"))
+  ) {
+    return original;
+  }
 
   switch (category) {
     case "needs_review":
@@ -362,9 +434,15 @@ export function formatNoticeMessage(
         ? `「${jobName}」について、ご確認をお願いいたします。`
         : "ご確認が必要な仕事がございます。内容をご確認ください。";
     case "completed":
+      if (
+        original &&
+        (original.includes("プレビュー") || original.includes("お待たせ"))
+      ) {
+        return original;
+      }
       return jobName
-        ? `お待たせいたしました。「${jobName}」の作成が完了しました。`
-        : "お待たせいたしました。ご依頼の内容が完了しました。";
+        ? `お待たせいたしました。「${jobName}」の作成が完了しました。プレビュー・ダウンロード・共有・コピー・再編集がご利用いただけます。`
+        : "お待たせいたしました。ご依頼の内容が完了しました。プレビュー・ダウンロード・共有・コピー・再編集がご利用いただけます。";
     case "scheduled":
       return original
         ? `次回の実行予定をご案内します。${original}`
@@ -376,7 +454,9 @@ export function formatNoticeMessage(
     case "needs_material":
       return "作業を進めるため、追加の資料をご提供ください。";
     case "error":
-      return "処理を完了できませんでした。内容をご確認ください。";
+      return jobName
+        ? `「${jobName}」の処理中にエラーが発生しました。原因と次の対応をご確認ください。`
+        : "処理中にエラーが発生しました。原因と次の対応をご確認ください。";
     case "ops":
       return original || "運営よりご案内がございます。";
     default:
@@ -392,14 +472,17 @@ export function sanitizeUserFacingText(value: string): string {
     .replace(/stack\s*trace/gi, "")
     .replace(/OPENAI_[A-Z_]+/g, "")
     .replace(/sk-[a-zA-Z0-9]+/g, "")
-    .replace(/\s{2,}/g, " ")
+    .replace(/[ \t]{2,}/g, " ")
     .trim()
-    .slice(0, 240);
+    .slice(0, 800);
 }
 
 export function extractJobName(
   notification: NotificationRecord,
 ): string | null {
+  const fromProgress = notification.jobProgress?.jobName?.trim();
+  if (fromProgress) return fromProgress;
+
   const fromQuotes = notification.title.match(/「([^」]+)」/);
   if (fromQuotes?.[1]) return fromQuotes[1];
 
