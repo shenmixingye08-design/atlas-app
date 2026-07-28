@@ -113,7 +113,7 @@ function normalizeHaystack(value: string): string {
   return value.toLowerCase();
 }
 
-/** True when the assignment / preferred format should produce a Word (.docx) file. */
+/** True when the user explicitly needs a Word (.docx) file — not company defaults. */
 export function assignmentRequestsWordFile(
   assignment: string,
   metadata?: Readonly<Record<string, unknown>> | null,
@@ -134,7 +134,38 @@ export function assignmentRequestsWordFile(
       return false;
     }
   }
-  return detectDeliverableFormats(assignment).formats.includes("docx");
+
+  const haystack = normalizeHaystack(assignment);
+  const explicitWordHints = [
+    "word",
+    "ワード",
+    "docx",
+    ".docx",
+    "wordファイル",
+    "ワードファイル",
+    "wordで",
+    "ワードで",
+    "word作成",
+    "ワード作成",
+    "wordにして",
+    "ワードにして",
+    "文書作成",
+    "書類作成",
+  ] as const;
+  if (explicitWordHints.some((hint) => haystack.includes(hint.toLowerCase()))) {
+    return true;
+  }
+
+  // Only intentional format rules (minutes/report/contract/blog/…) — never company :default.
+  const detection = detectDeliverableFormats(assignment);
+  if (
+    detection.matchedRule &&
+    !detection.matchedRule.endsWith(":default") &&
+    detection.formats.includes("docx")
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /** Infer which file formats to produce from the user's assignment text. */

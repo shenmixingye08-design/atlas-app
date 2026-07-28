@@ -64,7 +64,8 @@ export async function exportWordDeliverableOnServer(input: {
     requestId: input.requestId,
   });
 
-  const raw = getDeliverableExportText(input.result.deliverable).trim();
+  const rawExport = getDeliverableExportText(input.result.deliverable);
+  const raw = (typeof rawExport === "string" ? rawExport : "").trim();
   if (!raw) {
     const reason = "word_export_empty_content";
     logWordPipeline({

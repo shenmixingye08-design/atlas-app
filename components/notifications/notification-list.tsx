@@ -189,7 +189,8 @@ export function NotificationList({
 
   useEffect(() => {
     if (isFixture) return;
-    void reload();
+    const boot = window.setTimeout(() => void reload(), 0);
+    return () => window.clearTimeout(boot);
   }, [reload, isFixture]);
 
   // Real-time: refetch on change / focus / short poll — no full page reload.

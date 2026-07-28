@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 
 import { fetchNotifications } from "@/lib/notifications/client";
 import { subscribeNotificationsChanged } from "@/lib/notifications/refresh-events";
-import { ui } from "@/lib/i18n";
 
 export function HomeNotificationsBadge() {
   const [unreadCount, setUnreadCount] = useState(0);
@@ -19,14 +18,16 @@ export function HomeNotificationsBadge() {
   }, []);
 
   useEffect(() => {
-    void reload();
-    // Real-time: refresh the count on in-app changes, focus, and a slow poll —
+    // Defer initial fetch so setState is not synchronous inside the effect body.
+    const boot = window.setTimeout(() => void reload(), 0);
+    // Real-time: refresh the count on in-app changes, focus, and a short poll —
     // no full page reload.
     const interval = window.setInterval(() => void reload(), 8_000);
     const unsubscribe = subscribeNotificationsChanged(() => void reload());
     const onFocus = () => void reload();
     window.addEventListener("focus", onFocus);
     return () => {
+      window.clearTimeout(boot);
       window.clearInterval(interval);
       unsubscribe();
       window.removeEventListener("focus", onFocus);

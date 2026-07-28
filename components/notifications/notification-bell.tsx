@@ -26,7 +26,7 @@ export function NotificationBell() {
   }, []);
 
   useEffect(() => {
-    void refreshCount();
+    const boot = window.setTimeout(() => void refreshCount(), 0);
     // Fast poll so phone/desktop see unread without full reload (was 60s).
     const interval = window.setInterval(() => void refreshCount(), 8_000);
     // Real-time: update the badge immediately on in-app changes (mark read /
@@ -35,6 +35,7 @@ export function NotificationBell() {
     const onFocus = () => void refreshCount();
     window.addEventListener("focus", onFocus);
     return () => {
+      window.clearTimeout(boot);
       window.clearInterval(interval);
       unsubscribe();
       window.removeEventListener("focus", onFocus);
