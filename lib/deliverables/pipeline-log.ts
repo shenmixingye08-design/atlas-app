@@ -12,6 +12,8 @@ export const WORD_PIPELINE_STAGES = [
   "DOCX_GENERATED",
   "STORAGE_SAVED",
   "DB_METADATA_SAVED",
+  /** Commander project row / Storage sidecar for `/results` lookup. */
+  "PROJECT_SAVED",
   "STATUS_COMPLETED",
   "NOTIFICATION_CREATED",
   "UNREAD_COUNT_READY",

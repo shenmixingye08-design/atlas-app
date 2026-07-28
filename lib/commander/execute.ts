@@ -750,14 +750,29 @@ async function executeStoredRun(input: {
   if (finalStatus === "completed") {
     // Persist first so the notification can deep-link straight to the saved
     // result (成果物) instead of a generic workspace page.
+    // DIAGNOSTIC: return value was previously ignored — log when null so
+    // `/results` not_saved can be correlated with project_persist_failed.
+    let persistedProjectId: string | null = null;
     if (lastResult) {
-      await persistCommanderResultAsProject({
+      persistedProjectId = await persistCommanderResultAsProject({
         userId: input.userId,
         assignment: plan.assignment,
         result: lastResult,
         projectId: resultProjectId,
       });
     }
+    logWordPipeline({
+      stage: persistedProjectId ? "PROJECT_SAVED" : "FAILED",
+      ok: Boolean(persistedProjectId),
+      userId: input.userId,
+      requestId: input.runId,
+      jobId: `cmdword_${input.runId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20)}`,
+      deliverableId: wordDeliverableId,
+      error: persistedProjectId ? null : "project_persist_failed",
+      detail: persistedProjectId
+        ? `project=${persistedProjectId}`
+        : `expected=${resultProjectId};notify_will_still_fire=true`,
+    });
     // CRITICAL: `/results/<notificationId>` loads a Project by targetId.
     // Always point deliverableId/relatedTaskId/targetId at the commander
     // project id — NEVER the Word file UUID (that is only for download).

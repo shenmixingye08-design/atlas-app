@@ -130,7 +130,21 @@ export async function GET(
       }
     }
     console.warn(
-      `[results] notification=${notificationId} user=${userId} code=${code} http=${decision.http}`,
+      "[results] resolve_error",
+      JSON.stringify({
+        notificationId,
+        userId: `${userId.slice(0, 8)}…`,
+        code,
+        http: decision.http,
+        requestId: notification?.requestId ?? null,
+        deliverableId: notification?.deliverableId ?? null,
+        targetId: resolveTrace?.primaryTargetId ?? null,
+        triedIds: resolveTrace?.triedIds ?? [],
+        wordFileFound: resolveTrace?.wordFileFound ?? null,
+        wordFileId: resolveTrace?.wordFileId ?? null,
+        commanderStatus: resolveTrace?.commanderStatus ?? null,
+        workJobStatus: resolveTrace?.workJobStatus ?? null,
+      }),
     );
     return Response.json(
       { status: "error", code },
