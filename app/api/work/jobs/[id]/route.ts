@@ -3,6 +3,10 @@ import { auth } from "@clerk/nextjs/server";
 
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 import {
+  isTerminalJobStatus,
+  userMessageForJobError,
+} from "@/lib/work-jobs/job-status";
+import {
   executeWorkJob,
   isStaleWorkJobRunning,
 } from "@/lib/work-jobs/run";
@@ -13,6 +17,34 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+function userMessageForJob(job: {
+  status: string;
+  blockReason: string | null;
+  error: string | null;
+  errorCode: string | null;
+}): string {
+  if (job.status === "queued" || job.status === "processing") {
+    if (job.blockReason === "awaiting_confirmation") {
+      return "確認が必要です。";
+    }
+    return "依頼を受け付けました。バックグラウンドで処理しています。";
+  }
+  if (job.status === "completed") return "すべて完了しました。";
+  if (job.status === "cancelled") return "作業を中止しました。";
+  if (job.status === "timed_out") {
+    return userMessageForJobError("TIMEOUT", job.error);
+  }
+  if (job.status === "failed") {
+    return (
+      job.error ??
+      userMessageForJobError(
+        (job.errorCode as "UNKNOWN_ERROR" | null) ?? "UNKNOWN_ERROR",
+      )
+    );
+  }
+  return job.error ?? "確認が必要です。";
+}
 
 /** Poll work job status — browser does not hold the orchestration connection. */
 export async function GET(
@@ -36,8 +68,12 @@ export async function GET(
     );
   }
 
-  // Stale running must not stay 処理中 — reclaim on poll.
-  if (job.status === "running" && isStaleWorkJobRunning(job)) {
+  // Stale processing must not stay 処理中 — reclaim on poll.
+  if (
+    job.status === "processing" &&
+    job.blockReason == null &&
+    isStaleWorkJobRunning(job)
+  ) {
     after(async () => {
       try {
         await executeWorkJob(id, userId);
@@ -45,7 +81,6 @@ export async function GET(
         console.warn("[work-jobs/poll]", toHumanReliabilityMessage(error));
       }
     });
-    // Re-read after scheduling recovery (may already be failed if max attempts).
     job = (await getWorkJobDurable(id, userId)) ?? job;
   }
 
@@ -53,16 +88,15 @@ export async function GET(
     ok: true,
     jobId: job.id,
     status: job.status,
+    blockReason: job.blockReason,
     error: job.error,
+    errorCode: job.errorCode,
     result: job.result,
+    startedAt: job.startedAt,
     completedAt: job.completedAt,
-    message:
-      job.status === "queued" || job.status === "running"
-        ? "依頼を受け付けました。バックグラウンドで処理しています。"
-        : job.status === "completed"
-          ? "すべて完了しました。"
-          : job.status === "awaiting_confirmation"
-            ? "確認が必要です。"
-            : job.error ?? "確認が必要です。",
+    failedAt: job.failedAt,
+    updatedAt: job.updatedAt,
+    terminal: isTerminalJobStatus(job.status),
+    message: userMessageForJob(job),
   });
 }

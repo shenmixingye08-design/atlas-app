@@ -87,6 +87,7 @@ export function loadWorkJobFromDisk(
     if (!existsSync(file)) return null;
     const parsed = JSON.parse(readFileSync(file, "utf8")) as WorkJobRecord;
     if (parsed.userId !== userId) return null;
+    // Caller (store.getWorkJob*) normalizes legacy statuses on read.
     return parsed;
   } catch {
     return null;
@@ -101,6 +102,7 @@ export async function loadWorkJobFromDurable(
     const payload = await loadDurableDomain<JobsPayload>(userId, DOMAIN_KEY);
     const job = payload?.jobs?.find((j) => j.id === id) ?? null;
     if (!job || job.userId !== userId) return null;
+    // Caller (store.getWorkJob*) normalizes legacy statuses on read.
     return job;
   } catch {
     return null;

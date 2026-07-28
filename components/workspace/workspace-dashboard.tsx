@@ -208,6 +208,7 @@ export function WorkspaceDashboard() {
         });
         const body = (await poll.json().catch(() => ({}))) as {
           status?: string;
+          blockReason?: string | null;
           result?: OrchestrationResult | null;
           error?: string;
           message?: string;
@@ -215,7 +216,12 @@ export function WorkspaceDashboard() {
         if (!poll.ok) {
           throw new Error(body.error || "状況を確認できませんでした。");
         }
-        if (body.status === "awaiting_confirmation") {
+        // Legacy awaiting_confirmation status OR processing + blockReason.
+        const needsConfirmation =
+          body.status === "awaiting_confirmation" ||
+          (body.status === "processing" &&
+            body.blockReason === "awaiting_confirmation");
+        if (needsConfirmation) {
           // Fall back to interactive confirm via classic path when needed.
           setIsLoading(false);
           setBackgroundAccepted(false);
@@ -253,7 +259,11 @@ export function WorkspaceDashboard() {
           }
           return;
         }
-        if (body.status === "failed") {
+        if (
+          body.status === "failed" ||
+          body.status === "timed_out" ||
+          body.status === "cancelled"
+        ) {
           throw new Error(body.error || body.message || "確認が必要です。");
         }
       }

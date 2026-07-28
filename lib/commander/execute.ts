@@ -25,6 +25,7 @@ import {
   notifyWorkFailed,
 } from "@/lib/notifications/emitters";
 import { persistNotificationsNow } from "@/lib/notifications/durable";
+import { assignmentRequestsWordFile } from "@/lib/deliverables/detect-formats";
 import { exportWordDeliverableOnServer } from "@/lib/deliverables/server-word-export";
 import { logWordPipeline } from "@/lib/deliverables/pipeline-log";
 import { runLearningAnalysis } from "@/lib/learning-engine/service";
@@ -152,6 +153,7 @@ function toRunResult(input: {
   externalMessages: string[];
   workMemory?: OrchestrationResult["workMemory"];
   workMemoryCandidates?: unknown[];
+  persistence?: import("./types").CommanderPersistenceReport;
 }): CommanderRunResult {
   return {
     runId: input.runId,
@@ -173,6 +175,7 @@ function toRunResult(input: {
       input.workMemoryCandidates.length > 0 && {
         workMemoryCandidates: input.workMemoryCandidates,
       }),
+    ...(input.persistence && { persistence: input.persistence }),
   };
 }
 
@@ -248,38 +251,55 @@ async function executeRememberHabitRun(input: {
   });
 
   const habitProjectId = `commander-${input.runId}`;
-  await persistCommanderResultAsProject({
+  const persistedProjectId = await persistCommanderResultAsProject({
     userId: input.userId,
     assignment: input.plan.assignment,
     result: syntheticResult,
     projectId: habitProjectId,
   });
 
-  notifyWorkCompleted(input.userId, {
-    title: "習慣候補を作成しました",
-    message: summary,
-    actionUrl: `/projects/${encodeURIComponent(habitProjectId)}`,
-    relatedTaskId: habitProjectId,
-    deliverableId: habitProjectId,
-    requestId: input.runId,
-  });
+  let notificationCreated = false;
+  if (persistedProjectId) {
+    const notification = notifyWorkCompleted(input.userId, {
+      title: "習慣候補を作成しました",
+      message: summary,
+      actionUrl: `/projects/${encodeURIComponent(habitProjectId)}`,
+      relatedTaskId: habitProjectId,
+      deliverableId: habitProjectId,
+      requestId: input.runId,
+    });
+    notificationCreated = Boolean(notification);
+  }
 
   return toRunResult({
     runId: input.runId,
-    status: "completed",
+    status: persistedProjectId ? "completed" : "failed",
     plan: input.plan,
-    result: syntheticResult,
+    result: persistedProjectId
+      ? syntheticResult
+      : {
+          ...syntheticResult,
+          status: "failed",
+          error: "ARTIFACT_DB_SAVE_FAILED:成果物の登録に失敗しました。",
+        },
     attempts: [
       {
         attempt: 1,
-        status: "completed",
-        error: null,
+        status: persistedProjectId ? "completed" : "failed",
+        error: persistedProjectId ? null : "ARTIFACT_DB_SAVE_FAILED",
         durationMs: 0,
       },
     ],
     confirmationReasons: input.confirmationReasons,
     externalMessages: input.externalMessages,
     workMemoryCandidates: candidates,
+    persistence: {
+      projectId: persistedProjectId,
+      projectPersisted: Boolean(persistedProjectId),
+      wordRequired: false,
+      wordDeliverableId: null,
+      notificationCreated,
+    },
   });
 }
 
@@ -746,13 +766,17 @@ async function executeStoredRun(input: {
   // start, not only the browser tab that ran the request.
   const resultProjectId = `commander-${input.runId}`;
   const resultDeepLink = `/projects/${encodeURIComponent(resultProjectId)}`;
+  const wordRequired = assignmentRequestsWordFile(
+    plan.assignment,
+    input.metadata,
+  );
+
+  let persistedProjectId: string | null = null;
+  let notificationCreated = false;
+  let persistenceFinalStatus = finalStatus;
 
   if (finalStatus === "completed") {
-    // Persist first so the notification can deep-link straight to the saved
-    // result (成果物) instead of a generic workspace page.
-    // DIAGNOSTIC: return value was previously ignored — log when null so
-    // `/results` not_saved can be correlated with project_persist_failed.
-    let persistedProjectId: string | null = null;
+    // Persist first — completed notification is forbidden without a Project row.
     if (lastResult) {
       persistedProjectId = await persistCommanderResultAsProject({
         userId: input.userId,
@@ -771,61 +795,90 @@ async function executeStoredRun(input: {
       error: persistedProjectId ? null : "project_persist_failed",
       detail: persistedProjectId
         ? `project=${persistedProjectId}`
-        : `expected=${resultProjectId};notify_will_still_fire=true`,
+        : `expected=${resultProjectId};notify_completed_suppressed=true`,
     });
-    // CRITICAL: `/results/<notificationId>` loads a Project by targetId.
-    // Always point deliverableId/relatedTaskId/targetId at the commander
-    // project id — NEVER the Word file UUID (that is only for download).
-    const completedNotification = ensureNotificationDelivery(
-      () =>
-        notifyWorkCompleted(input.userId, {
-          title: wordDeliverableId
-            ? "Wordファイルの準備ができました"
-            : "お仕事が完了しました",
-          message: snsPublishedTweetUrl
-            ? `「${plan.classification.summary}」が完了し、Xへ投稿しました。${snsPublishedTweetUrl}`
-            : wordDeliverableId
-              ? `「${plan.classification.summary}」のWordファイルを作成しました。通知から開いてダウンロードできます。`
-              : `「${plan.classification.summary}」が完了しました。`,
-          actionUrl: lastResult ? resultDeepLink : "/workspace",
-          relatedTaskId: resultProjectId,
-          deliverableId: resultProjectId,
-          workflowRunId: workflowRun.id,
-          requestId: input.runId,
-        }),
-      { runId: input.runId, userId: input.userId, kind: "completed" },
-    );
-    try {
-      await persistNotificationsNow(input.userId);
-    } catch (error) {
-      console.error(
-        "[word_pipeline] notification_persist_failed",
-        error instanceof Error ? error.message : error,
+
+    if (!persistedProjectId) {
+      // Do not emit「完了」when `/results` cannot resolve the Project.
+      persistenceFinalStatus = "failed";
+      finalStatus = "failed";
+      lastResult = lastResult
+        ? {
+            ...lastResult,
+            status: "failed",
+            error: "ARTIFACT_DB_SAVE_FAILED:成果物の登録に失敗しました。",
+          }
+        : lastResult;
+      ensureNotificationDelivery(
+        () =>
+          notifyWorkFailed(input.userId, {
+            title: "保存失敗",
+            message:
+              "処理は進みましたが、成果物の登録に失敗しました。もう一度お試しください。",
+            actionUrl: resultDeepLink,
+            relatedTaskId: resultProjectId,
+            deliverableId: resultProjectId,
+            workflowRunId: workflowRun.id,
+            requestId: input.runId,
+          }),
+        { runId: input.runId, userId: input.userId, kind: "failed" },
       );
+      await persistNotificationsNow(input.userId).catch(() => undefined);
+      notificationCreated = true;
+    } else {
+      // CRITICAL: `/results/<notificationId>` loads a Project by targetId.
+      const completedNotification = ensureNotificationDelivery(
+        () =>
+          notifyWorkCompleted(input.userId, {
+            title: wordDeliverableId
+              ? "Wordファイルの準備ができました"
+              : "お仕事が完了しました",
+            message: snsPublishedTweetUrl
+              ? `「${plan.classification.summary}」が完了し、Xへ投稿しました。${snsPublishedTweetUrl}`
+              : wordDeliverableId
+                ? `「${plan.classification.summary}」のWordファイルを作成しました。通知から開いてダウンロードできます。`
+                : `「${plan.classification.summary}」が完了しました。`,
+            actionUrl: resultDeepLink,
+            relatedTaskId: resultProjectId,
+            deliverableId: resultProjectId,
+            workflowRunId: workflowRun.id,
+            requestId: input.runId,
+          }),
+        { runId: input.runId, userId: input.userId, kind: "completed" },
+      );
+      notificationCreated = Boolean(completedNotification);
+      try {
+        await persistNotificationsNow(input.userId);
+      } catch (error) {
+        console.error(
+          "[word_pipeline] notification_persist_failed",
+          error instanceof Error ? error.message : error,
+        );
+        logWordPipeline({
+          stage: "FAILED",
+          ok: false,
+          userId: input.userId,
+          requestId: input.runId,
+          deliverableId: wordDeliverableId,
+          error: "notification_persist_failed",
+          detail: "通知失敗",
+        });
+      }
       logWordPipeline({
-        stage: "FAILED",
-        ok: false,
+        stage: "NOTIFICATION_CREATED",
         userId: input.userId,
         requestId: input.runId,
         deliverableId: wordDeliverableId,
-        error: "notification_persist_failed",
-        detail: "通知失敗",
+        ok: notificationCreated,
+        detail: wordDeliverableId
+          ? `word_ready;project=${resultProjectId}`
+          : "text_only",
       });
-    }
-    logWordPipeline({
-      stage: "NOTIFICATION_CREATED",
-      userId: input.userId,
-      requestId: input.runId,
-      deliverableId: wordDeliverableId,
-      ok: Boolean(completedNotification),
-      detail: wordDeliverableId
-        ? `word_ready;project=${resultProjectId}`
-        : "text_only",
-    });
-    try {
-      runLearningAnalysis(input.userId, { periodDays: 30 });
-    } catch (error) {
-      console.warn("[commander] Learning analysis failed:", error);
+      try {
+        runLearningAnalysis(input.userId, { periodDays: 30 });
+      } catch (error) {
+        console.warn("[commander] Learning analysis failed:", error);
+      }
     }
   } else if (wordFailedReason) {
     if (lastResult) {
@@ -972,6 +1025,13 @@ async function executeStoredRun(input: {
     externalMessages: external.messages,
     workMemory,
     workMemoryCandidates,
+    persistence: {
+      projectId: persistedProjectId,
+      projectPersisted: Boolean(persistedProjectId),
+      wordRequired,
+      wordDeliverableId,
+      notificationCreated,
+    },
   });
 }
 

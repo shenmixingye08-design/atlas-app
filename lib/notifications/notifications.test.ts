@@ -11,7 +11,7 @@ import {
   listUserNotifications,
   updateUserNotificationPreferences,
 } from "./service";
-import { resetNotificationStore } from "./store";
+import { listStoredNotifications, resetNotificationStore } from "./store";
 
 const TEST_USER = "user_notification_test";
 
@@ -161,6 +161,31 @@ describe("notifications", () => {
 
     expect(record?.actionUrl).toBe("/workspace");
     expect(record?.targetType ?? null).toBeNull();
+  });
+
+  it("does not create duplicate work notifications for the same requestId", () => {
+    const first = notifyWorkCompleted(TEST_USER, {
+      title: "完了",
+      message: "1回目",
+      deliverableId: "commander-run_dedupe",
+      requestId: "run_dedupe_1",
+    });
+    const second = notifyWorkCompleted(TEST_USER, {
+      title: "完了（再実行）",
+      message: "2回目",
+      deliverableId: "commander-run_dedupe",
+      requestId: "run_dedupe_1",
+    });
+
+    expect(first?.notificationId).toBeTruthy();
+    expect(second?.notificationId).toBe(first?.notificationId);
+    expect(second?.title).toBe("完了（再実行）");
+
+    const matches = listStoredNotifications({
+      audience: "user",
+      userId: TEST_USER,
+    }).filter((n) => n.requestId === "run_dedupe_1");
+    expect(matches).toHaveLength(1);
   });
 
   it("creates owner notifications without user preferences", () => {
