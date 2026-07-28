@@ -636,7 +636,6 @@ async function executeStoredRun(input: {
 
   // Server-side Word export before terminal status is frozen.
   // Must not depend on a browser tab remaining open.
-  let wordDownloadUrl: string | null = null;
   let wordDeliverableId: string | null = null;
   let wordFailedReason: string | null = null;
   let wordFailedUserTitle: string | null = null;
@@ -662,7 +661,6 @@ async function executeStoredRun(input: {
       notify: false,
     });
     if (wordExport.attempted && wordExport.ok) {
-      wordDownloadUrl = wordExport.downloadUrl;
       wordDeliverableId = wordExport.docx.id;
       lastResult = {
         ...lastResult,
@@ -763,7 +761,7 @@ async function executeStoredRun(input: {
     // CRITICAL: `/results/<notificationId>` loads a Project by targetId.
     // Always point deliverableId/relatedTaskId/targetId at the commander
     // project id — NEVER the Word file UUID (that is only for download).
-    ensureNotificationDelivery(
+    const completedNotification = ensureNotificationDelivery(
       () =>
         notifyWorkCompleted(input.userId, {
           title: wordDeliverableId
@@ -782,12 +780,29 @@ async function executeStoredRun(input: {
         }),
       { runId: input.runId, userId: input.userId, kind: "completed" },
     );
-    await persistNotificationsNow(input.userId).catch(() => undefined);
+    try {
+      await persistNotificationsNow(input.userId);
+    } catch (error) {
+      console.error(
+        "[word_pipeline] notification_persist_failed",
+        error instanceof Error ? error.message : error,
+      );
+      logWordPipeline({
+        stage: "FAILED",
+        ok: false,
+        userId: input.userId,
+        requestId: input.runId,
+        deliverableId: wordDeliverableId,
+        error: "notification_persist_failed",
+        detail: "通知失敗",
+      });
+    }
     logWordPipeline({
       stage: "NOTIFICATION_CREATED",
       userId: input.userId,
       requestId: input.runId,
       deliverableId: wordDeliverableId,
+      ok: Boolean(completedNotification),
       detail: wordDeliverableId
         ? `word_ready;project=${resultProjectId}`
         : "text_only",
@@ -819,7 +834,14 @@ async function executeStoredRun(input: {
         }),
       { runId: input.runId, userId: input.userId, kind: "failed" },
     );
-    await persistNotificationsNow(input.userId).catch(() => undefined);
+    try {
+      await persistNotificationsNow(input.userId);
+    } catch (error) {
+      console.error(
+        "[word_pipeline] notification_persist_failed",
+        error instanceof Error ? error.message : error,
+      );
+    }
   } else if (finalStatus === "partial") {
     if (lastResult) {
       await persistCommanderResultAsProject({
@@ -844,6 +866,14 @@ async function executeStoredRun(input: {
         }),
       { runId: input.runId, userId: input.userId, kind: "partial" },
     );
+    try {
+      await persistNotificationsNow(input.userId);
+    } catch (error) {
+      console.error(
+        "[word_pipeline] notification_persist_failed",
+        error instanceof Error ? error.message : error,
+      );
+    }
   } else if (finalStatus === "cancelled") {
     ensureNotificationDelivery(
       () =>
@@ -853,6 +883,14 @@ async function executeStoredRun(input: {
         }),
       { runId: input.runId, userId: input.userId, kind: "cancelled" },
     );
+    try {
+      await persistNotificationsNow(input.userId);
+    } catch (error) {
+      console.error(
+        "[word_pipeline] notification_persist_failed",
+        error instanceof Error ? error.message : error,
+      );
+    }
   } else {
     // Persist the failed run (with its error) so「確認する」deep-links to a page
     // that explains 生成に失敗しました + reason instead of a dead/blank list.
@@ -899,6 +937,14 @@ async function executeStoredRun(input: {
         }),
       { runId: input.runId, userId: input.userId, kind: "failed" },
     );
+    try {
+      await persistNotificationsNow(input.userId);
+    } catch (error) {
+      console.error(
+        "[word_pipeline] notification_persist_failed",
+        error instanceof Error ? error.message : error,
+      );
+    }
   }
 
   return toRunResult({

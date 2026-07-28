@@ -105,17 +105,28 @@ export async function GET(
   if (decision.status === "error") {
     let code = decision.code;
     // Never leave users on generic「成果物が見つかりません」when we can classify.
-    if (code === "not_saved" && notification && resolveTrace) {
-      code = refineMissingDeliverableCode({
+    if (
+      notification &&
+      resolveTrace &&
+      (code === "not_saved" ||
+        code === "generation_failed" ||
+        code === "unknown" ||
+        code === "not_found")
+    ) {
+      const refined = refineMissingDeliverableCode({
         notification,
         trace: resolveTrace,
       });
+      // Prefer refined cause codes over coarse not_saved / unknown.
       if (
-        /timeout|Timeout|時間内|ETIMEDOUT/i.test(
-          `${notification.title} ${notification.message}`,
-        )
+        refined === "pending" ||
+        refined === "timeout" ||
+        refined === "ai_error" ||
+        refined === "storage_failed" ||
+        refined === "notification_failed" ||
+        refined === "generation_failed"
       ) {
-        code = "timeout";
+        code = refined;
       }
     }
     console.warn(

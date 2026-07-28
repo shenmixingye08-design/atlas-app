@@ -23,7 +23,7 @@ const ICONS: Record<NonReadyState["kind"], string> = {
 };
 
 const TITLES: Record<NonReadyState["kind"], string> = {
-  generating: "まだ生成中です",
+  generating: "生成中",
   failed: "生成に失敗しました",
   not_found: "結果が見つかりませんでした",
 };

@@ -129,15 +129,24 @@ export async function exportWordDeliverableOnServer(input: {
       durationMs: Date.now() - started,
     });
     if (input.notify !== false) {
+      const projectTarget = input.result.commanderRunId
+        ? `commander-${input.result.commanderRunId}`
+        : null;
       notifyWorkFailed(input.userId, {
         title: userTitle,
         message: `${userMessage}（jobId: ${jobId}）`,
         requestId: `${input.requestId}:word`,
-        deliverableId: input.result.commanderRunId
-          ? `commander-${input.result.commanderRunId}`
-          : null,
+        relatedTaskId: projectTarget,
+        deliverableId: projectTarget,
       });
-      await persistNotificationsNow(input.userId).catch(() => undefined);
+      try {
+        await persistNotificationsNow(input.userId);
+      } catch (error) {
+        console.error(
+          "[word_pipeline] notification_persist_failed",
+          error instanceof Error ? error.message : error,
+        );
+      }
     }
     return {
       attempted: true,
@@ -172,6 +181,10 @@ export async function exportWordDeliverableOnServer(input: {
     const formats: DeliverableFormat[] =
       input.formats && input.formats.length > 0 ? input.formats : ["docx"];
 
+    const projectTarget = input.result.commanderRunId
+      ? `commander-${input.result.commanderRunId}`
+      : null;
+
     const generated = await generateDeliverables(
       {
         assignment: input.assignment,
@@ -183,6 +196,7 @@ export async function exportWordDeliverableOnServer(input: {
       {
         userId: input.userId,
         jobId,
+        notificationTargetId: projectTarget,
         // Notification is owned by this helper / commander — engine skips duplicate.
         suppressWordReadyNotification: true,
         // Orchestration already produced approved text — do not re-fail on soft quality.
@@ -234,29 +248,50 @@ export async function exportWordDeliverableOnServer(input: {
     });
 
     if (input.notify !== false) {
+      // CRITICAL: target the commander project (or wordfile-{uuid}), never the
+      // raw .docx UUID alone — /results loads Project rows, not file rows.
+      const notifyTarget = projectTarget ?? `wordfile-${docx.id}`;
       notifyWorkCompleted(input.userId, {
         title: "Wordファイルの準備ができました",
         message: `「${docx.fileName}」を作成しました。通知から開いてダウンロードできます。`,
         actionUrl: docx.downloadUrl,
-        relatedTaskId: docx.id,
-        deliverableId: docx.id,
+        relatedTaskId: notifyTarget,
+        deliverableId: notifyTarget,
         requestId: `${input.requestId}:word`,
       });
-      await persistNotificationsNow(input.userId).catch(() => undefined);
-      logWordPipeline({
-        stage: "NOTIFICATION_CREATED",
-        jobId,
-        userId: input.userId,
-        deliverableId: docx.id,
-        requestId: input.requestId,
-      });
-      logWordPipeline({
-        stage: "UNREAD_COUNT_READY",
-        jobId,
-        userId: input.userId,
-        deliverableId: docx.id,
-        requestId: input.requestId,
-      });
+      try {
+        await persistNotificationsNow(input.userId);
+        logWordPipeline({
+          stage: "NOTIFICATION_CREATED",
+          jobId,
+          userId: input.userId,
+          deliverableId: docx.id,
+          requestId: input.requestId,
+          detail: `target=${notifyTarget}`,
+        });
+        logWordPipeline({
+          stage: "UNREAD_COUNT_READY",
+          jobId,
+          userId: input.userId,
+          deliverableId: docx.id,
+          requestId: input.requestId,
+        });
+      } catch (error) {
+        console.error(
+          "[word_pipeline] notification_persist_failed",
+          error instanceof Error ? error.message : error,
+        );
+        logWordPipeline({
+          stage: "FAILED",
+          ok: false,
+          jobId,
+          userId: input.userId,
+          deliverableId: docx.id,
+          requestId: input.requestId,
+          error: "notification_persist_failed",
+          detail: "通知失敗",
+        });
+      }
     }
 
     return {

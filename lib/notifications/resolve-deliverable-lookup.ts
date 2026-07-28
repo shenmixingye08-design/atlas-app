@@ -3,7 +3,14 @@ import "server-only";
 import { loadPersistedProjectById } from "@/lib/commander/durable-store";
 import { getCommanderRun } from "@/lib/commander/run-store";
 import { getWorkJobDurable } from "@/lib/work-jobs/store";
-import { getStoredDeliverableForUser } from "@/lib/deliverables/store";
+import type { Deliverable as FileDeliverable } from "@/lib/deliverables/types";
+import {
+  getStoredDeliverableForUser,
+  type StoredDeliverable,
+} from "@/lib/deliverables/store";
+import { emptyDeliverable } from "@/lib/orchestration/deliverable-types";
+import type { OrchestrationResult } from "@/lib/orchestration/types";
+import { hydrateWorkflowState } from "@/lib/orchestration/workflow-state";
 import type { ResultResolutionCode } from "@/lib/notifications/result-messages";
 import type { NotificationRecord } from "@/lib/notifications/types";
 import {
@@ -42,6 +49,67 @@ function isUuidLike(value: string): boolean {
 }
 
 /**
+ * Recover a displayable Project when the notification still points at a Word
+ * file UUID (legacy) but the .docx binary exists in Storage.
+ *
+ * Without this, wordFileFound + missing project collapsed to「生成中」forever
+ * even though the file was downloadable — the smoking gun behind
+ * 「成果物が見つかりません」after a successful Word save.
+ */
+export function projectFromStoredWordFile(
+  file: StoredDeliverable,
+  projectId: string,
+): Project {
+  const body = (file.sourceContent ?? "").trim();
+  const fileMeta: FileDeliverable = {
+    id: file.id,
+    fileName: file.fileName,
+    format: file.format,
+    mimeType: file.mimeType,
+    generatedAt: file.generatedAt,
+    sizeBytes: file.buffer.byteLength,
+    isPlaceholder: false,
+    downloadUrl: `/api/deliverables/${file.id}`,
+    metadata: file.metadata ?? undefined,
+  };
+  const result: OrchestrationResult = {
+    assignment: file.baseFileName || file.fileName,
+    status: "completed",
+    ceo: null,
+    plannerPlan: null,
+    plannerTasks: null,
+    tasks: [],
+    executions: [],
+    deliverable: {
+      ...emptyDeliverable("document"),
+      title: file.baseFileName || file.fileName,
+      markdown: body,
+      content: body,
+      plainText: body,
+    },
+    reviewComments: "",
+    approved: true,
+    finalResponse: body
+      ? "Wordファイルの準備ができました。"
+      : "Wordファイルを作成しました。",
+    totalDurationMs: 0,
+    workflow: hydrateWorkflowState({ status: "completed", approved: true }),
+    fileDeliverables: [fileMeta],
+  };
+  return {
+    id: projectId,
+    title: file.baseFileName || file.fileName,
+    workRequest: file.baseFileName || "Word成果物",
+    status: "completed",
+    progress: 100,
+    createdAt: file.generatedAt,
+    updatedAt: file.generatedAt,
+    assignedEmployees: [],
+    result,
+  };
+}
+
+/**
  * Candidate project ids for a notification target.
  * Word-ready notifications used to store the .docx UUID as deliverableId —
  * also try commander-{requestId} so those rows still resolve.
@@ -51,6 +119,10 @@ export function candidateProjectIdsForNotification(
   primaryTargetId: string,
 ): string[] {
   const ids: string[] = [primaryTargetId];
+  // Legacy / engine notifications may store bare Word UUID — also try wordfile-*.
+  if (isUuidLike(primaryTargetId)) {
+    ids.push(`wordfile-${primaryTargetId}`);
+  }
   const requestId = notification.requestId?.trim();
   if (requestId) {
     ids.push(`commander-${requestId}`);
@@ -174,18 +246,10 @@ export async function resolveDeliverableLookupForNotification(input: {
   }
 
   if (project) {
-    let displayKind: DeliverableDisplayState["kind"] =
+    const displayKind: DeliverableDisplayState["kind"] =
       resolveDeliverableDisplayState(project).kind;
     // If project text is ready but Word binary missing while notification
     // claimed Word ready, keep showing ready (download CTA can recover).
-    if (displayKind === "ready" || displayKind === "failed") {
-      return {
-        lookup: { durable: true, found: true, displayKind },
-        project,
-        resolvedProjectId,
-        trace,
-      };
-    }
     return {
       lookup: { durable: true, found: true, displayKind },
       project,
@@ -231,19 +295,27 @@ export async function resolveDeliverableLookupForNotification(input: {
     };
   }
 
-  // Word file exists under UUID target but project row missing — treat as
-  // generating/recovery rather than "not saved forever".
-  if (wordFileFound) {
-    return {
-      lookup: {
-        durable: true,
-        found: true,
-        displayKind: "generating",
-      },
-      project: null,
-      resolvedProjectId: null,
-      trace,
-    };
+  // Word file exists under UUID target but project row missing — recover a
+  // ready Project from Storage so「結果を見る」shows the download, not 生成中.
+  if (wordFileFound && wordFileId) {
+    const file = await getStoredDeliverableForUser(wordFileId, input.userId, {
+      bypassMemory: true,
+      bypassDisk: true,
+    });
+    if (file?.buffer?.byteLength) {
+      const recoveredId = `wordfile-${file.id}`;
+      const recovered = projectFromStoredWordFile(file, recoveredId);
+      return {
+        lookup: {
+          durable: true,
+          found: true,
+          displayKind: "ready",
+        },
+        project: recovered,
+        resolvedProjectId: recoveredId,
+        trace: { ...trace, wordFileFound: true, wordFileId: file.id },
+      };
+    }
   }
 
   return {
@@ -260,6 +332,8 @@ export function refineMissingDeliverableCode(input: {
   trace: ResolvedDeliverableLookup["trace"];
 }): ResultResolutionCode {
   const { notification, trace } = input;
+  const blob = `${notification.title} ${notification.message}`;
+
   if (
     trace.workJobStatus === "queued" ||
     trace.workJobStatus === "running" ||
@@ -269,18 +343,24 @@ export function refineMissingDeliverableCode(input: {
   ) {
     return "pending";
   }
+  if (/timeout|Timeout|タイムアウト|時間内|ETIMEDOUT/i.test(blob)) {
+    return "timeout";
+  }
+  if (/AI応答|AIエラー|openai|empty_deliverable|文書内容/i.test(blob)) {
+    return "ai_error";
+  }
+  if (/Storage|保存失敗|storage_failed|persist/i.test(blob)) {
+    return "storage_failed";
+  }
+  if (/通知失敗|notification_emit|notification_failed/i.test(blob)) {
+    return "notification_failed";
+  }
   if (
     notification.type === "error" ||
     trace.workJobStatus === "failed" ||
     trace.commanderStatus === "failed"
   ) {
     return "generation_failed";
-  }
-  if (
-    /timeout|Timeout|時間/i.test(notification.title) ||
-    /timeout|Timeout|時間/i.test(notification.message)
-  ) {
-    return "pending"; // pending message covers retry; timeout title is on notification
   }
   return "not_saved";
 }
