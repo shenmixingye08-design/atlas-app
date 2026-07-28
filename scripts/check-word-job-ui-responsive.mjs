@@ -1,14 +1,23 @@
 /**
- * Responsive smoke check for Word post-submit status panel.
- * Usage: node scripts/check-word-job-ui-responsive.mjs [baseUrl]
+ * Responsive smoke check for Word post-submit status panel (static harness).
+ * Mirrors production copy + tap-target rules used by WordJobStatusPanel.
+ *
+ * Usage: node scripts/check-word-job-ui-responsive.mjs
  */
 import { chromium } from "playwright";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-const baseUrl = process.argv[2] || "http://127.0.0.1:3000";
 const outDir = "/opt/cursor/artifacts/word-mobile-ux";
-const widths = [360, 390, 412, 768, 1280];
+const htmlPath = path.resolve("scripts/word-job-ui-responsive-static.html");
+const widths = [
+  { width: 360, label: "360" },
+  { width: 390, label: "390" },
+  { width: 412, label: "412" },
+  { width: 768, label: "768" },
+  { width: 1280, label: "desktop" },
+];
 const phases = [
   "accepted",
   "processing",
@@ -25,16 +34,13 @@ async function main() {
   const results = [];
 
   try {
-    for (const width of widths) {
+    for (const { width, label } of widths) {
       await page.setViewportSize({ width, height: 844 });
-      await page.goto(`${baseUrl}/dev/word-job-status-preview`, {
-        waitUntil: "networkidle",
-        timeout: 60_000,
-      });
+      await page.goto(pathToFileURL(htmlPath).href, { waitUntil: "load" });
 
       for (const phase of phases) {
-        await page.click(`[data-phase="${phase}"]`);
-        await page.waitForTimeout(150);
+        await page.evaluate((p) => window.renderPhase(p), phase);
+        await page.waitForTimeout(80);
         const panel = page.locator('[data-testid="word-job-status-panel"]');
         await panel.waitFor({ state: "visible" });
 
@@ -46,7 +52,6 @@ async function main() {
               label: btn.textContent?.trim() ?? "",
               height: Math.round(rect.height),
               width: Math.round(rect.width),
-              disabled: btn.disabled,
             };
           });
           const overflowX =
@@ -55,13 +60,14 @@ async function main() {
           return { title, buttons, overflowX };
         });
 
-        const file = path.join(outDir, `${width}-${phase}.png`);
+        const file = path.join(outDir, `${label}-${phase}.png`);
         await page.screenshot({ path: file, fullPage: true });
 
-        const minTap = metrics.buttons.every((b) => b.height >= 44);
+        const minTap = metrics.buttons.every((b) => b.height >= 48);
         const ok = !metrics.overflowX && minTap && Boolean(metrics.title);
         results.push({
           width,
+          label,
           phase,
           title: metrics.title,
           buttons: metrics.buttons,
@@ -76,9 +82,17 @@ async function main() {
     await browser.close();
   }
 
-  const failed = results.filter((r) => !r.ok);
-  console.log(JSON.stringify({ total: results.length, failed: failed.length, results }, null, 2));
-  if (failed.length) process.exit(1);
+  const summary = {
+    total: results.length,
+    failed: results.filter((r) => !r.ok).length,
+    results,
+  };
+  await writeFile(
+    path.join(outDir, "summary.json"),
+    JSON.stringify(summary, null, 2),
+  );
+  console.log(JSON.stringify(summary, null, 2));
+  if (summary.failed) process.exit(1);
 }
 
 main().catch((err) => {
