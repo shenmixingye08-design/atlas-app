@@ -97,7 +97,7 @@ export async function runWordPipelineSmoke(input?: {
       return {
         ok: false,
         stage: reason.includes("storage") ? "storage_save" : "docx_generate",
-        jobId: generated.jobId,
+        jobId: generated.jobId ?? null,
         deliverableId: null,
         downloadUrl: null,
         durable: false,
@@ -116,9 +116,9 @@ export async function runWordPipelineSmoke(input?: {
       return {
         ok: false,
         stage: "download_verify",
-        jobId: generated.jobId,
+        jobId: generated.jobId ?? null,
         deliverableId: docx.id,
-        downloadUrl: docx.downloadUrl,
+        downloadUrl: docx.downloadUrl ?? null,
         durable: false,
         hasPkHeader: false,
         sizeBytes: 0,
@@ -145,9 +145,9 @@ export async function runWordPipelineSmoke(input?: {
     return {
       ok,
       stage: ok ? "completed" : "failed",
-      jobId: generated.jobId,
+      jobId: generated.jobId ?? null,
       deliverableId: docx.id,
-      downloadUrl: docx.downloadUrl,
+      downloadUrl: docx.downloadUrl ?? null,
       durable: stored.storageStatus === "stored" || stored.storageStatus === "regenerated",
       hasPkHeader: hasPk,
       sizeBytes: stored.buffer.byteLength,
