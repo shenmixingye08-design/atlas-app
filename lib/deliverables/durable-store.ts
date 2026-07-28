@@ -16,7 +16,7 @@ import {
   downloadDeliverableObject,
   uploadDeliverableObject,
 } from "./object-storage";
-import { allowDeliverableDiskFallback } from "./storage-backend";
+import { allowDeliverableDiskFallback, isDeliverableStorageRequired } from "./storage-backend";
 import type {
   DeliverableFormat,
   DeliverableMetadata,
@@ -324,17 +324,22 @@ export async function persistDurableDeliverable(
       };
     } else if (!uploaded.ok) {
       storageError = uploaded.error;
+      const emergencyBase64 =
+        buffer.byteLength <= MAX_BASE64_CACHE_BYTES
+          ? buffer.toString("base64")
+          : null;
       next = {
         ...next,
-        storageStatus: "failed",
+        storageStatus: emergencyBase64 ? "legacy_base64" : "failed",
         storageError,
-        // Keep small base64 as emergency fallback outside strict production Storage.
-        contentBase64:
-          allowDeliverableDiskFallback() &&
-          buffer.byteLength <= MAX_BASE64_CACHE_BYTES
-            ? buffer.toString("base64")
-            : next.contentBase64,
+        // Production emergency: keep small OOXML in Postgres when Storage upload fails.
+        contentBase64: emergencyBase64 ?? next.contentBase64,
       };
+      console.error(
+        "[atlas_deliverable_files] storage upload failed",
+        uploaded.error,
+        { id: row.id, bytes: buffer.byteLength, usedBase64: Boolean(emergencyBase64) },
+      );
     }
   }
 
@@ -352,10 +357,11 @@ export async function persistDurableDeliverable(
   }
 
   let dbOk = true;
+  let dbError: string | null = null;
   try {
     const client = createServiceRoleClientIfConfigured();
     if (client) {
-      const { error } = await client.from("atlas_deliverable_files").upsert({
+      const fullPayload = {
         id: next.id,
         user_id: next.userId,
         file_name: next.fileName,
@@ -382,14 +388,78 @@ export async function persistDurableDeliverable(
         expires_at: next.expiresAt,
         created_at: next.generatedAt,
         updated_at: new Date().toISOString(),
-      } as never);
+      };
+      const { error } = await client
+        .from("atlas_deliverable_files")
+        .upsert(fullPayload as never);
       if (error) {
-        dbOk = false;
-        console.error("[atlas_deliverable_files] upsert failed", error.message);
+        console.error(
+          "[atlas_deliverable_files] upsert failed",
+          error.message,
+          error.code ?? "",
+          error.details ?? "",
+        );
+        // Stage-3 columns may be missing if migration not applied — fall back
+        // to the original schema so Word downloads still work via content_base64.
+        const emergencyBase64 =
+          next.contentBase64 ??
+          (buffer && buffer.byteLength > 0 && buffer.byteLength <= 2 * 1024 * 1024
+            ? buffer.toString("base64")
+            : null);
+        const legacyPayload = {
+          id: next.id,
+          user_id: next.userId,
+          file_name: next.fileName,
+          format: next.format,
+          mime_type: next.mimeType,
+          is_placeholder: next.isPlaceholder,
+          source_content: next.sourceContent,
+          base_file_name: next.baseFileName,
+          size_bytes: next.sizeBytes,
+          content_base64: emergencyBase64,
+          generated_at: next.generatedAt,
+          expires_at: next.expiresAt,
+          created_at: next.generatedAt,
+        };
+        const legacy = await client
+          .from("atlas_deliverable_files")
+          .upsert(legacyPayload as never);
+        if (legacy.error) {
+          dbOk = false;
+          dbError = `db_upsert_failed:${error.message}; legacy:${legacy.error.message}`;
+          console.error(
+            "[atlas_deliverable_files] legacy upsert failed",
+            legacy.error.message,
+          );
+        } else {
+          // Legacy row written — prefer base64 recovery path.
+          next = {
+            ...next,
+            contentBase64: emergencyBase64,
+            storageStatus:
+              next.storageStatus === "stored"
+                ? next.storageStatus
+                : emergencyBase64
+                  ? "legacy_base64"
+                  : next.storageStatus,
+            storageError: `stage3_upsert_failed:${error.message}`,
+          };
+          console.warn(
+            "[atlas_deliverable_files] used legacy upsert after stage3 failure",
+            error.message,
+          );
+        }
       }
+    } else if (isDeliverableStorageRequired()) {
+      dbOk = false;
+      dbError = "supabase_service_role_missing";
     }
   } catch (error) {
     dbOk = false;
+    dbError =
+      error instanceof Error
+        ? `db_upsert_exception:${error.message}`
+        : "db_upsert_exception";
     console.error("[atlas_deliverable_files] upsert error", error);
   }
 
@@ -398,16 +468,39 @@ export async function persistDurableDeliverable(
     next.storageStatus === "legacy_base64" ||
     (allowDeliverableDiskFallback() && Boolean(buffer?.byteLength));
 
-  // Production: Storage success is required for durable=true.
+  // Production: Storage object OR emergency base64 row + DB write.
   const durable = allowDeliverableDiskFallback()
     ? storageOk || Boolean(next.contentBase64) || Boolean(buffer?.byteLength)
-    : next.storageStatus === "stored" && dbOk;
+    : dbOk &&
+      (next.storageStatus === "stored" ||
+        (next.storageStatus === "legacy_base64" &&
+          Boolean(next.contentBase64)));
+
+  const resolvedError =
+    next.storageError ??
+    storageError ??
+    dbError ??
+    (!durable
+      ? `not_durable:status=${next.storageStatus};dbOk=${dbOk}`
+      : null);
+
+  if (!durable) {
+    console.error("[atlas_deliverable_files] persist not durable", {
+      id: next.id,
+      storageStatus: next.storageStatus,
+      dbOk,
+      storageError: next.storageError ?? storageError,
+      dbError,
+      hasBase64: Boolean(next.contentBase64),
+      hasBuffer: Boolean(buffer?.byteLength),
+    });
+  }
 
   return {
     ok: durable,
     durable,
     storageStatus: next.storageStatus,
-    storageError: next.storageError ?? storageError,
+    storageError: resolvedError,
     row: next,
   };
 }
