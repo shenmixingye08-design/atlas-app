@@ -45,7 +45,9 @@ function mapCommanderToTerminal(input: {
     projectPersisted: boolean;
     wordRequired: boolean;
     wordDeliverableId: string | null;
+    wordCompletionVerified?: boolean;
     notificationCreated: boolean;
+    wordErrorCode?: string | null;
   } | null;
   visionFailed: boolean;
 }): {
@@ -57,6 +59,7 @@ function mapCommanderToTerminal(input: {
     projectPersisted: boolean;
     wordRequired: boolean;
     wordDeliverablePresent: boolean;
+    wordCompletionVerified?: boolean;
   };
 } {
   if (input.commanderStatus === "awaiting_confirmation") {
@@ -90,12 +93,13 @@ function mapCommanderToTerminal(input: {
     };
   }
 
-  // completed / partial → require durable artifact gate
+  // completed / partial → require durable artifact gate (+ Word 11-step gate)
   const persistence = input.persistence;
   const gate = {
     projectPersisted: Boolean(persistence?.projectPersisted),
     wordRequired: Boolean(persistence?.wordRequired),
     wordDeliverablePresent: Boolean(persistence?.wordDeliverableId),
+    wordCompletionVerified: Boolean(persistence?.wordCompletionVerified),
   };
 
   if (!gate.projectPersisted) {
@@ -111,6 +115,16 @@ function mapCommanderToTerminal(input: {
       to: "failed",
       errorCode: "DOCX_GENERATION_FAILED",
       internalError: "word_deliverable_missing_after_success",
+    };
+  }
+
+  if (gate.wordRequired && !gate.wordCompletionVerified) {
+    return {
+      to: "failed",
+      errorCode:
+        (persistence?.wordErrorCode as import("./job-status").WorkJobErrorCode | undefined) ??
+        "DOCX_GENERATION_FAILED",
+      internalError: "word_completion_gate_failed",
     };
   }
 

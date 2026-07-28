@@ -148,7 +148,11 @@ export type CommanderPersistenceReport = {
   projectPersisted: boolean;
   wordRequired: boolean;
   wordDeliverableId: string | null;
+  /** True only when the formal 11-step Word completion gate passed. */
+  wordCompletionVerified: boolean;
   notificationCreated: boolean;
+  wordErrorCode?: string | null;
+  wordFailedStep?: string | null;
 };
 
 export type CommanderRunResult = {

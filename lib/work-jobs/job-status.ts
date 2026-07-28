@@ -189,18 +189,25 @@ export function assertJobTransition(
 
 /**
  * completed is allowed only when durable artifacts are confirmed.
- * Word-required jobs must also have a saved .docx reference.
+ * Word-required jobs must pass the formal 11-step Word completion gate.
  */
 export function canMarkJobCompleted(input: {
   projectPersisted: boolean;
   wordRequired: boolean;
   wordDeliverablePresent: boolean;
+  /** Required when wordRequired — verifyWordCompletion must have passed. */
+  wordCompletionVerified?: boolean;
 }): { ok: true } | { ok: false; code: WorkJobErrorCode } {
   if (!input.projectPersisted) {
     return { ok: false, code: "ARTIFACT_DB_SAVE_FAILED" };
   }
-  if (input.wordRequired && !input.wordDeliverablePresent) {
-    return { ok: false, code: "DOCX_GENERATION_FAILED" };
+  if (input.wordRequired) {
+    if (!input.wordDeliverablePresent) {
+      return { ok: false, code: "DOCX_GENERATION_FAILED" };
+    }
+    if (input.wordCompletionVerified !== true) {
+      return { ok: false, code: "DOCX_GENERATION_FAILED" };
+    }
   }
   return { ok: true };
 }

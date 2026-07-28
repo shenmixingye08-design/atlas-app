@@ -99,6 +99,16 @@ describe("canonical job status", () => {
         projectPersisted: true,
         wordRequired: true,
         wordDeliverablePresent: true,
+        wordCompletionVerified: false,
+      }).ok,
+    ).toBe(false);
+
+    expect(
+      canMarkJobCompleted({
+        projectPersisted: true,
+        wordRequired: true,
+        wordDeliverablePresent: true,
+        wordCompletionVerified: true,
       }).ok,
     ).toBe(true);
   });

@@ -131,6 +131,7 @@ describe("executeWorkJob idempotency", () => {
         projectPersisted: true,
         wordRequired: false,
         wordDeliverableId: null,
+        wordCompletionVerified: false,
         notificationCreated: true,
       },
     });
@@ -177,6 +178,7 @@ describe("executeWorkJob idempotency", () => {
         projectPersisted: false,
         wordRequired: false,
         wordDeliverableId: null,
+        wordCompletionVerified: false,
         notificationCreated: false,
       },
     });

@@ -298,6 +298,7 @@ async function executeRememberHabitRun(input: {
       projectPersisted: Boolean(persistedProjectId),
       wordRequired: false,
       wordDeliverableId: null,
+      wordCompletionVerified: false,
       notificationCreated,
     },
   });
@@ -656,7 +657,14 @@ async function executeStoredRun(input: {
 
   // Server-side Word export before terminal status is frozen.
   // Must not depend on a browser tab remaining open.
+  const wordRequired = assignmentRequestsWordFile(
+    plan.assignment,
+    input.metadata,
+  );
   let wordDeliverableId: string | null = null;
+  let wordCompletionVerified = false;
+  let wordErrorCode: string | null = null;
+  let wordFailedStep: string | null = null;
   let wordFailedReason: string | null = null;
   let wordFailedUserTitle: string | null = null;
   let wordFailedUserMessage: string | null = null;
@@ -668,6 +676,10 @@ async function executeStoredRun(input: {
       requestId: input.runId,
       detail: "commander",
     });
+    const workJobId =
+      typeof input.metadata?.workJobId === "string"
+        ? input.metadata.workJobId
+        : null;
     const wordExport = await exportWordDeliverableOnServer({
       userId: input.userId,
       assignment: plan.assignment,
@@ -679,19 +691,30 @@ async function executeStoredRun(input: {
       jobId: `cmdword_${input.runId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20)}`,
       metadata: input.metadata,
       notify: false,
+      workJobId,
     });
     if (wordExport.attempted && wordExport.ok) {
       wordDeliverableId = wordExport.docx.id;
+      wordCompletionVerified = wordExport.completion.ok;
       lastResult = {
         ...lastResult,
         commanderRunId: input.runId,
         fileDeliverables: wordExport.files,
       };
+      if (!wordCompletionVerified) {
+        // Belt-and-suspenders: gate failure must never complete the job.
+        finalStatus = "failed";
+        wordFailedReason = "word_completion_gate_failed";
+        wordErrorCode = wordExport.completion.errorCode;
+        wordFailedStep = wordExport.completion.failedStep;
+      }
     } else if (wordExport.attempted && !wordExport.ok) {
       wordFailedReason = wordExport.reason;
       wordFailedUserTitle = wordExport.userTitle;
       wordFailedUserMessage = wordExport.userMessage;
       wordFailedJobId = wordExport.jobId;
+      wordErrorCode = wordExport.errorCode ?? null;
+      wordFailedStep = wordExport.completion?.failedStep ?? null;
       finalStatus = "failed";
       lastResult = {
         ...lastResult,
@@ -709,6 +732,11 @@ async function executeStoredRun(input: {
           }),
         );
       }
+    } else if (wordRequired && !wordExport.attempted) {
+      // Word was required by assignment/metadata but export was skipped.
+      finalStatus = "failed";
+      wordFailedReason = "word_export_not_attempted";
+      wordErrorCode = "DOCX_GENERATION_FAILED";
     }
   }
 
@@ -766,14 +794,9 @@ async function executeStoredRun(input: {
   // start, not only the browser tab that ran the request.
   const resultProjectId = `commander-${input.runId}`;
   const resultDeepLink = `/projects/${encodeURIComponent(resultProjectId)}`;
-  const wordRequired = assignmentRequestsWordFile(
-    plan.assignment,
-    input.metadata,
-  );
 
   let persistedProjectId: string | null = null;
   let notificationCreated = false;
-  let persistenceFinalStatus = finalStatus;
 
   if (finalStatus === "completed") {
     // Persist first — completed notification is forbidden without a Project row.
@@ -800,7 +823,6 @@ async function executeStoredRun(input: {
 
     if (!persistedProjectId) {
       // Do not emit「完了」when `/results` cannot resolve the Project.
-      persistenceFinalStatus = "failed";
       finalStatus = "failed";
       lastResult = lastResult
         ? {
@@ -1030,7 +1052,10 @@ async function executeStoredRun(input: {
       projectPersisted: Boolean(persistedProjectId),
       wordRequired,
       wordDeliverableId,
+      wordCompletionVerified: wordRequired ? wordCompletionVerified : false,
       notificationCreated,
+      wordErrorCode,
+      wordFailedStep,
     },
   });
 }
