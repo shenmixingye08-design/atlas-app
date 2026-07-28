@@ -760,6 +760,9 @@ async function executeStoredRun(input: {
         projectId: resultProjectId,
       });
     }
+    // CRITICAL: `/results/<notificationId>` loads a Project by targetId.
+    // Always point deliverableId/relatedTaskId/targetId at the commander
+    // project id — NEVER the Word file UUID (that is only for download).
     ensureNotificationDelivery(
       () =>
         notifyWorkCompleted(input.userId, {
@@ -771,12 +774,9 @@ async function executeStoredRun(input: {
             : wordDeliverableId
               ? `「${plan.classification.summary}」のWordファイルを作成しました。通知から開いてダウンロードできます。`
               : `「${plan.classification.summary}」が完了しました。`,
-          actionUrl:
-            wordDownloadUrl ?? (lastResult ? resultDeepLink : "/workspace"),
-          relatedTaskId:
-            wordDeliverableId ?? (lastResult ? resultProjectId : null),
-          deliverableId:
-            wordDeliverableId ?? (lastResult ? resultProjectId : null),
+          actionUrl: lastResult ? resultDeepLink : "/workspace",
+          relatedTaskId: resultProjectId,
+          deliverableId: resultProjectId,
           workflowRunId: workflowRun.id,
           requestId: input.runId,
         }),
@@ -788,7 +788,9 @@ async function executeStoredRun(input: {
       userId: input.userId,
       requestId: input.runId,
       deliverableId: wordDeliverableId,
-      detail: wordDeliverableId ? "word_ready" : "text_only",
+      detail: wordDeliverableId
+        ? `word_ready;project=${resultProjectId}`
+        : "text_only",
     });
     try {
       runLearningAnalysis(input.userId, { periodDays: 30 });

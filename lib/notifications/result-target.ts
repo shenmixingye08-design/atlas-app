@@ -29,7 +29,7 @@ export function isDeliverableTargetType(
 }
 
 /** Durable project ids are minted as `commander-*` / `orchestrate-*`. */
-function looksLikeProjectId(value: string): boolean {
+export function looksLikeProjectId(value: string): boolean {
   return /^(commander|orchestrate|project)[-_]/.test(value);
 }
 

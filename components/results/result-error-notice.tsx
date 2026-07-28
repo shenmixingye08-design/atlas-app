@@ -22,6 +22,7 @@ const ICONS: Partial<Record<ResultResolutionCode, string>> = {
   pending: "⏳",
   not_saved: "🗂️",
   generation_failed: "⚠️",
+  timeout: "⏱️",
   not_found: "🔍",
   forbidden: "🔒",
   legacy: "🕰️",

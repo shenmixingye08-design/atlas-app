@@ -76,8 +76,9 @@ describe("loadPersistedProjectById", () => {
     expect(out).toEqual({ project: null, found: false, durable: true });
   });
 
-  it("treats a read error as non-durable (client cache fallback)", async () => {
+  it("falls back to sidecar then durable miss when select errors", async () => {
     const stub = buildClient({ data: null, error: { message: "boom" } });
+    // No storage on stub → sidecar skip → confirmed miss with durable backend.
     serviceClientMock.mockReturnValue(stub.client);
 
     const out = await loadPersistedProjectById({
@@ -85,6 +86,6 @@ describe("loadPersistedProjectById", () => {
       projectId: "commander-run_1",
     });
 
-    expect(out).toEqual({ project: null, found: false, durable: false });
+    expect(out).toEqual({ project: null, found: false, durable: true });
   });
 });

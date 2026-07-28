@@ -1,18 +1,17 @@
 import { auth } from "@clerk/nextjs/server";
 
-import { loadPersistedProjectById } from "@/lib/commander/durable-store";
 import { ensureNotificationsHydrated } from "@/lib/notifications/durable";
 import type { ResultResolutionCode } from "@/lib/notifications/result-messages";
+import { decideNotificationResult } from "@/lib/notifications/result-resolution";
 import {
-  decideNotificationResult,
-  type DeliverableLookup,
-} from "@/lib/notifications/result-resolution";
+  refineMissingDeliverableCode,
+  resolveDeliverableLookupForNotification,
+} from "@/lib/notifications/resolve-deliverable-lookup";
 import {
   isDeliverableTargetType,
   resolveNotificationTarget,
 } from "@/lib/notifications/result-target";
 import { findNotification } from "@/lib/notifications/store";
-import { resolveDeliverableDisplayState } from "@/lib/projects/deliverable-state";
 import type { Project } from "@/lib/projects/types";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -58,30 +57,42 @@ export async function GET(
   await ensureNotificationsHydrated(userId);
   const notification = findNotification(notificationId);
 
-  // Load the durable 成果物 only when the target is a deliverable-family kind.
-  let lookup: DeliverableLookup | undefined;
   let project: Project | null = null;
+  let lookup = undefined as
+    | Awaited<
+        ReturnType<typeof resolveDeliverableLookupForNotification>
+      >["lookup"]
+    | undefined;
+  let resolveTrace: Awaited<
+    ReturnType<typeof resolveDeliverableLookupForNotification>
+  >["trace"] | null = null;
+
   if (notification) {
     const target = resolveNotificationTarget(notification);
     const owned =
       notification.audience !== "user" || notification.userId === userId;
     if (owned && target.kind !== "none" && isDeliverableTargetType(target.kind)) {
-      const loaded = await loadPersistedProjectById({
+      const resolved = await resolveDeliverableLookupForNotification({
+        notification,
         userId,
-        projectId: target.targetId,
       });
-      project = loaded.project;
-      if (!loaded.durable) {
-        lookup = { durable: false };
-      } else if (!loaded.found || !loaded.project) {
-        lookup = { durable: true, found: false };
-      } else {
-        lookup = {
-          durable: true,
-          found: true,
-          displayKind: resolveDeliverableDisplayState(loaded.project).kind,
-        };
-      }
+      lookup = resolved.lookup;
+      project = resolved.project;
+      resolveTrace = resolved.trace;
+      console.info(
+        "[results] deliverable_lookup",
+        JSON.stringify({
+          notificationId,
+          userId: `${userId.slice(0, 8)}…`,
+          primaryTargetId: resolved.trace.primaryTargetId,
+          triedIds: resolved.trace.triedIds,
+          resolvedProjectId: resolved.resolvedProjectId,
+          found: resolved.lookup.durable && resolved.lookup.found,
+          wordFileFound: resolved.trace.wordFileFound,
+          commanderStatus: resolved.trace.commanderStatus,
+          workJobStatus: resolved.trace.workJobStatus,
+        }),
+      );
     }
   }
 
@@ -92,12 +103,26 @@ export async function GET(
   });
 
   if (decision.status === "error") {
-    // Log HTTP status + cause server-side (no secrets).
+    let code = decision.code;
+    // Never leave users on generic「成果物が見つかりません」when we can classify.
+    if (code === "not_saved" && notification && resolveTrace) {
+      code = refineMissingDeliverableCode({
+        notification,
+        trace: resolveTrace,
+      });
+      if (
+        /timeout|Timeout|時間内|ETIMEDOUT/i.test(
+          `${notification.title} ${notification.message}`,
+        )
+      ) {
+        code = "timeout";
+      }
+    }
     console.warn(
-      `[results] notification=${notificationId} user=${userId} code=${decision.code} http=${decision.http}`,
+      `[results] notification=${notificationId} user=${userId} code=${code} http=${decision.http}`,
     );
     return Response.json(
-      { status: "error", code: decision.code },
+      { status: "error", code },
       { status: decision.http },
     );
   }
@@ -114,10 +139,23 @@ export async function GET(
     } satisfies NotificationResultPayload);
   }
 
+  if (!project) {
+    // Lookup said ready/generating/failed without a project body — refine.
+    const code: ResultResolutionCode =
+      lookup && lookup.durable && lookup.found
+        ? lookup.displayKind === "failed"
+          ? "generation_failed"
+          : lookup.displayKind === "generating"
+            ? "pending"
+            : "not_saved"
+        : "not_saved";
+    return Response.json({ status: "error", code }, { status: 200 });
+  }
+
   return Response.json({
     status: "deliverable",
     targetType: decision.targetType,
     targetId: decision.targetId,
-    project: project as Project,
+    project,
   } satisfies NotificationResultPayload);
 }
