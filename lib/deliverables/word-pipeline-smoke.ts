@@ -130,10 +130,50 @@ export async function runWordPipelineSmoke(input?: {
       };
     }
 
+    // Prove cross-instance durability on Supabase: drop memory and reload via Storage.
+    let verifyBuffer = stored.buffer;
+    let verifyFileName = stored.fileName;
+    let verifyDurable =
+      stored.storageStatus === "stored" ||
+      stored.storageStatus === "regenerated" ||
+      stored.storageStatus === "legacy_base64";
+    if (storage.ready && storage.backend === "supabase") {
+      const { resetDeliverableMemoryStoreForTests } = await import("./store");
+      const { resetDurableDeliverableStoreForTests } = await import(
+        "./durable-store"
+      );
+      resetDeliverableMemoryStoreForTests();
+      resetDurableDeliverableStoreForTests();
+      const reloaded = await getStoredDeliverableForUser(docx.id, SMOKE_USER, {
+        bypassMemory: true,
+        bypassDisk: true,
+      });
+      if (!reloaded?.buffer?.byteLength) {
+        return {
+          ok: false,
+          stage: "download_verify",
+          jobId: generated.jobId ?? null,
+          deliverableId: docx.id,
+          downloadUrl: docx.downloadUrl ?? null,
+          durable: false,
+          hasPkHeader: false,
+          sizeBytes: stored.buffer.byteLength,
+          storageReady: storage.ready,
+          storageWarning: storage.warning,
+          error: "reload_after_memory_clear_failed",
+          durationMs: Date.now() - started,
+          version,
+        };
+      }
+      verifyBuffer = reloaded.buffer;
+      verifyFileName = reloaded.fileName;
+      verifyDurable = true;
+    }
+
     const integrity = buildIntegritySnapshot({
-      buffer: stored.buffer,
+      buffer: verifyBuffer,
       format: "docx",
-      fileName: stored.fileName,
+      fileName: verifyFileName,
     });
 
     const hasPk = integrity.hasPkHeader;
@@ -148,9 +188,9 @@ export async function runWordPipelineSmoke(input?: {
       jobId: generated.jobId ?? null,
       deliverableId: docx.id,
       downloadUrl: docx.downloadUrl ?? null,
-      durable: stored.storageStatus === "stored" || stored.storageStatus === "regenerated",
+      durable: verifyDurable,
       hasPkHeader: hasPk,
-      sizeBytes: stored.buffer.byteLength,
+      sizeBytes: verifyBuffer.byteLength,
       storageReady: storage.ready,
       storageWarning: storage.warning,
       error: ok
