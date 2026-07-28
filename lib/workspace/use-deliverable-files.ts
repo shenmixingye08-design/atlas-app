@@ -37,10 +37,15 @@ export function useDeliverableFiles(
     return { previewContent: guarded.text, guardError: null as string | null };
   }, [result]);
 
+  // Server already exported files (e.g. Word on work-job path) — do not re-call AI/export.
+  const serverFiles = result?.fileDeliverables;
+  const hasServerFiles = Boolean(serverFiles && serverFiles.length > 0);
+
   const shouldGenerate = Boolean(
     result &&
       exportGuard.previewContent &&
-      !options?.skipFileGeneration,
+      !options?.skipFileGeneration &&
+      !hasServerFiles,
   );
 
   useEffect(() => {
@@ -100,6 +105,14 @@ export function useDeliverableFiles(
     options?.formats,
     options?.skipFileGeneration,
   ]);
+
+  if (hasServerFiles && serverFiles) {
+    return {
+      deliverables: serverFiles,
+      deliverablesError: exportGuard.guardError,
+      isGeneratingDeliverables: false,
+    };
+  }
 
   if (!shouldGenerate) {
     return {

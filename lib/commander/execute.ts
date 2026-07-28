@@ -24,6 +24,9 @@ import {
   notifyWorkCompleted,
   notifyWorkFailed,
 } from "@/lib/notifications/emitters";
+import { persistNotificationsNow } from "@/lib/notifications/durable";
+import { exportWordDeliverableOnServer } from "@/lib/deliverables/server-word-export";
+import { logWordPipeline } from "@/lib/deliverables/pipeline-log";
 import { runLearningAnalysis } from "@/lib/learning-engine/service";
 import { detectMemorySignals } from "@/lib/work-memory/learning";
 import { createWorkMemoryCandidate } from "@/lib/work-memory/service";
@@ -631,6 +634,50 @@ async function executeStoredRun(input: {
     }
   }
 
+  // Server-side Word export before terminal status is frozen.
+  // Must not depend on a browser tab remaining open.
+  let wordDownloadUrl: string | null = null;
+  let wordDeliverableId: string | null = null;
+  let wordFailedReason: string | null = null;
+  if (finalStatus === "completed" && lastResult) {
+    logWordPipeline({
+      stage: "AI_ORCHESTRATION_COMPLETED",
+      userId: input.userId,
+      requestId: input.runId,
+      detail: "commander",
+    });
+    const wordExport = await exportWordDeliverableOnServer({
+      userId: input.userId,
+      assignment: plan.assignment,
+      result: {
+        ...lastResult,
+        commanderRunId: input.runId,
+      },
+      requestId: input.runId,
+      jobId: `cmdword_${input.runId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20)}`,
+      metadata: input.metadata,
+      notify: false,
+    });
+    if (wordExport.attempted && wordExport.ok) {
+      wordDownloadUrl = wordExport.downloadUrl;
+      wordDeliverableId = wordExport.docx.id;
+      lastResult = {
+        ...lastResult,
+        commanderRunId: input.runId,
+        fileDeliverables: wordExport.files,
+      };
+    } else if (wordExport.attempted && !wordExport.ok) {
+      wordFailedReason = wordExport.reason;
+      finalStatus = "failed";
+      lastResult = {
+        ...lastResult,
+        status: "failed",
+        error: wordExport.reason,
+        commanderRunId: input.runId,
+      };
+    }
+  }
+
   // Persist full attempt list
   updateCommanderRun(input.runId, input.userId, {
     attempts,
@@ -700,23 +747,62 @@ async function executeStoredRun(input: {
     ensureNotificationDelivery(
       () =>
         notifyWorkCompleted(input.userId, {
-          title: "お仕事が完了しました",
+          title: wordDeliverableId
+            ? "Wordファイルの準備ができました"
+            : "お仕事が完了しました",
           message: snsPublishedTweetUrl
             ? `「${plan.classification.summary}」が完了し、Xへ投稿しました。${snsPublishedTweetUrl}`
-            : `「${plan.classification.summary}」が完了しました。`,
-          actionUrl: lastResult ? resultDeepLink : "/workspace",
-          relatedTaskId: lastResult ? resultProjectId : null,
-          deliverableId: lastResult ? resultProjectId : null,
+            : wordDeliverableId
+              ? `「${plan.classification.summary}」のWordファイルを作成しました。通知から開いてダウンロードできます。`
+              : `「${plan.classification.summary}」が完了しました。`,
+          actionUrl:
+            wordDownloadUrl ?? (lastResult ? resultDeepLink : "/workspace"),
+          relatedTaskId:
+            wordDeliverableId ?? (lastResult ? resultProjectId : null),
+          deliverableId:
+            wordDeliverableId ?? (lastResult ? resultProjectId : null),
           workflowRunId: workflowRun.id,
           requestId: input.runId,
         }),
       { runId: input.runId, userId: input.userId, kind: "completed" },
     );
+    await persistNotificationsNow(input.userId).catch(() => undefined);
+    logWordPipeline({
+      stage: "NOTIFICATION_CREATED",
+      userId: input.userId,
+      requestId: input.runId,
+      deliverableId: wordDeliverableId,
+      detail: wordDeliverableId ? "word_ready" : "text_only",
+    });
     try {
       runLearningAnalysis(input.userId, { periodDays: 30 });
     } catch (error) {
       console.warn("[commander] Learning analysis failed:", error);
     }
+  } else if (wordFailedReason) {
+    if (lastResult) {
+      await persistCommanderResultAsProject({
+        userId: input.userId,
+        assignment: plan.assignment,
+        result: lastResult,
+        projectId: resultProjectId,
+      });
+    }
+    ensureNotificationDelivery(
+      () =>
+        notifyWorkFailed(input.userId, {
+          title: "Wordファイルを作成できませんでした",
+          message:
+            "文書内容は作成できましたが、Wordファイルの保存に失敗しました。もう一度お試しください。",
+          actionUrl: resultDeepLink,
+          relatedTaskId: resultProjectId,
+          deliverableId: resultProjectId,
+          workflowRunId: workflowRun.id,
+          requestId: input.runId,
+        }),
+      { runId: input.runId, userId: input.userId, kind: "failed" },
+    );
+    await persistNotificationsNow(input.userId).catch(() => undefined);
   } else if (finalStatus === "partial") {
     if (lastResult) {
       await persistCommanderResultAsProject({

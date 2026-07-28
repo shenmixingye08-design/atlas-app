@@ -4,6 +4,11 @@ import {
   assertSafeExportText,
   logDeliverableNormalizeDebug,
 } from "@/lib/orchestration/normalize-deliverable-payload";
+import {
+  notifyWorkCompleted,
+  notifyWorkFailed,
+} from "@/lib/notifications/emitters";
+import { persistNotificationsNow } from "@/lib/notifications/durable";
 import { recordReliabilityEvent } from "@/lib/reliability";
 
 import {
@@ -19,6 +24,7 @@ import { consumeWordFault } from "./fault-inject";
 import { buildDeliverableBaseName } from "./filename";
 import { getDeliverableGenerator } from "./generators";
 import { buildIntegritySnapshot } from "./integrity";
+import { logWordPipeline } from "./pipeline-log";
 import { recordWordMetric } from "./word-metrics";
 import { trackWordEvent } from "./word-analytics";
 import { estimateAiCost, recordWordCostEvent } from "./word-cost";
@@ -58,6 +64,61 @@ import {
   isWordJobTerminal,
   stageReached,
 } from "./word-job-stages";
+
+async function emitWordTerminalNotification(input: {
+  userId: string;
+  jobId: string;
+  suppressed?: boolean;
+  kind: "completed" | "failed" | "timeout";
+  deliverableId?: string | null;
+  fileName?: string | null;
+  downloadUrl?: string | null;
+  message?: string | null;
+}): Promise<void> {
+  if (input.suppressed) return;
+  const requestId = `wordjob:${input.jobId}:${input.kind}`;
+  try {
+    if (input.kind === "completed" && input.deliverableId && input.downloadUrl) {
+      notifyWorkCompleted(input.userId, {
+        title: "Wordファイルの準備ができました",
+        message: input.fileName
+          ? `「${input.fileName}」を作成しました。通知から開いてダウンロードできます。`
+          : "Wordファイルを作成しました。",
+        actionUrl: input.downloadUrl,
+        relatedTaskId: input.deliverableId,
+        deliverableId: input.deliverableId,
+        requestId,
+      });
+    } else {
+      notifyWorkFailed(input.userId, {
+        title:
+          input.kind === "timeout"
+            ? "Word作成がタイムアウトしました"
+            : "Wordファイルを作成できませんでした",
+        message:
+          input.message?.trim() ||
+          "処理を完了できませんでした。もう一度お試しください。",
+        deliverableId: input.deliverableId ?? null,
+        requestId,
+      });
+    }
+    await persistNotificationsNow(input.userId);
+    logWordPipeline({
+      stage: "NOTIFICATION_CREATED",
+      jobId: input.jobId,
+      userId: input.userId,
+      deliverableId: input.deliverableId,
+      requestId,
+      ok: input.kind === "completed",
+      detail: input.kind,
+    });
+  } catch (error) {
+    console.error(
+      "[word_pipeline] notification_emit_failed",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
 
 export type GenerateDeliverablesResult = {
   deliverables: Deliverable[];
@@ -178,6 +239,11 @@ export type GenerateDeliverablesOptions = {
    * Resume must pass the same id used for any prior claim to avoid double-claim deadlocks.
    */
   workerId?: string;
+  /**
+   * When true, skip emitting the Word-ready user notification from the engine.
+   * Used when the caller (commander / server-word-export) owns notification timing.
+   */
+  suppressWordReadyNotification?: boolean;
   /** Optional AI content regenerator for quality retries. */
   regenerateContent?: (
     strategy: "same_model" | "simplified_prompt" | "fallback_model",
@@ -477,6 +543,13 @@ export async function generateDeliverables(
           retryCount: 0,
         });
         await failWordJob(jobId, "AI_CONTENT_STARTED", quality.message);
+        await emitWordTerminalNotification({
+          userId: options.userId,
+          jobId,
+          suppressed: options.suppressWordReadyNotification === true,
+          kind: "failed",
+          message: quality.message,
+        });
         return {
           deliverables: [],
           detection,
@@ -516,6 +589,13 @@ export async function generateDeliverables(
           retryCount: 0,
         });
         await failWordJob(jobId, "AI_CONTENT_STARTED", again.message);
+        await emitWordTerminalNotification({
+          userId: options.userId,
+          jobId,
+          suppressed: options.suppressWordReadyNotification === true,
+          kind: "failed",
+          message: again.message,
+        });
         return {
           deliverables: [],
           detection,
@@ -622,6 +702,15 @@ export async function generateDeliverables(
         });
         // Must reach a terminal state — previously left `running`.
         await completeWordJob(jobId, job.deliverableId);
+        await emitWordTerminalNotification({
+          userId: options.userId,
+          jobId,
+          suppressed: options.suppressWordReadyNotification === true,
+          kind: "completed",
+          deliverableId: job.deliverableId,
+          fileName: `${job.baseFileName}.docx`,
+          downloadUrl: `/api/deliverables/${job.deliverableId}`,
+        });
         continue;
       }
 
@@ -670,6 +759,13 @@ export async function generateDeliverables(
             "DOCX_GENERATION_STARTED",
             reasons.join(",") || "word_convert_failed",
           );
+          await emitWordTerminalNotification({
+            userId: options.userId,
+            jobId,
+            suppressed: options.suppressWordReadyNotification === true,
+            kind: "failed",
+            message: reasons.join(",") || "word_convert_failed",
+          });
         }
         failures.push({ format, reasons });
         continue;
@@ -754,6 +850,16 @@ export async function generateDeliverables(
             "DOCX_STORAGE_STARTED",
             persist.storageError ?? "storage_failed",
           );
+          await emitWordTerminalNotification({
+            userId: options.userId,
+            jobId,
+            suppressed: options.suppressWordReadyNotification === true,
+            kind: "failed",
+            deliverableId: stored.id,
+            message:
+              persist.storageError ??
+              "Wordファイルは完成しましたが、保存できませんでした。",
+          });
           failures.push({
             format,
             reasons: [
@@ -773,8 +879,20 @@ export async function generateDeliverables(
           deliverableId: stored.id,
         });
         const notifyStarted = Date.now();
+        const meta = toDeliverableMetadata(stored, requestOrigin);
+        // Real user notification (was previously a no-op stage label only).
+        await emitWordTerminalNotification({
+          userId: options.userId,
+          jobId,
+          suppressed: options.suppressWordReadyNotification === true,
+          kind: "completed",
+          deliverableId: stored.id,
+          fileName: stored.fileName,
+          downloadUrl: meta.downloadUrl,
+        });
         await advanceWordJobStage(jobId, "NOTIFICATION_SENT", {
           deliverableId: stored.id,
+          notificationStatus: "sent",
         });
         recordWordMetric("notify_ms", Date.now() - notifyStarted);
         await completeWordJob(jobId, stored.id);
@@ -873,13 +991,27 @@ export async function generateDeliverables(
       const docx = deliverables.find((d) => d.format === "docx");
       if (docx) {
         await completeWordJob(jobId, docx.id);
-      } else {
-        await failWordJob(
+        await emitWordTerminalNotification({
+          userId: options.userId,
           jobId,
-          settled.stage,
+          suppressed: options.suppressWordReadyNotification === true,
+          kind: "completed",
+          deliverableId: docx.id,
+          fileName: docx.fileName,
+          downloadUrl: docx.downloadUrl,
+        });
+      } else {
+        const reason =
           failures.map((f) => f.reasons.join(",")).join(";") ||
-            "docx_not_produced",
-        );
+          "docx_not_produced";
+        await failWordJob(jobId, settled.stage, reason);
+        await emitWordTerminalNotification({
+          userId: options.userId,
+          jobId,
+          suppressed: options.suppressWordReadyNotification === true,
+          kind: "failed",
+          message: reason,
+        });
       }
     }
 

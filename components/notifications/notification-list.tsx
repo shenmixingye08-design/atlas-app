@@ -192,14 +192,15 @@ export function NotificationList({
     void reload();
   }, [reload, isFixture]);
 
-  // Real-time: refetch when any tab / component signals a change (mark read,
-  // new notice) and when the window regains focus — no full page reload.
+  // Real-time: refetch on change / focus / short poll — no full page reload.
   useEffect(() => {
     if (isFixture) return;
+    const interval = window.setInterval(() => void reload(), 8_000);
     const unsubscribe = subscribeNotificationsChanged(() => void reload());
     const onFocus = () => void reload();
     window.addEventListener("focus", onFocus);
     return () => {
+      window.clearInterval(interval);
       unsubscribe();
       window.removeEventListener("focus", onFocus);
     };
