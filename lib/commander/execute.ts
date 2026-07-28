@@ -661,6 +661,10 @@ async function executeStoredRun(input: {
     plan.assignment,
     input.metadata,
   );
+  const workJobId =
+    typeof input.metadata?.workJobId === "string"
+      ? input.metadata.workJobId
+      : null;
   let wordDeliverableId: string | null = null;
   let wordCompletionVerified = false;
   let wordErrorCode: string | null = null;
@@ -676,10 +680,6 @@ async function executeStoredRun(input: {
       requestId: input.runId,
       detail: "commander",
     });
-    const workJobId =
-      typeof input.metadata?.workJobId === "string"
-        ? input.metadata.workJobId
-        : null;
     const wordExport = await exportWordDeliverableOnServer({
       userId: input.userId,
       assignment: plan.assignment,
@@ -794,6 +794,10 @@ async function executeStoredRun(input: {
   // start, not only the browser tab that ran the request.
   const resultProjectId = `commander-${input.runId}`;
   const resultDeepLink = `/projects/${encodeURIComponent(resultProjectId)}`;
+  // Prefer work-job lifecycle key so accepted→processing→completed upsert one row.
+  const lifecycleRequestId = workJobId
+    ? `workjob:${workJobId}`
+    : input.runId;
 
   let persistedProjectId: string | null = null;
   let notificationCreated = false;
@@ -841,7 +845,11 @@ async function executeStoredRun(input: {
             relatedTaskId: resultProjectId,
             deliverableId: resultProjectId,
             workflowRunId: workflowRun.id,
-            requestId: input.runId,
+            requestId: lifecycleRequestId,
+            jobId: workJobId,
+            artifactId: wordDeliverableId,
+            workEvent: "failed",
+            retryActionUrl: "/workspace",
           }),
         { runId: input.runId, userId: input.userId, kind: "failed" },
       );
@@ -864,7 +872,10 @@ async function executeStoredRun(input: {
             relatedTaskId: resultProjectId,
             deliverableId: resultProjectId,
             workflowRunId: workflowRun.id,
-            requestId: input.runId,
+            requestId: lifecycleRequestId,
+            jobId: workJobId,
+            artifactId: wordDeliverableId,
+            workEvent: "completed",
           }),
         { runId: input.runId, userId: input.userId, kind: "completed" },
       );
@@ -914,13 +925,17 @@ async function executeStoredRun(input: {
     ensureNotificationDelivery(
       () =>
         notifyWorkFailed(input.userId, {
-          title: wordFailedUserTitle ?? "Word生成失敗",
+          title: wordFailedUserTitle ?? "Wordの作成に失敗しました",
           message: `${wordFailedUserMessage ?? "文書内容は作成できましたが、Wordファイルの作成に失敗しました。もう一度お試しください。"}${wordFailedJobId ? `（jobId: ${wordFailedJobId}）` : ""}`,
           actionUrl: resultDeepLink,
           relatedTaskId: resultProjectId,
           deliverableId: resultProjectId,
           workflowRunId: workflowRun.id,
-          requestId: input.runId,
+          requestId: lifecycleRequestId,
+          jobId: workJobId,
+          artifactId: wordDeliverableId,
+          workEvent: "failed",
+          retryActionUrl: "/workspace",
         }),
       { runId: input.runId, userId: input.userId, kind: "failed" },
     );
@@ -952,7 +967,10 @@ async function executeStoredRun(input: {
           relatedTaskId: lastResult ? resultProjectId : null,
           deliverableId: lastResult ? resultProjectId : null,
           workflowRunId: workflowRun.id,
-          requestId: input.runId,
+          requestId: lifecycleRequestId,
+          jobId: workJobId,
+          artifactId: wordDeliverableId,
+          workEvent: "completed",
         }),
       { runId: input.runId, userId: input.userId, kind: "partial" },
     );
@@ -1023,7 +1041,11 @@ async function executeStoredRun(input: {
           relatedTaskId: resultProjectId,
           deliverableId: resultProjectId,
           workflowRunId: workflowRun.id,
-          requestId: input.runId,
+          requestId: lifecycleRequestId,
+          jobId: workJobId,
+          artifactId: wordDeliverableId,
+          workEvent: "failed",
+          retryActionUrl: "/workspace",
         }),
       { runId: input.runId, userId: input.userId, kind: "failed" },
     );

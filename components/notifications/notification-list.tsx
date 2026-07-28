@@ -53,6 +53,43 @@ type NotificationListProps = {
   items?: NotificationRecord[];
 };
 
+function noticePrimaryAction(item: NotificationRecord): {
+  href: string;
+  label: string;
+} | null {
+  const category = resolveNoticeCategory(item);
+  const actionUrl = resolveNoticeActionUrl(item);
+
+  if (
+    item.workEvent === "failed" ||
+    item.workEvent === "timed_out" ||
+    item.workEvent === "retry_result"
+  ) {
+    const retry = item.retryActionUrl?.startsWith("/")
+      ? item.retryActionUrl
+      : "/workspace";
+    return { href: retry, label: ui.notifications.retryWork };
+  }
+
+  if (item.workEvent === "processing" || item.workEvent === "accepted") {
+    return actionUrl
+      ? { href: actionUrl, label: "状況を見る" }
+      : { href: "/workspace", label: "状況を見る" };
+  }
+
+  if (item.workEvent === "completed" && actionUrl) {
+    return {
+      href: actionUrl,
+      label: item.artifactId
+        ? ui.notifications.openDownload
+        : ui.notifications.openResult,
+    };
+  }
+
+  if (!actionUrl) return null;
+  return { href: actionUrl, label: getNoticeActionLabel(category) };
+}
+
 function NoticeCard({
   item,
   compact,
@@ -68,10 +105,22 @@ function NoticeCard({
 }) {
   const category = resolveNoticeCategory(item);
   const priority = resolveNoticePriority(item, category);
-  const title = formatNoticeTitle(item, category);
-  const message = formatNoticeMessage(item, category);
+  const title =
+    item.workEvent === "processing"
+      ? ui.notifications.processingTitle
+      : item.workEvent === "failed"
+        ? ui.notifications.failedTitle
+        : formatNoticeTitle(item, category);
+  const message =
+    item.workEvent === "processing"
+      ? ui.notifications.processingDescription
+      : formatNoticeMessage(item, category);
   const jobName = extractJobName(item);
-  const actionUrl = resolveNoticeActionUrl(item);
+  const primary = noticePrimaryAction(item);
+  const detailUrl =
+    item.workEvent === "completed" || item.deliverableId
+      ? resolveNoticeActionUrl(item)
+      : null;
 
   return (
     <li>
@@ -115,26 +164,45 @@ function NoticeCard({
           {compact && message.length > 72 ? `${message.slice(0, 72)}…` : message}
         </p>
 
-        {!compact && jobName && (
+        {!compact && (jobName || item.jobId) && (
           <p className="mt-2 text-xs text-[var(--text-muted)]">
-            {ui.notifications.relatedJob}: {jobName}
+            {jobName
+              ? `${ui.notifications.relatedJob}: ${jobName}`
+              : `${ui.notifications.jobIdLabel}: ${item.jobId}`}
           </p>
         )}
 
         <div className="mt-4 flex flex-wrap gap-2">
-          {actionUrl && (
+          {primary && (
             <Link
-              href={actionUrl}
+              href={primary.href}
               onClick={() => {
                 if (!item.isRead) onMarkRead(item.notificationId);
                 onNavigate?.();
               }}
             >
               <Button variant="primary" size="sm" className="min-h-[44px]">
-                {getNoticeActionLabel(category)}
+                {primary.label}
               </Button>
             </Link>
           )}
+          {detailUrl &&
+            primary &&
+            primary.href !== detailUrl &&
+            (item.workEvent === "failed" ||
+              item.workEvent === "timed_out") && (
+              <Link
+                href={detailUrl}
+                onClick={() => {
+                  if (!item.isRead) onMarkRead(item.notificationId);
+                  onNavigate?.();
+                }}
+              >
+                <Button variant="secondary" size="sm" className="min-h-[44px]">
+                  {ui.notifications.openResult}
+                </Button>
+              </Link>
+            )}
           {!item.isRead && (
             <Button
               variant="secondary"
@@ -173,6 +241,7 @@ export function NotificationList({
     items ?? [],
   );
   const [loading, setLoading] = useState(!isFixture);
+  const [fetchError, setFetchError] = useState(false);
   const [filter, setFilter] = useState<NoticeFilter>("all");
 
   const reload = useCallback(async () => {
@@ -181,7 +250,11 @@ export function NotificationList({
     try {
       const data = await fetchNotifications();
       setNotifications(data.notifications);
+      setFetchError(false);
       onUpdate?.();
+    } catch {
+      // Distinguish fetch failure from a true empty inbox.
+      setFetchError(true);
     } finally {
       setLoading(false);
     }
@@ -193,7 +266,7 @@ export function NotificationList({
     return () => window.clearTimeout(boot);
   }, [reload, isFixture]);
 
-  // Real-time: refetch on change / focus / short poll — no full page reload.
+  // Existing-safe update: short poll + focus + local change events (no new realtime).
   useEffect(() => {
     if (isFixture) return;
     const interval = window.setInterval(() => void reload(), 8_000);
@@ -233,11 +306,35 @@ export function NotificationList({
     await reload();
   };
 
-  if (loading) {
+  if (loading && notifications.length === 0 && !fetchError) {
     return (
       <p className="px-4 py-6 text-sm text-[var(--text-secondary)]">
         {ui.loading}
       </p>
+    );
+  }
+
+  // NEVER reuse deliverable/results empty UI here.
+  if (fetchError && notifications.length === 0) {
+    return (
+      <div className={cn("px-4 py-10 text-center", !compact && "py-16")}>
+        <p className="text-base font-medium text-foreground">
+          {ui.notifications.fetchErrorTitle}
+        </p>
+        <p className="mt-2 text-sm text-[var(--text-secondary)]">
+          {ui.notifications.fetchErrorDescription}
+        </p>
+        <div className="mt-4">
+          <Button
+            variant="primary"
+            size="sm"
+            className="min-h-[44px]"
+            onClick={() => void reload()}
+          >
+            {ui.notifications.retryFetch}
+          </Button>
+        </div>
+      </div>
     );
   }
 

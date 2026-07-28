@@ -62,14 +62,24 @@ export function ResultErrorNotice({ code, reason }: ResultErrorNoticeProps) {
                 </Link>
               ) : (
                 <>
-                  <Link href="/history">
+                  {(code === "generation_failed" ||
+                    code === "ai_error" ||
+                    code === "storage_failed" ||
+                    code === "timeout") && (
+                    <Link href="/workspace">
+                      <Button variant="primary" size="sm">
+                        {ui.notifications.retryWork}
+                      </Button>
+                    </Link>
+                  )}
+                  <Link href="/notifications">
                     <Button variant="secondary" size="sm">
-                      {ui.nav.history}
+                      {ui.notifications.title}
                     </Button>
                   </Link>
-                  <Link href="/workspace">
-                    <Button variant="primary" size="sm">
-                      {ui.nav.work}
+                  <Link href="/history">
+                    <Button variant="ghost" size="sm">
+                      {ui.nav.history}
                     </Button>
                   </Link>
                 </>

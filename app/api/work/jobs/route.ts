@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { after } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 
+import { notifyWorkAccepted } from "@/lib/notifications/work-lifecycle";
 import { MAX_IMMEDIATE_RETRIES } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 import { isTerminalJobStatus } from "@/lib/work-jobs/job-status";
@@ -142,6 +143,9 @@ export async function POST(request: Request): Promise<Response> {
     completedAt: null,
     failedAt: null,
   });
+
+  // Inbox: 仕事受付 — separate from deliverable/result empty states.
+  notifyWorkAccepted({ userId, jobId: id, assignment });
 
   after(async () => {
     try {

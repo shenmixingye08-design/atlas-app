@@ -1,6 +1,15 @@
 import "server-only";
 
 import { runCommanderRequest } from "@/lib/commander/service";
+import {
+  notifyWorkCompleted,
+  notifyWorkFailed,
+} from "@/lib/notifications/emitters";
+import {
+  notifyWorkProcessing,
+  notifyWorkTimedOut,
+  workJobNotificationRequestId,
+} from "@/lib/notifications/work-lifecycle";
 import { recordReliabilityEvent, withRetry } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 
@@ -187,6 +196,11 @@ export async function executeWorkJob(
     if (!applied.ok || !applied.job) {
       throw new Error(applied.ok === false ? applied.message : "timed_out_failed");
     }
+    notifyWorkTimedOut({
+      userId,
+      jobId,
+      message: applied.job.error,
+    });
     return applied.job;
   }
 
@@ -205,6 +219,12 @@ export async function executeWorkJob(
     // Illegal transition (e.g. raced into terminal) — return current.
     return getWorkJob(jobId, userId) ?? existing;
   }
+
+  notifyWorkProcessing({
+    userId,
+    jobId,
+    assignment: existing.assignment,
+  });
 
   const startedAt = Date.now();
 
@@ -302,10 +322,34 @@ export async function executeWorkJob(
           attemptCount: nextAttempt,
           result: commander.result ?? null,
         });
-        return failed.ok && failed.job
-          ? failed.job
-          : (getWorkJob(jobId, userId) ?? existing);
+        const failedJob =
+          failed.ok && failed.job
+            ? failed.job
+            : (getWorkJob(jobId, userId) ?? existing);
+        notifyWorkFailed(userId, {
+          title: "Wordの作成に失敗しました",
+          message: failedJob.error ?? userMessageForJobError(applied.code),
+          requestId: workJobNotificationRequestId(jobId),
+          jobId,
+          workEvent: nextAttempt > 1 ? "retry_result" : "failed",
+          retryActionUrl: "/workspace",
+          deliverableId: commander.persistence?.projectId ?? null,
+          artifactId: commander.persistence?.wordDeliverableId ?? null,
+        });
+        return failedJob;
       }
+      // Ensure completed notification exists (commander may have already upserted).
+      notifyWorkCompleted(userId, {
+        title: commander.persistence?.wordDeliverableId
+          ? "Wordファイルの準備ができました"
+          : "お仕事が完了しました",
+        message: "ご依頼の内容が完了しました。通知から結果を開けます。",
+        requestId: workJobNotificationRequestId(jobId),
+        jobId,
+        deliverableId: commander.persistence?.projectId ?? null,
+        artifactId: commander.persistence?.wordDeliverableId ?? null,
+        workEvent: nextAttempt > 1 ? "retry_result" : "completed",
+      });
       return applied.job;
     }
 
@@ -353,9 +397,21 @@ export async function executeWorkJob(
       attemptCount: nextAttempt,
       result: commander.result ?? null,
     });
-    return applied.ok && applied.job
-      ? applied.job
-      : (getWorkJob(jobId, userId) ?? existing);
+    const failedJob =
+      applied.ok && applied.job
+        ? applied.job
+        : (getWorkJob(jobId, userId) ?? existing);
+    notifyWorkFailed(userId, {
+      title: "Wordの作成に失敗しました",
+      message: failedJob.error ?? userMessageForJobError(errorCode),
+      requestId: workJobNotificationRequestId(jobId),
+      jobId,
+      workEvent: nextAttempt > 1 ? "retry_result" : "failed",
+      retryActionUrl: "/workspace",
+      deliverableId: commander.persistence?.projectId ?? null,
+      artifactId: commander.persistence?.wordDeliverableId ?? null,
+    });
+    return failedJob;
   } catch (error) {
     const message = toHumanReliabilityMessage(error);
     const isTimeout = /timeout|ETIMEDOUT|aborted/i.test(message);
@@ -380,8 +436,26 @@ export async function executeWorkJob(
         ? { timeoutReason: message.slice(0, 240) }
         : undefined,
     });
-    return applied.ok && applied.job
-      ? applied.job
-      : (getWorkJob(jobId, userId) ?? existing);
+    const terminal =
+      applied.ok && applied.job
+        ? applied.job
+        : (getWorkJob(jobId, userId) ?? existing);
+    if (isTimeout) {
+      notifyWorkTimedOut({
+        userId,
+        jobId,
+        message: terminal.error,
+      });
+    } else {
+      notifyWorkFailed(userId, {
+        title: "Wordの作成に失敗しました",
+        message: terminal.error ?? message,
+        requestId: workJobNotificationRequestId(jobId),
+        jobId,
+        workEvent: "failed",
+        retryActionUrl: "/workspace",
+      });
+    }
+    return terminal;
   }
 }

@@ -25,13 +25,14 @@ export type ResultResolutionCode =
 /** User-facing Japanese copy for each outcome (secretary tone, no internals). */
 export const RESULT_MESSAGES: Record<ResultResolutionCode, string> = {
   deliverable: "成果物の準備ができました。内容をご確認ください。",
-  pending: "まだ生成中です。少し時間をおいて、もう一度お試しください。",
+  pending: "完了すると通知でお知らせします",
   not_saved:
     "成果物の保存を確認しています。少し時間をおいて、もう一度お試しください。",
-  generation_failed: "Wordファイルの作成に失敗しました。もう一度お試しください。",
+  generation_failed:
+    "安全な範囲で再試行できます。入力内容は保存されています。",
   ai_error: "AI応答の作成で問題がありました。入力内容は保存されています。",
   storage_failed:
-    "文書は作成できましたが、Storageへの保存に失敗しました。もう一度お試しください。",
+    "文書は作成できましたが、保存に失敗しました。もう一度お試しください。",
   notification_failed:
     "成果物は作成済みです。通知の配信に失敗したため、履歴からご確認ください。",
   timeout: "処理が時間内に終わりませんでした。もう一度お試しください。",
@@ -45,9 +46,9 @@ export const RESULT_MESSAGES: Record<ResultResolutionCode, string> = {
 /** Shorter title shown above the detail message on the results page. */
 export const RESULT_TITLES: Partial<Record<ResultResolutionCode, string>> = {
   deliverable: "生成完了",
-  pending: "生成中",
+  pending: "Wordを作成しています",
   not_saved: "保存確認中",
-  generation_failed: "Word生成失敗",
+  generation_failed: "Wordの作成に失敗しました",
   ai_error: "AIエラー",
   storage_failed: "保存失敗",
   notification_failed: "通知失敗",

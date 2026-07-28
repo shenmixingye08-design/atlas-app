@@ -23,8 +23,8 @@ const ICONS: Record<NonReadyState["kind"], string> = {
 };
 
 const TITLES: Record<NonReadyState["kind"], string> = {
-  generating: "生成中",
-  failed: "生成に失敗しました",
+  generating: "Wordを作成しています",
+  failed: "Wordの作成に失敗しました",
   not_found: "結果が見つかりませんでした",
 };
 
@@ -66,14 +66,21 @@ export function DeliverableStateNotice({
               </div>
             )}
             <div className="flex flex-wrap justify-center gap-2">
-              <Link href="/history">
+              {state.kind === "failed" ? (
+                <Link href="/workspace">
+                  <Button variant="primary" size="sm">
+                    {ui.notifications.retryWork}
+                  </Button>
+                </Link>
+              ) : null}
+              <Link href="/notifications">
                 <Button variant="secondary" size="sm">
-                  {ui.nav.history}
+                  {ui.notifications.title}
                 </Button>
               </Link>
-              <Link href="/workspace">
-                <Button variant="primary" size="sm">
-                  {ui.nav.work}
+              <Link href="/history">
+                <Button variant="ghost" size="sm">
+                  {ui.nav.history}
                 </Button>
               </Link>
             </div>

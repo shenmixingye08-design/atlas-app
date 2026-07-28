@@ -20,12 +20,13 @@ describe("result-messages cause codes", () => {
   ];
 
   it("exposes user-facing titles for 生成中/完了/保存失敗/AI/Timeout/通知失敗", () => {
-    expect(resultTitle("pending")).toBe("生成中");
+    expect(resultTitle("pending")).toBe("Wordを作成しています");
     expect(resultTitle("deliverable")).toBe("生成完了");
     expect(resultTitle("storage_failed")).toBe("保存失敗");
     expect(resultTitle("ai_error")).toBe("AIエラー");
     expect(resultTitle("timeout")).toBe("タイムアウト");
     expect(resultTitle("notification_failed")).toBe("通知失敗");
+    expect(resultTitle("generation_failed")).toBe("Wordの作成に失敗しました");
   });
 
   it("never uses the banned generic-only「成果物が見つかりません」copy", () => {

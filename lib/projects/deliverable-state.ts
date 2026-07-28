@@ -18,7 +18,7 @@ export type DeliverableDisplayState =
   | { kind: "failed"; message: string; reason: string | null; title: string }
   | { kind: "not_found"; message: string };
 
-const GENERATING_MESSAGE = "まだ生成中です。少し時間をおいて、もう一度お試しください。";
+const GENERATING_MESSAGE = "完了すると通知でお知らせします";
 const NOT_FOUND_MESSAGE =
   "この結果は見つかりませんでした。削除されたか、まだ保存が完了していない可能性があります。";
 

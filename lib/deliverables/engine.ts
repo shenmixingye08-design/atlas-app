@@ -85,7 +85,8 @@ async function emitWordTerminalNotification(input: {
   message?: string | null;
 }): Promise<void> {
   if (input.suppressed) return;
-  const requestId = `wordjob:${input.jobId}:${input.kind}`;
+  // Stable key per Word job — fail→complete patches one row (no duplicates).
+  const requestId = `wordjob:${input.jobId}`;
   const resultTargetId =
     input.notificationTargetId?.trim() ||
     (input.deliverableId ? `wordfile-${input.deliverableId}` : null);
@@ -100,6 +101,9 @@ async function emitWordTerminalNotification(input: {
         relatedTaskId: resultTargetId,
         deliverableId: resultTargetId,
         requestId,
+        jobId: input.jobId,
+        artifactId: input.deliverableId,
+        workEvent: "completed",
       });
     } else {
       const failTitle =
@@ -116,9 +120,13 @@ async function emitWordTerminalNotification(input: {
         title: failTitle,
         message:
           input.message?.trim() ||
-          "処理を完了できませんでした。もう一度お試しください。",
+          "Wordの作成に失敗しました。もう一度お試しください。",
         deliverableId: resultTargetId,
         requestId,
+        jobId: input.jobId,
+        artifactId: input.deliverableId ?? null,
+        workEvent: input.kind === "timeout" ? "timed_out" : "failed",
+        retryActionUrl: "/workspace",
       });
     }
     await persistNotificationsNow(input.userId);
