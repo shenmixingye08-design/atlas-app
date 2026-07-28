@@ -115,6 +115,10 @@ export function createNotification(
     deliverableId: input.deliverableId ?? null,
     requestId: input.requestId ?? null,
     automationId: input.automationId ?? null,
+    jobId: input.jobId ?? null,
+    artifactId: input.artifactId ?? null,
+    workEvent: input.workEvent ?? null,
+    retryActionUrl: input.retryActionUrl ?? null,
     severity:
       input.severity ??
       resolvePushSeverity({

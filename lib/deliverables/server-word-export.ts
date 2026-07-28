@@ -21,6 +21,11 @@ import {
   wordFailureUserMessage,
 } from "./recovery-messages";
 import type { Deliverable, DeliverableFormat } from "./types";
+import {
+  classifyWordPipelineFailure,
+  verifyWordCompletion,
+  type WordCompletionReport,
+} from "./word-completion-gate";
 
 export { assignmentRequestsWordFile };
 
@@ -32,6 +37,7 @@ export type ServerWordExportResult =
       files: Deliverable[];
       downloadUrl: string;
       jobId: string;
+      completion: WordCompletionReport;
     }
   | {
       attempted: true;
@@ -42,6 +48,8 @@ export type ServerWordExportResult =
       files: Deliverable[];
       jobId: string;
       stack?: string | null;
+      errorCode?: string;
+      completion?: WordCompletionReport | null;
     }
   | { attempted: false; ok: true; files: [] };
 
@@ -83,6 +91,7 @@ function resolveExportSourceText(result: OrchestrationResult): {
 /**
  * Server-side Word export after orchestration text is ready.
  * Phone/browser must NOT be required to keep a tab open for .docx creation.
+ * Returns ok only when the formal 11-step completion gate passes.
  */
 export async function exportWordDeliverableOnServer(input: {
   userId: string;
@@ -95,6 +104,7 @@ export async function exportWordDeliverableOnServer(input: {
   /** When true, emit completed/failed notifications (await durable persist). */
   notify?: boolean;
   formats?: DeliverableFormat[];
+  workJobId?: string | null;
 }): Promise<ServerWordExportResult> {
   const wantsWord = assignmentRequestsWordFile(
     input.assignment,
@@ -113,10 +123,15 @@ export async function exportWordDeliverableOnServer(input: {
     reason: string,
     files: Deliverable[] = [],
     stack?: string | null,
+    completion?: WordCompletionReport | null,
   ): Promise<Extract<ServerWordExportResult, { ok: false }>> => {
+    const errorCode =
+      completion?.errorCode ?? classifyWordPipelineFailure(reason);
     const userTitle = wordFailureTitle(reason);
     const userMessage = wordFailureUserMessage(reason);
-    const isTimeout = classifyDeliverableError(reason) === "timeout";
+    const isTimeout =
+      errorCode === "TIMEOUT" ||
+      classifyDeliverableError(reason) === "timeout";
     logWordPipeline({
       stage: isTimeout ? "TIMEOUT" : "FAILED",
       ok: false,
@@ -125,19 +140,28 @@ export async function exportWordDeliverableOnServer(input: {
       requestId: input.requestId,
       error: reason,
       stack: stack ?? null,
-      detail: userTitle,
+      detail: `${userTitle};code=${errorCode}`,
       durationMs: Date.now() - started,
     });
     if (input.notify !== false) {
+      const projectTarget = input.result.commanderRunId
+        ? `commander-${input.result.commanderRunId}`
+        : null;
       notifyWorkFailed(input.userId, {
         title: userTitle,
         message: `${userMessage}（jobId: ${jobId}）`,
         requestId: `${input.requestId}:word`,
-        deliverableId: input.result.commanderRunId
-          ? `commander-${input.result.commanderRunId}`
-          : null,
+        relatedTaskId: projectTarget,
+        deliverableId: projectTarget,
       });
-      await persistNotificationsNow(input.userId).catch(() => undefined);
+      try {
+        await persistNotificationsNow(input.userId);
+      } catch (error) {
+        console.error(
+          "[word_pipeline] notification_persist_failed",
+          error instanceof Error ? error.message : error,
+        );
+      }
     }
     return {
       attempted: true,
@@ -148,6 +172,8 @@ export async function exportWordDeliverableOnServer(input: {
       files,
       jobId,
       stack: stack ?? null,
+      errorCode,
+      completion: completion ?? null,
     };
   };
 
@@ -158,6 +184,10 @@ export async function exportWordDeliverableOnServer(input: {
       userId: input.userId,
       requestId: input.requestId,
     });
+
+    if (!input.userId.trim()) {
+      return fail("AUTHENTICATION_FAILED:missing_user");
+    }
 
     const { text: raw, source } = resolveExportSourceText(input.result);
     if (!raw) {
@@ -172,6 +202,10 @@ export async function exportWordDeliverableOnServer(input: {
     const formats: DeliverableFormat[] =
       input.formats && input.formats.length > 0 ? input.formats : ["docx"];
 
+    const projectTarget = input.result.commanderRunId
+      ? `commander-${input.result.commanderRunId}`
+      : null;
+
     const generated = await generateDeliverables(
       {
         assignment: input.assignment,
@@ -183,10 +217,13 @@ export async function exportWordDeliverableOnServer(input: {
       {
         userId: input.userId,
         jobId,
+        notificationTargetId: projectTarget,
         // Notification is owned by this helper / commander — engine skips duplicate.
         suppressWordReadyNotification: true,
         // Orchestration already produced approved text — do not re-fail on soft quality.
         contentAlreadyApproved: true,
+        workJobId: input.workJobId ?? null,
+        commanderRunId: input.result.commanderRunId ?? input.requestId,
       },
     );
 
@@ -198,74 +235,125 @@ export async function exportWordDeliverableOnServer(input: {
       return fail(reason, generated.deliverables);
     }
 
-    // completed only when download URL exists and points at our API.
-    if (!docx.downloadUrl?.includes(`/api/deliverables/${docx.id}`)) {
-      return fail("docx_download_url_invalid", generated.deliverables);
+    // Formal 11-step gate — completed is forbidden until every check passes.
+    const completion = await verifyWordCompletion({
+      userId: input.userId,
+      jobId,
+      requestValidated: true,
+      aiContentReady: true,
+      deliverableId: docx.id,
+      expectedWorkJobId: input.workJobId ?? null,
+      expectedCommanderRunId: input.result.commanderRunId ?? input.requestId,
+    });
+
+    if (!completion.ok) {
+      return fail(
+        `word_completion_gate:${completion.failedStep}:${completion.internalError}`,
+        generated.deliverables,
+        null,
+        completion,
+      );
     }
+
+    // Prefer gate-verified metadata (non-zero size, canonical MIME/name).
+    const verifiedDocx: Deliverable = {
+      ...docx,
+      fileName: completion.fileName ?? docx.fileName,
+      mimeType: completion.mimeType ?? docx.mimeType,
+      sizeBytes: completion.sizeBytes,
+      downloadUrl: completion.downloadUrl ?? docx.downloadUrl,
+    };
 
     logWordPipeline({
       stage: "DOCX_GENERATED",
       jobId,
       userId: input.userId,
       requestId: input.requestId,
-      deliverableId: docx.id,
+      deliverableId: verifiedDocx.id,
       durationMs: Date.now() - started,
+      detail: `bytes=${completion.sizeBytes}`,
     });
     logWordPipeline({
       stage: "STORAGE_SAVED",
       jobId,
       userId: input.userId,
-      deliverableId: docx.id,
+      deliverableId: verifiedDocx.id,
       requestId: input.requestId,
+      detail: `key=${completion.storageKey}`,
     });
     logWordPipeline({
       stage: "DB_METADATA_SAVED",
       jobId,
       userId: input.userId,
-      deliverableId: docx.id,
+      deliverableId: verifiedDocx.id,
       requestId: input.requestId,
     });
     logWordPipeline({
       stage: "STATUS_COMPLETED",
       jobId,
       userId: input.userId,
-      deliverableId: docx.id,
+      deliverableId: verifiedDocx.id,
       requestId: input.requestId,
+      detail: "word_completion_gate_ok",
     });
 
     if (input.notify !== false) {
+      // CRITICAL: target the commander project (or wordfile-{uuid}), never the
+      // raw .docx UUID alone — /results loads Project rows, not file rows.
+      const notifyTarget = projectTarget ?? `wordfile-${verifiedDocx.id}`;
       notifyWorkCompleted(input.userId, {
         title: "Wordファイルの準備ができました",
-        message: `「${docx.fileName}」を作成しました。通知から開いてダウンロードできます。`,
-        actionUrl: docx.downloadUrl,
-        relatedTaskId: docx.id,
-        deliverableId: docx.id,
+        message: `「${verifiedDocx.fileName}」を作成しました。通知から開いてダウンロードできます。`,
+        actionUrl: verifiedDocx.downloadUrl,
+        relatedTaskId: notifyTarget,
+        deliverableId: notifyTarget,
         requestId: `${input.requestId}:word`,
       });
-      await persistNotificationsNow(input.userId).catch(() => undefined);
-      logWordPipeline({
-        stage: "NOTIFICATION_CREATED",
-        jobId,
-        userId: input.userId,
-        deliverableId: docx.id,
-        requestId: input.requestId,
-      });
-      logWordPipeline({
-        stage: "UNREAD_COUNT_READY",
-        jobId,
-        userId: input.userId,
-        deliverableId: docx.id,
-        requestId: input.requestId,
-      });
+      try {
+        await persistNotificationsNow(input.userId);
+        logWordPipeline({
+          stage: "NOTIFICATION_CREATED",
+          jobId,
+          userId: input.userId,
+          deliverableId: verifiedDocx.id,
+          requestId: input.requestId,
+          detail: `target=${notifyTarget}`,
+        });
+        logWordPipeline({
+          stage: "UNREAD_COUNT_READY",
+          jobId,
+          userId: input.userId,
+          deliverableId: verifiedDocx.id,
+          requestId: input.requestId,
+        });
+      } catch (error) {
+        console.error(
+          "[word_pipeline] notification_persist_failed",
+          error instanceof Error ? error.message : error,
+        );
+        logWordPipeline({
+          stage: "FAILED",
+          ok: false,
+          jobId,
+          userId: input.userId,
+          deliverableId: verifiedDocx.id,
+          requestId: input.requestId,
+          error: "notification_persist_failed",
+          detail: "通知失敗",
+        });
+      }
     }
 
     return {
       attempted: true,
       ok: true,
-      docx,
-      files: generated.deliverables,
-      downloadUrl: docx.downloadUrl,
+      docx: verifiedDocx,
+      files: generated.deliverables.map((f) =>
+        f.id === verifiedDocx.id ? verifiedDocx : f,
+      ),
+      downloadUrl: verifiedDocx.downloadUrl,
       jobId,
+      completion,
     };
   } catch (error) {
     const reason =

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Word job status responsive check</title>
+    <style>
+      :root {
+        --background: #f7f4ef;
+        --foreground: #1c1917;
+        --foreground-muted: #57534e;
+        --text-secondary: #57534e;
+        --accent: #0f766e;
+        --card: #fffdf9;
+        --surface-muted: #efeae2;
+        --border-subtle: #e7e0d6;
+        --radius-lg: 16px;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
+        background: var(--background);
+        color: var(--foreground);
+      }
+      main { padding: 16px 12px 40px; }
+      .panel {
+        max-width: 32rem;
+        margin: 0 auto;
+        background: var(--card);
+        border: 1px solid var(--border-subtle);
+        border-radius: 24px;
+        padding: 24px;
+        text-align: center;
+      }
+      .brand { color: var(--accent); font-size: 14px; font-weight: 600; margin: 0 0 8px; }
+      h2 { font-size: 22px; margin: 0 0 12px; line-height: 1.35; }
+      .desc, .detail {
+        color: var(--foreground-muted);
+        font-size: 16px;
+        line-height: 1.6;
+        margin: 0 0 12px;
+      }
+      .detail {
+        text-align: left;
+        background: var(--surface-muted);
+        border-radius: var(--radius-lg);
+        padding: 12px 16px;
+        font-size: 14px;
+      }
+      .actions {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-top: 16px;
+      }
+      button {
+        min-height: 48px;
+        width: 100%;
+        border-radius: 999px;
+        border: 0;
+        font-size: 16px;
+        touch-action: manipulation;
+        padding: 12px 24px;
+      }
+      button.primary { background: var(--accent); color: #fff; }
+      button.secondary {
+        background: transparent;
+        color: var(--foreground);
+        border: 1px solid var(--border-subtle);
+      }
+      @media (min-width: 640px) {
+        .actions { flex-direction: row; justify-content: center; }
+        button { width: auto; min-width: 10rem; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="panel" data-testid="word-job-status-panel" aria-live="polite" role="status">
+        <p class="brand">MINERVOT</p>
+        <h2 id="title">Wordを作成しています。</h2>
+        <p class="desc" id="desc">完了すると通知でお知らせします。</p>
+        <p class="detail" id="detail" hidden></p>
+        <div class="actions" id="actions"></div>
+      </section>
+    </main>
+    <script>
+      const COPY = {
+        accepted: { title: "Word作成を受け付けました。", desc: null, primary: null, secondary: null },
+        processing: { title: "Wordを作成しています。", desc: "完了すると通知でお知らせします。", primary: null, secondary: null },
+        completed: { title: "Wordが完成しました。", desc: null, primary: "Wordを開く", secondary: "ダウンロード" },
+        failed: { title: "Wordの作成に失敗しました。", desc: null, primary: "もう一度試す", secondary: "詳細を見る", detail: "文書の保存に失敗しました。もう一度お試しください。" },
+        timed_out: { title: "処理時間を超えたため停止しました。", desc: null, primary: "もう一度試す", secondary: null, detail: "処理時間を超えたため停止しました。" },
+        network_error: { title: "最新状態を取得できませんでした。", desc: null, primary: "再読み込み", secondary: null },
+      };
+      window.renderPhase = (phase) => {
+        const copy = COPY[phase];
+        document.getElementById("title").textContent = copy.title;
+        const desc = document.getElementById("desc");
+        if (copy.desc) { desc.hidden = false; desc.textContent = copy.desc; } else { desc.hidden = true; }
+        const detail = document.getElementById("detail");
+        if (copy.detail) { detail.hidden = false; detail.textContent = copy.detail; } else { detail.hidden = true; }
+        const actions = document.getElementById("actions");
+        actions.innerHTML = "";
+        if (copy.primary) {
+          const b = document.createElement("button");
+          b.className = "primary";
+          b.textContent = copy.primary;
+          actions.appendChild(b);
+        }
+        if (copy.secondary) {
+          const b = document.createElement("button");
+          b.className = "secondary";
+          b.textContent = copy.secondary;
+          actions.appendChild(b);
+        }
+      };
+      window.renderPhase("processing");
+    </script>
+  </body>
+</html>

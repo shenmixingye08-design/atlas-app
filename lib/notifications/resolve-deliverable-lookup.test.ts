@@ -21,7 +21,7 @@ function sample(overrides: Partial<NotificationRecord> = {}): NotificationRecord
 }
 
 describe("candidateProjectIdsForNotification", () => {
-  it("adds commander-{requestId} when Word UUID was stored as deliverableId", () => {
+  it("adds commander-{requestId} and wordfile-* when Word UUID was stored as deliverableId", () => {
     const ids = candidateProjectIdsForNotification(
       sample({
         deliverableId: "c4ac3465-532b-4106-9513-b1ef5346020a",
@@ -30,6 +30,7 @@ describe("candidateProjectIdsForNotification", () => {
       "c4ac3465-532b-4106-9513-b1ef5346020a",
     );
     expect(ids[0]).toBe("c4ac3465-532b-4106-9513-b1ef5346020a");
+    expect(ids).toContain("wordfile-c4ac3465-532b-4106-9513-b1ef5346020a");
     expect(ids).toContain("commander-run_abc");
   });
 

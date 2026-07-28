@@ -328,19 +328,23 @@ export function notifyRecommendation(
 function upsertWorkNotificationByRequestId(input: {
   userId: string;
   requestId: string | null | undefined;
+  jobId?: string | null;
   build: () => NotificationRecord | null;
   patch: (existing: NotificationRecord) => Partial<NotificationRecord>;
 }): NotificationRecord | null {
   const requestId = input.requestId?.trim() || null;
-  if (requestId) {
+  const jobId = input.jobId?.trim() || null;
+  if (requestId || jobId) {
     const existing = listStoredNotifications({
       audience: "user",
       userId: input.userId,
     }).find(
       (n) =>
-        n.requestId === requestId ||
-        n.relatedTaskId === requestId ||
-        n.workflowRunId === requestId,
+        (requestId &&
+          (n.requestId === requestId ||
+            n.relatedTaskId === requestId ||
+            n.workflowRunId === requestId)) ||
+        (jobId && n.jobId === jobId),
     );
     if (existing) {
       const updated = updateNotification(
@@ -368,6 +372,9 @@ export function notifyWorkCompleted(
     workflowRunId?: string | null;
     /** Originating request/run id. */
     requestId?: string | null;
+    jobId?: string | null;
+    artifactId?: string | null;
+    workEvent?: "completed" | "retry_result";
   },
 ) {
   if (!userId) return null;
@@ -382,10 +389,17 @@ export function notifyWorkCompleted(
   const message = input.message
     ? `お待たせいたしました。${input.message}`
     : "お待たせいたしました。ご依頼の内容が完了しました。";
+  const workEvent = input.workEvent ?? "completed";
+  const requestId =
+    input.requestId ??
+    (input.jobId ? `workjob:${input.jobId}` : null) ??
+    input.workflowRunId ??
+    deliverableId;
 
   return upsertWorkNotificationByRequestId({
     userId,
-    requestId: input.requestId ?? input.workflowRunId ?? deliverableId,
+    requestId,
+    jobId: input.jobId,
     build: () =>
       createNotification({
         audience: "user",
@@ -399,10 +413,13 @@ export function notifyWorkCompleted(
         targetId: deliverableId,
         deliverableId,
         workflowRunId: input.workflowRunId ?? null,
-        requestId: input.requestId ?? null,
+        requestId,
+        jobId: input.jobId ?? null,
+        artifactId: input.artifactId ?? null,
+        workEvent,
         lineEvent: "work_completed",
       }),
-    patch: () => ({
+    patch: (existing) => ({
       type: "completed" as const,
       title,
       message,
@@ -411,9 +428,18 @@ export function notifyWorkCompleted(
       targetId: deliverableId,
       relatedTaskId: input.relatedTaskId ?? deliverableId,
       workflowRunId: input.workflowRunId ?? null,
-      requestId: input.requestId ?? null,
+      requestId,
+      jobId: input.jobId ?? null,
+      artifactId: input.artifactId ?? null,
+      workEvent,
+      retryActionUrl: null,
+      // Upgrade accepted/processing rows to the canonical results deep link.
+      actionUrl: deliverableId
+        ? `/results/${encodeURIComponent(existing.notificationId)}`
+        : existing.actionUrl,
       lineEvent: "work_completed" as const,
       isRead: false,
+      readAt: null,
     }),
   });
 }
@@ -428,6 +454,10 @@ export function notifyWorkFailed(
     deliverableId?: string | null;
     workflowRunId?: string | null;
     requestId?: string | null;
+    jobId?: string | null;
+    artifactId?: string | null;
+    workEvent?: "failed" | "timed_out" | "retry_result";
+    retryActionUrl?: string | null;
   },
 ) {
   if (!userId) return null;
@@ -442,10 +472,18 @@ export function notifyWorkFailed(
   const message = input.message?.trim()
     ? `処理を完了できませんでした。${input.message.trim()}`
     : "処理を完了できませんでした。内容をご確認ください。";
+  const workEvent = input.workEvent ?? "failed";
+  const requestId =
+    input.requestId ??
+    (input.jobId ? `workjob:${input.jobId}` : null) ??
+    input.workflowRunId ??
+    deliverableId;
+  const retryActionUrl = input.retryActionUrl ?? "/workspace";
 
   return upsertWorkNotificationByRequestId({
     userId,
-    requestId: input.requestId ?? input.workflowRunId ?? deliverableId,
+    requestId,
+    jobId: input.jobId,
     build: () =>
       createNotification({
         audience: "user",
@@ -459,7 +497,11 @@ export function notifyWorkFailed(
         targetId: deliverableId,
         deliverableId,
         workflowRunId: input.workflowRunId ?? null,
-        requestId: input.requestId ?? null,
+        requestId,
+        jobId: input.jobId ?? null,
+        artifactId: input.artifactId ?? null,
+        workEvent,
+        retryActionUrl,
         lineEvent: "error",
       }),
     patch: (existing) => {
@@ -477,9 +519,17 @@ export function notifyWorkFailed(
         targetId: deliverableId,
         relatedTaskId: input.relatedTaskId ?? deliverableId,
         workflowRunId: input.workflowRunId ?? null,
-        requestId: input.requestId ?? null,
+        requestId,
+        jobId: input.jobId ?? null,
+        artifactId: input.artifactId ?? null,
+        workEvent,
+        retryActionUrl,
+        actionUrl: deliverableId
+          ? `/results/${encodeURIComponent(existing.notificationId)}`
+          : actionUrl,
         lineEvent: "error" as const,
         isRead: false,
+        readAt: null,
       };
     },
   });
