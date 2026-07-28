@@ -58,7 +58,7 @@ export function buildDeliverableMetaPath(input: {
   return [
     sanitizeSegment(input.userId),
     sanitizeSegment(input.deliverableId),
-    "meta.json",
+    "meta.bin",
   ].join("/");
 }
 
@@ -97,7 +97,8 @@ export async function writeDeliverableSidecarMeta(
   const { error } = await client.storage
     .from(ATLAS_DELIVERABLE_FILES_BUCKET)
     .upload(path, body, {
-      contentType: "application/json",
+      // Bucket allow-list may omit application/json — use octet-stream.
+      contentType: "application/octet-stream",
       upsert: true,
     });
   if (error) {
