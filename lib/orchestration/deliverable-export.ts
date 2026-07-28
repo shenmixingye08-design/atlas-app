@@ -75,10 +75,24 @@ export function buildExportMarkdown(deliverable: Deliverable): string {
   }
 }
 
+function asExportField(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
 /** Single export source for copy, markdown, Word, and PDF. */
 export function getDeliverableExportText(deliverable: Deliverable | unknown): string {
   if (deliverable && typeof deliverable === "object" && "type" in deliverable) {
-    const typed = deliverable as Deliverable;
+    const raw = deliverable as Deliverable;
+    // Coerce optional/missing fields so Word export never crashes on .trim().
+    const typed: Deliverable = {
+      ...raw,
+      title: asExportField(raw.title),
+      summary: asExportField(raw.summary),
+      content: asExportField(raw.content),
+      markdown: asExportField(raw.markdown),
+      html: asExportField(raw.html),
+      plainText: asExportField(raw.plainText),
+    };
     if (
       isForbiddenTitle(typed.title) ||
       looksLikeDeliverableJson(typed.summary) ||

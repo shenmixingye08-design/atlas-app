@@ -244,6 +244,12 @@ export type GenerateDeliverablesOptions = {
    * Used when the caller (commander / server-word-export) owns notification timing.
    */
   suppressWordReadyNotification?: boolean;
+  /**
+   * When true, skip the AI content quality gate.
+   * Used for server-side Word export after orchestration already approved the text.
+   * Still rejects empty content earlier in generateDeliverables.
+   */
+  contentAlreadyApproved?: boolean;
   /** Optional AI content regenerator for quality retries. */
   regenerateContent?: (
     strategy: "same_model" | "simplified_prompt" | "fallback_model",
@@ -512,7 +518,16 @@ export async function generateDeliverables(
 
   try {
     // AI content quality gate — only before Word conversion.
-    if (!stageReached(job?.stage ?? "REQUEST_RECEIVED", "AI_CONTENT_COMPLETED")) {
+    // Skip when caller already approved orchestration text (server Word export).
+    if (
+      options.contentAlreadyApproved &&
+      !stageReached(job?.stage ?? "REQUEST_RECEIVED", "AI_CONTENT_COMPLETED")
+    ) {
+      await advanceWordJobStage(jobId, "AI_CONTENT_STARTED");
+      await advanceWordJobStage(jobId, "AI_CONTENT_COMPLETED", {
+        sourceContent: safeContent,
+      });
+    } else if (!stageReached(job?.stage ?? "REQUEST_RECEIVED", "AI_CONTENT_COMPLETED")) {
       await advanceWordJobStage(jobId, "AI_CONTENT_STARTED");
       await heartbeatWordJob(jobId);
       const modelStarted = Date.now();

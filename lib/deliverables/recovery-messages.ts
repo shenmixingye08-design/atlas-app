@@ -14,6 +14,16 @@ export type DeliverableFailureKind =
   | "expired"
   | "deleted"
   | "recovery_failed"
+  | "timeout"
+  | "unknown";
+
+/** Categories requested for production user messaging. */
+export type WordFailureCategory =
+  | "ai_response"
+  | "word_generation"
+  | "storage"
+  | "permission"
+  | "timeout"
   | "unknown";
 
 export type UserRecoveryAction =
@@ -27,10 +37,10 @@ export type UserRecoveryAction =
 
 const MESSAGES: Record<DeliverableFailureKind, string> = {
   ai_content:
-    "文書内容を作成できませんでした。入力内容は保存されています。再実行してください。",
+    "AI応答の作成で問題がありました。入力内容は保存されています。再実行してください。",
   word_convert:
     "文書内容は完成しましたが、Wordファイルへの変換に失敗しました。",
-  persist: "Wordファイルは完成しましたが、保存できませんでした。",
+  persist: "Wordファイルは完成しましたが、Storageへの保存に失敗しました。",
   download:
     "Wordファイルは保存されています。ダウンロードをもう一度お試しください。",
   notification:
@@ -42,7 +52,17 @@ const MESSAGES: Record<DeliverableFailureKind, string> = {
   deleted: "この成果物は削除されています。",
   recovery_failed:
     "自動復旧できませんでした。再実行するか、サポートへエラー情報を送信してください。",
+  timeout: "処理時間の上限に達しました。もう一度お試しください。",
   unknown: "処理を完了できませんでした。内容をご確認ください。",
+};
+
+const TITLES: Record<WordFailureCategory, string> = {
+  ai_response: "AI応答失敗",
+  word_generation: "Word生成失敗",
+  storage: "Storage保存失敗",
+  permission: "権限エラー",
+  timeout: "Timeout",
+  unknown: "生成に失敗しました",
 };
 
 const ACTIONS: Record<DeliverableFailureKind, UserRecoveryAction[]> = {
@@ -61,17 +81,8 @@ const ACTIONS: Record<DeliverableFailureKind, UserRecoveryAction[]> = {
   expired: ["regenerate_word_only", "retry", "send_support_info"],
   deleted: ["send_support_info"],
   recovery_failed: ["retry", "send_support_info"],
+  timeout: ["retry", "send_support_info"],
   unknown: ["retry", "send_support_info"],
-};
-
-export const USER_RECOVERY_ACTION_LABELS: Record<UserRecoveryAction, string> = {
-  retry: "再試行",
-  resume_from_last_stage: "続きから再開",
-  review_content: "文書内容を確認",
-  regenerate_word_only: "Wordだけ再生成",
-  retry_persist: "保存だけ再試行",
-  retry_download: "ダウンロードを再試行",
-  send_support_info: "サポートへエラー情報送信",
 };
 
 export function userMessageForFailure(kind: DeliverableFailureKind): string {
@@ -89,35 +100,47 @@ export function classifyDeliverableError(
 ): DeliverableFailureKind {
   const raw = (error ?? "").toLowerCase();
   if (!raw) return "unknown";
+  if (/timeout|etimedout|aborted|maxduration|時間内/.test(raw)) {
+    return "timeout";
+  }
   if (raw.includes("unauthorized") || raw.includes("auth") || raw.includes("401")) {
     return "auth";
   }
-  if (raw.includes("forbidden") || raw.includes("403")) return "forbidden";
+  if (raw.includes("forbidden") || raw.includes("403") || raw.includes("権限")) {
+    return "forbidden";
+  }
   if (raw.includes("expired") || raw.includes("ttl")) return "expired";
   if (raw.includes("deleted")) return "deleted";
   if (
     raw.includes("empty_deliverable") ||
+    raw.includes("word_export_empty") ||
     raw.includes("content_quality") ||
     raw.includes("ai_content") ||
-    raw.includes("文書内容")
+    raw.includes("openai") ||
+    raw.includes("文書内容") ||
+    raw.includes("ai応答")
   ) {
     return "ai_content";
-  }
-  if (
-    raw.includes("word生成失敗") ||
-    raw.includes("docx") ||
-    raw.includes("packer") ||
-    raw.includes("verify")
-  ) {
-    return "word_convert";
   }
   if (
     raw.includes("storage") ||
     raw.includes("persist") ||
     raw.includes("upsert") ||
+    raw.includes("supabase") ||
+    raw.includes("bucket") ||
     raw.includes("保存")
   ) {
     return "persist";
+  }
+  if (
+    raw.includes("word生成失敗") ||
+    raw.includes("word_convert") ||
+    raw.includes("docx") ||
+    raw.includes("packer") ||
+    raw.includes("verify") ||
+    raw.includes("word_export")
+  ) {
+    return "word_convert";
   }
   if (raw.includes("download") || raw.includes("sha256") || raw.includes("integrity")) {
     return "download";
@@ -125,7 +148,49 @@ export function classifyDeliverableError(
   if (raw.includes("notification") || raw.includes("notify")) {
     return "notification";
   }
+  if (
+    raw.includes("cannot read properties of undefined") ||
+    raw.includes("reading 'trim'") ||
+    raw.includes("typeerror")
+  ) {
+    // Known export crash class — treat as Word generation until content is repaired.
+    return "word_convert";
+  }
   return "unknown";
+}
+
+export function toWordFailureCategory(
+  kind: DeliverableFailureKind,
+): WordFailureCategory {
+  switch (kind) {
+    case "ai_content":
+      return "ai_response";
+    case "word_convert":
+    case "download":
+    case "notification":
+    case "recovery_failed":
+      return "word_generation";
+    case "persist":
+      return "storage";
+    case "auth":
+    case "forbidden":
+      return "permission";
+    case "timeout":
+      return "timeout";
+    default:
+      return "unknown";
+  }
+}
+
+export function wordFailureTitle(reason: string | null | undefined): string {
+  const kind = classifyDeliverableError(reason);
+  return TITLES[toWordFailureCategory(kind)];
+}
+
+export function wordFailureUserMessage(
+  reason: string | null | undefined,
+): string {
+  return userMessageForFailure(classifyDeliverableError(reason));
 }
 
 /** Safe support payload — no tokens, cookies, or full document body. */

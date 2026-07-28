@@ -75,6 +75,35 @@ describe("resolveDeliverableDisplayState", () => {
     expect(state.kind).toBe("failed");
     if (state.kind === "failed") {
       expect(state.reason).toContain("外部API");
+      expect(state.title.length).toBeGreaterThan(0);
+      expect(state.message.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("maps Word storage failures to Storage保存失敗", () => {
+    const project = baseProject({
+      error: "storage_failed:supabase upsert error",
+      result: baseResult({
+        status: "failed",
+        error: "storage_failed:supabase upsert error",
+      }),
+    });
+    const state = resolveDeliverableDisplayState(project);
+    expect(state.kind).toBe("failed");
+    if (state.kind === "failed") {
+      expect(state.title).toBe("Storage保存失敗");
+    }
+  });
+
+  it("maps timeout reasons to Timeout", () => {
+    const project = baseProject({
+      error: "timeout while waiting for packer",
+      result: baseResult({ status: "failed", error: "timeout while waiting" }),
+    });
+    const state = resolveDeliverableDisplayState(project);
+    expect(state.kind).toBe("failed");
+    if (state.kind === "failed") {
+      expect(state.title).toBe("Timeout");
     }
   });
 

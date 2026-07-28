@@ -41,12 +41,16 @@ export function DeliverableStateNotice({
 
   const reason = state.kind === "failed" ? state.reason : null;
   const wordProgress = showWordProgress && state.kind === "generating";
+  const title =
+    state.kind === "failed" && state.title
+      ? state.title
+      : TITLES[state.kind];
 
   return (
     <Card variant="elevated" padding="lg">
       <EmptyState
         icon={ICONS[state.kind]}
-        title={TITLES[state.kind]}
+        title={title}
         description={state.message}
         action={
           <div className="flex flex-col items-center gap-3">

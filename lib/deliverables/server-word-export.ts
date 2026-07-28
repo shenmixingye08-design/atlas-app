@@ -1,6 +1,9 @@
 import "server-only";
 
-import { getDeliverableExportText } from "@/lib/orchestration/final-deliverable";
+import {
+  getDeliverableExportText,
+  resolveFinalOutputPreview,
+} from "@/lib/orchestration/final-deliverable";
 import { assertSafeExportText } from "@/lib/orchestration/normalize-deliverable-payload";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import {
@@ -12,6 +15,11 @@ import { persistNotificationsNow } from "@/lib/notifications/durable";
 import { assignmentRequestsWordFile } from "./detect-formats";
 import { generateDeliverables } from "./engine";
 import { logWordPipeline } from "./pipeline-log";
+import {
+  classifyDeliverableError,
+  wordFailureTitle,
+  wordFailureUserMessage,
+} from "./recovery-messages";
 import type { Deliverable, DeliverableFormat } from "./types";
 
 export { assignmentRequestsWordFile };
@@ -23,14 +31,54 @@ export type ServerWordExportResult =
       docx: Deliverable;
       files: Deliverable[];
       downloadUrl: string;
+      jobId: string;
     }
   | {
       attempted: true;
       ok: false;
       reason: string;
+      userMessage: string;
+      userTitle: string;
       files: Deliverable[];
+      jobId: string;
+      stack?: string | null;
     }
   | { attempted: false; ok: true; files: [] };
+
+function resolveExportSourceText(result: OrchestrationResult): {
+  text: string;
+  source: string;
+} {
+  try {
+    const rawExport = getDeliverableExportText(result.deliverable);
+    const fromDeliverable = (
+      typeof rawExport === "string" ? rawExport : ""
+    ).trim();
+    if (fromDeliverable) {
+      return { text: fromDeliverable, source: "deliverable_export" };
+    }
+  } catch (error) {
+    // Never let undefined-field crashes abort Word — fall through to preview.
+    console.error(
+      "[word_pipeline] getDeliverableExportText threw",
+      error instanceof Error ? error.message : error,
+      error instanceof Error ? error.stack : undefined,
+    );
+  }
+
+  const preview = resolveFinalOutputPreview(result);
+  if (preview.content.trim()) {
+    return { text: preview.content.trim(), source: preview.source };
+  }
+
+  const finalResponse =
+    typeof result.finalResponse === "string" ? result.finalResponse.trim() : "";
+  if (finalResponse) {
+    return { text: finalResponse, source: "finalResponse" };
+  }
+
+  return { text: "", source: "empty" };
+}
 
 /**
  * Server-side Word export after orchestration text is ready.
@@ -57,29 +105,33 @@ export async function exportWordDeliverableOnServer(input: {
   }
 
   const started = Date.now();
-  logWordPipeline({
-    stage: "WORD_EXPORT_STARTED",
-    jobId: input.jobId,
-    userId: input.userId,
-    requestId: input.requestId,
-  });
+  const jobId =
+    input.jobId ??
+    `word_${input.requestId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
 
-  const rawExport = getDeliverableExportText(input.result.deliverable);
-  const raw = (typeof rawExport === "string" ? rawExport : "").trim();
-  if (!raw) {
-    const reason = "word_export_empty_content";
+  const fail = async (
+    reason: string,
+    files: Deliverable[] = [],
+    stack?: string | null,
+  ): Promise<Extract<ServerWordExportResult, { ok: false }>> => {
+    const userTitle = wordFailureTitle(reason);
+    const userMessage = wordFailureUserMessage(reason);
+    const isTimeout = classifyDeliverableError(reason) === "timeout";
     logWordPipeline({
-      stage: "FAILED",
+      stage: isTimeout ? "TIMEOUT" : "FAILED",
       ok: false,
-      jobId: input.jobId,
+      jobId,
       userId: input.userId,
       requestId: input.requestId,
       error: reason,
+      stack: stack ?? null,
+      detail: userTitle,
+      durationMs: Date.now() - started,
     });
     if (input.notify !== false) {
       notifyWorkFailed(input.userId, {
-        title: "Wordファイルを作成できませんでした",
-        message: "文書本文が空のため、Wordファイルを保存できませんでした。",
+        title: userTitle,
+        message: `${userMessage}（jobId: ${jobId}）`,
         requestId: `${input.requestId}:word`,
         deliverableId: input.result.commanderRunId
           ? `commander-${input.result.commanderRunId}`
@@ -87,37 +139,39 @@ export async function exportWordDeliverableOnServer(input: {
       });
       await persistNotificationsNow(input.userId).catch(() => undefined);
     }
-    return { attempted: true, ok: false, reason, files: [] };
-  }
-
-  const guard = assertSafeExportText(raw);
-  if (!guard.ok) {
-    const reason = guard.rejectedReason;
-    logWordPipeline({
-      stage: "FAILED",
+    return {
+      attempted: true,
       ok: false,
-      jobId: input.jobId,
-      userId: input.userId,
-      requestId: input.requestId,
-      error: reason,
-    });
-    if (input.notify !== false) {
-      notifyWorkFailed(input.userId, {
-        title: "Wordファイルを作成できませんでした",
-        message: guard.safeMessage,
-        requestId: `${input.requestId}:word`,
-      });
-      await persistNotificationsNow(input.userId).catch(() => undefined);
-    }
-    return { attempted: true, ok: false, reason, files: [] };
-  }
-
-  const formats: DeliverableFormat[] =
-    input.formats && input.formats.length > 0
-      ? input.formats
-      : ["docx"];
+      reason,
+      userMessage,
+      userTitle,
+      files,
+      jobId,
+      stack: stack ?? null,
+    };
+  };
 
   try {
+    logWordPipeline({
+      stage: "WORD_EXPORT_STARTED",
+      jobId,
+      userId: input.userId,
+      requestId: input.requestId,
+    });
+
+    const { text: raw, source } = resolveExportSourceText(input.result);
+    if (!raw) {
+      return fail(`word_export_empty_content:source=${source}`);
+    }
+
+    const guard = assertSafeExportText(raw);
+    if (!guard.ok) {
+      return fail(guard.rejectedReason || "unsafe_export_text");
+    }
+
+    const formats: DeliverableFormat[] =
+      input.formats && input.formats.length > 0 ? input.formats : ["docx"];
+
     const generated = await generateDeliverables(
       {
         assignment: input.assignment,
@@ -128,9 +182,11 @@ export async function exportWordDeliverableOnServer(input: {
       input.requestOrigin ?? "https://atlasapp.jp",
       {
         userId: input.userId,
-        jobId: input.jobId ?? `word_${input.requestId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`,
+        jobId,
         // Notification is owned by this helper / commander — engine skips duplicate.
         suppressWordReadyNotification: true,
+        // Orchestration already produced approved text — do not re-fail on soft quality.
+        contentAlreadyApproved: true,
       },
     );
 
@@ -139,64 +195,17 @@ export async function exportWordDeliverableOnServer(input: {
       const reason =
         generated.failures.map((f) => f.reasons.join(",")).join(";") ||
         "docx_not_produced";
-      logWordPipeline({
-        stage: "FAILED",
-        ok: false,
-        jobId: input.jobId,
-        userId: input.userId,
-        requestId: input.requestId,
-        error: reason,
-        durationMs: Date.now() - started,
-      });
-      if (input.notify !== false) {
-        notifyWorkFailed(input.userId, {
-          title: "Wordファイルを作成できませんでした",
-          message:
-            "文書内容は作成できましたが、Wordファイルの保存に失敗しました。もう一度お試しください。",
-          requestId: `${input.requestId}:word`,
-        });
-        await persistNotificationsNow(input.userId).catch(() => undefined);
-      }
-      return {
-        attempted: true,
-        ok: false,
-        reason,
-        files: generated.deliverables,
-      };
+      return fail(reason, generated.deliverables);
     }
 
     // completed only when download URL exists and points at our API.
     if (!docx.downloadUrl?.includes(`/api/deliverables/${docx.id}`)) {
-      const reason = "docx_download_url_invalid";
-      logWordPipeline({
-        stage: "FAILED",
-        ok: false,
-        jobId: input.jobId,
-        userId: input.userId,
-        requestId: input.requestId,
-        deliverableId: docx.id,
-        error: reason,
-      });
-      if (input.notify !== false) {
-        notifyWorkFailed(input.userId, {
-          title: "Wordファイルを作成できませんでした",
-          message: "保存は完了しましたが、ダウンロード用のURLを確認できませんでした。",
-          requestId: `${input.requestId}:word`,
-          deliverableId: docx.id,
-        });
-        await persistNotificationsNow(input.userId).catch(() => undefined);
-      }
-      return {
-        attempted: true,
-        ok: false,
-        reason,
-        files: generated.deliverables,
-      };
+      return fail("docx_download_url_invalid", generated.deliverables);
     }
 
     logWordPipeline({
       stage: "DOCX_GENERATED",
-      jobId: input.jobId,
+      jobId,
       userId: input.userId,
       requestId: input.requestId,
       deliverableId: docx.id,
@@ -204,21 +213,21 @@ export async function exportWordDeliverableOnServer(input: {
     });
     logWordPipeline({
       stage: "STORAGE_SAVED",
-      jobId: input.jobId,
+      jobId,
       userId: input.userId,
       deliverableId: docx.id,
       requestId: input.requestId,
     });
     logWordPipeline({
       stage: "DB_METADATA_SAVED",
-      jobId: input.jobId,
+      jobId,
       userId: input.userId,
       deliverableId: docx.id,
       requestId: input.requestId,
     });
     logWordPipeline({
       stage: "STATUS_COMPLETED",
-      jobId: input.jobId,
+      jobId,
       userId: input.userId,
       deliverableId: docx.id,
       requestId: input.requestId,
@@ -236,14 +245,14 @@ export async function exportWordDeliverableOnServer(input: {
       await persistNotificationsNow(input.userId).catch(() => undefined);
       logWordPipeline({
         stage: "NOTIFICATION_CREATED",
-        jobId: input.jobId,
+        jobId,
         userId: input.userId,
         deliverableId: docx.id,
         requestId: input.requestId,
       });
       logWordPipeline({
         stage: "UNREAD_COUNT_READY",
-        jobId: input.jobId,
+        jobId,
         userId: input.userId,
         deliverableId: docx.id,
         requestId: input.requestId,
@@ -256,32 +265,17 @@ export async function exportWordDeliverableOnServer(input: {
       docx,
       files: generated.deliverables,
       downloadUrl: docx.downloadUrl,
+      jobId,
     };
   } catch (error) {
     const reason =
       error instanceof Error ? error.message : "word_export_exception";
-    const isTimeout = /timeout|ETIMEDOUT|aborted|maxDuration/i.test(reason);
-    logWordPipeline({
-      stage: isTimeout ? "TIMEOUT" : "FAILED",
-      ok: false,
-      jobId: input.jobId,
-      userId: input.userId,
-      requestId: input.requestId,
-      error: reason,
-      durationMs: Date.now() - started,
-    });
-    if (input.notify !== false) {
-      notifyWorkFailed(input.userId, {
-        title: isTimeout
-          ? "Word作成がタイムアウトしました"
-          : "Wordファイルを作成できませんでした",
-        message: isTimeout
-          ? "処理時間の上限に達しました。もう一度お試しください。"
-          : reason.slice(0, 200),
-        requestId: `${input.requestId}:word`,
-      });
-      await persistNotificationsNow(input.userId).catch(() => undefined);
-    }
-    return { attempted: true, ok: false, reason, files: [] };
+    const stack = error instanceof Error ? error.stack : null;
+    // Never swallow — log full Error.message + stack for Vercel.
+    console.error(
+      "[word_pipeline] exportWordDeliverableOnServer exception",
+      { jobId, reason, stack },
+    );
+    return fail(reason, [], stack);
   }
 }

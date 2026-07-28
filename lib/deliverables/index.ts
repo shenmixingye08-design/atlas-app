@@ -62,4 +62,7 @@ export {
   userMessageForFailure,
   recoveryActionsForFailure,
   classifyDeliverableError,
+  wordFailureTitle,
+  wordFailureUserMessage,
+  toWordFailureCategory,
 } from "./recovery-messages";

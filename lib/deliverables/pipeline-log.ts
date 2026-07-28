@@ -29,6 +29,8 @@ export type WordPipelineLogInput = {
   requestId?: string | null;
   ok?: boolean;
   error?: string | null;
+  /** Error.stack when available — logged truncated, never to end users. */
+  stack?: string | null;
   detail?: string | null;
   durationMs?: number | null;
 };
@@ -43,7 +45,8 @@ export function logWordPipeline(input: WordPipelineLogInput): void {
     userId: input.userId ? `${input.userId.slice(0, 8)}…` : null,
     deliverableId: input.deliverableId ?? null,
     requestId: input.requestId ?? null,
-    error: input.error ? input.error.slice(0, 300) : null,
+    error: input.error ? input.error.slice(0, 500) : null,
+    stack: input.stack ? input.stack.slice(0, 2000) : null,
     detail: input.detail ? input.detail.slice(0, 200) : null,
     durationMs: input.durationMs ?? null,
   };

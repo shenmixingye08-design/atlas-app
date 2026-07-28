@@ -95,6 +95,9 @@ export function stripCodeFence(text: string): string {
  * be adopted as user-visible prose (even if JSON.parse fails).
  */
 export function isJsonLikeForbiddenFallback(text: string): boolean {
+  // Production Word path must tolerate missing deliverable fields (undefined/null)
+  // after Clerk/JSON round-trips — never throw TypeError on .trim().
+  if (typeof text !== "string") return false;
   const trimmed = text.trim();
   if (!trimmed) return false;
 
@@ -115,6 +118,7 @@ export function isJsonLikeForbiddenFallback(text: string): boolean {
 
 /** Title values that must never render as a document heading. */
 export function isForbiddenTitle(title: string): boolean {
+  if (typeof title !== "string") return false;
   const trimmed = title.trim();
   if (!trimmed) return false;
   if (trimmed === "{" || trimmed === "}" || trimmed === "[" || trimmed === "]") {
@@ -753,6 +757,13 @@ export type ExportGuardResult =
 
 /** Guard Word/PDF/Markdown/Drive export text. */
 export function assertSafeExportText(text: string): ExportGuardResult {
+  if (typeof text !== "string") {
+    return {
+      ok: false,
+      safeMessage: SAFE_USER_MESSAGE,
+      rejectedReason: "empty_export",
+    };
+  }
   const trimmed = text.trim();
   if (!trimmed) {
     return {

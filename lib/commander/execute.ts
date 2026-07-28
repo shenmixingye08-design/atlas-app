@@ -639,6 +639,9 @@ async function executeStoredRun(input: {
   let wordDownloadUrl: string | null = null;
   let wordDeliverableId: string | null = null;
   let wordFailedReason: string | null = null;
+  let wordFailedUserTitle: string | null = null;
+  let wordFailedUserMessage: string | null = null;
+  let wordFailedJobId: string | null = null;
   if (finalStatus === "completed" && lastResult) {
     logWordPipeline({
       stage: "AI_ORCHESTRATION_COMPLETED",
@@ -668,13 +671,26 @@ async function executeStoredRun(input: {
       };
     } else if (wordExport.attempted && !wordExport.ok) {
       wordFailedReason = wordExport.reason;
+      wordFailedUserTitle = wordExport.userTitle;
+      wordFailedUserMessage = wordExport.userMessage;
+      wordFailedJobId = wordExport.jobId;
       finalStatus = "failed";
       lastResult = {
         ...lastResult,
         status: "failed",
-        error: wordExport.reason,
+        error: `${wordExport.userTitle}: ${wordExport.userMessage} [${wordExport.jobId}] ${wordExport.reason}`,
         commanderRunId: input.runId,
       };
+      if (wordExport.stack) {
+        console.error(
+          "[word_pipeline] commander word export failed",
+          JSON.stringify({
+            jobId: wordExport.jobId,
+            reason: wordExport.reason,
+            stack: wordExport.stack.slice(0, 2000),
+          }),
+        );
+      }
     }
   }
 
@@ -791,9 +807,8 @@ async function executeStoredRun(input: {
     ensureNotificationDelivery(
       () =>
         notifyWorkFailed(input.userId, {
-          title: "Wordファイルを作成できませんでした",
-          message:
-            "文書内容は作成できましたが、Wordファイルの保存に失敗しました。もう一度お試しください。",
+          title: wordFailedUserTitle ?? "Word生成失敗",
+          message: `${wordFailedUserMessage ?? "文書内容は作成できましたが、Wordファイルの作成に失敗しました。もう一度お試しください。"}${wordFailedJobId ? `（jobId: ${wordFailedJobId}）` : ""}`,
           actionUrl: resultDeepLink,
           relatedTaskId: resultProjectId,
           deliverableId: resultProjectId,
