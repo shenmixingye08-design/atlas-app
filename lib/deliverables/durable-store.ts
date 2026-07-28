@@ -14,7 +14,9 @@ import {
 import { consumeWordFault } from "./fault-inject";
 import {
   downloadDeliverableObject,
+  readDeliverableSidecarMeta,
   uploadDeliverableObject,
+  writeDeliverableSidecarMeta,
 } from "./object-storage";
 import { allowDeliverableDiskFallback, isDeliverableStorageRequired } from "./storage-backend";
 import type {
@@ -468,27 +470,80 @@ export async function persistDurableDeliverable(
     next.storageStatus === "legacy_base64" ||
     (allowDeliverableDiskFallback() && Boolean(buffer?.byteLength));
 
-  // Production: Storage object OR emergency base64 row + DB write.
+  // When Postgres table is missing (common before migration), keep Word durable
+  // via Storage binary + meta.json sidecar.
+  let sidecarOk = false;
+  const tableMissing =
+    Boolean(dbError) &&
+    /could not find the table|schema cache|does not exist|relation .* does not exist/i.test(
+      dbError ?? "",
+    );
+
+  if (
+    next.storageStatus === "stored" &&
+    next.storageBucket &&
+    next.storagePath &&
+    (tableMissing || !dbOk)
+  ) {
+    const sidecar = await writeDeliverableSidecarMeta({
+      id: next.id,
+      userId: next.userId,
+      fileName: next.fileName,
+      format: next.format,
+      mimeType: next.mimeType,
+      isPlaceholder: next.isPlaceholder,
+      sourceContent: next.sourceContent,
+      baseFileName: next.baseFileName,
+      sizeBytes: next.sizeBytes,
+      contentSha256: next.contentSha256,
+      storageBucket: next.storageBucket,
+      storagePath: next.storagePath,
+      storageStatus: "stored",
+      hasPkHeader: next.hasPkHeader,
+      ooxmlVerified: next.ooxmlVerified,
+      metadata: next.metadata,
+      generatedAt: next.generatedAt,
+      expiresAt: next.expiresAt,
+    });
+    sidecarOk = sidecar.ok;
+    if (!sidecar.ok) {
+      console.error(
+        "[atlas_deliverable_files] sidecar meta write failed",
+        sidecar.error,
+      );
+      if (!dbError) dbError = `sidecar_meta_failed:${sidecar.error}`;
+      else dbError = `${dbError}; sidecar_meta_failed:${sidecar.error}`;
+    } else {
+      console.warn(
+        "[atlas_deliverable_files] durable via Storage sidecar (DB unavailable)",
+        { id: next.id, tableMissing },
+      );
+    }
+  }
+
+  // Production: Storage object (+ DB or sidecar) OR emergency base64 row + DB.
   const durable = allowDeliverableDiskFallback()
     ? storageOk || Boolean(next.contentBase64) || Boolean(buffer?.byteLength)
-    : dbOk &&
-      (next.storageStatus === "stored" ||
-        (next.storageStatus === "legacy_base64" &&
-          Boolean(next.contentBase64)));
+    : (dbOk &&
+        (next.storageStatus === "stored" ||
+          (next.storageStatus === "legacy_base64" &&
+            Boolean(next.contentBase64)))) ||
+      (next.storageStatus === "stored" && sidecarOk);
 
   const resolvedError =
-    next.storageError ??
-    storageError ??
-    dbError ??
-    (!durable
-      ? `not_durable:status=${next.storageStatus};dbOk=${dbOk}`
-      : null);
+    durable
+      ? null
+      : next.storageError ??
+        storageError ??
+        dbError ??
+        `not_durable:status=${next.storageStatus};dbOk=${dbOk};sidecarOk=${sidecarOk}`;
 
   if (!durable) {
     console.error("[atlas_deliverable_files] persist not durable", {
       id: next.id,
       storageStatus: next.storageStatus,
       dbOk,
+      sidecarOk,
       storageError: next.storageError ?? storageError,
       dbError,
       hasBase64: Boolean(next.contentBase64),
@@ -507,6 +562,7 @@ export async function persistDurableDeliverable(
 
 export async function loadDurableDeliverable(
   id: string,
+  userId?: string | null,
 ): Promise<DurableDeliverableRow | null> {
   const mem = getDurableMemory().get(id);
   if (mem) {
@@ -525,91 +581,128 @@ export async function loadDurableDeliverable(
 
   try {
     const client = createServiceRoleClientIfConfigured();
-    if (!client) return null;
-    const { data, error } = await client
-      .from("atlas_deliverable_files")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
-    if (error) {
-      console.error("[atlas_deliverable_files] select failed", error.message);
-      return null;
-    }
-    if (!data) return null;
+    if (client) {
+      const { data, error } = await client
+        .from("atlas_deliverable_files")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+      if (error) {
+        console.error("[atlas_deliverable_files] select failed", error.message);
+        // Fall through to Storage sidecar when the table is missing.
+      } else if (data) {
+        const row = data as {
+          id: string;
+          user_id: string;
+          file_name: string;
+          format: string;
+          mime_type: string;
+          is_placeholder: boolean;
+          source_content: string;
+          base_file_name: string;
+          size_bytes: number | null;
+          content_base64: string | null;
+          content_sha256?: string | null;
+          storage_bucket?: string | null;
+          storage_path?: string | null;
+          storage_status?: string | null;
+          storage_error?: string | null;
+          has_pk_header?: boolean | null;
+          ooxml_verified?: boolean | null;
+          download_count?: number | null;
+          last_downloaded_at?: string | null;
+          deletion_reason?: string | null;
+          deleted_at?: string | null;
+          deliverable_metadata?: DeliverableMetadata | null;
+          generated_at: string;
+          expires_at: string;
+        };
 
-    const row = data as {
-      id: string;
-      user_id: string;
-      file_name: string;
-      format: string;
-      mime_type: string;
-      is_placeholder: boolean;
-      source_content: string;
-      base_file_name: string;
-      size_bytes: number | null;
-      content_base64: string | null;
-      content_sha256?: string | null;
-      storage_bucket?: string | null;
-      storage_path?: string | null;
-      storage_status?: string | null;
-      storage_error?: string | null;
-      has_pk_header?: boolean | null;
-      ooxml_verified?: boolean | null;
-      download_count?: number | null;
-      last_downloaded_at?: string | null;
-      deletion_reason?: string | null;
-      deleted_at?: string | null;
-      deliverable_metadata?: DeliverableMetadata | null;
-      generated_at: string;
-      expires_at: string;
-    };
+        if (row.deleted_at) {
+          return null;
+        }
 
-    if (row.deleted_at) {
-      return null;
-    }
+        const expired = new Date(row.expires_at).getTime() < Date.now();
+        // Expired WITHOUT source → gone. Expired WITH source → regeneratable.
+        if (expired && !row.source_content?.trim()) {
+          void client.from("atlas_deliverable_files").delete().eq("id", id);
+          return null;
+        }
 
-    const expired = new Date(row.expires_at).getTime() < Date.now();
-    // Expired WITHOUT source → gone. Expired WITH source → regeneratable.
-    if (expired && !row.source_content?.trim()) {
-      void client.from("atlas_deliverable_files").delete().eq("id", id);
-      return null;
+        const mapped: DurableDeliverableRow = {
+          id: row.id,
+          userId: row.user_id,
+          fileName: row.file_name,
+          format: row.format as DeliverableFormat,
+          mimeType: row.mime_type,
+          isPlaceholder: row.is_placeholder,
+          sourceContent: row.source_content,
+          baseFileName: row.base_file_name,
+          sizeBytes: row.size_bytes,
+          contentBase64: row.content_base64,
+          contentSha256: row.content_sha256 ?? null,
+          storageBucket: row.storage_bucket ?? null,
+          storagePath: row.storage_path ?? null,
+          storageStatus:
+            (row.storage_status as DeliverableStorageStatus) ?? "pending",
+          storageError: row.storage_error ?? null,
+          hasPkHeader: row.has_pk_header ?? null,
+          ooxmlVerified: row.ooxml_verified ?? null,
+          downloadCount: row.download_count ?? 0,
+          lastDownloadedAt: row.last_downloaded_at ?? null,
+          deletionReason:
+            (row.deletion_reason as DeliverableDeletionReason) ?? null,
+          deletedAt: row.deleted_at ?? null,
+          metadata: row.deliverable_metadata ?? null,
+          generatedAt: row.generated_at,
+          expiresAt: row.expires_at,
+        };
+        getDurableMemory().set(mapped.id, mapped);
+        return mapped;
+      }
     }
-
-    const mapped: DurableDeliverableRow = {
-      id: row.id,
-      userId: row.user_id,
-      fileName: row.file_name,
-      format: row.format as DeliverableFormat,
-      mimeType: row.mime_type,
-      isPlaceholder: row.is_placeholder,
-      sourceContent: row.source_content,
-      baseFileName: row.base_file_name,
-      sizeBytes: row.size_bytes,
-      contentBase64: row.content_base64,
-      contentSha256: row.content_sha256 ?? null,
-      storageBucket: row.storage_bucket ?? null,
-      storagePath: row.storage_path ?? null,
-      storageStatus: (row.storage_status as DeliverableStorageStatus) ?? "pending",
-      storageError: row.storage_error ?? null,
-      hasPkHeader: row.has_pk_header ?? null,
-      ooxmlVerified: row.ooxml_verified ?? null,
-      downloadCount: row.download_count ?? 0,
-      lastDownloadedAt: row.last_downloaded_at ?? null,
-      deletionReason: (row.deletion_reason as DeliverableDeletionReason) ?? null,
-      deletedAt: row.deleted_at ?? null,
-      metadata: row.deliverable_metadata ?? null,
-      generatedAt: row.generated_at,
-      expiresAt: row.expires_at,
-    };
-    getDurableMemory().set(mapped.id, mapped);
-    if (allowDeliverableDiskFallback()) {
-      persistToDisk(mapped);
-    }
-    return mapped;
   } catch (error) {
-    console.error("[atlas_deliverable_files] select error", error);
-    return null;
+    console.error("[atlas_deliverable_files] select exception", error);
   }
+
+  if (userId) {
+    const sidecar = await readDeliverableSidecarMeta({
+      userId,
+      deliverableId: id,
+    });
+    if (sidecar) {
+      const mapped: DurableDeliverableRow = {
+        id: sidecar.id,
+        userId: sidecar.userId,
+        fileName: sidecar.fileName,
+        format: sidecar.format,
+        mimeType: sidecar.mimeType,
+        isPlaceholder: sidecar.isPlaceholder,
+        sourceContent: sidecar.sourceContent,
+        baseFileName: sidecar.baseFileName,
+        sizeBytes: sidecar.sizeBytes,
+        contentBase64: null,
+        contentSha256: sidecar.contentSha256,
+        storageBucket: sidecar.storageBucket,
+        storagePath: sidecar.storagePath,
+        storageStatus: "stored",
+        storageError: null,
+        hasPkHeader: sidecar.hasPkHeader,
+        ooxmlVerified: sidecar.ooxmlVerified,
+        downloadCount: 0,
+        lastDownloadedAt: null,
+        deletionReason: null,
+        deletedAt: null,
+        metadata: (sidecar.metadata as DeliverableMetadata | null) ?? null,
+        generatedAt: sidecar.generatedAt,
+        expiresAt: sidecar.expiresAt,
+      };
+      getDurableMemory().set(mapped.id, mapped);
+      return mapped;
+    }
+  }
+
+  return null;
 }
 
 export async function updateDurableDeliverableMetadata(input: {

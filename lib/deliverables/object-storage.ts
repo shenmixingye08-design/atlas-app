@@ -50,6 +50,84 @@ export function buildDeliverableObjectPath(input: {
   ].join("/");
 }
 
+/** Stable metadata sidecar when Postgres deliverable table is unavailable. */
+export function buildDeliverableMetaPath(input: {
+  userId: string;
+  deliverableId: string;
+}): string {
+  return [
+    sanitizeSegment(input.userId),
+    sanitizeSegment(input.deliverableId),
+    "meta.json",
+  ].join("/");
+}
+
+export type DeliverableSidecarMeta = {
+  id: string;
+  userId: string;
+  fileName: string;
+  format: DeliverableFormat;
+  mimeType: string;
+  isPlaceholder: boolean;
+  sourceContent: string;
+  baseFileName: string;
+  sizeBytes: number | null;
+  contentSha256: string | null;
+  storageBucket: string;
+  storagePath: string;
+  storageStatus: "stored";
+  hasPkHeader: boolean | null;
+  ooxmlVerified: boolean | null;
+  metadata: unknown;
+  generatedAt: string;
+  expiresAt: string;
+};
+
+export async function writeDeliverableSidecarMeta(
+  meta: DeliverableSidecarMeta,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const client = createServiceRoleClientIfConfigured();
+  if (!client) return { ok: false, error: "supabase_not_configured" };
+
+  const path = buildDeliverableMetaPath({
+    userId: meta.userId,
+    deliverableId: meta.id,
+  });
+  const body = Buffer.from(JSON.stringify(meta), "utf8");
+  const { error } = await client.storage
+    .from(ATLAS_DELIVERABLE_FILES_BUCKET)
+    .upload(path, body, {
+      contentType: "application/json",
+      upsert: true,
+    });
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+export async function readDeliverableSidecarMeta(input: {
+  userId: string;
+  deliverableId: string;
+}): Promise<DeliverableSidecarMeta | null> {
+  const client = createServiceRoleClientIfConfigured();
+  if (!client) return null;
+  const path = buildDeliverableMetaPath(input);
+  const { data, error } = await client.storage
+    .from(ATLAS_DELIVERABLE_FILES_BUCKET)
+    .download(path);
+  if (error || !data) return null;
+  try {
+    const text = await data.text();
+    const parsed = JSON.parse(text) as DeliverableSidecarMeta;
+    if (!parsed?.id || parsed.id !== input.deliverableId) return null;
+    if (parsed.userId !== input.userId) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 async function ensureDeliverableBucket(): Promise<{
   ok: boolean;
   error?: string;

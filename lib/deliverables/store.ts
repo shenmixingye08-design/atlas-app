@@ -272,8 +272,11 @@ async function regenerateFromSource(
   }
 }
 
-async function hydrateFromDurable(id: string): Promise<StoredDeliverable | null> {
-  const durable = await loadDurableDeliverable(id);
+async function hydrateFromDurable(
+  id: string,
+  userId?: string | null,
+): Promise<StoredDeliverable | null> {
+  const durable = await loadDurableDeliverable(id, userId);
   if (!durable) return null;
 
   // 1) Supabase Storage / legacy base64
@@ -345,7 +348,7 @@ export async function getStoredDeliverableForUser(
     }
   }
 
-  const hydrated = await hydrateFromDurable(id);
+  const hydrated = await hydrateFromDurable(id, userId);
   if (hydrated) {
     if (hydrated.userId !== userId) return null;
     if (integrityOk(hydrated, hydrated.contentSha256)) {
