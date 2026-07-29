@@ -3,7 +3,10 @@ import "server-only";
 import { checkAtlasOwner } from "@/lib/auth/require-atlas-owner";
 import { getClerkUserPrimaryEmail } from "@/lib/auth/get-clerk-user-email";
 import { probeDeliverableStorage } from "@/lib/deliverables/object-storage";
-import { getWordMetricsSnapshot } from "@/lib/deliverables/word-metrics";
+import {
+  getWordMetricsSnapshot,
+  getWordReleaseMonitoringSnapshot,
+} from "@/lib/deliverables/word-metrics";
 import { evaluateWordAlerts } from "@/lib/deliverables/word-alerts";
 import { getWordCostSnapshot } from "@/lib/deliverables/word-cost";
 import { summarizeWordAnalytics } from "@/lib/deliverables/word-analytics";
@@ -28,6 +31,8 @@ export async function buildWordDiagnosticsOverview(input: {
   userEmailHost: string | null;
   storage: Awaited<ReturnType<typeof probeDeliverableStorage>>;
   metrics: ReturnType<typeof getWordMetricsSnapshot>;
+  /** Counters-only release monitoring (no assignment / body text). */
+  releaseMonitoring: ReturnType<typeof getWordReleaseMonitoringSnapshot>;
   alerts: Awaited<ReturnType<typeof evaluateWordAlerts>>;
   cost: ReturnType<typeof getWordCostSnapshot>;
   wordQuality: ReturnType<typeof summarizeWordAnalytics>;
@@ -53,6 +58,7 @@ export async function buildWordDiagnosticsOverview(input: {
         severity: "critical",
       },
       metrics: getWordMetricsSnapshot(),
+      releaseMonitoring: getWordReleaseMonitoringSnapshot(),
       alerts: [],
       cost: getWordCostSnapshot(),
       wordQuality: summarizeWordAnalytics(),
@@ -64,6 +70,7 @@ export async function buildWordDiagnosticsOverview(input: {
 
   const storage = await probeDeliverableStorage();
   const metrics = getWordMetricsSnapshot();
+  const releaseMonitoring = getWordReleaseMonitoringSnapshot();
   const alerts = await evaluateWordAlerts();
   const cost = getWordCostSnapshot();
   const wordQuality = summarizeWordAnalytics();
@@ -143,6 +150,7 @@ export async function buildWordDiagnosticsOverview(input: {
     userEmailHost,
     storage,
     metrics,
+    releaseMonitoring,
     alerts,
     cost,
     wordQuality,

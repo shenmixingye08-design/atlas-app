@@ -7,9 +7,18 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "lint:gate": "eslint lib/deliverables lib/notifications lib/work-jobs lib/quality app/api/work app/api/deliverables app/api/notifications --max-warnings 0",
     "typecheck": "tsc --noEmit",
+    "typecheck:gate": "tsc --noEmit -p tsconfig.release-gate.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:unit": "vitest run",
+    "test:unit:gate": "vitest run lib/deliverables/word-metrics.test.ts lib/deliverables/word-job-ui-state.test.ts lib/deliverables/docx-binary-integrity.test.ts lib/deliverables/download-route.test.ts lib/deliverables/download-client.test.ts lib/deliverables/content-quality.test.ts lib/deliverables/word-pipeline-smoke.test.ts lib/work-jobs/job-status.test.ts lib/work-jobs/run.idempotency.test.ts lib/notifications/work-lifecycle.test.ts lib/notifications/result-resolution.test.ts lib/notifications/result-messages.test.ts",
+    "test:integration": "vitest run lib/deliverables/word-completion.integration.test.ts lib/quality/word-notification-regression.test.ts",
+    "test:word-e2e": "vitest run lib/deliverables/word-stage3.e2e.test.ts lib/deliverables/word-e2e-pipeline.test.ts lib/quality/word-notification-regression.test.ts",
+    "test:notification-e2e": "vitest run lib/notifications/work-lifecycle.test.ts lib/quality/word-notification-regression.test.ts",
+    "release-gate": "node scripts/release-gate.mjs",
+    "release-gate:ci": "node scripts/release-gate.mjs",
     "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts"
   },
   "dependencies": {

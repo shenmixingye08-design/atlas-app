@@ -62,6 +62,11 @@ function getBucket(): Bucket {
   return g.__atlasWorkJobs;
 }
 
+/** Test-only — clear in-memory work jobs between cases. */
+export function resetWorkJobsForTests(): void {
+  getBucket().clear();
+}
+
 /**
  * Normalize legacy records (running / awaiting_confirmation / missing fields)
  * into the canonical shape. Safe for disk + durable domain payloads.

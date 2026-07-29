@@ -144,6 +144,10 @@ async function emitWordTerminalNotification(input: {
       "[word_pipeline] notification_emit_failed",
       error instanceof Error ? error.message : error,
     );
+    recordWordMetric("notify_failure", 1, {
+      stage: "notify",
+      message: "notification_emit_failed",
+    });
     logWordPipeline({
       stage: "FAILED",
       ok: false,
@@ -419,6 +423,14 @@ export async function generateDeliverables(
   const jobId =
     options.jobId?.trim() ||
     `dlvjob_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
+
+  const detectionPreview = detectDeliverableFormats(input.assignment);
+  const wantsWord =
+    Boolean(input.formats?.includes("docx")) ||
+    detectionPreview.formats.includes("docx");
+  if (wantsWord) {
+    recordWordMetric("request", 1, { stage: "request", message: "word_request" });
+  }
 
   const earlyFail = async (
     reasons: string[],

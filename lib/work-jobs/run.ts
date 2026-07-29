@@ -10,6 +10,7 @@ import {
   notifyWorkTimedOut,
   workJobNotificationRequestId,
 } from "@/lib/notifications/work-lifecycle";
+import { recordWordMetric } from "@/lib/deliverables/word-metrics";
 import { recordReliabilityEvent, withRetry } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 
@@ -441,6 +442,10 @@ export async function executeWorkJob(
         ? applied.job
         : (getWorkJob(jobId, userId) ?? existing);
     if (isTimeout) {
+      recordWordMetric("timeout", 1, {
+        stage: "timeout",
+        message: "work_job_timed_out",
+      });
       notifyWorkTimedOut({
         userId,
         jobId,
