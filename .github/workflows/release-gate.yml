@@ -1,0 +1,68 @@
+name: Release Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-gate:
+    name: Word / Notifications quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      ATLAS_DELIVERABLE_STORAGE: local
+      # Build placeholders only — not production secrets
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuZXhhbXBsZS5jb20k
+      CLERK_SECRET_KEY: sk_test_dummysecretdummysecretdummysecret
+      ATLAS_OWNER_EMAILS: release-gate@example.com
+      ATLAS_OPERATOR_BUSINESS_NAME: MINERVOT Gate
+      ATLAS_OPERATOR_REPRESENTATIVE_NAME: Gate Runner
+      ATLAS_OPERATOR_ADDRESS: CI
+      ATLAS_OPERATOR_CONTACT_EMAIL: release-gate@example.com
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck (release gate / exclude tests)
+        run: npm run typecheck:gate
+
+      - name: Lint (Word / notifications surface)
+        run: npm run lint:gate
+
+      - name: Unit tests (Word / notifications gate)
+        run: npm run test:unit:gate
+
+      - name: Integration tests
+        run: npm run test:integration
+
+      - name: Word E2E (mocked externals)
+        run: npm run test:word-e2e
+
+      - name: Notification E2E
+        run: npm run test:notification-e2e
+
+      - name: Build
+        run: npm run build
+
+      - name: Mark gate result
+        if: success()
+        run: |
+          echo "production_ready=true" >> "$GITHUB_STEP_SUMMARY"
+          echo "Release gate passed — safe to treat as production-ready (after manual Vercel promote if auto-deploy cannot be blocked)."

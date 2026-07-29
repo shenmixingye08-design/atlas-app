@@ -665,8 +665,15 @@ export function FinalOutput({
         )}
 
         {docxFile ? (
-          <div className="mt-6 space-y-3">
-            <details className="group rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--background-muted)]/40 px-4 py-2">
+          <div
+            id="word-preview"
+            tabIndex={-1}
+            className="mt-6 space-y-3 scroll-mt-24 outline-none"
+          >
+            <details
+              open
+              className="group rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--background-muted)]/40 px-4 py-2"
+            >
               <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-semibold text-foreground focus-ring">
                 <span className="text-xs transition-transform group-open:rotate-90" aria-hidden="true">
                   ▸
