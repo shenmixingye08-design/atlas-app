@@ -1,8 +1,5 @@
 import "server-only";
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
-
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
 import {
@@ -64,36 +61,6 @@ export type DurableDeliverableRow = {
 
 type MemoryDurableBucket = Map<string, DurableDeliverableRow>;
 
-type DurableMeta = {
-  id: string;
-  userId: string;
-  fileName: string;
-  format: DeliverableFormat;
-  mimeType: string;
-  generatedAt: string;
-  sizeBytes: number;
-  isPlaceholder: boolean;
-  sourceContent: string;
-  baseFileName: string;
-  contentSha256: string | null;
-  downloadedAt: string | null;
-  downloadCount: number;
-  metadata: DeliverableMetadata | null;
-};
-
-const ROOT = join(process.cwd(), ".data", "deliverables");
-
-function userDir(userId: string): string {
-  return join(ROOT, userId.replace(/[^a-zA-Z0-9_-]/g, "_"));
-}
-
-function metaPath(userId: string, id: string): string {
-  return join(userDir(userId), `${id}.json`);
-}
-
-function binPath(userId: string, id: string): string {
-  return join(userDir(userId), `${id}.bin`);
-}
 
 /** Test / no-Supabase fallback that still survives a cleared binary memory cache. */
 function getDurableMemory(): MemoryDurableBucket {
@@ -113,118 +80,17 @@ export function resetDurableDeliverableStoreForTests(): void {
   scope.__atlasDeliverableDurable = new Map();
 }
 
-function persistToDisk(row: DurableDeliverableRow, buffer?: Buffer): void {
-  if (!allowDeliverableDiskFallback()) {
-    // Production / Vercel: never write under process.cwd()/.data (→ /var/task).
-    return;
-  }
-  try {
-    const dir = userDir(row.userId);
-    mkdirSync(dir, { recursive: true });
-    const meta: DurableMeta = {
-      id: row.id,
-      userId: row.userId,
-      fileName: row.fileName,
-      format: row.format,
-      mimeType: row.mimeType,
-      generatedAt: row.generatedAt,
-      sizeBytes: row.sizeBytes ?? 0,
-      isPlaceholder: row.isPlaceholder,
-      sourceContent: row.sourceContent,
-      baseFileName: row.baseFileName,
-      contentSha256: row.contentSha256,
-      downloadedAt: row.lastDownloadedAt,
-      downloadCount: row.downloadCount,
-      metadata: row.metadata,
-    };
-    writeFileSync(metaPath(row.userId, row.id), JSON.stringify(meta));
-    if (buffer && buffer.byteLength > 0) {
-      writeFileSync(binPath(row.userId, row.id), buffer);
-    } else if (row.contentBase64) {
-      writeFileSync(
-        binPath(row.userId, row.id),
-        Buffer.from(row.contentBase64, "base64"),
-      );
-    }
-  } catch (error) {
-    console.warn("[deliverables] disk persist failed", error);
-  }
-}
-
 export function loadDeliverableFromDisk(
-  id: string,
-  userId: string,
+  _id: string,
+  _userId: string,
 ): DiskStoredDeliverable | null {
-  if (!allowDeliverableDiskFallback()) {
-    // Production: disk is not authoritative. Still allow same-instance read
-    // as a last-resort cache only when the file exists — callers decide order.
-  }
-  try {
-    const metaFile = metaPath(userId, id);
-    const dataFile = binPath(userId, id);
-    if (!existsSync(metaFile)) return null;
-    const meta = JSON.parse(readFileSync(metaFile, "utf8")) as DurableMeta;
-    if (meta.userId !== userId) return null;
-    let buffer = Buffer.alloc(0);
-    if (existsSync(dataFile)) {
-      buffer = readFileSync(dataFile);
-    }
-    return {
-      id: meta.id,
-      userId: meta.userId,
-      fileName: meta.fileName,
-      format: meta.format,
-      mimeType: meta.mimeType,
-      generatedAt: meta.generatedAt,
-      isPlaceholder: meta.isPlaceholder,
-      buffer,
-      sourceContent: meta.sourceContent ?? "",
-      baseFileName: meta.baseFileName ?? meta.fileName,
-      contentSha256: meta.contentSha256 ?? null,
-      metadata: meta.metadata ?? null,
-    };
-  } catch {
-    return null;
-  }
+  // Disk under process.cwd()/.data removed — Supabase Storage/DB only.
+  return null;
 }
 
-/** @deprecated Prefer persistDurableDeliverable — kept for local disk sync. */
-export function persistDeliverableToDisk(stored: DiskStoredDeliverable): void {
-  const expiresAt = new Date(
-    new Date(stored.generatedAt).getTime() + DELIVERABLE_METADATA_TTL_MS,
-  ).toISOString();
-  persistToDisk(
-    {
-      id: stored.id,
-      userId: stored.userId,
-      fileName: stored.fileName,
-      format: stored.format,
-      mimeType: stored.mimeType,
-      isPlaceholder: stored.isPlaceholder,
-      sourceContent: stored.sourceContent ?? "",
-      baseFileName: stored.baseFileName ?? stored.fileName,
-      sizeBytes: stored.buffer.byteLength,
-      contentBase64:
-        stored.buffer.byteLength > 0
-          ? stored.buffer.toString("base64")
-          : null,
-      contentSha256: stored.contentSha256 ?? null,
-      storageBucket: null,
-      storagePath: null,
-      storageStatus: "pending",
-      storageError: null,
-      hasPkHeader: null,
-      ooxmlVerified: null,
-      downloadCount: 0,
-      lastDownloadedAt: null,
-      deletionReason: null,
-      deletedAt: null,
-      metadata: stored.metadata ?? null,
-      generatedAt: stored.generatedAt,
-      expiresAt,
-    },
-    stored.buffer,
-  );
+/** @deprecated No-op — disk persistence removed. */
+export function persistDeliverableToDisk(_stored: DiskStoredDeliverable): void {
+  return;
 }
 
 export function markDeliverableDownloaded(id: string, userId: string): boolean {
@@ -235,15 +101,9 @@ export function markDeliverableDownloaded(id: string, userId: string): boolean {
       mem.lastDownloadedAt = new Date().toISOString();
       getDurableMemory().set(id, mem);
       void updateDownloadStatsRemote(mem);
+      return true;
     }
-
-    const metaFile = metaPath(userId, id);
-    if (!existsSync(metaFile)) return Boolean(mem);
-    const meta = JSON.parse(readFileSync(metaFile, "utf8")) as DurableMeta;
-    meta.downloadedAt = new Date().toISOString();
-    meta.downloadCount = (meta.downloadCount ?? 0) + 1;
-    writeFileSync(metaFile, JSON.stringify(meta));
-    return true;
+    return false;
   } catch {
     return false;
   }
@@ -346,7 +206,6 @@ export async function persistDurableDeliverable(
   }
 
   getDurableMemory().set(next.id, next);
-  persistToDisk(next, buffer);
 
   if (consumeWordFault("db_upsert")) {
     return {
@@ -717,7 +576,6 @@ export async function updateDurableDeliverableMetadata(input: {
       metadata: input.metadata,
     };
     getDurableMemory().set(input.id, updated);
-    persistToDisk(updated);
   }
 
   try {

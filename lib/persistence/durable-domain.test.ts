@@ -32,6 +32,7 @@ describe("durable-domain", () => {
     loadSb.mockClear();
     clearClerk.mockClear();
     persistClerk.mockResolvedValue(true);
+    clearClerk.mockResolvedValue(true);
     upsertSb.mockResolvedValue(false);
     loadClerk.mockResolvedValue(null);
     loadSb.mockResolvedValue(null);
@@ -50,7 +51,7 @@ describe("durable-domain", () => {
     expect(upsertSb).not.toHaveBeenCalled();
   });
 
-  it("forceSupabase writes full payload to Supabase and pointer-only to Clerk once", async () => {
+  it("forceSupabase writes only to Supabase and clears heavy Clerk keys (no payload rewrite)", async () => {
     upsertSb.mockResolvedValue(true);
     const jobs = { jobs: [{ id: "j1", blob: "x".repeat(1000) }] };
     const first = await persistDurableDomain("user_1", "atlasWorkJobs", jobs, {
@@ -63,20 +64,13 @@ describe("durable-domain", () => {
     });
     expect(first).toBe("supabase");
     expect(second).toBe("supabase");
-    expect(upsertSb).toHaveBeenCalledTimes(2);
-    // Pointer cached — Clerk written once.
-    expect(persistClerk).toHaveBeenCalledTimes(1);
-    const clerkValue = persistClerk.mock.calls[0]?.[2] as {
-      storedInSupabase?: boolean;
-      payload?: unknown;
-      id?: string;
-    };
-    expect(clerkValue.storedInSupabase).toBe(true);
-    expect(clerkValue.payload).toBeNull();
-    expect(clerkValue.id).toBe("atlasWorkJobs");
+    expect(upsertSb).toHaveBeenCalled();
+    // No routine pointer/payload writes for supabase-only domains.
+    expect(persistClerk).not.toHaveBeenCalled();
+    expect(clearClerk).toHaveBeenCalled();
   });
 
-  it("overflows oversized non-forced domains to Supabase with Clerk pointer", async () => {
+  it("overflows oversized non-forced domains to Supabase without Clerk payload", async () => {
     upsertSb.mockResolvedValue(true);
     const huge = { blob: "x".repeat(CLERK_DOMAIN_SAFE_BYTES + 100) };
     const result = await persistDurableDomain("user_1", "atlasTest", huge, {
@@ -84,10 +78,7 @@ describe("durable-domain", () => {
     });
     expect(result).toBe("supabase");
     expect(upsertSb).toHaveBeenCalled();
-    const clerkValue = persistClerk.mock.calls[0]?.[2] as {
-      payload?: unknown;
-    };
-    expect(clerkValue.payload).toBeNull();
+    expect(persistClerk).not.toHaveBeenCalled();
   });
 
   it("does not pretend success with clerk_compact in production when Supabase fails", async () => {

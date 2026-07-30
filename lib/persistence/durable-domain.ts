@@ -5,7 +5,6 @@ import { isAtlasProduction } from "@/lib/runtime/is-production";
 import {
   clearClerkPrivateMetadataKeys,
   loadClerkPrivateMetadataKey,
-  persistClerkPrivateMetadataKey,
 } from "./clerk-private-metadata";
 import { warnIfProductionSupabaseServiceRoleMissing } from "./production-guard";
 import {
@@ -14,8 +13,9 @@ import {
 } from "./supabase-user-state";
 
 /**
- * Domains that must never store payloads in Clerk private_metadata.
- * Durable source of truth is Supabase `atlas_user_state`.
+ * Domains that MUST never write payloads (or routine pointers) to Clerk.
+ * Source of truth: Supabase `atlas_user_state` only.
+ * Old Clerk keys are cleared once (null) to shrink private_metadata under 8KB.
  */
 export const SUPABASE_ONLY_DOMAIN_KEYS = [
   "atlasWorkJobs",
@@ -36,7 +36,7 @@ export const SUPABASE_ONLY_DOMAIN_KEYS = [
 
 export type SupabaseOnlyDomainKey = (typeof SUPABASE_ONLY_DOMAIN_KEYS)[number];
 
-/** @deprecated Kept for tests — payloads no longer go to Clerk for large domains. */
+/** @deprecated Large domains never use Clerk byte budgets. */
 export const CLERK_DOMAIN_SAFE_BYTES = 5500;
 
 export type DurableDomainEnvelope<T> = {
@@ -44,19 +44,14 @@ export type DurableDomainEnvelope<T> = {
   updatedAt: string;
   storedInSupabase?: boolean;
   truncated?: boolean;
-  /** Always null/omitted for supabase-only Clerk pointers. */
   payload?: T | null;
-  /** Optional domain id for pointer debugging (never a payload). */
   id?: string | null;
 };
 
 export type PersistDurableDomainOptions<T> = {
   compact: (payload: T) => T;
   forceSupabase?: boolean;
-  /**
-   * When true (default for supabase-only), skip Clerk entirely if a pointer
-   * was already ensured in this process — prevents 429 on repeated job saves.
-   */
+  /** Ignored — supabase-only domains never write Clerk on persist. */
   skipClerkIfPointerCached?: boolean;
 };
 
@@ -68,183 +63,57 @@ function isSupabaseOnlyDomain(domainKey: string): boolean {
   return (SUPABASE_ONLY_DOMAIN_KEYS as readonly string[]).includes(domainKey);
 }
 
-/** Minimal Clerk pointer — never embeds job/history/deliverable JSON. */
-function clerkSupabasePointer(
-  updatedAt: string,
-  domainKey: string,
-): DurableDomainEnvelope<null> {
-  return {
-    version: 1,
-    updatedAt,
-    storedInSupabase: true,
-    id: domainKey,
-    payload: null,
-  };
-}
-
-function pointerCacheKey(userId: string, domainKey: string): string {
-  return `${userId}::${domainKey}`;
-}
-
-function getPointerCache(): Set<string> {
+function clearedUsersCache(): Set<string> {
   const g = globalThis as typeof globalThis & {
-    __atlasClerkPointerCache?: Set<string>;
+    __atlasClerkHeavyKeysCleared?: Set<string>;
   };
-  if (!g.__atlasClerkPointerCache) g.__atlasClerkPointerCache = new Set();
-  return g.__atlasClerkPointerCache;
+  if (!g.__atlasClerkHeavyKeysCleared) {
+    g.__atlasClerkHeavyKeysCleared = new Set();
+  }
+  return g.__atlasClerkHeavyKeysCleared;
 }
 
 /** Test helper. */
 export function resetClerkPointerCacheForTests(): void {
-  getPointerCache().clear();
-}
-
-async function ensureClerkPointerOnce(
-  userId: string,
-  domainKey: string,
-  updatedAt: string,
-): Promise<void> {
-  const cache = getPointerCache();
-  const key = pointerCacheKey(userId, domainKey);
-  if (cache.has(key)) return;
-
-  const ok = await persistClerkPrivateMetadataKey(
-    userId,
-    domainKey,
-    clerkSupabasePointer(updatedAt, domainKey),
-  );
-  if (ok) {
-    cache.add(key);
-    return;
-  }
-
-  // One prune + one retry — never loop.
-  await pruneOversizedClerkDurableDomains(userId);
-  const retryOk = await persistClerkPrivateMetadataKey(
-    userId,
-    domainKey,
-    clerkSupabasePointer(updatedAt, domainKey),
-  );
-  if (retryOk) cache.add(key);
+  clearedUsersCache().clear();
+  const g = globalThis as typeof globalThis & {
+    __atlasClerkPointerCache?: Set<string>;
+  };
+  g.__atlasClerkPointerCache?.clear();
 }
 
 /**
- * Durable write.
- * supabase-only / forceSupabase → Supabase full blob; Clerk pointer at most once per process.
+ * Migrate any leftover Clerk payloads → Supabase, then NULL those keys in Clerk.
+ * Does not write new Clerk pointers (avoids 8KB / 429 on every job).
  */
-export async function persistDurableDomain<T>(
-  userId: string,
-  domainKey: string,
-  payload: T,
-  options: PersistDurableDomainOptions<T>,
-): Promise<"clerk" | "supabase" | "clerk_compact" | "skipped"> {
-  const updatedAt = new Date().toISOString();
-  const full: DurableDomainEnvelope<T> = {
-    version: 1,
-    updatedAt,
-    storedInSupabase: true,
-    payload,
-  };
-
-  const supabaseOnly =
-    options.forceSupabase === true || isSupabaseOnlyDomain(domainKey);
-
-  if (supabaseOnly) {
-    const supabaseOk = await upsertSupabaseUserState(userId, domainKey, full);
-    if (!supabaseOk) {
-      if (isAtlasProduction()) {
-        warnIfProductionSupabaseServiceRoleMissing(`${domainKey} supabase-only`);
-        console.error(
-          `[persistence] Supabase-only persist failed for ${domainKey} ` +
-            `(user=${userId}). Refusing Clerk payload fallback.`,
-        );
-      }
-      return "skipped";
-    }
-
-    const skipClerk = options.skipClerkIfPointerCached !== false;
-    if (skipClerk) {
-      await ensureClerkPointerOnce(userId, domainKey, updatedAt);
-    }
-    return "supabase";
-  }
-
-  if (byteLength(full) <= CLERK_DOMAIN_SAFE_BYTES) {
-    const ok = await persistClerkPrivateMetadataKey(userId, domainKey, full);
-    if (ok) return "clerk";
-    const supabaseOk = await upsertSupabaseUserState(userId, domainKey, {
-      ...full,
-      storedInSupabase: true,
-    });
-    if (supabaseOk) {
-      await ensureClerkPointerOnce(userId, domainKey, updatedAt);
-      return "supabase";
-    }
-    return "skipped";
-  }
-
-  const supabaseOk = await upsertSupabaseUserState(userId, domainKey, {
-    ...full,
-    storedInSupabase: true,
-  });
-  if (supabaseOk) {
-    await ensureClerkPointerOnce(userId, domainKey, updatedAt);
-    return "supabase";
-  }
-
-  if (isAtlasProduction()) {
-    warnIfProductionSupabaseServiceRoleMissing(`${domainKey} overflow`);
-    console.error(
-      `[persistence] Production refuse truncated Clerk fallback for ${domainKey} ` +
-        `(user=${userId}). Full payload was not durable-saved.`,
-    );
-    return "skipped";
-  }
-
-  console.warn(
-    `[persistence] Dev compact Clerk fallback for ${domainKey} (Supabase overflow unavailable).`,
-  );
-  const compactPayload = options.compact(payload);
-  const compactEnvelope: DurableDomainEnvelope<T> = {
-    version: 1,
-    updatedAt,
-    truncated: true,
-    storedInSupabase: false,
-    payload: compactPayload,
-  };
-  const ok = await persistClerkPrivateMetadataKey(
-    userId,
-    domainKey,
-    compactEnvelope,
-  );
-  return ok ? "clerk_compact" : "skipped";
-}
-
-/**
- * Migrate leftover Clerk payloads into Supabase, then clear those keys from Clerk.
- * Called only on 8KB errors — never on every job save.
- */
-export async function pruneOversizedClerkDurableDomains(
+export async function clearHeavyClerkDurableDomains(
   userId: string,
 ): Promise<{ migrated: string[]; cleared: string[] }> {
+  if (clearedUsersCache().has(userId)) {
+    return { migrated: [], cleared: [] };
+  }
+
   const migrated: string[] = [];
   const toClear: string[] = [];
 
   for (const domainKey of SUPABASE_ONLY_DOMAIN_KEYS) {
-    const fromClerk = await loadClerkPrivateMetadataKey<DurableDomainEnvelope<unknown>>(
-      userId,
-      domainKey,
-    );
-    if (!fromClerk) continue;
+    const fromClerk =
+      await loadClerkPrivateMetadataKey<DurableDomainEnvelope<unknown>>(
+        userId,
+        domainKey,
+      );
+    if (fromClerk == null) {
+      // Still clear in batch in case of non-envelope garbage.
+      toClear.push(domainKey);
+      continue;
+    }
 
     const hasHeavyPayload =
       fromClerk.payload !== undefined &&
       fromClerk.payload !== null &&
       !(
-        fromClerk.storedInSupabase === true &&
-        (fromClerk.payload === null ||
-          (typeof fromClerk.payload === "object" &&
-            Object.keys(fromClerk.payload as object).length === 0))
+        typeof fromClerk.payload === "object" &&
+        Object.keys(fromClerk.payload as object).length === 0
       );
 
     if (hasHeavyPayload) {
@@ -257,12 +126,13 @@ export async function pruneOversizedClerkDurableDomains(
           version: 1,
           updatedAt: fromClerk.updatedAt ?? new Date().toISOString(),
           storedInSupabase: true,
+          id: domainKey,
           payload: fromClerk.payload,
         };
         const ok = await upsertSupabaseUserState(userId, domainKey, envelope);
         if (!ok) {
           console.error(
-            `[persistence] Cannot prune Clerk ${domainKey}: Supabase migrate failed`,
+            `[persistence] Cannot clear Clerk ${domainKey}: Supabase migrate failed`,
           );
           continue;
         }
@@ -272,22 +142,120 @@ export async function pruneOversizedClerkDurableDomains(
       }
     }
 
-    // Clear heavy key from Clerk (null) — pointer optional later via ensureClerkPointerOnce.
     toClear.push(domainKey);
-    getPointerCache().delete(pointerCacheKey(userId, domainKey));
   }
 
   if (toClear.length > 0) {
-    const clearedOk = await clearClerkPrivateMetadataKeys(userId, toClear);
-    if (clearedOk) {
+    const ok = await clearClerkPrivateMetadataKeys(userId, toClear);
+    if (ok) {
+      clearedUsersCache().add(userId);
       return { migrated, cleared: toClear };
     }
+    console.error(
+      `[persistence] Failed to clear heavy Clerk keys for user=${userId}`,
+    );
+    return { migrated, cleared: [] };
   }
 
+  clearedUsersCache().add(userId);
   return { migrated, cleared: [] };
 }
 
-/** Load domain: Supabase first for supabase-only keys; Clerk pointer is advisory. */
+/** @deprecated Use clearHeavyClerkDurableDomains — no longer writes pointers. */
+export async function pruneOversizedClerkDurableDomains(
+  userId: string,
+): Promise<{ migrated: string[]; cleared: string[] }> {
+  return clearHeavyClerkDurableDomains(userId);
+}
+
+/**
+ * Durable write.
+ * supabase-only / forceSupabase → Supabase ONLY (zero Clerk writes on persist).
+ * Old oversized Clerk keys are cleared once per user (null), never re-filled.
+ */
+export async function persistDurableDomain<T>(
+  userId: string,
+  domainKey: string,
+  payload: T,
+  options: PersistDurableDomainOptions<T>,
+): Promise<"clerk" | "supabase" | "clerk_compact" | "skipped"> {
+  const updatedAt = new Date().toISOString();
+  const full: DurableDomainEnvelope<T> = {
+    version: 1,
+    updatedAt,
+    storedInSupabase: true,
+    id: domainKey,
+    payload,
+  };
+
+  const supabaseOnly =
+    options.forceSupabase === true || isSupabaseOnlyDomain(domainKey);
+
+  if (supabaseOnly) {
+    // Shrink private_metadata once — migrate then null keys. No pointer rewrite.
+    await clearHeavyClerkDurableDomains(userId);
+
+    const supabaseOk = await upsertSupabaseUserState(userId, domainKey, full);
+    if (!supabaseOk) {
+      if (isAtlasProduction()) {
+        warnIfProductionSupabaseServiceRoleMissing(`${domainKey} supabase-only`);
+        console.error(
+          `[persistence] Supabase-only persist failed for ${domainKey} ` +
+            `(user=${userId}). Refusing any Clerk payload fallback.`,
+        );
+      }
+      return "skipped";
+    }
+    return "supabase";
+  }
+
+  // Non-forced small settings may still use Clerk (connection prefs etc.).
+  if (byteLength(full) <= CLERK_DOMAIN_SAFE_BYTES) {
+    const { persistClerkPrivateMetadataKey } = await import(
+      "./clerk-private-metadata"
+    );
+    const ok = await persistClerkPrivateMetadataKey(userId, domainKey, full);
+    if (ok) return "clerk";
+    const supabaseOk = await upsertSupabaseUserState(userId, domainKey, {
+      ...full,
+      storedInSupabase: true,
+    });
+    return supabaseOk ? "supabase" : "skipped";
+  }
+
+  const supabaseOk = await upsertSupabaseUserState(userId, domainKey, {
+    ...full,
+    storedInSupabase: true,
+  });
+  if (supabaseOk) return "supabase";
+
+  if (isAtlasProduction()) {
+    warnIfProductionSupabaseServiceRoleMissing(`${domainKey} overflow`);
+    console.error(
+      `[persistence] Production refuse Clerk fallback for ${domainKey} ` +
+        `(user=${userId}).`,
+    );
+    return "skipped";
+  }
+
+  console.warn(
+    `[persistence] Dev compact Clerk fallback for ${domainKey} (Supabase unavailable).`,
+  );
+  const { persistClerkPrivateMetadataKey } = await import(
+    "./clerk-private-metadata"
+  );
+  const compactPayload = options.compact(payload);
+  const ok = await persistClerkPrivateMetadataKey(userId, domainKey, {
+    version: 1 as const,
+    updatedAt,
+    truncated: true,
+    storedInSupabase: false,
+    payload: compactPayload,
+  });
+  return ok ? "clerk_compact" : "skipped";
+}
+
+/** Load: Supabase first for supabase-only keys. Never depends on Clerk payloads. */
 export async function loadDurableDomain<T>(
   userId: string,
   domainKey: string,
@@ -297,9 +265,13 @@ export async function loadDurableDomain<T>(
       userId,
       domainKey,
     );
-    if (fromSb?.payload?.payload !== undefined && fromSb.payload.payload !== null) {
+    if (
+      fromSb?.payload?.payload !== undefined &&
+      fromSb.payload.payload !== null
+    ) {
       return fromSb.payload.payload;
     }
+    return null;
   }
 
   const fromClerk = await loadClerkPrivateMetadataKey<DurableDomainEnvelope<T>>(
@@ -312,7 +284,10 @@ export async function loadDurableDomain<T>(
       userId,
       domainKey,
     );
-    if (fromSb?.payload?.payload !== undefined && fromSb.payload.payload !== null) {
+    if (
+      fromSb?.payload?.payload !== undefined &&
+      fromSb.payload.payload !== null
+    ) {
       return fromSb.payload.payload;
     }
   }

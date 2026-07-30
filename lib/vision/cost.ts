@@ -1,15 +1,8 @@
 import "server-only";
 
-import { promises as fs } from "fs";
-import path from "path";
-
 import { decisionToModelPolicy, resolveTaskPolicy } from "@/lib/ai/policy-engine";
 import { recordUserAiUsage } from "@/lib/billing/usage/meter";
-import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
-import { allowProcessCwdDataDir } from "@/lib/runtime/ephemeral-fs";
 import type { VisionCostRecord, VisionDetailLevel } from "@/lib/vision/types";
-
-const COST_ROOT = path.join(process.cwd(), ".data", "vision-cost");
 
 export function estimateVisionCostUsd(input: {
   inputTokens: number;
@@ -29,19 +22,25 @@ export function estimateImageInputTokens(detail: VisionDetailLevel, imageCount: 
   return per * Math.max(1, imageCount);
 }
 
+type MemoryCostLedger = VisionCostRecord[];
+
+function costLedger(): MemoryCostLedger {
+  const g = globalThis as typeof globalThis & {
+    __atlasVisionCostLedger?: MemoryCostLedger;
+  };
+  if (!g.__atlasVisionCostLedger) g.__atlasVisionCostLedger = [];
+  return g.__atlasVisionCostLedger;
+}
+
+/** In-memory cost ledger only — never writes local filesystem. */
 export async function appendVisionCostRecord(
   record: VisionCostRecord,
 ): Promise<void> {
-  // Cost ledger is optional analytics — never write under /var/task on Vercel.
-  if (!allowProcessCwdDataDir()) {
-    bumpPersistenceCounter("processCwdDataDirBlocked");
-    return;
+  const ledger = costLedger();
+  ledger.push(record);
+  if (ledger.length > 2000) {
+    ledger.splice(0, ledger.length - 2000);
   }
-  bumpPersistenceCounter("processCwdDataDirAttempts");
-  const dir = path.join(COST_ROOT, record.userId);
-  await fs.mkdir(dir, { recursive: true });
-  const file = path.join(dir, `${record.createdAt.slice(0, 7)}.jsonl`);
-  await fs.appendFile(file, `${JSON.stringify(record)}\n`, "utf8");
 }
 
 export function recordVisionBillingUsage(input: {
@@ -80,26 +79,16 @@ export type VisionUsageMeter = {
 
 export async function getVisionUsageMeter(userId: string): Promise<VisionUsageMeter> {
   const monthKey = new Date().toISOString().slice(0, 7);
-  const file = path.join(COST_ROOT, userId, `${monthKey}.jsonl`);
   let analyzeCount = 0;
   let imageCount = 0;
   let estimatedCostUsd = 0;
-  try {
-    const raw = await fs.readFile(file, "utf8");
-    for (const line of raw.split("\n")) {
-      if (!line.trim()) continue;
-      try {
-        const row = JSON.parse(line) as VisionCostRecord;
-        if (!row.success) continue;
-        analyzeCount += 1;
-        imageCount += row.imageCount;
-        estimatedCostUsd += row.estimatedCostUsd;
-      } catch {
-        // ignore
-      }
-    }
-  } catch {
-    // missing file
+  for (const row of costLedger()) {
+    if (row.userId !== userId) continue;
+    if (!row.createdAt.startsWith(monthKey)) continue;
+    if (!row.success) continue;
+    analyzeCount += 1;
+    imageCount += row.imageCount;
+    estimatedCostUsd += row.estimatedCostUsd;
   }
   return { userId, monthKey, analyzeCount, imageCount, estimatedCostUsd };
 }

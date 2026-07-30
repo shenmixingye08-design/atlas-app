@@ -1,15 +1,10 @@
 import "server-only";
 
-import { promises as fs } from "fs";
-import path from "path";
-
-import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
-import { allowProcessCwdDataDir } from "@/lib/runtime/ephemeral-fs";
 import type { VisionStyleSignals } from "@/lib/vision/types";
 
 /**
  * Optional style-reference stash (session / approved save).
- * Does NOT write into User Profile / Business Profile cores.
+ * In-memory only — never writes local filesystem.
  */
 export type StyleReferenceChoice = "session_only" | "profile_save" | "discard";
 
@@ -23,7 +18,13 @@ export type StyleReferenceRecord = {
   createdAt: string;
 };
 
-const ROOT = path.join(process.cwd(), ".data", "vision-style-refs");
+function styleRefs(): StyleReferenceRecord[] {
+  const g = globalThis as typeof globalThis & {
+    __atlasStyleRefs?: StyleReferenceRecord[];
+  };
+  if (!g.__atlasStyleRefs) g.__atlasStyleRefs = [];
+  return g.__atlasStyleRefs;
+}
 
 export async function saveStyleReference(input: {
   userId: string;
@@ -43,25 +44,6 @@ export async function saveStyleReference(input: {
     note: input.note ?? null,
     createdAt: new Date().toISOString(),
   };
-
-  if (!allowProcessCwdDataDir()) {
-    bumpPersistenceCounter("processCwdDataDirBlocked");
-    // Keep in-process only on ephemeral FS.
-    const g = globalThis as typeof globalThis & {
-      __atlasStyleRefs?: StyleReferenceRecord[];
-    };
-    if (!g.__atlasStyleRefs) g.__atlasStyleRefs = [];
-    g.__atlasStyleRefs.push(record);
-    return record;
-  }
-
-  bumpPersistenceCounter("processCwdDataDirAttempts");
-  const dir = path.join(ROOT, input.userId);
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(
-    path.join(dir, `${record.id}.json`),
-    JSON.stringify(record, null, 2),
-    "utf8",
-  );
+  styleRefs().push(record);
   return record;
 }

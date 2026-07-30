@@ -1,35 +1,29 @@
 import "server-only";
 
 import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import path from "node:path";
+  ATTACHMENT_LIMITS,
+  type SaveImageAttachmentInput,
+  type StoredImageAttachment,
+} from "./types";
 
-import { ATTACHMENT_LIMITS, type SaveImageAttachmentInput, type StoredImageAttachment } from "./types";
+type LocalAttachmentRow = {
+  meta: StoredImageAttachment;
+  originalBuffer: Buffer;
+  processedBuffer: Buffer;
+};
 
-const ROOT = path.join(process.cwd(), ".data", "attachments");
+type LocalBucket = Map<string, LocalAttachmentRow>;
+
+function getBucket(): LocalBucket {
+  const g = globalThis as typeof globalThis & {
+    __atlasLocalAttachments?: LocalBucket;
+  };
+  if (!g.__atlasLocalAttachments) g.__atlasLocalAttachments = new Map();
+  return g.__atlasLocalAttachments;
+}
 
 function sanitizeSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "unknown";
-}
-
-function attachmentDir(userId: string, jobId: string, id: string): string {
-  return path.join(ROOT, sanitizeSegment(userId), sanitizeSegment(jobId), sanitizeSegment(id));
-}
-
-function metaPath(userId: string, jobId: string, id: string): string {
-  return path.join(attachmentDir(userId, jobId, id), "meta.json");
-}
-
-function extForMime(mime: string): string {
-  if (mime.includes("png")) return "png";
-  if (mime.includes("webp")) return "webp";
-  return "jpg";
 }
 
 function isExpired(meta: StoredImageAttachment): boolean {
@@ -38,48 +32,12 @@ function isExpired(meta: StoredImageAttachment): boolean {
   return Date.parse(meta.expiresAt) < Date.now();
 }
 
-function listAllMetaFiles(): string[] {
-  if (!existsSync(ROOT)) return [];
-  const files: string[] = [];
-  for (const userEntry of readdirSync(ROOT)) {
-    const userPath = path.join(ROOT, userEntry);
-    if (!existsSync(userPath)) continue;
-    for (const jobEntry of readdirSync(userPath)) {
-      const jobPath = path.join(userPath, jobEntry);
-      if (!existsSync(jobPath)) continue;
-      for (const idEntry of readdirSync(jobPath)) {
-        const metaFile = path.join(jobPath, idEntry, "meta.json");
-        if (existsSync(metaFile)) files.push(metaFile);
-      }
-    }
-  }
-  return files;
-}
-
-function readMetaFile(file: string): StoredImageAttachment | null {
-  try {
-    return JSON.parse(readFileSync(file, "utf8")) as StoredImageAttachment;
-  } catch {
-    return null;
-  }
-}
-
 export async function localSaveImageAttachment(
   input: SaveImageAttachmentInput,
 ): Promise<StoredImageAttachment> {
   const id = `img_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
   const jobId = sanitizeSegment(input.jobId?.trim() || "pending");
   const retentionPolicy = input.retentionPolicy ?? "temporary";
-  const dir = attachmentDir(input.userId, jobId, id);
-  mkdirSync(dir, { recursive: true });
-
-  const originalExt = extForMime(input.mimeType);
-  const processedExt = extForMime(input.processedMimeType);
-  const originalPath = path.join(dir, `original.${originalExt}`);
-  const processedPath = path.join(dir, `processed.${processedExt}`);
-  writeFileSync(originalPath, input.originalBuffer);
-  writeFileSync(processedPath, input.processedBuffer);
-
   const now = new Date();
   const meta: StoredImageAttachment = {
     id,
@@ -99,11 +57,15 @@ export async function localSaveImageAttachment(
         ? null
         : new Date(now.getTime() + ATTACHMENT_LIMITS.ttlMs).toISOString(),
     retentionPolicy,
-    originalPath,
-    processedPath,
+    originalPath: `memory://${input.userId}/${jobId}/${id}/original`,
+    processedPath: `memory://${input.userId}/${jobId}/${id}/processed`,
     storageBackend: "local",
   };
-  writeFileSync(metaPath(input.userId, jobId, id), JSON.stringify(meta));
+  getBucket().set(id, {
+    meta,
+    originalBuffer: Buffer.from(input.originalBuffer),
+    processedBuffer: Buffer.from(input.processedBuffer),
+  });
   return meta;
 }
 
@@ -111,29 +73,29 @@ export async function localGetImageAttachmentForUser(
   userId: string,
   id: string,
 ): Promise<StoredImageAttachment | null> {
-  for (const file of listAllMetaFiles()) {
-    const meta = readMetaFile(file);
-    if (!meta || meta.id !== id) continue;
-    if (meta.userId !== userId) return null;
-    if (isExpired(meta)) {
-      rmSync(path.dirname(file), { recursive: true, force: true });
-      return null;
-    }
-    return meta;
+  const row = getBucket().get(id);
+  if (!row || row.meta.userId !== userId) return null;
+  if (isExpired(row.meta)) {
+    getBucket().delete(id);
+    return null;
   }
-  return null;
+  return row.meta;
 }
 
 export async function localReadProcessedImageBytes(
   userId: string,
   id: string,
 ): Promise<{ buffer: Buffer; mimeType: string; meta: StoredImageAttachment } | null> {
-  const meta = await localGetImageAttachmentForUser(userId, id);
-  if (!meta || !existsSync(meta.processedPath)) return null;
+  const row = getBucket().get(id);
+  if (!row || row.meta.userId !== userId) return null;
+  if (isExpired(row.meta)) {
+    getBucket().delete(id);
+    return null;
+  }
   return {
-    buffer: readFileSync(meta.processedPath),
-    mimeType: meta.mimeType,
-    meta,
+    buffer: row.processedBuffer,
+    mimeType: row.meta.mimeType,
+    meta: row.meta,
   };
 }
 
@@ -141,29 +103,25 @@ export async function localDeleteImageAttachment(
   userId: string,
   id: string,
 ): Promise<boolean> {
-  for (const file of listAllMetaFiles()) {
-    const meta = readMetaFile(file);
-    if (!meta || meta.id !== id) continue;
-    if (meta.userId !== userId) return false;
-    rmSync(path.dirname(file), { recursive: true, force: true });
-    return true;
-  }
-  return false;
+  const row = getBucket().get(id);
+  if (!row || row.meta.userId !== userId) return false;
+  getBucket().delete(id);
+  return true;
 }
 
 export async function localFindAttachmentByHash(
   userId: string,
   contentHash: string,
 ): Promise<StoredImageAttachment | null> {
-  for (const file of listAllMetaFiles()) {
-    const meta = readMetaFile(file);
-    if (!meta) continue;
-    if (meta.userId !== userId || meta.contentHash !== contentHash) continue;
-    if (isExpired(meta)) {
-      rmSync(path.dirname(file), { recursive: true, force: true });
+  for (const row of getBucket().values()) {
+    if (row.meta.userId !== userId || row.meta.contentHash !== contentHash) {
       continue;
     }
-    return meta;
+    if (isExpired(row.meta)) {
+      getBucket().delete(row.meta.id);
+      continue;
+    }
+    return row.meta;
   }
   return null;
 }
@@ -172,21 +130,19 @@ export async function localMarkAttachmentRetained(
   userId: string,
   id: string,
 ): Promise<StoredImageAttachment | null> {
-  for (const file of listAllMetaFiles()) {
-    const meta = readMetaFile(file);
-    if (!meta || meta.id !== id || meta.userId !== userId) continue;
-    const next: StoredImageAttachment = {
-      ...meta,
-      retentionPolicy: "retained",
-      expiresAt: null,
-    };
-    writeFileSync(file, JSON.stringify(next));
-    return next;
-  }
-  return null;
+  const row = getBucket().get(id);
+  if (!row || row.meta.userId !== userId) return null;
+  const next: StoredImageAttachment = {
+    ...row.meta,
+    retentionPolicy: "retained",
+    expiresAt: null,
+  };
+  row.meta = next;
+  getBucket().set(id, row);
+  return next;
 }
 
-/** Update logical jobId without moving storage paths (paths may stay under pending/). */
+/** Update logical jobId (in-memory only — no disk paths). */
 export async function localBindAttachmentToJob(
   userId: string,
   id: string,
@@ -194,30 +150,31 @@ export async function localBindAttachmentToJob(
 ): Promise<StoredImageAttachment | null> {
   const nextJobId = jobId.trim();
   if (!nextJobId) return null;
-  for (const file of listAllMetaFiles()) {
-    const meta = readMetaFile(file);
-    if (!meta || meta.id !== id || meta.userId !== userId) continue;
-    if (isExpired(meta)) {
-      rmSync(path.dirname(file), { recursive: true, force: true });
-      return null;
-    }
-    const next: StoredImageAttachment = {
-      ...meta,
-      jobId: nextJobId,
-    };
-    writeFileSync(file, JSON.stringify(next));
-    return next;
+  const row = getBucket().get(id);
+  if (!row || row.meta.userId !== userId) return null;
+  if (isExpired(row.meta)) {
+    getBucket().delete(id);
+    return null;
   }
-  return null;
+  const next: StoredImageAttachment = {
+    ...row.meta,
+    jobId: nextJobId,
+  };
+  row.meta = next;
+  getBucket().set(id, row);
+  return next;
 }
 
 export async function localPurgeExpiredAttachments(): Promise<number> {
   let purged = 0;
-  for (const file of listAllMetaFiles()) {
-    const meta = readMetaFile(file);
-    if (!meta || !isExpired(meta)) continue;
-    rmSync(path.dirname(file), { recursive: true, force: true });
+  for (const [id, row] of [...getBucket().entries()]) {
+    if (!isExpired(row.meta)) continue;
+    getBucket().delete(id);
     purged += 1;
   }
   return purged;
+}
+
+export function resetLocalAttachmentStoreForTests(): void {
+  getBucket().clear();
 }

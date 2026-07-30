@@ -37,8 +37,8 @@ export type WorkJobRecord = {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
-  /** Last durable persist backend (supabase / disk_dev). */
-  durablePersist?: "supabase" | "disk_dev" | null;
+  /** Last durable persist backend. */
+  durablePersist?: "supabase" | null;
 };
 
 type Bucket = Map<string, WorkJobRecord>;
@@ -75,7 +75,7 @@ export async function saveWorkJob(job: WorkJobRecord): Promise<WorkJobRecord> {
   }
   const withPersist: WorkJobRecord = {
     ...normalized,
-    durablePersist: persistResult === "disk_dev" ? "disk_dev" : "supabase",
+    durablePersist: "supabase",
   };
   getBucket().set(withPersist.id, withPersist);
   return withPersist;

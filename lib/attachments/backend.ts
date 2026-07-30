@@ -7,7 +7,7 @@ import type { AttachmentStorageBackend } from "./constants";
 /**
  * Resolve where image bytes are persisted.
  * - Vercel Production / Preview: always Supabase Storage (required).
- * - Local development: local `.data` unless ATLAS_ATTACHMENT_STORAGE=supabase.
+ * - Local development: in-memory local store unless ATLAS_ATTACHMENT_STORAGE=supabase.
  */
 export function resolveAttachmentStorageBackend(): AttachmentStorageBackend {
   const forced = process.env.ATLAS_ATTACHMENT_STORAGE?.trim().toLowerCase();

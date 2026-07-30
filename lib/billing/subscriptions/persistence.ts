@@ -1,30 +1,17 @@
 import "server-only";
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import path from "path";
-
 import { clerkClient } from "@clerk/nextjs/server";
 
-import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 import { isPlanId } from "../plans/registry";
 import type { PlanId } from "../plans/types";
 
 import type { SubscriptionStatus, UserSubscriptionRecord } from "./types";
 
-const DATA_DIR = path.join(process.cwd(), ".data", "billing");
-const SUBSCRIPTIONS_FILE = path.join(DATA_DIR, "subscriptions.json");
-const WEBHOOK_EVENTS_FILE = path.join(DATA_DIR, "processed-webhook-events.json");
-
 const CLERK_BILLING_KEY = "atlasBilling";
 
 const SUBSCRIPTIONS_TABLE = "atlas_billing_subscriptions" as const;
 const WEBHOOK_EVENTS_TABLE = "atlas_stripe_webhook_events" as const;
-
-type SubscriptionFileShape = {
-  version: 1;
-  records: Record<string, UserSubscriptionRecord>;
-};
 
 type BillingSubscriptionRow = {
   user_id: string;
@@ -41,17 +28,6 @@ type BillingSubscriptionRow = {
   payment_failure_grace_ends_at: string | null;
   plan_profile_synced_at: string | null;
 };
-
-function ensureDataDir(): void {
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
-/** Local/dev disk fallback only — never relied on for production correctness. */
-function allowDiskFallback(): boolean {
-  return !isAtlasProduction();
-}
 
 export function isBillingSupabaseConfigured(): boolean {
   return createServiceRoleClientIfConfigured() !== null;
@@ -107,64 +83,22 @@ function recordToRow(record: UserSubscriptionRecord): BillingSubscriptionRow {
   };
 }
 
-export function readSubscriptionsFromDisk(): Map<string, UserSubscriptionRecord> {
-  if (!allowDiskFallback()) return new Map();
-
-  try {
-    if (!existsSync(SUBSCRIPTIONS_FILE)) return new Map();
-    const raw = readFileSync(SUBSCRIPTIONS_FILE, "utf8");
-    const parsed = JSON.parse(raw) as SubscriptionFileShape;
-    if (!parsed?.records || typeof parsed.records !== "object") return new Map();
-    return new Map(Object.entries(parsed.records));
-  } catch {
-    return new Map();
-  }
+export function writeSubscriptionsToDisk(
+  _records: Map<string, UserSubscriptionRecord>,
+): void {
+  return;
 }
 
-export function writeSubscriptionsToDisk(
-  records: Map<string, UserSubscriptionRecord>,
-): void {
-  if (!allowDiskFallback()) return;
-
-  try {
-    ensureDataDir();
-    const payload: SubscriptionFileShape = {
-      version: 1,
-      records: Object.fromEntries(records.entries()),
-    };
-    writeFileSync(SUBSCRIPTIONS_FILE, JSON.stringify(payload, null, 2), "utf8");
-  } catch (error) {
-    console.error("[billing] Failed to persist subscriptions to disk:", error);
-  }
+export function readSubscriptionsFromDisk(): Map<string, UserSubscriptionRecord> {
+  return new Map();
 }
 
 export function readProcessedWebhookEventsFromDisk(): Set<string> {
-  if (!allowDiskFallback()) return new Set();
-
-  try {
-    if (!existsSync(WEBHOOK_EVENTS_FILE)) return new Set();
-    const raw = readFileSync(WEBHOOK_EVENTS_FILE, "utf8");
-    const parsed = JSON.parse(raw) as { eventIds?: string[] };
-    return new Set(Array.isArray(parsed.eventIds) ? parsed.eventIds : []);
-  } catch {
-    return new Set();
-  }
+  return new Set();
 }
 
-export function writeProcessedWebhookEventsToDisk(eventIds: Set<string>): void {
-  if (!allowDiskFallback()) return;
-
-  try {
-    ensureDataDir();
-    const ids = [...eventIds].slice(-2000);
-    writeFileSync(
-      WEBHOOK_EVENTS_FILE,
-      JSON.stringify({ version: 1, eventIds: ids }, null, 2),
-      "utf8",
-    );
-  } catch (error) {
-    console.error("[billing] Failed to persist webhook idempotency:", error);
-  }
+export function writeProcessedWebhookEventsToDisk(_eventIds: Set<string>): void {
+  return;
 }
 
 function isSubscriptionRecord(value: unknown): value is UserSubscriptionRecord {

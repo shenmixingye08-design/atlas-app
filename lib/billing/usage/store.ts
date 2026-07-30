@@ -1,8 +1,3 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import path from "path";
-
-import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
-import { allowProcessCwdDataDir } from "@/lib/runtime/ephemeral-fs";
 import type {
   AiUsageEvent,
   UsageCounters,
@@ -11,15 +6,6 @@ import type {
 } from "./types";
 
 type UsageBucket = Map<string, UsageSnapshot>;
-
-const DATA_DIR = path.join(process.cwd(), ".data", "billing");
-const USAGE_FILE = path.join(DATA_DIR, "usage.json");
-
-type UsageFileShape = {
-  version: 1;
-  snapshots: Record<string, UsageSnapshot>;
-  events: AiUsageEvent[];
-};
 
 function usageKey(userId: string, month: UsageMonthKey): string {
   return `${userId}:${month}`;
@@ -36,11 +22,14 @@ function getBucket(): UsageBucket {
   }
 
   if (!globalScope.__atlasBillingUsageHydrated) {
-    hydrateFromDisk(globalScope.__atlasBillingUsageStore);
     globalScope.__atlasBillingUsageHydrated = true;
-    if (!(globalScope as { __atlasBillingUsageSbHydrateStarted?: boolean }).__atlasBillingUsageSbHydrateStarted) {
-      (globalScope as { __atlasBillingUsageSbHydrateStarted?: boolean }).__atlasBillingUsageSbHydrateStarted =
-        true;
+    if (
+      !(globalScope as { __atlasBillingUsageSbHydrateStarted?: boolean })
+        .__atlasBillingUsageSbHydrateStarted
+    ) {
+      (
+        globalScope as { __atlasBillingUsageSbHydrateStarted?: boolean }
+      ).__atlasBillingUsageSbHydrateStarted = true;
       void import("./durable")
         .then((mod) => mod.ensureBillingUsageHydrated())
         .catch(() => undefined);
@@ -53,82 +42,23 @@ function getBucket(): UsageBucket {
 function getEventBucket(): AiUsageEvent[] {
   const globalScope = globalThis as typeof globalThis & {
     __atlasBillingAiUsageEvents?: AiUsageEvent[];
-    __atlasBillingUsageHydrated?: boolean;
   };
 
   if (!globalScope.__atlasBillingAiUsageEvents) {
     globalScope.__atlasBillingAiUsageEvents = [];
   }
 
-  // Ensure counters hydrate first (also loads events).
   void getBucket();
-
   return globalScope.__atlasBillingAiUsageEvents;
 }
 
-function ensureDataDir(): void {
-  if (!allowProcessCwdDataDir()) {
-    bumpPersistenceCounter("processCwdDataDirBlocked");
-    return;
-  }
-  bumpPersistenceCounter("processCwdDataDirAttempts");
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
-function hydrateFromDisk(bucket: UsageBucket): void {
-  if (!allowProcessCwdDataDir()) return;
-  try {
-    if (!existsSync(USAGE_FILE)) return;
-    const raw = readFileSync(USAGE_FILE, "utf8");
-    const parsed = JSON.parse(raw) as UsageFileShape;
-    if (parsed?.snapshots && typeof parsed.snapshots === "object") {
-      for (const [key, snapshot] of Object.entries(parsed.snapshots)) {
-        if (snapshot?.userId && snapshot?.month) {
-          bucket.set(key, snapshot);
-        }
-      }
-    }
-    const globalScope = globalThis as typeof globalThis & {
-      __atlasBillingAiUsageEvents?: AiUsageEvent[];
-    };
-    if (Array.isArray(parsed?.events)) {
-      globalScope.__atlasBillingAiUsageEvents = parsed.events.slice(-5000);
-    }
-  } catch {
-    // Best-effort hydrate — keep empty in-memory state.
-  }
-}
-
-function persistToDisk(): void {
-  // Durable path (Supabase) always — disk only for local/dev.
+/** Durable persist via Supabase only — no local filesystem. */
+function persistDurable(): void {
   void import("./durable")
     .then((mod) => {
       mod.schedulePersistBillingUsage();
     })
-    .catch(() => {
-      // durable module is server-only; ignore if unavailable in odd contexts
-    });
-
-  if (!allowProcessCwdDataDir()) {
-    bumpPersistenceCounter("processCwdDataDirBlocked");
-    return;
-  }
-
-  try {
-    ensureDataDir();
-    const snapshots = Object.fromEntries(getBucket().entries());
-    const events = getEventBucket().slice(-5000);
-    const payload: UsageFileShape = {
-      version: 1,
-      snapshots,
-      events,
-    };
-    writeFileSync(USAGE_FILE, JSON.stringify(payload, null, 2), "utf8");
-  } catch (error) {
-    console.error("[billing] Failed to persist usage to disk:", error);
-  }
+    .catch(() => undefined);
 }
 
 /** Snapshot map for durable serialization (no secrets). */
@@ -136,7 +66,7 @@ export function serializeUsageSnapshots(): Record<string, UsageSnapshot> {
   return Object.fromEntries(getBucket().entries());
 }
 
-/** Replace in-memory usage from durable hydrate (keeps disk as secondary cache). */
+/** Replace in-memory usage from durable hydrate. */
 export function replaceUsageDurableState(input: {
   snapshots: Record<string, UsageSnapshot>;
   events: AiUsageEvent[];
@@ -181,7 +111,7 @@ export function getUsageSnapshot(
 
 export function saveUsageSnapshot(snapshot: UsageSnapshot): UsageSnapshot {
   getBucket().set(usageKey(snapshot.userId, snapshot.month), snapshot);
-  persistToDisk();
+  persistDurable();
   return snapshot;
 }
 
@@ -220,7 +150,7 @@ export function appendAiUsageEvent(event: AiUsageEvent): AiUsageEvent {
   if (bucket.length > 5000) {
     bucket.splice(0, bucket.length - 5000);
   }
-  persistToDisk();
+  persistDurable();
   return event;
 }
 
@@ -238,5 +168,5 @@ export function resetUsageStore(): void {
   if (globalScope.__atlasBillingAiUsageEvents) {
     globalScope.__atlasBillingAiUsageEvents.length = 0;
   }
-  persistToDisk();
+  persistDurable();
 }

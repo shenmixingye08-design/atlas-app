@@ -111,7 +111,6 @@ import {
   pruneOversizedClerkDurableDomains,
   resetClerkPointerCacheForTests,
 } from "@/lib/persistence/durable-domain";
-import { persistClerkPrivateMetadataKey } from "@/lib/persistence/clerk-private-metadata";
 import { setCachedVisionAnalysis } from "@/lib/vision/cache";
 import { appendVisionCostRecord } from "@/lib/vision/cost";
 import { persistWorkJob } from "@/lib/work-jobs/durable";
@@ -411,37 +410,16 @@ describe("persistence repeat ×10 (Vercel ephemeral)", () => {
     expect(counters.clerk8kbErrors).toBe(0);
     expect(counters.clerk429Errors).toBe(0);
     expect(report.finalClerkBytes).toBeLessThanOrEqual(8192);
-    // Pointer-once: Clerk updates stay far below old ~30+/job × 10.
-    expect(counters.clerkUpdateMetadata).toBeLessThan(40);
-    expect(counters.workJobPersist).toBe(30); // 3 durable saves × 10
+    expect(counters.workJobPersist).toBe(30);
     expect(counters.supabaseUserStateUpsert).toBeGreaterThan(0);
-
-    // Clerk values are pointers only (no heavy payloads).
-    for (const value of Object.values(clerkMeta.get(USER) ?? {})) {
-      if (!value || typeof value !== "object") continue;
-      const envelope = value as { payload?: unknown; storedInSupabase?: boolean };
-      if ("storedInSupabase" in envelope) {
-        expect(envelope.storedInSupabase).toBe(true);
-        expect(envelope.payload == null).toBe(true);
-      }
-    }
-  });
-
-  it("partial Clerk update does not rewrite sibling keys (8KB safety)", async () => {
-    clerkMeta.set(USER, {
-      lightSetting: { theme: "system" },
-    });
-    const ok = await persistClerkPrivateMetadataKey(USER, "atlasWorkJobs", {
-      version: 1,
-      storedInSupabase: true,
-      id: "atlasWorkJobs",
-      payload: null,
-    });
-    expect(ok).toBe(true);
-    expect(clerkMeta.get(USER)?.lightSetting).toEqual({ theme: "system" });
-    expect(
-      (clerkMeta.get(USER)?.atlasWorkJobs as { payload: unknown }).payload,
-    ).toBeNull();
+    // Heavy domains must not remain in Clerk after clear + 10 cycles.
+    expect(Object.keys(clerkMeta.get(USER) ?? {})).not.toContain("atlasWorkJobs");
+    expect(Object.keys(clerkMeta.get(USER) ?? {})).not.toContain(
+      "atlasCommanderRuns",
+    );
+    expect(Object.keys(clerkMeta.get(USER) ?? {})).not.toContain(
+      "atlasNotifications",
+    );
   });
 
   it("forceSupabase domains never embed job arrays into Clerk", async () => {
@@ -459,12 +437,7 @@ describe("persistence repeat ×10 (Vercel ephemeral)", () => {
       },
       { forceSupabase: true, compact: (p) => p },
     );
-    const clerkValue = clerkMeta.get(USER)?.atlasWorkJobs as {
-      payload: unknown;
-      storedInSupabase: boolean;
-    };
-    expect(clerkValue.storedInSupabase).toBe(true);
-    expect(clerkValue.payload).toBeNull();
+    expect(clerkMeta.get(USER)?.atlasWorkJobs).toBeUndefined();
     const sb = sbStore.get(`${USER}:atlasWorkJobs`) as {
       payload: { jobs: unknown[] };
     };
