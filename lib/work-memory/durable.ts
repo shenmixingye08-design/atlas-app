@@ -4,6 +4,7 @@ import {
   loadDurableDomain,
   persistDurableDomain,
 } from "@/lib/persistence/durable-domain";
+import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
 
 import type {
   WorkMemoryCandidate,
@@ -71,6 +72,7 @@ export function snapshotWorkMemory(userId: string): DurableWorkMemoryState {
 }
 
 export function schedulePersistWorkMemory(userId: string): void {
+  bumpPersistenceCounter("workMemoryPersist");
   void persistDurableDomain(
     userId,
     WORK_MEMORY_DOMAIN_KEY,

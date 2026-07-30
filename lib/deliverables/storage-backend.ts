@@ -28,6 +28,8 @@ export function isDeliverableStorageRequired(): boolean {
 }
 
 export function allowDeliverableDiskFallback(): boolean {
+  if (process.env.ATLAS_FORCE_EPHEMERAL_FS === "1") return false;
+  if (process.env.VERCEL || process.env.VERCEL_ENV) return false;
   if (process.env.NODE_ENV === "test" || process.env.VITEST === "true") {
     return true;
   }

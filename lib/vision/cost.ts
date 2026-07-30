@@ -5,6 +5,8 @@ import path from "path";
 
 import { decisionToModelPolicy, resolveTaskPolicy } from "@/lib/ai/policy-engine";
 import { recordUserAiUsage } from "@/lib/billing/usage/meter";
+import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
+import { allowProcessCwdDataDir } from "@/lib/runtime/ephemeral-fs";
 import type { VisionCostRecord, VisionDetailLevel } from "@/lib/vision/types";
 
 const COST_ROOT = path.join(process.cwd(), ".data", "vision-cost");
@@ -30,6 +32,12 @@ export function estimateImageInputTokens(detail: VisionDetailLevel, imageCount: 
 export async function appendVisionCostRecord(
   record: VisionCostRecord,
 ): Promise<void> {
+  // Cost ledger is optional analytics — never write under /var/task on Vercel.
+  if (!allowProcessCwdDataDir()) {
+    bumpPersistenceCounter("processCwdDataDirBlocked");
+    return;
+  }
+  bumpPersistenceCounter("processCwdDataDirAttempts");
   const dir = path.join(COST_ROOT, record.userId);
   await fs.mkdir(dir, { recursive: true });
   const file = path.join(dir, `${record.createdAt.slice(0, 7)}.jsonl`);

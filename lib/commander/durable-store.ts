@@ -4,6 +4,7 @@ import {
   loadDurableDomain,
   persistDurableDomain,
 } from "@/lib/persistence/durable-domain";
+import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
 import { loadClerkPrivateMetadataKey } from "@/lib/persistence/clerk-private-metadata";
 import { createProjectFromOrchestration } from "@/lib/projects/domain";
 import {
@@ -220,6 +221,7 @@ export async function persistCommanderRunToClerk(
         compact: (state) => ({ runs: compactRuns(state.runs) }),
       },
     );
+    bumpPersistenceCounter("commanderPersist");
   } catch (error) {
     console.error("[commander] Failed to persist run:", error);
   }

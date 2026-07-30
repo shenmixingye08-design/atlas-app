@@ -173,28 +173,27 @@ function isSubscriptionRecord(value: unknown): value is UserSubscriptionRecord {
   return typeof row.userId === "string" && typeof row.planId === "string";
 }
 
-/** Best-effort durable copy on Clerk privateMetadata (survives serverless restarts). */
+/** Best-effort: subscription lives in Supabase; Clerk gets pointer only (once). */
 export async function persistSubscriptionToClerk(
   record: UserSubscriptionRecord,
 ): Promise<void> {
   if (!process.env.CLERK_SECRET_KEY?.trim()) return;
 
   try {
-    const client = await clerkClient();
-    const user = await client.users.getUser(record.userId);
-    const existing =
-      user.privateMetadata && typeof user.privateMetadata === "object"
-        ? { ...user.privateMetadata }
-        : {};
-
-    await client.users.updateUserMetadata(record.userId, {
-      privateMetadata: {
-        ...existing,
-        [CLERK_BILLING_KEY]: record,
+    const { persistDurableDomain } = await import(
+      "@/lib/persistence/durable-domain"
+    );
+    await persistDurableDomain(
+      record.userId,
+      CLERK_BILLING_KEY,
+      record,
+      {
+        forceSupabase: true,
+        compact: (r) => r,
       },
-    });
+    );
   } catch (error) {
-    console.error("[billing] Failed to persist subscription to Clerk:", error);
+    console.error("[billing] Failed to persist subscription durably:", error);
   }
 }
 

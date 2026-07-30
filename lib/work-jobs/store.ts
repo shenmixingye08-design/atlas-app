@@ -82,22 +82,12 @@ export async function saveWorkJob(job: WorkJobRecord): Promise<WorkJobRecord> {
 }
 
 /**
- * In-memory update only (heartbeat). Durable persist is best-effort and must
- * not flip terminal success — used while status remains `running`.
+ * In-memory heartbeat only — never durable-persists.
+ * Heartbeat durable writes caused Clerk/Supabase spam and 429s.
  */
-export async function touchWorkJob(job: WorkJobRecord): Promise<WorkJobRecord> {
+export function touchWorkJob(job: WorkJobRecord): WorkJobRecord {
   const normalized = normalizeWorkJob(job);
   getBucket().set(normalized.id, normalized);
-  try {
-    const persistResult = await persistWorkJob(normalized);
-    if (persistResult === "failed") {
-      console.error("[work-jobs] touchWorkJob durable persist failed", {
-        jobId: normalized.id,
-      });
-    }
-  } catch (error) {
-    console.error("[work-jobs] touchWorkJob threw", error);
-  }
   return normalized;
 }
 

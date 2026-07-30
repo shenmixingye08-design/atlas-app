@@ -1,5 +1,6 @@
 import "server-only";
 
+import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
 import { warnIfProductionSupabaseServiceRoleMissing } from "@/lib/persistence/production-guard";
 import { withPersistenceTimeout } from "@/lib/persistence/with-timeout";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
@@ -41,6 +42,7 @@ export async function upsertSupabaseUserState(
         );
         return false;
       }
+      bumpPersistenceCounter("supabaseUserStateUpsert");
       return true;
     } catch (error) {
       console.warn(`[persistence] Supabase user_state skipped (${domain}):`, error);
@@ -118,6 +120,7 @@ export async function loadSupabaseUserState<T>(
           .maybeSingle();
 
         if (error || !data) return null;
+        bumpPersistenceCounter("supabaseUserStateLoad");
         return {
           payload: data.payload as T,
           updatedAt: data.updated_at,

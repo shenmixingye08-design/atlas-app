@@ -14,6 +14,8 @@ import {
   persistCommanderRunToClerk,
   snapshotToCommanderRun,
 } from "./durable-store";
+import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
+import { allowProcessCwdDataDir } from "@/lib/runtime/ephemeral-fs";
 
 const DATA_DIR = path.join(process.cwd(), ".data", "commander");
 const RUNS_FILE = path.join(DATA_DIR, "runs.json");
@@ -46,12 +48,18 @@ function getBucket(): RunBucket {
 }
 
 function ensureDataDir(): void {
+  if (!allowProcessCwdDataDir()) {
+    bumpPersistenceCounter("processCwdDataDirBlocked");
+    return;
+  }
+  bumpPersistenceCounter("processCwdDataDirAttempts");
   if (!existsSync(DATA_DIR)) {
     mkdirSync(DATA_DIR, { recursive: true });
   }
 }
 
 function loadFromDisk(): RunBucket {
+  if (!allowProcessCwdDataDir()) return new Map();
   try {
     if (!existsSync(RUNS_FILE)) return new Map();
     const raw = readFileSync(RUNS_FILE, "utf8");
@@ -63,8 +71,12 @@ function loadFromDisk(): RunBucket {
   }
 }
 
-/** Local/dev cache only — production durability is Clerk (+ optional Supabase). */
+/** Local/dev cache only — banned on Vercel `/var/task`. */
 function persistLocalCache(bucket: RunBucket): void {
+  if (!allowProcessCwdDataDir()) {
+    bumpPersistenceCounter("processCwdDataDirBlocked");
+    return;
+  }
   try {
     ensureDataDir();
     const sorted = [...bucket.entries()].sort(
@@ -84,8 +96,27 @@ function persistLocalCache(bucket: RunBucket): void {
   }
 }
 
-function persistDurable(run: CommanderRunRecord): void {
+const TERMINAL_COMMANDER: ReadonlySet<CommanderRunStatus> = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+  "awaiting_confirmation",
+]);
+
+/**
+ * Durable persist only on create + terminal (or force).
+ * Intermediate `running` updates stay in-memory to avoid Clerk/Supabase spam.
+ */
+function persistDurable(
+  run: CommanderRunRecord,
+  options?: { force?: boolean },
+): void {
   persistLocalCache(getBucket());
+  const shouldDurable =
+    options?.force === true ||
+    TERMINAL_COMMANDER.has(run.status) ||
+    run.status === "planning";
+  if (!shouldDurable) return;
   void persistCommanderRunToClerk(run);
 }
 
@@ -182,7 +213,13 @@ export function updateCommanderRun(
     updatedAt: new Date().toISOString(),
   };
   getBucket().set(runId, updated);
-  persistDurable(updated);
+  const statusChanged =
+    patch.status !== undefined && patch.status !== existing.status;
+  const becameTerminal =
+    statusChanged && TERMINAL_COMMANDER.has(updated.status);
+  persistDurable(updated, {
+    force: becameTerminal || updated.status === "planning",
+  });
   return updated;
 }
 

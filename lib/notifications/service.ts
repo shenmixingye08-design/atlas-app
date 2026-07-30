@@ -6,6 +6,7 @@ import { resolvePushEventCategory, resolvePushSeverity } from "@/lib/push/catego
 
 import { deliverLineWithAck, deliverWebPushWithAck } from "./delivery";
 import { schedulePersistNotifications } from "./durable";
+import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
 import {
   appendNotification,
   deleteNotification,
@@ -134,6 +135,7 @@ export function createNotification(
     pushFailureReason: null,
     readAt: null,
   });
+  bumpPersistenceCounter("notificationCreate");
   if (input.userId) schedulePersistNotifications(input.userId);
 
   if (!options?.skipDelivery) {

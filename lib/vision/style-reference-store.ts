@@ -3,6 +3,8 @@ import "server-only";
 import { promises as fs } from "fs";
 import path from "path";
 
+import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
+import { allowProcessCwdDataDir } from "@/lib/runtime/ephemeral-fs";
 import type { VisionStyleSignals } from "@/lib/vision/types";
 
 /**
@@ -42,6 +44,18 @@ export async function saveStyleReference(input: {
     createdAt: new Date().toISOString(),
   };
 
+  if (!allowProcessCwdDataDir()) {
+    bumpPersistenceCounter("processCwdDataDirBlocked");
+    // Keep in-process only on ephemeral FS.
+    const g = globalThis as typeof globalThis & {
+      __atlasStyleRefs?: StyleReferenceRecord[];
+    };
+    if (!g.__atlasStyleRefs) g.__atlasStyleRefs = [];
+    g.__atlasStyleRefs.push(record);
+    return record;
+  }
+
+  bumpPersistenceCounter("processCwdDataDirAttempts");
   const dir = path.join(ROOT, input.userId);
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(

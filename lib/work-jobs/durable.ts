@@ -6,9 +6,9 @@ import { join } from "path";
 import {
   loadDurableDomain,
   persistDurableDomain,
-  pruneOversizedClerkDurableDomains,
 } from "@/lib/persistence/durable-domain";
-import { isAtlasProduction } from "@/lib/runtime/is-production";
+import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
+import { allowProcessCwdDataDir } from "@/lib/runtime/ephemeral-fs";
 
 import type { WorkJobRecord } from "./store";
 
@@ -19,23 +19,15 @@ type JobsPayload = { jobs: WorkJobRecord[] };
 
 export type WorkJobPersistResult = "supabase" | "disk_dev" | "failed";
 
-/** Vercel serverless local FS is ephemeral — never use it as a job DB. */
 export function isVercelEphemeralFs(): boolean {
-  return (
-    Boolean(process.env.VERCEL) ||
-    Boolean(process.env.VERCEL_ENV) ||
-    process.env.AWS_LAMBDA_FUNCTION_NAME != null
-  );
+  return !allowProcessCwdDataDir();
 }
 
 function allowLocalDiskPersist(): boolean {
-  // Production / Vercel: ban process.cwd()/.data (maps to /var/task/.data).
-  if (isVercelEphemeralFs() || isAtlasProduction()) return false;
-  return true;
+  return allowProcessCwdDataDir();
 }
 
 function diskRoot(): string {
-  // Dev-only helper under the repo. Never relied upon in Vercel.
   return join(process.cwd(), ".data", "work-jobs");
 }
 
@@ -59,7 +51,6 @@ function slimJob(job: WorkJobRecord): WorkJobRecord {
 async function persistWorkJobToSupabase(job: WorkJobRecord): Promise<boolean> {
   const slim = slimJob(job);
   try {
-    await pruneOversizedClerkDurableDomains(job.userId);
     const existing =
       (await loadDurableDomain<JobsPayload>(job.userId, DOMAIN_KEY))?.jobs ?? [];
     const next = [slim, ...existing.filter((j) => j.id !== slim.id)].slice(
@@ -83,6 +74,7 @@ async function persistWorkJobToSupabase(job: WorkJobRecord): Promise<boolean> {
       });
       return false;
     }
+    bumpPersistenceCounter("workJobPersist");
     return true;
   } catch (error) {
     console.error("[work-jobs] durable supabase persist threw", {
@@ -97,7 +89,7 @@ async function persistWorkJobToSupabase(job: WorkJobRecord): Promise<boolean> {
 /**
  * Persist job for cold-start / cross-instance recovery.
  * Vercel / production: Supabase only (never /var/task/.data).
- * Local dev: Supabase + optional disk cache; disk failure alone is not success.
+ * Never prunes Clerk on every save (that caused 429).
  */
 export async function persistWorkJob(
   job: WorkJobRecord,
@@ -108,9 +100,11 @@ export async function persistWorkJob(
   }
 
   if (!allowLocalDiskPersist()) {
+    bumpPersistenceCounter("processCwdDataDirBlocked");
     return "supabase";
   }
 
+  bumpPersistenceCounter("processCwdDataDirAttempts");
   try {
     const slim = slimJob(job);
     const file = pathFor(job.userId, job.id);
@@ -118,7 +112,6 @@ export async function persistWorkJob(
     writeFileSync(file, JSON.stringify(slim));
     return "disk_dev";
   } catch (error) {
-    // Dev disk is optional cache; Supabase already succeeded.
     console.warn("[work-jobs] local disk cache write skipped", error);
     return "supabase";
   }

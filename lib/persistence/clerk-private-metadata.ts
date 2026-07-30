@@ -2,6 +2,10 @@ import "server-only";
 
 import { clerkClient } from "@clerk/nextjs/server";
 
+import {
+  bumpPersistenceCounter,
+  recordClerkErrorMessage,
+} from "./call-counters";
 import { withPersistenceTimeout } from "./with-timeout";
 
 /** Read a single privateMetadata key for a Clerk user. */
@@ -11,9 +15,9 @@ export async function loadClerkPrivateMetadataKey<T>(
 ): Promise<T | null> {
   if (!process.env.CLERK_SECRET_KEY?.trim()) return null;
 
-  // Bounded: a hung Clerk call must not stall the request indefinitely.
   return withPersistenceTimeout<T | null>(async () => {
     try {
+      bumpPersistenceCounter("clerkGetUser");
       const client = await clerkClient();
       const user = await client.users.getUser(userId);
       const value = user.privateMetadata?.[key];
@@ -24,7 +28,11 @@ export async function loadClerkPrivateMetadataKey<T>(
   }, null);
 }
 
-/** Merge-write a single privateMetadata key (preserves sibling keys). */
+/**
+ * Merge-write a single privateMetadata key.
+ * Clerk merges top-level keys — do NOT getUser + rewrite the entire blob
+ * (that re-sends oversized sibling keys and causes 8KB / 429 failures).
+ */
 export async function persistClerkPrivateMetadataKey(
   userId: string,
   key: string,
@@ -34,22 +42,17 @@ export async function persistClerkPrivateMetadataKey(
 
   return withPersistenceTimeout(async () => {
     try {
+      bumpPersistenceCounter("clerkUpdateMetadata");
       const client = await clerkClient();
-      const user = await client.users.getUser(userId);
-      const existing =
-        user.privateMetadata && typeof user.privateMetadata === "object"
-          ? { ...user.privateMetadata }
-          : {};
-
       await client.users.updateUserMetadata(userId, {
         privateMetadata: {
-          ...existing,
           [key]: value,
         },
       });
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      recordClerkErrorMessage(message);
       console.error(`[persistence] Clerk metadata write failed (${key}):`, error);
       if (/8192|8 KB|maximum allowed size|private_metadata/i.test(message)) {
         try {
@@ -58,20 +61,18 @@ export async function persistClerkPrivateMetadataKey(
           );
           const pruned = await pruneOversizedClerkDurableDomains(userId);
           console.error("[persistence] Clerk 8KB prune attempted", pruned);
+          bumpPersistenceCounter("clerkUpdateMetadata");
           const client = await clerkClient();
-          const user = await client.users.getUser(userId);
-          const existing =
-            user.privateMetadata && typeof user.privateMetadata === "object"
-              ? { ...user.privateMetadata }
-              : {};
           await client.users.updateUserMetadata(userId, {
             privateMetadata: {
-              ...existing,
               [key]: value,
             },
           });
           return true;
         } catch (retryError) {
+          const retryMessage =
+            retryError instanceof Error ? retryError.message : String(retryError);
+          recordClerkErrorMessage(retryMessage);
           console.error(
             `[persistence] Clerk metadata write failed after prune (${key}):`,
             retryError,
@@ -92,23 +93,20 @@ export async function clearClerkPrivateMetadataKeys(
   if (!process.env.CLERK_SECRET_KEY?.trim() || keys.length === 0) return false;
 
   try {
+    bumpPersistenceCounter("clerkClearKeys");
     const client = await clerkClient();
-    const user = await client.users.getUser(userId);
-    const existing =
-      user.privateMetadata && typeof user.privateMetadata === "object"
-        ? { ...user.privateMetadata }
-        : {};
-
-    const next: Record<string, unknown> = { ...existing };
+    const next: Record<string, null> = {};
     for (const key of keys) {
       next[key] = null;
     }
-
+    // Partial merge — do not re-upload the rest of privateMetadata.
     await client.users.updateUserMetadata(userId, {
       privateMetadata: next,
     });
     return true;
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    recordClerkErrorMessage(message);
     console.error(`[persistence] Clerk metadata clear failed:`, error);
     return false;
   }

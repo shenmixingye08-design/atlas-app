@@ -4,6 +4,7 @@ import {
   loadDurableDomain,
   persistDurableDomain,
 } from "@/lib/persistence/durable-domain";
+import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
 
 import type { LearningEvent, LearningReport } from "./types";
 import {
@@ -53,6 +54,7 @@ export function snapshotLearning(userId: string): DurableLearningState {
 }
 
 export function schedulePersistLearning(userId: string): void {
+  bumpPersistenceCounter("learningPersist");
   void persistDurableDomain(
     userId,
     LEARNING_DOMAIN_KEY,

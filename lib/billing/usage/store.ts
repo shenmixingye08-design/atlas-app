@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import path from "path";
 
+import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
+import { allowProcessCwdDataDir } from "@/lib/runtime/ephemeral-fs";
 import type {
   AiUsageEvent,
   UsageCounters,
@@ -65,12 +67,18 @@ function getEventBucket(): AiUsageEvent[] {
 }
 
 function ensureDataDir(): void {
+  if (!allowProcessCwdDataDir()) {
+    bumpPersistenceCounter("processCwdDataDirBlocked");
+    return;
+  }
+  bumpPersistenceCounter("processCwdDataDirAttempts");
   if (!existsSync(DATA_DIR)) {
     mkdirSync(DATA_DIR, { recursive: true });
   }
 }
 
 function hydrateFromDisk(bucket: UsageBucket): void {
+  if (!allowProcessCwdDataDir()) return;
   try {
     if (!existsSync(USAGE_FILE)) return;
     const raw = readFileSync(USAGE_FILE, "utf8");
@@ -94,6 +102,20 @@ function hydrateFromDisk(bucket: UsageBucket): void {
 }
 
 function persistToDisk(): void {
+  // Durable path (Supabase) always — disk only for local/dev.
+  void import("./durable")
+    .then((mod) => {
+      mod.schedulePersistBillingUsage();
+    })
+    .catch(() => {
+      // durable module is server-only; ignore if unavailable in odd contexts
+    });
+
+  if (!allowProcessCwdDataDir()) {
+    bumpPersistenceCounter("processCwdDataDirBlocked");
+    return;
+  }
+
   try {
     ensureDataDir();
     const snapshots = Object.fromEntries(getBucket().entries());
@@ -107,15 +129,6 @@ function persistToDisk(): void {
   } catch (error) {
     console.error("[billing] Failed to persist usage to disk:", error);
   }
-
-  // Durable path (Supabase) — fire-and-forget; disk is local/dev only.
-  void import("./durable")
-    .then((mod) => {
-      mod.schedulePersistBillingUsage();
-    })
-    .catch(() => {
-      // durable module is server-only; ignore if unavailable in odd contexts
-    });
 }
 
 /** Snapshot map for durable serialization (no secrets). */

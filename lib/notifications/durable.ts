@@ -47,26 +47,34 @@ export function snapshotNotifications(
   };
 }
 
+const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * Debounced durable write — coalesces bursts from createNotification + mark-read.
+ * Serverless routes that must flush before response should call persistNotificationsNow.
+ */
 export function schedulePersistNotifications(userId: string): void {
-  void persistDurableDomain(
+  const existing = pendingTimers.get(userId);
+  if (existing) clearTimeout(existing);
+  pendingTimers.set(
     userId,
-    NOTIFICATIONS_DOMAIN_KEY,
-    snapshotNotifications(userId),
-    {
-      compact: compactNotifications,
-      forceSupabase: true,
-    },
+    setTimeout(() => {
+      pendingTimers.delete(userId);
+      void persistNotificationsNow(userId);
+    }, 50),
   );
 }
 
 /**
  * Awaitable durable write. Serverless instances can freeze the moment a route
- * returns its Response, so fire-and-forget persistence ({@link
- * schedulePersistNotifications}) may never reach Supabase — the mutation then
- * "does nothing" after the next cold start. API routes that mutate must await
- * this before responding so read/mark-all/delete actually stick.
+ * returns its Response, so fire-and-forget persistence may never reach Supabase.
  */
 export async function persistNotificationsNow(userId: string): Promise<void> {
+  const pending = pendingTimers.get(userId);
+  if (pending) {
+    clearTimeout(pending);
+    pendingTimers.delete(userId);
+  }
   await persistDurableDomain(
     userId,
     NOTIFICATIONS_DOMAIN_KEY,

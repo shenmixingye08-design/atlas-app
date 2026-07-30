@@ -115,8 +115,8 @@ export function resetDurableDeliverableStoreForTests(): void {
 
 function persistToDisk(row: DurableDeliverableRow, buffer?: Buffer): void {
   if (!allowDeliverableDiskFallback()) {
-    // Still attempt best-effort local cache on the same instance, but never
-    // treat disk as the durable source of truth in production.
+    // Production / Vercel: never write under process.cwd()/.data (→ /var/task).
+    return;
   }
   try {
     const dir = userDir(row.userId);
