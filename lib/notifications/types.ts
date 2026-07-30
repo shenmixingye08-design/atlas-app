@@ -15,6 +15,18 @@ export type NotificationType =
   | "integration"
   | "automation";
 
+/**
+ * Formal work-lifecycle event on a notification.
+ * Separates inbox semantics from deliverable/result page states.
+ */
+export type WorkNotificationEvent =
+  | "accepted"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "timed_out"
+  | "retry_result";
+
 export type NotificationAudience = "user" | "owner";
 
 export type NotificationChannel = "in_app" | "email" | "line" | "slack" | "push";
@@ -76,6 +88,14 @@ export type NotificationRecord = {
   deliverableId?: string | null;
   requestId?: string | null;
   automationId?: string | null;
+  /** Work-job id (canonical for lifecycle upsert / deep link). */
+  jobId?: string | null;
+  /** Word/.docx artifact id when a downloadable file exists. */
+  artifactId?: string | null;
+  /** Formal lifecycle event — never confuse with deliverable empty states. */
+  workEvent?: WorkNotificationEvent | null;
+  /** Optional retry deep link for failed / timed_out / retry_result. */
+  retryActionUrl?: string | null;
   /** Unified push + in-app metadata */
   severity?: PushSeverity | null;
   eventCategory?: PushEventCategory | null;
@@ -152,6 +172,10 @@ export type CreateNotificationInput = {
   deliverableId?: string | null;
   requestId?: string | null;
   automationId?: string | null;
+  jobId?: string | null;
+  artifactId?: string | null;
+  workEvent?: WorkNotificationEvent | null;
+  retryActionUrl?: string | null;
   severity?: PushSeverity | null;
   eventCategory?: PushEventCategory | null;
   autoRecovered?: boolean;

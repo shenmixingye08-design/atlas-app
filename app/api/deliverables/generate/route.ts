@@ -168,6 +168,22 @@ export async function POST(request: Request): Promise<Response> {
     const workflowId =
       typeof body.workflowId === "string" ? body.workflowId : null;
 
+    // DIAGNOSTIC: this route does not create a commander Project row.
+    // Engine notifications therefore cannot resolve via commander-* without
+    // a separate persist — correlate with /results not_saved in Vercel logs.
+    console.info(
+      "[word_pipeline]",
+      JSON.stringify({
+        tag: "word_pipeline",
+        stage: "REQUEST_ACCEPTED",
+        ok: true,
+        route: "/api/deliverables/generate",
+        userId: `${userId.slice(0, 8)}…`,
+        createsProjectRow: false,
+        detail: "client_generate_no_project_persist",
+      }),
+    );
+
     const result = await generateDeliverables(
       {
         assignment: body.assignment.trim(),

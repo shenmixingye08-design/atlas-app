@@ -28,9 +28,12 @@ export function isDeliverableTargetType(
   return DELIVERABLE_TARGET_TYPES.has(kind);
 }
 
-/** Durable project ids are minted as `commander-*` / `orchestrate-*`. */
+/**
+ * Durable project ids are minted as `commander-*` / `orchestrate-*` /
+ * `wordfile-*` (legacy Word-UUID recovery stub).
+ */
 export function looksLikeProjectId(value: string): boolean {
-  return /^(commander|orchestrate|project)[-_]/.test(value);
+  return /^(commander|orchestrate|project|wordfile)[-_]/.test(value);
 }
 
 /**

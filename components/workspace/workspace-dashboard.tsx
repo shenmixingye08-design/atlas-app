@@ -30,7 +30,22 @@ import { Button } from "@/components/ui/button";
 import { ui } from "@/lib/i18n";
 import { consumePendingAttachmentIds } from "@/lib/attachments/pending-session";
 import type { DocumentExtractClient } from "@/lib/attachments/documents/client-upload";
+import { WordJobStatusPanel } from "@/components/deliverables/word-job-status-panel";
 import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
+import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
+import {
+  clearWordJobSession,
+  mapWorkJobStatusToWordUiPhase,
+  readWordJobSession,
+  sanitizeWordFailureDetail,
+  writeWordJobSession,
+  type WordJobUiPhase,
+} from "@/lib/deliverables/word-job-ui-state";
+import {
+  JOB_ACCEPTED_DESCRIPTION,
+  JOB_ACCEPTED_TITLE,
+  type JobProgressPhase,
+} from "@/lib/work-jobs/progress";
 
 import { FinalOutput } from "./final-output";
 import {
@@ -70,8 +85,20 @@ export function WorkspaceDashboard() {
   const [backgroundAccepted, setBackgroundAccepted] = useState(false);
   const [pendingCommander, setPendingCommander] =
     useState<CommanderRunResult | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [wordUiPhase, setWordUiPhase] = useState<WordJobUiPhase | null>(null);
+  const [wordErrorDetail, setWordErrorDetail] = useState<string | null>(null);
+  const [wordActionBusy, setWordActionBusy] = useState(false);
+  const [jobProgressPhase, setJobProgressPhase] =
+    useState<JobProgressPhase | null>(null);
+  const [jobProgressLabel, setJobProgressLabel] = useState<string | null>(null);
+  const [jobIsSlow, setJobIsSlow] = useState(false);
 
   const autoStartedRef = useRef(false);
+  const submittingRef = useRef(false);
+  const pollAbortRef = useRef(0);
+  const sessionRestoredRef = useRef(false);
+  const lastWordAssignmentRef = useRef("");
   const requestMetadataRef = useRef<Readonly<Record<string, unknown>>>({});
   const { isAvailable } = useFeatureAvailability();
   const preferredFormat = requestMetadata.preferredDeliverableFormat;
@@ -96,6 +123,11 @@ export function WorkspaceDashboard() {
     deliverableOptions?.formats?.includes("docx") ?? likelyFormats.includes("docx");
   const { deliverables, deliverablesError, isGeneratingDeliverables } =
     useDeliverableFiles(result, deliverableOptions);
+
+  const wordDeliverable =
+    deliverables.find((item) => item.format === "docx") ??
+    result?.fileDeliverables?.find((item) => item.format === "docx") ??
+    null;
 
   const searchParams = useSearchParams();
 
@@ -141,17 +173,229 @@ export function WorkspaceDashboard() {
     return undefined;
   }, [loadingStepIndex, isLoading]);
 
+  const updateWordPhase = useCallback(
+    (
+      phase: WordJobUiPhase | null,
+      opts?: {
+        jobId?: string | null;
+        assignment?: string;
+        errorDetail?: string | null;
+      },
+    ) => {
+      setWordUiPhase(phase);
+      if (phase == null) {
+        clearWordJobSession();
+        return;
+      }
+      const nextAssignment =
+        opts?.assignment?.trim() ||
+        lastWordAssignmentRef.current ||
+        assignment;
+      if (nextAssignment) {
+        lastWordAssignmentRef.current = nextAssignment;
+      }
+      const jobId = opts?.jobId ?? activeJobId;
+      // Persist even without jobId for failed accept — back/reload keeps the panel.
+      writeWordJobSession({
+        jobId: jobId || `local-failed`,
+        assignment: nextAssignment,
+        phase,
+        updatedAt: new Date().toISOString(),
+        errorDetail: opts?.errorDetail ?? null,
+      });
+    },
+    [activeJobId, assignment],
+  );
+
+  const pollWorkJobUntilSettled = useCallback(
+    async (
+      jobId: string,
+      requestAssignment: string,
+      wantsWord: boolean,
+    ): Promise<void> => {
+      const pollToken = ++pollAbortRef.current;
+      for (let i = 0; i < 240; i += 1) {
+        if (pollToken !== pollAbortRef.current) return;
+        await new Promise((r) => setTimeout(r, i === 0 ? 400 : 2_000));
+        if (pollToken !== pollAbortRef.current) return;
+
+        let poll: Response;
+        try {
+          poll = await fetch(`/api/work/jobs/${encodeURIComponent(jobId)}`, {
+            cache: "no-store",
+          });
+        } catch {
+          if (wantsWord) {
+            setWordErrorDetail(null);
+            updateWordPhase("network_error", { jobId, assignment: requestAssignment });
+            setIsLoading(false);
+            setBackgroundAccepted(false);
+            return;
+          }
+          throw new Error("最新状態を取得できませんでした。");
+        }
+
+        const body = (await poll.json().catch(() => ({}))) as {
+          status?: string;
+          blockReason?: string | null;
+          result?: OrchestrationResult | null;
+          error?: string;
+          message?: string;
+          progressPhase?: JobProgressPhase | string | null;
+          progressLabel?: string | null;
+          isSlow?: boolean;
+          timeoutReason?: string | null;
+        };
+
+        if (
+          typeof body.progressPhase === "string" &&
+          body.progressPhase.trim()
+        ) {
+          setJobProgressPhase(body.progressPhase as JobProgressPhase);
+        }
+        if (typeof body.progressLabel === "string") {
+          setJobProgressLabel(body.progressLabel);
+        }
+        setJobIsSlow(Boolean(body.isSlow));
+
+        if (!poll.ok) {
+          if (wantsWord) {
+            setWordErrorDetail(null);
+            updateWordPhase("network_error", { jobId, assignment: requestAssignment });
+            setIsLoading(false);
+            setBackgroundAccepted(false);
+            return;
+          }
+          throw new Error(body.error || "最新状態を取得できませんでした。");
+        }
+
+        const phase = mapWorkJobStatusToWordUiPhase({
+          status: body.status,
+          blockReason: body.blockReason,
+        });
+        if (wantsWord && phase && phase !== "completed") {
+          updateWordPhase(phase, { jobId, assignment: requestAssignment });
+        }
+
+        const needsConfirmation =
+          body.status === "awaiting_confirmation" ||
+          (body.status === "processing" &&
+            body.blockReason === "awaiting_confirmation");
+        if (needsConfirmation) {
+          setIsLoading(false);
+          setBackgroundAccepted(false);
+          updateWordPhase(null);
+          const orchestrationResult = await submitWorkRequest(
+            requestAssignment,
+            undefined,
+            { metadata: requestMetadataRef.current },
+          );
+          setResult(orchestrationResult);
+          projectService.saveFromOrchestration(
+            requestAssignment,
+            orchestrationResult,
+            orchestrationResult.commanderRunId
+              ? `commander-${orchestrationResult.commanderRunId}`
+              : undefined,
+          );
+          return;
+        }
+
+        if (body.status === "completed" && body.result) {
+          setResult(body.result);
+          setWorkMemoryUsed(body.result.workMemory ?? null);
+          projectService.saveFromOrchestration(
+            requestAssignment,
+            body.result,
+            body.result.commanderRunId
+              ? `commander-${body.result.commanderRunId}`
+              : undefined,
+          );
+          if (wantsWord) {
+            updateWordPhase("completed", {
+              jobId,
+              assignment: requestAssignment,
+            });
+          }
+          if (body.result.status === "failed" && body.result.error) {
+            const detail = sanitizeWordFailureDetail(
+              formatUserFacingErrorText(
+                toUserFacingError(body.result.error, body.result),
+              ),
+            );
+            setWordErrorDetail(detail);
+            if (wantsWord) {
+              updateWordPhase("failed", {
+                jobId,
+                assignment: requestAssignment,
+                errorDetail: detail,
+              });
+            } else {
+              setError(detail);
+            }
+          }
+          return;
+        }
+
+        if (
+          body.status === "failed" ||
+          body.status === "timed_out" ||
+          body.status === "cancelled"
+        ) {
+          const detail = sanitizeWordFailureDetail(
+            body.timeoutReason ||
+              body.error ||
+              body.message ||
+              "処理を完了できませんでした。",
+          );
+          setWordErrorDetail(detail);
+          if (wantsWord) {
+            updateWordPhase(
+              body.status === "timed_out" ? "timed_out" : "failed",
+              {
+                jobId,
+                assignment: requestAssignment,
+                errorDetail: detail,
+              },
+            );
+            return;
+          }
+          throw new Error(detail ?? "確認が必要です。");
+        }
+      }
+
+      const timeoutDetail = sanitizeWordFailureDetail(
+        "処理時間を超えたため停止しました。",
+      );
+      setWordErrorDetail(timeoutDetail);
+      if (wantsWord) {
+        updateWordPhase("timed_out", {
+          jobId,
+          assignment: requestAssignment,
+          errorDetail: timeoutDetail,
+        });
+        return;
+      }
+      throw new Error(timeoutDetail ?? "確認が必要です。");
+    },
+    [updateWordPhase],
+  );
+
   const runOrchestration = useCallback(async (
     requestAssignment: string,
     config?: SalesMaterialSessionConfig | null,
     extraMetadata?: Readonly<Record<string, unknown>>,
   ) => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+
     setError(null);
     setResult(null);
     setOutlineOnlyText(null);
     setWorkMemoryUsed(null);
     setWorkMemoryCandidateCount(0);
     setPendingCommander(null);
+    setWordErrorDetail(null);
     setIsLoading(true);
     setBackgroundAccepted(false);
     setLoadingStepIndex(0);
@@ -168,6 +412,10 @@ export function WorkspaceDashboard() {
     };
     requestMetadataRef.current = mergedMetadata;
     setRequestMetadata(mergedMetadata);
+
+    const wantsWord =
+      mergedMetadata.preferredDeliverableFormat === "docx" ||
+      detectDeliverableFormats(requestAssignment).formats.includes("docx");
 
     try {
       // Server job — browser does not hold the long orchestration connection.
@@ -197,86 +445,44 @@ export function WorkspaceDashboard() {
         );
       }
 
-      setBackgroundAccepted(true);
       const jobId = acceptBody.jobId;
-
-      // Poll until completed / failed / confirmation.
-      for (let i = 0; i < 240; i += 1) {
-        await new Promise((r) => setTimeout(r, 2_000));
-        const poll = await fetch(`/api/work/jobs/${encodeURIComponent(jobId)}`, {
-          cache: "no-store",
+      setActiveJobId(jobId);
+      setBackgroundAccepted(true);
+      if (wantsWord) {
+        updateWordPhase("accepted", {
+          jobId,
+          assignment: requestAssignment,
         });
-        const body = (await poll.json().catch(() => ({}))) as {
-          status?: string;
-          result?: OrchestrationResult | null;
-          error?: string;
-          message?: string;
-        };
-        if (!poll.ok) {
-          throw new Error(body.error || "状況を確認できませんでした。");
-        }
-        if (body.status === "awaiting_confirmation") {
-          // Fall back to interactive confirm via classic path when needed.
-          setIsLoading(false);
-          setBackgroundAccepted(false);
-          const orchestrationResult = await submitWorkRequest(
-            requestAssignment,
-            undefined,
-            { metadata: requestMetadataRef.current },
-          );
-          setResult(orchestrationResult);
-          projectService.saveFromOrchestration(
-            requestAssignment,
-            orchestrationResult,
-            orchestrationResult.commanderRunId
-              ? `commander-${orchestrationResult.commanderRunId}`
-              : undefined,
-          );
-          return;
-        }
-        if (body.status === "completed" && body.result) {
-          setResult(body.result);
-          setWorkMemoryUsed(body.result.workMemory ?? null);
-          projectService.saveFromOrchestration(
-            requestAssignment,
-            body.result,
-            body.result.commanderRunId
-              ? `commander-${body.result.commanderRunId}`
-              : undefined,
-          );
-          if (body.result.status === "failed" && body.result.error) {
-            setError(
-              formatUserFacingErrorText(
-                toUserFacingError(body.result.error, body.result),
-              ),
-            );
-          }
-          return;
-        }
-        if (body.status === "failed") {
-          throw new Error(body.error || body.message || "確認が必要です。");
-        }
       }
-      throw new Error(
-        "まだ準備中です。しばらくしてから履歴をご確認ください。",
-      );
+
+      await pollWorkJobUntilSettled(jobId, requestAssignment, wantsWord);
     } catch (err) {
       if (err instanceof CommanderConfirmationRequiredError) {
         setPendingCommander(err.commander);
         setIsLoading(false);
         setBackgroundAccepted(false);
+        updateWordPhase(null);
         return;
       }
       const message =
         err instanceof Error
           ? err.message
           : formatUserFacingErrorText(toUserFacingError(err));
-      setError(message);
+      if (wantsWord) {
+        setWordErrorDetail(sanitizeWordFailureDetail(message));
+        updateWordPhase("failed", {
+          assignment: requestAssignment,
+          errorDetail: sanitizeWordFailureDetail(message),
+        });
+      } else {
+        setError(message);
+      }
     } finally {
       setIsLoading(false);
       setBackgroundAccepted(false);
+      submittingRef.current = false;
     }
-  }, []);
+  }, [pollWorkJobUntilSettled, updateWordPhase]);
 
   const handleConfirmPending = async () => {
     if (!pendingCommander?.runId || isLoading) return;
@@ -315,7 +521,7 @@ export function WorkspaceDashboard() {
 
   const handleSubmit = async (payload: WorkRequestSubmitPayload) => {
     const trimmed = payload.assignment.trim();
-    if (!trimmed || isLoading) return;
+    if (!trimmed || isLoading || submittingRef.current) return;
 
     requestMetadataRef.current = payload.metadata;
     setRequestMetadata(payload.metadata);
@@ -439,6 +645,8 @@ export function WorkspaceDashboard() {
   };
 
   const handleReset = () => {
+    pollAbortRef.current += 1;
+    submittingRef.current = false;
     setAssignment("");
     requestMetadataRef.current = {};
     setRequestMetadata({});
@@ -447,14 +655,227 @@ export function WorkspaceDashboard() {
     setSalesWizardAssignment(null);
     setSalesMaterialConfig(null);
     setOutlineOnlyText(null);
+    setActiveJobId(null);
+    setWordUiPhase(null);
+    setWordErrorDetail(null);
+    setJobProgressPhase(null);
+    setJobProgressLabel(null);
+    setJobIsSlow(false);
+    setWordActionBusy(false);
+    lastWordAssignmentRef.current = "";
+    clearWordJobSession();
   };
 
+  const isResumableWordJobId = (jobId: string | null | undefined) =>
+    Boolean(jobId && !jobId.startsWith("local-"));
+
+  // Restore Word job panel after back / reload — do not lose in-flight state.
+  useEffect(() => {
+    if (sessionRestoredRef.current) return;
+    sessionRestoredRef.current = true;
+    const session = readWordJobSession();
+    if (!session?.phase) return;
+
+    setWordUiPhase(session.phase);
+    setWordErrorDetail(session.errorDetail ?? null);
+    if (session.assignment) {
+      lastWordAssignmentRef.current = session.assignment;
+      setAssignment(session.assignment);
+    }
+    if (isResumableWordJobId(session.jobId)) {
+      setActiveJobId(session.jobId);
+    }
+
+    if (session.phase === "completed" && isResumableWordJobId(session.jobId)) {
+      void (async () => {
+        try {
+          const poll = await fetch(
+            `/api/work/jobs/${encodeURIComponent(session.jobId)}`,
+            { cache: "no-store" },
+          );
+          const body = (await poll.json().catch(() => ({}))) as {
+            result?: OrchestrationResult | null;
+            status?: string;
+          };
+          if (body.result) {
+            setResult(body.result);
+          }
+          if (body.status && body.status !== "completed") {
+            const mapped = mapWorkJobStatusToWordUiPhase({
+              status: body.status,
+            });
+            if (mapped) {
+              updateWordPhase(mapped, {
+                jobId: session.jobId,
+                assignment: session.assignment,
+              });
+            }
+          }
+        } catch {
+          updateWordPhase("network_error", {
+            jobId: session.jobId,
+            assignment: session.assignment,
+          });
+        }
+      })();
+      return;
+    }
+
+    if (
+      (session.phase === "accepted" || session.phase === "processing") &&
+      isResumableWordJobId(session.jobId)
+    ) {
+      setIsLoading(true);
+      setBackgroundAccepted(true);
+      void (async () => {
+        try {
+          await pollWorkJobUntilSettled(
+            session.jobId,
+            session.assignment,
+            true,
+          );
+        } catch (err) {
+          const message =
+            err instanceof Error
+              ? err.message
+              : "最新状態を取得できませんでした。";
+          setWordErrorDetail(sanitizeWordFailureDetail(message));
+          updateWordPhase("network_error", {
+            jobId: session.jobId,
+            assignment: session.assignment,
+          });
+        } finally {
+          setIsLoading(false);
+          setBackgroundAccepted(false);
+        }
+      })();
+    }
+  }, [pollWorkJobUntilSettled, updateWordPhase]);
+
+  const handleWordOpen = useCallback(() => {
+    const el = document.getElementById("word-preview");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      el.focus({ preventScroll: true });
+      return;
+    }
+    // Preview not mounted yet — soft hint without technical jargon.
+    setWordErrorDetail(null);
+  }, []);
+
+  const handleWordDownload = useCallback(async () => {
+    if (!wordDeliverable || wordActionBusy || wordUiPhase !== "completed") {
+      return;
+    }
+    setWordActionBusy(true);
+    try {
+      await downloadDeliverableFile({
+        url: wordDeliverable.downloadUrl,
+        fileName: wordDeliverable.fileName,
+        mimeType: wordDeliverable.mimeType,
+        format: wordDeliverable.format,
+      });
+    } catch (downloadError) {
+      setWordErrorDetail(
+        sanitizeWordFailureDetail(
+          downloadError instanceof Error
+            ? downloadError.message
+            : ui.work.downloadFailed,
+        ),
+      );
+    } finally {
+      setWordActionBusy(false);
+    }
+  }, [wordActionBusy, wordDeliverable, wordUiPhase]);
+
+  const handleWordRetry = useCallback(async () => {
+    if (submittingRef.current || wordActionBusy || isLoading) return;
+    const nextAssignment =
+      lastWordAssignmentRef.current.trim() || assignment.trim();
+    if (!nextAssignment) return;
+    pollAbortRef.current += 1;
+    setResult(null);
+    setError(null);
+    await runOrchestration(nextAssignment, salesMaterialConfig, {
+      ...requestMetadataRef.current,
+      preferredDeliverableFormat: "docx",
+    });
+  }, [
+    assignment,
+    isLoading,
+    runOrchestration,
+    salesMaterialConfig,
+    wordActionBusy,
+  ]);
+
+  const handleWordDetail = useCallback(() => {
+    window.location.assign("/notifications");
+  }, []);
+
+  const handleWordReload = useCallback(async () => {
+    if (wordActionBusy) return;
+    const session = readWordJobSession();
+    const jobId = activeJobId ?? session?.jobId ?? null;
+    const nextAssignment =
+      session?.assignment ||
+      lastWordAssignmentRef.current ||
+      assignment.trim();
+    if (!isResumableWordJobId(jobId)) {
+      window.location.reload();
+      return;
+    }
+    setWordActionBusy(true);
+    setIsLoading(true);
+    setBackgroundAccepted(true);
+    setWordErrorDetail(null);
+    updateWordPhase("processing", {
+      jobId,
+      assignment: nextAssignment,
+    });
+    try {
+      await pollWorkJobUntilSettled(jobId!, nextAssignment, true);
+    } catch {
+      updateWordPhase("network_error", {
+        jobId,
+        assignment: nextAssignment,
+      });
+    } finally {
+      setIsLoading(false);
+      setBackgroundAccepted(false);
+      setWordActionBusy(false);
+    }
+  }, [
+    activeJobId,
+    assignment,
+    pollWorkJobUntilSettled,
+    updateWordPhase,
+    wordActionBusy,
+  ]);
+
+  const showWordPanel = wordUiPhase != null;
   const showForm =
+    !showWordPanel &&
     !isLoading &&
     !result &&
     !salesWizardAssignment &&
     !outlineOnlyText &&
     !pendingCommander;
+
+  const wordPrimaryHandler =
+    wordUiPhase === "completed"
+      ? handleWordOpen
+      : wordUiPhase === "failed" || wordUiPhase === "timed_out"
+        ? () => void handleWordRetry()
+        : wordUiPhase === "network_error"
+          ? () => void handleWordReload()
+          : undefined;
+
+  const wordSecondaryHandler =
+    wordUiPhase === "completed" && wordDeliverable
+      ? () => void handleWordDownload()
+      : wordUiPhase === "failed"
+        ? handleWordDetail
+        : undefined;
 
   return (
     <div className="space-y-16">
@@ -472,7 +893,7 @@ export function WorkspaceDashboard() {
           value={assignment}
           onChange={setAssignment}
           onSubmit={(payload) => void handleSubmit(payload)}
-          isLoading={isLoading}
+          isLoading={isLoading || submittingRef.current}
         />
       )}
 
@@ -538,43 +959,79 @@ export function WorkspaceDashboard() {
         </section>
       )}
 
-      {error && !result && !outlineOnlyText && <ErrorState message={error} />}
+      {showWordPanel && wordUiPhase ? (
+        <WordJobStatusPanel
+          phase={wordUiPhase}
+          progressPhase={jobProgressPhase}
+          progressLabel={jobProgressLabel}
+          isSlow={jobIsSlow}
+          detail={
+            wordErrorDetail ??
+            (wordUiPhase === "failed" || wordUiPhase === "timed_out"
+              ? sanitizeWordFailureDetail(null)
+              : null)
+          }
+          busy={
+            wordActionBusy ||
+            (isLoading &&
+              (wordUiPhase === "accepted" || wordUiPhase === "processing"))
+          }
+          onPrimary={wordPrimaryHandler}
+          onSecondary={wordSecondaryHandler}
+        />
+      ) : null}
 
-      {isLoading && backgroundAccepted && (
+      {error && !result && !outlineOnlyText && !showWordPanel ? (
+        <ErrorState message={error} />
+      ) : null}
+
+      {isLoading && backgroundAccepted && !showWordPanel ? (
         <section className="mx-auto max-w-lg space-y-4 py-16 text-center animate-fade-in">
           <p className="text-sm font-medium text-accent">MINERVOT</p>
           <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-            依頼を受け付けました
+            {JOB_ACCEPTED_TITLE}
           </h2>
-          <p className="text-base text-[var(--foreground-muted)]">
-            バックグラウンドで処理しています。完了次第、成果物をお渡しします。
+          <p className="whitespace-pre-line text-base text-[var(--foreground-muted)]">
+            {JOB_ACCEPTED_DESCRIPTION}
           </p>
-          {showWordProgress ? (
-            <WordProgressStatus className="animate-soft-pulse text-sm text-[var(--foreground-muted)]" />
+          {showWordProgress || jobProgressPhase ? (
+            <WordProgressStatus
+              progressPhase={jobProgressPhase}
+              className="animate-soft-pulse text-sm text-[var(--foreground-muted)]"
+            />
+          ) : null}
+          {jobIsSlow ? (
+            <p className="whitespace-pre-line text-sm text-[var(--text-secondary)]">
+              通常より時間がかかっています。{"\n\n"}
+              現在も処理は継続しています。{"\n\n"}
+              完成しましたら通知いたします。
+            </p>
           ) : null}
         </section>
-      )}
+      ) : null}
 
-      {isLoading && !backgroundAccepted && (
+      {isLoading && !backgroundAccepted && !showWordPanel ? (
         <WorkflowResults
           result={result}
           loadingPhases={loadingPhases}
           isLoading={isLoading}
           error={error}
         />
-      )}
+      ) : null}
 
       {result && !isLoading && (
         <section className="space-y-6 animate-fade-up">
-          <header className="space-y-2 text-center">
-            <p className="text-sm font-medium text-accent">MINERVOT</p>
-            <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-              すべて完了しました
-            </h2>
-            <p className="text-sm text-[var(--foreground-muted)] sm:text-base">
-              成果物をご確認ください。必要ならすぐ別の形式でもお渡しできます。
-            </p>
-          </header>
+          {!showWordPanel ? (
+            <header className="space-y-2 text-center">
+              <p className="text-sm font-medium text-accent">MINERVOT</p>
+              <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                すべて完了しました
+              </h2>
+              <p className="text-sm text-[var(--foreground-muted)] sm:text-base">
+                成果物をご確認ください。必要ならすぐ別の形式でもお渡しできます。
+              </p>
+            </header>
+          ) : null}
 
           <FinalOutput
             result={result}
@@ -586,7 +1043,12 @@ export function WorkspaceDashboard() {
           />
 
           <div className="flex justify-center pt-2">
-            <Button type="button" variant="secondary" onClick={handleReset}>
+            <Button
+              type="button"
+              variant="secondary"
+              className="min-h-[48px]"
+              onClick={handleReset}
+            >
               別のお願いをする
             </Button>
           </div>

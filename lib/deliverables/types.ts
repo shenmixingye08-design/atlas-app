@@ -11,6 +11,12 @@ export type DeliverableMetadata = {
   version?: number | null;
   parentDeliverableId?: string | null;
   versionGroupId?: string | null;
+  /** Word job id — links the .docx artifact to the generation job. */
+  wordJobId?: string | null;
+  /** Work-job id when generated via /api/work/jobs. */
+  workJobId?: string | null;
+  /** Commander run id when generated via commander Word export. */
+  commanderRunId?: string | null;
 };
 
 export interface Deliverable {

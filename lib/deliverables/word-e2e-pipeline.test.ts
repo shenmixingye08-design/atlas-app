@@ -80,7 +80,12 @@ describe("Word E2E pipeline stability", () => {
     const notices = listStoredNotifications({ userId: OWNER });
     const completed = notices.filter((n) => n.type === "completed");
     expect(completed.length).toBeGreaterThanOrEqual(1);
-    expect(completed.some((n) => n.deliverableId === docx!.id)).toBe(true);
+    // Notification target must be a Project id (wordfile-* / commander-*),
+    // never the bare .docx UUID — that broke「結果を見る」.
+    expect(
+      completed.some((n) => n.deliverableId === `wordfile-${docx!.id}`),
+    ).toBe(true);
+    expect(completed.some((n) => n.deliverableId === docx!.id)).toBe(false);
   });
 
   it("quality failure emits failed notification and terminal job status", async () => {
