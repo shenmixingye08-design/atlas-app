@@ -57,6 +57,34 @@ describe("worker validation for email prose output", () => {
     ).not.toThrow();
   });
 
+  it("accepts non-JSON document/Word prose from the worker", () => {
+    const assignment = "社内向けの報告書をWordで作成してください。";
+    const prose = [
+      "# 月次業務報告書",
+      "",
+      "今月の進捗は以下の通りです。",
+      "1. 顧客対応を完了しました。",
+      "2. 次月の計画を整理しました。",
+    ].join("\n");
+
+    expect(() =>
+      assertWorkersProducedDeliverables(
+        [
+          {
+            ...buildExecution(prose),
+            task: {
+              id: 1,
+              title: "報告書作成",
+              description: "Word document",
+            },
+          },
+        ],
+        assignment,
+        "document",
+      ),
+    ).not.toThrow();
+  });
+
   it("rejects CEO routing text mistaken as worker output", () => {
     const ceoLikeOutput = [
       "## 目的",

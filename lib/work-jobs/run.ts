@@ -240,7 +240,20 @@ export async function executeWorkJob(
     if (commander.visionGate && !commander.visionGate.analysisSuccess) {
       recordReliabilityEvent("work_job", "failure", 1, {
         durationMs: Date.now() - startedAt,
+        errorCode: commander.visionGate.developerCode ?? "vision_failed",
         errorMessage: commander.visionGate.message,
+        message: commander.visionGate.message,
+        jobId,
+        diagnosticId: commander.visionGate.diagnosticId ?? null,
+        userId,
+        stage: commander.visionGate.failedStage ?? "vision_response",
+        severity: "error",
+        metadata: {
+          failedStage: commander.visionGate.failedStage ?? null,
+          failedStageLabel: commander.visionGate.failedStageLabel ?? null,
+          lastSuccessHint: "vision_prior_stage",
+          blockedStage: commander.visionGate.failedStage ?? "vision_response",
+        },
       });
       return saveWorkJob({
         ...existing,
@@ -256,20 +269,69 @@ export async function executeWorkJob(
     }
 
     if (commander.status === "failed" || !commander.result) {
+      const failedStage =
+        commander.visionGate?.failedStage ??
+        (commander.result as { stepError?: { step?: string } } | null | undefined)
+          ?.stepError?.step ??
+        "worker";
+      const safeMessage = toHumanReliabilityMessage(
+        commander.visionGate?.message ??
+          commander.report?.summary ??
+          "failed",
+      );
       recordReliabilityEvent("work_job", "failure", 1, {
         durationMs: Date.now() - startedAt,
-        errorMessage: commander.report?.summary ?? "failed",
+        errorCode:
+          commander.visionGate?.developerCode ?? "commander_failed",
+        errorMessage: safeMessage,
+        message: safeMessage,
+        jobId,
+        diagnosticId:
+          commander.visionGate?.diagnosticId ??
+          (typeof mergedMetadata.visionDiagnosticId === "string"
+            ? mergedMetadata.visionDiagnosticId
+            : null),
+        userId,
+        stage: failedStage,
+        severity: "error",
+        metadata: {
+          commanderStatus: commander.status,
+          reportSummary: commander.report?.summary?.slice(0, 300) ?? null,
+          attempts: commander.attempts?.length ?? commander.report?.attempts ?? null,
+          failedStage,
+          developerCode: commander.visionGate?.developerCode ?? null,
+          lastSuccessHint: "commander_prior_stage",
+          blockedStage: failedStage,
+          persistence: commander.persistence
+            ? {
+                projectPersisted: commander.persistence.projectPersisted,
+                wordRequired: commander.persistence.wordRequired,
+                wordCompletionVerified:
+                  commander.persistence.wordCompletionVerified,
+                wordErrorCode: commander.persistence.wordErrorCode ?? null,
+              }
+            : null,
+        },
       });
       return saveWorkJob({
         ...existing,
         status: "failed",
-        metadata: mergedMetadata,
+        metadata: {
+          ...mergedMetadata,
+          failureDiagnostic: {
+            jobId,
+            diagnosticId:
+              commander.visionGate?.diagnosticId ??
+              (typeof mergedMetadata.visionDiagnosticId === "string"
+                ? mergedMetadata.visionDiagnosticId
+                : null),
+            failedStage,
+            developerCode: commander.visionGate?.developerCode ?? null,
+            safeMessage,
+          },
+        },
         attemptCount: existing.attemptCount + 1,
-        error: toHumanReliabilityMessage(
-          commander.visionGate?.message ??
-            commander.report?.summary ??
-            "failed",
-        ),
+        error: safeMessage,
         visionGate: commander.visionGate ?? existing.visionGate ?? null,
         result: commander.result ?? null,
         updatedAt: new Date().toISOString(),
@@ -284,12 +346,47 @@ export async function executeWorkJob(
     if (!gate.ok) {
       recordReliabilityEvent("work_job", "failure", 1, {
         durationMs: Date.now() - startedAt,
+        errorCode: "completion_gate_failed",
         errorMessage: gate.error,
+        message: gate.error,
+        jobId,
+        diagnosticId:
+          typeof mergedMetadata.visionDiagnosticId === "string"
+            ? mergedMetadata.visionDiagnosticId
+            : null,
+        userId,
+        stage: "completion_gate",
+        severity: "error",
+        metadata: {
+          failedStage: "completion_gate",
+          blockedStage: "completed",
+          lastSuccessHint: "commander_result",
+          persistence: commander.persistence
+            ? {
+                projectPersisted: commander.persistence.projectPersisted,
+                wordRequired: commander.persistence.wordRequired,
+                wordCompletionVerified:
+                  commander.persistence.wordCompletionVerified,
+                wordErrorCode: commander.persistence.wordErrorCode ?? null,
+              }
+            : null,
+          downloadableCount: (commander.result.fileDeliverables ?? []).filter(
+            (f) => Boolean(f.downloadUrl?.includes(`/api/deliverables/${f.id}`)),
+          ).length,
+        },
       });
       return saveWorkJob({
         ...existing,
         status: "failed",
-        metadata: mergedMetadata,
+        metadata: {
+          ...mergedMetadata,
+          failureDiagnostic: {
+            jobId,
+            failedStage: "completion_gate",
+            developerCode: "completion_gate_failed",
+            safeMessage: toHumanReliabilityMessage(gate.error),
+          },
+        },
         attemptCount: existing.attemptCount + 1,
         error: toHumanReliabilityMessage(gate.error),
         visionGate: commander.visionGate ?? existing.visionGate ?? null,
@@ -301,6 +398,10 @@ export async function executeWorkJob(
 
     recordReliabilityEvent("work_job", "success", 1, {
       durationMs: Date.now() - startedAt,
+      jobId,
+      userId,
+      stage: "completed",
+      severity: "info",
     });
 
     // Durable save is part of completed — saveWorkJob throws if Supabase fails.
@@ -326,7 +427,17 @@ export async function executeWorkJob(
     const isTimeout = /timeout|ETIMEDOUT|aborted/i.test(message);
     recordReliabilityEvent("work_job", isTimeout ? "timeout" : "failure", 1, {
       durationMs: Date.now() - startedAt,
+      errorCode: isTimeout ? "timeout" : "work_job_exception",
       errorMessage: message,
+      message,
+      jobId,
+      userId,
+      stage: isTimeout ? "timeout" : "work_job",
+      severity: "error",
+      metadata: {
+        failedStage: isTimeout ? "timeout" : "work_job",
+        blockedStage: "completed",
+      },
     });
     if (isTimeout) recordReliabilityEvent("timeout", "timeout");
 

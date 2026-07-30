@@ -5,6 +5,8 @@ import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role
 /**
  * Reliability counters (in-process + durable events).
  * Unmeasured rates must be scored as 0 by reviewers.
+ *
+ * Durable rows never store secrets, tokens, or image/binary bodies.
  */
 
 export type ReliabilityMetricKey =
@@ -30,6 +32,8 @@ export type ReliabilityMetricBucket = {
 };
 
 export type ReliabilityWindow = 7 | 30 | 90;
+
+export type ReliabilitySeverity = "info" | "warn" | "error" | "critical";
 
 type MetricsState = {
   startedAt: string;
@@ -58,6 +62,9 @@ const METRIC_KEYS: ReliabilityMetricKey[] = [
   "recovery",
   "timeout",
 ];
+
+const SENSITIVE_KEY =
+  /^(authorization|cookie|token|password|secret|api[_-]?key|private[_-]?key|content_base64|image(_data|_base64)?|data_url|raw_image)$/i;
 
 function emptyBucket(): ReliabilityMetricBucket {
   return {
@@ -93,10 +100,62 @@ function getState(): MetricsState {
   return g.__atlasReliabilityMetrics;
 }
 
+function sanitizeMetadata(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!metadata) return {};
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (SENSITIVE_KEY.test(key)) continue;
+    if (typeof value === "string") {
+      // Cap string fields; never persist image/data URLs.
+      if (/^data:image\//i.test(value) || value.length > 2000) {
+        out[key] = `[omitted:${Math.min(value.length, 999999)}chars]`;
+        continue;
+      }
+      out[key] = value.slice(0, 500);
+      continue;
+    }
+    if (
+      typeof value === "number" ||
+      typeof value === "boolean" ||
+      value === null
+    ) {
+      out[key] = value;
+      continue;
+    }
+    if (Array.isArray(value)) {
+      out[key] = value.slice(0, 20).map((item) =>
+        typeof item === "string" ? item.slice(0, 200) : item,
+      );
+      continue;
+    }
+    if (typeof value === "object") {
+      out[key] = sanitizeMetadata(value as Record<string, unknown>);
+    }
+  }
+  return out;
+}
+
+function safeMessage(message: string | undefined | null): string | null {
+  if (!message) return null;
+  return message
+    .replace(/sk-[a-zA-Z0-9-_]+/g, "[redacted]")
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "[redacted]")
+    .slice(0, 500);
+}
+
 export type RecordReliabilityOptions = {
   durationMs?: number;
   errorCode?: string;
   errorMessage?: string;
+  /** Alias of errorMessage — stored as both `message` and `error_message`. */
+  message?: string;
+  jobId?: string | null;
+  diagnosticId?: string | null;
+  userId?: string | null;
+  stage?: string | null;
+  severity?: ReliabilitySeverity | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -115,10 +174,14 @@ export function recordReliabilityEvent(
     state.buckets[key].durationSumMs += options.durationMs * count;
     state.buckets[key].durationCount += count;
   }
+  const message =
+    safeMessage(options.message ?? options.errorMessage) ??
+    options.errorCode ??
+    "failure";
   if (outcome === "failure") {
     state.recentFailures.unshift({
       key,
-      message: options.errorMessage ?? options.errorCode ?? "failure",
+      message,
       at: new Date().toISOString(),
     });
     state.recentFailures = state.recentFailures.slice(0, 100);
@@ -140,16 +203,61 @@ async function persistReliabilityEvent(
   outcome: string,
   options: RecordReliabilityOptions,
 ): Promise<void> {
+  const message = safeMessage(options.message ?? options.errorMessage);
+  const metadata = sanitizeMetadata({
+    ...(options.metadata ?? {}),
+    ...(options.jobId ? { jobId: options.jobId } : {}),
+    ...(options.diagnosticId ? { diagnosticId: options.diagnosticId } : {}),
+    ...(options.stage ? { stage: options.stage } : {}),
+  });
+
+  // Always emit a structured console line so Vercel shows the real failure
+  // even when the diagnostics table is missing.
+  if (outcome === "failure" || outcome === "timeout") {
+    console.error("[atlas_reliability_events] diagnostic", {
+      metric_key: key,
+      outcome,
+      job_id: options.jobId ?? null,
+      diagnostic_id: options.diagnosticId ?? null,
+      user_id: options.userId ? "[present]" : null,
+      stage: options.stage ?? null,
+      severity:
+        options.severity ??
+        (outcome === "timeout" ? "error" : "error"),
+      error_code: options.errorCode ?? null,
+      message,
+      metadata,
+    });
+  }
+
   try {
     const client = createServiceRoleClientIfConfigured();
-    if (!client) return;
+    if (!client) {
+      console.warn(
+        "[atlas_reliability_events] insert skipped: supabase service role not configured",
+      );
+      return;
+    }
+    const severity =
+      options.severity ??
+      (outcome === "success"
+        ? "info"
+        : outcome === "retry"
+          ? "warn"
+          : "error");
     const { error } = await client.from("atlas_reliability_events").insert({
       metric_key: key,
       outcome,
       duration_ms: options.durationMs ?? null,
+      job_id: options.jobId ?? null,
+      diagnostic_id: options.diagnosticId ?? null,
+      user_id: options.userId ?? null,
+      stage: options.stage ?? null,
+      severity,
       error_code: options.errorCode ?? null,
-      error_message: options.errorMessage ?? null,
-      metadata: options.metadata ?? {},
+      message,
+      error_message: message,
+      metadata,
     } as never);
     if (error) {
       console.warn("[atlas_reliability_events] insert failed", error.message);
@@ -226,11 +334,11 @@ export async function getReliabilityWindowMetrics(
           .limit(50_000);
         if (!error && data) {
           for (const row of data as Array<{
-            metric_key: string;
-            outcome: string;
+            metric_key: string | null;
+            outcome: string | null;
             duration_ms: number | null;
           }>) {
-            const key = row.metric_key;
+            const key = row.metric_key ?? "work_job";
             if (!buckets[key]) buckets[key] = emptyBucket();
             const outcome = row.outcome as keyof ReliabilityMetricBucket;
             if (

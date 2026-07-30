@@ -498,30 +498,48 @@ export type Database = {
       atlas_reliability_events: {
         Row: {
           id: string;
-          metric_key: string;
-          outcome: string;
+          metric_key: string | null;
+          outcome: string | null;
           duration_ms: number | null;
+          job_id: string | null;
+          diagnostic_id: string | null;
+          user_id: string | null;
+          stage: string | null;
+          severity: string | null;
           error_code: string | null;
+          message: string | null;
           error_message: string | null;
           metadata: unknown;
           created_at: string;
         };
         Insert: {
           id?: string;
-          metric_key: string;
-          outcome: string;
+          metric_key?: string | null;
+          outcome?: string | null;
           duration_ms?: number | null;
+          job_id?: string | null;
+          diagnostic_id?: string | null;
+          user_id?: string | null;
+          stage?: string | null;
+          severity?: string | null;
           error_code?: string | null;
+          message?: string | null;
           error_message?: string | null;
           metadata?: unknown;
           created_at?: string;
         };
         Update: {
           id?: string;
-          metric_key?: string;
-          outcome?: string;
+          metric_key?: string | null;
+          outcome?: string | null;
           duration_ms?: number | null;
+          job_id?: string | null;
+          diagnostic_id?: string | null;
+          user_id?: string | null;
+          stage?: string | null;
+          severity?: string | null;
           error_code?: string | null;
+          message?: string | null;
           error_message?: string | null;
           metadata?: unknown;
           created_at?: string;

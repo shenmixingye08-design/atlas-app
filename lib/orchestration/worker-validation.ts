@@ -33,30 +33,61 @@ function looksLikeNonWorkerPhaseOutput(raw: string): boolean {
   );
 }
 
+export type WorkerUsabilityResult = {
+  usable: boolean;
+  reason:
+    | "ok"
+    | "empty"
+    | "non_worker_phase"
+    | "unparseable"
+    | "no_content";
+};
+
+/**
+ * Decide whether worker output can become a deliverable.
+ * Aligns with buildDeliverable / parseWorkerDeliverablePayload — plain prose
+ * for document/Word types must not be rejected solely for lacking `{` JSON.
+ */
+export function evaluateWorkerDeliverableUsability(
+  raw: string,
+  assignment: string,
+  expectedType: DeliverableType,
+  taskText = "",
+): WorkerUsabilityResult {
+  const trimmed = raw.trim();
+  if (!trimmed) return { usable: false, reason: "empty" };
+  if (looksLikeNonWorkerPhaseOutput(trimmed)) {
+    return { usable: false, reason: "non_worker_phase" };
+  }
+  if (tryParseStoredDeliverable(trimmed)) {
+    return { usable: true, reason: "ok" };
+  }
+
+  const parsed = parseWorkerDeliverablePayload(
+    trimmed,
+    assignment,
+    taskText,
+    expectedType,
+  );
+  if (!parsed) return { usable: false, reason: "unparseable" };
+  if (!workerPayloadHasContent(parsed)) {
+    return { usable: false, reason: "no_content" };
+  }
+  return { usable: true, reason: "ok" };
+}
+
 function workerOutputHasUsableDeliverable(
   raw: string,
   assignment: string,
   expectedType: DeliverableType,
   taskText = "",
 ): boolean {
-  if (looksLikeNonWorkerPhaseOutput(raw)) return false;
-  if (tryParseStoredDeliverable(raw)) return true;
-
-  const trimmed = raw.trim();
-  const jsonCandidate =
-    trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim() ?? trimmed;
-
-  if (expectedType === "email" || expectedType === "social_post" || expectedType === "short_document") {
-    const parsed = parseWorkerDeliverablePayload(raw, assignment, taskText, expectedType);
-    return workerPayloadHasContent(parsed);
-  }
-
-  if (!jsonCandidate.startsWith("{")) {
-    return false;
-  }
-
-  const parsed = parseWorkerDeliverablePayload(raw, assignment, taskText, expectedType);
-  return workerPayloadHasContent(parsed);
+  return evaluateWorkerDeliverableUsability(
+    raw,
+    assignment,
+    expectedType,
+    taskText,
+  ).usable;
 }
 
 /** Fail fast when the production stage was never run. */
@@ -91,9 +122,9 @@ export function assertWorkersProducedDeliverables(
     );
   }
 
-  const hasStructured = completed.some((exec) => {
+  const evaluations = completed.map((exec) => {
     const raw = exec.worker!.result.outputText.trim();
-    return workerOutputHasUsableDeliverable(
+    return evaluateWorkerDeliverableUsability(
       raw,
       assignment,
       deliverableType,
@@ -101,7 +132,17 @@ export function assertWorkersProducedDeliverables(
     );
   });
 
+  const hasStructured = evaluations.some((item) => item.usable);
+
   if (!hasStructured) {
+    const reason = evaluations[0]?.reason ?? "unparseable";
+    console.error("[orchestrator.worker] deliverable unusable", {
+      expectedType: deliverableType,
+      reason,
+      outputChars: completed[0]?.worker?.result.outputText.trim().length ?? 0,
+      model: completed[0]?.worker?.result.model ?? null,
+      responseStatus: completed[0]?.worker?.result.status ?? null,
+    });
     throw createPipelineFailure(
       "worker",
       "worker",

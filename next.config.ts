@@ -37,6 +37,8 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_ATLAS_DEBUG: process.env.NEXT_PUBLIC_ATLAS_DEBUG ?? "false",
   },
+  // pg is used only by reliability schema probe / migration apply on the server.
+  serverExternalPackages: ["pg"],
   async headers() {
     return [
       {

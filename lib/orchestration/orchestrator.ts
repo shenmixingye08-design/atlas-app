@@ -714,6 +714,21 @@ export async function orchestrate(
     assertWorkerStageExecuted(isolation.pipeline.workerExecuted);
 
     if (!isolation.pipeline.workerOutputExists) {
+      console.error("[orchestrator.worker] empty worker output", {
+        jobId:
+          typeof metadata?.jobId === "string"
+            ? metadata.jobId
+            : typeof metadata?.workJobId === "string"
+              ? metadata.workJobId
+              : null,
+        deliverableType,
+        model: workerPhase.result.model ?? null,
+        responseStatus: workerPhase.result.status ?? null,
+        responseId: workerPhase.result.responseId ?? null,
+        outputChars: workerPhase.result.outputText?.length ?? 0,
+        lastSuccessStage: "planner",
+        blockedStage: "worker",
+      });
       throw createPipelineFailure(
         "worker",
         "worker",
