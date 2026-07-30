@@ -55,6 +55,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/health/version(.*)",
   "/api/health/word-pipeline(.*)",
   "/api/health/word-request-trace(.*)",
+  "/api/health/reliability-events(.*)",
   "/api/contact(.*)",
   "/api/automations/tick(.*)",
   "/api/feature-flags/availability(.*)",
