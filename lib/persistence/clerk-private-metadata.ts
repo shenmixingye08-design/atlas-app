@@ -49,7 +49,36 @@ export async function persistClerkPrivateMetadataKey(
       });
       return true;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       console.error(`[persistence] Clerk metadata write failed (${key}):`, error);
+      if (/8192|8 KB|maximum allowed size|private_metadata/i.test(message)) {
+        try {
+          const { pruneOversizedClerkDurableDomains } = await import(
+            "@/lib/persistence/durable-domain"
+          );
+          const pruned = await pruneOversizedClerkDurableDomains(userId);
+          console.error("[persistence] Clerk 8KB prune attempted", pruned);
+          const client = await clerkClient();
+          const user = await client.users.getUser(userId);
+          const existing =
+            user.privateMetadata && typeof user.privateMetadata === "object"
+              ? { ...user.privateMetadata }
+              : {};
+          await client.users.updateUserMetadata(userId, {
+            privateMetadata: {
+              ...existing,
+              [key]: value,
+            },
+          });
+          return true;
+        } catch (retryError) {
+          console.error(
+            `[persistence] Clerk metadata write failed after prune (${key}):`,
+            retryError,
+          );
+          return false;
+        }
+      }
       return false;
     }
   }, false);

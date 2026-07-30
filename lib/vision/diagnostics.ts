@@ -46,9 +46,18 @@ export function logVisionStage(input: {
   downloadedByteLength?: number;
   mimeType?: string;
   base64Length?: number;
+  imageByteLength?: number;
   model?: string;
   openaiErrorCode?: string;
   openaiErrorType?: string;
+  httpStatus?: number | null;
+  param?: string | null;
+  requestId?: string | null;
+  safeMessage?: string | null;
+  inputTypes?: string | null;
+  timedOut?: boolean | null;
+  apiFormat?: string | null;
+  responseStatus?: string | null;
   errorCode?: string;
   userCode?: string;
   durationMs?: number;
@@ -63,9 +72,18 @@ export function logVisionStage(input: {
     downloadedByteLength: input.downloadedByteLength,
     mimeType: input.mimeType,
     base64Length: input.base64Length,
+    imageByteLength: input.imageByteLength,
     model: input.model,
     openaiErrorCode: input.openaiErrorCode,
     openaiErrorType: input.openaiErrorType,
+    httpStatus: input.httpStatus ?? null,
+    param: input.param ?? null,
+    requestId: input.requestId ?? null,
+    safeMessage: input.safeMessage ?? null,
+    inputTypes: input.inputTypes ?? null,
+    timedOut: input.timedOut ?? null,
+    apiFormat: input.apiFormat ?? null,
+    responseStatus: input.responseStatus ?? null,
     errorCode: input.errorCode ?? null,
     userCode: input.userCode ?? null,
     durationMs: input.durationMs ?? null,
@@ -180,12 +198,19 @@ export function appendVisionDiagnosticStage(
   logVisionStage({
     diagnosticId: record.id,
     attachmentId: record.attachmentId,
-    jobId: record.jobId,
+    jobId:
+      typeof detail?.jobId === "string"
+        ? detail.jobId
+        : record.jobId,
     stage,
     ok,
     downloadedByteLength: record.downloadedByteLength ?? undefined,
     mimeType: record.mimeType ?? undefined,
     base64Length: record.base64Length ?? undefined,
+    imageByteLength:
+      typeof detail?.imageByteLength === "number"
+        ? detail.imageByteLength
+        : undefined,
     model: record.model ?? undefined,
     openaiErrorCode:
       typeof detail?.openaiErrorCode === "string"
@@ -195,6 +220,23 @@ export function appendVisionDiagnosticStage(
       typeof detail?.openaiErrorType === "string"
         ? detail.openaiErrorType
         : undefined,
+    httpStatus:
+      typeof detail?.httpStatus === "number" ? detail.httpStatus : null,
+    param: typeof detail?.param === "string" ? detail.param : null,
+    requestId:
+      typeof detail?.requestId === "string" ? detail.requestId : null,
+    safeMessage:
+      typeof detail?.safeMessage === "string" ? detail.safeMessage : null,
+    inputTypes:
+      typeof detail?.inputTypes === "string" ? detail.inputTypes : null,
+    timedOut:
+      typeof detail?.timedOut === "boolean" ? detail.timedOut : null,
+    apiFormat:
+      typeof detail?.apiFormat === "string" ? detail.apiFormat : null,
+    responseStatus:
+      typeof detail?.responseStatus === "string"
+        ? detail.responseStatus
+        : null,
     errorCode:
       typeof detail?.errorCode === "string" ? detail.errorCode : undefined,
     userCode:

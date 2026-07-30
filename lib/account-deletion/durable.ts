@@ -30,9 +30,14 @@ export const ACCOUNT_WIPE_DOMAIN_KEYS = [
   "atlasNotifications",
   "atlasAutomations",
   "atlasCommanderRuns",
+  "atlasWorkJobs",
   "atlasExternalAuth",
   "atlasLineLink",
   "atlasAccountDeletion",
+  "atlasHouseholdLedger",
+  "atlasVisionDiagnostics",
+  "atlasPersistenceReport",
+  "atlasErrorHistory",
 ] as const;
 
 type GlobalIndex = {

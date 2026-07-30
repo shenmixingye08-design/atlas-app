@@ -8,6 +8,10 @@ import {
 import { ensureWorkMemoryHydrated } from "@/lib/work-memory/durable";
 import { bindAttachmentsToJob } from "@/lib/attachments/store";
 import type { Deliverable } from "@/lib/deliverables/types";
+import {
+  resolveWorkJobIdFromMetadata,
+  withPropagatedJobId,
+} from "@/lib/work-jobs/job-id";
 
 import {
   cancelCommanderRun,
@@ -314,8 +318,7 @@ export async function runCommanderRequest(input: {
   let metadata = enriched.metadata;
   if (attachmentIds.length > 0) {
     const jobId =
-      (typeof enriched.metadata?.jobId === "string" &&
-        enriched.metadata.jobId.trim()) ||
+      resolveWorkJobIdFromMetadata(enriched.metadata) ||
       `job_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
     const bind = await bindAttachmentsToJob(
       input.userId,
@@ -335,8 +338,7 @@ export async function runCommanderRequest(input: {
       });
     }
     metadata = {
-      ...(enriched.metadata ?? {}),
-      jobId,
+      ...withPropagatedJobId(enriched.metadata, jobId),
       attachmentIds,
       attachmentBindStatus: "bound",
       visionPayloadAttachmentIds: attachmentIds,

@@ -37,6 +37,8 @@ export type WorkJobRecord = {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  /** Last durable persist backend (supabase / disk_dev). */
+  durablePersist?: "supabase" | "disk_dev" | null;
 };
 
 type Bucket = Map<string, WorkJobRecord>;
@@ -55,10 +57,47 @@ function normalizeWorkJob(job: WorkJobRecord): WorkJobRecord {
   };
 }
 
-export function saveWorkJob(job: WorkJobRecord): WorkJobRecord {
+/**
+ * Save job to memory and durable Supabase.
+ * Throws if durable persist fails — callers must not treat as completed.
+ */
+export async function saveWorkJob(job: WorkJobRecord): Promise<WorkJobRecord> {
   const normalized = normalizeWorkJob(job);
   getBucket().set(normalized.id, normalized);
-  persistWorkJob(normalized);
+  const persistResult = await persistWorkJob(normalized);
+  if (persistResult === "failed") {
+    const err = new Error("work_job_durable_persist_failed");
+    console.error("[work-jobs] saveWorkJob durable persist failed", {
+      jobId: normalized.id,
+      status: normalized.status,
+    });
+    throw err;
+  }
+  const withPersist: WorkJobRecord = {
+    ...normalized,
+    durablePersist: persistResult === "disk_dev" ? "disk_dev" : "supabase",
+  };
+  getBucket().set(withPersist.id, withPersist);
+  return withPersist;
+}
+
+/**
+ * In-memory update only (heartbeat). Durable persist is best-effort and must
+ * not flip terminal success — used while status remains `running`.
+ */
+export async function touchWorkJob(job: WorkJobRecord): Promise<WorkJobRecord> {
+  const normalized = normalizeWorkJob(job);
+  getBucket().set(normalized.id, normalized);
+  try {
+    const persistResult = await persistWorkJob(normalized);
+    if (persistResult === "failed") {
+      console.error("[work-jobs] touchWorkJob durable persist failed", {
+        jobId: normalized.id,
+      });
+    }
+  } catch (error) {
+    console.error("[work-jobs] touchWorkJob threw", error);
+  }
   return normalized;
 }
 

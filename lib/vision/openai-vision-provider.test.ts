@@ -87,4 +87,52 @@ describe("openAiVisionProvider request shape", () => {
     ).rejects.toThrow(/形式/);
     expect(createAtlasResponse).not.toHaveBeenCalled();
   });
+
+  it("preserves OpenAI API error fields instead of collapsing to VisionError alone", async () => {
+    const { APIError } = await import("openai");
+    const headers = new Headers({ "x-request-id": "req_vision_1" });
+    vi.mocked(createAtlasResponse).mockRejectedValue(
+      new APIError(
+        400,
+        {
+          message: "Image could not be processed",
+          type: "invalid_request_error",
+          code: "invalid_image",
+          param: "input_image",
+        },
+        undefined,
+        headers,
+      ),
+    );
+
+    const dataUrl =
+      "data:image/jpeg;base64," + Buffer.from("fake-jpeg-bytes-for-test!").toString("base64");
+
+    await expect(
+      openAiVisionProvider.analyzeImage({
+        userId: "user_a",
+        attachmentId: "img_1",
+        imageUrl: dataUrl,
+        userText: "解析して",
+        hintType: "general_photo",
+        detail: "high",
+        pageIndex: 0,
+        pageCount: 1,
+        diagnosticId: "vdiag_err",
+        jobId: "job_err",
+      }),
+    ).rejects.toMatchObject({
+      name: "VisionError",
+      code: "openai_failed",
+      details: expect.objectContaining({
+        httpStatus: 400,
+        openaiErrorType: "invalid_request_error",
+        openaiErrorCode: "invalid_image",
+        param: "input_image",
+        requestId: "req_vision_1",
+        model: expect.any(String),
+        apiFormat: "responses",
+      }),
+    });
+  });
 });

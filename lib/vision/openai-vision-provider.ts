@@ -12,6 +12,17 @@ import { parseVisionModelPayload } from "@/lib/vision/parse-model-json";
 import { resolveVisionModel } from "@/lib/vision/resolve-vision-model";
 import type { VisionProvider, VisionProviderResult } from "@/lib/vision/provider";
 import { VisionError, type VisionAnalysisResult } from "@/lib/vision/types";
+import {
+  extractOpenAiVisionErrorDetails,
+  inspectVisionDataUrl,
+  openAiDetailsForLog,
+  type OpenAiVisionErrorDetails,
+} from "@/lib/vision/openai-error-details";
+
+/** Vision Responses API call budget — logged as timedOut when exceeded. */
+export const VISION_OPENAI_TIMEOUT_MS = 120_000;
+
+const RESPONSES_INPUT_TYPES = ["input_text", "input_image"] as const;
 
 function assertDataUrl(imageUrl: string, diagnosticId?: string | null): void {
   if (!imageUrl.startsWith("data:image/")) {
@@ -37,41 +48,92 @@ function assertDataUrl(imageUrl: string, diagnosticId?: string | null): void {
   }
 }
 
-function mapOpenAiError(error: unknown, diagnosticId?: string | null): VisionError {
-  if (error instanceof VisionError) {
-    return new VisionError(error.code, error.message, {
-      diagnosticId: error.diagnosticId ?? diagnosticId ?? null,
-      failedStage: error.failedStage ?? "vision_response",
-    });
-  }
-  const message = error instanceof Error ? error.message : "画像解析に失敗しました";
-  const lower = message.toLowerCase();
-  if (lower.includes("api key") || lower.includes("not configured")) {
+function classifyTransportFailure(
+  details: OpenAiVisionErrorDetails,
+  diagnosticId: string | null,
+  cause: unknown,
+): VisionError {
+  const safe =
+    details.safeMessage?.slice(0, 180) ??
+    "画像解析に失敗しました。再試行してください";
+
+  if (
+    details.openaiErrorCode === "invalid_api_key" ||
+    /api key|not configured/i.test(details.safeMessage ?? "")
+  ) {
     return new VisionError(
       "config_missing",
       "AI画像解析の設定が不足しています",
-      { diagnosticId, failedStage: "vision_request" },
+      {
+        diagnosticId,
+        failedStage: "vision_request",
+        details: openAiDetailsForLog(details),
+        cause,
+      },
     );
   }
-  if (lower.includes("rate") || lower.includes("429")) {
+
+  if (
+    details.httpStatus === 429 ||
+    details.openaiErrorCode === "rate_limit_exceeded" ||
+    /rate.?limit/i.test(details.safeMessage ?? "")
+  ) {
     return new VisionError(
       "rate_limited",
       "画像解析が混み合っています。再試行してください",
-      { diagnosticId, failedStage: "vision_response" },
+      {
+        diagnosticId,
+        failedStage: "vision_response",
+        details: openAiDetailsForLog(details),
+        cause,
+      },
     );
   }
-  if (lower.includes("timeout") || lower.includes("timed out")) {
+
+  if (details.timedOut || details.httpStatus === 408) {
     return new VisionError(
       "timeout",
       "画像解析がタイムアウトしました。再試行してください",
-      { diagnosticId, failedStage: "vision_response" },
+      {
+        diagnosticId,
+        failedStage: "vision_response",
+        details: openAiDetailsForLog(details),
+        cause,
+      },
     );
   }
-  return new VisionError(
-    "openai_failed",
-    "画像解析に失敗しました。再試行してください",
-    { diagnosticId, failedStage: "vision_response" },
-  );
+
+  // Preserve OpenAI identity in details — do not collapse type/code into VisionError alone.
+  return new VisionError("openai_failed", safe, {
+    diagnosticId,
+    failedStage: "vision_response",
+    details: openAiDetailsForLog(details),
+    cause,
+  });
+}
+
+function logVisionResponseFailure(
+  diagnosticId: string | null,
+  details: OpenAiVisionErrorDetails,
+  atlasCode: string,
+): void {
+  if (!diagnosticId) {
+    console.error("[vision]", {
+      stage: "vision_response",
+      ok: false,
+      ...openAiDetailsForLog(details),
+      atlasCode,
+    });
+    return;
+  }
+  appendVisionDiagnosticStage(diagnosticId, "vision_response", false, {
+    ...openAiDetailsForLog(details),
+    // Prefer raw OpenAI fields over atlas wrapper names in primary slots.
+    openaiErrorCode: details.openaiErrorCode ?? atlasCode,
+    openaiErrorType: details.openaiErrorType ?? "OpenAIError",
+    errorCode: atlasCode,
+    userCode: "ai_analyze_failed",
+  });
 }
 
 export const openAiVisionProvider: VisionProvider = {
@@ -81,6 +143,7 @@ export const openAiVisionProvider: VisionProvider = {
     assertDataUrl(input.imageUrl, input.diagnosticId);
 
     const model = resolveVisionModel();
+    const imageMeta = inspectVisionDataUrl(input.imageUrl);
     const userText = buildVisionAnalyzeUserText({
       userText: input.userText,
       hintType: input.hintType,
@@ -89,6 +152,9 @@ export const openAiVisionProvider: VisionProvider = {
       pageCount: input.pageCount,
     });
 
+    // Official Responses API image shape:
+    // content: [{ type: "input_text", text }, { type: "input_image", image_url: data URL, detail }]
+    // See https://developers.openai.com/api/docs/guides/images-vision
     const multimodalInput = [
       {
         role: "user" as const,
@@ -104,41 +170,141 @@ export const openAiVisionProvider: VisionProvider = {
     ];
 
     const diagnosticId = input.diagnosticId ?? null;
+    const inputTypes = [...RESPONSES_INPUT_TYPES];
 
     if (diagnosticId) {
       appendVisionDiagnosticStage(diagnosticId, "vision_request", true, {
         model,
         inputImageIncluded: true,
-        base64Length: input.imageUrl.length,
+        inputTypes: inputTypes.join(","),
+        apiFormat: "responses",
+        mimeType: imageMeta.mimeType,
+        imageByteLength: imageMeta.imageByteLength,
+        base64Length: imageMeta.base64Length,
+        detail: input.detail,
+        timeoutMs: VISION_OPENAI_TIMEOUT_MS,
+        jobId: input.jobId ?? null,
       });
     }
 
     let response;
+    let timedOut = false;
     try {
-      response = await createAtlasResponse({
-        aiTaskType: "vision_analyze",
-        model,
-        instructions: buildVisionAnalyzeInstructions(),
-        input: multimodalInput,
-      });
-    } catch (error) {
-      const mapped = mapOpenAiError(error, diagnosticId);
-      if (diagnosticId) {
-        appendVisionDiagnosticStage(diagnosticId, "vision_response", false, {
+      response = await Promise.race([
+        createAtlasResponse({
+          aiTaskType: "vision_analyze",
           model,
-          openaiErrorCode: mapped.code,
-          openaiErrorType: mapped.name,
-          errorCode: mapped.code,
-          userCode: "ai_analyze_failed",
-        });
-      }
+          instructions: buildVisionAnalyzeInstructions(),
+          input: multimodalInput,
+        }),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            timedOut = true;
+            reject(
+              Object.assign(new Error("vision_openai_timeout"), {
+                name: "VisionTimeoutError",
+                code: "timeout",
+                status: 408,
+              }),
+            );
+          }, VISION_OPENAI_TIMEOUT_MS);
+        }),
+      ]);
+    } catch (error) {
+      const details = extractOpenAiVisionErrorDetails(error, {
+        model,
+        inputTypes,
+        mimeType: imageMeta.mimeType,
+        imageByteLength: imageMeta.imageByteLength,
+        base64Length: imageMeta.base64Length,
+        timedOut,
+      });
+      const mapped = classifyTransportFailure(details, diagnosticId, error);
+      logVisionResponseFailure(diagnosticId, details, mapped.code);
+      throw mapped;
+    }
+
+    const responseStatus =
+      typeof (response as { status?: unknown }).status === "string"
+        ? (response as { status: string }).status
+        : null;
+    const responseError = (response as { error?: unknown }).error;
+    const incomplete =
+      (response as { incomplete_details?: { reason?: string } | null })
+        .incomplete_details ?? null;
+
+    if (
+      responseStatus === "failed" ||
+      responseStatus === "cancelled" ||
+      responseError
+    ) {
+      const details = extractOpenAiVisionErrorDetails(
+        responseError ?? {
+          type: "ResponseError",
+          message: `Responses API status=${responseStatus ?? "unknown"}`,
+          code: responseStatus ?? "response_failed",
+        },
+        {
+          model: response.model ?? model,
+          inputTypes,
+          mimeType: imageMeta.mimeType,
+          imageByteLength: imageMeta.imageByteLength,
+          base64Length: imageMeta.base64Length,
+          responseStatus,
+        },
+      );
+      const mapped = classifyTransportFailure(details, diagnosticId, responseError);
+      logVisionResponseFailure(diagnosticId, details, mapped.code);
       throw mapped;
     }
 
     const rawText = response.output_text ?? "";
+    if (!rawText.trim()) {
+      const details: OpenAiVisionErrorDetails = {
+        httpStatus: 200,
+        openaiErrorType: incomplete?.reason
+          ? "IncompleteResponse"
+          : "EmptyOutputText",
+        openaiErrorCode: incomplete?.reason ?? "empty_content",
+        param: null,
+        requestId:
+          typeof (response as { id?: unknown }).id === "string"
+            ? (response as { id: string }).id
+            : null,
+        safeMessage: incomplete?.reason
+          ? `incomplete:${incomplete.reason}`
+          : "Responses API returned empty output_text",
+        model: response.model ?? model,
+        inputTypes,
+        mimeType: imageMeta.mimeType,
+        imageByteLength: imageMeta.imageByteLength,
+        base64Length: imageMeta.base64Length,
+        timedOut: false,
+        responseStatus,
+        apiFormat: "responses",
+      };
+      const mapped = new VisionError(
+        "openai_failed",
+        "画像解析の応答が空でした。再試行してください",
+        {
+          diagnosticId,
+          failedStage: "vision_response",
+          details: openAiDetailsForLog(details),
+        },
+      );
+      logVisionResponseFailure(diagnosticId, details, mapped.code);
+      throw mapped;
+    }
+
     if (diagnosticId) {
       appendVisionDiagnosticStage(diagnosticId, "vision_response", true, {
         model: response.model ?? model,
+        responseStatus,
+        inputTypes: inputTypes.join(","),
+        mimeType: imageMeta.mimeType,
+        imageByteLength: imageMeta.imageByteLength,
+        timedOut: false,
+        jobId: input.jobId ?? null,
       });
     }
 
@@ -148,12 +314,16 @@ export const openAiVisionProvider: VisionProvider = {
       if (diagnosticId) {
         appendVisionDiagnosticStage(diagnosticId, "schema_validation", true, {
           analysisSuccess: true,
+          jobId: input.jobId ?? null,
         });
       }
     } catch (error) {
       if (diagnosticId) {
         appendVisionDiagnosticStage(diagnosticId, "schema_validation", false, {
           analysisSuccess: false,
+          jobId: input.jobId ?? null,
+          errorCode:
+            error instanceof VisionError ? error.code : "json_parse_failed",
         });
       }
       throw error;

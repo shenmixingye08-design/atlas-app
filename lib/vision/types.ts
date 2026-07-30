@@ -140,10 +140,16 @@ export type VisionErrorCode =
   | "empty_image"
   | "invalid_data_url";
 
+export type VisionErrorDetails = Readonly<
+  Record<string, string | number | boolean | null | undefined>
+>;
+
 export class VisionError extends Error {
   readonly code: VisionErrorCode;
   readonly diagnosticId: string | null;
   readonly failedStage: string | null;
+  /** Safe diagnostic fields (OpenAI status/code/requestId, etc.). Never secrets. */
+  readonly details: VisionErrorDetails | null;
 
   constructor(
     code: VisionErrorCode,
@@ -151,13 +157,16 @@ export class VisionError extends Error {
     options?: {
       diagnosticId?: string | null;
       failedStage?: string | null;
+      details?: VisionErrorDetails | null;
+      cause?: unknown;
     },
   ) {
-    super(message);
+    super(message, options?.cause !== undefined ? { cause: options.cause } : undefined);
     this.code = code;
     this.name = "VisionError";
     this.diagnosticId = options?.diagnosticId ?? null;
     this.failedStage = options?.failedStage ?? null;
+    this.details = options?.details ?? null;
   }
 }
 

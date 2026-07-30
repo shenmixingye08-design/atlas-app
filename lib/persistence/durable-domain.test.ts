@@ -4,10 +4,12 @@ const persistClerk = vi.fn(async () => true);
 const loadClerk = vi.fn(async () => null);
 const upsertSb = vi.fn(async () => false);
 const loadSb = vi.fn(async () => null);
+const clearClerk = vi.fn(async () => true);
 
 vi.mock("@/lib/persistence/clerk-private-metadata", () => ({
   persistClerkPrivateMetadataKey: (...args: unknown[]) => persistClerk(...args),
   loadClerkPrivateMetadataKey: (...args: unknown[]) => loadClerk(...args),
+  clearClerkPrivateMetadataKeys: (...args: unknown[]) => clearClerk(...args),
 }));
 
 vi.mock("@/lib/persistence/supabase-user-state", () => ({
@@ -27,13 +29,14 @@ describe("durable-domain", () => {
     loadClerk.mockClear();
     upsertSb.mockClear();
     loadSb.mockClear();
+    clearClerk.mockClear();
     persistClerk.mockResolvedValue(true);
     upsertSb.mockResolvedValue(false);
     loadClerk.mockResolvedValue(null);
     loadSb.mockResolvedValue(null);
   });
 
-  it("stores small payloads in Clerk only", async () => {
+  it("stores small non-forced payloads in Clerk only", async () => {
     const result = await persistDurableDomain(
       "user_1",
       "atlasTest",
@@ -45,7 +48,24 @@ describe("durable-domain", () => {
     expect(upsertSb).not.toHaveBeenCalled();
   });
 
-  it("overflows to Supabase when payload exceeds Clerk safe bytes", async () => {
+  it("forceSupabase writes full payload to Supabase and pointer-only to Clerk", async () => {
+    upsertSb.mockResolvedValue(true);
+    const jobs = { jobs: [{ id: "j1", blob: "x".repeat(1000) }] };
+    const result = await persistDurableDomain("user_1", "atlasWorkJobs", jobs, {
+      forceSupabase: true,
+      compact: () => ({ jobs: [] }),
+    });
+    expect(result).toBe("supabase");
+    expect(upsertSb).toHaveBeenCalled();
+    const clerkValue = persistClerk.mock.calls[0]?.[2] as {
+      storedInSupabase?: boolean;
+      payload?: unknown;
+    };
+    expect(clerkValue.storedInSupabase).toBe(true);
+    expect(clerkValue.payload).toBeNull();
+  });
+
+  it("overflows oversized non-forced domains to Supabase with Clerk pointer", async () => {
     upsertSb.mockResolvedValue(true);
     const huge = { blob: "x".repeat(CLERK_DOMAIN_SAFE_BYTES + 100) };
     const result = await persistDurableDomain("user_1", "atlasTest", huge, {
@@ -53,7 +73,10 @@ describe("durable-domain", () => {
     });
     expect(result).toBe("supabase");
     expect(upsertSb).toHaveBeenCalled();
-    expect(persistClerk).toHaveBeenCalled();
+    const clerkValue = persistClerk.mock.calls[0]?.[2] as {
+      payload?: unknown;
+    };
+    expect(clerkValue.payload).toBeNull();
   });
 
   it("does not pretend success with clerk_compact in production when Supabase fails", async () => {
@@ -85,7 +108,7 @@ describe("durable-domain", () => {
       version: 1,
       updatedAt: new Date().toISOString(),
       storedInSupabase: true,
-      payload: { blob: "compact" },
+      payload: null,
     });
     loadSb.mockResolvedValue({
       payload: {

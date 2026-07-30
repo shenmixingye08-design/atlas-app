@@ -215,7 +215,10 @@ export async function persistCommanderRunToClerk(
       run.userId,
       COMMANDER_DOMAIN_KEY,
       { runs: next } satisfies DurableCommanderState,
-      { compact: (state) => ({ runs: compactRuns(state.runs) }) },
+      {
+        forceSupabase: true,
+        compact: (state) => ({ runs: compactRuns(state.runs) }),
+      },
     );
   } catch (error) {
     console.error("[commander] Failed to persist run:", error);

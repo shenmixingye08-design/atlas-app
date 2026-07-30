@@ -57,7 +57,7 @@ export function schedulePersistLearning(userId: string): void {
     userId,
     LEARNING_DOMAIN_KEY,
     snapshotLearning(userId),
-    { compact: compactLearning },
+    { compact: compactLearning, forceSupabase: true },
   );
 }
 

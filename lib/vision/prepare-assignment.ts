@@ -30,6 +30,7 @@ import type {
 } from "@/lib/vision/types";
 import { VisionError } from "@/lib/vision/types";
 import { readEffectiveCostSavingMode } from "@/lib/cost-optimization/metadata";
+import { resolveWorkJobIdFromMetadata } from "@/lib/work-jobs/job-id";
 
 export type VisionPrepareResult = {
   assignment: string;
@@ -260,13 +261,15 @@ export async function prepareAssignmentWithVision(input: {
 }): Promise<VisionPrepareResult> {
   const cleanAssignment = stripVisionPoisonText(input.assignment);
   const attachmentIds = readAttachmentIds(input.metadata);
+  const jobId = resolveWorkJobIdFromMetadata(input.metadata);
   const diagnosticId = createVisionDiagnostic({
     userId: input.userId,
     attachmentId: attachmentIds[0] ?? null,
-    jobId: typeof input.metadata?.jobId === "string" ? input.metadata.jobId : null,
+    jobId,
   }).id;
   appendVisionDiagnosticStage(diagnosticId, "upload", attachmentIds.length > 0, {
     payloadAttachmentIdCount: attachmentIds.length,
+    jobId,
   });
 
   if (attachmentIds.length === 0) {
@@ -343,7 +346,7 @@ export async function prepareAssignmentWithVision(input: {
       ecoMode,
       forceRefresh:
         input.forceRefresh === true || input.metadata?.forceVisionRefresh === true,
-      jobId: typeof input.metadata?.jobId === "string" ? input.metadata.jobId : null,
+      jobId,
       diagnosticId,
     });
 
@@ -431,12 +434,7 @@ export async function prepareAssignmentWithVision(input: {
         userId: input.userId,
         assignment: cleanAssignment,
         batch,
-        jobId:
-          typeof input.metadata?.jobId === "string"
-            ? input.metadata.jobId
-            : typeof input.metadata?.workJobId === "string"
-              ? input.metadata.workJobId
-              : null,
+        jobId,
       });
       const saveOk = Boolean(visionFiles.downloadable && visionFiles.ok);
       appendVisionDiagnosticStage(

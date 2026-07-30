@@ -4,7 +4,13 @@ import { runCommanderRequest } from "@/lib/commander/service";
 import { recordReliabilityEvent, withRetry } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 
-import { getWorkJob, saveWorkJob, type WorkJobRecord } from "./store";
+import { withPropagatedJobId } from "./job-id";
+import {
+  getWorkJob,
+  saveWorkJob,
+  touchWorkJob,
+  type WorkJobRecord,
+} from "./store";
 
 /**
  * Just over route maxDuration (300s). If a serverless after() is killed,
@@ -30,11 +36,98 @@ export function isWorkJobTerminal(status: WorkJobRecord["status"]): boolean {
   );
 }
 
+function readAttachmentIds(
+  metadata: Readonly<Record<string, unknown>> | null | undefined,
+): string[] {
+  const raw = metadata?.attachmentIds;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((id): id is string => typeof id === "string" && id.length > 0);
+}
+
+/**
+ * completed requires (when images attached): AI vision ok, deliverables downloadable,
+ * project/artifact persistence. Always requires commander success + durable Supabase
+ * job save (enforced by saveWorkJob). Clerk/AI/artifact failures never become completed.
+ */
+function evaluateCompletionGate(input: {
+  job: WorkJobRecord;
+  commander: Awaited<ReturnType<typeof runCommanderRequest>>;
+}): { ok: true } | { ok: false; error: string } {
+  const { job, commander } = input;
+  const attachmentIds = readAttachmentIds(job.metadata);
+  const hasImages = attachmentIds.length > 0;
+
+  if (commander.visionGate && !commander.visionGate.analysisSuccess) {
+    return {
+      ok: false,
+      error: commander.visionGate.message || "画像解析に失敗しました",
+    };
+  }
+
+  if (commander.status === "failed" || !commander.result) {
+    return {
+      ok: false,
+      error:
+        commander.visionGate?.message ??
+        commander.report?.summary ??
+        "仕事の実行に失敗しました",
+    };
+  }
+
+  const persistence = commander.persistence;
+  const files = commander.result.fileDeliverables ?? [];
+  const hasDownloadable = files.some((f) =>
+    Boolean(f.downloadUrl?.includes(`/api/deliverables/${f.id}`)),
+  );
+
+  if (persistence?.wordRequired && !persistence.wordCompletionVerified && !hasDownloadable) {
+    return {
+      ok: false,
+      error:
+        persistence.wordErrorCode
+          ? `Word成果物の保存に失敗しました（${persistence.wordErrorCode}）`
+          : "Word成果物を確認できませんでした",
+    };
+  }
+
+  if (hasImages) {
+    if (!persistence) {
+      return {
+        ok: false,
+        error: "成果物の保存結果を確認できませんでした",
+      };
+    }
+
+    if (
+      !persistence.projectPersisted &&
+      !persistence.wordCompletionVerified &&
+      !hasDownloadable
+    ) {
+      return {
+        ok: false,
+        error: "成果物をSupabaseへ保存できませんでした",
+      };
+    }
+
+    if (!hasDownloadable && !persistence.wordCompletionVerified) {
+      return {
+        ok: false,
+        error: "画像解析後の成果物が保存されていないため完了にできません",
+      };
+    }
+  }
+
+  return { ok: true };
+}
+
 /**
  * Execute a queued work job on the server (not in the browser).
  * Retries transient failures up to maxAttempts with backoff.
  * Idempotent: completed jobs are not re-executed.
  * Stale `running` jobs are reclaimed so work never stays 処理中 forever.
+ *
+ * POST 202 / status queued|accepted = 受付成功 only.
+ * status completed = AI + artifacts + Supabase + downloadable all succeeded.
  */
 export async function executeWorkJob(
   jobId: string,
@@ -75,9 +168,12 @@ export async function executeWorkJob(
   }
 
   const startedAt = Date.now();
-  saveWorkJob({
+  const metadataWithJobId = withPropagatedJobId(existing.metadata, jobId);
+
+  await saveWorkJob({
     ...existing,
     status: "running",
+    metadata: metadataWithJobId,
     attemptCount: existing.attemptCount + 1,
     updatedAt: new Date().toISOString(),
   });
@@ -92,8 +188,9 @@ export async function executeWorkJob(
         // Heartbeat so long runs are not mistaken for stale hangs.
         const current = getWorkJob(jobId, userId);
         if (current?.status === "running") {
-          saveWorkJob({
+          await touchWorkJob({
             ...current,
+            metadata: withPropagatedJobId(current.metadata, jobId),
             updatedAt: new Date().toISOString(),
           });
         }
@@ -104,8 +201,10 @@ export async function executeWorkJob(
             mode: "execute",
             metadata: {
               requestUi: "secretary_zero_friction_v1",
-              ...(existing.metadata ?? {}),
-              workJobId: jobId,
+              ...withPropagatedJobId(
+                { ...(existing.metadata ?? {}), ...(metadataWithJobId ?? {}) },
+                jobId,
+              ),
               idempotencyKey: existing.idempotencyKey,
             },
           },
@@ -114,10 +213,22 @@ export async function executeWorkJob(
       { maxAttempts: existing.maxAttempts },
     );
 
+    // Merge vision metadata from commander result when present on report path.
+    const mergedMetadata = withPropagatedJobId(
+      {
+        ...metadataWithJobId,
+        ...(commander.visionGate?.diagnosticId
+          ? { visionDiagnosticId: commander.visionGate.diagnosticId }
+          : {}),
+      },
+      jobId,
+    );
+
     if (commander.status === "awaiting_confirmation") {
       return saveWorkJob({
         ...existing,
         status: "awaiting_confirmation",
+        metadata: mergedMetadata,
         attemptCount: Math.max(existing.attemptCount + 1, 1),
         result: commander.result ?? null,
         error: null,
@@ -134,6 +245,7 @@ export async function executeWorkJob(
       return saveWorkJob({
         ...existing,
         status: "failed",
+        metadata: mergedMetadata,
         attemptCount: existing.attemptCount + 1,
         error: commander.visionGate.message,
         visionGate: commander.visionGate,
@@ -151,6 +263,7 @@ export async function executeWorkJob(
       return saveWorkJob({
         ...existing,
         status: "failed",
+        metadata: mergedMetadata,
         attemptCount: existing.attemptCount + 1,
         error: toHumanReliabilityMessage(
           commander.visionGate?.message ??
@@ -164,12 +277,37 @@ export async function executeWorkJob(
       });
     }
 
+    const gate = evaluateCompletionGate({
+      job: { ...existing, metadata: mergedMetadata },
+      commander,
+    });
+    if (!gate.ok) {
+      recordReliabilityEvent("work_job", "failure", 1, {
+        durationMs: Date.now() - startedAt,
+        errorMessage: gate.error,
+      });
+      return saveWorkJob({
+        ...existing,
+        status: "failed",
+        metadata: mergedMetadata,
+        attemptCount: existing.attemptCount + 1,
+        error: toHumanReliabilityMessage(gate.error),
+        visionGate: commander.visionGate ?? existing.visionGate ?? null,
+        result: commander.result ?? null,
+        updatedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      });
+    }
+
     recordReliabilityEvent("work_job", "success", 1, {
       durationMs: Date.now() - startedAt,
     });
+
+    // Durable save is part of completed — saveWorkJob throws if Supabase fails.
     return saveWorkJob({
       ...existing,
       status: "completed",
+      metadata: mergedMetadata,
       attemptCount: existing.attemptCount + 1,
       result: {
         ...commander.result,
@@ -181,21 +319,32 @@ export async function executeWorkJob(
       completedAt: new Date().toISOString(),
     });
   } catch (error) {
-    const message = toHumanReliabilityMessage(error);
+    const message =
+      error instanceof Error && error.message === "work_job_durable_persist_failed"
+        ? "ジョブ状態をSupabaseへ保存できませんでした"
+        : toHumanReliabilityMessage(error);
     const isTimeout = /timeout|ETIMEDOUT|aborted/i.test(message);
     recordReliabilityEvent("work_job", isTimeout ? "timeout" : "failure", 1, {
       durationMs: Date.now() - startedAt,
       errorMessage: message,
     });
     if (isTimeout) recordReliabilityEvent("timeout", "timeout");
-    return saveWorkJob({
-      ...existing,
-      status: "failed",
-      attemptCount: existing.attemptCount + 1,
-      error: message,
-      visionGate: existing.visionGate ?? null,
-      updatedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
-    });
+
+    // Best-effort failed persist — if this also fails, rethrow.
+    try {
+      return await saveWorkJob({
+        ...existing,
+        status: "failed",
+        metadata: withPropagatedJobId(existing.metadata, jobId),
+        attemptCount: existing.attemptCount + 1,
+        error: message,
+        visionGate: existing.visionGate ?? null,
+        updatedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      });
+    } catch (persistError) {
+      console.error("[work-jobs] failed to persist failed status", persistError);
+      throw error;
+    }
   }
 }

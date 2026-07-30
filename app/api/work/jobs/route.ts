@@ -5,6 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 
 import { MAX_IMMEDIATE_RETRIES } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
+import { withPropagatedJobId } from "@/lib/work-jobs/job-id";
 import { executeWorkJob } from "@/lib/work-jobs/run";
 import {
   buildWorkJobIdempotencyKey,
@@ -99,6 +100,8 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(
       {
         ok: true,
+        // 202 = acceptance only — never implies completed.
+        acceptance: "accepted",
         jobId: existing.id,
         status: existing.status,
         reused: true,
@@ -113,22 +116,33 @@ export async function POST(request: Request): Promise<Response> {
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  saveWorkJob({
-    id,
-    userId,
-    assignment,
-    idempotencyKey,
-    metadata: safeMetadata,
-    status: "queued",
-    attemptCount: 0,
-    maxAttempts: MAX_IMMEDIATE_RETRIES,
-    error: null,
-    visionGate: null,
-    result: null,
-    createdAt: now,
-    updatedAt: now,
-    completedAt: null,
-  });
+  try {
+    await saveWorkJob({
+      id,
+      userId,
+      assignment,
+      idempotencyKey,
+      metadata: withPropagatedJobId(safeMetadata, id),
+      status: "queued",
+      attemptCount: 0,
+      maxAttempts: MAX_IMMEDIATE_RETRIES,
+      error: null,
+      visionGate: null,
+      result: null,
+      createdAt: now,
+      updatedAt: now,
+      completedAt: null,
+    });
+  } catch {
+    return Response.json(
+      {
+        ok: false,
+        acceptance: "rejected",
+        error: "依頼の保存に失敗しました。しばらくしてからもう一度お試しください。",
+      },
+      { status: 503 },
+    );
+  }
 
   after(async () => {
     try {
@@ -141,6 +155,8 @@ export async function POST(request: Request): Promise<Response> {
   return Response.json(
     {
       ok: true,
+      // 202 = acceptance only — AI/artifacts/Supabase complete later → status completed.
+      acceptance: "accepted",
       jobId: id,
       status: "queued",
       reused: false,

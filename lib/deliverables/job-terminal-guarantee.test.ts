@@ -1,5 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/lib/work-jobs/durable", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/work-jobs/durable")>();
+  return {
+    ...actual,
+    persistWorkJob: vi.fn(async () => "supabase" as const),
+    loadWorkJobFromDisk: vi.fn(() => null),
+    loadWorkJobFromDurable: vi.fn(async () => null),
+  };
+});
+
 import { generateDeliverables } from "@/lib/deliverables/engine";
 import { resetDurableDeliverableStoreForTests } from "@/lib/deliverables/durable-store";
 import { resetDeliverableMemoryStoreForTests } from "@/lib/deliverables/store";
@@ -247,7 +257,7 @@ describe("work-job stale running recovery", () => {
     const staleAt = new Date(
       Date.now() - WORK_JOB_STALE_RUNNING_MS - 5_000,
     ).toISOString();
-    saveWorkJob({
+    await saveWorkJob({
       id,
       userId: OWNER,
       assignment: "止まっている仕事",

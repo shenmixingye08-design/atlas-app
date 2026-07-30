@@ -75,7 +75,7 @@ export function schedulePersistWorkMemory(userId: string): void {
     userId,
     WORK_MEMORY_DOMAIN_KEY,
     snapshotWorkMemory(userId),
-    { compact: compactWorkMemory },
+    { compact: compactWorkMemory, forceSupabase: true },
   );
 }
 

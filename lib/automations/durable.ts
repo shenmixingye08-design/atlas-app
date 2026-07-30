@@ -75,7 +75,7 @@ export function schedulePersistAutomations(userId: string): void {
     userId,
     AUTOMATIONS_DOMAIN_KEY,
     snapshotAutomations(userId),
-    { compact: compactAutomations },
+    { compact: compactAutomations, forceSupabase: true },
   ).then(async () => {
     const rows = listStoredAutomationsForUser(userId);
     if (rows.length > 0) {
