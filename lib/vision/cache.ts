@@ -3,7 +3,10 @@ import { promises as fs } from "fs";
 import path from "path";
 import type { VisionAnalysisResult, VisionDetailLevel } from "@/lib/vision/types";
 
-const CACHE_ROOT = path.join(process.cwd(), ".data", "vision-cache");
+function cacheRoot(): string {
+  // Resolve at call time so tests that chdir() into a temp data root stay isolated.
+  return path.join(process.cwd(), ".data", "vision-cache");
+}
 
 function cacheKey(contentHash: string, detail: VisionDetailLevel, promptVersion: string): string {
   return createHash("sha256")
@@ -13,7 +16,7 @@ function cacheKey(contentHash: string, detail: VisionDetailLevel, promptVersion:
 }
 
 function cachePath(userId: string, key: string): string {
-  return path.join(CACHE_ROOT, userId, `${key}.json`);
+  return path.join(cacheRoot(), userId, `${key}.json`);
 }
 
 export async function getCachedVisionAnalysis(args: {

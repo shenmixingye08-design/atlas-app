@@ -367,12 +367,20 @@ export function resolveMockLlmOutput(
     case "reviewer_fallback":
       return "APPROVED\n\nMock reviewer fallback — deliverable meets minimum requirements.";
     case "vision_analyze": {
-      const isReceipt = /レシート|家計簿|receipt/i.test(input);
-      const isInvoice = /請求書|invoice/i.test(input);
-      const isTable = /表|Excel|エクセル|table/i.test(input);
-      const isMemo = /手書き|メモ|文字にして/i.test(input);
-      const isCard = /名刺|連絡先|business\s*card/i.test(input);
-      const isSales = /営業|資料|改善|チラシ|sales/i.test(input);
+      // Match only the user request — schema text always contains "receipt|invoice|..."
+      const requestMatch = input.match(/【ユーザー依頼】\n([\s\S]*?)(?:\n\n【|$)/);
+      const hintMatch = input.match(/想定用途:\s*([a-z_]+)/i);
+      const focus = [requestMatch?.[1] ?? "", hintMatch?.[1] ?? ""].join("\n");
+      const isReceipt = /レシート|家計簿|receipt/i.test(focus);
+      const isInvoice = /請求書|invoice/i.test(focus);
+      const isContract = /契約書|contract|nda|秘密保持/i.test(focus);
+      const isChart = /グラフ|チャート|chart/i.test(focus);
+      const isTable = /表|Excel|エクセル|table|spreadsheet/i.test(focus);
+      const isMemo = /手書き|メモ|文字にして|handwritten/i.test(focus);
+      const isCard = /名刺|連絡先|business\s*card/i.test(focus);
+      const isScreenshot = /スクリーンショット|screenshot|画面キャプチャ/i.test(focus);
+      const isSales = /営業|資料|改善|チラシ|sales/i.test(focus);
+      const isPhoto = /写真|物件|設備|photo|general_photo/i.test(focus);
 
       if (isReceipt) {
         return JSON.stringify({
@@ -489,7 +497,7 @@ export function resolveMockLlmOutput(
         return JSON.stringify({
           detectedType: "business_card",
           confidence: 0.91,
-          summary: "名刺情報",
+          summary: "名刺から氏名・会社・連絡先を抽出済み。",
           extractedText: "山田太郎\n株式会社サンプル",
           language: "ja",
           fields: {
@@ -556,6 +564,122 @@ export function resolveMockLlmOutput(
         });
       }
 
+      if (isContract) {
+        return JSON.stringify({
+          detectedType: "contract",
+          confidence: 0.9,
+          summary: "業務委託契約書。報酬と秘密保持条項あり。",
+          extractedText:
+            "業務委託契約書\n甲: 株式会社サンプル\n乙: 株式会社テスト\n契約日 2026-04-01\n報酬 月額300,000円",
+          language: "ja",
+          fields: {
+            parties: "甲:株式会社サンプル / 乙:株式会社テスト",
+            effectiveDate: "2026-04-01",
+            expiryDate: "2027-03-31",
+            amounts: "月額300,000円",
+            governingLaw: "日本法",
+            keyClauses: [
+              "業務内容は別紙のとおり",
+              "秘密情報を第三者に開示しない",
+              "契約期間は1年、自動更新",
+            ],
+          },
+          tables: [],
+          visualElements: ["契印欄"],
+          layout: { hierarchy: "契約書", readability: "良好" },
+          styleSignals: null,
+          warnings: [],
+          missingFields: [],
+          recommendedActions: ["契約書要約Wordを生成"],
+          artifactSuggestions: ["contract_docx"],
+        });
+      }
+
+      if (isChart) {
+        return JSON.stringify({
+          detectedType: "chart",
+          confidence: 0.89,
+          summary: "月次売上の棒グラフ。右肩上がり。",
+          extractedText: "売上推移 1月〜6月",
+          language: "ja",
+          fields: {
+            chartType: "棒グラフ",
+            title: "月次売上推移",
+            xAxis: "月",
+            yAxis: "売上（万円）",
+            series: "売上",
+            trend: "増加傾向",
+            insights: ["6月が最高", "3月以降の伸びが大きい"],
+          },
+          tables: [
+            {
+              headers: ["月", "売上"],
+              rows: [
+                ["1月", 120],
+                ["2月", 135],
+                ["3月", 150],
+                ["4月", 180],
+                ["5月", 210],
+                ["6月", 240],
+              ],
+              notes: null,
+            },
+          ],
+          visualElements: ["棒", "軸ラベル"],
+          layout: null,
+          styleSignals: null,
+          warnings: [],
+          missingFields: [],
+          recommendedActions: ["グラフ分析レポートを生成"],
+          artifactSuggestions: ["chart_report_docx"],
+        });
+      }
+
+      if (isScreenshot) {
+        return JSON.stringify({
+          detectedType: "screenshot",
+          confidence: 0.87,
+          summary: "設定画面のスクリーンショット。通知トグルが見える。",
+          extractedText: "設定\n通知 ON\n保存",
+          language: "ja",
+          fields: {
+            appOrSite: "MINERVOT設定",
+            purpose: "通知設定の確認",
+            keyUiText: "通知 ON / 保存",
+          },
+          tables: [],
+          visualElements: ["トグル", "ボタン"],
+          layout: { hierarchy: "画面UI", readability: "良好" },
+          styleSignals: null,
+          warnings: [],
+          missingFields: [],
+          recommendedActions: ["画面内容を要約文書化"],
+          artifactSuggestions: ["screenshot_summary_docx"],
+        });
+      }
+
+      if (isPhoto) {
+        return JSON.stringify({
+          detectedType: "general_photo",
+          confidence: 0.84,
+          summary: "現場の状況写真。機材と作業スペースが写っている。",
+          extractedText: null,
+          language: "ja",
+          fields: {
+            scene: "屋内作業スペース",
+            objects: ["機材", "机", "ケーブル"],
+          },
+          tables: [],
+          visualElements: ["機材", "机"],
+          layout: null,
+          styleSignals: null,
+          warnings: [],
+          missingFields: [],
+          recommendedActions: ["写真レポートを生成"],
+          artifactSuggestions: ["photo_report_docx"],
+        });
+      }
+
       return JSON.stringify({
         detectedType: "general_photo",
         confidence: 0.6,
@@ -570,7 +694,7 @@ export function resolveMockLlmOutput(
         warnings: [],
         missingFields: [],
         recommendedActions: ["用途を指定してください"],
-        artifactSuggestions: [],
+        artifactSuggestions: ["photo_report_docx"],
       });
     }
     case "chat":

@@ -7,6 +7,7 @@ import {
 } from "@/lib/vision/gate";
 import { ensureWorkMemoryHydrated } from "@/lib/work-memory/durable";
 import { bindAttachmentsToJob } from "@/lib/attachments/store";
+import type { Deliverable } from "@/lib/deliverables/types";
 
 import {
   cancelCommanderRun,
@@ -310,13 +311,67 @@ export async function runCommanderRequest(input: {
     };
   }
 
-  return executeCommander({
-    assignment: enriched.assignment,
-    userId: input.userId,
+  return attachVisionGeneratedFiles(
+    await executeCommander({
+      assignment: enriched.assignment,
+      userId: input.userId,
+      metadata,
+      confirmed: input.request.confirmed,
+      runId: input.request.runId,
+    }),
     metadata,
-    confirmed: input.request.confirmed,
-    runId: input.request.runId,
+  );
+}
+
+/** Merge vision→deliverable files onto the commander result (Excel/Word/PDF). */
+function attachVisionGeneratedFiles(
+  result: CommanderRunResult,
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): CommanderRunResult {
+  const raw = metadata?.visionGeneratedDeliverables;
+  if (!Array.isArray(raw) || raw.length === 0 || !result.result) {
+    return result;
+  }
+
+  const visionFiles = raw.filter((item): item is Deliverable => {
+    if (!item || typeof item !== "object") return false;
+    const file = item as Partial<Deliverable>;
+    return (
+      typeof file.id === "string" &&
+      typeof file.format === "string" &&
+      typeof file.downloadUrl === "string"
+    );
   });
+  if (visionFiles.length === 0) return result;
+
+  const existing = result.result.fileDeliverables ?? [];
+  const byId = new Map(existing.map((f) => [f.id, f]));
+  for (const file of visionFiles) {
+    byId.set(file.id, file);
+  }
+  const merged = [...byId.values()];
+  const word = merged.find((f) => f.format === "docx");
+  const anyDownloadable = merged.some((f) =>
+    Boolean(f.downloadUrl?.includes(`/api/deliverables/${f.id}`)),
+  );
+
+  return {
+    ...result,
+    result: {
+      ...result.result,
+      fileDeliverables: merged,
+    },
+    persistence: result.persistence
+      ? {
+          ...result.persistence,
+          wordDeliverableId:
+            result.persistence.wordDeliverableId ?? word?.id ?? null,
+          wordCompletionVerified:
+            result.persistence.wordCompletionVerified ||
+            (Boolean(word) && anyDownloadable),
+        }
+      : result.persistence,
+  };
 }
 
 export {

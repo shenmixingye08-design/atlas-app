@@ -3,9 +3,11 @@ import type { VisionDetectedType, VisionDetailLevel } from "@/lib/vision/types";
 export function buildVisionAnalyzeInstructions(): string {
   return [
     "あなたはMINERVOTの画像理解エンジンです。",
-    "ユーザー画像の文字・表・レイアウト・物体・資料構成を正確に読み取り、指定JSONのみを返してください。",
+    "OCR転記だけで終わらず、画像の種類・構造・意味・仕事への使い方まで理解してください。",
+    "ユーザー画像の文字・表・グラフ・レイアウト・物体・資料構成を正確に読み取り、指定JSONのみを返してください。",
     "推測で不明項目を埋めないでください。読めない項目は missingFields と warnings に入れ、fields では null を使います。",
     "extractedText は見える文字の転記。手書きは原文を改変せず、整形は fields.cleanedText / fields.summary に分けます。",
+    "契約書は条項・当事者・日付・金額を構造化。グラフは軸・系列・傾向・数値を fields と tables に整理。",
     "Markdownや説明文は出力せず、JSONオブジェクトのみを返してください。",
   ].join("\n");
 }
@@ -19,7 +21,7 @@ export function buildVisionAnalyzeUserText(input: {
 }): string {
   return [
     "【ユーザー依頼】",
-    input.userText.trim() || "（依頼文なし・画像内容を整理してください）",
+    input.userText.trim() || "（依頼文なし・画像内容を整理し、成果物化できる形にしてください）",
     "",
     "【ヒント】",
     `想定用途: ${input.hintType}`,
@@ -28,16 +30,18 @@ export function buildVisionAnalyzeUserText(input: {
     "",
     "【出力JSONスキーマ】",
     JSON.stringify({
-      detectedType: "receipt|invoice|estimate|business_document|sales_material|table|spreadsheet_source|handwritten_note|business_card|whiteboard|screenshot|property_photo|equipment_photo|social_media_reference|design_reference|general_photo|unknown",
+      detectedType:
+        "receipt|invoice|estimate|contract|business_document|sales_material|table|spreadsheet_source|chart|handwritten_note|business_card|whiteboard|screenshot|property_photo|equipment_photo|social_media_reference|design_reference|general_photo|unknown",
       confidence: 0.0,
-      summary: "短い要約",
+      summary: "短い要約（何の画像で、仕事にどう使えるか）",
       extractedText: "画像内文字の転記またはnull",
       language: "ja|en|null",
       fields: {
-        note: "用途別フィールド。receiptなら storeName,date,items,subtotal,tax,total,paymentMethod。invoiceなら issuer,recipient,invoiceNumber,issueDate,dueDate,lineItems,subtotal,tax,total,bankDetails。business_cardなら personName,companyName,...。sales_materialなら title,targetAudience,keyMessage,benefits,callToAction,contactInfo,weaknesses。handwritten_noteなら rawText,cleanedText,summary。tableは tables を優先。",
+        note:
+          "用途別フィールド。receipt: storeName,date,items,subtotal,tax,total,paymentMethod。invoice: issuer,recipient,invoiceNumber,issueDate,dueDate,lineItems,subtotal,tax,total,bankDetails。contract: parties,effectiveDate,expiryDate,keyClauses,amounts,governingLaw。chart: chartType,title,xAxis,yAxis,series,trend,insights。business_card: personName,companyName,...。handwritten_note: rawText,cleanedText,summary。screenshot: appOrSite,purpose,keyUiText。tableは tables を優先。",
       },
       tables: [{ headers: ["列"], rows: [["値"]], notes: null }],
-      visualElements: ["ロゴ", "写真"],
+      visualElements: ["ロゴ", "写真", "グラフ"],
       layout: {
         hierarchy: null,
         sections: [],
@@ -60,7 +64,18 @@ export function buildVisionAnalyzeUserText(input: {
       warnings: [],
       missingFields: [],
       recommendedActions: [],
-      artifactSuggestions: ["household_excel", "invoice_excel", "improved_sales_doc", "table_excel", "memo_text", "contact_card"],
+      artifactSuggestions: [
+        "household_excel",
+        "invoice_excel",
+        "contract_docx",
+        "chart_report_docx",
+        "improved_sales_doc",
+        "table_excel",
+        "memo_text",
+        "contact_card",
+        "screenshot_summary_docx",
+        "photo_report_docx",
+      ],
     }),
   ].join("\n");
 }

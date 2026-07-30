@@ -71,6 +71,23 @@ function artifactInstruction(
   if (recommended === "contact_card" || type === "business_card") {
     return "名刺情報を構造化して整理してください。連絡先登録やプロフィール保存は提案のみとし、ユーザー承認なしでは実行しないでください。";
   }
+  if (recommended === "contract_docx" || type === "contract") {
+    return "契約書の当事者・日付・金額・重要条項を要約したWord/PDFを生成してください。読めない条項は要確認とし、勝手に補完しないでください。";
+  }
+  if (recommended === "chart_report_docx" || type === "chart") {
+    return "グラフの種類・軸・数値・傾向・示唆をまとめた分析レポート（Word/PDF）を生成してください。";
+  }
+  if (recommended === "screenshot_summary_docx" || type === "screenshot") {
+    return "画面キャプチャの内容を整理した要約文書を生成してください。";
+  }
+  if (
+    recommended === "photo_report_docx" ||
+    type === "general_photo" ||
+    type === "property_photo" ||
+    type === "equipment_photo"
+  ) {
+    return "写真の内容を理解したレポート（何が写っているか・次の行動）をWord/PDFで生成してください。";
+  }
   return userText.trim()
     ? "上記の画像解析結果を正式な入力ソースとして成果物を作成してください。"
     : "画像解析結果を整理し、必要なら成果物を提案してください。";

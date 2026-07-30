@@ -32,6 +32,26 @@ export function visionBatchToDeliverableContent(batch: VisionBatchResult): strin
   if (type === "sales_material" || type === "business_document") {
     return buildSalesImproveMarkdown(batch);
   }
+  if (type === "contract" || batch.recommendedArtifactType === "contract_docx") {
+    return buildContractMarkdown(batch);
+  }
+  if (type === "chart" || batch.recommendedArtifactType === "chart_report_docx") {
+    return buildChartMarkdown(batch);
+  }
+  if (
+    type === "screenshot" ||
+    batch.recommendedArtifactType === "screenshot_summary_docx"
+  ) {
+    return buildScreenshotMarkdown(batch);
+  }
+  if (
+    type === "general_photo" ||
+    type === "property_photo" ||
+    type === "equipment_photo" ||
+    batch.recommendedArtifactType === "photo_report_docx"
+  ) {
+    return buildPhotoReportMarkdown(batch);
+  }
 
   return [
     `# 画像解析結果`,
@@ -208,5 +228,118 @@ function buildSalesImproveMarkdown(batch: VisionBatchResult): string {
     "",
     "## 参考抽出テキスト",
     image?.extractedText ?? "",
+  ].join("\n");
+}
+
+function buildContractMarkdown(batch: VisionBatchResult): string {
+  return batch.images
+    .map((image, i) => {
+      const f = image.fields;
+      const clauses = Array.isArray(f.keyClauses)
+        ? (f.keyClauses as unknown[]).map((c, idx) => `${idx + 1}. ${String(c)}`)
+        : asString(f.keyClauses)
+          ? [asString(f.keyClauses)]
+          : ["（条項を十分に読み取れませんでした）"];
+      return [
+        `# 契約書要約 ${i + 1}`,
+        `- 当事者: ${asString(f.parties) || "要確認"}`,
+        `- 契約日/発効日: ${asString(f.effectiveDate) || "要確認"}`,
+        `- 終了日: ${asString(f.expiryDate) || "要確認"}`,
+        `- 金額: ${asString(f.amounts) || "要確認"}`,
+        `- 準拠法: ${asString(f.governingLaw) || "要確認"}`,
+        "",
+        "## 重要条項",
+        ...clauses.map((c) => (c.startsWith("-") ? c : `- ${c}`)),
+        "",
+        "## 抽出テキスト",
+        image.extractedText || "（なし）",
+        image.missingFields.length
+          ? `\n要確認: ${image.missingFields.join("、")}`
+          : "",
+      ].join("\n");
+    })
+    .join("\n\n");
+}
+
+function buildChartMarkdown(batch: VisionBatchResult): string {
+  return batch.images
+    .map((image, i) => {
+      const f = image.fields;
+      const insights = Array.isArray(f.insights)
+        ? (f.insights as unknown[]).map((x) => `- ${String(x)}`)
+        : asString(f.insights)
+          ? [`- ${asString(f.insights)}`]
+          : [`- ${image.summary}`];
+      const table = image.tables[0];
+      const tableMd = table
+        ? [
+            `| ${table.headers.join(" | ")} |`,
+            `| ${table.headers.map(() => "---").join(" | ")} |`,
+            ...table.rows.map(
+              (row) =>
+                `| ${row.map((c) => (c == null ? "（不明）" : String(c))).join(" | ")} |`,
+            ),
+          ].join("\n")
+        : "（数値表を十分に読み取れませんでした）";
+      return [
+        `# グラフ分析 ${i + 1}`,
+        `- 種類: ${asString(f.chartType) || "要確認"}`,
+        `- タイトル: ${asString(f.title) || image.summary}`,
+        `- X軸: ${asString(f.xAxis) || "要確認"}`,
+        `- Y軸: ${asString(f.yAxis) || "要確認"}`,
+        `- 系列: ${asString(f.series) || "要確認"}`,
+        `- 傾向: ${asString(f.trend) || "要確認"}`,
+        "",
+        "## 読み取った数値",
+        tableMd,
+        "",
+        "## 示唆",
+        ...insights,
+      ].join("\n");
+    })
+    .join("\n\n");
+}
+
+function buildScreenshotMarkdown(batch: VisionBatchResult): string {
+  return batch.images
+    .map((image, i) => {
+      const f = image.fields;
+      return [
+        `# 画面キャプチャ整理 ${i + 1}`,
+        `- アプリ/サイト: ${asString(f.appOrSite) || "要確認"}`,
+        `- 目的: ${asString(f.purpose) || image.summary}`,
+        `- 主要UI文言: ${asString(f.keyUiText) || image.extractedText || "要確認"}`,
+        "",
+        "## 要約",
+        image.summary,
+        "",
+        "## 抽出テキスト",
+        image.extractedText || "（なし）",
+      ].join("\n");
+    })
+    .join("\n\n");
+}
+
+function buildPhotoReportMarkdown(batch: VisionBatchResult): string {
+  return [
+    "# 写真レポート",
+    batch.combinedSummary,
+    "",
+    ...batch.images.map((image, i) => {
+      return [
+        `## 写真${i + 1}`,
+        `- 種別: ${image.detectedType}`,
+        `- 要約: ${image.summary}`,
+        image.visualElements.length
+          ? `- 写っているもの: ${image.visualElements.join("、")}`
+          : null,
+        image.extractedText ? `- 文字: ${image.extractedText}` : null,
+        image.recommendedActions.length
+          ? `- 次の行動: ${image.recommendedActions.join(" / ")}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }),
   ].join("\n");
 }

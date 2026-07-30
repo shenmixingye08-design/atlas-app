@@ -4,10 +4,12 @@ export type VisionDetectedType =
   | "receipt"
   | "invoice"
   | "estimate"
+  | "contract"
   | "business_document"
   | "sales_material"
   | "table"
   | "spreadsheet_source"
+  | "chart"
   | "handwritten_note"
   | "business_card"
   | "whiteboard"
@@ -156,4 +158,4 @@ export type VisionGatePayload = {
   diagnosticId?: string | null;
 };
 
-export const VISION_PROMPT_VERSION = "v1";
+export const VISION_PROMPT_VERSION = "v2-secretary-understand";

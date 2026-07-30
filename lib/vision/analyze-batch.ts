@@ -34,13 +34,32 @@ function recommendArtifactType(
 ): string | null {
   if (type === "receipt" || /家計簿/.test(userText)) return "household_excel";
   if (type === "invoice") return "invoice_excel";
-  if (type === "table" || type === "spreadsheet_source" || /Excel|エクセル/.test(userText)) {
+  if (type === "contract" || /契約/.test(userText)) return "contract_docx";
+  if (type === "chart" || /グラフ|チャート/.test(userText)) {
+    return "chart_report_docx";
+  }
+  if (
+    type === "table" ||
+    type === "spreadsheet_source" ||
+    /Excel|エクセル/.test(userText)
+  ) {
     return "table_excel";
   }
-  if (type === "sales_material" || /改善/.test(userText)) return "improved_sales_doc";
+  if (type === "sales_material" || /改善/.test(userText)) {
+    return "improved_sales_doc";
+  }
   if (type === "handwritten_note") return "memo_text";
   if (type === "business_card") return "contact_card";
-  return null;
+  if (type === "screenshot") return "screenshot_summary_docx";
+  if (
+    type === "general_photo" ||
+    type === "property_photo" ||
+    type === "equipment_photo"
+  ) {
+    return "photo_report_docx";
+  }
+  if (/Word|ワード|PDF|報告書/.test(userText)) return "photo_report_docx";
+  return "photo_report_docx";
 }
 
 export async function analyzeUserImageBatch(input: {

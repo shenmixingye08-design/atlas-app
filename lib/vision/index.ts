@@ -30,3 +30,9 @@ export {
   inferRequiredVisionFields,
 } from "./gate";
 export { resolveVisionModel } from "./resolve-vision-model";
+export {
+  formatsFromVisionBatch,
+  titleFromVisionBatch,
+} from "./formats-from-vision";
+export { completeImageWorkToDeliverables } from "./complete-image-work";
+export type { VisionWorkCompletion } from "./complete-image-work";

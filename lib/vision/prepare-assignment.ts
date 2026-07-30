@@ -3,6 +3,7 @@ import "server-only";
 import { analyzeUserImageBatch } from "@/lib/vision/analyze-batch";
 import { buildVisionEnrichedAssignment } from "@/lib/vision/adapters/to-assignment-context";
 import { visionBatchToDeliverableContent } from "@/lib/vision/adapters/to-artifact-source";
+import { completeImageWorkToDeliverables } from "@/lib/vision/complete-image-work";
 import {
   evaluateVisionBatchGate,
   stripVisionPoisonText,
@@ -252,6 +253,37 @@ export async function prepareAssignmentWithVision(input: {
       batch,
     });
 
+    // Generate real Word/PDF/Excel from understood image content (not OCR-only).
+    let visionFiles: Awaited<
+      ReturnType<typeof completeImageWorkToDeliverables>
+    > | null = null;
+    try {
+      visionFiles = await completeImageWorkToDeliverables({
+        userId: input.userId,
+        assignment: cleanAssignment,
+        batch,
+        jobId:
+          typeof input.metadata?.jobId === "string"
+            ? input.metadata.jobId
+            : typeof input.metadata?.workJobId === "string"
+              ? input.metadata.workJobId
+              : null,
+      });
+      appendVisionDiagnosticStage(batchDiagnosticId, "artifact_handoff", true, {
+        artifactGate: visionFiles.ok ? "deliverables_ok" : "deliverables_partial",
+        analysisSuccess: true,
+        payloadAttachmentIdCount: attachmentIds.length,
+      });
+    } catch (error) {
+      appendVisionDiagnosticStage(batchDiagnosticId, "artifact_handoff", false, {
+        artifactGate: "deliverables_failed",
+        analysisSuccess: true,
+        payloadAttachmentIdCount: attachmentIds.length,
+        error:
+          error instanceof Error ? error.message.slice(0, 200) : "deliverable_error",
+      });
+    }
+
     return {
       assignment: enriched,
       metadata: {
@@ -290,6 +322,11 @@ export async function prepareAssignmentWithVision(input: {
           })),
         },
         visionDeliverableSeed: visionBatchToDeliverableContent(batch),
+        visionDeliverableFormats: visionFiles?.formats ?? [],
+        visionDeliverableTitle: visionFiles?.title ?? null,
+        visionGeneratedDeliverables: visionFiles?.deliverables ?? [],
+        visionDeliverablesOk: visionFiles?.ok ?? false,
+        visionDeliverablesDownloadable: visionFiles?.downloadable ?? false,
         visionStyleSavePrompt: batch.images.some((image) => image.styleSignals)
           ? {
               options: ["session_only", "profile_save", "discard"] as const,
