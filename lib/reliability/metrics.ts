@@ -211,6 +211,30 @@ async function persistReliabilityEvent(
     ...(options.stage ? { stage: options.stage } : {}),
   });
 
+  const severity =
+    options.severity ??
+    (outcome === "success"
+      ? "info"
+      : outcome === "retry"
+        ? "warn"
+        : "error");
+
+  const row = {
+    metric_key: key,
+    outcome,
+    duration_ms: options.durationMs ?? null,
+    job_id: options.jobId ?? null,
+    diagnostic_id: options.diagnosticId ?? null,
+    user_id: options.userId ?? null,
+    stage: options.stage ?? null,
+    severity,
+    error_code: options.errorCode ?? null,
+    message,
+    error_message: message,
+    metadata,
+    created_at: new Date().toISOString(),
+  };
+
   // Always emit a structured console line so Vercel shows the real failure
   // even when the diagnostics table is missing.
   if (outcome === "failure" || outcome === "timeout") {
@@ -221,9 +245,7 @@ async function persistReliabilityEvent(
       diagnostic_id: options.diagnosticId ?? null,
       user_id: options.userId ? "[present]" : null,
       stage: options.stage ?? null,
-      severity:
-        options.severity ??
-        (outcome === "timeout" ? "error" : "error"),
+      severity,
       error_code: options.errorCode ?? null,
       message,
       metadata,
@@ -238,29 +260,43 @@ async function persistReliabilityEvent(
       );
       return;
     }
-    const severity =
-      options.severity ??
-      (outcome === "success"
-        ? "info"
-        : outcome === "retry"
-          ? "warn"
-          : "error");
-    const { error } = await client.from("atlas_reliability_events").insert({
-      metric_key: key,
-      outcome,
-      duration_ms: options.durationMs ?? null,
-      job_id: options.jobId ?? null,
-      diagnostic_id: options.diagnosticId ?? null,
-      user_id: options.userId ?? null,
-      stage: options.stage ?? null,
-      severity,
-      error_code: options.errorCode ?? null,
-      message,
-      error_message: message,
-      metadata,
-    } as never);
-    if (error) {
-      console.warn("[atlas_reliability_events] insert failed", error.message);
+    const { error } = await client
+      .from("atlas_reliability_events")
+      .insert(row as never);
+    if (!error) return;
+
+    console.warn("[atlas_reliability_events] insert failed", error.message);
+
+    // Durable fallback while migration is pending — never store secrets/images.
+    if (
+      /schema cache|does not exist|Could not find the table/i.test(error.message)
+    ) {
+      const { upsertSupabaseUserState, loadSupabaseUserState } = await import(
+        "@/lib/persistence/supabase-user-state"
+      );
+      const ownerId = options.userId?.trim() || "__atlas_reliability__";
+      const existing = await loadSupabaseUserState<{
+        events?: Array<Record<string, unknown>>;
+      }>(ownerId, "reliability_events");
+      const events = Array.isArray(existing?.payload?.events)
+        ? existing!.payload.events
+        : [];
+      events.unshift({
+        ...row,
+        fallback: true,
+        table_missing: true,
+      });
+      const ok = await upsertSupabaseUserState(ownerId, "reliability_events", {
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        events: events.slice(0, 100),
+      });
+      if (ok) {
+        console.warn(
+          "[atlas_reliability_events] wrote durable fallback to atlas_user_state",
+          { job_id: options.jobId ?? null, stage: options.stage ?? null },
+        );
+      }
     }
   } catch (error) {
     console.warn("[atlas_reliability_events] insert error", error);
