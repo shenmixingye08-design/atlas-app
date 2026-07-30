@@ -49,6 +49,7 @@ import {
 import type {
   CommanderAttemptRecord,
   CommanderCompletionReport,
+  CommanderPersistenceReport,
   CommanderPlan,
   CommanderRunResult,
   CommanderRunStatus,
@@ -152,6 +153,7 @@ function toRunResult(input: {
   externalMessages: string[];
   workMemory?: OrchestrationResult["workMemory"];
   workMemoryCandidates?: unknown[];
+  persistence?: CommanderPersistenceReport;
 }): CommanderRunResult {
   return {
     runId: input.runId,
@@ -173,6 +175,7 @@ function toRunResult(input: {
       input.workMemoryCandidates.length > 0 && {
         workMemoryCandidates: input.workMemoryCandidates,
       }),
+    ...(input.persistence && { persistence: input.persistence }),
   };
 }
 
@@ -748,12 +751,14 @@ async function executeStoredRun(input: {
   // start, not only the browser tab that ran the request.
   const resultProjectId = `commander-${input.runId}`;
   const resultDeepLink = `/projects/${encodeURIComponent(resultProjectId)}`;
+  let persistedProjectId: string | null = null;
+  let notificationCreated = false;
 
   if (finalStatus === "completed") {
     // Persist first so the notification can deep-link straight to the saved
     // result (成果物) instead of a generic workspace page.
     if (lastResult) {
-      await persistCommanderResultAsProject({
+      persistedProjectId = await persistCommanderResultAsProject({
         userId: input.userId,
         assignment: plan.assignment,
         result: lastResult,
@@ -782,6 +787,7 @@ async function executeStoredRun(input: {
         }),
       { runId: input.runId, userId: input.userId, kind: "completed" },
     );
+    notificationCreated = true;
     await persistNotificationsNow(input.userId).catch(() => undefined);
     logWordPipeline({
       stage: "NOTIFICATION_CREATED",
@@ -799,7 +805,7 @@ async function executeStoredRun(input: {
     }
   } else if (wordFailedReason) {
     if (lastResult) {
-      await persistCommanderResultAsProject({
+      persistedProjectId = await persistCommanderResultAsProject({
         userId: input.userId,
         assignment: plan.assignment,
         result: lastResult,
@@ -819,10 +825,11 @@ async function executeStoredRun(input: {
         }),
       { runId: input.runId, userId: input.userId, kind: "failed" },
     );
+    notificationCreated = true;
     await persistNotificationsNow(input.userId).catch(() => undefined);
   } else if (finalStatus === "partial") {
     if (lastResult) {
-      await persistCommanderResultAsProject({
+      persistedProjectId = await persistCommanderResultAsProject({
         userId: input.userId,
         assignment: plan.assignment,
         result: lastResult,
@@ -844,6 +851,7 @@ async function executeStoredRun(input: {
         }),
       { runId: input.runId, userId: input.userId, kind: "partial" },
     );
+    notificationCreated = true;
   } else if (finalStatus === "cancelled") {
     ensureNotificationDelivery(
       () =>
@@ -853,6 +861,7 @@ async function executeStoredRun(input: {
         }),
       { runId: input.runId, userId: input.userId, kind: "cancelled" },
     );
+    notificationCreated = true;
   } else {
     // Persist the failed run (with its error) so「確認する」deep-links to a page
     // that explains 生成に失敗しました + reason instead of a dead/blank list.
@@ -880,7 +889,7 @@ async function executeStoredRun(input: {
           ),
           error: failureReason,
         };
-    await persistCommanderResultAsProject({
+    persistedProjectId = await persistCommanderResultAsProject({
       userId: input.userId,
       assignment: plan.assignment,
       result: failedResult,
@@ -899,7 +908,20 @@ async function executeStoredRun(input: {
         }),
       { runId: input.runId, userId: input.userId, kind: "failed" },
     );
+    notificationCreated = true;
   }
+
+  const wordRequired = Boolean(wordDeliverableId || wordFailedReason);
+  const persistence: CommanderPersistenceReport = {
+    projectId: persistedProjectId ?? resultProjectId,
+    projectPersisted: Boolean(persistedProjectId),
+    wordRequired,
+    wordDeliverableId,
+    wordCompletionVerified: Boolean(wordDeliverableId && wordDownloadUrl),
+    notificationCreated,
+    wordErrorCode: wordFailedReason,
+    wordFailedStep: wordFailedReason ? "DOCX_GENERATION" : null,
+  };
 
   return toRunResult({
     runId: input.runId,
@@ -911,6 +933,7 @@ async function executeStoredRun(input: {
     externalMessages: external.messages,
     workMemory,
     workMemoryCandidates,
+    persistence,
   });
 }
 

@@ -132,8 +132,12 @@ export async function analyzeUserImage(input: {
   try {
     bytes = await readProcessedImageBytes(input.userId, input.attachmentId);
   } catch (error) {
-    appendVisionDiagnosticStage(diagnosticId, "storage_download", false);
-    throw mapStorageConfigError(error);
+    appendVisionDiagnosticStage(diagnosticId, "storage_download", false, {
+      analysisSuccess: false,
+      errorCode: "storage_failed",
+      userCode: "image_fetch_failed",
+    });
+    throw mapStorageConfigError(error, diagnosticId);
   }
 
   if (!bytes || bytes.buffer.length <= 0) {

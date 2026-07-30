@@ -25,6 +25,7 @@ import type {
   CommanderRequest,
   CommanderRunResult,
   CommanderVisionGate,
+  CommanderPersistenceReport,
 } from "./types";
 
 function blockedVisionResult(input: {
@@ -386,22 +387,31 @@ function attachVisionGeneratedFiles(
     Boolean(f.downloadUrl?.includes(`/api/deliverables/${f.id}`)),
   );
 
+  const basePersistence: CommanderPersistenceReport = result.persistence ?? {
+    projectId: null,
+    projectPersisted: false,
+    wordRequired: Boolean(word),
+    wordDeliverableId: null,
+    wordCompletionVerified: false,
+    notificationCreated: false,
+  };
+
+  const persistence: CommanderPersistenceReport = {
+    ...basePersistence,
+    wordRequired: basePersistence.wordRequired || Boolean(word),
+    wordDeliverableId: basePersistence.wordDeliverableId ?? word?.id ?? null,
+    wordCompletionVerified:
+      basePersistence.wordCompletionVerified ||
+      (Boolean(word) && anyDownloadable),
+  };
+
   return {
     ...result,
     result: {
       ...result.result,
       fileDeliverables: merged,
     },
-    persistence: result.persistence
-      ? {
-          ...result.persistence,
-          wordDeliverableId:
-            result.persistence.wordDeliverableId ?? word?.id ?? null,
-          wordCompletionVerified:
-            result.persistence.wordCompletionVerified ||
-            (Boolean(word) && anyDownloadable),
-        }
-      : result.persistence,
+    persistence,
   };
 }
 

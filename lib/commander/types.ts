@@ -145,6 +145,22 @@ export type CommanderVisionGate = {
   payloadAttachmentIds?: string[];
 };
 
+/**
+ * Durable artifact persistence outcome for work-job / vision completion gates.
+ * completed consumers may require projectPersisted (and Word when required).
+ */
+export type CommanderPersistenceReport = {
+  projectId: string | null;
+  projectPersisted: boolean;
+  wordRequired: boolean;
+  wordDeliverableId: string | null;
+  /** True when a downloadable Word deliverable id is present and verified. */
+  wordCompletionVerified: boolean;
+  notificationCreated: boolean;
+  wordErrorCode?: string | null;
+  wordFailedStep?: string | null;
+};
+
 export type CommanderRunResult = {
   runId: string | null;
   status: CommanderRunStatus;
@@ -157,6 +173,8 @@ export type CommanderRunResult = {
   workMemoryCandidates?: unknown[];
   /** Present when image-attached work was blocked before Artifact Engine. */
   visionGate?: CommanderVisionGate;
+  /** Artifact / notification persistence for completion gates. */
+  persistence?: CommanderPersistenceReport;
 };
 
 export type CommanderRequest = {

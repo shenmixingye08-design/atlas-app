@@ -277,6 +277,8 @@ describe("vision secretary E2E — image understand → deliverable", () => {
   it("rejects non-data-url images (must send real image bytes)", async () => {
     await expect(
       openAiVisionProvider.analyzeImage({
+        userId: "user_vision_e2e",
+        attachmentId: "img_reject",
         imageUrl: "https://example.com/receipt.png",
         userText: "レシート",
         hintType: "receipt",
@@ -301,14 +303,16 @@ describe("vision secretary E2E — image understand → deliverable", () => {
     const spyProvider = {
       id: "spy",
       async analyzeImage(input: {
+        userId: string;
+        attachmentId: string;
         imageUrl: string;
         userText: string;
         hintType: import("@/lib/vision/types").VisionDetectedType;
         detail: import("@/lib/vision/types").VisionDetailLevel;
         pageIndex: number;
         pageCount: number;
-        userId: string;
-        attachmentId: string;
+        jobId?: string | null;
+        diagnosticId?: string | null;
       }) {
         capturedUrl =
           typeof input.imageUrl === "string"

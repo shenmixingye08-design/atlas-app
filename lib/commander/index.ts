@@ -19,6 +19,7 @@ export type {
   CommanderExecutionStep,
   CommanderExternalNeed,
   CommanderMemoryNeed,
+  CommanderPersistenceReport,
   CommanderPlan,
   CommanderRequest,
   CommanderRunRecord,
