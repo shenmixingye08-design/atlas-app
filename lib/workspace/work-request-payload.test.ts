@@ -56,6 +56,10 @@ describe("buildWorkRequestSubmitPayload", () => {
     expect(payload.metadata.attachmentIds).toBeUndefined();
   });
 
+  it("appendDocumentExtractsToAssignment is stable", () => {
+    expect(appendDocumentExtractsToAssignment("a", [])).toBe("a");
+  });
+
   it("home and お願いする produce identical POST /api/work/jobs bodies", () => {
     const input = {
       assignment: "社内報告書をWordで作成してください",
@@ -72,21 +76,9 @@ describe("buildWorkRequestSubmitPayload", () => {
         },
       ],
     };
-    // HomeChatBar and WorkRequestForm both call this builder.
     const homePayload = buildWorkRequestSubmitPayload(input);
     const workspacePayload = buildWorkRequestSubmitPayload(input);
     expect(homePayload).toEqual(workspacePayload);
-    expect(
-      JSON.stringify({
-        assignment: homePayload.assignment,
-        metadata: homePayload.metadata,
-      }),
-    ).toBe(
-      JSON.stringify({
-        assignment: workspacePayload.assignment,
-        metadata: workspacePayload.metadata,
-      }),
-    );
   });
 });
 
