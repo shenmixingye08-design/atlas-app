@@ -123,6 +123,7 @@ export async function POST(request: Request): Promise<Response> {
     attemptCount: 0,
     maxAttempts: MAX_IMMEDIATE_RETRIES,
     error: null,
+    visionGate: null,
     result: null,
     createdAt: now,
     updatedAt: now,

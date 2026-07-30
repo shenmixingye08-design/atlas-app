@@ -136,6 +136,7 @@ export async function executeWorkJob(
         status: "failed",
         attemptCount: existing.attemptCount + 1,
         error: commander.visionGate.message,
+        visionGate: commander.visionGate,
         result: null,
         updatedAt: new Date().toISOString(),
         completedAt: new Date().toISOString(),
@@ -156,6 +157,7 @@ export async function executeWorkJob(
             commander.report?.summary ??
             "failed",
         ),
+        visionGate: commander.visionGate ?? existing.visionGate ?? null,
         result: commander.result ?? null,
         updatedAt: new Date().toISOString(),
         completedAt: new Date().toISOString(),
@@ -174,6 +176,7 @@ export async function executeWorkJob(
         ...(commander.runId ? { commanderRunId: commander.runId } : {}),
       },
       error: null,
+      visionGate: null,
       updatedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
     });
@@ -190,6 +193,7 @@ export async function executeWorkJob(
       status: "failed",
       attemptCount: existing.attemptCount + 1,
       error: message,
+      visionGate: existing.visionGate ?? null,
       updatedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
     });

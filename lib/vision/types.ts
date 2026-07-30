@@ -142,20 +142,38 @@ export type VisionErrorCode =
 
 export class VisionError extends Error {
   readonly code: VisionErrorCode;
+  readonly diagnosticId: string | null;
+  readonly failedStage: string | null;
 
-  constructor(code: VisionErrorCode, message: string) {
+  constructor(
+    code: VisionErrorCode,
+    message: string,
+    options?: {
+      diagnosticId?: string | null;
+      failedStage?: string | null;
+    },
+  ) {
     super(message);
     this.code = code;
     this.name = "VisionError";
+    this.diagnosticId = options?.diagnosticId ?? null;
+    this.failedStage = options?.failedStage ?? null;
   }
 }
 
 export type VisionGatePayload = {
   status: "vision_failed" | "needs_image_retry" | "needs_input" | "config_missing";
   analysisSuccess: boolean;
+  /** User-facing Japanese message (includes which stage failed). */
   message: string;
   userCode: string;
   diagnosticId?: string | null;
+  /** Pipeline stage that failed (upload / AI / artifact / …). */
+  failedStage?: string | null;
+  /** Short Japanese stage label for UI badges. */
+  failedStageLabel?: string | null;
+  /** Developer error code (VisionError.code or internal). */
+  developerCode?: string | null;
 };
 
 export const VISION_PROMPT_VERSION = "v2-secretary-understand";

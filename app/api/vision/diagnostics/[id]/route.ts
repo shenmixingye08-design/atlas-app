@@ -2,12 +2,43 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 
 import { isAtlasOwnerEmail } from "@/lib/auth/is-atlas-owner";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
-import { getVisionDiagnosticForUser } from "@/lib/vision/diagnostics";
+import {
+  getLatestFailedStage,
+  getVisionDiagnosticForUser,
+} from "@/lib/vision/diagnostics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+const SAFE_DETAIL_KEYS = [
+  "errorCode",
+  "userCode",
+  "openaiErrorCode",
+  "openaiErrorType",
+  "artifactGate",
+  "durationMs",
+  "analysisSuccess",
+  "inputImageIncluded",
+  "payloadAttachmentIdCount",
+  "detectedType",
+  "model",
+  "mimeType",
+  "downloadedByteLength",
+  "base64Length",
+] as const;
+
+function pickSafeDetail(
+  detail: Record<string, string | number | boolean | null> | undefined,
+): Record<string, string | number | boolean | null> | null {
+  if (!detail) return null;
+  const out: Record<string, string | number | boolean | null> = {};
+  for (const key of SAFE_DETAIL_KEYS) {
+    if (key in detail) out[key] = detail[key] ?? null;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
 
 export async function GET(
   _request: Request,
@@ -47,6 +78,7 @@ export async function GET(
         stage: stage.stage,
         ok: stage.ok,
         at: stage.at,
+        detail: pickSafeDetail(stage.detail),
       })),
       model: diagnostic.model,
       mimeType: diagnostic.mimeType,
@@ -57,6 +89,9 @@ export async function GET(
       payloadAttachmentIdCount: diagnostic.payloadAttachmentIds?.length ?? null,
       detectedType: diagnostic.detectedType,
       artifactGate: diagnostic.artifactGate,
+      failedStage: getLatestFailedStage(diagnostic),
+      lastErrorCode: diagnostic.lastErrorCode,
+      lastUserCode: diagnostic.lastUserCode,
       createdAt: diagnostic.createdAt,
       updatedAt: diagnostic.updatedAt,
     },

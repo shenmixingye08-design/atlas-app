@@ -39,7 +39,9 @@ function blockedVisionResult(input: {
   const title =
     input.gate.status === "needs_input"
       ? "画像の確認が必要です"
-      : "画像の内容を解析できませんでした";
+      : input.gate.failedStageLabel
+        ? `画像処理に失敗しました（${input.gate.failedStageLabel}）`
+        : "画像の内容を解析できませんでした";
   return {
     runId: null,
     status: "failed",
@@ -101,8 +103,11 @@ async function maybeEnrichWithVision(input: {
       gate: {
         status: "needs_image_retry",
         analysisSuccess: false,
-        message: missingGate.message,
+        message: `【画像アップロードで失敗】${missingGate.message}`,
         userCode: missingGate.userCode,
+        failedStage: "upload",
+        failedStageLabel: "画像アップロード",
+        developerCode: missingGate.userCode,
       },
     };
   }
@@ -127,7 +132,10 @@ async function maybeEnrichWithVision(input: {
     return {
       assignment: prepared.assignment,
       metadata: prepared.metadata,
-      gate: prepared.gate,
+      gate: {
+        ...prepared.gate,
+        payloadAttachmentIds: attachmentIds,
+      },
     };
   }
 
@@ -139,8 +147,31 @@ async function maybeEnrichWithVision(input: {
       gate: {
         status: "vision_failed",
         analysisSuccess: false,
-        message: "画像の内容を解析できませんでした",
-        userCode: "image_analyze_failed",
+        message:
+          typeof prepared.metadata.visionError === "string"
+            ? prepared.metadata.visionError
+            : "【AI解析で失敗】画像の内容を解析できませんでした。再試行してください。",
+        userCode:
+          typeof prepared.metadata.visionUserCode === "string"
+            ? prepared.metadata.visionUserCode
+            : "image_analyze_failed",
+        diagnosticId:
+          typeof prepared.metadata.visionDiagnosticId === "string"
+            ? prepared.metadata.visionDiagnosticId
+            : null,
+        failedStage:
+          typeof prepared.metadata.visionFailedStage === "string"
+            ? prepared.metadata.visionFailedStage
+            : "vision_response",
+        failedStageLabel:
+          typeof prepared.metadata.visionFailedStageLabel === "string"
+            ? prepared.metadata.visionFailedStageLabel
+            : "AI解析",
+        developerCode:
+          typeof prepared.metadata.visionDeveloperCode === "string"
+            ? prepared.metadata.visionDeveloperCode
+            : "image_analyze_failed",
+        payloadAttachmentIds: attachmentIds,
       },
     };
   }

@@ -25,15 +25,22 @@ import {
   type VisionDetectedType,
 } from "@/lib/vision/types";
 
-function mapStorageConfigError(error: unknown): VisionError {
+function mapStorageConfigError(
+  error: unknown,
+  diagnosticId: string | null,
+): VisionError {
   const message = error instanceof Error ? error.message : "";
   if (/supabase|service role|SUPABASE_/i.test(message)) {
     return new VisionError(
       "config_missing",
       "画像保存の設定が不足しています。管理者に連絡してください",
+      { diagnosticId, failedStage: "storage_save" },
     );
   }
-  return new VisionError("storage_failed", "解析用画像の読み込みに失敗しました");
+  return new VisionError("storage_failed", "解析用画像の読み込みに失敗しました", {
+    diagnosticId,
+    failedStage: "storage_download",
+  });
 }
 
 export async function analyzeUserImage(input: {
@@ -64,16 +71,23 @@ export async function analyzeUserImage(input: {
   } catch (error) {
     appendVisionDiagnosticStage(diagnosticId, "storage_download", false, {
       analysisSuccess: false,
+      errorCode: "config_missing",
+      userCode: "config_missing",
     });
-    throw mapStorageConfigError(error);
+    throw mapStorageConfigError(error, diagnosticId);
   }
 
   const meta = await getImageAttachmentForUser(input.userId, input.attachmentId);
   if (!meta) {
     appendVisionDiagnosticStage(diagnosticId, "storage_download", false, {
       analysisSuccess: false,
+      errorCode: "not_found",
+      userCode: "image_fetch_failed",
     });
-    throw new VisionError("not_found", "画像が見つからないか、アクセスできません");
+    throw new VisionError("not_found", "画像が見つからないか、アクセスできません", {
+      diagnosticId,
+      failedStage: "storage_download",
+    });
   }
 
   appendVisionDiagnosticStage(diagnosticId, "upload", true, {
@@ -125,8 +139,13 @@ export async function analyzeUserImage(input: {
   if (!bytes || bytes.buffer.length <= 0) {
     appendVisionDiagnosticStage(diagnosticId, "storage_download", false, {
       downloadedByteLength: 0,
+      errorCode: "empty_image",
+      userCode: "image_fetch_failed",
     });
-    throw new VisionError("empty_image", "画像取得失敗：解析用画像が空です");
+    throw new VisionError("empty_image", "画像取得失敗：解析用画像が空です", {
+      diagnosticId,
+      failedStage: "storage_download",
+    });
   }
 
   appendVisionDiagnosticStage(diagnosticId, "storage_download", true, {
@@ -139,8 +158,13 @@ export async function analyzeUserImage(input: {
     appendVisionDiagnosticStage(diagnosticId, "data_url", false, {
       base64Length: imageUrl.length,
       mimeType: bytes.mimeType,
+      errorCode: "invalid_data_url",
+      userCode: "image_format_invalid",
     });
-    throw new VisionError("invalid_data_url", "画像データの生成に失敗しました");
+    throw new VisionError("invalid_data_url", "画像データの生成に失敗しました", {
+      diagnosticId,
+      failedStage: "data_url",
+    });
   }
 
   appendVisionDiagnosticStage(diagnosticId, "data_url", true, {
@@ -232,8 +256,19 @@ export async function analyzeUserImage(input: {
     });
     appendVisionDiagnosticStage(diagnosticId, "blocked", false, {
       analysisSuccess: false,
+      errorCode: error instanceof VisionError ? error.code : "openai_failed",
+      userCode: "ai_analyze_failed",
     });
-    if (error instanceof VisionError) throw error;
-    throw new VisionError("openai_failed", "画像解析に失敗しました。再試行してください");
+    if (error instanceof VisionError) {
+      throw new VisionError(error.code, error.message, {
+        diagnosticId: error.diagnosticId ?? diagnosticId,
+        failedStage: error.failedStage ?? "vision_response",
+      });
+    }
+    throw new VisionError(
+      "openai_failed",
+      "画像解析に失敗しました。再試行してください",
+      { diagnosticId, failedStage: "vision_response" },
+    );
   }
 }

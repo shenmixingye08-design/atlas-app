@@ -1,14 +1,11 @@
 import "server-only";
 
-export type VisionDiagnosticStage =
-  | "upload"
-  | "storage_download"
-  | "data_url"
-  | "vision_request"
-  | "vision_response"
-  | "schema_validation"
-  | "artifact_handoff"
-  | "blocked";
+import {
+  type VisionPipelineStage,
+  isVisionPipelineStage,
+} from "@/lib/vision/failure-stage";
+
+export type VisionDiagnosticStage = VisionPipelineStage;
 
 export type VisionDiagnosticRecord = {
   id: string;
@@ -30,6 +27,9 @@ export type VisionDiagnosticRecord = {
   payloadAttachmentIds: string[] | null;
   detectedType: string | null;
   artifactGate: string | null;
+  failedStage: VisionDiagnosticStage | null;
+  lastErrorCode: string | null;
+  lastUserCode: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -38,6 +38,7 @@ const store = new Map<string, VisionDiagnosticRecord>();
 
 /** Safe server log — never includes image bytes, URLs, or extracted PII text. */
 export function logVisionStage(input: {
+  diagnosticId?: string | null;
   attachmentId?: string | null;
   jobId?: string | null;
   stage: VisionDiagnosticStage;
@@ -48,8 +49,12 @@ export function logVisionStage(input: {
   model?: string;
   openaiErrorCode?: string;
   openaiErrorType?: string;
+  errorCode?: string;
+  userCode?: string;
+  durationMs?: number;
 }): void {
   console.info("[vision]", {
+    diagnosticId: input.diagnosticId ?? null,
     attachmentId: input.attachmentId ?? null,
     jobId: input.jobId ?? null,
     stage: input.stage,
@@ -61,6 +66,9 @@ export function logVisionStage(input: {
     model: input.model,
     openaiErrorCode: input.openaiErrorCode,
     openaiErrorType: input.openaiErrorType,
+    errorCode: input.errorCode ?? null,
+    userCode: input.userCode ?? null,
+    durationMs: input.durationMs ?? null,
     ok: input.ok,
   });
 }
@@ -86,10 +94,21 @@ export function createVisionDiagnostic(input: {
     payloadAttachmentIds: null,
     detectedType: null,
     artifactGate: null,
+    failedStage: null,
+    lastErrorCode: null,
+    lastUserCode: null,
     createdAt: now,
     updatedAt: now,
   };
   store.set(record.id, record);
+  console.info("[vision]", {
+    diagnosticId: record.id,
+    attachmentId: record.attachmentId,
+    jobId: record.jobId,
+    stage: "upload",
+    event: "diagnostic_created",
+    ok: true,
+  });
   return record;
 }
 
@@ -100,7 +119,15 @@ export function appendVisionDiagnosticStage(
   detail?: Record<string, string | number | boolean | null>,
 ): void {
   const record = store.get(id);
-  if (!record) return;
+  if (!record) {
+    console.warn("[vision]", {
+      diagnosticId: id,
+      stage,
+      ok,
+      event: "diagnostic_missing",
+    });
+    return;
+  }
   record.stages.push({
     stage,
     ok,
@@ -138,8 +165,20 @@ export function appendVisionDiagnosticStage(
       (_, index) => `id_${index + 1}`,
     );
   }
+  if (!ok) {
+    record.failedStage = stage;
+    if (typeof detail?.errorCode === "string") {
+      record.lastErrorCode = detail.errorCode;
+    } else if (typeof detail?.openaiErrorCode === "string") {
+      record.lastErrorCode = detail.openaiErrorCode;
+    }
+    if (typeof detail?.userCode === "string") {
+      record.lastUserCode = detail.userCode;
+    }
+  }
   record.updatedAt = new Date().toISOString();
   logVisionStage({
+    diagnosticId: record.id,
     attachmentId: record.attachmentId,
     jobId: record.jobId,
     stage,
@@ -156,7 +195,26 @@ export function appendVisionDiagnosticStage(
       typeof detail?.openaiErrorType === "string"
         ? detail.openaiErrorType
         : undefined,
+    errorCode:
+      typeof detail?.errorCode === "string" ? detail.errorCode : undefined,
+    userCode:
+      typeof detail?.userCode === "string" ? detail.userCode : undefined,
+    durationMs:
+      typeof detail?.durationMs === "number" ? detail.durationMs : undefined,
   });
+}
+
+export function getLatestFailedStage(
+  record: VisionDiagnosticRecord,
+): VisionDiagnosticStage | null {
+  if (record.failedStage && isVisionPipelineStage(record.failedStage)) {
+    return record.failedStage;
+  }
+  for (let i = record.stages.length - 1; i >= 0; i -= 1) {
+    const row = record.stages[i];
+    if (row && !row.ok) return row.stage;
+  }
+  return null;
 }
 
 export function getVisionDiagnosticForUser(
@@ -176,4 +234,9 @@ export function listRecentVisionDiagnosticsForUser(
     .filter((row) => row.userId === userId)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, limit);
+}
+
+/** Test helper — clear in-memory diagnostics. */
+export function resetVisionDiagnosticsForTests(): void {
+  store.clear();
 }

@@ -31,6 +31,9 @@ import { ui } from "@/lib/i18n";
 import { consumePendingAttachmentIds } from "@/lib/attachments/pending-session";
 import type { DocumentExtractClient } from "@/lib/attachments/documents/client-upload";
 import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
+import { VisionFailurePanel } from "@/components/vision/vision-failure-panel";
+import { VisionDiagnosticsPanel } from "@/components/vision/vision-diagnostics-panel";
+import type { CommanderVisionGate } from "@/lib/commander/types";
 
 import { FinalOutput } from "./final-output";
 import {
@@ -52,6 +55,8 @@ export function WorkspaceDashboard() {
     useState<WorkflowPhaseState[]>(createInitialPhases);
   const [result, setResult] = useState<OrchestrationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [visionGate, setVisionGate] = useState<CommanderVisionGate | null>(null);
+  const [showVisionDiagnostics, setShowVisionDiagnostics] = useState(false);
   const [loadingStepIndex, setLoadingStepIndex] = useState(0);
   const [salesWizardAssignment, setSalesWizardAssignment] = useState<string | null>(
     null,
@@ -147,6 +152,8 @@ export function WorkspaceDashboard() {
     extraMetadata?: Readonly<Record<string, unknown>>,
   ) => {
     setError(null);
+    setVisionGate(null);
+    setShowVisionDiagnostics(false);
     setResult(null);
     setOutlineOnlyText(null);
     setWorkMemoryUsed(null);
@@ -211,6 +218,7 @@ export function WorkspaceDashboard() {
           result?: OrchestrationResult | null;
           error?: string;
           message?: string;
+          visionGate?: CommanderVisionGate | null;
         };
         if (!poll.ok) {
           throw new Error(body.error || "状況を確認できませんでした。");
@@ -254,6 +262,11 @@ export function WorkspaceDashboard() {
           return;
         }
         if (body.status === "failed") {
+          if (body.visionGate) {
+            setVisionGate(body.visionGate);
+            setError(body.visionGate.message);
+            return;
+          }
           throw new Error(body.error || body.message || "確認が必要です。");
         }
       }
@@ -538,7 +551,31 @@ export function WorkspaceDashboard() {
         </section>
       )}
 
-      {error && !result && !outlineOnlyText && <ErrorState message={error} />}
+      {visionGate && !result && !outlineOnlyText && (
+        <div className="mx-auto max-w-lg space-y-3">
+          <VisionFailurePanel
+            gate={visionGate}
+            showDeveloperHint={Boolean(visionGate.diagnosticId)}
+            onRetryAnalyze={() => {
+              void runOrchestration(assignment.trim());
+            }}
+            onPickAnother={() => {
+              setVisionGate(null);
+              setError(null);
+            }}
+          />
+          <VisionDiagnosticsPanel
+            diagnosticId={visionGate.diagnosticId}
+            enabled={showVisionDiagnostics}
+            showToggle={Boolean(visionGate.diagnosticId)}
+            onToggle={() => setShowVisionDiagnostics((v) => !v)}
+          />
+        </div>
+      )}
+
+      {error && !visionGate && !result && !outlineOnlyText && (
+        <ErrorState message={error} />
+      )}
 
       {isLoading && backgroundAccepted && (
         <section className="mx-auto max-w-lg space-y-4 py-16 text-center animate-fade-in">

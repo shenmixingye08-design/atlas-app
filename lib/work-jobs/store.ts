@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { OrchestrationResult } from "@/lib/orchestration/types";
+import type { CommanderVisionGate } from "@/lib/commander/types";
 
 import {
   loadWorkJobFromDisk,
@@ -30,6 +31,8 @@ export type WorkJobRecord = {
   attemptCount: number;
   maxAttempts: number;
   error: string | null;
+  /** Vision failure detail when image pipeline blocked the job. */
+  visionGate: CommanderVisionGate | null;
   result: OrchestrationResult | null;
   createdAt: string;
   updatedAt: string;
@@ -48,6 +51,7 @@ function normalizeWorkJob(job: WorkJobRecord): WorkJobRecord {
   return {
     ...job,
     metadata: job.metadata && typeof job.metadata === "object" ? job.metadata : {},
+    visionGate: job.visionGate ?? null,
   };
 }
 

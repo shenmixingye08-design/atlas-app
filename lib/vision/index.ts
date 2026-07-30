@@ -36,3 +36,14 @@ export {
 } from "./formats-from-vision";
 export { completeImageWorkToDeliverables } from "./complete-image-work";
 export type { VisionWorkCompletion } from "./complete-image-work";
+export {
+  VISION_PIPELINE_STAGES,
+  VISION_STAGE_USER_LABEL,
+  VISION_STAGE_USER_MESSAGE,
+  isVisionPipelineStage,
+  labelForVisionStage,
+  messageForVisionStage,
+  stageFromVisionErrorCode,
+  formatVisionDeveloperHint,
+} from "./failure-stage";
+export type { VisionPipelineStage } from "./failure-stage";

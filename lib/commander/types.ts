@@ -135,6 +135,12 @@ export type CommanderVisionGate = {
   message: string;
   userCode: string;
   diagnosticId?: string | null;
+  /** Pipeline stage that failed (upload / AI / artifact / …). */
+  failedStage?: string | null;
+  /** Japanese label for the failed stage. */
+  failedStageLabel?: string | null;
+  /** Developer error code (VisionError.code). */
+  developerCode?: string | null;
   /** Safe debug only — never includes filenames as content substitutes. */
   payloadAttachmentIds?: string[];
 };

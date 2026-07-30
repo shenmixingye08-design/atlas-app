@@ -2,9 +2,26 @@
 
 import { useEffect, useState } from "react";
 
+import {
+  isVisionPipelineStage,
+  labelForVisionStage,
+} from "@/lib/vision/failure-stage";
+
 type Diagnostic = {
   id: string;
-  stages: Array<{ stage: string; ok: boolean }>;
+  stages: Array<{
+    stage: string;
+    ok: boolean;
+    at?: string;
+    detail?: {
+      errorCode?: string | null;
+      userCode?: string | null;
+      openaiErrorCode?: string | null;
+      openaiErrorType?: string | null;
+      artifactGate?: string | null;
+      durationMs?: number | null;
+    } | null;
+  }>;
   model: string | null;
   mimeType: string | null;
   downloadedByteLength: number | null;
@@ -14,6 +31,9 @@ type Diagnostic = {
   payloadAttachmentIdCount?: number | null;
   detectedType?: string | null;
   artifactGate?: string | null;
+  failedStage?: string | null;
+  lastErrorCode?: string | null;
+  lastUserCode?: string | null;
 };
 
 type VisionDiagnosticsPanelProps = {
@@ -80,17 +100,10 @@ export function VisionDiagnosticsPanel({
   if (!allowed) return null;
 
   const stageLabel = (stage: string, ok: boolean): string => {
-    const map: Record<string, string> = {
-      upload: "Upload",
-      storage_download: "Storage",
-      data_url: "Data URL",
-      vision_request: "Vision request",
-      vision_response: "Vision response",
-      schema_validation: "Schema validation",
-      artifact_handoff: "Artifact handoff",
-      blocked: "Blocked",
-    };
-    return `${map[stage] ?? stage}: ${ok ? "success" : "failed"}`;
+    const ja = isVisionPipelineStage(stage)
+      ? labelForVisionStage(stage)
+      : stage;
+    return `${ja} (${stage}): ${ok ? "成功" : "失敗"}`;
   };
 
   return (
@@ -108,9 +121,27 @@ export function VisionDiagnosticsPanel({
         <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)] p-3 text-xs text-[var(--text-secondary)]">
           <p className="mb-2 font-medium text-foreground">画像解析診断（管理者）</p>
           <ul className="space-y-1">
+            <li className="font-mono">診断ID: {row.id}</li>
+            {row.failedStage && (
+              <li>
+                失敗工程:{" "}
+                {isVisionPipelineStage(row.failedStage)
+                  ? labelForVisionStage(row.failedStage)
+                  : row.failedStage}{" "}
+                ({row.failedStage})
+              </li>
+            )}
+            {row.lastErrorCode && <li>errorCode: {row.lastErrorCode}</li>}
+            {row.lastUserCode && <li>userCode: {row.lastUserCode}</li>}
             {row.stages.map((stage, index) => (
               <li key={`${stage.stage}-${index}`}>
                 {stageLabel(stage.stage, stage.ok)}
+                {stage.detail?.errorCode
+                  ? ` [${stage.detail.errorCode}]`
+                  : ""}
+                {typeof stage.detail?.durationMs === "number"
+                  ? ` ${stage.detail.durationMs}ms`
+                  : ""}
               </li>
             ))}
             <li>

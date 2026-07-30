@@ -22,6 +22,8 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
 import { ErrorState } from "@/components/ui/error-state";
 import { SecretaryProgress } from "@/components/home/secretary-progress";
+import { VisionFailurePanel } from "@/components/vision/vision-failure-panel";
+import { VisionDiagnosticsPanel } from "@/components/vision/vision-diagnostics-panel";
 
 function statusLabel(status: CommanderRunStatus): string {
   switch (status) {
@@ -190,6 +192,7 @@ export function CommanderDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [run, setRun] = useState<CommanderRunResult | null>(null);
+  const [showVisionDiagnostics, setShowVisionDiagnostics] = useState(false);
   const [savedProjectId, setSavedProjectId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const autoStartedRef = useRef(false);
@@ -344,7 +347,23 @@ export function CommanderDashboard() {
 
       {isLoading && !run && <SecretaryProgress />}
 
-      {error && <ErrorState message={error} />}
+      {error && !run?.visionGate && <ErrorState message={error} />}
+
+      {run?.visionGate && (
+        <div className="space-y-3">
+          <VisionFailurePanel
+            gate={run.visionGate}
+            showDeveloperHint={Boolean(run.visionGate.diagnosticId)}
+            onRetryAnalyze={() => void handleSubmit("execute")}
+          />
+          <VisionDiagnosticsPanel
+            diagnosticId={run.visionGate.diagnosticId}
+            enabled={showVisionDiagnostics}
+            showToggle={Boolean(run.visionGate.diagnosticId)}
+            onToggle={() => setShowVisionDiagnostics((v) => !v)}
+          />
+        </div>
+      )}
 
       {run && (
         <div className="space-y-6">

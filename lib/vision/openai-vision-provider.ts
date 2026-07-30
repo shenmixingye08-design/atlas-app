@@ -13,50 +13,72 @@ import { resolveVisionModel } from "@/lib/vision/resolve-vision-model";
 import type { VisionProvider, VisionProviderResult } from "@/lib/vision/provider";
 import { VisionError, type VisionAnalysisResult } from "@/lib/vision/types";
 
-function assertDataUrl(imageUrl: string): void {
+function assertDataUrl(imageUrl: string, diagnosticId?: string | null): void {
   if (!imageUrl.startsWith("data:image/")) {
-    throw new VisionError("invalid_data_url", "画像データの形式が不正です");
+    throw new VisionError("invalid_data_url", "画像データの形式が不正です", {
+      diagnosticId,
+      failedStage: "data_url",
+    });
   }
   if (!/^data:image\/(png|jpeg|jpg|webp);base64,/i.test(imageUrl)) {
     throw new VisionError(
       "invalid_data_url",
       "対応する画像データ形式ではありません",
+      { diagnosticId, failedStage: "data_url" },
     );
   }
   const comma = imageUrl.indexOf(",");
   const payload = comma >= 0 ? imageUrl.slice(comma + 1) : "";
   if (payload.length < 32) {
-    throw new VisionError("empty_image", "画像データが空です");
+    throw new VisionError("empty_image", "画像データが空です", {
+      diagnosticId,
+      failedStage: "data_url",
+    });
   }
 }
 
-function mapOpenAiError(error: unknown): VisionError {
-  if (error instanceof VisionError) return error;
+function mapOpenAiError(error: unknown, diagnosticId?: string | null): VisionError {
+  if (error instanceof VisionError) {
+    return new VisionError(error.code, error.message, {
+      diagnosticId: error.diagnosticId ?? diagnosticId ?? null,
+      failedStage: error.failedStage ?? "vision_response",
+    });
+  }
   const message = error instanceof Error ? error.message : "画像解析に失敗しました";
   const lower = message.toLowerCase();
   if (lower.includes("api key") || lower.includes("not configured")) {
     return new VisionError(
       "config_missing",
       "AI画像解析の設定が不足しています",
+      { diagnosticId, failedStage: "vision_request" },
     );
   }
   if (lower.includes("rate") || lower.includes("429")) {
     return new VisionError(
       "rate_limited",
       "画像解析が混み合っています。再試行してください",
+      { diagnosticId, failedStage: "vision_response" },
     );
   }
   if (lower.includes("timeout") || lower.includes("timed out")) {
-    return new VisionError("timeout", "画像解析がタイムアウトしました。再試行してください");
+    return new VisionError(
+      "timeout",
+      "画像解析がタイムアウトしました。再試行してください",
+      { diagnosticId, failedStage: "vision_response" },
+    );
   }
-  return new VisionError("openai_failed", "画像解析に失敗しました。再試行してください");
+  return new VisionError(
+    "openai_failed",
+    "画像解析に失敗しました。再試行してください",
+    { diagnosticId, failedStage: "vision_response" },
+  );
 }
 
 export const openAiVisionProvider: VisionProvider = {
   id: "openai-responses",
 
   async analyzeImage(input): Promise<VisionProviderResult> {
-    assertDataUrl(input.imageUrl);
+    assertDataUrl(input.imageUrl, input.diagnosticId);
 
     const model = resolveVisionModel();
     const userText = buildVisionAnalyzeUserText({
@@ -100,12 +122,14 @@ export const openAiVisionProvider: VisionProvider = {
         input: multimodalInput,
       });
     } catch (error) {
-      const mapped = mapOpenAiError(error);
+      const mapped = mapOpenAiError(error, diagnosticId);
       if (diagnosticId) {
         appendVisionDiagnosticStage(diagnosticId, "vision_response", false, {
           model,
           openaiErrorCode: mapped.code,
           openaiErrorType: mapped.name,
+          errorCode: mapped.code,
+          userCode: "ai_analyze_failed",
         });
       }
       throw mapped;

@@ -54,6 +54,7 @@ export async function GET(
     jobId: job.id,
     status: job.status,
     error: job.error,
+    visionGate: job.visionGate,
     result: job.result,
     completedAt: job.completedAt,
     message:

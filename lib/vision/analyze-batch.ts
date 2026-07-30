@@ -72,9 +72,13 @@ export async function analyzeUserImageBatch(input: {
   forceRefresh?: boolean;
   provider?: VisionProvider;
   jobId?: string | null;
+  diagnosticId?: string | null;
 }): Promise<VisionBatchResult> {
   if (input.attachmentIds.length === 0) {
-    throw new VisionError("not_found", "解析する画像がありません");
+    throw new VisionError("not_found", "解析する画像がありません", {
+      diagnosticId: input.diagnosticId,
+      failedStage: "upload",
+    });
   }
 
   const hintType =
@@ -91,7 +95,8 @@ export async function analyzeUserImageBatch(input: {
 
   const images: VisionAnalysisResult[] = [];
   const failures: string[] = [];
-  let firstDiagnosticId: string | null = null;
+  let firstDiagnosticId: string | null = input.diagnosticId ?? null;
+  let firstFailureError: VisionError | null = null;
 
   for (let i = 0; i < input.attachmentIds.length; i += 1) {
     const attachmentId = input.attachmentIds[i]!;
@@ -108,6 +113,7 @@ export async function analyzeUserImageBatch(input: {
         forceRefresh: input.forceRefresh,
         provider: input.provider,
         jobId: input.jobId,
+        diagnosticId: firstDiagnosticId,
       });
       if (!firstDiagnosticId && "diagnosticId" in result) {
         firstDiagnosticId =
@@ -124,7 +130,19 @@ export async function analyzeUserImageBatch(input: {
           error.code === "storage_failed" ||
           error.code === "not_found")
       ) {
+        if (!error.diagnosticId && firstDiagnosticId) {
+          throw new VisionError(error.code, error.message, {
+            diagnosticId: firstDiagnosticId,
+            failedStage: error.failedStage,
+          });
+        }
         throw error;
+      }
+      if (error instanceof VisionError && !firstFailureError) {
+        firstFailureError = error;
+        if (!firstDiagnosticId && error.diagnosticId) {
+          firstDiagnosticId = error.diagnosticId;
+        }
       }
       const message =
         error instanceof VisionError
@@ -136,7 +154,16 @@ export async function analyzeUserImageBatch(input: {
 
   if (images.length === 0) {
     const first = failures[0] ?? "画像解析に失敗しました。再試行してください";
-    throw new VisionError("openai_failed", first);
+    if (firstFailureError) {
+      throw new VisionError(firstFailureError.code, first, {
+        diagnosticId: firstFailureError.diagnosticId ?? firstDiagnosticId,
+        failedStage: firstFailureError.failedStage ?? "vision_response",
+      });
+    }
+    throw new VisionError("openai_failed", first, {
+      diagnosticId: firstDiagnosticId,
+      failedStage: "vision_response",
+    });
   }
 
   // Stash diagnostic id for gate/UI via commonFields (no PII).
