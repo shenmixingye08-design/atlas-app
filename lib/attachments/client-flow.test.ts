@@ -207,5 +207,8 @@ describe("attachment client flow", () => {
     expect(home).toContain("RequestDocumentPicker");
     expect(work).toContain("attachmentIds");
     expect(work).toContain("ImageAttachmentPicker");
+    expect(work).toContain("buildWorkRequestSubmitPayload");
+    expect(home).toContain("buildWorkRequestSubmitPayload");
+    expect(home).toContain("stashPendingWorkRequestSubmit");
   });
 });

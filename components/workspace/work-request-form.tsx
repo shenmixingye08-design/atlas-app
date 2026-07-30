@@ -17,14 +17,14 @@ import { ui } from "@/lib/i18n";
 import { QUICK_REQUEST_PRESETS } from "@/lib/workspace/quick-request-presets";
 import { assignmentImpliesImageWork } from "@/lib/vision/gate";
 import type { DocumentExtractClient } from "@/lib/attachments/documents/client-upload";
+import {
+  buildWorkRequestSubmitPayload,
+  type PreferredDeliverableFormat,
+  type WorkRequestSubmitPayload,
+} from "@/lib/workspace/work-request-payload";
 
-export type RequestExecutionMode = "once" | "recurring" | "delegate";
-export type RequestPriority = "low" | "normal" | "high";
-
-export type WorkRequestSubmitPayload = {
-  assignment: string;
-  metadata: Readonly<Record<string, unknown>>;
-};
+export type { WorkRequestSubmitPayload };
+export type { PreferredDeliverableFormat as RequestPreferredFormat };
 
 type WorkRequestFormProps = {
   value: string;
@@ -35,7 +35,7 @@ type WorkRequestFormProps = {
 
 /**
  * Zero-friction request form with real image/document attachments.
- * Priority / schedule stay inferred — attachments are the only extra control.
+ * Submit payload is built ONLY via buildWorkRequestSubmitPayload (shared with home).
  */
 export function WorkRequestForm({
   value,
@@ -48,9 +48,8 @@ export function WorkRequestForm({
   const [imageDrafts, setImageDrafts] = useState<LocalImageDraft[]>([]);
   const [documents, setDocuments] = useState<DocumentExtractClient[]>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
-  const [preferredFormat, setPreferredFormat] = useState<
-    "auto" | "xlsx" | "docx" | "pdf" | "txt"
-  >("auto");
+  const [preferredFormat, setPreferredFormat] =
+    useState<PreferredDeliverableFormat>("auto");
 
   useEffect(() => {
     if (searchParams.get("attach") === "text") {
@@ -69,11 +68,17 @@ export function WorkRequestForm({
     if (!trimmed || isLoading || uploading) return;
 
     if (failedImages.length > 0) {
-      setAttachError("アップロードに失敗した画像があります。削除するか再試行してください。");
+      setAttachError(
+        "アップロードに失敗した画像があります。削除するか再試行してください。",
+      );
       return;
     }
 
-    if (assignmentImpliesImageWork(trimmed) && uploadedIds.length === 0 && documents.length === 0) {
+    if (
+      assignmentImpliesImageWork(trimmed) &&
+      uploadedIds.length === 0 &&
+      documents.length === 0
+    ) {
       setAttachError(
         "この依頼には画像またはファイルの添付が必要です。レシート・請求書・表などを添付してください。",
       );
@@ -81,44 +86,14 @@ export function WorkRequestForm({
     }
 
     setAttachError(null);
-
-    const documentBlock =
-      documents.length > 0
-        ? [
-            "",
-            "【添付ファイルの抽出テキスト】",
-            ...documents.map((doc, index) => {
-              return [
-                `--- ファイル${index + 1}: ${doc.fileName} (${doc.mimeType}) ---`,
-                doc.extractedText,
-              ].join("\n");
-            }),
-          ].join("\n")
-        : "";
-
-    onSubmit({
-      assignment: `${trimmed}${documentBlock}`,
-      metadata: {
-        requestUi: "secretary_zero_friction_v1",
-        executionPreference: "once" satisfies RequestExecutionMode,
-        priority: "normal" satisfies RequestPriority,
-        skipWorkMemory: false,
-        preferredDeliverableFormat: preferredFormat,
-        requireVisionSuccess: uploadedIds.length > 0,
-        ...(uploadedIds.length > 0 ? { attachmentIds: uploadedIds } : {}),
-        ...(documents.length > 0
-          ? {
-              documentExtracts: documents.map((doc) => ({
-                id: doc.id,
-                fileName: doc.fileName,
-                mimeType: doc.mimeType,
-                bytes: doc.bytes,
-                pageOrSheetCount: doc.pageOrSheetCount,
-              })),
-            }
-          : {}),
-      },
-    });
+    onSubmit(
+      buildWorkRequestSubmitPayload({
+        assignment: trimmed,
+        attachmentIds: uploadedIds,
+        documents,
+        preferredFormat,
+      }),
+    );
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -129,7 +104,10 @@ export function WorkRequestForm({
   };
 
   const canSubmit =
-    value.trim().length > 0 && !isLoading && !uploading && failedImages.length === 0;
+    value.trim().length > 0 &&
+    !isLoading &&
+    !uploading &&
+    failedImages.length === 0;
 
   return (
     <div className="mx-auto max-w-2xl space-y-8 overflow-x-hidden sm:space-y-10">
@@ -225,7 +203,7 @@ export function WorkRequestForm({
             disabled={isLoading}
             onChange={(event) =>
               setPreferredFormat(
-                event.target.value as typeof preferredFormat,
+                event.target.value as PreferredDeliverableFormat,
               )
             }
           >

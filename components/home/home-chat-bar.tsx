@@ -12,52 +12,75 @@ import {
   type LocalImageDraft,
 } from "@/components/vision/image-attachment-picker";
 import { RequestDocumentPicker } from "@/components/request/request-document-picker";
-import { stashPendingAttachmentIds } from "@/lib/attachments/pending-session";
 import type { DocumentExtractClient } from "@/lib/attachments/documents/client-upload";
 import { assignmentImpliesImageWork } from "@/lib/vision/gate";
+import {
+  buildWorkRequestSubmitPayload,
+  stashPendingWorkRequestSubmit,
+  type PreferredDeliverableFormat,
+} from "@/lib/workspace/work-request-payload";
 
-/** Home hero: ask + attach — then hand off to workspace with autostart. */
+/**
+ * Home hero: ask + attach.
+ * Builds the SAME submit payload as WorkRequestForm, then hands it to
+ * /workspace?autostart=1 which calls WorkspaceDashboard.handleSubmit.
+ * Home must not invent its own metadata or job API path.
+ */
 export function HomeChatBar() {
   const router = useRouter();
   const [input, setInput] = useState("");
   const [imageDrafts, setImageDrafts] = useState<LocalImageDraft[]>([]);
   const [documents, setDocuments] = useState<DocumentExtractClient[]>([]);
+  const [preferredFormat, setPreferredFormat] =
+    useState<PreferredDeliverableFormat>("auto");
   const [error, setError] = useState<string | null>(null);
 
   const uploading = imageDrafts.some(
     (d) => d.status === "pending" || d.status === "uploading",
   );
   const uploadedIds = getUploadedAttachmentIds(imageDrafts);
+  const failedImages = imageDrafts.filter((d) => d.status === "failed");
 
   const submitToWork = () => {
     const trimmed = input.trim();
     if (!trimmed || uploading) return;
 
-    if (assignmentImpliesImageWork(trimmed) && uploadedIds.length === 0 && documents.length === 0) {
+    if (failedImages.length > 0) {
+      setError("アップロードに失敗した画像があります。削除するか再試行してください。");
+      return;
+    }
+
+    if (
+      assignmentImpliesImageWork(trimmed) &&
+      uploadedIds.length === 0 &&
+      documents.length === 0
+    ) {
       setError(
         "この依頼には画像またはファイルの添付が必要です。レシート・請求書・表などを添付してください。",
       );
       return;
     }
 
-    stashPendingAttachmentIds(uploadedIds);
-    if (documents.length > 0) {
-      try {
-        sessionStorage.setItem(
-          "atlas.pendingDocumentExtracts",
-          JSON.stringify(documents),
-        );
-      } catch {
-        /* ignore quota */
-      }
-    } else {
+    // Identical payload builder as 「お願いする」 / WorkRequestForm.
+    const payload = buildWorkRequestSubmitPayload({
+      assignment: trimmed,
+      attachmentIds: uploadedIds,
+      documents,
+      preferredFormat,
+    });
+    stashPendingWorkRequestSubmit(payload);
+
+    // Clear legacy handoff keys so workspace cannot rebuild a divergent payload.
+    try {
       sessionStorage.removeItem("atlas.pendingDocumentExtracts");
+    } catch {
+      /* ignore */
     }
 
     setError(null);
-    router.push(
-      `/workspace?assignment=${encodeURIComponent(trimmed)}&autostart=1`,
-    );
+    // Assignment lives in the stashed payload (not the URL) so body/metadata
+    // cannot diverge and long Japanese prompts are not truncated.
+    router.push("/workspace?autostart=1");
   };
 
   return (
@@ -97,6 +120,25 @@ export function HomeChatBar() {
           <RequestDocumentPicker value={documents} onChange={setDocuments} />
         </div>
 
+        <label className="mt-4 block text-sm">
+          <span className="font-medium text-foreground">成果物形式</span>
+          <select
+            className="mt-1 min-h-[44px] w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2"
+            value={preferredFormat}
+            onChange={(event) =>
+              setPreferredFormat(
+                event.target.value as PreferredDeliverableFormat,
+              )
+            }
+          >
+            <option value="auto">自動判定</option>
+            <option value="xlsx">Excel</option>
+            <option value="docx">Word</option>
+            <option value="pdf">PDF</option>
+            <option value="txt">テキスト</option>
+          </select>
+        </label>
+
         {error && (
           <p className="mt-3 text-sm text-[var(--error)]">{error}</p>
         )}
@@ -107,7 +149,7 @@ export function HomeChatBar() {
             size="lg"
             className="h-14 w-full rounded-full text-base sm:h-16 sm:text-lg"
             onClick={submitToWork}
-            disabled={!input.trim() || uploading}
+            disabled={!input.trim() || uploading || failedImages.length > 0}
             isLoading={uploading}
           >
             {uploading ? "アップロード中…" : ui.secretaryHome.askSubmit}

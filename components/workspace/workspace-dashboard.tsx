@@ -34,12 +34,14 @@ import { WordProgressStatus } from "@/components/deliverables/word-progress-stat
 import { VisionFailurePanel } from "@/components/vision/vision-failure-panel";
 import { VisionDiagnosticsPanel } from "@/components/vision/vision-diagnostics-panel";
 import type { CommanderVisionGate } from "@/lib/commander/types";
+import {
+  buildWorkRequestSubmitPayload,
+  consumePendingWorkRequestSubmit,
+  type WorkRequestSubmitPayload,
+} from "@/lib/workspace/work-request-payload";
 
 import { FinalOutput } from "./final-output";
-import {
-  WorkRequestForm,
-  type WorkRequestSubmitPayload,
-} from "./work-request-form";
+import { WorkRequestForm } from "./work-request-form";
 import { WorkflowResults } from "./workflow-results";
 import {
   SalesMaterialWizard,
@@ -332,6 +334,7 @@ export function WorkspaceDashboard() {
 
     requestMetadataRef.current = payload.metadata;
     setRequestMetadata(payload.metadata);
+    setAssignment(trimmed);
 
     if (isSalesMaterialRequest(assignment.trim()) || isSalesMaterialRequest(trimmed)) {
       if (!isAvailable("sales_material")) {
@@ -349,21 +352,28 @@ export function WorkspaceDashboard() {
     await runOrchestration(trimmed, null, payload.metadata);
   };
 
-  // ホーム等から「すぐ実行」で届いた依頼は、確認クリックなしで開始する。
+  const handleSubmitRef = useRef(handleSubmit);
+  handleSubmitRef.current = handleSubmit;
+
+  // Home → /workspace?autostart=1: consume the SAME WorkRequestSubmitPayload
+  // built by buildWorkRequestSubmitPayload (no home-specific metadata).
   useEffect(() => {
-    const prefill = searchParams.get("assignment");
-    if (
-      searchParams.get("autostart") !== "1" ||
-      !prefill?.trim() ||
-      autoStartedRef.current ||
-      isLoading ||
-      result
-    ) {
+    if (searchParams.get("autostart") !== "1") return;
+    if (autoStartedRef.current || isLoading || result) return;
+
+    const pending = consumePendingWorkRequestSubmit();
+    if (pending) {
+      autoStartedRef.current = true;
+      void handleSubmitRef.current(pending);
       return;
     }
 
-    autoStartedRef.current = true;
+    // Legacy deep-link support: ?assignment=...&autostart=1
+    // Still routed through the shared builder + handleSubmit (not a second path).
+    const prefill = searchParams.get("assignment")?.trim();
+    if (!prefill) return;
 
+    autoStartedRef.current = true;
     const attachmentIds = consumePendingAttachmentIds();
     let documents: DocumentExtractClient[] = [];
     try {
@@ -384,54 +394,14 @@ export function WorkspaceDashboard() {
       documents = [];
     }
 
-    const documentBlock =
-      documents.length > 0
-        ? [
-            "",
-            "【添付ファイルの抽出テキスト】",
-            ...documents.map((doc, index) =>
-              [
-                `--- ファイル${index + 1}: ${doc.fileName} (${doc.mimeType}) ---`,
-                doc.extractedText,
-              ].join("\n"),
-            ),
-          ].join("\n")
-        : "";
-
-    const metadata: Record<string, unknown> = {
-      requestUi: "secretary_zero_friction_v1",
-      executionPreference: "once",
-      priority: "normal",
-      skipWorkMemory: false,
-      requireVisionSuccess: attachmentIds.length > 0,
-      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
-      ...(documents.length > 0
-        ? {
-            documentExtracts: documents.map((doc) => ({
-              id: doc.id,
-              fileName: doc.fileName,
-              mimeType: doc.mimeType,
-              bytes: doc.bytes,
-              pageOrSheetCount: doc.pageOrSheetCount,
-            })),
-          }
-        : {}),
-    };
-    requestMetadataRef.current = metadata;
-    setRequestMetadata(metadata);
-
-    if (isSalesMaterialRequest(prefill) && isAvailable("sales_material")) {
-      const timer = window.setTimeout(() => {
-        setSalesWizardAssignment(prefill);
-      }, 0);
-      return () => window.clearTimeout(timer);
-    }
-
-    const timer = window.setTimeout(() => {
-      void runOrchestration(`${prefill}${documentBlock}`, null, metadata);
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [searchParams, isAvailable, isLoading, result, runOrchestration]);
+    const payload = buildWorkRequestSubmitPayload({
+      assignment: prefill,
+      attachmentIds,
+      documents,
+      preferredFormat: "auto",
+    });
+    void handleSubmitRef.current(payload);
+  }, [searchParams, isLoading, result]);
 
   const handleWizardComplete = (wizardResult: SalesMaterialWizardResult) => {
     setSalesWizardAssignment(null);

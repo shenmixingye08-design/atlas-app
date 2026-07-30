@@ -11,6 +11,10 @@ import {
   type UploadClassification,
   type UploadIntent,
 } from "@/lib/home/upload-intent";
+import {
+  buildWorkRequestSubmitPayload,
+  stashPendingWorkRequestSubmit,
+} from "@/lib/workspace/work-request-payload";
 
 type SpeechRecognitionLike = {
   lang: string;
@@ -85,9 +89,13 @@ export function SecretaryUploadHero() {
     (assignment: string) => {
       const trimmed = assignment.trim();
       if (!trimmed) return;
-      router.push(
-        `/workspace?assignment=${encodeURIComponent(trimmed)}&autostart=1`,
-      );
+      // Same payload builder as WorkRequestForm / HomeChatBar — no hero-specific metadata.
+      const payload = buildWorkRequestSubmitPayload({
+        assignment: trimmed,
+        preferredFormat: "auto",
+      });
+      stashPendingWorkRequestSubmit(payload);
+      router.push("/workspace?autostart=1");
     },
     [router],
   );
