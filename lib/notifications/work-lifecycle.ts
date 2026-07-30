@@ -182,16 +182,13 @@ export function notifyWorkAccepted(input: {
   jobId: string;
   assignment?: string | null;
 }): NotificationRecord | null {
-  const snippet = input.assignment?.trim().slice(0, 40);
   return notifyWorkLifecycle({
     userId: input.userId,
     jobId: input.jobId,
     event: "accepted",
-    title: "仕事を受け付けました",
-    message: snippet
-      ? `「${snippet}」の依頼を受け付けました。準備を進めています。`
-      : "依頼を受け付けました。準備を進めています。",
-    persist: false,
+    title: "かしこまりました。ご依頼を受け付けました。",
+    message: "成果物が完成しましたら通知いたします。",
+    persist: true,
   });
 }
 
@@ -204,8 +201,8 @@ export function notifyWorkProcessing(input: {
     userId: input.userId,
     jobId: input.jobId,
     event: "processing",
-    title: "Wordを作成しています",
-    message: "完了すると通知でお知らせします",
+    title: "ご依頼を処理しています",
+    message: "完了すると通知でお知らせします。",
     persist: false,
   });
 }
@@ -220,11 +217,58 @@ export function notifyWorkTimedOut(input: {
     userId: input.userId,
     jobId: input.jobId,
     event: "timed_out",
-    title: "タイムアウト",
+    title: "通常より時間がかかっています。",
     message:
       input.message?.trim() ||
-      "処理が時間内に終わりませんでした。もう一度お試しください。",
+      "処理を終了しました。必要に応じて再試行してください。",
     deliverableId: input.deliverableId,
+    retryActionUrl: "/workspace",
+    persist: true,
+  });
+}
+
+/** Terminal success — exact secretary copy. */
+export function notifyWorkLifecycleCompleted(input: {
+  userId: string;
+  jobId: string;
+  deliverableId?: string | null;
+  artifactId?: string | null;
+  workflowRunId?: string | null;
+  isRetry?: boolean;
+}): NotificationRecord | null {
+  return notifyWorkLifecycle({
+    userId: input.userId,
+    jobId: input.jobId,
+    event: input.isRetry ? "retry_result" : "completed",
+    title: "成果物が完成しました。",
+    message: "通知から開いてダウンロードできます。",
+    deliverableId: input.deliverableId,
+    artifactId: input.artifactId,
+    workflowRunId: input.workflowRunId,
+    persist: true,
+  });
+}
+
+/** Terminal failure — exact secretary copy. */
+export function notifyWorkLifecycleFailed(input: {
+  userId: string;
+  jobId: string;
+  detail?: string | null;
+  deliverableId?: string | null;
+  artifactId?: string | null;
+  isRetry?: boolean;
+}): NotificationRecord | null {
+  const detail = input.detail?.trim();
+  return notifyWorkLifecycle({
+    userId: input.userId,
+    jobId: input.jobId,
+    event: input.isRetry ? "retry_result" : "failed",
+    title: "申し訳ありません。",
+    message: detail
+      ? `生成中にエラーが発生しました。再試行できます。\n${detail.slice(0, 180)}`
+      : "生成中にエラーが発生しました。再試行できます。",
+    deliverableId: input.deliverableId,
+    artifactId: input.artifactId,
     retryActionUrl: "/workspace",
     persist: true,
   });

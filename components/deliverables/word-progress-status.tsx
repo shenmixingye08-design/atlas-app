@@ -1,15 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import {
   WORD_PROGRESS_LABELS,
   progressStepFromStage,
   type WordProgressStep,
 } from "@/lib/deliverables/word-progress";
+import {
+  JOB_PROGRESS_LABELS,
+  isJobProgressPhase,
+  type JobProgressPhase,
+} from "@/lib/work-jobs/progress";
 
 type WordProgressStatusProps = {
+  /** Word job stage — preferred when available. */
   stage?: string | null;
+  /** Coarse progress phase from work-job API. */
+  progressPhase?: JobProgressPhase | string | null;
   className?: string;
 };
 
@@ -26,15 +34,6 @@ type WordJobStage =
   | "DOWNLOAD_READY"
   | "NOTIFICATION_SENT"
   | "COMPLETED";
-
-const WORD_PROGRESS_SEQUENCE: WordProgressStep[] = [
-  "confirming_request",
-  "creating_content",
-  "converting_word",
-  "verifying_file",
-  "saving",
-  "preparing_deliverable",
-];
 
 const WORD_JOB_STAGES: readonly WordJobStage[] = [
   "REQUEST_RECEIVED",
@@ -55,28 +54,24 @@ function isWordJobStage(value: string | null | undefined): value is WordJobStage
   return Boolean(value && WORD_JOB_STAGES.includes(value as WordJobStage));
 }
 
+/**
+ * Displays the current progress label from real stage/phase data only.
+ * Does not invent stages with timers.
+ */
 export function WordProgressStatus({
   stage = null,
+  progressPhase = null,
   className,
 }: WordProgressStatusProps) {
-  const [index, setIndex] = useState(0);
-
-  useEffect(() => {
-    if (stage) return;
-    const timer = window.setInterval(() => {
-      setIndex((current) =>
-        Math.min(current + 1, WORD_PROGRESS_SEQUENCE.length - 1),
-      );
-    }, 2_800);
-    return () => window.clearInterval(timer);
-  }, [stage]);
-
   const label = useMemo(() => {
     if (isWordJobStage(stage)) {
       return WORD_PROGRESS_LABELS[progressStepFromStage(stage)];
     }
-    return WORD_PROGRESS_LABELS[WORD_PROGRESS_SEQUENCE[index] ?? "confirming_request"];
-  }, [index, stage]);
+    if (isJobProgressPhase(progressPhase)) {
+      return JOB_PROGRESS_LABELS[progressPhase];
+    }
+    return WORD_PROGRESS_LABELS["confirming_request" satisfies WordProgressStep];
+  }, [progressPhase, stage]);
 
   return (
     <p
@@ -84,6 +79,7 @@ export function WordProgressStatus({
       role="status"
       aria-live="polite"
       aria-atomic="true"
+      data-testid="word-progress-status"
     >
       {label}
     </p>

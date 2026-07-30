@@ -23,32 +23,34 @@ export type WordJobUiCopy = {
 
 export const WORD_JOB_UI_COPY: Record<WordJobUiPhase, WordJobUiCopy> = {
   accepted: {
-    title: "Word作成を受け付けました。",
-    description: null,
+    title: "かしこまりました。",
+    description:
+      "ご依頼を受け付けました。\n\n成果物が完成しましたら通知いたします。",
     primaryAction: null,
     secondaryAction: null,
   },
   processing: {
-    title: "Wordを作成しています。",
+    title: "ご依頼を処理しています。",
     description: "完了すると通知でお知らせします。",
     primaryAction: null,
     secondaryAction: null,
   },
   completed: {
-    title: "Wordが完成しました。",
+    title: "成果物が完成しました。",
     description: null,
-    primaryAction: "Wordを開く",
+    primaryAction: "成果物を開く",
     secondaryAction: "ダウンロード",
   },
   failed: {
-    title: "Wordの作成に失敗しました。",
-    description: null,
+    title: "申し訳ありません。",
+    description: "生成中にエラーが発生しました。\n再試行できます。",
     primaryAction: "もう一度試す",
     secondaryAction: "詳細を見る",
   },
   timed_out: {
-    title: "処理時間を超えたため停止しました。",
-    description: null,
+    title: "通常より時間がかかっています。",
+    description:
+      "処理を終了しました。\n必要に応じて再試行してください。",
     primaryAction: "もう一度試す",
     secondaryAction: null,
   },

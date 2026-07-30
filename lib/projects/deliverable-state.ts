@@ -18,9 +18,14 @@ export type DeliverableDisplayState =
   | { kind: "failed"; message: string; reason: string | null; title: string }
   | { kind: "not_found"; message: string };
 
-const GENERATING_MESSAGE = "完了すると通知でお知らせします";
+const GENERATING_MESSAGE =
+  "ご依頼を処理しています。完了すると通知でお知らせします。";
 const NOT_FOUND_MESSAGE =
   "この結果は見つかりませんでした。削除されたか、まだ保存が完了していない可能性があります。";
+
+/** Queued / accepted copy — shared with work-job progress. */
+export const DELIVERABLE_QUEUED_MESSAGE =
+  "かしこまりました。ご依頼を受け付けました。成果物が完成しましたら通知いたします。";
 
 /** State for the case where no project row exists at all (durable miss). */
 export function notFoundDisplayState(): Extract<

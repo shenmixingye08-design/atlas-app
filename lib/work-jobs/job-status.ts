@@ -57,7 +57,8 @@ export const WORK_JOB_ERROR_USER_MESSAGES: Record<WorkJobErrorCode, string> = {
     "処理状態の更新に失敗しました。履歴から状況をご確認ください。",
   NOTIFICATION_CREATE_FAILED:
     "処理は完了していますが、通知の作成に失敗しました。履歴からご確認ください。",
-  TIMEOUT: "処理が時間内に終わりませんでした。もう一度お試しください。",
+  TIMEOUT:
+    "通常より時間がかかっています。処理を終了しました。必要に応じて再試行してください。",
   UNKNOWN_ERROR: "処理を完了できませんでした。もう一度お試しください。",
 };
 
@@ -188,8 +189,9 @@ export function assertJobTransition(
 }
 
 /**
- * completed is allowed only when durable artifacts are confirmed.
- * Word-required jobs must pass the formal 11-step Word completion gate.
+ * completed is allowed only when durable artifacts + notification are confirmed.
+ * Word-required jobs must pass the formal Word completion gate (file + size +
+ * storage + DB + downloadable). Notification send is always required.
  */
 export function canMarkJobCompleted(input: {
   projectPersisted: boolean;
@@ -197,6 +199,8 @@ export function canMarkJobCompleted(input: {
   wordDeliverablePresent: boolean;
   /** Required when wordRequired — verifyWordCompletion must have passed. */
   wordCompletionVerified?: boolean;
+  /** Completed is forbidden until lifecycle notification is created. */
+  notificationCreated?: boolean;
 }): { ok: true } | { ok: false; code: WorkJobErrorCode } {
   if (!input.projectPersisted) {
     return { ok: false, code: "ARTIFACT_DB_SAVE_FAILED" };
@@ -208,6 +212,9 @@ export function canMarkJobCompleted(input: {
     if (input.wordCompletionVerified !== true) {
       return { ok: false, code: "DOCX_GENERATION_FAILED" };
     }
+  }
+  if (input.notificationCreated !== true) {
+    return { ok: false, code: "NOTIFICATION_CREATE_FAILED" };
   }
   return { ok: true };
 }

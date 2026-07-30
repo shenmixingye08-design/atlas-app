@@ -41,6 +41,11 @@ import {
   writeWordJobSession,
   type WordJobUiPhase,
 } from "@/lib/deliverables/word-job-ui-state";
+import {
+  JOB_ACCEPTED_DESCRIPTION,
+  JOB_ACCEPTED_TITLE,
+  type JobProgressPhase,
+} from "@/lib/work-jobs/progress";
 
 import { FinalOutput } from "./final-output";
 import {
@@ -84,6 +89,10 @@ export function WorkspaceDashboard() {
   const [wordUiPhase, setWordUiPhase] = useState<WordJobUiPhase | null>(null);
   const [wordErrorDetail, setWordErrorDetail] = useState<string | null>(null);
   const [wordActionBusy, setWordActionBusy] = useState(false);
+  const [jobProgressPhase, setJobProgressPhase] =
+    useState<JobProgressPhase | null>(null);
+  const [jobProgressLabel, setJobProgressLabel] = useState<string | null>(null);
+  const [jobIsSlow, setJobIsSlow] = useState(false);
 
   const autoStartedRef = useRef(false);
   const submittingRef = useRef(false);
@@ -232,7 +241,22 @@ export function WorkspaceDashboard() {
           result?: OrchestrationResult | null;
           error?: string;
           message?: string;
+          progressPhase?: JobProgressPhase | string | null;
+          progressLabel?: string | null;
+          isSlow?: boolean;
+          timeoutReason?: string | null;
         };
+
+        if (
+          typeof body.progressPhase === "string" &&
+          body.progressPhase.trim()
+        ) {
+          setJobProgressPhase(body.progressPhase as JobProgressPhase);
+        }
+        if (typeof body.progressLabel === "string") {
+          setJobProgressLabel(body.progressLabel);
+        }
+        setJobIsSlow(Boolean(body.isSlow));
 
         if (!poll.ok) {
           if (wantsWord) {
@@ -319,7 +343,10 @@ export function WorkspaceDashboard() {
           body.status === "cancelled"
         ) {
           const detail = sanitizeWordFailureDetail(
-            body.error || body.message || "処理を完了できませんでした。",
+            body.timeoutReason ||
+              body.error ||
+              body.message ||
+              "処理を完了できませんでした。",
           );
           setWordErrorDetail(detail);
           if (wantsWord) {
@@ -631,6 +658,9 @@ export function WorkspaceDashboard() {
     setActiveJobId(null);
     setWordUiPhase(null);
     setWordErrorDetail(null);
+    setJobProgressPhase(null);
+    setJobProgressLabel(null);
+    setJobIsSlow(false);
     setWordActionBusy(false);
     lastWordAssignmentRef.current = "";
     clearWordJobSession();
@@ -932,6 +962,9 @@ export function WorkspaceDashboard() {
       {showWordPanel && wordUiPhase ? (
         <WordJobStatusPanel
           phase={wordUiPhase}
+          progressPhase={jobProgressPhase}
+          progressLabel={jobProgressLabel}
+          isSlow={jobIsSlow}
           detail={
             wordErrorDetail ??
             (wordUiPhase === "failed" || wordUiPhase === "timed_out"
@@ -956,13 +989,23 @@ export function WorkspaceDashboard() {
         <section className="mx-auto max-w-lg space-y-4 py-16 text-center animate-fade-in">
           <p className="text-sm font-medium text-accent">MINERVOT</p>
           <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-            依頼を受け付けました
+            {JOB_ACCEPTED_TITLE}
           </h2>
-          <p className="text-base text-[var(--foreground-muted)]">
-            バックグラウンドで処理しています。完了次第、成果物をお渡しします。
+          <p className="whitespace-pre-line text-base text-[var(--foreground-muted)]">
+            {JOB_ACCEPTED_DESCRIPTION}
           </p>
-          {showWordProgress ? (
-            <WordProgressStatus className="animate-soft-pulse text-sm text-[var(--foreground-muted)]" />
+          {showWordProgress || jobProgressPhase ? (
+            <WordProgressStatus
+              progressPhase={jobProgressPhase}
+              className="animate-soft-pulse text-sm text-[var(--foreground-muted)]"
+            />
+          ) : null}
+          {jobIsSlow ? (
+            <p className="whitespace-pre-line text-sm text-[var(--text-secondary)]">
+              通常より時間がかかっています。{"\n\n"}
+              現在も処理は継続しています。{"\n\n"}
+              完成しましたら通知いたします。
+            </p>
           ) : null}
         </section>
       ) : null}

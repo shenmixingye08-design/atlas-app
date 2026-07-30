@@ -110,6 +110,25 @@ describe("canonical job status", () => {
         wordDeliverablePresent: true,
         wordCompletionVerified: true,
       }).ok,
+    ).toBe(false);
+
+    expect(
+      canMarkJobCompleted({
+        projectPersisted: true,
+        wordRequired: true,
+        wordDeliverablePresent: true,
+        wordCompletionVerified: true,
+        notificationCreated: true,
+      }).ok,
+    ).toBe(true);
+
+    expect(
+      canMarkJobCompleted({
+        projectPersisted: true,
+        wordRequired: false,
+        wordDeliverablePresent: false,
+        notificationCreated: true,
+      }).ok,
     ).toBe(true);
   });
 
@@ -205,6 +224,7 @@ describe("applyJobStatusTransition", () => {
         projectPersisted: true,
         wordRequired: false,
         wordDeliverablePresent: false,
+        notificationCreated: true,
       },
     });
     expect(toCompleted.ok).toBe(true);
@@ -302,6 +322,7 @@ describe("applyJobStatusTransition", () => {
         projectPersisted: true,
         wordRequired: false,
         wordDeliverablePresent: false,
+        notificationCreated: true,
       },
     });
     expect(again.ok).toBe(true);

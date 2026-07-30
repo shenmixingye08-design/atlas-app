@@ -77,11 +77,12 @@ describe("work notification lifecycle", () => {
     notifyWorkTimedOut({
       userId: USER_A,
       jobId: "job_timeout_1",
-      message: "処理が時間内に終わりませんでした。",
     });
+
     const row = listUserNotifications(USER_A)[0];
     expect(row?.workEvent).toBe("timed_out");
-    expect(row?.title).toBe("タイムアウト");
+    expect(row?.title).toContain("通常より時間がかかっています");
+    expect(row?.message).toContain("処理を終了しました");
     expect(row?.retryActionUrl).toBe("/workspace");
   });
 

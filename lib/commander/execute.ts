@@ -680,6 +680,27 @@ async function executeStoredRun(input: {
       requestId: input.runId,
       detail: "commander",
     });
+    if (workJobId) {
+      try {
+        const { setWorkJobProgress, appendJobEvent } = await import(
+          "@/lib/work-jobs/event-log"
+        );
+        appendJobEvent(workJobId, input.userId, {
+          type: "ai_finished",
+          phase: "ai_content",
+        });
+        if (wordRequired) {
+          setWorkJobProgress({
+            jobId: workJobId,
+            userId: input.userId,
+            phase: "generating",
+            eventType: "file_gen_started",
+          });
+        }
+      } catch {
+        // Progress is best-effort — never block the pipeline.
+      }
+    }
     const wordExport = await exportWordDeliverableOnServer({
       userId: input.userId,
       assignment: plan.assignment,
@@ -693,6 +714,40 @@ async function executeStoredRun(input: {
       notify: false,
       workJobId,
     });
+    if (workJobId && wordExport.attempted) {
+      try {
+        const { setWorkJobProgress, appendJobEvent } = await import(
+          "@/lib/work-jobs/event-log"
+        );
+        if (wordExport.ok) {
+          appendJobEvent(workJobId, input.userId, {
+            type: "file_gen_finished",
+            phase: "generating",
+            deliverableId: wordExport.docx.id,
+          });
+          setWorkJobProgress({
+            jobId: workJobId,
+            userId: input.userId,
+            phase: "saving",
+            eventType: "storage_started",
+            deliverableId: wordExport.docx.id,
+          });
+          appendJobEvent(workJobId, input.userId, {
+            type: "storage_finished",
+            phase: "saving",
+            deliverableId: wordExport.docx.id,
+          });
+        } else {
+          appendJobEvent(workJobId, input.userId, {
+            type: "failed",
+            phase: "failed",
+            reason: wordExport.reason,
+          });
+        }
+      } catch {
+        // best-effort
+      }
+    }
     if (wordExport.attempted && wordExport.ok) {
       wordDeliverableId = wordExport.docx.id;
       wordCompletionVerified = wordExport.completion.ok;

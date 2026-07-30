@@ -3,9 +3,24 @@ import { auth } from "@clerk/nextjs/server";
 
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 import {
+  appendJobEvent,
+  readJobEvents,
+  readProgressPhase,
+  readTimeoutReason,
+} from "@/lib/work-jobs/event-log";
+import {
   isTerminalJobStatus,
   userMessageForJobError,
 } from "@/lib/work-jobs/job-status";
+import {
+  JOB_ACCEPTED_DESCRIPTION,
+  JOB_ACCEPTED_TITLE,
+  JOB_SLOW_BANNER,
+  computeJobElapsedMs,
+  isJobTakingLonger,
+  labelForProgressPhase,
+  progressPhaseFromJobStatus,
+} from "@/lib/work-jobs/progress";
 import {
   executeWorkJob,
   isStaleWorkJobRunning,
@@ -23,14 +38,19 @@ function userMessageForJob(job: {
   blockReason: string | null;
   error: string | null;
   errorCode: string | null;
+  isSlow: boolean;
 }): string {
-  if (job.status === "queued" || job.status === "processing") {
+  if (job.status === "queued") {
+    return `${JOB_ACCEPTED_TITLE}\n${JOB_ACCEPTED_DESCRIPTION}`;
+  }
+  if (job.status === "processing") {
     if (job.blockReason === "awaiting_confirmation") {
       return "確認が必要です。";
     }
-    return "依頼を受け付けました。バックグラウンドで処理しています。";
+    if (job.isSlow) return JOB_SLOW_BANNER;
+    return "ご依頼を処理しています。完了すると通知でお知らせします。";
   }
-  if (job.status === "completed") return "すべて完了しました。";
+  if (job.status === "completed") return "成果物が完成しました。";
   if (job.status === "cancelled") return "作業を中止しました。";
   if (job.status === "timed_out") {
     return userMessageForJobError("TIMEOUT", job.error);
@@ -84,6 +104,22 @@ export async function GET(
     job = (await getWorkJobDurable(id, userId)) ?? job;
   }
 
+  const elapsedMs = computeJobElapsedMs({
+    createdAt: job.createdAt,
+    startedAt: job.startedAt,
+  });
+  const isSlow = isJobTakingLonger({
+    status: job.status,
+    createdAt: job.createdAt,
+    startedAt: job.startedAt,
+  });
+  const progressPhase = progressPhaseFromJobStatus(
+    job.status,
+    readProgressPhase(job),
+  );
+  const events = readJobEvents(job);
+  const timeoutReason = readTimeoutReason(job);
+
   return Response.json({
     ok: true,
     jobId: job.id,
@@ -95,8 +131,21 @@ export async function GET(
     startedAt: job.startedAt,
     completedAt: job.completedAt,
     failedAt: job.failedAt,
+    createdAt: job.createdAt,
     updatedAt: job.updatedAt,
     terminal: isTerminalJobStatus(job.status),
-    message: userMessageForJob(job),
+    progressPhase,
+    progressLabel: labelForProgressPhase(progressPhase),
+    elapsedMs,
+    isSlow,
+    timeoutReason,
+    events,
+    message: userMessageForJob({
+      status: job.status,
+      blockReason: job.blockReason,
+      error: job.error,
+      errorCode: job.errorCode,
+      isSlow,
+    }),
   });
 }

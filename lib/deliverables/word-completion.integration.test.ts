@@ -136,6 +136,7 @@ describe("Word completion integration", () => {
         wordRequired: true,
         wordDeliverablePresent: true,
         wordCompletionVerified: exported.completion.ok,
+        notificationCreated: true,
       }).ok,
     ).toBe(true);
   }, 60_000);

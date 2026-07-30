@@ -70,6 +70,16 @@ function PreviewInner() {
         <div data-testid="word-job-status-panel">
           <WordJobStatusPanel
             phase={phase}
+            progressPhase={
+              phase === "accepted"
+                ? "accepted"
+                : phase === "processing"
+                  ? "ai_content"
+                  : phase === "completed"
+                    ? "completed"
+                    : null
+            }
+            isSlow={phase === "processing"}
             detail={
               phase === "failed" || phase === "timed_out"
                 ? "文書の保存に失敗しました。もう一度お試しください。"

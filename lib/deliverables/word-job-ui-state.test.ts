@@ -34,16 +34,25 @@ describe("word job UI state", () => {
   });
 
   it("exposes the required mobile copy for every phase", () => {
-    expect(WORD_JOB_UI_COPY.accepted.title).toBe("Word作成を受け付けました。");
-    expect(WORD_JOB_UI_COPY.processing.title).toBe("Wordを作成しています。");
-    expect(WORD_JOB_UI_COPY.processing.description).toBe(
-      "完了すると通知でお知らせします。",
+    expect(WORD_JOB_UI_COPY.accepted.title).toBe("かしこまりました。");
+    expect(WORD_JOB_UI_COPY.accepted.description).toContain(
+      "ご依頼を受け付けました",
     );
-    expect(WORD_JOB_UI_COPY.completed.primaryAction).toBe("Wordを開く");
+    expect(WORD_JOB_UI_COPY.accepted.description).toContain(
+      "成果物が完成しましたら通知いたします",
+    );
+    expect(WORD_JOB_UI_COPY.processing.description).toContain(
+      "完了すると通知でお知らせします",
+    );
+    expect(WORD_JOB_UI_COPY.completed.title).toBe("成果物が完成しました。");
+    expect(WORD_JOB_UI_COPY.completed.primaryAction).toBe("成果物を開く");
     expect(WORD_JOB_UI_COPY.completed.secondaryAction).toBe("ダウンロード");
+    expect(WORD_JOB_UI_COPY.failed.title).toBe("申し訳ありません。");
+    expect(WORD_JOB_UI_COPY.failed.description).toContain("再試行できます");
     expect(WORD_JOB_UI_COPY.failed.primaryAction).toBe("もう一度試す");
     expect(WORD_JOB_UI_COPY.failed.secondaryAction).toBe("詳細を見る");
-    expect(WORD_JOB_UI_COPY.timed_out.title).toContain("処理時間を超え");
+    expect(WORD_JOB_UI_COPY.timed_out.title).toContain("通常より時間がかかっています");
+    expect(WORD_JOB_UI_COPY.timed_out.description).toContain("処理を終了しました");
     expect(WORD_JOB_UI_COPY.network_error.primaryAction).toBe("再読み込み");
   });
 

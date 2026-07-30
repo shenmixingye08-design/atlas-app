@@ -2,17 +2,15 @@ import "server-only";
 
 import { runCommanderRequest } from "@/lib/commander/service";
 import {
-  notifyWorkCompleted,
-  notifyWorkFailed,
-} from "@/lib/notifications/emitters";
-import {
+  notifyWorkLifecycleCompleted,
+  notifyWorkLifecycleFailed,
   notifyWorkProcessing,
   notifyWorkTimedOut,
-  workJobNotificationRequestId,
 } from "@/lib/notifications/work-lifecycle";
 import { recordReliabilityEvent, withRetry } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 
+import { appendJobEvent, setWorkJobProgress } from "./event-log";
 import {
   classifyWorkJobError,
   isStaleProcessingJob,
@@ -69,6 +67,7 @@ function mapCommanderToTerminal(input: {
     wordRequired: boolean;
     wordDeliverablePresent: boolean;
     wordCompletionVerified?: boolean;
+    notificationCreated?: boolean;
   };
 } {
   if (input.commanderStatus === "awaiting_confirmation") {
@@ -102,13 +101,13 @@ function mapCommanderToTerminal(input: {
     };
   }
 
-  // completed / partial → require durable artifact gate (+ Word 11-step gate)
   const persistence = input.persistence;
   const gate = {
     projectPersisted: Boolean(persistence?.projectPersisted),
     wordRequired: Boolean(persistence?.wordRequired),
     wordDeliverablePresent: Boolean(persistence?.wordDeliverableId),
     wordCompletionVerified: Boolean(persistence?.wordCompletionVerified),
+    notificationCreated: Boolean(persistence?.notificationCreated),
   };
 
   if (!gate.projectPersisted) {
@@ -131,15 +130,20 @@ function mapCommanderToTerminal(input: {
     return {
       to: "failed",
       errorCode:
-        (persistence?.wordErrorCode as import("./job-status").WorkJobErrorCode | undefined) ??
-        "DOCX_GENERATION_FAILED",
+        (persistence?.wordErrorCode as
+          | import("./job-status").WorkJobErrorCode
+          | undefined) ?? "DOCX_GENERATION_FAILED",
       internalError: "word_completion_gate_failed",
     };
   }
 
+  // Notification is required for completed — emit in executeWorkJob then set true.
   return {
     to: "completed",
-    completionGate: gate,
+    completionGate: {
+      ...gate,
+      notificationCreated: false,
+    },
   };
 }
 
@@ -158,25 +162,18 @@ export async function executeWorkJob(
     throw new Error("job_not_found");
   }
 
-  // Terminal jobs are immutable — retries must use a new job / attempt.
   if (isTerminalJobStatus(existing.status)) {
     return existing;
   }
 
-  // Confirmation pause: still processing, but do not re-enter the pipeline.
   if (existing.blockReason === "awaiting_confirmation") {
     return existing;
   }
 
-  // Fresh processing lease — another worker is actively processing.
-  if (
-    existing.status === "processing" &&
-    !isStaleWorkJobRunning(existing)
-  ) {
+  if (existing.status === "processing" && !isStaleWorkJobRunning(existing)) {
     return existing;
   }
 
-  // Stale processing past maxAttempts → timed_out (never leave 処理中).
   if (
     existing.status === "processing" &&
     isStaleWorkJobRunning(existing) &&
@@ -190,12 +187,20 @@ export async function executeWorkJob(
       internalError: "stale_processing_max_attempts",
       userMessage: userMessageForJobError("TIMEOUT"),
       metadataPatch: {
-        timeoutReason: "stale_processing_max_attempts",
+        timeoutReason:
+          "処理が長時間応答しなかったためタイムアウトしました。",
       },
     });
     if (!applied.ok || !applied.job) {
-      throw new Error(applied.ok === false ? applied.message : "timed_out_failed");
+      throw new Error(
+        applied.ok === false ? applied.message : "timed_out_failed",
+      );
     }
+    appendJobEvent(jobId, userId, {
+      type: "timed_out",
+      phase: "failed",
+      reason: "stale_processing_max_attempts",
+    });
     notifyWorkTimedOut({
       userId,
       jobId,
@@ -213,12 +218,19 @@ export async function executeWorkJob(
     attemptCount: nextAttempt,
     metadataPatch: {
       lastAttemptStartedAt: new Date().toISOString(),
+      progressPhase: "ai_content",
     },
   });
   if (!start.ok || !start.job) {
-    // Illegal transition (e.g. raced into terminal) — return current.
     return getWorkJob(jobId, userId) ?? existing;
   }
+
+  setWorkJobProgress({
+    jobId,
+    userId,
+    phase: "ai_content",
+    eventType: "ai_started",
+  });
 
   notifyWorkProcessing({
     userId,
@@ -235,7 +247,6 @@ export async function executeWorkJob(
           recordReliabilityEvent("retry", "retry");
           recordReliabilityEvent("work_job", "retry");
         }
-        // Heartbeat so long runs are not mistaken for stale hangs.
         const current = getWorkJob(jobId, userId);
         if (current?.status === "processing") {
           applyJobStatusTransition({
@@ -265,7 +276,12 @@ export async function executeWorkJob(
       { maxAttempts: existing.maxAttempts },
     );
 
-    // Confirmation wait: stay processing with blockReason (not a 7th status).
+    appendJobEvent(jobId, userId, {
+      type: "ai_finished",
+      phase: "ai_content",
+      durationMs: Date.now() - startedAt,
+    });
+
     if (commander.status === "awaiting_confirmation") {
       const applied = applyJobStatusTransition({
         jobId,
@@ -291,6 +307,71 @@ export async function executeWorkJob(
     });
 
     if (mapped.to === "completed") {
+      if (commander.persistence?.wordDeliverableId) {
+        setWorkJobProgress({
+          jobId,
+          userId,
+          phase: "saving",
+          eventType: "storage_finished",
+          deliverableId: commander.persistence.wordDeliverableId,
+        });
+        appendJobEvent(jobId, userId, {
+          type: "db_registered",
+          phase: "saving",
+          deliverableId: commander.persistence.wordDeliverableId,
+        });
+      }
+
+      setWorkJobProgress({
+        jobId,
+        userId,
+        phase: "notifying",
+        eventType: "progress",
+      });
+
+      const notification = notifyWorkLifecycleCompleted({
+        userId,
+        jobId,
+        deliverableId: commander.persistence?.projectId ?? null,
+        artifactId: commander.persistence?.wordDeliverableId ?? null,
+        isRetry: nextAttempt > 1,
+      });
+
+      if (!notification) {
+        const failed = applyJobStatusTransition({
+          jobId,
+          userId,
+          to: "failed",
+          errorCode: "NOTIFICATION_CREATE_FAILED",
+          internalError: "notification_create_returned_null",
+          attemptCount: nextAttempt,
+          result: commander.result ?? null,
+        });
+        const failedJob =
+          failed.ok && failed.job
+            ? failed.job
+            : (getWorkJob(jobId, userId) ?? existing);
+        appendJobEvent(jobId, userId, {
+          type: "failed",
+          phase: "failed",
+          reason: "NOTIFICATION_CREATE_FAILED",
+        });
+        notifyWorkLifecycleFailed({
+          userId,
+          jobId,
+          detail: failedJob.error,
+          deliverableId: commander.persistence?.projectId ?? null,
+          artifactId: commander.persistence?.wordDeliverableId ?? null,
+        });
+        return failedJob;
+      }
+
+      appendJobEvent(jobId, userId, {
+        type: "notification_sent",
+        phase: "notifying",
+        deliverableId: commander.persistence?.wordDeliverableId ?? null,
+      });
+
       recordReliabilityEvent("work_job", "success", 1, {
         durationMs: Date.now() - startedAt,
       });
@@ -303,16 +384,17 @@ export async function executeWorkJob(
           ...commander.result!,
           ...(commander.runId ? { commanderRunId: commander.runId } : {}),
         },
-        completionGate: mapped.completionGate,
+        completionGate: {
+          ...mapped.completionGate!,
+          notificationCreated: true,
+        },
         metadataPatch: {
-          notificationCreated: Boolean(
-            commander.persistence?.notificationCreated,
-          ),
+          notificationCreated: true,
           projectId: commander.persistence?.projectId ?? null,
+          progressPhase: "completed",
         },
       });
       if (!applied.ok) {
-        // Gate rejected completed — surface as failed with the gate code.
         const failed = applyJobStatusTransition({
           jobId,
           userId,
@@ -326,29 +408,26 @@ export async function executeWorkJob(
           failed.ok && failed.job
             ? failed.job
             : (getWorkJob(jobId, userId) ?? existing);
-        notifyWorkFailed(userId, {
-          title: "Wordの作成に失敗しました",
-          message: failedJob.error ?? userMessageForJobError(applied.code),
-          requestId: workJobNotificationRequestId(jobId),
+        appendJobEvent(jobId, userId, {
+          type: "failed",
+          phase: "failed",
+          reason: applied.message,
+        });
+        notifyWorkLifecycleFailed({
+          userId,
           jobId,
-          workEvent: nextAttempt > 1 ? "retry_result" : "failed",
-          retryActionUrl: "/workspace",
+          detail: failedJob.error ?? userMessageForJobError(applied.code),
           deliverableId: commander.persistence?.projectId ?? null,
           artifactId: commander.persistence?.wordDeliverableId ?? null,
+          isRetry: nextAttempt > 1,
         });
         return failedJob;
       }
-      // Ensure completed notification exists (commander may have already upserted).
-      notifyWorkCompleted(userId, {
-        title: commander.persistence?.wordDeliverableId
-          ? "Wordファイルの準備ができました"
-          : "お仕事が完了しました",
-        message: "ご依頼の内容が完了しました。通知から結果を開けます。",
-        requestId: workJobNotificationRequestId(jobId),
-        jobId,
-        deliverableId: commander.persistence?.projectId ?? null,
-        artifactId: commander.persistence?.wordDeliverableId ?? null,
-        workEvent: nextAttempt > 1 ? "retry_result" : "completed",
+      appendJobEvent(jobId, userId, {
+        type: "completed",
+        phase: "completed",
+        durationMs: Date.now() - startedAt,
+        deliverableId: commander.persistence?.wordDeliverableId ?? null,
       });
       return applied.job;
     }
@@ -361,12 +440,15 @@ export async function executeWorkJob(
         attemptCount: nextAttempt,
         result: commander.result ?? null,
       });
+      appendJobEvent(jobId, userId, {
+        type: "cancelled",
+        phase: "failed",
+      });
       return applied.ok && applied.job
         ? applied.job
         : (getWorkJob(jobId, userId) ?? existing);
     }
 
-    // failed
     const errorCode =
       mapped.errorCode ??
       classifyWorkJobError(
@@ -396,20 +478,24 @@ export async function executeWorkJob(
       ),
       attemptCount: nextAttempt,
       result: commander.result ?? null,
+      metadataPatch: { progressPhase: "failed" },
     });
     const failedJob =
       applied.ok && applied.job
         ? applied.job
         : (getWorkJob(jobId, userId) ?? existing);
-    notifyWorkFailed(userId, {
-      title: "Wordの作成に失敗しました",
-      message: failedJob.error ?? userMessageForJobError(errorCode),
-      requestId: workJobNotificationRequestId(jobId),
+    appendJobEvent(jobId, userId, {
+      type: "failed",
+      phase: "failed",
+      reason: failedJob.error ?? mapped.internalError ?? errorCode,
+    });
+    notifyWorkLifecycleFailed({
+      userId,
       jobId,
-      workEvent: nextAttempt > 1 ? "retry_result" : "failed",
-      retryActionUrl: "/workspace",
+      detail: failedJob.error ?? userMessageForJobError(errorCode),
       deliverableId: commander.persistence?.projectId ?? null,
       artifactId: commander.persistence?.wordDeliverableId ?? null,
+      isRetry: nextAttempt > 1,
     });
     return failedJob;
   } catch (error) {
@@ -433,13 +519,22 @@ export async function executeWorkJob(
       userMessage: userMessageForJobError(errorCode, message),
       attemptCount: nextAttempt,
       metadataPatch: isTimeout
-        ? { timeoutReason: message.slice(0, 240) }
-        : undefined,
+        ? {
+            timeoutReason: message.slice(0, 240),
+            progressPhase: "failed",
+          }
+        : { progressPhase: "failed" },
     });
     const terminal =
       applied.ok && applied.job
         ? applied.job
         : (getWorkJob(jobId, userId) ?? existing);
+    appendJobEvent(jobId, userId, {
+      type: isTimeout ? "timed_out" : "failed",
+      phase: "failed",
+      reason: message.slice(0, 240),
+      durationMs: Date.now() - startedAt,
+    });
     if (isTimeout) {
       notifyWorkTimedOut({
         userId,
@@ -447,13 +542,10 @@ export async function executeWorkJob(
         message: terminal.error,
       });
     } else {
-      notifyWorkFailed(userId, {
-        title: "Wordの作成に失敗しました",
-        message: terminal.error ?? message,
-        requestId: workJobNotificationRequestId(jobId),
+      notifyWorkLifecycleFailed({
+        userId,
         jobId,
-        workEvent: "failed",
-        retryActionUrl: "/workspace",
+        detail: terminal.error ?? message,
       });
     }
     return terminal;

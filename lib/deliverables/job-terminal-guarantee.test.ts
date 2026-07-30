@@ -103,6 +103,26 @@ describe("job terminal guarantee (no stuck 処理中)", () => {
       workerId: "worker_a",
     });
     expect(claim.ok).toBe(true);
+
+    const { DocxDeliverableGenerator } = await import(
+      "@/lib/deliverables/generators/docx-generator"
+    );
+    const { saveDeliverableFile } = await import("@/lib/deliverables/store");
+    const generated = await new DocxDeliverableGenerator().generate(
+      SALES,
+      "営業報告書",
+    );
+    const seeded = saveDeliverableFile(
+      {
+        ...generated,
+        id: "dlv_existing",
+        downloadUrl: "/api/deliverables/dlv_existing",
+      },
+      OWNER,
+      { jobId, deliverableId: "dlv_existing" },
+    );
+    expect(seeded.id).toBe("dlv_existing");
+
     await advanceWordJobStage(jobId, "DOWNLOAD_READY", {
       deliverableId: "dlv_existing",
     });
@@ -263,7 +283,8 @@ describe("work-job stale running recovery", () => {
     });
 
     const out = await executeWorkJob(id, OWNER);
-    expect(out.status).toBe("failed");
-    expect(out.error).toMatch(/長時間停止/);
+    expect(out.status).toBe("timed_out");
+    expect(out.errorCode).toBe("TIMEOUT");
+    expect(out.error).toMatch(/時間がかかっています|再試行/);
   });
 });

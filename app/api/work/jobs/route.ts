@@ -6,7 +6,12 @@ import { auth } from "@clerk/nextjs/server";
 import { notifyWorkAccepted } from "@/lib/notifications/work-lifecycle";
 import { MAX_IMMEDIATE_RETRIES } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
+import { appendJobEvent } from "@/lib/work-jobs/event-log";
 import { isTerminalJobStatus } from "@/lib/work-jobs/job-status";
+import {
+  JOB_ACCEPTED_DESCRIPTION,
+  JOB_ACCEPTED_TITLE,
+} from "@/lib/work-jobs/progress";
 import { executeWorkJob, isStaleWorkJobRunning } from "@/lib/work-jobs/run";
 import {
   buildWorkJobIdempotencyKey,
@@ -17,6 +22,8 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
+
+const ACCEPTED_MESSAGE = `${JOB_ACCEPTED_TITLE}\n${JOB_ACCEPTED_DESCRIPTION}`;
 
 /**
  * Accept a work request and process it as a server job.
@@ -110,12 +117,14 @@ export async function POST(request: Request): Promise<Response> {
         errorCode: existing.errorCode,
         reused: true,
         terminal: isTerminalJobStatus(existing.status),
+        progressPhase: "accepted",
+        progressLabel: JOB_ACCEPTED_TITLE,
         message:
           existing.status === "completed"
-            ? "同じ依頼は処理済みです。"
+            ? "成果物が完成しました。"
             : existing.blockReason === "awaiting_confirmation"
               ? "確認が必要です。"
-              : "依頼を受け付けました。バックグラウンドで処理しています。",
+              : ACCEPTED_MESSAGE,
       },
       { status: 202 },
     );
@@ -128,7 +137,23 @@ export async function POST(request: Request): Promise<Response> {
     userId,
     assignment,
     idempotencyKey,
-    metadata: safeMetadata,
+    metadata: {
+      ...safeMetadata,
+      progressPhase: "accepted",
+      progressUpdatedAt: now,
+      events: [
+        {
+          type: "accepted",
+          at: now,
+          phase: "accepted",
+          reason: null,
+          durationMs: null,
+          deliverableId: null,
+        },
+      ],
+      lastEventType: "accepted",
+      lastEventAt: now,
+    },
     status: "queued",
     blockReason: null,
     attemptCount: 0,
@@ -144,8 +169,13 @@ export async function POST(request: Request): Promise<Response> {
     failedAt: null,
   });
 
-  // Inbox: 仕事受付 — separate from deliverable/result empty states.
+  // Inbox: 受付 — separate from deliverable/result empty states.
   notifyWorkAccepted({ userId, jobId: id, assignment });
+  appendJobEvent(id, userId, {
+    type: "accepted",
+    phase: "accepted",
+    at: now,
+  });
 
   after(async () => {
     try {
@@ -164,12 +194,13 @@ export async function POST(request: Request): Promise<Response> {
       errorCode: null,
       reused: false,
       terminal: false,
+      progressPhase: "accepted",
+      progressLabel: JOB_ACCEPTED_TITLE,
       fingerprint: createHash("sha256")
         .update(idempotencyKey)
         .digest("hex")
         .slice(0, 12),
-      message:
-        "依頼を受け付けました。バックグラウンドで処理しています。",
+      message: ACCEPTED_MESSAGE,
     },
     { status: 202 },
   );

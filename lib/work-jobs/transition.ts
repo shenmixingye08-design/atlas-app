@@ -34,6 +34,7 @@ export type ApplyJobStatusInput = {
     wordRequired: boolean;
     wordDeliverablePresent: boolean;
     wordCompletionVerified?: boolean;
+    notificationCreated?: boolean;
   };
   /** Extra metadata patch (idempotency / correlation). */
   metadataPatch?: Readonly<Record<string, unknown>>;

@@ -2,16 +2,25 @@
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
 import {
   WORD_JOB_UI_COPY,
   type WordJobUiPhase,
 } from "@/lib/deliverables/word-job-ui-state";
+import {
+  JOB_SLOW_BANNER,
+  labelForProgressPhase,
+  type JobProgressPhase,
+} from "@/lib/work-jobs/progress";
 import { cn } from "@/lib/design-system/cn";
 
 export type WordJobStatusPanelProps = {
   phase: WordJobUiPhase;
-  /** Safe user-facing failure detail (never empty on failed). */
+  /** Real progress phase from the server (must match pipeline). */
+  progressPhase?: JobProgressPhase | null;
+  progressLabel?: string | null;
+  /** Show “taking longer” banner while still processing. */
+  isSlow?: boolean;
+  /** Safe user-facing failure / timeout detail. */
   detail?: string | null;
   busy?: boolean;
   onPrimary?: () => void;
@@ -20,11 +29,14 @@ export type WordJobStatusPanelProps = {
 };
 
 /**
- * Post-submit Word status for mobile — one clear state + next actions.
- * Not a deliverable empty state and not a notification empty state.
+ * Post-submit job status — one clear state + next actions.
+ * Progress labels come from the server; never invent stages.
  */
 export function WordJobStatusPanel({
   phase,
+  progressPhase = null,
+  progressLabel = null,
+  isSlow = false,
   detail = null,
   busy = false,
   onPrimary,
@@ -35,6 +47,14 @@ export function WordJobStatusPanel({
   const showProgress = phase === "accepted" || phase === "processing";
   const showDetail =
     (phase === "failed" || phase === "timed_out") && Boolean(detail);
+  const resolvedProgressLabel =
+    progressLabel?.trim() ||
+    (progressPhase ? labelForProgressPhase(progressPhase) : null) ||
+    (phase === "accepted"
+      ? labelForProgressPhase("accepted")
+      : phase === "processing"
+        ? labelForProgressPhase("ai_content")
+        : null);
 
   return (
     <section
@@ -55,17 +75,30 @@ export function WordJobStatusPanel({
           {copy.title}
         </h2>
         {copy.description ? (
-          <p className="text-base leading-relaxed text-[var(--foreground-muted)]">
+          <p className="whitespace-pre-line text-base leading-relaxed text-[var(--foreground-muted)]">
             {copy.description}
+          </p>
+        ) : null}
+        {showProgress && resolvedProgressLabel ? (
+          <p
+            className="animate-soft-pulse text-sm font-medium text-[var(--foreground-muted)]"
+            data-testid="job-progress-label"
+          >
+            {resolvedProgressLabel}
+          </p>
+        ) : null}
+        {showProgress && isSlow ? (
+          <p
+            className="whitespace-pre-line rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-4 py-3 text-left text-sm leading-relaxed text-[var(--text-secondary)]"
+            data-testid="job-slow-banner"
+          >
+            {JOB_SLOW_BANNER}
           </p>
         ) : null}
         {showDetail ? (
           <p className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-4 py-3 text-left text-sm leading-relaxed text-[var(--text-secondary)]">
             {detail}
           </p>
-        ) : null}
-        {showProgress ? (
-          <WordProgressStatus className="animate-soft-pulse text-sm text-[var(--foreground-muted)]" />
         ) : null}
 
         {(copy.primaryAction || copy.secondaryAction) && (

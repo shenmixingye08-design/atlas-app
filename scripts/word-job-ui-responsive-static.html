@@ -35,12 +35,14 @@
       }
       .brand { color: var(--accent); font-size: 14px; font-weight: 600; margin: 0 0 8px; }
       h2 { font-size: 22px; margin: 0 0 12px; line-height: 1.35; }
-      .desc, .detail {
+      .desc, .detail, .progress {
         color: var(--foreground-muted);
         font-size: 16px;
         line-height: 1.6;
         margin: 0 0 12px;
+        white-space: pre-line;
       }
+      .progress { font-size: 14px; font-weight: 600; }
       .detail {
         text-align: left;
         background: var(--surface-muted);
@@ -79,26 +81,69 @@
     <main>
       <section class="panel" data-testid="word-job-status-panel" aria-live="polite" role="status">
         <p class="brand">MINERVOT</p>
-        <h2 id="title">Wordを作成しています。</h2>
-        <p class="desc" id="desc">完了すると通知でお知らせします。</p>
+        <h2 id="title">かしこまりました。</h2>
+        <p class="desc" id="desc">ご依頼を受け付けました。
+
+成果物が完成しましたら通知いたします。</p>
+        <p class="progress" id="progress" data-testid="job-progress-label">🧠 AIで内容作成中</p>
         <p class="detail" id="detail" hidden></p>
         <div class="actions" id="actions"></div>
       </section>
     </main>
     <script>
       const COPY = {
-        accepted: { title: "Word作成を受け付けました。", desc: null, primary: null, secondary: null },
-        processing: { title: "Wordを作成しています。", desc: "完了すると通知でお知らせします。", primary: null, secondary: null },
-        completed: { title: "Wordが完成しました。", desc: null, primary: "Wordを開く", secondary: "ダウンロード" },
-        failed: { title: "Wordの作成に失敗しました。", desc: null, primary: "もう一度試す", secondary: "詳細を見る", detail: "文書の保存に失敗しました。もう一度お試しください。" },
-        timed_out: { title: "処理時間を超えたため停止しました。", desc: null, primary: "もう一度試す", secondary: null, detail: "処理時間を超えたため停止しました。" },
-        network_error: { title: "最新状態を取得できませんでした。", desc: null, primary: "再読み込み", secondary: null },
+        accepted: {
+          title: "かしこまりました。",
+          desc: "ご依頼を受け付けました。\n\n成果物が完成しましたら通知いたします。",
+          progress: "ご依頼を受け付けました",
+          primary: null,
+          secondary: null,
+        },
+        processing: {
+          title: "ご依頼を処理しています。",
+          desc: "完了すると通知でお知らせします。",
+          progress: "🧠 AIで内容作成中",
+          primary: null,
+          secondary: null,
+        },
+        completed: {
+          title: "成果物が完成しました。",
+          desc: null,
+          progress: null,
+          primary: "成果物を開く",
+          secondary: "ダウンロード",
+        },
+        failed: {
+          title: "申し訳ありません。",
+          desc: "生成中にエラーが発生しました。\n再試行できます。",
+          progress: null,
+          primary: "もう一度試す",
+          secondary: "詳細を見る",
+          detail: "文書の保存に失敗しました。もう一度お試しください。",
+        },
+        timed_out: {
+          title: "通常より時間がかかっています。",
+          desc: "処理を終了しました。\n必要に応じて再試行してください。",
+          progress: null,
+          primary: "もう一度試す",
+          secondary: null,
+          detail: "処理が長時間応答しなかったためタイムアウトしました。",
+        },
+        network_error: {
+          title: "最新状態を取得できませんでした。",
+          desc: null,
+          progress: null,
+          primary: "再読み込み",
+          secondary: null,
+        },
       };
       window.renderPhase = (phase) => {
         const copy = COPY[phase];
         document.getElementById("title").textContent = copy.title;
         const desc = document.getElementById("desc");
         if (copy.desc) { desc.hidden = false; desc.textContent = copy.desc; } else { desc.hidden = true; }
+        const progress = document.getElementById("progress");
+        if (copy.progress) { progress.hidden = false; progress.textContent = copy.progress; } else { progress.hidden = true; }
         const detail = document.getElementById("detail");
         if (copy.detail) { detail.hidden = false; detail.textContent = copy.detail; } else { detail.hidden = true; }
         const actions = document.getElementById("actions");
@@ -116,7 +161,7 @@
           actions.appendChild(b);
         }
       };
-      window.renderPhase("processing");
+      window.renderPhase("accepted");
     </script>
   </body>
 </html>
