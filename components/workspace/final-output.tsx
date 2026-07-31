@@ -574,13 +574,14 @@ export function FinalOutput({
       aria-labelledby="output-heading"
     >
       <div>
-        <h2 id="output-heading" className="text-title text-foreground">
-          {heading ?? ui.work.deliverableTitle}
-        </h2>
-        {!result.approved && (
-          <p className="mt-1 text-caption text-[var(--status-warning)]">
-            {ui.work.deliverableNeedsReview}
-          </p>
+        {heading?.trim() ? (
+          <h2 id="output-heading" className="text-title text-foreground">
+            {heading}
+          </h2>
+        ) : (
+          <h2 id="output-heading" className="sr-only">
+            結果
+          </h2>
         )}
       </div>
 

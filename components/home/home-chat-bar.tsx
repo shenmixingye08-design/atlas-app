@@ -7,137 +7,71 @@ import { ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import {
-  getUploadedAttachmentIds,
-  ImageAttachmentPicker,
-  type LocalImageDraft,
-} from "@/components/vision/image-attachment-picker";
-import { RequestDocumentPicker } from "@/components/request/request-document-picker";
-import type { DocumentExtractClient } from "@/lib/attachments/documents/client-upload";
-import { assignmentImpliesImageWork } from "@/lib/vision/gate";
-import {
   buildWorkRequestSubmitPayload,
   stashPendingWorkRequestSubmit,
 } from "@/lib/workspace/work-request-payload";
 
 /**
- * Home hero: ask + attach.
- * Builds the SAME submit payload as WorkRequestForm, then hands it to
- * /workspace?autostart=1 which calls WorkspaceDashboard.handleSubmit.
- * Home must not invent its own metadata or job API path.
- * Format is never user-selected — secretary uses auto detection.
+ * Phase1 home ask — text + 任せる only.
+ * Attachments / formats are not shown (secretary decides means internally).
  */
 export function HomeChatBar() {
   const router = useRouter();
   const [input, setInput] = useState("");
-  const [imageDrafts, setImageDrafts] = useState<LocalImageDraft[]>([]);
-  const [documents, setDocuments] = useState<DocumentExtractClient[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const uploading = imageDrafts.some(
-    (d) => d.status === "pending" || d.status === "uploading",
-  );
-  const uploadedIds = getUploadedAttachmentIds(imageDrafts);
-  const failedImages = imageDrafts.filter((d) => d.status === "failed");
 
   const submitToWork = () => {
     const trimmed = input.trim();
-    if (!trimmed || uploading) return;
+    if (!trimmed) return;
 
-    if (failedImages.length > 0) {
-      setError("アップロードに失敗した画像があります。削除するか再試行してください。");
-      return;
-    }
-
-    if (
-      assignmentImpliesImageWork(trimmed) &&
-      uploadedIds.length === 0 &&
-      documents.length === 0
-    ) {
-      setError(
-        "この依頼には画像またはファイルの添付が必要です。レシート・請求書・表などを添付してください。",
-      );
-      return;
-    }
-
-    // Identical payload builder as 「お願いする」 / WorkRequestForm.
-    // preferredFormat is always auto — user never chooses Word/PDF/Excel.
     const payload = buildWorkRequestSubmitPayload({
       assignment: trimmed,
-      attachmentIds: uploadedIds,
-      documents,
       preferredFormat: "auto",
     });
     stashPendingWorkRequestSubmit(payload);
 
-    // Clear legacy handoff keys so workspace cannot rebuild a divergent payload.
     try {
       sessionStorage.removeItem("atlas.pendingDocumentExtracts");
     } catch {
       /* ignore */
     }
 
-    setError(null);
-    // Assignment lives in the stashed payload (not the URL) so body/metadata
-    // cannot diverge and long Japanese prompts are not truncated.
     router.push("/workspace?autostart=1");
   };
 
   return (
-    <section aria-labelledby="home-ask-heading" className="space-y-5 overflow-x-hidden">
-      <h2
+    <section aria-labelledby="home-ask-heading" className="space-y-6">
+      <h1
         id="home-ask-heading"
         className="text-center text-2xl font-semibold tracking-tight text-foreground sm:text-3xl"
       >
         {ui.secretaryHome.askTitle}
-      </h2>
+      </h1>
 
-      <div className="rounded-[28px] border border-[var(--border-subtle)] bg-[var(--card)] p-4 shadow-[var(--shadow-md)] sm:p-6">
-        <Textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          rows={5}
-          placeholder={ui.secretaryHome.askPlaceholder}
-          aria-label={ui.secretaryHome.askTitle}
-          className="min-h-[140px] resize-y border-none bg-transparent px-1 py-1 text-lg leading-relaxed shadow-none focus:ring-0"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              submitToWork();
-            }
-          }}
-        />
+      <Textarea
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        rows={4}
+        placeholder=""
+        aria-label={ui.secretaryHome.askTitle}
+        className="min-h-[120px] resize-none border border-[var(--border-subtle)] bg-transparent px-4 py-4 text-lg leading-relaxed shadow-none focus:ring-0"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            submitToWork();
+          }
+        }}
+      />
 
-        <div className="mt-4 space-y-3 border-t border-[var(--border-subtle)] pt-4">
-          <p className="text-sm font-medium text-foreground">
-            {ui.work.attachmentsLabel}
-          </p>
-          <ImageAttachmentPicker
-            value={imageDrafts}
-            onChange={setImageDrafts}
-            preferReadableText
-          />
-          <RequestDocumentPicker value={documents} onChange={setDocuments} />
-        </div>
-
-        {error && (
-          <p className="mt-3 text-sm text-[var(--error)]">{error}</p>
-        )}
-
-        <div className="mt-5 pb-[env(safe-area-inset-bottom)]">
-          <Button
-            variant="primary"
-            size="lg"
-            className="h-14 w-full rounded-full text-base sm:h-16 sm:text-lg"
-            onClick={submitToWork}
-            disabled={!input.trim() || uploading || failedImages.length > 0}
-            isLoading={uploading}
-          >
-            {uploading ? "アップロード中…" : ui.secretaryHome.askSubmit}
-          </Button>
-          <p className="mt-3 text-center text-sm text-[var(--foreground-muted)]">
-            {ui.secretaryHome.askHint}
-          </p>
-        </div>
+      <div className="flex justify-center pb-[env(safe-area-inset-bottom)]">
+        <Button
+          variant="primary"
+          size="lg"
+          className="h-12 min-w-[8rem] rounded-full px-10 text-base"
+          onClick={submitToWork}
+          disabled={!input.trim()}
+        >
+          {ui.secretaryHome.askSubmit}
+        </Button>
       </div>
     </section>
   );

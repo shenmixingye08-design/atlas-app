@@ -165,18 +165,18 @@ export const ui = {
 
   /* AI秘書の進行状況フレーズ（読み込み表示に使用・AI不使用の固定文言） */
   secretaryProgress: {
-    understanding: "内容を整理しています",
-    thinking: "進め方を考えています",
-    executing: "作業を進めています",
+    understanding: "内容を理解しています",
+    thinking: "資料を準備しています",
+    executing: "確認しています",
     preparing: "準備しています",
-    understand: "内容を整理しています",
-    understandHint: "ご依頼の要点を確認しています",
-    write: "資料を書いています",
-    writeHint: "本文を作成しています",
-    polish: "仕上げています",
-    polishHint: "読みやすさと抜け漏れを整えています",
-    done: "完成しました",
-    doneHint: "成果物をご確認ください",
+    understand: "内容を理解しています",
+    understandHint: "",
+    write: "資料を準備しています",
+    writeHint: "",
+    polish: "確認しています",
+    polishHint: "",
+    done: "仕上げています",
+    doneHint: "",
   },
 
   /* ホーム「AI秘書の現在状況」パネル（実データのみ・空状態は上品に） */
@@ -194,14 +194,12 @@ export const ui = {
   },
 
   secretaryHome: {
-    brandTagline: "あなた専属のAI秘書",
-    zeroFrictionHint:
-      "仕事を書いて送るだけ。形式や手順はMINERVOTが判断します。",
-    askTitle: "仕事を依頼する",
-    askPlaceholder:
-      "例）営業資料を作って共有用に整えて / 請求書をまとめて / 議事録を作って保存して",
-    askSubmit: "仕事を頼む",
-    askHint: "形式は選びません。お任せください。",
+    brandTagline: "MINERVOT",
+    zeroFrictionHint: "",
+    askTitle: "何を終わらせますか？",
+    askPlaceholder: "",
+    askSubmit: "任せる",
+    askHint: "",
     todayWorkTitle: "今日の仕事",
     todayWorkSubtitle: "今日お手伝いしている内容です。",
     summaryRunning: "対応中",
