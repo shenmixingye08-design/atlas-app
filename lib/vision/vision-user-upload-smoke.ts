@@ -10,6 +10,7 @@ import {
 import { getHealthVersionPayload } from "@/lib/health/version-info";
 import { isOpenAIConfigured } from "@/lib/openai";
 import { analyzeUserImage } from "@/lib/vision/analyze-image";
+import { getVisionDiagnosticForUser } from "@/lib/vision/diagnostics";
 import { detectImageMimeFromBytes } from "@/lib/vision/image-magic";
 import { logVisionPipeline } from "@/lib/vision/pipeline-log";
 
@@ -43,6 +44,23 @@ export type VisionUserUploadSmokeResult = {
     storageRead: boolean;
     storageOpenable: boolean;
     visionAnalyze: boolean;
+    completed: boolean;
+  };
+  /** Per-stage report for Production forensic (same shape as user request). */
+  trace: {
+    ok: boolean;
+    stage: string;
+    attachmentId: string | null;
+    diagnosticId: string | null;
+    storageDownloadSuccess: boolean | null;
+    downloadedByteLength: number | null;
+    mimeType: string | null;
+    imageByteLength: number | null;
+    openaiHttpStatus: number | null;
+    openaiRequestId: string | null;
+    safeMessage: string | null;
+    rawErrorBody: string | null;
+    durationMs: number;
   };
   durationMs: number;
   error: string | null;
@@ -79,6 +97,22 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
       storageRead: false,
       storageOpenable: false,
       visionAnalyze: false,
+      completed: false,
+    },
+    trace: {
+      ok: false,
+      stage: "init",
+      attachmentId: null,
+      diagnosticId: null,
+      storageDownloadSuccess: null,
+      downloadedByteLength: null,
+      mimeType: null,
+      imageByteLength: null,
+      openaiHttpStatus: null,
+      openaiRequestId: null,
+      safeMessage: null,
+      rawErrorBody: null,
+      durationMs: 0,
     },
     durationMs: 0,
     error: null,
@@ -96,22 +130,41 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
 
   let attachmentId: string | null = null;
   try {
-    // Fresh JPEG each run (avoids fixture packaging / hash-reuse orphans).
+    // Receipt-like JPEG (text overlay) — closer to real user uploads than a flat square.
     const buffer = await sharp({
       create: {
-        width: 96,
-        height: 96,
+        width: 640,
+        height: 480,
         channels: 3,
-        background: { r: 40, g: 120, b: 200 },
+        background: { r: 250, g: 248, b: 240 },
       },
     })
+      .composite([
+        {
+          input: Buffer.from(
+            `<svg width="640" height="480" xmlns="http://www.w3.org/2000/svg">
+              <rect x="40" y="40" width="560" height="400" fill="#fff" stroke="#222" stroke-width="2"/>
+              <text x="320" y="100" text-anchor="middle" font-size="28" font-family="sans-serif" fill="#111">MINERVOT Café</text>
+              <text x="80" y="160" font-size="20" font-family="sans-serif" fill="#333">コーヒー</text>
+              <text x="480" y="160" text-anchor="end" font-size="20" font-family="sans-serif" fill="#333">¥450</text>
+              <text x="80" y="200" font-size="20" font-family="sans-serif" fill="#333">トースト</text>
+              <text x="480" y="200" text-anchor="end" font-size="20" font-family="sans-serif" fill="#333">¥380</text>
+              <text x="80" y="280" font-size="22" font-family="sans-serif" fill="#111">合計</text>
+              <text x="480" y="280" text-anchor="end" font-size="22" font-family="sans-serif" fill="#111">¥830</text>
+              <text x="320" y="360" text-anchor="middle" font-size="16" font-family="sans-serif" fill="#666">領収書 / 2026-07-31</text>
+            </svg>`,
+          ),
+          top: 0,
+          left: 0,
+        },
+      ])
       .jpeg({ quality: 90 })
       .toBuffer();
 
     logVisionPipeline({
       stage: "image_select",
       ok: true,
-      fileName: "smoke-generated.jpg",
+      fileName: "receipt-smoke.jpg",
       mimeType: "image/jpeg",
       byteLength: buffer.length,
       headHex32: buffer.subarray(0, 32).toString("hex"),
@@ -122,7 +175,7 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
       userId: SMOKE_USER_ID,
       files: [
         {
-          fileName: "smoke-generated.jpg",
+          fileName: "receipt-smoke.jpg",
           mimeType: "image/jpeg",
           buffer,
         },
@@ -133,6 +186,7 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
     attachmentId = results[0]?.attachment.id ?? null;
     base.attachmentId = attachmentId;
     base.stages.upload = Boolean(attachmentId);
+    base.trace.attachmentId = attachmentId;
     logVisionPipeline({
       stage: "attachment_upload_after",
       ok: Boolean(attachmentId),
@@ -190,6 +244,10 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
       height,
     };
     base.stages.storageOpenable = sharpOpenable;
+    base.trace.storageDownloadSuccess = sharpOpenable;
+    base.trace.downloadedByteLength = stored.buffer.length;
+    base.trace.mimeType = stored.mimeType;
+    base.trace.imageByteLength = stored.buffer.length;
     logVisionPipeline({
       stage: "storage_read",
       ok: sharpOpenable,
@@ -201,6 +259,8 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
     });
 
     if (!sharpOpenable) {
+      base.trace.stage = "storage_corrupt";
+      base.trace.durationMs = Date.now() - started;
       return {
         ...base,
         stage: "storage_corrupt",
@@ -213,10 +273,11 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
     const analysis = await analyzeUserImage({
       userId: SMOKE_USER_ID,
       attachmentId,
-      userText: "この画像を一言で説明してください。テストです。",
+      userText:
+        "この領収書の内容を読み取り、店名と合計金額を日本語で要約してください。",
       forceRefresh: true,
-      detail: "low",
-      ecoMode: true,
+      detail: "high",
+      ecoMode: false,
       jobId: "job_vision_user_upload_smoke",
     });
 
@@ -227,9 +288,32 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
     base.model = analysis.model ?? null;
     base.cached = analysis.cached === true;
     base.ok = Boolean(analysis.summary?.trim() || analysis.detectedType);
+    base.stages.completed = base.ok;
     base.stage = base.ok ? "completed" : "empty_analysis";
     base.error = base.ok ? null : "analysis returned empty summary/type";
     base.durationMs = Date.now() - started;
+
+    const diagnostic =
+      base.diagnosticId
+        ? getVisionDiagnosticForUser(SMOKE_USER_ID, base.diagnosticId)
+        : null;
+    base.trace = {
+      ok: base.ok,
+      stage: base.stage,
+      attachmentId,
+      diagnosticId: base.diagnosticId,
+      storageDownloadSuccess: true,
+      downloadedByteLength:
+        diagnostic?.downloadedByteLength ?? stored.buffer.length,
+      mimeType: diagnostic?.mimeType ?? stored.mimeType,
+      imageByteLength:
+        diagnostic?.imageByteLength ?? stored.buffer.length,
+      openaiHttpStatus: diagnostic?.openaiHttpStatus ?? (base.ok ? 200 : null),
+      openaiRequestId: diagnostic?.openaiRequestId ?? null,
+      safeMessage: diagnostic?.openaiErrorMessage ?? null,
+      rawErrorBody: diagnostic?.openaiErrorBody ?? null,
+      durationMs: base.durationMs,
+    };
 
     logVisionPipeline({
       stage: "return_to_frontend",
