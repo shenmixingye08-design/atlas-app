@@ -44,11 +44,11 @@ describe("prepareAssignment OpenAI error surfacing", () => {
 
     expect(prepared.gate).toBeTruthy();
     expect(prepared.gate?.failedStage).toBe("vision_response");
+    // Internal cause keeps OpenAI message for admin diagnostics.
     expect(prepared.gate?.cause).toContain("Image could not be processed");
-    expect(prepared.gate?.message).toContain("Image could not be processed");
-    expect(prepared.gate?.message).not.toMatch(
-      /再試行してください$/,
-    );
+    // User-facing message is Japanese — not raw OpenAI English.
+    expect(prepared.gate?.message).toMatch(/JPEG|PNG|形式|解析/);
+    expect(prepared.gate?.message).not.toContain("Image could not be processed");
     expect(prepared.gate?.openai).toMatchObject({
       httpStatus: 400,
       type: "invalid_request_error",

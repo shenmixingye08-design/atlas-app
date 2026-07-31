@@ -29,7 +29,13 @@ export {
   assignmentImpliesImageWork,
   inferRequiredVisionFields,
 } from "./gate";
-export { resolveVisionModel } from "./resolve-vision-model";
+export {
+  resolveVisionModel,
+  DEFAULT_VISION_MODEL,
+  VISION_MODEL_ALLOWLIST,
+} from "./resolve-vision-model";
+export { normalizeImageForOpenAi } from "./normalize-for-openai";
+export { userMessageForVisionFailure } from "./user-error";
 export {
   formatsFromVisionBatch,
   titleFromVisionBatch,

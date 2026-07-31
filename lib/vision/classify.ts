@@ -93,12 +93,14 @@ export function recommendDetailLevel(args: {
   ];
 
   if (ecoMode && imageCount >= 4) return "low";
-  if (ecoMode && !highTypes.includes(detectedType)) return "auto";
+  // gpt-5.5 treats detail=auto as original (expensive/flaky for phone photos).
+  // Prefer explicit high/low — never auto for production vision.
+  if (ecoMode && !highTypes.includes(detectedType)) return "low";
 
   if (highTypes.includes(detectedType)) return "high";
   if (/細かく|文字|表|明細|金額|番号|条項/.test(userText)) return "high";
   if (imageCount >= 6) return "low";
-  return "auto";
+  return "high";
 }
 
 export function labelForDetectedType(type: VisionDetectedType): string {

@@ -76,9 +76,10 @@ export const TASK_POLICY_TEMPLATES: Record<AiTaskType, TaskPolicyTemplate> = {
   vision_analyze: {
     taskType: "vision_analyze",
     tier: "strong",
-    maxOutputTokens: 4_096,
+    // Vision JSON extraction — avoid reasoning tokens eating the output budget.
+    maxOutputTokens: 8_192,
     temperature: 0.2,
-    reasoningLevel: "low",
+    reasoningLevel: "none",
     costPriority: "quality",
   },
 };

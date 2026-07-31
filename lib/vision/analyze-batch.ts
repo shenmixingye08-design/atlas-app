@@ -151,7 +151,22 @@ export async function analyzeUserImageBatch(input: {
           : error instanceof Error
             ? error.message
             : "画像解析に失敗しました";
-      failures.push(`${i + 1}枚目: ${message}`);
+      // Identify which attachment failed (id, not filename).
+      failures.push(
+        `${i + 1}枚目(attachmentId=${attachmentId}): ${message}`,
+      );
+      if (firstDiagnosticId) {
+        const { appendVisionDiagnosticStage } = await import(
+          "@/lib/vision/diagnostics"
+        );
+        appendVisionDiagnosticStage(firstDiagnosticId, "vision_response", false, {
+          pageIndex: i,
+          failedAttachmentId: attachmentId,
+          errorCode: error instanceof VisionError ? error.code : "openai_failed",
+          safeMessage: message.slice(0, 500),
+          partialBatch: true,
+        });
+      }
     }
   }
 

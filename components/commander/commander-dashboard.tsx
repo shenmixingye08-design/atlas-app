@@ -216,7 +216,11 @@ export function CommanderDashboard() {
   }
 
   const runAssignment = useCallback(
-    async (text: string, mode: "plan" | "execute") => {
+    async (
+      text: string,
+      mode: "plan" | "execute",
+      metadata?: Readonly<Record<string, unknown>>,
+    ) => {
       const trimmed = text.trim();
       if (!trimmed || isLoadingRef.current) return;
 
@@ -233,6 +237,7 @@ export function CommanderDashboard() {
         const result = await submitCommanderRequest(trimmed, {
           signal: controller.signal,
           mode,
+          metadata,
         });
         setRun(result);
         maybeSaveProject(result, trimmed);
@@ -260,8 +265,11 @@ export function CommanderDashboard() {
     }
   }, [runAssignment, searchParams]);
 
-  async function handleSubmit(mode: "plan" | "execute") {
-    await runAssignment(assignment, mode);
+  async function handleSubmit(
+    mode: "plan" | "execute",
+    metadata?: Readonly<Record<string, unknown>>,
+  ) {
+    await runAssignment(assignment, mode, metadata);
   }
 
   async function handleConfirm() {
@@ -354,7 +362,13 @@ export function CommanderDashboard() {
           <VisionFailurePanel
             gate={run.visionGate}
             showDeveloperHint={Boolean(run.visionGate.diagnosticId)}
-            onRetryAnalyze={() => void handleSubmit("execute")}
+            onRetryAnalyze={() =>
+              void handleSubmit("execute", {
+                forceVisionRefresh: true,
+                visionRetry: true,
+                visionRetryAt: new Date().toISOString(),
+              })
+            }
           />
           <VisionDiagnosticsPanel
             diagnosticId={run.visionGate.diagnosticId}
