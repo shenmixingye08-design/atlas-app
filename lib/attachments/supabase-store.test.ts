@@ -157,4 +157,29 @@ describe("supabase image store", () => {
     expect(bytes?.buffer.equals(TINY_PNG)).toBe(true);
     expect(downloadMock).toHaveBeenCalled();
   });
+
+  it("uploads Uint8Array (not Node Buffer) to avoid JSON Buffer corruption", async () => {
+    const { supabaseSaveImageAttachment } = await import(
+      "@/lib/attachments/supabase-store"
+    );
+
+    await supabaseSaveImageAttachment({
+      userId: "user_a",
+      jobId: "job_1",
+      originalFileName: "shot.png",
+      mimeType: "image/png",
+      originalBuffer: TINY_PNG,
+      processedBuffer: TINY_PNG,
+      processedMimeType: "image/png",
+      width: 1,
+      height: 1,
+      contentHash: "hash2",
+    });
+
+    const uploadedBody = uploadMock.mock.calls[0]?.[1];
+    expect(uploadedBody).toBeInstanceOf(Uint8Array);
+    expect(Buffer.isBuffer(uploadedBody)).toBe(false);
+    // Prove the corruption mode we are avoiding.
+    expect(JSON.stringify(Buffer.from([1, 2, 3]))).toContain('"type":"Buffer"');
+  });
 });

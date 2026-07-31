@@ -179,9 +179,23 @@ export async function supabaseSaveImageAttachment(
     ext: processedExt,
   });
 
+  // CRITICAL: never pass Node Buffer directly — some Supabase/fetch paths
+  // JSON-serialize it as {"type":"Buffer","data":[...]} which corrupts the object.
+  // Uint8Array is treated as binary body bytes.
+  const originalBytes = new Uint8Array(
+    input.originalBuffer.buffer,
+    input.originalBuffer.byteOffset,
+    input.originalBuffer.byteLength,
+  );
+  const processedBytes = new Uint8Array(
+    input.processedBuffer.buffer,
+    input.processedBuffer.byteOffset,
+    input.processedBuffer.byteLength,
+  );
+
   const originalUpload = await client.storage
     .from(ATLAS_IMAGE_ATTACHMENTS_BUCKET)
-    .upload(originalPath, input.originalBuffer, {
+    .upload(originalPath, originalBytes, {
       contentType: input.mimeType,
       upsert: false,
     });
@@ -191,7 +205,7 @@ export async function supabaseSaveImageAttachment(
 
   const processedUpload = await client.storage
     .from(ATLAS_IMAGE_ATTACHMENTS_BUCKET)
-    .upload(processedPath, input.processedBuffer, {
+    .upload(processedPath, processedBytes, {
       contentType: input.processedMimeType,
       upsert: false,
     });
