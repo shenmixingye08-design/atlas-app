@@ -17,6 +17,8 @@ export type BillingSchemaProbe = {
   upsertOk: boolean;
   appliedViaPostgres: boolean;
   appliedViaManagementApi: boolean;
+  /** When dedicated tables are missing, runtime uses atlas_user_state. */
+  usingDurableFallback: boolean;
   error: string | null;
   migrationFiles: string[];
   sqlPreview: string | null;
@@ -170,6 +172,7 @@ export async function probeBillingSubscriptionsSchema(input?: {
       upsertOk: false,
       appliedViaPostgres,
       appliedViaManagementApi,
+      usingDurableFallback: true,
       error: error ?? "supabase_service_role_not_configured",
       migrationFiles: files,
       sqlPreview: sql.slice(0, 1200),
@@ -208,6 +211,13 @@ export async function probeBillingSubscriptionsSchema(input?: {
     probe.selectOk &&
     probe.upsertOk;
 
+  if (ok) {
+    const { markBillingDedicatedTableReadyUnknown } = await import(
+      "./table-ready"
+    );
+    markBillingDedicatedTableReadyUnknown();
+  }
+
   return {
     ok,
     subscriptionsTableExists: probe.subscriptionsTableExists,
@@ -216,6 +226,7 @@ export async function probeBillingSubscriptionsSchema(input?: {
     upsertOk: probe.upsertOk,
     appliedViaPostgres,
     appliedViaManagementApi,
+    usingDurableFallback: !ok,
     error: ok ? null : error ?? probe.error,
     migrationFiles: files,
     sqlPreview: ok ? null : sql.slice(0, 1200),
