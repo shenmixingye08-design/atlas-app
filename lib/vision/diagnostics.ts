@@ -4,6 +4,11 @@ import {
   type VisionPipelineStage,
   isVisionPipelineStage,
 } from "@/lib/vision/failure-stage";
+import {
+  loadVisionDiagnosticDurable,
+  persistVisionDiagnosticDurable,
+} from "@/lib/vision/diagnostics-durable";
+import { readVercelRequestId } from "@/lib/runtime/vercel-request-id";
 
 export type VisionDiagnosticStage = VisionPipelineStage;
 
@@ -22,6 +27,9 @@ export type VisionDiagnosticRecord = {
   mimeType: string | null;
   downloadedByteLength: number | null;
   base64Length: number | null;
+  imageByteLength: number | null;
+  imageCount: number | null;
+  urlLength: number | null;
   inputImageIncluded: boolean | null;
   analysisSuccess: boolean | null;
   payloadAttachmentIds: string[] | null;
@@ -30,11 +38,37 @@ export type VisionDiagnosticRecord = {
   failedStage: VisionDiagnosticStage | null;
   lastErrorCode: string | null;
   lastUserCode: string | null;
+  /** OpenAI request id (x-request-id / req_…). */
+  openaiRequestId: string | null;
+  /** Vercel request id (x-vercel-id). */
+  vercelRequestId: string | null;
+  /** Full OpenAI error JSON (secrets redacted). */
+  openaiErrorBody: string | null;
+  openaiHttpStatus: number | null;
+  openaiErrorType: string | null;
+  openaiErrorCode: string | null;
+  openaiErrorMessage: string | null;
+  /** Where the durable copy was last written. */
+  supabasePersist: "pending" | "ok" | "skipped" | null;
   createdAt: string;
   updatedAt: string;
 };
 
 const store = new Map<string, VisionDiagnosticRecord>();
+
+function scheduleDurablePersist(record: VisionDiagnosticRecord): void {
+  void persistVisionDiagnosticDurable(record)
+    .then((result) => {
+      const current = store.get(record.id);
+      if (!current) return;
+      current.supabasePersist = result === "supabase" ? "ok" : "skipped";
+      current.updatedAt = new Date().toISOString();
+    })
+    .catch(() => {
+      const current = store.get(record.id);
+      if (current) current.supabasePersist = "skipped";
+    });
+}
 
 /** Safe server log — never includes image bytes, URLs, or extracted PII text. */
 export function logVisionStage(input: {
@@ -47,13 +81,18 @@ export function logVisionStage(input: {
   mimeType?: string;
   base64Length?: number;
   imageByteLength?: number;
+  imageCount?: number | null;
+  urlLength?: number | null;
   model?: string;
   openaiErrorCode?: string;
   openaiErrorType?: string;
   httpStatus?: number | null;
   param?: string | null;
   requestId?: string | null;
+  openaiRequestId?: string | null;
+  vercelRequestId?: string | null;
   safeMessage?: string | null;
+  rawErrorBody?: string | null;
   inputTypes?: string | null;
   timedOut?: boolean | null;
   apiFormat?: string | null;
@@ -73,13 +112,18 @@ export function logVisionStage(input: {
     mimeType: input.mimeType,
     base64Length: input.base64Length,
     imageByteLength: input.imageByteLength,
+    imageCount: input.imageCount ?? null,
+    urlLength: input.urlLength ?? null,
     model: input.model,
     openaiErrorCode: input.openaiErrorCode,
     openaiErrorType: input.openaiErrorType,
     httpStatus: input.httpStatus ?? null,
     param: input.param ?? null,
-    requestId: input.requestId ?? null,
+    requestId: input.requestId ?? input.openaiRequestId ?? null,
+    openaiRequestId: input.openaiRequestId ?? input.requestId ?? null,
+    vercelRequestId: input.vercelRequestId ?? null,
     safeMessage: input.safeMessage ?? null,
+    rawErrorBody: input.rawErrorBody ?? null,
     inputTypes: input.inputTypes ?? null,
     timedOut: input.timedOut ?? null,
     apiFormat: input.apiFormat ?? null,
@@ -95,6 +139,7 @@ export function createVisionDiagnostic(input: {
   userId: string;
   attachmentId?: string | null;
   jobId?: string | null;
+  vercelRequestId?: string | null;
 }): VisionDiagnosticRecord {
   const now = new Date().toISOString();
   const record: VisionDiagnosticRecord = {
@@ -107,6 +152,9 @@ export function createVisionDiagnostic(input: {
     mimeType: null,
     downloadedByteLength: null,
     base64Length: null,
+    imageByteLength: null,
+    imageCount: null,
+    urlLength: null,
     inputImageIncluded: null,
     analysisSuccess: null,
     payloadAttachmentIds: null,
@@ -115,6 +163,14 @@ export function createVisionDiagnostic(input: {
     failedStage: null,
     lastErrorCode: null,
     lastUserCode: null,
+    openaiRequestId: null,
+    vercelRequestId: input.vercelRequestId ?? null,
+    openaiErrorBody: null,
+    openaiHttpStatus: null,
+    openaiErrorType: null,
+    openaiErrorCode: null,
+    openaiErrorMessage: null,
+    supabasePersist: "pending",
     createdAt: now,
     updatedAt: now,
   };
@@ -123,10 +179,25 @@ export function createVisionDiagnostic(input: {
     diagnosticId: record.id,
     attachmentId: record.attachmentId,
     jobId: record.jobId,
+    vercelRequestId: record.vercelRequestId,
     stage: "upload",
     event: "diagnostic_created",
     ok: true,
   });
+
+  // Capture Vercel id asynchronously when not provided (Route Handler context).
+  if (!record.vercelRequestId) {
+    void readVercelRequestId().then((id) => {
+      const current = store.get(record.id);
+      if (!current || current.vercelRequestId || !id) return;
+      current.vercelRequestId = id;
+      current.updatedAt = new Date().toISOString();
+      scheduleDurablePersist(current);
+    });
+  } else {
+    scheduleDurablePersist(record);
+  }
+
   return record;
 }
 
@@ -161,6 +232,15 @@ export function appendVisionDiagnosticStage(
   if (typeof detail?.base64Length === "number") {
     record.base64Length = detail.base64Length;
   }
+  if (typeof detail?.imageByteLength === "number") {
+    record.imageByteLength = detail.imageByteLength;
+  }
+  if (typeof detail?.imageCount === "number") {
+    record.imageCount = detail.imageCount;
+  }
+  if (typeof detail?.urlLength === "number") {
+    record.urlLength = detail.urlLength;
+  }
   if (typeof detail?.model === "string") {
     record.model = detail.model;
   }
@@ -182,6 +262,30 @@ export function appendVisionDiagnosticStage(
       { length: detail.payloadAttachmentIdCount },
       (_, index) => `id_${index + 1}`,
     );
+  }
+  if (typeof detail?.requestId === "string") {
+    record.openaiRequestId = detail.requestId;
+  }
+  if (typeof detail?.openaiRequestId === "string") {
+    record.openaiRequestId = detail.openaiRequestId;
+  }
+  if (typeof detail?.vercelRequestId === "string") {
+    record.vercelRequestId = detail.vercelRequestId;
+  }
+  if (typeof detail?.rawErrorBody === "string") {
+    record.openaiErrorBody = detail.rawErrorBody;
+  }
+  if (typeof detail?.httpStatus === "number") {
+    record.openaiHttpStatus = detail.httpStatus;
+  }
+  if (typeof detail?.openaiErrorType === "string") {
+    record.openaiErrorType = detail.openaiErrorType;
+  }
+  if (typeof detail?.openaiErrorCode === "string") {
+    record.openaiErrorCode = detail.openaiErrorCode;
+  }
+  if (typeof detail?.safeMessage === "string") {
+    record.openaiErrorMessage = detail.safeMessage;
   }
   if (!ok) {
     record.failedStage = stage;
@@ -207,10 +311,9 @@ export function appendVisionDiagnosticStage(
     downloadedByteLength: record.downloadedByteLength ?? undefined,
     mimeType: record.mimeType ?? undefined,
     base64Length: record.base64Length ?? undefined,
-    imageByteLength:
-      typeof detail?.imageByteLength === "number"
-        ? detail.imageByteLength
-        : undefined,
+    imageByteLength: record.imageByteLength ?? undefined,
+    imageCount: record.imageCount,
+    urlLength: record.urlLength,
     model: record.model ?? undefined,
     openaiErrorCode:
       typeof detail?.openaiErrorCode === "string"
@@ -224,9 +327,15 @@ export function appendVisionDiagnosticStage(
       typeof detail?.httpStatus === "number" ? detail.httpStatus : null,
     param: typeof detail?.param === "string" ? detail.param : null,
     requestId:
-      typeof detail?.requestId === "string" ? detail.requestId : null,
+      typeof detail?.requestId === "string"
+        ? detail.requestId
+        : record.openaiRequestId,
+    openaiRequestId: record.openaiRequestId,
+    vercelRequestId: record.vercelRequestId,
     safeMessage:
       typeof detail?.safeMessage === "string" ? detail.safeMessage : null,
+    rawErrorBody:
+      typeof detail?.rawErrorBody === "string" ? detail.rawErrorBody : null,
     inputTypes:
       typeof detail?.inputTypes === "string" ? detail.inputTypes : null,
     timedOut:
@@ -244,6 +353,7 @@ export function appendVisionDiagnosticStage(
     durationMs:
       typeof detail?.durationMs === "number" ? detail.durationMs : undefined,
   });
+  scheduleDurablePersist(record);
 }
 
 export function getLatestFailedStage(
@@ -266,6 +376,20 @@ export function getVisionDiagnosticForUser(
   const record = store.get(id);
   if (!record || record.userId !== userId) return null;
   return record;
+}
+
+/** Memory first, then Supabase durable (cross-instance / cold start). */
+export async function getVisionDiagnosticForUserDurable(
+  userId: string,
+  id: string,
+): Promise<VisionDiagnosticRecord | null> {
+  const memory = getVisionDiagnosticForUser(userId, id);
+  if (memory) return memory;
+  const durable = await loadVisionDiagnosticDurable(userId, id);
+  if (durable) {
+    store.set(durable.id, durable);
+  }
+  return durable;
 }
 
 export function listRecentVisionDiagnosticsForUser(

@@ -2,10 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/openai", () => ({
   createAtlasResponse: vi.fn(),
+  resolveAtlasResponseCreateParams: vi.fn((params: { model?: string }) => ({
+    model: params.model ?? "gpt-5.5",
+    max_output_tokens: 4096,
+    temperature: null,
+    tools: null,
+    response_format: null,
+    previous_response_id: null,
+  })),
 }));
 
 vi.mock("@/lib/vision/diagnostics", () => ({
   appendVisionDiagnosticStage: vi.fn(),
+  getVisionDiagnosticForUser: vi.fn(() => null),
 }));
 
 import { createAtlasResponse } from "@/lib/openai";
@@ -124,15 +133,59 @@ describe("openAiVisionProvider request shape", () => {
     ).rejects.toMatchObject({
       name: "VisionError",
       code: "openai_failed",
+      message: expect.stringContaining("Image could not be processed"),
       details: expect.objectContaining({
         httpStatus: 400,
         openaiErrorType: "invalid_request_error",
         openaiErrorCode: "invalid_image",
         param: "input_image",
         requestId: "req_vision_1",
+        safeMessage: expect.stringContaining("Image could not be processed"),
+        rawErrorBody: expect.stringContaining("invalid_image"),
         model: expect.any(String),
         apiFormat: "responses",
+        imageCount: 1,
+        urlLength: expect.any(Number),
       }),
     });
+  });
+
+  it("does not use a generic retry-only message for OpenAI failures", async () => {
+    const { APIError } = await import("openai");
+    vi.mocked(createAtlasResponse).mockRejectedValue(
+      new APIError(
+        500,
+        {
+          message: "The server had an error while processing your request",
+          type: "server_error",
+          code: "server_error",
+        },
+        undefined,
+        new Headers({ "x-request-id": "req_server_1" }),
+      ),
+    );
+
+    const dataUrl =
+      "data:image/png;base64," + Buffer.from("fake-png-bytes-for-test!!").toString("base64");
+
+    try {
+      await openAiVisionProvider.analyzeImage({
+        userId: "user_a",
+        attachmentId: "img_1",
+        imageUrl: dataUrl,
+        userText: "解析して",
+        hintType: "general_photo",
+        detail: "auto",
+        pageIndex: 0,
+        pageCount: 1,
+      });
+      throw new Error("expected throw");
+    } catch (error) {
+      expect(error).toMatchObject({ code: "openai_failed" });
+      expect(String((error as Error).message)).not.toMatch(
+        /^画像解析に失敗しました。再試行してください$/,
+      );
+      expect(String((error as Error).message)).toContain("server had an error");
+    }
   });
 });

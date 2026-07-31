@@ -106,16 +106,55 @@ export async function POST(request: Request): Promise<Response> {
           : error.code === "not_found" || error.code === "forbidden"
             ? 404
             : 422;
+      const details = error.details ?? null;
+      console.error("[vision] analyze VisionError", {
+        code: error.code,
+        message: error.message,
+        diagnosticId: error.diagnosticId,
+        failedStage: error.failedStage,
+        details,
+      });
       return Response.json(
-        { error: error.message, code: error.code },
+        {
+          error: error.message,
+          code: error.code,
+          diagnosticId: error.diagnosticId,
+          failedStage: error.failedStage,
+          cause: error.message,
+          openai: details
+            ? {
+                status: details.httpStatus ?? null,
+                type: details.openaiErrorType ?? null,
+                code: details.openaiErrorCode ?? null,
+                message: details.safeMessage ?? error.message,
+                request_id: details.requestId ?? null,
+                rawErrorBody: details.rawErrorBody ?? null,
+              }
+            : null,
+          details,
+        },
         { status },
       );
     }
-    console.error("[vision] analyze failed");
+    const message =
+      error instanceof Error ? error.message : "unknown_vision_analyze_error";
+    console.error("[vision] analyze failed", {
+      message,
+      name: error instanceof Error ? error.name : typeof error,
+    });
     return Response.json(
       {
-        error: "画像解析に失敗しました。再試行してください",
+        error: message,
         code: "openai_failed",
+        cause: message,
+        openai: {
+          status: null,
+          type: error instanceof Error ? error.name : "unknown",
+          code: "unhandled_exception",
+          message,
+          request_id: null,
+          rawErrorBody: null,
+        },
       },
       { status: 500 },
     );

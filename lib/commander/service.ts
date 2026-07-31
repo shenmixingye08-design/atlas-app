@@ -146,6 +146,18 @@ async function maybeEnrichWithVision(input: {
 
   // Hard safety: never proceed with poison fallback language when images are attached.
   if (!prepared.metadata.visionAnalysisSuccess) {
+    const openaiMeta =
+      prepared.metadata.visionOpenAi &&
+      typeof prepared.metadata.visionOpenAi === "object"
+        ? (prepared.metadata.visionOpenAi as {
+            httpStatus?: number | null;
+            type?: string | null;
+            code?: string | null;
+            message?: string | null;
+            requestId?: string | null;
+            rawErrorBody?: string | null;
+          })
+        : null;
     return {
       assignment: prepared.assignment,
       metadata: prepared.metadata,
@@ -155,7 +167,9 @@ async function maybeEnrichWithVision(input: {
         message:
           typeof prepared.metadata.visionError === "string"
             ? prepared.metadata.visionError
-            : "【AI解析で失敗】画像の内容を解析できませんでした。再試行してください。",
+            : typeof prepared.metadata.visionCause === "string"
+              ? `【AI解析で失敗】${prepared.metadata.visionCause}`
+              : "【AI解析で失敗】原因未取得（診断IDを確認してください）",
         userCode:
           typeof prepared.metadata.visionUserCode === "string"
             ? prepared.metadata.visionUserCode
@@ -176,6 +190,24 @@ async function maybeEnrichWithVision(input: {
           typeof prepared.metadata.visionDeveloperCode === "string"
             ? prepared.metadata.visionDeveloperCode
             : "image_analyze_failed",
+        cause:
+          typeof prepared.metadata.visionCause === "string"
+            ? prepared.metadata.visionCause
+            : openaiMeta?.message ?? null,
+        openai: openaiMeta
+          ? {
+              httpStatus: openaiMeta.httpStatus ?? null,
+              type: openaiMeta.type ?? null,
+              code: openaiMeta.code ?? null,
+              message: openaiMeta.message ?? null,
+              requestId: openaiMeta.requestId ?? null,
+              rawErrorBody: openaiMeta.rawErrorBody ?? null,
+            }
+          : null,
+        vercelRequestId:
+          typeof prepared.metadata.visionVercelRequestId === "string"
+            ? prepared.metadata.visionVercelRequestId
+            : null,
         payloadAttachmentIds: attachmentIds,
       },
     };

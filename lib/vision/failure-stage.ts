@@ -116,12 +116,16 @@ export function formatVisionDeveloperHint(input: {
   failedStage?: VisionPipelineStage | null;
   userCode?: string | null;
   errorCode?: string | null;
+  openaiRequestId?: string | null;
+  vercelRequestId?: string | null;
 }): string {
   const parts = [
     input.diagnosticId ? `診断ID: ${input.diagnosticId}` : null,
     input.failedStage ? `工程: ${input.failedStage}` : null,
     input.userCode ? `userCode: ${input.userCode}` : null,
     input.errorCode ? `errorCode: ${input.errorCode}` : null,
+    input.openaiRequestId ? `openai_request_id: ${input.openaiRequestId}` : null,
+    input.vercelRequestId ? `vercel: ${input.vercelRequestId}` : null,
   ].filter(Boolean);
   return parts.join(" / ");
 }

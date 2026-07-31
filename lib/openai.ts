@@ -146,6 +146,38 @@ function resolveRequestParams(params: AtlasResponseRequest): {
   };
 }
 
+/**
+ * Resolve Responses API create params for diagnostics / logging.
+ * Callers must redact image bytes before printing.
+ */
+export function resolveAtlasResponseCreateParams(
+  params: AtlasResponseRequest,
+): {
+  model: string;
+  max_output_tokens: number | null;
+  temperature: number | null;
+  tools: null;
+  response_format: null;
+  previous_response_id: string | null;
+} {
+  const resolved = resolveRequestParams(params);
+  const sanitized = sanitizeResponsesApiParams(resolved.model, {
+    maxOutputTokens: resolved.max_output_tokens,
+    temperature: resolved.temperature,
+    reasoningLevel: resolved.reasoningLevel,
+  });
+  return {
+    model: resolved.model,
+    max_output_tokens:
+      sanitized.max_output_tokens ?? sanitized.max_tokens ?? null,
+    temperature: sanitized.temperature ?? null,
+    // Vision analyze does not send tools / response_format today — log explicitly.
+    tools: null,
+    response_format: null,
+    previous_response_id: params.previousResponseId ?? null,
+  };
+}
+
 function buildResponseCreateParams(
   params: AtlasResponseRequest,
   stream: boolean,
