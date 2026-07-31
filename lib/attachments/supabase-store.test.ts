@@ -158,7 +158,7 @@ describe("supabase image store", () => {
     expect(downloadMock).toHaveBeenCalled();
   });
 
-  it("uploads Uint8Array (not Node Buffer) to avoid JSON Buffer corruption", async () => {
+  it("uploads Blob (not Buffer/Uint8Array) to keep binary storage body", async () => {
     const { supabaseSaveImageAttachment } = await import(
       "@/lib/attachments/supabase-store"
     );
@@ -177,9 +177,10 @@ describe("supabase image store", () => {
     });
 
     const uploadedBody = uploadMock.mock.calls[0]?.[1];
-    expect(uploadedBody).toBeInstanceOf(Uint8Array);
+    expect(uploadedBody).toBeInstanceOf(Blob);
     expect(Buffer.isBuffer(uploadedBody)).toBe(false);
-    // Prove the corruption mode we are avoiding.
-    expect(JSON.stringify(Buffer.from([1, 2, 3]))).toContain('"type":"Buffer"');
+    // Corruption modes observed on Production:
+    expect(JSON.stringify(Buffer.from([255, 216]))).toContain('"type":"Buffer"');
+    expect(String(new Uint8Array([255, 216, 255, 219]))).toBe("255,216,255,219");
   });
 });
