@@ -5,6 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 
 import { MAX_IMMEDIATE_RETRIES } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
+import { logVisionPipeline } from "@/lib/vision/pipeline-log";
 import { withPropagatedJobId } from "@/lib/work-jobs/job-id";
 import { executeWorkJob } from "@/lib/work-jobs/run";
 import {
@@ -67,6 +68,23 @@ export async function POST(request: Request): Promise<Response> {
   const safeMetadata = { ...(rawMetadata as Record<string, unknown>) };
   delete safeMetadata.userId;
   delete safeMetadata.user_id;
+
+  const attachmentIds = Array.isArray(safeMetadata.attachmentIds)
+    ? safeMetadata.attachmentIds.filter(
+        (id): id is string => typeof id === "string" && id.trim().length > 0,
+      )
+    : [];
+  logVisionPipeline({
+    stage: "job_metadata",
+    ok: true,
+    attachmentIds,
+    attachmentId: attachmentIds[0] ?? null,
+    dropReason:
+      /画像|レシート|請求|写真|スキャン|明細/.test(assignment) &&
+      attachmentIds.length === 0
+        ? "image_work_implied_but_no_attachment_ids"
+        : null,
+  });
 
   if (!assignment) {
     return Response.json(

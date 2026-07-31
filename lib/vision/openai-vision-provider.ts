@@ -52,6 +52,7 @@ import {
   bufferFromPossiblySerialized,
   inspectDataUrlIntegrity,
 } from "@/lib/vision/data-url-integrity";
+import { logVisionPipeline } from "@/lib/vision/pipeline-log";
 
 /** Per-attempt OpenAI call budget (Vercel-safe). */
 export const VISION_OPENAI_TIMEOUT_MS = 55_000;
@@ -148,6 +149,16 @@ function logVisionResponseFailure(
     request_id: details.requestId,
     ...(extra ?? {}),
   };
+
+  logVisionPipeline({
+    stage: "openai_response",
+    ok: false,
+    diagnosticId,
+    openAiHttpStatus: details.httpStatus ?? null,
+    openAiRequestId: details.requestId ?? null,
+    openAiErrorCode: details.openaiErrorCode ?? atlasCode,
+    openAiErrorMessage: details.safeMessage ?? atlasCode,
+  });
 
   if (!diagnosticId) {
     console.error("[vision] openai_error_full", payload);
@@ -578,6 +589,20 @@ export const openAiVisionProvider: VisionProvider = {
         canaryHardcodedJpeg: canary,
       });
 
+      logVisionPipeline({
+        stage: "responses_payload",
+        ok: true,
+        diagnosticId,
+        jobId: input.jobId ?? null,
+        transport,
+        fileId: uploadedFileId,
+        hasInputImage: true,
+        inputImageKind: transport === "file_id" ? "file_id" : "image_url",
+        mimeType: sendMime,
+        byteLength: sendByteLength,
+        headHex32: sendHeadHex,
+      });
+
       if (diagnosticId) {
         appendVisionDiagnosticStage(diagnosticId, "vision_request", true, {
           model: requestParams.model,
@@ -804,6 +829,23 @@ export const openAiVisionProvider: VisionProvider = {
                 : null,
           });
         }
+
+        logVisionPipeline({
+          stage: "openai_response",
+          ok: true,
+          diagnosticId,
+          jobId: input.jobId ?? null,
+          transport,
+          fileId: uploadedFileId,
+          openAiRequestId:
+            typeof (response as { id?: unknown }).id === "string"
+              ? (response as { id: string }).id
+              : null,
+          openAiHttpStatus: 200,
+          outputTextPreview: rawText.slice(0, 120),
+          mimeType: sendMime,
+          byteLength: sendByteLength,
+        });
 
         let payload;
         try {

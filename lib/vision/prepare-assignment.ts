@@ -430,6 +430,15 @@ export async function prepareAssignmentWithVision(input: {
       artifactGate: "missing_attachment_ids",
       analysisSuccess: false,
     });
+    const { logVisionPipeline } = await import("@/lib/vision/pipeline-log");
+    logVisionPipeline({
+      stage: "image_dropped",
+      ok: false,
+      diagnosticId,
+      jobId,
+      dropReason: "prepare_assignment_missing_attachment_ids",
+      attachmentIds: [],
+    });
     return {
       assignment: cleanAssignment,
       metadata: { ...(input.metadata ?? {}) },

@@ -253,10 +253,39 @@ export async function supabaseReadProcessedImageBytes(
   if (!meta) return null;
   try {
     const buffer = await downloadObject(meta.processedPath);
-    return { buffer, mimeType: meta.mimeType, meta };
-  } catch {
-    return null;
+    if (buffer.length > 0) {
+      return { buffer, mimeType: meta.mimeType, meta };
+    }
+  } catch (processedError) {
+    console.warn("[attachments] processed download failed; trying original", {
+      attachmentId: id,
+      message:
+        processedError instanceof Error
+          ? processedError.message.slice(0, 160)
+          : "download_failed",
+    });
   }
+
+  // Fallback: original bytes (preprocess will re-run in vision normalize).
+  try {
+    const buffer = await downloadObject(meta.originalPath);
+    if (buffer.length > 0) {
+      return {
+        buffer,
+        mimeType: meta.originalMimeType ?? meta.mimeType,
+        meta,
+      };
+    }
+  } catch (originalError) {
+    console.error("[attachments] original download also failed", {
+      attachmentId: id,
+      message:
+        originalError instanceof Error
+          ? originalError.message.slice(0, 160)
+          : "download_failed",
+    });
+  }
+  return null;
 }
 
 export async function supabaseDeleteImageAttachment(

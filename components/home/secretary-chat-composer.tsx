@@ -5,6 +5,15 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/design-system/cn";
+import { uploadImagesToAtlas } from "@/lib/attachments/client-upload";
+import {
+  logVisionPipeline,
+  newVisionTraceId,
+} from "@/lib/vision/pipeline-log";
+import {
+  buildWorkRequestSubmitPayload,
+  stashPendingWorkRequestSubmit,
+} from "@/lib/workspace/work-request-payload";
 
 type SpeechRecognitionLike = {
   lang: string;
@@ -69,16 +78,65 @@ export function SecretaryChatComposer() {
     setFiles((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
-  const submit = useCallback(() => {
+  const submit = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed && files.length === 0) return;
 
-    const fileNote =
-      files.length > 0
-        ? `\n\n（添付予定: ${files.map((item) => item.file.name).join("、")}）`
-        : "";
-    const assignment = `${trimmed || "添付資料の整理をお願いします。"}${fileNote}`;
-    router.push(`/workspace?assignment=${encodeURIComponent(assignment)}`);
+    const traceId = newVisionTraceId();
+    let attachmentIds: string[] = [];
+    if (files.length > 0) {
+      logVisionPipeline({
+        stage: "image_select",
+        ok: true,
+        traceId,
+        fileCount: files.length,
+        fileName: files[0]?.file.name ?? null,
+        mimeType: files[0]?.file.type || null,
+        byteLength: files[0]?.file.size ?? null,
+      });
+      try {
+        const uploaded = await uploadImagesToAtlas(
+          files.map((item) => item.file),
+          { preferReadableText: true, traceId },
+        );
+        attachmentIds = uploaded.attachments.map((item) => item.id);
+        if (attachmentIds.length === 0) {
+          logVisionPipeline({
+            stage: "image_dropped",
+            ok: false,
+            traceId,
+            dropReason: "composer_upload_returned_no_ids",
+          });
+          setVoiceHint("画像のアップロードに失敗しました。もう一度お試しください。");
+          return;
+        }
+      } catch (error) {
+        logVisionPipeline({
+          stage: "image_dropped",
+          ok: false,
+          traceId,
+          dropReason:
+            error instanceof Error
+              ? error.message.slice(0, 160)
+              : "composer_upload_failed",
+        });
+        setVoiceHint(
+          error instanceof Error
+            ? error.message
+            : "画像のアップロードに失敗しました。",
+        );
+        return;
+      }
+    }
+
+    const assignment = trimmed || "添付資料の整理をお願いします。";
+    const payload = buildWorkRequestSubmitPayload({
+      assignment,
+      attachmentIds,
+      preferredFormat: "auto",
+    });
+    stashPendingWorkRequestSubmit(payload);
+    router.push("/workspace?autostart=1");
   }, [files, router, text]);
 
   const toggleVoice = useCallback(() => {
@@ -201,7 +259,7 @@ export function SecretaryChatComposer() {
           onKeyDown={(event) => {
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
               event.preventDefault();
-              submit();
+              void submit();
             }
           }}
         />

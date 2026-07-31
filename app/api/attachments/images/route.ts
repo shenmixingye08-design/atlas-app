@@ -9,13 +9,23 @@ import {
   AttachmentStorageError,
   logAttachmentError,
 } from "@/lib/attachments/errors";
+import { logVisionPipeline } from "@/lib/vision/pipeline-log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request): Promise<Response> {
   const { userId } = await auth();
+  const traceId =
+    request.headers.get("x-atlas-vision-trace")?.trim() ||
+    `vtr_srv_${Date.now().toString(36)}`;
   if (!userId) {
+    logVisionPipeline({
+      stage: "attachment_upload_after",
+      ok: false,
+      traceId,
+      dropReason: "unauthorized",
+    });
     return Response.json({ error: "Unauthorized", code: "unauthorized" }, { status: 401 });
   }
 
@@ -24,11 +34,18 @@ export async function POST(request: Request): Promise<Response> {
     form = await request.formData();
   } catch (error) {
     logAttachmentError(error, { stage: "http.formData", userId });
+    logVisionPipeline({
+      stage: "formdata_build",
+      ok: false,
+      traceId,
+      dropReason: "formdata_parse_failed",
+    });
     return Response.json(
       {
         error: "画像の受信に失敗しました（FormData）",
         code: "formdata_failed",
         stage: "http.formData",
+        traceId,
       },
       { status: 400 },
     );
@@ -39,9 +56,31 @@ export async function POST(request: Request): Promise<Response> {
     .concat(form.getAll("file"))
     .filter((entry): entry is File => entry instanceof File);
 
+  logVisionPipeline({
+    stage: "formdata_build",
+    ok: files.length > 0,
+    traceId,
+    fileCount: files.length,
+    formDataHasFiles: files.length > 0,
+    fileName: files[0]?.name ?? null,
+    mimeType: files[0]?.type || null,
+    byteLength: files[0]?.size ?? null,
+  });
+
   if (files.length === 0) {
+    logVisionPipeline({
+      stage: "image_dropped",
+      ok: false,
+      traceId,
+      dropReason: "formdata_no_files_field",
+    });
     return Response.json(
-      { error: "画像ファイルがありません", code: "empty", stage: "http.files" },
+      {
+        error: "画像ファイルがありません",
+        code: "empty",
+        stage: "http.files",
+        traceId,
+      },
       { status: 400 },
     );
   }
@@ -54,6 +93,22 @@ export async function POST(request: Request): Promise<Response> {
         buffer: Buffer.from(await file.arrayBuffer()),
       })),
     );
+
+    const emptyBuffers = buffers.filter((b) => b.buffer.length === 0);
+    logVisionPipeline({
+      stage: "attachment_upload_before",
+      ok: emptyBuffers.length === 0,
+      traceId,
+      fileCount: buffers.length,
+      fileName: buffers[0]?.fileName ?? null,
+      mimeType: buffers[0]?.mimeType ?? null,
+      byteLength: buffers[0]?.buffer.length ?? null,
+      headHex32: buffers[0]
+        ? buffers[0].buffer.subarray(0, 32).toString("hex")
+        : null,
+      dropReason:
+        emptyBuffers.length > 0 ? "file_arraybuffer_empty" : null,
+    });
 
     const preferReadableText = form.get("preferReadableText") === "true";
     const jobIdRaw = form.get("jobId");
@@ -71,24 +126,38 @@ export async function POST(request: Request): Promise<Response> {
       retentionPolicy,
     });
 
+    const attachments = results.map((result) => ({
+      id: result.attachment.id,
+      jobId: result.attachment.jobId,
+      fileName: result.attachment.originalFileName,
+      mimeType: result.attachment.mimeType,
+      originalBytes: result.attachment.originalBytes,
+      processedBytes: result.attachment.processedBytes,
+      width: result.attachment.width,
+      height: result.attachment.height,
+      contentHash: result.attachment.contentHash,
+      createdAt: result.attachment.createdAt,
+      expiresAt: result.attachment.expiresAt,
+      retentionPolicy: result.attachment.retentionPolicy,
+      storageBackend: result.attachment.storageBackend,
+      warnings: result.warnings,
+    }));
+
+    logVisionPipeline({
+      stage: "attachment_upload_after",
+      ok: attachments.length > 0,
+      traceId,
+      attachmentIds: attachments.map((a) => a.id),
+      attachmentId: attachments[0]?.id ?? null,
+      mimeType: attachments[0]?.mimeType ?? null,
+      byteLength: attachments[0]?.processedBytes ?? null,
+      fileCount: attachments.length,
+    });
+
     return Response.json({
-      attachments: results.map((result) => ({
-        id: result.attachment.id,
-        jobId: result.attachment.jobId,
-        fileName: result.attachment.originalFileName,
-        mimeType: result.attachment.mimeType,
-        originalBytes: result.attachment.originalBytes,
-        processedBytes: result.attachment.processedBytes,
-        width: result.attachment.width,
-        height: result.attachment.height,
-        contentHash: result.attachment.contentHash,
-        createdAt: result.attachment.createdAt,
-        expiresAt: result.attachment.expiresAt,
-        retentionPolicy: result.attachment.retentionPolicy,
-        storageBackend: result.attachment.storageBackend,
-        warnings: result.warnings,
-      })),
+      attachments,
       warnings,
+      traceId,
       limits: {
         maxImagesPerRequest: ATTACHMENT_LIMITS.maxImagesPerRequest,
         maxOriginalBytes: ATTACHMENT_LIMITS.maxOriginalBytes,

@@ -17,6 +17,7 @@ import {
   createVisionDiagnostic,
 } from "@/lib/vision/diagnostics";
 import { openAiVisionProvider } from "@/lib/vision/openai-vision-provider";
+import { logVisionPipeline } from "@/lib/vision/pipeline-log";
 import type { VisionProvider } from "@/lib/vision/provider";
 import {
   VISION_PROMPT_VERSION,
@@ -136,6 +137,14 @@ export async function analyzeUserImage(input: {
   try {
     bytes = await readProcessedImageBytes(input.userId, input.attachmentId);
   } catch (error) {
+    logVisionPipeline({
+      stage: "storage_read",
+      ok: false,
+      diagnosticId,
+      jobId: input.jobId ?? null,
+      attachmentId: input.attachmentId,
+      dropReason: "storage_read_threw",
+    });
     appendVisionDiagnosticStage(diagnosticId, "storage_download", false, {
       analysisSuccess: false,
       errorCode: "storage_failed",
@@ -145,6 +154,15 @@ export async function analyzeUserImage(input: {
   }
 
   if (!bytes || bytes.buffer.length <= 0) {
+    logVisionPipeline({
+      stage: "storage_read",
+      ok: false,
+      diagnosticId,
+      jobId: input.jobId ?? null,
+      attachmentId: input.attachmentId,
+      byteLength: 0,
+      dropReason: "storage_bytes_empty_or_missing",
+    });
     appendVisionDiagnosticStage(diagnosticId, "storage_download", false, {
       downloadedByteLength: 0,
       errorCode: "empty_image",
@@ -158,6 +176,16 @@ export async function analyzeUserImage(input: {
 
   // MIME from magic bytes — never trust DB/extension alone for OpenAI payloads.
   const detectedMime = detectImageMimeFromBytes(bytes.buffer);
+  logVisionPipeline({
+    stage: "storage_read",
+    ok: true,
+    diagnosticId,
+    jobId: input.jobId ?? null,
+    attachmentId: input.attachmentId,
+    mimeType: bytes.mimeType,
+    byteLength: bytes.buffer.length,
+    headHex32: bytes.buffer.subarray(0, 32).toString("hex"),
+  });
   appendVisionDiagnosticStage(diagnosticId, "storage_download", true, {
     downloadedByteLength: bytes.buffer.length,
     mimeType: bytes.mimeType,
