@@ -8,8 +8,15 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## 最優先ドキュメント
 
-**開発・設計判断の正は [`ATLAS_RULES.md`](./ATLAS_RULES.md) です。**  
-本ファイル・README・個別 docs と矛盾する場合は、`ATLAS_RULES.md` を優先してください。
+**開発の最上位ルールは [`MINERVOT_CONSTITUTION.md`](./MINERVOT_CONSTITUTION.md)（Phase0 開発憲法）です。**  
+次点は [`ATLAS_RULES.md`](./ATLAS_RULES.md)。  
+本ファイル・README・個別 docs と矛盾する場合の優先順:
+
+1. `MINERVOT_CONSTITUTION.md`
+2. `ATLAS_RULES.md`
+3. 本ファイル / その他
+
+憲法に反する実装は禁止。すべての PR で憲法自己レビュー必須（`.github/pull_request_template.md`）。
 
 ## 基本思想
 
