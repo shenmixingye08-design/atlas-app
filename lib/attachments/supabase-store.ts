@@ -179,23 +179,34 @@ export async function supabaseSaveImageAttachment(
     ext: processedExt,
   });
 
-  // CRITICAL: never pass Node Buffer directly — some Supabase/fetch paths
-  // JSON-serialize it as {"type":"Buffer","data":[...]} which corrupts the object.
-  // Uint8Array is treated as binary body bytes.
-  const originalBytes = new Uint8Array(
-    input.originalBuffer.buffer,
-    input.originalBuffer.byteOffset,
-    input.originalBuffer.byteLength,
+  // CRITICAL: pass Blob, never Buffer/Uint8Array alone.
+  // - Buffer → JSON {"type":"Buffer","data":[...]}
+  // - Uint8Array → String(uint8) === "255,216,255,..." (Production headDown)
+  // Blob keeps a true binary body for Supabase Storage upload.
+  const originalBlob = new Blob(
+    [
+      new Uint8Array(
+        input.originalBuffer.buffer,
+        input.originalBuffer.byteOffset,
+        input.originalBuffer.byteLength,
+      ),
+    ],
+    { type: input.mimeType },
   );
-  const processedBytes = new Uint8Array(
-    input.processedBuffer.buffer,
-    input.processedBuffer.byteOffset,
-    input.processedBuffer.byteLength,
+  const processedBlob = new Blob(
+    [
+      new Uint8Array(
+        input.processedBuffer.buffer,
+        input.processedBuffer.byteOffset,
+        input.processedBuffer.byteLength,
+      ),
+    ],
+    { type: input.processedMimeType },
   );
 
   const originalUpload = await client.storage
     .from(ATLAS_IMAGE_ATTACHMENTS_BUCKET)
-    .upload(originalPath, originalBytes, {
+    .upload(originalPath, originalBlob, {
       contentType: input.mimeType,
       upsert: false,
     });
@@ -205,7 +216,7 @@ export async function supabaseSaveImageAttachment(
 
   const processedUpload = await client.storage
     .from(ATLAS_IMAGE_ATTACHMENTS_BUCKET)
-    .upload(processedPath, processedBytes, {
+    .upload(processedPath, processedBlob, {
       contentType: input.processedMimeType,
       upsert: false,
     });
