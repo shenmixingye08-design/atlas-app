@@ -130,21 +130,16 @@ async function downloadObject(path: string): Promise<Buffer> {
   if (error || !data) {
     throw classifySupabaseError(error, "storage.download");
   }
-  // Supabase returns a Blob in browsers/Node; also accept ArrayBuffer/Uint8Array.
-  if (Buffer.isBuffer(data)) return data;
-  if (data instanceof ArrayBuffer) return Buffer.from(data);
-  if (ArrayBuffer.isView(data)) {
-    return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  const arrayBuffer = await data.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  if (buffer.length === 0) {
+    throw new AttachmentStorageError({
+      code: "read_failed",
+      stage: "storage.download",
+      providerMessage: `empty download for ${path}`,
+    });
   }
-  if (typeof (data as Blob).arrayBuffer === "function") {
-    const arrayBuffer = await (data as Blob).arrayBuffer();
-    return Buffer.from(arrayBuffer);
-  }
-  throw new AttachmentStorageError({
-    code: "read_failed",
-    stage: "storage.download",
-    providerMessage: `unexpected download type=${typeof data}`,
-  });
+  return buffer;
 }
 
 async function removeObjects(paths: string[]): Promise<void> {

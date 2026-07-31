@@ -96,8 +96,7 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
 
   let attachmentId: string | null = null;
   try {
-    // Prefer a freshly generated JPEG on Production so we never depend on a
-    // fixture that might be transformed by deploy packaging.
+    // Fresh JPEG each run (avoids fixture packaging / hash-reuse orphans).
     const buffer = await sharp({
       create: {
         width: 96,
@@ -108,7 +107,6 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
     })
       .jpeg({ quality: 90 })
       .toBuffer();
-    void loadJpeg;
 
     logVisionPipeline({
       stage: "image_select",
