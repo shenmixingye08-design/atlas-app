@@ -31,4 +31,6 @@ AIなしで実装可能：一部 — ジョブ状態機械、cron、通知、履
 
 ---
 
-実装は本評価承認後、`docs/development/secretary-execution-redesign.md` のフェーズ順で進める。
+実装は本評価承認後、`docs/development/secretary-execution-redesign.md` のフェーズ順で進める。  
+手順の自動決定は `docs/development/secretary-ai-decision-engine.md`（Decision Engine 評価を同ファイル先頭に記載）。  
+競争上の不足は `docs/development/minervot-competitive-hard-review.md`。

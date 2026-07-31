@@ -2,7 +2,10 @@
 
 > 正: [`ATLAS_RULES.md`](../../ATLAS_RULES.md)  
 > 評価: [`feature-evaluations/secretary-execution-redesign.md`](./feature-evaluations/secretary-execution-redesign.md)  
-> 方針: **新規で第二のパイプラインを作らない。** 既存 Commander / Work Jobs / Automations / Notifications / Deliverables を「仕事完了」定義で束ね直す。
+> 追加: [`secretary-ai-decision-engine.md`](./secretary-ai-decision-engine.md) — AIが手順を決める（Decision Engine / Dynamic Workflow）  
+> 競争レビュー: [`minervot-competitive-hard-review.md`](./minervot-competitive-hard-review.md)  
+> 方針: **新規で第二のパイプラインを作らない。** 既存 Commander / Work Jobs / Automations / Notifications / Deliverables を「仕事完了」定義で束ね直す。  
+> ユーザーは意図だけ。Step 設定 UI は作らない。
 
 ---
 
@@ -100,18 +103,28 @@ Automation 定義
 
 ### 2.2 完了の定義（Done Definition）
 
-1つの仕事 = 依頼文に含まれるゴールまでの到達。
+1つの仕事 = 依頼文に含まれるゴールまでの到達。  
+**成果物生成だけでは完了ではない。**
+
+依頼に応じて次が揃って初めて `completed`:
+
+1. 成果物生成（必要な形式）  
+2. 保存（外部指定時）  
+3. 送信 / 投稿（指定時・承認後）  
+4. 通知  
+5. 履歴保存  
+6. 実行証跡保存  
 
 例:
 
 | 依頼 | Done |
 |------|------|
-| 毎週月曜9時に営業レポートを作成 | 生成 +（指定があれば）保存/共有 + 完了通知 |
-| 毎日18時に売上をExcelへまとめる | Excel 更新/生成 + 保存先反映 + 通知 |
-| 毎月請求書をPDF化して送信 | PDF 生成 + 送信（承認後）+ 送信証拠 + 通知 |
+| 毎週月曜9時に営業レポートを作成 | 生成 +（指定があれば）保存/共有 + 通知 + 履歴 + 証跡 |
+| 毎日18時に売上をExcelへまとめる | Excel 更新/生成 + 保存先反映 + 通知 + 履歴 + 証跡 |
+| 毎月請求書をPDF化して送信 | PDF 生成 + 送信（承認後）+ 送信証拠 + 通知 + 履歴 + 証跡 |
 
 「ファイルがダウンロード可能」だけでは Done にしない。  
-依頼に外部アクションが含まれる場合、**そのアクションの完了証拠**が必須（既存 `completion-evidence` 思想を単発にも適用）。
+詳細な Capability / 計画承認は [`secretary-ai-decision-engine.md`](./secretary-ai-decision-engine.md)。
 
 ### 2.3 ユーザー操作の最小化（MINERVOT原則）
 
@@ -487,39 +500,46 @@ AI にスケジュール計算・リトライ判定・ON/OFF をさせない。
 
 ### Phase 0 — 思想の固定（本 PR）
 
-- `ATLAS_RULES.md` 更新  
-- 本設計書 + 機能評価  
+- `ATLAS_RULES.md` 更新（実行完了 + 意図/手順の分離）  
+- 本設計書 + Decision Engine 追加設計 + 競争レビュー  
 - 実装コードの大規模変更はしない
 
 ### Phase 1 — UI の主語を「仕事」へ（コア非接触）
 
-- ホーム文言・形式セレクタ折りたたみ  
+- ホーム文言・形式セレクタ折りたたみ（手段を選ばせない）  
 - 「進行中の仕事」リスト（既存 jobs/projects 読み取り）  
-- 「成果物」ユーザー文言の置換
+- 「成果物」ユーザー文言の置換  
+- 実行計画カードの箱（中身はまずルール計画）
 
-### Phase 2 — Work ファサード API + ステップ進捗
+### Phase 2 — Work ファサード + Capability Registry + 計画 API
 
 - `atlasWorks` / runs / steps（domain または table）  
-- `/api/works*`  
-- Workspace 進捗 UI  
-- 既存 work/jobs を内部利用
+- `/api/works*` と `/plan` `/plan/approve`  
+- ルールベース Decision（既存 classify / external infer を再利用）  
+- Workspace に計画承認 → ステップ進捗
 
-### Phase 3 — 完了定義の拡張
+### Phase 2.5 — AI Decision Engine
 
-- completion-evidence を単発へ  
-- 保存/送信ステップ adapter（承認ゲート）  
+- 構造化 JSON で capabilities 判定（エコ時はルール優先）  
+- Dynamic Workflow 生成  
+- 危険 Capability は常に承認
+
+### Phase 3 — 完了定義の強制
+
+- completion-evidence を単発へ（生成・保存・送信・通知・履歴・証跡）  
+- 未充足なら `completed` にしない  
 - 通知の `targetType=work`
 
-### Phase 4 — テンプレ・複製・定期化 UX
+### Phase 4 — Smart Templates + Learning 閉ループ
 
-- テンプレ CRUD  
-- 「毎週の仕事にする」  
-- Automations UI との導線統合（見た目のみでも可）
+- 類似仕事検出、「前回と同じ流れで？」  
+- 修正/承認を Work Memory → 次回 Decision prior へ  
+- 「毎週の仕事にする」
 
-### Phase 5 — 単発ジョブの durable drain
+### Phase 5 — 単発ジョブの durable drain + 出口連携の深化
 
 - tick が queued Work も処理  
-- `after()` 依存を縮小
+- ICP に必要な Capability だけ ready 化（全部同時禁止）
 
 各 Phase はユーザー確認後に次へ（`ATLAS_RULES` §14）。
 
