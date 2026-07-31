@@ -22,6 +22,8 @@ function maxEdgeForDetail(detail: VisionDetailLevel, preferReadableText: boolean
 
 /**
  * EXIF rotate, resize, compress — keep text readable for receipts/tables.
+ * Upload-time normalization; OpenAI send path re-normalizes again via
+ * `normalizeImageForOpenAi` (sRGB / magic-byte verify / profiles).
  */
 export async function preprocessImageBuffer(input: {
   buffer: Buffer;
@@ -32,7 +34,9 @@ export async function preprocessImageBuffer(input: {
   const detail = input.detail ?? "auto";
   const preferReadableText = Boolean(input.preferReadableText);
 
-  let pipeline = sharp(input.buffer, { failOn: "none" }).rotate();
+  let pipeline = sharp(input.buffer, { failOn: "none", pages: 1 })
+    .rotate()
+    .toColourspace("srgb");
   const meta = await pipeline.metadata();
   const originalWidth = meta.width ?? 0;
   const originalHeight = meta.height ?? 0;
@@ -42,15 +46,13 @@ export async function preprocessImageBuffer(input: {
   }
 
   const maxEdge = maxEdgeForDetail(detail, preferReadableText);
-  const longest = Math.max(originalWidth, originalHeight);
-  if (longest > maxEdge) {
-    pipeline = pipeline.resize({
-      width: originalWidth >= originalHeight ? maxEdge : undefined,
-      height: originalHeight > originalWidth ? maxEdge : undefined,
-      fit: "inside",
-      withoutEnlargement: true,
-    });
-  }
+  // After EXIF rotate, width/height may swap — constrain both edges.
+  pipeline = pipeline.resize({
+    width: maxEdge,
+    height: maxEdge,
+    fit: "inside",
+    withoutEnlargement: true,
+  });
 
   // Prefer JPEG for photos; keep PNG when alpha likely matters.
   const hasAlpha = Boolean(meta.hasAlpha);
@@ -64,14 +66,26 @@ export async function preprocessImageBuffer(input: {
     buffer = await pipeline.jpeg({ quality: 88, mozjpeg: true }).toBuffer();
     mimeType = "image/jpeg";
   } else {
-    buffer = await pipeline.jpeg({ quality: 80, mozjpeg: true }).toBuffer();
+    buffer = await pipeline.jpeg({ quality: 82, mozjpeg: true }).toBuffer();
+    mimeType = "image/jpeg";
+  }
+
+  // Cap upload-processed size so Storage stays lean (OpenAI path re-encodes).
+  if (buffer.length > 4 * 1024 * 1024) {
+    warnings.push("解析用画像が大きめです。送信前に再圧縮します");
+    buffer = await sharp(buffer, { failOn: "none" })
+      .resize({
+        width: 1600,
+        height: 1600,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: 75, mozjpeg: true })
+      .toBuffer();
     mimeType = "image/jpeg";
   }
 
   const outMeta = await sharp(buffer).metadata();
-  if (buffer.length > 4 * 1024 * 1024) {
-    warnings.push("解析用画像が大きめです。詳細解析には時間がかかる場合があります");
-  }
 
   return {
     buffer,

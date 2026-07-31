@@ -158,6 +158,7 @@ export async function analyzeUserImage(input: {
     mimeType: bytes.mimeType,
   });
 
+  // Provisional data URL for legacy providers; OpenAI path re-normalizes imageBytes.
   const imageUrl = toDataUrl(bytes.mimeType, bytes.buffer);
   if (!imageUrl.includes(";base64,") || imageUrl.length < 64) {
     appendVisionDiagnosticStage(diagnosticId, "data_url", false, {
@@ -172,6 +173,12 @@ export async function analyzeUserImage(input: {
     });
   }
 
+  appendVisionDiagnosticStage(diagnosticId, "preprocess", true, {
+    downloadedByteLength: bytes.buffer.length,
+    mimeType: bytes.mimeType,
+    forceRefresh: input.forceRefresh === true,
+  });
+
   appendVisionDiagnosticStage(diagnosticId, "data_url", true, {
     base64Length: imageUrl.length,
     mimeType: bytes.mimeType,
@@ -185,6 +192,7 @@ export async function analyzeUserImage(input: {
       userId: input.userId,
       attachmentId: input.attachmentId,
       imageUrl,
+      imageBytes: bytes.buffer,
       userText: input.userText,
       hintType,
       detail,

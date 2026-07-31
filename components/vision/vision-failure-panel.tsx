@@ -49,24 +49,17 @@ export function VisionFailurePanel({
     gate.developerCode === "rate_limited" ||
     Boolean(gate.openai);
 
-  const cause =
-    gate.cause?.trim() ||
-    gate.openai?.message?.trim() ||
-    (isAiFailure ? null : null);
-
+  // User-facing Japanese only — never dump OpenAI internals here.
   const detail =
     gate.status === "needs_input"
       ? "画像は読み取れましたが、依頼の必須項目を確認できませんでした。成果物はまだ作成していません。"
       : gate.userCode === "missing_attachment_ids"
         ? "画像の添付IDが送信されていません。ファイル名だけでは解析できません。画像を選び直してください。"
-        : cause
-          ? null
-          : failedStage && !isAiFailure
-            ? messageForVisionStage(failedStage)
-            : gate.message ||
-              (gate.analysisSuccess
-                ? null
-                : "成果物の生成は停止しました。診断情報を確認してください。");
+        : gate.message ||
+          (failedStage ? messageForVisionStage(failedStage) : null) ||
+          (gate.analysisSuccess
+            ? null
+            : "成果物の生成は停止しました。内容を確認して再試行してください。");
 
   const openaiBody =
     gate.openai?.rawErrorBody?.trim() ||
@@ -108,20 +101,19 @@ export function VisionFailurePanel({
           </p>
         )}
 
-        {/* AI解析失敗: 原因 / OpenAIエラー本文 / request_id を必ず表示（generic禁止） */}
-        {isAiFailure && (
+        {/* Admin / developer only: OpenAI body + request_id */}
+        {showDeveloperHint && isAiFailure && (
           <div className="mt-3 space-y-2 rounded-lg border border-amber-200/80 bg-white/70 p-3 text-xs text-[var(--text-secondary)]">
-            <p className="font-medium text-foreground">AI解析の失敗詳細</p>
-            <p>
-              <span className="text-foreground">原因: </span>
-              {cause || gate.message || "原因未取得（ログの診断IDを確認してください）"}
-            </p>
+            <p className="font-medium text-foreground">管理者診断（OpenAI詳細）</p>
+            {gate.cause && (
+              <p>
+                <span className="text-foreground">内部原因: </span>
+                {gate.cause}
+              </p>
+            )}
             {gate.openai?.requestId && (
               <p className="break-all font-mono">
-                <span className="font-sans text-[var(--text-secondary)]">
-                  request_id:{" "}
-                </span>
-                {gate.openai.requestId}
+                request_id: {gate.openai.requestId}
               </p>
             )}
             {(gate.openai?.httpStatus != null ||

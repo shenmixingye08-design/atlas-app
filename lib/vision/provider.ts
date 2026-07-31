@@ -7,8 +7,10 @@ import type {
 export type VisionAnalyzeImageInput = {
   userId: string;
   attachmentId: string;
-  /** data URL or https URL OpenAI can fetch */
+  /** data URL (legacy) — prefer imageBytes + re-normalize in provider */
   imageUrl: string;
+  /** Raw processed/original bytes for pre-send normalization (preferred). */
+  imageBytes?: Buffer;
   userText: string;
   hintType: VisionDetectedType;
   detail: VisionDetailLevel;

@@ -31,6 +31,7 @@ import type {
   VisionOpenAiFailureInfo,
 } from "@/lib/vision/types";
 import { VisionError } from "@/lib/vision/types";
+import { userMessageForVisionFailure } from "@/lib/vision/user-error";
 import { readEffectiveCostSavingMode } from "@/lib/cost-optimization/metadata";
 import { resolveWorkJobIdFromMetadata } from "@/lib/work-jobs/job-id";
 
@@ -77,16 +78,17 @@ function buildAiFailureMessage(input: {
   failedStage: VisionPipelineStage;
   openai: VisionOpenAiFailureInfo | null;
   errorMessage: string;
+  code?: string | null;
 }): string {
   const stageLabel = labelForVisionStage(input.failedStage);
-  const openaiMsg = input.openai?.message?.trim();
-  if (openaiMsg) {
-    return `【${stageLabel}で失敗】${openaiMsg}`;
-  }
-  if (input.errorMessage.trim()) {
-    return `【${stageLabel}で失敗】${input.errorMessage}`;
-  }
-  return `【${stageLabel}で失敗】${messageForVisionStage(input.failedStage)}`;
+  const userMsg = userMessageForVisionFailure({
+    code: input.code,
+    failedStage: input.failedStage,
+    openaiCode: input.openai?.code,
+    openaiMessage: input.openai?.message,
+    httpStatus: input.openai?.httpStatus,
+  });
+  return `【${stageLabel}で失敗】${userMsg}`;
 }
 
 export type VisionPrepareResult = {
@@ -275,6 +277,7 @@ function mapVisionErrorToGate(
           failedStage: "vision_response",
           openai,
           errorMessage: error.message,
+          code: error.code,
         }),
         cause,
         openai,

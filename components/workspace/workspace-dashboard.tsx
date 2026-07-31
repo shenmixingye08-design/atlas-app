@@ -527,7 +527,12 @@ export function WorkspaceDashboard() {
             gate={visionGate}
             showDeveloperHint={Boolean(visionGate.diagnosticId)}
             onRetryAnalyze={() => {
-              void runOrchestration(assignment.trim());
+              // Re-analyze: new job, force refresh, re-normalize / fallback path.
+              void runOrchestration(assignment.trim(), null, {
+                forceVisionRefresh: true,
+                visionRetry: true,
+                visionRetryAt: new Date().toISOString(),
+              });
             }}
             onPickAnother={() => {
               setVisionGate(null);
