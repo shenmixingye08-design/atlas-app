@@ -27,11 +27,19 @@ import type {
   VisionBatchResult,
   VisionDetectedType,
   VisionErrorDetails,
+  VisionErrorKind,
   VisionGatePayload,
   VisionOpenAiFailureInfo,
 } from "@/lib/vision/types";
 import { VisionError } from "@/lib/vision/types";
-import { userMessageForVisionFailure } from "@/lib/vision/user-error";
+import {
+  VISION_NEEDS_INPUT_USER_MESSAGE,
+  VISION_NETWORK_USER_MESSAGE,
+  VISION_RATE_LIMIT_USER_MESSAGE,
+  VISION_TIMEOUT_USER_MESSAGE,
+  VISION_UNSUPPORTED_IMAGE_USER_MESSAGE,
+  userMessageForVisionFailure,
+} from "@/lib/vision/user-error";
 import { readEffectiveCostSavingMode } from "@/lib/cost-optimization/metadata";
 import { resolveWorkJobIdFromMetadata } from "@/lib/work-jobs/job-id";
 
@@ -80,7 +88,6 @@ function buildAiFailureMessage(input: {
   errorMessage: string;
   code?: string | null;
 }): string {
-  const stageLabel = labelForVisionStage(input.failedStage);
   const userMsg = userMessageForVisionFailure({
     code: input.code,
     failedStage: input.failedStage,
@@ -88,7 +95,28 @@ function buildAiFailureMessage(input: {
     openaiMessage: input.openai?.message,
     httpStatus: input.openai?.httpStatus,
   });
+  // Temporary / classified errors: show the exact user copy (no stage wrapper).
+  if (
+    input.code === "timeout" ||
+    input.code === "rate_limited" ||
+    input.code === "network" ||
+    input.code === "unsupported_type" ||
+    input.code === "invalid_data_url" ||
+    input.code === "corrupt_image"
+  ) {
+    return userMsg;
+  }
+  const stageLabel = labelForVisionStage(input.failedStage);
   return `【${stageLabel}で失敗】${userMsg}`;
+}
+
+function errorKindForVisionCode(code: string | null | undefined): VisionErrorKind {
+  if (code === "config_missing") return "config";
+  if (code === "timeout" || code === "rate_limited" || code === "network") {
+    return "temporary";
+  }
+  if (code === "needs_input") return "needs_input";
+  return "analysis_failure";
 }
 
 export type VisionPrepareResult = {
@@ -120,10 +148,13 @@ function buildUserGateMessage(input: {
   fallback?: string;
 }): string {
   if (input.status === "needs_input") {
-    return input.fallback ?? "画像内に該当情報を確認できませんでした";
+    return input.fallback ?? VISION_NEEDS_INPUT_USER_MESSAGE;
   }
   if (input.status === "config_missing") {
     return input.fallback ?? "画像解析の設定が不足しています";
+  }
+  if (input.status === "temporary_error") {
+    return input.fallback ?? VISION_TIMEOUT_USER_MESSAGE;
   }
   const stageLabel = labelForVisionStage(input.failedStage);
   const stageMessage = messageForVisionStage(input.failedStage);
@@ -141,6 +172,8 @@ function toGatePayload(input: {
   cause?: string | null;
   openai?: VisionOpenAiFailureInfo | null;
   vercelRequestId?: string | null;
+  errorKind?: VisionErrorKind;
+  reanalyzable?: boolean;
 }): VisionGatePayload {
   const failedStage = input.failedStage ?? "vision_response";
   const message =
@@ -149,11 +182,25 @@ function toGatePayload(input: {
       failedStage,
       status: input.status,
     });
+  const errorKind =
+    input.errorKind ??
+    (input.status === "needs_input"
+      ? "needs_input"
+      : input.status === "config_missing"
+        ? "config"
+        : input.status === "temporary_error"
+          ? "temporary"
+          : errorKindForVisionCode(input.developerCode));
+  const reanalyzable =
+    input.reanalyzable ??
+    (errorKind === "temporary" || input.status === "needs_image_retry");
   return {
     status: input.status,
     analysisSuccess: input.analysisSuccess,
     message,
     userCode: input.userCode,
+    errorKind,
+    reanalyzable,
     diagnosticId: input.diagnosticId ?? null,
     failedStage,
     failedStageLabel: labelForVisionStage(failedStage),
@@ -196,14 +243,27 @@ function mapVisionErrorToGate(
         userCode:
           error.code === "config_missing"
             ? "config_missing"
-            : error.code === "openai_failed" ||
-                error.code === "timeout" ||
-                error.code === "rate_limited"
-              ? "ai_analyze_failed"
-              : error.code === "json_parse_failed"
-                ? "schema_failed"
-                : "image_analyze_failed",
+            : error.code === "timeout"
+              ? "vision_temporary_error"
+              : error.code === "rate_limited"
+                ? "rate_limit"
+                : error.code === "network"
+                  ? "network"
+                  : error.code === "openai_failed"
+                    ? "ai_analyze_failed"
+                    : error.code === "json_parse_failed"
+                      ? "schema_failed"
+                      : error.code === "unsupported_type" ||
+                          error.code === "invalid_data_url" ||
+                          error.code === "corrupt_image"
+                        ? "unsupported_image"
+                        : "image_analyze_failed",
         analysisSuccess: false,
+        errorKind: errorKindForVisionCode(error.code),
+        temporaryError:
+          error.code === "timeout" ||
+          error.code === "rate_limited" ||
+          error.code === "network",
         ...detailExtras,
       });
     }
@@ -219,6 +279,8 @@ function mapVisionErrorToGate(
         messageOverride: error.message,
         cause,
         openai,
+        errorKind: "config",
+        reanalyzable: false,
       });
     }
     if (
@@ -235,18 +297,27 @@ function mapVisionErrorToGate(
         developerCode: error.code,
         cause,
         openai,
+        errorKind: "analysis_failure",
+        reanalyzable: true,
       });
     }
-    if (error.code === "unsupported_type" || error.code === "invalid_data_url") {
+    if (
+      error.code === "unsupported_type" ||
+      error.code === "invalid_data_url" ||
+      error.code === "corrupt_image"
+    ) {
       return toGatePayload({
         status: "needs_image_retry",
-        userCode: "image_format_invalid",
+        userCode: "unsupported_image",
         analysisSuccess: false,
         diagnosticId,
         failedStage,
         developerCode: error.code,
+        messageOverride: VISION_UNSUPPORTED_IMAGE_USER_MESSAGE,
         cause,
         openai,
+        errorKind: "analysis_failure",
+        reanalyzable: true,
       });
     }
     if (error.code === "json_parse_failed" || error.code === "table_extract_failed") {
@@ -259,13 +330,57 @@ function mapVisionErrorToGate(
         developerCode: error.code,
         cause,
         openai,
+        errorKind: "analysis_failure",
+        reanalyzable: true,
       });
     }
-    if (
-      error.code === "openai_failed" ||
-      error.code === "timeout" ||
-      error.code === "rate_limited"
-    ) {
+    // Timeout = temporary OpenAI outage — re-analyzable, not analysis failure.
+    if (error.code === "timeout") {
+      return toGatePayload({
+        status: "temporary_error",
+        userCode: "vision_temporary_error",
+        analysisSuccess: false,
+        diagnosticId,
+        failedStage: "vision_response",
+        developerCode: error.code,
+        messageOverride: VISION_TIMEOUT_USER_MESSAGE,
+        cause,
+        openai,
+        errorKind: "temporary",
+        reanalyzable: true,
+      });
+    }
+    if (error.code === "rate_limited") {
+      return toGatePayload({
+        status: "temporary_error",
+        userCode: "rate_limit",
+        analysisSuccess: false,
+        diagnosticId,
+        failedStage: "vision_response",
+        developerCode: error.code,
+        messageOverride: VISION_RATE_LIMIT_USER_MESSAGE,
+        cause,
+        openai,
+        errorKind: "temporary",
+        reanalyzable: true,
+      });
+    }
+    if (error.code === "network") {
+      return toGatePayload({
+        status: "temporary_error",
+        userCode: "network",
+        analysisSuccess: false,
+        diagnosticId,
+        failedStage: "vision_response",
+        developerCode: error.code,
+        messageOverride: VISION_NETWORK_USER_MESSAGE,
+        cause,
+        openai,
+        errorKind: "temporary",
+        reanalyzable: true,
+      });
+    }
+    if (error.code === "openai_failed") {
       return toGatePayload({
         status: "vision_failed",
         userCode: "ai_analyze_failed",
@@ -281,6 +396,8 @@ function mapVisionErrorToGate(
         }),
         cause,
         openai,
+        errorKind: "analysis_failure",
+        reanalyzable: true,
       });
     }
     if (error.code === "artifact_failed") {
@@ -293,6 +410,8 @@ function mapVisionErrorToGate(
         developerCode: error.code,
         cause,
         openai,
+        errorKind: "analysis_failure",
+        reanalyzable: false,
       });
     }
     return toGatePayload({
@@ -304,6 +423,8 @@ function mapVisionErrorToGate(
       developerCode: error.code,
       cause,
       openai,
+      errorKind: "analysis_failure",
+      reanalyzable: true,
     });
   }
 
@@ -477,7 +598,13 @@ export async function prepareAssignmentWithVision(input: {
           diagnosticId,
           failedStage: "blocked",
           developerCode: gate.userCode,
-          messageOverride: gate.message,
+          messageOverride:
+            gate.status === "needs_input"
+              ? VISION_NEEDS_INPUT_USER_MESSAGE
+              : gate.message,
+          errorKind:
+            gate.status === "needs_input" ? "needs_input" : "analysis_failure",
+          reanalyzable: gate.status === "needs_input",
         }),
       };
     }
@@ -561,7 +688,13 @@ export async function prepareAssignmentWithVision(input: {
             diagnosticId: batchDiagnosticId,
             failedStage: "blocked",
             developerCode: gate.userCode,
-            messageOverride: gate.message,
+            messageOverride:
+              gate.status === "needs_input"
+                ? VISION_NEEDS_INPUT_USER_MESSAGE
+                : gate.message,
+            errorKind:
+              gate.status === "needs_input" ? "needs_input" : "analysis_failure",
+            reanalyzable: gate.status === "needs_input",
           }),
           input.userId,
         ),
@@ -698,6 +831,8 @@ export async function prepareAssignmentWithVision(input: {
         visionAnalysisSuccess: false,
         visionError: gate.message,
         visionUserCode: gate.userCode,
+        visionErrorKind: gate.errorKind ?? null,
+        visionReanalyzable: gate.reanalyzable ?? false,
         visionDiagnosticId: gate.diagnosticId ?? diagnosticId,
         visionFailedStage: gate.failedStage ?? null,
         visionFailedStageLabel: gate.failedStageLabel ?? null,
@@ -706,6 +841,8 @@ export async function prepareAssignmentWithVision(input: {
         visionOpenAi: gate.openai ?? null,
         visionVercelRequestId: gate.vercelRequestId ?? null,
         visionOpenAiRequestId: gate.openai?.requestId ?? null,
+        visionOpenAiErrorCode: gate.openai?.code ?? null,
+        visionOpenAiErrorType: gate.openai?.type ?? null,
         visionDeveloperHint: formatVisionDeveloperHint({
           diagnosticId: gate.diagnosticId ?? diagnosticId,
           failedStage: isVisionPipelineStage(gate.failedStage)

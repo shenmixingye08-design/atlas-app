@@ -64,6 +64,9 @@ export async function GET(
           ? "すべて完了しました。"
           : job.status === "awaiting_confirmation"
             ? "確認が必要です。"
-            : job.error ?? "確認が必要です。",
+            : job.status === "needs_reanalysis"
+              ? job.error ??
+                "画像解析サーバーが混み合っています。数秒後に再解析してください。"
+              : job.error ?? "確認が必要です。",
   });
 }

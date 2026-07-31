@@ -37,6 +37,8 @@ import {
   shouldFallbackOpenAiFailure,
   sleep,
   VISION_MAX_ATTEMPTS,
+  VISION_TIMEOUT_MAX_ATTEMPTS,
+  visionMaxAttemptsForFailure,
   visionRetryDelayMs,
 } from "@/lib/vision/retry";
 import { validateOpenAiImageDataUrl } from "@/lib/vision/validate-openai-image-payload";
@@ -123,6 +125,20 @@ function classifyTransportFailure(
     );
   }
 
+  if (
+    details.openaiErrorType === "APIConnectionError" ||
+    /ECONNRESET|ENOTFOUND|ECONNREFUSED|socket hang up|fetch failed|network error|getaddrinfo/i.test(
+      details.safeMessage ?? "",
+    )
+  ) {
+    return new VisionError("network", `通信エラーが発生しました: ${causeMessage}`, {
+      diagnosticId,
+      failedStage: "vision_response",
+      details: openAiDetailsForLog(details),
+      cause,
+    });
+  }
+
   return new VisionError("openai_failed", causeMessage, {
     diagnosticId,
     failedStage: "vision_response",
@@ -169,7 +185,24 @@ function logVisionResponseFailure(
     openaiErrorCode: details.openaiErrorCode ?? atlasCode,
     openaiErrorType: details.openaiErrorType ?? "OpenAIError",
     errorCode: atlasCode,
-    userCode: "ai_analyze_failed",
+    userCode:
+      atlasCode === "timeout"
+        ? "vision_temporary_error"
+        : atlasCode === "rate_limited"
+          ? "rate_limit"
+          : atlasCode === "network"
+            ? "network"
+            : "ai_analyze_failed",
+    errorKind:
+      atlasCode === "timeout" ||
+      atlasCode === "rate_limited" ||
+      atlasCode === "network"
+        ? "temporary"
+        : "analysis_failure",
+    temporaryError:
+      atlasCode === "timeout" ||
+      atlasCode === "rate_limited" ||
+      atlasCode === "network",
     ...(extra ?? {}),
   });
   console.error("[vision] openai_error_full", {
@@ -296,11 +329,23 @@ export const openAiVisionProvider: VisionProvider = {
     let lastError: VisionError | null = null;
     let lastNormalized: NormalizedOpenAiImage | null = null;
 
-    for (let attempt = 1; attempt <= VISION_MAX_ATTEMPTS; attempt += 1) {
+    // Upper bound covers timeout path (1 + 3 retries). Non-timeout stops earlier.
+    for (let attempt = 1; attempt <= VISION_TIMEOUT_MAX_ATTEMPTS; attempt += 1) {
       const profile = normalizeProfileForAttempt(attempt, readable);
       const model = resolveVisionFallbackModel(primaryModel, attempt);
       const openAiDetail = resolveOpenAiVisionDetail(input.detail, attempt);
       const attemptStarted = Date.now();
+
+      const sleepBeforeRetry = async (details: {
+        timedOut?: boolean;
+        code?: string | null;
+      }) => {
+        await sleep(
+          visionRetryDelayMs(attempt, {
+            timedOut: details.timedOut === true || details.code === "timeout",
+          }),
+        );
+      };
 
       let normalized: NormalizedOpenAiImage;
       try {
@@ -694,12 +739,16 @@ export const openAiVisionProvider: VisionProvider = {
             fallbackUsed: model !== primaryModel,
           });
           lastError = mapped;
-          if (
-            attempt < VISION_MAX_ATTEMPTS &&
-            shouldFallbackOpenAiFailure(details)
-          ) {
+          const maxAttempts = visionMaxAttemptsForFailure({
+            timedOut: details.timedOut,
+            code: mapped.code,
+          });
+          if (attempt < maxAttempts && shouldFallbackOpenAiFailure(details)) {
             if (isRetryableOpenAiFailure(details)) {
-              await sleep(visionRetryDelayMs(attempt));
+              await sleepBeforeRetry({
+                timedOut: details.timedOut,
+                code: mapped.code,
+              });
             }
             continue;
           }
@@ -996,9 +1045,13 @@ export const openAiVisionProvider: VisionProvider = {
               } satisfies OpenAiVisionErrorDetails)
             : null;
 
+          const maxAttempts = visionMaxAttemptsForFailure({
+            timedOut: details?.timedOut === true,
+            code: error.code,
+          });
           if (
             details &&
-            attempt < VISION_MAX_ATTEMPTS &&
+            attempt < maxAttempts &&
             shouldFallbackOpenAiFailure(details)
           ) {
             if (diagnosticId) {
@@ -1009,18 +1062,32 @@ export const openAiVisionProvider: VisionProvider = {
                 errorCode: error.code,
                 openaiErrorCode: details.openaiErrorCode,
                 safeMessage: details.safeMessage,
+                temporaryError: error.code === "timeout",
+                errorKind:
+                  error.code === "timeout" ||
+                  error.code === "rate_limited" ||
+                  error.code === "network"
+                    ? "temporary"
+                    : "analysis_failure",
               });
             }
             if (isRetryableOpenAiFailure(details)) {
-              await sleep(visionRetryDelayMs(attempt));
+              await sleepBeforeRetry({
+                timedOut: details.timedOut,
+                code: error.code,
+              });
             }
             continue;
           }
 
-          if (attempt >= VISION_MAX_ATTEMPTS) {
+          if (attempt >= maxAttempts) {
             throw error;
           }
           if (error.code === "config_missing" || error.code === "forbidden") {
+            throw error;
+          }
+          // Non-timeout errors must not consume the timeout-only 4th attempt.
+          if (attempt >= VISION_MAX_ATTEMPTS) {
             throw error;
           }
           continue;
@@ -1044,12 +1111,16 @@ export const openAiVisionProvider: VisionProvider = {
           wireHeadHex32: wireCapture.headHex32,
         });
         lastError = mapped;
-        if (
-          attempt < VISION_MAX_ATTEMPTS &&
-          shouldFallbackOpenAiFailure(details)
-        ) {
+        const maxAttempts = visionMaxAttemptsForFailure({
+          timedOut: details.timedOut,
+          code: mapped.code,
+        });
+        if (attempt < maxAttempts && shouldFallbackOpenAiFailure(details)) {
           if (isRetryableOpenAiFailure(details)) {
-            await sleep(visionRetryDelayMs(attempt));
+            await sleepBeforeRetry({
+              timedOut: details.timedOut,
+              code: mapped.code,
+            });
           }
           continue;
         }

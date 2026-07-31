@@ -41,14 +41,21 @@ function blockedVisionResult(input: {
     assignment: stripVisionPoisonText(input.assignment),
     userId: input.userId,
   });
+  const temporary =
+    input.gate.status === "temporary_error" ||
+    input.gate.errorKind === "temporary" ||
+    input.gate.developerCode === "timeout";
   const title =
     input.gate.status === "needs_input"
       ? "画像の確認が必要です"
-      : input.gate.failedStageLabel
-        ? `画像処理に失敗しました（${input.gate.failedStageLabel}）`
-        : "画像の内容を解析できませんでした";
+      : temporary
+        ? "画像解析を再試行できます"
+        : input.gate.failedStageLabel
+          ? `画像処理に失敗しました（${input.gate.failedStageLabel}）`
+          : "画像の内容を解析できませんでした";
   return {
     runId: null,
+    // Temporary OpenAI errors still block the run, but are not analysis failures.
     status: "failed",
     plan,
     result: null,

@@ -91,7 +91,7 @@ describe("vision gate", () => {
     });
     expect(gate.analysisSuccess).toBe(true);
     expect(gate.status).toBe("needs_input");
-    expect(gate.message).toContain("画像内に該当情報を確認できませんでした");
+    expect(gate.message).toContain("画像から依頼内容を読み取れませんでした");
   });
 
   it("blocks household artifact when receipt fields are all empty", () => {

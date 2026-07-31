@@ -13,11 +13,12 @@ const STATUS_LABEL: Record<string, string> = {
   processing: "画像を解析中",
   analyzed: "画像解析が完了しました",
   needs_input: "追加確認が必要です",
+  needs_reanalysis: "再解析が可能です",
+  temporary_error: "一時エラー（再解析可能）",
   artifact_generating: "成果物を作成中",
   completed: "完了",
   failed: "画像解析に失敗しました",
 };
-
 export function VisionStatus({
   status,
   label,

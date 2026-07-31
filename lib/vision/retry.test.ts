@@ -4,6 +4,10 @@ import {
   isNonRetryableOpenAiFailure,
   isRetryableOpenAiFailure,
   shouldFallbackOpenAiFailure,
+  visionMaxAttemptsForFailure,
+  visionTimeoutRetryDelayMs,
+  VISION_TIMEOUT_MAX_ATTEMPTS,
+  VISION_TIMEOUT_RETRY_DELAYS_MS,
 } from "@/lib/vision/retry";
 import type { OpenAiVisionErrorDetails } from "@/lib/vision/openai-error-details";
 
@@ -67,5 +71,16 @@ describe("vision retry policy", () => {
         details({ openaiErrorCode: "empty_content" }),
       ),
     ).toBe(true);
+  });
+
+  it("uses fixed 2s/5s/10s delays and 4 attempts for timeout", () => {
+    expect(VISION_TIMEOUT_RETRY_DELAYS_MS).toEqual([2000, 5000, 10000]);
+    expect(visionTimeoutRetryDelayMs(1)).toBe(2000);
+    expect(visionTimeoutRetryDelayMs(2)).toBe(5000);
+    expect(visionTimeoutRetryDelayMs(3)).toBe(10000);
+    expect(visionMaxAttemptsForFailure({ timedOut: true })).toBe(
+      VISION_TIMEOUT_MAX_ATTEMPTS,
+    );
+    expect(VISION_TIMEOUT_MAX_ATTEMPTS).toBe(4);
   });
 });

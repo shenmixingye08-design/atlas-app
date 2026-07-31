@@ -263,7 +263,7 @@ export function WorkspaceDashboard() {
           }
           return;
         }
-        if (body.status === "failed") {
+        if (body.status === "failed" || body.status === "needs_reanalysis") {
           if (body.visionGate) {
             setVisionGate(body.visionGate);
             setError(body.visionGate.message);

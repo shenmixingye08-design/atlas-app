@@ -190,7 +190,7 @@ export function evaluateVisionBatchGate(input: {
     return {
       status: "needs_input",
       analysisSuccess: true,
-      message: "画像内に該当情報を確認できませんでした",
+      message: "画像から依頼内容を読み取れませんでした。",
       userCode: "needs_input",
       requiredFields: ["storeName", "date", "total"],
       missingRequiredFields: ["storeName", "date", "total"].filter(
@@ -208,7 +208,7 @@ export function evaluateVisionBatchGate(input: {
     return {
       status: "needs_input",
       analysisSuccess: true,
-      message: "画像内に該当情報を確認できませんでした",
+      message: "画像から依頼内容を読み取れませんでした。",
       userCode: "needs_input",
       requiredFields,
       missingRequiredFields,

@@ -6,6 +6,8 @@ export type {
   VisionDetectedType,
   VisionJobStatus,
   VisionErrorCode,
+  VisionErrorKind,
+  VisionGatePayload,
 } from "./types";
 export { VisionError, rethrowVisionError, VISION_PROMPT_VERSION } from "./types";
 export {
@@ -35,7 +37,16 @@ export {
   VISION_MODEL_ALLOWLIST,
 } from "./resolve-vision-model";
 export { normalizeImageForOpenAi } from "./normalize-for-openai";
-export { userMessageForVisionFailure } from "./user-error";
+export {
+  userMessageForVisionFailure,
+  VISION_TIMEOUT_USER_MESSAGE,
+  VISION_NEEDS_INPUT_USER_MESSAGE,
+  VISION_UNSUPPORTED_IMAGE_USER_MESSAGE,
+  VISION_RATE_LIMIT_USER_MESSAGE,
+  VISION_NETWORK_USER_MESSAGE,
+} from "./user-error";
+export { buildVisionAdminMetrics } from "./metrics";
+export type { VisionAdminMetrics } from "./metrics";
 export {
   formatsFromVisionBatch,
   titleFromVisionBatch,

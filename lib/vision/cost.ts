@@ -92,3 +92,17 @@ export async function getVisionUsageMeter(userId: string): Promise<VisionUsageMe
   }
   return { userId, monthKey, analyzeCount, imageCount, estimatedCostUsd };
 }
+
+/** Owner metrics — returns a shallow copy of recent cost rows (no image bytes). */
+export function listVisionCostRecordsForAdmin(limit = 2000): VisionCostRecord[] {
+  const ledger = costLedger();
+  return ledger.slice(Math.max(0, ledger.length - limit));
+}
+
+/** Test helper. */
+export function resetVisionCostLedgerForTests(): void {
+  const g = globalThis as typeof globalThis & {
+    __atlasVisionCostLedger?: MemoryCostLedger;
+  };
+  g.__atlasVisionCostLedger = [];
+}

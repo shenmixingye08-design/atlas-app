@@ -1,6 +1,20 @@
 import type { VisionErrorCode } from "@/lib/vision/types";
 import type { VisionPipelineStage } from "@/lib/vision/failure-stage";
 
+/** User-facing copy for OpenAI Vision timeout (temporary congestion). */
+export const VISION_TIMEOUT_USER_MESSAGE =
+  "画像解析サーバーが混み合っています。\n画像は受信できていますので、数秒後に再解析してください。";
+
+export const VISION_NEEDS_INPUT_USER_MESSAGE =
+  "画像から依頼内容を読み取れませんでした。";
+
+export const VISION_UNSUPPORTED_IMAGE_USER_MESSAGE =
+  "対応していない画像形式です。";
+
+export const VISION_RATE_LIMIT_USER_MESSAGE = "現在アクセスが集中しています。";
+
+export const VISION_NETWORK_USER_MESSAGE = "通信エラーが発生しました。";
+
 /**
  * Japanese user-facing copy for vision failures.
  * Never expose OpenAI internal error bodies / request_id here.
@@ -29,12 +43,11 @@ export function userMessageForVisionFailure(input: {
     input.code === "corrupt_image" ||
     openaiCode === "invalid_image" ||
     openaiCode === "invalid_image_format" ||
-    /image could not be processed|invalid image/i.test(openaiMessage)
+    /image could not be processed|invalid image|unsupported.?image/i.test(
+      openaiMessage,
+    )
   ) {
-    if (input.failedStage === "preprocess") {
-      return "画像形式を変換できませんでした。JPEGまたはPNGで送り直してください。";
-    }
-    return "画像の形式を確認できませんでした。JPEGまたはPNGで送り直してください。";
+    return VISION_UNSUPPORTED_IMAGE_USER_MESSAGE;
   }
 
   if (input.code === "too_large" || /too large|maximum.*size/i.test(openaiMessage)) {
@@ -46,16 +59,25 @@ export function userMessageForVisionFailure(input: {
     input.httpStatus === 429 ||
     openaiCode === "rate_limit_exceeded"
   ) {
-    return "AIサービスが一時的に混雑しています。少し時間をおいて再解析してください。";
+    return VISION_RATE_LIMIT_USER_MESSAGE;
   }
 
   if (
     input.code === "timeout" ||
     input.httpStatus === 408 ||
     input.httpStatus === 504 ||
-    /timeout|timed out/i.test(openaiMessage)
+    /timeout|timed out|vision_openai_timeout/i.test(openaiMessage)
   ) {
-    return "AI解析が時間切れになりました。画像を小さくして再解析してください。";
+    return VISION_TIMEOUT_USER_MESSAGE;
+  }
+
+  if (
+    input.code === "network" ||
+    /ECONNRESET|ENOTFOUND|ECONNREFUSED|socket hang up|fetch failed|network|APIConnectionError/i.test(
+      openaiMessage,
+    )
+  ) {
+    return VISION_NETWORK_USER_MESSAGE;
   }
 
   if (
@@ -64,7 +86,7 @@ export function userMessageForVisionFailure(input: {
     input.httpStatus === 503 ||
     openaiCode === "server_error"
   ) {
-    return "AIサービスが一時的に混雑しています。自動で再試行しても失敗した場合は、しばらくしてから再解析してください。";
+    return VISION_RATE_LIMIT_USER_MESSAGE;
   }
 
   if (
@@ -84,7 +106,7 @@ export function userMessageForVisionFailure(input: {
   }
 
   if (input.failedStage === "preprocess") {
-    return "画像形式を変換できませんでした。JPEGまたはPNGで送り直してください。";
+    return VISION_UNSUPPORTED_IMAGE_USER_MESSAGE;
   }
 
   if (input.failedStage === "vision_response" || input.code === "openai_failed") {
