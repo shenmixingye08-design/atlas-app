@@ -146,6 +146,13 @@ export async function loadSubscriptionFromClerk(
   }
 }
 
+function isMissingBillingTableError(message: string | undefined): boolean {
+  return Boolean(
+    message &&
+      /schema cache|does not exist|Could not find the table/i.test(message),
+  );
+}
+
 /** Prefer Supabase as source of truth when service role is configured. */
 export async function loadSubscriptionFromSupabase(
   userId: string,
@@ -161,7 +168,27 @@ export async function loadSubscriptionFromSupabase(
       .maybeSingle();
 
     if (error) {
-      console.warn(
+      if (isMissingBillingTableError(error.message)) {
+        // Attempt DDL once (Postgres URL / Management token), then retry.
+        const { ensureBillingSubscriptionsSchema } = await import(
+          "./schema-probe"
+        );
+        const ready = await ensureBillingSubscriptionsSchema();
+        if (ready) {
+          const retry = await client
+            .from(SUBSCRIPTIONS_TABLE)
+            .select("*")
+            .eq("user_id", userId)
+            .maybeSingle();
+          if (!retry.error && retry.data) {
+            return rowToRecord(retry.data as BillingSubscriptionRow);
+          }
+          if (!retry.error) return null;
+        }
+        // Do not spam warn on every /api/commander call — ensure already logged error.
+        return null;
+      }
+      console.error(
         "[billing] Supabase subscription load failed:",
         error.message,
       );
@@ -170,7 +197,7 @@ export async function loadSubscriptionFromSupabase(
     if (!data) return null;
     return rowToRecord(data as BillingSubscriptionRow);
   } catch (error) {
-    console.warn("[billing] Supabase subscription load skipped:", error);
+    console.error("[billing] Supabase subscription load skipped:", error);
     return null;
   }
 }
@@ -187,7 +214,25 @@ export async function persistSubscriptionToSupabase(
       .upsert(recordToRow(record), { onConflict: "user_id" });
 
     if (error) {
-      console.warn(
+      if (isMissingBillingTableError(error.message)) {
+        const { ensureBillingSubscriptionsSchema } = await import(
+          "./schema-probe"
+        );
+        const ready = await ensureBillingSubscriptionsSchema();
+        if (ready) {
+          const retry = await client
+            .from(SUBSCRIPTIONS_TABLE)
+            .upsert(recordToRow(record), { onConflict: "user_id" });
+          if (!retry.error) return true;
+          console.error(
+            "[billing] Supabase subscription upsert failed after ensure:",
+            retry.error.message,
+          );
+          return false;
+        }
+        return false;
+      }
+      console.error(
         "[billing] Supabase subscription upsert failed:",
         error.message,
       );
@@ -195,7 +240,7 @@ export async function persistSubscriptionToSupabase(
     }
     return true;
   } catch (error) {
-    console.warn("[billing] Supabase subscription upsert skipped:", error);
+    console.error("[billing] Supabase subscription upsert skipped:", error);
     return false;
   }
 }

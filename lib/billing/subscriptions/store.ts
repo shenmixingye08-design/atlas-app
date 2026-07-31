@@ -125,6 +125,14 @@ export async function resolveUserSubscriptionDurable(
   const cached = getUserSubscription(userId);
   if (cached) return cached;
 
+  // Ensure dedicated billing tables exist before first durable read.
+  if (isBillingSupabaseConfigured()) {
+    const { ensureBillingSubscriptionsSchema } = await import(
+      "./schema-probe"
+    );
+    await ensureBillingSubscriptionsSchema();
+  }
+
   const fromSupabase = await loadSubscriptionFromSupabase(userId);
   if (fromSupabase) {
     const bucket = getBucket();
