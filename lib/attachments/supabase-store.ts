@@ -183,26 +183,13 @@ export async function supabaseSaveImageAttachment(
   // - Buffer → JSON {"type":"Buffer","data":[...]}
   // - Uint8Array → String(uint8) === "255,216,255,..." (Production headDown)
   // Blob keeps a true binary body for Supabase Storage upload.
-  const originalBlob = new Blob(
-    [
-      new Uint8Array(
-        input.originalBuffer.buffer,
-        input.originalBuffer.byteOffset,
-        input.originalBuffer.byteLength,
-      ),
-    ],
-    { type: input.mimeType },
-  );
-  const processedBlob = new Blob(
-    [
-      new Uint8Array(
-        input.processedBuffer.buffer,
-        input.processedBuffer.byteOffset,
-        input.processedBuffer.byteLength,
-      ),
-    ],
-    { type: input.processedMimeType },
-  );
+  // Uint8Array.from(...) copies into a concrete ArrayBuffer (BlobPart-safe).
+  const originalBlob = new Blob([Uint8Array.from(input.originalBuffer)], {
+    type: input.mimeType,
+  });
+  const processedBlob = new Blob([Uint8Array.from(input.processedBuffer)], {
+    type: input.processedMimeType,
+  });
 
   const originalUpload = await client.storage
     .from(ATLAS_IMAGE_ATTACHMENTS_BUCKET)
