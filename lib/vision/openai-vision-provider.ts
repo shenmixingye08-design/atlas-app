@@ -40,6 +40,14 @@ import {
   visionRetryDelayMs,
 } from "@/lib/vision/retry";
 import { validateOpenAiImageDataUrl } from "@/lib/vision/validate-openai-image-payload";
+import {
+  captureVisionWirePayload,
+  hardcodedValidJpegDataUrl,
+} from "@/lib/vision/capture-wire-image";
+import {
+  deleteVisionImageFile,
+  uploadVisionImageFile,
+} from "@/lib/vision/upload-vision-file";
 
 /** Per-attempt OpenAI call budget (Vercel-safe). */
 export const VISION_OPENAI_TIMEOUT_MS = 55_000;
@@ -367,19 +375,86 @@ export const openAiVisionProvider: VisionProvider = {
         hintType: input.hintType,
       });
 
-      // Official Responses API shape:
-      // { type: "input_image", image_url: "data:image/jpeg;base64,...", detail }
-      // image_url MUST be a string data URL (not { url: ... }).
+      // Optional canary: prove API structure with a hardcoded known-good JPEG.
+      // If this succeeds while user images fail → preprocess path is the cause.
+      // If this also fails → request structure / model / account is the cause.
+      const canary =
+        process.env.VISION_CANARY_HARDCODED_JPEG === "1" ||
+        process.env.VISION_CANARY_HARDCODED_JPEG === "true";
+      let sendBuffer = validated.buffer;
+      let sendMime = validated.mimeType;
+      let sendDataUrl = validated.dataUrl;
+      let sendHeadHex = validated.headHex32;
+      let sendWidth = validated.width;
+      let sendHeight = validated.height;
+      let sendByteLength = validated.byteLength;
+      let sendBase64Length = validated.base64Length;
+      if (canary) {
+        // Use the hardcoded JPEG as-is (no normalize) to isolate API structure.
+        const canaryValidated = await validateOpenAiImageDataUrl({
+          dataUrl: hardcodedValidJpegDataUrl(),
+          diagnosticId,
+          jobId: input.jobId ?? null,
+        });
+        sendBuffer = canaryValidated.buffer;
+        sendMime = canaryValidated.mimeType;
+        sendDataUrl = canaryValidated.dataUrl;
+        sendHeadHex = canaryValidated.headHex32;
+        sendWidth = canaryValidated.width;
+        sendHeight = canaryValidated.height;
+        sendByteLength = canaryValidated.byteLength;
+        sendBase64Length = canaryValidated.base64Length;
+        console.warn("[vision] CANARY_HARDCODED_JPEG active", {
+          diagnosticId,
+          headHex32: sendHeadHex,
+          byteLength: sendByteLength,
+        });
+      }
+
+      // Prefer Files API file_id (official, avoids giant JSON base64).
+      // Fall back to string data URL if upload is unavailable.
+      let transport: "file_id" | "data_url" = "data_url";
+      let uploadedFileId: string | null = null;
+      if (process.env.VISION_DISABLE_FILES_API !== "1") {
+        try {
+          const uploaded = await uploadVisionImageFile({
+            buffer: sendBuffer,
+            mimeType: sendMime,
+            diagnosticId,
+          });
+          uploadedFileId = uploaded.fileId;
+          transport = "file_id";
+        } catch (error) {
+          console.warn("[vision] files_api_fallback_to_data_url", {
+            diagnosticId,
+            message:
+              error instanceof Error ? error.message.slice(0, 200) : "upload_failed",
+          });
+        }
+      }
+
+      // Official Responses API shapes (string image_url OR file_id — never nested {url}):
+      // { type: "input_image", file_id: "file-...", detail: "high" }
+      // { type: "input_image", image_url: "data:image/jpeg;base64,...", detail: "high" }
+      const imagePart =
+        transport === "file_id" && uploadedFileId
+          ? {
+              type: "input_image" as const,
+              file_id: uploadedFileId,
+              detail: openAiDetail,
+            }
+          : {
+              type: "input_image" as const,
+              image_url: sendDataUrl,
+              detail: openAiDetail,
+            };
+
       const multimodalInput = [
         {
           role: "user" as const,
           content: [
             { type: "input_text" as const, text: userText },
-            {
-              type: "input_image" as const,
-              image_url: validated.dataUrl,
-              detail: openAiDetail,
-            },
+            imagePart,
           ],
         },
       ];
@@ -391,12 +466,47 @@ export const openAiVisionProvider: VisionProvider = {
         input: multimodalInput,
       });
 
+      // Capture AFTER JSON.stringify — exact bytes OpenAI HTTP body would carry.
+      const wireBody = {
+        model: requestParams.model,
+        instructions,
+        max_output_tokens: requestParams.max_output_tokens,
+        input: multimodalInput,
+      };
+      const wireCapture = await captureVisionWirePayload({
+        diagnosticId,
+        requestBody: wireBody,
+      });
+      if (
+        transport === "data_url" &&
+        (!wireCapture.openable ||
+          (wireCapture.mimeFromMagic !== "image/jpeg" &&
+            wireCapture.mimeFromMagic !== "image/png"))
+      ) {
+        await deleteVisionImageFile(uploadedFileId);
+        throw new VisionError(
+          "corrupt_image",
+          "シリアライズ後の画像を開けないため AI へ送信しませんでした",
+          {
+            diagnosticId,
+            failedStage: "data_url",
+            details: {
+              safeMessage: wireCapture.error ?? "wire_capture_not_openable",
+              headHex32: wireCapture.headHex32,
+              mimeFromHeader: wireCapture.mimeFromHeader,
+              mimeFromMagic: wireCapture.mimeFromMagic,
+              probeDir: wireCapture.probeDir,
+            },
+          },
+        );
+      }
+
       const imageMeta = {
-        ...inspectVisionDataUrl(validated.dataUrl),
-        mimeType: validated.mimeType,
-        imageByteLength: validated.byteLength,
-        base64Length: validated.base64Length,
-        urlLength: validated.urlLength,
+        ...inspectVisionDataUrl(sendDataUrl),
+        mimeType: sendMime,
+        imageByteLength: sendByteLength,
+        base64Length: sendBase64Length,
+        urlLength: sendDataUrl.length,
         imageCount: 1 as const,
       };
       const requestLog = buildVisionOpenAiRequestLog({
@@ -417,14 +527,24 @@ export const openAiVisionProvider: VisionProvider = {
         attempt,
         profile: normalized.profile,
         fallbackModel: model !== primaryModel,
-        width: validated.width,
-        height: validated.height,
-        headHex32: validated.headHex32,
-        bufferSize: validated.byteLength,
-        base64Length: validated.base64Length,
-        mimeType: validated.mimeType,
-        image_url_is_string: typeof multimodalInput[0]?.content[1]?.image_url === "string",
-        image_url_prefix: validated.dataUrl.slice(0, 22),
+        width: sendWidth,
+        height: sendHeight,
+        headHex32: sendHeadHex,
+        bufferSize: sendByteLength,
+        base64Length: sendBase64Length,
+        mimeType: sendMime,
+        transport,
+        fileId: uploadedFileId,
+        image_url_is_string:
+          "image_url" in imagePart && typeof imagePart.image_url === "string",
+        image_url_prefix:
+          "image_url" in imagePart && typeof imagePart.image_url === "string"
+            ? imagePart.image_url.slice(0, 22)
+            : null,
+        wireProbeDir: wireCapture.probeDir,
+        wireOpenable: wireCapture.openable,
+        wireHeadHex32: wireCapture.headHex32,
+        canaryHardcodedJpeg: canary,
       });
 
       if (diagnosticId) {
@@ -433,14 +553,14 @@ export const openAiVisionProvider: VisionProvider = {
           inputImageIncluded: true,
           inputTypes: RESPONSES_INPUT_TYPES.join(","),
           apiFormat: "responses",
-          mimeType: validated.mimeType,
-          imageByteLength: validated.byteLength,
-          base64Length: validated.base64Length,
+          mimeType: sendMime,
+          imageByteLength: sendByteLength,
+          base64Length: sendBase64Length,
           imageCount: 1,
-          urlLength: validated.urlLength,
-          width: validated.width,
-          height: validated.height,
-          headHex32: validated.headHex32,
+          urlLength: sendDataUrl.length,
+          width: sendWidth,
+          height: sendHeight,
+          headHex32: sendHeadHex,
           detail: openAiDetail,
           maxOutputTokens: requestParams.max_output_tokens,
           attempt,
@@ -453,8 +573,15 @@ export const openAiVisionProvider: VisionProvider = {
           jobId: input.jobId ?? null,
           vercelRequestId,
           matchesOfficialResponsesApi: true,
-          imageUrlField: "image_url",
-          imageUrlShape: "string_data_url",
+          imageUrlField: transport === "file_id" ? "file_id" : "image_url",
+          imageUrlShape:
+            transport === "file_id" ? "file_id" : "string_data_url",
+          transport,
+          fileId: uploadedFileId,
+          wireProbeDir: wireCapture.probeDir,
+          wireOpenable: wireCapture.openable,
+          wireHeadHex32: wireCapture.headHex32,
+          canaryHardcodedJpeg: canary,
         });
       }
 
@@ -839,6 +966,9 @@ export const openAiVisionProvider: VisionProvider = {
         logVisionResponseFailure(diagnosticId, details, mapped.code, {
           attempt,
           normalizeProfile: profile,
+          transport,
+          wireProbeDir: wireCapture.probeDir,
+          wireHeadHex32: wireCapture.headHex32,
         });
         lastError = mapped;
         if (
@@ -851,6 +981,8 @@ export const openAiVisionProvider: VisionProvider = {
           continue;
         }
         throw mapped;
+      } finally {
+        await deleteVisionImageFile(uploadedFileId);
       }
     }
 
