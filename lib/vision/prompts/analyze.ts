@@ -80,6 +80,10 @@ export function buildVisionAnalyzeInstructions(input?: {
     "ユーザー画像の文字・表・グラフ・レイアウト・物体・資料構成を正確に読み取り、指定JSONのみを返してください。",
     "推測で不明項目を埋めないでください。読めない項目は missingFields と warnings に入れ、fields では null を使います。",
     "extractedText は見える文字の転記。手書きは原文を改変せず、整形は fields.cleanedText / fields.summary に分けます。",
+    "documentStructure には、人が作るWordと同じ読み順で構造を入れてください。",
+    "documentStructure の type は title|heading|paragraph|bullet|numbered|table|page_break のみ。",
+    "見出し・箇条書き・表・段落を必ず分離し、OCRのベタ書きだけにしないでください。",
+    "表は tables と documentStructure の table ブロックの両方に入れてください。",
     purpose,
     "Markdownや説明文は出力せず、JSONオブジェクトのみを返してください。",
   ].join("\n");
@@ -120,6 +124,18 @@ export function buildVisionAnalyzeUserText(input: {
       language: "ja|en|null",
       fields: {},
       tables: [{ headers: ["列"], rows: [["値"]], notes: null }],
+      documentStructure: [
+        { type: "title", text: "文書タイトル" },
+        { type: "heading", level: 2, text: "見出し" },
+        { type: "paragraph", text: "本文段落" },
+        { type: "bullet", items: ["箇条書き1", "箇条書き2"] },
+        { type: "numbered", items: ["手順1", "手順2"] },
+        {
+          type: "table",
+          headers: ["列A", "列B"],
+          rows: [["値1", "値2"]],
+        },
+      ],
       visualElements: ["ロゴ", "写真", "グラフ"],
       layout: {
         hierarchy: null,

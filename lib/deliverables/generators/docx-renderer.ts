@@ -244,7 +244,10 @@ function blocksToChildren(
           children.push(
             new Paragraph({
               spacing: { after: 80 },
-              children: [run(`${index + 1}. ${item}`, template, brand)],
+              indent: { left: 360 },
+              children: [
+                run(`${index + 1}.\u00a0${item}`, template, brand),
+              ],
             }),
           );
         });

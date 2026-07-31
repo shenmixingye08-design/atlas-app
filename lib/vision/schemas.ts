@@ -32,6 +32,29 @@ const lineItemSchema = z.object({
   notes: z.string().optional().nullable(),
 });
 
+const visionDocumentBlockSchema = z.object({
+  type: z
+    .enum([
+      "title",
+      "heading",
+      "paragraph",
+      "bullet",
+      "numbered",
+      "table",
+      "page_break",
+    ])
+    .catch("paragraph"),
+  text: z.string().optional().nullable().catch(null),
+  level: z.number().optional().nullable().catch(null),
+  items: z.array(z.string()).optional().nullable().catch(null),
+  headers: z.array(z.string()).optional().nullable().catch(null),
+  rows: z
+    .array(z.array(z.union([z.string(), z.number(), z.null()])))
+    .optional()
+    .nullable()
+    .catch(null),
+});
+
 export const visionAnalysisResultSchema = z.object({
   id: z.string().min(1),
   attachmentId: z.string().min(1),
@@ -50,6 +73,7 @@ export const visionAnalysisResultSchema = z.object({
       })
     )
     .default([]),
+  documentStructure: z.array(visionDocumentBlockSchema).optional().nullable().default([]),
   visualElements: z.array(z.string()).default([]),
   layout: z
     .object({
@@ -104,6 +128,7 @@ export const visionModelPayloadSchema = z.object({
       })
     )
     .catch([]),
+  documentStructure: z.array(visionDocumentBlockSchema).optional().nullable().catch([]),
   visualElements: z.array(z.string()).catch([]),
   layout: z
     .object({

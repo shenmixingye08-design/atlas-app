@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 
 export default function ProjectsPage() {
   return (
-    <AtlasAppShell active="projects" width="wide">
+    <AtlasAppShell active="projects" width="wide" chrome="focus">
       <Suspense fallback={<LoadingState message={ui.secretaryProgress.preparing} />}>
         <ProjectsDashboard />
       </Suspense>
