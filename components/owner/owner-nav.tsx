@@ -16,6 +16,7 @@ type OwnerNavProps = {
     | "betaUsers"
     | "betaOps"
     | "launchVerdict"
+    | "growthOs"
     | "systemStatus"
     | "externalServices"
     | "envStatus"
@@ -101,6 +102,11 @@ const LINKS = [
     id: "launchVerdict" as const,
     href: "/owner/launch-verdict",
     label: "公開判定",
+  },
+  {
+    id: "growthOs" as const,
+    href: "/owner/growth-os",
+    label: "Growth OS",
   },
   {
     id: "systemStatus" as const,
