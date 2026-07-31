@@ -22,42 +22,36 @@ export type VisionPipelineStage = (typeof VISION_PIPELINE_STAGES)[number];
 
 /** Short Japanese label for users (which step failed). */
 export const VISION_STAGE_USER_LABEL: Record<VisionPipelineStage, string> = {
-  upload: "画像アップロード",
-  preprocess: "画像の前処理",
+  upload: "画像の受け取り",
+  preprocess: "画像の整理",
   storage_save: "画像の保存",
-  storage_download: "保存画像の読み込み",
-  data_url: "AI送信用データの準備",
-  vision_request: "AIへの送信",
-  vision_response: "AI解析",
-  schema_validation: "解析結果の整理",
-  artifact_generation: "成果物の作成",
-  deliverable_save: "成果物の保存",
-  artifact_handoff: "成果物への引き渡し",
+  storage_download: "画像の読み込み",
+  data_url: "資料の準備",
+  vision_request: "内容の確認",
+  vision_response: "内容の確認",
+  schema_validation: "内容の整理",
+  artifact_generation: "資料の準備",
+  deliverable_save: "保存",
+  artifact_handoff: "仕上げ",
   blocked: "処理の停止",
 };
 
-/** User-facing explanation — clear, not technical jargon. */
+/** User-facing explanation — secretary tone; no model/tool jargon. */
 export const VISION_STAGE_USER_MESSAGE: Record<VisionPipelineStage, string> = {
   upload: "画像を受け取れませんでした。もう一度選び直してください。",
   preprocess:
-    "画像を解析用に整えられませんでした。JPEGまたはPNGで送り直してください。",
-  storage_save: "画像の保存に失敗しました。もう一度アップロードしてください。",
+    "画像を整えられませんでした。JPEGまたはPNGで送り直してください。",
+  storage_save: "画像の保存に失敗しました。もう一度お送りください。",
   storage_download:
-    "保存済みの画像を読み込めませんでした。もう一度アップロードしてください。",
-  data_url:
-    "AIに渡す画像データを準備できませんでした。別の画像でお試しください。",
-  vision_request:
-    "AI解析を開始できませんでした。少し時間をおいて再試行してください。",
-  vision_response:
-    "AIから解析結果を受け取れませんでした。再試行してください。",
-  schema_validation:
-    "AIの解析結果を整理できませんでした。再解析してください。",
-  artifact_generation:
-    "画像の内容は読み取れましたが、成果物を作成できませんでした。",
-  deliverable_save: "成果物の保存に失敗しました。再試行してください。",
-  artifact_handoff:
-    "解析結果から成果物への引き渡しに失敗しました。再試行してください。",
-  blocked: "画像解析を完了できなかったため、成果物作成を停止しました。",
+    "画像を読み込めませんでした。もう一度お送りください。",
+  data_url: "処理を続けています",
+  vision_request: "処理を続けています",
+  vision_response: "処理を続けています",
+  schema_validation: "処理を続けています",
+  artifact_generation: "処理を続けています",
+  deliverable_save: "処理を続けています",
+  artifact_handoff: "処理を続けています",
+  blocked: "お仕事を完了できませんでした。別の画像でもう一度お任せください。",
 };
 
 export function isVisionPipelineStage(value: unknown): value is VisionPipelineStage {

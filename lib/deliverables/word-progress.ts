@@ -14,13 +14,13 @@ export type WordProgressStep =
   | "completed";
 
 export const WORD_PROGRESS_LABELS: Record<WordProgressStep, string> = {
-  confirming_request: "依頼内容を確認しています",
-  creating_content: "文書内容を作成しています",
-  converting_word: "Wordファイルに変換しています",
-  verifying_file: "ファイルを確認しています",
-  saving: "保存しています",
-  preparing_deliverable: "成果物を準備しています",
-  completed: "完成しました",
+  confirming_request: "内容を確認しています",
+  creating_content: "資料を準備しています",
+  converting_word: "処理を続けています",
+  verifying_file: "仕上げています",
+  saving: "処理を続けています",
+  preparing_deliverable: "仕上げています",
+  completed: "お仕事が終わりました",
 };
 
 export function progressStepFromStage(stage: WordJobStage): WordProgressStep {

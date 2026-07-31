@@ -15,6 +15,8 @@ type VisionFailurePanelProps = {
   onPickAnother?: () => void;
   /** Show developer hint (diagnosticId / stage / codes). */
   showDeveloperHint?: boolean;
+  /** Phase3 first-run: secretary-only copy, no tech failure theater. */
+  calm?: boolean;
 };
 
 export function VisionFailurePanel({
@@ -23,6 +25,7 @@ export function VisionFailurePanel({
   onRetake,
   onPickAnother,
   showDeveloperHint = false,
+  calm = false,
 }: VisionFailurePanelProps) {
   const failedStage =
     gate.failedStage && isVisionPipelineStage(gate.failedStage)
@@ -32,14 +35,36 @@ export function VisionFailurePanel({
     gate.failedStageLabel ??
     (failedStage ? labelForVisionStage(failedStage) : null);
 
+  if (calm) {
+    return (
+      <div className="mx-auto max-w-lg space-y-6 py-16 text-center">
+        <p className="text-2xl font-semibold tracking-tight text-foreground">
+          処理を続けています
+        </p>
+        <div className="flex flex-wrap justify-center gap-2">
+          {onRetryAnalyze && gate.status !== "config_missing" && (
+            <Button type="button" onClick={onRetryAnalyze}>
+              続ける
+            </Button>
+          )}
+          {onPickAnother && (
+            <Button type="button" variant="secondary" onClick={onPickAnother}>
+              別の写真
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const title =
     gate.status === "needs_input"
       ? gate.message
       : gate.status === "config_missing"
-        ? "画像解析の設定が不足しています"
+        ? "準備が整っていません"
         : stageLabel
-          ? `画像処理に失敗しました（${stageLabel}）`
-          : "画像の内容を解析できませんでした";
+          ? `お仕事を完了できませんでした（${stageLabel}）`
+          : "お仕事を完了できませんでした";
 
   const isAiFailure =
     failedStage === "vision_response" ||
@@ -149,7 +174,7 @@ export function VisionFailurePanel({
       <div className="flex flex-wrap gap-2">
         {onRetryAnalyze && gate.status !== "config_missing" && (
           <Button type="button" size="sm" onClick={onRetryAnalyze}>
-            再解析する
+            続ける
           </Button>
         )}
         {onRetake && (

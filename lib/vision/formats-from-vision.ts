@@ -1,4 +1,5 @@
 import type { DeliverableFormat } from "@/lib/deliverables/types";
+import type { WordTemplateId } from "@/lib/deliverables/word-templates";
 import type { VisionBatchResult, VisionDetectedType } from "@/lib/vision/types";
 
 /**
@@ -62,6 +63,12 @@ export function titleFromVisionBatch(batch: VisionBatchResult): string {
     (batch.commonFields.detectedType as VisionDetectedType | undefined) ??
     batch.images[0]?.detectedType ??
     "unknown";
+  const fieldTitle =
+    typeof batch.images[0]?.fields?.title === "string"
+      ? batch.images[0].fields.title.trim()
+      : "";
+  if (fieldTitle) return fieldTitle.slice(0, 80);
+
   const map: Partial<Record<VisionDetectedType, string>> = {
     receipt: "家計簿（レシート）",
     invoice: "請求書データ",
@@ -71,11 +78,30 @@ export function titleFromVisionBatch(batch: VisionBatchResult): string {
     spreadsheet_source: "表データ",
     handwritten_note: "手書きメモ整理",
     business_card: "名刺情報",
-    sales_material: "営業資料改善案",
+    sales_material: "営業資料",
+    business_document: "業務資料",
     screenshot: "画面キャプチャ整理",
     general_photo: "写真レポート",
     property_photo: "物件写真レポート",
     equipment_photo: "設備写真レポート",
   };
-  return map[type] ?? "画像解析レポート";
+  return map[type] ?? "資料";
+}
+
+/** Pick a Word template that matches the understood image type (no AI). */
+export function wordTemplateFromVisionBatch(
+  batch: VisionBatchResult,
+  assignment = "",
+): WordTemplateId {
+  const type =
+    (batch.commonFields.detectedType as VisionDetectedType | undefined) ??
+    batch.images[0]?.detectedType ??
+    "unknown";
+  if (/議事録|会議/.test(assignment)) return "meeting-minutes";
+  if (/提案/.test(assignment) || type === "sales_material") return "proposal";
+  if (/比較|見積/.test(assignment) || type === "table") return "comparison-table";
+  if (type === "contract") return "customer-letter";
+  if (type === "chart" || type === "business_document") return "business-report";
+  if (type === "invoice" || type === "estimate") return "sales-report";
+  return "standard-document";
 }
