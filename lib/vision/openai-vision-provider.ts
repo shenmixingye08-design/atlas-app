@@ -48,6 +48,10 @@ import {
   deleteVisionImageFile,
   uploadVisionImageFile,
 } from "@/lib/vision/upload-vision-file";
+import {
+  bufferFromPossiblySerialized,
+  inspectDataUrlIntegrity,
+} from "@/lib/vision/data-url-integrity";
 
 /** Per-attempt OpenAI call budget (Vercel-safe). */
 export const VISION_OPENAI_TIMEOUT_MS = 55_000;
@@ -290,12 +294,39 @@ export const openAiVisionProvider: VisionProvider = {
       let normalized: NormalizedOpenAiImage;
       try {
         // Prefer re-normalizing raw bytes when provided; else decode data URL.
-        const sourceBuffer = input.imageBytes
-          ? input.imageBytes
-          : Buffer.from(
-              input.imageUrl.slice(input.imageUrl.indexOf(",") + 1),
-              "base64",
+        // Guard against JSON-serialized Buffer {type:'Buffer',data:[]} across RPC.
+        const recoveredBytes = bufferFromPossiblySerialized(input.imageBytes);
+        let sourceBuffer: Buffer;
+        if (recoveredBytes) {
+          sourceBuffer = recoveredBytes;
+        } else {
+          const integrity = inspectDataUrlIntegrity(input.imageUrl);
+          if (!integrity.ok) {
+            throw new VisionError(
+              "invalid_data_url",
+              `送信前 data URL 破損: ${integrity.issues.map((i) => i.code).join(",")}`,
+              {
+                diagnosticId,
+                failedStage: "data_url",
+                details: {
+                  safeMessage: integrity.issues.map((i) => i.code).join(","),
+                  looksDoubleBase64Encoded: integrity.looksDoubleBase64Encoded,
+                  hasDataPrefixDuplicate: integrity.hasDataPrefixDuplicate,
+                },
+              },
             );
+          }
+          sourceBuffer = Buffer.from(
+            input.imageUrl.slice(input.imageUrl.indexOf(",") + 1).replace(/\s+/g, ""),
+            "base64",
+          );
+        }
+        if (!Buffer.isBuffer(sourceBuffer)) {
+          throw new VisionError("corrupt_image", "画像 Buffer が不正です", {
+            diagnosticId,
+            failedStage: "preprocess",
+          });
+        }
         normalized = await normalizeImageForOpenAi({
           buffer: sourceBuffer,
           profile,

@@ -59,7 +59,9 @@ export async function analyzeUserImage(input: {
   jobId?: string | null;
   diagnosticId?: string | null;
 }): Promise<VisionAnalysisResult & { diagnosticId?: string }> {
-  let diagnosticId = input.diagnosticId ?? null;
+  // Reanalyze (forceRefresh) always mints a new diagnostic — never reuse a failed id.
+  let diagnosticId =
+    input.forceRefresh === true ? null : (input.diagnosticId ?? null);
   if (!diagnosticId) {
     diagnosticId = createVisionDiagnostic({
       userId: input.userId,

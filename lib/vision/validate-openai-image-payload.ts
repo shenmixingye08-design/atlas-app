@@ -6,6 +6,7 @@ import { join } from "node:path";
 import sharp from "sharp";
 
 import { detectImageMimeFromBytes } from "@/lib/vision/image-magic";
+import { inspectDataUrlIntegrity } from "@/lib/vision/data-url-integrity";
 import { VisionError } from "@/lib/vision/types";
 
 /** Only these MIME types are accepted for OpenAI Responses `input_image` data URLs. */
@@ -97,6 +98,27 @@ export async function validateOpenAiImageDataUrl(input: {
       diagnosticId: input.diagnosticId,
       failedStage: "data_url",
     });
+  }
+
+  const integrity = inspectDataUrlIntegrity(dataUrl);
+  if (!integrity.ok) {
+    throw new VisionError(
+      "invalid_data_url",
+      `data URL が破損しています: ${integrity.issues.map((i) => i.code).join(",")}`,
+      {
+        diagnosticId: input.diagnosticId,
+        failedStage: "data_url",
+        details: {
+          safeMessage: integrity.issues.map((i) => i.code).join(","),
+          hasDataPrefixDuplicate: integrity.hasDataPrefixDuplicate,
+          looksDoubleBase64Encoded: integrity.looksDoubleBase64Encoded,
+          plusBecameSpace: integrity.plusBecameSpace,
+          urlEncoded: integrity.urlEncoded,
+          hasWhitespaceInBase64: integrity.hasWhitespaceInBase64,
+          headerPreview: (integrity.header ?? "").slice(0, 80),
+        },
+      },
+    );
   }
 
   // Reject image/jpg, webp, heic, charset params, missing base64 marker, etc.
