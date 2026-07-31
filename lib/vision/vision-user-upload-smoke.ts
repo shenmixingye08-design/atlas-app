@@ -249,8 +249,27 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
         ? (error as { diagnosticId: string }).diagnosticId
         : null;
     base.diagnosticId = diagnosticId;
-    base.error =
-      error instanceof Error ? error.message.slice(0, 400) : String(error);
+    const providerMessage =
+      error &&
+      typeof error === "object" &&
+      "providerMessage" in error &&
+      typeof (error as { providerMessage?: unknown }).providerMessage === "string"
+        ? (error as { providerMessage: string }).providerMessage
+        : null;
+    const errStage =
+      error &&
+      typeof error === "object" &&
+      "stage" in error &&
+      typeof (error as { stage?: unknown }).stage === "string"
+        ? (error as { stage: string }).stage
+        : null;
+    base.error = [
+      error instanceof Error ? error.message.slice(0, 240) : String(error),
+      errStage ? `stage=${errStage}` : null,
+      providerMessage ? providerMessage.slice(0, 240) : null,
+    ]
+      .filter(Boolean)
+      .join(" | ");
     base.durationMs = Date.now() - started;
     logVisionPipeline({
       stage: "image_dropped",
