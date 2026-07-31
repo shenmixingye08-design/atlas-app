@@ -72,7 +72,6 @@ export function WorkspaceDashboard() {
   >(null);
   const [, setWorkMemoryCandidateCount] = useState(0);
   const [taughtWorkflowHint, setTaughtWorkflowHint] = useState(false);
-  const [backgroundAccepted, setBackgroundAccepted] = useState(false);
   const [pendingCommander, setPendingCommander] =
     useState<CommanderRunResult | null>(null);
 
@@ -116,24 +115,13 @@ export function WorkspaceDashboard() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!isLoading) {
-      const resetTimer = window.setTimeout(() => {
-        setBackgroundAccepted(false);
-      }, 0);
-      return () => window.clearTimeout(resetTimer);
-    }
-    const acceptedTimer = window.setTimeout(() => {
-      setBackgroundAccepted(true);
-    }, 3_000);
+    if (!isLoading) return undefined;
     const interval = setInterval(() => {
       setLoadingStepIndex((prev) =>
         Math.min(prev + 1, loadingPhases.length - 1),
       );
     }, LOADING_STEP_INTERVAL_MS);
-    return () => {
-      window.clearTimeout(acceptedTimer);
-      clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, [isLoading, loadingPhases.length]);
 
   useEffect(() => {
@@ -160,7 +148,6 @@ export function WorkspaceDashboard() {
     setWorkMemoryCandidateCount(0);
     setPendingCommander(null);
     setIsLoading(true);
-    setBackgroundAccepted(false);
     setLoadingStepIndex(0);
     setLoadingPhases(buildLoadingPhases(0));
 
@@ -204,7 +191,6 @@ export function WorkspaceDashboard() {
         );
       }
 
-      setBackgroundAccepted(true);
       const jobId = acceptBody.jobId;
 
       // Poll until completed / failed / confirmation.
@@ -226,7 +212,6 @@ export function WorkspaceDashboard() {
         if (body.status === "awaiting_confirmation") {
           // Fall back to interactive confirm via classic path when needed.
           setIsLoading(false);
-          setBackgroundAccepted(false);
           const orchestrationResult = await submitWorkRequest(
             requestAssignment,
             undefined,
@@ -277,7 +262,6 @@ export function WorkspaceDashboard() {
       if (err instanceof CommanderConfirmationRequiredError) {
         setPendingCommander(err.commander);
         setIsLoading(false);
-        setBackgroundAccepted(false);
         return;
       }
       const message =
@@ -287,7 +271,6 @@ export function WorkspaceDashboard() {
       setError(message);
     } finally {
       setIsLoading(false);
-      setBackgroundAccepted(false);
     }
   }, []);
 
@@ -334,7 +317,15 @@ export function WorkspaceDashboard() {
     setRequestMetadata(payload.metadata);
     setAssignment(trimmed);
 
-    if (isSalesMaterialRequest(assignment.trim()) || isSalesMaterialRequest(trimmed)) {
+    // Phase3 first-run: never interrupt with sales wizard / settings.
+    const firstRunPath =
+      homeAutostart || searchParams.get("autostart") === "1";
+
+    if (
+      !firstRunPath &&
+      (isSalesMaterialRequest(assignment.trim()) ||
+        isSalesMaterialRequest(trimmed))
+    ) {
       if (!isAvailable("sales_material")) {
         setError(ui.featureFlags.userDisabledSalesMaterial);
         return;
@@ -537,9 +528,10 @@ export function WorkspaceDashboard() {
         <div className="mx-auto max-w-lg space-y-3">
           <VisionFailurePanel
             gate={visionGate}
-            showDeveloperHint={Boolean(visionGate.diagnosticId)}
+            calm={homeAutostart}
+            showDeveloperHint={!homeAutostart && Boolean(visionGate.diagnosticId)}
             onRetryAnalyze={() => {
-              // Re-analyze: new job, force refresh, re-normalize / fallback path.
+              // Silent continue — same path, no tech explanation.
               void runOrchestration(assignment.trim(), null, {
                 forceVisionRefresh: true,
                 visionRetry: true,
@@ -551,28 +543,25 @@ export function WorkspaceDashboard() {
               setError(null);
             }}
           />
-          <VisionDiagnosticsPanel
-            diagnosticId={visionGate.diagnosticId}
-            enabled={showVisionDiagnostics}
-            showToggle={Boolean(visionGate.diagnosticId)}
-            onToggle={() => setShowVisionDiagnostics((v) => !v)}
-          />
+          {!homeAutostart && (
+            <VisionDiagnosticsPanel
+              diagnosticId={visionGate.diagnosticId}
+              enabled={showVisionDiagnostics}
+              showToggle={Boolean(visionGate.diagnosticId)}
+              onToggle={() => setShowVisionDiagnostics((v) => !v)}
+            />
+          )}
         </div>
       )}
 
       {error && !visionGate && !result && !outlineOnlyText && (
-        <ErrorState message={error} />
+        <ErrorState
+          message={homeAutostart ? ui.secretaryProgress.write : error}
+        />
       )}
 
-      {isLoading && backgroundAccepted && (
-        <section className="mx-auto max-w-lg space-y-4 py-16 text-center animate-fade-in">
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-            {ui.secretaryProgress.write}
-          </h2>
-        </section>
-      )}
-
-      {isLoading && !backgroundAccepted && (
+      {/* Phase3: keep cycling secretary phrases for the full wait (incl. 30s+). */}
+      {isLoading && (
         <WorkflowResults
           result={result}
           loadingPhases={loadingPhases}

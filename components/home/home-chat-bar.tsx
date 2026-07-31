@@ -1,31 +1,50 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
+import {
+  getUploadedAttachmentIds,
+  ImageAttachmentPicker,
+  type LocalImageDraft,
+} from "@/components/vision/image-attachment-picker";
 import {
   buildWorkRequestSubmitPayload,
   stashPendingWorkRequestSubmit,
 } from "@/lib/workspace/work-request-payload";
 
 /**
- * Phase1 home hero — ask + 任せる only.
- * No attachments, formats, hints, or tool names.
+ * Phase3 first-run — one wow job: photo → work document.
+ * Ask + optional photo + 任せる. No tutorials / formats / tech labels.
  */
 export function HomeChatBar() {
   const router = useRouter();
   const [input, setInput] = useState("");
+  const [imageDrafts, setImageDrafts] = useState<LocalImageDraft[]>([]);
+
+  const uploading = imageDrafts.some(
+    (d) => d.status === "pending" || d.status === "uploading",
+  );
+  const uploadedIds = getUploadedAttachmentIds(imageDrafts);
+  const failedImages = imageDrafts.filter((d) => d.status === "failed");
+
+  // When a photo arrives with empty input, seed the single wow example.
+  useEffect(() => {
+    if (uploadedIds.length > 0 && !input.trim()) {
+      setInput(ui.secretaryHome.askPlaceholder);
+    }
+  }, [uploadedIds.length, input]);
 
   const submitToWork = () => {
-    const trimmed = input.trim();
-    if (!trimmed) return;
+    const trimmed = input.trim() || ui.secretaryHome.askPlaceholder;
+    if (!trimmed || uploading || failedImages.length > 0) return;
 
     const payload = buildWorkRequestSubmitPayload({
       assignment: trimmed,
-      attachmentIds: [],
+      attachmentIds: uploadedIds,
       documents: [],
       preferredFormat: "auto",
     });
@@ -39,6 +58,11 @@ export function HomeChatBar() {
 
     router.push("/workspace?autostart=1");
   };
+
+  const canSubmit =
+    (input.trim().length > 0 || uploadedIds.length > 0) &&
+    !uploading &&
+    failedImages.length === 0;
 
   return (
     <section aria-labelledby="home-ask-heading" className="space-y-5 overflow-x-hidden">
@@ -65,13 +89,23 @@ export function HomeChatBar() {
           }}
         />
 
+        <div className="mt-4">
+          <ImageAttachmentPicker
+            value={imageDrafts}
+            onChange={setImageDrafts}
+            preferReadableText
+            variant="firstRun"
+          />
+        </div>
+
         <div className="mt-5 pb-[env(safe-area-inset-bottom)]">
           <Button
             variant="primary"
             size="lg"
             className="h-14 w-full rounded-full text-base sm:h-16 sm:text-lg"
             onClick={submitToWork}
-            disabled={!input.trim()}
+            disabled={!canSubmit}
+            isLoading={uploading}
           >
             {ui.secretaryHome.askSubmit}
           </Button>
