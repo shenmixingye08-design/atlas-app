@@ -1,10 +1,17 @@
 import type { VisionBatchResult, VisionDetectedType } from "@/lib/vision/types";
 
+import { batchStructureToMarkdown } from "./structure-to-markdown";
+
 /**
  * Convert vision batch into deliverable-facing content (tables / structured text).
- * Used before generateDeliverables without modifying artifact-engine cores.
+ * Prefer documentStructure → human Word; never OCR-only dump.
  */
 export function visionBatchToDeliverableContent(batch: VisionBatchResult): string {
+  const structured = batchStructureToMarkdown(batch);
+  if (structured.length >= 80) {
+    return structured;
+  }
+
   const type =
     (batch.commonFields.detectedType as VisionDetectedType | undefined) ??
     batch.images[0]?.detectedType ??
@@ -53,15 +60,29 @@ export function visionBatchToDeliverableContent(batch: VisionBatchResult): strin
     return buildPhotoReportMarkdown(batch);
   }
 
+  const title =
+    (typeof batch.images[0]?.fields?.title === "string" &&
+      String(batch.images[0].fields.title).trim()) ||
+    "資料";
   return [
-    `# 画像解析結果`,
-    batch.combinedSummary,
+    `# ${title}`,
+    "",
+    "## 概要",
+    batch.combinedSummary || "画像内容を整理しました。",
+    "",
     ...batch.images.map((image, i) => {
+      const bullets = image.visualElements.slice(0, 8).map((v) => `- ${v}`);
       return [
-        `## 画像${i + 1}`,
+        `## 内容 ${i + 1}`,
         image.summary,
-        image.extractedText ?? "",
-      ].join("\n");
+        "",
+        image.extractedText?.trim()
+          ? `### 読み取った内容\n\n${image.extractedText.trim()}`
+          : "",
+        bullets.length ? `### 要点\n\n${bullets.join("\n")}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
     }),
   ].join("\n\n");
 }
@@ -208,26 +229,44 @@ function buildBusinessCardMarkdown(batch: VisionBatchResult): string {
 function buildSalesImproveMarkdown(batch: VisionBatchResult): string {
   const image = batch.images[0];
   const f = image?.fields ?? {};
+  const benefits = Array.isArray(f.benefits)
+    ? (f.benefits as unknown[]).map((b) => `- ${String(b)}`)
+    : asString(f.benefits)
+      ? asString(f.benefits)
+          .split(/[、,\n]/)
+          .map((b) => b.trim())
+          .filter(Boolean)
+          .map((b) => `- ${b}`)
+      : ["- ご提供価値を明確化してください"];
+  const weaknesses = Array.isArray(f.weaknesses)
+    ? (f.weaknesses as unknown[]).map((w) => `- ${String(w)}`)
+    : image?.warnings.map((w) => `- ${w}`) ?? ["- （特記なし）"];
   return [
-    "# 営業資料の改善版ドラフト",
+    "# 営業資料",
     "",
-    `## 対象読者\n${asString(f.targetAudience) || "要確認"}`,
-    `## 主要メッセージ\n${asString(f.keyMessage) || image?.summary || ""}`,
-    `## ベネフィット\n${asString(f.benefits) || ""}`,
-    `## CTA\n${asString(f.callToAction) || "要確認"}`,
-    `## 問い合わせ\n${asString(f.contactInfo) || "要確認"}`,
+    "## 対象読者",
+    asString(f.targetAudience) || "要確認",
+    "",
+    "## 主要メッセージ",
+    asString(f.keyMessage) || image?.summary || "要確認",
+    "",
+    "## ベネフィット",
+    ...benefits,
+    "",
+    "## 次のアクション",
+    asString(f.callToAction) || "お気軽にお問い合わせください。",
+    "",
+    "## お問い合わせ",
+    asString(f.contactInfo) || "要確認",
     "",
     "## 現状の課題",
-    asString(f.weaknesses) ||
-      (Array.isArray(f.weaknesses)
-        ? (f.weaknesses as unknown[]).map((w) => `- ${String(w)}`).join("\n")
-        : image?.warnings.map((w) => `- ${w}`).join("\n") || "- （特記なし）"),
+    ...weaknesses,
     "",
     "## 改善方針",
-    ...(image?.recommendedActions.map((a) => `- ${a}`) ?? ["- 読みやすさとCTAを明確化"]),
-    "",
-    "## 参考抽出テキスト",
-    image?.extractedText ?? "",
+    ...(image?.recommendedActions.map((a) => `- ${a}`) ?? [
+      "- 見出しと要点を先に置く",
+      "- 表と箇条書きで読みやすくする",
+    ]),
   ].join("\n");
 }
 
@@ -236,29 +275,33 @@ function buildContractMarkdown(batch: VisionBatchResult): string {
     .map((image, i) => {
       const f = image.fields;
       const clauses = Array.isArray(f.keyClauses)
-        ? (f.keyClauses as unknown[]).map((c, idx) => `${idx + 1}. ${String(c)}`)
+        ? (f.keyClauses as unknown[]).map((c) => String(c))
         : asString(f.keyClauses)
           ? [asString(f.keyClauses)]
-          : ["（条項を十分に読み取れませんでした）"];
+          : ["条項を十分に読み取れませんでした。原紙をご確認ください。"];
       return [
-        `# 契約書要約 ${i + 1}`,
-        `- 当事者: ${asString(f.parties) || "要確認"}`,
-        `- 契約日/発効日: ${asString(f.effectiveDate) || "要確認"}`,
-        `- 終了日: ${asString(f.expiryDate) || "要確認"}`,
-        `- 金額: ${asString(f.amounts) || "要確認"}`,
-        `- 準拠法: ${asString(f.governingLaw) || "要確認"}`,
+        `# 契約書要約${batch.images.length > 1 ? `（${i + 1}）` : ""}`,
+        "",
+        "## 基本情報",
+        `| 項目 | 内容 |`,
+        `| --- | --- |`,
+        `| 当事者 | ${asString(f.parties) || "要確認"} |`,
+        `| 発効日 | ${asString(f.effectiveDate) || "要確認"} |`,
+        `| 終了日 | ${asString(f.expiryDate) || "要確認"} |`,
+        `| 金額 | ${asString(f.amounts) || "要確認"} |`,
+        `| 準拠法 | ${asString(f.governingLaw) || "要確認"} |`,
         "",
         "## 重要条項",
-        ...clauses.map((c) => (c.startsWith("-") ? c : `- ${c}`)),
+        ...clauses.map((c, idx) => `${idx + 1}. ${c.replace(/^\d+\.\s*/, "")}`),
         "",
-        "## 抽出テキスト",
-        image.extractedText || "（なし）",
+        "## 補足",
+        image.extractedText?.trim() || "特記事項はありません。",
         image.missingFields.length
-          ? `\n要確認: ${image.missingFields.join("、")}`
+          ? `\n### 要確認\n\n${image.missingFields.map((m) => `- ${m}`).join("\n")}`
           : "",
       ].join("\n");
     })
-    .join("\n\n");
+    .join("\n\n---\n\n");
 }
 
 function buildChartMarkdown(batch: VisionBatchResult): string {
@@ -323,20 +366,26 @@ function buildScreenshotMarkdown(batch: VisionBatchResult): string {
 function buildPhotoReportMarkdown(batch: VisionBatchResult): string {
   return [
     "# 写真レポート",
-    batch.combinedSummary,
+    "",
+    "## 概要",
+    batch.combinedSummary || "写真内容を整理しました。",
     "",
     ...batch.images.map((image, i) => {
       return [
-        `## 写真${i + 1}`,
-        `- 種別: ${image.detectedType}`,
-        `- 要約: ${image.summary}`,
+        `## 写真 ${i + 1}`,
+        "",
+        "### 状況",
+        image.summary,
+        "",
         image.visualElements.length
-          ? `- 写っているもの: ${image.visualElements.join("、")}`
-          : null,
-        image.extractedText ? `- 文字: ${image.extractedText}` : null,
+          ? `### 確認できた要素\n\n${image.visualElements.map((v) => `- ${v}`).join("\n")}`
+          : "",
+        image.extractedText?.trim()
+          ? `### 読み取った文字\n\n${image.extractedText.trim()}`
+          : "",
         image.recommendedActions.length
-          ? `- 次の行動: ${image.recommendedActions.join(" / ")}`
-          : null,
+          ? `### 次の対応\n\n${image.recommendedActions.map((a) => `1. ${a}`).join("\n")}`
+          : "",
       ]
         .filter(Boolean)
         .join("\n");

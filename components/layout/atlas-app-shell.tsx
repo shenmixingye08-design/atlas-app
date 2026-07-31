@@ -10,6 +10,11 @@ type AtlasAppShellProps = {
   children: React.ReactNode;
   /** narrow: workspace/chat · default: home · wide: grids */
   width?: "narrow" | "default" | "wide";
+  /**
+   * focus: Phase1 home — no sidebar / history / settings chrome.
+   * full: standard app shell.
+   */
+  chrome?: "full" | "focus";
 };
 
 const MAIN_WIDTH: Record<NonNullable<AtlasAppShellProps["width"]>, string> = {
@@ -22,22 +27,29 @@ export function AtlasAppShell({
   active,
   children,
   width = "default",
+  chrome = "full",
 }: AtlasAppShellProps) {
+  const focus = chrome === "focus";
+
   return (
     <div className="minervot-lux relative min-h-screen bg-[var(--background)] text-foreground">
       <AtlasBackground />
-      <AtlasSidebar active={active} />
-      {/* Desktop: fixed bell + account top-right */}
-      <div
-        className="fixed top-0 z-[60] hidden h-14 items-center justify-end gap-2 border-b border-[var(--border-subtle)] bg-[var(--card-glass)] px-6 backdrop-blur-xl md:flex md:left-[var(--sidebar-width)] md:right-0"
-        aria-label="アカウントと通知"
-      >
-        <AtlasTopActions />
-      </div>
-      <div className="app-shell-content md:pl-[var(--sidebar-width)]">
+      {!focus && <AtlasSidebar active={active} />}
+      {!focus && (
+        <div
+          className="fixed top-0 z-[60] hidden h-14 items-center justify-end gap-2 border-b border-[var(--border-subtle)] bg-[var(--card-glass)] px-6 backdrop-blur-xl md:flex md:left-[var(--sidebar-width)] md:right-0"
+          aria-label="アカウントと通知"
+        >
+          <AtlasTopActions />
+        </div>
+      )}
+      <div className={cn("app-shell-content", !focus && "md:pl-[var(--sidebar-width)]")}>
         <main
           className={cn(
-            "app-shell-main mx-auto w-full px-4 pt-[calc(var(--mobile-top-bar-height)+1rem)] sm:px-6 md:px-10 md:pt-[calc(3.5rem+1.5rem)] animate-page",
+            "app-shell-main mx-auto w-full px-4 sm:px-6 md:px-10 animate-page",
+            focus
+              ? "pt-8 md:pt-12"
+              : "pt-[calc(var(--mobile-top-bar-height)+1rem)] md:pt-[calc(3.5rem+1.5rem)]",
             MAIN_WIDTH[width],
           )}
         >

@@ -36,24 +36,18 @@ export type UserRecoveryAction =
   | "send_support_info";
 
 const MESSAGES: Record<DeliverableFailureKind, string> = {
-  ai_content:
-    "AI応答の作成で問題がありました。入力内容は保存されています。再実行してください。",
-  word_convert:
-    "文書内容は完成しましたが、Wordファイルへの変換に失敗しました。",
-  persist: "Wordファイルは完成しましたが、Storageへの保存に失敗しました。",
-  download:
-    "Wordファイルは保存されています。ダウンロードをもう一度お試しください。",
-  notification:
-    "Wordファイルは完成しています。成果物一覧から確認できます。",
+  ai_content: "処理を続けています",
+  word_convert: "処理を続けています",
+  persist: "処理を続けています",
+  download: "こちらをご確認ください。もう一度お開きください。",
+  notification: "お仕事が終わりました。こちらです。",
   auth: "確認が必要です。もう一度ログインしてください。",
   forbidden: "このファイルを表示する権限がありません。",
-  expired:
-    "保存期限を過ぎた可能性があります。元の内容から再生成できます。",
+  expired: "保存期限を過ぎた可能性があります。もう一度お任せください。",
   deleted: "この成果物は削除されています。",
-  recovery_failed:
-    "自動復旧できませんでした。再実行するか、サポートへエラー情報を送信してください。",
-  timeout: "処理時間の上限に達しました。もう一度お試しください。",
-  unknown: "処理を完了できませんでした。内容をご確認ください。",
+  recovery_failed: "処理を続けています",
+  timeout: "処理を続けています",
+  unknown: "処理を続けています",
 };
 
 const TITLES: Record<WordFailureCategory, string> = {

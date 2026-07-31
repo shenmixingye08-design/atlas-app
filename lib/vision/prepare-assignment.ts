@@ -80,7 +80,6 @@ function buildAiFailureMessage(input: {
   errorMessage: string;
   code?: string | null;
 }): string {
-  const stageLabel = labelForVisionStage(input.failedStage);
   const userMsg = userMessageForVisionFailure({
     code: input.code,
     failedStage: input.failedStage,
@@ -88,6 +87,9 @@ function buildAiFailureMessage(input: {
     openaiMessage: input.openai?.message,
     httpStatus: input.openai?.httpStatus,
   });
+  // Retryable / in-flight copy stays secretary-safe.
+  if (userMsg === "処理を続けています") return userMsg;
+  const stageLabel = labelForVisionStage(input.failedStage);
   return `【${stageLabel}で失敗】${userMsg}`;
 }
 
@@ -123,7 +125,7 @@ function buildUserGateMessage(input: {
     return input.fallback ?? "画像内に該当情報を確認できませんでした";
   }
   if (input.status === "config_missing") {
-    return input.fallback ?? "画像解析の設定が不足しています";
+    return input.fallback ?? "準備が整っていません。しばらくしてからもう一度お任せください。";
   }
   const stageLabel = labelForVisionStage(input.failedStage);
   const stageMessage = messageForVisionStage(input.failedStage);
@@ -329,7 +331,7 @@ function mapVisionErrorToGate(
     developerCode: "unknown",
     cause: message || "unknown_error",
     messageOverride: message
-      ? `【AI解析で失敗】${message}`
+      ? `処理を続けています`
       : undefined,
   });
 }
