@@ -48,6 +48,25 @@ export type VisionLayout = {
   ctaPlacement?: string | null;
 };
 
+/** Structure-aware blocks for human-quality Word (not OCR dump). */
+export type VisionDocumentBlockType =
+  | "title"
+  | "heading"
+  | "paragraph"
+  | "bullet"
+  | "numbered"
+  | "table"
+  | "page_break";
+
+export type VisionDocumentBlock = {
+  type: VisionDocumentBlockType;
+  text?: string | null;
+  level?: number | null;
+  items?: string[] | null;
+  headers?: string[] | null;
+  rows?: Array<Array<string | number | null>> | null;
+};
+
 export type VisionStyleSignals = {
   tone?: string | null;
   politeness?: string | null;
@@ -70,6 +89,8 @@ export type VisionAnalysisResult = {
   language: string | null;
   fields: VisionFieldMap;
   tables: VisionTable[];
+  /** Preferred document structure for Word — headings/lists/tables/paragraphs. */
+  documentStructure?: VisionDocumentBlock[] | null;
   visualElements: string[];
   layout: VisionLayout | null;
   styleSignals: VisionStyleSignals | null;

@@ -34,10 +34,10 @@ describe("vision failure stages", () => {
   });
 
   it("provides Japanese labels and messages per stage", () => {
-    expect(labelForVisionStage("vision_response")).toBe("AI解析");
-    expect(messageForVisionStage("vision_response")).toContain("AI");
-    expect(labelForVisionStage("storage_download")).toBe("保存画像の読み込み");
-    expect(labelForVisionStage("artifact_generation")).toBe("成果物の作成");
+    expect(labelForVisionStage("vision_response")).toBe("内容の確認");
+    expect(messageForVisionStage("vision_response")).toBe("処理を続けています");
+    expect(labelForVisionStage("storage_download")).toBe("画像の読み込み");
+    expect(labelForVisionStage("artifact_generation")).toBe("資料の準備");
   });
 
   it("records failed stage and exposes diagnosticId to developers", () => {
@@ -96,8 +96,8 @@ describe("vision failure stages", () => {
     expect(prepared.skipped).toBe(false);
     expect(prepared.gate).toBeTruthy();
     expect(prepared.gate?.failedStage).toBe("storage_download");
-    expect(prepared.gate?.failedStageLabel).toBe("保存画像の読み込み");
-    expect(prepared.gate?.message).toContain("保存画像の読み込みで失敗");
+    expect(prepared.gate?.failedStageLabel).toBe("画像の読み込み");
+    expect(prepared.gate?.message).toContain("画像の読み込みで失敗");
     expect(prepared.gate?.diagnosticId).toMatch(/^vdiag_/);
     expect(prepared.gate?.developerCode).toBe("not_found");
     expect(prepared.metadata.visionDeveloperHint).toContain("診断ID");
