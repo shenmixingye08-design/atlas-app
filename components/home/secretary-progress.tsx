@@ -5,13 +5,15 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 
+/** Phase3 first-run wait — secretary phrases only, cycles past 30s. */
 const PHASES = [
-  ui.secretaryProgress.understanding,
-  ui.secretaryProgress.thinking,
-  ui.secretaryProgress.executing,
+  ui.secretaryProgress.understand,
+  ui.secretaryProgress.write,
+  ui.secretaryProgress.polish,
+  ui.secretaryProgress.finalCheck,
 ] as const;
 
-const PHASE_INTERVAL_MS = 2200;
+const PHASE_INTERVAL_MS = 7000;
 
 type SecretaryProgressProps = {
   /** Cycle through the secretary phrases (default) or show a single line. */
@@ -20,9 +22,7 @@ type SecretaryProgressProps = {
 };
 
 /**
- * Elegant loading indicator for the home / commander flow.
- * Replaces generic「読み込み」with calm AI-secretary phrasing.
- * Pure client-side cycling — no AI cost.
+ * Calm wait indicator — no tool / model names.
  */
 export function SecretaryProgress({ message, className }: SecretaryProgressProps) {
   const [index, setIndex] = useState(0);
@@ -49,7 +49,7 @@ export function SecretaryProgress({ message, className }: SecretaryProgressProps
       <span className="lux-spinner h-9 w-9" aria-hidden />
       <p
         key={label}
-        className="animate-fade-in text-sm font-medium tracking-tight text-[var(--text-secondary)]"
+        className="animate-fade-in text-base font-medium tracking-tight text-foreground sm:text-lg"
       >
         {label}
       </p>

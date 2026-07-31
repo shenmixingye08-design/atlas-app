@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation";
 
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import { formatUserFacingErrorText, toUserFacingError } from "@/lib/orchestration/user-errors";
-import { detectDeliverableFormats } from "@/lib/deliverables/detect-formats";
 import { projectService } from "@/lib/projects/project-service";
 import {
   LOADING_STEP_INTERVAL_MS,
@@ -30,7 +29,6 @@ import { Button } from "@/components/ui/button";
 import { ui } from "@/lib/i18n";
 import { consumePendingAttachmentIds } from "@/lib/attachments/pending-session";
 import type { DocumentExtractClient } from "@/lib/attachments/documents/client-upload";
-import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
 import { VisionFailurePanel } from "@/components/vision/vision-failure-panel";
 import { VisionDiagnosticsPanel } from "@/components/vision/vision-diagnostics-panel";
 import type { CommanderVisionGate } from "@/lib/commander/types";
@@ -40,7 +38,7 @@ import {
   type WorkRequestSubmitPayload,
 } from "@/lib/workspace/work-request-payload";
 
-import { FinalOutput } from "./final-output";
+import { WorkFinishedPanel } from "./work-finished-panel";
 import { WorkRequestForm } from "./work-request-form";
 import { WorkflowResults } from "./workflow-results";
 import {
@@ -74,11 +72,11 @@ export function WorkspaceDashboard() {
   >(null);
   const [, setWorkMemoryCandidateCount] = useState(0);
   const [taughtWorkflowHint, setTaughtWorkflowHint] = useState(false);
-  const [backgroundAccepted, setBackgroundAccepted] = useState(false);
   const [pendingCommander, setPendingCommander] =
     useState<CommanderRunResult | null>(null);
 
   const autoStartedRef = useRef(false);
+  const [homeAutostart, setHomeAutostart] = useState(false);
   const requestMetadataRef = useRef<Readonly<Record<string, unknown>>>({});
   const { isAvailable } = useFeatureAvailability();
   const preferredFormat = requestMetadata.preferredDeliverableFormat;
@@ -98,11 +96,10 @@ export function WorkspaceDashboard() {
     : preferredFormats
       ? { formats: preferredFormats }
       : undefined;
-  const likelyFormats = detectDeliverableFormats(assignment).formats;
-  const showWordProgress =
-    deliverableOptions?.formats?.includes("docx") ?? likelyFormats.includes("docx");
-  const { deliverables, deliverablesError, isGeneratingDeliverables } =
-    useDeliverableFiles(result, deliverableOptions);
+  const { deliverables, isGeneratingDeliverables } = useDeliverableFiles(
+    result,
+    deliverableOptions,
+  );
 
   const searchParams = useSearchParams();
 
@@ -118,24 +115,13 @@ export function WorkspaceDashboard() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!isLoading) {
-      const resetTimer = window.setTimeout(() => {
-        setBackgroundAccepted(false);
-      }, 0);
-      return () => window.clearTimeout(resetTimer);
-    }
-    const acceptedTimer = window.setTimeout(() => {
-      setBackgroundAccepted(true);
-    }, 3_000);
+    if (!isLoading) return undefined;
     const interval = setInterval(() => {
       setLoadingStepIndex((prev) =>
         Math.min(prev + 1, loadingPhases.length - 1),
       );
     }, LOADING_STEP_INTERVAL_MS);
-    return () => {
-      window.clearTimeout(acceptedTimer);
-      clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, [isLoading, loadingPhases.length]);
 
   useEffect(() => {
@@ -162,7 +148,6 @@ export function WorkspaceDashboard() {
     setWorkMemoryCandidateCount(0);
     setPendingCommander(null);
     setIsLoading(true);
-    setBackgroundAccepted(false);
     setLoadingStepIndex(0);
     setLoadingPhases(buildLoadingPhases(0));
 
@@ -206,7 +191,6 @@ export function WorkspaceDashboard() {
         );
       }
 
-      setBackgroundAccepted(true);
       const jobId = acceptBody.jobId;
 
       // Poll until completed / failed / confirmation.
@@ -228,7 +212,6 @@ export function WorkspaceDashboard() {
         if (body.status === "awaiting_confirmation") {
           // Fall back to interactive confirm via classic path when needed.
           setIsLoading(false);
-          setBackgroundAccepted(false);
           const orchestrationResult = await submitWorkRequest(
             requestAssignment,
             undefined,
@@ -279,7 +262,6 @@ export function WorkspaceDashboard() {
       if (err instanceof CommanderConfirmationRequiredError) {
         setPendingCommander(err.commander);
         setIsLoading(false);
-        setBackgroundAccepted(false);
         return;
       }
       const message =
@@ -289,7 +271,6 @@ export function WorkspaceDashboard() {
       setError(message);
     } finally {
       setIsLoading(false);
-      setBackgroundAccepted(false);
     }
   }, []);
 
@@ -336,7 +317,15 @@ export function WorkspaceDashboard() {
     setRequestMetadata(payload.metadata);
     setAssignment(trimmed);
 
-    if (isSalesMaterialRequest(assignment.trim()) || isSalesMaterialRequest(trimmed)) {
+    // Phase3 first-run: never interrupt with sales wizard / settings.
+    const firstRunPath =
+      homeAutostart || searchParams.get("autostart") === "1";
+
+    if (
+      !firstRunPath &&
+      (isSalesMaterialRequest(assignment.trim()) ||
+        isSalesMaterialRequest(trimmed))
+    ) {
       if (!isAvailable("sales_material")) {
         setError(ui.featureFlags.userDisabledSalesMaterial);
         return;
@@ -357,9 +346,12 @@ export function WorkspaceDashboard() {
 
   // Home → /workspace?autostart=1: consume the SAME WorkRequestSubmitPayload
   // built by buildWorkRequestSubmitPayload (no home-specific metadata).
+  // Hide the form immediately so the path is ask → progress → done (no re-ask).
   useEffect(() => {
     if (searchParams.get("autostart") !== "1") return;
     if (autoStartedRef.current || isLoading || result) return;
+
+    setHomeAutostart(true);
 
     const pending = consumePendingWorkRequestSubmit();
     if (pending) {
@@ -439,9 +431,11 @@ export function WorkspaceDashboard() {
     setSalesWizardAssignment(null);
     setSalesMaterialConfig(null);
     setOutlineOnlyText(null);
+    setHomeAutostart(false);
   };
 
   const showForm =
+    !homeAutostart &&
     !isLoading &&
     !result &&
     !salesWizardAssignment &&
@@ -534,9 +528,10 @@ export function WorkspaceDashboard() {
         <div className="mx-auto max-w-lg space-y-3">
           <VisionFailurePanel
             gate={visionGate}
-            showDeveloperHint={Boolean(visionGate.diagnosticId)}
+            calm={homeAutostart}
+            showDeveloperHint={!homeAutostart && Boolean(visionGate.diagnosticId)}
             onRetryAnalyze={() => {
-              // Re-analyze: new job, force refresh, re-normalize / fallback path.
+              // Silent continue — same path, no tech explanation.
               void runOrchestration(assignment.trim(), null, {
                 forceVisionRefresh: true,
                 visionRetry: true,
@@ -548,35 +543,25 @@ export function WorkspaceDashboard() {
               setError(null);
             }}
           />
-          <VisionDiagnosticsPanel
-            diagnosticId={visionGate.diagnosticId}
-            enabled={showVisionDiagnostics}
-            showToggle={Boolean(visionGate.diagnosticId)}
-            onToggle={() => setShowVisionDiagnostics((v) => !v)}
-          />
+          {!homeAutostart && (
+            <VisionDiagnosticsPanel
+              diagnosticId={visionGate.diagnosticId}
+              enabled={showVisionDiagnostics}
+              showToggle={Boolean(visionGate.diagnosticId)}
+              onToggle={() => setShowVisionDiagnostics((v) => !v)}
+            />
+          )}
         </div>
       )}
 
       {error && !visionGate && !result && !outlineOnlyText && (
-        <ErrorState message={error} />
+        <ErrorState
+          message={homeAutostart ? ui.secretaryProgress.write : error}
+        />
       )}
 
-      {isLoading && backgroundAccepted && (
-        <section className="mx-auto max-w-lg space-y-4 py-16 text-center animate-fade-in">
-          <p className="text-sm font-medium text-accent">MINERVOT</p>
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-            依頼を受け付けました
-          </h2>
-          <p className="text-base text-[var(--foreground-muted)]">
-            バックグラウンドで処理しています。完了次第、成果物をお渡しします。
-          </p>
-          {showWordProgress ? (
-            <WordProgressStatus className="animate-soft-pulse text-sm text-[var(--foreground-muted)]" />
-          ) : null}
-        </section>
-      )}
-
-      {isLoading && !backgroundAccepted && (
+      {/* Phase3: keep cycling secretary phrases for the full wait (incl. 30s+). */}
+      {isLoading && (
         <WorkflowResults
           result={result}
           loadingPhases={loadingPhases}
@@ -585,33 +570,21 @@ export function WorkspaceDashboard() {
         />
       )}
 
+      {!isLoading && homeAutostart && !result && !error && !visionGate && !pendingCommander && (
+        <WorkflowResults
+          result={null}
+          loadingPhases={loadingPhases}
+          isLoading
+          error={null}
+        />
+      )}
+
       {result && !isLoading && (
-        <section className="space-y-6 animate-fade-up">
-          <header className="space-y-2 text-center">
-            <p className="text-sm font-medium text-accent">MINERVOT</p>
-            <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-              すべて完了しました
-            </h2>
-            <p className="text-sm text-[var(--foreground-muted)] sm:text-base">
-              成果物をご確認ください。必要ならすぐ別の形式でもお渡しできます。
-            </p>
-          </header>
-
-          <FinalOutput
-            result={result}
-            isLoading={isLoading}
-            deliverables={deliverables}
-            isGeneratingDeliverables={isGeneratingDeliverables}
-            deliverablesError={deliverablesError}
-            expectedFormats={salesMaterialConfig?.formats}
-          />
-
-          <div className="flex justify-center pt-2">
-            <Button type="button" variant="secondary" onClick={handleReset}>
-              別のお願いをする
-            </Button>
-          </div>
-        </section>
+        <WorkFinishedPanel
+          result={result}
+          deliverables={deliverables}
+          isGeneratingDeliverables={isGeneratingDeliverables}
+        />
       )}
     </div>
   );

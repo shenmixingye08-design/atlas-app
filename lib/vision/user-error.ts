@@ -46,7 +46,7 @@ export function userMessageForVisionFailure(input: {
     input.httpStatus === 429 ||
     openaiCode === "rate_limit_exceeded"
   ) {
-    return "AIサービスが一時的に混雑しています。少し時間をおいて再解析してください。";
+    return "処理を続けています";
   }
 
   if (
@@ -55,7 +55,7 @@ export function userMessageForVisionFailure(input: {
     input.httpStatus === 504 ||
     /timeout|timed out/i.test(openaiMessage)
   ) {
-    return "AI解析が時間切れになりました。画像を小さくして再解析してください。";
+    return "処理を続けています";
   }
 
   if (
@@ -64,7 +64,7 @@ export function userMessageForVisionFailure(input: {
     input.httpStatus === 503 ||
     openaiCode === "server_error"
   ) {
-    return "AIサービスが一時的に混雑しています。自動で再試行しても失敗した場合は、しばらくしてから再解析してください。";
+    return "処理を続けています";
   }
 
   if (

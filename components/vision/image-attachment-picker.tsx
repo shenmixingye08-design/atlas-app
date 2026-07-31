@@ -39,6 +39,11 @@ type ImageAttachmentPickerProps = {
   disabled?: boolean;
   className?: string;
   preferReadableText?: boolean;
+  /**
+   * firstRun: one calm control for the Phase3 wow job (photo → document).
+   * No format jargon / “解析” copy.
+   */
+  variant?: "default" | "firstRun";
   /** Lets parent route image drops from other UI zones into this uploader. */
   addFilesRef?: MutableRefObject<((files: FileList | File[]) => void) | null>;
 };
@@ -61,8 +66,10 @@ export function ImageAttachmentPicker({
   disabled,
   className,
   preferReadableText = true,
+  variant = "default",
   addFilesRef,
 }: ImageAttachmentPickerProps) {
+  const firstRun = variant === "firstRun";
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -217,7 +224,7 @@ export function ImageAttachmentPicker({
     <div className={cn("space-y-3", className)}>
       <div
         className={cn(
-          "rounded-xl border border-dashed border-[var(--border-subtle)] p-4 transition",
+          "rounded-xl border border-dashed border-[var(--border-subtle)] p-3 transition sm:p-4",
           isDragging && "border-accent bg-accent/5",
         )}
         onDragOver={(event) => {
@@ -239,32 +246,38 @@ export function ImageAttachmentPicker({
             className="min-h-11 touch-manipulation"
             disabled={disabled}
             onClick={() => galleryRef.current?.click()}
-            aria-label={ui.work.attachPickImage}
+            aria-label={
+              firstRun ? ui.secretaryHome.attachPhoto : ui.work.attachPickImage
+            }
           >
-            {ui.work.attachPickImage}
+            {firstRun ? ui.secretaryHome.attachPhoto : ui.work.attachPickImage}
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="min-h-11 touch-manipulation"
-            disabled={disabled}
-            onClick={() => cameraRef.current?.click()}
-            aria-label={ui.work.attachTakePhoto}
-          >
-            {ui.work.attachTakePhoto}
-          </Button>
-          <p className="text-xs text-[var(--text-secondary)]">
-            JPEG / PNG / WEBP（最大{ATTACHMENT_LIMITS.maxImagesPerRequest}枚・
-            {Math.round(ATTACHMENT_LIMITS.maxOriginalBytes / (1024 * 1024))}MB）
-            ／ HEICは変換可能な場合のみ
-          </p>
+          {!firstRun && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="min-h-11 touch-manipulation"
+              disabled={disabled}
+              onClick={() => cameraRef.current?.click()}
+              aria-label={ui.work.attachTakePhoto}
+            >
+              {ui.work.attachTakePhoto}
+            </Button>
+          )}
+          {!firstRun && (
+            <p className="text-xs text-[var(--text-secondary)]">
+              JPEG / PNG / WEBP（最大{ATTACHMENT_LIMITS.maxImagesPerRequest}枚・
+              {Math.round(ATTACHMENT_LIMITS.maxOriginalBytes / (1024 * 1024))}MB）
+              ／ HEICは変換可能な場合のみ
+            </p>
+          )}
         </div>
         <input
           ref={galleryRef}
           type="file"
           accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic"
-          multiple
+          multiple={!firstRun}
           className="hidden"
           disabled={disabled}
           onChange={(event) => {
@@ -272,26 +285,28 @@ export function ImageAttachmentPicker({
             event.target.value = "";
           }}
         />
-        <input
-          ref={cameraRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          disabled={disabled}
-          onChange={(event) => {
-            if (event.target.files) addFiles(event.target.files);
-            event.target.value = "";
-          }}
-        />
+        {!firstRun && (
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            disabled={disabled}
+            onChange={(event) => {
+              if (event.target.files) addFiles(event.target.files);
+              event.target.value = "";
+            }}
+          />
+        )}
       </div>
 
       <ImagePreviewList
         items={value.map((item) => ({
           id: item.localId,
           previewUrl: item.previewUrl,
-          fileName: item.file.name,
-          sizeLabel: formatBytes(item.file.size),
+          fileName: firstRun ? "写真" : item.file.name,
+          sizeLabel: firstRun ? "" : formatBytes(item.file.size),
           status: item.status,
           progress: item.progress,
           error: item.error,
@@ -300,9 +315,9 @@ export function ImageAttachmentPicker({
         onRetry={retry}
       />
 
-      {uploadedCount > 0 && (
+      {!firstRun && uploadedCount > 0 && (
         <p className="text-xs text-[var(--text-secondary)]">
-          アップロード済み {uploadedCount} 枚（文章を入力して送信すると解析します）
+          アップロード済み {uploadedCount} 枚
         </p>
       )}
     </div>
