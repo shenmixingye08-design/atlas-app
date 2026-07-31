@@ -195,12 +195,13 @@ export const ui = {
 
   secretaryHome: {
     brandTagline: "あなた専属のAI秘書",
-    zeroFrictionHint: "やりたいことを書くだけで、あとはお任せください。",
-    askTitle: "何をしてほしいですか？",
+    zeroFrictionHint:
+      "仕事を書いて送るだけ。形式や手順はMINERVOTが判断します。",
+    askTitle: "仕事を依頼する",
     askPlaceholder:
-      "例）営業資料を作る / 毎日の投稿文を用意する / 議事録をまとめる",
-    askSubmit: "お願いする",
-    askHint: "送信後、すぐ取りかかります。",
+      "例）営業資料を作って共有用に整えて / 請求書をまとめて / 議事録を作って保存して",
+    askSubmit: "仕事を頼む",
+    askHint: "形式は選びません。お任せください。",
     todayWorkTitle: "今日の仕事",
     todayWorkSubtitle: "今日お手伝いしている内容です。",
     summaryRunning: "対応中",

@@ -17,7 +17,6 @@ import { assignmentImpliesImageWork } from "@/lib/vision/gate";
 import {
   buildWorkRequestSubmitPayload,
   stashPendingWorkRequestSubmit,
-  type PreferredDeliverableFormat,
 } from "@/lib/workspace/work-request-payload";
 
 /**
@@ -25,14 +24,13 @@ import {
  * Builds the SAME submit payload as WorkRequestForm, then hands it to
  * /workspace?autostart=1 which calls WorkspaceDashboard.handleSubmit.
  * Home must not invent its own metadata or job API path.
+ * Format is never user-selected — secretary uses auto detection.
  */
 export function HomeChatBar() {
   const router = useRouter();
   const [input, setInput] = useState("");
   const [imageDrafts, setImageDrafts] = useState<LocalImageDraft[]>([]);
   const [documents, setDocuments] = useState<DocumentExtractClient[]>([]);
-  const [preferredFormat, setPreferredFormat] =
-    useState<PreferredDeliverableFormat>("auto");
   const [error, setError] = useState<string | null>(null);
 
   const uploading = imageDrafts.some(
@@ -62,11 +60,12 @@ export function HomeChatBar() {
     }
 
     // Identical payload builder as 「お願いする」 / WorkRequestForm.
+    // preferredFormat is always auto — user never chooses Word/PDF/Excel.
     const payload = buildWorkRequestSubmitPayload({
       assignment: trimmed,
       attachmentIds: uploadedIds,
       documents,
-      preferredFormat,
+      preferredFormat: "auto",
     });
     stashPendingWorkRequestSubmit(payload);
 
@@ -119,25 +118,6 @@ export function HomeChatBar() {
           />
           <RequestDocumentPicker value={documents} onChange={setDocuments} />
         </div>
-
-        <label className="mt-4 block text-sm">
-          <span className="font-medium text-foreground">成果物形式</span>
-          <select
-            className="mt-1 min-h-[44px] w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2"
-            value={preferredFormat}
-            onChange={(event) =>
-              setPreferredFormat(
-                event.target.value as PreferredDeliverableFormat,
-              )
-            }
-          >
-            <option value="auto">自動判定</option>
-            <option value="xlsx">Excel</option>
-            <option value="docx">Word</option>
-            <option value="pdf">PDF</option>
-            <option value="txt">テキスト</option>
-          </select>
-        </label>
 
         {error && (
           <p className="mt-3 text-sm text-[var(--error)]">{error}</p>

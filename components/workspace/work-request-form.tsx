@@ -19,12 +19,10 @@ import { assignmentImpliesImageWork } from "@/lib/vision/gate";
 import type { DocumentExtractClient } from "@/lib/attachments/documents/client-upload";
 import {
   buildWorkRequestSubmitPayload,
-  type PreferredDeliverableFormat,
   type WorkRequestSubmitPayload,
 } from "@/lib/workspace/work-request-payload";
 
 export type { WorkRequestSubmitPayload };
-export type { PreferredDeliverableFormat as RequestPreferredFormat };
 
 type WorkRequestFormProps = {
   value: string;
@@ -48,8 +46,6 @@ export function WorkRequestForm({
   const [imageDrafts, setImageDrafts] = useState<LocalImageDraft[]>([]);
   const [documents, setDocuments] = useState<DocumentExtractClient[]>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
-  const [preferredFormat, setPreferredFormat] =
-    useState<PreferredDeliverableFormat>("auto");
 
   useEffect(() => {
     if (searchParams.get("attach") === "text") {
@@ -91,7 +87,7 @@ export function WorkRequestForm({
         assignment: trimmed,
         attachmentIds: uploadedIds,
         documents,
-        preferredFormat,
+        preferredFormat: "auto",
       }),
     );
   };
@@ -194,26 +190,6 @@ export function WorkRequestForm({
             </p>
           )}
         </div>
-
-        <label className="block text-sm">
-          <span className="font-medium text-foreground">成果物形式</span>
-          <select
-            className="mt-1 min-h-[44px] w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2"
-            value={preferredFormat}
-            disabled={isLoading}
-            onChange={(event) =>
-              setPreferredFormat(
-                event.target.value as PreferredDeliverableFormat,
-              )
-            }
-          >
-            <option value="auto">自動判定</option>
-            <option value="xlsx">Excel</option>
-            <option value="docx">Word</option>
-            <option value="pdf">PDF</option>
-            <option value="txt">テキスト</option>
-          </select>
-        </label>
       </Card>
 
       {attachError && (
