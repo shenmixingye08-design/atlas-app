@@ -2250,6 +2250,32 @@ export const ui = {
     resetAllConfirm: "すべての記憶を削除します。よろしいですか？",
   },
 
+  smartProfileSuggestion: {
+    qualityHeading: "品質向上ポイント",
+    qualityHint: "登録すると改善します",
+    sheetEyebrow: "AI秘書からの提案",
+    sheetTitle: "品質をさらに向上できます",
+    sheetLead:
+      "今回の成果物を分析した結果、登録すると次回から自動入力できる情報があります。",
+    missingHeading: "今回不足していた情報",
+    benefitsHeading: "登録すると",
+    benefitAuto: "次回から自動入力",
+    benefitFaster: "修正時間を短縮",
+    benefitYours: "あなた専用の成果物になります",
+    openRegister: "プロフィールへ登録",
+    skip: "今回はスキップ",
+    recurringTitle: "毎回入力されています",
+    recurringLead:
+      "業務プロフィールへ保存しますか？保存すると次回から自動入力されます。",
+    inlineSave: "保存",
+    inlineSaving: "保存中…",
+    saved: "保存しました。次回から自動入力できます。",
+    saveError: "保存に失敗しました",
+    valuePlaceholder: "値を入力",
+    close: "閉じる",
+    starsLabel: (n: number) => `向上余地 ${"★".repeat(n)}${"☆".repeat(Math.max(0, 5 - n))}`,
+  },
+
   workMemory: {
     pageTitle: "仕事の記憶",
     pageSubtitle: "AI秘書が覚えている仕事やルールを管理できます。",

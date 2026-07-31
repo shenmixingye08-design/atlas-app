@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { NextActionsBar } from "@/components/results/next-actions-bar";
+import { SmartProfileSuggestionHost } from "@/components/results/smart-profile-suggestion-host";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
@@ -159,6 +160,8 @@ export function SecretaryResultView({
           </div>
         </div>
       )}
+
+      <SmartProfileSuggestionHost project={project} />
     </div>
   );
 }
