@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { runWithAiBillingUsage } from "@/lib/billing/usage/request-context";
 import { isVisionDetectedType } from "@/lib/vision/schemas";
 import { analyzeUserImageBatch } from "@/lib/vision/analyze-batch";
+import { logVisionPipeline } from "@/lib/vision/pipeline-log";
 import { VisionError } from "@/lib/vision/types";
 import { labelForDetectedType } from "@/lib/vision/classify";
 
@@ -72,7 +73,7 @@ export async function POST(request: Request): Promise<Response> {
     );
 
     const primary = batch.images[0];
-    return Response.json({
+    const responseBody = {
       batch: {
         id: batch.id,
         status: batch.status,
@@ -97,7 +98,16 @@ export async function POST(request: Request): Promise<Response> {
         })),
       },
       label: primary ? labelForDetectedType(primary.detectedType) : null,
+    };
+    logVisionPipeline({
+      stage: "return_to_frontend",
+      ok: batch.status !== "failed",
+      attachmentIds,
+      attachmentId: primary?.attachmentId ?? null,
+      outputTextPreview: batch.combinedSummary?.slice(0, 120) ?? null,
+      jobId: typeof body.jobId === "string" ? body.jobId : null,
     });
+    return Response.json(responseBody);
   } catch (error) {
     if (error instanceof VisionError) {
       const status =
@@ -113,6 +123,18 @@ export async function POST(request: Request): Promise<Response> {
         diagnosticId: error.diagnosticId,
         failedStage: error.failedStage,
         details,
+      });
+      logVisionPipeline({
+        stage: "return_to_frontend",
+        ok: false,
+        diagnosticId: error.diagnosticId ?? null,
+        attachmentIds,
+        dropReason: error.code,
+        openAiErrorCode:
+          typeof details?.openaiErrorCode === "string"
+            ? details.openaiErrorCode
+            : null,
+        openAiErrorMessage: error.message.slice(0, 200),
       });
       return Response.json(
         {

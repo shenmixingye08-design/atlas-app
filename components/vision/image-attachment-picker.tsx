@@ -18,6 +18,10 @@ import {
 import { ATTACHMENT_LIMITS } from "@/lib/attachments/types";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
+import {
+  logVisionPipeline,
+  newVisionTraceId,
+} from "@/lib/vision/pipeline-log";
 
 export type LocalImageDraft = {
   localId: string;
@@ -71,7 +75,20 @@ export function ImageAttachmentPicker({
   const addFiles = useCallback(
     (list: FileList | File[]) => {
       if (disabled) return;
-      const images = filterImageFiles(Array.from(list));
+      const selected = Array.from(list);
+      const images = filterImageFiles(selected);
+      const selectTraceId = newVisionTraceId();
+      logVisionPipeline({
+        stage: "image_select",
+        ok: images.length > 0,
+        traceId: selectTraceId,
+        fileCount: images.length,
+        fileName: images[0]?.name ?? selected[0]?.name ?? null,
+        mimeType: images[0]?.type || selected[0]?.type || null,
+        byteLength: images[0]?.size ?? selected[0]?.size ?? null,
+        dropReason:
+          images.length === 0 ? "selected_files_filtered_out" : null,
+      });
       if (images.length === 0) return;
       const remaining =
         ATTACHMENT_LIMITS.maxImagesPerRequest - valueRef.current.length;
@@ -90,6 +107,7 @@ export function ImageAttachmentPicker({
 
       void (async () => {
         for (const draft of nextDrafts) {
+          const traceId = newVisionTraceId();
           current = current.map((item) =>
             item.localId === draft.localId
               ? { ...item, status: "uploading" as const, progress: 40 }
@@ -99,9 +117,17 @@ export function ImageAttachmentPicker({
           try {
             const result = await uploadImagesToAtlas([draft.file], {
               preferReadableText,
+              traceId,
             });
             const uploaded = result.attachments[0];
             if (!uploaded?.id) {
+              logVisionPipeline({
+                stage: "image_dropped",
+                ok: false,
+                traceId,
+                dropReason: "upload_returned_no_attachment_id",
+                fileName: draft.file.name,
+              });
               throw new Error("画像のアップロードに失敗しました");
             }
             current = current.map((item) =>

@@ -414,7 +414,16 @@ export function WorkspaceDashboard() {
       return;
     }
 
-    void runOrchestration(wizardResult.assignment, wizardResult.config);
+    // Preserve attachmentIds collected before the sales wizard (ref merge alone
+    // is easy to lose if config metadata overwrites unexpectedly).
+    const priorIds = Array.isArray(requestMetadataRef.current.attachmentIds)
+      ? requestMetadataRef.current.attachmentIds.filter(
+          (id): id is string => typeof id === "string" && id.length > 0,
+        )
+      : [];
+    void runOrchestration(wizardResult.assignment, wizardResult.config, {
+      ...(priorIds.length > 0 ? { attachmentIds: priorIds } : {}),
+    });
   };
 
   const handleWizardCancel = () => {

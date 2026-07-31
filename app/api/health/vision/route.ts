@@ -1,5 +1,6 @@
 import { getHealthVersionPayload } from "@/lib/health/version-info";
 import { runVisionProductionSmoke } from "@/lib/vision/vision-production-smoke";
+import { runVisionUserUploadSmoke } from "@/lib/vision/vision-user-upload-smoke";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,39 +8,77 @@ export const maxDuration = 60;
 
 /**
  * Public Production vision smoke (uses OpenAI once).
- * Verifies PR #55 path: normalize → validate → file_id/data_url → Responses API
- * with a known-good JPEG on the Production alias (atlasapp.jp).
+ *
+ * Modes:
+ * - default / ?mode=direct — known-good JPEG → Files API → Responses (no storage)
+ * - ?mode=user_upload — uploadUserImages (storage) → analyzeUserImage (real user path)
  *
  * Rate-limited in-process to avoid abuse / cost spikes.
  */
-let lastRunAtMs = 0;
-let lastResult: Awaited<ReturnType<typeof runVisionProductionSmoke>> | null =
+let lastDirectAtMs = 0;
+let lastDirectResult: Awaited<ReturnType<typeof runVisionProductionSmoke>> | null =
+  null;
+let lastUserAtMs = 0;
+let lastUserResult: Awaited<ReturnType<typeof runVisionUserUploadSmoke>> | null =
   null;
 const MIN_INTERVAL_MS = 120_000;
 
 export async function GET(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  const force = url.searchParams.get("force") === "1";
+  const mode = url.searchParams.get("mode") === "user_upload" ? "user_upload" : "direct";
   const now = Date.now();
-  const force = new URL(request.url).searchParams.get("force") === "1";
-  if (!force && lastResult && now - lastRunAtMs < MIN_INTERVAL_MS) {
+
+  if (mode === "user_upload") {
+    if (!force && lastUserResult && now - lastUserAtMs < MIN_INTERVAL_MS) {
+      return Response.json(
+        {
+          ...lastUserResult,
+          mode: "user_upload",
+          cached: true,
+          version: getHealthVersionPayload(),
+        },
+        {
+          status: lastUserResult.ok ? 200 : 503,
+          headers: { "Cache-Control": "no-store, max-age=0" },
+        },
+      );
+    }
+
+    const result = await runVisionUserUploadSmoke();
+    lastUserAtMs = Date.now();
+    lastUserResult = result;
+
+    return Response.json(
+      { ...result, mode: "user_upload", cached: false },
+      {
+        status: result.ok ? 200 : 503,
+        headers: { "Cache-Control": "no-store, max-age=0" },
+      },
+    );
+  }
+
+  if (!force && lastDirectResult && now - lastDirectAtMs < MIN_INTERVAL_MS) {
     return Response.json(
       {
-        ...lastResult,
+        ...lastDirectResult,
+        mode: "direct",
         cached: true,
         version: getHealthVersionPayload(),
       },
       {
-        status: lastResult.ok ? 200 : 503,
+        status: lastDirectResult.ok ? 200 : 503,
         headers: { "Cache-Control": "no-store, max-age=0" },
       },
     );
   }
 
   const result = await runVisionProductionSmoke();
-  lastRunAtMs = Date.now();
-  lastResult = result;
+  lastDirectAtMs = Date.now();
+  lastDirectResult = result;
 
   return Response.json(
-    { ...result, cached: false },
+    { ...result, mode: "direct", cached: false },
     {
       status: result.ok ? 200 : 503,
       headers: { "Cache-Control": "no-store, max-age=0" },

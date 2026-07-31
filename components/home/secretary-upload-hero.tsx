@@ -11,6 +11,11 @@ import {
   type UploadClassification,
   type UploadIntent,
 } from "@/lib/home/upload-intent";
+import { uploadImagesToAtlas } from "@/lib/attachments/client-upload";
+import {
+  logVisionPipeline,
+  newVisionTraceId,
+} from "@/lib/vision/pipeline-log";
 import {
   buildWorkRequestSubmitPayload,
   stashPendingWorkRequestSubmit,
@@ -86,18 +91,69 @@ export function SecretaryUploadHero() {
   }, []);
 
   const startWork = useCallback(
-    (assignment: string) => {
+    async (assignment: string, pendingFiles: PendingFile[] = files) => {
       const trimmed = assignment.trim();
       if (!trimmed) return;
-      // Same payload builder as WorkRequestForm / HomeChatBar — no hero-specific metadata.
+
+      const traceId = newVisionTraceId();
+      let attachmentIds: string[] = [];
+      if (pendingFiles.length > 0) {
+        logVisionPipeline({
+          stage: "image_select",
+          ok: true,
+          traceId,
+          fileCount: pendingFiles.length,
+          fileName: pendingFiles[0]?.file.name ?? null,
+          mimeType: pendingFiles[0]?.file.type || null,
+          byteLength: pendingFiles[0]?.file.size ?? null,
+        });
+        try {
+          const uploaded = await uploadImagesToAtlas(
+            pendingFiles.map((item) => item.file),
+            { preferReadableText: true, traceId },
+          );
+          attachmentIds = uploaded.attachments.map((item) => item.id);
+          if (attachmentIds.length === 0) {
+            logVisionPipeline({
+              stage: "image_dropped",
+              ok: false,
+              traceId,
+              dropReason: "hero_upload_returned_no_ids",
+            });
+            setVoiceHint("画像のアップロードに失敗しました。もう一度お試しください。");
+            setPhase("idle");
+            return;
+          }
+        } catch (error) {
+          logVisionPipeline({
+            stage: "image_dropped",
+            ok: false,
+            traceId,
+            dropReason:
+              error instanceof Error
+                ? error.message.slice(0, 160)
+                : "hero_upload_failed",
+          });
+          setVoiceHint(
+            error instanceof Error
+              ? error.message
+              : "画像のアップロードに失敗しました。",
+          );
+          setPhase("idle");
+          return;
+        }
+      }
+
+      // Same payload builder as WorkRequestForm / HomeChatBar — include real IDs.
       const payload = buildWorkRequestSubmitPayload({
         assignment: trimmed,
+        attachmentIds,
         preferredFormat: "auto",
       });
       stashPendingWorkRequestSubmit(payload);
       router.push("/workspace?autostart=1");
     },
-    [router],
+    [files, router],
   );
 
   const cancelAutoStart = useCallback(() => {
@@ -135,7 +191,7 @@ export function SecretaryUploadHero() {
       if (result.confidence === "high") {
         setPhase("autostart");
         autoStartTimerRef.current = setTimeout(() => {
-          startWork(result.intent.buildAssignment(fileNames));
+          void startWork(result.intent.buildAssignment(fileNames), pending);
         }, AUTO_START_DELAY_MS);
       } else {
         setPhase("choose");
@@ -147,7 +203,7 @@ export function SecretaryUploadHero() {
   const chooseIntent = useCallback(
     (intent: UploadIntent) => {
       const fileNames = files.map((item) => item.file.name);
-      startWork(intent.buildAssignment(fileNames));
+      void startWork(intent.buildAssignment(fileNames), files);
     },
     [files, startWork],
   );
@@ -155,8 +211,8 @@ export function SecretaryUploadHero() {
   const sendText = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    startWork(trimmed);
-  }, [startWork, text]);
+    void startWork(trimmed, files);
+  }, [files, startWork, text]);
 
   const toggleVoice = useCallback(() => {
     const Ctor = getSpeechRecognitionCtor();

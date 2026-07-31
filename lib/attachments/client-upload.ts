@@ -1,6 +1,10 @@
 "use client";
 
 import { ATTACHMENT_LIMITS } from "@/lib/attachments/types";
+import {
+  logVisionPipeline,
+  newVisionTraceId,
+} from "@/lib/vision/pipeline-log";
 
 export type UploadedAttachmentClient = {
   id: string;
@@ -17,6 +21,7 @@ export type UploadedAttachmentClient = {
 export type UploadImagesResult = {
   attachments: UploadedAttachmentClient[];
   warnings: string[];
+  traceId: string;
 };
 
 function isImageFile(file: File): boolean {
@@ -32,11 +37,23 @@ export function filterImageFiles(files: File[]): File[] {
 
 export async function uploadImagesToAtlas(
   files: File[],
-  options?: { preferReadableText?: boolean; signal?: AbortSignal },
+  options?: {
+    preferReadableText?: boolean;
+    signal?: AbortSignal;
+    traceId?: string;
+  },
 ): Promise<UploadImagesResult> {
   const images = filterImageFiles(files);
+  const traceId = options?.traceId ?? newVisionTraceId();
   if (images.length === 0) {
-    return { attachments: [], warnings: [] };
+    logVisionPipeline({
+      stage: "image_dropped",
+      ok: false,
+      traceId,
+      dropReason: "no_image_files_after_filter",
+      fileCount: files.length,
+    });
+    return { attachments: [], warnings: [], traceId };
   }
 
   const form = new FormData();
@@ -47,10 +64,35 @@ export async function uploadImagesToAtlas(
     form.append("preferReadableText", "true");
   }
 
+  const formEntries = form.getAll("files");
+  logVisionPipeline({
+    stage: "formdata_build",
+    ok: formEntries.length > 0,
+    traceId,
+    fileCount: images.length,
+    formDataHasFiles: formEntries.length > 0,
+    fileName: images[0]?.name ?? null,
+    mimeType: images[0]?.type || null,
+    byteLength: images[0]?.size ?? null,
+  });
+
+  logVisionPipeline({
+    stage: "attachment_upload_before",
+    ok: true,
+    traceId,
+    fileCount: images.length,
+    fileName: images[0]?.name ?? null,
+    mimeType: images[0]?.type || null,
+    byteLength: images[0]?.size ?? null,
+  });
+
   const response = await fetch("/api/attachments/images", {
     method: "POST",
     body: form,
     signal: options?.signal,
+    headers: {
+      "x-atlas-vision-trace": traceId,
+    },
   });
 
   const payload = (await response.json().catch(() => ({}))) as {
@@ -60,7 +102,25 @@ export async function uploadImagesToAtlas(
     providerCode?: string | null;
     attachments?: UploadedAttachmentClient[];
     warnings?: string[];
+    traceId?: string;
   };
+
+  const attachments = payload.attachments ?? [];
+  logVisionPipeline({
+    stage: "attachment_upload_after",
+    ok: response.ok && attachments.length > 0,
+    traceId: payload.traceId ?? traceId,
+    fileCount: attachments.length,
+    attachmentIds: attachments.map((a) => a.id),
+    attachmentId: attachments[0]?.id ?? null,
+    mimeType: attachments[0]?.mimeType ?? null,
+    byteLength: attachments[0]?.processedBytes ?? null,
+    dropReason: response.ok
+      ? attachments.length === 0
+        ? "upload_ok_but_empty_attachments"
+        : null
+      : payload.code ?? "upload_http_failed",
+  });
 
   if (!response.ok) {
     const detail = [payload.code, payload.stage].filter(Boolean).join("@");
@@ -69,8 +129,9 @@ export async function uploadImagesToAtlas(
   }
 
   return {
-    attachments: payload.attachments ?? [],
+    attachments,
     warnings: payload.warnings ?? [],
+    traceId: payload.traceId ?? traceId,
   };
 }
 

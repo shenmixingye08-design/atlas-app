@@ -3,6 +3,7 @@ import "server-only";
 import { toFile } from "openai";
 
 import { getOpenAIClient } from "@/lib/openai";
+import { logVisionPipeline } from "@/lib/vision/pipeline-log";
 import type { OpenAiSafeImageMime } from "@/lib/vision/validate-openai-image-payload";
 import { VisionError } from "@/lib/vision/types";
 
@@ -16,6 +17,13 @@ export async function uploadVisionImageFile(input: {
   diagnosticId?: string | null;
 }): Promise<{ fileId: string; filename: string }> {
   if (!Buffer.isBuffer(input.buffer) || input.buffer.length < 64) {
+    logVisionPipeline({
+      stage: "files_api_before",
+      ok: false,
+      diagnosticId: input.diagnosticId ?? null,
+      byteLength: Buffer.isBuffer(input.buffer) ? input.buffer.length : 0,
+      dropReason: "empty_or_tiny_buffer",
+    });
     throw new VisionError("empty_image", "Files API 用の画像が空です", {
       diagnosticId: input.diagnosticId,
       failedStage: "data_url",
@@ -24,6 +32,16 @@ export async function uploadVisionImageFile(input: {
 
   const ext = input.mimeType === "image/png" ? "png" : "jpg";
   const filename = `atlas-vision-${input.diagnosticId ?? "img"}.${ext}`;
+
+  logVisionPipeline({
+    stage: "files_api_before",
+    ok: true,
+    diagnosticId: input.diagnosticId ?? null,
+    mimeType: input.mimeType,
+    byteLength: input.buffer.length,
+    headHex32: input.buffer.subarray(0, 32).toString("hex"),
+    fileName: filename,
+  });
 
   try {
     const client = getOpenAIClient();
@@ -34,6 +52,22 @@ export async function uploadVisionImageFile(input: {
     if (!file?.id) {
       throw new Error("files.create returned empty id");
     }
+    logVisionPipeline({
+      stage: "files_api_after",
+      ok: true,
+      diagnosticId: input.diagnosticId ?? null,
+      fileId: file.id,
+      mimeType: input.mimeType,
+      byteLength: input.buffer.length,
+      fileName: filename,
+    });
+    logVisionPipeline({
+      stage: "file_id",
+      ok: true,
+      diagnosticId: input.diagnosticId ?? null,
+      fileId: file.id,
+      transport: "file_id",
+    });
     console.info("[vision] files_api_upload", {
       diagnosticId: input.diagnosticId ?? null,
       fileId: file.id,
@@ -43,6 +77,15 @@ export async function uploadVisionImageFile(input: {
     });
     return { fileId: file.id, filename };
   } catch (error) {
+    logVisionPipeline({
+      stage: "files_api_after",
+      ok: false,
+      diagnosticId: input.diagnosticId ?? null,
+      mimeType: input.mimeType,
+      byteLength: input.buffer.length,
+      dropReason:
+        error instanceof Error ? error.message.slice(0, 200) : "files_upload_failed",
+    });
     throw new VisionError(
       "openai_failed",
       "画像の Files API アップロードに失敗しました",

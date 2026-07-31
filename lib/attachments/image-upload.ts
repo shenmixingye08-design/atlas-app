@@ -33,7 +33,23 @@ export async function uploadUserImage(input: {
   const contentHash = hashImageBytes(input.buffer);
   const existing = await findAttachmentByHash(input.userId, contentHash);
   if (existing) {
-    return { attachment: existing, warnings: ["同一画像のため既存添付を再利用しました"] };
+    // Reuse only when processed bytes are still readable — orphaned DB rows
+    // (storage purged / missing) must not short-circuit a fresh upload.
+    const { readProcessedImageBytes } = await import("./store");
+    const readable = await readProcessedImageBytes(input.userId, existing.id);
+    if (readable && readable.buffer.length > 0) {
+      return {
+        attachment: existing,
+        warnings: ["同一画像のため既存添付を再利用しました"],
+      };
+    }
+    // Stale hash hit: delete orphan and continue with a new save.
+    try {
+      const { deleteImageAttachment } = await import("./store");
+      await deleteImageAttachment(input.userId, existing.id);
+    } catch {
+      /* best-effort */
+    }
   }
 
   let processed;
