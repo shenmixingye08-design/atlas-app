@@ -125,13 +125,9 @@ export async function resolveUserSubscriptionDurable(
   const cached = getUserSubscription(userId);
   if (cached) return cached;
 
-  // Ensure dedicated billing tables exist before first durable read.
-  if (isBillingSupabaseConfigured()) {
-    const { ensureBillingSubscriptionsSchema } = await import(
-      "./schema-probe"
-    );
-    await ensureBillingSubscriptionsSchema();
-  }
+  // Dedicated table DDL is NOT attempted on the request hot path (service role
+  // cannot create tables). loadSubscriptionFromSupabase gates on schema cache
+  // and falls back to atlas_user_state domain atlasBilling when missing.
 
   const fromSupabase = await loadSubscriptionFromSupabase(userId);
   if (fromSupabase) {

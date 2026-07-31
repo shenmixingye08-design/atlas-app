@@ -33,8 +33,7 @@ jobs:
             exit 0
           fi
           if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ] || [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
-            echo "No DATABASE_URL/POSTGRES_URL and no SUPABASE_ACCESS_TOKEN+SUPABASE_PROJECT_REF"
-            echo "Skipping apply (configure repo secrets to enable)."
+            echo "::warning::No DATABASE_URL/POSTGRES_URL and no SUPABASE_ACCESS_TOKEN+SUPABASE_PROJECT_REF — DDL not applied. Runtime uses atlas_user_state fallback."
             exit 0
           fi
           BODY=$(python3 - <<'PY'

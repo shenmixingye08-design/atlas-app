@@ -77,6 +77,7 @@ describe("billing schema probe", () => {
     const result = await probeBillingSubscriptionsSchema({ apply: true });
     expect(result.ok).toBe(false);
     expect(result.subscriptionsTableExists).toBe(false);
+    expect(result.usingDurableFallback).toBe(true);
     expect(result.error).toMatch(/atlas_billing_subscriptions|schema cache|no_postgres/i);
   });
 });

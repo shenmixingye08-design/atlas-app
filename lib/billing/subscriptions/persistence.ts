@@ -6,6 +6,15 @@ import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role
 import { isPlanId } from "../plans/registry";
 import type { PlanId } from "../plans/types";
 
+import {
+  findSubscriptionByStripeCustomerIdFromDurable,
+  hasProcessedWebhookEventInDurable,
+  listSubscriptionsFromDurableDomain,
+  loadSubscriptionFromDurableDomain,
+  markWebhookEventProcessedInDurable,
+  persistSubscriptionToDurableDomain,
+} from "./durable-fallback";
+import { isBillingDedicatedTableReady } from "./table-ready";
 import type { SubscriptionStatus, UserSubscriptionRecord } from "./types";
 
 const CLERK_BILLING_KEY = "atlasBilling";
@@ -107,33 +116,30 @@ function isSubscriptionRecord(value: unknown): value is UserSubscriptionRecord {
   return typeof row.userId === "string" && typeof row.planId === "string";
 }
 
-/** Best-effort: subscription lives in Supabase; Clerk gets pointer only (once). */
+/**
+ * Persist subscription to atlas_user_state domain atlasBilling
+ * (supabase-only; does not write Clerk payloads).
+ */
 export async function persistSubscriptionToClerk(
   record: UserSubscriptionRecord,
 ): Promise<void> {
-  if (!process.env.CLERK_SECRET_KEY?.trim()) return;
-
-  try {
-    const { persistDurableDomain } = await import(
-      "@/lib/persistence/durable-domain"
+  const ok = await persistSubscriptionToDurableDomain(record);
+  if (!ok) {
+    console.error(
+      "[billing] Failed to persist subscription durably to atlas_user_state",
     );
-    await persistDurableDomain(
-      record.userId,
-      CLERK_BILLING_KEY,
-      record,
-      {
-        forceSupabase: true,
-        compact: (r) => r,
-      },
-    );
-  } catch (error) {
-    console.error("[billing] Failed to persist subscription durably:", error);
   }
 }
 
+/**
+ * Load subscription: durable atlasBilling first, then legacy Clerk metadata.
+ */
 export async function loadSubscriptionFromClerk(
   userId: string,
 ): Promise<UserSubscriptionRecord | null> {
+  const fromDurable = await loadSubscriptionFromDurableDomain(userId);
+  if (fromDurable) return fromDurable;
+
   if (!process.env.CLERK_SECRET_KEY?.trim()) return null;
 
   try {
@@ -153,12 +159,19 @@ function isMissingBillingTableError(message: string | undefined): boolean {
   );
 }
 
-/** Prefer Supabase as source of truth when service role is configured. */
+/**
+ * Prefer dedicated atlas_billing_subscriptions when present;
+ * otherwise atlas_user_state domain atlasBilling (no schema-cache warn spam).
+ */
 export async function loadSubscriptionFromSupabase(
   userId: string,
 ): Promise<UserSubscriptionRecord | null> {
+  if (!(await isBillingDedicatedTableReady())) {
+    return loadSubscriptionFromDurableDomain(userId);
+  }
+
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return null;
+  if (!client) return loadSubscriptionFromDurableDomain(userId);
 
   try {
     const { data, error } = await client
@@ -169,44 +182,38 @@ export async function loadSubscriptionFromSupabase(
 
     if (error) {
       if (isMissingBillingTableError(error.message)) {
-        // Attempt DDL once (Postgres URL / Management token), then retry.
-        const { ensureBillingSubscriptionsSchema } = await import(
-          "./schema-probe"
+        const { markBillingDedicatedTableReadyUnknown } = await import(
+          "./table-ready"
         );
-        const ready = await ensureBillingSubscriptionsSchema();
-        if (ready) {
-          const retry = await client
-            .from(SUBSCRIPTIONS_TABLE)
-            .select("*")
-            .eq("user_id", userId)
-            .maybeSingle();
-          if (!retry.error && retry.data) {
-            return rowToRecord(retry.data as BillingSubscriptionRow);
-          }
-          if (!retry.error) return null;
-        }
-        // Do not spam warn on every /api/commander call — ensure already logged error.
-        return null;
+        markBillingDedicatedTableReadyUnknown();
+        return loadSubscriptionFromDurableDomain(userId);
       }
       console.error(
         "[billing] Supabase subscription load failed:",
         error.message,
       );
-      return null;
+      return loadSubscriptionFromDurableDomain(userId);
     }
-    if (!data) return null;
+    if (!data) return loadSubscriptionFromDurableDomain(userId);
     return rowToRecord(data as BillingSubscriptionRow);
   } catch (error) {
     console.error("[billing] Supabase subscription load skipped:", error);
-    return null;
+    return loadSubscriptionFromDurableDomain(userId);
   }
 }
 
 export async function persistSubscriptionToSupabase(
   record: UserSubscriptionRecord,
 ): Promise<boolean> {
+  // Always keep durable domain in sync (exists on Production today).
+  const durableOk = await persistSubscriptionToDurableDomain(record);
+
+  if (!(await isBillingDedicatedTableReady())) {
+    return durableOk;
+  }
+
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return false;
+  if (!client) return durableOk;
 
   try {
     const { error } = await client
@@ -215,41 +222,36 @@ export async function persistSubscriptionToSupabase(
 
     if (error) {
       if (isMissingBillingTableError(error.message)) {
-        const { ensureBillingSubscriptionsSchema } = await import(
-          "./schema-probe"
+        const { markBillingDedicatedTableReadyUnknown } = await import(
+          "./table-ready"
         );
-        const ready = await ensureBillingSubscriptionsSchema();
-        if (ready) {
-          const retry = await client
-            .from(SUBSCRIPTIONS_TABLE)
-            .upsert(recordToRow(record), { onConflict: "user_id" });
-          if (!retry.error) return true;
-          console.error(
-            "[billing] Supabase subscription upsert failed after ensure:",
-            retry.error.message,
-          );
-          return false;
-        }
-        return false;
+        markBillingDedicatedTableReadyUnknown();
+        return durableOk;
       }
       console.error(
         "[billing] Supabase subscription upsert failed:",
         error.message,
       );
-      return false;
+      return durableOk;
     }
     return true;
   } catch (error) {
     console.error("[billing] Supabase subscription upsert skipped:", error);
-    return false;
+    return durableOk;
   }
 }
 
 export async function findSubscriptionByStripeCustomerIdFromSupabase(
   stripeCustomerId: string,
 ): Promise<UserSubscriptionRecord | null> {
+  if (!(await isBillingDedicatedTableReady())) {
+    return findSubscriptionByStripeCustomerIdFromDurable(stripeCustomerId);
+  }
+
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return null;
+  if (!client) {
+    return findSubscriptionByStripeCustomerIdFromDurable(stripeCustomerId);
+  }
 
   try {
     const { data, error } = await client
@@ -260,50 +262,74 @@ export async function findSubscriptionByStripeCustomerIdFromSupabase(
       .maybeSingle();
 
     if (error) {
-      console.warn(
+      if (isMissingBillingTableError(error.message)) {
+        const { markBillingDedicatedTableReadyUnknown } = await import(
+          "./table-ready"
+        );
+        markBillingDedicatedTableReadyUnknown();
+        return findSubscriptionByStripeCustomerIdFromDurable(stripeCustomerId);
+      }
+      console.error(
         "[billing] Supabase customer lookup failed:",
         error.message,
       );
-      return null;
+      return findSubscriptionByStripeCustomerIdFromDurable(stripeCustomerId);
     }
-    if (!data) return null;
+    if (!data) {
+      return findSubscriptionByStripeCustomerIdFromDurable(stripeCustomerId);
+    }
     return rowToRecord(data as BillingSubscriptionRow);
   } catch {
-    return null;
+    return findSubscriptionByStripeCustomerIdFromDurable(stripeCustomerId);
   }
 }
 
 export async function listSubscriptionsFromSupabase(): Promise<
   UserSubscriptionRecord[]
 > {
+  if (!(await isBillingDedicatedTableReady())) {
+    return listSubscriptionsFromDurableDomain();
+  }
+
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return [];
+  if (!client) return listSubscriptionsFromDurableDomain();
 
   try {
     const { data, error } = await client.from(SUBSCRIPTIONS_TABLE).select("*");
     if (error || !data) {
+      if (error && isMissingBillingTableError(error.message)) {
+        const { markBillingDedicatedTableReadyUnknown } = await import(
+          "./table-ready"
+        );
+        markBillingDedicatedTableReadyUnknown();
+        return listSubscriptionsFromDurableDomain();
+      }
       if (error) {
-        console.warn(
+        console.error(
           "[billing] Supabase subscription list failed:",
           error.message,
         );
       }
-      return [];
+      return listSubscriptionsFromDurableDomain();
     }
 
     return data
       .map((row) => rowToRecord(row as BillingSubscriptionRow))
       .filter((row): row is UserSubscriptionRecord => row !== null);
   } catch {
-    return [];
+    return listSubscriptionsFromDurableDomain();
   }
 }
 
 export async function hasProcessedWebhookEventInSupabase(
   eventId: string,
 ): Promise<boolean> {
+  if (!(await isBillingDedicatedTableReady())) {
+    return hasProcessedWebhookEventInDurable(eventId);
+  }
+
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return false;
+  if (!client) return hasProcessedWebhookEventInDurable(eventId);
 
   try {
     const { data, error } = await client
@@ -313,15 +339,22 @@ export async function hasProcessedWebhookEventInSupabase(
       .maybeSingle();
 
     if (error) {
-      console.warn(
+      if (isMissingBillingTableError(error.message)) {
+        const { markBillingDedicatedTableReadyUnknown } = await import(
+          "./table-ready"
+        );
+        markBillingDedicatedTableReadyUnknown();
+        return hasProcessedWebhookEventInDurable(eventId);
+      }
+      console.error(
         "[billing] Supabase webhook idempotency check failed:",
         error.message,
       );
-      return false;
+      return hasProcessedWebhookEventInDurable(eventId);
     }
     return Boolean(data?.event_id);
   } catch {
-    return false;
+    return hasProcessedWebhookEventInDurable(eventId);
   }
 }
 
@@ -329,8 +362,15 @@ export async function markWebhookEventProcessedInSupabase(
   eventId: string,
   eventType?: string | null,
 ): Promise<boolean> {
+  // Always durable-mark so idempotency survives without dedicated table.
+  const durableOk = await markWebhookEventProcessedInDurable(eventId, eventType);
+
+  if (!(await isBillingDedicatedTableReady())) {
+    return durableOk;
+  }
+
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return false;
+  if (!client) return durableOk;
 
   try {
     const { error } = await client.from(WEBHOOK_EVENTS_TABLE).upsert(
@@ -343,15 +383,25 @@ export async function markWebhookEventProcessedInSupabase(
     );
 
     if (error) {
-      console.warn(
+      if (isMissingBillingTableError(error.message)) {
+        const { markBillingDedicatedTableReadyUnknown } = await import(
+          "./table-ready"
+        );
+        markBillingDedicatedTableReadyUnknown();
+        return durableOk;
+      }
+      console.error(
         "[billing] Supabase webhook idempotency write failed:",
         error.message,
       );
-      return false;
+      return durableOk;
     }
     return true;
   } catch (error) {
-    console.warn("[billing] Supabase webhook idempotency write skipped:", error);
-    return false;
+    console.error(
+      "[billing] Supabase webhook idempotency write skipped:",
+      error,
+    );
+    return durableOk;
   }
 }
