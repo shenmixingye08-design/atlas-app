@@ -926,6 +926,16 @@ export const openAiVisionProvider: VisionProvider = {
             rows: table.rows ?? [],
             notes: table.notes ?? null,
           })),
+          documentStructure: Array.isArray(payload.documentStructure)
+            ? payload.documentStructure.map((block) => ({
+                type: block.type,
+                text: block.text ?? null,
+                level: block.level ?? null,
+                items: block.items ?? null,
+                headers: block.headers ?? null,
+                rows: block.rows ?? null,
+              }))
+            : [],
           visualElements: payload.visualElements ?? [],
           layout: payload.layout ?? null,
           styleSignals: payload.styleSignals ?? null,

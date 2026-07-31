@@ -1,6 +1,7 @@
 import "server-only";
 
 import { runCommanderRequest } from "@/lib/commander/service";
+import { recordBetaOpsEvent } from "@/lib/owner/beta-ops";
 import { recordReliabilityEvent, withRetry } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 
@@ -170,6 +171,14 @@ export async function executeWorkJob(
   const startedAt = Date.now();
   const metadataWithJobId = withPropagatedJobId(existing.metadata, jobId);
 
+  recordBetaOpsEvent({
+    kind: existing.attemptCount > 0 ? "retry" : "request",
+    userId,
+    jobId,
+    assignment:
+      typeof existing.assignment === "string" ? existing.assignment : null,
+  });
+
   await saveWorkJob({
     ...existing,
     status: "running",
@@ -239,6 +248,13 @@ export async function executeWorkJob(
     // Vision / attachment hard failures must surface as failed jobs — never "completed".
     if (commander.visionGate && !commander.visionGate.analysisSuccess) {
       const visionOpenAi = commander.visionGate.openai ?? null;
+      recordBetaOpsEvent({
+        kind: "fail",
+        userId,
+        jobId,
+        durationMs: Date.now() - startedAt,
+        assignment: existing.assignment,
+      });
       recordReliabilityEvent("work_job", "failure", 1, {
         durationMs: Date.now() - startedAt,
         errorCode:
@@ -446,6 +462,14 @@ export async function executeWorkJob(
       stage: "completed",
       severity: "info",
     });
+    recordBetaOpsEvent({
+      kind: "complete",
+      userId,
+      jobId,
+      durationMs: Date.now() - startedAt,
+      assignment:
+        typeof existing.assignment === "string" ? existing.assignment : null,
+    });
 
     // Durable save is part of completed — saveWorkJob throws if Supabase fails.
     return saveWorkJob({
@@ -483,6 +507,14 @@ export async function executeWorkJob(
       },
     });
     if (isTimeout) recordReliabilityEvent("timeout", "timeout");
+    recordBetaOpsEvent({
+      kind: "fail",
+      userId,
+      jobId,
+      durationMs: Date.now() - startedAt,
+      assignment:
+        typeof existing.assignment === "string" ? existing.assignment : null,
+    });
 
     // Best-effort failed persist — if this also fails, rethrow.
     try {

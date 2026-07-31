@@ -5,6 +5,7 @@ import { ui } from "@/lib/i18n";
  * User-facing wait steps only — no CEO / Planner / QA / pipeline jargon.
  * Kept short so first-time users always know what is happening.
  */
+/** First-run wait copy — no abandoned-wait feeling for 30s+. */
 const SECRETARY_PHASES = [
   {
     id: "understand",
@@ -22,9 +23,9 @@ const SECRETARY_PHASES = [
     subtitle: ui.secretaryProgress.polishHint,
   },
   {
-    id: "done",
-    label: ui.secretaryProgress.done,
-    subtitle: ui.secretaryProgress.doneHint,
+    id: "final-check",
+    label: ui.secretaryProgress.finalCheck,
+    subtitle: ui.secretaryProgress.finalCheckHint,
   },
 ] as const;
 
@@ -38,7 +39,7 @@ export function buildWorkflowPhaseTemplate(
 }
 
 /** Interval for advancing the visual running phase while awaiting /api/orchestrate. */
-export const LOADING_STEP_INTERVAL_MS = 4500;
+export const LOADING_STEP_INTERVAL_MS = 7000;
 
 export function createInitialPhases(
   workerCount: number = DEFAULT_PARALLEL_WORKER_SLOTS,

@@ -165,18 +165,20 @@ export const ui = {
 
   /* AI秘書の進行状況フレーズ（読み込み表示に使用・AI不使用の固定文言） */
   secretaryProgress: {
-    understanding: "内容を整理しています",
-    thinking: "進め方を考えています",
-    executing: "作業を進めています",
-    preparing: "準備しています",
-    understand: "内容を整理しています",
-    understandHint: "ご依頼の要点を確認しています",
-    write: "資料を書いています",
-    writeHint: "本文を作成しています",
+    understanding: "内容を確認しています",
+    thinking: "資料を整理しています",
+    executing: "仕上げています",
+    preparing: "内容を確認しています",
+    understand: "内容を確認しています",
+    understandHint: "",
+    write: "資料を整理しています",
+    writeHint: "",
     polish: "仕上げています",
-    polishHint: "読みやすさと抜け漏れを整えています",
-    done: "完成しました",
-    doneHint: "成果物をご確認ください",
+    polishHint: "",
+    finalCheck: "最終確認しています",
+    finalCheckHint: "",
+    done: "お仕事が終わりました",
+    doneHint: "こちらです。",
   },
 
   /* ホーム「AI秘書の現在状況」パネル（実データのみ・空状態は上品に） */
@@ -194,13 +196,19 @@ export const ui = {
   },
 
   secretaryHome: {
-    brandTagline: "あなた専属のAI秘書",
-    zeroFrictionHint: "やりたいことを書くだけで、あとはお任せください。",
-    askTitle: "何をしてほしいですか？",
-    askPlaceholder:
-      "例）営業資料を作る / 毎日の投稿文を用意する / 議事録をまとめる",
-    askSubmit: "お願いする",
-    askHint: "送信後、すぐ取りかかります。",
+    brandName: "MINERVOT",
+    brandTagline: "MINERVOT",
+    zeroFrictionHint: "",
+    askTitle: "何を終わらせますか？",
+    /** Phase3 first-wow: photo → work document (one example only). */
+    askPlaceholder: "この写真を資料にして",
+    askSubmit: "任せる",
+    askHint: "",
+    attachPhoto: "写真を添える",
+    finishedTitle: "お仕事が終わりました。",
+    finishedBody: "こちらです。",
+    finishedOpen: "開く",
+    finishedOpenUnavailable: "いま開ける準備が整っていません。もう一度お試しください。",
     todayWorkTitle: "今日の仕事",
     todayWorkSubtitle: "今日お手伝いしている内容です。",
     summaryRunning: "対応中",
