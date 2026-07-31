@@ -141,7 +141,7 @@ async function downloadObject(path: string): Promise<Buffer> {
     return Buffer.from(arrayBuffer);
   }
   throw new AttachmentStorageError({
-    code: "storage_failed",
+    code: "read_failed",
     stage: "storage.download",
     providerMessage: `unexpected download type=${typeof data}`,
   });
@@ -267,7 +267,7 @@ export async function supabaseSaveImageAttachment(
       await removeObjects([originalPath, processedPath]);
       await client.from("atlas_image_attachments").delete().eq("id", id);
       throw new AttachmentStorageError({
-        code: "storage_failed",
+        code: "storage_upload_failed",
         stage: "storage.roundtrip",
         providerMessage: [
           "processed round-trip mismatch",
@@ -286,7 +286,11 @@ export async function supabaseSaveImageAttachment(
     } catch {
       /* best-effort */
     }
-    throw classifySupabaseError(verifyError, "storage.roundtrip");
+    const errObj =
+      verifyError && typeof verifyError === "object"
+        ? (verifyError as { message?: string; code?: string; status?: number })
+        : { message: String(verifyError) };
+    throw classifySupabaseError(errObj, "storage.roundtrip");
   }
 
   return rowToMeta(row);
