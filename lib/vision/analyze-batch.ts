@@ -5,6 +5,7 @@ import { classifyImagePurposeFromText, recommendDetailLevel } from "@/lib/vision
 import type { VisionProvider } from "@/lib/vision/provider";
 import {
   VisionError,
+  rethrowVisionError,
   type VisionAnalysisResult,
   type VisionBatchResult,
   type VisionDetailLevel,
@@ -131,7 +132,7 @@ export async function analyzeUserImageBatch(input: {
           error.code === "not_found")
       ) {
         if (!error.diagnosticId && firstDiagnosticId) {
-          throw new VisionError(error.code, error.message, {
+          rethrowVisionError(error, {
             diagnosticId: firstDiagnosticId,
             failedStage: error.failedStage,
           });
@@ -147,22 +148,33 @@ export async function analyzeUserImageBatch(input: {
       const message =
         error instanceof VisionError
           ? error.message
-          : "画像解析に失敗しました";
+          : error instanceof Error
+            ? error.message
+            : "画像解析に失敗しました";
       failures.push(`${i + 1}枚目: ${message}`);
     }
   }
 
   if (images.length === 0) {
-    const first = failures[0] ?? "画像解析に失敗しました。再試行してください";
+    const first =
+      failures[0] ??
+      firstFailureError?.message ??
+      "画像解析に失敗しました（原因未取得）";
     if (firstFailureError) {
-      throw new VisionError(firstFailureError.code, first, {
+      rethrowVisionError(firstFailureError, {
         diagnosticId: firstFailureError.diagnosticId ?? firstDiagnosticId,
         failedStage: firstFailureError.failedStage ?? "vision_response",
+        message: first,
       });
     }
     throw new VisionError("openai_failed", first, {
       diagnosticId: firstDiagnosticId,
       failedStage: "vision_response",
+      details: {
+        safeMessage: first,
+        openaiErrorCode: "batch_all_failed",
+        openaiErrorType: "BatchFailure",
+      },
     });
   }
 

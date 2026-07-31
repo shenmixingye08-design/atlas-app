@@ -20,6 +20,7 @@ import type { VisionProvider } from "@/lib/vision/provider";
 import {
   VISION_PROMPT_VERSION,
   VisionError,
+  rethrowVisionError,
   type VisionAnalysisResult,
   type VisionDetailLevel,
   type VisionDetectedType,
@@ -258,21 +259,41 @@ export async function analyzeUserImage(input: {
       cached: false,
       createdAt: new Date().toISOString(),
     });
+    const details =
+      error instanceof VisionError && error.details
+        ? Object.fromEntries(
+            Object.entries(error.details).filter(
+              (entry): entry is [string, string | number | boolean | null] =>
+                entry[1] !== undefined,
+            ),
+          )
+        : null;
     appendVisionDiagnosticStage(diagnosticId, "blocked", false, {
       analysisSuccess: false,
       errorCode: error instanceof VisionError ? error.code : "openai_failed",
       userCode: "ai_analyze_failed",
+      ...(details ?? {}),
     });
     if (error instanceof VisionError) {
-      throw new VisionError(error.code, error.message, {
+      // Preserve OpenAI status/type/code/message/request_id — never drop details.
+      rethrowVisionError(error, {
         diagnosticId: error.diagnosticId ?? diagnosticId,
         failedStage: error.failedStage ?? "vision_response",
       });
     }
-    throw new VisionError(
-      "openai_failed",
-      "画像解析に失敗しました。再試行してください",
-      { diagnosticId, failedStage: "vision_response" },
-    );
+    const fallbackMessage =
+      error instanceof Error && error.message.trim()
+        ? error.message
+        : "画像解析に失敗しました（非VisionError）";
+    throw new VisionError("openai_failed", fallbackMessage, {
+      diagnosticId,
+      failedStage: "vision_response",
+      details: {
+        safeMessage: fallbackMessage,
+        openaiErrorType: error instanceof Error ? error.name : "unknown",
+        openaiErrorCode: "unhandled_exception",
+      },
+      cause: error,
+    });
   }
 }

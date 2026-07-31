@@ -112,4 +112,29 @@ describe("vision failure stages", () => {
     expect(err.failedStage).toBe("vision_response");
     expect(err.code).toBe("timeout");
   });
+
+  it("VisionError details retain OpenAI status/type/code/message/request_id", () => {
+    const err = new VisionError("openai_failed", "Image could not be processed", {
+      diagnosticId: "vdiag_openai_ui",
+      failedStage: "vision_response",
+      details: {
+        httpStatus: 400,
+        openaiErrorType: "invalid_request_error",
+        openaiErrorCode: "invalid_image",
+        requestId: "req_ui_1",
+        safeMessage: "Image could not be processed",
+        rawErrorBody:
+          '{"status":400,"type":"invalid_request_error","code":"invalid_image","message":"Image could not be processed","request_id":"req_ui_1"}',
+      },
+    });
+    expect(err.message).toContain("Image could not be processed");
+    expect(err.message).not.toBe("画像解析に失敗しました。再試行してください");
+    expect(err.details).toMatchObject({
+      httpStatus: 400,
+      openaiErrorType: "invalid_request_error",
+      openaiErrorCode: "invalid_image",
+      requestId: "req_ui_1",
+      rawErrorBody: expect.stringContaining("request_id"),
+    });
+  });
 });

@@ -7,7 +7,7 @@ export type {
   VisionJobStatus,
   VisionErrorCode,
 } from "./types";
-export { VisionError, VISION_PROMPT_VERSION } from "./types";
+export { VisionError, rethrowVisionError, VISION_PROMPT_VERSION } from "./types";
 export {
   classifyImagePurposeFromText,
   recommendDetailLevel,

@@ -26,11 +26,68 @@ import { isVisionDetectedType } from "@/lib/vision/schemas";
 import type {
   VisionBatchResult,
   VisionDetectedType,
+  VisionErrorDetails,
   VisionGatePayload,
+  VisionOpenAiFailureInfo,
 } from "@/lib/vision/types";
 import { VisionError } from "@/lib/vision/types";
 import { readEffectiveCostSavingMode } from "@/lib/cost-optimization/metadata";
 import { resolveWorkJobIdFromMetadata } from "@/lib/work-jobs/job-id";
+
+function readDetailString(
+  details: VisionErrorDetails | null | undefined,
+  key: string,
+): string | null {
+  const value = details?.[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function readDetailNumber(
+  details: VisionErrorDetails | null | undefined,
+  key: string,
+): number | null {
+  const value = details?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function openaiInfoFromError(error: VisionError): VisionOpenAiFailureInfo | null {
+  if (!error.details) return null;
+  const message =
+    readDetailString(error.details, "safeMessage") ??
+    (error.message.trim() ? error.message : null);
+  const hasAny =
+    readDetailNumber(error.details, "httpStatus") != null ||
+    readDetailString(error.details, "openaiErrorType") != null ||
+    readDetailString(error.details, "openaiErrorCode") != null ||
+    readDetailString(error.details, "requestId") != null ||
+    readDetailString(error.details, "rawErrorBody") != null ||
+    Boolean(message);
+  if (!hasAny) return null;
+  return {
+    httpStatus: readDetailNumber(error.details, "httpStatus"),
+    type: readDetailString(error.details, "openaiErrorType"),
+    code: readDetailString(error.details, "openaiErrorCode"),
+    message,
+    requestId: readDetailString(error.details, "requestId"),
+    rawErrorBody: readDetailString(error.details, "rawErrorBody"),
+  };
+}
+
+function buildAiFailureMessage(input: {
+  failedStage: VisionPipelineStage;
+  openai: VisionOpenAiFailureInfo | null;
+  errorMessage: string;
+}): string {
+  const stageLabel = labelForVisionStage(input.failedStage);
+  const openaiMsg = input.openai?.message?.trim();
+  if (openaiMsg) {
+    return `【${stageLabel}で失敗】${openaiMsg}`;
+  }
+  if (input.errorMessage.trim()) {
+    return `【${stageLabel}で失敗】${input.errorMessage}`;
+  }
+  return `【${stageLabel}で失敗】${messageForVisionStage(input.failedStage)}`;
+}
 
 export type VisionPrepareResult = {
   assignment: string;
@@ -79,6 +136,9 @@ function toGatePayload(input: {
   failedStage?: VisionPipelineStage | null;
   developerCode?: string | null;
   messageOverride?: string;
+  cause?: string | null;
+  openai?: VisionOpenAiFailureInfo | null;
+  vercelRequestId?: string | null;
 }): VisionGatePayload {
   const failedStage = input.failedStage ?? "vision_response";
   const message =
@@ -96,6 +156,9 @@ function toGatePayload(input: {
     failedStage,
     failedStageLabel: labelForVisionStage(failedStage),
     developerCode: input.developerCode ?? null,
+    cause: input.cause ?? null,
+    openai: input.openai ?? null,
+    vercelRequestId: input.vercelRequestId ?? null,
   };
 }
 
@@ -104,13 +167,28 @@ function mapVisionErrorToGate(
   fallbackDiagnosticId?: string | null,
 ): VisionGatePayload {
   if (error instanceof VisionError) {
-    const diagnosticId = error.diagnosticId ?? fallbackDiagnosticId ?? null;
+    // Prefer the prepare-assignment pipeline diagnostic so UI/Supabase tracking
+    // stays on one id even when nested code stamped a different diagnosticId.
+    const diagnosticId = fallbackDiagnosticId ?? error.diagnosticId ?? null;
     const failedStage: VisionPipelineStage =
       (error.failedStage && isVisionPipelineStage(error.failedStage)
         ? error.failedStage
         : null) ?? stageFromVisionErrorCode(error.code);
+    const openai = openaiInfoFromError(error);
+    const cause =
+      openai?.message ??
+      (error.message.trim() ? error.message : null) ??
+      "原因未取得";
 
     if (diagnosticId) {
+      const detailExtras = error.details
+        ? Object.fromEntries(
+            Object.entries(error.details).filter(
+              (entry): entry is [string, string | number | boolean | null] =>
+                entry[1] !== undefined,
+            ),
+          )
+        : {};
       appendVisionDiagnosticStage(diagnosticId, failedStage, false, {
         errorCode: error.code,
         userCode:
@@ -124,6 +202,7 @@ function mapVisionErrorToGate(
                 ? "schema_failed"
                 : "image_analyze_failed",
         analysisSuccess: false,
+        ...detailExtras,
       });
     }
 
@@ -136,6 +215,8 @@ function mapVisionErrorToGate(
         failedStage: "vision_request",
         developerCode: error.code,
         messageOverride: error.message,
+        cause,
+        openai,
       });
     }
     if (
@@ -150,6 +231,8 @@ function mapVisionErrorToGate(
         diagnosticId,
         failedStage,
         developerCode: error.code,
+        cause,
+        openai,
       });
     }
     if (error.code === "unsupported_type" || error.code === "invalid_data_url") {
@@ -160,6 +243,8 @@ function mapVisionErrorToGate(
         diagnosticId,
         failedStage,
         developerCode: error.code,
+        cause,
+        openai,
       });
     }
     if (error.code === "json_parse_failed" || error.code === "table_extract_failed") {
@@ -170,6 +255,8 @@ function mapVisionErrorToGate(
         diagnosticId,
         failedStage: "schema_validation",
         developerCode: error.code,
+        cause,
+        openai,
       });
     }
     if (
@@ -184,6 +271,13 @@ function mapVisionErrorToGate(
         diagnosticId,
         failedStage: "vision_response",
         developerCode: error.code,
+        messageOverride: buildAiFailureMessage({
+          failedStage: "vision_response",
+          openai,
+          errorMessage: error.message,
+        }),
+        cause,
+        openai,
       });
     }
     if (error.code === "artifact_failed") {
@@ -194,6 +288,8 @@ function mapVisionErrorToGate(
         diagnosticId,
         failedStage: "artifact_generation",
         developerCode: error.code,
+        cause,
+        openai,
       });
     }
     return toGatePayload({
@@ -203,6 +299,8 @@ function mapVisionErrorToGate(
       diagnosticId,
       failedStage,
       developerCode: error.code,
+      cause,
+      openai,
     });
   }
 
@@ -216,6 +314,7 @@ function mapVisionErrorToGate(
       failedStage: "storage_save",
       developerCode: "config_missing",
       messageOverride: "画像保存の設定が不足しています",
+      cause: message || "画像保存の設定が不足しています",
     });
   }
   return toGatePayload({
@@ -225,6 +324,10 @@ function mapVisionErrorToGate(
     diagnosticId: fallbackDiagnosticId,
     failedStage: "vision_response",
     developerCode: "unknown",
+    cause: message || "unknown_error",
+    messageOverride: message
+      ? `【AI解析で失敗】${message}`
+      : undefined,
   });
 }
 
@@ -236,16 +339,63 @@ function enrichGateFromDiagnostic(
   const record = getVisionDiagnosticForUser(userId, gate.diagnosticId);
   if (!record) return gate;
   const failedStage = getLatestFailedStage(record) ?? gate.failedStage;
-  if (!failedStage || !isVisionPipelineStage(failedStage)) return gate;
+  if (!failedStage || !isVisionPipelineStage(failedStage)) {
+    return {
+      ...gate,
+      vercelRequestId: gate.vercelRequestId ?? record.vercelRequestId,
+      openai: gate.openai ??
+        (record.openaiErrorBody || record.openaiErrorMessage
+          ? {
+              httpStatus: record.openaiHttpStatus,
+              type: record.openaiErrorType,
+              code: record.openaiErrorCode,
+              message: record.openaiErrorMessage,
+              requestId: record.openaiRequestId,
+              rawErrorBody: record.openaiErrorBody,
+            }
+          : null),
+    };
+  }
+
+  const openaiFromRecord: VisionOpenAiFailureInfo | null =
+    record.openaiErrorBody ||
+    record.openaiErrorMessage ||
+    record.openaiRequestId ||
+    record.openaiErrorCode
+      ? {
+          httpStatus: record.openaiHttpStatus,
+          type: record.openaiErrorType,
+          code: record.openaiErrorCode,
+          message: record.openaiErrorMessage,
+          requestId: record.openaiRequestId,
+          rawErrorBody: record.openaiErrorBody,
+        }
+      : null;
+  const openai = gate.openai ?? openaiFromRecord;
+  const cause =
+    gate.cause ??
+    openai?.message ??
+    record.openaiErrorMessage ??
+    null;
+
+  // Keep OpenAI-specific cause on AI failures — do not overwrite with generic stage copy.
+  const keepSpecificMessage =
+    gate.status === "needs_input" ||
+    gate.status === "config_missing" ||
+    Boolean(openai?.message) ||
+    Boolean(gate.cause);
+
   return {
     ...gate,
     failedStage,
     failedStageLabel: labelForVisionStage(failedStage),
     developerCode: gate.developerCode ?? record.lastErrorCode,
-    message:
-      gate.status === "needs_input" || gate.status === "config_missing"
-        ? gate.message
-        : buildUserGateMessage({ failedStage, status: gate.status }),
+    vercelRequestId: gate.vercelRequestId ?? record.vercelRequestId,
+    openai,
+    cause,
+    message: keepSpecificMessage
+      ? gate.message
+      : buildUserGateMessage({ failedStage, status: gate.status }),
   };
 }
 
@@ -540,6 +690,10 @@ export async function prepareAssignmentWithVision(input: {
         visionFailedStage: gate.failedStage ?? null,
         visionFailedStageLabel: gate.failedStageLabel ?? null,
         visionDeveloperCode: gate.developerCode ?? null,
+        visionCause: gate.cause ?? null,
+        visionOpenAi: gate.openai ?? null,
+        visionVercelRequestId: gate.vercelRequestId ?? null,
+        visionOpenAiRequestId: gate.openai?.requestId ?? null,
         visionDeveloperHint: formatVisionDeveloperHint({
           diagnosticId: gate.diagnosticId ?? diagnosticId,
           failedStage: isVisionPipelineStage(gate.failedStage)
@@ -547,6 +701,8 @@ export async function prepareAssignmentWithVision(input: {
             : null,
           userCode: gate.userCode,
           errorCode: gate.developerCode,
+          openaiRequestId: gate.openai?.requestId ?? null,
+          vercelRequestId: gate.vercelRequestId ?? null,
         }),
       },
       batch: null,

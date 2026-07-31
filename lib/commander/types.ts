@@ -141,6 +141,19 @@ export type CommanderVisionGate = {
   failedStageLabel?: string | null;
   /** Developer error code (VisionError.code). */
   developerCode?: string | null;
+  /** Root cause — never a generic retry-only string when OpenAI details exist. */
+  cause?: string | null;
+  /** OpenAI error body fields for AI解析失敗画面. */
+  openai?: {
+    httpStatus: number | null;
+    type: string | null;
+    code: string | null;
+    message: string | null;
+    requestId: string | null;
+    rawErrorBody: string | null;
+  } | null;
+  /** Vercel x-vercel-id for log correlation. */
+  vercelRequestId?: string | null;
   /** Safe debug only — never includes filenames as content substitutes. */
   payloadAttachmentIds?: string[];
 };

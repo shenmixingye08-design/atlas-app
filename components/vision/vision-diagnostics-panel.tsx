@@ -20,12 +20,19 @@ type Diagnostic = {
       openaiErrorType?: string | null;
       artifactGate?: string | null;
       durationMs?: number | null;
+      safeMessage?: string | null;
+      rawErrorBody?: string | null;
+      requestId?: string | null;
+      httpStatus?: number | null;
     } | null;
   }>;
   model: string | null;
   mimeType: string | null;
   downloadedByteLength: number | null;
   base64Length: number | null;
+  imageByteLength?: number | null;
+  imageCount?: number | null;
+  urlLength?: number | null;
   inputImageIncluded: boolean | null;
   analysisSuccess: boolean | null;
   payloadAttachmentIdCount?: number | null;
@@ -34,6 +41,20 @@ type Diagnostic = {
   failedStage?: string | null;
   lastErrorCode?: string | null;
   lastUserCode?: string | null;
+  openaiRequestId?: string | null;
+  vercelRequestId?: string | null;
+  openaiErrorBody?: string | null;
+  openaiHttpStatus?: number | null;
+  openaiErrorType?: string | null;
+  openaiErrorCode?: string | null;
+  openaiErrorMessage?: string | null;
+  tracking?: {
+    diagnosticId?: string | null;
+    supabaseDomain?: string | null;
+    vercelRequestId?: string | null;
+    openaiRequestId?: string | null;
+    jobId?: string | null;
+  } | null;
 };
 
 type VisionDiagnosticsPanelProps = {
@@ -122,6 +143,13 @@ export function VisionDiagnosticsPanel({
           <p className="mb-2 font-medium text-foreground">画像解析診断（管理者）</p>
           <ul className="space-y-1">
             <li className="font-mono">診断ID: {row.id}</li>
+            {row.tracking && (
+              <li className="break-all font-mono">
+                tracking: supabase={row.tracking.supabaseDomain ?? "—"} /
+                vercel={row.tracking.vercelRequestId ?? row.vercelRequestId ?? "—"} /
+                openai={row.tracking.openaiRequestId ?? row.openaiRequestId ?? "—"}
+              </li>
+            )}
             {row.failedStage && (
               <li>
                 失敗工程:{" "}
@@ -133,11 +161,37 @@ export function VisionDiagnosticsPanel({
             )}
             {row.lastErrorCode && <li>errorCode: {row.lastErrorCode}</li>}
             {row.lastUserCode && <li>userCode: {row.lastUserCode}</li>}
+            {row.openaiErrorMessage && (
+              <li className="break-all">OpenAI message: {row.openaiErrorMessage}</li>
+            )}
+            {(row.openaiHttpStatus != null ||
+              row.openaiErrorType ||
+              row.openaiErrorCode) && (
+              <li className="break-all font-mono">
+                OpenAI status={String(row.openaiHttpStatus ?? "—")} type=
+                {row.openaiErrorType ?? "—"} code={row.openaiErrorCode ?? "—"}
+              </li>
+            )}
+            {row.openaiRequestId && (
+              <li className="break-all font-mono">
+                openai request_id: {row.openaiRequestId}
+              </li>
+            )}
+            {row.openaiErrorBody && (
+              <li>
+                <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-[var(--surface)] p-2 font-mono text-[10px] text-foreground">
+                  {row.openaiErrorBody}
+                </pre>
+              </li>
+            )}
             {row.stages.map((stage, index) => (
               <li key={`${stage.stage}-${index}`}>
                 {stageLabel(stage.stage, stage.ok)}
                 {stage.detail?.errorCode
                   ? ` [${stage.detail.errorCode}]`
+                  : ""}
+                {stage.detail?.safeMessage
+                  ? ` — ${stage.detail.safeMessage}`
                   : ""}
                 {typeof stage.detail?.durationMs === "number"
                   ? ` ${stage.detail.durationMs}ms`
@@ -148,6 +202,13 @@ export function VisionDiagnosticsPanel({
               Processed bytes:{" "}
               {row.downloadedByteLength?.toLocaleString("ja-JP") ?? "—"}
             </li>
+            <li>
+              Image bytes / base64 / urlLength:{" "}
+              {row.imageByteLength?.toLocaleString("ja-JP") ?? "—"} /{" "}
+              {row.base64Length?.toLocaleString("ja-JP") ?? "—"} /{" "}
+              {row.urlLength?.toLocaleString("ja-JP") ?? "—"}
+            </li>
+            <li>Image count: {row.imageCount ?? "—"}</li>
             <li>MIME: {row.mimeType ?? "—"}</li>
             <li>Model: {row.model ?? "—"}</li>
             <li>

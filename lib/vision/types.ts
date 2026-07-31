@@ -170,6 +170,32 @@ export class VisionError extends Error {
   }
 }
 
+/** Re-throw preserving diagnostic details (never drop OpenAI fields). */
+export function rethrowVisionError(
+  error: VisionError,
+  overrides?: {
+    diagnosticId?: string | null;
+    failedStage?: string | null;
+    message?: string;
+  },
+): never {
+  throw new VisionError(error.code, overrides?.message ?? error.message, {
+    diagnosticId: overrides?.diagnosticId ?? error.diagnosticId,
+    failedStage: overrides?.failedStage ?? error.failedStage,
+    details: error.details,
+    cause: error.cause ?? error,
+  });
+}
+
+export type VisionOpenAiFailureInfo = {
+  httpStatus: number | null;
+  type: string | null;
+  code: string | null;
+  message: string | null;
+  requestId: string | null;
+  rawErrorBody: string | null;
+};
+
 export type VisionGatePayload = {
   status: "vision_failed" | "needs_image_retry" | "needs_input" | "config_missing";
   analysisSuccess: boolean;
@@ -183,6 +209,12 @@ export type VisionGatePayload = {
   failedStageLabel?: string | null;
   /** Developer error code (VisionError.code or internal). */
   developerCode?: string | null;
+  /** Root cause summary for UI (not a generic retry string). */
+  cause?: string | null;
+  /** OpenAI error fields for AI解析失敗画面. */
+  openai?: VisionOpenAiFailureInfo | null;
+  /** Vercel request id for log correlation. */
+  vercelRequestId?: string | null;
 };
 
 export const VISION_PROMPT_VERSION = "v2-secretary-understand";

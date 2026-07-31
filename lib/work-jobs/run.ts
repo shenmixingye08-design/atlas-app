@@ -238,11 +238,21 @@ export async function executeWorkJob(
 
     // Vision / attachment hard failures must surface as failed jobs — never "completed".
     if (commander.visionGate && !commander.visionGate.analysisSuccess) {
+      const visionOpenAi = commander.visionGate.openai ?? null;
       recordReliabilityEvent("work_job", "failure", 1, {
         durationMs: Date.now() - startedAt,
-        errorCode: commander.visionGate.developerCode ?? "vision_failed",
-        errorMessage: commander.visionGate.message,
-        message: commander.visionGate.message,
+        errorCode:
+          visionOpenAi?.code ??
+          commander.visionGate.developerCode ??
+          "vision_failed",
+        errorMessage:
+          visionOpenAi?.message ??
+          commander.visionGate.cause ??
+          commander.visionGate.message,
+        message:
+          visionOpenAi?.message ??
+          commander.visionGate.cause ??
+          commander.visionGate.message,
         jobId,
         diagnosticId: commander.visionGate.diagnosticId ?? null,
         userId,
@@ -253,14 +263,47 @@ export async function executeWorkJob(
           failedStageLabel: commander.visionGate.failedStageLabel ?? null,
           lastSuccessHint: "vision_prior_stage",
           blockedStage: commander.visionGate.failedStage ?? "vision_response",
+          cause: commander.visionGate.cause ?? null,
+          vercelRequestId: commander.visionGate.vercelRequestId ?? null,
+          openaiRequestId: visionOpenAi?.requestId ?? null,
+          openaiHttpStatus: visionOpenAi?.httpStatus ?? null,
+          openaiErrorType: visionOpenAi?.type ?? null,
+          openaiErrorCode: visionOpenAi?.code ?? null,
+          openaiErrorMessage: visionOpenAi?.message ?? null,
+          openaiErrorBody: visionOpenAi?.rawErrorBody ?? null,
+          tracking: {
+            diagnosticId: commander.visionGate.diagnosticId ?? null,
+            supabaseDomain: "atlasVisionDiagnostics",
+            vercelRequestId: commander.visionGate.vercelRequestId ?? null,
+            openaiRequestId: visionOpenAi?.requestId ?? null,
+            jobId,
+          },
         },
       });
       return saveWorkJob({
         ...existing,
         status: "failed",
-        metadata: mergedMetadata,
+        metadata: {
+          ...mergedMetadata,
+          failureDiagnostic: {
+            jobId,
+            diagnosticId: commander.visionGate.diagnosticId ?? null,
+            failedStage: commander.visionGate.failedStage ?? null,
+            developerCode: commander.visionGate.developerCode ?? null,
+            cause: commander.visionGate.cause ?? null,
+            vercelRequestId: commander.visionGate.vercelRequestId ?? null,
+            openai: visionOpenAi,
+            safeMessage:
+              visionOpenAi?.message ??
+              commander.visionGate.cause ??
+              commander.visionGate.message,
+          },
+        },
         attemptCount: existing.attemptCount + 1,
-        error: commander.visionGate.message,
+        error:
+          visionOpenAi?.message ??
+          commander.visionGate.cause ??
+          commander.visionGate.message,
         visionGate: commander.visionGate,
         result: null,
         updatedAt: new Date().toISOString(),

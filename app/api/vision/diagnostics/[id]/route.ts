@@ -4,7 +4,7 @@ import { isAtlasOwnerEmail } from "@/lib/auth/is-atlas-owner";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 import {
   getLatestFailedStage,
-  getVisionDiagnosticForUser,
+  getVisionDiagnosticForUserDurable,
 } from "@/lib/vision/diagnostics";
 
 export const runtime = "nodejs";
@@ -27,6 +27,23 @@ const SAFE_DETAIL_KEYS = [
   "mimeType",
   "downloadedByteLength",
   "base64Length",
+  "imageByteLength",
+  "imageCount",
+  "urlLength",
+  "httpStatus",
+  "param",
+  "requestId",
+  "openaiRequestId",
+  "vercelRequestId",
+  "safeMessage",
+  "rawErrorBody",
+  "inputTypes",
+  "timedOut",
+  "apiFormat",
+  "responseStatus",
+  "maxOutputTokens",
+  "detail",
+  "matchesOfficialResponsesApi",
 ] as const;
 
 function pickSafeDetail(
@@ -66,7 +83,7 @@ export async function GET(
   }
 
   const { id } = await context.params;
-  const diagnostic = getVisionDiagnosticForUser(userId, id);
+  const diagnostic = await getVisionDiagnosticForUserDurable(userId, id);
   if (!diagnostic) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
@@ -84,6 +101,9 @@ export async function GET(
       mimeType: diagnostic.mimeType,
       downloadedByteLength: diagnostic.downloadedByteLength,
       base64Length: diagnostic.base64Length,
+      imageByteLength: diagnostic.imageByteLength,
+      imageCount: diagnostic.imageCount,
+      urlLength: diagnostic.urlLength,
       inputImageIncluded: diagnostic.inputImageIncluded,
       analysisSuccess: diagnostic.analysisSuccess,
       payloadAttachmentIdCount: diagnostic.payloadAttachmentIds?.length ?? null,
@@ -92,8 +112,24 @@ export async function GET(
       failedStage: getLatestFailedStage(diagnostic),
       lastErrorCode: diagnostic.lastErrorCode,
       lastUserCode: diagnostic.lastUserCode,
+      openaiRequestId: diagnostic.openaiRequestId,
+      vercelRequestId: diagnostic.vercelRequestId,
+      openaiErrorBody: diagnostic.openaiErrorBody,
+      openaiHttpStatus: diagnostic.openaiHttpStatus,
+      openaiErrorType: diagnostic.openaiErrorType,
+      openaiErrorCode: diagnostic.openaiErrorCode,
+      openaiErrorMessage: diagnostic.openaiErrorMessage,
+      supabasePersist: diagnostic.supabasePersist,
       createdAt: diagnostic.createdAt,
       updatedAt: diagnostic.updatedAt,
+      /** Cross-system tracking keys */
+      tracking: {
+        diagnosticId: diagnostic.id,
+        supabaseDomain: "atlasVisionDiagnostics",
+        vercelRequestId: diagnostic.vercelRequestId,
+        openaiRequestId: diagnostic.openaiRequestId,
+        jobId: diagnostic.jobId,
+      },
     },
   });
 }
