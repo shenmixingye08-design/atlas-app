@@ -5,6 +5,7 @@ import { ui } from "@/lib/i18n";
  * User-facing wait steps only — no CEO / Planner / QA / pipeline jargon.
  * Kept short so first-time users always know what is happening.
  */
+/** Phase1 wait copy — confirm → prepare → finish. Done is a separate screen. */
 const SECRETARY_PHASES = [
   {
     id: "understand",
@@ -20,11 +21,6 @@ const SECRETARY_PHASES = [
     id: "polish",
     label: ui.secretaryProgress.polish,
     subtitle: ui.secretaryProgress.polishHint,
-  },
-  {
-    id: "done",
-    label: ui.secretaryProgress.done,
-    subtitle: ui.secretaryProgress.doneHint,
   },
 ] as const;
 
