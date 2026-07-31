@@ -98,6 +98,19 @@ export async function preprocessImageBuffer(input: {
   };
 }
 
+/**
+ * Build a data URL from a Buffer via binary Base64 (`buffer.toString("base64")`).
+ * Never pass a UTF-8 string as image bytes.
+ *
+ * For OpenAI vision payloads, prefer `buildOpenAiDataUrlFromBuffer` /
+ * `validateOpenAiImageDataUrl` so MIME comes from magic bytes, not callers.
+ */
 export function toDataUrl(mimeType: string, buffer: Buffer): string {
-  return `data:${mimeType};base64,${buffer.toString("base64")}`;
+  if (!Buffer.isBuffer(buffer)) {
+    throw new Error("toDataUrl requires a Buffer (binary), not a string");
+  }
+  const normalized =
+    mimeType.toLowerCase() === "image/jpg" ? "image/jpeg" : mimeType.toLowerCase();
+  // Binary → base64 only. Do NOT use buffer.toString("utf8").
+  return `data:${normalized};base64,${buffer.toString("base64")}`;
 }

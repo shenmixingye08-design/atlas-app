@@ -3,7 +3,7 @@ import "server-only";
 import sharp from "sharp";
 
 import { detectImageMimeFromBytes } from "@/lib/vision/image-magic";
-import { toDataUrl } from "@/lib/attachments/preprocess";
+import { buildOpenAiDataUrlFromBuffer } from "@/lib/vision/validate-openai-image-payload";
 import { VisionError } from "@/lib/vision/types";
 
 export type VisionNormalizeProfile = "standard" | "compact" | "ocr";
@@ -63,36 +63,13 @@ export async function normalizeImageForOpenAi(input: {
     });
   }
 
-  let pipeline: ReturnType<typeof sharp>;
-  try {
-    pipeline = sharp(input.buffer, {
-      failOn: "none",
-      // Animated GIF/WEBP: use first frame only.
-      pages: 1,
-    })
-      .rotate() // EXIF orientation
-      .toColourspace("srgb");
-  } catch (error) {
-    throw new VisionError(
-      "corrupt_image",
-      "画像形式を変換できませんでした。JPEGまたはPNGで送り直してください",
-      {
-        diagnosticId: input.diagnosticId,
-        failedStage: "preprocess",
-        details: {
-          safeMessage:
-            error instanceof Error ? error.message.slice(0, 200) : "sharp_init_failed",
-          detectedInputMime,
-          profile,
-        },
-        cause: error,
-      },
-    );
-  }
-
+  // Fresh sharp instance for metadata — never reuse a consumed pipeline.
   let meta;
   try {
-    meta = await pipeline.metadata();
+    meta = await sharp(input.buffer, {
+      failOn: "none",
+      pages: 1,
+    }).metadata();
   } catch (error) {
     if (detectedInputMime === "image/heic") {
       throw new VisionError(
@@ -117,6 +94,7 @@ export async function normalizeImageForOpenAi(input: {
             error instanceof Error ? error.message.slice(0, 200) : "metadata_failed",
           detectedInputMime,
           profile,
+          headHex32: input.buffer.subarray(0, 32).toString("hex"),
         },
         cause: error,
       },
@@ -147,31 +125,33 @@ export async function normalizeImageForOpenAi(input: {
     );
   }
 
-  // After EXIF rotate, dimensions may swap — always constrain both edges.
-  pipeline = pipeline.resize({
-    width: settings.maxEdge,
-    height: settings.maxEdge,
-    fit: "inside",
-    withoutEnlargement: true,
-  });
   if (Math.max(originalWidth, originalHeight) > settings.maxEdge) {
     warnings.push(`resized_long_edge_to_${settings.maxEdge}`);
   }
 
   // Prefer JPEG for OpenAI (universal). Keep PNG only when alpha is required.
+  // Fresh pipeline for encode (binary Buffer out — never utf8 string).
   const hasAlpha = Boolean(meta.hasAlpha);
   let buffer: Buffer;
   let mimeType: "image/jpeg" | "image/png";
   try {
+    const base = sharp(input.buffer, { failOn: "none", pages: 1 })
+      .rotate() // EXIF orientation
+      .toColourspace("srgb")
+      .resize({
+        width: settings.maxEdge,
+        height: settings.maxEdge,
+        fit: "inside",
+        withoutEnlargement: true,
+      });
+
     if (hasAlpha && profile !== "compact") {
-      // sharp strips EXIF by default unless withMetadata() is used.
-      buffer = await pipeline.png({ compressionLevel: 9, effort: 7 }).toBuffer();
+      buffer = await base.png({ compressionLevel: 9, effort: 7 }).toBuffer();
       mimeType = "image/png";
     } else {
-      // Flatten alpha onto white for compact / photos.
       const jpegPipeline = hasAlpha
-        ? pipeline.flatten({ background: "#ffffff" })
-        : pipeline;
+        ? base.flatten({ background: "#ffffff" })
+        : base;
       buffer = await jpegPipeline
         .jpeg({
           quality: settings.jpegQuality,
@@ -234,27 +214,37 @@ export async function normalizeImageForOpenAi(input: {
     );
   }
 
-  const dataUrl = toDataUrl(mimeType, buffer);
-  if (!dataUrl.startsWith(`data:${mimeType};base64,`) || dataUrl.length < 64) {
-    throw new VisionError("invalid_data_url", "AI送信用データの生成に失敗しました", {
-      diagnosticId: input.diagnosticId,
-      failedStage: "data_url",
-    });
+  // MIME from magic bytes of the encoded Buffer — never from extension/DB.
+  const built = buildOpenAiDataUrlFromBuffer(buffer);
+  if (built.mimeType !== mimeType) {
+    throw new VisionError(
+      "invalid_data_url",
+      "画像のMIMEタイプと実データが一致しませんでした",
+      {
+        diagnosticId: input.diagnosticId,
+        failedStage: "data_url",
+        details: {
+          declaredMime: mimeType,
+          detectedMime: built.mimeType,
+          headHex32: buffer.subarray(0, 32).toString("hex"),
+        },
+      },
+    );
   }
 
   return {
     buffer,
-    mimeType,
+    mimeType: built.mimeType,
     width,
     height,
     originalWidth,
     originalHeight,
-    dataUrl,
+    dataUrl: built.dataUrl,
     detectedInputMime,
     profile,
     byteLength: buffer.length,
     base64Length: buffer.toString("base64").length,
-    urlLength: dataUrl.length,
+    urlLength: built.dataUrl.length,
     warnings,
   };
 }

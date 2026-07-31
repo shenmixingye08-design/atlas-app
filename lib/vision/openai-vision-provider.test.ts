@@ -68,6 +68,44 @@ describe("openAiVisionProvider request shape", () => {
     } as Awaited<ReturnType<typeof createAtlasResponse>>);
   });
 
+  it("never sends MIME-spoofed bytes (webp labeled jpeg) to OpenAI", async () => {
+    const webp = await sharp({
+      create: {
+        width: 80,
+        height: 60,
+        channels: 3,
+        background: { r: 1, g: 2, b: 3 },
+      },
+    })
+      .webp()
+      .toBuffer();
+
+    // Old bug path: trust DB mime and skip magic checks.
+    // New path: normalize re-encodes webp → jpeg, then validate passes.
+    const result = await openAiVisionProvider.analyzeImage({
+      userId: "user_1",
+      attachmentId: "att_1",
+      imageUrl: `data:image/jpeg;base64,${webp.toString("base64")}`,
+      imageBytes: webp,
+      userText: "これは何？",
+      hintType: "unknown",
+      detail: "auto",
+    });
+    expect(result.result.summary).toBeTruthy();
+    const call = vi.mocked(createAtlasResponse).mock.calls[0]?.[0];
+    const content = (
+      call?.input as Array<{ content: Array<{ type?: string; image_url?: string }> }>
+    )[0]?.content;
+    const imagePart = content?.find((part) => part.type === "input_image");
+    expect(String(imagePart?.image_url)).toMatch(/^data:image\/jpeg;base64,/);
+    // Payload after normalize must be real JPEG magic, not RIFF/WEBP.
+    const b64 = String(imagePart?.image_url).split(",")[1] ?? "";
+    const decoded = Buffer.from(b64, "base64");
+    expect(decoded[0]).toBe(0xff);
+    expect(decoded[1]).toBe(0xd8);
+    expect(decoded[2]).toBe(0xff);
+  });
+
   it("sends input_text + input_image data URL with detail=high (not auto)", async () => {
     const jpeg = await sampleJpeg();
     const dataUrl = `data:image/jpeg;base64,${jpeg.toString("base64")}`;

@@ -1,10 +1,11 @@
 import "server-only";
 
 import { assertAttachmentBackendReady } from "@/lib/attachments/backend";
-import { toDataUrl } from "@/lib/attachments/preprocess";
 import { getImageAttachmentForUser, readProcessedImageBytes } from "@/lib/attachments/store";
 import { getCachedVisionAnalysis, setCachedVisionAnalysis } from "@/lib/vision/cache";
 import { classifyImagePurposeFromText, recommendDetailLevel } from "@/lib/vision/classify";
+import { detectImageMimeFromBytes } from "@/lib/vision/image-magic";
+import { buildOpenAiDataUrlFromBuffer } from "@/lib/vision/validate-openai-image-payload";
 import {
   appendVisionCostRecord,
   estimateImageInputTokens,
@@ -153,35 +154,64 @@ export async function analyzeUserImage(input: {
     });
   }
 
+  // MIME from magic bytes — never trust DB/extension alone for OpenAI payloads.
+  const detectedMime = detectImageMimeFromBytes(bytes.buffer);
   appendVisionDiagnosticStage(diagnosticId, "storage_download", true, {
     downloadedByteLength: bytes.buffer.length,
     mimeType: bytes.mimeType,
+    detectedMime,
+    headHex32: bytes.buffer.subarray(0, 32).toString("hex"),
   });
 
   // Provisional data URL for legacy providers; OpenAI path re-normalizes imageBytes.
-  const imageUrl = toDataUrl(bytes.mimeType, bytes.buffer);
-  if (!imageUrl.includes(";base64,") || imageUrl.length < 64) {
+  // If stored bytes are already JPEG/PNG, build a verified data URL from magic MIME.
+  // Otherwise pass a placeholder — provider will re-encode from imageBytes.
+  let imageUrl: string;
+  try {
+    if (detectedMime === "image/jpeg" || detectedMime === "image/png") {
+      imageUrl = buildOpenAiDataUrlFromBuffer(bytes.buffer).dataUrl;
+    } else {
+      // Non JPEG/PNG (webp/heic/gif): do not pretend mimeType from DB is correct.
+      // Provider must re-encode from imageBytes; keep a clearly non-sendable marker
+      // only when imageBytes are present (they are, below).
+      imageUrl = "data:application/octet-stream;base64,";
+    }
+  } catch (error) {
     appendVisionDiagnosticStage(diagnosticId, "data_url", false, {
-      base64Length: imageUrl.length,
+      base64Length: 0,
       mimeType: bytes.mimeType,
+      detectedMime,
       errorCode: "invalid_data_url",
       userCode: "image_format_invalid",
+      headHex32: bytes.buffer.subarray(0, 32).toString("hex"),
     });
+    if (error instanceof VisionError) {
+      throw new VisionError(error.code, error.message, {
+        diagnosticId,
+        failedStage: error.failedStage ?? "data_url",
+        details: error.details,
+        cause: error,
+      });
+    }
     throw new VisionError("invalid_data_url", "画像データの生成に失敗しました", {
       diagnosticId,
       failedStage: "data_url",
+      cause: error,
     });
   }
 
   appendVisionDiagnosticStage(diagnosticId, "preprocess", true, {
     downloadedByteLength: bytes.buffer.length,
     mimeType: bytes.mimeType,
+    detectedMime,
     forceRefresh: input.forceRefresh === true,
   });
 
   appendVisionDiagnosticStage(diagnosticId, "data_url", true, {
     base64Length: imageUrl.length,
-    mimeType: bytes.mimeType,
+    mimeType: detectedMime ?? bytes.mimeType,
+    detectedMime,
+    usedDbMime: false,
   });
 
   const provider = input.provider ?? openAiVisionProvider;

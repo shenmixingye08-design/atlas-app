@@ -39,6 +39,7 @@ import {
   VISION_MAX_ATTEMPTS,
   visionRetryDelayMs,
 } from "@/lib/vision/retry";
+import { validateOpenAiImageDataUrl } from "@/lib/vision/validate-openai-image-payload";
 
 /** Per-attempt OpenAI call budget (Vercel-safe). */
 export const VISION_OPENAI_TIMEOUT_MS = 55_000;
@@ -302,6 +303,36 @@ export const openAiVisionProvider: VisionProvider = {
         throw error;
       }
 
+      // Hard gate: decode data URL → magic bytes → sharp open → disk probe.
+      // Never call OpenAI when bytes are not a real JPEG/PNG.
+      let validated;
+      try {
+        validated = await validateOpenAiImageDataUrl({
+          dataUrl: normalized.dataUrl,
+          diagnosticId,
+          jobId: input.jobId ?? null,
+        });
+      } catch (error) {
+        if (error instanceof VisionError) {
+          lastError = error;
+          if (diagnosticId) {
+            appendVisionDiagnosticStage(diagnosticId, "data_url", false, {
+              errorCode: error.code,
+              userCode: "image_format_invalid",
+              attempt,
+              normalizeProfile: profile,
+              headHex32:
+                typeof error.details?.headHex32 === "string"
+                  ? error.details.headHex32
+                  : null,
+            });
+          }
+          if (attempt >= VISION_MAX_ATTEMPTS) throw error;
+          continue;
+        }
+        throw error;
+      }
+
       console.info("[vision] image_send_metrics", {
         diagnosticId,
         jobId: input.jobId ?? null,
@@ -309,15 +340,18 @@ export const openAiVisionProvider: VisionProvider = {
         attempt,
         profile: normalized.profile,
         imageCount: 1,
-        mimeType: normalized.mimeType,
-        imageByteLength: normalized.byteLength,
-        base64Length: normalized.base64Length,
-        urlLength: normalized.urlLength,
-        width: normalized.width,
-        height: normalized.height,
+        mimeType: validated.mimeType,
+        imageByteLength: validated.byteLength,
+        bufferSize: validated.byteLength,
+        base64Length: validated.base64Length,
+        urlLength: validated.urlLength,
+        width: validated.width,
+        height: validated.height,
         originalWidth: normalized.originalWidth,
         originalHeight: normalized.originalHeight,
         detectedInputMime: normalized.detectedInputMime,
+        headHex32: validated.headHex32,
+        probePath: validated.probePath,
         detail: openAiDetail,
         model,
       });
@@ -333,6 +367,9 @@ export const openAiVisionProvider: VisionProvider = {
         hintType: input.hintType,
       });
 
+      // Official Responses API shape:
+      // { type: "input_image", image_url: "data:image/jpeg;base64,...", detail }
+      // image_url MUST be a string data URL (not { url: ... }).
       const multimodalInput = [
         {
           role: "user" as const,
@@ -340,7 +377,7 @@ export const openAiVisionProvider: VisionProvider = {
             { type: "input_text" as const, text: userText },
             {
               type: "input_image" as const,
-              image_url: normalized.dataUrl,
+              image_url: validated.dataUrl,
               detail: openAiDetail,
             },
           ],
@@ -354,7 +391,14 @@ export const openAiVisionProvider: VisionProvider = {
         input: multimodalInput,
       });
 
-      const imageMeta = inspectVisionDataUrl(normalized.dataUrl);
+      const imageMeta = {
+        ...inspectVisionDataUrl(validated.dataUrl),
+        mimeType: validated.mimeType,
+        imageByteLength: validated.byteLength,
+        base64Length: validated.base64Length,
+        urlLength: validated.urlLength,
+        imageCount: 1 as const,
+      };
       const requestLog = buildVisionOpenAiRequestLog({
         model: requestParams.model,
         instructions,
@@ -373,8 +417,14 @@ export const openAiVisionProvider: VisionProvider = {
         attempt,
         profile: normalized.profile,
         fallbackModel: model !== primaryModel,
-        width: normalized.width,
-        height: normalized.height,
+        width: validated.width,
+        height: validated.height,
+        headHex32: validated.headHex32,
+        bufferSize: validated.byteLength,
+        base64Length: validated.base64Length,
+        mimeType: validated.mimeType,
+        image_url_is_string: typeof multimodalInput[0]?.content[1]?.image_url === "string",
+        image_url_prefix: validated.dataUrl.slice(0, 22),
       });
 
       if (diagnosticId) {
@@ -383,13 +433,14 @@ export const openAiVisionProvider: VisionProvider = {
           inputImageIncluded: true,
           inputTypes: RESPONSES_INPUT_TYPES.join(","),
           apiFormat: "responses",
-          mimeType: normalized.mimeType,
-          imageByteLength: normalized.byteLength,
-          base64Length: normalized.base64Length,
+          mimeType: validated.mimeType,
+          imageByteLength: validated.byteLength,
+          base64Length: validated.base64Length,
           imageCount: 1,
-          urlLength: normalized.urlLength,
-          width: normalized.width,
-          height: normalized.height,
+          urlLength: validated.urlLength,
+          width: validated.width,
+          height: validated.height,
+          headHex32: validated.headHex32,
           detail: openAiDetail,
           maxOutputTokens: requestParams.max_output_tokens,
           attempt,
@@ -402,6 +453,8 @@ export const openAiVisionProvider: VisionProvider = {
           jobId: input.jobId ?? null,
           vercelRequestId,
           matchesOfficialResponsesApi: true,
+          imageUrlField: "image_url",
+          imageUrlShape: "string_data_url",
         });
       }
 
