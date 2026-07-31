@@ -37,6 +37,12 @@ export function LegalFooterLinks({
       <Link href="/contact" className={linkClass}>
         {ui.contact.link}
       </Link>
+      <Link href="/contact?category=bug" className={linkClass}>
+        不具合報告
+      </Link>
+      <Link href="/contact?category=service" className={linkClass}>
+        フィードバック
+      </Link>
       <Link href="/status" className={linkClass}>
         {ui.systemPages.statusTitle}
       </Link>

@@ -14,6 +14,7 @@ type OwnerNavProps = {
     | "costRanking"
     | "cancellationAnalysis"
     | "betaUsers"
+    | "betaOps"
     | "systemStatus"
     | "externalServices"
     | "envStatus"
@@ -89,6 +90,11 @@ const LINKS = [
     id: "betaUsers" as const,
     href: "/owner/beta-users",
     label: ui.owner.navBetaUsers,
+  },
+  {
+    id: "betaOps" as const,
+    href: "/owner/beta-ops",
+    label: "β運営",
   },
   {
     id: "systemStatus" as const,
