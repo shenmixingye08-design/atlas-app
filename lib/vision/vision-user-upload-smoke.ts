@@ -1,24 +1,22 @@
 import "server-only";
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import sharp from "sharp";
 
 import { uploadUserImages } from "@/lib/attachments";
-import { deleteImageAttachment } from "@/lib/attachments/store";
+import {
+  deleteImageAttachment,
+  readProcessedImageBytes,
+} from "@/lib/attachments/store";
 import { getHealthVersionPayload } from "@/lib/health/version-info";
 import { isOpenAIConfigured } from "@/lib/openai";
 import { analyzeUserImage } from "@/lib/vision/analyze-image";
+import { detectImageMimeFromBytes } from "@/lib/vision/image-magic";
 import { logVisionPipeline } from "@/lib/vision/pipeline-log";
 
 /**
  * Production smoke for the REAL user-upload path:
  * buffer → uploadUserImages (preprocess + storage) → analyzeUserImage
  * → Files API / Responses (same as authenticated user attachments).
- *
- * Known-good JPEG fixture is used as the "user" upload bytes so we isolate
- * pipeline drops without depending on browser/Clerk.
  */
 export type VisionUserUploadSmokeResult = {
   ok: boolean;
@@ -31,9 +29,19 @@ export type VisionUserUploadSmokeResult = {
   summaryPreview: string | null;
   model: string | null;
   cached: boolean | null;
+  storage: {
+    byteLength: number | null;
+    mimeType: string | null;
+    detectedMime: string | null;
+    headHex32: string | null;
+    sharpOpenable: boolean | null;
+    width: number | null;
+    height: number | null;
+  };
   stages: {
     upload: boolean;
-    storageReadViaAnalyze: boolean;
+    storageRead: boolean;
+    storageOpenable: boolean;
     visionAnalyze: boolean;
   };
   durationMs: number;
@@ -42,23 +50,6 @@ export type VisionUserUploadSmokeResult = {
 };
 
 const SMOKE_USER_ID = "vision_user_upload_smoke";
-
-async function loadJpeg(): Promise<Buffer> {
-  try {
-    return readFileSync(join(process.cwd(), "testdata/vision/known-good-64.jpg"));
-  } catch {
-    return sharp({
-      create: {
-        width: 96,
-        height: 96,
-        channels: 3,
-        background: { r: 40, g: 120, b: 200 },
-      },
-    })
-      .jpeg({ quality: 90 })
-      .toBuffer();
-  }
-}
 
 export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeResult> {
   const started = Date.now();
@@ -74,9 +65,19 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
     summaryPreview: null,
     model: null,
     cached: null,
+    storage: {
+      byteLength: null,
+      mimeType: null,
+      detectedMime: null,
+      headHex32: null,
+      sharpOpenable: null,
+      width: null,
+      height: null,
+    },
     stages: {
       upload: false,
-      storageReadViaAnalyze: false,
+      storageRead: false,
+      storageOpenable: false,
       visionAnalyze: false,
     },
     durationMs: 0,
@@ -95,15 +96,27 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
 
   let attachmentId: string | null = null;
   try {
-    const buffer = await loadJpeg();
+    // Prefer a freshly generated JPEG on Production so we never depend on a
+    // fixture that might be transformed by deploy packaging.
+    const buffer = await sharp({
+      create: {
+        width: 96,
+        height: 96,
+        channels: 3,
+        background: { r: 40, g: 120, b: 200 },
+      },
+    })
+      .jpeg({ quality: 90 })
+      .toBuffer();
+    void loadJpeg;
+
     logVisionPipeline({
       stage: "image_select",
       ok: true,
-      fileName: "known-good-64.jpg",
+      fileName: "smoke-generated.jpg",
       mimeType: "image/jpeg",
       byteLength: buffer.length,
       headHex32: buffer.subarray(0, 32).toString("hex"),
-      dropReason: null,
     });
 
     base.stage = "uploadUserImages";
@@ -111,7 +124,7 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
       userId: SMOKE_USER_ID,
       files: [
         {
-          fileName: "known-good-64.jpg",
+          fileName: "smoke-generated.jpg",
           mimeType: "image/jpeg",
           buffer,
         },
@@ -139,6 +152,65 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
       };
     }
 
+    base.stage = "storage_read";
+    const stored = await readProcessedImageBytes(SMOKE_USER_ID, attachmentId);
+    if (!stored) {
+      logVisionPipeline({
+        stage: "storage_read",
+        ok: false,
+        attachmentId,
+        dropReason: "storage_read_null",
+      });
+      return {
+        ...base,
+        stage: "storage_read_null",
+        error: "readProcessedImageBytes returned null after upload",
+        durationMs: Date.now() - started,
+      };
+    }
+
+    base.stages.storageRead = true;
+    const detectedMime = detectImageMimeFromBytes(stored.buffer);
+    let sharpOpenable = false;
+    let width: number | null = null;
+    let height: number | null = null;
+    try {
+      const meta = await sharp(stored.buffer, { failOn: "none", pages: 1 }).metadata();
+      sharpOpenable = Boolean(meta.width && meta.height && meta.format);
+      width = meta.width ?? null;
+      height = meta.height ?? null;
+    } catch {
+      sharpOpenable = false;
+    }
+    base.storage = {
+      byteLength: stored.buffer.length,
+      mimeType: stored.mimeType,
+      detectedMime,
+      headHex32: stored.buffer.subarray(0, 32).toString("hex"),
+      sharpOpenable,
+      width,
+      height,
+    };
+    base.stages.storageOpenable = sharpOpenable;
+    logVisionPipeline({
+      stage: "storage_read",
+      ok: sharpOpenable,
+      attachmentId,
+      mimeType: stored.mimeType,
+      byteLength: stored.buffer.length,
+      headHex32: base.storage.headHex32,
+      dropReason: sharpOpenable ? null : "storage_bytes_not_openable",
+    });
+
+    if (!sharpOpenable) {
+      return {
+        ...base,
+        stage: "storage_corrupt",
+        error: `storage bytes not openable head=${base.storage.headHex32} mime=${detectedMime}`,
+        durationMs: Date.now() - started,
+      };
+    }
+
     base.stage = "analyzeUserImage";
     const analysis = await analyzeUserImage({
       userId: SMOKE_USER_ID,
@@ -150,7 +222,6 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
       jobId: "job_vision_user_upload_smoke",
     });
 
-    base.stages.storageReadViaAnalyze = true;
     base.stages.visionAnalyze = true;
     base.diagnosticId = analysis.diagnosticId ?? null;
     base.detectedType = analysis.detectedType;
@@ -172,6 +243,14 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
 
     return base;
   } catch (error) {
+    const diagnosticId =
+      error &&
+      typeof error === "object" &&
+      "diagnosticId" in error &&
+      typeof (error as { diagnosticId?: unknown }).diagnosticId === "string"
+        ? (error as { diagnosticId: string }).diagnosticId
+        : null;
+    base.diagnosticId = diagnosticId;
     base.error =
       error instanceof Error ? error.message.slice(0, 400) : String(error);
     base.durationMs = Date.now() - started;
@@ -180,7 +259,7 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
       ok: false,
       attachmentId,
       dropReason: base.error,
-      diagnosticId: base.diagnosticId,
+      diagnosticId,
     });
     return base;
   } finally {

@@ -34,10 +34,11 @@ export async function preprocessImageBuffer(input: {
   const detail = input.detail ?? "auto";
   const preferReadableText = Boolean(input.preferReadableText);
 
-  let pipeline = sharp(input.buffer, { failOn: "none", pages: 1 })
-    .rotate()
-    .toColourspace("srgb");
-  const meta = await pipeline.metadata();
+  // Fresh instance for metadata — never reuse a sharp pipeline after await.
+  const meta = await sharp(input.buffer, {
+    failOn: "none",
+    pages: 1,
+  }).metadata();
   const originalWidth = meta.width ?? 0;
   const originalHeight = meta.height ?? 0;
 
@@ -46,27 +47,30 @@ export async function preprocessImageBuffer(input: {
   }
 
   const maxEdge = maxEdgeForDetail(detail, preferReadableText);
-  // After EXIF rotate, width/height may swap — constrain both edges.
-  pipeline = pipeline.resize({
-    width: maxEdge,
-    height: maxEdge,
-    fit: "inside",
-    withoutEnlargement: true,
-  });
-
   // Prefer JPEG for photos; keep PNG when alpha likely matters.
   const hasAlpha = Boolean(meta.hasAlpha);
   let buffer: Buffer;
   let mimeType: PreprocessResult["mimeType"];
 
+  // Fresh encode pipeline (EXIF rotate + sRGB + resize).
+  const encode = sharp(input.buffer, { failOn: "none", pages: 1 })
+    .rotate()
+    .toColourspace("srgb")
+    .resize({
+      width: maxEdge,
+      height: maxEdge,
+      fit: "inside",
+      withoutEnlargement: true,
+    });
+
   if (hasAlpha) {
-    buffer = await pipeline.png({ compressionLevel: 8 }).toBuffer();
+    buffer = await encode.png({ compressionLevel: 8 }).toBuffer();
     mimeType = "image/png";
   } else if (preferReadableText) {
-    buffer = await pipeline.jpeg({ quality: 88, mozjpeg: true }).toBuffer();
+    buffer = await encode.jpeg({ quality: 88, mozjpeg: true }).toBuffer();
     mimeType = "image/jpeg";
   } else {
-    buffer = await pipeline.jpeg({ quality: 82, mozjpeg: true }).toBuffer();
+    buffer = await encode.jpeg({ quality: 82, mozjpeg: true }).toBuffer();
     mimeType = "image/jpeg";
   }
 

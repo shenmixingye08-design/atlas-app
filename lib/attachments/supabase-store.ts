@@ -58,6 +58,27 @@ function extForMime(mime: string): string {
   return "jpg";
 }
 
+function looksLikeImageBytes(buffer: Buffer): boolean {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 32) return false;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return true;
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47
+  ) {
+    return true;
+  }
+  if (
+    buffer.toString("ascii", 0, 4) === "RIFF" &&
+    buffer.toString("ascii", 8, 12) === "WEBP"
+  ) {
+    return true;
+  }
+  if (buffer.toString("ascii", 4, 8) === "ftyp") return true;
+  return false;
+}
+
 function buildObjectPath(input: {
   userId: string;
   jobId: string;
@@ -109,8 +130,21 @@ async function downloadObject(path: string): Promise<Buffer> {
   if (error || !data) {
     throw classifySupabaseError(error, "storage.download");
   }
-  const arrayBuffer = await data.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  // Supabase returns a Blob in browsers/Node; also accept ArrayBuffer/Uint8Array.
+  if (Buffer.isBuffer(data)) return data;
+  if (data instanceof ArrayBuffer) return Buffer.from(data);
+  if (ArrayBuffer.isView(data)) {
+    return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  }
+  if (typeof (data as Blob).arrayBuffer === "function") {
+    const arrayBuffer = await (data as Blob).arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+  throw new AttachmentStorageError({
+    code: "storage_failed",
+    stage: "storage.download",
+    providerMessage: `unexpected download type=${typeof data}`,
+  });
 }
 
 async function removeObjects(paths: string[]): Promise<void> {
@@ -221,6 +255,40 @@ export async function supabaseSaveImageAttachment(
     throw classifySupabaseError(error, "db.insert");
   }
 
+  // Fail closed if Storage round-trip does not return real image bytes.
+  // Production drop: upload OK → download non-image / truncated.
+  try {
+    const verified = await downloadObject(processedPath);
+    if (
+      verified.length !== input.processedBuffer.length ||
+      !looksLikeImageBytes(verified) ||
+      !verified.subarray(0, 16).equals(input.processedBuffer.subarray(0, 16))
+    ) {
+      await removeObjects([originalPath, processedPath]);
+      await client.from("atlas_image_attachments").delete().eq("id", id);
+      throw new AttachmentStorageError({
+        code: "storage_failed",
+        stage: "storage.roundtrip",
+        providerMessage: [
+          "processed round-trip mismatch",
+          `uploaded=${input.processedBuffer.length}`,
+          `downloaded=${verified.length}`,
+          `headUp=${input.processedBuffer.subarray(0, 16).toString("hex")}`,
+          `headDown=${verified.subarray(0, 16).toString("hex")}`,
+        ].join(" "),
+      });
+    }
+  } catch (verifyError) {
+    if (verifyError instanceof AttachmentStorageError) throw verifyError;
+    await removeObjects([originalPath, processedPath]);
+    try {
+      await client.from("atlas_image_attachments").delete().eq("id", id);
+    } catch {
+      /* best-effort */
+    }
+    throw classifySupabaseError(verifyError, "storage.roundtrip");
+  }
+
   return rowToMeta(row);
 }
 
@@ -253,9 +321,14 @@ export async function supabaseReadProcessedImageBytes(
   if (!meta) return null;
   try {
     const buffer = await downloadObject(meta.processedPath);
-    if (buffer.length > 0) {
+    if (looksLikeImageBytes(buffer)) {
       return { buffer, mimeType: meta.mimeType, meta };
     }
+    console.warn("[attachments] processed bytes not image magic; trying original", {
+      attachmentId: id,
+      byteLength: buffer.length,
+      headHex32: buffer.subarray(0, 32).toString("hex"),
+    });
   } catch (processedError) {
     console.warn("[attachments] processed download failed; trying original", {
       attachmentId: id,
@@ -266,16 +339,21 @@ export async function supabaseReadProcessedImageBytes(
     });
   }
 
-  // Fallback: original bytes (preprocess will re-run in vision normalize).
+  // Fallback: original bytes (vision normalize will re-encode).
   try {
     const buffer = await downloadObject(meta.originalPath);
-    if (buffer.length > 0) {
+    if (looksLikeImageBytes(buffer)) {
       return {
         buffer,
         mimeType: meta.originalMimeType ?? meta.mimeType,
         meta,
       };
     }
+    console.error("[attachments] original bytes also lack image magic", {
+      attachmentId: id,
+      byteLength: buffer.length,
+      headHex32: buffer.subarray(0, 32).toString("hex"),
+    });
   } catch (originalError) {
     console.error("[attachments] original download also failed", {
       attachmentId: id,
