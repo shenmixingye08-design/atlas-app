@@ -122,6 +122,11 @@ export type QualityLoopResult = {
   currentScore: number | null;
   passed: boolean;
   ceoApproval: CeoApprovalRecord | null;
+  /**
+   * Owner-facing Quality Engine telemetry (timings / improve count / score).
+   * Never render AI role names from this to end users.
+   */
+  qualityEngine?: import("@/lib/quality-engine/types").QualityEngineTelemetry;
 };
 
 /** Worker + Reviewer results for one task. */

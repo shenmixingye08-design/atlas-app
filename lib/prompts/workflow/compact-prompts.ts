@@ -40,7 +40,9 @@ export function buildCompactPlannerTaskPrompt(
   return [
     `Assignment: ${assignment.slice(0, 500)}`,
     `Target type: ${deliverableType}`,
-    `Return JSON: {plan,deliverableType,tasks:[{title,description,department}]}`,
+    `Planner organizes only — do NOT write the final deliverable body.`,
+    `Organize: purpose, audience, tone, page structure, required sections, profile/vision/settings notes for Writer.`,
+    `Return JSON: {plan,deliverableType,tasks:[{title,description,department}],writerBrief:{purpose,audience,tone,sections[]}}`,
     `2-5 tasks. Same language as assignment.`,
   ].join("\n");
 }
