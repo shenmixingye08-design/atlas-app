@@ -24,6 +24,12 @@ vi.mock("@/lib/attachments/ensure-infrastructure", () => ({
   })),
 }));
 
+/** 1×1 PNG — real magic bytes for round-trip / read guards. */
+const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
 vi.mock("@/lib/supabase/service-role", () => ({
   createServiceRoleClientIfConfigured: () => ({
     storage: {
@@ -56,8 +62,8 @@ vi.mock("@/lib/supabase/service-role", () => ({
                 original_file_name: "a.png",
                 mime_type: "image/png",
                 original_mime_type: "image/png",
-                original_bytes: 3,
-                processed_bytes: 3,
+                original_bytes: TINY_PNG.length,
+                processed_bytes: TINY_PNG.length,
                 width: 1,
                 height: 1,
                 content_hash: "abc",
@@ -110,7 +116,7 @@ describe("supabase image store", () => {
     uploadMock.mockResolvedValue({ error: null });
     removeMock.mockResolvedValue({ error: null });
     downloadMock.mockResolvedValue({
-      data: new Blob([Buffer.from([1, 2, 3])]),
+      data: new Blob([TINY_PNG]),
       error: null,
     });
   });
@@ -125,11 +131,11 @@ describe("supabase image store", () => {
       jobId: "job_1",
       originalFileName: "shot.png",
       mimeType: "image/png",
-      originalBuffer: Buffer.from([1, 2, 3]),
-      processedBuffer: Buffer.from([4, 5, 6]),
+      originalBuffer: TINY_PNG,
+      processedBuffer: TINY_PNG,
       processedMimeType: "image/png",
-      width: 10,
-      height: 10,
+      width: 1,
+      height: 1,
       contentHash: "hash1",
     });
 
@@ -138,6 +144,7 @@ describe("supabase image store", () => {
     expect(firstPath.startsWith("user_a/job_1/")).toBe(true);
     expect(firstPath.includes("/original.png")).toBe(true);
     expect(insertMock).toHaveBeenCalled();
+    expect(downloadMock).toHaveBeenCalled();
     expect(saved.storageBackend).toBe("supabase");
     expect(saved.jobId).toBe("job_1");
   });
@@ -147,7 +154,7 @@ describe("supabase image store", () => {
       "@/lib/attachments/supabase-store"
     );
     const bytes = await supabaseReadProcessedImageBytes("user_a", "img_test");
-    expect(bytes?.buffer.equals(Buffer.from([1, 2, 3]))).toBe(true);
+    expect(bytes?.buffer.equals(TINY_PNG)).toBe(true);
     expect(downloadMock).toHaveBeenCalled();
   });
 });

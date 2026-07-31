@@ -33,17 +33,24 @@ export async function uploadUserImage(input: {
   const contentHash = hashImageBytes(input.buffer);
   const existing = await findAttachmentByHash(input.userId, contentHash);
   if (existing) {
-    // Reuse only when processed bytes are still readable — orphaned DB rows
-    // (storage purged / missing) must not short-circuit a fresh upload.
+    // Reuse only when processed bytes are still a real image — orphaned /
+    // corrupted Storage objects must not short-circuit a fresh upload.
     const { readProcessedImageBytes } = await import("./store");
+    const { detectImageMimeFromBytes } = await import(
+      "@/lib/vision/image-magic"
+    );
     const readable = await readProcessedImageBytes(input.userId, existing.id);
-    if (readable && readable.buffer.length > 0) {
+    const mimeOk =
+      readable &&
+      readable.buffer.length > 64 &&
+      Boolean(detectImageMimeFromBytes(readable.buffer));
+    if (mimeOk && readable) {
       return {
         attachment: existing,
         warnings: ["同一画像のため既存添付を再利用しました"],
       };
     }
-    // Stale hash hit: delete orphan and continue with a new save.
+    // Stale / corrupt hash hit: delete orphan and continue with a new save.
     try {
       const { deleteImageAttachment } = await import("./store");
       await deleteImageAttachment(input.userId, existing.id);
