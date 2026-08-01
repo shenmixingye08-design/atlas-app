@@ -178,8 +178,10 @@ export function SalesMaterialWizard({
   }, [assignment, costMode]);
 
   useEffect(() => {
-    if (step !== "outline_loading") return;
-    void loadOutline();
+    queueMicrotask(() => {
+      if (step !== "outline_loading") return;
+      void loadOutline();
+    });
   }, [step, loadOutline]);
 
   const handleFormatConfirm = () => {

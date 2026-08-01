@@ -93,7 +93,9 @@ export function AuditLogPanel() {
   }, []);
 
   useEffect(() => {
-    void load(applied);
+    queueMicrotask(() => {
+      void load(applied);
+    });
   }, [applied, load]);
 
   const retention = snapshot?.settings.retentionDays ?? 90;

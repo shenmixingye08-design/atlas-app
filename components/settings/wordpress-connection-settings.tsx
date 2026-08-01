@@ -116,13 +116,17 @@ export function WordPressConnectionSettings() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   useEffect(() => {
-    if (service?.connection.status === "connected") {
-      void loadTaxonomies();
-    }
+    queueMicrotask(() => {
+      if (service?.connection.status === "connected") {
+        void loadTaxonomies();
+      }
+    });
   }, [service?.connection.status, loadTaxonomies]);
 
   const handleConnect = async (isReconnect = false) => {

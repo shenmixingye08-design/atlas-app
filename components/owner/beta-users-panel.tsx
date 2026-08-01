@@ -69,7 +69,9 @@ export function BetaUsersPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   async function handleAdd(event: React.FormEvent) {

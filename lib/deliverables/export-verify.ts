@@ -1,6 +1,7 @@
 import "server-only";
 
 import { verifyPdfQuality } from "./pdf-quality";
+import { inspectPptxProduction } from "./pptx-production/pptx-inspect";
 import type { DeliverableFormat, GeneratedDeliverableFile } from "./types";
 
 export type ExportVerifyResult = {
@@ -66,6 +67,11 @@ export async function verifyGeneratedExportAsync(
   file: GeneratedDeliverableFile,
 ): Promise<ExportVerifyResult> {
   const base = verifyGeneratedExport(file);
+  if (file.format === "pptx") {
+    const pptx = inspectPptxProduction(file.buffer);
+    const reasons = [...base.reasons, ...pptx.reasons];
+    return { ok: reasons.length === 0, reasons };
+  }
   if (file.format !== "pdf") return base;
 
   const pdf = await verifyPdfQuality(file);

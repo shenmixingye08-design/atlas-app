@@ -6,7 +6,12 @@ export type ContentBlock =
   | { type: "bulletList"; items: string[] }
   | { type: "numberedList"; items: string[] }
   | { type: "table"; headers: string[]; rows: string[][] }
-  | { type: "imagePlaceholder"; caption: string };
+  | {
+      type: "imagePlaceholder";
+      caption: string;
+      /** Optional embedded image data URL for slide rendering. */
+      dataUrl?: string;
+    };
 
 /** A logical section (usually from `##` headings). */
 export type ParsedSection = {
@@ -27,9 +32,10 @@ export type ParsedDeliverable = {
 const HEADING_PATTERN = /^(#{1,3})\s+(.+)$/;
 const BULLET_PATTERN = /^[-*•]\s+(.+)$/;
 const NUMBERED_PATTERN = /^\d+[.)]\s+(.+)$/;
-const TABLE_SEPARATOR_PATTERN = /^\|?[\s:-]+\|[\s|:-]+$/;
+/** Markdown table separator: supports 1+ columns. */
+const TABLE_SEPARATOR_PATTERN = /^\|?[\s:|-]+$/;
 const IMAGE_PLACEHOLDER_PATTERN =
-  /^!\[(.*?)\]\((?:placeholder|image-placeholder|#)\)|^\[(Image(?: placeholder)?(?:[:\s].*)?)\]$/i;
+  /^!\[(.*?)\]\((placeholder|image-placeholder|#|data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+)\)|^\[(Image(?: placeholder)?(?:[:\s].*)?)\]$/i;
 const HORIZONTAL_RULE = /^-{3,}$/;
 
 /** Section headings produced by {@link buildExportMarkdown} — never treat as subtitle. */
@@ -78,9 +84,15 @@ function parseBlocks(lines: string[]): ContentBlock[] {
 
     const imageMatch = line.match(IMAGE_PLACEHOLDER_PATTERN);
     if (imageMatch) {
+      const src = imageMatch[2]?.trim() ?? "";
+      const dataUrl = src.startsWith("data:image/") ? src : undefined;
       blocks.push({
         type: "imagePlaceholder",
-        caption: imageMatch[1]?.trim() || ui.generated.imagePlaceholder,
+        caption:
+          imageMatch[1]?.trim() ||
+          imageMatch[3]?.trim() ||
+          ui.generated.imagePlaceholder,
+        ...(dataUrl ? { dataUrl } : {}),
       });
       index += 1;
       continue;
@@ -88,10 +100,14 @@ function parseBlocks(lines: string[]): ContentBlock[] {
 
     if (isTableRow(line)) {
       const tableLines: string[] = [];
-      while (index < lines.length && isTableRow(lines[index] ?? "")) {
-        if (!TABLE_SEPARATOR_PATTERN.test(lines[index]?.trim() ?? "")) {
-          tableLines.push(lines[index]!);
+      while (index < lines.length) {
+        const rowLine = lines[index]?.trim() ?? "";
+        if (TABLE_SEPARATOR_PATTERN.test(rowLine)) {
+          index += 1;
+          continue;
         }
+        if (!isTableRow(rowLine)) break;
+        tableLines.push(lines[index]!);
         index += 1;
       }
 
@@ -185,9 +201,20 @@ export function parseDeliverableContent(content: string): ParsedDeliverable {
       !EXPORT_SECTION_LABELS.has(headingText) &&
       !/^投稿\s*\d+$/i.test(headingText)
     ) {
-      subtitle = headingText;
-      bodyStartIndex = index + 1;
-      continue;
+      // Only treat as subtitle when the heading has no body content.
+      let hasBody = false;
+      for (let peek = index + 1; peek < lines.length; peek += 1) {
+        const peekLine = lines[peek]?.trim() ?? "";
+        if (!peekLine) continue;
+        if (HEADING_PATTERN.test(peekLine)) break;
+        hasBody = true;
+        break;
+      }
+      if (!hasBody) {
+        subtitle = headingText;
+        bodyStartIndex = index + 1;
+        continue;
+      }
     }
 
     if (currentSection) {
