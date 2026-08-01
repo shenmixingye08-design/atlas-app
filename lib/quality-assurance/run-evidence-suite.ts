@@ -290,41 +290,60 @@ export async function runEvidenceSuite(
     )
   );
 
-  // --- Vision / OCR (honest: live only with QUALITY_LIVE_VISION=1; never self-score) ---
-  const hasVisionKey = Boolean(process.env.OPENAI_API_KEY?.trim());
+  // --- Vision / OCR: prefer Phase1 suite results; never vanity-pass ---
   cases.push(
     await runCase("vision_analyze", "vision", "画像解析", environment, suiteDir, async ({ log }) => {
-      if (!hasVisionKey) {
+      const { loadLatestVisionPhase1 } = await import(
+        "@/lib/vision-eval/load-latest"
+      );
+      const latest = loadLatestVisionPhase1();
+      if (latest?.aggregate && latest.aggregate.totalCases >= 100) {
+        const rate = latest.aggregate.visionSuccessRate;
         log.push(
-          "OPENAI_API_KEY missing — Vision live call skipped (counted FAIL for evidence honesty)"
+          `phase1 suite=${latest.suiteId} visionSuccess=${rate} n=${latest.aggregate.totalCases} pass=${latest.phase1Pass}`
         );
+        return {
+          ok: Boolean(rate != null && rate >= 0.95),
+          error:
+            rate != null && rate >= 0.95
+              ? null
+              : `vision_phase1_below_target rate=${rate}`,
+        };
+      }
+      if (!process.env.OPENAI_API_KEY?.trim()) {
+        log.push("OPENAI_API_KEY missing — FAIL (not self-scored)");
         return { ok: false, error: "vision_unmeasured_no_api_key" };
       }
       if (process.env.QUALITY_LIVE_VISION !== "1") {
-        log.push(
-          "QUALITY_LIVE_VISION!=1 — refusing live Vision spend; FAIL (not self-scored pass)"
-        );
+        log.push("QUALITY_LIVE_VISION!=1 — FAIL (spend gate)");
         return { ok: false, error: "vision_live_not_enabled" };
       }
-      log.push(
-        "QUALITY_LIVE_VISION=1 set but suite uses HTTP /api/vision/analyze only in production runner — FAIL until instrumented"
-      );
-      return { ok: false, error: "vision_live_runner_pending" };
+      log.push("Phase1 suite missing — run npm run test:vision-phase1");
+      return { ok: false, error: "vision_phase1_not_run" };
     })
   );
 
   cases.push(
     await runCase("ocr", "ocr", "OCR", environment, suiteDir, async ({ log }) => {
-      log.push(
-        "OCR is gated behind Vision pipeline; counted FAIL until production evidence exists"
+      const { loadLatestVisionPhase1 } = await import(
+        "@/lib/vision-eval/load-latest"
       );
-      return {
-        ok: false,
-        error:
-          hasVisionKey && process.env.QUALITY_LIVE_VISION === "1"
-            ? "ocr_pipeline_not_separately_instrumented"
-            : "ocr_unmeasured",
-      };
+      const latest = loadLatestVisionPhase1();
+      log.push(
+        "OCR is embedded in Vision (extractedText/fields/tables). No separate OCR API."
+      );
+      if (latest?.aggregate && latest.aggregate.totalCases >= 100) {
+        const rate = latest.aggregate.ocrSuccessRate;
+        log.push(`phase1 ocrSuccess=${rate} n=${latest.aggregate.totalCases}`);
+        return {
+          ok: Boolean(rate != null && rate >= 0.9),
+          error:
+            rate != null && rate >= 0.9
+              ? null
+              : `ocr_phase1_below_target rate=${rate}`,
+        };
+      }
+      return { ok: false, error: "ocr_phase1_not_run" };
     })
   );
 

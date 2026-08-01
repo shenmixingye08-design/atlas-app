@@ -28,6 +28,10 @@ import {
   type ReliabilityMetricBucket,
   type ReliabilityWindow,
 } from "@/lib/reliability/metrics";
+import {
+  loadLatestVisionPhase1,
+  visionRatesFromPhase1,
+} from "@/lib/vision-eval/load-latest";
 
 function rateFromBucket(
   bucket: ReliabilityMetricBucket | undefined,
@@ -202,26 +206,38 @@ export async function buildQualityDashboardSnapshot(
       : `reliability:${windowDays}d:export_word`
   );
 
-  // Vision — no durable aggregator yet; evidence only
-  const visionEvidence = evidenceCategoryRate(
-    evidence,
-    ["vision"],
-    "evidence:vision"
+  // Vision — prefer Phase1 live suite (n>=100) over single evidence case
+  const visionPhase1 = loadLatestVisionPhase1();
+  const visionPhase1Rates = visionRatesFromPhase1(visionPhase1);
+  const visionEvidence = mergePreferMeasured(
+    visionPhase1Rates.visionSuccess,
+    evidenceCategoryRate(evidence, ["vision"], "evidence:vision")
   );
-  const ocrEvidence = evidenceCategoryRate(evidence, ["ocr"], "evidence:ocr");
+  const ocrEvidence = mergePreferMeasured(
+    visionPhase1Rates.ocrSuccess,
+    evidenceCategoryRate(evidence, ["ocr"], "evidence:ocr")
+  );
   const timeoutBucket = window.buckets.timeout;
   const timeoutTotal =
     (timeoutBucket?.success ?? 0) +
     (timeoutBucket?.failure ?? 0) +
     (timeoutBucket?.timeout ?? 0);
-  const openaiTimeoutRate =
+  const openaiTimeoutRate = mergePreferMeasured(
+    visionPhase1Rates.timeoutRate.measured
+      ? ratioRate(
+          visionPhase1Rates.timeoutRate.failure,
+          visionPhase1Rates.timeoutRate.total,
+          "vision-phase1:timeout"
+        )
+      : unmeasuredRate("vision-phase1:timeout"),
     timeoutTotal > 0 && timeoutBucket
       ? ratioRate(
           timeoutBucket.timeout,
           timeoutTotal,
           `reliability:${windowDays}d:timeout`
         )
-      : unmeasuredRate("vision:openai_timeout");
+      : unmeasuredRate("vision:openai_timeout")
+  );
 
   // Jobs
   const jobTotal = jobMetrics.total;
@@ -424,13 +440,40 @@ export async function buildQualityDashboardSnapshot(
         {
           id: "vision_avg_ms",
           label: "平均解析時間",
-          value: unmeasuredRate("vision:avg_ms"),
-          latency: unmeasuredLatency("vision:avg_ms"),
+          value: visionPhase1Rates.latency.measured
+            ? {
+                rate: null,
+                success: visionPhase1Rates.latency.sampleCount,
+                failure: 0,
+                total: visionPhase1Rates.latency.sampleCount,
+                measured: true,
+                source: visionPhase1Rates.latency.source,
+              }
+            : unmeasuredRate("vision:avg_ms"),
+          latency: visionPhase1Rates.latency,
+          note:
+            visionPhase1Rates.latency.avgMs != null
+              ? `${Math.round(visionPhase1Rates.latency.avgMs)} ms`
+              : null,
         },
         {
           id: "vision_p95",
           label: "95パーセンタイル",
-          value: unmeasuredRate("vision:p95"),
+          value:
+            visionPhase1Rates.p95Ms != null
+              ? {
+                  rate: null,
+                  success: 1,
+                  failure: 0,
+                  total: 1,
+                  measured: true,
+                  source: "vision-phase1:p95",
+                }
+              : unmeasuredRate("vision:p95"),
+          note:
+            visionPhase1Rates.p95Ms != null
+              ? `${Math.round(visionPhase1Rates.p95Ms)} ms`
+              : null,
         },
         {
           id: "avg_image_bytes",
@@ -606,8 +649,8 @@ export async function buildQualityDashboardSnapshot(
       openaiTimeoutRate,
       ocrSuccess: ocrEvidence,
       analyzeSuccess: visionEvidence,
-      avgMs: unmeasuredLatency("vision:avg_ms"),
-      p95Ms: null,
+      avgMs: visionPhase1Rates.latency,
+      p95Ms: visionPhase1Rates.p95Ms,
       avgImageBytes: null,
       avgPageCount: null,
       abortRate: unmeasuredRate("vision:abort"),

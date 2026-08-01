@@ -11,7 +11,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts",
-    "test:quality-evidence": "WRITE_QUALITY_EVIDENCE=1 vitest run lib/quality-assurance/write-evidence-report.test.ts lib/quality-assurance/evidence-suite.test.ts lib/quality-assurance/gates.test.ts"
+    "test:quality-evidence": "WRITE_QUALITY_EVIDENCE=1 vitest run lib/quality-assurance/write-evidence-report.test.ts lib/quality-assurance/evidence-suite.test.ts lib/quality-assurance/gates.test.ts",
+    "test:vision-phase1": "vitest run lib/vision-eval/phase1.live.test.ts lib/vision-eval/cases.test.ts lib/vision-eval/fault-injection.test.ts",
+    "test:vision-eval-unit": "vitest run lib/vision-eval/cases.test.ts lib/vision-eval/fault-injection.test.ts",
+    "test:vision-phase1:live": "QUALITY_LIVE_VISION=1 vitest run lib/vision-eval/phase1.live.test.ts"
   },
   "dependencies": {
     "@clerk/localizations": "^4.13.5",
