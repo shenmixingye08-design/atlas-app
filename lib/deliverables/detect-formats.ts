@@ -1,4 +1,5 @@
 import { detectCompanyDeliverableFormats } from "@/lib/company-templates/context";
+import { detectFormatsViaUnderstanding } from "@/lib/request-understanding/bridge";
 
 import type {
   DeliverableFormat,
@@ -37,6 +38,8 @@ const FORMAT_RULES: readonly FormatRule[] = [
     keywords: [
       "excel",
       "xlsx",
+      "xls",
+      "csv",
       "エクセル",
       "表計算",
       "スプレッドシート",
@@ -46,11 +49,22 @@ const FORMAT_RULES: readonly FormatRule[] = [
       "レシート",
       "領収書",
       "請求書",
+      "見積書",
       "経費精算",
+      "売上管理",
+      "工程表",
+      "ガント",
+      "勤務表",
+      "勤怠",
+      "顧客管理",
+      "在庫管理",
+      "スケジュール表",
       "表にまと",
       "表形式",
       "excelにして",
       "エクセルにして",
+      "エクセルを作",
+      "excelを作",
     ],
     formats: ["xlsx", "pdf", "docx"],
   },
@@ -178,6 +192,20 @@ export function detectDeliverableFormats(
     return companyDetection;
   }
 
+  // Unified multi-signal understanding (not first-keyword-wins).
+  const understood = detectFormatsViaUnderstanding(assignment);
+  if (
+    understood.matchedRule &&
+    !understood.matchedRule.endsWith(":fallback") &&
+    understood.formats.length > 0
+  ) {
+    // Prefer understanding when it found a concrete document intent.
+    if (!understood.matchedRule.endsWith(":conversation") &&
+        !understood.matchedRule.endsWith(":needs_input")) {
+      return understood;
+    }
+  }
+
   const haystack = normalizeHaystack(assignment);
 
   for (const rule of FORMAT_RULES) {
@@ -191,6 +219,10 @@ export function detectDeliverableFormats(
         matchedRule: rule.id,
       };
     }
+  }
+
+  if (understood.formats.length > 0 && understood.matchedRule) {
+    return understood;
   }
 
   if (companyDetection.formats.length > 0) {

@@ -82,13 +82,50 @@ export async function saveWorkJob(job: WorkJobRecord): Promise<WorkJobRecord> {
 }
 
 /**
- * In-memory heartbeat only — never durable-persists.
- * Heartbeat durable writes caused Clerk/Supabase spam and 429s.
+ * In-memory heartbeat — durable write is throttled separately via
+ * `touchWorkJobDurableThrottled` to avoid Clerk/Supabase spam.
  */
 export function touchWorkJob(job: WorkJobRecord): WorkJobRecord {
   const normalized = normalizeWorkJob(job);
   getBucket().set(normalized.id, normalized);
   return normalized;
+}
+
+const DURABLE_HEARTBEAT_MIN_INTERVAL_MS = 60_000;
+
+type HeartbeatMap = Map<string, number>;
+
+function getHeartbeatBucket(): HeartbeatMap {
+  const g = globalThis as typeof globalThis & {
+    __atlasWorkJobHeartbeats?: HeartbeatMap;
+  };
+  if (!g.__atlasWorkJobHeartbeats) g.__atlasWorkJobHeartbeats = new Map();
+  return g.__atlasWorkJobHeartbeats;
+}
+
+/**
+ * Throttled durable heartbeat so other instances do not reclaim a live job
+ * as stale while this instance is still running.
+ */
+export async function touchWorkJobDurableThrottled(
+  job: WorkJobRecord,
+): Promise<WorkJobRecord> {
+  const now = Date.now();
+  const last = getHeartbeatBucket().get(job.id) ?? 0;
+  const touched = touchWorkJob({
+    ...job,
+    updatedAt: new Date(now).toISOString(),
+  });
+  if (now - last < DURABLE_HEARTBEAT_MIN_INTERVAL_MS) {
+    return touched;
+  }
+  getHeartbeatBucket().set(job.id, now);
+  try {
+    return await saveWorkJob(touched);
+  } catch {
+    // Heartbeat must not fail the poll — memory touch already applied.
+    return touched;
+  }
 }
 
 export function getWorkJob(id: string, userId: string): WorkJobRecord | null {

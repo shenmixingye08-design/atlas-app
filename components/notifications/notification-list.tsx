@@ -250,6 +250,14 @@ export function NotificationList({
         <p className="mt-2 text-sm text-[var(--text-secondary)]">
           {ui.notifications.emptyDescription}
         </p>
+        <div className="mt-5">
+          <Link
+            href="/workspace"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-accent px-6 text-sm font-medium text-[var(--accent-foreground)] shadow-sm"
+          >
+            {ui.notifications.emptyCta}
+          </Link>
+        </div>
       </div>
     );
   }

@@ -90,8 +90,11 @@ export function ActivityHistoryPageContent() {
           <p className="mt-2 text-sm text-[var(--foreground-muted)]">
             {ui.activityHistory.emptyHint}
           </p>
-          <Link href="/workspace" className="mt-6 inline-block text-[var(--accent)] hover:underline">
-            {ui.nav.work}
+          <Link
+            href="/workspace"
+            className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-full bg-accent px-6 text-sm font-medium text-[var(--accent-foreground)]"
+          >
+            最初の仕事を頼む
           </Link>
         </div>
       ) : (

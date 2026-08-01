@@ -11,6 +11,7 @@ export type PreferredDeliverableFormat =
   | "xlsx"
   | "docx"
   | "pdf"
+  | "pptx"
   | "txt";
 
 export type WorkRequestDocumentExtract = {

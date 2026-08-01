@@ -5,6 +5,7 @@ import { recordReliabilityEvent, withRetry } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 
 import { withPropagatedJobId } from "./job-id";
+import { notifyWorkJobFailed } from "./notify-failure";
 import {
   getWorkJob,
   saveWorkJob,
@@ -228,9 +229,20 @@ export async function executeWorkJob(
       return saveWorkJob({
         ...existing,
         status: "awaiting_confirmation",
-        metadata: mergedMetadata,
+        metadata: {
+          ...mergedMetadata,
+          // Persist run id so confirmation can resume across instances.
+          ...(commander.runId ? { commanderRunId: commander.runId } : {}),
+        },
         attemptCount: Math.max(existing.attemptCount + 1, 1),
-        result: commander.result ?? null,
+        result: commander.result
+          ? {
+              ...commander.result,
+              ...(commander.runId
+                ? { commanderRunId: commander.runId }
+                : {}),
+            }
+          : null,
         error: null,
         updatedAt: new Date().toISOString(),
       });
@@ -280,6 +292,17 @@ export async function executeWorkJob(
           },
         },
       });
+      const visionError =
+        visionOpenAi?.message ??
+        commander.visionGate.cause ??
+        commander.visionGate.message ??
+        "画像の解析に失敗しました";
+      notifyWorkJobFailed({
+        userId,
+        jobId,
+        message: visionError,
+        title: "画像の確認が必要です",
+      });
       return saveWorkJob({
         ...existing,
         status: "failed",
@@ -293,17 +316,11 @@ export async function executeWorkJob(
             cause: commander.visionGate.cause ?? null,
             vercelRequestId: commander.visionGate.vercelRequestId ?? null,
             openai: visionOpenAi,
-            safeMessage:
-              visionOpenAi?.message ??
-              commander.visionGate.cause ??
-              commander.visionGate.message,
+            safeMessage: visionError,
           },
         },
         attemptCount: existing.attemptCount + 1,
-        error:
-          visionOpenAi?.message ??
-          commander.visionGate.cause ??
-          commander.visionGate.message,
+        error: visionError,
         visionGate: commander.visionGate,
         result: null,
         updatedAt: new Date().toISOString(),
@@ -355,6 +372,11 @@ export async function executeWorkJob(
               }
             : null,
         },
+      });
+      notifyWorkJobFailed({
+        userId,
+        jobId,
+        message: safeMessage,
       });
       return saveWorkJob({
         ...existing,
@@ -418,6 +440,13 @@ export async function executeWorkJob(
           ).length,
         },
       });
+      const gateMessage = toHumanReliabilityMessage(gate.error);
+      notifyWorkJobFailed({
+        userId,
+        jobId,
+        message: gateMessage,
+        title: "成果物の完成確認が必要です",
+      });
       return saveWorkJob({
         ...existing,
         status: "failed",
@@ -427,11 +456,11 @@ export async function executeWorkJob(
             jobId,
             failedStage: "completion_gate",
             developerCode: "completion_gate_failed",
-            safeMessage: toHumanReliabilityMessage(gate.error),
+            safeMessage: gateMessage,
           },
         },
         attemptCount: existing.attemptCount + 1,
-        error: toHumanReliabilityMessage(gate.error),
+        error: gateMessage,
         visionGate: commander.visionGate ?? existing.visionGate ?? null,
         result: commander.result ?? null,
         updatedAt: new Date().toISOString(),
@@ -486,6 +515,14 @@ export async function executeWorkJob(
 
     // Best-effort failed persist — if this also fails, rethrow.
     try {
+      notifyWorkJobFailed({
+        userId,
+        jobId,
+        message,
+        title: isTimeout
+          ? "お時間がかかりすぎました"
+          : "お仕事を完了できませんでした",
+      });
       return await saveWorkJob({
         ...existing,
         status: "failed",

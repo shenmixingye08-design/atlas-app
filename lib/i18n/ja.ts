@@ -200,7 +200,36 @@ export const ui = {
     askPlaceholder:
       "例）営業資料を作る / 毎日の投稿文を用意する / 議事録をまとめる",
     askSubmit: "お願いする",
-    askHint: "送信後、すぐ取りかかります。",
+    askHint: "送信後、すぐ取りかかります。完了したら🔔にお知らせします。",
+    firstJobTitle: "はじめてのお願い（選ぶだけ）",
+    firstJobHint: "迷ったらここから始めてください。あとから文章を直せます。",
+    attachHint: "レシート・請求書・表などの画像があれば、ここに添付してください。",
+    exampleJobs: [
+      {
+        id: "minutes",
+        label: "議事録をまとめる",
+        assignment:
+          "今日の打ち合わせ議事録をWordでまとめて。決定事項・宿題・次回予定を含めて。",
+      },
+      {
+        id: "sales",
+        label: "売上表を作る",
+        assignment:
+          "今月の売上管理表をExcelで作って。商品・数量・金額・合計が分かるように。",
+      },
+      {
+        id: "pitch",
+        label: "営業資料を作る",
+        assignment:
+          "新規顧客向けの営業説明資料をPowerPointで作って。概要・価格・次のアクションを含めて。",
+      },
+      {
+        id: "receipt",
+        label: "レシートを読み取る",
+        assignment:
+          "添付のレシートを読み取り、日付・店名・金額をExcelに整理して。",
+      },
+    ] as const,
     todayWorkTitle: "今日の仕事",
     todayWorkSubtitle: "今日お手伝いしている内容です。",
     summaryRunning: "対応中",
@@ -255,9 +284,10 @@ export const ui = {
     viewAll: "すべてのお知らせを見る",
     close: "お知らせを閉じる",
     empty: "新しいお知らせはありません",
-    emptyTitle: "新しいお知らせはありません",
+    emptyTitle: "まだお知らせはありません",
     emptyDescription:
-      "確認が必要な仕事や完了した内容がある場合、こちらへ表示します。",
+      "仕事が完了したり、確認が必要になったらここに届きます。まずは最初のお願いをしてみましょう。",
+    emptyCta: "最初の仕事を頼む",
     emptyFiltered: "この条件に一致するお知らせはありません。",
     markRead: "既読にする",
     markAllRead: "すべて既読にする",

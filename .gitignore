@@ -56,4 +56,10 @@ next-env.d.ts
 
 .vercel
 .env*
-artifacts/
+# Build / sample output directory (not source)
+/artifacts/
+# Keep product source paths for the unified Artifact platform
+!app/artifacts/
+!app/api/artifacts/
+!components/artifacts/
+!lib/artifact-platform/

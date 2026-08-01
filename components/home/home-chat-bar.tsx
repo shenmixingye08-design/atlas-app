@@ -92,6 +92,30 @@ export function HomeChatBar() {
         {ui.secretaryHome.askTitle}
       </h2>
 
+      <div className="space-y-2">
+        <p className="text-center text-sm font-medium text-foreground">
+          {ui.secretaryHome.firstJobTitle}
+        </p>
+        <p className="text-center text-xs text-[var(--foreground-muted)]">
+          {ui.secretaryHome.firstJobHint}
+        </p>
+        <div className="flex flex-wrap justify-center gap-2">
+          {ui.secretaryHome.exampleJobs.map((job) => (
+            <button
+              key={job.id}
+              type="button"
+              className="min-h-[44px] rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2 text-sm text-foreground transition hover:border-[#74172A] hover:text-[#74172A]"
+              onClick={() => {
+                setInput(job.assignment);
+                setError(null);
+              }}
+            >
+              {job.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="rounded-[28px] border border-[var(--border-subtle)] bg-[var(--card)] p-4 shadow-[var(--shadow-md)] sm:p-6">
         <Textarea
           value={input}
@@ -112,6 +136,9 @@ export function HomeChatBar() {
           <p className="text-sm font-medium text-foreground">
             {ui.work.attachmentsLabel}
           </p>
+          <p className="text-xs text-[var(--foreground-muted)]">
+            {ui.secretaryHome.attachHint}
+          </p>
           <ImageAttachmentPicker
             value={imageDrafts}
             onChange={setImageDrafts}
@@ -131,10 +158,11 @@ export function HomeChatBar() {
               )
             }
           >
-            <option value="auto">自動判定</option>
+            <option value="auto">自動判定（おすすめ）</option>
             <option value="xlsx">Excel</option>
             <option value="docx">Word</option>
             <option value="pdf">PDF</option>
+            <option value="pptx">PowerPoint</option>
             <option value="txt">テキスト</option>
           </select>
         </label>
