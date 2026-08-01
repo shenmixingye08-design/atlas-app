@@ -34,6 +34,7 @@ export const SIDEBAR_CHANNEL_NAV: SidebarNavItem[] = [
 
 /** Secondary routes grouped under 「その他」 — keep short; no analysis / memory consoles. */
 export const SIDEBAR_MORE_NAV: SidebarNavItem[] = [
+  { id: "artifacts", href: "/artifacts", label: "成果物", icon: "📄" },
   { id: "billing", href: "/settings/billing", label: ui.nav.billingCredits, icon: "💳" },
   { id: "contact", href: "/contact", label: ui.nav.contact, icon: "✉️" },
 ];

@@ -55,4 +55,42 @@ export function assertOfficeBinaryOrThrow(
       throw new Error("pdf_invalid_header");
     }
   }
+  if (format === "png") {
+    const view =
+      bytes instanceof ArrayBuffer
+        ? new Uint8Array(bytes)
+        : new Uint8Array(bytes);
+    if (
+      view.byteLength < 8 ||
+      view[0] !== 0x89 ||
+      view[1] !== 0x50 ||
+      view[2] !== 0x4e ||
+      view[3] !== 0x47
+    ) {
+      throw new Error("png_invalid_header");
+    }
+  }
+  if (format === "jpg") {
+    const view =
+      bytes instanceof ArrayBuffer
+        ? new Uint8Array(bytes)
+        : new Uint8Array(bytes);
+    if (
+      view.byteLength < 3 ||
+      view[0] !== 0xff ||
+      view[1] !== 0xd8 ||
+      view[2] !== 0xff
+    ) {
+      throw new Error("jpg_invalid_header");
+    }
+  }
+  if (format === "csv") {
+    const view =
+      bytes instanceof ArrayBuffer
+        ? new Uint8Array(bytes)
+        : new Uint8Array(bytes);
+    if (view.byteLength === 0) {
+      throw new Error("csv_empty");
+    }
+  }
 }

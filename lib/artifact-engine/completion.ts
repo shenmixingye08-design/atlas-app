@@ -13,6 +13,9 @@ const FORMAT_PURPOSE: Record<DeliverableFormat, string> = {
   pptx: "PowerPointで説明",
   md: "Markdownを保存",
   txt: "テキストを保存",
+  csv: "CSVで受け渡し",
+  png: "画像で共有",
+  jpg: "画像で共有",
 };
 
 const FORMAT_LABEL: Record<DeliverableFormat, string> = {
@@ -22,6 +25,9 @@ const FORMAT_LABEL: Record<DeliverableFormat, string> = {
   pptx: "PowerPoint",
   md: "Markdown",
   txt: "テキスト",
+  csv: "CSV",
+  png: "画像",
+  jpg: "画像",
 };
 
 export function formatPurpose(format: DeliverableFormat): string {

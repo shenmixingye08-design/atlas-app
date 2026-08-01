@@ -1,5 +1,14 @@
-/** Supported downloadable deliverable formats (v1). */
-export type DeliverableFormat = "pdf" | "docx" | "pptx" | "md" | "txt" | "xlsx";
+/** Supported downloadable deliverable formats (v1 + unified artifact formats). */
+export type DeliverableFormat =
+  | "pdf"
+  | "docx"
+  | "pptx"
+  | "md"
+  | "txt"
+  | "xlsx"
+  | "csv"
+  | "png"
+  | "jpg";
 
 /** ISO timestamp string. */
 export type DeliverableTimestamp = string;
@@ -11,6 +20,27 @@ export type DeliverableMetadata = {
   version?: number | null;
   parentDeliverableId?: string | null;
   versionGroupId?: string | null;
+  /** Unified artifact platform lineage (additive; safe for older rows). */
+  artifactFormat?: string | null;
+  rootArtifactId?: string | null;
+  sourceArtifactId?: string | null;
+  revisionNumber?: number | null;
+  conversionType?: string | null;
+  createdFrom?: string | null;
+  requestId?: string | null;
+  jobId?: string | null;
+  title?: string | null;
+  description?: string | null;
+  previewStatus?: string | null;
+  validationStatus?: string | null;
+  status?: string | null;
+  quality?: string | null;
+  changeReason?: string | null;
+  changeSummary?: string | null;
+  isLatest?: boolean | null;
+  softDeleted?: boolean | null;
+  deletedAt?: string | null;
+  conversionHistory?: Array<Record<string, unknown>> | null;
 };
 
 export interface Deliverable {
@@ -67,6 +97,9 @@ export const DELIVERABLE_FORMAT_LABELS: Record<DeliverableFormat, string> = {
   md: "Markdown (.md)",
   txt: "テキスト (.txt)",
   xlsx: "Excel (.xlsx)",
+  csv: "CSV (.csv)",
+  png: "画像 (.png)",
+  jpg: "画像 (.jpg)",
 };
 
 export const DELIVERABLE_MIME_TYPES: Record<DeliverableFormat, string> = {
@@ -78,6 +111,9 @@ export const DELIVERABLE_MIME_TYPES: Record<DeliverableFormat, string> = {
   md: "text/markdown; charset=utf-8",
   txt: "text/plain; charset=utf-8",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  csv: "text/csv; charset=utf-8",
+  png: "image/png",
+  jpg: "image/jpeg",
 };
 
 export const DELIVERABLE_EXTENSIONS: Record<DeliverableFormat, string> = {
@@ -87,4 +123,11 @@ export const DELIVERABLE_EXTENSIONS: Record<DeliverableFormat, string> = {
   md: ".md",
   txt: ".txt",
   xlsx: ".xlsx",
+  csv: ".csv",
+  png: ".png",
+  jpg: ".jpg",
 };
+
+export function getDeliverableExtension(format: DeliverableFormat): string {
+  return DELIVERABLE_EXTENSIONS[format].replace(/^\./, "");
+}

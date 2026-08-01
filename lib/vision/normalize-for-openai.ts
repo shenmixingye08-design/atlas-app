@@ -263,7 +263,15 @@ export function resolveOpenAiVisionDetail(
 export function normalizeProfileForAttempt(
   attempt: number,
   preferReadableText: boolean,
+  options?: { forceCompact?: boolean; sourceByteLength?: number },
 ): VisionNormalizeProfile {
+  // Large phone photos are the main timeout source — shrink earlier.
+  if (
+    options?.forceCompact ||
+    (options?.sourceByteLength != null && options.sourceByteLength > 2_500_000)
+  ) {
+    return "compact";
+  }
   if (attempt <= 1) return preferReadableText ? "ocr" : "standard";
   if (attempt === 2) return "compact";
   return "compact";

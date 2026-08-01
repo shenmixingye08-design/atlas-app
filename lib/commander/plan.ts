@@ -23,6 +23,8 @@ import {
 } from "@/lib/work-memory/taught-workflow";
 import type { WorkMemoryRecord } from "@/lib/work-memory/types";
 
+import { understandRequest } from "@/lib/request-understanding/understand";
+
 import {
   classifyCommanderWork,
   inferRequiredExternalServices,
@@ -277,6 +279,10 @@ export function buildCommanderPlan(input: {
   userId: string | null;
 }): CommanderPlan {
   const classification = classifyCommanderWork(input.assignment);
+  const understanding = understandRequest({
+    assignment: input.assignment,
+    userId: input.userId,
+  });
   const requiredAis = selectRequiredAis({
     assignment: input.assignment,
     deliverableType: classification.deliverableType,
@@ -304,9 +310,23 @@ export function buildCommanderPlan(input: {
     taughtWorkflowTitle: taught?.title ?? null,
   };
 
+  const understandingSummary = [
+    understanding.user_summary,
+    `mode=${understanding.execution_mode}`,
+    `confidence=${understanding.confidence.toFixed(2)}`,
+  ].join(" / ");
+
   return {
     assignment: input.assignment,
-    classification,
+    classification: {
+      ...classification,
+      summary: `${classification.summary}｜理解: ${understandingSummary}`,
+      keywords: [
+        ...classification.keywords,
+        understanding.execution_mode,
+        understanding.intent,
+      ].filter((value, index, arr) => arr.indexOf(value) === index),
+    },
     requiredAis,
     requiredExternalServices,
     requiredTemplate,

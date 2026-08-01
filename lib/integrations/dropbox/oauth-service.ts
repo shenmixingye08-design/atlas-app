@@ -11,6 +11,10 @@ import {
 } from "../external-services/store";
 import type { ExternalServiceConnection } from "../external-services/types";
 import { createDefaultConnection } from "../external-services/registry";
+import {
+  ensureExternalAuthHydrated,
+  schedulePersistExternalAuth,
+} from "../external-services/durable";
 
 import { DROPBOX_OAUTH_SCOPES } from "./config";
 import { dropboxServiceDefinition } from "./definition";
@@ -27,6 +31,7 @@ export async function completeDropboxAccountOAuth(
   codeVerifier: string,
   requestOrigin: string,
 ): Promise<ExternalServiceConnection> {
+  await ensureExternalAuthHydrated(userId);
   const token = await exchangeDropboxAuthCode(code, codeVerifier, requestOrigin);
 
   if (!token.refresh_token) {
@@ -68,12 +73,15 @@ export async function completeDropboxAccountOAuth(
   };
 
   saveExternalServiceConnection(userId, connection);
+  // Dropbox is not on a dedicated Supabase table — persist via durable domain.
+  schedulePersistExternalAuth(userId);
   return connection;
 }
 
 export async function disconnectDropboxAccount(
   userId: string,
 ): Promise<ExternalServiceConnection> {
+  await ensureExternalAuthHydrated(userId);
   const credentials = getExternalServiceCredentials(userId, "dropbox");
   if (credentials) {
     try {
@@ -96,12 +104,14 @@ export async function disconnectDropboxAccount(
   };
 
   saveExternalServiceConnection(userId, disconnected);
+  schedulePersistExternalAuth(userId);
   return disconnected;
 }
 
 export async function getDropboxAccessToken(
   userId: string,
 ): Promise<string | null> {
+  await ensureExternalAuthHydrated(userId);
   const credentials = getExternalServiceCredentials(userId, "dropbox");
   if (!credentials) return null;
 
@@ -129,6 +139,7 @@ export async function getDropboxAccessToken(
       scope: refreshed.scope ?? credentials.scope,
       updatedAt: now,
     });
+    schedulePersistExternalAuth(userId);
 
     return refreshed.access_token;
   } catch (error) {
