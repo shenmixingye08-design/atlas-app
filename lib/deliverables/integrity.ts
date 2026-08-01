@@ -19,6 +19,13 @@ const OOXML_REQUIRED = [
   "word/document.xml",
 ] as const;
 
+const PPTX_OOXML_REQUIRED = [
+  "[Content_Types].xml",
+  "_rels/.rels",
+  "ppt/presentation.xml",
+  "ppt/_rels/presentation.xml.rels",
+] as const;
+
 export function sha256Hex(buffer: Buffer | Uint8Array): string {
   return createHash("sha256").update(buffer).digest("hex");
 }
@@ -86,6 +93,21 @@ export function verifyOoxmlStructure(buffer: Buffer): {
   return { ok: missing.length === 0, missing: [...missing] };
 }
 
+export function verifyPptxOoxmlStructure(buffer: Buffer): {
+  ok: boolean;
+  missing: string[];
+} {
+  const names = new Set(listZipEntryNames(buffer));
+  const missing: string[] = PPTX_OOXML_REQUIRED.filter(
+    (required) => !names.has(required),
+  );
+  const hasSlide = [...names].some((n) =>
+    /^ppt\/slides\/slide\d+\.xml$/i.test(n),
+  );
+  if (!hasSlide) missing.push("ppt/slides/slide1.xml");
+  return { ok: missing.length === 0, missing };
+}
+
 export function buildIntegritySnapshot(input: {
   buffer: Buffer;
   format: DeliverableFormat;
@@ -95,7 +117,9 @@ export function buildIntegritySnapshot(input: {
   const ooxml =
     input.format === "docx" && hasPk
       ? verifyOoxmlStructure(input.buffer)
-      : { ok: false, missing: [...OOXML_REQUIRED] };
+      : input.format === "pptx" && hasPk
+        ? verifyPptxOoxmlStructure(input.buffer)
+        : { ok: false, missing: [...OOXML_REQUIRED] };
 
   return {
     sizeBytes: input.buffer.byteLength,
@@ -104,8 +128,10 @@ export function buildIntegritySnapshot(input: {
     format: input.format,
     fileName: input.fileName,
     hasPkHeader: hasPk,
-    ooxmlVerified: input.format === "docx" ? ooxml.ok : true,
-    ooxmlMissing: input.format === "docx" ? ooxml.missing : [],
+    ooxmlVerified:
+      input.format === "docx" || input.format === "pptx" ? ooxml.ok : true,
+    ooxmlMissing:
+      input.format === "docx" || input.format === "pptx" ? ooxml.missing : [],
   };
 }
 
@@ -174,6 +200,9 @@ export function assertDownloadIntegrity(input: {
   if (input.format === "docx" && !input.fileName.toLowerCase().endsWith(".docx")) {
     issues.push("wrong_extension");
   }
+  if (input.format === "pptx" && !input.fileName.toLowerCase().endsWith(".pptx")) {
+    issues.push("wrong_extension");
+  }
 
   const head = buf.subarray(0, Math.min(64, buf.byteLength)).toString("utf8");
   if (/^\s*</.test(head) || /<!DOCTYPE|<html/i.test(head)) {
@@ -185,6 +214,10 @@ export function assertDownloadIntegrity(input: {
 
   if (input.format === "docx" && (input.requireOoxml ?? true) && hasPkHeader(buf)) {
     const ooxml = verifyOoxmlStructure(buf);
+    if (!ooxml.ok) issues.push("ooxml_incomplete");
+  }
+  if (input.format === "pptx" && (input.requireOoxml ?? true) && hasPkHeader(buf)) {
+    const ooxml = verifyPptxOoxmlStructure(buf);
     if (!ooxml.ok) issues.push("ooxml_incomplete");
   }
 
