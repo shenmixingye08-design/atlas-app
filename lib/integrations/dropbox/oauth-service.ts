@@ -1,5 +1,7 @@
 import "server-only";
 
+import { recordOAuthLifecycleEvent } from "@/lib/integrations/production/oauth-lifecycle";
+
 import {
   deleteExternalServiceCredentials,
   getExternalServiceCredentials,
@@ -13,6 +15,10 @@ import type { ExternalServiceConnection } from "../external-services/types";
 import { createDefaultConnection } from "../external-services/registry";
 
 import { DROPBOX_OAUTH_SCOPES } from "./config";
+import {
+  deleteDropboxAuthFromSupabase,
+  persistDropboxAuthToSupabase,
+} from "./credential-persistence";
 import { dropboxServiceDefinition } from "./definition";
 import {
   exchangeDropboxAuthCode,
@@ -20,6 +26,15 @@ import {
   refreshDropboxAccessToken,
   revokeDropboxToken,
 } from "./oauth";
+
+async function persistDropboxAuthDurable(
+  userId: string,
+  connection: ExternalServiceConnection,
+): Promise<void> {
+  const credentials = getExternalServiceCredentials(userId, "dropbox");
+  if (!credentials) return;
+  await persistDropboxAuthToSupabase(credentials, connection);
+}
 
 export async function completeDropboxAccountOAuth(
   userId: string,
@@ -41,15 +56,16 @@ export async function completeDropboxAccountOAuth(
     Date.now() + (token.expires_in ?? 14400) * 1000,
   ).toISOString();
 
-  saveExternalServiceCredentials({
+  const credentials = {
     userId,
-    serviceId: "dropbox",
+    serviceId: "dropbox" as const,
     accessToken: token.access_token,
     refreshToken: token.refresh_token,
     expiresAt,
     scope: token.scope ?? DROPBOX_OAUTH_SCOPES.join(" "),
     updatedAt: now,
-  });
+  };
+  saveExternalServiceCredentials(credentials);
 
   const connection: ExternalServiceConnection = {
     ...createDefaultConnection(dropboxServiceDefinition),
@@ -68,6 +84,13 @@ export async function completeDropboxAccountOAuth(
   };
 
   saveExternalServiceConnection(userId, connection);
+  await persistDropboxAuthDurable(userId, connection);
+  recordOAuthLifecycleEvent({
+    integration: "dropbox",
+    userId,
+    phase: "callback",
+    message: "Dropbox OAuth完了",
+  });
   return connection;
 }
 
@@ -84,6 +107,8 @@ export async function disconnectDropboxAccount(
     deleteExternalServiceCredentials(userId, "dropbox");
   }
 
+  await deleteDropboxAuthFromSupabase(userId);
+
   const disconnected: ExternalServiceConnection = {
     ...createDefaultConnection(dropboxServiceDefinition),
     status: "disconnected",
@@ -96,23 +121,47 @@ export async function disconnectDropboxAccount(
   };
 
   saveExternalServiceConnection(userId, disconnected);
+  recordOAuthLifecycleEvent({
+    integration: "dropbox",
+    userId,
+    phase: "disconnect",
+    message: "Dropbox接続を解除しました",
+  });
   return disconnected;
 }
 
-export async function getDropboxAccessToken(
+export type DropboxAccessTokenResult =
+  | { status: "ready"; accessToken: string }
+  | { status: "missing"; message: string }
+  | { status: "refresh_failed"; message: string };
+
+export async function getDropboxAccessTokenResult(
   userId: string,
-): Promise<string | null> {
+): Promise<DropboxAccessTokenResult> {
   const credentials = getExternalServiceCredentials(userId, "dropbox");
-  if (!credentials) return null;
+  if (!credentials) {
+    return { status: "missing", message: "Dropboxを接続してください" };
+  }
 
   const expiresAtMs = new Date(credentials.expiresAt).getTime();
   const bufferMs = 60_000;
 
   if (Date.now() < expiresAtMs - bufferMs) {
-    return credentials.accessToken;
+    return { status: "ready", accessToken: credentials.accessToken };
   }
 
-  if (!credentials.refreshToken) return null;
+  if (!credentials.refreshToken) {
+    recordOAuthLifecycleEvent({
+      integration: "dropbox",
+      userId,
+      phase: "expired",
+      message: "Dropbox refresh token がありません",
+    });
+    return {
+      status: "refresh_failed",
+      message: "Dropboxの再接続が必要です",
+    };
+  }
 
   try {
     const refreshed = await refreshDropboxAccessToken(credentials.refreshToken);
@@ -121,18 +170,57 @@ export async function getDropboxAccessToken(
       Date.now() + (refreshed.expires_in ?? 14400) * 1000,
     ).toISOString();
 
-    saveExternalServiceCredentials({
+    const nextCredentials = {
       ...credentials,
       accessToken: refreshed.access_token,
       refreshToken: refreshed.refresh_token ?? credentials.refreshToken,
       expiresAt,
       scope: refreshed.scope ?? credentials.scope,
       updatedAt: now,
+    };
+    saveExternalServiceCredentials(nextCredentials);
+
+    const connection = getExternalServiceConnection(userId, "dropbox");
+    const healthy: ExternalServiceConnection = {
+      ...connection,
+      status: "connected",
+      errorMessage: null,
+    };
+    saveExternalServiceConnection(userId, healthy);
+    void persistDropboxAuthToSupabase(nextCredentials, healthy);
+
+    recordOAuthLifecycleEvent({
+      integration: "dropbox",
+      userId,
+      phase: "refresh",
+      message: "Dropbox access token を更新しました",
     });
 
-    return refreshed.access_token;
+    return { status: "ready", accessToken: refreshed.access_token };
   } catch (error) {
     console.warn("[Dropbox] Token refresh failed:", error);
-    return null;
+    const failed: ExternalServiceConnection = {
+      ...getExternalServiceConnection(userId, "dropbox"),
+      status: "error",
+      errorMessage: "Dropboxの再接続が必要です",
+    };
+    saveExternalServiceConnection(userId, failed);
+    recordOAuthLifecycleEvent({
+      integration: "dropbox",
+      userId,
+      phase: "expired",
+      message: "Dropbox token refresh に失敗しました",
+    });
+    return {
+      status: "refresh_failed",
+      message: "Dropboxの再接続が必要です",
+    };
   }
+}
+
+export async function getDropboxAccessToken(
+  userId: string,
+): Promise<string | null> {
+  const result = await getDropboxAccessTokenResult(userId);
+  return result.status === "ready" ? result.accessToken : null;
 }

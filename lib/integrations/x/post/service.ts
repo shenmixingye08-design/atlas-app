@@ -52,6 +52,10 @@ import type {
   XPostResult,
   XScheduledPostsResult,
 } from "./types";
+import { normalizeTweetText } from "@/lib/integrations/production/x/text-normalize";
+import { buildIdempotencyKey } from "@/lib/integrations/production/idempotency";
+import { runIntegrationAction } from "@/lib/integrations/production/execute";
+
 import { validateTweetText } from "./validate";
 
 const TEST_POST_PREFIX = "【MINERVOTテスト投稿】";
@@ -160,13 +164,15 @@ async function executeTweetPost(input: {
   context: FeatureAccessContext;
   automationId?: string | null;
   scheduledFor?: string | null;
+  media?: { buffer: Buffer; mimeType: string };
 }): Promise<XPostResult> {
-  const validation = validateTweetText(input.text);
+  const normalizedText = normalizeTweetText(input.text);
+  const validation = validateTweetText(normalizedText);
   if (validation.errors.length > 0) {
     saveXPostHistoryRecord(
       buildHistoryRecord({
         userId: input.userId,
-        text: input.text,
+        text: normalizedText,
         mode: input.mode,
         status: "failed",
         errorMessage: validation.errors.join(" / "),
@@ -195,7 +201,7 @@ async function executeTweetPost(input: {
   try {
     driveFileUrl = await savePostTextToGoogleDriveIfEnabled({
       userId: input.userId,
-      text: input.text.trim(),
+      text: normalizedText,
       context: input.context,
       fileNamePrefix:
         input.mode === "auto"
@@ -212,10 +218,45 @@ async function executeTweetPost(input: {
   }
 
   try {
-    const tweet = await createTweet({
-      accessToken: access.accessToken,
-      text: input.text.trim(),
+    const mediaFingerprint = input.media
+      ? `${input.media.mimeType}:${input.media.buffer.length}`
+      : "";
+    const idempotencyKey = buildIdempotencyKey({
+      integration: "x",
+      action: "post",
+      userId: input.userId,
+      fingerprint: `${normalizedText}|${mediaFingerprint}|${input.mode}`,
     });
+
+    const executed = await runIntegrationAction(
+      {
+        integration: "x",
+        action: input.media ? "post_with_media" : "post",
+        userId: input.userId,
+        idempotencyKey,
+        preventDuplicate: true,
+      },
+      async () => {
+        let mediaIds: string[] | undefined;
+        if (input.media) {
+          const { uploadXImageMedia } = await import(
+            "@/lib/integrations/production/x/media"
+          );
+          const uploaded = await uploadXImageMedia({
+            accessToken: access.accessToken,
+            buffer: input.media.buffer,
+            mimeType: input.media.mimeType,
+          });
+          mediaIds = [uploaded.mediaId];
+        }
+        return createTweet({
+          accessToken: access.accessToken,
+          text: normalizedText,
+          mediaIds,
+        });
+      },
+    );
+    const tweet = executed.value;
 
     const tweetUrl =
       access.username != null
@@ -225,7 +266,7 @@ async function executeTweetPost(input: {
     const history = saveXPostHistoryRecord(
       buildHistoryRecord({
         userId: input.userId,
-        text: input.text,
+        text: normalizedText,
         mode: input.mode,
         status: "success",
         tweetId: tweet.tweetId,
@@ -250,7 +291,7 @@ async function executeTweetPost(input: {
     }
 
     await touchXConnectionLastUsed(input.userId);
-    notifyXPostSuccess(input.userId, input.text.trim(), {
+    notifyXPostSuccess(input.userId, normalizedText, {
       historyId: history.id,
     });
 
@@ -265,7 +306,7 @@ async function executeTweetPost(input: {
       saveXPostHistoryRecord(
         buildHistoryRecord({
           userId: input.userId,
-          text: input.text,
+          text: normalizedText,
           mode: input.mode,
           status: "failed",
           errorMessage: error.message,
@@ -291,7 +332,7 @@ async function executeTweetPost(input: {
     saveXPostHistoryRecord(
       buildHistoryRecord({
         userId: input.userId,
-        text: input.text,
+        text: normalizedText,
         mode: input.mode,
         status: "failed",
         errorMessage: message,
@@ -311,6 +352,7 @@ export async function postTweetNowForUser(input: {
   userId: string;
   text: string;
   context: FeatureAccessContext;
+  media?: { buffer: Buffer; mimeType: string };
 }): Promise<XPostResult> {
   if (!isFeatureEnabled("x", input.context)) {
     return {
@@ -324,6 +366,7 @@ export async function postTweetNowForUser(input: {
     text: input.text,
     mode: "immediate",
     context: input.context,
+    media: input.media,
   });
 }
 

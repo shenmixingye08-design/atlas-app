@@ -237,6 +237,57 @@ export type Database = {
         };
         Relationships: [];
       };
+      atlas_dropbox_oauth_credentials: {
+        Row: {
+          user_id: string;
+          access_token: string;
+          refresh_token: string;
+          expires_at: string;
+          scope: string;
+          connection_status: string;
+          connected_at: string | null;
+          last_used_at: string | null;
+          account_email: string | null;
+          account_name: string | null;
+          account_picture_url: string | null;
+          provider_user_id: string | null;
+          error_message: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          access_token: string;
+          refresh_token: string;
+          expires_at: string;
+          scope?: string;
+          connection_status?: string;
+          connected_at?: string | null;
+          last_used_at?: string | null;
+          account_email?: string | null;
+          account_name?: string | null;
+          account_picture_url?: string | null;
+          provider_user_id?: string | null;
+          error_message?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          access_token?: string;
+          refresh_token?: string;
+          expires_at?: string;
+          scope?: string;
+          connection_status?: string;
+          connected_at?: string | null;
+          last_used_at?: string | null;
+          account_email?: string | null;
+          account_name?: string | null;
+          account_picture_url?: string | null;
+          provider_user_id?: string | null;
+          error_message?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       atlas_x_autopost_settings: {
         Row: {
           user_id: string;

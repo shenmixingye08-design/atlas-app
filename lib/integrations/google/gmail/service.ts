@@ -14,10 +14,11 @@ import {
   resolveGrantedGoogleScope,
 } from "@/lib/integrations/google/scopes";
 
+import { sendGmailProduction } from "@/lib/integrations/production/gmail/compose";
+
 import {
   addLabelToGmailMessage,
   archiveGmailMessage,
-  createGmailDraft,
   createGmailLabel,
   extractTextFromPdfBuffer,
   fetchGmailAttachment,
@@ -25,8 +26,8 @@ import {
   fetchGmailMessages,
   listGmailLabels,
   moveGmailMessageToSpam,
-  sendGmailReply,
   trashGmailMessage,
+  type GmailAttachmentInput,
 } from "./api-client";
 import { isGmailFilterId, resolveGmailSearchQuery } from "./filters";
 import type {
@@ -281,13 +282,24 @@ export async function trashMessageForUser(input: {
   return { status: "ready" };
 }
 
+function mapDraftAttachments(
+  draft: GmailReplyDraftContent,
+): GmailAttachmentInput[] | undefined {
+  if (!draft.attachments?.length) return undefined;
+  return draft.attachments.map((attachment) => ({
+    filename: attachment.filename,
+    mimeType: attachment.mimeType,
+    content: Buffer.from(attachment.contentBase64 ?? "", "base64"),
+  }));
+}
+
 export async function sendReplyForUser(input: {
   userId: string;
   context: FeatureAccessContext;
   messageId: string;
   draft: GmailReplyDraftContent;
 }): Promise<
-  | { status: "ready"; sentMessageId: string }
+  | { status: "ready"; sentMessageId: string; duplicate?: boolean }
   | GateFailure
   | { status: "not_found"; message: string }
 > {
@@ -302,15 +314,27 @@ export async function sendReplyForUser(input: {
     return { status: "not_found", message: "メールが見つかりません" };
   }
 
-  const sent = await sendGmailReply({
+  const sent = await sendGmailProduction({
+    userId: input.userId,
     accessToken: access.accessToken,
-    message,
+    mode: "reply",
     to: input.draft.to,
     subject: input.draft.subject,
     body: input.draft.body,
+    htmlBody: input.draft.htmlBody,
+    cc: input.draft.cc,
+    bcc: input.draft.bcc,
+    attachments: mapDraftAttachments(input.draft),
+    inReplyTo: message.messageIdHeader,
+    references: message.messageIdHeader,
+    threadId: message.threadId,
   });
 
-  return { status: "ready", sentMessageId: sent.id };
+  return {
+    status: "ready",
+    sentMessageId: sent.value.id,
+    duplicate: sent.duplicate,
+  };
 }
 
 export async function saveGmailDraftForUser(input: {
@@ -319,7 +343,7 @@ export async function saveGmailDraftForUser(input: {
   messageId: string;
   draft: GmailReplyDraftContent;
 }): Promise<
-  | { status: "ready"; gmailDraftId: string }
+  | { status: "ready"; gmailDraftId: string; duplicate?: boolean }
   | GateFailure
   | { status: "not_found"; message: string }
 > {
@@ -334,15 +358,65 @@ export async function saveGmailDraftForUser(input: {
     return { status: "not_found", message: "メールが見つかりません" };
   }
 
-  const created = await createGmailDraft({
+  const created = await sendGmailProduction({
+    userId: input.userId,
     accessToken: access.accessToken,
-    message,
+    mode: "draft",
     to: input.draft.to,
     subject: input.draft.subject,
     body: input.draft.body,
+    htmlBody: input.draft.htmlBody,
+    cc: input.draft.cc,
+    bcc: input.draft.bcc,
+    attachments: mapDraftAttachments(input.draft),
+    inReplyTo: message.messageIdHeader,
+    references: message.messageIdHeader,
+    threadId: message.threadId,
   });
 
-  return { status: "ready", gmailDraftId: created.id };
+  return {
+    status: "ready",
+    gmailDraftId: created.value.id,
+    duplicate: created.duplicate,
+  };
+}
+
+/** Compose and send a new Gmail message (HTML / CC / BCC / attachments). */
+export async function sendGmailComposeForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  to: string;
+  subject: string;
+  body: string;
+  htmlBody?: string | null;
+  cc?: string[];
+  bcc?: string[];
+  attachments?: GmailAttachmentInput[];
+}): Promise<
+  | { status: "ready"; sentMessageId: string; duplicate?: boolean }
+  | GateFailure
+> {
+  const access = await requireGmailAccess(input);
+  if (isGateFailure(access)) return access;
+
+  const sent = await sendGmailProduction({
+    userId: input.userId,
+    accessToken: access.accessToken,
+    mode: "send",
+    to: input.to,
+    subject: input.subject,
+    body: input.body,
+    htmlBody: input.htmlBody,
+    cc: input.cc,
+    bcc: input.bcc,
+    attachments: input.attachments,
+  });
+
+  return {
+    status: "ready",
+    sentMessageId: sent.value.id,
+    duplicate: sent.duplicate,
+  };
 }
 
 export async function listAttachmentsForUser(input: {

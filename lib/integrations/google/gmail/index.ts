@@ -19,8 +19,15 @@ export {
   modifyGmailMessageLabels,
   moveGmailMessageToSpam,
   normalizeGmailMessage,
+  sendGmailMessage,
+  createGmailDraftMessage,
   sendGmailReply,
   trashGmailMessage,
+} from "./api-client";
+export type {
+  GmailAttachmentInput,
+  GmailComposeInput,
+  GmailComposeResult,
 } from "./api-client";
 export {
   fetchGmailMessagesClient,
@@ -56,6 +63,7 @@ export {
   trashMessageForUser,
   sendReplyForUser,
   saveGmailDraftForUser,
+  sendGmailComposeForUser,
   listAttachmentsForUser,
   getAttachmentBytesForUser,
   analyzePdfAttachmentForUser,

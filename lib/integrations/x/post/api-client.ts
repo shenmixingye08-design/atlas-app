@@ -43,7 +43,15 @@ export type FetchTweetResponse = CreateTweetResponse;
 async function createTweetOnce(input: {
   accessToken: string;
   text: string;
+  mediaIds?: string[];
 }): Promise<{ tweetId: string; text: string }> {
+  const body: { text: string; media?: { media_ids: string[] } } = {
+    text: input.text,
+  };
+  if (input.mediaIds?.length) {
+    body.media = { media_ids: input.mediaIds };
+  }
+
   const response = await fetchWithTimeout(
     X_TWEETS_API_URL,
     {
@@ -52,7 +60,7 @@ async function createTweetOnce(input: {
         Authorization: `Bearer ${input.accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ text: input.text }),
+      body: JSON.stringify(body),
     },
     RELIABILITY_TIMEOUTS.x,
   );
@@ -113,8 +121,12 @@ export async function fetchTweetById(input: {
 export async function createTweet(input: {
   accessToken: string;
   text: string;
+  mediaIds?: string[];
 }): Promise<{ tweetId: string; text: string }> {
-  const dedupeKey = postDedupeKey(input.accessToken, input.text);
+  const mediaSuffix = input.mediaIds?.length
+    ? `:media:${input.mediaIds.join(",")}`
+    : "";
+  const dedupeKey = `${postDedupeKey(input.accessToken, input.text)}${mediaSuffix}`;
   const recent = recentPostKeys().get(dedupeKey);
   if (recent && Date.now() - recent.at < RECENT_POST_TTL_MS) {
     // Duplicate post forbidden — return the already-confirmed tweet id.

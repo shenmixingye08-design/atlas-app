@@ -70,6 +70,15 @@ export type GmailReplyDraftContent = {
   subject: string;
   to: string;
   body: string;
+  htmlBody?: string | null;
+  cc?: string[];
+  bcc?: string[];
+  attachments?: Array<{
+    filename: string;
+    mimeType: string;
+    /** Base64-encoded content for client round-trips; server prefers Buffer paths. */
+    contentBase64?: string;
+  }>;
 };
 
 export type GmailSavedReplyDraft = GmailReplyDraftContent & {

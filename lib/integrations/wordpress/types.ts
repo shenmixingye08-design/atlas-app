@@ -79,6 +79,10 @@ export type WordPressPostPayload = {
   /** Remote image URL — server fetches and uploads as featured media. */
   featuredImageUrl?: string;
   featuredImageAlt?: string;
+  /** SEO meta — stored in post meta / Yoast-compatible keys when available. */
+  seoTitle?: string;
+  seoDescription?: string;
+  seoSlug?: string;
 };
 
 export type WordPressPostResult = {

@@ -11,13 +11,15 @@ import {
   analyzeDropboxPdfText,
   summarizeDropboxDocument,
 } from "./ai-assistant";
+import { saveDropboxProduction } from "@/lib/integrations/production/dropbox/files-production";
+import { ensureExternalAuthHydrated } from "@/lib/integrations/external-services/durable";
+
 import {
   createDropboxSharedLink,
   deleteDropboxPath,
   downloadDropboxFile,
   listDropboxFolder,
   searchDropboxFiles,
-  uploadDropboxFile,
 } from "./api-client";
 import { getDropboxAccessToken } from "./oauth-service";
 import type {
@@ -47,7 +49,15 @@ async function resolveDropboxAccess(input: {
     };
   }
 
+  await ensureExternalAuthHydrated(input.userId);
+
   const connection = getExternalServiceConnection(input.userId, "dropbox");
+  if (connection.status === "error") {
+    return {
+      status: "dropbox_not_connected",
+      message: connection.errorMessage ?? "Dropboxの再接続が必要です",
+    };
+  }
   if (connection.status !== "connected") {
     return {
       status: "dropbox_not_connected",
@@ -59,7 +69,7 @@ async function resolveDropboxAccess(input: {
   if (!accessToken) {
     return {
       status: "dropbox_not_connected",
-      message: "Dropboxを接続してください",
+      message: "Dropboxの再接続が必要です",
     };
   }
 
@@ -121,7 +131,9 @@ export async function uploadDropboxFileForUser(input: {
   fileName: string;
   buffer: Buffer;
   parentPath?: string | null;
-}): Promise<DropboxMutationResult> {
+  /** Default add prevents silent overwrite (autorename on conflict). */
+  mode?: "add" | "overwrite";
+}): Promise<DropboxMutationResult & { duplicate?: boolean }> {
   const access = await resolveDropboxAccess(input);
   if (access.status !== "ready") {
     return { status: access.status, message: access.message };
@@ -130,14 +142,18 @@ export async function uploadDropboxFileForUser(input: {
   const parent = (input.parentPath?.trim() || "").replace(/\/$/, "");
   const safeName = input.fileName.replace(/[\\/]/g, "-");
   const path = `${parent}/${safeName}`.replace(/\/+/g, "/");
+  const normalized = path.startsWith("/") ? path : `/${path}`;
 
-  const file = await uploadDropboxFile({
+  const saved = await saveDropboxProduction({
+    userId: input.userId,
     accessToken: access.accessToken,
-    path: path.startsWith("/") ? path : `/${path}`,
+    path: normalized,
     buffer: input.buffer,
+    mode: input.mode === "overwrite" ? "overwrite" : "add",
+    ensureFolders: true,
   });
 
-  return { status: "ready", file };
+  return { status: "ready", file: saved.value, duplicate: saved.duplicate };
 }
 
 export async function deleteDropboxFileForUser(input: {
