@@ -11,6 +11,7 @@ import {
 import { getStoredDeliverableForUser } from "@/lib/deliverables/store";
 import { classifyArtifactFailure } from "@/lib/artifact-durability/classify";
 import { generateForCase } from "@/lib/artifact-durability/generate";
+import { buildRevisionContent } from "@/lib/artifact-durability/revision-content";
 import { validateStructure } from "@/lib/artifact-durability/structure";
 import type {
   ArtifactCaseResult,
@@ -24,6 +25,8 @@ export type RunCaseOptions = {
   environment?: "local" | "production-http";
   /** Second user for cross-tenant access probe (must fail). */
   otherUserId?: string;
+  /** 0..n for cycling revision edit kinds (text/table/image etc.). */
+  revisionIndex?: number;
 };
 
 export async function runArtifactCase(
@@ -167,18 +170,32 @@ export async function runArtifactCase(
     if (options.runRevision !== false && okDownload && okStructure) {
       revisionAttempted = true;
       try {
-        const revisedContent = `${c.content}\n\n## 改訂\n再編集 ${requestId}\n`;
+        const { content: revisedContent, changeSummary } = buildRevisionContent(
+          c,
+          requestId,
+          options.revisionIndex ?? 0
+        );
         const revisedFile = await generateForCase({
           ...c,
           content: revisedContent,
           title: `${c.title}_rev`,
         });
+        // Re-validate revision bytes before save
+        const revStructure = await validateStructure(c.format, revisedFile);
+        if (!revStructure.ok || revisedFile.buffer.byteLength === 0) {
+          throw new Error(
+            `revision_structure_failed:${revStructure.checks
+              .filter((x) => !x.ok)
+              .map((x) => x.name)
+              .join(",")}`
+          );
+        }
         const rev = await createArtifactRevision({
           sourceArtifactId: artifactId!,
           userId: options.userId,
           buffer: revisedFile.buffer,
           changeReason: "耐久試験再編集",
-          changeSummary: `revision for ${c.caseId}`,
+          changeSummary: `${changeSummary} (${c.caseId})`,
           jobId,
         });
         const sourceStill =

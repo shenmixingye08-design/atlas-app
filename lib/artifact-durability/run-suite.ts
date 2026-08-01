@@ -102,15 +102,17 @@ export async function runArtifactDurabilitySuite(options?: {
 
   const results: ArtifactCaseResult[] = [];
   for (const c of cases) {
-    const runRevision = (revisionCounts[c.format] ?? 0) < revisionPerFormat;
+    const revIdx = revisionCounts[c.format] ?? 0;
+    const runRevision = revIdx < revisionPerFormat;
     const result = await runArtifactCase(c, {
       userId,
       otherUserId,
       outDir,
       runRevision,
+      revisionIndex: revIdx,
       environment: "local",
     });
-    if (runRevision) revisionCounts[c.format] = (revisionCounts[c.format] ?? 0) + 1;
+    if (runRevision) revisionCounts[c.format] = revIdx + 1;
     results.push(result);
   }
 
