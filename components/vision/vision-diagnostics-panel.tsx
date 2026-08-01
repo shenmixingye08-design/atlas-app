@@ -80,19 +80,22 @@ export function VisionDiagnosticsPanel({
   const [allowed, setAllowed] = useState(canShowVisionDiagnostics());
 
   useEffect(() => {
-    if (canShowVisionDiagnostics()) {
-      setAllowed(true);
-      return;
-    }
     let cancelled = false;
-    void fetch("/api/auth/owner-status", { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((body: { isOwner?: boolean } | null) => {
-        if (!cancelled) setAllowed(Boolean(body?.isOwner));
-      })
-      .catch(() => {
-        if (!cancelled) setAllowed(false);
-      });
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (canShowVisionDiagnostics()) {
+        setAllowed(true);
+        return;
+      }
+      void fetch("/api/auth/owner-status", { cache: "no-store" })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((body: { isOwner?: boolean } | null) => {
+          if (!cancelled) setAllowed(Boolean(body?.isOwner));
+        })
+        .catch(() => {
+          if (!cancelled) setAllowed(false);
+        });
+    });
     return () => {
       cancelled = true;
     };

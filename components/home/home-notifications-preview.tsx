@@ -28,7 +28,9 @@ export function HomeNotificationsPreview() {
   }, []);
 
   useEffect(() => {
-    void reload();
+    queueMicrotask(() => {
+      void reload();
+    });
   }, [reload]);
 
   if (loading) {

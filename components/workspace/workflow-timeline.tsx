@@ -47,16 +47,22 @@ function statusToProgress(status: StepStatus, explicit?: number): number {
 
 function StageElapsedTimer({ running }: { running: boolean }) {
   const [elapsed, setElapsed] = useState(0);
-  const startRef = useRef(Date.now());
+  const startRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!running) return;
     startRef.current = Date.now();
-    setElapsed(0);
+    queueMicrotask(() => {
+      setElapsed(0);
+    });
     const id = setInterval(() => {
+      if (startRef.current === null) return;
       setElapsed(Date.now() - startRef.current);
     }, 100);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      startRef.current = null;
+    };
   }, [running]);
 
   if (!running) return null;

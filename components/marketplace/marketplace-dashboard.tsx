@@ -38,7 +38,9 @@ export function MarketplaceDashboard() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const handleInstall = async (templateId: WorkflowPackageView["templateId"]) => {

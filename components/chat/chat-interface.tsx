@@ -39,10 +39,12 @@ export function ChatInterface() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    const prefill = searchParams.get("message");
-    if (prefill?.trim()) {
-      setInput(prefill);
-    }
+    queueMicrotask(() => {
+      const prefill = searchParams.get("message");
+      if (prefill?.trim()) {
+        setInput(prefill);
+      }
+    });
   }, [searchParams]);
 
   const scrollToBottom = useCallback(() => {

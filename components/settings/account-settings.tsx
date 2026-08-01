@@ -74,7 +74,9 @@ export function AccountSettings() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const handlePortal = async () => {

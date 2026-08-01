@@ -70,7 +70,9 @@ export function ReleaseGatePanel() {
   }, [q]);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   async function patch(body: Record<string, unknown>) {

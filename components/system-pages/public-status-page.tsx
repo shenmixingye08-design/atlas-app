@@ -91,7 +91,9 @@ export function PublicStatusPageContent() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
     const timer = window.setInterval(() => void load(), 15_000);
     return () => window.clearInterval(timer);
   }, [load]);

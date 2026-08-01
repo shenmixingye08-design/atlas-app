@@ -119,7 +119,9 @@ export function CostRankingPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const warningCount =

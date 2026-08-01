@@ -10,7 +10,7 @@ export function applyPptxEdits(
   model: PresentationModel,
   operations: PptxEditOperation[],
 ): PresentationModel {
-  let next: PresentationModel = {
+  const next: PresentationModel = {
     ...model,
     slides: model.slides.map((s) => ({ ...s })),
     warnings: [...model.warnings],

@@ -193,7 +193,7 @@ export async function registerArtifact(
 
   let revisionNumber = 1;
   let versionGroupId: string | null = source?.versionGroupId ?? null;
-  let parentId: string | null = source?.id ?? null;
+  const parentId: string | null = source?.id ?? null;
 
   if (asRevision && source) {
     const found = await findVersionGroupByDeliverableIdAsync(source.id);

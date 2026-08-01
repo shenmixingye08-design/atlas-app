@@ -84,7 +84,9 @@ export function ExcelPreviewPanel({
   }, [deliverableId]);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const sheet = preview?.sheets[sheetIndex] ?? preview?.sheets[0];
