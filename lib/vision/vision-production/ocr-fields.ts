@@ -37,17 +37,23 @@ function asFieldString(fields: VisionFieldMap, ...keys: string[]): string | null
 }
 
 function parseAmount(raw: string): number | null {
-  const n = Number(raw.replace(/,/g, ""));
+  const trimmed = raw.replace(/,/g, "").trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
   return Number.isFinite(n) ? n : null;
 }
 
 function findLabeledAmount(text: string, labels: RegExp[]): number | null {
   for (const label of labels) {
-    const re = new RegExp(`${label.source}\\s*[:：]?\\s*[¥￥]?\\s*${AMOUNT_NUM}`, "i");
+    // ラベルと金額の間に「合計」等の語が挟まる帳票表記にも対応
+    const re = new RegExp(
+      `${label.source}[^\\d¥￥]{0,12}[¥￥]?\\s*${AMOUNT_NUM}`,
+      "i",
+    );
     const m = text.match(re);
     if (m?.[1]) {
       const v = parseAmount(m[1]);
-      if (v != null) return v;
+      if (v != null && v > 0) return v;
     }
   }
   return null;

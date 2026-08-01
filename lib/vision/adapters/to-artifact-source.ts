@@ -443,26 +443,6 @@ function buildChartMarkdown(batch: VisionBatchResult): string {
     .join("\n\n");
 }
 
-function buildScreenshotMarkdown(batch: VisionBatchResult): string {
-  return batch.images
-    .map((image, i) => {
-      const f = image.fields;
-      return [
-        `# 画面キャプチャ整理 ${i + 1}`,
-        `- アプリ/サイト: ${asString(f.appOrSite) || "要確認"}`,
-        `- 目的: ${asString(f.purpose) || image.summary}`,
-        `- 主要UI文言: ${asString(f.keyUiText) || image.extractedText || "要確認"}`,
-        "",
-        "## 要約",
-        image.summary,
-        "",
-        "## 抽出テキスト",
-        image.extractedText || "（なし）",
-      ].join("\n");
-    })
-    .join("\n\n");
-}
-
 function buildPhotoReportMarkdown(batch: VisionBatchResult): string {
   return [
     "# 写真レポート",

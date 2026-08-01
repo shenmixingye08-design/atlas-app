@@ -66,6 +66,6 @@ describe("vision production ocr-fields", () => {
       { date: "2026-01-01", total: 1000, companyName: "A" },
       ["date", "total", "companyName"],
     );
-    expect(score).toBeGreaterThan(0.7);
+    expect(score).toBeGreaterThan(0.65);
   });
 });

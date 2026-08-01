@@ -233,14 +233,9 @@ export function refineVisionAnalysisResult(input: {
       }
     }
   } else {
-    const ocrAcc = estimateOcrAccuracy(
-      refined.extractedText,
-      refined.fields,
-      required,
-    );
     refined.fields = {
       ...refined.fields,
-      qualityOcrAccuracy: ocrAcc,
+      qualityOcrAccuracy: ocrAccuracy,
     };
   }
 

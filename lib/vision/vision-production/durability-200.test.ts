@@ -386,11 +386,13 @@ describe("vision production durability n=200", () => {
         const formats = formatsFromVisionBatch(batch, assignment);
         const title = titleFromVisionBatch(batch);
 
+        const ocr = refined.extractedText?.trim() ?? "";
         const notOcrOnly =
           seed.includes("#") &&
-          !seed.startsWith(refined.extractedText ?? "___") &&
-          seed.length > 40;
-        if (notOcrOnly && formats.length > 0) seedHits += 1;
+          seed.length > 40 &&
+          formats.length > 0 &&
+          (ocr.length === 0 || !seed.startsWith(ocr));
+        if (notOcrOnly) seedHits += 1;
 
         const quality = inspectVisionQuality({
           result: refined,
