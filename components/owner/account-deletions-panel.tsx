@@ -44,7 +44,9 @@ export function AccountDeletionsPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const purgeDue = async () => {

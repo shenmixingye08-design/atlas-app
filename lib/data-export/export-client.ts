@@ -45,7 +45,7 @@ export async function exportAtlasData(
   input.onProgress?.({ stage: "formatting", percent: 10 });
 
   let blob: Blob;
-  let fileName = buildExportFileName(input.format);
+  const fileName = buildExportFileName(input.format);
 
   switch (input.format) {
     case "json":

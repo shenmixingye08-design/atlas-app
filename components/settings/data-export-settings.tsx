@@ -80,8 +80,10 @@ export function DataExportSettings() {
       }
     }
 
-    refreshHistory();
-    void load();
+    queueMicrotask(() => {
+      refreshHistory();
+      void load();
+    });
     return () => {
       cancelled = true;
     };

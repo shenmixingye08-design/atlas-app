@@ -51,7 +51,9 @@ export function ProjectsDashboard() {
   }, [searchParams]);
 
   useEffect(() => {
-    refreshExperienceState();
+    queueMicrotask(() => {
+      refreshExperienceState();
+    });
   }, [refreshExperienceState]);
 
   const handleWizardComplete = useCallback(() => {

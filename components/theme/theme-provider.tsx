@@ -44,12 +44,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const stored = readStoredThemePreference();
-    const nextResolved = resolveTheme(stored);
-    setPreferenceState(stored);
-    setResolved(nextResolved);
-    applyResolvedTheme(nextResolved);
-    setReady(true);
+    queueMicrotask(() => {
+      const stored = readStoredThemePreference();
+      const nextResolved = resolveTheme(stored);
+      setPreferenceState(stored);
+      setResolved(nextResolved);
+      applyResolvedTheme(nextResolved);
+      setReady(true);
+    });
   }, []);
 
   useEffect(() => {

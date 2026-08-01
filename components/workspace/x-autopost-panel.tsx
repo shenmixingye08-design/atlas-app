@@ -120,7 +120,9 @@ export function XAutoPostPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const frequencyOption = useMemo(
