@@ -117,6 +117,22 @@ export async function runOpsDurabilitySuite(options?: {
       );
     }
   }
+  if (!env.vapid) {
+    aggregate.phase3Pass = false;
+    aggregate.notifications.pushRate = 0;
+    if (!aggregate.phase3FailReasons.some((r) => /Push|VAPID/i.test(r))) {
+      aggregate.phase3FailReasons.push(
+        "Push成功率未達: VAPID/端末subscriptionなし（送信成功とみなさない）"
+      );
+    }
+  }
+  // Email channel unimplemented — never pass email gate by omission
+  aggregate.phase3Pass = false;
+  if (!aggregate.phase3FailReasons.some((r) => /email|メール/i.test(r))) {
+    aggregate.phase3FailReasons.push(
+      "メール通知チャネル未実装 — メール成功率を成功扱いにしない"
+    );
+  }
 
   writeFileSync(join(outDir, "jobs.json"), JSON.stringify(jobs, null, 2));
   writeFileSync(
