@@ -82,7 +82,9 @@ export function CancellationAnalysisPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   return (

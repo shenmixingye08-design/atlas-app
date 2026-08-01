@@ -32,7 +32,9 @@ export function ConnectionsDashboard() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   if (isLoading) return <LoadingState />;
