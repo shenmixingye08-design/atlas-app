@@ -98,6 +98,18 @@ export async function analyzeUserImage(input: {
   appendVisionDiagnosticStage(diagnosticId, "upload", true, {
     downloadedByteLength: meta.processedBytes,
     mimeType: meta.mimeType,
+    storagePath: meta.processedPath,
+    originalByteLength: meta.originalBytes,
+  });
+
+  console.info("[vision] storage_image_meta", {
+    jobId: input.jobId ?? null,
+    diagnosticId,
+    storagePath: meta.processedPath,
+    mimeType: meta.mimeType,
+    originalBytes: meta.originalBytes,
+    processedBytes: meta.processedBytes,
+    emptyFile: meta.processedBytes <= 0,
   });
 
   const hintType =
@@ -165,12 +177,25 @@ export async function analyzeUserImage(input: {
     });
     appendVisionDiagnosticStage(diagnosticId, "storage_download", false, {
       downloadedByteLength: 0,
+      storagePath: meta.processedPath,
       errorCode: "empty_image",
       userCode: "image_fetch_failed",
+    });
+    console.error("[vision] empty_storage_image", {
+      jobId: input.jobId ?? null,
+      diagnosticId,
+      storagePath: meta.processedPath,
+      mimeType: meta.mimeType,
+      byteSize: 0,
     });
     throw new VisionError("empty_image", "画像取得失敗：解析用画像が空です", {
       diagnosticId,
       failedStage: "storage_download",
+      details: {
+        storagePath: meta.processedPath,
+        mimeType: meta.mimeType,
+        byteSize: 0,
+      },
     });
   }
 
@@ -260,6 +285,7 @@ export async function analyzeUserImage(input: {
       pageCount: input.pageCount ?? 1,
       jobId: input.jobId,
       diagnosticId,
+      storagePath: meta.processedPath,
     });
 
     const resolvedInputTokens =

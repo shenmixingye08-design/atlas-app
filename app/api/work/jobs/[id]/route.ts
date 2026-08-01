@@ -36,8 +36,8 @@ export async function GET(
     );
   }
 
-  // Stale running must not stay 処理中 — reclaim on poll.
-  if (job.status === "running" && isStaleWorkJobRunning(job)) {
+  // Stale active vision/work phases must not stay 処理中 — reclaim on poll.
+  if (isStaleWorkJobRunning(job)) {
     after(async () => {
       try {
         await executeWorkJob(id, userId);
@@ -49,6 +49,11 @@ export async function GET(
     job = (await getWorkJobDurable(id, userId)) ?? job;
   }
 
+  const visionPhase =
+    typeof job.metadata?.visionPhase === "string"
+      ? job.metadata.visionPhase
+      : job.status;
+
   return Response.json({
     ok: true,
     jobId: job.id,
@@ -57,13 +62,30 @@ export async function GET(
     visionGate: job.visionGate,
     result: job.result,
     completedAt: job.completedAt,
+    metadata: {
+      visionPhase,
+      visionAttempt:
+        typeof job.metadata?.visionAttempt === "number"
+          ? job.metadata.visionAttempt
+          : null,
+      parentJobId:
+        typeof job.metadata?.parentJobId === "string"
+          ? job.metadata.parentJobId
+          : null,
+    },
     message:
-      job.status === "queued" || job.status === "running"
+      job.status === "queued" ||
+      job.status === "running" ||
+      job.status === "preprocessing" ||
+      job.status === "analyzing" ||
+      job.status === "retrying"
         ? "依頼を受け付けました。バックグラウンドで処理しています。"
         : job.status === "completed"
           ? "すべて完了しました。"
-          : job.status === "awaiting_confirmation"
-            ? "確認が必要です。"
-            : job.error ?? "確認が必要です。",
+          : job.status === "needs_input"
+            ? "画像は読み取れましたが、必要な項目を確認できませんでした。"
+            : job.status === "awaiting_confirmation"
+              ? "確認が必要です。"
+              : job.error ?? "確認が必要です。",
   });
 }

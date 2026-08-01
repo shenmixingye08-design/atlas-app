@@ -15,6 +15,8 @@ export type NormalizedOpenAiImage = {
   height: number;
   originalWidth: number;
   originalHeight: number;
+  /** Source buffer size before normalize. */
+  originalByteLength: number;
   dataUrl: string;
   detectedInputMime: string | null;
   profile: VisionNormalizeProfile;
@@ -28,16 +30,18 @@ const PROFILE_SETTINGS: Record<
   VisionNormalizeProfile,
   { maxEdge: number; jpegQuality: number; maxBytes: number }
 > = {
-  // Long edge ~2048, readable for receipts/docs.
-  standard: { maxEdge: 2048, jpegQuality: 85, maxBytes: 3_500_000 },
-  // Fallback shrink when OpenAI rejects / times out.
-  compact: { maxEdge: 1280, jpegQuality: 72, maxBytes: 1_500_000 },
-  // Slightly higher quality for OCR-heavy work.
-  ocr: { maxEdge: 2048, jpegQuality: 90, maxBytes: 4_000_000 },
+  // Long edge ≤2048, quality ~82 — phone photos shrink without killing small text.
+  standard: { maxEdge: 2048, jpegQuality: 82, maxBytes: 3_500_000 },
+  // Fallback shrink when OpenAI times out / overloaded.
+  compact: { maxEdge: 1280, jpegQuality: 78, maxBytes: 1_500_000 },
+  // Slightly higher quality for OCR-heavy work (receipts / forms).
+  ocr: { maxEdge: 2048, jpegQuality: 85, maxBytes: 4_000_000 },
 };
 
 const MIN_EDGE_PX = 32;
 const MIN_BYTES = 64;
+/** Absolute OpenAI payload ceiling (never send >10MB). */
+export const VISION_MAX_PAYLOAD_BYTES = 10_000_000;
 
 /**
  * Re-encode smartphone images into a safe OpenAI vision payload.
@@ -55,6 +59,7 @@ export async function normalizeImageForOpenAi(input: {
   const settings = PROFILE_SETTINGS[profile];
   const warnings: string[] = [];
   const detectedInputMime = detectImageMimeFromBytes(input.buffer);
+  const originalByteLength = input.buffer?.length ?? 0;
 
   if (!input.buffer?.length || input.buffer.length < MIN_BYTES) {
     throw new VisionError("empty_image", "解析用画像が空です", {
@@ -62,6 +67,13 @@ export async function normalizeImageForOpenAi(input: {
       failedStage: "preprocess",
     });
   }
+
+  console.info("[vision] image_normalize_before", {
+    diagnosticId: input.diagnosticId ?? null,
+    profile,
+    originalByteLength,
+    detectedInputMime,
+  });
 
   // Fresh sharp instance for metadata — never reuse a consumed pipeline.
   let meta;
@@ -189,9 +201,41 @@ export async function normalizeImageForOpenAi(input: {
         fit: "inside",
         withoutEnlargement: true,
       })
-      .jpeg({ quality: Math.min(settings.jpegQuality, 70), mozjpeg: true })
+      .jpeg({ quality: Math.min(settings.jpegQuality, 78), mozjpeg: true })
       .toBuffer();
     mimeType = "image/jpeg";
+  }
+
+  // Absolute 10MB ceiling — never send smartphone originals that remain huge.
+  if (buffer.length > VISION_MAX_PAYLOAD_BYTES) {
+    warnings.push("forced_under_10mb");
+    buffer = await sharp(buffer, { failOn: "none" })
+      .resize({
+        width: 1024,
+        height: 1024,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: 75, mozjpeg: true })
+      .toBuffer();
+    mimeType = "image/jpeg";
+  }
+
+  if (buffer.length > VISION_MAX_PAYLOAD_BYTES) {
+    throw new VisionError(
+      "too_large",
+      "画像が大きすぎたため圧縮に失敗しました。解像度を下げて再度お試しください",
+      {
+        diagnosticId: input.diagnosticId,
+        failedStage: "preprocess",
+        details: {
+          originalByteLength,
+          processedByteLength: buffer.length,
+          maxBytes: VISION_MAX_PAYLOAD_BYTES,
+          profile,
+        },
+      },
+    );
   }
 
   const outMeta = await sharp(buffer).metadata();
@@ -232,6 +276,19 @@ export async function normalizeImageForOpenAi(input: {
     );
   }
 
+  console.info("[vision] image_normalize_after", {
+    diagnosticId: input.diagnosticId ?? null,
+    profile,
+    originalByteLength,
+    processedByteLength: buffer.length,
+    originalWidth,
+    originalHeight,
+    width,
+    height,
+    mimeType: built.mimeType,
+    warnings,
+  });
+
   return {
     buffer,
     mimeType: built.mimeType,
@@ -239,6 +296,7 @@ export async function normalizeImageForOpenAi(input: {
     height,
     originalWidth,
     originalHeight,
+    originalByteLength,
     dataUrl: built.dataUrl,
     detectedInputMime,
     profile,

@@ -81,6 +81,13 @@ export type AtlasInputMessage = {
 /** String prompt or Responses API multimodal message list. */
 export type AtlasResponseInput = string | AtlasInputMessage[];
 
+export type AtlasResponseTextFormat = {
+  type: "json_schema";
+  name: string;
+  strict?: boolean;
+  schema: Record<string, unknown>;
+};
+
 export type AtlasResponseRequest = {
   /** User message, or multimodal Responses API input (text + images). */
   input: AtlasResponseInput;
@@ -94,6 +101,13 @@ export type AtlasResponseRequest = {
   model?: string;
   maxOutputTokens?: number;
   temperature?: number;
+  /** Responses API Structured Outputs (`text.format`). */
+  textFormat?: AtlasResponseTextFormat;
+};
+
+export type AtlasResponseCreateOptions = {
+  /** Abort in-flight OpenAI HTTP when app timeout fires. */
+  signal?: AbortSignal;
 };
 
 /** Extract plain text from multimodal input for mocks / token estimates (never logs image bytes). */
@@ -157,7 +171,8 @@ export function resolveAtlasResponseCreateParams(
   max_output_tokens: number | null;
   temperature: number | null;
   tools: null;
-  response_format: null;
+  response_format: AtlasResponseTextFormat | null;
+  text_format: AtlasResponseTextFormat | null;
   previous_response_id: string | null;
 } {
   const resolved = resolveRequestParams(params);
@@ -171,9 +186,9 @@ export function resolveAtlasResponseCreateParams(
     max_output_tokens:
       sanitized.max_output_tokens ?? sanitized.max_tokens ?? null,
     temperature: sanitized.temperature ?? null,
-    // Vision analyze does not send tools / response_format today — log explicitly.
     tools: null,
-    response_format: null,
+    response_format: params.textFormat ?? null,
+    text_format: params.textFormat ?? null,
     previous_response_id: params.previousResponseId ?? null,
   };
 }
@@ -182,7 +197,7 @@ function buildResponseCreateParams(
   params: AtlasResponseRequest,
   stream: boolean,
 ): ResponseCreateParamsNonStreaming | ResponseCreateParamsStreaming {
-  const { input, instructions, previousResponseId } = params;
+  const { input, instructions, previousResponseId, textFormat } = params;
   const resolved = resolveRequestParams(params);
   const sanitized = sanitizeResponsesApiParams(resolved.model, {
     maxOutputTokens: resolved.max_output_tokens,
@@ -196,6 +211,13 @@ function buildResponseCreateParams(
     instructions: instructions ?? DEFAULT_INSTRUCTIONS,
     ...(previousResponseId && { previous_response_id: previousResponseId }),
     ...sanitized,
+    ...(textFormat
+      ? {
+          text: {
+            format: textFormat,
+          },
+        }
+      : {}),
     stream,
   } as ResponseCreateParamsNonStreaming | ResponseCreateParamsStreaming;
 }
@@ -239,6 +261,7 @@ function maybeRecordBillingUsage(input: {
 /** Creates a non-streaming response via the OpenAI Responses API. */
 export async function createAtlasResponse(
   params: AtlasResponseRequest,
+  options?: AtlasResponseCreateOptions,
 ): Promise<Response> {
   if (isMockLlmEnabled()) {
     const outputText = resolveMockLlmOutput(
@@ -261,6 +284,7 @@ export async function createAtlasResponse(
 
   const response = await getOpenAIClient().responses.create(
     buildNonStreamingParams(params),
+    options?.signal ? { signal: options.signal } : undefined,
   );
   maybeRecordBillingUsage({
     params,

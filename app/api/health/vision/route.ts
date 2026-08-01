@@ -4,7 +4,8 @@ import { runVisionUserUploadSmoke } from "@/lib/vision/vision-user-upload-smoke"
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+/** Vision smoke may call OpenAI — keep ≥ single-request budget. */
+export const maxDuration = 120;
 
 /**
  * Public Production vision smoke (uses OpenAI once).

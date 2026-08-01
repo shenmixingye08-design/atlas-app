@@ -77,8 +77,13 @@ export function WorkspaceDashboard() {
   const [backgroundAccepted, setBackgroundAccepted] = useState(false);
   const [pendingCommander, setPendingCommander] =
     useState<CommanderRunResult | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [visionPhase, setVisionPhase] = useState<string | null>(null);
 
   const autoStartedRef = useRef(false);
+  const reanalyzeInFlightRef = useRef(false);
+  const parentJobIdRef = useRef<string | null>(null);
+  const visionAttemptRef = useRef(0);
   const requestMetadataRef = useRef<Readonly<Record<string, unknown>>>({});
   const { isAvailable } = useFeatureAvailability();
   const preferredFormat = requestMetadata.preferredDeliverableFormat;
@@ -163,6 +168,7 @@ export function WorkspaceDashboard() {
     setPendingCommander(null);
     setIsLoading(true);
     setBackgroundAccepted(false);
+    setVisionPhase("queued");
     setLoadingStepIndex(0);
     setLoadingPhases(buildLoadingPhases(0));
 
@@ -170,10 +176,30 @@ export function WorkspaceDashboard() {
       setSalesMaterialConfig(config);
     }
 
+    const isVisionRetry = extraMetadata?.forceVisionRefresh === true;
+    if (isVisionRetry) {
+      visionAttemptRef.current += 1;
+    } else {
+      visionAttemptRef.current = 1;
+      parentJobIdRef.current = null;
+    }
+
     const mergedMetadata = {
       ...requestMetadataRef.current,
       ...(extraMetadata ?? {}),
       ...(config ? buildSalesMaterialMetadata(config) : {}),
+      ...(isVisionRetry
+        ? {
+            parentJobId: parentJobIdRef.current,
+            visionAttempt: visionAttemptRef.current,
+            reuseAttachments: true,
+            // Preserve prior error history — do not overwrite.
+            priorVisionDiagnosticId:
+              typeof requestMetadataRef.current.visionDiagnosticId === "string"
+                ? requestMetadataRef.current.visionDiagnosticId
+                : null,
+          }
+        : {}),
     };
     requestMetadataRef.current = mergedMetadata;
     setRequestMetadata(mergedMetadata);
@@ -186,7 +212,7 @@ export function WorkspaceDashboard() {
         body: JSON.stringify({
           assignment: requestAssignment,
           metadata: mergedMetadata,
-          // Prevent double-submit of the same request (job runs once).
+          // Reanalyze gets a fresh key so it is a new attempt, not a no-op.
           idempotencyKey:
             typeof crypto !== "undefined" && "randomUUID" in crypto
               ? crypto.randomUUID()
@@ -208,8 +234,12 @@ export function WorkspaceDashboard() {
 
       setBackgroundAccepted(true);
       const jobId = acceptBody.jobId;
+      setActiveJobId(jobId);
+      if (!parentJobIdRef.current) {
+        parentJobIdRef.current = jobId;
+      }
 
-      // Poll until completed / failed / confirmation.
+      // Poll until completed / failed / needs_input / confirmation.
       for (let i = 0; i < 240; i += 1) {
         await new Promise((r) => setTimeout(r, 2_000));
         const poll = await fetch(`/api/work/jobs/${encodeURIComponent(jobId)}`, {
@@ -221,9 +251,13 @@ export function WorkspaceDashboard() {
           error?: string;
           message?: string;
           visionGate?: CommanderVisionGate | null;
+          metadata?: { visionPhase?: string };
         };
         if (!poll.ok) {
           throw new Error(body.error || "状況を確認できませんでした。");
+        }
+        if (body.status) {
+          setVisionPhase(body.metadata?.visionPhase ?? body.status);
         }
         if (body.status === "awaiting_confirmation") {
           // Fall back to interactive confirm via classic path when needed.
@@ -263,7 +297,7 @@ export function WorkspaceDashboard() {
           }
           return;
         }
-        if (body.status === "failed") {
+        if (body.status === "failed" || body.status === "needs_input") {
           if (body.visionGate) {
             setVisionGate(body.visionGate);
             setError(body.visionGate.message);
@@ -290,6 +324,7 @@ export function WorkspaceDashboard() {
     } finally {
       setIsLoading(false);
       setBackgroundAccepted(false);
+      reanalyzeInFlightRef.current = false;
     }
   }, []);
 
@@ -535,12 +570,18 @@ export function WorkspaceDashboard() {
           <VisionFailurePanel
             gate={visionGate}
             showDeveloperHint={Boolean(visionGate.diagnosticId)}
+            retryDisabled={isLoading || reanalyzeInFlightRef.current}
             onRetryAnalyze={() => {
-              // Re-analyze: new job, force refresh, re-normalize / fallback path.
+              if (isLoading || reanalyzeInFlightRef.current) return;
+              reanalyzeInFlightRef.current = true;
+              // Re-analyze: reuse attachments, link parent job, new attempt.
               void runOrchestration(assignment.trim(), null, {
                 forceVisionRefresh: true,
                 visionRetry: true,
                 visionRetryAt: new Date().toISOString(),
+                parentJobId: parentJobIdRef.current ?? activeJobId,
+                visionAttempt: visionAttemptRef.current + 1,
+                attachmentIds: requestMetadataRef.current.attachmentIds,
               });
             }}
             onPickAnother={() => {
@@ -548,6 +589,14 @@ export function WorkspaceDashboard() {
               setError(null);
             }}
           />
+          {visionPhase && (
+            <p className="text-center text-xs text-[var(--text-secondary)]">
+              状態: {visionPhase}
+              {visionAttemptRef.current > 1
+                ? ` / 試行 ${visionAttemptRef.current}`
+                : ""}
+            </p>
+          )}
           <VisionDiagnosticsPanel
             diagnosticId={visionGate.diagnosticId}
             enabled={showVisionDiagnostics}

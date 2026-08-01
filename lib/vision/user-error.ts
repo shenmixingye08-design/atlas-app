@@ -53,9 +53,10 @@ export function userMessageForVisionFailure(input: {
     input.code === "timeout" ||
     input.httpStatus === 408 ||
     input.httpStatus === 504 ||
-    /timeout|timed out/i.test(openaiMessage)
+    /timeout|timed out|vision_openai_timeout/i.test(openaiMessage)
   ) {
-    return "AI解析が時間切れになりました。画像を小さくして再解析してください。";
+    // timeout is a temporary transport failure — never needs_input copy.
+    return "AI解析が時間切れになりました。同じ画像のまま再解析できます。";
   }
 
   if (

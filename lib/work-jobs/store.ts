@@ -9,10 +9,19 @@ import {
   persistWorkJob,
 } from "./durable";
 
+/**
+ * Work job + vision pipeline statuses.
+ * timeout → failed (never needs_input).
+ * needs_input = analysis completed but required fields absent.
+ */
 export type WorkJobStatus =
   | "queued"
+  | "preprocessing"
+  | "analyzing"
+  | "retrying"
   | "running"
   | "completed"
+  | "needs_input"
   | "failed"
   | "awaiting_confirmation";
 

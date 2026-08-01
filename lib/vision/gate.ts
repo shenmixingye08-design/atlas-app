@@ -159,6 +159,32 @@ export function evaluateMissingAttachmentIdsGate(input: {
   };
 }
 
+function readStructuredVisionGate(fields: Record<string, unknown>): {
+  needsUserInput: boolean;
+  userMessage: string | null;
+  missingRequiredFields: string[];
+} | null {
+  const raw = fields.__visionGate;
+  if (!raw || typeof raw !== "object") return null;
+  const gate = raw as {
+    needs_user_input?: unknown;
+    user_message?: unknown;
+    missing_required_fields?: unknown;
+  };
+  return {
+    needsUserInput: gate.needs_user_input === true,
+    userMessage:
+      typeof gate.user_message === "string" && gate.user_message.trim()
+        ? gate.user_message
+        : null,
+    missingRequiredFields: Array.isArray(gate.missing_required_fields)
+      ? gate.missing_required_fields.filter(
+          (v): v is string => typeof v === "string",
+        )
+      : [],
+  };
+}
+
 export function evaluateVisionBatchGate(input: {
   batch: VisionBatchResult;
   userText: string;
@@ -179,6 +205,31 @@ export function evaluateVisionBatchGate(input: {
   const mergedFields: Record<string, unknown> = {};
   for (const image of images) {
     Object.assign(mergedFields, image.fields);
+  }
+  // Internal structured gate metadata is not a document field.
+  delete mergedFields.__visionGate;
+
+  const structuredGates = images
+    .map((image) => readStructuredVisionGate(image.fields))
+    .filter((g): g is NonNullable<typeof g> => Boolean(g));
+  const structuredNeedsInput = structuredGates.find((g) => g.needsUserInput);
+  if (structuredNeedsInput) {
+    return {
+      status: "needs_input",
+      analysisSuccess: true,
+      message:
+        structuredNeedsInput.userMessage ??
+        "画像内に該当情報を確認できませんでした",
+      userCode: "needs_input",
+      requiredFields:
+        structuredNeedsInput.missingRequiredFields.length > 0
+          ? structuredNeedsInput.missingRequiredFields
+          : requiredFields,
+      missingRequiredFields:
+        structuredNeedsInput.missingRequiredFields.length > 0
+          ? structuredNeedsInput.missingRequiredFields
+          : requiredFields,
+    };
   }
 
   const isReceiptWork =
