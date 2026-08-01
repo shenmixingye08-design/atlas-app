@@ -157,7 +157,7 @@ export function QualityDashboardPanel() {
         if (!res.ok || !json.ok) {
           throw new Error(json.error ?? `HTTP ${res.status}`);
         }
-        if (json.snapshot) setData({ ok: true, ...json.snapshot });
+        if (json.snapshot) setData({ ...json.snapshot, ok: true });
         setSuiteMsg(
           json.evidence
             ? `証拠スイート完了: ${json.evidence.passed}/${json.evidence.totalCases} PASS (${json.evidence.suiteId})`

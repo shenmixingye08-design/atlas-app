@@ -188,7 +188,7 @@ export async function runOpsJobCase(
         throw new Error(converted.errors?.[0]?.message ?? "convert_failed");
       }
       artifactId = converted.artifact.id;
-      diagnosticId = converted.diagnosticId ?? null;
+      diagnosticId = converted.errors[0]?.diagnosticId ?? null;
       await markJobCompleted({
         jobId,
         userId: options.userId,

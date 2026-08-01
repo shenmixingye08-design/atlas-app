@@ -88,10 +88,8 @@ export function classifyVisionFailure(input: {
   if (input.artifactFailed) return "artifact_generation_failed";
   if (input.finalStatus === "needs_input") return "job_state_mismatch";
 
-  if (!err && !input.timedOut) {
-    // scoring failure without thrown error
-    if (input.ocrOk === false) return "ocr_failed";
-    if ((input.fieldHitRate ?? 1) < 0.5) return "required_fields_missing";
+  if (!err && !input.timedOut && (input.fieldHitRate ?? 1) < 0.5) {
+    return "required_fields_missing";
   }
 
   return "unknown";

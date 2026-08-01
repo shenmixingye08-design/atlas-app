@@ -147,7 +147,7 @@ export class ServerKnowledgeRepository implements KnowledgeRepository {
       if (value.userId === userId) bucket.delete(key);
     }
     for (const entry of entries) {
-      const uid = entry.userId ?? userId;
+      const uid: string = entry.userId ?? userId;
       if (uid !== userId) continue;
       const row = { ...entry, userId: uid };
       bucket.set(knowledgeTenantKey(uid, entry.id), row);

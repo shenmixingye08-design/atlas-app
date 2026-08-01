@@ -426,7 +426,7 @@ function renderSlide(
             { length: slideModel.table.headers.length },
             () => 9.0 / Math.max(1, slideModel.table!.headers.length),
           ),
-          border: [{ pt: 0.5, color: "CBD5E1" }],
+          border: { pt: 0.5, color: "CBD5E1" },
         },
       );
     } else if (slideModel.type === "cta") {

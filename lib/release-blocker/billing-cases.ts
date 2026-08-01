@@ -50,7 +50,9 @@ export async function runBillingCases(): Promise<BillingCaseResult[]> {
     out.push({
       caseId: "rb_bill_free_quota_blocks",
       ok: freeLimit === 0 ? !denied.allowed : !denied.allowed,
-      detail: `freeLimit=${freeLimit} allowed=${denied.allowed} reason=${denied.reason}`,
+      detail: `freeLimit=${freeLimit} allowed=${denied.allowed} reason=${
+        denied.allowed ? "n/a" : denied.reason
+      }`,
     });
   }
 
