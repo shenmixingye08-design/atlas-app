@@ -183,7 +183,11 @@ export function evaluateVisionBatchGate(input: {
 
   const isReceiptWork =
     /レシート|家計簿|領収書/i.test(input.userText) ||
-    images.some((image) => image.detectedType === "receipt") ||
+    images.some(
+      (image) =>
+        image.detectedType === "receipt" ||
+        image.detectedType === "receipt_voucher",
+    ) ||
     input.batch.recommendedArtifactType === "household_excel";
 
   if (isReceiptWork && receiptSignalCount(mergedFields) < 2) {

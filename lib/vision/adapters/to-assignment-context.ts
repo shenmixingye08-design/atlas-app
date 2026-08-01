@@ -53,11 +53,19 @@ function artifactInstruction(
   recommended: string | null,
   userText: string,
 ): string {
-  if (recommended === "household_excel" || type === "receipt") {
+  if (
+    recommended === "household_excel" ||
+    type === "receipt" ||
+    type === "receipt_voucher"
+  ) {
     return "画像から抽出した家計簿データを使い、日付・分類・店名・内容・金額・支払方法・備考・合計付きのExcelを生成してください。読めない項目は空欄または要確認とし、勝手に埋めないでください。";
   }
-  if (recommended === "invoice_excel" || type === "invoice") {
-    return "請求書の構造化データから明細Excel（必要ならPDF/Word要約）を生成してください。読めない項目は警告として残してください。";
+  if (
+    recommended === "invoice_excel" ||
+    type === "invoice" ||
+    type === "delivery_note"
+  ) {
+    return "請求書／納品書の構造化データから請求管理Excelを生成してください。読めない項目は警告として残してください。";
   }
   if (recommended === "table_excel" || type === "table" || type === "spreadsheet_source") {
     return "表構造を復元したExcelを生成してください。数値・日付型を保ち、読めないセルは（不明）と明示してください。";
@@ -68,8 +76,12 @@ function artifactInstruction(
   if (recommended === "memo_text" || type === "handwritten_note") {
     return "手書きメモについて【原文転記】【整形版】【要約】を分けて提示してください。不鮮明箇所は推測で埋めないでください。";
   }
-  if (recommended === "contact_card" || type === "business_card") {
-    return "名刺情報を構造化して整理してください。連絡先登録やプロフィール保存は提案のみとし、ユーザー承認なしでは実行しないでください。";
+  if (
+    recommended === "contact_list_excel" ||
+    recommended === "contact_card" ||
+    type === "business_card"
+  ) {
+    return "名刺情報から連絡先一覧Excel（CSV互換の表）を生成してください。連絡先登録やプロフィール保存は提案のみとし、ユーザー承認なしでは実行しないでください。";
   }
   if (recommended === "contract_docx" || type === "contract") {
     return "契約書の当事者・日付・金額・重要条項を要約したWord/PDFを生成してください。読めない条項は要確認とし、勝手に補完しないでください。";
@@ -77,8 +89,25 @@ function artifactInstruction(
   if (recommended === "chart_report_docx" || type === "chart") {
     return "グラフの種類・軸・数値・傾向・示唆をまとめた分析レポート（Word/PDF）を生成してください。";
   }
-  if (recommended === "screenshot_summary_docx" || type === "screenshot") {
-    return "画面キャプチャの内容を整理した要約文書を生成してください。";
+  if (
+    recommended === "meeting_minutes_docx" ||
+    type === "meeting_minutes" ||
+    type === "whiteboard"
+  ) {
+    return "会議写真／ホワイトボードから議事録Word（日時・出席者・議題・決定・アクション）を生成してください。";
+  }
+  if (
+    recommended === "construction_report_docx" ||
+    type === "construction_photo"
+  ) {
+    return "施工写真から施工報告書Word（現場・日付・工事内容・進捗・所見）を生成してください。";
+  }
+  if (
+    recommended === "manual_docx" ||
+    recommended === "screenshot_summary_docx" ||
+    type === "screenshot"
+  ) {
+    return "スクリーンショットから操作マニュアルWord（手順・画面文言）を生成してください。OCR転記だけで終わらせないでください。";
   }
   if (
     recommended === "photo_report_docx" ||

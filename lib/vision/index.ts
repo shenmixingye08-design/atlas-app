@@ -42,6 +42,17 @@ export {
 } from "./formats-from-vision";
 export { completeImageWorkToDeliverables } from "./complete-image-work";
 export type { VisionWorkCompletion } from "./complete-image-work";
+export { refineVisionAnalysisResult } from "./vision-production/refine-result";
+export { inspectVisionQuality } from "./vision-production/quality-inspect";
+export type { VisionQualityReport } from "./vision-production/quality-inspect";
+export {
+  extractStructuredOcrFields,
+  estimateOcrAccuracy,
+} from "./vision-production/ocr-fields";
+export {
+  assessImageQuality,
+  enhanceImageForOcr,
+} from "./vision-production/image-quality";
 export {
   VISION_PIPELINE_STAGES,
   VISION_STAGE_USER_LABEL,

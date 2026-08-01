@@ -5,6 +5,10 @@ import sharp from "sharp";
 import { detectImageMimeFromBytes } from "@/lib/vision/image-magic";
 import { buildOpenAiDataUrlFromBuffer } from "@/lib/vision/validate-openai-image-payload";
 import { VisionError } from "@/lib/vision/types";
+import {
+  assessImageQuality,
+  enhanceImageForOcr,
+} from "@/lib/vision/vision-production/image-quality";
 
 export type VisionNormalizeProfile = "standard" | "compact" | "ocr";
 
@@ -54,19 +58,37 @@ export async function normalizeImageForOpenAi(input: {
   const profile = input.profile ?? "standard";
   const settings = PROFILE_SETTINGS[profile];
   const warnings: string[] = [];
-  const detectedInputMime = detectImageMimeFromBytes(input.buffer);
+  let workingBuffer = input.buffer;
 
-  if (!input.buffer?.length || input.buffer.length < MIN_BYTES) {
+  if (!workingBuffer?.length || workingBuffer.length < MIN_BYTES) {
     throw new VisionError("empty_image", "解析用画像が空です", {
       diagnosticId: input.diagnosticId,
       failedStage: "preprocess",
     });
   }
 
+  // OCR / 文書向け: 暗い・ぼやけ画像を非AIで補正してから正規化。
+  if (profile === "ocr" || profile === "standard") {
+    try {
+      const quality = await assessImageQuality(workingBuffer);
+      warnings.push(...quality.warnings);
+      if (quality.tooDark || quality.likelyBlurry || quality.tooBright) {
+        const enhanced = await enhanceImageForOcr(workingBuffer);
+        workingBuffer = enhanced.buffer;
+        warnings.push(...enhanced.warnings.filter((w) => !warnings.includes(w)));
+      }
+    } catch {
+      // 画質補正失敗は致命ではない — 元バッファで続行
+      warnings.push("image_quality_enhance_skipped");
+    }
+  }
+
+  const detectedInputMime = detectImageMimeFromBytes(workingBuffer);
+
   // Fresh sharp instance for metadata — never reuse a consumed pipeline.
   let meta;
   try {
-    meta = await sharp(input.buffer, {
+    meta = await sharp(workingBuffer, {
       failOn: "none",
       pages: 1,
     }).metadata();
@@ -94,7 +116,7 @@ export async function normalizeImageForOpenAi(input: {
             error instanceof Error ? error.message.slice(0, 200) : "metadata_failed",
           detectedInputMime,
           profile,
-          headHex32: input.buffer.subarray(0, 32).toString("hex"),
+          headHex32: workingBuffer.subarray(0, 32).toString("hex"),
         },
         cause: error,
       },
@@ -135,7 +157,7 @@ export async function normalizeImageForOpenAi(input: {
   let buffer: Buffer;
   let mimeType: "image/jpeg" | "image/png";
   try {
-    const base = sharp(input.buffer, { failOn: "none", pages: 1 })
+    const base = sharp(workingBuffer, { failOn: "none", pages: 1 })
       .rotate() // EXIF orientation
       .toColourspace("srgb")
       .resize({

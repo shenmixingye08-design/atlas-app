@@ -371,16 +371,58 @@ export function resolveMockLlmOutput(
       const requestMatch = input.match(/【ユーザー依頼】\n([\s\S]*?)(?:\n\n【|$)/);
       const hintMatch = input.match(/想定用途:\s*([a-z_]+)/i);
       const focus = [requestMatch?.[1] ?? "", hintMatch?.[1] ?? ""].join("\n");
+      const isReceiptVoucher = /領収書|領収証|receipt_voucher/i.test(focus);
       const isReceipt = /レシート|家計簿|receipt/i.test(focus);
+      const isDelivery = /納品書|delivery_note/i.test(focus);
       const isInvoice = /請求書|invoice/i.test(focus);
       const isContract = /契約書|contract|nda|秘密保持/i.test(focus);
       const isChart = /グラフ|チャート|chart/i.test(focus);
       const isTable = /表|Excel|エクセル|table|spreadsheet/i.test(focus);
       const isMemo = /手書き|メモ|文字にして|handwritten/i.test(focus);
       const isCard = /名刺|連絡先|business\s*card/i.test(focus);
-      const isScreenshot = /スクリーンショット|screenshot|画面キャプチャ/i.test(focus);
+      const isMeeting =
+        /議事録|会議|meeting_minutes|ホワイトボード|whiteboard/i.test(focus);
+      const isConstruction = /施工|工事写真|construction_photo/i.test(focus);
+      const isIdentity = /身分証|免許証|identity_document/i.test(focus);
+      const isScreenshot =
+        /スクリーンショット|screenshot|画面キャプチャ|マニュアル/i.test(focus);
       const isSales = /営業|資料|改善|チラシ|sales/i.test(focus);
       const isPhoto = /写真|物件|設備|photo|general_photo/i.test(focus);
+
+      if (isReceiptVoucher) {
+        return JSON.stringify({
+          detectedType: "receipt_voucher",
+          confidence: 0.91,
+          summary: "領収書。税込合計5,500円。",
+          extractedText:
+            "領収書\n株式会社サンプル\n2026年7月10日\n但し 事務用品代として\n税抜 5,000\n消費税 500\n税込合計 5,500円\nTEL 03-1111-2222",
+          language: "ja",
+          fields: {
+            storeName: "株式会社サンプル",
+            companyName: "株式会社サンプル",
+            date: "2026-07-10",
+            subtotal: 5000,
+            tax: 500,
+            amountTaxExcluded: 5000,
+            amountTaxIncluded: 5500,
+            total: 5500,
+            phone: "03-1111-2222",
+          },
+          tables: [],
+          visualElements: ["社印"],
+          layout: {
+            title: "領収書",
+            header: "領収書",
+            seal: "印影あり",
+            readability: "良好",
+          },
+          styleSignals: null,
+          warnings: [],
+          missingFields: [],
+          recommendedActions: ["家計簿Excelを生成"],
+          artifactSuggestions: ["household_excel"],
+        });
+      }
 
       if (isReceipt) {
         return JSON.stringify({
@@ -412,28 +454,75 @@ export function resolveMockLlmOutput(
         });
       }
 
+      if (isDelivery) {
+        return JSON.stringify({
+          detectedType: "delivery_note",
+          confidence: 0.9,
+          summary: "納品書。品目3点。",
+          extractedText:
+            "納品書\n株式会社サンプル\n納品日 2026/07/15\n品目A 数量2 単価1000\n合計 2,000",
+          language: "ja",
+          fields: {
+            issuer: "株式会社サンプル",
+            companyName: "株式会社サンプル",
+            date: "2026-07-15",
+            lineItems: [
+              { name: "品目A", quantity: 2, unitPrice: 1000, amount: 2000 },
+            ],
+            total: 2000,
+          },
+          tables: [],
+          visualElements: ["明細表"],
+          layout: { title: "納品書", hasTable: true },
+          styleSignals: null,
+          warnings: [],
+          missingFields: [],
+          recommendedActions: ["請求管理Excelを生成"],
+          artifactSuggestions: ["invoice_excel"],
+        });
+      }
+
       if (isInvoice) {
         return JSON.stringify({
           detectedType: "invoice",
           confidence: 0.9,
           summary: "請求書。合計110,000円。",
-          extractedText: "請求書\n株式会社サンプル\n請求番号 INV-001\n合計 110,000",
+          extractedText:
+            "請求書\n株式会社サンプル\n東京都千代田区1-1\n請求番号 INV-001\n税抜 100,000\n消費税 10,000\n税込合計 110,000\nemail billing@example.com",
           language: "ja",
           fields: {
             issuer: "株式会社サンプル",
+            companyName: "株式会社サンプル",
             recipient: "株式会社テスト",
             invoiceNumber: "INV-001",
             issueDate: "2026-07-01",
+            date: "2026-07-01",
             dueDate: null,
-            lineItems: [{ name: "コンサルティング", quantity: 1, unitPrice: 100000, amount: 100000 }],
+            lineItems: [
+              {
+                name: "コンサルティング",
+                quantity: 1,
+                unitPrice: 100000,
+                amount: 100000,
+              },
+            ],
             subtotal: 100000,
             tax: 10000,
+            amountTaxExcluded: 100000,
+            amountTaxIncluded: 110000,
             total: 110000,
+            email: "billing@example.com",
+            address: "東京都千代田区1-1",
             bankDetails: null,
           },
           tables: [],
           visualElements: ["社印"],
-          layout: { hierarchy: "帳票", readability: "良好" },
+          layout: {
+            hierarchy: "帳票",
+            readability: "良好",
+            title: "請求書",
+            seal: "印影あり",
+          },
           styleSignals: null,
           warnings: ["支払期限が読めません", "振込先が見切れています"],
           missingFields: ["dueDate", "bankDetails"],
@@ -516,8 +605,89 @@ export function resolveMockLlmOutput(
           styleSignals: null,
           warnings: [],
           missingFields: [],
-          recommendedActions: ["連絡先として整理（保存は承認後）"],
-          artifactSuggestions: ["contact_card"],
+          recommendedActions: ["連絡先一覧Excelを生成（保存は承認後）"],
+          artifactSuggestions: ["contact_list_excel"],
+        });
+      }
+
+      if (isMeeting) {
+        return JSON.stringify({
+          detectedType: /ホワイトボード|whiteboard/i.test(focus)
+            ? "whiteboard"
+            : "meeting_minutes",
+          confidence: 0.88,
+          summary: "打合せの議事メモ。決定事項とTODOあり。",
+          extractedText:
+            "議事録\n2026/07/20\n出席: 山田, 佐藤\n決定: 見積提出\nTODO: 資料作成",
+          language: "ja",
+          fields: {
+            date: "2026-07-20",
+            attendees: "山田, 佐藤",
+            agenda: "見積提出について",
+            decisions: ["見積を今週提出する"],
+            actionItems: ["資料作成"],
+            cleanedText: "見積提出を決定。資料作成がアクション。",
+          },
+          tables: [],
+          visualElements: ["箇条書き"],
+          layout: {
+            title: "議事録",
+            bulletLists: ["決定: 見積提出", "TODO: 資料作成"],
+          },
+          styleSignals: null,
+          warnings: [],
+          missingFields: [],
+          recommendedActions: ["議事録Wordを生成"],
+          artifactSuggestions: ["meeting_minutes_docx"],
+        });
+      }
+
+      if (isConstruction) {
+        return JSON.stringify({
+          detectedType: "construction_photo",
+          confidence: 0.86,
+          summary: "施工現場の写真。足場と外壁工事が見える。",
+          extractedText: "現場A 進捗70%",
+          language: "ja",
+          fields: {
+            siteName: "現場A",
+            location: "東京都",
+            date: "2026-07-18",
+            workDescription: "外壁補修工事",
+            progress: "70%",
+            safetyNotes: "ヘルメット着用確認",
+          },
+          tables: [],
+          visualElements: ["足場", "外壁"],
+          layout: null,
+          styleSignals: null,
+          warnings: [],
+          missingFields: [],
+          recommendedActions: ["施工報告書Wordを生成"],
+          artifactSuggestions: ["construction_report_docx"],
+        });
+      }
+
+      if (isIdentity) {
+        return JSON.stringify({
+          detectedType: "identity_document",
+          confidence: 0.85,
+          summary: "身分証の表面。氏名を抽出。",
+          extractedText: "氏名 山田太郎",
+          language: "ja",
+          fields: {
+            personName: "山田太郎",
+            name: "山田太郎",
+            date: "2030-01-01",
+          },
+          tables: [],
+          visualElements: ["顔写真欄"],
+          layout: { title: "身分証" },
+          styleSignals: null,
+          warnings: [],
+          missingFields: [],
+          recommendedActions: ["必要項目のみ整理"],
+          artifactSuggestions: ["photo_report_docx"],
         });
       }
 
@@ -646,15 +816,21 @@ export function resolveMockLlmOutput(
             appOrSite: "MINERVOT設定",
             purpose: "通知設定の確認",
             keyUiText: "通知 ON / 保存",
+            steps: ["設定を開く", "通知をONにする", "保存を押す"],
           },
           tables: [],
           visualElements: ["トグル", "ボタン"],
-          layout: { hierarchy: "画面UI", readability: "良好" },
+          layout: {
+            hierarchy: "画面UI",
+            readability: "良好",
+            title: "設定",
+            headings: ["通知"],
+          },
           styleSignals: null,
           warnings: [],
           missingFields: [],
-          recommendedActions: ["画面内容を要約文書化"],
-          artifactSuggestions: ["screenshot_summary_docx"],
+          recommendedActions: ["操作マニュアルWordを生成"],
+          artifactSuggestions: ["manual_docx"],
         });
       }
 

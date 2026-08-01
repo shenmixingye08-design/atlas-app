@@ -2,7 +2,9 @@ export type VisionDetailLevel = "low" | "auto" | "high";
 
 export type VisionDetectedType =
   | "receipt"
+  | "receipt_voucher"
   | "invoice"
+  | "delivery_note"
   | "estimate"
   | "contract"
   | "business_document"
@@ -14,8 +16,11 @@ export type VisionDetectedType =
   | "business_card"
   | "whiteboard"
   | "screenshot"
+  | "meeting_minutes"
   | "property_photo"
   | "equipment_photo"
+  | "construction_photo"
+  | "identity_document"
   | "social_media_reference"
   | "design_reference"
   | "general_photo"
@@ -46,6 +51,19 @@ export type VisionLayout = {
   colorTendency?: string | null;
   logoPosition?: string | null;
   ctaPlacement?: string | null;
+  /** Production layout structure (kept for deliverable seeding). */
+  title?: string | null;
+  headings?: string[] | null;
+  paragraphs?: string[] | null;
+  bulletLists?: string[] | null;
+  hasTable?: boolean | null;
+  hasImage?: boolean | null;
+  header?: string | null;
+  footer?: string | null;
+  pageNumbers?: string[] | null;
+  signature?: string | null;
+  seal?: string | null;
+  cells?: Array<{ row: number; col: number; text: string }> | null;
 };
 
 export type VisionStyleSignals = {
@@ -217,4 +235,4 @@ export type VisionGatePayload = {
   vercelRequestId?: string | null;
 };
 
-export const VISION_PROMPT_VERSION = "v2-secretary-understand";
+export const VISION_PROMPT_VERSION = "v3-production-document-ready";
