@@ -90,6 +90,8 @@ describe("openAiVisionProvider request shape", () => {
       userText: "これは何？",
       hintType: "unknown",
       detail: "auto",
+      pageIndex: 0,
+      pageCount: 1,
     });
     expect(result.result.summary).toBeTruthy();
     const call = vi.mocked(createAtlasResponse).mock.calls[0]?.[0];
@@ -227,10 +229,8 @@ describe("openAiVisionProvider request shape", () => {
         requestId: "req_vision_1",
       }),
     });
-    // Fallback attempts re-encode / alternate settings.
-    expect(vi.mocked(createAtlasResponse).mock.calls.length).toBeGreaterThanOrEqual(
-      2,
-    );
+    // 400-class input errors must not be auto-retried.
+    expect(vi.mocked(createAtlasResponse).mock.calls.length).toBe(1);
   });
 
   it("fails empty output_text instead of treating as success", async () => {

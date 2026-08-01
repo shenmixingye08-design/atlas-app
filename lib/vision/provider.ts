@@ -18,6 +18,8 @@ export type VisionAnalyzeImageInput = {
   pageCount: number;
   jobId?: string | null;
   diagnosticId?: string | null;
+  /** Storage object path for preflight logs (never signed URL secrets). */
+  storagePath?: string | null;
 };
 
 export type VisionProviderResult = {

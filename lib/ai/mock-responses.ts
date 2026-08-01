@@ -384,31 +384,26 @@ export function resolveMockLlmOutput(
 
       if (isReceipt) {
         return JSON.stringify({
-          detectedType: "receipt",
+          image_readable: true,
+          document_type: "receipt",
+          detected_fields: [
+            { key: "storeName", value: "MINERVOT MART" },
+            { key: "date", value: "2026-07-25" },
+            { key: "total", value: "1280" },
+            { key: "paymentMethod", value: "現金" },
+          ],
+          missing_required_fields: [],
           confidence: 0.92,
+          needs_user_input: false,
+          user_message: "",
           summary: "コンビニのレシート。合計1,280円。",
-          extractedText: "MINERVOT MART\n2026/07/25\nお茶 150\n弁当 980\n合計 1,280\n現金",
+          extracted_text: "MINERVOT MART\n2026/07/25\nお茶 150\n弁当 980\n合計 1,280\n現金",
           language: "ja",
-          fields: {
-            storeName: "MINERVOT MART",
-            date: "2026-07-25",
-            items: [
-              { name: "お茶", amount: 150, category: "飲料" },
-              { name: "弁当", amount: 980, category: "食料品" },
-            ],
-            subtotal: 1130,
-            tax: 150,
-            total: 1280,
-            paymentMethod: "現金",
-          },
           tables: [],
-          visualElements: ["店名", "合計金額"],
-          layout: { hierarchy: "単票", readability: "良好" },
-          styleSignals: null,
+          visual_elements: ["店名", "合計金額"],
           warnings: [],
-          missingFields: [],
-          recommendedActions: ["家計簿Excelを生成"],
-          artifactSuggestions: ["household_excel"],
+          recommended_actions: ["家計簿Excelを生成"],
+          artifact_suggestions: ["household_excel"],
         });
       }
 
