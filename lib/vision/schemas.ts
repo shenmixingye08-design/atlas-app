@@ -3,7 +3,9 @@ import type { VisionDetectedType } from "@/lib/vision/types";
 
 export const visionDetectedTypeSchema = z.enum([
   "receipt",
+  "receipt_voucher",
   "invoice",
+  "delivery_note",
   "estimate",
   "contract",
   "business_document",
@@ -15,8 +17,11 @@ export const visionDetectedTypeSchema = z.enum([
   "business_card",
   "whiteboard",
   "screenshot",
+  "meeting_minutes",
   "property_photo",
   "equipment_photo",
+  "construction_photo",
+  "identity_document",
   "social_media_reference",
   "design_reference",
   "general_photo",
@@ -31,6 +36,39 @@ const lineItemSchema = z.object({
   category: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
 });
+
+const layoutSchema = z
+  .object({
+    hierarchy: z.string().optional().nullable(),
+    sections: z.array(z.string()).optional().nullable(),
+    readability: z.string().optional().nullable(),
+    colorTendency: z.string().optional().nullable(),
+    logoPosition: z.string().optional().nullable(),
+    ctaPlacement: z.string().optional().nullable(),
+    title: z.string().optional().nullable(),
+    headings: z.array(z.string()).optional().nullable(),
+    paragraphs: z.array(z.string()).optional().nullable(),
+    bulletLists: z.array(z.string()).optional().nullable(),
+    hasTable: z.boolean().optional().nullable(),
+    hasImage: z.boolean().optional().nullable(),
+    header: z.string().optional().nullable(),
+    footer: z.string().optional().nullable(),
+    pageNumbers: z.array(z.string()).optional().nullable(),
+    signature: z.string().optional().nullable(),
+    seal: z.string().optional().nullable(),
+    cells: z
+      .array(
+        z.object({
+          row: z.number(),
+          col: z.number(),
+          text: z.string(),
+        }),
+      )
+      .optional()
+      .nullable(),
+  })
+  .optional()
+  .nullable();
 
 export const visionAnalysisResultSchema = z.object({
   id: z.string().min(1),
@@ -47,21 +85,11 @@ export const visionAnalysisResultSchema = z.object({
         headers: z.array(z.string()).default([]),
         rows: z.array(z.array(z.union([z.string(), z.number(), z.null()]))).default([]),
         notes: z.string().optional().nullable(),
-      })
+      }),
     )
     .default([]),
   visualElements: z.array(z.string()).default([]),
-  layout: z
-    .object({
-      hierarchy: z.string().optional().nullable(),
-      sections: z.array(z.string()).optional().nullable(),
-      readability: z.string().optional().nullable(),
-      colorTendency: z.string().optional().nullable(),
-      logoPosition: z.string().optional().nullable(),
-      ctaPlacement: z.string().optional().nullable(),
-    })
-    .optional()
-    .nullable(),
+  layout: layoutSchema,
   styleSignals: z
     .object({
       tone: z.string().optional().nullable(),
@@ -101,22 +129,11 @@ export const visionModelPayloadSchema = z.object({
         headers: z.array(z.string()).default([]),
         rows: z.array(z.array(z.union([z.string(), z.number(), z.null()]))).default([]),
         notes: z.string().optional().nullable(),
-      })
+      }),
     )
     .catch([]),
   visualElements: z.array(z.string()).catch([]),
-  layout: z
-    .object({
-      hierarchy: z.string().optional().nullable(),
-      sections: z.array(z.string()).optional().nullable(),
-      readability: z.string().optional().nullable(),
-      colorTendency: z.string().optional().nullable(),
-      logoPosition: z.string().optional().nullable(),
-      ctaPlacement: z.string().optional().nullable(),
-    })
-    .optional()
-    .nullable()
-    .catch(null),
+  layout: layoutSchema.catch(null),
   styleSignals: z
     .object({
       tone: z.string().optional().nullable(),

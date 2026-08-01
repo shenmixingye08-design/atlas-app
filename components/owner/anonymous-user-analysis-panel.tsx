@@ -81,7 +81,9 @@ export function AnonymousUserAnalysisPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   return (

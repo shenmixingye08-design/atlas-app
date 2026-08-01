@@ -252,17 +252,19 @@ export function CommanderDashboard() {
   );
 
   useEffect(() => {
-    const prefill = searchParams.get("assignment");
-    if (prefill?.trim()) setAssignment(prefill);
-    // ホームから「送る」で届いた依頼は、確認不要ですぐに実行する（クリック削減）。
-    if (
-      searchParams.get("autostart") === "1" &&
-      prefill?.trim() &&
-      !autoStartedRef.current
-    ) {
-      autoStartedRef.current = true;
-      void runAssignment(prefill, "execute");
-    }
+    queueMicrotask(() => {
+      const prefill = searchParams.get("assignment");
+      if (prefill?.trim()) setAssignment(prefill);
+      // ホームから「送る」で届いた依頼は、確認不要ですぐに実行する（クリック削減）。
+      if (
+        searchParams.get("autostart") === "1" &&
+        prefill?.trim() &&
+        !autoStartedRef.current
+      ) {
+        autoStartedRef.current = true;
+        void runAssignment(prefill, "execute");
+      }
+    });
   }, [runAssignment, searchParams]);
 
   async function handleSubmit(

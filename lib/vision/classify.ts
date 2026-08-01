@@ -1,12 +1,18 @@
 import type { VisionDetailLevel, VisionDetectedType } from "@/lib/vision/types";
 
 const TYPE_KEYWORDS: Array<{ type: VisionDetectedType; patterns: RegExp[] }> = [
-  { type: "receipt", patterns: [/レシート/, /領収書/, /家計簿/, /receipt/i] },
+  { type: "receipt", patterns: [/レシート/, /receipt/i, /家計簿/] },
+  { type: "receipt_voucher", patterns: [/領収書/, /領収証/, /voucher/i] },
   { type: "invoice", patterns: [/請求書/, /invoice/i, /請求明細/] },
+  { type: "delivery_note", patterns: [/納品書/, /delivery\s*note/i, /納品明細/] },
   { type: "estimate", patterns: [/見積/, /estimate/i, /quotation/i] },
   {
     type: "contract",
     patterns: [/契約書/, /contract/i, /nda/i, /秘密保持/, /利用規約/, /合意書/],
+  },
+  {
+    type: "meeting_minutes",
+    patterns: [/議事録/, /会議メモ/, /meeting\s*minutes/i, /打ち合わせ記録/],
   },
   {
     type: "sales_material",
@@ -40,12 +46,26 @@ const TYPE_KEYWORDS: Array<{ type: VisionDetectedType; patterns: RegExp[] }> = [
     type: "business_card",
     patterns: [/名刺/, /連絡先として/, /business\s*card/i],
   },
+  {
+    type: "identity_document",
+    patterns: [/身分証/, /免許証/, /マイナンバー/, /passport/i, /IDカード/i],
+  },
   { type: "property_photo", patterns: [/土地/, /物件/, /不動産/, /現地写真/] },
-  { type: "equipment_photo", patterns: [/設備/, /機械/, /施工/, /現場写真/] },
+  {
+    type: "construction_photo",
+    patterns: [/施工写真/, /工事写真/, /建設現場/, /施工報告/],
+  },
+  { type: "equipment_photo", patterns: [/設備/, /機械/, /現場写真/] },
   { type: "whiteboard", patterns: [/ホワイトボード/, /whiteboard/i] },
   {
     type: "screenshot",
-    patterns: [/スクリーンショット/, /screenshot/i, /画面キャプチャ/, /画面写真/],
+    patterns: [
+      /スクリーンショット/,
+      /screenshot/i,
+      /画面キャプチャ/,
+      /画面写真/,
+      /マニュアル/,
+    ],
   },
   {
     type: "design_reference",
@@ -80,7 +100,9 @@ export function recommendDetailLevel(args: {
   const { detectedType, userText, imageCount, ecoMode } = args;
   const highTypes: VisionDetectedType[] = [
     "receipt",
+    "receipt_voucher",
     "invoice",
+    "delivery_note",
     "estimate",
     "contract",
     "table",
@@ -88,13 +110,15 @@ export function recommendDetailLevel(args: {
     "chart",
     "handwritten_note",
     "business_card",
+    "meeting_minutes",
+    "identity_document",
     "business_document",
     "sales_material",
+    "whiteboard",
+    "screenshot",
   ];
 
   if (ecoMode && imageCount >= 4) return "low";
-  // gpt-5.5 treats detail=auto as original (expensive/flaky for phone photos).
-  // Prefer explicit high/low — never auto for production vision.
   if (ecoMode && !highTypes.includes(detectedType)) return "low";
 
   if (highTypes.includes(detectedType)) return "high";
@@ -106,7 +130,9 @@ export function recommendDetailLevel(args: {
 export function labelForDetectedType(type: VisionDetectedType): string {
   const map: Record<VisionDetectedType, string> = {
     receipt: "レシートとして認識しました",
+    receipt_voucher: "領収書として認識しました",
     invoice: "請求書として認識しました",
+    delivery_note: "納品書として認識しました",
     estimate: "見積書として認識しました",
     contract: "契約書として認識しました",
     business_document: "業務資料として認識しました",
@@ -118,8 +144,11 @@ export function labelForDetectedType(type: VisionDetectedType): string {
     business_card: "名刺として認識しました",
     whiteboard: "ホワイトボードとして認識しました",
     screenshot: "スクリーンショットとして認識しました",
+    meeting_minutes: "議事録・会議メモとして認識しました",
     property_photo: "物件・土地写真として認識しました",
     equipment_photo: "設備写真として認識しました",
+    construction_photo: "施工写真として認識しました",
+    identity_document: "身分証として認識しました",
     social_media_reference: "SNS参考として認識しました",
     design_reference: "デザイン参考として認識しました",
     general_photo: "一般写真として認識しました",

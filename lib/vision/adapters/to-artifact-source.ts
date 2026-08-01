@@ -10,10 +10,18 @@ export function visionBatchToDeliverableContent(batch: VisionBatchResult): strin
     batch.images[0]?.detectedType ??
     "unknown";
 
-  if (type === "receipt" || batch.recommendedArtifactType === "household_excel") {
+  if (
+    type === "receipt" ||
+    type === "receipt_voucher" ||
+    batch.recommendedArtifactType === "household_excel"
+  ) {
     return buildHouseholdMarkdown(batch);
   }
-  if (type === "invoice" || batch.recommendedArtifactType === "invoice_excel") {
+  if (
+    type === "invoice" ||
+    type === "delivery_note" ||
+    batch.recommendedArtifactType === "invoice_excel"
+  ) {
     return buildInvoiceMarkdown(batch);
   }
   if (
@@ -26,8 +34,11 @@ export function visionBatchToDeliverableContent(batch: VisionBatchResult): strin
   if (type === "handwritten_note") {
     return buildHandwritingMarkdown(batch);
   }
-  if (type === "business_card") {
-    return buildBusinessCardMarkdown(batch);
+  if (
+    type === "business_card" ||
+    batch.recommendedArtifactType === "contact_list_excel"
+  ) {
+    return buildContactListMarkdown(batch);
   }
   if (type === "sales_material" || type === "business_document") {
     return buildSalesImproveMarkdown(batch);
@@ -40,9 +51,23 @@ export function visionBatchToDeliverableContent(batch: VisionBatchResult): strin
   }
   if (
     type === "screenshot" ||
-    batch.recommendedArtifactType === "screenshot_summary_docx"
+    batch.recommendedArtifactType === "screenshot_summary_docx" ||
+    batch.recommendedArtifactType === "manual_docx"
   ) {
-    return buildScreenshotMarkdown(batch);
+    return buildManualMarkdown(batch);
+  }
+  if (
+    type === "meeting_minutes" ||
+    type === "whiteboard" ||
+    batch.recommendedArtifactType === "meeting_minutes_docx"
+  ) {
+    return buildMeetingMinutesMarkdown(batch);
+  }
+  if (
+    type === "construction_photo" ||
+    batch.recommendedArtifactType === "construction_report_docx"
+  ) {
+    return buildConstructionReportMarkdown(batch);
   }
   if (
     type === "general_photo" ||
@@ -184,25 +209,143 @@ function buildHandwritingMarkdown(batch: VisionBatchResult): string {
     .join("\n\n");
 }
 
-function buildBusinessCardMarkdown(batch: VisionBatchResult): string {
-  return batch.images
-    .map((image, i) => {
+function buildContactListMarkdown(batch: VisionBatchResult): string {
+  const rows: string[] = [
+    "| 氏名 | 会社 | 部署 | 役職 | 電話 | メール | 住所 | Web | 備考 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  ];
+  for (const image of batch.images) {
+    const f = image.fields;
+    rows.push(
+      `| ${asString(f.personName) || asString(f.name) || "要確認"} | ${asString(f.companyName) || "要確認"} | ${asString(f.department) || ""} | ${asString(f.title) || ""} | ${asString(f.phone) || ""} | ${asString(f.email) || ""} | ${asString(f.address) || ""} | ${asString(f.website) || asString(f.url) || ""} | ${image.missingFields.join(" ") || ""} |`,
+    );
+  }
+  const csvLines = [
+    "氏名,会社,部署,役職,電話,メール,住所,Web",
+    ...batch.images.map((image) => {
+      const f = image.fields;
+      const cells = [
+        asString(f.personName) || asString(f.name),
+        asString(f.companyName),
+        asString(f.department),
+        asString(f.title),
+        asString(f.phone),
+        asString(f.email),
+        asString(f.address),
+        asString(f.website) || asString(f.url),
+      ].map((c) => `"${c.replace(/"/g, '""')}"`);
+      return cells.join(",");
+    }),
+  ];
+  return [
+    "# 連絡先一覧",
+    "名刺画像から抽出した連絡先です。保存はユーザー承認後のみ行います。",
+    "",
+    ...rows,
+    "",
+    "## CSV（参考）",
+    "```csv",
+    ...csvLines,
+    "```",
+  ].join("\n");
+}
+
+function buildMeetingMinutesMarkdown(batch: VisionBatchResult): string {
+  return [
+    "# 議事録",
+    "",
+    `## 概要\n${batch.combinedSummary}`,
+    "",
+    ...batch.images.map((image, i) => {
+      const f = image.fields;
+      const decisions = Array.isArray(f.decisions)
+        ? (f.decisions as unknown[]).map((d) => `- ${String(d)}`)
+        : asString(f.decisions)
+          ? [`- ${asString(f.decisions)}`]
+          : ["- （要確認）"];
+      const actions = Array.isArray(f.actionItems)
+        ? (f.actionItems as unknown[]).map((d) => `- ${String(d)}`)
+        : image.recommendedActions.map((a) => `- ${a}`);
+      return [
+        `## 会議記録 ${i + 1}`,
+        `- 日時: ${asString(f.date) || asString(f.meetingDate) || "要確認"}`,
+        `- 場所/形式: ${asString(f.location) || "要確認"}`,
+        `- 出席者: ${asString(f.attendees) || "要確認"}`,
+        "",
+        "### 議題・内容",
+        asString(f.agenda) ||
+          asString(f.cleanedText) ||
+          image.extractedText ||
+          image.summary,
+        "",
+        "### 決定事項",
+        ...decisions,
+        "",
+        "### アクション",
+        ...(actions.length ? actions : ["- （なし）"]),
+        image.layout?.title ? `\nレイアウト題名: ${image.layout.title}` : "",
+      ].join("\n");
+    }),
+  ].join("\n");
+}
+
+function buildConstructionReportMarkdown(batch: VisionBatchResult): string {
+  return [
+    "# 施工報告書",
+    "",
+    `## 総括\n${batch.combinedSummary}`,
+    "",
+    ...batch.images.map((image, i) => {
       const f = image.fields;
       return [
-        `# 名刺 ${i + 1}`,
-        `- 氏名: ${asString(f.personName) || "要確認"}`,
-        `- 会社: ${asString(f.companyName) || "要確認"}`,
-        `- 部署: ${asString(f.department) || "要確認"}`,
-        `- 役職: ${asString(f.title) || "要確認"}`,
-        `- 電話: ${asString(f.phone) || "要確認"}`,
-        `- メール: ${asString(f.email) || "要確認"}`,
-        `- 住所: ${asString(f.address) || "要確認"}`,
-        `- Web: ${asString(f.website) || "要確認"}`,
+        `## 施工写真 ${i + 1}`,
+        `- 現場: ${asString(f.siteName) || asString(f.location) || "要確認"}`,
+        `- 日付: ${asString(f.date) || "要確認"}`,
+        `- 工事内容: ${asString(f.workDescription) || image.summary}`,
+        `- 進捗: ${asString(f.progress) || "要確認"}`,
+        `- 安全・品質メモ: ${asString(f.safetyNotes) || asString(f.notes) || "特記なし"}`,
+        image.visualElements.length
+          ? `- 写っているもの: ${image.visualElements.join("、")}`
+          : null,
+        image.extractedText ? `\n### 画像内文字\n${image.extractedText}` : null,
         "",
-        "※連絡先の保存はユーザー承認後のみ行います。",
+        "### 所見",
+        image.recommendedActions.length
+          ? image.recommendedActions.map((a) => `- ${a}`).join("\n")
+          : "- 写真内容を確認し、必要なら追加撮影してください。",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }),
+  ].join("\n");
+}
+
+function buildManualMarkdown(batch: VisionBatchResult): string {
+  return [
+    "# 操作マニュアル（画面キャプチャより）",
+    "",
+    batch.combinedSummary,
+    "",
+    ...batch.images.map((image, i) => {
+      const f = image.fields;
+      const steps = Array.isArray(f.steps)
+        ? (f.steps as unknown[]).map((s, idx) => `${idx + 1}. ${String(s)}`)
+        : image.recommendedActions.map((a, idx) => `${idx + 1}. ${a}`);
+      return [
+        `## 手順 ${i + 1}: ${asString(f.purpose) || image.summary}`,
+        `- 画面/アプリ: ${asString(f.appOrSite) || "要確認"}`,
+        "",
+        "### 操作ステップ",
+        ...(steps.length ? steps : ["1. 画面の内容を確認する", "2. 必要操作を実行する"]),
+        "",
+        "### 画面上の文言",
+        asString(f.keyUiText) || image.extractedText || "（なし）",
+        image.layout?.headings?.length
+          ? `\n見出し: ${image.layout.headings.join(" / ")}`
+          : "",
       ].join("\n");
-    })
-    .join("\n\n");
+    }),
+  ].join("\n");
 }
 
 function buildSalesImproveMarkdown(batch: VisionBatchResult): string {
@@ -295,26 +438,6 @@ function buildChartMarkdown(batch: VisionBatchResult): string {
         "",
         "## 示唆",
         ...insights,
-      ].join("\n");
-    })
-    .join("\n\n");
-}
-
-function buildScreenshotMarkdown(batch: VisionBatchResult): string {
-  return batch.images
-    .map((image, i) => {
-      const f = image.fields;
-      return [
-        `# 画面キャプチャ整理 ${i + 1}`,
-        `- アプリ/サイト: ${asString(f.appOrSite) || "要確認"}`,
-        `- 目的: ${asString(f.purpose) || image.summary}`,
-        `- 主要UI文言: ${asString(f.keyUiText) || image.extractedText || "要確認"}`,
-        "",
-        "## 要約",
-        image.summary,
-        "",
-        "## 抽出テキスト",
-        image.extractedText || "（なし）",
       ].join("\n");
     })
     .join("\n\n");

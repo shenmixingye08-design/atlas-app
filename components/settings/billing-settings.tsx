@@ -183,7 +183,9 @@ export function BillingSettings() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   // Quietly refetch just the usage/plan summary (no full-screen loading) so the

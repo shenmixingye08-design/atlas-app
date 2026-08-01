@@ -141,7 +141,9 @@ export function DropboxFilesPanel({ embedded = false }: { embedded?: boolean }) 
   }, []);
 
   useEffect(() => {
-    void load(path, appliedQuery);
+    queueMicrotask(() => {
+      void load(path, appliedQuery);
+    });
   }, [path, appliedQuery, load]);
 
   const handleConnect = async () => {

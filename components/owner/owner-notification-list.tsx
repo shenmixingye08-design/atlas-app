@@ -23,7 +23,9 @@ export function OwnerNotificationList() {
   }, []);
 
   useEffect(() => {
-    void reload();
+    queueMicrotask(() => {
+      void reload();
+    });
   }, [reload]);
 
   if (loading) {

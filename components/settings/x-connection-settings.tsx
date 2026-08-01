@@ -193,22 +193,26 @@ export function XConnectionSettings() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   useEffect(() => {
-    if (searchParams.get("x_error") === "1") {
-      setError(ui.xSettings.connectError);
-    }
-    if (searchParams.get("connected") === "x") {
-      const username = searchParams.get("username");
-      setSuccess(
-        username
-          ? ui.xSettings.connectSuccessWithUsername(username)
-          : ui.xSettings.connectSuccess,
-      );
-      void load();
-    }
+    queueMicrotask(() => {
+      if (searchParams.get("x_error") === "1") {
+        setError(ui.xSettings.connectError);
+      }
+      if (searchParams.get("connected") === "x") {
+        const username = searchParams.get("username");
+        setSuccess(
+          username
+            ? ui.xSettings.connectSuccessWithUsername(username)
+            : ui.xSettings.connectSuccess,
+        );
+        void load();
+      }
+    });
   }, [load, searchParams]);
 
   const handleConnect = async () => {

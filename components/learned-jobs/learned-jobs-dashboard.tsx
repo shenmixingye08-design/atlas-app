@@ -58,7 +58,9 @@ export function LearnedJobsDashboard() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const hasItems = items.length > 0;

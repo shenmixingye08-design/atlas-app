@@ -145,7 +145,9 @@ export function ErrorMonitoringPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const handleResolve = async (

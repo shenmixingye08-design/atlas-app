@@ -36,13 +36,15 @@ export function HomeCollapsibleSection({
   const [open, setOpen] = useState(defaultOpen);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored === "open") setOpen(true);
-      if (stored === "closed") setOpen(false);
-    } catch {
-      setOpen(defaultOpen);
-    }
+    queueMicrotask(() => {
+      try {
+        const stored = localStorage.getItem(storageKey);
+        if (stored === "open") setOpen(true);
+        if (stored === "closed") setOpen(false);
+      } catch {
+        setOpen(defaultOpen);
+      }
+    });
   }, [storageKey, defaultOpen]);
 
   const toggle = useCallback(() => {

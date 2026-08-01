@@ -27,6 +27,8 @@ import {
   type VisionDetailLevel,
   type VisionDetectedType,
 } from "@/lib/vision/types";
+import { assessImageQuality } from "@/lib/vision/vision-production/image-quality";
+import { refineVisionAnalysisResult } from "@/lib/vision/vision-production/refine-result";
 
 function mapStorageConfigError(
   error: unknown,
@@ -247,6 +249,13 @@ export async function analyzeUserImage(input: {
   const provider = input.provider ?? openAiVisionProvider;
   const started = Date.now();
 
+  let imageQuality = null as Awaited<ReturnType<typeof assessImageQuality>> | null;
+  try {
+    imageQuality = await assessImageQuality(bytes.buffer);
+  } catch {
+    imageQuality = null;
+  }
+
   try {
     const { result, model, inputTokens, outputTokens } = await provider.analyzeImage({
       userId: input.userId,
@@ -262,6 +271,12 @@ export async function analyzeUserImage(input: {
       diagnosticId,
     });
 
+    const refined = refineVisionAnalysisResult({
+      result,
+      userHint: hintType,
+      imageQuality,
+    });
+
     const resolvedInputTokens =
       inputTokens > 0 ? inputTokens : estimateImageInputTokens(detail, 1) + 400;
     const resolvedOutputTokens = outputTokens > 0 ? outputTokens : 800;
@@ -275,7 +290,7 @@ export async function analyzeUserImage(input: {
       contentHash: meta.contentHash,
       detail,
       promptVersion: VISION_PROMPT_VERSION,
-      result,
+      result: refined,
     });
 
     await appendVisionCostRecord({
@@ -307,9 +322,11 @@ export async function analyzeUserImage(input: {
     appendVisionDiagnosticStage(diagnosticId, "artifact_handoff", true, {
       analysisSuccess: true,
       model,
+      detectedType: refined.detectedType,
+      confidence: refined.confidence,
     });
 
-    return { ...result, diagnosticId };
+    return { ...refined, diagnosticId };
   } catch (error) {
     await appendVisionCostRecord({
       userId: input.userId,

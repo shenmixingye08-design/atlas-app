@@ -81,7 +81,9 @@ export function VisionDiagnosticsPanel({
 
   useEffect(() => {
     if (canShowVisionDiagnostics()) {
-      setAllowed(true);
+      queueMicrotask(() => {
+        setAllowed(true);
+      });
       return;
     }
     let cancelled = false;

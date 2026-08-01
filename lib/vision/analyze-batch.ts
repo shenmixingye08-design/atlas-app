@@ -33,8 +33,20 @@ function recommendArtifactType(
   type: VisionDetectedType,
   userText: string,
 ): string | null {
-  if (type === "receipt" || /家計簿/.test(userText)) return "household_excel";
-  if (type === "invoice") return "invoice_excel";
+  if (
+    type === "receipt" ||
+    type === "receipt_voucher" ||
+    /家計簿|レシート|領収書/.test(userText)
+  ) {
+    return "household_excel";
+  }
+  if (
+    type === "invoice" ||
+    type === "delivery_note" ||
+    /請求|納品書/.test(userText)
+  ) {
+    return "invoice_excel";
+  }
   if (type === "contract" || /契約/.test(userText)) return "contract_docx";
   if (type === "chart" || /グラフ|チャート/.test(userText)) {
     return "chart_report_docx";
@@ -50,8 +62,22 @@ function recommendArtifactType(
     return "improved_sales_doc";
   }
   if (type === "handwritten_note") return "memo_text";
-  if (type === "business_card") return "contact_card";
-  if (type === "screenshot") return "screenshot_summary_docx";
+  if (type === "business_card" || /名刺|連絡先/.test(userText)) {
+    return "contact_list_excel";
+  }
+  if (
+    type === "meeting_minutes" ||
+    type === "whiteboard" ||
+    /議事録|会議/.test(userText)
+  ) {
+    return "meeting_minutes_docx";
+  }
+  if (type === "construction_photo" || /施工/.test(userText)) {
+    return "construction_report_docx";
+  }
+  if (type === "screenshot" || /マニュアル|スクリーンショット/.test(userText)) {
+    return "manual_docx";
+  }
   if (
     type === "general_photo" ||
     type === "property_photo" ||

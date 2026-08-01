@@ -394,9 +394,11 @@ export function GoogleMailPanel() {
   );
 
   useEffect(() => {
-    void load(filter, activeSearch);
-    void loadSavedDrafts();
-    void loadLabels();
+    queueMicrotask(() => {
+      void load(filter, activeSearch);
+      void loadSavedDrafts();
+      void loadLabels();
+    });
   }, [filter, activeSearch, load, loadSavedDrafts, loadLabels]);
 
   const handleConnect = async () => {

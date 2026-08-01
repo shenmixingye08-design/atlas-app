@@ -59,7 +59,9 @@ function ProviderUsageCard({
   const [budgetInput, setBudgetInput] = useState(String(provider.budgetUsd));
 
   useEffect(() => {
-    setBudgetInput(String(provider.budgetUsd));
+    queueMicrotask(() => {
+      setBudgetInput(String(provider.budgetUsd));
+    });
   }, [provider.budgetUsd]);
 
   const warningClasses = {
@@ -179,7 +181,9 @@ export function ApiUsagePanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const handleBudgetSave = async (

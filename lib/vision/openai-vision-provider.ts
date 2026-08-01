@@ -61,9 +61,12 @@ const RESPONSES_INPUT_TYPES = ["input_text", "input_image"] as const;
 
 function preferReadableText(hintType: string, userText: string): boolean {
   return (
-    /receipt|invoice|estimate|contract|table|spreadsheet|handwritten|business_card|chart/i.test(
+    /receipt|receipt_voucher|invoice|delivery_note|estimate|contract|table|spreadsheet|handwritten|business_card|chart|meeting_minutes|whiteboard|screenshot|identity|construction/i.test(
       hintType,
-    ) || /文字|明細|金額|表|レシート|請求|名刺|条項/.test(userText)
+    ) ||
+    /文字|明細|金額|表|レシート|領収|請求|納品|名刺|条項|議事録|施工|マニュアル/.test(
+      userText,
+    )
   );
 }
 
