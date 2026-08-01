@@ -13,6 +13,8 @@ type VisionFailurePanelProps = {
   onRetryAnalyze?: () => void;
   onRetake?: () => void;
   onPickAnother?: () => void;
+  /** Disable reanalyze while a job is in flight (double-click guard). */
+  retryDisabled?: boolean;
   /** Show developer hint (diagnosticId / stage / codes). */
   showDeveloperHint?: boolean;
 };
@@ -22,6 +24,7 @@ export function VisionFailurePanel({
   onRetryAnalyze,
   onRetake,
   onPickAnother,
+  retryDisabled = false,
   showDeveloperHint = false,
 }: VisionFailurePanelProps) {
   const failedStage =
@@ -32,14 +35,18 @@ export function VisionFailurePanel({
     gate.failedStageLabel ??
     (failedStage ? labelForVisionStage(failedStage) : null);
 
+  const isTimeout = gate.developerCode === "timeout";
+
   const title =
     gate.status === "needs_input"
       ? gate.message
-      : gate.status === "config_missing"
-        ? "画像解析の設定が不足しています"
-        : stageLabel
-          ? `画像処理に失敗しました（${stageLabel}）`
-          : "画像の内容を解析できませんでした";
+      : isTimeout
+        ? "AI解析が時間切れになりました"
+        : gate.status === "config_missing"
+          ? "画像解析の設定が不足しています"
+          : stageLabel
+            ? `画像処理に失敗しました（${stageLabel}）`
+            : "画像の内容を解析できませんでした";
 
   const isAiFailure =
     failedStage === "vision_response" ||
@@ -50,16 +57,19 @@ export function VisionFailurePanel({
     Boolean(gate.openai);
 
   // User-facing Japanese only — never dump OpenAI internals here.
+  // timeout and needs_input must stay fully separated in copy.
   const detail =
     gate.status === "needs_input"
       ? "画像は読み取れましたが、依頼の必須項目を確認できませんでした。成果物はまだ作成していません。"
-      : gate.userCode === "missing_attachment_ids"
-        ? "画像の添付IDが送信されていません。ファイル名だけでは解析できません。画像を選び直してください。"
-        : gate.message ||
-          (failedStage ? messageForVisionStage(failedStage) : null) ||
-          (gate.analysisSuccess
-            ? null
-            : "成果物の生成は停止しました。内容を確認して再試行してください。");
+      : isTimeout
+        ? "一時的な通信・処理遅延です。同じ画像のまま再解析できます（撮り直し不要）。"
+        : gate.userCode === "missing_attachment_ids"
+          ? "画像の添付IDが送信されていません。ファイル名だけでは解析できません。画像を選び直してください。"
+          : gate.message ||
+            (failedStage ? messageForVisionStage(failedStage) : null) ||
+            (gate.analysisSuccess
+              ? null
+              : "成果物の生成は停止しました。内容を確認して再試行してください。");
 
   const openaiBody =
     gate.openai?.rawErrorBody?.trim() ||
@@ -148,8 +158,13 @@ export function VisionFailurePanel({
       </div>
       <div className="flex flex-wrap gap-2">
         {onRetryAnalyze && gate.status !== "config_missing" && (
-          <Button type="button" size="sm" onClick={onRetryAnalyze}>
-            再解析する
+          <Button
+            type="button"
+            size="sm"
+            disabled={retryDisabled}
+            onClick={onRetryAnalyze}
+          >
+            {retryDisabled ? "再解析中…" : "再解析する"}
           </Button>
         )}
         {onRetake && (

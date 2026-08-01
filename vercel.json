@@ -4,5 +4,22 @@
       "path": "/api/automations/tick",
       "schedule": "0 0 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "app/api/work/jobs/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/work/jobs/[id]/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/vision/analyze/route.ts": {
+      "maxDuration": 180
+    },
+    "app/api/health/vision/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/attachments/images/route.ts": {
+      "maxDuration": 60
+    }
+  }
 }

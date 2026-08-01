@@ -18,7 +18,31 @@ export { analyzeUserImageBatch } from "./analyze-batch";
 export { prepareAssignmentWithVision } from "./prepare-assignment";
 export { buildVisionEnrichedAssignment } from "./adapters/to-assignment-context";
 export { visionBatchToDeliverableContent } from "./adapters/to-artifact-source";
-export { openAiVisionProvider } from "./openai-vision-provider";
+export {
+  openAiVisionProvider,
+  VISION_OPENAI_TIMEOUT_MS,
+  VISION_JOB_BUDGET_MS,
+} from "./openai-vision-provider";
+export {
+  VISION_MAX_ATTEMPTS,
+  VISION_TIMEOUT_MAX_ATTEMPTS,
+  VISION_RETRY_DELAYS_MS,
+  visionRetryDelayMs,
+} from "./retry";
+export type { VisionJobPhase } from "./job-phase";
+export {
+  visionPhaseForError,
+  visionPhaseLabel,
+  visionPipelineStepIndex,
+  VISION_PIPELINE_STEPS,
+} from "./job-phase";
+export { VISION_QUALITY_FEATURE_EVALUATION } from "./feature-evaluation";
+export { enhanceImageForVision } from "./enhance-image";
+export {
+  formatsFromVisionBatch,
+  selectFormatsFromVision,
+  titleFromVisionBatch,
+} from "./formats-from-vision";
 export type { VisionProvider } from "./provider";
 export { visionAnalysisResultSchema, visionModelPayloadSchema } from "./schemas";
 export { getVisionUsageMeter } from "./cost";

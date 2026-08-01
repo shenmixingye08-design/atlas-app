@@ -9,6 +9,8 @@ import { labelForDetectedType } from "@/lib/vision/classify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** Align with vision job budget (≥120s). Prefer /api/work/jobs for UI flows. */
+export const maxDuration = 180;
 
 type Body = {
   attachmentIds?: unknown;

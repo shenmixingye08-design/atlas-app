@@ -18,11 +18,24 @@ import {
  */
 export const WORK_JOB_STALE_RUNNING_MS = 310_000;
 
+const ACTIVE_WORK_JOB_STATUSES: ReadonlySet<WorkJobRecord["status"]> = new Set([
+  "running",
+  "preprocessing",
+  "analyzing",
+  "retrying",
+]);
+
+export function isActiveWorkJobStatus(
+  status: WorkJobRecord["status"],
+): boolean {
+  return ACTIVE_WORK_JOB_STATUSES.has(status);
+}
+
 export function isStaleWorkJobRunning(
   job: WorkJobRecord,
   nowMs = Date.now(),
 ): boolean {
-  if (job.status !== "running") return false;
+  if (!isActiveWorkJobStatus(job.status)) return false;
   const updatedMs = new Date(job.updatedAt).getTime();
   if (Number.isNaN(updatedMs)) return true;
   return nowMs - updatedMs > WORK_JOB_STALE_RUNNING_MS;
@@ -32,8 +45,17 @@ export function isWorkJobTerminal(status: WorkJobRecord["status"]): boolean {
   return (
     status === "completed" ||
     status === "failed" ||
+    status === "needs_input" ||
     status === "awaiting_confirmation"
   );
+}
+
+function visionPhaseFromGate(
+  gate: NonNullable<WorkJobRecord["visionGate"]>,
+): WorkJobRecord["status"] {
+  // timeout / temporary AI failures stay failed — never collapse into needs_input.
+  if (gate.status === "needs_input") return "needs_input";
+  return "failed";
 }
 
 function readAttachmentIds(
@@ -141,25 +163,30 @@ export async function executeWorkJob(
   // Duplicate execution forbidden for terminal / confirmation states.
   if (
     existing.status === "completed" ||
+    existing.status === "needs_input" ||
     existing.status === "awaiting_confirmation"
   ) {
     return existing;
   }
 
-  // Fresh running lease — another worker is actively processing.
-  if (existing.status === "running" && !isStaleWorkJobRunning(existing)) {
+  // Fresh active lease — another worker is actively processing.
+  if (isActiveWorkJobStatus(existing.status) && !isStaleWorkJobRunning(existing)) {
     return existing;
   }
 
-  // Stale running past maxAttempts → force failed (never leave 処理中).
+  // Stale active past maxAttempts → force failed (never leave 処理中).
   if (
-    existing.status === "running" &&
+    isActiveWorkJobStatus(existing.status) &&
     isStaleWorkJobRunning(existing) &&
     existing.attemptCount >= existing.maxAttempts
   ) {
     return saveWorkJob({
       ...existing,
       status: "failed",
+      metadata: {
+        ...existing.metadata,
+        visionPhase: "failed",
+      },
       error:
         "処理が長時間停止したため失敗として記録しました。もう一度送ってください。",
       updatedAt: new Date().toISOString(),
@@ -170,24 +197,72 @@ export async function executeWorkJob(
   const startedAt = Date.now();
   const metadataWithJobId = withPropagatedJobId(existing.metadata, jobId);
 
+  const hasAttachments = readAttachmentIds(existing.metadata).length > 0;
   await saveWorkJob({
     ...existing,
-    status: "running",
-    metadata: metadataWithJobId,
+    status: hasAttachments ? "preprocessing" : "running",
+    metadata: {
+      ...metadataWithJobId,
+      visionPhase: hasAttachments ? "image_received" : "queued",
+      visionAttemptHistory: Array.isArray(existing.metadata?.visionAttemptHistory)
+        ? existing.metadata.visionAttemptHistory
+        : [],
+    },
     attemptCount: existing.attemptCount + 1,
     updatedAt: new Date().toISOString(),
   });
 
   try {
+    if (hasAttachments) {
+      const received = getWorkJob(jobId, userId) ?? existing;
+      await saveWorkJob({
+        ...received,
+        status: "preprocessing",
+        metadata: {
+          ...withPropagatedJobId(received.metadata, jobId),
+          visionPhase: "preprocessing",
+        },
+        updatedAt: new Date().toISOString(),
+      });
+      const pre = getWorkJob(jobId, userId) ?? received;
+      await saveWorkJob({
+        ...pre,
+        status: "analyzing",
+        metadata: {
+          ...withPropagatedJobId(pre.metadata, jobId),
+          visionPhase: "analyzing",
+        },
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
     const commander = await withRetry(
       async (attempt) => {
         if (attempt > 1) {
           recordReliabilityEvent("retry", "retry");
           recordReliabilityEvent("work_job", "retry");
+          const current = getWorkJob(jobId, userId);
+          if (current && !isWorkJobTerminal(current.status)) {
+            await saveWorkJob({
+              ...current,
+              status: "retrying",
+              metadata: {
+                ...withPropagatedJobId(current.metadata, jobId),
+                visionPhase: "retrying",
+              },
+              updatedAt: new Date().toISOString(),
+            });
+          }
         }
         // Heartbeat so long runs are not mistaken for stale hangs.
         const current = getWorkJob(jobId, userId);
-        if (current?.status === "running") {
+        if (
+          current &&
+          (current.status === "running" ||
+            current.status === "analyzing" ||
+            current.status === "preprocessing" ||
+            current.status === "retrying")
+        ) {
           await touchWorkJob({
             ...current,
             metadata: withPropagatedJobId(current.metadata, jobId),
@@ -236,9 +311,21 @@ export async function executeWorkJob(
       });
     }
 
-    // Vision / attachment hard failures must surface as failed jobs — never "completed".
-    if (commander.visionGate && !commander.visionGate.analysisSuccess) {
+    // Vision hard failures / needs_input — never completed. timeout ≠ needs_input.
+    if (
+      commander.visionGate &&
+      (!commander.visionGate.analysisSuccess ||
+        commander.visionGate.status === "needs_input")
+    ) {
       const visionOpenAi = commander.visionGate.openai ?? null;
+      const terminalStatus = visionPhaseFromGate(commander.visionGate);
+      // Explicit guard: timeout must never become needs_input.
+      if (
+        commander.visionGate.developerCode === "timeout" &&
+        terminalStatus === "needs_input"
+      ) {
+        throw new Error("invariant_timeout_mapped_to_needs_input");
+      }
       recordReliabilityEvent("work_job", "failure", 1, {
         durationMs: Date.now() - startedAt,
         errorCode:
@@ -271,6 +358,7 @@ export async function executeWorkJob(
           openaiErrorCode: visionOpenAi?.code ?? null,
           openaiErrorMessage: visionOpenAi?.message ?? null,
           openaiErrorBody: visionOpenAi?.rawErrorBody ?? null,
+          visionPhase: terminalStatus,
           tracking: {
             diagnosticId: commander.visionGate.diagnosticId ?? null,
             supabaseDomain: "atlasVisionDiagnostics",
@@ -280,11 +368,31 @@ export async function executeWorkJob(
           },
         },
       });
+      const priorHistory = Array.isArray(mergedMetadata.visionAttemptHistory)
+        ? mergedMetadata.visionAttemptHistory
+        : [];
       return saveWorkJob({
         ...existing,
-        status: "failed",
+        status: terminalStatus,
         metadata: {
           ...mergedMetadata,
+          visionPhase: terminalStatus,
+          visionAttemptHistory: [
+            ...priorHistory,
+            {
+              attempt: existing.attemptCount + 1,
+              phase: terminalStatus,
+              errorCode: commander.visionGate.developerCode ?? null,
+              errorMessage:
+                visionOpenAi?.message ??
+                commander.visionGate.cause ??
+                commander.visionGate.message,
+              openaiRequestId: visionOpenAi?.requestId ?? null,
+              startedAt: existing.updatedAt,
+              finishedAt: new Date().toISOString(),
+              durationMs: Date.now() - startedAt,
+            },
+          ],
           failureDiagnostic: {
             jobId,
             diagnosticId: commander.visionGate.diagnosticId ?? null,
@@ -297,6 +405,13 @@ export async function executeWorkJob(
               visionOpenAi?.message ??
               commander.visionGate.cause ??
               commander.visionGate.message,
+            // Keep timeout distinct from needs_input in stored diagnostics.
+            errorKind:
+              commander.visionGate.developerCode === "timeout"
+                ? "timeout"
+                : commander.visionGate.status === "needs_input"
+                  ? "needs_input"
+                  : "failure",
           },
         },
         attemptCount: existing.attemptCount + 1,

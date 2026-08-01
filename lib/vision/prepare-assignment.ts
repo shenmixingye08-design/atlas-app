@@ -34,6 +34,7 @@ import { VisionError } from "@/lib/vision/types";
 import { userMessageForVisionFailure } from "@/lib/vision/user-error";
 import { readEffectiveCostSavingMode } from "@/lib/cost-optimization/metadata";
 import { resolveWorkJobIdFromMetadata } from "@/lib/work-jobs/job-id";
+import { getWorkJob, saveWorkJob } from "@/lib/work-jobs/store";
 
 function readDetailString(
   details: VisionErrorDetails | null | undefined,
@@ -177,6 +178,25 @@ function mapVisionErrorToGate(
         ? error.failedStage
         : null) ?? stageFromVisionErrorCode(error.code);
     const openai = openaiInfoFromError(error);
+    // Hard invariant: timeout is a temporary transport failure, never needs_input.
+    if (error.code === "timeout") {
+      return toGatePayload({
+        status: "vision_failed",
+        userCode: "ai_analyze_failed",
+        analysisSuccess: false,
+        diagnosticId,
+        failedStage: "vision_response",
+        developerCode: "timeout",
+        messageOverride: buildAiFailureMessage({
+          failedStage: "vision_response",
+          openai,
+          errorMessage: error.message,
+          code: "timeout",
+        }),
+        cause: openai?.message ?? error.message,
+        openai,
+      });
+    }
     const cause =
       openai?.message ??
       (error.message.trim() ? error.message : null) ??
@@ -196,9 +216,7 @@ function mapVisionErrorToGate(
         userCode:
           error.code === "config_missing"
             ? "config_missing"
-            : error.code === "openai_failed" ||
-                error.code === "timeout" ||
-                error.code === "rate_limited"
+            : error.code === "openai_failed" || error.code === "rate_limited"
               ? "ai_analyze_failed"
               : error.code === "json_parse_failed"
                 ? "schema_failed"
@@ -261,11 +279,7 @@ function mapVisionErrorToGate(
         openai,
       });
     }
-    if (
-      error.code === "openai_failed" ||
-      error.code === "timeout" ||
-      error.code === "rate_limited"
-    ) {
+    if (error.code === "openai_failed" || error.code === "rate_limited") {
       return toGatePayload({
         status: "vision_failed",
         userCode: "ai_analyze_failed",
@@ -592,6 +606,20 @@ export async function prepareAssignmentWithVision(input: {
         artifactGate: "generating",
         analysisSuccess: true,
       });
+      if (jobId) {
+        const current = getWorkJob(jobId, input.userId);
+        if (current && !["completed", "failed"].includes(current.status)) {
+          await saveWorkJob({
+            ...current,
+            status: "analyzing",
+            metadata: {
+              ...(current.metadata ?? {}),
+              visionPhase: "artifact_generating",
+            },
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
       visionFiles = await completeImageWorkToDeliverables({
         userId: input.userId,
         assignment: cleanAssignment,

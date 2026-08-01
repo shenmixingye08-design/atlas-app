@@ -33,6 +33,7 @@ import type { DocumentExtractClient } from "@/lib/attachments/documents/client-u
 import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
 import { VisionFailurePanel } from "@/components/vision/vision-failure-panel";
 import { VisionDiagnosticsPanel } from "@/components/vision/vision-diagnostics-panel";
+import { VisionPipelineProgress } from "@/components/vision/vision-pipeline-progress";
 import type { CommanderVisionGate } from "@/lib/commander/types";
 import {
   buildWorkRequestSubmitPayload,
@@ -49,6 +50,13 @@ import {
   formatsForWizardConfig,
   type SalesMaterialWizardResult,
 } from "./sales-material-wizard";
+
+function readAttachmentIdsFromMeta(
+  metadata: Readonly<Record<string, unknown>> | null | undefined,
+): boolean {
+  const ids = metadata?.attachmentIds;
+  return Array.isArray(ids) && ids.some((id) => typeof id === "string" && id.trim());
+}
 
 export function WorkspaceDashboard() {
   const [assignment, setAssignment] = useState("");
@@ -77,8 +85,13 @@ export function WorkspaceDashboard() {
   const [backgroundAccepted, setBackgroundAccepted] = useState(false);
   const [pendingCommander, setPendingCommander] =
     useState<CommanderRunResult | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [visionPhase, setVisionPhase] = useState<string | null>(null);
 
   const autoStartedRef = useRef(false);
+  const reanalyzeInFlightRef = useRef(false);
+  const parentJobIdRef = useRef<string | null>(null);
+  const visionAttemptRef = useRef(0);
   const requestMetadataRef = useRef<Readonly<Record<string, unknown>>>({});
   const { isAvailable } = useFeatureAvailability();
   const preferredFormat = requestMetadata.preferredDeliverableFormat;
@@ -163,6 +176,7 @@ export function WorkspaceDashboard() {
     setPendingCommander(null);
     setIsLoading(true);
     setBackgroundAccepted(false);
+    setVisionPhase("queued");
     setLoadingStepIndex(0);
     setLoadingPhases(buildLoadingPhases(0));
 
@@ -170,10 +184,30 @@ export function WorkspaceDashboard() {
       setSalesMaterialConfig(config);
     }
 
+    const isVisionRetry = extraMetadata?.forceVisionRefresh === true;
+    if (isVisionRetry) {
+      visionAttemptRef.current += 1;
+    } else {
+      visionAttemptRef.current = 1;
+      parentJobIdRef.current = null;
+    }
+
     const mergedMetadata = {
       ...requestMetadataRef.current,
       ...(extraMetadata ?? {}),
       ...(config ? buildSalesMaterialMetadata(config) : {}),
+      ...(isVisionRetry
+        ? {
+            parentJobId: parentJobIdRef.current,
+            visionAttempt: visionAttemptRef.current,
+            reuseAttachments: true,
+            // Preserve prior error history — do not overwrite.
+            priorVisionDiagnosticId:
+              typeof requestMetadataRef.current.visionDiagnosticId === "string"
+                ? requestMetadataRef.current.visionDiagnosticId
+                : null,
+          }
+        : {}),
     };
     requestMetadataRef.current = mergedMetadata;
     setRequestMetadata(mergedMetadata);
@@ -186,7 +220,7 @@ export function WorkspaceDashboard() {
         body: JSON.stringify({
           assignment: requestAssignment,
           metadata: mergedMetadata,
-          // Prevent double-submit of the same request (job runs once).
+          // Reanalyze gets a fresh key so it is a new attempt, not a no-op.
           idempotencyKey:
             typeof crypto !== "undefined" && "randomUUID" in crypto
               ? crypto.randomUUID()
@@ -208,8 +242,12 @@ export function WorkspaceDashboard() {
 
       setBackgroundAccepted(true);
       const jobId = acceptBody.jobId;
+      setActiveJobId(jobId);
+      if (!parentJobIdRef.current) {
+        parentJobIdRef.current = jobId;
+      }
 
-      // Poll until completed / failed / confirmation.
+      // Poll until completed / failed / needs_input / confirmation.
       for (let i = 0; i < 240; i += 1) {
         await new Promise((r) => setTimeout(r, 2_000));
         const poll = await fetch(`/api/work/jobs/${encodeURIComponent(jobId)}`, {
@@ -221,9 +259,13 @@ export function WorkspaceDashboard() {
           error?: string;
           message?: string;
           visionGate?: CommanderVisionGate | null;
+          metadata?: { visionPhase?: string };
         };
         if (!poll.ok) {
           throw new Error(body.error || "状況を確認できませんでした。");
+        }
+        if (body.status) {
+          setVisionPhase(body.metadata?.visionPhase ?? body.status);
         }
         if (body.status === "awaiting_confirmation") {
           // Fall back to interactive confirm via classic path when needed.
@@ -263,7 +305,7 @@ export function WorkspaceDashboard() {
           }
           return;
         }
-        if (body.status === "failed") {
+        if (body.status === "failed" || body.status === "needs_input") {
           if (body.visionGate) {
             setVisionGate(body.visionGate);
             setError(body.visionGate.message);
@@ -290,6 +332,7 @@ export function WorkspaceDashboard() {
     } finally {
       setIsLoading(false);
       setBackgroundAccepted(false);
+      reanalyzeInFlightRef.current = false;
     }
   }, []);
 
@@ -535,12 +578,18 @@ export function WorkspaceDashboard() {
           <VisionFailurePanel
             gate={visionGate}
             showDeveloperHint={Boolean(visionGate.diagnosticId)}
+            retryDisabled={isLoading || reanalyzeInFlightRef.current}
             onRetryAnalyze={() => {
-              // Re-analyze: new job, force refresh, re-normalize / fallback path.
+              if (isLoading || reanalyzeInFlightRef.current) return;
+              reanalyzeInFlightRef.current = true;
+              // Re-analyze: reuse attachments, link parent job, new attempt.
               void runOrchestration(assignment.trim(), null, {
                 forceVisionRefresh: true,
                 visionRetry: true,
                 visionRetryAt: new Date().toISOString(),
+                parentJobId: parentJobIdRef.current ?? activeJobId,
+                visionAttempt: visionAttemptRef.current + 1,
+                attachmentIds: requestMetadataRef.current.attachmentIds,
               });
             }}
             onPickAnother={() => {
@@ -548,6 +597,13 @@ export function WorkspaceDashboard() {
               setError(null);
             }}
           />
+          {visionPhase && (
+            <VisionPipelineProgress
+              phase={visionPhase}
+              attempt={visionAttemptRef.current}
+              className="mt-2"
+            />
+          )}
           <VisionDiagnosticsPanel
             diagnosticId={visionGate.diagnosticId}
             enabled={showVisionDiagnostics}
@@ -570,6 +626,12 @@ export function WorkspaceDashboard() {
           <p className="text-base text-[var(--foreground-muted)]">
             バックグラウンドで処理しています。完了次第、成果物をお渡しします。
           </p>
+          {visionPhase || readAttachmentIdsFromMeta(requestMetadataRef.current) ? (
+            <VisionPipelineProgress
+              phase={visionPhase ?? "image_received"}
+              attempt={visionAttemptRef.current}
+            />
+          ) : null}
           {showWordProgress ? (
             <WordProgressStatus className="animate-soft-pulse text-sm text-[var(--foreground-muted)]" />
           ) : null}

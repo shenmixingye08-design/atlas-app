@@ -33,10 +33,11 @@ import {
   type NormalizedOpenAiImage,
 } from "@/lib/vision/normalize-for-openai";
 import {
+  isNonRetryableOpenAiFailure,
   isRetryableOpenAiFailure,
-  shouldFallbackOpenAiFailure,
   sleep,
   VISION_MAX_ATTEMPTS,
+  VISION_TIMEOUT_MAX_ATTEMPTS,
   visionRetryDelayMs,
 } from "@/lib/vision/retry";
 import { validateOpenAiImageDataUrl } from "@/lib/vision/validate-openai-image-payload";
@@ -53,9 +54,24 @@ import {
   inspectDataUrlIntegrity,
 } from "@/lib/vision/data-url-integrity";
 import { logVisionPipeline } from "@/lib/vision/pipeline-log";
+import {
+  parseVisionStructuredPayload,
+  VISION_TEXT_FORMAT,
+} from "@/lib/vision/structured-output";
+import {
+  assertImageDeliveryOrThrow,
+  validateImageDelivery,
+} from "@/lib/vision/image-delivery-validate";
 
-/** Per-attempt OpenAI call budget (Vercel-safe). */
-export const VISION_OPENAI_TIMEOUT_MS = 55_000;
+/**
+ * Per-attempt OpenAI Vision budget.
+ * Was 55s (root cause of premature vision_openai_timeout on phone photos).
+ * Aligned to ≥60s; work-job maxDuration remains 300s.
+ */
+export const VISION_OPENAI_TIMEOUT_MS = 60_000;
+
+/** Overall vision analysis budget inside a background job (≥120s). */
+export const VISION_JOB_BUDGET_MS = 120_000;
 
 const RESPONSES_INPUT_TYPES = ["input_text", "input_image"] as const;
 
@@ -222,6 +238,14 @@ function extractOutputText(response: {
   };
 }
 
+function isAbortLikeError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const row = error as { name?: string; code?: string; message?: string };
+  if (row.name === "AbortError" || row.name === "APIUserAbortError") return true;
+  if (row.code === "ABORT_ERR" || row.code === "timeout") return true;
+  return /aborted|abort|timeout|vision_openai_timeout/i.test(row.message ?? "");
+}
+
 async function callOpenAiVisionOnce(input: {
   model: string;
   instructions: string;
@@ -235,34 +259,53 @@ async function callOpenAiVisionOnce(input: {
 }): Promise<{
   response: Awaited<ReturnType<typeof createAtlasResponse>>;
   timedOut: boolean;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  requestId: string | null;
 }> {
+  const controller = new AbortController();
   let timedOut = false;
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  const startedAtMs = Date.now();
+  const startedAt = new Date(startedAtMs).toISOString();
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, input.timeoutMs);
+
   try {
-    const response = await Promise.race([
-      createAtlasResponse({
+    const response = await createAtlasResponse(
+      {
         aiTaskType: "vision_analyze",
         model: input.model,
         instructions: input.instructions,
         input: input.multimodalInput as never,
-      }),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          timedOut = true;
-          reject(
-            Object.assign(new Error("vision_openai_timeout"), {
-              name: "VisionTimeoutError",
-              code: "timeout",
-              status: 408,
-            }),
-          );
-        }, input.timeoutMs);
-      }),
-    ]);
-    return { response, timedOut: false };
+        textFormat: VISION_TEXT_FORMAT,
+      },
+      { signal: controller.signal },
+    );
+    const finishedAtMs = Date.now();
+    const requestId =
+      typeof (response as { id?: unknown }).id === "string"
+        ? (response as { id: string }).id
+        : null;
+    return {
+      response,
+      timedOut: false,
+      startedAt,
+      finishedAt: new Date(finishedAtMs).toISOString(),
+      durationMs: finishedAtMs - startedAtMs,
+      requestId,
+    };
   } catch (error) {
-    if (timedOut) {
-      const details = extractOpenAiVisionErrorDetails(error, {
+    if (timedOut || controller.signal.aborted || isAbortLikeError(error)) {
+      const timeoutError = Object.assign(new Error("vision_openai_timeout"), {
+        name: "VisionTimeoutError",
+        code: "timeout",
+        status: 408,
+        cause: error,
+      });
+      const details = extractOpenAiVisionErrorDetails(timeoutError, {
         model: input.model,
         inputTypes: [...RESPONSES_INPUT_TYPES],
         mimeType: input.imageMeta.mimeType,
@@ -272,11 +315,11 @@ async function callOpenAiVisionOnce(input: {
         urlLength: input.imageMeta.urlLength,
         timedOut: true,
       });
-      throw classifyTransportFailure(details, input.diagnosticId, error);
+      throw classifyTransportFailure(details, input.diagnosticId, timeoutError);
     }
     throw error;
   } finally {
-    if (timer) clearTimeout(timer);
+    clearTimeout(timer);
   }
 }
 
@@ -295,8 +338,25 @@ export const openAiVisionProvider: VisionProvider = {
 
     let lastError: VisionError | null = null;
     let lastNormalized: NormalizedOpenAiImage | null = null;
+    const jobStartedAt = Date.now();
+    // Allow timeout path up to VISION_TIMEOUT_MAX_ATTEMPTS; others stop at VISION_MAX_ATTEMPTS.
+    const maxAttempts = VISION_TIMEOUT_MAX_ATTEMPTS;
 
-    for (let attempt = 1; attempt <= VISION_MAX_ATTEMPTS; attempt += 1) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      if (Date.now() - jobStartedAt > VISION_JOB_BUDGET_MS && attempt > 1) {
+        throw (
+          lastError ??
+          new VisionError("timeout", "画像解析のジョブ予算を超過しました", {
+            diagnosticId,
+            failedStage: "vision_response",
+            details: {
+              safeMessage: "vision_job_budget_exceeded",
+              jobBudgetMs: VISION_JOB_BUDGET_MS,
+            },
+          })
+        );
+      }
+
       const profile = normalizeProfileForAttempt(attempt, readable);
       const model = resolveVisionFallbackModel(primaryModel, attempt);
       const openAiDetail = resolveOpenAiVisionDetail(input.detail, attempt);
@@ -506,6 +566,7 @@ export const openAiVisionProvider: VisionProvider = {
         model,
         instructions,
         input: multimodalInput,
+        textFormat: VISION_TEXT_FORMAT,
       });
 
       // Capture AFTER JSON.stringify — exact bytes OpenAI HTTP body would carry.
@@ -513,6 +574,7 @@ export const openAiVisionProvider: VisionProvider = {
         model: requestParams.model,
         instructions,
         max_output_tokens: requestParams.max_output_tokens,
+        text: { format: VISION_TEXT_FORMAT },
         input: multimodalInput,
       };
       const wireCapture = await captureVisionWirePayload({
@@ -564,6 +626,15 @@ export const openAiVisionProvider: VisionProvider = {
         jobId: input.jobId ?? null,
         vercelRequestId,
       });
+      const deliveryCheck = validateImageDelivery({
+        mimeType: sendMime,
+        byteSize: sendByteLength,
+        deliveryMethod: transport === "file_id" ? "file_id" : "base64",
+        base64Length: sendBase64Length,
+      });
+      assertImageDeliveryOrThrow(deliveryCheck, diagnosticId);
+
+      const openaiRequestStartedAt = new Date().toISOString();
       console.info("[vision] openai_request_full", {
         ...requestLog,
         attempt,
@@ -577,6 +648,12 @@ export const openAiVisionProvider: VisionProvider = {
         mimeType: sendMime,
         transport,
         fileId: uploadedFileId,
+        imageDeliveryMethod: transport === "file_id" ? "file_id" : "base64",
+        originalByteLength: normalized.originalByteLength,
+        processedByteLength: sendByteLength,
+        openaiRequestStartedAt,
+        timeoutMs: VISION_OPENAI_TIMEOUT_MS,
+        structuredOutputs: true,
         image_url_is_string:
           "image_url" in imagePart && typeof imagePart.image_url === "string",
         image_url_prefix:
@@ -587,6 +664,20 @@ export const openAiVisionProvider: VisionProvider = {
         wireOpenable: wireCapture.openable,
         wireHeadHex32: wireCapture.headHex32,
         canaryHardcodedJpeg: canary,
+      });
+
+      // Pre-flight diagnostics (never log image bytes / full base64).
+      console.info("[vision] openai_preflight", {
+        jobId: input.jobId ?? null,
+        diagnosticId,
+        storagePath: input.storagePath ?? null,
+        mimeType: sendMime,
+        width: sendWidth,
+        height: sendHeight,
+        byteSize: sendByteLength,
+        imageDeliveryMethod: transport === "file_id" ? "file_id" : "base64",
+        openaiRequestStartedAt,
+        emptyFile: sendByteLength <= 0,
       });
 
       logVisionPipeline({
@@ -642,13 +733,34 @@ export const openAiVisionProvider: VisionProvider = {
       }
 
       try {
-        const { response } = await callOpenAiVisionOnce({
+        const {
+          response,
+          startedAt: openaiStartedAt,
+          finishedAt: openaiFinishedAt,
+          durationMs: openaiDurationMs,
+          requestId: openaiRequestId,
+        } = await callOpenAiVisionOnce({
           model,
           instructions,
           multimodalInput,
           diagnosticId,
           imageMeta,
           timeoutMs: VISION_OPENAI_TIMEOUT_MS,
+        });
+
+        console.info("[vision] openai_request_timing", {
+          jobId: input.jobId ?? null,
+          diagnosticId,
+          attempt,
+          openaiRequestStartedAt: openaiStartedAt,
+          openaiRequestFinishedAt: openaiFinishedAt,
+          durationMs: openaiDurationMs,
+          request_id: openaiRequestId,
+          mimeType: sendMime,
+          width: sendWidth,
+          height: sendHeight,
+          byteSize: sendByteLength,
+          imageDeliveryMethod: transport === "file_id" ? "file_id" : "base64",
         });
 
         const responseStatus =
@@ -695,12 +807,11 @@ export const openAiVisionProvider: VisionProvider = {
           });
           lastError = mapped;
           if (
-            attempt < VISION_MAX_ATTEMPTS &&
-            shouldFallbackOpenAiFailure(details)
+            attempt < maxAttempts &&
+            isRetryableOpenAiFailure(details) &&
+            !isNonRetryableOpenAiFailure(details)
           ) {
-            if (isRetryableOpenAiFailure(details)) {
-              await sleep(visionRetryDelayMs(attempt));
-            }
+            await sleep(visionRetryDelayMs(attempt));
             continue;
           }
           throw mapped;
@@ -746,7 +857,10 @@ export const openAiVisionProvider: VisionProvider = {
             attempt,
           });
           lastError = mapped;
-          if (attempt < VISION_MAX_ATTEMPTS) continue;
+          if (attempt < VISION_MAX_ATTEMPTS && isRetryableOpenAiFailure(details)) {
+            await sleep(visionRetryDelayMs(attempt));
+            continue;
+          }
           throw mapped;
         }
 
@@ -821,12 +935,11 @@ export const openAiVisionProvider: VisionProvider = {
             attempt,
             normalizeProfile: profile,
             fallbackUsed: model !== primaryModel,
-            durationMs: Date.now() - attemptStarted,
+            durationMs: openaiDurationMs || Date.now() - attemptStarted,
             jobId: input.jobId ?? null,
-            requestId:
-              typeof (response as { id?: unknown }).id === "string"
-                ? (response as { id: string }).id
-                : null,
+            requestId: openaiRequestId,
+            openaiStartedAt,
+            openaiFinishedAt,
           });
         }
 
@@ -849,12 +962,40 @@ export const openAiVisionProvider: VisionProvider = {
 
         let payload;
         try {
-          payload = parseVisionModelPayload(rawText);
+          try {
+            payload = parseVisionStructuredPayload(rawText);
+          } catch {
+            // Compatibility fallback for mock / non-strict responses.
+            const legacy = parseVisionModelPayload(rawText);
+            payload = {
+              image_readable: true,
+              document_type: legacy.detectedType,
+              detected_fields: legacy.fields ?? {},
+              missing_required_fields: legacy.missingFields ?? [],
+              confidence: legacy.confidence,
+              // Legacy free-form JSON never implies needs_input — gate rules decide.
+              needs_user_input: false,
+              user_message: "",
+              summary: legacy.summary,
+              extractedText: legacy.extractedText ?? null,
+              language: legacy.language ?? null,
+              tables: legacy.tables ?? [],
+              visualElements: legacy.visualElements ?? [],
+              warnings: legacy.warnings ?? [],
+              missingFields: legacy.missingFields ?? [],
+              recommendedActions: legacy.recommendedActions ?? [],
+              artifactSuggestions: legacy.artifactSuggestions ?? [],
+              detectedType: legacy.detectedType,
+              fields: legacy.fields ?? {},
+            };
+          }
           if (diagnosticId) {
             appendVisionDiagnosticStage(diagnosticId, "schema_validation", true, {
               analysisSuccess: true,
               jobId: input.jobId ?? null,
               attempt,
+              imageReadable: payload.image_readable,
+              needsUserInput: payload.needs_user_input,
             });
           }
         } catch (error) {
@@ -876,9 +1017,34 @@ export const openAiVisionProvider: VisionProvider = {
           }
           if (error instanceof VisionError && attempt < VISION_MAX_ATTEMPTS) {
             lastError = error;
+            await sleep(visionRetryDelayMs(attempt));
             continue;
           }
           throw error;
+        }
+
+        // Structured gate: unreadable image is analysis failure (not needs_input).
+        if (!payload.image_readable) {
+          const mapped = new VisionError(
+            "unreadable",
+            payload.user_message || "画像の文字を読み取れませんでした",
+            {
+              diagnosticId,
+              failedStage: "schema_validation",
+              details: {
+                safeMessage: "image_not_readable",
+                attempt,
+                model: response.model ?? model,
+                needsUserInput: false,
+              },
+            },
+          );
+          lastError = mapped;
+          if (attempt < VISION_MAX_ATTEMPTS) {
+            await sleep(visionRetryDelayMs(attempt));
+            continue;
+          }
+          throw mapped;
         }
 
         // Validate required analysis fields — HTTP 200 + empty meaning is failure.
@@ -902,7 +1068,10 @@ export const openAiVisionProvider: VisionProvider = {
             },
           );
           lastError = mapped;
-          if (attempt < VISION_MAX_ATTEMPTS) continue;
+          if (attempt < VISION_MAX_ATTEMPTS) {
+            await sleep(visionRetryDelayMs(attempt));
+            continue;
+          }
           throw mapped;
         }
 
@@ -920,21 +1089,30 @@ export const openAiVisionProvider: VisionProvider = {
           summary: payload.summary || "画像を解析しました",
           extractedText: payload.extractedText ?? null,
           language: payload.language ?? null,
-          fields: payload.fields ?? {},
+          fields: {
+            ...(payload.fields ?? {}),
+            __visionGate: {
+              image_readable: payload.image_readable,
+              document_type: payload.document_type,
+              needs_user_input: payload.needs_user_input,
+              user_message: payload.user_message,
+              missing_required_fields: payload.missing_required_fields,
+            },
+          },
           tables: (payload.tables ?? []).map((table) => ({
             headers: table.headers ?? [],
             rows: table.rows ?? [],
             notes: table.notes ?? null,
           })),
           visualElements: payload.visualElements ?? [],
-          layout: payload.layout ?? null,
-          styleSignals: payload.styleSignals ?? null,
+          layout: null,
+          styleSignals: null,
           warnings: [
             ...(payload.warnings ?? []),
             ...(normalized.warnings ?? []),
-            ...(attempt > 1 ? [`fallback_attempt_${attempt}`] : []),
+            ...(attempt > 1 ? [`retry_attempt_${attempt}`] : []),
           ],
-          missingFields: payload.missingFields ?? [],
+          missingFields: payload.missingFields ?? payload.missing_required_fields ?? [],
           recommendedActions: payload.recommendedActions ?? [],
           artifactSuggestions: payload.artifactSuggestions ?? [],
           model: response.model ?? model,
@@ -996,34 +1174,36 @@ export const openAiVisionProvider: VisionProvider = {
               } satisfies OpenAiVisionErrorDetails)
             : null;
 
+          if (error.code === "config_missing" || error.code === "forbidden") {
+            throw error;
+          }
           if (
             details &&
-            attempt < VISION_MAX_ATTEMPTS &&
-            shouldFallbackOpenAiFailure(details)
+            isNonRetryableOpenAiFailure(details)
+          ) {
+            throw error;
+          }
+          if (
+            details &&
+            attempt < maxAttempts &&
+            isRetryableOpenAiFailure(details)
           ) {
             if (diagnosticId) {
               appendVisionDiagnosticStage(diagnosticId, "vision_response", false, {
                 attempt,
                 normalizeProfile: profile,
-                fallbackNext: true,
+                retryNext: true,
                 errorCode: error.code,
                 openaiErrorCode: details.openaiErrorCode,
                 safeMessage: details.safeMessage,
+                retryDelayMs: visionRetryDelayMs(attempt),
               });
             }
-            if (isRetryableOpenAiFailure(details)) {
-              await sleep(visionRetryDelayMs(attempt));
-            }
+            await sleep(visionRetryDelayMs(attempt));
             continue;
           }
 
-          if (attempt >= VISION_MAX_ATTEMPTS) {
-            throw error;
-          }
-          if (error.code === "config_missing" || error.code === "forbidden") {
-            throw error;
-          }
-          continue;
+          throw error;
         }
 
         const details = extractOpenAiVisionErrorDetails(error, {
@@ -1044,13 +1224,11 @@ export const openAiVisionProvider: VisionProvider = {
           wireHeadHex32: wireCapture.headHex32,
         });
         lastError = mapped;
-        if (
-          attempt < VISION_MAX_ATTEMPTS &&
-          shouldFallbackOpenAiFailure(details)
-        ) {
-          if (isRetryableOpenAiFailure(details)) {
-            await sleep(visionRetryDelayMs(attempt));
-          }
+        if (isNonRetryableOpenAiFailure(details)) {
+          throw mapped;
+        }
+        if (attempt < maxAttempts && isRetryableOpenAiFailure(details)) {
+          await sleep(visionRetryDelayMs(attempt));
           continue;
         }
         throw mapped;

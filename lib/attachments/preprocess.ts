@@ -2,6 +2,7 @@ import "server-only";
 
 import sharp from "sharp";
 
+import { enhanceImageForVision } from "@/lib/vision/enhance-image";
 import type { VisionDetailLevel } from "@/lib/vision/types";
 
 export type PreprocessResult = {
@@ -52,8 +53,8 @@ export async function preprocessImageBuffer(input: {
   let buffer: Buffer;
   let mimeType: PreprocessResult["mimeType"];
 
-  // Fresh encode pipeline (EXIF rotate + sRGB + resize).
-  const encode = sharp(input.buffer, { failOn: "none", pages: 1 })
+  // Resize first, then enhance document-like uploads (deskew on full 12MP is too slow).
+  let working = await sharp(input.buffer, { failOn: "none", pages: 1 })
     .rotate()
     .toColourspace("srgb")
     .resize({
@@ -61,16 +62,47 @@ export async function preprocessImageBuffer(input: {
       height: maxEdge,
       fit: "inside",
       withoutEnlargement: true,
-    });
+    })
+    .jpeg({ quality: preferReadableText ? 90 : 85, mozjpeg: true })
+    .toBuffer();
+
+  if (preferReadableText || detail === "high") {
+    try {
+      const enhanced = await enhanceImageForVision(working, {
+        deskew: true,
+        denoise: preferReadableText,
+        contrast: true,
+        maxDeskewDegrees: 6,
+      });
+      working = await sharp(enhanced.buffer, { failOn: "none" })
+        .resize({
+          width: maxEdge,
+          height: maxEdge,
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: preferReadableText ? 88 : 82, mozjpeg: true })
+        .toBuffer();
+      warnings.push(...enhanced.applied.map((step) => `enhance:${step}`));
+    } catch {
+      // Fall back to resized bytes.
+    }
+  }
 
   if (hasAlpha) {
-    buffer = await encode.png({ compressionLevel: 8 }).toBuffer();
+    buffer = await sharp(working, { failOn: "none" })
+      .png({ compressionLevel: 8 })
+      .toBuffer();
     mimeType = "image/png";
   } else if (preferReadableText) {
-    buffer = await encode.jpeg({ quality: 88, mozjpeg: true }).toBuffer();
+    buffer = await sharp(working, { failOn: "none" })
+      .jpeg({ quality: 88, mozjpeg: true })
+      .toBuffer();
     mimeType = "image/jpeg";
   } else {
-    buffer = await encode.jpeg({ quality: 82, mozjpeg: true }).toBuffer();
+    buffer = await sharp(working, { failOn: "none" })
+      .jpeg({ quality: 82, mozjpeg: true })
+      .toBuffer();
     mimeType = "image/jpeg";
   }
 
