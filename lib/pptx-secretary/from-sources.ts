@@ -122,9 +122,23 @@ export async function presentationFromXlsx(input: {
     model.slides[2];
   if (target) {
     target.charts = [chart];
+    // Pad ragged Excel rows so Zod table schema (string cells, equal width) passes.
+    const colCount = Math.min(
+      4,
+      Math.max(headers.length, ...dataRows.map((r) => r.length), 1)
+    );
+    const tableHeaders = Array.from(
+      { length: colCount },
+      (_, i) => headers[i]?.trim() || `列${i + 1}`
+    );
+    const tableRows = dataRows.map((r) =>
+      Array.from({ length: colCount }, (_, i) =>
+        r[i] == null ? "" : String(r[i])
+      )
+    );
     target.table = {
-      headers: headers.slice(0, 4),
-      rows: dataRows.map((r) => r.slice(0, 4)),
+      headers: tableHeaders,
+      rows: tableRows,
     };
     target.source_references = [`xlsx:${sheet.name}`];
     target.speaker_notes = [

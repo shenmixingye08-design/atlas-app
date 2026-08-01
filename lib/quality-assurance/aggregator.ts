@@ -29,6 +29,10 @@ import {
   type ReliabilityWindow,
 } from "@/lib/reliability/metrics";
 import {
+  artifactRatesFromPhase2,
+  loadLatestArtifactDurability,
+} from "@/lib/artifact-durability/load-latest";
+import {
   loadLatestVisionPhase1,
   visionRatesFromPhase1,
 } from "@/lib/vision-eval/load-latest";
@@ -108,7 +112,8 @@ export async function buildQualityDashboardSnapshot(
       evidence.failed === 0 &&
       evidence.totalCases > 0);
 
-  // Deliverables — prefer reliability window; fall back to word metrics / evidence
+  // Deliverables — prefer Phase2 durability (n>=100) when present; else reliability/word/evidence
+  const phase2Rates = artifactRatesFromPhase2(loadLatestArtifactDurability());
   const wordRel = rateFromBucket(
     window.buckets.export_word,
     `reliability:${windowDays}d:export_word`
@@ -119,8 +124,8 @@ export async function buildQualityDashboardSnapshot(
       : unmeasuredRate("word-metrics:24h");
   const wordEvidence = evidenceCategoryRate(evidence, ["word"], "evidence:word");
   const wordRate = mergePreferMeasured(
-    mergePreferMeasured(wordRel, wordLocal),
-    wordEvidence
+    phase2Rates.wordFinal,
+    mergePreferMeasured(mergePreferMeasured(wordRel, wordLocal), wordEvidence)
   );
 
   const excelRel = rateFromBucket(
@@ -132,20 +137,25 @@ export async function buildQualityDashboardSnapshot(
     ["excel"],
     "evidence:excel"
   );
-  const excelRate = mergePreferMeasured(excelRel, excelEvidence);
+  const excelRate = mergePreferMeasured(
+    phase2Rates.excelFinal,
+    mergePreferMeasured(excelRel, excelEvidence)
+  );
 
   const pdfRel = rateFromBucket(
     window.buckets.export_pdf,
     `reliability:${windowDays}d:export_pdf`
   );
   const pdfEvidence = evidenceCategoryRate(evidence, ["pdf"], "evidence:pdf");
-  const pdfRate = mergePreferMeasured(pdfRel, pdfEvidence);
+  const pdfRate = mergePreferMeasured(
+    phase2Rates.pdfFinal,
+    mergePreferMeasured(pdfRel, pdfEvidence)
+  );
 
   // No dedicated powerpoint reliability key yet
-  const powerpointRate = evidenceCategoryRate(
-    evidence,
-    ["pptx"],
-    "evidence:powerpoint"
+  const powerpointRate = mergePreferMeasured(
+    phase2Rates.pptxFinal,
+    evidenceCategoryRate(evidence, ["pptx"], "evidence:powerpoint")
   );
 
   const csvRate = evidenceCategoryRate(evidence, ["csv"], "evidence:csv");

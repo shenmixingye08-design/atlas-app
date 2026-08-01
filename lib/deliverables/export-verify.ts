@@ -42,16 +42,21 @@ export function verifyGeneratedExport(
   }
 
   if (file.format !== "pdf") {
+    const isOfficeZip =
+      file.format === "docx" ||
+      file.format === "xlsx" ||
+      file.format === "pptx";
     for (const marker of [
       '"type":',
       '"content":',
       "```json",
       "[object Object]",
-      "\\n",
+      // `\n` appears randomly in compressed OOXML streams — only flag on text exports
+      ...(isOfficeZip ? [] : ["\\n"]),
     ]) {
       if (asUtf8.includes(marker)) reasons.push(`forbidden:${marker}`);
     }
-    if (/\bundefined\b/.test(asUtf8)) {
+    if (!isOfficeZip && /\bundefined\b/.test(asUtf8)) {
       reasons.push("forbidden:undefined");
     }
   }
