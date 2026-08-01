@@ -5,6 +5,12 @@ import { auth } from "@clerk/nextjs/server";
 
 import { MAX_IMMEDIATE_RETRIES } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
+import {
+  buildUnderstandingLog,
+  buildUnderstandingPublicView,
+} from "@/lib/request-understanding/diagnostics";
+import { withUnderstandingMetadata } from "@/lib/request-understanding/bridge";
+import { routeRequest } from "@/lib/request-understanding/route";
 import { logVisionPipeline } from "@/lib/vision/pipeline-log";
 import { withPropagatedJobId } from "@/lib/work-jobs/job-id";
 import { executeWorkJob } from "@/lib/work-jobs/run";
@@ -92,6 +98,59 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400 },
     );
   }
+
+  const understandStarted = Date.now();
+  const preferredFormat =
+    typeof safeMetadata.preferredDeliverableFormat === "string"
+      ? safeMetadata.preferredDeliverableFormat
+      : null;
+  const routeDecision = routeRequest({
+    assignment,
+    userId,
+    preferredFormat,
+    attachments: attachmentIds.map((id) => ({ id })),
+    idempotencyKey: clientKey,
+  });
+  const enrichedMetadata = withUnderstandingMetadata(
+    safeMetadata,
+    assignment,
+  );
+  console.info(
+    "[request-understanding]",
+    buildUnderstandingLog({
+      userId,
+      rawInputLength: assignment.length,
+      attachmentCount: attachmentIds.length,
+      decision: routeDecision,
+      durationMs: Date.now() - understandStarted,
+    }),
+  );
+
+  // Block when unsupported, attachment missing, hard required gaps, or very low confidence.
+  // Mid-confidence with only safe assumptions still proceeds (assumptions in metadata).
+  const blockingMissing = routeDecision.parsed.missing_required_fields.filter(
+    (field) => field !== "attachment",
+  );
+  const hardBlock =
+    routeDecision.target === "unsupported" ||
+    routeDecision.parsed.missing_required_fields.includes("attachment") ||
+    routeDecision.parsed.confidence < 0.4 ||
+    (routeDecision.parsed.needs_clarification && blockingMissing.length > 0);
+  if (hardBlock) {
+    return Response.json(
+      {
+        ok: false,
+        acceptance:
+          routeDecision.target === "unsupported" ? "rejected" : "needs_input",
+        code: routeDecision.developerCode,
+        error: routeDecision.userMessage,
+        understanding: buildUnderstandingPublicView(routeDecision.parsed),
+      },
+      { status: routeDecision.target === "unsupported" ? 422 : 409 },
+    );
+  }
+
+  Object.assign(safeMetadata, enrichedMetadata);
 
   const idempotencyKey = buildWorkJobIdempotencyKey({
     userId,
