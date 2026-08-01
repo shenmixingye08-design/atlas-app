@@ -57,6 +57,15 @@ function guessFormat(
     return "pptx";
   }
   if (lower.endsWith(".md") || mimeType?.includes("markdown")) return "md";
+  if (lower.endsWith(".csv") || mimeType?.includes("text/csv")) return "csv";
+  if (lower.endsWith(".png") || mimeType === "image/png") return "png";
+  if (
+    lower.endsWith(".jpg") ||
+    lower.endsWith(".jpeg") ||
+    mimeType === "image/jpeg"
+  ) {
+    return "jpg";
+  }
   if (lower.endsWith(".txt")) return "txt";
   return null;
 }

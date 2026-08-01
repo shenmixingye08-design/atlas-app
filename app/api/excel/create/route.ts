@@ -7,6 +7,7 @@ import {
 } from "@/lib/excel-secretary";
 import { EXCEL_LIMITS } from "@/lib/excel-secretary/limits";
 import { userMessageForExcelCode } from "@/lib/excel-secretary/job-phase";
+import { persistSecretaryArtifact } from "@/lib/artifact-platform/persist-secretary";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +60,13 @@ export async function POST(request: Request): Promise<Response> {
             { status: 422 },
           );
         }
+        const artifact = await persistSecretaryArtifact({
+          userId,
+          buffer: result.buffer,
+          format: "xlsx",
+          fileName: result.fileName,
+          createdFrom: "excel-secretary-upload",
+        });
         return Response.json({
           ok: true,
           fileName: result.fileName,
@@ -67,6 +75,8 @@ export async function POST(request: Request): Promise<Response> {
           base64: result.buffer.toString("base64"),
           mimeType:
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          artifactId: artifact?.id ?? null,
+          downloadUrl: artifact?.downloadUrl ?? null,
         });
       }
     }
@@ -107,6 +117,15 @@ export async function POST(request: Request): Promise<Response> {
       });
     });
 
+    const artifact = await persistSecretaryArtifact({
+      userId,
+      buffer: result.buffer,
+      format: "xlsx",
+      fileName: result.fileName,
+      sourceContent: assignment,
+      createdFrom: "excel-secretary",
+    });
+
     return Response.json({
       ok: true,
       fileName: result.fileName,
@@ -115,6 +134,8 @@ export async function POST(request: Request): Promise<Response> {
       base64: result.buffer.toString("base64"),
       mimeType:
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      artifactId: artifact?.id ?? null,
+      downloadUrl: artifact?.downloadUrl ?? null,
     });
   } catch (error) {
     return Response.json(
