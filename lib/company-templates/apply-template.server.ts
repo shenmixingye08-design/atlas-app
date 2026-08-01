@@ -22,45 +22,57 @@ export type ApplyTemplateResult = {
 
 async function mergeAutomationPresets(
   template: CompanyTemplate,
+  userId: string
 ): Promise<number> {
-  const existing = await serverAutomationRepository.list();
+  const existing = await serverAutomationRepository.list({ userId });
   const byId = new Map(existing.map((item) => [item.id, item]));
   let merged = 0;
 
   for (const preset of template.automationPresets) {
-    if (byId.has(preset.id)) continue;
+    // Scope preset id per user to avoid cross-tenant id collisions.
+    const scopedId = `${userId}::${preset.id}`;
+    if (byId.has(scopedId) || byId.has(preset.id)) continue;
 
-    byId.set(preset.id, {
-      ...createAutomationFromInput(preset),
-      id: preset.id,
+    byId.set(scopedId, {
+      ...createAutomationFromInput({ ...preset, userId }),
+      id: scopedId,
+      userId,
     });
     merged += 1;
   }
 
   if (merged > 0) {
-    await serverAutomationRepository.saveAll([...byId.values()]);
+    // Tenant-scoped replace — never list/saveAll the global automation pool.
+    await serverAutomationRepository.replaceUserAutomations(
+      userId,
+      [...byId.values()].filter((a) => a.userId === userId)
+    );
   }
 
   return merged;
 }
 
 /**
- * Activate a company template on the server.
+ * Activate a company template for a specific user.
  * Switching templates does NOT delete projects, workflow runs, or existing automations.
  */
 export async function applyCompanyTemplate(
   templateId: CompanyTemplateId,
+  userId: string
 ): Promise<ApplyTemplateResult> {
+  if (!userId) {
+    throw new Error("company_template_userId_required");
+  }
   const template = getCompanyTemplate(templateId);
   const state: ActiveCompanyState = {
     templateId,
     selectedAt: new Date().toISOString(),
   };
 
-  setServerActiveCompanyState(state);
+  setServerActiveCompanyState(state, userId);
   setClientActiveCompanyState(state);
 
-  const automationsMerged = await mergeAutomationPresets(template);
+  const automationsMerged = await mergeAutomationPresets(template, userId);
 
   return { template, state, automationsMerged };
 }

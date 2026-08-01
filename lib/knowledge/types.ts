@@ -20,6 +20,8 @@ export type KnowledgeCategory =
 /** A single item in the Company Knowledge Base. */
 export interface KnowledgeEntry {
   id: EntityId;
+  /** Tenant owner — required for isolation (never shared across users). */
+  userId?: string;
   title: string;
   category: KnowledgeCategory;
   tags: readonly string[];
@@ -36,6 +38,8 @@ export interface KnowledgeEntry {
 }
 
 export type CreateKnowledgeInput = {
+  /** Required at persist time — knowledge is never global. */
+  userId?: string;
   title: string;
   category: KnowledgeCategory;
   tags?: readonly string[];
@@ -48,6 +52,8 @@ export type CreateKnowledgeInput = {
 };
 
 export type KnowledgeFilter = {
+  /** Required for list — unscoped list returns empty. */
+  userId?: string;
   category?: KnowledgeCategory | KnowledgeCategory[];
   tags?: readonly string[];
   reusable?: boolean;
@@ -56,6 +62,7 @@ export type KnowledgeFilter = {
 };
 
 export type KnowledgeSearchParams = {
+  userId: string;
   query: string;
   limit?: number;
   reusableOnly?: boolean;
@@ -90,4 +97,6 @@ export type IngestWorkflowInput = {
   workflowId: EntityId;
   assignment: string;
   userFeedback?: string | null;
+  /** Tenant owner — required for ingest. */
+  userId?: string;
 };

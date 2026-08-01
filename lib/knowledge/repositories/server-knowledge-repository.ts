@@ -5,31 +5,47 @@ import type {
   KnowledgeEntry,
   KnowledgeFilter,
 } from "../types";
+import { knowledgeTenantKey } from "../tenant-scope";
 
 import type { KnowledgeRepository } from "./types";
 
-type KnowledgeBucket = Map<string, KnowledgeEntry>;
+type KnowledgeBucket = Map<string, KnowledgeEntry & { userId: string }>;
 
 function getBucket(): KnowledgeBucket {
   const globalScope = globalThis as typeof globalThis & {
-    __atlasKnowledgeStore?: KnowledgeBucket;
+    __atlasKnowledgeStoreV2?: KnowledgeBucket;
+    /** Legacy unscoped store — never read for tenant queries. */
+    __atlasKnowledgeStore?: Map<string, KnowledgeEntry>;
   };
 
-  if (!globalScope.__atlasKnowledgeStore) {
-    globalScope.__atlasKnowledgeStore = new Map();
+  if (!globalScope.__atlasKnowledgeStoreV2) {
+    globalScope.__atlasKnowledgeStoreV2 = new Map();
   }
 
-  return globalScope.__atlasKnowledgeStore;
+  // Drop legacy global pool so it cannot leak across tenants.
+  if (globalScope.__atlasKnowledgeStore) {
+    globalScope.__atlasKnowledgeStore.clear();
+  }
+
+  return globalScope.__atlasKnowledgeStoreV2;
 }
 
-function matchesFilter(entry: KnowledgeEntry, filter?: KnowledgeFilter): boolean {
+function matchesFilter(
+  entry: KnowledgeEntry & { userId: string },
+  filter?: KnowledgeFilter
+): boolean {
   if (!filter) return true;
+
+  if (filter.userId && entry.userId !== filter.userId) return false;
 
   if (filter.reusable !== undefined && entry.reusable !== filter.reusable) {
     return false;
   }
 
-  if (filter.sourceWorkflowId && entry.sourceWorkflowId !== filter.sourceWorkflowId) {
+  if (
+    filter.sourceWorkflowId &&
+    entry.sourceWorkflowId !== filter.sourceWorkflowId
+  ) {
     return false;
   }
 
@@ -53,11 +69,14 @@ function matchesFilter(entry: KnowledgeEntry, filter?: KnowledgeFilter): boolean
   return true;
 }
 
-function createEntry(input: CreateKnowledgeInput): KnowledgeEntry {
+function createEntry(
+  input: CreateKnowledgeInput & { userId: string }
+): KnowledgeEntry & { userId: string } {
   const now = new Date().toISOString();
 
   return {
     id: crypto.randomUUID(),
+    userId: input.userId,
     title: input.title.trim(),
     category: input.category,
     tags: [...(input.tags ?? [])],
@@ -71,43 +90,78 @@ function createEntry(input: CreateKnowledgeInput): KnowledgeEntry {
   };
 }
 
-/** Server-side in-memory knowledge store. */
+/**
+ * Tenant-scoped knowledge store.
+ * list/find/create WITHOUT userId are rejected (no global pool).
+ */
 export class ServerKnowledgeRepository implements KnowledgeRepository {
   async list(filter?: KnowledgeFilter): Promise<KnowledgeEntry[]> {
+    if (!filter?.userId) {
+      // Refuse unscoped listing — prevents cross-tenant dump.
+      return [];
+    }
     return [...getBucket().values()]
       .filter((entry) => matchesFilter(entry, filter))
       .sort(
         (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+      .map(({ userId: _u, ...rest }) => rest);
   }
 
-  async findById(id: string): Promise<KnowledgeEntry | null> {
-    return getBucket().get(id) ?? null;
+  async findById(id: string, userId?: string): Promise<KnowledgeEntry | null> {
+    if (!userId) return null;
+    const row = getBucket().get(knowledgeTenantKey(userId, id));
+    if (!row || row.userId !== userId) return null;
+    const { userId: _u, ...rest } = row;
+    return rest;
   }
 
   async create(input: CreateKnowledgeInput): Promise<KnowledgeEntry> {
-    const entry = createEntry(input);
-    getBucket().set(entry.id, entry);
-    return entry;
+    if (!input.userId) {
+      throw new Error("knowledge_userId_required");
+    }
+    const entry = createEntry({ ...input, userId: input.userId });
+    getBucket().set(knowledgeTenantKey(entry.userId, entry.id), entry);
+    const { userId: _u, ...rest } = entry;
+    return rest;
   }
 
   async createMany(inputs: CreateKnowledgeInput[]): Promise<KnowledgeEntry[]> {
-    const entries = inputs.map(createEntry);
-    const bucket = getBucket();
-    for (const entry of entries) {
-      bucket.set(entry.id, entry);
+    const out: KnowledgeEntry[] = [];
+    for (const input of inputs) {
+      out.push(await this.create(input));
     }
-    return entries;
+    return out;
   }
 
-  async saveAll(entries: KnowledgeEntry[]): Promise<void> {
+  async saveAll(
+    entries: Array<KnowledgeEntry & { userId?: string }>,
+    userId?: string
+  ): Promise<void> {
+    if (!userId) {
+      throw new Error("knowledge_userId_required");
+    }
     const bucket = getBucket();
-    bucket.clear();
+    for (const [key, value] of bucket) {
+      if (value.userId === userId) bucket.delete(key);
+    }
     for (const entry of entries) {
-      bucket.set(entry.id, entry);
+      const uid = entry.userId ?? userId;
+      if (uid !== userId) continue;
+      const row = { ...entry, userId: uid };
+      bucket.set(knowledgeTenantKey(uid, entry.id), row);
     }
   }
 }
 
 export const serverKnowledgeRepository = new ServerKnowledgeRepository();
+
+export function resetKnowledgeStoreForTests(): void {
+  const globalScope = globalThis as typeof globalThis & {
+    __atlasKnowledgeStoreV2?: KnowledgeBucket;
+    __atlasKnowledgeStore?: Map<string, KnowledgeEntry>;
+  };
+  globalScope.__atlasKnowledgeStoreV2?.clear();
+  globalScope.__atlasKnowledgeStore?.clear();
+}

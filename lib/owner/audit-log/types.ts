@@ -57,6 +57,11 @@ export type AuditLogEntry = {
   targetId: string | null;
   result: AuditResult;
   reason: string | null;
+  /** Correlation — never store secrets/tokens here. */
+  requestId: string | null;
+  jobId: string | null;
+  artifactId: string | null;
+  retryCount: number | null;
 };
 
 export type AuditLogSettings = {
@@ -93,4 +98,8 @@ export type RecordAuditLogInput = {
   result: AuditResult;
   reason?: string | null;
   at?: string;
+  requestId?: string | null;
+  jobId?: string | null;
+  artifactId?: string | null;
+  retryCount?: number | null;
 };

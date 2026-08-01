@@ -32,9 +32,18 @@ function getBucket(): ProcessedEventBucket {
   return globalScope.__atlasStripeProcessedWebhookEvents;
 }
 
+function getInFlight(): Set<string> {
+  const globalScope = globalThis as typeof globalThis & {
+    __atlasStripeWebhookInFlight?: Set<string>;
+  };
+  if (!globalScope.__atlasStripeWebhookInFlight) {
+    globalScope.__atlasStripeWebhookInFlight = new Set();
+  }
+  return globalScope.__atlasStripeWebhookInFlight;
+}
+
 /**
  * Durable-first idempotency check.
- * Memory/disk are process-local; Supabase is the production source of truth.
  */
 export async function hasProcessedStripeEvent(eventId: string): Promise<boolean> {
   if (getBucket().has(eventId)) return true;
@@ -49,16 +58,33 @@ export async function hasProcessedStripeEvent(eventId: string): Promise<boolean>
 }
 
 /**
- * Mark after successful handler (allows Stripe retries on failure).
- * Writes Supabase when configured; disk only in non-production fallback.
+ * Claim before handler. Does NOT durable-mark until success
+ * (so Stripe can retry failed handlers). Same-process races use in-flight set.
  */
+export async function claimStripeEventForProcessing(
+  eventId: string,
+  _eventType?: string | null
+): Promise<"claimed" | "duplicate" | "in_flight"> {
+  if (await hasProcessedStripeEvent(eventId)) return "duplicate";
+
+  const inFlight = getInFlight();
+  if (inFlight.has(eventId)) return "in_flight";
+  inFlight.add(eventId);
+  return "claimed";
+}
+
+export function releaseStripeEventClaim(eventId: string): void {
+  getInFlight().delete(eventId);
+}
+
 export async function markStripeEventProcessed(
   eventId: string,
-  eventType?: string | null,
+  eventType?: string | null
 ): Promise<void> {
   const bucket = getBucket();
   bucket.add(eventId);
   writeProcessedWebhookEventsToDisk(bucket);
+  getInFlight().delete(eventId);
 
   if (!isBillingSupabaseConfigured()) {
     warnIfProductionSupabaseServiceRoleMissing("atlas_stripe_webhook_events");
@@ -71,5 +97,6 @@ export async function markStripeEventProcessed(
 export function resetProcessedStripeEvents(): void {
   const bucket = getBucket();
   bucket.clear();
+  getInFlight().clear();
   writeProcessedWebhookEventsToDisk(bucket);
 }

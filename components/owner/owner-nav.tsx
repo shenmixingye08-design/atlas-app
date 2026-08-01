@@ -26,6 +26,7 @@ type OwnerNavProps = {
     | "disasterRecovery"
     | "automationExecutionLogs"
     | "reliability"
+    | "quality"
     | "wordDownloadDiagnostics";
 };
 const LINKS = [
@@ -99,6 +100,11 @@ const LINKS = [
     id: "reliability" as const,
     href: "/owner/reliability",
     label: "Reliability (SRE)",
+  },
+  {
+    id: "quality" as const,
+    href: "/owner/quality",
+    label: "Quality (Evidence)",
   },
   {
     id: "wordDownloadDiagnostics" as const,

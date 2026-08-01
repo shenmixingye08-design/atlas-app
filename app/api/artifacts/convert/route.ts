@@ -1,5 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { requireBillingAiUsage } from "@/lib/billing/access/enforce";
+import { enforceAiRateLimit } from "@/lib/http/enforce-ai-rate-limit";
 import {
   convertArtifact,
   createArtifactRevision,
@@ -22,6 +24,11 @@ export async function POST(request: Request): Promise<Response> {
   if (!userId) {
     return Response.json({ error: "認証が必要です。" }, { status: 401 });
   }
+
+  const rateLimited = enforceAiRateLimit(userId);
+  if (rateLimited) return rateLimited;
+  const billingDenied = await requireBillingAiUsage(userId);
+  if (billingDenied) return billingDenied;
 
   const body = (await request.json()) as {
     sourceArtifactId?: string;

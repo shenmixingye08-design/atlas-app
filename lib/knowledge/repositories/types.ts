@@ -6,11 +6,12 @@ import type {
 
 /**
  * Persistence contract for the Company Knowledge Base.
+ * All reads/writes MUST be tenant-scoped via userId.
  */
 export interface KnowledgeRepository {
   list(filter?: KnowledgeFilter): Promise<KnowledgeEntry[]>;
-  findById(id: string): Promise<KnowledgeEntry | null>;
+  findById(id: string, userId?: string): Promise<KnowledgeEntry | null>;
   create(input: CreateKnowledgeInput): Promise<KnowledgeEntry>;
   createMany(inputs: CreateKnowledgeInput[]): Promise<KnowledgeEntry[]>;
-  saveAll(entries: KnowledgeEntry[]): Promise<void>;
+  saveAll(entries: KnowledgeEntry[], userId?: string): Promise<void>;
 }

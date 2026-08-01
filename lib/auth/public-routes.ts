@@ -60,6 +60,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/health/reliability-events(.*)",
   "/api/health/billing-schema(.*)",
   "/api/health/vision(.*)",
+  "/api/internal/vision-eval(.*)",
   "/api/contact(.*)",
   "/api/automations/tick(.*)",
   "/api/feature-flags/availability(.*)",

@@ -22,11 +22,12 @@ export function loadCompanyTemplate(
 /** Resolve the active company configuration for runtime modules. */
 export function getActiveCompanyConfig(
   templateId?: CompanyTemplateId | null,
+  userId?: string | null
 ): ActiveCompanyConfig {
   const state =
     typeof window !== "undefined"
       ? getClientActiveCompanyState()
-      : getServerActiveCompanyState();
+      : getServerActiveCompanyState(userId);
 
   const id = templateId ?? state.templateId;
   const template = getCompanyTemplate(id);
@@ -40,8 +41,9 @@ export function getActiveCompanyConfig(
 /** Metadata injected into orchestration — does not change pipeline code paths. */
 export function buildCompanyOrchestrationMetadata(
   templateId?: CompanyTemplateId | null,
+  userId?: string | null
 ): Record<string, unknown> {
-  const config = getActiveCompanyConfig(templateId);
+  const config = getActiveCompanyConfig(templateId, userId);
 
   return {
     companyTemplateId: config.id,
@@ -58,8 +60,9 @@ export function buildCompanyOrchestrationMetadata(
 /** Research assessment prompt supplement from active company template. */
 export function getCompanyResearchGuidance(
   templateId?: CompanyTemplateId | null,
+  userId?: string | null
 ): string {
-  return getActiveCompanyConfig(templateId).researchBehavior.guidance;
+  return getActiveCompanyConfig(templateId, userId).researchBehavior.guidance;
 }
 
 /** Client-safe activation (persists locally; server sync via API). */

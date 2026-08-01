@@ -83,7 +83,7 @@ export async function runOrchestrationForUser(
 
   const templateId =
     resolveCompanyTemplateIdFromMetadata(input.metadata) ??
-    getServerActiveCompanyState().templateId;
+    getServerActiveCompanyState(input.userId).templateId;
 
   const skipWorkMemory = shouldSkipWorkMemory(input.metadata);
   const workMemoryEnabled =

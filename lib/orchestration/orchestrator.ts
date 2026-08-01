@@ -485,7 +485,16 @@ export async function orchestrate(
     const workflowId = crypto.randomUUID();
     workflowStateManager = new WorkflowStateManager(workflowId);
     const deliverableType = classifyDeliverableType(assignment);
-    const retrieval = await retrieveExecutiveMemory(assignment, workflowId, deliverableType);
+    const knowledgeUserId =
+      typeof metadata?.userId === "string" && metadata.userId.trim()
+        ? metadata.userId.trim()
+        : null;
+    const retrieval = await retrieveExecutiveMemory(
+      assignment,
+      workflowId,
+      deliverableType,
+      knowledgeUserId
+    );
     knowledgeUsed = { workflowId, retrieval };
 
     const cacheKeyInput = {

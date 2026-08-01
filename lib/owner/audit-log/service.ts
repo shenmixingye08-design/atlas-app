@@ -78,6 +78,9 @@ export function filterAuditLogEntries(
         row.reason,
         row.ip,
         row.result,
+        row.requestId,
+        row.jobId,
+        row.artifactId,
       ]
         .filter(Boolean)
         .join(" ")
@@ -122,6 +125,10 @@ export function auditLogsToCsv(entries: AuditLogEntry[]): string {
     "targetId",
     "result",
     "reason",
+    "requestId",
+    "jobId",
+    "artifactId",
+    "retryCount",
   ];
   const rows = entries.map((row) => [
     row.at,
@@ -134,6 +141,10 @@ export function auditLogsToCsv(entries: AuditLogEntry[]): string {
     row.targetId,
     row.result,
     row.reason,
+    row.requestId,
+    row.jobId,
+    row.artifactId,
+    row.retryCount,
   ]);
   const lines = [
     headers.map(escapeCsv).join(","),

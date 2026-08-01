@@ -56,8 +56,52 @@ export function idempotencyStore(
   });
 }
 
+type RegisterIdempotencyEntry = {
+  userId: string;
+  artifactId: string;
+  createdAt: number;
+};
+
+function getRegisterBucket(): Map<string, RegisterIdempotencyEntry> {
+  const scope = globalThis as typeof globalThis & {
+    __atlasArtifactRegisterIdempotency?: Map<string, RegisterIdempotencyEntry>;
+  };
+  if (!scope.__atlasArtifactRegisterIdempotency) {
+    scope.__atlasArtifactRegisterIdempotency = new Map();
+  }
+  return scope.__atlasArtifactRegisterIdempotency;
+}
+
+/** Lookup prior register by userId+requestId (prevents Artifact ID collision / double create). */
+export function registerIdempotencyLookup(
+  userId: string,
+  requestId: string | null | undefined
+): string | null {
+  if (!requestId) return null;
+  const bucket = getRegisterBucket();
+  const cutoff = Date.now() - TTL_MS;
+  for (const [k, v] of bucket.entries()) {
+    if (v.createdAt < cutoff) bucket.delete(k);
+  }
+  return bucket.get(`${userId}:${requestId}`)?.artifactId ?? null;
+}
+
+export function registerIdempotencyStore(
+  userId: string,
+  requestId: string | null | undefined,
+  artifactId: string
+): void {
+  if (!requestId) return;
+  getRegisterBucket().set(`${userId}:${requestId}`, {
+    userId,
+    artifactId,
+    createdAt: Date.now(),
+  });
+}
+
 export function resetArtifactIdempotencyForTests(): void {
   getBucket().clear();
+  getRegisterBucket().clear();
 }
 
 /** Composite key for same conversion detection without client key. */

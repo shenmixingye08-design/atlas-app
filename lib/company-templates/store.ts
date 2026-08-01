@@ -14,30 +14,48 @@ function createDefaultState(): ActiveCompanyState {
   };
 }
 
-function getServerBucket(): ActiveCompanyState {
+type CompanyBucket = Map<string, ActiveCompanyState>;
+
+function getServerBucket(): CompanyBucket {
   const globalScope = globalThis as typeof globalThis & {
+    __atlasActiveCompanyByUser?: CompanyBucket;
+    /** Legacy global — cleared so it cannot pollute tenants. */
     __atlasActiveCompany?: ActiveCompanyState;
   };
 
-  if (!globalScope.__atlasActiveCompany) {
-    globalScope.__atlasActiveCompany = createDefaultState();
+  if (!globalScope.__atlasActiveCompanyByUser) {
+    globalScope.__atlasActiveCompanyByUser = new Map();
+  }
+  // Invalidate legacy process-global state.
+  if (globalScope.__atlasActiveCompany) {
+    delete globalScope.__atlasActiveCompany;
   }
 
-  return globalScope.__atlasActiveCompany;
+  return globalScope.__atlasActiveCompanyByUser;
 }
 
-/** Read active template id on the server (API routes, deliverables, orchestration). */
-export function getServerActiveCompanyState(): ActiveCompanyState {
-  return getServerBucket();
+/** Read active template id on the server for a specific user. */
+export function getServerActiveCompanyState(
+  userId?: string | null
+): ActiveCompanyState {
+  if (!userId) return createDefaultState();
+  const bucket = getServerBucket();
+  const existing = bucket.get(userId);
+  if (existing) return existing;
+  const created = createDefaultState();
+  bucket.set(userId, created);
+  return created;
 }
 
 export function setServerActiveCompanyState(
   state: ActiveCompanyState,
+  userId?: string | null
 ): ActiveCompanyState {
-  const globalScope = globalThis as typeof globalThis & {
-    __atlasActiveCompany?: ActiveCompanyState;
-  };
-  globalScope.__atlasActiveCompany = state;
+  if (!userId) {
+    // Refuse to write a process-global active company.
+    return state;
+  }
+  getServerBucket().set(userId, state);
   return state;
 }
 
@@ -57,7 +75,7 @@ export function getClientActiveCompanyState(): ActiveCompanyState {
 }
 
 export function setClientActiveCompanyState(
-  state: ActiveCompanyState,
+  state: ActiveCompanyState
 ): ActiveCompanyState {
   if (typeof window !== "undefined") {
     localStorage.setItem(ACTIVE_COMPANY_STORAGE_KEY, JSON.stringify(state));
@@ -67,6 +85,7 @@ export function setClientActiveCompanyState(
 
 export function resolveActiveTemplateId(
   override?: CompanyTemplateId | null,
+  userId?: string | null
 ): CompanyTemplateId {
   if (override) return override;
 
@@ -74,5 +93,9 @@ export function resolveActiveTemplateId(
     return getClientActiveCompanyState().templateId;
   }
 
-  return getServerActiveCompanyState().templateId;
+  return getServerActiveCompanyState(userId).templateId;
+}
+
+export function resetCompanyStoreForTests(): void {
+  getServerBucket().clear();
 }

@@ -1,9 +1,16 @@
+import { auth } from "@clerk/nextjs/server";
+
 import { companyTemplateService } from "@/lib/company-templates/service";
 import type { CompanyTemplateId } from "@/lib/company-templates/types";
 import { findCompanyTemplate } from "@/lib/company-templates/registry";
 
 export async function GET(): Promise<Response> {
-  const state = companyTemplateService.getActive();
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const state = companyTemplateService.getActive(userId);
   return Response.json({
     state: {
       templateId: state.id,
@@ -14,6 +21,11 @@ export async function GET(): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   let body: unknown;
 
   try {
@@ -34,6 +46,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const result = await companyTemplateService.selectTemplate(
     templateId as CompanyTemplateId,
+    userId
   );
 
   return Response.json(result);

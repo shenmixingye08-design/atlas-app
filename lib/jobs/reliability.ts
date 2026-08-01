@@ -13,7 +13,39 @@ import {
   upsertJobRecord as persistJobRecord,
 } from "./job-store";
 import { buildStepEvidence } from "./step-labels";
+import {
+  assertJobTransition,
+  recordJobTransition,
+} from "./transitions";
 import type { JobPushStatus, JobRecord, JobStatus } from "./types";
+
+function trackTransition(input: {
+  jobId: string;
+  userId: string;
+  from: JobStatus | null | undefined;
+  to: JobStatus;
+  reason?: string | null;
+  retryCount?: number;
+  failedStage?: string | null;
+  diagnosticId?: string | null;
+  requestId?: string | null;
+  changedBy?: string;
+}): void {
+  assertJobTransition(input.from, input.to, { jobId: input.jobId });
+  recordJobTransition({
+    jobId: input.jobId,
+    userId: input.userId,
+    previousStatus: input.from ?? null,
+    nextStatus: input.to,
+    changedAt: new Date().toISOString(),
+    changedBy: input.changedBy ?? "system",
+    reason: input.reason ?? null,
+    retryCount: input.retryCount ?? 0,
+    failedStage: input.failedStage ?? null,
+    diagnosticId: input.diagnosticId ?? null,
+    requestId: input.requestId ?? null,
+  });
+}
 
 export type { JobStatus, JobPushStatus, JobRecord } from "./types";
 export { JOB_HANG_TIMEOUT_MS, listDueRetries } from "./job-store";
@@ -36,6 +68,14 @@ export async function markJobRunning(input: {
   step?: string | null;
 }): Promise<JobRecord> {
   const existing = await getStoredJobRecord(input.jobId, input.userId);
+  trackTransition({
+    jobId: input.jobId,
+    userId: input.userId,
+    from: existing?.status,
+    to: "running",
+    reason: input.step ? `step:${input.step}` : "mark_running",
+    retryCount: existing?.attemptCount ?? 0,
+  });
   const stepEvidence = input.step
     ? buildStepEvidence(input.step, "running")
     : null;
@@ -117,6 +157,7 @@ export async function markJobFailed(input: {
   const classification = classifyRetryError(input.error);
   const willRetry =
     classification === "retryable" && attemptCount <= maxAttempts;
+  const nextStatus = willRetry ? "retrying" : "failed";
 
   const lastErrorMessage =
     typeof input.error === "string"
@@ -125,13 +166,23 @@ export async function markJobFailed(input: {
         ? input.error.message.slice(0, 240)
         : "処理に失敗しました";
 
+  trackTransition({
+    jobId: input.jobId,
+    userId: input.userId,
+    from: existing?.status,
+    to: nextStatus,
+    reason: lastErrorMessage,
+    retryCount: attemptCount,
+    failedStage: input.errorCode ?? "worker",
+  });
+
   const now = new Date().toISOString();
   const record = await persistJobRecord({
     id: input.jobId,
     userId: input.userId,
     automationId: input.automationId ?? existing?.automationId ?? null,
     jobType: existing?.jobType ?? "automation",
-    status: willRetry ? "retrying" : "failed",
+    status: nextStatus,
     scheduledAt: existing?.scheduledAt ?? null,
     queuedAt: existing?.queuedAt ?? null,
     startedAt: existing?.startedAt ?? null,
@@ -170,13 +221,40 @@ export async function markJobCompleted(input: {
   autoRecovered?: boolean;
 }): Promise<JobRecord> {
   const existing = await getStoredJobRecord(input.jobId, input.userId);
+  const nextStatus = input.status ?? "completed";
+  if (
+    nextStatus !== "completed" &&
+    nextStatus !== "partially_completed" &&
+    nextStatus !== "waiting_for_approval"
+  ) {
+    throw new Error(`invalid_completion_status:${nextStatus}`);
+  }
+  // completed requires artifact OR explicit external result OR summary evidence
+  if (
+    nextStatus === "completed" &&
+    !input.artifactId &&
+    !existing?.artifactId &&
+    !input.externalResultId &&
+    !existing?.externalResultId &&
+    !(input.resultSummary ?? existing?.resultSummary)
+  ) {
+    throw new Error("completed_without_artifact_or_result");
+  }
+  trackTransition({
+    jobId: input.jobId,
+    userId: input.userId,
+    from: existing?.status,
+    to: nextStatus,
+    reason: input.autoRecovered ? "auto_recovered" : "mark_completed",
+    retryCount: existing?.attemptCount ?? 0,
+  });
   const now = new Date().toISOString();
   return persistJobRecord({
     id: input.jobId,
     userId: input.userId,
     automationId: existing?.automationId ?? null,
     jobType: existing?.jobType ?? "automation",
-    status: input.status ?? "completed",
+    status: nextStatus,
     scheduledAt: existing?.scheduledAt ?? null,
     queuedAt: existing?.queuedAt ?? null,
     startedAt: existing?.startedAt ?? null,
@@ -212,4 +290,99 @@ export async function setJobPushStatus(
   const existing = await getStoredJobRecord(jobId, userId);
   if (!existing) return null;
   return persistJobRecord({ ...existing, pushStatus });
+}
+
+export async function markJobCancelled(input: {
+  jobId: string;
+  userId: string;
+  reason?: string | null;
+}): Promise<JobRecord> {
+  const existing = await getStoredJobRecord(input.jobId, input.userId);
+  trackTransition({
+    jobId: input.jobId,
+    userId: input.userId,
+    from: existing?.status,
+    to: "cancelled",
+    reason: input.reason ?? "user_cancelled",
+    retryCount: existing?.attemptCount ?? 0,
+    failedStage: "cancelled",
+  });
+  const now = new Date().toISOString();
+  return persistJobRecord({
+    id: input.jobId,
+    userId: input.userId,
+    automationId: existing?.automationId ?? null,
+    jobType: existing?.jobType ?? "automation",
+    status: "cancelled",
+    scheduledAt: existing?.scheduledAt ?? null,
+    queuedAt: existing?.queuedAt ?? null,
+    startedAt: existing?.startedAt ?? null,
+    completedAt: null,
+    failedAt: now,
+    currentStep: existing?.currentStep ?? null,
+    progressPercent: existing?.progressPercent ?? 0,
+    attemptCount: existing?.attemptCount ?? 0,
+    maxAttempts: existing?.maxAttempts ?? MAX_JOB_RETRIES,
+    nextRetryAt: null,
+    lastErrorCode: "cancelled",
+    lastErrorMessage: input.reason ?? "user_cancelled",
+    resultSummary: existing?.resultSummary ?? null,
+    artifactId: existing?.artifactId ?? null,
+    externalResultId: existing?.externalResultId ?? null,
+    externalResultUrl: existing?.externalResultUrl ?? null,
+    idempotencyKey: existing?.idempotencyKey ?? `${input.userId}::${input.jobId}`,
+    pushStatus: "skipped",
+    autoRecovered: false,
+    steps: existing?.steps ?? [],
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  });
+}
+
+export async function markJobQueued(input: {
+  jobId: string;
+  userId: string;
+  idempotencyKey: string;
+  automationId?: string | null;
+  jobType?: string;
+}): Promise<JobRecord> {
+  const existing = await getStoredJobRecord(input.jobId, input.userId);
+  trackTransition({
+    jobId: input.jobId,
+    userId: input.userId,
+    from: existing?.status,
+    to: "queued",
+    reason: "enqueue",
+    retryCount: existing?.attemptCount ?? 0,
+  });
+  const now = new Date().toISOString();
+  return persistJobRecord({
+    id: input.jobId,
+    userId: input.userId,
+    automationId: input.automationId ?? existing?.automationId ?? null,
+    jobType: input.jobType ?? existing?.jobType ?? "automation",
+    status: "queued",
+    scheduledAt: existing?.scheduledAt ?? null,
+    queuedAt: existing?.queuedAt ?? now,
+    startedAt: null,
+    completedAt: null,
+    failedAt: null,
+    currentStep: null,
+    progressPercent: 0,
+    attemptCount: existing?.attemptCount ?? 0,
+    maxAttempts: existing?.maxAttempts ?? MAX_JOB_RETRIES,
+    nextRetryAt: null,
+    lastErrorCode: null,
+    lastErrorMessage: null,
+    resultSummary: null,
+    artifactId: null,
+    externalResultId: null,
+    externalResultUrl: null,
+    idempotencyKey: input.idempotencyKey,
+    pushStatus: "pending",
+    autoRecovered: false,
+    steps: [],
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  });
 }
