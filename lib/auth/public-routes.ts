@@ -38,6 +38,8 @@ export const ATLAS_PROTECTED_PAGE_MATCHERS = [
   "/marketplace(.*)",
   "/mihon(.*)",
   "/notifications(.*)",
+  "/results(.*)",
+  "/artifacts(.*)",
   "/reports(.*)",
   "/billing(.*)",
   "/owner(.*)",
@@ -76,4 +78,4 @@ export const ATLAS_APP_HOME_PATH = "/projects";
 export const ATLAS_LOGIN_CONTINUE_NOTICE = "continue";
 
 export const ATLAS_LOGIN_CONTINUE_MESSAGE =
-  "ログインすると続きからご利用いただけます。";
+  "ログインすると続きからご利用いただけます。依頼中の仕事や成果物もそのまま残せます。";

@@ -6,7 +6,10 @@ import {
   executeWorkJob,
   isStaleWorkJobRunning,
 } from "@/lib/work-jobs/run";
-import { getWorkJobDurable } from "@/lib/work-jobs/store";
+import {
+  getWorkJobDurable,
+  touchWorkJobDurableThrottled,
+} from "@/lib/work-jobs/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,6 +50,9 @@ export async function GET(
     });
     // Re-read after scheduling recovery (may already be failed if max attempts).
     job = (await getWorkJobDurable(id, userId)) ?? job;
+  } else if (job.status === "running" || job.status === "queued") {
+    // Keep durable updatedAt fresh so other instances do not false-reclaim.
+    job = await touchWorkJobDurableThrottled(job);
   }
 
   return Response.json({
@@ -57,13 +63,18 @@ export async function GET(
     visionGate: job.visionGate,
     result: job.result,
     completedAt: job.completedAt,
+    commanderRunId:
+      typeof job.metadata?.commanderRunId === "string"
+        ? job.metadata.commanderRunId
+        : (job.result as { commanderRunId?: string } | null)?.commanderRunId ??
+          null,
     message:
       job.status === "queued" || job.status === "running"
-        ? "依頼を受け付けました。バックグラウンドで処理しています。"
+        ? "依頼を受け付けました。完了したらお知らせに届きます。このまま待っても、ホームに戻っても大丈夫です。"
         : job.status === "completed"
           ? "すべて完了しました。"
           : job.status === "awaiting_confirmation"
-            ? "確認が必要です。"
-            : job.error ?? "確認が必要です。",
+            ? "内容の確認が必要です。画面の案内に沿って進めてください。"
+            : job.error ?? "内容をご確認ください。もう一度お願いすることもできます。",
   });
 }

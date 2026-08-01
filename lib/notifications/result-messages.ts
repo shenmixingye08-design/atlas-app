@@ -34,7 +34,7 @@ export const RESULT_TITLES: Partial<Record<ResultResolutionCode, string>> = {
   pending: "生成中です",
   not_saved: "保存を確認しています",
   generation_failed: "生成に失敗しました",
-  timeout: "Timeout",
+  timeout: "時間がかかりすぎました",
   not_found: "結果が見つかりません",
   forbidden: "権限がありません",
   legacy: "旧形式の通知です",

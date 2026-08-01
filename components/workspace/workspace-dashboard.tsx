@@ -562,17 +562,38 @@ export function WorkspaceDashboard() {
       )}
 
       {isLoading && backgroundAccepted && (
-        <section className="mx-auto max-w-lg space-y-4 py-16 text-center animate-fade-in">
+        <section className="mx-auto max-w-lg space-y-5 py-16 text-center animate-fade-in">
           <p className="text-sm font-medium text-accent">MINERVOT</p>
           <h2 className="text-2xl font-semibold tracking-tight text-foreground">
             依頼を受け付けました
           </h2>
           <p className="text-base text-[var(--foreground-muted)]">
-            バックグラウンドで処理しています。完了次第、成果物をお渡しします。
+            バックグラウンドで進めています。完了したら🔔お知らせに届きます。
+            このまま待っても、ホームに戻っても大丈夫です。
           </p>
           {showWordProgress ? (
             <WordProgressStatus className="animate-soft-pulse text-sm text-[var(--foreground-muted)]" />
           ) : null}
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => {
+                window.location.href = "/notifications";
+              }}
+            >
+              お知らせを見る
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                window.location.href = "/projects";
+              }}
+            >
+              ホームへ戻る
+            </Button>
+          </div>
         </section>
       )}
 
