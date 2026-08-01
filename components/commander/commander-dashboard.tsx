@@ -362,13 +362,15 @@ export function CommanderDashboard() {
           <VisionFailurePanel
             gate={run.visionGate}
             showDeveloperHint={Boolean(run.visionGate.diagnosticId)}
-            onRetryAnalyze={() =>
+            retryDisabled={isLoading}
+            onRetryAnalyze={() => {
+              if (isLoading) return;
               void handleSubmit("execute", {
                 forceVisionRefresh: true,
                 visionRetry: true,
                 visionRetryAt: new Date().toISOString(),
-              })
-            }
+              });
+            }}
           />
           <VisionDiagnosticsPanel
             diagnosticId={run.visionGate.diagnosticId}
