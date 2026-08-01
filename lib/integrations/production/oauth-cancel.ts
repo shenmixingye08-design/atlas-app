@@ -29,6 +29,6 @@ export function cancelExternalServiceOAuth(input: {
     integration: input.serviceId === "google" ? "gmail" : input.serviceId,
     userId: input.userId,
     clearPending: () => undefined,
-    message: `${definition.displayName}の認証をキャンセルしました`,
+    message: `${definition.serviceName}の認証をキャンセルしました`,
   });
 }
