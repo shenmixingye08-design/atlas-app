@@ -149,7 +149,9 @@ export function HomeAiActivityPanel({ automations, projects }: HomeAiActivityPan
   }, [activeJobs.length]);
 
   useEffect(() => {
-    setActiveIndex(0);
+    queueMicrotask(() => {
+      setActiveIndex(0);
+    });
   }, [activeJobs.length]);
 
   const currentJob = activeJobs[activeIndex] ?? null;

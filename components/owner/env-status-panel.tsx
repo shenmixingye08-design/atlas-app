@@ -102,7 +102,9 @@ export function EnvStatusPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const groups = useMemo(

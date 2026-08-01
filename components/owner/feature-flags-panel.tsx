@@ -129,7 +129,9 @@ export function FeatureFlagsPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const handleChange = async (id: FeatureFlagId, state: FeatureFlagState) => {

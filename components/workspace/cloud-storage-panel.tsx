@@ -25,10 +25,12 @@ export function CloudStoragePanel({
   const [provider, setProvider] = useState<CloudStorageProvider>(initialProvider);
 
   useEffect(() => {
-    const fromQuery = searchParams.get("provider");
-    if (fromQuery === "dropbox" || fromQuery === "drive") {
-      setProvider(fromQuery);
-    }
+    queueMicrotask(() => {
+      const fromQuery = searchParams.get("provider");
+      if (fromQuery === "dropbox" || fromQuery === "drive") {
+        setProvider(fromQuery);
+      }
+    });
   }, [searchParams]);
 
   return (

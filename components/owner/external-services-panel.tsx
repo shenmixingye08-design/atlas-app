@@ -189,7 +189,9 @@ export function ExternalServicesPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   async function handleReconnect(serviceId: string) {

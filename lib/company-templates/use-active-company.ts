@@ -25,7 +25,9 @@ export function useActiveCompany() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    queueMicrotask(() => {
+      void refresh();
+    });
   }, [refresh]);
 
   return { config, isLoading, refresh };

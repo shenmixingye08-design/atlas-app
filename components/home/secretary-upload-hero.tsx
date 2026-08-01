@@ -83,7 +83,9 @@ export function SecretaryUploadHero() {
   const autoStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setVoiceSupported(Boolean(getSpeechRecognitionCtor()));
+    queueMicrotask(() => {
+      setVoiceSupported(Boolean(getSpeechRecognitionCtor()));
+    });
     return () => {
       recognitionRef.current?.stop();
       if (autoStartTimerRef.current) clearTimeout(autoStartTimerRef.current);
