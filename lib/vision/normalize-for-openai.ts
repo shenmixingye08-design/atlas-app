@@ -2,6 +2,7 @@ import "server-only";
 
 import sharp from "sharp";
 
+import { enhanceImageForVision } from "@/lib/vision/enhance-image";
 import { detectImageMimeFromBytes } from "@/lib/vision/image-magic";
 import { buildOpenAiDataUrlFromBuffer } from "@/lib/vision/validate-openai-image-payload";
 import { VisionError } from "@/lib/vision/types";
@@ -147,15 +148,41 @@ export async function normalizeImageForOpenAi(input: {
   let buffer: Buffer;
   let mimeType: "image/jpeg" | "image/png";
   try {
-    const base = sharp(input.buffer, { failOn: "none", pages: 1 })
-      .rotate() // EXIF orientation
+    // Resize first (CPU-bound deskew must not run on 12MP phone originals).
+    let resized = await sharp(input.buffer, { failOn: "none", pages: 1 })
+      .rotate()
       .toColourspace("srgb")
       .resize({
         width: settings.maxEdge,
         height: settings.maxEdge,
         fit: "inside",
         withoutEnlargement: true,
+      })
+      .jpeg({ quality: 92, mozjpeg: true })
+      .toBuffer();
+
+    if (profile === "ocr" || profile === "standard") {
+      const enhanced = await enhanceImageForVision(resized, {
+        deskew: true,
+        denoise: profile === "ocr",
+        contrast: true,
+        maxDeskewDegrees: 6,
       });
+      resized = enhanced.buffer;
+      warnings.push(...enhanced.applied.map((step) => `enhance:${step}`));
+      // Deskew can expand canvas — re-cap long edge after enhance.
+      resized = await sharp(resized, { failOn: "none" })
+        .resize({
+          width: settings.maxEdge,
+          height: settings.maxEdge,
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: settings.jpegQuality, mozjpeg: true })
+        .toBuffer();
+    }
+
+    const base = sharp(resized, { failOn: "none", pages: 1 });
 
     if (hasAlpha && profile !== "compact") {
       buffer = await base.png({ compressionLevel: 9, effort: 7 }).toBuffer();

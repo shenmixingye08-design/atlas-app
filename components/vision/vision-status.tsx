@@ -1,21 +1,12 @@
 "use client";
 
+import { visionPhaseLabel } from "@/lib/vision/job-phase-client";
+
 type VisionStatusProps = {
   status?: string | null;
   label?: string | null;
   analyzing?: boolean;
   error?: string | null;
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  uploading: "画像をアップロード中",
-  uploaded: "画像の準備ができました",
-  processing: "画像を解析中",
-  analyzed: "画像解析が完了しました",
-  needs_input: "追加確認が必要です",
-  artifact_generating: "成果物を作成中",
-  completed: "完了",
-  failed: "画像解析に失敗しました",
 };
 
 export function VisionStatus({
@@ -30,9 +21,7 @@ export function VisionStatus({
     <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-3 py-2 text-sm">
       {analyzing && <p className="text-accent">画像を解析しています…</p>}
       {!analyzing && status && (
-        <p className="text-foreground">
-          {STATUS_LABEL[status] ?? "画像処理中"}
-        </p>
+        <p className="text-foreground">{visionPhaseLabel(status)}</p>
       )}
       {label && <p className="mt-1 text-[var(--text-secondary)]">{label}</p>}
       {error && <p className="mt-1 text-red-600">{error}</p>}

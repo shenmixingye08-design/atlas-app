@@ -30,7 +30,19 @@ export {
   visionRetryDelayMs,
 } from "./retry";
 export type { VisionJobPhase } from "./job-phase";
-export { visionPhaseForError } from "./job-phase";
+export {
+  visionPhaseForError,
+  visionPhaseLabel,
+  visionPipelineStepIndex,
+  VISION_PIPELINE_STEPS,
+} from "./job-phase";
+export { VISION_QUALITY_FEATURE_EVALUATION } from "./feature-evaluation";
+export { enhanceImageForVision } from "./enhance-image";
+export {
+  formatsFromVisionBatch,
+  selectFormatsFromVision,
+  titleFromVisionBatch,
+} from "./formats-from-vision";
 export type { VisionProvider } from "./provider";
 export { visionAnalysisResultSchema, visionModelPayloadSchema } from "./schemas";
 export { getVisionUsageMeter } from "./cost";

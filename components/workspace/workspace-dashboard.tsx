@@ -33,6 +33,7 @@ import type { DocumentExtractClient } from "@/lib/attachments/documents/client-u
 import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
 import { VisionFailurePanel } from "@/components/vision/vision-failure-panel";
 import { VisionDiagnosticsPanel } from "@/components/vision/vision-diagnostics-panel";
+import { VisionPipelineProgress } from "@/components/vision/vision-pipeline-progress";
 import type { CommanderVisionGate } from "@/lib/commander/types";
 import {
   buildWorkRequestSubmitPayload,
@@ -49,6 +50,13 @@ import {
   formatsForWizardConfig,
   type SalesMaterialWizardResult,
 } from "./sales-material-wizard";
+
+function readAttachmentIdsFromMeta(
+  metadata: Readonly<Record<string, unknown>> | null | undefined,
+): boolean {
+  const ids = metadata?.attachmentIds;
+  return Array.isArray(ids) && ids.some((id) => typeof id === "string" && id.trim());
+}
 
 export function WorkspaceDashboard() {
   const [assignment, setAssignment] = useState("");
@@ -590,12 +598,11 @@ export function WorkspaceDashboard() {
             }}
           />
           {visionPhase && (
-            <p className="text-center text-xs text-[var(--text-secondary)]">
-              状態: {visionPhase}
-              {visionAttemptRef.current > 1
-                ? ` / 試行 ${visionAttemptRef.current}`
-                : ""}
-            </p>
+            <VisionPipelineProgress
+              phase={visionPhase}
+              attempt={visionAttemptRef.current}
+              className="mt-2"
+            />
           )}
           <VisionDiagnosticsPanel
             diagnosticId={visionGate.diagnosticId}
@@ -619,6 +626,12 @@ export function WorkspaceDashboard() {
           <p className="text-base text-[var(--foreground-muted)]">
             バックグラウンドで処理しています。完了次第、成果物をお渡しします。
           </p>
+          {visionPhase || readAttachmentIdsFromMeta(requestMetadataRef.current) ? (
+            <VisionPipelineProgress
+              phase={visionPhase ?? "image_received"}
+              attempt={visionAttemptRef.current}
+            />
+          ) : null}
           {showWordProgress ? (
             <WordProgressStatus className="animate-soft-pulse text-sm text-[var(--foreground-muted)]" />
           ) : null}

@@ -34,6 +34,7 @@ import { VisionError } from "@/lib/vision/types";
 import { userMessageForVisionFailure } from "@/lib/vision/user-error";
 import { readEffectiveCostSavingMode } from "@/lib/cost-optimization/metadata";
 import { resolveWorkJobIdFromMetadata } from "@/lib/work-jobs/job-id";
+import { getWorkJob, saveWorkJob } from "@/lib/work-jobs/store";
 
 function readDetailString(
   details: VisionErrorDetails | null | undefined,
@@ -605,6 +606,20 @@ export async function prepareAssignmentWithVision(input: {
         artifactGate: "generating",
         analysisSuccess: true,
       });
+      if (jobId) {
+        const current = getWorkJob(jobId, input.userId);
+        if (current && !["completed", "failed"].includes(current.status)) {
+          await saveWorkJob({
+            ...current,
+            status: "analyzing",
+            metadata: {
+              ...(current.metadata ?? {}),
+              visionPhase: "artifact_generating",
+            },
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
       visionFiles = await completeImageWorkToDeliverables({
         userId: input.userId,
         assignment: cleanAssignment,

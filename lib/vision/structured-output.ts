@@ -72,6 +72,10 @@ export const VISION_STRUCTURED_OUTPUT_SCHEMA = {
     "warnings",
     "recommended_actions",
     "artifact_suggestions",
+    "layout_hierarchy",
+    "layout_sections",
+    "structure_notes",
+    "recommended_formats",
   ],
   properties: {
     image_readable: { type: "boolean" },
@@ -115,6 +119,16 @@ export const VISION_STRUCTURED_OUTPUT_SCHEMA = {
     warnings: { type: "array", items: { type: "string" } },
     recommended_actions: { type: "array", items: { type: "string" } },
     artifact_suggestions: { type: "array", items: { type: "string" } },
+    layout_hierarchy: { type: ["string", "null"] },
+    layout_sections: { type: "array", items: { type: "string" } },
+    structure_notes: { type: ["string", "null"] },
+    recommended_formats: {
+      type: "array",
+      items: {
+        type: "string",
+        enum: ["docx", "xlsx", "pdf", "pptx", "md", "csv", "json"],
+      },
+    },
   },
 } as const;
 
@@ -281,12 +295,28 @@ export function parseVisionStructuredPayload(rawText: string): VisionStructuredM
       : Array.isArray(row.recommendedActions)
         ? row.recommendedActions.map(String)
         : [],
-    artifactSuggestions: Array.isArray(row.artifact_suggestions)
-      ? row.artifact_suggestions.map(String)
-      : Array.isArray(row.artifactSuggestions)
-        ? row.artifactSuggestions.map(String)
-        : [],
+    artifactSuggestions: [
+      ...(Array.isArray(row.artifact_suggestions)
+        ? row.artifact_suggestions.map(String)
+        : Array.isArray(row.artifactSuggestions)
+          ? row.artifactSuggestions.map(String)
+          : []),
+      ...(Array.isArray(row.recommended_formats)
+        ? row.recommended_formats.map((f) => String(f))
+        : []),
+    ],
     detectedType: documentType,
-    fields: detectedFields,
+    fields: {
+      ...detectedFields,
+      ...(typeof row.layout_hierarchy === "string" || row.layout_hierarchy === null
+        ? { layoutHierarchy: row.layout_hierarchy }
+        : {}),
+      ...(Array.isArray(row.layout_sections)
+        ? { layoutSections: row.layout_sections.map(String) }
+        : {}),
+      ...(typeof row.structure_notes === "string" || row.structure_notes === null
+        ? { structureNotes: row.structure_notes }
+        : {}),
+    },
   };
 }

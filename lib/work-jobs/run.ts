@@ -203,7 +203,7 @@ export async function executeWorkJob(
     status: hasAttachments ? "preprocessing" : "running",
     metadata: {
       ...metadataWithJobId,
-      visionPhase: hasAttachments ? "preprocessing" : "queued",
+      visionPhase: hasAttachments ? "image_received" : "queued",
       visionAttemptHistory: Array.isArray(existing.metadata?.visionAttemptHistory)
         ? existing.metadata.visionAttemptHistory
         : [],
@@ -214,7 +214,17 @@ export async function executeWorkJob(
 
   try {
     if (hasAttachments) {
-      const pre = getWorkJob(jobId, userId) ?? existing;
+      const received = getWorkJob(jobId, userId) ?? existing;
+      await saveWorkJob({
+        ...received,
+        status: "preprocessing",
+        metadata: {
+          ...withPropagatedJobId(received.metadata, jobId),
+          visionPhase: "preprocessing",
+        },
+        updatedAt: new Date().toISOString(),
+      });
+      const pre = getWorkJob(jobId, userId) ?? received;
       await saveWorkJob({
         ...pre,
         status: "analyzing",
