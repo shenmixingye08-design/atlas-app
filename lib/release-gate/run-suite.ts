@@ -59,6 +59,9 @@ export async function runReleaseGateSuite(options?: { outDir?: string }) {
   resetKillSwitchesForTests();
 
   const restore = runRestoreDrills({ outDir: join(outDir, "restore") });
+  // Restore drill mutates in-process stores — reset to publish-scope defaults for report.
+  resetKillSwitchesForTests();
+  resetCapabilityFlagsForTests();
   const rollback = runRollbackDrill();
 
   const deployItems: DeployCheckItem[] = DEPLOY_CHECKLIST_TEMPLATE.map((t) => {
