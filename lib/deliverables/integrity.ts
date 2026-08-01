@@ -13,10 +13,22 @@ export type IntegritySnapshot = {
   ooxmlMissing: string[];
 };
 
+/** Minimal package parts (legacy callers). */
 const OOXML_REQUIRED = [
   "[Content_Types].xml",
   "_rels/.rels",
   "word/document.xml",
+] as const;
+
+/** Production Word package parts — required before download/persist. */
+const DOCX_PRODUCTION_REQUIRED = [
+  "[Content_Types].xml",
+  "_rels/.rels",
+  "word/document.xml",
+  "word/styles.xml",
+  "word/numbering.xml",
+  "word/settings.xml",
+  "word/_rels/document.xml.rels",
 ] as const;
 
 export function sha256Hex(buffer: Buffer | Uint8Array): string {
@@ -86,6 +98,18 @@ export function verifyOoxmlStructure(buffer: Buffer): {
   return { ok: missing.length === 0, missing: [...missing] };
 }
 
+/** Stricter OpenXML check for production Word downloads. */
+export function verifyDocxProductionStructure(buffer: Buffer): {
+  ok: boolean;
+  missing: string[];
+} {
+  const names = new Set(listZipEntryNames(buffer));
+  const missing = DOCX_PRODUCTION_REQUIRED.filter(
+    (required) => !names.has(required),
+  );
+  return { ok: missing.length === 0, missing: [...missing] };
+}
+
 export function buildIntegritySnapshot(input: {
   buffer: Buffer;
   format: DeliverableFormat;
@@ -94,8 +118,8 @@ export function buildIntegritySnapshot(input: {
   const hasPk = hasPkHeader(input.buffer);
   const ooxml =
     input.format === "docx" && hasPk
-      ? verifyOoxmlStructure(input.buffer)
-      : { ok: false, missing: [...OOXML_REQUIRED] };
+      ? verifyDocxProductionStructure(input.buffer)
+      : { ok: false, missing: [...DOCX_PRODUCTION_REQUIRED] };
 
   return {
     sizeBytes: input.buffer.byteLength,
