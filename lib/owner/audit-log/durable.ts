@@ -112,7 +112,7 @@ export async function ensureAuditLogHydrated(): Promise<void> {
 
   const payload = unwrapPayload(loaded);
   if (payload) {
-    replaceAuditLogEntries(payload.entries);
+    replaceAuditLogEntries(payload.entries.map(normalizeHydratedAuditEntry));
     if (payload.settings?.retentionDays) {
       setAuditLogSettings(
         payload.settings.retentionDays,
@@ -122,6 +122,30 @@ export async function ensureAuditLogHydrated(): Promise<void> {
   } else {
     markAuditLogHydrated();
   }
+}
+
+function normalizeHydratedAuditEntry(
+  row: Partial<AuditLogEntry> &
+    Pick<AuditLogEntry, "id" | "at" | "category" | "action" | "result">
+): AuditLogEntry {
+  return {
+    id: row.id,
+    at: row.at,
+    userId: row.userId ?? null,
+    email: row.email ?? null,
+    ip: row.ip ?? null,
+    userAgent: row.userAgent ?? null,
+    category: row.category,
+    action: row.action,
+    targetId: row.targetId ?? null,
+    result: row.result,
+    reason: row.reason ?? null,
+    requestId: row.requestId ?? null,
+    jobId: row.jobId ?? null,
+    artifactId: row.artifactId ?? null,
+    retryCount:
+      typeof row.retryCount === "number" ? row.retryCount : null,
+  };
 }
 
 export function resetAuditLogDurableForTests(): void {

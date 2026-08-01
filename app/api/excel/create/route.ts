@@ -1,6 +1,8 @@
 import { after } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 
+import { requireBillingAiUsage } from "@/lib/billing/access/enforce";
+import { enforceAiRateLimit } from "@/lib/http/enforce-ai-rate-limit";
 import {
   createExcelFromAssignment,
   createExcelFromUpload,
@@ -22,6 +24,11 @@ export async function POST(request: Request): Promise<Response> {
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const rateLimited = enforceAiRateLimit(userId);
+  if (rateLimited) return rateLimited;
+  const billingDenied = await requireBillingAiUsage(userId);
+  if (billingDenied) return billingDenied;
 
   const contentType = request.headers.get("content-type") ?? "";
 

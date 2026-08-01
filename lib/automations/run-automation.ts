@@ -179,7 +179,8 @@ export async function executeAutomationRun(
         assignment,
         metadata: {
           ...buildCompanyOrchestrationMetadata(
-            getServerActiveCompanyState().templateId,
+            getServerActiveCompanyState(options.userId).templateId,
+            options.userId
           ),
           automationId: automation.id,
           automationName: automation.name,

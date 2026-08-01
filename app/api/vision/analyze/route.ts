@@ -1,6 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { requireBillingAiUsage } from "@/lib/billing/access/enforce";
 import { runWithAiBillingUsage } from "@/lib/billing/usage/request-context";
+import { enforceAiRateLimit } from "@/lib/http/enforce-ai-rate-limit";
 import { isVisionDetectedType } from "@/lib/vision/schemas";
 import { analyzeUserImageBatch } from "@/lib/vision/analyze-batch";
 import { logVisionPipeline } from "@/lib/vision/pipeline-log";
@@ -24,6 +26,12 @@ export async function POST(request: Request): Promise<Response> {
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const rateLimited = enforceAiRateLimit(userId);
+  if (rateLimited) return rateLimited;
+
+  const billingDenied = await requireBillingAiUsage(userId);
+  if (billingDenied) return billingDenied;
 
   let body: Body;
   try {
@@ -58,7 +66,8 @@ export async function POST(request: Request): Promise<Response> {
         userId,
         api: "other",
         feature: "vision_analyze",
-        suppressAutoRecord: true,
+        // Record AI usage so free-plan quota applies.
+        suppressAutoRecord: false,
       },
       () =>
         analyzeUserImageBatch({

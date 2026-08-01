@@ -37,6 +37,8 @@ export { suggestArtifactFormats } from "./suggest-format";
 export {
   idempotencyLookup,
   idempotencyStore,
+  registerIdempotencyLookup,
+  registerIdempotencyStore,
   resetArtifactIdempotencyForTests,
   buildConversionFingerprint,
 } from "./idempotency";

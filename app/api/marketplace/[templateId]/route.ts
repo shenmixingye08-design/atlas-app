@@ -1,3 +1,5 @@
+import { auth } from "@clerk/nextjs/server";
+
 import { findCompanyTemplate } from "@/lib/company-templates/registry";
 import { workflowMarketplaceService } from "@/lib/workflow-marketplace/marketplace-service";
 
@@ -7,8 +9,13 @@ type RouteContext = {
 
 export async function GET(
   _request: Request,
-  context: RouteContext,
+  context: RouteContext
 ): Promise<Response> {
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { templateId } = await context.params;
   const template = findCompanyTemplate(templateId);
 
@@ -16,13 +23,20 @@ export async function GET(
     return Response.json({ error: "Package not found" }, { status: 404 });
   }
 
-  return Response.json(workflowMarketplaceService.getPackage(template.id));
+  return Response.json(
+    workflowMarketplaceService.getPackage(template.id, userId)
+  );
 }
 
 export async function DELETE(
   _request: Request,
-  context: RouteContext,
+  context: RouteContext
 ): Promise<Response> {
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { templateId } = await context.params;
   const template = findCompanyTemplate(templateId);
 
@@ -31,7 +45,10 @@ export async function DELETE(
   }
 
   try {
-    const result = await workflowMarketplaceService.removePackage(template.id);
+    const result = await workflowMarketplaceService.removePackage(
+      template.id,
+      userId
+    );
     return Response.json(result);
   } catch (error) {
     const message =

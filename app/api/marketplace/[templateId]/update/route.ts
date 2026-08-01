@@ -1,3 +1,5 @@
+import { auth } from "@clerk/nextjs/server";
+
 import type { CompanyTemplateId } from "@/lib/company-templates/types";
 import { findCompanyTemplate } from "@/lib/company-templates/registry";
 import { workflowMarketplaceService } from "@/lib/workflow-marketplace/marketplace-service";
@@ -12,8 +14,13 @@ function parseTemplateId(value: string): CompanyTemplateId | null {
 
 export async function POST(
   _request: Request,
-  context: RouteContext,
+  context: RouteContext
 ): Promise<Response> {
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { templateId } = await context.params;
   const id = parseTemplateId(templateId);
 
@@ -22,7 +29,7 @@ export async function POST(
   }
 
   try {
-    const result = await workflowMarketplaceService.updatePackage(id);
+    const result = await workflowMarketplaceService.updatePackage(id, userId);
     return Response.json(result);
   } catch (error) {
     const message =

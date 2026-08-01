@@ -6,7 +6,7 @@ const SENSITIVE_KEY =
   /(password|passwd|secret|token|cookie|authorization|api[_-]?key|access[_-]?key|refresh[_-]?token|client[_-]?secret|bearer)/i;
 
 const SENSITIVE_INLINE =
-  /(password|passwd|secret|token|cookie|authorization|api[_-]?key)\s*[:=]\s*["']?[^"',\s]+/gi;
+  /(password|passwd|secret|token|cookie|authorization|api[_-]?key|bearer|sk-live|sk-test)\s*[:=]?\s*["']?[^"',\s]+/gi;
 
 export function redactSensitiveText(value: string | null | undefined): string | null {
   if (value == null) return null;

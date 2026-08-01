@@ -32,6 +32,7 @@ import {
   artifactRatesFromPhase2,
   loadLatestArtifactDurability,
 } from "@/lib/artifact-durability/load-latest";
+import { loadLatestReleaseBlocker } from "@/lib/release-blocker/load-latest";
 import {
   loadLatestVisionPhase1,
   visionRatesFromPhase1,
@@ -337,13 +338,15 @@ export async function buildQualityDashboardSnapshot(
         )
       : unmeasuredRate("system:error_rate");
 
+  const releaseBlocker = loadLatestReleaseBlocker();
   const criticalFindings = [
     ...collectStaticCriticalFindings({
       productionNotVerified: !productionE2eVerified,
       // Vision timeout mitigation code exists; only flag if runtime rate high
       visionTimeoutUnmitigated: false,
-      billingGapsOpen: true,
-      authzGlobalStores: true,
+      // Cleared only when Phase4 suite proves gates; default open if suite missing.
+      billingGapsOpen: releaseBlocker?.billingGated !== true,
+      authzGlobalStores: releaseBlocker?.authzFixed !== true,
     }),
     ...collectRuntimeCriticalFindings({
       stuckJobs: jobMetrics.hung,

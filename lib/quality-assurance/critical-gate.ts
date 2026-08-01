@@ -32,8 +32,13 @@ export function collectStaticCriticalFindings(opts?: {
         category: "authz_leak",
         title: "権限漏れリスク: knowledge/company がユーザー非スコープ",
         detail:
-          "lib/knowledge/store.ts / lib/company/store.ts がプロセス共有メモリ。マルチテナント本番では権限漏れになり得る。",
-        evidenceRefs: ["lib/knowledge/store.ts", "lib/company/store.ts"],
+          "knowledge/company/marketplace がユーザー非スコープの場合、マルチテナント本番で権限漏れになり得る。Phase4 suite でテナント隔離を証明すること。",
+        evidenceRefs: [
+          "lib/knowledge/repositories/server-knowledge-repository.ts",
+          "lib/company-templates/store.ts",
+          "lib/workflow-marketplace/installed-store.ts",
+          "lib/release-blocker/",
+        ],
         detectedAt: now,
       })
     );

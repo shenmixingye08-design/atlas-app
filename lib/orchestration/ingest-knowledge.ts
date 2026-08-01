@@ -10,9 +10,15 @@ export async function ingestWorkflowKnowledge(
   const userFeedback =
     typeof metadata?.userFeedback === "string" ? metadata.userFeedback : null;
 
+  const userId =
+    typeof metadata?.userId === "string" && metadata.userId.trim()
+      ? metadata.userId.trim()
+      : undefined;
+
   await knowledgeService.ingestFromWorkflow(result, {
     workflowId,
     assignment: result.assignment,
     userFeedback,
+    userId,
   });
 }

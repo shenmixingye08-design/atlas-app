@@ -1,8 +1,15 @@
+import { auth } from "@clerk/nextjs/server";
+
 import { knowledgeService } from "@/lib/knowledge/knowledge-service";
 import { buildKnowledgeRetrievalResult } from "@/lib/knowledge/retrieval";
 import { classifyDeliverableType } from "@/lib/orchestration/deliverable-classification";
 
 export async function GET(request: Request): Promise<Response> {
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const url = new URL(request.url);
   const query = url.searchParams.get("q")?.trim() ?? "";
   const workflowId = url.searchParams.get("workflowId")?.trim() ?? "preview";
@@ -12,6 +19,7 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   const ranked = await knowledgeService.search({
+    userId,
     query,
     limit: 12,
     reusableOnly: true,
@@ -22,7 +30,7 @@ export async function GET(request: Request): Promise<Response> {
     query,
     workflowId,
     ranked,
-    deliverableType,
+    deliverableType
   );
 
   return Response.json(retrieval);

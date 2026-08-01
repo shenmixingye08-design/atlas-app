@@ -56,6 +56,17 @@ export async function recordAuditLog(
     targetId: input.targetId ? sanitizeAuditReason(input.targetId) : null,
     result: input.result,
     reason: sanitizeAuditReason(input.reason),
+    requestId: input.requestId
+      ? sanitizeAuditReason(input.requestId)
+      : null,
+    jobId: input.jobId ? sanitizeAuditReason(input.jobId) : null,
+    artifactId: input.artifactId
+      ? sanitizeAuditReason(input.artifactId)
+      : null,
+    retryCount:
+      typeof input.retryCount === "number" && Number.isFinite(input.retryCount)
+        ? Math.max(0, Math.floor(input.retryCount))
+        : null,
   };
 
   prependAuditLogEntry(entry);

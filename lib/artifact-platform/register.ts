@@ -21,6 +21,10 @@ import { DELIVERABLE_METADATA_TTL_MS } from "@/lib/deliverables/constants";
 
 import { ArtifactPlatformError } from "./errors";
 import {
+  registerIdempotencyLookup,
+  registerIdempotencyStore,
+} from "./idempotency";
+import {
   extensionForArtifactFormat,
   mimeForArtifactFormat,
   normalizeArtifactFormat,
@@ -141,6 +145,12 @@ export async function getUnifiedArtifact(
 export async function registerArtifact(
   input: RegisterArtifactInput
 ): Promise<UnifiedArtifact> {
+  const existingId = registerIdempotencyLookup(input.userId, input.requestId);
+  if (existingId) {
+    const reused = await getUnifiedArtifact(existingId, input.userId);
+    if (reused) return reused;
+  }
+
   const format = normalizeArtifactFormat(input.format);
   if (!format) {
     throw new ArtifactPlatformError(
@@ -323,6 +333,7 @@ export async function registerArtifact(
       { artifactId: stored.id }
     );
   }
+  registerIdempotencyStore(input.userId, input.requestId, artifact.id);
   return artifact;
 }
 

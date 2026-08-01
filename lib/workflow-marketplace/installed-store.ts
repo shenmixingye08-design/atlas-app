@@ -7,6 +7,7 @@ import { getWorkflowPackageMetadata } from "./definitions/packages";
 export const INSTALLED_PACKAGES_STORAGE_KEY = "atlas-installed-workflow-packages";
 
 type InstalledBucket = Map<CompanyTemplateId, InstalledWorkflowPackage>;
+type UserInstalledBucket = Map<string, InstalledBucket>;
 
 function createDefaultInstalled(): InstalledWorkflowPackage {
   const now = new Date().toISOString();
@@ -26,43 +27,71 @@ function seedDefaults(bucket: InstalledBucket): void {
   bucket.set(defaults.templateId, defaults);
 }
 
-function getServerBucket(): InstalledBucket {
+function getServerUserBuckets(): UserInstalledBucket {
   const globalScope = globalThis as typeof globalThis & {
+    __atlasInstalledWorkflowPackagesByUser?: UserInstalledBucket;
+    /** Legacy process-global install map — cleared so it cannot leak tenants. */
     __atlasInstalledWorkflowPackages?: InstalledBucket;
   };
 
-  if (!globalScope.__atlasInstalledWorkflowPackages) {
-    globalScope.__atlasInstalledWorkflowPackages = new Map();
-    seedDefaults(globalScope.__atlasInstalledWorkflowPackages);
+  if (!globalScope.__atlasInstalledWorkflowPackagesByUser) {
+    globalScope.__atlasInstalledWorkflowPackagesByUser = new Map();
   }
 
-  return globalScope.__atlasInstalledWorkflowPackages;
+  if (globalScope.__atlasInstalledWorkflowPackages) {
+    globalScope.__atlasInstalledWorkflowPackages.clear();
+    delete globalScope.__atlasInstalledWorkflowPackages;
+  }
+
+  return globalScope.__atlasInstalledWorkflowPackagesByUser;
 }
 
-export function getServerInstalledPackages(): InstalledWorkflowPackage[] {
-  return [...getServerBucket().values()].sort(
+function getUserBucket(userId: string): InstalledBucket {
+  if (!userId) {
+    throw new Error("marketplace_userId_required");
+  }
+  const users = getServerUserBuckets();
+  let bucket = users.get(userId);
+  if (!bucket) {
+    bucket = new Map();
+    seedDefaults(bucket);
+    users.set(userId, bucket);
+  }
+  return bucket;
+}
+
+export function getServerInstalledPackages(
+  userId: string
+): InstalledWorkflowPackage[] {
+  if (!userId) return [];
+  return [...getUserBucket(userId).values()].sort(
     (a, b) =>
-      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
 }
 
 export function getServerInstalledPackage(
   templateId: CompanyTemplateId,
+  userId: string
 ): InstalledWorkflowPackage | null {
-  return getServerBucket().get(templateId) ?? null;
+  if (!userId) return null;
+  return getUserBucket(userId).get(templateId) ?? null;
 }
 
 export function saveServerInstalledPackage(
   record: InstalledWorkflowPackage,
+  userId: string
 ): InstalledWorkflowPackage {
-  getServerBucket().set(record.templateId, record);
+  getUserBucket(userId).set(record.templateId, record);
   return record;
 }
 
 export function removeServerInstalledPackage(
   templateId: CompanyTemplateId,
+  userId: string
 ): boolean {
-  return getServerBucket().delete(templateId);
+  if (!userId) return false;
+  return getUserBucket(userId).delete(templateId);
 }
 
 export function getClientInstalledPackages(): InstalledWorkflowPackage[] {
@@ -74,7 +103,10 @@ export function getClientInstalledPackages(): InstalledWorkflowPackage[] {
     const raw = localStorage.getItem(INSTALLED_PACKAGES_STORAGE_KEY);
     if (!raw) {
       const defaults = [createDefaultInstalled()];
-      localStorage.setItem(INSTALLED_PACKAGES_STORAGE_KEY, JSON.stringify(defaults));
+      localStorage.setItem(
+        INSTALLED_PACKAGES_STORAGE_KEY,
+        JSON.stringify(defaults)
+      );
       return defaults;
     }
 
@@ -85,19 +117,19 @@ export function getClientInstalledPackages(): InstalledWorkflowPackage[] {
 }
 
 export function setClientInstalledPackages(
-  packages: InstalledWorkflowPackage[],
+  packages: InstalledWorkflowPackage[]
 ): InstalledWorkflowPackage[] {
   if (typeof window !== "undefined") {
     localStorage.setItem(
       INSTALLED_PACKAGES_STORAGE_KEY,
-      JSON.stringify(packages),
+      JSON.stringify(packages)
     );
   }
   return packages;
 }
 
 export function syncClientInstalledPackage(
-  record: InstalledWorkflowPackage,
+  record: InstalledWorkflowPackage
 ): void {
   const existing = getClientInstalledPackages();
   const next = existing.filter((item) => item.templateId !== record.templateId);
@@ -106,10 +138,14 @@ export function syncClientInstalledPackage(
 }
 
 export function removeClientInstalledPackage(
-  templateId: CompanyTemplateId,
+  templateId: CompanyTemplateId
 ): void {
   const next = getClientInstalledPackages().filter(
-    (item) => item.templateId !== templateId,
+    (item) => item.templateId !== templateId
   );
   setClientInstalledPackages(next);
+}
+
+export function resetInstalledStoreForTests(): void {
+  getServerUserBuckets().clear();
 }

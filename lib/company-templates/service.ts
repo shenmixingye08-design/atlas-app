@@ -13,12 +13,12 @@ export class CompanyTemplateService {
     return getCompanyTemplate(id);
   }
 
-  getActive(): ActiveCompanyConfig {
-    return getActiveCompanyConfig();
+  getActive(userId?: string | null): ActiveCompanyConfig {
+    return getActiveCompanyConfig(undefined, userId);
   }
 
-  selectTemplate(templateId: CompanyTemplateId) {
-    return applyCompanyTemplate(templateId);
+  selectTemplate(templateId: CompanyTemplateId, userId: string) {
+    return applyCompanyTemplate(templateId, userId);
   }
 }
 

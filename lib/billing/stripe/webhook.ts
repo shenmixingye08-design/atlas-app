@@ -7,8 +7,9 @@ import { getStripeWebhookSecret } from "./config";
 import { assertStripeWebhookSafeForProduction } from "./production-guard";
 import { handleStripeWebhookEvent } from "./webhook-handlers";
 import {
-  hasProcessedStripeEvent,
+  claimStripeEventForProcessing,
   markStripeEventProcessed,
+  releaseStripeEventClaim,
 } from "./webhook-idempotency";
 
 /** Structured log without secrets, card data, or full event payloads. */
@@ -71,7 +72,8 @@ export async function processStripeWebhookRequest(
     };
   }
 
-  if (await hasProcessedStripeEvent(event.id)) {
+  const claim = await claimStripeEventForProcessing(event.id, event.type);
+  if (claim === "duplicate" || claim === "in_flight") {
     logWebhookOutcome({
       eventId: event.id,
       eventType: event.type,
@@ -93,7 +95,8 @@ export async function processStripeWebhookRequest(
   try {
     result = await handleStripeWebhookEvent(event);
   } catch (error) {
-    // Transient / unexpected — return 5xx so Stripe retries.
+    // Transient / unexpected — release claim so Stripe can retry.
+    releaseStripeEventClaim(event.id);
     const message =
       error instanceof Error ? error.message : "Webhook handler threw";
     console.error(
@@ -114,6 +117,9 @@ export async function processStripeWebhookRequest(
 
   if (result.success) {
     await markStripeEventProcessed(event.id, event.type);
+  } else {
+    // Unsuccessful handled result — allow retry by releasing in-flight only.
+    releaseStripeEventClaim(event.id);
   }
 
   // Failures that were handled but unsuccessful: 500 so Stripe retries.
