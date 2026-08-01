@@ -2,6 +2,16 @@ import "server-only";
 
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import type { CommanderVisionGate } from "@/lib/commander/types";
+import type { JobAuditTrail } from "@/lib/queue/audit";
+import type {
+  JobPipelineStage,
+  JobStatusHistoryEntry,
+} from "@/lib/queue/state-machine";
+import {
+  isInProgressJobStage,
+  isTerminalJobStage,
+  normalizeJobStage,
+} from "@/lib/queue/state-machine";
 
 import {
   loadWorkJobFromDisk,
@@ -9,12 +19,37 @@ import {
   persistWorkJob,
 } from "./durable";
 
+/**
+ * Production Ready job statuses (strict pipeline + exceptions).
+ * Legacy `running` / `awaiting_confirmation` remain valid for compatibility.
+ */
 export type WorkJobStatus =
   | "queued"
-  | "running"
+  | "validating"
+  | "preprocessing"
+  | "analyzing"
+  | "generating"
+  | "converting"
+  | "uploading"
+  | "saving"
+  | "notifying"
   | "completed"
   | "failed"
+  | "needs_input"
+  | "retrying"
+  | "cancelled"
+  | "running"
   | "awaiting_confirmation";
+
+export type WorkJobProgress = {
+  stage: JobPipelineStage;
+  label: string;
+  percent: number;
+  estimatedRemainingMs: number | null;
+  retrying: boolean;
+  waitingForInput: boolean;
+  failureReason: string | null;
+};
 
 export type WorkJobRecord = {
   id: string;
@@ -39,6 +74,18 @@ export type WorkJobRecord = {
   completedAt: string | null;
   /** Last durable persist backend. */
   durablePersist?: "supabase" | null;
+  /** Production progress / audit (optional for legacy rows). */
+  stage?: JobPipelineStage;
+  progressPercent?: number;
+  currentStep?: string | null;
+  estimatedRemainingMs?: number | null;
+  workerId?: string | null;
+  requestId?: string | null;
+  diagnosticId?: string | null;
+  artifactId?: string | null;
+  statusHistory?: JobStatusHistoryEntry[];
+  audit?: JobAuditTrail;
+  nextRetryAt?: string | null;
 };
 
 type Bucket = Map<string, WorkJobRecord>;
@@ -49,11 +96,26 @@ function getBucket(): Bucket {
   return g.__atlasWorkJobs;
 }
 
+export function isWorkJobTerminalStatus(status: WorkJobStatus): boolean {
+  return isTerminalJobStage(normalizeJobStage(status));
+}
+
+export function isWorkJobInProgressStatus(status: WorkJobStatus): boolean {
+  return isInProgressJobStage(normalizeJobStage(status));
+}
+
 function normalizeWorkJob(job: WorkJobRecord): WorkJobRecord {
+  const stage = job.stage ?? normalizeJobStage(job.status);
   return {
     ...job,
     metadata: job.metadata && typeof job.metadata === "object" ? job.metadata : {},
     visionGate: job.visionGate ?? null,
+    stage,
+    progressPercent: job.progressPercent ?? undefined,
+    currentStep: job.currentStep ?? null,
+    workerId: job.workerId ?? null,
+    requestId: job.requestId ?? job.id,
+    statusHistory: job.statusHistory ?? [],
   };
 }
 
@@ -136,6 +198,22 @@ export function findWorkJobByIdempotencyKey(
   return null;
 }
 
+/** Queue depth for overflow admission. */
+export function getWorkJobQueueSnapshot(userId: string): {
+  queued: number;
+  inFlight: number;
+  total: number;
+} {
+  const jobs = listWorkJobsForUser(userId);
+  let queued = 0;
+  let inFlight = 0;
+  for (const job of jobs) {
+    if (job.status === "queued") queued += 1;
+    else if (isWorkJobInProgressStatus(job.status)) inFlight += 1;
+  }
+  return { queued, inFlight, total: jobs.length };
+}
+
 /** Build minute-bucket idempotency key to prevent double-submit of the same request. */
 export function buildWorkJobIdempotencyKey(input: {
   userId: string;
@@ -149,4 +227,9 @@ export function buildWorkJobIdempotencyKey(input: {
   const minuteBucket = Math.floor((input.nowMs ?? Date.now()) / 60_000);
   const normalized = input.assignment.trim().replace(/\s+/g, " ").slice(0, 500);
   return `work:${input.userId}:${minuteBucket}:${normalized}`;
+}
+
+/** Test helper — clear in-memory bucket. */
+export function resetWorkJobMemoryStoreForTests(): void {
+  getBucket().clear();
 }
