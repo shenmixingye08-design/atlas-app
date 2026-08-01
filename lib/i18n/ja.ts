@@ -194,40 +194,60 @@ export const ui = {
   },
 
   secretaryHome: {
-    brandTagline: "あなた専属のAI秘書",
-    zeroFrictionHint: "やりたいことを書くだけで、あとはお任せください。",
-    askTitle: "何をしてほしいですか？",
+    brandTagline: "短い日本語で、実ファイルまで完成",
+    zeroFrictionHint:
+      "お願いすると、Word・Excel・PDF・PowerPointのファイルを作成し、ダウンロードできるところまで進めます。",
+    askTitle: "何のファイルを作りますか？",
     askPlaceholder:
-      "例）営業資料を作る / 毎日の投稿文を用意する / 議事録をまとめる",
+      "例）売上管理表をExcelで / 営業資料をPowerPointで / 議事録をWordで",
     askSubmit: "お願いする",
-    askHint: "送信後、すぐ取りかかります。完了したら🔔にお知らせします。",
-    firstJobTitle: "はじめてのお願い（選ぶだけ）",
-    firstJobHint: "迷ったらここから始めてください。あとから文章を直せます。",
-    attachHint: "レシート・請求書・表などの画像があれば、ここに添付してください。",
-    exampleJobs: [
+    askHint:
+      "送信後に作成を開始します。完了したらダウンロードできます。過去の成果物は「これまでの仕事」から再利用できます。",
+    firstJobTitle: "はじめてのお願い（選ぶだけ・実際に作成します）",
+    firstJobHint:
+      "押すと依頼文が入ります。そのまま「お願いする」で実ファイル作成に進みます（ダミー表示ではありません）。",
+    attachHint:
+      "レシートや表の写真があれば添付してください。読み取ってExcelに整理できます。",
+    valueProps: [
       {
-        id: "minutes",
-        label: "議事録をまとめる",
-        assignment:
-          "今日の打ち合わせ議事録をWordでまとめて。決定事項・宿題・次回予定を含めて。",
+        id: "files",
+        label: "写真や文章から Excel / Word / PDF / PowerPoint",
       },
       {
+        id: "download",
+        label: "完成したらダウンロード・再編集",
+      },
+      {
+        id: "habit",
+        label: "定期の仕事として繰り返せる",
+      },
+    ] as const,
+    continueHint: "前回の続きは「これまでの仕事」から開けます",
+    continueCta: "これまでの仕事を見る",
+    exampleJobs: [
+      {
         id: "sales",
-        label: "売上表を作る",
+        label: "売上表をExcelで",
         assignment:
           "今月の売上管理表をExcelで作って。商品・数量・金額・合計が分かるように。",
       },
       {
         id: "pitch",
-        label: "営業資料を作る",
+        label: "営業資料をPowerPointで",
         assignment:
           "新規顧客向けの営業説明資料をPowerPointで作って。概要・価格・次のアクションを含めて。",
       },
       {
-        id: "receipt",
-        label: "レシートを読み取る",
+        id: "minutes",
+        label: "議事録をWordで",
         assignment:
-          "添付のレシートを読み取り、日付・店名・金額をExcelに整理して。",
+          "今日の打ち合わせ議事録をWordでまとめて。決定事項・宿題・次回予定を含めて。",
+      },
+      {
+        id: "receipt",
+        label: "レシートをExcelに整理",
+        assignment:
+          "添付のレシートを読み取り、日付・店名・金額・支払方法をExcelの表に整理して。家計簿アプリへの自動追記は不要。",
       },
     ] as const,
     todayWorkTitle: "今日の仕事",
@@ -614,10 +634,10 @@ export const ui = {
   },
 
   commander: {
-    eyebrow: "AI Orchestrator",
-    title: "AIオーケストレーター",
+    eyebrow: "お願いする",
+    title: "仕事をお願いする",
     subtitle:
-      "一回依頼するだけで、仕事分類・必要AI選択・実行順・並列実行・失敗時再試行・完了報告まで自動で判断します。新しいAIは作らず、既存のAI秘書を統括します。",
+      "やりたいことを書くと、作成・整理・再試行・完了報告まで進めます。内部の実行計画は自動で扱います。",
     inputLabel: "依頼内容",
     inputPlaceholder:
       "例: 競合調査のあと営業メールを下書きし、Driveに保存してLINEで完了通知して",

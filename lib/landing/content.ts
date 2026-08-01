@@ -123,10 +123,10 @@ export const LANDING_REQUEST_EXAMPLES = [
     icon: "🧾",
     title: "レシートの写真",
     input: "レシートの写真",
-    request: "今月の家計簿へ追加してください",
-    result: "支出内容を読み取り、分類して記録します。",
-    // 家計簿モジュール・OCR・写真入力なし（domains/user-memory の分類スタブのみ）
-    status: "upcoming" as const satisfies LandingExampleStatus,
+    request: "日付・店名・金額をExcelの表に整理してください",
+    result: "読み取った内容をExcelファイルとして作成し、ダウンロードできます。",
+    // Vision→Excelは実装済みだが本番未検証。家計簿への自動追記モジュールは未実装。
+    status: "partial" as const satisfies LandingExampleStatus,
   },
   {
     id: "pdf-to-excel",

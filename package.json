@@ -20,7 +20,9 @@
     "test:ops-durability": "vitest run lib/ops-durability/cases.test.ts lib/ops-durability/phase3.test.ts lib/jobs/transitions.test.ts",
     "test:ops-durability:full": "OPS_DURABILITY_FULL=1 vitest run lib/ops-durability/phase3.test.ts",
     "test:release-blocker": "vitest run lib/release-blocker/phase4.test.ts",
-    "test:release-blocker:full": "RELEASE_BLOCKER_FULL=1 vitest run lib/release-blocker/phase4.test.ts"
+    "test:release-blocker:full": "RELEASE_BLOCKER_FULL=1 vitest run lib/release-blocker/phase4.test.ts",
+    "test:value-audit": "vitest run lib/value-audit/phase5.test.ts",
+    "test:value-audit:full": "VALUE_AUDIT_FULL=1 vitest run lib/value-audit/phase5.test.ts"
   },
   "dependencies": {
     "@clerk/localizations": "^4.13.5",

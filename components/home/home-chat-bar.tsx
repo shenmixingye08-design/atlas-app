@@ -14,6 +14,7 @@ import {
 import { RequestDocumentPicker } from "@/components/request/request-document-picker";
 import type { DocumentExtractClient } from "@/lib/attachments/documents/client-upload";
 import { assignmentImpliesImageWork } from "@/lib/vision/gate";
+import { trackFunnelClient } from "@/lib/product-funnel/client";
 import {
   buildWorkRequestSubmitPayload,
   stashPendingWorkRequestSubmit,
@@ -45,8 +46,15 @@ export function HomeChatBar() {
     const trimmed = input.trim();
     if (!trimmed || uploading) return;
 
+    trackFunnelClient("request_start", {
+      hasImages: uploadedIds.length > 0,
+      hasDocuments: documents.length > 0,
+      format: preferredFormat,
+    });
+
     if (failedImages.length > 0) {
       setError("アップロードに失敗した画像があります。削除するか再試行してください。");
+      trackFunnelClient("error_shown", { code: "upload_failed" });
       return;
     }
 
@@ -58,6 +66,7 @@ export function HomeChatBar() {
       setError(
         "この依頼には画像またはファイルの添付が必要です。レシート・請求書・表などを添付してください。",
       );
+      trackFunnelClient("error_shown", { code: "image_required" });
       return;
     }
 
@@ -78,6 +87,10 @@ export function HomeChatBar() {
     }
 
     setError(null);
+    trackFunnelClient("request_submit", {
+      sample: false,
+      format: preferredFormat,
+    });
     // Assignment lives in the stashed payload (not the URL) so body/metadata
     // cannot diverge and long Japanese prompts are not truncated.
     router.push("/workspace?autostart=1");
@@ -108,6 +121,7 @@ export function HomeChatBar() {
               onClick={() => {
                 setInput(job.assignment);
                 setError(null);
+                trackFunnelClient("sample_select", { sampleId: job.id });
               }}
             >
               {job.label}

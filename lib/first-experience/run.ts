@@ -43,9 +43,10 @@ export async function runFirstExperienceTask(
     await sleep(EMPLOYEE_STEP_DELAY_MS);
   }
 
+  // Wait for real orchestration — do not treat timeout as success with canned preview.
   const orchestrateResult = await Promise.race([
     orchestratePromise,
-    sleep(3000).then(() => null),
+    sleep(45_000).then(() => null),
   ]);
 
   const durationSec = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
@@ -56,6 +57,14 @@ export async function runFirstExperienceTask(
     deliverable = {
       ...task.deliverable,
       preview: orchestrateResult.deliverable.content.slice(0, 280),
+    };
+  } else {
+    // Honest incomplete result — UI must not present canned text as completed work.
+    deliverable = {
+      ...task.deliverable,
+      title: `${task.deliverable.title}（未完了）`,
+      preview:
+        "本番の作成が完了しませんでした。ホームから同じ内容で「お願いする」を実行し、成果物ダウンロードまで確認してください。",
     };
   }
 
