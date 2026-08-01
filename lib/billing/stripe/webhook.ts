@@ -7,6 +7,12 @@ import { getStripeWebhookSecret } from "./config";
 import { assertStripeWebhookSafeForProduction } from "./production-guard";
 import { handleStripeWebhookEvent } from "./webhook-handlers";
 import {
+  auditBillingOperation,
+  billingOperationFromWebhookType,
+} from "@/lib/security/billing/billing-security";
+import { recordAuditLogSafe } from "@/lib/owner/audit-log/record";
+
+import {
   hasProcessedStripeEvent,
   markStripeEventProcessed,
 } from "./webhook-idempotency";
@@ -78,6 +84,13 @@ export async function processStripeWebhookRequest(
       status: 200,
       duplicate: true,
     });
+    auditBillingOperation({
+      userId: null,
+      operation: "webhook",
+      success: true,
+      reason: `duplicate:${event.id}`,
+      targetId: event.type,
+    });
     return {
       status: 200,
       body: {
@@ -131,6 +144,29 @@ export async function processStripeWebhookRequest(
     handled: result.handled,
   });
 
+  const operation = billingOperationFromWebhookType(event.type);
+  const requestId = auditBillingOperation({
+    userId: result.userId ?? null,
+    operation,
+    success: result.success,
+    reason: result.message ?? event.type,
+    targetId: event.id,
+  });
+  recordAuditLogSafe({
+    userId: result.userId ?? null,
+    category: "billing",
+    action:
+      operation === "cancel"
+        ? "stripe_cancel"
+        : operation === "refund"
+          ? "stripe_payment"
+          : "stripe_payment",
+    targetId: result.planId ?? event.id,
+    result: result.success ? "success" : "failure",
+    reason: `${event.type}:${result.message ?? ""}`,
+    requestId,
+  });
+
   return {
     status,
     body: {
@@ -141,6 +177,7 @@ export async function processStripeWebhookRequest(
       message: result.message,
       userId: result.userId,
       planId: result.planId,
+      request_id: requestId,
     },
   };
 }

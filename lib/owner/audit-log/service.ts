@@ -122,6 +122,7 @@ export function auditLogsToCsv(entries: AuditLogEntry[]): string {
     "targetId",
     "result",
     "reason",
+    "requestId",
   ];
   const rows = entries.map((row) => [
     row.at,
@@ -134,6 +135,7 @@ export function auditLogsToCsv(entries: AuditLogEntry[]): string {
     row.targetId,
     row.result,
     row.reason,
+    row.requestId,
   ]);
   const lines = [
     headers.map(escapeCsv).join(","),

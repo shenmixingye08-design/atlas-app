@@ -106,6 +106,31 @@ export async function POST(request: Request): Promise<Response> {
     return billingDenied;
   }
 
+  const {
+    assertDeliverableQuota,
+    consumeDeliverableQuota,
+    deliverableQuotaDeniedResponse,
+  } = await import("@/lib/security/billing/free-user-controls");
+  const formatsForQuota = parseFormats(body.formats) ?? ["docx"];
+  for (const format of formatsForQuota) {
+    const kind =
+      format === "docx"
+        ? "word"
+        : format === "xlsx"
+          ? "excel"
+          : format === "pptx"
+            ? "powerpoint"
+            : format === "pdf"
+              ? "pdf"
+              : null;
+    if (!kind) continue;
+    const quota = await assertDeliverableQuota({ userId, kind });
+    if (!quota.allowed) {
+      releaseWordGenerateSlot(userId);
+      return deliverableQuotaDeniedResponse(quota);
+    }
+  }
+
   if (
     typeof body.finalDeliverable !== "string" ||
     !body.finalDeliverable.trim()
@@ -206,6 +231,21 @@ export async function POST(request: Request): Promise<Response> {
         projectName,
         workflowId,
       });
+      for (const file of result.deliverables) {
+        const kind =
+          file.format === "docx"
+            ? "word"
+            : file.format === "xlsx"
+              ? "excel"
+              : file.format === "pptx"
+                ? "powerpoint"
+                : file.format === "pdf"
+                  ? "pdf"
+                  : null;
+        if (kind) {
+          consumeDeliverableQuota({ userId, kind });
+        }
+      }
     }
 
     return Response.json({

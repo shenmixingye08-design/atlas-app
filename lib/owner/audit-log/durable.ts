@@ -55,7 +55,13 @@ function unwrapPayload(loaded: unknown): AuditDurablePayload | null {
         retentionDays: 90,
         updatedAt: null,
       },
-      entries: asPayload.entries,
+      entries: asPayload.entries.map((entry) => ({
+        ...entry,
+        requestId:
+          entry && typeof entry === "object" && "requestId" in entry
+            ? (entry as AuditLogEntry).requestId ?? null
+            : null,
+      })),
     };
   }
 

@@ -85,6 +85,39 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  // Cap monthly image uploads to stop free-user flood / paid bypass.
+  const {
+    assertDeliverableQuota,
+    consumeDeliverableQuota,
+    deliverableQuotaDeniedResponse,
+  } = await import("@/lib/security/billing/free-user-controls");
+  const imageQuota = await assertDeliverableQuota({
+    userId,
+    kind: "image",
+  });
+  if (!imageQuota.allowed || imageQuota.used + files.length > imageQuota.limit) {
+    logVisionPipeline({
+      stage: "attachment_upload_after",
+      ok: false,
+      traceId,
+      dropReason: "billing_quota",
+    });
+    if (!imageQuota.allowed) {
+      return deliverableQuotaDeniedResponse(imageQuota);
+    }
+    return Response.json(
+      {
+        error: `画像アップロードの月間上限（${imageQuota.limit}件）を超えます`,
+        code: "quota_exceeded",
+        used: imageQuota.used,
+        limit: imageQuota.limit,
+        request_id: imageQuota.request_id,
+        upgradePath: "/settings/billing",
+      },
+      { status: 429 },
+    );
+  }
+
   try {
     const buffers = await Promise.all(
       files.map(async (file) => ({
@@ -142,6 +175,10 @@ export async function POST(request: Request): Promise<Response> {
       storageBackend: result.attachment.storageBackend,
       warnings: result.warnings,
     }));
+
+    for (let n = 0; n < attachments.length; n += 1) {
+      consumeDeliverableQuota({ userId, kind: "image" });
+    }
 
     logVisionPipeline({
       stage: "attachment_upload_after",

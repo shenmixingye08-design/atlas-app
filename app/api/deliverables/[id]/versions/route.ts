@@ -1,10 +1,14 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 
 import { getStoredDeliverableForUser } from "@/lib/deliverables/store";
 import {
   findVersionGroupByDeliverableIdAsync,
   listDeliverableVersionsAsync,
 } from "@/lib/deliverables/versioning";
+import {
+  assertArtifactAccess,
+  artifactAccessDeniedResponse,
+} from "@/lib/security/artifact/access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +18,7 @@ type RouteContext = {
 };
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ): Promise<Response> {
   const { userId } = await auth();
@@ -23,9 +27,30 @@ export async function GET(
   }
 
   const { id } = await context.params;
+  const user = await currentUser();
+  const email =
+    user?.primaryEmailAddress?.emailAddress ??
+    user?.emailAddresses?.[0]?.emailAddress ??
+    null;
   const stored = await getStoredDeliverableForUser(id, userId);
+  const access = assertArtifactAccess({
+    actorUserId: userId,
+    actorEmail: email,
+    artifactOwnerUserId: stored?.userId ?? null,
+    op: "revision",
+    artifactId: id,
+    ip:
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      request.headers.get("x-real-ip"),
+  });
+  if (!access.allowed) {
+    return artifactAccessDeniedResponse(access);
+  }
   if (!stored) {
-    return Response.json({ error: "Not found" }, { status: 404 });
+    return Response.json(
+      { error: "Not found", request_id: access.request_id },
+      { status: 404 },
+    );
   }
 
   const group = await findVersionGroupByDeliverableIdAsync(stored.id);

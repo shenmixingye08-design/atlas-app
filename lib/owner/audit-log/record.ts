@@ -56,6 +56,9 @@ export async function recordAuditLog(
     targetId: input.targetId ? sanitizeAuditReason(input.targetId) : null,
     result: input.result,
     reason: sanitizeAuditReason(input.reason),
+    requestId: input.requestId
+      ? sanitizeAuditReason(input.requestId)
+      : null,
   };
 
   prependAuditLogEntry(entry);
