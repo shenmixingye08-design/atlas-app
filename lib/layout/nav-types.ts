@@ -3,6 +3,7 @@ export type AtlasNavPage =
   | "projects"
   | "commander"
   | "history"
+  | "artifacts"
   | "automations"
   | "settings"
   | "x-autopost"
