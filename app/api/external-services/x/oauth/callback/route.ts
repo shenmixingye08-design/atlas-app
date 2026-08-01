@@ -69,6 +69,27 @@ export async function GET(request: Request): Promise<Response> {
       origin,
     );
 
+    try {
+      const { recordAuditLogSafe, auditRequestContext } = await import(
+        "@/lib/owner/audit-log/record"
+      );
+      const ctx = auditRequestContext(request);
+      recordAuditLogSafe({
+        actorUserId: userId,
+        action: "x_connect",
+        targetType: "integration",
+        targetId: connection.serviceId,
+        summary: "X OAuth connected",
+        metadata: {
+          username:
+            connection.account?.username ?? connection.account?.email ?? null,
+        },
+        ...ctx,
+      });
+    } catch {
+      // audit must not block OAuth success
+    }
+
     return redirectToSettings(origin, {
       connected: connection.serviceId,
       username: connection.account?.username ?? connection.account?.email ?? "",
@@ -78,6 +99,23 @@ export async function GET(request: Request): Promise<Response> {
     // Never log tokens / auth codes — message only.
     console.error("[X OAuth callback]", message);
     markXConnectionError(userId, message);
+    try {
+      const { recordAuditLogSafe, auditRequestContext } = await import(
+        "@/lib/owner/audit-log/record"
+      );
+      const ctx = auditRequestContext(request);
+      recordAuditLogSafe({
+        actorUserId: userId,
+        action: "x_connect",
+        targetType: "integration",
+        targetId: "x",
+        summary: "X OAuth connect failed",
+        metadata: { ok: false, error: message.slice(0, 120) },
+        ...ctx,
+      });
+    } catch {
+      // ignore
+    }
     return redirectToSettings(origin, { x_error: "1" });
   }
 }

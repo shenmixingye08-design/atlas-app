@@ -110,6 +110,16 @@ export async function deliverWebPushWithAck(input: {
       { maxAttempts: MAX_NOTIFY_ATTEMPTS },
     );
     recordReliabilityEvent("notification_ack", "success");
+    // Keep job.pushStatus in sync when notification is tied to a job/task.
+    const jobId = input.record.relatedTaskId;
+    if (jobId && input.record.userId) {
+      try {
+        const { setJobPushStatus } = await import("@/lib/jobs/reliability");
+        await setJobPushStatus(jobId, input.record.userId, "sent");
+      } catch {
+        // non-fatal: delivery already succeeded
+      }
+    }
     return { ok: true, attempts };
   } catch (error) {
     const message =
@@ -117,6 +127,15 @@ export async function deliverWebPushWithAck(input: {
     recordReliabilityEvent("notification_ack", "failure", 1, {
       errorMessage: message,
     });
+    const jobId = input.record.relatedTaskId;
+    if (jobId && input.record.userId) {
+      try {
+        const { setJobPushStatus } = await import("@/lib/jobs/reliability");
+        await setJobPushStatus(jobId, input.record.userId, "failed");
+      } catch {
+        // ignore
+      }
+    }
     await enqueueNotificationDlq({
       notificationId: input.record.notificationId,
       userId: input.record.userId!,

@@ -2,6 +2,8 @@ import { classifyRetryError } from "@/lib/jobs/retry-classifier";
 
 /** Immediate-call retry delays (not job-scheduler delays). */
 export const IMMEDIATE_RETRY_BACKOFF_MS = [500, 1_500, 4_000] as const;
+/** External-facing policy (Phase3): 2s / 5s / 10s / 30s + jitter at call site. */
+export const EXTERNAL_RETRY_BACKOFF_MS = [2_000, 5_000, 10_000, 30_000] as const;
 export const MAX_IMMEDIATE_RETRIES = 3;
 
 export type RetryOptions = {
@@ -47,9 +49,10 @@ export async function withRetry<T>(
       if (attempt >= maxAttempts || !shouldRetry(error, attempt)) {
         throw error;
       }
-      const delay =
+      const base =
         backoff[Math.min(attempt - 1, backoff.length - 1)] ??
         backoff[backoff.length - 1]!;
+      const delay = base + Math.floor(base * 0.2 * Math.random());
       options.onRetry?.(error, attempt, delay);
       await sleep(delay);
     }

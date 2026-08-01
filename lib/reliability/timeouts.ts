@@ -18,6 +18,18 @@ export const RELIABILITY_TIMEOUTS = {
   uiWaitMax: 3_000,
   /** Server job wall clock for a single work request */
   workJob: 8 * 60_000,
+  /** Inbound API request budget */
+  request: 60_000,
+  /** Max time waiting in queue before stuck classification */
+  queueWait: 15 * 60_000,
+  /** Worker lease / hang detection (aligned with JOB_HANG_TIMEOUT) */
+  worker: 30 * 60_000,
+  /** Storage object upload/download */
+  storage: 30_000,
+  /** Durable DB round-trip soft budget */
+  db: 10_000,
+  /** Notification channel ACK */
+  notification: 15_000,
 } as const;
 
 export type ReliabilityTimeoutKey = keyof typeof RELIABILITY_TIMEOUTS;

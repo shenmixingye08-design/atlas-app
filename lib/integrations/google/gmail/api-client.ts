@@ -210,15 +210,21 @@ async function gmailFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetch(`${GMAIL_API_BASE}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...(init?.headers ?? {}),
+  const { fetchWithTimeout } = await import("@/lib/http/fetch-with-timeout");
+  const { RELIABILITY_TIMEOUTS } = await import("@/lib/reliability/timeouts");
+  const response = await fetchWithTimeout(
+    `${GMAIL_API_BASE}${path}`,
+    {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...(init?.headers ?? {}),
+      },
+      cache: "no-store",
     },
-    cache: "no-store",
-  });
+    RELIABILITY_TIMEOUTS.google
+  );
 
   if (response.status === 204) {
     return {} as T;

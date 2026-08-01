@@ -16,7 +16,9 @@
     "test:vision-eval-unit": "vitest run lib/vision-eval/cases.test.ts lib/vision-eval/fault-injection.test.ts",
     "test:vision-phase1:live": "QUALITY_LIVE_VISION=1 vitest run lib/vision-eval/phase1.live.test.ts",
     "test:artifact-durability": "vitest run lib/artifact-durability/cases.test.ts lib/artifact-durability/phase2.test.ts",
-    "test:artifact-durability:full": "ARTIFACT_DURABILITY_FULL=1 vitest run lib/artifact-durability/phase2.test.ts"
+    "test:artifact-durability:full": "ARTIFACT_DURABILITY_FULL=1 vitest run lib/artifact-durability/phase2.test.ts",
+    "test:ops-durability": "vitest run lib/ops-durability/cases.test.ts lib/ops-durability/phase3.test.ts lib/jobs/transitions.test.ts",
+    "test:ops-durability:full": "OPS_DURABILITY_FULL=1 vitest run lib/ops-durability/phase3.test.ts"
   },
   "dependencies": {
     "@clerk/localizations": "^4.13.5",
