@@ -50,10 +50,12 @@ export function ContactForm({ className }: { className?: string }) {
   const categoryOptions = useMemo(() => CONTACT_CATEGORIES, []);
 
   useEffect(() => {
-    const raw = searchParams.get("category");
-    if (raw && isContactCategoryId(raw)) {
-      setForm((prev) => ({ ...prev, category: raw }));
-    }
+    queueMicrotask(() => {
+      const raw = searchParams.get("category");
+      if (raw && isContactCategoryId(raw)) {
+        setForm((prev) => ({ ...prev, category: raw }));
+      }
+    });
   }, [searchParams]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {

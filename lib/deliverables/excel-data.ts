@@ -6,7 +6,8 @@ export type ExcelSheetData = {
   rows: string[][];
 };
 
-const TABLE_SEPARATOR_PATTERN = /^\|?[\s:-]+\|[\s|:-]+$/;
+/** Markdown table separator: supports 1+ columns (`| --- |` and `| --- | --- |`). */
+const TABLE_SEPARATOR_PATTERN = /^\|?[\s:|-]+$/;
 
 const EXCEL_KEYWORDS =
   /excel|\.xlsx|エクセル|表計算|スプレッドシート|spreadsheet|一覧表|家計簿|経費精算/i;
@@ -63,7 +64,7 @@ export function contentHasMarkdownTable(content: string): boolean {
       sawRow = false;
       continue;
     }
-    if (/^\|?[\s:-]+\|[\s|:-]+$/.test(trimmed)) {
+    if (TABLE_SEPARATOR_PATTERN.test(trimmed)) {
       if (sawRow) return true;
       continue;
     }
@@ -140,23 +141,69 @@ function extractMarkdownTables(content: string): ExcelSheetData[] {
   return sheets;
 }
 
+function parseDelimitedRecords(
+  content: string,
+  delimiter: "," | "\t",
+): string[][] {
+  const text = content.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (inQuotes) {
+      if (ch === '"' && text[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = true;
+      continue;
+    }
+    if (ch === delimiter) {
+      row.push(current.trim());
+      current = "";
+      continue;
+    }
+    if (ch === "\n") {
+      row.push(current.trim());
+      current = "";
+      if (row.some((cell) => cell.length > 0)) rows.push(row);
+      row = [];
+      continue;
+    }
+    current += ch;
+  }
+  row.push(current.trim());
+  if (row.some((cell) => cell.length > 0)) rows.push(row);
+  return rows;
+}
+
 function extractCsvLikeSheet(content: string): ExcelSheetData | null {
-  const lines = content
+  const withoutHash = content
     .replace(/\r\n/g, "\n")
     .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !line.startsWith("#"));
+    .filter((line) => !line.trim().startsWith("#"))
+    .join("\n");
 
-  const delimited = lines.filter(
-    (line) => line.includes("\t") || (line.includes(",") && !line.includes("|")),
-  );
-  if (delimited.length < 2) return null;
+  const hasTab = withoutHash.includes("\t");
+  const hasComma = withoutHash.includes(",") && !withoutHash.includes("|");
+  if (!hasTab && !hasComma) return null;
 
-  const delimiter = delimited[0]!.includes("\t") ? "\t" : ",";
-  const rows = delimited.map((line) =>
-    line.split(delimiter).map((cell) => cell.trim().replace(/^"|"$/g, "")),
+  const delimiter: "," | "\t" = hasTab ? "\t" : ",";
+  const rows = parseDelimitedRecords(withoutHash, delimiter).filter(
+    (row) => !row.every((cell) => cell === ""),
   );
+  if (rows.length < 2) return null;
+
   const width = Math.max(...rows.map((row) => row.length), 1);
   const [header, ...body] = rows;
   return {

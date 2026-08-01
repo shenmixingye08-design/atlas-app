@@ -56,7 +56,9 @@ export function DisasterRecoveryPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const run = async (body: Record<string, unknown>) => {

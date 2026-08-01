@@ -1,5 +1,6 @@
 import "server-only";
 
+import { inspectXlsxProduction } from "./excel-production/xlsx-quality";
 import { verifyPdfQuality } from "./pdf-quality";
 import type { DeliverableFormat, GeneratedDeliverableFile } from "./types";
 
@@ -66,6 +67,11 @@ export async function verifyGeneratedExportAsync(
   file: GeneratedDeliverableFile,
 ): Promise<ExportVerifyResult> {
   const base = verifyGeneratedExport(file);
+  if (file.format === "xlsx") {
+    const xlsx = inspectXlsxProduction(file.buffer);
+    const reasons = [...base.reasons, ...xlsx.reasons];
+    return { ok: reasons.length === 0, reasons };
+  }
   if (file.format !== "pdf") return base;
 
   const pdf = await verifyPdfQuality(file);

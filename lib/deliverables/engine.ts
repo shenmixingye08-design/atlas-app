@@ -132,6 +132,7 @@ async function generateVerifiedFile(
   content: string,
   baseFileName: string,
   docxOptions?: DocxGenerateOptions,
+  generatorOptions?: Record<string, unknown>,
 ): Promise<{
   file: GeneratedDeliverableFile | null;
   reasons: string[];
@@ -168,7 +169,9 @@ async function generateVerifiedFile(
       const file =
         format === "docx"
           ? await generator.generate(content, baseFileName, docxOptions)
-          : await generator.generate(content, baseFileName);
+          : format === "xlsx" && generatorOptions
+            ? await generator.generate(content, baseFileName, generatorOptions)
+            : await generator.generate(content, baseFileName);
       generateMs += Date.now() - renderStarted;
       if (format === "docx" && consumeWordFault("docx_verify")) {
         lastReasons = ["Word生成失敗: fault_inject:docx_verify"];
@@ -739,6 +742,7 @@ export async function generateDeliverables(
         safeContent,
         baseFileName,
         format === "docx" ? docxOptions : undefined,
+        format === "xlsx" ? { assignment: input.assignment } : undefined,
       );
 
       if (!file) {

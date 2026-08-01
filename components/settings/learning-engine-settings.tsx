@@ -109,7 +109,9 @@ export function LearningEngineSettings() {
   }, [apiPeriod]);
 
   useEffect(() => {
-    void reload();
+    queueMicrotask(() => {
+      void reload();
+    });
   }, [reload]);
 
   useEffect(() => {

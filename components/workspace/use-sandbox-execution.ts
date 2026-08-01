@@ -25,17 +25,16 @@ export function useSandboxExecution(actions: readonly ActionRequest[]) {
 
   useEffect(() => {
     if (actions.length === 0) {
-      setExecutions([]);
-      setIsRunning(false);
-      setIsComplete(false);
+      queueMicrotask(() => {
+        setExecutions([]);
+        setIsRunning(false);
+        setIsComplete(false);
+      });
       return;
     }
 
     let cancelled = false;
     const plan = createSandboxPlan(actions);
-    setExecutions(plan.executions);
-    setIsRunning(true);
-    setIsComplete(false);
 
     async function simulate() {
       const state = [...plan.executions];
@@ -66,7 +65,13 @@ export function useSandboxExecution(actions: readonly ActionRequest[]) {
       }
     }
 
-    void simulate();
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setExecutions(plan.executions);
+      setIsRunning(true);
+      setIsComplete(false);
+      void simulate();
+    });
 
     return () => {
       cancelled = true;

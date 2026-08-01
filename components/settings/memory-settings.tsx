@@ -127,7 +127,9 @@ export function MemorySettings() {
   }, []);
 
   useEffect(() => {
-    void reload();
+    queueMicrotask(() => {
+      void reload();
+    });
   }, [reload]);
 
   const filteredMemories = useMemo(() => {
