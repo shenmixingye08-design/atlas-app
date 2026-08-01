@@ -5,13 +5,24 @@ type FlagBucket = Map<FeatureFlagId, FeatureFlagRecord>;
 
 const DEFAULT_STATE: FeatureFlagState = "on";
 
+/** New platform flags default OFF so production stays on V1 until rollout. */
+const DEFAULT_STATE_BY_ID: Partial<Record<FeatureFlagId, FeatureFlagState>> = {
+  automation_v2_enabled: "off",
+  automation_memory_enabled: "off",
+  automation_approval_enabled: "off",
+};
+
 function nowIso(): string {
   return new Date().toISOString();
 }
 
+function defaultStateFor(id: FeatureFlagId): FeatureFlagState {
+  return DEFAULT_STATE_BY_ID[id] ?? DEFAULT_STATE;
+}
+
 function createDefaultRecord(id: FeatureFlagId): FeatureFlagRecord {
   const timestamp = nowIso();
-  return { id, state: DEFAULT_STATE, updatedAt: timestamp };
+  return { id, state: defaultStateFor(id), updatedAt: timestamp };
 }
 
 function getBucket(): FlagBucket {

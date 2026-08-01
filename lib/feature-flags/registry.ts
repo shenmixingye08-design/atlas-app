@@ -67,6 +67,24 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
     description: "自動化の高品質実行モード",
     category: "capability",
   },
+  {
+    id: "automation_v2_enabled",
+    label: "自動化プラットフォーム v2",
+    description: "新しい Automation Platform API / モデル（既存の定期の仕事は維持）",
+    category: "capability",
+  },
+  {
+    id: "automation_memory_enabled",
+    label: "自動化メモリ連携",
+    description: "Automation ごとの Memory Scope 利用（契約のみ → 段階公開）",
+    category: "capability",
+  },
+  {
+    id: "automation_approval_enabled",
+    label: "自動化承認フロー",
+    description: "実行前承認・ステップ承認（Execution Policy）",
+    category: "capability",
+  },
 ] as const;
 
 export const FEATURE_FLAG_IDS: readonly FeatureFlagId[] =

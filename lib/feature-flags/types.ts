@@ -10,7 +10,10 @@ export type FeatureFlagId =
   | "blog"
   | "sns"
   | "ai_employees"
-  | "high_quality_mode";
+  | "high_quality_mode"
+  | "automation_v2_enabled"
+  | "automation_memory_enabled"
+  | "automation_approval_enabled";
 
 /** Operator-controlled rollout state. */
 export type FeatureFlagState = "on" | "off" | "beta";

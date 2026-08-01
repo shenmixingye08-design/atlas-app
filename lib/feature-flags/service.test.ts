@@ -18,10 +18,17 @@ describe("feature flag store and service", () => {
     resetFeatureFlagStore();
   });
 
-  it("defaults all flags to on", () => {
+  it("defaults legacy flags to on and automation platform flags to off", () => {
     const snapshot = updateFeatureFlagState("google", "on");
-    expect(snapshot.flags).toHaveLength(11);
-    expect(snapshot.flags.every((flag) => flag.state === "on")).toBe(true);
+    expect(snapshot.flags).toHaveLength(14);
+    const automationFlags = snapshot.flags.filter((flag) =>
+      flag.id.startsWith("automation_"),
+    );
+    expect(automationFlags.every((flag) => flag.state === "off")).toBe(true);
+    const legacyFlags = snapshot.flags.filter(
+      (flag) => !flag.id.startsWith("automation_"),
+    );
+    expect(legacyFlags.every((flag) => flag.state === "on")).toBe(true);
   });
 
   it("updates a single flag state", () => {
