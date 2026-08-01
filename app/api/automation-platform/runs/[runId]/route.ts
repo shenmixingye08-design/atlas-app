@@ -22,7 +22,7 @@ export async function GET(
 
   try {
     const access = await resolveFeatureAccessContext();
-    const run = automationPlatformService.getRun(userId, runId, access);
+    const run = await automationPlatformService.getRun(userId, runId, access);
     return Response.json({ run });
   } catch (error) {
     return jsonError(error, {

@@ -8,10 +8,14 @@ import {
 } from "@/lib/automation-platform/idempotency/keys";
 import { detectInstructionConflicts } from "@/lib/automation-platform/instruction/conflict";
 import { validateMemoryPolicy } from "@/lib/automation-platform/memory/contract";
+import { syncV2ToV1Scheduler } from "@/lib/automation-platform/bridge/v2-to-v1-scheduler";
+import {
+  ensureAutomationsV2Hydrated,
+  persistAutomationV2Now,
+} from "@/lib/automation-platform/durable";
 import {
   memoryGetAutomation,
   memoryGetRun,
-  memoryInsertAutomation,
   memoryInsertRun,
   memoryListAutomationsForUser,
   memoryListRunsForAutomation,
@@ -58,13 +62,14 @@ function assertRateLimit(userId: string, action: string): void {
 }
 
 export class AutomationPlatformService {
-  create(
+  async create(
     userId: string,
     input: CreateAutomationV2Input,
     context: FeatureAccessContext,
-  ): AutomationV2 {
+  ): Promise<AutomationV2> {
     assertV2Enabled(context);
     assertRateLimit(userId, "create");
+    await ensureAutomationsV2Hydrated(userId);
 
     if (input.memoryPolicy?.enabled) {
       if (!isFeatureEnabled("automation_memory_enabled", context)) {
@@ -75,7 +80,11 @@ export class AutomationPlatformService {
     }
 
     const record = buildAutomationFromCreateInput(userId, input);
-    const saved = memoryInsertAutomation(record);
+    let saved = persistAutomationV2Now(record);
+
+    if (saved.status === "active") {
+      saved = await this.registerWithScheduler(saved);
+    }
 
     appendAutomationAudit({
       actorUserId: userId,
@@ -84,40 +93,54 @@ export class AutomationPlatformService {
       runId: null,
       outcome: "success",
       errorCode: null,
-      meta: { status: saved.status, name: saved.name },
+      meta: {
+        status: saved.status,
+        name: saved.name,
+        schedulerRegistered: saved.status === "active",
+      },
     });
 
     return saved;
   }
 
-  createFromUnknownBody(
+  async createFromUnknownBody(
     userId: string,
     body: unknown,
     context: FeatureAccessContext,
-  ): AutomationV2 {
+  ): Promise<AutomationV2> {
     const input = parseCreateAutomationBody(body);
     return this.create(userId, input, context);
   }
 
-  list(userId: string, context: FeatureAccessContext): AutomationV2[] {
+  async list(
+    userId: string,
+    context: FeatureAccessContext,
+  ): Promise<AutomationV2[]> {
     assertV2Enabled(context);
     assertRateLimit(userId, "list");
+    await ensureAutomationsV2Hydrated(userId);
     return memoryListAutomationsForUser(userId);
   }
 
-  get(userId: string, id: string, context: FeatureAccessContext): AutomationV2 {
+  async get(
+    userId: string,
+    id: string,
+    context: FeatureAccessContext,
+  ): Promise<AutomationV2> {
     assertV2Enabled(context);
+    await ensureAutomationsV2Hydrated(userId);
     return assertOwner(memoryGetAutomation(id), userId);
   }
 
-  update(
+  async update(
     userId: string,
     id: string,
     patch: UpdateAutomationV2Input,
     context: FeatureAccessContext,
-  ): AutomationV2 {
+  ): Promise<AutomationV2> {
     assertV2Enabled(context);
     assertRateLimit(userId, "update");
+    await ensureAutomationsV2Hydrated(userId);
     const current = assertOwner(memoryGetAutomation(id), userId);
 
     if (patch.status && patch.status !== current.status) {
@@ -184,7 +207,16 @@ export class AutomationPlatformService {
       updatedAt: new Date().toISOString(),
     };
 
-    const saved = memoryUpdateAutomation(updated);
+    let saved = persistAutomationV2Now(updated);
+
+    if (
+      saved.status === "active" ||
+      current.status === "active" ||
+      Boolean(saved.instruction.structuredOptions.v1SchedulerId)
+    ) {
+      saved = await this.registerWithScheduler(saved);
+    }
+
     appendAutomationAudit({
       actorUserId: userId,
       action: "automation.update",
@@ -197,12 +229,33 @@ export class AutomationPlatformService {
     return saved;
   }
 
-  duplicate(
+  private async registerWithScheduler(
+    automation: AutomationV2,
+  ): Promise<AutomationV2> {
+    const bridge = await syncV2ToV1Scheduler(automation);
+    if (!bridge.v1Id) return automation;
+
+    const next: AutomationV2 = {
+      ...automation,
+      instruction: {
+        ...automation.instruction,
+        structuredOptions: {
+          ...automation.instruction.structuredOptions,
+          v1SchedulerId: bridge.v1Id,
+          schedulerRegistered: bridge.registered,
+        },
+      },
+      updatedAt: new Date().toISOString(),
+    };
+    return persistAutomationV2Now(next);
+  }
+
+  async duplicate(
     userId: string,
     id: string,
     context: FeatureAccessContext,
-  ): AutomationV2 {
-    const source = this.get(userId, id, context);
+  ): Promise<AutomationV2> {
+    const source = await this.get(userId, id, context);
     return this.create(
       userId,
       {
@@ -213,7 +266,14 @@ export class AutomationPlatformService {
         workflow: source.workflow,
         executionPolicy: source.executionPolicy,
         notificationPolicy: source.notificationPolicy,
-        instruction: source.instruction,
+        instruction: {
+          ...source.instruction,
+          structuredOptions: {
+            ...source.instruction.structuredOptions,
+            v1SchedulerId: undefined,
+            schedulerRegistered: false,
+          },
+        },
         memoryPolicy: { ...source.memoryPolicy, enabled: false },
         rejectOnConflict: false,
       },
@@ -221,12 +281,20 @@ export class AutomationPlatformService {
     );
   }
 
-  pause(userId: string, id: string, context: FeatureAccessContext): AutomationV2 {
+  async pause(
+    userId: string,
+    id: string,
+    context: FeatureAccessContext,
+  ): Promise<AutomationV2> {
     return this.update(userId, id, { status: "paused", nextRunAt: null }, context);
   }
 
-  resume(userId: string, id: string, context: FeatureAccessContext): AutomationV2 {
-    const current = this.get(userId, id, context);
+  async resume(
+    userId: string,
+    id: string,
+    context: FeatureAccessContext,
+  ): Promise<AutomationV2> {
+    const current = await this.get(userId, id, context);
     const nextRunAt = computeNextRunIsoFromTrigger(current.trigger);
     return this.update(
       userId,
@@ -236,11 +304,11 @@ export class AutomationPlatformService {
     );
   }
 
-  archive(
+  async archive(
     userId: string,
     id: string,
     context: FeatureAccessContext,
-  ): AutomationV2 {
+  ): Promise<AutomationV2> {
     return this.update(
       userId,
       id,
@@ -249,12 +317,12 @@ export class AutomationPlatformService {
     );
   }
 
-  getNextRunAt(
+  async getNextRunAt(
     userId: string,
     id: string,
     context: FeatureAccessContext,
-  ): string | null {
-    const automation = this.get(userId, id, context);
+  ): Promise<string | null> {
+    const automation = await this.get(userId, id, context);
     if (automation.status !== "active") return null;
     return computeNextRunIsoFromTrigger(automation.trigger);
   }
@@ -263,16 +331,17 @@ export class AutomationPlatformService {
    * Manual / scheduled run creation with idempotency.
    * Does not invoke deliverable engines in Phase 1 — creates a durable Run contract.
    */
-  enqueueRun(input: {
+  async enqueueRun(input: {
     userId: string;
     automationId: string;
     triggerType: "manual" | "schedule";
     scheduledFor?: string | null;
     clientIdempotencyKey?: string | null;
     context: FeatureAccessContext;
-  }): { run: AutomationRun; created: boolean } {
+  }): Promise<{ run: AutomationRun; created: boolean }> {
     assertV2Enabled(input.context);
     assertRateLimit(input.userId, "run");
+    await ensureAutomationsV2Hydrated(input.userId);
 
     const automation = assertOwner(
       memoryGetAutomation(input.automationId),
@@ -433,22 +502,24 @@ export class AutomationPlatformService {
     return inserted;
   }
 
-  listRuns(
+  async listRuns(
     userId: string,
     automationId: string,
     context: FeatureAccessContext,
-  ): AutomationRun[] {
+  ): Promise<AutomationRun[]> {
     assertV2Enabled(context);
+    await ensureAutomationsV2Hydrated(userId);
     assertOwner(memoryGetAutomation(automationId), userId);
     return memoryListRunsForAutomation({ userId, automationId });
   }
 
-  getRun(
+  async getRun(
     userId: string,
     runId: string,
     context: FeatureAccessContext,
-  ): AutomationRun {
+  ): Promise<AutomationRun> {
     assertV2Enabled(context);
+    await ensureAutomationsV2Hydrated(userId);
     const run = memoryGetRun(runId);
     if (!run || run.userId !== userId) {
       throw new AutomationPlatformError("automation_not_found", {
@@ -458,11 +529,11 @@ export class AutomationPlatformService {
     return run;
   }
 
-  approveRun(
+  async approveRun(
     userId: string,
     runId: string,
     context: FeatureAccessContext,
-  ): AutomationRun {
+  ): Promise<AutomationRun> {
     assertV2Enabled(context);
     if (!isFeatureEnabled("automation_approval_enabled", context)) {
       throw new AutomationPlatformError("automation_feature_disabled", {
@@ -471,7 +542,7 @@ export class AutomationPlatformService {
     }
     assertRateLimit(userId, "approve");
 
-    const run = this.getRun(userId, runId, context);
+    const run = await this.getRun(userId, runId, context);
     if (
       run.approvalExpiresAt &&
       Date.parse(run.approvalExpiresAt) <= Date.now()
@@ -503,13 +574,13 @@ export class AutomationPlatformService {
     return updated;
   }
 
-  rejectRun(
+  async rejectRun(
     userId: string,
     runId: string,
     context: FeatureAccessContext,
-  ): AutomationRun {
+  ): Promise<AutomationRun> {
     assertV2Enabled(context);
-    const run = this.getRun(userId, runId, context);
+    const run = await this.getRun(userId, runId, context);
     const updated = this.transitionRun(
       run,
       "cancelled",
@@ -528,13 +599,13 @@ export class AutomationPlatformService {
     return updated;
   }
 
-  cancelRun(
+  async cancelRun(
     userId: string,
     runId: string,
     context: FeatureAccessContext,
-  ): AutomationRun {
+  ): Promise<AutomationRun> {
     assertV2Enabled(context);
-    const run = this.getRun(userId, runId, context);
+    const run = await this.getRun(userId, runId, context);
     return this.transitionRun(
       run,
       "cancelled",

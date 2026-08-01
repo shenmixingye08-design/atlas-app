@@ -23,7 +23,7 @@ export async function GET(
 
   try {
     const access = await resolveFeatureAccessContext();
-    const automation = automationPlatformService.get(userId, id, access);
+    const automation = await automationPlatformService.get(userId, id, access);
     return Response.json({ automation });
   } catch (error) {
     return jsonError(error, {
@@ -59,7 +59,7 @@ export async function PATCH(
     }
 
     const access = await resolveFeatureAccessContext();
-    const updated = automationPlatformService.update(
+    const updated = await automationPlatformService.update(
       userId,
       id,
       body as UpdateAutomationV2Input,
