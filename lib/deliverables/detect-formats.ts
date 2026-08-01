@@ -1,4 +1,5 @@
 import { detectCompanyDeliverableFormats } from "@/lib/company-templates/context";
+import { detectFormatsViaUnderstanding } from "@/lib/request-understanding/bridge";
 
 import type {
   DeliverableFormat,
@@ -191,6 +192,20 @@ export function detectDeliverableFormats(
     return companyDetection;
   }
 
+  // Unified multi-signal understanding (not first-keyword-wins).
+  const understood = detectFormatsViaUnderstanding(assignment);
+  if (
+    understood.matchedRule &&
+    !understood.matchedRule.endsWith(":fallback") &&
+    understood.formats.length > 0
+  ) {
+    // Prefer understanding when it found a concrete document intent.
+    if (!understood.matchedRule.endsWith(":conversation") &&
+        !understood.matchedRule.endsWith(":needs_input")) {
+      return understood;
+    }
+  }
+
   const haystack = normalizeHaystack(assignment);
 
   for (const rule of FORMAT_RULES) {
@@ -204,6 +219,10 @@ export function detectDeliverableFormats(
         matchedRule: rule.id,
       };
     }
+  }
+
+  if (understood.formats.length > 0 && understood.matchedRule) {
+    return understood;
   }
 
   if (companyDetection.formats.length > 0) {

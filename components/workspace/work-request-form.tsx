@@ -22,6 +22,7 @@ import {
   type PreferredDeliverableFormat,
   type WorkRequestSubmitPayload,
 } from "@/lib/workspace/work-request-payload";
+import { RequestUnderstandingPanel } from "@/components/workspace/request-understanding-panel";
 
 export type { WorkRequestSubmitPayload };
 export type { PreferredDeliverableFormat as RequestPreferredFormat };
@@ -215,6 +216,18 @@ export function WorkRequestForm({
           </select>
         </label>
       </Card>
+
+      <RequestUnderstandingPanel
+        assignment={value}
+        preferredFormat={preferredFormat === "auto" ? null : preferredFormat}
+        attachmentIds={uploadedIds}
+        compact
+        onChangeFormats={(formats) => {
+          if (formats.includes("xlsx")) setPreferredFormat("xlsx");
+          else if (formats.includes("docx")) setPreferredFormat("docx");
+          else if (formats.includes("pdf")) setPreferredFormat("pdf");
+        }}
+      />
 
       {attachError && (
         <p className="rounded-lg border border-[var(--error)]/30 bg-[var(--error-bg)] px-4 py-3 text-sm text-[var(--error)]">
