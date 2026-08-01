@@ -94,6 +94,8 @@ export type AtlasResponseRequest = {
   model?: string;
   maxOutputTokens?: number;
   temperature?: number;
+  /** Abort in-flight OpenAI HTTP when caller times out (prevents orphaned work). */
+  signal?: AbortSignal;
 };
 
 /** Extract plain text from multimodal input for mocks / token estimates (never logs image bytes). */
@@ -261,6 +263,7 @@ export async function createAtlasResponse(
 
   const response = await getOpenAIClient().responses.create(
     buildNonStreamingParams(params),
+    params.signal ? { signal: params.signal } : undefined,
   );
   maybeRecordBillingUsage({
     params,

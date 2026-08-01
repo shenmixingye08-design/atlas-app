@@ -54,8 +54,37 @@ import {
 } from "@/lib/vision/data-url-integrity";
 import { logVisionPipeline } from "@/lib/vision/pipeline-log";
 
-/** Per-attempt OpenAI call budget (Vercel-safe). */
-export const VISION_OPENAI_TIMEOUT_MS = 55_000;
+/**
+ * Per-attempt OpenAI call budget (Vercel-safe).
+ * Kept under serverless maxDuration with room for preprocess + retries.
+ */
+export const VISION_OPENAI_TIMEOUT_MS = 45_000;
+
+/** Wall-clock budget across all vision attempts (preprocess excluded). */
+export const VISION_TOTAL_OPENAI_BUDGET_MS = 120_000;
+
+/** Large payloads get compact profile earlier to cut timeout recurrence. */
+export const VISION_LARGE_PAYLOAD_BYTES = 1_200_000;
+
+/** Resolve per-attempt timeout — later attempts use a tighter budget. */
+export function resolveVisionAttemptTimeoutMs(input: {
+  attempt: number;
+  remainingBudgetMs: number;
+  imageByteLength?: number;
+}): number {
+  const base =
+    input.attempt <= 1
+      ? VISION_OPENAI_TIMEOUT_MS
+      : input.attempt === 2
+        ? 35_000
+        : 25_000;
+  const sized =
+    (input.imageByteLength ?? 0) > VISION_LARGE_PAYLOAD_BYTES
+      ? Math.min(base, 35_000)
+      : base;
+  // Never schedule an attempt that cannot finish inside remaining budget.
+  return Math.max(5_000, Math.min(sized, input.remainingBudgetMs));
+}
 
 const RESPONSES_INPUT_TYPES = ["input_text", "input_image"] as const;
 
@@ -236,33 +265,35 @@ async function callOpenAiVisionOnce(input: {
   response: Awaited<ReturnType<typeof createAtlasResponse>>;
   timedOut: boolean;
 }> {
+  const controller = new AbortController();
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, input.timeoutMs);
+
   try {
-    const response = await Promise.race([
-      createAtlasResponse({
-        aiTaskType: "vision_analyze",
-        model: input.model,
-        instructions: input.instructions,
-        input: input.multimodalInput as never,
-      }),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          timedOut = true;
-          reject(
-            Object.assign(new Error("vision_openai_timeout"), {
-              name: "VisionTimeoutError",
-              code: "timeout",
-              status: 408,
-            }),
-          );
-        }, input.timeoutMs);
-      }),
-    ]);
+    const response = await createAtlasResponse({
+      aiTaskType: "vision_analyze",
+      model: input.model,
+      instructions: input.instructions,
+      input: input.multimodalInput as never,
+      signal: controller.signal,
+    });
     return { response, timedOut: false };
   } catch (error) {
-    if (timedOut) {
-      const details = extractOpenAiVisionErrorDetails(error, {
+    const aborted =
+      timedOut ||
+      (error instanceof Error &&
+        (error.name === "AbortError" || /aborted|abort/i.test(error.message)));
+    if (aborted) {
+      const timeoutError = Object.assign(new Error("vision_openai_timeout"), {
+        name: "VisionTimeoutError",
+        code: "timeout",
+        status: 408,
+      });
+      const details = extractOpenAiVisionErrorDetails(timeoutError, {
         model: input.model,
         inputTypes: [...RESPONSES_INPUT_TYPES],
         mimeType: input.imageMeta.mimeType,
@@ -272,7 +303,7 @@ async function callOpenAiVisionOnce(input: {
         urlLength: input.imageMeta.urlLength,
         timedOut: true,
       });
-      throw classifyTransportFailure(details, input.diagnosticId, error);
+      throw classifyTransportFailure(details, input.diagnosticId, timeoutError);
     }
     throw error;
   } finally {
@@ -295,11 +326,43 @@ export const openAiVisionProvider: VisionProvider = {
 
     let lastError: VisionError | null = null;
     let lastNormalized: NormalizedOpenAiImage | null = null;
+    let forceCompact = false;
+    const openaiBudgetStarted = Date.now();
 
     for (let attempt = 1; attempt <= VISION_MAX_ATTEMPTS; attempt += 1) {
-      const profile = normalizeProfileForAttempt(attempt, readable);
+      const remainingBudgetMs =
+        VISION_TOTAL_OPENAI_BUDGET_MS - (Date.now() - openaiBudgetStarted);
+      if (remainingBudgetMs < 5_000) {
+        throw (
+          lastError ??
+          new VisionError("timeout", "画像解析の制限時間を超えました", {
+            diagnosticId,
+            failedStage: "openai_response",
+            details: {
+              code: "vision_total_budget_exhausted",
+              remainingBudgetMs,
+            },
+          })
+        );
+      }
+
+      const sourceLenHint =
+        bufferFromPossiblySerialized(input.imageBytes)?.byteLength ??
+        lastNormalized?.byteLength ??
+        0;
+      if (sourceLenHint > VISION_LARGE_PAYLOAD_BYTES) {
+        forceCompact = true;
+      }
+
+      const profile = normalizeProfileForAttempt(attempt, readable, {
+        forceCompact,
+        sourceByteLength: sourceLenHint,
+      });
       const model = resolveVisionFallbackModel(primaryModel, attempt);
-      const openAiDetail = resolveOpenAiVisionDetail(input.detail, attempt);
+      const openAiDetail = resolveOpenAiVisionDetail(
+        forceCompact || attempt >= 2 ? "low" : input.detail,
+        attempt,
+      );
       const attemptStarted = Date.now();
 
       let normalized: NormalizedOpenAiImage;
@@ -625,7 +688,13 @@ export const openAiVisionProvider: VisionProvider = {
           tools: null,
           response_format: null,
           messages: null,
-          timeoutMs: VISION_OPENAI_TIMEOUT_MS,
+          timeoutMs: resolveVisionAttemptTimeoutMs({
+            attempt,
+            remainingBudgetMs,
+            imageByteLength: sendByteLength,
+          }),
+          remainingBudgetMs,
+          forceCompact,
           jobId: input.jobId ?? null,
           vercelRequestId,
           matchesOfficialResponsesApi: true,
@@ -641,6 +710,12 @@ export const openAiVisionProvider: VisionProvider = {
         });
       }
 
+      const attemptTimeoutMs = resolveVisionAttemptTimeoutMs({
+        attempt,
+        remainingBudgetMs,
+        imageByteLength: sendByteLength,
+      });
+
       try {
         const { response } = await callOpenAiVisionOnce({
           model,
@@ -648,7 +723,7 @@ export const openAiVisionProvider: VisionProvider = {
           multimodalInput,
           diagnosticId,
           imageMeta,
-          timeoutMs: VISION_OPENAI_TIMEOUT_MS,
+          timeoutMs: attemptTimeoutMs,
         });
 
         const responseStatus =
@@ -1001,6 +1076,9 @@ export const openAiVisionProvider: VisionProvider = {
             attempt < VISION_MAX_ATTEMPTS &&
             shouldFallbackOpenAiFailure(details)
           ) {
+            if (error.code === "timeout" || details.timedOut) {
+              forceCompact = true;
+            }
             if (diagnosticId) {
               appendVisionDiagnosticStage(diagnosticId, "vision_response", false, {
                 attempt,
@@ -1009,6 +1087,7 @@ export const openAiVisionProvider: VisionProvider = {
                 errorCode: error.code,
                 openaiErrorCode: details.openaiErrorCode,
                 safeMessage: details.safeMessage,
+                forceCompactNext: forceCompact,
               });
             }
             if (isRetryableOpenAiFailure(details)) {
