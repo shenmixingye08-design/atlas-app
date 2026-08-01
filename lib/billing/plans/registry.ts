@@ -55,7 +55,8 @@ export const PLAN_DEFINITIONS: readonly PlanDefinition[] = [
   {
     planId: "light",
     name: "Light",
-    description: "文章作成とSNS投稿補助、基本的な自動化",
+    description:
+      "Word/Excel/PDF/PowerPointの作成とSNS文案補助、基本的な自動化（外部の自動投稿・Google連携は上位プラン）",
     monthlyPriceJpy: 980,
     stripePriceId: process.env.STRIPE_PRICE_LIGHT?.trim() || null,
     limits: {
@@ -68,7 +69,11 @@ export const PLAN_DEFINITIONS: readonly PlanDefinition[] = [
       imageGeneration: false,
       features: LIGHT_FEATURES,
     },
-    highlights: ["文章作成", "SNS投稿補助", "自動化タスク 3件"],
+    highlights: [
+      "実ファイル作成（Word/Excel/PDF/PowerPoint）",
+      "SNS投稿文の補助（自動投稿は上位）",
+      "自動化タスク 3件",
+    ],
   },
   {
     planId: "standard",

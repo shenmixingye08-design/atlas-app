@@ -1,6 +1,7 @@
 "use client";
 
 import { triggerBlobDownload } from "@/lib/browser/trigger-blob-download";
+import { trackFunnelClient } from "@/lib/product-funnel/client";
 
 import {
   DELIVERABLE_EXTENSIONS,
@@ -246,4 +247,11 @@ export async function downloadDeliverableFile(
   }
 
   await triggerBlobDownload(blob, fileName);
+
+  const artifactMatch = input.url.match(/\/deliverables\/([^/?#]+)/);
+  trackFunnelClient("artifact_download", {
+    format,
+    bytes: bytes.byteLength,
+    artifactId: artifactMatch?.[1] ?? null,
+  });
 }
