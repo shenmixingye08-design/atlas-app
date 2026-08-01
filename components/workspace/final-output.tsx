@@ -41,6 +41,7 @@ import {
 } from "@/lib/orchestration/normalize-deliverable-payload";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import { ui } from "@/lib/i18n";
+import { trackFunnelClient } from "@/lib/product-funnel/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
@@ -583,6 +584,12 @@ export function FinalOutput({
         <h2 id="output-heading" className="text-title text-foreground">
           {heading ?? ui.work.deliverableTitle}
         </h2>
+        <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+          {ui.secretaryHome.downloadHint}
+        </p>
+        <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+          {ui.secretaryHome.reviseHint}
+        </p>
         {!result.approved && (
           <p className="mt-1 text-caption text-[var(--status-warning)]">
             {ui.work.deliverableNeedsReview}
@@ -591,7 +598,14 @@ export function FinalOutput({
       </div>
 
       <Card padding="lg" className="shadow-[var(--shadow-soft)]">
-        <div className="max-h-[560px] overflow-x-hidden overflow-y-auto rounded-[var(--radius-xl)] bg-[var(--background-subtle)] px-4 py-6 sm:px-6 sm:py-8">
+        <div
+          className="max-h-[560px] overflow-x-hidden overflow-y-auto rounded-[var(--radius-xl)] bg-[var(--background-subtle)] px-4 py-6 sm:px-6 sm:py-8"
+          onFocus={() =>
+            trackFunnelClient("artifact_previewed", {
+              currentScreen: "/workspace",
+            })
+          }
+        >
           <DeliverablePreview deliverable={normalizedDeliverable} />
         </div>
 

@@ -22,7 +22,9 @@
     "test:release-blocker": "vitest run lib/release-blocker/phase4.test.ts",
     "test:release-blocker:full": "RELEASE_BLOCKER_FULL=1 vitest run lib/release-blocker/phase4.test.ts",
     "test:value-audit": "vitest run lib/value-audit/phase5.test.ts",
-    "test:value-audit:full": "VALUE_AUDIT_FULL=1 vitest run lib/value-audit/phase5.test.ts"
+    "test:value-audit:full": "VALUE_AUDIT_FULL=1 vitest run lib/value-audit/phase5.test.ts",
+    "test:beta-ux": "vitest run lib/beta-ux/phase6.test.ts lib/product-funnel/events.test.ts",
+    "test:beta-ux:full": "BETA_UX_FULL=1 vitest run lib/beta-ux/phase6.test.ts"
   },
   "dependencies": {
     "@clerk/localizations": "^4.13.5",

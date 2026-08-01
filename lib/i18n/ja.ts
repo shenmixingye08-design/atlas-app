@@ -202,7 +202,10 @@ export const ui = {
       "例）売上管理表をExcelで / 営業資料をPowerPointで / 議事録をWordで",
     askSubmit: "お願いする",
     askHint:
-      "送信後に作成を開始します。完了したらダウンロードできます。過去の成果物は「これまでの仕事」から再利用できます。",
+      "送信すると作成が始まり、画面上で進捗が分かります。完了したらすぐダウンロードできます。迷ったら上のサンプルを押してください。",
+    progressHint: "作成中です。この画面を閉じても、完了したら通知と「これまでの仕事」から開けます。",
+    downloadHint: "完成ファイルは下の「ダウンロード」から保存できます。",
+    reviseHint: "直したいときは「修正する」から続きを頼めます。",
     firstJobTitle: "はじめてのお願い（選ぶだけ・実際に作成します）",
     firstJobHint:
       "押すと依頼文が入ります。そのまま「お願いする」で実ファイル作成に進みます（ダミー表示ではありません）。",
@@ -1661,6 +1664,7 @@ export const ui = {
     navAuditLog: "監査ログ",
     navDisasterRecovery: "障害復旧",
     navBetaUsers: "ベータユーザー",
+    navBetaUx: "β UX計測",
     navSystemStatus: "システム監視",
     navExternalServices: "外部サービス管理",
     navEnvStatus: "環境変数",
