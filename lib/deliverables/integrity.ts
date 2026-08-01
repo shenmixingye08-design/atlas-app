@@ -13,10 +13,22 @@ export type IntegritySnapshot = {
   ooxmlMissing: string[];
 };
 
-const OOXML_REQUIRED = [
+const OOXML_REQUIRED_DOCX = [
   "[Content_Types].xml",
   "_rels/.rels",
   "word/document.xml",
+] as const;
+
+const OOXML_REQUIRED_XLSX = [
+  "[Content_Types].xml",
+  "_rels/.rels",
+  "xl/workbook.xml",
+] as const;
+
+const OOXML_REQUIRED_PPTX = [
+  "[Content_Types].xml",
+  "_rels/.rels",
+  "ppt/presentation.xml",
 ] as const;
 
 export function sha256Hex(buffer: Buffer | Uint8Array): string {
@@ -77,12 +89,21 @@ export function listZipEntryNames(buffer: Buffer): string[] {
   return names;
 }
 
-export function verifyOoxmlStructure(buffer: Buffer): {
+export function verifyOoxmlStructure(
+  buffer: Buffer,
+  format: DeliverableFormat = "docx",
+): {
   ok: boolean;
   missing: string[];
 } {
+  const required =
+    format === "xlsx"
+      ? OOXML_REQUIRED_XLSX
+      : format === "pptx"
+        ? OOXML_REQUIRED_PPTX
+        : OOXML_REQUIRED_DOCX;
   const names = new Set(listZipEntryNames(buffer));
-  const missing = OOXML_REQUIRED.filter((required) => !names.has(required));
+  const missing = required.filter((entry) => !names.has(entry));
   return { ok: missing.length === 0, missing: [...missing] };
 }
 
@@ -92,10 +113,23 @@ export function buildIntegritySnapshot(input: {
   fileName: string;
 }): IntegritySnapshot {
   const hasPk = hasPkHeader(input.buffer);
+  const isOffice =
+    input.format === "docx" ||
+    input.format === "xlsx" ||
+    input.format === "pptx";
   const ooxml =
-    input.format === "docx" && hasPk
-      ? verifyOoxmlStructure(input.buffer)
-      : { ok: false, missing: [...OOXML_REQUIRED] };
+    isOffice && hasPk
+      ? verifyOoxmlStructure(input.buffer, input.format)
+      : {
+          ok: false,
+          missing: [
+            ...(input.format === "xlsx"
+              ? OOXML_REQUIRED_XLSX
+              : input.format === "pptx"
+                ? OOXML_REQUIRED_PPTX
+                : OOXML_REQUIRED_DOCX),
+          ],
+        };
 
   return {
     sizeBytes: input.buffer.byteLength,
@@ -104,8 +138,8 @@ export function buildIntegritySnapshot(input: {
     format: input.format,
     fileName: input.fileName,
     hasPkHeader: hasPk,
-    ooxmlVerified: input.format === "docx" ? ooxml.ok : true,
-    ooxmlMissing: input.format === "docx" ? ooxml.missing : [],
+    ooxmlVerified: isOffice ? ooxml.ok : true,
+    ooxmlMissing: isOffice ? ooxml.missing : [],
   };
 }
 
@@ -162,16 +196,28 @@ export function assertDownloadIntegrity(input: {
   if (isOffice && !hasPkHeader(buf)) issues.push("missing_pk");
 
   const mime = input.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  const isCsv =
+    input.fileName.toLowerCase().endsWith(".csv") || mime === "text/csv";
   if (
     mime === "text/html" ||
     mime === "application/json" ||
-    mime === "text/plain" ||
-    mime === "application/octet-stream"
+    mime === "application/octet-stream" ||
+    (mime === "text/plain" && !isCsv)
   ) {
     issues.push("wrong_mime");
   }
 
   if (input.format === "docx" && !input.fileName.toLowerCase().endsWith(".docx")) {
+    issues.push("wrong_extension");
+  }
+  if (
+    input.format === "xlsx" &&
+    !input.fileName.toLowerCase().endsWith(".xlsx") &&
+    !isCsv
+  ) {
+    issues.push("wrong_extension");
+  }
+  if (input.format === "pptx" && !input.fileName.toLowerCase().endsWith(".pptx")) {
     issues.push("wrong_extension");
   }
 
@@ -183,8 +229,14 @@ export function assertDownloadIntegrity(input: {
     issues.push("looks_like_json");
   }
 
-  if (input.format === "docx" && (input.requireOoxml ?? true) && hasPkHeader(buf)) {
-    const ooxml = verifyOoxmlStructure(buf);
+  if (
+    (input.format === "docx" ||
+      input.format === "xlsx" ||
+      input.format === "pptx") &&
+    (input.requireOoxml ?? input.format === "docx") &&
+    hasPkHeader(buf)
+  ) {
+    const ooxml = verifyOoxmlStructure(buf, input.format);
     if (!ooxml.ok) issues.push("ooxml_incomplete");
   }
 

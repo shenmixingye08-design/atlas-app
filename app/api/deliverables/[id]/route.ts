@@ -20,6 +20,8 @@ import { recordWordMetric } from "@/lib/deliverables/word-metrics";
 import { buildAttachmentContentDisposition } from "@/lib/http/content-disposition";
 import { recordReliabilityEvent } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
+import { isSoftDeleted } from "@/lib/storage/cleanup";
+import { assertArtifactAccess } from "@/lib/storage/authz";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +45,24 @@ export async function GET(
   }
 
   const { id } = await context.params;
+  const access = await assertArtifactAccess({
+    artifactId: id,
+    requesterId: userId,
+    action: "download",
+  });
+  if (!access.ok || isSoftDeleted(id)) {
+    recordReliabilityEvent("deliverable_download", "failure");
+    recordWordMetric("download_failure", 1, { stage: "lookup" });
+    return Response.json(
+      {
+        error: toHumanReliabilityMessage("not found or expired"),
+        availability: "expired",
+        actions: ["regenerate_word_only", "retry", "send_support_info"],
+      },
+      { status: 404 },
+    );
+  }
+
   let stored = await getStoredDeliverableForUser(id, userId);
 
   if (!stored) {
@@ -60,8 +80,21 @@ export async function GET(
 
   // Force canonical MIME by format — never trust a stale/wrong stored mimeType
   // that could become text/plain or application/octet-stream in the browser.
+  // CSV / image keep their real type for storage Production Ready downloads.
   let contentType = mimeTypeForFormat(stored.format);
   let fileName = ensureFormatFileName(stored.fileName, stored.format);
+  if (stored.fileName.toLowerCase().endsWith(".csv")) {
+    contentType = "text/csv; charset=utf-8";
+    fileName = stored.fileName;
+  } else if (
+    stored.mimeType.startsWith("image/") ||
+    /\.(png|jpe?g|webp|gif)$/i.test(stored.fileName)
+  ) {
+    contentType = stored.mimeType.startsWith("image/")
+      ? stored.mimeType
+      : "image/png";
+    fileName = stored.fileName;
+  }
 
   let integrity = assertDownloadIntegrity({
     buffer: stored.buffer,
