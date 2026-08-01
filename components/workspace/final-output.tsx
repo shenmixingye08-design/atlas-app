@@ -14,6 +14,8 @@ import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
 import { ExcelPreviewPanel } from "@/components/deliverables/excel-preview-panel";
 import { ExcelRevisionPanel } from "@/components/deliverables/excel-revision-panel";
+import { PptxPreviewPanel } from "@/components/deliverables/pptx-preview-panel";
+import { PptxRevisionPanel } from "@/components/deliverables/pptx-revision-panel";
 import { WordPreviewPanel } from "@/components/deliverables/word-preview-panel";
 import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
 import { WordRevisionPanel } from "@/components/deliverables/word-revision-panel";
@@ -533,6 +535,7 @@ export function FinalOutput({
   const markdownFile = findGeneratedFile(deliverables, "md");
   const docxFile = findGeneratedFile(deliverables, "docx");
   const xlsxFile = findGeneratedFile(deliverables, "xlsx");
+  const pptxFile = findGeneratedFile(deliverables, "pptx");
   const baseName = markdownFile?.fileName ?? `${normalizedDeliverable.type}-deliverable.md`;
 
   const handleCopy = async () => {
@@ -731,6 +734,43 @@ export function FinalOutput({
                 <ExcelRevisionPanel
                   deliverableId={xlsxFile.id}
                   initialTitle={normalizedDeliverable.title || xlsxFile.fileName}
+                />
+              </div>
+            </details>
+          </div>
+        ) : null}
+
+        {pptxFile ? (
+          <div className="mt-6 space-y-3">
+            <details
+              className="group rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--background-muted)]/40 px-4 py-2"
+              open
+            >
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-semibold text-foreground focus-ring">
+                <span className="text-xs transition-transform group-open:rotate-90" aria-hidden="true">
+                  ▸
+                </span>
+                PowerPointプレビュー
+              </summary>
+              <div className="py-3">
+                <PptxPreviewPanel
+                  deliverableId={pptxFile.id}
+                  fileName={pptxFile.fileName}
+                />
+              </div>
+            </details>
+
+            <details className="group rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--background-muted)]/40 px-4 py-2">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-semibold text-foreground focus-ring">
+                <span className="text-xs transition-transform group-open:rotate-90" aria-hidden="true">
+                  ▸
+                </span>
+                PowerPointを再編集・PDF化
+              </summary>
+              <div className="py-3">
+                <PptxRevisionPanel
+                  deliverableId={pptxFile.id}
+                  initialTitle={normalizedDeliverable.title || pptxFile.fileName}
                 />
               </div>
             </details>
