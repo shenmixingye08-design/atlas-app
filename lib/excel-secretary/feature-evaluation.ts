@@ -29,6 +29,13 @@
  * - 再生成禁止：同一 idempotencyKey で重複成果物を作らない
  *
  * 優先度：P0
+ *
+ * 本番品質ゲート（本PR）:
+ * - 構造化検証（schema）+ 数式静的検証
+ * - CSVインジェクション対策 / 先頭ゼロ保持
+ * - .xls 偽拡張子禁止
+ * - 大容量制限とスケール分類
+ * - 受け入れテスト 35項目以上
  */
 
 export const EXCEL_SECRETARY_FEATURE_EVALUATION = {
@@ -36,4 +43,5 @@ export const EXCEL_SECRETARY_FEATURE_EVALUATION = {
   priority: "P0",
   aiRequired: "medium",
   reducesHabitualWork: true,
+  productionGate: true,
 } as const;

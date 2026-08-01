@@ -19,6 +19,8 @@ import {
   workbookFromMarkdownTables,
   workbookFromMatrix,
 } from "./from-tabular";
+import { validateExcelWorkbookModel } from "./schema";
+import { sanitizeExcelFileName } from "./security";
 import { buildTemplateWorkbook } from "./templates";
 import type {
   ExcelAnalysisResult,
@@ -50,21 +52,61 @@ async function finalize(
   warnings: string[] = [],
 ): Promise<ExcelSecretaryResult> {
   try {
-    const buffer = await writeWorkbookBuffer(workbook);
-    const fileName = `${workbook.title.replace(/[\\/:*?"<>|]/g, "_").slice(0, 80) || "excel"}.xlsx`;
+    const enriched: ExcelWorkbookModel = {
+      ...workbook,
+      locale: workbook.locale ?? "ja-JP",
+      purpose: workbook.purpose ?? workbook.title,
+      warnings: [...(workbook.warnings ?? []), ...warnings],
+    };
+
+    // Highlight low-confidence OCR cells for human review.
+    enriched.sheets = enriched.sheets.map((sheet) => ({
+      ...sheet,
+      rows: sheet.rows.map((row) =>
+        row.map((cell) => {
+          if (cell.needsReview || (cell.confidence != null && cell.confidence < 0.6)) {
+            return {
+              ...cell,
+              fillArgb: cell.fillArgb ?? "FFFFF2CC",
+              needsReview: true,
+            };
+          }
+          return cell;
+        }),
+      ),
+    }));
+
+    const validation = validateExcelWorkbookModel(enriched);
+    if (!validation.ok) {
+      return fail(
+        "formula",
+        "formula_validation_failed",
+        validation.errors.slice(0, 5).join(" / ") || "表設計の検証に失敗しました",
+        true,
+      );
+    }
+
+    const buffer = await writeWorkbookBuffer(enriched);
+    const fileName = `${sanitizeExcelFileName(enriched.title)}.xlsx`;
     return {
       ok: true,
-      workbook,
+      workbook: enriched,
       buffer,
       fileName,
       errors: [],
-      warnings,
-      preview: toPreviewPayload(workbook),
+      warnings: [
+        ...warnings,
+        ...validation.formulaIssues
+          .filter((i) => i.code === "invalid_ref")
+          .slice(0, 3)
+          .map((i) => `${i.sheet}!${i.cell}: ${i.message}`),
+      ],
+      preview: toPreviewPayload(enriched),
     };
   } catch (error) {
     return fail(
       "excel_build",
-      "excel_build_failed",
+      "excel_generation_failed",
       error instanceof Error ? error.message : "Excel生成に失敗しました",
     );
   }

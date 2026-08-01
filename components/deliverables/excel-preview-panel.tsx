@@ -241,11 +241,10 @@ export function ExcelPreviewPanel({
             type="button"
             size="sm"
             variant="ghost"
-            disabled={exporting !== null}
-            onClick={() => void exportAs("xls")}
-            title="旧.xls は xlsx 互換で保存します"
+            disabled
+            title="旧形式 .xls の書き出しは互換性リスクのため未対応です（.xlsx をご利用ください）"
           >
-            xls
+            xls（未対応）
           </Button>
           {onReedit && (
             <Button type="button" size="sm" onClick={onReedit}>

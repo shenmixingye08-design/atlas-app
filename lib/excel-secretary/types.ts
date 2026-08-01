@@ -2,14 +2,24 @@
 
 export type ExcelWorkbookKind =
   | "sales"
+  | "sales_pipeline"
   | "household"
   | "process"
   | "attendance"
+  | "shift"
   | "customers"
   | "inventory"
+  | "vehicle"
+  | "daily_report"
   | "estimate"
   | "invoice"
   | "receipt"
+  | "invoice_list"
+  | "cashflow"
+  | "survey"
+  | "tasks"
+  | "realestate"
+  | "solar"
   | "gantt"
   | "timecard"
   | "schedule"
@@ -43,6 +53,10 @@ export type ExcelCellModel = {
   fillArgb?: string;
   align?: "left" | "center" | "right";
   merge?: { rowSpan?: number; colSpan?: number };
+  /** Vision / OCR confidence 0–1 */
+  confidence?: number;
+  originalText?: string;
+  needsReview?: boolean;
 };
 
 export type ExcelColumnModel = {
@@ -99,6 +113,10 @@ export type ExcelWorkbookModel = {
   title: string;
   sheets: ExcelSheetModel[];
   creator?: string;
+  purpose?: string;
+  locale?: string;
+  warnings?: string[];
+  assumptions?: string[];
   /** Pipeline stage breadcrumbs for UI errors. */
   stages?: ExcelPipelineStage[];
 };

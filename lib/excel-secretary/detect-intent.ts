@@ -9,7 +9,7 @@ export type ExcelIntent = {
 };
 
 /**
- * Rule-based NL intent — no AI. AI fills content later when needed.
+ * Rule-based NL intent — no AI. Templates provide structure; content may come from markdown/vision.
  */
 export function detectExcelIntent(assignment: string): ExcelIntent {
   const text = assignment.trim();
@@ -19,6 +19,30 @@ export function detectExcelIntent(assignment: string): ExcelIntent {
 
   if (/家計簿|家計|経費精算|レシート/.test(text)) {
     return { kind: "household", title: "家計簿", wantsChart: true, wantsGantt: false, wantsAnalysis };
+  }
+  if (/太陽光|ソーラー|発電所/.test(text)) {
+    return { kind: "solar", title: "太陽光案件管理表", wantsChart: true, wantsGantt: false, wantsAnalysis };
+  }
+  if (/不動産|物件管理|賃貸/.test(text)) {
+    return { kind: "realestate", title: "不動産管理表", wantsChart: false, wantsGantt: false, wantsAnalysis };
+  }
+  if (/車両|車検|社用車/.test(text)) {
+    return { kind: "vehicle", title: "車両管理表", wantsChart: false, wantsGantt: false, wantsAnalysis };
+  }
+  if (/日報/.test(text)) {
+    return { kind: "daily_report", title: "日報", wantsChart: false, wantsGantt: false, wantsAnalysis };
+  }
+  if (/タスク|ToDo|todo|課題管理/i.test(text)) {
+    return { kind: "tasks", title: "タスク管理表", wantsChart: false, wantsGantt: false, wantsAnalysis };
+  }
+  if (/収支|損益|キャッシュフロー|cash ?flow/i.test(text)) {
+    return { kind: "cashflow", title: "収支計算表", wantsChart: true, wantsGantt: false, wantsAnalysis };
+  }
+  if (/営業案件|案件一覧|パイプライン|商談/.test(text)) {
+    return { kind: "sales_pipeline", title: "営業案件一覧", wantsChart: true, wantsGantt: false, wantsAnalysis };
+  }
+  if (/請求一覧|請求リスト/.test(text)) {
+    return { kind: "invoice_list", title: "請求一覧", wantsChart: true, wantsGantt: false, wantsAnalysis };
   }
   if (/請求書/.test(text)) {
     return { kind: "invoice", title: "請求書", wantsChart, wantsGantt: false, wantsAnalysis };
@@ -35,7 +59,10 @@ export function detectExcelIntent(assignment: string): ExcelIntent {
   if (/顧客|取引先|名簿|CRM/i.test(text)) {
     return { kind: "customers", title: "顧客管理表", wantsChart: false, wantsGantt: false, wantsAnalysis };
   }
-  if (/勤務表|シフト/.test(text)) {
+  if (/シフト/.test(text)) {
+    return { kind: "shift", title: "シフト表", wantsChart: false, wantsGantt: false, wantsAnalysis };
+  }
+  if (/勤務表/.test(text)) {
     return { kind: "attendance", title: "勤務表", wantsChart: false, wantsGantt: false, wantsAnalysis };
   }
   if (/勤怠|タイムカード|出退勤/.test(text)) {
@@ -51,7 +78,7 @@ export function detectExcelIntent(assignment: string): ExcelIntent {
     return { kind: "sales", title: "売上管理表", wantsChart: true, wantsGantt: false, wantsAnalysis };
   }
   if (/アンケート/.test(text)) {
-    return { kind: "generic_table", title: "アンケート集計", wantsChart: true, wantsGantt: false, wantsAnalysis };
+    return { kind: "survey", title: "アンケート集計表", wantsChart: true, wantsGantt: false, wantsAnalysis };
   }
   return {
     kind: "generic_table",

@@ -9,14 +9,18 @@ import type {
   ExcelWorkbookModel,
 } from "./types";
 import { buildAutoTotalRow, tableOrigin } from "./formulas";
+import { headerRequiresText } from "./security";
 
 function inferKind(header: string, values: string[]): ExcelCellKind {
+  if (headerRequiresText(header)) return "text";
   const h = header.toLowerCase();
   if (/金額|単価|売上|価格|税|円|amount|price|cost|total/i.test(h)) return "currency";
   if (/率|％|%|progress|進捗/i.test(h)) return "percent";
   if (/日|date|年月/i.test(h)) return "date";
   if (/数量|数|qty|件数|時間|日数|rank|順位/i.test(h)) return "number";
   const sample = values.filter(Boolean).slice(0, 8);
+  // Keep leading-zero codes as text
+  if (sample.some((v) => /^0\d+$/.test(v.trim()))) return "text";
   if (
     sample.length > 0 &&
     sample.every((v) => /^-?[\d,]+(\.\d+)?$/.test(v.replace(/[¥￥円\s]/g, "")))

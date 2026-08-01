@@ -6,6 +6,7 @@ import {
   writeWorkbookBuffer,
 } from "./build-workbook";
 import { ExcelSecretaryError } from "./errors";
+import { sanitizeCsvCell, sanitizeExcelFileName } from "./security";
 import type { ExcelPreviewPayload, ExcelWorkbookModel } from "./types";
 
 export type ExcelExportFormat = "xlsx" | "xls" | "csv" | "pdf";
@@ -19,7 +20,7 @@ export type ExcelExportResult = {
 };
 
 function baseName(title: string): string {
-  return title.replace(/[\\/:*?"<>|]/g, "_").slice(0, 80) || "excel";
+  return sanitizeExcelFileName(title);
 }
 
 /** Export workbook model to xlsx / csv / pdf. .xls is served as xlsx with warning. */
@@ -29,7 +30,17 @@ export async function exportWorkbook(
 ): Promise<ExcelExportResult> {
   const name = baseName(model.title);
 
-  if (format === "xlsx" || format === "xls") {
+  if (format === "xls") {
+    // Honest unsupported: never emit a fake .xls extension.
+    throw new ExcelSecretaryError(
+      "download",
+      "unsupported_file",
+      "旧形式 .xls の書き出しは互換性リスクがあるため未対応です。.xlsx をご利用ください。",
+      false,
+    );
+  }
+
+  if (format === "xlsx") {
     const buffer = await writeWorkbookBuffer(model);
     return {
       format,
@@ -37,10 +48,6 @@ export async function exportWorkbook(
       mimeType:
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       buffer,
-      warning:
-        format === "xls"
-          ? "旧形式 .xls の新規出力は非推奨のため .xlsx で保存しました。"
-          : undefined,
     };
   }
 
@@ -55,16 +62,19 @@ export async function exportWorkbook(
       };
     }
     const lines = [
-      sheet.columns.map((c) => csvEscape(c.header)).join(","),
+      sheet.columns.map((c) => sanitizeCsvCell(c.header)).join(","),
       ...sheet.rows.map((row) =>
         sheet.columns
           .map((_, i) => {
             const cell = row[i];
-            if (cell?.formula) return csvEscape(`=${cell.formula}`);
-            if (cell?.value instanceof Date) {
-              return csvEscape(cell.value.toISOString().slice(0, 10));
+            if (cell?.formula) {
+              // Export formula result placeholder safely (prefix apostrophe).
+              return sanitizeCsvCell(`=${cell.formula.replace(/^=/, "")}`);
             }
-            return csvEscape(cell?.value == null ? "" : String(cell.value));
+            if (cell?.value instanceof Date) {
+              return sanitizeCsvCell(cell.value.toISOString().slice(0, 10));
+            }
+            return sanitizeCsvCell(cell?.value == null ? "" : String(cell.value));
           })
           .join(","),
       ),
@@ -89,11 +99,6 @@ export async function exportWorkbook(
     mimeType: pdf.mimeType,
     buffer: pdf.buffer,
   };
-}
-
-function csvEscape(value: string): string {
-  if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
-  return value;
 }
 
 export function workbookToMarkdown(model: ExcelWorkbookModel): string {

@@ -9,7 +9,7 @@ export type ExcelSheetData = {
 const TABLE_SEPARATOR_PATTERN = /^\|?[\s:-]+\|[\s|:-]+$/;
 
 const EXCEL_KEYWORDS =
-  /excel|\.xlsx|エクセル|表計算|スプレッドシート|spreadsheet|一覧表|家計簿|経費精算|売上管理|工程表|勤務表|顧客管理|在庫管理|見積書|請求書|領収書|ガント|勤怠管理|スケジュール表|タイムカード/i;
+  /excel|\.xlsx|エクセル|表計算|スプレッドシート|spreadsheet|一覧表|家計簿|経費精算|売上管理|工程表|勤務表|シフト表|顧客管理|在庫管理|車両管理|日報|見積書|請求書|請求一覧|領収書|ガント|勤怠管理|スケジュール表|タイムカード|営業案件|タスク管理|不動産|太陽光|収支|アンケート集計/i;
 
 const IMAGE_KEYWORDS =
   /画像|写真|スクショ|スクリーンショット|レシート|領収|名刺|現場写真|image|photo|screenshot|添付/i;

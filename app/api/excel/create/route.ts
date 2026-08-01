@@ -5,6 +5,8 @@ import {
   createExcelFromAssignment,
   createExcelFromUpload,
 } from "@/lib/excel-secretary";
+import { EXCEL_LIMITS } from "@/lib/excel-secretary/limits";
+import { userMessageForExcelCode } from "@/lib/excel-secretary/job-phase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +30,17 @@ export async function POST(request: Request): Promise<Response> {
       const assignment = String(form.get("assignment") ?? "");
       const file = form.get("file");
       if (file instanceof File) {
+        if (file.size > EXCEL_LIMITS.maxUploadBytes) {
+          return Response.json(
+            {
+              ok: false,
+              code: "file_too_large",
+              error: userMessageForExcelCode("file_too_large"),
+              stage: "intent",
+            },
+            { status: 413 },
+          );
+        }
         const buffer = Buffer.from(await file.arrayBuffer());
         const result = await createExcelFromUpload({
           fileName: file.name,
@@ -41,6 +54,7 @@ export async function POST(request: Request): Promise<Response> {
               ok: false,
               errors: result.errors,
               stage: result.errors[0]?.stage ?? "excel_build",
+              code: result.errors[0]?.code ?? "excel_generation_failed",
             },
             { status: 422 },
           );

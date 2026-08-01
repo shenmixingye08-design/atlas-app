@@ -28,6 +28,20 @@ export {
   workbookFromMarkdownTables,
   workbookFromMatrix,
 } from "./from-tabular";
+export { validateExcelWorkbookModel } from "./schema";
+export { validateWorkbookFormulas } from "./formula-validate";
+export { EXCEL_LIMITS, classifyExcelScale } from "./limits";
+export {
+  sanitizeCsvCell,
+  sanitizeExcelFileName,
+  headerRequiresText,
+} from "./security";
+export {
+  excelPhaseLabel,
+  userMessageForExcelCode,
+  EXCEL_JOB_PHASES,
+} from "./job-phase";
+export type { ExcelJobPhase, ExcelUserErrorCode } from "./job-phase";
 export type {
   ExcelWorkbookModel,
   ExcelSheetModel,

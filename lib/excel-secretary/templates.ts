@@ -300,6 +300,298 @@ const TEMPLATE_BUILDERS: Record<
     ],
   }),
 
+  sales_pipeline: (title) => {
+    const columns = cols([
+      ["name", "案件名", "text"],
+      ["customer", "顧客", "text"],
+      ["stage", "ステージ", "text"],
+      ["amount", "見込金額", "currency"],
+      ["prob", "確度", "percent"],
+      ["owner", "担当", "text"],
+      ["close", "予定日", "date"],
+      ["notes", "備考", "text"],
+    ]);
+    const rows = sampleRows(columns, [
+      ["A社刷新", "株式会社A", "提案", 3000000, 0.4, "山田", "2026-09-30", ""],
+      ["B社追加", "B商事", "交渉", 1200000, 0.7, "佐藤", "2026-08-31", ""],
+    ]);
+    return {
+      kind: "sales_pipeline",
+      title,
+      purpose: "営業案件の進捗管理",
+      locale: "ja-JP",
+      sheets: [
+        withTotals({
+          name: "案件一覧",
+          title,
+          columns,
+          rows,
+          asTable: true,
+          freezeHeader: true,
+          charts: [
+            {
+              type: "column",
+              title: "見込金額",
+              categoriesRange: "A3:A4",
+              series: [{ name: "見込", valuesRange: "D3:D4" }],
+              anchor: "J2",
+            },
+          ],
+        }),
+      ],
+    };
+  },
+
+  shift: (title) => {
+    const columns = cols([
+      ["name", "氏名", "text"],
+      ["mon", "月", "text"],
+      ["tue", "火", "text"],
+      ["wed", "水", "text"],
+      ["thu", "木", "text"],
+      ["fri", "金", "text"],
+      ["sat", "土", "text"],
+      ["sun", "日", "text"],
+      ["hours", "週合計時間", "number"],
+    ]);
+    const rows = sampleRows(columns, [
+      ["山田", "早番", "早番", "公休", "遅番", "遅番", "公休", "公休", 32],
+      ["佐藤", "遅番", "遅番", "早番", "早番", "公休", "早番", "公休", 40],
+    ]);
+    return {
+      kind: "shift",
+      title,
+      sheets: [
+        {
+          name: "シフト",
+          title,
+          columns,
+          rows,
+          asTable: true,
+          freezeHeader: true,
+          printLandscape: true,
+        },
+        {
+          name: "使い方",
+          columns: cols([
+            ["q", "項目", "text"],
+            ["a", "説明", "text"],
+          ]),
+          rows: sampleRows(
+            cols([
+              ["q", "項目", "text"],
+              ["a", "説明", "text"],
+            ]),
+            [
+              ["入力", "早番/遅番/公休を入力してください"],
+              ["集計", "週合計時間は手入力またはSUMで集計できます"],
+            ],
+          ),
+          asTable: true,
+          freezeHeader: true,
+        },
+      ],
+    };
+  },
+
+  vehicle: (title) => {
+    const columns = cols([
+      ["plate", "車両番号", "text"],
+      ["model", "車種", "text"],
+      ["user", "使用者", "text"],
+      ["inspect", "車検期限", "date"],
+      ["insurance", "保険期限", "date"],
+      ["mileage", "走行距離", "number"],
+      ["notes", "備考", "text"],
+    ]);
+    const rows = sampleRows(columns, [
+      ["品川300あ1234", "ハイエース", "山田", "2027-03-01", "2026-12-31", 45200, ""],
+    ]);
+    return {
+      kind: "vehicle",
+      title,
+      sheets: [{ name: "車両一覧", title, columns, rows, asTable: true, freezeHeader: true }],
+    };
+  },
+
+  daily_report: (title) => {
+    const columns = cols([
+      ["date", "日付", "date"],
+      ["name", "氏名", "text"],
+      ["work", "業務内容", "text"],
+      ["result", "成果", "text"],
+      ["issue", "課題", "text"],
+      ["next", "明日の予定", "text"],
+      ["hours", "稼働時間", "number"],
+    ]);
+    const rows = sampleRows(columns, [
+      ["2026-08-01", "山田", "顧客ヒアリング", "要件整理完了", "見積待ち", "提案資料作成", 8],
+    ]);
+    return {
+      kind: "daily_report",
+      title,
+      sheets: [{ name: "日報", title, columns, rows, asTable: true, freezeHeader: true }],
+    };
+  },
+
+  invoice_list: (title) => {
+    const columns = cols([
+      ["no", "請求番号", "text"],
+      ["customer", "請求先", "text"],
+      ["date", "請求日", "date"],
+      ["due", "支払期限", "date"],
+      ["amount", "請求額", "currency"],
+      ["status", "状態", "text"],
+      ["notes", "備考", "text"],
+    ]);
+    const rows = sampleRows(columns, [
+      ["INV-001", "株式会社A", "2026-07-31", "2026-08-31", 563200, "未入金", ""],
+      ["INV-002", "B商事", "2026-07-15", "2026-08-15", 220000, "入金済", ""],
+    ]);
+    return {
+      kind: "invoice_list",
+      title,
+      sheets: [
+        withTotals({
+          name: "請求一覧",
+          title,
+          columns,
+          rows,
+          asTable: true,
+          freezeHeader: true,
+        }),
+      ],
+    };
+  },
+
+  cashflow: (title) => {
+    const columns = cols([
+      ["date", "日付", "date"],
+      ["category", "区分", "text"],
+      ["item", "項目", "text"],
+      ["income", "収入", "currency"],
+      ["expense", "支出", "currency"],
+      ["balance", "残高", "currency"],
+      ["notes", "備考", "text"],
+    ]);
+    const rows = sampleRows(columns, [
+      ["2026-08-01", "売上", "受注入金", 500000, 0, 500000, ""],
+      ["2026-08-02", "経費", "交通費", 0, 12000, 488000, ""],
+    ]);
+    return {
+      kind: "cashflow",
+      title,
+      sheets: [
+        withTotals({
+          name: "収支",
+          title,
+          columns,
+          rows,
+          asTable: true,
+          freezeHeader: true,
+          charts: [
+            {
+              type: "line",
+              title: "残高推移",
+              categoriesRange: "A3:A4",
+              series: [{ name: "残高", valuesRange: "F3:F4" }],
+              anchor: "I2",
+            },
+          ],
+        }),
+      ],
+    };
+  },
+
+  survey: (title) => {
+    const columns = cols([
+      ["id", "回答ID", "text"],
+      ["q1", "設問1", "text"],
+      ["q2", "設問2", "number"],
+      ["q3", "設問3", "text"],
+      ["submitted", "回答日", "date"],
+    ]);
+    const rows = sampleRows(columns, [
+      ["R001", "はい", 5, "改善してほしい", "2026-08-01"],
+      ["R002", "いいえ", 3, "現状で良い", "2026-08-01"],
+    ]);
+    return {
+      kind: "survey",
+      title,
+      sheets: [{ name: "回答", title, columns, rows, asTable: true, freezeHeader: true }],
+    };
+  },
+
+  tasks: (title) => {
+    const columns = cols([
+      ["task", "タスク", "text"],
+      ["owner", "担当", "text"],
+      ["status", "状態", "text"],
+      ["priority", "優先度", "text"],
+      ["due", "期限", "date"],
+      ["notes", "備考", "text"],
+    ]);
+    const rows = sampleRows(columns, [
+      ["提案資料作成", "山田", "進行中", "高", "2026-08-05", ""],
+      ["見積確認", "佐藤", "未着手", "中", "2026-08-07", ""],
+    ]);
+    return {
+      kind: "tasks",
+      title,
+      sheets: [{ name: "タスク", title, columns, rows, asTable: true, freezeHeader: true }],
+    };
+  },
+
+  realestate: (title) => {
+    const columns = cols([
+      ["property", "物件名", "text"],
+      ["address", "住所", "text"],
+      ["type", "種別", "text"],
+      ["rent", "賃料", "currency"],
+      ["status", "状態", "text"],
+      ["tenant", "入居者", "text"],
+      ["renew", "更新日", "date"],
+      ["notes", "備考", "text"],
+    ]);
+    const rows = sampleRows(columns, [
+      ["メゾン青葉101", "東京都世田谷区", "マンション", 120000, "契約中", "田中", "2027-03-31", ""],
+    ]);
+    return {
+      kind: "realestate",
+      title,
+      sheets: [{ name: "物件一覧", title, columns, rows, asTable: true, freezeHeader: true }],
+    };
+  },
+
+  solar: (title) => {
+    const columns = cols([
+      ["site", "案件名", "text"],
+      ["kw", "容量kW", "number"],
+      ["status", "進捗", "text"],
+      ["epc", "EPC", "text"],
+      ["cod", "連系予定", "date"],
+      ["capex", "投資額", "currency"],
+      ["notes", "備考", "text"],
+    ]);
+    const rows = sampleRows(columns, [
+      ["千葉A発電所", 500, "設計", "〇〇建設", "2026-12-01", 80000000, ""],
+    ]);
+    return {
+      kind: "solar",
+      title,
+      sheets: [
+        withTotals({
+          name: "案件管理",
+          title,
+          columns,
+          rows,
+          asTable: true,
+          freezeHeader: true,
+        }),
+      ],
+    };
+  },
+
   from_image: (title) => TEMPLATE_BUILDERS.generic_table(title),
   from_pdf: (title) => TEMPLATE_BUILDERS.generic_table(title),
   from_word: (title) => TEMPLATE_BUILDERS.generic_table(title),
