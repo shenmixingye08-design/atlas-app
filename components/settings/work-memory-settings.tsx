@@ -364,7 +364,9 @@ export function WorkMemorySettings() {
   }, [search, typeFilter]);
 
   useEffect(() => {
-    void reload();
+    queueMicrotask(() => {
+      void reload();
+    });
   }, [reload]);
 
   const stats = useMemo(() => {

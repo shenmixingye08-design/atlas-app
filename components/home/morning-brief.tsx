@@ -216,7 +216,9 @@ export function MorningBrief({
   }, []);
 
   useEffect(() => {
-    void loadGoogleData();
+    queueMicrotask(() => {
+      void loadGoogleData();
+    });
   }, [loadGoogleData]);
 
   const handleStartToday = async () => {

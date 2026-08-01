@@ -84,10 +84,12 @@ export function AutomationsDashboard() {
   const [selected, setSelected] = useState<Automation | null>(null);
 
   useEffect(() => {
-    if (initialForm) {
-      setShowCreate(true);
-      setCreateInitialState(initialForm);
-    }
+    queueMicrotask(() => {
+      if (initialForm) {
+        setShowCreate(true);
+        setCreateInitialState(initialForm);
+      }
+    });
   }, [initialForm]);
 
   const loadAutomations = useCallback(async () => {
@@ -107,19 +109,23 @@ export function AutomationsDashboard() {
   }, []);
 
   useEffect(() => {
-    void loadAutomations();
+    queueMicrotask(() => {
+      void loadAutomations();
+    });
   }, [loadAutomations]);
 
   // Notification deep link (/automations?id=...) opens the exact automation's
   // detail panel once loaded, so「結果を見る」lands on the right item.
   useEffect(() => {
-    if (!selectedIdParam || automations.length === 0) return;
-    if (openedIdRef.current === selectedIdParam) return;
-    const match = automations.find((item) => item.id === selectedIdParam);
-    if (match) {
-      openedIdRef.current = selectedIdParam;
-      setSelected(match);
-    }
+    queueMicrotask(() => {
+      if (!selectedIdParam || automations.length === 0) return;
+      if (openedIdRef.current === selectedIdParam) return;
+      const match = automations.find((item) => item.id === selectedIdParam);
+      if (match) {
+        openedIdRef.current = selectedIdParam;
+        setSelected(match);
+      }
+    });
   }, [selectedIdParam, automations]);
 
   const summary = useMemo(

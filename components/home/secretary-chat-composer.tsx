@@ -60,7 +60,9 @@ export function SecretaryChatComposer() {
   const dragDepthRef = useRef(0);
 
   useEffect(() => {
-    setVoiceSupported(Boolean(getSpeechRecognitionCtor()));
+    queueMicrotask(() => {
+      setVoiceSupported(Boolean(getSpeechRecognitionCtor()));
+    });
     return () => {
       recognitionRef.current?.stop();
     };

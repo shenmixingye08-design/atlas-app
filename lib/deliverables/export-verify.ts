@@ -66,6 +66,14 @@ export async function verifyGeneratedExportAsync(
   file: GeneratedDeliverableFile,
 ): Promise<ExportVerifyResult> {
   const base = verifyGeneratedExport(file);
+  if (file.format === "docx") {
+    const { inspectDocxProduction } = await import(
+      "./word-production/docx-quality"
+    );
+    const docx = inspectDocxProduction(file.buffer);
+    const reasons = [...base.reasons, ...docx.reasons];
+    return { ok: reasons.length === 0, reasons };
+  }
   if (file.format !== "pdf") return base;
 
   const pdf = await verifyPdfQuality(file);

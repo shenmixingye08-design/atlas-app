@@ -197,9 +197,11 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
   const closeMobile = useCallback(() => setMobileOpen(false), []);
 
   useEffect(() => {
-    if (isSidebarMoreActive(resolvedActive)) {
-      setMoreExpanded(true);
-    }
+    queueMicrotask(() => {
+      if (isSidebarMoreActive(resolvedActive)) {
+        setMoreExpanded(true);
+      }
+    });
   }, [resolvedActive]);
 
   useEffect(() => {

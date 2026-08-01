@@ -4,6 +4,8 @@ import {
   Footer,
   Header,
   HeadingLevel,
+  ImageRun,
+  LevelFormat,
   PageNumber,
   Packer,
   PageBreak,
@@ -14,6 +16,7 @@ import {
   TableOfContents,
   TableRow,
   TextRun,
+  VerticalAlignTable,
   WidthType,
   BorderStyle,
   convertInchesToTwip,
@@ -24,12 +27,16 @@ import { formatGeneratedDate } from "./shared";
 import {
   formatCompanyLetterhead,
   type WordCompanyBrand,
+  validateWordLogoDataUrl,
 } from "../company-brand";
 import {
   getWordTemplate,
   type WordTemplateDefinition,
   type WordTemplateId,
 } from "../word-templates";
+import { normalizeJapaneseBusinessText } from "../word-production/japanese-normalize";
+
+const NUMBERED_LIST_REF = "minervot-numbered-list";
 
 /** Font fallback chain documented for environments without Yu Gothic. */
 export const WORD_FONT_FALLBACKS = [
@@ -57,7 +64,7 @@ function run(
 ): TextRun {
   const fonts = resolveFonts(template, brand);
   return new TextRun({
-    text,
+    text: normalizeJapaneseBusinessText(text),
     font: {
       ascii: fonts.ascii,
       eastAsia: fonts.eastAsia,
@@ -67,6 +74,44 @@ function run(
     bold: options?.bold,
     color: options?.color ?? template.colors.textHex,
   });
+}
+
+function decodeDataUrlImage(dataUrl: string): {
+  type: "png" | "jpg";
+  data: Buffer;
+} | null {
+  const validated = validateWordLogoDataUrl(dataUrl);
+  if (!validated.ok) return null;
+  const lower = validated.dataUrl.toLowerCase();
+  const type: "png" | "jpg" = lower.startsWith("data:image/png")
+    ? "png"
+    : "jpg";
+  const comma = validated.dataUrl.indexOf(",");
+  if (comma < 0) return null;
+  try {
+    return {
+      type,
+      data: Buffer.from(validated.dataUrl.slice(comma + 1), "base64"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Fit image into usable A4 width (~6.2in) while preserving aspect ratio. */
+function fitImageSize(
+  widthPx: number,
+  heightPx: number,
+  maxWidthPx = 560,
+  maxHeightPx = 720,
+): { width: number; height: number } {
+  const w = Math.max(1, widthPx);
+  const h = Math.max(1, heightPx);
+  const scale = Math.min(1, maxWidthPx / w, maxHeightPx / h);
+  return {
+    width: Math.max(24, Math.round(w * scale)),
+    height: Math.max(24, Math.round(h * scale)),
+  };
 }
 
 function formatDate(template: WordTemplateDefinition, value?: string): string {
@@ -148,15 +193,18 @@ function buildTable(
 
   const headerRow = new TableRow({
     tableHeader: template.tableHeaderRepeat,
+    cantSplit: true,
     children: headers.map(
       (header, index) =>
         new TableCell({
           width: { size: widths[index] ?? 1000, type: WidthType.DXA },
+          verticalAlign: VerticalAlignTable.CENTER,
           shading: { fill: accent, type: ShadingType.CLEAR },
           margins: { top: 80, bottom: 80, left: 100, right: 100 },
           borders: { top: border, bottom: border, left: border, right: border },
           children: [
             new Paragraph({
+              alignment: AlignmentType.CENTER,
               spacing: { after: 0 },
               children: [
                 run(header || " ", template, brand, {
@@ -175,17 +223,20 @@ function buildTable(
     const zebra =
       rowIndex % 2 === 1 ? template.colors.zebraFillHex : "FFFFFF";
     return new TableRow({
+      cantSplit: true,
       children: headers.map((_, columnIndex) => {
         const cell = row[columnIndex] ?? "";
+        const longText = cell.length > 80;
         return new TableCell({
           width: { size: widths[columnIndex] ?? 1000, type: WidthType.DXA },
+          verticalAlign: VerticalAlignTable.CENTER,
           shading: { fill: zebra, type: ShadingType.CLEAR },
           margins: { top: 60, bottom: 60, left: 100, right: 100 },
           borders: { top: border, bottom: border, left: border, right: border },
           children: [
             new Paragraph({
               alignment: cellAlignment(cell),
-              spacing: { after: 0, line: 260 },
+              spacing: { after: 0, line: longText ? 276 : 260 },
               children: [
                 run(cell || " ", template, brand, {
                   size: Math.max(16, template.typography.bodyHalfPoints - 2),
@@ -240,14 +291,15 @@ function blocksToChildren(
         }
         break;
       case "numberedList":
-        block.items.forEach((item, index) => {
+        for (const item of block.items) {
           children.push(
             new Paragraph({
               spacing: { after: 80 },
-              children: [run(`${index + 1}. ${item}`, template, brand)],
+              numbering: { reference: NUMBERED_LIST_REF, level: 0 },
+              children: [run(item, template, brand)],
             }),
           );
-        });
+        }
         break;
       case "table":
         children.push(
@@ -320,31 +372,73 @@ function blocksToChildren(
           );
         }
         break;
-      case "imagePlaceholder":
-        children.push(
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            spacing: { before: 120, after: 80 },
-            shading: { fill: "F2F2F2", type: ShadingType.CLEAR },
-            children: [
-              run(`[ 画像プレースホルダ ]`, template, brand, {
-                color: "888888",
-                bold: true,
-              }),
-            ],
-          }),
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            spacing: { after: 160 },
-            children: [
-              run(block.caption, template, brand, {
-                size: CAPTION_SIZE,
-                color: template.colors.mutedHex,
-              }),
-            ],
-          }),
-        );
+      case "imagePlaceholder": {
+        const embedded = block.dataUrl
+          ? decodeDataUrlImage(block.dataUrl)
+          : null;
+        if (embedded) {
+          const size = fitImageSize(
+            block.widthPx ?? 960,
+            block.heightPx ?? 540,
+          );
+          children.push(
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 160, after: 80 },
+              children: [
+                new ImageRun({
+                  type: embedded.type,
+                  data: embedded.data,
+                  transformation: {
+                    width: size.width,
+                    height: size.height,
+                  },
+                  altText: {
+                    name: block.caption || "image",
+                    description: block.caption || "embedded image",
+                    title: block.caption || "image",
+                  },
+                }),
+              ],
+            }),
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { after: 160 },
+              children: [
+                run(block.caption || "図", template, brand, {
+                  size: CAPTION_SIZE,
+                  color: template.colors.mutedHex,
+                }),
+              ],
+            }),
+          );
+        } else {
+          children.push(
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 120, after: 80 },
+              shading: { fill: "F2F2F2", type: ShadingType.CLEAR },
+              children: [
+                run(`[ 画像プレースホルダ ]`, template, brand, {
+                  color: "888888",
+                  bold: true,
+                }),
+              ],
+            }),
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { after: 160 },
+              children: [
+                run(block.caption, template, brand, {
+                  size: CAPTION_SIZE,
+                  color: template.colors.mutedHex,
+                }),
+              ],
+            }),
+          );
+        }
         break;
+      }
       case "pageBreak":
         children.push(
           new Paragraph({
@@ -388,14 +482,18 @@ function buildFooter(
   template: WordTemplateDefinition,
   brand: WordCompanyBrand | null,
   model: DocumentModel,
+  options?: { includePageNumbers?: boolean },
 ): Footer | undefined {
-  if (!template.showFooter && !template.showPageNumbers) return undefined;
+  const includePageNumbers =
+    options?.includePageNumbers ?? template.showPageNumbers;
+  if (!template.showFooter && !includePageNumbers) return undefined;
   const letterhead = formatCompanyLetterhead(brand);
   const label =
     model.footerNote ||
     letterhead.footer ||
     (template.showCompanyInfo && letterhead.lines[0]) ||
     "MINERVOT";
+  const fonts = resolveFonts(template, brand);
 
   const children: TextRun[] = [
     run(String(label), template, brand, {
@@ -403,18 +501,32 @@ function buildFooter(
       color: template.colors.mutedHex,
     }),
   ];
-  if (template.showPageNumbers) {
+  if (includePageNumbers) {
     children.push(
       run("  ·  ", template, brand, {
         size: CAPTION_SIZE,
         color: template.colors.mutedHex,
       }),
       new TextRun({
-        children: ["", PageNumber.CURRENT],
+        children: [PageNumber.CURRENT],
         font: {
-          ascii: resolveFonts(template, brand).ascii,
-          eastAsia: resolveFonts(template, brand).eastAsia,
-          hAnsi: resolveFonts(template, brand).ascii,
+          ascii: fonts.ascii,
+          eastAsia: fonts.eastAsia,
+          hAnsi: fonts.ascii,
+        },
+        size: CAPTION_SIZE,
+        color: template.colors.mutedHex,
+      }),
+      run(" / ", template, brand, {
+        size: CAPTION_SIZE,
+        color: template.colors.mutedHex,
+      }),
+      new TextRun({
+        children: [PageNumber.TOTAL_PAGES],
+        font: {
+          ascii: fonts.ascii,
+          eastAsia: fonts.eastAsia,
+          hAnsi: fonts.ascii,
         },
         size: CAPTION_SIZE,
         color: template.colors.mutedHex,
@@ -483,7 +595,35 @@ export async function renderDocumentModelToDocx(
 
   const children: Array<Paragraph | Table> = [];
 
-  // Title / letter cover
+  // Title / letter cover (+ optional company logo, aspect-preserved)
+  if (template.showLogo && brand?.logoDataUrl) {
+    const logo = decodeDataUrlImage(brand.logoDataUrl);
+    if (logo) {
+      const size = fitImageSize(320, 120, 220, 80);
+      children.push(
+        new Paragraph({
+          alignment: AlignmentType.LEFT,
+          spacing: { after: 120 },
+          children: [
+            new ImageRun({
+              type: logo.type,
+              data: logo.data,
+              transformation: {
+                width: size.width,
+                height: size.height,
+              },
+              altText: {
+                name: "company-logo",
+                description: letterhead.lines[0] || "logo",
+                title: "logo",
+              },
+            }),
+          ],
+        }),
+      );
+    }
+  }
+
   if (template.showCompanyInfo && letterhead.lines.length > 0) {
     for (const line of letterhead.lines.slice(0, 4)) {
       children.push(
@@ -676,10 +816,16 @@ export async function renderDocumentModelToDocx(
   const fonts = resolveFonts(template, brand);
   const header = buildHeader(template, brand, input.model);
   const footer = buildFooter(template, brand, input.model);
+  const firstFooter =
+    template.hidePageNumberOnFirstPage && template.showPageNumbers
+      ? buildFooter(template, brand, input.model, {
+          includePageNumbers: false,
+        })
+      : undefined;
 
   const doc = new Document({
     creator: "MINERVOT",
-    title: input.model.title,
+    title: normalizeJapaneseBusinessText(input.model.title),
     description: "MINERVOT Word deliverable",
     styles: {
       default: {
@@ -693,10 +839,33 @@ export async function renderDocumentModelToDocx(
             size: template.typography.bodyHalfPoints,
           },
           paragraph: {
-            spacing: { line: template.typography.lineSpacing },
+            spacing: {
+              line: template.typography.lineSpacing,
+              after: template.typography.paragraphSpacingAfter,
+            },
           },
         },
       },
+    },
+    numbering: {
+      config: [
+        {
+          reference: NUMBERED_LIST_REF,
+          levels: [
+            {
+              level: 0,
+              format: LevelFormat.DECIMAL,
+              text: "%1.",
+              alignment: AlignmentType.START,
+              style: {
+                paragraph: {
+                  indent: { left: 720, hanging: 360 },
+                },
+              },
+            },
+          ],
+        },
+      ],
     },
     sections: [
       {
@@ -713,13 +882,19 @@ export async function renderDocumentModelToDocx(
                   height: convertInchesToTwip(11.69),
                 },
             margin: template.marginsDxa,
-            pageNumbers: template.hidePageNumberOnFirstPage
-              ? { start: 1 }
-              : undefined,
+            pageNumbers: { start: 1 },
           },
+          titlePage: Boolean(
+            template.hidePageNumberOnFirstPage && template.showPageNumbers,
+          ),
         },
         headers: header ? { default: header } : undefined,
-        footers: footer ? { default: footer } : undefined,
+        footers: footer
+          ? {
+              default: footer,
+              ...(firstFooter ? { first: firstFooter } : {}),
+            }
+          : undefined,
         children,
       },
     ],

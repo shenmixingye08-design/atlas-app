@@ -59,7 +59,9 @@ export function MaintenanceModePanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   async function handleToggle(enabled: boolean) {

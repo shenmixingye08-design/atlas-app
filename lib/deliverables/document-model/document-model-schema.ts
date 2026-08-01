@@ -50,6 +50,10 @@ export const documentModelBlockSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("imagePlaceholder"),
     caption: z.string(),
+    /** Optional embedded image (data URL). When absent, caption box is rendered. */
+    dataUrl: z.string().optional(),
+    widthPx: z.number().int().positive().max(2000).optional(),
+    heightPx: z.number().int().positive().max(2000).optional(),
   }),
   z.object({
     type: z.literal("pageBreak"),

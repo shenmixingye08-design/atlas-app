@@ -88,10 +88,16 @@ function parseBlocks(lines: string[]): ContentBlock[] {
 
     if (isTableRow(line)) {
       const tableLines: string[] = [];
-      while (index < lines.length && isTableRow(lines[index] ?? "")) {
-        if (!TABLE_SEPARATOR_PATTERN.test(lines[index]?.trim() ?? "")) {
-          tableLines.push(lines[index]!);
+      while (index < lines.length) {
+        const current = lines[index]?.trim() ?? "";
+        if (!current) break;
+        if (TABLE_SEPARATOR_PATTERN.test(current)) {
+          // Consume markdown separator so it never becomes a paragraph.
+          index += 1;
+          continue;
         }
+        if (!isTableRow(current)) break;
+        tableLines.push(lines[index]!);
         index += 1;
       }
 

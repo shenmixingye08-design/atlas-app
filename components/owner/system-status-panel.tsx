@@ -124,7 +124,9 @@ export function SystemStatusPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   async function handleStatusChange(

@@ -66,6 +66,12 @@ export class DocxDeliverableGenerator implements DeliverableGenerator {
     ) {
       throw new Error("Word生成失敗: refused JSON/HTML payload");
     }
+
+    const { assertDocxProductionOrThrow } = await import(
+      "../word-production/docx-quality"
+    );
+    assertDocxProductionOrThrow(buffer);
+
     return createDeliverableFile("docx", baseFileName, buffer, false);
   }
 }

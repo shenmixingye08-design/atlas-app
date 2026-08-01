@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { InternalErrorPageContent } from "@/components/system-pages/internal-error-page";
 
@@ -15,9 +15,9 @@ export default function GlobalError({
     console.error("[ATLAS global error]", error);
   }, [error]);
 
-  const errorId =
-    error.digest ??
-    `ERR-${Date.now().toString(36).toUpperCase()}`;
+  const [errorId] = useState(
+    () => error.digest ?? `ERR-${Date.now().toString(36).toUpperCase()}`,
+  );
 
   return (
     <html lang="ja">

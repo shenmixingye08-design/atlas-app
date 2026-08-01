@@ -73,7 +73,9 @@ function DriveFileRow({
   const [destId, setDestId] = useState(folderOptions[0]?.id ?? "");
 
   useEffect(() => {
-    if (!destId && folderOptions[0]?.id) setDestId(folderOptions[0].id);
+    queueMicrotask(() => {
+      if (!destId && folderOptions[0]?.id) setDestId(folderOptions[0].id);
+    });
   }, [destId, folderOptions]);
 
   return (
@@ -229,7 +231,9 @@ export function GoogleDrivePanel({ embedded = false }: { embedded?: boolean }) {
   );
 
   useEffect(() => {
-    void load(category, appliedQuery, parentId, useFullTextSearch);
+    queueMicrotask(() => {
+      void load(category, appliedQuery, parentId, useFullTextSearch);
+    });
   }, [category, appliedQuery, parentId, useFullTextSearch, load]);
 
   const folderOptions = useMemo(() => {
