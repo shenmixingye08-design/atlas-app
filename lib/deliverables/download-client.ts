@@ -249,9 +249,12 @@ export async function downloadDeliverableFile(
   await triggerBlobDownload(blob, fileName);
 
   const artifactMatch = input.url.match(/\/deliverables\/([^/?#]+)/);
-  trackFunnelClient("artifact_download", {
-    format,
-    bytes: bytes.byteLength,
-    artifactId: artifactMatch?.[1] ?? null,
-  });
+  trackFunnelClient(
+    "artifact_downloaded",
+    {
+      format,
+      bytes: bytes.byteLength,
+    },
+    { artifactId: artifactMatch?.[1] ?? null }
+  );
 }

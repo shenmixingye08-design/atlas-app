@@ -2,6 +2,7 @@
 
 import { Suspense } from "react";
 
+import { BetaFeedbackForm } from "@/components/beta/beta-feedback-form";
 import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
 import { SettingsAccountLink } from "@/components/settings/settings-account-link";
 import { SettingsAccountRequestsLink } from "@/components/settings/settings-account-requests-link";
@@ -28,6 +29,7 @@ function SettingsContent() {
       <SettingsBillingLink />
       <SettingsAccountLink />
       <SettingsAccountRequestsLink />
+      <BetaFeedbackForm />
     </div>
   );
 }

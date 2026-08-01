@@ -46,11 +46,17 @@ export function HomeChatBar() {
     const trimmed = input.trim();
     if (!trimmed || uploading) return;
 
-    trackFunnelClient("request_start", {
+    trackFunnelClient("first_request_started", {
       hasImages: uploadedIds.length > 0,
       hasDocuments: documents.length > 0,
       format: preferredFormat,
     });
+    if (uploadedIds.length > 0 || documents.length > 0) {
+      trackFunnelClient("attachment_added", {
+        images: uploadedIds.length,
+        documents: documents.length,
+      });
+    }
 
     if (failedImages.length > 0) {
       setError("アップロードに失敗した画像があります。削除するか再試行してください。");
@@ -87,7 +93,7 @@ export function HomeChatBar() {
     }
 
     setError(null);
-    trackFunnelClient("request_submit", {
+    trackFunnelClient("first_request_submitted", {
       sample: false,
       format: preferredFormat,
     });

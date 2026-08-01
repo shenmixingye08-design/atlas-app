@@ -25,7 +25,7 @@ export function SecretaryHomeDashboard({
   projects,
 }: SecretaryHomeDashboardProps) {
   useEffect(() => {
-    trackFunnelClient("home_view", {
+    trackFunnelClient("home_viewed", {
       hasHistory: projects.length > 0,
       hasAutomations: automations.length > 0,
     });
