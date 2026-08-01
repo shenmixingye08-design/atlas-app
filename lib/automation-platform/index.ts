@@ -51,7 +51,19 @@ export {
   normalizeExecutionPolicy,
   resolveRunApprovalRequirement,
 } from "./execution/policy";
+export {
+  prepareRunSnapshot,
+  buildRunStepsFromAutomation,
+  resolveMemoryUsage,
+} from "./execution/prepare-run";
+export {
+  isRetryableFailure,
+  computeRetryAt,
+  classifyExecutionError,
+} from "./execution/retry-policy";
+export { dispatchAutomationRuns } from "./execution/dispatch";
 export { migrateV1Automations, convertV1ToV2 } from "./migration/v1-to-v2";
 export { automationPlatformService } from "./service/automation-service";
 export { AutomationPlatformError } from "./errors/messages";
 export type { AutomationErrorCode } from "./errors/codes";
+export { AUTOMATION_EXECUTION_FEATURE_EVALUATION } from "./feature-evaluation-execution";

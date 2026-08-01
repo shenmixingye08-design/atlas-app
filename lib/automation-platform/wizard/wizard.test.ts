@@ -162,6 +162,8 @@ describe("automation create wizard domain", () => {
       "run_then_notify",
       "approve_first_then_auto",
       "review_high_risk_only",
+      "review_post_only",
+      "review_send_only",
       "review_selected_steps",
     ] as const;
     for (const mode of modes) {

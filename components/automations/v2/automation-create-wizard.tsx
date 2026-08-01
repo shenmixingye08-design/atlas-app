@@ -1072,8 +1072,18 @@ function ApprovalStep({
     },
     {
       id: "review_high_risk_only" as const,
-      title: "外部送信・公開だけ確認する",
-      description: "ファイル作成は自動で行い、投稿・送信前だけ確認します",
+      title: "高リスクだけ確認する",
+      description: "送信・投稿・公開・削除・共有・課金の前だけ確認します",
+    },
+    {
+      id: "review_post_only" as const,
+      title: "投稿だけ確認する",
+      description: "X投稿の前だけ確認します（他の高リスクも安全のため確認）",
+    },
+    {
+      id: "review_send_only" as const,
+      title: "送信だけ確認する",
+      description: "メール送信の前だけ確認します（他の高リスクも安全のため確認）",
     },
     {
       id: "review_selected_steps" as const,

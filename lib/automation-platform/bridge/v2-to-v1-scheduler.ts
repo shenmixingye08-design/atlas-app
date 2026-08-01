@@ -14,16 +14,28 @@ import type {
  */
 
 function mapExecutionLevel(
-  mode: AutomationV2["executionPolicy"]["mode"],
+  automation: AutomationV2,
 ): AutomationExecutionLevel {
-  switch (mode) {
+  const hasHighRisk = automation.workflow.steps.some(
+    (step) =>
+      step.enabled &&
+      (step.type === "x_post" ||
+        step.type === "gmail" ||
+        step.type === "wordpress" ||
+        step.type === "google_calendar"),
+  );
+  // Never bridge high-risk automations into V1 full_auto.
+  if (hasHighRisk) return "approve_then_run";
+
+  switch (automation.executionPolicy.mode) {
     case "run_then_notify":
       return "full_auto";
     case "review_before_run":
     case "approve_first_then_auto":
-      return "approve_then_run";
     case "review_selected_steps":
     case "review_high_risk_only":
+    case "review_post_only":
+    case "review_send_only":
       return "approve_then_run";
     default:
       return "approve_then_run";
@@ -95,7 +107,7 @@ export function buildV1CreateInputFromV2(
         label: "手動実行",
       },
       workflow: { assignment: buildAssignment(automation) },
-      executionLevel: mapExecutionLevel(automation.executionPolicy.mode),
+      executionLevel: mapExecutionLevel(automation),
       executionMode: "standard",
       destination: automation.workflow.steps.some((s) => s.type === "x_post")
         ? "x"
@@ -133,7 +145,7 @@ export function buildV1CreateInputFromV2(
             }
           : { type: "never" },
     },
-    executionLevel: mapExecutionLevel(automation.executionPolicy.mode),
+    executionLevel: mapExecutionLevel(automation),
     executionMode: "standard",
     destination: automation.workflow.steps.some((s) => s.type === "x_post")
       ? "x"

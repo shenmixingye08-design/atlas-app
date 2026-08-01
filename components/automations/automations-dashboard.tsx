@@ -381,7 +381,12 @@ export function AutomationsDashboard() {
                   onRun={() => {
                     setRunningId(automation.id);
                     void runAutomationV2(automation.id)
-                      .then(loadV2)
+                      .then((result) => {
+                        void loadV2();
+                        router.push(
+                          `/automations/runs/${encodeURIComponent(result.run.id)}`,
+                        );
+                      })
                       .catch((err: unknown) =>
                         setError(
                           err instanceof Error ? err.message : ui.error.runFailed,

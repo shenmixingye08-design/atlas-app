@@ -101,6 +101,62 @@ export async function runAutomationV2(
   return parseResponse(response);
 }
 
+export async function fetchAutomationRun(runId: string): Promise<AutomationRun> {
+  const response = await fetch(`/api/automation-platform/runs/${runId}`, {
+    cache: "no-store",
+  });
+  const payload = await parseResponse<{ run: AutomationRun }>(response);
+  return payload.run;
+}
+
+export async function fetchAutomationRuns(
+  automationId: string,
+): Promise<AutomationRun[]> {
+  const response = await fetch(`/api/automation-platform/${automationId}/run`, {
+    cache: "no-store",
+  });
+  const payload = await parseResponse<{ runs: AutomationRun[] }>(response);
+  return payload.runs;
+}
+
+export async function approveAutomationRun(
+  runId: string,
+  comment?: string,
+): Promise<AutomationRun> {
+  const response = await fetch(
+    `/api/automation-platform/runs/${runId}/approve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comment }),
+    },
+  );
+  const payload = await parseResponse<{ run: AutomationRun }>(response);
+  return payload.run;
+}
+
+export async function rejectAutomationRun(
+  runId: string,
+): Promise<AutomationRun> {
+  const response = await fetch(
+    `/api/automation-platform/runs/${runId}/reject`,
+    { method: "POST" },
+  );
+  const payload = await parseResponse<{ run: AutomationRun }>(response);
+  return payload.run;
+}
+
+export async function retryAutomationRun(
+  runId: string,
+): Promise<AutomationRun> {
+  const response = await fetch(
+    `/api/automation-platform/runs/${runId}/retry`,
+    { method: "POST" },
+  );
+  const payload = await parseResponse<{ run: AutomationRun }>(response);
+  return payload.run;
+}
+
 export async function saveAutomationDraft(
   draft: AutomationWizardDraft,
 ): Promise<{ draft: AutomationWizardDraft; savedAt: string }> {

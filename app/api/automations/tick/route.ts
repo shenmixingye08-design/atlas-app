@@ -67,6 +67,17 @@ export async function POST(request: Request): Promise<Response> {
     const results = await automationService.processDueAutomations({
       requestOrigin: origin,
     });
+
+    let v2Dispatch: { processed: number } = { processed: 0 };
+    try {
+      const { dispatchAutomationRuns } = await import(
+        "@/lib/automation-platform/execution/dispatch"
+      );
+      v2Dispatch = await dispatchAutomationRuns({ limit: 20 });
+    } catch (error) {
+      console.warn("[automation tick] v2 dispatch skipped:", error);
+    }
+
     const scheduledXPosts = await processScheduledXPostsFromAutomationTick();
     const autoPosts = await processDueAutoPostsFromAutomationTick();
 
@@ -111,6 +122,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({
       processed: results.length,
       results,
+      v2Dispatch,
       scheduledXPosts: {
         processed: scheduledXPosts.length,
         results: scheduledXPosts,

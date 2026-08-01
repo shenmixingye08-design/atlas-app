@@ -17,7 +17,9 @@ const POLICY_LABEL: Record<AutomationV2["executionPolicy"]["mode"], string> = {
   run_then_notify: "自動実行",
   review_selected_steps: "手順ごとに確認",
   approve_first_then_auto: "初回のみ確認",
-  review_high_risk_only: "送信・公開のみ確認",
+  review_high_risk_only: "高リスクのみ確認",
+  review_post_only: "投稿だけ確認",
+  review_send_only: "送信だけ確認",
 };
 
 type Props = {
