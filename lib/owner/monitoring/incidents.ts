@@ -74,6 +74,10 @@ export function recordMonitoringIncident(input: RecordIncidentInput): void {
     targetId: input.targetId,
     result: "failure",
     reason: sanitizeAuditReason(input.message),
+    requestId: null,
+    jobId: null,
+    artifactId: null,
+    retryCount: null,
   });
   schedulePersistAuditLog();
   handleDisasterIncident(input);

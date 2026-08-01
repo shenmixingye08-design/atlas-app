@@ -59,7 +59,7 @@ export async function runArtifactCase(
   let failureReason: string | null = null;
   let developerCode: string | null = null;
   let finalStatus = "failed";
-  let retryCount = 0;
+  const retryCount = 0;
 
   try {
     const g0 = Date.now();

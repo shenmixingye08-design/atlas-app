@@ -53,7 +53,9 @@ function hasJapanese(text: string): boolean {
 async function validateXlsxDeep(buffer: Buffer): Promise<StructureCheck[]> {
   const checks: StructureCheck[] = [];
   const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(Uint8Array.from(buffer));
+  await wb.xlsx.load(
+    buffer as unknown as Parameters<typeof wb.xlsx.load>[0]
+  );
   checks.push({
     name: "sheet_count",
     ok: wb.worksheets.length >= 1,

@@ -115,7 +115,7 @@ export async function createPptxFromAssignment(input: {
       );
     }
 
-    let model = input.contentMarkdown?.trim()
+    const model = input.contentMarkdown?.trim()
       ? await presentationFromMarkdown({
           markdown: input.contentMarkdown,
           assignment: input.assignment,

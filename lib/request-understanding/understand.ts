@@ -480,7 +480,7 @@ export function understandRequest(input: UnderstandInput): ParsedRequest {
       ? hardMissing.filter((k) => k !== "line_items" && k !== "entries")
       : hardMissing;
 
-  let confidence_breakdown: ConfidenceBreakdown = {
+  const confidence_breakdown: ConfidenceBreakdown = {
     intent: kindSignal?.weight ?? (explicitFormats.length ? 0.8 : 0.55),
     executionMode: actions.wantsExternalSend
       ? 0.9

@@ -226,7 +226,9 @@ export function GoogleCalendarPanel() {
   }, []);
 
   useEffect(() => {
-    void load(range);
+    queueMicrotask(() => {
+      void load(range);
+    });
   }, [load, range]);
 
   const handleConnect = async () => {

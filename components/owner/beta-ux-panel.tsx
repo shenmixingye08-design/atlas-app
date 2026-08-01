@@ -88,7 +88,9 @@ export function BetaUxPanel() {
   }, [q.artifactId, q.jobId, q.requestId]);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   if (error) {

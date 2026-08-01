@@ -58,7 +58,6 @@ describe("audit log", () => {
     });
 
     const payments = filterAuditLogEntries(listAuditLogEntries(), {
-      action: undefined,
       category: "billing",
       q: "stripe_payment",
     });
@@ -119,6 +118,43 @@ describe("audit log", () => {
     expect(
       listAuditLogEntries().map((r) => r.action),
     ).toEqual(expect.arrayContaining(["google_connect", "data_export"]));
+  });
+
+  it("records x_connect success/failure with formal userId actor field", async () => {
+    const { recordAuditLog } = await import("./record");
+    const { listAuditLogEntries } = await import("./store");
+
+    await recordAuditLog({
+      userId: "user_x",
+      ip: "198.51.100.7",
+      userAgent: "X-Callback-Test",
+      category: "integration",
+      action: "x_connect",
+      targetId: "x",
+      result: "success",
+      reason: "X OAuth connected (@atlas)",
+    });
+    await recordAuditLog({
+      userId: "user_x",
+      ip: "198.51.100.7",
+      userAgent: "X-Callback-Test",
+      category: "integration",
+      action: "x_connect",
+      targetId: "x",
+      result: "failure",
+      reason: "token exchange failed",
+    });
+
+    const rows = listAuditLogEntries().filter((r) => r.action === "x_connect");
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.userId === "user_x")).toBe(true);
+    expect(rows.every((r) => r.category === "integration")).toBe(true);
+    expect(rows.every((r) => r.targetId === "x")).toBe(true);
+    expect(rows.every((r) => r.ip === "198.51.100.7")).toBe(true);
+    expect(rows.map((r) => r.result).sort()).toEqual(["failure", "success"]);
+    expect(rows.every((r) => typeof r.at === "string" && r.at.length > 0)).toBe(
+      true,
+    );
   });
 
   it("records account deletion and redacts secrets", async () => {

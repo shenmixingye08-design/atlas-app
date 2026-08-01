@@ -30,7 +30,9 @@ export function CostOptimizationSettings() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setModes(loadCategoryExecutionModes());
+    queueMicrotask(() => {
+      setModes(loadCategoryExecutionModes());
+    });
   }, []);
 
   const handleChange = (category: JobCategoryId, mode: AutomationExecutionMode) => {

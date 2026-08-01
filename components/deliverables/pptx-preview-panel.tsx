@@ -46,7 +46,9 @@ export function PptxPreviewPanel({ deliverableId, fileName, onReedit }: Props) {
   }, [deliverableId]);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   if (loading) {

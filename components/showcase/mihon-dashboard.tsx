@@ -39,7 +39,9 @@ export function MihonDashboard() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const handleAdd = async (templateId: CompanyTemplateId) => {

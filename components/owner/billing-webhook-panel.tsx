@@ -55,7 +55,9 @@ export function BillingWebhookPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   if (error) {

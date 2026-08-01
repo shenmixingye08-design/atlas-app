@@ -15,7 +15,9 @@ export function useWorkProfile() {
   }, []);
 
   useEffect(() => {
-    refresh();
+    queueMicrotask(() => {
+      refresh();
+    });
   }, [refresh]);
 
   const reset = useCallback(() => {

@@ -48,7 +48,9 @@ export function CompanySelectionDashboard() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const handleSelect = async (templateId: CompanyTemplateId) => {

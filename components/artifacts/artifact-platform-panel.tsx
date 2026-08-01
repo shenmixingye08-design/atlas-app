@@ -120,18 +120,6 @@ export function ArtifactPlatformPanel() {
     });
   };
 
-  useEffect(() => {
-    loadList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, latestOnly, sort]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const id = new URLSearchParams(window.location.search).get("id");
-    if (id) void openDetail(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const openDetail = async (id: string) => {
     setSelectedId(id);
     setPreview(null);
@@ -153,6 +141,21 @@ export function ArtifactPlatformPanel() {
       setBusy(false);
     }
   };
+
+  useEffect(() => {
+    loadList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, latestOnly, sort]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const id = new URLSearchParams(window.location.search).get("id");
+    if (id) {
+      queueMicrotask(() => {
+        void openDetail(id);
+      });
+    }
+  }, []);
 
   const onDownload = async (item: ArtifactItem) => {
     await downloadDeliverableFile({

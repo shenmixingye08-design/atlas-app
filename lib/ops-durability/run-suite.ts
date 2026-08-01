@@ -21,6 +21,7 @@ import { runOpsJobCase } from "@/lib/ops-durability/run-job";
 import { runNotificationDurability } from "@/lib/ops-durability/run-notifications";
 import { runOpsScenarioJobs } from "@/lib/ops-durability/run-scenarios";
 import { runStorageDurability } from "@/lib/ops-durability/run-storage";
+import type { OpsJobResult } from "@/lib/ops-durability/types";
 
 export const DEFAULT_OPS_DURABILITY_OUT =
   process.env.OPS_DURABILITY_OUT?.trim() ||
@@ -65,7 +66,7 @@ export async function runOpsDurabilitySuite(options?: {
   const jobLimit = options?.jobLimit ?? 500;
   const cases = OPS_JOB_CASES.slice(0, jobLimit);
 
-  const jobs = [];
+  const jobs: OpsJobResult[] = [];
   for (const c of cases) {
     jobs.push(
       await runOpsJobCase(c, {

@@ -71,20 +71,23 @@ export async function GET(request: Request): Promise<Response> {
 
     try {
       const { recordAuditLogSafe, auditRequestContext } = await import(
-        "@/lib/owner/audit-log/record"
+        "@/lib/owner/audit-log"
       );
       const ctx = auditRequestContext(request);
+      // Formal contract: userId (actor), category, action, targetId, result, reason + request context.
+      // Do not use actorUserId / targetType / summary / metadata — those are not RecordAuditLogInput fields.
       recordAuditLogSafe({
-        actorUserId: userId,
+        userId,
+        email: connection.account?.email ?? null,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        category: "integration",
         action: "x_connect",
-        targetType: "integration",
         targetId: connection.serviceId,
-        summary: "X OAuth connected",
-        metadata: {
-          username:
-            connection.account?.username ?? connection.account?.email ?? null,
-        },
-        ...ctx,
+        result: "success",
+        reason: connection.account?.username
+          ? `X OAuth connected (@${connection.account.username})`
+          : "X OAuth connected",
       });
     } catch {
       // audit must not block OAuth success
@@ -101,17 +104,18 @@ export async function GET(request: Request): Promise<Response> {
     markXConnectionError(userId, message);
     try {
       const { recordAuditLogSafe, auditRequestContext } = await import(
-        "@/lib/owner/audit-log/record"
+        "@/lib/owner/audit-log"
       );
       const ctx = auditRequestContext(request);
       recordAuditLogSafe({
-        actorUserId: userId,
+        userId,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        category: "integration",
         action: "x_connect",
-        targetType: "integration",
         targetId: "x",
-        summary: "X OAuth connect failed",
-        metadata: { ok: false, error: message.slice(0, 120) },
-        ...ctx,
+        result: "failure",
+        reason: message,
       });
     } catch {
       // ignore
