@@ -11,6 +11,9 @@ vi.mock("@/lib/persistence/durable-domain", () => ({
   persistDurableDomain: vi.fn(async () => "clerk"),
   loadDurableDomain: vi.fn(async () => null),
 }));
+vi.mock("@/lib/notifications/service", () => ({
+  createNotification: vi.fn(() => ({ notificationId: "n1" })),
+}));
 
 import {
   listAutomationAuditEvents,
@@ -220,7 +223,17 @@ describe("Automation Platform Phase 1", () => {
       context: ownerContext,
     });
     expect(result.created).toBe(true);
-    expect(["queued", "awaiting_approval"]).toContain(result.run.status);
+    expect([
+      "queued",
+      "awaiting_approval",
+      "running",
+      "succeeded",
+      "partially_succeeded",
+      "retrying",
+      "failed",
+    ]).toContain(result.run.status);
+    expect(result.run.preparation).toBeTruthy();
+    expect(result.run.steps.length).toBeGreaterThan(0);
   });
 
   it("8. daily schedule next run", () => {

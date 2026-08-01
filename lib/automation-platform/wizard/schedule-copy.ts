@@ -59,7 +59,11 @@ export function describeExecutionPolicy(draft: AutomationWizardDraft): string {
     case "approve_first_then_auto":
       return "初回だけ確認し、以降は自動で実行します（高リスク操作は毎回確認）";
     case "review_high_risk_only":
-      return "ファイル作成などは自動で行い、投稿・送信・公開の前だけ確認します";
+      return "ファイル作成などは自動で行い、高リスク操作の前だけ確認します";
+    case "review_post_only":
+      return "投稿の前だけ確認します（他の高リスク操作も安全のため確認）";
+    case "review_send_only":
+      return "メール送信の前だけ確認します（他の高リスク操作も安全のため確認）";
     case "review_selected_steps":
       return "指定した手順の前だけ確認します";
     default:
