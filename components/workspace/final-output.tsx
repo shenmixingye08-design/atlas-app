@@ -12,6 +12,8 @@ import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
+import { ExcelPreviewPanel } from "@/components/deliverables/excel-preview-panel";
+import { ExcelRevisionPanel } from "@/components/deliverables/excel-revision-panel";
 import { WordPreviewPanel } from "@/components/deliverables/word-preview-panel";
 import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
 import { WordRevisionPanel } from "@/components/deliverables/word-revision-panel";
@@ -530,6 +532,7 @@ export function FinalOutput({
 
   const markdownFile = findGeneratedFile(deliverables, "md");
   const docxFile = findGeneratedFile(deliverables, "docx");
+  const xlsxFile = findGeneratedFile(deliverables, "xlsx");
   const baseName = markdownFile?.fileName ?? `${normalizedDeliverable.type}-deliverable.md`;
 
   const handleCopy = async () => {
@@ -691,6 +694,43 @@ export function FinalOutput({
                   initialTitle={normalizedDeliverable.title || docxFile.fileName}
                   initialContent={exportText}
                   initialTemplateId={docxFile.metadata?.templateId ?? null}
+                />
+              </div>
+            </details>
+          </div>
+        ) : null}
+
+        {xlsxFile ? (
+          <div className="mt-6 space-y-3">
+            <details
+              className="group rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--background-muted)]/40 px-4 py-2"
+              open
+            >
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-semibold text-foreground focus-ring">
+                <span className="text-xs transition-transform group-open:rotate-90" aria-hidden="true">
+                  ▸
+                </span>
+                Excelプレビュー
+              </summary>
+              <div className="py-3">
+                <ExcelPreviewPanel
+                  deliverableId={xlsxFile.id}
+                  fileName={xlsxFile.fileName}
+                />
+              </div>
+            </details>
+
+            <details className="group rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--background-muted)]/40 px-4 py-2">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-semibold text-foreground focus-ring">
+                <span className="text-xs transition-transform group-open:rotate-90" aria-hidden="true">
+                  ▸
+                </span>
+                Excelを再編集・分析
+              </summary>
+              <div className="py-3">
+                <ExcelRevisionPanel
+                  deliverableId={xlsxFile.id}
+                  initialTitle={normalizedDeliverable.title || xlsxFile.fileName}
                 />
               </div>
             </details>
