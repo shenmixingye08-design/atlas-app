@@ -8,7 +8,7 @@ import {
   listZipEntryNames,
   sha256Hex,
 } from "@/lib/deliverables/integrity";
-import type { ArtifactKind } from "@/lib/artifacts/types";
+import type { ArtifactKind } from "@/lib/artifact-registry/types";
 
 export type IntegrityMatrixResult = {
   ok: boolean;

@@ -10,9 +10,9 @@ import { performance } from "node:perf_hooks";
 import {
   appendArtifactRevision,
   registerRootArtifact,
-} from "@/lib/artifacts/registry";
-import { assertNeverOverwrite } from "@/lib/artifacts/revision-policy";
-import type { ArtifactKind } from "@/lib/artifacts/types";
+} from "@/lib/artifact-registry/registry";
+import { assertNeverOverwrite } from "@/lib/artifact-registry/revision-policy";
+import type { ArtifactKind } from "@/lib/artifact-registry/types";
 import {
   resetDeliverableMemoryStoreForTests,
   getStoredDeliverableForUser,

@@ -1,9 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 
-import { appendArtifactRevision } from "@/lib/artifacts/registry";
+import { appendArtifactRevision } from "@/lib/artifact-registry/registry";
 import { assertArtifactAccess } from "@/lib/storage/authz";
 import { inspectArtifactIntegrity } from "@/lib/storage/integrity-matrix";
-import type { ArtifactKind } from "@/lib/artifacts/types";
+import type { ArtifactKind } from "@/lib/artifact-registry/types";
 import { getStoredDeliverableForUser } from "@/lib/deliverables/store";
 
 export const runtime = "nodejs";

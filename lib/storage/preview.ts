@@ -5,8 +5,8 @@
 import type { StoredDeliverable } from "@/lib/deliverables/store";
 import { buildWordPreviewModel } from "@/lib/deliverables/word-preview";
 import { resolveDocumentModel } from "@/lib/deliverables/document-model";
-import { kindFromDeliverableFormat, kindFromMimeAndName } from "@/lib/artifacts/identity";
-import type { ArtifactKind } from "@/lib/artifacts/types";
+import { kindFromDeliverableFormat, kindFromMimeAndName } from "@/lib/artifact-registry/identity";
+import type { ArtifactKind } from "@/lib/artifact-registry/types";
 
 export type ArtifactPreviewResult =
   | {

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { registerRootArtifact } from "@/lib/artifacts/registry";
+import { registerRootArtifact } from "@/lib/artifact-registry/registry";
 import {
   resetDeliverableMemoryStoreForTests,
 } from "@/lib/deliverables/store";
