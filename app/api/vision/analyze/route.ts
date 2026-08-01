@@ -22,6 +22,13 @@ type Body = {
 };
 
 export async function POST(request: Request): Promise<Response> {
+  const { enforceReleaseGate } = await import("@/lib/release-gate/enforce");
+  const gated = await enforceReleaseGate({
+    capability: "vision",
+    routeKind: "vision",
+  });
+  if (gated) return gated;
+
   const { userId } = await auth();
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

@@ -28,6 +28,7 @@ type OwnerNavProps = {
     | "automationExecutionLogs"
     | "reliability"
     | "quality"
+    | "releaseGate"
     | "wordDownloadDiagnostics";
 };
 const LINKS = [
@@ -111,6 +112,11 @@ const LINKS = [
     id: "quality" as const,
     href: "/owner/quality",
     label: "Quality (Evidence)",
+  },
+  {
+    id: "releaseGate" as const,
+    href: "/owner/release-gate",
+    label: "Release Gate",
   },
   {
     id: "wordDownloadDiagnostics" as const,

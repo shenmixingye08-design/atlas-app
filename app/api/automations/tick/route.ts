@@ -31,6 +31,12 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: gate.error }, { status: gate.status });
   }
 
+  const { enforceKillSwitchesForRoute } = await import(
+    "@/lib/release-gate/kill-switch"
+  );
+  const killed = enforceKillSwitchesForRoute("automation");
+  if (killed) return killed;
+
   // Optional kill-switch for Preview / emergency freeze. Default: enabled.
   const scheduledCronEnabled =
     process.env.ENABLE_SCHEDULED_CRON?.trim().toLowerCase() !== "false";

@@ -12,6 +12,7 @@ export const ATLAS_PUBLIC_PAGE_PATHS = [
   "/privacy",
   "/legal",
   "/contact",
+  "/faq",
   "/sign-in",
   "/sign-up",
   "/status",

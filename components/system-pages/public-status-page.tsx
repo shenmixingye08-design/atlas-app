@@ -13,12 +13,28 @@ import { cn } from "@/lib/design-system/cn";
 import { formatOwnerPercent } from "@/lib/owner/format";
 import { ui } from "@/lib/i18n";
 
-async function fetchStatus(): Promise<SystemStatusSnapshot> {
+type StatusPayload = SystemStatusSnapshot & {
+  components?: Array<{
+    id: string;
+    label: string;
+    status: string;
+    detail: string | null;
+  }>;
+  incidents?: Array<{
+    id: string;
+    title: string;
+    phaseLabel: string;
+    publicNote: string;
+    updatedAt: string;
+  }>;
+};
+
+async function fetchStatus(): Promise<StatusPayload> {
   const response = await fetch("/api/status", { cache: "no-store" });
   if (!response.ok) {
     throw new Error("Failed to load status");
   }
-  return response.json() as Promise<SystemStatusSnapshot>;
+  return response.json() as Promise<StatusPayload>;
 }
 
 const STATUS_LABELS: Record<SystemServiceStatus, string> = {
@@ -62,7 +78,7 @@ function StatusRow({ service }: { service: SystemServiceSnapshot }) {
 }
 
 export function PublicStatusPageContent() {
-  const [snapshot, setSnapshot] = useState<SystemStatusSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<StatusPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -134,11 +150,54 @@ export function PublicStatusPageContent() {
                   {ui.systemPages.statusIssueAlert(snapshot.issueCount)}
                 </p>
               ) : null}
+              {snapshot.components && snapshot.components.length > 0 ? (
+                <div className="mb-6 space-y-3 border-b border-[var(--border-subtle)] pb-6">
+                  <p className="text-sm font-medium text-[var(--terms-heading)]">
+                    サービス区分
+                  </p>
+                  {snapshot.components.map((c) => (
+                    <div
+                      key={c.id}
+                      className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                    >
+                      <div>
+                        <p className="font-medium">{c.label}</p>
+                        {c.detail ? (
+                          <p className="text-xs text-[var(--terms-muted)]">
+                            {c.detail}
+                          </p>
+                        ) : null}
+                      </div>
+                      <span className="text-xs text-[var(--terms-muted)]">
+                        {c.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
               <div>
                 {snapshot.services.map((service) => (
                   <StatusRow key={service.serviceId} service={service} />
                 ))}
               </div>
+
+              {snapshot.incidents && snapshot.incidents.length > 0 ? (
+                <div className="mt-6 space-y-3 border-t border-[var(--border-subtle)] pt-6">
+                  <p className="text-sm font-medium">障害・お知らせ</p>
+                  {snapshot.incidents.map((incident) => (
+                    <div key={incident.id} className="text-sm">
+                      <p className="font-medium">
+                        [{incident.phaseLabel}] {incident.title}
+                      </p>
+                      <p className="mt-1 text-[var(--terms-muted)]">
+                        {incident.publicNote}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
               <p className="mt-4 text-xs text-[var(--terms-muted)]">
                 {ui.systemPages.statusUpdated(
                   new Date(snapshot.generatedAt).toLocaleString("ja-JP"),
@@ -149,6 +208,9 @@ export function PublicStatusPageContent() {
         </div>
 
         <div className="mt-6 flex flex-wrap justify-center gap-3 text-sm">
+          <Link href="/faq" className="text-[var(--terms-accent)] hover:underline">
+            よくある質問
+          </Link>
           <Link href="/contact" className="text-[var(--terms-accent)] hover:underline">
             {ui.systemPages.contact}
           </Link>

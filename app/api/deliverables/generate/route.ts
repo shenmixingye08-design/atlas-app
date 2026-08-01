@@ -70,6 +70,13 @@ function resolveProjectName(body: RequestBody): string {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const { enforceReleaseGate } = await import("@/lib/release-gate/enforce");
+  const gated = await enforceReleaseGate({
+    capability: "word",
+    routeKind: "openai",
+  });
+  if (gated) return gated;
+
   const { auth } = await import("@clerk/nextjs/server");
   const { userId } = await auth();
   if (!userId) {

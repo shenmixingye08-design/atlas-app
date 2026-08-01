@@ -20,6 +20,13 @@ export async function GET(): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const { enforceReleaseGate } = await import("@/lib/release-gate/enforce");
+  const gated = await enforceReleaseGate({
+    capability: "convert",
+    routeKind: "new_job",
+  });
+  if (gated) return gated;
+
   const { userId } = await auth();
   if (!userId) {
     return Response.json({ error: "認証が必要です。" }, { status: 401 });

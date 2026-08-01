@@ -1665,6 +1665,7 @@ export const ui = {
     navDisasterRecovery: "障害復旧",
     navBetaUsers: "ベータユーザー",
     navBetaUx: "β UX計測",
+    navReleaseGate: "Release Gate",
     navSystemStatus: "システム監視",
     navExternalServices: "外部サービス管理",
     navEnvStatus: "環境変数",

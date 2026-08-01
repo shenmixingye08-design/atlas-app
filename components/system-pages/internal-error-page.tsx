@@ -33,6 +33,11 @@ export function InternalErrorPageContent({
         </p>
       ) : null}
 
+      <p className="mb-4 text-sm text-[var(--terms-muted)]">
+        まず再読み込みをお試しください。解消しない場合はエラーIDを控えたうえで FAQ
+        の手順（再試行・再接続）を確認し、必要ならお問い合わせください。
+      </p>
+
       <SystemPageActions>
         <Button
           type="button"
@@ -41,8 +46,18 @@ export function InternalErrorPageContent({
         >
           {ui.systemPages.reload}
         </Button>
-        <Link href="/">
+        <Link href="/faq">
           <Button variant="secondary" className="w-full sm:w-auto">
+            よくある質問
+          </Button>
+        </Link>
+        <Link href="/status">
+          <Button variant="secondary" className="w-full sm:w-auto">
+            {ui.systemPages.viewStatus}
+          </Button>
+        </Link>
+        <Link href="/">
+          <Button variant="ghost" className="w-full sm:w-auto">
             {ui.systemPages.backHome}
           </Button>
         </Link>

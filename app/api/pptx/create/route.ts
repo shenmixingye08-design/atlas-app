@@ -16,6 +16,13 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function POST(request: Request): Promise<Response> {
+  const { enforceReleaseGate } = await import("@/lib/release-gate/enforce");
+  const gated = await enforceReleaseGate({
+    capability: "powerpoint",
+    routeKind: "new_job",
+  });
+  if (gated) return gated;
+
   const { userId } = await auth();
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
