@@ -19,6 +19,14 @@ const OOXML_REQUIRED = [
   "word/document.xml",
 ] as const;
 
+const XLSX_OOXML_REQUIRED = [
+  "[Content_Types].xml",
+  "_rels/.rels",
+  "xl/workbook.xml",
+  "xl/styles.xml",
+  "xl/_rels/workbook.xml.rels",
+] as const;
+
 export function sha256Hex(buffer: Buffer | Uint8Array): string {
   return createHash("sha256").update(buffer).digest("hex");
 }
@@ -86,6 +94,21 @@ export function verifyOoxmlStructure(buffer: Buffer): {
   return { ok: missing.length === 0, missing: [...missing] };
 }
 
+export function verifyXlsxOoxmlStructure(buffer: Buffer): {
+  ok: boolean;
+  missing: string[];
+} {
+  const names = new Set(listZipEntryNames(buffer));
+  const missing: string[] = XLSX_OOXML_REQUIRED.filter(
+    (required) => !names.has(required),
+  );
+  const hasWorksheet = [...names].some((n) =>
+    /^xl\/worksheets\/sheet\d+\.xml$/i.test(n),
+  );
+  if (!hasWorksheet) missing.push("xl/worksheets/sheet1.xml");
+  return { ok: missing.length === 0, missing };
+}
+
 export function buildIntegritySnapshot(input: {
   buffer: Buffer;
   format: DeliverableFormat;
@@ -95,7 +118,9 @@ export function buildIntegritySnapshot(input: {
   const ooxml =
     input.format === "docx" && hasPk
       ? verifyOoxmlStructure(input.buffer)
-      : { ok: false, missing: [...OOXML_REQUIRED] };
+      : input.format === "xlsx" && hasPk
+        ? verifyXlsxOoxmlStructure(input.buffer)
+        : { ok: false, missing: [...OOXML_REQUIRED] };
 
   return {
     sizeBytes: input.buffer.byteLength,
@@ -104,8 +129,10 @@ export function buildIntegritySnapshot(input: {
     format: input.format,
     fileName: input.fileName,
     hasPkHeader: hasPk,
-    ooxmlVerified: input.format === "docx" ? ooxml.ok : true,
-    ooxmlMissing: input.format === "docx" ? ooxml.missing : [],
+    ooxmlVerified:
+      input.format === "docx" || input.format === "xlsx" ? ooxml.ok : true,
+    ooxmlMissing:
+      input.format === "docx" || input.format === "xlsx" ? ooxml.missing : [],
   };
 }
 
@@ -174,6 +201,9 @@ export function assertDownloadIntegrity(input: {
   if (input.format === "docx" && !input.fileName.toLowerCase().endsWith(".docx")) {
     issues.push("wrong_extension");
   }
+  if (input.format === "xlsx" && !input.fileName.toLowerCase().endsWith(".xlsx")) {
+    issues.push("wrong_extension");
+  }
 
   const head = buf.subarray(0, Math.min(64, buf.byteLength)).toString("utf8");
   if (/^\s*</.test(head) || /<!DOCTYPE|<html/i.test(head)) {
@@ -185,6 +215,10 @@ export function assertDownloadIntegrity(input: {
 
   if (input.format === "docx" && (input.requireOoxml ?? true) && hasPkHeader(buf)) {
     const ooxml = verifyOoxmlStructure(buf);
+    if (!ooxml.ok) issues.push("ooxml_incomplete");
+  }
+  if (input.format === "xlsx" && (input.requireOoxml ?? true) && hasPkHeader(buf)) {
+    const ooxml = verifyXlsxOoxmlStructure(buf);
     if (!ooxml.ok) issues.push("ooxml_incomplete");
   }
 
