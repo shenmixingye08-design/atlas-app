@@ -309,6 +309,11 @@ describe("security production durability 1000", () => {
       const audits = listSecurityAuditRecords({ limit: 20_000 });
       const summary = summarizeSecurityAudit(audits);
 
+      const permissionCases = permissionOk + falseAllowByBucket[0] + falseDeny;
+      const billingCases = billingOk + falseAllowByBucket[2];
+      const securityCases =
+        securityOk + falseAllowByBucket[1] + falseAllowByBucket[3] + falseAllowByBucket[4];
+
       const report = {
         generatedAt: new Date().toISOString(),
         totalCases: TOTAL,
@@ -319,9 +324,9 @@ describe("security production durability 1000", () => {
         falseDeny,
         falseAllowRate: falseAllow / TOTAL,
         falseDenyRate: falseDeny / TOTAL,
-        permissionSuccessRate: permissionOk / Math.max(1, Math.floor(TOTAL / 5) * 2),
-        billingSuccessRate: billingOk / Math.max(1, Math.floor(TOTAL / 5) * 2),
-        securitySuccessRate: securityOk / Math.max(1, Math.floor(TOTAL / 5) * 2),
+        permissionSuccessRate: permissionOk / Math.max(1, permissionCases),
+        billingSuccessRate: billingOk / Math.max(1, billingCases),
+        securitySuccessRate: securityOk / Math.max(1, securityCases),
         auditSummary: summary,
       };
 
