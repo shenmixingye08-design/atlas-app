@@ -22,7 +22,7 @@ export async function POST(
 
   try {
     const access = await resolveFeatureAccessContext();
-    const automation = automationPlatformService.resume(userId, id, access);
+    const automation = await automationPlatformService.resume(userId, id, access);
     return Response.json({ automation });
   } catch (error) {
     return jsonError(error, {
