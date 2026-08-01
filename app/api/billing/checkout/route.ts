@@ -49,6 +49,13 @@ export async function POST(request: Request): Promise<Response> {
   console.info("[billing/checkout] POST start");
 
   try {
+    const { enforceReleaseGate } = await import("@/lib/release-gate/enforce");
+    const gated = await enforceReleaseGate({
+      capability: "billing",
+      routeKind: "billing",
+    });
+    if (gated) return gated;
+
     const { userId } = await auth();
     if (!userId) {
       console.info("[billing/checkout] unauthorized");

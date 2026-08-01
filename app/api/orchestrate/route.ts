@@ -102,6 +102,13 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const { enforceReleaseGate } = await import("@/lib/release-gate/enforce");
+    const gated = await enforceReleaseGate({
+      capability: "new_jobs",
+      routeKind: "new_job",
+    });
+    if (gated) return gated;
+
     const { isTargetInFallback, gracefulDegradedResponse, enqueueDisasterJob } =
       await import("@/lib/owner/disaster-recovery");
     if (isTargetInFallback("openai")) {
