@@ -4,7 +4,7 @@ import {
   type AutomationWorkflowStep,
   type ExecutionPolicyMode,
 } from "@/lib/automation-platform/types";
-import { stepRequiresSystemApproval } from "@/lib/automation-platform/step-registry/registry";
+import { isStepHighRisk } from "@/lib/automation-platform/execution/high-risk";
 import { AutomationPlatformError } from "@/lib/automation-platform/errors/messages";
 
 const MODES: readonly ExecutionPolicyMode[] = [
@@ -13,7 +13,19 @@ const MODES: readonly ExecutionPolicyMode[] = [
   "review_selected_steps",
   "approve_first_then_auto",
   "review_high_risk_only",
+  "review_post_only",
+  "review_send_only",
 ];
+
+function stepIdsByCapability(
+  steps: readonly AutomationWorkflowStep[],
+  capabilityIds: readonly string[],
+): string[] {
+  const set = new Set(capabilityIds);
+  return steps
+    .filter((step) => step.enabled && set.has(step.type))
+    .map((step) => step.id);
+}
 
 export function normalizeExecutionPolicy(
   partial?: Partial<AutomationExecutionPolicy>,
@@ -55,7 +67,7 @@ export function resolveRunApprovalRequirement(input: {
   stepIds: string[];
 } {
   const highRiskStepIds = input.steps
-    .filter((step) => step.enabled && stepRequiresSystemApproval(step.type))
+    .filter((step) => step.enabled && isStepHighRisk(step))
     .map((step) => step.id);
 
   const selected = new Set(input.policy.selectedStepIds);
@@ -130,6 +142,24 @@ export function resolveRunApprovalRequirement(input: {
         reason: "review_high_risk_only",
         stepIds: highRiskStepIds,
       };
+    case "review_post_only": {
+      const postIds = stepIdsByCapability(input.steps, ["x_post"]);
+      const stepIds = [...new Set([...postIds, ...highRiskStepIds])];
+      return {
+        requiresApproval: stepIds.length > 0,
+        reason: "review_post_only",
+        stepIds,
+      };
+    }
+    case "review_send_only": {
+      const sendIds = stepIdsByCapability(input.steps, ["gmail"]);
+      const stepIds = [...new Set([...sendIds, ...highRiskStepIds])];
+      return {
+        requiresApproval: stepIds.length > 0,
+        reason: "review_send_only",
+        stepIds,
+      };
+    }
     default:
       return {
         requiresApproval: true,
