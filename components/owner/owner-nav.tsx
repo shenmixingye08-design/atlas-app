@@ -25,6 +25,7 @@ type OwnerNavProps = {
     | "auditLog"
     | "disasterRecovery"
     | "automationExecutionLogs"
+    | "scheduler"
     | "reliability"
     | "wordDownloadDiagnostics";
 };
@@ -54,6 +55,11 @@ const LINKS = [
     id: "automationExecutionLogs" as const,
     href: "/owner/automation-execution-logs",
     label: "定期実行ログ",
+  },
+  {
+    id: "scheduler" as const,
+    href: "/owner/scheduler",
+    label: "Scheduler",
   },
   {
     id: "popularityRanking" as const,

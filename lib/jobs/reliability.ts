@@ -171,12 +171,60 @@ export async function markJobCompleted(input: {
 }): Promise<JobRecord> {
   const existing = await getStoredJobRecord(input.jobId, input.userId);
   const now = new Date().toISOString();
+  const targetStatus = input.status ?? "completed";
+
+  // Fail Closed: scheduled jobs cannot become completed without Scheduler proof.
+  if (targetStatus === "completed" || targetStatus === "partially_completed") {
+    const { assertSchedulerAllowsCompletion } = await import(
+      "@/lib/scheduler/gate"
+    );
+    const gate = assertSchedulerAllowsCompletion({
+      requireScheduled: Boolean(existing?.scheduledAt),
+      jobId: input.jobId,
+      scheduleId: existing?.idempotencyKey ?? null,
+    });
+    if (!gate.allowed) {
+      return persistJobRecord({
+        id: input.jobId,
+        userId: input.userId,
+        automationId: existing?.automationId ?? null,
+        jobType: existing?.jobType ?? "automation",
+        status: "failed",
+        scheduledAt: existing?.scheduledAt ?? null,
+        queuedAt: existing?.queuedAt ?? null,
+        startedAt: existing?.startedAt ?? null,
+        completedAt: null,
+        failedAt: now,
+        currentStep: existing?.currentStep ?? null,
+        progressPercent: existing?.progressPercent ?? 0,
+        attemptCount: existing?.attemptCount ?? 0,
+        maxAttempts: existing?.maxAttempts ?? MAX_JOB_RETRIES,
+        nextRetryAt: null,
+        lastErrorCode: gate.code,
+        lastErrorMessage: gate.reason,
+        resultSummary: null,
+        artifactId: input.artifactId ?? existing?.artifactId ?? null,
+        externalResultId:
+          input.externalResultId ?? existing?.externalResultId ?? null,
+        externalResultUrl:
+          input.externalResultUrl ?? existing?.externalResultUrl ?? null,
+        idempotencyKey:
+          existing?.idempotencyKey ?? `${input.userId}::${input.jobId}`,
+        pushStatus: "skipped",
+        autoRecovered: false,
+        steps: existing?.steps ?? [],
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      });
+    }
+  }
+
   return persistJobRecord({
     id: input.jobId,
     userId: input.userId,
     automationId: existing?.automationId ?? null,
     jobType: existing?.jobType ?? "automation",
-    status: input.status ?? "completed",
+    status: targetStatus,
     scheduledAt: existing?.scheduledAt ?? null,
     queuedAt: existing?.queuedAt ?? null,
     startedAt: existing?.startedAt ?? null,

@@ -125,6 +125,26 @@ export async function processDueScheduledAutomationsV2(options?: {
         timezone: automation.trigger.timezone,
         created: enqueued.created,
       });
+      try {
+        const { beginSchedulerTick, recordSchedulerExecution } = await import(
+          "@/lib/scheduler"
+        );
+        beginSchedulerTick(new Date(nowMs).toISOString());
+        recordSchedulerExecution({
+          jobId: enqueued.run.id,
+          runId: enqueued.run.id,
+          scheduleId: enqueued.run.scheduleOccurrenceKey,
+          automationId: automation.id,
+          scheduledAt,
+          startedAt: new Date(nowMs).toISOString(),
+          endedAt: new Date().toISOString(),
+          success: true,
+          retryCount: Math.max(0, (enqueued.run.attemptCount ?? 1) - 1),
+          source: "v2_schedule",
+        });
+      } catch (evidenceError) {
+        console.warn("[v2 schedule] evidence record skipped:", evidenceError);
+      }
       appendAutomationAudit({
         actorUserId: null,
         action: "automation.schedule.fire",
@@ -143,6 +163,24 @@ export async function processDueScheduledAutomationsV2(options?: {
       });
     } catch (error) {
       result.failed += 1;
+      try {
+        const { beginSchedulerTick, recordSchedulerExecution } = await import(
+          "@/lib/scheduler"
+        );
+        beginSchedulerTick(new Date(nowMs).toISOString());
+        recordSchedulerExecution({
+          automationId: automation.id,
+          scheduleId: `occurrence:${automation.id}:${scheduledAt}`,
+          scheduledAt,
+          startedAt: new Date(nowMs).toISOString(),
+          endedAt: new Date().toISOString(),
+          success: false,
+          error,
+          source: "v2_schedule",
+        });
+      } catch {
+        // evidence best-effort
+      }
       // Advance nextRunAt even on enqueue failure to avoid tight retry loops
       // for permanent definition errors — temporary errors will still recompute.
       const { computeNextRunIsoFromTrigger } = await import(

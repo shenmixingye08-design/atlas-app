@@ -135,6 +135,26 @@ export async function executeAutomationRun(
     triggerType,
   });
   const jobId = options.jobId;
+  const isScheduledTrigger = triggerType === "automation";
+  const scheduleId =
+    options.userId && options.scheduledAt
+      ? `automation:${options.userId}:${automation.id}:${options.scheduledAt}`
+      : options.scheduledAt
+        ? `occurrence:${automation.id}:${options.scheduledAt}`
+        : null;
+
+  if (isScheduledTrigger && (jobId || scheduleId)) {
+    const { beginSchedulerTick, noteSchedulerJobStarted } = await import(
+      "@/lib/scheduler"
+    );
+    // Manual processDueAutomations paths also reach here — ensure Alive.
+    beginSchedulerTick();
+    noteSchedulerJobStarted({
+      jobId: jobId ?? null,
+      runId: jobId ?? workflowRun.id,
+      scheduleId,
+    });
+  }
 
   if (options.userId && jobId) {
     await markJobRunning({
@@ -570,6 +590,14 @@ export async function executeAutomationRun(
     });
 
     const flow = normalizeExecutionFlow(automation.executionFlow);
+    const { hasSchedulerStartEvidence } = await import("@/lib/scheduler");
+    const schedulerStarted =
+      !isScheduledTrigger ||
+      hasSchedulerStartEvidence({
+        jobId: jobId ?? null,
+        runId: jobId ?? workflowRun.id,
+        scheduleId,
+      });
     const evidence = evaluateCompletionEvidence({
       templateId: flow.templateId,
       orchestrationStatus: snsPostFailure ? "failed" : result.status,
@@ -580,6 +608,8 @@ export async function executeAutomationRun(
       tweetUrl: xPostUrl,
       artifactId: workflowRun.id,
       storageUrl,
+      requireScheduled: isScheduledTrigger,
+      schedulerStarted,
     });
 
     if (options.userId && jobId) {
@@ -689,6 +719,7 @@ export async function executeAutomationRun(
     return {
       automationId: automation.id,
       workflowRunId: workflowRun.id,
+      jobId: jobId ?? null,
       status:
         effectiveStatus === "awaiting_approval"
           ? "awaiting_approval"
@@ -793,6 +824,7 @@ export async function executeAutomationRun(
     return {
       automationId: automation.id,
       workflowRunId: workflowRun.id,
+      jobId: jobId ?? null,
       status: "failed",
       orchestrationStatus: "failed",
       approved: false,

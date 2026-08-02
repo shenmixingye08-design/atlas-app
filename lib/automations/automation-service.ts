@@ -183,6 +183,7 @@ export class AutomationService {
         return {
           automationId: automation.id,
           workflowRunId: claim.record.id,
+          jobId: claim.record.id,
           status: skippedCompleted ? "completed" : "failed",
           orchestrationStatus: claim.record.status,
           approved: true,
@@ -216,6 +217,17 @@ export class AutomationService {
   async processDueAutomations(
     options: { requestOrigin?: string } = {},
   ): Promise<AutomationRunResult[]> {
+    const {
+      beginSchedulerTick,
+      buildScheduleId,
+      finishSchedulerTick,
+      noteSchedulerJobStarted,
+      recordSchedulerExecution,
+    } = await import("@/lib/scheduler");
+
+    // Scheduler Alive proof — required before any scheduled completed.
+    beginSchedulerTick();
+
     const ownerIds = await listAutomationOwnerUserIds();
     const results: AutomationRunResult[] = [];
 
@@ -250,6 +262,14 @@ export class AutomationService {
         );
         if (!claimed) continue;
 
+        const scheduledAt =
+          automation.nextRun ?? new Date().toISOString();
+        const scheduleId = buildScheduleId({
+          automationId: automation.id,
+          scheduledAt,
+        });
+        const startedAt = new Date().toISOString();
+
         const { denial } = await evaluateBillingAiUsage(userId);
         if (denial) {
           await this.automations.update(automation.id, {
@@ -258,6 +278,17 @@ export class AutomationService {
             nextRun: computeNextRunIso(automation.schedule, new Date()),
           });
           schedulePersistAutomations(userId);
+          recordSchedulerExecution({
+            scheduleId,
+            automationId: automation.id,
+            scheduledAt,
+            startedAt,
+            endedAt: new Date().toISOString(),
+            success: false,
+            failureReason: "permission",
+            failureMessage: denial.reason,
+            source: "v1_tick",
+          });
           continue;
         }
 
@@ -274,15 +305,37 @@ export class AutomationService {
           userId,
           requestOrigin: options.requestOrigin,
           triggerType: "automation",
-          scheduledAt: automation.nextRun,
+          scheduledAt,
         });
         if (!result) continue;
         if (result.dedupeSkipped) continue;
+
+        const evidenceJobId = result.jobId ?? result.workflowRunId;
+        noteSchedulerJobStarted({
+          jobId: evidenceJobId,
+          runId: result.workflowRunId,
+          scheduleId,
+        });
+        recordSchedulerExecution({
+          jobId: evidenceJobId,
+          runId: result.workflowRunId,
+          scheduleId,
+          automationId: automation.id,
+          scheduledAt,
+          startedAt,
+          endedAt: new Date().toISOString(),
+          success: result.status === "completed",
+          failureMessage: result.error,
+          retryCount: 0,
+          source: "v1_tick",
+        });
+
         results.push(result);
         schedulePersistAutomations(userId);
       }
     }
 
+    finishSchedulerTick({ ok: true });
     return results;
   }
 

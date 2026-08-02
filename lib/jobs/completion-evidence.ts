@@ -10,6 +10,9 @@ export type CompletionEvidenceInput = {
   tweetUrl?: string | null;
   artifactId?: string | null;
   storageUrl?: string | null;
+  /** When true, job was scheduled and Scheduler start evidence is required. */
+  requireScheduled?: boolean;
+  schedulerStarted?: boolean;
 };
 
 export type CompletionEvidenceResult = {
@@ -25,6 +28,19 @@ export type CompletionEvidenceResult = {
 export function evaluateCompletionEvidence(
   input: CompletionEvidenceInput,
 ): CompletionEvidenceResult {
+  // Fail Closed: scheduled work without Scheduler start → never completed.
+  if (input.requireScheduled && input.schedulerStarted !== true) {
+    return {
+      status: "failed",
+      resultSummary: null,
+      externalResultId: null,
+      externalResultUrl: null,
+      artifactId: null,
+      lastErrorMessage:
+        "Schedulerが起動していないため完了できません（途中成功禁止）",
+    };
+  }
+
   if (input.orchestrationStatus === "failed" || input.snsPostFailure) {
     return {
       status: "failed",

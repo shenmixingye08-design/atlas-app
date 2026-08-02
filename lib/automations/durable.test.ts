@@ -65,9 +65,15 @@ describe("automation persistence and cron tick", () => {
     const { resetAutomationsGlobalDurableForTests } = await import(
       "./global-durable"
     );
+    const { resetSchedulerStoreForTests } = await import("@/lib/scheduler");
+    const { resetAutomationJobStoreForTests } = await import(
+      "@/lib/jobs/job-store"
+    );
     const { orchestrate } = await import("@/lib/orchestration/orchestrator");
     resetAutomationStore({ seed: false });
     resetAutomationsGlobalDurableForTests();
+    resetSchedulerStoreForTests();
+    resetAutomationJobStoreForTests();
     vi.mocked(orchestrate).mockReset();
     vi.mocked(orchestrate).mockResolvedValue({
       assignment: "test",
