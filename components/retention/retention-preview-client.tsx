@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 
 import { WelcomeWizard } from "@/components/onboarding/welcome-wizard";
 import { RetentionDayPlanPanel } from "@/components/retention/day-plan-panel";
@@ -45,20 +45,13 @@ function seedPreviewHome(): void {
 }
 
 export function RetentionPreviewClient() {
+  const seededRef = useRef(false);
+  if (!seededRef.current) {
+    seedPreviewHome();
+    seededRef.current = true;
+  }
   const [scene, setScene] = useState<PreviewScene>("wizard");
   const [viewport, setViewport] = useState<"pc" | "mobile">("pc");
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    seedPreviewHome();
-    setReady(true);
-  }, []);
-
-  if (!ready) {
-    return (
-      <div className="p-8 text-sm text-[var(--text-muted)]">preview loading…</div>
-    );
-  }
 
   return (
     <div className="min-h-[100dvh] bg-[var(--background)] p-4">
@@ -109,7 +102,7 @@ export function RetentionPreviewClient() {
         data-viewport={viewport}
       >
         {scene === "wizard" ? (
-          <div className="relative min-h-[640px]">
+          <div className="relative isolate min-h-[640px] overflow-hidden [&_[data-testid=retention-welcome-wizard]]:absolute [&_[data-testid=retention-welcome-wizard]]:inset-0">
             <WelcomeWizard onComplete={() => setScene("home")} />
           </div>
         ) : null}
@@ -123,7 +116,7 @@ export function RetentionPreviewClient() {
         ) : null}
 
         {scene === "survey" ? (
-          <div className="relative min-h-[520px]">
+          <div className="relative isolate min-h-[520px] overflow-hidden [&_[data-testid=retention-survey]]:absolute [&_[data-testid=retention-survey]]:inset-0">
             <FirstDeliverableSurvey onClose={() => setScene("home")} />
           </div>
         ) : null}

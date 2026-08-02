@@ -32,15 +32,15 @@ async function main() {
     await page.waitForTimeout(600);
     await shot(page, "retention-wizard-pc.png");
 
-    await page.getByRole("button", { name: "2 Home" }).click();
+    await page.getByRole("button", { name: "2 Home" }).click({ force: true });
     await page.waitForTimeout(400);
     await shot(page, "retention-home-pc.png");
 
-    await page.getByRole("button", { name: "3 Survey" }).click();
+    await page.getByRole("button", { name: "3 Survey" }).click({ force: true });
     await page.waitForTimeout(400);
     await shot(page, "retention-survey-pc.png");
 
-    await page.getByRole("button", { name: "4 7日プラン" }).click();
+    await page.getByRole("button", { name: "4 7日プラン" }).click({ force: true });
     await page.waitForTimeout(400);
     await shot(page, "retention-dayplan-pc.png");
     await ctx.close();
@@ -54,11 +54,11 @@ async function main() {
     await page.goto(`${BASE}/dev/retention-preview`, {
       waitUntil: "networkidle",
     });
-    await page.getByRole("button", { name: "PC" }).click();
+    await page.getByRole("button", { name: "PC" }).click({ force: true });
     await page.waitForTimeout(300);
     await shot(page, "retention-wizard-mobile.png");
 
-    await page.getByRole("button", { name: "2 Home" }).click();
+    await page.getByRole("button", { name: "2 Home" }).click({ force: true });
     await page.waitForTimeout(300);
     await shot(page, "retention-home-mobile.png");
     await ctx.close();

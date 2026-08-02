@@ -32,7 +32,7 @@ export function FirstDeliverableSurvey({ onClose }: FirstDeliverableSurveyProps)
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-end justify-center bg-black/40 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      className="fixed inset-0 z-[110] flex items-end justify-center bg-black/40 p-0 backdrop-blur-sm sm:items-center sm:p-4 [.isolate_&]:absolute [.isolate_&]:z-10"
       data-testid="retention-survey"
     >
       <div
