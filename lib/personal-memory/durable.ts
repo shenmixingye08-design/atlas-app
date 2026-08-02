@@ -17,6 +17,12 @@ import {
   replaceStoredPersonalMemories,
   writePersonalMemorySettings,
 } from "@/lib/personal-memory/store";
+import type { DeliverableQualityEvaluation } from "@/lib/personal-memory/quality/types";
+import {
+  clearQualityEvaluations,
+  listQualityEvaluations,
+  replaceQualityEvaluations,
+} from "@/lib/personal-memory/quality/store";
 
 export const PERSONAL_MEMORY_DOMAIN_KEY = "atlasPersonalMemory";
 
@@ -31,6 +37,7 @@ export type DurablePersonalMemoryState = {
     automationId: string | null;
   }>;
   rejectedFingerprints: string[];
+  qualityEvaluations?: DeliverableQualityEvaluation[];
 };
 
 type HydrationFlags = Set<string>;
@@ -64,6 +71,11 @@ function snapshot(userId: string): DurablePersonalMemoryState {
     rejectedFingerprints: [
       ...(g.__atlasPersonalMemoryStore?.rejectedFingerprints.get(userId) ?? []),
     ],
+    qualityEvaluations: listQualityEvaluations(userId).slice(0, 100).map((row) => ({
+      ...row,
+      generatedText: row.generatedText.slice(0, 2000),
+      correctedText: row.correctedText.slice(0, 2000),
+    })),
   };
 }
 
@@ -74,6 +86,11 @@ function compact(
     settings: state.settings,
     correctionCounters: state.correctionCounters.slice(-100),
     rejectedFingerprints: state.rejectedFingerprints.slice(-200),
+    qualityEvaluations: (state.qualityEvaluations ?? []).slice(0, 100).map((row) => ({
+      ...row,
+      generatedText: row.generatedText.slice(0, 1200),
+      correctedText: row.correctedText.slice(0, 1200),
+    })),
     memories: state.memories.slice(0, 300).map((row) => ({
       ...row,
       summary: row.summary.slice(0, 400),
@@ -138,10 +155,17 @@ export async function ensurePersonalMemoryHydrated(
   if (store && Array.isArray(loaded.rejectedFingerprints)) {
     store.rejectedFingerprints.set(userId, new Set(loaded.rejectedFingerprints));
   }
+  if (Array.isArray(loaded.qualityEvaluations)) {
+    replaceQualityEvaluations(
+      userId,
+      loaded.qualityEvaluations.filter((row) => row?.userId === userId),
+    );
+  }
 }
 
 export function wipePersonalMemoryDurable(userId: string): void {
   clearAllPersonalMemoryData(userId);
+  clearQualityEvaluations(userId);
   getHydrated().delete(userId);
   schedulePersistPersonalMemory(userId);
 }

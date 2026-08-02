@@ -186,6 +186,8 @@ export type OrchestrationResult = {
   workMemory?: import("@/lib/work-memory/types").WorkMemoryUsedContext;
   /** Memory candidates created after this run (optional). */
   workMemoryCandidates?: import("@/lib/work-memory/types").WorkMemoryCandidate[];
+  /** Personal Memory preferences applied (pre-generation summary). */
+  personalMemoryApplyPreview?: import("@/lib/personal-memory/types").MemoryApplyPreviewItem[];
   /** Dev/debug cost breakdown (non-production only). */
   costDebug?: import("@/lib/ai/cost-meter").WorkflowCostSummary;
   /** Dev/debug pipeline stage report (non-production only). */

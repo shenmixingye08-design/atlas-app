@@ -60,6 +60,10 @@ import {
 } from "./pipeline-diagnostics";
 import { readAtlasMemoryFromMetadata } from "@/lib/user-memory/metadata";
 import { readWorkMemoryFromMetadata } from "@/lib/work-memory/metadata";
+import {
+  formatPersonalMemoryForPlanner,
+  readPersonalMemoryFromMetadata,
+} from "@/lib/personal-memory/metadata";
 import { retrieveExecutiveMemory } from "./knowledge-stage";
 import { parseUnifiedPlannerOutput } from "./parse-unified-planner";
 import { parseTasksFromPlannerOutput } from "./parse-tasks";
@@ -511,11 +515,16 @@ export async function orchestrate(
 
     const atlasMemory = readAtlasMemoryFromMetadata(metadata);
     const workMemory = readWorkMemoryFromMetadata(metadata);
+    const personalMemoryRaw = readPersonalMemoryFromMetadata(metadata);
+    const personalMemory = personalMemoryRaw
+      ? formatPersonalMemoryForPlanner(personalMemoryRaw)
+      : null;
     const plannerKnowledge = [
       retrieval.plannerContext.similarProjects,
       retrieval.plannerContext.successfulStrategies,
       atlasMemory,
       workMemory,
+      personalMemory,
     ]
       .filter(Boolean)
       .join("\n\n");
