@@ -994,6 +994,8 @@ export class AutomationPlatformService {
     options: {
       mode: "failed_only" | "from_failed" | "full";
       stepId?: string | null;
+      /** When false, leave the new run queued for the caller to dispatch. */
+      dispatch?: boolean;
     },
   ): Promise<AutomationRun> {
     assertV2Enabled(context);
@@ -1118,7 +1120,7 @@ export class AutomationPlatformService {
       },
     });
 
-    if (run.status === "queued") {
+    if (run.status === "queued" && options.dispatch !== false) {
       await dispatchAutomationRuns({ runIds: [run.id] });
       return memoryGetRun(run.id) ?? run;
     }
@@ -1130,6 +1132,7 @@ export class AutomationPlatformService {
     runId: string,
     context: FeatureAccessContext,
     inputPatch?: Record<string, unknown>,
+    options?: { dispatch?: boolean },
   ): Promise<AutomationRun> {
     assertV2Enabled(context);
     const run = await this.getRun(userId, runId, context);
@@ -1176,6 +1179,9 @@ export class AutomationPlatformService {
       "resumed_after_input",
     );
     persistAutomationRunNow(updated);
+    if (options?.dispatch === false) {
+      return updated;
+    }
     await dispatchAutomationRuns({ runIds: [updated.id] });
     return memoryGetRun(updated.id) ?? updated;
   }

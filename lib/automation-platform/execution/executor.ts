@@ -16,10 +16,8 @@ import {
   computeRetryAt,
   isRetryableFailure,
 } from "@/lib/automation-platform/execution/retry-policy";
-import {
-  defaultStepInvoker,
-  type StepInvoker,
-} from "@/lib/automation-platform/execution/step-invoker";
+import type { StepInvoker } from "@/lib/automation-platform/execution/step-invoker";
+import { strictStepInvoker } from "@/lib/automation-platform/execution/strict-step-invoker";
 import { memoryUpdateRun } from "@/lib/automation-platform/repository/memory-store";
 import { persistAutomationRunNow } from "@/lib/automation-platform/durable-runs";
 
@@ -83,7 +81,7 @@ export async function executeQueuedRun(input: {
   automation: AutomationV2;
   invoker?: StepInvoker;
 }): Promise<ExecuteRunResult> {
-  const invoker = input.invoker ?? defaultStepInvoker;
+  const invoker = input.invoker ?? strictStepInvoker;
   let run = input.run;
 
   // Accept pre-claimed (running) or unclaimed (queued/retrying) runs.
