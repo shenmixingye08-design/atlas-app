@@ -545,7 +545,7 @@ export function AutomationFirstHome({
         </div>
       </header>
 
-      {opsError ? (
+      {opsError && hasAutomations ? (
         <ErrorState
           description={`運用データの取得に失敗しました: ${opsError}`}
           onRetry={() => {
