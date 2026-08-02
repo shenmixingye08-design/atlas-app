@@ -98,9 +98,64 @@ export function memoryInsertRun(run: AutomationRun): {
   return { run: structuredClone(run), created: true };
 }
 
-export function memoryUpdateRun(run: AutomationRun): AutomationRun {
-  getStore().runs.set(run.id, structuredClone(run));
+/** Hydration / force restore — bypasses idempotency (record already owned). */
+export function memoryRestoreRun(run: AutomationRun): AutomationRun {
+  const store = getStore();
+  store.runs.set(run.id, structuredClone(run));
+  store.idempotencyKeys.set(run.idempotencyKey, run.id);
+  if (run.scheduleOccurrenceKey) {
+    store.occurrenceKeys.set(run.scheduleOccurrenceKey, run.id);
+  }
   return structuredClone(run);
+}
+
+export function memoryUpdateRun(run: AutomationRun): AutomationRun {
+  const store = getStore();
+  const existing = store.runs.get(run.id);
+  if (!existing) {
+    store.runs.set(run.id, structuredClone(run));
+    return structuredClone(run);
+  }
+  // Tamper guard: immutable identity fields
+  if (
+    existing.userId !== run.userId ||
+    existing.automationId !== run.automationId ||
+    existing.runKey !== run.runKey ||
+    existing.idempotencyKey !== run.idempotencyKey
+  ) {
+    throw new Error("Run identity fields are immutable");
+  }
+  store.runs.set(run.id, structuredClone(run));
+  return structuredClone(run);
+}
+
+/**
+ * Claim a queued/retrying run for execution. Returns null if already claimed
+ * or not in a claimable state (prevents double execution).
+ */
+export function memoryClaimRun(runId: string): AutomationRun | null {
+  const store = getStore();
+  const current = store.runs.get(runId);
+  if (!current) return null;
+  if (current.status !== "queued" && current.status !== "retrying") {
+    return null;
+  }
+  if (
+    current.status === "retrying" &&
+    current.nextRetryAt &&
+    Date.parse(current.nextRetryAt) > Date.now()
+  ) {
+    return null;
+  }
+  const now = new Date().toISOString();
+  const claimed: AutomationRun = {
+    ...current,
+    status: "running",
+    startedAt: current.startedAt ?? now,
+    updatedAt: now,
+  };
+  store.runs.set(runId, structuredClone(claimed));
+  return structuredClone(claimed);
 }
 
 export function memoryGetRun(id: string): AutomationRun | null {
@@ -119,6 +174,28 @@ export function memoryListRunsForAutomation(input: {
     )
     .map((run) => structuredClone(run))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function memoryListRunsForUser(userId: string): AutomationRun[] {
+  return [...getStore().runs.values()]
+    .filter((run) => run.userId === userId)
+    .map((run) => structuredClone(run))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/** Queued runs + due retries ready for the worker. */
+export function memoryListDispatchableRuns(limit = 20): AutomationRun[] {
+  const now = Date.now();
+  return [...getStore().runs.values()]
+    .filter((run) => {
+      if (run.status === "queued") return true;
+      if (run.status !== "retrying") return false;
+      if (!run.nextRetryAt) return true;
+      return Date.parse(run.nextRetryAt) <= now;
+    })
+    .sort((a, b) => (a.queuedAt ?? a.createdAt).localeCompare(b.queuedAt ?? b.createdAt))
+    .slice(0, limit)
+    .map((run) => structuredClone(run));
 }
 
 export function memoryGetRunByOccurrenceKey(
