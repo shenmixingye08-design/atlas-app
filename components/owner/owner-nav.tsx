@@ -26,10 +26,16 @@ type OwnerNavProps = {
     | "disasterRecovery"
     | "automationExecutionLogs"
     | "reliability"
+    | "production"
     | "wordDownloadDiagnostics";
 };
 const LINKS = [
   { id: "dashboard" as const, href: "/owner", label: ui.owner.navDashboard },
+  {
+    id: "production" as const,
+    href: "/owner/production",
+    label: "Production (1000)",
+  },
   {
     id: "simulator" as const,
     href: "/owner/simulator",
