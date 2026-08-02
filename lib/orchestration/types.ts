@@ -205,6 +205,11 @@ export type OrchestrationResult = {
    * must not re-call /api/deliverables/generate for the same result.
    */
   fileDeliverables?: import("@/lib/deliverables/types").Deliverable[];
+  /**
+   * Structured failure when status is failed — always set by Commander / Word
+   * export so `/results` can show failedStage without re-deriving from prose.
+   */
+  generationFailure?: import("./generation-failure").GenerationFailureDiagnostic;
 };
 
 /** Cache and knowledge isolation diagnostics for Workflow Inspector. */

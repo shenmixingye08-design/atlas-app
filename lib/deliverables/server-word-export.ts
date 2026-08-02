@@ -12,6 +12,12 @@ import {
 } from "@/lib/notifications/emitters";
 import { persistNotificationsNow } from "@/lib/notifications/durable";
 
+import {
+  createGenerationFailureDiagnostic,
+  mapWordExportReasonToStage,
+  type GenerationFailureDiagnostic,
+} from "@/lib/orchestration/generation-failure";
+
 import { assignmentRequestsWordFile } from "./detect-formats";
 import { generateDeliverables } from "./engine";
 import { logWordPipeline } from "./pipeline-log";
@@ -42,6 +48,8 @@ export type ServerWordExportResult =
       files: Deliverable[];
       jobId: string;
       stack?: string | null;
+      failedStage: string;
+      generationFailure: GenerationFailureDiagnostic;
     }
   | { attempted: false; ok: true; files: [] };
 
@@ -117,6 +125,29 @@ export async function exportWordDeliverableOnServer(input: {
     const userTitle = wordFailureTitle(reason);
     const userMessage = wordFailureUserMessage(reason);
     const isTimeout = classifyDeliverableError(reason) === "timeout";
+    const mapped = mapWordExportReasonToStage(reason);
+    const commanderRunId = input.result.commanderRunId ?? input.requestId;
+    const projectId = commanderRunId ? `commander-${commanderRunId}` : null;
+    const workJobId =
+      typeof input.metadata?.jobId === "string"
+        ? input.metadata.jobId
+        : typeof input.metadata?.workJobId === "string"
+          ? input.metadata.workJobId
+          : null;
+    const generationFailure = createGenerationFailureDiagnostic({
+      failedStage: mapped.failedStage,
+      errorCode: mapped.errorCode,
+      userMessage,
+      developerMessage: reason,
+      requestId: input.requestId,
+      workJobId,
+      commanderRunId,
+      projectId,
+      retryable: mapped.retryable,
+      lastSuccessStage: mapped.lastSuccessStage,
+      storageError: /storage/i.test(reason) ? reason : null,
+      exportError: reason,
+    });
     logWordPipeline({
       stage: isTimeout ? "TIMEOUT" : "FAILED",
       ok: false,
@@ -125,7 +156,7 @@ export async function exportWordDeliverableOnServer(input: {
       requestId: input.requestId,
       error: reason,
       stack: stack ?? null,
-      detail: userTitle,
+      detail: `${userTitle}|failedStage=${mapped.failedStage}|diagnosticId=${generationFailure.diagnosticId}`,
       durationMs: Date.now() - started,
     });
     if (input.notify !== false) {
@@ -148,6 +179,8 @@ export async function exportWordDeliverableOnServer(input: {
       files,
       jobId,
       stack: stack ?? null,
+      failedStage: mapped.failedStage,
+      generationFailure,
     };
   };
 

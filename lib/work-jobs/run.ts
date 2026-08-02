@@ -213,12 +213,25 @@ export async function executeWorkJob(
       { maxAttempts: existing.maxAttempts },
     );
 
-    // Merge vision metadata from commander result when present on report path.
+    // Merge vision metadata + ID links (commanderRunId ≠ workJobId).
+    const projectIdFromCommander =
+      commander.persistence?.projectId ??
+      (commander.runId ? `commander-${commander.runId}` : null);
     const mergedMetadata = withPropagatedJobId(
       {
         ...metadataWithJobId,
         ...(commander.visionGate?.diagnosticId
           ? { visionDiagnosticId: commander.visionGate.diagnosticId }
+          : {}),
+        ...(commander.runId ? { commanderRunId: commander.runId } : {}),
+        ...(projectIdFromCommander
+          ? { projectId: projectIdFromCommander }
+          : {}),
+        ...(commander.persistence?.wordErrorCode
+          ? { wordErrorCode: commander.persistence.wordErrorCode }
+          : {}),
+        ...(commander.result?.generationFailure
+          ? { generationFailure: commander.result.generationFailure }
           : {}),
       },
       jobId,

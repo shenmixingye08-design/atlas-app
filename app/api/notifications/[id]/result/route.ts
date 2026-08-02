@@ -12,6 +12,7 @@ import {
   resolveNotificationTarget,
 } from "@/lib/notifications/result-target";
 import { findNotification } from "@/lib/notifications/store";
+import type { GenerationFailureDiagnostic } from "@/lib/orchestration/generation-failure";
 import type { Project } from "@/lib/projects/types";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -25,17 +26,63 @@ type RouteContext = { params: Promise<{ id: string }> };
  * - `redirect`    — a working detail deep link (automation / X post result).
  * - `unavailable` — no durable backend (dev); client falls back to local cache.
  * - `error`       — a typed, user-facing reason (never blank).
+ *
+ * `requestStatus` = HTTP/API layer (always ok when this JSON is returned with 200).
+ * `generationStatus` = whether the underlying work produced a usable 成果物.
  */
 export type NotificationResultPayload =
   | {
       status: "deliverable";
+      requestStatus: "ok";
+      generationStatus: "ready";
       targetType: string;
       targetId: string;
       project: Project;
     }
-  | { status: "redirect"; url: string }
-  | { status: "unavailable"; targetType: string; targetId: string }
-  | { status: "error"; code: ResultResolutionCode };
+  | {
+      status: "redirect";
+      requestStatus: "ok";
+      generationStatus: "ready";
+      url: string;
+    }
+  | {
+      status: "unavailable";
+      requestStatus: "ok";
+      generationStatus: "unknown";
+      targetType: string;
+      targetId: string;
+    }
+  | {
+      status: "error";
+      requestStatus: "ok";
+      generationStatus: "failed" | "pending" | "unknown";
+      code: ResultResolutionCode;
+      diagnostic?: GenerationFailureDiagnostic | null;
+      projectError?: string | null;
+      failedStage?: string | null;
+      workJobId?: string | null;
+      commanderRunId?: string | null;
+      wordFileFound?: boolean;
+    };
+
+function generationStatusForCode(
+  code: ResultResolutionCode,
+): "failed" | "pending" | "unknown" {
+  if (code === "pending" || code === "timeout") return "pending";
+  if (
+    code === "generation_failed" ||
+    code === "not_saved" ||
+    code === "not_found" ||
+    code === "forbidden" ||
+    code === "legacy" ||
+    code === "unknown"
+  ) {
+    return code === "generation_failed" || code === "not_saved"
+      ? "failed"
+      : "unknown";
+  }
+  return "unknown";
+}
 
 export async function GET(
   _request: Request,
@@ -43,13 +90,29 @@ export async function GET(
 ): Promise<Response> {
   const { userId } = await auth();
   if (!userId) {
-    return Response.json({ status: "error", code: "unauthorized" }, { status: 401 });
+    return Response.json(
+      {
+        status: "error",
+        requestStatus: "error",
+        generationStatus: "unknown",
+        code: "unauthorized",
+      },
+      { status: 401 },
+    );
   }
 
   const { id } = await context.params;
   const notificationId = id?.trim();
   if (!notificationId) {
-    return Response.json({ status: "error", code: "not_found" }, { status: 404 });
+    return Response.json(
+      {
+        status: "error",
+        requestStatus: "ok",
+        generationStatus: "unknown",
+        code: "not_found",
+      },
+      { status: 404 },
+    );
   }
 
   // Cold serverless instances hold no in-memory notifications — hydrate first so
@@ -89,8 +152,17 @@ export async function GET(
           resolvedProjectId: resolved.resolvedProjectId,
           found: resolved.lookup.durable && resolved.lookup.found,
           wordFileFound: resolved.trace.wordFileFound,
+          wordFileId: resolved.trace.wordFileId,
           commanderStatus: resolved.trace.commanderStatus,
           workJobStatus: resolved.trace.workJobStatus,
+          workJobId: resolved.trace.workJobId,
+          commanderRunId: resolved.trace.commanderRunId,
+          projectError: resolved.trace.projectError,
+          resultStatus: resolved.trace.resultStatus,
+          failedStage: resolved.trace.generationFailure?.failedStage ?? null,
+          errorCode: resolved.trace.generationFailure?.errorCode ?? null,
+          diagnosticId: resolved.trace.generationFailure?.diagnosticId ?? null,
+          fileDeliverableIds: resolved.trace.fileDeliverableIds,
         }),
       );
     }
@@ -118,22 +190,41 @@ export async function GET(
         code = "timeout";
       }
     }
+    const generationStatus = generationStatusForCode(code);
     console.warn(
-      `[results] notification=${notificationId} user=${userId} code=${code} http=${decision.http}`,
+      `[results] notification=${notificationId} user=${userId} code=${code} http=${decision.http} requestStatus=ok generationStatus=${generationStatus} failedStage=${resolveTrace?.generationFailure?.failedStage ?? "null"} projectError=${(resolveTrace?.projectError ?? "").slice(0, 120)}`,
     );
     return Response.json(
-      { status: "error", code },
+      {
+        status: "error",
+        requestStatus: "ok",
+        generationStatus,
+        code,
+        diagnostic: resolveTrace?.generationFailure ?? null,
+        projectError: resolveTrace?.projectError ?? null,
+        failedStage: resolveTrace?.generationFailure?.failedStage ?? null,
+        workJobId: resolveTrace?.workJobId ?? null,
+        commanderRunId: resolveTrace?.commanderRunId ?? null,
+        wordFileFound: resolveTrace?.wordFileFound ?? false,
+      } satisfies NotificationResultPayload,
       { status: decision.http },
     );
   }
 
   if (decision.status === "redirect") {
-    return Response.json({ status: "redirect", url: decision.url });
+    return Response.json({
+      status: "redirect",
+      requestStatus: "ok",
+      generationStatus: "ready",
+      url: decision.url,
+    } satisfies NotificationResultPayload);
   }
 
   if (decision.status === "unavailable") {
     return Response.json({
       status: "unavailable",
+      requestStatus: "ok",
+      generationStatus: "unknown",
       targetType: decision.targetType,
       targetId: decision.targetId,
     } satisfies NotificationResultPayload);
@@ -149,11 +240,27 @@ export async function GET(
             ? "pending"
             : "not_saved"
         : "not_saved";
-    return Response.json({ status: "error", code }, { status: 200 });
+    return Response.json(
+      {
+        status: "error",
+        requestStatus: "ok",
+        generationStatus: generationStatusForCode(code),
+        code,
+        diagnostic: resolveTrace?.generationFailure ?? null,
+        projectError: resolveTrace?.projectError ?? null,
+        failedStage: resolveTrace?.generationFailure?.failedStage ?? null,
+        workJobId: resolveTrace?.workJobId ?? null,
+        commanderRunId: resolveTrace?.commanderRunId ?? null,
+        wordFileFound: resolveTrace?.wordFileFound ?? false,
+      } satisfies NotificationResultPayload,
+      { status: 200 },
+    );
   }
 
   return Response.json({
     status: "deliverable",
+    requestStatus: "ok",
+    generationStatus: "ready",
     targetType: decision.targetType,
     targetId: decision.targetId,
     project,

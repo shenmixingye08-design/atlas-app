@@ -118,6 +118,11 @@ export async function getWorkJobDurable(
   return null;
 }
 
+export {
+  findWorkJobByLinkedIds,
+  loadWorkJobsForUserFromDurable,
+} from "./durable";
+
 export function listWorkJobsForUser(userId: string): WorkJobRecord[] {
   return [...getBucket().values()]
     .filter((j) => j.userId === userId)

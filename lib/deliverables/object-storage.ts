@@ -178,17 +178,25 @@ export async function uploadDeliverableObject(input: {
   sha256: string;
   buffer: Buffer;
 }): Promise<ObjectStorageUploadResult> {
-  if (consumeWordFault("storage_upload")) {
-    return {
-      ok: false,
-      error: "fault_inject:storage_upload",
-      backend: resolveDeliverableStorageBackend(),
-    };
-  }
-
   const backend = resolveDeliverableStorageBackend();
   if (backend === "local") {
-    return { ok: true, bucket: null, path: null, backend: "local" };
+    // Same retry policy as supabase — one transient fault must not kill Word.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (consumeWordFault("storage_upload")) {
+        if (attempt === 0) continue;
+        return {
+          ok: false,
+          error: "fault_inject:storage_upload",
+          backend: "local",
+        };
+      }
+      return { ok: true, bucket: null, path: null, backend: "local" };
+    }
+    return {
+      ok: false,
+      error: "storage_upload_exhausted",
+      backend: "local",
+    };
   }
 
   const client = createServiceRoleClientIfConfigured();
@@ -213,17 +221,44 @@ export async function uploadDeliverableObject(input: {
   }
 
   const path = buildDeliverableObjectPath(input);
-  const { error } = await client.storage
-    .from(ATLAS_DELIVERABLE_FILES_BUCKET)
-    .upload(path, input.buffer, {
-      contentType: input.mimeType,
-      upsert: false,
-    });
+  const isAlreadyExists = (message: string | undefined) => {
+    const lower = (message ?? "").toLowerCase();
+    return (
+      lower.includes("already exists") ||
+      lower.includes("duplicate") ||
+      lower.includes("resource already")
+    );
+  };
 
-  if (error) {
-    const lower = (error.message ?? "").toLowerCase();
-    // Same content path already present — treat as success (idempotent retry).
-    if (lower.includes("already exists") || lower.includes("duplicate") || lower.includes("resource already")) {
+  /**
+   * Direct cause fix for generation_failed / wordFileFound=false:
+   * transient Storage upload failures used to fail Word permanently.
+   * Attempt once, then retry with upsert before giving up.
+   */
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (consumeWordFault("storage_upload")) {
+      if (attempt === 0) {
+        console.warn(
+          "[atlas_deliverable_files] storage upload attempt failed; retrying",
+          { deliverableId: input.deliverableId, attempt },
+        );
+        continue;
+      }
+      return {
+        ok: false,
+        error: "fault_inject:storage_upload",
+        backend: "supabase",
+      };
+    }
+
+    const { error } = await client.storage
+      .from(ATLAS_DELIVERABLE_FILES_BUCKET)
+      .upload(path, input.buffer, {
+        contentType: input.mimeType,
+        upsert: attempt > 0,
+      });
+
+    if (!error || isAlreadyExists(error.message)) {
       return {
         ok: true,
         bucket: ATLAS_DELIVERABLE_FILES_BUCKET,
@@ -231,13 +266,21 @@ export async function uploadDeliverableObject(input: {
         backend: "supabase",
       };
     }
+
+    if (attempt === 0) {
+      console.warn(
+        "[atlas_deliverable_files] storage upload attempt failed; retrying",
+        error.message,
+        { deliverableId: input.deliverableId, attempt },
+      );
+      continue;
+    }
     return { ok: false, error: error.message, backend: "supabase" };
   }
 
   return {
-    ok: true,
-    bucket: ATLAS_DELIVERABLE_FILES_BUCKET,
-    path,
+    ok: false,
+    error: "storage_upload_exhausted",
     backend: "supabase",
   };
 }

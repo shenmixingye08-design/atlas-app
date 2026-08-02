@@ -17,6 +17,7 @@ import {
   persistExecutionState,
 } from "@/lib/orchestration/execution-reliability";
 import { runOrchestrationForUser } from "@/lib/orchestration/run-for-user";
+import { createGenerationFailureDiagnostic } from "@/lib/orchestration/generation-failure";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import { hydrateWorkflowState } from "@/lib/orchestration/workflow-state";
 import {
@@ -678,11 +679,28 @@ async function executeStoredRun(input: {
       wordFailedUserMessage = wordExport.userMessage;
       wordFailedJobId = wordExport.jobId;
       finalStatus = "failed";
+      const workJobId =
+        typeof input.metadata?.jobId === "string"
+          ? input.metadata.jobId
+          : typeof input.metadata?.workJobId === "string"
+            ? input.metadata.workJobId
+            : null;
+      const generationFailure =
+        "generationFailure" in wordExport
+          ? {
+              ...wordExport.generationFailure,
+              workJobId:
+                wordExport.generationFailure.workJobId ?? workJobId,
+              commanderRunId: input.runId,
+              projectId: `commander-${input.runId}`,
+            }
+          : null;
       lastResult = {
         ...lastResult,
         status: "failed",
         error: `${wordExport.userTitle}: ${wordExport.userMessage} [${wordExport.jobId}] ${wordExport.reason}`,
         commanderRunId: input.runId,
+        ...(generationFailure ? { generationFailure } : {}),
       };
       if (wordExport.stack) {
         console.error(
@@ -690,6 +708,9 @@ async function executeStoredRun(input: {
           JSON.stringify({
             jobId: wordExport.jobId,
             reason: wordExport.reason,
+            failedStage:
+              "failedStage" in wordExport ? wordExport.failedStage : null,
+            diagnosticId: generationFailure?.diagnosticId ?? null,
             stack: wordExport.stack.slice(0, 2000),
           }),
         );
@@ -868,8 +889,38 @@ async function executeStoredRun(input: {
     const failureReason = formatFailureReason(
       lastResult?.error ?? attempts.at(-1)?.error ?? "実行に失敗しました。",
     );
+    const orchFailure = createGenerationFailureDiagnostic({
+      failedStage:
+        lastResult?.stepError?.step ??
+        lastResult?.generationFailure?.failedStage ??
+        "AI_ORCHESTRATION",
+      errorCode: lastResult?.stepError?.step
+        ? `orchestration_${lastResult.stepError.step}`
+        : "orchestration_failed",
+      userMessage: failureReason,
+      developerMessage: lastResult?.error ?? failureReason,
+      requestId: input.runId,
+      workJobId:
+        typeof input.metadata?.jobId === "string"
+          ? input.metadata.jobId
+          : typeof input.metadata?.workJobId === "string"
+            ? input.metadata.workJobId
+            : null,
+      commanderRunId: input.runId,
+      projectId: resultProjectId,
+      retryable: isRetryableFailure(failureReason),
+      lastSuccessStage: lastResult ? "AI_ORCHESTRATION_STARTED" : null,
+      openaiRequestId: null,
+    });
     const failedResult: OrchestrationResult = lastResult
-      ? { ...lastResult, status: "failed", error: failureReason }
+      ? {
+          ...lastResult,
+          status: "failed",
+          error: failureReason,
+          generationFailure:
+            lastResult.generationFailure ?? orchFailure,
+          commanderRunId: input.runId,
+        }
       : {
           assignment: plan.assignment,
           status: "failed",
@@ -888,6 +939,8 @@ async function executeStoredRun(input: {
             0,
           ),
           error: failureReason,
+          generationFailure: orchFailure,
+          commanderRunId: input.runId,
         };
     persistedProjectId = await persistCommanderResultAsProject({
       userId: input.userId,
@@ -920,7 +973,9 @@ async function executeStoredRun(input: {
     wordCompletionVerified: Boolean(wordDeliverableId && wordDownloadUrl),
     notificationCreated,
     wordErrorCode: wordFailedReason,
-    wordFailedStep: wordFailedReason ? "DOCX_GENERATION" : null,
+    wordFailedStep:
+      lastResult?.generationFailure?.failedStage ??
+      (wordFailedReason ? "WORD_EXPORT" : null),
   };
 
   return toRunResult({

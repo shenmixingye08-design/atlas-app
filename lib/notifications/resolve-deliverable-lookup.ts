@@ -1,9 +1,10 @@
 import "server-only";
 
 import { loadPersistedProjectById } from "@/lib/commander/durable-store";
-import { getCommanderRun } from "@/lib/commander/run-store";
-import { getWorkJobDurable } from "@/lib/work-jobs/store";
+import { getCommanderRunDurable } from "@/lib/commander/run-store";
+import { findWorkJobByLinkedIds } from "@/lib/work-jobs/store";
 import { getStoredDeliverableForUser } from "@/lib/deliverables/store";
+import type { GenerationFailureDiagnostic } from "@/lib/orchestration/generation-failure";
 import type { ResultResolutionCode } from "@/lib/notifications/result-messages";
 import type { NotificationRecord } from "@/lib/notifications/types";
 import {
@@ -32,6 +33,12 @@ export type ResolvedDeliverableLookup = {
     wordFileId: string | null;
     commanderStatus: string | null;
     workJobStatus: string | null;
+    workJobId: string | null;
+    commanderRunId: string | null;
+    projectError: string | null;
+    resultStatus: string | null;
+    generationFailure: GenerationFailureDiagnostic | null;
+    fileDeliverableIds: string[];
   };
 };
 
@@ -67,6 +74,22 @@ export function candidateProjectIdsForNotification(
   return [...new Set(ids.filter(Boolean))];
 }
 
+function extractCommanderRunId(input: {
+  notification: NotificationRecord;
+  resolvedProjectId: string | null;
+  project: Project | null;
+}): string | null {
+  const fromResult = input.project?.result?.commanderRunId?.trim();
+  if (fromResult) return fromResult;
+  const requestId = input.notification.requestId?.trim();
+  if (requestId && !requestId.includes(":word")) return requestId;
+  const projectId = input.resolvedProjectId ?? "";
+  if (projectId.startsWith("commander-")) {
+    return projectId.slice("commander-".length);
+  }
+  return null;
+}
+
 /**
  * Load the durable 成果物 for a notification, with Word-UUID → project fallback
  * and generating/failed/timeout awareness for missing rows.
@@ -83,6 +106,12 @@ export async function resolveDeliverableLookupForNotification(input: {
     wordFileId: null as string | null,
     commanderStatus: null as string | null,
     workJobStatus: null as string | null,
+    workJobId: null as string | null,
+    commanderRunId: null as string | null,
+    projectError: null as string | null,
+    resultStatus: null as string | null,
+    generationFailure: null as GenerationFailureDiagnostic | null,
+    fileDeliverableIds: [] as string[],
   };
 
   if (target.kind === "none" || !isDeliverableTargetType(target.kind)) {
@@ -145,15 +174,47 @@ export async function resolveDeliverableLookupForNotification(input: {
     }
   }
 
+  const commanderRunId = extractCommanderRunId({
+    notification: input.notification,
+    resolvedProjectId,
+    project,
+  });
+
   let commanderStatus: string | null = null;
-  let workJobStatus: string | null = null;
-  const requestId = input.notification.requestId?.trim();
-  if (requestId) {
-    const run = getCommanderRun(requestId, input.userId);
+  if (commanderRunId) {
+    const run = await getCommanderRunDurable(commanderRunId, input.userId);
     commanderStatus = run?.status ?? null;
-    const job = await getWorkJobDurable(requestId, input.userId);
-    workJobStatus = job?.status ?? null;
   }
+
+  // WorkJob id ≠ commander run id. Resolve via durable ID links.
+  let workJobStatus: string | null = null;
+  let workJobId: string | null = null;
+  const metaJobHint =
+    typeof project?.result?.generationFailure?.workJobId === "string"
+      ? project.result.generationFailure.workJobId
+      : null;
+  const linked = await findWorkJobByLinkedIds({
+    userId: input.userId,
+    workJobId: metaJobHint,
+    commanderRunId,
+    projectId: resolvedProjectId,
+    // Only use requestId as job.id when it is a bare uuid that matches a job —
+    // findWorkJobByLinkedIds enforces that.
+    requestId: input.notification.requestId,
+  });
+  if (linked) {
+    workJobId = linked.id;
+    workJobStatus = linked.status;
+  }
+
+  const generationFailure =
+    project?.result?.generationFailure ??
+    (linked?.metadata?.generationFailure as GenerationFailureDiagnostic | undefined) ??
+    null;
+
+  const fileDeliverableIds = (project?.result?.fileDeliverables ?? []).map(
+    (f) => f.id,
+  );
 
   const trace = {
     primaryTargetId: target.targetId,
@@ -162,6 +223,12 @@ export async function resolveDeliverableLookupForNotification(input: {
     wordFileId,
     commanderStatus,
     workJobStatus,
+    workJobId,
+    commanderRunId,
+    projectError: project?.error ?? project?.result?.error ?? null,
+    resultStatus: project?.result?.status ?? null,
+    generationFailure,
+    fileDeliverableIds,
   };
 
   if (!lastDurable && !project) {
@@ -174,18 +241,8 @@ export async function resolveDeliverableLookupForNotification(input: {
   }
 
   if (project) {
-    let displayKind: DeliverableDisplayState["kind"] =
+    const displayKind: DeliverableDisplayState["kind"] =
       resolveDeliverableDisplayState(project).kind;
-    // If project text is ready but Word binary missing while notification
-    // claimed Word ready, keep showing ready (download CTA can recover).
-    if (displayKind === "ready" || displayKind === "failed") {
-      return {
-        lookup: { durable: true, found: true, displayKind },
-        project,
-        resolvedProjectId,
-        trace,
-      };
-    }
     return {
       lookup: { durable: true, found: true, displayKind },
       project,
