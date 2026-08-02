@@ -49,6 +49,17 @@ function sampleAutomation(
 
 const SAMPLE_PROJECTS: Project[] = [
   {
+    id: "preview-deadline",
+    title: "来週の営業会議資料",
+    workRequest: "営業資料をPowerPointで作成しPDF化\n【期限】" + new Date(Date.now() + 20 * 3600_000).toISOString().slice(0, 10),
+    status: "pending",
+    progress: 10,
+    createdAt: now,
+    updatedAt: now,
+    assignedEmployees: [],
+    result: null,
+  },
+  {
     id: "preview-1",
     title: "X投稿文の作成",
     workRequest: "商品画像からX投稿文を作成",
@@ -70,31 +81,24 @@ const SAMPLE_PROJECTS: Project[] = [
     assignedEmployees: [],
     result: null,
   },
-  {
-    id: "preview-3",
-    title: "月次レポートの作成",
-    workRequest: "先月の売上データを要約",
-    status: "completed",
-    progress: 100,
-    createdAt: now,
-    updatedAt: now,
-    assignedEmployees: [],
-    result: null,
-  },
-  {
-    id: "preview-4",
-    title: "ブログ記事の下書き",
-    workRequest: "新商品のブログ記事をWordPressへ投稿",
-    status: "completed",
-    progress: 100,
-    createdAt: now,
-    updatedAt: now,
-    assignedEmployees: [],
-    result: null,
-  },
 ];
 
 const SAMPLE_AUTOMATIONS: Automation[] = [
+  sampleAutomation({
+    id: "auto-preview-sales",
+    name: "営業資料作成",
+    status: "idle",
+    schedule: {
+      kind: "schedule",
+      preset: { type: "weekly", dayOfWeek: 5, hour: 18, minute: 0 },
+      timezone: "Asia/Tokyo",
+      label: "毎週金曜 18:00",
+    },
+    workflow: {
+      assignment: "営業資料をPowerPointで作りPDF化しDropboxへ保存",
+    },
+    nextRun: new Date(Date.now() + 2 * 86400_000).toISOString(),
+  }),
   sampleAutomation({
     id: "auto-preview-1",
     name: "毎朝メール要約",
