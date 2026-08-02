@@ -43,7 +43,15 @@ export type PersonalMemoryScope =
   | "currency"
   | "contact_info"
   | "customer_info"
-  | "recurring_work_preferences";
+  | "recurring_work_preferences"
+  /** Expanded personalization catalog */
+  | "bullet_style"
+  | "image_output"
+  | "ocr_postprocess"
+  | "company_template"
+  | "client_style"
+  | "ai_model_preference"
+  | "preferred_work_hours";
 
 export const PERSONAL_MEMORY_SCOPES: readonly PersonalMemoryScope[] = [
   "writing_style",
@@ -73,7 +81,18 @@ export const PERSONAL_MEMORY_SCOPES: readonly PersonalMemoryScope[] = [
   "contact_info",
   "customer_info",
   "recurring_work_preferences",
+  "bullet_style",
+  "image_output",
+  "ocr_postprocess",
+  "company_template",
+  "client_style",
+  "ai_model_preference",
+  "preferred_work_hours",
 ] as const;
+
+/** Confidence tiers for exclusivity experience */
+export const MEMORY_CONFIDENCE_FORMAL = 0.9;
+export const MEMORY_CONFIDENCE_CANDIDATE = 0.7;
 
 export type MemorySource =
   | "explicit"
@@ -190,7 +209,7 @@ export const DEFAULT_PERSONAL_MEMORY_SETTINGS: PersonalMemorySettings = {
   defaultRetention: "forever",
   unusedReconfirmDays: 90,
   candidateNotifyBatchSize: 3,
-  candidateMinConfidence: 0.72,
+  candidateMinConfidence: MEMORY_CONFIDENCE_CANDIDATE,
   maxMemoriesInjectedPerRun: 8,
   maxInjectionChars: 1200,
 };

@@ -1,12 +1,13 @@
 /**
  * Step invoker — executes one capability without mutating V1 automation history.
- * Document/engine steps produce structured artifacts; external high-risk steps
- * are gated by prior Approval and recorded as drafts unless explicitly allowed.
+ * Document steps call the real deliverables engine (never url:null stub success).
+ * External high-risk steps are gated by Approval / strict invoker.
  */
 
 import type { AutomationWorkflowStep } from "@/lib/automation-platform/types/step";
 import type { AutomationRunArtifact } from "@/lib/automation-platform/types/run";
 import { getCapability } from "@/lib/automation-platform/step-registry/registry";
+import { isDeliverableGenerateStep } from "@/lib/automation-platform/execution/real-deliverable-policy";
 
 export type StepInvokeResult = {
   ok: boolean;
@@ -17,13 +18,19 @@ export type StepInvokeResult = {
   needsUserInput?: boolean;
 };
 
-export type StepInvoker = (input: {
+export type StepInvokerInput = {
   step: AutomationWorkflowStep;
   userId: string;
   automationName: string;
   runId: string;
   approved: boolean;
-}) => Promise<StepInvokeResult>;
+  /** Freeform instruction notes from the automation definition. */
+  assignmentNotes?: string | null;
+  /** Public origin for download URLs. */
+  requestOrigin?: string | null;
+};
+
+export type StepInvoker = (input: StepInvokerInput) => Promise<StepInvokeResult>;
 
 function artifact(
   label: string,
@@ -40,9 +47,8 @@ function artifact(
 }
 
 /**
- * Default invoker: real side-effects only for safe/local steps.
- * High-risk external actions require approval and still produce a reviewable
- * draft/result record rather than silent publish when credentials are absent.
+ * Default invoker: document steps produce real downloadable artifacts.
+ * High-risk external actions require approval (strict invoker hardens further).
  */
 export const defaultStepInvoker: StepInvoker = async (input) => {
   const { step, approved } = input;
@@ -68,30 +74,36 @@ export const defaultStepInvoker: StepInvoker = async (input) => {
     };
   }
 
+  if (isDeliverableGenerateStep(step.type)) {
+    const { invokeRealDeliverableStep } = await import(
+      "@/lib/automation-platform/execution/invoke-real-deliverable"
+    );
+    return invokeRealDeliverableStep({
+      stepType: step.type,
+      stepName: step.name,
+      configuration: step.configuration,
+      userId: input.userId,
+      automationName: input.automationName,
+      runId: input.runId,
+      assignmentNotes: input.assignmentNotes,
+      requestOrigin: input.requestOrigin,
+    });
+  }
+
   switch (step.type) {
     case "ocr":
     case "vision_analysis":
     case "data_extract":
     case "file_convert":
+      // Not on the ¥980 weekly-report critical path — fail closed (no fake file).
       return {
-        ok: true,
-        summary: `${capability.name}を完了しました`,
-        artifacts: [artifact(`${capability.name}結果`, "file")],
+        ok: false,
+        summary: `${capability.name}は現在この自動化経路では未接続です`,
+        artifacts: [],
+        errorCode: "automation_unsupported_step",
+        errorMessage: `${step.type}_not_wired_in_v2_invoker`,
+        needsUserInput: true,
       };
-    case "word_generate":
-    case "excel_generate":
-    case "pdf_generate":
-    case "powerpoint_generate":
-    case "deliverable_generate": {
-      const title =
-        (typeof step.configuration.title === "string" && step.configuration.title) ||
-        `${input.automationName} / ${capability.name}`;
-      return {
-        ok: true,
-        summary: `${capability.name}の成果物を準備しました`,
-        artifacts: [artifact(title, "deliverable")],
-      };
-    }
     case "notify":
       return {
         ok: true,
@@ -164,10 +176,11 @@ export const defaultStepInvoker: StepInvoker = async (input) => {
         typeof step.configuration.assignment === "string"
           ? step.configuration.assignment
           : input.automationName;
+      // Planning/pass-through only — never claim a downloadable deliverable here.
       return {
         ok: true,
-        summary: `仕事の遂行を記録しました: ${assignment.slice(0, 60)}`,
-        artifacts: [artifact("遂行結果", "deliverable")],
+        summary: `依頼内容を整理しました: ${assignment.slice(0, 60)}`,
+        artifacts: [],
       };
     }
     default:

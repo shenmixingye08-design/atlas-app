@@ -168,11 +168,42 @@ export async function POST(request: Request): Promise<Response> {
     const workflowId =
       typeof body.workflowId === "string" ? body.workflowId : null;
 
+    let assignment = body.assignment.trim();
+    let finalDeliverable = body.finalDeliverable;
+    let title = typeof body.title === "string" ? body.title : undefined;
+    let memoryPreview: Record<string, unknown> | null = null;
+    try {
+      const { applyMemoryToDeliverableSource } = await import(
+        "@/lib/personal-memory/bridge/deliverable"
+      );
+      const formats = parseFormats(body.formats);
+      const applied = await applyMemoryToDeliverableSource({
+        userId,
+        content: String(body.finalDeliverable),
+        assignment,
+        title: title ?? projectName,
+        notes: assignment,
+        formats: formats ?? null,
+      });
+      assignment = applied.assignment;
+      finalDeliverable = applied.content;
+      title = applied.title;
+      memoryPreview = {
+        headline: applied.previewHeadline,
+        memoriesApplied: applied.memoriesApplied,
+        memoryScore: applied.memoryScore,
+        matchRate: applied.matchRate,
+        diffRate: applied.diffRate,
+      };
+    } catch {
+      memoryPreview = null;
+    }
+
     const result = await generateDeliverables(
       {
-        assignment: body.assignment.trim(),
-        finalDeliverable: body.finalDeliverable,
-        title: typeof body.title === "string" ? body.title : undefined,
+        assignment,
+        finalDeliverable,
+        title,
         formats: parseFormats(body.formats),
       },
       origin,
@@ -213,6 +244,7 @@ export async function POST(request: Request): Promise<Response> {
       matchedRule: result.detection.matchedRule,
       uploads,
       jobId: result.jobId,
+      memoryPreview,
     });
   } catch (error) {
     console.error("[Atlas /api/deliverables/generate]", error);

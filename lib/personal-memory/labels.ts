@@ -44,6 +44,13 @@ export const SCOPE_LABELS: Record<PersonalMemoryScope, string> = {
   contact_info: "連絡先",
   customer_info: "顧客情報",
   recurring_work_preferences: "繰り返しの仕事",
+  bullet_style: "箇条書き",
+  image_output: "画像サイズ",
+  ocr_postprocess: "OCR後処理",
+  company_template: "会社テンプレート",
+  client_style: "営業先ごとの癖",
+  ai_model_preference: "AIモデル選択",
+  preferred_work_hours: "よく使う時間帯",
 };
 
 export const STATUS_LABELS: Record<MemoryStatus, string> = {

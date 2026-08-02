@@ -321,7 +321,21 @@ export async function deletePersonalMemory(
   id: string,
 ): Promise<void> {
   await ensurePersonalMemoryHydrated(userId);
-  assertOwner(findStoredPersonalMemory(userId, id), userId);
+  const current = assertOwner(findStoredPersonalMemory(userId, id), userId);
+  try {
+    const { recordMemoryVersion } = await import(
+      "@/lib/personal-memory/versioning"
+    );
+    recordMemoryVersion({
+      memoryId: id,
+      userId,
+      action: "deleted",
+      snapshot: current,
+      approvedBy: userId,
+    });
+  } catch {
+    // optional
+  }
   softDeleteMemory(userId, id);
   schedulePersistPersonalMemory(userId);
   appendPersonalMemoryAudit({
@@ -330,6 +344,41 @@ export async function deletePersonalMemory(
     memoryId: id,
     meta: {},
   });
+}
+
+/** Undo last delete/pause by restoring snapshot. */
+export async function undoPersonalMemoryChange(
+  userId: string,
+  memoryId: string,
+): Promise<PersonalMemoryRecord | null> {
+  await ensurePersonalMemoryHydrated(userId);
+  const { findUndoSnapshot, recordMemoryVersion } = await import(
+    "@/lib/personal-memory/versioning"
+  );
+  const snapshot = findUndoSnapshot({ userId, memoryId });
+  if (!snapshot || snapshot.userId !== userId) return null;
+  const restored: PersonalMemoryRecord = {
+    ...snapshot,
+    status: snapshot.status === "deleted" ? "active" : snapshot.status,
+    deletedAt: null,
+    updatedAt: nowIso(),
+  };
+  upsertStoredPersonalMemory(restored);
+  schedulePersistPersonalMemory(userId);
+  recordMemoryVersion({
+    memoryId,
+    userId,
+    action: "undo",
+    snapshot: restored,
+    approvedBy: userId,
+  });
+  appendPersonalMemoryAudit({
+    userId,
+    action: "memory.update",
+    memoryId,
+    meta: { undo: true },
+  });
+  return restored;
 }
 
 export async function deleteAllPersonalMemories(userId: string): Promise<number> {
@@ -392,6 +441,7 @@ export async function approveCandidate(
     ...current,
     status: "active",
     source: "approved_inference",
+    confidence: Math.max(current.confidence, 0.9),
     appliesTo,
     expiresAt:
       scopeMode === "once" ? computeExpiresAt("once") : current.expiresAt,
@@ -405,6 +455,20 @@ export async function approveCandidate(
     memoryId: id,
     meta: { scope: scopeMode },
   });
+  try {
+    const { recordMemoryVersion } = await import(
+      "@/lib/personal-memory/versioning"
+    );
+    recordMemoryVersion({
+      memoryId: id,
+      userId,
+      action: "approved",
+      snapshot: approved,
+      approvedBy: userId,
+    });
+  } catch {
+    // optional
+  }
   return approved;
 }
 

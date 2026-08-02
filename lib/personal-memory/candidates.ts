@@ -76,8 +76,20 @@ const CORRECTION_PATTERNS: Array<{
 }> = [
   { re: /もっと短く|短めに|簡潔に/, scope: "writing_style", key: "length", title: "文章の長さ" },
   { re: /もっと丁寧|敬語/, scope: "writing_style", key: "tone", title: "文体" },
+  { re: /改行(を増|多め)|読みやすく/, scope: "writing_style", key: "line_breaks", title: "改行" },
+  { re: /箇条書き|リスト形式/, scope: "bullet_style", key: "bullets", title: "箇条書き" },
   { re: /絵文字(なし|やめて)/, scope: "writing_style", key: "emoji", title: "絵文字" },
   { re: /青系|ブルー/, scope: "color_palette", key: "palette", title: "配色" },
+  { re: /A4|ワード.*レイアウト|Word.*A4/i, scope: "word_template", key: "page", title: "Wordレイアウト" },
+  { re: /PowerPoint|パワポ.*(青|テーマ)/i, scope: "powerpoint_theme", key: "theme", title: "PowerPointデザイン" },
+  { re: /Excel.*(構成|シート)/i, scope: "excel_template", key: "layout", title: "Excel構成" },
+  { re: /PDFも|PDF同時/, scope: "preferred_formats", key: "pdf", title: "PDF有無" },
+  { re: /Dropbox|Google.?Drive|保存先/, scope: "default_storage_locations", key: "storage", title: "保存場所" },
+  { re: /ファイル名/, scope: "file_naming", key: "pattern", title: "ファイル名" },
+  { re: /OCR.*(整形|後処理)/i, scope: "ocr_postprocess", key: "cleanup", title: "OCR後処理" },
+  { re: /画像.*(サイズ|解像度)/, scope: "image_output", key: "size", title: "画像サイズ" },
+  { re: /承認(不要|してから)/, scope: "approval_preferences", key: "mode", title: "承認フロー" },
+  { re: /通知(は|を)/, scope: "notification_preferences", key: "timing", title: "通知タイミング" },
   { re: /PDFも|pdfも/, scope: "preferred_formats", key: "formats", title: "成果物の形式" },
 ];
 

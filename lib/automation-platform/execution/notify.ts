@@ -19,6 +19,13 @@ export type RunNotificationEvent =
   | "retry_finished";
 
 function runActionUrl(run: AutomationRun): string {
+  const downloadable = run.artifacts.find(
+    (artifact) =>
+      artifact.kind === "deliverable" &&
+      typeof artifact.url === "string" &&
+      artifact.url.trim().length > 0,
+  );
+  if (downloadable?.url) return downloadable.url;
   return `/automations/runs/${encodeURIComponent(run.id)}`;
 }
 

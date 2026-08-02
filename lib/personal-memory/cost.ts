@@ -4,6 +4,7 @@ import type {
   ResolvedMemoryValue,
 } from "@/lib/personal-memory/types";
 import { SCOPE_LABELS } from "@/lib/personal-memory/labels";
+import { isInjectableConfidence } from "@/lib/personal-memory/confidence";
 
 export function estimateTokens(text: string): number {
   // Rough JP/EN mix estimate
@@ -26,6 +27,8 @@ export function selectRelevantMemories(input: {
 
   const filtered = input.memories.filter((memory) => {
     if (memory.status !== "active") return false;
+    // Suggestions (<70%) never auto-inject; candidates/formal only.
+    if (!isInjectableConfidence(memory.confidence)) return false;
     if (denied.has(memory.scope)) return false;
     if (allowed && !allowed.has(memory.scope)) return false;
     if (!memory.appliesTo.global) {

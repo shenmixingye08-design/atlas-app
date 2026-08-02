@@ -511,11 +511,17 @@ export async function orchestrate(
 
     const atlasMemory = readAtlasMemoryFromMetadata(metadata);
     const workMemory = readWorkMemoryFromMetadata(metadata);
+    const personalMemoryRaw = metadata?.personalMemory;
+    const personalMemory =
+      typeof personalMemoryRaw === "string" && personalMemoryRaw.trim()
+        ? personalMemoryRaw.trim()
+        : null;
     const plannerKnowledge = [
       retrieval.plannerContext.similarProjects,
       retrieval.plannerContext.successfulStrategies,
       atlasMemory,
       workMemory,
+      personalMemory,
     ]
       .filter(Boolean)
       .join("\n\n");

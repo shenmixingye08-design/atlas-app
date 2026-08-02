@@ -20,7 +20,24 @@ export {
   activatePersonalMemory,
   pauseAllPersonalMemories,
   wipePersonalMemoryForAccountDeletion,
+  undoPersonalMemoryChange,
 } from "./service";
 export { resolvePersonalMemories, toRunMemoryLedger } from "./resolve";
 export { evaluateCorrectionForCandidate, buildCandidatePrompt } from "./candidates";
 export { ensurePersonalMemoryHydrated } from "./durable";
+export {
+  confidenceTier,
+  confidenceTierLabel,
+  isInjectableConfidence,
+} from "./confidence";
+export {
+  recordMemoryApply,
+  getMemoryDashboardSnapshot,
+  resetMemoryApplyMetricsForTests,
+} from "./apply-metrics";
+export { buildMemoryPreview } from "./preview";
+export {
+  recordMemoryVersion,
+  listMemoryVersions,
+  resetMemoryVersionsForTests,
+} from "./versioning";

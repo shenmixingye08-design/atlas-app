@@ -61,6 +61,7 @@ export async function dispatchAutomationRuns(options?: {
   limit?: number;
   invoker?: StepInvoker;
   runIds?: string[];
+  requestOrigin?: string | null;
 }): Promise<DispatchResult> {
   const result: DispatchResult = {
     processed: 0,
@@ -138,6 +139,7 @@ export async function dispatchAutomationRuns(options?: {
       run: withHistory,
       automation,
       invoker: options?.invoker ?? strictStepInvoker,
+      requestOrigin: options?.requestOrigin,
     });
 
     result.processed += 1;
