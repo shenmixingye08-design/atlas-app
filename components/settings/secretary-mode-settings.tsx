@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import {
   loadExecutiveAssistantSettings,
@@ -21,11 +21,11 @@ const MODE_HELP: Record<SecretaryMode, string> = {
  * 秘書モード設定 — User Profile コアを書き換えず local 設定のみ。
  */
 export function SecretaryModeSettings() {
-  const [mode, setMode] = useState<SecretaryMode>("suggest_only");
-
-  useEffect(() => {
-    setMode(loadExecutiveAssistantSettings().secretaryMode);
-  }, []);
+  const [mode, setMode] = useState<SecretaryMode>(() =>
+    typeof window === "undefined"
+      ? "suggest_only"
+      : loadExecutiveAssistantSettings().secretaryMode,
+  );
 
   return (
     <div className="space-y-6">
