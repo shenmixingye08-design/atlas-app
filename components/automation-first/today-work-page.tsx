@@ -70,8 +70,22 @@ export function TodayWorkPage({
 
   useEffect(() => {
     if (initialAutomations) return;
-    load();
-  }, [load, initialAutomations]);
+    let cancelled = false;
+    void fetchAutomations()
+      .then((items) => {
+        if (cancelled) return;
+        setAutomations(normalizeAutomations(items));
+        setError(null);
+      })
+      .catch((err: Error) => {
+        if (cancelled) return;
+        setError(err.message || "読み込めませんでした");
+        setAutomations([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialAutomations]);
 
   useEffect(() => {
     if (!opsEnabled || initialAutomations) return;

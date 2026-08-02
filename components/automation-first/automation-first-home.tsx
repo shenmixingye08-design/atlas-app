@@ -170,7 +170,6 @@ function WeeklyStatsCard({ stats }: { stats: HomeWeeklyStats }) {
 
 export function AutomationFirstHome({
   automations,
-  projects: _projects,
 }: AutomationFirstHomeProps) {
   const { flags } = useFeatureAvailability();
   const opsEnabled =
@@ -179,21 +178,22 @@ export function AutomationFirstHome({
     flags.automation_dashboard_v2_enabled === true;
 
   const now = useMemo(() => new Date(), []);
-  const [opsLoading, setOpsLoading] = useState(opsEnabled);
+  const [opsLoading, setOpsLoading] = useState(false);
   const [opsError, setOpsError] = useState<string | null>(null);
   const [opsSummary, setOpsSummary] = useState<AutomationOperationsSummary | null>(
     null,
   );
   const [runs, setRuns] = useState<AutomationRun[]>([]);
+  const [opsRequestId, setOpsRequestId] = useState(0);
 
   useEffect(() => {
-    if (!opsEnabled) {
-      setOpsLoading(false);
-      return;
-    }
+    if (!opsEnabled) return;
     let cancelled = false;
-    setOpsLoading(true);
-    setOpsError(null);
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      setOpsLoading(true);
+      setOpsError(null);
+    });
 
     void Promise.all([
       fetchAutomationOperationsSummary(),
@@ -216,7 +216,7 @@ export function AutomationFirstHome({
     return () => {
       cancelled = true;
     };
-  }, [opsEnabled]);
+  }, [opsEnabled, opsRequestId]);
 
   const v1Jobs = useMemo(
     () => buildTodayJobsFromAutomations(automations, now),
@@ -326,7 +326,7 @@ export function AutomationFirstHome({
   const createHref = "/automations/new";
   const oneTimeHref = "/workspace";
 
-  if (opsEnabled && opsLoading) {
+  if (opsEnabled && opsLoading && !opsSummary && !opsError) {
     return <HomeSkeleton />;
   }
 
@@ -506,22 +506,7 @@ export function AutomationFirstHome({
         <ErrorState
           description={`運用データの取得に失敗しました: ${opsError}`}
           onRetry={() => {
-            setOpsLoading(true);
-            setOpsError(null);
-            void Promise.all([
-              fetchAutomationOperationsSummary(),
-              fetchAutomationRunsAll({ sort: "newest" }).catch(
-                () => [] as AutomationRun[],
-              ),
-            ])
-              .then(([summary, nextRuns]) => {
-                setOpsSummary(summary);
-                setRuns(nextRuns);
-              })
-              .catch((error: Error) => {
-                setOpsError(error.message || "運用データの取得に失敗しました");
-              })
-              .finally(() => setOpsLoading(false));
+            setOpsRequestId((value) => value + 1);
           }}
         />
       ) : null}
