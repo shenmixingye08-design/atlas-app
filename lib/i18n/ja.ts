@@ -2207,16 +2207,16 @@ export const ui = {
   },
 
   memory: {
-    pageTitle: "MINERVOT Memory",
+    pageTitle: "MINERVOTが覚えていること",
     pageSubtitle:
-      "MINERVOTが長期記憶したあなたの仕事スタイル・好み・習慣です。使うほど、あなた専属のAI秘書へ成長します。",
-    settingsLinkTitle: "MINERVOT Memory",
-    settingsLinkHint: "長期記憶の確認・編集・固定・削除",
+      "成果物の好み・文体・形式を安全に覚えます。使うほど、あなた専属のAI秘書へ育ちます。",
+    settingsLinkTitle: "MINERVOTが覚えていること",
+    settingsLinkHint: "文体・レイアウト・保存先・承認などの確認・編集・削除",
     loading: "記憶を読み込み中…",
     loadError: "記憶を読み込めませんでした",
     saveError: "保存に失敗しました",
     suggestionsTitle: "MINERVOTが学習した内容",
-    suggestionsHint: "利用履歴からMINERVOTが読み取った傾向です。",
+    suggestionsHint: "修正履歴から読み取った傾向です。承認後だけ使います。",
     recentTitle: "最近覚えたこと",
     recentHint: "直近に学習・更新された記憶です。",
     workStyleTitle: "仕事スタイル",
@@ -2917,7 +2917,8 @@ export const ui = {
     statusConnected: "Connected",
     statusAvailable: "Available",
     statusComingSoon: "Coming Soon",
-    planningNote: "OAuth と API 実行は将来対応です。",
+    planningNote:
+      "Gmail / Calendar / Dropbox / WordPress / X は Live Integrations で接続・再接続できます。",
     empty: "プロバイダーが見つかりません",
   },
 
@@ -2925,7 +2926,7 @@ export const ui = {
     title: "接続管理",
     subtitle: "プロバイダーの接続状態と権限を一元管理します。",
     planningNote:
-      "Google は OAuth で接続できます（Clerk の Google ログインとは別）。他プロバイダーは順次対応します。",
+      "優先連携（Gmail・Calendar・Dropbox・WordPress・X）は上部の Live Integrations から接続・再接続できます。",
     permissionsLabel: "権限",
     servicesLabel: "利用可能なサービス",
     oauthReadinessLabel: "OAuth 準備",
@@ -2936,12 +2937,16 @@ export const ui = {
     statusConnected: "接続済み",
     statusNotConnected: "未接続",
     statusNeedsReconnect: "再接続が必要",
+    statusExpired: "期限切れ",
+    statusInsufficientScope: "権限不足",
     oauthReady: "利用可能",
     oauthPlanned: "準備中",
     oauthUnavailable: "利用不可",
     granted: "付与済み",
     missing: "未付与",
     empty: "プロバイダーが見つかりません",
+    lastUsedLabel: "最終利用",
+    automationCountLabel: "使用中Automation",
   },
 
   internalComms: {

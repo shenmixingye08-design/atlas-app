@@ -6,6 +6,7 @@ import { ui } from "@/lib/i18n";
 
 import { HomeChatBar } from "./home-chat-bar";
 import { HomeGreetingHeader } from "./home-greeting-header";
+import { HomeLiveIntegrationsStrip } from "./home-live-integrations-strip";
 
 type SecretaryHomeDashboardProps = {
   automations: Automation[];
@@ -34,6 +35,7 @@ export function SecretaryHomeDashboard({
       </header>
 
       <HomeChatBar />
+      <HomeLiveIntegrationsStrip />
     </div>
   );
 }

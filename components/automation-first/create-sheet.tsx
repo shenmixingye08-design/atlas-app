@@ -37,7 +37,7 @@ export function CreateSheet({ open, onClose }: CreateSheetProps) {
       <div className="absolute inset-x-0 bottom-0 rounded-t-[var(--radius-xl)] border border-[var(--border)] bg-[var(--surface-elevated)] p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[var(--shadow-lg)]">
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[var(--border-strong)]" aria-hidden />
         <h2 id={titleId} className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]">
-          何をしますか？
+          何を任せますか？
         </h2>
         <ul className="mt-4 space-y-2">
           <li>
@@ -51,7 +51,7 @@ export function CreateSheet({ open, onClose }: CreateSheetProps) {
               }}
               className="flex min-h-[var(--touch-target)] items-center rounded-[var(--radius-md)] bg-[var(--brand)] px-4 text-sm font-semibold text-[var(--brand-foreground)]"
             >
-              新しい自動化を作る
+              仕事を任せる
             </Link>
           </li>
           <li>

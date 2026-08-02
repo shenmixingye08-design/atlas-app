@@ -22,6 +22,10 @@ export type CalendarEventInput = {
   createMeet?: boolean;
   /** Minutes before start for Google popup/email reminder. */
   remindMinutesBefore?: number | null;
+  /** IANA timezone override; defaults to CALENDAR_TIMEZONE. */
+  timeZone?: string | null;
+  /** Participant emails. */
+  attendees?: string[] | null;
 };
 
 export type CalendarRangeWindow = {

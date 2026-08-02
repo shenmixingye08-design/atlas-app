@@ -9,6 +9,11 @@ type ConnectionProviderCardProps = {
   provider: ProviderConnectionView;
 };
 
+const CONNECT_HREF: Partial<Record<ProviderConnectionView["id"], string>> = {
+  google: "/api/external-services/google/oauth/authorize",
+  wordpress: "/settings/wordpress",
+};
+
 function connectionStatusLabel(status: ProviderConnectionView["connectionStatus"]) {
   switch (status) {
     case "connected":
@@ -17,6 +22,10 @@ function connectionStatusLabel(status: ProviderConnectionView["connectionStatus"
       return ui.connections.statusNotConnected;
     case "needs_reconnect":
       return ui.connections.statusNeedsReconnect;
+    case "expired":
+      return ui.connections.statusExpired;
+    case "insufficient_scope":
+      return ui.connections.statusInsufficientScope;
   }
 }
 
@@ -32,6 +41,9 @@ function oauthReadinessLabel(readiness: ProviderConnectionView["oauthReadiness"]
 }
 
 export function ConnectionProviderCard({ provider }: ConnectionProviderCardProps) {
+  const href = CONNECT_HREF[provider.id];
+  const canConnect = Boolean(href);
+
   return (
     <Card padding="lg" className="h-full">
       <div className="space-y-8">
@@ -106,19 +118,17 @@ export function ConnectionProviderCard({ provider }: ConnectionProviderCardProps
           </div>
           <Button
             variant="secondary"
-            disabled={provider.id !== "google"}
+            disabled={!canConnect}
             onClick={() => {
-              if (provider.id === "google" && typeof window !== "undefined") {
-                window.location.assign(
-                  "/api/external-services/google/oauth/authorize",
-                );
+              if (href && typeof window !== "undefined") {
+                window.location.assign(href);
               }
             }}
           >
             {provider.connectionStatus === "connected" ||
             provider.connectionStatus === "needs_reconnect"
               ? ui.connections.reconnect
-              : provider.id === "google"
+              : canConnect
                 ? ui.actions.connect
                 : ui.connections.connectFuture}
           </Button>

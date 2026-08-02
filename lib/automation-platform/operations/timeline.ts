@@ -33,6 +33,7 @@ function reasonLabel(reason: string): string {
 
 /**
  * Build a user-readable chronological timeline from statusHistory + steps.
+ * External integration steps are labeled with completion / in-progress status.
  * Does not include secrets, tokens, or full file bodies.
  */
 export function buildRunTimeline(run: AutomationRun): TimelineEntry[] {
@@ -59,7 +60,28 @@ export function buildRunTimeline(run: AutomationRun): TimelineEntry[] {
   }
 
   for (const step of run.steps) {
-    if (step.startedAt) {
+    const isExternal = [
+      "gmail",
+      "x_post",
+      "dropbox",
+      "google_calendar",
+      "wordpress",
+    ].includes(step.capabilityId ?? "");
+
+    if (step.status === "running" || step.status === "pending") {
+      entries.push({
+        id: `step-progress-${step.id}`,
+        at: step.startedAt ?? run.updatedAt ?? run.createdAt,
+        timeLabel: timeLabel(step.startedAt ?? run.updatedAt ?? run.createdAt),
+        title: isExternal
+          ? `${step.name}（外部処理）${step.status === "running" ? "実行中" : "待機"}`
+          : `${step.name}${step.status === "running" ? "を実行中" : "待機"}`,
+        detail: step.outputSummary?.slice(0, 160) ?? null,
+        tone: "info",
+      });
+    }
+
+    if (step.startedAt && step.status !== "running" && step.status !== "pending") {
       entries.push({
         id: `step-start-${step.id}`,
         at: step.startedAt,
@@ -103,8 +125,13 @@ export function buildRunTimeline(run: AutomationRun): TimelineEntry[] {
       id: `artifact-${artifact.id}`,
       at: artifact.createdAt,
       timeLabel: timeLabel(artifact.createdAt),
-      title: `成果物「${artifact.label}」を作成`,
-      detail: null,
+      title:
+        artifact.kind === "external"
+          ? `外部処理「${artifact.label}」完了`
+          : `成果物「${artifact.label}」を作成`,
+      detail: artifact.externalId
+        ? `外部ID: ${artifact.externalId}`
+        : null,
       tone: "success",
     });
   }

@@ -3,7 +3,9 @@ import type { ConnectorProviderId } from "@/lib/connectors";
 export type ProviderConnectionStatus =
   | "connected"
   | "not_connected"
-  | "needs_reconnect";
+  | "needs_reconnect"
+  | "expired"
+  | "insufficient_scope";
 
 export type PermissionGrantState = "granted" | "missing";
 
@@ -31,6 +33,8 @@ export type ProviderConnectionView = {
     status: "connected" | "available" | "coming_soon";
   }[];
   oauthReadiness: OAuthReadiness;
+  lastUsedAt?: string | null;
+  automationCount?: number;
 };
 
 export type ConnectionCenterSnapshot = {
@@ -59,11 +63,14 @@ export type ConnectionCenterExtensions = {
 };
 
 export const CONNECTION_EXTENSION_STUBS: ConnectionCenterExtensions = {
-  oauth: { enabled: false, note: "OAuth（将来対応）" },
-  tokenRefresh: { enabled: false, note: "トークン更新（将来対応）" },
-  permissionValidation: { enabled: false, note: "権限検証（将来対応）" },
-  providerHealth: { enabled: false, note: "プロバイダー健全性（将来対応）" },
-  apiLimits: { enabled: false, note: "API制限（将来対応）" },
+  oauth: { enabled: false, note: "OAuth（Live Integrations で管理）" },
+  tokenRefresh: { enabled: false, note: "トークン更新（プロバイダー側で自動）" },
+  permissionValidation: {
+    enabled: false,
+    note: "権限検証（Preflight / Connection Center）",
+  },
+  providerHealth: { enabled: false, note: "プロバイダー健全性（Live status）" },
+  apiLimits: { enabled: false, note: "API制限（429 Retry）" },
 };
 
 export function permissionKey(

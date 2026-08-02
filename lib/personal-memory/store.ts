@@ -2,7 +2,17 @@ import type {
   PersonalMemoryRecord,
   PersonalMemorySettings,
 } from "@/lib/personal-memory/types";
-import { DEFAULT_PERSONAL_MEMORY_SETTINGS } from "@/lib/personal-memory/types";
+import {
+  DEFAULT_PERSONAL_MEMORY_SETTINGS,
+  normalizeAppliesTo,
+} from "@/lib/personal-memory/types";
+
+function normalizeRecord(record: PersonalMemoryRecord): PersonalMemoryRecord {
+  return {
+    ...record,
+    appliesTo: normalizeAppliesTo(record.appliesTo),
+  };
+}
 
 type CorrectionCounter = {
   fingerprint: string;
@@ -17,6 +27,7 @@ type Store = {
   settings: Map<string, PersonalMemorySettings>;
   correctionCounters: Map<string, CorrectionCounter[]>;
   rejectedFingerprints: Map<string, Set<string>>;
+  sessionDisabled: Map<string, Set<string>>;
 };
 
 function getStore(): Store {
@@ -29,7 +40,10 @@ function getStore(): Store {
       settings: new Map(),
       correctionCounters: new Map(),
       rejectedFingerprints: new Map(),
+      sessionDisabled: new Map(),
     };
+  } else if (!globalScope.__atlasPersonalMemoryStore.sessionDisabled) {
+    globalScope.__atlasPersonalMemoryStore.sessionDisabled = new Map();
   }
   return globalScope.__atlasPersonalMemoryStore;
 }
@@ -40,13 +54,30 @@ export function resetPersonalMemoryStoreForTests(): void {
   store.settings.clear();
   store.correctionCounters.clear();
   store.rejectedFingerprints.clear();
+  store.sessionDisabled.clear();
+}
+
+export function setSessionDisabledMemory(
+  userId: string,
+  memoryId: string,
+  disabled: boolean,
+): void {
+  const store = getStore();
+  const set = store.sessionDisabled.get(userId) ?? new Set();
+  if (disabled) set.add(memoryId);
+  else set.delete(memoryId);
+  store.sessionDisabled.set(userId, set);
+}
+
+export function listSessionDisabledMemoryIds(userId: string): string[] {
+  return [...(getStore().sessionDisabled.get(userId) ?? [])];
 }
 
 export function listStoredPersonalMemories(
   userId: string,
 ): PersonalMemoryRecord[] {
   return (getStore().memories.get(userId) ?? []).map((row) =>
-    structuredClone(row),
+    normalizeRecord(structuredClone(row)),
   );
 }
 
@@ -55,22 +86,23 @@ export function findStoredPersonalMemory(
   id: string,
 ): PersonalMemoryRecord | null {
   const found = (getStore().memories.get(userId) ?? []).find((m) => m.id === id);
-  return found ? structuredClone(found) : null;
+  return found ? normalizeRecord(structuredClone(found)) : null;
 }
 
 export function upsertStoredPersonalMemory(
   record: PersonalMemoryRecord,
 ): PersonalMemoryRecord {
   const store = getStore();
-  const list = store.memories.get(record.userId) ?? [];
-  const index = list.findIndex((m) => m.id === record.id);
+  const normalized = normalizeRecord(record);
+  const list = store.memories.get(normalized.userId) ?? [];
+  const index = list.findIndex((m) => m.id === normalized.id);
   if (index >= 0) {
-    list[index] = structuredClone(record);
+    list[index] = structuredClone(normalized);
   } else {
-    list.unshift(structuredClone(record));
+    list.unshift(structuredClone(normalized));
   }
-  store.memories.set(record.userId, list);
-  return structuredClone(record);
+  store.memories.set(normalized.userId, list);
+  return structuredClone(normalized);
 }
 
 export function replaceStoredPersonalMemories(
@@ -79,7 +111,7 @@ export function replaceStoredPersonalMemories(
 ): void {
   getStore().memories.set(
     userId,
-    records.map((row) => structuredClone(row)),
+    records.map((row) => normalizeRecord(structuredClone(row))),
   );
 }
 
@@ -175,6 +207,7 @@ export function listCorrectionCounters(userId: string): CorrectionCounter[] {
 
 export function clearAllPersonalMemoryData(userId: string): void {
   const store = getStore();
+  store.sessionDisabled.delete(userId);
   store.memories.delete(userId);
   store.settings.delete(userId);
   store.correctionCounters.delete(userId);
