@@ -80,6 +80,7 @@ export async function executeQueuedRun(input: {
   run: AutomationRun;
   automation: AutomationV2;
   invoker?: StepInvoker;
+  requestOrigin?: string | null;
 }): Promise<ExecuteRunResult> {
   const invoker = input.invoker ?? strictStepInvoker;
   let run = input.run;
@@ -163,6 +164,8 @@ export async function executeQueuedRun(input: {
         automationName: input.automation.name,
         runId: run.id,
         approved: approved || !runStep.requiresApproval,
+        assignmentNotes: input.automation.instruction.freeformNotes,
+        requestOrigin: input.requestOrigin,
       });
 
       if (result.needsUserInput) {

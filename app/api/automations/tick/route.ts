@@ -83,12 +83,16 @@ export async function POST(request: Request): Promise<Response> {
       v2Schedule = await processDueScheduledAutomationsV2({
         limit: 20,
         dispatch: true,
+        requestOrigin: origin,
       });
       const { dispatchAutomationRuns } = await import(
         "@/lib/automation-platform/execution/dispatch"
       );
       // Also drain any remaining queued/retrying runs (retries, manual).
-      v2Dispatch = await dispatchAutomationRuns({ limit: 20 });
+      v2Dispatch = await dispatchAutomationRuns({
+        limit: 20,
+        requestOrigin: origin,
+      });
     } catch (error) {
       console.warn("[automation tick] v2 schedule/dispatch skipped:", error);
     }

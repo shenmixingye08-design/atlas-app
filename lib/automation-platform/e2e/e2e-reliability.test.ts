@@ -18,6 +18,22 @@ vi.mock("@/lib/notifications/service", () => ({
     notificationId: `ntf_${Math.random().toString(16).slice(2)}`,
   })),
 }));
+vi.mock("@/lib/automation-platform/execution/invoke-real-deliverable", () => ({
+  invokeRealDeliverableStep: vi.fn(async (input: { stepName: string }) => ({
+    ok: true,
+    summary: `${input.stepName}を作成しました`,
+    artifacts: [
+      {
+        id: crypto.randomUUID(),
+        kind: "deliverable",
+        label: `${input.stepName}.docx`,
+        url: `https://example.com/d/${encodeURIComponent(input.stepName)}.docx`,
+        externalId: "dlv_e2e",
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  })),
+}));
 vi.mock("@/lib/personal-memory/bridge/automation", () => ({
   resolveMemoryForAutomation: vi.fn(async () => ({
     memoryUsage: {
