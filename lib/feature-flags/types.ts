@@ -13,7 +13,11 @@ export type FeatureFlagId =
   | "high_quality_mode"
   | "automation_v2_enabled"
   | "automation_memory_enabled"
-  | "automation_approval_enabled";
+  | "automation_approval_enabled"
+  | "automation_first_home_enabled"
+  | "automation_first_navigation_enabled"
+  | "automation_design_system_enabled"
+  | "automation_dashboard_v2_enabled";
 
 /** Operator-controlled rollout state. */
 export type FeatureFlagState = "on" | "off" | "beta";

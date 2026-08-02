@@ -44,6 +44,12 @@
   --border-focus: rgba(0, 113, 227, 0.5);
   --border-subtle: var(--border);
 
+  /* Brand (calm secretary — teal, not chat-purple) */
+  --brand: #0f5c4c;
+  --brand-hover: #0c4a3d;
+  --brand-muted: rgba(15, 92, 76, 0.1);
+  --brand-foreground: #ffffff;
+
   /* Semantic status */
   --success: #1d7a34;
   --success-bg: rgba(29, 122, 52, 0.08);
@@ -51,6 +57,22 @@
   --warning-bg: rgba(179, 80, 0, 0.08);
   --error: #c40014;
   --error-bg: rgba(196, 0, 20, 0.06);
+  --info: #0b6bcb;
+  --info-bg: rgba(11, 107, 203, 0.08);
+
+  /* Automation run / attention states (distinct from brand) */
+  --status-paused: #5c6570;
+  --status-paused-bg: rgba(92, 101, 112, 0.1);
+  --status-pending-approval: #9a6700;
+  --status-pending-approval-bg: rgba(154, 103, 0, 0.12);
+  --status-needs-input: #8759c0;
+  --status-needs-input-bg: rgba(135, 89, 192, 0.1);
+  --status-running: #0b6bcb;
+  --status-running-bg: rgba(11, 107, 203, 0.1);
+  --status-completed: var(--success);
+  --status-completed-bg: var(--success-bg);
+  --status-failed: var(--error);
+  --status-failed-bg: var(--error-bg);
 
   /* Legacy status aliases */
   --status-success: var(--success);
@@ -59,11 +81,29 @@
   --status-warning-bg: var(--warning-bg);
   --status-error: var(--error);
   --status-error-bg: var(--error-bg);
-  --status-info: var(--accent);
-  --status-info-bg: var(--accent-muted);
+  --status-info: var(--info);
+  --status-info-bg: var(--info-bg);
   --status-neutral: var(--text-muted);
   --status-neutral-bg: rgba(0, 0, 0, 0.04);
-  --status-running: var(--accent);
+
+  /* Typography scale */
+  --text-display: clamp(1.75rem, 2vw + 1rem, 2.25rem);
+  --text-page-title: 1.5rem;
+  --text-section: 1.125rem;
+  --text-card-title: 1rem;
+  --text-body: 0.9375rem;
+  --text-label: 0.8125rem;
+  --text-caption: 0.75rem;
+  --text-meta: 0.6875rem;
+  --leading-body: 1.65;
+  --leading-tight: 1.35;
+
+  /* Touch / z-index */
+  --touch-target: 44px;
+  --z-sticky: 40;
+  --z-nav: 50;
+  --z-modal: 70;
+  --z-toast: 80;
 
   /* Cards — bright, floating */
   --glass-bg: var(--card);
@@ -110,6 +150,48 @@
   );
 }
 
+/* Automation First design system — calm brand accent for app shell */
+html.automation-design-system {
+  --accent: var(--brand);
+  --accent-hover: var(--brand-hover);
+  --accent-muted: var(--brand-muted);
+  --accent-foreground: var(--brand-foreground);
+  --border-focus: color-mix(in srgb, var(--brand) 55%, transparent);
+}
+
+/* Override luxury gold shell when Automation First design system is on */
+html.automation-design-system .minervot-lux {
+  --accent: var(--brand);
+  --accent-hover: var(--brand-hover);
+  --accent-muted: var(--brand-muted);
+  --accent-glow: transparent;
+  --accent-foreground: var(--brand-foreground);
+  --border-focus: color-mix(in srgb, var(--brand) 55%, transparent);
+  --success: #1d7a34;
+  --success-bg: rgba(29, 122, 52, 0.08);
+}
+
+html.automation-design-system[data-theme="dark"] .minervot-lux,
+html[data-theme="dark"].automation-design-system .minervot-lux {
+  --success: #30d158;
+  --success-bg: rgba(48, 209, 88, 0.12);
+  --accent: var(--brand);
+  --accent-hover: var(--brand-hover);
+  --accent-muted: var(--brand-muted);
+  --accent-foreground: var(--brand-foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.automation-design-system *,
+  html.automation-design-system *::before,
+  html.automation-design-system *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ── Dark theme (Apple-like) ── */
 html[data-theme="dark"] {
   --background: #0f1115;
@@ -136,12 +218,32 @@ html[data-theme="dark"] {
   --border-focus: rgba(0, 113, 227, 0.55);
   --border-subtle: var(--border);
 
+  --brand: #3d9b86;
+  --brand-hover: #4aaf98;
+  --brand-muted: rgba(61, 155, 134, 0.18);
+  --brand-foreground: #0a1210;
+
   --success: #30d158;
   --success-bg: rgba(48, 209, 88, 0.12);
   --warning: #ff9f0a;
   --warning-bg: rgba(255, 159, 10, 0.12);
   --error: #ff453a;
   --error-bg: rgba(255, 69, 58, 0.12);
+  --info: #64d2ff;
+  --info-bg: rgba(100, 210, 255, 0.12);
+
+  --status-paused: #98989d;
+  --status-paused-bg: rgba(152, 152, 157, 0.14);
+  --status-pending-approval: #ffd60a;
+  --status-pending-approval-bg: rgba(255, 214, 10, 0.14);
+  --status-needs-input: #bf5af2;
+  --status-needs-input-bg: rgba(191, 90, 242, 0.14);
+  --status-running: #64d2ff;
+  --status-running-bg: rgba(100, 210, 255, 0.14);
+  --status-completed: var(--success);
+  --status-completed-bg: var(--success-bg);
+  --status-failed: var(--error);
+  --status-failed-bg: var(--error-bg);
 
   --status-neutral: var(--text-muted);
   --status-neutral-bg: rgba(255, 255, 255, 0.06);

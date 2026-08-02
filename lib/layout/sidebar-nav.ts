@@ -17,6 +17,7 @@ export function resolveSidebarActiveId(pathname: string): AtlasNavPage | null {
   // Request-creation and related workspace tools (not AI Orchestra).
   if (pathname.startsWith("/workspace")) return "workspace";
   if (pathname.startsWith("/automations")) return "automations";
+  if (pathname.startsWith("/today")) return "today";
   if (pathname.startsWith("/settings/learning")) return "learning";
   if (pathname.startsWith("/settings/billing")) return "billing";
   if (pathname.startsWith("/settings")) return "settings";
@@ -28,7 +29,8 @@ export function resolveSidebarActiveId(pathname: string): AtlasNavPage | null {
   }
   if (pathname.startsWith("/contact")) return "contact";
   if (pathname.startsWith("/capabilities")) return "help";
-  if (pathname.startsWith("/projects") || pathname === "/notifications") {
+  if (pathname === "/notifications") return "notifications";
+  if (pathname.startsWith("/projects")) {
     return "projects";
   }
 

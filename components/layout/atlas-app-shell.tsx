@@ -1,5 +1,10 @@
+"use client";
+
 import { AtlasBackground } from "@/components/atlas-background";
+import { AutomationDesignSystemRoot } from "@/components/automation-first/design-system-root";
+import { AutomationFirstBottomNav } from "@/components/automation-first/automation-first-bottom-nav";
 import { cn } from "@/lib/design-system/cn";
+import { useFeatureAvailability } from "@/lib/feature-flags";
 import type { AtlasNavPage } from "@/lib/layout/nav-types";
 
 import { AtlasSidebar } from "./atlas-sidebar";
@@ -23,8 +28,13 @@ export function AtlasAppShell({
   children,
   width = "default",
 }: AtlasAppShellProps) {
+  const { flags, loading } = useFeatureAvailability();
+  const afNav =
+    !loading && flags.automation_first_navigation_enabled === true;
+
   return (
     <div className="minervot-lux relative min-h-screen bg-[var(--background)] text-foreground">
+      <AutomationDesignSystemRoot />
       <AtlasBackground />
       <AtlasSidebar active={active} />
       {/* Desktop: fixed bell + account top-right */}
@@ -39,11 +49,15 @@ export function AtlasAppShell({
           className={cn(
             "app-shell-main mx-auto w-full px-4 pt-[calc(var(--mobile-top-bar-height)+1rem)] sm:px-6 md:px-10 md:pt-[calc(3.5rem+1.5rem)] animate-page",
             MAIN_WIDTH[width],
+            afNav &&
+              "pb-[calc(var(--bottom-nav-height)+var(--safe-area-bottom)+1.5rem)] md:pb-10",
           )}
         >
           {children}
         </main>
       </div>
+      {/* Bottom nav only when Automation First navigation flag is on (rollback = previous shell). */}
+      {afNav ? <AutomationFirstBottomNav /> : null}
     </div>
   );
 }
