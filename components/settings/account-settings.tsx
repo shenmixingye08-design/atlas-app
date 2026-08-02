@@ -1,4 +1,5 @@
 "use client";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -74,7 +75,9 @@ export function AccountSettings() {
   }, []);
 
   useEffect(() => {
-    void load();
+    return scheduleMountWork(() => {
+      void load();
+    });
   }, [load]);
 
   const handlePortal = async () => {

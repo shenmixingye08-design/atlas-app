@@ -2,7 +2,6 @@
 
 import {
   useCallback,
-  useEffect,
   useId,
   useState,
   type ReactNode,
@@ -11,6 +10,17 @@ import {
 import { cn } from "@/lib/design-system/cn";
 
 const STORAGE_PREFIX = "atlas-home-collapse:";
+
+function readStoredOpenState(storageKey: string, defaultOpen: boolean): boolean {
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored === "open") return true;
+    if (stored === "closed") return false;
+  } catch {
+    // Keep the server/client fallback when storage is unavailable.
+  }
+  return defaultOpen;
+}
 
 type HomeCollapsibleSectionProps = {
   id: string;
@@ -33,17 +43,9 @@ export function HomeCollapsibleSection({
 }: HomeCollapsibleSectionProps) {
   const headingId = useId();
   const storageKey = `${STORAGE_PREFIX}${id}`;
-  const [open, setOpen] = useState(defaultOpen);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored === "open") setOpen(true);
-      if (stored === "closed") setOpen(false);
-    } catch {
-      setOpen(defaultOpen);
-    }
-  }, [storageKey, defaultOpen]);
+  const [open, setOpen] = useState(() =>
+    readStoredOpenState(storageKey, defaultOpen),
+  );
 
   const toggle = useCallback(() => {
     setOpen((value) => {

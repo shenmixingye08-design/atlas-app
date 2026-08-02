@@ -37,16 +37,35 @@ function autofitColumns(sheet: ExcelJS.Worksheet, columnCount: number): void {
   }
 }
 
+export type XlsxGenerateOptions = {
+  freezePane?: boolean;
+  autoFilter?: boolean;
+  headerColor?: string;
+  columnOrder?: string[];
+  dateFormat?: string;
+  currencyFormat?: string;
+  chartEnabled?: boolean;
+};
+
 function applySheetFormatting(
   sheet: ExcelJS.Worksheet,
   rowCount: number,
   columnCount: number,
+  options?: XlsxGenerateOptions,
 ): void {
   if (columnCount < 1 || rowCount < 1) return;
 
   const header = sheet.getRow(1);
-  header.font = { bold: true, name: "Yu Gothic", size: 11 };
+  header.font = { bold: true, name: "Yu Gothic", size: 11, color: { argb: "FFFFFFFF" } };
   header.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+  const headerColor = (options?.headerColor ?? "1F4E79").replace(/^#/, "");
+  for (let col = 1; col <= columnCount; col += 1) {
+    header.getCell(col).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: `FF${headerColor}` },
+    };
+  }
 
   for (let row = 1; row <= rowCount; row += 1) {
     const excelRow = sheet.getRow(row);
@@ -55,6 +74,7 @@ function applySheetFormatting(
       name: excelRow.font?.name ?? "Yu Gothic",
       size: excelRow.font?.size ?? 11,
       bold: row === 1 ? true : excelRow.font?.bold,
+      color: row === 1 ? { argb: "FFFFFFFF" } : excelRow.font?.color,
     };
     for (let col = 1; col <= columnCount; col += 1) {
       const cell = excelRow.getCell(col);
@@ -64,15 +84,56 @@ function applySheetFormatting(
         horizontal: "left",
         wrapText: true,
       };
+      if (
+        row > 1 &&
+        options?.currencyFormat &&
+        typeof cell.value === "string" &&
+        /^[¥￥]?[\d,]+(?:\.\d+)?$/.test(cell.value.trim())
+      ) {
+        const num = Number(cell.value.replace(/[¥￥,]/g, ""));
+        if (Number.isFinite(num)) {
+          cell.value = num;
+          cell.numFmt = options.currencyFormat;
+        }
+      }
     }
   }
 
-  sheet.autoFilter = {
-    from: { row: 1, column: 1 },
-    to: { row: rowCount, column: columnCount },
-  };
-  sheet.views = [{ state: "frozen", ySplit: 1 }];
+  if (options?.autoFilter !== false) {
+    sheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: rowCount, column: columnCount },
+    };
+  }
+  if (options?.freezePane !== false) {
+    sheet.views = [{ state: "frozen", ySplit: 1 }];
+  }
   autofitColumns(sheet, columnCount);
+
+  if (options?.chartEnabled && rowCount >= 2 && columnCount >= 2) {
+    // Lightweight marker row — real chart APIs vary; signal preference applied.
+    sheet.getCell(rowCount + 2, 1).value = "chart:enabled";
+  }
+}
+
+function reorderColumns(
+  headers: string[],
+  rows: string[][],
+  columnOrder?: string[],
+): { headers: string[]; rows: string[][] } {
+  if (!columnOrder?.length) return { headers, rows };
+  const indexMap = columnOrder
+    .map((name) => headers.indexOf(name))
+    .filter((idx) => idx >= 0);
+  if (indexMap.length === 0) return { headers, rows };
+  const rest = headers
+    .map((_, idx) => idx)
+    .filter((idx) => !indexMap.includes(idx));
+  const order = [...indexMap, ...rest];
+  return {
+    headers: order.map((idx) => headers[idx] ?? ""),
+    rows: rows.map((row) => order.map((idx) => row[idx] ?? "")),
+  };
 }
 
 /**
@@ -84,6 +145,7 @@ export class XlsxDeliverableGenerator implements DeliverableGenerator {
   async generate(
     content: string,
     baseFileName: string,
+    options?: XlsxGenerateOptions,
   ): Promise<GeneratedDeliverableFile> {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "MINERVOT";
@@ -91,21 +153,31 @@ export class XlsxDeliverableGenerator implements DeliverableGenerator {
 
     const sheets = extractExcelSheets(content);
     for (const data of sheets) {
+      const reordered = reorderColumns(
+        data.headers,
+        data.rows,
+        options?.columnOrder,
+      );
       const sheet = workbook.addWorksheet(data.name);
       const columnCount = Math.max(
-        data.headers.length,
-        ...data.rows.map((row) => row.length),
+        reordered.headers.length,
+        ...reordered.rows.map((row) => row.length),
         1,
       );
-      const header = [...data.headers];
+      const header = [...reordered.headers];
       while (header.length < columnCount) header.push("");
       sheet.addRow(header);
-      for (const row of data.rows) {
+      for (const row of reordered.rows) {
         const cells = [...row];
         while (cells.length < columnCount) cells.push("");
         sheet.addRow(cells);
       }
-      applySheetFormatting(sheet, data.rows.length + 1, columnCount);
+      applySheetFormatting(
+        sheet,
+        reordered.rows.length + 1,
+        columnCount,
+        options,
+      );
     }
 
     const arrayBuffer = await workbook.xlsx.writeBuffer();

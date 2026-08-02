@@ -17,15 +17,36 @@ type PdfFonts = Map<number, PDFFont>;
 
 const PAGE_WIDTH = 595;
 const PAGE_HEIGHT = 842;
-const MARGIN = 50;
-const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
+const DEFAULT_MARGIN = 50;
+
+export type PdfGenerateOptions = {
+  marginsMm?: number;
+  headerFooter?: boolean;
+  pageLayout?: "compact" | "standard" | "spacious";
+  fontFamily?: string;
+};
+
+function marginFromOptions(options?: PdfGenerateOptions): number {
+  if (options?.marginsMm != null && Number.isFinite(options.marginsMm)) {
+    // mm → PDF points (~2.834)
+    return Math.max(24, Math.min(90, Math.round(options.marginsMm * 2.834)));
+  }
+  if (options?.pageLayout === "compact") return 36;
+  if (options?.pageLayout === "spacious") return 64;
+  return DEFAULT_MARGIN;
+}
 
 type DrawCursor = {
   page: PDFPage;
   y: number;
 };
 
-function wrapText(text: string, font: PDFFont, size: number): string[] {
+function wrapText(
+  text: string,
+  font: PDFFont,
+  size: number,
+  contentWidth: number,
+): string[] {
   const lines: string[] = [];
   for (const paragraph of text.split("\n")) {
     if (!paragraph.trim()) {
@@ -37,7 +58,7 @@ function wrapText(text: string, font: PDFFont, size: number): string[] {
     for (const char of paragraph) {
       const candidate = line + char;
       const width = font.widthOfTextAtSize(candidate, size);
-      if (width > CONTENT_WIDTH && line) {
+      if (width > contentWidth && line) {
         lines.push(line);
         line = char;
       } else {
@@ -53,10 +74,11 @@ function ensureSpace(
   pdfDoc: PDFDocument,
   cursor: DrawCursor,
   needed: number,
+  margin: number,
 ): void {
-  if (cursor.y - needed < MARGIN) {
+  if (cursor.y - needed < margin) {
     cursor.page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-    cursor.y = PAGE_HEIGHT - MARGIN;
+    cursor.y = PAGE_HEIGHT - margin;
   }
 }
 
@@ -68,10 +90,17 @@ async function drawWrappedText(params: {
   x: number;
   size: number;
   lineHeight: number;
+  margin: number;
+  contentWidth: number;
 }): Promise<void> {
   for (const paragraph of params.text.split("\n")) {
     if (!paragraph.trim()) {
-      ensureSpace(params.pdfDoc, params.cursor, params.lineHeight);
+      ensureSpace(
+        params.pdfDoc,
+        params.cursor,
+        params.lineHeight,
+        params.margin,
+      );
       params.cursor.y -= params.lineHeight * 0.6;
       continue;
     }
@@ -81,7 +110,12 @@ async function drawWrappedText(params: {
 
     const flushLine = async () => {
       if (!line) return;
-      ensureSpace(params.pdfDoc, params.cursor, params.lineHeight);
+      ensureSpace(
+        params.pdfDoc,
+        params.cursor,
+        params.lineHeight,
+        params.margin,
+      );
       let drawX = params.x;
       for (const run of splitTextBySubset(line)) {
         const font = await loadPdfFontForSubset(
@@ -111,7 +145,7 @@ async function drawWrappedText(params: {
         );
         const candidate = line + char;
         const width = font.widthOfTextAtSize(candidate, params.size);
-        if (width > CONTENT_WIDTH && line) {
+        if (width > params.contentWidth && line) {
           await flushLine();
           line = char;
         } else {
@@ -129,6 +163,8 @@ async function drawBlocks(params: {
   cursor: DrawCursor;
   fonts: PdfFonts;
   blocks: ContentBlock[];
+  margin: number;
+  contentWidth: number;
 }): Promise<void> {
   for (const block of params.blocks) {
     switch (block.type) {
@@ -138,9 +174,11 @@ async function drawBlocks(params: {
           cursor: params.cursor,
           fonts: params.fonts,
           text: block.text,
-          x: MARGIN,
+          x: params.margin,
           size: 11,
           lineHeight: 16,
+          margin: params.margin,
+          contentWidth: params.contentWidth,
         });
         params.cursor.y -= 6;
         break;
@@ -151,9 +189,11 @@ async function drawBlocks(params: {
             cursor: params.cursor,
             fonts: params.fonts,
             text: `・ ${item}`,
-            x: MARGIN + 12,
+            x: params.margin + 12,
             size: 11,
             lineHeight: 16,
+            margin: params.margin,
+            contentWidth: params.contentWidth,
           });
         }
         params.cursor.y -= 4;
@@ -165,9 +205,11 @@ async function drawBlocks(params: {
             cursor: params.cursor,
             fonts: params.fonts,
             text: `${index + 1}. ${block.items[index]}`,
-            x: MARGIN + 12,
+            x: params.margin + 12,
             size: 11,
             lineHeight: 16,
+            margin: params.margin,
+            contentWidth: params.contentWidth,
           });
         }
         params.cursor.y -= 4;
@@ -181,12 +223,15 @@ async function drawBlocks(params: {
 async function buildJapanesePdf(
   parsed: ParsedDeliverable,
   sourceText: string,
+  options?: PdfGenerateOptions,
 ): Promise<Buffer> {
+  const margin = marginFromOptions(options);
+  const contentWidth = PAGE_WIDTH - margin * 2;
   const pdfDoc = await PDFDocument.create();
   const fonts: PdfFonts = new Map();
   const cursor: DrawCursor = {
     page: pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]),
-    y: PAGE_HEIGHT - MARGIN,
+    y: PAGE_HEIGHT - margin,
   };
 
   const titleFont = await loadPdfFontForSubset(
@@ -195,11 +240,11 @@ async function buildJapanesePdf(
     subsetIndexForCodePoint(parsed.title.codePointAt(0) ?? 0),
   );
 
-  for (const line of wrapText(parsed.title, titleFont, 20)) {
-    ensureSpace(pdfDoc, cursor, 24);
+  for (const line of wrapText(parsed.title, titleFont, 20, contentWidth)) {
+    ensureSpace(pdfDoc, cursor, 24, margin);
     cursor.y -= 24;
     cursor.page.drawText(line, {
-      x: MARGIN,
+      x: margin,
       y: cursor.y,
       size: 20,
       font: titleFont,
@@ -209,6 +254,16 @@ async function buildJapanesePdf(
 
   cursor.y -= 12;
 
+  if (options?.headerFooter !== false) {
+    cursor.page.drawText("MINERVOT", {
+      x: margin,
+      y: PAGE_HEIGHT - margin + 8,
+      size: 8,
+      font: titleFont,
+      color: rgb(0.4, 0.4, 0.4),
+    });
+  }
+
   for (const section of parsed.sections) {
     const headingSize = section.level === 1 ? 16 : section.level === 2 ? 14 : 12;
     const headingFont = await loadPdfFontForSubset(
@@ -217,10 +272,10 @@ async function buildJapanesePdf(
       subsetIndexForCodePoint(section.title.codePointAt(0) ?? 0),
     );
 
-    ensureSpace(pdfDoc, cursor, headingSize + 24);
+    ensureSpace(pdfDoc, cursor, headingSize + 24, margin);
     cursor.y -= headingSize + 8;
     cursor.page.drawText(section.title, {
-      x: MARGIN,
+      x: margin,
       y: cursor.y,
       size: headingSize,
       font: headingFont,
@@ -233,6 +288,8 @@ async function buildJapanesePdf(
       cursor,
       fonts,
       blocks: section.blocks,
+      margin,
+      contentWidth,
     });
   }
 
@@ -242,12 +299,28 @@ async function buildJapanesePdf(
       cursor,
       fonts,
       text: sourceText,
-      x: MARGIN,
+      x: margin,
       size: 11,
       lineHeight: 16,
+      margin,
+      contentWidth,
     });
   }
 
+  if (options?.headerFooter !== false) {
+    const pages = pdfDoc.getPages();
+    for (let i = 0; i < pages.length; i += 1) {
+      pages[i]!.drawText(`${i + 1} / ${pages.length}`, {
+        x: PAGE_WIDTH - margin - 40,
+        y: margin - 16,
+        size: 8,
+        font: titleFont,
+        color: rgb(0.45, 0.45, 0.45),
+      });
+    }
+  }
+
+  void options?.fontFamily;
   return Buffer.from(await pdfDoc.save());
 }
 
@@ -258,9 +331,10 @@ export class PdfDeliverableGenerator implements DeliverableGenerator {
   async generate(
     content: string,
     baseFileName: string,
+    options?: PdfGenerateOptions,
   ): Promise<GeneratedDeliverableFile> {
     const parsed = parseDeliverableContent(content);
-    const buffer = await buildJapanesePdf(parsed, content);
+    const buffer = await buildJapanesePdf(parsed, content, options);
     return createDeliverableFile("pdf", baseFileName, buffer, false);
   }
 }

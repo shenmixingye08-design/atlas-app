@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -179,7 +180,9 @@ export function SalesMaterialWizard({
 
   useEffect(() => {
     if (step !== "outline_loading") return;
-    void loadOutline();
+    return scheduleMountWork(() => {
+      void loadOutline();
+    });
   }, [step, loadOutline]);
 
   const handleFormatConfirm = () => {

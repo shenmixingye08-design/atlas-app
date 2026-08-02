@@ -5,7 +5,6 @@ import { isMockLlmEnabled } from "@/lib/ai/mock-responses";
 
 import {
   buildFallbackSalesOutline,
-  formatOutlineForWorker,
 } from "./outline-template";
 import type { SalesCostMode, SalesMaterialOutline } from "./types";
 

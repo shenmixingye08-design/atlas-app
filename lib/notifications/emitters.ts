@@ -77,22 +77,28 @@ export function notifyAutomationFailed(
 export function notifyXPostSuccess(
   userId: string,
   text?: string,
-  options?: { historyId?: string | null },
+  options?: { historyId?: string | null; tweetUrl?: string | null },
 ) {
   const historyId = options?.historyId ?? null;
+  const tweetUrl = options?.tweetUrl?.trim() || null;
   return createNotification({
     audience: "user",
     userId,
     type: "completed",
     title: "X自動投稿が完了しました",
-    message: text
-      ? `お待たせいたしました。投稿の準備が完了しました。`
-      : "お待たせいたしました。投稿が完了しました。",
+    message: tweetUrl
+      ? `Xへの投稿が完了しました。\n${tweetUrl}`
+      : text
+        ? `お待たせいたしました。投稿の準備が完了しました。`
+        : "お待たせいたしました。投稿が完了しました。",
     relatedTaskId: historyId,
     relatedService: "x",
-    actionUrl: historyId
-      ? `/workspace/x?historyId=${encodeURIComponent(historyId)}`
-      : "/workspace/x",
+    // Prefer remote post URL — internal history is fallback only
+    actionUrl: tweetUrl
+      ? tweetUrl
+      : historyId
+        ? `/workspace/x?historyId=${encodeURIComponent(historyId)}`
+        : "/workspace/x",
     requestId: historyId,
   });
 }

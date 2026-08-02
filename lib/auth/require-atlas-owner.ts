@@ -1,6 +1,7 @@
 import "server-only";
 
 import { auth } from "@clerk/nextjs/server";
+import { connection } from "next/server";
 import { redirect } from "next/navigation";
 
 import { getClerkUserPrimaryEmail } from "./get-clerk-user-email";
@@ -10,6 +11,9 @@ import {
 } from "./is-atlas-owner";
 
 export async function requireAtlasOwner(): Promise<{ email: string }> {
+  // Owner pages must not evaluate ATLAS_OWNER_EMAILS during prerender/build.
+  // Runtime remains fail-closed via assertOwnerEmailsConfiguredForProduction.
+  await connection();
   assertOwnerEmailsConfiguredForProduction();
 
   const { userId } = await auth();

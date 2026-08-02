@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type {
@@ -157,9 +158,14 @@ export function MonitoringDashboardPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const cancelInitialLoad = scheduleMountWork(() => {
+      void load();
+    });
     const timer = window.setInterval(() => void load(), 30_000);
-    return () => window.clearInterval(timer);
+    return () => {
+      cancelInitialLoad();
+      window.clearInterval(timer);
+    };
   }, [load]);
 
   const kpis = useMemo(() => {

@@ -1,5 +1,5 @@
 import { hasResolvableResultTarget } from "./result-target";
-import type { NotificationRecord, NotificationType } from "./types";
+import type { NotificationRecord } from "./types";
 
 /** User-facing notice categories for the secretary inbox. */
 export type NoticeCategory =

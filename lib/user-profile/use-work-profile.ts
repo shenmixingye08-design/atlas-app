@@ -1,4 +1,5 @@
 "use client";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -15,7 +16,9 @@ export function useWorkProfile() {
   }, []);
 
   useEffect(() => {
-    refresh();
+    return scheduleMountWork(() => {
+      void refresh();
+    });
   }, [refresh]);
 
   const reset = useCallback(() => {

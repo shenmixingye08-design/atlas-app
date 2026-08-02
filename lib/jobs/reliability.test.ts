@@ -83,14 +83,15 @@ describe("completion evidence", () => {
     });
     expect(ok.status).toBe("completed");
 
-    const partial = evaluateCompletionEvidence({
+    const noProof = evaluateCompletionEvidence({
       templateId: "sns_post",
       orchestrationStatus: "completed",
       approved: true,
       deliverableCount: 0,
       snsPostFailure: null,
     });
-    expect(partial.status).toBe("partially_completed");
+    // Fail Closed — missing tweet proof must not complete
+    expect(noProof.status).toBe("failed");
   });
 
   it("marks waiting_for_approval when not approved", () => {

@@ -353,7 +353,10 @@ export function WorkspaceDashboard() {
   };
 
   const handleSubmitRef = useRef(handleSubmit);
-  handleSubmitRef.current = handleSubmit;
+
+  useEffect(() => {
+    handleSubmitRef.current = handleSubmit;
+  });
 
   // Home → /workspace?autostart=1: consume the SAME WorkRequestSubmitPayload
   // built by buildWorkRequestSubmitPayload (no home-specific metadata).

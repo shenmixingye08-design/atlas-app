@@ -1,4 +1,5 @@
 "use client";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -32,7 +33,9 @@ export function ConnectorsDashboard() {
   }, []);
 
   useEffect(() => {
-    void load();
+    return scheduleMountWork(() => {
+      void load();
+    });
   }, [load]);
 
   if (isLoading) return <LoadingState />;

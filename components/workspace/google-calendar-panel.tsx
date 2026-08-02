@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -226,7 +227,9 @@ export function GoogleCalendarPanel() {
   }, []);
 
   useEffect(() => {
-    void load(range);
+    return scheduleMountWork(() => {
+      void load(range);
+    });
   }, [load, range]);
 
   const handleConnect = async () => {

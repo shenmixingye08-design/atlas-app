@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -73,7 +74,10 @@ function DriveFileRow({
   const [destId, setDestId] = useState(folderOptions[0]?.id ?? "");
 
   useEffect(() => {
-    if (!destId && folderOptions[0]?.id) setDestId(folderOptions[0].id);
+    if (destId || !folderOptions[0]?.id) return;
+    return scheduleMountWork(() => {
+      setDestId(folderOptions[0].id);
+    });
   }, [destId, folderOptions]);
 
   return (
@@ -229,7 +233,9 @@ export function GoogleDrivePanel({ embedded = false }: { embedded?: boolean }) {
   );
 
   useEffect(() => {
-    void load(category, appliedQuery, parentId, useFullTextSearch);
+    return scheduleMountWork(() => {
+      void load(category, appliedQuery, parentId, useFullTextSearch);
+    });
   }, [category, appliedQuery, parentId, useFullTextSearch, load]);
 
   const folderOptions = useMemo(() => {

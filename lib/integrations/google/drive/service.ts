@@ -32,9 +32,7 @@ import {
 import {
   getDriveCategoryLabel,
   inferDriveCategoryFromFormat,
-  isDriveCategoryId,
   isSupportedDriveFormat,
-  parseDriveCategoryParam,
 } from "./categories";
 import { DRIVE_CATEGORY_FOLDERS } from "./constants";
 import type {

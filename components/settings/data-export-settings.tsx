@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -80,10 +81,13 @@ export function DataExportSettings() {
       }
     }
 
-    refreshHistory();
-    void load();
+    const cancelInitialLoad = scheduleMountWork(() => {
+      refreshHistory();
+      void load();
+    });
     return () => {
       cancelled = true;
+      cancelInitialLoad();
     };
   }, [refreshHistory]);
 

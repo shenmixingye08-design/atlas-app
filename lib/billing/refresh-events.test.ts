@@ -1,38 +1,33 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   notifyBillingUsageChanged,
   subscribeBillingUsageChanged,
 } from "./refresh-events";
 
-type MutableGlobal = typeof globalThis & {
-  window?: unknown;
-  CustomEvent?: unknown;
-};
-
-const g = globalThis as MutableGlobal;
-const originalWindow = g.window;
-
 // Node 20 ships EventTarget globally; provide a minimal CustomEvent shim only
 // if the runtime lacks it so the module's dispatch call works under vitest.
-if (typeof g.CustomEvent === "undefined") {
-  class CustomEventShim<T> extends Event {
-    detail: T | null;
-    constructor(type: string, init?: { detail?: T }) {
-      super(type);
-      this.detail = init?.detail ?? null;
-    }
+class CustomEventShim<T> extends Event {
+  detail: T | null;
+  constructor(type: string, init?: { detail?: T }) {
+    super(type);
+    this.detail = init?.detail ?? null;
   }
-  g.CustomEvent = CustomEventShim as unknown;
 }
 
 describe("billing refresh events", () => {
+  beforeEach(() => {
+    if (typeof globalThis.CustomEvent === "undefined") {
+      vi.stubGlobal("CustomEvent", CustomEventShim);
+    }
+  });
+
   afterEach(() => {
-    g.window = originalWindow;
+    vi.unstubAllGlobals();
   });
 
   it("no-ops safely without a window (SSR)", () => {
-    g.window = undefined;
+    vi.stubGlobal("window", undefined);
     const unsubscribe = subscribeBillingUsageChanged(() => {});
     expect(typeof unsubscribe).toBe("function");
     expect(() => notifyBillingUsageChanged()).not.toThrow();
@@ -40,7 +35,7 @@ describe("billing refresh events", () => {
   });
 
   it("notifies subscribers when usage changes and stops after unsubscribe", () => {
-    g.window = new EventTarget();
+    vi.stubGlobal("window", new EventTarget());
     const handler = vi.fn();
     const unsubscribe = subscribeBillingUsageChanged(handler);
 

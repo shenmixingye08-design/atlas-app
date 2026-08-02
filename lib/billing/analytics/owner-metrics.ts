@@ -9,7 +9,7 @@ import {
   getStripeSecretKey,
 } from "../stripe/config";
 import { getConfiguredStripeMode } from "./stripe-live-metrics";
-import type { OwnerBillingMetrics, OwnerPlanBreakdown } from "./types";
+import type { OwnerBillingMetrics } from "./types";
 
 export type { OwnerBillingMetrics, OwnerPlanBreakdown } from "./types";
 

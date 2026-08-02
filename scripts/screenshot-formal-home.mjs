@@ -3,7 +3,7 @@
  * Serves a static chrome that mirrors AtlasAppShell + AutomationFirstHome empty/populated states.
  */
 import { createServer } from "node:http";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { chromium } from "playwright";
 
 const PORT = 4173;

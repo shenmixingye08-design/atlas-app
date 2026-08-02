@@ -1,4 +1,5 @@
 "use client";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -56,7 +57,9 @@ export function DisasterRecoveryPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    return scheduleMountWork(() => {
+      void load();
+    });
   }, [load]);
 
   const run = async (body: Record<string, unknown>) => {

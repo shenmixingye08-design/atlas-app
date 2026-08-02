@@ -123,7 +123,7 @@ function computeNextFromPreset(
     }
 
     case "weekly": {
-      let daysUntil = (preset.dayOfWeek - now.dayOfWeek + 7) % 7;
+      const daysUntil = (preset.dayOfWeek - now.dayOfWeek + 7) % 7;
       let target = addDays(now.year, now.month, now.day, daysUntil);
       let candidate = zonedTimeToUtc(
         target.year,

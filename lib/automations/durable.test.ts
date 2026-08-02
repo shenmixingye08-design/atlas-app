@@ -54,11 +54,18 @@ vi.mock("@/lib/notifications/emitters", () => ({
   notifyAutomationCompleted: vi.fn(),
   notifyAutomationFailed: vi.fn(),
   notifyOwnerSystemIncident: vi.fn(),
+  notifyWorkCompleted: vi.fn(),
 }));
 
 describe("automation persistence and cron tick", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    process.env.ATLAS_WORK_QUEUE_FORCE_FILE = "true";
+    const { resetWorkQueueStoreForTests } = await import("@/lib/work-queue");
+    const workQueue = resetWorkQueueStoreForTests(
+      `${process.cwd()}/.data/work-queue-durable-test.json`,
+    );
+    await workQueue.resetForTests();
     const { resetAutomationStore } = await import(
       "./repositories/server-automation-repository"
     );

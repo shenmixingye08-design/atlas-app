@@ -82,12 +82,12 @@ export async function persistWorkJob(
 }
 
 /** Disk lookup removed — always null (Supabase via loadWorkJobFromDurable). */
-export function loadWorkJobFromDisk(
-  _id: string,
-  _userId: string,
-): WorkJobRecord | null {
+export const loadWorkJobFromDisk: (
+  id: string,
+  userId: string,
+) => WorkJobRecord | null = () => {
   return null;
-}
+};
 
 export async function loadWorkJobFromDurable(
   id: string,

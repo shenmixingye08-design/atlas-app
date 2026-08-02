@@ -142,7 +142,7 @@ export function applyWorkProfileToFormState(
   if (!suggestion) return state;
 
   const { settings } = suggestion;
-  let next: AutomationFormState = { ...state };
+  const next: AutomationFormState = { ...state };
 
   if (settings.executionLevel) {
     next.executionLevel = settings.executionLevel;
