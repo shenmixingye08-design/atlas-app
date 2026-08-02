@@ -92,6 +92,23 @@ export class AutomationPlatformService {
     }
 
     const record = buildAutomationFromCreateInput(userId, input);
+    if (record.status === "active") {
+      const { runAutomationLiveAdapterPreflight } = await import(
+        "@/lib/live-adapters"
+      );
+      const preflight = await runAutomationLiveAdapterPreflight({
+        automation: record,
+        userId,
+      });
+      if (!preflight.canActivate) {
+        throw new AutomationPlatformError("automation_integration_required", {
+          preflight,
+          message:
+            preflight.issues.map((i) => i.message).join(" / ") ||
+            "Live Adapter preflight failed",
+        });
+      }
+    }
     let saved = persistAutomationV2Now(record);
 
     if (saved.status === "active") {
@@ -195,6 +212,33 @@ export class AutomationPlatformService {
     let nextStatus = patch.status ?? current.status;
     if (conflicts.length > 0 && nextStatus === "active") {
       nextStatus = "draft";
+    }
+
+    if (nextStatus === "active" && current.status !== "active") {
+      const candidate = {
+        ...current,
+        ...patch,
+        instruction,
+        workflow: patch.workflow ?? current.workflow,
+        executionPolicy: patch.executionPolicy
+          ? { ...patch.executionPolicy, systemHighRiskOverride: true as const }
+          : current.executionPolicy,
+      };
+      const { runAutomationLiveAdapterPreflight } = await import(
+        "@/lib/live-adapters"
+      );
+      const preflight = await runAutomationLiveAdapterPreflight({
+        automation: candidate,
+        userId,
+      });
+      if (!preflight.canActivate) {
+        throw new AutomationPlatformError("automation_integration_required", {
+          preflight,
+          message:
+            preflight.issues.map((i) => i.message).join(" / ") ||
+            "Live Adapter preflight failed",
+        });
+      }
     }
 
     const trigger = patch.trigger ?? current.trigger;

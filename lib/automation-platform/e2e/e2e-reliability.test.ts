@@ -325,7 +325,8 @@ describe("Automation E2E Reliability", () => {
             type: "gmail",
             name: "メール",
             order: 1,
-            configuration: {},
+            // Destination present for activate preflight; invoker still forces needs_input.
+            configuration: { to: "needs-input@example.com" },
           }),
         ]),
         executionPolicy: { mode: "run_then_notify" },

@@ -1,0 +1,30 @@
+name: Live Adapters Quality Gate
+
+on:
+  pull_request:
+    paths:
+      - "lib/live-adapters/**"
+      - "lib/automation-platform/execution/**"
+      - "lib/integrations/**"
+      - "app/api/health/live-adapters/**"
+      - "app/api/owner/live-adapters/**"
+      - ".github/workflows/live-adapters.yml"
+  push:
+    branches: [main]
+
+jobs:
+  live-adapters:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Live Adapter Vitest gate
+        run: npm run test:live-adapters
+      - name: Typecheck changed surface (tsc project)
+        run: npx tsc --noEmit -p tsconfig.json --pretty false 2>&1 | tee /tmp/tsc.log | rg "lib/live-adapters|strict-step-invoker|step-invoker|gmail/api-client|gmail/service" && exit 1 || true
+      - name: ESLint live-adapters
+        run: npx eslint lib/live-adapters app/api/health/live-adapters app/api/owner/live-adapters lib/automation-platform/execution/strict-step-invoker.ts lib/automation-platform/execution/step-invoker.ts
