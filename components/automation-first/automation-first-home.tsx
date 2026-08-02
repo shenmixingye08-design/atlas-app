@@ -546,12 +546,19 @@ export function AutomationFirstHome({
       </header>
 
       {opsError && hasAutomations ? (
-        <ErrorState
-          description={`運用データの取得に失敗しました: ${opsError}`}
-          onRetry={() => {
-            setOpsRequestId((value) => value + 1);
-          }}
-        />
+        <p
+          className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-[length:var(--text-caption)] text-[var(--text-secondary)]"
+          role="status"
+        >
+          運用サマリーを取得できませんでした。自動化一覧にもとづく表示です。
+          <button
+            type="button"
+            className="ml-2 font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+            onClick={() => setOpsRequestId((value) => value + 1)}
+          >
+            再試行
+          </button>
+        </p>
       ) : null}
 
       {/* Mobile order: attention → today → create → next → recent → one-time */}
