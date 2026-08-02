@@ -30,13 +30,18 @@ import {
   findStoredPersonalMemory,
   listStoredPersonalMemories,
   markRejectedFingerprint,
+  listSessionDisabledMemoryIds,
   readPersonalMemorySettings,
+  setSessionDisabledMemory,
   upsertStoredPersonalMemory,
   writePersonalMemorySettings,
 } from "@/lib/personal-memory/store";
 import type {
+  CandidateDecision,
   CorrectionSignal,
   CreatePersonalMemoryInput,
+  MemoryApplyPreviewItem,
+  MemoryImprovementSuggestion,
   MemoryStatus,
   PersonalMemoryRecord,
   PersonalMemorySettings,
@@ -47,8 +52,14 @@ import {
   DEFAULT_PERSONAL_MEMORY_SETTINGS,
   MAX_CANDIDATES_PER_USER,
   MAX_PERSONAL_MEMORIES_PER_USER,
+  MEMORY_PROMOTE_CONFIDENCE,
+  normalizeAppliesTo,
 } from "@/lib/personal-memory/types";
 import { appendPersonalMemoryAudit } from "@/lib/personal-memory/audit";
+import { analyzeDeliverableDiff } from "@/lib/personal-memory/diff-learning";
+import { buildMemoryApplyPreview } from "@/lib/personal-memory/apply-preview";
+import { buildImprovementSuggestions } from "@/lib/personal-memory/improvement-suggestions";
+import { canPromoteByConfidence } from "@/lib/personal-memory/confidence";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -239,12 +250,7 @@ export async function createPersonalMemory(
     confidence: clampConfidence(input.confidence),
     status,
     sensitivity,
-    appliesTo: {
-      global: input.appliesTo?.global ?? true,
-      automationIds: input.appliesTo?.automationIds ?? [],
-      artifactTypes: input.appliesTo?.artifactTypes ?? [],
-      capabilities: input.appliesTo?.capabilities ?? [],
-    },
+    appliesTo: normalizeAppliesTo(input.appliesTo),
     evidence: input.evidence ?? [
       {
         kind: "manual",
@@ -285,6 +291,9 @@ export async function updatePersonalMemory(
     ...current,
     ...patch,
     value: patch.value ?? current.value,
+    appliesTo: patch.appliesTo
+      ? normalizeAppliesTo(patch.appliesTo)
+      : current.appliesTo,
     sensitivity:
       patch.sensitivity ??
       (patch.value
@@ -388,11 +397,22 @@ export async function approveCandidate(
             : current.appliesTo.automationIds,
         };
 
+  const nextConfidence = Math.max(
+    current.confidence,
+    scopeMode === "once" ? 0.8 : MEMORY_PROMOTE_CONFIDENCE,
+  );
+  // Never auto-activate without user decision; approval is the gate.
+  // Confidence still recorded for UI bands.
+  if (!canPromoteByConfidence(nextConfidence) && scopeMode !== "once") {
+    // User explicitly approved → allow activation even if prior confidence was low.
+  }
+
   const approved: PersonalMemoryRecord = {
     ...current,
     status: "active",
     source: "approved_inference",
-    appliesTo,
+    confidence: Math.min(0.98, nextConfidence),
+    appliesTo: normalizeAppliesTo(appliesTo),
     expiresAt:
       scopeMode === "once" ? computeExpiresAt("once") : current.expiresAt,
     updatedAt: nowIso(),
@@ -403,7 +423,7 @@ export async function approveCandidate(
     userId,
     action: "candidate.approve",
     memoryId: id,
-    meta: { scope: scopeMode },
+    meta: { scope: scopeMode, confidence: approved.confidence },
   });
   return approved;
 }
@@ -505,8 +525,15 @@ export async function resolveForContext(
   await ensurePersonalMemoryHydrated(input.userId);
   const settings = readPersonalMemorySettings(input.userId);
   const memories = listStoredPersonalMemories(input.userId);
+  const sessionDisabledIds = Array.from(
+    new Set([
+      ...(input.sessionDisabledIds ?? []),
+      ...listSessionDisabledMemoryIds(input.userId),
+    ]),
+  );
   const result = resolvePersonalMemories({
     ...input,
+    sessionDisabledIds,
     settings,
     memories,
   });
@@ -543,4 +570,157 @@ export async function wipePersonalMemoryForAccountDeletion(
     memoryId: null,
     meta: {},
   });
+}
+
+/**
+ * Learn from deliverable before/after Diff → candidate memories only.
+ */
+export async function learnFromDeliverableDiff(input: {
+  userId: string;
+  before: string;
+  after: string;
+  automationId?: string | null;
+  artifactType?: string | null;
+  workCategory?: string | null;
+  companyId?: string | null;
+  templateId?: string | null;
+}): Promise<PersonalMemoryRecord[]> {
+  await ensurePersonalMemoryHydrated(input.userId);
+  const settings = readPersonalMemorySettings(input.userId);
+  if (!settings.enabled || !settings.proposeFromCorrections) return [];
+
+  const signals = analyzeDeliverableDiff({
+    before: input.before,
+    after: input.after,
+    artifactType: input.artifactType,
+    workCategory: input.workCategory,
+  });
+  if (signals.length === 0) return [];
+
+  const created: PersonalMemoryRecord[] = [];
+  for (const signal of signals) {
+    const text = signal.summary;
+    const record = await ingestCorrectionSignal({
+      userId: input.userId,
+      text,
+      before: input.before.slice(0, 4000),
+      after: input.after.slice(0, 4000),
+      automationId: input.automationId ?? null,
+      artifactType: input.artifactType ?? null,
+      workCategory: input.workCategory ?? null,
+      companyId: input.companyId ?? null,
+      templateId: input.templateId ?? null,
+      source: "user_correction",
+    });
+    if (!record) continue;
+
+    // Attach category / company / template scope without activating.
+    const appliesTo = normalizeAppliesTo({
+      ...record.appliesTo,
+      global:
+        !input.automationId &&
+        !input.workCategory &&
+        !input.companyId &&
+        !input.templateId,
+      workCategories: input.workCategory ? [input.workCategory] : record.appliesTo.workCategories,
+      companyIds: input.companyId ? [input.companyId] : record.appliesTo.companyIds,
+      templateIds: input.templateId ? [input.templateId] : record.appliesTo.templateIds,
+      artifactTypes: input.artifactType
+        ? Array.from(new Set([...record.appliesTo.artifactTypes, input.artifactType]))
+        : record.appliesTo.artifactTypes,
+    });
+    const updated = await updatePersonalMemory(input.userId, record.id, {
+      appliesTo,
+      value: { ...record.value, ...signal.value },
+      title: signal.title,
+      summary: signal.summary,
+      confidence: Math.max(record.confidence, Math.min(0.84, 0.45 + signal.strength * 0.4)),
+    });
+    created.push(updated);
+  }
+  return created;
+}
+
+export async function decideCandidate(
+  userId: string,
+  id: string,
+  decision: CandidateDecision,
+  options?: { automationId?: string | null },
+): Promise<PersonalMemoryRecord> {
+  if (decision === "never") {
+    return rejectCandidate(userId, id, "user_said_no");
+  }
+  if (decision === "once") {
+    return approveCandidate(userId, id, {
+      scope: "once",
+      automationId: options?.automationId,
+    });
+  }
+  return approveCandidate(userId, id, {
+    scope: "global",
+    automationId: options?.automationId,
+  });
+}
+
+export async function getApplyPreviewForContext(
+  input: Omit<ResolveMemoryInput, "settings" | "memories"> & {
+    userId: string;
+  },
+): Promise<{
+  items: MemoryApplyPreviewItem[];
+  injectionText: string;
+  ledger: RunMemoryLedger;
+}> {
+  const { result, ledger } = await resolveForContext(input);
+  return {
+    items: buildMemoryApplyPreview(result),
+    injectionText: result.injectionText,
+    ledger,
+  };
+}
+
+export async function listMemoryImprovementSuggestions(
+  userId: string,
+): Promise<MemoryImprovementSuggestion[]> {
+  await ensurePersonalMemoryHydrated(userId);
+  const memories = listStoredPersonalMemories(userId);
+  const recentCorrections = memories
+    .flatMap((memory) =>
+      memory.evidence
+        .filter((e) => e.kind === "correction")
+        .map((e) => ({
+          text: e.summary,
+          before:
+            typeof memory.value.before === "string"
+              ? memory.value.before
+              : null,
+          after:
+            typeof memory.value.after === "string" ? memory.value.after : null,
+        })),
+    )
+    .slice(0, 10);
+  return buildImprovementSuggestions({ memories, recentCorrections });
+}
+
+export async function disableMemoryForThisRun(
+  userId: string,
+  memoryId: string,
+): Promise<void> {
+  await ensurePersonalMemoryHydrated(userId);
+  assertOwner(findStoredPersonalMemory(userId, memoryId), userId);
+  setSessionDisabledMemory(userId, memoryId, true);
+  appendPersonalMemoryAudit({
+    userId,
+    action: "memory.session_disable",
+    memoryId,
+    meta: {},
+  });
+}
+
+export async function clearMemorySessionDisable(
+  userId: string,
+  memoryId: string,
+): Promise<void> {
+  await ensurePersonalMemoryHydrated(userId);
+  setSessionDisabledMemory(userId, memoryId, false);
 }
