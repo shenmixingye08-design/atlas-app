@@ -6,6 +6,7 @@ import { AutomationFirstBottomNav } from "@/components/automation-first/automati
 import { cn } from "@/lib/design-system/cn";
 import { useFeatureAvailability } from "@/lib/feature-flags";
 import type { AtlasNavPage } from "@/lib/layout/nav-types";
+import { usePathname } from "next/navigation";
 
 import { AtlasSidebar } from "./atlas-sidebar";
 import { AtlasTopActions } from "./atlas-top-actions";
@@ -28,9 +29,14 @@ export function AtlasAppShell({
   children,
   width = "default",
 }: AtlasAppShellProps) {
+  const pathname = usePathname() ?? "";
   const { flags, loading } = useFeatureAvailability();
+  const isAutomationFirstPreview = pathname.startsWith(
+    "/dev/automation-first-preview",
+  );
   const afNav =
-    !loading && flags.automation_first_navigation_enabled === true;
+    isAutomationFirstPreview ||
+    (!loading && flags.automation_first_navigation_enabled === true);
 
   return (
     <div className="minervot-lux relative min-h-screen bg-[var(--background)] text-foreground">

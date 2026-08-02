@@ -193,8 +193,12 @@ function SidebarPanel({
 export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
   const pathname = usePathname() ?? "";
   const { flags, loading } = useFeatureAvailability();
+  const isAutomationFirstPreview = pathname.startsWith(
+    "/dev/automation-first-preview",
+  );
   const afNav =
-    !loading && flags.automation_first_navigation_enabled === true;
+    isAutomationFirstPreview ||
+    (!loading && flags.automation_first_navigation_enabled === true);
   const primaryNav = afNav
     ? AUTOMATION_FIRST_SIDEBAR_PRIMARY
     : SIDEBAR_PRIMARY_NAV;
