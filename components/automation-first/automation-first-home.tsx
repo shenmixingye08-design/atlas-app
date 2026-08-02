@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AttentionCard } from "@/components/automation-first/attention-card";
 import { EmptyState } from "@/components/automation-first/empty-state";
-import { ErrorState } from "@/components/automation-first/error-state";
 import { KpiCard } from "@/components/automation-first/kpi-card";
 import { SectionHeader } from "@/components/automation-first/page-header";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
