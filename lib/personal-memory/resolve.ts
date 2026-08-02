@@ -22,21 +22,38 @@ export type ResolveMemoryInput = {
   userId: string;
   settings: PersonalMemorySettings;
   memories: PersonalMemoryRecord[];
-  /** Layer 1 — explicit this-run settings */
+  /** Priority 1 — explicit this-run settings */
   currentInstruction?: Record<string, unknown> | null;
-  /** Layer 2 — freeform notes */
+  /** Freeform notes / assignment */
   notes?: string | null;
-  /** Layer 3 — automation structured config */
+  /** Automation structured config */
   automationConfig?: Record<string, unknown> | null;
-  /** Layer 4 — automation locked overrides */
+  /** Automation locked overrides */
   automationOverrides?: Record<string, unknown> | null;
   allowedScopes?: readonly string[] | null;
   deniedScopes?: readonly string[] | null;
   automationId?: string | null;
   artifactTypes?: readonly string[] | null;
   capabilities?: readonly string[] | null;
+  workCategory?: string | null;
+  companyId?: string | null;
+  templateId?: string | null;
+  sessionDisabledIds?: readonly string[] | null;
   systemDefaults?: Record<string, unknown> | null;
 };
+
+function layerForMemory(memory: PersonalMemoryRecord): ResolvedMemoryValue["layer"] {
+  if (memory.appliesTo.automationIds.length > 0) return "automation_memory";
+  if (memory.appliesTo.workCategories.length > 0) return "deliverable_category";
+  if (memory.appliesTo.companyIds.length > 0) return "company_memory";
+  if (
+    memory.source === "system_inference" ||
+    memory.source === "user_correction"
+  ) {
+    return "system_inference";
+  }
+  return "global_memory";
+}
 
 function asResolved(
   memory: PersonalMemoryRecord,
@@ -101,6 +118,10 @@ export function resolvePersonalMemories(
     automationId: input.automationId,
     artifactTypes: input.artifactTypes,
     capabilities: input.capabilities,
+    workCategory: input.workCategory,
+    companyId: input.companyId,
+    templateId: input.templateId,
+    sessionDisabledIds: input.sessionDisabledIds,
     settings: input.settings,
   });
 
@@ -143,15 +164,12 @@ export function resolvePersonalMemories(
     coveredScopes.add(scope);
   }
 
-  // Layer 5 — memories (automation-specific already preferred in selectRelevant)
+  // Priority 2–5 — memories (specificity already ordered in selectRelevant)
   for (const memory of relevant) {
     if (coveredScopes.has(memory.scope) || coveredScopes.has(memory.key)) {
       continue;
     }
-    const layer = memory.appliesTo.global
-      ? "global_memory"
-      : "automation_override";
-    used.push(asResolved(memory, layer));
+    used.push(asResolved(memory, layerForMemory(memory)));
     coveredScopes.add(memory.scope);
     coveredScopes.add(memory.key);
   }
@@ -169,13 +187,23 @@ export function resolvePersonalMemories(
           ? `status_${m.status}`
           : isExpired(m.expiresAt, now)
             ? "expired"
-            : policy.blockedMemoryIds.includes(m.id)
-              ? "conflict_blocked"
-              : "not_relevant",
+            : (input.sessionDisabledIds ?? []).includes(m.id)
+              ? "session_disabled"
+              : policy.blockedMemoryIds.includes(m.id)
+                ? "conflict_blocked"
+                : "not_relevant",
     }));
 
   const injection = buildInjectionText(
-    finalUsed.filter((u) => u.layer === "global_memory" || u.layer === "automation_override"),
+    finalUsed.filter(
+      (u) =>
+        u.layer === "global_memory" ||
+        u.layer === "automation_memory" ||
+        u.layer === "deliverable_category" ||
+        u.layer === "company_memory" ||
+        u.layer === "automation_override" ||
+        u.layer === "system_inference",
+    ),
     input.settings.maxInjectionChars,
   );
 

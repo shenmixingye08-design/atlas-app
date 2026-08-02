@@ -2207,16 +2207,16 @@ export const ui = {
   },
 
   memory: {
-    pageTitle: "MINERVOT Memory",
+    pageTitle: "MINERVOTが覚えていること",
     pageSubtitle:
-      "MINERVOTが長期記憶したあなたの仕事スタイル・好み・習慣です。使うほど、あなた専属のAI秘書へ成長します。",
-    settingsLinkTitle: "MINERVOT Memory",
-    settingsLinkHint: "長期記憶の確認・編集・固定・削除",
+      "成果物の好み・文体・形式を安全に覚えます。使うほど、あなた専属のAI秘書へ育ちます。",
+    settingsLinkTitle: "MINERVOTが覚えていること",
+    settingsLinkHint: "文体・レイアウト・保存先・承認などの確認・編集・削除",
     loading: "記憶を読み込み中…",
     loadError: "記憶を読み込めませんでした",
     saveError: "保存に失敗しました",
     suggestionsTitle: "MINERVOTが学習した内容",
-    suggestionsHint: "利用履歴からMINERVOTが読み取った傾向です。",
+    suggestionsHint: "修正履歴から読み取った傾向です。承認後だけ使います。",
     recentTitle: "最近覚えたこと",
     recentHint: "直近に学習・更新された記憶です。",
     workStyleTitle: "仕事スタイル",

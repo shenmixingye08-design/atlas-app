@@ -74,11 +74,18 @@ const CORRECTION_PATTERNS: Array<{
   key: string;
   title: string;
 }> = [
-  { re: /もっと短く|短めに|簡潔に/, scope: "writing_style", key: "length", title: "文章の長さ" },
+  { re: /もっと短く|短めに|簡潔に|短めで生成/, scope: "writing_style", key: "length", title: "文章の長さ" },
   { re: /もっと丁寧|敬語/, scope: "writing_style", key: "tone", title: "文体" },
-  { re: /絵文字(なし|やめて)/, scope: "writing_style", key: "emoji", title: "絵文字" },
+  { re: /カジュアル|やわらか/, scope: "writing_style", key: "tone", title: "文体" },
+  { re: /結論ファースト|まず結論/, scope: "writing_style", key: "structure_order", title: "構成順" },
+  { re: /箇条書き/, scope: "work_content_style", key: "structure", title: "構成" },
+  { re: /絵文字(なし|やめて)|絵文字なし/, scope: "writing_style", key: "emoji", title: "絵文字" },
+  { re: /一文を短く/, scope: "writing_style", key: "sentence_length", title: "一文の長さ" },
+  { re: /見出しを多め|H2多め/, scope: "document_design", key: "headings", title: "見出し構成" },
   { re: /青系|ブルー/, scope: "color_palette", key: "palette", title: "配色" },
-  { re: /PDFも|pdfも/, scope: "preferred_formats", key: "formats", title: "成果物の形式" },
+  { re: /PDFも|pdfも|PDFを使う|PDFも自動/, scope: "preferred_formats", key: "formats", title: "成果物の形式" },
+  { re: /余白/, scope: "document_design", key: "spacing", title: "余白" },
+  { re: /SEO/, scope: "work_content_style", key: "seo", title: "資料の書き方" },
 ];
 
 export function inferPreferenceFromText(
@@ -168,19 +175,19 @@ export function evaluateCorrectionForCandidate(
     automationId: signal.automationId,
   });
 
-  const appliesTo = signal.automationId
-    ? {
-        global: false,
-        automationIds: [signal.automationId],
-        artifactTypes: signal.artifactType ? [signal.artifactType] : [],
-        capabilities: [],
-      }
-    : {
-        global: true,
-        automationIds: [],
-        artifactTypes: signal.artifactType ? [signal.artifactType] : [],
-        capabilities: [],
-      };
+  const appliesTo = {
+    global:
+      !signal.automationId &&
+      !signal.workCategory &&
+      !signal.companyId &&
+      !signal.templateId,
+    automationIds: signal.automationId ? [signal.automationId] : [],
+    artifactTypes: signal.artifactType ? [signal.artifactType] : [],
+    capabilities: [] as string[],
+    workCategories: signal.workCategory ? [signal.workCategory] : [],
+    companyIds: signal.companyId ? [signal.companyId] : [],
+    templateIds: signal.templateId ? [signal.templateId] : [],
+  };
 
   const base: CreatePersonalMemoryInput = {
     kind:
