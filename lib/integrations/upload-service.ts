@@ -6,7 +6,7 @@ import type { Deliverable } from "@/lib/deliverables/types";
 import { getUploadProvider } from "./providers/upload-registry";
 import { serverIntegrationRepository } from "./repositories/server-integration-repository";
 import { serverUploadRepository } from "./repositories/server-upload-repository";
-import { withRetry } from "./retry";
+import { executeWithRetryPolicy } from "@/lib/integration-platform/retry-policy";
 import type {
   IntegrationUploadResult,
   IntegrationUploadSummary,
@@ -90,7 +90,7 @@ export async function uploadDeliverablesToIntegrations(
     }
 
     try {
-      const result = await withRetry(
+      const outcome = await executeWithRetryPolicy(
         () =>
           provider.uploadFile(uploadConnection.id, {
             fileName: deliverable.fileName,
@@ -101,9 +101,11 @@ export async function uploadDeliverablesToIntegrations(
           }),
         {
           maxAttempts: 3,
-          label: `Google Drive upload (${deliverable.fileName})`,
+          baseDelayMs: 500,
+          label: `upload (${deliverable.fileName})`,
         },
       );
+      const result = outcome.value;
 
       folderUrl = result.folderUrl ?? folderUrl;
 

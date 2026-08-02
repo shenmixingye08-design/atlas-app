@@ -1,6 +1,7 @@
 import { OwnerDashboard } from "@/components/owner/owner-dashboard";
 import { BillingWebhookSummaryCard } from "@/components/owner/billing-webhook-panel";
 import { MemoryQualityDashboard } from "@/components/owner/memory-quality-dashboard";
+import { IntegrationPlatformDashboard } from "@/components/owner/integration-platform-dashboard";
 import { OwnerNav } from "@/components/owner/owner-nav";
 import { OwnerRefreshControl } from "@/components/owner/owner-refresh-control";
 import { OwnerShell } from "@/components/owner/owner-shell";
@@ -26,6 +27,7 @@ export default async function OwnerPage() {
         <OwnerRefreshControl />
         <BillingWebhookSummaryCard snapshot={billingWebhook} />
         <MemoryQualityDashboard />
+        <IntegrationPlatformDashboard />
         <OwnerDashboard
           snapshot={snapshot}
           apiUsageWarnings={apiUsage.warnings}

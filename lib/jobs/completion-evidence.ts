@@ -10,6 +10,14 @@ export type CompletionEvidenceInput = {
   tweetUrl?: string | null;
   artifactId?: string | null;
   storageUrl?: string | null;
+  /** Fail Closed: required external integration failed or unverified */
+  integrationFailure?: string | null;
+  wordpressPostId?: string | null;
+  wordpressUrl?: string | null;
+  dropboxFileId?: string | null;
+  dropboxUrl?: string | null;
+  /** When true, storage/upload proof is mandatory for completed */
+  requireUploadProof?: boolean;
 };
 
 export type CompletionEvidenceResult = {
@@ -25,14 +33,21 @@ export type CompletionEvidenceResult = {
 export function evaluateCompletionEvidence(
   input: CompletionEvidenceInput,
 ): CompletionEvidenceResult {
-  if (input.orchestrationStatus === "failed" || input.snsPostFailure) {
+  if (
+    input.orchestrationStatus === "failed" ||
+    input.snsPostFailure ||
+    input.integrationFailure
+  ) {
     return {
       status: "failed",
       resultSummary: null,
       externalResultId: null,
       externalResultUrl: null,
       artifactId: null,
-      lastErrorMessage: input.snsPostFailure ?? "処理に失敗しました",
+      lastErrorMessage:
+        input.integrationFailure ??
+        input.snsPostFailure ??
+        "処理に失敗しました",
     };
   }
 
@@ -69,13 +84,57 @@ export function evaluateCompletionEvidence(
         lastErrorMessage: null,
       };
     }
+    // Fail Closed — SNS without tweet proof is never completed
     return {
-      status: "partially_completed",
-      resultSummary: "内容は作成済み — X投稿の証拠がありません",
+      status: "failed",
+      resultSummary: null,
       externalResultId: null,
       externalResultUrl: null,
       artifactId: input.artifactId ?? null,
-      lastErrorMessage: null,
+      lastErrorMessage: "X投稿の証拠（TweetID/URL）が無いため完了できません",
+    };
+  }
+
+  if (input.wordpressUrl || input.wordpressPostId) {
+    if (input.wordpressPostId && input.wordpressUrl) {
+      return {
+        status: "completed",
+        resultSummary: "WordPressへの投稿が完了しました",
+        externalResultId: input.wordpressPostId,
+        externalResultUrl: input.wordpressUrl,
+        artifactId: input.artifactId ?? null,
+        lastErrorMessage: null,
+      };
+    }
+    return {
+      status: "failed",
+      resultSummary: null,
+      externalResultId: null,
+      externalResultUrl: null,
+      artifactId: input.artifactId ?? null,
+      lastErrorMessage:
+        "WordPress投稿の証拠（投稿ID/URL）が無いため完了できません",
+    };
+  }
+
+  if (input.dropboxUrl || input.dropboxFileId) {
+    if (input.dropboxFileId && input.dropboxUrl) {
+      return {
+        status: "completed",
+        resultSummary: "Dropboxへの保存が完了しました",
+        externalResultId: input.dropboxFileId,
+        externalResultUrl: input.dropboxUrl,
+        artifactId: input.artifactId ?? null,
+        lastErrorMessage: null,
+      };
+    }
+    return {
+      status: "failed",
+      resultSummary: null,
+      externalResultId: null,
+      externalResultUrl: null,
+      artifactId: input.artifactId ?? null,
+      lastErrorMessage: "Dropbox保存の証拠（ID/URL）が無いため完了できません",
     };
   }
 
@@ -91,6 +150,16 @@ export function evaluateCompletionEvidence(
   }
 
   if (input.deliverableCount > 0) {
+    if (input.requireUploadProof) {
+      return {
+        status: "failed",
+        resultSummary: null,
+        externalResultId: null,
+        externalResultUrl: null,
+        artifactId: input.artifactId ?? null,
+        lastErrorMessage: "保存先URLが無いため完了できません（Fail Closed）",
+      };
+    }
     return {
       status: "partially_completed",
       resultSummary: "成果物は生成済み — 保存先URLがありません",

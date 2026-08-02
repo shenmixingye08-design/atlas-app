@@ -257,6 +257,8 @@ export async function executeAutomationRun(
     // Tracks a real SNS publish failure so we never report "投稿完了" when
     // nothing actually reached X. Holds the user-facing reason on failure.
     let snsPostFailure: string | null = null;
+    /** Fail Closed: Drive/Dropbox/etc upload failure blocks completed. */
+    let integrationFailure: string | null = null;
     let snsErrorCode: string | null = null;
     let xPostId: string | null = null;
     let xPostUrl: string | null = null;
@@ -457,6 +459,17 @@ export async function executeAutomationRun(
               uploadResult.folderUrl ??
               uploadResult.uploads.find((upload) => upload.success)?.driveUrl ??
               null;
+            // Fail Closed: if an upload provider was connected and attempted,
+            // missing storage URL / failed batch must not look like success.
+            if (
+              uploadResult.status === "failed" ||
+              (uploadResult.uploads.length > 0 &&
+                uploadResult.uploads.every((u) => !u.success))
+            ) {
+              integrationFailure =
+                "外部保存に失敗したため完了できません（Fail Closed）";
+              storageUrl = null;
+            }
             if (options.userId && jobId) {
               await heartbeatJob({
                 jobId,
@@ -470,6 +483,10 @@ export async function executeAutomationRun(
               `[executeAutomationRun] Drive upload failed for ${automation.id}:`,
               uploadError,
             );
+            integrationFailure =
+              uploadError instanceof Error
+                ? uploadError.message
+                : "外部保存に失敗したため完了できません";
           }
         }
       } catch (deliverableError) {
@@ -488,22 +505,25 @@ export async function executeAutomationRun(
     // A completed orchestration whose SNS publish failed must be surfaced as a
     // failure — otherwise the user sees "投稿完了" while nothing reached X.
     // Approval-wait is a successful run that intentionally did not post yet.
+    const externalFailure = snsPostFailure ?? integrationFailure;
     const effectiveStatus: "completed" | "failed" | "awaiting_approval" =
-      snsPostFailure && result.status === "completed"
+      externalFailure && result.status === "completed"
         ? "failed"
         : awaitingXApproval && result.status === "completed"
           ? "awaiting_approval"
           : result.status === "completed"
             ? "completed"
             : "failed";
-    const effectiveError = snsPostFailure ?? result.error ?? null;
+    const effectiveError = externalFailure ?? result.error ?? null;
 
     await serverWorkflowRunRepository.complete({
       id: workflowRun.id,
       status:
         effectiveStatus === "awaiting_approval" ? "completed" : effectiveStatus,
       approved:
-        effectiveStatus === "completed" && result.approved && !snsPostFailure,
+        effectiveStatus === "completed" &&
+        result.approved &&
+        !externalFailure,
       totalDurationMs: result.totalDurationMs,
       result,
       finalResponsePreview: preview,
@@ -572,14 +592,19 @@ export async function executeAutomationRun(
     const flow = normalizeExecutionFlow(automation.executionFlow);
     const evidence = evaluateCompletionEvidence({
       templateId: flow.templateId,
-      orchestrationStatus: snsPostFailure ? "failed" : result.status,
-      approved: effectiveStatus === "completed" && result.approved && !snsPostFailure,
+      orchestrationStatus: externalFailure ? "failed" : result.status,
+      approved:
+        effectiveStatus === "completed" &&
+        result.approved &&
+        !externalFailure,
       deliverableCount,
       snsPostFailure,
+      integrationFailure,
       tweetId: xPostId,
       tweetUrl: xPostUrl,
       artifactId: workflowRun.id,
       storageUrl,
+      requireUploadProof: Boolean(storageUrl) || Boolean(integrationFailure),
     });
 
     if (options.userId && jobId) {
@@ -697,7 +722,9 @@ export async function executeAutomationRun(
             : "failed",
       orchestrationStatus: result.status,
       approved:
-        effectiveStatus === "completed" && result.approved && !snsPostFailure,
+        effectiveStatus === "completed" &&
+        result.approved &&
+        !externalFailure,
       totalDurationMs: result.totalDurationMs,
       finalResponsePreview: preview,
       error: effectiveError,
