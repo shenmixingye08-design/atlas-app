@@ -24,6 +24,7 @@ export const SUPABASE_ONLY_DOMAIN_KEYS = [
   "atlasWorkMemory",
   "atlasLearning",
   "atlasPersonalMemory",
+  "atlasWorkflowLearning",
   "atlasAutomations",
   "atlasHouseholdLedger",
   "atlasExternalAuth",

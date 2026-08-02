@@ -109,6 +109,12 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
     description: "自動化一覧・今日の仕事の運用向け表示",
     category: "capability",
   },
+  {
+    id: "workflow_learning_enabled",
+    label: "Workflow Learning",
+    description: "実行結果と修正から改善候補を提案し、承認後に新revisionへ反映",
+    category: "capability",
+  },
 ] as const;
 
 export const FEATURE_FLAG_IDS: readonly FeatureFlagId[] =

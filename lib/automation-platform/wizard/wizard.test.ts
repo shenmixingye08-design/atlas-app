@@ -32,6 +32,7 @@ const allFlagsOn = {
   automation_first_navigation_enabled: true,
   automation_design_system_enabled: true,
   automation_dashboard_v2_enabled: true,
+  workflow_learning_enabled: true,
 } satisfies FeatureAvailabilityMap;
 
 describe("automation create wizard domain", () => {
