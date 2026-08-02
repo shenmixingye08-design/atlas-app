@@ -45,6 +45,17 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const origin = resolveOrigin(request);
+    const {
+      beginSchedulerTick,
+      finishSchedulerTick,
+      evaluateSchedulerAlerts,
+      buildSchedulerHealth,
+      computeSchedulerMetrics,
+      getSchedulerQueueSnapshot,
+      recordQueueDepthSample,
+    } = await import("@/lib/scheduler");
+
+    beginSchedulerTick();
 
     let reliability: {
       retriesProcessed: number;
@@ -107,6 +118,9 @@ export async function POST(request: Request): Promise<Response> {
       console.warn("[automation tick] daily reports skipped:", error);
     }
 
+    const queue = await getSchedulerQueueSnapshot();
+    recordQueueDepthSample(queue.queueSize);
+
     const { recordCronTickOutcome, recordMonitoringIncident } = await import(
       "@/lib/owner/monitoring"
     );
@@ -114,6 +128,7 @@ export async function POST(request: Request): Promise<Response> {
       "@/lib/automations/execution-log"
     );
     recordCronTickOutcome(true);
+    finishSchedulerTick({ ok: true });
 
     const failed = results.filter((r) => r.status === "failed");
     const succeeded = results.filter((r) => r.status === "completed");
@@ -134,6 +149,12 @@ export async function POST(request: Request): Promise<Response> {
       });
     }
 
+    const schedulerAlerts = await evaluateSchedulerAlerts({
+      emitIncidents: true,
+    });
+    const schedulerHealth = await buildSchedulerHealth();
+    const schedulerMetrics = computeSchedulerMetrics();
+
     return Response.json({
       processed: results.length,
       results,
@@ -149,6 +170,12 @@ export async function POST(request: Request): Promise<Response> {
       },
       dailyReports,
       reliability,
+      scheduler: {
+        health: schedulerHealth,
+        metrics: schedulerMetrics,
+        alerts: schedulerAlerts,
+        queue,
+      },
     });
   } catch (error) {
     const message =
@@ -157,7 +184,9 @@ export async function POST(request: Request): Promise<Response> {
     const { recordAutomationCronDebug } = await import(
       "@/lib/automations/execution-log"
     );
+    const { finishSchedulerTick } = await import("@/lib/scheduler");
     recordCronTickOutcome(false, message);
+    finishSchedulerTick({ ok: false, error: message });
     recordAutomationCronDebug({ ok: false, error: message });
     return Response.json({ error: message }, { status: 500 });
   }

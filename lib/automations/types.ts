@@ -219,6 +219,8 @@ export type AutomationFilter = {
 export type AutomationRunResult = {
   automationId: EntityId;
   workflowRunId: EntityId;
+  /** Durable automation job id when claimed (Scheduler evidence). */
+  jobId?: EntityId | null;
   status: "completed" | "failed" | "awaiting_approval";
   orchestrationStatus: "completed" | "failed" | string;
   approved: boolean;
