@@ -57,7 +57,6 @@ import {
 } from "@/lib/personal-memory/types";
 import { appendPersonalMemoryAudit } from "@/lib/personal-memory/audit";
 import { analyzeDeliverableDiff } from "@/lib/personal-memory/diff-learning";
-import { buildMemoryApplyPreview } from "@/lib/personal-memory/apply-preview";
 import { buildImprovementSuggestions } from "@/lib/personal-memory/improvement-suggestions";
 import { canPromoteByConfidence } from "@/lib/personal-memory/confidence";
 import { evaluateDeliverableQuality } from "@/lib/personal-memory/quality/evaluate";
