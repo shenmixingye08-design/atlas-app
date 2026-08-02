@@ -10,7 +10,7 @@ export type HomeTimelineRow = {
   timeLabel: string;
   title: string;
   status: RunVisualStatus;
-  statusLabel: string;
+  statusLabel?: string;
   currentStep?: string | null;
   nextAction?: string;
   artifactLabel?: string | null;

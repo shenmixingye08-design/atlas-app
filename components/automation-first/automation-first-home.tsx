@@ -268,11 +268,15 @@ export function AutomationFirstHome({
       return mapOpsTodayWorkToTimeline(opsSummary.todayWork, runs);
     }
     return jobsToTimelineItems(v1Jobs).map((item) => ({
-      ...item,
-      statusLabel: undefined,
+      id: item.id,
+      timeLabel: item.timeLabel,
+      title: item.title,
+      status: item.status,
+      statusLabel: item.actionLabel,
       currentStep: null,
       nextAction: item.actionLabel,
       artifactLabel: null,
+      href: item.href,
       tone: "muted" as const,
     }));
   }, [opsSummary, runs, v1Jobs]);
