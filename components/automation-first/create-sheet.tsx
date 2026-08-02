@@ -42,16 +42,31 @@ export function CreateSheet({ open, onClose }: CreateSheetProps) {
         <ul className="mt-4 space-y-2">
           <li>
             <Link
-              href="/automations/new"
+              href="/activation/weekly-report"
               onClick={() => {
                 trackAutomationFirstEvent("primary_automation_cta_clicked", {
                   source: "create_sheet",
+                  template: "weekly_sales_report_word",
                 });
                 onClose();
               }}
               className="flex min-h-[var(--touch-target)] items-center rounded-[var(--radius-md)] bg-[var(--brand)] px-4 text-sm font-semibold text-[var(--brand-foreground)]"
             >
-              新しい自動化を作る
+              毎週レポートを作ってみる
+            </Link>
+          </li>
+          <li>
+            <Link
+              href="/automations/new"
+              onClick={() => {
+                trackAutomationFirstEvent("primary_automation_cta_clicked", {
+                  source: "create_sheet_other",
+                });
+                onClose();
+              }}
+              className="flex min-h-[var(--touch-target)] items-center rounded-[var(--radius-md)] border border-[var(--border)] px-4 text-sm font-medium text-[var(--text-primary)]"
+            >
+              別の仕事を選ぶ
             </Link>
           </li>
           <li>

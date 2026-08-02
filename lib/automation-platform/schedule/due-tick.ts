@@ -16,6 +16,7 @@ import {
   memoryListDueActiveAutomations,
 } from "@/lib/automation-platform/repository/memory-store";
 import { automationPlatformService } from "@/lib/automation-platform/service/automation-service";
+import { listAutomationOwnerUserIds } from "@/lib/automations/global-durable";
 import {
   buildFeatureAccessContext,
   isFeatureEnabled,
@@ -52,6 +53,8 @@ export async function processDueScheduledAutomationsV2(options?: {
   dispatch?: boolean;
   /** Optional userIds to hydrate from durable storage before scanning. */
   hydrateUserIds?: string[];
+  /** Public origin for deliverable download URLs when dispatching. */
+  requestOrigin?: string | null;
 }): Promise<DueScheduleTickResult> {
   const nowMs = options?.nowMs ?? Date.now();
   const context = buildFeatureAccessContext(null);
@@ -69,7 +72,11 @@ export async function processDueScheduledAutomationsV2(options?: {
     return result;
   }
 
-  for (const userId of options?.hydrateUserIds ?? []) {
+  // Cold serverless instances have an empty memory store. Hydrate known owners
+  // (V2 create bridges into V1 index) before scanning due automations.
+  const hydrateUserIds =
+    options?.hydrateUserIds ?? (await listAutomationOwnerUserIds().catch(() => []));
+  for (const userId of hydrateUserIds) {
     await ensureAutomationsV2Hydrated(userId);
     await ensureAutomationRunsV2Hydrated(userId);
   }
@@ -174,7 +181,10 @@ export async function processDueScheduledAutomationsV2(options?: {
   }
 
   if (options?.dispatch !== false && runIds.length > 0) {
-    const dispatched = await dispatchAutomationRuns({ runIds });
+    const dispatched = await dispatchAutomationRuns({
+      runIds,
+      requestOrigin: options?.requestOrigin,
+    });
     result.dispatched = dispatched.processed;
   }
 

@@ -14,6 +14,22 @@ vi.mock("@/lib/automation-platform/bridge/v2-to-v1-scheduler", () => ({
 vi.mock("@/lib/notifications/service", () => ({
   createNotification: vi.fn(() => ({ notificationId: "n1" })),
 }));
+vi.mock("@/lib/automation-platform/execution/invoke-real-deliverable", () => ({
+  invokeRealDeliverableStep: vi.fn(async (input: { stepName: string }) => ({
+    ok: true,
+    summary: `${input.stepName}を作成しました`,
+    artifacts: [
+      {
+        id: crypto.randomUUID(),
+        kind: "deliverable",
+        label: `${input.stepName}.docx`,
+        url: `https://example.com/d/${encodeURIComponent(input.stepName)}.docx`,
+        externalId: "dlv_test",
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  })),
+}));
 
 import { resetAutomationAuditLogForTests } from "@/lib/automation-platform/audit/log";
 import {
@@ -128,6 +144,7 @@ describe("Automation Execution System", () => {
     expect(run.preparation?.summary).toContain("Excel");
     expect(run.steps.every((step) => step.status === "succeeded")).toBe(true);
     expect(run.artifacts.length).toBeGreaterThan(0);
+    expect(run.artifacts.every((artifact) => Boolean(artifact.url))).toBe(true);
     expect(run.memoryUsage.updated).toEqual([]);
     expect(run.durationMs).not.toBeNull();
   });
