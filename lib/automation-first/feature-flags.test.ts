@@ -25,7 +25,7 @@ describe("automation first feature flags", () => {
     expect(FEATURE_FLAG_IDS).toContain("automation_operations_enabled");
   });
 
-  it("defaults Automation First flags to off", () => {
+  it("defaults Automation First flags to off in unit tests (Preview/dev use rollout)", () => {
     expect(getFeatureFlagState("automation_first_home_enabled")).toBe("off");
     expect(getFeatureFlagState("automation_first_navigation_enabled")).toBe("off");
     expect(getFeatureFlagState("automation_design_system_enabled")).toBe("off");

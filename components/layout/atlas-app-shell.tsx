@@ -21,7 +21,7 @@ type AtlasAppShellProps = {
 const MAIN_WIDTH: Record<NonNullable<AtlasAppShellProps["width"]>, string> = {
   narrow: "max-w-3xl",
   default: "max-w-5xl",
-  wide: "max-w-6xl",
+  wide: "max-w-7xl",
 };
 
 export function AtlasAppShell({

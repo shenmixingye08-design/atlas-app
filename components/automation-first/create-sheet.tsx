@@ -51,7 +51,7 @@ export function CreateSheet({ open, onClose }: CreateSheetProps) {
               }}
               className="flex min-h-[var(--touch-target)] items-center rounded-[var(--radius-md)] bg-[var(--brand)] px-4 text-sm font-semibold text-[var(--brand-foreground)]"
             >
-              自動化を作る
+              新しい自動化を作る
             </Link>
           </li>
           <li>

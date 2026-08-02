@@ -13,15 +13,25 @@ export type HomeAttentionItem = {
   description: string;
   href: string;
   actionLabel: string;
+  /** Optional deadline / updated-at ISO for attention cards. */
+  meta?: string | null;
 };
 
 export type HomeSummary = {
   activeAutomationCount: number;
+  attentionItemCount: number;
   attentionCount: number;
+  todayScheduledRuns: number;
   scheduledCount: number;
+  runningRuns: number;
   runningCount: number;
+  awaitingApprovalRuns: number;
   awaitingCount: number;
+  needsInputRuns: number;
+  completedRuns: number;
   completedCount: number;
+  partiallySucceededRuns: number;
+  failedRuns: number;
   nextJob: TodayDashboardJob | null;
 };
 
@@ -92,26 +102,82 @@ export function buildHomeSummary(
   automations: Automation[],
   jobs: TodayDashboardJob[],
   attention: HomeAttentionItem[],
+  extras?: {
+    needsInputRuns?: number;
+    partiallySucceededRuns?: number;
+    failedRuns?: number;
+  },
 ): HomeSummary {
   const activeAutomationCount = automations.filter((a) => a.enabled).length;
   const runningCount = jobs.filter((j) => j.status === "running" || j.status === "preparing").length;
   const awaitingCount = jobs.filter((j) => j.status === "awaiting_review").length;
   const completedCount = jobs.filter((j) => j.status === "completed").length;
   const scheduledCount = jobs.filter((j) => j.status === "not_started").length;
+  const needsInputRuns = extras?.needsInputRuns ?? 0;
+  const partiallySucceededRuns = extras?.partiallySucceededRuns ?? 0;
+  const failedRuns =
+    extras?.failedRuns ??
+    automations.filter((a) => a.status === "failed").length;
   const nextJob =
     jobs.find((j) => j.status === "running" || j.status === "preparing") ??
     jobs.find((j) => j.status === "awaiting_review") ??
     jobs.find((j) => j.status === "not_started") ??
     null;
+  const attentionItemCount = attention.length;
+  const attentionCount = attentionItemCount + awaitingCount;
 
   return {
     activeAutomationCount,
-    attentionCount: attention.length + awaitingCount,
+    attentionItemCount,
+    attentionCount,
+    todayScheduledRuns: scheduledCount,
     scheduledCount,
+    runningRuns: runningCount,
     runningCount,
+    awaitingApprovalRuns: awaitingCount,
     awaitingCount,
+    needsInputRuns,
+    completedRuns: completedCount,
     completedCount,
+    partiallySucceededRuns,
+    failedRuns,
     nextJob,
+  };
+}
+
+/** Merge ops summary counts into the home summary when V2 data is available. */
+export function applyOpsSummaryToHomeSummary(
+  base: HomeSummary,
+  ops: {
+    counts: {
+      activeAutomations: number;
+      awaitingApproval: number;
+      needsInput: number;
+      running: number;
+      succeededToday: number;
+      failedToday: number;
+    };
+    attentionCount: number;
+    scheduledToday: number;
+    partiallySucceeded?: number;
+  },
+): HomeSummary {
+  return {
+    ...base,
+    activeAutomationCount: ops.counts.activeAutomations,
+    attentionItemCount: ops.attentionCount,
+    attentionCount: ops.attentionCount,
+    todayScheduledRuns: ops.scheduledToday,
+    scheduledCount: ops.scheduledToday,
+    runningRuns: ops.counts.running,
+    runningCount: ops.counts.running,
+    awaitingApprovalRuns: ops.counts.awaitingApproval,
+    awaitingCount: ops.counts.awaitingApproval,
+    needsInputRuns: ops.counts.needsInput,
+    completedRuns: ops.counts.succeededToday,
+    completedCount: ops.counts.succeededToday,
+    partiallySucceededRuns: ops.partiallySucceeded ?? base.partiallySucceededRuns,
+    failedRuns: ops.counts.failedToday,
   };
 }
 
