@@ -97,6 +97,7 @@ export function stageFromVisionErrorCode(
       return "vision_request";
     case "timeout":
     case "rate_limited":
+    case "network":
     case "openai_failed":
     case "unreadable":
       return "vision_response";

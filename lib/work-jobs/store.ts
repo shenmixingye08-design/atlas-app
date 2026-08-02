@@ -14,7 +14,9 @@ export type WorkJobStatus =
   | "running"
   | "completed"
   | "failed"
-  | "awaiting_confirmation";
+  | "awaiting_confirmation"
+  /** Vision timeout / temporary OpenAI error — image kept, re-analyze allowed. */
+  | "needs_reanalysis";
 
 export type WorkJobRecord = {
   id: string;

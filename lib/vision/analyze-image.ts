@@ -336,10 +336,29 @@ export async function analyzeUserImage(input: {
             ),
           )
         : null;
+    const errorCode =
+      error instanceof VisionError ? error.code : "openai_failed";
     appendVisionDiagnosticStage(diagnosticId, "blocked", false, {
       analysisSuccess: false,
-      errorCode: error instanceof VisionError ? error.code : "openai_failed",
-      userCode: "ai_analyze_failed",
+      errorCode,
+      userCode:
+        errorCode === "timeout"
+          ? "vision_temporary_error"
+          : errorCode === "rate_limited"
+            ? "rate_limit"
+            : errorCode === "network"
+              ? "network"
+              : "ai_analyze_failed",
+      errorKind:
+        errorCode === "timeout" ||
+        errorCode === "rate_limited" ||
+        errorCode === "network"
+          ? "temporary"
+          : "analysis_failure",
+      temporaryError:
+        errorCode === "timeout" ||
+        errorCode === "rate_limited" ||
+        errorCode === "network",
       ...(details ?? {}),
     });
     if (error instanceof VisionError) {

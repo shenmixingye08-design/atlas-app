@@ -27,9 +27,24 @@ export type VisionJobStatus =
   | "processing"
   | "analyzed"
   | "needs_input"
+  | "needs_reanalysis"
   | "artifact_generating"
   | "completed"
-  | "failed";
+  | "failed"
+  | "temporary_error";
+
+/**
+ * Distinguishes OpenAI transient outages from true image-analysis failures.
+ * - temporary: timeout / rate limit / network — re-analyzable, not a deliverable failure
+ * - analysis_failure: image content / format / schema could not be understood
+ * - needs_input: analysis succeeded but required fields were missing
+ * - config: missing keys / model misconfiguration
+ */
+export type VisionErrorKind =
+  | "temporary"
+  | "analysis_failure"
+  | "needs_input"
+  | "config";
 
 export type VisionTable = {
   headers: string[];
@@ -130,6 +145,7 @@ export type VisionErrorCode =
   | "openai_failed"
   | "timeout"
   | "rate_limited"
+  | "network"
   | "unreadable"
   | "json_parse_failed"
   | "table_extract_failed"
@@ -197,11 +213,23 @@ export type VisionOpenAiFailureInfo = {
 };
 
 export type VisionGatePayload = {
-  status: "vision_failed" | "needs_image_retry" | "needs_input" | "config_missing";
+  status:
+    | "vision_failed"
+    | "needs_image_retry"
+    | "needs_input"
+    | "config_missing"
+    | "temporary_error";
   analysisSuccess: boolean;
   /** User-facing Japanese message (includes which stage failed). */
   message: string;
   userCode: string;
+  /**
+   * temporary = OpenAI side outage (timeout/rate/network).
+   * analysis_failure = image could not be understood.
+   */
+  errorKind?: VisionErrorKind;
+  /** When true, UI should offer re-analyze without treating deliverables as failed. */
+  reanalyzable?: boolean;
   diagnosticId?: string | null;
   /** Pipeline stage that failed (upload / AI / artifact / …). */
   failedStage?: string | null;
@@ -211,7 +239,7 @@ export type VisionGatePayload = {
   developerCode?: string | null;
   /** Root cause summary for UI (not a generic retry string). */
   cause?: string | null;
-  /** OpenAI error fields for AI解析失敗画面. */
+  /** OpenAI error fields for AI解析失敗画面 — always keep request_id / code / type. */
   openai?: VisionOpenAiFailureInfo | null;
   /** Vercel request id for log correlation. */
   vercelRequestId?: string | null;

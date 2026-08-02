@@ -402,6 +402,15 @@ export function listRecentVisionDiagnosticsForUser(
     .slice(0, limit);
 }
 
+/** Owner metrics — all in-memory diagnostics (no image bytes / PII text). */
+export function listAllVisionDiagnosticsForAdmin(
+  limit = 2000,
+): VisionDiagnosticRecord[] {
+  return Array.from(store.values())
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, limit);
+}
+
 /** Test helper — clear in-memory diagnostics. */
 export function resetVisionDiagnosticsForTests(): void {
   store.clear();

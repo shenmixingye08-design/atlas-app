@@ -105,6 +105,7 @@ export async function POST(request: Request): Promise<Response> {
     const shouldRestart =
       existing.status === "queued" ||
       existing.status === "failed" ||
+      existing.status === "needs_reanalysis" ||
       (existing.status === "running" && isStaleWorkJobRunning(existing));
     if (shouldRestart) {
       after(async () => {

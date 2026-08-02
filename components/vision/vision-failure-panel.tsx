@@ -32,14 +32,26 @@ export function VisionFailurePanel({
     gate.failedStageLabel ??
     (failedStage ? labelForVisionStage(failedStage) : null);
 
+  const isTemporary =
+    gate.status === "temporary_error" ||
+    gate.errorKind === "temporary" ||
+    gate.developerCode === "timeout" ||
+    gate.developerCode === "rate_limited" ||
+    gate.developerCode === "network" ||
+    gate.userCode === "vision_temporary_error" ||
+    gate.userCode === "rate_limit" ||
+    gate.userCode === "network";
+
   const title =
     gate.status === "needs_input"
       ? gate.message
       : gate.status === "config_missing"
         ? "画像解析の設定が不足しています"
-        : stageLabel
-          ? `画像処理に失敗しました（${stageLabel}）`
-          : "画像の内容を解析できませんでした";
+        : isTemporary
+          ? "再解析が可能です"
+          : stageLabel
+            ? `画像処理に失敗しました（${stageLabel}）`
+            : "画像の内容を解析できませんでした";
 
   const isAiFailure =
     failedStage === "vision_response" ||
@@ -47,19 +59,28 @@ export function VisionFailurePanel({
     gate.developerCode === "openai_failed" ||
     gate.developerCode === "timeout" ||
     gate.developerCode === "rate_limited" ||
+    gate.developerCode === "network" ||
     Boolean(gate.openai);
 
   // User-facing Japanese only — never dump OpenAI internals here.
   const detail =
     gate.status === "needs_input"
-      ? "画像は読み取れましたが、依頼の必須項目を確認できませんでした。成果物はまだ作成していません。"
-      : gate.userCode === "missing_attachment_ids"
-        ? "画像の添付IDが送信されていません。ファイル名だけでは解析できません。画像を選び直してください。"
-        : gate.message ||
-          (failedStage ? messageForVisionStage(failedStage) : null) ||
-          (gate.analysisSuccess
-            ? null
-            : "成果物の生成は停止しました。内容を確認して再試行してください。");
+      ? "画像から依頼内容を読み取れませんでした。成果物はまだ作成していません。"
+      : isTemporary
+        ? gate.message ||
+          "画像解析サーバーが混み合っています。画像は受信できていますので、数秒後に再解析してください。"
+        : gate.userCode === "unsupported_image" ||
+            gate.developerCode === "unsupported_type" ||
+            gate.developerCode === "invalid_data_url" ||
+            gate.developerCode === "corrupt_image"
+          ? "対応していない画像形式です。"
+          : gate.userCode === "missing_attachment_ids"
+            ? "画像の添付IDが送信されていません。ファイル名だけでは解析できません。画像を選び直してください。"
+            : gate.message ||
+              (failedStage ? messageForVisionStage(failedStage) : null) ||
+              (gate.analysisSuccess
+                ? null
+                : "成果物の生成は停止しました。内容を確認して再試行してください。");
 
   const openaiBody =
     gate.openai?.rawErrorBody?.trim() ||
@@ -95,9 +116,14 @@ export function VisionFailurePanel({
         {detail && (
           <p className="mt-1 text-sm text-[var(--text-secondary)]">{detail}</p>
         )}
-        {stageLabel && gate.status !== "needs_input" && (
+        {stageLabel && gate.status !== "needs_input" && !isTemporary && (
           <p className="mt-2 text-xs text-[var(--text-secondary)]">
             失敗した工程: {stageLabel}
+          </p>
+        )}
+        {isTemporary && (
+          <p className="mt-2 text-xs text-[var(--text-secondary)]">
+            一時エラー（解析失敗ではありません）。画像はそのまま再利用できます。
           </p>
         )}
 

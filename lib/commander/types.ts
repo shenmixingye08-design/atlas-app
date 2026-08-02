@@ -130,10 +130,19 @@ export type CommanderRunRecord = {
 };
 
 export type CommanderVisionGate = {
-  status: "vision_failed" | "needs_image_retry" | "needs_input" | "config_missing";
+  status:
+    | "vision_failed"
+    | "needs_image_retry"
+    | "needs_input"
+    | "config_missing"
+    | "temporary_error";
   analysisSuccess: boolean;
   message: string;
   userCode: string;
+  /** temporary = OpenAI outage; analysis_failure = image content failure. */
+  errorKind?: "temporary" | "analysis_failure" | "needs_input" | "config";
+  /** Timeout / transient — deliverables must not be marked failed. */
+  reanalyzable?: boolean;
   diagnosticId?: string | null;
   /** Pipeline stage that failed (upload / AI / artifact / …). */
   failedStage?: string | null;
@@ -143,7 +152,7 @@ export type CommanderVisionGate = {
   developerCode?: string | null;
   /** Root cause — never a generic retry-only string when OpenAI details exist. */
   cause?: string | null;
-  /** OpenAI error body fields for AI解析失敗画面. */
+  /** OpenAI error body fields — always preserve request_id / code / type. */
   openai?: {
     httpStatus: number | null;
     type: string | null;

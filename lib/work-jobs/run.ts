@@ -32,7 +32,24 @@ export function isWorkJobTerminal(status: WorkJobRecord["status"]): boolean {
   return (
     status === "completed" ||
     status === "failed" ||
-    status === "awaiting_confirmation"
+    status === "awaiting_confirmation" ||
+    status === "needs_reanalysis"
+  );
+}
+
+/** Vision timeout / rate / network — temporary, re-analyzable (not deliverable failure). */
+export function isVisionTemporaryGate(
+  gate: NonNullable<WorkJobRecord["visionGate"]>,
+): boolean {
+  return (
+    gate.errorKind === "temporary" ||
+    gate.status === "temporary_error" ||
+    gate.developerCode === "timeout" ||
+    gate.developerCode === "rate_limited" ||
+    gate.developerCode === "network" ||
+    gate.userCode === "vision_temporary_error" ||
+    gate.userCode === "rate_limit" ||
+    gate.userCode === "network"
   );
 }
 
@@ -139,6 +156,7 @@ export async function executeWorkJob(
   }
 
   // Duplicate execution forbidden for terminal / confirmation states.
+  // needs_reanalysis is re-runnable when the client sends forceVisionRefresh.
   if (
     existing.status === "completed" ||
     existing.status === "awaiting_confirmation"
@@ -236,34 +254,42 @@ export async function executeWorkJob(
       });
     }
 
-    // Vision / attachment hard failures must surface as failed jobs — never "completed".
+    // Vision / attachment hard failures must surface — never "completed".
+    // Timeout / temporary OpenAI errors → needs_reanalysis (not deliverable failure).
     if (commander.visionGate && !commander.visionGate.analysisSuccess) {
       const visionOpenAi = commander.visionGate.openai ?? null;
-      recordReliabilityEvent("work_job", "failure", 1, {
+      const temporary = isVisionTemporaryGate(commander.visionGate);
+      const jobStatus = temporary ? "needs_reanalysis" : "failed";
+      recordReliabilityEvent("work_job", temporary ? "retry" : "failure", 1, {
         durationMs: Date.now() - startedAt,
         errorCode:
           visionOpenAi?.code ??
           commander.visionGate.developerCode ??
           "vision_failed",
         errorMessage:
-          visionOpenAi?.message ??
-          commander.visionGate.cause ??
-          commander.visionGate.message,
+          commander.visionGate.message ||
+          visionOpenAi?.message ||
+          commander.visionGate.cause ||
+          "画像解析エラー",
         message:
-          visionOpenAi?.message ??
-          commander.visionGate.cause ??
-          commander.visionGate.message,
+          commander.visionGate.message ||
+          visionOpenAi?.message ||
+          commander.visionGate.cause ||
+          "画像解析エラー",
         jobId,
         diagnosticId: commander.visionGate.diagnosticId ?? null,
         userId,
         stage: commander.visionGate.failedStage ?? "vision_response",
-        severity: "error",
+        severity: temporary ? "warn" : "error",
         metadata: {
           failedStage: commander.visionGate.failedStage ?? null,
           failedStageLabel: commander.visionGate.failedStageLabel ?? null,
           lastSuccessHint: "vision_prior_stage",
           blockedStage: commander.visionGate.failedStage ?? "vision_response",
           cause: commander.visionGate.cause ?? null,
+          errorKind: commander.visionGate.errorKind ?? null,
+          reanalyzable: temporary,
+          temporaryError: temporary,
           vercelRequestId: commander.visionGate.vercelRequestId ?? null,
           openaiRequestId: visionOpenAi?.requestId ?? null,
           openaiHttpStatus: visionOpenAi?.httpStatus ?? null,
@@ -282,35 +308,42 @@ export async function executeWorkJob(
       });
       return saveWorkJob({
         ...existing,
-        status: "failed",
+        status: jobStatus,
         metadata: {
           ...mergedMetadata,
+          visionErrorKind: commander.visionGate.errorKind ?? null,
+          visionReanalyzable: temporary,
           failureDiagnostic: {
             jobId,
             diagnosticId: commander.visionGate.diagnosticId ?? null,
             failedStage: commander.visionGate.failedStage ?? null,
             developerCode: commander.visionGate.developerCode ?? null,
             cause: commander.visionGate.cause ?? null,
+            errorKind: commander.visionGate.errorKind ?? null,
+            temporaryError: temporary,
             vercelRequestId: commander.visionGate.vercelRequestId ?? null,
             openai: visionOpenAi,
+            // Always preserve OpenAI request_id / code / type
+            openaiRequestId: visionOpenAi?.requestId ?? null,
+            openaiErrorCode: visionOpenAi?.code ?? null,
+            openaiErrorType: visionOpenAi?.type ?? null,
             safeMessage:
-              visionOpenAi?.message ??
-              commander.visionGate.cause ??
-              commander.visionGate.message,
+              commander.visionGate.message ||
+              visionOpenAi?.message ||
+              commander.visionGate.cause ||
+              null,
           },
         },
         attemptCount: existing.attemptCount + 1,
-        error:
-          visionOpenAi?.message ??
-          commander.visionGate.cause ??
-          commander.visionGate.message,
+        // User-facing Japanese message — not raw OpenAI English.
+        error: commander.visionGate.message,
         visionGate: commander.visionGate,
         result: null,
         updatedAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
+        // Temporary: not a completed failure — leave completedAt null so re-analyze is clear.
+        completedAt: temporary ? null : new Date().toISOString(),
       });
     }
-
     if (commander.status === "failed" || !commander.result) {
       const failedStage =
         commander.visionGate?.failedStage ??
