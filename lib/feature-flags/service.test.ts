@@ -20,7 +20,7 @@ describe("feature flag store and service", () => {
 
   it("defaults legacy flags to on and automation platform flags to off", () => {
     const snapshot = updateFeatureFlagState("google", "on");
-    expect(snapshot.flags).toHaveLength(14);
+    expect(snapshot.flags).toHaveLength(18);
     const automationFlags = snapshot.flags.filter((flag) =>
       flag.id.startsWith("automation_"),
     );
