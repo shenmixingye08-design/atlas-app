@@ -5,8 +5,8 @@ import { AutomationCreateWizard } from "@/components/automations/v2/automation-c
 import { LoadingState } from "@/components/ui/loading-state";
 
 export const metadata: Metadata = {
-  title: "自動化を作成 — MINERVOT",
-  description: "自動化したい仕事を引き継ぎます",
+  title: "仕事を任せる — MINERVOT",
+  description: "MINERVOTに仕事を引き継ぎます。専門知識は不要です。",
 };
 
 function WizardEntry({

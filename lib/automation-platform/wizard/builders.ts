@@ -339,15 +339,16 @@ export function buildCreateInputFromWizard(
 }
 
 export function visibleWizardSteps(draft: AutomationWizardDraft): WizardStepId[] {
-  const steps: WizardStepId[] = ["work", "timing", "steps"];
-  if (draft.steps.some((s) => getCapability(s.type))) {
-    steps.push("details");
-  }
-  steps.push("approval", "notifications");
-  if (draft.memoryEnabled || draft.categoryIds.length > 0) {
-    steps.push("memory");
-  }
-  steps.push("notes", "review");
+  // S-rank Composer: fixed 7 human steps (details/approval folded into steps/notifications)
+  const steps: WizardStepId[] = [
+    "work",
+    "timing",
+    "steps",
+    "notifications",
+    "memory",
+    "notes",
+    "review",
+  ];
   if (draft.createdAutomationId) {
     steps.push("complete");
   }
