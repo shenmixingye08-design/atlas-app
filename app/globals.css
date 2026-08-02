@@ -44,10 +44,10 @@
   --border-focus: rgba(0, 113, 227, 0.5);
   --border-subtle: var(--border);
 
-  /* Brand (calm secretary — teal, not chat-purple) */
-  --brand: #0f5c4c;
-  --brand-hover: #0c4a3d;
-  --brand-muted: rgba(15, 92, 76, 0.1);
+  /* Brand — deep emerald (Automation First hero; not status green) */
+  --brand: #0b6b4d;
+  --brand-hover: #095a41;
+  --brand-muted: rgba(11, 107, 77, 0.12);
   --brand-foreground: #ffffff;
 
   /* Semantic status */
@@ -150,35 +150,13 @@
   );
 }
 
-/* Automation First design system — calm brand accent for app shell */
+/* Automation First — early hooks (full token lock lives at file end) */
 html.automation-design-system {
   --accent: var(--brand);
   --accent-hover: var(--brand-hover);
   --accent-muted: var(--brand-muted);
   --accent-foreground: var(--brand-foreground);
   --border-focus: color-mix(in srgb, var(--brand) 55%, transparent);
-}
-
-/* Override luxury gold shell when Automation First design system is on */
-html.automation-design-system .minervot-lux {
-  --accent: var(--brand);
-  --accent-hover: var(--brand-hover);
-  --accent-muted: var(--brand-muted);
-  --accent-glow: transparent;
-  --accent-foreground: var(--brand-foreground);
-  --border-focus: color-mix(in srgb, var(--brand) 55%, transparent);
-  --success: #1d7a34;
-  --success-bg: rgba(29, 122, 52, 0.08);
-}
-
-html.automation-design-system[data-theme="dark"] .minervot-lux,
-html[data-theme="dark"].automation-design-system .minervot-lux {
-  --success: #30d158;
-  --success-bg: rgba(48, 209, 88, 0.12);
-  --accent: var(--brand);
-  --accent-hover: var(--brand-hover);
-  --accent-muted: var(--brand-muted);
-  --accent-foreground: var(--brand-foreground);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -218,10 +196,10 @@ html[data-theme="dark"] {
   --border-focus: rgba(0, 113, 227, 0.55);
   --border-subtle: var(--border);
 
-  --brand: #3d9b86;
-  --brand-hover: #4aaf98;
-  --brand-muted: rgba(61, 155, 134, 0.18);
-  --brand-foreground: #0a1210;
+  --brand: #2fa37f;
+  --brand-hover: #3db890;
+  --brand-muted: rgba(47, 163, 127, 0.18);
+  --brand-foreground: #061410;
 
   --success: #30d158;
   --success-bg: rgba(48, 209, 88, 0.12);
@@ -1025,4 +1003,211 @@ html[data-theme="dark"] .activity-history-page {
 
 html[data-theme="dark"] .activity-history-detail {
   background: var(--history-surface);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Automation First — Design System Lock (must be LAST)
+   Wins over .minervot-lux gold theme. Brand ≠ status colors.
+   Brand: deep emerald · Success green · Warning yellow · Danger red
+   · Info blue · Neutral gray
+   ═══════════════════════════════════════════════════════════════ */
+
+html.automation-design-system,
+html.automation-design-system .minervot-lux,
+html[data-theme="light"].automation-design-system .minervot-lux,
+html[data-theme="light-warm"].automation-design-system .minervot-lux,
+html.automation-design-system[data-theme="light"] .minervot-lux,
+html.automation-design-system[data-theme="light-warm"] .minervot-lux {
+  /* Brand — sole hero accent (深いエメラルドグリーン) */
+  --brand: #0b6b4d;
+  --brand-hover: #095a41;
+  --brand-muted: rgba(11, 107, 77, 0.12);
+  --brand-foreground: #ffffff;
+
+  /* CTA / links / nav selection = brand only (never gold) */
+  --accent: var(--brand);
+  --accent-hover: var(--brand-hover);
+  --accent-muted: var(--brand-muted);
+  --accent-glow: transparent;
+  --accent-foreground: var(--brand-foreground);
+  --border-focus: color-mix(in srgb, var(--brand) 50%, transparent);
+  --form-control-focus: var(--brand);
+
+  /* Status — distinct from brand */
+  --success: #15803d;
+  --success-bg: rgba(21, 128, 61, 0.1);
+  --warning: #ca8a04;
+  --warning-bg: rgba(202, 138, 4, 0.12);
+  --error: #dc2626;
+  --error-bg: rgba(220, 38, 38, 0.08);
+  --info: #2563eb;
+  --info-bg: rgba(37, 99, 235, 0.1);
+
+  --status-success: var(--success);
+  --status-success-bg: var(--success-bg);
+  --status-warning: var(--warning);
+  --status-warning-bg: var(--warning-bg);
+  --status-error: var(--error);
+  --status-error-bg: var(--error-bg);
+  --status-info: var(--info);
+  --status-info-bg: var(--info-bg);
+  --status-neutral: #6b7280;
+  --status-neutral-bg: rgba(107, 114, 128, 0.1);
+  --status-completed: var(--success);
+  --status-completed-bg: var(--success-bg);
+  --status-failed: var(--error);
+  --status-failed-bg: var(--error-bg);
+  --status-running: var(--info);
+  --status-running-bg: var(--info-bg);
+  --status-paused: #6b7280;
+  --status-paused-bg: rgba(107, 114, 128, 0.1);
+  --status-pending-approval: #ca8a04;
+  --status-pending-approval-bg: rgba(202, 138, 4, 0.12);
+  --status-needs-input: #2563eb;
+  --status-needs-input-bg: rgba(37, 99, 235, 0.1);
+
+  /* Typography — calm SaaS scale (8px-aligned rem) */
+  --text-display: 1.75rem;
+  --text-page-title: 1.5rem;
+  --text-section: 1.125rem;
+  --text-card-title: 1rem;
+  --text-body: 0.9375rem;
+  --text-label: 0.8125rem;
+  --text-caption: 0.75rem;
+  --text-meta: 0.6875rem;
+  --text-numeric: 1.25rem;
+
+  /* Spacing — 8px grid */
+  --af-space-1: 8px;
+  --af-space-2: 16px;
+  --af-space-3: 24px;
+  --af-space-4: 32px;
+  --af-space-5: 40px;
+
+  /* Cards — one radius / shadow / padding language */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 16px;
+  --radius-2xl: 16px;
+  --af-radius-card: 16px;
+  --af-pad-card: 16px;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 2px 4px rgba(15, 23, 42, 0.05), 0 8px 24px rgba(15, 23, 42, 0.07);
+  --shadow-soft: var(--shadow-md);
+  --shadow-glow: none;
+  --af-shadow-card: var(--shadow-md);
+  --af-shadow-card-hover: var(--shadow-lg);
+
+  /* Motion — fade / scale / slide only, restrained */
+  --motion-fast: 150ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  --motion-base: 200ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  --motion-slow: 250ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+html[data-theme="dark"].automation-design-system,
+html[data-theme="dark"].automation-design-system .minervot-lux,
+html.automation-design-system[data-theme="dark"] .minervot-lux {
+  --brand: #2fa37f;
+  --brand-hover: #3db890;
+  --brand-muted: rgba(47, 163, 127, 0.18);
+  --brand-foreground: #061410;
+
+  --accent: var(--brand);
+  --accent-hover: var(--brand-hover);
+  --accent-muted: var(--brand-muted);
+  --accent-glow: transparent;
+  --accent-foreground: var(--brand-foreground);
+  --border-focus: color-mix(in srgb, var(--brand) 55%, transparent);
+  --form-control-focus: var(--brand);
+
+  --success: #34c759;
+  --success-bg: rgba(52, 199, 89, 0.14);
+  --warning: #eab308;
+  --warning-bg: rgba(234, 179, 8, 0.14);
+  --error: #f87171;
+  --error-bg: rgba(248, 113, 113, 0.14);
+  --info: #60a5fa;
+  --info-bg: rgba(96, 165, 250, 0.14);
+
+  --status-success: var(--success);
+  --status-success-bg: var(--success-bg);
+  --status-warning: var(--warning);
+  --status-warning-bg: var(--warning-bg);
+  --status-error: var(--error);
+  --status-error-bg: var(--error-bg);
+  --status-info: var(--info);
+  --status-info-bg: var(--info-bg);
+  --status-neutral: #9ca3af;
+  --status-neutral-bg: rgba(156, 163, 175, 0.14);
+  --status-completed: var(--success);
+  --status-completed-bg: var(--success-bg);
+  --status-failed: var(--error);
+  --status-failed-bg: var(--error-bg);
+  --status-running: var(--info);
+  --status-running-bg: var(--info-bg);
+  --status-paused: #9ca3af;
+  --status-paused-bg: rgba(156, 163, 175, 0.14);
+  --status-pending-approval: #eab308;
+  --status-pending-approval-bg: rgba(234, 179, 8, 0.14);
+  --status-needs-input: #60a5fa;
+  --status-needs-input-bg: rgba(96, 165, 250, 0.14);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 16px rgba(0, 0, 0, 0.28);
+  --shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-soft: var(--shadow-md);
+  --shadow-glow: none;
+  --af-shadow-card: var(--shadow-md);
+  --af-shadow-card-hover: var(--shadow-lg);
+}
+
+/* Unified AF card surface */
+html.automation-design-system .af-card {
+  border-radius: var(--af-radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+  box-shadow: var(--af-shadow-card);
+  transition:
+    box-shadow var(--motion-base),
+    border-color var(--motion-base),
+    background-color var(--motion-base),
+    transform var(--motion-base);
+}
+
+html.automation-design-system .af-card:hover {
+  box-shadow: var(--af-shadow-card-hover);
+}
+
+html.automation-design-system .af-card:active {
+  transform: scale(0.995);
+}
+
+/* Restrained page enter — fade + slight slide only */
+html.automation-design-system .animate-fade-up {
+  animation: af-fade-slide 220ms cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+
+@keyframes af-fade-slide {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+html.automation-design-system .af-icon {
+  width: 24px;
+  height: 24px;
+  stroke-width: 1.75;
+}
+
+html.automation-design-system .af-icon--sm {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.75;
 }

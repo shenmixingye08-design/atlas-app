@@ -6,6 +6,7 @@ export { CreateSheet } from "./create-sheet";
 export { AutomationDesignSystemRoot } from "./design-system-root";
 export { EmptyState } from "./empty-state";
 export { ErrorState } from "./error-state";
+export { KpiCard } from "./kpi-card";
 export { NotificationInbox } from "./notification-inbox";
 export { PageHeader, SectionHeader } from "./page-header";
 export { StatusBadge } from "./status-badge";

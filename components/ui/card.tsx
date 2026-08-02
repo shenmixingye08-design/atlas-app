@@ -7,9 +7,9 @@ type CardProps = React.HTMLAttributes<HTMLDivElement> & {
 
 const PADDING: Record<NonNullable<CardProps["padding"]>, string> = {
   none: "",
-  sm: "p-5",
-  md: "p-6 sm:p-8",
-  lg: "p-8 sm:p-10",
+  sm: "p-4",
+  md: "p-4 sm:p-6",
+  lg: "p-6 sm:p-8",
 };
 
 export function Card({
@@ -22,10 +22,9 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-[var(--radius-2xl)] bg-[var(--card)]",
-        (variant === "default" || variant === "elevated") && "shadow-[var(--shadow-md)]",
+        "rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--card)] shadow-[var(--shadow-md)]",
         variant === "interactive" &&
-          "cursor-pointer shadow-[var(--shadow-md)] transition-all duration-[var(--motion-base)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-lg)] active:translate-y-0 active:shadow-[var(--shadow-md)]",
+          "cursor-pointer transition-[box-shadow,transform] duration-[var(--motion-base)] hover:shadow-[var(--shadow-lg)] active:scale-[0.995]",
         PADDING[padding],
         className,
       )}

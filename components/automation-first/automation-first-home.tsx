@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AttentionCard } from "@/components/automation-first/attention-card";
 import { EmptyState } from "@/components/automation-first/empty-state";
 import { ErrorState } from "@/components/automation-first/error-state";
+import { KpiCard } from "@/components/automation-first/kpi-card";
 import { SectionHeader } from "@/components/automation-first/page-header";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
 import { Timeline } from "@/components/automation-first/timeline";
@@ -39,40 +40,11 @@ import type { AutomationRun } from "@/lib/automation-platform/types";
 import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 import { useFeatureAvailability } from "@/lib/feature-flags";
-import { cn } from "@/lib/design-system/cn";
 
 export type AutomationFirstHomeProps = {
   automations: Automation[];
   projects: Project[];
 };
-
-function StatChip({
-  label,
-  value,
-  emphasize,
-}: {
-  label: string;
-  value: number;
-  emphasize?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "rounded-[var(--radius-md)] border px-3 py-2.5",
-        emphasize
-          ? "border-[color-mix(in_srgb,var(--warning)_40%,var(--border))] bg-[var(--warning-bg)]"
-          : "border-[var(--border)] bg-[var(--surface-elevated)]",
-      )}
-    >
-      <p className="text-[length:var(--text-label)] text-[var(--text-muted)]">
-        {label}
-      </p>
-      <p className="mt-0.5 text-xl font-semibold tabular-nums text-[var(--text-primary)]">
-        {value}
-      </p>
-    </div>
-  );
-}
 
 function HomeSkeleton() {
   return (
@@ -105,7 +77,7 @@ function CtaBlock({
             source: primary ? "home_main" : "home_side",
           })
         }
-        className="inline-flex min-h-[var(--touch-target)] items-center justify-center rounded-[var(--radius-md)] bg-[var(--brand)] px-5 text-sm font-semibold text-[var(--brand-foreground)]"
+        className="inline-flex min-h-[var(--touch-target)] items-center justify-center rounded-[var(--radius-md)] bg-[var(--brand)] px-5 text-sm font-semibold text-[var(--brand-foreground)] shadow-[var(--shadow-sm)] transition-[opacity,transform] duration-[var(--motion-base)] hover:bg-[var(--brand-hover)] active:scale-[0.99]"
       >
         新しい自動化を作る
       </Link>
@@ -116,7 +88,7 @@ function CtaBlock({
             source: primary ? "home_main" : "home_side",
           })
         }
-        className="inline-flex min-h-[var(--touch-target)] items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-5 text-sm font-medium text-[var(--text-primary)]"
+        className="inline-flex min-h-[var(--touch-target)] items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-elevated)] px-5 text-sm font-medium text-[var(--text-primary)] transition-[background-color,transform] duration-[var(--motion-base)] hover:bg-[var(--surface-muted)] active:scale-[0.99]"
       >
         一度だけお願いする
       </Link>
@@ -126,41 +98,54 @@ function CtaBlock({
 
 function WeeklyStatsCard({ stats }: { stats: HomeWeeklyStats }) {
   return (
-    <section
-      aria-labelledby="af-week-heading"
-      className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-4"
-    >
+    <section aria-labelledby="af-week-heading" className="af-card space-y-3 p-4">
       <h2
         id="af-week-heading"
         className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]"
       >
         今週の実績
       </h2>
-      <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
-        <div>
-          <dt className="text-[var(--text-muted)]">完了した仕事</dt>
-          <dd className="text-lg font-semibold tabular-nums">{stats.completedJobs}</dd>
-        </div>
-        <div>
-          <dt className="text-[var(--text-muted)]">成功率</dt>
-          <dd className="text-lg font-semibold tabular-nums">
-            {stats.successRatePercent == null ? "—" : `${stats.successRatePercent}%`}
+      <dl className="grid grid-cols-2 gap-4 text-[length:var(--text-body)]">
+        <div className="space-y-1">
+          <dt className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
+            完了した仕事
+          </dt>
+          <dd className="text-[length:var(--text-numeric)] font-semibold tabular-nums">
+            {stats.completedJobs}
           </dd>
         </div>
-        <div>
-          <dt className="text-[var(--text-muted)]">成果物</dt>
-          <dd className="text-lg font-semibold tabular-nums">{stats.artifactCount}</dd>
+        <div className="space-y-1">
+          <dt className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
+            成功率
+          </dt>
+          <dd className="text-[length:var(--text-numeric)] font-semibold tabular-nums">
+            {stats.successRatePercent == null
+              ? "—"
+              : `${stats.successRatePercent}%`}
+          </dd>
         </div>
-        <div>
-          <dt className="text-[var(--text-muted)]">自動実行したStep</dt>
-          <dd className="text-lg font-semibold tabular-nums">{stats.autoStepCount}</dd>
+        <div className="space-y-1">
+          <dt className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
+            成果物
+          </dt>
+          <dd className="text-[length:var(--text-numeric)] font-semibold tabular-nums">
+            {stats.artifactCount}
+          </dd>
+        </div>
+        <div className="space-y-1">
+          <dt className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
+            自動実行したStep
+          </dt>
+          <dd className="text-[length:var(--text-numeric)] font-semibold tabular-nums">
+            {stats.autoStepCount}
+          </dd>
         </div>
       </dl>
-      <p className="mt-3 text-[length:var(--text-caption)] text-[var(--text-muted)]">
+      <p className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
         操作を省略した推定回数: {stats.estimatedSkippedActions}
       </p>
       {stats.savedMinutes != null ? (
-        <p className="mt-1 text-[length:var(--text-caption)] text-[var(--text-secondary)]">
+        <p className="text-[length:var(--text-caption)] text-[var(--text-secondary)]">
           節約時間（測定値）: 約{stats.savedMinutes}分
         </p>
       ) : null}
@@ -397,11 +382,10 @@ export function AutomationFirstHome({
       </section>
     ) : null;
 
+  const pausedCount = opsSummary?.counts.pausedAutomations ?? 0;
+
   const nextRunCard = nextRun ? (
-    <section
-      aria-labelledby="af-next-run-heading"
-      className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-4"
-    >
+    <section aria-labelledby="af-next-run-heading" className="af-card p-4">
       <h2
         id="af-next-run-heading"
         className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]"
@@ -425,10 +409,7 @@ export function AutomationFirstHome({
       </Link>
     </section>
   ) : summary.nextJob ? (
-    <section
-      aria-labelledby="af-next-run-heading"
-      className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-4"
-    >
+    <section aria-labelledby="af-next-run-heading" className="af-card p-4">
       <h2
         id="af-next-run-heading"
         className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]"
@@ -448,7 +429,7 @@ export function AutomationFirstHome({
     recentCompleted.length > 0 ? (
       <section aria-labelledby="af-completed-heading" className="space-y-3">
         <SectionHeader title="最近完了した仕事" />
-        <ul className="divide-y divide-[var(--border)] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)]">
+        <ul className="af-card divide-y divide-[var(--border)] overflow-hidden">
           {recentCompleted.map((item) => (
             <li
               key={item.id}
@@ -481,29 +462,84 @@ export function AutomationFirstHome({
       </section>
     ) : null;
 
+  const kpiGrid = (
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+      <KpiCard
+        label="実行予定"
+        description="今日これから実行される仕事"
+        value={summary.todayScheduledRuns}
+        emptyHint="予定を組むとここに表示されます"
+      />
+      <KpiCard
+        label="確認待ち"
+        description="承認や確認が必要"
+        value={summary.awaitingApprovalRuns + summary.needsInputRuns}
+        emphasize={
+          summary.awaitingApprovalRuns + summary.needsInputRuns > 0
+        }
+        emptyHint="いま確認が必要な仕事はありません"
+      />
+      <KpiCard
+        label="完了"
+        description="今日完了した仕事"
+        value={summary.completedRuns}
+        emptyHint="完了するとここに積み上がります"
+      />
+      <KpiCard
+        label="停止中"
+        description="一時停止中の自動化"
+        value={pausedCount}
+        emptyHint="停止中の自動化はありません"
+      />
+    </div>
+  );
+
+  const emptyAutomationState = (
+    <EmptyState
+      title="まだ自動化はありません"
+      description="最初の自動化を作成すると、MINERVOTが自動で仕事を実行します。"
+      primaryHref={createHref}
+      primaryLabel="最初の自動化を作る"
+      secondaryHref={oneTimeHref}
+      secondaryLabel="一度だけお願いする"
+      onPrimaryClick={() =>
+        trackAutomationFirstEvent("empty_state_cta_clicked", {
+          source: "home_empty",
+        })
+      }
+    />
+  );
+
   return (
-    <div className="automation-first-home space-y-8 pb-8 sm:space-y-10">
-      <header className="space-y-3">
+    <div className="automation-first-home space-y-8 pb-8">
+      <header className="space-y-4">
         <p className="text-[length:var(--text-label)] font-semibold tracking-[0.08em] text-[var(--brand)]">
           MINERVOT
         </p>
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="space-y-2">
             <h1 className="text-[length:var(--text-display)] font-semibold tracking-tight text-[var(--text-primary)]">
               {greetingForHour(now.getHours())}
             </h1>
-            <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-secondary)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-secondary)]">
               {formatTodayDateLabel(now)}
               {" — "}
               今日、MINERVOTが進める仕事です
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-            <StatChip label="稼働中の自動化" value={summary.activeAutomationCount} />
-            <StatChip
+          <div className="grid w-full grid-cols-2 gap-4 sm:w-auto sm:min-w-[22rem]">
+            <KpiCard
+              label="稼働中"
+              description="いま動いている自動化"
+              value={summary.activeAutomationCount}
+              emptyHint="自動化を作ると稼働が始まります"
+            />
+            <KpiCard
               label="対応が必要"
+              description="承認・入力・修復が必要"
               value={summary.attentionItemCount}
               emphasize={summary.attentionItemCount > 0}
+              emptyHint="いま手を動かす項目はありません"
             />
           </div>
         </div>
@@ -520,6 +556,7 @@ export function AutomationFirstHome({
 
       {/* Mobile order: attention → today → create → next → recent → one-time */}
       <div className="space-y-8 lg:hidden">
+        {kpiGrid}
         {attentionSection}
         {timelineSection}
         <RunningStepsPanel
@@ -532,19 +569,7 @@ export function AutomationFirstHome({
           }
         />
         {!hasAutomations ? (
-          <EmptyState
-            title="まだ自動化がありません"
-            description="繰り返す仕事を一度設定すると、MINERVOTが予定どおり進めます。"
-            primaryHref={createHref}
-            primaryLabel="新しい自動化を作る"
-            secondaryHref={oneTimeHref}
-            secondaryLabel="一度だけお願いする"
-            onPrimaryClick={() =>
-              trackAutomationFirstEvent("empty_state_cta_clicked", {
-                source: "home_empty",
-              })
-            }
-          />
+          emptyAutomationState
         ) : (
           <CtaBlock createHref={createHref} oneTimeHref={oneTimeHref} />
         )}
@@ -556,22 +581,20 @@ export function AutomationFirstHome({
       {/* PC: main + right rail */}
       <div className="hidden gap-8 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)]">
         <div className="space-y-8">
-          <section className="rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-[var(--shadow-sm)]">
-            <p className="text-[length:var(--text-label)] font-medium text-[var(--text-muted)]">
-              今日の仕事
-            </p>
-            <h2 className="mt-1 text-[length:var(--text-page-title)] font-semibold tracking-tight text-[var(--text-primary)]">
-              今日、MINERVOTが行う仕事
-            </h2>
-            {hasAutomations ? (
-              <div className="mt-5 grid grid-cols-3 gap-2 xl:grid-cols-6">
-                <StatChip label="予定" value={summary.todayScheduledRuns} />
-                <StatChip label="実行中" value={summary.runningRuns} />
-                <StatChip label="承認待ち" value={summary.awaitingApprovalRuns} />
-                <StatChip label="入力待ち" value={summary.needsInputRuns} />
-                <StatChip label="完了" value={summary.completedRuns} />
-                <StatChip label="失敗" value={summary.failedRuns} />
-              </div>
+          <section className="af-card space-y-4 p-6">
+            <div className="space-y-2">
+              <p className="text-[length:var(--text-label)] font-medium text-[var(--text-muted)]">
+                今日の仕事
+              </p>
+              <h2 className="text-[length:var(--text-page-title)] font-semibold tracking-tight text-[var(--text-primary)]">
+                今日、MINERVOTが行う仕事
+              </h2>
+            </div>
+            {kpiGrid}
+            {!hasAutomations ? (
+              <p className="text-[length:var(--text-body)] text-[var(--text-secondary)]">
+                まだ自動化はありません。最初の自動化を作ると、ここに今日の仕事が並びます。
+              </p>
             ) : null}
           </section>
 
@@ -586,35 +609,23 @@ export function AutomationFirstHome({
             }
           />
           {recentSection}
-          {!hasAutomations ? (
-            <EmptyState
-              title="まだ自動化がありません"
-              description="繰り返す仕事を一度設定すると、MINERVOTが予定どおり進めます。"
-              primaryHref={createHref}
-              primaryLabel="新しい自動化を作る"
-              secondaryHref={oneTimeHref}
-              secondaryLabel="一度だけお願いする"
-              onPrimaryClick={() =>
-                trackAutomationFirstEvent("empty_state_cta_clicked", {
-                  source: "home_empty",
-                })
-              }
-            />
-          ) : null}
+          {!hasAutomations ? emptyAutomationState : null}
         </div>
 
-        <aside className="space-y-5">
+        <aside className="space-y-4">
           {attentionSection}
-          <section className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+          <section className="af-card space-y-3 p-4">
             <h2 className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]">
               自動化を作る
             </h2>
-            <p className="mt-1 text-[length:var(--text-caption)] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
               主役は自動化。単発のお願いも残せます。
             </p>
-            <div className="mt-3">
-              <CtaBlock createHref={createHref} oneTimeHref={oneTimeHref} primary={false} />
-            </div>
+            <CtaBlock
+              createHref={createHref}
+              oneTimeHref={oneTimeHref}
+              primary={false}
+            />
           </section>
           {nextRunCard}
           {opsSummary ? <WeeklyStatsCard stats={weeklyStats} /> : null}
