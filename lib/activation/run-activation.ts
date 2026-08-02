@@ -26,6 +26,7 @@ import {
   saveActivationState,
 } from "@/lib/activation/store";
 import { verifyActivationArtifact } from "@/lib/activation/verify-artifact";
+import { recordFirstWinDeliverable } from "@/lib/retention/first-win";
 
 const TERMINAL = new Set([
   "succeeded",
@@ -265,6 +266,15 @@ export async function runWeeklyReportActivation(input: {
       time_to_first_artifact_ms: durationMs,
       retry_count: retryCount,
     });
+
+    // Retention Day1: real artifact received — never count setup-only as success.
+    try {
+      recordFirstWinDeliverable(
+        verified.downloadUrl || `/projects/${encodeURIComponent(automationId)}`,
+      );
+    } catch {
+      // Retention telemetry must not break the activation success path.
+    }
 
     return { ok: true, result };
   } catch (error) {

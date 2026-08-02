@@ -5,14 +5,21 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { WeeklyReportActivation } from "@/components/activation/weekly-report-activation";
 import { AutomationFirstHome } from "@/components/automation-first/automation-first-home";
+import { FirstDeliverableSurvey } from "@/components/retention/first-deliverable-survey";
 import { fetchAutomations } from "@/lib/automations/client";
 import type { Automation } from "@/lib/automations/types";
 import { normalizeAutomations, normalizeProjects } from "@/lib/compatibility";
 import {
+  isActivationCompleted,
   isActivationWeeklyReportEnabled,
   shouldAutoOpenActivation,
 } from "@/lib/activation";
 import { shouldShowWelcomeWizard } from "@/lib/onboarding";
+import {
+  loadRetentionState,
+  recordRetentionActivity,
+  shouldShowRetentionSurvey,
+} from "@/lib/retention";
 import { useProjects } from "@/lib/projects/use-projects";
 import { ui } from "@/lib/i18n";
 import { useFeatureAvailability } from "@/lib/feature-flags";
@@ -39,6 +46,7 @@ export function ProjectsDashboard() {
   const [automationsError, setAutomationsError] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const [showActivation, setShowActivation] = useState(false);
+  const [showSurvey, setShowSurvey] = useState(false);
 
   const automationFirstHome = flags.automation_first_home_enabled === true;
   const activationEnabled = isActivationWeeklyReportEnabled();
@@ -61,11 +69,17 @@ export function ProjectsDashboard() {
     const forceActivation =
       searchParams.get("activation") === "1" ||
       searchParams.get("experience") === "1";
+    const forceSurvey = searchParams.get("survey") === "1";
     setShowWizard(forceWelcome || shouldShowWelcomeWizard());
     setShowActivation(
       activationEnabled &&
         !forceWelcome &&
         (forceActivation || shouldAutoOpenActivation()),
+    );
+    recordRetentionActivity();
+    setShowSurvey(
+      forceSurvey ||
+        shouldShowRetentionSurvey(loadRetentionState(), isActivationCompleted()),
     );
   }, [activationEnabled, searchParams]);
 
@@ -76,10 +90,15 @@ export function ProjectsDashboard() {
   }, [refreshExperienceState]);
 
   const handleWizardComplete = useCallback(
-    (options?: { startActivation?: boolean }) => {
+    (options?: { startActivation?: boolean; activationHref?: string }) => {
       setShowWizard(false);
       if (activationEnabled && options?.startActivation !== false) {
         // Prefer dedicated route for mobile full-screen + deep-linkable flow.
+        router.push(options?.activationHref ?? "/activation/weekly-report");
+        return;
+      }
+      // Forbidden: settings-only ending. Soft-fallback still opens Quick Win.
+      if (activationEnabled) {
         router.push("/activation/weekly-report");
         return;
       }
@@ -91,10 +110,14 @@ export function ProjectsDashboard() {
   const handleActivationComplete = useCallback(() => {
     setShowActivation(false);
     reloadAutomations();
+    setShowSurvey(
+      shouldShowRetentionSurvey(loadRetentionState(), isActivationCompleted()),
+    );
     router.replace("/projects");
   }, [reloadAutomations, router]);
 
   const handleActivationSkip = useCallback(() => {
+    // Soft skip on overlay only — home still shows bootstrap + Quick Win CTA.
     setShowActivation(false);
   }, []);
 
@@ -125,6 +148,14 @@ export function ProjectsDashboard() {
         <WeeklyReportActivation
           onComplete={handleActivationComplete}
           onSkip={handleActivationSkip}
+        />
+      ) : null}
+      {showSurvey && !showWizard && !showActivation ? (
+        <FirstDeliverableSurvey
+          onClose={() => {
+            setShowSurvey(false);
+            router.replace("/projects");
+          }}
         />
       ) : null}
 

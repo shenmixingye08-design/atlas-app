@@ -9,6 +9,10 @@ import { ErrorState } from "@/components/automation-first/error-state";
 import { SectionHeader } from "@/components/automation-first/page-header";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
 import { Timeline } from "@/components/automation-first/timeline";
+import { RetentionDayPlanPanel } from "@/components/retention/day-plan-panel";
+import { HomeBootstrapPanel } from "@/components/retention/home-bootstrap-panel";
+import { NextAutomatePanel } from "@/components/retention/next-automate-panel";
+import { RetentionValueDashboard } from "@/components/retention/value-dashboard";
 import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
 import {
   buildRunningJobsFromRuns,
@@ -521,8 +525,12 @@ export function AutomationFirstHome({
         />
       ) : null}
 
-      {/* Mobile order: attention → today → create → next → recent → one-time */}
+      {/* Mobile order: bootstrap → value → suggestions → day plan → ops */}
       <div className="space-y-8 lg:hidden">
+        {!hasAutomations ? <HomeBootstrapPanel /> : null}
+        <RetentionValueDashboard />
+        <NextAutomatePanel automations={automations} />
+        <RetentionDayPlanPanel />
         {attentionSection}
         {timelineSection}
         <RunningStepsPanel
@@ -609,6 +617,10 @@ export function AutomationFirstHome({
         </div>
 
         <aside className="space-y-5">
+          {!hasAutomations ? <HomeBootstrapPanel /> : null}
+          <RetentionValueDashboard />
+          <NextAutomatePanel automations={automations} />
+          <RetentionDayPlanPanel />
           {attentionSection}
           <section className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
             <h2 className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]">
