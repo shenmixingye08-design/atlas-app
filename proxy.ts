@@ -47,6 +47,26 @@ export default clerkMiddleware(async (auth, request) => {
     return;
   }
 
+  // Non-production visual verification of formal `/projects` home (not /dev).
+  // Never enabled in production / Vercel production.
+  const screenshotMode =
+    process.env.ATLAS_SCREENSHOT_MODE === "1" ||
+    process.env.ATLAS_SCREENSHOT_MODE === "true";
+  const isProdDeploy =
+    process.env.NODE_ENV === "production" ||
+    process.env.VERCEL_ENV === "production";
+  if (
+    screenshotMode &&
+    !isProdDeploy &&
+    (pathname === "/projects" ||
+      pathname.startsWith("/api/feature-flags") ||
+      pathname.startsWith("/api/automations") ||
+      pathname.startsWith("/api/automation-platform") ||
+      pathname.startsWith("/api/projects"))
+  ) {
+    return;
+  }
+
   try {
     assertClerkSafeForProduction();
   } catch (error) {

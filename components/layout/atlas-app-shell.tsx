@@ -30,13 +30,15 @@ export function AtlasAppShell({
   width = "default",
 }: AtlasAppShellProps) {
   const pathname = usePathname() ?? "";
-  const { flags, loading } = useFeatureAvailability();
+  const { flags } = useFeatureAvailability();
   const isAutomationFirstPreview = pathname.startsWith(
     "/dev/automation-first-preview",
   );
+  // Optimistic Preview/dev defaults keep this true while the map loads —
+  // never mount legacy bottom-nav flash. Rollback = server flag off.
   const afNav =
     isAutomationFirstPreview ||
-    (!loading && flags.automation_first_navigation_enabled === true);
+    flags.automation_first_navigation_enabled === true;
 
   return (
     <div className="minervot-lux relative min-h-screen bg-[var(--background)] text-foreground">

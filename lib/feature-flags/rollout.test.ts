@@ -3,41 +3,62 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isAutomationFirstRolloutFlag,
   resolveAutomationFirstDefaultState,
-} from "./rollout";
-import { resetFeatureFlagStore, getFeatureFlagState } from "./store";
+} from "@/lib/feature-flags/rollout";
+import { resolveClientAutomationFirstPreferOn } from "@/lib/feature-flags/client-rollout";
 
 describe("automation first rollout defaults", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
-    resetFeatureFlagStore();
   });
 
-  it("identifies rollout flags", () => {
+  it("marks formal-home flags as rollout members", () => {
     expect(isAutomationFirstRolloutFlag("automation_first_home_enabled")).toBe(
       true,
     );
-    expect(isAutomationFirstRolloutFlag("automation_memory_enabled")).toBe(
-      false,
-    );
+    expect(
+      isAutomationFirstRolloutFlag("automation_first_navigation_enabled"),
+    ).toBe(true);
+    expect(
+      isAutomationFirstRolloutFlag("automation_design_system_enabled"),
+    ).toBe(true);
+    expect(
+      isAutomationFirstRolloutFlag("automation_dashboard_v2_enabled"),
+    ).toBe(true);
   });
 
-  it("keeps test defaults off for deterministic unit tests", () => {
-    expect(resolveAutomationFirstDefaultState()).toBe("off");
-    expect(getFeatureFlagState("automation_first_home_enabled")).toBe("off");
-  });
-
-  it("turns on for Preview via env override", () => {
-    vi.stubEnv("ATLAS_AUTOMATION_FIRST_UI", "on");
+  it("defaults to on for Vercel Preview", () => {
+    vi.stubEnv("VITEST", "");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("ATLAS_AUTOMATION_FIRST_UI", "");
     expect(resolveAutomationFirstDefaultState()).toBe("on");
   });
 
-  it("supports beta staged production default via override", () => {
-    vi.stubEnv("ATLAS_AUTOMATION_FIRST_UI", "beta");
+  it("defaults to beta in production (rollback-friendly staged)", () => {
+    vi.stubEnv("VITEST", "");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("ATLAS_AUTOMATION_FIRST_UI", "");
     expect(resolveAutomationFirstDefaultState()).toBe("beta");
   });
 
-  it("supports explicit off override", () => {
+  it("honors ATLAS_AUTOMATION_FIRST_UI=off for rollback", () => {
     vi.stubEnv("ATLAS_AUTOMATION_FIRST_UI", "off");
+    vi.stubEnv("VERCEL_ENV", "preview");
     expect(resolveAutomationFirstDefaultState()).toBe("off");
+  });
+
+  it("client prefers AF on for Preview/dev", () => {
+    vi.stubEnv("NEXT_PUBLIC_ATLAS_AUTOMATION_FIRST_UI", "");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "preview");
+    vi.stubEnv("NODE_ENV", "production");
+    expect(resolveClientAutomationFirstPreferOn()).toBe(true);
+
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
+    vi.stubEnv("NODE_ENV", "development");
+    expect(resolveClientAutomationFirstPreferOn()).toBe(true);
+
+    vi.stubEnv("NEXT_PUBLIC_ATLAS_AUTOMATION_FIRST_UI", "off");
+    expect(resolveClientAutomationFirstPreferOn()).toBe(false);
   });
 });

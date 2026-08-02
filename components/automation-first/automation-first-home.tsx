@@ -197,17 +197,24 @@ export function AutomationFirstHome({
 
     void Promise.all([
       fetchAutomationOperationsSummary(),
-      fetchAutomationRunsAll({ sort: "newest" }).catch(() => [] as AutomationRun[]),
+      fetchAutomationRunsAll({ sort: "newest" }),
     ])
       .then(([summary, nextRuns]) => {
         if (cancelled) return;
         setOpsSummary(summary);
         setRuns(nextRuns);
+        setOpsError(null);
       })
-      .catch((error: Error) => {
+      .catch((error: unknown) => {
         if (cancelled) return;
+        // Fail closed: do not treat fetch failure as zero runs.
         setOpsSummary(null);
-        setOpsError(error.message || "運用データの取得に失敗しました");
+        setRuns([]);
+        setOpsError(
+          error instanceof Error
+            ? error.message
+            : "運用データの取得に失敗しました",
+        );
       })
       .finally(() => {
         if (!cancelled) setOpsLoading(false);

@@ -199,12 +199,19 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
   const isAutomationFirstPreview = pathname.startsWith(
     "/dev/automation-first-preview",
   );
+  // Never flash legacy sidebar while AF flags are loading on Preview/dev
+  // (client optimistic defaults keep automation_first_navigation_enabled true).
   const afNav =
     isAutomationFirstPreview ||
-    (!loading && flags.automation_first_navigation_enabled === true);
-  const primaryNav = afNav
-    ? AUTOMATION_FIRST_SIDEBAR_PRIMARY
-    : SIDEBAR_PRIMARY_NAV;
+    flags.automation_first_navigation_enabled === true;
+  const primaryNav = loading && !afNav
+    ? AUTOMATION_FIRST_SIDEBAR_PRIMARY.map((item) => ({
+        ...item,
+        label: "…",
+      }))
+    : afNav
+      ? AUTOMATION_FIRST_SIDEBAR_PRIMARY
+      : SIDEBAR_PRIMARY_NAV;
   const resolvedActive =
     (afNav
       ? resolveAutomationFirstSidebarActive(pathname, activeProp)

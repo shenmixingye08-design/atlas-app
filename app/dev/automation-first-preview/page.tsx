@@ -7,10 +7,12 @@ import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 
 /**
- * DEV-ONLY visual preview of Automation First framing.
+ * DEV-ONLY design sandbox (theme toggles + fixture data).
  * - Production: 404
  * - Non-production: owner-only (or open when ATLAS_DEV_PREVIEW_OPEN=1 for local design)
- * Never used as the formal post-login home — that is `/projects`.
+ *
+ * Formal post-login home is `/projects` (ProjectsDashboard → AutomationFirstHome).
+ * Do not treat this route as the product home. Normal users never need this URL.
  */
 export const dynamic = "force-dynamic";
 
