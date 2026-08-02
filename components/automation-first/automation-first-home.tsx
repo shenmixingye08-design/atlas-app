@@ -198,7 +198,6 @@ export function AutomationFirstHome({
   );
   const [runs, setRuns] = useState<AutomationRun[]>([]);
   const [opsRequestId, setOpsRequestId] = useState(0);
-  const [memoryUseCount, setMemoryUseCount] = useState(0);
 
   useEffect(() => {
     if (!opsEnabled) return;
@@ -367,6 +366,19 @@ export function AutomationFirstHome({
     });
   }, [weeklyStats.savedMinutes, estimatedTodayMinutes, estimatedWeekMinutes]);
 
+  const memoryUseCount = useMemo(
+    () =>
+      runs.reduce(
+        (sum, run) =>
+          sum +
+          (run.memoryUsage?.memoryIdsUsed?.length ??
+            run.memoryUsage?.used?.length ??
+            0),
+        0,
+      ),
+    [runs],
+  );
+
   const secretaryLevel = useMemo(
     () =>
       computeSecretaryLevel({
@@ -376,14 +388,6 @@ export function AutomationFirstHome({
       }),
     [automations.length, roi.monthHoursSaved, memoryUseCount],
   );
-
-  useEffect(() => {
-    const used = runs.reduce(
-      (sum, run) => sum + (run.memoryUsage?.memoryIdsUsed?.length ?? run.memoryUsage?.used?.length ?? 0),
-      0,
-    );
-    setMemoryUseCount(used);
-  }, [runs]);
 
   const funnelTracked = useRef(false);
   useEffect(() => {

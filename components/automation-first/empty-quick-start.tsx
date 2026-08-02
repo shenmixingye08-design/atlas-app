@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import {
   FREQUENCY_OPTIONS,
@@ -23,6 +23,17 @@ import { cn } from "@/lib/design-system/cn";
 
 type Phase = "pick" | "form" | "created";
 
+function resolveInitialPreset(
+  initialPresetId?: string | null,
+): QuickStartPreset | null {
+  const fromProp = getQuickStartPreset(initialPresetId);
+  if (fromProp) return fromProp;
+  if (typeof window === "undefined") return null;
+  return getQuickStartPreset(
+    new URLSearchParams(window.location.search).get("quickStart"),
+  );
+}
+
 /**
  * Empty-home Quick Start — 3 clicks to Automation + まず一度試す.
  * No scheduler wait for first success.
@@ -35,32 +46,25 @@ export function EmptyQuickStart({
   initialPresetId?: string | null;
 }) {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>("pick");
-  const [preset, setPreset] = useState<QuickStartPreset | null>(null);
-  const [title, setTitle] = useState("");
-  const [frequency, setFrequency] = useState<QuickStartFrequency>("once");
-  const [workContent, setWorkContent] = useState("");
+  const [boot] = useState(() => {
+    const initial = resolveInitialPreset(initialPresetId);
+    return {
+      preset: initial,
+      phase: (initial ? "form" : "pick") as Phase,
+      title: initial?.title ?? "",
+      frequency: (initial?.defaultFrequency ?? "once") as QuickStartFrequency,
+      workContent: initial?.workContent ?? "",
+    };
+  });
+  const [preset, setPreset] = useState<QuickStartPreset | null>(boot.preset);
+  const [phase, setPhase] = useState<Phase>(boot.phase);
+  const [title, setTitle] = useState(boot.title);
+  const [frequency, setFrequency] = useState<QuickStartFrequency>(boot.frequency);
+  const [workContent, setWorkContent] = useState(boot.workContent);
   const [automationId, setAutomationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [trying, setTrying] = useState(false);
-
-  useEffect(() => {
-    const fromProp = getQuickStartPreset(initialPresetId);
-    const fromQuery =
-      typeof window !== "undefined"
-        ? getQuickStartPreset(
-            new URLSearchParams(window.location.search).get("quickStart"),
-          )
-        : null;
-    const fromQueryOrProp = fromProp ?? fromQuery;
-    if (!fromQueryOrProp || preset) return;
-    setPreset(fromQueryOrProp);
-    setTitle(fromQueryOrProp.title);
-    setFrequency(fromQueryOrProp.defaultFrequency);
-    setWorkContent(fromQueryOrProp.workContent);
-    setPhase("form");
-  }, [initialPresetId, preset]);
 
   const onPickPreset = (next: QuickStartPreset) => {
     setPreset(next);
