@@ -1,14 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
+import { WeeklyReportActivation } from "@/components/activation/weekly-report-activation";
 import { AutomationFirstHome } from "@/components/automation-first/automation-first-home";
+import { FirstDeliverableSurvey } from "@/components/retention/first-deliverable-survey";
 import { fetchAutomations } from "@/lib/automations/client";
 import type { Automation } from "@/lib/automations/types";
 import { normalizeAutomations, normalizeProjects } from "@/lib/compatibility";
-import { shouldShowFirstExperience } from "@/lib/first-experience";
+import {
+  isActivationCompleted,
+  isActivationWeeklyReportEnabled,
+  shouldAutoOpenActivation,
+} from "@/lib/activation";
 import { shouldShowWelcomeWizard } from "@/lib/onboarding";
+import {
+  loadRetentionState,
+  recordRetentionActivity,
+  shouldShowRetentionSurvey,
+} from "@/lib/retention";
 import { useProjects } from "@/lib/projects/use-projects";
 import { ui } from "@/lib/i18n";
 import { useFeatureAvailability } from "@/lib/feature-flags";
@@ -18,10 +29,10 @@ import {
   HomeWorkLoadError,
 } from "@/components/home/home-dashboard-error-boundary";
 import { SecretaryHomeDashboard } from "@/components/home/secretary-home-dashboard";
-import { FirstSuccessExperience } from "@/components/onboarding/first-success-experience";
 import { WelcomeWizard } from "@/components/onboarding/welcome-wizard";
 
 export function ProjectsDashboard() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { projects: rawProjects, isReady } = useProjects();
   const projects = normalizeProjects(rawProjects);
@@ -34,11 +45,11 @@ export function ProjectsDashboard() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [automationsError, setAutomationsError] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
-  const [showFirstExperience, setShowFirstExperience] = useState(false);
+  const [showActivation, setShowActivation] = useState(false);
+  const [showSurvey, setShowSurvey] = useState(false);
 
-  // Prefer AF once flags resolve (or optimistic Preview/dev defaults).
-  // Never render legacy home while flags are still loading.
   const automationFirstHome = flags.automation_first_home_enabled === true;
+  const activationEnabled = isActivationWeeklyReportEnabled();
 
   const reloadAutomations = useCallback(() => {
     void fetchAutomations()
@@ -55,12 +66,22 @@ export function ProjectsDashboard() {
 
   const refreshExperienceState = useCallback(() => {
     const forceWelcome = searchParams.get("welcome") === "1";
-    const forceExperience = searchParams.get("experience") === "1";
+    const forceActivation =
+      searchParams.get("activation") === "1" ||
+      searchParams.get("experience") === "1";
+    const forceSurvey = searchParams.get("survey") === "1";
     setShowWizard(forceWelcome || shouldShowWelcomeWizard());
-    setShowFirstExperience(
-      !forceWelcome && (forceExperience || shouldShowFirstExperience()),
+    setShowActivation(
+      activationEnabled &&
+        !forceWelcome &&
+        (forceActivation || shouldAutoOpenActivation()),
     );
-  }, [searchParams]);
+    recordRetentionActivity();
+    setShowSurvey(
+      forceSurvey ||
+        shouldShowRetentionSurvey(loadRetentionState(), isActivationCompleted()),
+    );
+  }, [activationEnabled, searchParams]);
 
   useEffect(() => {
     void Promise.resolve().then(() => {
@@ -68,18 +89,36 @@ export function ProjectsDashboard() {
     });
   }, [refreshExperienceState]);
 
-  const handleWizardComplete = useCallback(() => {
-    setShowWizard(false);
-    // オンボーディング完了後は説明のみ。ダミー業務・架空体験は自動表示しない。
-    setShowFirstExperience(false);
-  }, []);
+  const handleWizardComplete = useCallback(
+    (options?: { startActivation?: boolean; activationHref?: string }) => {
+      setShowWizard(false);
+      if (activationEnabled && options?.startActivation !== false) {
+        // Prefer dedicated route for mobile full-screen + deep-linkable flow.
+        router.push(options?.activationHref ?? "/activation/weekly-report");
+        return;
+      }
+      // Forbidden: settings-only ending. Soft-fallback still opens Quick Win.
+      if (activationEnabled) {
+        router.push("/activation/weekly-report");
+        return;
+      }
+      setShowActivation(false);
+    },
+    [activationEnabled, router],
+  );
 
-  const handleFirstExperienceComplete = useCallback(() => {
-    setShowFirstExperience(false);
-  }, []);
+  const handleActivationComplete = useCallback(() => {
+    setShowActivation(false);
+    reloadAutomations();
+    setShowSurvey(
+      shouldShowRetentionSurvey(loadRetentionState(), isActivationCompleted()),
+    );
+    router.replace("/projects");
+  }, [reloadAutomations, router]);
 
-  const handleFirstExperienceDefer = useCallback(() => {
-    setShowFirstExperience(false);
+  const handleActivationSkip = useCallback(() => {
+    // Soft skip on overlay only — home still shows bootstrap + Quick Win CTA.
+    setShowActivation(false);
   }, []);
 
   useEffect(() => {
@@ -90,7 +129,6 @@ export function ProjectsDashboard() {
     return <LoadingState message={ui.secretaryProgress.preparing} />;
   }
 
-  // Flag fetch failed and AF is not optimistically on → retry, never flash legacy.
   if (flagsError && !automationFirstHome) {
     return (
       <div className="home-dashboard space-y-6 pb-2 sm:pb-4">
@@ -106,12 +144,20 @@ export function ProjectsDashboard() {
   return (
     <HomeDashboardErrorBoundary>
       {showWizard && <WelcomeWizard onComplete={handleWizardComplete} />}
-      {showFirstExperience && !showWizard && (
-        <FirstSuccessExperience
-          onComplete={handleFirstExperienceComplete}
-          onDefer={handleFirstExperienceDefer}
+      {showActivation && !showWizard && activationEnabled ? (
+        <WeeklyReportActivation
+          onComplete={handleActivationComplete}
+          onSkip={handleActivationSkip}
         />
-      )}
+      ) : null}
+      {showSurvey && !showWizard && !showActivation ? (
+        <FirstDeliverableSurvey
+          onClose={() => {
+            setShowSurvey(false);
+            router.replace("/projects");
+          }}
+        />
+      ) : null}
 
       {automationsError ? (
         <div className="home-dashboard space-y-6 pb-2 sm:pb-4">

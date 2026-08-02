@@ -9,6 +9,10 @@ import { ErrorState } from "@/components/automation-first/error-state";
 import { SectionHeader } from "@/components/automation-first/page-header";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
 import { Timeline } from "@/components/automation-first/timeline";
+import { RetentionDayPlanPanel } from "@/components/retention/day-plan-panel";
+import { HomeBootstrapPanel } from "@/components/retention/home-bootstrap-panel";
+import { NextAutomatePanel } from "@/components/retention/next-automate-panel";
+import { RetentionValueDashboard } from "@/components/retention/value-dashboard";
 import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
 import {
   buildRunningJobsFromRuns,
@@ -91,10 +95,12 @@ function CtaBlock({
   createHref,
   oneTimeHref,
   primary = true,
+  createLabel = "新しい自動化を作る",
 }: {
   createHref: string;
   oneTimeHref: string;
   primary?: boolean;
+  createLabel?: string;
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -107,7 +113,7 @@ function CtaBlock({
         }
         className="inline-flex min-h-[var(--touch-target)] items-center justify-center rounded-[var(--radius-md)] bg-[var(--brand)] px-5 text-sm font-semibold text-[var(--brand-foreground)]"
       >
-        新しい自動化を作る
+        {createLabel}
       </Link>
       <Link
         href={oneTimeHref}
@@ -330,7 +336,8 @@ export function AutomationFirstHome({
   ]);
 
   const hasAutomations = automations.length > 0 || (opsSummary?.counts.activeAutomations ?? 0) > 0;
-  const createHref = "/automations/new";
+  const createHref = "/activation/weekly-report";
+  const alternateCreateHref = "/automations/new";
   const oneTimeHref = "/workspace";
 
   if (opsEnabled && opsLoading && !opsSummary && !opsError) {
@@ -518,8 +525,12 @@ export function AutomationFirstHome({
         />
       ) : null}
 
-      {/* Mobile order: attention → today → create → next → recent → one-time */}
+      {/* Mobile order: bootstrap → value → suggestions → day plan → ops */}
       <div className="space-y-8 lg:hidden">
+        {!hasAutomations ? <HomeBootstrapPanel /> : null}
+        <RetentionValueDashboard />
+        <NextAutomatePanel automations={automations} />
+        <RetentionDayPlanPanel />
         {attentionSection}
         {timelineSection}
         <RunningStepsPanel
@@ -533,20 +544,21 @@ export function AutomationFirstHome({
         />
         {!hasAutomations ? (
           <EmptyState
-            title="まだ自動化がありません"
-            description="繰り返す仕事を一度設定すると、MINERVOTが予定どおり進めます。"
+            title="最初の仕事をMINERVOTへ任せてみましょう"
+            description="毎週の営業レポートをWordで作成するところから始められます。外部連携は不要です。"
             primaryHref={createHref}
-            primaryLabel="新しい自動化を作る"
-            secondaryHref={oneTimeHref}
-            secondaryLabel="一度だけお願いする"
+            primaryLabel="毎週レポートを作ってみる"
+            secondaryHref={alternateCreateHref}
+            secondaryLabel="別の仕事を選ぶ"
             onPrimaryClick={() =>
               trackAutomationFirstEvent("empty_state_cta_clicked", {
                 source: "home_empty",
+                template: "weekly_sales_report_word",
               })
             }
           />
         ) : (
-          <CtaBlock createHref={createHref} oneTimeHref={oneTimeHref} />
+          <CtaBlock createHref={alternateCreateHref} oneTimeHref={oneTimeHref} />
         )}
         {nextRunCard}
         {recentSection}
@@ -588,15 +600,16 @@ export function AutomationFirstHome({
           {recentSection}
           {!hasAutomations ? (
             <EmptyState
-              title="まだ自動化がありません"
-              description="繰り返す仕事を一度設定すると、MINERVOTが予定どおり進めます。"
+              title="最初の仕事をMINERVOTへ任せてみましょう"
+              description="毎週の営業レポートをWordで作成するところから始められます。外部連携は不要です。"
               primaryHref={createHref}
-              primaryLabel="新しい自動化を作る"
-              secondaryHref={oneTimeHref}
-              secondaryLabel="一度だけお願いする"
+              primaryLabel="毎週レポートを作ってみる"
+              secondaryHref={alternateCreateHref}
+              secondaryLabel="別の仕事を選ぶ"
               onPrimaryClick={() =>
                 trackAutomationFirstEvent("empty_state_cta_clicked", {
-                  source: "home_empty",
+                  source: "home_empty_desktop",
+                  template: "weekly_sales_report_word",
                 })
               }
             />
@@ -604,16 +617,29 @@ export function AutomationFirstHome({
         </div>
 
         <aside className="space-y-5">
+          {!hasAutomations ? <HomeBootstrapPanel /> : null}
+          <RetentionValueDashboard />
+          <NextAutomatePanel automations={automations} />
+          <RetentionDayPlanPanel />
           {attentionSection}
           <section className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
             <h2 className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]">
               自動化を作る
             </h2>
             <p className="mt-1 text-[length:var(--text-caption)] text-[var(--text-muted)]">
-              主役は自動化。単発のお願いも残せます。
+              最初は毎週レポートから。単発のお願いも残せます。
             </p>
             <div className="mt-3">
-              <CtaBlock createHref={createHref} oneTimeHref={oneTimeHref} primary={false} />
+              <CtaBlock
+                createHref={hasAutomations ? alternateCreateHref : createHref}
+                oneTimeHref={oneTimeHref}
+                primary={false}
+                createLabel={
+                  hasAutomations
+                    ? "新しい自動化を作る"
+                    : "毎週レポートを作ってみる"
+                }
+              />
             </div>
           </section>
           {nextRunCard}
