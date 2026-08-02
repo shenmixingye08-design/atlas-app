@@ -53,6 +53,12 @@ export type AutomationRunArtifact = {
   url: string | null;
   externalId: string | null;
   createdAt: Timestamp;
+  /** Optional live-execution metadata (absent on legacy stub artifacts). */
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  contentSha256?: string | null;
+  sourceRunId?: string | null;
+  sourceStepId?: string | null;
 };
 
 export type AutomationRunAttempt = {

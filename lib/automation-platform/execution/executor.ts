@@ -17,7 +17,7 @@ import {
   isRetryableFailure,
 } from "@/lib/automation-platform/execution/retry-policy";
 import type { StepInvoker } from "@/lib/automation-platform/execution/step-invoker";
-import { strictStepInvoker } from "@/lib/automation-platform/execution/strict-step-invoker";
+import { liveStepInvoker } from "@/lib/automation-platform/adapters/live-step-invoker";
 import { memoryUpdateRun } from "@/lib/automation-platform/repository/memory-store";
 import { persistAutomationRunNow } from "@/lib/automation-platform/durable-runs";
 
@@ -81,7 +81,7 @@ export async function executeQueuedRun(input: {
   automation: AutomationV2;
   invoker?: StepInvoker;
 }): Promise<ExecuteRunResult> {
-  const invoker = input.invoker ?? strictStepInvoker;
+  const invoker = input.invoker ?? liveStepInvoker;
   let run = input.run;
 
   // Accept pre-claimed (running) or unclaimed (queued/retrying) runs.
@@ -161,8 +161,20 @@ export async function executeQueuedRun(input: {
         step: def,
         userId: run.userId,
         automationName: input.automation.name,
+        automationId: input.automation.id,
         runId: run.id,
         approved: approved || !runStep.requiresApproval,
+        attempt: run.attemptCount,
+        priorArtifacts: run.artifacts,
+        instructionText:
+          (typeof input.automation.instruction.structuredOptions.assignment ===
+            "string" &&
+            input.automation.instruction.structuredOptions.assignment) ||
+          input.automation.instruction.freeformNotes ||
+          input.automation.name,
+        freeformNotes: input.automation.instruction.freeformNotes,
+        structuredOptions: input.automation.instruction.structuredOptions,
+        occurrenceKey: run.scheduleOccurrenceKey,
       });
 
       if (result.needsUserInput) {

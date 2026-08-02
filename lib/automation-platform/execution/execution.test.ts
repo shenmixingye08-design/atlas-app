@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/persistence/durable-domain", () => ({
@@ -12,7 +12,54 @@ vi.mock("@/lib/automation-platform/bridge/v2-to-v1-scheduler", () => ({
   })),
 }));
 vi.mock("@/lib/notifications/service", () => ({
-  createNotification: vi.fn(() => ({ notificationId: "n1" })),
+  createNotification: vi.fn(() => ({
+    id: "n1",
+    notificationId: "n1",
+    userId: "user_exec",
+    audience: "user",
+    type: "automation_completed",
+    title: "ok",
+    message: "ok",
+  })),
+}));
+vi.mock("@/lib/deliverables", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/deliverables")>(
+    "@/lib/deliverables",
+  );
+  return {
+    ...actual,
+    generateDeliverables: vi.fn(async (input, _origin, options) => {
+      const format = input.formats?.[0] ?? "docx";
+      const id = `dlv_${format}_${options.userId}`;
+      return {
+        deliverables: [
+          {
+            id,
+            fileName: `report.${format}`,
+            format,
+            mimeType: "application/octet-stream",
+            generatedAt: new Date().toISOString(),
+            sizeBytes: 2048,
+            isPlaceholder: false,
+            downloadUrl: `/api/deliverables/${id}`,
+          },
+        ],
+        detection: { formats: [format], matchedRule: "test" },
+        failures: [],
+        jobId: options.jobId ?? "job_test",
+      };
+    }),
+  };
+});
+vi.mock("@/lib/integrations/external-services/store", () => ({
+  getExternalServiceConnection: vi.fn(() => ({
+    status: "connected",
+    serviceId: "x",
+    userId: "user_exec",
+  })),
+}));
+vi.mock("@/lib/integrations/external-services/durable", () => ({
+  ensureExternalAuthHydrated: vi.fn(async () => undefined),
 }));
 
 import { resetAutomationAuditLogForTests } from "@/lib/automation-platform/audit/log";
@@ -76,7 +123,10 @@ async function createActive(
           name: "Excel",
           order: 1,
           inputBindings: {},
-          configuration: { title: "売上" },
+          configuration: {
+            title: "売上",
+            content: "売上データのテスト本文です。十分な長さの内容。",
+          },
           requiresApproval: false,
           retryPolicy: { maxAttempts: 2, backoffMs: [1000] },
           timeoutMs: 10_000,
@@ -90,7 +140,10 @@ async function createActive(
           name: "PDF",
           order: 2,
           inputBindings: {},
-          configuration: { title: "報告" },
+          configuration: {
+            title: "報告",
+            content: "報告本文のテストです。十分な長さの内容。",
+          },
           requiresApproval: false,
           retryPolicy: { maxAttempts: 2, backoffMs: [1000] },
           timeoutMs: 10_000,
@@ -113,6 +166,10 @@ describe("Automation Execution System", () => {
     resetAutomationRateLimitForTests();
     resetFeatureFlagStore();
     enableFlags();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("prepare → execute → succeed with step timeline", async () => {
@@ -155,6 +212,10 @@ describe("Automation Execution System", () => {
   });
 
   it("cannot skip high-risk approval even on run_then_notify", async () => {
+    vi.stubEnv("AUTOMATION_E2E_LIVE_EXTERNAL", "true");
+    vi.stubEnv("X_CLIENT_ID", "xid");
+    vi.stubEnv("X_CLIENT_SECRET", "xsecret");
+    setFeatureFlagState("x", "on");
     const automation = await createActive({
       executionPolicy: { mode: "run_then_notify" },
       workflow: workflow([

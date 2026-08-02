@@ -520,5 +520,44 @@ export async function createGmailDraft(input: {
   return { id: payload.id };
 }
 
+/** Create a new compose draft (not a reply). */
+export async function createGmailComposeDraft(input: {
+  accessToken: string;
+  to: string;
+  cc?: string;
+  bcc?: string;
+  subject: string;
+  body: string;
+}): Promise<{ id: string }> {
+  const encodedBody = Buffer.from(input.body, "utf8").toString("base64");
+  const lines = [
+    `To: ${input.to}`,
+    ...(input.cc ? [`Cc: ${input.cc}`] : []),
+    ...(input.bcc ? [`Bcc: ${input.bcc}`] : []),
+    `Subject: =?UTF-8?B?${Buffer.from(input.subject, "utf8").toString("base64")}?=`,
+    "MIME-Version: 1.0",
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+    "",
+    encodedBody,
+  ];
+  const payload = await gmailFetch<{ id?: string }>(
+    input.accessToken,
+    "/users/me/drafts",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        message: {
+          raw: encodeBase64Url(lines.join("\r\n")),
+        },
+      }),
+    },
+  );
+  if (!payload.id) {
+    throw new Error("Gmail did not return a compose draft id");
+  }
+  return { id: payload.id };
+}
+
 /** Best-effort text extraction from PDF bytes (no extra dependency). */
 export { extractTextFromPdfBuffer } from "@/lib/documents/extract-pdf-text";

@@ -14,6 +14,47 @@ vi.mock("@/lib/persistence/durable-domain", () => ({
 vi.mock("@/lib/notifications/service", () => ({
   createNotification: vi.fn(() => ({ notificationId: "n1" })),
 }));
+vi.mock("@/lib/integrations/external-services/store", () => ({
+  getExternalServiceConnection: vi.fn(() => ({
+    status: "connected",
+    serviceId: "x",
+    userId: "user_a",
+    connectedAt: "2026-01-01T00:00:00.000Z",
+    scopes: ["tweet.write", "gmail.compose", "calendar.events", "files.content.write"],
+  })),
+}));
+vi.mock("@/lib/integrations/external-services/durable", () => ({
+  ensureExternalAuthHydrated: vi.fn(async () => undefined),
+}));
+vi.mock("@/lib/deliverables", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/deliverables")>(
+    "@/lib/deliverables",
+  );
+  return {
+    ...actual,
+    generateDeliverables: vi.fn(async (input, _origin, options) => {
+      const format = input.formats?.[0] ?? "docx";
+      const id = `dlv_${format}_${options.userId}`;
+      return {
+        deliverables: [
+          {
+            id,
+            fileName: `report.${format}`,
+            format,
+            mimeType: "application/octet-stream",
+            generatedAt: new Date().toISOString(),
+            sizeBytes: 2048,
+            isPlaceholder: false,
+            downloadUrl: `/api/deliverables/${id}`,
+          },
+        ],
+        detection: { formats: [format], matchedRule: "test" },
+        failures: [],
+        jobId: options.jobId ?? "job_test",
+      };
+    }),
+  };
+});
 
 import {
   listAutomationAuditEvents,
@@ -72,6 +113,10 @@ function enableV2Flags(): void {
   setFeatureFlagState("automation_v2_enabled", "on");
   setFeatureFlagState("automation_memory_enabled", "on");
   setFeatureFlagState("automation_approval_enabled", "on");
+  setFeatureFlagState("x", "on");
+  setFeatureFlagState("google", "on");
+  setFeatureFlagState("wordpress", "on");
+  setFeatureFlagState("dropbox", "on");
 }
 
 function baseWorkflow(): CreateAutomationV2Input["workflow"] {
@@ -79,12 +124,12 @@ function baseWorkflow(): CreateAutomationV2Input["workflow"] {
     version: 1,
     steps: [
       {
-        id: "step-orchestrate",
-        type: "orchestrate",
-        name: "仕事の遂行",
+        id: "step-notify",
+        type: "notify",
+        name: "完了通知",
         order: 1,
         inputBindings: {},
-        configuration: {},
+        configuration: { title: "完了", message: "テスト完了" },
         requiresApproval: false,
         retryPolicy: { maxAttempts: 1, backoffMs: [] },
         timeoutMs: 60_000,

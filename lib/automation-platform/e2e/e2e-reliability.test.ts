@@ -36,6 +36,47 @@ vi.mock("@/lib/personal-memory/bridge/automation", () => ({
     tokenEstimate: 40,
   })),
 }));
+vi.mock("@/lib/integrations/external-services/store", () => ({
+  getExternalServiceConnection: vi.fn(() => ({
+    status: "connected",
+    serviceId: "x",
+    userId: "user_e2e",
+    connectedAt: "2026-01-01T00:00:00.000Z",
+    scopes: ["tweet.write", "gmail.compose", "calendar.events", "files.content.write"],
+  })),
+}));
+vi.mock("@/lib/integrations/external-services/durable", () => ({
+  ensureExternalAuthHydrated: vi.fn(async () => undefined),
+}));
+vi.mock("@/lib/deliverables", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/deliverables")>(
+    "@/lib/deliverables",
+  );
+  return {
+    ...actual,
+    generateDeliverables: vi.fn(async (input, _origin, options) => {
+      const format = input.formats?.[0] ?? "docx";
+      const id = `dlv_${format}_${options.userId}`;
+      return {
+        deliverables: [
+          {
+            id,
+            fileName: `report.${format}`,
+            format,
+            mimeType: "application/octet-stream",
+            generatedAt: new Date().toISOString(),
+            sizeBytes: 2048,
+            isPlaceholder: false,
+            downloadUrl: `/api/deliverables/${id}`,
+          },
+        ],
+        detection: { formats: [format], matchedRule: "test" },
+        failures: [],
+        jobId: options.jobId ?? "job_test",
+      };
+    }),
+  };
+});
 
 import { createNotification } from "@/lib/notifications/service";
 import {
@@ -83,6 +124,11 @@ function enableFlags(): void {
   setFeatureFlagState("automation_memory_enabled", "on");
   setFeatureFlagState("automation_approval_enabled", "on");
   setFeatureFlagState("automation_operations_enabled", "on");
+  setFeatureFlagState("x", "on");
+  setFeatureFlagState("google", "on");
+  setFeatureFlagState("wordpress", "on");
+  setFeatureFlagState("dropbox", "on");
+  setFeatureFlagState("image_generation", "on");
 }
 
 function step(
@@ -152,6 +198,10 @@ async function createAutomation(
         allowedScopes: ["writing_style", "document_design", "default_storage_locations"],
         deniedScopes: [],
         lockedOverrides: {},
+      },
+      instruction: {
+        structuredOptions: { assignment: name },
+        freeformNotes: `${name} の本文です。`,
       },
       ...input,
     },
@@ -225,9 +275,10 @@ describe("Automation E2E Reliability", () => {
         steps: [
           step({
             id: "a",
-            type: "orchestrate",
+            type: "word_generate",
             name: "投稿案",
             order: 0,
+            configuration: { content: "本日の投稿案です。" },
           }),
           step({
             id: "b",
@@ -243,7 +294,13 @@ describe("Automation E2E Reliability", () => {
         id: "s4_wp",
         name: "WordPress記事",
         steps: [
-          step({ id: "a", type: "word_generate", name: "下書き", order: 0 }),
+          step({
+            id: "a",
+            type: "word_generate",
+            name: "下書き",
+            order: 0,
+            configuration: { content: "WordPress記事本文" },
+          }),
           step({
             id: "b",
             type: "wordpress",
@@ -257,13 +314,19 @@ describe("Automation E2E Reliability", () => {
         id: "s5_gmail",
         name: "Gmail下書き",
         steps: [
-          step({ id: "a", type: "orchestrate", name: "整理", order: 0 }),
+          step({
+            id: "a",
+            type: "word_generate",
+            name: "整理",
+            order: 0,
+            configuration: { content: "メール本文案" },
+          }),
           step({
             id: "b",
             type: "gmail",
             name: "下書き",
             order: 1,
-            configuration: { to: "boss@example.com" },
+            configuration: { to: "boss@example.com", mode: "draft" },
           }),
         ],
       },
@@ -319,13 +382,20 @@ describe("Automation E2E Reliability", () => {
     {
       const auto = await createAutomation("入力不足E2E", {
         workflow: workflow([
-          step({ id: "a", type: "excel_generate", name: "Excel", order: 0 }),
+          step({
+            id: "a",
+            type: "excel_generate",
+            name: "Excel",
+            order: 0,
+            configuration: { content: "売上データ" },
+          }),
           step({
             id: "b",
             type: "gmail",
             name: "メール",
             order: 1,
-            configuration: {},
+            // Preflight requires宛先; controlled invoker still returns needs_input.
+            configuration: { to: "boss@example.com", mode: "draft" },
           }),
         ]),
         executionPolicy: { mode: "run_then_notify" },

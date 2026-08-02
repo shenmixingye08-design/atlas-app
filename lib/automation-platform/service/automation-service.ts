@@ -1,4 +1,5 @@
 import { appendAutomationAudit } from "@/lib/automation-platform/audit/log";
+import "@/lib/automation-platform/audit/durable-audit";
 import { AutomationPlatformError } from "@/lib/automation-platform/errors/messages";
 import { resolveRunApprovalRequirement } from "@/lib/automation-platform/execution/policy";
 import {
@@ -92,6 +93,23 @@ export class AutomationPlatformService {
     }
 
     const record = buildAutomationFromCreateInput(userId, input);
+    if (record.status === "active") {
+      const { preflightAutomationActivation } = await import(
+        "@/lib/automation-platform/adapters/preflight"
+      );
+      const preflight = await preflightAutomationActivation({
+        automation: record,
+        access: context,
+      });
+      if (!preflight.ok) {
+        throw new AutomationPlatformError("automation_integration_required", {
+          preflightIssues: preflight.issues,
+          message:
+            preflight.issues[0]?.message ??
+            "自動化を有効化できません。不足している接続・設定を確認してください。",
+        });
+      }
+    }
     let saved = persistAutomationV2Now(record);
 
     if (saved.status === "active") {
@@ -198,7 +216,37 @@ export class AutomationPlatformService {
     }
 
     const trigger = patch.trigger ?? current.trigger;
-    const status = nextStatus;
+    let status = nextStatus;
+    const candidate: AutomationV2 = {
+      ...current,
+      ...patch,
+      instruction,
+      status,
+      trigger,
+      executionPolicy: patch.executionPolicy
+        ? { ...patch.executionPolicy, systemHighRiskOverride: true as const }
+        : current.executionPolicy,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (status === "active" && current.status !== "active") {
+      const { preflightAutomationActivation } = await import(
+        "@/lib/automation-platform/adapters/preflight"
+      );
+      const preflight = await preflightAutomationActivation({
+        automation: candidate,
+        access: context,
+      });
+      if (!preflight.ok) {
+        throw new AutomationPlatformError("automation_integration_required", {
+          preflightIssues: preflight.issues,
+          message:
+            preflight.issues[0]?.message ??
+            "自動化を有効化できません。不足している接続・設定を確認してください。",
+        });
+      }
+    }
+
     const nextRunAt =
       status === "active"
         ? computeNextRunIsoFromTrigger(trigger)
@@ -207,16 +255,9 @@ export class AutomationPlatformService {
           : current.nextRunAt;
 
     const updated: AutomationV2 = {
-      ...current,
-      ...patch,
-      instruction,
+      ...candidate,
       status,
-      trigger,
       nextRunAt: patch.nextRunAt !== undefined ? patch.nextRunAt : nextRunAt,
-      executionPolicy: patch.executionPolicy
-        ? { ...patch.executionPolicy, systemHighRiskOverride: true as const }
-        : current.executionPolicy,
-      updatedAt: new Date().toISOString(),
     };
 
     let saved = persistAutomationV2Now(updated);

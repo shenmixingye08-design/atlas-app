@@ -1,10 +1,22 @@
 /**
  * Dispatch queued / due-retry runs into the executor.
+ *
+ * Persistence model (environment constraint):
+ * - Runs + leases are DB-backed via atlas_user_state durable domains
+ * - No separate Redis/SQS broker in this deployment
+ * - Claim + lease + heartbeat + stuck reclaim provide restart/deploy safety
  */
 
 import "server-only";
 
 import { executeQueuedRun } from "@/lib/automation-platform/execution/executor";
+import {
+  acquireDispatchLease,
+  completeDispatchLease,
+  deadLetterDispatchLease,
+  heartbeatDispatchLease,
+  reclaimStuckDispatchLeases,
+} from "@/lib/automation-platform/execution/durable-dispatch";
 import { notifyAutomationRunEvent } from "@/lib/automation-platform/execution/notify";
 import type { StepInvoker } from "@/lib/automation-platform/execution/step-invoker";
 import { strictStepInvoker } from "@/lib/automation-platform/execution/strict-step-invoker";
@@ -18,6 +30,10 @@ import {
 import { createStatusTransition } from "@/lib/automation-platform/state-machine/transitions";
 import { persistAutomationRunNow } from "@/lib/automation-platform/durable-runs";
 import type { AutomationRun } from "@/lib/automation-platform/types";
+
+const WORKER_ID =
+  process.env.AUTOMATION_WORKER_ID?.trim() ||
+  `worker_${process.pid}_${Math.random().toString(16).slice(2, 8)}`;
 
 export type DispatchResult = {
   processed: number;
@@ -61,6 +77,7 @@ export async function dispatchAutomationRuns(options?: {
   limit?: number;
   invoker?: StepInvoker;
   runIds?: string[];
+  workerId?: string;
 }): Promise<DispatchResult> {
   const result: DispatchResult = {
     processed: 0,
@@ -70,6 +87,8 @@ export async function dispatchAutomationRuns(options?: {
     awaiting: 0,
   };
 
+  const workerId = options?.workerId ?? WORKER_ID;
+
   const candidates =
     options?.runIds && options.runIds.length > 0
       ? options.runIds
@@ -77,9 +96,30 @@ export async function dispatchAutomationRuns(options?: {
           .filter((run): run is AutomationRun => Boolean(run))
       : memoryListDispatchableRuns(options?.limit ?? 20);
 
+  const userIds = new Set(candidates.map((run) => run.userId));
+  for (const userId of userIds) {
+    await reclaimStuckDispatchLeases({ userId });
+  }
+
   for (const candidate of candidates) {
     const claimed = memoryClaimRun(candidate.id);
     if (!claimed) continue;
+
+    const lease = await acquireDispatchLease({
+      run: claimed,
+      workerId,
+    });
+    if (!lease) {
+      // Another worker holds a valid lease — roll claim back to avoid stuck running.
+      persistAutomationRunNow(
+        memoryUpdateRun({
+          ...claimed,
+          status: candidate.status,
+          updatedAt: new Date().toISOString(),
+        }),
+      );
+      continue;
+    }
 
     const withHistory = attachClaimTransition(claimed);
     const automation = memoryGetAutomation(withHistory.automationId);
@@ -94,6 +134,12 @@ export async function dispatchAutomationRuns(options?: {
           updatedAt: new Date().toISOString(),
         }),
       );
+      await deadLetterDispatchLease({
+        runId: failed.id,
+        userId: failed.userId,
+        workerId,
+        error: "automation_not_found",
+      });
       result.processed += 1;
       result.failed += 1;
       notifyAutomationRunEvent({
@@ -131,13 +177,22 @@ export async function dispatchAutomationRuns(options?: {
       });
     }
 
-    // Executor expects queued/retrying — restore claimable previous for its transition
-    // We already claimed to running; pass a synthetic queued shell by resetting status
-    // only inside executor input while keeping id. Simpler: update executor to accept running.
+    await heartbeatDispatchLease({
+      runId: withHistory.id,
+      userId: withHistory.userId,
+      workerId,
+    });
+
     const execResult = await executeQueuedRun({
       run: withHistory,
       automation,
       invoker: options?.invoker ?? strictStepInvoker,
+    });
+
+    await completeDispatchLease({
+      runId: withHistory.id,
+      userId: withHistory.userId,
+      workerId,
     });
 
     result.processed += 1;

@@ -8,6 +8,8 @@ import type { AutomationWorkflowStep } from "@/lib/automation-platform/types/ste
 import type { AutomationRunArtifact } from "@/lib/automation-platform/types/run";
 import { getCapability } from "@/lib/automation-platform/step-registry/registry";
 
+// AutomationRunArtifact kept for StepInvokeResult typing.
+
 export type StepInvokeResult = {
   ok: boolean;
   summary: string;
@@ -15,34 +17,37 @@ export type StepInvokeResult = {
   errorCode?: string | null;
   errorMessage?: string | null;
   needsUserInput?: boolean;
+  retryable?: boolean;
+  requestId?: string;
+  diagnosticId?: string;
+  costUsage?: {
+    aiCalls: number;
+    externalCalls: number;
+    estimatedTokens: number | null;
+  };
+  externalActionIds?: string[];
+  notificationIds?: string[];
+  outputBindings?: Record<string, unknown>;
 };
 
 export type StepInvoker = (input: {
   step: AutomationWorkflowStep;
   userId: string;
   automationName: string;
+  automationId?: string;
   runId: string;
   approved: boolean;
+  attempt?: number;
+  priorArtifacts?: AutomationRunArtifact[];
+  instructionText?: string;
+  freeformNotes?: string;
+  structuredOptions?: Readonly<Record<string, unknown>>;
+  occurrenceKey?: string | null;
 }) => Promise<StepInvokeResult>;
 
-function artifact(
-  label: string,
-  kind: AutomationRunArtifact["kind"] = "file",
-): AutomationRunArtifact {
-  return {
-    id: crypto.randomUUID(),
-    kind,
-    label,
-    url: null,
-    externalId: null,
-    createdAt: new Date().toISOString(),
-  };
-}
-
 /**
- * Default invoker: real side-effects only for safe/local steps.
- * High-risk external actions require approval and still produce a reviewable
- * draft/result record rather than silent publish when credentials are absent.
+ * Legacy/default invoker — fail-closed for live capabilities.
+ * Production dispatch uses liveStepInvoker (strictStepInvoker alias).
  */
 export const defaultStepInvoker: StepInvoker = async (input) => {
   const { step, approved } = input;
@@ -73,30 +78,21 @@ export const defaultStepInvoker: StepInvoker = async (input) => {
     case "vision_analysis":
     case "data_extract":
     case "file_convert":
-      return {
-        ok: true,
-        summary: `${capability.name}を完了しました`,
-        artifacts: [artifact(`${capability.name}結果`, "file")],
-      };
     case "word_generate":
     case "excel_generate":
     case "pdf_generate":
     case "powerpoint_generate":
-    case "deliverable_generate": {
-      const title =
-        (typeof step.configuration.title === "string" && step.configuration.title) ||
-        `${input.automationName} / ${capability.name}`;
-      return {
-        ok: true,
-        summary: `${capability.name}の成果物を準備しました`,
-        artifacts: [artifact(title, "deliverable")],
-      };
-    }
+    case "deliverable_generate":
     case "notify":
+    case "orchestrate":
+      // Legacy default invoker must not fake live success.
+      // Production dispatch uses liveStepInvoker / strictStepInvoker.
       return {
-        ok: true,
-        summary: "通知手順を記録しました",
+        ok: false,
+        summary: `${capability.name}はライブアダプタ経由でのみ実行できます`,
         artifacts: [],
+        errorCode: "automation_unsupported_step",
+        errorMessage: `${step.type}_requires_live_adapter`,
       };
     case "wait":
     case "condition":
@@ -114,62 +110,18 @@ export const defaultStepInvoker: StepInvoker = async (input) => {
         errorMessage: "ユーザー承認が必要です",
         needsUserInput: true,
       };
-    case "gmail": {
-      const to =
-        typeof step.configuration.to === "string"
-          ? step.configuration.to
-          : "（宛先未設定）";
-      return {
-        ok: true,
-        summary: `メール下書きを準備しました（${to}）`,
-        artifacts: [artifact(`メール下書き: ${to}`, "draft")],
-      };
-    }
-    case "x_post": {
-      const text =
-        typeof step.configuration.text === "string"
-          ? step.configuration.text.slice(0, 80)
-          : "投稿下書き";
-      return {
-        ok: true,
-        summary: "X投稿の下書きを準備しました（公開は承認済み手順のみ）",
-        artifacts: [artifact(`X下書き: ${text}`, "draft")],
-      };
-    }
+    case "gmail":
+    case "x_post":
     case "wordpress":
-      return {
-        ok: true,
-        summary: "WordPress公開内容を準備しました",
-        artifacts: [artifact("WordPress下書き", "draft")],
-      };
-    case "dropbox": {
-      const dest =
-        typeof step.configuration.saveTarget === "string"
-          ? step.configuration.saveTarget
-          : "Dropbox";
-      return {
-        ok: true,
-        summary: `保存先 ${dest} への準備が完了しました`,
-        artifacts: [artifact(`保存: ${dest}`, "external")],
-      };
-    }
+    case "dropbox":
     case "google_calendar":
       return {
-        ok: true,
-        summary: "カレンダー予定を準備しました",
-        artifacts: [artifact("カレンダー予定", "external")],
+        ok: false,
+        summary: `${capability.name}はライブアダプタ経由でのみ実行できます`,
+        artifacts: [],
+        errorCode: "automation_unsupported_step",
+        errorMessage: `${step.type}_requires_live_adapter`,
       };
-    case "orchestrate": {
-      const assignment =
-        typeof step.configuration.assignment === "string"
-          ? step.configuration.assignment
-          : input.automationName;
-      return {
-        ok: true,
-        summary: `仕事の遂行を記録しました: ${assignment.slice(0, 60)}`,
-        artifacts: [artifact("遂行結果", "deliverable")],
-      };
-    }
     default:
       return {
         ok: false,
