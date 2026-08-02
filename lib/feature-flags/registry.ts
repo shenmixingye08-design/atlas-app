@@ -85,6 +85,36 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
     description: "実行前承認・ステップ承認（Execution Policy）",
     category: "capability",
   },
+  {
+    id: "automation_first_home_enabled",
+    label: "Automation First ホーム",
+    description: "ログイン後ホームを自動化・今日の仕事中心の構成へ切替",
+    category: "capability",
+  },
+  {
+    id: "automation_first_navigation_enabled",
+    label: "Automation First ナビ",
+    description: "サイドバー／下部ナビの優先順位を自動化ファーストへ",
+    category: "capability",
+  },
+  {
+    id: "automation_design_system_enabled",
+    label: "Automation Design System",
+    description: "状態色・タイポ・余白トークンの統一スタイルを適用",
+    category: "capability",
+  },
+  {
+    id: "automation_dashboard_v2_enabled",
+    label: "自動化ダッシュボード v2",
+    description: "自動化一覧・今日の仕事の運用向け表示",
+    category: "capability",
+  },
+  {
+    id: "workflow_learning_enabled",
+    label: "Workflow Learning",
+    description: "実行結果と修正から改善候補を提案し、承認後に新revisionへ反映",
+    category: "capability",
+  },
 ] as const;
 
 export const FEATURE_FLAG_IDS: readonly FeatureFlagId[] =
