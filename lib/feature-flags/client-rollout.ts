@@ -26,14 +26,11 @@ export function resolveClientAutomationFirstPreferOn(): boolean {
     return true;
   }
 
-  // Vercel injects NEXT_PUBLIC_VERCEL_ENV on client bundles.
-  if (process.env.NEXT_PUBLIC_VERCEL_ENV === "preview") {
-    return true;
+  // Prefer AF on for real app surfaces (Preview / Production / Development).
+  // Vitest does not use this helper for server store defaults.
+  if (process.env.NODE_ENV === "test") {
+    return false;
   }
 
-  if (process.env.NODE_ENV === "development") {
-    return true;
-  }
-
-  return false;
+  return true;
 }

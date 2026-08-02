@@ -34,12 +34,12 @@ describe("automation first rollout defaults", () => {
     expect(resolveAutomationFirstDefaultState()).toBe("on");
   });
 
-  it("defaults to beta in production (rollback-friendly staged)", () => {
+  it("defaults to on in production so formal /projects shows AF after login", () => {
     vi.stubEnv("VITEST", "");
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("VERCEL_ENV", "production");
     vi.stubEnv("ATLAS_AUTOMATION_FIRST_UI", "");
-    expect(resolveAutomationFirstDefaultState()).toBe("beta");
+    expect(resolveAutomationFirstDefaultState()).toBe("on");
   });
 
   it("honors ATLAS_AUTOMATION_FIRST_UI=off for rollback", () => {
@@ -48,14 +48,14 @@ describe("automation first rollout defaults", () => {
     expect(resolveAutomationFirstDefaultState()).toBe("off");
   });
 
-  it("client prefers AF on for Preview/dev", () => {
+  it("client prefers AF on for Preview/production/dev", () => {
     vi.stubEnv("NEXT_PUBLIC_ATLAS_AUTOMATION_FIRST_UI", "");
     vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "preview");
     vi.stubEnv("NODE_ENV", "production");
     expect(resolveClientAutomationFirstPreferOn()).toBe(true);
 
-    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
-    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "production");
+    vi.stubEnv("NODE_ENV", "production");
     expect(resolveClientAutomationFirstPreferOn()).toBe(true);
 
     vi.stubEnv("NEXT_PUBLIC_ATLAS_AUTOMATION_FIRST_UI", "off");
