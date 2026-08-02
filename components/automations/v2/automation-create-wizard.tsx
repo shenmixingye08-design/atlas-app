@@ -58,7 +58,12 @@ import { fetchIntegrationCatalog } from "@/lib/integrations/client";
 import { fetchXConnectionStatusClient } from "@/lib/integrations/x/post/client";
 import { cn } from "@/lib/design-system/cn";
 
-import { WizardShell } from "./wizard-shell";
+import { ComposerShell } from "./composer-shell";
+import { LiveSummaryPanel } from "./live-summary-panel";
+import {
+  applyJobTemplate,
+  JOB_TEMPLATES,
+} from "@/lib/automation-platform/wizard/job-templates";
 
 const DAY_OPTIONS = [
   { value: 0, label: "日" },
@@ -326,18 +331,17 @@ export function AutomationCreateWizard({ initialDraftId, seedText }: Props) {
 
   const nextLabel = useMemo(() => {
     if (draft.currentStepId === "review") {
-      if (draft.activateOnCreate) return "自動化を作成して有効化";
-      return "下書きとして保存して作成";
+      return "この内容で任せる";
     }
     return "次へ";
-  }, [draft.currentStepId, draft.activateOnCreate]);
+  }, [draft.currentStepId]);
 
   if (flags && flags.automation_v2_enabled === false) {
     return (
       <div className="mx-auto max-w-xl px-4 py-10">
-        <h1 className="text-xl font-semibold">自動化</h1>
+        <h1 className="text-xl font-semibold">仕事を任せる</h1>
         <p className="mt-3 text-sm text-[var(--text-secondary)]">
-          新しい自動化の作成は、現在ご利用いただけません。
+          いまは新しい依頼を作成できません。
         </p>
         <Button className="mt-6" onClick={() => router.push("/automations")}>
           一覧へ戻る
@@ -347,8 +351,8 @@ export function AutomationCreateWizard({ initialDraftId, seedText }: Props) {
   }
 
   return (
-    <WizardShell
-      title={draft.name || "新しい自動化"}
+    <ComposerShell
+      title={draft.name || "仕事を任せる"}
       stepIds={stepIds}
       currentStepId={draft.currentStepId}
       savedAt={draft.savedAt}
@@ -359,6 +363,12 @@ export function AutomationCreateWizard({ initialDraftId, seedText }: Props) {
       onBack={onBack}
       onNext={() => void onNext()}
       onSaveDraft={() => void persistDraft(draft)}
+      summaryPanel={
+        <LiveSummaryPanel
+          draft={draft}
+          validationMessages={built.errors.map((e) => e.message)}
+        />
+      }
     >
       <div ref={errorRef} tabIndex={-1} className="outline-none">
         {draft.currentStepId === "work" ? (
@@ -407,7 +417,7 @@ export function AutomationCreateWizard({ initialDraftId, seedText }: Props) {
           />
         ) : null}
       </div>
-    </WizardShell>
+    </ComposerShell>
   );
 }
 
@@ -496,9 +506,29 @@ function WorkStep({
   return (
     <div className="space-y-5">
       <SectionTitle
-        title="何を自動化しますか"
-        description="よく使う仕事から選ぶか、希望を文章で書いてください。あとから順番や詳細を直せます。"
+        title="何を任せますか？"
+        description="テンプレートを選ぶか、希望を文章で書いてください。細かい調整はこのあとできます。"
       />
+
+      <div className="space-y-2">
+        <p className="text-sm font-medium">よく任せる仕事（テンプレート）</p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {JOB_TEMPLATES.map((template) => (
+            <ChoiceButton
+              key={template.id}
+              selected={draft.name === template.label}
+              title={template.label}
+              description={template.description}
+              badge={template.group}
+              onClick={() =>
+                onChange(
+                  applyJobTemplate(template, { draftId: draft.draftId }),
+                )
+              }
+            />
+          ))}
+        </div>
+      </div>
 
       <label className="block">
         <span className="mb-2 block text-sm font-medium">希望を文章で書く</span>
@@ -524,11 +554,11 @@ function WorkStep({
           onChange(proposeWizardFromNaturalLanguage(draft.naturalLanguageSeed))
         }
       >
-        文章から自動化案を作る
+        文章から依頼内容を作る
       </Button>
       {draft.naturalLanguageSeed && draft.steps.length > 0 ? (
         <div className="rounded-2xl bg-[var(--surface-muted)] px-4 py-3 text-sm">
-          <p className="font-medium">提案内容（まだ保存されていません）</p>
+          <p className="font-medium">いまの提案</p>
           <p className="mt-2 whitespace-pre-wrap">{describeSteps(draft)}</p>
           <p className="mt-2">{describeSchedule(draft)}</p>
           {listUnsetProposalFields(draft).length > 0 ? (
@@ -596,41 +626,104 @@ function TimingStep({
   onChange: (draft: AutomationWizardDraft) => void;
 }) {
   const frequencies = [
-    { id: "manual", label: "手動で実行", hint: "必要なときに自分で開始" },
-    { id: "once", label: "一回だけ", hint: "指定日時に1回" },
     { id: "daily", label: "毎日", hint: "毎日同じ時刻" },
-    { id: "weekdays", label: "平日のみ", hint: "月〜金" },
-    { id: "weekly", label: "毎週・曜日指定", hint: "選んだ曜日" },
+    { id: "weekly", label: "毎週", hint: "選んだ曜日" },
     { id: "monthly", label: "毎月", hint: "毎月同じ日" },
-    { id: "month_end", label: "月末", hint: "毎月末" },
+    { id: "once", label: "特定日", hint: "指定日時に1回" },
+    { id: "manual", label: "手動", hint: "必要なときに自分で開始" },
+    {
+      id: "condition",
+      label: "条件がそろったとき",
+      hint: "準備ができたら実行（いまは手動開始＋メモ）",
+    },
+    {
+      id: "ai_propose",
+      label: "提案を見てから",
+      hint: "実行前に内容を確認してから進める",
+    },
   ] as const;
 
   return (
     <div className="space-y-5">
       <SectionTitle
-        title="いつ実行しますか"
-        description="時刻と繰り返しを選ぶと、次回の実行予定が文章で表示されます。"
+        title="いつ進めますか？"
+        description="選ぶだけで大丈夫です。時刻はあとから変えられます。"
       />
       <div className="space-y-2">
-        {frequencies.map((item) => (
-          <ChoiceButton
-            key={item.id}
-            selected={
-              item.id === "manual"
-                ? draft.triggerType === "manual"
-                : draft.triggerType === "schedule" && draft.frequency === item.id
-            }
-            title={item.label}
-            description={item.hint}
-            onClick={() =>
-              onChange({
-                ...draft,
-                triggerType: item.id === "manual" ? "manual" : "schedule",
-                frequency: item.id === "manual" ? draft.frequency : item.id,
-              })
-            }
-          />
-        ))}
+        {frequencies.map((item) => {
+          const selected =
+            item.id === "manual" || item.id === "condition"
+              ? draft.triggerType === "manual" &&
+                (item.id !== "condition" ||
+                  Boolean(draft.structuredExtras.waitForCondition))
+              : item.id === "ai_propose"
+                ? draft.executionMode === "review_before_run" &&
+                  Boolean(draft.structuredExtras.aiProposeFirst)
+                : draft.triggerType === "schedule" &&
+                  draft.frequency === item.id &&
+                  !draft.structuredExtras.aiProposeFirst;
+          return (
+            <ChoiceButton
+              key={item.id}
+              selected={Boolean(selected)}
+              title={item.label}
+              description={item.hint}
+              onClick={() => {
+                if (item.id === "manual") {
+                  onChange({
+                    ...draft,
+                    triggerType: "manual",
+                    structuredExtras: {
+                      ...draft.structuredExtras,
+                      waitForCondition: false,
+                      aiProposeFirst: false,
+                    },
+                  });
+                  return;
+                }
+                if (item.id === "condition") {
+                  onChange({
+                    ...draft,
+                    triggerType: "manual",
+                    structuredExtras: {
+                      ...draft.structuredExtras,
+                      waitForCondition: true,
+                      aiProposeFirst: false,
+                    },
+                    freeformNotes: draft.freeformNotes.includes("条件")
+                      ? draft.freeformNotes
+                      : `${draft.freeformNotes}\n条件がそろったら実行`.trim(),
+                  });
+                  return;
+                }
+                if (item.id === "ai_propose") {
+                  onChange({
+                    ...draft,
+                    triggerType: "schedule",
+                    frequency: "weekly",
+                    executionMode: "review_before_run",
+                    structuredExtras: {
+                      ...draft.structuredExtras,
+                      waitForCondition: false,
+                      aiProposeFirst: true,
+                    },
+                  });
+                  return;
+                }
+                onChange({
+                  ...draft,
+                  triggerType: "schedule",
+                  frequency: item.id,
+                  structuredExtras: {
+                    ...draft.structuredExtras,
+                    waitForCondition: false,
+                    aiProposeFirst: false,
+                  },
+                });
+              }}
+            />
+          );
+        })}
       </div>
 
       {draft.triggerType === "schedule" ? (
@@ -767,8 +860,8 @@ function StepsStep({
   return (
     <div className="space-y-5">
       <SectionTitle
-        title="やることと順番"
-        description="上から順に実行します。スマートフォンでは「上へ」「下へ」で並べ替えられます。"
+        title="どんな成果物にしますか？"
+        description="複数選べます。順番は上から下へ進みます。"
       />
       <ul className="space-y-3">
         {draft.steps.map((step, index) => (
@@ -1123,76 +1216,67 @@ function NotificationsStep({
   draft: AutomationWizardDraft;
   onChange: (draft: AutomationWizardDraft) => void;
 }) {
+  const noneSelected =
+    !draft.notifyOnSuccess &&
+    !draft.notifyOnFailure &&
+    !draft.notifyBeforeRun &&
+    !draft.notifyOnNeedsInput;
+
   return (
     <div className="space-y-5">
       <SectionTitle
-        title="通知"
-        description="通知をオフにしても、自動化の履歴から結果を確認できます。"
+        title="どう知らせますか？"
+        description="完了・失敗・承認のどれを知らせるか選ぶだけです。"
       />
-      {(
-        [
-          ["notifyBeforeRun", "実行前"],
-          ["notifyOnNeedsInput", "入力・承認が必要な時"],
-          ["notifyOnSuccess", "完了時"],
-          ["notifyOnFailure", "失敗時"],
-        ] as const
-      ).map(([key, label]) => (
-        <label key={key} className="flex min-h-[48px] items-center gap-3">
-          <input
-            type="checkbox"
-            checked={Boolean(draft[key])}
-            onChange={(event) =>
-              onChange({ ...draft, [key]: event.target.checked })
-            }
-          />
-          <span>{label}</span>
-        </label>
-      ))}
-      <div>
-        <p className="mb-2 text-sm font-medium">通知方法</p>
-        {(
-          [
-            ["in_app", "アプリ内"],
-            ["web_push", "Push"],
-            ["email", "メール"],
-          ] as const
-        ).map(([value, label]) => {
-          // email channel may be unavailable depending on product — keep selectable only if in_app always
-          const disabled = value === "email";
-          const selected = draft.notificationChannels.includes(value);
-          return (
-            <label
-              key={value}
-              className={cn(
-                "mb-2 flex min-h-[48px] items-center gap-3",
-                disabled && "opacity-45",
-              )}
-            >
-              <input
-                type="checkbox"
-                disabled={disabled}
-                checked={selected}
-                onChange={(event) => {
-                  const notificationChannels = event.target.checked
-                    ? [...draft.notificationChannels, value]
-                    : draft.notificationChannels.filter((item) => item !== value);
-                  onChange({
-                    ...draft,
-                    notificationChannels:
-                      notificationChannels.length > 0
-                        ? notificationChannels
-                        : ["in_app"],
-                  });
-                }}
-              />
-              <span>
-                {label}
-                {disabled ? "（準備中）" : ""}
-              </span>
-            </label>
-          );
-        })}
-      </div>
+      <ChoiceButton
+        selected={draft.notifyOnSuccess}
+        title="完了を知らせる"
+        description="終わったらお知らせします"
+        onClick={() =>
+          onChange({ ...draft, notifyOnSuccess: !draft.notifyOnSuccess })
+        }
+      />
+      <ChoiceButton
+        selected={draft.notifyOnFailure}
+        title="失敗を知らせる"
+        description="うまくいかなかったらお知らせします"
+        onClick={() =>
+          onChange({ ...draft, notifyOnFailure: !draft.notifyOnFailure })
+        }
+      />
+      <ChoiceButton
+        selected={
+          draft.executionMode === "review_before_run" ||
+          draft.selectedApprovalStepIds.length > 0
+        }
+        title="承認が必要"
+        description="進める前にあなたが確認します"
+        onClick={() =>
+          onChange({
+            ...draft,
+            executionMode:
+              draft.executionMode === "review_before_run"
+                ? "run_then_notify"
+                : "review_before_run",
+            notifyOnNeedsInput: true,
+          })
+        }
+      />
+      <ChoiceButton
+        selected={noneSelected}
+        title="通知なし"
+        description="履歴から結果を見られます"
+        onClick={() =>
+          onChange({
+            ...draft,
+            notifyBeforeRun: false,
+            notifyOnSuccess: false,
+            notifyOnFailure: false,
+            notifyOnNeedsInput: false,
+            notificationChannels: ["in_app"],
+          })
+        }
+      />
     </div>
   );
 }
@@ -1207,8 +1291,54 @@ function MemoryStep({
   return (
     <div className="space-y-5">
       <SectionTitle
-        title="好み・過去の設定"
-        description="この自動化で使う記憶だけ選んでください。送信先や保存先は記憶だけで確定しません。"
+        title="覚え方"
+        description="今回だけか、次からも使うか選んでください。"
+      />
+      <ChoiceButton
+        selected={draft.memoryEnabled}
+        title="今回の設定を覚える"
+        description="次からも同じ好みで進めます"
+        onClick={() =>
+          onChange({
+            ...draft,
+            memoryEnabled: true,
+            memoryAllowedScopes:
+              draft.memoryAllowedScopes.length > 0
+                ? draft.memoryAllowedScopes
+                : [
+                    "writing_style",
+                    "document_design",
+                    "preferred_formats",
+                    "recurring_work_preferences",
+                  ],
+          })
+        }
+      />
+      <ChoiceButton
+        selected={!draft.memoryEnabled}
+        title="今回だけ"
+        description="この依頼だけの設定にします"
+        onClick={() => onChange({ ...draft, memoryEnabled: false })}
+      />
+      <ChoiceButton
+        selected={draft.memoryEnabled && draft.memoryAllowedScopes.length > 0}
+        title="既存の好みを使う"
+        description="すでに覚えている内容を使います"
+        onClick={() =>
+          onChange({
+            ...draft,
+            memoryEnabled: true,
+            memoryAllowedScopes:
+              draft.memoryAllowedScopes.length > 0
+                ? draft.memoryAllowedScopes
+                : [
+                    "writing_style",
+                    "document_design",
+                    "preferred_formats",
+                    "recurring_work_preferences",
+                  ],
+          })
+        }
       />
       <label className="flex min-h-[48px] items-center gap-3">
         <input
@@ -1218,7 +1348,7 @@ function MemoryStep({
             onChange({ ...draft, memoryEnabled: event.target.checked })
           }
         />
-        <span>この自動化で好みや過去の設定を使う</span>
+        <span>くわしい好みの範囲を選ぶ</span>
       </label>
       {draft.memoryEnabled ? (
         <div className="space-y-2">
@@ -1309,8 +1439,8 @@ function NotesStep({
   return (
     <div className="space-y-5">
       <SectionTitle
-        title="備考・細かい希望"
-        description="フォームにない希望を自由に書いてください。危険な指示や設定との矛盾は確認します。"
+        title="くわしい希望"
+        description="箇条書き・枚数・色など、自然な言葉で書いてください。"
       />
       <label className="block">
         <span className="mb-2 block text-sm font-medium">備考</span>
@@ -1393,40 +1523,44 @@ function ReviewStep({
   return (
     <div className="space-y-5">
       <SectionTitle
-        title="最終確認"
-        description="この内容でMINERVOTが動きます。違う点があれば戻って直してください。"
+        title="この内容で任せます"
+        description="そのままでよければ「任せる」。違うところはここで直せます（戻らなくて大丈夫です）。"
       />
       <label className="block">
-        <span className="mb-2 block text-sm font-medium">自動化名</span>
+        <span className="mb-2 block text-sm font-medium">依頼の名前</span>
         <Input
           value={draft.name}
           onChange={(event) => onChange({ ...draft, name: event.target.value })}
         />
       </label>
-      <div className="whitespace-pre-wrap rounded-2xl bg-[var(--surface-muted)] px-4 py-4 text-sm leading-relaxed">
-        {summary || buildHumanSummary(draft)}
-      </div>
-      <div className="space-y-2 text-sm">
-        <p>実行タイミング: {describeSchedule(draft)}</p>
-        <p>やること: {describeSteps(draft)}</p>
-        <p>確認方針: {describeExecutionPolicy(draft)}</p>
+      <label className="block">
+        <span className="mb-2 block text-sm font-medium">内容のまとめ（編集可）</span>
+        <textarea
+          className="min-h-[140px] w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm leading-relaxed outline-none focus-ring"
+          value={draft.description || summary || buildHumanSummary(draft)}
+          onChange={(event) =>
+            onChange({ ...draft, description: event.target.value })
+          }
+        />
+      </label>
+      <label className="block">
+        <span className="mb-2 block text-sm font-medium">くわしい希望</span>
+        <textarea
+          className="min-h-[96px] w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm outline-none focus-ring"
+          value={draft.freeformNotes}
+          placeholder="例: 箇条書き、A4一枚、青系"
+          onChange={(event) =>
+            onChange({ ...draft, freeformNotes: event.target.value })
+          }
+        />
+      </label>
+      <div className="space-y-2 text-sm text-[var(--text-secondary)]">
+        <p>タイミング: {describeSchedule(draft)}</p>
+        <p>成果物: {describeSteps(draft)}</p>
+        <p>確認: {describeExecutionPolicy(draft)}</p>
         <p>
-          通知:{" "}
-          {[
-            draft.notifyBeforeRun ? "実行前" : null,
-            draft.notifyOnSuccess ? "完了" : null,
-            draft.notifyOnFailure ? "失敗" : null,
-          ]
-            .filter(Boolean)
-            .join(" / ") || "履歴で確認"}
-        </p>
-        <p>
-          好み・記憶:{" "}
-          {draft.memoryEnabled
-            ? draft.memoryAllowedScopes
-                .map((scope) => MEMORY_LABELS[scope] ?? scope)
-                .join("、") || "範囲未選択"
-            : "使わない"}
+          覚え方:{" "}
+          {draft.memoryEnabled ? "好みを使う / 覚える" : "今回だけ"}
         </p>
       </div>
       <label className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-[var(--border)] px-4">
@@ -1437,7 +1571,7 @@ function ReviewStep({
             onChange({ ...draft, activateOnCreate: event.target.checked })
           }
         />
-        <span>作成と同時に有効化する（スケジューラへ登録します）</span>
+        <span>すぐに開始する（予定どおり進める）</span>
       </label>
     </div>
   );
@@ -1458,11 +1592,11 @@ function CompleteStep({
   return (
     <div className="space-y-5 py-6">
       <SectionTitle
-        title="自動化を作成しました"
+        title="任せました"
         description={
           draft.activateOnCreate
-            ? "実行スケジュールへ登録済みです。"
-            : "下書きとして保存しました。一覧から有効化できます。"
+            ? "予定どおり進めます。"
+            : "下書きとして保存しました。一覧から開始できます。"
         }
       />
       <div className="rounded-2xl bg-[var(--surface-muted)] px-4 py-3 text-sm">

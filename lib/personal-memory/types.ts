@@ -116,7 +116,27 @@ export type MemoryAppliesTo = {
   automationIds: string[];
   artifactTypes: string[];
   capabilities: string[];
+  /** Work / deliverable categories e.g. sales_deck, sns_post, blog */
+  workCategories: string[];
+  /** Company / client ids */
+  companyIds: string[];
+  /** Template ids */
+  templateIds: string[];
 };
+
+export function normalizeAppliesTo(
+  partial?: Partial<MemoryAppliesTo> | null,
+): MemoryAppliesTo {
+  return {
+    global: partial?.global ?? true,
+    automationIds: partial?.automationIds ?? [],
+    artifactTypes: partial?.artifactTypes ?? [],
+    capabilities: partial?.capabilities ?? [],
+    workCategories: partial?.workCategories ?? [],
+    companyIds: partial?.companyIds ?? [],
+    templateIds: partial?.templateIds ?? [],
+  };
+}
 
 export type MemoryEvidence = {
   kind: "user_message" | "correction" | "run" | "manual" | "import";
@@ -252,6 +272,18 @@ export type MemoryConflict = {
   >;
 };
 
+export type MemoryResolveLayer =
+  | "current_instruction"
+  | "automation_memory"
+  | "deliverable_category"
+  | "company_memory"
+  | "global_memory"
+  | "system_inference"
+  | "notes"
+  | "automation_config"
+  | "automation_override"
+  | "system_default";
+
 export type ResolvedMemoryValue = {
   memoryId: string;
   scope: PersonalMemoryScope;
@@ -260,13 +292,7 @@ export type ResolvedMemoryValue = {
   title: string;
   summary: string;
   source: MemorySource;
-  layer:
-    | "current_instruction"
-    | "notes"
-    | "automation_config"
-    | "automation_override"
-    | "global_memory"
-    | "system_default";
+  layer: MemoryResolveLayer;
   sensitivity: MemorySensitivity;
 };
 
@@ -298,12 +324,44 @@ export type CorrectionSignal = {
   after?: string | null;
   automationId?: string | null;
   artifactType?: string | null;
+  workCategory?: string | null;
+  companyId?: string | null;
+  templateId?: string | null;
   source: Exclude<MemorySource, "external_content">;
+};
+
+/** User response to a candidate preference */
+export type CandidateDecision = "always" | "once" | "never";
+
+export type MemoryConfidenceBand = "confirmed" | "candidate" | "learning";
+
+export type MemoryApplyPreviewItem = {
+  scope: PersonalMemoryScope;
+  title: string;
+  summary: string;
+  layer: MemoryResolveLayer;
+  memoryId: string | null;
+};
+
+export type MemoryImprovementSuggestion = {
+  id: string;
+  title: string;
+  description: string;
+  scope: PersonalMemoryScope;
+  key: string;
+  proposedValue: Record<string, unknown>;
+  evidenceCount: number;
+  confidence: number;
 };
 
 export const MAX_PERSONAL_MEMORIES_PER_USER = 300;
 export const MAX_CANDIDATES_PER_USER = 50;
 export const CORRECTION_REPEAT_THRESHOLD = 3;
+/** Promote candidate → active only after user approval AND this confidence */
+export const MEMORY_PROMOTE_CONFIDENCE = 0.85;
+export const MEMORY_CONFIRMED_CONFIDENCE = 0.95;
+export const MEMORY_CANDIDATE_CONFIDENCE = 0.7;
+export const MEMORY_LEARNING_CONFIDENCE = 0.3;
 
 export const SENSITIVE_SCOPES: readonly PersonalMemoryScope[] = [
   "default_recipients",

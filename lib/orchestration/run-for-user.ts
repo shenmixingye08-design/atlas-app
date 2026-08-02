@@ -131,39 +131,91 @@ export async function runOrchestrationForUser(
       : null;
 
   let personalMemoryMeta: Record<string, unknown> | null = null;
+  let personalMemoryApplyPreview:
+    | import("@/lib/personal-memory/types").MemoryApplyPreviewItem[]
+    | undefined;
+  let personalMemoryPrediction:
+    | import("@/lib/personal-memory/predict/types").PredictiveApplyPreview
+    | undefined;
   if (input.userId) {
     try {
-      const { resolveForContext } = await import(
+      const { getApplyPreviewForContext } = await import(
         "@/lib/personal-memory/service"
       );
-      const { result: personalResolved } = await resolveForContext({
+      const { listSessionDisabledMemoryIds } = await import(
+        "@/lib/personal-memory/store"
+      );
+      const preview = await getApplyPreviewForContext({
         userId: input.userId,
         notes: input.assignment,
+        sessionDisabledIds: listSessionDisabledMemoryIds(input.userId),
+        workCategory:
+          typeof input.metadata?.workCategory === "string"
+            ? input.metadata.workCategory
+            : null,
+        companyId:
+          typeof input.metadata?.companyId === "string"
+            ? input.metadata.companyId
+            : null,
+        templateId:
+          typeof input.metadata?.templateId === "string"
+            ? input.metadata.templateId
+            : null,
+        automationId:
+          typeof input.metadata?.automationId === "string"
+            ? input.metadata.automationId
+            : null,
+        artifactTypes: Array.isArray(input.metadata?.artifactTypes)
+          ? (input.metadata.artifactTypes as string[])
+          : null,
       });
-      if (personalResolved.injectionText) {
+      personalMemoryApplyPreview = preview.items;
+      personalMemoryPrediction = preview.prediction;
+      if (preview.injectionText) {
         personalMemoryMeta = {
-          personalMemory: personalResolved.injectionText,
-          personalMemoryTokenEstimate: personalResolved.tokenEstimate,
+          personalMemory: preview.injectionText,
+          personalMemoryTokenEstimate: preview.injectionText.length,
+          personalMemoryApplyPreview: preview.items,
+          personalMemoryPrediction: {
+            id: preview.prediction.id,
+            headline: preview.prediction.headline,
+            evidenceSummary: preview.prediction.evidenceSummary,
+            overallPrediction: preview.prediction.overallPrediction,
+            estimatedMatchRate: preview.prediction.estimatedMatchRate,
+            items: preview.prediction.items,
+            proactiveSuggestions: preview.prediction.proactiveSuggestions,
+          },
         };
       }
     } catch {
       personalMemoryMeta = null;
+      personalMemoryApplyPreview = undefined;
+      personalMemoryPrediction = undefined;
     }
   }
 
-  const result = sanitizeOrchestrationResultForClient(
-    await orchestrate({
-      assignment: input.assignment,
-      metadata: {
-        ...buildCompanyOrchestrationMetadata(templateId),
-        ...(input.metadata ?? {}),
-        ...(input.userId ? { userId: input.userId } : {}),
-        ...(memoryMeta ?? {}),
-        ...(workMemoryMeta ?? {}),
-        ...(personalMemoryMeta ?? {}),
-      },
+  const result = {
+    ...sanitizeOrchestrationResultForClient(
+      await orchestrate({
+        assignment: input.assignment,
+        metadata: {
+          ...buildCompanyOrchestrationMetadata(templateId),
+          ...(input.metadata ?? {}),
+          ...(input.userId ? { userId: input.userId } : {}),
+          ...(memoryMeta ?? {}),
+          ...(workMemoryMeta ?? {}),
+          ...(personalMemoryMeta ?? {}),
+        },
+      }),
+    ),
+    ...(personalMemoryApplyPreview &&
+      personalMemoryApplyPreview.length > 0 && {
+        personalMemoryApplyPreview,
+      }),
+    ...(personalMemoryPrediction && {
+      personalMemoryPrediction,
     }),
-  );
+  };
 
   const workMemory =
     usedWorkMemories.length > 0
@@ -268,6 +320,34 @@ export async function runOrchestrationForUser(
       finalResponse: result.finalResponse,
       metadata: input.metadata,
     });
+
+    if (
+      typeof input.metadata?.correctionBefore === "string" &&
+      typeof input.metadata?.correctionAfter === "string"
+    ) {
+      void import("@/lib/personal-memory/service")
+        .then(({ learnFromDeliverableDiff }) =>
+          learnFromDeliverableDiff({
+            userId: input.userId!,
+            before: input.metadata!.correctionBefore as string,
+            after: input.metadata!.correctionAfter as string,
+            artifactType: result.deliverable?.type ?? null,
+            workCategory:
+              typeof input.metadata?.workCategory === "string"
+                ? input.metadata.workCategory
+                : null,
+            companyId:
+              typeof input.metadata?.companyId === "string"
+                ? input.metadata.companyId
+                : null,
+            automationId:
+              typeof input.metadata?.automationId === "string"
+                ? input.metadata.automationId
+                : null,
+          }),
+        )
+        .catch(() => undefined);
+    }
 
     recordLearningEventFromOrchestration({
       userId: input.userId,
