@@ -114,50 +114,20 @@ export const defaultStepInvoker: StepInvoker = async (input) => {
         errorMessage: "ユーザー承認が必要です",
         needsUserInput: true,
       };
-    case "gmail": {
-      const to =
-        typeof step.configuration.to === "string"
-          ? step.configuration.to
-          : "（宛先未設定）";
-      return {
-        ok: true,
-        summary: `メール下書きを準備しました（${to}）`,
-        artifacts: [artifact(`メール下書き: ${to}`, "draft")],
-      };
-    }
-    case "x_post": {
-      const text =
-        typeof step.configuration.text === "string"
-          ? step.configuration.text.slice(0, 80)
-          : "投稿下書き";
-      return {
-        ok: true,
-        summary: "X投稿の下書きを準備しました（公開は承認済み手順のみ）",
-        artifacts: [artifact(`X下書き: ${text}`, "draft")],
-      };
-    }
+    // External steps: never fake draft success. Use strictStepInvoker / Live Registry.
+    case "gmail":
+    case "x_post":
     case "wordpress":
-      return {
-        ok: true,
-        summary: "WordPress公開内容を準備しました",
-        artifacts: [artifact("WordPress下書き", "draft")],
-      };
-    case "dropbox": {
-      const dest =
-        typeof step.configuration.saveTarget === "string"
-          ? step.configuration.saveTarget
-          : "Dropbox";
-      return {
-        ok: true,
-        summary: `保存先 ${dest} への準備が完了しました`,
-        artifacts: [artifact(`保存: ${dest}`, "external")],
-      };
-    }
+    case "dropbox":
     case "google_calendar":
       return {
-        ok: true,
-        summary: "カレンダー予定を準備しました",
-        artifacts: [artifact("カレンダー予定", "external")],
+        ok: false,
+        summary:
+          "外部連携は Live Adapter Registry 経由でのみ実行できます（途中成功禁止）",
+        artifacts: [],
+        errorCode: "automation_unsupported_step",
+        errorMessage: `${step.type}_requires_live_adapter`,
+        needsUserInput: true,
       };
     case "orchestrate": {
       const assignment =
