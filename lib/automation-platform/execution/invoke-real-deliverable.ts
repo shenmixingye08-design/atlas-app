@@ -80,6 +80,31 @@ export async function invokeRealDeliverableStep(
     );
   }
 
+  // Apply Personal Memory into source before generateDeliverables (instruction wins).
+  let assignment = source.assignment;
+  let content = source.content;
+  let title = source.title;
+  try {
+    const { applyMemoryToDeliverableSource } = await import(
+      "@/lib/personal-memory/bridge/deliverable"
+    );
+    const applied = await applyMemoryToDeliverableSource({
+      userId: input.userId,
+      content: source.content,
+      assignment: source.assignment,
+      title: source.title,
+      notes: input.assignmentNotes,
+      currentInstruction: input.configuration,
+      formats,
+      artifactTypes: [input.stepType],
+    });
+    assignment = applied.assignment;
+    content = applied.content;
+    title = applied.title;
+  } catch (error) {
+    console.warn("[invoke-real-deliverable] memory apply skipped:", error);
+  }
+
   const origin = resolveAppOrigin(
     input.requestOrigin?.trim() || "http://localhost:3000",
   );
@@ -87,9 +112,9 @@ export async function invokeRealDeliverableStep(
   try {
     const generated = await generateDeliverables(
       {
-        assignment: source.assignment,
-        finalDeliverable: source.content,
-        title: source.title,
+        assignment,
+        finalDeliverable: content,
+        title,
         formats,
       },
       origin,

@@ -13,8 +13,17 @@ const KIND_TO_SCOPES: Record<PersonalMemoryKind, readonly PersonalMemoryScope[]>
     "file_naming",
     "notification_preferences",
     "approval_preferences",
+    "bullet_style",
+    "image_output",
+    "ai_model_preference",
+    "preferred_work_hours",
   ],
-  work_preference: ["work_content_style", "recurring_work_preferences"],
+  work_preference: [
+    "work_content_style",
+    "recurring_work_preferences",
+    "client_style",
+    "ocr_postprocess",
+  ],
   default_destination: [
     "default_storage_locations",
     "default_recipients",
@@ -25,6 +34,7 @@ const KIND_TO_SCOPES: Record<PersonalMemoryKind, readonly PersonalMemoryScope[]>
     "automation_execution",
     "approval_preferences",
     "notification_preferences",
+    "ai_model_preference",
   ],
   naming_convention: [
     "file_naming",
@@ -38,6 +48,7 @@ const KIND_TO_SCOPES: Record<PersonalMemoryKind, readonly PersonalMemoryScope[]>
     "excel_template",
     "powerpoint_theme",
     "pdf_layout",
+    "company_template",
   ],
   locale: ["language", "timezone", "currency", "date_format"],
   sensitive: [
@@ -45,6 +56,7 @@ const KIND_TO_SCOPES: Record<PersonalMemoryKind, readonly PersonalMemoryScope[]>
     "default_storage_locations",
     "contact_info",
     "customer_info",
+    "client_style",
   ],
 };
 
