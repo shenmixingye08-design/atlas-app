@@ -1,6 +1,7 @@
 export { PERSONAL_MEMORY_FEATURE_EVALUATION } from "./feature-evaluation";
 export { DELIVERABLE_PREFERENCE_LEARNING_EVALUATION } from "./feature-evaluation-deliverable-learning";
 export { MEMORY_QUALITY_METRICS_EVALUATION } from "./quality/feature-evaluation";
+export { PREDICTIVE_PERSONAL_MEMORY_EVALUATION } from "./predict/feature-evaluation";
 export * from "./types";
 export * from "./labels";
 export { scopesForKind, kindForScope, isPersonalMemoryScope } from "./scopes";
@@ -23,6 +24,12 @@ export {
   getMemoryQualityDashboardForUser,
   resolveForContext,
   getApplyPreviewForContext,
+  getPredictivePreviewForUser,
+  togglePredictiveMemoryForUser,
+  acceptPredictivePreview,
+  getPredictiveMemoryDashboard,
+  dismissProactiveSuggestionForUser,
+  acceptProactiveSuggestionForUser,
   listMemoryImprovementSuggestions,
   disableMemoryForThisRun,
   clearMemorySessionDisable,
@@ -44,6 +51,17 @@ export { computeMatchRates, averageMatchRate } from "./quality/match-rate";
 export { computeMemoryScore, bandForScore, labelForBand } from "./quality/memory-score";
 export { buildLearningVelocity, seriesImprovement } from "./quality/learning-velocity";
 export { buildMemoryQualityDashboard } from "./quality/dashboard";
+export {
+  predictMemoriesForContext,
+  togglePredictedMemory,
+  buildPredictiveDashboard,
+  recordPredictionOutcomes,
+} from "./predict/engine";
+export {
+  computePredictionScore,
+  bandForPredictionScore,
+  labelForPredictionBand,
+} from "./predict/score";
 export type {
   DeliverableQualityEvaluation,
   MemoryQualityDashboard,
@@ -51,3 +69,10 @@ export type {
   CorrectionMetrics,
   MatchRateBreakdown,
 } from "./quality/types";
+export type {
+  PredictiveApplyPreview,
+  PredictedMemoryItem,
+  PredictiveMemoryDashboard,
+  PredictionScoreResult,
+  ProactiveSuggestion,
+} from "./predict/types";

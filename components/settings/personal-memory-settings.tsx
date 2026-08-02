@@ -13,6 +13,8 @@ import {
   fetchMemoryApplyPreview,
   fetchMemoryQualityDashboard,
   fetchPersonalMemories,
+  fetchPredictiveApplyPreview,
+  fetchPredictiveMemoryDashboard,
   pauseAllPersonalMemoriesClient,
   updatePersonalMemoryClient,
   updatePersonalMemorySettingsClient,
@@ -31,10 +33,16 @@ import type {
   PersonalMemoryScope,
 } from "@/lib/personal-memory/types";
 import type { MemoryQualityDashboard } from "@/lib/personal-memory/quality/types";
+import type {
+  PredictiveApplyPreview,
+  PredictiveMemoryDashboard,
+} from "@/lib/personal-memory/predict/types";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { MemoryQualityDashboardPanel } from "@/components/personal-memory/memory-quality-dashboard";
+import { PredictiveMemoryDashboardPanel } from "@/components/personal-memory/predictive-memory-dashboard";
+import { PredictiveMemoryPreview } from "@/components/personal-memory/predictive-memory-preview";
 
 type Tab = "active" | "candidate" | "paused" | "rejected" | "expired" | "deleted";
 
@@ -109,6 +117,11 @@ export function PersonalMemorySettingsPanel() {
   const [dashboard, setDashboard] = useState<MemoryQualityDashboard | null>(
     null,
   );
+  const [predictDash, setPredictDash] =
+    useState<PredictiveMemoryDashboard | null>(null);
+  const [prediction, setPrediction] = useState<PredictiveApplyPreview | null>(
+    null,
+  );
   const [applyPreview, setApplyPreview] = useState<MemoryApplyPreviewItem[]>(
     [],
   );
@@ -131,9 +144,21 @@ export function PersonalMemorySettingsPanel() {
       setDashboard(null);
     }
     try {
+      setPredictDash(await fetchPredictiveMemoryDashboard());
+    } catch {
+      setPredictDash(null);
+    }
+    try {
       setApplyPreview(await fetchMemoryApplyPreview({ workCategory: "営業資料" }));
     } catch {
       setApplyPreview([]);
+    }
+    try {
+      setPrediction(
+        await fetchPredictiveApplyPreview({ workCategory: "営業資料" }),
+      );
+    } catch {
+      setPrediction(null);
     }
   }, []);
 
@@ -151,12 +176,26 @@ export function PersonalMemorySettingsPanel() {
           if (!cancelled) setDashboard(null);
         }
         try {
+          const nextPred = await fetchPredictiveMemoryDashboard();
+          if (!cancelled) setPredictDash(nextPred);
+        } catch {
+          if (!cancelled) setPredictDash(null);
+        }
+        try {
           const preview = await fetchMemoryApplyPreview({
             workCategory: "営業資料",
           });
           if (!cancelled) setApplyPreview(preview);
         } catch {
           if (!cancelled) setApplyPreview([]);
+        }
+        try {
+          const pred = await fetchPredictiveApplyPreview({
+            workCategory: "営業資料",
+          });
+          if (!cancelled) setPrediction(pred);
+        } catch {
+          if (!cancelled) setPrediction(null);
         }
       })
       .catch((err: Error) => {
@@ -317,6 +356,16 @@ export function PersonalMemorySettingsPanel() {
           送信先・保存先などの大切な情報は保存しない
         </label>
       </section>
+
+      <PredictiveMemoryPreview
+        prediction={prediction}
+        onAccepted={(next) => setPrediction(next)}
+      />
+
+      <PredictiveMemoryDashboardPanel
+        dashboard={predictDash}
+        onRefresh={() => void reload()}
+      />
 
       <MemoryQualityDashboardPanel
         dashboard={dashboard}

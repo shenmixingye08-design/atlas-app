@@ -134,6 +134,9 @@ export async function runOrchestrationForUser(
   let personalMemoryApplyPreview:
     | import("@/lib/personal-memory/types").MemoryApplyPreviewItem[]
     | undefined;
+  let personalMemoryPrediction:
+    | import("@/lib/personal-memory/predict/types").PredictiveApplyPreview
+    | undefined;
   if (input.userId) {
     try {
       const { getApplyPreviewForContext } = await import(
@@ -167,16 +170,27 @@ export async function runOrchestrationForUser(
           : null,
       });
       personalMemoryApplyPreview = preview.items;
+      personalMemoryPrediction = preview.prediction;
       if (preview.injectionText) {
         personalMemoryMeta = {
           personalMemory: preview.injectionText,
           personalMemoryTokenEstimate: preview.injectionText.length,
           personalMemoryApplyPreview: preview.items,
+          personalMemoryPrediction: {
+            id: preview.prediction.id,
+            headline: preview.prediction.headline,
+            evidenceSummary: preview.prediction.evidenceSummary,
+            overallPrediction: preview.prediction.overallPrediction,
+            estimatedMatchRate: preview.prediction.estimatedMatchRate,
+            items: preview.prediction.items,
+            proactiveSuggestions: preview.prediction.proactiveSuggestions,
+          },
         };
       }
     } catch {
       personalMemoryMeta = null;
       personalMemoryApplyPreview = undefined;
+      personalMemoryPrediction = undefined;
     }
   }
 
@@ -198,6 +212,9 @@ export async function runOrchestrationForUser(
       personalMemoryApplyPreview.length > 0 && {
         personalMemoryApplyPreview,
       }),
+    ...(personalMemoryPrediction && {
+      personalMemoryPrediction,
+    }),
   };
 
   const workMemory =

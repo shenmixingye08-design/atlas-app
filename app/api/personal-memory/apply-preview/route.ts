@@ -15,6 +15,7 @@ export async function POST(request: Request): Promise<Response> {
       automationId?: string;
       templateId?: string;
       artifactTypes?: string[];
+      disabledMemoryIds?: string[];
     };
     const preview = await getApplyPreviewForContext({
       userId,
@@ -24,10 +25,12 @@ export async function POST(request: Request): Promise<Response> {
       automationId: body.automationId ?? null,
       templateId: body.templateId ?? null,
       artifactTypes: body.artifactTypes ?? null,
+      disabledMemoryIds: body.disabledMemoryIds ?? null,
     });
     return Response.json({
       items: preview.items,
       injectionText: preview.injectionText,
+      prediction: preview.prediction,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "preview_failed";

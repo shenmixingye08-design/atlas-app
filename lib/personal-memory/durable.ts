@@ -23,6 +23,14 @@ import {
   listQualityEvaluations,
   replaceQualityEvaluations,
 } from "@/lib/personal-memory/quality/store";
+import type { PredictionHistoryEntry } from "@/lib/personal-memory/predict/types";
+import {
+  clearPredictStoreForUser,
+  listDismissedSuggestionFingerprints,
+  listPredictionHistory,
+  replaceDismissedSuggestions,
+  replacePredictionHistory,
+} from "@/lib/personal-memory/predict/store";
 
 export const PERSONAL_MEMORY_DOMAIN_KEY = "atlasPersonalMemory";
 
@@ -38,6 +46,8 @@ export type DurablePersonalMemoryState = {
   }>;
   rejectedFingerprints: string[];
   qualityEvaluations?: DeliverableQualityEvaluation[];
+  predictionHistory?: PredictionHistoryEntry[];
+  dismissedSuggestionFingerprints?: string[];
 };
 
 type HydrationFlags = Set<string>;
@@ -76,6 +86,9 @@ function snapshot(userId: string): DurablePersonalMemoryState {
       generatedText: row.generatedText.slice(0, 2000),
       correctedText: row.correctedText.slice(0, 2000),
     })),
+    predictionHistory: listPredictionHistory(userId).slice(0, 150),
+    dismissedSuggestionFingerprints:
+      listDismissedSuggestionFingerprints(userId).slice(0, 100),
   };
 }
 
@@ -91,6 +104,14 @@ function compact(
       generatedText: row.generatedText.slice(0, 1200),
       correctedText: row.correctedText.slice(0, 1200),
     })),
+    predictionHistory: (state.predictionHistory ?? []).slice(0, 150).map((row) => ({
+      ...row,
+      summary: row.summary.slice(0, 200),
+      title: row.title.slice(0, 120),
+    })),
+    dismissedSuggestionFingerprints: (
+      state.dismissedSuggestionFingerprints ?? []
+    ).slice(0, 100),
     memories: state.memories.slice(0, 300).map((row) => ({
       ...row,
       summary: row.summary.slice(0, 400),
@@ -161,11 +182,24 @@ export async function ensurePersonalMemoryHydrated(
       loaded.qualityEvaluations.filter((row) => row?.userId === userId),
     );
   }
+  if (Array.isArray(loaded.predictionHistory)) {
+    replacePredictionHistory(
+      userId,
+      loaded.predictionHistory.filter((row) => row?.userId === userId),
+    );
+  }
+  if (Array.isArray(loaded.dismissedSuggestionFingerprints)) {
+    replaceDismissedSuggestions(
+      userId,
+      loaded.dismissedSuggestionFingerprints,
+    );
+  }
 }
 
 export function wipePersonalMemoryDurable(userId: string): void {
   clearAllPersonalMemoryData(userId);
   clearQualityEvaluations(userId);
+  clearPredictStoreForUser(userId);
   getHydrated().delete(userId);
   schedulePersistPersonalMemory(userId);
 }

@@ -67,6 +67,22 @@ import type {
   DeliverableQualityEvaluation,
   MemoryQualityDashboard,
 } from "@/lib/personal-memory/quality/types";
+import {
+  buildPredictiveDashboard,
+  predictMemoriesForContext,
+  recordPredictionOutcomes,
+  togglePredictedMemory,
+} from "@/lib/personal-memory/predict/engine";
+import {
+  bumpSuggestionAccepted,
+  dismissSuggestionFingerprint,
+  getPredictionPreview,
+} from "@/lib/personal-memory/predict/store";
+import type {
+  PredictiveApplyPreview,
+  PredictiveMemoryDashboard,
+  PredictionOutcome,
+} from "@/lib/personal-memory/predict/types";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -731,18 +747,136 @@ export async function decideCandidate(
 export async function getApplyPreviewForContext(
   input: Omit<ResolveMemoryInput, "settings" | "memories"> & {
     userId: string;
+    disabledMemoryIds?: readonly string[] | null;
   },
 ): Promise<{
   items: MemoryApplyPreviewItem[];
   injectionText: string;
   ledger: RunMemoryLedger;
+  prediction: PredictiveApplyPreview;
 }> {
-  const { result, ledger } = await resolveForContext(input);
+  await ensurePersonalMemoryHydrated(input.userId);
+  const prediction = predictMemoriesForContext({
+    userId: input.userId,
+    notes: input.notes,
+    workCategory: input.workCategory,
+    companyId: input.companyId,
+    automationId: input.automationId,
+    templateId: input.templateId,
+    artifactTypes: input.artifactTypes,
+    sessionDisabledIds: input.sessionDisabledIds,
+    currentInstruction: input.currentInstruction,
+    disabledMemoryIds: input.disabledMemoryIds,
+  });
+  const { result, ledger } = await resolveForContext({
+    ...input,
+    // Only inject auto-applied (enabled + score>=60) memories into the run.
+    sessionDisabledIds: [
+      ...(input.sessionDisabledIds ?? []),
+      ...prediction.items
+        .filter((i) => i.memoryId && !i.enabled)
+        .map((i) => i.memoryId!),
+    ],
+  });
+  schedulePersistPersonalMemory(input.userId);
   return {
-    items: buildMemoryApplyPreview(result),
-    injectionText: result.injectionText,
+    items: prediction.autoApplyItems.map((i) => ({
+      scope: i.scope,
+      title: i.title,
+      summary: i.summary,
+      layer: i.layer,
+      memoryId: i.memoryId,
+    })),
+    injectionText: prediction.injectionText || result.injectionText,
     ledger,
+    prediction,
   };
+}
+
+export async function getPredictivePreviewForUser(
+  input: Omit<ResolveMemoryInput, "settings" | "memories"> & {
+    userId: string;
+    disabledMemoryIds?: readonly string[] | null;
+  },
+): Promise<PredictiveApplyPreview> {
+  const preview = await getApplyPreviewForContext(input);
+  return preview.prediction;
+}
+
+export async function togglePredictiveMemoryForUser(input: {
+  userId: string;
+  predictionId: string;
+  memoryId: string;
+  enabled: boolean;
+}): Promise<PredictiveApplyPreview> {
+  await ensurePersonalMemoryHydrated(input.userId);
+  const updated = togglePredictedMemory(input);
+  if (!updated) throw new Error("PREDICTION_NOT_FOUND");
+  if (!input.enabled) {
+    setSessionDisabledMemory(input.userId, input.memoryId, true);
+  } else {
+    setSessionDisabledMemory(input.userId, input.memoryId, false);
+  }
+  schedulePersistPersonalMemory(input.userId);
+  return updated;
+}
+
+export async function acceptPredictivePreview(input: {
+  userId: string;
+  predictionId: string;
+  /** If provided, only these memory ids are treated as accepted */
+  enabledMemoryIds?: string[];
+}): Promise<PredictiveApplyPreview> {
+  await ensurePersonalMemoryHydrated(input.userId);
+  const preview = getPredictionPreview(input.userId, input.predictionId);
+  if (!preview) throw new Error("PREDICTION_NOT_FOUND");
+
+  const enabledSet = input.enabledMemoryIds
+    ? new Set(input.enabledMemoryIds)
+    : null;
+
+  const outcomes = preview.items
+    .filter((i) => i.memoryId)
+    .map((i) => {
+      const enabled = enabledSet
+        ? enabledSet.has(i.memoryId!)
+        : i.enabled;
+      const outcome: PredictionOutcome = enabled ? "accepted" : "toggled_off";
+      return { memoryId: i.memoryId!, outcome, enabled };
+    });
+  recordPredictionOutcomes({
+    userId: input.userId,
+    predictionId: input.predictionId,
+    outcomes,
+  });
+  schedulePersistPersonalMemory(input.userId);
+  return preview;
+}
+
+export async function getPredictiveMemoryDashboard(
+  userId: string,
+): Promise<PredictiveMemoryDashboard> {
+  await ensurePersonalMemoryHydrated(userId);
+  return buildPredictiveDashboard(userId);
+}
+
+export async function dismissProactiveSuggestionForUser(
+  userId: string,
+  fingerprint: string,
+): Promise<void> {
+  await ensurePersonalMemoryHydrated(userId);
+  dismissSuggestionFingerprint(userId, fingerprint);
+  schedulePersistPersonalMemory(userId);
+}
+
+export async function acceptProactiveSuggestionForUser(
+  userId: string,
+  fingerprint: string,
+): Promise<void> {
+  await ensurePersonalMemoryHydrated(userId);
+  bumpSuggestionAccepted(userId, 1);
+  dismissSuggestionFingerprint(userId, fingerprint);
+  schedulePersistPersonalMemory(userId);
 }
 
 export async function listMemoryImprovementSuggestions(

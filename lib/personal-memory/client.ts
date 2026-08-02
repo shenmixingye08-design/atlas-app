@@ -12,6 +12,10 @@ import type {
   DeliverableQualityEvaluation,
   MemoryQualityDashboard,
 } from "@/lib/personal-memory/quality/types";
+import type {
+  PredictiveApplyPreview,
+  PredictiveMemoryDashboard,
+} from "@/lib/personal-memory/predict/types";
 
 async function parseJson<T>(response: Response): Promise<T> {
   const payload = (await response.json()) as T & { error?: string };
@@ -170,6 +174,7 @@ export async function fetchMemoryApplyPreview(input?: {
   workCategory?: string;
   companyId?: string;
   automationId?: string;
+  disabledMemoryIds?: string[];
 }): Promise<MemoryApplyPreviewItem[]> {
   const response = await fetch("/api/personal-memory/apply-preview", {
     method: "POST",
@@ -178,6 +183,87 @@ export async function fetchMemoryApplyPreview(input?: {
   });
   const payload = await parseJson<{ items: MemoryApplyPreviewItem[] }>(response);
   return payload.items;
+}
+
+export async function fetchPredictiveApplyPreview(input?: {
+  notes?: string;
+  workCategory?: string;
+  companyId?: string;
+  automationId?: string;
+  disabledMemoryIds?: string[];
+}): Promise<PredictiveApplyPreview> {
+  const response = await fetch("/api/personal-memory/predict", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "predict", ...(input ?? {}) }),
+  });
+  const payload = await parseJson<{ prediction: PredictiveApplyPreview }>(
+    response,
+  );
+  return payload.prediction;
+}
+
+export async function togglePredictiveMemoryClient(input: {
+  predictionId: string;
+  memoryId: string;
+  enabled: boolean;
+}): Promise<PredictiveApplyPreview> {
+  const response = await fetch("/api/personal-memory/predict", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "toggle", ...input }),
+  });
+  const payload = await parseJson<{ prediction: PredictiveApplyPreview }>(
+    response,
+  );
+  return payload.prediction;
+}
+
+export async function acceptPredictivePreviewClient(input: {
+  predictionId: string;
+  enabledMemoryIds?: string[];
+}): Promise<PredictiveApplyPreview> {
+  const response = await fetch("/api/personal-memory/predict", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "accept", ...input }),
+  });
+  const payload = await parseJson<{ prediction: PredictiveApplyPreview }>(
+    response,
+  );
+  return payload.prediction;
+}
+
+export async function fetchPredictiveMemoryDashboard(): Promise<PredictiveMemoryDashboard> {
+  const response = await fetch("/api/personal-memory/predict", {
+    cache: "no-store",
+  });
+  const payload = await parseJson<{ dashboard: PredictiveMemoryDashboard }>(
+    response,
+  );
+  return payload.dashboard;
+}
+
+export async function dismissProactiveSuggestionClient(
+  fingerprint: string,
+): Promise<void> {
+  const response = await fetch("/api/personal-memory/predict", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "dismiss_suggestion", fingerprint }),
+  });
+  await parseJson(response);
+}
+
+export async function acceptProactiveSuggestionClient(
+  fingerprint: string,
+): Promise<void> {
+  const response = await fetch("/api/personal-memory/predict", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "accept_suggestion", fingerprint }),
+  });
+  await parseJson(response);
 }
 
 export async function disableMemoryForThisRunClient(id: string): Promise<void> {
