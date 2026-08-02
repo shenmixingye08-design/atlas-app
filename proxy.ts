@@ -42,9 +42,29 @@ function productionConfigErrorResponse(
 export default clerkMiddleware(async (auth, request) => {
   const pathname = request.nextUrl.pathname;
 
+  // Correlation / request IDs for production observability (no PII).
+  const incomingCorrelation =
+    request.headers.get("x-correlation-id") ??
+    request.headers.get("x-atlas-correlation-id");
+  const correlationId =
+    incomingCorrelation?.trim() ||
+    request.headers.get("x-request-id")?.trim() ||
+    request.headers.get("x-vercel-id")?.trim() ||
+    crypto.randomUUID();
+
+  const withCorrelation = (response: NextResponse) => {
+    response.headers.set("x-correlation-id", correlationId);
+    const requestId =
+      request.headers.get("x-request-id") ??
+      request.headers.get("x-vercel-id") ??
+      correlationId;
+    response.headers.set("x-request-id", requestId);
+    return response;
+  };
+
   // ホームページ等の公開ページは protect しない（表示速度を優先）
   if (pathname === "/" || pathname.startsWith("/_next")) {
-    return;
+    return withCorrelation(NextResponse.next());
   }
 
   // Non-production visual verification of formal `/projects` home (not /dev).
@@ -64,7 +84,7 @@ export default clerkMiddleware(async (auth, request) => {
       pathname.startsWith("/api/automation-platform") ||
       pathname.startsWith("/api/projects"))
   ) {
-    return;
+    return withCorrelation(NextResponse.next());
   }
 
   try {
@@ -74,11 +94,11 @@ export default clerkMiddleware(async (auth, request) => {
       error instanceof Error
         ? error.message
         : "Clerk is not configured for production";
-    return productionConfigErrorResponse(request, message);
+    return withCorrelation(productionConfigErrorResponse(request, message));
   }
 
   if (isPublicApi(request)) {
-    return;
+    return withCorrelation(NextResponse.next());
   }
 
   if (isProtectedPage(request) || (isApiRoute(request) && !isPublicApi(request))) {
@@ -87,14 +107,16 @@ export default clerkMiddleware(async (auth, request) => {
     if (!userId) {
       // API は 401（JSON）。ページはログインへリダイレクト＋案内
       if (pathname.startsWith("/api/")) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        return withCorrelation(
+          NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+        );
       }
 
       const signInUrl = new URL("/sign-in", request.url);
       const returnTo = `${request.nextUrl.pathname}${request.nextUrl.search}`;
       signInUrl.searchParams.set("redirect_url", returnTo);
       signInUrl.searchParams.set("notice", ATLAS_LOGIN_CONTINUE_NOTICE);
-      return NextResponse.redirect(signInUrl);
+      return withCorrelation(NextResponse.redirect(signInUrl));
     }
   }
 
@@ -104,7 +126,7 @@ export default clerkMiddleware(async (auth, request) => {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Owner emails not configured";
-      return productionConfigErrorResponse(request, message);
+      return withCorrelation(productionConfigErrorResponse(request, message));
     }
 
     await auth.protect();
@@ -115,12 +137,16 @@ export default clerkMiddleware(async (auth, request) => {
     // null / missing primary email → deny (same as non-owner)
     if (!isAtlasOwnerEmail(email)) {
       if (request.nextUrl.pathname.startsWith("/api/")) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        return withCorrelation(
+          NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+        );
       }
 
-      return NextResponse.redirect(new URL("/", request.url));
+      return withCorrelation(NextResponse.redirect(new URL("/", request.url)));
     }
   }
+
+  return withCorrelation(NextResponse.next());
 });
 
 export const config = {

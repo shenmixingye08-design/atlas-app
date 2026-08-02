@@ -104,6 +104,20 @@ export function recordMonitoringIncident(input: RecordIncidentInput): void {
       .catch(() => {
         // optional channel
       });
+
+    // Production alert fan-out: Slack / Email / Discord / Webhook (cooldown inside).
+    void import("@/lib/production/alerts")
+      .then(({ dispatchProductionAlert }) =>
+        dispatchProductionAlert({
+          title: input.kind,
+          message: input.message,
+          severity: "critical",
+          kind: input.kind,
+        }),
+      )
+      .catch(() => {
+        // optional channel
+      });
   }
 }
 
