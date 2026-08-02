@@ -9,6 +9,7 @@ import {
 } from "@/lib/deliverables/excel-data";
 import { detectDeliverableFormats } from "@/lib/deliverables/detect-formats";
 import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
+import { trackFirstValueEvent } from "@/lib/first-value/analytics";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
@@ -139,6 +140,10 @@ function FormatDownloadButton({
         fileName: file.fileName,
         mimeType: file.mimeType,
         format: file.format,
+      });
+      trackFirstValueEvent("first_download", {
+        format: file.format,
+        fileName: file.fileName,
       });
     } catch (downloadError) {
       setError(

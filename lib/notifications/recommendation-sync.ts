@@ -27,8 +27,14 @@ export async function syncRecommendationNotifications(
   const top = suggestions[0];
   if (!top) return;
 
+  // 広告・販促通知は禁止。仕事完了につながる自動化提案のみ（1件）。
+  const isWorkSuggestion =
+    /自動化|任せ|繰り返|次回|Memory|記憶|成果物/.test(top.message) ||
+    Boolean(top.action.automationId);
+  if (!isWorkSuggestion) return;
+
   notifyRecommendation(userId, {
-    title: "MINERVOTからのおすすめ",
+    title: "次はこれを自動化できます",
     message: top.message,
     actionUrl: top.action.automationId ? "/automations" : "/workspace",
   });

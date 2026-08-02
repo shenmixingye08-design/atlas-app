@@ -309,6 +309,20 @@ export function AutomationCreateWizard({ initialDraftId, seedText }: Props) {
       const created = await createAutomationV2(payload.input);
       await deleteAutomationDraft(draft.draftId).catch(() => undefined);
       clearLocalDraftPointer();
+      const { trackFirstValueEvent } = await import(
+        "@/lib/first-value/analytics"
+      );
+      trackFirstValueEvent("automation_created", {
+        id: created.id,
+        source: "wizard",
+      });
+      const { trackAutomationFirstEvent } = await import(
+        "@/lib/automation-first/analytics"
+      );
+      trackAutomationFirstEvent("automation_create_completed", {
+        id: created.id,
+        source: "wizard",
+      });
       setDraft((current) => ({
         ...current,
         createdAutomationId: created.id,
@@ -400,8 +414,33 @@ export function AutomationCreateWizard({ initialDraftId, seedText }: Props) {
             }
             onTest={async () => {
               if (!draft.createdAutomationId) return;
-              await runAutomationV2(draft.createdAutomationId);
-              router.push(`/automations?id=${draft.createdAutomationId}`);
+              const [{ trackFirstValueEvent }, { trackAutomationFirstEvent }] =
+                await Promise.all([
+                  import("@/lib/first-value/analytics"),
+                  import("@/lib/automation-first/analytics"),
+                ]);
+              trackFirstValueEvent("first_try_now_clicked", {
+                automationId: draft.createdAutomationId,
+                source: "wizard_complete",
+              });
+              trackAutomationFirstEvent("automation_create_completed", {
+                id: draft.createdAutomationId,
+                source: "wizard_try_now",
+              });
+              await runAutomationV2(draft.createdAutomationId).catch(
+                () => undefined,
+              );
+              // Scheduler待ち禁止 — 実成果物は Workspace でその場生成
+              const assignment =
+                draft.freeformNotes.trim() ||
+                draft.name.trim() ||
+                "仕事を進めてください";
+              const params = new URLSearchParams({
+                assignment,
+                autostart: "1",
+                automationId: draft.createdAutomationId,
+              });
+              router.push(`/workspace?${params.toString()}`);
             }}
             onList={() => router.push("/automations")}
           />
@@ -1459,11 +1498,7 @@ function CompleteStep({
     <div className="space-y-5 py-6">
       <SectionTitle
         title="自動化を作成しました"
-        description={
-          draft.activateOnCreate
-            ? "実行スケジュールへ登録済みです。"
-            : "下書きとして保存しました。一覧から有効化できます。"
-        }
+        description="予定を待たず、まず一度試して成果物をご確認ください。"
       />
       <div className="rounded-2xl bg-[var(--surface-muted)] px-4 py-3 text-sm">
         <p className="font-medium">{draft.name}</p>
@@ -1471,19 +1506,18 @@ function CompleteStep({
         <p className="mt-2">{describeExecutionPolicy(draft)}</p>
       </div>
       <div className="flex flex-col gap-3">
-        <Button type="button" onClick={onView}>
-          自動化の詳細を見る
-        </Button>
         <Button
           type="button"
-          variant="secondary"
           isLoading={testing}
           onClick={() => {
             setTesting(true);
             void onTest().finally(() => setTesting(false));
           }}
         >
-          今すぐテスト実行
+          まず一度試す
+        </Button>
+        <Button type="button" variant="secondary" onClick={onView}>
+          自動化の詳細を見る
         </Button>
         <Button type="button" variant="ghost" onClick={onList}>
           一覧へ戻る
