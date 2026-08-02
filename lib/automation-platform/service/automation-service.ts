@@ -437,6 +437,8 @@ export class AutomationPlatformService {
     context: FeatureAccessContext;
     /** When false, leave queued without executing (tests / deferred tick). */
     dispatch?: boolean;
+    /** Public origin for deliverable download URLs. */
+    requestOrigin?: string | null;
   }): Promise<{ run: AutomationRun; created: boolean }> {
     assertV2Enabled(input.context);
     assertRateLimit(input.userId, "run");
@@ -673,7 +675,10 @@ export class AutomationPlatformService {
 
     const shouldDispatch = input.dispatch !== false && inserted.run.status === "queued";
     if (shouldDispatch) {
-      await dispatchAutomationRuns({ runIds: [inserted.run.id] });
+      await dispatchAutomationRuns({
+        runIds: [inserted.run.id],
+        requestOrigin: input.requestOrigin,
+      });
       const latest = memoryGetRun(inserted.run.id) ?? inserted.run;
       persistAutomationV2Now({
         ...automation,
@@ -753,7 +758,11 @@ export class AutomationPlatformService {
     userId: string,
     runId: string,
     context: FeatureAccessContext,
-    options?: { comment?: string | null; dispatch?: boolean },
+    options?: {
+      comment?: string | null;
+      dispatch?: boolean;
+      requestOrigin?: string | null;
+    },
   ): Promise<AutomationRun> {
     assertV2Enabled(context);
     // Approval API remains available whenever V2 is on — cannot leave runs stuck
@@ -816,7 +825,10 @@ export class AutomationPlatformService {
     });
 
     if (options?.dispatch !== false) {
-      await dispatchAutomationRuns({ runIds: [updated.id] });
+      await dispatchAutomationRuns({
+        runIds: [updated.id],
+        requestOrigin: options?.requestOrigin,
+      });
       return memoryGetRun(updated.id) ?? updated;
     }
     return updated;

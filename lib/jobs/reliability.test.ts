@@ -103,6 +103,40 @@ describe("completion evidence", () => {
     });
     expect(result.status).toBe("waiting_for_approval");
   });
+
+  it("fails closed when deliverables were expected but missing", () => {
+    const result = evaluateCompletionEvidence({
+      orchestrationStatus: "completed",
+      approved: true,
+      deliverableCount: 0,
+      snsPostFailure: null,
+      deliverablesExpected: true,
+    });
+    expect(result.status).toBe("failed");
+    expect(result.lastErrorMessage).toContain("成果物");
+  });
+
+  it("does not mark file-less orchestration as completed", () => {
+    const result = evaluateCompletionEvidence({
+      orchestrationStatus: "completed",
+      approved: true,
+      deliverableCount: 0,
+      snsPostFailure: null,
+      deliverablesExpected: false,
+    });
+    expect(result.status).toBe("partially_completed");
+  });
+
+  it("completes when deliverable count and storage URL exist", () => {
+    const result = evaluateCompletionEvidence({
+      orchestrationStatus: "completed",
+      approved: true,
+      deliverableCount: 1,
+      snsPostFailure: null,
+      storageUrl: "https://example.com/d/file.docx",
+    });
+    expect(result.status).toBe("completed");
+  });
 });
 
 describe("step labels", () => {
