@@ -312,6 +312,19 @@ describe("Automation Execution System", () => {
   });
 
   it("memory is never rewritten by execution", async () => {
+    const { createPersonalMemory } = await import(
+      "@/lib/personal-memory/service"
+    );
+    await createPersonalMemory("user_exec", {
+      kind: "user_preference",
+      scope: "writing_style",
+      key: "tone",
+      value: { text: "短く" },
+      title: "文体",
+      summary: "短く",
+      source: "explicit",
+      status: "active",
+    });
     const automation = await createActive({
       memoryPolicy: {
         enabled: true,
@@ -330,5 +343,6 @@ describe("Automation Execution System", () => {
       true,
     );
     expect(run.memoryUsage.updated).toEqual([]);
+    expect(run.memoryUsage.memoryIdsUsed?.length ?? 0).toBeGreaterThan(0);
   });
 });

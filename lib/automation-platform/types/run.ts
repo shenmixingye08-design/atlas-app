@@ -96,6 +96,12 @@ export type MemoryUsageRecord = {
   used: MemoryReferenceRecord[];
   updated: MemoryReferenceRecord[];
   unusedScopes: string[];
+  /** Personal Memory ids actually applied */
+  memoryIdsUsed?: string[];
+  /** Conflicts detected during resolve */
+  memoryConflicts?: Array<{ id: string; message: string; highRisk: boolean }>;
+  /** Injection budget diagnostics */
+  tokenEstimate?: number;
 };
 
 export type AutomationRun = {
