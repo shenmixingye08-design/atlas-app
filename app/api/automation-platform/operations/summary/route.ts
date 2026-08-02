@@ -4,44 +4,26 @@ import { automationPlatformService } from "@/lib/automation-platform/service/aut
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { auth } from "@clerk/nextjs/server";
 
-type RouteContext = { params: Promise<{ runId: string }> };
-
-export async function POST(
-  request: Request,
-  context: RouteContext,
-): Promise<Response> {
+export async function GET(): Promise<Response> {
   const { userId } = await auth();
-  const { runId } = await context.params;
   if (!userId) {
     return jsonError(new AutomationPlatformError("automation_unauthorized"), {
       actorUserId: null,
-      action: "automation.run.cancel",
-      runId,
+      action: "automation.operations.summary",
     });
   }
 
   try {
-    let reason: string | null = null;
-    try {
-      const body = (await request.json()) as { reason?: unknown };
-      if (typeof body.reason === "string") reason = body.reason;
-    } catch {
-      // empty body is fine
-    }
-
     const access = await resolveFeatureAccessContext();
-    const run = await automationPlatformService.cancelRun(
+    const summary = await automationPlatformService.getOperationsSummary(
       userId,
-      runId,
       access,
-      { reason },
     );
-    return Response.json({ run });
+    return Response.json({ summary });
   } catch (error) {
     return jsonError(error, {
       actorUserId: userId,
-      action: "automation.run.cancel",
-      runId,
+      action: "automation.operations.summary",
     });
   }
 }

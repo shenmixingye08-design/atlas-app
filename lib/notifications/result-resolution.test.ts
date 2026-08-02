@@ -114,6 +114,17 @@ describe("decideNotificationResult", () => {
 
     expect(
       decideNotificationResult({
+        notification: sample({
+          targetType: "automation_run",
+          targetId: "run_9",
+          automationId: "auto_7",
+        }),
+        requesterUserId: "user_1",
+      }),
+    ).toEqual({ status: "redirect", url: "/automations/runs/run_9" });
+
+    expect(
+      decideNotificationResult({
         notification: sample({ relatedService: "x", requestId: "hist_2" }),
         requesterUserId: "user_1",
       }),

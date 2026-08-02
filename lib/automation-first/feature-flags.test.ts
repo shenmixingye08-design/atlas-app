@@ -22,6 +22,7 @@ describe("automation first feature flags", () => {
     expect(FEATURE_FLAG_IDS).toContain("automation_first_navigation_enabled");
     expect(FEATURE_FLAG_IDS).toContain("automation_design_system_enabled");
     expect(FEATURE_FLAG_IDS).toContain("automation_dashboard_v2_enabled");
+    expect(FEATURE_FLAG_IDS).toContain("automation_operations_enabled");
   });
 
   it("defaults Automation First flags to off", () => {
@@ -29,6 +30,7 @@ describe("automation first feature flags", () => {
     expect(getFeatureFlagState("automation_first_navigation_enabled")).toBe("off");
     expect(getFeatureFlagState("automation_design_system_enabled")).toBe("off");
     expect(getFeatureFlagState("automation_dashboard_v2_enabled")).toBe("off");
+    expect(getFeatureFlagState("automation_operations_enabled")).toBe("off");
   });
 
   it("keeps legacy home when flags are off", () => {

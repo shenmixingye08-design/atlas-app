@@ -18,7 +18,8 @@ export type FeatureFlagId =
   | "automation_first_navigation_enabled"
   | "automation_design_system_enabled"
   | "automation_dashboard_v2_enabled"
-  | "workflow_learning_enabled";
+  | "workflow_learning_enabled"
+  | "automation_operations_enabled";
 
 /** Operator-controlled rollout state. */
 export type FeatureFlagState = "on" | "off" | "beta";

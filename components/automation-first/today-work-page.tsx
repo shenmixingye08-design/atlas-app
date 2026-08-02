@@ -16,6 +16,7 @@ import { fetchAutomations } from "@/lib/automations/client";
 import type { Automation } from "@/lib/automations/types";
 import { normalizeAutomations } from "@/lib/compatibility";
 import { LoadingState } from "@/components/ui/loading-state";
+import { TodayOpsPanel } from "@/components/automations/v2/today-ops-panel";
 
 export function TodayWorkPage({
   initialAutomations,
@@ -125,6 +126,8 @@ export function TodayWorkPage({
           </aside>
         </div>
       )}
+
+      <TodayOpsPanel />
     </div>
   );
 }

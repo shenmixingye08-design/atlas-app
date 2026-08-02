@@ -170,6 +170,8 @@ export function featureDisabledMessage(flagId: FeatureFlagId): string {
       return "新しい自動化一覧は現在ご利用いただけません";
     case "workflow_learning_enabled":
       return "改善提案機能は現在ご利用いただけません";
+    case "automation_operations_enabled":
+      return "自動化の運用画面は現在ご利用いただけません";
     default:
       return "この機能は現在ご利用いただけません";
   }

@@ -186,8 +186,10 @@ describe("Automation Platform Phase 1", () => {
       created.id,
       ownerContext,
     );
-    expect(paused.status).toBe("paused");
-    expect(paused.nextRunAt).toBeNull();
+    expect(paused.automation.status).toBe("paused");
+    expect(paused.automation.nextRunAt).toBeNull();
+    expect(paused.effects.scheduleStopped).toBe(true);
+    expect(paused.effects.resumeNote).toContain("過去分");
   });
 
   it("5. resumes automation", async () => {

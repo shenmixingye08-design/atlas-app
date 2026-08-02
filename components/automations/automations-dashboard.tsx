@@ -18,11 +18,20 @@ import {
 import {
   archiveAutomationV2,
   duplicateAutomationV2,
+  fetchAutomationRunsAll,
   fetchAutomationsV2,
   pauseAutomationV2,
   resumeAutomationV2,
   runAutomationV2,
 } from "@/lib/automation-platform/client";
+import type { AutomationRun } from "@/lib/automation-platform/types";
+import {
+  buildAutomationListRows,
+  filterAutomationListRows,
+  sortAutomationListRows,
+  type AutomationListFilter,
+  type AutomationListSort,
+} from "@/lib/automation-platform/operations/list-model";
 import { fetchFeatureAvailability } from "@/lib/feature-flags/client";
 import {
   automationToVisualStatus,
@@ -38,7 +47,10 @@ import { PageHeader } from "@/components/automation-first/page-header";
 import { AutomationCard } from "./automation-card";
 import { AutomationDetailPanel } from "./automation-detail-panel";
 import { CreateAutomationForm } from "./create-automation-form";
+import { AutomationListControls } from "./v2/automation-list-controls";
 import { AutomationV2Card } from "./v2/automation-v2-card";
+import { AutomationV2DetailPanel } from "./v2/automation-v2-detail-panel";
+import { OperationsDashboard } from "./v2/operations-dashboard";
 
 function parseInitialFormFromSearchParams(
   params: URLSearchParams,
@@ -87,7 +99,9 @@ export function AutomationsDashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedIdParam = searchParams.get("id");
+  const selectedV2Param = searchParams.get("v2");
   const openedIdRef = useRef<string | null>(null);
+  const openedV2Ref = useRef<string | null>(null);
   const initialForm = useMemo(
     () => parseInitialFormFromSearchParams(searchParams),
     [searchParams],
@@ -95,8 +109,10 @@ export function AutomationsDashboard() {
 
   const [v2Enabled, setV2Enabled] = useState(false);
   const [dashboardV2, setDashboardV2] = useState(false);
+  const [operationsEnabled, setOperationsEnabled] = useState(false);
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [automationsV2, setAutomationsV2] = useState<AutomationV2[]>([]);
+  const [runsV2, setRunsV2] = useState<AutomationRun[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
@@ -104,16 +120,22 @@ export function AutomationsDashboard() {
   const [showCreate, setShowCreate] = useState(Boolean(initialForm) && !v2Enabled);
   const [createInitialState, setCreateInitialState] = useState(initialForm);
   const [selected, setSelected] = useState<Automation | null>(null);
+  const [selectedV2, setSelectedV2] = useState<AutomationV2 | null>(null);
+  const [listFilter, setListFilter] = useState<AutomationListFilter>("all");
+  const [listSort, setListSort] = useState<AutomationListSort>("next_run");
+  const [listQuery, setListQuery] = useState("");
 
   useEffect(() => {
     void fetchFeatureAvailability()
       .then((flags) => {
         setV2Enabled(Boolean(flags.automation_v2_enabled));
         setDashboardV2(Boolean(flags.automation_dashboard_v2_enabled));
+        setOperationsEnabled(Boolean(flags.automation_operations_enabled));
       })
       .catch(() => {
         setV2Enabled(false);
         setDashboardV2(false);
+        setOperationsEnabled(false);
       });
   }, []);
 
@@ -156,16 +178,25 @@ export function AutomationsDashboard() {
   const loadV2 = useCallback(async () => {
     if (!v2Enabled) {
       setAutomationsV2([]);
+      setRunsV2([]);
       return;
     }
     try {
       const items = await fetchAutomationsV2();
       setAutomationsV2(items);
+      if (operationsEnabled) {
+        try {
+          const runs = await fetchAutomationRunsAll({ sort: "newest" });
+          setRunsV2(runs);
+        } catch {
+          setRunsV2([]);
+        }
+      }
     } catch {
       // Flag race or API unavailable — keep V1 visible
       setAutomationsV2([]);
     }
-  }, [v2Enabled]);
+  }, [v2Enabled, operationsEnabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -205,10 +236,38 @@ export function AutomationsDashboard() {
     };
   }, [selectedIdParam, automations]);
 
+  useEffect(() => {
+    if (!selectedV2Param || automationsV2.length === 0) return;
+    if (openedV2Ref.current === selectedV2Param) return;
+    const match = automationsV2.find((item) => item.id === selectedV2Param);
+    if (!match) return;
+    openedV2Ref.current = selectedV2Param;
+    setSelectedV2(match);
+  }, [selectedV2Param, automationsV2]);
+
   const summary = useMemo(
     () => summarizeEntrustedJobs(automations),
     [automations],
   );
+
+  const v2Rows = useMemo(() => {
+    const rows = buildAutomationListRows(automationsV2, runsV2);
+    return sortAutomationListRows(
+      filterAutomationListRows(rows, listFilter, listQuery),
+      listSort,
+    );
+  }, [automationsV2, runsV2, listFilter, listQuery, listSort]);
+
+  const openV2Detail = (automation: AutomationV2) => {
+    setSelectedV2(automation);
+    router.replace(`/automations?v2=${encodeURIComponent(automation.id)}`);
+  };
+
+  const closeV2Detail = () => {
+    setSelectedV2(null);
+    openedV2Ref.current = null;
+    router.replace("/automations");
+  };
 
   const handleToggle = async (id: string, enabled: boolean) => {
     setUpdatingId(id);
@@ -361,18 +420,48 @@ export function AutomationsDashboard() {
 
       {error ? <ErrorState message={error} /> : null}
 
-      {v2Enabled && automationsV2.length > 0 ? (
+      {v2Enabled && (operationsEnabled || dashboardV2) ? (
+        <OperationsDashboard enabled={operationsEnabled || dashboardV2} />
+      ) : null}
+
+      {v2Enabled ? (
         <section className="space-y-4">
-          <h2 className="text-title">あなたの自動化</h2>
+          <div className="flex items-end justify-between gap-3">
+            <h2 className="text-title">あなたの自動化</h2>
+            <Link
+              href="/automations/runs"
+              className="text-sm text-accent underline"
+            >
+              実行履歴
+            </Link>
+          </div>
+          {(operationsEnabled || dashboardV2) && automationsV2.length > 0 ? (
+            <AutomationListControls
+              filter={listFilter}
+              sort={listSort}
+              query={listQuery}
+              onFilterChange={setListFilter}
+              onSortChange={setListSort}
+              onQueryChange={setListQuery}
+            />
+          ) : null}
+          {automationsV2.length === 0 ? (
+            <p className="text-sm text-[var(--muted)]">
+              まだ自動化がありません。新しい自動化を作成してください。
+            </p>
+          ) : null}
           <ul className="space-y-4">
-            {automationsV2.map((automation) => (
+            {(operationsEnabled || dashboardV2 ? v2Rows.map((row) => row.automation) : automationsV2).map(
+              (automation) => {
+                const row = v2Rows.find(
+                  (item) => item.automation.id === automation.id,
+                );
+                return (
               <li key={automation.id}>
                 <AutomationV2Card
                   automation={automation}
                   busy={updatingId === automation.id || runningId === automation.id}
-                  onOpen={() =>
-                    router.push(`/automations?id=${automation.id}`)
-                  }
+                  onOpen={() => openV2Detail(automation)}
                   onPause={() => {
                     setUpdatingId(automation.id);
                     void pauseAutomationV2(automation.id)
@@ -434,8 +523,19 @@ export function AutomationsDashboard() {
                       .finally(() => setUpdatingId(null));
                   }}
                 />
+                {row && (operationsEnabled || dashboardV2) ? (
+                  <p className="mt-2 px-1 text-xs text-[var(--muted)]">
+                    最終結果: {row.lastResultLabel}
+                    {row.successRate != null ? ` · 成功率 ${row.successRate}%` : ""}
+                    {row.recentFailure ? " · 最近失敗あり" : ""}
+                    {" · "}
+                    {row.memorySummary}
+                  </p>
+                ) : null}
               </li>
-            ))}
+                );
+              },
+            )}
           </ul>
         </section>
       ) : null}
@@ -518,6 +618,89 @@ export function AutomationsDashboard() {
           onToggleEnabled={(id, enabled) => void handleToggle(id, enabled)}
           isRunning={runningId === selected.id}
           isUpdating={updatingId === selected.id}
+        />
+      ) : null}
+
+      {selectedV2 ? (
+        <AutomationV2DetailPanel
+          automation={selectedV2}
+          busy={
+            updatingId === selectedV2.id || runningId === selectedV2.id
+          }
+          onClose={closeV2Detail}
+          onPause={() => {
+            setUpdatingId(selectedV2.id);
+            void pauseAutomationV2(selectedV2.id)
+              .then(async () => {
+                await loadV2();
+                setSelectedV2((current) =>
+                  current
+                    ? { ...current, status: "paused", nextRunAt: null }
+                    : current,
+                );
+              })
+              .catch((err: unknown) =>
+                setError(
+                  err instanceof Error ? err.message : ui.error.updateFailed,
+                ),
+              )
+              .finally(() => setUpdatingId(null));
+          }}
+          onResume={() => {
+            setUpdatingId(selectedV2.id);
+            void resumeAutomationV2(selectedV2.id)
+              .then(async (updated) => {
+                await loadV2();
+                setSelectedV2(updated);
+              })
+              .catch((err: unknown) =>
+                setError(
+                  err instanceof Error ? err.message : ui.error.updateFailed,
+                ),
+              )
+              .finally(() => setUpdatingId(null));
+          }}
+          onRun={() => {
+            setRunningId(selectedV2.id);
+            void runAutomationV2(selectedV2.id)
+              .then((result) => {
+                void loadV2();
+                router.push(
+                  `/automations/runs/${encodeURIComponent(result.run.id)}`,
+                );
+              })
+              .catch((err: unknown) =>
+                setError(
+                  err instanceof Error ? err.message : ui.error.runFailed,
+                ),
+              )
+              .finally(() => setRunningId(null));
+          }}
+          onDuplicate={() => {
+            setUpdatingId(selectedV2.id);
+            void duplicateAutomationV2(selectedV2.id)
+              .then(loadV2)
+              .catch((err: unknown) =>
+                setError(
+                  err instanceof Error ? err.message : ui.error.updateFailed,
+                ),
+              )
+              .finally(() => setUpdatingId(null));
+          }}
+          onArchive={() => {
+            setUpdatingId(selectedV2.id);
+            void archiveAutomationV2(selectedV2.id)
+              .then(async () => {
+                await loadV2();
+                closeV2Detail();
+              })
+              .catch((err: unknown) =>
+                setError(
+                  err instanceof Error ? err.message : ui.error.updateFailed,
+                ),
+              )
+              .finally(() => setUpdatingId(null));
+          }}
         />
       ) : null}
     </div>
