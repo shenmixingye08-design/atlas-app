@@ -1,3 +1,9 @@
+/**
+ * Build a user-readable chronological timeline from statusHistory + steps.
+ * Shows 完了 / 実行中 / 待機 for each step so users can see progress.
+ * Does not include secrets, tokens, or full file bodies.
+ */
+
 import type { AutomationRun } from "@/lib/automation-platform/types";
 import { formatRunStatus, formatStepStatus } from "./status-labels";
 
@@ -27,14 +33,12 @@ function reasonLabel(reason: string): string {
     rejected: "却下されました",
     cancelled_by_user: "キャンセルされました",
     approval_expired: "承認期限切れ",
+    worker_reclaim_stuck_running: "Worker再起動後に再開予約",
+    dispatch_claim: "実行キューから取得",
   };
   return map[reason] ?? reason;
 }
 
-/**
- * Build a user-readable chronological timeline from statusHistory + steps.
- * Does not include secrets, tokens, or full file bodies.
- */
 export function buildRunTimeline(run: AutomationRun): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
 
@@ -59,7 +63,30 @@ export function buildRunTimeline(run: AutomationRun): TimelineEntry[] {
   }
 
   for (const step of run.steps) {
-    if (step.startedAt) {
+    if (step.status === "pending") {
+      entries.push({
+        id: `step-wait-${step.id}`,
+        at: run.updatedAt,
+        timeLabel: timeLabel(run.updatedAt),
+        title: `${step.name} 待機`,
+        detail: null,
+        tone: "neutral",
+      });
+      continue;
+    }
+
+    if (step.status === "running" || step.status === "retrying") {
+      entries.push({
+        id: `step-active-${step.id}`,
+        at: step.startedAt ?? run.updatedAt,
+        timeLabel: timeLabel(step.startedAt ?? run.updatedAt),
+        title: `${step.name} ${step.status === "retrying" ? "再試行中" : "実行中"}`,
+        detail: step.outputSummary?.slice(0, 160) ?? null,
+        tone: step.status === "retrying" ? "warning" : "info",
+      });
+    }
+
+    if (step.startedAt && step.status !== "running" && step.status !== "retrying") {
       entries.push({
         id: `step-start-${step.id}`,
         at: step.startedAt,
@@ -69,6 +96,7 @@ export function buildRunTimeline(run: AutomationRun): TimelineEntry[] {
         tone: "info",
       });
     }
+
     if (step.completedAt) {
       const ok = step.status === "succeeded" || step.status === "skipped";
       entries.push({
@@ -76,7 +104,7 @@ export function buildRunTimeline(run: AutomationRun): TimelineEntry[] {
         at: step.completedAt,
         timeLabel: timeLabel(step.completedAt),
         title: ok
-          ? `${step.name}${step.status === "skipped" ? "をスキップ" : "完了"}`
+          ? `${step.name}${step.status === "skipped" ? "をスキップ" : " 完了"}`
           : `${step.name}が${formatStepStatus(step.status)}`,
         detail: step.errorMessage
           ? step.errorMessage.slice(0, 160)
@@ -86,6 +114,7 @@ export function buildRunTimeline(run: AutomationRun): TimelineEntry[] {
         tone: ok ? "success" : step.status === "failed" ? "danger" : "warning",
       });
     }
+
     if (step.attemptCount > 1 && step.startedAt) {
       entries.push({
         id: `step-retry-${step.id}-${step.attemptCount}`,
@@ -104,7 +133,7 @@ export function buildRunTimeline(run: AutomationRun): TimelineEntry[] {
       at: artifact.createdAt,
       timeLabel: timeLabel(artifact.createdAt),
       title: `成果物「${artifact.label}」を作成`,
-      detail: null,
+      detail: artifact.stepId ? `Step: ${artifact.stepId}` : null,
       tone: "success",
     });
   }

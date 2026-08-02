@@ -12,6 +12,7 @@ import {
 } from "@/lib/automation-platform/durable";
 import { ensureAutomationRunsV2Hydrated } from "@/lib/automation-platform/durable-runs";
 import { dispatchAutomationRuns } from "@/lib/automation-platform/execution/dispatch";
+import { reclaimStuckRunningRuns } from "@/lib/automation-platform/operations/reclaim-stuck-runs";
 import {
   memoryListDueActiveAutomations,
 } from "@/lib/automation-platform/repository/memory-store";
@@ -28,6 +29,7 @@ export type DueScheduleTickResult = {
   skippedPaused: number;
   failed: number;
   dispatched: number;
+  reclaimed: number;
   firings: Array<{
     automationId: string;
     userId: string;
@@ -62,6 +64,7 @@ export async function processDueScheduledAutomationsV2(options?: {
     skippedPaused: 0,
     failed: 0,
     dispatched: 0,
+    reclaimed: 0,
     firings: [],
   };
 
@@ -171,6 +174,16 @@ export async function processDueScheduledAutomationsV2(options?: {
         },
       });
     }
+  }
+
+  // Worker restart safety: reclaim stuck running runs before new dispatch.
+  const reclaimed = reclaimStuckRunningRuns({
+    nowMs,
+    userIds: options?.hydrateUserIds,
+  });
+  result.reclaimed = reclaimed.reclaimed;
+  for (const id of reclaimed.runIds) {
+    if (!runIds.includes(id)) runIds.push(id);
   }
 
   if (options?.dispatch !== false && runIds.length > 0) {

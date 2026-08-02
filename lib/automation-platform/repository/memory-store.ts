@@ -210,6 +210,13 @@ export function memoryListRunsForUser(userId: string): AutomationRun[] {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+/** All in-memory runs (worker reclaim / ops). */
+export function memoryListAllRuns(): AutomationRun[] {
+  return [...getStore().runs.values()]
+    .map((run) => structuredClone(run))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 /** Queued runs + due retries ready for the worker. */
 export function memoryListDispatchableRuns(limit = 20): AutomationRun[] {
   const now = Date.now();

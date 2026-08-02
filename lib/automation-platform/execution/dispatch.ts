@@ -18,6 +18,11 @@ import {
 import { createStatusTransition } from "@/lib/automation-platform/state-machine/transitions";
 import { persistAutomationRunNow } from "@/lib/automation-platform/durable-runs";
 import type { AutomationRun } from "@/lib/automation-platform/types";
+import {
+  estimateStepCost,
+  recordAutomationRunCost,
+} from "@/lib/automation-platform/cost/run-cost";
+import { auditRunTerminalEvent } from "@/lib/automation-platform/execution/run-audit";
 
 export type DispatchResult = {
   processed: number;
@@ -139,6 +144,39 @@ export async function dispatchAutomationRuns(options?: {
       automation,
       invoker: options?.invoker ?? strictStepInvoker,
     });
+
+    if (
+      execResult.run.status === "succeeded" ||
+      execResult.run.status === "partially_succeeded" ||
+      execResult.run.status === "failed"
+    ) {
+      const stepCosts = execResult.run.steps
+        .filter((s) => s.status === "succeeded")
+        .map((s) =>
+          estimateStepCost({
+            stepId: s.id,
+            capabilityId: s.capabilityId,
+            ok: true,
+          }),
+        );
+      const cost = recordAutomationRunCost({
+        runId: execResult.run.id,
+        automationId: automation.id,
+        userId: automation.userId,
+        steps: stepCosts,
+      });
+      auditRunTerminalEvent({
+        requestId: execResult.run.diagnosticId || execResult.run.id,
+        runId: execResult.run.id,
+        automationId: automation.id,
+        userId: automation.userId,
+        status: execResult.run.status,
+        durationMs: execResult.run.durationMs,
+        costUsd: cost.totals.estimatedUsd,
+        failedStepId: execResult.run.failedStepId,
+        errorCode: execResult.run.lastErrorCode,
+      });
+    }
 
     result.processed += 1;
     if (execResult.run.status === "succeeded") {

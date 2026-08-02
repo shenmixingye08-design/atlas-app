@@ -1,5 +1,8 @@
 /**
  * AutomationRun executor — step timeline, retry classification, no Memory rewrite.
+ *
+ * Thin extensions: step timeout, per-step retry, artifact merge/dedupe, audit/cost hooks.
+ * Does not restart succeeded steps. Never marks mid-failure as Completed.
  */
 
 import "server-only";
@@ -20,6 +23,17 @@ import type { StepInvoker } from "@/lib/automation-platform/execution/step-invok
 import { strictStepInvoker } from "@/lib/automation-platform/execution/strict-step-invoker";
 import { memoryUpdateRun } from "@/lib/automation-platform/repository/memory-store";
 import { persistAutomationRunNow } from "@/lib/automation-platform/durable-runs";
+import { mergeStepArtifacts } from "@/lib/automation-platform/execution/artifacts";
+import {
+  invokeWithStepTimeout,
+  resolveStepTimeoutMs,
+} from "@/lib/automation-platform/execution/step-timeout";
+import {
+  resolveStepRetryPolicy,
+  waitStepRetryDelay,
+} from "@/lib/automation-platform/execution/step-retry";
+import { auditRunStepEvent } from "@/lib/automation-platform/execution/run-audit";
+import { estimateStepCost } from "@/lib/automation-platform/cost/run-cost";
 
 export type ExecuteRunResult = {
   run: AutomationRun;
@@ -83,6 +97,7 @@ export async function executeQueuedRun(input: {
 }): Promise<ExecuteRunResult> {
   const invoker = input.invoker ?? strictStepInvoker;
   let run = input.run;
+  const requestId = run.diagnosticId || run.id;
 
   // Accept pre-claimed (running) or unclaimed (queued/retrying) runs.
   if (
@@ -131,6 +146,7 @@ export async function executeQueuedRun(input: {
 
   for (let i = 0; i < steps.length; i += 1) {
     const runStep = steps[i]!;
+    // Failure recovery: keep succeeded / skipped steps (do not restart).
     if (runStep.status === "succeeded" || runStep.status === "skipped") {
       if (runStep.status === "succeeded") succeededCount += 1;
       continue;
@@ -147,86 +163,218 @@ export async function executeQueuedRun(input: {
       continue;
     }
 
-    const now = new Date().toISOString();
-    steps[i] = {
-      ...runStep,
-      status: "running",
-      startedAt: now,
-      attemptCount: runStep.attemptCount + 1,
-    };
-    run = persist({ ...run, steps: steps.map((s) => ({ ...s })) });
+    const stepRetry = resolveStepRetryPolicy(def, run.maxAttempts);
+    const timeoutMs = resolveStepTimeoutMs(def);
+    let stepSucceeded = false;
+    let stepNeedsInput = false;
 
-    try {
-      const result = await invoker({
-        step: def,
-        userId: run.userId,
-        automationName: input.automation.name,
-        runId: run.id,
-        approved: approved || !runStep.requiresApproval,
-      });
+    for (
+      let stepAttempt = 1;
+      stepAttempt <= stepRetry.maxAttempts;
+      stepAttempt += 1
+    ) {
+      const startedMs = Date.now();
+      const now = new Date().toISOString();
+      steps[i] = {
+        ...steps[i]!,
+        status: stepAttempt > 1 ? "retrying" : "running",
+        startedAt: steps[i]!.startedAt ?? now,
+        attemptCount: (steps[i]!.attemptCount || 0) + (stepAttempt === 1 ? 1 : 0),
+        completedAt: null,
+        errorCode: null,
+        errorMessage: null,
+      };
+      if (stepAttempt > 1) {
+        steps[i] = { ...steps[i]!, status: "running", attemptCount: steps[i]!.attemptCount + 1 };
+      }
+      run = persist({ ...run, steps: steps.map((s) => ({ ...s })) });
 
-      if (result.needsUserInput) {
-        needsUserInput = true;
+      try {
+        const result = await invokeWithStepTimeout(
+          invoker,
+          {
+            step: def,
+            userId: run.userId,
+            automationName: input.automation.name,
+            runId: run.id,
+            approved: approved || !runStep.requiresApproval,
+          },
+          timeoutMs,
+        );
+
+        const durationMs = Date.now() - startedMs;
+
+        if (result.needsUserInput) {
+          stepNeedsInput = true;
+          needsUserInput = true;
+          steps[i] = {
+            ...steps[i]!,
+            status: "waiting_approval",
+            errorCode: result.errorCode ?? null,
+            errorMessage: result.errorMessage ?? null,
+            outputSummary: result.summary,
+          };
+          failedStepId = runStep.id;
+          lastErrorCode = result.errorCode ?? "automation_approval_required";
+          lastErrorMessage = result.errorMessage ?? result.summary;
+          auditRunStepEvent({
+            requestId,
+            runId: run.id,
+            automationId: run.automationId,
+            userId: run.userId,
+            stepId: runStep.id,
+            capabilityId: runStep.capabilityId,
+            attempt: stepAttempt,
+            durationMs,
+            outcome: "denied",
+            errorCode: lastErrorCode,
+            retryable: false,
+          });
+          break;
+        }
+
+        if (!result.ok) {
+          const retryable = stepRetry.isRetryable(
+            result.errorCode ?? null,
+            result.errorMessage ?? result.summary,
+          );
+          auditRunStepEvent({
+            requestId,
+            runId: run.id,
+            automationId: run.automationId,
+            userId: run.userId,
+            stepId: runStep.id,
+            capabilityId: runStep.capabilityId,
+            attempt: stepAttempt,
+            durationMs,
+            outcome: "error",
+            errorCode: result.errorCode ?? "automation_run_failed",
+            retryable,
+          });
+
+          if (retryable && stepAttempt < stepRetry.maxAttempts) {
+            steps[i] = {
+              ...steps[i]!,
+              status: "retrying",
+              errorCode: result.errorCode ?? "automation_run_failed",
+              errorMessage: result.errorMessage ?? result.summary,
+              outputSummary: `一時失敗のため再試行します（${stepAttempt}/${stepRetry.maxAttempts}）`,
+            };
+            run = persist({ ...run, steps: steps.map((s) => ({ ...s })) });
+            await waitStepRetryDelay(stepRetry.delayMsForAttempt(stepAttempt));
+            continue;
+          }
+
+          failedCount += 1;
+          failedStepId = runStep.id;
+          lastErrorCode = result.errorCode ?? "automation_run_failed";
+          lastErrorMessage = result.errorMessage ?? result.summary;
+          steps[i] = {
+            ...steps[i]!,
+            status: "failed",
+            completedAt: new Date().toISOString(),
+            errorCode: lastErrorCode,
+            errorMessage: lastErrorMessage,
+            outputSummary: retryable
+              ? `${result.summary}（再試行上限に達しました）`
+              : result.summary,
+          };
+          break;
+        }
+
+        // Success — save artifacts immediately (途中成果物を残す)
+        const cost = estimateStepCost({
+          stepId: runStep.id,
+          capabilityId: runStep.capabilityId,
+          ok: true,
+          retryExtra: stepAttempt > 1,
+        });
+        auditRunStepEvent({
+          requestId,
+          runId: run.id,
+          automationId: run.automationId,
+          userId: run.userId,
+          stepId: runStep.id,
+          capabilityId: runStep.capabilityId,
+          attempt: stepAttempt,
+          durationMs,
+          outcome: "success",
+          costUsd: cost.estimatedUsd,
+        });
+
+        succeededCount += 1;
+        stepSucceeded = true;
         steps[i] = {
           ...steps[i]!,
-          status: "waiting_approval",
-          errorCode: result.errorCode ?? null,
-          errorMessage: result.errorMessage ?? null,
+          status: "succeeded",
+          completedAt: new Date().toISOString(),
           outputSummary: result.summary,
+          errorCode: null,
+          errorMessage: null,
         };
-        failedStepId = runStep.id;
-        lastErrorCode = result.errorCode ?? "automation_approval_required";
-        lastErrorMessage = result.errorMessage ?? result.summary;
+        run = persist({
+          ...run,
+          steps: steps.map((s) => ({ ...s })),
+          artifacts: mergeStepArtifacts({
+            existing: run.artifacts,
+            incoming: result.artifacts,
+            stepId: runStep.id,
+          }),
+        });
         break;
-      }
+      } catch (error) {
+        const classified = classifyExecutionError(error);
+        const durationMs = Date.now() - startedMs;
+        auditRunStepEvent({
+          requestId,
+          runId: run.id,
+          automationId: run.automationId,
+          userId: run.userId,
+          stepId: runStep.id,
+          capabilityId: runStep.capabilityId,
+          attempt: stepAttempt,
+          durationMs,
+          outcome: "error",
+          errorCode: classified.code,
+          retryable: classified.retryable,
+        });
 
-      if (!result.ok) {
+        if (
+          classified.retryable &&
+          stepAttempt < stepRetry.maxAttempts
+        ) {
+          steps[i] = {
+            ...steps[i]!,
+            status: "retrying",
+            errorCode: classified.code,
+            errorMessage: classified.message,
+            outputSummary: `一時失敗のため再試行します（${stepAttempt}/${stepRetry.maxAttempts}）`,
+          };
+          run = persist({ ...run, steps: steps.map((s) => ({ ...s })) });
+          await waitStepRetryDelay(stepRetry.delayMsForAttempt(stepAttempt));
+          continue;
+        }
+
         failedCount += 1;
         failedStepId = runStep.id;
-        lastErrorCode = result.errorCode ?? "automation_run_failed";
-        lastErrorMessage = result.errorMessage ?? result.summary;
+        lastErrorCode = classified.code;
+        lastErrorMessage = classified.message;
         steps[i] = {
           ...steps[i]!,
           status: "failed",
           completedAt: new Date().toISOString(),
-          errorCode: lastErrorCode,
-          errorMessage: lastErrorMessage,
-          outputSummary: result.summary,
+          errorCode: classified.code,
+          errorMessage: classified.message,
+          outputSummary: classified.retryable
+            ? "手順で例外が発生しました（再試行上限）"
+            : "手順で例外が発生しました",
         };
-        if (input.automation.workflow.onFailure.strategy === "stop") {
-          break;
-        }
-        continue;
+        break;
       }
+    }
 
-      succeededCount += 1;
-      steps[i] = {
-        ...steps[i]!,
-        status: "succeeded",
-        completedAt: new Date().toISOString(),
-        outputSummary: result.summary,
-        errorCode: null,
-        errorMessage: null,
-      };
-      run = persist({
-        ...run,
-        steps: steps.map((s) => ({ ...s })),
-        artifacts: [...run.artifacts, ...result.artifacts],
-      });
-    } catch (error) {
-      const classified = classifyExecutionError(error);
-      failedCount += 1;
-      failedStepId = runStep.id;
-      lastErrorCode = classified.code;
-      lastErrorMessage = classified.message;
-      steps[i] = {
-        ...steps[i]!,
-        status: "failed",
-        completedAt: new Date().toISOString(),
-        errorCode: classified.code,
-        errorMessage: classified.message,
-        outputSummary: "手順で例外が発生しました",
-      };
+    if (stepNeedsInput) break;
+    if (!stepSucceeded && failedCount > 0) {
       if (input.automation.workflow.onFailure.strategy === "stop") {
         break;
       }
@@ -287,6 +435,7 @@ export async function executeQueuedRun(input: {
     : null;
 
   if (retryable && nextRetryAt) {
+    // Keep succeeded steps; only failed step retries on next claim.
     const withRetry = {
       ...transition(run, "retrying", "retry_scheduled"),
       nextRetryAt,
@@ -302,6 +451,7 @@ export async function executeQueuedRun(input: {
     return { run, terminal: false };
   }
 
+  // Never mark mid-failure as Completed (succeeded).
   const terminalStatus =
     succeededCount > 0 ? "partially_succeeded" : "failed";
   run = persist({
