@@ -71,6 +71,13 @@ export type {
 export type {
   RunActor,
   AutomationRunStatusTransition,
+  RunStepStatus,
+  AutomationRunStep,
+  AutomationRunArtifact,
+  AutomationRunAttempt,
+  RunPreparation,
+  RunApprovalRecord,
+  MemoryUsageRecord,
   AutomationRun,
   CreateAutomationRunInput,
 } from "./run";

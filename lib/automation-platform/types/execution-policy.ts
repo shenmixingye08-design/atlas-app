@@ -7,7 +7,11 @@ export type ExecutionPolicyMode =
   | "run_then_notify"
   | "review_selected_steps"
   | "approve_first_then_auto"
-  | "review_high_risk_only";
+  | "review_high_risk_only"
+  /** 投稿（X）だけ確認 */
+  | "review_post_only"
+  /** 送信（メール）だけ確認 */
+  | "review_send_only";
 
 export type ApprovalTimeoutAction = "skip" | "cancel" | "run";
 
