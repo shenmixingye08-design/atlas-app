@@ -155,14 +155,18 @@ const GROUPS: SettingsGroup[] = [
 
 export function SettingsHub({
   legacy,
+  forceEnabled = false,
 }: {
   legacy: React.ReactNode;
+  /** DEV preview can force the hub without waiting for feature flags. */
+  forceEnabled?: boolean;
 }) {
   const { flags, loading } = useFeatureAvailability();
   const hubEnabled =
-    !loading &&
-    (flags.automation_design_system_enabled === true ||
-      flags.automation_first_home_enabled === true);
+    forceEnabled ||
+    (!loading &&
+      (flags.automation_design_system_enabled === true ||
+        flags.automation_first_home_enabled === true));
 
   if (!hubEnabled) {
     return <>{legacy}</>;

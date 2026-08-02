@@ -17,11 +17,23 @@ import type { Automation } from "@/lib/automations/types";
 import { normalizeAutomations } from "@/lib/compatibility";
 import { LoadingState } from "@/components/ui/loading-state";
 
-export function TodayWorkPage() {
-  const [automations, setAutomations] = useState<Automation[] | null>(null);
+export function TodayWorkPage({
+  initialAutomations,
+}: {
+  /** When provided (DEV preview), skip network fetch. */
+  initialAutomations?: Automation[];
+} = {}) {
+  const [automations, setAutomations] = useState<Automation[] | null>(
+    initialAutomations ? normalizeAutomations(initialAutomations) : null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
+    if (initialAutomations) {
+      setAutomations(normalizeAutomations(initialAutomations));
+      setError(null);
+      return;
+    }
     setError(null);
     void fetchAutomations()
       .then((items) => setAutomations(normalizeAutomations(items)))
@@ -29,11 +41,12 @@ export function TodayWorkPage() {
         setError(err.message || "読み込めませんでした");
         setAutomations([]);
       });
-  }, []);
+  }, [initialAutomations]);
 
   useEffect(() => {
+    if (initialAutomations) return;
     load();
-  }, [load]);
+  }, [load, initialAutomations]);
 
   const jobs = useMemo(
     () => (automations ? buildTodayJobsFromAutomations(automations) : []),
