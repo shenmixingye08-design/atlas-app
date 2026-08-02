@@ -4,11 +4,11 @@
 
 | 経路 | schedule | 用途 |
 | --- | --- | --- |
-| **GitHub Actions** `.github/workflows/minute-scheduler-tick.yml` | `* * * * *` | **本番の正**（Hobbyでも毎分） |
-| Vercel Cron（Pro移行後） | `vercel.cron.pro.json` → `vercel.json` | 冗長の二重tick（idempotent） |
+| **GitHub Actions** `.github/workflows/minute-scheduler-tick.yml` | `* * * * *` | **本番の正**（Hobbyでも毎分・±60s） |
+| Vercel Hobby cron | `0 0 * * *` | デプロイ互換の冗長フォールバックのみ（正ではない） |
+| Vercel Cron（Pro移行後） | `vercel.cron.pro.json` → `vercel.json` | ネイティブ毎分（GHAと二重でも idempotent） |
 
-`vercel.json` の `crons` は Hobby デプロイ互換のため空です。  
-**日次 cron のみでの運用は禁止**です。
+**日次 cron のみでの運用は禁止**です。毎分は GitHub Actions（必須）が担います。
 
 ## 必要 Secrets（GitHub）
 
