@@ -10,6 +10,7 @@ import {
   resolveOrchestrationFeatureFlag,
   validateAutomationFeatureAccess,
 } from "./guards";
+import { FEATURE_FLAG_IDS } from "./registry";
 import { resetFeatureFlagStore, setFeatureFlagState } from "./store";
 import { parseFeatureFlagUpdateBody, updateFeatureFlagState } from "./service";
 
@@ -18,15 +19,20 @@ describe("feature flag store and service", () => {
     resetFeatureFlagStore();
   });
 
-  it("defaults legacy flags to on and automation platform flags to off", () => {
+  it("defaults legacy flags to on and staged platform flags to off in tests", () => {
     const snapshot = updateFeatureFlagState("google", "on");
-    expect(snapshot.flags).toHaveLength(14);
-    const automationFlags = snapshot.flags.filter((flag) =>
-      flag.id.startsWith("automation_"),
+    expect(snapshot.flags).toHaveLength(FEATURE_FLAG_IDS.length);
+    const platformFlags = snapshot.flags.filter(
+      (flag) =>
+        flag.id.startsWith("automation_") ||
+        flag.id.startsWith("workflow_"),
     );
-    expect(automationFlags.every((flag) => flag.state === "off")).toBe(true);
+    // Vitest keeps Automation First rollout defaults off (see rollout.ts).
+    expect(platformFlags.every((flag) => flag.state === "off")).toBe(true);
     const legacyFlags = snapshot.flags.filter(
-      (flag) => !flag.id.startsWith("automation_"),
+      (flag) =>
+        !flag.id.startsWith("automation_") &&
+        !flag.id.startsWith("workflow_"),
     );
     expect(legacyFlags.every((flag) => flag.state === "on")).toBe(true);
   });

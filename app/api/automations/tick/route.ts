@@ -67,6 +67,32 @@ export async function POST(request: Request): Promise<Response> {
     const results = await automationService.processDueAutomations({
       requestOrigin: origin,
     });
+
+    let v2Schedule: {
+      due: number;
+      enqueued: number;
+      deduped: number;
+      failed: number;
+      dispatched: number;
+    } = { due: 0, enqueued: 0, deduped: 0, failed: 0, dispatched: 0 };
+    let v2Dispatch: { processed: number } = { processed: 0 };
+    try {
+      const { processDueScheduledAutomationsV2 } = await import(
+        "@/lib/automation-platform/schedule/due-tick"
+      );
+      v2Schedule = await processDueScheduledAutomationsV2({
+        limit: 20,
+        dispatch: true,
+      });
+      const { dispatchAutomationRuns } = await import(
+        "@/lib/automation-platform/execution/dispatch"
+      );
+      // Also drain any remaining queued/retrying runs (retries, manual).
+      v2Dispatch = await dispatchAutomationRuns({ limit: 20 });
+    } catch (error) {
+      console.warn("[automation tick] v2 schedule/dispatch skipped:", error);
+    }
+
     const scheduledXPosts = await processScheduledXPostsFromAutomationTick();
     const autoPosts = await processDueAutoPostsFromAutomationTick();
 
@@ -111,6 +137,8 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({
       processed: results.length,
       results,
+      v2Schedule,
+      v2Dispatch,
       scheduledXPosts: {
         processed: scheduledXPosts.length,
         results: scheduledXPosts,

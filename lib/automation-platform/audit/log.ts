@@ -11,6 +11,20 @@ export type AutomationAuditEvent = {
   meta: Readonly<Record<string, unknown>>;
 };
 
+type DurableAuditPersist = (
+  userId: string,
+  event: AutomationAuditEvent,
+) => Promise<void>;
+
+let durablePersist: DurableAuditPersist | null = null;
+
+/** Wire durable persistence without creating a hard import cycle at module load. */
+export function setAutomationAuditDurablePersist(
+  fn: DurableAuditPersist | null,
+): void {
+  durablePersist = fn;
+}
+
 type AuditBucket = AutomationAuditEvent[];
 
 function getBucket(): AuditBucket {
@@ -65,6 +79,9 @@ export function appendAutomationAudit(
     meta: sanitizeAuditMeta(event.meta),
   };
   getBucket().push(record);
+  if (record.actorUserId && durablePersist) {
+    void durablePersist(record.actorUserId, record);
+  }
   return record;
 }
 

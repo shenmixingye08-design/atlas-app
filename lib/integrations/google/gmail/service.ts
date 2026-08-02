@@ -17,6 +17,7 @@ import {
 import {
   addLabelToGmailMessage,
   archiveGmailMessage,
+  createGmailComposeDraft,
   createGmailDraft,
   createGmailLabel,
   extractTextFromPdfBuffer,
@@ -338,6 +339,32 @@ export async function saveGmailDraftForUser(input: {
     accessToken: access.accessToken,
     message,
     to: input.draft.to,
+    subject: input.draft.subject,
+    body: input.draft.body,
+  });
+
+  return { status: "ready", gmailDraftId: created.id };
+}
+
+export async function createGmailComposeDraftForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  draft: {
+    to: string;
+    subject: string;
+    body: string;
+    cc?: string;
+    bcc?: string;
+  };
+}): Promise<{ status: "ready"; gmailDraftId: string } | GateFailure> {
+  const access = await requireGmailAccess(input);
+  if (isGateFailure(access)) return access;
+
+  const created = await createGmailComposeDraft({
+    accessToken: access.accessToken,
+    to: input.draft.to,
+    cc: input.draft.cc,
+    bcc: input.draft.bcc,
     subject: input.draft.subject,
     body: input.draft.body,
   });

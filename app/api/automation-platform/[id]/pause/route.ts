@@ -7,7 +7,7 @@ import { auth } from "@clerk/nextjs/server";
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ): Promise<Response> {
   const { userId } = await auth();
@@ -21,9 +21,25 @@ export async function POST(
   }
 
   try {
+    let cancelRunningRuns = false;
+    let cancelPendingApprovals = false;
+    try {
+      const body = (await request.json()) as {
+        cancelRunningRuns?: unknown;
+        cancelPendingApprovals?: unknown;
+      };
+      cancelRunningRuns = body.cancelRunningRuns === true;
+      cancelPendingApprovals = body.cancelPendingApprovals === true;
+    } catch {
+      // empty body: keep running / keep approvals
+    }
+
     const access = await resolveFeatureAccessContext();
-    const automation = automationPlatformService.pause(userId, id, access);
-    return Response.json({ automation });
+    const result = await automationPlatformService.pause(userId, id, access, {
+      cancelRunningRuns,
+      cancelPendingApprovals,
+    });
+    return Response.json(result);
   } catch (error) {
     return jsonError(error, {
       actorUserId: userId,

@@ -1,5 +1,6 @@
 import type { ResolvedInstruction } from "./instruction";
 import type { MemoryReferenceRecord } from "./memory-policy";
+import type { AutomationCapabilityId } from "./step";
 import type { AutomationRunStatus } from "./status";
 
 export type Timestamp = string;
@@ -20,33 +21,133 @@ export type AutomationRunStatusTransition = {
   diagnosticId: string;
 };
 
+export type RunStepStatus =
+  | "pending"
+  | "running"
+  | "waiting_approval"
+  | "succeeded"
+  | "failed"
+  | "skipped"
+  | "retrying";
+
+export type AutomationRunStep = {
+  id: string;
+  capabilityId: AutomationCapabilityId;
+  name: string;
+  order: number;
+  status: RunStepStatus;
+  requiresApproval: boolean;
+  highRisk: boolean;
+  startedAt: Timestamp | null;
+  completedAt: Timestamp | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  attemptCount: number;
+  outputSummary: string | null;
+};
+
+export type AutomationRunArtifact = {
+  id: string;
+  kind: "deliverable" | "external" | "draft" | "file";
+  label: string;
+  url: string | null;
+  externalId: string | null;
+  createdAt: Timestamp;
+  /** Optional live-execution metadata (absent on legacy stub artifacts). */
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  contentSha256?: string | null;
+  sourceRunId?: string | null;
+  sourceStepId?: string | null;
+};
+
+export type AutomationRunAttempt = {
+  attempt: number;
+  startedAt: Timestamp;
+  finishedAt: Timestamp | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  retryScheduledFor: Timestamp | null;
+};
+
+export type RunPreparation = {
+  summary: string;
+  plannedSteps: Array<{
+    id: string;
+    name: string;
+    capabilityId: AutomationCapabilityId;
+    highRisk: boolean;
+    requiresApproval: boolean;
+  }>;
+  approvalReason: string | null;
+  approvalStepIds: string[];
+  externalEffects: string[];
+  estimatedDurationLabel: string;
+  timezone: string;
+  scheduledLabel: string;
+  preparedAt: Timestamp;
+};
+
+export type RunApprovalRecord = {
+  status: "not_required" | "pending" | "approved" | "rejected" | "expired";
+  mode: string;
+  requestedAt: Timestamp | null;
+  decidedAt: Timestamp | null;
+  decidedByUserId: string | null;
+  comment: string | null;
+  stepIds: string[];
+};
+
+export type MemoryUsageRecord = {
+  used: MemoryReferenceRecord[];
+  updated: MemoryReferenceRecord[];
+  unusedScopes: string[];
+  /** Personal Memory ids actually applied */
+  memoryIdsUsed?: string[];
+  /** Conflicts detected during resolve */
+  memoryConflicts?: Array<{ id: string; message: string; highRisk: boolean }>;
+  /** Injection budget diagnostics */
+  tokenEstimate?: number;
+};
+
 export type AutomationRun = {
   id: EntityId;
   automationId: EntityId;
+  automationName: string;
   userId: string;
   status: AutomationRunStatus;
-  /** Stable key for this logical run (automation + occurrence). */
   runKey: string;
-  /** Client/API idempotency key when provided. */
   idempotencyKey: string;
-  /** Unique key for a scheduled occurrence slot. */
   scheduleOccurrenceKey: string | null;
   triggerType: "manual" | "schedule" | "event" | "condition" | "retry";
   scheduledFor: Timestamp | null;
   queuedAt: Timestamp | null;
   startedAt: Timestamp | null;
   completedAt: Timestamp | null;
+  durationMs: number | null;
   attemptCount: number;
   maxAttempts: number;
+  nextRetryAt: Timestamp | null;
   lastErrorCode: string | null;
   lastErrorMessage: string | null;
+  failedStepId: string | null;
+  retryable: boolean;
+  needsUserInput: boolean;
   resolvedInstruction: ResolvedInstruction | null;
-  memoryReferences: MemoryReferenceRecord[];
+  memoryUsage: MemoryUsageRecord;
   statusHistory: AutomationRunStatusTransition[];
+  preparation: RunPreparation | null;
+  approval: RunApprovalRecord | null;
+  steps: AutomationRunStep[];
+  artifacts: AutomationRunArtifact[];
+  attempts: AutomationRunAttempt[];
   approvalExpiresAt: Timestamp | null;
   resultSummary: string | null;
+  diagnosticId: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  /** @deprecated use memoryUsage.used */
+  memoryReferences: MemoryReferenceRecord[];
 };
 
 export type CreateAutomationRunInput = {

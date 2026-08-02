@@ -8,6 +8,7 @@ export { isGmailFilterId, resolveGmailSearchQuery } from "./filters";
 export {
   addLabelToGmailMessage,
   archiveGmailMessage,
+  createGmailComposeDraft,
   createGmailDraft,
   createGmailLabel,
   extractTextFromPdfBuffer,
@@ -56,6 +57,7 @@ export {
   trashMessageForUser,
   sendReplyForUser,
   saveGmailDraftForUser,
+  createGmailComposeDraftForUser,
   listAttachmentsForUser,
   getAttachmentBytesForUser,
   analyzePdfAttachmentForUser,
