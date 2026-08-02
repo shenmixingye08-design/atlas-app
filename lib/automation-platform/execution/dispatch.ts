@@ -7,6 +7,7 @@ import "server-only";
 import { executeQueuedRun } from "@/lib/automation-platform/execution/executor";
 import { notifyAutomationRunEvent } from "@/lib/automation-platform/execution/notify";
 import type { StepInvoker } from "@/lib/automation-platform/execution/step-invoker";
+import { strictStepInvoker } from "@/lib/automation-platform/execution/strict-step-invoker";
 import {
   memoryClaimRun,
   memoryGetAutomation,
@@ -136,7 +137,7 @@ export async function dispatchAutomationRuns(options?: {
     const execResult = await executeQueuedRun({
       run: withHistory,
       automation,
-      invoker: options?.invoker,
+      invoker: options?.invoker ?? strictStepInvoker,
     });
 
     result.processed += 1;

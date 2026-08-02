@@ -64,6 +64,33 @@ export function memoryListAutomationsForUser(userId: string): AutomationV2[] {
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
+/** System/cron: all automations currently resident in the process store. */
+export function memoryListAllAutomations(): AutomationV2[] {
+  return [...getStore().automations.values()]
+    .map((item) => structuredClone(item))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/** Active scheduled automations whose nextRunAt is due at or before `nowMs`. */
+export function memoryListDueActiveAutomations(
+  nowMs: number = Date.now(),
+  limit = 50,
+): AutomationV2[] {
+  return memoryListAllAutomations()
+    .filter((item) => {
+      if (item.status !== "active") return false;
+      if (item.trigger.type !== "schedule") return false;
+      if (!item.nextRunAt) return false;
+      const t = Date.parse(item.nextRunAt);
+      return Number.isFinite(t) && t <= nowMs;
+    })
+    .sort(
+      (a, b) =>
+        Date.parse(a.nextRunAt ?? "") - Date.parse(b.nextRunAt ?? ""),
+    )
+    .slice(0, limit);
+}
+
 export function memoryFindByLegacyId(legacyId: string): AutomationV2 | null {
   const store = getStore();
   const id = store.legacyMap.get(legacyId);
@@ -205,4 +232,21 @@ export function memoryGetRunByOccurrenceKey(
   const id = store.occurrenceKeys.get(occurrenceKey);
   if (!id) return null;
   return memoryGetRun(id);
+}
+
+/** Test/harness helper: drop a run from memory without touching automations. */
+export function memoryDeleteRunForTests(runId: string): void {
+  const store = getStore();
+  const run = store.runs.get(runId);
+  if (!run) return;
+  store.runs.delete(runId);
+  if (store.idempotencyKeys.get(run.idempotencyKey) === runId) {
+    store.idempotencyKeys.delete(run.idempotencyKey);
+  }
+  if (
+    run.scheduleOccurrenceKey &&
+    store.occurrenceKeys.get(run.scheduleOccurrenceKey) === runId
+  ) {
+    store.occurrenceKeys.delete(run.scheduleOccurrenceKey);
+  }
 }

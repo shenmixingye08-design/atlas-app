@@ -37,6 +37,7 @@ export async function POST(
       runId,
       access,
       inputPatch,
+      { dispatch: true },
     );
     return Response.json({ run });
   } catch (error) {
