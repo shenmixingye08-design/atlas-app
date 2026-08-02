@@ -172,8 +172,8 @@ export function sortAutomationListRows(
     case "last_run":
       return copy.sort(
         (a, b) =>
-          Date.parse(b.automation.lastRunAt ?? 0) -
-          Date.parse(a.automation.lastRunAt ?? 0),
+          Date.parse(b.automation.lastRunAt ?? "1970-01-01T00:00:00.000Z") -
+          Date.parse(a.automation.lastRunAt ?? "1970-01-01T00:00:00.000Z"),
       );
     case "success_rate":
       return copy.sort(
