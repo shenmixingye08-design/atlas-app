@@ -173,11 +173,15 @@ export function WeeklyReportActivation({
   }, [automationId, config, finishSuccess]);
 
   const handleRetry = useCallback(() => {
-    incrementActivationRetry();
+    const retryCount = incrementActivationRetry();
     trackActivationEvent("activation_retry_clicked", {
       stage: failure?.stage ?? "unknown",
       diagnosticId: failure?.diagnosticId,
+      retry_count: retryCount,
     });
+    setFailure((prev) =>
+      prev ? { ...prev, autoRetrying: true } : prev,
+    );
     void executeTestRun();
   }, [executeTestRun, failure?.diagnosticId, failure?.stage]);
 
@@ -339,7 +343,7 @@ export function WeeklyReportActivation({
               void executeTestRun();
             }}
           >
-            まず一度試してみる
+            まず一度作ってみる
           </button>
           <button
             type="button"
@@ -367,7 +371,9 @@ export function WeeklyReportActivation({
               aria-live="polite"
             >
               <p className="font-medium text-[var(--text-primary)]">
-                Word成果物を作成しています…
+                {failure?.autoRetrying
+                  ? "再実行中です…"
+                  : "Word成果物を作成しています…"}
               </p>
               <p className="mt-2 text-sm text-[var(--text-secondary)]">
                 本物の生成経路で保存まで進めます。サンプルファイルは使いません。
@@ -376,6 +382,7 @@ export function WeeklyReportActivation({
                 <li>1. 自動化を作成</li>
                 <li>2. テスト実行</li>
                 <li>3. Word生成と保存</li>
+                <li>4. ダウンロード検証</li>
               </ul>
             </div>
           ) : null}
@@ -393,21 +400,33 @@ export function WeeklyReportActivation({
                     ? "成果物の生成"
                     : failure.stage === "storage"
                       ? "保存"
-                      : "実行"}
+                      : failure.stage === "ownership"
+                        ? "所有権の確認"
+                        : failure.stage === "validation"
+                          ? "ファイル検証"
+                          : "実行"}
               </p>
               <p className="text-sm text-[var(--text-primary)]">
                 {failure.message}
               </p>
               <p className="text-sm text-[var(--text-secondary)]">
+                自動Retry中: いいえ（再実行ボタンで再開できます）
+              </p>
+              <p className="text-sm text-[var(--text-secondary)]">
+                ユーザー操作:{" "}
                 {failure.userCanFix
-                  ? "入力内容を直してから再実行できます。"
-                  : "自動で再実行できます。続く場合は診断IDをお知らせください。"}
+                  ? "入力内容の修正が必要です"
+                  : "再実行で復旧を試せます"}
               </p>
               {failure.diagnosticId ? (
                 <p className="break-all text-[length:var(--text-caption)] text-[var(--text-muted)]">
                   診断ID: {failure.diagnosticId}
                 </p>
-              ) : null}
+              ) : (
+                <p className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
+                  診断ID: （未採番）
+                </p>
+              )}
               <div className="flex flex-col gap-2">
                 {failure.retryable ? (
                   <button
@@ -457,6 +476,9 @@ export function WeeklyReportActivation({
             <p className="text-sm text-[var(--text-secondary)]">
               作成日時: {formatNextRunDisplay(result.createdAt)}
             </p>
+            <p className="mt-2 text-sm font-medium text-[var(--text-primary)]">
+              次回実行日時: {nextRunLabel}
+            </p>
           </div>
 
           <a
@@ -472,13 +494,23 @@ export function WeeklyReportActivation({
           >
             内容を確認
           </Link>
+          <button
+            type="button"
+            className={secondaryButtonClass()}
+            onClick={() => {
+              setPhase("idle");
+              setStep("configure");
+            }}
+          >
+            修正して再生成
+          </button>
 
           <div className="rounded-[var(--radius-md)] border border-[var(--brand)] bg-[var(--brand-muted)] p-4 text-left">
             <p className="font-semibold text-[var(--text-primary)]">
               次回から自動で実行します
             </p>
             <p className="mt-2 text-sm text-[var(--text-secondary)]">
-              次回: {nextRunLabel}
+              次回実行日時: {nextRunLabel}
             </p>
             <p className="text-sm text-[var(--text-secondary)]">
               通知: 完了時（アプリ内）
@@ -488,7 +520,7 @@ export function WeeklyReportActivation({
                 href={`/automations?id=${encodeURIComponent(result.automationId)}`}
                 className="text-[var(--brand)] underline-offset-2 hover:underline"
               >
-                編集 / 一時停止
+                一時停止
               </Link>
               <Link
                 href={`/automations?id=${encodeURIComponent(result.automationId)}`}
@@ -496,18 +528,52 @@ export function WeeklyReportActivation({
               >
                 自動化詳細
               </Link>
-              <button
-                type="button"
-                className="text-[var(--brand)] underline-offset-2 hover:underline"
-                onClick={() => {
-                  setPhase("idle");
-                  setStep("configure");
-                }}
-              >
-                修正して再生成
-              </button>
             </div>
           </div>
+
+          <details className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3 text-sm text-[var(--text-secondary)]">
+            <summary className="cursor-pointer font-medium text-[var(--text-primary)]">
+              技術情報
+            </summary>
+            <dl className="mt-2 space-y-1 break-all">
+              <div>
+                <dt className="inline text-[var(--text-muted)]">artifactId: </dt>
+                <dd className="inline">{result.artifactId}</dd>
+              </div>
+              <div>
+                <dt className="inline text-[var(--text-muted)]">projectId: </dt>
+                <dd className="inline">{result.projectId}</dd>
+              </div>
+              <div>
+                <dt className="inline text-[var(--text-muted)]">runId: </dt>
+                <dd className="inline">{result.runId}</dd>
+              </div>
+              <div>
+                <dt className="inline text-[var(--text-muted)]">sizeBytes: </dt>
+                <dd className="inline">{result.sizeBytes}</dd>
+              </div>
+              <div>
+                <dt className="inline text-[var(--text-muted)]">PK header: </dt>
+                <dd className="inline">
+                  {result.hasPkHeader ? "ok" : "missing"}
+                </dd>
+              </div>
+              <div>
+                <dt className="inline text-[var(--text-muted)]">ownership: </dt>
+                <dd className="inline">
+                  {result.ownershipConfirmed ? "confirmed" : "unknown"}
+                </dd>
+              </div>
+              {result.diagnosticId ? (
+                <div>
+                  <dt className="inline text-[var(--text-muted)]">
+                    diagnosticId:{" "}
+                  </dt>
+                  <dd className="inline">{result.diagnosticId}</dd>
+                </div>
+              ) : null}
+            </dl>
+          </details>
 
           <button
             type="button"

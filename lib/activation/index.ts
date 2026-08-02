@@ -38,3 +38,7 @@ export {
   runWeeklyReportActivation,
   type RunWeeklyReportActivationResult,
 } from "./run-activation";
+export {
+  extractDeliverableIdFromUrl,
+  verifyActivationArtifact,
+} from "./verify-artifact";

@@ -1,6 +1,6 @@
 /**
  * Client-side activation runner: create weekly report automation → test run →
- * require a real downloadable Word artifact.
+ * require a real downloadable Word artifact (DOCX PK + size + ownership).
  */
 
 import {
@@ -21,9 +21,11 @@ import type {
 import { trackActivationEvent } from "@/lib/activation/analytics";
 import {
   incrementActivationRetry,
+  loadActivationState,
   markActivationCompleted,
   saveActivationState,
 } from "@/lib/activation/store";
+import { verifyActivationArtifact } from "@/lib/activation/verify-artifact";
 
 const TERMINAL = new Set([
   "succeeded",
@@ -39,6 +41,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function pickDeliverableArtifact(run: AutomationRun): {
+  artifactId: string;
   fileName: string;
   downloadUrl: string;
 } | null {
@@ -49,7 +52,11 @@ function pickDeliverableArtifact(run: AutomationRun): {
       item.url.trim().length > 0,
   );
   if (!artifact?.url) return null;
+  const artifactId =
+    (typeof artifact.externalId === "string" && artifact.externalId.trim()) ||
+    artifact.id;
   return {
+    artifactId,
     fileName: artifact.label || "週次営業報告書.docx",
     downloadUrl: artifact.url,
   };
@@ -69,6 +76,7 @@ function failureFromRun(run: AutomationRun): ActivationFailureInfo {
     userCanFix: Boolean(run.needsUserInput),
     diagnosticId: run.diagnosticId || null,
     retryable: true,
+    autoRetrying: false,
   };
 }
 
@@ -100,6 +108,7 @@ export async function runWeeklyReportActivation(input: {
 }): Promise<RunWeeklyReportActivationResult> {
   const startedAt = Date.now();
   let automationId = input.existingAutomationId?.trim() || null;
+  const retryCount = loadActivationState().retryCount;
 
   try {
     if (!automationId) {
@@ -120,6 +129,7 @@ export async function runWeeklyReportActivation(input: {
     trackActivationEvent("first_test_run_started", {
       templateId: WEEKLY_REPORT_TEMPLATE_ID,
       automationId,
+      retry_count: retryCount,
     });
 
     const { run, created } = await runAutomationV2(
@@ -142,6 +152,7 @@ export async function runWeeklyReportActivation(input: {
         automationId,
         diagnosticId: finalRun.diagnosticId,
         status: finalRun.status,
+        retry_count: retryCount,
       });
       return { ok: false, failure: failureFromRun(finalRun) };
     }
@@ -153,6 +164,7 @@ export async function runWeeklyReportActivation(input: {
         automationId,
         diagnosticId: finalRun.diagnosticId,
         reason: "missing_artifact_url",
+        retry_count: retryCount,
       });
       return {
         ok: false,
@@ -163,12 +175,19 @@ export async function runWeeklyReportActivation(input: {
           userCanFix: false,
           diagnosticId: finalRun.diagnosticId || null,
           retryable: true,
+          autoRetrying: false,
         },
       };
     }
 
     // Require app download URL (storage-backed), not a blank success.
     if (!artifact.downloadUrl.includes("/api/deliverables/")) {
+      trackActivationEvent("first_test_run_failed", {
+        templateId: WEEKLY_REPORT_TEMPLATE_ID,
+        automationId,
+        reason: "invalid_download_url",
+        retry_count: retryCount,
+      });
       return {
         ok: false,
         failure: {
@@ -178,6 +197,28 @@ export async function runWeeklyReportActivation(input: {
           userCanFix: false,
           diagnosticId: finalRun.diagnosticId || null,
           retryable: true,
+          autoRetrying: false,
+        },
+      };
+    }
+
+    const verified = await verifyActivationArtifact(artifact.downloadUrl);
+    if (!verified.ok) {
+      trackActivationEvent("first_test_run_failed", {
+        templateId: WEEKLY_REPORT_TEMPLATE_ID,
+        automationId,
+        reason: `verify_${verified.stage}`,
+        retry_count: retryCount,
+      });
+      return {
+        ok: false,
+        failure: {
+          stage: verified.stage,
+          message: verified.message,
+          userCanFix: verified.stage === "ownership",
+          diagnosticId: finalRun.diagnosticId || null,
+          retryable: true,
+          autoRetrying: false,
         },
       };
     }
@@ -185,34 +226,44 @@ export async function runWeeklyReportActivation(input: {
     const durationMs = Date.now() - startedAt;
     const result: ActivationResult = {
       automationId,
+      projectId: automationId,
       runId: finalRun.id,
+      artifactId: verified.artifactId,
       diagnosticId: finalRun.diagnosticId || null,
       fileName: artifact.fileName,
-      downloadUrl: artifact.downloadUrl,
+      downloadUrl: verified.downloadUrl,
       formatLabel: "Word",
       createdAt: finalRun.completedAt ?? finalRun.updatedAt,
       nextRunAt: null, // filled by caller from automation fetch
       durationMs,
+      sizeBytes: verified.sizeBytes,
+      hasPkHeader: verified.hasPkHeader,
+      ownershipConfirmed: true,
     };
 
     trackActivationEvent("first_artifact_created", {
       templateId: WEEKLY_REPORT_TEMPLATE_ID,
       automationId,
       runId: finalRun.id,
+      artifactId: verified.artifactId,
+      projectId: automationId,
       time_to_first_artifact_ms: durationMs,
       steps_to_first_artifact: 4,
+      retry_count: retryCount,
+      sizeBytes: verified.sizeBytes,
     });
 
     markActivationCompleted({
       automationId,
       runId: finalRun.id,
-      artifactUrl: artifact.downloadUrl,
+      artifactUrl: verified.downloadUrl,
     });
 
     trackActivationEvent("first_experience_completed", {
       templateId: WEEKLY_REPORT_TEMPLATE_ID,
       automationId,
       time_to_first_artifact_ms: durationMs,
+      retry_count: retryCount,
     });
 
     return { ok: true, result };
@@ -222,14 +273,11 @@ export async function runWeeklyReportActivation(input: {
       error instanceof Error
         ? error.message
         : "初回体験の実行に失敗しました";
-    const diagnosticId =
-      error && typeof error === "object" && "details" in error
-        ? null
-        : null;
     trackActivationEvent("first_test_run_failed", {
       templateId: WEEKLY_REPORT_TEMPLATE_ID,
       automationId,
       reason: "exception",
+      retry_count: loadActivationState().retryCount,
     });
     return {
       ok: false,
@@ -237,8 +285,9 @@ export async function runWeeklyReportActivation(input: {
         stage: automationId ? "run" : "create",
         message,
         userCanFix: true,
-        diagnosticId,
+        diagnosticId: null,
         retryable: true,
+        autoRetrying: false,
       },
     };
   }

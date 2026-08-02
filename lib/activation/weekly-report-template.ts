@@ -43,7 +43,7 @@ export function buildWeeklyReportCreateInput(
       freeformNotes: notes,
       structuredOptions: {
         generateWord: true,
-        generatePdf: true,
+        generatePdf: false,
       },
     },
     trigger: {

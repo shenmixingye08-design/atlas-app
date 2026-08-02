@@ -63,6 +63,8 @@ describe("activation weekly report template", () => {
     ).toBe(true);
     expect(input.executionPolicy?.mode).toBe("run_then_notify");
     expect(input.notificationPolicy?.onSuccess).toBe(true);
+    expect(input.instruction.structuredOptions?.generatePdf).toBe(false);
+    expect(input.instruction.structuredOptions?.generateWord).toBe(true);
   });
 });
 
@@ -106,6 +108,24 @@ describe("activation store + analytics", () => {
   });
 });
 
+function mockDocxFetchOk(artifactId = "dlv_act_1") {
+  const pk = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      expect(url).toContain(`/api/deliverables/${artifactId}`);
+      return new Response(pk, {
+        status: 200,
+        headers: {
+          "content-type":
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        },
+      });
+    }),
+  );
+}
+
 describe("runWeeklyReportActivation", () => {
   beforeEach(() => {
     resetActivationStateForTests();
@@ -114,9 +134,19 @@ describe("runWeeklyReportActivation", () => {
     runAutomationV2.mockReset();
     fetchAutomationRun.mockReset();
     fetchAutomationsV2.mockReset();
+    vi.unstubAllGlobals();
+    vi.stubGlobal("localStorage", localStorageMock);
+    vi.stubGlobal("window", { localStorage: localStorageMock });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.stubGlobal("localStorage", localStorageMock);
+    vi.stubGlobal("window", { localStorage: localStorageMock });
   });
 
   it("creates automation, runs test, requires real deliverable URL", async () => {
+    mockDocxFetchOk("dlv_act_1");
     createAutomationV2.mockResolvedValue({ id: "auto_act_1" });
     runAutomationV2.mockResolvedValue({
       created: true,
@@ -151,6 +181,11 @@ describe("runWeeklyReportActivation", () => {
     if (!outcome.ok) return;
     expect(outcome.result.downloadUrl).toContain("/api/deliverables/");
     expect(outcome.result.fileName).toContain("docx");
+    expect(outcome.result.artifactId).toBe("dlv_act_1");
+    expect(outcome.result.projectId).toBe("auto_act_1");
+    expect(outcome.result.sizeBytes).toBeGreaterThan(0);
+    expect(outcome.result.hasPkHeader).toBe(true);
+    expect(outcome.result.ownershipConfirmed).toBe(true);
     expect(loadActivationState().completedAt).toBeTruthy();
     expect(createAutomationV2).toHaveBeenCalledOnce();
     expect(runAutomationV2).toHaveBeenCalledWith(
@@ -163,6 +198,44 @@ describe("runWeeklyReportActivation", () => {
     expect(names).toContain("first_test_run_started");
     expect(names).toContain("first_artifact_created");
     expect(names).toContain("first_experience_completed");
+  });
+
+  it("fails closed when download verification returns empty/non-docx", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(new Uint8Array([0x00, 0x01]), { status: 200 })),
+    );
+    createAutomationV2.mockResolvedValue({ id: "auto_act_bad" });
+    runAutomationV2.mockResolvedValue({
+      created: true,
+      run: {
+        id: "run_act_bad",
+        status: "succeeded",
+        diagnosticId: "diag_bad",
+        artifacts: [
+          {
+            id: "bad",
+            kind: "deliverable",
+            label: "壊れた.docx",
+            url: "/api/deliverables/dlv_bad",
+            externalId: "dlv_bad",
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        completedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        needsUserInput: false,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      },
+    });
+    const outcome = await runWeeklyReportActivation({
+      config: WEEKLY_REPORT_DEFAULTS,
+    });
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.failure.stage).toBe("deliverable");
+    expect(loadActivationState().completedAt).toBeNull();
   });
 
   it("fails closed when artifact url is missing (no fake success)", async () => {
@@ -201,6 +274,7 @@ describe("runWeeklyReportActivation", () => {
   });
 
   it("reuses existing automation id on retry to avoid duplicates", async () => {
+    mockDocxFetchOk("dlv_act_3");
     runAutomationV2.mockResolvedValue({
       created: true,
       run: {

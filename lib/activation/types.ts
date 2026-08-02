@@ -22,16 +22,28 @@ export type WeeklyReportConfig = {
 };
 
 export type ActivationFailureInfo = {
-  stage: "create" | "run" | "deliverable" | "storage" | "unknown";
+  stage:
+    | "create"
+    | "run"
+    | "deliverable"
+    | "storage"
+    | "ownership"
+    | "validation"
+    | "unknown";
   message: string;
   userCanFix: boolean;
   diagnosticId: string | null;
   retryable: boolean;
+  /** True while the client is re-running after a failure. */
+  autoRetrying?: boolean;
 };
 
 export type ActivationResult = {
   automationId: string;
+  /** Product project key for activation = automation id (no separate Project row). */
+  projectId: string;
   runId: string;
+  artifactId: string;
   diagnosticId: string | null;
   fileName: string;
   downloadUrl: string;
@@ -39,6 +51,9 @@ export type ActivationResult = {
   createdAt: string;
   nextRunAt: string | null;
   durationMs: number;
+  sizeBytes: number;
+  hasPkHeader: boolean;
+  ownershipConfirmed: boolean;
 };
 
 export type ActivationProgressState = {

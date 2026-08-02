@@ -121,6 +121,9 @@ describe("auth route matchers", () => {
       "/api/health/word-pipeline(.*)",
     );
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
+      "/api/health/activation-proof(.*)",
+    );
+    expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
       "/api/health/word-request-trace(.*)",
     );
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain(

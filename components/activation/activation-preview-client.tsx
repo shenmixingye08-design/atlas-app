@@ -8,7 +8,9 @@ import { cn } from "@/lib/design-system/cn";
 
 const PREVIEW_RESULT: ActivationResult = {
   automationId: "preview-auto-1",
+  projectId: "preview-auto-1",
   runId: "preview-run-1",
+  artifactId: "preview-dlv-1",
   diagnosticId: "preview-diag-1",
   fileName: "毎週の営業レポート.docx",
   downloadUrl: "/api/deliverables/preview-dlv-1",
@@ -16,6 +18,9 @@ const PREVIEW_RESULT: ActivationResult = {
   createdAt: new Date().toISOString(),
   nextRunAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
   durationMs: 42_000,
+  sizeBytes: 12_480,
+  hasPkHeader: true,
+  ownershipConfirmed: true,
 };
 
 const STEPS: { id: ActivationStepId; label: string }[] = [
