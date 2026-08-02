@@ -68,7 +68,11 @@ export const PLAN_DEFINITIONS: readonly PlanDefinition[] = [
       imageGeneration: false,
       features: LIGHT_FEATURES,
     },
-    highlights: ["文章作成", "SNS投稿補助", "自動化タスク 3件"],
+    highlights: [
+      "月額980円で、終わった仕事の時間を見える化",
+      "自動化・Memory・成果物で手作業を削減",
+      "時給換算ROIで「安い」を毎月確認",
+    ],
   },
   {
     planId: "standard",
