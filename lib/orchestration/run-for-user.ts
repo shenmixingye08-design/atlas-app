@@ -78,6 +78,24 @@ export type RunOrchestrationForUserResult = {
 export async function runOrchestrationForUser(
   input: RunOrchestrationForUserInput,
 ): Promise<RunOrchestrationForUserResult> {
+  if (input.userId) {
+    try {
+      const { ensureWorkMemoryHydrated } = await import(
+        "@/lib/work-memory/durable"
+      );
+      await ensureWorkMemoryHydrated(input.userId);
+    } catch {
+      // hydration best-effort
+    }
+    try {
+      const { ensurePersonalMemoryHydrated } = await import(
+        "@/lib/personal-memory/durable"
+      );
+      await ensurePersonalMemoryHydrated(input.userId);
+    } catch {
+      // hydration best-effort
+    }
+  }
   const notify = input.notify !== false;
   const recordLearning = input.recordLearning !== false;
 
@@ -112,6 +130,27 @@ export async function runOrchestrationForUser(
       ? buildWorkMemoryMetadata(usedWorkMemories)
       : null;
 
+  let personalMemoryMeta: Record<string, unknown> | null = null;
+  if (input.userId) {
+    try {
+      const { resolveForContext } = await import(
+        "@/lib/personal-memory/service"
+      );
+      const { result: personalResolved } = await resolveForContext({
+        userId: input.userId,
+        notes: input.assignment,
+      });
+      if (personalResolved.injectionText) {
+        personalMemoryMeta = {
+          personalMemory: personalResolved.injectionText,
+          personalMemoryTokenEstimate: personalResolved.tokenEstimate,
+        };
+      }
+    } catch {
+      personalMemoryMeta = null;
+    }
+  }
+
   const result = sanitizeOrchestrationResultForClient(
     await orchestrate({
       assignment: input.assignment,
@@ -121,6 +160,7 @@ export async function runOrchestrationForUser(
         ...(input.userId ? { userId: input.userId } : {}),
         ...(memoryMeta ?? {}),
         ...(workMemoryMeta ?? {}),
+        ...(personalMemoryMeta ?? {}),
       },
     }),
   );

@@ -56,9 +56,16 @@ export function decideNotificationResult(input: {
   }
 
   if (target.kind === "automation_run") {
+    // Explicit V2 run targets deep-link to Run detail.
+    // Legacy rows that only carry automationId still open the automation list.
+    const isExplicitRunTarget =
+      notification.targetType === "automation_run" &&
+      Boolean(notification.targetId);
     return {
       status: "redirect",
-      url: `/automations?id=${encodeURIComponent(target.targetId)}`,
+      url: isExplicitRunTarget
+        ? `/automations/runs/${encodeURIComponent(target.targetId)}`
+        : `/automations?id=${encodeURIComponent(target.targetId)}`,
     };
   }
 

@@ -7,7 +7,7 @@ import { auth } from "@clerk/nextjs/server";
 type RouteContext = { params: Promise<{ runId: string }> };
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ): Promise<Response> {
   const { userId } = await auth();
@@ -21,8 +21,21 @@ export async function POST(
   }
 
   try {
+    let reason: string | null = null;
+    try {
+      const body = (await request.json()) as { reason?: unknown };
+      if (typeof body.reason === "string") reason = body.reason;
+    } catch {
+      // empty body is fine
+    }
+
     const access = await resolveFeatureAccessContext();
-    const run = automationPlatformService.cancelRun(userId, runId, access);
+    const run = await automationPlatformService.cancelRun(
+      userId,
+      runId,
+      access,
+      { reason },
+    );
     return Response.json({ run });
   } catch (error) {
     return jsonError(error, {

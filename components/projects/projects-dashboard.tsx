@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
+import { AutomationFirstHome } from "@/components/automation-first/automation-first-home";
 import { fetchAutomations } from "@/lib/automations/client";
 import type { Automation } from "@/lib/automations/types";
 import { normalizeAutomations, normalizeProjects } from "@/lib/compatibility";
@@ -10,6 +11,7 @@ import { shouldShowFirstExperience } from "@/lib/first-experience";
 import { shouldShowWelcomeWizard } from "@/lib/onboarding";
 import { useProjects } from "@/lib/projects/use-projects";
 import { ui } from "@/lib/i18n";
+import { useFeatureAvailability } from "@/lib/feature-flags";
 import { LoadingState } from "@/components/ui/loading-state";
 import {
   HomeDashboardErrorBoundary,
@@ -23,10 +25,20 @@ export function ProjectsDashboard() {
   const searchParams = useSearchParams();
   const { projects: rawProjects, isReady } = useProjects();
   const projects = normalizeProjects(rawProjects);
+  const {
+    flags,
+    loading: flagsLoading,
+    error: flagsError,
+    reload: reloadFlags,
+  } = useFeatureAvailability();
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [automationsError, setAutomationsError] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const [showFirstExperience, setShowFirstExperience] = useState(false);
+
+  // Prefer AF once flags resolve (or optimistic Preview/dev defaults).
+  // Never render legacy home while flags are still loading.
+  const automationFirstHome = flags.automation_first_home_enabled === true;
 
   const reloadAutomations = useCallback(() => {
     void fetchAutomations()
@@ -51,7 +63,9 @@ export function ProjectsDashboard() {
   }, [searchParams]);
 
   useEffect(() => {
-    refreshExperienceState();
+    void Promise.resolve().then(() => {
+      refreshExperienceState();
+    });
   }, [refreshExperienceState]);
 
   const handleWizardComplete = useCallback(() => {
@@ -72,8 +86,21 @@ export function ProjectsDashboard() {
     reloadAutomations();
   }, [reloadAutomations]);
 
-  if (!isReady) {
+  if (!isReady || flagsLoading) {
     return <LoadingState message={ui.secretaryProgress.preparing} />;
+  }
+
+  // Flag fetch failed and AF is not optimistically on → retry, never flash legacy.
+  if (flagsError && !automationFirstHome) {
+    return (
+      <div className="home-dashboard space-y-6 pb-2 sm:pb-4">
+        <HomeWorkLoadError
+          onRetry={() => {
+            reloadFlags();
+          }}
+        />
+      </div>
+    );
   }
 
   return (
@@ -95,6 +122,8 @@ export function ProjectsDashboard() {
             }}
           />
         </div>
+      ) : automationFirstHome ? (
+        <AutomationFirstHome automations={automations} projects={projects} />
       ) : (
         <SecretaryHomeDashboard automations={automations} projects={projects} />
       )}

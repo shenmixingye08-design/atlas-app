@@ -40,6 +40,8 @@ export default function robots(): MetadataRoute.Robots {
           "/notifications",
           "/maintenance",
           "/offline",
+          "/dev",
+          "/dev/",
         ],
       },
     ],
