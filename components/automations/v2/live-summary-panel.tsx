@@ -10,6 +10,7 @@ import {
 } from "@/lib/automation-platform/wizard/schedule-copy";
 import type { AutomationWizardDraft } from "@/lib/automation-platform/wizard/types";
 import type { PredictiveApplyPreview } from "@/lib/personal-memory/predict/types";
+import { LiveIntegrationsPreflightBanner } from "@/components/automations/v2/live-integrations-preflight-banner";
 
 type LiveSummaryPanelProps = {
   draft: AutomationWizardDraft;
@@ -92,6 +93,8 @@ export function LiveSummaryPanel({
       <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-secondary)]">
         {summary || "左側で仕事を選ぶと、ここに内容がまとまります。"}
       </p>
+
+      <LiveIntegrationsPreflightBanner draft={draft} />
 
       <ul className="space-y-1 text-sm text-[var(--text-secondary)]">
         <li>・タイミング: {describeSchedule(draft)}</li>

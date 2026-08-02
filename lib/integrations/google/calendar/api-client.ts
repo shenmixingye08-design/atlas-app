@@ -81,7 +81,7 @@ function extractMeetLink(item: GoogleCalendarEventItem): string | null {
 }
 
 function toGoogleEventBody(input: CalendarEventInput): Record<string, unknown> {
-  const timeZone = CALENDAR_TIMEZONE;
+  const timeZone = input.timeZone?.trim() || CALENDAR_TIMEZONE;
   const body: Record<string, unknown> = {
     summary: input.title.trim(),
     description: input.description?.trim() || undefined,
@@ -124,6 +124,13 @@ function toGoogleEventBody(input: CalendarEventInput): Record<string, unknown> {
         { method: "email", minutes: input.remindMinutesBefore },
       ],
     };
+  }
+
+  const attendees = (input.attendees ?? [])
+    .map((email) => email.trim())
+    .filter(Boolean);
+  if (attendees.length > 0) {
+    body.attendees = attendees.map((email) => ({ email }));
   }
 
   return body;

@@ -2917,7 +2917,8 @@ export const ui = {
     statusConnected: "Connected",
     statusAvailable: "Available",
     statusComingSoon: "Coming Soon",
-    planningNote: "OAuth と API 実行は将来対応です。",
+    planningNote:
+      "Gmail / Calendar / Dropbox / WordPress / X は Live Integrations で接続・再接続できます。",
     empty: "プロバイダーが見つかりません",
   },
 
@@ -2925,7 +2926,7 @@ export const ui = {
     title: "接続管理",
     subtitle: "プロバイダーの接続状態と権限を一元管理します。",
     planningNote:
-      "Google は OAuth で接続できます（Clerk の Google ログインとは別）。他プロバイダーは順次対応します。",
+      "優先連携（Gmail・Calendar・Dropbox・WordPress・X）は上部の Live Integrations から接続・再接続できます。",
     permissionsLabel: "権限",
     servicesLabel: "利用可能なサービス",
     oauthReadinessLabel: "OAuth 準備",
@@ -2936,12 +2937,16 @@ export const ui = {
     statusConnected: "接続済み",
     statusNotConnected: "未接続",
     statusNeedsReconnect: "再接続が必要",
+    statusExpired: "期限切れ",
+    statusInsufficientScope: "権限不足",
     oauthReady: "利用可能",
     oauthPlanned: "準備中",
     oauthUnavailable: "利用不可",
     granted: "付与済み",
     missing: "未付与",
     empty: "プロバイダーが見つかりません",
+    lastUsedLabel: "最終利用",
+    automationCountLabel: "使用中Automation",
   },
 
   internalComms: {

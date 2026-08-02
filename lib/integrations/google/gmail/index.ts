@@ -8,6 +8,7 @@ export { isGmailFilterId, resolveGmailSearchQuery } from "./filters";
 export {
   addLabelToGmailMessage,
   archiveGmailMessage,
+  createGmailComposeDraft,
   createGmailDraft,
   createGmailLabel,
   extractTextFromPdfBuffer,
@@ -19,9 +20,11 @@ export {
   modifyGmailMessageLabels,
   moveGmailMessageToSpam,
   normalizeGmailMessage,
+  sendGmailCompose,
   sendGmailReply,
   trashGmailMessage,
 } from "./api-client";
+export type { GmailComposeInput } from "./api-client";
 export {
   fetchGmailMessagesClient,
   analyzeGmailMessagesClient,
@@ -56,6 +59,8 @@ export {
   trashMessageForUser,
   sendReplyForUser,
   saveGmailDraftForUser,
+  composeGmailDraftForUser,
+  sendGmailComposeForUser,
   listAttachmentsForUser,
   getAttachmentBytesForUser,
   analyzePdfAttachmentForUser,

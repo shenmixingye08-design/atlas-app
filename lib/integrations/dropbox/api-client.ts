@@ -184,7 +184,7 @@ export async function uploadDropboxFile(input: {
         "Dropbox-API-Arg": JSON.stringify({
           path: input.path,
           mode: input.mode ?? "add",
-          autorename: true,
+          autorename: input.mode !== "overwrite",
           mute: false,
         }),
       },
@@ -336,10 +336,47 @@ export async function getDropboxMetadata(input: {
   accessToken: string;
   path: string;
 }): Promise<DropboxFileItem | null> {
-  const result = await dropboxRpc<DropboxMetadata>(
-    input.accessToken,
-    "/files/get_metadata",
-    { path: input.path, include_deleted: false },
-  );
-  return normalizeDropboxEntry(result);
+  try {
+    const result = await dropboxRpc<DropboxMetadata>(
+      input.accessToken,
+      "/files/get_metadata",
+      { path: input.path, include_deleted: false },
+    );
+    return normalizeDropboxEntry(result);
+  } catch {
+    return null;
+  }
+}
+
+/** Create a folder; no-op success if it already exists. */
+export async function ensureDropboxFolder(input: {
+  accessToken: string;
+  path: string;
+}): Promise<DropboxFileItem | null> {
+  const normalized = input.path.replace(/\/+/g, "/").replace(/\/$/, "") || "/";
+  if (normalized === "/" || normalized === "") return null;
+
+  const existing = await getDropboxMetadata({
+    accessToken: input.accessToken,
+    path: normalized,
+  });
+  if (existing?.isFolder) return existing;
+
+  try {
+    const result = await dropboxRpc<{ metadata?: DropboxMetadata }>(
+      input.accessToken,
+      "/files/create_folder_v2",
+      { path: normalized, autorename: false },
+    );
+    return normalizeDropboxEntry(result.metadata ?? { ".tag": "folder", path_display: normalized, path_lower: normalized.toLowerCase(), name: normalized.split("/").pop() });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/conflict|already.?exists/i.test(message)) {
+      return getDropboxMetadata({
+        accessToken: input.accessToken,
+        path: normalized,
+      });
+    }
+    throw error;
+  }
 }

@@ -15,6 +15,8 @@ import {
   createDropboxSharedLink,
   deleteDropboxPath,
   downloadDropboxFile,
+  ensureDropboxFolder,
+  getDropboxMetadata,
   listDropboxFolder,
   searchDropboxFiles,
   uploadDropboxFile,
@@ -121,6 +123,10 @@ export async function uploadDropboxFileForUser(input: {
   fileName: string;
   buffer: Buffer;
   parentPath?: string | null;
+  /** When true, overwrite same path (revision). Default add+autorename. */
+  overwrite?: boolean;
+  /** Ensure parent folder exists before upload. */
+  ensureFolder?: boolean;
 }): Promise<DropboxMutationResult> {
   const access = await resolveDropboxAccess(input);
   if (access.status !== "ready") {
@@ -128,16 +134,55 @@ export async function uploadDropboxFileForUser(input: {
   }
 
   const parent = (input.parentPath?.trim() || "").replace(/\/$/, "");
+  if (input.ensureFolder !== false && parent) {
+    await ensureDropboxFolder({
+      accessToken: access.accessToken,
+      path: parent.startsWith("/") ? parent : `/${parent}`,
+    });
+  }
+
   const safeName = input.fileName.replace(/[\\/]/g, "-");
   const path = `${parent}/${safeName}`.replace(/\/+/g, "/");
+  const fullPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (!input.overwrite) {
+    const existing = await getDropboxMetadata({
+      accessToken: access.accessToken,
+      path: fullPath,
+    });
+    if (existing && !existing.isFolder) {
+      // Duplicate save prevention — return existing without re-upload.
+      return { status: "ready", file: existing };
+    }
+  }
 
   const file = await uploadDropboxFile({
     accessToken: access.accessToken,
-    path: path.startsWith("/") ? path : `/${path}`,
+    path: fullPath,
     buffer: input.buffer,
+    mode: input.overwrite ? "overwrite" : "add",
   });
 
   return { status: "ready", file };
+}
+
+export async function ensureDropboxFolderForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  path: string;
+}): Promise<
+  | { status: "ready"; folder: DropboxFileItem | null }
+  | { status: Exclude<DropboxFilesResult["status"], "ready">; message: string }
+> {
+  const access = await resolveDropboxAccess(input);
+  if (access.status !== "ready") {
+    return { status: access.status, message: access.message };
+  }
+  const folder = await ensureDropboxFolder({
+    accessToken: access.accessToken,
+    path: input.path,
+  });
+  return { status: "ready", folder };
 }
 
 export async function deleteDropboxFileForUser(input: {

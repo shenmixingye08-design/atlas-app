@@ -17,6 +17,7 @@ import {
 import {
   addLabelToGmailMessage,
   archiveGmailMessage,
+  createGmailComposeDraft,
   createGmailDraft,
   createGmailLabel,
   extractTextFromPdfBuffer,
@@ -25,8 +26,10 @@ import {
   fetchGmailMessages,
   listGmailLabels,
   moveGmailMessageToSpam,
+  sendGmailCompose,
   sendGmailReply,
   trashGmailMessage,
+  type GmailComposeInput,
 } from "./api-client";
 import { isGmailFilterId, resolveGmailSearchQuery } from "./filters";
 import type {
@@ -436,5 +439,51 @@ export async function analyzePdfAttachmentForUser(input: {
       summaryLines,
       extractedTextPreview: extractedText.slice(0, 500),
     },
+  };
+}
+
+export async function composeGmailDraftForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  compose: GmailComposeInput;
+}): Promise<
+  | { status: "ready"; draftId: string; messageId: string | null }
+  | GateFailure
+> {
+  const access = await requireGmailAccess(input);
+  if (isGateFailure(access)) return access;
+
+  const created = await createGmailComposeDraft({
+    accessToken: access.accessToken,
+    compose: input.compose,
+  });
+
+  return {
+    status: "ready",
+    draftId: created.id,
+    messageId: created.messageId,
+  };
+}
+
+export async function sendGmailComposeForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  compose: GmailComposeInput;
+}): Promise<
+  | { status: "ready"; messageId: string; threadId: string | null }
+  | GateFailure
+> {
+  const access = await requireGmailAccess(input);
+  if (isGateFailure(access)) return access;
+
+  const sent = await sendGmailCompose({
+    accessToken: access.accessToken,
+    compose: input.compose,
+  });
+
+  return {
+    status: "ready",
+    messageId: sent.id,
+    threadId: sent.threadId,
   };
 }

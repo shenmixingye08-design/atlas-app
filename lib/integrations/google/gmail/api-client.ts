@@ -520,5 +520,151 @@ export async function createGmailDraft(input: {
   return { id: payload.id };
 }
 
+export type GmailComposeInput = {
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  bodyText: string;
+  bodyHtml?: string;
+  /** Optional signature appended to bodyText when non-empty. */
+  signature?: string | null;
+  inReplyTo?: string | null;
+  references?: string | null;
+  threadId?: string | null;
+  attachments?: Array<{
+    filename: string;
+    mimeType: string;
+    contentBase64: string;
+  }>;
+};
+
+function buildRfc822Compose(input: GmailComposeInput): string {
+  const to = input.to.map((v) => v.trim()).filter(Boolean).join(", ");
+  const cc = (input.cc ?? []).map((v) => v.trim()).filter(Boolean).join(", ");
+  const bcc = (input.bcc ?? []).map((v) => v.trim()).filter(Boolean).join(", ");
+  const signature = input.signature?.trim();
+  const bodyText = signature
+    ? `${input.bodyText.trim()}\n\n--\n${signature}`
+    : input.bodyText;
+  const encodedBody = Buffer.from(bodyText, "utf8").toString("base64");
+  const lines = [
+    `To: ${to}`,
+    ...(cc ? [`Cc: ${cc}`] : []),
+    ...(bcc ? [`Bcc: ${bcc}`] : []),
+    `Subject: =?UTF-8?B?${Buffer.from(input.subject, "utf8").toString("base64")}?=`,
+    "MIME-Version: 1.0",
+  ];
+
+  if (input.inReplyTo) {
+    lines.push(`In-Reply-To: ${input.inReplyTo}`);
+    lines.push(`References: ${input.references ?? input.inReplyTo}`);
+  }
+
+  const attachments = input.attachments ?? [];
+  if (attachments.length === 0 && !input.bodyHtml) {
+    lines.push(
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      encodedBody,
+    );
+    return lines.join("\r\n");
+  }
+
+  const boundary = `atlas_${Date.now().toString(36)}`;
+  lines.push(`Content-Type: multipart/mixed; boundary="${boundary}"`, "");
+  lines.push(`--${boundary}`);
+  if (input.bodyHtml?.trim()) {
+    const altBoundary = `alt_${Date.now().toString(36)}`;
+    lines.push(
+      `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+      "",
+      `--${altBoundary}`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      encodedBody,
+      `--${altBoundary}`,
+      'Content-Type: text/html; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      Buffer.from(input.bodyHtml, "utf8").toString("base64"),
+      `--${altBoundary}--`,
+    );
+  } else {
+    lines.push(
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      encodedBody,
+    );
+  }
+
+  for (const file of attachments) {
+    lines.push(
+      `--${boundary}`,
+      `Content-Type: ${file.mimeType}; name="${file.filename}"`,
+      "Content-Transfer-Encoding: base64",
+      `Content-Disposition: attachment; filename="${file.filename}"`,
+      "",
+      file.contentBase64.replace(/\s+/g, ""),
+    );
+  }
+  lines.push(`--${boundary}--`);
+  return lines.join("\r\n");
+}
+
+/** Create a new Gmail draft (compose, not reply-only). */
+export async function createGmailComposeDraft(input: {
+  accessToken: string;
+  compose: GmailComposeInput;
+}): Promise<{ id: string; messageId: string | null }> {
+  const raw = buildRfc822Compose(input.compose);
+  const payload = await gmailFetch<{
+    id?: string;
+    message?: { id?: string };
+  }>(input.accessToken, "/users/me/drafts", {
+    method: "POST",
+    body: JSON.stringify({
+      message: {
+        raw: encodeBase64Url(raw),
+        threadId: input.compose.threadId ?? undefined,
+      },
+    }),
+  });
+
+  if (!payload.id) {
+    throw new Error("Gmail did not return a draft id");
+  }
+
+  return { id: payload.id, messageId: payload.message?.id ?? null };
+}
+
+/** Send a new Gmail message (compose). */
+export async function sendGmailCompose(input: {
+  accessToken: string;
+  compose: GmailComposeInput;
+}): Promise<{ id: string; threadId: string | null }> {
+  const raw = buildRfc822Compose(input.compose);
+  const payload = await gmailFetch<{ id?: string; threadId?: string }>(
+    input.accessToken,
+    "/users/me/messages/send",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        raw: encodeBase64Url(raw),
+        threadId: input.compose.threadId ?? undefined,
+      }),
+    },
+  );
+
+  if (!payload.id) {
+    throw new Error("Gmail did not return a sent message id");
+  }
+
+  return { id: payload.id, threadId: payload.threadId ?? null };
+}
+
 /** Best-effort text extraction from PDF bytes (no extra dependency). */
 export { extractTextFromPdfBuffer } from "@/lib/documents/extract-pdf-text";
