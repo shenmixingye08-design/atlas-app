@@ -22,7 +22,7 @@ export async function POST(
 
   try {
     const access = await resolveFeatureAccessContext();
-    const automation = automationPlatformService.duplicate(userId, id, access);
+    const automation = await automationPlatformService.duplicate(userId, id, access);
     return Response.json({ automation }, { status: 201 });
   } catch (error) {
     return jsonError(error, {

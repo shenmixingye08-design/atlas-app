@@ -29,7 +29,7 @@ export const ui = {
     home: "ホーム",
     newRequest: "お願いする",
     send: "お願い",
-    automation: "定期の仕事",
+    automation: "自動化",
     commander: "お願いする",
     requestHistory: "ご依頼履歴",
     history: "これまでの仕事",
@@ -187,10 +187,10 @@ export const ui = {
     metricInReview: "確認待ち",
     metricInProgress: "進行中",
     metricCompleted: "完了した仕事",
-    metricHabits: "定期の仕事",
+    metricHabits: "自動化",
     unit: "件",
     viewHistory: "これまでの仕事を見る",
-    viewAutomations: "定期の仕事を見る",
+    viewAutomations: "自動化を見る",
   },
 
   secretaryHome: {
@@ -945,12 +945,12 @@ export const ui = {
   },
 
   entrustedJobs: {
-    title: "AI秘書に任せている仕事",
+    title: "自動化",
     subtitle:
-      "繰り返し発生する仕事の内容、実行方法、確認範囲を管理できます。",
+      "自動化したい仕事の内容、実行タイミング、確認範囲を管理できます。",
     pageDescription:
       "毎日・毎週・毎月の繰り返し作業を、MINERVOTが継続してお手伝いします。",
-    addNew: "＋ 新しい仕事を任せる",
+    addNew: "＋ 新しい自動化",
     countSuffix: "件",
     summaryScheduled: "実行予定",
     summaryNeedsReview: "確認待ち",
@@ -969,11 +969,11 @@ export const ui = {
     manualAlsoAvailable: "必要なときに手動実行も可能",
     comingSoon: "順次対応",
     viewDetail: "詳細を見る",
-    emptyTitle: "まだ任せている仕事はありません",
+    emptyTitle: "まだ自動化はありません",
     emptyDescription:
-      "繰り返し行っている仕事をMINERVOTへ依頼すると、次回以降の負担を減らせます。",
-    emptyCta: "新しい仕事を依頼する",
-    registerHere: "この画面で定期登録",
+      "繰り返しの仕事をMINERVOTへ引き継ぐと、次回以降の負担を減らせます。",
+    emptyCta: "自動化を作成",
+    registerHere: "自動化を作成",
     purpose: "仕事の目的",
     procedure: "実行手順",
     requiredInput: "必要な入力",

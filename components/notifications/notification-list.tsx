@@ -45,6 +45,8 @@ type NotificationListProps = {
   limit?: number;
   onUpdate?: () => void;
   onNavigate?: () => void;
+  /** Initial filter tab (Automation First inbox can pass attention-first). */
+  initialFilter?: NoticeFilter;
   /**
    * Fixture notifications. When provided, the list renders these directly and
    * skips fetching / mutations — used by the DEV panel preview to prove layout
@@ -166,6 +168,7 @@ export function NotificationList({
   limit,
   onUpdate,
   onNavigate,
+  initialFilter = "all",
   items,
 }: NotificationListProps) {
   const isFixture = items != null;
@@ -173,7 +176,7 @@ export function NotificationList({
     items ?? [],
   );
   const [loading, setLoading] = useState(!isFixture);
-  const [filter, setFilter] = useState<NoticeFilter>("all");
+  const [filter, setFilter] = useState<NoticeFilter>(initialFilter);
 
   const reload = useCallback(async () => {
     if (isFixture) return;

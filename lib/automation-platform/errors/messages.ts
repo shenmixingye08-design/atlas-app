@@ -132,6 +132,96 @@ const PRESENTATIONS: Record<AutomationErrorCode, AutomationErrorPresentation> =
       diagnostic: "Missing authenticated user.",
       httpStatus: 401,
     },
+    run_not_found: {
+      code: "run_not_found",
+      userMessage: "指定された実行履歴が見つかりませんでした。",
+      diagnostic: "Run id missing or not owned by caller.",
+      httpStatus: 404,
+    },
+    run_permission_denied: {
+      code: "run_permission_denied",
+      userMessage: "この実行を操作する権限がありません。",
+      diagnostic: "Run ownership check failed.",
+      httpStatus: 403,
+    },
+    run_invalid_state: {
+      code: "run_invalid_state",
+      userMessage: "この操作は現在の実行状態では行えません。",
+      diagnostic: "Run is in an invalid state for the requested operation.",
+      httpStatus: 409,
+    },
+    run_already_completed: {
+      code: "run_already_completed",
+      userMessage: "この実行はすでに完了しています。",
+      diagnostic: "Run already in a successful terminal state.",
+      httpStatus: 409,
+    },
+    run_already_cancelled: {
+      code: "run_already_cancelled",
+      userMessage: "この実行はすでにキャンセルされています。",
+      diagnostic: "Run already cancelled.",
+      httpStatus: 409,
+    },
+    run_retry_not_allowed: {
+      code: "run_retry_not_allowed",
+      userMessage: "この実行は再実行できません。",
+      diagnostic: "Retry rejected by policy or terminal constraints.",
+      httpStatus: 409,
+    },
+    run_step_retry_not_allowed: {
+      code: "run_step_retry_not_allowed",
+      userMessage: "この手順は再実行できません。",
+      diagnostic: "Step retry blocked (external action completed or invalid).",
+      httpStatus: 409,
+    },
+    run_resume_not_allowed: {
+      code: "run_resume_not_allowed",
+      userMessage: "この実行は再開できません。",
+      diagnostic: "Resume not allowed from current run state.",
+      httpStatus: 409,
+    },
+    run_cancel_failed: {
+      code: "run_cancel_failed",
+      userMessage: "実行のキャンセルに失敗しました。",
+      diagnostic: "Cancel transition failed.",
+      httpStatus: 500,
+    },
+    run_artifact_missing: {
+      code: "run_artifact_missing",
+      userMessage: "指定された成果物が見つかりませんでした。",
+      diagnostic: "Artifact id missing on run.",
+      httpStatus: 404,
+    },
+    run_notification_target_invalid: {
+      code: "run_notification_target_invalid",
+      userMessage: "通知の移動先が無効です。",
+      diagnostic: "Notification target missing or not owned.",
+      httpStatus: 404,
+    },
+    run_external_action_already_completed: {
+      code: "run_external_action_already_completed",
+      userMessage: "この外部操作はすでに完了しているため、再実行しません。",
+      diagnostic: "Idempotent skip of completed external action.",
+      httpStatus: 409,
+    },
+    run_history_load_failed: {
+      code: "run_history_load_failed",
+      userMessage: "実行履歴の読み込みに失敗しました。",
+      diagnostic: "Failed to load run history.",
+      httpStatus: 500,
+    },
+    run_progress_unavailable: {
+      code: "run_progress_unavailable",
+      userMessage: "進捗情報を取得できませんでした。",
+      diagnostic: "Progress view unavailable for run.",
+      httpStatus: 503,
+    },
+    run_timeout: {
+      code: "run_timeout",
+      userMessage: "実行が時間切れになりました。",
+      diagnostic: "Run exceeded timeout.",
+      httpStatus: 504,
+    },
   };
 
 export function getAutomationErrorPresentation(
