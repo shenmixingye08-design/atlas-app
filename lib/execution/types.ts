@@ -1,5 +1,3 @@
-import type { ActionRequest } from "@/lib/actions/types";
-
 export type SimulationPhase =
   | "queued"
   | "preparing"

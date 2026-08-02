@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -60,8 +61,11 @@ export function SecretaryChatComposer() {
   const dragDepthRef = useRef(0);
 
   useEffect(() => {
-    setVoiceSupported(Boolean(getSpeechRecognitionCtor()));
+    const cancelVoiceSupportCheck = scheduleMountWork(() => {
+      setVoiceSupported(Boolean(getSpeechRecognitionCtor()));
+    });
     return () => {
+      cancelVoiceSupportCheck();
       recognitionRef.current?.stop();
     };
   }, []);

@@ -172,6 +172,14 @@ export async function exportWordDeliverableOnServer(input: {
     const formats: DeliverableFormat[] =
       input.formats && input.formats.length > 0 ? input.formats : ["docx"];
 
+    const { resolvePersonalizationForDeliverables } = await import(
+      "@/lib/personalization/for-deliverables"
+    );
+    const personalization = await resolvePersonalizationForDeliverables({
+      userId: input.userId,
+      artifactType: formats.includes("docx") ? "docx" : formats[0] ?? null,
+    });
+
     const generated = await generateDeliverables(
       {
         assignment: input.assignment,
@@ -187,6 +195,7 @@ export async function exportWordDeliverableOnServer(input: {
         suppressWordReadyNotification: true,
         // Orchestration already produced approved text — do not re-fail on soft quality.
         contentAlreadyApproved: true,
+        personalization,
       },
     );
 

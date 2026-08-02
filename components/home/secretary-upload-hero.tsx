@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -83,8 +84,11 @@ export function SecretaryUploadHero() {
   const autoStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setVoiceSupported(Boolean(getSpeechRecognitionCtor()));
+    const cancelVoiceSupportCheck = scheduleMountWork(() => {
+      setVoiceSupported(Boolean(getSpeechRecognitionCtor()));
+    });
     return () => {
+      cancelVoiceSupportCheck();
       recognitionRef.current?.stop();
       if (autoStartTimerRef.current) clearTimeout(autoStartTimerRef.current);
     };

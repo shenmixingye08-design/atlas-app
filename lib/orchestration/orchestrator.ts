@@ -30,7 +30,6 @@ import {
 import { WorkflowLimitError } from "@/lib/ai/workflow-limits";
 import { resolveCompanyTemplateIdFromMetadata } from "@/lib/company-templates/context";
 import type { EmployeeId } from "@/lib/employees/types";
-import type { KnowledgeRetrievalResult } from "@/lib/knowledge/types";
 
 import { isAtlasServerDebugEnabled } from "@/lib/debug/atlas-debug";
 import { ui } from "@/lib/i18n";
@@ -86,7 +85,6 @@ import {
 } from "./worker-validation";
 import {
   legacyOrchestrationStatus,
-  WorkflowState,
   WorkflowStateManager,
 } from "./workflow-state";
 import type {
@@ -511,11 +509,17 @@ export async function orchestrate(
 
     const atlasMemory = readAtlasMemoryFromMetadata(metadata);
     const workMemory = readWorkMemoryFromMetadata(metadata);
+    const { readPersonalizationPlannerHintFromMetadata } = await import(
+      "@/lib/personalization/metadata"
+    );
+    const personalizationHint =
+      readPersonalizationPlannerHintFromMetadata(metadata);
     const plannerKnowledge = [
       retrieval.plannerContext.similarProjects,
       retrieval.plannerContext.successfulStrategies,
       atlasMemory,
       workMemory,
+      personalizationHint,
     ]
       .filter(Boolean)
       .join("\n\n");

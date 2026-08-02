@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 
@@ -56,6 +57,7 @@ export function RunReviewPanel({
   const [error, setError] = useState<string | null>(null);
   const [showTechnical, setShowTechnical] = useState(false);
   const [inputNote, setInputNote] = useState("");
+  const [approveLocked, setApproveLocked] = useState(false);
   const [pending, startTransition] = useTransition();
   const approveLockRef = useRef(false);
 
@@ -65,7 +67,10 @@ export function RunReviewPanel({
   }, [runId]);
 
   useEffect(() => {
-    approveLockRef.current = false;
+    return scheduleMountWork(() => {
+      approveLockRef.current = false;
+      setApproveLocked(false);
+    });
   }, [runId]);
 
   useEffect(() => {
@@ -116,6 +121,7 @@ export function RunReviewPanel({
   const onApprove = () => {
     if (approveLockRef.current || pending) return;
     approveLockRef.current = true;
+    setApproveLocked(true);
     startTransition(async () => {
       try {
         const next = await approveAutomationRun(runId);
@@ -124,6 +130,7 @@ export function RunReviewPanel({
       } catch (err) {
         setError(err instanceof Error ? err.message : "承認に失敗しました");
         approveLockRef.current = false;
+        setApproveLocked(false);
       }
     });
   };
@@ -579,7 +586,7 @@ export function RunReviewPanel({
             <>
               <Button
                 className="min-h-12 min-w-[8rem] flex-1"
-                disabled={pending || approveLockRef.current}
+                disabled={pending || approveLocked}
                 onClick={onApprove}
               >
                 承認して実行

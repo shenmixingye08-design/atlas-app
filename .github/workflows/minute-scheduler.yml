@@ -1,0 +1,47 @@
+name: Minute Scheduler
+
+# Production minute due-tick without Vercel Pro cron.
+# Calls /api/automations/tick with CRON_SECRET every minute.
+
+on:
+  schedule:
+    - cron: "* * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: minute-scheduler
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tick:
+    name: enqueue + worker drain
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Due tick
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::CRON_SECRET secret is required"
+            exit 1
+          fi
+          BASE_URL="${ATLAS_APP_URL:-}"
+          if [ -z "$BASE_URL" ]; then
+            echo "::error::ATLAS_APP_URL secret is required (e.g. https://app.example.com)"
+            exit 1
+          fi
+          BASE_URL="${BASE_URL%/}"
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            "${BASE_URL}/api/automations/tick" \
+            -o /tmp/tick.json
+          echo "Tick response:" 
+          head -c 2000 /tmp/tick.json || true
+          echo

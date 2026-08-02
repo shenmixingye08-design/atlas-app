@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -141,7 +142,9 @@ export function DropboxFilesPanel({ embedded = false }: { embedded?: boolean }) 
   }, []);
 
   useEffect(() => {
-    void load(path, appliedQuery);
+    return scheduleMountWork(() => {
+      void load(path, appliedQuery);
+    });
   }, [path, appliedQuery, load]);
 
   const handleConnect = async () => {

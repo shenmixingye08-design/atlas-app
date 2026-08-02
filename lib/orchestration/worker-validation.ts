@@ -76,20 +76,6 @@ export function evaluateWorkerDeliverableUsability(
   return { usable: true, reason: "ok" };
 }
 
-function workerOutputHasUsableDeliverable(
-  raw: string,
-  assignment: string,
-  expectedType: DeliverableType,
-  taskText = "",
-): boolean {
-  return evaluateWorkerDeliverableUsability(
-    raw,
-    assignment,
-    expectedType,
-    taskText,
-  ).usable;
-}
-
 /** Fail fast when the production stage was never run. */
 export function assertWorkerStageExecuted(workerExecuted: boolean): void {
   if (!workerExecuted) {

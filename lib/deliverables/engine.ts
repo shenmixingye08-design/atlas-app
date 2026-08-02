@@ -43,6 +43,14 @@ import type {
 import { getWordCompanyBrand } from "./company-brand";
 import { detectWordPurpose, isWordTemplateId } from "./word-templates";
 import type { DocxGenerateOptions } from "./generators/docx-generator";
+import type { PdfGenerateOptions } from "./generators/pdf-generator";
+import type { PptxGenerateOptions } from "./generators/pptx-generator";
+import type { XlsxGenerateOptions } from "./generators/xlsx-generator";
+import type { ArtifactGeneratorOptions } from "@/lib/personalization/types";
+import {
+  applyContentPersonalization,
+  applyFileNamePattern,
+} from "@/lib/personalization/apply-artifact";
 import {
   addDeliverableVersion,
   buildVersionedDisplayName,
@@ -127,11 +135,18 @@ export type GenerateDeliverablesResult = {
   jobId?: string;
 };
 
+type FormatGenerateOptions = {
+  docx?: DocxGenerateOptions;
+  pptx?: PptxGenerateOptions;
+  xlsx?: XlsxGenerateOptions;
+  pdf?: PdfGenerateOptions;
+};
+
 async function generateVerifiedFile(
   format: GeneratedDeliverableFile["format"],
   content: string,
   baseFileName: string,
-  docxOptions?: DocxGenerateOptions,
+  formatOptions?: FormatGenerateOptions,
 ): Promise<{
   file: GeneratedDeliverableFile | null;
   reasons: string[];
@@ -165,10 +180,21 @@ async function generateVerifiedFile(
         throw new Error("fault_inject:docx_packer");
       }
       const renderStarted = Date.now();
-      const file =
+      const optionPayload =
         format === "docx"
-          ? await generator.generate(content, baseFileName, docxOptions)
-          : await generator.generate(content, baseFileName);
+          ? formatOptions?.docx
+          : format === "pptx"
+            ? formatOptions?.pptx
+            : format === "xlsx"
+              ? formatOptions?.xlsx
+              : format === "pdf"
+                ? formatOptions?.pdf
+                : undefined;
+      const file = await generator.generate(
+        content,
+        baseFileName,
+        optionPayload,
+      );
       generateMs += Date.now() - renderStarted;
       if (format === "docx" && consumeWordFault("docx_verify")) {
         lastReasons = ["Word生成失敗: fault_inject:docx_verify"];
@@ -270,6 +296,8 @@ export type GenerateDeliverablesOptions = {
     outputTokens?: number | null;
     regenerateCount?: number | null;
   };
+  /** Typed personalization from production Memory — applied to content + exporters */
+  personalization?: ArtifactGeneratorOptions | null;
 };
 
 function estimateTokensFromText(text: string): number {
@@ -445,11 +473,29 @@ export async function generateDeliverables(
   if (!needsWord) {
     const deliverables: Deliverable[] = [];
     const failures: Array<{ format: string; reasons: string[] }> = [];
+    const personalization = options.personalization ?? null;
+    const personalizedContent =
+      personalization?.personalization != null
+        ? applyContentPersonalization(
+            safeContent,
+            personalization.personalization,
+          )
+        : safeContent;
+    const personalizedBaseName = applyFileNamePattern(
+      baseFileName,
+      personalization?.fileNamePattern,
+    );
+    const formatOptions: FormatGenerateOptions = {
+      pptx: personalization?.powerpoint,
+      xlsx: personalization?.excel,
+      pdf: personalization?.pdf,
+    };
     for (const format of formats) {
       const { file, reasons } = await generateVerifiedFile(
         format,
-        safeContent,
-        baseFileName,
+        personalizedContent,
+        personalizedBaseName,
+        formatOptions,
       );
       if (!file) {
         failures.push({ format, reasons });
@@ -458,7 +504,7 @@ export async function generateDeliverables(
       const { stored } = await saveDeliverableFileDurableDetailed(
         file,
         options.userId,
-        { sourceContent: safeContent, baseFileName },
+        { sourceContent: personalizedContent, baseFileName: personalizedBaseName },
       );
       deliverables.push(toDeliverableMetadata(stored, requestOrigin));
     }
@@ -683,16 +729,35 @@ export async function generateDeliverables(
       sourceContent: safeContent,
     });
 
-    const docxOptions: DocxGenerateOptions = {
-      assignment: input.assignment,
-      title: input.title,
-      templateId: purpose.templateId,
-      brand,
-      author: options.author ?? brand?.contactName,
-      companyName: options.companyName ?? brand?.companyName,
-      recipient: options.recipient,
-      createdAt: options.createdAt,
-      footerNote: brand?.footerText,
+    const personalization = options.personalization ?? null;
+    const personalizedContent =
+      personalization?.personalization != null
+        ? applyContentPersonalization(
+            safeContent,
+            personalization.personalization,
+          )
+        : safeContent;
+    const personalizedBaseName = applyFileNamePattern(
+      baseFileName,
+      personalization?.fileNamePattern,
+    );
+
+    const formatOptions: FormatGenerateOptions = {
+      docx: {
+        assignment: input.assignment,
+        title: input.title,
+        templateId: purpose.templateId,
+        brand,
+        author: options.author ?? brand?.contactName,
+        companyName: options.companyName ?? brand?.companyName,
+        recipient: options.recipient,
+        createdAt: options.createdAt,
+        footerNote: brand?.footerText,
+        ...(personalization?.word ?? {}),
+      },
+      pptx: personalization?.powerpoint,
+      xlsx: personalization?.excel,
+      pdf: personalization?.pdf,
     };
 
     for (const format of formats) {
@@ -736,9 +801,9 @@ export async function generateDeliverables(
       const genStarted = Date.now();
       const { file, reasons, attempts, timings } = await generateVerifiedFile(
         format,
-        safeContent,
-        baseFileName,
-        format === "docx" ? docxOptions : undefined,
+        personalizedContent,
+        personalizedBaseName,
+        formatOptions,
       );
 
       if (!file) {

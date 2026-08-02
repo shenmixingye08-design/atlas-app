@@ -31,7 +31,6 @@ const ENV_KEYS = [
   "NEXT_PUBLIC_SITE_URL",
   "VERCEL_URL",
   "VERCEL_ENV",
-  "NODE_ENV",
 ] as const;
 
 function snapshotEnv(): Record<(typeof ENV_KEYS)[number], string | undefined> {
@@ -53,10 +52,14 @@ function restoreEnv(values: Record<(typeof ENV_KEYS)[number], string | undefined
 }
 
 describe("stripe checkout config", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("builds success and cancel URLs from app origin in non-production", () => {
     const saved = snapshotEnv();
     delete process.env.VERCEL_ENV;
-    process.env.NODE_ENV = "development";
+    vi.stubEnv("NODE_ENV", "development");
     delete process.env.NEXT_PUBLIC_APP_URL;
     delete process.env.NEXT_PUBLIC_SITE_URL;
     delete process.env.VERCEL_URL;
@@ -95,7 +98,7 @@ describe("stripe checkout config", () => {
   it("prefers NEXT_PUBLIC_APP_URL over request origin outside production", () => {
     const saved = snapshotEnv();
     delete process.env.VERCEL_ENV;
-    process.env.NODE_ENV = "development";
+    vi.stubEnv("NODE_ENV", "development");
     process.env.NEXT_PUBLIC_APP_URL = "https://atlas.example.com/";
 
     expect(resolveAppOrigin("http://localhost:3000")).toBe("https://atlas.example.com");

@@ -611,6 +611,11 @@ export async function prepareAssignmentWithVision(input: {
               : "deliverables_empty",
           analysisSuccess: true,
           payloadAttachmentIdCount: attachmentIds.length,
+          deliverableFormats: visionFiles.formats.join(","),
+          deliverableFailureReasons: visionFiles.failures
+            .map((failure) => `${failure.format}:${failure.reasons.join("|")}`)
+            .join(";")
+            .slice(0, 500),
         },
       );
       appendVisionDiagnosticStage(batchDiagnosticId, "deliverable_save", saveOk, {

@@ -1,13 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  loadDurableDomain,
+  persistDurableDomain,
+  pruneOversizedClerkDurableDomains,
+} from "@/lib/persistence/durable-domain";
 
-const persistDomain = vi.fn(async () => "supabase");
-const loadDomain = vi.fn(async () => null);
-const prune = vi.fn(async () => ({ migrated: [], cleared: [] }));
+type PersistDomainMock = (
+  userId: Parameters<typeof persistDurableDomain>[0],
+  domainKey: Parameters<typeof persistDurableDomain>[1],
+  payload: unknown,
+  options: unknown,
+) => ReturnType<typeof persistDurableDomain<unknown>>;
+
+const persistDomain = vi.fn<PersistDomainMock>(async () => "supabase");
+const loadDomain = vi.fn<typeof loadDurableDomain>(async () => null);
+const prune = vi.fn<typeof pruneOversizedClerkDurableDomains>(
+  async () => ({ migrated: [], cleared: [] }),
+);
 
 vi.mock("@/lib/persistence/durable-domain", () => ({
-  persistDurableDomain: (...args: unknown[]) => persistDomain(...args),
-  loadDurableDomain: (...args: unknown[]) => loadDomain(...args),
-  pruneOversizedClerkDurableDomains: (...args: unknown[]) => prune(...args),
+  persistDurableDomain: <T,>(
+    ...args: Parameters<typeof persistDurableDomain<T>>
+  ) => persistDomain(...args) as ReturnType<typeof persistDurableDomain<T>>,
+  loadDurableDomain: <T,>(...args: Parameters<typeof loadDurableDomain>) =>
+    loadDomain(...args) as ReturnType<typeof loadDurableDomain<T>>,
+  pruneOversizedClerkDurableDomains: (
+    ...args: Parameters<typeof pruneOversizedClerkDurableDomains>
+  ) => prune(...args),
 }));
 
 import {

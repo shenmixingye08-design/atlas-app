@@ -174,7 +174,7 @@ export async function resolveDeliverableLookupForNotification(input: {
   }
 
   if (project) {
-    let displayKind: DeliverableDisplayState["kind"] =
+    const displayKind: DeliverableDisplayState["kind"] =
       resolveDeliverableDisplayState(project).kind;
     // If project text is ready but Word binary missing while notification
     // claimed Word ready, keep showing ready (download CTA can recover).

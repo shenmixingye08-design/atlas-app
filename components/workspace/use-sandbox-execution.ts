@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useEffect, useState } from "react";
 
 import type { ActionRequest } from "@/lib/actions/types";
@@ -24,52 +25,55 @@ export function useSandboxExecution(actions: readonly ActionRequest[]) {
   const [isComplete, setIsComplete] = useState(false);
 
   useEffect(() => {
-    if (actions.length === 0) {
-      setExecutions([]);
-      setIsRunning(false);
-      setIsComplete(false);
-      return;
-    }
-
     let cancelled = false;
-    const plan = createSandboxPlan(actions);
-    setExecutions(plan.executions);
-    setIsRunning(true);
-    setIsComplete(false);
+    const cancelSimulationStart = scheduleMountWork(() => {
+      if (actions.length === 0) {
+        setExecutions([]);
+        setIsRunning(false);
+        setIsComplete(false);
+        return;
+      }
 
-    async function simulate() {
-      const state = [...plan.executions];
+      const plan = createSandboxPlan(actions);
+      setExecutions(plan.executions);
+      setIsRunning(true);
+      setIsComplete(false);
 
-      for (let actionIndex = 0; actionIndex < state.length; actionIndex += 1) {
-        let elapsed = 0;
+      async function simulate() {
+        const state = [...plan.executions];
 
-        for (const phase of PHASE_ORDER) {
-          if (cancelled) return;
+        for (let actionIndex = 0; actionIndex < state.length; actionIndex += 1) {
+          let elapsed = 0;
 
-          state[actionIndex] = advanceExecution(
-            state[actionIndex]!,
-            phase,
-            elapsed,
-          );
-          setExecutions([...state]);
+          for (const phase of PHASE_ORDER) {
+            if (cancelled) return;
 
-          if (phase !== "completed") {
-            await sleep(PHASE_DURATIONS_MS[phase]);
-            elapsed += PHASE_DURATIONS_MS[phase];
+            state[actionIndex] = advanceExecution(
+              state[actionIndex]!,
+              phase,
+              elapsed,
+            );
+            setExecutions([...state]);
+
+            if (phase !== "completed") {
+              await sleep(PHASE_DURATIONS_MS[phase]);
+              elapsed += PHASE_DURATIONS_MS[phase];
+            }
           }
+        }
+
+        if (!cancelled) {
+          setIsRunning(false);
+          setIsComplete(true);
         }
       }
 
-      if (!cancelled) {
-        setIsRunning(false);
-        setIsComplete(true);
-      }
-    }
-
-    void simulate();
+      void simulate();
+    });
 
     return () => {
       cancelled = true;
+      cancelSimulationStart();
     };
   }, [actions]);
 

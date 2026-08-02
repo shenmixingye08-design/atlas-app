@@ -1,4 +1,5 @@
 "use client";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -183,7 +184,9 @@ export function BillingSettings() {
   }, []);
 
   useEffect(() => {
-    void load();
+    return scheduleMountWork(() => {
+      void load();
+    });
   }, [load]);
 
   // Quietly refetch just the usage/plan summary (no full-screen loading) so the

@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -25,10 +26,12 @@ export function CloudStoragePanel({
   const [provider, setProvider] = useState<CloudStorageProvider>(initialProvider);
 
   useEffect(() => {
-    const fromQuery = searchParams.get("provider");
-    if (fromQuery === "dropbox" || fromQuery === "drive") {
-      setProvider(fromQuery);
-    }
+    return scheduleMountWork(() => {
+      const fromQuery = searchParams.get("provider");
+      if (fromQuery === "dropbox" || fromQuery === "drive") {
+        setProvider(fromQuery);
+      }
+    });
   }, [searchParams]);
 
   return (
