@@ -1,8 +1,4 @@
 {
-  "crons": [
-    {
-      "path": "/api/automations/tick",
-      "schedule": "* * * * *"
-    }
-  ]
+  "$comment": "Vercel Hobby rejects minute crons. Minute scheduling is provided by .github/workflows/minute-scheduler-tick.yml. After Vercel Pro, copy vercel.cron.pro.json into this file for native Vercel Cron as well.",
+  "crons": []
 }
