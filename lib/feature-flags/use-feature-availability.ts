@@ -15,6 +15,7 @@ const DEFAULT_OFF_UNTIL_LOADED: ReadonlySet<FeatureFlagId> = new Set([
   "automation_v2_enabled",
   "automation_memory_enabled",
   "automation_approval_enabled",
+  "workflow_learning_enabled",
 ]);
 
 const DEFAULT_AVAILABILITY = FEATURE_FLAG_IDS.reduce<FeatureAvailabilityMap>(
