@@ -3,7 +3,7 @@ export { AutomationFirstBottomNav } from "./automation-first-bottom-nav";
 export { AutomationFirstHome } from "./automation-first-home";
 export { AutomationRow } from "./automation-row";
 export { CreateSheet } from "./create-sheet";
-export { DesignSystemRoot } from "./design-system-root";
+export { AutomationDesignSystemRoot } from "./design-system-root";
 export { EmptyState } from "./empty-state";
 export { ErrorState } from "./error-state";
 export { NotificationInbox } from "./notification-inbox";

@@ -80,7 +80,7 @@ export function WizardShell({
             aria-label="作成の進捗"
           >
             <div
-              className="h-full rounded-full bg-accent transition-[width] duration-300 motion-reduce:transition-none"
+              className="h-full rounded-full bg-[var(--brand,var(--accent))] transition-[width] duration-300 motion-reduce:transition-none"
               style={{ width: `${Math.round(progress * 100)}%` }}
             />
           </div>
