@@ -1,20 +1,44 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  clearClerkPrivateMetadataKeys,
+  loadClerkPrivateMetadataKey,
+  persistClerkPrivateMetadataKey,
+} from "@/lib/persistence/clerk-private-metadata";
+import type {
+  loadSupabaseUserState,
+  upsertSupabaseUserState,
+} from "@/lib/persistence/supabase-user-state";
+import type { DurableDomainEnvelope } from "./durable-domain";
 
-const persistClerk = vi.fn(async () => true);
-const loadClerk = vi.fn(async () => null);
-const upsertSb = vi.fn(async () => false);
-const loadSb = vi.fn(async () => null);
-const clearClerk = vi.fn(async () => true);
+const persistClerk = vi.fn<typeof persistClerkPrivateMetadataKey>(
+  async () => true,
+);
+const loadClerk = vi.fn<typeof loadClerkPrivateMetadataKey>(async () => null);
+const upsertSb = vi.fn<typeof upsertSupabaseUserState>(async () => false);
+const loadSb = vi.fn<typeof loadSupabaseUserState>(async () => null);
+const clearClerk = vi.fn<typeof clearClerkPrivateMetadataKeys>(
+  async () => true,
+);
 
 vi.mock("@/lib/persistence/clerk-private-metadata", () => ({
-  persistClerkPrivateMetadataKey: (...args: unknown[]) => persistClerk(...args),
-  loadClerkPrivateMetadataKey: (...args: unknown[]) => loadClerk(...args),
-  clearClerkPrivateMetadataKeys: (...args: unknown[]) => clearClerk(...args),
+  persistClerkPrivateMetadataKey: (
+    ...args: Parameters<typeof persistClerkPrivateMetadataKey>
+  ) => persistClerk(...args),
+  loadClerkPrivateMetadataKey: <T,>(
+    ...args: Parameters<typeof loadClerkPrivateMetadataKey>
+  ) => loadClerk(...args) as ReturnType<typeof loadClerkPrivateMetadataKey<T>>,
+  clearClerkPrivateMetadataKeys: (
+    ...args: Parameters<typeof clearClerkPrivateMetadataKeys>
+  ) => clearClerk(...args),
 }));
 
 vi.mock("@/lib/persistence/supabase-user-state", () => ({
-  upsertSupabaseUserState: (...args: unknown[]) => upsertSb(...args),
-  loadSupabaseUserState: (...args: unknown[]) => loadSb(...args),
+  upsertSupabaseUserState: (
+    ...args: Parameters<typeof upsertSupabaseUserState>
+  ) => upsertSb(...args),
+  loadSupabaseUserState: <T,>(
+    ...args: Parameters<typeof loadSupabaseUserState>
+  ) => loadSb(...args) as ReturnType<typeof loadSupabaseUserState<T>>,
 }));
 
 import {
@@ -106,14 +130,17 @@ describe("durable-domain", () => {
   });
 
   it("loads Supabase payload for supabase-only domains without Clerk", async () => {
-    loadSb.mockResolvedValue({
+    const row = {
       payload: {
         version: 1,
         updatedAt: new Date().toISOString(),
         payload: { blob: "full" },
       },
       updatedAt: new Date().toISOString(),
-    });
+    } satisfies Awaited<
+      ReturnType<typeof loadSupabaseUserState<DurableDomainEnvelope<{ blob: string }>>>
+    >;
+    loadSb.mockResolvedValue(row);
 
     const loaded = await loadDurableDomain<{ blob: string }>(
       "user_1",

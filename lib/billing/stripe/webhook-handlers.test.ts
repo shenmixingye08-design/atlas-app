@@ -17,7 +17,7 @@ function buildEvent<T extends string>(
     id,
     type,
     data: { object },
-  } as Parameters<typeof handleStripeWebhookEvent>[0];
+  };
 }
 
 describe("stripe webhook handlers", () => {

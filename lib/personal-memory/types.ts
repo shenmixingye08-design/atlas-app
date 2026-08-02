@@ -298,7 +298,7 @@ export type CorrectionSignal = {
   after?: string | null;
   automationId?: string | null;
   artifactType?: string | null;
-  source: Exclude<MemorySource, "external_content">;
+  source: MemorySource;
 };
 
 export const MAX_PERSONAL_MEMORIES_PER_USER = 300;

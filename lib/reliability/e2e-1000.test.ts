@@ -185,29 +185,28 @@ async function oneIteration(i: number): Promise<IterResult> {
     message: `成果物を用意しました (#${i})`,
     actionUrl: null,
   });
+  const fallbackNotification = {
+    notificationId: `ntf_test_${i}`,
+    userId: USER,
+    audience: "user",
+    type: "completed",
+    title: "仕事が完了しました",
+    message: `成果物を用意しました (#${i})`,
+    relatedTaskId: null,
+    relatedService: null,
+    isRead: false,
+    createdAt: new Date().toISOString(),
+    actionUrl: null,
+    lineEvent: "work_completed",
+    severity: "info",
+    eventCategory: "final_success",
+    pushSentAt: null,
+    pushFailedAt: null,
+    pushFailureReason: null,
+    readAt: null,
+  } satisfies NonNullable<typeof ntf>;
   const push = await deliverWebPushWithAck({
-    record:
-      ntf ??
-      ({
-        notificationId: `ntf_test_${i}`,
-        userId: USER,
-        audience: "user",
-        type: "completed",
-        title: "仕事が完了しました",
-        message: `成果物を用意しました (#${i})`,
-        relatedTaskId: null,
-        relatedService: null,
-        isRead: false,
-        createdAt: new Date().toISOString(),
-        actionUrl: null,
-        lineEvent: "work_completed",
-        severity: "info",
-        eventCategory: "work_completed",
-        pushSentAt: null,
-        pushFailedAt: null,
-        pushFailureReason: null,
-        readAt: null,
-      } as const),
+    record: ntf ?? fallbackNotification,
   });
   notifyOk = line.ok && push.ok;
   historyOk = Boolean(ntf?.notificationId) && (wordOk || pdfOk);

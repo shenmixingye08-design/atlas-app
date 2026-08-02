@@ -16,6 +16,10 @@ import type { OrchestrationResult } from "@/lib/orchestration/types";
 import { inferDeliverableType, parseWorkerDeliverablePayload } from "@/lib/orchestration/worker-output";
 import { hydrateWorkflowState } from "@/lib/orchestration/workflow-state";
 
+type LegacyOrchestrationResult = Omit<OrchestrationResult, "deliverable"> & {
+  deliverable: string | Deliverable;
+};
+
 function isStructuredDeliverable(value: unknown): value is Deliverable {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
@@ -109,7 +113,12 @@ function hydrateFromFinalResponse(
   };
 }
 
-function rebuildFromExecutions(result: OrchestrationResult): Deliverable | null {
+function rebuildFromExecutions(
+  result: Pick<
+    OrchestrationResult,
+    "assignment" | "executions" | "research" | "plannerPlan"
+  >,
+): Deliverable | null {
   if (result.executions.length === 0) return null;
   const rebuilt = buildDeliverable({
     assignment: result.assignment,
@@ -183,7 +192,7 @@ function repairStructuredDeliverable(raw: Deliverable, assignment: string): Deli
 
 /** Migrate legacy persisted orchestration results to structured Deliverable shape. */
 export function migrateOrchestrationResult(
-  result: OrchestrationResult,
+  result: OrchestrationResult | LegacyOrchestrationResult,
 ): OrchestrationResult {
   let deliverable: Deliverable;
 

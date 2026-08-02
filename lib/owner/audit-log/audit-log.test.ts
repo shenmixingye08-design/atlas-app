@@ -58,7 +58,6 @@ describe("audit log", () => {
     });
 
     const payments = filterAuditLogEntries(listAuditLogEntries(), {
-      action: undefined,
       category: "billing",
       q: "stripe_payment",
     });
