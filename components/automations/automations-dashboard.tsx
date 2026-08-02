@@ -24,10 +24,16 @@ import {
   runAutomationV2,
 } from "@/lib/automation-platform/client";
 import { fetchFeatureAvailability } from "@/lib/feature-flags/client";
+import {
+  automationToVisualStatus,
+  formatRunInstant,
+} from "@/lib/automation-first/automation-status";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { AutomationRow } from "@/components/automation-first/automation-row";
+import { PageHeader } from "@/components/automation-first/page-header";
 
 import { AutomationCard } from "./automation-card";
 import { AutomationDetailPanel } from "./automation-detail-panel";
@@ -88,6 +94,7 @@ export function AutomationsDashboard() {
   );
 
   const [v2Enabled, setV2Enabled] = useState(false);
+  const [dashboardV2, setDashboardV2] = useState(false);
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [automationsV2, setAutomationsV2] = useState<AutomationV2[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -102,8 +109,12 @@ export function AutomationsDashboard() {
     void fetchFeatureAvailability()
       .then((flags) => {
         setV2Enabled(Boolean(flags.automation_v2_enabled));
+        setDashboardV2(Boolean(flags.automation_dashboard_v2_enabled));
       })
-      .catch(() => setV2Enabled(false));
+      .catch(() => {
+        setV2Enabled(false);
+        setDashboardV2(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -262,45 +273,62 @@ export function AutomationsDashboard() {
 
   return (
     <div className="space-y-10 sm:space-y-12 animate-fade-up pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-accent">{ui.brand}</p>
-          <h1 className="text-display text-foreground">
-            {ui.entrustedJobs.title}
-          </h1>
-          <p className="text-body max-w-2xl text-[var(--text-secondary)]">
-            {ui.entrustedJobs.subtitle}
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-col gap-2 self-start sm:items-end">
-          <Button
-            variant="primary"
-            className="min-h-[48px] rounded-full px-6"
-            onClick={openCreate}
-          >
-            {ui.entrustedJobs.registerHere}
-          </Button>
-          {v2Enabled ? (
-            <Link
-              href="/automations/new"
-              className="text-sm text-accent underline"
-            >
-              下書きから続ける
-            </Link>
-          ) : (
+      {dashboardV2 ? (
+        <PageHeader
+          eyebrow={ui.brand}
+          title="自動化"
+          description="稼働中の仕事、次回実行、最終結果を一覧で運用できます。"
+          actions={
             <Button
-              variant="secondary"
-              className="min-h-[44px] rounded-full px-4"
-              onClick={() => {
-                setCreateInitialState(defaultAutomationFormState());
-                setShowCreate(true);
-              }}
+              variant="primary"
+              className="min-h-[var(--touch-target)] rounded-[var(--radius-md)] px-5"
+              onClick={openCreate}
             >
-              {ui.entrustedJobs.addNew}
+              新しい自動化を作る
             </Button>
-          )}
-        </div>
-      </header>
+          }
+        />
+      ) : (
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-accent">{ui.brand}</p>
+            <h1 className="text-display text-foreground">
+              {ui.entrustedJobs.title}
+            </h1>
+            <p className="text-body max-w-2xl text-[var(--text-secondary)]">
+              {ui.entrustedJobs.subtitle}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col gap-2 self-start sm:items-end">
+            <Button
+              variant="primary"
+              className="min-h-[48px] rounded-full px-6"
+              onClick={openCreate}
+            >
+              {ui.entrustedJobs.registerHere}
+            </Button>
+            {v2Enabled ? (
+              <Link
+                href="/automations/new"
+                className="text-sm text-accent underline"
+              >
+                下書きから続ける
+              </Link>
+            ) : (
+              <Button
+                variant="secondary"
+                className="min-h-[44px] rounded-full px-4"
+                onClick={() => {
+                  setCreateInitialState(defaultAutomationFormState());
+                  setShowCreate(true);
+                }}
+              >
+                {ui.entrustedJobs.addNew}
+              </Button>
+            )}
+          </div>
+        </header>
+      )}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {summaryCards.map((item) => (
@@ -439,6 +467,27 @@ export function AutomationsDashboard() {
               </Button>
             </div>
           </Card>
+        ) : dashboardV2 ? (
+          <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)]">
+            <div className="hidden border-b border-[var(--border)] px-3 py-2 text-[length:var(--text-caption)] text-[var(--text-muted)] sm:grid sm:grid-cols-[minmax(0,1.4fr)_auto_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
+              <span>自動化</span>
+              <span>状態</span>
+              <span>次回</span>
+              <span>最終</span>
+            </div>
+            {automations.map((automation) => (
+              <AutomationRow
+                key={automation.id}
+                id={automation.id}
+                name={automation.name}
+                description={automation.schedule.label}
+                status={automationToVisualStatus(automation)}
+                nextRunLabel={formatRunInstant(automation.nextRun)}
+                lastRunLabel={formatRunInstant(automation.lastRun)}
+                href={`/automations?id=${encodeURIComponent(automation.id)}`}
+              />
+            ))}
+          </div>
         ) : (
           <ul className="space-y-4">
             {automations.map((automation) => (

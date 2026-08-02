@@ -28,6 +28,10 @@ const allFlagsOn = {
   automation_v2_enabled: true,
   automation_memory_enabled: true,
   automation_approval_enabled: true,
+  automation_first_home_enabled: true,
+  automation_first_navigation_enabled: true,
+  automation_design_system_enabled: true,
+  automation_dashboard_v2_enabled: true,
 } satisfies FeatureAvailabilityMap;
 
 describe("automation create wizard domain", () => {
