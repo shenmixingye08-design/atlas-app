@@ -2,8 +2,9 @@ import type { FeatureFlagId, FeatureFlagState } from "./types";
 
 /**
  * Flags that ship with Automation First formal-home rollout.
- * Defaults are environment-aware so Preview / local show the new UI on `/projects`
- * without visiting `/dev`, while production stays staged (`beta`) until owner promote.
+ * Defaults are environment-aware so `/projects` shows the new UI without `/dev`.
+ * Rollback: Owner Feature Flags → off, or ATLAS_AUTOMATION_FIRST_UI=off /
+ * NEXT_PUBLIC_ATLAS_AUTOMATION_FIRST_UI=off.
  */
 export const AUTOMATION_FIRST_ROLLOUT_FLAG_IDS = [
   "automation_first_home_enabled",
@@ -29,8 +30,8 @@ export function isAutomationFirstRolloutFlag(
  * Priority:
  * 1. `ATLAS_AUTOMATION_FIRST_UI` = on|off|beta
  * 2. Vitest → off (deterministic tests)
- * 3. Vercel Preview / non-production → on
- * 4. Production → beta (owners + ATLAS_BETA_USER_EMAILS)
+ * 3. All other environments (Preview / Development / Production) → on
+ *    so normal login to `/projects` shows Automation First UI.
  */
 export function resolveAutomationFirstDefaultState(): FeatureFlagState {
   const override = process.env.ATLAS_AUTOMATION_FIRST_UI?.trim().toLowerCase();
@@ -48,13 +49,5 @@ export function resolveAutomationFirstDefaultState(): FeatureFlagState {
     return "off";
   }
 
-  if (process.env.VERCEL_ENV === "preview") {
-    return "on";
-  }
-
-  if (process.env.NODE_ENV !== "production") {
-    return "on";
-  }
-
-  return "beta";
+  return "on";
 }
