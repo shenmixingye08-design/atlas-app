@@ -95,6 +95,14 @@ export async function runOrchestrationForUser(
     } catch {
       // hydration best-effort
     }
+    try {
+      const { ensureProductionMemoryHydrated } = await import(
+        "@/lib/personalization/durable"
+      );
+      await ensureProductionMemoryHydrated(input.userId);
+    } catch {
+      // hydration best-effort
+    }
   }
   const notify = input.notify !== false;
   const recordLearning = input.recordLearning !== false;
@@ -151,6 +159,51 @@ export async function runOrchestrationForUser(
     }
   }
 
+  let productionPersonalizationMeta: Record<string, unknown> | null = null;
+  if (input.userId && input.metadata?.skipProductionMemory !== true) {
+    try {
+      const { resolvePersonalization } = await import(
+        "@/lib/personalization/service"
+      );
+      const { buildPersonalizationMetadata } = await import(
+        "@/lib/personalization/metadata"
+      );
+      const explicit =
+        input.metadata?.explicitOverrides &&
+        typeof input.metadata.explicitOverrides === "object"
+          ? (input.metadata.explicitOverrides as Record<string, unknown>)
+          : null;
+      const resolved = await resolvePersonalization({
+        ownerId: input.userId,
+        explicitOverrides: explicit,
+        automationId:
+          typeof input.metadata?.automationId === "string"
+            ? input.metadata.automationId
+            : null,
+        templateId: templateId ?? null,
+        companyId:
+          typeof input.metadata?.companyId === "string"
+            ? input.metadata.companyId
+            : null,
+        category:
+          typeof input.metadata?.workCategory === "string"
+            ? input.metadata.workCategory
+            : null,
+        artifactType:
+          typeof input.metadata?.artifactType === "string"
+            ? input.metadata.artifactType
+            : null,
+        memoryEnabled: input.metadata?.memoryEnabled !== false,
+      });
+      productionPersonalizationMeta = {
+        ...buildPersonalizationMetadata(resolved.context),
+        personalizationGeneratorOptions: resolved.generatorOptions,
+      };
+    } catch {
+      productionPersonalizationMeta = null;
+    }
+  }
+
   const result = sanitizeOrchestrationResultForClient(
     await orchestrate({
       assignment: input.assignment,
@@ -161,6 +214,7 @@ export async function runOrchestrationForUser(
         ...(memoryMeta ?? {}),
         ...(workMemoryMeta ?? {}),
         ...(personalMemoryMeta ?? {}),
+        ...(productionPersonalizationMeta ?? {}),
       },
     }),
   );

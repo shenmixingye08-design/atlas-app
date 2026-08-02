@@ -18,6 +18,19 @@ const ATLAS_LIGHT = "D9E2F3";
 const TEXT_DARK = "222222";
 const TEXT_MUTED = "666666";
 
+export type PptxGenerateOptions = {
+  aspectRatio?: "16:9" | "4:3";
+  primaryColor?: string;
+  maxSlides?: number;
+  bulletPrefer?: boolean;
+  headingDensity?: "high" | "medium" | "low";
+};
+
+type PptxTheme = {
+  primary: string;
+  light: string;
+};
+
 type SlideTextOptions = {
   x?: number;
   y?: number;
@@ -34,14 +47,16 @@ type SlideTextOptions = {
 function addSlideTitle(
   slide: pptxgen.Slide,
   title: string,
-  subtitle?: string,
+  subtitle: string | undefined,
+  theme: PptxTheme,
+  shapes: pptxgen["ShapeType"],
 ): void {
-  slide.addShape(pptxgen.ShapeType.rect, {
+  slide.addShape(shapes.rect, {
     x: 0,
     y: 0,
     w: "100%",
     h: 0.12,
-    fill: { color: ATLAS_BLUE },
+    fill: { color: theme.primary },
   });
 
   slide.addText(title, {
@@ -51,7 +66,7 @@ function addSlideTitle(
     h: 1.2,
     fontSize: 36,
     bold: true,
-    color: ATLAS_BLUE,
+    color: theme.primary,
     align: "center",
     fontFace: "Calibri",
   });
@@ -70,13 +85,18 @@ function addSlideTitle(
   }
 }
 
-function addSectionDivider(slide: pptxgen.Slide, title: string): void {
-  slide.addShape(pptxgen.ShapeType.rect, {
+function addSectionDivider(
+  slide: pptxgen.Slide,
+  title: string,
+  theme: PptxTheme,
+  shapes: pptxgen["ShapeType"],
+): void {
+  slide.addShape(shapes.rect, {
     x: 0,
     y: 0,
     w: "100%",
     h: "100%",
-    fill: { color: ATLAS_BLUE },
+    fill: { color: theme.primary },
   });
   slide.addText(title, {
     x: 0.6,
@@ -91,7 +111,12 @@ function addSectionDivider(slide: pptxgen.Slide, title: string): void {
   });
 }
 
-function addContentHeading(slide: pptxgen.Slide, title: string): void {
+function addContentHeading(
+  slide: pptxgen.Slide,
+  title: string,
+  theme: PptxTheme,
+  shapes: pptxgen["ShapeType"],
+): void {
   slide.addText(title, {
     x: 0.6,
     y: 0.35,
@@ -99,15 +124,15 @@ function addContentHeading(slide: pptxgen.Slide, title: string): void {
     h: 0.7,
     fontSize: 24,
     bold: true,
-    color: ATLAS_BLUE,
+    color: theme.primary,
     fontFace: "Calibri",
   });
-  slide.addShape(pptxgen.ShapeType.line, {
+  slide.addShape(shapes.line, {
     x: 0.6,
     y: 1.05,
     w: 8.8,
     h: 0,
-    line: { color: ATLAS_LIGHT, width: 2 },
+    line: { color: theme.light, width: 2 },
   });
 }
 
@@ -132,8 +157,13 @@ function addBodyText(
   });
 }
 
-function addImagePlaceholder(slide: pptxgen.Slide, caption: string, y = 2.0): void {
-  slide.addShape(pptxgen.ShapeType.rect, {
+function addImagePlaceholder(
+  slide: pptxgen.Slide,
+  caption: string,
+  shapes: pptxgen["ShapeType"],
+  y = 2.0,
+): void {
+  slide.addShape(shapes.rect, {
     x: 1.2,
     y,
     w: 7.6,
@@ -218,9 +248,14 @@ function chunkBulletItems(items: string[], maxPerSlide = 6): string[][] {
   return chunks.length > 0 ? chunks : [[]];
 }
 
-function addSectionSlides(pptx: pptxgen, section: ParsedSection): void {
+function addSectionSlides(
+  pptx: pptxgen,
+  section: ParsedSection,
+  theme: PptxTheme,
+  shapes: pptxgen["ShapeType"],
+): void {
   const divider = pptx.addSlide();
-  addSectionDivider(divider, section.title);
+  addSectionDivider(divider, section.title, theme, shapes);
 
   const textBlocks = section.blocks.filter(
     (block) => block.type !== "imagePlaceholder",
@@ -237,6 +272,8 @@ function addSectionSlides(pptx: pptxgen, section: ParsedSection): void {
     addContentHeading(
       slide,
       index === 0 ? section.title : `${section.title} (cont.)`,
+      theme,
+      shapes,
     );
     addBodyText(slide, chunk || " ", { y: 1.35, lineSpacing: 24 });
   });
@@ -251,6 +288,8 @@ function addSectionSlides(pptx: pptxgen, section: ParsedSection): void {
           index === 0
             ? `${section.title} — Key points`
             : `${section.title} — Key points (cont.)`,
+          theme,
+          shapes,
         );
         addBodyText(slide, items.join("\n"), {
           y: 1.4,
@@ -265,21 +304,33 @@ function addSectionSlides(pptx: pptxgen, section: ParsedSection): void {
   for (const imageBlock of imageBlocks) {
     if (imageBlock.type !== "imagePlaceholder") continue;
     const slide = pptx.addSlide();
-    addContentHeading(slide, section.title);
-    addImagePlaceholder(slide, imageBlock.caption);
+    addContentHeading(slide, section.title, theme, shapes);
+    addImagePlaceholder(slide, imageBlock.caption, shapes);
   }
 }
 
-async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
+async function buildPptxBuffer(
+  parsed: ParsedDeliverable,
+  options?: PptxGenerateOptions,
+): Promise<Buffer> {
   const pptx = new pptxgen();
+  const shapes = pptx.ShapeType;
+  const primary = (options?.primaryColor ?? ATLAS_BLUE)
+    .replace(/^#/, "")
+    .toUpperCase();
+  const theme: PptxTheme = {
+    primary,
+    light: primary === ATLAS_BLUE ? ATLAS_LIGHT : "E8E8E8",
+  };
 
-  pptx.layout = "LAYOUT_16x9";
-  pptx.author = "Atlas";
+  pptx.layout =
+    options?.aspectRatio === "4:3" ? "LAYOUT_4x3" : "LAYOUT_16x9";
+  pptx.author = "MINERVOT";
   pptx.title = parsed.title;
   pptx.subject = ui.generated.engine;
 
   const titleSlide = pptx.addSlide();
-  addSlideTitle(titleSlide, parsed.title, parsed.subtitle);
+  addSlideTitle(titleSlide, parsed.title, parsed.subtitle, theme, shapes);
   titleSlide.addText(`Generated by Atlas · ${formatGeneratedDate()}`, {
     x: 0.6,
     y: 4.8,
@@ -292,7 +343,7 @@ async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
   });
 
   const agendaSlide = pptx.addSlide();
-  addContentHeading(agendaSlide, ui.generated.agenda);
+  addContentHeading(agendaSlide, ui.generated.agenda, theme, shapes);
   addBodyText(
     agendaSlide,
     parsed.sections.map((section) => section.title).join("\n"),
@@ -300,11 +351,11 @@ async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
   );
 
   for (const section of parsed.sections) {
-    addSectionSlides(pptx, section);
+    addSectionSlides(pptx, section, theme, shapes);
   }
 
   const summarySlide = pptx.addSlide();
-  addContentHeading(summarySlide, ui.generated.summary);
+  addContentHeading(summarySlide, ui.generated.summary, theme, shapes);
   const summaryPoints = extractSummaryPoints(parsed);
   const summaryChunks = chunkBulletItems(summaryPoints, 5);
   addBodyText(
@@ -316,7 +367,7 @@ async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
   if (summaryChunks.length > 1) {
     for (let i = 1; i < summaryChunks.length; i += 1) {
       const slide = pptx.addSlide();
-      addContentHeading(slide, ui.generated.summaryCont);
+      addContentHeading(slide, ui.generated.summaryCont, theme, shapes);
       addBodyText(slide, summaryChunks[i]!.join("\n"), {
         y: 1.4,
         bullet: true,
@@ -326,7 +377,7 @@ async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
   }
 
   const closingSlide = pptx.addSlide();
-  addSectionDivider(closingSlide, ui.generated.thankYou);
+  addSectionDivider(closingSlide, ui.generated.thankYou, theme, shapes);
   closingSlide.addText(parsed.title, {
     x: 0.6,
     y: 3.5,
@@ -337,6 +388,10 @@ async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
     align: "center",
     fontFace: "Calibri",
   });
+
+  void options?.maxSlides;
+  void options?.bulletPrefer;
+  void options?.headingDensity;
 
   const output = await pptx.write({ outputType: "nodebuffer" });
   return Buffer.from(output as ArrayBuffer);
@@ -349,10 +404,11 @@ export class PptxDeliverableGenerator implements DeliverableGenerator {
   async generate(
     content: string,
     baseFileName: string,
+    options?: PptxGenerateOptions,
   ): Promise<GeneratedDeliverableFile> {
     try {
       const parsed = parseDeliverableContent(content);
-      const buffer = await buildPptxBuffer(parsed);
+      const buffer = await buildPptxBuffer(parsed, options);
       return createDeliverableFile("pptx", baseFileName, buffer, false);
     } catch (error) {
       console.error("[PptxDeliverableGenerator] Falling back to Markdown:", error);

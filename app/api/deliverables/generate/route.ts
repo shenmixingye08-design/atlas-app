@@ -29,6 +29,11 @@ type RequestBody = {
   recipient?: unknown;
   author?: unknown;
   createdAt?: unknown;
+  explicitOverrides?: unknown;
+  skipMemoryIds?: unknown;
+  memoryEnabled?: unknown;
+  workCategory?: unknown;
+  artifactType?: unknown;
 };
 
 const VALID_FORMATS = new Set(["pdf", "docx", "pptx", "md", "txt", "xlsx"]);
@@ -168,6 +173,29 @@ export async function POST(request: Request): Promise<Response> {
     const workflowId =
       typeof body.workflowId === "string" ? body.workflowId : null;
 
+    const { resolvePersonalizationForDeliverables } = await import(
+      "@/lib/personalization/for-deliverables"
+    );
+    const personalization = await resolvePersonalizationForDeliverables({
+      userId,
+      templateId:
+        typeof body.templateId === "string" ? body.templateId.trim() : null,
+      explicitOverrides:
+        body.explicitOverrides &&
+        typeof body.explicitOverrides === "object" &&
+        !Array.isArray(body.explicitOverrides)
+          ? (body.explicitOverrides as Record<string, unknown>)
+          : null,
+      skipMemoryIds: Array.isArray(body.skipMemoryIds)
+        ? body.skipMemoryIds.filter((id): id is string => typeof id === "string")
+        : null,
+      memoryEnabled: body.memoryEnabled !== false,
+      category:
+        typeof body.workCategory === "string" ? body.workCategory : null,
+      artifactType:
+        typeof body.artifactType === "string" ? body.artifactType : null,
+    });
+
     const result = await generateDeliverables(
       {
         assignment: body.assignment.trim(),
@@ -187,6 +215,7 @@ export async function POST(request: Request): Promise<Response> {
         author: typeof body.author === "string" ? body.author.trim() : undefined,
         createdAt:
           typeof body.createdAt === "string" ? body.createdAt.trim() : undefined,
+        personalization,
       },
     );
 

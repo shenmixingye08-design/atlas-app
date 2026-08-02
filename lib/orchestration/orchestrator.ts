@@ -509,11 +509,17 @@ export async function orchestrate(
 
     const atlasMemory = readAtlasMemoryFromMetadata(metadata);
     const workMemory = readWorkMemoryFromMetadata(metadata);
+    const { readPersonalizationPlannerHintFromMetadata } = await import(
+      "@/lib/personalization/metadata"
+    );
+    const personalizationHint =
+      readPersonalizationPlannerHintFromMetadata(metadata);
     const plannerKnowledge = [
       retrieval.plannerContext.similarProjects,
       retrieval.plannerContext.successfulStrategies,
       atlasMemory,
       workMemory,
+      personalizationHint,
     ]
       .filter(Boolean)
       .join("\n\n");
