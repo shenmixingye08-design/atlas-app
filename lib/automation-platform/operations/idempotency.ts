@@ -12,6 +12,16 @@ export const EXTERNAL_ACTION_CAPABILITIES: ReadonlySet<AutomationCapabilityId> =
     "notify",
   ]);
 
+/** Deliverable generators — succeeded outputs must not be double-generated. */
+export const DELIVERABLE_CAPABILITIES: ReadonlySet<AutomationCapabilityId> =
+  new Set([
+    "word_generate",
+    "pdf_generate",
+    "excel_generate",
+    "powerpoint_generate",
+    "deliverable_generate",
+  ]);
+
 export function isExternalActionCapability(
   capabilityId: AutomationCapabilityId,
 ): boolean {
@@ -23,9 +33,10 @@ export function isExternalActionCapability(
  * Non-external succeeded steps may be kept as succeeded (executor skips them).
  */
 export function shouldSkipOnRetry(step: AutomationRunStep): boolean {
+  if (step.status !== "succeeded") return false;
   return (
-    step.status === "succeeded" &&
-    isExternalActionCapability(step.capabilityId)
+    isExternalActionCapability(step.capabilityId) ||
+    DELIVERABLE_CAPABILITIES.has(step.capabilityId)
   );
 }
 

@@ -225,6 +225,15 @@ export function memoryListDispatchableRuns(limit = 20): AutomationRun[] {
     .map((run) => structuredClone(run));
 }
 
+/** All currently running runs (for heartbeat / recovery scans). */
+export function memoryListRunningRuns(limit = 10_000): AutomationRun[] {
+  return [...getStore().runs.values()]
+    .filter((run) => run.status === "running")
+    .sort((a, b) => (a.updatedAt ?? "").localeCompare(b.updatedAt ?? ""))
+    .slice(0, limit)
+    .map((run) => structuredClone(run));
+}
+
 export function memoryGetRunByOccurrenceKey(
   occurrenceKey: string,
 ): AutomationRun | null {

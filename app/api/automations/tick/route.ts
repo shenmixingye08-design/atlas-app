@@ -17,11 +17,11 @@ function resolveOrigin(request: Request): string {
 }
 
 /**
- * Process automations whose nextRun is due.
+ * Process automations whose nextRun is due (minute scheduler entry).
  * Auth: `Authorization: Bearer $CRON_SECRET` (Vercel Cron) or ATLAS owner session.
  *
- * Hobby: vercel.json keeps daily cron (`0 0 * * *`). Minute cron is for Pro
- * only (see vercel.cron.pro.json). Owner/secret manual ticks remain available.
+ * Schedule: vercel.json uses `* * * * *` (±60s SLA). Requires Vercel Pro.
+ * Reliability worker: recover hung leases → due enqueue → leased dispatch.
  */
 export async function POST(request: Request): Promise<Response> {
   const gate = await authorizeAutomationTick(request);
@@ -75,24 +75,39 @@ export async function POST(request: Request): Promise<Response> {
       failed: number;
       dispatched: number;
     } = { due: 0, enqueued: 0, deduped: 0, failed: 0, dispatched: 0 };
-    let v2Dispatch: { processed: number } = { processed: 0 };
+    let v2Dispatch: { processed: number; leaseConflicts?: number } = {
+      processed: 0,
+    };
+    let scheduleReliability: Record<string, unknown> | null = null;
     try {
-      const { processDueScheduledAutomationsV2 } = await import(
-        "@/lib/automation-platform/schedule/due-tick"
+      const { processScheduleReliabilityWorkerTick } = await import(
+        "@/lib/automation-platform/reliability/worker-tick"
       );
-      v2Schedule = await processDueScheduledAutomationsV2({
-        limit: 20,
-        dispatch: true,
+      const workerTick = await processScheduleReliabilityWorkerTick({
         requestOrigin: origin,
       });
-      const { dispatchAutomationRuns } = await import(
-        "@/lib/automation-platform/execution/dispatch"
-      );
-      // Also drain any remaining queued/retrying runs (retries, manual).
-      v2Dispatch = await dispatchAutomationRuns({
-        limit: 20,
-        requestOrigin: origin,
-      });
+      v2Schedule = {
+        due: workerTick.due.due,
+        enqueued: workerTick.due.enqueued,
+        deduped: workerTick.due.deduped,
+        failed: workerTick.due.failed,
+        dispatched: workerTick.dispatch.processed,
+      };
+      v2Dispatch = {
+        processed: workerTick.dispatch.processed,
+        leaseConflicts: workerTick.dispatch.leaseConflicts,
+      };
+      scheduleReliability = {
+        workerId: workerTick.workerId,
+        durationMs: workerTick.durationMs,
+        recovery: workerTick.recovery,
+        metrics: workerTick.metrics,
+        alerts: workerTick.alerts.map((a) => ({
+          kind: a.kind,
+          severity: a.severity,
+          message: a.message,
+        })),
+      };
     } catch (error) {
       console.warn("[automation tick] v2 schedule/dispatch skipped:", error);
     }
@@ -143,6 +158,7 @@ export async function POST(request: Request): Promise<Response> {
       results,
       v2Schedule,
       v2Dispatch,
+      scheduleReliability,
       scheduledXPosts: {
         processed: scheduledXPosts.length,
         results: scheduledXPosts,

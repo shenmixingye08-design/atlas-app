@@ -22,6 +22,7 @@ import {
   TRIGGER_LABEL,
 } from "@/lib/automation-platform/operations/status-labels";
 import { buildRunTimeline } from "@/lib/automation-platform/operations/timeline";
+import { RunLiveStatus } from "@/components/automations/v2/run-live-status";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/design-system/cn";
 
@@ -236,6 +237,8 @@ export function RunReviewPanel({
           {preparation?.scheduledLabel ? ` · ${preparation.scheduledLabel}` : ""}
         </p>
       </header>
+
+      <RunLiveStatus run={run} />
 
       {run.status === "partially_succeeded" && failureView ? (
         <section
@@ -579,7 +582,7 @@ export function RunReviewPanel({
             <>
               <Button
                 className="min-h-12 min-w-[8rem] flex-1"
-                disabled={pending || approveLockRef.current}
+                disabled={pending}
                 onClick={onApprove}
               >
                 承認して実行

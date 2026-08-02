@@ -1,8 +1,10 @@
 import type { AutomationErrorCode } from "@/lib/automation-platform/errors/codes";
+import { classifyFailure } from "@/lib/automation-platform/reliability/failure-class";
 
 const RETRYABLE_CODES = new Set<string>([
   "automation_timeout",
   "automation_run_failed",
+  "hang_timeout",
 ]);
 
 const RETRYABLE_MESSAGE_PATTERNS = [
@@ -28,22 +30,28 @@ const NON_RETRYABLE_PATTERNS = [
   /not found/i,
   /approval/i,
   /conflict/i,
+  /hang_timeout_exhausted/i,
 ];
 
-/** Backoff bases in ms: 1m, 5m, 15m */
-const BACKOFF_MS = [60_000, 300_000, 900_000] as const;
+/** Exponential backoff bases: 15s, 1m, 5m, 15m, 30m — never infinite. */
+const BACKOFF_MS = [15_000, 60_000, 300_000, 900_000, 1_800_000] as const;
 
 export function isRetryableFailure(input: {
   errorCode: string | null;
   errorMessage: string | null;
 }): boolean {
+  const classified = classifyFailure(input);
+  if (!classified.retryable) return false;
   if (input.errorCode && RETRYABLE_CODES.has(input.errorCode)) return true;
   const message = input.errorMessage ?? "";
-  if (!message) return false;
+  if (!message) return classified.retryable;
   if (NON_RETRYABLE_PATTERNS.some((pattern) => pattern.test(message))) {
     return false;
   }
-  return RETRYABLE_MESSAGE_PATTERNS.some((pattern) => pattern.test(message));
+  if (RETRYABLE_MESSAGE_PATTERNS.some((pattern) => pattern.test(message))) {
+    return true;
+  }
+  return classified.retryable && classified.failureClass !== "validation";
 }
 
 /** Exponential-ish backoff with full jitter. Never infinite. */
