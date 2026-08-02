@@ -9,9 +9,12 @@ export type { RunVisualStatus };
 
 export function StatusBadge({
   status,
+  label,
   className,
 }: {
   status: RunVisualStatus;
+  /** Override default status copy when the API provides a richer label. */
+  label?: string;
   className?: string;
 }) {
   return (
@@ -22,7 +25,7 @@ export function StatusBadge({
         className,
       )}
     >
-      {RUN_STATUS_LABEL[status]}
+      {label?.trim() || RUN_STATUS_LABEL[status]}
     </span>
   );
 }

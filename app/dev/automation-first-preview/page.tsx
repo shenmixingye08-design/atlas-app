@@ -1,14 +1,23 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { AutomationFirstPreviewClient } from "@/components/automation-first/preview-client";
+import { checkAtlasOwner } from "@/lib/auth/require-atlas-owner";
 import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 
 /**
- * DEV-ONLY visual preview of Automation First home / today framing.
- * Returns 404 in production. Used for screenshot verification.
+ * DEV-ONLY visual preview of Automation First framing.
+ * - Production: 404
+ * - Non-production: owner-only (or open when ATLAS_DEV_PREVIEW_OPEN=1 for local design)
+ * Never used as the formal post-login home — that is `/projects`.
  */
-export const dynamic = "force-static";
+export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Automation First Preview (dev)",
+  robots: { index: false, follow: false, nocache: true },
+};
 
 const now = new Date().toISOString();
 
@@ -89,9 +98,19 @@ const SAMPLE_AUTOMATIONS: Automation[] = [
 
 const SAMPLE_PROJECTS: Project[] = [];
 
-export default function DevAutomationFirstPreviewPage() {
-  if (process.env.NODE_ENV === "production") {
+export default async function DevAutomationFirstPreviewPage() {
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
     notFound();
+  }
+
+  const openLocal =
+    process.env.ATLAS_DEV_PREVIEW_OPEN === "1" ||
+    process.env.ATLAS_DEV_PREVIEW_OPEN === "true";
+  if (!openLocal) {
+    const isOwner = await checkAtlasOwner();
+    if (!isOwner) {
+      notFound();
+    }
   }
 
   return (

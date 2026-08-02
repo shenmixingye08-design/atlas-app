@@ -103,5 +103,7 @@ describe("automation-first navigation", () => {
     expect(labels.indexOf("自動化")).toBeLessThan(labels.indexOf("設定"));
     expect(labels[0]).toBe("ホーム");
     expect(labels).toContain("今日の仕事");
+    expect(labels).toContain("連携");
+    expect(labels).toContain("実行履歴");
   });
 });

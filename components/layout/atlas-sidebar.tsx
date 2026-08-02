@@ -8,7 +8,10 @@ import { OwnerNavLink } from "@/components/owner/owner-nav-link";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 import type { AtlasNavPage } from "@/lib/layout/nav-types";
-import { AUTOMATION_FIRST_SIDEBAR_PRIMARY } from "@/lib/automation-first/nav";
+import {
+  AUTOMATION_FIRST_SIDEBAR_PRIMARY,
+  resolveAutomationFirstSidebarActive,
+} from "@/lib/automation-first/nav";
 import { useFeatureAvailability } from "@/lib/feature-flags";
 import {
   SIDEBAR_MORE_GROUPS,
@@ -148,7 +151,7 @@ function SidebarPanel({
         <Link
           href="/projects"
           onClick={onNavigate}
-          className="text-base font-semibold tracking-tight text-foreground focus-ring rounded-md"
+          className="text-lg font-semibold tracking-tight text-[var(--brand)] focus-ring rounded-md"
         >
           {ui.brand}
         </Link>
@@ -202,7 +205,12 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
   const primaryNav = afNav
     ? AUTOMATION_FIRST_SIDEBAR_PRIMARY
     : SIDEBAR_PRIMARY_NAV;
-  const resolvedActive = activeProp ?? resolveSidebarActiveId(pathname);
+  const resolvedActive =
+    (afNav
+      ? resolveAutomationFirstSidebarActive(pathname, activeProp)
+      : null) ??
+    activeProp ??
+    resolveSidebarActiveId(pathname);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [moreExpanded, setMoreExpanded] = useState(() =>
     isSidebarMoreActive(resolvedActive),
@@ -244,7 +252,7 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
         </button>
         <Link
           href="/projects"
-          className="min-w-0 truncate text-sm font-semibold tracking-tight text-foreground focus-ring rounded-md"
+          className="min-w-0 truncate text-base font-semibold tracking-tight text-[var(--brand)] focus-ring rounded-md"
         >
           {ui.brand}
         </Link>
