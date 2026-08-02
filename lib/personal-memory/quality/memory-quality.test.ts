@@ -2,6 +2,8 @@
  * Memory Quality Metrics — prove quality improves with numbers, not presence.
  */
 
+import { mkdirSync, writeFileSync } from "fs";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/persistence/durable-domain", () => ({
@@ -271,6 +273,35 @@ describe("Memory applied vs not applied — numeric proof", () => {
     expect(dash.learningVelocity[0]?.points.length).toBe(2);
     expect(dash.learningVelocity[0]!.points[1]!.memoryScore).toBeGreaterThan(
       dash.learningVelocity[0]!.points[0]!.memoryScore,
+    );
+
+    const proof = {
+      run1: {
+        score: run1.memoryScore.score,
+        label: run1.memoryScore.label,
+        diffRate: run1.correction.diffRate,
+        match: run1.overallMatchRate,
+        applied: run1.memoryApplied.totalApplied,
+      },
+      runN: {
+        score: runN.memoryScore.score,
+        label: runN.memoryScore.label,
+        diffRate: runN.correction.diffRate,
+        match: runN.overallMatchRate,
+        applied: runN.memoryApplied.totalApplied,
+        confidence: runN.appliedConfidence,
+      },
+      lift: runN.memoryScore.score - run1.memoryScore.score,
+      diffDrop: Number(
+        (run1.correction.diffRate - runN.correction.diffRate).toFixed(4),
+      ),
+      dashboardProof: dash.proof,
+      pass: true as const,
+    };
+    mkdirSync("/opt/cursor/artifacts/memory-quality", { recursive: true });
+    writeFileSync(
+      "/opt/cursor/artifacts/memory-quality/proof-numbers.json",
+      JSON.stringify(proof, null, 2),
     );
   });
 

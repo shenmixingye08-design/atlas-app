@@ -55,11 +55,6 @@ function wantsPdf(memories: MemoryApplyPreviewItem[]): boolean {
   return memories.some((m) => /pdf/i.test(m.summary));
 }
 
-function scoreBoolean(expected: boolean | null, actual: boolean): number | null {
-  if (expected === null) return null;
-  return expected === actual ? 1 : 0;
-}
-
 /**
  * Compare corrected deliverable against applied Memory preferences.
  * Returns 0–1 per dimension (null = no memory constraint for that dimension).

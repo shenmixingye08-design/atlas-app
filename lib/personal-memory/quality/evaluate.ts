@@ -188,9 +188,10 @@ export function evaluateDeliverableQuality(
         }, 0) / memoryIdsUsed.length;
 
   const evaluation: DeliverableQualityEvaluation = {
-    id: `mqe_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    id: `mqe_${Date.now().toString(36)}_${runIndexInCategory}_${Math.random().toString(36).slice(2, 8)}`,
     userId: input.userId,
-    createdAt: new Date().toISOString(),
+    // Include run index so same-ms batch evaluations stay ordered.
+    createdAt: new Date(Date.now() + runIndexInCategory).toISOString(),
     deliverableKind: kind,
     workCategory: categoryKey,
     automationId: input.automationId ?? null,

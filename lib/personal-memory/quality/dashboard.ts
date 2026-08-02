@@ -73,20 +73,21 @@ export function buildMemoryQualityDashboard(input: {
       updatedAt: m.updatedAt,
     }));
 
-  const improvementSuggestions = evaluations
-    .filter(
-      (e) =>
-        e.memoryScore.band === "memory_insufficient" ||
-        e.memoryScore.band === "almost_first_run" ||
-        e.memoryScore.score < 60,
-    )
-    .slice(0, 3)
-    .map((e) => ({
-      id: `quality_${e.id}`,
-      title: `${e.workCategory ?? "成果物"}の Memory が不足しています`,
-      description: `直近の Memory Score は ${e.memoryScore.label}（Diff率 ${(e.correction.diffRate * 100).toFixed(0)}%）。標準設定を追加しますか？`,
-      reason: "memory_insufficient" as const,
-    }));
+  const improvementSuggestions: MemoryQualityDashboard["improvementSuggestions"] =
+    evaluations
+      .filter(
+        (e) =>
+          e.memoryScore.band === "memory_insufficient" ||
+          e.memoryScore.band === "almost_first_run" ||
+          e.memoryScore.score < 60,
+      )
+      .slice(0, 3)
+      .map((e) => ({
+        id: `quality_${e.id}`,
+        title: `${e.workCategory ?? "成果物"}の Memory が不足しています`,
+        description: `直近の Memory Score は ${e.memoryScore.label}（Diff率 ${(e.correction.diffRate * 100).toFixed(0)}%）。標準設定を追加しますか？`,
+        reason: "memory_insufficient" as const,
+      }));
 
   // Merge rule-based suggestions only when quality is insufficient
   if (improvementSuggestions.length > 0) {

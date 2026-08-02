@@ -18,11 +18,13 @@ export function buildLearningVelocity(
   }
 
   return [...byCategory.entries()].map(([workCategory, rows]) => {
-    const ordered = [...rows].sort((a, b) =>
-      a.createdAt.localeCompare(b.createdAt),
-    );
+    const ordered = [...rows].sort((a, b) => {
+      const byRun = a.runIndexInCategory - b.runIndexInCategory;
+      if (byRun !== 0) return byRun;
+      return a.createdAt.localeCompare(b.createdAt);
+    });
     const points: LearningVelocityPoint[] = ordered.map((row, index) => ({
-      runIndex: index + 1,
+      runIndex: row.runIndexInCategory || index + 1,
       memoryScore: row.memoryScore.score,
       diffRate: row.correction.diffRate,
       overallMatchRate: row.overallMatchRate,
