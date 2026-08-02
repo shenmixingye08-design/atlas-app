@@ -115,6 +115,12 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
     description: "実行結果と修正から改善候補を提案し、承認後に新revisionへ反映",
     category: "capability",
   },
+  {
+    id: "automation_operations_enabled",
+    label: "自動化運用ダッシュボード",
+    description: "自動化の全体状況・Run履歴・復旧操作・今日の仕事ビュー",
+    category: "capability",
+  },
 ] as const;
 
 export const FEATURE_FLAG_IDS: readonly FeatureFlagId[] =

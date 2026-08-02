@@ -57,12 +57,28 @@ export async function updateAutomationV2(
   return payload.automation;
 }
 
-export async function pauseAutomationV2(id: string): Promise<AutomationV2> {
+export async function pauseAutomationV2(
+  id: string,
+  options?: {
+    cancelRunningRuns?: boolean;
+    cancelPendingApprovals?: boolean;
+  },
+): Promise<{
+  automation: AutomationV2;
+  effects?: {
+    scheduleStopped: true;
+    runningRuns: "continued" | "cancelled";
+    pendingApprovals: "kept" | "cancelled";
+    nextRunAt: null;
+    resumeNote: string;
+  };
+}> {
   const response = await fetch(`/api/automation-platform/${id}/pause`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(options ?? {}),
   });
-  const payload = await parseResponse<{ automation: AutomationV2 }>(response);
-  return payload.automation;
+  return parseResponse(response);
 }
 
 export async function resumeAutomationV2(id: string): Promise<AutomationV2> {
@@ -155,6 +171,107 @@ export async function retryAutomationRun(
   );
   const payload = await parseResponse<{ run: AutomationRun }>(response);
   return payload.run;
+}
+
+export async function cancelAutomationRun(
+  runId: string,
+  reason?: string,
+): Promise<AutomationRun> {
+  const response = await fetch(
+    `/api/automation-platform/runs/${encodeURIComponent(runId)}/cancel`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    },
+  );
+  const payload = await parseResponse<{ run: AutomationRun }>(response);
+  return payload.run;
+}
+
+export async function resumeAutomationRunAfterInput(
+  runId: string,
+  input?: Record<string, unknown>,
+): Promise<AutomationRun> {
+  const response = await fetch(
+    `/api/automation-platform/runs/${encodeURIComponent(runId)}/resume`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input }),
+    },
+  );
+  const payload = await parseResponse<{ run: AutomationRun }>(response);
+  return payload.run;
+}
+
+export async function retryAutomationRunStep(
+  runId: string,
+  stepId: string,
+  mode: "failed_only" | "from_failed" = "failed_only",
+): Promise<AutomationRun> {
+  const response = await fetch(
+    `/api/automation-platform/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/retry`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    },
+  );
+  const payload = await parseResponse<{ run: AutomationRun }>(response);
+  return payload.run;
+}
+
+export type AutomationRunsQuery = {
+  q?: string;
+  status?: string;
+  automationId?: string;
+  diagnosticId?: string;
+  from?: string;
+  to?: string;
+  needsInput?: boolean;
+  retryable?: boolean;
+  hasArtifacts?: boolean;
+  hasExternal?: boolean;
+  hasRetry?: boolean;
+  sort?: string;
+};
+
+export async function fetchAutomationRunsAll(
+  query: AutomationRunsQuery = {},
+): Promise<AutomationRun[]> {
+  const params = new URLSearchParams();
+  if (query.q) params.set("q", query.q);
+  if (query.status) params.set("status", query.status);
+  if (query.automationId) params.set("automationId", query.automationId);
+  if (query.diagnosticId) params.set("diagnosticId", query.diagnosticId);
+  if (query.from) params.set("from", query.from);
+  if (query.to) params.set("to", query.to);
+  if (query.needsInput) params.set("needsInput", "1");
+  if (query.retryable) params.set("retryable", "1");
+  if (query.hasArtifacts) params.set("hasArtifacts", "1");
+  if (query.hasExternal) params.set("hasExternal", "1");
+  if (query.hasRetry) params.set("hasRetry", "1");
+  if (query.sort) params.set("sort", query.sort);
+  const qs = params.toString();
+  const response = await fetch(
+    `/api/automation-platform/runs${qs ? `?${qs}` : ""}`,
+    { cache: "no-store" },
+  );
+  const payload = await parseResponse<{ runs: AutomationRun[] }>(response);
+  return payload.runs;
+}
+
+export async function fetchAutomationOperationsSummary(): Promise<
+  import("@/lib/automation-platform/operations/summary").AutomationOperationsSummary
+> {
+  const response = await fetch("/api/automation-platform/operations/summary", {
+    cache: "no-store",
+  });
+  const payload = await parseResponse<{
+    summary: import("@/lib/automation-platform/operations/summary").AutomationOperationsSummary;
+  }>(response);
+  return payload.summary;
 }
 
 export async function saveAutomationDraft(

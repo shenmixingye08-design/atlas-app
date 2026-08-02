@@ -15,6 +15,7 @@ const DEFAULT_STATE_BY_ID: Partial<Record<FeatureFlagId, FeatureFlagState>> = {
   automation_design_system_enabled: "off",
   automation_dashboard_v2_enabled: "off",
   workflow_learning_enabled: "off",
+  automation_operations_enabled: "off",
 };
 
 function nowIso(): string {

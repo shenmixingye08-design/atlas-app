@@ -5,6 +5,7 @@ import {
   persistDurableDomain,
 } from "@/lib/persistence/durable-domain";
 import type { AutomationRun } from "@/lib/automation-platform/types";
+import { applyRunRetentionPolicy } from "@/lib/automation-platform/history/retention";
 import {
   memoryGetRun,
   memoryListRunsForUser,
@@ -42,17 +43,7 @@ function compactRuns(
   state: DurableAutomationRunsV2State,
 ): DurableAutomationRunsV2State {
   return {
-    runs: state.runs.slice(0, 80).map((run) => ({
-      ...run,
-      resultSummary: run.resultSummary?.slice(0, 500) ?? null,
-      lastErrorMessage: run.lastErrorMessage?.slice(0, 500) ?? null,
-      preparation: run.preparation
-        ? {
-            ...run.preparation,
-            summary: run.preparation.summary.slice(0, 2000),
-          }
-        : null,
-    })),
+    runs: applyRunRetentionPolicy(state.runs),
   };
 }
 

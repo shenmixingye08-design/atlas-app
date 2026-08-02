@@ -15,32 +15,34 @@ export async function POST(
   if (!userId) {
     return jsonError(new AutomationPlatformError("automation_unauthorized"), {
       actorUserId: null,
-      action: "automation.run.cancel",
+      action: "automation.run.resume",
       runId,
     });
   }
 
   try {
-    let reason: string | null = null;
+    let inputPatch: Record<string, unknown> | undefined;
     try {
-      const body = (await request.json()) as { reason?: unknown };
-      if (typeof body.reason === "string") reason = body.reason;
+      const body = (await request.json()) as { input?: Record<string, unknown> };
+      if (body.input && typeof body.input === "object") {
+        inputPatch = body.input;
+      }
     } catch {
       // empty body is fine
     }
 
     const access = await resolveFeatureAccessContext();
-    const run = await automationPlatformService.cancelRun(
+    const run = await automationPlatformService.resumeRunAfterInput(
       userId,
       runId,
       access,
-      { reason },
+      inputPatch,
     );
     return Response.json({ run });
   } catch (error) {
     return jsonError(error, {
       actorUserId: userId,
-      action: "automation.run.cancel",
+      action: "automation.run.resume",
       runId,
     });
   }
