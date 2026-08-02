@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 import { WelcomeWizard } from "@/components/onboarding/welcome-wizard";
 import { RetentionDayPlanPanel } from "@/components/retention/day-plan-panel";
@@ -45,12 +45,10 @@ function seedPreviewHome(): void {
 }
 
 export function RetentionPreviewClient() {
-  const seededRef = useRef(false);
-  if (!seededRef.current) {
+  const [scene, setScene] = useState<PreviewScene>(() => {
     seedPreviewHome();
-    seededRef.current = true;
-  }
-  const [scene, setScene] = useState<PreviewScene>("wizard");
+    return "wizard";
+  });
   const [viewport, setViewport] = useState<"pc" | "mobile">("pc");
 
   return (
