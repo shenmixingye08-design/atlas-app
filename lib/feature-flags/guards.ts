@@ -154,6 +154,12 @@ export function featureDisabledMessage(flagId: FeatureFlagId): string {
       return "AI秘書機能は現在ご利用いただけません";
     case "high_quality_mode":
       return "高品質モードは現在ご利用いただけません";
+    case "automation_v2_enabled":
+      return "新しい自動化機能は現在ご利用いただけません";
+    case "automation_memory_enabled":
+      return "自動化の記憶連携は現在ご利用いただけません";
+    case "automation_approval_enabled":
+      return "自動化の承認フローは現在ご利用いただけません";
     default:
       return "この機能は現在ご利用いただけません";
   }
