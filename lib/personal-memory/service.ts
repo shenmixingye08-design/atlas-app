@@ -60,6 +60,13 @@ import { analyzeDeliverableDiff } from "@/lib/personal-memory/diff-learning";
 import { buildMemoryApplyPreview } from "@/lib/personal-memory/apply-preview";
 import { buildImprovementSuggestions } from "@/lib/personal-memory/improvement-suggestions";
 import { canPromoteByConfidence } from "@/lib/personal-memory/confidence";
+import { evaluateDeliverableQuality } from "@/lib/personal-memory/quality/evaluate";
+import { buildMemoryQualityDashboard } from "@/lib/personal-memory/quality/dashboard";
+import { listQualityEvaluations } from "@/lib/personal-memory/quality/store";
+import type {
+  DeliverableQualityEvaluation,
+  MemoryQualityDashboard,
+} from "@/lib/personal-memory/quality/types";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -574,6 +581,7 @@ export async function wipePersonalMemoryForAccountDeletion(
 
 /**
  * Learn from deliverable before/after Diff → candidate memories only.
+ * Always records a quality evaluation so Memory Score / Diff rate can prove impact.
  */
 export async function learnFromDeliverableDiff(input: {
   userId: string;
@@ -585,9 +593,42 @@ export async function learnFromDeliverableDiff(input: {
   companyId?: string | null;
   templateId?: string | null;
 }): Promise<PersonalMemoryRecord[]> {
+  const { memories } = await learnFromDeliverableDiffWithQuality(input);
+  return memories;
+}
+
+export async function learnFromDeliverableDiffWithQuality(input: {
+  userId: string;
+  before: string;
+  after: string;
+  automationId?: string | null;
+  artifactType?: string | null;
+  workCategory?: string | null;
+  companyId?: string | null;
+  templateId?: string | null;
+}): Promise<{
+  memories: PersonalMemoryRecord[];
+  evaluation: DeliverableQualityEvaluation;
+}> {
   await ensurePersonalMemoryHydrated(input.userId);
   const settings = readPersonalMemorySettings(input.userId);
-  if (!settings.enabled || !settings.proposeFromCorrections) return [];
+
+  // Evaluate against currently active Memory (pre-learning) so Diff proves impact.
+  const evaluation = evaluateDeliverableQuality({
+    userId: input.userId,
+    before: input.before,
+    after: input.after,
+    artifactType: input.artifactType,
+    workCategory: input.workCategory,
+    companyId: input.companyId,
+    automationId: input.automationId,
+    templateId: input.templateId,
+  });
+
+  const created: PersonalMemoryRecord[] = [];
+  if (!settings.enabled || !settings.proposeFromCorrections) {
+    return { memories: created, evaluation };
+  }
 
   const signals = analyzeDeliverableDiff({
     before: input.before,
@@ -595,9 +636,10 @@ export async function learnFromDeliverableDiff(input: {
     artifactType: input.artifactType,
     workCategory: input.workCategory,
   });
-  if (signals.length === 0) return [];
+  if (signals.length === 0) {
+    return { memories: created, evaluation };
+  }
 
-  const created: PersonalMemoryRecord[] = [];
   for (const signal of signals) {
     const text = signal.summary;
     const record = await ingestCorrectionSignal({
@@ -622,11 +664,19 @@ export async function learnFromDeliverableDiff(input: {
         !input.workCategory &&
         !input.companyId &&
         !input.templateId,
-      workCategories: input.workCategory ? [input.workCategory] : record.appliesTo.workCategories,
-      companyIds: input.companyId ? [input.companyId] : record.appliesTo.companyIds,
-      templateIds: input.templateId ? [input.templateId] : record.appliesTo.templateIds,
+      workCategories: input.workCategory
+        ? [input.workCategory]
+        : record.appliesTo.workCategories,
+      companyIds: input.companyId
+        ? [input.companyId]
+        : record.appliesTo.companyIds,
+      templateIds: input.templateId
+        ? [input.templateId]
+        : record.appliesTo.templateIds,
       artifactTypes: input.artifactType
-        ? Array.from(new Set([...record.appliesTo.artifactTypes, input.artifactType]))
+        ? Array.from(
+            new Set([...record.appliesTo.artifactTypes, input.artifactType]),
+          )
         : record.appliesTo.artifactTypes,
     });
     const updated = await updatePersonalMemory(input.userId, record.id, {
@@ -634,11 +684,27 @@ export async function learnFromDeliverableDiff(input: {
       value: { ...record.value, ...signal.value },
       title: signal.title,
       summary: signal.summary,
-      confidence: Math.max(record.confidence, Math.min(0.84, 0.45 + signal.strength * 0.4)),
+      confidence: Math.max(
+        record.confidence,
+        Math.min(0.84, 0.45 + signal.strength * 0.4),
+      ),
     });
     created.push(updated);
   }
-  return created;
+  return { memories: created, evaluation };
+}
+
+export async function getMemoryQualityDashboardForUser(
+  userId: string,
+): Promise<MemoryQualityDashboard> {
+  await ensurePersonalMemoryHydrated(userId);
+  const memories = listStoredPersonalMemories(userId);
+  const suggestions = await listMemoryImprovementSuggestions(userId);
+  return buildMemoryQualityDashboard({
+    evaluations: listQualityEvaluations(userId),
+    memories,
+    suggestions,
+  });
 }
 
 export async function decideCandidate(

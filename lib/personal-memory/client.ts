@@ -8,6 +8,10 @@ import type {
   PersonalMemorySettings,
   UpdatePersonalMemoryInput,
 } from "@/lib/personal-memory/types";
+import type {
+  DeliverableQualityEvaluation,
+  MemoryQualityDashboard,
+} from "@/lib/personal-memory/quality/types";
 
 async function parseJson<T>(response: Response): Promise<T> {
   const payload = (await response.json()) as T & { error?: string };
@@ -181,4 +185,32 @@ export async function disableMemoryForThisRunClient(id: string): Promise<void> {
     method: "POST",
   });
   await parseJson(response);
+}
+
+export async function fetchMemoryQualityDashboard(): Promise<MemoryQualityDashboard> {
+  const response = await fetch("/api/personal-memory/quality", {
+    cache: "no-store",
+  });
+  const payload = await parseJson<{ dashboard: MemoryQualityDashboard }>(response);
+  return payload.dashboard;
+}
+
+export async function evaluateDeliverableQualityClient(input: {
+  before: string;
+  after: string;
+  automationId?: string;
+  artifactType?: string;
+  workCategory?: string;
+  companyId?: string;
+  templateId?: string;
+}): Promise<{
+  memories: PersonalMemoryRecord[];
+  evaluation: DeliverableQualityEvaluation;
+}> {
+  const response = await fetch("/api/personal-memory/quality", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseJson(response);
 }

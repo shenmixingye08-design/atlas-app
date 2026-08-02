@@ -10,7 +10,8 @@ import {
   deletePersonalMemoryClient,
   disableMemoryForThisRunClient,
   exportPersonalMemoriesClient,
-  fetchMemoryImprovementSuggestions,
+  fetchMemoryApplyPreview,
+  fetchMemoryQualityDashboard,
   fetchPersonalMemories,
   pauseAllPersonalMemoriesClient,
   updatePersonalMemoryClient,
@@ -24,14 +25,16 @@ import {
   STATUS_LABELS,
 } from "@/lib/personal-memory/labels";
 import type {
-  MemoryImprovementSuggestion,
+  MemoryApplyPreviewItem,
   PersonalMemoryRecord,
   PersonalMemorySettings,
   PersonalMemoryScope,
 } from "@/lib/personal-memory/types";
+import type { MemoryQualityDashboard } from "@/lib/personal-memory/quality/types";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
+import { MemoryQualityDashboardPanel } from "@/components/personal-memory/memory-quality-dashboard";
 
 type Tab = "active" | "candidate" | "paused" | "rejected" | "expired" | "deleted";
 
@@ -103,7 +106,10 @@ function scopeGroupLabel(memory: PersonalMemoryRecord): string {
 export function PersonalMemorySettingsPanel() {
   const [memories, setMemories] = useState<PersonalMemoryRecord[]>([]);
   const [settings, setSettings] = useState<PersonalMemorySettings | null>(null);
-  const [suggestions, setSuggestions] = useState<MemoryImprovementSuggestion[]>(
+  const [dashboard, setDashboard] = useState<MemoryQualityDashboard | null>(
+    null,
+  );
+  const [applyPreview, setApplyPreview] = useState<MemoryApplyPreviewItem[]>(
     [],
   );
   const [tab, setTab] = useState<Tab>("active");
@@ -120,9 +126,14 @@ export function PersonalMemorySettingsPanel() {
     setMemories(payload.memories);
     setSettings(payload.settings);
     try {
-      setSuggestions(await fetchMemoryImprovementSuggestions());
+      setDashboard(await fetchMemoryQualityDashboard());
     } catch {
-      setSuggestions([]);
+      setDashboard(null);
+    }
+    try {
+      setApplyPreview(await fetchMemoryApplyPreview({ workCategory: "営業資料" }));
+    } catch {
+      setApplyPreview([]);
     }
   }, []);
 
@@ -134,10 +145,18 @@ export function PersonalMemorySettingsPanel() {
         setMemories(payload.memories);
         setSettings(payload.settings);
         try {
-          const next = await fetchMemoryImprovementSuggestions();
-          if (!cancelled) setSuggestions(next);
+          const nextDash = await fetchMemoryQualityDashboard();
+          if (!cancelled) setDashboard(nextDash);
         } catch {
-          if (!cancelled) setSuggestions([]);
+          if (!cancelled) setDashboard(null);
+        }
+        try {
+          const preview = await fetchMemoryApplyPreview({
+            workCategory: "営業資料",
+          });
+          if (!cancelled) setApplyPreview(preview);
+        } catch {
+          if (!cancelled) setApplyPreview([]);
         }
       })
       .catch((err: Error) => {
@@ -299,22 +318,10 @@ export function PersonalMemorySettingsPanel() {
         </label>
       </section>
 
-      {suggestions.length > 0 ? (
-        <section className="space-y-3 rounded-2xl border border-[var(--border)] p-4">
-          <h2 className="text-sm font-semibold">自動改善の提案</h2>
-          <ul className="space-y-3">
-            {suggestions.map((item) => (
-              <li key={item.id} className="space-y-2 text-sm">
-                <p className="font-medium">{item.title}</p>
-                <p className="text-[var(--text-secondary)]">{item.description}</p>
-                <p className="text-xs text-[var(--text-muted)]">
-                  {confidenceLabel(item.confidence)} · 根拠 {item.evidenceCount} 件
-                </p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      <MemoryQualityDashboardPanel
+        dashboard={dashboard}
+        applyPreview={applyPreview}
+      />
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">明示して覚える</h2>
