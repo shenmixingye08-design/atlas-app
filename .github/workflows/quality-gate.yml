@@ -42,6 +42,13 @@ jobs:
         env:
           # Keep tests deterministic; do not enable mock-success shortcuts.
           TZ: UTC
+          ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+
+      - name: Work-queue critical path
+        run: npm test -- --run lib/work-queue lib/automations/durable.test.ts
+        env:
+          TZ: UTC
+          ATLAS_WORK_QUEUE_FORCE_FILE: "true"
 
       - name: Upload Vitest logs on failure
         if: failure()
