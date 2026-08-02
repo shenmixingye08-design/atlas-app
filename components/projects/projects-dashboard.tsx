@@ -1,4 +1,5 @@
 "use client";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -83,7 +84,9 @@ export function ProjectsDashboard() {
   }, []);
 
   useEffect(() => {
-    reloadAutomations();
+    return scheduleMountWork(() => {
+      void reloadAutomations();
+    });
   }, [reloadAutomations]);
 
   if (!isReady || flagsLoading) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/design-system/cn";
@@ -47,16 +48,25 @@ function statusToProgress(status: StepStatus, explicit?: number): number {
 
 function StageElapsedTimer({ running }: { running: boolean }) {
   const [elapsed, setElapsed] = useState(0);
-  const startRef = useRef(Date.now());
+  const startRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!running) return;
-    startRef.current = Date.now();
-    setElapsed(0);
-    const id = setInterval(() => {
-      setElapsed(Date.now() - startRef.current);
-    }, 100);
-    return () => clearInterval(id);
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const cancelTimerStart = scheduleMountWork(() => {
+      startRef.current = Date.now();
+      setElapsed(0);
+      intervalId = setInterval(() => {
+        const startedAt = startRef.current;
+        if (startedAt === null) return;
+        setElapsed(Date.now() - startedAt);
+      }, 100);
+    });
+    return () => {
+      cancelTimerStart();
+      if (intervalId !== null) clearInterval(intervalId);
+      startRef.current = null;
+    };
   }, [running]);
 
   if (!running) return null;

@@ -2966,7 +2966,7 @@ export const ui = {
     plannerTasks: "作業を開始します。",
     plannerTasksCount: (n: number) => `${n}件のタスクに分解しました。`,
     workerDone: "成果物を作成しました。",
-    workerDoneNamed: (_title: string) => "成果物を作成しました。",
+    workerDoneNamed: () => "成果物を作成しました。",
     reviewerDone: "制作内容を確認しました。",
     reviewerApproved: "問題ありません。",
     reviewerRevise: "修正が必要です。",

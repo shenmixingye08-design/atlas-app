@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -37,18 +38,22 @@ export function IntegrationsDashboard() {
   }, []);
 
   useEffect(() => {
-    void loadCatalog();
+    return scheduleMountWork(() => {
+      void loadCatalog();
+    });
   }, [loadCatalog]);
 
   useEffect(() => {
-    const oauthError = searchParams.get("error");
-    const connected = searchParams.get("connected");
-    if (oauthError) {
-      setError(oauthError);
-    } else if (connected === "google_drive") {
-      setSuccessMessage(ui.integrations.googleDriveConnected);
-      void loadCatalog();
-    }
+    return scheduleMountWork(() => {
+      const oauthError = searchParams.get("error");
+      const connected = searchParams.get("connected");
+      if (oauthError) {
+        setError(oauthError);
+      } else if (connected === "google_drive") {
+        setSuccessMessage(ui.integrations.googleDriveConnected);
+        void loadCatalog();
+      }
+    });
   }, [searchParams, loadCatalog]);
 
   const handleConnect = async (providerId: IntegrationProviderView["id"]) => {

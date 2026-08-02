@@ -1,4 +1,5 @@
 "use client";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -120,7 +121,9 @@ export function XAutoPostPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    return scheduleMountWork(() => {
+      void load();
+    });
   }, [load]);
 
   const frequencyOption = useMemo(

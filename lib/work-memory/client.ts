@@ -7,8 +7,6 @@ import type {
   WorkMemoryResetInput,
   WorkMemorySettings,
   WorkMemorySummary,
-  WorkMemoryType,
-  WorkMemoryCandidate,
 } from "./types";
 
 export type {

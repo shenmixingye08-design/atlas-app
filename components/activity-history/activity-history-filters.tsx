@@ -8,7 +8,6 @@ import {
 } from "@/lib/activity-history";
 import { ui } from "@/lib/i18n";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/design-system/cn";
 
 type ActivityHistoryFiltersBarProps = {
   filters: ActivityHistoryFilters;

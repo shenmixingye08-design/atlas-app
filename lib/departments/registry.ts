@@ -7,7 +7,6 @@ import {
 import type {
   DepartmentDefinition,
   DepartmentRegistry,
-  WorkerEligibleDepartmentId,
 } from "./types";
 import { WORKER_ELIGIBLE_DEPARTMENT_IDS, isWorkerEligibleDepartment } from "./types";
 

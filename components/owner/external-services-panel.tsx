@@ -1,4 +1,5 @@
 "use client";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -189,7 +190,9 @@ export function ExternalServicesPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    return scheduleMountWork(() => {
+      void load();
+    });
   }, [load]);
 
   async function handleReconnect(serviceId: string) {

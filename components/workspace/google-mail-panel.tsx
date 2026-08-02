@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -394,9 +395,11 @@ export function GoogleMailPanel() {
   );
 
   useEffect(() => {
-    void load(filter, activeSearch);
-    void loadSavedDrafts();
-    void loadLabels();
+    return scheduleMountWork(() => {
+      void load(filter, activeSearch);
+      void loadSavedDrafts();
+      void loadLabels();
+    });
   }, [filter, activeSearch, load, loadSavedDrafts, loadLabels]);
 
   const handleConnect = async () => {

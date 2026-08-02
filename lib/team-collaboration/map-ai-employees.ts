@@ -2,7 +2,7 @@ import type { OrchestrationResult } from "@/lib/orchestration/types";
 import type { AiEmployeeDisplayState } from "@/lib/ai-employees/types";
 import { getAiEmployeeDepartment } from "@/lib/ai-employees/registry";
 
-import { mapDepartmentToAiEmployee, getEmployeeDisplayMeta } from "./employee-map";
+import { getEmployeeDisplayMeta } from "./employee-map";
 import { buildTeamCollaborationSnapshot } from "./build-snapshot";
 
 export function mapExecutionsToAiEmployees(

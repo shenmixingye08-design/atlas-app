@@ -1,4 +1,5 @@
 "use client";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -25,7 +26,9 @@ export function useActiveCompany() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    return scheduleMountWork(() => {
+      void refresh();
+    });
   }, [refresh]);
 
   return { config, isLoading, refresh };

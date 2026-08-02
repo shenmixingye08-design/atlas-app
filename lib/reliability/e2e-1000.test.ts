@@ -257,7 +257,7 @@ describe("reliability e2e measured gate", () => {
         results.push(r);
         if (!r.ok) failures.push({ i, reasons: r.reasons });
         if (i % 100 === 0) {
-          // eslint-disable-next-line no-console
+           
           console.log(
             `[reliability-e2e] ${i}/${RUNS} ok=${results.filter((x) => x.ok).length}`,
           );
@@ -359,7 +359,7 @@ describe("reliability e2e measured gate", () => {
 `,
       );
 
-      // eslint-disable-next-line no-console
+       
       console.log(
         JSON.stringify(
           {

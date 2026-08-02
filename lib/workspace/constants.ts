@@ -31,11 +31,11 @@ const SECRETARY_PHASES = [
 /** @deprecated Internal parallel slot count — UI no longer exposes workers. */
 export const DEFAULT_PARALLEL_WORKER_SLOTS = 4;
 
-export function buildWorkflowPhaseTemplate(
-  _workerCount: number = DEFAULT_PARALLEL_WORKER_SLOTS,
-): readonly { id: string; label: string; subtitle: string }[] {
+export const buildWorkflowPhaseTemplate: (
+  workerCount?: number,
+) => readonly { id: string; label: string; subtitle: string }[] = () => {
   return SECRETARY_PHASES;
-}
+};
 
 /** Interval for advancing the visual running phase while awaiting /api/orchestrate. */
 export const LOADING_STEP_INTERVAL_MS = 4500;

@@ -38,7 +38,6 @@ import {
 import {
   deleteAccountDeletionRecord,
   getAccountDeletionRecord,
-  saveAccountDeletionRecord,
 } from "./store";
 import {
   ACCOUNT_DELETION_CONFIRMATION,

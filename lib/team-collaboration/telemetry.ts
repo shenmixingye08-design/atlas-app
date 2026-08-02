@@ -1,5 +1,4 @@
 import type { OrchestrationResult } from "@/lib/orchestration/types";
-import { resolveAssignedEmployee } from "@/lib/employees/registry";
 import { getDepartmentLabel } from "@/lib/i18n";
 
 import { getEmployeeDisplayMeta } from "./employee-map";

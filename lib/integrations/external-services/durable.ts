@@ -60,21 +60,6 @@ function getHydratedUsers(): Map<string, number> {
 export function resetExternalAuthHydration(): void {
   getHydratedUsers().clear();
 }
-function compactConnectionForClerk(
-  connection: ExternalServiceConnection,
-): ExternalServiceConnection {
-  return {
-    serviceId: connection.serviceId,
-    serviceName: connection.serviceName,
-    status: connection.status,
-    connectedAt: null,
-    lastUsedAt: null,
-    scopes: [],
-    features: [],
-    errorMessage: null,
-    account: undefined,
-  };
-}
 
 function compactAuth(): DurableExternalAuthState {
   return {

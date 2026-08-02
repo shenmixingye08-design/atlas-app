@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -278,26 +279,30 @@ export function ExternalServiceSettings() {
   }, []);
 
   useEffect(() => {
-    void loadCatalog();
+    return scheduleMountWork(() => {
+      void loadCatalog();
+    });
   }, [loadCatalog]);
 
   useEffect(() => {
-    const googleError = searchParams.get("google_error");
-    const connected = searchParams.get("connected");
+    return scheduleMountWork(() => {
+      const googleError = searchParams.get("google_error");
+      const connected = searchParams.get("connected");
 
-    if (googleError === "1") {
-      setError(ui.externalServices.googleConnectError);
-      setSuccessMessage(null);
-    } else if (connected === "google") {
-      const account = searchParams.get("account");
-      setSuccessMessage(
-        account
-          ? `${ui.externalServices.googleConnectSuccess}（${account}）`
-          : ui.externalServices.googleConnectSuccess,
-      );
-      setError(null);
-      void loadCatalog();
-    }
+      if (googleError === "1") {
+        setError(ui.externalServices.googleConnectError);
+        setSuccessMessage(null);
+      } else if (connected === "google") {
+        const account = searchParams.get("account");
+        setSuccessMessage(
+          account
+            ? `${ui.externalServices.googleConnectSuccess}（${account}）`
+            : ui.externalServices.googleConnectSuccess,
+        );
+        setError(null);
+        void loadCatalog();
+      }
+    });
   }, [searchParams, loadCatalog]);
 
   const handleConnect = async (serviceId: ExternalServiceView["serviceId"]) => {

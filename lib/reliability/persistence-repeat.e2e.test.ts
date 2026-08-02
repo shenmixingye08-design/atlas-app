@@ -6,13 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const clerkMeta = new Map<string, Record<string, unknown>>();
 let clerkUpdateCalls = 0;
-let clerkGetCalls = 0;
 
 vi.mock("@clerk/nextjs/server", () => ({
   clerkClient: async () => ({
     users: {
       getUser: async (userId: string) => {
-        clerkGetCalls += 1;
         return {
           id: userId,
           privateMetadata: { ...(clerkMeta.get(userId) ?? {}) },
@@ -372,7 +370,6 @@ describe("persistence repeat ×10 (Vercel ephemeral)", () => {
   beforeEach(() => {
     clerkMeta.clear();
     clerkUpdateCalls = 0;
-    clerkGetCalls = 0;
     sbStore.clear();
     resetPersistenceCounters();
     resetClerkPointerCacheForTests();
@@ -434,7 +431,7 @@ describe("persistence repeat ×10 (Vercel ephemeral)", () => {
     };
 
     // Evidence artifact for the completion report.
-    // eslint-disable-next-line no-console
+     
     console.info("[persistence-repeat-10]", JSON.stringify(report, null, 2));
 
     expect(failed.length, JSON.stringify(report)).toBe(0);

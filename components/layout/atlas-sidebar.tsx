@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -226,9 +227,10 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
   const closeMobile = useCallback(() => setMobileOpen(false), []);
 
   useEffect(() => {
-    if (isSidebarMoreActive(resolvedActive)) {
+    if (!isSidebarMoreActive(resolvedActive)) return;
+    return scheduleMountWork(() => {
       setMoreExpanded(true);
-    }
+    });
   }, [resolvedActive]);
 
   useEffect(() => {
