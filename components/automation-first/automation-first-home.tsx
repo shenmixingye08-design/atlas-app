@@ -91,10 +91,12 @@ function CtaBlock({
   createHref,
   oneTimeHref,
   primary = true,
+  createLabel = "新しい自動化を作る",
 }: {
   createHref: string;
   oneTimeHref: string;
   primary?: boolean;
+  createLabel?: string;
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -107,7 +109,7 @@ function CtaBlock({
         }
         className="inline-flex min-h-[var(--touch-target)] items-center justify-center rounded-[var(--radius-md)] bg-[var(--brand)] px-5 text-sm font-semibold text-[var(--brand-foreground)]"
       >
-        新しい自動化を作る
+        {createLabel}
       </Link>
       <Link
         href={oneTimeHref}
@@ -330,7 +332,8 @@ export function AutomationFirstHome({
   ]);
 
   const hasAutomations = automations.length > 0 || (opsSummary?.counts.activeAutomations ?? 0) > 0;
-  const createHref = "/automations/new";
+  const createHref = "/activation/weekly-report";
+  const alternateCreateHref = "/automations/new";
   const oneTimeHref = "/workspace";
 
   if (opsEnabled && opsLoading && !opsSummary && !opsError) {
@@ -533,20 +536,21 @@ export function AutomationFirstHome({
         />
         {!hasAutomations ? (
           <EmptyState
-            title="まだ自動化がありません"
-            description="繰り返す仕事を一度設定すると、MINERVOTが予定どおり進めます。"
+            title="最初の仕事をMINERVOTへ任せてみましょう"
+            description="毎週の営業レポートをWordで作成するところから始められます。外部連携は不要です。"
             primaryHref={createHref}
-            primaryLabel="新しい自動化を作る"
-            secondaryHref={oneTimeHref}
-            secondaryLabel="一度だけお願いする"
+            primaryLabel="毎週レポートを作ってみる"
+            secondaryHref={alternateCreateHref}
+            secondaryLabel="別の仕事を選ぶ"
             onPrimaryClick={() =>
               trackAutomationFirstEvent("empty_state_cta_clicked", {
                 source: "home_empty",
+                template: "weekly_sales_report_word",
               })
             }
           />
         ) : (
-          <CtaBlock createHref={createHref} oneTimeHref={oneTimeHref} />
+          <CtaBlock createHref={alternateCreateHref} oneTimeHref={oneTimeHref} />
         )}
         {nextRunCard}
         {recentSection}
@@ -588,15 +592,16 @@ export function AutomationFirstHome({
           {recentSection}
           {!hasAutomations ? (
             <EmptyState
-              title="まだ自動化がありません"
-              description="繰り返す仕事を一度設定すると、MINERVOTが予定どおり進めます。"
+              title="最初の仕事をMINERVOTへ任せてみましょう"
+              description="毎週の営業レポートをWordで作成するところから始められます。外部連携は不要です。"
               primaryHref={createHref}
-              primaryLabel="新しい自動化を作る"
-              secondaryHref={oneTimeHref}
-              secondaryLabel="一度だけお願いする"
+              primaryLabel="毎週レポートを作ってみる"
+              secondaryHref={alternateCreateHref}
+              secondaryLabel="別の仕事を選ぶ"
               onPrimaryClick={() =>
                 trackAutomationFirstEvent("empty_state_cta_clicked", {
-                  source: "home_empty",
+                  source: "home_empty_desktop",
+                  template: "weekly_sales_report_word",
                 })
               }
             />
@@ -610,10 +615,19 @@ export function AutomationFirstHome({
               自動化を作る
             </h2>
             <p className="mt-1 text-[length:var(--text-caption)] text-[var(--text-muted)]">
-              主役は自動化。単発のお願いも残せます。
+              最初は毎週レポートから。単発のお願いも残せます。
             </p>
             <div className="mt-3">
-              <CtaBlock createHref={createHref} oneTimeHref={oneTimeHref} primary={false} />
+              <CtaBlock
+                createHref={hasAutomations ? alternateCreateHref : createHref}
+                oneTimeHref={oneTimeHref}
+                primary={false}
+                createLabel={
+                  hasAutomations
+                    ? "新しい自動化を作る"
+                    : "毎週レポートを作ってみる"
+                }
+              />
             </div>
           </section>
           {nextRunCard}

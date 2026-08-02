@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { deferFirstExperience } from "@/lib/first-experience";
+import { trackActivationEvent } from "@/lib/activation";
 import { completeOnboarding } from "@/lib/onboarding";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 
 type WelcomeWizardProps = {
-  onComplete: () => void;
+  onComplete: (options?: { startActivation?: boolean }) => void;
 };
 
 const TOTAL_STEPS = 5;
@@ -140,12 +140,15 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
   const finish = useCallback(
     (mode: "guide" | "skip") => {
       completeOnboarding({
-        preferredTasks: [],
+        preferredTasks: ["sales_material"],
         entryMode: mode,
       });
-      // ダミー業務・架空体験は自動起動しない
-      deferFirstExperience();
-      onComplete();
+      // 空ホームへ defer しない。初回は毎週レポート Activation へ進める。
+      trackActivationEvent("signup_completed", {
+        entryMode: mode,
+        templateId: "weekly_sales_report_word",
+      });
+      onComplete({ startActivation: true });
     },
     [onComplete],
   );
