@@ -20,6 +20,10 @@ import type { StepInvoker } from "@/lib/automation-platform/execution/step-invok
 import { strictStepInvoker } from "@/lib/automation-platform/execution/strict-step-invoker";
 import { memoryUpdateRun } from "@/lib/automation-platform/repository/memory-store";
 import { persistAutomationRunNow } from "@/lib/automation-platform/durable-runs";
+import {
+  recordAutomationMemoryFailure,
+  recordAutomationMemorySuccess,
+} from "@/lib/memory-apply/automation";
 
 export type ExecuteRunResult = {
   run: AutomationRun;
@@ -163,6 +167,8 @@ export async function executeQueuedRun(input: {
         automationName: input.automation.name,
         runId: run.id,
         approved: approved || !runStep.requiresApproval,
+        resolvedInstruction: run.resolvedInstruction,
+        memoryUsage: run.memoryUsage,
       });
 
       if (result.needsUserInput) {
@@ -272,6 +278,13 @@ export async function executeQueuedRun(input: {
       resultSummary: `${succeededCount} 件の手順が完了しました`,
       retryable: false,
     });
+    void recordAutomationMemorySuccess({
+      userId: run.userId,
+      automationId: run.automationId,
+      runId: run.id,
+      memoryIdsUsed: run.memoryUsage.memoryIdsUsed ?? [],
+      summary: run.resultSummary,
+    });
     return { run, terminal: true };
   }
 
@@ -312,6 +325,13 @@ export async function executeQueuedRun(input: {
       terminalStatus === "partially_succeeded"
         ? `${succeededCount} 件成功 / ${failedCount} 件失敗`
         : lastErrorMessage ?? "実行に失敗しました",
+  });
+  void recordAutomationMemoryFailure({
+    userId: run.userId,
+    automationId: run.automationId,
+    runId: run.id,
+    errorCode: lastErrorCode,
+    errorMessage: lastErrorMessage,
   });
   return { run, terminal: true };
 }

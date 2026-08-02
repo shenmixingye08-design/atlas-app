@@ -178,9 +178,32 @@ async function drawBlocks(params: {
   }
 }
 
+type PdfGenerateOptions = {
+  companyName?: string | null;
+  footerNote?: string | null;
+  brandColorHex?: string | null;
+  pdf?: {
+    brandColorHex?: string | null;
+    footerNote?: string | null;
+    marginPt?: number | null;
+  } | null;
+};
+
+function hexToRgb(hex: string | null | undefined): ReturnType<typeof rgb> {
+  const cleaned = (hex ?? "").replace(/^#/, "");
+  if (!/^[0-9A-Fa-f]{6}$/.test(cleaned)) {
+    return rgb(0.05, 0.18, 0.32);
+  }
+  const r = parseInt(cleaned.slice(0, 2), 16) / 255;
+  const g = parseInt(cleaned.slice(2, 4), 16) / 255;
+  const b = parseInt(cleaned.slice(4, 6), 16) / 255;
+  return rgb(r, g, b);
+}
+
 async function buildJapanesePdf(
   parsed: ParsedDeliverable,
   sourceText: string,
+  options?: PdfGenerateOptions,
 ): Promise<Buffer> {
   const pdfDoc = await PDFDocument.create();
   const fonts: PdfFonts = new Map();
@@ -188,6 +211,11 @@ async function buildJapanesePdf(
     page: pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]),
     y: PAGE_HEIGHT - MARGIN,
   };
+  const titleColor = hexToRgb(
+    options?.pdf?.brandColorHex ?? options?.brandColorHex,
+  );
+  const footerNote =
+    options?.pdf?.footerNote ?? options?.footerNote ?? options?.companyName ?? null;
 
   const titleFont = await loadPdfFontForSubset(
     pdfDoc,
@@ -203,7 +231,7 @@ async function buildJapanesePdf(
       y: cursor.y,
       size: 20,
       font: titleFont,
-      color: rgb(0.05, 0.18, 0.32),
+      color: titleColor,
     });
   }
 
@@ -248,6 +276,21 @@ async function buildJapanesePdf(
     });
   }
 
+  if (footerNote) {
+    const footerFont = await loadPdfFontForSubset(
+      pdfDoc,
+      fonts,
+      subsetIndexForCodePoint(footerNote.codePointAt(0) ?? 0),
+    );
+    cursor.page.drawText(footerNote.slice(0, 120), {
+      x: MARGIN,
+      y: 28,
+      size: 9,
+      font: footerFont,
+      color: rgb(0.35, 0.35, 0.35),
+    });
+  }
+
   return Buffer.from(await pdfDoc.save());
 }
 
@@ -258,9 +301,10 @@ export class PdfDeliverableGenerator implements DeliverableGenerator {
   async generate(
     content: string,
     baseFileName: string,
+    options?: PdfGenerateOptions,
   ): Promise<GeneratedDeliverableFile> {
     const parsed = parseDeliverableContent(content);
-    const buffer = await buildJapanesePdf(parsed, content);
+    const buffer = await buildJapanesePdf(parsed, content, options);
     return createDeliverableFile("pdf", baseFileName, buffer, false);
   }
 }

@@ -32,7 +32,27 @@ vi.mock("@/lib/personal-memory/bridge/automation", () => ({
       updated: [],
       unusedScopes: [],
     },
-    ledger: { memoryIdsUsed: ["mem_1"], memoryConflicts: [] },
+    ledger: {
+      memoryIdsUsed: ["mem_1"],
+      memoryValuesResolved: [
+        {
+          memoryId: "mem_1",
+          scope: "writing_style",
+          key: "tone",
+          value: { text: "丁寧語" },
+          title: "文体",
+          summary: "丁寧語",
+          source: "explicit",
+          layer: "global_memory",
+          sensitivity: "normal",
+        },
+      ],
+      memoryConflicts: [],
+      memoryOverrides: [],
+      memoryCandidateUpdates: [],
+      unusedMemoryIds: [],
+    },
+    injectionText: "丁寧語で書いてください",
     tokenEstimate: 40,
   })),
 }));

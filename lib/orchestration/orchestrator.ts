@@ -60,6 +60,8 @@ import {
 } from "./pipeline-diagnostics";
 import { readAtlasMemoryFromMetadata } from "@/lib/user-memory/metadata";
 import { readWorkMemoryFromMetadata } from "@/lib/work-memory/metadata";
+import { readPersonalMemoryFromMetadata } from "@/lib/memory-apply/orchestration-metadata";
+import { recordMemoryApplyEvent } from "@/lib/memory-apply/metrics";
 import { retrieveExecutiveMemory } from "./knowledge-stage";
 import { parseUnifiedPlannerOutput } from "./parse-unified-planner";
 import { parseTasksFromPlannerOutput } from "./parse-tasks";
@@ -511,14 +513,29 @@ export async function orchestrate(
 
     const atlasMemory = readAtlasMemoryFromMetadata(metadata);
     const workMemory = readWorkMemoryFromMetadata(metadata);
+    const personalMemory = readPersonalMemoryFromMetadata(metadata);
     const plannerKnowledge = [
       retrieval.plannerContext.similarProjects,
       retrieval.plannerContext.successfulStrategies,
       atlasMemory,
       workMemory,
+      personalMemory,
     ]
       .filter(Boolean)
       .join("\n\n");
+
+    const orchestrationUserId =
+      typeof metadata?.userId === "string" ? metadata.userId : null;
+    if (orchestrationUserId) {
+      recordMemoryApplyEvent({
+        userId: orchestrationUserId,
+        channel: "orchestration",
+        memoryMode: personalMemory ? "on" : "off",
+        applied: Boolean(personalMemory),
+        success: true,
+        improvementRate: personalMemory ? 0.5 : 0,
+      });
+    }
 
     trackStep("ceo");
     ceo = buildDeterministicCeoPhase(assignment, retrieval, deliverableType);

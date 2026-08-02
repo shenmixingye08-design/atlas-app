@@ -24,7 +24,7 @@ import {
   buildRunStepsFromAutomation,
   prepareRunSnapshot,
 } from "@/lib/automation-platform/execution/prepare-run";
-import { resolveMemoryForAutomation } from "@/lib/personal-memory/bridge/automation";
+import { applyMemoryForAutomation } from "@/lib/memory-apply/automation";
 import {
   memoryGetAutomation,
   memoryGetRun,
@@ -521,17 +521,8 @@ export class AutomationPlatformService {
           ).toISOString()
         : null;
 
-    const memoryResolved = await resolveMemoryForAutomation({ automation });
-    const memoryUsage = {
-      ...memoryResolved.memoryUsage,
-      memoryIdsUsed: memoryResolved.ledger.memoryIdsUsed,
-      memoryConflicts: memoryResolved.ledger.memoryConflicts.map((c) => ({
-        id: c.id,
-        message: c.message,
-        highRisk: c.highRisk,
-      })),
-      tokenEstimate: memoryResolved.tokenEstimate,
-    };
+    const memoryResolved = await applyMemoryForAutomation({ automation });
+    const memoryUsage = memoryResolved.memoryUsage;
     const preparation = prepareRunSnapshot({
       automation,
       scheduledFor,
@@ -567,7 +558,7 @@ export class AutomationPlatformService {
       failedStepId: null,
       retryable: false,
       needsUserInput: false,
-      resolvedInstruction: null,
+      resolvedInstruction: memoryResolved.resolvedInstruction,
       memoryUsage,
       memoryReferences: memoryUsage.used,
       statusHistory: [],

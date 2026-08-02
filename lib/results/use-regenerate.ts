@@ -26,7 +26,15 @@ export function useRegenerate(workRequest: string) {
     setError(null);
 
     try {
-      const result = await submitCommanderRequest(trimmed, { mode: "execute" });
+      // Never zero-from-scratch: pass prior request + regenerate Memory flag.
+      const result = await submitCommanderRequest(trimmed, {
+        mode: "execute",
+        metadata: {
+          regenerate: true,
+          previousWorkRequest: trimmed,
+          memoryApplyMode: "delta",
+        },
+      });
 
       if (
         result.result &&

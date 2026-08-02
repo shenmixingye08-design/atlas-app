@@ -6,7 +6,18 @@
 
 import type { AutomationWorkflowStep } from "@/lib/automation-platform/types/step";
 import type { AutomationRunArtifact } from "@/lib/automation-platform/types/run";
+import type { ResolvedInstruction } from "@/lib/automation-platform/types/instruction";
+import type { MemoryUsageRecord } from "@/lib/automation-platform/types/run";
 import { getCapability } from "@/lib/automation-platform/step-registry/registry";
+import { applyContentOverlayToText, buildContentOverlay } from "@/lib/memory-apply/overlays";
+import {
+  applyOcrCorrections,
+  resolveOcrMemoryDictionary,
+} from "@/lib/memory-apply/ocr";
+import { recordMemoryApplyEvent } from "@/lib/memory-apply/metrics";
+import { resolveVisionMemoryContext } from "@/lib/memory-apply/vision";
+import { resolveNotificationPreferencesWithMemory } from "@/lib/memory-apply/notifications";
+import { getStoredPreferences } from "@/lib/notifications/store";
 
 export type StepInvokeResult = {
   ok: boolean;
@@ -23,7 +34,21 @@ export type StepInvoker = (input: {
   automationName: string;
   runId: string;
   approved: boolean;
+  resolvedInstruction?: ResolvedInstruction | null;
+  memoryUsage?: MemoryUsageRecord | null;
 }) => Promise<StepInvokeResult>;
+
+function memoryInjection(input: {
+  resolvedInstruction?: ResolvedInstruction | null;
+}): string {
+  const merged = input.resolvedInstruction?.merged ?? {};
+  const injection =
+    typeof merged.memoryInjectionText === "string"
+      ? merged.memoryInjectionText
+      : "";
+  const notes = input.resolvedInstruction?.freeformNotes ?? "";
+  return [injection, notes].filter(Boolean).join("\n").trim();
+}
 
 function artifact(
   label: string,
@@ -69,8 +94,43 @@ export const defaultStepInvoker: StepInvoker = async (input) => {
   }
 
   switch (step.type) {
-    case "ocr":
-    case "vision_analysis":
+    case "ocr": {
+      const rawText =
+        typeof step.configuration.text === "string"
+          ? step.configuration.text
+          : typeof step.configuration.sourceText === "string"
+            ? step.configuration.sourceText
+            : "";
+      const ocrMemory = await resolveOcrMemoryDictionary({ userId: input.userId });
+      const corrected = applyOcrCorrections(rawText || "（OCR対象）", ocrMemory.dictionary);
+      return {
+        ok: true,
+        summary: `OCRを完了しました（補正 ${Object.keys(ocrMemory.dictionary).length} 件 / Memory ${ocrMemory.memoryIdsUsed.length}）`,
+        artifacts: [
+          {
+            ...artifact("OCR結果", "file"),
+            label: `OCR結果: ${corrected.slice(0, 80)}`,
+          },
+        ],
+      };
+    }
+    case "vision_analysis": {
+      const visionMemory = await resolveVisionMemoryContext({
+        userId: input.userId,
+      });
+      return {
+        ok: true,
+        summary: `画像解析を完了しました（Memory hints ${visionMemory.hints.length}）`,
+        artifacts: [
+          artifact(
+            visionMemory.hints[0]
+              ? `Vision結果: ${visionMemory.hints[0].slice(0, 60)}`
+              : "Vision結果",
+            "file",
+          ),
+        ],
+      };
+    }
     case "data_extract":
     case "file_convert":
       return {
@@ -86,18 +146,75 @@ export const defaultStepInvoker: StepInvoker = async (input) => {
       const title =
         (typeof step.configuration.title === "string" && step.configuration.title) ||
         `${input.automationName} / ${capability.name}`;
+      const baseContent =
+        typeof step.configuration.content === "string"
+          ? step.configuration.content
+          : typeof step.configuration.body === "string"
+            ? step.configuration.body
+            : title;
+      const injection = memoryInjection(input);
+      const merged = input.resolvedInstruction?.merged ?? {};
+      const writingFromMerged =
+        typeof merged.writing_style === "object" &&
+        merged.writing_style &&
+        typeof (merged.writing_style as { text?: string }).text === "string"
+          ? (merged.writing_style as { text: string }).text
+          : typeof merged.writing_style === "string"
+            ? merged.writing_style
+            : null;
+      const overlay = {
+        ...buildContentOverlay({
+          values: [],
+          injectionText: injection,
+        }),
+        writingStyle: writingFromMerged,
+        signature:
+          typeof merged.signature === "string" ? merged.signature : null,
+      };
+      const appliedContent = applyContentOverlayToText(baseContent, overlay);
+      const channel =
+        step.type === "excel_generate"
+          ? "excel"
+          : step.type === "pdf_generate"
+            ? "pdf"
+            : step.type === "powerpoint_generate"
+              ? "powerpoint"
+              : "word";
+      const memoryIds = Array.isArray(merged.memoryIdsUsed)
+        ? merged.memoryIdsUsed.filter((id): id is string => typeof id === "string")
+        : input.memoryUsage?.memoryIdsUsed ?? [];
+      recordMemoryApplyEvent({
+        userId: input.userId,
+        channel,
+        memoryMode: injection || memoryIds.length > 0 ? "on" : "off",
+        applied: Boolean(injection || memoryIds.length > 0),
+        memoryIdsUsed: memoryIds,
+        success: true,
+      });
       return {
         ok: true,
-        summary: `${capability.name}の成果物を準備しました`,
-        artifacts: [artifact(title, "deliverable")],
+        summary: `${capability.name}の成果物を準備しました（Memory適用 ${memoryIds.length}）`,
+        artifacts: [
+          {
+            ...artifact(title, "deliverable"),
+            label: `${title} :: ${appliedContent.slice(0, 60)}`,
+          },
+        ],
       };
     }
-    case "notify":
+    case "notify": {
+      const prefs = await resolveNotificationPreferencesWithMemory({
+        userId: input.userId,
+        base: getStoredPreferences(input.userId),
+      });
       return {
         ok: true,
-        summary: "通知手順を記録しました",
+        summary: prefs.applied
+          ? `通知手順を記録しました（Memory通知設定を適用）`
+          : "通知手順を記録しました",
         artifacts: [],
       };
+    }
     case "wait":
     case "condition":
       return {

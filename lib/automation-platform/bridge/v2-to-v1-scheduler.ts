@@ -94,7 +94,13 @@ function buildAssignment(automation: AutomationV2): string {
 
 export function buildV1CreateInputFromV2(
   automation: AutomationV2,
+  memoryTimezone?: string | null,
 ): CreateAutomationInput | null {
+  const timezone =
+    automation.trigger.timezone?.trim() ||
+    memoryTimezone?.trim() ||
+    undefined;
+
   if (automation.trigger.type === "manual") {
     // Manual-only: still register as disabled schedule placeholder so it appears in V1 list
     return {
@@ -103,7 +109,7 @@ export function buildV1CreateInputFromV2(
       schedule: {
         kind: "schedule",
         preset: { type: "daily", hour: 9, minute: 0 },
-        timezone: automation.trigger.timezone,
+        timezone: timezone ?? automation.trigger.timezone,
         label: "手動実行",
       },
       workflow: { assignment: buildAssignment(automation) },
@@ -128,7 +134,7 @@ export function buildV1CreateInputFromV2(
     schedule: {
       kind: "schedule",
       preset,
-      timezone: automation.trigger.timezone,
+      timezone: timezone ?? automation.trigger.timezone,
       label: automation.name,
       cron: schedule.cronDerived ?? undefined,
     },
@@ -158,7 +164,21 @@ export function buildV1CreateInputFromV2(
 export async function syncV2ToV1Scheduler(
   automation: AutomationV2,
 ): Promise<{ v1Id: string | null; registered: boolean }> {
-  const input = buildV1CreateInputFromV2(automation);
+  let memoryTimezone: string | null = null;
+  try {
+    const { resolveSchedulerMemoryDefaults } = await import(
+      "@/lib/memory-apply/scheduler"
+    );
+    const schedulerMemory = await resolveSchedulerMemoryDefaults({
+      userId: automation.userId,
+      explicitTimezone: automation.trigger.timezone,
+    });
+    memoryTimezone = schedulerMemory.timezone;
+  } catch {
+    memoryTimezone = null;
+  }
+
+  const input = buildV1CreateInputFromV2(automation, memoryTimezone);
   if (!input) {
     return { v1Id: null, registered: false };
   }

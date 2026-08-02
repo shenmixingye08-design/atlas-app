@@ -136,15 +136,41 @@ export async function runOrchestrationForUser(
       const { resolveForContext } = await import(
         "@/lib/personal-memory/service"
       );
-      const { result: personalResolved } = await resolveForContext({
-        userId: input.userId,
-        notes: input.assignment,
-      });
-      if (personalResolved.injectionText) {
+      const isRegenerate = input.metadata?.regenerate === true;
+      const previousContent =
+        typeof input.metadata?.previousWorkRequest === "string"
+          ? input.metadata.previousWorkRequest
+          : input.assignment;
+
+      if (isRegenerate) {
+        const { applyMemoryForRegenerate } = await import(
+          "@/lib/memory-apply/regenerate"
+        );
+        const regen = await applyMemoryForRegenerate({
+          userId: input.userId,
+          previousContent,
+          improvementNotes:
+            typeof input.metadata?.improvementNotes === "string"
+              ? input.metadata.improvementNotes
+              : "差分再生成",
+        });
         personalMemoryMeta = {
-          personalMemory: personalResolved.injectionText,
-          personalMemoryTokenEstimate: personalResolved.tokenEstimate,
+          personalMemory: regen.content.slice(0, 1200),
+          personalMemoryIdsUsed: regen.memoryIdsUsed,
+          memoryApplyMode: "delta",
+          regenerateApplied: regen.applied,
         };
+      } else {
+        const { result: personalResolved } = await resolveForContext({
+          userId: input.userId,
+          notes: input.assignment,
+        });
+        if (personalResolved.injectionText) {
+          personalMemoryMeta = {
+            personalMemory: personalResolved.injectionText,
+            personalMemoryTokenEstimate: personalResolved.tokenEstimate,
+          };
+        }
       }
     } catch {
       personalMemoryMeta = null;
