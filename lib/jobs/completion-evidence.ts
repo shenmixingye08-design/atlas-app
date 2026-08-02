@@ -10,6 +10,11 @@ export type CompletionEvidenceInput = {
   tweetUrl?: string | null;
   artifactId?: string | null;
   storageUrl?: string | null;
+  /**
+   * True when this run path expected a downloadable file (attempted generation
+   * or had exportable content). Empty proof then fails closed.
+   */
+  deliverablesExpected?: boolean;
 };
 
 export type CompletionEvidenceResult = {
@@ -101,9 +106,23 @@ export function evaluateCompletionEvidence(
     };
   }
 
+  // Expected a file but got none — never mark as completed.
+  if (input.deliverablesExpected) {
+    return {
+      status: "failed",
+      resultSummary: null,
+      externalResultId: null,
+      externalResultUrl: null,
+      artifactId: input.artifactId ?? null,
+      lastErrorMessage:
+        "成果物が生成されませんでした。内容をご確認のうえ、再実行してください。",
+    };
+  }
+
+  // Orchestration finished without a file export path — not a downloadable win.
   return {
-    status: "completed",
-    resultSummary: "自動化が完了しました",
+    status: "partially_completed",
+    resultSummary: "内容は作成済み — ダウンロード可能な成果物はありません",
     externalResultId: null,
     externalResultUrl: null,
     artifactId: input.artifactId ?? null,

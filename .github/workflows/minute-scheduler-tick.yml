@@ -1,0 +1,39 @@
+name: Minute scheduler tick
+
+# Persistent minute scheduler for Hobby/Pro. Hits /api/automations/tick every minute.
+# Requires repo secrets: CRON_SECRET, APP_URL (e.g. https://atlasapp.jp)
+
+on:
+  schedule:
+    - cron: "* * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: minute-scheduler-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Invoke automation tick
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "APP_URL / CRON_SECRET secrets are required for minute scheduling"
+            exit 1
+          fi
+          base="${APP_URL%/}"
+          code=$(curl -sS -o /tmp/tick-body.json -w "%{http_code}" \
+            -X POST "${base}/api/automations/tick" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            --max-time 90)
+          echo "HTTP ${code}"
+          head -c 2000 /tmp/tick-body.json || true
+          echo
+          test "${code}" = "200"

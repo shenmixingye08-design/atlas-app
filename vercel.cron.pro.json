@@ -1,5 +1,5 @@
 {
-  "$comment": "Copy the crons entry into vercel.json after upgrading to Vercel Pro. Hobby rejects minute schedules.",
+  "$comment": "Canonical minute schedule — vercel.json already uses this. Kept for reference.",
   "crons": [
     {
       "path": "/api/automations/tick",

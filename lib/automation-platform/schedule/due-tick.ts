@@ -16,10 +16,17 @@ import {
   memoryListDueActiveAutomations,
 } from "@/lib/automation-platform/repository/memory-store";
 import { automationPlatformService } from "@/lib/automation-platform/service/automation-service";
+import { listAutomationOwnerUserIds } from "@/lib/automations/global-durable";
 import {
   buildFeatureAccessContext,
   isFeatureEnabled,
 } from "@/lib/feature-flags/access";
+import {
+  recordDuplicate,
+  recordScheduleDelay,
+} from "@/lib/automation-platform/reliability/metrics";
+import { recordExecutionEvent } from "@/lib/automation-platform/reliability/execution-events";
+import { SCHEDULE_SLA_MS } from "@/lib/automation-platform/reliability/constants";
 
 export type DueScheduleTickResult = {
   due: number;
@@ -52,6 +59,8 @@ export async function processDueScheduledAutomationsV2(options?: {
   dispatch?: boolean;
   /** Optional userIds to hydrate from durable storage before scanning. */
   hydrateUserIds?: string[];
+  /** Public origin for deliverable download URLs when dispatching. */
+  requestOrigin?: string | null;
 }): Promise<DueScheduleTickResult> {
   const nowMs = options?.nowMs ?? Date.now();
   const context = buildFeatureAccessContext(null);
@@ -69,7 +78,11 @@ export async function processDueScheduledAutomationsV2(options?: {
     return result;
   }
 
-  for (const userId of options?.hydrateUserIds ?? []) {
+  // Cold serverless instances have an empty memory store. Hydrate known owners
+  // (V2 create bridges into V1 index) before scanning due automations.
+  const hydrateUserIds =
+    options?.hydrateUserIds ?? (await listAutomationOwnerUserIds().catch(() => []));
+  for (const userId of hydrateUserIds) {
     await ensureAutomationsV2Hydrated(userId);
     await ensureAutomationRunsV2Hydrated(userId);
   }
@@ -94,11 +107,33 @@ export async function processDueScheduledAutomationsV2(options?: {
         context,
         dispatch: false,
       });
+      recordScheduleDelay(delayMs);
       if (enqueued.created) {
         result.enqueued += 1;
         runIds.push(enqueued.run.id);
+        recordExecutionEvent({
+          runId: enqueued.run.id,
+          jobId: null,
+          ownerId: automation.userId,
+          automationId: automation.id,
+          step: "enqueue",
+          status: "queued",
+          startedAt: new Date(nowMs).toISOString(),
+          endedAt: null,
+          durationMs: null,
+          retryCount: 0,
+          errorCode:
+            delayMs > SCHEDULE_SLA_MS ? "schedule_delay_over_sla" : null,
+          errorMessage:
+            delayMs > SCHEDULE_SLA_MS
+              ? `開始遅延 ${delayMs}ms（SLA ${SCHEDULE_SLA_MS}ms）`
+              : null,
+          failureClass: null,
+          meta: { delayMs, scheduledAt },
+        });
       } else {
         result.deduped += 1;
+        recordDuplicate();
         // Avoid tight loops when occurrence already exists: advance nextRunAt.
         const { computeNextRunIsoFromTrigger } = await import(
           "@/lib/automation-platform/schedule/compute"
@@ -174,7 +209,10 @@ export async function processDueScheduledAutomationsV2(options?: {
   }
 
   if (options?.dispatch !== false && runIds.length > 0) {
-    const dispatched = await dispatchAutomationRuns({ runIds });
+    const dispatched = await dispatchAutomationRuns({
+      runIds,
+      requestOrigin: options?.requestOrigin,
+    });
     result.dispatched = dispatched.processed;
   }
 

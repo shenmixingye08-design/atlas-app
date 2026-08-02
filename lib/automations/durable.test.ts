@@ -29,6 +29,8 @@ vi.mock("@/lib/orchestration/orchestrator", () => ({
       summary: "s",
       sections: [],
       body: "ok",
+      content:
+        "十分な長さの本文です。週次の要点を整理し、確認しやすい形でまとめました。",
     },
     reviewComments: "",
     approved: true,
@@ -54,6 +56,43 @@ vi.mock("@/lib/notifications/emitters", () => ({
   notifyAutomationCompleted: vi.fn(),
   notifyAutomationFailed: vi.fn(),
   notifyOwnerSystemIncident: vi.fn(),
+}));
+
+vi.mock("@/lib/deliverables/engine", () => ({
+  generateDeliverables: vi.fn(async () => ({
+    deliverables: [
+      {
+        id: "dlv_durable_1",
+        fileName: "result.pdf",
+        format: "pdf",
+        mimeType: "application/pdf",
+        generatedAt: new Date().toISOString(),
+        sizeBytes: 128,
+        isPlaceholder: false,
+        downloadUrl: "http://localhost:3000/api/deliverables/dlv_durable_1",
+      },
+    ],
+    detection: { formats: ["pdf"], matchedRule: "test" },
+    failures: [],
+    jobId: "job_durable_1",
+  })),
+}));
+
+vi.mock("@/lib/integrations/deliverable-bridge", () => ({
+  uploadDeliverablesAfterGeneration: vi.fn(async () => ({
+    folderUrl: "http://localhost:3000/api/deliverables/dlv_durable_1",
+    uploads: [
+      {
+        success: true,
+        driveUrl: "http://localhost:3000/api/deliverables/dlv_durable_1",
+      },
+    ],
+  })),
+}));
+
+vi.mock("@/lib/billing/stripe/config", () => ({
+  resolveAppOrigin: (fallback: string) =>
+    fallback.replace(/\/$/, "") || "http://localhost:3000",
 }));
 
 describe("automation persistence and cron tick", () => {
@@ -84,6 +123,8 @@ describe("automation persistence and cron tick", () => {
         summary: "s",
         sections: [],
         body: "ok",
+        content:
+          "十分な長さの本文です。週次の要点を整理し、確認しやすい形でまとめました。",
       },
       reviewComments: "",
       approved: true,
@@ -170,8 +211,10 @@ describe("automation persistence and cron tick", () => {
 
     const ok = await automationService.runNow(created.id, {
       userId: "user_run",
+      requestOrigin: "http://localhost:3000",
     });
     expect(ok?.status).toBe("completed");
+    expect(ok?.deliverableCount).toBeGreaterThan(0);
 
     const afterOk = await automationService.getByIdForUser(
       created.id,
