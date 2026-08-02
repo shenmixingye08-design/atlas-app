@@ -1,0 +1,160 @@
+import type { Automation } from "@/lib/automations/types";
+import {
+  automationToDashboardJob,
+  sortAutomationJobs,
+  type TodayDashboardJob,
+} from "@/lib/home/today-dashboard";
+import { mapTodayJobToVisual, type RunVisualStatus } from "@/lib/automation-first/status";
+
+export type HomeAttentionItem = {
+  id: string;
+  kind: "approval" | "input" | "reconnect" | "failed" | "billing";
+  title: string;
+  description: string;
+  href: string;
+  actionLabel: string;
+};
+
+export type HomeSummary = {
+  activeAutomationCount: number;
+  attentionCount: number;
+  scheduledCount: number;
+  runningCount: number;
+  awaitingCount: number;
+  completedCount: number;
+  nextJob: TodayDashboardJob | null;
+};
+
+function formatTimeLabel(isoOrLabel: string | null): string {
+  if (!isoOrLabel) return "—";
+  // Already a display label like "09:00"
+  if (/^\d{1,2}:\d{2}/.test(isoOrLabel)) return isoOrLabel.slice(0, 5);
+  const ms = Date.parse(isoOrLabel);
+  if (Number.isNaN(ms)) return isoOrLabel;
+  return new Intl.DateTimeFormat("ja-JP", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(ms));
+}
+
+export function buildTodayJobsFromAutomations(
+  automations: Automation[],
+  now: Date = new Date(),
+): TodayDashboardJob[] {
+  const enabled = automations.filter((a) => a.enabled);
+  const jobs = enabled.map((a) => automationToDashboardJob(a, false, now));
+  return sortAutomationJobs(jobs);
+}
+
+export function buildHomeAttentionItems(
+  automations: Automation[],
+): HomeAttentionItem[] {
+  const items: HomeAttentionItem[] = [];
+
+  for (const automation of automations) {
+    if (automation.status === "failed") {
+      items.push({
+        id: `failed:${automation.id}`,
+        kind: "failed",
+        title: `${automation.name} が失敗しました`,
+        description: "内容を確認して、必要なら再実行できます。",
+        href: `/automations?id=${encodeURIComponent(automation.id)}`,
+        actionLabel: "確認する",
+      });
+    }
+
+    if (
+      automation.enabled &&
+      (automation.executionLevel === "approve_then_run" ||
+        automation.executionLevel === "suggest_only" ||
+        automation.executionLevel === "draft_save") &&
+      automation.status === "success"
+    ) {
+      // Heuristic: recently successful approve-level jobs may need review
+      // Only surface when lastRun exists and status suggests review path
+    }
+
+    if (
+      automation.enabled &&
+      automation.executionLevel === "approve_then_run" &&
+      automation.status === "idle"
+    ) {
+      // no-op — idle approve jobs are not attention until a run awaits
+    }
+  }
+
+  // Failed first, then keep list short
+  return items.slice(0, 6);
+}
+
+export function buildHomeSummary(
+  automations: Automation[],
+  jobs: TodayDashboardJob[],
+  attention: HomeAttentionItem[],
+): HomeSummary {
+  const activeAutomationCount = automations.filter((a) => a.enabled).length;
+  const runningCount = jobs.filter((j) => j.status === "running" || j.status === "preparing").length;
+  const awaitingCount = jobs.filter((j) => j.status === "awaiting_review").length;
+  const completedCount = jobs.filter((j) => j.status === "completed").length;
+  const scheduledCount = jobs.filter((j) => j.status === "not_started").length;
+  const nextJob =
+    jobs.find((j) => j.status === "running" || j.status === "preparing") ??
+    jobs.find((j) => j.status === "awaiting_review") ??
+    jobs.find((j) => j.status === "not_started") ??
+    null;
+
+  return {
+    activeAutomationCount,
+    attentionCount: attention.length + awaitingCount,
+    scheduledCount,
+    runningCount,
+    awaitingCount,
+    completedCount,
+    nextJob,
+  };
+}
+
+export function jobsToTimelineItems(jobs: TodayDashboardJob[]): Array<{
+  id: string;
+  timeLabel: string;
+  title: string;
+  subtitle?: string;
+  status: RunVisualStatus;
+  href: string;
+  actionLabel?: string;
+}> {
+  return jobs.slice(0, 8).map((job) => {
+    const status = mapTodayJobToVisual(job.status);
+    const actionLabel =
+      status === "pending_approval"
+        ? "確認する"
+        : status === "running"
+          ? "進捗を見る"
+          : "詳細";
+    return {
+      id: job.id,
+      timeLabel: formatTimeLabel(job.scheduledTime),
+      title: job.title,
+      subtitle: job.activityLabel ?? job.scheduleLabel ?? job.subtitle,
+      status,
+      href: job.href ?? "/automations",
+      actionLabel,
+    };
+  });
+}
+
+export function formatTodayDateLabel(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  }).format(now);
+}
+
+export function greetingForHour(hour: number): string {
+  if (hour < 11) return "おはようございます";
+  if (hour < 18) return "こんにちは";
+  return "お疲れ様です";
+}

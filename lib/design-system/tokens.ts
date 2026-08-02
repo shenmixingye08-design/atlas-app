@@ -23,14 +23,50 @@ export const COLORS = {
   accentHover: "#0077ed",
   accentMuted: "rgba(0, 113, 227, 0.1)",
 
+  /** Automation First brand — calm teal secretary */
+  brand: "#0f5c4c",
+  brandHover: "#0c4a3d",
+  brandMuted: "rgba(15, 92, 76, 0.1)",
+  brandForeground: "#ffffff",
+
   success: "#1d7a34",
   successBg: "rgba(29, 122, 52, 0.08)",
   warning: "#b35000",
   warningBg: "rgba(179, 80, 0, 0.08)",
   error: "#c40014",
   errorBg: "rgba(196, 0, 20, 0.06)",
+  info: "#0b6bcb",
+  infoBg: "rgba(11, 107, 203, 0.08)",
 
   secondaryHover: "#e8e8ed",
+} as const;
+
+export const TYPOGRAPHY = {
+  display: "clamp(1.75rem, 2vw + 1rem, 2.25rem)",
+  pageTitle: "1.5rem",
+  section: "1.125rem",
+  cardTitle: "1rem",
+  body: "0.9375rem",
+  label: "0.8125rem",
+  caption: "0.75rem",
+  meta: "0.6875rem",
+  leadingBody: 1.65,
+} as const;
+
+export const LAYOUT = {
+  contentNarrow: "48rem",
+  contentDefault: "64rem",
+  contentWide: "72rem",
+  touchTarget: "44px",
+  sidebarWidth: "15rem",
+  bottomNavHeight: "4.25rem",
+} as const;
+
+export const Z_INDEX = {
+  sticky: 40,
+  nav: 50,
+  modal: 70,
+  toast: 80,
 } as const;
 
 export const COLORS_DARK = {

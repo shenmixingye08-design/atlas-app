@@ -165,118 +165,47 @@ export function resetUserMemories(
   return resetStoredMemories(userId, category);
 }
 
+/**
+ * Legacy auto-learn entrypoint.
+ * Personal Memory is now the source of truth: heuristics become *candidates*
+ * via personal-memory (never auto-activated). Direct upserts are disabled.
+ */
 export function learnFromOrchestration(input: {
   userId: string;
   assignment: string;
   deliverableType?: string;
   metadata?: Readonly<Record<string, unknown>>;
 }): void {
-  const assignment = input.assignment.toLowerCase();
-  const deliverable = (input.deliverableType ?? "").toLowerCase();
+  // Fire-and-forget candidate evaluation — must not block orchestration.
+  void import("@/lib/personal-memory/service")
+    .then(({ ingestCorrectionSignal }) =>
+      ingestCorrectionSignal({
+        userId: input.userId,
+        text: input.assignment,
+        artifactType: input.deliverableType ?? null,
+        source: /今後|毎回|いつも|これから/.test(input.assignment)
+          ? "user_explicit"
+          : "system_inference",
+      }),
+    )
+    .catch(() => undefined);
 
-  if (/営業|資料|sales|ppt|pdf/.test(assignment) || deliverable === "sales_material") {
-    upsertMemoryByKey(input.userId, "sales:layout", {
-      category: "sales",
-      title: "営業資料の好み",
-      content: "青ベース · 16:9 · 敬語は普通",
-      confidence: 0.55,
-      learningKey: "layout",
-    });
-  }
-
-  if (/sns|投稿|x投稿|twitter/.test(assignment) || deliverable === "sns") {
-    const hour = new Date().getHours();
-    upsertMemoryByKey(input.userId, "sns:post_time", {
-      category: "sns",
-      title: "SNS投稿時間",
-      content: `${hour}時前後の投稿が多い`,
-      confidence: 0.5,
-      learningKey: "post_time",
-    });
-  }
-
-  if (/メール|mail|返信/.test(assignment) || deliverable === "email") {
-    upsertMemoryByKey(input.userId, "email:speed", {
-      category: "email",
-      title: "メール返信スタイル",
-      content: "丁寧語で簡潔に返信",
-      confidence: 0.5,
-      learningKey: "email_reply_speed",
-    });
-  }
-
-  if (/ブログ|blog/.test(assignment) || deliverable === "blog") {
-    upsertMemoryByKey(input.userId, "blog:length", {
-      category: "blog",
-      title: "ブログ文字数",
-      content: "中程度の文章量を好む",
-      confidence: 0.45,
-      learningKey: "blog_length",
-    });
-  }
-
-  if (/家計|簿|経費|レシート/.test(assignment)) {
-    upsertMemoryByKey(input.userId, "habit:bookkeeping", {
-      category: "other",
-      title: "家計簿の習慣",
-      content: "定期的な家計・経費入力のパターンを学習中",
-      confidence: 0.45,
-      learningKey: "bookkeeping",
-    });
-  }
-
-  if (/車|車両|メンテ|給油/.test(assignment)) {
-    upsertMemoryByKey(input.userId, "habit:vehicle", {
-      category: "other",
-      title: "車両管理の習慣",
-      content: "車両関連の定期作業パターンを学習中",
-      confidence: 0.45,
-      learningKey: "vehicle",
-    });
-  }
-
-  if (/毎月|毎週|毎日|定期|ルーティン/.test(assignment)) {
-    upsertMemoryByKey(input.userId, "habit:recurring", {
-      category: "automation",
-      title: "繰り返し業務",
-      content: assignment.slice(0, 120),
-      confidence: 0.5,
-      learningKey: "recurring_work",
-    });
-  }
+  // Intentionally no active upserts — prevents uncontrolled preference writes.
 }
 
 export function learnFromAutomation(
   userId: string,
   automation: CreateAutomationInput,
 ): void {
-  const text = `${automation.name} ${automation.workflow.assignment}`.toLowerCase();
-  let category: MemoryCategory = "automation";
-
-  if (/sns|投稿|x/.test(text)) category = "sns";
-  else if (/営業|資料/.test(text)) category = "sales";
-  else if (/メール/.test(text)) category = "email";
-  else if (/ブログ/.test(text)) category = "blog";
-
-  upsertMemoryByKey(userId, `automation:${automation.name}`, {
-    category,
-    title: `自動化: ${automation.name}`,
-    content: automation.workflow.assignment.slice(0, 120),
-    confidence: 0.65,
-    learningKey: "preferred_service",
-  });
-
-  if (automation.schedule.kind === "schedule") {
-    const { hour, minute, type } = automation.schedule.preset;
-    const timeLabel = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-    upsertMemoryByKey(userId, `automation:time:${automation.name}`, {
-      category: "schedule",
-      title: "自動化スケジュール",
-      content: `${type === "weekly" ? "毎週" : type === "monthly" ? "毎月" : "毎日"} ${timeLabel}`,
-      confidence: 0.7,
-      learningKey: "post_time",
-    });
-  }
+  void import("@/lib/personal-memory/service")
+    .then(({ ingestCorrectionSignal }) =>
+      ingestCorrectionSignal({
+        userId,
+        text: `今後は自動化「${automation.name}」: ${automation.workflow.assignment}`,
+        source: "user_explicit",
+      }),
+    )
+    .catch(() => undefined);
 }
 
 export function learnFromProfileSync(

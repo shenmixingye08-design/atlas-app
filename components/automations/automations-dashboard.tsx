@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import type { Automation } from "@/lib/automations/types";
+import type { AutomationV2 } from "@/lib/automation-platform/types";
 import { prefillFromAssignment } from "@/lib/automations/detect-recurring";
 import { defaultAutomationFormState } from "@/lib/automations/form-utils";
 import { summarizeEntrustedJobs } from "@/lib/automations/display";
@@ -13,14 +15,30 @@ import {
   runAutomationNow,
   setAutomationEnabled,
 } from "@/lib/automations/client";
+import {
+  archiveAutomationV2,
+  duplicateAutomationV2,
+  fetchAutomationsV2,
+  pauseAutomationV2,
+  resumeAutomationV2,
+  runAutomationV2,
+} from "@/lib/automation-platform/client";
+import { fetchFeatureAvailability } from "@/lib/feature-flags/client";
+import {
+  automationToVisualStatus,
+  formatRunInstant,
+} from "@/lib/automation-first/automation-status";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { AutomationRow } from "@/components/automation-first/automation-row";
+import { PageHeader } from "@/components/automation-first/page-header";
 
 import { AutomationCard } from "./automation-card";
 import { AutomationDetailPanel } from "./automation-detail-panel";
 import { CreateAutomationForm } from "./create-automation-form";
+import { AutomationV2Card } from "./v2/automation-v2-card";
 
 function parseInitialFormFromSearchParams(
   params: URLSearchParams,
@@ -66,6 +84,7 @@ function parseInitialFormFromSearchParams(
 }
 
 export function AutomationsDashboard() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const selectedIdParam = searchParams.get("id");
   const openedIdRef = useRef<string | null>(null);
@@ -74,21 +93,49 @@ export function AutomationsDashboard() {
     [searchParams],
   );
 
+  const [v2Enabled, setV2Enabled] = useState(false);
+  const [dashboardV2, setDashboardV2] = useState(false);
   const [automations, setAutomations] = useState<Automation[]>([]);
+  const [automationsV2, setAutomationsV2] = useState<AutomationV2[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(Boolean(initialForm));
+  const [showCreate, setShowCreate] = useState(Boolean(initialForm) && !v2Enabled);
   const [createInitialState, setCreateInitialState] = useState(initialForm);
   const [selected, setSelected] = useState<Automation | null>(null);
 
   useEffect(() => {
-    if (initialForm) {
-      setShowCreate(true);
-      setCreateInitialState(initialForm);
-    }
-  }, [initialForm]);
+    void fetchFeatureAvailability()
+      .then((flags) => {
+        setV2Enabled(Boolean(flags.automation_v2_enabled));
+        setDashboardV2(Boolean(flags.automation_dashboard_v2_enabled));
+      })
+      .catch(() => {
+        setV2Enabled(false);
+        setDashboardV2(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      if (initialForm && !v2Enabled) {
+        setShowCreate(true);
+        setCreateInitialState(initialForm);
+      }
+      if (initialForm && v2Enabled) {
+        const seed = initialForm.assignment || initialForm.title;
+        router.replace(
+          `/automations/new${seed ? `?seed=${encodeURIComponent(seed)}` : ""}`,
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialForm, v2Enabled, router]);
 
   const loadAutomations = useCallback(async () => {
     try {
@@ -106,20 +153,56 @@ export function AutomationsDashboard() {
     }
   }, []);
 
+  const loadV2 = useCallback(async () => {
+    if (!v2Enabled) {
+      setAutomationsV2([]);
+      return;
+    }
+    try {
+      const items = await fetchAutomationsV2();
+      setAutomationsV2(items);
+    } catch {
+      // Flag race or API unavailable — keep V1 visible
+      setAutomationsV2([]);
+    }
+  }, [v2Enabled]);
+
   useEffect(() => {
-    void loadAutomations();
+    let cancelled = false;
+    void (async () => {
+      await loadAutomations();
+      if (cancelled) return;
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [loadAutomations]);
 
-  // Notification deep link (/automations?id=...) opens the exact automation's
-  // detail panel once loaded, so「結果を見る」lands on the right item.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      await loadV2();
+      if (cancelled) return;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadV2]);
+
   useEffect(() => {
     if (!selectedIdParam || automations.length === 0) return;
     if (openedIdRef.current === selectedIdParam) return;
     const match = automations.find((item) => item.id === selectedIdParam);
-    if (match) {
+    if (!match) return;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
       openedIdRef.current = selectedIdParam;
       setSelected(match);
-    }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedIdParam, automations]);
 
   const summary = useMemo(
@@ -134,9 +217,7 @@ export function AutomationsDashboard() {
       setAutomations((prev) =>
         prev.map((item) => (item.id === id ? updated : item)),
       );
-      setSelected((current) =>
-        current?.id === id ? updated : current,
-      );
+      setSelected((current) => (current?.id === id ? updated : current));
     } catch (err) {
       setError(err instanceof Error ? err.message : ui.error.updateFailed);
     } finally {
@@ -147,13 +228,11 @@ export function AutomationsDashboard() {
   const handleRunNow = async (id: string) => {
     setRunningId(id);
     setError(null);
-
     setAutomations((prev) =>
       prev.map((item) =>
         item.id === id ? { ...item, status: "running" as const } : item,
       ),
     );
-
     try {
       await runAutomationNow(id);
       await loadAutomations();
@@ -172,7 +251,16 @@ export function AutomationsDashboard() {
     await loadAutomations();
   };
 
-  if (isLoading && !showCreate && automations.length === 0) {
+  const openCreate = () => {
+    if (v2Enabled) {
+      router.push("/automations/new");
+      return;
+    }
+    setCreateInitialState(defaultAutomationFormState());
+    setShowCreate(true);
+  };
+
+  if (isLoading && !showCreate && automations.length === 0 && automationsV2.length === 0) {
     return <LoadingState />;
   }
 
@@ -184,42 +272,63 @@ export function AutomationsDashboard() {
   ] as const;
 
   return (
-    <div className="space-y-10 sm:space-y-12 animate-fade-up">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-accent">{ui.brand}</p>
-          <h1 className="text-display text-foreground">
-            {ui.entrustedJobs.title}
-          </h1>
-          <p className="text-body max-w-2xl text-[var(--text-secondary)]">
-            {ui.entrustedJobs.subtitle}
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-col gap-2 self-start sm:items-end">
-          <Button
-            variant="primary"
-            className="min-h-[48px] rounded-full px-6"
-            onClick={() => {
-              setCreateInitialState(
-                defaultAutomationFormState({ destination: "x" }),
-              );
-              setShowCreate(true);
-            }}
-          >
-            {ui.entrustedJobs.registerHere}
-          </Button>
-          <Button
-            variant="secondary"
-            className="min-h-[40px] rounded-full px-4"
-            onClick={() => {
-              setCreateInitialState(defaultAutomationFormState());
-              setShowCreate(true);
-            }}
-          >
-            {ui.entrustedJobs.addNew}
-          </Button>
-        </div>
-      </header>
+    <div className="space-y-10 sm:space-y-12 animate-fade-up pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+      {dashboardV2 ? (
+        <PageHeader
+          eyebrow={ui.brand}
+          title="自動化"
+          description="稼働中の仕事、次回実行、最終結果を一覧で運用できます。"
+          actions={
+            <Button
+              variant="primary"
+              className="min-h-[var(--touch-target)] rounded-[var(--radius-md)] px-5"
+              onClick={openCreate}
+            >
+              新しい自動化を作る
+            </Button>
+          }
+        />
+      ) : (
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-accent">{ui.brand}</p>
+            <h1 className="text-display text-foreground">
+              {ui.entrustedJobs.title}
+            </h1>
+            <p className="text-body max-w-2xl text-[var(--text-secondary)]">
+              {ui.entrustedJobs.subtitle}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col gap-2 self-start sm:items-end">
+            <Button
+              variant="primary"
+              className="min-h-[48px] rounded-full px-6"
+              onClick={openCreate}
+            >
+              {ui.entrustedJobs.registerHere}
+            </Button>
+            {v2Enabled ? (
+              <Link
+                href="/automations/new"
+                className="text-sm text-accent underline"
+              >
+                下書きから続ける
+              </Link>
+            ) : (
+              <Button
+                variant="secondary"
+                className="min-h-[44px] rounded-full px-4"
+                onClick={() => {
+                  setCreateInitialState(defaultAutomationFormState());
+                  setShowCreate(true);
+                }}
+              >
+                {ui.entrustedJobs.addNew}
+              </Button>
+            )}
+          </div>
+        </header>
+      )}
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {summaryCards.map((item) => (
@@ -239,7 +348,7 @@ export function AutomationsDashboard() {
         ))}
       </section>
 
-      {showCreate && (
+      {showCreate && !v2Enabled ? (
         <CreateAutomationForm
           initialState={createInitialState ?? undefined}
           onCreated={() => void handleCreated()}
@@ -248,14 +357,96 @@ export function AutomationsDashboard() {
             setCreateInitialState(null);
           }}
         />
-      )}
+      ) : null}
 
-      {error && <ErrorState message={error} />}
+      {error ? <ErrorState message={error} /> : null}
+
+      {v2Enabled && automationsV2.length > 0 ? (
+        <section className="space-y-4">
+          <h2 className="text-title">あなたの自動化</h2>
+          <ul className="space-y-4">
+            {automationsV2.map((automation) => (
+              <li key={automation.id}>
+                <AutomationV2Card
+                  automation={automation}
+                  busy={updatingId === automation.id || runningId === automation.id}
+                  onOpen={() =>
+                    router.push(`/automations?id=${automation.id}`)
+                  }
+                  onPause={() => {
+                    setUpdatingId(automation.id);
+                    void pauseAutomationV2(automation.id)
+                      .then(loadV2)
+                      .catch((err: unknown) =>
+                        setError(
+                          err instanceof Error ? err.message : ui.error.updateFailed,
+                        ),
+                      )
+                      .finally(() => setUpdatingId(null));
+                  }}
+                  onResume={() => {
+                    setUpdatingId(automation.id);
+                    void resumeAutomationV2(automation.id)
+                      .then(loadV2)
+                      .catch((err: unknown) =>
+                        setError(
+                          err instanceof Error ? err.message : ui.error.updateFailed,
+                        ),
+                      )
+                      .finally(() => setUpdatingId(null));
+                  }}
+                  onDuplicate={() => {
+                    setUpdatingId(automation.id);
+                    void duplicateAutomationV2(automation.id)
+                      .then(loadV2)
+                      .catch((err: unknown) =>
+                        setError(
+                          err instanceof Error ? err.message : ui.error.updateFailed,
+                        ),
+                      )
+                      .finally(() => setUpdatingId(null));
+                  }}
+                  onRun={() => {
+                    setRunningId(automation.id);
+                    void runAutomationV2(automation.id)
+                      .then((result) => {
+                        void loadV2();
+                        router.push(
+                          `/automations/runs/${encodeURIComponent(result.run.id)}`,
+                        );
+                      })
+                      .catch((err: unknown) =>
+                        setError(
+                          err instanceof Error ? err.message : ui.error.runFailed,
+                        ),
+                      )
+                      .finally(() => setRunningId(null));
+                  }}
+                  onArchive={() => {
+                    setUpdatingId(automation.id);
+                    void archiveAutomationV2(automation.id)
+                      .then(loadV2)
+                      .catch((err: unknown) =>
+                        setError(
+                          err instanceof Error ? err.message : ui.error.updateFailed,
+                        ),
+                      )
+                      .finally(() => setUpdatingId(null));
+                  }}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="space-y-4">
+        {v2Enabled && automations.length > 0 ? (
+          <h2 className="text-title">これまでのスケジュール型の仕事</h2>
+        ) : null}
         {isLoading ? (
           <LoadingState />
-        ) : automations.length === 0 && !showCreate ? (
+        ) : automations.length === 0 && automationsV2.length === 0 && !showCreate ? (
           <Card
             padding="lg"
             className="border border-dashed border-[var(--border-subtle)] bg-[var(--surface-muted)]/40 px-6 py-14 text-center"
@@ -270,27 +461,33 @@ export function AutomationsDashboard() {
               <Button
                 variant="primary"
                 className="min-h-[48px]"
-                onClick={() => {
-                  setCreateInitialState(
-                    defaultAutomationFormState({ destination: "x" }),
-                  );
-                  setShowCreate(true);
-                }}
-              >
-                {ui.entrustedJobs.registerHere}
-              </Button>
-              <Button
-                variant="secondary"
-                className="min-h-[48px]"
-                onClick={() => {
-                  setCreateInitialState(defaultAutomationFormState());
-                  setShowCreate(true);
-                }}
+                onClick={openCreate}
               >
                 {ui.entrustedJobs.emptyCta}
               </Button>
             </div>
           </Card>
+        ) : dashboardV2 ? (
+          <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)]">
+            <div className="hidden border-b border-[var(--border)] px-3 py-2 text-[length:var(--text-caption)] text-[var(--text-muted)] sm:grid sm:grid-cols-[minmax(0,1.4fr)_auto_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
+              <span>自動化</span>
+              <span>状態</span>
+              <span>次回</span>
+              <span>最終</span>
+            </div>
+            {automations.map((automation) => (
+              <AutomationRow
+                key={automation.id}
+                id={automation.id}
+                name={automation.name}
+                description={automation.schedule.label}
+                status={automationToVisualStatus(automation)}
+                nextRunLabel={formatRunInstant(automation.nextRun)}
+                lastRunLabel={formatRunInstant(automation.lastRun)}
+                href={`/automations?id=${encodeURIComponent(automation.id)}`}
+              />
+            ))}
+          </div>
         ) : (
           <ul className="space-y-4">
             {automations.map((automation) => (
@@ -307,7 +504,7 @@ export function AutomationsDashboard() {
         )}
       </section>
 
-      {selected && (
+      {selected ? (
         <AutomationDetailPanel
           automation={selected}
           onClose={() => setSelected(null)}
@@ -322,7 +519,7 @@ export function AutomationsDashboard() {
           isRunning={runningId === selected.id}
           isUpdating={updatingId === selected.id}
         />
-      )}
+      ) : null}
     </div>
   );
 }
