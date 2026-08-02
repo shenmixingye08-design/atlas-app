@@ -53,6 +53,10 @@ export type AutomationRunArtifact = {
   url: string | null;
   externalId: string | null;
   createdAt: Timestamp;
+  /** Step that produced this artifact — used for resume / UI grouping */
+  stepId?: string | null;
+  /** Content/external identity key — prevents duplicate artifacts on retry */
+  dedupeKey?: string | null;
 };
 
 export type AutomationRunAttempt = {

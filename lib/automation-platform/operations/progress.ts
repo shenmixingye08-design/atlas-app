@@ -11,6 +11,7 @@ export type StepProgressItem = {
 
 export type RunProgressView = {
   currentStepName: string | null;
+  nextStepName: string | null;
   completedCount: number;
   waitingCount: number;
   failedCount: number;
@@ -102,8 +103,19 @@ export function buildRunProgressView(run: AutomationRun): RunProgressView {
     run.steps.find((step) => step.status === "waiting_approval") ??
     null;
 
+  const currentIndex = current
+    ? run.steps.findIndex((step) => step.id === current.id)
+    : -1;
+  const next =
+    currentIndex >= 0
+      ? run.steps
+          .slice(currentIndex + 1)
+          .find((step) => step.status === "pending") ?? null
+      : run.steps.find((step) => step.status === "pending") ?? null;
+
   return {
     currentStepName: current?.name ?? null,
+    nextStepName: next?.name ?? null,
     completedCount: run.steps.filter(
       (step) => step.status === "succeeded" || step.status === "skipped",
     ).length,

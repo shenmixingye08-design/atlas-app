@@ -7,17 +7,21 @@ const RETRYABLE_CODES = new Set<string>([
 
 const RETRYABLE_MESSAGE_PATTERNS = [
   /\b429\b/,
+  /\b503\b/,
   /\b5\d\d\b/,
   /timeout/i,
   /timed out/i,
   /ECONNRESET/i,
+  /ECONNREFUSED/i,
   /ENOTFOUND/i,
   /network/i,
   /fetch failed/i,
+  /socket hang up/i,
   /storage/i,
   /temporar/i,
   /rate limit/i,
   /unavailable/i,
+  /service unavailable/i,
 ];
 
 const NON_RETRYABLE_PATTERNS = [

@@ -36,8 +36,12 @@ export type AutomationOperationsSummary = {
     awaitingApproval: number;
     needsInput: number;
     running: number;
+    retrying: number;
     succeededToday: number;
     failedToday: number;
+    /** Today executed (any started/completed today) */
+    executedToday: number;
+    completedToday: number;
   };
   nextRun: {
     automationId: string;
@@ -117,16 +121,21 @@ export function buildAutomationOperationsSummary(input: {
     (run) =>
       run.status === "running" ||
       run.status === "queued" ||
-      run.status === "retrying" ||
       run.status === "preparing",
   ).length;
+  const retrying = input.runs.filter((run) => run.status === "retrying").length;
 
   const todayRuns = input.runs.filter((run) => {
     const t = Date.parse(run.completedAt ?? run.startedAt ?? run.createdAt);
     return Number.isFinite(t) && t >= dayStart && t < dayEnd;
   });
+  const executedToday = todayRuns.length;
   const succeededToday = todayRuns.filter(
     (run) => run.status === "succeeded",
+  ).length;
+  const completedToday = todayRuns.filter(
+    (run) =>
+      run.status === "succeeded" || run.status === "partially_succeeded",
   ).length;
   const failedToday = todayRuns.filter(
     (run) =>
@@ -281,8 +290,11 @@ export function buildAutomationOperationsSummary(input: {
       awaitingApproval,
       needsInput,
       running,
+      retrying,
       succeededToday,
       failedToday,
+      executedToday,
+      completedToday,
     },
     nextRun: nextAutomation?.nextRunAt
       ? {

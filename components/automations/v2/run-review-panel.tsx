@@ -332,6 +332,11 @@ export function RunReviewPanel({
         {progress.currentStepName ? (
           <p className="text-sm">現在: {progress.currentStepName}</p>
         ) : null}
+        {progress.nextStepName ? (
+          <p className="text-sm text-[var(--muted)]">
+            次: {progress.nextStepName}
+          </p>
+        ) : null}
         {progress.estimatedRemainingLabel ? (
           <p className="text-xs text-[var(--muted)]">
             {progress.estimatedRemainingLabel}
