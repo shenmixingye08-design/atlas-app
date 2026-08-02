@@ -15,7 +15,7 @@ export async function GET(): Promise<Response> {
 
   try {
     const context = await resolveFeatureAccessContext();
-    const items = automationPlatformService.list(userId, context);
+    const items = await automationPlatformService.list(userId, context);
     return Response.json({ automations: items });
   } catch (error) {
     return jsonError(error, { actorUserId: userId, action: "automation.list" });
@@ -42,7 +42,7 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const context = await resolveFeatureAccessContext();
-    const created = automationPlatformService.createFromUnknownBody(
+    const created = await automationPlatformService.createFromUnknownBody(
       userId,
       body,
       context,

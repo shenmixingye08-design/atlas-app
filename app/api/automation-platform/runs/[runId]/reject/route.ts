@@ -22,7 +22,7 @@ export async function POST(
 
   try {
     const access = await resolveFeatureAccessContext();
-    const run = automationPlatformService.rejectRun(userId, runId, access);
+    const run = await automationPlatformService.rejectRun(userId, runId, access);
     return Response.json({ run });
   } catch (error) {
     return jsonError(error, {

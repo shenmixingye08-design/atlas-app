@@ -22,7 +22,7 @@ export async function GET(
 
   try {
     const access = await resolveFeatureAccessContext();
-    const runs = automationPlatformService.listRuns(userId, id, access);
+    const runs = await automationPlatformService.listRuns(userId, id, access);
     return Response.json({ runs });
   } catch (error) {
     return jsonError(error, {
@@ -59,7 +59,7 @@ export async function POST(
     }
 
     const access = await resolveFeatureAccessContext();
-    const result = automationPlatformService.enqueueRun({
+    const result = await automationPlatformService.enqueueRun({
       userId,
       automationId: id,
       triggerType: "manual",

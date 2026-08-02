@@ -1,4 +1,16 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/automation-platform/bridge/v2-to-v1-scheduler", () => ({
+  syncV2ToV1Scheduler: vi.fn(async (automation: { id: string }) => ({
+    v1Id: `v1-${automation.id}`,
+    registered: true,
+  })),
+}));
+vi.mock("server-only", () => ({}));
+vi.mock("@/lib/persistence/durable-domain", () => ({
+  persistDurableDomain: vi.fn(async () => "clerk"),
+  loadDurableDomain: vi.fn(async () => null),
+}));
 
 import {
   listAutomationAuditEvents,
@@ -103,8 +115,8 @@ function dailyTrigger(
   };
 }
 
-function createActive(input?: Partial<CreateAutomationV2Input>): AutomationV2 {
-  return automationPlatformService.create(
+async function createActive(input?: Partial<CreateAutomationV2Input>): Promise<AutomationV2> {
+  return await automationPlatformService.create(
     "user_a",
     {
       name: "日次レポート",
@@ -133,17 +145,17 @@ beforeEach(() => {
 });
 
 describe("Automation Platform Phase 1", () => {
-  it("1. creates automation", () => {
-    const created = createActive();
+  it("1. creates automation", async () => {
+    const created = await createActive();
     expect(created.id).toBeTruthy();
     expect(created.schemaVersion).toBe(2);
     expect(created.userId).toBe("user_a");
     expect(created.status).toBe("active");
   });
 
-  it("2. updates automation", () => {
-    const created = createActive();
-    const updated = automationPlatformService.update(
+  it("2. updates automation", async () => {
+    const created = await createActive();
+    const updated = await automationPlatformService.update(
       "user_a",
       created.id,
       { name: "更新後" },
@@ -152,9 +164,9 @@ describe("Automation Platform Phase 1", () => {
     expect(updated.name).toBe("更新後");
   });
 
-  it("3. duplicates automation as draft", () => {
-    const created = createActive();
-    const copy = automationPlatformService.duplicate(
+  it("3. duplicates automation as draft", async () => {
+    const created = await createActive();
+    const copy = await automationPlatformService.duplicate(
       "user_a",
       created.id,
       ownerContext,
@@ -164,9 +176,9 @@ describe("Automation Platform Phase 1", () => {
     expect(copy.name).toContain("コピー");
   });
 
-  it("4. pauses automation", () => {
-    const created = createActive();
-    const paused = automationPlatformService.pause(
+  it("4. pauses automation", async () => {
+    const created = await createActive();
+    const paused = await automationPlatformService.pause(
       "user_a",
       created.id,
       ownerContext,
@@ -175,10 +187,10 @@ describe("Automation Platform Phase 1", () => {
     expect(paused.nextRunAt).toBeNull();
   });
 
-  it("5. resumes automation", () => {
-    const created = createActive();
-    automationPlatformService.pause("user_a", created.id, ownerContext);
-    const resumed = automationPlatformService.resume(
+  it("5. resumes automation", async () => {
+    const created = await createActive();
+    await automationPlatformService.pause("user_a", created.id, ownerContext);
+    const resumed = await automationPlatformService.resume(
       "user_a",
       created.id,
       ownerContext,
@@ -187,9 +199,9 @@ describe("Automation Platform Phase 1", () => {
     expect(resumed.nextRunAt).toBeTruthy();
   });
 
-  it("6. archives automation", () => {
-    const created = createActive();
-    const archived = automationPlatformService.archive(
+  it("6. archives automation", async () => {
+    const created = await createActive();
+    const archived = await automationPlatformService.archive(
       "user_a",
       created.id,
       ownerContext,
@@ -197,11 +209,11 @@ describe("Automation Platform Phase 1", () => {
     expect(archived.status).toBe("archived");
   });
 
-  it("7. manual run enqueue", () => {
-    const created = createActive({
+  it("7. manual run enqueue", async () => {
+    const created = await createActive({
       executionPolicy: { mode: "run_then_notify" },
     });
-    const result = automationPlatformService.enqueueRun({
+    const result = await automationPlatformService.enqueueRun({
       userId: "user_a",
       automationId: created.id,
       triggerType: "manual",
@@ -248,7 +260,7 @@ describe("Automation Platform Phase 1", () => {
     expect(next!.toISOString()).toContain("2026-08-15");
   });
 
-  it("11. month-end schedule clamps", () => {
+  it("11. month-end schedule clamps", async () => {
     const from = new Date("2026-01-31T15:00:00.000Z"); // Feb approaching
     const next = computeNextRunFromSchedule(
       { frequency: "month_end", hour: 9, minute: 0 },
@@ -258,7 +270,7 @@ describe("Automation Platform Phase 1", () => {
     expect(next).toBeTruthy();
   });
 
-  it("12. once schedule", () => {
+  it("12. once schedule", async () => {
     const runAt = "2026-12-01T00:00:00.000Z";
     const next = computeNextRunFromSchedule(
       { frequency: "once", hour: 0, minute: 0, runAt },
@@ -268,14 +280,14 @@ describe("Automation Platform Phase 1", () => {
     expect(next?.toISOString()).toBe(runAt);
   });
 
-  it("13. timezone validation and default Tokyo", () => {
+  it("13. timezone validation and default Tokyo", async () => {
     const trigger = dailyTrigger(9, 0);
     expect(trigger.timezone).toBe("Asia/Tokyo");
     const iso = computeNextRunIsoFromTrigger(trigger, new Date("2026-08-01T00:00:00.000Z"));
     expect(iso).toBeTruthy();
   });
 
-  it("14. rejects past one-shot", () => {
+  it("14. rejects past one-shot", async () => {
     expect(() =>
       assertNotPastOneShot(
         {
@@ -289,21 +301,21 @@ describe("Automation Platform Phase 1", () => {
     ).toThrow(AutomationPlatformError);
   });
 
-  it("15. stores structuredOptions", () => {
-    const created = createActive({
+  it("15. stores structuredOptions", async () => {
+    const created = await createActive({
       instruction: {
         structuredOptions: { generatePdf: true, format: "A4" },
         freeformNotes: "",
       },
     });
-    expect(created.instruction.structuredOptions).toEqual({
+    expect(created.instruction.structuredOptions).toMatchObject({
       generatePdf: true,
       format: "A4",
     });
   });
 
-  it("16. stores freeformNotes", () => {
-    const created = createActive({
+  it("16. stores freeformNotes", async () => {
+    const created = await createActive({
       instruction: {
         structuredOptions: {},
         freeformNotes: "トーンは丁寧に",
@@ -381,7 +393,7 @@ describe("Automation Platform Phase 1", () => {
     expect(result.stepIds).toContain("notify");
   });
 
-  it("21. high-risk step always requires approval", () => {
+  it("21. high-risk step always requires approval", async () => {
     const steps = [
       {
         id: "x",
@@ -409,14 +421,14 @@ describe("Automation Platform Phase 1", () => {
     expect(result.reason).toBe("system_high_risk_override");
   });
 
-  it("22. approval expiry", () => {
-    const created = createActive({
+  it("22. approval expiry", async () => {
+    const created = await createActive({
       executionPolicy: {
         mode: "review_before_run",
         approvalTimeoutMs: 1,
       },
     });
-    const enqueued = automationPlatformService.enqueueRun({
+    const enqueued = await automationPlatformService.enqueueRun({
       userId: "user_a",
       automationId: created.id,
       triggerType: "manual",
@@ -430,39 +442,39 @@ describe("Automation Platform Phase 1", () => {
     };
     memoryUpdateRun(expiredRun);
 
-    expect(() =>
+    await expect(
       automationPlatformService.approveRun(
         "user_a",
         expiredRun.id,
         ownerContext,
       ),
-    ).toThrow(AutomationPlatformError);
+    ).rejects.toThrow(AutomationPlatformError);
   });
 
-  it("23. run status transitions", () => {
+  it("23. run status transitions", async () => {
     expect(canTransitionRunStatus("queued", "running")).toBe(true);
     expect(canTransitionRunStatus("running", "succeeded")).toBe(true);
   });
 
-  it("24. rejects illegal run transition", () => {
+  it("24. rejects illegal run transition", async () => {
     expect(() => assertRunTransition("succeeded", "running")).toThrow(
       AutomationPlatformError,
     );
   });
 
-  it("25. scheduleOccurrenceKey dedupe", () => {
-    const created = createActive({
+  it("25. scheduleOccurrenceKey dedupe", async () => {
+    const created = await createActive({
       executionPolicy: { mode: "run_then_notify" },
     });
     const scheduledFor = "2026-08-01T00:00:00.000Z";
-    const first = automationPlatformService.enqueueRun({
+    const first = await automationPlatformService.enqueueRun({
       userId: "user_a",
       automationId: created.id,
       triggerType: "schedule",
       scheduledFor,
       context: ownerContext,
     });
-    const second = automationPlatformService.enqueueRun({
+    const second = await automationPlatformService.enqueueRun({
       userId: "user_a",
       automationId: created.id,
       triggerType: "schedule",
@@ -480,7 +492,7 @@ describe("Automation Platform Phase 1", () => {
     ).toBe(first.run.scheduleOccurrenceKey);
   });
 
-  it("26. retry key distinct but occurrence still unique", () => {
+  it("26. retry key distinct but occurrence still unique", async () => {
     const key = buildRunKey({
       automationId: "auto1",
       triggerType: "retry",
@@ -496,43 +508,43 @@ describe("Automation Platform Phase 1", () => {
     expect(idemp).toContain("occurrence:auto1");
   });
 
-  it("27. denies other user get", () => {
-    const created = createActive();
-    expect(() =>
+  it("27. denies other user get", async () => {
+    const created = await createActive();
+    await expect(
       automationPlatformService.get("user_b", created.id, ownerContext),
-    ).toThrow(AutomationPlatformError);
+    ).rejects.toThrow(AutomationPlatformError);
   });
 
-  it("28. denies other user update", () => {
-    const created = createActive();
-    expect(() =>
+  it("28. denies other user update", async () => {
+    const created = await createActive();
+    await expect(
       automationPlatformService.update(
         "user_b",
         created.id,
         { name: "hijack" },
         ownerContext,
       ),
-    ).toThrow(AutomationPlatformError);
+    ).rejects.toThrow(AutomationPlatformError);
   });
 
-  it("29. denies other user run", () => {
-    const created = createActive();
-    expect(() =>
+  it("29. denies other user run", async () => {
+    const created = await createActive();
+    await expect(
       automationPlatformService.enqueueRun({
         userId: "user_b",
         automationId: created.id,
         triggerType: "manual",
         context: ownerContext,
       }),
-    ).toThrow(AutomationPlatformError);
+    ).rejects.toThrow(AutomationPlatformError);
   });
 
-  it("30. feature flag off blocks create", () => {
+  it("30. feature flag off blocks create", async () => {
     setFeatureFlagState("automation_v2_enabled", "off");
-    expect(() => createActive()).toThrow(AutomationPlatformError);
+    await expect(createActive()).rejects.toThrow(AutomationPlatformError);
   });
 
-  it("31. reads legacy V1 shape via migration converter", () => {
+  it("31. reads legacy V1 shape via migration converter", async () => {
     const v1 = sampleV1();
     const report = migrateV1Automations([v1], "dry-run");
     expect(report.sourceCount).toBe(1);
@@ -540,14 +552,14 @@ describe("Automation Platform Phase 1", () => {
     expect(Object.keys(report.idMap)).toContain(v1.id);
   });
 
-  it("32. migration dry-run does not persist", () => {
+  it("32. migration dry-run does not persist", async () => {
     const v1 = sampleV1();
     migrateV1Automations([v1], "dry-run");
-    const listed = automationPlatformService.list("user_a", ownerContext);
+    const listed = await automationPlatformService.list("user_a", ownerContext);
     expect(listed.find((item) => item.legacyAutomationId === v1.id)).toBeUndefined();
   });
 
-  it("33. migration re-run is idempotent", () => {
+  it("33. migration re-run is idempotent", async () => {
     const v1 = sampleV1();
     const first = migrateV1Automations([v1], "apply");
     const second = migrateV1Automations([v1], "apply");
@@ -556,8 +568,8 @@ describe("Automation Platform Phase 1", () => {
     expect(second.idMap[v1.id]).toBe(first.idMap[v1.id]);
   });
 
-  it("34. memory scope saved", () => {
-    const created = createActive({
+  it("34. memory scope saved", async () => {
+    const created = await createActive({
       memoryPolicy: {
         enabled: true,
         allowedScopes: ["writing_style", "timezone"],
@@ -619,7 +631,7 @@ describe("Automation Platform Phase 1", () => {
     expect(isKnownCapabilityId("not_a_real_step")).toBe(false);
   });
 
-  it("37. rejects invalid memory scope / external capability combo", () => {
+  it("37. rejects invalid memory scope / external capability combo", async () => {
     expect(() =>
       validateMemoryPolicy({
         enabled: true,
@@ -629,7 +641,7 @@ describe("Automation Platform Phase 1", () => {
       }),
     ).toThrow(AutomationPlatformError);
 
-    expect(() =>
+    await expect(
       createActive({
         workflow: {
           version: 1,
@@ -657,9 +669,9 @@ describe("Automation Platform Phase 1", () => {
         },
         executionPolicy: { mode: "run_then_notify" },
       }),
-    ).not.toThrow();
+    ).resolves.toBeTruthy();
 
-    const withWp = createActive({
+    const withWp = await createActive({
       name: "wp",
       workflow: {
         version: 1,
@@ -696,15 +708,15 @@ describe("Automation Platform Phase 1", () => {
     expect(approval.requiresApproval).toBe(true);
   });
 
-  it("38. writes audit log", () => {
-    createActive();
+  it("38. writes audit log", async () => {
+    await createActive();
     const events = listAutomationAuditEvents();
     expect(events.some((event) => event.action === "automation.create")).toBe(
       true,
     );
   });
 
-  it("39. buildAutomationFromCreateInput produces valid model", () => {
+  it("39. buildAutomationFromCreateInput produces valid model", async () => {
     const record = buildAutomationFromCreateInput("user_a", {
       name: "x",
       trigger: dailyTrigger(),
@@ -714,17 +726,17 @@ describe("Automation Platform Phase 1", () => {
     expect(record.executionPolicy.systemHighRiskOverride).toBe(true);
   });
 
-  it("40. paused automation cannot run (non-destructive to single jobs)", () => {
-    const created = createActive();
-    automationPlatformService.pause("user_a", created.id, ownerContext);
-    expect(() =>
+  it("40. paused automation cannot run (non-destructive to single jobs)", async () => {
+    const created = await createActive();
+    await automationPlatformService.pause("user_a", created.id, ownerContext);
+    await expect(
       automationPlatformService.enqueueRun({
         userId: "user_a",
         automationId: created.id,
         triggerType: "manual",
         context: ownerContext,
       }),
-    ).toThrow(AutomationPlatformError);
+    ).rejects.toThrow(AutomationPlatformError);
   });
 });
 

@@ -7,7 +7,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ui } from "@/lib/i18n";
 
 export const metadata: Metadata = {
-  title: ui.metadata.automations,
+  title: "自動化 — MINERVOT",
   description: ui.entrustedJobs.pageDescription,
 };
 
