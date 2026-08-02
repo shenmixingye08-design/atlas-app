@@ -349,7 +349,13 @@ export async function saveGmailDraftForUser(input: {
 export async function createGmailComposeDraftForUser(input: {
   userId: string;
   context: FeatureAccessContext;
-  draft: GmailReplyDraftContent & { cc?: string; bcc?: string };
+  draft: {
+    to: string;
+    subject: string;
+    body: string;
+    cc?: string;
+    bcc?: string;
+  };
 }): Promise<{ status: "ready"; gmailDraftId: string } | GateFailure> {
   const access = await requireGmailAccess(input);
   if (isGateFailure(access)) return access;

@@ -143,19 +143,16 @@ export const xPostAdapter: AutomationStepAdapter = {
       const ids = newRequestIds();
       if (result.status !== "ready") {
         const retryable = result.status === "error";
+        const needsConfig =
+          result.status === "x_not_connected" ||
+          result.status === "feature_disabled" ||
+          (result.status === "error" && Boolean(result.reconnectRequired));
         return failResult({
-          status:
-            result.status === "x_not_connected" ||
-            result.status === "needs_reconnect" ||
-            result.status === "feature_disabled"
-              ? "needs_configuration"
-              : "failed",
+          status: needsConfig ? "needs_configuration" : "failed",
           summary: result.message || "X投稿に失敗しました",
-          errorCode:
-            result.status === "x_not_connected" ||
-            result.status === "needs_reconnect"
-              ? "automation_integration_required"
-              : "automation_run_failed",
+          errorCode: needsConfig
+            ? "automation_integration_required"
+            : "automation_run_failed",
           errorMessage: result.message || result.status,
           retryable,
           startedAt,
@@ -289,7 +286,7 @@ export const gmailAdapter: AutomationStepAdapter = {
           userId: context.userId,
           context: context.access,
           messageId,
-          draft: { to, subject, body },
+          draft: { messageId, to, subject, body },
         });
         if (sent.status !== "ready") {
           return failResult({
@@ -337,12 +334,18 @@ export const gmailAdapter: AutomationStepAdapter = {
             userId: context.userId,
             context: context.access,
             messageId,
-            draft: { to, subject, body },
+            draft: { messageId, to, subject, body },
           })
         : await createGmailComposeDraftForUser({
             userId: context.userId,
             context: context.access,
-            draft: { to, cc: cc || undefined, bcc: bcc || undefined, subject, body },
+            draft: {
+              to,
+              cc: cc || undefined,
+              bcc: bcc || undefined,
+              subject,
+              body,
+            },
           });
 
       if (result.status !== "ready") {
@@ -629,19 +632,19 @@ export const dropboxAdapter: AutomationStepAdapter = {
           summary: result.message || "Dropboxアップロードに失敗しました",
           errorCode: "automation_integration_required",
           errorMessage: result.status,
-          retryable: result.status === "error",
+          retryable: result.status === "unauthorized",
           startedAt,
         });
       }
 
-      const fileId = result.file.id || result.file.path;
+      const fileId = result.file.id || result.file.pathLower;
       return {
         status: "succeeded",
         startedAt,
         completedAt: new Date().toISOString(),
         summary: "Dropboxへ保存しました",
         outputBindings: {
-          path: result.file.path,
+          path: result.file.pathDisplay,
           fileId,
         },
         artifacts: [
@@ -649,7 +652,7 @@ export const dropboxAdapter: AutomationStepAdapter = {
             id: fileId,
             kind: "external",
             label: result.file.name,
-            url: null,
+            url: result.file.sharedLinkUrl,
             externalId: fileId,
             createdAt: new Date().toISOString(),
             sourceRunId: context.runId,

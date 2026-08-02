@@ -68,7 +68,7 @@ export const notifyAdapter: AutomationStepAdapter = {
     const record = createNotification({
       audience: "user",
       userId: context.userId,
-      type: "automation_completed",
+      type: "automation",
       title,
       message,
       actionUrl: `/automations/runs/${encodeURIComponent(context.runId)}`,
@@ -90,10 +90,11 @@ export const notifyAdapter: AutomationStepAdapter = {
       });
     }
 
+    const notificationId = record.notificationId;
     await completeIdempotencyRecord({
       userId: context.userId,
       key,
-      externalActionId: record.id,
+      externalActionId: notificationId,
     });
 
     return {
@@ -101,11 +102,11 @@ export const notifyAdapter: AutomationStepAdapter = {
       startedAt,
       completedAt: new Date().toISOString(),
       summary: "アプリ内通知を保存しました",
-      outputBindings: { notificationId: record.id },
+      outputBindings: { notificationId },
       artifacts: [],
       artifactIds: [],
       externalActionIds: [],
-      notificationIds: [record.id],
+      notificationIds: [notificationId],
       requestId: ids.requestId,
       diagnosticId: ids.diagnosticId,
       retryable: false,
