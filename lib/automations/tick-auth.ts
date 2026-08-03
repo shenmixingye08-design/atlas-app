@@ -7,6 +7,9 @@ import { checkAtlasOwner } from "@/lib/auth/require-atlas-owner";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 function readCronSecret(): string | null {
+  // Phase 2-2: prefer SCHEDULER_CRON_SECRET; CRON_SECRET remains compat.
+  const primary = process.env.SCHEDULER_CRON_SECRET?.trim();
+  if (primary && primary.length > 0) return primary;
   const value = process.env.CRON_SECRET?.trim();
   return value && value.length > 0 ? value : null;
 }
