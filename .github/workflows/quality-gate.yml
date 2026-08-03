@@ -50,8 +50,6 @@ jobs:
         env:
           # Keep tests deterministic; do not enable mock-success shortcuts.
           TZ: UTC
-<<<<<<< HEAD
-=======
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
           NODE_OPTIONS: --max-old-space-size=8192
 
@@ -60,7 +58,6 @@ jobs:
         env:
           TZ: UTC
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
->>>>>>> origin/cursor/scheduler-production-trust-83f5
           NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Upload Vitest logs on failure
