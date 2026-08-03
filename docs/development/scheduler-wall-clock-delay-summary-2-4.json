@@ -1,0 +1,40 @@
+{
+  "commitSha": "47f8794ba3d5c58212b3eedec3624d9d3acc37dd",
+  "environment": "local_formal_path_wall_clock",
+  "scheduleDelay": {
+    "count": 95,
+    "mean": 324.4842105263158,
+    "median": 311,
+    "p90": 430,
+    "p95": 451,
+    "p99": 469,
+    "max": 469
+  },
+  "queueWait": {
+    "count": 95,
+    "mean": 524.3578947368421,
+    "median": 264,
+    "p90": 2111,
+    "p95": 2147,
+    "p99": 2176,
+    "max": 2176
+  },
+  "startDelay": {
+    "count": 95,
+    "mean": 848.8421052631579,
+    "median": 617,
+    "p90": 2412,
+    "p95": 2412,
+    "p99": 2412,
+    "max": 2412
+  },
+  "rates": {
+    "detectionRate": 1,
+    "workerStartRate": 1,
+    "completionRate": 1,
+    "missedRate": 0,
+    "duplicateRate": 0,
+    "retryRate": 0,
+    "recoveryRate": 1
+  }
+}

@@ -9,6 +9,8 @@ export default defineConfig({
     exclude: [
       "lib/reliability/e2e-1000.test.ts",
       "lib/reliability/x-post-1000.test.ts",
+      // Phase 2-4 wall-clock proof — multi-minute real waits; run via npm run test:scheduler-wall-clock
+      "lib/scheduler-core/wall-clock-proof/wall-clock-proof.test.ts",
     ],
   },
   resolve: {

@@ -4,6 +4,10 @@ import {
   getZonedParts,
   DEFAULT_AUTOMATION_TIMEZONE,
 } from "@/lib/automations/schedule";
+import {
+  calculateResumeNextRunAtIso,
+  calculateSkipNextRunAtIso,
+} from "@/lib/scheduler-core/calculate-next-run-at";
 import type { AutomationSchedule } from "@/lib/automations/types";
 
 export {
@@ -19,7 +23,6 @@ export function lastDayOfMonthInTz(
   month: number,
   timeZone: string,
 ): number {
-  // month is 1-12; day 0 of next month = last day of this month in UTC guess, then verify in TZ.
   for (let day = 31; day >= 28; day -= 1) {
     const probe = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
     const parts = getZonedParts(probe, timeZone);
@@ -42,7 +45,7 @@ export function computeResumeNextRunIso(
   schedule: AutomationSchedule,
   from: Date = new Date(),
 ): string | null {
-  return computeNextRunIso(schedule, from);
+  return calculateResumeNextRunAtIso(schedule, from);
 }
 
 /** Skip the immediate next occurrence (advance from that slot). */
@@ -50,7 +53,5 @@ export function computeSkipNextRunIso(
   schedule: AutomationSchedule,
   currentNextRun: string | null,
 ): string | null {
-  const from = currentNextRun ? new Date(currentNextRun) : new Date();
-  // +1 minute past the scheduled slot so computeNextRun moves forward.
-  return computeNextRunIso(schedule, new Date(from.getTime() + 60_000));
+  return calculateSkipNextRunAtIso(schedule, currentNextRun);
 }

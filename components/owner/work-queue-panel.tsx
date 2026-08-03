@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
@@ -17,11 +17,14 @@ type MetricsResponse = {
   oldestQueuedAgeMs: number | null;
   duplicateCount: number;
   schedulerLastSuccessAt: string | null;
+  p50ScheduleDelayMs?: number | null;
+  p90ScheduleDelayMs?: number | null;
   p95ScheduleDelayMs: number | null;
   p99ScheduleDelayMs: number | null;
   averageDelayMs: number | null;
   p95ExecutionMs: number | null;
   recoverySuccessRate: number | null;
+  recoveryCount?: number | null;
   alive: boolean;
   workerCount: number;
   successRate: number | null;
@@ -30,8 +33,56 @@ type MetricsResponse = {
   workerBusyPercent: number | null;
 };
 
+type OpsHealth = {
+  running: boolean;
+  healthy: boolean;
+  status: string;
+  lastTickAt: string | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  dueCount: number | null;
+  queueCount: number | null;
+  oldestDueAgeMs: number | null;
+  p95DelayMs: number | null;
+  retryCount: number | null;
+  recoverySuccessRate: number | null;
+  outboxPendingCount: number | null;
+  workerCount: number | null;
+};
+
+type OpsMetrics = {
+  tickCount: number | null;
+  runCount: number | null;
+  occurrenceCount: number | null;
+  queueCount: number;
+  missCount: number | null;
+  duplicateCount: number;
+  retryCount: number;
+  recoveryCount: number | null;
+  p50DelayMs: number | null;
+  p90DelayMs: number | null;
+  p95DelayMs: number | null;
+  p99DelayMs: number | null;
+};
+
+type OpsSnapshot = {
+  health: OpsHealth;
+  metrics: OpsMetrics;
+  alerts: Array<{ code: string; severity: string; message: string }>;
+  killSwitches: {
+    scheduledCronEnabled: boolean;
+    dispatcherDisabled: boolean;
+    queueDisabled: boolean;
+    previewTickAllowed: boolean;
+    schedulerSecretConfigured: boolean;
+  };
+};
+
 type Snapshot = {
   metrics: MetricsResponse;
+  ops?: OpsSnapshot | null;
+  health?: OpsHealth | null;
+  bridge?: Record<string, unknown> | null;
   alerts: Array<{ code: string; severity: string; message: string }>;
   capabilities: Array<{
     capability: string;
@@ -63,17 +114,37 @@ function Metric({
   );
 }
 
-function pct(rate: number | null): string {
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <h3 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h3>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{children}</div>
+    </section>
+  );
+}
+
+function pct(rate: number | null | undefined): string {
   if (rate == null) return "—";
   return `${(rate * 100).toFixed(1)}%`;
 }
 
-function ms(value: number | null): string {
+function ms(value: number | null | undefined): string {
   if (value == null) return "—";
   return `${Math.round(value)}ms`;
 }
 
-/** Owner-only operational view — internal queue terms OK here. */
+function age(value: number | null | undefined): string {
+  if (value == null) return "—";
+  return `${Math.round(value / 1000)}s`;
+}
+
+/** Owner-only operational view — Phase 2-5 Cutover dashboard. */
 export function WorkQueuePanel() {
   const [data, setData] = useState<Snapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -106,52 +177,146 @@ export function WorkQueuePanel() {
   }
 
   const metrics = data.metrics;
-  const ageSec =
-    metrics.oldestQueuedAgeMs == null
-      ? "—"
-      : `${Math.round(metrics.oldestQueuedAgeMs / 1000)}s`;
+  const ops = data.ops;
+  const health = ops?.health ?? data.health;
+  const opsMetrics = ops?.metrics;
+  const alerts = ops?.alerts?.length ? ops.alerts : data.alerts;
+  const flags = ops?.killSwitches;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
       <div>
         <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-          Scheduler · Queue · Worker
+          Scheduler · Queue · Worker · Automation · Health
         </h2>
         <p className="text-sm text-[var(--text-secondary)]">
-          Alive / Queue / Lease / Retry / Metrics / Alerts（一般ユーザー非表示）
+          Phase 2-5 Production Cutover — 実DB/Metrics由来（固定値禁止）
         </p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+
+      <Section title="Health">
+        <Metric
+          label="Running"
+          value={health?.running ? "YES" : "NO"}
+          tone={health?.running ? "ok" : "bad"}
+        />
+        <Metric
+          label="Healthy"
+          value={health?.healthy ? "YES" : "NO"}
+          tone={health?.healthy ? "ok" : "bad"}
+        />
+        <Metric label="Last Tick" value={health?.lastTickAt ?? "—"} />
+        <Metric
+          label="Last Success"
+          value={health?.lastSuccessAt ?? metrics.schedulerLastSuccessAt ?? "—"}
+        />
+        <Metric label="Last Failure" value={health?.lastFailureAt ?? "—"} />
+        <Metric label="Due Count" value={health?.dueCount ?? "—"} />
+        <Metric
+          label="Queue Count"
+          value={health?.queueCount ?? metrics.queued}
+        />
+        <Metric label="Oldest Due" value={age(health?.oldestDueAgeMs)} />
+        <Metric
+          label="P95 Delay"
+          value={ms(health?.p95DelayMs ?? metrics.p95ScheduleDelayMs)}
+        />
+        <Metric
+          label="Retry"
+          value={health?.retryCount ?? metrics.retryScheduled}
+        />
+        <Metric
+          label="Recovery"
+          value={pct(health?.recoverySuccessRate ?? metrics.recoverySuccessRate)}
+        />
+        <Metric
+          label="Status"
+          value={(health?.status ?? "—").toString().toUpperCase()}
+          tone={health?.status === "ok" ? "ok" : "bad"}
+        />
+      </Section>
+
+      <Section title="Metrics">
+        <Metric label="Tick Count" value={opsMetrics?.tickCount ?? "—"} />
+        <Metric label="Run Count" value={opsMetrics?.runCount ?? "—"} />
+        <Metric
+          label="Occurrence Count"
+          value={opsMetrics?.occurrenceCount ?? "—"}
+        />
+        <Metric
+          label="Queue Count"
+          value={opsMetrics?.queueCount ?? metrics.queued}
+        />
+        <Metric label="Miss Count" value={opsMetrics?.missCount ?? "—"} />
+        <Metric
+          label="Duplicate Count"
+          value={opsMetrics?.duplicateCount ?? metrics.duplicateCount}
+        />
+        <Metric
+          label="Retry Count"
+          value={opsMetrics?.retryCount ?? metrics.retryScheduled}
+        />
+        <Metric
+          label="Recovery Count"
+          value={opsMetrics?.recoveryCount ?? metrics.recoveryCount ?? "—"}
+        />
+        <Metric
+          label="P50"
+          value={ms(opsMetrics?.p50DelayMs ?? metrics.p50ScheduleDelayMs)}
+        />
+        <Metric
+          label="P90"
+          value={ms(opsMetrics?.p90DelayMs ?? metrics.p90ScheduleDelayMs)}
+        />
+        <Metric
+          label="P95"
+          value={ms(opsMetrics?.p95DelayMs ?? metrics.p95ScheduleDelayMs)}
+        />
+        <Metric
+          label="P99"
+          value={ms(opsMetrics?.p99DelayMs ?? metrics.p99ScheduleDelayMs)}
+        />
+      </Section>
+
+      <Section title="Scheduler">
         <Metric
           label="Scheduler Alive"
           value={metrics.alive ? "YES" : "NO"}
           tone={metrics.alive ? "ok" : "bad"}
         />
-        <Metric label="Queue Size" value={metrics.waiting ?? metrics.queued} />
-        <Metric label="Worker Count" value={metrics.workerCount} />
         <Metric
-          label="Success Rate"
-          value={pct(metrics.successRate)}
-          tone={
-            metrics.successRate == null
-              ? undefined
-              : metrics.successRate >= 0.95
-                ? "ok"
-                : "bad"
-          }
+          label="Cron Enabled"
+          value={flags?.scheduledCronEnabled ? "YES" : "NO"}
+          tone={flags?.scheduledCronEnabled ? "ok" : "bad"}
         />
-        <Metric label="Running" value={metrics.running} />
+        <Metric
+          label="Secret Configured"
+          value={flags?.schedulerSecretConfigured ? "YES" : "NO"}
+          tone={flags?.schedulerSecretConfigured ? "ok" : "bad"}
+        />
+        <Metric
+          label="Dispatcher Disabled"
+          value={flags?.dispatcherDisabled ? "YES" : "NO"}
+          tone={flags?.dispatcherDisabled ? "bad" : "ok"}
+        />
+      </Section>
+
+      <Section title="Queue">
         <Metric label="Waiting" value={metrics.waiting ?? metrics.queued} />
-        <Metric label="Retry" value={metrics.retryScheduled} />
-        <Metric label="Failed" value={metrics.failed} />
-        <Metric label="leased" value={metrics.leased} />
-        <Metric label="stuck" value={metrics.stuck} />
-        <Metric label="dead-letter" value={metrics.deadLetter} />
-        <Metric label="completed" value={metrics.completed} />
-        <Metric label="Avg Delay" value={ms(metrics.averageDelayMs)} />
-        <Metric label="P95 Delay" value={ms(metrics.p95ScheduleDelayMs)} />
-        <Metric label="P99 Delay" value={ms(metrics.p99ScheduleDelayMs)} />
-        <Metric label="Queue Wait" value={ms(metrics.averageQueueWaitMs)} />
+        <Metric label="Oldest Job" value={age(metrics.oldestQueuedAgeMs)} />
+        <Metric label="Dead Letter" value={metrics.deadLetter} />
+        <Metric
+          label="Queue Disabled"
+          value={flags?.queueDisabled ? "YES" : "NO"}
+          tone={flags?.queueDisabled ? "bad" : "ok"}
+        />
+      </Section>
+
+      <Section title="Worker">
+        <Metric label="Worker Count" value={metrics.workerCount} />
+        <Metric label="Leased" value={metrics.leased} />
+        <Metric label="Running" value={metrics.running} />
+        <Metric label="Stuck" value={metrics.stuck} />
         <Metric
           label="Worker Busy"
           value={
@@ -160,34 +325,39 @@ export function WorkQueuePanel() {
               : `${metrics.workerBusyPercent}%`
           }
         />
-        <Metric label="oldest queued age" value={ageSec} />
-        <Metric label="duplicate count" value={metrics.duplicateCount} />
-        <Metric
-          label="recovery success rate"
-          value={
-            metrics.recoverySuccessRate == null
-              ? "—"
-              : `${Math.round(metrics.recoverySuccessRate * 100)}%`
-          }
-        />
-        <Metric
-          label="Scheduler最終成功"
-          value={metrics.schedulerLastSuccessAt ?? "—"}
-        />
-      </div>
+        <Metric label="Success Rate" value={pct(metrics.successRate)} />
+        <Metric label="Failed" value={metrics.failed} />
+        <Metric label="Completed" value={metrics.completed} />
+      </Section>
 
-      {data.alerts.length > 0 ? (
+      <Section title="Automation">
+        <Metric label="Due Count" value={health?.dueCount ?? "—"} />
+        <Metric
+          label="Outbox Pending"
+          value={health?.outboxPendingCount ?? "—"}
+        />
+        <Metric
+          label="Preview Tick Allowed"
+          value={flags?.previewTickAllowed ? "YES" : "NO"}
+        />
+        <Metric label="Avg Delay" value={ms(metrics.averageDelayMs)} />
+      </Section>
+
+      {alerts.length > 0 ? (
         <div className="rounded-xl border border-[var(--border-subtle)] p-4">
           <h3 className="text-sm font-semibold">Alerts</h3>
           <ul className="mt-2 space-y-1 text-sm">
-            {data.alerts.map((alert, idx) => (
+            {alerts.map((alert, idx) => (
               <li key={`${alert.code}-${idx}`}>
-                <span className="font-medium">{alert.code}</span> — {alert.message}
+                <span className="font-medium">{alert.code}</span> (
+                {alert.severity}) — {alert.message}
               </li>
             ))}
           </ul>
         </div>
-      ) : null}
+      ) : (
+        <p className="text-sm text-[var(--text-secondary)]">Alerts: none</p>
+      )}
 
       {data.capabilities.length > 0 ? (
         <div className="rounded-xl border border-[var(--border-subtle)] p-4">
