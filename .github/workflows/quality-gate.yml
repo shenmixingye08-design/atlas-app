@@ -18,6 +18,20 @@ jobs:
     name: typecheck · lint · test · build
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: atlas
+          POSTGRES_DB: atlas_work_queue
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atlas -d atlas_work_queue"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,6 +59,21 @@ jobs:
       - name: V2 stub-ban / Production registry gate
         run: node scripts/ci/v2-stub-ban.mjs
 
+      - name: Work-queue durability ban
+        run: node scripts/ci/work-queue-durability-ban.mjs
+
+      - name: Cron SoT consistency
+        run: node scripts/ci/assert-cron-sot.mjs
+
+      - name: Apply work-queue Postgres migrations (CI service)
+        env:
+          DATABASE_URL: postgresql://atlas:atlas@127.0.0.1:5432/atlas_work_queue
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          chmod +x scripts/ci/apply-work-queue-migrations.sh
+          ./scripts/ci/apply-work-queue-migrations.sh
+
       - name: Unit / integration tests
         run: npm test
         env:
@@ -54,11 +83,32 @@ jobs:
           # Vitest workers serialize large fixtures; default heap OOMs on ubuntu-latest.
           NODE_OPTIONS: --max-old-space-size=8192
 
-      - name: Work-queue critical path
+      - name: Work-queue critical path + 100 consecutive proof
         run: npm test -- --run lib/work-queue lib/automations/durable.test.ts
         env:
           TZ: UTC
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Upload scheduler-100-proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-100-proof
+          path: |
+            artifacts/scheduler-production/scheduler-100-proof.json
+            /opt/cursor/artifacts/scheduler-production/scheduler-100-proof.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Work-queue Postgres durability
+        run: npm test -- --run lib/work-queue/postgres-durability.test.ts
+        env:
+          TZ: UTC
+          DATABASE_URL: postgresql://atlas:atlas@127.0.0.1:5432/atlas_work_queue
+          ATLAS_WORK_QUEUE_FORCE_FILE: "false"
+          VITEST: ""
+          NODE_ENV: test
           NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Upload Vitest logs on failure

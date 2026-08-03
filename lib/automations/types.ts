@@ -15,6 +15,8 @@ export type AutomationTriggerKind =
   | "calendar";
 
 export type SchedulePreset =
+  | { type: "minutely" }
+  | { type: "hourly"; minute: number }
   | { type: "daily"; hour: number; minute: number }
   | { type: "weekly"; dayOfWeek: number; hour: number; minute: number }
   | { type: "monthly"; dayOfMonth: number; hour: number; minute: number };
@@ -219,8 +221,8 @@ export type AutomationFilter = {
 export type AutomationRunResult = {
   automationId: EntityId;
   workflowRunId: EntityId;
-  status: "completed" | "failed" | "awaiting_approval";
-  orchestrationStatus: "completed" | "failed" | string;
+  status: "completed" | "failed" | "awaiting_approval" | "queued";
+  orchestrationStatus: "completed" | "failed" | "queued" | string;
   approved: boolean;
   totalDurationMs: number;
   finalResponsePreview: string | null;
@@ -230,4 +232,8 @@ export type AutomationRunResult = {
   xPostUrl?: string | null;
   errorCode?: string | null;
   dedupeSkipped?: boolean;
+  /** Present when manual run was durable-enqueued (HTTP 202). */
+  jobId?: string;
+  occurrenceKey?: string;
+  message?: string;
 };

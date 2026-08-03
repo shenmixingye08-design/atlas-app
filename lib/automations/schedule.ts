@@ -2,9 +2,13 @@ import type { AutomationSchedule, SchedulePreset, Timestamp } from "./types";
 
 export const DEFAULT_AUTOMATION_TIMEZONE = "Asia/Tokyo";
 
-/** Map presets to cron strings for future external schedulers. */
+/** Map presets to cron strings — Cron SoT product templates (see lib/work-queue/cron-sot.ts). */
 export function presetToCron(preset: SchedulePreset): string {
   switch (preset.type) {
+    case "minutely":
+      return "* * * * *";
+    case "hourly":
+      return `${preset.minute} * * * *`;
     case "daily":
       return `${preset.minute} ${preset.hour} * * *`;
     case "weekly":
@@ -97,6 +101,51 @@ function computeNextFromPreset(
   const now = getZonedParts(from, timeZone);
 
   switch (preset.type) {
+    case "minutely": {
+      // Next whole minute boundary strictly after `from`.
+      const next = new Date(from.getTime());
+      next.setUTCSeconds(0, 0);
+      next.setUTCMinutes(next.getUTCMinutes() + 1);
+      return next;
+    }
+
+    case "hourly": {
+      let candidate = zonedTimeToUtc(
+        now.year,
+        now.month,
+        now.day,
+        now.hour,
+        preset.minute,
+        timeZone,
+      );
+      if (candidate.getTime() <= from.getTime()) {
+        // Advance one hour in the zone.
+        const plusHour = new Date(candidate.getTime() + 60 * 60 * 1000);
+        const parts = getZonedParts(plusHour, timeZone);
+        candidate = zonedTimeToUtc(
+          parts.year,
+          parts.month,
+          parts.day,
+          parts.hour,
+          preset.minute,
+          timeZone,
+        );
+        if (candidate.getTime() <= from.getTime()) {
+          const again = new Date(candidate.getTime() + 60 * 60 * 1000);
+          const p2 = getZonedParts(again, timeZone);
+          candidate = zonedTimeToUtc(
+            p2.year,
+            p2.month,
+            p2.day,
+            p2.hour,
+            preset.minute,
+            timeZone,
+          );
+        }
+      }
+      return candidate;
+    }
+
     case "daily": {
       let candidate = zonedTimeToUtc(
         now.year,

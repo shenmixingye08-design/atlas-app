@@ -79,15 +79,15 @@ export async function runAutomationNow(
     method: "POST",
   });
 
-  if (!response.ok) {
+  // 202 = durable queue accepted (worker will finish the job).
+  if (!response.ok && response.status !== 202) {
     const body = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? ui.error.runFailed);
   }
 
-  const result = (await response.json()) as AutomationRunResult;
-  // Running an automation consumes plan usage — signal usage meters to refetch.
+  const body = (await response.json()) as AutomationRunResult;
   notifyBillingUsageChanged();
-  return result;
+  return body;
 }
 
 export async function tickAutomations(): Promise<{

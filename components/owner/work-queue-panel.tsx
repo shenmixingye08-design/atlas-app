@@ -38,6 +38,16 @@ type Snapshot = {
     status: string;
     note: string;
   }>;
+  cronSot?: {
+    infrastructure: Array<{
+      id: string;
+      schedule: string;
+      path: string;
+      providers: string[];
+      purpose: string;
+    }>;
+    productPresets: string[];
+  };
 };
 
 function Metric({
@@ -197,6 +207,26 @@ export function WorkQueuePanel() {
               <li key={cap.capability}>
                 <span className="font-medium">{cap.capability}</span>{" "}
                 <span>({cap.status})</span> — {cap.note}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {data.cronSot ? (
+        <div className="rounded-xl border border-[var(--border-subtle)] p-4">
+          <h3 className="text-sm font-semibold">Cron SoT</h3>
+          <p className="mt-1 text-xs text-[var(--text-secondary)]">
+            Product presets: {data.cronSot.productPresets.join(" · ")}
+          </p>
+          <ul className="mt-2 space-y-1 text-sm">
+            {data.cronSot.infrastructure.map((entry) => (
+              <li key={entry.id}>
+                <span className="font-mono text-xs">{entry.schedule}</span>{" "}
+                → {entry.path}{" "}
+                <span className="text-[var(--text-secondary)]">
+                  ({entry.providers.join(", ")})
+                </span>
               </li>
             ))}
           </ul>

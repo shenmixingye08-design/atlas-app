@@ -41,10 +41,15 @@ function schedulePriority(
 ): number {
   if (automation.schedule.kind !== "schedule") return 50;
 
+  const preset = automation.schedule.preset;
+  if (!("hour" in preset) || !("minute" in preset)) {
+    // minutely / hourly: treat as always near-due for ranking.
+    return preset.type === "minutely" || preset.type === "hourly" ? 90 : 50;
+  }
   const delta = minutesUntilScheduledTime(
     context,
-    automation.schedule.preset.hour,
-    automation.schedule.preset.minute,
+    preset.hour,
+    preset.minute,
   );
 
   if (delta >= 0 && delta <= 120) return 100 - delta;

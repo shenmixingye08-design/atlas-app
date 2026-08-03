@@ -12,6 +12,15 @@ export const WORK_QUEUE_FILE_ENV = "ATLAS_WORK_QUEUE_FILE";
 export const WORK_QUEUE_FORCE_FILE_ENV = "ATLAS_WORK_QUEUE_FORCE_FILE";
 
 /**
+ * Env: allow file-durable fallback outside Vitest.
+ * Production / Vercel must NOT set this — Postgres is required SoT.
+ */
+export const WORK_QUEUE_ALLOW_FILE_ENV = "ATLAS_WORK_QUEUE_ALLOW_FILE";
+
+/** Env: when "false", tick enqueues only and does not drain workers. */
+export const WORK_QUEUE_DRAIN_ON_TICK_ENV = "ATLAS_WORK_QUEUE_DRAIN_ON_TICK";
+
+/**
  * Env: keep durable semantics in-process without rewriting JSON every mutation.
  * Used for large load tests. Restart-survival tests must leave this unset.
  */

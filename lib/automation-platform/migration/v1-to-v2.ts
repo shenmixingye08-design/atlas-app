@@ -65,6 +65,49 @@ function mapSchedule(v1: AutomationV1): AutomationV2["trigger"] {
   }
 
   const preset = v1.schedule.preset;
+  const timingFields = {
+    cronDerived: v1.schedule.cron ?? null,
+    startAt: v1.timing.startDate,
+    endAt:
+      v1.timing.endCondition.type === "until_date"
+        ? v1.timing.endCondition.until
+        : null,
+    maxOccurrences:
+      v1.timing.endCondition.type === "occurrence_count"
+        ? v1.timing.endCondition.maxOccurrences
+        : null,
+  };
+
+  if (preset.type === "minutely") {
+    return {
+      type: "schedule",
+      timezone,
+      schedule: {
+        frequency: "daily",
+        hour: 0,
+        minute: 0,
+        ...timingFields,
+        cronDerived: v1.schedule.cron ?? "* * * * *",
+      },
+      event: null,
+      condition: null,
+    };
+  }
+  if (preset.type === "hourly") {
+    return {
+      type: "schedule",
+      timezone,
+      schedule: {
+        frequency: "daily",
+        hour: 0,
+        minute: preset.minute,
+        ...timingFields,
+        cronDerived: v1.schedule.cron ?? `${preset.minute} * * * *`,
+      },
+      event: null,
+      condition: null,
+    };
+  }
   if (preset.type === "daily") {
     return {
       type: "schedule",
@@ -73,16 +116,7 @@ function mapSchedule(v1: AutomationV1): AutomationV2["trigger"] {
         frequency: "daily",
         hour: preset.hour,
         minute: preset.minute,
-        cronDerived: v1.schedule.cron ?? null,
-        startAt: v1.timing.startDate,
-        endAt:
-          v1.timing.endCondition.type === "until_date"
-            ? v1.timing.endCondition.until
-            : null,
-        maxOccurrences:
-          v1.timing.endCondition.type === "occurrence_count"
-            ? v1.timing.endCondition.maxOccurrences
-            : null,
+        ...timingFields,
       },
       event: null,
       condition: null,
@@ -97,16 +131,7 @@ function mapSchedule(v1: AutomationV1): AutomationV2["trigger"] {
         hour: preset.hour,
         minute: preset.minute,
         daysOfWeek: [preset.dayOfWeek],
-        cronDerived: v1.schedule.cron ?? null,
-        startAt: v1.timing.startDate,
-        endAt:
-          v1.timing.endCondition.type === "until_date"
-            ? v1.timing.endCondition.until
-            : null,
-        maxOccurrences:
-          v1.timing.endCondition.type === "occurrence_count"
-            ? v1.timing.endCondition.maxOccurrences
-            : null,
+        ...timingFields,
       },
       event: null,
       condition: null,
@@ -121,16 +146,7 @@ function mapSchedule(v1: AutomationV1): AutomationV2["trigger"] {
       hour: preset.hour,
       minute: preset.minute,
       dayOfMonth: preset.dayOfMonth,
-      cronDerived: v1.schedule.cron ?? null,
-      startAt: v1.timing.startDate,
-      endAt:
-        v1.timing.endCondition.type === "until_date"
-          ? v1.timing.endCondition.until
-          : null,
-      maxOccurrences:
-        v1.timing.endCondition.type === "occurrence_count"
-          ? v1.timing.endCondition.maxOccurrences
-          : null,
+      ...timingFields,
     },
     event: null,
     condition: null,

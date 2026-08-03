@@ -3,6 +3,8 @@ import type {
   WorkJobRecord,
   WorkJobStatus,
   WorkQueueMetrics,
+  WorkRetryHistoryEntry,
+  WorkSideEffectRecord,
   WorkStepRecord,
 } from "../types";
 
@@ -34,5 +36,22 @@ export type WorkQueueStore = {
   recordScheduleDelay(delayMs: number): Promise<void>;
   recordExecutionMs(durationMs: number): Promise<void>;
   recordRecovery(success: boolean): Promise<void>;
+  /** Durable side-effect idempotency (DB unique / file unique key). */
+  getSideEffect(idempotencyKey: string): Promise<WorkSideEffectRecord | null>;
+  tryRecordSideEffect(input: {
+    idempotencyKey: string;
+    jobId: string;
+    runId: string;
+    stepId: string;
+    kind: string;
+    result: Record<string, unknown>;
+  }): Promise<{ created: boolean; record: WorkSideEffectRecord }>;
+  appendRetryHistory(
+    jobId: string,
+    entry: WorkRetryHistoryEntry,
+  ): Promise<void>;
+  /** Durable meta for scheduler gate / health — not process memory. */
+  readSchedulerMeta?<T>(key: string, fallback: T): Promise<T>;
+  writeSchedulerMeta?(key: string, value: unknown): Promise<void>;
   resetForTests(): Promise<void>;
 };

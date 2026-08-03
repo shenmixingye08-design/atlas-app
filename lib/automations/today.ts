@@ -52,6 +52,8 @@ export function isAutomationScheduledForToday(
   if (!preset?.type) return false;
 
   switch (preset.type) {
+    case "minutely":
+    case "hourly":
     case "daily":
       return true;
     case "weekly":

@@ -587,6 +587,7 @@ describe("work-queue fail-closed completion", () => {
       resultSummary: null,
       firstError: null,
       lastError: null,
+      retryHistory: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       steps: [
@@ -735,11 +736,19 @@ describe("scheduler 100 fires", () => {
       success: enqueued,
       failed: 100 - enqueued,
       duplicates: deduped,
-      firings,
+      firings: firings.map((f) => ({
+        ...f,
+        executionTimeMs: f.delayMs,
+        status: f.success ? ("completed" as const) : ("failed" as const),
+      })),
       averageDelayMs: avg,
+      averageExecutionTimeMs: avg,
       p95DelayMs: p95,
       p99DelayMs: p99,
       maxDelayMs: sorted[sorted.length - 1]!,
+      storeKind: "file",
+      durableLogs: true,
+      presetsCovered: ["daily"],
     });
     expect(proof.verdict).toBe("pass");
   }, 120_000);
@@ -753,8 +762,8 @@ describe("work-queue production trust extensions", () => {
     expect(caps.daily).toBe("supported");
     expect(caps.weekly).toBe("supported");
     expect(caps.monthly).toBe("supported");
-    expect(caps.minutely).toBe("unsupported");
-    expect(caps.hourly).toBe("unsupported");
+    expect(caps.minutely).toBe("supported");
+    expect(caps.hourly).toBe("supported");
     expect(caps.holiday_exclusion).toBe("unsupported");
   });
 
@@ -818,6 +827,7 @@ describe("work-queue production trust extensions", () => {
       resultSummary: null,
       firstError: null,
       lastError: null,
+      retryHistory: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       steps: [

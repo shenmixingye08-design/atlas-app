@@ -41,6 +41,12 @@ export async function POST(
   }
 
   const origin = resolveOrigin(request);
+  const url = new URL(request.url);
+  // sync=1 keeps legacy in-request execution for internal tests only.
+  // Default path: durable enqueue — worker executes under lease.
+  const forceSync =
+    url.searchParams.get("sync") === "1" ||
+    process.env.ATLAS_RUN_SYNC?.trim() === "1";
 
   const { requireBillingAiUsage, requireBillingFeature } = await import(
     "@/lib/billing/access"
@@ -52,6 +58,53 @@ export async function POST(
   const usageDenied = await requireBillingAiUsage(userId);
   if (usageDenied) return usageDenied;
 
+  const { recordAuditLogSafe, auditRequestContext } = await import(
+    "@/lib/owner/audit-log"
+  );
+  const ctx = auditRequestContext(request);
+
+  if (!forceSync) {
+    const { enqueueManualAutomationRun } = await import(
+      "@/lib/work-queue/enqueue-manual"
+    );
+    const { job, created } = await enqueueManualAutomationRun({
+      automationId: id,
+      ownerId: userId,
+      automationName: automation.name,
+      assignment: automation.workflow?.assignment,
+      requestOrigin: origin,
+      offlineArtifacts: false,
+    });
+    recordAuditLogSafe({
+      userId,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      category: "automation",
+      action: "automation_run",
+      targetId: id,
+      result: "success",
+      reason: created ? "manual run enqueued" : "manual run deduped",
+    });
+    return Response.json(
+      {
+        automationId: id,
+        workflowRunId: job.runId,
+        status: "queued",
+        orchestrationStatus: "queued",
+        approved: true,
+        totalDurationMs: 0,
+        finalResponsePreview: null,
+        error: null,
+        deliverableCount: 0,
+        jobId: job.jobId,
+        occurrenceKey: job.occurrenceKey,
+        dedupeSkipped: !created,
+        message: "仕事をキューに入れました。Worker が実行します。",
+      },
+      { status: 202 },
+    );
+  }
+
   const result = await automationService.runNow(id, {
     requestOrigin: origin,
     userId,
@@ -61,10 +114,6 @@ export async function POST(
     return Response.json({ error: "Automation not found" }, { status: 404 });
   }
 
-  const { recordAuditLogSafe, auditRequestContext } = await import(
-    "@/lib/owner/audit-log"
-  );
-  const ctx = auditRequestContext(request);
   recordAuditLogSafe({
     userId,
     ip: ctx.ip,
@@ -73,7 +122,7 @@ export async function POST(
     action: "automation_run",
     targetId: id,
     result: result.status === "failed" ? "failure" : "success",
-    reason: result.status === "failed" ? result.error ?? "run failed" : "manual run",
+    reason: result.status === "failed" ? result.error ?? "run failed" : "manual run sync",
   });
 
   if (result.status === "failed") {

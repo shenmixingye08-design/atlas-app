@@ -26,6 +26,8 @@ import {
 } from "./x-recurring/destination";
 
 export type FrequencyOption =
+  | "minutely"
+  | "hourly"
   | "daily"
   | "weekly"
   | "monthly"
@@ -102,6 +104,10 @@ export function defaultAutomationFormState(
 export function buildScheduleLabel(state: AutomationFormState): string {
   const time = `${String(state.hour).padStart(2, "0")}:${String(state.minute).padStart(2, "0")}`;
   switch (state.frequency) {
+    case "minutely":
+      return "毎分";
+    case "hourly":
+      return `毎時 ${String(state.minute).padStart(2, "0")}分`;
     case "daily":
       return `毎日 ${time}`;
     case "weekly":
@@ -117,6 +123,10 @@ export function buildScheduleLabel(state: AutomationFormState): string {
 
 export function buildSchedulePreset(state: AutomationFormState): SchedulePreset {
   switch (state.frequency) {
+    case "minutely":
+      return { type: "minutely" };
+    case "hourly":
+      return { type: "hourly", minute: state.minute };
     case "daily":
       return { type: "daily", hour: state.hour, minute: state.minute };
     case "weekly":
@@ -257,8 +267,8 @@ export function formStateFromCreateInput(
     frequency,
     dayOfWeek: preset.type === "weekly" ? preset.dayOfWeek : base.dayOfWeek,
     dayOfMonth: preset.type === "monthly" ? preset.dayOfMonth : base.dayOfMonth,
-    hour: preset.hour,
-    minute: preset.minute,
+    hour: "hour" in preset ? preset.hour : base.hour,
+    minute: "minute" in preset ? preset.minute : base.minute,
     timezone: schedule.timezone || DEFAULT_AUTOMATION_TIMEZONE,
     customCron: schedule.cron ?? base.customCron,
     startDate: timing.startDate
