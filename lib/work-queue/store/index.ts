@@ -1,3 +1,5 @@
+import { assertWorkQueueFileFallbackAllowed } from "@/lib/persistence/durable-sot-audit/production-diagnostics";
+
 import { WORK_QUEUE_FORCE_FILE_ENV } from "../constants";
 import { createFileWorkQueueStore } from "./file-store";
 import type { WorkQueueStore } from "./interface";
@@ -17,6 +19,8 @@ export function getWorkQueueStore(): WorkQueueStore {
       singleton = pg;
       return singleton;
     }
+    // Fail-fast diagnostic: file/.data is not durable SoT on prod/ephemeral FS.
+    assertWorkQueueFileFallbackAllowed("postgres_unavailable");
   }
   singleton = createFileWorkQueueStore();
   return singleton;

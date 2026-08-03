@@ -1,0 +1,1481 @@
+{
+  "summary": {
+    "domainCount": 27,
+    "mixedSotCount": 24,
+    "mixedDomains": [
+      "Automation",
+      "Schedule",
+      "Occurrence",
+      "Run",
+      "Job",
+      "Step",
+      "Lease",
+      "Heartbeat",
+      "Retry",
+      "Recovery",
+      "Artifact",
+      "CompletionEvidence",
+      "Memory",
+      "Notification",
+      "Metrics",
+      "Idempotency",
+      "ExternalAction",
+      "Approval",
+      "FirstExperience",
+      "OAuthConnection",
+      "Lock",
+      "Monitoring",
+      "ResultApi",
+      "StorageMetadata"
+    ],
+    "p0": [
+      "P0-WQ-FILE-FALLBACK",
+      "P0-V2-RUN-MEMORY-SOT",
+      "P0-EXTERNAL-BEFORE-EVIDENCE",
+      "P0-LEGACY-JOB-MEMORY-FALLBACK",
+      "P0-FALSE-COMPLETED-WITHOUT-DURABLE-EVIDENCE",
+      "P0-DETACHED-HEARTBEAT"
+    ],
+    "p1": [
+      "P1-AUTOMATION-FIRE-AND-FORGET-PERSIST",
+      "P1-MEMORY-FIRE-AND-FORGET-PERSIST",
+      "P1-NOTIFICATION-DETACHED-DELIVERY",
+      "P1-OAUTH-TOKEN-REFRESH-DETACHED",
+      "P1-METRICS-PROCESS-ONLY",
+      "P1-SCHEDULE-TICK-MEMORY",
+      "P1-RETRY-SCHEDULE-LOST"
+    ],
+    "p2": [
+      "P2-LOCALSTORAGE-PROFILE-ONBOARDING",
+      "P2-PROJECTS-LOCALSTORAGE-FALLBACK",
+      "P2-THEME-SESSION-CACHE"
+    ],
+    "restartCaseCount": 8,
+    "multiInstanceCaseCount": 7,
+    "migrationTargetCount": 21,
+    "phase12": [
+      "Eliminate production Work Queue file fallback (fail-closed to Postgres)",
+      "Replace V2 __atlasAutomationPlatformStore runs/occurrence/idempotency with DB repository",
+      "Await (or transactional outbox) for run/job durable writes on enqueue and terminal transitions",
+      "Durable external_action attempt records before provider calls",
+      "Baseline diff gate already tracks new memory/file/detached regressions"
+    ]
+  },
+  "report": {
+    "phase": "1-1-durable-sot-audit",
+    "generatedAt": "2026-08-03T18:44:30.422Z",
+    "domains": [
+      {
+        "domain": "Automation",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/automations/repositories/server-automation-repository.ts",
+          "lib/automations/durable.ts",
+          "lib/automation-platform/repository/memory-store.ts",
+          "lib/automation-platform/durable.ts"
+        ],
+        "durableBackend": "atlas_user_state domains atlasAutomations / atlasAutomationsV2 (+ migration tables atlas_automations)",
+        "processMemoryHotPath": "globalThis.__atlasAutomationStore / __atlasAutomationPlatformStore",
+        "fileFallback": null,
+        "browserStorage": null,
+        "mixedDetail": "Hot path = process Map; durable write via void persistDurableDomain (fire-and-forget). V2 migration SQL exists; runtime still centers on memory-store + durable-domain.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Restart loses unhydrated/unpersisted mutations until durable persist completes",
+          "Remote apply of atlas_automations table is unconfirmed"
+        ]
+      },
+      {
+        "domain": "Schedule",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/automation-platform/schedule/due-tick.ts",
+          "lib/work-queue/scheduler.ts",
+          "app/api/automations/tick/route.ts",
+          "lib/automations/global-durable.ts"
+        ],
+        "durableBackend": "nextRunAt inside durable automation payload; work-queue jobs in Postgres when available",
+        "processMemoryHotPath": "__atlasAutomationPlatformStore.nextRunAt / due list",
+        "fileFallback": ".data/work-queue.json (schedulerLastSuccessAt when file store)",
+        "browserStorage": null,
+        "mixedDetail": "V2 due-tick reads memory store; Work Queue enqueue targets Postgres or file fallback.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Tick mid-flight advances may be lost if persist not awaited"
+        ]
+      },
+      {
+        "domain": "Occurrence",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/automation-platform/repository/memory-store.ts",
+          "lib/work-queue/occurrence.ts",
+          "lib/work-queue/store/postgres-store.ts"
+        ],
+        "durableBackend": "atlas_work_queue_jobs.occurrence_key UNIQUE (Postgres); V2 occurrenceKeys Map (+ durable runs domain)",
+        "processMemoryHotPath": "__atlasAutomationPlatformStore.occurrenceKeys",
+        "fileFallback": "file-store jobs[].occurrenceKey",
+        "browserStorage": null,
+        "mixedDetail": "Work Queue SoT intended Postgres; V2 occurrence dedupe is process Map until durable-domain hydrate.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Duplicate occurrence risk across instances when memory SoT"
+        ]
+      },
+      {
+        "domain": "Run",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/automation-platform/repository/memory-store.ts",
+          "lib/automation-platform/durable-runs.ts",
+          "lib/commander/run-store.ts",
+          "lib/work-jobs/store.ts"
+        ],
+        "durableBackend": "atlasAutomationRunsV2 / atlasCommanderRuns / atlasWorkJobs in atlas_user_state; migration atlas_automation_runs",
+        "processMemoryHotPath": "__atlasAutomationPlatformStore.runs / __atlasCommanderRunStore / __atlasWorkJobs",
+        "fileFallback": null,
+        "browserStorage": null,
+        "mixedDetail": "schedulePersistAutomationRunsV2 uses void persistDurableDomain — not awaited.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Dedicated atlas_automation_runs repository usage not confirmed in runtime"
+        ]
+      },
+      {
+        "domain": "Job",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/work-queue/store/index.ts",
+          "lib/work-queue/store/postgres-store.ts",
+          "lib/work-queue/store/file-store.ts",
+          "lib/jobs/job-store.ts"
+        ],
+        "durableBackend": "atlas_work_queue_jobs (intended); atlas_automation_jobs for legacy jobs",
+        "processMemoryHotPath": "__atlasAutomationJobs (legacy fallback)",
+        "fileFallback": ".data/work-queue.json when Postgres unavailable / FORCE_FILE",
+        "browserStorage": null,
+        "mixedDetail": "getWorkQueueStore(): Postgres if DATABASE_URL else file. Legacy job-store: Supabase else memory Map.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Migration comment declares Postgres SoT",
+          "File/memory fallbacks are production-reachable if env incomplete"
+        ]
+      },
+      {
+        "domain": "Step",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/work-queue/store/postgres-store.ts",
+          "lib/work-queue/store/file-store.ts",
+          "lib/work-queue/worker.ts"
+        ],
+        "durableBackend": "atlas_work_queue_steps",
+        "processMemoryHotPath": null,
+        "fileFallback": "embedded in .data/work-queue.json",
+        "browserStorage": null,
+        "mixedDetail": "Follows Work Queue store backend (Postgres vs file).",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "In-flight step status lost if not persisted before crash"
+        ]
+      },
+      {
+        "domain": "Lease",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/work-queue/store/postgres-store.ts",
+          "lib/work-queue/store/file-store.ts",
+          "lib/work-queue/worker.ts"
+        ],
+        "durableBackend": "atlas_work_queue_jobs.lease_owner / lease_expires_at",
+        "processMemoryHotPath": null,
+        "fileFallback": "file-store lease fields (process-local mutex only)",
+        "browserStorage": null,
+        "mixedDetail": "Postgres SKIP LOCKED style leasing when PG available; file store mutex is single-process only.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Restart clears in-memory mutex; lease reclaim depends on durable lease expiry"
+        ]
+      },
+      {
+        "domain": "Heartbeat",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/work-queue/worker.ts"
+        ],
+        "durableBackend": "job.heartbeat_at column (Postgres/file)",
+        "processMemoryHotPath": "setInterval void store.heartbeat(...) fire-and-forget",
+        "fileFallback": "same file snapshot",
+        "browserStorage": null,
+        "mixedDetail": "Heartbeat updates are detached (void promise). Missed heartbeats → stuck reclaim path.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Timer dies with process; last durable heartbeat_at remains if persisted"
+        ]
+      },
+      {
+        "domain": "Retry",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/work-queue/retry.ts",
+          "lib/work-queue/worker.ts",
+          "lib/jobs/job-store.ts"
+        ],
+        "durableBackend": "job.retry_at / attempt / status in Work Queue or automation_jobs",
+        "processMemoryHotPath": "__atlasAutomationJobs.nextRetryAt when memory fallback",
+        "fileFallback": "file-store retryAt",
+        "browserStorage": null,
+        "mixedDetail": "Retry decision is code; schedule state must be durable to resume.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Memory-only retry schedule is lost on restart"
+        ]
+      },
+      {
+        "domain": "Recovery",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/work-queue/worker.ts",
+          "lib/jobs/reliability.ts",
+          "lib/owner/disaster-recovery/store.ts"
+        ],
+        "durableBackend": "Work Queue reclaim via lease expiry; reliability events table; DR durable domain",
+        "processMemoryHotPath": "owner DR / monitoring globalThis buckets",
+        "fileFallback": "file-store recovery counters",
+        "browserStorage": null,
+        "mixedDetail": "Recovery effectiveness depends on durable lease/job state.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": []
+      },
+      {
+        "domain": "Artifact",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/deliverables/store.ts",
+          "lib/deliverables/durable-store.ts",
+          "lib/deliverables/object-storage.ts",
+          "lib/work-queue/steps/execute-step.ts"
+        ],
+        "durableBackend": "atlas_deliverable_files + Supabase Storage; contentBase64 emergency column",
+        "processMemoryHotPath": "__atlasDeliverableStore",
+        "fileFallback": "local object-storage backend / .data/work-queue-artifacts (offline notify)",
+        "browserStorage": null,
+        "mixedDetail": "void persistDurableDeliverable after memory insert — crash window between buffer and durable write.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Disk load explicitly removed from durable-store; local backend still exists for dev"
+        ]
+      },
+      {
+        "domain": "CompletionEvidence",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/jobs/completion-evidence.ts",
+          "lib/automation-platform/execution/completion-evidence-v2.ts",
+          "lib/work-queue/completion-gate.ts",
+          "lib/results/completion.ts"
+        ],
+        "durableBackend": "job steps/evidence JSON; run artifacts in durable runs; work-queue step outputs",
+        "processMemoryHotPath": "V2 run evidence in memory store until persist",
+        "fileFallback": "file-store step outputBindings",
+        "browserStorage": null,
+        "mixedDetail": "Evaluation helpers are pure; storage of evidence follows Run/Job SoT (often mixed).",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "External success without durable evidence → false completed risk on recovery"
+        ]
+      },
+      {
+        "domain": "Memory",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/work-memory/store.ts",
+          "lib/work-memory/durable.ts",
+          "lib/personal-memory/store.ts",
+          "lib/personal-memory/durable.ts",
+          "lib/memory-apply/audit.ts"
+        ],
+        "durableBackend": "atlasWorkMemory / atlasPersonalMemory / atlasMemoryApplyLog in atlas_user_state",
+        "processMemoryHotPath": "__atlasWorkMemory* / __atlasPersonalMemory*",
+        "fileFallback": null,
+        "browserStorage": "explicitly NON-SoT (user-profile/company-templates/etc. must not be Memory SoT)",
+        "mixedDetail": "Hot Map + void persistDurableDomain. localStorage listed as non-SoT in memory-apply audit.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "docs/work-memory.md stale vs code durable domain"
+        ]
+      },
+      {
+        "domain": "Notification",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/notifications/store.ts",
+          "lib/notifications/durable.ts",
+          "lib/notifications/service.ts",
+          "lib/notifications/dlq.ts"
+        ],
+        "durableBackend": "atlasNotifications domain; atlas_notification_dlq; atlas_push_subscriptions",
+        "processMemoryHotPath": "__atlasNotificationStore / Preferences / Dlq",
+        "fileFallback": null,
+        "browserStorage": null,
+        "mixedDetail": "createNotification schedules durable persist + void deliver*WithAck (detached delivery).",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Read-state race documented in web-push-investigation.md"
+        ]
+      },
+      {
+        "domain": "Metrics",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/reliability/metrics.ts",
+          "lib/memory-apply/metrics.ts",
+          "lib/owner/monitoring/store.ts",
+          "lib/work-queue/store/file-store.ts"
+        ],
+        "durableBackend": "atlas_reliability_events; monitoring durable domain (debounced); work-queue metrics columns/file",
+        "processMemoryHotPath": "__atlasMemoryApplyMetrics / monitoring global buckets",
+        "fileFallback": "file-store scheduleDelays/executionMs counters",
+        "browserStorage": null,
+        "mixedDetail": "Many counters are process-only; selected paths debounce to durable.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": []
+      },
+      {
+        "domain": "Idempotency",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/automation-platform/repository/memory-store.ts",
+          "lib/work-queue/store/postgres-store.ts",
+          "lib/work-queue/store/file-store.ts",
+          "lib/jobs/job-store.ts",
+          "lib/billing/stripe/webhook-idempotency.ts"
+        ],
+        "durableBackend": "UNIQUE constraints on work queue / automation jobs; stripe webhook table; durable domains",
+        "processMemoryHotPath": "__atlasAutomationPlatformStore.idempotencyKeys / __atlasStripeProcessedWebhookEvents",
+        "fileFallback": "file-store idempotencyKey uniqueness",
+        "browserStorage": null,
+        "mixedDetail": "V2 run idempotency is process Map; Work Queue uses DB UNIQUE when Postgres active.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Multi-instance double enqueue when memory idempotency"
+        ]
+      },
+      {
+        "domain": "ExternalAction",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/automation-platform/execution/executor.ts",
+          "lib/integrations/x/oauth-service.ts",
+          "lib/work-queue/steps/execute-step.ts"
+        ],
+        "durableBackend": "evidence fields / notification ACK / OAuth credential tables — only if persisted",
+        "processMemoryHotPath": "run step state in memory before durable persist",
+        "fileFallback": "offline notify receipt under .data/work-queue-artifacts",
+        "browserStorage": null,
+        "mixedDetail": "External API success can precede durable evidence write; token refresh uses void persist*.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Duplicate external side-effect risk on retry after crash"
+        ]
+      },
+      {
+        "domain": "Approval",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/automation-platform/service/automation-service.ts",
+          "lib/automation-platform/state-machine/transitions.ts",
+          "lib/jobs/completion-evidence.ts"
+        ],
+        "durableBackend": "run status awaiting_approval in durable runs domain / job status",
+        "processMemoryHotPath": "V2 run status in memory Map",
+        "fileFallback": null,
+        "browserStorage": null,
+        "mixedDetail": "Approval gate follows Run SoT (mixed).",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": []
+      },
+      {
+        "domain": "FirstExperience",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/first-experience/run.ts",
+          "lib/user-profile/store.ts",
+          "lib/onboarding/store.ts"
+        ],
+        "durableBackend": "orchestrate/work request if completed; profile otherwise browser",
+        "processMemoryHotPath": null,
+        "fileFallback": null,
+        "browserStorage": "user-profile / onboarding localStorage",
+        "mixedDetail": "runFirstExperienceTask races orchestration vs timeout; profile prefs in localStorage.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Not a durable server SoT for completion"
+        ]
+      },
+      {
+        "domain": "OAuthConnection",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/integrations/google/credential-persistence.ts",
+          "lib/integrations/x/credential-persistence.ts",
+          "lib/integrations/wordpress/credential-persistence.ts",
+          "lib/integrations/external-services/durable.ts",
+          "lib/integrations/*/credential-store.ts"
+        ],
+        "durableBackend": "dedicated OAuth tables (google/x/wordpress) + atlasExternalAuth domain",
+        "processMemoryHotPath": "__atlas*CredentialStore / __atlasExternalService*",
+        "fileFallback": null,
+        "browserStorage": null,
+        "mixedDetail": "Token refresh often void persist*ToSupabase — crash can drop refreshed token.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Dropbox appears generic external-auth path"
+        ]
+      },
+      {
+        "domain": "Lock",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/work-queue/store/file-store.ts",
+          "lib/work-queue/store/postgres-store.ts",
+          "lib/http/rate-limit.ts"
+        ],
+        "durableBackend": "Postgres row lease / SKIP LOCKED",
+        "processMemoryHotPath": "file-store Promise mutex; __atlasHttpRateLimits Map",
+        "fileFallback": "in-process mutex only",
+        "browserStorage": null,
+        "mixedDetail": "File mutex does not cross instances.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": []
+      },
+      {
+        "domain": "Prediction",
+        "sot": "process_memory",
+        "primaryPaths": [
+          "lib/memory-apply/metrics.ts",
+          "lib/proactive-suggestions/persistence.ts"
+        ],
+        "durableBackend": null,
+        "processMemoryHotPath": "__atlasMemoryApplyMetrics channel coverage",
+        "fileFallback": null,
+        "browserStorage": "proactive-suggestions preferences localStorage",
+        "mixedDetail": null,
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Metrics process-only; suggestion prefs browser-only"
+        ]
+      },
+      {
+        "domain": "Monitoring",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/owner/monitoring/store.ts",
+          "lib/owner/monitoring/durable.ts",
+          "lib/owner/error-monitoring/store.ts"
+        ],
+        "durableBackend": "monitoring durable domain (debounced setTimeout + void)",
+        "processMemoryHotPath": "owner monitoring globalThis store",
+        "fileFallback": null,
+        "browserStorage": null,
+        "mixedDetail": "Live telemetry memory; durable debounce may drop on crash.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": []
+      },
+      {
+        "domain": "ResultApi",
+        "sot": "mixed",
+        "primaryPaths": [
+          "app/api/notifications/[id]/result/route.ts",
+          "lib/notifications/result-resolution.ts",
+          "lib/results/dev-preview.ts"
+        ],
+        "durableBackend": "durable notifications + deliverables + projects",
+        "processMemoryHotPath": "hot notification/deliverable stores after hydrate",
+        "fileFallback": null,
+        "browserStorage": "dev-preview localStorage map (dev)",
+        "mixedDetail": "Prod path expects durable; cold start without hydrate → unavailable.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": []
+      },
+      {
+        "domain": "SavedMinutes",
+        "sot": "derived",
+        "primaryPaths": [
+          "lib/automation-first/home-data.ts",
+          "components/automation-first/automation-first-home.tsx"
+        ],
+        "durableBackend": null,
+        "processMemoryHotPath": null,
+        "fileFallback": null,
+        "browserStorage": null,
+        "mixedDetail": null,
+        "survivesRestart": true,
+        "productionReachable": true,
+        "notes": [
+          "savedMinutes is number|null derived UI value; currently null unless measured — no durable store found"
+        ]
+      },
+      {
+        "domain": "DashboardAggregation",
+        "sot": "derived",
+        "primaryPaths": [
+          "lib/dashboard/use-dashboard-home.ts",
+          "components/home/today-dashboard.tsx",
+          "lib/projects/use-projects.ts"
+        ],
+        "durableBackend": "underlying projects/automations when Supabase configured",
+        "processMemoryHotPath": null,
+        "fileFallback": null,
+        "browserStorage": "projects localStorage cache/fallback possible",
+        "mixedDetail": "Aggregation is derived; projects backend may be localStorage in non-Supabase configs.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": []
+      },
+      {
+        "domain": "StorageMetadata",
+        "sot": "mixed",
+        "primaryPaths": [
+          "lib/deliverables/durable-store.ts",
+          "lib/attachments/supabase-store.ts",
+          "lib/attachments/local-store.ts"
+        ],
+        "durableBackend": "atlas_deliverable_files / atlas_image_attachments + Storage buckets",
+        "processMemoryHotPath": "__atlasLocalAttachments / __atlasDeliverableStore",
+        "fileFallback": "docs mention .data/attachments; local-store is memory Map",
+        "browserStorage": null,
+        "mixedDetail": "Prod requires Supabase; local/dev uses memory.",
+        "survivesRestart": false,
+        "productionReachable": true,
+        "notes": [
+          "Local file attachments path doc-confirmed; code path is memory store"
+        ]
+      }
+    ],
+    "findings": [
+      {
+        "id": "P0-WQ-FILE-FALLBACK",
+        "criticality": "P0",
+        "title": "Work Queue falls back to .data file when Postgres unavailable",
+        "domain": "Job",
+        "evidence": [
+          "lib/work-queue/store/index.ts:8-22",
+          "lib/work-queue/store/file-store.ts:47-50",
+          "lib/runtime/ephemeral-fs.ts:8-28"
+        ],
+        "impact": "job_loss",
+        "restartRisk": true,
+        "multiInstanceRisk": true,
+        "migrationTarget": true
+      },
+      {
+        "id": "P0-V2-RUN-MEMORY-SOT",
+        "criticality": "P0",
+        "title": "Automation Platform V2 runs/idempotency/occurrence live in process Map",
+        "domain": "Run",
+        "evidence": [
+          "lib/automation-platform/repository/memory-store.ts:15-28",
+          "lib/automation-platform/repository/memory-store.ts:101-125",
+          "lib/automation-platform/durable-runs.ts:50-59"
+        ],
+        "impact": "double_execution",
+        "restartRisk": true,
+        "multiInstanceRisk": true,
+        "migrationTarget": true
+      },
+      {
+        "id": "P0-EXTERNAL-BEFORE-EVIDENCE",
+        "criticality": "P0",
+        "title": "External action / notify can succeed before durable evidence/persist",
+        "domain": "ExternalAction",
+        "evidence": [
+          "lib/notifications/service.ts:140-214",
+          "lib/deliverables/store.ts:173-174",
+          "lib/automation-platform/durable-runs.ts:50-59",
+          "lib/work-queue/steps/execute-step.ts:180-232"
+        ],
+        "impact": "external_action_duplicate",
+        "restartRisk": true,
+        "multiInstanceRisk": true,
+        "migrationTarget": true
+      },
+      {
+        "id": "P0-LEGACY-JOB-MEMORY-FALLBACK",
+        "criticality": "P0",
+        "title": "Legacy automation jobs fall back to globalThis Map when Supabase missing",
+        "domain": "Job",
+        "evidence": [
+          "lib/jobs/job-store.ts:49-56",
+          "lib/jobs/job-store.ts:175-260"
+        ],
+        "impact": "job_loss",
+        "restartRisk": true,
+        "multiInstanceRisk": true,
+        "migrationTarget": true
+      },
+      {
+        "id": "P0-FALSE-COMPLETED-WITHOUT-DURABLE-EVIDENCE",
+        "criticality": "P0",
+        "title": "Completion/evidence stored via mixed SoT — restart can lose proof while side effects remain",
+        "domain": "CompletionEvidence",
+        "evidence": [
+          "lib/jobs/completion-evidence.ts:24-80",
+          "lib/work-queue/completion-gate.ts",
+          "lib/automation-platform/execution/run-completion.ts"
+        ],
+        "impact": "false_completed",
+        "restartRisk": true,
+        "multiInstanceRisk": false,
+        "migrationTarget": true
+      },
+      {
+        "id": "P0-DETACHED-HEARTBEAT",
+        "criticality": "P0",
+        "title": "Worker heartbeat is fire-and-forget void promise",
+        "domain": "Heartbeat",
+        "evidence": [
+          "lib/work-queue/worker.ts:73-83"
+        ],
+        "impact": "double_execution",
+        "restartRisk": true,
+        "multiInstanceRisk": true,
+        "migrationTarget": true
+      },
+      {
+        "id": "P1-AUTOMATION-FIRE-AND-FORGET-PERSIST",
+        "criticality": "P1",
+        "title": "Automation persist scheduled via void persistDurableDomain",
+        "domain": "Automation",
+        "evidence": [
+          "lib/automations/durable.ts:73-86",
+          "lib/automation-platform/durable.ts:57"
+        ],
+        "impact": "restart_inconsistency",
+        "restartRisk": true,
+        "multiInstanceRisk": true,
+        "migrationTarget": true
+      },
+      {
+        "id": "P1-MEMORY-FIRE-AND-FORGET-PERSIST",
+        "criticality": "P1",
+        "title": "Work/Personal Memory durable writes are detached",
+        "domain": "Memory",
+        "evidence": [
+          "lib/work-memory/durable.ts:74-78",
+          "lib/personal-memory/durable.ts:91-92"
+        ],
+        "impact": "memory_loss",
+        "restartRisk": true,
+        "multiInstanceRisk": true,
+        "migrationTarget": true
+      },
+      {
+        "id": "P1-NOTIFICATION-DETACHED-DELIVERY",
+        "criticality": "P1",
+        "title": "LINE/WebPush delivery is void deliver*WithAck",
+        "domain": "Notification",
+        "evidence": [
+          "lib/notifications/service.ts:141-213"
+        ],
+        "impact": "restart_inconsistency",
+        "restartRisk": true,
+        "multiInstanceRisk": true,
+        "migrationTarget": true
+      },
+      {
+        "id": "P1-OAUTH-TOKEN-REFRESH-DETACHED",
+        "criticality": "P1",
+        "title": "OAuth token refresh persistence is fire-and-forget",
+        "domain": "OAuthConnection",
+        "evidence": [
+          "lib/integrations/x/token-manager.ts:90-92",
+          "lib/integrations/google/token-manager.ts:87-89",
+          "lib/integrations/x/oauth-service.ts:159-178"
+        ],
+        "impact": "recovery_impossible",
+        "restartRisk": true,
+        "multiInstanceRisk": true,
+        "migrationTarget": true
+      },
+      {
+        "id": "P1-METRICS-PROCESS-ONLY",
+        "criticality": "P1",
+        "title": "Memory-apply / many monitoring counters are process-memory only",
+        "domain": "Metrics",
+        "evidence": [
+          "lib/memory-apply/metrics.ts:33-47",
+          "lib/owner/monitoring/store.ts:17-73"
+        ],
+        "impact": "metrics_loss",
+        "restartRisk": true,
+        "multiInstanceRisk": true,
+        "migrationTarget": true
+      },
+      {
+        "id": "P1-SCHEDULE-TICK-MEMORY",
+        "criticality": "P1",
+        "title": "V2 scheduler due list depends on process-resident automations",
+        "domain": "Schedule",
+        "evidence": [
+          "lib/automation-platform/schedule/due-tick.ts",
+          "lib/automation-platform/repository/memory-store.ts:74-91"
+        ],
+        "impact": "schedule_miss",
+        "restartRisk": true,
+        "multiInstanceRisk": true,
+        "migrationTarget": true
+      },
+      {
+        "id": "P1-RETRY-SCHEDULE-LOST",
+        "criticality": "P1",
+        "title": "Retry schedule lost if stored only in memory fallback job store",
+        "domain": "Retry",
+        "evidence": [
+          "lib/jobs/job-store.ts:49-56",
+          "lib/work-queue/retry.ts"
+        ],
+        "impact": "recovery_impossible",
+        "restartRisk": true,
+        "multiInstanceRisk": false,
+        "migrationTarget": true
+      },
+      {
+        "id": "P2-LOCALSTORAGE-PROFILE-ONBOARDING",
+        "criticality": "P2",
+        "title": "User profile / onboarding / first-experience prefs use localStorage",
+        "domain": "FirstExperience",
+        "evidence": [
+          "lib/user-profile/store.ts:112-148",
+          "lib/onboarding/store.ts",
+          "lib/first-experience/run.ts:32-49"
+        ],
+        "impact": "ui_inconsistency",
+        "restartRisk": false,
+        "multiInstanceRisk": false,
+        "migrationTarget": true
+      },
+      {
+        "id": "P2-PROJECTS-LOCALSTORAGE-FALLBACK",
+        "criticality": "P2",
+        "title": "Projects repository can use localStorage as backend/cache",
+        "domain": "DashboardAggregation",
+        "evidence": [
+          "lib/projects/repositories/local-storage-repository.ts",
+          "lib/supabase/env.ts:62-88",
+          "lib/dashboard/use-dashboard-home.ts:64-65"
+        ],
+        "impact": "cache_inconsistency",
+        "restartRisk": false,
+        "multiInstanceRisk": true,
+        "migrationTarget": true
+      },
+      {
+        "id": "P2-THEME-SESSION-CACHE",
+        "criticality": "P2",
+        "title": "Theme / session draft pointers in browser storage (acceptable UI cache)",
+        "domain": "CrossCutting",
+        "evidence": [
+          "lib/theme/storage.ts",
+          "lib/automation-platform/client.ts:306-335",
+          "lib/workspace/work-request-payload.ts:104-116"
+        ],
+        "impact": "noncritical_history_loss",
+        "restartRisk": false,
+        "multiInstanceRisk": false,
+        "migrationTarget": false
+      }
+    ],
+    "restartScenarios": [
+      {
+        "id": "A",
+        "title": "Job queued直後に process restart",
+        "codePaths": [
+          "lib/work-queue/store/postgres-store.ts (enqueue)",
+          "lib/work-queue/store/file-store.ts (enqueue + persist)",
+          "lib/work-queue/store/index.ts (backend selection)"
+        ],
+        "remains": [
+          "Postgres path: job row with status queued (if commit completed)",
+          "File path: job in .data/work-queue.json only if persist() finished"
+        ],
+        "lost": [
+          "In-memory singleton store state",
+          "Uncommitted enqueue / incomplete file rename",
+          "V2 run occurrence Map entries not yet durable-persisted"
+        ],
+        "resumable": true,
+        "doubleExecutionRisk": false,
+        "falseCompletedRisk": false,
+        "currentOutcome": "Postgres SoT → worker can lease after restart. File SoT → only same instance disk; Vercel ephemeral → job lost. Memory-only V2 enqueue → lost.",
+        "requiredFix": "Mandate Postgres Work Queue in production (fail-fast if unavailable); await durable run/occurrence write before ack."
+      },
+      {
+        "id": "B",
+        "title": "Worker running中に restart",
+        "codePaths": [
+          "lib/work-queue/worker.ts:49-120 (lease, running, heartbeat interval)",
+          "lib/work-queue/store/* (lease_expires_at / heartbeat_at)"
+        ],
+        "remains": [
+          "Last persisted job status/lease/heartbeat",
+          "Completed steps already written via updateStep"
+        ],
+        "lost": [
+          "setInterval heartbeat timer",
+          "In-flight step execution without updateStep",
+          "Process-local file mutex"
+        ],
+        "resumable": true,
+        "doubleExecutionRisk": true,
+        "falseCompletedRisk": false,
+        "currentOutcome": "After lease expiry another worker can reclaim. If external side-effect already applied but step not completed → duplicate risk on retry.",
+        "requiredFix": "Durable step claim + external idempotency keys before side effects; await heartbeat writes or shorten reclaim with evidence checks."
+      },
+      {
+        "id": "C",
+        "title": "Artifact生成後、Storage保存前に restart",
+        "codePaths": [
+          "lib/deliverables/store.ts:173-174 (void persistDurableDeliverable)",
+          "lib/deliverables/durable-store.ts",
+          "lib/deliverables/object-storage.ts:190-203"
+        ],
+        "remains": [
+          "Possibly nothing if only __atlasDeliverableStore had the buffer",
+          "Partial DB row without storage object if mid-write"
+        ],
+        "lost": [
+          "In-memory deliverable buffer",
+          "Unfinished Storage upload"
+        ],
+        "resumable": false,
+        "doubleExecutionRisk": true,
+        "falseCompletedRisk": true,
+        "currentOutcome": "User/job may see memory hit then cold miss; regenerate may create second artifact. Local backend reports ok without durable bytes.",
+        "requiredFix": "Await durable metadata+bytes before returning success; transactional evidence linking artifactId to job/run."
+      },
+      {
+        "id": "D",
+        "title": "External API成功後、Evidence保存前に restart",
+        "codePaths": [
+          "lib/work-queue/steps/execute-step.ts (external steps)",
+          "lib/automation-platform/execution/executor.ts",
+          "lib/jobs/completion-evidence.ts",
+          "lib/integrations/x/* (post + void credential persist)"
+        ],
+        "remains": [
+          "External system side effect (tweet/mail/etc.)",
+          "Possibly no durable evidence in job/run"
+        ],
+        "lost": [
+          "In-memory run/step evidence",
+          "Detached durable-domain persist of runs"
+        ],
+        "resumable": true,
+        "doubleExecutionRisk": true,
+        "falseCompletedRisk": true,
+        "currentOutcome": "Retry may re-post; or recovery marks failed despite external success; false completed if memory said ok without durable proof.",
+        "requiredFix": "Write pending_external / idempotency record BEFORE external call; store provider result ids durably before completed."
+      },
+      {
+        "id": "E",
+        "title": "Notification前に restart",
+        "codePaths": [
+          "lib/notifications/service.ts:192-214",
+          "lib/notifications/durable.ts:50-63",
+          "lib/work-queue/steps/execute-step.ts:180-232"
+        ],
+        "remains": [
+          "Job/run may already be completed in store",
+          "In-app notification only if append+persist completed"
+        ],
+        "lost": [
+          "void deliverLineWithAck / deliverWebPushWithAck in flight",
+          "Debounced notification durable persist"
+        ],
+        "resumable": false,
+        "doubleExecutionRisk": true,
+        "falseCompletedRisk": false,
+        "currentOutcome": "User may get job completed without push/LINE; retry notify can duplicate if not idempotent.",
+        "requiredFix": "Durable outbox for notification delivery; ACK/DLQ already partial — make create→outbox transactional with job completion."
+      },
+      {
+        "id": "F",
+        "title": "Scheduler tick中に restart",
+        "codePaths": [
+          "app/api/automations/tick/route.ts",
+          "lib/automation-platform/schedule/due-tick.ts",
+          "lib/work-queue/scheduler.ts",
+          "lib/automations/global-durable.ts"
+        ],
+        "remains": [
+          "Already enqueued Work Queue jobs (if durable backend)",
+          "Persisted nextRunAt if durable persist completed"
+        ],
+        "lost": [
+          "In-memory due list / nextRunAt advances not persisted",
+          "Tick claims only in process/global durable if write incomplete"
+        ],
+        "resumable": true,
+        "doubleExecutionRisk": true,
+        "falseCompletedRisk": false,
+        "currentOutcome": "Missed tick or double occurrence enqueue depending on whether occurrenceKey was durable.",
+        "requiredFix": "Durable occurrence reservation before enqueue; DB unique on occurrence; await nextRunAt persist."
+      },
+      {
+        "id": "G",
+        "title": "Memory更新直後に restart",
+        "codePaths": [
+          "lib/work-memory/store.ts",
+          "lib/work-memory/durable.ts:74-78",
+          "lib/personal-memory/durable.ts:91-92"
+        ],
+        "remains": [
+          "Last successfully upserted atlas_user_state payload"
+        ],
+        "lost": [
+          "Hot Map mutations after last void persistDurableDomain",
+          "Hydration flags (re-hydrate on next request)"
+        ],
+        "resumable": false,
+        "doubleExecutionRisk": false,
+        "falseCompletedRisk": false,
+        "currentOutcome": "Recent memory writes disappear until user re-enters them; apply-log may also miss events.",
+        "requiredFix": "Await persist for mutating Memory APIs; optional write-ahead to atlas_user_state before ACK."
+      },
+      {
+        "id": "H",
+        "title": "Retry scheduled中に restart",
+        "codePaths": [
+          "lib/work-queue/retry.ts",
+          "lib/work-queue/worker.ts (decideRetry → updateJob retry_at)",
+          "lib/jobs/job-store.ts (next_retry_at / memory Map)"
+        ],
+        "remains": [
+          "Postgres/file job with retry_at/status if update persisted"
+        ],
+        "lost": [
+          "Memory-fallback job retry schedule",
+          "In-flight decideRetry before store update"
+        ],
+        "resumable": true,
+        "doubleExecutionRisk": true,
+        "falseCompletedRisk": false,
+        "currentOutcome": "Durable retry_at → recovered on next drain. Memory-only → retry forever lost. Reclaim may re-run external steps.",
+        "requiredFix": "Forbid memory-only job store in production; durable retry_at + external idempotency."
+      }
+    ],
+    "multiInstance": [
+      {
+        "id": "MI-2-WORKERS",
+        "title": "2 Worker同時",
+        "codePaths": [
+          "lib/work-queue/worker.ts",
+          "lib/work-queue/store/postgres-store.ts",
+          "lib/work-queue/store/file-store.ts"
+        ],
+        "processMemoryShared": false,
+        "fileShared": false,
+        "dbShared": true,
+        "raceResult": "Postgres: lease/SKIP LOCKED should serialize. File store: per-process mutex + shared JSON races → duplicate lease/lost updates. Process memory irrelevant for queue when using PG.",
+        "requiredFix": "Production-only Postgres store; ban file fallback on multi-instance."
+      },
+      {
+        "id": "MI-2-SCHEDULER-TICKS",
+        "title": "2 Scheduler tick同時",
+        "codePaths": [
+          "app/api/automations/tick/route.ts",
+          "lib/automation-platform/schedule/due-tick.ts",
+          "lib/automations/global-durable.ts"
+        ],
+        "processMemoryShared": false,
+        "fileShared": false,
+        "dbShared": true,
+        "raceResult": "Each instance has its own automation Map. Without durable occurrence unique, both may enqueue same occurrence. Global durable claims help only if awaited/shared.",
+        "requiredFix": "DB unique(occurrence_key) + claim row before enqueue; remove memory-only due lists."
+      },
+      {
+        "id": "MI-JOB-LEASE",
+        "title": "同一Job lease競合",
+        "codePaths": [
+          "lib/work-queue/store/postgres-store.ts",
+          "lib/work-queue/store/file-store.ts"
+        ],
+        "processMemoryShared": false,
+        "fileShared": false,
+        "dbShared": true,
+        "raceResult": "PG lease columns mediate. File store cannot safely coordinate across instances — both may believe they own the lease.",
+        "requiredFix": "Fail-fast if Work Queue not Postgres in production."
+      },
+      {
+        "id": "MI-OCCURRENCE",
+        "title": "同一Occurrence作成",
+        "codePaths": [
+          "lib/automation-platform/repository/memory-store.ts:112-118",
+          "lib/work-queue/occurrence.ts",
+          "supabase/migrations/20260802_atlas_work_queue.sql"
+        ],
+        "processMemoryShared": false,
+        "fileShared": false,
+        "dbShared": true,
+        "raceResult": "V2 memory occurrenceKeys Map is per-instance → duplicate runs. Work Queue PG unique on occurrence_key blocks duplicates when used.",
+        "requiredFix": "Move V2 occurrence index to DB unique constraint (Phase 1-2+)."
+      },
+      {
+        "id": "MI-EXTERNAL-ACTION",
+        "title": "同一External Action実行",
+        "codePaths": [
+          "lib/automation-platform/execution/executor.ts",
+          "lib/work-queue/steps/execute-step.ts",
+          "lib/integrations/x/post/*"
+        ],
+        "processMemoryShared": false,
+        "fileShared": false,
+        "dbShared": false,
+        "raceResult": "Idempotency in process Map / missing provider idempotency → duplicate posts/sends across instances or retries.",
+        "requiredFix": "Durable idempotency key + provider dedupe before external call."
+      },
+      {
+        "id": "MI-NOTIFICATION",
+        "title": "同一Notification送信",
+        "codePaths": [
+          "lib/notifications/service.ts",
+          "lib/notifications/store.ts",
+          "lib/notifications/dlq.ts"
+        ],
+        "processMemoryShared": false,
+        "fileShared": false,
+        "dbShared": true,
+        "raceResult": "In-app store is process memory until durable hydrate; two instances may create duplicate notifications / double push if delivery detached twice.",
+        "requiredFix": "Durable notification id/outbox with unique constraint; await delivery state."
+      },
+      {
+        "id": "MI-ARTIFACT",
+        "title": "同一Artifact生成",
+        "codePaths": [
+          "lib/deliverables/store.ts",
+          "lib/deliverables/durable-store.ts",
+          "lib/deliverables/object-storage.ts"
+        ],
+        "processMemoryShared": false,
+        "fileShared": false,
+        "dbShared": true,
+        "raceResult": "Memory store not shared; parallel generates create distinct ids. Storage upload has some already-exists handling, but job may attach wrong/missing artifact.",
+        "requiredFix": "Content-addressed or job-scoped unique artifact keys in DB before generate."
+      }
+    ],
+    "migrationTargets": [
+      {
+        "domain": "Job",
+        "currentStorage": "mixed",
+        "targetStorage": "Postgres atlas_work_queue_jobs (mandatory prod)",
+        "migrationRequired": true,
+        "schemaRequired": false,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": true,
+        "transactionRequired": true,
+        "ttlRequired": false,
+        "retention": "operational + audit window (90d+)",
+        "rollbackDifficulty": "high",
+        "priority": "P0",
+        "rationale": "File/memory fallback loses work on restart/multi-instance."
+      },
+      {
+        "domain": "Run",
+        "currentStorage": "mixed",
+        "targetStorage": "Postgres atlas_automation_runs (or harden durable-domain await)",
+        "migrationRequired": true,
+        "schemaRequired": true,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": true,
+        "transactionRequired": true,
+        "ttlRequired": true,
+        "retention": "per applyRunRetentionPolicy + longer evidence retention",
+        "rollbackDifficulty": "high",
+        "priority": "P0",
+        "rationale": "V2 memory Map is live SoT for runs/idempotency/occurrence."
+      },
+      {
+        "domain": "Step",
+        "currentStorage": "mixed",
+        "targetStorage": "Postgres atlas_work_queue_steps",
+        "migrationRequired": true,
+        "schemaRequired": false,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": true,
+        "transactionRequired": true,
+        "ttlRequired": false,
+        "retention": "with parent job",
+        "rollbackDifficulty": "medium",
+        "priority": "P0",
+        "rationale": "Step progress must survive crash for safe resume."
+      },
+      {
+        "domain": "Lease",
+        "currentStorage": "mixed",
+        "targetStorage": "Postgres lease columns only",
+        "migrationRequired": true,
+        "schemaRequired": false,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": false,
+        "transactionRequired": true,
+        "ttlRequired": true,
+        "retention": "lease TTL via lease_expires_at",
+        "rollbackDifficulty": "medium",
+        "priority": "P0",
+        "rationale": "File mutex is not multi-instance safe."
+      },
+      {
+        "domain": "Heartbeat",
+        "currentStorage": "mixed",
+        "targetStorage": "Postgres heartbeat_at (awaited or batched durable)",
+        "migrationRequired": true,
+        "schemaRequired": false,
+        "repositoryRequired": false,
+        "uniqueConstraintRequired": false,
+        "transactionRequired": false,
+        "ttlRequired": true,
+        "retention": "overwrite in place",
+        "rollbackDifficulty": "low",
+        "priority": "P0",
+        "rationale": "Detached heartbeat causes false stuck / double lease."
+      },
+      {
+        "domain": "Idempotency",
+        "currentStorage": "mixed",
+        "targetStorage": "DB unique indexes (runs, jobs, external actions)",
+        "migrationRequired": true,
+        "schemaRequired": true,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": true,
+        "transactionRequired": true,
+        "ttlRequired": true,
+        "retention": "TTL for ephemeral keys; permanent for external action receipts",
+        "rollbackDifficulty": "medium",
+        "priority": "P0",
+        "rationale": "Process Map idempotency cannot prevent cross-instance duplicates."
+      },
+      {
+        "domain": "CompletionEvidence",
+        "currentStorage": "mixed",
+        "targetStorage": "DB evidence columns / outbox linked to job+run",
+        "migrationRequired": true,
+        "schemaRequired": true,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": true,
+        "transactionRequired": true,
+        "ttlRequired": false,
+        "retention": "long-term audit",
+        "rollbackDifficulty": "high",
+        "priority": "P0",
+        "rationale": "Evidence must precede completed; survive restart."
+      },
+      {
+        "domain": "ExternalAction",
+        "currentStorage": "mixed",
+        "targetStorage": "DB external_action_attempts + provider idempotency",
+        "migrationRequired": true,
+        "schemaRequired": true,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": true,
+        "transactionRequired": true,
+        "ttlRequired": false,
+        "retention": "long-term",
+        "rollbackDifficulty": "high",
+        "priority": "P0",
+        "rationale": "Prevent duplicate side effects after crash/retry."
+      },
+      {
+        "domain": "Schedule",
+        "currentStorage": "mixed",
+        "targetStorage": "DB schedule + occurrence reservation",
+        "migrationRequired": true,
+        "schemaRequired": true,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": true,
+        "transactionRequired": true,
+        "ttlRequired": false,
+        "retention": "with automation lifetime",
+        "rollbackDifficulty": "medium",
+        "priority": "P1",
+        "rationale": "Due-tick memory lists miss/double across instances."
+      },
+      {
+        "domain": "Occurrence",
+        "currentStorage": "mixed",
+        "targetStorage": "DB unique occurrence_key",
+        "migrationRequired": true,
+        "schemaRequired": true,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": true,
+        "transactionRequired": true,
+        "ttlRequired": false,
+        "retention": "with runs",
+        "rollbackDifficulty": "medium",
+        "priority": "P1",
+        "rationale": "V2 occurrenceKeys Map is process-local."
+      },
+      {
+        "domain": "Retry",
+        "currentStorage": "mixed",
+        "targetStorage": "Postgres retry_at/attempt only",
+        "migrationRequired": true,
+        "schemaRequired": false,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": false,
+        "transactionRequired": true,
+        "ttlRequired": false,
+        "retention": "with job",
+        "rollbackDifficulty": "low",
+        "priority": "P1",
+        "rationale": "Memory fallback drops retry schedules."
+      },
+      {
+        "domain": "Recovery",
+        "currentStorage": "mixed",
+        "targetStorage": "DB reclaim based on lease + evidence",
+        "migrationRequired": true,
+        "schemaRequired": false,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": false,
+        "transactionRequired": true,
+        "ttlRequired": false,
+        "retention": "operational",
+        "rollbackDifficulty": "medium",
+        "priority": "P1",
+        "rationale": "Recovery needs durable job/lease truth."
+      },
+      {
+        "domain": "Artifact",
+        "currentStorage": "mixed",
+        "targetStorage": "atlas_deliverable_files + Storage (awaited)",
+        "migrationRequired": true,
+        "schemaRequired": false,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": true,
+        "transactionRequired": true,
+        "ttlRequired": false,
+        "retention": "user data retention policy",
+        "rollbackDifficulty": "high",
+        "priority": "P1",
+        "rationale": "void persist creates crash window after generate."
+      },
+      {
+        "domain": "Notification",
+        "currentStorage": "mixed",
+        "targetStorage": "DB outbox + atlas_user_state / DLQ tables",
+        "migrationRequired": true,
+        "schemaRequired": true,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": true,
+        "transactionRequired": true,
+        "ttlRequired": true,
+        "retention": "notifications TTL + DLQ retention",
+        "rollbackDifficulty": "medium",
+        "priority": "P1",
+        "rationale": "Detached delivery + memory hot store."
+      },
+      {
+        "domain": "Memory",
+        "currentStorage": "mixed",
+        "targetStorage": "atlas_user_state (awaited) or dedicated tables",
+        "migrationRequired": true,
+        "schemaRequired": false,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": false,
+        "transactionRequired": true,
+        "ttlRequired": false,
+        "retention": "user lifetime",
+        "rollbackDifficulty": "medium",
+        "priority": "P1",
+        "rationale": "Fire-and-forget persist loses recent writes."
+      },
+      {
+        "domain": "Metrics",
+        "currentStorage": "mixed",
+        "targetStorage": "atlas_reliability_events + aggregated metrics tables",
+        "migrationRequired": true,
+        "schemaRequired": true,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": false,
+        "transactionRequired": false,
+        "ttlRequired": true,
+        "retention": "30-90d rollups",
+        "rollbackDifficulty": "low",
+        "priority": "P1",
+        "rationale": "Process counters disappear every deploy."
+      },
+      {
+        "domain": "OAuthConnection",
+        "currentStorage": "mixed",
+        "targetStorage": "Existing OAuth tables (await refresh persist)",
+        "migrationRequired": true,
+        "schemaRequired": false,
+        "repositoryRequired": false,
+        "uniqueConstraintRequired": true,
+        "transactionRequired": true,
+        "ttlRequired": false,
+        "retention": "while connected",
+        "rollbackDifficulty": "medium",
+        "priority": "P1",
+        "rationale": "Detached token persist can brick connections after refresh."
+      },
+      {
+        "domain": "Approval",
+        "currentStorage": "mixed",
+        "targetStorage": "DB run status + approval records",
+        "migrationRequired": true,
+        "schemaRequired": true,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": true,
+        "transactionRequired": true,
+        "ttlRequired": false,
+        "retention": "with run",
+        "rollbackDifficulty": "medium",
+        "priority": "P1",
+        "rationale": "Follows Run SoT migration."
+      },
+      {
+        "domain": "FirstExperience",
+        "currentStorage": "browser_storage",
+        "targetStorage": "user durable prefs domain / profile table",
+        "migrationRequired": true,
+        "schemaRequired": true,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": false,
+        "transactionRequired": false,
+        "ttlRequired": false,
+        "retention": "user lifetime",
+        "rollbackDifficulty": "low",
+        "priority": "P2",
+        "rationale": "localStorage not server SoT; multi-device inconsistent."
+      },
+      {
+        "domain": "DashboardAggregation",
+        "currentStorage": "derived",
+        "targetStorage": "keep derived; ensure underlying projects SoT is DB",
+        "migrationRequired": false,
+        "schemaRequired": false,
+        "repositoryRequired": false,
+        "uniqueConstraintRequired": false,
+        "transactionRequired": false,
+        "ttlRequired": false,
+        "retention": "n/a",
+        "rollbackDifficulty": "low",
+        "priority": "P2",
+        "rationale": "Fix project backend; aggregation stays computed."
+      },
+      {
+        "domain": "SavedMinutes",
+        "currentStorage": "derived",
+        "targetStorage": "optional metrics table if product requires durable KPI",
+        "migrationRequired": false,
+        "schemaRequired": true,
+        "repositoryRequired": true,
+        "uniqueConstraintRequired": false,
+        "transactionRequired": false,
+        "ttlRequired": true,
+        "retention": "rollups",
+        "rollbackDifficulty": "low",
+        "priority": "P2",
+        "rationale": "Currently null-derived; no SoT to migrate yet."
+      }
+    ],
+    "recommendedOrder": [
+      {
+        "order": 1,
+        "domain": "Job / Run / Step",
+        "reason": "All completion, lease, and evidence hang off job/run/step identity. V2 memory runs + WQ file fallback are the largest loss/duplication surface."
+      },
+      {
+        "order": 2,
+        "domain": "Lease / Heartbeat",
+        "reason": "Without durable lease truth, multi-worker reclaim doubles execution of the jobs just migrated."
+      },
+      {
+        "order": 3,
+        "domain": "Idempotency",
+        "reason": "DB unique keys must exist before retry/recovery is made aggressive, or duplicates increase."
+      },
+      {
+        "order": 4,
+        "domain": "Completion Evidence + External Action outbox",
+        "reason": "Prevents false completed and external duplicates once retries are reliable."
+      },
+      {
+        "order": 5,
+        "domain": "Scheduler / Occurrence",
+        "reason": "Depends on durable job enqueue + occurrence unique; otherwise tick storms recreate work."
+      },
+      {
+        "order": 6,
+        "domain": "Retry / Recovery",
+        "reason": "Safe only after evidence + idempotency exist so reclaim cannot re-fire side effects blindly."
+      },
+      {
+        "order": 7,
+        "domain": "Artifact / Storage metadata",
+        "reason": "Link artifacts to durable job/run evidence; remove void-persist crash window."
+      },
+      {
+        "order": 8,
+        "domain": "Notification outbox",
+        "reason": "Delivery can be eventually consistent once job completion is durable and idempotent."
+      },
+      {
+        "order": 9,
+        "domain": "Memory",
+        "reason": "User value high but not on the critical external-action path; await persist after core queue SoT."
+      },
+      {
+        "order": 10,
+        "domain": "Metrics / Monitoring / First Experience",
+        "reason": "Observability and UX prefs after production work integrity is guaranteed."
+      }
+    ],
+    "nextPhase12Targets": [
+      "Eliminate production Work Queue file fallback (fail-closed to Postgres)",
+      "Replace V2 __atlasAutomationPlatformStore runs/occurrence/idempotency with DB repository",
+      "Await (or transactional outbox) for run/job durable writes on enqueue and terminal transitions",
+      "Durable external_action attempt records before provider calls",
+      "Baseline diff gate already tracks new memory/file/detached regressions"
+    ],
+    "unconfirmed": [
+      "Remote Supabase migration apply status for atlas_work_queue_* / atlas_automations / atlas_automation_runs (docs/development/pre-pro-migrations.md)",
+      "Whether production Vercel always has DATABASE_URL for Work Queue Postgres store",
+      "Direct runtime repository usage of atlas_automations / atlas_automation_runs tables (migration present; memory-store still primary in code)",
+      "Local .data/attachments file writes (documented; runtime local-store is memory Map)",
+      "Whether Clerk private metadata still holds any leftover automation payloads in live tenants"
+    ],
+    "uncertainties": [
+      "Exact race windows under Vercel fluid compute / multi-region not measured in this audit",
+      "Whether any production traffic still hits ATLAS_WORK_QUEUE_FORCE_FILE",
+      "Volume of void persistDurableDomain losses under real write latency",
+      "Dropbox credential durability path completeness vs google/x/wordpress dedicated tables"
+    ]
+  }
+}
