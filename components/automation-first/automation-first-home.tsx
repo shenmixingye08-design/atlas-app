@@ -396,22 +396,13 @@ export function AutomationFirstHome({
     month: null as number | null,
     completedCount: 0,
   });
-  const [memoryApplyRate, setMemoryApplyRate] = useState<number | null>(null);
+  // Memory apply rate is server-side SoT — show null on client (推定枠はROIパネル側)。
+  const memoryApplyRate: number | null = null;
 
   useEffect(() => {
     return scheduleMountWork(() => {
       setFirstValueDone(hasFirstValueCompletion());
       setMeasuredSlices(getMeasuredMinutesSlices());
-      void import("@/lib/memory-apply/metrics")
-        .then(({ getMemoryApplyMetrics }) => {
-          const m = getMemoryApplyMetrics();
-          if (m.useCount > 0) {
-            setMemoryApplyRate(m.successRate);
-          }
-        })
-        .catch(() => {
-          setMemoryApplyRate(null);
-        });
     });
   }, [opsSummary, automations.length]);
 
