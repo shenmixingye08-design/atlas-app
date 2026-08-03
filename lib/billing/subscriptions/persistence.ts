@@ -92,11 +92,9 @@ function recordToRow(record: UserSubscriptionRecord): BillingSubscriptionRow {
   };
 }
 
-export function writeSubscriptionsToDisk(
-  _records: Map<string, UserSubscriptionRecord>,
-): void {
-  return;
-}
+export const writeSubscriptionsToDisk: (
+  records: Map<string, UserSubscriptionRecord>,
+) => void = () => undefined;
 
 export function readSubscriptionsFromDisk(): Map<string, UserSubscriptionRecord> {
   return new Map();
@@ -106,9 +104,9 @@ export function readProcessedWebhookEventsFromDisk(): Set<string> {
   return new Set();
 }
 
-export function writeProcessedWebhookEventsToDisk(_eventIds: Set<string>): void {
-  return;
-}
+export const writeProcessedWebhookEventsToDisk: (
+  eventIds: Set<string>,
+) => void = () => undefined;
 
 function isSubscriptionRecord(value: unknown): value is UserSubscriptionRecord {
   if (!value || typeof value !== "object") return false;

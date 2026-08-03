@@ -1,4 +1,5 @@
 "use client";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -28,7 +29,9 @@ export function HomeNotificationsPreview() {
   }, []);
 
   useEffect(() => {
-    void reload();
+    return scheduleMountWork(() => {
+      void reload();
+    });
   }, [reload]);
 
   if (loading) {

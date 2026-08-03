@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useEffect, useMemo, useState } from "react";
 
 import type { Automation } from "@/lib/automations/types";
@@ -149,7 +150,9 @@ export function HomeAiActivityPanel({ automations, projects }: HomeAiActivityPan
   }, [activeJobs.length]);
 
   useEffect(() => {
-    setActiveIndex(0);
+    return scheduleMountWork(() => {
+      setActiveIndex(0);
+    });
   }, [activeJobs.length]);
 
   const currentJob = activeJobs[activeIndex] ?? null;

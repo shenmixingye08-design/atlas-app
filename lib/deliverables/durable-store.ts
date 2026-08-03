@@ -3,7 +3,6 @@ import "server-only";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
 import {
-  DELIVERABLE_METADATA_TTL_MS,
   type DeliverableDeletionReason,
   type DeliverableStorageStatus,
   MAX_BASE64_CACHE_BYTES,
@@ -80,18 +79,18 @@ export function resetDurableDeliverableStoreForTests(): void {
   scope.__atlasDeliverableDurable = new Map();
 }
 
-export function loadDeliverableFromDisk(
-  _id: string,
-  _userId: string,
-): DiskStoredDeliverable | null {
+export const loadDeliverableFromDisk: (
+  id: string,
+  userId: string,
+) => DiskStoredDeliverable | null = () => {
   // Disk under process.cwd()/.data removed — Supabase Storage/DB only.
   return null;
-}
+};
 
 /** @deprecated No-op — disk persistence removed. */
-export function persistDeliverableToDisk(_stored: DiskStoredDeliverable): void {
-  return;
-}
+export const persistDeliverableToDisk: (
+  stored: DiskStoredDeliverable,
+) => void = () => undefined;
 
 export function markDeliverableDownloaded(id: string, userId: string): boolean {
   try {

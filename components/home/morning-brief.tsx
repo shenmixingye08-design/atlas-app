@@ -1,4 +1,5 @@
 "use client";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -216,7 +217,9 @@ export function MorningBrief({
   }, []);
 
   useEffect(() => {
-    void loadGoogleData();
+    return scheduleMountWork(() => {
+      void loadGoogleData();
+    });
   }, [loadGoogleData]);
 
   const handleStartToday = async () => {

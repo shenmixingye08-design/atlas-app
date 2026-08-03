@@ -10,6 +10,10 @@ import type {
 
 /** Maps orchestration loading phase IDs to user-facing AI employee departments. */
 const PHASE_TO_DEPARTMENT: Readonly<Record<string, AiEmployeeDepartmentId>> = {
+  understand: "sales",
+  write: "materials",
+  polish: "quality",
+  done: "delivery",
   ceo: "sales",
   research: "sales",
   "planner-plan": "materials",

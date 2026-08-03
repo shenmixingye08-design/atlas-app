@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { triggerBlobDownload } from "@/lib/browser/trigger-blob-download";
 
-const triggerMock = vi.fn(async () => undefined);
+const triggerMock = vi.fn<typeof triggerBlobDownload>(async () => undefined);
 
 vi.mock("@/lib/browser/trigger-blob-download", () => ({
-  triggerBlobDownload: (...args: unknown[]) => triggerMock(...args),
+  triggerBlobDownload: (...args: Parameters<typeof triggerBlobDownload>) =>
+    triggerMock(...args),
 }));
 
 import { downloadDeliverableFile } from "./download-client";
@@ -48,14 +50,19 @@ describe("downloadDeliverableFile client guards", () => {
     });
 
     expect(triggerMock).toHaveBeenCalledTimes(1);
-    const [blob, name] = triggerMock.mock.calls[0]!;
+    const firstCall = triggerMock.mock.calls[0];
+    expect(firstCall).toBeDefined();
+    if (!firstCall) {
+      throw new Error("Expected triggerBlobDownload to be called");
+    }
+    const [blob, name] = firstCall;
     expect(name).toBe("report.docx");
     expect(blob).toBeInstanceOf(Blob);
-    expect((blob as Blob).type).toBe(
+    expect(blob.type).toBe(
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     );
-    expect((blob as Blob).type).not.toBe("application/octet-stream");
-    expect((blob as Blob).type).not.toBe("text/plain");
+    expect(blob.type).not.toBe("application/octet-stream");
+    expect(blob.type).not.toBe("text/plain");
   });
 
   it("rejects text/plain Content-Type for Word", async () => {

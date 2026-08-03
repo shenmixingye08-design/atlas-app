@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type {
@@ -93,7 +94,9 @@ export function AuditLogPanel() {
   }, []);
 
   useEffect(() => {
-    void load(applied);
+    return scheduleMountWork(() => {
+      void load(applied);
+    });
   }, [applied, load]);
 
   const retention = snapshot?.settings.retentionDays ?? 90;

@@ -33,8 +33,8 @@ describe("mapWorkflowPhasesToAiEmployees", () => {
     expect(byId(employees, "secretary")?.status).toBe("waiting");
   });
 
-  it("maps planner phases to materials department", () => {
-    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(2));
+  it("maps write phase to materials department", () => {
+    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(1));
 
     expect(byId(employees, "materials")).toMatchObject({
       id: "materials",
@@ -48,8 +48,15 @@ describe("mapWorkflowPhasesToAiEmployees", () => {
     expect(byId(employees, "sns")?.status).toBe("completed");
   });
 
-  it("maps worker phases to materials department", () => {
-    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(4));
+  it("keeps legacy worker phases mapped to materials department", () => {
+    const employees = mapWorkflowPhasesToAiEmployees([
+      {
+        id: "worker-1",
+        label: "Worker",
+        subtitle: "Legacy worker phase",
+        status: "running",
+      },
+    ]);
 
     expect(byId(employees, "materials")).toMatchObject({
       id: "materials",
@@ -58,9 +65,35 @@ describe("mapWorkflowPhasesToAiEmployees", () => {
     });
   });
 
-  it("maps reviewer and qa phases to quality department", () => {
-    const reviewer = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(8));
-    const qa = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(9));
+  it("maps polish phase to quality department", () => {
+    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(2));
+
+    expect(byId(employees, "quality")).toMatchObject({
+      id: "quality",
+      icon: "🧐",
+      name: "品質管理部",
+      task: "内容確認中",
+      status: "running",
+    });
+  });
+
+  it("keeps legacy reviewer and qa phases mapped to quality department", () => {
+    const reviewer = mapWorkflowPhasesToAiEmployees([
+      {
+        id: "reviewer",
+        label: "Reviewer",
+        subtitle: "Legacy review phase",
+        status: "running",
+      },
+    ]);
+    const qa = mapWorkflowPhasesToAiEmployees([
+      {
+        id: "quality-assurance",
+        label: "Quality Assurance",
+        subtitle: "Legacy QA phase",
+        status: "running",
+      },
+    ]);
 
     expect(byId(reviewer, "quality")).toMatchObject({
       id: "quality",
@@ -72,8 +105,27 @@ describe("mapWorkflowPhasesToAiEmployees", () => {
     expect(byId(qa, "quality")?.status).toBe("running");
   });
 
-  it("maps final deliverable phase to delivery department", () => {
-    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(11));
+  it("maps done phase to delivery department", () => {
+    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(3));
+
+    expect(byId(employees, "delivery")).toMatchObject({
+      id: "delivery",
+      icon: "📦",
+      name: "納品部",
+      task: "成果物準備中",
+      status: "running",
+    });
+  });
+
+  it("keeps legacy final deliverable phase mapped to delivery department", () => {
+    const employees = mapWorkflowPhasesToAiEmployees([
+      {
+        id: "final-deliverable",
+        label: "Final Deliverable",
+        subtitle: "Legacy delivery phase",
+        status: "running",
+      },
+    ]);
 
     expect(byId(employees, "delivery")).toMatchObject({
       id: "delivery",

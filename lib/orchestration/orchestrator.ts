@@ -30,7 +30,6 @@ import {
 import { WorkflowLimitError } from "@/lib/ai/workflow-limits";
 import { resolveCompanyTemplateIdFromMetadata } from "@/lib/company-templates/context";
 import type { EmployeeId } from "@/lib/employees/types";
-import type { KnowledgeRetrievalResult } from "@/lib/knowledge/types";
 
 import { isAtlasServerDebugEnabled } from "@/lib/debug/atlas-debug";
 import { ui } from "@/lib/i18n";
@@ -88,7 +87,6 @@ import {
 } from "./worker-validation";
 import {
   legacyOrchestrationStatus,
-  WorkflowState,
   WorkflowStateManager,
 } from "./workflow-state";
 import type {

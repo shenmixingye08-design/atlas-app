@@ -1,0 +1,81 @@
+name: Quality Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: quality-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: typecheck · lint · test · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies (lockfile strict)
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit / integration tests
+        run: npm test
+        env:
+          # Keep tests deterministic; do not enable mock-success shortcuts.
+          TZ: UTC
+
+      - name: Upload Vitest logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-logs
+          path: |
+            **/vitest*.log
+            /tmp/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Build (unconditional — no owner/screenshot secrets)
+        run: npm run build
+        env:
+          # CI build must succeed without production secrets.
+          # Runtime remains fail-closed for missing Clerk/owner config.
+          NODE_ENV: production
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Upload Next.js build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-build-logs
+          path: |
+            .next/diagnostics/**
+            .next/trace
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Failure summary
+        if: failure()
+        run: |
+          echo "## Quality Gate failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "One or more of typecheck / lint / test / build failed." >> "$GITHUB_STEP_SUMMARY"
+          echo "This workflow is a required merge gate for main." >> "$GITHUB_STEP_SUMMARY"

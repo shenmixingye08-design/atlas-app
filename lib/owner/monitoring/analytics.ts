@@ -181,7 +181,6 @@ function dayKey(d: Date): string {
 function buildBucketSeries(
   keys: string[],
   labelFor: (key: string) => string,
-  now: Date,
 ): AnalyticsSeriesPoint[] {
   const entries = listAuditLogEntries();
   const usage = listApiUsageRecords();
@@ -265,8 +264,8 @@ export function buildAnalyticsSeries(now: Date = new Date()): {
   }
 
   return {
-    daily: buildBucketSeries(dailyKeys, (k) => k.slice(5), now),
-    weekly: buildBucketSeries(weeklyKeys, (k) => `W ${k.slice(5)}`, now),
-    monthly: buildBucketSeries(monthlyKeys, (k) => k, now),
+    daily: buildBucketSeries(dailyKeys, (k) => k.slice(5)),
+    weekly: buildBucketSeries(weeklyKeys, (k) => `W ${k.slice(5)}`),
+    monthly: buildBucketSeries(monthlyKeys, (k) => k),
   };
 }

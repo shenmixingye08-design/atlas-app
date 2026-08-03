@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -193,22 +194,26 @@ export function XConnectionSettings() {
   }, []);
 
   useEffect(() => {
-    void load();
+    return scheduleMountWork(() => {
+      void load();
+    });
   }, [load]);
 
   useEffect(() => {
-    if (searchParams.get("x_error") === "1") {
-      setError(ui.xSettings.connectError);
-    }
-    if (searchParams.get("connected") === "x") {
-      const username = searchParams.get("username");
-      setSuccess(
-        username
-          ? ui.xSettings.connectSuccessWithUsername(username)
-          : ui.xSettings.connectSuccess,
-      );
-      void load();
-    }
+    return scheduleMountWork(() => {
+      if (searchParams.get("x_error") === "1") {
+        setError(ui.xSettings.connectError);
+      }
+      if (searchParams.get("connected") === "x") {
+        const username = searchParams.get("username");
+        setSuccess(
+          username
+            ? ui.xSettings.connectSuccessWithUsername(username)
+            : ui.xSettings.connectSuccess,
+        );
+        void load();
+      }
+    });
   }, [load, searchParams]);
 
   const handleConnect = async () => {

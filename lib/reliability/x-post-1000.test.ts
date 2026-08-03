@@ -79,7 +79,7 @@ describe("x post reliability measured gate", () => {
 
       const snap = getReliabilityMetricsSnapshot();
       const rate = success / RUNS;
-      // eslint-disable-next-line no-console
+       
       console.log(
         JSON.stringify({
           runs: RUNS,

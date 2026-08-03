@@ -11,23 +11,6 @@ import type {
 } from "@/lib/automation-platform/execution/step-invoker";
 import { defaultStepInvoker } from "@/lib/automation-platform/execution/step-invoker";
 import { getCapability } from "@/lib/automation-platform/step-registry/registry";
-import type { AutomationRunArtifact } from "@/lib/automation-platform/types/run";
-
-function artifact(
-  label: string,
-  kind: AutomationRunArtifact["kind"],
-  extra?: Partial<AutomationRunArtifact>,
-): AutomationRunArtifact {
-  return {
-    id: crypto.randomUUID(),
-    kind,
-    label,
-    url: null,
-    externalId: null,
-    createdAt: new Date().toISOString(),
-    ...extra,
-  };
-}
 
 function missingInput(message: string): StepInvokeResult {
   return {
@@ -103,7 +86,7 @@ function wordpressAppConfigured(): boolean {
  * External steps require connection config + required fields; never silent success.
  */
 export const strictStepInvoker: StepInvoker = async (input) => {
-  const { step, approved, userId } = input;
+  const { step, approved } = input;
   const capability = getCapability(step.type);
   if (!capability) {
     return {

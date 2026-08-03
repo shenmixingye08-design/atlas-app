@@ -34,6 +34,13 @@ function isInAppTypeEnabled(
   type: NotificationType,
 ): boolean {
   if (!prefs.allEnabled || !prefs.channels.inApp) return false;
+  return isNotificationTypeEnabled(prefs, type);
+}
+
+function isNotificationTypeEnabled(
+  prefs: NotificationPreferences,
+  type: NotificationType,
+): boolean {
   switch (type) {
     case "completed":
       return prefs.completedEnabled;
@@ -52,6 +59,17 @@ function isInAppTypeEnabled(
     default:
       return true;
   }
+}
+
+function isLineDeliveryEnabled(
+  prefs: NotificationPreferences,
+  type: NotificationType,
+  lineEvent: LineNotifyEvent | null,
+): lineEvent is LineNotifyEvent {
+  if (!lineEvent) return false;
+  if (!prefs.allEnabled || !isNotificationTypeEnabled(prefs, type)) return false;
+  if (!prefs.channels.line) return false;
+  return prefs.lineEvents[lineEvent] === true;
 }
 
 function resolveLineEvent(
@@ -78,6 +96,28 @@ export function createNotification(
   options?: { skipDelivery?: boolean },
 ): NotificationRecord | null {
   const lineEvent = resolveLineEvent(input);
+  let shouldCreateInApp = true;
+  let enabledLineEvent: LineNotifyEvent | null = null;
+
+  if (input.audience === "user" && input.userId) {
+    const stored = getStoredPreferences(input.userId);
+    const { preferences: prefs } = resolveNotificationPreferencesWithMemorySync({
+      userId: input.userId,
+      base: stored,
+    });
+    if (!prefs.allEnabled) {
+      return null;
+    }
+
+    shouldCreateInApp = isInAppTypeEnabled(prefs, input.type);
+    enabledLineEvent = isLineDeliveryEnabled(prefs, input.type, lineEvent)
+      ? lineEvent
+      : null;
+
+    if (!shouldCreateInApp && !enabledLineEvent) {
+      return null;
+    }
+  }
 
   // The notification id is the canonical key of the unified results route. When
   // a result target is present, the button MUST open `/results/<id>` (which
@@ -91,17 +131,23 @@ export function createNotification(
       ? `/results/${encodeURIComponent(notificationId)}`
       : (input.actionUrl ?? null);
 
-  if (input.audience === "user" && input.userId) {
-    const stored = getStoredPreferences(input.userId);
-    const { preferences: prefs } = resolveNotificationPreferencesWithMemorySync({
-      userId: input.userId,
-      base: stored,
-    });
-    // In-app preference is authoritative for creating the notification record.
-    // Memory may overlay toggles; LINE delivery is gated separately below.
-    if (!isInAppTypeEnabled(prefs, input.type)) {
-      return null;
+  if (!shouldCreateInApp) {
+    if (
+      !options?.skipDelivery &&
+      input.audience === "user" &&
+      input.userId &&
+      enabledLineEvent
+    ) {
+      void deliverLineWithAck({
+        notificationId,
+        userId: input.userId,
+        event: enabledLineEvent,
+        title: input.title,
+        message: input.message,
+        actionUrl: canonicalActionUrl,
+      }).catch((error) => console.warn("[LINE notify]", error));
     }
+    return null;
   }
 
   const record = appendNotification({
@@ -148,11 +194,11 @@ export function createNotification(
   if (!options?.skipDelivery) {
     // Delivery with ACK → Retry → DLQ. Scheduled (not blocking create), but never
     // counted as success until deliver*WithAck completes.
-    if (input.audience === "user" && input.userId && lineEvent) {
+    if (input.audience === "user" && input.userId && enabledLineEvent) {
       void deliverLineWithAck({
         notificationId,
         userId: input.userId,
-        event: lineEvent,
+        event: enabledLineEvent,
         title: input.title,
         message: input.message,
         actionUrl: canonicalActionUrl,
@@ -187,11 +233,15 @@ export async function createNotificationWithDelivery(
 
   let lineOk: boolean | null = null;
   let pushOk: boolean | null = null;
-  if (lineEvent) {
+  const prefs = getStoredPreferences(input.userId);
+  const enabledLineEvent = isLineDeliveryEnabled(prefs, input.type, lineEvent)
+    ? lineEvent
+    : null;
+  if (enabledLineEvent) {
     const line = await deliverLineWithAck({
       notificationId: record.notificationId,
       userId: input.userId,
-      event: lineEvent,
+      event: enabledLineEvent,
       title: input.title,
       message: input.message,
       actionUrl: record.actionUrl,

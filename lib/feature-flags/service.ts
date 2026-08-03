@@ -2,7 +2,6 @@ import "server-only";
 
 import { getFeatureFlagDefinition, isFeatureFlagId } from "./registry";
 import {
-  getFeatureFlagRecord,
   listFeatureFlagRecords,
   setFeatureFlagState,
 } from "./store";

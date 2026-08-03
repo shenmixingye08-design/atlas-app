@@ -67,6 +67,21 @@ export async function completeImageWorkToDeliverables(input: {
     if (typeof d.sizeBytes === "number" && d.sizeBytes <= 0) return false;
     return true;
   });
+  if (
+    process.env.ATLAS_DEBUG === "true" ||
+    process.env.NEXT_PUBLIC_ATLAS_DEBUG === "true"
+  ) {
+    console.info(
+      "[vision] artifact_generation_result",
+      JSON.stringify({
+        batchId: input.batch.id,
+        formats,
+        generatedCount: generated.deliverables.length,
+        downloadableCount: deliverables.length,
+        failures: generated.failures,
+      }),
+    );
+  }
 
   return {
     ok: deliverables.length > 0,
