@@ -37,15 +37,34 @@ function autofitColumns(sheet: ExcelJS.Worksheet, columnCount: number): void {
   }
 }
 
+type XlsxGenerateOptions = {
+  excel?: {
+    headerColorArgb?: string | null;
+    currency?: string | null;
+    dateFormat?: string | null;
+    decimalPlaces?: number | null;
+    columnOrder?: string[];
+  } | null;
+  companyName?: string | null;
+};
+
 function applySheetFormatting(
   sheet: ExcelJS.Worksheet,
   rowCount: number,
   columnCount: number,
+  options?: XlsxGenerateOptions,
 ): void {
   if (columnCount < 1 || rowCount < 1) return;
 
   const header = sheet.getRow(1);
-  header.font = { bold: true, name: "Yu Gothic", size: 11 };
+  header.font = { bold: true, name: "Yu Gothic", size: 11, color: { argb: "FFFFFFFF" } };
+  header.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: {
+      argb: options?.excel?.headerColorArgb ?? "FF1F4E79",
+    },
+  };
   header.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
 
   for (let row = 1; row <= rowCount; row += 1) {
@@ -84,28 +103,61 @@ export class XlsxDeliverableGenerator implements DeliverableGenerator {
   async generate(
     content: string,
     baseFileName: string,
+    options?: XlsxGenerateOptions,
   ): Promise<GeneratedDeliverableFile> {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = "MINERVOT";
+    workbook.creator = options?.companyName ?? "MINERVOT";
     workbook.created = new Date();
 
     const sheets = extractExcelSheets(content);
     for (const data of sheets) {
       const sheet = workbook.addWorksheet(data.name);
+      let headers = [...data.headers];
+      let rows = data.rows.map((row) => [...row]);
+      const preferredOrder = options?.excel?.columnOrder ?? [];
+      if (preferredOrder.length > 0 && headers.length > 0) {
+        const indexMap = preferredOrder
+          .map((name) => headers.findIndex((h) => h === name))
+          .filter((idx) => idx >= 0);
+        const remaining = headers
+          .map((_, idx) => idx)
+          .filter((idx) => !indexMap.includes(idx));
+        const order = [...indexMap, ...remaining];
+        headers = order.map((idx) => headers[idx] ?? "");
+        rows = rows.map((row) => order.map((idx) => row[idx] ?? ""));
+      }
       const columnCount = Math.max(
-        data.headers.length,
-        ...data.rows.map((row) => row.length),
+        headers.length,
+        ...rows.map((row) => row.length),
         1,
       );
-      const header = [...data.headers];
+      const header = [...headers];
       while (header.length < columnCount) header.push("");
       sheet.addRow(header);
-      for (const row of data.rows) {
+      for (const row of rows) {
         const cells = [...row];
         while (cells.length < columnCount) cells.push("");
-        sheet.addRow(cells);
+        // Memory-driven number formatting (currency / decimals)
+        sheet.addRow(
+          cells.map((cell) => {
+            if (
+              options?.excel?.decimalPlaces != null &&
+              typeof cell === "string" &&
+              /^-?\d+(\.\d+)?$/.test(cell)
+            ) {
+              return Number(Number(cell).toFixed(options.excel.decimalPlaces));
+            }
+            return cell;
+          }),
+        );
       }
-      applySheetFormatting(sheet, data.rows.length + 1, columnCount);
+      applySheetFormatting(sheet, rows.length + 1, columnCount, options);
+      if (options?.excel?.currency) {
+        sheet.getCell(1, columnCount + 1).value = `通貨:${options.excel.currency}`;
+      }
+      if (options?.excel?.dateFormat) {
+        sheet.getCell(2, columnCount + 1).value = `日付:${options.excel.dateFormat}`;
+      }
     }
 
     const arrayBuffer = await workbook.xlsx.writeBuffer();

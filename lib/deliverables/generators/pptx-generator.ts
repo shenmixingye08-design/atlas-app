@@ -20,6 +20,31 @@ const TEXT_MUTED = "666666";
 /** pptxgenjs exposes ShapeType on instances, not the constructor. */
 const SHAPE_TYPE = new pptxgen().ShapeType;
 
+type PptxGenerateOptions = {
+  brandColorHex?: string | null;
+  companyName?: string | null;
+  powerpoint?: {
+    brandColorHex?: string | null;
+    fontFace?: string | null;
+    titleAlign?: "left" | "center" | "right" | null;
+  } | null;
+};
+
+function resolvePptxBrand(options?: PptxGenerateOptions): {
+  brand: string;
+  fontFace: string;
+  titleAlign: "left" | "center" | "right";
+} {
+  const raw =
+    options?.powerpoint?.brandColorHex ?? options?.brandColorHex ?? ATLAS_BLUE;
+  const brand = raw.replace(/^#/, "").toUpperCase();
+  return {
+    brand: /^[0-9A-F]{6}$/.test(brand) ? brand : ATLAS_BLUE,
+    fontFace: options?.powerpoint?.fontFace?.trim() || "Calibri",
+    titleAlign: options?.powerpoint?.titleAlign ?? "center",
+  };
+}
+
 type SlideTextOptions = {
   x?: number;
   y?: number;
@@ -36,14 +61,15 @@ type SlideTextOptions = {
 function addSlideTitle(
   slide: pptxgen.Slide,
   title: string,
-  subtitle?: string,
+  subtitle: string | undefined,
+  theme: { brand: string; fontFace: string; titleAlign: "left" | "center" | "right" },
 ): void {
   slide.addShape(SHAPE_TYPE.rect, {
     x: 0,
     y: 0,
     w: "100%",
     h: 0.12,
-    fill: { color: ATLAS_BLUE },
+    fill: { color: theme.brand },
   });
 
   slide.addText(title, {
@@ -53,9 +79,9 @@ function addSlideTitle(
     h: 1.2,
     fontSize: 36,
     bold: true,
-    color: ATLAS_BLUE,
-    align: "center",
-    fontFace: "Calibri",
+    color: theme.brand,
+    align: theme.titleAlign,
+    fontFace: theme.fontFace,
   });
 
   if (subtitle) {
@@ -66,19 +92,23 @@ function addSlideTitle(
       h: 0.6,
       fontSize: 16,
       color: TEXT_MUTED,
-      align: "center",
-      fontFace: "Calibri",
+      align: theme.titleAlign,
+      fontFace: theme.fontFace,
     });
   }
 }
 
-function addSectionDivider(slide: pptxgen.Slide, title: string): void {
+function addSectionDivider(
+  slide: pptxgen.Slide,
+  title: string,
+  theme: { brand: string; fontFace: string },
+): void {
   slide.addShape(SHAPE_TYPE.rect, {
     x: 0,
     y: 0,
     w: "100%",
     h: "100%",
-    fill: { color: ATLAS_BLUE },
+    fill: { color: theme.brand },
   });
   slide.addText(title, {
     x: 0.6,
@@ -89,11 +119,15 @@ function addSectionDivider(slide: pptxgen.Slide, title: string): void {
     bold: true,
     color: "FFFFFF",
     align: "center",
-    fontFace: "Calibri",
+    fontFace: theme.fontFace,
   });
 }
 
-function addContentHeading(slide: pptxgen.Slide, title: string): void {
+function addContentHeading(
+  slide: pptxgen.Slide,
+  title: string,
+  theme: { brand: string; fontFace: string },
+): void {
   slide.addText(title, {
     x: 0.6,
     y: 0.35,
@@ -101,8 +135,8 @@ function addContentHeading(slide: pptxgen.Slide, title: string): void {
     h: 0.7,
     fontSize: 24,
     bold: true,
-    color: ATLAS_BLUE,
-    fontFace: "Calibri",
+    color: theme.brand,
+    fontFace: theme.fontFace,
   });
   slide.addShape(SHAPE_TYPE.line, {
     x: 0.6,
@@ -220,9 +254,13 @@ function chunkBulletItems(items: string[], maxPerSlide = 6): string[][] {
   return chunks.length > 0 ? chunks : [[]];
 }
 
-function addSectionSlides(pptx: pptxgen, section: ParsedSection): void {
+function addSectionSlides(
+  pptx: pptxgen,
+  section: ParsedSection,
+  theme: { brand: string; fontFace: string; titleAlign: "left" | "center" | "right" },
+): void {
   const divider = pptx.addSlide();
-  addSectionDivider(divider, section.title);
+  addSectionDivider(divider, section.title, theme);
 
   const textBlocks = section.blocks.filter(
     (block) => block.type !== "imagePlaceholder",
@@ -239,6 +277,7 @@ function addSectionSlides(pptx: pptxgen, section: ParsedSection): void {
     addContentHeading(
       slide,
       index === 0 ? section.title : `${section.title} (cont.)`,
+      theme,
     );
     addBodyText(slide, chunk || " ", { y: 1.35, lineSpacing: 24 });
   });
@@ -253,6 +292,7 @@ function addSectionSlides(pptx: pptxgen, section: ParsedSection): void {
           index === 0
             ? `${section.title} — Key points`
             : `${section.title} — Key points (cont.)`,
+          theme,
         );
         addBodyText(slide, items.join("\n"), {
           y: 1.4,
@@ -267,21 +307,25 @@ function addSectionSlides(pptx: pptxgen, section: ParsedSection): void {
   for (const imageBlock of imageBlocks) {
     if (imageBlock.type !== "imagePlaceholder") continue;
     const slide = pptx.addSlide();
-    addContentHeading(slide, section.title);
+    addContentHeading(slide, section.title, theme);
     addImagePlaceholder(slide, imageBlock.caption);
   }
 }
 
-async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
+async function buildPptxBuffer(
+  parsed: ParsedDeliverable,
+  options?: PptxGenerateOptions,
+): Promise<Buffer> {
   const pptx = new pptxgen();
+  const theme = resolvePptxBrand(options);
 
   pptx.layout = "LAYOUT_16x9";
-  pptx.author = "Atlas";
+  pptx.author = options?.companyName ?? "Atlas";
   pptx.title = parsed.title;
   pptx.subject = ui.generated.engine;
 
   const titleSlide = pptx.addSlide();
-  addSlideTitle(titleSlide, parsed.title, parsed.subtitle);
+  addSlideTitle(titleSlide, parsed.title, parsed.subtitle, theme);
   titleSlide.addText(`Generated by Atlas · ${formatGeneratedDate()}`, {
     x: 0.6,
     y: 4.8,
@@ -290,11 +334,11 @@ async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
     fontSize: 12,
     color: TEXT_MUTED,
     align: "center",
-    fontFace: "Calibri",
+    fontFace: theme.fontFace,
   });
 
   const agendaSlide = pptx.addSlide();
-  addContentHeading(agendaSlide, ui.generated.agenda);
+  addContentHeading(agendaSlide, ui.generated.agenda, theme);
   addBodyText(
     agendaSlide,
     parsed.sections.map((section) => section.title).join("\n"),
@@ -302,11 +346,11 @@ async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
   );
 
   for (const section of parsed.sections) {
-    addSectionSlides(pptx, section);
+    addSectionSlides(pptx, section, theme);
   }
 
   const summarySlide = pptx.addSlide();
-  addContentHeading(summarySlide, ui.generated.summary);
+  addContentHeading(summarySlide, ui.generated.summary, theme);
   const summaryPoints = extractSummaryPoints(parsed);
   const summaryChunks = chunkBulletItems(summaryPoints, 5);
   addBodyText(
@@ -318,7 +362,7 @@ async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
   if (summaryChunks.length > 1) {
     for (let i = 1; i < summaryChunks.length; i += 1) {
       const slide = pptx.addSlide();
-      addContentHeading(slide, ui.generated.summaryCont);
+      addContentHeading(slide, ui.generated.summaryCont, theme);
       addBodyText(slide, summaryChunks[i]!.join("\n"), {
         y: 1.4,
         bullet: true,
@@ -328,7 +372,7 @@ async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
   }
 
   const closingSlide = pptx.addSlide();
-  addSectionDivider(closingSlide, ui.generated.thankYou);
+  addSectionDivider(closingSlide, ui.generated.thankYou, theme);
   closingSlide.addText(parsed.title, {
     x: 0.6,
     y: 3.5,
@@ -337,7 +381,7 @@ async function buildPptxBuffer(parsed: ParsedDeliverable): Promise<Buffer> {
     fontSize: 14,
     color: "FFFFFF",
     align: "center",
-    fontFace: "Calibri",
+    fontFace: theme.fontFace,
   });
 
   const output = await pptx.write({ outputType: "nodebuffer" });
@@ -351,9 +395,10 @@ export class PptxDeliverableGenerator implements DeliverableGenerator {
   async generate(
     content: string,
     baseFileName: string,
+    options?: PptxGenerateOptions,
   ): Promise<GeneratedDeliverableFile> {
     const parsed = parseDeliverableContent(content);
-    const buffer = await buildPptxBuffer(parsed);
+    const buffer = await buildPptxBuffer(parsed, options);
     if (!buffer?.byteLength || buffer.subarray(0, 2).toString("utf8") !== "PK") {
       throw new Error("PowerPoint生成失敗: invalid pptx zip");
     }

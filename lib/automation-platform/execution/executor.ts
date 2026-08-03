@@ -31,6 +31,10 @@ import {
 import { getProductionStep } from "@/lib/automation-platform/execution/production-step-registry";
 import { memoryUpdateRun } from "@/lib/automation-platform/repository/memory-store";
 import { persistAutomationRunNow } from "@/lib/automation-platform/durable-runs";
+import {
+  recordAutomationMemoryFailure,
+  recordAutomationMemorySuccess,
+} from "@/lib/memory-apply/automation";
 
 export type ExecuteRunResult = {
   run: AutomationRun;
@@ -230,6 +234,8 @@ export async function executeQueuedRun(input: {
         automationName: input.automation.name,
         runId: run.id,
         approved: approved || !runStep.requiresApproval,
+        resolvedInstruction: run.resolvedInstruction,
+        memoryUsage: run.memoryUsage,
       });
 
       const fake = rejectFakeSuccess({
@@ -457,6 +463,24 @@ export async function executeQueuedRun(input: {
         ? lastErrorMessage ?? decision.reason
         : null,
   });
+  if (decision.runStatus === "succeeded") {
+    void recordAutomationMemorySuccess({
+      userId: run.userId,
+      automationId: run.automationId,
+      runId: run.id,
+      memoryIdsUsed: run.memoryUsage.memoryIdsUsed ?? [],
+      summary: run.resultSummary,
+    });
+  } else if (decision.runStatus === "failed") {
+    void recordAutomationMemoryFailure({
+      userId: run.userId,
+      automationId: run.automationId,
+      runId: run.id,
+      errorCode: lastErrorCode,
+      errorMessage: lastErrorMessage,
+    });
+  }
+
   return {
     run,
     terminal:

@@ -27,6 +27,7 @@ import {
   DEFAULT_LINE_EVENTS,
   DEFAULT_NOTIFICATION_PREFERENCES,
 } from "./types";
+import { resolveNotificationPreferencesWithMemorySync } from "@/lib/memory-apply/notifications";
 
 function isInAppTypeEnabled(
   prefs: NotificationPreferences,
@@ -99,7 +100,11 @@ export function createNotification(
   let enabledLineEvent: LineNotifyEvent | null = null;
 
   if (input.audience === "user" && input.userId) {
-    const prefs = getStoredPreferences(input.userId);
+    const stored = getStoredPreferences(input.userId);
+    const { preferences: prefs } = resolveNotificationPreferencesWithMemorySync({
+      userId: input.userId,
+      base: stored,
+    });
     if (!prefs.allEnabled) {
       return null;
     }

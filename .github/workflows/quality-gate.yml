@@ -51,6 +51,7 @@ jobs:
           # Keep tests deterministic; do not enable mock-success shortcuts.
           TZ: UTC
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          # Vitest workers serialize large fixtures; default heap OOMs on ubuntu-latest.
           NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Work-queue critical path
