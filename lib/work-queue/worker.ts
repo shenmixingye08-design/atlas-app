@@ -10,6 +10,10 @@ import { buildDiagnosticId } from "./occurrence";
 import { logWorkQueue } from "./observability";
 import { evaluateWorkQueueCompletion } from "./completion-gate";
 import { decideRetry } from "./retry";
+import {
+  markScheduleOccurrenceRunning,
+  markScheduleOccurrenceTerminal,
+} from "./scheduler-registry/service";
 import { getWorkQueueStore } from "./store";
 import { executeWorkStep } from "./steps/execute-step";
 import type { WorkJobRecord, WorkStepRecord } from "./types";
@@ -59,6 +63,18 @@ async function processLeasedJob(
     workerId,
   );
   if (!running) return "failed";
+
+  if (job.automationId) {
+    try {
+      await markScheduleOccurrenceRunning({
+        automationId: job.automationId,
+        occurrenceKey: job.occurrenceKey,
+        jobId: job.jobId,
+      });
+    } catch {
+      // Registry miss must not block worker; completion gate still fail-closed.
+    }
+  }
 
   logWorkQueue({
     event: "JOB_STARTED",
@@ -253,6 +269,15 @@ async function processLeasedJob(
         errorCode: failedStep.errorCode,
         diagnosticId,
       });
+      if (job.automationId) {
+        await markScheduleOccurrenceTerminal({
+          automationId: job.automationId,
+          occurrenceKey: job.occurrenceKey,
+          ok: false,
+          errorCode: failedStep.errorCode,
+          errorMessage: failedStep.errorMessage,
+        });
+      }
       return "failed";
     }
 
@@ -280,6 +305,15 @@ async function processLeasedJob(
         ownerId: job.ownerId,
         errorCode: gate.errorCode,
       });
+      if (job.automationId) {
+        await markScheduleOccurrenceTerminal({
+          automationId: job.automationId,
+          occurrenceKey: job.occurrenceKey,
+          ok: false,
+          errorCode: gate.errorCode,
+          errorMessage: gate.errorMessage,
+        });
+      }
       return "failed";
     }
 
@@ -297,6 +331,13 @@ async function processLeasedJob(
       workerId,
     );
     await store.recordExecutionMs(Date.now() - started);
+    if (job.automationId) {
+      await markScheduleOccurrenceTerminal({
+        automationId: job.automationId,
+        occurrenceKey: job.occurrenceKey,
+        ok: true,
+      });
+    }
     logWorkQueue({
       event: "JOB_COMPLETED",
       jobId: job.jobId,

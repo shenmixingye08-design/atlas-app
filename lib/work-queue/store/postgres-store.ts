@@ -154,6 +154,14 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
     }
   }
 
+  async readSchedulerMeta<T>(key: string, fallback: T): Promise<T> {
+    return this.readMeta(key, fallback);
+  }
+
+  async writeSchedulerMeta(key: string, value: unknown): Promise<void> {
+    await this.writeMeta(key, value);
+  }
+
   private async loadSteps(client: pg.PoolClient | pg.Pool, jobId: string) {
     const res = await client.query(
       `select * from public.atlas_work_queue_steps where job_id = $1 order by step_index asc`,

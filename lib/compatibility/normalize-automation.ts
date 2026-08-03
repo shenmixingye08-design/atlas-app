@@ -65,7 +65,15 @@ export type CompatibilityPresetType =
 /** Coerce unknown preset.type values — unknown becomes `"custom"`. */
 export function normalizePresetType(raw: unknown): CompatibilityPresetType {
   const type = asString(raw, "custom");
-  if (type === "daily" || type === "weekly" || type === "monthly") return type;
+  if (
+    type === "minutely" ||
+    type === "hourly" ||
+    type === "daily" ||
+    type === "weekly" ||
+    type === "monthly"
+  ) {
+    return type;
+  }
   return "custom";
 }
 
@@ -84,6 +92,10 @@ export function normalizeSchedulePreset(raw: unknown): SchedulePreset | null {
   const minute = clampNumber(asNumber(record.minute, 0), 0, 59);
 
   switch (type) {
+    case "minutely":
+      return { type: "minutely" };
+    case "hourly":
+      return { type: "hourly", minute };
     case "daily":
       return { type: "daily", hour, minute };
     case "weekly":

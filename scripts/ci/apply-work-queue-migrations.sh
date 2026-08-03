@@ -17,4 +17,5 @@ SQL
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260802_atlas_work_queue.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260803_atlas_work_queue_reliability.sql
-echo "work-queue migrations applied"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260804_atlas_scheduler_registry.sql
+echo "work-queue + scheduler registry migrations applied"

@@ -7,7 +7,9 @@ name: Minute Scheduler
 
 on:
   schedule:
+    # Cron SoT: lib/work-queue/cron-sot.ts — minute_due_tick + hourly_due_tick_backup
     - cron: "* * * * *"
+    - cron: "0 * * * *"
   workflow_dispatch:
 
 concurrency:

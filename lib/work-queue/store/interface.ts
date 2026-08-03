@@ -50,5 +50,8 @@ export type WorkQueueStore = {
     jobId: string,
     entry: WorkRetryHistoryEntry,
   ): Promise<void>;
+  /** Durable meta for scheduler gate / health — not process memory. */
+  readSchedulerMeta?<T>(key: string, fallback: T): Promise<T>;
+  writeSchedulerMeta?(key: string, value: unknown): Promise<void>;
   resetForTests(): Promise<void>;
 };

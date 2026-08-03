@@ -8,6 +8,8 @@ import { isAutomationSuspendedForUser } from "@/lib/billing/subscriptions/lifecy
 
 import { evaluateWorkQueueAlerts } from "./alerts";
 import { WORK_QUEUE_DRAIN_ON_TICK_ENV } from "./constants";
+import { presetToCron } from "@/lib/automations/schedule";
+import { hydrateSchedulerGateFromStore } from "./scheduler-gate";
 import { enqueueDueAutomations } from "./scheduler";
 import { drainWorkQueue } from "./worker";
 
@@ -36,6 +38,9 @@ export async function processWorkQueueTick(options?: {
   alerts: Awaited<ReturnType<typeof evaluateWorkQueueAlerts>>;
   drained: boolean;
 }> {
+  // Sync Fail-Closed gate from durable meta (not process memory alone).
+  await hydrateSchedulerGateFromStore();
+
   const ownerIds = await listAutomationOwnerUserIds();
   const memoryOwners = new Set(ownerIds);
   for (const row of await serverAutomationRepository.list()) {
@@ -62,6 +67,9 @@ export async function processWorkQueueTick(options?: {
         paused: !automation.enabled,
         assignment: automation.workflow?.assignment,
         offlineArtifacts: false,
+        cronExpression:
+          automation.schedule.cron ?? presetToCron(automation.schedule.preset),
+        presetType: automation.schedule.preset.type,
       });
     }
   }

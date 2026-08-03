@@ -15,6 +15,8 @@ export type AutomationTriggerKind =
   | "calendar";
 
 export type SchedulePreset =
+  | { type: "minutely" }
+  | { type: "hourly"; minute: number }
   | { type: "daily"; hour: number; minute: number }
   | { type: "weekly"; dayOfWeek: number; hour: number; minute: number }
   | { type: "monthly"; dayOfMonth: number; hour: number; minute: number };

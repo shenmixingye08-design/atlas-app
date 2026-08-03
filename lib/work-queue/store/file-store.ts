@@ -45,6 +45,8 @@ type FileSnapshot = {
   recoveryTotal: number;
   duplicateCount: number;
   workers: WorkerHeartbeat[];
+  /** Durable key/value meta (scheduler gate, etc.) — not process memory. */
+  meta: Record<string, unknown>;
 };
 
 function emptySnapshot(): FileSnapshot {
@@ -58,6 +60,7 @@ function emptySnapshot(): FileSnapshot {
     recoveryTotal: 0,
     duplicateCount: 0,
     workers: [],
+    meta: {},
   };
 }
 
@@ -113,6 +116,10 @@ export class FileWorkQueueStore implements WorkQueueStore {
         recoveryTotal: raw.recoveryTotal ?? 0,
         duplicateCount: raw.duplicateCount ?? 0,
         workers: Array.isArray(raw.workers) ? raw.workers : [],
+        meta:
+          raw.meta && typeof raw.meta === "object" && !Array.isArray(raw.meta)
+            ? (raw.meta as Record<string, unknown>)
+            : {},
       };
     } catch {
       return emptySnapshot();
@@ -563,6 +570,19 @@ export class FileWorkQueueStore implements WorkQueueStore {
       if (!Array.isArray(job.retryHistory)) job.retryHistory = [];
       job.retryHistory.push(entry);
       job.updatedAt = new Date().toISOString();
+    });
+  }
+
+  async readSchedulerMeta<T>(key: string, fallback: T): Promise<T> {
+    return this.withLock(() => {
+      if (!(key in this.data.meta)) return fallback;
+      return this.data.meta[key] as T;
+    });
+  }
+
+  async writeSchedulerMeta(key: string, value: unknown): Promise<void> {
+    await this.withLock(() => {
+      this.data.meta[key] = value;
     });
   }
 

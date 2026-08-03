@@ -44,8 +44,13 @@ function isYesterday(iso: string, now: Date): boolean {
 
 function formatScheduleClock(automation: Automation): string | null {
   if (automation.schedule.kind !== "schedule") return null;
-  const { hour, minute } = automation.schedule.preset;
-  return `${hour}:${String(minute).padStart(2, "0")}`;
+  const preset = automation.schedule.preset;
+  if (preset.type === "minutely") return "毎分";
+  if (preset.type === "hourly") {
+    return `毎時${String(preset.minute).padStart(2, "0")}分`;
+  }
+  if (!("hour" in preset) || !("minute" in preset)) return null;
+  return `${preset.hour}:${String(preset.minute).padStart(2, "0")}`;
 }
 
 /**
