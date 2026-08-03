@@ -38,8 +38,18 @@ export type SchedulerCoreDurableStore = {
   insertOccurrenceLink(link: SchedulerOccurrenceLink): Promise<void>;
   insertOutbox(row: SchedulerOutboxRow): Promise<{ created: boolean; row: SchedulerOutboxRow }>;
   listPendingOutbox(limit: number): Promise<SchedulerOutboxRow[]>;
+  markOutboxProcessing(outboxId: string): Promise<boolean>;
   markOutboxDelivered(outboxId: string, atIso: string): Promise<void>;
   markOutboxFailed(outboxId: string, errorCode: string): Promise<void>;
+  /** After Queue dispatch — persist real jobId/runId onto the outbox row. */
+  updateOutboxDispatchResult(
+    outboxId: string,
+    patch: {
+      jobId: string;
+      runId: string;
+      payload?: Record<string, unknown>;
+    },
+  ): Promise<void>;
   getLatestTick(): Promise<SchedulerTickHistory | null>;
   countPendingOutbox(): Promise<number>;
   oldestDueAgeMs(environment: SchedulerEnvironment, nowMs: number): Promise<number | null>;

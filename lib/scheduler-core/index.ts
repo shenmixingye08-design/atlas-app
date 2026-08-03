@@ -25,6 +25,20 @@ export {
   resetSchedulerCoreStoreForTests,
 } from "./durable";
 export { SCHEDULER_CORE_FEATURE_EVALUATION } from "./feature-evaluation";
+export { SCHEDULER_BRIDGE_FEATURE_EVALUATION } from "./bridge/feature-evaluation";
+export {
+  dispatchSchedulerOutbox,
+  getSchedulerBridgeHealth,
+  getSchedulerBridgeMetricsSnapshot,
+  resetSchedulerBridgeMetricsForTests,
+  SCHEDULER_LIFECYCLE_ORDER,
+} from "./bridge";
+export type {
+  SchedulerBridgeHealth,
+  SchedulerBridgeMetricsSnapshot,
+  SchedulerLifecycleState,
+  EnqueueResult,
+} from "./bridge";
 export {
   FORMAL_SCHEDULER_TICK_PATH,
   FORMAL_SCHEDULER_HEALTH_PATH,

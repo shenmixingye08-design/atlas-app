@@ -1,6 +1,8 @@
 import "server-only";
 
 import { getSchedulerSecretConfigStatus } from "./auth";
+import type { SchedulerBridgeHealth } from "./bridge/types";
+import { getSchedulerBridgeHealth } from "./bridge/metrics";
 import { getSchedulerCoreStore } from "./durable";
 import { resolveSchedulerEnvironment } from "./env";
 import { FORMAL_SCHEDULER_TICK_PATH } from "./types";
@@ -20,6 +22,8 @@ export type SchedulerHealthSnapshot = {
   oldestDueAgeMs: number | null;
   status: "ok" | "warn" | "down" | "misconfigured";
   diagnosticId: string;
+  /** Phase 2-3 Queue Health bridge metrics */
+  bridge: SchedulerBridgeHealth | null;
 };
 
 export async function buildSchedulerHealthSnapshot(): Promise<SchedulerHealthSnapshot> {
@@ -57,10 +61,21 @@ export async function buildSchedulerHealthSnapshot(): Promise<SchedulerHealthSna
     storeOk = false;
   }
 
+  let bridge: SchedulerBridgeHealth | null = null;
+  try {
+    bridge = await getSchedulerBridgeHealth();
+  } catch {
+    bridge = null;
+  }
+
   let status: SchedulerHealthSnapshot["status"] = "ok";
   if (!secrets.configured) status = "misconfigured";
-  else if (!storeOk) status = "down";
-  else if ((outboxPendingCount ?? 0) > 50 || (oldestDueAgeMs ?? 0) > 3600_000) {
+  else if (!storeOk || bridge?.status === "down") status = "down";
+  else if (
+    (outboxPendingCount ?? 0) > 50 ||
+    (oldestDueAgeMs ?? 0) > 3600_000 ||
+    bridge?.status === "warn"
+  ) {
     status = "warn";
   }
 
@@ -79,5 +94,6 @@ export async function buildSchedulerHealthSnapshot(): Promise<SchedulerHealthSna
     oldestDueAgeMs,
     status,
     diagnosticId,
+    bridge,
   };
 }

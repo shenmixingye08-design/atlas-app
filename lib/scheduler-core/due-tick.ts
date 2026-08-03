@@ -4,11 +4,14 @@ import { ensureAutomationsHydrated } from "@/lib/automations/durable";
 import { listAutomationOwnerUserIds } from "@/lib/automations/global-durable";
 import { serverAutomationRepository } from "@/lib/automations/repositories/server-automation-repository";
 import { isAutomationSuspendedForUser } from "@/lib/billing/subscriptions/lifecycle";
-import { WORK_QUEUE_SCHEDULER_BATCH } from "@/lib/work-queue/constants";
+import {
+  WORK_QUEUE_DEFAULT_MAX_ATTEMPTS,
+  WORK_QUEUE_SCHEDULER_BATCH,
+} from "@/lib/work-queue/constants";
 import { getWorkQueueStore } from "@/lib/work-queue/store";
-import { defaultAutomationSteps } from "@/lib/work-queue/steps/execute-step";
-import { drainWorkQueue } from "@/lib/work-queue/worker";
 
+import { dispatchSchedulerOutbox } from "./bridge/dispatcher";
+import type { DispatchEnqueuePayload } from "./bridge/types";
 import { calculateNextRunAtIsoFromV1Schedule } from "./calculate-next-run-at";
 import { getSchedulerCoreStore } from "./durable";
 import type { SchedulerScheduleIndexRow } from "./durable";
@@ -46,7 +49,6 @@ async function syncScheduleIndexFromAutomations(
   for (const userId of memoryOwners) {
     await ensureAutomationsHydrated(userId);
     if (isAutomationSuspendedForUser(userId)) {
-      // Keep index rows but mark paused via enabled=false semantics on next sync.
       continue;
     }
     const automations = await serverAutomationRepository.list({ userId });
@@ -76,60 +78,11 @@ async function syncScheduleIndexFromAutomations(
   }
 }
 
-async function dispatchOutboxAdvances(tickId: string): Promise<number> {
-  const core = getSchedulerCoreStore();
-  const pending = await core.listPendingOutbox(100);
-  let updated = 0;
-  for (const item of pending) {
-    if (item.tickId !== tickId && item.status === "delivered") continue;
-    try {
-      const automation = await serverAutomationRepository.findById(
-        item.automationId,
-      );
-      if (!automation || automation.schedule.kind !== "schedule") {
-        await core.markOutboxFailed(item.outboxId, "automation_missing");
-        continue;
-      }
-      // nextRunAt basis: scheduledAt (not wall-clock delay accumulation)
-      const from = new Date(Date.parse(item.scheduledAt) + 1);
-      const next = calculateNextRunAtIsoFromV1Schedule(automation.schedule, from);
-      await serverAutomationRepository.update(item.automationId, {
-        nextRun: next,
-        status: automation.status === "running" ? "idle" : automation.status,
-        lastError: null,
-      });
-      await core.updateScheduleNextRun(item.automationId, next);
-      await core.markOutboxDelivered(item.outboxId, new Date().toISOString());
-      updated += 1;
-      logSchedulerCore({
-        event: "NEXT_RUN_UPDATED",
-        schedulerTickId: tickId,
-        automationId: item.automationId,
-        occurrenceId: item.occurrenceKey,
-        runId: item.runId,
-        jobId: item.jobId,
-        status: "ok",
-        extra: { nextRunAt: next },
-      });
-    } catch (error) {
-      await core.markOutboxFailed(
-        item.outboxId,
-        error instanceof Error ? error.message.slice(0, 80) : "outbox_failed",
-      );
-    }
-  }
-  return updated;
-}
-
 /**
- * Formal Scheduler due tick — single production path.
- * Order per due item:
- * 1) occurrence key
- * 2) Job enqueue (durable unique)
- * 3) Outbox for nextRun advance
- * 4) History link
- * then dispatch outbox → nextRunAt update (scheduledAt basis)
- * Worker drain is invoked after enqueue (existing worker, not rewritten).
+ * Formal Scheduler due tick — Phase 2-3 bridge:
+ * Scheduled → OccurrenceCreated → Outbox(dispatch_enqueue)
+ * → Dispatcher → Durable Queue (Queued) → Worker lease (Leased/Running)
+ * nextRunAt advances ONLY after successful Queue accept (via Outbox).
  */
 export async function runSchedulerCoreTick(options?: {
   requestId?: string;
@@ -282,10 +235,8 @@ export async function runSchedulerCoreTick(options?: {
       event: "DUE_SCHEDULES_LOADED",
       schedulerTickId: tickId,
       requestId,
-      extra: { dueCount: due.length },
+      extra: { dueCount: due.length, lifecycle: "Scheduled" },
     });
-
-    const queue = getWorkQueueStore();
 
     for (const schedule of due) {
       const scheduledAt = new Date(schedule.nextRunAt!);
@@ -296,7 +247,6 @@ export async function runSchedulerCoreTick(options?: {
       });
       if (misfire.action === "skip_missed") {
         history.misfireSkippedCount += 1;
-        // Advance nextRun via outbox-less direct update so the slot does not stick.
         const automation = await serverAutomationRepository.findById(
           schedule.automationId,
         );
@@ -326,72 +276,40 @@ export async function runSchedulerCoreTick(options?: {
         timezone: schedule.timezone,
       });
 
+      logSchedulerCore({
+        event: "OCCURRENCE_CREATED",
+        schedulerTickId: tickId,
+        automationId: schedule.automationId,
+        occurrenceId: occurrenceKey,
+        extra: { lifecycle: "OccurrenceCreated" },
+      });
+
+      const enqueuePayload: DispatchEnqueuePayload = {
+        action: "dispatch_enqueue",
+        ownerId: schedule.ownerId,
+        automationId: schedule.automationId,
+        automationName: schedule.name,
+        occurrenceKey,
+        scheduledAt: scheduledAt.toISOString(),
+        timezone: schedule.timezone,
+        priority: 0,
+        maxAttempts: WORK_QUEUE_DEFAULT_MAX_ATTEMPTS,
+        offlineArtifacts: false,
+        state: "OccurrenceCreated",
+      };
+
       try {
-        const { job, created } = await queue.enqueue({
-          ownerId: schedule.ownerId,
-          automationId: schedule.automationId,
-          occurrenceKey,
-          scheduleId: schedule.automationId,
-          scheduledAt: scheduledAt.toISOString(),
-          payload: {
-            kind: "automation",
-            automationName: schedule.name,
-            triggerType: "automation",
-            offlineArtifacts: false,
-          },
-          steps: defaultAutomationSteps(false),
-        });
-
-        if (created) {
-          history.occurrenceCreatedCount += 1;
-          logSchedulerCore({
-            event: "OCCURRENCE_CREATED",
-            schedulerTickId: tickId,
-            automationId: schedule.automationId,
-            occurrenceId: occurrenceKey,
-            runId: job.runId,
-            jobId: job.jobId,
-          });
-          logSchedulerCore({
-            event: "RUN_CREATED",
-            schedulerTickId: tickId,
-            automationId: schedule.automationId,
-            runId: job.runId,
-            jobId: job.jobId,
-          });
-          logSchedulerCore({
-            event: "JOB_CREATED",
-            schedulerTickId: tickId,
-            automationId: schedule.automationId,
-            runId: job.runId,
-            jobId: job.jobId,
-            occurrenceId: occurrenceKey,
-          });
-        } else {
-          history.duplicateSkippedCount += 1;
-          logSchedulerCore({
-            event: "OCCURRENCE_DUPLICATE_SKIPPED",
-            schedulerTickId: tickId,
-            automationId: schedule.automationId,
-            occurrenceId: occurrenceKey,
-            runId: job.runId,
-            jobId: job.jobId,
-          });
-        }
-
+        // Durable Outbox first — NEVER enqueue fire-and-forget; NEVER advance nextRun here.
         const outbox = await core.insertOutbox({
           outboxId: newOutboxId(),
           tickId,
           occurrenceKey,
           automationId: schedule.automationId,
           ownerId: schedule.ownerId,
-          runId: job.runId,
-          jobId: job.jobId,
+          runId: "pending",
+          jobId: "pending",
           scheduledAt: scheduledAt.toISOString(),
-          payload: {
-            action: "advance_next_run",
-            basis: "scheduledAt",
-          },
+          payload: enqueuePayload,
           status: "pending",
           availableAt: new Date().toISOString(),
           attempt: 0,
@@ -407,24 +325,18 @@ export async function runSchedulerCoreTick(options?: {
             schedulerTickId: tickId,
             automationId: schedule.automationId,
             occurrenceId: occurrenceKey,
-            jobId: job.jobId,
-            runId: job.runId,
+            extra: { action: "dispatch_enqueue" },
+          });
+        } else {
+          history.duplicateSkippedCount += 1;
+          logSchedulerCore({
+            event: "OCCURRENCE_DUPLICATE_SKIPPED",
+            schedulerTickId: tickId,
+            automationId: schedule.automationId,
+            occurrenceId: occurrenceKey,
+            extra: { reason: "outbox_duplicate" },
           });
         }
-
-        await core.insertOccurrenceLink({
-          tickId,
-          occurrenceKey,
-          automationId: schedule.automationId,
-          ownerId: schedule.ownerId,
-          runId: job.runId,
-          jobId: job.jobId,
-          scheduledAt: scheduledAt.toISOString(),
-          created,
-          misfirePolicy: schedule.misfirePolicy,
-          misfireAction: created ? "enqueue" : "duplicate_skip",
-          reason: created ? null : "duplicate_occurrence",
-        });
       } catch (error) {
         history.failedCount += 1;
         logSchedulerCore({
@@ -432,33 +344,32 @@ export async function runSchedulerCoreTick(options?: {
           schedulerTickId: tickId,
           automationId: schedule.automationId,
           errorCode:
-            error instanceof Error ? error.message.slice(0, 80) : "enqueue_failed",
+            error instanceof Error
+              ? error.message.slice(0, 80)
+              : "outbox_insert_failed",
         });
       }
     }
 
-    history.nextRunUpdatedCount += await dispatchOutboxAdvances(tickId);
+    // Outbox → Dispatcher → Durable Queue → Worker lease start
+    const dispatched = await dispatchSchedulerOutbox({
+      limit: 200,
+      startWorkerLease: options?.skipWorkerDrain !== true,
+      workerLimit: options?.workerLimit,
+    });
 
-    let worker:
-      | { completed: number; failed: number; leased: number }
-      | undefined;
-    if (!options?.skipWorkerDrain) {
-      const drained = await drainWorkQueue({
-        limit: options?.workerLimit,
-      });
-      worker = {
-        completed: drained.completed,
-        failed: drained.failed,
-        leased: drained.leased,
-      };
-    }
+    history.occurrenceCreatedCount += dispatched.dispatched;
+    history.duplicateSkippedCount += dispatched.duplicates;
+    history.failedCount += dispatched.failed;
+    history.nextRunUpdatedCount += dispatched.nextRunAdvanced;
 
+    const queue = getWorkQueueStore();
     const completedAt = new Date().toISOString();
     history.completedAt = completedAt;
     history.durationMs = Date.parse(completedAt) - Date.parse(startedAt);
     history.status =
       history.failedCount > 0
-        ? history.occurrenceCreatedCount > 0
+        ? history.occurrenceCreatedCount > 0 || dispatched.dispatched > 0
           ? "partial"
           : "failed"
         : "succeeded";
@@ -477,8 +388,9 @@ export async function runSchedulerCoreTick(options?: {
       status: history.status,
       extra: {
         dueCount: history.dueCount,
-        occurrenceCreatedCount: history.occurrenceCreatedCount,
-        duplicateSkippedCount: history.duplicateSkippedCount,
+        dispatched: dispatched.dispatched,
+        leased: dispatched.leaseStarted,
+        outboxCreatedCount: history.outboxCreatedCount,
       },
     });
 
@@ -496,7 +408,11 @@ export async function runSchedulerCoreTick(options?: {
       outboxCreatedCount: history.outboxCreatedCount,
       nextRunUpdatedCount: history.nextRunUpdatedCount,
       misfireSkippedCount: history.misfireSkippedCount,
-      worker,
+      worker: {
+        completed: dispatched.workerCompleted,
+        failed: dispatched.workerFailed,
+        leased: dispatched.leaseStarted,
+      },
       errorCode: history.errorCode,
     };
   } catch (error) {

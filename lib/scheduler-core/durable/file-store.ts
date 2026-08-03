@@ -143,6 +143,16 @@ export function createSchedulerCoreFileStore(
         )
         .slice(0, limit);
     },
+    async markOutboxProcessing(outboxId) {
+      load();
+      const row = data.outbox[outboxId];
+      if (!row) return false;
+      if (row.status !== "pending" && row.status !== "failed") return false;
+      row.status = "processing";
+      row.updatedAt = new Date().toISOString();
+      persist();
+      return true;
+    },
     async markOutboxDelivered(outboxId, atIso) {
       load();
       const row = data.outbox[outboxId];
@@ -159,6 +169,27 @@ export function createSchedulerCoreFileStore(
       row.status = "failed";
       row.errorCode = errorCode;
       row.attempt += 1;
+      // Keep (occurrence_key, job_id=pending) stable; Vitest uses zero backoff for retry coverage.
+      const backoffMs =
+        process.env.VITEST === "true" || process.env.NODE_ENV === "test"
+          ? 0
+          : Math.min(60_000, 1000 * 2 ** row.attempt);
+      row.availableAt = new Date(Date.now() + backoffMs).toISOString();
+      row.updatedAt = new Date().toISOString();
+      persist();
+    },
+    async updateOutboxDispatchResult(outboxId, patch) {
+      load();
+      const row = data.outbox[outboxId];
+      if (!row) return;
+      // Do NOT overwrite jobId/runId columns for dispatch_enqueue rows —
+      // unique(occurrence_key, job_id) with job_id="pending" prevents duplicate intents.
+      row.payload = {
+        ...row.payload,
+        ...(patch.payload ?? {}),
+        dispatchedJobId: patch.jobId,
+        dispatchedRunId: patch.runId,
+      };
       row.updatedAt = new Date().toISOString();
       persist();
     },

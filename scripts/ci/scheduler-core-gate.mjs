@@ -98,6 +98,33 @@ assert(
   "durable store must document no memory fallback",
 );
 
+// 9) Phase 2-3 Bridge — Outbox Dispatcher → Durable Queue → Worker lease
+assert(
+  existsSync(join(root, "lib/scheduler-core/bridge/dispatcher.ts")),
+  "missing bridge dispatcher",
+);
+const dueTick = read("lib/scheduler-core/due-tick.ts");
+assert(
+  dueTick.includes("dispatchSchedulerOutbox"),
+  "due-tick must dispatch via Outbox Dispatcher",
+);
+assert(
+  !/getWorkQueueStore\(\)\s*;\s*\n\s*await queue\.enqueue/.test(dueTick) &&
+    !dueTick.includes("await queue.enqueue("),
+  "due-tick must not fire-and-forget queue.enqueue (Outbox only)",
+);
+const dispatcher = read("lib/scheduler-core/bridge/dispatcher.ts");
+assert(dispatcher.includes("drainWorkQueue"), "dispatcher must start worker lease via drainWorkQueue");
+assert(dispatcher.includes("leaseJobs") || dispatcher.includes("drainWorkQueue"), "worker must obtain work from queue path");
+assert(
+  dispatcher.includes("advance_next_run"),
+  "nextRun advance must be outbox-driven after queue accept",
+);
+assert(
+  existsSync(join(root, "docs/development/scheduler-queue-worker-bridge-2-3.md")),
+  "missing phase 2-3 bridge doc",
+);
+
 if (errors.length) {
   console.error("scheduler-core-gate FAIL:");
   for (const e of errors) console.error(` - ${e}`);

@@ -217,6 +217,16 @@ export function tryCreateSchedulerCorePostgresStore(): SchedulerCoreDurableStore
       );
       return res.rows.map(mapOutboxRow);
     },
+    async markOutboxProcessing(outboxId) {
+      const res = await pool.query(
+        `update public.atlas_scheduler_outbox
+         set status = 'processing', updated_at = now()
+         where outbox_id = $1 and status in ('pending','failed')
+         returning outbox_id`,
+        [outboxId],
+      );
+      return (res.rowCount ?? 0) > 0;
+    },
     async markOutboxDelivered(outboxId, atIso) {
       await pool.query(
         `update public.atlas_scheduler_outbox
@@ -226,11 +236,43 @@ export function tryCreateSchedulerCorePostgresStore(): SchedulerCoreDurableStore
       );
     },
     async markOutboxFailed(outboxId, errorCode) {
+      const testFast =
+        process.env.VITEST === "true" || process.env.NODE_ENV === "test";
+      await pool.query(
+        testFast
+          ? `update public.atlas_scheduler_outbox
+             set status = 'failed',
+                 error_code = $2,
+                 attempt = attempt + 1,
+                 available_at = now(),
+                 updated_at = now()
+             where outbox_id = $1`
+          : `update public.atlas_scheduler_outbox
+             set status = 'failed',
+                 error_code = $2,
+                 attempt = attempt + 1,
+                 available_at = now() + make_interval(secs => least(60, power(2, attempt + 1)::int)),
+                 updated_at = now()
+             where outbox_id = $1`,
+        [outboxId, errorCode],
+      );
+    },
+    async updateOutboxDispatchResult(outboxId, patch) {
+      // Keep job_id/run_id columns stable ("pending") so unique(occurrence_key, job_id)
+      // continues to block duplicate dispatch_enqueue intents after successful Queue accept.
       await pool.query(
         `update public.atlas_scheduler_outbox
-         set status = 'failed', error_code = $2, attempt = attempt + 1, updated_at = now()
+         set payload = coalesce(payload, '{}'::jsonb) || $2::jsonb,
+             updated_at = now()
          where outbox_id = $1`,
-        [outboxId, errorCode],
+        [
+          outboxId,
+          JSON.stringify({
+            ...(patch.payload ?? {}),
+            dispatchedJobId: patch.jobId,
+            dispatchedRunId: patch.runId,
+          }),
+        ],
       );
     },
     async getLatestTick() {
