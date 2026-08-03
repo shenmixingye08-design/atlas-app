@@ -1,5 +1,6 @@
 /**
  * Run lifecycle notifications — policy-aware, deep-link to Review.
+ * partially_succeeded is NEVER treated as completed.
  */
 
 import "server-only";
@@ -7,6 +8,7 @@ import "server-only";
 import { createNotification } from "@/lib/notifications/service";
 import type { AutomationNotificationPolicy } from "@/lib/automation-platform/types";
 import type { AutomationRun } from "@/lib/automation-platform/types/run";
+import { runCompletionUserMessage } from "@/lib/automation-platform/execution/run-completion";
 
 export type RunNotificationEvent =
   | "started"
@@ -16,7 +18,8 @@ export type RunNotificationEvent =
   | "partially_succeeded"
   | "failed"
   | "retry_started"
-  | "retry_finished";
+  | "retry_finished"
+  | "prepared";
 
 function runActionUrl(run: AutomationRun): string {
   return `/automations/runs/${encodeURIComponent(run.id)}`;
@@ -31,11 +34,14 @@ function shouldNotify(
       return policy.beforeRun;
     case "awaiting_approval":
     case "needs_input":
+    case "prepared":
       return policy.onNeedsInput;
     case "succeeded":
-    case "partially_succeeded":
     case "retry_finished":
       return policy.onSuccess;
+    case "partially_succeeded":
+      // Partial completion needs user attention — not a success channel.
+      return policy.onNeedsInput || policy.onFailure;
     case "failed":
     case "retry_started":
       return policy.onFailure;
@@ -44,10 +50,13 @@ function shouldNotify(
   }
 }
 
-const COPY: Record<
-  RunNotificationEvent,
-  { title: string; message: (name: string) => string; type: "automation" | "awaiting_review" | "completed" | "error" }
-> = {
+type NotifyCopy = {
+  title: string;
+  message: (name: string) => string;
+  type: "automation" | "awaiting_review" | "completed" | "error";
+};
+
+const COPY: Record<RunNotificationEvent, NotifyCopy> = {
   started: {
     title: "自動化を開始しました",
     message: (name) => `「${name}」の実行を開始しました。`,
@@ -63,19 +72,28 @@ const COPY: Record<
     message: (name) => `「${name}」の続行に、追加のご入力が必要です。`,
     type: "awaiting_review",
   },
+  prepared: {
+    title: "準備済みです",
+    message: (name) => `「${name}」の準備が完了しました。実行はまだ完了していません。`,
+    type: "awaiting_review",
+  },
   succeeded: {
-    title: "自動化が終了しました",
-    message: (name) => `お待たせいたしました。「${name}」の自動化が終了しました。`,
+    title: runCompletionUserMessage("completed"),
+    message: (name) =>
+      `お待たせいたしました。「${name}」の${runCompletionUserMessage("completed")}。`,
     type: "completed",
   },
   partially_succeeded: {
-    title: "自動化が一部完了しました",
-    message: (name) => `「${name}」は一部の手順まで完了しました。内容をご確認ください。`,
-    type: "completed",
+    title: runCompletionUserMessage("partially_completed"),
+    message: (name) =>
+      `「${name}」は${runCompletionUserMessage("partially_completed")}。`,
+    // Must NOT use type "completed" — partial ≠ finished work.
+    type: "awaiting_review",
   },
   failed: {
-    title: "処理を完了できませんでした",
-    message: (name) => `「${name}」の処理を完了できませんでした。内容をご確認ください。`,
+    title: runCompletionUserMessage("failed"),
+    message: (name) =>
+      `「${name}」の処理を${runCompletionUserMessage("failed")}。内容をご確認ください。`,
     type: "error",
   },
   retry_started: {
@@ -84,8 +102,9 @@ const COPY: Record<
     type: "automation",
   },
   retry_finished: {
-    title: "再試行が完了しました",
-    message: (name) => `「${name}」の再試行が完了しました。`,
+    title: runCompletionUserMessage("completed"),
+    message: (name) =>
+      `「${name}」の再試行により${runCompletionUserMessage("completed")}。`,
     type: "completed",
   },
 };

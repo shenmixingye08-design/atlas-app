@@ -10,13 +10,15 @@ import {
 import type { ContentBlock, ParsedDeliverable, ParsedSection } from "../parse-content";
 import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
 
-import { MarkdownDeliverableGenerator } from "./markdown-generator";
 import { createDeliverableFile, formatGeneratedDate } from "./shared";
 
 const ATLAS_BLUE = "1F4E79";
 const ATLAS_LIGHT = "D9E2F3";
 const TEXT_DARK = "222222";
 const TEXT_MUTED = "666666";
+
+/** pptxgenjs exposes ShapeType on instances, not the constructor. */
+const SHAPE_TYPE = new pptxgen().ShapeType;
 
 type SlideTextOptions = {
   x?: number;
@@ -36,7 +38,7 @@ function addSlideTitle(
   title: string,
   subtitle?: string,
 ): void {
-  slide.addShape(pptxgen.ShapeType.rect, {
+  slide.addShape(SHAPE_TYPE.rect, {
     x: 0,
     y: 0,
     w: "100%",
@@ -71,7 +73,7 @@ function addSlideTitle(
 }
 
 function addSectionDivider(slide: pptxgen.Slide, title: string): void {
-  slide.addShape(pptxgen.ShapeType.rect, {
+  slide.addShape(SHAPE_TYPE.rect, {
     x: 0,
     y: 0,
     w: "100%",
@@ -102,7 +104,7 @@ function addContentHeading(slide: pptxgen.Slide, title: string): void {
     color: ATLAS_BLUE,
     fontFace: "Calibri",
   });
-  slide.addShape(pptxgen.ShapeType.line, {
+  slide.addShape(SHAPE_TYPE.line, {
     x: 0.6,
     y: 1.05,
     w: 8.8,
@@ -133,7 +135,7 @@ function addBodyText(
 }
 
 function addImagePlaceholder(slide: pptxgen.Slide, caption: string, y = 2.0): void {
-  slide.addShape(pptxgen.ShapeType.rect, {
+  slide.addShape(SHAPE_TYPE.rect, {
     x: 1.2,
     y,
     w: 7.6,
@@ -350,14 +352,12 @@ export class PptxDeliverableGenerator implements DeliverableGenerator {
     content: string,
     baseFileName: string,
   ): Promise<GeneratedDeliverableFile> {
-    try {
-      const parsed = parseDeliverableContent(content);
-      const buffer = await buildPptxBuffer(parsed);
-      return createDeliverableFile("pptx", baseFileName, buffer, false);
-    } catch (error) {
-      console.error("[PptxDeliverableGenerator] Falling back to Markdown:", error);
-      return new MarkdownDeliverableGenerator().generate(content, baseFileName);
+    const parsed = parseDeliverableContent(content);
+    const buffer = await buildPptxBuffer(parsed);
+    if (!buffer?.byteLength || buffer.subarray(0, 2).toString("utf8") !== "PK") {
+      throw new Error("PowerPoint生成失敗: invalid pptx zip");
     }
+    return createDeliverableFile("pptx", baseFileName, buffer, false);
   }
 }
 

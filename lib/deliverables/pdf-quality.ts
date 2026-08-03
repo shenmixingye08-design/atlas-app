@@ -153,13 +153,15 @@ export async function verifyPdfQuality(
   const hasFont = /\/Font|FontFile|CIDFont|ToUnicode/.test(latin);
 
   if (pageCount >= 1 && rasterizedPages < 1) reasons.push("rasterize_failed");
-  if (!hasContentStream && !hasFont) reasons.push("no_text_content_stream");
 
   if (charCount > 0) {
     if (charCount < minChars) reasons.push("insufficient_text");
     if (blankRatio > maxBlankRatio) reasons.push("blank_ratio_high");
   } else {
     // Empty extract is common for JP subset fonts — require structural proof.
+    if (!hasContentStream && !hasFont) {
+      reasons.push("no_text_content_stream");
+    }
     if (file.buffer.byteLength < 2_000) reasons.push("blank_pdf");
     if (pageCount >= 1 && !hasFont && !hasContentStream) {
       reasons.push("blank_pdf");

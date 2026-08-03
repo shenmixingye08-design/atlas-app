@@ -151,7 +151,8 @@ export async function dispatchAutomationRuns(options?: {
         event: wasRetry ? "retry_finished" : "succeeded",
       });
     } else if (execResult.run.status === "partially_succeeded") {
-      result.succeeded += 1;
+      // Partial completion is not a success counter / completed notification.
+      result.failed += 1;
       notifyAutomationRunEvent({
         userId: automation.userId,
         automationName: automation.name,

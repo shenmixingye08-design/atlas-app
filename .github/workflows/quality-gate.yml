@@ -31,11 +31,19 @@ jobs:
       - name: Install dependencies (lockfile strict)
         run: npm ci
 
+      - name: Install PDF QA tools (poppler)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils
+
       - name: Typecheck
         run: npm run typecheck
 
       - name: Lint
         run: npm run lint
+
+      - name: V2 stub-ban / Production registry gate
+        run: node scripts/ci/v2-stub-ban.mjs
 
       - name: Unit / integration tests
         run: npm test

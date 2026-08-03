@@ -140,6 +140,26 @@ export type AutomationRun = {
   diagnosticId: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  /**
+   * V2 Completion Evidence — required before product-facing completed.
+   * Stored as a plain object for durable serialization.
+   */
+  completionEvidence?: {
+    runId: string;
+    jobId: string;
+    automationId: string;
+    ownerId: string;
+    completedStepIds: string[];
+    artifactIds: string[];
+    storageObjectIds: string[];
+    externalActionIds: string[];
+    externalUrls: string[];
+    notificationIds: string[];
+    incompleteOptionalStepIds: string[];
+    completionHash: string;
+    completedAt: string;
+    evidenceVersion: number;
+  } | null;
   /** @deprecated use memoryUsage.used */
   memoryReferences: MemoryReferenceRecord[];
 };
