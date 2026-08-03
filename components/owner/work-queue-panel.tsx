@@ -75,8 +75,17 @@ type DurabilitySlice = {
       status: string;
     }>;
   };
-  notification: { count: number };
-  memory: { sot: string; note: string };
+  notification: {
+    count: number;
+    durableDomainKey?: string;
+    processMemoryIsCacheOnly?: boolean;
+  };
+  memory: {
+    sot: string;
+    note: string;
+    durableDomainKey?: string;
+    processMemoryIsCacheOnly?: boolean;
+  };
   locks: Array<{ lockKey: string; owner: string; expiresAt: string }>;
   metrics: {
     startedCount: number;
@@ -397,9 +406,19 @@ export function WorkQueuePanel() {
             <h3 className="text-sm font-semibold">Notification · Memory</h3>
             <p className="mt-2 text-sm">
               Notification count: {durability.notification.count}
+              {durability.notification.durableDomainKey
+                ? ` · ${durability.notification.durableDomainKey}`
+                : ""}
+              {durability.notification.processMemoryIsCacheOnly
+                ? " · process memory = cache only"
+                : ""}
             </p>
             <p className="mt-1 text-xs text-[var(--text-secondary)]">
-              Memory SoT: {durability.memory.sot} — {durability.memory.note}
+              Memory SoT: {durability.memory.sot}
+              {durability.memory.durableDomainKey
+                ? ` (${durability.memory.durableDomainKey})`
+                : ""}{" "}
+              — {durability.memory.note}
             </p>
           </section>
         </div>

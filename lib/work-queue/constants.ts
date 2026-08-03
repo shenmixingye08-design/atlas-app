@@ -1,6 +1,11 @@
 export const WORK_QUEUE_LEASE_MS = 60_000;
 export const WORK_QUEUE_HEARTBEAT_MS = 15_000;
-export const WORK_QUEUE_STUCK_MS = 90_000;
+/**
+ * Stuck detection must not lag behind lease expiry.
+ * Otherwise a new worker can reclaim a lease while steps are still "running"
+ * before recoverStuckJobs normalizes them. Align with lease TTL.
+ */
+export const WORK_QUEUE_STUCK_MS = WORK_QUEUE_LEASE_MS;
 export const WORK_QUEUE_DEFAULT_MAX_ATTEMPTS = 5;
 export const WORK_QUEUE_WORKER_BATCH = 10;
 export const WORK_QUEUE_SCHEDULER_BATCH = 50;

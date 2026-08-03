@@ -347,16 +347,25 @@ export function getSchedulerRegistryStore(): SchedulerRegistryStoreLike {
     return singleton;
   }
 
-  if (
+  const isProduction =
     process.env.NODE_ENV === "production" ||
     process.env.VERCEL === "1" ||
-    process.env.ATLAS_RUNTIME === "production"
+    process.env.ATLAS_RUNTIME === "production";
+
+  // Production Blocker #4: file SoT escape hatch is hard-banned in production.
+  if (
+    isProduction &&
+    process.env.ATLAS_SCHEDULER_ALLOW_FILE?.trim().toLowerCase() === "true"
   ) {
-    if (process.env.ATLAS_SCHEDULER_ALLOW_FILE?.trim().toLowerCase() !== "true") {
-      throw new Error(
-        "scheduler_registry_postgres_required: DATABASE_URL missing — process memory / file SoT forbidden in production",
-      );
-    }
+    throw new Error(
+      "scheduler_file_sot_forbidden_in_production: ATLAS_SCHEDULER_ALLOW_FILE cannot be SoT in production",
+    );
+  }
+
+  if (isProduction) {
+    throw new Error(
+      "scheduler_registry_postgres_required: DATABASE_URL missing — process memory / file SoT forbidden in production",
+    );
   }
 
   singleton = new SchedulerRegistryStore();

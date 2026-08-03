@@ -50,6 +50,43 @@ function mergeOutputs(steps: WorkStepRecord[]): Record<string, unknown> {
   return out;
 }
 
+/**
+ * Before executing after reclaim/resume: reconcile in-flight steps with
+ * durable side-effect evidence. Never wipe completed work; never restart
+ * from scratch when evidence exists.
+ */
+async function normalizeStepsForResume(job: WorkJobRecord): Promise<void> {
+  const store = getWorkQueueStore();
+  for (const step of job.steps) {
+    if (step.status !== "running" && step.status !== "failed") continue;
+    const prior = await store.getSideEffect(step.idempotencyKey);
+    if (prior) {
+      await store.updateStep({
+        ...step,
+        status: "completed",
+        outputBindings: {
+          ...step.outputBindings,
+          ...((prior.result.outputBindings as Record<string, unknown>) ?? {}),
+        },
+        artifactIds: Array.isArray(prior.result.artifactIds)
+          ? (prior.result.artifactIds as string[])
+          : step.artifactIds,
+        completedAt: prior.createdAt,
+        updatedAt: new Date().toISOString(),
+        errorCode: null,
+        errorMessage: null,
+      });
+    } else if (step.status === "running") {
+      await store.updateStep({
+        ...step,
+        status: "pending",
+        completedAt: null,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  }
+}
+
 async function processLeasedJob(
   job: WorkJobRecord,
   workerId: string,
@@ -94,6 +131,10 @@ async function processLeasedJob(
       // Registry miss must not block worker; completion gate still fail-closed.
     }
   }
+
+  // Reclaim / crash resume: normalize in-flight steps against durable evidence
+  // before any AI/external side-effect runs.
+  await normalizeStepsForResume(running);
 
   logWorkQueue({
     event: "JOB_STARTED",
@@ -260,15 +301,15 @@ async function processLeasedJob(
           errorCode: failedStep.errorCode,
           diagnosticId,
         });
-        if (store.incrementMetricCounter) {
-          await store.incrementMetricCounter("retry_count", 1);
-        }
+        // retry_count is incremented once inside endExecution(outcome: "retried")
         if (store.endExecution) {
           await store.endExecution({
             executionId,
             outcome: "retried",
             detail: { stepId: step.stepId, errorCode: failedStep.errorCode },
           });
+        } else if (store.incrementMetricCounter) {
+          await store.incrementMetricCounter("retry_count", 1);
         }
         return "retried";
       }
@@ -514,9 +555,21 @@ export async function recoverOnWorkerBoot(
   }
 
   const retries = await store.listByStatus("retry_scheduled", 200);
-  const retryDuePromoted = retries.filter(
+  const dueRetries = retries.filter(
     (j) => new Date(j.availableAt).getTime() <= nowMs,
-  ).length;
+  );
+  const retryDuePromoted = dueRetries.length;
+  for (const job of dueRetries) {
+    if (store.recordRecoveryEvent) {
+      await store.recordRecoveryEvent({
+        eventId: randomUUID(),
+        jobId: job.jobId,
+        kind: "retry_due",
+        success: true,
+        detail: { availableAt: job.availableAt, attempt: job.attempt },
+      });
+    }
+  }
 
   const recoveredStuck = await recoverStuckJobs(nowMs);
 
@@ -683,9 +736,32 @@ export async function drainWorkQueue(options?: {
   const completedJobs: WorkerDrainResult["completedJobs"] = [];
   const failedJobs: WorkerDrainResult["failedJobs"] = [];
 
-  for (const job of leased) {
+  for (let i = 0; i < leased.length; i += 1) {
+    const job = leased[i]!;
     if (options?.signal?.aborted) {
-      // Release unused leases so another worker can reclaim after expiry.
+      // Mid-stop: immediately return unused leases to queued (no wait for expiry).
+      for (let j = i; j < leased.length; j += 1) {
+        const unused = leased[j]!;
+        await store.updateJob(
+          unused.jobId,
+          {
+            status: "queued",
+            leaseOwner: null,
+            leaseExpiresAt: null,
+            availableAt: new Date().toISOString(),
+          },
+          workerId,
+        );
+        if (store.recordRecoveryEvent) {
+          await store.recordRecoveryEvent({
+            eventId: randomUUID(),
+            jobId: unused.jobId,
+            kind: "lease_expired",
+            success: true,
+            detail: { reason: "drain_aborted_release", workerId },
+          });
+        }
+      }
       break;
     }
     logWorkQueue({

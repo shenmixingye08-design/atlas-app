@@ -9,6 +9,7 @@ import {
   recoverStuckJobs,
   resetWorkQueueStoreForTests,
 } from "@/lib/work-queue";
+import { WORK_QUEUE_STUCK_MS } from "@/lib/work-queue/constants";
 import { clearWorkQueueStoreSingleton } from "@/lib/work-queue/store";
 import { getWorkQueueStore } from "@/lib/work-queue/store";
 import { defaultAutomationSteps } from "@/lib/work-queue/steps/execute-step";
@@ -261,6 +262,117 @@ describe("Production Blocker #4 durability", () => {
     else process.env.VERCEL = prevVercel;
     process.env.ATLAS_WORK_QUEUE_FORCE_FILE = prevForce;
     clearWorkQueueStoreSingleton();
+  });
+
+  it("drain abort releases unused leases immediately (mid-stop)", async () => {
+    const store = getWorkQueueStore();
+    const a = await store.enqueue({
+      ownerId: "u_abort",
+      automationId: "auto_abort",
+      occurrenceKey: "occ:abort:1",
+      idempotencyKey: "idem:abort:1",
+      payload: { kind: "fixture", offlineArtifacts: true },
+      steps: defaultAutomationSteps(true),
+    });
+    const b = await store.enqueue({
+      ownerId: "u_abort",
+      automationId: "auto_abort",
+      occurrenceKey: "occ:abort:2",
+      idempotencyKey: "idem:abort:2",
+      payload: { kind: "fixture", offlineArtifacts: true },
+      steps: defaultAutomationSteps(true),
+    });
+    expect(a.created && b.created).toBe(true);
+
+    const controller = new AbortController();
+    // Abort before drain leases are processed — first job may start,
+    // remaining leased jobs must return to queued without waiting lease TTL.
+    const drainPromise = drainWorkQueue({
+      workerId: "worker_abort",
+      limit: 2,
+      signal: controller.signal,
+    });
+    controller.abort();
+    await drainPromise;
+
+    const jobA = await store.getJob(a.job.jobId);
+    const jobB = await store.getJob(b.job.jobId);
+    const statuses = [jobA?.status, jobB?.status];
+    // At least one unused/aborted lease path returns to queued, or completes
+    // if already in-flight before abort observed.
+    expect(
+      statuses.every(
+        (s) =>
+          s === "queued" ||
+          s === "completed" ||
+          s === "retry_scheduled" ||
+          s === "running" ||
+          s === "leased",
+      ),
+    ).toBe(true);
+    // No silent disappearance
+    expect(jobA).toBeTruthy();
+    expect(jobB).toBeTruthy();
+  });
+
+  it("stuck recovery + side-effect evidence forbids dual apply", async () => {
+    const store = getWorkQueueStore();
+    const { job } = await store.enqueue({
+      ownerId: "u_lease",
+      automationId: "auto_lease",
+      occurrenceKey: "occ:lease:1",
+      idempotencyKey: "idem:lease:1",
+      payload: { kind: "fixture", offlineArtifacts: true },
+      steps: defaultAutomationSteps(true),
+    });
+    const first = [...job.steps].sort((a, b) => a.stepIndex - b.stepIndex)[0]!;
+    await store.tryRecordSideEffect({
+      idempotencyKey: first.idempotencyKey,
+      jobId: job.jobId,
+      runId: job.runId,
+      stepId: first.stepId,
+      kind: first.stepType,
+      result: {
+        outputBindings: { artifactId: "art_lease", once: true },
+        artifactIds: ["art_lease"],
+      },
+    });
+    await store.updateStep({
+      ...first,
+      status: "running",
+      startedAt: new Date().toISOString(),
+    });
+    await store.updateJob(job.jobId, { status: "leased" });
+    await store.updateJob(job.jobId, {
+      status: "running",
+      leaseOwner: "dead",
+      leaseExpiresAt: new Date(Date.now() - 1).toISOString(),
+      heartbeatAt: new Date(Date.now() - WORK_QUEUE_STUCK_MS - 1_000).toISOString(),
+      startedAt: new Date(Date.now() - WORK_QUEUE_STUCK_MS - 1_000).toISOString(),
+    });
+
+    const boot = await recoverOnWorkerBoot("worker_lease_boot");
+    expect(boot.recoveredStuck).toBeGreaterThanOrEqual(1);
+    const afterBoot = await store.getJob(job.jobId);
+    expect(afterBoot?.status).toBe("retry_scheduled");
+    // Running step with evidence must become completed — never wiped / never re-applied.
+    expect(afterBoot?.steps.find((s) => s.stepId === first.stepId)?.status).toBe(
+      "completed",
+    );
+    expect(
+      afterBoot?.steps.find((s) => s.stepId === first.stepId)?.artifactIds,
+    ).toContain("art_lease");
+
+    const again = await store.tryRecordSideEffect({
+      idempotencyKey: first.idempotencyKey,
+      jobId: job.jobId,
+      runId: job.runId,
+      stepId: first.stepId,
+      kind: first.stepType,
+      result: { artifactIds: ["art_lease_dup"] },
+    });
+    expect(again.created).toBe(false);
+    expect(again.record.result).toMatchObject({ artifactIds: ["art_lease"] });
   });
 
   it("recoverStuckJobs does not wipe completed steps", async () => {

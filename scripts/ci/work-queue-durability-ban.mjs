@@ -55,8 +55,28 @@ const REQUIRED_SNIPPETS = [
   },
   {
     file: "lib/work-queue/worker.ts",
+    re: /normalizeStepsForResume/,
+    msg: "Worker must normalize in-flight steps before resume (no restart-from-scratch)",
+  },
+  {
+    file: "lib/work-queue/worker.ts",
     re: /HEARTBEAT/,
     msg: "Worker must heartbeat",
+  },
+  {
+    file: "lib/work-queue/constants.ts",
+    re: /WORK_QUEUE_STUCK_MS\s*=\s*WORK_QUEUE_LEASE_MS/,
+    msg: "Stuck detection must align with lease TTL",
+  },
+  {
+    file: "lib/work-queue/scheduler-registry/store.ts",
+    re: /scheduler_file_sot_forbidden_in_production/,
+    msg: "Scheduler must hard-ban file SoT in production",
+  },
+  {
+    file: "lib/jobs/job-store.ts",
+    re: /jobs_memory_sot_forbidden_in_production/,
+    msg: "Legacy jobs store must ban process-memory SoT in production",
   },
   {
     file: "lib/work-queue/side-effects.ts",

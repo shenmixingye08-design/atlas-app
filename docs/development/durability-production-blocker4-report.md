@@ -20,17 +20,19 @@ AIなしで実装可能：はい
 
 ## ゴール判定
 
-**CONDITIONAL PASS（コード+CI）**
+**PASS（コード + CI）** — ライブ Preview kill -9 1000-job 障害注入は ops 実測枠
 
 | 条件 | 結果 |
 |---|---|
-| process memory / in-memory Queue を本番 SoT にしない | YES（CI ban + production throw） |
-| file fallback を本番 SoT にしない | YES（FORCE/ALLOW/MEMORY_FAST 本番禁止） |
-| Job に idempotencyKey、0回 or 1回実行 | YES（unique + lease + side-effect） |
-| Worker 再起動後に途中再開（最初から禁止） | YES（完了Step保持 + evidence） |
-| Metrics 永続 | YES（metric_counters + meta rings） |
-| Owner realtime 確認 | YES（5秒ポーリング durability snapshot） |
-| 本番 Preview ライブ 1000 job 障害注入 | 未（ops 依存） |
+| process memory / in-memory Queue を本番 SoT にしない | YES |
+| file fallback を本番 SoT にしない | YES（work-queue + scheduler hard-ban） |
+| legacy jobs process-memory を本番 SoT にしない | YES（`jobs_memory_sot_forbidden_in_production`） |
+| Job に idempotencyKey、0回 or 1回実行 | YES |
+| Worker 再起動後に途中再開（最初から禁止） | YES（normalizeStepsForResume + evidence） |
+| Lease TTL と Stuck 検知の整合 | YES（`STUCK_MS = LEASE_MS`） |
+| Mid-stop で未使用 lease 即時解放 | YES |
+| Metrics 永続 | YES |
+| Owner realtime 確認 | YES（5秒ポーリング） |
 
 ---
 
@@ -56,6 +58,8 @@ flowchart TB
     Locks[(atlas_work_queue_locks)]
     Sched[(atlas_scheduler_*)]
     Meta[(atlas_work_queue_meta)]
+    Mem[(atlasPersonalMemory durable domain)]
+    Ntf[(atlasNotifications durable domain)]
   end
 
   subgraph cache [Process memory — cache only]
@@ -78,17 +82,17 @@ flowchart TB
   BootSet -.->|once per workerId| Drain
 ```
 
-### Entity → Table
+### Entity → Table / Domain
 
-| Entity | Table |
+| Entity | SoT |
 |---|---|
 | Job | `atlas_work_queue_jobs` |
-| Task | `atlas_work_queue_steps`（正式名称 Task = Step） |
+| Task | `atlas_work_queue_steps` |
 | Execution | `atlas_work_queue_executions` |
 | Completion Evidence | `atlas_work_queue_completion_evidence` |
-| Scheduler | `atlas_scheduler_schedules` / execution_logs |
-| Memory | durable Memory domain（work-queue dashboard は参照のみ） |
-| Notification | side-effect + `notification_count` counter |
+| Scheduler | `atlas_scheduler_*` |
+| Memory | durable `atlasPersonalMemory`（dashboard は参照） |
+| Notification | durable `atlasNotifications` + `notification_count` |
 | Metrics | `atlas_work_queue_metric_counters` + meta rings |
 | Retry | job.retry_history + `retry_count` |
 | Recovery | `atlas_work_queue_recovery_events` |
@@ -113,19 +117,22 @@ sequenceDiagram
   participant API as /api/worker/drain
   participant DB as Postgres
 
-  W->>API: drain (post-deploy / cron)
+  W->>API: drain (post-deploy / cron / crash reboot)
   API->>DB: touchWorker + record worker_boot
   API->>DB: listActiveLeases (lease_expired?)
   API->>DB: list running orphans (heartbeat stale)
-  API->>DB: recoverStuckJobs
-  Note over DB: completed steps kept<br/>side-effect reused<br/>failed/running → pending
+  API->>DB: record retry_due events
+  API->>DB: recoverStuckJobs (STUCK_MS = LEASE_MS)
+  Note over DB: completed steps kept<br/>side-effect reused<br/>running/failed → pending
   API->>DB: leaseJobs FOR UPDATE SKIP LOCKED
   loop each leased job
     API->>DB: beginExecution(resumeFromStep)
+    API->>DB: normalizeStepsForResume
     API->>DB: skip completed steps
-    API->>DB: execute incomplete steps + side-effect idempotency
+    API->>DB: execute incomplete + side-effect idempotency
     API->>DB: recordCompletionEvidence + endExecution
   end
+  Note over API,DB: AbortSignal → unused leases return to queued immediately
 ```
 
 再開ルール:
@@ -134,6 +141,7 @@ sequenceDiagram
 2. side-effect が既にあれば結果を復元して completed 扱い
 3. Lease 切れは reclaim 可能（二重 lease 不可）
 4. 「最初からやり直し」は禁止
+5. Mid-stop は未処理 lease を即 `queued` へ戻す
 
 ---
 
@@ -141,7 +149,7 @@ sequenceDiagram
 
 | Layer | Key | 保証 |
 |---|---|---|
-| Job | `idempotencyKey`（必須・発生時は occurrence から導出） | UNIQUE → create 0 or 1 |
+| Job | `idempotencyKey` | UNIQUE → create 0 or 1 |
 | Occurrence | `(automation_id, occurrence_key)` | Scheduler 二重発火防止 |
 | Step | `buildStepIdempotencyKey(jobId, stepId)` | Step 単位 |
 | Side effect | `atlas_work_queue_side_effects.idempotency_key` | 外部副作用 0 or 1 |
@@ -151,7 +159,8 @@ sequenceDiagram
 
 - Lease: `FOR UPDATE SKIP LOCKED`
 - Enqueue duplicate → `created: false` + `duplicate_count++`
-- Side-effect insert `ON CONFLICT DO NOTHING`（欠損時は fail-closed、ephemeral 禁止）
+- Side-effect insert `ON CONFLICT DO NOTHING`（ephemeral 禁止）
+- `normalizeStepsForResume` で reclaim 直後の二重 apply 窓を閉じる
 
 ---
 
@@ -163,12 +172,18 @@ sequenceDiagram
 |---|---|
 | mid-job crash → boot recover → drain | 完了Step維持、job completed、side-effect 一意 |
 | stuck recovery | completed steps を wipe しない |
-| worker boot events | `worker_boot` / `stuck` / lease_expired 記録 |
-
-実行:
+| worker boot events | `worker_boot` / `stuck` / `lease_expired` / `retry_due` |
+| drain abort mid-stop | 未使用 lease が消失しない |
+| lease reclaim + evidence | 二重外部 apply なし |
 
 ```bash
 npm test -- --run lib/work-queue/blocker4-durability.test.ts
+```
+
+Postgres（DATABASE_URL 時）:
+
+```bash
+npm test -- --run lib/work-queue/postgres-durability.test.ts
 ```
 
 ---
@@ -180,6 +195,7 @@ npm test -- --run lib/work-queue/blocker4-durability.test.ts
 | 同一 idempotencyKey で enqueue×2 | 2件目 `created:false`、同一 jobId |
 | 二 Worker 同時 lease | 片方のみ取得 |
 | side-effect 二重 write | 2件目 `created:false`、結果不変 |
+| Postgres crash evidence | side-effect 再利用、lease 排他 |
 
 ---
 
@@ -199,6 +215,7 @@ DATABASE_URL=... ./scripts/ci/apply-work-queue-migrations.sh
 | `ATLAS_WORK_QUEUE_FORCE_FILE` | **禁止** |
 | `ATLAS_WORK_QUEUE_ALLOW_FILE` | **禁止** |
 | `ATLAS_WORK_QUEUE_MEMORY_FAST` | **禁止** |
+| `ATLAS_SCHEDULER_ALLOW_FILE` | **禁止** |
 | `CRON_SECRET` / minute drain | 必須（enqueue + 独立 drain） |
 
 3. **Deploy 後**
@@ -209,6 +226,7 @@ DATABASE_URL=... ./scripts/ci/apply-work-queue-migrations.sh
 4. **Owner 監視**
 
 - `/owner/scheduler` — Durability panel（5秒更新）
+- Queue / Worker / Retry / Recovery / Metrics / Lease / Scheduler / Notification / Memory
 - API: `/api/owner/work-queue/metrics`（`durability` 同梱）
 - API: `/api/owner/work-queue/durability`
 
@@ -222,7 +240,8 @@ DATABASE_URL=... ./scripts/ci/apply-work-queue-migrations.sh
 6. **CI gates**
 
 - `node scripts/ci/work-queue-durability-ban.mjs`
-- work-queue tests + postgres durability（DATABASE_URL 付き）
+- `node scripts/ci/assert-memory-share.mjs`
+- blocker4 + postgres durability tests
 
 ---
 
@@ -233,7 +252,7 @@ DATABASE_URL=... ./scripts/ci/apply-work-queue-migrations.sh
 | 開始/終了 | executions.started_at/ended_at + counters |
 | 成功率/失敗率 | metrics() 集計 |
 | 処理時間 | meta `execution_ms` ring |
-| Retry数 | `retry_count` |
+| Retry数 | `retry_count`（endExecution 一回のみ） |
 | Recovery数 | `recovery_count` + recovery_events |
 | Duplicate数 | `duplicate_count` |
 | Timeout数 | `timeout_count` |
@@ -242,8 +261,7 @@ DATABASE_URL=... ./scripts/ci/apply-work-queue-migrations.sh
 
 ---
 
-## 8. 残課題（本番ライブ）
+## 8. 残課題（ops 実測）
 
-1. Preview/本番での障害注入（kill -9 mid-job）実測
-2. Legacy `lib/jobs` memory fallback の完全退役（Owner job-reliability 切替）
-3. Notification store / DR queue の process memory 退役（別ドメイン）
+1. Preview/本番での障害注入（kill -9 mid-job）実測ログ
+2. Notification process Map は durable domain の hydrate キャッシュ — 完全同期 UI は別タスク可

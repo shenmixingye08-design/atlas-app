@@ -3,7 +3,7 @@
  * CI: Memory share — ban parallel resolve SoT in surface adapters.
  * PersonalizationContext / loadMemory must be the only path.
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = process.cwd();
@@ -37,21 +37,21 @@ for (const file of ADAPTER_FILES) {
 
 const pipeline = readFileSync(join(ADAPTER_DIR, "pipeline.ts"), "utf8");
 for (const sym of ["loadMemory", "saveMemory", "assertMemoryLoadedForAi"]) {
-  if (!pipeline.includes(`export async function ${sym}`) && !pipeline.includes(`export function ${sym}`)) {
-    // loadMemory/saveMemory are async; assert is sync
-    if (sym === "assertMemoryLoadedForAi") {
-      if (!pipeline.includes(`export function ${sym}`)) {
-        console.error(`FAIL: pipeline.ts missing ${sym}`);
-        failed += 1;
-      }
-    } else if (!pipeline.includes(`export async function ${sym}`)) {
+  if (sym === "assertMemoryLoadedForAi") {
+    if (!pipeline.includes(`export function ${sym}`)) {
       console.error(`FAIL: pipeline.ts missing ${sym}`);
       failed += 1;
     }
+  } else if (!pipeline.includes(`export async function ${sym}`)) {
+    console.error(`FAIL: pipeline.ts missing ${sym}`);
+    failed += 1;
   }
 }
 
-const ctx = readFileSync(join(ADAPTER_DIR, "personalization-context.ts"), "utf8");
+const ctx = readFileSync(
+  join(ADAPTER_DIR, "personalization-context.ts"),
+  "utf8",
+);
 if (!ctx.includes("memoryVersion")) {
   console.error("FAIL: PersonalizationContext must include memoryVersion");
   failed += 1;

@@ -87,10 +87,14 @@ export async function buildDurabilitySnapshot(
     },
     notification: {
       count: counters.notification_count,
+      durableDomainKey: "atlasNotifications",
+      processMemoryIsCacheOnly: true,
     },
     memory: {
       sot: "durable_domain",
-      note: "Memory SoT is durable PersonalizationContext / memory domain — process buffers are cache only",
+      durableDomainKey: "atlasPersonalMemory",
+      processMemoryIsCacheOnly: true,
+      note: "Memory SoT is durable PersonalizationContext / Personal Memory domain — process buffers are cache only",
     },
     locks,
   };

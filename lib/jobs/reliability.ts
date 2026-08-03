@@ -1,6 +1,7 @@
 /**
  * Durable job state for automations / scheduled work.
- * Persists to Supabase atlas_automation_jobs (memory fallback in dev/tests).
+ * Persists to Supabase atlas_automation_jobs.
+ * Process-memory fallback is allowed only outside production (Blocker #4).
  */
 
 import {

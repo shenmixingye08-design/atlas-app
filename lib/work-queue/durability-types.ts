@@ -147,10 +147,15 @@ export type WorkDurabilitySnapshot = {
   };
   notification: {
     count: number;
+    /** Durable notifications domain key (process Map is cache only). */
+    durableDomainKey: "atlasNotifications";
+    processMemoryIsCacheOnly: true;
   };
   memory: {
     /** Durable Memory health — process buffers are not SoT. */
     sot: "durable_domain";
+    durableDomainKey: "atlasPersonalMemory";
+    processMemoryIsCacheOnly: true;
     note: string;
   };
   locks: WorkLockRecord[];
