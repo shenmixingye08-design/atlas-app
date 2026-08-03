@@ -2,17 +2,12 @@ import "server-only";
 
 import { getWordCompanyBrand } from "@/lib/deliverables/company-brand";
 import type { DeliverableFormat } from "@/lib/deliverables/types";
-import { resolveForContext } from "@/lib/personal-memory/service";
+import { buildDeliverableOverlay } from "@/lib/memory-apply/overlays";
 import {
-  applyContentOverlayToText,
-  buildContentOverlay,
-  buildDeliverableOverlay,
-} from "@/lib/memory-apply/overlays";
-import { recordMemoryApplyEvent } from "@/lib/memory-apply/metrics";
-import {
-  compareMemoryQuality,
-  expectedTokensFromMemoryValues,
-} from "@/lib/memory-apply/quality-diff";
+  assertMemoryLoadedForAi,
+  loadMemory,
+  saveMemory,
+} from "@/lib/memory-apply/pipeline";
 import type {
   MemoryApplyChannel,
   MemoryDeliverableOverlay,
@@ -45,6 +40,7 @@ export type DeliverableMemoryApply = {
 
 /**
  * Resolve Personal Memory overlays for deliverable generation.
+ * Path: loadMemory → PersonalizationContext → PromptBuilder (no parallel resolve).
  */
 export async function applyMemoryForDeliverable(input: {
   userId: string;
@@ -52,70 +48,68 @@ export async function applyMemoryForDeliverable(input: {
   format: DeliverableFormat;
   assignment?: string;
 }): Promise<DeliverableMemoryApply> {
-  const brandFallback = await getWordCompanyBrand(input.userId);
-  const { result, ledger } = await resolveForContext({
-    userId: input.userId,
-    notes: input.assignment ?? input.content.slice(0, 400),
-    artifactTypes: [input.format],
-    allowedScopes: [
-      "writing_style",
-      "document_design",
-      "color_palette",
-      "preferred_formats",
-      "word_template",
-      "excel_template",
-      "powerpoint_theme",
-      "pdf_layout",
-      "contact_info",
-      "file_naming",
-      "date_format",
-      "currency",
-      "work_content_style",
-    ],
-  });
-
-  const contentOverlay = buildContentOverlay({
-    values: ledger.memoryValuesResolved,
-    injectionText: result.injectionText,
-  });
-  const overlay = buildDeliverableOverlay({
-    userId: input.userId,
-    values: ledger.memoryValuesResolved,
-    injectionText: result.injectionText,
-    tokenEstimate: result.tokenEstimate,
-    brandFallback,
-  });
-
-  const next = applyContentOverlayToText(input.content, contentOverlay);
-  const flat: Record<string, unknown> = {};
-  for (const row of ledger.memoryValuesResolved) Object.assign(flat, row.value);
-
   const channel = channelForFormat(input.format);
-  const applied = ledger.memoryIdsUsed.length > 0 || Boolean(overlay.brand);
-  const quality = compareMemoryQuality({
-    before: input.content,
-    after: next,
-    memoryMode: applied ? "on" : "off",
-    expectedMemoryTokens: expectedTokensFromMemoryValues(flat),
-  });
+  const brandFallback = await getWordCompanyBrand(input.userId);
 
-  recordMemoryApplyEvent({
+  const applied = await loadMemory({
     userId: input.userId,
     channel,
-    memoryMode: applied ? "on" : "off",
-    applied,
-    memoryIdsUsed: ledger.memoryIdsUsed,
-    scopesUsed: overlay.scopesUsed,
-    improvementRate: quality.improvementRate,
-    success: true,
+    baseline: input.content,
+    assignment: input.assignment ?? input.content.slice(0, 400),
+    artifactTypes: [input.format],
+    capabilities: ["deliverable", input.format, channel],
+    // No per-surface scope silo — shared PersonalizationContext for all AI
   });
+  assertMemoryLoadedForAi(applied.context);
+
+  const overlay: MemoryDeliverableOverlay =
+    brandFallback && !applied.context.deliverable.brand
+      ? buildDeliverableOverlay({
+          userId: input.userId,
+          values: applied.provider.personalValues,
+          injectionText: applied.context.injectionText,
+          tokenEstimate: applied.context.tokenEstimate,
+          brandFallback,
+        })
+      : applied.context.deliverable;
+
+  const appliedFlag =
+    applied.context.memoryIdsUsed.length > 0 || Boolean(overlay.brand);
 
   return {
-    content: next,
+    content: applied.prompt.withMemory,
     overlay,
-    memoryIdsUsed: ledger.memoryIdsUsed,
-    quality,
-    applied,
+    memoryIdsUsed: applied.context.memoryIdsUsed,
+    quality: applied.quality,
+    applied: appliedFlag,
     channel,
   };
+}
+
+/** Persist deliverable outcome into shared Memory after artifact generation. */
+export async function saveDeliverableMemoryHistory(input: {
+  userId: string;
+  format: DeliverableFormat;
+  assignment?: string | null;
+  summary?: string | null;
+  memoryIdsUsed?: string[];
+}): Promise<void> {
+  const channel = channelForFormat(input.format);
+  try {
+    await saveMemory({
+      userId: input.userId,
+      category: "deliverable_history",
+      channel,
+      title: `${channel}成果物履歴`,
+      summary: (input.summary ?? input.assignment ?? channel).slice(0, 240),
+      value: {
+        format: input.format,
+        assignment: input.assignment ?? null,
+        memoryIdsUsed: input.memoryIdsUsed ?? [],
+      },
+      asCandidate: true,
+    });
+  } catch {
+    // Fail soft on persist — generation already succeeded
+  }
 }

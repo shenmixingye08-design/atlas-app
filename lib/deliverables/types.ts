@@ -11,6 +11,10 @@ export type DeliverableMetadata = {
   version?: number | null;
   parentDeliverableId?: string | null;
   versionGroupId?: string | null;
+  /** MemoryApply ids used when generating this artifact */
+  memoryIdsUsed?: string[] | null;
+  memoryApplyChannel?: string | null;
+  regenerateApplied?: boolean | null;
 };
 
 export interface Deliverable {

@@ -43,7 +43,10 @@ import type {
 import { getWordCompanyBrand } from "./company-brand";
 import { detectWordPurpose, isWordTemplateId } from "./word-templates";
 import type { DocxGenerateOptions } from "./generators/docx-generator";
-import { applyMemoryForDeliverable } from "@/lib/memory-apply/deliverables";
+import {
+  applyMemoryForDeliverable,
+  saveDeliverableMemoryHistory,
+} from "@/lib/memory-apply/deliverables";
 import type { MemoryDeliverableOverlay } from "@/lib/memory-apply/types";
 import { recordMemoryApplyEvent } from "@/lib/memory-apply/metrics";
 import {
@@ -463,39 +466,36 @@ export async function generateDeliverables(
   if (!needsWord) {
     const deliverables: Deliverable[] = [];
     const failures: Array<{ format: string; reasons: string[] }> = [];
-    let earlyMemoryOverlay: MemoryDeliverableOverlay | null = null;
-    try {
-      const earlyMemory = await applyMemoryForDeliverable({
+    // Fail Closed: Memory未取得で成果物生成禁止
+    const earlyMemory = await applyMemoryForDeliverable({
+      userId: options.userId,
+      content: safeContent,
+      format: formats[0] ?? "pdf",
+      assignment: input.assignment,
+    });
+    const earlyMemoryOverlay: MemoryDeliverableOverlay | null =
+      earlyMemory.overlay;
+    if (earlyMemory.applied) safeContent = earlyMemory.content;
+    for (const format of formats) {
+      const channel =
+        format === "xlsx"
+          ? "excel"
+          : format === "pdf"
+            ? "pdf"
+            : format === "pptx"
+              ? "powerpoint"
+              : null;
+      if (!channel) continue;
+      recordMemoryApplyEvent({
         userId: options.userId,
-        content: safeContent,
-        format: formats[0] ?? "pdf",
-        assignment: input.assignment,
+        channel,
+        memoryMode: earlyMemory.applied ? "on" : "off",
+        applied: earlyMemory.applied,
+        memoryIdsUsed: earlyMemory.memoryIdsUsed,
+        scopesUsed: earlyMemory.overlay.scopesUsed,
+        improvementRate: earlyMemory.quality.improvementRate,
+        success: true,
       });
-      earlyMemoryOverlay = earlyMemory.overlay;
-      if (earlyMemory.applied) safeContent = earlyMemory.content;
-      for (const format of formats) {
-        const channel =
-          format === "xlsx"
-            ? "excel"
-            : format === "pdf"
-              ? "pdf"
-              : format === "pptx"
-                ? "powerpoint"
-                : null;
-        if (!channel) continue;
-        recordMemoryApplyEvent({
-          userId: options.userId,
-          channel,
-          memoryMode: earlyMemory.applied ? "on" : "off",
-          applied: earlyMemory.applied,
-          memoryIdsUsed: earlyMemory.memoryIdsUsed,
-          scopesUsed: earlyMemory.overlay.scopesUsed,
-          improvementRate: earlyMemory.quality.improvementRate,
-          success: true,
-        });
-      }
-    } catch {
-      earlyMemoryOverlay = null;
     }
     for (const format of formats) {
       const { file, reasons } = await generateVerifiedFile(
@@ -515,6 +515,13 @@ export async function generateDeliverables(
         { sourceContent: safeContent, baseFileName },
       );
       deliverables.push(toDeliverableMetadata(stored, requestOrigin));
+      await saveDeliverableMemoryHistory({
+        userId: options.userId,
+        format,
+        assignment: input.assignment,
+        summary: stored.fileName ?? format,
+        memoryIdsUsed: earlyMemory.memoryIdsUsed,
+      });
     }
     recordWordMetric("total_ms", Date.now() - startedAt);
     return { deliverables, detection, failures, jobId };
@@ -690,52 +697,46 @@ export async function generateDeliverables(
     const deliverables: Deliverable[] = [];
     const failures: Array<{ format: string; reasons: string[] }> = [];
 
-    // Memory apply before artifact generation (Personal Memory → overlays).
-    let memoryOverlay: MemoryDeliverableOverlay | null = null;
+    // Memory apply before artifact generation — Fail Closed (shared PersonalizationContext).
+    const primaryFormat = formats.includes("docx")
+      ? "docx"
+      : formats[0] ?? "docx";
+    const memoryApplied = await applyMemoryForDeliverable({
+      userId: options.userId,
+      content: safeContent,
+      format: primaryFormat,
+      assignment: input.assignment,
+    });
+    const memoryOverlay: MemoryDeliverableOverlay | null =
+      memoryApplied.overlay;
     let memoryAppliedContent: string | null = null;
-    try {
-      const primaryFormat = formats.includes("docx")
-        ? "docx"
-        : formats[0] ?? "docx";
-      const memoryApplied = await applyMemoryForDeliverable({
+    if (memoryApplied.applied) {
+      memoryAppliedContent = memoryApplied.content;
+      safeContent = memoryApplied.content;
+    }
+    for (const format of formats) {
+      if (format === "md" || format === "txt") continue;
+      const channel =
+        format === "docx"
+          ? "word"
+          : format === "xlsx"
+            ? "excel"
+            : format === "pdf"
+              ? "pdf"
+              : format === "pptx"
+                ? "powerpoint"
+                : null;
+      if (!channel) continue;
+      recordMemoryApplyEvent({
         userId: options.userId,
-        content: safeContent,
-        format: primaryFormat,
-        assignment: input.assignment,
+        channel,
+        memoryMode: memoryApplied.applied ? "on" : "off",
+        applied: memoryApplied.applied,
+        memoryIdsUsed: memoryApplied.memoryIdsUsed,
+        scopesUsed: memoryApplied.overlay.scopesUsed,
+        improvementRate: memoryApplied.quality.improvementRate,
+        success: true,
       });
-      memoryOverlay = memoryApplied.overlay;
-      if (memoryApplied.applied) {
-        memoryAppliedContent = memoryApplied.content;
-        safeContent = memoryApplied.content;
-      }
-      // Mark each requested format channel when Memory was resolved
-      for (const format of formats) {
-        if (format === "md" || format === "txt") continue;
-        const channel =
-          format === "docx"
-            ? "word"
-            : format === "xlsx"
-              ? "excel"
-              : format === "pdf"
-                ? "pdf"
-                : format === "pptx"
-                  ? "powerpoint"
-                  : null;
-        if (!channel) continue;
-        recordMemoryApplyEvent({
-          userId: options.userId,
-          channel,
-          memoryMode: memoryApplied.applied ? "on" : "off",
-          applied: memoryApplied.applied,
-          memoryIdsUsed: memoryApplied.memoryIdsUsed,
-          scopesUsed: memoryApplied.overlay.scopesUsed,
-          improvementRate: memoryApplied.quality.improvementRate,
-          success: true,
-        });
-      }
-    } catch {
-      memoryOverlay = null;
-      memoryAppliedContent = null;
     }
     void memoryAppliedContent;
 
@@ -1117,6 +1118,13 @@ export async function generateDeliverables(
       }
 
       deliverables.push(toDeliverableMetadata(stored, requestOrigin));
+      await saveDeliverableMemoryHistory({
+        userId: options.userId,
+        format,
+        assignment: input.assignment,
+        summary: stored.fileName ?? format,
+        memoryIdsUsed: memoryApplied.memoryIdsUsed,
+      });
     }
 
     // Safety net: every claimed Word job must leave as completed|failed.

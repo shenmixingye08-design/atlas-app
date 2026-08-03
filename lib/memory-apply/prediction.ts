@@ -6,8 +6,11 @@
 
 import "server-only";
 
-import { MemoryApply } from "@/lib/memory-apply/apply";
 import type { MemoryApplyOutput } from "@/lib/memory-apply/apply";
+import {
+  assertMemoryLoadedForAi,
+  loadMemory,
+} from "@/lib/memory-apply/pipeline";
 
 export type PredictionMemoryInput = {
   userId: string;
@@ -21,11 +24,12 @@ export type PredictionMemoryInput = {
 /**
  * Apply Personal/Work Memory to a prediction draft so suggestions
  * sound like the same secretary across surfaces.
+ * Path: loadMemory → PersonalizationContext → Prompt.
  */
 export async function applyMemoryForPrediction(
   input: PredictionMemoryInput,
 ): Promise<MemoryApplyOutput> {
-  return MemoryApply({
+  const applied = await loadMemory({
     userId: input.userId,
     channel: "prediction",
     baseline: input.draft,
@@ -35,4 +39,6 @@ export async function applyMemoryForPrediction(
     artifactTypes: ["prediction"],
     capabilities: ["prediction"],
   });
+  assertMemoryLoadedForAi(applied.context);
+  return applied;
 }

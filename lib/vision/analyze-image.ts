@@ -111,28 +111,24 @@ export async function analyzeUserImage(input: {
       ecoMode: input.ecoMode,
     });
 
-  // Vision解析前: Personal Memory（前回形式・会社固有語・OCR補正ヒント）を取得
+  // Vision解析前: 共有 PersonalizationContext（Fail Closed — Memory未取得でAI禁止）
+  const { resolveVisionMemoryContext } = await import(
+    "@/lib/memory-apply/vision"
+  );
+  const visionMemory = await resolveVisionMemoryContext({
+    userId: input.userId,
+  });
   let memoryAugmentedText = input.userText;
-  try {
-    const { resolveVisionMemoryContext } = await import(
-      "@/lib/memory-apply/vision"
-    );
-    const visionMemory = await resolveVisionMemoryContext({
-      userId: input.userId,
-    });
-    if (visionMemory.hints.length > 0 || visionMemory.injectionText) {
-      memoryAugmentedText = [
-        input.userText,
-        visionMemory.injectionText,
-        visionMemory.hints.length > 0
-          ? `【Memoryヒント】${visionMemory.hints.slice(0, 8).join(" / ")}`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
-    }
-  } catch {
-    memoryAugmentedText = input.userText;
+  if (visionMemory.hints.length > 0 || visionMemory.injectionText) {
+    memoryAugmentedText = [
+      input.userText,
+      visionMemory.injectionText,
+      visionMemory.hints.length > 0
+        ? `【Memoryヒント】${visionMemory.hints.slice(0, 8).join(" / ")}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
   }
 
   if (!input.forceRefresh) {
@@ -286,7 +282,7 @@ export async function analyzeUserImage(input: {
       diagnosticId,
     });
 
-    // OCR結果を Memory 辞書で補正し、次回以降のために利用する
+    // OCR結果を共有 Memory 辞書で補正（同一 PersonalizationContext）
     try {
       const { correctOcrTextWithMemory } = await import("@/lib/memory-apply/ocr");
       if (result.extractedText?.trim()) {
@@ -298,8 +294,43 @@ export async function analyzeUserImage(input: {
           result.extractedText = corrected.corrected;
         }
       }
+    } catch (error) {
+      // Fail Closed for OCR Memory load; Vision AI already required Memory
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String((error as { code?: string }).code)
+          : "";
+      if (
+        code === "memory_load_failed" ||
+        code === "memory_required_for_ai"
+      ) {
+        throw error;
+      }
+    }
+
+    // saveMemory: Vision 解析履歴を共有 Memory へ
+    try {
+      const { saveMemory } = await import("@/lib/memory-apply/pipeline");
+      await saveMemory({
+        userId: input.userId,
+        category: "vision_history",
+        channel: "vision",
+        title: "Vision解析履歴",
+        summary: (result.summary || result.extractedText || "vision").slice(
+          0,
+          240,
+        ),
+        value: {
+          attachmentId: input.attachmentId,
+          hintType,
+          detail,
+          memoryIdsUsed: visionMemory.memoryIdsUsed,
+          hasExtractedText: Boolean(result.extractedText?.trim()),
+        },
+        asCandidate: true,
+      });
     } catch {
-      // fail soft — Vision success must not depend on OCR memory write
+      // Fail soft on persist — analysis already succeeded
     }
 
     const resolvedInputTokens =

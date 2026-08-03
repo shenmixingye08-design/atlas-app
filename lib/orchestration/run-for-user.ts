@@ -133,14 +133,15 @@ export async function runOrchestrationForUser(
   let personalMemoryMeta: Record<string, unknown> | null = null;
   if (input.userId) {
     try {
-      const { resolveForContext } = await import(
-        "@/lib/personal-memory/service"
-      );
       const isRegenerate = input.metadata?.regenerate === true;
       const previousContent =
         typeof input.metadata?.previousWorkRequest === "string"
           ? input.metadata.previousWorkRequest
           : input.assignment;
+      const deliverableType =
+        typeof input.metadata?.deliverableType === "string"
+          ? input.metadata.deliverableType
+          : "document";
 
       if (isRegenerate) {
         const { applyMemoryForRegenerate } = await import(
@@ -161,56 +162,80 @@ export async function runOrchestrationForUser(
           regenerateApplied: regen.applied,
         };
       } else {
-        const { MemoryApply } = await import("@/lib/memory-apply/apply");
-        const { recordMemoryApplyEvent } = await import(
-          "@/lib/memory-apply/metrics"
+        const {
+          loadMemory,
+          MemoryRequiredError,
+        } = await import("@/lib/memory-apply/pipeline");
+        const { applyMemoryForPlanner } = await import(
+          "@/lib/memory-apply/planner"
         );
-        const applied = await MemoryApply({
+        // Commander + Planner share PersonalizationContext via loadMemory (Fail Closed)
+        const commanderApplied = await loadMemory({
           userId: input.userId,
           channel: "commander",
           baseline: input.assignment,
           assignment: input.assignment,
-          artifactTypes: [
-            typeof input.metadata?.deliverableType === "string"
-              ? input.metadata.deliverableType
-              : "document",
-          ],
+          artifactTypes: [deliverableType],
           capabilities: ["commander", "orchestration"],
         });
-        for (const channel of ["orchestration", "workflow"] as const) {
-          recordMemoryApplyEvent({
-            userId: input.userId,
-            channel,
-            memoryMode: applied.context.mode,
-            applied: applied.context.memoryIdsUsed.length > 0,
-            memoryIdsUsed: applied.context.memoryIdsUsed,
-            scopesUsed: applied.context.scopesUsed,
-            improvementRate: applied.quality.improvementRate,
-            success: true,
-          });
+        // loadMemory already Fail Closes on load failure; guard version for AI
+        if (!commanderApplied.context.memoryVersion?.checksum) {
+          throw new MemoryRequiredError(
+            "MemoryVersion不全のためAI実行は禁止されています",
+          );
         }
-        if (applied.prompt.injection.fullText) {
-          personalMemoryMeta = {
-            personalMemory: applied.prompt.injection.fullText,
-            personalMemoryTokenEstimate: applied.context.tokenEstimate,
-            personalMemoryIdsUsed: applied.context.memoryIdsUsed,
-            personalMemoryScopesUsed: applied.context.scopesUsed,
-          };
-        } else {
-          // Fallback resolve if injection empty but Memory still resolved
-          const { result: personalResolved } = await resolveForContext({
-            userId: input.userId,
-            notes: input.assignment,
-          });
-          if (personalResolved.injectionText) {
-            personalMemoryMeta = {
-              personalMemory: personalResolved.injectionText,
-              personalMemoryTokenEstimate: personalResolved.tokenEstimate,
-            };
-          }
+        const plannerApplied = await applyMemoryForPlanner({
+          userId: input.userId,
+          assignment: input.assignment,
+          deliverableType,
+        });
+        // Workflow / orchestration channels also resolve via loadMemory (real path)
+        await loadMemory({
+          userId: input.userId,
+          channel: "orchestration",
+          baseline: input.assignment,
+          assignment: input.assignment,
+          artifactTypes: [deliverableType],
+          capabilities: ["orchestration"],
+        });
+        await loadMemory({
+          userId: input.userId,
+          channel: "workflow",
+          baseline: input.assignment,
+          assignment: input.assignment,
+          artifactTypes: [deliverableType],
+          capabilities: ["workflow"],
+        });
+
+        personalMemoryMeta = {
+          ...(plannerApplied.metadata ?? {}),
+          personalMemory:
+            plannerApplied.prompt.injection.fullText ||
+            commanderApplied.prompt.injection.fullText ||
+            plannerApplied.context.injectionText,
+          personalMemoryTokenEstimate: plannerApplied.context.tokenEstimate,
+          personalMemoryIdsUsed: plannerApplied.context.memoryIdsUsed,
+          personalMemoryScopesUsed: plannerApplied.context.scopesUsed,
+          commanderMemoryIdsUsed: commanderApplied.context.memoryIdsUsed,
+          memoryVersion: plannerApplied.context.memoryVersion,
+        };
+        if (
+          !personalMemoryMeta.personalMemory ||
+          String(personalMemoryMeta.personalMemory).trim().length === 0
+        ) {
+          personalMemoryMeta = null;
         }
       }
-    } catch {
+    } catch (error) {
+      const { MemoryLoadError, MemoryRequiredError } = await import(
+        "@/lib/memory-apply/pipeline"
+      );
+      if (
+        error instanceof MemoryLoadError ||
+        error instanceof MemoryRequiredError
+      ) {
+        throw error;
+      }
       personalMemoryMeta = null;
     }
   }
