@@ -42,10 +42,14 @@ import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 import { useFeatureAvailability } from "@/lib/feature-flags";
 import {
-  getFirstValueFunnelState,
+  getMeasuredMinutesSlices,
+  hasFirstValueCompletion,
+  listFirstValueMeasured,
+  maybeEmitRetentionSnapshots,
   selectSingleAiProposal,
   trackFirstValueEvent,
 } from "@/lib/first-value";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { cn } from "@/lib/design-system/cn";
 
 export type AutomationFirstHomeProps = {
@@ -136,11 +140,13 @@ function SecretaryDashboardStrip({
   running,
   nextLabel,
   recentCount,
+  aiProposalTitle,
 }: {
   completedToday: number;
   running: number;
   nextLabel: string;
   recentCount: number;
+  aiProposalTitle: string;
 }) {
   return (
     <section
@@ -153,10 +159,10 @@ function SecretaryDashboardStrip({
       >
         AI秘書ダッシュボード
       </h2>
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
         <StatChip label="今日終わった仕事" value={completedToday} />
         <StatChip label="実行中" value={running} emphasize={running > 0} />
-        <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 sm:col-span-1">
+        <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5">
           <p className="text-[length:var(--text-label)] text-[var(--text-muted)]">
             次の予定
           </p>
@@ -165,6 +171,14 @@ function SecretaryDashboardStrip({
           </p>
         </div>
         <StatChip label="最近の成果物" value={recentCount} />
+        <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 col-span-2 sm:col-span-1">
+          <p className="text-[length:var(--text-label)] text-[var(--text-muted)]">
+            AI提案
+          </p>
+          <p className="mt-0.5 truncate text-sm font-semibold text-[var(--text-primary)]">
+            {aiProposalTitle}
+          </p>
+        </div>
       </div>
     </section>
   );
@@ -375,34 +389,74 @@ export function AutomationFirstHome({
     opsSummary,
   ]);
 
-  const hasAutomations = automations.length > 0 || (opsSummary?.counts.activeAutomations ?? 0) > 0;
+  const [firstValueDone, setFirstValueDone] = useState(false);
+  const [measuredSlices, setMeasuredSlices] = useState({
+    today: null as number | null,
+    week: null as number | null,
+    month: null as number | null,
+    completedCount: 0,
+  });
+  const [memoryApplyRate, setMemoryApplyRate] = useState<number | null>(null);
+
+  useEffect(() => {
+    return scheduleMountWork(() => {
+      setFirstValueDone(hasFirstValueCompletion());
+      setMeasuredSlices(getMeasuredMinutesSlices());
+      void import("@/lib/memory-apply/metrics")
+        .then(({ getMemoryApplyMetrics }) => {
+          const m = getMemoryApplyMetrics();
+          if (m.useCount > 0) {
+            setMemoryApplyRate(m.successRate);
+          }
+        })
+        .catch(() => {
+          setMemoryApplyRate(null);
+        });
+    });
+  }, [opsSummary, automations.length]);
+
+  const hasAutomations =
+    automations.length > 0 ||
+    (opsSummary?.counts.activeAutomations ?? 0) > 0 ||
+    firstValueDone;
   const createHref = "/automations/quick-start";
   const oneTimeHref = "/workspace";
 
   const aiProposal = useMemo(() => {
-    const sources = recentCompleted.map((item) => ({
-      id: item.id,
-      title: item.title,
-      completedCount: 1,
-      lastCompletedAt: item.meta || null,
-    }));
+    const measuredJobs =
+      measuredSlices.completedCount > 0
+        ? listFirstValueMeasured().map((r) => ({
+            id: r.jobId,
+            title: r.title,
+            completedCount: 1,
+            lastCompletedAt: r.completedAt,
+          }))
+        : [];
+    const sources = [
+      ...measuredJobs,
+      ...recentCompleted.map((item) => ({
+        id: item.id,
+        title: item.title,
+        completedCount: 1,
+        lastCompletedAt: item.meta || null,
+      })),
+    ];
     return selectSingleAiProposal(sources);
-  }, [recentCompleted]);
-
-  const measuredMinutes = useMemo(() => {
-    const funnel = getFirstValueFunnelState();
-    if (!funnel.firstDeliverableAt) return null;
-    // Measured only after a real first deliverable — use candidate default as recorded estimate→measured handoff placeholder.
-    // Until run-duration telemetry exists, keep measured null and show estimates in ROI panel.
-    return null as number | null;
-  }, []);
+  }, [recentCompleted, measuredSlices]);
 
   useEffect(() => {
     trackFirstValueEvent("first_value_home_viewed", {
       automations: automations.length,
       empty: !hasAutomations,
     });
-  }, [automations.length, hasAutomations]);
+    maybeEmitRetentionSnapshots({
+      automationCount: automations.length,
+      successRate:
+        weeklyStats.successRatePercent == null
+          ? null
+          : weeklyStats.successRatePercent / 100,
+    });
+  }, [automations.length, hasAutomations, weeklyStats.successRatePercent]);
 
   if (opsEnabled && opsLoading && !opsSummary && !opsError) {
     return <HomeSkeleton />;
@@ -586,10 +640,13 @@ export function AutomationFirstHome({
       </header>
 
       <SecretaryDashboardStrip
-        completedToday={summary.completedRuns}
+        completedToday={
+          summary.completedRuns + measuredSlices.completedCount
+        }
         running={summary.runningRuns + runningJobs.length}
         nextLabel={nextLabel}
-        recentCount={recentCompleted.length}
+        recentCount={recentCompleted.length + measuredSlices.completedCount}
+        aiProposalTitle={aiProposal?.title ?? "履歴が集まると提案します"}
       />
 
       {opsError ? (
@@ -622,9 +679,9 @@ export function AutomationFirstHome({
         {recentSection}
         <AiProposalCard proposal={aiProposal} />
         <FirstValueRoiPanel
-          measuredTodayMinutes={measuredMinutes}
-          measuredWeekMinutes={measuredMinutes}
-          measuredMonthMinutes={measuredMinutes}
+          measuredTodayMinutes={measuredSlices.today}
+          measuredWeekMinutes={measuredSlices.week}
+          measuredMonthMinutes={measuredSlices.month}
           estimatedTodayMinutes={
             weeklyStats.completedJobs > 0
               ? weeklyStats.completedJobs * 15
@@ -640,12 +697,21 @@ export function AutomationFirstHome({
           }
           automationSuccessRate={
             weeklyStats.successRatePercent == null
-              ? null
+              ? measuredSlices.completedCount > 0
+                ? 1
+                : null
               : weeklyStats.successRatePercent / 100
           }
-          memoryApplyRate={null}
+          memoryApplyRate={memoryApplyRate}
         />
-        {opsSummary ? <WeeklyStatsCard stats={weeklyStats} /> : null}
+        {opsSummary ? (
+          <WeeklyStatsCard
+            stats={{
+              ...weeklyStats,
+              savedMinutes: measuredSlices.week,
+            }}
+          />
+        ) : null}
       </div>
 
       {/* Desktop */}
@@ -700,9 +766,9 @@ export function AutomationFirstHome({
           {nextRunCard}
           <AiProposalCard proposal={aiProposal} />
           <FirstValueRoiPanel
-            measuredTodayMinutes={measuredMinutes}
-            measuredWeekMinutes={measuredMinutes}
-            measuredMonthMinutes={measuredMinutes}
+            measuredTodayMinutes={measuredSlices.today}
+            measuredWeekMinutes={measuredSlices.week}
+            measuredMonthMinutes={measuredSlices.month}
             estimatedTodayMinutes={
               weeklyStats.completedJobs > 0
                 ? weeklyStats.completedJobs * 15
@@ -718,12 +784,21 @@ export function AutomationFirstHome({
             }
             automationSuccessRate={
               weeklyStats.successRatePercent == null
-                ? null
+                ? measuredSlices.completedCount > 0
+                  ? 1
+                  : null
                 : weeklyStats.successRatePercent / 100
             }
-            memoryApplyRate={null}
+            memoryApplyRate={memoryApplyRate}
           />
-          {opsSummary ? <WeeklyStatsCard stats={weeklyStats} /> : null}
+          {opsSummary ? (
+            <WeeklyStatsCard
+              stats={{
+                ...weeklyStats,
+                savedMinutes: measuredSlices.week,
+              }}
+            />
+          ) : null}
         </aside>
       </div>
     </div>

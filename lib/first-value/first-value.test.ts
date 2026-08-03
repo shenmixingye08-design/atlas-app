@@ -9,9 +9,14 @@ import {
   formatRoiBasis,
   formatRoiMinutes,
   getFirstValueCandidate,
+  getMeasuredMinutesSlices,
+  hasFirstValueCompletion,
   isJourneyComplete,
+  isJourneyWorkComplete,
   markJourneyStep,
+  recordFirstValueMeasured,
   resetFirstValueAnalyticsForTests,
+  resetFirstValueMeasuredForTests,
   selectSingleAiProposal,
   takeSingleProposal,
   trackFirstValueEvent,
@@ -23,6 +28,7 @@ import {
 describe("Production Blocker #5 first value", () => {
   afterEach(() => {
     resetFirstValueAnalyticsForTests();
+    resetFirstValueMeasuredForTests();
   });
 
   it("exposes feature evaluation as P0", () => {
@@ -59,13 +65,41 @@ describe("Production Blocker #5 first value", () => {
     expect(body).toContain("MINERVOT");
   });
 
-  it("marks journey complete only when all steps done", () => {
-    let steps = buildInitialJourneySteps();
+  it("builds 仕事完了一覧 steps with candidate label", () => {
+    const steps = buildInitialJourneySteps("営業資料");
+    expect(steps.map((s) => s.label)).toEqual([
+      "営業資料",
+      "保存",
+      "通知",
+      "ダウンロード",
+    ]);
     expect(isJourneyComplete(steps)).toBe(false);
-    for (const step of steps) {
-      steps = markJourneyStep(steps, step.id, "completed");
+    let next = steps;
+    for (const step of steps.filter((s) => s.id !== "downloadable")) {
+      next = markJourneyStep(next, step.id, "completed");
     }
-    expect(isJourneyComplete(steps)).toBe(true);
+    expect(isJourneyWorkComplete(next)).toBe(true);
+    expect(isJourneyComplete(next)).toBe(false);
+    next = markJourneyStep(next, "downloadable", "completed");
+    expect(isJourneyComplete(next)).toBe(true);
+  });
+
+  it("records measured minutes so savedMinutes is not forever null", () => {
+    expect(hasFirstValueCompletion()).toBe(false);
+    recordFirstValueMeasured({
+      jobId: "fv_1",
+      candidateLabel: "営業資料",
+      title: "提案",
+      minutesSaved: 45,
+      completedAt: new Date().toISOString(),
+      deliverableId: "d1",
+      automationId: "a1",
+    });
+    expect(hasFirstValueCompletion()).toBe(true);
+    const slices = getMeasuredMinutesSlices();
+    expect(slices.today).toBe(45);
+    expect(slices.week).toBe(45);
+    expect(slices.month).toBe(45);
   });
 
   it("distinguishes estimated vs measured ROI", () => {

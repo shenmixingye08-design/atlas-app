@@ -396,15 +396,14 @@ export function AutomationCreateWizard({ initialDraftId, seedText }: Props) {
           <CompleteStep
             draft={draft}
             onView={() =>
-              router.push(`/automations?id=${draft.createdAutomationId}`)
+              // Wizard完了だけでは終わらせない — Quick Startで成果物まで保証
+              router.push("/automations/quick-start")
             }
             onTest={async () => {
               if (!draft.createdAutomationId) return;
               await runAutomationV2(draft.createdAutomationId);
-              // Wizard終了で終わらせない — 実行後は仕事完了導線へ寄せる
-              router.push(
-                `/automations/runs?id=${encodeURIComponent(draft.createdAutomationId)}`,
-              );
+              // 実行後も成果物保証のため Quick Start / 完了一覧へ寄せる
+              router.push("/automations/quick-start");
             }}
             onList={() => router.push("/automations/quick-start")}
             onFirstValue={() => router.push("/automations/quick-start")}
@@ -1487,7 +1486,7 @@ function CompleteStep({
           Quick Startで初回体験する
         </Button>
         <Button type="button" variant="ghost" onClick={onView}>
-          自動化の詳細を見る
+          Quick Startで成果物まで完了する
         </Button>
         <Button type="button" variant="ghost" onClick={onList}>
           Quick Startへ

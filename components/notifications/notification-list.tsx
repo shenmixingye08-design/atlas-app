@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { filterFirstValueNotifications } from "@/lib/first-value/notification-policy";
 import {
   deleteNotification,
   fetchNotifications,
@@ -211,7 +212,8 @@ export function NotificationList({
   }, [reload, isFixture]);
 
   const visible = useMemo(() => {
-    const filtered = notifications.filter((item) =>
+    const workOnly = filterFirstValueNotifications(notifications);
+    const filtered = workOnly.filter((item) =>
       matchesNoticeFilter(item, compact ? "all" : filter),
     );
     if (typeof limit === "number") return filtered.slice(0, limit);

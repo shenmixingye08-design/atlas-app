@@ -1,6 +1,4 @@
 export type FirstValueJourneyStepId =
-  | "job_created"
-  | "ai_executed"
   | "deliverable_ready"
   | "saved"
   | "notified"
@@ -22,18 +20,42 @@ export type FirstValueJourney = {
   downloadUrl: string | null;
   deliverableId: string | null;
   notificationId: string | null;
+  automationId: string | null;
   estimatedMinutesSaved: number;
+  /** Written when deliverable path succeeds — feeds measured ROI. */
+  measuredMinutesSaved: number | null;
   completedAt: string | null;
 };
 
-export function buildInitialJourneySteps(): FirstValueJourneyStep[] {
+/**
+ * 仕事完了一覧 steps — example:
+ * 営業資料 → 保存 → 通知 → ダウンロード
+ */
+export function buildInitialJourneySteps(
+  candidateLabel: string,
+): FirstValueJourneyStep[] {
   return [
-    { id: "job_created", label: "仕事作成", status: "pending" },
-    { id: "ai_executed", label: "AI実行", status: "pending" },
-    { id: "deliverable_ready", label: "成果物完成", status: "pending" },
-    { id: "saved", label: "保存", status: "pending" },
-    { id: "notified", label: "通知", status: "pending" },
-    { id: "downloadable", label: "ダウンロード", status: "pending" },
+    {
+      id: "deliverable_ready",
+      label: candidateLabel,
+      status: "pending",
+    },
+    {
+      id: "saved",
+      label: "保存",
+      status: "pending",
+      detail: "Google Drive連携時はDriveへ。未接続時はアプリ内へ保存します",
+    },
+    {
+      id: "notified",
+      label: "通知",
+      status: "pending",
+    },
+    {
+      id: "downloadable",
+      label: "ダウンロード",
+      status: "pending",
+    },
   ];
 }
 
@@ -46,6 +68,13 @@ export function markJourneyStep(
   return steps.map((step) =>
     step.id === id ? { ...step, status, detail: detail ?? step.detail } : step,
   );
+}
+
+/** Journey is "work complete" when deliverable+save+notify done; download may wait for user. */
+export function isJourneyWorkComplete(steps: FirstValueJourneyStep[]): boolean {
+  return steps
+    .filter((s) => s.id !== "downloadable")
+    .every((s) => s.status === "completed");
 }
 
 export function isJourneyComplete(steps: FirstValueJourneyStep[]): boolean {

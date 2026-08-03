@@ -28,6 +28,7 @@ export {
   buildInitialJourneySteps,
   markJourneyStep,
   isJourneyComplete,
+  isJourneyWorkComplete,
   type FirstValueJourney,
   type FirstValueJourneyStep,
 } from "./journey";
@@ -41,3 +42,12 @@ export {
   isFirstValueNotificationAllowed,
   FIRST_VALUE_ALLOWED_NOTIFICATION_TYPES,
 } from "./notification-policy";
+export {
+  recordFirstValueMeasured,
+  markFirstValueDownloaded,
+  getMeasuredMinutesSlices,
+  hasFirstValueCompletion,
+  listFirstValueMeasured,
+  resetFirstValueMeasuredForTests,
+} from "./measured";
+export { maybeEmitRetentionSnapshots } from "./retention";
