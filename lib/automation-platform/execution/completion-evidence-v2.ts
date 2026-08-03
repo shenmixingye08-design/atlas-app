@@ -9,6 +9,27 @@ import type { AutomationRun } from "@/lib/automation-platform/types/run";
 
 export const COMPLETION_EVIDENCE_VERSION = 1 as const;
 
+export type CalendarStepEvidence = {
+  service: "google_calendar";
+  action: string;
+  calendarId: string;
+  eventId: string | null;
+  htmlLink: string | null;
+  hangoutLink: string | null;
+  startDateTime: string;
+  endDateTime: string;
+  timezone: string;
+  attendeeHash: string;
+  completedAt: string;
+  resultHash: string;
+  retryCount: number;
+  duplicatePrevented: boolean;
+  adapterMode: string;
+  environment: string;
+  approvalId: string | null;
+  providerRequestId: string | null;
+};
+
 export type AutomationV2CompletionEvidence = {
   runId: string;
   jobId: string;
@@ -24,6 +45,9 @@ export type AutomationV2CompletionEvidence = {
   completionHash: string;
   completedAt: string;
   evidenceVersion: typeof COMPLETION_EVIDENCE_VERSION;
+  adapterMode: string | null;
+  environment: string | null;
+  calendarResults: CalendarStepEvidence[];
 };
 
 export type StepEvidenceFragment = {
@@ -32,6 +56,9 @@ export type StepEvidenceFragment = {
   externalActionIds?: string[];
   externalUrls?: string[];
   notificationIds?: string[];
+  adapterMode?: string;
+  environment?: string;
+  calendar?: CalendarStepEvidence;
 };
 
 function unique(values: string[]): string[] {
@@ -40,7 +67,22 @@ function unique(values: string[]): string[] {
 
 export function mergeEvidenceFragments(
   fragments: StepEvidenceFragment[],
-): Required<StepEvidenceFragment> {
+): Required<
+  Omit<StepEvidenceFragment, "adapterMode" | "environment" | "calendar">
+> & {
+  adapterMode: string | null;
+  environment: string | null;
+  calendarResults: CalendarStepEvidence[];
+} {
+  const calendarResults = fragments
+    .map((item) => item.calendar)
+    .filter((item): item is CalendarStepEvidence => Boolean(item));
+  const adapterMode =
+    fragments.map((item) => item.adapterMode).find((item) => item?.trim()) ??
+    null;
+  const environment =
+    fragments.map((item) => item.environment).find((item) => item?.trim()) ??
+    null;
   return {
     artifactIds: unique(fragments.flatMap((item) => item.artifactIds ?? [])),
     storageObjectIds: unique(
@@ -53,6 +95,9 @@ export function mergeEvidenceFragments(
     notificationIds: unique(
       fragments.flatMap((item) => item.notificationIds ?? []),
     ),
+    adapterMode,
+    environment,
+    calendarResults,
   };
 }
 
@@ -102,6 +147,9 @@ export function buildCompletionEvidenceV2(input: {
     ].sort(),
     completedAt,
     evidenceVersion: COMPLETION_EVIDENCE_VERSION,
+    adapterMode: merged.adapterMode,
+    environment: merged.environment,
+    calendarResults: merged.calendarResults,
   };
 
   const completionHash = createHash("sha256")
@@ -114,7 +162,6 @@ export function buildCompletionEvidenceV2(input: {
   };
 }
 
-/** Attach evidence onto run resultSummary metadata channel (durable-friendly). */
 export function evidenceSummaryLine(
   evidence: AutomationV2CompletionEvidence,
 ): string {

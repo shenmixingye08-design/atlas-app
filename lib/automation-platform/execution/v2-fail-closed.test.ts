@@ -285,6 +285,39 @@ describe("V2 Production fail-closed", () => {
     expect(result.failedStage).toBe("EXTERNAL_ADAPTER_RESOLUTION");
   });
 
+  it("calendar live adapter fails closed without connection", async () => {
+    vi.stubEnv("GOOGLE_CLIENT_ID", "test-google-client");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "test-google-secret");
+    const result = await strictStepInvoker({
+      step: baseStep({
+        id: "c",
+        type: "google_calendar",
+        name: "Calendar",
+        order: 0,
+        configuration: {
+          action: "create",
+          eventTitle: "Meeting",
+          startDateTime: "2030-06-01T10:00:00.000Z",
+          endDateTime: "2030-06-01T11:00:00.000Z",
+          timezone: "Asia/Tokyo",
+        },
+        requiresApproval: true,
+      }),
+      userId: "user_fc",
+      automationName: "cal",
+      runId: "r_cal",
+      approved: true,
+    });
+    expect(result.ok).toBe(false);
+    expect(
+      [
+        "calendar_not_connected",
+        "calendar_reconnect_required",
+        "calendar_missing_scope",
+      ].includes(result.errorCode ?? ""),
+    ).toBe(true);
+  });
+
   it("partially_succeeded notification is not type=completed", () => {
     const run = {
       id: "run_partial",

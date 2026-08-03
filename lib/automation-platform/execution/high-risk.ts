@@ -14,6 +14,22 @@ export function isConfigHighRisk(step: AutomationWorkflowStep): boolean {
 }
 
 export function isStepHighRisk(step: AutomationWorkflowStep): boolean {
+  if (step.type === "google_calendar") {
+    const action = String(
+      step.configuration?.action ?? step.configuration?.mode ?? "create",
+    ).toLowerCase();
+    const attendees =
+      step.configuration?.attendees ?? step.configuration?.guests;
+    const hasAttendees =
+      (Array.isArray(attendees) && attendees.length > 0) ||
+      (typeof attendees === "string" && attendees.trim().length > 0);
+    // Create without external attendees may run without pre-run approval.
+    // Invite / update / cancel remain high-risk.
+    if ((action === "create" || action === "") && !hasAttendees) {
+      return false;
+    }
+    return true;
+  }
   return (
     stepRequiresSystemApproval(step.type) ||
     isConfigHighRisk(step)

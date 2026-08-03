@@ -20,6 +20,7 @@ import {
   getProductionStep,
   isLiveAdapterWired,
 } from "@/lib/automation-platform/execution/production-step-registry";
+import { invokeGoogleCalendarLiveStep } from "@/lib/automation-platform/execution/google-calendar-step";
 import { getCapability } from "@/lib/automation-platform/step-registry/registry";
 import { createNotification } from "@/lib/notifications/service";
 
@@ -303,16 +304,19 @@ export const strictStepInvoker: StepInvoker = async (input) => {
   }
 
   if (capability.systemRequiresApproval && !approved) {
-    return {
-      ok: false,
-      summary: "承認が必要です",
-      artifacts: [],
-      errorCode: "automation_approval_required",
-      errorMessage: "高リスク手順は承認後のみ実行できます",
-      failedStage: "APPROVAL",
-      retryable: false,
-      needsUserInput: true,
-    };
+    // Calendar: invite/update/cancel gated inside the live adapter (never invite before approval).
+    if (step.type !== "google_calendar") {
+      return {
+        ok: false,
+        summary: "承認が必要です",
+        artifacts: [],
+        errorCode: "automation_approval_required",
+        errorMessage: "高リスク手順は承認後のみ実行できます",
+        failedStage: "APPROVAL",
+        retryable: false,
+        needsUserInput: true,
+      };
+    }
   }
 
   const live = process.env.AUTOMATION_E2E_LIVE_EXTERNAL === "true";
@@ -397,14 +401,22 @@ export const strictStepInvoker: StepInvoker = async (input) => {
           : null,
       );
     }
-    case "google_calendar":
-      return invokeExternalGate(
-        "Google Calendar",
-        "google_calendar",
-        googleAppConfigured(),
-        live,
-        null,
-      );
+    case "google_calendar": {
+      if (!googleAppConfigured()) {
+        return notConnected("Google Calendar");
+      }
+      if (!isLiveAdapterWired("google_calendar")) {
+        return liveAdapterMissing("Google Calendar");
+      }
+      return invokeGoogleCalendarLiveStep({
+        step,
+        userId: input.userId,
+        runId: input.runId,
+        approved,
+        diagnosticId: input.diagnosticId ?? input.runId,
+        approvalId: input.approvalId ?? null,
+      });
+    }
     case "wordpress":
       return invokeExternalGate(
         "WordPress",

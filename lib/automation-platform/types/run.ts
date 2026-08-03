@@ -159,6 +159,28 @@ export type AutomationRun = {
     completionHash: string;
     completedAt: string;
     evidenceVersion: number;
+    adapterMode?: string | null;
+    environment?: string | null;
+    calendarResults?: Array<{
+      service: "google_calendar";
+      action: string;
+      calendarId: string;
+      eventId: string | null;
+      htmlLink: string | null;
+      hangoutLink: string | null;
+      startDateTime: string;
+      endDateTime: string;
+      timezone: string;
+      attendeeHash: string;
+      completedAt: string;
+      resultHash: string;
+      retryCount: number;
+      duplicatePrevented: boolean;
+      adapterMode: string;
+      environment: string;
+      approvalId: string | null;
+      providerRequestId: string | null;
+    }>;
   } | null;
   /** @deprecated use memoryUsage.used */
   memoryReferences: MemoryReferenceRecord[];
