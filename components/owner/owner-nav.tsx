@@ -26,6 +26,7 @@ type OwnerNavProps = {
     | "disasterRecovery"
     | "automationExecutionLogs"
     | "reliability"
+    | "scheduler"
     | "wordDownloadDiagnostics";
 };
 const LINKS = [
@@ -94,6 +95,11 @@ const LINKS = [
     id: "systemStatus" as const,
     href: "/owner/system-status",
     label: ui.owner.navSystemStatus,
+  },
+  {
+    id: "scheduler" as const,
+    href: "/owner/scheduler",
+    label: "Scheduler",
   },
   {
     id: "reliability" as const,

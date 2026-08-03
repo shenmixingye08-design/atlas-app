@@ -468,24 +468,53 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
       if (!arr.length) return null;
       return arr[Math.min(arr.length - 1, Math.ceil((pct / 100) * arr.length) - 1)]!;
     };
+    const queued = map.get("queued")?.c ?? 0;
+    const completed = map.get("completed")?.c ?? 0;
+    const failed = map.get("failed")?.c ?? 0;
+    const deadLetter = map.get("dead_letter")?.c ?? 0;
+    const terminal = completed + failed + deadLetter;
+    const cronEnabled =
+      process.env.ENABLE_SCHEDULED_CRON?.trim().toLowerCase() !== "false";
+    let alive = cronEnabled;
+    if (this.schedulerLastSuccessAt) {
+      const age = nowMs - new Date(this.schedulerLastSuccessAt).getTime();
+      alive = cronEnabled && Number.isFinite(age) && age <= 26 * 60 * 60 * 1000;
+    }
+    const running = map.get("running")?.c ?? 0;
+    const leased = map.get("leased")?.c ?? 0;
+    const workerBusyDenom = Math.max(1, leased + running);
     return {
-      queued: map.get("queued")?.c ?? 0,
-      leased: map.get("leased")?.c ?? 0,
-      running: map.get("running")?.c ?? 0,
+      queued,
+      waiting: queued,
+      leased,
+      running,
       retryScheduled: map.get("retry_scheduled")?.c ?? 0,
       stuck: Number(stuckRes.rows[0]?.c ?? 0),
-      failed: map.get("failed")?.c ?? 0,
-      deadLetter: map.get("dead_letter")?.c ?? 0,
-      completed: map.get("completed")?.c ?? 0,
+      failed,
+      deadLetter,
+      completed,
       oldestQueuedAgeMs: map.get("queued")?.oldest ?? null,
       duplicateCount: this.metaDuplicates,
       schedulerLastSuccessAt: this.schedulerLastSuccessAt,
       p95ScheduleDelayMs: p(delays, 95),
+      p99ScheduleDelayMs: p(delays, 99),
+      averageDelayMs:
+        delays.length === 0
+          ? null
+          : delays.reduce((a, b) => a + b, 0) / delays.length,
       p95ExecutionMs: p(execs, 95),
       recoverySuccessRate:
         this.metaRecoveryTotal > 0
           ? this.metaRecoverySuccess / this.metaRecoveryTotal
           : null,
+      alive,
+      workerCount: leased + running > 0 ? 1 : 0,
+      successRate: terminal > 0 ? completed / terminal : null,
+      failureRate: terminal > 0 ? (failed + deadLetter) / terminal : null,
+      averageQueueWaitMs: map.get("queued")?.oldest ?? null,
+      workerBusyPercent: Math.round(
+        ((leased + running) / workerBusyDenom) * 100,
+      ),
     };
   }
 

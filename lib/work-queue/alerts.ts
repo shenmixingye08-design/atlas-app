@@ -1,15 +1,21 @@
+import {
+  isScheduledCronEnabled,
+  isSchedulerExplicitlyStopped,
+} from "./scheduler-gate";
 import { getWorkQueueStore } from "./store";
 
 export type WorkQueueAlert = {
   code:
     | "scheduler_stale"
+    | "scheduler_stopped"
     | "queue_backlog"
     | "worker_stale"
     | "stuck_jobs"
     | "failure_spike"
     | "retry_spike"
     | "duplicate_detected"
-    | "dead_letter";
+    | "dead_letter"
+    | "success_rate_low";
   severity: "warning" | "critical";
   message: string;
 };
@@ -28,6 +34,14 @@ export async function evaluateWorkQueueAlerts(
   const metrics = await store.metrics(nowMs);
   const alerts: WorkQueueAlert[] = [];
 
+  if (!isScheduledCronEnabled() || isSchedulerExplicitlyStopped()) {
+    alerts.push({
+      code: "scheduler_stopped",
+      severity: "critical",
+      message: "Scheduler が停止しています（completed 禁止）",
+    });
+  }
+
   if (metrics.schedulerLastSuccessAt) {
     const age =
       nowMs - new Date(metrics.schedulerLastSuccessAt).getTime();
@@ -38,6 +52,37 @@ export async function evaluateWorkQueueAlerts(
         message: `Scheduler has not succeeded for ${Math.round(age / 1000)}s`,
       });
     }
+  }
+
+  if (metrics.alive === false) {
+    alerts.push({
+      code: "scheduler_stopped",
+      severity: "critical",
+      message: "Scheduler Alive = NO",
+    });
+  }
+
+  if (
+    metrics.workerCount === 0 &&
+    (metrics.running > 0 || metrics.leased > 0 || metrics.stuck > 0)
+  ) {
+    alerts.push({
+      code: "worker_stale",
+      severity: "critical",
+      message: "Worker が停止または応答していません",
+    });
+  }
+
+  if (
+    metrics.successRate != null &&
+    metrics.completed + metrics.failed + metrics.deadLetter >= 20 &&
+    metrics.successRate < 0.95
+  ) {
+    alerts.push({
+      code: "success_rate_low",
+      severity: "critical",
+      message: `Success Rate ${(metrics.successRate * 100).toFixed(1)}% < 95%`,
+    });
   }
 
   if (metrics.queued >= QUEUE_BACKLOG_WARN) {

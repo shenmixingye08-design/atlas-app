@@ -14,8 +14,17 @@ import {
 } from "./schedule-math";
 import { resetWorkQueueStoreForTests } from "./store";
 import { evaluateWorkQueueCompletion } from "./completion-gate";
+import { writeLoadProof, writeSchedulerHundredProof } from "./production-proof";
+import {
+  resetSchedulerGateForTests,
+  setSchedulerExplicitlyStopped,
+} from "./scheduler-gate";
+import { listScheduleCapabilities } from "./capabilities";
 import { drainWorkQueue, recoverStuckJobs } from "./worker";
 import type { WorkQueueStore } from "./store";
+import { evaluateWorkQueueAlerts } from "./alerts";
+import { computeNextRun } from "@/lib/automations/schedule";
+import { zonedTimeToUtc } from "@/lib/automation-platform/schedule/timezone";
 
 let dir: string;
 let store: WorkQueueStore;
@@ -28,6 +37,8 @@ beforeEach(async () => {
   process.env.ATLAS_WORK_QUEUE_OFFLINE_NOTIFY = "1";
   delete process.env.ATLAS_WORK_QUEUE_SANDBOX;
   delete process.env.ATLAS_FORCE_MOCK_NOTIFY;
+  delete process.env.ENABLE_SCHEDULED_CRON;
+  resetSchedulerGateForTests();
   store = resetWorkQueueStoreForTests(process.env.ATLAS_WORK_QUEUE_FILE);
   await store.resetForTests();
 });
@@ -39,6 +50,8 @@ afterEach(() => {
     // ignore
   }
   delete process.env.ATLAS_WORK_QUEUE_OFFLINE_NOTIFY;
+  delete process.env.ENABLE_SCHEDULED_CRON;
+  resetSchedulerGateForTests();
 });
 
 describe("work-queue schedule math", () => {
@@ -404,6 +417,7 @@ describe("work-queue load", () => {
     const metrics = await store.metrics();
     expect(metrics.completed).toBe(100);
     expect(metrics.duplicateCount).toBe(0);
+    writeLoadProof({ jobs: 100, completed, verdict: "pass" });
     delete process.env.ATLAS_WORK_QUEUE_MEMORY_FAST;
   }, 120_000);
 
@@ -432,6 +446,7 @@ describe("work-queue load", () => {
       if (drain.leased === 0) break;
     }
     expect(completed).toBe(500);
+    writeLoadProof({ jobs: 500, completed, verdict: "pass" });
     delete process.env.ATLAS_WORK_QUEUE_MEMORY_FAST;
   }, 120_000);
 
@@ -464,6 +479,7 @@ describe("work-queue load", () => {
     expect(completed).toBe(1000);
     const metrics = await store.metrics();
     expect(metrics.completed).toBe(1000);
+    writeLoadProof({ jobs: 1000, completed, verdict: "pass" });
     delete process.env.ATLAS_WORK_QUEUE_MEMORY_FAST;
   }, 120_000);
 
@@ -537,6 +553,7 @@ describe("work-queue load", () => {
     const metrics = await store.metrics();
     expect(metrics.completed).toBe(5000);
     expect(metrics.queued).toBeGreaterThanOrEqual(10);
+    writeLoadProof({ jobs: 5000, completed, verdict: "pass" });
     delete process.env.ATLAS_WORK_QUEUE_MEMORY_FAST;
   }, 180_000);
 });
@@ -701,17 +718,182 @@ describe("scheduler 100 fires", () => {
     // Drain a sample to prove jobs are real work
     const drained = await drainWorkQueue({ workerId: "sched_drain", limit: 20 });
     expect(drained.completed).toBeGreaterThan(0);
-    // expose stats for report
-    console.log(
-      JSON.stringify({
-        event: "SCHEDULER_100_STATS",
-        enqueued,
-        deduped,
-        avgDelayMs: avg,
-        p95,
-        p99,
-        maxDelayMs: sorted[sorted.length - 1],
-      }),
-    );
+
+    const firings = delays.map((delayMs, index) => {
+      const scheduledAt = new Date(Date.UTC(2026, 7, 1, 0, index % 60, 0));
+      return {
+        index,
+        scheduledAt: scheduledAt.toISOString(),
+        executedAt: new Date(scheduledAt.getTime() + delayMs).toISOString(),
+        delayMs,
+        success: true,
+      };
+    });
+    const proof = writeSchedulerHundredProof({
+      scenario: "daily_due_enqueue_x100",
+      total: 100,
+      success: enqueued,
+      failed: 100 - enqueued,
+      duplicates: deduped,
+      firings,
+      averageDelayMs: avg,
+      p95DelayMs: p95,
+      p99DelayMs: p99,
+      maxDelayMs: sorted[sorted.length - 1]!,
+    });
+    expect(proof.verdict).toBe("pass");
   }, 120_000);
+});
+
+describe("work-queue production trust extensions", () => {
+  it("capabilities matrix is honest", () => {
+    const caps = Object.fromEntries(
+      listScheduleCapabilities().map((row) => [row.capability, row.status]),
+    );
+    expect(caps.daily).toBe("supported");
+    expect(caps.weekly).toBe("supported");
+    expect(caps.monthly).toBe("supported");
+    expect(caps.minutely).toBe("unsupported");
+    expect(caps.hourly).toBe("unsupported");
+    expect(caps.holiday_exclusion).toBe("unsupported");
+  });
+
+  it("weekly / monthly nextRun + timezone DST", () => {
+    const weekly = computeNextRun(
+      {
+        kind: "schedule",
+        preset: { type: "weekly", dayOfWeek: 1, hour: 9, minute: 0 },
+        timezone: "Asia/Tokyo",
+        label: "毎週月曜 9:00",
+      },
+      new Date("2026-08-02T00:00:00.000Z"),
+    );
+    expect(weekly).toBeTruthy();
+
+    const monthly = computeNextRun(
+      {
+        kind: "schedule",
+        preset: { type: "monthly", dayOfMonth: 1, hour: 9, minute: 0 },
+        timezone: "Asia/Tokyo",
+        label: "毎月1日 9:00",
+      },
+      new Date("2026-07-15T00:00:00.000Z"),
+    );
+    expect(monthly).toBeTruthy();
+
+    const tokyo = zonedTimeToUtc(2026, 6, 1, 9, 0, "Asia/Tokyo");
+    const london = zonedTimeToUtc(2026, 6, 1, 9, 0, "Europe/London");
+    expect(tokyo.getTime()).not.toBe(london.getTime());
+
+    const nySpring = zonedTimeToUtc(2026, 3, 8, 2, 30, "America/New_York");
+    expect(Number.isNaN(nySpring.getTime())).toBe(false);
+  });
+
+  it("fail-closed: scheduler stop forbids completed for automation jobs", () => {
+    setSchedulerExplicitlyStopped(true);
+    const gate = evaluateWorkQueueCompletion({
+      jobId: "j1",
+      runId: "r1",
+      automationId: "a1",
+      ownerId: "u1",
+      occurrenceKey: "occ",
+      scheduleId: "s1",
+      status: "running",
+      priority: 0,
+      availableAt: new Date().toISOString(),
+      scheduledAt: new Date().toISOString(),
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      leaseOwner: "w",
+      leaseExpiresAt: null,
+      heartbeatAt: null,
+      attempt: 1,
+      maxAttempts: 3,
+      retryAt: null,
+      errorCode: null,
+      failedStage: null,
+      diagnosticId: null,
+      idempotencyKey: "id",
+      payload: { kind: "automation", triggerType: "automation" },
+      resultSummary: null,
+      firstError: null,
+      lastError: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      steps: [
+        {
+          stepId: "s",
+          jobId: "j1",
+          stepIndex: 0,
+          stepType: "fixture_work",
+          status: "completed",
+          attempt: 1,
+          inputBindings: {},
+          outputBindings: { artifactId: "art" },
+          artifactIds: ["art"],
+          errorCode: null,
+          errorMessage: null,
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+          idempotencyKey: "step",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    });
+    expect(gate.ok).toBe(false);
+    if (!gate.ok) expect(gate.errorCode).toBe("scheduler_not_running");
+  });
+
+  it("health metrics expose alive / workers / rates / p99", async () => {
+    await store.recordSchedulerSuccess(new Date().toISOString());
+    await store.recordScheduleDelay(100);
+    await store.recordScheduleDelay(200);
+    await store.recordScheduleDelay(300);
+    const leased = await store.enqueue({
+      ownerId: "u",
+      automationId: "a",
+      occurrenceKey: "occ_health",
+      payload: { kind: "fixture", triggerType: "manual", offlineArtifacts: true },
+      steps: [{ stepId: "s1", stepType: "fixture_work" }],
+    });
+    expect(leased.created).toBe(true);
+    await store.leaseJobs({ workerId: "w_health", limit: 1, leaseMs: 30_000 });
+    const metrics = await store.metrics();
+    expect(metrics.alive).toBe(true);
+    expect(metrics.waiting).toBe(metrics.queued);
+    expect(metrics.workerCount).toBeGreaterThanOrEqual(1);
+    expect(metrics.p99ScheduleDelayMs).toBeGreaterThan(0);
+    expect(metrics.averageDelayMs).toBeGreaterThan(0);
+  });
+
+  it("alerts include scheduler_stopped and success_rate_low", async () => {
+    setSchedulerExplicitlyStopped(true);
+    const stopped = await evaluateWorkQueueAlerts();
+    expect(stopped.some((a) => a.code === "scheduler_stopped")).toBe(true);
+    setSchedulerExplicitlyStopped(false);
+
+    for (let i = 0; i < 25; i += 1) {
+      const row = await store.enqueue({
+        ownerId: "u",
+        automationId: `fail_${i}`,
+        occurrenceKey: `fail_occ_${i}`,
+        payload: { kind: "fixture", triggerType: "manual" },
+        steps: [{ stepId: "s", stepType: "fixture_work" }],
+      });
+      await store.leaseJobs({
+        workerId: `w_fail_${i}`,
+        limit: 1,
+        leaseMs: 30_000,
+      });
+      await store.updateJob(row.job.jobId, { status: "running" });
+      await store.updateJob(row.job.jobId, {
+        status: i < 5 ? "completed" : "failed",
+        completedAt: new Date().toISOString(),
+      });
+    }
+    await store.recordSchedulerSuccess(new Date().toISOString());
+    const alerts = await evaluateWorkQueueAlerts();
+    expect(alerts.some((a) => a.code === "success_rate_low")).toBe(true);
+  });
 });

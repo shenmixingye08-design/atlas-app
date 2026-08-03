@@ -19,3 +19,10 @@ export { decideRetry, classifyErrorCode } from "./retry";
 export { defaultAutomationSteps } from "./steps/execute-step";
 export { evaluateWorkQueueCompletion } from "./completion-gate";
 export { WORK_QUEUE_FEATURE_EVALUATION } from "./feature-evaluation";
+export { listScheduleCapabilities } from "./capabilities";
+export {
+  isSchedulerAcceptingCompletions,
+  setSchedulerExplicitlyStopped,
+  resetSchedulerGateForTests,
+} from "./scheduler-gate";
+export { writeSchedulerHundredProof, writeLoadProof } from "./production-proof";

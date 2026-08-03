@@ -1,9 +1,11 @@
+import { isSchedulerAcceptingCompletions } from "./scheduler-gate";
 import type { WorkJobRecord, WorkStepRecord } from "./types";
 
 /**
  * Fail-closed completion for work-queue jobs.
  * `completed` requires every step finished successfully with evidence —
  * never mark completed on partial success.
+ * Schedule-triggered jobs also require Scheduler to be accepting completions.
  */
 export type CompletionGateResult =
   | { ok: true; summary: string }
@@ -47,6 +49,17 @@ export function evaluateWorkQueueCompletion(
       ok: false,
       errorCode: "validation_failure",
       errorMessage: "no steps — cannot complete",
+    };
+  }
+
+  const schedulerGate = isSchedulerAcceptingCompletions({
+    triggerType: job.payload.triggerType ?? "automation",
+  });
+  if (!schedulerGate.allowed) {
+    return {
+      ok: false,
+      errorCode: schedulerGate.code,
+      errorMessage: schedulerGate.message,
     };
   }
 

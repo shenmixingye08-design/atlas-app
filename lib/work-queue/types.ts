@@ -111,6 +111,8 @@ export type LeaseResult = {
 
 export type WorkQueueMetrics = {
   queued: number;
+  /** Alias of queued — Waiting in Scheduler Health vocabulary. */
+  waiting: number;
   leased: number;
   running: number;
   retryScheduled: number;
@@ -122,8 +124,17 @@ export type WorkQueueMetrics = {
   duplicateCount: number;
   schedulerLastSuccessAt: string | null;
   p95ScheduleDelayMs: number | null;
+  p99ScheduleDelayMs: number | null;
+  averageDelayMs: number | null;
   p95ExecutionMs: number | null;
   recoverySuccessRate: number | null;
+  /** Scheduler Alive — enabled + recent tick (or never started). */
+  alive: boolean;
+  workerCount: number;
+  successRate: number | null;
+  failureRate: number | null;
+  averageQueueWaitMs: number | null;
+  workerBusyPercent: number | null;
 };
 
 /** Valid transitions (enforced in store). */

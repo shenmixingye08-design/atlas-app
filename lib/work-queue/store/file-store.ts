@@ -27,6 +27,12 @@ import type {
 import { WORK_JOB_TRANSITIONS } from "../types";
 import type { WorkQueueStore } from "./interface";
 
+type WorkerHeartbeat = {
+  workerId: string;
+  lastSeenAt: string;
+  busy: boolean;
+};
+
 type FileSnapshot = {
   jobs: WorkJobRecord[];
   schedulerLastSuccessAt: string | null;
@@ -35,6 +41,7 @@ type FileSnapshot = {
   recoverySuccess: number;
   recoveryTotal: number;
   duplicateCount: number;
+  workers: WorkerHeartbeat[];
 };
 
 function defaultPath(): string {
@@ -77,6 +84,7 @@ export class FileWorkQueueStore implements WorkQueueStore {
           recoverySuccess: 0,
           recoveryTotal: 0,
           duplicateCount: 0,
+          workers: [],
         };
       }
       const raw = JSON.parse(readFileSync(this.path, "utf8")) as FileSnapshot;
@@ -88,6 +96,7 @@ export class FileWorkQueueStore implements WorkQueueStore {
         recoverySuccess: raw.recoverySuccess ?? 0,
         recoveryTotal: raw.recoveryTotal ?? 0,
         duplicateCount: raw.duplicateCount ?? 0,
+        workers: Array.isArray(raw.workers) ? raw.workers : [],
       };
     } catch {
       return {
@@ -98,6 +107,7 @@ export class FileWorkQueueStore implements WorkQueueStore {
         recoverySuccess: 0,
         recoveryTotal: 0,
         duplicateCount: 0,
+        workers: [],
       };
     }
   }
@@ -260,6 +270,7 @@ export class FileWorkQueueStore implements WorkQueueStore {
         if (!job.startedAt) job.startedAt = nowIso;
         leased.push(structuredClone(job));
       }
+      this.touchWorker(input.workerId, nowIso, leased.length > 0);
       return leased;
     });
   }
@@ -278,8 +289,22 @@ export class FileWorkQueueStore implements WorkQueueStore {
       job.heartbeatAt = new Date(now).toISOString();
       job.leaseExpiresAt = new Date(now + leaseMs).toISOString();
       job.updatedAt = job.heartbeatAt;
+      this.touchWorker(workerId, job.heartbeatAt, true);
       return true;
     });
+  }
+
+  private touchWorker(workerId: string, at: string, busy: boolean): void {
+    const existing = this.data.workers.find((w) => w.workerId === workerId);
+    if (existing) {
+      existing.lastSeenAt = at;
+      existing.busy = busy;
+      return;
+    }
+    this.data.workers.push({ workerId, lastSeenAt: at, busy });
+    if (this.data.workers.length > 200) {
+      this.data.workers = this.data.workers.slice(-100);
+    }
   }
 
   async getJob(jobId: string): Promise<WorkJobRecord | null> {
@@ -366,11 +391,13 @@ export class FileWorkQueueStore implements WorkQueueStore {
         completed: 0,
       };
       let oldest: number | null = null;
+      const queueWaits: number[] = [];
       for (const job of this.data.jobs) {
         if (job.status === "queued") {
           counts.queued += 1;
           const age = nowMs - new Date(job.createdAt).getTime();
           oldest = oldest === null ? age : Math.max(oldest, age);
+          queueWaits.push(age);
         } else if (job.status === "leased") counts.leased += 1;
         else if (job.status === "running") counts.running += 1;
         else if (job.status === "retry_scheduled") counts.retryScheduled += 1;
@@ -384,8 +411,38 @@ export class FileWorkQueueStore implements WorkQueueStore {
         this.data.recoveryTotal > 0
           ? this.data.recoverySuccess / this.data.recoveryTotal
           : null;
+      const terminal = counts.completed + counts.failed + counts.deadLetter;
+      const successRate = terminal > 0 ? counts.completed / terminal : null;
+      const failureRate =
+        terminal > 0 ? (counts.failed + counts.deadLetter) / terminal : null;
+      const avgDelay =
+        delays.length === 0
+          ? null
+          : delays.reduce((a, b) => a + b, 0) / delays.length;
+      const avgQueueWait =
+        queueWaits.length === 0
+          ? null
+          : queueWaits.reduce((a, b) => a + b, 0) / queueWaits.length;
+
+      const activeWorkers = this.data.workers.filter((w) => {
+        const age = nowMs - new Date(w.lastSeenAt).getTime();
+        return Number.isFinite(age) && age <= 120_000;
+      });
+      const busy = activeWorkers.filter((w) => w.busy).length;
+
+      const cronEnabled =
+        process.env.ENABLE_SCHEDULED_CRON?.trim().toLowerCase() !== "false";
+      let alive = cronEnabled;
+      if (this.data.schedulerLastSuccessAt) {
+        const age =
+          nowMs - new Date(this.data.schedulerLastSuccessAt).getTime();
+        // Hobby daily cron → 26h; minute cron stays well under.
+        alive = cronEnabled && Number.isFinite(age) && age <= 26 * 60 * 60 * 1000;
+      }
+
       return {
         ...counts,
+        waiting: counts.queued,
         stuck: this.data.jobs.filter((j) => {
           if (j.status !== "leased" && j.status !== "running") return false;
           const hb = j.heartbeatAt ? new Date(j.heartbeatAt).getTime() : 0;
@@ -395,8 +452,19 @@ export class FileWorkQueueStore implements WorkQueueStore {
         duplicateCount: this.data.duplicateCount,
         schedulerLastSuccessAt: this.data.schedulerLastSuccessAt,
         p95ScheduleDelayMs: percentile(delays, 95),
+        p99ScheduleDelayMs: percentile(delays, 99),
+        averageDelayMs: avgDelay,
         p95ExecutionMs: percentile(execs, 95),
         recoverySuccessRate: recoveryRate,
+        alive,
+        workerCount: activeWorkers.length,
+        successRate,
+        failureRate,
+        averageQueueWaitMs: avgQueueWait,
+        workerBusyPercent:
+          activeWorkers.length === 0
+            ? null
+            : Math.round((busy / activeWorkers.length) * 100),
       };
     });
   }
@@ -442,6 +510,7 @@ export class FileWorkQueueStore implements WorkQueueStore {
         recoverySuccess: 0,
         recoveryTotal: 0,
         duplicateCount: 0,
+        workers: [],
       };
     });
   }
