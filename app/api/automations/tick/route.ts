@@ -47,9 +47,19 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const origin = resolveOrigin(request);
+    const url = new URL(request.url);
+    const drainParam = url.searchParams.get("drain");
+    const drain =
+      drainParam === "0" || drainParam === "false"
+        ? false
+        : drainParam === "1" || drainParam === "true"
+          ? true
+          : undefined;
+
     const { processWorkQueueTick } = await import("@/lib/work-queue/tick");
     const workQueue = await processWorkQueueTick({
       requestOrigin: origin,
+      drain,
     });
 
     let v2Schedule = {
@@ -61,18 +71,26 @@ export async function POST(request: Request): Promise<Response> {
     };
     let v2Dispatch = { processed: 0 };
     try {
+      const { listAutomationOwnerUserIds } = await import(
+        "@/lib/automations/global-durable"
+      );
+      const hydrateUserIds = await listAutomationOwnerUserIds();
       const { processDueScheduledAutomationsV2 } = await import(
         "@/lib/automation-platform/schedule/due-tick"
       );
-      // V2: enqueue-only (dispatch false) — avoid sync heavy work in cron.
+      // V2: hydrate owners + enqueue-only — avoid sync heavy work in cron.
       v2Schedule = await processDueScheduledAutomationsV2({
         limit: 20,
         dispatch: false,
+        hydrateUserIds,
       });
-      const { dispatchAutomationRuns } = await import(
-        "@/lib/automation-platform/execution/dispatch"
-      );
-      v2Dispatch = await dispatchAutomationRuns({ limit: 10 });
+      // Independent of scheduler: small dispatch batch only when drain enabled.
+      if (workQueue.drained) {
+        const { dispatchAutomationRuns } = await import(
+          "@/lib/automation-platform/execution/dispatch"
+        );
+        v2Dispatch = await dispatchAutomationRuns({ limit: 10 });
+      }
     } catch (error) {
       console.warn("[automation tick] v2 schedule/dispatch skipped:", error);
     }
@@ -104,8 +122,8 @@ export async function POST(request: Request): Promise<Response> {
     recordAutomationCronDebug({
       ok: true,
       dueCount: workQueue.schedule.due,
-      successCount: workQueue.worker.completed,
-      failureCount: workQueue.worker.failed,
+      successCount: workQueue.worker?.completed ?? 0,
+      failureCount: workQueue.worker?.failed ?? 0,
     });
 
     for (const alert of workQueue.alerts.filter((a) => a.severity === "critical")) {
@@ -119,7 +137,8 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     return Response.json({
-      processed: workQueue.worker.completed + workQueue.worker.failed,
+      processed:
+        (workQueue.worker?.completed ?? 0) + (workQueue.worker?.failed ?? 0),
       workQueue,
       v2Schedule,
       v2Dispatch,

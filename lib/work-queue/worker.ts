@@ -89,6 +89,15 @@ async function processLeasedJob(
     for (const step of [...current.steps].sort(
       (a, b) => a.stepIndex - b.stepIndex,
     )) {
+      // Cancel / ownership re-check before every side-effect step.
+      const live = await store.getJob(job.jobId);
+      if (!live || live.status === "cancelled") {
+        return "failed";
+      }
+      if (live.leaseOwner && live.leaseOwner !== workerId) {
+        return "failed";
+      }
+
       if (step.status === "completed" || step.status === "skipped") {
         Object.assign(previousOutputs, step.outputBindings);
         continue;
@@ -115,7 +124,7 @@ async function processLeasedJob(
       });
 
       const result = await executeWorkStep({
-        job: current,
+        job: live,
         step: runningStep,
         previousOutputs,
       });
@@ -192,6 +201,21 @@ async function processLeasedJob(
           },
           workerId,
         );
+        await store.appendRetryHistory(job.jobId, {
+          at: failAt,
+          attempt,
+          reason: decision.developerMessage,
+          errorCode: failedStep.errorCode,
+          stepId: step.stepId,
+        });
+        // Reset failed step to pending so resume re-enters cleanly;
+        // completed prior steps remain untouched (step resume).
+        await store.updateStep({
+          ...failedStep,
+          status: "pending",
+          completedAt: null,
+          updatedAt: failAt,
+        });
         logWorkQueue({
           event: "RETRY_SCHEDULED",
           jobId: job.jobId,
@@ -311,6 +335,37 @@ export async function recoverStuckJobs(
     });
     if (decision.retryable && decision.retryAt) {
       // Do not re-run completed steps — only re-queue job; worker skips completed.
+      // Running/failed steps without side-effect evidence reset to pending.
+      for (const step of job.steps) {
+        if (step.status === "running" || step.status === "failed") {
+          const prior = await store.getSideEffect(step.idempotencyKey);
+          if (prior) {
+            await store.updateStep({
+              ...step,
+              status: "completed",
+              outputBindings: {
+                ...step.outputBindings,
+                ...((prior.result.outputBindings as Record<string, unknown>) ??
+                  {}),
+              },
+              artifactIds: Array.isArray(prior.result.artifactIds)
+                ? (prior.result.artifactIds as string[])
+                : step.artifactIds,
+              completedAt: prior.createdAt,
+              updatedAt: new Date(nowMs).toISOString(),
+              errorCode: null,
+              errorMessage: null,
+            });
+          } else {
+            await store.updateStep({
+              ...step,
+              status: "pending",
+              completedAt: null,
+              updatedAt: new Date(nowMs).toISOString(),
+            });
+          }
+        }
+      }
       await store.updateJob(job.jobId, {
         status: "retry_scheduled",
         attempt,
@@ -321,6 +376,13 @@ export async function recoverStuckJobs(
         leaseOwner: null,
         leaseExpiresAt: null,
         lastError: "heartbeat timeout — scheduled for recovery",
+      });
+      await store.appendRetryHistory(job.jobId, {
+        at: new Date(nowMs).toISOString(),
+        attempt,
+        reason: "stuck_recovered",
+        errorCode: "stuck_recovered",
+        stepId: job.failedStage,
       });
       await store.recordRecovery(true);
       recovered += 1;

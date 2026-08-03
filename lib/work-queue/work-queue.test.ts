@@ -587,6 +587,7 @@ describe("work-queue fail-closed completion", () => {
       resultSummary: null,
       firstError: null,
       lastError: null,
+      retryHistory: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       steps: [
@@ -818,6 +819,7 @@ describe("work-queue production trust extensions", () => {
       resultSummary: null,
       firstError: null,
       lastError: null,
+      retryHistory: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       steps: [

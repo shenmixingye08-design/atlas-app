@@ -22,9 +22,11 @@ import type {
   WorkJobRecord,
   WorkJobStatus,
   WorkQueueMetrics,
+  WorkRetryHistoryEntry,
+  WorkSideEffectRecord,
   WorkStepRecord,
 } from "../types";
-import { WORK_JOB_TRANSITIONS } from "../types";
+import { WORK_JOB_TERMINAL_STATUSES, WORK_JOB_TRANSITIONS } from "../types";
 import type { WorkQueueStore } from "./interface";
 
 type WorkerHeartbeat = {
@@ -35,6 +37,7 @@ type WorkerHeartbeat = {
 
 type FileSnapshot = {
   jobs: WorkJobRecord[];
+  sideEffects: WorkSideEffectRecord[];
   schedulerLastSuccessAt: string | null;
   scheduleDelays: number[];
   executionMs: number[];
@@ -43,6 +46,27 @@ type FileSnapshot = {
   duplicateCount: number;
   workers: WorkerHeartbeat[];
 };
+
+function emptySnapshot(): FileSnapshot {
+  return {
+    jobs: [],
+    sideEffects: [],
+    schedulerLastSuccessAt: null,
+    scheduleDelays: [],
+    executionMs: [],
+    recoverySuccess: 0,
+    recoveryTotal: 0,
+    duplicateCount: 0,
+    workers: [],
+  };
+}
+
+function normalizeJob(job: WorkJobRecord): WorkJobRecord {
+  return {
+    ...job,
+    retryHistory: Array.isArray(job.retryHistory) ? job.retryHistory : [],
+  };
+}
 
 function defaultPath(): string {
   return (
@@ -76,20 +100,12 @@ export class FileWorkQueueStore implements WorkQueueStore {
   private load(): FileSnapshot {
     try {
       if (!existsSync(this.path)) {
-        return {
-          jobs: [],
-          schedulerLastSuccessAt: null,
-          scheduleDelays: [],
-          executionMs: [],
-          recoverySuccess: 0,
-          recoveryTotal: 0,
-          duplicateCount: 0,
-          workers: [],
-        };
+        return emptySnapshot();
       }
       const raw = JSON.parse(readFileSync(this.path, "utf8")) as FileSnapshot;
       return {
-        jobs: Array.isArray(raw.jobs) ? raw.jobs : [],
+        jobs: Array.isArray(raw.jobs) ? raw.jobs.map(normalizeJob) : [],
+        sideEffects: Array.isArray(raw.sideEffects) ? raw.sideEffects : [],
         schedulerLastSuccessAt: raw.schedulerLastSuccessAt ?? null,
         scheduleDelays: Array.isArray(raw.scheduleDelays) ? raw.scheduleDelays : [],
         executionMs: Array.isArray(raw.executionMs) ? raw.executionMs : [],
@@ -99,16 +115,7 @@ export class FileWorkQueueStore implements WorkQueueStore {
         workers: Array.isArray(raw.workers) ? raw.workers : [],
       };
     } catch {
-      return {
-        jobs: [],
-        schedulerLastSuccessAt: null,
-        scheduleDelays: [],
-        executionMs: [],
-        recoverySuccess: 0,
-        recoveryTotal: 0,
-        duplicateCount: 0,
-        workers: [],
-      };
+      return emptySnapshot();
     }
   }
 
@@ -207,6 +214,7 @@ export class FileWorkQueueStore implements WorkQueueStore {
       resultSummary: null,
       firstError: null,
       lastError: null,
+      retryHistory: [],
       createdAt: now,
       updatedAt: now,
       steps,
@@ -261,7 +269,12 @@ export class FileWorkQueueStore implements WorkQueueStore {
 
       const leased: WorkJobRecord[] = [];
       for (const job of candidates) {
-        if (job.status === "completed" || job.status === "cancelled") continue;
+        if (
+          WORK_JOB_TERMINAL_STATUSES.includes(job.status) ||
+          job.status === "failed"
+        ) {
+          continue;
+        }
         job.status = "leased";
         job.leaseOwner = input.workerId;
         job.leaseExpiresAt = leaseExpires;
@@ -500,18 +513,62 @@ export class FileWorkQueueStore implements WorkQueueStore {
     });
   }
 
+  async getSideEffect(
+    idempotencyKey: string,
+  ): Promise<WorkSideEffectRecord | null> {
+    return this.withLock(() => {
+      const found = this.data.sideEffects.find(
+        (row) => row.idempotencyKey === idempotencyKey,
+      );
+      return found ? structuredClone(found) : null;
+    });
+  }
+
+  async tryRecordSideEffect(input: {
+    idempotencyKey: string;
+    jobId: string;
+    runId: string;
+    stepId: string;
+    kind: string;
+    result: Record<string, unknown>;
+  }): Promise<{ created: boolean; record: WorkSideEffectRecord }> {
+    return this.withLock(() => {
+      const existing = this.data.sideEffects.find(
+        (row) => row.idempotencyKey === input.idempotencyKey,
+      );
+      if (existing) {
+        return { created: false, record: structuredClone(existing) };
+      }
+      const record: WorkSideEffectRecord = {
+        idempotencyKey: input.idempotencyKey,
+        jobId: input.jobId,
+        runId: input.runId,
+        stepId: input.stepId,
+        kind: input.kind,
+        result: input.result,
+        createdAt: new Date().toISOString(),
+      };
+      this.data.sideEffects.push(record);
+      return { created: true, record: structuredClone(record) };
+    });
+  }
+
+  async appendRetryHistory(
+    jobId: string,
+    entry: WorkRetryHistoryEntry,
+  ): Promise<void> {
+    await this.withLock(() => {
+      const job = this.data.jobs.find((j) => j.jobId === jobId);
+      if (!job) return;
+      if (!Array.isArray(job.retryHistory)) job.retryHistory = [];
+      job.retryHistory.push(entry);
+      job.updatedAt = new Date().toISOString();
+    });
+  }
+
   async resetForTests(): Promise<void> {
     await this.withLock(() => {
-      this.data = {
-        jobs: [],
-        schedulerLastSuccessAt: null,
-        scheduleDelays: [],
-        executionMs: [],
-        recoverySuccess: 0,
-        recoveryTotal: 0,
-        duplicateCount: 0,
-        workers: [],
-      };
+      this.data = emptySnapshot();
     });
   }
 }

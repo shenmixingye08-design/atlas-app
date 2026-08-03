@@ -8,7 +8,14 @@ export async function cancelWorkJob(jobId: string): Promise<boolean> {
   const store = getWorkQueueStore();
   const job = await store.getJob(jobId);
   if (!job) return false;
-  if (job.status === "completed" || job.status === "cancelled") return false;
+  if (
+    job.status === "completed" ||
+    job.status === "cancelled" ||
+    job.status === "failed" ||
+    job.status === "dead_letter"
+  ) {
+    return false;
+  }
 
   const now = new Date().toISOString();
   for (const step of job.steps) {
