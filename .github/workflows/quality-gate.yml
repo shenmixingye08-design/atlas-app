@@ -61,6 +61,24 @@ jobs:
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
           NODE_OPTIONS: --max-old-space-size=8192
 
+      - name: Scheduler production audit (Phase 2-1)
+        run: |
+          npm test -- --run lib/scheduler-audit
+          node scripts/ci/scheduler-audit.mjs
+        env:
+          TZ: UTC
+          ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Upload Scheduler audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-audit-2-1
+          path: artifacts/scheduler-audit-2-1/**
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Upload Vitest logs on failure
         if: failure()
         uses: actions/upload-artifact@v4

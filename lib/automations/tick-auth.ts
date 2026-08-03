@@ -20,12 +20,26 @@ function safeEqualString(a: string, b: string): boolean {
 
 /**
  * Accept Vercel Cron Bearer secret.
- * In non-production, any signed-in user may tick (local UI).
- * In production, only CRON_SECRET or an ATLAS owner may tick.
+ * Non-production: any signed-in user may tick (local UI).
+ * Production: CRON_SECRET or ATLAS owner only.
+ * Fail-closed: never returns ok when production secret is missing.
  */
+export type AutomationTickAuthResult =
+  | { ok: true }
+  | {
+      ok: false;
+      status: number;
+      error: string;
+      /** Fail-fast diagnostic code for Scheduler audit / ops (never a success path). */
+      diagnosticCode:
+        | "cron_secret_missing"
+        | "cron_secret_mismatch_or_unauthorized"
+        | "cron_unauthorized";
+    };
+
 export async function authorizeAutomationTick(
   request: Request,
-): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+): Promise<AutomationTickAuthResult> {
   const secret = readCronSecret();
   const authorization = request.headers.get("authorization");
   const headerSecret = request.headers.get("x-cron-secret");
@@ -42,26 +56,44 @@ export async function authorizeAutomationTick(
 
   if (isAtlasProduction()) {
     if (!secret) {
+      console.error(
+        "[scheduler-audit] FAIL_CLOSED cron_secret_missing env=production",
+      );
       return {
         ok: false,
         status: 503,
         error: "CRON_SECRET is not configured",
+        diagnosticCode: "cron_secret_missing",
       };
     }
     if (await checkAtlasOwner()) return { ok: true };
-    return { ok: false, status: 401, error: "Unauthorized" };
+    return {
+      ok: false,
+      status: 401,
+      error: "Unauthorized",
+      diagnosticCode: "cron_secret_mismatch_or_unauthorized",
+    };
   }
 
   const { userId } = await auth();
   if (userId) return { ok: true };
 
   if (!secret) {
+    console.error(
+      "[scheduler-audit] FAIL_CLOSED cron_secret_missing env=non-production",
+    );
     return {
       ok: false,
       status: 503,
       error: "CRON_SECRET is not configured",
+      diagnosticCode: "cron_secret_missing",
     };
   }
 
-  return { ok: false, status: 401, error: "Unauthorized" };
+  return {
+    ok: false,
+    status: 401,
+    error: "Unauthorized",
+    diagnosticCode: "cron_unauthorized",
+  };
 }
