@@ -46,6 +46,18 @@ describe("authorizeAutomationTick", () => {
     await expect(authorizeAutomationTick(request)).resolves.toMatchObject({
       ok: false,
       status: 401,
+      diagnosticCode: "cron_unauthorized",
+    });
+  });
+
+  it("fail-closes with diagnosticCode when CRON_SECRET missing in production", async () => {
+    vi.stubEnv("CRON_SECRET", "");
+    vi.stubEnv("VERCEL_ENV", "production");
+    const request = new Request("https://example.com/api/automations/tick");
+    await expect(authorizeAutomationTick(request)).resolves.toMatchObject({
+      ok: false,
+      status: 503,
+      diagnosticCode: "cron_secret_missing",
     });
   });
 
@@ -57,6 +69,7 @@ describe("authorizeAutomationTick", () => {
     await expect(authorizeAutomationTick(request)).resolves.toMatchObject({
       ok: false,
       status: 401,
+      diagnosticCode: "cron_secret_mismatch_or_unauthorized",
     });
   });
 

@@ -31,7 +31,14 @@ export async function POST(request: Request): Promise<Response> {
   if (!gate.ok) {
     const { recordCronTickOutcome } = await import("@/lib/owner/monitoring");
     recordCronTickOutcome(false, gate.error);
-    return Response.json({ error: gate.error }, { status: gate.status });
+    return Response.json(
+      {
+        error: gate.error,
+        diagnosticCode: gate.diagnosticCode,
+        ok: false,
+      },
+      { status: gate.status },
+    );
   }
 
   const scheduledCronEnabled =
