@@ -24,6 +24,24 @@ export function isStepHighRisk(step: AutomationWorkflowStep): boolean {
     }
     return true;
   }
+  if (step.type === "wordpress") {
+    const publishMode = String(
+      step.configuration?.publishMode ?? "",
+    ).toLowerCase();
+    if (publishMode === "publish") return true;
+    const mode = String(
+      step.configuration?.mode ??
+        step.configuration?.action ??
+        step.configuration?.publishMode ??
+        "draft",
+    ).toLowerCase();
+    if (mode === "draft" || mode === "create_draft" || mode === "save_draft") {
+      return false;
+    }
+    if (mode === "update") return false;
+    if (mode === "publish" || mode === "publish_post") return true;
+    return isConfigHighRisk(step);
+  }
   if (step.type === "google_calendar") {
     const action = String(
       step.configuration?.action ?? step.configuration?.mode ?? "create",

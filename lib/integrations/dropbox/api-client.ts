@@ -19,6 +19,19 @@ type DropboxMetadata = {
   client_modified?: string;
   server_modified?: string;
   size?: number;
+  rev?: string;
+  content_hash?: string;
+};
+
+export type DropboxRawMetadata = {
+  id: string;
+  path_display: string;
+  path_lower: string;
+  rev: string;
+  size: number;
+  content_hash: string;
+  deleted: boolean;
+  name: string;
 };
 
 type DropboxListFolderResponse = {
@@ -342,4 +355,152 @@ export async function getDropboxMetadata(input: {
     { path: input.path, include_deleted: false },
   );
   return normalizeDropboxEntry(result);
+}
+
+function normalizeDropboxPath(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed || trimmed === "/") return "";
+  const withLeading = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return withLeading.replace(/\/+/g, "/").replace(/\/$/, "") || "";
+}
+
+export async function createDropboxFolder(input: {
+  accessToken: string;
+  path: string;
+}): Promise<DropboxFileItem> {
+  const path = normalizeDropboxPath(input.path);
+  const result = await dropboxRpc<{ metadata?: DropboxMetadata }>(
+    input.accessToken,
+    "/files/create_folder_v2",
+    {
+      path,
+      autorename: false,
+    },
+  );
+  const normalized = normalizeDropboxEntry(result.metadata ?? {});
+  if (!normalized) throw new Error("Failed to normalize created Dropbox folder");
+  return normalized;
+}
+
+export async function getDropboxRawMetadata(input: {
+  accessToken: string;
+  path?: string;
+  id?: string;
+}): Promise<DropboxRawMetadata | null> {
+  const lookup =
+    input.id?.trim()
+      ? { path: input.id.trim() }
+      : { path: normalizeDropboxPath(input.path ?? "") };
+
+  let result: DropboxMetadata;
+  try {
+    result = await dropboxRpc<DropboxMetadata>(
+      input.accessToken,
+      "/files/get_metadata",
+      { ...lookup, include_deleted: true },
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/not_found|404|path_lookup/i.test(message)) {
+      return null;
+    }
+    throw error;
+  }
+
+  if (result[".tag"] === "deleted") {
+    return {
+      id: result.id ?? lookup.path,
+      path_display: result.path_display ?? lookup.path,
+      path_lower: result.path_lower ?? lookup.path.toLowerCase(),
+      rev: result.rev ?? "",
+      size: typeof result.size === "number" ? result.size : 0,
+      content_hash: result.content_hash ?? "",
+      deleted: true,
+      name: result.name ?? lookup.path.split("/").pop() ?? "",
+    };
+  }
+
+  if (!result.id || !result.path_display || !result.rev) return null;
+  if (result[".tag"] === "folder") return null;
+
+  return {
+    id: result.id,
+    path_display: result.path_display,
+    path_lower: result.path_lower ?? result.path_display.toLowerCase(),
+    rev: result.rev,
+    size: typeof result.size === "number" ? result.size : 0,
+    content_hash: result.content_hash ?? "",
+    deleted: false,
+    name: result.name ?? result.path_display.split("/").pop() ?? "",
+  };
+}
+
+export type DropboxWriteMode =
+  | { tag: "add"; autorename: boolean }
+  | { tag: "overwrite" }
+  | { tag: "update"; rev: string };
+
+export async function uploadDropboxFileLive(input: {
+  accessToken: string;
+  path: string;
+  buffer: Buffer;
+  writeMode: DropboxWriteMode;
+}): Promise<DropboxRawMetadata> {
+  const trimmed = input.path.trim();
+  const uploadPath =
+    !trimmed || trimmed === "/"
+      ? `/${input.path.split("/").pop() ?? "upload.bin"}`
+      : trimmed.startsWith("/")
+        ? trimmed.replace(/\/+/g, "/")
+        : `/${trimmed.replace(/\/+/g, "/")}`;
+
+  let modeArg: Record<string, unknown>;
+  if (input.writeMode.tag === "add") {
+    modeArg = { ".tag": "add", autorename: input.writeMode.autorename };
+  } else if (input.writeMode.tag === "overwrite") {
+    modeArg = { ".tag": "overwrite" };
+  } else {
+    modeArg = { ".tag": "update", update: input.writeMode.rev };
+  }
+
+  const response = await fetchWithTimeout(
+    `${DROPBOX_CONTENT_BASE}/files/upload`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        "Content-Type": "application/octet-stream",
+        "Dropbox-API-Arg": JSON.stringify({
+          path: uploadPath,
+          mode: modeArg,
+          mute: false,
+        }),
+      },
+      body: new Uint8Array(input.buffer),
+    },
+    RELIABILITY_TIMEOUTS.dropbox,
+  );
+
+  const payload = (await response.json()) as DropboxMetadata & {
+    error_summary?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(payload.error_summary ?? "Dropbox upload failed");
+  }
+
+  if (!payload.id || !payload.path_display || !payload.rev) {
+    throw new Error("Dropbox upload missing id/path_display/rev");
+  }
+
+  return {
+    id: payload.id,
+    path_display: payload.path_display,
+    path_lower: payload.path_lower ?? payload.path_display.toLowerCase(),
+    rev: payload.rev,
+    size: typeof payload.size === "number" ? payload.size : input.buffer.byteLength,
+    content_hash: payload.content_hash ?? "",
+    deleted: false,
+    name: payload.name ?? payload.path_display.split("/").pop() ?? "",
+  };
 }

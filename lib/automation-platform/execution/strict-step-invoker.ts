@@ -21,10 +21,15 @@ import {
   isLiveAdapterWired,
 } from "@/lib/automation-platform/execution/production-step-registry";
 import { invokeGoogleDriveUploadStep } from "@/lib/automation-platform/execution/google-drive-step";
+import { invokeDropboxUploadStep } from "@/lib/automation-platform/execution/dropbox-step";
 import {
   gmailStepAllowsWithoutApproval,
   invokeGmailLiveStep,
 } from "@/lib/automation-platform/execution/gmail-step";
+import {
+  invokeWordPressLiveStep,
+  wordpressStepAllowsWithoutApproval,
+} from "@/lib/automation-platform/execution/wordpress-step";
 import { invokeGoogleCalendarLiveStep } from "@/lib/automation-platform/execution/google-calendar-step";
 import { getCapability } from "@/lib/automation-platform/step-registry/registry";
 import { createNotification } from "@/lib/notifications/service";
@@ -314,8 +319,18 @@ export const strictStepInvoker: StepInvoker = async (input) => {
     const gmailDraftOk =
       step.type === "gmail" && gmailStepAllowsWithoutApproval(step);
     const gmailSendDeferred = step.type === "gmail" && !gmailDraftOk;
+    const wordpressDraftOk =
+      step.type === "wordpress" && wordpressStepAllowsWithoutApproval(step);
+    const wordpressPublishDeferred =
+      step.type === "wordpress" && !wordpressDraftOk;
     const calendarDeferred = step.type === "google_calendar";
-    if (!gmailDraftOk && !gmailSendDeferred && !calendarDeferred) {
+    if (
+      !gmailDraftOk &&
+      !gmailSendDeferred &&
+      !wordpressDraftOk &&
+      !wordpressPublishDeferred &&
+      !calendarDeferred
+    ) {
       return {
         ok: false,
         summary: "承認が必要です",
@@ -406,21 +421,28 @@ export const strictStepInvoker: StepInvoker = async (input) => {
       );
     }
     case "dropbox": {
+      if (!dropboxAppConfigured()) {
+        return notConnected("Dropbox");
+      }
+      if (!isLiveAdapterWired("dropbox")) {
+        return liveAdapterMissing("Dropbox");
+      }
       const dest =
         typeof step.configuration.saveTarget === "string"
           ? step.configuration.saveTarget.trim()
           : typeof step.configuration.folderPath === "string"
             ? step.configuration.folderPath.trim()
             : "";
-      return invokeExternalGate(
-        "Dropbox",
-        "dropbox",
-        dropboxAppConfigured(),
-        live,
-        !dest
-          ? missingInput("Dropboxの保存先フォルダを選択してください")
-          : null,
-      );
+      if (!dest) {
+        return missingInput("Dropboxの保存先フォルダを選択してください");
+      }
+      return invokeDropboxUploadStep({
+        step,
+        userId: input.userId,
+        runId: input.runId,
+        diagnosticId: input.diagnosticId ?? input.runId,
+        priorArtifacts: input.priorArtifacts,
+      });
     }
     case "google_calendar": {
       if (!googleAppConfigured()) {
@@ -438,14 +460,39 @@ export const strictStepInvoker: StepInvoker = async (input) => {
         approvalId: input.approvalId ?? null,
       });
     }
-    case "wordpress":
-      return invokeExternalGate(
-        "WordPress",
-        "wordpress",
-        wordpressAppConfigured(),
-        live,
-        null,
-      );
+    case "wordpress": {
+      const title =
+        typeof step.configuration.title === "string"
+          ? step.configuration.title.trim()
+          : "";
+      const content =
+        typeof step.configuration.content === "string"
+          ? step.configuration.content.trim()
+          : typeof step.configuration.body === "string"
+            ? step.configuration.body.trim()
+            : "";
+      if (!title || !content) {
+        return missingInput("WordPressのタイトルと本文が設定されていません");
+      }
+      if (!wordpressAppConfigured()) {
+        return notConnected("WordPress");
+      }
+      if (!isLiveAdapterWired("wordpress")) {
+        return liveAdapterMissing("WordPress");
+      }
+      if (!live) {
+        return liveExternalDisabled("WordPress");
+      }
+      return invokeWordPressLiveStep({
+        step,
+        userId: input.userId,
+        runId: input.runId,
+        approved,
+        diagnosticId: input.diagnosticId ?? input.runId,
+        approvalId: input.approvalId ?? null,
+        priorArtifacts: input.priorArtifacts,
+      });
+    }
 
     case "google_drive": {
       if (!googleAppConfigured()) {

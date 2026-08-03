@@ -213,6 +213,41 @@ export type AutomationRun = {
       approvalId: string | null;
       providerRequestId: string | null;
     }>;
+    dropboxResults?: Array<{
+      service: "dropbox";
+      fileId: string;
+      pathDisplay: string;
+      rev: string;
+      size: number;
+      contentHash: string;
+      targetPath: string;
+      fileName: string;
+      sharedLinkUrl: string | null;
+      completedAt: string;
+      resultHash: string;
+      retryCount: number;
+      duplicatePrevented: boolean;
+    }>;
+    wordpressResults?: Array<{
+      service: "wordpress";
+      action: string;
+      postId: number;
+      postStatus: string;
+      link: string;
+      editLink: string;
+      titleHash: string;
+      contentHash: string;
+      mediaArtifactIds: string[];
+      mediaIds: number[];
+      completedAt: string;
+      resultHash: string;
+      retryCount: number;
+      duplicatePrevented: boolean;
+      adapterMode: string;
+      environment: string;
+      approvalId: string | null;
+      providerRequestId: string | null;
+    }>;
   } | null;
   /** @deprecated use memoryUsage.used */
   memoryReferences: MemoryReferenceRecord[];

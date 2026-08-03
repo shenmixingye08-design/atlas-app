@@ -12,6 +12,8 @@
     "ci:google-drive-live-adapter": "node scripts/ci/google-drive-live-adapter.mjs",
     "ci:gmail-live-adapter": "node scripts/ci/gmail-live-adapter.mjs",
     "ci:google-calendar-live-adapter": "node scripts/ci/google-calendar-live-adapter.mjs",
+    "ci:dropbox-live-adapter": "node scripts/ci/dropbox-live-adapter.mjs",
+    "ci:wordpress-live-adapter": "node scripts/ci/wordpress-live-adapter.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts"

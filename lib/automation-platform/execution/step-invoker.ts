@@ -37,8 +37,6 @@ export type StepInvoker = (input: {
   diagnosticId?: string | null;
   approvalId?: string | null;
   priorArtifacts?: AutomationRunArtifact[];
-  diagnosticId?: string | null;
-  approvalId?: string | null;
 }) => Promise<StepInvokeResult>;
 
 /**

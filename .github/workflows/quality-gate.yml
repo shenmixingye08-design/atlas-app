@@ -61,6 +61,26 @@ jobs:
       - name: Google Calendar Live Adapter Production gate
         run: node scripts/ci/google-calendar-live-adapter.mjs
 
+      - name: WordPress Live Adapter Production gate
+        run: node scripts/ci/wordpress-live-adapter.mjs
+
+      - name: Dropbox Live Adapter Production gate
+        run: node scripts/ci/dropbox-live-adapter.mjs
+
+      - name: Dropbox Live Adapter tests
+        run: npm test -- --run lib/integrations/dropbox/live
+        env:
+          TZ: UTC
+          ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: WordPress Live Adapter tests
+        run: npm test -- --run lib/integrations/wordpress/live
+        env:
+          TZ: UTC
+          ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          NODE_OPTIONS: --max-old-space-size=8192
+
 
       - name: Unit / integration tests
         run: npm test

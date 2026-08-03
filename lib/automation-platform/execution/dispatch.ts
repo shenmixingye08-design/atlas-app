@@ -159,11 +159,88 @@ function buildGoogleDriveNotificationDetail(run: AutomationRun): string | null {
   return null;
 }
 
+function buildDropboxNotificationDetail(run: AutomationRun): string | null {
+  const dropbox = run.completionEvidence?.dropboxResults?.[0];
+  if (dropbox) {
+    const url = dropbox.sharedLinkUrl ?? dropbox.pathDisplay;
+    return [
+      "Dropboxへ保存しました。",
+      `ファイル: ${dropbox.fileName}`,
+      `パス: ${dropbox.pathDisplay}`,
+      `rev: ${dropbox.rev}`,
+      `URL: ${url}`,
+      `実行時刻: ${dropbox.completedAt}`,
+    ].join(" ");
+  }
+
+  const message = run.lastErrorMessage ?? "";
+  if (/missing_scope|権限/i.test(message)) {
+    return "権限不足です。Dropboxを再接続してください。";
+  }
+  if (/reconnect|再接続|revok|expired|401/i.test(message)) {
+    return "再接続が必要です。Dropbox連携をやり直してください。";
+  }
+  if (/folder.*not found|フォルダ/i.test(message)) {
+    return "folder不存在、またはアクセスできません。";
+  }
+  if (/retry|429|rate limit/i.test(message)) {
+    return "Retry中または一時的な制限です。";
+  }
+  return null;
+}
+
+function buildWordPressNotificationDetail(run: AutomationRun): string | null {
+  const wp = run.completionEvidence?.wordpressResults?.[0];
+  if (wp) {
+    const isPublished =
+      wp.action === "publish" && wp.postStatus === "publish";
+    if (isPublished) {
+      return [
+        "WordPressに公開しました。",
+        `postId: ${wp.postId}`,
+        `URL: ${wp.link}`,
+        `実行時刻: ${wp.completedAt}`,
+      ].join(" ");
+    }
+    return [
+      "WordPress下書きを作成しました。",
+      `postId: ${wp.postId}`,
+      `編集: ${wp.editLink}`,
+      wp.action === "publish" ? "公開には承認が必要です。" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const message = run.lastErrorMessage ?? run.resultSummary ?? "";
+  if (/auth|認証|401|403/i.test(message)) {
+    return "WordPress認証に失敗しました。再接続してください。";
+  }
+  if (/reconnect|再接続/i.test(message)) {
+    return "再接続が必要です。WordPress連携をやり直してください。";
+  }
+  if (/title|本文|content/i.test(message)) {
+    return "タイトルまたは本文が不正です。";
+  }
+  if (/media|画像|artifact/i.test(message)) {
+    return "アイキャッチ画像の取得に失敗しました。";
+  }
+  if (/approval|承認/i.test(message)) {
+    return "WordPress公開の承認待ちです。下書きは作成済みの場合があります。";
+  }
+  if (/retry|429|rate limit/i.test(message)) {
+    return "WordPress API制限のため再試行中です。";
+  }
+  return null;
+}
+
 function buildExternalNotificationDetail(run: AutomationRun): string | null {
   return (
     buildGmailNotificationDetail(run) ||
     buildCalendarNotificationDetail(run) ||
-    buildGoogleDriveNotificationDetail(run)
+    buildGoogleDriveNotificationDetail(run) ||
+    buildDropboxNotificationDetail(run) ||
+    buildWordPressNotificationDetail(run)
   );
 }
 

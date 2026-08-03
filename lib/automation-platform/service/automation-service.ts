@@ -3,6 +3,7 @@ import { AutomationPlatformError } from "@/lib/automation-platform/errors/messag
 import { resolveRunApprovalRequirement } from "@/lib/automation-platform/execution/policy";
 import { validateStepsForProductionActivation } from "@/lib/automation-platform/execution/production-step-registry";
 import { assertGmailPreflightForActivation } from "@/lib/automation-platform/execution/gmail-preflight";
+import { assertWordPressPreflightForActivation } from "@/lib/automation-platform/execution/wordpress-preflight";
 import { assertGoogleCalendarPreflightForActivation } from "@/lib/automation-platform/execution/google-calendar-preflight";
 import {
   buildIdempotencyKey,
@@ -24,6 +25,7 @@ import {
 import { dispatchAutomationRuns } from "@/lib/automation-platform/execution/dispatch";
 import { notifyAutomationRunEvent } from "@/lib/automation-platform/execution/notify";
 import { assertGoogleDrivePreflightForActivation } from "@/lib/automation-platform/execution/google-drive-preflight";
+import { assertDropboxPreflightForActivation } from "@/lib/automation-platform/execution/dropbox-preflight";
 import {
   buildRunStepsFromAutomation,
   prepareRunSnapshot,
@@ -141,6 +143,20 @@ async function assertExternalPreflightForActivation(
     });
   }
 
+  const dropboxIssues = await assertDropboxPreflightForActivation({
+    userId,
+    steps,
+  });
+  if (dropboxIssues.length > 0) {
+    const first = dropboxIssues[0]!;
+    throw new AutomationPlatformError("automation_integration_required", {
+      stepId: first.stepId,
+      stepType: "dropbox",
+      reason: first.message,
+      issues: dropboxIssues,
+    });
+  }
+
   const gmailIssues = await assertGmailPreflightForActivation({
     userId,
     steps,
@@ -166,6 +182,20 @@ async function assertExternalPreflightForActivation(
       stepType: "google_calendar",
       reason: first.message,
       issues: calendarIssues,
+    });
+  }
+
+  const wordpressIssues = await assertWordPressPreflightForActivation({
+    userId,
+    steps,
+  });
+  if (wordpressIssues.length > 0) {
+    const first = wordpressIssues[0]!;
+    throw new AutomationPlatformError("automation_integration_required", {
+      stepId: first.stepId,
+      stepType: "wordpress",
+      reason: first.message,
+      issues: wordpressIssues,
     });
   }
 }

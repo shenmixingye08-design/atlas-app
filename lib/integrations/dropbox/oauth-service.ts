@@ -11,15 +11,46 @@ import {
 } from "../external-services/store";
 import type { ExternalServiceConnection } from "../external-services/types";
 import { createDefaultConnection } from "../external-services/registry";
+import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 import { DROPBOX_OAUTH_SCOPES } from "./config";
 import { dropboxServiceDefinition } from "./definition";
+import {
+  deleteDropboxAuthFromSupabase,
+  persistDropboxAuthToSupabase,
+} from "./credential-persistence";
 import {
   exchangeDropboxAuthCode,
   fetchDropboxAccount,
   refreshDropboxAccessToken,
   revokeDropboxToken,
 } from "./oauth";
+import {
+  ensureExternalAuthHydrated,
+  schedulePersistExternalAuth,
+} from "../external-services/durable";
+
+async function persistDropboxAuthDurable(
+  userId: string,
+  connection: ExternalServiceConnection,
+  extras?: {
+    lastRefreshAt?: string | null;
+    revokedAt?: string | null;
+  },
+): Promise<void> {
+  const credentials = getExternalServiceCredentials(userId, "dropbox");
+  if (credentials) {
+    const ok = await persistDropboxAuthToSupabase(credentials, connection, extras);
+    if (!ok && isAtlasProduction()) {
+      throw new Error(
+        "Dropbox連携の保存に失敗しました。しばらくしてから再度お試しください",
+      );
+    }
+  } else {
+    await deleteDropboxAuthFromSupabase(userId);
+  }
+  schedulePersistExternalAuth(userId);
+}
 
 export async function completeDropboxAccountOAuth(
   userId: string,
@@ -27,6 +58,7 @@ export async function completeDropboxAccountOAuth(
   codeVerifier: string,
   requestOrigin: string,
 ): Promise<ExternalServiceConnection> {
+  await ensureExternalAuthHydrated(userId);
   const token = await exchangeDropboxAuthCode(code, codeVerifier, requestOrigin);
 
   if (!token.refresh_token) {
@@ -56,7 +88,9 @@ export async function completeDropboxAccountOAuth(
     status: "connected",
     connectedAt: now,
     lastUsedAt: null,
-    scopes: [...DROPBOX_OAUTH_SCOPES],
+    scopes: token.scope
+      ? token.scope.split(/[\s,]+/).filter(Boolean)
+      : [...DROPBOX_OAUTH_SCOPES],
     features: [...dropboxServiceDefinition.plannedFeatures],
     errorMessage: null,
     account: {
@@ -68,12 +102,14 @@ export async function completeDropboxAccountOAuth(
   };
 
   saveExternalServiceConnection(userId, connection);
+  await persistDropboxAuthDurable(userId, connection);
   return connection;
 }
 
 export async function disconnectDropboxAccount(
   userId: string,
 ): Promise<ExternalServiceConnection> {
+  await ensureExternalAuthHydrated(userId);
   const credentials = getExternalServiceCredentials(userId, "dropbox");
   if (credentials) {
     try {
@@ -82,6 +118,7 @@ export async function disconnectDropboxAccount(
       console.warn("[Dropbox] Token revoke failed:", error);
     }
     deleteExternalServiceCredentials(userId, "dropbox");
+    await deleteDropboxAuthFromSupabase(userId);
   }
 
   const disconnected: ExternalServiceConnection = {
@@ -96,12 +133,14 @@ export async function disconnectDropboxAccount(
   };
 
   saveExternalServiceConnection(userId, disconnected);
+  schedulePersistExternalAuth(userId);
   return disconnected;
 }
 
 export async function getDropboxAccessToken(
   userId: string,
 ): Promise<string | null> {
+  await ensureExternalAuthHydrated(userId);
   const credentials = getExternalServiceCredentials(userId, "dropbox");
   if (!credentials) return null;
 
@@ -128,6 +167,11 @@ export async function getDropboxAccessToken(
       expiresAt,
       scope: refreshed.scope ?? credentials.scope,
       updatedAt: now,
+    });
+
+    const connection = getExternalServiceConnection(userId, "dropbox");
+    await persistDropboxAuthDurable(userId, connection, {
+      lastRefreshAt: now,
     });
 
     return refreshed.access_token;

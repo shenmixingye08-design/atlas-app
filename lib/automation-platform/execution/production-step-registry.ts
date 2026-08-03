@@ -279,6 +279,8 @@ export function isLiveAdapterWired(adapterId: string | null): boolean {
     "google_drive",
     "google_gmail",
     "google_calendar",
+    "dropbox",
+    "wordpress",
   ]);
   return wired.has(adapterId);
 }
