@@ -27,6 +27,55 @@ export type DispatchResult = {
   awaiting: number;
 };
 
+function buildCalendarNotificationDetail(run: AutomationRun): string | null {
+  const calendar = run.completionEvidence?.calendarResults?.[0];
+  if (calendar) {
+    if (calendar.action === "cancel") {
+      return [
+        "予定をキャンセルしました。",
+        `日時: ${calendar.startDateTime}〜${calendar.endDateTime}`,
+      ].join(" ");
+    }
+    if (calendar.action === "update") {
+      return [
+        "予定を更新しました。",
+        calendar.htmlLink ? `URL: ${calendar.htmlLink}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+    return [
+      "Google Calendarへ予定を登録しました。",
+      `日時: ${calendar.startDateTime}〜${calendar.endDateTime} (${calendar.timezone})`,
+      calendar.htmlLink ? `URL: ${calendar.htmlLink}` : "",
+      calendar.hangoutLink ? `Meet: ${calendar.hangoutLink}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const message = run.lastErrorMessage ?? run.resultSummary ?? "";
+  if (/missing_scope|権限/i.test(message)) {
+    return "権限不足です。Google Calendarを再接続してください。";
+  }
+  if (/reconnect|再接続|revok|expired|401/i.test(message)) {
+    return "再接続が必要です。Google連携をやり直してください。";
+  }
+  if (/datetime|日時/i.test(message)) {
+    return "日時が不正です。";
+  }
+  if (/attendee|参加/i.test(message)) {
+    return "参加者が不正です。";
+  }
+  if (/approval|承認/i.test(message)) {
+    return "Google Calendar操作の承認待ちです。";
+  }
+  if (/retry|429|rate limit/i.test(message)) {
+    return "Google Calendar API制限のため再試行中です。";
+  }
+  return null;
+}
+
 function attachClaimTransition(run: AutomationRun): AutomationRun {
   if (run.status !== "running") return run;
   const last = run.statusHistory[run.statusHistory.length - 1];
@@ -141,6 +190,7 @@ export async function dispatchAutomationRuns(options?: {
     });
 
     result.processed += 1;
+    const calendarDetail = buildCalendarNotificationDetail(execResult.run);
     if (execResult.run.status === "succeeded") {
       result.succeeded += 1;
       notifyAutomationRunEvent({
@@ -149,9 +199,9 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: wasRetry ? "retry_finished" : "succeeded",
+        detail: calendarDetail,
       });
     } else if (execResult.run.status === "partially_succeeded") {
-      // Partial completion is not a success counter / completed notification.
       result.failed += 1;
       notifyAutomationRunEvent({
         userId: automation.userId,
@@ -159,6 +209,7 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "partially_succeeded",
+        detail: calendarDetail,
       });
     } else if (execResult.run.status === "failed") {
       result.failed += 1;
@@ -168,7 +219,7 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "failed",
-        detail: execResult.run.lastErrorMessage,
+        detail: calendarDetail || execResult.run.lastErrorMessage,
       });
     } else if (execResult.run.status === "retrying") {
       result.retrying += 1;
@@ -178,6 +229,7 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "retry_started",
+        detail: calendarDetail || "Google Calendar操作を再試行します",
       });
     } else if (execResult.run.status === "needs_input") {
       result.awaiting += 1;
@@ -187,6 +239,10 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "needs_input",
+        detail:
+          calendarDetail ||
+          execResult.run.resultSummary ||
+          "Google Calendar操作の承認待ちです",
       });
     }
   }

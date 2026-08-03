@@ -131,16 +131,27 @@ const SCHEMAS: Record<AutomationCapabilityId, readonly CapabilityFieldSchema[]> 
     { key: "hashtags", label: "ハッシュタグ", type: "text", placeholder: "#例" },
   ],
   google_calendar: [
-    { key: "eventTitle", label: "予定タイトル", type: "text", required: true },
     {
       key: "action",
       label: "操作",
       type: "select",
+      required: true,
       options: [
         { value: "create", label: "新規登録" },
         { value: "update", label: "更新（要確認）" },
-        { value: "delete", label: "削除（要確認）" },
+        { value: "cancel", label: "取消（要確認）" },
       ],
+    },
+    { key: "eventTitle", label: "予定タイトル", type: "text", required: true },
+    { key: "startDateTime", label: "開始日時", type: "text", required: true },
+    { key: "endDateTime", label: "終了日時", type: "text", required: true },
+    { key: "timezone", label: "タイムゾーン", type: "text", placeholder: "Asia/Tokyo" },
+    { key: "attendees", label: "参加者", type: "text", sensitive: true },
+    {
+      key: "approvalRequired",
+      label: "外部招待前に承認する",
+      type: "boolean",
+      helpText: "参加者あり・更新・取消は原則ON",
     },
   ],
   wordpress: [

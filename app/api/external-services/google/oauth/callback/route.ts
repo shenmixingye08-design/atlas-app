@@ -77,7 +77,12 @@ export async function GET(request: Request): Promise<Response> {
   const { userId } = statePayload;
 
   try {
-    const connection = await completeGoogleAccountOAuth(userId, code, origin);
+    const connection = await completeGoogleAccountOAuth(
+      userId,
+      code,
+      origin,
+      statePayload.codeVerifier,
+    );
     recordGoogleIntegrationUsage();
 
     const { recordAuditLogSafe, auditRequestContext } = await import(

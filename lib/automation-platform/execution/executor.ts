@@ -236,6 +236,13 @@ export async function executeQueuedRun(input: {
         approved: approved || !runStep.requiresApproval,
         resolvedInstruction: run.resolvedInstruction,
         memoryUsage: run.memoryUsage,
+        priorArtifacts: run.artifacts,
+        diagnosticId: run.diagnosticId,
+        approvalId: run.approval?.decidedByUserId
+          ? `${run.id}:${run.approval.decidedByUserId}`
+          : run.approval?.status === "approved"
+            ? run.id
+            : null,
       });
 
       const fake = rejectFakeSuccess({
@@ -266,6 +273,15 @@ export async function executeQueuedRun(input: {
           errorMessage: result.errorMessage ?? null,
           outputSummary: result.summary,
         };
+        if (result.artifacts.length > 0) {
+          run = {
+            ...run,
+            artifacts: [...run.artifacts, ...result.artifacts],
+          };
+        }
+        if (result.evidence) {
+          evidenceFragments.push(result.evidence);
+        }
         failedStepId = runStep.id;
         lastErrorCode = result.errorCode ?? "automation_approval_required";
         lastErrorMessage = result.errorMessage ?? result.summary;

@@ -2,6 +2,7 @@ import { appendAutomationAudit } from "@/lib/automation-platform/audit/log";
 import { AutomationPlatformError } from "@/lib/automation-platform/errors/messages";
 import { resolveRunApprovalRequirement } from "@/lib/automation-platform/execution/policy";
 import { validateStepsForProductionActivation } from "@/lib/automation-platform/execution/production-step-registry";
+import { assertGoogleCalendarPreflightForActivation } from "@/lib/automation-platform/execution/google-calendar-preflight";
 import {
   buildIdempotencyKey,
   buildRunKey,
@@ -107,6 +108,35 @@ function assertProductionStepsActivatable(
   );
 }
 
+async function assertExternalPreflightForActivation(
+  userId: string,
+  steps: ReadonlyArray<{
+    id: string;
+    type: string;
+    enabled: boolean;
+    configuration?: Readonly<Record<string, unknown>>;
+  }>,
+): Promise<void> {
+  assertProductionStepsActivatable(steps);
+  const allowSkip =
+    process.env.AUTOMATION_ALLOW_UNWIRED_EXTERNAL_ACTIVATION === "true" ||
+    process.env.VITEST === "true";
+  if (allowSkip) return;
+
+  const calendarIssues = await assertGoogleCalendarPreflightForActivation({
+    userId,
+    steps,
+  });
+  if (calendarIssues.length === 0) return;
+  const first = calendarIssues[0]!;
+  throw new AutomationPlatformError("automation_integration_required", {
+    stepId: first.stepId,
+    stepType: "google_calendar",
+    reason: first.message,
+    issues: calendarIssues,
+  });
+}
+
 export class AutomationPlatformService {
   async create(
     userId: string,
@@ -127,7 +157,10 @@ export class AutomationPlatformService {
 
     const record = buildAutomationFromCreateInput(userId, input);
     if (record.status === "active") {
-      assertProductionStepsActivatable(record.workflow.steps);
+      await assertExternalPreflightForActivation(
+        userId,
+        record.workflow.steps,
+      );
     }
     let saved = persistAutomationV2Now(record);
 
@@ -257,7 +290,10 @@ export class AutomationPlatformService {
     };
 
     if (updated.status === "active") {
-      assertProductionStepsActivatable(updated.workflow.steps);
+      await assertExternalPreflightForActivation(
+        userId,
+        updated.workflow.steps,
+      );
     }
 
     let saved = persistAutomationV2Now(updated);
