@@ -17,7 +17,7 @@ jobs:
   quality:
     name: typecheck · lint · test · build
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,6 +50,17 @@ jobs:
         env:
           # Keep tests deterministic; do not enable mock-success shortcuts.
           TZ: UTC
+<<<<<<< HEAD
+=======
+          ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Work-queue critical path
+        run: npm test -- --run lib/work-queue lib/automations/durable.test.ts
+        env:
+          TZ: UTC
+          ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+>>>>>>> origin/cursor/scheduler-production-trust-83f5
           NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Upload Vitest logs on failure
@@ -59,7 +70,8 @@ jobs:
           name: vitest-logs
           path: |
             **/vitest*.log
-            /tmp/**
+            /tmp/vitest*
+            /tmp/atlas*
           if-no-files-found: ignore
           retention-days: 7
 

@@ -69,13 +69,14 @@ export function evaluateCompletionEvidence(
         lastErrorMessage: null,
       };
     }
+    // Fail closed: content without post proof is NOT completed.
     return {
-      status: "partially_completed",
-      resultSummary: "内容は作成済み — X投稿の証拠がありません",
+      status: "failed",
+      resultSummary: null,
       externalResultId: null,
       externalResultUrl: null,
       artifactId: input.artifactId ?? null,
-      lastErrorMessage: null,
+      lastErrorMessage: "X投稿の証拠がありません — 途中成功は完了扱いしません",
     };
   }
 
@@ -91,22 +92,24 @@ export function evaluateCompletionEvidence(
   }
 
   if (input.deliverableCount > 0) {
+    // Fail closed: artifact without durable storage URL is NOT completed.
     return {
-      status: "partially_completed",
-      resultSummary: "成果物は生成済み — 保存先URLがありません",
+      status: "failed",
+      resultSummary: null,
       externalResultId: null,
       externalResultUrl: null,
       artifactId: input.artifactId ?? null,
-      lastErrorMessage: null,
+      lastErrorMessage: "保存先URLがありません — 途中成功は完了扱いしません",
     };
   }
 
+  // No deliverable and no SNS proof — do not invent success.
   return {
-    status: "completed",
-    resultSummary: "自動化が完了しました",
+    status: "failed",
+    resultSummary: null,
     externalResultId: null,
     externalResultUrl: null,
     artifactId: input.artifactId ?? null,
-    lastErrorMessage: null,
+    lastErrorMessage: "成果物・外部送信の証拠がありません",
   };
 }
