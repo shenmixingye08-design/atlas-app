@@ -28,6 +28,7 @@ import {
   evaluateRunCompletion,
   runCompletionUserMessage,
 } from "@/lib/automation-platform/execution/run-completion";
+import { evaluateExternalCompletionGate } from "@/lib/automation-platform/execution/external-completion-gate";
 import { getProductionStep } from "@/lib/automation-platform/execution/production-step-registry";
 import { memoryUpdateRun } from "@/lib/automation-platform/repository/memory-store";
 import { persistAutomationRunNow } from "@/lib/automation-platform/durable-runs";
@@ -455,6 +456,29 @@ export async function executeQueuedRun(input: {
       resultSummary: "Completion Evidenceを作成できないため完了できません",
       lastErrorCode: "automation_run_failed",
       lastErrorMessage: "completion_evidence_missing",
+    });
+    return { run, terminal: true };
+  }
+
+  const externalGate = evaluateExternalCompletionGate({
+    run: { ...run, steps },
+    workflowSteps: input.automation.workflow.steps,
+    evidence,
+  });
+  if (
+    (decision.runStatus === "succeeded" ||
+      decision.runStatus === "partially_succeeded") &&
+    !externalGate.ok
+  ) {
+    run = persist({
+      ...transition(run, "failed", "external_completion_gate_failed"),
+      retryable: false,
+      nextRetryAt: null,
+      completionEvidence: evidence,
+      resultSummary:
+        "外部連携の完了条件を満たしていないため完了できません",
+      lastErrorCode: "automation_run_failed",
+      lastErrorMessage: `external_completion_gate:${externalGate.reasons.join(",")}`,
     });
     return { run, terminal: true };
   }

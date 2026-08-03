@@ -81,6 +81,8 @@ jobs:
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
           NODE_OPTIONS: --max-old-space-size=8192
 
+      - name: External Production Registry cutover gate
+        run: node scripts/ci/external-production-registry.mjs
 
       - name: Unit / integration tests
         run: npm test
