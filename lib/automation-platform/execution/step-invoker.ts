@@ -6,7 +6,11 @@
  */
 
 import type { AutomationWorkflowStep } from "@/lib/automation-platform/types/step";
-import type { AutomationRunArtifact } from "@/lib/automation-platform/types/run";
+import type {
+  AutomationRunArtifact,
+  MemoryUsageRecord,
+} from "@/lib/automation-platform/types/run";
+import type { ResolvedInstruction } from "@/lib/automation-platform/types/instruction";
 import type { StepEvidenceFragment } from "@/lib/automation-platform/execution/completion-evidence-v2";
 
 export type StepInvokeResult = {
@@ -27,6 +31,9 @@ export type StepInvoker = (input: {
   automationName: string;
   runId: string;
   approved: boolean;
+  /** Optional Memory / instruction context for production step adapters. */
+  resolvedInstruction?: ResolvedInstruction | null;
+  memoryUsage?: MemoryUsageRecord | null;
 }) => Promise<StepInvokeResult>;
 
 /**
