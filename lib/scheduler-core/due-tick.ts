@@ -294,7 +294,10 @@ export async function runSchedulerCoreTick(options?: {
         timezone: schedule.timezone,
         priority: 0,
         maxAttempts: WORK_QUEUE_DEFAULT_MAX_ATTEMPTS,
-        offlineArtifacts: false,
+        // Proof harness only (Phase 2-4). Default false — never enables AI/product offline mode by itself.
+        offlineArtifacts:
+          process.env.ATLAS_WALL_CLOCK_PROOF_OFFLINE?.trim().toLowerCase() ===
+          "true",
         state: "OccurrenceCreated",
       };
 

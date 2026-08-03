@@ -12,7 +12,8 @@
     "ci:scheduler-core-gate": "node scripts/ci/scheduler-core-gate.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts"
+    "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts",
+    "test:scheduler-wall-clock": "vitest run --config vitest.wall-clock.config.ts"
   },
   "dependencies": {
     "@clerk/localizations": "^4.13.5",
