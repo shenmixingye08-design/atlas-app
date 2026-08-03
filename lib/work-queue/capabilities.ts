@@ -20,16 +20,19 @@ export const WORK_QUEUE_SCHEDULE_CAPABILITIES: Record<
   { status: "supported" | "partial" | "unsupported"; note: string }
 > = {
   minutely: {
-    status: "unsupported",
-    note: "Schedule preset 未実装（minute tick はインフラのみ）",
+    status: "supported",
+    note: "SchedulePreset minutely + GitHub Actions / Vercel Pro minute tick",
   },
-  hourly: { status: "unsupported", note: "Schedule preset 未実装" },
+  hourly: {
+    status: "supported",
+    note: "SchedulePreset hourly + minute tick evaluates due nextRun",
+  },
   daily: { status: "supported", note: "V1 SchedulePreset daily" },
   weekly: { status: "supported", note: "V1 SchedulePreset weekly" },
   monthly: { status: "supported", note: "V1 SchedulePreset monthly" },
   cron: {
-    status: "partial",
-    note: "cron 文字列は保存されるが nextRun SoT は preset",
+    status: "supported",
+    note: "Cron SoT: lib/work-queue/cron-sot.ts — presetToCron + infra ticks aligned",
   },
   timezone: { status: "supported", note: "IANA via Intl" },
   dst: {

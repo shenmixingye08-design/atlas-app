@@ -55,6 +55,24 @@ export type WorkStepRecord = {
   updatedAt: string;
 };
 
+export type WorkRetryHistoryEntry = {
+  at: string;
+  attempt: number;
+  reason: string;
+  errorCode: string | null;
+  stepId: string | null;
+};
+
+export type WorkSideEffectRecord = {
+  idempotencyKey: string;
+  jobId: string;
+  runId: string;
+  stepId: string;
+  kind: string;
+  result: Record<string, unknown>;
+  createdAt: string;
+};
+
 export type WorkJobRecord = {
   jobId: string;
   runId: string;
@@ -82,6 +100,7 @@ export type WorkJobRecord = {
   resultSummary: string | null;
   firstError: string | null;
   lastError: string | null;
+  retryHistory: WorkRetryHistoryEntry[];
   createdAt: string;
   updatedAt: string;
   steps: WorkStepRecord[];
@@ -101,6 +120,10 @@ export type EnqueueJobInput = {
     stepType: WorkStepType;
     inputBindings?: Record<string, unknown>;
   }>;
+  /**
+   * Required for Production Blocker #4.
+   * When omitted, stores derive from occurrenceKey — never leave blank.
+   */
   idempotencyKey?: string;
 };
 
@@ -127,7 +150,20 @@ export type WorkQueueMetrics = {
   p99ScheduleDelayMs: number | null;
   averageDelayMs: number | null;
   p95ExecutionMs: number | null;
+  averageExecutionMs: number | null;
   recoverySuccessRate: number | null;
+  /** Absolute recovery attempts (persisted counter). */
+  recoveryCount: number;
+  /** Cumulative retry schedules (persisted counter). */
+  retryCount: number;
+  /** Heartbeat / lease timeout recoveries. */
+  timeoutCount: number;
+  /** Notify side-effects recorded. */
+  notificationCount: number;
+  /** Jobs that entered running. */
+  startedCount: number;
+  /** Alias for queued depth. */
+  queueLength: number;
   /** Scheduler Alive — enabled + recent tick (or never started). */
   alive: boolean;
   workerCount: number;
@@ -158,7 +194,15 @@ export const WORK_JOB_TRANSITIONS: Readonly<
   retry_scheduled: ["leased", "queued", "cancelled", "dead_letter"],
   completed: [],
   partially_completed: ["queued", "retry_scheduled", "cancelled"],
+  // Terminal — never promote to completed.
   failed: ["queued", "retry_scheduled", "dead_letter"],
   cancelled: [],
   dead_letter: [],
 };
+
+/** Statuses that must never be leased or completed again. */
+export const WORK_JOB_TERMINAL_STATUSES: readonly WorkJobStatus[] = [
+  "completed",
+  "cancelled",
+  "dead_letter",
+] as const;

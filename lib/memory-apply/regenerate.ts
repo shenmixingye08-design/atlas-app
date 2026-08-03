@@ -1,17 +1,15 @@
 import "server-only";
 
-import { resolveForContext } from "@/lib/personal-memory/service";
-import {
-  applyContentOverlayToText,
-  buildContentOverlay,
-  buildDeliverableOverlay,
-} from "@/lib/memory-apply/overlays";
-import { recordMemoryApplyEvent } from "@/lib/memory-apply/metrics";
+import { MemoryApply } from "@/lib/memory-apply/apply";
+import { applyContentOverlayToText } from "@/lib/memory-apply/overlays";
 import {
   compareMemoryQuality,
   expectedTokensFromMemoryValues,
 } from "@/lib/memory-apply/quality-diff";
-import type { MemoryDeliverableOverlay, MemoryQualityDiff } from "@/lib/memory-apply/types";
+import type {
+  MemoryDeliverableOverlay,
+  MemoryQualityDiff,
+} from "@/lib/memory-apply/types";
 
 export type RegenerateMemoryApplyResult = {
   /** Previous content with only improvement deltas applied — never zero-from-scratch */
@@ -26,6 +24,7 @@ export type RegenerateMemoryApplyResult = {
 /**
  * Regenerate with Memory: keep prior body, re-apply style/signature/brand,
  * and fold in explicit improvement notes — never start from empty.
+ * Path: MemoryApply → PersonalizationContext → PromptBuilder.
  */
 export async function applyMemoryForRegenerate(input: {
   userId: string;
@@ -37,46 +36,39 @@ export async function applyMemoryForRegenerate(input: {
     throw new Error("REGENERATE_REQUIRES_PREVIOUS_CONTENT");
   }
 
-  const { result, ledger } = await resolveForContext({
-    userId: input.userId,
-    notes: input.improvementNotes ?? previous.slice(0, 400),
-    artifactTypes: ["docx", "pdf", "xlsx", "pptx"],
-  });
-
-  const contentOverlay = buildContentOverlay({
-    values: ledger.memoryValuesResolved,
-    injectionText: result.injectionText,
-  });
-  const deliverableOverlay = buildDeliverableOverlay({
-    userId: input.userId,
-    values: ledger.memoryValuesResolved,
-    injectionText: result.injectionText,
-    tokenEstimate: result.tokenEstimate,
-  });
-
-  // Delta-only: keep previous body; append improvement notes; re-apply signature/style header
   const withNotes = input.improvementNotes?.trim()
     ? `${previous}\n\n【改善点】\n${input.improvementNotes.trim()}`
     : previous;
+
+  const applied = await MemoryApply({
+    userId: input.userId,
+    channel: "regenerate",
+    baseline: withNotes,
+    assignment: input.improvementNotes ?? previous.slice(0, 400),
+    artifactTypes: ["docx", "pdf", "xlsx", "pptx"],
+    capabilities: ["regenerate", "deliverable"],
+  });
+
+  // Delta-only: keep previous body; re-apply style header without full injection dump
   const next = applyContentOverlayToText(withNotes, {
-    ...contentOverlay,
-    // Avoid duplicating a huge injection block on regenerate — keep style bits
-    injectionText: contentOverlay.writingStyle
-      ? `【文体維持】${contentOverlay.writingStyle}`
+    ...applied.context.content,
+    injectionText: applied.context.content.writingStyle
+      ? `【文体維持】${applied.context.content.writingStyle}`
       : "",
   });
 
   const flat: Record<string, unknown> = {};
-  for (const row of ledger.memoryValuesResolved) {
+  for (const row of applied.provider.personalValues) {
     Object.assign(flat, row.value);
   }
   const quality = compareMemoryQuality({
     before: previous,
     after: next,
-    memoryMode: ledger.memoryIdsUsed.length > 0 ? "on" : "off",
+    memoryMode: applied.context.memoryIdsUsed.length > 0 ? "on" : "off",
     expectedMemoryTokens: expectedTokensFromMemoryValues(flat),
   });
 
+  const deliverableOverlay = applied.context.deliverable;
   const preservedLayoutHints = [
     deliverableOverlay.templateId
       ? `template:${deliverableOverlay.templateId}`
@@ -90,25 +82,16 @@ export async function applyMemoryForRegenerate(input: {
     "layout:preserve_previous_structure",
   ].filter((v): v is string => Boolean(v));
 
-  const applied = ledger.memoryIdsUsed.length > 0 || Boolean(input.improvementNotes?.trim());
-
-  recordMemoryApplyEvent({
-    userId: input.userId,
-    channel: "regenerate",
-    memoryMode: applied ? "on" : "off",
-    applied,
-    memoryIdsUsed: ledger.memoryIdsUsed,
-    scopesUsed: deliverableOverlay.scopesUsed,
-    improvementRate: quality.improvementRate,
-    success: true,
-  });
+  const appliedFlag =
+    applied.context.memoryIdsUsed.length > 0 ||
+    Boolean(input.improvementNotes?.trim());
 
   return {
     content: next,
     overlay: deliverableOverlay,
-    memoryIdsUsed: ledger.memoryIdsUsed,
+    memoryIdsUsed: applied.context.memoryIdsUsed,
     quality,
     preservedLayoutHints,
-    applied,
+    applied: appliedFlag,
   };
 }

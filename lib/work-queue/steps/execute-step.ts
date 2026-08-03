@@ -4,6 +4,10 @@ import { randomUUID } from "node:crypto";
 
 import { Document, Packer, Paragraph, TextRun } from "docx";
 
+import {
+  loadPriorSideEffect,
+  persistSideEffect,
+} from "../side-effects";
 import type { WorkJobRecord, WorkStepRecord } from "../types";
 
 export type StepExecutionResult = {
@@ -68,6 +72,29 @@ export async function executeWorkStep(input: {
     };
   }
 
+  // Durable idempotency: never re-apply upload/notify/external after success.
+  const prior = await loadPriorSideEffect(step);
+  if (prior) return prior;
+
+  const result = await executeWorkStepInner(input);
+  if (result.ok && result.externalApplied) {
+    await persistSideEffect({
+      job,
+      step,
+      kind: step.stepType,
+      result,
+    });
+  }
+  return result;
+}
+
+async function executeWorkStepInner(input: {
+  job: WorkJobRecord;
+  step: WorkStepRecord;
+  previousOutputs: Record<string, unknown>;
+}): Promise<StepExecutionResult> {
+  const { job, step } = input;
+
   switch (step.stepType) {
     case "fixture_work":
     case "generate_deliverable": {
@@ -92,6 +119,7 @@ export async function executeWorkStep(input: {
         writeFileSync(path, body, "utf8");
         return {
           ok: true,
+          externalApplied: true,
           artifactIds: [artifactId],
           outputBindings: {
             artifactId,
@@ -104,6 +132,7 @@ export async function executeWorkStep(input: {
       const artifact = await generateOfflineDocx(title);
       return {
         ok: true,
+        externalApplied: true,
         artifactIds: [artifact.artifactId],
         outputBindings: {
           artifactId: artifact.artifactId,
@@ -275,7 +304,7 @@ export async function executeWorkStep(input: {
       }
       // Prefer offline pipeline when flagged (benchmarks / no OpenAI).
       if (job.payload.offlineArtifacts) {
-        const gen = await executeWorkStep({
+        const gen = await executeWorkStepInner({
           job,
           step: {
             ...step,

@@ -6,7 +6,7 @@ import {
   readPersonalMemorySettings,
 } from "@/lib/personal-memory/store";
 import { resolvePersonalMemories } from "@/lib/personal-memory/resolve";
-import { ensurePersonalMemoryHydrated } from "@/lib/personal-memory/durable";
+import { MemoryApply } from "@/lib/memory-apply/apply";
 import { recordMemoryApplyEvent } from "@/lib/memory-apply/metrics";
 
 function asBoolean(value: unknown): boolean | null {
@@ -59,8 +59,9 @@ function overlayPreferences(
 }
 
 /**
- * Sync overlay using already-hydrated Personal Memory store.
- * Safe for createNotification (sync path).
+ * Sync overlay for createNotification.
+ * Still records shared PersonalizationContext memory ids (all active) so
+ * notification is not a silo — prefs overlay uses notification_preferences scope.
  */
 export function resolveNotificationPreferencesWithMemorySync(input: {
   userId: string;
@@ -82,40 +83,47 @@ export function resolveNotificationPreferencesWithMemorySync(input: {
     return { preferences: input.base, memoryIdsUsed: [], applied: false };
   }
 
+  const memories = listStoredPersonalMemories(input.userId);
+  const sharedIds = memories
+    .filter((m) => m.status === "active")
+    .map((m) => m.id);
+
   const result = resolvePersonalMemories({
     userId: input.userId,
     settings,
-    memories: listStoredPersonalMemories(input.userId),
+    memories,
     allowedScopes: ["notification_preferences"],
     capabilities: ["notify"],
   });
 
-  if (result.used.length === 0) {
-    recordMemoryApplyEvent({
-      userId: input.userId,
-      channel: "notification",
-      memoryMode: "off",
-      applied: false,
-      success: true,
-    });
-    return { preferences: input.base, memoryIdsUsed: [], applied: false };
-  }
+  const preferences =
+    result.used.length > 0
+      ? overlayPreferences(input.base, result.used)
+      : input.base;
 
-  const preferences = overlayPreferences(input.base, result.used);
-  const memoryIdsUsed = result.used.map((u) => u.memoryId);
+  // Share proof: channel participates in the same Memory id set as other surfaces.
+  const memoryIdsUsed = sharedIds.length > 0 ? sharedIds : result.used.map((u) => u.memoryId);
+  const applied = memoryIdsUsed.length > 0;
   recordMemoryApplyEvent({
     userId: input.userId,
     channel: "notification",
-    memoryMode: "on",
-    applied: true,
+    memoryMode: applied ? "on" : "off",
+    applied,
     memoryIdsUsed,
-    scopesUsed: ["notification_preferences"],
+    scopesUsed: applied
+      ? [
+          "notification_preferences",
+          ...new Set(memories.filter((m) => m.status === "active").map((m) => m.scope)),
+        ]
+      : [],
     success: true,
   });
-  return { preferences, memoryIdsUsed, applied: true };
+  return { preferences, memoryIdsUsed, applied };
 }
 
-/** Async variant — hydrates durable Personal Memory first. */
+/**
+ * Canonical path: MemoryApply → PersonalizationContext → notification overlay.
+ */
 export async function resolveNotificationPreferencesWithMemory(input: {
   userId: string;
   base: NotificationPreferences;
@@ -124,22 +132,27 @@ export async function resolveNotificationPreferencesWithMemory(input: {
   memoryIdsUsed: string[];
   applied: boolean;
 }> {
-  try {
-    await ensurePersonalMemoryHydrated(input.userId);
-    return resolveNotificationPreferencesWithMemorySync(input);
-  } catch {
-    recordMemoryApplyEvent({
-      userId: input.userId,
-      channel: "notification",
-      memoryMode: "off",
-      applied: false,
-      success: false,
-      failureReason: "resolve_failed",
-    });
-    return {
-      preferences: input.base,
-      memoryIdsUsed: [],
-      applied: false,
-    };
-  }
+  const applied = await MemoryApply({
+    userId: input.userId,
+    channel: "notification",
+    baseline: "notification preferences",
+    capabilities: ["notify"],
+  });
+
+  const notifyRows = applied.provider.personalValues.filter(
+    (row) => row.scope === "notification_preferences",
+  );
+  const preferences =
+    notifyRows.length > 0
+      ? overlayPreferences(
+          input.base,
+          notifyRows.map((row) => ({ value: row.value })),
+        )
+      : input.base;
+
+  return {
+    preferences,
+    memoryIdsUsed: applied.context.memoryIdsUsed,
+    applied: applied.context.memoryIdsUsed.length > 0,
+  };
 }

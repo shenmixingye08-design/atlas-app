@@ -5,7 +5,10 @@
 import "server-only";
 
 import { MemoryProvider } from "@/lib/memory-apply/provider";
-import type { MemoryProviderRequest } from "@/lib/memory-apply/provider";
+import type {
+  MemoryProviderRequest,
+  MemoryProviderResult,
+} from "@/lib/memory-apply/provider";
 import {
   buildPersonalizationContext,
   type PersonalizationContext,
@@ -39,6 +42,8 @@ export type MemoryApplyInput = {
   /** Memory OFF for A/B comparison */
   memoryEnabled?: boolean;
   artifactIds?: string[];
+  automationOverrides?: Record<string, unknown> | null;
+  currentInstruction?: Record<string, unknown> | null;
 };
 
 export type MemoryApplyOutput = {
@@ -47,11 +52,14 @@ export type MemoryApplyOutput = {
   surface: SurfaceContextBundle;
   quality: MemoryQualityDiff;
   logId: string;
+  /** Raw provider result — adapters must not re-resolve Memory separately */
+  provider: MemoryProviderResult;
 };
 
 /**
  * Resolve Memory → PersonalizationContext → Prompt → log.
- * Use this from Commander / Automation / Vision / OCR / Deliverables / Prediction.
+ * Fail Closed: load failure throws (AI must not continue without Memory).
+ * Prefer loadMemory() from pipeline.ts for the canonical secretary sequence.
  */
 export async function MemoryApply(
   input: MemoryApplyInput,
@@ -67,67 +75,89 @@ export async function MemoryApply(
     artifactTypes: input.artifactTypes,
     capabilities: input.capabilities,
     memoryEnabled: input.memoryEnabled,
+    automationOverrides: input.automationOverrides,
+    currentInstruction: input.currentInstruction,
   };
 
-  const provider = await MemoryProvider(providerRequest);
-  const context = buildPersonalizationContext({
-    userId: input.userId,
-    channel: input.channel,
-    provider,
-  });
-  const prompt = PromptBuilder({
-    baseline: input.baseline,
-    context,
-  });
-  const surface = ContextBuilder({
-    baseline: input.baseline,
-    context,
-  });
+  try {
+    const provider = await MemoryProvider(providerRequest);
+    const context = buildPersonalizationContext({
+      userId: input.userId,
+      channel: input.channel,
+      provider,
+    });
+    if (!context.memoryVersion?.checksum) {
+      throw new Error("memory_version_incomplete");
+    }
+    const prompt = PromptBuilder({
+      baseline: input.baseline,
+      context,
+    });
+    const surface = ContextBuilder({
+      baseline: input.baseline,
+      context,
+    });
 
-  const flatExpected: Record<string, unknown> = {};
-  for (const row of provider.personalValues) {
-    flatExpected[row.key] = row.value;
-    flatExpected[row.scope] = row.summary;
+    const flatExpected: Record<string, unknown> = {};
+    for (const row of provider.personalValues) {
+      flatExpected[row.key] = row.value;
+      flatExpected[row.scope] = row.summary;
+    }
+    const expected = expectedTokensFromMemoryValues(flatExpected);
+    const quality = compareMemoryQuality({
+      before: prompt.baseline,
+      after: prompt.withMemory,
+      memoryMode: context.mode,
+      expectedMemoryTokens: expected,
+    });
+
+    const log = appendMemoryApplyLog({
+      userId: input.userId,
+      organizationId: input.organizationId,
+      channel: input.channel,
+      mode: context.mode,
+      memoryIdsUsed: context.memoryIdsUsed,
+      scopesUsed: context.scopesUsed,
+      artifactIds: input.artifactIds,
+      beforeText: prompt.baseline,
+      afterText: prompt.withMemory,
+      quality,
+    });
+
+    recordMemoryApplyEvent({
+      userId: input.userId,
+      channel: input.channel,
+      memoryMode: context.mode,
+      applied: context.mode === "on" && context.memoryIdsUsed.length > 0,
+      memoryIdsUsed: context.memoryIdsUsed,
+      scopesUsed: context.scopesUsed,
+      improvementRate: quality.improvementRate,
+      success: true,
+    });
+
+    return {
+      context,
+      prompt,
+      surface,
+      quality,
+      logId: log.id,
+      provider,
+    };
+  } catch (error) {
+    recordMemoryApplyEvent({
+      userId: input.userId,
+      channel: input.channel,
+      memoryMode: "off",
+      applied: false,
+      memoryIdsUsed: [],
+      scopesUsed: [],
+      improvementRate: 0,
+      success: false,
+      failureReason:
+        error instanceof Error ? error.message.slice(0, 200) : "memory_apply_failed",
+    });
+    throw error;
   }
-  const expected = expectedTokensFromMemoryValues(flatExpected);
-  const quality = compareMemoryQuality({
-    before: prompt.baseline,
-    after: prompt.withMemory,
-    memoryMode: context.mode,
-    expectedMemoryTokens: expected,
-  });
-
-  const log = appendMemoryApplyLog({
-    userId: input.userId,
-    organizationId: input.organizationId,
-    channel: input.channel,
-    mode: context.mode,
-    memoryIdsUsed: context.memoryIdsUsed,
-    scopesUsed: context.scopesUsed,
-    artifactIds: input.artifactIds,
-    beforeText: prompt.baseline,
-    afterText: prompt.withMemory,
-    quality,
-  });
-
-  recordMemoryApplyEvent({
-    userId: input.userId,
-    channel: input.channel,
-    memoryMode: context.mode,
-    applied: context.mode === "on" && context.memoryIdsUsed.length > 0,
-    memoryIdsUsed: context.memoryIdsUsed,
-    scopesUsed: context.scopesUsed,
-    improvementRate: quality.improvementRate,
-    success: true,
-  });
-
-  return {
-    context,
-    prompt,
-    surface,
-    quality,
-    logId: log.id,
-  };
 }
 
 /**

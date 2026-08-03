@@ -87,7 +87,11 @@ export function formatAutomationScheduledTime(automation: Automation): string | 
   const normalized = normalizeAutomation(automation);
   if (normalized.schedule.kind !== "schedule") return null;
   const preset = normalized.schedule.preset;
-  if (!preset || typeof preset.hour !== "number" || typeof preset.minute !== "number") {
+  if (!preset || !("hour" in preset) || !("minute" in preset)) {
+    if (preset?.type === "minutely") return "毎分";
+    if (preset?.type === "hourly") {
+      return `毎時 ${String(preset.minute).padStart(2, "0")}分`;
+    }
     return null;
   }
   const { hour, minute } = preset;

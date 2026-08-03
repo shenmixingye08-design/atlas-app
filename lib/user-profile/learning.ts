@@ -173,9 +173,15 @@ export function recordAutomationCreated(
   let frequency: "daily" | "weekly" | "monthly" | undefined;
 
   if (schedule.kind === "schedule") {
-    hour = schedule.preset.hour;
-    minute = schedule.preset.minute;
-    frequency = schedule.preset.type;
+    hour = "hour" in schedule.preset ? schedule.preset.hour : undefined;
+    minute = "minute" in schedule.preset ? schedule.preset.minute : undefined;
+    if (
+      schedule.preset.type === "daily" ||
+      schedule.preset.type === "weekly" ||
+      schedule.preset.type === "monthly"
+    ) {
+      frequency = schedule.preset.type;
+    }
   }
 
   return recordJobUsage({

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
 import type {
@@ -12,6 +13,23 @@ import type {
 } from "./types";
 
 const TABLE = "atlas_automation_jobs" as const;
+
+function isProductionJobsRuntime(): boolean {
+  return (
+    isAtlasProduction() ||
+    process.env.VERCEL === "1" ||
+    process.env.ATLAS_RUNTIME === "production"
+  );
+}
+
+/** Process memory is cache/dev only — never production SoT (Blocker #4). */
+function assertMemoryJobsAllowed(operation: string): void {
+  if (isProductionJobsRuntime()) {
+    throw new Error(
+      `jobs_memory_sot_forbidden_in_production: ${operation} requires Supabase/DB SoT`,
+    );
+  }
+}
 
 /** Running jobs without heartbeat for this long are treated as hung. */
 export const JOB_HANG_TIMEOUT_MS = 30 * 60 * 1000;
@@ -185,6 +203,7 @@ export async function claimAutomationJob(input: {
   const client = createServiceRoleClientIfConfigured();
 
   if (!client) {
+    assertMemoryJobsAllowed("claimAutomationJob");
     const existing = memoryByIdempotency(input.idempotencyKey);
     if (existing) return resolveClaim(existing);
     const record: JobRecord = {
@@ -220,47 +239,40 @@ export async function claimAutomationJob(input: {
     return { action: "created", record };
   }
 
-  try {
-    const { data, error } = await client
-      .from(TABLE)
-      .insert(
-        recordToRow({
-          id: input.id,
-          userId: input.userId,
-          automationId: input.automationId,
-          idempotencyKey: input.idempotencyKey,
-          jobType: input.jobType ?? "automation",
-          status: "queued",
-          scheduledAt: input.scheduledAt ?? null,
-          queuedAt: now,
-          maxAttempts: input.maxAttempts ?? 3,
-        }),
-      )
-      .select("*")
-      .single();
+  const { data, error } = await client
+    .from(TABLE)
+    .insert(
+      recordToRow({
+        id: input.id,
+        userId: input.userId,
+        automationId: input.automationId,
+        idempotencyKey: input.idempotencyKey,
+        jobType: input.jobType ?? "automation",
+        status: "queued",
+        scheduledAt: input.scheduledAt ?? null,
+        queuedAt: now,
+        maxAttempts: input.maxAttempts ?? 3,
+      }),
+    )
+    .select("*")
+    .single();
 
-    if (error) {
-      if (error.code === "23505") {
-        const { data: existingRow } = await client
-          .from(TABLE)
-          .select("*")
-          .eq("idempotency_key", input.idempotencyKey)
-          .maybeSingle();
-        if (existingRow) {
-          return resolveClaim(rowToRecord(existingRow as DbRow));
-        }
+  if (error) {
+    if (error.code === "23505") {
+      const { data: existingRow } = await client
+        .from(TABLE)
+        .select("*")
+        .eq("idempotency_key", input.idempotencyKey)
+        .maybeSingle();
+      if (existingRow) {
+        return resolveClaim(rowToRecord(existingRow as DbRow));
       }
-      console.warn("[jobs] claim insert failed:", error.message);
-      throw new Error(error.message);
     }
-
-    return { action: "created", record: rowToRecord(data as DbRow) };
-  } catch (error) {
-    console.warn("[jobs] claim skipped, using memory fallback");
-    const existing = memoryByIdempotency(input.idempotencyKey);
-    if (existing) return resolveClaim(existing);
-    throw error;
+    // Fail Closed — never fall back to process memory in production.
+    throw new Error(error.message);
   }
+
+  return { action: "created", record: rowToRecord(data as DbRow) };
 }
 
 export async function getJobRecord(
@@ -269,6 +281,7 @@ export async function getJobRecord(
 ): Promise<JobRecord | null> {
   const client = createServiceRoleClientIfConfigured();
   if (!client) {
+    assertMemoryJobsAllowed("getJobRecord");
     const row = getMemoryStore().get(jobId);
     return row && row.userId === userId ? row : null;
   }
@@ -280,10 +293,7 @@ export async function getJobRecord(
     .eq("user_id", userId)
     .maybeSingle();
 
-  if (error || !data) {
-    const mem = getMemoryStore().get(jobId);
-    return mem && mem.userId === userId ? mem : null;
-  }
+  if (error || !data) return null;
   return rowToRecord(data as DbRow);
 }
 
@@ -293,6 +303,7 @@ export async function upsertJobRecord(record: JobRecord): Promise<JobRecord> {
   const client = createServiceRoleClientIfConfigured();
 
   if (!client) {
+    assertMemoryJobsAllowed("upsertJobRecord");
     getMemoryStore().set(next.id, next);
     return next;
   }
@@ -304,9 +315,7 @@ export async function upsertJobRecord(record: JobRecord): Promise<JobRecord> {
     .single();
 
   if (error || !data) {
-    console.warn("[jobs] upsert failed:", error?.message);
-    getMemoryStore().set(next.id, next);
-    return next;
+    throw new Error(error?.message ?? "jobs_upsert_failed");
   }
   return rowToRecord(data as DbRow);
 }
@@ -316,6 +325,7 @@ export async function listDueRetries(nowMs = Date.now()): Promise<JobRecord[]> {
   const client = createServiceRoleClientIfConfigured();
 
   if (!client) {
+    assertMemoryJobsAllowed("listDueRetries");
     return [...getMemoryStore().values()].filter(
       (job) =>
         job.status === "retrying" &&
@@ -333,12 +343,10 @@ export async function listDueRetries(nowMs = Date.now()): Promise<JobRecord[]> {
     .limit(50);
 
   if (error || !Array.isArray(data)) {
-    return [...getMemoryStore().values()].filter(
-      (job) =>
-        job.status === "retrying" &&
-        job.nextRetryAt != null &&
-        job.nextRetryAt <= now,
-    );
+    if (isProductionJobsRuntime()) {
+      throw new Error(error?.message ?? "jobs_list_due_retries_failed");
+    }
+    return [];
   }
   return data.map((row) => rowToRecord(row as DbRow));
 }
@@ -350,6 +358,7 @@ export async function listStaleRunningJobs(
   const client = createServiceRoleClientIfConfigured();
 
   if (!client) {
+    assertMemoryJobsAllowed("listStaleRunningJobs");
     return [...getMemoryStore().values()].filter(
       (job) => job.status === "running" && job.updatedAt <= cutoff,
     );
@@ -363,9 +372,10 @@ export async function listStaleRunningJobs(
     .limit(50);
 
   if (error || !Array.isArray(data)) {
-    return [...getMemoryStore().values()].filter(
-      (job) => job.status === "running" && job.updatedAt <= cutoff,
-    );
+    if (isProductionJobsRuntime()) {
+      throw new Error(error?.message ?? "jobs_list_stale_running_failed");
+    }
+    return [];
   }
   return data.map((row) => rowToRecord(row as DbRow));
 }
@@ -388,6 +398,7 @@ export async function getJobMetrics24h(): Promise<JobMetrics24h> {
   };
 
   if (!client) {
+    assertMemoryJobsAllowed("getJobMetrics24h");
     const rows = [...getMemoryStore().values()].filter(
       (r) => r.createdAt >= since,
     );

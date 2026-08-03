@@ -1,8 +1,11 @@
+import { presetToCron } from "@/lib/automations/schedule";
+
 import {
   WORK_QUEUE_SCHEDULER_BATCH,
 } from "./constants";
 import { buildOccurrenceKey } from "./occurrence";
 import { logWorkQueue } from "./observability";
+import { markScheduleOccurrenceScheduled } from "./scheduler-registry/service";
 import { getWorkQueueStore } from "./store";
 import { defaultAutomationSteps } from "./steps/execute-step";
 
@@ -25,11 +28,15 @@ export type DueAutomationCandidate = {
   paused?: boolean;
   assignment?: string;
   offlineArtifacts?: boolean;
+  /** Cron SoT expression for this automation (from presetToCron). */
+  cronExpression?: string;
+  presetType?: string;
 };
 
 /**
  * Scheduler tick: create occurrences + enqueue jobs only.
  * Never runs deliverable generation here.
+ * Persists Scheduler registry: Scheduled status + execution log (DB/file SoT).
  */
 export async function enqueueDueAutomations(input: {
   candidates: DueAutomationCandidate[];
@@ -54,10 +61,11 @@ export async function enqueueDueAutomations(input: {
 
   for (const candidate of due) {
     const scheduledAt = new Date(candidate.nextRun!);
+    const timezone = candidate.timezone ?? "Asia/Tokyo";
     const occurrenceKey = buildOccurrenceKey({
       automationId: candidate.automationId,
       scheduledAt,
-      timezone: candidate.timezone ?? "Asia/Tokyo",
+      timezone,
     });
 
     const delayMs = Math.max(0, now.getTime() - scheduledAt.getTime());
@@ -80,6 +88,41 @@ export async function enqueueDueAutomations(input: {
       },
       steps: defaultAutomationSteps(offline),
     });
+
+    const cronExpression =
+      candidate.cronExpression ??
+      (candidate.presetType === "minutely"
+        ? "* * * * *"
+        : candidate.presetType === "hourly"
+          ? "0 * * * *"
+          : "0 9 * * *");
+    const presetType = candidate.presetType ?? "daily";
+
+    // Always persist registry + log (idempotent on occurrence).
+    try {
+      await markScheduleOccurrenceScheduled({
+        automationId: candidate.automationId,
+        ownerId: candidate.ownerId,
+        cronExpression,
+        timezone,
+        presetType,
+        nextRun: candidate.nextRun,
+        occurrenceKey,
+        jobId: job.jobId,
+        enabled: true,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.startsWith("scheduler_stopped")) {
+        logWorkQueue({
+          event: "SCHEDULE_TICK_STARTED",
+          automationId: candidate.automationId,
+          extra: { skipped: "scheduler_stopped" },
+        });
+        continue;
+      }
+      throw error;
+    }
 
     if (created) {
       enqueued += 1;
@@ -124,4 +167,38 @@ export async function enqueueDueAutomations(input: {
     advanced,
     delaysMs,
   };
+}
+
+/** Helper for callers that have a full AutomationSchedule. */
+export function cronFromPresetType(
+  presetType: string,
+  fields?: { minute?: number; hour?: number; dayOfWeek?: number; dayOfMonth?: number },
+): string {
+  switch (presetType) {
+    case "minutely":
+      return presetToCron({ type: "minutely" });
+    case "hourly":
+      return presetToCron({ type: "hourly", minute: fields?.minute ?? 0 });
+    case "weekly":
+      return presetToCron({
+        type: "weekly",
+        dayOfWeek: fields?.dayOfWeek ?? 1,
+        hour: fields?.hour ?? 9,
+        minute: fields?.minute ?? 0,
+      });
+    case "monthly":
+      return presetToCron({
+        type: "monthly",
+        dayOfMonth: fields?.dayOfMonth ?? 1,
+        hour: fields?.hour ?? 9,
+        minute: fields?.minute ?? 0,
+      });
+    case "daily":
+    default:
+      return presetToCron({
+        type: "daily",
+        hour: fields?.hour ?? 9,
+        minute: fields?.minute ?? 0,
+      });
+  }
 }

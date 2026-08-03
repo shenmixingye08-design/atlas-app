@@ -19,7 +19,10 @@ const RETRYABLE_CODES = new Set([
 const NON_RETRYABLE_CODES = new Set([
   "invalid_input",
   "missing_connection",
+  "missing_adapter",
+  "missing_configuration",
   "revoked_authorization",
+  "revoked_oauth",
   "insufficient_permission",
   "unsupported_operation",
   "validation_failure",

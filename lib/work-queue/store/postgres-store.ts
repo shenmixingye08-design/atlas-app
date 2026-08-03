@@ -10,13 +10,42 @@ import {
   buildStepIdempotencyKey,
 } from "../occurrence";
 import type {
+  WorkCompletionEvidenceRecord,
+  WorkExecutionOutcome,
+  WorkExecutionRecord,
+  WorkLockRecord,
+  WorkMetricCounterKey,
+  WorkRecoveryEventRecord,
+  WorkRecoveryKind,
+  WorkWorkerRecord,
+} from "../durability-types";
+import type {
   EnqueueJobInput,
   WorkJobRecord,
   WorkJobStatus,
   WorkQueueMetrics,
+  WorkRetryHistoryEntry,
+  WorkSideEffectRecord,
   WorkStepRecord,
 } from "../types";
+import { WORK_JOB_TRANSITIONS } from "../types";
 import type { WorkQueueStore } from "./interface";
+
+const METRIC_KEYS: WorkMetricCounterKey[] = [
+  "retry_count",
+  "recovery_count",
+  "duplicate_count",
+  "timeout_count",
+  "notification_count",
+  "job_started_count",
+  "job_completed_count",
+  "job_failed_count",
+];
+
+function canTransition(from: WorkJobStatus, to: WorkJobStatus): boolean {
+  if (from === to) return true;
+  return WORK_JOB_TRANSITIONS[from].includes(to);
+}
 
 function resolveDatabaseUrl(): string | null {
   const url =
@@ -66,6 +95,9 @@ function rowToJob(row: Record<string, unknown>, steps: WorkStepRecord[]): WorkJo
     resultSummary: (row.result_summary as string | null) ?? null,
     firstError: (row.first_error as string | null) ?? null,
     lastError: (row.last_error as string | null) ?? null,
+    retryHistory: Array.isArray(row.retry_history)
+      ? (row.retry_history as WorkRetryHistoryEntry[])
+      : [],
     createdAt: new Date(String(row.created_at)).toISOString(),
     updatedAt: new Date(String(row.updated_at)).toISOString(),
     steps,
@@ -106,12 +138,6 @@ function rowToStep(row: Record<string, unknown>): WorkStepRecord {
 export class PostgresWorkQueueStore implements WorkQueueStore {
   readonly kind = "postgres" as const;
   private pool: pg.Pool;
-  private metaDelays: number[] = [];
-  private metaExec: number[] = [];
-  private metaRecoverySuccess = 0;
-  private metaRecoveryTotal = 0;
-  private metaDuplicates = 0;
-  private schedulerLastSuccessAt: string | null = null;
 
   constructor(connectionString: string) {
     this.pool = new pg.Pool({
@@ -119,6 +145,42 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
       max: 4,
       idleTimeoutMillis: 10_000,
     });
+  }
+
+  private async readMeta<T>(key: string, fallback: T): Promise<T> {
+    try {
+      const res = await this.pool.query(
+        `select meta_value from public.atlas_work_queue_meta where meta_key = $1`,
+        [key],
+      );
+      if (!res.rowCount) return fallback;
+      return res.rows[0]!.meta_value as T;
+    } catch {
+      return fallback;
+    }
+  }
+
+  private async writeMeta(key: string, value: unknown): Promise<void> {
+    try {
+      await this.pool.query(
+        `insert into public.atlas_work_queue_meta (meta_key, meta_value, updated_at)
+         values ($1, $2::jsonb, now())
+         on conflict (meta_key) do update
+           set meta_value = excluded.meta_value,
+               updated_at = excluded.updated_at`,
+        [key, JSON.stringify(value)],
+      );
+    } catch {
+      // Meta table may be missing before migration — do not fail jobs.
+    }
+  }
+
+  async readSchedulerMeta<T>(key: string, fallback: T): Promise<T> {
+    return this.readMeta(key, fallback);
+  }
+
+  async writeSchedulerMeta(key: string, value: unknown): Promise<void> {
+    await this.writeMeta(key, value);
   }
 
   private async loadSteps(client: pg.PoolClient | pg.Pool, jobId: string) {
@@ -145,7 +207,13 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
         [idem, input.automationId, input.occurrenceKey],
       );
       if (existing.rowCount && existing.rows[0]) {
-        this.metaDuplicates += 1;
+        const prev = await this.readMeta<number>("duplicate_count", 0);
+        await this.writeMeta("duplicate_count", prev + 1);
+        try {
+          await this.incrementMetricCounter("duplicate_count", 1);
+        } catch {
+          // counters table may be missing before migration — meta still holds count
+        }
         const jobId = String(existing.rows[0].job_id);
         const steps = await this.loadSteps(client, jobId);
         await client.query("commit");
@@ -284,6 +352,14 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
         jobs.push(rowToJob(row as Record<string, unknown>, steps));
       }
       await client.query("commit");
+      try {
+        await this.touchWorker(input.workerId, {
+          busy: jobs.length > 0,
+          leaseDelta: jobs.length,
+        });
+      } catch {
+        // workers table optional until migration applied
+      }
       return jobs;
     } catch (error) {
       await client.query("rollback");
@@ -314,7 +390,15 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
         workerId,
       ],
     );
-    return (res.rowCount ?? 0) > 0;
+    if ((res.rowCount ?? 0) > 0) {
+      try {
+        await this.touchWorker(workerId, { busy: true });
+      } catch {
+        // optional until migration
+      }
+      return true;
+    }
+    return false;
   }
 
   async getJob(jobId: string): Promise<WorkJobRecord | null> {
@@ -332,6 +416,15 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
     patch: Partial<WorkJobRecord> & { status?: WorkJobStatus },
     expectedLeaseOwner?: string,
   ): Promise<WorkJobRecord | null> {
+    if (patch.status !== undefined) {
+      const current = await this.getJob(jobId);
+      if (!current) return null;
+      if (!canTransition(current.status, patch.status)) {
+        throw new Error(
+          `invalid_transition:${current.status}->${patch.status}:${jobId}`,
+        );
+      }
+    }
     const fields: string[] = [];
     const values: unknown[] = [];
     const add = (col: string, value: unknown) => {
@@ -359,6 +452,9 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
     }
     if (patch.firstError !== undefined) add("first_error", patch.firstError);
     if (patch.lastError !== undefined) add("last_error", patch.lastError);
+    if (patch.retryHistory !== undefined) {
+      add("retry_history", JSON.stringify(patch.retryHistory));
+    }
     add("updated_at", new Date().toISOString());
 
     values.push(jobId);
@@ -462,8 +558,21 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
          and heartbeat_at < $1::timestamptz`,
       [new Date(nowMs - 90_000).toISOString()],
     );
-    const delays = [...this.metaDelays].sort((a, b) => a - b);
-    const execs = [...this.metaExec].sort((a, b) => a - b);
+    const delays = (
+      await this.readMeta<number[]>("schedule_delays", [])
+    ).slice().sort((a, b) => a - b);
+    const execs = (
+      await this.readMeta<number[]>("execution_ms", [])
+    ).slice().sort((a, b) => a - b);
+    const recovery = await this.readMeta<{ success: number; total: number }>(
+      "recovery",
+      { success: 0, total: 0 },
+    );
+    const duplicates = await this.readMeta<number>("duplicate_count", 0);
+    const schedulerLastSuccessAt = await this.readMeta<string | null>(
+      "scheduler_last_success_at",
+      null,
+    );
     const p = (arr: number[], pct: number) => {
       if (!arr.length) return null;
       return arr[Math.min(arr.length - 1, Math.ceil((pct / 100) * arr.length) - 1)]!;
@@ -476,13 +585,28 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
     const cronEnabled =
       process.env.ENABLE_SCHEDULED_CRON?.trim().toLowerCase() !== "false";
     let alive = cronEnabled;
-    if (this.schedulerLastSuccessAt) {
-      const age = nowMs - new Date(this.schedulerLastSuccessAt).getTime();
+    if (schedulerLastSuccessAt) {
+      const age = nowMs - new Date(schedulerLastSuccessAt).getTime();
       alive = cronEnabled && Number.isFinite(age) && age <= 26 * 60 * 60 * 1000;
     }
     const running = map.get("running")?.c ?? 0;
     const leased = map.get("leased")?.c ?? 0;
-    const workerBusyDenom = Math.max(1, leased + running);
+    const counters = await this.getMetricCounters().catch(() => null);
+    let workerCount = 0;
+    let busyWorkers = 0;
+    try {
+      const workers = await this.listWorkers(nowMs);
+      const active = workers.filter((w) => w.status === "active");
+      workerCount = active.length;
+      busyWorkers = active.filter((w) => w.busy).length;
+    } catch {
+      workerCount = leased + running > 0 ? 1 : 0;
+      busyWorkers = workerCount;
+    }
+    const avgExec =
+      execs.length === 0
+        ? null
+        : execs.reduce((a, b) => a + b, 0) / execs.length;
     return {
       queued,
       waiting: queued,
@@ -494,8 +618,8 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
       deadLetter,
       completed,
       oldestQueuedAgeMs: map.get("queued")?.oldest ?? null,
-      duplicateCount: this.metaDuplicates,
-      schedulerLastSuccessAt: this.schedulerLastSuccessAt,
+      duplicateCount: counters?.duplicate_count ?? duplicates,
+      schedulerLastSuccessAt,
       p95ScheduleDelayMs: p(delays, 95),
       p99ScheduleDelayMs: p(delays, 99),
       averageDelayMs:
@@ -503,48 +627,621 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
           ? null
           : delays.reduce((a, b) => a + b, 0) / delays.length,
       p95ExecutionMs: p(execs, 95),
+      averageExecutionMs: avgExec,
       recoverySuccessRate:
-        this.metaRecoveryTotal > 0
-          ? this.metaRecoverySuccess / this.metaRecoveryTotal
-          : null,
+        recovery.total > 0 ? recovery.success / recovery.total : null,
+      recoveryCount: counters?.recovery_count ?? recovery.total,
+      retryCount: counters?.retry_count ?? 0,
+      timeoutCount: counters?.timeout_count ?? 0,
+      notificationCount: counters?.notification_count ?? 0,
+      startedCount: counters?.job_started_count ?? 0,
+      queueLength: queued,
       alive,
-      workerCount: leased + running > 0 ? 1 : 0,
+      workerCount,
       successRate: terminal > 0 ? completed / terminal : null,
       failureRate: terminal > 0 ? (failed + deadLetter) / terminal : null,
       averageQueueWaitMs: map.get("queued")?.oldest ?? null,
-      workerBusyPercent: Math.round(
-        ((leased + running) / workerBusyDenom) * 100,
-      ),
+      workerBusyPercent:
+        workerCount === 0
+          ? null
+          : Math.round((busyWorkers / Math.max(1, workerCount)) * 100),
     };
   }
 
   async recordSchedulerSuccess(atIso: string): Promise<void> {
-    this.schedulerLastSuccessAt = atIso;
+    await this.writeMeta("scheduler_last_success_at", atIso);
   }
 
   async recordScheduleDelay(delayMs: number): Promise<void> {
-    this.metaDelays.push(delayMs);
-    if (this.metaDelays.length > 5000) this.metaDelays = this.metaDelays.slice(-2000);
+    const delays = await this.readMeta<number[]>("schedule_delays", []);
+    delays.push(delayMs);
+    await this.writeMeta(
+      "schedule_delays",
+      delays.length > 5000 ? delays.slice(-2000) : delays,
+    );
   }
 
   async recordExecutionMs(durationMs: number): Promise<void> {
-    this.metaExec.push(durationMs);
-    if (this.metaExec.length > 5000) this.metaExec = this.metaExec.slice(-2000);
+    const execs = await this.readMeta<number[]>("execution_ms", []);
+    execs.push(durationMs);
+    await this.writeMeta(
+      "execution_ms",
+      execs.length > 5000 ? execs.slice(-2000) : execs,
+    );
   }
 
   async recordRecovery(success: boolean): Promise<void> {
-    this.metaRecoveryTotal += 1;
-    if (success) this.metaRecoverySuccess += 1;
+    const recovery = await this.readMeta<{ success: number; total: number }>(
+      "recovery",
+      { success: 0, total: 0 },
+    );
+    recovery.total += 1;
+    if (success) recovery.success += 1;
+    await this.writeMeta("recovery", recovery);
+    try {
+      await this.incrementMetricCounter("recovery_count", 1);
+    } catch {
+      // optional until migration
+    }
+  }
+
+  async getSideEffect(
+    idempotencyKey: string,
+  ): Promise<WorkSideEffectRecord | null> {
+    try {
+      const res = await this.pool.query(
+        `select * from public.atlas_work_queue_side_effects where idempotency_key = $1`,
+        [idempotencyKey],
+      );
+      if (!res.rowCount) return null;
+      const row = res.rows[0] as Record<string, unknown>;
+      return {
+        idempotencyKey: String(row.idempotency_key),
+        jobId: String(row.job_id),
+        runId: String(row.run_id),
+        stepId: String(row.step_id),
+        kind: String(row.kind),
+        result: (row.result as Record<string, unknown>) ?? {},
+        createdAt: new Date(String(row.created_at)).toISOString(),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async tryRecordSideEffect(input: {
+    idempotencyKey: string;
+    jobId: string;
+    runId: string;
+    stepId: string;
+    kind: string;
+    result: Record<string, unknown>;
+  }): Promise<{ created: boolean; record: WorkSideEffectRecord }> {
+    try {
+      const res = await this.pool.query(
+        `insert into public.atlas_work_queue_side_effects (
+           idempotency_key, job_id, run_id, step_id, kind, result, created_at
+         ) values ($1,$2,$3,$4,$5,$6::jsonb, now())
+         on conflict (idempotency_key) do nothing
+         returning *`,
+        [
+          input.idempotencyKey,
+          input.jobId,
+          input.runId,
+          input.stepId,
+          input.kind,
+          JSON.stringify(input.result),
+        ],
+      );
+      if (res.rowCount && res.rows[0]) {
+        const row = res.rows[0] as Record<string, unknown>;
+        return {
+          created: true,
+          record: {
+            idempotencyKey: String(row.idempotency_key),
+            jobId: String(row.job_id),
+            runId: String(row.run_id),
+            stepId: String(row.step_id),
+            kind: String(row.kind),
+            result: (row.result as Record<string, unknown>) ?? {},
+            createdAt: new Date(String(row.created_at)).toISOString(),
+          },
+        };
+      }
+    } catch (err) {
+      const existingAfterErr = await this.getSideEffect(input.idempotencyKey);
+      if (existingAfterErr) {
+        return { created: false, record: existingAfterErr };
+      }
+      // Fail closed — never invent ephemeral SoT on missing table / write failure.
+      throw new Error(
+        `work_queue_side_effect_persist_failed:${input.idempotencyKey}:${
+          err instanceof Error ? err.message : "unknown"
+        }`,
+      );
+    }
+    const existing = await this.getSideEffect(input.idempotencyKey);
+    if (existing) return { created: false, record: existing };
+    throw new Error(
+      `work_queue_side_effect_persist_failed:${input.idempotencyKey}:missing_after_insert`,
+    );
+  }
+
+  async appendRetryHistory(
+    jobId: string,
+    entry: WorkRetryHistoryEntry,
+  ): Promise<void> {
+    try {
+      await this.pool.query(
+        `update public.atlas_work_queue_jobs
+         set retry_history = coalesce(retry_history, '[]'::jsonb) || $2::jsonb,
+             updated_at = now()
+         where job_id = $1`,
+        [jobId, JSON.stringify([entry])],
+      );
+    } catch {
+      // column may be missing before migration
+    }
+  }
+
+  async touchWorker(
+    workerId: string,
+    input?: { busy?: boolean; leaseDelta?: number },
+  ): Promise<WorkWorkerRecord> {
+    const res = await this.pool.query(
+      `insert into public.atlas_work_queue_workers
+         (worker_id, last_seen_at, started_at, busy, lease_count, status)
+       values ($1, now(), now(), $2, $3, 'active')
+       on conflict (worker_id) do update set
+         last_seen_at = now(),
+         busy = coalesce($2, public.atlas_work_queue_workers.busy),
+         lease_count = public.atlas_work_queue_workers.lease_count + $3,
+         status = 'active'
+       returning *`,
+      [workerId, input?.busy ?? false, input?.leaseDelta ?? 0],
+    );
+    const row = res.rows[0] as Record<string, unknown>;
+    return {
+      workerId: String(row.worker_id),
+      lastSeenAt: new Date(String(row.last_seen_at)).toISOString(),
+      startedAt: new Date(String(row.started_at)).toISOString(),
+      busy: Boolean(row.busy),
+      leaseCount: Number(row.lease_count ?? 0),
+      status: (row.status as WorkWorkerRecord["status"]) ?? "active",
+    };
+  }
+
+  async listWorkers(nowMs = Date.now()): Promise<WorkWorkerRecord[]> {
+    const res = await this.pool.query(
+      `select * from public.atlas_work_queue_workers order by last_seen_at desc limit 200`,
+    );
+    return res.rows.map((raw) => {
+      const row = raw as Record<string, unknown>;
+      const lastSeenAt = new Date(String(row.last_seen_at)).toISOString();
+      const age = nowMs - new Date(lastSeenAt).getTime();
+      const status: WorkWorkerRecord["status"] =
+        Number.isFinite(age) && age > 120_000
+          ? "stale"
+          : ((row.status as WorkWorkerRecord["status"]) ?? "active");
+      return {
+        workerId: String(row.worker_id),
+        lastSeenAt,
+        startedAt: new Date(String(row.started_at)).toISOString(),
+        busy: Boolean(row.busy),
+        leaseCount: Number(row.lease_count ?? 0),
+        status,
+      };
+    });
+  }
+
+  async beginExecution(input: {
+    executionId: string;
+    jobId: string;
+    runId: string;
+    workerId: string;
+    attempt: number;
+    resumeFromStep: number;
+  }): Promise<WorkExecutionRecord> {
+    const res = await this.pool.query(
+      `insert into public.atlas_work_queue_executions (
+         execution_id, job_id, run_id, worker_id, attempt, resume_from_step,
+         started_at, detail
+       ) values ($1,$2,$3,$4,$5,$6, now(), '{}'::jsonb)
+       returning *`,
+      [
+        input.executionId,
+        input.jobId,
+        input.runId,
+        input.workerId,
+        input.attempt,
+        input.resumeFromStep,
+      ],
+    );
+    await this.incrementMetricCounter("job_started_count", 1).catch(() => 0);
+    const row = res.rows[0] as Record<string, unknown>;
+    return {
+      executionId: String(row.execution_id),
+      jobId: String(row.job_id),
+      runId: String(row.run_id),
+      workerId: String(row.worker_id),
+      attempt: Number(row.attempt ?? 0),
+      resumeFromStep: Number(row.resume_from_step ?? 0),
+      startedAt: new Date(String(row.started_at)).toISOString(),
+      endedAt: null,
+      outcome: null,
+      detail: {},
+    };
+  }
+
+  async endExecution(input: {
+    executionId: string;
+    outcome: WorkExecutionOutcome;
+    detail?: Record<string, unknown>;
+  }): Promise<void> {
+    await this.pool.query(
+      `update public.atlas_work_queue_executions
+       set ended_at = now(), outcome = $2, detail = $3::jsonb
+       where execution_id = $1`,
+      [input.executionId, input.outcome, JSON.stringify(input.detail ?? {})],
+    );
+    if (input.outcome === "completed") {
+      await this.incrementMetricCounter("job_completed_count", 1).catch(() => 0);
+    } else if (input.outcome === "failed") {
+      await this.incrementMetricCounter("job_failed_count", 1).catch(() => 0);
+    } else if (input.outcome === "retried") {
+      await this.incrementMetricCounter("retry_count", 1).catch(() => 0);
+    }
+  }
+
+  async recordCompletionEvidence(input: {
+    evidenceId: string;
+    jobId: string;
+    runId: string;
+    stepId: string;
+    kind: string;
+    payload: Record<string, unknown>;
+  }): Promise<WorkCompletionEvidenceRecord> {
+    const res = await this.pool.query(
+      `insert into public.atlas_work_queue_completion_evidence (
+         evidence_id, job_id, run_id, step_id, kind, payload, created_at
+       ) values ($1,$2,$3,$4,$5,$6::jsonb, now())
+       on conflict (job_id, step_id, kind) do update
+         set payload = excluded.payload
+       returning *`,
+      [
+        input.evidenceId,
+        input.jobId,
+        input.runId,
+        input.stepId,
+        input.kind,
+        JSON.stringify(input.payload),
+      ],
+    );
+    if (input.kind.includes("notify")) {
+      await this.incrementMetricCounter("notification_count", 1).catch(() => 0);
+    }
+    const row = res.rows[0] as Record<string, unknown>;
+    return {
+      evidenceId: String(row.evidence_id),
+      jobId: String(row.job_id),
+      runId: String(row.run_id),
+      stepId: String(row.step_id),
+      kind: String(row.kind),
+      payload: (row.payload as Record<string, unknown>) ?? {},
+      createdAt: new Date(String(row.created_at)).toISOString(),
+    };
+  }
+
+  async listCompletionEvidence(
+    jobId: string,
+  ): Promise<WorkCompletionEvidenceRecord[]> {
+    const res = await this.pool.query(
+      `select * from public.atlas_work_queue_completion_evidence
+       where job_id = $1 order by created_at asc`,
+      [jobId],
+    );
+    return res.rows.map((raw) => {
+      const row = raw as Record<string, unknown>;
+      return {
+        evidenceId: String(row.evidence_id),
+        jobId: String(row.job_id),
+        runId: String(row.run_id),
+        stepId: String(row.step_id),
+        kind: String(row.kind),
+        payload: (row.payload as Record<string, unknown>) ?? {},
+        createdAt: new Date(String(row.created_at)).toISOString(),
+      };
+    });
+  }
+
+  async recordRecoveryEvent(input: {
+    eventId: string;
+    jobId: string | null;
+    kind: WorkRecoveryKind;
+    success: boolean;
+    detail?: Record<string, unknown>;
+  }): Promise<WorkRecoveryEventRecord> {
+    const res = await this.pool.query(
+      `insert into public.atlas_work_queue_recovery_events (
+         event_id, job_id, kind, success, detail, created_at
+       ) values ($1,$2,$3,$4,$5::jsonb, now())
+       returning *`,
+      [
+        input.eventId,
+        input.jobId,
+        input.kind,
+        input.success,
+        JSON.stringify(input.detail ?? {}),
+      ],
+    );
+    if (input.kind === "stuck" || input.kind === "lease_expired") {
+      await this.incrementMetricCounter("timeout_count", 1).catch(() => 0);
+    }
+    const row = res.rows[0] as Record<string, unknown>;
+    return {
+      eventId: String(row.event_id),
+      jobId: row.job_id ? String(row.job_id) : null,
+      kind: row.kind as WorkRecoveryKind,
+      success: Boolean(row.success),
+      detail: (row.detail as Record<string, unknown>) ?? {},
+      createdAt: new Date(String(row.created_at)).toISOString(),
+    };
+  }
+
+  async listRecoveryEvents(limit = 50): Promise<WorkRecoveryEventRecord[]> {
+    const res = await this.pool.query(
+      `select * from public.atlas_work_queue_recovery_events
+       order by created_at desc limit $1`,
+      [limit],
+    );
+    return res.rows.map((raw) => {
+      const row = raw as Record<string, unknown>;
+      return {
+        eventId: String(row.event_id),
+        jobId: row.job_id ? String(row.job_id) : null,
+        kind: row.kind as WorkRecoveryKind,
+        success: Boolean(row.success),
+        detail: (row.detail as Record<string, unknown>) ?? {},
+        createdAt: new Date(String(row.created_at)).toISOString(),
+      };
+    });
+  }
+
+  async incrementMetricCounter(
+    key: WorkMetricCounterKey,
+    by = 1,
+  ): Promise<number> {
+    const res = await this.pool.query(
+      `insert into public.atlas_work_queue_metric_counters (counter_key, counter_value, updated_at)
+       values ($1, $2, now())
+       on conflict (counter_key) do update
+         set counter_value = public.atlas_work_queue_metric_counters.counter_value + $2,
+             updated_at = now()
+       returning counter_value`,
+      [key, by],
+    );
+    return Number(res.rows[0]?.counter_value ?? 0);
+  }
+
+  async getMetricCounters(): Promise<Record<WorkMetricCounterKey, number>> {
+    const out = Object.fromEntries(METRIC_KEYS.map((k) => [k, 0])) as Record<
+      WorkMetricCounterKey,
+      number
+    >;
+    try {
+      const res = await this.pool.query(
+        `select counter_key, counter_value from public.atlas_work_queue_metric_counters`,
+      );
+      for (const raw of res.rows) {
+        const row = raw as { counter_key: string; counter_value: string | number };
+        if ((METRIC_KEYS as string[]).includes(row.counter_key)) {
+          out[row.counter_key as WorkMetricCounterKey] = Number(
+            row.counter_value ?? 0,
+          );
+        }
+      }
+    } catch {
+      // table may be missing before migration
+    }
+    return out;
+  }
+
+  async acquireLock(input: {
+    lockKey: string;
+    owner: string;
+    leaseMs: number;
+  }): Promise<{ acquired: boolean; lock: WorkLockRecord | null }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(
+        `delete from public.atlas_work_queue_locks where expires_at < now()`,
+      );
+      const existing = await client.query(
+        `select * from public.atlas_work_queue_locks where lock_key = $1 for update`,
+        [input.lockKey],
+      );
+      if (existing.rowCount && existing.rows[0]) {
+        const row = existing.rows[0] as Record<string, unknown>;
+        if (String(row.owner) === input.owner) {
+          const upd = await client.query(
+            `update public.atlas_work_queue_locks
+             set expires_at = now() + ($2 || ' milliseconds')::interval
+             where lock_key = $1
+             returning *`,
+            [input.lockKey, String(input.leaseMs)],
+          );
+          await client.query("commit");
+          const u = upd.rows[0] as Record<string, unknown>;
+          return {
+            acquired: true,
+            lock: {
+              lockKey: String(u.lock_key),
+              owner: String(u.owner),
+              expiresAt: new Date(String(u.expires_at)).toISOString(),
+              createdAt: new Date(String(u.created_at)).toISOString(),
+            },
+          };
+        }
+        await client.query("commit");
+        return {
+          acquired: false,
+          lock: {
+            lockKey: String(row.lock_key),
+            owner: String(row.owner),
+            expiresAt: new Date(String(row.expires_at)).toISOString(),
+            createdAt: new Date(String(row.created_at)).toISOString(),
+          },
+        };
+      }
+      const ins = await client.query(
+        `insert into public.atlas_work_queue_locks (lock_key, owner, expires_at, created_at)
+         values ($1, $2, now() + ($3 || ' milliseconds')::interval, now())
+         returning *`,
+        [input.lockKey, input.owner, String(input.leaseMs)],
+      );
+      await client.query("commit");
+      const row = ins.rows[0] as Record<string, unknown>;
+      return {
+        acquired: true,
+        lock: {
+          lockKey: String(row.lock_key),
+          owner: String(row.owner),
+          expiresAt: new Date(String(row.expires_at)).toISOString(),
+          createdAt: new Date(String(row.created_at)).toISOString(),
+        },
+      };
+    } catch (err) {
+      await client.query("rollback").catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async releaseLock(lockKey: string, owner: string): Promise<boolean> {
+    const res = await this.pool.query(
+      `delete from public.atlas_work_queue_locks
+       where lock_key = $1 and owner = $2`,
+      [lockKey, owner],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async listLocks(): Promise<WorkLockRecord[]> {
+    const res = await this.pool.query(
+      `select * from public.atlas_work_queue_locks
+       where expires_at > now()
+       order by created_at desc`,
+    );
+    return res.rows.map((raw) => {
+      const row = raw as Record<string, unknown>;
+      return {
+        lockKey: String(row.lock_key),
+        owner: String(row.owner),
+        expiresAt: new Date(String(row.expires_at)).toISOString(),
+        createdAt: new Date(String(row.created_at)).toISOString(),
+      };
+    });
+  }
+
+  async listActiveLeases(limit = 50): Promise<
+    Array<{
+      jobId: string;
+      leaseOwner: string | null;
+      leaseExpiresAt: string | null;
+      heartbeatAt: string | null;
+      status: string;
+    }>
+  > {
+    const res = await this.pool.query(
+      `select job_id, lease_owner, lease_expires_at, heartbeat_at, status
+       from public.atlas_work_queue_jobs
+       where status in ('leased', 'running')
+       order by updated_at desc
+       limit $1`,
+      [limit],
+    );
+    return res.rows.map((raw) => {
+      const row = raw as Record<string, unknown>;
+      return {
+        jobId: String(row.job_id),
+        leaseOwner: (row.lease_owner as string | null) ?? null,
+        leaseExpiresAt: row.lease_expires_at
+          ? new Date(String(row.lease_expires_at)).toISOString()
+          : null,
+        heartbeatAt: row.heartbeat_at
+          ? new Date(String(row.heartbeat_at)).toISOString()
+          : null,
+        status: String(row.status),
+      };
+    });
+  }
+
+  async listRecentRetries(limit = 50): Promise<
+    Array<{
+      jobId: string;
+      attempt: number;
+      reason: string;
+      at: string;
+    }>
+  > {
+    const res = await this.pool.query(
+      `select job_id, retry_history
+       from public.atlas_work_queue_jobs
+       where jsonb_array_length(coalesce(retry_history, '[]'::jsonb)) > 0
+       order by updated_at desc
+       limit 200`,
+    );
+    const rows: Array<{
+      jobId: string;
+      attempt: number;
+      reason: string;
+      at: string;
+    }> = [];
+    for (const raw of res.rows) {
+      const row = raw as { job_id: string; retry_history: WorkRetryHistoryEntry[] };
+      for (const entry of row.retry_history ?? []) {
+        rows.push({
+          jobId: String(row.job_id),
+          attempt: entry.attempt,
+          reason: entry.reason,
+          at: entry.at,
+        });
+      }
+    }
+    return rows
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+      .slice(0, limit);
   }
 
   async resetForTests(): Promise<void> {
-    await this.pool.query("truncate public.atlas_work_queue_steps, public.atlas_work_queue_jobs");
-    this.metaDelays = [];
-    this.metaExec = [];
-    this.metaRecoverySuccess = 0;
-    this.metaRecoveryTotal = 0;
-    this.metaDuplicates = 0;
-    this.schedulerLastSuccessAt = null;
+    await this.pool.query(`
+      truncate
+        public.atlas_work_queue_locks,
+        public.atlas_work_queue_metric_counters,
+        public.atlas_work_queue_recovery_events,
+        public.atlas_work_queue_completion_evidence,
+        public.atlas_work_queue_executions,
+        public.atlas_work_queue_workers,
+        public.atlas_work_queue_side_effects,
+        public.atlas_work_queue_steps,
+        public.atlas_work_queue_jobs,
+        public.atlas_work_queue_meta
+    `);
+    await this.pool.query(`
+      insert into public.atlas_work_queue_metric_counters (counter_key, counter_value)
+      values
+        ('retry_count', 0),
+        ('recovery_count', 0),
+        ('duplicate_count', 0),
+        ('timeout_count', 0),
+        ('notification_count', 0),
+        ('job_started_count', 0),
+        ('job_completed_count', 0),
+        ('job_failed_count', 0)
+      on conflict (counter_key) do nothing
+    `);
   }
 
   async close(): Promise<void> {

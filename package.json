@@ -9,6 +9,11 @@
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "ci:v2-stub-ban": "node scripts/ci/v2-stub-ban.mjs",
+    "ci:cron-sot": "node scripts/ci/assert-cron-sot.mjs",
+    "ci:memory-share": "node scripts/ci/assert-memory-share.mjs",
+    "test:scheduler-100": "vitest run lib/work-queue/scheduler-100-consecutive.test.ts",
+    "test:memory-share": "vitest run lib/memory-apply/memory-apply.test.ts",
+    "ci:durability-ban": "node scripts/ci/work-queue-durability-ban.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts"
