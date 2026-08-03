@@ -1,5 +1,6 @@
 import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
 import { getSchedulerBridgeHealth } from "@/lib/scheduler-core/bridge";
+import { buildSchedulerOpsSnapshot } from "@/lib/scheduler-core/ops";
 import { evaluateWorkQueueAlerts } from "@/lib/work-queue/alerts";
 import { listScheduleCapabilities } from "@/lib/work-queue/capabilities";
 import { getWorkQueueStore } from "@/lib/work-queue";
@@ -19,9 +20,17 @@ export async function GET(): Promise<Response> {
   } catch {
     bridge = null;
   }
+  let ops = null;
+  try {
+    ops = await buildSchedulerOpsSnapshot();
+  } catch {
+    ops = null;
+  }
   return Response.json({
     metrics,
     bridge,
+    ops,
+    health: ops?.health ?? null,
     alerts,
     capabilities: listScheduleCapabilities(),
     generatedAt: new Date().toISOString(),

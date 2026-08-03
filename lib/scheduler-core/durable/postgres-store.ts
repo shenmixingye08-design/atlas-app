@@ -288,6 +288,25 @@ export function tryCreateSchedulerCorePostgresStore(): SchedulerCoreDurableStore
       );
       return Number(res.rows[0]?.c ?? 0);
     },
+    async countTicks() {
+      const res = await pool.query(
+        `select count(*)::int as c from public.atlas_scheduler_ticks`,
+      );
+      return Number(res.rows[0]?.c ?? 0);
+    },
+    async countOccurrences() {
+      const res = await pool.query(
+        `select count(*)::int as c from public.atlas_scheduler_tick_occurrences`,
+      );
+      return Number(res.rows[0]?.c ?? 0);
+    },
+    async countFailedOutbox() {
+      const res = await pool.query(
+        `select count(*)::int as c from public.atlas_scheduler_outbox
+         where status = 'failed'`,
+      );
+      return Number(res.rows[0]?.c ?? 0);
+    },
     async oldestDueAgeMs(environment, nowMs) {
       const res = await pool.query(
         `select min(next_run_at) as oldest from public.atlas_scheduler_schedules

@@ -52,6 +52,10 @@ export type SchedulerCoreDurableStore = {
   ): Promise<void>;
   getLatestTick(): Promise<SchedulerTickHistory | null>;
   countPendingOutbox(): Promise<number>;
+  /** Phase 2-5 ops counters — durable, not process-memory invention. */
+  countTicks(): Promise<number>;
+  countOccurrences(): Promise<number>;
+  countFailedOutbox(): Promise<number>;
   oldestDueAgeMs(environment: SchedulerEnvironment, nowMs: number): Promise<number | null>;
   resetForTests(): Promise<void>;
 };

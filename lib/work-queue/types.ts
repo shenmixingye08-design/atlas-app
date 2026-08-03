@@ -123,9 +123,13 @@ export type WorkQueueMetrics = {
   oldestQueuedAgeMs: number | null;
   duplicateCount: number;
   schedulerLastSuccessAt: string | null;
+  p50ScheduleDelayMs: number | null;
+  p90ScheduleDelayMs: number | null;
   p95ScheduleDelayMs: number | null;
   p99ScheduleDelayMs: number | null;
   averageDelayMs: number | null;
+  /** Successful recovery attempts recorded (absolute count). */
+  recoveryCount: number | null;
   p95ExecutionMs: number | null;
   recoverySuccessRate: number | null;
   /** Scheduler Alive — enabled + recent tick (or never started). */

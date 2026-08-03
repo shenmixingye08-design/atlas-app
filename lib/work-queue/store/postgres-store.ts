@@ -496,6 +496,8 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
       oldestQueuedAgeMs: map.get("queued")?.oldest ?? null,
       duplicateCount: this.metaDuplicates,
       schedulerLastSuccessAt: this.schedulerLastSuccessAt,
+      p50ScheduleDelayMs: p(delays, 50),
+      p90ScheduleDelayMs: p(delays, 90),
       p95ScheduleDelayMs: p(delays, 95),
       p99ScheduleDelayMs: p(delays, 99),
       averageDelayMs:
@@ -507,6 +509,7 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
         this.metaRecoveryTotal > 0
           ? this.metaRecoverySuccess / this.metaRecoveryTotal
           : null,
+      recoveryCount: this.metaRecoveryTotal,
       alive,
       workerCount: leased + running > 0 ? 1 : 0,
       successRate: terminal > 0 ? completed / terminal : null,

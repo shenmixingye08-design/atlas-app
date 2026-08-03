@@ -27,6 +27,15 @@ export {
 export { SCHEDULER_CORE_FEATURE_EVALUATION } from "./feature-evaluation";
 export { SCHEDULER_BRIDGE_FEATURE_EVALUATION } from "./bridge/feature-evaluation";
 export {
+  buildSchedulerOpsSnapshot,
+  SCHEDULER_CUTOVER_FEATURE_EVALUATION,
+} from "./ops";
+export type {
+  SchedulerOpsSnapshot,
+  SchedulerOpsHealth,
+  SchedulerOpsMetrics,
+} from "./ops";
+export {
   dispatchSchedulerOutbox,
   getSchedulerBridgeHealth,
   getSchedulerBridgeMetricsSnapshot,

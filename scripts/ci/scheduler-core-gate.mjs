@@ -125,6 +125,30 @@ assert(
   "missing phase 2-3 bridge doc",
 );
 
+// 10) Phase 2-5 Production Cutover — ops + runbook + chaos
+assert(
+  existsSync(join(root, "lib/scheduler-core/ops/production-ops.ts")),
+  "missing scheduler ops snapshot",
+);
+assert(
+  existsSync(join(root, "docs/operations/scheduler-runbook.md")),
+  "missing scheduler runbook",
+);
+assert(
+  existsSync(join(root, "docs/development/scheduler-production-cutover-2-5.md")),
+  "missing phase 2-5 cutover doc",
+);
+const ops = read("lib/scheduler-core/ops/production-ops.ts");
+assert(ops.includes("buildSchedulerOpsSnapshot"), "ops snapshot builder required");
+const alerts = read("lib/work-queue/alerts.ts");
+assert(alerts.includes("due_backlog"), "due_backlog alert required");
+assert(alerts.includes("miss_detected"), "miss_detected alert required");
+assert(alerts.includes("p95_delay_exceeded"), "p95_delay_exceeded alert required");
+assert(alerts.includes("recovery_failed"), "recovery_failed alert required");
+const panel = read("components/owner/work-queue-panel.tsx");
+assert(panel.includes("Health"), "Owner dashboard must show Health section");
+assert(panel.includes("Tick Count"), "Owner dashboard must show Tick Count");
+
 if (errors.length) {
   console.error("scheduler-core-gate FAIL:");
   for (const e of errors) console.error(` - ${e}`);

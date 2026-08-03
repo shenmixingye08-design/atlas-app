@@ -206,6 +206,19 @@ export function createSchedulerCoreFileStore(
         (o) => o.status === "pending" || o.status === "failed",
       ).length;
     },
+    async countTicks() {
+      load();
+      return data.ticks.length;
+    },
+    async countOccurrences() {
+      load();
+      return data.occurrences.length;
+    },
+    async countFailedOutbox() {
+      load();
+      return Object.values(data.outbox).filter((o) => o.status === "failed")
+        .length;
+    },
     async oldestDueAgeMs(environment, nowMs) {
       load();
       let oldest: number | null = null;

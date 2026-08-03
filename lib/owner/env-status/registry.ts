@@ -118,6 +118,25 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
       "true のときだけ Preview で Scheduler tick を許可（Preview専用データ時のみ）",
   },
   {
+    key: "SCHEDULER_BRIDGE_DISPATCHER_DISABLED",
+    service: "vercel_cron",
+    requirement: "optional",
+    purpose:
+      "true で Outbox Dispatcher 停止（障害注入/緊急停止。通常は未設定）",
+  },
+  {
+    key: "SCHEDULER_BRIDGE_QUEUE_DISABLED",
+    service: "vercel_cron",
+    requirement: "optional",
+    purpose: "true で Queue enqueue 拒否（障害注入/緊急停止。通常は未設定）",
+  },
+  {
+    key: "ATLAS_APP_URL",
+    service: "vercel_cron",
+    requirement: "recommended",
+    purpose: "GH Actions minute-scheduler が叩く本番/Preview 基底 URL",
+  },
+  {
     key: "OAUTH_STATE_SECRET",
     service: "atlas",
     requirement: "recommended",
