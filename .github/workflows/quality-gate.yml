@@ -45,6 +45,30 @@ jobs:
       - name: V2 stub-ban / Production registry gate
         run: node scripts/ci/v2-stub-ban.mjs
 
+      - name: Phase 3-1 external adapter audit tests + artifacts
+        run: npm test -- --run lib/integrations/audit
+        env:
+          TZ: UTC
+          ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: External adapter audit CI gate
+        run: node scripts/ci/external-adapter-audit.mjs
+
+      - name: Upload Phase 3-1 external adapter audit artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-adapter-audit
+          path: |
+            artifacts/external-adapter-inventory.json
+            artifacts/integration-registry-audit.json
+            artifacts/oauth-security-audit.json
+            artifacts/token-storage-audit.json
+            artifacts/integration-risk-register.json
+            docs/development/phase-3-2-targets.md
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Unit / integration tests
         run: npm test
         env:
