@@ -18,13 +18,33 @@ export type WorkQueueStore = {
     limit: number;
     leaseMs: number;
     nowMs?: number;
+    workerInstanceId?: string;
   }): Promise<WorkJobRecord[]>;
-  heartbeat(jobId: string, workerId: string, leaseMs: number): Promise<boolean>;
+  heartbeat(
+    jobId: string,
+    workerId: string,
+    leaseMs: number,
+    meta?: {
+      leaseToken?: string | null;
+      leaseVersion?: number | null;
+      workerInstanceId?: string | null;
+      currentStepId?: string | null;
+      currentStage?: string | null;
+      progressMarker?: string | null;
+      lastExternalActionId?: string | null;
+      lastArtifactId?: string | null;
+      runId?: string | null;
+    },
+  ): Promise<boolean>;
   getJob(jobId: string): Promise<WorkJobRecord | null>;
   updateJob(
     jobId: string,
     patch: Partial<WorkJobRecord> & { status?: WorkJobStatus },
     expectedLeaseOwner?: string,
+    fence?: {
+      leaseToken?: string | null;
+      leaseVersion?: number | null;
+    },
   ): Promise<WorkJobRecord | null>;
   updateStep(step: WorkStepRecord): Promise<WorkStepRecord>;
   listStuck(nowMs: number, stuckMs: number): Promise<WorkJobRecord[]>;

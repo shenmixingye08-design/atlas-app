@@ -70,6 +70,12 @@ export type WorkJobRecord = {
   completedAt: string | null;
   leaseOwner: string | null;
   leaseExpiresAt: string | null;
+  /** Phase 1-4 fencing token (null on legacy file store). */
+  leaseToken?: string | null;
+  /** Phase 1-4 fencing version (0 when unsupported). */
+  leaseVersion?: number;
+  workerInstanceId?: string | null;
+  workerStartedAt?: string | null;
   heartbeatAt: string | null;
   attempt: number;
   maxAttempts: number;

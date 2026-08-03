@@ -97,6 +97,14 @@ export class DurableJobsRepository {
     if (patch.leaseExpiresAt !== undefined) {
       add("lease_expires_at", patch.leaseExpiresAt);
     }
+    if (patch.leaseToken !== undefined) add("lease_token", patch.leaseToken);
+    if (patch.leaseVersion !== undefined) add("lease_version", patch.leaseVersion);
+    if (patch.workerInstanceId !== undefined) {
+      add("worker_instance_id", patch.workerInstanceId);
+    }
+    if (patch.workerStartedAt !== undefined) {
+      add("worker_started_at", patch.workerStartedAt);
+    }
     if (patch.heartbeatAt !== undefined) add("heartbeat_at", patch.heartbeatAt);
     if (patch.attempt !== undefined) add("attempt", patch.attempt);
     if (patch.maxAttempts !== undefined) add("max_attempts", patch.maxAttempts);

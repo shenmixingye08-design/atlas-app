@@ -50,4 +50,28 @@ export {
   DurableSotWorkQueueStore,
   tryCreateDurableSotWorkQueueStore,
 } from "./adapters/work-queue-store";
+export { DurableJobRecoveriesRepository } from "./repositories/job-recoveries-repository";
+export { DurableLeaseMetricsRepository } from "./repositories/lease-metrics-repository";
+export { DurableRecoveryOrchestrator } from "./recovery/orchestrator";
+export {
+  assessRecoveryEligibility,
+  assessSideEffects,
+  findResumeStepId,
+} from "./recovery/assess";
+export {
+  resolveHeartbeatMs,
+  resolveLeaseMs,
+  resolveShutdownLeaseGraceMs,
+  resolveStuckThresholdMs,
+} from "./lease-config";
+export {
+  loadDurableSotLeaseMigrationDownSql,
+  loadDurableSotLeaseMigrationUpSql,
+} from "./migration";
+export {
+  DURABLE_JOB_RECOVERY_STATUSES,
+  DURABLE_SOT_FOUNDATION_TABLES,
+  DURABLE_SOT_LEASE_MIGRATION_DOWN,
+  DURABLE_SOT_LEASE_MIGRATION_UP,
+} from "./schema";
 export * from "./types";

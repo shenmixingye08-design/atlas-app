@@ -7,6 +7,8 @@ import type { DurableSotPool } from "./db";
 import {
   DURABLE_SOT_JOBS_MIGRATION_DOWN,
   DURABLE_SOT_JOBS_MIGRATION_UP,
+  DURABLE_SOT_LEASE_MIGRATION_DOWN,
+  DURABLE_SOT_LEASE_MIGRATION_UP,
   DURABLE_SOT_MIGRATION_DOWN,
   DURABLE_SOT_MIGRATION_UP,
   DURABLE_SOT_TABLES,
@@ -36,20 +38,34 @@ export function loadDurableSotJobsMigrationDownSql(
   return readFileSync(join(root, DURABLE_SOT_JOBS_MIGRATION_DOWN), "utf8");
 }
 
-/** Apply Phase 1-2 foundation then Phase 1-3 jobs/queue. */
+export function loadDurableSotLeaseMigrationUpSql(
+  root: string = process.cwd(),
+): string {
+  return readFileSync(join(root, DURABLE_SOT_LEASE_MIGRATION_UP), "utf8");
+}
+
+export function loadDurableSotLeaseMigrationDownSql(
+  root: string = process.cwd(),
+): string {
+  return readFileSync(join(root, DURABLE_SOT_LEASE_MIGRATION_DOWN), "utf8");
+}
+
+/** Apply Phase 1-2 → 1-3 → 1-4 migrations. */
 export async function applyDurableSotMigrationUp(
   pool: DurableSotPool,
   root?: string,
 ): Promise<void> {
   await pool.query(loadDurableSotMigrationUpSql(root));
   await pool.query(loadDurableSotJobsMigrationUpSql(root));
+  await pool.query(loadDurableSotLeaseMigrationUpSql(root));
 }
 
-/** Drop Phase 1-3 jobs/queue first, then Phase 1-2 foundation. */
+/** Drop Phase 1-4 → 1-3 → 1-2 in reverse order. */
 export async function applyDurableSotMigrationDown(
   pool: DurableSotPool,
   root?: string,
 ): Promise<void> {
+  await pool.query(loadDurableSotLeaseMigrationDownSql(root));
   await pool.query(loadDurableSotJobsMigrationDownSql(root));
   await pool.query(loadDurableSotMigrationDownSql(root));
 }

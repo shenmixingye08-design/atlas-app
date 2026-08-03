@@ -11,11 +11,14 @@ import {
   listDurableSotTables,
   loadDurableSotJobsMigrationDownSql,
   loadDurableSotJobsMigrationUpSql,
+  loadDurableSotLeaseMigrationDownSql,
+  loadDurableSotLeaseMigrationUpSql,
   loadDurableSotMigrationDownSql,
   loadDurableSotMigrationUpSql,
 } from "./migration";
 import {
   DURABLE_QUEUE_STATUSES,
+  DURABLE_SOT_FOUNDATION_TABLES,
   DURABLE_SOT_REQUIRED_INDEX_FRAGMENTS,
   DURABLE_SOT_TABLES,
   DURABLE_SOT_UNIQUE_CONSTRAINTS,
@@ -27,9 +30,7 @@ const dbUrl =
   resolveDurableSotDatabaseUrl() ||
   "";
 
-const foundationTables = Object.values(DURABLE_SOT_TABLES).filter(
-  (t) => t !== DURABLE_SOT_TABLES.jobs,
-);
+const foundationTables = [...DURABLE_SOT_FOUNDATION_TABLES];
 
 describe("Durable SoT migration SQL (always)", () => {
   it("foundation up migration declares Phase 1-2 entity tables", () => {
@@ -54,10 +55,23 @@ describe("Durable SoT migration SQL (always)", () => {
 
   it("up migrations declare required indexes", () => {
     const sql =
-      loadDurableSotMigrationUpSql() + loadDurableSotJobsMigrationUpSql();
+      loadDurableSotMigrationUpSql() +
+      loadDurableSotJobsMigrationUpSql() +
+      loadDurableSotLeaseMigrationUpSql();
     for (const idx of DURABLE_SOT_REQUIRED_INDEX_FRAGMENTS) {
       expect(sql, idx).toContain(idx);
     }
+  });
+
+  it("lease migration declares fencing + recovery ledger", () => {
+    const sql = loadDurableSotLeaseMigrationUpSql();
+    expect(sql).toContain("lease_token");
+    expect(sql).toContain("lease_version");
+    expect(sql).toContain("atlas_durable_job_recoveries");
+    expect(sql).toContain("'detected'");
+    expect(sql).toContain("'manual_review'");
+    const down = loadDurableSotLeaseMigrationDownSql();
+    expect(down).toContain("atlas_durable_job_recoveries");
   });
 
   it("up migration includes unique / PK constraints for duplicates", () => {
@@ -87,9 +101,13 @@ describe("Durable SoT migration SQL (always)", () => {
   it("down migrations drop all durable tables", () => {
     const foundationDown = loadDurableSotMigrationDownSql();
     const jobsDown = loadDurableSotJobsMigrationDownSql();
+    const leaseDown = loadDurableSotLeaseMigrationDownSql();
     expect(foundationDown).toContain("begin;");
     expect(jobsDown).toContain("begin;");
     expect(jobsDown).toContain(`drop table if exists public.${DURABLE_SOT_TABLES.jobs}`);
+    expect(leaseDown).toContain(
+      `drop table if exists public.${DURABLE_SOT_TABLES.jobRecoveries}`,
+    );
     for (const table of foundationTables) {
       expect(foundationDown).toContain(`drop table if exists public.${table}`);
     }

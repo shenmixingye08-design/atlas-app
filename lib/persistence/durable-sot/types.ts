@@ -36,6 +36,15 @@ export type DurableRecoveryStatus =
   | "recovered"
   | "abandoned";
 
+/** Phase 1-4 job recovery ledger statuses. */
+export type DurableJobRecoveryStatus =
+  | "detected"
+  | "assessing"
+  | "recovering"
+  | "recovered"
+  | "manual_review"
+  | "failed";
+
 export type DurableQueueStatus =
   | "queued"
   | "leased"
@@ -90,6 +99,10 @@ export type DurableJobRecord = {
   completedAt: string | null;
   leaseOwner: string | null;
   leaseExpiresAt: string | null;
+  leaseToken: string | null;
+  leaseVersion: number;
+  workerInstanceId: string | null;
+  workerStartedAt: string | null;
   heartbeatAt: string | null;
   attempt: number;
   maxAttempts: number;
@@ -130,7 +143,14 @@ export type DurableLeaseRecord = {
   runId: string;
   jobId: string | null;
   leaseOwner: string;
+  leaseToken: string | null;
+  leaseVersion: number;
   leaseExpiresAt: string;
+  heartbeatAt: string | null;
+  workerStartedAt: string | null;
+  workerInstanceId: string | null;
+  releasedAt: string | null;
+  releaseReason: string | null;
   acquiredAt: string;
   updatedAt: string;
   createdAt: string;
@@ -140,7 +160,36 @@ export type DurableHeartbeatRecord = {
   runId: string;
   jobId: string | null;
   leaseOwner: string;
+  leaseToken: string | null;
   heartbeatAt: string;
+  currentStepId: string | null;
+  currentStage: string | null;
+  progressMarker: string | null;
+  lastExternalActionId: string | null;
+  lastArtifactId: string | null;
+  workerInstanceId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DurableJobRecoveryRecord = {
+  recoveryId: string;
+  jobId: string;
+  runId: string;
+  detectedAt: string;
+  detectedReason: string;
+  previousLeaseOwner: string | null;
+  previousLeaseToken: string | null;
+  recoveryWorkerId: string | null;
+  recoveryAttempt: number;
+  recoveryFromStepId: string | null;
+  recoveryStrategy: string | null;
+  recoveryStatus: DurableJobRecoveryStatus;
+  recoveredAt: string | null;
+  failedAt: string | null;
+  errorCode: string | null;
+  diagnosticId: string | null;
+  assessment: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 };
@@ -243,6 +292,10 @@ export type UpdateDurableJobInput = {
   completedAt?: string | null;
   leaseOwner?: string | null;
   leaseExpiresAt?: string | null;
+  leaseToken?: string | null;
+  leaseVersion?: number;
+  workerInstanceId?: string | null;
+  workerStartedAt?: string | null;
   heartbeatAt?: string | null;
   attempt?: number;
   maxAttempts?: number;
@@ -257,6 +310,14 @@ export type UpdateDurableJobInput = {
   resultSummary?: string | null;
   expiresAt?: string | null;
 };
+
+export class DurableSotFenceViolationError extends Error {
+  readonly code = "DURABLE_SOT_FENCE_VIOLATION" as const;
+  constructor(message = "lease fence violation") {
+    super(message);
+    this.name = "DurableSotFenceViolationError";
+  }
+}
 
 export type UpdateDurableRunInput = {
   status?: DurableRunStatus;
@@ -326,7 +387,14 @@ export type SaveHeartbeatInput = {
   runId: string;
   jobId?: string | null;
   leaseOwner: string;
+  leaseToken?: string | null;
   heartbeatAt?: string;
+  currentStepId?: string | null;
+  currentStage?: string | null;
+  progressMarker?: string | null;
+  lastExternalActionId?: string | null;
+  lastArtifactId?: string | null;
+  workerInstanceId?: string | null;
 };
 
 export type AcquireLeaseInput = {
@@ -334,6 +402,56 @@ export type AcquireLeaseInput = {
   jobId?: string | null;
   leaseOwner: string;
   leaseExpiresAt: string;
+  leaseToken?: string;
+  workerInstanceId?: string | null;
+  workerStartedAt?: string | null;
+};
+
+export type LeaseFence = {
+  jobId: string;
+  leaseOwner: string;
+  leaseToken: string;
+  leaseVersion: number;
+};
+
+export type HeartbeatWriteInput = LeaseFence & {
+  runId: string;
+  heartbeatAt?: string;
+  currentStepId?: string | null;
+  currentStage?: string | null;
+  progressMarker?: string | null;
+  lastExternalActionId?: string | null;
+  lastArtifactId?: string | null;
+  workerInstanceId?: string | null;
+  leaseExpiresAt: string;
+};
+
+export type CreateJobRecoveryInput = {
+  recoveryId?: string;
+  jobId: string;
+  runId: string;
+  detectedReason: string;
+  previousLeaseOwner?: string | null;
+  previousLeaseToken?: string | null;
+  recoveryWorkerId?: string | null;
+  recoveryAttempt?: number;
+  recoveryFromStepId?: string | null;
+  recoveryStrategy?: string | null;
+  recoveryStatus?: DurableJobRecoveryStatus;
+  diagnosticId?: string | null;
+  assessment?: Record<string, unknown>;
+};
+
+export type UpdateJobRecoveryInput = {
+  recoveryStatus?: DurableJobRecoveryStatus;
+  recoveryWorkerId?: string | null;
+  recoveryFromStepId?: string | null;
+  recoveryStrategy?: string | null;
+  recoveredAt?: string | null;
+  failedAt?: string | null;
+  errorCode?: string | null;
+  diagnosticId?: string | null;
+  assessment?: Record<string, unknown>;
 };
 
 export type RecordIdempotencyInput = {

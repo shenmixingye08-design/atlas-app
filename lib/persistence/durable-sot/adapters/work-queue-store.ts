@@ -35,11 +35,15 @@ import type {
   DurableStepStatus,
 } from "../types";
 import { DurableSotUniqueViolationError } from "../types";
+import { DurableHeartbeatsRepository } from "../repositories/heartbeats-repository";
 import { DurableJobsRepository } from "../repositories/jobs-repository";
+import { DurableLeaseMetricsRepository } from "../repositories/lease-metrics-repository";
+import { DurableLeasesRepository } from "../repositories/leases-repository";
 import { DurableOccurrencesRepository } from "../repositories/occurrences-repository";
 import { DurableQueueRepository } from "../repositories/queue-repository";
 import { DurableStepsRepository } from "../repositories/steps-repository";
 import { RunRepository } from "../repositories/run-repository";
+import { DurableRecoveryOrchestrator } from "../recovery/orchestrator";
 import {
   createRunJobQueueTransaction,
   withDurableTransaction,
@@ -115,6 +119,10 @@ function jobToWork(
     completedAt: job.completedAt,
     leaseOwner: job.leaseOwner,
     leaseExpiresAt: job.leaseExpiresAt,
+    leaseToken: job.leaseToken,
+    leaseVersion: job.leaseVersion,
+    workerInstanceId: job.workerInstanceId,
+    workerStartedAt: job.workerStartedAt,
     heartbeatAt: job.heartbeatAt,
     attempt: job.attempt,
     maxAttempts: job.maxAttempts,
@@ -142,12 +150,17 @@ export class DurableSotWorkQueueStore implements WorkQueueStore {
   private readonly queue: DurableQueueRepository;
   private readonly runs: RunRepository;
   private readonly steps: DurableStepsRepository;
+  private readonly leases: DurableLeasesRepository;
+  private readonly heartbeats: DurableHeartbeatsRepository;
+  private readonly leaseMetricsRepo: DurableLeaseMetricsRepository;
+  private readonly recovery: DurableRecoveryOrchestrator;
 
   private metaDelays: number[] = [];
   private metaExec: number[] = [];
   private metaRecoverySuccess = 0;
   private metaRecoveryTotal = 0;
   private metaDuplicates = 0;
+  private zombieRejected = 0;
   private schedulerLastSuccessAt: string | null = null;
 
   constructor(connectionString?: string) {
@@ -163,6 +176,10 @@ export class DurableSotWorkQueueStore implements WorkQueueStore {
     this.queue = new DurableQueueRepository(this.pool);
     this.runs = new RunRepository(this.pool);
     this.steps = new DurableStepsRepository(this.pool);
+    this.leases = new DurableLeasesRepository(this.pool);
+    this.heartbeats = new DurableHeartbeatsRepository(this.pool);
+    this.leaseMetricsRepo = new DurableLeaseMetricsRepository(this.pool);
+    this.recovery = new DurableRecoveryOrchestrator(this.pool);
   }
 
   private async loadSteps(
@@ -296,6 +313,7 @@ export class DurableSotWorkQueueStore implements WorkQueueStore {
     limit: number;
     leaseMs: number;
     nowMs?: number;
+    workerInstanceId?: string;
   }): Promise<WorkJobRecord[]> {
     const nowMs = input.nowMs ?? Date.now();
     const nowIso = new Date(nowMs).toISOString();
@@ -305,9 +323,20 @@ export class DurableSotWorkQueueStore implements WorkQueueStore {
       leaseOwner: input.workerId,
       leaseExpiresAt: leaseExpires,
       limit: input.limit,
+      workerInstanceId: input.workerInstanceId ?? input.workerId,
     });
     const jobs: WorkJobRecord[] = [];
     for (const row of claimed) {
+      // Mirror job lease into durable leases table (run-scoped SoT).
+      await this.leases.acquire({
+        runId: row.runId,
+        jobId: row.jobId,
+        leaseOwner: input.workerId,
+        leaseExpiresAt: leaseExpires,
+        leaseToken: row.leaseToken ?? undefined,
+        workerInstanceId: input.workerInstanceId ?? input.workerId,
+        workerStartedAt: nowIso,
+      });
       const steps = await this.loadSteps(row.jobId, row.runId);
       jobs.push(jobToWork(row, steps));
     }
@@ -318,14 +347,48 @@ export class DurableSotWorkQueueStore implements WorkQueueStore {
     jobId: string,
     workerId: string,
     leaseMs: number,
+    meta?: {
+      leaseToken?: string | null;
+      leaseVersion?: number | null;
+      workerInstanceId?: string | null;
+      currentStepId?: string | null;
+      currentStage?: string | null;
+      progressMarker?: string | null;
+      lastExternalActionId?: string | null;
+      lastArtifactId?: string | null;
+      runId?: string | null;
+    },
   ): Promise<boolean> {
     const now = Date.now();
-    return this.queue.heartbeat({
+    const ok = await this.queue.heartbeat({
       jobId,
       leaseOwner: workerId,
       heartbeatAt: new Date(now).toISOString(),
       leaseExpiresAt: new Date(now + leaseMs).toISOString(),
+      leaseToken: meta?.leaseToken,
+      leaseVersion: meta?.leaseVersion,
+      workerInstanceId: meta?.workerInstanceId,
     });
+    if (!ok) {
+      await this.leaseMetricsRepo.increment("heartbeatFailureCount");
+      return false;
+    }
+    if (meta?.runId) {
+      await this.heartbeats.save({
+        runId: meta.runId,
+        jobId,
+        leaseOwner: workerId,
+        leaseToken: meta.leaseToken,
+        heartbeatAt: new Date(now).toISOString(),
+        currentStepId: meta.currentStepId,
+        currentStage: meta.currentStage,
+        progressMarker: meta.progressMarker,
+        lastExternalActionId: meta.lastExternalActionId,
+        lastArtifactId: meta.lastArtifactId,
+        workerInstanceId: meta.workerInstanceId,
+      });
+    }
+    return true;
   }
 
   async getJob(jobId: string): Promise<WorkJobRecord | null> {
@@ -339,6 +402,10 @@ export class DurableSotWorkQueueStore implements WorkQueueStore {
     jobId: string,
     patch: Partial<WorkJobRecord> & { status?: WorkJobStatus },
     expectedLeaseOwner?: string,
+    fence?: {
+      leaseToken?: string | null;
+      leaseVersion?: number | null;
+    },
   ): Promise<WorkJobRecord | null> {
     const current = await this.jobs.get(jobId);
     if (!current) return null;
@@ -347,16 +414,30 @@ export class DurableSotWorkQueueStore implements WorkQueueStore {
       current.leaseOwner &&
       current.leaseOwner !== expectedLeaseOwner
     ) {
+      this.zombieRejected += 1;
+      await this.leaseMetricsRepo.increment("zombieWriteRejectedCount");
+      await this.leaseMetricsRepo.increment("leaseConflictCount");
+      return null;
+    }
+    if (
+      fence?.leaseToken &&
+      (current.leaseToken !== fence.leaseToken ||
+        (fence.leaseVersion != null &&
+          current.leaseVersion !== fence.leaseVersion))
+    ) {
+      this.zombieRejected += 1;
+      await this.leaseMetricsRepo.increment("zombieWriteRejectedCount");
       return null;
     }
 
-    const updated = await this.queue.update(jobId, {
+    const patchBody = {
       status: patch.status ? toDurableStatus(patch.status) : undefined,
       availableAt: patch.availableAt,
       startedAt: patch.startedAt,
       completedAt: patch.completedAt,
       leaseOwner: patch.leaseOwner,
       leaseExpiresAt: patch.leaseExpiresAt,
+      leaseToken: patch.leaseToken,
       heartbeatAt: patch.heartbeatAt,
       attempt: patch.attempt,
       retryAt: patch.retryAt,
@@ -368,8 +449,29 @@ export class DurableSotWorkQueueStore implements WorkQueueStore {
       lastError: patch.lastError,
       resultSummary: patch.resultSummary,
       payload: patch.payload as unknown as Record<string, unknown> | undefined,
-    });
-    if (!updated) return null;
+    };
+
+    const updated =
+      expectedLeaseOwner &&
+      fence?.leaseToken &&
+      fence.leaseVersion != null
+        ? await this.queue.updateWithFence(
+            {
+              jobId,
+              leaseOwner: expectedLeaseOwner,
+              leaseToken: fence.leaseToken,
+              leaseVersion: fence.leaseVersion,
+            },
+            patchBody,
+          )
+        : await this.queue.update(jobId, patchBody);
+    if (!updated) {
+      if (expectedLeaseOwner || fence?.leaseToken) {
+        this.zombieRejected += 1;
+        await this.leaseMetricsRepo.increment("zombieWriteRejectedCount");
+      }
+      return null;
+    }
 
     if (patch.status === "completed" || patch.status === "partially_completed") {
       await this.runs.completeRun(updated.runId, {
@@ -423,13 +525,33 @@ export class DurableSotWorkQueueStore implements WorkQueueStore {
 
   async listStuck(nowMs: number, stuckMs: number): Promise<WorkJobRecord[]> {
     const cutoff = new Date(nowMs - stuckMs).toISOString();
-    const rows = await this.queue.listStuck(cutoff, 100);
+    const nowIso = new Date(nowMs).toISOString();
+    const rows = await this.queue.listStuck({
+      cutoffIso: cutoff,
+      nowIso,
+      limit: 100,
+    });
     const jobs: WorkJobRecord[] = [];
     for (const row of rows) {
       const steps = await this.loadSteps(row.jobId, row.runId);
       jobs.push(jobToWork(row, steps));
     }
     return jobs;
+  }
+
+  /** Phase 1-4 durable recovery (step resume, not retry-as-recovery). */
+  async recoverStuckDurable(input?: {
+    nowMs?: number;
+    recoveryWorkerId?: string;
+  }) {
+    const result = await this.recovery.recoverStuck(input);
+    this.metaRecoveryTotal += result.examined;
+    this.metaRecoverySuccess += result.recovered;
+    return result;
+  }
+
+  async leaseMetricsSnapshot(nowMs?: number) {
+    return this.recovery.metricsSnapshot(nowMs);
   }
 
   async listByStatus(
