@@ -32,6 +32,8 @@ let store: WorkQueueStore;
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), "wq-"));
   process.env.ATLAS_WORK_QUEUE_FORCE_FILE = "true";
+  process.env.ATLAS_LEGACY_STORE_WRITE_ENABLED = "true";
+  process.env.ATLAS_DURABLE_SOT_ENABLED = "false";
   process.env.ATLAS_WORK_QUEUE_FILE = join(dir, "queue.json");
   // Unit tests: durable local notify receipt (fail-closed still applies in prod).
   process.env.ATLAS_WORK_QUEUE_OFFLINE_NOTIFY = "1";

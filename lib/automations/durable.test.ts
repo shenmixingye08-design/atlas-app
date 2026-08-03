@@ -61,6 +61,8 @@ describe("automation persistence and cron tick", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     process.env.ATLAS_WORK_QUEUE_FORCE_FILE = "true";
+    process.env.ATLAS_LEGACY_STORE_WRITE_ENABLED = "true";
+    process.env.ATLAS_DURABLE_SOT_ENABLED = "false";
     const { resetWorkQueueStoreForTests } = await import("@/lib/work-queue");
     const workQueue = resetWorkQueueStoreForTests(
       `${process.cwd()}/.data/work-queue-durable-test.json`,
