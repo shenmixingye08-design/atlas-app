@@ -162,12 +162,15 @@ export async function runOrchestrationForUser(
           regenerateApplied: regen.applied,
         };
       } else {
-        const { MemoryApply } = await import("@/lib/memory-apply/apply");
+        const {
+          loadMemory,
+          MemoryRequiredError,
+        } = await import("@/lib/memory-apply/pipeline");
         const { applyMemoryForPlanner } = await import(
           "@/lib/memory-apply/planner"
         );
-        // Commander + Planner each go through MemoryApply (same PersonalizationContext SoT)
-        const commanderApplied = await MemoryApply({
+        // Commander + Planner share PersonalizationContext via loadMemory (Fail Closed)
+        const commanderApplied = await loadMemory({
           userId: input.userId,
           channel: "commander",
           baseline: input.assignment,
@@ -175,13 +178,19 @@ export async function runOrchestrationForUser(
           artifactTypes: [deliverableType],
           capabilities: ["commander", "orchestration"],
         });
+        // loadMemory already Fail Closes on load failure; guard version for AI
+        if (!commanderApplied.context.memoryVersion?.checksum) {
+          throw new MemoryRequiredError(
+            "MemoryVersion不全のためAI実行は禁止されています",
+          );
+        }
         const plannerApplied = await applyMemoryForPlanner({
           userId: input.userId,
           assignment: input.assignment,
           deliverableType,
         });
-        // Workflow / orchestration channels also resolve via MemoryApply (real path)
-        await MemoryApply({
+        // Workflow / orchestration channels also resolve via loadMemory (real path)
+        await loadMemory({
           userId: input.userId,
           channel: "orchestration",
           baseline: input.assignment,
@@ -189,7 +198,7 @@ export async function runOrchestrationForUser(
           artifactTypes: [deliverableType],
           capabilities: ["orchestration"],
         });
-        await MemoryApply({
+        await loadMemory({
           userId: input.userId,
           channel: "workflow",
           baseline: input.assignment,
@@ -208,6 +217,7 @@ export async function runOrchestrationForUser(
           personalMemoryIdsUsed: plannerApplied.context.memoryIdsUsed,
           personalMemoryScopesUsed: plannerApplied.context.scopesUsed,
           commanderMemoryIdsUsed: commanderApplied.context.memoryIdsUsed,
+          memoryVersion: plannerApplied.context.memoryVersion,
         };
         if (
           !personalMemoryMeta.personalMemory ||
@@ -216,7 +226,16 @@ export async function runOrchestrationForUser(
           personalMemoryMeta = null;
         }
       }
-    } catch {
+    } catch (error) {
+      const { MemoryLoadError, MemoryRequiredError } = await import(
+        "@/lib/memory-apply/pipeline"
+      );
+      if (
+        error instanceof MemoryLoadError ||
+        error instanceof MemoryRequiredError
+      ) {
+        throw error;
+      }
       personalMemoryMeta = null;
     }
   }

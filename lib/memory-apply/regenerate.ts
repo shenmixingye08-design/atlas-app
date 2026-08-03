@@ -1,7 +1,11 @@
 import "server-only";
 
-import { MemoryApply } from "@/lib/memory-apply/apply";
 import { applyContentOverlayToText } from "@/lib/memory-apply/overlays";
+import {
+  assertMemoryLoadedForAi,
+  loadMemory,
+  saveMemory,
+} from "@/lib/memory-apply/pipeline";
 import {
   compareMemoryQuality,
   expectedTokensFromMemoryValues,
@@ -24,7 +28,7 @@ export type RegenerateMemoryApplyResult = {
 /**
  * Regenerate with Memory: keep prior body, re-apply style/signature/brand,
  * and fold in explicit improvement notes — never start from empty.
- * Path: MemoryApply → PersonalizationContext → PromptBuilder.
+ * Path: loadMemory → PersonalizationContext → PromptBuilder.
  */
 export async function applyMemoryForRegenerate(input: {
   userId: string;
@@ -40,7 +44,7 @@ export async function applyMemoryForRegenerate(input: {
     ? `${previous}\n\n【改善点】\n${input.improvementNotes.trim()}`
     : previous;
 
-  const applied = await MemoryApply({
+  const applied = await loadMemory({
     userId: input.userId,
     channel: "regenerate",
     baseline: withNotes,
@@ -48,6 +52,7 @@ export async function applyMemoryForRegenerate(input: {
     artifactTypes: ["docx", "pdf", "xlsx", "pptx"],
     capabilities: ["regenerate", "deliverable"],
   });
+  assertMemoryLoadedForAi(applied.context);
 
   // Delta-only: keep previous body; re-apply style header without full injection dump
   const next = applyContentOverlayToText(withNotes, {
@@ -85,6 +90,25 @@ export async function applyMemoryForRegenerate(input: {
   const appliedFlag =
     applied.context.memoryIdsUsed.length > 0 ||
     Boolean(input.improvementNotes?.trim());
+
+  if (input.improvementNotes?.trim()) {
+    try {
+      await saveMemory({
+        userId: input.userId,
+        category: "correction_history",
+        channel: "regenerate",
+        title: "再生成の修正履歴",
+        summary: input.improvementNotes.trim().slice(0, 240),
+        value: {
+          improvementNotes: input.improvementNotes.trim(),
+          memoryIdsUsed: applied.context.memoryIdsUsed,
+        },
+        asCandidate: true,
+      });
+    } catch {
+      // Fail soft on persist
+    }
+  }
 
   return {
     content: next,

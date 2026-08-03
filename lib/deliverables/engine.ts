@@ -43,7 +43,10 @@ import type {
 import { getWordCompanyBrand } from "./company-brand";
 import { detectWordPurpose, isWordTemplateId } from "./word-templates";
 import type { DocxGenerateOptions } from "./generators/docx-generator";
-import { applyMemoryForDeliverable } from "@/lib/memory-apply/deliverables";
+import {
+  applyMemoryForDeliverable,
+  saveDeliverableMemoryHistory,
+} from "@/lib/memory-apply/deliverables";
 import type { MemoryDeliverableOverlay } from "@/lib/memory-apply/types";
 import { recordMemoryApplyEvent } from "@/lib/memory-apply/metrics";
 import {
@@ -512,6 +515,13 @@ export async function generateDeliverables(
         { sourceContent: safeContent, baseFileName },
       );
       deliverables.push(toDeliverableMetadata(stored, requestOrigin));
+      await saveDeliverableMemoryHistory({
+        userId: options.userId,
+        format,
+        assignment: input.assignment,
+        summary: stored.fileName ?? format,
+        memoryIdsUsed: earlyMemory.memoryIdsUsed,
+      });
     }
     recordWordMetric("total_ms", Date.now() - startedAt);
     return { deliverables, detection, failures, jobId };
@@ -1108,6 +1118,13 @@ export async function generateDeliverables(
       }
 
       deliverables.push(toDeliverableMetadata(stored, requestOrigin));
+      await saveDeliverableMemoryHistory({
+        userId: options.userId,
+        format,
+        assignment: input.assignment,
+        summary: stored.fileName ?? format,
+        memoryIdsUsed: memoryApplied.memoryIdsUsed,
+      });
     }
 
     // Safety net: every claimed Word job must leave as completed|failed.

@@ -7,22 +7,22 @@ import type { ResolvedInstruction } from "@/lib/automation-platform/types/instru
 import type { MemoryUsageRecord } from "@/lib/automation-platform/types/run";
 import type { RunMemoryLedger } from "@/lib/personal-memory/types";
 import { mapAutomationScopeToPersonal } from "@/lib/personal-memory/scopes";
-import { MemoryApply } from "@/lib/memory-apply/apply";
 import {
   applyContentOverlayToText,
   buildContentOverlay,
   buildDeliverableOverlay,
 } from "@/lib/memory-apply/overlays";
+import { recordMemoryApplyEvent } from "@/lib/memory-apply/metrics";
 import {
-  recordMemoryApplyEvent,
-  recordMemoryUpdateEvent,
-} from "@/lib/memory-apply/metrics";
+  assertMemoryLoadedForAi,
+  loadMemory,
+  saveMemory,
+} from "@/lib/memory-apply/pipeline";
 import {
   compareMemoryQuality,
   expectedTokensFromMemoryValues,
 } from "@/lib/memory-apply/quality-diff";
 import type { MemoryApplyResult } from "@/lib/memory-apply/types";
-import { createPersonalMemory } from "@/lib/personal-memory/service";
 
 function toAutomationScope(scope: string): AutomationMemoryScope | null {
   const reverse: Record<string, AutomationMemoryScope> = {
@@ -60,8 +60,9 @@ function flattenResolvedValues(
 }
 
 /**
- * Resolve Memory for an Automation run via the unified MemoryApply path.
+ * Resolve Memory for an Automation run via the unified loadMemory path.
  * Memory OFF / policy disabled → empty apply (not a fake success).
+ * Fail Closed when Memory load itself fails.
  */
 export async function applyMemoryForAutomation(input: {
   automation: AutomationV2;
@@ -78,7 +79,7 @@ export async function applyMemoryForAutomation(input: {
     .map((scope) => mapAutomationScopeToPersonal(scope))
     .filter((scope): scope is NonNullable<typeof scope> => Boolean(scope));
 
-  const applied = await MemoryApply({
+  const applied = await loadMemory({
     userId: input.automation.userId,
     channel: "automation",
     baseline,
@@ -97,6 +98,7 @@ export async function applyMemoryForAutomation(input: {
     artifactTypes: input.automation.workflow.steps.map((s) => s.type),
     capabilities: input.automation.workflow.steps.map((s) => s.type),
   });
+  assertMemoryLoadedForAi(applied.context);
 
   const ledger: RunMemoryLedger = applied.provider.personalLedger;
   const injectionText = memoryEnabled
@@ -205,7 +207,7 @@ export async function applyMemoryForAutomation(input: {
       tokenEstimate,
       quality,
       notes: appliedFlag
-        ? ["MemoryApply → PersonalizationContext → instruction merge"]
+        ? ["loadMemory → PersonalizationContext → instruction merge"]
         : ["Memory not applied (disabled or empty)"],
       at: new Date().toISOString(),
     },
@@ -221,10 +223,10 @@ export async function recordAutomationMemoryFailure(input: {
   errorMessage: string | null;
 }): Promise<void> {
   try {
-    await createPersonalMemory(input.userId, {
-      kind: "automation_preference",
-      scope: "automation_execution",
-      key: "last_failure",
+    await saveMemory({
+      userId: input.userId,
+      category: "work_history",
+      channel: "automation",
       title: "自動化の失敗理由",
       summary: (input.errorMessage ?? input.errorCode ?? "failed").slice(0, 160),
       value: {
@@ -232,18 +234,10 @@ export async function recordAutomationMemoryFailure(input: {
         runId: input.runId,
         errorCode: input.errorCode,
         errorMessage: input.errorMessage,
+        kind: "automation_failure",
       },
-      source: "automation_result",
-      status: "candidate",
-      confidence: 0.4,
-      appliesTo: {
-        global: false,
-        automationIds: [input.automationId],
-        artifactTypes: [],
-        capabilities: [],
-      },
+      asCandidate: true,
     });
-    recordMemoryUpdateEvent(input.userId, 1);
     recordMemoryApplyEvent({
       userId: input.userId,
       channel: "automation",
@@ -266,28 +260,20 @@ export async function recordAutomationMemorySuccess(input: {
   summary: string | null;
 }): Promise<void> {
   try {
-    await createPersonalMemory(input.userId, {
-      kind: "work_preference",
-      scope: "recurring_work_preferences",
-      key: "last_success_pattern",
+    await saveMemory({
+      userId: input.userId,
+      category: "schedule_history",
+      channel: "automation",
       title: "自動化の成功パターン",
       summary: (input.summary ?? "succeeded").slice(0, 160),
       value: {
         automationId: input.automationId,
         runId: input.runId,
         memoryIdsUsed: input.memoryIdsUsed,
+        kind: "automation_success",
       },
-      source: "automation_result",
-      status: "candidate",
-      confidence: 0.5,
-      appliesTo: {
-        global: false,
-        automationIds: [input.automationId],
-        artifactTypes: [],
-        capabilities: [],
-      },
+      asCandidate: true,
     });
-    recordMemoryUpdateEvent(input.userId, 1);
   } catch {
     // Fail soft
   }

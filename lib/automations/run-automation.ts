@@ -181,14 +181,14 @@ export async function executeAutomationRun(
           const { applyMemoryForPlanner } = await import(
             "@/lib/memory-apply/planner"
           );
-          const { MemoryApply } = await import("@/lib/memory-apply/apply");
+          const { loadMemory } = await import("@/lib/memory-apply/pipeline");
           const plannerApplied = await applyMemoryForPlanner({
             userId: options.userId,
             assignment,
             automationId: automation.id,
           });
-          // Automation V1 also records automation channel via unified MemoryApply
-          await MemoryApply({
+          // Automation V1 also records automation channel via unified loadMemory
+          await loadMemory({
             userId: options.userId,
             channel: "automation",
             baseline: assignment,
@@ -199,8 +199,18 @@ export async function executeAutomationRun(
           plannerMemoryMeta = {
             ...(plannerApplied.metadata ?? {}),
             userId: options.userId,
+            memoryVersion: plannerApplied.context.memoryVersion,
           };
-        } catch {
+        } catch (error) {
+          const { MemoryLoadError, MemoryRequiredError } = await import(
+            "@/lib/memory-apply/pipeline"
+          );
+          if (
+            error instanceof MemoryLoadError ||
+            error instanceof MemoryRequiredError
+          ) {
+            throw error;
+          }
           plannerMemoryMeta = {};
         }
       }

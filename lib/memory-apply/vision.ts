@@ -2,11 +2,14 @@ import "server-only";
 
 import type { VisionStyleSignals } from "@/lib/vision/types";
 import { createPersonalMemory } from "@/lib/personal-memory/service";
-import { MemoryApply } from "@/lib/memory-apply/apply";
 import {
   recordMemoryApplyEvent,
   recordMemoryUpdateEvent,
 } from "@/lib/memory-apply/metrics";
+import {
+  assertMemoryLoadedForAi,
+  loadMemory,
+} from "@/lib/memory-apply/pipeline";
 
 /**
  * Convert Vision style signals into Personal Memory candidates (approval required).
@@ -108,7 +111,7 @@ export async function createVisionStyleMemoryCandidates(input: {
 
 /**
  * Resolve prior Vision/OCR format memory before analysis.
- * Path: MemoryApply → PersonalizationContext → PromptBuilder.
+ * Path: loadMemory → PersonalizationContext → PromptBuilder (Fail Closed).
  */
 export async function resolveVisionMemoryContext(input: {
   userId: string;
@@ -117,13 +120,14 @@ export async function resolveVisionMemoryContext(input: {
   hints: string[];
   memoryIdsUsed: string[];
 }> {
-  const applied = await MemoryApply({
+  const applied = await loadMemory({
     userId: input.userId,
     channel: "vision",
     baseline: "Vision analysis",
     capabilities: ["vision", "ocr"],
     // Shared PersonalizationContext — no Vision-only Memory silo
   });
+  assertMemoryLoadedForAi(applied.context);
 
   const hints = [
     ...applied.context.content.visionHints,

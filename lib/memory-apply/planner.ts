@@ -1,14 +1,17 @@
 /**
  * Planner surface Memory apply — orchestration planner knowledge.
  * Does NOT rewrite Planner core; only prepares injection metadata.
- * Path: MemoryApply → PersonalizationContext → PromptBuilder.
+ * Path: loadMemory → PersonalizationContext → PromptBuilder.
  */
 
 import "server-only";
 
-import { MemoryApply } from "@/lib/memory-apply/apply";
 import type { MemoryApplyOutput } from "@/lib/memory-apply/apply";
 import { buildPersonalMemoryMetadata } from "@/lib/memory-apply/orchestration-metadata";
+import {
+  assertMemoryLoadedForAi,
+  loadMemory,
+} from "@/lib/memory-apply/pipeline";
 
 export type PlannerMemoryInput = {
   userId: string;
@@ -30,7 +33,7 @@ export type PlannerMemoryApplyResult = MemoryApplyOutput & {
 export async function applyMemoryForPlanner(
   input: PlannerMemoryInput,
 ): Promise<PlannerMemoryApplyResult> {
-  const applied = await MemoryApply({
+  const applied = await loadMemory({
     userId: input.userId,
     channel: "planner",
     baseline: input.assignment,
@@ -41,6 +44,7 @@ export async function applyMemoryForPlanner(
     artifactTypes: input.deliverableType ? [input.deliverableType] : ["document"],
     capabilities: ["planner", "orchestration"],
   });
+  assertMemoryLoadedForAi(applied.context);
 
   const injection =
     applied.prompt.injection.fullText || applied.context.injectionText;

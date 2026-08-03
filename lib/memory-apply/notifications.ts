@@ -6,8 +6,11 @@ import {
   readPersonalMemorySettings,
 } from "@/lib/personal-memory/store";
 import { resolvePersonalMemories } from "@/lib/personal-memory/resolve";
-import { MemoryApply } from "@/lib/memory-apply/apply";
 import { recordMemoryApplyEvent } from "@/lib/memory-apply/metrics";
+import {
+  assertMemoryLoadedForAi,
+  loadMemory,
+} from "@/lib/memory-apply/pipeline";
 
 function asBoolean(value: unknown): boolean | null {
   if (typeof value === "boolean") return value;
@@ -122,7 +125,7 @@ export function resolveNotificationPreferencesWithMemorySync(input: {
 }
 
 /**
- * Canonical path: MemoryApply → PersonalizationContext → notification overlay.
+ * Canonical path: loadMemory → PersonalizationContext → notification overlay.
  */
 export async function resolveNotificationPreferencesWithMemory(input: {
   userId: string;
@@ -132,12 +135,13 @@ export async function resolveNotificationPreferencesWithMemory(input: {
   memoryIdsUsed: string[];
   applied: boolean;
 }> {
-  const applied = await MemoryApply({
+  const applied = await loadMemory({
     userId: input.userId,
     channel: "notification",
     baseline: "notification preferences",
     capabilities: ["notify"],
   });
+  assertMemoryLoadedForAi(applied.context);
 
   const notifyRows = applied.provider.personalValues.filter(
     (row) => row.scope === "notification_preferences",

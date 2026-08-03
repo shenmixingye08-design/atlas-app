@@ -1,6 +1,6 @@
 /**
  * Chat surface Memory apply — Responses API / conversational AI.
- * Path: MemoryApply → PersonalizationContext → PromptBuilder → LLM.
+ * Path: loadMemory → PersonalizationContext → PromptBuilder → LLM.
  */
 
 import "server-only";

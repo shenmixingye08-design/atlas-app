@@ -43,7 +43,10 @@ export {
 export { resolveNotificationPreferencesWithMemory } from "./notifications";
 export { resolveSchedulerMemoryDefaults } from "./scheduler";
 export { applyMemoryForRegenerate } from "./regenerate";
-export { applyMemoryForDeliverable } from "./deliverables";
+export {
+  applyMemoryForDeliverable,
+  saveDeliverableMemoryHistory,
+} from "./deliverables";
 export { applyMemoryForChat } from "./chat";
 export type { ChatMemoryInput, ChatMemoryApplyResult } from "./chat";
 export { applyMemoryForPlanner } from "./planner";

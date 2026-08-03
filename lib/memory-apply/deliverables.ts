@@ -2,8 +2,12 @@ import "server-only";
 
 import { getWordCompanyBrand } from "@/lib/deliverables/company-brand";
 import type { DeliverableFormat } from "@/lib/deliverables/types";
-import { MemoryApply } from "@/lib/memory-apply/apply";
 import { buildDeliverableOverlay } from "@/lib/memory-apply/overlays";
+import {
+  assertMemoryLoadedForAi,
+  loadMemory,
+  saveMemory,
+} from "@/lib/memory-apply/pipeline";
 import type {
   MemoryApplyChannel,
   MemoryDeliverableOverlay,
@@ -36,7 +40,7 @@ export type DeliverableMemoryApply = {
 
 /**
  * Resolve Personal Memory overlays for deliverable generation.
- * Path: MemoryApply → PersonalizationContext → PromptBuilder (no parallel resolve).
+ * Path: loadMemory → PersonalizationContext → PromptBuilder (no parallel resolve).
  */
 export async function applyMemoryForDeliverable(input: {
   userId: string;
@@ -47,7 +51,7 @@ export async function applyMemoryForDeliverable(input: {
   const channel = channelForFormat(input.format);
   const brandFallback = await getWordCompanyBrand(input.userId);
 
-  const applied = await MemoryApply({
+  const applied = await loadMemory({
     userId: input.userId,
     channel,
     baseline: input.content,
@@ -56,6 +60,7 @@ export async function applyMemoryForDeliverable(input: {
     capabilities: ["deliverable", input.format, channel],
     // No per-surface scope silo — shared PersonalizationContext for all AI
   });
+  assertMemoryLoadedForAi(applied.context);
 
   const overlay: MemoryDeliverableOverlay =
     brandFallback && !applied.context.deliverable.brand
@@ -79,4 +84,32 @@ export async function applyMemoryForDeliverable(input: {
     applied: appliedFlag,
     channel,
   };
+}
+
+/** Persist deliverable outcome into shared Memory after artifact generation. */
+export async function saveDeliverableMemoryHistory(input: {
+  userId: string;
+  format: DeliverableFormat;
+  assignment?: string | null;
+  summary?: string | null;
+  memoryIdsUsed?: string[];
+}): Promise<void> {
+  const channel = channelForFormat(input.format);
+  try {
+    await saveMemory({
+      userId: input.userId,
+      category: "deliverable_history",
+      channel,
+      title: `${channel}成果物履歴`,
+      summary: (input.summary ?? input.assignment ?? channel).slice(0, 240),
+      value: {
+        format: input.format,
+        assignment: input.assignment ?? null,
+        memoryIdsUsed: input.memoryIdsUsed ?? [],
+      },
+      asCandidate: true,
+    });
+  } catch {
+    // Fail soft on persist — generation already succeeded
+  }
 }

@@ -103,7 +103,7 @@ const CATEGORY_TO_SCOPE: Record<SaveMemoryCategory, PersonalMemoryScope> = {
   external_service: "default_storage_locations",
   schedule_history: "timezone",
   vision_history: "document_design",
-  ocr_history: "language",
+  ocr_history: "work_content_style",
   correction_history: "work_content_style",
 };
 

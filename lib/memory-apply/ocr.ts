@@ -1,11 +1,10 @@
 import "server-only";
 
-import { createPersonalMemory } from "@/lib/personal-memory/service";
-import { MemoryApply } from "@/lib/memory-apply/apply";
 import {
-  recordMemoryApplyEvent,
-  recordMemoryUpdateEvent,
-} from "@/lib/memory-apply/metrics";
+  assertMemoryLoadedForAi,
+  loadMemory,
+  saveMemory,
+} from "@/lib/memory-apply/pipeline";
 import {
   compareMemoryQuality,
   expectedTokensFromMemoryValues,
@@ -31,7 +30,7 @@ export function applyOcrCorrections(
 }
 
 /**
- * Path: MemoryApply → PersonalizationContext → OCR dictionary overlay.
+ * Path: loadMemory → PersonalizationContext → OCR dictionary overlay (Fail Closed).
  */
 export async function resolveOcrMemoryDictionary(input: {
   userId: string;
@@ -40,13 +39,14 @@ export async function resolveOcrMemoryDictionary(input: {
   memoryIdsUsed: string[];
   injectionText: string;
 }> {
-  const applied = await MemoryApply({
+  const applied = await loadMemory({
     userId: input.userId,
     channel: "ocr",
     baseline: "OCR correction",
     capabilities: ["ocr"],
     // Shared PersonalizationContext — no OCR-only Memory silo
   });
+  assertMemoryLoadedForAi(applied.context);
 
   return {
     dictionary: applied.context.content.ocrDictionary,
@@ -84,7 +84,7 @@ export async function correctOcrTextWithMemory(input: {
   };
 }
 
-/** Persist OCR correction pairs as a candidate dictionary entry. */
+/** Persist OCR correction pairs via shared saveMemory (correction_history). */
 export async function saveOcrCorrectionToMemory(input: {
   userId: string;
   from: string;
@@ -95,10 +95,10 @@ export async function saveOcrCorrectionToMemory(input: {
   const to = input.to.trim();
   if (!from || !to || from === to) return null;
 
-  const row = await createPersonalMemory(input.userId, {
-    kind: "work_preference",
-    scope: "work_content_style",
-    key: "ocr_dictionary",
+  const saved = await saveMemory({
+    userId: input.userId,
+    category: "ocr_history",
+    channel: "ocr",
     title: "OCR補正辞書",
     summary: `${from} → ${to}`,
     value: {
@@ -106,20 +106,9 @@ export async function saveOcrCorrectionToMemory(input: {
       to,
       dictionary: { [from]: to },
       context: input.context ?? null,
+      category: "correction_history",
     },
-    source: "user_correction",
-    status: "candidate",
-    confidence: 0.6,
+    asCandidate: true,
   });
-  recordMemoryUpdateEvent(input.userId, 1);
-  recordMemoryApplyEvent({
-    userId: input.userId,
-    channel: "dashboard",
-    memoryMode: "on",
-    applied: true,
-    memoryIdsUsed: [row.id],
-    scopesUsed: ["work_content_style"],
-    success: true,
-  });
-  return row.id;
+  return saved.memoryId;
 }
