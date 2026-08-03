@@ -9,6 +9,8 @@
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "ci:v2-stub-ban": "node scripts/ci/v2-stub-ban.mjs",
+    "ci:memory-share": "node scripts/ci/assert-memory-share.mjs",
+    "test:memory-share": "vitest run lib/memory-apply/memory-apply.test.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts"

@@ -1,8 +1,8 @@
 /**
- * Memory share-rate proof for AI secretary surfaces.
+ * Memory share-rate proof for AI secretary surfaces (Production Blocker #3).
  *
- * Path (mandatory one-way):
- *   MemoryProvider → PersonalizationContext → PromptBuilder → LLM → Result
+ * Mandatory sequence:
+ *   loadMemory() → PersonalizationContext → Prompt → AI → 成果物 → saveMemory()
  *
  * No per-surface Memory SoT. No localStorage Memory. No UI-only apply.
  */
@@ -16,34 +16,51 @@ import {
 } from "@/lib/memory-apply/types";
 import { getMemoryApplyMetrics, listMemoryApplyEvents } from "@/lib/memory-apply/metrics";
 import { auditMemoryApplyCoverage } from "@/lib/memory-apply/audit";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 export const MEMORY_PATH_DIAGRAM = `
 Personal Memory / Work Memory (durable SoT)
         │
         ▼
-  MemoryProvider(userId, channel)
+  loadMemory()  ─── MemoryProvider(userId, channel)
         │
         ▼
   PersonalizationContext  ←── 唯一の共有コンテキスト
+  (+ memoryVersion: version / updatedAt / source / checksum)
         │
         ▼
   PromptBuilder / ContextBuilder
         │
         ▼
-  Surface adapter (chat / planner / commander / automation /
-                   vision / ocr / word / excel / pdf / ppt / regenerate)
+  Surface adapter
+  (Chat / Commander / Planner / Automation / Scheduler /
+   Vision / OCR / Word / Excel / PDF / PowerPoint / Regenerate / 通知)
         │
         ▼
-  LLM / Generator / OCR corrector
+  AI実行 / Generator / OCR corrector
         │
         ▼
-  Result (+ MemoryApplyLog / metrics)
+  成果物生成
+        │
+        ▼
+  saveMemory()  (+ MemoryApplyLog / metrics)
 `.trim();
+
+export const MEMORY_EXECUTION_SEQUENCE = [
+  "loadMemory()",
+  "PersonalizationContext (+ MemoryVersion)",
+  "Prompt生成",
+  "AI実行",
+  "成果物生成",
+  "saveMemory()",
+] as const;
 
 export type MemoryShareProof = {
   userId: string;
   checkedAt: string;
   pathDiagram: string;
+  executionSequence: readonly string[];
   requiredChannels: readonly AiSecretaryMemoryChannel[];
   appliedChannels: AiSecretaryMemoryChannel[];
   missingChannels: AiSecretaryMemoryChannel[];
@@ -54,6 +71,7 @@ export type MemoryShareProof = {
   /** 0–100: appliedChannels / requiredChannels */
   shareRatePercent: number;
   unappliedCount: number;
+  unsharedCount: number;
   auditPass: boolean;
   pass: boolean;
   notes: string[];
@@ -65,7 +83,7 @@ function fingerprintIds(ids: string[]): string {
 
 /**
  * Prove Memory is shared 100% across AI secretary channels for a user.
- * Requires real MemoryApply events (not synthetic coverage alone for share ids).
+ * Requires real MemoryApply / loadMemory events (not synthetic coverage alone).
  */
 export function proveMemoryShare(userId: string): MemoryShareProof {
   const metrics = getMemoryApplyMetrics(userId);
@@ -104,18 +122,18 @@ export function proveMemoryShare(userId: string): MemoryShareProof {
     ).toFixed(2),
   );
 
-  // Shared Memory = non-empty intersection of memoryIdsUsed across every AI channel.
-  // Channel fingerprints may differ when Automation policy scopes subset the full
-  // PersonalizationContext — but at least one Memory id must appear in ALL channels.
+  const unsharedCount = missingChannels.length;
   const pass =
     missingChannels.length === 0 &&
     shareRatePercent === 100 &&
-    sharedMemoryIds.length > 0;
+    sharedMemoryIds.length > 0 &&
+    unsharedCount === 0;
 
   return {
     userId,
     checkedAt: new Date().toISOString(),
     pathDiagram: MEMORY_PATH_DIAGRAM,
+    executionSequence: MEMORY_EXECUTION_SEQUENCE,
     requiredChannels: AI_SECRETARY_MEMORY_CHANNELS,
     appliedChannels: [...appliedChannels],
     missingChannels: [...missingChannels],
@@ -123,19 +141,38 @@ export function proveMemoryShare(userId: string): MemoryShareProof {
     channelFingerprints,
     shareRatePercent,
     unappliedCount: missingChannels.length,
+    unsharedCount,
     auditPass: audit.pass,
     pass,
     notes: [
-      "適用済み = MemoryApply 経路で applied イベントが存在する",
-      "共有 = 全 AI secretary チャネルで同じ memoryIdsUsed fingerprint",
+      "適用済み = loadMemory/MemoryApply 経路で applied イベントが存在する",
+      "共有 = 全 AI secretary チャネルで同じ memoryIds が交差する",
+      "未共有ゼロ = missingChannels.length === 0 && unsharedCount === 0",
       "localStorage は Memory SoT ではない",
+      "Memory未取得でのAI実行は Fail Closed",
       ...audit.notes,
     ],
   };
 }
 
-/** Channels that still use parallel resolve (must stay empty after Phase2). */
+/** Channels that still use parallel resolve (must stay empty). */
 export function listForbiddenParallelMemoryResolves(): MemoryApplyChannel[] {
-  // After Phase2 adapters all call MemoryApply — none remain.
   return [];
+}
+
+/** Persist share proof artifact for CI / submission. */
+export function writeMemoryShareProof(proof: MemoryShareProof): void {
+  const dirs = [
+    "/opt/cursor/artifacts/memory-share",
+    join(process.cwd(), "artifacts/memory-share"),
+  ];
+  const payload = JSON.stringify(proof, null, 2);
+  for (const dir of dirs) {
+    try {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "memory-share-proof.json"), payload);
+    } catch {
+      // ignore
+    }
+  }
 }

@@ -33,10 +33,14 @@ export type MemoryApplyChannel =
 
 /**
  * AI secretary surfaces that MUST share one PersonalizationContext.
- * Phase2: Memory share rate must be 100% across these channels.
+ * Blocker #3: share rate 100% — Chat専用 Memory 禁止。
  */
 export const AI_SECRETARY_MEMORY_CHANNELS = [
+  "chat",
+  "commander",
+  "planner",
   "automation",
+  "scheduler",
   "vision",
   "ocr",
   "word",
@@ -44,9 +48,7 @@ export const AI_SECRETARY_MEMORY_CHANNELS = [
   "pdf",
   "powerpoint",
   "regenerate",
-  "chat",
-  "planner",
-  "commander",
+  "notification",
 ] as const satisfies readonly MemoryApplyChannel[];
 
 export type AiSecretaryMemoryChannel =

@@ -5,8 +5,11 @@
 
 import "server-only";
 
-import { MemoryApply } from "@/lib/memory-apply/apply";
 import type { MemoryApplyOutput } from "@/lib/memory-apply/apply";
+import {
+  assertMemoryLoadedForAi,
+  loadMemory,
+} from "@/lib/memory-apply/pipeline";
 import { DEFAULT_INSTRUCTIONS } from "@/lib/openai";
 
 export type ChatMemoryInput = {
@@ -26,12 +29,13 @@ export type ChatMemoryApplyResult = MemoryApplyOutput & {
 
 /**
  * Apply shared PersonalizationContext to chat system instructions.
+ * Sequence: loadMemory → PersonalizationContext → Prompt → (LLM in route).
  */
 export async function applyMemoryForChat(
   input: ChatMemoryInput,
 ): Promise<ChatMemoryApplyResult> {
   const base = (input.baseInstructions ?? DEFAULT_INSTRUCTIONS).trim();
-  const applied = await MemoryApply({
+  const applied = await loadMemory({
     userId: input.userId,
     channel: "chat",
     baseline: input.input,
@@ -41,6 +45,7 @@ export async function applyMemoryForChat(
     capabilities: ["chat"],
     artifactTypes: ["chat"],
   });
+  assertMemoryLoadedForAi(applied.context);
 
   const injection = applied.prompt.injection.fullText.trim();
   const instructions = injection

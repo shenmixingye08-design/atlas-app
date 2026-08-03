@@ -50,7 +50,9 @@ export { applyMemoryForPlanner } from "./planner";
 export type { PlannerMemoryInput, PlannerMemoryApplyResult } from "./planner";
 export {
   proveMemoryShare,
+  writeMemoryShareProof,
   MEMORY_PATH_DIAGRAM,
+  MEMORY_EXECUTION_SEQUENCE,
   listForbiddenParallelMemoryResolves,
   type MemoryShareProof,
 } from "./share-proof";
@@ -62,6 +64,21 @@ export {
   buildPersonalizationContext,
   type PersonalizationContext,
 } from "./personalization-context";
+export {
+  buildMemoryVersion,
+  assertMemoryVersionComplete,
+  type MemoryVersion,
+} from "./memory-version";
+export {
+  loadMemory,
+  saveMemory,
+  assertMemoryLoadedForAi,
+  withSharedMemory,
+  MemoryLoadError,
+  MemoryRequiredError,
+  type SaveMemoryCategory,
+  type SaveMemoryInput,
+} from "./pipeline";
 export {
   MemoryApply,
   MemoryApplyComparison,

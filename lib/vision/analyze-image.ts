@@ -111,28 +111,24 @@ export async function analyzeUserImage(input: {
       ecoMode: input.ecoMode,
     });
 
-  // Vision解析前: Personal Memory（前回形式・会社固有語・OCR補正ヒント）を取得
+  // Vision解析前: 共有 PersonalizationContext（Fail Closed — Memory未取得でAI禁止）
+  const { resolveVisionMemoryContext } = await import(
+    "@/lib/memory-apply/vision"
+  );
+  const visionMemory = await resolveVisionMemoryContext({
+    userId: input.userId,
+  });
   let memoryAugmentedText = input.userText;
-  try {
-    const { resolveVisionMemoryContext } = await import(
-      "@/lib/memory-apply/vision"
-    );
-    const visionMemory = await resolveVisionMemoryContext({
-      userId: input.userId,
-    });
-    if (visionMemory.hints.length > 0 || visionMemory.injectionText) {
-      memoryAugmentedText = [
-        input.userText,
-        visionMemory.injectionText,
-        visionMemory.hints.length > 0
-          ? `【Memoryヒント】${visionMemory.hints.slice(0, 8).join(" / ")}`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
-    }
-  } catch {
-    memoryAugmentedText = input.userText;
+  if (visionMemory.hints.length > 0 || visionMemory.injectionText) {
+    memoryAugmentedText = [
+      input.userText,
+      visionMemory.injectionText,
+      visionMemory.hints.length > 0
+        ? `【Memoryヒント】${visionMemory.hints.slice(0, 8).join(" / ")}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
   }
 
   if (!input.forceRefresh) {

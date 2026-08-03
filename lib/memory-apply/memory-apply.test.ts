@@ -974,9 +974,11 @@ describe("Memory Apply — Phase2 share rate 100%", () => {
     const { applyMemoryForPrediction } = await import(
       "@/lib/memory-apply/prediction"
     );
-    const { proveMemoryShare, MEMORY_PATH_DIAGRAM } = await import(
-      "@/lib/memory-apply/share-proof"
-    );
+    const {
+      proveMemoryShare,
+      MEMORY_PATH_DIAGRAM,
+      writeMemoryShareProof,
+    } = await import("@/lib/memory-apply/share-proof");
     const { resolveNotificationPreferencesWithMemorySync } = await import(
       "@/lib/memory-apply/notifications"
     );
@@ -1054,12 +1056,17 @@ describe("Memory Apply — Phase2 share rate 100%", () => {
     });
 
     const proof = proveMemoryShare(USER);
+    writeMemoryShareProof(proof);
     expect(MEMORY_PATH_DIAGRAM).toMatch(/PersonalizationContext/);
+    expect(MEMORY_PATH_DIAGRAM).toMatch(/loadMemory/);
     expect(proof.unappliedCount).toBe(0);
+    expect(proof.unsharedCount).toBe(0);
     expect(proof.missingChannels).toEqual([]);
     expect(proof.shareRatePercent).toBe(100);
     expect(proof.sharedMemoryIds).toContain(style.id);
     expect(proof.pass).toBe(true);
+    expect(proof.executionSequence).toContain("loadMemory()");
+    expect(proof.executionSequence).toContain("saveMemory()");
 
     const audit = auditMemoryApplyCoverage(USER);
     expect(audit.missing).toEqual([]);
@@ -1073,7 +1080,7 @@ describe("Memory Apply — Phase2 share rate 100%", () => {
     expect(listForbiddenParallelMemoryResolves()).toEqual([]);
   });
 
-  it("43. chat + planner adapters expose shared PersonalizationContext", async () => {
+  it("43. chat + planner adapters expose shared PersonalizationContext + MemoryVersion", async () => {
     seedMemory({
       scope: "writing_style",
       key: "tone",
@@ -1087,6 +1094,7 @@ describe("Memory Apply — Phase2 share rate 100%", () => {
     const { applyMemoryForPlanner } = await import(
       "@/lib/memory-apply/planner"
     );
+    const pipeline = await import("@/lib/memory-apply/pipeline");
     const chat = await applyMemoryForChat({
       userId: USER,
       input: "こんにちは",
@@ -1099,8 +1107,41 @@ describe("Memory Apply — Phase2 share rate 100%", () => {
     expect(planner.context.channel).toBe("planner");
     expect(chat.instructions.length).toBeGreaterThan(0);
     expect(planner.metadata?.personalMemory).toBeTruthy();
-    expect(chat.context.memoryIdsUsed.sort()).toEqual(
-      planner.context.memoryIdsUsed.sort(),
+    expect(chat.context.memoryVersion.version).toBeTruthy();
+    expect(chat.context.memoryVersion.checksum.length).toBeGreaterThanOrEqual(
+      32,
+    );
+    expect(chat.context.memoryVersion.source).toBeTruthy();
+    expect(chat.context.memoryVersion.updatedAt).toBeTruthy();
+    expect(() => pipeline.assertMemoryLoadedForAi(chat.context)).not.toThrow();
+
+    const word = await pipeline.loadMemory({
+      userId: USER,
+      channel: "word",
+      baseline: "提案書",
+    });
+    expect(word.context.memoryIdsUsed.sort()).toEqual(
+      chat.context.memoryIdsUsed.sort(),
+    );
+  });
+
+  it("44. Memory OFF comparison still has MemoryVersion", async () => {
+    const pipeline = await import("@/lib/memory-apply/pipeline");
+    const off = await pipeline.loadMemory({
+      userId: USER,
+      channel: "chat",
+      baseline: "hi",
+      memoryEnabled: false,
+    });
+    expect(off.context.mode).toBe("off");
+    expect(off.context.memoryVersion.checksum).toBeTruthy();
+    expect(() => pipeline.assertMemoryLoadedForAi(off.context)).not.toThrow();
+  });
+
+  it("45. assertMemoryLoadedForAi Fail Closed without context", async () => {
+    const pipeline = await import("@/lib/memory-apply/pipeline");
+    expect(() => pipeline.assertMemoryLoadedForAi(null)).toThrow(
+      pipeline.MemoryRequiredError,
     );
   });
 });
