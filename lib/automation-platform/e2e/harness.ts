@@ -1,11 +1,13 @@
 /**
  * Controlled E2E harness helpers — never invents live external success.
+ * Local deliverable steps use the real generator/storage path.
  */
 
 import type { StepInvoker } from "@/lib/automation-platform/execution/step-invoker";
 import type { AutomationRunArtifact } from "@/lib/automation-platform/types/run";
 import type { AutomationWorkflowStep } from "@/lib/automation-platform/types/step";
 import { getCapability } from "@/lib/automation-platform/step-registry/registry";
+import { invokeDeliverableStep } from "@/lib/automation-platform/execution/deliverable-step";
 import {
   estimateStepCost,
   recordAutomationRunCost,
@@ -35,23 +37,30 @@ function artifact(
   label: string,
   kind: AutomationRunArtifact["kind"],
   externalId: string | null = null,
+  url: string | null = null,
 ): AutomationRunArtifact {
   return {
     id: crypto.randomUUID(),
     kind,
     label,
-    url: null,
+    url,
     externalId,
     createdAt: new Date().toISOString(),
   };
 }
 
+const DELIVERABLE_TYPES = new Set([
+  "word_generate",
+  "excel_generate",
+  "pdf_generate",
+  "powerpoint_generate",
+  "deliverable_generate",
+]);
+
 /**
  * Controlled invoker for platform mechanics tests.
- * - Document/local steps succeed with labeled local artifacts
- * - External steps NEVER succeed (fail closed) unless explicitly overridden
- *   via `allowExternalSimulation` for partial-success / retry mechanics only,
- *   and those are tagged controlled_external (not live).
+ * - Document steps → real generator + storage (no placeholder URL)
+ * - External steps NEVER succeed unless explicitly overridden and tagged
  */
 export function createControlledInvoker(options?: {
   /** Map capability -> behavior for mechanics tests only */
@@ -72,8 +81,10 @@ export function createControlledInvoker(options?: {
         ok: false,
         summary: "unsupported",
         artifacts: [],
-        errorCode: "automation_unsupported_step",
+        errorCode: "step_not_implemented",
         errorMessage: step.type,
+        failedStage: "STEP_DISPATCH",
+        retryable: false,
       };
     }
     if (capability.systemRequiresApproval && !approved) {
@@ -84,6 +95,8 @@ export function createControlledInvoker(options?: {
         errorCode: "automation_approval_required",
         errorMessage: "高リスク手順は承認後のみ実行できます",
         needsUserInput: true,
+        failedStage: "APPROVAL",
+        retryable: false,
       };
     }
 
@@ -105,6 +118,8 @@ export function createControlledInvoker(options?: {
           errorCode: "automation_integration_required",
           errorMessage: "メール送信先が設定されていません",
           needsUserInput: true,
+          failedStage: "EXTERNAL_INPUT",
+          retryable: false,
         };
       }
       if (behavior === "transient_fail_once") {
@@ -117,32 +132,86 @@ export function createControlledInvoker(options?: {
             artifacts: [],
             errorCode: "automation_timeout",
             errorMessage: "upstream 503",
+            failedStage: "EXTERNAL_CALL",
+            retryable: true,
           };
         }
       }
       if (behavior === "controlled_success") {
+        const externalId = `ctrl:${step.id}:${input.runId}`;
         return {
           ok: true,
           summary: `controlled_external:${step.type}`,
           artifacts: [
-            artifact(`controlled:${step.type}`, "external", `ctrl:${step.id}`),
+            artifact(
+              `controlled:${step.type}`,
+              "external",
+              externalId,
+              `controlled://external/${encodeURIComponent(externalId)}`,
+            ),
           ],
+          evidence: {
+            externalActionIds: [externalId],
+            externalUrls: [
+              `controlled://external/${encodeURIComponent(externalId)}`,
+            ],
+            artifactIds: [],
+            storageObjectIds: [],
+            notificationIds: [],
+          },
         };
       }
       return {
         ok: false,
         summary: `${step.type}は未接続/ライブ未実行のため成功扱いしません`,
         artifacts: [],
-        errorCode: "automation_integration_required",
+        errorCode: "live_adapter_missing",
         errorMessage: "external_not_live",
+        failedStage: "EXTERNAL_ADAPTER_RESOLUTION",
+        retryable: false,
       };
     }
 
-    // Local / document steps
+    if (DELIVERABLE_TYPES.has(step.type)) {
+      return invokeDeliverableStep(input);
+    }
+
+    if (step.type === "notify") {
+      const id = `ctrl_notify_${input.runId}_${step.id}`;
+      return {
+        ok: true,
+        summary: "通知（controlled）",
+        artifacts: [
+          artifact("通知", "file", id, `/results/${encodeURIComponent(id)}`),
+        ],
+        evidence: {
+          notificationIds: [id],
+          artifactIds: [id],
+          storageObjectIds: [],
+          externalActionIds: [],
+          externalUrls: [],
+        },
+      };
+    }
+
+    if (step.type === "wait" || step.type === "condition") {
+      return {
+        ok: true,
+        summary: `${capability.name}（controlled control）`,
+        artifacts: [],
+        evidence: {},
+      };
+    }
+
+    // Vision/OCR/unimplemented — fail closed in controlled harness too
     return {
-      ok: true,
-      summary: `${capability.name}（controlled local）`,
-      artifacts: [artifact(`${capability.name}`, "deliverable")],
+      ok: false,
+      summary: "controlled harness: step_not_implemented",
+      artifacts: [],
+      errorCode: "step_not_implemented",
+      errorMessage: step.type,
+      failedStage: "STEP_DISPATCH",
+      retryable: false,
     };
   };
 }
