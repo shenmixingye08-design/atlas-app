@@ -1,18 +1,17 @@
 # Quality Gate Zero — Final Report
 
-PR: https://github.com/shenmixingye08-design/atlas-app/pull/129  
-Branch: `cursor/quality-gate-zero-4b7a`  
-CI success: https://github.com/shenmixingye08-design/atlas-app/actions/runs/30758529230
+Branch: `cursor/quality-gate-zero-83f5` (rebased onto current `main`)  
+Prior green CI evidence: https://github.com/shenmixingye08-design/atlas-app/actions/runs/30758529230
 
 ## Counts
 
-| Gate | Before | After |
+| Gate | Before (main) | After |
 |---|---:|---:|
 | TypeScript errors | 43 | **0** |
 | ESLint errors | 79 | **0** |
 | ESLint warnings | 66 | **0** |
-| Vitest failed | 8 | **0** |
-| Vitest passed | 1018 | **1028** |
+| Vitest failed | 7–8 | **0** |
+| Vitest passed | ~1019 | **1028** |
 | Build (no secrets) | FAIL | **PASS** |
 
 ## Root causes (summary)
