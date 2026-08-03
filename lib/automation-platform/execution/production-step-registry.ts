@@ -254,16 +254,22 @@ export type ProductionStepValidationIssue = {
 };
 
 /**
- * Live adapters are not yet wired into V2 Production invoker.
- * Activation refuses enabled external steps that require them.
+ * Live adapters wired into Production invoker via `lib/live-adapters`.
+ * Activation refuses enabled external steps that are not in this set.
+ * Slack / Discord / Notion / outbound Webhook remain unwired (fail-closed).
  */
 export function isLiveAdapterWired(adapterId: string | null): boolean {
   if (!adapterId) return true;
-  // Production wiring gate — set true only when a real adapter path exists.
   const wired = new Set<string>([
-    // Internal engines (not external OAuth adapters)
     "openai_vision",
     "openai_vision_ocr",
+    "google_gmail",
+    "google_calendar",
+    "dropbox",
+    "wordpress",
+    "x",
+    // Drive Live Adapter exists for registry/API; no V2 capability id yet.
+    "google_drive",
   ]);
   return wired.has(adapterId);
 }

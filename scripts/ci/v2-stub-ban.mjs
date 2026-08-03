@@ -101,8 +101,24 @@ const strict = readFileSync(
 if (strict.includes("defaultStepInvoker")) {
   violations.push("strict-step-invoker must not call defaultStepInvoker");
 }
-if (!strict.includes("live_adapter_missing")) {
-  violations.push("strict-step-invoker must fail with live_adapter_missing");
+if (!strict.includes("invokeLiveAdapterForStep")) {
+  violations.push(
+    "strict-step-invoker must route externals via invokeLiveAdapterForStep",
+  );
+}
+const liveAdaptersIndex = readFileSync(
+  join(ROOT, "lib/live-adapters/index.ts"),
+  "utf8",
+);
+if (!liveAdaptersIndex.includes("invokeLiveAdapterForStep")) {
+  violations.push("lib/live-adapters must export invokeLiveAdapterForStep");
+}
+const productionRegistry = readFileSync(
+  join(ROOT, "lib/live-adapters/registry/production.ts"),
+  "utf8",
+);
+if (!/gmailLiveAdapter|xLiveAdapter/.test(productionRegistry)) {
+  violations.push("production Live Adapter registry must include gmail/x");
 }
 
 const notify = readFileSync(

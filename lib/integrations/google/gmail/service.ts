@@ -17,6 +17,7 @@ import {
 import {
   addLabelToGmailMessage,
   archiveGmailMessage,
+  createGmailComposeDraft,
   createGmailDraft,
   createGmailLabel,
   extractTextFromPdfBuffer,
@@ -25,6 +26,7 @@ import {
   fetchGmailMessages,
   listGmailLabels,
   moveGmailMessageToSpam,
+  sendGmailCompose,
   sendGmailReply,
   trashGmailMessage,
 } from "./api-client";
@@ -311,6 +313,73 @@ export async function sendReplyForUser(input: {
   });
 
   return { status: "ready", sentMessageId: sent.id };
+}
+
+/** Compose + send a new email (Automation Live Adapter path). */
+export async function sendGmailComposeForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  to: string;
+  subject: string;
+  body: string;
+  cc?: string | null;
+  bcc?: string | null;
+}): Promise<
+  | { status: "ready"; sentMessageId: string; threadId: string | null }
+  | GateFailure
+> {
+  const access = await requireGmailAccess(input);
+  if (isGateFailure(access)) return access;
+
+  const to = input.to.trim();
+  const subject = input.subject.trim();
+  const body = input.body.trim();
+  if (!to || !subject || !body) {
+    return {
+      status: "unauthorized",
+      message: "宛先・件名・本文を入力してください",
+    };
+  }
+
+  const sent = await sendGmailCompose({
+    accessToken: access.accessToken,
+    to,
+    subject,
+    body,
+    cc: input.cc,
+    bcc: input.bcc,
+  });
+
+  return {
+    status: "ready",
+    sentMessageId: sent.id,
+    threadId: sent.threadId,
+  };
+}
+
+/** Compose a new Gmail draft (Automation Live Adapter path). */
+export async function saveGmailComposeDraftForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  to: string;
+  subject: string;
+  body: string;
+  cc?: string | null;
+  bcc?: string | null;
+}): Promise<{ status: "ready"; gmailDraftId: string } | GateFailure> {
+  const access = await requireGmailAccess(input);
+  if (isGateFailure(access)) return access;
+
+  const created = await createGmailComposeDraft({
+    accessToken: access.accessToken,
+    to: input.to.trim(),
+    subject: input.subject.trim(),
+    body: input.body.trim(),
+    cc: input.cc,
+    bcc: input.bcc,
+  });
+
+  return { status: "ready", gmailDraftId: created.id };
 }
 
 export async function saveGmailDraftForUser(input: {

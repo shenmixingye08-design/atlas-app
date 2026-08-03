@@ -60,7 +60,7 @@ describe("external service store", () => {
     expect(view.connection.status).toBe("disconnected");
   });
 
-  it("supports stub connect flow", async () => {
+  it("forbids Notion stub connect success (unsupported)", async () => {
     const { notionConnector } = await import("@/lib/integrations/notion");
     const definition = getExternalServiceDefinition("notion");
     const pending = {
@@ -74,10 +74,8 @@ describe("external service store", () => {
     saveExternalServiceConnection(TEST_USER_ID, result.connection);
 
     expect(getExternalServiceConnection(TEST_USER_ID, "notion").status).toBe(
-      "connected",
+      "error",
     );
-    expect(
-      getExternalServiceConnection(TEST_USER_ID, "notion").connectedAt,
-    ).not.toBeNull();
+    expect(result.message).toMatch(/未対応/);
   });
 });

@@ -45,6 +45,9 @@ jobs:
       - name: V2 stub-ban / Production registry gate
         run: node scripts/ci/v2-stub-ban.mjs
 
+      - name: Integrations production ban
+        run: node scripts/ci/integrations-production-ban.mjs
+
       - name: Unit / integration tests
         run: npm test
         env:
@@ -59,6 +62,12 @@ jobs:
         env:
           TZ: UTC
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Live adapters / integrations critical path
+        run: npm run test:live-adapters
+        env:
+          TZ: UTC
           NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Upload Vitest logs on failure
