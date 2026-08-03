@@ -50,6 +50,7 @@ jobs:
         env:
           # Keep tests deterministic; do not enable mock-success shortcuts.
           TZ: UTC
+          NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Upload Vitest logs on failure
         if: failure()

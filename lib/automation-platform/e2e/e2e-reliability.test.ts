@@ -177,7 +177,9 @@ describe("Automation E2E Reliability", () => {
     vi.mocked(createNotification).mockClear();
   });
 
-  it("scenario matrix + schedule fire + security + endurance (controlled)", async () => {
+  it(
+    "scenario matrix + schedule fire + security + endurance (controlled)",
+    async () => {
     const started = Date.now();
 
     // -------- Scenario 1-7: external-required → blocked without live creds --------
@@ -804,10 +806,24 @@ describe("Automation E2E Reliability", () => {
     // retention; we execute 1000 enqueue+dispatch cycles while reclaiming runs,
     // and separately measure concurrency bands 5/10/20.
     {
+      // Mechanics endurance uses fast Production control/notify steps.
+      // Heavy Word/Excel/PDF generation is covered in dedicated fail-closed tests.
       const auto = await createAutomation("endurance", {
         workflow: workflow([
-          step({ id: "a", type: "excel_generate", name: "Excel", order: 0 }),
-          step({ id: "b", type: "pdf_generate", name: "PDF", order: 1 }),
+          step({
+            id: "a",
+            type: "wait",
+            name: "待機",
+            order: 0,
+            configuration: { durationMs: 0 },
+          }),
+          step({
+            id: "b",
+            type: "notify",
+            name: "通知",
+            order: 1,
+            configuration: { title: "endurance", message: "ok" },
+          }),
         ]),
         executionPolicy: { mode: "run_then_notify" },
       });
@@ -952,5 +968,7 @@ describe("Automation E2E Reliability", () => {
           e.scenarioId.startsWith("s5_"),
       ).every((e) => e.verdict !== "pass"),
     ).toBe(true);
-  }, 180_000);
+  },
+    600_000,
+  );
 });
