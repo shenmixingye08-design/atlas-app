@@ -29,7 +29,7 @@ AIなしで実装可能：一部
 | 7 | 通知 | PASS — recommendation default OFF、成果物/Automation中心 |
 | 8 | Mobile | PASS — AF home mobile column + bottom nav既存 |
 | 9 | Desktop | PASS — 2カラム rail |
-| 10 | Screenshot | 下記 artifacts |
+| 10 | Screenshot | PASS — `/opt/cursor/artifacts/first-value-blocker5/{home-desktop,home-mobile,job-complete}.png` |
 | 11 | Build | Typecheck / Vitest / CI gate |
 | 12 | PASS/FAIL | **CONDITIONAL PASS**（Previewライブ実測はops依存） |
 
