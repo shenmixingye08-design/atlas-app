@@ -9,8 +9,10 @@ import { DurableSotUniqueViolationError } from "../types";
 
 const T = DURABLE_SOT_TABLES.steps;
 
+type Queryable = Pick<DurableSotPool, "query">;
+
 export class DurableStepsRepository {
-  constructor(private readonly pool: DurableSotPool) {}
+  constructor(private readonly pool: Queryable) {}
 
   async create(input: CreateDurableStepInput): Promise<DurableStepRecord> {
     const now = new Date().toISOString();
@@ -55,6 +57,7 @@ export class DurableStepsRepository {
         DurableStepRecord,
         | "status"
         | "attempt"
+        | "inputBindings"
         | "outputBindings"
         | "errorCode"
         | "errorMessage"
@@ -68,13 +71,14 @@ export class DurableStepsRepository {
       `update public.${T} set
         status = coalesce($3, status),
         attempt = coalesce($4, attempt),
-        output_bindings = coalesce($5::jsonb, output_bindings),
-        error_code = coalesce($6, error_code),
-        error_message = coalesce($7, error_message),
-        started_at = coalesce($8, started_at),
-        completed_at = coalesce($9, completed_at),
-        job_id = coalesce($10, job_id),
-        updated_at = $11
+        input_bindings = coalesce($5::jsonb, input_bindings),
+        output_bindings = coalesce($6::jsonb, output_bindings),
+        error_code = coalesce($7, error_code),
+        error_message = coalesce($8, error_message),
+        started_at = coalesce($9, started_at),
+        completed_at = coalesce($10, completed_at),
+        job_id = coalesce($11, job_id),
+        updated_at = $12
        where run_id = $1 and step_id = $2
        returning *`,
       [
@@ -82,6 +86,9 @@ export class DurableStepsRepository {
         stepId,
         patch.status ?? null,
         patch.attempt ?? null,
+        patch.inputBindings === undefined
+          ? null
+          : JSON.stringify(patch.inputBindings),
         patch.outputBindings === undefined
           ? null
           : JSON.stringify(patch.outputBindings),
@@ -103,6 +110,16 @@ export class DurableStepsRepository {
        where run_id = $1
        order by step_index asc`,
       [runId],
+    );
+    return res.rows.map((row) => mapStep(row as Record<string, unknown>));
+  }
+
+  async listByJobId(jobId: string): Promise<DurableStepRecord[]> {
+    const res = await this.pool.query(
+      `select * from public.${T}
+       where job_id = $1
+       order by step_index asc`,
+      [jobId],
     );
     return res.rows.map((row) => mapStep(row as Record<string, unknown>));
   }

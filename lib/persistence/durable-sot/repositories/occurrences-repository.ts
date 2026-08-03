@@ -14,8 +14,10 @@ import { DurableSotUniqueViolationError } from "../types";
 
 const T = DURABLE_SOT_TABLES.occurrences;
 
+type Queryable = Pick<DurableSotPool, "query">;
+
 export class DurableOccurrencesRepository {
-  constructor(private readonly pool: DurableSotPool) {}
+  constructor(private readonly pool: Queryable) {}
 
   async create(
     input: CreateDurableOccurrenceInput,

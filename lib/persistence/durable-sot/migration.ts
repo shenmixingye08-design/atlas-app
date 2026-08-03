@@ -5,6 +5,8 @@ import { join } from "node:path";
 
 import type { DurableSotPool } from "./db";
 import {
+  DURABLE_SOT_JOBS_MIGRATION_DOWN,
+  DURABLE_SOT_JOBS_MIGRATION_UP,
   DURABLE_SOT_MIGRATION_DOWN,
   DURABLE_SOT_MIGRATION_UP,
   DURABLE_SOT_TABLES,
@@ -22,20 +24,34 @@ export function loadDurableSotMigrationDownSql(
   return readFileSync(join(root, DURABLE_SOT_MIGRATION_DOWN), "utf8");
 }
 
+export function loadDurableSotJobsMigrationUpSql(
+  root: string = process.cwd(),
+): string {
+  return readFileSync(join(root, DURABLE_SOT_JOBS_MIGRATION_UP), "utf8");
+}
+
+export function loadDurableSotJobsMigrationDownSql(
+  root: string = process.cwd(),
+): string {
+  return readFileSync(join(root, DURABLE_SOT_JOBS_MIGRATION_DOWN), "utf8");
+}
+
+/** Apply Phase 1-2 foundation then Phase 1-3 jobs/queue. */
 export async function applyDurableSotMigrationUp(
   pool: DurableSotPool,
   root?: string,
 ): Promise<void> {
-  const sql = loadDurableSotMigrationUpSql(root);
-  await pool.query(sql);
+  await pool.query(loadDurableSotMigrationUpSql(root));
+  await pool.query(loadDurableSotJobsMigrationUpSql(root));
 }
 
+/** Drop Phase 1-3 jobs/queue first, then Phase 1-2 foundation. */
 export async function applyDurableSotMigrationDown(
   pool: DurableSotPool,
   root?: string,
 ): Promise<void> {
-  const sql = loadDurableSotMigrationDownSql(root);
-  await pool.query(sql);
+  await pool.query(loadDurableSotJobsMigrationDownSql(root));
+  await pool.query(loadDurableSotMigrationDownSql(root));
 }
 
 export async function listDurableSotTables(

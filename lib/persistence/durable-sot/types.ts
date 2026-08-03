@@ -36,6 +36,16 @@ export type DurableRecoveryStatus =
   | "recovered"
   | "abandoned";
 
+export type DurableQueueStatus =
+  | "queued"
+  | "leased"
+  | "running"
+  | "retry"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "dead_letter";
+
 export type DurableRunRecord = {
   runId: string;
   ownerId: string;
@@ -48,10 +58,53 @@ export type DurableRunRecord = {
   resultSummary: string | null;
   errorCode: string | null;
   errorMessage: string | null;
+  idempotencyKey: string | null;
   createdAt: string;
   updatedAt: string;
   startedAt: string | null;
   completedAt: string | null;
+  expiresAt: string | null;
+};
+
+/** Persisted job/queue status — Phase 1-3 minimum + WorkQueueStore compatibility. */
+export type DurableJobPersistedStatus =
+  | DurableQueueStatus
+  | "retry_scheduled"
+  | "waiting_approval"
+  | "waiting_input"
+  | "partially_completed";
+
+export type DurableJobRecord = {
+  jobId: string;
+  runId: string;
+  ownerId: string;
+  automationId: string | null;
+  occurrenceId: string | null;
+  occurrenceKey: string;
+  scheduleId: string | null;
+  status: DurableJobPersistedStatus;
+  priority: number;
+  availableAt: string;
+  scheduledAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  leaseOwner: string | null;
+  leaseExpiresAt: string | null;
+  heartbeatAt: string | null;
+  attempt: number;
+  maxAttempts: number;
+  retryAt: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  diagnosticId: string | null;
+  failedStage: string | null;
+  firstError: string | null;
+  lastError: string | null;
+  idempotencyKey: string;
+  payload: Record<string, unknown>;
+  resultSummary: string | null;
+  createdAt: string;
+  updatedAt: string;
   expiresAt: string | null;
 };
 
@@ -159,6 +212,49 @@ export type CreateDurableRunInput = {
   status?: DurableRunStatus;
   triggerType?: string;
   payload?: Record<string, unknown>;
+  idempotencyKey?: string | null;
+  expiresAt?: string | null;
+};
+
+export type CreateDurableJobInput = {
+  jobId?: string;
+  runId: string;
+  ownerId: string;
+  automationId?: string | null;
+  occurrenceId?: string | null;
+  occurrenceKey: string;
+  scheduleId?: string | null;
+  status?: DurableJobPersistedStatus;
+  priority?: number;
+  availableAt?: string;
+  scheduledAt?: string | null;
+  maxAttempts?: number;
+  idempotencyKey: string;
+  payload?: Record<string, unknown>;
+  expiresAt?: string | null;
+};
+
+export type UpdateDurableJobInput = {
+  status?: DurableJobPersistedStatus;
+  priority?: number;
+  availableAt?: string;
+  scheduledAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  leaseOwner?: string | null;
+  leaseExpiresAt?: string | null;
+  heartbeatAt?: string | null;
+  attempt?: number;
+  maxAttempts?: number;
+  retryAt?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  diagnosticId?: string | null;
+  failedStage?: string | null;
+  firstError?: string | null;
+  lastError?: string | null;
+  payload?: Record<string, unknown>;
+  resultSummary?: string | null;
   expiresAt?: string | null;
 };
 

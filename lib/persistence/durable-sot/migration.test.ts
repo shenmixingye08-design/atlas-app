@@ -9,10 +9,13 @@ import {
   applyDurableSotMigrationDown,
   applyDurableSotMigrationUp,
   listDurableSotTables,
+  loadDurableSotJobsMigrationDownSql,
+  loadDurableSotJobsMigrationUpSql,
   loadDurableSotMigrationDownSql,
   loadDurableSotMigrationUpSql,
 } from "./migration";
 import {
+  DURABLE_QUEUE_STATUSES,
   DURABLE_SOT_REQUIRED_INDEX_FRAGMENTS,
   DURABLE_SOT_TABLES,
   DURABLE_SOT_UNIQUE_CONSTRAINTS,
@@ -24,16 +27,34 @@ const dbUrl =
   resolveDurableSotDatabaseUrl() ||
   "";
 
+const foundationTables = Object.values(DURABLE_SOT_TABLES).filter(
+  (t) => t !== DURABLE_SOT_TABLES.jobs,
+);
+
 describe("Durable SoT migration SQL (always)", () => {
-  it("up migration declares all entity tables", () => {
+  it("foundation up migration declares Phase 1-2 entity tables", () => {
     const sql = loadDurableSotMigrationUpSql();
-    for (const table of Object.values(DURABLE_SOT_TABLES)) {
+    for (const table of foundationTables) {
       expect(sql).toContain(`create table if not exists public.${table}`);
     }
   });
 
-  it("up migration declares required indexes", () => {
-    const sql = loadDurableSotMigrationUpSql();
+  it("jobs up migration declares Phase 1-3 jobs/queue table", () => {
+    const sql = loadDurableSotJobsMigrationUpSql();
+    expect(sql).toContain(
+      `create table if not exists public.${DURABLE_SOT_TABLES.jobs}`,
+    );
+    for (const status of DURABLE_QUEUE_STATUSES) {
+      expect(sql).toContain(`'${status}'`);
+    }
+    expect(sql).toContain("unique (idempotency_key)");
+    expect(sql).toContain("unique (run_id)");
+    expect(sql).toContain("unique (automation_id, occurrence_key)");
+  });
+
+  it("up migrations declare required indexes", () => {
+    const sql =
+      loadDurableSotMigrationUpSql() + loadDurableSotJobsMigrationUpSql();
     for (const idx of DURABLE_SOT_REQUIRED_INDEX_FRAGMENTS) {
       expect(sql, idx).toContain(idx);
     }
@@ -58,14 +79,19 @@ describe("Durable SoT migration SQL (always)", () => {
       true,
     );
     expect(sql).toContain("commit;");
+    const jobsSql = loadDurableSotJobsMigrationUpSql();
+    expect(jobsSql).toContain("begin;");
+    expect(jobsSql).toContain("commit;");
   });
 
-  it("down migration drops all durable tables", () => {
-    const sql = loadDurableSotMigrationDownSql();
-    expect(sql).toContain("begin;");
-    expect(sql).toContain("commit;");
-    for (const table of Object.values(DURABLE_SOT_TABLES)) {
-      expect(sql).toContain(`drop table if exists public.${table}`);
+  it("down migrations drop all durable tables", () => {
+    const foundationDown = loadDurableSotMigrationDownSql();
+    const jobsDown = loadDurableSotJobsMigrationDownSql();
+    expect(foundationDown).toContain("begin;");
+    expect(jobsDown).toContain("begin;");
+    expect(jobsDown).toContain(`drop table if exists public.${DURABLE_SOT_TABLES.jobs}`);
+    for (const table of foundationTables) {
+      expect(foundationDown).toContain(`drop table if exists public.${table}`);
     }
   });
 
@@ -87,7 +113,7 @@ describe.skipIf(!dbUrl)("Durable SoT migration apply/rollback (Postgres)", () =>
     await pool.end();
   });
 
-  it("applies up and creates all tables", async () => {
+  it("applies up and creates all tables including jobs", async () => {
     await applyDurableSotMigrationUp(pool);
     const tables = await listDurableSotTables(pool);
     expect(tables.sort()).toEqual(Object.values(DURABLE_SOT_TABLES).sort());

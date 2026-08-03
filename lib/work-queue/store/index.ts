@@ -1,4 +1,5 @@
 import { WORK_QUEUE_FORCE_FILE_ENV } from "../constants";
+import { tryCreateDurableSotWorkQueueStore } from "@/lib/persistence/durable-sot/adapters/work-queue-store";
 import { createFileWorkQueueStore } from "./file-store";
 import type { WorkQueueStore } from "./interface";
 import { tryCreatePostgresWorkQueueStore } from "./postgres-store";
@@ -12,6 +13,12 @@ export function getWorkQueueStore(): WorkQueueStore {
     process.env.NODE_ENV === "test" ||
     process.env.VITEST === "true";
   if (!forceFile) {
+    // Phase 1-3: prefer Durable SoT repositories (Run/Job/Queue) over legacy tables.
+    const durable = tryCreateDurableSotWorkQueueStore();
+    if (durable) {
+      singleton = durable;
+      return singleton;
+    }
     const pg = tryCreatePostgresWorkQueueStore();
     if (pg) {
       singleton = pg;

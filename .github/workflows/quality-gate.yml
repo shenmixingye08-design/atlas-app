@@ -58,6 +58,7 @@ jobs:
           sudo apt-get install -y -qq postgresql-client
           psql -h 127.0.0.1 -U atlas -d atlas -c "create database atlas_durable_sot_mig owner atlas;"
           psql -h 127.0.0.1 -U atlas -d atlas -c "create database atlas_durable_sot_crud owner atlas;"
+          psql -h 127.0.0.1 -U atlas -d atlas -c "create database atlas_durable_sot_queue owner atlas;"
 
       - name: Typecheck
         run: npm run typecheck
@@ -78,6 +79,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=8192
           DURABLE_SOT_MIGRATION_DATABASE_URL: postgresql://atlas:atlas@127.0.0.1:5432/atlas_durable_sot_mig
           DURABLE_SOT_CRUD_DATABASE_URL: postgresql://atlas:atlas@127.0.0.1:5432/atlas_durable_sot_crud
+          DURABLE_SOT_QUEUE_DATABASE_URL: postgresql://atlas:atlas@127.0.0.1:5432/atlas_durable_sot_queue
 
       - name: Durable SoT foundation (migration + repository)
         run: npm test -- --run lib/persistence/durable-sot
@@ -86,6 +88,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=8192
           DURABLE_SOT_MIGRATION_DATABASE_URL: postgresql://atlas:atlas@127.0.0.1:5432/atlas_durable_sot_mig
           DURABLE_SOT_CRUD_DATABASE_URL: postgresql://atlas:atlas@127.0.0.1:5432/atlas_durable_sot_crud
+          DURABLE_SOT_QUEUE_DATABASE_URL: postgresql://atlas:atlas@127.0.0.1:5432/atlas_durable_sot_queue
 
       - name: Work-queue critical path
         run: npm test -- --run lib/work-queue lib/automations/durable.test.ts

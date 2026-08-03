@@ -12,18 +12,30 @@ import type {
   UpdateDurableRunInput,
 } from "../types";
 import { DurableSotUniqueViolationError } from "../types";
+import { DurableRunsRepository } from "./runs-repository";
 
-const T = DURABLE_SOT_TABLES.runs;
+type Queryable = Pick<DurableSotPool, "query">;
 
-export class DurableRunsRepository {
-  constructor(private readonly pool: DurableSotPool) {}
+/**
+ * RunRepository — Phase 1-3 canonical Run SoT.
+ * process-memory is forbidden; all reads/writes go to Postgres.
+ */
+export class RunRepository {
+  private readonly inner: DurableRunsRepository;
 
-  async create(input: CreateDurableRunInput): Promise<DurableRunRecord> {
+  constructor(private readonly db: Queryable) {
+    this.inner = new DurableRunsRepository(db as DurableSotPool);
+  }
+
+  async createRun(
+    input: CreateDurableRunInput,
+    client: Queryable = this.db,
+  ): Promise<DurableRunRecord> {
     const runId = input.runId ?? randomUUID();
     const now = new Date().toISOString();
     try {
-      const res = await this.pool.query(
-        `insert into public.${T} (
+      const res = await client.query(
+        `insert into public.${DURABLE_SOT_TABLES.runs} (
           run_id, owner_id, automation_id, job_id, occurrence_id, status,
           trigger_type, payload, idempotency_key, created_at, updated_at, expires_at
         ) values (
@@ -55,12 +67,13 @@ export class DurableRunsRepository {
     }
   }
 
-  async update(
+  async updateRun(
     runId: string,
     patch: UpdateDurableRunInput,
+    client: Queryable = this.db,
   ): Promise<DurableRunRecord | null> {
-    const res = await this.pool.query(
-      `update public.${T} set
+    const res = await client.query(
+      `update public.${DURABLE_SOT_TABLES.runs} set
         status = coalesce($2, status),
         job_id = coalesce($3, job_id),
         occurrence_id = coalesce($4, occurrence_id),
@@ -93,43 +106,43 @@ export class DurableRunsRepository {
     return mapRun(res.rows[0] as Record<string, unknown>);
   }
 
-  async get(runId: string): Promise<DurableRunRecord | null> {
-    const res = await this.pool.query(
-      `select * from public.${T} where run_id = $1 limit 1`,
+  async getRun(
+    runId: string,
+    client: Queryable = this.db,
+  ): Promise<DurableRunRecord | null> {
+    const res = await client.query(
+      `select * from public.${DURABLE_SOT_TABLES.runs} where run_id = $1 limit 1`,
       [runId],
     );
     if (!res.rowCount) return null;
     return mapRun(res.rows[0] as Record<string, unknown>);
   }
 
-  async findPending(limit = 50): Promise<DurableRunRecord[]> {
-    const res = await this.pool.query(
-      `select * from public.${T}
-       where status in ('pending', 'queued', 'retry_scheduled')
-       order by created_at asc
-       limit $1`,
-      [limit],
+  async completeRun(
+    runId: string,
+    input: {
+      status?: "succeeded" | "failed" | "cancelled" | "dead_letter";
+      resultSummary?: string | null;
+      errorCode?: string | null;
+      errorMessage?: string | null;
+    } = {},
+    client: Queryable = this.db,
+  ): Promise<DurableRunRecord | null> {
+    return this.updateRun(
+      runId,
+      {
+        status: input.status ?? "succeeded",
+        resultSummary: input.resultSummary ?? null,
+        errorCode: input.errorCode ?? null,
+        errorMessage: input.errorMessage ?? null,
+        completedAt: new Date().toISOString(),
+      },
+      client,
     );
-    return res.rows.map((row) => mapRun(row as Record<string, unknown>));
   }
 
-  async findRecoverable(input: {
-    nowIso: string;
-    limit?: number;
-  }): Promise<DurableRunRecord[]> {
-    const res = await this.pool.query(
-      `select r.*
-       from public.${T} r
-       left join public.${DURABLE_SOT_TABLES.leases} l on l.run_id = r.run_id
-       where r.status in ('leased', 'running')
-         and (
-           l.run_id is null
-           or l.lease_expires_at < $1::timestamptz
-         )
-       order by r.updated_at asc
-       limit $2`,
-      [input.nowIso, input.limit ?? 50],
-    );
-    return res.rows.map((row) => mapRun(row as Record<string, unknown>));
+  /** Escape hatch to legacy helper used by DurableStore facade. */
+  get legacy(): DurableRunsRepository {
+    return this.inner;
   }
 }
