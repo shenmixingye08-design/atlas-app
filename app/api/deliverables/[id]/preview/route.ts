@@ -1,12 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 
-import { getWordCompanyBrand } from "@/lib/deliverables/company-brand";
-import { resolveDocumentModel } from "@/lib/deliverables/document-model";
 import { getStoredDeliverableForUser } from "@/lib/deliverables/store";
-import { buildWordPreviewModel } from "@/lib/deliverables/word-preview";
-import { trackWordEvent } from "@/lib/deliverables/word-analytics";
-import { findVersionGroupByDeliverableIdAsync } from "@/lib/deliverables/versioning";
-import { isWordTemplateId } from "@/lib/deliverables/word-templates";
+import { assertArtifactAccess } from "@/lib/storage/authz";
+import { buildArtifactPreview } from "@/lib/storage/preview";
+import { isSoftDeleted } from "@/lib/storage/cleanup";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +12,10 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
+/**
+ * Multi-format preview (Word / Excel / PDF / PowerPoint / CSV / image).
+ * Preview failure never blocks download — downloadAvailable is always true.
+ */
 export async function GET(
   _request: Request,
   context: RouteContext,
@@ -25,51 +26,44 @@ export async function GET(
   }
 
   const { id } = await context.params;
+  const access = await assertArtifactAccess({
+    artifactId: id,
+    requesterId: userId,
+    action: "preview",
+  });
+  if (!access.ok) {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+  if (isSoftDeleted(id)) {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+
   const stored = await getStoredDeliverableForUser(id, userId);
   if (!stored) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
-  if (stored.format !== "docx") {
+
+  const result = buildArtifactPreview(stored);
+  if (!result.ok) {
     return Response.json(
-      { error: "Preview is available for Word documents only" },
-      { status: 400 },
+      {
+        ok: false,
+        error: result.error,
+        errorCode: result.errorCode,
+        downloadAvailable: true,
+        retryable: result.retryable,
+        kind: result.kind,
+        downloadUrl: `/api/deliverables/${id}`,
+      },
+      { status: 422 },
     );
   }
 
-  const versionGroup = await findVersionGroupByDeliverableIdAsync(stored.id);
-  const brand = await getWordCompanyBrand(userId);
-  const templateId =
-    stored.metadata?.templateId && isWordTemplateId(stored.metadata.templateId)
-      ? stored.metadata.templateId
-      : null;
-  const resolved = resolveDocumentModel({
-    content: stored.sourceContent,
-    assignment: stored.baseFileName,
-    title: stored.baseFileName,
-    templateId,
-    author: brand?.contactName,
-    companyName: brand?.companyName,
-    footerNote: brand?.footerText,
+  return Response.json({
+    ok: true,
+    kind: result.kind,
+    preview: result.preview,
+    downloadAvailable: true,
+    downloadUrl: `/api/deliverables/${id}`,
   });
-  const preview = buildWordPreviewModel({
-    model: resolved.model,
-    sizeBytes: stored.buffer.byteLength,
-    version: versionGroup?.record.version ?? stored.metadata?.version ?? undefined,
-    isLatest: versionGroup?.record.isLatest ?? true,
-    status: "ready",
-  });
-
-  trackWordEvent({
-    name: "preview_view",
-    userId,
-    deliverableId: stored.id,
-    templateId: preview.templateId,
-    purpose: stored.metadata?.purpose ?? resolved.model.documentType ?? null,
-    format: "docx",
-    stage: "preview",
-    success: true,
-    sizeBytes: stored.buffer.byteLength,
-  });
-
-  return Response.json({ preview });
 }
