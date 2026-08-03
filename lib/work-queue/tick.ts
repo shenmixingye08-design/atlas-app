@@ -1,18 +1,9 @@
-import { ensureAutomationsHydrated } from "@/lib/automations/durable";
-import {
-  listAutomationOwnerUserIds,
-} from "@/lib/automations/global-durable";
-import { serverAutomationRepository } from "@/lib/automations/repositories/server-automation-repository";
-import { computeNextRunIso } from "@/lib/automations/schedule";
-import { isAutomationSuspendedForUser } from "@/lib/billing/subscriptions/lifecycle";
-
 import { evaluateWorkQueueAlerts } from "./alerts";
-import { enqueueDueAutomations } from "./scheduler";
-import { drainWorkQueue } from "./worker";
+import type { WorkerDrainResult } from "./worker";
 
 /**
- * Production tick: schedule enqueue (light) then worker drain (step-sized).
- * Replaces synchronous run-inside-cron for due automations.
+ * Production tick — Phase 2-2 delegates schedule enqueue to scheduler-core.
+ * Worker drain remains via scheduler-core (existing worker, not rewritten).
  */
 export async function processWorkQueueTick(options?: {
   requestOrigin?: string | null;
@@ -20,73 +11,80 @@ export async function processWorkQueueTick(options?: {
   workerLimit?: number;
   workerId?: string;
 }): Promise<{
-  schedule: Awaited<ReturnType<typeof enqueueDueAutomations>>;
-  worker: Awaited<ReturnType<typeof drainWorkQueue>>;
+  schedule: {
+    scanned: number;
+    due: number;
+    enqueued: number;
+    deduped: number;
+    advanced: number;
+    delaysMs: number[];
+  };
+  worker: WorkerDrainResult;
   alerts: Awaited<ReturnType<typeof evaluateWorkQueueAlerts>>;
 }> {
-  const ownerIds = await listAutomationOwnerUserIds();
-  const memoryOwners = new Set(ownerIds);
-  for (const row of await serverAutomationRepository.list()) {
-    if (row.userId) memoryOwners.add(row.userId);
-  }
+  void options?.requestOrigin;
+  void options?.workerId;
 
-  const candidates = [];
-  for (const userId of memoryOwners) {
-    await ensureAutomationsHydrated(userId);
-    if (isAutomationSuspendedForUser(userId)) continue;
-    const enabled = await serverAutomationRepository.list({
-      enabled: true,
-      userId,
-    });
-    for (const automation of enabled) {
-      if (automation.schedule.kind !== "schedule") continue;
-      candidates.push({
-        automationId: automation.id,
-        ownerId: userId,
-        name: automation.name,
-        nextRun: automation.nextRun,
-        timezone: automation.schedule.timezone,
-        enabled: automation.enabled,
-        paused: !automation.enabled,
-        assignment: automation.workflow?.assignment,
-        offlineArtifacts: false,
-      });
-    }
-  }
-
-  const schedule = await enqueueDueAutomations({
-    candidates,
-    limit: options?.scheduleLimit,
-    advanceNextRun: async (automationId, from) => {
-      const automation = await serverAutomationRepository.findById(automationId);
-      if (!automation || automation.schedule.kind !== "schedule") return null;
-      const next = computeNextRunIso(automation.schedule, from);
-      await serverAutomationRepository.update(automationId, {
-        nextRun: next,
-        status: automation.status === "running" ? "idle" : automation.status,
-        lastError: null,
-      });
-      return next;
-    },
+  const { runSchedulerCoreTick } = await import(
+    "@/lib/scheduler-core/due-tick"
+  );
+  // Core tick already drains the worker. Capture counts from result, then
+  // build a WorkerDrainResult-compatible shape for legacy callers.
+  const result = await runSchedulerCoreTick({
+    scheduleLimit: options?.scheduleLimit,
+    workerLimit: options?.workerLimit,
   });
-
-  const worker = await drainWorkQueue({
-    limit: options?.workerLimit,
-    workerId: options?.workerId,
-  });
-
-  // Keep legacy reliability processor for V1 job table during transition.
-  try {
-    const { processJobReliabilityTick } = await import(
-      "@/lib/jobs/tick-processor"
-    );
-    await processJobReliabilityTick({
-      requestOrigin: options?.requestOrigin ?? undefined,
-    });
-  } catch {
-    // optional
-  }
 
   const alerts = await evaluateWorkQueueAlerts();
-  return { schedule, worker, alerts };
+  const worker: WorkerDrainResult = {
+    workerId: "scheduler-core",
+    leased: result.worker?.leased ?? 0,
+    completed: result.worker?.completed ?? 0,
+    failed: result.worker?.failed ?? 0,
+    retried: 0,
+    recovered: 0,
+    completedJobs: [],
+    failedJobs: [],
+  };
+
+  // Re-query recent completed/failed from store for legacy AutomationRunResult mapping.
+  try {
+    const { getWorkQueueStore } = await import("./store");
+    const store = getWorkQueueStore();
+    const completed = await store.listByStatus("completed", 50);
+    const failed = await store.listByStatus("failed", 50);
+    const dead = await store.listByStatus("dead_letter", 50);
+    worker.completedJobs = completed.slice(0, worker.completed).map((job) => ({
+      jobId: job.jobId,
+      runId: job.runId,
+      automationId: job.automationId,
+      status: "completed" as const,
+    }));
+    worker.failedJobs = [...failed, ...dead]
+      .slice(0, Math.max(worker.failed, 1))
+      .map((job) => ({
+        jobId: job.jobId,
+        runId: job.runId,
+        automationId: job.automationId,
+        status: (job.status === "dead_letter" ? "dead_letter" : "failed") as
+          | "failed"
+          | "dead_letter",
+        errorCode: job.errorCode,
+      }));
+  } catch {
+    // optional legacy mapping
+  }
+
+  return {
+    schedule: {
+      scanned: result.dueCount,
+      due: result.dueCount,
+      enqueued: result.occurrenceCreatedCount,
+      deduped: result.duplicateSkippedCount,
+      advanced: result.nextRunUpdatedCount,
+      delaysMs: [],
+    },
+    worker,
+    alerts,
+  };
 }

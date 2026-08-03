@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/automations/tick",
+      "path": "/api/internal/scheduler/tick",
       "schedule": "0 0 * * *"
     }
   ]
