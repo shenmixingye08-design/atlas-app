@@ -803,20 +803,18 @@ describe("scheduler wall-clock proof (phase 2-4)", () => {
         !acceptance.jobDupZero ||
         !acceptance.silentMissZero ||
         !acceptance.pausedFalseFireZero ||
-        pauseFalseFire > 0;
+        pauseFalseFire > 0 ||
+        detectionRate < 0.99 ||
+        workerStartRate < 0.99;
 
-      let verdict: WallClockVerdict = "PASS";
-      if (hardFail || detectionRate < 0.99 || workerStartRate < 0.99) {
+      // Local formal-path wall-clock can be CONDITIONAL_FAIL at best (not Production).
+      // Production PASS requires live Production environment classification.
+      let verdict: WallClockVerdict = "CONDITIONAL_FAIL";
+      if (hardFail) {
         verdict = "FAIL";
+      } else if (environment.classification === "production") {
+        verdict = "PASS";
       }
-      // Cannot claim Production / Preview live — conditional even if local metrics pass
-      if (
-        verdict === "PASS" ||
-        environment.classification !== "production"
-      ) {
-        verdict = "CONDITIONAL_FAIL";
-      }
-      if (hardFail) verdict = "FAIL";
 
       const wallClockHundredProven =
         plans.length >= 100 &&
@@ -826,9 +824,7 @@ describe("scheduler wall-clock proof (phase 2-4)", () => {
           : "NO";
 
       const scheduleTrustworthy: "YES" | "NO" =
-        verdict === "PASS" && environment.classification === "production"
-          ? "YES"
-          : "NO";
+        verdict === "PASS" ? "YES" : "NO";
 
       const paths = persistWallClockEvidence({
         environment,
@@ -887,9 +883,8 @@ describe("scheduler wall-clock proof (phase 2-4)", () => {
       expect(jobDupCount).toBe(0);
       expect(dupOcc).toBe(0);
 
-      // eslint-disable-next-line no-console
-      console.log(
-        JSON.stringify(
+      process.stdout.write(
+        `${JSON.stringify(
           {
             verdict,
             wallClockHundredProven,
@@ -905,7 +900,7 @@ describe("scheduler wall-clock proof (phase 2-4)", () => {
           },
           null,
           2,
-        ),
+        )}\n`,
       );
     },
     15 * 60_000,

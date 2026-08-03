@@ -1,0 +1,210 @@
+{
+  "1_environment": "local_formal_path_wall_clock",
+  "2_branch": "cursor/scheduler-wall-clock-proof-2706",
+  "3_commit_sha_measured": "47f8794ba3d5c58212b3eedec3624d9d3acc37dd",
+  "3b_commit_sha_harness": "80d468b04394129f4242b4c526b6aaa2b10b5b04",
+  "4_scheduler_endpoint": "http://127.0.0.1:41879/api/internal/scheduler/tick",
+  "5_cron": "vercel.json daily 0 0 * * *; GH Actions * * * * * (secrets UNCONFIRMED in this VM)",
+  "6_db": "file-durable (.data / artifacts JSON) \u2014 NOT Production Supabase",
+  "7_worker": "in-process drainWorkQueue via formal tick",
+  "8_breakdown": {
+    "normal_time": {
+      "total": 40,
+      "success": 40,
+      "failed": 0
+    },
+    "same_minute": {
+      "total": 20,
+      "success": 20,
+      "failed": 0
+    },
+    "timezone": {
+      "total": 10,
+      "success": 10,
+      "failed": 0
+    },
+    "pause_before": {
+      "total": 5,
+      "success": 5,
+      "failed": 0
+    },
+    "resume_after": {
+      "total": 5,
+      "success": 5,
+      "failed": 0
+    },
+    "duplicate_tick": {
+      "total": 5,
+      "success": 5,
+      "failed": 0
+    },
+    "endpoint_resend": {
+      "total": 5,
+      "success": 5,
+      "failed": 0
+    },
+    "worker_delay": {
+      "total": 5,
+      "success": 5,
+      "failed": 0
+    },
+    "queue_delay": {
+      "total": 5,
+      "success": 5,
+      "failed": 0
+    }
+  },
+  "9_success_count": 100,
+  "10_failure_count": 0,
+  "11_missed": 0,
+  "12_dup_occurrence": 0,
+  "13_dup_run": 0,
+  "14_dup_job": 0,
+  "15_dup_queue": 0,
+  "16_mean_schedule_delay": 324.4842105263158,
+  "17_median": 311,
+  "18_p90": 430,
+  "19_p95": 451,
+  "20_p99": 469,
+  "21_max": 469,
+  "22_mean_queue_wait": 524.3578947368421,
+  "23_p95_queue_wait": 2147,
+  "24_worker_start_rate": 1,
+  "25_completion_rate": 1,
+  "26_retry_rate": 0,
+  "27_recovery_rate": 1,
+  "28_pause": {
+    "total": 5,
+    "success": 5,
+    "failed": 0
+  },
+  "29_resume": {
+    "total": 5,
+    "success": 5,
+    "failed": 0
+  },
+  "30_duplicate_tick": {
+    "total": 5,
+    "success": 5,
+    "failed": 0
+  },
+  "31_endpoint_resend": {
+    "total": 5,
+    "success": 5,
+    "failed": 0
+  },
+  "32_worker_delay": {
+    "total": 5,
+    "success": 5,
+    "failed": 0
+  },
+  "33_queue_delay": {
+    "total": 5,
+    "success": 5,
+    "failed": 0
+  },
+  "34_deploy_interrupt": "UNVERIFIED (not injected in this run)",
+  "35_timezone": {
+    "total": 10,
+    "success": 10,
+    "failed": 0
+  },
+  "36_alerts": {
+    "in_process_scheduler_stopped": true,
+    "delivery_channels": false,
+    "detail": {
+      "connected": false,
+      "note": "No Slack/email/webhook destination configured in this agent \u2014 alerts evaluated in-process only; NOT counted as delivery success"
+    }
+  },
+  "37_dashboard": {
+    "lastTick": "2026-08-03T19:26:00.416Z",
+    "lastSuccess": "2026-08-03T19:26:00.438Z",
+    "lastFailure": null,
+    "dueCount": 0,
+    "outboxPending": 0,
+    "oldestDueAgeMs": null,
+    "queued": 0,
+    "leased": 0,
+    "running": 0,
+    "missed": 0,
+    "duplicate": 0,
+    "p95Delay": 451,
+    "recoveryCount": 1,
+    "bridge": {
+      "enqueueCount": 100,
+      "duplicateEnqueueCount": 0,
+      "failedEnqueueCount": 5,
+      "retryEnqueueCount": 5,
+      "dispatchedCount": 95,
+      "leaseStartedCount": 5,
+      "averageEnqueueLatencyMs": 0.77,
+      "averageDispatchLatencyMs": 98.6,
+      "averageQueueWaitMs": 325.2736842105263,
+      "averageLeaseWaitMs": 303.8,
+      "p95EnqueueLatencyMs": 2,
+      "outboxPendingCount": 0,
+      "queueLength": 0,
+      "oldestJobAgeMs": null,
+      "retryQueueLength": 0,
+      "deadLetterLength": 0,
+      "runningCount": 0,
+      "waitingCount": 0,
+      "leasedCount": 0,
+      "status": "ok",
+      "dispatcherDisabled": false,
+      "queueDisabled": false,
+      "generatedAt": "2026-08-03T19:26:00.469Z"
+    },
+    "source": "live_metrics_not_hardcoded"
+  },
+  "38_evidence_files": [
+    "run.log",
+    "scheduler-100-occurrences.csv",
+    "scheduler-acceptance.json",
+    "scheduler-alert-report.json",
+    "scheduler-cohort-breakdown.json",
+    "scheduler-core.json",
+    "scheduler-dashboard-snapshot.json",
+    "scheduler-delay-summary.json",
+    "scheduler-duplicate-report.json",
+    "scheduler-missed-report.json",
+    "scheduler-preview-probe.json",
+    "scheduler-recovery-report.json",
+    "scheduler-wall-clock-proof.json",
+    "work-queue.json"
+  ],
+  "39_vercel_logs": "UNAVAILABLE (Preview Deployment Protection; no Production log pull)",
+  "40_db_history": "file durable scheduler-core.json in artifacts (not Production Supabase)",
+  "41_typescript": "PASS",
+  "42_lint": "PASS",
+  "43_vitest": "PASS (1133)",
+  "44_build": "PASS",
+  "45_ci": "pending_on_pr",
+  "46_vercel_preview": "Deploy PASS on 2-3 branch; live tick BLOCKED; this PR will get new Preview",
+  "47_unproven": [
+    "Production live cron",
+    "Production Supabase History",
+    "Preview authenticated live tick",
+    "Alert notification delivery",
+    "Deploy interrupt mid-tick",
+    "Cold start under Vercel",
+    "DST wall-clock boundary (deterministic tests only)",
+    "GH Actions minute secrets confirmation"
+  ],
+  "48_critical_remaining": [
+    "No Production wall-clock proof",
+    "Preview Deployment Protection blocks external tick",
+    "Minute cron secrets UNCONFIRMED"
+  ],
+  "49_phase_verdict": "CONDITIONAL_FAIL",
+  "50_wall_clock_100": "YES",
+  "51_schedule_trustworthy": "NO",
+  "52_rationale": [
+    "Local formal-path wall-clock: 95/95 expectFire success",
+    "detectionRate=1 workerStartRate=1",
+    "p95 startDelayMs=2412",
+    "Preview live tick blocked; Production secrets/DB unavailable in agent VM",
+    "Therefore Production schedule trust = NO; Phase = CONDITIONAL_FAIL unless hardFail"
+  ]
+}
