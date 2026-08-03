@@ -139,6 +139,98 @@ export function createControlledInvoker(options?: {
       }
       if (behavior === "controlled_success") {
         const externalId = `ctrl:${step.id}:${input.runId}`;
+        const completedAt = new Date().toISOString();
+        const url = `controlled://external/${encodeURIComponent(externalId)}`;
+        // Provider-shaped evidence fragments satisfy External Completion Gate
+        // for mechanics tests (not Live API success).
+        const providerEvidence =
+          step.type === "gmail"
+            ? {
+                gmail: {
+                  service: "gmail" as const,
+                  action: "send",
+                  draftId: null,
+                  messageId: externalId,
+                  threadId: null,
+                  recipientHash: "controlled",
+                  subjectHash: "controlled",
+                  attachmentArtifactIds: [] as string[],
+                  completedAt,
+                  resultHash: externalId,
+                  retryCount: 0,
+                  duplicatePrevented: false,
+                  adapterMode: "production",
+                  environment: "test",
+                  approvalId: null,
+                  providerRequestId: null,
+                  deliveryGuarantee: "provider_accepted" as const,
+                },
+              }
+            : step.type === "dropbox"
+              ? {
+                  dropbox: {
+                    service: "dropbox" as const,
+                    fileId: externalId,
+                    pathDisplay: "/controlled/file.bin",
+                    rev: "rev_controlled",
+                    size: 1,
+                    contentHash: "controlled",
+                    targetPath: "/controlled",
+                    fileName: "file.bin",
+                    sharedLinkUrl: url,
+                    completedAt,
+                    resultHash: externalId,
+                    retryCount: 0,
+                    duplicatePrevented: false,
+                  },
+                }
+              : step.type === "wordpress"
+                ? {
+                    wordpress: {
+                      service: "wordpress" as const,
+                      action: "draft",
+                      postId: 1,
+                      postStatus: "draft",
+                      link: url,
+                      editLink: url,
+                      titleHash: "controlled",
+                      contentHash: "controlled",
+                      mediaArtifactIds: [] as string[],
+                      mediaIds: [] as number[],
+                      completedAt,
+                      resultHash: externalId,
+                      retryCount: 0,
+                      duplicatePrevented: false,
+                      adapterMode: "production",
+                      environment: "test",
+                      approvalId: null,
+                      providerRequestId: null,
+                    },
+                  }
+                : step.type === "google_calendar"
+                  ? {
+                      calendar: {
+                        service: "google_calendar" as const,
+                        action: "create",
+                        calendarId: "primary",
+                        eventId: externalId,
+                        htmlLink: url,
+                        hangoutLink: null,
+                        startDateTime: completedAt,
+                        endDateTime: completedAt,
+                        timezone: "UTC",
+                        attendeeHash: "controlled",
+                        completedAt,
+                        resultHash: externalId,
+                        retryCount: 0,
+                        duplicatePrevented: false,
+                        adapterMode: "production",
+                        environment: "test",
+                        approvalId: null,
+                        providerRequestId: null,
+                      },
+                    }
+                  : {};
         return {
           ok: true,
           summary: `controlled_external:${step.type}`,
@@ -147,17 +239,18 @@ export function createControlledInvoker(options?: {
               `controlled:${step.type}`,
               "external",
               externalId,
-              `controlled://external/${encodeURIComponent(externalId)}`,
+              url,
             ),
           ],
           evidence: {
             externalActionIds: [externalId],
-            externalUrls: [
-              `controlled://external/${encodeURIComponent(externalId)}`,
-            ],
+            externalUrls: [url],
             artifactIds: [],
             storageObjectIds: [],
             notificationIds: [],
+            adapterMode: "production",
+            environment: "test",
+            ...providerEvidence,
           },
         };
       }

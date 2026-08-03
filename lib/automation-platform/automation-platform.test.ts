@@ -697,7 +697,7 @@ describe("Automation Platform Phase 1", () => {
             name: "WP",
             order: 1,
             inputBindings: {},
-            configuration: {},
+            configuration: { publishMode: "publish" },
             requiresApproval: false,
             retryPolicy: { maxAttempts: 1, backoffMs: [] },
             timeoutMs: 1,
