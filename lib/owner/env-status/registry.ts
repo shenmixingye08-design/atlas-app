@@ -90,10 +90,18 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     purpose: "特商法・公開問い合わせメール",
   },
   {
-    key: "CRON_SECRET",
+    key: "SCHEDULER_CRON_SECRET",
     service: "vercel_cron",
     requirement: "required",
-    purpose: "自動化 tick（/api/automations/tick）の Cron 認証",
+    purpose:
+      "正式 Scheduler（/api/internal/scheduler/tick）認証。configured/missing のみ表示",
+  },
+  {
+    key: "CRON_SECRET",
+    service: "vercel_cron",
+    requirement: "optional",
+    purpose:
+      "SCHEDULER_CRON_SECRET 互換（〜2026-10-01）。正式 Secret へ移行後に削除",
   },
   {
     key: "ENABLE_SCHEDULED_CRON",
@@ -101,6 +109,13 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     requirement: "optional",
     purpose:
       "false で due 自動処理をスキップ（Hobby/Preview の誤実行抑制。既定は有効）",
+  },
+  {
+    key: "SCHEDULER_ALLOW_PREVIEW_TICK",
+    service: "vercel_cron",
+    requirement: "optional",
+    purpose:
+      "true のときだけ Preview で Scheduler tick を許可（Preview専用データ時のみ）",
   },
   {
     key: "OAUTH_STATE_SECRET",

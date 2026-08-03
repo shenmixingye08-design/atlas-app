@@ -30,8 +30,30 @@ type MetricsResponse = {
   workerBusyPercent: number | null;
 };
 
+type BridgeHealth = {
+  status: "ok" | "warn" | "down";
+  queueLength: number;
+  oldestJobAgeMs: number | null;
+  retryQueueLength: number;
+  deadLetterLength: number;
+  runningCount: number;
+  waitingCount: number;
+  leasedCount: number;
+  outboxPendingCount: number;
+  averageEnqueueLatencyMs: number | null;
+  averageDispatchLatencyMs: number | null;
+  averageQueueWaitMs: number | null;
+  averageLeaseWaitMs: number | null;
+  duplicateEnqueueCount: number;
+  failedEnqueueCount: number;
+  retryEnqueueCount: number;
+  dispatcherDisabled: boolean;
+  queueDisabled: boolean;
+};
+
 type Snapshot = {
   metrics: MetricsResponse;
+  bridge?: BridgeHealth | null;
   alerts: Array<{ code: string; severity: string; message: string }>;
   capabilities: Array<{
     capability: string;
@@ -106,10 +128,15 @@ export function WorkQueuePanel() {
   }
 
   const metrics = data.metrics;
+  const bridge = data.bridge;
   const ageSec =
     metrics.oldestQueuedAgeMs == null
       ? "—"
       : `${Math.round(metrics.oldestQueuedAgeMs / 1000)}s`;
+  const oldestJobSec =
+    bridge?.oldestJobAgeMs == null
+      ? ageSec
+      : `${Math.round(bridge.oldestJobAgeMs / 1000)}s`;
 
   return (
     <div className="space-y-4">
@@ -118,7 +145,7 @@ export function WorkQueuePanel() {
           Scheduler · Queue · Worker
         </h2>
         <p className="text-sm text-[var(--text-secondary)]">
-          Alive / Queue / Lease / Retry / Metrics / Alerts（一般ユーザー非表示）
+          Alive / Queue Health / Lease / Retry / Bridge Metrics / Alerts（一般ユーザー非表示）
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -127,7 +154,36 @@ export function WorkQueuePanel() {
           value={metrics.alive ? "YES" : "NO"}
           tone={metrics.alive ? "ok" : "bad"}
         />
-        <Metric label="Queue Size" value={metrics.waiting ?? metrics.queued} />
+        <Metric
+          label="Bridge Status"
+          value={bridge?.status?.toUpperCase() ?? "—"}
+          tone={
+            bridge?.status === "ok"
+              ? "ok"
+              : bridge?.status
+                ? "bad"
+                : undefined
+          }
+        />
+        <Metric
+          label="Queue Length"
+          value={bridge?.queueLength ?? metrics.waiting ?? metrics.queued}
+        />
+        <Metric label="Oldest Job" value={oldestJobSec} />
+        <Metric
+          label="Retry Queue"
+          value={bridge?.retryQueueLength ?? metrics.retryScheduled}
+        />
+        <Metric
+          label="Dead Letter"
+          value={bridge?.deadLetterLength ?? metrics.deadLetter}
+        />
+        <Metric label="Running" value={bridge?.runningCount ?? metrics.running} />
+        <Metric
+          label="Waiting"
+          value={bridge?.waitingCount ?? metrics.waiting ?? metrics.queued}
+        />
+        <Metric label="Outbox Pending" value={bridge?.outboxPendingCount ?? "—"} />
         <Metric label="Worker Count" value={metrics.workerCount} />
         <Metric
           label="Success Rate"
@@ -140,18 +196,26 @@ export function WorkQueuePanel() {
                 : "bad"
           }
         />
-        <Metric label="Running" value={metrics.running} />
-        <Metric label="Waiting" value={metrics.waiting ?? metrics.queued} />
-        <Metric label="Retry" value={metrics.retryScheduled} />
         <Metric label="Failed" value={metrics.failed} />
-        <Metric label="leased" value={metrics.leased} />
+        <Metric label="leased" value={bridge?.leasedCount ?? metrics.leased} />
         <Metric label="stuck" value={metrics.stuck} />
-        <Metric label="dead-letter" value={metrics.deadLetter} />
         <Metric label="completed" value={metrics.completed} />
+        <Metric label="Enqueue Latency" value={ms(bridge?.averageEnqueueLatencyMs ?? null)} />
+        <Metric label="Dispatch Latency" value={ms(bridge?.averageDispatchLatencyMs ?? null)} />
+        <Metric
+          label="Queue Wait"
+          value={ms(bridge?.averageQueueWaitMs ?? metrics.averageQueueWaitMs)}
+        />
+        <Metric label="Lease Wait" value={ms(bridge?.averageLeaseWaitMs ?? null)} />
+        <Metric
+          label="Duplicate Enqueue"
+          value={bridge?.duplicateEnqueueCount ?? metrics.duplicateCount}
+        />
+        <Metric label="Failed Enqueue" value={bridge?.failedEnqueueCount ?? "—"} />
+        <Metric label="Retry Enqueue" value={bridge?.retryEnqueueCount ?? "—"} />
         <Metric label="Avg Delay" value={ms(metrics.averageDelayMs)} />
         <Metric label="P95 Delay" value={ms(metrics.p95ScheduleDelayMs)} />
         <Metric label="P99 Delay" value={ms(metrics.p99ScheduleDelayMs)} />
-        <Metric label="Queue Wait" value={ms(metrics.averageQueueWaitMs)} />
         <Metric
           label="Worker Busy"
           value={
@@ -160,8 +224,6 @@ export function WorkQueuePanel() {
               : `${metrics.workerBusyPercent}%`
           }
         />
-        <Metric label="oldest queued age" value={ageSec} />
-        <Metric label="duplicate count" value={metrics.duplicateCount} />
         <Metric
           label="recovery success rate"
           value={

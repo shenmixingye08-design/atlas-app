@@ -4,15 +4,15 @@ import type {
   ScheduleFrequency,
 } from "@/lib/automation-platform/types";
 import { AutomationPlatformError } from "@/lib/automation-platform/errors/messages";
+import {
+  calculateNextRunAtFromV2Schedule,
+  SchedulerNextRunError,
+} from "@/lib/scheduler-core/calculate-next-run-at";
 
 import {
-  addCalendarDays,
-  clampDayOfMonth,
   DEFAULT_AUTOMATION_PLATFORM_TIMEZONE,
-  getZonedParts,
   isValidTimeZone,
   resolveTimeZone,
-  zonedTimeToUtc,
 } from "./timezone";
 
 function assertHourMinute(hour: number, minute: number): void {
@@ -103,57 +103,9 @@ export function validateScheduleSpec(
   }
 }
 
-function candidateAt(
-  year: number,
-  month: number,
-  day: number,
-  hour: number,
-  minute: number,
-  timeZone: string,
-): Date {
-  return zonedTimeToUtc(year, month, day, hour, minute, timeZone);
-}
-
-function nextWeekdayMatch(
-  fromParts: ReturnType<typeof getZonedParts>,
-  allowedDays: number[],
-  hour: number,
-  minute: number,
-  timeZone: string,
-  from: Date,
-): Date {
-  const unique = [...new Set(allowedDays)].sort((a, b) => a - b);
-  for (let offset = 0; offset <= 14; offset += 1) {
-    const target = addCalendarDays(
-      fromParts.year,
-      fromParts.month,
-      fromParts.day,
-      offset,
-    );
-    const probe = candidateAt(
-      target.year,
-      target.month,
-      target.day,
-      hour,
-      minute,
-      timeZone,
-    );
-    const probeParts = getZonedParts(probe, timeZone);
-    if (
-      unique.includes(probeParts.dayOfWeek) &&
-      probe.getTime() > from.getTime()
-    ) {
-      return probe;
-    }
-  }
-  throw new AutomationPlatformError("automation_invalid_schedule", {
-    reason: "unable_to_compute_weekday",
-  });
-}
-
 /**
  * Compute the next run strictly in the future relative to `from`.
- * Does not catch up on missed past occurrences (no infinite backlog).
+ * Phase 2-2: delegates to scheduler-core calculateNextRunAt (server-side SoT).
  */
 export function computeNextRunFromSchedule(
   schedule: AutomationScheduleSpec,
@@ -165,152 +117,16 @@ export function computeNextRunFromSchedule(
     DEFAULT_AUTOMATION_PLATFORM_TIMEZONE,
   );
   validateScheduleSpec(schedule, timeZone);
-
-  if (schedule.startAt && Date.parse(schedule.startAt) > from.getTime()) {
-    // Jump computation base to startAt when start is in the future
-    return computeNextRunFromSchedule(
-      { ...schedule, startAt: null },
-      timeZone,
-      new Date(schedule.startAt),
-    );
-  }
-
-  if (schedule.endAt && Date.parse(schedule.endAt) <= from.getTime()) {
-    return null;
-  }
-
-  if (schedule.frequency === "once") {
-    const runAt = new Date(schedule.runAt!);
-    if (runAt.getTime() <= from.getTime()) return null;
-    if (schedule.endAt && runAt.getTime() >= Date.parse(schedule.endAt)) {
-      return null;
-    }
-    return runAt;
-  }
-
-  const parts = getZonedParts(from, timeZone);
-  let next: Date;
-
-  switch (schedule.frequency) {
-    case "daily": {
-      next = candidateAt(
-        parts.year,
-        parts.month,
-        parts.day,
-        schedule.hour,
-        schedule.minute,
-        timeZone,
-      );
-      if (next.getTime() <= from.getTime()) {
-        const d = addCalendarDays(parts.year, parts.month, parts.day, 1);
-        next = candidateAt(
-          d.year,
-          d.month,
-          d.day,
-          schedule.hour,
-          schedule.minute,
-          timeZone,
-        );
-      }
-      break;
-    }
-    case "weekdays": {
-      next = nextWeekdayMatch(
-        parts,
-        [1, 2, 3, 4, 5],
-        schedule.hour,
-        schedule.minute,
-        timeZone,
-        from,
-      );
-      break;
-    }
-    case "weekly":
-    case "custom_days": {
-      next = nextWeekdayMatch(
-        parts,
-        schedule.daysOfWeek ?? [],
-        schedule.hour,
-        schedule.minute,
-        timeZone,
-        from,
-      );
-      break;
-    }
-    case "monthly": {
-      const day = clampDayOfMonth(
-        parts.year,
-        parts.month,
-        schedule.dayOfMonth ?? 1,
-      );
-      next = candidateAt(
-        parts.year,
-        parts.month,
-        day,
-        schedule.hour,
-        schedule.minute,
-        timeZone,
-      );
-      if (next.getTime() <= from.getTime()) {
-        let month = parts.month + 1;
-        let year = parts.year;
-        if (month > 12) {
-          month = 1;
-          year += 1;
-        }
-        const nextDay = clampDayOfMonth(year, month, schedule.dayOfMonth ?? 1);
-        next = candidateAt(
-          year,
-          month,
-          nextDay,
-          schedule.hour,
-          schedule.minute,
-          timeZone,
-        );
-      }
-      break;
-    }
-    case "month_end": {
-      const last = clampDayOfMonth(parts.year, parts.month, 31);
-      next = candidateAt(
-        parts.year,
-        parts.month,
-        last,
-        schedule.hour,
-        schedule.minute,
-        timeZone,
-      );
-      if (next.getTime() <= from.getTime()) {
-        let month = parts.month + 1;
-        let year = parts.year;
-        if (month > 12) {
-          month = 1;
-          year += 1;
-        }
-        const nextLast = clampDayOfMonth(year, month, 31);
-        next = candidateAt(
-          year,
-          month,
-          nextLast,
-          schedule.hour,
-          schedule.minute,
-          timeZone,
-        );
-      }
-      break;
-    }
-    default:
+  try {
+    return calculateNextRunAtFromV2Schedule(schedule, timeZone, from);
+  } catch (error) {
+    if (error instanceof SchedulerNextRunError) {
       throw new AutomationPlatformError("automation_invalid_schedule", {
-        field: "frequency",
-        value: schedule.frequency,
+        reason: error.message,
       });
+    }
+    throw error;
   }
-
-  if (schedule.endAt && next.getTime() >= Date.parse(schedule.endAt)) {
-    return null;
-  }
-
-  return next;
 }
 
 export function computeNextRunIsoFromTrigger(
@@ -327,9 +143,7 @@ export function computeNextRunIsoFromTrigger(
   return next ? next.toISOString() : null;
 }
 
-/**
- * Reject creating a one-shot schedule already in the past.
- */
+/** Guard: one-shot in the past is invalid at create time. */
 export function assertNotPastOneShot(
   schedule: AutomationScheduleSpec,
   now: Date = new Date(),
@@ -337,8 +151,8 @@ export function assertNotPastOneShot(
   if (schedule.frequency !== "once" || !schedule.runAt) return;
   if (Date.parse(schedule.runAt) <= now.getTime()) {
     throw new AutomationPlatformError("automation_invalid_schedule", {
-      reason: "past_run_at",
-      runAt: schedule.runAt,
+      field: "runAt",
+      reason: "past_one_shot",
     });
   }
 }

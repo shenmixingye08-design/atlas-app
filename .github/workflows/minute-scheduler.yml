@@ -1,7 +1,7 @@
 name: Minute Scheduler
 
 # Production minute due-tick without Vercel Pro cron.
-# Calls /api/automations/tick with CRON_SECRET every minute.
+# Calls formal /api/internal/scheduler/tick with SCHEDULER_CRON_SECRET (or CRON_SECRET compat).
 
 on:
   schedule:
@@ -23,12 +23,17 @@ jobs:
     steps:
       - name: Due tick
         env:
+          SCHEDULER_CRON_SECRET: ${{ secrets.SCHEDULER_CRON_SECRET }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
         run: |
           set -euo pipefail
-          if [ -z "${CRON_SECRET:-}" ]; then
-            echo "::error::CRON_SECRET secret is required"
+          SECRET="${SCHEDULER_CRON_SECRET:-}"
+          if [ -z "$SECRET" ]; then
+            SECRET="${CRON_SECRET:-}"
+          fi
+          if [ -z "$SECRET" ]; then
+            echo "::error::SCHEDULER_CRON_SECRET (or CRON_SECRET compat) is required"
             exit 1
           fi
           BASE_URL="${ATLAS_APP_URL:-}"
@@ -38,10 +43,11 @@ jobs:
           fi
           BASE_URL="${BASE_URL%/}"
           curl -fsS -X POST \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Authorization: Bearer ${SECRET}" \
             -H "Content-Type: application/json" \
-            "${BASE_URL}/api/automations/tick" \
+            -H "x-request-id: gha-$(date -u +%Y%m%d%H%M%S)" \
+            "${BASE_URL}/api/internal/scheduler/tick" \
             -o /tmp/tick.json
-          echo "Tick response:" 
+          echo "Tick response:"
           head -c 2000 /tmp/tick.json || true
           echo

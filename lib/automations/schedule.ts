@@ -1,3 +1,5 @@
+import { calculateNextRunAtFromV1Schedule } from "@/lib/scheduler-core/calculate-next-run-at";
+
 import type { AutomationSchedule, SchedulePreset, Timestamp } from "./types";
 
 export const DEFAULT_AUTOMATION_TIMEZONE = "Asia/Tokyo";
@@ -52,142 +54,6 @@ export function getZonedParts(date: Date, timeZone: string) {
   };
 }
 
-/** Offset in ms between UTC and the given timezone at `date`. */
-function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
-  const parts = getZonedParts(date, timeZone);
-  const asUtc = Date.UTC(
-    parts.year,
-    parts.month - 1,
-    parts.day,
-    parts.hour,
-    parts.minute,
-    0,
-    0,
-  );
-  return asUtc - date.getTime();
-}
-
-function zonedTimeToUtc(
-  year: number,
-  month: number,
-  day: number,
-  hour: number,
-  minute: number,
-  timeZone: string,
-): Date {
-  const guess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0));
-  const offset = getTimeZoneOffsetMs(guess, timeZone);
-  return new Date(guess.getTime() - offset);
-}
-
-function addDays(year: number, month: number, day: number, amount: number) {
-  const date = new Date(Date.UTC(year, month - 1, day + amount));
-  return {
-    year: date.getUTCFullYear(),
-    month: date.getUTCMonth() + 1,
-    day: date.getUTCDate(),
-  };
-}
-
-function computeNextFromPreset(
-  preset: SchedulePreset,
-  timeZone: string,
-  from: Date,
-): Date {
-  const now = getZonedParts(from, timeZone);
-
-  switch (preset.type) {
-    case "daily": {
-      let candidate = zonedTimeToUtc(
-        now.year,
-        now.month,
-        now.day,
-        preset.hour,
-        preset.minute,
-        timeZone,
-      );
-
-      if (candidate.getTime() <= from.getTime()) {
-        const nextDay = addDays(now.year, now.month, now.day, 1);
-        candidate = zonedTimeToUtc(
-          nextDay.year,
-          nextDay.month,
-          nextDay.day,
-          preset.hour,
-          preset.minute,
-          timeZone,
-        );
-      }
-
-      return candidate;
-    }
-
-    case "weekly": {
-      const daysUntil = (preset.dayOfWeek - now.dayOfWeek + 7) % 7;
-      let target = addDays(now.year, now.month, now.day, daysUntil);
-      let candidate = zonedTimeToUtc(
-        target.year,
-        target.month,
-        target.day,
-        preset.hour,
-        preset.minute,
-        timeZone,
-      );
-
-      if (candidate.getTime() <= from.getTime()) {
-        target = addDays(target.year, target.month, target.day, 7);
-        candidate = zonedTimeToUtc(
-          target.year,
-          target.month,
-          target.day,
-          preset.hour,
-          preset.minute,
-          timeZone,
-        );
-      }
-
-      return candidate;
-    }
-
-    case "monthly": {
-      const clampDay = (year: number, month: number) => {
-        const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-        return Math.min(preset.dayOfMonth, lastDay);
-      };
-
-      let day = clampDay(now.year, now.month);
-      let candidate = zonedTimeToUtc(
-        now.year,
-        now.month,
-        day,
-        preset.hour,
-        preset.minute,
-        timeZone,
-      );
-
-      if (candidate.getTime() <= from.getTime()) {
-        let month = now.month + 1;
-        let year = now.year;
-        if (month > 12) {
-          month = 1;
-          year += 1;
-        }
-        day = clampDay(year, month);
-        candidate = zonedTimeToUtc(
-          year,
-          month,
-          day,
-          preset.hour,
-          preset.minute,
-          timeZone,
-        );
-      }
-
-      return candidate;
-    }
-  }
-}
-
 export function isSameCalendarDayInZone(
   left: Date,
   right: Date,
@@ -198,18 +64,16 @@ export function isSameCalendarDayInZone(
   return a.year === b.year && a.month === b.month && a.day === b.day;
 }
 
-/** Compute the next scheduled run time. Returns null for non-schedule triggers. */
+/**
+ * Compute the next scheduled run time. Returns null for non-schedule triggers.
+ * Phase 2-2: delegates to scheduler-core calculateNextRunAt (server-side SoT).
+ */
 export function computeNextRun(
   schedule: AutomationSchedule,
   from: Date = new Date(),
 ): Date | null {
   if (schedule.kind !== "schedule") return null;
-
-  return computeNextFromPreset(
-    schedule.preset,
-    schedule.timezone || DEFAULT_AUTOMATION_TIMEZONE,
-    from,
-  );
+  return calculateNextRunAtFromV1Schedule(schedule, from);
 }
 
 export function computeNextRunIso(
