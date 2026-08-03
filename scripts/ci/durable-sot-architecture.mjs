@@ -111,16 +111,29 @@ if (
   violations.push(`${FACTORY}: file store must be gated by legacyStoreWriteEnabled`);
 }
 
-// Dual-write / mixed SoT: factory must not select file after durable success path in production
-if (
-  factorySrc.includes("productionRuntime") &&
-  /if\s*\(\s*flags\.productionRuntime[\s\S]*createFileWorkQueueStore/.test(
-    factorySrc,
-  )
-) {
-  violations.push(
-    `${FACTORY}: production path must not reach createFileWorkQueueStore (dual/mixed SoT)`,
-  );
+// Dual-write / mixed SoT: productionRuntime block must throw fail-closed before any file path.
+{
+  const prodIdx = factorySrc.indexOf("if (flags.productionRuntime)");
+  const nonProdFileIdx = factorySrc.indexOf("if (wantsExplicitTestFileStore())");
+  if (prodIdx < 0) {
+    violations.push(`${FACTORY}: missing productionRuntime branch`);
+  } else if (nonProdFileIdx < 0 || nonProdFileIdx < prodIdx) {
+    violations.push(
+      `${FACTORY}: expected non-prod file SoT branch after productionRuntime`,
+    );
+  } else {
+    const prodBlock = factorySrc.slice(prodIdx, nonProdFileIdx);
+    if (prodBlock.includes("createFileWorkQueueStore")) {
+      violations.push(
+        `${FACTORY}: production path must not call createFileWorkQueueStore`,
+      );
+    }
+    if (!prodBlock.includes("DurableSotUnavailableError")) {
+      violations.push(
+        `${FACTORY}: production path must throw DurableSotUnavailableError`,
+      );
+    }
+  }
 }
 
 // Worker must go through getWorkQueueStore (repository/adapter), not file-store
