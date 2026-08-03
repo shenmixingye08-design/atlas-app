@@ -4,6 +4,7 @@
  */
 
 import type { AutomationCapabilityId } from "@/lib/automation-platform/types/step";
+import { isLiveAdapterWired as isAdapterWired } from "@/lib/automation-platform/execution/live-adapters/wired-status";
 
 export type ProductionStepKind =
   | "deliverable"
@@ -44,7 +45,7 @@ export const PRODUCTION_STEP_REGISTRY: readonly ProductionStepDefinition[] = [
     type: "word_generate",
     kind: "deliverable",
     productionInvoker: "strictStepInvoker",
-    requiredAdapter: null,
+    requiredAdapter: "atlas_deliverable_word",
     completionRequirements: ["artifact_with_url"],
     retryableByDefault: true,
     idempotent: true,
@@ -55,7 +56,7 @@ export const PRODUCTION_STEP_REGISTRY: readonly ProductionStepDefinition[] = [
     type: "excel_generate",
     kind: "deliverable",
     productionInvoker: "strictStepInvoker",
-    requiredAdapter: null,
+    requiredAdapter: "atlas_deliverable_excel",
     completionRequirements: ["artifact_with_url"],
     retryableByDefault: true,
     idempotent: true,
@@ -66,7 +67,7 @@ export const PRODUCTION_STEP_REGISTRY: readonly ProductionStepDefinition[] = [
     type: "pdf_generate",
     kind: "deliverable",
     productionInvoker: "strictStepInvoker",
-    requiredAdapter: null,
+    requiredAdapter: "atlas_deliverable_pdf",
     completionRequirements: ["artifact_with_url"],
     retryableByDefault: true,
     idempotent: true,
@@ -77,7 +78,7 @@ export const PRODUCTION_STEP_REGISTRY: readonly ProductionStepDefinition[] = [
     type: "powerpoint_generate",
     kind: "deliverable",
     productionInvoker: "strictStepInvoker",
-    requiredAdapter: null,
+    requiredAdapter: "atlas_deliverable_powerpoint",
     completionRequirements: ["artifact_with_url"],
     retryableByDefault: true,
     idempotent: true,
@@ -88,7 +89,7 @@ export const PRODUCTION_STEP_REGISTRY: readonly ProductionStepDefinition[] = [
     type: "deliverable_generate",
     kind: "deliverable",
     productionInvoker: "strictStepInvoker",
-    requiredAdapter: null,
+    requiredAdapter: "atlas_deliverable_word",
     completionRequirements: ["artifact_with_url"],
     retryableByDefault: true,
     idempotent: true,
@@ -206,10 +207,65 @@ export const PRODUCTION_STEP_REGISTRY: readonly ProductionStepDefinition[] = [
     requireLiveAdapterAtActivation: true,
   },
   {
+    type: "google_drive",
+    kind: "external",
+    productionInvoker: "strictStepInvoker",
+    requiredAdapter: "google_drive",
+    completionRequirements: ["artifact_with_external_id"],
+    retryableByDefault: true,
+    idempotent: true,
+    evidenceRequired: true,
+    requireLiveAdapterAtActivation: true,
+  },
+  {
     type: "wordpress",
     kind: "external",
     productionInvoker: "strictStepInvoker",
     requiredAdapter: "wordpress",
+    completionRequirements: ["artifact_with_external_id"],
+    retryableByDefault: true,
+    idempotent: false,
+    evidenceRequired: true,
+    requireLiveAdapterAtActivation: true,
+  },
+  {
+    type: "line_notify",
+    kind: "external",
+    productionInvoker: "strictStepInvoker",
+    requiredAdapter: "line",
+    completionRequirements: ["artifact_with_external_id"],
+    retryableByDefault: true,
+    idempotent: false,
+    evidenceRequired: true,
+    requireLiveAdapterAtActivation: true,
+  },
+  {
+    type: "slack",
+    kind: "external",
+    productionInvoker: "strictStepInvoker",
+    requiredAdapter: "slack",
+    completionRequirements: ["artifact_with_external_id"],
+    retryableByDefault: true,
+    idempotent: false,
+    evidenceRequired: true,
+    requireLiveAdapterAtActivation: true,
+  },
+  {
+    type: "discord",
+    kind: "external",
+    productionInvoker: "strictStepInvoker",
+    requiredAdapter: "discord",
+    completionRequirements: ["artifact_with_external_id"],
+    retryableByDefault: true,
+    idempotent: false,
+    evidenceRequired: true,
+    requireLiveAdapterAtActivation: true,
+  },
+  {
+    type: "notion",
+    kind: "external",
+    productionInvoker: "strictStepInvoker",
+    requiredAdapter: "notion",
     completionRequirements: ["artifact_with_external_id"],
     retryableByDefault: true,
     idempotent: false,
@@ -253,19 +309,9 @@ export type ProductionStepValidationIssue = {
   message: string;
 };
 
-/**
- * Live adapters are not yet wired into V2 Production invoker.
- * Activation refuses enabled external steps that require them.
- */
+/** Delegate to Live Adapter registry — never invent success for unwired adapters. */
 export function isLiveAdapterWired(adapterId: string | null): boolean {
-  if (!adapterId) return true;
-  // Production wiring gate — set true only when a real adapter path exists.
-  const wired = new Set<string>([
-    // Internal engines (not external OAuth adapters)
-    "openai_vision",
-    "openai_vision_ocr",
-  ]);
-  return wired.has(adapterId);
+  return isAdapterWired(adapterId);
 }
 
 export function validateStepsForProductionActivation(

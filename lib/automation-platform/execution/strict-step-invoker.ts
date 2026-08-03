@@ -18,8 +18,8 @@ import {
 } from "@/lib/automation-platform/execution/vision-step";
 import {
   getProductionStep,
-  isLiveAdapterWired,
 } from "@/lib/automation-platform/execution/production-step-registry";
+import { invokeLiveAdapter } from "@/lib/automation-platform/execution/live-adapters";
 import { getCapability } from "@/lib/automation-platform/step-registry/registry";
 import { createNotification } from "@/lib/notifications/service";
 
@@ -31,18 +31,6 @@ function stepNotImplemented(type: string): StepInvokeResult {
     errorCode: "step_not_implemented",
     errorMessage: `step_not_implemented:${type}`,
     failedStage: "STEP_DISPATCH",
-    retryable: false,
-  };
-}
-
-function liveAdapterMissing(service: string): StepInvokeResult {
-  return {
-    ok: false,
-    summary: `${service}の本番ライブ実行アダプタは未配線です`,
-    artifacts: [],
-    errorCode: "live_adapter_missing",
-    errorMessage: `${service}_live_adapter_not_wired`,
-    failedStage: "EXTERNAL_ADAPTER_RESOLUTION",
     retryable: false,
   };
 }
@@ -265,18 +253,29 @@ function invokeConditionStep(
   };
 }
 
-async function invokeExternalGate(
-  service: string,
-  adapterId: string,
-  configured: boolean,
-  live: boolean,
-  inputOk: StepInvokeResult | null,
-): Promise<StepInvokeResult> {
-  if (inputOk) return inputOk;
-  if (!configured) return notConnected(service);
-  if (!live) return liveExternalDisabled(service);
-  if (!isLiveAdapterWired(adapterId)) return liveAdapterMissing(service);
-  return liveAdapterMissing(service);
+async function invokeExternalGate(input: {
+  service: string;
+  adapterId: string;
+  configured: boolean;
+  live: boolean;
+  inputOk: StepInvokeResult | null;
+  step: Parameters<StepInvoker>[0]["step"];
+  userId: string;
+  automationName: string;
+  runId: string;
+  priorArtifactIds?: string[];
+}): Promise<StepInvokeResult> {
+  if (input.inputOk) return input.inputOk;
+  if (!input.configured) return notConnected(input.service);
+  if (!input.live) return liveExternalDisabled(input.service);
+  // Live Adapter path — real integration call or fail closed (never stub success)
+  return invokeLiveAdapter(input.adapterId, {
+    step: input.step,
+    userId: input.userId,
+    automationName: input.automationName,
+    runId: input.runId,
+    priorArtifactIds: input.priorArtifactIds,
+  });
 }
 
 /**
@@ -357,28 +356,37 @@ export const strictStepInvoker: StepInvoker = async (input) => {
         typeof step.configuration.to === "string"
           ? step.configuration.to.trim()
           : "";
-      return invokeExternalGate(
-        "Gmail",
-        "google_gmail",
-        googleAppConfigured(),
+      return invokeExternalGate({
+        service: "Gmail",
+        adapterId: "google_gmail",
+        configured: googleAppConfigured(),
         live,
-        !to || to === "（宛先未設定）"
-          ? missingInput("メール送信先が設定されていません")
-          : null,
-      );
+        inputOk:
+          !to || to === "（宛先未設定）"
+            ? missingInput("メール送信先が設定されていません")
+            : null,
+        step,
+        userId: input.userId,
+        automationName: input.automationName,
+        runId: input.runId,
+      });
     }
     case "x_post": {
       const text =
         typeof step.configuration.text === "string"
           ? step.configuration.text.trim()
           : "";
-      return invokeExternalGate(
-        "X",
-        "x",
-        xAppConfigured(),
+      return invokeExternalGate({
+        service: "X",
+        adapterId: "x",
+        configured: xAppConfigured(),
         live,
-        !text ? missingInput("投稿本文が設定されていません") : null,
-      );
+        inputOk: !text ? missingInput("投稿本文が設定されていません") : null,
+        step,
+        userId: input.userId,
+        automationName: input.automationName,
+        runId: input.runId,
+      });
     }
     case "dropbox": {
       const dest =
@@ -387,32 +395,104 @@ export const strictStepInvoker: StepInvoker = async (input) => {
           : typeof step.configuration.folderPath === "string"
             ? step.configuration.folderPath.trim()
             : "";
-      return invokeExternalGate(
-        "Dropbox",
-        "dropbox",
-        dropboxAppConfigured(),
+      return invokeExternalGate({
+        service: "Dropbox",
+        adapterId: "dropbox",
+        configured: dropboxAppConfigured(),
         live,
-        !dest
+        inputOk: !dest
           ? missingInput("Dropboxの保存先フォルダを選択してください")
           : null,
-      );
+        step,
+        userId: input.userId,
+        automationName: input.automationName,
+        runId: input.runId,
+      });
     }
     case "google_calendar":
-      return invokeExternalGate(
-        "Google Calendar",
-        "google_calendar",
-        googleAppConfigured(),
+      return invokeExternalGate({
+        service: "Google Calendar",
+        adapterId: "google_calendar",
+        configured: googleAppConfigured(),
         live,
-        null,
-      );
+        inputOk: null,
+        step,
+        userId: input.userId,
+        automationName: input.automationName,
+        runId: input.runId,
+      });
+    case "google_drive":
+      return invokeExternalGate({
+        service: "Google Drive",
+        adapterId: "google_drive",
+        configured: googleAppConfigured(),
+        live,
+        inputOk: null,
+        step,
+        userId: input.userId,
+        automationName: input.automationName,
+        runId: input.runId,
+      });
     case "wordpress":
-      return invokeExternalGate(
-        "WordPress",
-        "wordpress",
-        wordpressAppConfigured(),
+      return invokeExternalGate({
+        service: "WordPress",
+        adapterId: "wordpress",
+        configured: wordpressAppConfigured(),
         live,
-        null,
-      );
+        inputOk: null,
+        step,
+        userId: input.userId,
+        automationName: input.automationName,
+        runId: input.runId,
+      });
+    case "line_notify":
+      return invokeExternalGate({
+        service: "LINE",
+        adapterId: "line",
+        configured: true,
+        live: true,
+        inputOk: null,
+        step,
+        userId: input.userId,
+        automationName: input.automationName,
+        runId: input.runId,
+      });
+    case "slack":
+      return invokeExternalGate({
+        service: "Slack",
+        adapterId: "slack",
+        configured: true,
+        live: true,
+        inputOk: null,
+        step,
+        userId: input.userId,
+        automationName: input.automationName,
+        runId: input.runId,
+      });
+    case "discord":
+      return invokeExternalGate({
+        service: "Discord",
+        adapterId: "discord",
+        configured: true,
+        live: true,
+        inputOk: null,
+        step,
+        userId: input.userId,
+        automationName: input.automationName,
+        runId: input.runId,
+      });
+    case "notion":
+      return invokeExternalGate({
+        service: "Notion",
+        adapterId: "notion",
+        configured: true,
+        live: true,
+        inputOk: null,
+        step,
+        userId: input.userId,
+        automationName: input.automationName,
+        runId: input.runId,
+      });
 
     default:
       return stepNotImplemented(step.type);

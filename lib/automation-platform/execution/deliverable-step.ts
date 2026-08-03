@@ -199,8 +199,10 @@ export async function invokeDeliverableStep(input: {
         kind: "deliverable",
         label: stored.fileName,
         url: downloadUrl,
-        externalId: stored.id,
+        // Never put storage id into externalId — externalActionIds must be real externals only
+        externalId: null,
         createdAt: stored.generatedAt,
+        sizeBytes: stored.buffer.byteLength,
       });
     } catch (error) {
       failures.push(
@@ -209,17 +211,27 @@ export async function invokeDeliverableStep(input: {
     }
   }
 
-  if (artifacts.length === 0) {
+  // All-or-nothing: partial format success is not completed
+  if (artifacts.length === 0 || failures.length > 0) {
     return {
       ok: false,
       summary: "成果物の生成・保存に失敗しました",
       artifacts: [],
       errorCode: "run_artifact_missing",
-      errorMessage: failures.join("; ") || "deliverable_generation_failed",
+      errorMessage:
+        failures.join("; ") ||
+        (artifacts.length === 0
+          ? "deliverable_generation_failed"
+          : "partial_format_success_forbidden"),
       failedStage: "DELIVERABLE_GENERATE",
       retryable: true,
     };
   }
+
+  const outputSizeBytes = artifacts.reduce(
+    (sum, item) => sum + (item.sizeBytes ?? 0),
+    0,
+  );
 
   return {
     ok: true,
@@ -237,6 +249,7 @@ export async function invokeDeliverableStep(input: {
         .map((item) => item.url)
         .filter((url): url is string => Boolean(url)),
       notificationIds: [],
+      outputSizeBytes,
     },
   };
 }
@@ -349,8 +362,9 @@ async function invokeRegenerateDeliverableStep(
           kind: "deliverable",
           label: stored.fileName,
           url: downloadUrl,
-          externalId: stored.id,
+          externalId: null,
           createdAt: stored.generatedAt,
+          sizeBytes: stored.buffer.byteLength,
         },
       ],
       evidence: {
@@ -359,6 +373,7 @@ async function invokeRegenerateDeliverableStep(
         externalActionIds: [],
         externalUrls: [downloadUrl],
         notificationIds: [],
+        outputSizeBytes: stored.buffer.byteLength,
       },
     };
   } catch (error) {

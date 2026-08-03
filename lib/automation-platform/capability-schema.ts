@@ -168,6 +168,24 @@ const SCHEMAS: Record<AutomationCapabilityId, readonly CapabilityFieldSchema[]> 
       ],
     },
   ],
+  google_drive: [
+    { key: "deliverableId", label: "成果物ID", type: "text" },
+  ],
+  line_notify: [
+    { key: "message", label: "LINE通知本文", type: "textarea", required: true },
+  ],
+  slack: [
+    { key: "channel", label: "チャンネル", type: "text" },
+    { key: "message", label: "メッセージ", type: "textarea", required: true },
+  ],
+  discord: [
+    { key: "channel", label: "チャンネル", type: "text" },
+    { key: "message", label: "メッセージ", type: "textarea", required: true },
+  ],
+  notion: [
+    { key: "pageTitle", label: "ページタイトル", type: "text", required: true },
+    { key: "content", label: "本文", type: "textarea" },
+  ],
   notify: [
     { key: "message", label: "通知メッセージの要点", type: "textarea" },
   ],
