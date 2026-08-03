@@ -131,6 +131,24 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      - name: Durability Blocker #4 proof
+        run: npm test -- --run lib/work-queue/blocker4-durability.test.ts
+        env:
+          TZ: UTC
+          ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Upload durability-blocker4-proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: durability-blocker4-proof
+          path: |
+            artifacts/durability-blocker4/durability-proof.json
+            /opt/cursor/artifacts/durability-blocker4/durability-proof.json
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload Vitest logs on failure
         if: failure()
         uses: actions/upload-artifact@v4

@@ -12,7 +12,11 @@ export {
   clearWorkQueueStoreSingleton,
 } from "./store";
 export { enqueueDueAutomations } from "./scheduler";
-export { drainWorkQueue, recoverStuckJobs } from "./worker";
+export {
+  drainWorkQueue,
+  recoverStuckJobs,
+  recoverOnWorkerBoot,
+} from "./worker";
 export { processWorkQueueTick } from "./tick";
 export { evaluateWorkQueueAlerts } from "./alerts";
 export { buildOccurrenceKey } from "./occurrence";
@@ -20,6 +24,8 @@ export { decideRetry, classifyErrorCode } from "./retry";
 export { defaultAutomationSteps } from "./steps/execute-step";
 export { evaluateWorkQueueCompletion } from "./completion-gate";
 export { WORK_QUEUE_FEATURE_EVALUATION } from "./feature-evaluation";
+export { buildDurabilitySnapshot } from "./durability";
+export type { WorkDurabilitySnapshot } from "./durability-types";
 export { listScheduleCapabilities } from "./capabilities";
 export {
   INFRASTRUCTURE_CRON_SOT,

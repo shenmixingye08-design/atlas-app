@@ -56,13 +56,32 @@ async function processLeasedJob(
 ): Promise<"completed" | "failed" | "retried"> {
   const store = getWorkQueueStore();
   const started = Date.now();
+  const executionId = randomUUID();
 
   const running = await store.updateJob(
     job.jobId,
-    { status: "running", heartbeatAt: new Date().toISOString() },
+    {
+      status: "running",
+      heartbeatAt: new Date().toISOString(),
+      startedAt: job.startedAt ?? new Date().toISOString(),
+    },
     workerId,
   );
   if (!running) return "failed";
+
+  const resumeFromStep = running.steps.filter(
+    (s) => s.status === "completed" || s.status === "skipped",
+  ).length;
+  if (store.beginExecution) {
+    await store.beginExecution({
+      executionId,
+      jobId: job.jobId,
+      runId: job.runId,
+      workerId,
+      attempt: job.attempt,
+      resumeFromStep,
+    });
+  }
 
   if (job.automationId) {
     try {
@@ -241,6 +260,16 @@ async function processLeasedJob(
           errorCode: failedStep.errorCode,
           diagnosticId,
         });
+        if (store.incrementMetricCounter) {
+          await store.incrementMetricCounter("retry_count", 1);
+        }
+        if (store.endExecution) {
+          await store.endExecution({
+            executionId,
+            outcome: "retried",
+            detail: { stepId: step.stepId, errorCode: failedStep.errorCode },
+          });
+        }
         return "retried";
       }
 
@@ -269,6 +298,13 @@ async function processLeasedJob(
         errorCode: failedStep.errorCode,
         diagnosticId,
       });
+      if (store.endExecution) {
+        await store.endExecution({
+          executionId,
+          outcome: "failed",
+          detail: { stepId: step.stepId, errorCode: failedStep.errorCode },
+        });
+      }
       if (job.automationId) {
         await markScheduleOccurrenceTerminal({
           automationId: job.automationId,
@@ -305,6 +341,13 @@ async function processLeasedJob(
         ownerId: job.ownerId,
         errorCode: gate.errorCode,
       });
+      if (store.endExecution) {
+        await store.endExecution({
+          executionId,
+          outcome: "failed",
+          detail: { errorCode: gate.errorCode, stage: "completion_gate" },
+        });
+      }
       if (job.automationId) {
         await markScheduleOccurrenceTerminal({
           automationId: job.automationId,
@@ -331,11 +374,40 @@ async function processLeasedJob(
       workerId,
     );
     await store.recordExecutionMs(Date.now() - started);
+
+    // Persist completion evidence for each completed step (DB SoT).
+    if (store.recordCompletionEvidence) {
+      const finalJob = (await store.getJob(job.jobId)) ?? latest;
+      for (const step of finalJob.steps) {
+        if (step.status !== "completed") continue;
+        await store.recordCompletionEvidence({
+          evidenceId: randomUUID(),
+          jobId: finalJob.jobId,
+          runId: finalJob.runId,
+          stepId: step.stepId,
+          kind: step.stepType,
+          payload: {
+            outputBindings: step.outputBindings,
+            artifactIds: step.artifactIds,
+            completedAt: step.completedAt,
+            idempotencyKey: step.idempotencyKey,
+          },
+        });
+      }
+    }
+
     if (job.automationId) {
       await markScheduleOccurrenceTerminal({
         automationId: job.automationId,
         occurrenceKey: job.occurrenceKey,
         ok: true,
+      });
+    }
+    if (store.endExecution) {
+      await store.endExecution({
+        executionId,
+        outcome: "completed",
+        detail: { resumeFromStep, durationMs: Date.now() - started },
       });
     }
     logWorkQueue({
@@ -353,6 +425,110 @@ async function processLeasedJob(
   }
 }
 
+export type WorkerBootRecoveryResult = {
+  workerId: string;
+  recoveredStuck: number;
+  releasedExpiredLeases: number;
+  retryDuePromoted: number;
+  runningOrphans: number;
+};
+
+/**
+ * Worker boot: detect Running / Stuck / Retry-due / Lease-expired.
+ * Resume from incomplete steps only — never restart completed work.
+ */
+export async function recoverOnWorkerBoot(
+  workerId: string,
+  nowMs = Date.now(),
+): Promise<WorkerBootRecoveryResult> {
+  const store = getWorkQueueStore();
+
+  if (store.touchWorker) {
+    await store.touchWorker(workerId, { busy: false });
+  }
+  if (store.recordRecoveryEvent) {
+    await store.recordRecoveryEvent({
+      eventId: randomUUID(),
+      jobId: null,
+      kind: "worker_boot",
+      success: true,
+      detail: { workerId, at: new Date(nowMs).toISOString() },
+    });
+  }
+
+  let releasedExpiredLeases = 0;
+  const active =
+    (await store.listActiveLeases?.(100)) ??
+    [
+      ...(await store.listByStatus("leased", 100)),
+      ...(await store.listByStatus("running", 100)),
+    ].map((j) => ({
+      jobId: j.jobId,
+      leaseOwner: j.leaseOwner,
+      leaseExpiresAt: j.leaseExpiresAt,
+      heartbeatAt: j.heartbeatAt,
+      status: j.status,
+    }));
+
+  for (const lease of active) {
+    if (
+      lease.leaseExpiresAt &&
+      new Date(lease.leaseExpiresAt).getTime() < nowMs
+    ) {
+      releasedExpiredLeases += 1;
+      if (store.recordRecoveryEvent) {
+        await store.recordRecoveryEvent({
+          eventId: randomUUID(),
+          jobId: lease.jobId,
+          kind: "lease_expired",
+          success: true,
+          detail: {
+            previousOwner: lease.leaseOwner,
+            leaseExpiresAt: lease.leaseExpiresAt,
+          },
+        });
+      }
+    }
+  }
+
+  const running = await store.listByStatus("running", 200);
+  let runningOrphans = 0;
+  for (const job of running) {
+    const hb = job.heartbeatAt
+      ? new Date(job.heartbeatAt).getTime()
+      : job.startedAt
+        ? new Date(job.startedAt).getTime()
+        : 0;
+    if (hb > 0 && nowMs - hb > WORK_QUEUE_STUCK_MS) {
+      runningOrphans += 1;
+      if (store.recordRecoveryEvent) {
+        await store.recordRecoveryEvent({
+          eventId: randomUUID(),
+          jobId: job.jobId,
+          kind: "running_orphan",
+          success: true,
+          detail: { heartbeatAt: job.heartbeatAt },
+        });
+      }
+    }
+  }
+
+  const retries = await store.listByStatus("retry_scheduled", 200);
+  const retryDuePromoted = retries.filter(
+    (j) => new Date(j.availableAt).getTime() <= nowMs,
+  ).length;
+
+  const recoveredStuck = await recoverStuckJobs(nowMs);
+
+  return {
+    workerId,
+    recoveredStuck,
+    releasedExpiredLeases,
+    retryDuePromoted,
+    runningOrphans,
+  };
+}
+
 export async function recoverStuckJobs(
   nowMs = Date.now(),
 ): Promise<number> {
@@ -366,6 +542,15 @@ export async function recoverStuckJobs(
       ownerId: job.ownerId,
       automationId: job.automationId,
     });
+    if (store.recordRecoveryEvent) {
+      await store.recordRecoveryEvent({
+        eventId: randomUUID(),
+        jobId: job.jobId,
+        kind: "stuck",
+        success: true,
+        detail: { attempt: job.attempt },
+      });
+    }
     const diagnosticId = job.diagnosticId ?? buildDiagnosticId("stuck");
     const attempt = job.attempt + 1;
     const decision = decideRetry({
@@ -451,6 +636,9 @@ export async function recoverStuckJobs(
   return recovered;
 }
 
+/** Per-process boot recovery once per workerId (cache only — SoT remains DB). */
+const bootedWorkers = new Set<string>();
+
 export async function drainWorkQueue(options?: {
   workerId?: string;
   limit?: number;
@@ -476,7 +664,18 @@ export async function drainWorkQueue(options?: {
     };
   }
 
-  const recovered = await recoverStuckJobs();
+  // Boot recovery on first drain for this workerId; every drain still recovers stuck.
+  let recovered = 0;
+  if (!bootedWorkers.has(workerId)) {
+    const boot = await recoverOnWorkerBoot(workerId);
+    recovered = boot.recoveredStuck;
+    bootedWorkers.add(workerId);
+  } else {
+    recovered = await recoverStuckJobs();
+  }
+  if (store.touchWorker) {
+    await store.touchWorker(workerId, { busy: false });
+  }
   const leased = await store.leaseJobs({ workerId, limit, leaseMs });
   let completed = 0;
   let failed = 0;

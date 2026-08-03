@@ -1,6 +1,7 @@
 import {
   WORK_QUEUE_ALLOW_FILE_ENV,
   WORK_QUEUE_FORCE_FILE_ENV,
+  WORK_QUEUE_MEMORY_FAST_ENV,
 } from "../constants";
 import { createFileWorkQueueStore } from "./file-store";
 import type { WorkQueueStore } from "./interface";
@@ -12,7 +13,7 @@ function isVitestRuntime(): boolean {
   return (
     process.env.NODE_ENV === "test" ||
     process.env.VITEST === "true" ||
-    process.env[WORK_QUEUE_FORCE_FILE_ENV]?.trim().toLowerCase() === "true"
+    process.env.VITEST === "1"
   );
 }
 
@@ -24,30 +25,56 @@ function isProductionRuntime(): boolean {
   );
 }
 
+function envTruthy(name: string): boolean {
+  return process.env[name]?.trim().toLowerCase() === "true";
+}
+
+function assertProductionFileSotBanned(): void {
+  if (!isProductionRuntime()) return;
+  if (
+    envTruthy(WORK_QUEUE_FORCE_FILE_ENV) ||
+    envTruthy(WORK_QUEUE_ALLOW_FILE_ENV) ||
+    envTruthy(WORK_QUEUE_MEMORY_FAST_ENV)
+  ) {
+    throw new Error(
+      "work_queue_file_sot_forbidden_in_production: FORCE_FILE/ALLOW_FILE/MEMORY_FAST cannot be SoT in production",
+    );
+  }
+}
+
+function forceFileStore(): boolean {
+  // Production hard-ban — FORCE_FILE must never skip Postgres in prod.
+  if (isProductionRuntime()) return false;
+  return envTruthy(WORK_QUEUE_FORCE_FILE_ENV);
+}
+
 function allowFileFallback(): boolean {
-  if (isVitestRuntime()) return true;
-  return process.env[WORK_QUEUE_ALLOW_FILE_ENV]?.trim().toLowerCase() === "true";
+  if (isProductionRuntime()) return false;
+  if (isVitestRuntime() || forceFileStore()) return true;
+  return envTruthy(WORK_QUEUE_ALLOW_FILE_ENV);
 }
 
 export function getWorkQueueStore(): WorkQueueStore {
   if (singleton) return singleton;
 
-  if (!isVitestRuntime()) {
+  assertProductionFileSotBanned();
+
+  if (!forceFileStore()) {
     const pg = tryCreatePostgresWorkQueueStore();
     if (pg) {
       singleton = pg;
       return singleton;
     }
-    if (isProductionRuntime() && !allowFileFallback()) {
+    if (isProductionRuntime()) {
       throw new Error(
         "work_queue_postgres_required: DATABASE_URL/POSTGRES_URL missing — file SoT is forbidden in production",
       );
     }
   }
 
-  if (!allowFileFallback() && isProductionRuntime()) {
+  if (!allowFileFallback()) {
     throw new Error(
-      "work_queue_postgres_required: file fallback disabled in production",
+      "work_queue_postgres_required: file fallback disabled outside explicit test/dev allowlist",
     );
   }
 

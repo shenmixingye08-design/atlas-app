@@ -1,12 +1,10 @@
 import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
 import { evaluateWorkQueueAlerts } from "@/lib/work-queue/alerts";
-import { listScheduleCapabilities } from "@/lib/work-queue/capabilities";
 import {
   INFRASTRUCTURE_CRON_SOT,
   PRODUCTION_PRESET_TYPES,
 } from "@/lib/work-queue/cron-sot";
 import { buildDurabilitySnapshot } from "@/lib/work-queue/durability";
-import { getWorkQueueStore } from "@/lib/work-queue";
 
 export async function GET(): Promise<Response> {
   try {
@@ -15,18 +13,15 @@ export async function GET(): Promise<Response> {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const metrics = await getWorkQueueStore().metrics();
+  const snapshot = await buildDurabilitySnapshot();
   const alerts = await evaluateWorkQueueAlerts();
-  const durability = await buildDurabilitySnapshot();
   return Response.json({
-    metrics,
-    durability,
+    snapshot,
     alerts,
-    capabilities: listScheduleCapabilities(),
     cronSot: {
       infrastructure: INFRASTRUCTURE_CRON_SOT,
       productPresets: PRODUCTION_PRESET_TYPES,
     },
-    generatedAt: new Date().toISOString(),
+    generatedAt: snapshot.generatedAt,
   });
 }

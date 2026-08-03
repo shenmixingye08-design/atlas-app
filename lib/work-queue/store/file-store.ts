@@ -18,6 +18,16 @@ import {
   buildStepIdempotencyKey,
 } from "../occurrence";
 import type {
+  WorkCompletionEvidenceRecord,
+  WorkExecutionOutcome,
+  WorkExecutionRecord,
+  WorkLockRecord,
+  WorkMetricCounterKey,
+  WorkRecoveryEventRecord,
+  WorkRecoveryKind,
+  WorkWorkerRecord,
+} from "../durability-types";
+import type {
   EnqueueJobInput,
   WorkJobRecord,
   WorkJobStatus,
@@ -29,12 +39,6 @@ import type {
 import { WORK_JOB_TERMINAL_STATUSES, WORK_JOB_TRANSITIONS } from "../types";
 import type { WorkQueueStore } from "./interface";
 
-type WorkerHeartbeat = {
-  workerId: string;
-  lastSeenAt: string;
-  busy: boolean;
-};
-
 type FileSnapshot = {
   jobs: WorkJobRecord[];
   sideEffects: WorkSideEffectRecord[];
@@ -44,7 +48,17 @@ type FileSnapshot = {
   recoverySuccess: number;
   recoveryTotal: number;
   duplicateCount: number;
-  workers: WorkerHeartbeat[];
+  retryCount: number;
+  timeoutCount: number;
+  notificationCount: number;
+  startedCount: number;
+  completedCount: number;
+  failedCount: number;
+  workers: WorkWorkerRecord[];
+  executions: WorkExecutionRecord[];
+  completionEvidence: WorkCompletionEvidenceRecord[];
+  recoveryEvents: WorkRecoveryEventRecord[];
+  locks: WorkLockRecord[];
   /** Durable key/value meta (scheduler gate, etc.) — not process memory. */
   meta: Record<string, unknown>;
 };
@@ -59,7 +73,17 @@ function emptySnapshot(): FileSnapshot {
     recoverySuccess: 0,
     recoveryTotal: 0,
     duplicateCount: 0,
+    retryCount: 0,
+    timeoutCount: 0,
+    notificationCount: 0,
+    startedCount: 0,
+    completedCount: 0,
+    failedCount: 0,
     workers: [],
+    executions: [],
+    completionEvidence: [],
+    recoveryEvents: [],
+    locks: [],
     meta: {},
   };
 }
@@ -105,8 +129,10 @@ export class FileWorkQueueStore implements WorkQueueStore {
       if (!existsSync(this.path)) {
         return emptySnapshot();
       }
-      const raw = JSON.parse(readFileSync(this.path, "utf8")) as FileSnapshot;
+      const raw = JSON.parse(readFileSync(this.path, "utf8")) as Partial<FileSnapshot>;
+      const base = emptySnapshot();
       return {
+        ...base,
         jobs: Array.isArray(raw.jobs) ? raw.jobs.map(normalizeJob) : [],
         sideEffects: Array.isArray(raw.sideEffects) ? raw.sideEffects : [],
         schedulerLastSuccessAt: raw.schedulerLastSuccessAt ?? null,
@@ -115,7 +141,30 @@ export class FileWorkQueueStore implements WorkQueueStore {
         recoverySuccess: raw.recoverySuccess ?? 0,
         recoveryTotal: raw.recoveryTotal ?? 0,
         duplicateCount: raw.duplicateCount ?? 0,
-        workers: Array.isArray(raw.workers) ? raw.workers : [],
+        retryCount: raw.retryCount ?? 0,
+        timeoutCount: raw.timeoutCount ?? 0,
+        notificationCount: raw.notificationCount ?? 0,
+        startedCount: raw.startedCount ?? 0,
+        completedCount: raw.completedCount ?? 0,
+        failedCount: raw.failedCount ?? 0,
+        workers: Array.isArray(raw.workers)
+          ? raw.workers.map((w) => ({
+              workerId: w.workerId,
+              lastSeenAt: w.lastSeenAt,
+              startedAt: w.startedAt ?? w.lastSeenAt,
+              busy: Boolean(w.busy),
+              leaseCount: Number(w.leaseCount ?? 0),
+              status: w.status ?? "active",
+            }))
+          : [],
+        executions: Array.isArray(raw.executions) ? raw.executions : [],
+        completionEvidence: Array.isArray(raw.completionEvidence)
+          ? raw.completionEvidence
+          : [],
+        recoveryEvents: Array.isArray(raw.recoveryEvents)
+          ? raw.recoveryEvents
+          : [],
+        locks: Array.isArray(raw.locks) ? raw.locks : [],
         meta:
           raw.meta && typeof raw.meta === "object" && !Array.isArray(raw.meta)
             ? (raw.meta as Record<string, unknown>)
@@ -290,7 +339,10 @@ export class FileWorkQueueStore implements WorkQueueStore {
         if (!job.startedAt) job.startedAt = nowIso;
         leased.push(structuredClone(job));
       }
-      this.touchWorker(input.workerId, nowIso, leased.length > 0);
+      this.touchWorkerInternal(input.workerId, nowIso, {
+        busy: leased.length > 0,
+        leaseDelta: leased.length,
+      });
       return leased;
     });
   }
@@ -309,22 +361,37 @@ export class FileWorkQueueStore implements WorkQueueStore {
       job.heartbeatAt = new Date(now).toISOString();
       job.leaseExpiresAt = new Date(now + leaseMs).toISOString();
       job.updatedAt = job.heartbeatAt;
-      this.touchWorker(workerId, job.heartbeatAt, true);
+      this.touchWorkerInternal(workerId, job.heartbeatAt, { busy: true });
       return true;
     });
   }
 
-  private touchWorker(workerId: string, at: string, busy: boolean): void {
+  private touchWorkerInternal(
+    workerId: string,
+    at: string,
+    opts?: { busy?: boolean; leaseDelta?: number },
+  ): WorkWorkerRecord {
     const existing = this.data.workers.find((w) => w.workerId === workerId);
     if (existing) {
       existing.lastSeenAt = at;
-      existing.busy = busy;
-      return;
+      existing.busy = opts?.busy ?? existing.busy;
+      existing.leaseCount += opts?.leaseDelta ?? 0;
+      existing.status = "active";
+      return existing;
     }
-    this.data.workers.push({ workerId, lastSeenAt: at, busy });
+    const created: WorkWorkerRecord = {
+      workerId,
+      lastSeenAt: at,
+      startedAt: at,
+      busy: opts?.busy ?? false,
+      leaseCount: opts?.leaseDelta ?? 0,
+      status: "active",
+    };
+    this.data.workers.push(created);
     if (this.data.workers.length > 200) {
       this.data.workers = this.data.workers.slice(-100);
     }
+    return created;
   }
 
   async getJob(jobId: string): Promise<WorkJobRecord | null> {
@@ -460,6 +527,11 @@ export class FileWorkQueueStore implements WorkQueueStore {
         alive = cronEnabled && Number.isFinite(age) && age <= 26 * 60 * 60 * 1000;
       }
 
+      const avgExec =
+        execs.length === 0
+          ? null
+          : execs.reduce((a, b) => a + b, 0) / execs.length;
+
       return {
         ...counts,
         waiting: counts.queued,
@@ -475,7 +547,14 @@ export class FileWorkQueueStore implements WorkQueueStore {
         p99ScheduleDelayMs: percentile(delays, 99),
         averageDelayMs: avgDelay,
         p95ExecutionMs: percentile(execs, 95),
+        averageExecutionMs: avgExec,
         recoverySuccessRate: recoveryRate,
+        recoveryCount: this.data.recoveryTotal,
+        retryCount: this.data.retryCount,
+        timeoutCount: this.data.timeoutCount,
+        notificationCount: this.data.notificationCount,
+        startedCount: this.data.startedCount,
+        queueLength: counts.queued,
         alive,
         workerCount: activeWorkers.length,
         successRate,
@@ -520,6 +599,303 @@ export class FileWorkQueueStore implements WorkQueueStore {
     });
   }
 
+  async touchWorker(
+    workerId: string,
+    input?: { busy?: boolean; leaseDelta?: number },
+  ): Promise<WorkWorkerRecord> {
+    return this.withLock(() =>
+      structuredClone(
+        this.touchWorkerInternal(workerId, new Date().toISOString(), input),
+      ),
+    );
+  }
+
+  async listWorkers(nowMs = Date.now()): Promise<WorkWorkerRecord[]> {
+    return this.withLock(() =>
+      this.data.workers.map((w) => {
+        const age = nowMs - new Date(w.lastSeenAt).getTime();
+        const status: WorkWorkerRecord["status"] =
+          Number.isFinite(age) && age > 120_000 ? "stale" : w.status;
+        return structuredClone({ ...w, status });
+      }),
+    );
+  }
+
+  async beginExecution(input: {
+    executionId: string;
+    jobId: string;
+    runId: string;
+    workerId: string;
+    attempt: number;
+    resumeFromStep: number;
+  }): Promise<WorkExecutionRecord> {
+    return this.withLock(() => {
+      const record: WorkExecutionRecord = {
+        executionId: input.executionId,
+        jobId: input.jobId,
+        runId: input.runId,
+        workerId: input.workerId,
+        attempt: input.attempt,
+        resumeFromStep: input.resumeFromStep,
+        startedAt: new Date().toISOString(),
+        endedAt: null,
+        outcome: null,
+        detail: {},
+      };
+      this.data.executions.push(record);
+      this.data.startedCount += 1;
+      return structuredClone(record);
+    });
+  }
+
+  async endExecution(input: {
+    executionId: string;
+    outcome: WorkExecutionOutcome;
+    detail?: Record<string, unknown>;
+  }): Promise<void> {
+    await this.withLock(() => {
+      const row = this.data.executions.find(
+        (e) => e.executionId === input.executionId,
+      );
+      if (!row) return;
+      row.endedAt = new Date().toISOString();
+      row.outcome = input.outcome;
+      row.detail = input.detail ?? {};
+      if (input.outcome === "completed") this.data.completedCount += 1;
+      if (input.outcome === "failed") this.data.failedCount += 1;
+      if (input.outcome === "retried") this.data.retryCount += 1;
+    });
+  }
+
+  async recordCompletionEvidence(input: {
+    evidenceId: string;
+    jobId: string;
+    runId: string;
+    stepId: string;
+    kind: string;
+    payload: Record<string, unknown>;
+  }): Promise<WorkCompletionEvidenceRecord> {
+    return this.withLock(() => {
+      const existing = this.data.completionEvidence.find(
+        (e) =>
+          e.jobId === input.jobId &&
+          e.stepId === input.stepId &&
+          e.kind === input.kind,
+      );
+      if (existing) return structuredClone(existing);
+      const record: WorkCompletionEvidenceRecord = {
+        evidenceId: input.evidenceId,
+        jobId: input.jobId,
+        runId: input.runId,
+        stepId: input.stepId,
+        kind: input.kind,
+        payload: input.payload,
+        createdAt: new Date().toISOString(),
+      };
+      this.data.completionEvidence.push(record);
+      if (input.kind.includes("notify")) {
+        this.data.notificationCount += 1;
+      }
+      return structuredClone(record);
+    });
+  }
+
+  async listCompletionEvidence(
+    jobId: string,
+  ): Promise<WorkCompletionEvidenceRecord[]> {
+    return this.withLock(() =>
+      this.data.completionEvidence
+        .filter((e) => e.jobId === jobId)
+        .map((e) => structuredClone(e)),
+    );
+  }
+
+  async recordRecoveryEvent(input: {
+    eventId: string;
+    jobId: string | null;
+    kind: WorkRecoveryKind;
+    success: boolean;
+    detail?: Record<string, unknown>;
+  }): Promise<WorkRecoveryEventRecord> {
+    return this.withLock(() => {
+      const record: WorkRecoveryEventRecord = {
+        eventId: input.eventId,
+        jobId: input.jobId,
+        kind: input.kind,
+        success: input.success,
+        detail: input.detail ?? {},
+        createdAt: new Date().toISOString(),
+      };
+      this.data.recoveryEvents.push(record);
+      if (this.data.recoveryEvents.length > 500) {
+        this.data.recoveryEvents = this.data.recoveryEvents.slice(-300);
+      }
+      if (input.kind === "stuck" || input.kind === "lease_expired") {
+        this.data.timeoutCount += 1;
+      }
+      return structuredClone(record);
+    });
+  }
+
+  async listRecoveryEvents(limit = 50): Promise<WorkRecoveryEventRecord[]> {
+    return this.withLock(() =>
+      [...this.data.recoveryEvents]
+        .reverse()
+        .slice(0, limit)
+        .map((e) => structuredClone(e)),
+    );
+  }
+
+  async incrementMetricCounter(
+    key: WorkMetricCounterKey,
+    by = 1,
+  ): Promise<number> {
+    return this.withLock(() => {
+      switch (key) {
+        case "retry_count":
+          this.data.retryCount += by;
+          return this.data.retryCount;
+        case "recovery_count":
+          this.data.recoveryTotal += by;
+          return this.data.recoveryTotal;
+        case "duplicate_count":
+          this.data.duplicateCount += by;
+          return this.data.duplicateCount;
+        case "timeout_count":
+          this.data.timeoutCount += by;
+          return this.data.timeoutCount;
+        case "notification_count":
+          this.data.notificationCount += by;
+          return this.data.notificationCount;
+        case "job_started_count":
+          this.data.startedCount += by;
+          return this.data.startedCount;
+        case "job_completed_count":
+          this.data.completedCount += by;
+          return this.data.completedCount;
+        case "job_failed_count":
+          this.data.failedCount += by;
+          return this.data.failedCount;
+        default:
+          return 0;
+      }
+    });
+  }
+
+  async getMetricCounters(): Promise<Record<WorkMetricCounterKey, number>> {
+    return this.withLock(() => ({
+      retry_count: this.data.retryCount,
+      recovery_count: this.data.recoveryTotal,
+      duplicate_count: this.data.duplicateCount,
+      timeout_count: this.data.timeoutCount,
+      notification_count: this.data.notificationCount,
+      job_started_count: this.data.startedCount,
+      job_completed_count: this.data.completedCount,
+      job_failed_count: this.data.failedCount,
+    }));
+  }
+
+  async acquireLock(input: {
+    lockKey: string;
+    owner: string;
+    leaseMs: number;
+  }): Promise<{ acquired: boolean; lock: WorkLockRecord | null }> {
+    return this.withLock(() => {
+      const now = Date.now();
+      const existing = this.data.locks.find((l) => l.lockKey === input.lockKey);
+      if (existing && new Date(existing.expiresAt).getTime() > now) {
+        if (existing.owner === input.owner) {
+          existing.expiresAt = new Date(now + input.leaseMs).toISOString();
+          return { acquired: true, lock: structuredClone(existing) };
+        }
+        return { acquired: false, lock: structuredClone(existing) };
+      }
+      const lock: WorkLockRecord = {
+        lockKey: input.lockKey,
+        owner: input.owner,
+        expiresAt: new Date(now + input.leaseMs).toISOString(),
+        createdAt: new Date(now).toISOString(),
+      };
+      this.data.locks = this.data.locks.filter(
+        (l) => l.lockKey !== input.lockKey,
+      );
+      this.data.locks.push(lock);
+      return { acquired: true, lock: structuredClone(lock) };
+    });
+  }
+
+  async releaseLock(lockKey: string, owner: string): Promise<boolean> {
+    return this.withLock(() => {
+      const before = this.data.locks.length;
+      this.data.locks = this.data.locks.filter(
+        (l) => !(l.lockKey === lockKey && l.owner === owner),
+      );
+      return this.data.locks.length < before;
+    });
+  }
+
+  async listLocks(nowMs = Date.now()): Promise<WorkLockRecord[]> {
+    return this.withLock(() =>
+      this.data.locks
+        .filter((l) => new Date(l.expiresAt).getTime() > nowMs)
+        .map((l) => structuredClone(l)),
+    );
+  }
+
+  async listActiveLeases(limit = 50): Promise<
+    Array<{
+      jobId: string;
+      leaseOwner: string | null;
+      leaseExpiresAt: string | null;
+      heartbeatAt: string | null;
+      status: string;
+    }>
+  > {
+    return this.withLock(() =>
+      this.data.jobs
+        .filter((j) => j.status === "leased" || j.status === "running")
+        .slice(0, limit)
+        .map((j) => ({
+          jobId: j.jobId,
+          leaseOwner: j.leaseOwner,
+          leaseExpiresAt: j.leaseExpiresAt,
+          heartbeatAt: j.heartbeatAt,
+          status: j.status,
+        })),
+    );
+  }
+
+  async listRecentRetries(limit = 50): Promise<
+    Array<{
+      jobId: string;
+      attempt: number;
+      reason: string;
+      at: string;
+    }>
+  > {
+    return this.withLock(() => {
+      const rows: Array<{
+        jobId: string;
+        attempt: number;
+        reason: string;
+        at: string;
+      }> = [];
+      for (const job of this.data.jobs) {
+        for (const entry of job.retryHistory ?? []) {
+          rows.push({
+            jobId: job.jobId,
+            attempt: entry.attempt,
+            reason: entry.reason,
+            at: entry.at,
+          });
+        }
+      }
+      return rows
+        .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+        .slice(0, limit);
+    });
+  }
+
   async getSideEffect(
     idempotencyKey: string,
   ): Promise<WorkSideEffectRecord | null> {
@@ -556,6 +932,9 @@ export class FileWorkQueueStore implements WorkQueueStore {
         createdAt: new Date().toISOString(),
       };
       this.data.sideEffects.push(record);
+      if (input.kind.includes("notify")) {
+        this.data.notificationCount += 1;
+      }
       return { created: true, record: structuredClone(record) };
     });
   }

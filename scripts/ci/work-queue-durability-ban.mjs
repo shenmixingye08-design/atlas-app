@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * CI gate: ban forbidden scheduler/queue patterns in production paths.
- * Fail closed — do not weaken Quality Gate.
+ * Production Blocker #4 — Durability fail-closed.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -26,6 +26,10 @@ const FORBIDDEN = [
     re: /new\s+Map\s*<[^>]*>\s*\(\s*\)\s*;\s*\/\/\s*queue/i,
     msg: "in-memory Map queue pattern forbidden",
   },
+  {
+    re: /ephemeral record \(still returned/i,
+    msg: "ephemeral side-effect fallback is forbidden (fail closed)",
+  },
 ];
 
 const REQUIRED_SNIPPETS = [
@@ -36,8 +40,18 @@ const REQUIRED_SNIPPETS = [
   },
   {
     file: "lib/work-queue/store/index.ts",
-    re: /work_queue_postgres_required/,
-    msg: "Production must require Postgres SoT",
+    re: /work_queue_file_sot_forbidden_in_production|work_queue_postgres_required/,
+    msg: "Production must forbid file SoT / require Postgres",
+  },
+  {
+    file: "lib/work-queue/store/index.ts",
+    re: /assertProductionFileSotBanned/,
+    msg: "Production must ban FORCE_FILE/ALLOW_FILE/MEMORY_FAST",
+  },
+  {
+    file: "lib/work-queue/worker.ts",
+    re: /recoverOnWorkerBoot/,
+    msg: "Worker must boot-recover Running/Stuck/Retry/Lease-expired",
   },
   {
     file: "lib/work-queue/worker.ts",
@@ -48,6 +62,21 @@ const REQUIRED_SNIPPETS = [
     file: "lib/work-queue/side-effects.ts",
     re: /tryRecordSideEffect|getSideEffect/,
     msg: "Side-effect idempotency module required",
+  },
+  {
+    file: "lib/work-queue/durability.ts",
+    re: /buildDurabilitySnapshot/,
+    msg: "Owner durability snapshot required",
+  },
+  {
+    file: "supabase/migrations/20260805_atlas_work_queue_durability.sql",
+    re: /atlas_work_queue_executions/,
+    msg: "Durability migration must create executions table",
+  },
+  {
+    file: "supabase/migrations/20260805_atlas_work_queue_durability.sql",
+    re: /atlas_work_queue_completion_evidence/,
+    msg: "Durability migration must create completion evidence table",
   },
   {
     file: ".github/workflows/minute-scheduler.yml",
@@ -67,7 +96,7 @@ function walk(dir, out = []) {
     const path = join(dir, name);
     const st = statSync(path);
     if (st.isDirectory()) walk(path, out);
-    else if (/\.(ts|tsx|mjs|js|yml)$/.test(name)) out.push(path);
+    else if (/\.(ts|tsx|mjs|js|yml|sql)$/.test(name)) out.push(path);
   }
   return out;
 }

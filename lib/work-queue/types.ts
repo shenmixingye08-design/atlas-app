@@ -120,6 +120,10 @@ export type EnqueueJobInput = {
     stepType: WorkStepType;
     inputBindings?: Record<string, unknown>;
   }>;
+  /**
+   * Required for Production Blocker #4.
+   * When omitted, stores derive from occurrenceKey — never leave blank.
+   */
   idempotencyKey?: string;
 };
 
@@ -146,7 +150,20 @@ export type WorkQueueMetrics = {
   p99ScheduleDelayMs: number | null;
   averageDelayMs: number | null;
   p95ExecutionMs: number | null;
+  averageExecutionMs: number | null;
   recoverySuccessRate: number | null;
+  /** Absolute recovery attempts (persisted counter). */
+  recoveryCount: number;
+  /** Cumulative retry schedules (persisted counter). */
+  retryCount: number;
+  /** Heartbeat / lease timeout recoveries. */
+  timeoutCount: number;
+  /** Notify side-effects recorded. */
+  notificationCount: number;
+  /** Jobs that entered running. */
+  startedCount: number;
+  /** Alias for queued depth. */
+  queueLength: number;
   /** Scheduler Alive — enabled + recent tick (or never started). */
   alive: boolean;
   workerCount: number;
