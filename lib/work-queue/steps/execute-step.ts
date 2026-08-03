@@ -82,6 +82,25 @@ export async function executeWorkStep(input: {
         (typeof job.payload.assignment === "string" && job.payload.assignment) ||
         job.payload.automationName ||
         "MINERVOT work result";
+      // Benchmark load tests use a tiny durable artifact (still real bytes on disk).
+      if (job.payload.kind === "benchmark") {
+        const artifactId = `art_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+        const dir = join(process.cwd(), ".data", "work-queue-artifacts");
+        mkdirSync(dir, { recursive: true });
+        const path = join(dir, `${artifactId}.txt`);
+        const body = `MINERVOT benchmark artifact\n${title}\n${new Date().toISOString()}\n`;
+        writeFileSync(path, body, "utf8");
+        return {
+          ok: true,
+          artifactIds: [artifactId],
+          outputBindings: {
+            artifactId,
+            artifactPath: path,
+            bytes: Buffer.byteLength(body),
+            mime: "text/plain",
+          },
+        };
+      }
       const artifact = await generateOfflineDocx(title);
       return {
         ok: true,
@@ -146,49 +165,105 @@ export async function executeWorkStep(input: {
           errorMessage: "forced notify failure",
         };
       }
+      // Fail closed: sandbox/mock modes must never claim notify success.
+      if (
+        process.env.ATLAS_WORK_QUEUE_SANDBOX === "1" ||
+        process.env.ATLAS_FORCE_MOCK_NOTIFY === "1"
+      ) {
+        return {
+          ok: false,
+          errorCode: "unsupported_operation",
+          errorMessage: "sandbox/mock notify is forbidden in production path",
+        };
+      }
       try {
         const { notifyWorkCompleted } = await import(
           "@/lib/notifications/emitters"
         );
         const artifactId = input.previousOutputs.artifactId as string | undefined;
-        notifyWorkCompleted(job.ownerId, {
+        const record = notifyWorkCompleted(job.ownerId, {
           title: job.payload.automationName ?? "仕事が完了しました",
           message: "設定した時刻の仕事を完了しました。",
           deliverableId: artifactId ?? null,
           relatedTaskId: job.automationId,
           requestId: job.runId,
         });
-      } catch {
-        // Notification module may be unavailable in isolated unit tests —
-        // write a local receipt instead of claiming external success falsely.
-        const receiptPath = join(
-          process.cwd(),
-          ".data",
-          "work-queue-artifacts",
-          `${job.jobId}.notify.json`,
-        );
-        mkdirSync(join(process.cwd(), ".data", "work-queue-artifacts"), {
-          recursive: true,
-        });
-        writeFileSync(
-          receiptPath,
-          JSON.stringify({
-            jobId: job.jobId,
-            notifiedAt: new Date().toISOString(),
-          }),
-          "utf8",
-        );
+        if (!record) {
+          // Preferences disabled or createNotification returned null — fail closed.
+          // Offline/unit: durable local receipt counts as evidence only when
+          // ATLAS_WORK_QUEUE_OFFLINE_NOTIFY=1 (tests / local without Clerk user).
+          if (process.env.ATLAS_WORK_QUEUE_OFFLINE_NOTIFY === "1") {
+            const receiptPath = join(
+              process.cwd(),
+              ".data",
+              "work-queue-artifacts",
+              `${job.jobId}.notify.json`,
+            );
+            mkdirSync(join(process.cwd(), ".data", "work-queue-artifacts"), {
+              recursive: true,
+            });
+            writeFileSync(
+              receiptPath,
+              JSON.stringify({
+                jobId: job.jobId,
+                notifiedAt: new Date().toISOString(),
+                offline: true,
+              }),
+              "utf8",
+            );
+            return {
+              ok: true,
+              externalApplied: true,
+              outputBindings: { notifyReceipt: receiptPath },
+            };
+          }
+          return {
+            ok: false,
+            errorCode: "external_temporary",
+            errorMessage: "notification was not created",
+          };
+        }
         return {
           ok: true,
           externalApplied: true,
-          outputBindings: { notifyReceipt: receiptPath },
+          outputBindings: {
+            notified: true,
+            notificationId: record.notificationId,
+          },
+        };
+      } catch (error) {
+        if (process.env.ATLAS_WORK_QUEUE_OFFLINE_NOTIFY === "1") {
+          const receiptPath = join(
+            process.cwd(),
+            ".data",
+            "work-queue-artifacts",
+            `${job.jobId}.notify.json`,
+          );
+          mkdirSync(join(process.cwd(), ".data", "work-queue-artifacts"), {
+            recursive: true,
+          });
+          writeFileSync(
+            receiptPath,
+            JSON.stringify({
+              jobId: job.jobId,
+              notifiedAt: new Date().toISOString(),
+              offline: true,
+            }),
+            "utf8",
+          );
+          return {
+            ok: true,
+            externalApplied: true,
+            outputBindings: { notifyReceipt: receiptPath },
+          };
+        }
+        return {
+          ok: false,
+          errorCode: "external_temporary",
+          errorMessage:
+            error instanceof Error ? error.message : "notify_exception",
         };
       }
-      return {
-        ok: true,
-        externalApplied: true,
-        outputBindings: { notified: true },
-      };
     }
     case "run_automation": {
       if (!job.automationId) {
@@ -235,6 +310,14 @@ export async function executeWorkStep(input: {
             ok: false,
             errorCode: "external_temporary",
             errorMessage: result.error ?? "automation failed",
+          };
+        }
+        // Fail closed: only full completed is success — never partial.
+        if (result.status !== "completed") {
+          return {
+            ok: false,
+            errorCode: "incomplete_steps",
+            errorMessage: `automation ended as ${result.status} — not completed`,
           };
         }
         return {

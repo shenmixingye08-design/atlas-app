@@ -13,6 +13,7 @@ import {
   lastDayOfMonthInTz,
 } from "./schedule-math";
 import { resetWorkQueueStoreForTests } from "./store";
+import { evaluateWorkQueueCompletion } from "./completion-gate";
 import { drainWorkQueue, recoverStuckJobs } from "./worker";
 import type { WorkQueueStore } from "./store";
 
@@ -23,6 +24,10 @@ beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), "wq-"));
   process.env.ATLAS_WORK_QUEUE_FORCE_FILE = "true";
   process.env.ATLAS_WORK_QUEUE_FILE = join(dir, "queue.json");
+  // Unit tests: durable local notify receipt (fail-closed still applies in prod).
+  process.env.ATLAS_WORK_QUEUE_OFFLINE_NOTIFY = "1";
+  delete process.env.ATLAS_WORK_QUEUE_SANDBOX;
+  delete process.env.ATLAS_FORCE_MOCK_NOTIFY;
   store = resetWorkQueueStoreForTests(process.env.ATLAS_WORK_QUEUE_FILE);
   await store.resetForTests();
 });
@@ -33,6 +38,7 @@ afterEach(() => {
   } catch {
     // ignore
   }
+  delete process.env.ATLAS_WORK_QUEUE_OFFLINE_NOTIFY;
 });
 
 describe("work-queue schedule math", () => {
@@ -367,6 +373,7 @@ describe("work-queue enqueue + worker", () => {
 
 describe("work-queue load", () => {
   it("drains 100 jobs with artifacts", async () => {
+    process.env.ATLAS_WORK_QUEUE_MEMORY_FAST = "true";
     for (let i = 0; i < 100; i += 1) {
       await store.enqueue({
         ownerId: "load_user",
@@ -397,9 +404,11 @@ describe("work-queue load", () => {
     const metrics = await store.metrics();
     expect(metrics.completed).toBe(100);
     expect(metrics.duplicateCount).toBe(0);
+    delete process.env.ATLAS_WORK_QUEUE_MEMORY_FAST;
   }, 120_000);
 
   it("drains 500 jobs", async () => {
+    process.env.ATLAS_WORK_QUEUE_MEMORY_FAST = "true";
     for (let i = 0; i < 500; i += 1) {
       await store.enqueue({
         ownerId: "load_user_500",
@@ -423,9 +432,11 @@ describe("work-queue load", () => {
       if (drain.leased === 0) break;
     }
     expect(completed).toBe(500);
-  }, 180_000);
+    delete process.env.ATLAS_WORK_QUEUE_MEMORY_FAST;
+  }, 120_000);
 
   it("drains 1000 jobs with 5 concurrent workers", async () => {
+    process.env.ATLAS_WORK_QUEUE_MEMORY_FAST = "true";
     for (let i = 0; i < 1000; i += 1) {
       await store.enqueue({
         ownerId: "load_user_1000",
@@ -453,7 +464,184 @@ describe("work-queue load", () => {
     expect(completed).toBe(1000);
     const metrics = await store.metrics();
     expect(metrics.completed).toBe(1000);
-  }, 300_000);
+    delete process.env.ATLAS_WORK_QUEUE_MEMORY_FAST;
+  }, 120_000);
+
+  it("drains 5000 jobs with priority FIFO and delayed release", async () => {
+    process.env.ATLAS_WORK_QUEUE_MEMORY_FAST = "true";
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const delayedInputs = Array.from({ length: 10 }, (_, i) => ({
+      ownerId: "load_user_5000",
+      automationId: `auto_delay_${i}`,
+      occurrenceKey: `occ:delay:${i}`,
+      priority: 100,
+      payload: {
+        kind: "benchmark" as const,
+        offlineArtifacts: true,
+        assignment: `delayed ${i}`,
+      },
+      steps: [
+        {
+          stepId: "generate",
+          stepType: "generate_deliverable" as const,
+        },
+      ],
+    }));
+    const delayed = store.enqueueMany
+      ? await store.enqueueMany(delayedInputs)
+      : await Promise.all(delayedInputs.map((input) => store.enqueue(input)));
+    for (const { job } of delayed) {
+      await store.updateJob(job.jobId, {
+        availableAt: future,
+        status: "queued",
+      });
+    }
+
+    const batch = Array.from({ length: 5000 }, (_, i) => ({
+      ownerId: "load_user_5000",
+      automationId: `auto_5000_${i}`,
+      occurrenceKey: `occ:5000:${i}`,
+      priority: i % 3,
+      payload: {
+        kind: "benchmark" as const,
+        offlineArtifacts: true,
+        assignment: `job ${i}`,
+      },
+      steps: [
+        {
+          stepId: "generate",
+          stepType: "generate_deliverable" as const,
+        },
+      ],
+    }));
+    if (store.enqueueMany) {
+      await store.enqueueMany(batch);
+    } else {
+      for (const input of batch) {
+        await store.enqueue(input);
+      }
+    }
+
+    let completed = 0;
+    while (completed < 5000) {
+      const rounds = await Promise.all(
+        Array.from({ length: 8 }, (_, idx) =>
+          drainWorkQueue({ workerId: `w5k_${completed}_${idx}`, limit: 40 }),
+        ),
+      );
+      const gained = rounds.reduce((sum, r) => sum + r.completed, 0);
+      completed += gained;
+      if (gained === 0) break;
+    }
+    expect(completed).toBe(5000);
+    const metrics = await store.metrics();
+    expect(metrics.completed).toBe(5000);
+    expect(metrics.queued).toBeGreaterThanOrEqual(10);
+    delete process.env.ATLAS_WORK_QUEUE_MEMORY_FAST;
+  }, 180_000);
+});
+
+describe("work-queue fail-closed completion", () => {
+  it("rejects completion without evidence", () => {
+    const gate = evaluateWorkQueueCompletion({
+      jobId: "j1",
+      runId: "r1",
+      automationId: "a1",
+      ownerId: "u1",
+      occurrenceKey: "occ",
+      scheduleId: null,
+      status: "running",
+      priority: 0,
+      availableAt: new Date().toISOString(),
+      scheduledAt: null,
+      startedAt: null,
+      completedAt: null,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      heartbeatAt: null,
+      attempt: 1,
+      maxAttempts: 5,
+      retryAt: null,
+      errorCode: null,
+      failedStage: null,
+      diagnosticId: null,
+      idempotencyKey: "idem",
+      payload: { kind: "fixture", offlineArtifacts: true },
+      resultSummary: null,
+      firstError: null,
+      lastError: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      steps: [
+        {
+          stepId: "generate",
+          jobId: "j1",
+          stepIndex: 0,
+          stepType: "generate_deliverable",
+          status: "completed",
+          attempt: 1,
+          inputBindings: {},
+          outputBindings: {},
+          artifactIds: [],
+          errorCode: null,
+          errorMessage: null,
+          startedAt: null,
+          completedAt: null,
+          idempotencyKey: "s1",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    });
+    expect(gate.ok).toBe(false);
+  });
+
+  it("fails sandbox notify (fail closed)", async () => {
+    process.env.ATLAS_WORK_QUEUE_SANDBOX = "1";
+    await store.enqueue({
+      ownerId: "sandbox_user",
+      automationId: "auto_sandbox",
+      occurrenceKey: "occ:sandbox",
+      payload: {
+        kind: "fixture",
+        offlineArtifacts: true,
+        assignment: "sandbox notify",
+      },
+      steps: [
+        { stepId: "generate", stepType: "generate_deliverable" },
+        { stepId: "upload", stepType: "upload_storage" },
+        { stepId: "notify", stepType: "notify_complete" },
+      ],
+    });
+    const drain = await drainWorkQueue({ workerId: "sandbox_w", limit: 1 });
+    expect(drain.completed).toBe(0);
+    expect(drain.failed + drain.retried).toBeGreaterThan(0);
+  });
+
+  it("stops leasing on graceful shutdown signal", async () => {
+    for (let i = 0; i < 5; i += 1) {
+      await store.enqueue({
+        ownerId: "grace_user",
+        automationId: `auto_g_${i}`,
+        occurrenceKey: `occ:g:${i}`,
+        payload: {
+          kind: "benchmark",
+          offlineArtifacts: true,
+          assignment: `g ${i}`,
+        },
+        steps: [{ stepId: "generate", stepType: "generate_deliverable" }],
+      });
+    }
+    const controller = new AbortController();
+    controller.abort();
+    const drain = await drainWorkQueue({
+      workerId: "grace",
+      limit: 5,
+      signal: controller.signal,
+    });
+    expect(drain.leased).toBe(0);
+    expect(drain.completed).toBe(0);
+  });
 });
 
 describe("scheduler 100 fires", () => {

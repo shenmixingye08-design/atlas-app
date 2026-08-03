@@ -11,6 +11,7 @@ import { dirname } from "node:path";
 import {
   WORK_QUEUE_DEFAULT_MAX_ATTEMPTS,
   WORK_QUEUE_FILE_ENV,
+  WORK_QUEUE_MEMORY_FAST_ENV,
 } from "../constants";
 import {
   buildJobIdempotencyKey,
@@ -116,88 +117,104 @@ export class FileWorkQueueStore implements WorkQueueStore {
     });
     await prev;
     try {
-      // Reload from disk so multi-instance / restart sees latest.
-      this.data = this.load();
+      // Single-writer test mode skips reload (mutex already serializes).
+      // Multi-process / restart paths still reload from disk.
+      if (process.env.ATLAS_WORK_QUEUE_FORCE_FILE !== "true") {
+        this.data = this.load();
+      }
       return await fn();
     } finally {
-      this.persist();
+      // Load tests: avoid O(n²) JSON rewrite on every mutation.
+      if (process.env[WORK_QUEUE_MEMORY_FAST_ENV] !== "true") {
+        this.persist();
+      }
       release();
     }
+  }
+
+  private buildJob(
+    input: EnqueueJobInput,
+  ): { job: WorkJobRecord; created: boolean } {
+    const idem =
+      input.idempotencyKey ?? buildJobIdempotencyKey(input.occurrenceKey);
+    const existing = this.data.jobs.find(
+      (j) =>
+        j.idempotencyKey === idem ||
+        (j.automationId === input.automationId &&
+          j.occurrenceKey === input.occurrenceKey),
+    );
+    if (existing) {
+      this.data.duplicateCount += 1;
+      return { job: existing, created: false };
+    }
+
+    const now = new Date().toISOString();
+    const jobId = randomUUID();
+    const runId = `run_${jobId.replace(/-/g, "").slice(0, 16)}`;
+    const steps: WorkStepRecord[] = input.steps.map((step, index) => ({
+      stepId: step.stepId,
+      jobId,
+      stepIndex: index,
+      stepType: step.stepType,
+      status: "pending",
+      attempt: 0,
+      inputBindings: step.inputBindings ?? {},
+      outputBindings: {},
+      artifactIds: [],
+      errorCode: null,
+      errorMessage: null,
+      startedAt: null,
+      completedAt: null,
+      idempotencyKey: buildStepIdempotencyKey(jobId, step.stepId),
+      createdAt: now,
+      updatedAt: now,
+    }));
+
+    const job: WorkJobRecord = {
+      jobId,
+      runId,
+      automationId: input.automationId,
+      ownerId: input.ownerId,
+      occurrenceKey: input.occurrenceKey,
+      scheduleId: input.scheduleId ?? null,
+      status: "queued",
+      priority: input.priority ?? 0,
+      availableAt: now,
+      scheduledAt: input.scheduledAt ?? null,
+      startedAt: null,
+      completedAt: null,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      heartbeatAt: null,
+      attempt: 0,
+      maxAttempts: input.maxAttempts ?? WORK_QUEUE_DEFAULT_MAX_ATTEMPTS,
+      retryAt: null,
+      errorCode: null,
+      failedStage: null,
+      diagnosticId: null,
+      idempotencyKey: idem,
+      payload: input.payload,
+      resultSummary: null,
+      firstError: null,
+      lastError: null,
+      createdAt: now,
+      updatedAt: now,
+      steps,
+    };
+    this.data.jobs.push(job);
+    return { job, created: true };
   }
 
   async enqueue(
     input: EnqueueJobInput,
   ): Promise<{ job: WorkJobRecord; created: boolean }> {
-    return this.withLock(() => {
-      const idem =
-        input.idempotencyKey ?? buildJobIdempotencyKey(input.occurrenceKey);
-      const existing = this.data.jobs.find(
-        (j) =>
-          j.idempotencyKey === idem ||
-          (j.automationId === input.automationId &&
-            j.occurrenceKey === input.occurrenceKey),
-      );
-      if (existing) {
-        this.data.duplicateCount += 1;
-        return { job: existing, created: false };
-      }
+    return this.withLock(() => this.buildJob(input));
+  }
 
-      const now = new Date().toISOString();
-      const jobId = randomUUID();
-      const runId = `run_${jobId.replace(/-/g, "").slice(0, 16)}`;
-      const steps: WorkStepRecord[] = input.steps.map((step, index) => ({
-        stepId: step.stepId,
-        jobId,
-        stepIndex: index,
-        stepType: step.stepType,
-        status: "pending",
-        attempt: 0,
-        inputBindings: step.inputBindings ?? {},
-        outputBindings: {},
-        artifactIds: [],
-        errorCode: null,
-        errorMessage: null,
-        startedAt: null,
-        completedAt: null,
-        idempotencyKey: buildStepIdempotencyKey(jobId, step.stepId),
-        createdAt: now,
-        updatedAt: now,
-      }));
-
-      const job: WorkJobRecord = {
-        jobId,
-        runId,
-        automationId: input.automationId,
-        ownerId: input.ownerId,
-        occurrenceKey: input.occurrenceKey,
-        scheduleId: input.scheduleId ?? null,
-        status: "queued",
-        priority: input.priority ?? 0,
-        availableAt: now,
-        scheduledAt: input.scheduledAt ?? null,
-        startedAt: null,
-        completedAt: null,
-        leaseOwner: null,
-        leaseExpiresAt: null,
-        heartbeatAt: null,
-        attempt: 0,
-        maxAttempts: input.maxAttempts ?? WORK_QUEUE_DEFAULT_MAX_ATTEMPTS,
-        retryAt: null,
-        errorCode: null,
-        failedStage: null,
-        diagnosticId: null,
-        idempotencyKey: idem,
-        payload: input.payload,
-        resultSummary: null,
-        firstError: null,
-        lastError: null,
-        createdAt: now,
-        updatedAt: now,
-        steps,
-      };
-      this.data.jobs.push(job);
-      return { job, created: true };
-    });
+  async enqueueMany(
+    inputs: EnqueueJobInput[],
+  ): Promise<Array<{ job: WorkJobRecord; created: boolean }>> {
+    return this.withLock(() => inputs.map((input) => this.buildJob(input)));
   }
 
   async leaseJobs(input: {

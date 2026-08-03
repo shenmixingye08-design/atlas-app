@@ -9,6 +9,10 @@ import type {
 export type WorkQueueStore = {
   readonly kind: "file" | "postgres";
   enqueue(input: EnqueueJobInput): Promise<{ job: WorkJobRecord; created: boolean }>;
+  /** Batch enqueue with a single persistence round-trip (load tests). */
+  enqueueMany?(
+    inputs: EnqueueJobInput[],
+  ): Promise<Array<{ job: WorkJobRecord; created: boolean }>>;
   leaseJobs(input: {
     workerId: string;
     limit: number;

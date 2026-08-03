@@ -8,6 +8,7 @@ import {
 } from "./constants";
 import { buildDiagnosticId } from "./occurrence";
 import { logWorkQueue } from "./observability";
+import { evaluateWorkQueueCompletion } from "./completion-gate";
 import { decideRetry } from "./retry";
 import { getWorkQueueStore } from "./store";
 import { executeWorkStep } from "./steps/execute-step";
@@ -231,7 +232,33 @@ async function processLeasedJob(
       return "failed";
     }
 
+    const latest = (await store.getJob(job.jobId)) ?? running;
+    const gate = evaluateWorkQueueCompletion(latest);
     const doneAt = new Date().toISOString();
+    if (!gate.ok) {
+      await store.updateJob(
+        job.jobId,
+        {
+          status: "failed",
+          completedAt: doneAt,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          errorCode: gate.errorCode,
+          failedStage: "completion_gate",
+          lastError: gate.errorMessage,
+          resultSummary: gate.errorMessage,
+        },
+        workerId,
+      );
+      logWorkQueue({
+        event: "JOB_FAILED",
+        jobId: job.jobId,
+        ownerId: job.ownerId,
+        errorCode: gate.errorCode,
+      });
+      return "failed";
+    }
+
     await store.updateJob(
       job.jobId,
       {
@@ -239,7 +266,7 @@ async function processLeasedJob(
         completedAt: doneAt,
         leaseOwner: null,
         leaseExpiresAt: null,
-        resultSummary: "仕事が完了しました",
+        resultSummary: gate.summary,
         errorCode: null,
         failedStage: null,
       },
@@ -325,11 +352,26 @@ export async function drainWorkQueue(options?: {
   workerId?: string;
   limit?: number;
   leaseMs?: number;
+  /** Graceful shutdown — stop leasing new work when aborted. */
+  signal?: AbortSignal;
 }): Promise<WorkerDrainResult> {
   const store = getWorkQueueStore();
   const workerId = options?.workerId ?? `worker_${randomUUID().slice(0, 8)}`;
   const limit = options?.limit ?? WORK_QUEUE_WORKER_BATCH;
   const leaseMs = options?.leaseMs ?? WORK_QUEUE_LEASE_MS;
+
+  if (options?.signal?.aborted) {
+    return {
+      workerId,
+      leased: 0,
+      completed: 0,
+      failed: 0,
+      retried: 0,
+      recovered: 0,
+      completedJobs: [],
+      failedJobs: [],
+    };
+  }
 
   const recovered = await recoverStuckJobs();
   const leased = await store.leaseJobs({ workerId, limit, leaseMs });
@@ -340,6 +382,10 @@ export async function drainWorkQueue(options?: {
   const failedJobs: WorkerDrainResult["failedJobs"] = [];
 
   for (const job of leased) {
+    if (options?.signal?.aborted) {
+      // Release unused leases so another worker can reclaim after expiry.
+      break;
+    }
     logWorkQueue({
       event: "JOB_LEASED",
       jobId: job.jobId,
