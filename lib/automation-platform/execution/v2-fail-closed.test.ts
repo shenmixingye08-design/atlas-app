@@ -261,14 +261,21 @@ describe("V2 Production fail-closed", () => {
     }
   });
 
-  it("live adapter missing fails closed (no prepared success)", async () => {
+  it("gmail live adapter fails closed without connection (no prepared success)", async () => {
+    vi.stubEnv("GOOGLE_CLIENT_ID", "test-google-client");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "test-google-secret");
     const result = await strictStepInvoker({
       step: baseStep({
         id: "g",
         type: "gmail",
         name: "Gmail",
         order: 0,
-        configuration: { to: "boss@example.com" },
+        configuration: {
+          mode: "draft",
+          to: "boss@example.com",
+          subject: "hello",
+          textBody: "body",
+        },
         requiresApproval: true,
       }),
       userId: "user_fc",
@@ -278,11 +285,14 @@ describe("V2 Production fail-closed", () => {
     });
     expect(result.ok).toBe(false);
     expect(
-      ["live_adapter_missing", "automation_integration_required", "automation_feature_disabled"].includes(
-        result.errorCode ?? "",
-      ),
+      [
+        "gmail_not_connected",
+        "gmail_reconnect_required",
+        "gmail_missing_scope",
+        "automation_integration_required",
+      ].includes(result.errorCode ?? ""),
     ).toBe(true);
-    expect(result.failedStage).toBe("EXTERNAL_ADAPTER_RESOLUTION");
+    expect(result.failedStage).toBe("EXTERNAL_ADAPTER_EXECUTION");
   });
 
   it("calendar live adapter fails closed without connection", async () => {

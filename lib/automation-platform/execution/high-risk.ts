@@ -14,6 +14,16 @@ export function isConfigHighRisk(step: AutomationWorkflowStep): boolean {
 }
 
 export function isStepHighRisk(step: AutomationWorkflowStep): boolean {
+  if (step.type === "gmail") {
+    const mode = String(
+      step.configuration?.mode ?? step.configuration?.action ?? "send",
+    ).toLowerCase();
+    // Draft-only does not require pre-run approval; send/reply remain high-risk.
+    if (mode === "draft" || mode === "create_draft") {
+      return false;
+    }
+    return true;
+  }
   if (step.type === "google_calendar") {
     const action = String(
       step.configuration?.action ?? step.configuration?.mode ?? "create",

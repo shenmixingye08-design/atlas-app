@@ -174,6 +174,25 @@ export type AutomationRun = {
       retryCount: number;
       duplicatePrevented: boolean;
     }>;
+    gmailResults?: Array<{
+      service: "gmail";
+      action: string;
+      draftId: string | null;
+      messageId: string | null;
+      threadId: string | null;
+      recipientHash: string;
+      subjectHash: string;
+      attachmentArtifactIds: string[];
+      completedAt: string;
+      resultHash: string;
+      retryCount: number;
+      duplicatePrevented: boolean;
+      adapterMode: string;
+      environment: string;
+      approvalId: string | null;
+      providerRequestId: string | null;
+      deliveryGuarantee: "provider_accepted" | "not_applicable";
+    }>;
     calendarResults?: Array<{
       service: "google_calendar";
       action: string;

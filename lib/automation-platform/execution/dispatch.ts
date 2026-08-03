@@ -76,6 +76,54 @@ function buildCalendarNotificationDetail(run: AutomationRun): string | null {
   return null;
 }
 
+function buildGmailNotificationDetail(run: AutomationRun): string | null {
+  const gmail = run.completionEvidence?.gmailResults?.[0];
+  if (gmail) {
+    const isSend = Boolean(gmail.messageId) && gmail.action !== "draft";
+    if (isSend) {
+      return [
+        "Gmailで送信しました。",
+        `宛先ハッシュ: ${gmail.recipientHash.slice(0, 8)}…`,
+        `添付数: ${gmail.attachmentArtifactIds.length}`,
+        `messageId: ${gmail.messageId}`,
+        `実行時刻: ${gmail.completedAt}`,
+        "（Provider受付済み）",
+      ].join(" ");
+    }
+    return [
+      "Gmail下書きを作成しました。",
+      `添付数: ${gmail.attachmentArtifactIds.length}`,
+      `draftId: ${gmail.draftId}`,
+      gmail.deliveryGuarantee === "not_applicable"
+        ? "承認待ちの場合は送信前に確認してください。"
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const message = run.lastErrorMessage ?? run.resultSummary ?? "";
+  if (/missing_scope|権限/i.test(message)) {
+    return "権限不足です。Gmailを再接続してください。";
+  }
+  if (/reconnect|再接続|revok|expired|401/i.test(message)) {
+    return "再接続が必要です。Google連携をやり直してください。";
+  }
+  if (/invalid recipient|宛先/i.test(message)) {
+    return "宛先が不正です。";
+  }
+  if (/attachment|添付/i.test(message)) {
+    return "添付ファイルの取得に失敗しました。";
+  }
+  if (/retry|429|rate limit/i.test(message)) {
+    return "Gmail API制限のため再試行中です。";
+  }
+  if (/approval|承認/i.test(message)) {
+    return "Gmail送信の承認待ちです。下書きは作成済みの場合があります。";
+  }
+  return null;
+}
+
 function buildGoogleDriveNotificationDetail(run: AutomationRun): string | null {
   const drive = run.completionEvidence?.driveResults?.[0];
   if (drive) {
@@ -113,6 +161,7 @@ function buildGoogleDriveNotificationDetail(run: AutomationRun): string | null {
 
 function buildExternalNotificationDetail(run: AutomationRun): string | null {
   return (
+    buildGmailNotificationDetail(run) ||
     buildCalendarNotificationDetail(run) ||
     buildGoogleDriveNotificationDetail(run)
   );

@@ -277,6 +277,7 @@ export function isLiveAdapterWired(adapterId: string | null): boolean {
     "openai_vision_ocr",
     // External Production Live adapters
     "google_drive",
+    "google_gmail",
     "google_calendar",
   ]);
   return wired.has(adapterId);

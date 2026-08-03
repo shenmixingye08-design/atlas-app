@@ -2,6 +2,7 @@ import { appendAutomationAudit } from "@/lib/automation-platform/audit/log";
 import { AutomationPlatformError } from "@/lib/automation-platform/errors/messages";
 import { resolveRunApprovalRequirement } from "@/lib/automation-platform/execution/policy";
 import { validateStepsForProductionActivation } from "@/lib/automation-platform/execution/production-step-registry";
+import { assertGmailPreflightForActivation } from "@/lib/automation-platform/execution/gmail-preflight";
 import { assertGoogleCalendarPreflightForActivation } from "@/lib/automation-platform/execution/google-calendar-preflight";
 import {
   buildIdempotencyKey,
@@ -137,6 +138,20 @@ async function assertExternalPreflightForActivation(
       stepType: "google_drive",
       reason: first.message,
       issues: driveIssues,
+    });
+  }
+
+  const gmailIssues = await assertGmailPreflightForActivation({
+    userId,
+    steps,
+  });
+  if (gmailIssues.length > 0) {
+    const first = gmailIssues[0]!;
+    throw new AutomationPlatformError("automation_integration_required", {
+      stepId: first.stepId,
+      stepType: "gmail",
+      reason: first.message,
+      issues: gmailIssues,
     });
   }
 

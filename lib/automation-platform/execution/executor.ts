@@ -273,6 +273,7 @@ export async function executeQueuedRun(input: {
           errorMessage: result.errorMessage ?? null,
           outputSummary: result.summary,
         };
+        // Preserve draft artifacts / evidence produced before approval wait.
         if (result.artifacts.length > 0) {
           run = {
             ...run,

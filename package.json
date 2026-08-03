@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "ci:v2-stub-ban": "node scripts/ci/v2-stub-ban.mjs",
     "ci:google-drive-live-adapter": "node scripts/ci/google-drive-live-adapter.mjs",
+    "ci:gmail-live-adapter": "node scripts/ci/gmail-live-adapter.mjs",
     "ci:google-calendar-live-adapter": "node scripts/ci/google-calendar-live-adapter.mjs",
     "test": "vitest run",
     "test:watch": "vitest",

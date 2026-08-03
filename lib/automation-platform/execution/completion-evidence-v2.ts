@@ -23,6 +23,26 @@ export type DriveStepEvidence = {
   duplicatePrevented: boolean;
 };
 
+export type GmailStepEvidence = {
+  service: "gmail";
+  action: string;
+  draftId: string | null;
+  messageId: string | null;
+  threadId: string | null;
+  recipientHash: string;
+  subjectHash: string;
+  attachmentArtifactIds: string[];
+  completedAt: string;
+  resultHash: string;
+  retryCount: number;
+  duplicatePrevented: boolean;
+  adapterMode: string;
+  environment: string;
+  approvalId: string | null;
+  providerRequestId: string | null;
+  deliveryGuarantee: "provider_accepted" | "not_applicable";
+};
+
 export type CalendarStepEvidence = {
   service: "google_calendar";
   action: string;
@@ -62,6 +82,7 @@ export type AutomationV2CompletionEvidence = {
   adapterMode: string | null;
   environment: string | null;
   driveResults: DriveStepEvidence[];
+  gmailResults: GmailStepEvidence[];
   calendarResults: CalendarStepEvidence[];
 };
 
@@ -74,6 +95,7 @@ export type StepEvidenceFragment = {
   adapterMode?: string;
   environment?: string;
   drive?: DriveStepEvidence;
+  gmail?: GmailStepEvidence;
   calendar?: CalendarStepEvidence;
 };
 
@@ -84,16 +106,23 @@ function unique(values: string[]): string[] {
 export function mergeEvidenceFragments(
   fragments: StepEvidenceFragment[],
 ): Required<
-  Omit<StepEvidenceFragment, "adapterMode" | "environment" | "drive" | "calendar">
+  Omit<
+    StepEvidenceFragment,
+    "adapterMode" | "environment" | "drive" | "gmail" | "calendar"
+  >
 > & {
   adapterMode: string | null;
   environment: string | null;
   driveResults: DriveStepEvidence[];
+  gmailResults: GmailStepEvidence[];
   calendarResults: CalendarStepEvidence[];
 } {
   const driveResults = fragments
     .map((item) => item.drive)
     .filter((item): item is DriveStepEvidence => Boolean(item));
+  const gmailResults = fragments
+    .map((item) => item.gmail)
+    .filter((item): item is GmailStepEvidence => Boolean(item));
   const calendarResults = fragments
     .map((item) => item.calendar)
     .filter((item): item is CalendarStepEvidence => Boolean(item));
@@ -118,6 +147,7 @@ export function mergeEvidenceFragments(
     adapterMode,
     environment,
     driveResults,
+    gmailResults,
     calendarResults,
   };
 }
@@ -171,6 +201,7 @@ export function buildCompletionEvidenceV2(input: {
     adapterMode: merged.adapterMode,
     environment: merged.environment,
     driveResults: merged.driveResults,
+    gmailResults: merged.gmailResults,
     calendarResults: merged.calendarResults,
   };
 

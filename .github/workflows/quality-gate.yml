@@ -55,8 +55,12 @@ jobs:
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
           NODE_OPTIONS: --max-old-space-size=8192
 
+      - name: Gmail Live Adapter Production gate
+        run: node scripts/ci/gmail-live-adapter.mjs
+
       - name: Google Calendar Live Adapter Production gate
         run: node scripts/ci/google-calendar-live-adapter.mjs
+
 
       - name: Unit / integration tests
         run: npm test

@@ -120,11 +120,21 @@ const SCHEMAS: Record<AutomationCapabilityId, readonly CapabilityFieldSchema[]> 
       options: [
         { value: "draft", label: "下書きのみ作る" },
         { value: "send", label: "送信する（要確認）" },
+        { value: "reply", label: "返信する（要確認）" },
       ],
     },
     { key: "to", label: "宛先", type: "text", sensitive: true, helpText: "記憶だけで自動入力しません" },
     { key: "cc", label: "CC", type: "text", sensitive: true },
+    { key: "bcc", label: "BCC", type: "text", sensitive: true },
     { key: "subject", label: "件名", type: "text" },
+    { key: "textBody", label: "本文（テキスト）", type: "textarea" },
+    { key: "htmlBody", label: "本文（HTML）", type: "textarea" },
+    {
+      key: "approvalRequired",
+      label: "送信前に承認する",
+      type: "boolean",
+      helpText: "送信・返信は原則ON。下書きのみなら不要です",
+    },
   ],
   x_post: [
     { key: "includeImage", label: "画像を付ける", type: "boolean" },

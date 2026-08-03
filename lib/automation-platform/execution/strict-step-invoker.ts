@@ -21,6 +21,10 @@ import {
   isLiveAdapterWired,
 } from "@/lib/automation-platform/execution/production-step-registry";
 import { invokeGoogleDriveUploadStep } from "@/lib/automation-platform/execution/google-drive-step";
+import {
+  gmailStepAllowsWithoutApproval,
+  invokeGmailLiveStep,
+} from "@/lib/automation-platform/execution/gmail-step";
 import { invokeGoogleCalendarLiveStep } from "@/lib/automation-platform/execution/google-calendar-step";
 import { getCapability } from "@/lib/automation-platform/step-registry/registry";
 import { createNotification } from "@/lib/notifications/service";
@@ -305,8 +309,13 @@ export const strictStepInvoker: StepInvoker = async (input) => {
   }
 
   if (capability.systemRequiresApproval && !approved) {
-    // Calendar: invite/update/cancel gated inside the live adapter (never invite before approval).
-    if (step.type !== "google_calendar") {
+    // Gmail draft-only may proceed; send/reply gated inside live adapter.
+    // Calendar invite/update/cancel gated inside live adapter.
+    const gmailDraftOk =
+      step.type === "gmail" && gmailStepAllowsWithoutApproval(step);
+    const gmailSendDeferred = step.type === "gmail" && !gmailDraftOk;
+    const calendarDeferred = step.type === "google_calendar";
+    if (!gmailDraftOk && !gmailSendDeferred && !calendarDeferred) {
       return {
         ok: false,
         summary: "承認が必要です",
@@ -361,16 +370,27 @@ export const strictStepInvoker: StepInvoker = async (input) => {
       const to =
         typeof step.configuration.to === "string"
           ? step.configuration.to.trim()
-          : "";
-      return invokeExternalGate(
-        "Gmail",
-        "google_gmail",
-        googleAppConfigured(),
-        live,
-        !to || to === "（宛先未設定）"
-          ? missingInput("メール送信先が設定されていません")
-          : null,
-      );
+          : Array.isArray(step.configuration.to)
+            ? step.configuration.to.join(",")
+            : "";
+      if (!to || to === "（宛先未設定）") {
+        return missingInput("メール送信先が設定されていません");
+      }
+      if (!googleAppConfigured()) {
+        return notConnected("Gmail");
+      }
+      if (!isLiveAdapterWired("google_gmail")) {
+        return liveAdapterMissing("Gmail");
+      }
+      return invokeGmailLiveStep({
+        step,
+        userId: input.userId,
+        runId: input.runId,
+        approved,
+        diagnosticId: input.diagnosticId ?? input.runId,
+        approvalId: input.approvalId ?? null,
+        priorArtifacts: input.priorArtifacts,
+      });
     }
     case "x_post": {
       const text =
