@@ -24,7 +24,10 @@ export type MemoryApplyChannel =
   | "dashboard"
   | "regenerate"
   | "scheduler"
-  | "orchestration";
+  | "orchestration"
+  | "commander"
+  | "prediction"
+  | "workflow";
 
 export type MemoryApplyMode = "on" | "off";
 

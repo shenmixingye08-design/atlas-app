@@ -25,6 +25,7 @@ import {
   recordMemoryApplyEvent,
   resetMemoryApplyMetricsForTests,
 } from "@/lib/memory-apply/metrics";
+import { resetMemoryApplyLogForTests } from "@/lib/memory-apply/apply-log";
 import { auditMemoryApplyCoverage } from "@/lib/memory-apply/audit";
 import { applyOcrCorrections } from "@/lib/memory-apply/ocr";
 import {
@@ -748,6 +749,9 @@ describe("Memory Apply — metrics / audit / dashboard", () => {
       "regenerate",
       "scheduler",
       "orchestration",
+      "commander",
+      "prediction",
+      "workflow",
     ] as const;
     for (const channel of channels) {
       recordMemoryApplyEvent({
@@ -786,5 +790,118 @@ describe("Memory Apply — metrics / audit / dashboard", () => {
     const audit = auditMemoryApplyCoverage();
     expect(audit.localStorageAsMemorySot.length).toBeGreaterThan(0);
     expect(audit.notes.join(" ")).toMatch(/localStorage/);
+  });
+});
+
+describe("Memory Apply — unified secretary API", () => {
+  beforeEach(() => {
+    clearAllPersonalMemoryData(USER);
+    writePersonalMemorySettings(USER, {
+      ...DEFAULT_PERSONAL_MEMORY_SETTINGS,
+      enabled: true,
+    });
+    resetMemoryApplyMetricsForTests();
+    resetMemoryApplyLogForTests();
+    seedMemory({
+      scope: "writing_style",
+      key: "tone",
+      title: "文体",
+      summary: "丁寧で簡潔に",
+      value: { text: "丁寧で簡潔に書いてください", tone: "丁寧語" },
+    });
+    seedMemory({
+      scope: "contact_info",
+      key: "company",
+      title: "会社",
+      summary: "株式会社ミネルバ",
+      value: { companyName: "株式会社ミネルバ", department: "営業部" },
+      kind: "work_preference",
+    });
+  });
+
+  it("35. MemoryProvider resolves shared context", async () => {
+    const { MemoryProvider } = await import("@/lib/memory-apply/provider");
+    const result = await MemoryProvider({
+      userId: USER,
+      channel: "commander",
+      assignment: "営業資料を作成",
+    });
+    expect(result.mode).toBe("on");
+    expect(result.combinedInjectionText.length).toBeGreaterThan(0);
+    expect(result.memoryIdsUsed.length).toBeGreaterThan(0);
+    expect(result.scopesUsed).toContain("writing_style");
+  });
+
+  it("36. MemoryApply ON vs OFF comparison", async () => {
+    const { MemoryApplyComparison } = await import("@/lib/memory-apply/apply");
+    const cmp = await MemoryApplyComparison({
+      userId: USER,
+      channel: "word",
+      baseline: "本日の提案資料です。",
+      assignment: "提案資料",
+    });
+    expect(cmp.off.context.mode).toBe("off");
+    expect(cmp.on.context.mode).toBe("on");
+    expect(cmp.on.prompt.withMemory.length).toBeGreaterThanOrEqual(
+      cmp.off.prompt.withMemory.length,
+    );
+    expect(cmp.on.quality.improvementRate).toBeGreaterThanOrEqual(0);
+    expect(cmp.improvementDelta).toBeGreaterThanOrEqual(0);
+  });
+
+  it("37. PromptBuilder / ContextBuilder inject Memory", async () => {
+    const { MemoryApply } = await import("@/lib/memory-apply/apply");
+    const applied = await MemoryApply({
+      userId: USER,
+      channel: "powerpoint",
+      baseline: "会社紹介スライド",
+      assignment: "会社紹介",
+    });
+    expect(applied.prompt.injection.fullText).toMatch(/記憶|Memory|文体|会社/i);
+    expect(applied.surface.plannerKnowledge).toBeTruthy();
+    expect(applied.context.facts.companyName).toBe("株式会社ミネルバ");
+  });
+
+  it("38. apply log records before/after and token delta", async () => {
+    const { MemoryApply } = await import("@/lib/memory-apply/apply");
+    const { listMemoryApplyLogs } = await import("@/lib/memory-apply/apply-log");
+    await MemoryApply({
+      userId: USER,
+      channel: "excel",
+      baseline: "売上表",
+      assignment: "売上",
+      artifactIds: ["art_1"],
+    });
+    const logs = listMemoryApplyLogs(USER, { channel: "excel" });
+    expect(logs.length).toBeGreaterThan(0);
+    expect(logs[0]!.artifactIds).toContain("art_1");
+    expect(logs[0]!.memoryIdsUsed.length).toBeGreaterThan(0);
+    expect(typeof logs[0]!.tokenDelta).toBe("number");
+  });
+
+  it("39. Prediction uses the same Memory", async () => {
+    const { applyMemoryForPrediction } = await import(
+      "@/lib/memory-apply/prediction"
+    );
+    const applied = await applyMemoryForPrediction({
+      userId: USER,
+      draft: "次は週次レポートの準備がよさそうです",
+      assignmentHint: "週次レポート",
+    });
+    expect(applied.context.channel).toBe("prediction");
+    expect(applied.context.mode).toBe("on");
+    expect(applied.prompt.withMemory).toBeTruthy();
+  });
+
+  it("40. Memory OFF provider returns empty injection", async () => {
+    const { MemoryProvider } = await import("@/lib/memory-apply/provider");
+    const result = await MemoryProvider({
+      userId: USER,
+      channel: "vision",
+      memoryEnabled: false,
+    });
+    expect(result.mode).toBe("off");
+    expect(result.combinedInjectionText).toBe("");
+    expect(result.memoryIdsUsed).toEqual([]);
   });
 });

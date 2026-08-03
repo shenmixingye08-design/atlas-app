@@ -161,15 +161,53 @@ export async function runOrchestrationForUser(
           regenerateApplied: regen.applied,
         };
       } else {
-        const { result: personalResolved } = await resolveForContext({
+        const { MemoryApply } = await import("@/lib/memory-apply/apply");
+        const { recordMemoryApplyEvent } = await import(
+          "@/lib/memory-apply/metrics"
+        );
+        const applied = await MemoryApply({
           userId: input.userId,
-          notes: input.assignment,
+          channel: "commander",
+          baseline: input.assignment,
+          assignment: input.assignment,
+          artifactTypes: [
+            typeof input.metadata?.deliverableType === "string"
+              ? input.metadata.deliverableType
+              : "document",
+          ],
+          capabilities: ["commander", "orchestration"],
         });
-        if (personalResolved.injectionText) {
+        for (const channel of ["orchestration", "workflow"] as const) {
+          recordMemoryApplyEvent({
+            userId: input.userId,
+            channel,
+            memoryMode: applied.context.mode,
+            applied: applied.context.memoryIdsUsed.length > 0,
+            memoryIdsUsed: applied.context.memoryIdsUsed,
+            scopesUsed: applied.context.scopesUsed,
+            improvementRate: applied.quality.improvementRate,
+            success: true,
+          });
+        }
+        if (applied.prompt.injection.fullText) {
           personalMemoryMeta = {
-            personalMemory: personalResolved.injectionText,
-            personalMemoryTokenEstimate: personalResolved.tokenEstimate,
+            personalMemory: applied.prompt.injection.fullText,
+            personalMemoryTokenEstimate: applied.context.tokenEstimate,
+            personalMemoryIdsUsed: applied.context.memoryIdsUsed,
+            personalMemoryScopesUsed: applied.context.scopesUsed,
           };
+        } else {
+          // Fallback resolve if injection empty but Memory still resolved
+          const { result: personalResolved } = await resolveForContext({
+            userId: input.userId,
+            notes: input.assignment,
+          });
+          if (personalResolved.injectionText) {
+            personalMemoryMeta = {
+              personalMemory: personalResolved.injectionText,
+              personalMemoryTokenEstimate: personalResolved.tokenEstimate,
+            };
+          }
         }
       }
     } catch {

@@ -44,3 +44,35 @@ export { resolveNotificationPreferencesWithMemory } from "./notifications";
 export { resolveSchedulerMemoryDefaults } from "./scheduler";
 export { applyMemoryForRegenerate } from "./regenerate";
 export { applyMemoryForDeliverable } from "./deliverables";
+
+/** Unified secretary Memory API */
+export { MemoryProvider } from "./provider";
+export type { MemoryProviderRequest, MemoryProviderResult } from "./provider";
+export {
+  buildPersonalizationContext,
+  type PersonalizationContext,
+} from "./personalization-context";
+export {
+  MemoryApply,
+  MemoryApplyComparison,
+  type MemoryApplyInput,
+  type MemoryApplyOutput,
+} from "./apply";
+export {
+  PromptBuilder,
+  PromptInjection,
+  ContextBuilder,
+  type BuiltPrompt,
+  type PromptInjectionBlock,
+  type SurfaceContextBundle,
+} from "./prompt-builder";
+export {
+  appendMemoryApplyLog,
+  listMemoryApplyLogs,
+  hydrateMemoryApplyLog,
+  resetMemoryApplyLogForTests,
+  buildMemoryOnOffComparison,
+  MEMORY_APPLY_LOG_DOMAIN_KEY,
+  type MemoryApplyLogEntry,
+} from "./apply-log";
+export { applyMemoryForPrediction } from "./prediction";

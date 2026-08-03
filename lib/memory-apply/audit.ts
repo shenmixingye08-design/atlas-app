@@ -14,6 +14,9 @@ export const MEMORY_APPLY_REQUIRED_CHANNELS: readonly MemoryApplyChannel[] = [
   "regenerate",
   "scheduler",
   "orchestration",
+  "commander",
+  "prediction",
+  "workflow",
 ] as const;
 
 export type MemoryApplyAuditResult = {
