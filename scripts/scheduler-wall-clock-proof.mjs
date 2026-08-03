@@ -8,8 +8,8 @@ import { mkdirSync } from "node:fs";
 mkdirSync("/opt/cursor/artifacts/scheduler-wall-clock-2-4", { recursive: true });
 
 const result = spawnSync(
-  "npx",
-  ["vitest", "run", "--config", "vitest.wall-clock.config.ts"],
+  "npm",
+  ["run", "test:scheduler-wall-clock"],
   {
     stdio: "inherit",
     env: {
