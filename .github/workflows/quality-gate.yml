@@ -45,6 +45,16 @@ jobs:
       - name: V2 stub-ban / Production registry gate
         run: node scripts/ci/v2-stub-ban.mjs
 
+      - name: Google Drive Live Adapter CI gate
+        run: node scripts/ci/google-drive-live-adapter.mjs
+
+      - name: Google Drive Live Adapter tests
+        run: npm test -- --run lib/integrations/google/drive/live lib/integrations/google/scopes.test.ts
+        env:
+          TZ: UTC
+          ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          NODE_OPTIONS: --max-old-space-size=8192
+
       - name: Google Calendar Live Adapter Production gate
         run: node scripts/ci/google-calendar-live-adapter.mjs
 

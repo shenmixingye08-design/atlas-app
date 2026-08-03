@@ -76,6 +76,48 @@ function buildCalendarNotificationDetail(run: AutomationRun): string | null {
   return null;
 }
 
+function buildGoogleDriveNotificationDetail(run: AutomationRun): string | null {
+  const drive = run.completionEvidence?.driveResults?.[0];
+  if (drive) {
+    return [
+      "Google Driveへ保存しました。",
+      `ファイル: ${drive.fileName}`,
+      `フォルダID: ${drive.targetFolderId}`,
+      `URL: ${drive.webViewLink}`,
+      `実行時刻: ${drive.completedAt}`,
+    ].join(" ");
+  }
+
+  const external = run.artifacts.find(
+    (item) => item.kind === "external" && item.externalId && item.url,
+  );
+  if (external?.url) {
+    return `Google Driveへ保存しました。ファイル: ${external.label} URL: ${external.url}`;
+  }
+
+  const message = run.lastErrorMessage ?? "";
+  if (/missing_scope|権限/i.test(message)) {
+    return "権限不足です。Google Driveを再接続してください。";
+  }
+  if (/reconnect|再接続|revok|expired|401/i.test(message)) {
+    return "再接続が必要です。Google連携をやり直してください。";
+  }
+  if (/folder.*not found|フォルダ/i.test(message)) {
+    return "folder不存在、またはアクセスできません。";
+  }
+  if (/retry|429|rate limit/i.test(message)) {
+    return "Retry中または一時的な制限です。";
+  }
+  return null;
+}
+
+function buildExternalNotificationDetail(run: AutomationRun): string | null {
+  return (
+    buildCalendarNotificationDetail(run) ||
+    buildGoogleDriveNotificationDetail(run)
+  );
+}
+
 function attachClaimTransition(run: AutomationRun): AutomationRun {
   if (run.status !== "running") return run;
   const last = run.statusHistory[run.statusHistory.length - 1];
@@ -190,7 +232,7 @@ export async function dispatchAutomationRuns(options?: {
     });
 
     result.processed += 1;
-    const calendarDetail = buildCalendarNotificationDetail(execResult.run);
+    const externalDetail = buildExternalNotificationDetail(execResult.run);
     if (execResult.run.status === "succeeded") {
       result.succeeded += 1;
       notifyAutomationRunEvent({
@@ -199,7 +241,7 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: wasRetry ? "retry_finished" : "succeeded",
-        detail: calendarDetail,
+        detail: externalDetail,
       });
     } else if (execResult.run.status === "partially_succeeded") {
       result.failed += 1;
@@ -209,7 +251,7 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "partially_succeeded",
-        detail: calendarDetail,
+        detail: externalDetail,
       });
     } else if (execResult.run.status === "failed") {
       result.failed += 1;
@@ -219,7 +261,10 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "failed",
-        detail: calendarDetail || execResult.run.lastErrorMessage,
+        detail:
+          externalDetail ||
+          execResult.run.lastErrorMessage ||
+          "外部連携または自動化の最終失敗",
       });
     } else if (execResult.run.status === "retrying") {
       result.retrying += 1;
@@ -229,7 +274,7 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "retry_started",
-        detail: calendarDetail || "Google Calendar操作を再試行します",
+        detail: externalDetail || "外部連携操作を再試行します",
       });
     } else if (execResult.run.status === "needs_input") {
       result.awaiting += 1;
@@ -240,9 +285,10 @@ export async function dispatchAutomationRuns(options?: {
         policy: automation.notificationPolicy,
         event: "needs_input",
         detail:
-          calendarDetail ||
+          externalDetail ||
           execResult.run.resultSummary ||
-          "Google Calendar操作の承認待ちです",
+          execResult.run.lastErrorMessage ||
+          "再接続・権限・承認の確認が必要です",
       });
     }
   }

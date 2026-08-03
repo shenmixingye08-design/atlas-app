@@ -22,6 +22,7 @@ import {
 } from "@/lib/automation-platform/durable-runs";
 import { dispatchAutomationRuns } from "@/lib/automation-platform/execution/dispatch";
 import { notifyAutomationRunEvent } from "@/lib/automation-platform/execution/notify";
+import { assertGoogleDrivePreflightForActivation } from "@/lib/automation-platform/execution/google-drive-preflight";
 import {
   buildRunStepsFromAutomation,
   prepareRunSnapshot,
@@ -91,6 +92,8 @@ function assertProductionStepsActivatable(
     if (issue.errorCode === "live_adapter_missing" && allowUnwiredExternal) {
       return false;
     }
+    // google_drive is Production-wired — never bypass missing adapter in tests
+    // via the generic unwired allowlist when the step is google_drive and wired.
     return true;
   });
   if (blocking.length === 0) return;
@@ -123,18 +126,33 @@ async function assertExternalPreflightForActivation(
     process.env.VITEST === "true";
   if (allowSkip) return;
 
+  const driveIssues = await assertGoogleDrivePreflightForActivation({
+    userId,
+    steps,
+  });
+  if (driveIssues.length > 0) {
+    const first = driveIssues[0]!;
+    throw new AutomationPlatformError("automation_integration_required", {
+      stepId: first.stepId,
+      stepType: "google_drive",
+      reason: first.message,
+      issues: driveIssues,
+    });
+  }
+
   const calendarIssues = await assertGoogleCalendarPreflightForActivation({
     userId,
     steps,
   });
-  if (calendarIssues.length === 0) return;
-  const first = calendarIssues[0]!;
-  throw new AutomationPlatformError("automation_integration_required", {
-    stepId: first.stepId,
-    stepType: "google_calendar",
-    reason: first.message,
-    issues: calendarIssues,
-  });
+  if (calendarIssues.length > 0) {
+    const first = calendarIssues[0]!;
+    throw new AutomationPlatformError("automation_integration_required", {
+      stepId: first.stepId,
+      stepType: "google_calendar",
+      reason: first.message,
+      issues: calendarIssues,
+    });
+  }
 }
 
 export class AutomationPlatformService {

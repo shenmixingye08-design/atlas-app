@@ -34,6 +34,7 @@ export type StepInvoker = (input: {
   /** Optional Memory / instruction context for production step adapters. */
   resolvedInstruction?: ResolvedInstruction | null;
   memoryUsage?: MemoryUsageRecord | null;
+  /** Artifacts produced by earlier steps in the same run (Drive upload source). */
   priorArtifacts?: AutomationRunArtifact[];
   diagnosticId?: string | null;
   approvalId?: string | null;

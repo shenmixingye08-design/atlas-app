@@ -161,6 +161,19 @@ export type AutomationRun = {
     evidenceVersion: number;
     adapterMode?: string | null;
     environment?: string | null;
+    driveResults?: Array<{
+      service: "google_drive";
+      fileId: string;
+      webViewLink: string;
+      size: number;
+      checksum: string;
+      targetFolderId: string;
+      fileName: string;
+      completedAt: string;
+      resultHash: string;
+      retryCount: number;
+      duplicatePrevented: boolean;
+    }>;
     calendarResults?: Array<{
       service: "google_calendar";
       action: string;

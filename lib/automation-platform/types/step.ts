@@ -13,6 +13,7 @@ export type AutomationCapabilityId =
   | "google_calendar"
   | "wordpress"
   | "dropbox"
+  | "google_drive"
   | "notify"
   | "await_approval"
   | "condition"

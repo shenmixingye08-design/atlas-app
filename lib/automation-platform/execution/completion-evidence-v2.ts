@@ -9,6 +9,20 @@ import type { AutomationRun } from "@/lib/automation-platform/types/run";
 
 export const COMPLETION_EVIDENCE_VERSION = 1 as const;
 
+export type DriveStepEvidence = {
+  service: "google_drive";
+  fileId: string;
+  webViewLink: string;
+  size: number;
+  checksum: string;
+  targetFolderId: string;
+  fileName: string;
+  completedAt: string;
+  resultHash: string;
+  retryCount: number;
+  duplicatePrevented: boolean;
+};
+
 export type CalendarStepEvidence = {
   service: "google_calendar";
   action: string;
@@ -47,6 +61,7 @@ export type AutomationV2CompletionEvidence = {
   evidenceVersion: typeof COMPLETION_EVIDENCE_VERSION;
   adapterMode: string | null;
   environment: string | null;
+  driveResults: DriveStepEvidence[];
   calendarResults: CalendarStepEvidence[];
 };
 
@@ -58,6 +73,7 @@ export type StepEvidenceFragment = {
   notificationIds?: string[];
   adapterMode?: string;
   environment?: string;
+  drive?: DriveStepEvidence;
   calendar?: CalendarStepEvidence;
 };
 
@@ -68,12 +84,16 @@ function unique(values: string[]): string[] {
 export function mergeEvidenceFragments(
   fragments: StepEvidenceFragment[],
 ): Required<
-  Omit<StepEvidenceFragment, "adapterMode" | "environment" | "calendar">
+  Omit<StepEvidenceFragment, "adapterMode" | "environment" | "drive" | "calendar">
 > & {
   adapterMode: string | null;
   environment: string | null;
+  driveResults: DriveStepEvidence[];
   calendarResults: CalendarStepEvidence[];
 } {
+  const driveResults = fragments
+    .map((item) => item.drive)
+    .filter((item): item is DriveStepEvidence => Boolean(item));
   const calendarResults = fragments
     .map((item) => item.calendar)
     .filter((item): item is CalendarStepEvidence => Boolean(item));
@@ -97,6 +117,7 @@ export function mergeEvidenceFragments(
     ),
     adapterMode,
     environment,
+    driveResults,
     calendarResults,
   };
 }
@@ -149,6 +170,7 @@ export function buildCompletionEvidenceV2(input: {
     evidenceVersion: COMPLETION_EVIDENCE_VERSION,
     adapterMode: merged.adapterMode,
     environment: merged.environment,
+    driveResults: merged.driveResults,
     calendarResults: merged.calendarResults,
   };
 
