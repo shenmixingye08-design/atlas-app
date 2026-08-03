@@ -1,0 +1,68 @@
+{
+  "phase": "2-5",
+  "branch": "cursor/scheduler-production-cutover-2706",
+  "commitSha": "7fecaee29acf970813c46e91db48a59fb7db1190",
+  "health": {
+    "running": true,
+    "healthy": false,
+    "status": "warn",
+    "lastTickAt": "2026-08-03T19:46:18.963Z",
+    "lastSuccessAt": "2026-08-03T19:46:18.963Z",
+    "lastFailureAt": "2026-08-03T19:46:18.963Z",
+    "dueCount": 5,
+    "queueCount": 4,
+    "oldestDueAgeMs": 207917178967,
+    "p95DelayMs": 200000,
+    "retryCount": 0,
+    "recoverySuccessRate": 0,
+    "outboxPendingCount": 0,
+    "workerCount": 0,
+    "diagnosticId": "sops_msdn3opj"
+  },
+  "metrics": {
+    "tickCount": 6,
+    "runCount": 4,
+    "occurrenceCount": 4,
+    "queueCount": 4,
+    "missCount": 0,
+    "duplicateCount": 0,
+    "retryCount": 0,
+    "recoveryCount": 5,
+    "recoverySuccessRate": 0,
+    "p50DelayMs": 200000,
+    "p90DelayMs": 200000,
+    "p95DelayMs": 200000,
+    "p99DelayMs": 200000,
+    "averageDelayMs": 200000
+  },
+  "alertsMeasured": {
+    "alerts": [
+      "scheduler_stopped",
+      "scheduler_stopped",
+      "due_backlog"
+    ],
+    "running": false,
+    "healthy": false,
+    "measured": true
+  },
+  "chaos": {
+    "chaosMeasured": "scheduler_stop,dispatcher_stop,queue_stop,db_stop,worker_skip_drain,p95_alert",
+    "unverified": [
+      "network_cut",
+      "deploy_interrupt",
+      "production_24h"
+    ],
+    "production24hReadyClaim": "NO \u2014 requires live Production evidence"
+  },
+  "dashboard": "/owner/scheduler + /api/owner/work-queue/metrics ops",
+  "runbook": "docs/operations/scheduler-runbook.md",
+  "gates": {
+    "typescript": "PASS",
+    "lint": "PASS",
+    "vitest": "PASS 1136",
+    "build": "PASS",
+    "ci": "pending"
+  },
+  "production24hClaim": "NO",
+  "cutoverOpsSurface": "YES"
+}
