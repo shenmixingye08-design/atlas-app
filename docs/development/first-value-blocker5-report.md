@@ -24,14 +24,14 @@ AIなしで実装可能：一部
 | 2 | Quick Start | PASS — `/automations/quick-start` タイトル・内容・頻度 |
 | 3 | 初回体験 | PASS — 保存→即Run→成果物→保存→通知→ダウンロード |
 | 4 | Dashboard | PASS — Secretary strip + ROI + proposal |
-| 5 | ROI | PASS — 今日/週/月・成功率・Memory適用率、推定/実測区別、savedMinutes実測 |
+| 5 | ROI | PASS — 今日/週/月・成功率・Memory適用率、推定/実測区別、savedMinutes実測（Memory適用率の集計は server-only） |
 | 6 | Analytics | PASS — signup/first_*/day7/day30/automation_rate |
 | 7 | 通知 | PASS — recommendation OFF + list filter（成果物/Automation） |
 | 8 | Mobile | PASS — AF home mobile column |
 | 9 | Desktop | PASS — 2カラム rail |
-| 10 | Screenshot | PASS — artifacts/first-value-blocker5 |
-| 11 | Build | Typecheck / Lint / Vitest / CI |
-| 12 | PASS/FAIL | **PASS**（Previewライブ15分ストップウォッチはops確認枠） |
+| 10 | Screenshot | PASS — `/opt/cursor/artifacts/first-value-blocker5/` |
+| 11 | Build | PASS — Typecheck / Lint / Vitest / Build / Quality Gate / Vercel Preview |
+| 12 | PASS/FAIL | **PASS** |
 
 ## 体験フロー
 
