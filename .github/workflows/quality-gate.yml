@@ -45,20 +45,25 @@ jobs:
       - name: V2 stub-ban / Production registry gate
         run: node scripts/ci/v2-stub-ban.mjs
 
+      - name: Scheduler Core architecture gate
+        run: node scripts/ci/scheduler-core-gate.mjs
+
       - name: Unit / integration tests
         run: npm test
         env:
           # Keep tests deterministic; do not enable mock-success shortcuts.
           TZ: UTC
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          ATLAS_SCHEDULER_CORE_FORCE_FILE: "true"
           # Vitest workers serialize large fixtures; default heap OOMs on ubuntu-latest.
           NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Work-queue critical path
-        run: npm test -- --run lib/work-queue lib/automations/durable.test.ts
+        run: npm test -- --run lib/work-queue lib/automations/durable.test.ts lib/scheduler-core
         env:
           TZ: UTC
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          ATLAS_SCHEDULER_CORE_FORCE_FILE: "true"
           NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Upload Vitest logs on failure

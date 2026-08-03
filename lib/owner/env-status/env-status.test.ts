@@ -8,6 +8,7 @@ describe("owner env status", () => {
     vi.stubEnv("CLERK_SECRET_KEY", "sk_clerk");
     vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_clerk");
     vi.stubEnv("ATLAS_OWNER_EMAILS", "owner@atlas.test");
+    vi.stubEnv("SCHEDULER_CRON_SECRET", "scheduler-secret-token");
     vi.stubEnv("CRON_SECRET", "cron");
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://example.com");
     vi.stubEnv("STRIPE_SECRET_KEY", "");
@@ -19,7 +20,8 @@ describe("owner env status", () => {
   });
 
   it("never returns secret values — only mask or unset label", () => {
-    vi.stubEnv("CRON_SECRET", "super-secret-token-xyz");
+    vi.stubEnv("SCHEDULER_CRON_SECRET", "super-secret-token-xyz");
+    vi.stubEnv("CRON_SECRET", "compat-secret-token-xyz");
     const snapshot = buildOwnerEnvStatusSnapshot();
     for (const row of snapshot.variables) {
       expect(row.displayValue === "******" || row.displayValue === "（未設定）").toBe(
@@ -28,6 +30,7 @@ describe("owner env status", () => {
       expect(JSON.stringify(row)).not.toContain("sk-test");
       expect(JSON.stringify(row)).not.toContain("sk_clerk");
       expect(JSON.stringify(row)).not.toContain("super-secret-token-xyz");
+      expect(JSON.stringify(row)).not.toContain("compat-secret-token-xyz");
     }
   });
 
