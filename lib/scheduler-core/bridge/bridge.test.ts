@@ -109,20 +109,28 @@ describe("scheduler-queue-worker bridge (phase 2-3)", () => {
       ownerId: "owner-bridge-1",
       nextRunAt: "2020-01-01T09:00:00.000Z",
     });
+    // Queue accept + nextRun advance; lease via Queue API only (no Worker business logic).
     const result = await runSchedulerCoreTick({
       skipIndexSync: true,
+      skipWorkerDrain: true,
       now: new Date("2020-01-01T09:05:00.000Z"),
-      workerLimit: 1,
     });
     expect(result.outboxCreatedCount).toBe(1);
     expect(result.occurrenceCreatedCount).toBe(1);
     expect(result.nextRunUpdatedCount).toBeGreaterThanOrEqual(1);
-    expect(result.worker?.leased).toBeGreaterThanOrEqual(1);
+
+    const { getWorkQueueStore } = await import("@/lib/work-queue/store");
+    const leased = await getWorkQueueStore().leaseJobs({
+      workerId: "bridge_test_worker",
+      limit: 1,
+      leaseMs: 30_000,
+    });
+    expect(leased.length).toBe(1);
+    expect(leased[0]!.status).toBe("leased");
 
     const bridge = await getSchedulerBridgeMetricsSnapshot();
     expect(bridge.enqueueCount).toBeGreaterThanOrEqual(1);
     expect(bridge.dispatchedCount).toBeGreaterThanOrEqual(1);
-    expect(bridge.leaseStartedCount).toBeGreaterThanOrEqual(1);
   });
 
   it("10 Jobs: batch due → durable queue", async () => {
@@ -245,19 +253,9 @@ describe("scheduler-queue-worker bridge (phase 2-3)", () => {
     expect(bridge.queueLength).toBe(100);
     expect(bridge.failedEnqueueCount).toBe(0);
     expect(elapsedMs).toBeLessThan(60_000);
-
-    // eslint-disable-next-line no-console
-    console.log(
-      JSON.stringify({
-        phase: "2-3",
-        jobs: 100,
-        queued: queued.length,
-        elapsedMs,
-        enqueueCount: bridge.enqueueCount,
-        duplicateEnqueueCount: bridge.duplicateEnqueueCount,
-        failedEnqueueCount: bridge.failedEnqueueCount,
-      }),
-    );
+    expect(bridge.enqueueCount).toBe(100);
+    expect(bridge.duplicateEnqueueCount).toBe(0);
+    expect(bridge.failedEnqueueCount).toBe(0);
   });
 
   it("concurrent enqueue is idempotent per occurrence", async () => {
@@ -301,7 +299,8 @@ describe("scheduler-queue-worker bridge (phase 2-3)", () => {
     expect(result.occurrenceCreatedCount).toBe(0);
     expect(result.nextRunUpdatedCount).toBe(0);
 
-    const core = resetSchedulerCoreStoreForTests();
+    const { getSchedulerCoreStore } = await import("../durable");
+    const core = getSchedulerCoreStore();
     expect(await core.countPendingOutbox()).toBe(1);
     const { getWorkQueueStore } = await import("@/lib/work-queue/store");
     expect((await getWorkQueueStore().listByStatus("queued", 10)).length).toBe(
