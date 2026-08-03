@@ -55,6 +55,24 @@ export type WorkStepRecord = {
   updatedAt: string;
 };
 
+export type WorkRetryHistoryEntry = {
+  at: string;
+  attempt: number;
+  reason: string;
+  errorCode: string | null;
+  stepId: string | null;
+};
+
+export type WorkSideEffectRecord = {
+  idempotencyKey: string;
+  jobId: string;
+  runId: string;
+  stepId: string;
+  kind: string;
+  result: Record<string, unknown>;
+  createdAt: string;
+};
+
 export type WorkJobRecord = {
   jobId: string;
   runId: string;
@@ -82,6 +100,7 @@ export type WorkJobRecord = {
   resultSummary: string | null;
   firstError: string | null;
   lastError: string | null;
+  retryHistory: WorkRetryHistoryEntry[];
   createdAt: string;
   updatedAt: string;
   steps: WorkStepRecord[];
@@ -158,7 +177,15 @@ export const WORK_JOB_TRANSITIONS: Readonly<
   retry_scheduled: ["leased", "queued", "cancelled", "dead_letter"],
   completed: [],
   partially_completed: ["queued", "retry_scheduled", "cancelled"],
+  // Terminal — never promote to completed.
   failed: ["queued", "retry_scheduled", "dead_letter"],
   cancelled: [],
   dead_letter: [],
 };
+
+/** Statuses that must never be leased or completed again. */
+export const WORK_JOB_TERMINAL_STATUSES: readonly WorkJobStatus[] = [
+  "completed",
+  "cancelled",
+  "dead_letter",
+] as const;

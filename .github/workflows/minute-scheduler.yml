@@ -1,7 +1,9 @@
 name: Minute Scheduler
 
 # Production minute due-tick without Vercel Pro cron.
-# Calls /api/automations/tick with CRON_SECRET every minute.
+# 1) Enqueue due occurrences (no heavy step work)
+# 2) Drain worker leases independently
+# Requires secrets: CRON_SECRET, ATLAS_APP_URL
 
 on:
   schedule:
@@ -16,12 +18,12 @@ permissions:
   contents: read
 
 jobs:
-  tick:
-    name: enqueue + worker drain
+  enqueue:
+    name: scheduler enqueue
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
     steps:
-      - name: Due tick
+      - name: Due tick (enqueue only)
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
@@ -40,8 +42,30 @@ jobs:
           curl -fsS -X POST \
             -H "Authorization: Bearer ${CRON_SECRET}" \
             -H "Content-Type: application/json" \
-            "${BASE_URL}/api/automations/tick" \
+            "${BASE_URL}/api/automations/tick?drain=0" \
             -o /tmp/tick.json
-          echo "Tick response:" 
+          echo "Enqueue response:"
           head -c 2000 /tmp/tick.json || true
+          echo
+
+  drain:
+    name: worker drain
+    needs: enqueue
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Drain leased jobs
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
+        run: |
+          set -euo pipefail
+          BASE_URL="${ATLAS_APP_URL%/}"
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            "${BASE_URL}/api/worker/drain?limit=20" \
+            -o /tmp/drain.json
+          echo "Drain response:"
+          head -c 2000 /tmp/drain.json || true
           echo

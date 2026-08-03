@@ -218,7 +218,9 @@ export class AutomationService {
     });
 
     const results: AutomationRunResult[] = [];
-    for (const job of tick.worker.completedJobs) {
+    const worker = tick.worker;
+    if (!worker) return results;
+    for (const job of worker.completedJobs) {
       if (!job.automationId) continue;
       results.push({
         automationId: job.automationId,
@@ -234,7 +236,7 @@ export class AutomationService {
       const automation = await this.automations.findById(job.automationId);
       if (automation?.userId) schedulePersistAutomations(automation.userId);
     }
-    for (const job of tick.worker.failedJobs) {
+    for (const job of worker.failedJobs) {
       if (!job.automationId) continue;
       results.push({
         automationId: job.automationId,

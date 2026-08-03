@@ -7,22 +7,34 @@ import { computeNextRunIso } from "@/lib/automations/schedule";
 import { isAutomationSuspendedForUser } from "@/lib/billing/subscriptions/lifecycle";
 
 import { evaluateWorkQueueAlerts } from "./alerts";
+import { WORK_QUEUE_DRAIN_ON_TICK_ENV } from "./constants";
 import { enqueueDueAutomations } from "./scheduler";
 import { drainWorkQueue } from "./worker";
 
+function shouldDrainOnTick(explicit?: boolean): boolean {
+  if (typeof explicit === "boolean") return explicit;
+  const env = process.env[WORK_QUEUE_DRAIN_ON_TICK_ENV]?.trim().toLowerCase();
+  if (env === "false" || env === "0") return false;
+  return true;
+}
+
 /**
- * Production tick: schedule enqueue (light) then worker drain (step-sized).
- * Replaces synchronous run-inside-cron for due automations.
+ * Production tick: schedule enqueue (light) then optional worker drain.
+ * Set ATLAS_WORK_QUEUE_DRAIN_ON_TICK=false + call /api/worker/drain for
+ * an independent worker path (preferred for long work).
  */
 export async function processWorkQueueTick(options?: {
   requestOrigin?: string | null;
   scheduleLimit?: number;
   workerLimit?: number;
   workerId?: string;
+  /** When false, only enqueue — do not drain in this request. */
+  drain?: boolean;
 }): Promise<{
   schedule: Awaited<ReturnType<typeof enqueueDueAutomations>>;
-  worker: Awaited<ReturnType<typeof drainWorkQueue>>;
+  worker: Awaited<ReturnType<typeof drainWorkQueue>> | null;
   alerts: Awaited<ReturnType<typeof evaluateWorkQueueAlerts>>;
+  drained: boolean;
 }> {
   const ownerIds = await listAutomationOwnerUserIds();
   const memoryOwners = new Set(ownerIds);
@@ -70,10 +82,13 @@ export async function processWorkQueueTick(options?: {
     },
   });
 
-  const worker = await drainWorkQueue({
-    limit: options?.workerLimit,
-    workerId: options?.workerId,
-  });
+  const drain = shouldDrainOnTick(options?.drain);
+  const worker = drain
+    ? await drainWorkQueue({
+        limit: options?.workerLimit,
+        workerId: options?.workerId,
+      })
+    : null;
 
   // Keep legacy reliability processor for V1 job table during transition.
   try {
@@ -88,5 +103,5 @@ export async function processWorkQueueTick(options?: {
   }
 
   const alerts = await evaluateWorkQueueAlerts();
-  return { schedule, worker, alerts };
+  return { schedule, worker, alerts, drained: drain };
 }

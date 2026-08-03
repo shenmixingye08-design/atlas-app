@@ -9,6 +9,7 @@ export { WORK_JOB_TRANSITIONS } from "./types";
 export {
   getWorkQueueStore,
   resetWorkQueueStoreForTests,
+  clearWorkQueueStoreSingleton,
 } from "./store";
 export { enqueueDueAutomations } from "./scheduler";
 export { drainWorkQueue, recoverStuckJobs } from "./worker";
@@ -20,6 +21,8 @@ export { defaultAutomationSteps } from "./steps/execute-step";
 export { evaluateWorkQueueCompletion } from "./completion-gate";
 export { WORK_QUEUE_FEATURE_EVALUATION } from "./feature-evaluation";
 export { listScheduleCapabilities } from "./capabilities";
+export { cancelWorkJob } from "./control";
+export { enqueueManualAutomationRun } from "./enqueue-manual";
 export {
   isSchedulerAcceptingCompletions,
   setSchedulerExplicitlyStopped,

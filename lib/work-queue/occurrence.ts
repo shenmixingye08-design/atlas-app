@@ -8,6 +8,8 @@ export function buildOccurrenceKey(input: {
   automationId: string;
   scheduledAt: Date | string;
   timezone?: string;
+  /** Optional disambiguator (manual run / recovery) — scheduled ticks omit this. */
+  suffix?: string;
 }): string {
   const at =
     typeof input.scheduledAt === "string"
@@ -26,7 +28,8 @@ export function buildOccurrenceKey(input: {
   const get = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((p) => p.type === type)?.value ?? "00";
   const slot = `${get("year")}${get("month")}${get("day")}${get("hour")}${get("minute")}`;
-  return `occ:${input.automationId}:${tz}:${slot}`;
+  const base = `occ:${input.automationId}:${tz}:${slot}`;
+  return input.suffix ? `${base}:${input.suffix}` : base;
 }
 
 export function buildJobIdempotencyKey(occurrenceKey: string): string {
