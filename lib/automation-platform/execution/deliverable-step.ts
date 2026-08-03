@@ -151,7 +151,29 @@ export async function invokeDeliverableStep(input: {
       continue;
     }
     try {
-      const file = await generator.generate(content, baseFileName, {
+      // MemoryApply → PersonalizationContext → PromptBuilder (shared secretary path)
+      let personalizedContent = content;
+      let memoryIdsUsed: string[] = [];
+      if (
+        format === "docx" ||
+        format === "xlsx" ||
+        format === "pdf" ||
+        format === "pptx"
+      ) {
+        const { applyMemoryForDeliverable } = await import(
+          "@/lib/memory-apply/deliverables"
+        );
+        const memoryApplied = await applyMemoryForDeliverable({
+          userId: input.userId,
+          content,
+          format,
+          assignment: input.automationName,
+        });
+        personalizedContent = memoryApplied.content;
+        memoryIdsUsed = memoryApplied.memoryIdsUsed;
+      }
+
+      const file = await generator.generate(personalizedContent, baseFileName, {
         assignment: input.automationName,
         title,
       });
@@ -177,12 +199,21 @@ export async function invokeDeliverableStep(input: {
         continue;
       }
       const stored = await saveDeliverableFileDurable(file, input.userId, {
-        sourceContent: content,
+        sourceContent: personalizedContent,
         baseFileName,
         metadata: {
           purpose: "automation_v2",
           templateId: input.step.type,
           version: 1,
+          memoryIdsUsed,
+          memoryApplyChannel:
+            format === "docx"
+              ? "word"
+              : format === "xlsx"
+                ? "excel"
+                : format === "pdf"
+                  ? "pdf"
+                  : "powerpoint",
         },
       });
       if (stored.userId !== input.userId) {
@@ -280,12 +311,19 @@ async function invokeRegenerateDeliverableStep(
     stringConfig(input.step.configuration, "revisionInstruction") ||
     stringConfig(input.step.configuration, "instruction") ||
     "内容を見直し、改訂版を作成してください。";
-  const content = [
-    parent.sourceContent?.trim() || `(既存成果物: ${parent.fileName})`,
-    "",
-    "【修正指示】",
-    instruction,
-  ].join("\n");
+  const previousBody =
+    parent.sourceContent?.trim() || `(既存成果物: ${parent.fileName})`;
+
+  // Regenerate path: MemoryApply → PersonalizationContext → PromptBuilder
+  const { applyMemoryForRegenerate } = await import(
+    "@/lib/memory-apply/regenerate"
+  );
+  const memoryRegen = await applyMemoryForRegenerate({
+    userId: input.userId,
+    previousContent: previousBody,
+    improvementNotes: instruction,
+  });
+  const content = memoryRegen.content;
 
   const targetFormat = parent.format || format;
   const generator = getDeliverableGenerator(targetFormat);
@@ -337,6 +375,9 @@ async function invokeRegenerateDeliverableStep(
         parentDeliverableId: parent.id,
         version: (parent.metadata?.version ?? 1) + 1,
         versionGroupId: parent.metadata?.versionGroupId ?? parent.id,
+        memoryIdsUsed: memoryRegen.memoryIdsUsed,
+        memoryApplyChannel: "regenerate",
+        regenerateApplied: memoryRegen.applied,
       },
     });
     const downloadUrl = `/api/deliverables/${stored.id}`;

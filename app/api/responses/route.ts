@@ -204,7 +204,18 @@ export async function POST(request: Request): Promise<Response> {
       "@/lib/billing/usage/request-context"
     );
 
-    let requestParams = params;
+    // MemoryApply → PersonalizationContext → PromptBuilder → Responses LLM
+    const { applyMemoryForChat } = await import("@/lib/memory-apply/chat");
+    const chatMemory = await applyMemoryForChat({
+      userId,
+      input: typeof params.input === "string" ? params.input : "",
+      baseInstructions: params.instructions ?? null,
+    });
+
+    let requestParams = {
+      ...params,
+      instructions: chatMemory.instructions,
+    };
     if (attachmentIds.length > 0) {
       const { buildMultimodalChatInput } = await import(
         "@/lib/vision/build-multimodal-chat-input"
@@ -221,7 +232,7 @@ export async function POST(request: Request): Promise<Response> {
         );
       }
       requestParams = {
-        ...params,
+        ...requestParams,
         input: multimodal.input,
         aiTaskType: "vision_analyze",
       };

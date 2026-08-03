@@ -34,6 +34,9 @@ export type MemoryProviderRequest = {
   /** When false, returns empty resolution (Memory OFF comparison baseline). */
   memoryEnabled?: boolean;
   organizationId?: string | null;
+  /** Automation locked overrides (policy) — never invent a parallel store */
+  automationOverrides?: Record<string, unknown> | null;
+  currentInstruction?: Record<string, unknown> | null;
 };
 
 export type MemoryProviderResult = {
@@ -52,6 +55,12 @@ export type MemoryProviderResult = {
   memoryIdsUsed: string[];
   scopesUsed: string[];
   organizationId: string | null;
+  /** Scopes resolved but unused (budget / policy) */
+  unusedPersonal: Array<{
+    memoryId: string;
+    scope: PersonalMemoryScope;
+    reason: string;
+  }>;
 };
 
 function emptyLedger(): RunMemoryLedger {
@@ -91,6 +100,7 @@ export async function MemoryProvider(
       memoryIdsUsed: [],
       scopesUsed: [],
       organizationId,
+      unusedPersonal: [],
     };
   }
 
@@ -119,6 +129,12 @@ export async function MemoryProvider(
     notes: request.assignment ?? undefined,
     artifactTypes: request.artifactTypes ?? undefined,
     capabilities: request.capabilities ?? undefined,
+    automationOverrides: request.automationOverrides
+      ? { ...request.automationOverrides }
+      : undefined,
+    currentInstruction: request.currentInstruction
+      ? { ...request.currentInstruction }
+      : undefined,
   });
 
   const workEnabled = isWorkMemoryEnabled(request.userId);
@@ -175,5 +191,6 @@ export async function MemoryProvider(
     memoryIdsUsed,
     scopesUsed,
     organizationId,
+    unusedPersonal: result.unused,
   };
 }

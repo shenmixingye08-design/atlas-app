@@ -175,6 +175,36 @@ export async function executeAutomationRun(
     }
 
     if (!result) {
+      let plannerMemoryMeta: Record<string, unknown> = {};
+      if (options.userId) {
+        try {
+          const { applyMemoryForPlanner } = await import(
+            "@/lib/memory-apply/planner"
+          );
+          const { MemoryApply } = await import("@/lib/memory-apply/apply");
+          const plannerApplied = await applyMemoryForPlanner({
+            userId: options.userId,
+            assignment,
+            automationId: automation.id,
+          });
+          // Automation V1 also records automation channel via unified MemoryApply
+          await MemoryApply({
+            userId: options.userId,
+            channel: "automation",
+            baseline: assignment,
+            assignment,
+            automationId: automation.id,
+            capabilities: ["automation"],
+          });
+          plannerMemoryMeta = {
+            ...(plannerApplied.metadata ?? {}),
+            userId: options.userId,
+          };
+        } catch {
+          plannerMemoryMeta = {};
+        }
+      }
+
       result = await orchestrate({
         assignment,
         metadata: {
@@ -194,6 +224,7 @@ export async function executeAutomationRun(
             costMode: executionModeToCostSavingMode(executionMode),
           },
           ...(automation.workflow.metadata ?? {}),
+          ...plannerMemoryMeta,
         },
       });
 

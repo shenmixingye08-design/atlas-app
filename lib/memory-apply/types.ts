@@ -27,7 +27,30 @@ export type MemoryApplyChannel =
   | "orchestration"
   | "commander"
   | "prediction"
-  | "workflow";
+  | "workflow"
+  | "chat"
+  | "planner";
+
+/**
+ * AI secretary surfaces that MUST share one PersonalizationContext.
+ * Phase2: Memory share rate must be 100% across these channels.
+ */
+export const AI_SECRETARY_MEMORY_CHANNELS = [
+  "automation",
+  "vision",
+  "ocr",
+  "word",
+  "excel",
+  "pdf",
+  "powerpoint",
+  "regenerate",
+  "chat",
+  "planner",
+  "commander",
+] as const satisfies readonly MemoryApplyChannel[];
+
+export type AiSecretaryMemoryChannel =
+  (typeof AI_SECRETARY_MEMORY_CHANNELS)[number];
 
 export type MemoryApplyMode = "on" | "off";
 

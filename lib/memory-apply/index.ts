@@ -44,6 +44,16 @@ export { resolveNotificationPreferencesWithMemory } from "./notifications";
 export { resolveSchedulerMemoryDefaults } from "./scheduler";
 export { applyMemoryForRegenerate } from "./regenerate";
 export { applyMemoryForDeliverable } from "./deliverables";
+export { applyMemoryForChat } from "./chat";
+export type { ChatMemoryInput, ChatMemoryApplyResult } from "./chat";
+export { applyMemoryForPlanner } from "./planner";
+export type { PlannerMemoryInput, PlannerMemoryApplyResult } from "./planner";
+export {
+  proveMemoryShare,
+  MEMORY_PATH_DIAGRAM,
+  listForbiddenParallelMemoryResolves,
+  type MemoryShareProof,
+} from "./share-proof";
 
 /** Unified secretary Memory API */
 export { MemoryProvider } from "./provider";
