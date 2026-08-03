@@ -264,6 +264,8 @@ export function isLiveAdapterWired(adapterId: string | null): boolean {
     // Internal engines (not external OAuth adapters)
     "openai_vision",
     "openai_vision_ocr",
+    // External Production Live adapters
+    "google_gmail",
   ]);
   return wired.has(adapterId);
 }

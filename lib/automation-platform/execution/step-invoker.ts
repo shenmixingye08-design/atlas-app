@@ -34,6 +34,10 @@ export type StepInvoker = (input: {
   /** Optional Memory / instruction context for production step adapters. */
   resolvedInstruction?: ResolvedInstruction | null;
   memoryUsage?: MemoryUsageRecord | null;
+  /** Prior run artifacts (deliverables) for attachment / upload steps. */
+  priorArtifacts?: AutomationRunArtifact[];
+  diagnosticId?: string | null;
+  approvalId?: string | null;
 }) => Promise<StepInvokeResult>;
 
 /**

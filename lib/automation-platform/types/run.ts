@@ -159,6 +159,27 @@ export type AutomationRun = {
     completionHash: string;
     completedAt: string;
     evidenceVersion: number;
+    adapterMode?: string | null;
+    environment?: string | null;
+    gmailResults?: Array<{
+      service: "gmail";
+      action: string;
+      draftId: string | null;
+      messageId: string | null;
+      threadId: string | null;
+      recipientHash: string;
+      subjectHash: string;
+      attachmentArtifactIds: string[];
+      completedAt: string;
+      resultHash: string;
+      retryCount: number;
+      duplicatePrevented: boolean;
+      adapterMode: string;
+      environment: string;
+      approvalId: string | null;
+      providerRequestId: string | null;
+      deliveryGuarantee: "provider_accepted" | "not_applicable";
+    }>;
   } | null;
   /** @deprecated use memoryUsage.used */
   memoryReferences: MemoryReferenceRecord[];

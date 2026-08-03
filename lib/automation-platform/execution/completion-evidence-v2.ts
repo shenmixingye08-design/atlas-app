@@ -9,6 +9,26 @@ import type { AutomationRun } from "@/lib/automation-platform/types/run";
 
 export const COMPLETION_EVIDENCE_VERSION = 1 as const;
 
+export type GmailStepEvidence = {
+  service: "gmail";
+  action: string;
+  draftId: string | null;
+  messageId: string | null;
+  threadId: string | null;
+  recipientHash: string;
+  subjectHash: string;
+  attachmentArtifactIds: string[];
+  completedAt: string;
+  resultHash: string;
+  retryCount: number;
+  duplicatePrevented: boolean;
+  adapterMode: string;
+  environment: string;
+  approvalId: string | null;
+  providerRequestId: string | null;
+  deliveryGuarantee: "provider_accepted" | "not_applicable";
+};
+
 export type AutomationV2CompletionEvidence = {
   runId: string;
   jobId: string;
@@ -24,6 +44,9 @@ export type AutomationV2CompletionEvidence = {
   completionHash: string;
   completedAt: string;
   evidenceVersion: typeof COMPLETION_EVIDENCE_VERSION;
+  adapterMode: string | null;
+  environment: string | null;
+  gmailResults: GmailStepEvidence[];
 };
 
 export type StepEvidenceFragment = {
@@ -32,6 +55,9 @@ export type StepEvidenceFragment = {
   externalActionIds?: string[];
   externalUrls?: string[];
   notificationIds?: string[];
+  adapterMode?: string;
+  environment?: string;
+  gmail?: GmailStepEvidence;
 };
 
 function unique(values: string[]): string[] {
@@ -40,7 +66,22 @@ function unique(values: string[]): string[] {
 
 export function mergeEvidenceFragments(
   fragments: StepEvidenceFragment[],
-): Required<StepEvidenceFragment> {
+): Required<
+  Omit<StepEvidenceFragment, "adapterMode" | "environment" | "gmail">
+> & {
+  adapterMode: string | null;
+  environment: string | null;
+  gmailResults: GmailStepEvidence[];
+} {
+  const gmailResults = fragments
+    .map((item) => item.gmail)
+    .filter((item): item is GmailStepEvidence => Boolean(item));
+  const adapterMode =
+    fragments.map((item) => item.adapterMode).find((item) => item?.trim()) ??
+    null;
+  const environment =
+    fragments.map((item) => item.environment).find((item) => item?.trim()) ??
+    null;
   return {
     artifactIds: unique(fragments.flatMap((item) => item.artifactIds ?? [])),
     storageObjectIds: unique(
@@ -53,6 +94,9 @@ export function mergeEvidenceFragments(
     notificationIds: unique(
       fragments.flatMap((item) => item.notificationIds ?? []),
     ),
+    adapterMode,
+    environment,
+    gmailResults,
   };
 }
 
@@ -102,6 +146,9 @@ export function buildCompletionEvidenceV2(input: {
     ].sort(),
     completedAt,
     evidenceVersion: COMPLETION_EVIDENCE_VERSION,
+    adapterMode: merged.adapterMode,
+    environment: merged.environment,
+    gmailResults: merged.gmailResults,
   };
 
   const completionHash = createHash("sha256")
