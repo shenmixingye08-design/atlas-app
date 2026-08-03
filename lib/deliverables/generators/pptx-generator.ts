@@ -18,6 +18,9 @@ const ATLAS_LIGHT = "D9E2F3";
 const TEXT_DARK = "222222";
 const TEXT_MUTED = "666666";
 
+/** pptxgenjs exposes ShapeType on instances, not the constructor. */
+const SHAPE_TYPE = new pptxgen().ShapeType;
+
 type PptxGenerateOptions = {
   brandColorHex?: string | null;
   companyName?: string | null;
@@ -62,7 +65,7 @@ function addSlideTitle(
   subtitle: string | undefined,
   theme: { brand: string; fontFace: string; titleAlign: "left" | "center" | "right" },
 ): void {
-  slide.addShape(pptxgen.ShapeType.rect, {
+  slide.addShape(SHAPE_TYPE.rect, {
     x: 0,
     y: 0,
     w: "100%",
@@ -101,7 +104,7 @@ function addSectionDivider(
   title: string,
   theme: { brand: string; fontFace: string },
 ): void {
-  slide.addShape(pptxgen.ShapeType.rect, {
+  slide.addShape(SHAPE_TYPE.rect, {
     x: 0,
     y: 0,
     w: "100%",
@@ -136,7 +139,7 @@ function addContentHeading(
     color: theme.brand,
     fontFace: theme.fontFace,
   });
-  slide.addShape(pptxgen.ShapeType.line, {
+  slide.addShape(SHAPE_TYPE.line, {
     x: 0.6,
     y: 1.05,
     w: 8.8,
@@ -167,7 +170,7 @@ function addBodyText(
 }
 
 function addImagePlaceholder(slide: pptxgen.Slide, caption: string, y = 2.0): void {
-  slide.addShape(pptxgen.ShapeType.rect, {
+  slide.addShape(SHAPE_TYPE.rect, {
     x: 1.2,
     y,
     w: 7.6,

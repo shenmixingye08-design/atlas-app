@@ -31,6 +31,11 @@ jobs:
       - name: Install dependencies (lockfile strict)
         run: npm ci
 
+      - name: Install PDF QA tools (poppler)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -42,6 +47,8 @@ jobs:
         env:
           # Keep tests deterministic; do not enable mock-success shortcuts.
           TZ: UTC
+          # Vitest workers serialize large fixtures; default heap OOMs on ubuntu-latest.
+          NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Upload Vitest logs on failure
         if: failure()
@@ -50,7 +57,8 @@ jobs:
           name: vitest-logs
           path: |
             **/vitest*.log
-            /tmp/**
+            /tmp/vitest*
+            /tmp/atlas*
           if-no-files-found: ignore
           retention-days: 7
 
