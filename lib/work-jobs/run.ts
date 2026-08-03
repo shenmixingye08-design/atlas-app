@@ -1,12 +1,23 @@
 import "server-only";
 
 import { runCommanderRequest } from "@/lib/commander/service";
+import { newWorkerId, decideLeaseClaim } from "@/lib/queue/claim";
+import {
+  appendBackoffRecord,
+  computeBackoffWithJitter,
+} from "@/lib/queue/backoff";
+import { createJobAuditTrail, mergeJobAudit } from "@/lib/queue/audit";
 import { recordReliabilityEvent, withRetry } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
+import { classifyRetryError } from "@/lib/jobs/retry-classifier";
 
 import { withPropagatedJobId } from "./job-id";
+import { applyWorkJobStageTransition } from "./production/transition";
+import { emitJobLifecycleNotification } from "./production/notify";
 import {
   getWorkJob,
+  isWorkJobInProgressStatus,
+  isWorkJobTerminalStatus,
   saveWorkJob,
   touchWorkJob,
   type WorkJobRecord,
@@ -14,7 +25,7 @@ import {
 
 /**
  * Just over route maxDuration (300s). If a serverless after() is killed,
- * the job stays `running` with an old updatedAt — reclaim after this window.
+ * the job stays in-progress with an old updatedAt — reclaim after this window.
  */
 export const WORK_JOB_STALE_RUNNING_MS = 310_000;
 
@@ -22,18 +33,16 @@ export function isStaleWorkJobRunning(
   job: WorkJobRecord,
   nowMs = Date.now(),
 ): boolean {
-  if (job.status !== "running") return false;
+  if (!isWorkJobInProgressStatus(job.status) && job.status !== "running") {
+    return false;
+  }
   const updatedMs = new Date(job.updatedAt).getTime();
   if (Number.isNaN(updatedMs)) return true;
   return nowMs - updatedMs > WORK_JOB_STALE_RUNNING_MS;
 }
 
 export function isWorkJobTerminal(status: WorkJobRecord["status"]): boolean {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "awaiting_confirmation"
-  );
+  return isWorkJobTerminalStatus(status);
 }
 
 function readAttachmentIds(
@@ -120,14 +129,22 @@ function evaluateCompletionGate(input: {
   return { ok: true };
 }
 
+async function persistStage(
+  job: WorkJobRecord,
+  stage: Parameters<typeof applyWorkJobStageTransition>[1],
+  opts?: Parameters<typeof applyWorkJobStageTransition>[2],
+  durable = true,
+): Promise<WorkJobRecord> {
+  const next = applyWorkJobStageTransition(job, stage, opts);
+  if (durable) return saveWorkJob(next);
+  return touchWorkJob(next);
+}
+
 /**
  * Execute a queued work job on the server (not in the browser).
- * Retries transient failures up to maxAttempts with backoff.
+ * Retries transient failures up to maxAttempts with backoff + jitter.
  * Idempotent: completed jobs are not re-executed.
- * Stale `running` jobs are reclaimed so work never stays 処理中 forever.
- *
- * POST 202 / status queued|accepted = 受付成功 only.
- * status completed = AI + artifacts + Supabase + downloadable all succeeded.
+ * Stale in-progress jobs are reclaimed so work never stays 処理中 forever.
  */
 export async function executeWorkJob(
   jobId: string,
@@ -138,59 +155,140 @@ export async function executeWorkJob(
     throw new Error("job_not_found");
   }
 
-  // Duplicate execution forbidden for terminal / confirmation states.
   if (
     existing.status === "completed" ||
-    existing.status === "awaiting_confirmation"
+    existing.status === "awaiting_confirmation" ||
+    existing.status === "needs_input" ||
+    existing.status === "cancelled"
   ) {
     return existing;
   }
 
-  // Fresh running lease — another worker is actively processing.
-  if (existing.status === "running" && !isStaleWorkJobRunning(existing)) {
+  const workerId = newWorkerId();
+  // Terminal statuses already returned above. `failed` may restart.
+  const lease = decideLeaseClaim({
+    status: existing.status,
+    updatedAt: existing.updatedAt,
+    attemptCount: existing.attemptCount,
+    maxAttempts: existing.maxAttempts,
+    workerId: existing.workerId,
+    newWorkerId: workerId,
+    isInProgress: isWorkJobInProgressStatus(existing.status),
+    isTerminal: false,
+    staleMs: WORK_JOB_STALE_RUNNING_MS,
+  });
+  if (lease.action === "skip_fresh_lease") {
     return existing;
   }
-
-  // Stale running past maxAttempts → force failed (never leave 処理中).
-  if (
-    existing.status === "running" &&
-    isStaleWorkJobRunning(existing) &&
-    existing.attemptCount >= existing.maxAttempts
-  ) {
-    return saveWorkJob({
-      ...existing,
-      status: "failed",
+  if (lease.action === "force_failed") {
+    const failed = applyWorkJobStageTransition(existing, "failed", {
+      reason: lease.reason,
+      workerId,
       error:
         "処理が長時間停止したため失敗として記録しました。もう一度送ってください。",
-      updatedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
+      estimatedRemainingMs: 0,
     });
+    const saved = await saveWorkJob(failed);
+    emitJobLifecycleNotification({
+      job: saved,
+      event: "failed",
+      message: saved.error,
+    });
+    return saved;
   }
 
   const startedAt = Date.now();
   const metadataWithJobId = withPropagatedJobId(existing.metadata, jobId);
+  const audit = mergeJobAudit(
+    existing.audit ??
+      createJobAuditTrail({
+        jobId,
+        requestId: existing.requestId ?? jobId,
+        workerId,
+      }),
+    {
+      workerId,
+      requestId: existing.requestId ?? jobId,
+      retryCount: existing.attemptCount,
+    },
+  );
 
-  await saveWorkJob({
+  // Restart / reclaim always enters via retrying (except fresh queued).
+  let seed: WorkJobRecord = {
     ...existing,
-    status: "running",
     metadata: metadataWithJobId,
     attemptCount: existing.attemptCount + 1,
-    updatedAt: new Date().toISOString(),
+    workerId,
+    requestId: existing.requestId ?? jobId,
+    audit,
+    nextRetryAt: null,
+    completedAt: null,
+    error: null,
+  };
+  if (
+    seed.status === "failed" ||
+    (isWorkJobInProgressStatus(seed.status) && seed.status !== "retrying")
+  ) {
+    seed = applyWorkJobStageTransition(seed, "retrying", {
+      reason:
+        lease.action === "reclaim" ? lease.reason : "restart_failed_job",
+      workerId,
+    });
+  }
+
+  let current = await persistStage(seed, "validating", {
+    reason:
+      lease.action === "reclaim"
+        ? lease.reason
+        : seed.status === "retrying"
+          ? "restart"
+          : "claim",
+    workerId,
+  });
+
+  emitJobLifecycleNotification({
+    job: current,
+    event: current.attemptCount > 1 ? "retry" : "start",
   });
 
   try {
+    current = await persistStage(current, "preprocessing", { workerId }, false);
+    current = await persistStage(current, "analyzing", { workerId }, false);
+
     const commander = await withRetry(
       async (attempt) => {
         if (attempt > 1) {
           recordReliabilityEvent("retry", "retry");
           recordReliabilityEvent("work_job", "retry");
+          const backoff = computeBackoffWithJitter({ attempt: attempt - 1 });
+          current = touchWorkJob({
+            ...applyWorkJobStageTransition(current, "retrying", {
+              reason: `immediate_retry_${attempt}`,
+              workerId,
+            }),
+            audit: mergeJobAudit(current.audit, {
+              backoffRecords: appendBackoffRecord(
+                current.audit?.backoffRecords,
+                backoff.record,
+              ),
+              retryCount: attempt - 1,
+            }),
+            nextRetryAt: backoff.nextAt,
+          });
+          emitJobLifecycleNotification({
+            job: current,
+            event: "retry",
+            message: `一時的な問題のため再試行しています（${attempt}回目）`,
+          });
         }
-        // Heartbeat so long runs are not mistaken for stale hangs.
-        const current = getWorkJob(jobId, userId);
-        if (current?.status === "running") {
-          await touchWorkJob({
-            ...current,
-            metadata: withPropagatedJobId(current.metadata, jobId),
+        const latest = getWorkJob(jobId, userId);
+        if (latest && isWorkJobInProgressStatus(latest.status)) {
+          current = touchWorkJob({
+            ...applyWorkJobStageTransition(
+              { ...latest, stage: latest.stage ?? "analyzing" },
+              "generating",
+              { workerId },
+            ),
             updatedAt: new Date().toISOString(),
           });
         }
@@ -213,7 +311,6 @@ export async function executeWorkJob(
       { maxAttempts: existing.maxAttempts },
     );
 
-    // Merge vision metadata from commander result when present on report path.
     const mergedMetadata = withPropagatedJobId(
       {
         ...metadataWithJobId,
@@ -225,18 +322,23 @@ export async function executeWorkJob(
     );
 
     if (commander.status === "awaiting_confirmation") {
-      return saveWorkJob({
-        ...existing,
-        status: "awaiting_confirmation",
-        metadata: mergedMetadata,
-        attemptCount: Math.max(existing.attemptCount + 1, 1),
-        result: commander.result ?? null,
-        error: null,
-        updatedAt: new Date().toISOString(),
+      current = await persistStage(
+        {
+          ...current,
+          metadata: mergedMetadata,
+          result: commander.result ?? null,
+          diagnosticId: commander.visionGate?.diagnosticId ?? current.diagnosticId,
+        },
+        "needs_input",
+        { reason: "awaiting_confirmation", workerId, error: null },
+      );
+      emitJobLifecycleNotification({
+        job: current,
+        event: "needs_input",
       });
+      return current;
     }
 
-    // Vision / attachment hard failures must surface as failed jobs — never "completed".
     if (commander.visionGate && !commander.visionGate.analysisSuccess) {
       const visionOpenAi = commander.visionGate.openai ?? null;
       recordReliabilityEvent("work_job", "failure", 1, {
@@ -258,65 +360,40 @@ export async function executeWorkJob(
         userId,
         stage: commander.visionGate.failedStage ?? "vision_response",
         severity: "error",
-        metadata: {
-          failedStage: commander.visionGate.failedStage ?? null,
-          failedStageLabel: commander.visionGate.failedStageLabel ?? null,
-          lastSuccessHint: "vision_prior_stage",
-          blockedStage: commander.visionGate.failedStage ?? "vision_response",
-          cause: commander.visionGate.cause ?? null,
-          vercelRequestId: commander.visionGate.vercelRequestId ?? null,
-          openaiRequestId: visionOpenAi?.requestId ?? null,
-          openaiHttpStatus: visionOpenAi?.httpStatus ?? null,
-          openaiErrorType: visionOpenAi?.type ?? null,
-          openaiErrorCode: visionOpenAi?.code ?? null,
-          openaiErrorMessage: visionOpenAi?.message ?? null,
-          openaiErrorBody: visionOpenAi?.rawErrorBody ?? null,
-          tracking: {
-            diagnosticId: commander.visionGate.diagnosticId ?? null,
-            supabaseDomain: "atlasVisionDiagnostics",
-            vercelRequestId: commander.visionGate.vercelRequestId ?? null,
-            openaiRequestId: visionOpenAi?.requestId ?? null,
-            jobId,
-          },
-        },
       });
-      return saveWorkJob({
-        ...existing,
-        status: "failed",
-        metadata: {
-          ...mergedMetadata,
-          failureDiagnostic: {
-            jobId,
-            diagnosticId: commander.visionGate.diagnosticId ?? null,
-            failedStage: commander.visionGate.failedStage ?? null,
-            developerCode: commander.visionGate.developerCode ?? null,
-            cause: commander.visionGate.cause ?? null,
-            vercelRequestId: commander.visionGate.vercelRequestId ?? null,
-            openai: visionOpenAi,
-            safeMessage:
-              visionOpenAi?.message ??
-              commander.visionGate.cause ??
-              commander.visionGate.message,
+      current = await persistStage(
+        {
+          ...current,
+          metadata: {
+            ...mergedMetadata,
+            failureDiagnostic: {
+              jobId,
+              diagnosticId: commander.visionGate.diagnosticId ?? null,
+              failedStage: commander.visionGate.failedStage ?? null,
+            },
           },
+          visionGate: commander.visionGate,
+          result: null,
+          diagnosticId: commander.visionGate.diagnosticId ?? null,
         },
-        attemptCount: existing.attemptCount + 1,
-        error:
-          visionOpenAi?.message ??
-          commander.visionGate.cause ??
-          commander.visionGate.message,
-        visionGate: commander.visionGate,
-        result: null,
-        updatedAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
+        "failed",
+        {
+          workerId,
+          error:
+            visionOpenAi?.message ??
+            commander.visionGate.cause ??
+            commander.visionGate.message,
+        },
+      );
+      emitJobLifecycleNotification({
+        job: current,
+        event: "failed",
+        message: current.error,
       });
+      return current;
     }
 
     if (commander.status === "failed" || !commander.result) {
-      const failedStage =
-        commander.visionGate?.failedStage ??
-        (commander.result as { stepError?: { step?: string } } | null | undefined)
-          ?.stepError?.step ??
-        "worker";
       const safeMessage = toHumanReliabilityMessage(
         commander.visionGate?.message ??
           commander.report?.summary ??
@@ -324,66 +401,43 @@ export async function executeWorkJob(
       );
       recordReliabilityEvent("work_job", "failure", 1, {
         durationMs: Date.now() - startedAt,
-        errorCode:
-          commander.visionGate?.developerCode ?? "commander_failed",
+        errorCode: commander.visionGate?.developerCode ?? "commander_failed",
         errorMessage: safeMessage,
         message: safeMessage,
         jobId,
-        diagnosticId:
-          commander.visionGate?.diagnosticId ??
-          (typeof mergedMetadata.visionDiagnosticId === "string"
-            ? mergedMetadata.visionDiagnosticId
-            : null),
         userId,
-        stage: failedStage,
+        stage: "worker",
         severity: "error",
-        metadata: {
-          commanderStatus: commander.status,
-          reportSummary: commander.report?.summary?.slice(0, 300) ?? null,
-          attempts: commander.attempts?.length ?? commander.report?.attempts ?? null,
-          failedStage,
-          developerCode: commander.visionGate?.developerCode ?? null,
-          lastSuccessHint: "commander_prior_stage",
-          blockedStage: failedStage,
-          persistence: commander.persistence
-            ? {
-                projectPersisted: commander.persistence.projectPersisted,
-                wordRequired: commander.persistence.wordRequired,
-                wordCompletionVerified:
-                  commander.persistence.wordCompletionVerified,
-                wordErrorCode: commander.persistence.wordErrorCode ?? null,
-              }
-            : null,
-        },
       });
-      return saveWorkJob({
-        ...existing,
-        status: "failed",
-        metadata: {
-          ...mergedMetadata,
-          failureDiagnostic: {
-            jobId,
-            diagnosticId:
-              commander.visionGate?.diagnosticId ??
-              (typeof mergedMetadata.visionDiagnosticId === "string"
-                ? mergedMetadata.visionDiagnosticId
-                : null),
-            failedStage,
-            developerCode: commander.visionGate?.developerCode ?? null,
-            safeMessage,
-          },
+      current = await persistStage(
+        {
+          ...current,
+          metadata: mergedMetadata,
+          visionGate: commander.visionGate ?? current.visionGate ?? null,
+          result: commander.result ?? null,
         },
-        attemptCount: existing.attemptCount + 1,
-        error: safeMessage,
-        visionGate: commander.visionGate ?? existing.visionGate ?? null,
-        result: commander.result ?? null,
-        updatedAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
+        "failed",
+        { workerId, error: safeMessage },
+      );
+      emitJobLifecycleNotification({
+        job: current,
+        event: "failed",
+        message: safeMessage,
       });
+      return current;
     }
 
+    current = await persistStage(
+      { ...current, metadata: mergedMetadata },
+      "converting",
+      { workerId },
+      false,
+    );
+    current = await persistStage(current, "uploading", { workerId }, false);
+    current = await persistStage(current, "saving", { workerId }, false);
+
     const gate = evaluateCompletionGate({
-      job: { ...existing, metadata: mergedMetadata },
+      job: { ...current, metadata: mergedMetadata },
       commander,
     });
     if (!gate.ok) {
@@ -393,51 +447,58 @@ export async function executeWorkJob(
         errorMessage: gate.error,
         message: gate.error,
         jobId,
-        diagnosticId:
-          typeof mergedMetadata.visionDiagnosticId === "string"
-            ? mergedMetadata.visionDiagnosticId
-            : null,
         userId,
         stage: "completion_gate",
         severity: "error",
-        metadata: {
-          failedStage: "completion_gate",
-          blockedStage: "completed",
-          lastSuccessHint: "commander_result",
-          persistence: commander.persistence
-            ? {
-                projectPersisted: commander.persistence.projectPersisted,
-                wordRequired: commander.persistence.wordRequired,
-                wordCompletionVerified:
-                  commander.persistence.wordCompletionVerified,
-                wordErrorCode: commander.persistence.wordErrorCode ?? null,
-              }
-            : null,
-          downloadableCount: (commander.result.fileDeliverables ?? []).filter(
-            (f) => Boolean(f.downloadUrl?.includes(`/api/deliverables/${f.id}`)),
-          ).length,
-        },
       });
-      return saveWorkJob({
-        ...existing,
-        status: "failed",
-        metadata: {
-          ...mergedMetadata,
-          failureDiagnostic: {
-            jobId,
-            failedStage: "completion_gate",
-            developerCode: "completion_gate_failed",
-            safeMessage: toHumanReliabilityMessage(gate.error),
-          },
+      current = await persistStage(
+        {
+          ...current,
+          metadata: mergedMetadata,
+          result: commander.result ?? null,
+          visionGate: commander.visionGate ?? current.visionGate ?? null,
         },
-        attemptCount: existing.attemptCount + 1,
-        error: toHumanReliabilityMessage(gate.error),
-        visionGate: commander.visionGate ?? existing.visionGate ?? null,
-        result: commander.result ?? null,
-        updatedAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
+        "failed",
+        { workerId, error: toHumanReliabilityMessage(gate.error) },
+      );
+      emitJobLifecycleNotification({
+        job: current,
+        event: "failed",
+        message: current.error,
       });
+      return current;
     }
+
+    const artifactId =
+      commander.result.fileDeliverables?.[0]?.id ??
+      current.artifactId ??
+      null;
+
+    current = await persistStage(
+      {
+        ...current,
+        metadata: mergedMetadata,
+        result: {
+          ...commander.result,
+          ...(commander.runId ? { commanderRunId: commander.runId } : {}),
+        },
+        artifactId,
+        visionGate: null,
+        audit: mergeJobAudit(current.audit, {
+          artifactId,
+          durationMs: Date.now() - startedAt,
+        }),
+      },
+      "notifying",
+      { workerId },
+      false,
+    );
+
+    emitJobLifecycleNotification({
+      job: current,
+      event: "progress",
+      message: "完了通知を準備しています",
+    });
 
     recordReliabilityEvent("work_job", "success", 1, {
       durationMs: Date.now() - startedAt,
@@ -447,27 +508,27 @@ export async function executeWorkJob(
       severity: "info",
     });
 
-    // Durable save is part of completed — saveWorkJob throws if Supabase fails.
-    return saveWorkJob({
-      ...existing,
-      status: "completed",
-      metadata: mergedMetadata,
-      attemptCount: existing.attemptCount + 1,
-      result: {
-        ...commander.result,
-        ...(commander.runId ? { commanderRunId: commander.runId } : {}),
-      },
+    current = await persistStage(current, "completed", {
+      workerId,
       error: null,
-      visionGate: null,
-      updatedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
+      estimatedRemainingMs: 0,
     });
+
+    // completed notification is typically emitted by Commander; emit only if missing path
+    emitJobLifecycleNotification({
+      job: current,
+      event: "completed",
+    });
+
+    return current;
   } catch (error) {
     const message =
       error instanceof Error && error.message === "work_job_durable_persist_failed"
         ? "ジョブ状態をSupabaseへ保存できませんでした"
         : toHumanReliabilityMessage(error);
     const isTimeout = /timeout|ETIMEDOUT|aborted/i.test(message);
+    const retryable = classifyRetryError(error) === "retryable";
+
     recordReliabilityEvent("work_job", isTimeout ? "timeout" : "failure", 1, {
       durationMs: Date.now() - startedAt,
       errorCode: isTimeout ? "timeout" : "work_job_exception",
@@ -477,25 +538,60 @@ export async function executeWorkJob(
       userId,
       stage: isTimeout ? "timeout" : "work_job",
       severity: "error",
-      metadata: {
-        failedStage: isTimeout ? "timeout" : "work_job",
-        blockedStage: "completed",
-      },
     });
     if (isTimeout) recordReliabilityEvent("timeout", "timeout");
 
-    // Best-effort failed persist — if this also fails, rethrow.
     try {
-      return await saveWorkJob({
-        ...existing,
-        status: "failed",
-        metadata: withPropagatedJobId(existing.metadata, jobId),
-        attemptCount: existing.attemptCount + 1,
+      const latest = getWorkJob(jobId, userId) ?? current;
+      if (
+        retryable &&
+        latest.attemptCount < latest.maxAttempts &&
+        latest.status !== "cancelled"
+      ) {
+        const backoff = computeBackoffWithJitter({
+          attempt: latest.attemptCount,
+        });
+        const retrying = applyWorkJobStageTransition(latest, "retrying", {
+          workerId,
+          reason: "retryable_exception",
+          error: message,
+        });
+        const saved = await saveWorkJob({
+          ...retrying,
+          nextRetryAt: backoff.nextAt,
+          audit: mergeJobAudit(retrying.audit, {
+            backoffRecords: appendBackoffRecord(
+              retrying.audit?.backoffRecords,
+              { ...backoff.record, reason: message },
+            ),
+            retryCount: latest.attemptCount,
+            durationMs: Date.now() - startedAt,
+          }),
+        });
+        emitJobLifecycleNotification({
+          job: saved,
+          event: "retry",
+          message,
+        });
+        return saved;
+      }
+
+      const failed = applyWorkJobStageTransition(latest, "failed", {
+        workerId,
         error: message,
-        visionGate: existing.visionGate ?? null,
-        updatedAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
       });
+      const saved = await saveWorkJob({
+        ...failed,
+        audit: mergeJobAudit(failed.audit, {
+          durationMs: Date.now() - startedAt,
+        }),
+      });
+      emitJobLifecycleNotification({
+        job: saved,
+        event: "failed",
+        message,
+      });
+      return saved;
     } catch (persistError) {
       console.error("[work-jobs] failed to persist failed status", persistError);
       throw error;

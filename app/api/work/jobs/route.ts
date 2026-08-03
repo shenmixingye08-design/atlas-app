@@ -3,14 +3,18 @@ import { createHash } from "crypto";
 import { after } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 
+import { admitJobToQueue } from "@/lib/queue/overflow";
+import { createJobAuditTrail } from "@/lib/queue/audit";
 import { MAX_IMMEDIATE_RETRIES } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 import { logVisionPipeline } from "@/lib/vision/pipeline-log";
 import { withPropagatedJobId } from "@/lib/work-jobs/job-id";
-import { executeWorkJob } from "@/lib/work-jobs/run";
+import { executeWorkJob, isStaleWorkJobRunning } from "@/lib/work-jobs/run";
 import {
   buildWorkJobIdempotencyKey,
   findWorkJobByIdempotencyKey,
+  getWorkJobQueueSnapshot,
+  isWorkJobInProgressStatus,
   saveWorkJob,
 } from "@/lib/work-jobs/store";
 
@@ -101,11 +105,12 @@ export async function POST(request: Request): Promise<Response> {
 
   const existing = findWorkJobByIdempotencyKey(userId, idempotencyKey);
   if (existing) {
-    const { isStaleWorkJobRunning } = await import("@/lib/work-jobs/run");
     const shouldRestart =
       existing.status === "queued" ||
       existing.status === "failed" ||
-      (existing.status === "running" && isStaleWorkJobRunning(existing));
+      existing.status === "retrying" ||
+      (isWorkJobInProgressStatus(existing.status) &&
+        isStaleWorkJobRunning(existing));
     if (shouldRestart) {
       after(async () => {
         try {
@@ -122,13 +127,30 @@ export async function POST(request: Request): Promise<Response> {
         acceptance: "accepted",
         jobId: existing.id,
         status: existing.status,
+        stage: existing.stage ?? existing.status,
         reused: true,
+        duplicate: true,
         message:
           existing.status === "completed"
             ? "同じ依頼は処理済みです。"
             : "依頼を受け付けました。バックグラウンドで処理しています。",
       },
       { status: 202 },
+    );
+  }
+
+  const snapshot = getWorkJobQueueSnapshot(userId);
+  const admit = admitJobToQueue({ snapshot });
+  if (!admit.admit) {
+    return Response.json(
+      {
+        ok: false,
+        acceptance: "rejected",
+        error: admit.message,
+        reason: admit.reason,
+        queue: snapshot,
+      },
+      { status: 429 },
     );
   }
 
@@ -142,11 +164,19 @@ export async function POST(request: Request): Promise<Response> {
       idempotencyKey,
       metadata: withPropagatedJobId(safeMetadata, id),
       status: "queued",
+      stage: "queued",
+      progressPercent: 0,
+      currentStep: "受付済み・待機中",
       attemptCount: 0,
       maxAttempts: MAX_IMMEDIATE_RETRIES,
       error: null,
       visionGate: null,
       result: null,
+      requestId: id,
+      statusHistory: [
+        { from: null, to: "queued", at: now, reason: "accepted" },
+      ],
+      audit: createJobAuditTrail({ jobId: id, requestId: id }),
       createdAt: now,
       updatedAt: now,
       completedAt: null,

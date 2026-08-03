@@ -6,7 +6,11 @@ import {
   executeWorkJob,
   isStaleWorkJobRunning,
 } from "@/lib/work-jobs/run";
-import { getWorkJobDurable } from "@/lib/work-jobs/store";
+import { buildWorkJobPublicView } from "@/lib/work-jobs/production/progress";
+import {
+  getWorkJobDurable,
+  isWorkJobInProgressStatus,
+} from "@/lib/work-jobs/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,8 +40,8 @@ export async function GET(
     );
   }
 
-  // Stale running must not stay 処理中 — reclaim on poll.
-  if (job.status === "running" && isStaleWorkJobRunning(job)) {
+  // Stale in-progress must not stay 処理中 — reclaim on poll.
+  if (isWorkJobInProgressStatus(job.status) && isStaleWorkJobRunning(job)) {
     after(async () => {
       try {
         await executeWorkJob(id, userId);
@@ -45,25 +49,16 @@ export async function GET(
         console.warn("[work-jobs/poll]", toHumanReliabilityMessage(error));
       }
     });
-    // Re-read after scheduling recovery (may already be failed if max attempts).
     job = (await getWorkJobDurable(id, userId)) ?? job;
   }
 
+  const view = buildWorkJobPublicView(job);
+
   return Response.json({
     ok: true,
-    jobId: job.id,
-    status: job.status,
-    error: job.error,
+    ...view,
     visionGate: job.visionGate,
     result: job.result,
     completedAt: job.completedAt,
-    message:
-      job.status === "queued" || job.status === "running"
-        ? "依頼を受け付けました。バックグラウンドで処理しています。"
-        : job.status === "completed"
-          ? "すべて完了しました。"
-          : job.status === "awaiting_confirmation"
-            ? "確認が必要です。"
-            : job.error ?? "確認が必要です。",
   });
 }

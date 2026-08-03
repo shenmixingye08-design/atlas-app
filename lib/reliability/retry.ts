@@ -1,4 +1,5 @@
 import { classifyRetryError } from "@/lib/jobs/retry-classifier";
+import { computeBackoffWithJitter } from "@/lib/queue/backoff";
 
 /** Immediate-call retry delays (not job-scheduler delays). */
 export const IMMEDIATE_RETRY_BACKOFF_MS = [500, 1_500, 4_000] as const;
@@ -12,6 +13,8 @@ export type RetryOptions = {
   /** Override retry classification. */
   shouldRetry?: (error: unknown, attempt: number) => boolean;
   onRetry?: (error: unknown, attempt: number, delayMs: number) => void;
+  /** Disable jitter (tests that assert exact delays). Default: jitter on. */
+  jitter?: boolean;
 };
 
 function sleep(ms: number): Promise<void> {
@@ -27,8 +30,9 @@ function defaultShouldRetry(error: unknown): boolean {
 }
 
 /**
- * Run an async operation with up to 3 attempts and exponential backoff.
- * Retries on timeout / 429 / 5xx (and classifier "retryable").
+ * Run an async operation with up to 3 attempts and exponential backoff + jitter.
+ * Retries on timeout / 429 / 5xx / network / storage / DB (classifier "retryable").
+ * Does not retry 400 / permission / validation / input errors.
  */
 export async function withRetry<T>(
   operation: (attempt: number) => Promise<T>,
@@ -37,6 +41,7 @@ export async function withRetry<T>(
   const maxAttempts = options.maxAttempts ?? MAX_IMMEDIATE_RETRIES;
   const backoff = options.backoffMs ?? IMMEDIATE_RETRY_BACKOFF_MS;
   const shouldRetry = options.shouldRetry ?? ((err) => defaultShouldRetry(err));
+  const useJitter = options.jitter !== false;
 
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -47,9 +52,15 @@ export async function withRetry<T>(
       if (attempt >= maxAttempts || !shouldRetry(error, attempt)) {
         throw error;
       }
-      const delay =
+      const base =
         backoff[Math.min(attempt - 1, backoff.length - 1)] ??
         backoff[backoff.length - 1]!;
+      const delay = useJitter
+        ? computeBackoffWithJitter({
+            attempt,
+            bases: backoff,
+          }).delayMs
+        : base;
       options.onRetry?.(error, attempt, delay);
       await sleep(delay);
     }
