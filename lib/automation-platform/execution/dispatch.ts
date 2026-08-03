@@ -27,6 +27,41 @@ export type DispatchResult = {
   awaiting: number;
 };
 
+function buildGoogleDriveNotificationDetail(run: AutomationRun): string | null {
+  const drive = run.completionEvidence?.driveResults?.[0];
+  if (drive) {
+    return [
+      "Google Driveへ保存しました。",
+      `ファイル: ${drive.fileName}`,
+      `フォルダID: ${drive.targetFolderId}`,
+      `URL: ${drive.webViewLink}`,
+      `実行時刻: ${drive.completedAt}`,
+    ].join(" ");
+  }
+
+  const external = run.artifacts.find(
+    (item) => item.kind === "external" && item.externalId && item.url,
+  );
+  if (external?.url) {
+    return `Google Driveへ保存しました。ファイル: ${external.label} URL: ${external.url}`;
+  }
+
+  const message = run.lastErrorMessage ?? "";
+  if (/missing_scope|権限/i.test(message)) {
+    return "権限不足です。Google Driveを再接続してください。";
+  }
+  if (/reconnect|再接続|revok|expired|401/i.test(message)) {
+    return "再接続が必要です。Google連携をやり直してください。";
+  }
+  if (/folder.*not found|フォルダ/i.test(message)) {
+    return "folder不存在、またはアクセスできません。";
+  }
+  if (/retry|429|rate limit/i.test(message)) {
+    return "Retry中または一時的な制限です。";
+  }
+  return null;
+}
+
 function attachClaimTransition(run: AutomationRun): AutomationRun {
   if (run.status !== "running") return run;
   const last = run.statusHistory[run.statusHistory.length - 1];
@@ -141,6 +176,7 @@ export async function dispatchAutomationRuns(options?: {
     });
 
     result.processed += 1;
+    const driveDetail = buildGoogleDriveNotificationDetail(execResult.run);
     if (execResult.run.status === "succeeded") {
       result.succeeded += 1;
       notifyAutomationRunEvent({
@@ -149,6 +185,7 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: wasRetry ? "retry_finished" : "succeeded",
+        detail: driveDetail,
       });
     } else if (execResult.run.status === "partially_succeeded") {
       // Partial completion is not a success counter / completed notification.
@@ -159,6 +196,7 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "partially_succeeded",
+        detail: driveDetail,
       });
     } else if (execResult.run.status === "failed") {
       result.failed += 1;
@@ -168,7 +206,10 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "failed",
-        detail: execResult.run.lastErrorMessage,
+        detail:
+          driveDetail ||
+          execResult.run.lastErrorMessage ||
+          "Google Driveまたは自動化の最終失敗",
       });
     } else if (execResult.run.status === "retrying") {
       result.retrying += 1;
@@ -178,6 +219,7 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "retry_started",
+        detail: "Retry中です。完了するまでお待ちください。",
       });
     } else if (execResult.run.status === "needs_input") {
       result.awaiting += 1;
@@ -187,6 +229,10 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "needs_input",
+        detail:
+          driveDetail ||
+          execResult.run.lastErrorMessage ||
+          "再接続または権限の確認が必要です",
       });
     }
   }

@@ -13,6 +13,10 @@ import {
   getGoogleClientId,
   getGoogleClientSecret,
 } from "./config";
+import {
+  generateGooglePkceCodeChallenge,
+  generateGooglePkceCodeVerifier,
+} from "./pkce";
 
 export type GoogleTokenResponse = {
   access_token: string;
@@ -33,7 +37,9 @@ export function buildGoogleAccountAuthorizeUrl(
   requestOrigin: string,
   userId: string,
 ): string {
-  const state = createOAuthState(userId);
+  const codeVerifier = generateGooglePkceCodeVerifier();
+  const codeChallenge = generateGooglePkceCodeChallenge(codeVerifier);
+  const state = createOAuthState(userId, { codeVerifier });
   const params = new URLSearchParams({
     client_id: getGoogleClientId(),
     redirect_uri: getGoogleAccountRedirectUri(requestOrigin),
@@ -42,6 +48,8 @@ export function buildGoogleAccountAuthorizeUrl(
     access_type: "offline",
     prompt: "consent",
     state,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
   });
 
   return `${GOOGLE_OAUTH_AUTHORIZE_URL}?${params.toString()}`;
@@ -50,6 +58,7 @@ export function buildGoogleAccountAuthorizeUrl(
 export async function exchangeGoogleAccountAuthCode(
   code: string,
   requestOrigin: string,
+  codeVerifier?: string,
 ): Promise<GoogleTokenResponse> {
   const body = new URLSearchParams({
     code,
@@ -58,6 +67,9 @@ export async function exchangeGoogleAccountAuthCode(
     redirect_uri: getGoogleAccountRedirectUri(requestOrigin),
     grant_type: "authorization_code",
   });
+  if (codeVerifier?.trim()) {
+    body.set("code_verifier", codeVerifier.trim());
+  }
 
   const response = await fetchWithTimeout(GOOGLE_OAUTH_TOKEN_URL, {
     method: "POST",

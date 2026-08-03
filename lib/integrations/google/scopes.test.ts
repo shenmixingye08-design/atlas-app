@@ -50,4 +50,17 @@ describe("Google OAuth scopes", () => {
       ]),
     ).toEqual(["https://www.googleapis.com/auth/gmail.modify"]);
   });
+
+  it("accepts drive.file or legacy full drive for Drive capability", () => {
+    expect(
+      hasGoogleCapability(
+        "https://www.googleapis.com/auth/drive.file",
+        "drive",
+      ),
+    ).toBe(true);
+    expect(
+      hasGoogleCapability("https://www.googleapis.com/auth/drive", "drive"),
+    ).toBe(true);
+    expect(hasGoogleCapability("email profile", "drive")).toBe(false);
+  });
 });

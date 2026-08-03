@@ -85,7 +85,11 @@ export async function getGoogleAccountAccessTokenResult(
       saveExternalServiceConnection(userId, healthyConnection);
     }
 
-    void persistGoogleAuthToSupabase(nextCredentials, healthyConnection);
+    void persistGoogleAuthToSupabase(nextCredentials, healthyConnection, {
+      tokenType: "Bearer",
+      lastRefreshAt: now,
+      revokedAt: null,
+    });
     schedulePersistExternalAuth(userId);
 
     return { status: "ready", accessToken: refreshed.access_token };
