@@ -52,9 +52,14 @@ export async function completeGoogleAccountOAuth(
   userId: string,
   code: string,
   requestOrigin: string,
+  codeVerifier?: string,
 ): Promise<ExternalServiceConnection> {
   await ensureExternalAuthHydrated(userId);
-  const token = await exchangeGoogleAccountAuthCode(code, requestOrigin);
+  const token = await exchangeGoogleAccountAuthCode(
+    code,
+    requestOrigin,
+    codeVerifier,
+  );
 
   if (!token.refresh_token) {
     throw new Error(

@@ -13,18 +13,20 @@ export const CALENDAR_REQUIRED_SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
 ] as const;
 
-/** Scopes required for Drive file access. */
+/**
+ * Scopes accepted for Drive upload.
+ * Prefer drive.file; legacy full drive still satisfies capability checks.
+ */
 export const DRIVE_REQUIRED_SCOPES = [
+  "https://www.googleapis.com/auth/drive.file",
+] as const;
+
+export const DRIVE_ACCEPTED_SCOPES = [
+  "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/drive",
 ] as const;
 
 export type GoogleCapability = "gmail" | "calendar" | "drive";
-
-const CAPABILITY_SCOPES: Record<GoogleCapability, readonly string[]> = {
-  gmail: GMAIL_REQUIRED_SCOPES,
-  calendar: CALENDAR_REQUIRED_SCOPES,
-  drive: DRIVE_REQUIRED_SCOPES,
-};
 
 export function parseGoogleScopeString(
   scope: string | null | undefined,
@@ -77,7 +79,18 @@ export function hasGoogleCapability(
     );
   }
 
-  return CAPABILITY_SCOPES[capability].every((scope) => granted.has(scope));
+  if (capability === "drive") {
+    return DRIVE_ACCEPTED_SCOPES.some((scope) => granted.has(scope));
+  }
+
+  return false;
+}
+
+export function getMissingDriveScopes(
+  grantedScope: string | null | undefined,
+): string[] {
+  if (hasGoogleCapability(grantedScope, "drive")) return [];
+  return [...DRIVE_REQUIRED_SCOPES];
 }
 
 /** Prefer stored OAuth scope string; fall back to planned account scopes. */

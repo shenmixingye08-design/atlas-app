@@ -21,6 +21,7 @@ import {
 } from "@/lib/automation-platform/durable-runs";
 import { dispatchAutomationRuns } from "@/lib/automation-platform/execution/dispatch";
 import { notifyAutomationRunEvent } from "@/lib/automation-platform/execution/notify";
+import { assertGoogleDrivePreflightForActivation } from "@/lib/automation-platform/execution/google-drive-preflight";
 import {
   buildRunStepsFromAutomation,
   prepareRunSnapshot,
@@ -90,6 +91,8 @@ function assertProductionStepsActivatable(
     if (issue.errorCode === "live_adapter_missing" && allowUnwiredExternal) {
       return false;
     }
+    // google_drive is Production-wired — never bypass missing adapter in tests
+    // via the generic unwired allowlist when the step is google_drive and wired.
     return true;
   });
   if (blocking.length === 0) return;
@@ -105,6 +108,34 @@ function assertProductionStepsActivatable(
       issues: blocking,
     },
   );
+}
+
+async function assertExternalPreflightForActivation(
+  userId: string,
+  steps: ReadonlyArray<{
+    id: string;
+    type: string;
+    enabled: boolean;
+    configuration?: Readonly<Record<string, unknown>>;
+  }>,
+): Promise<void> {
+  assertProductionStepsActivatable(steps);
+  const allowSkipDrive =
+    process.env.AUTOMATION_ALLOW_UNWIRED_EXTERNAL_ACTIVATION === "true";
+  if (allowSkipDrive) return;
+
+  const driveIssues = await assertGoogleDrivePreflightForActivation({
+    userId,
+    steps,
+  });
+  if (driveIssues.length === 0) return;
+  const first = driveIssues[0]!;
+  throw new AutomationPlatformError("automation_integration_required", {
+    stepId: first.stepId,
+    stepType: "google_drive",
+    reason: first.message,
+    issues: driveIssues,
+  });
 }
 
 export class AutomationPlatformService {
@@ -127,7 +158,10 @@ export class AutomationPlatformService {
 
     const record = buildAutomationFromCreateInput(userId, input);
     if (record.status === "active") {
-      assertProductionStepsActivatable(record.workflow.steps);
+      await assertExternalPreflightForActivation(
+        userId,
+        record.workflow.steps,
+      );
     }
     let saved = persistAutomationV2Now(record);
 
@@ -257,7 +291,10 @@ export class AutomationPlatformService {
     };
 
     if (updated.status === "active") {
-      assertProductionStepsActivatable(updated.workflow.steps);
+      await assertExternalPreflightForActivation(
+        userId,
+        updated.workflow.steps,
+      );
     }
 
     let saved = persistAutomationV2Now(updated);

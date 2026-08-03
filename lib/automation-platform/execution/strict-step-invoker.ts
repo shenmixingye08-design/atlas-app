@@ -20,6 +20,7 @@ import {
   getProductionStep,
   isLiveAdapterWired,
 } from "@/lib/automation-platform/execution/production-step-registry";
+import { invokeGoogleDriveUploadStep } from "@/lib/automation-platform/execution/google-drive-step";
 import { getCapability } from "@/lib/automation-platform/step-registry/registry";
 import { createNotification } from "@/lib/notifications/service";
 
@@ -413,6 +414,22 @@ export const strictStepInvoker: StepInvoker = async (input) => {
         live,
         null,
       );
+
+    case "google_drive": {
+      if (!googleAppConfigured()) {
+        return notConnected("Google Drive");
+      }
+      if (!isLiveAdapterWired("google_drive")) {
+        return liveAdapterMissing("Google Drive");
+      }
+      return invokeGoogleDriveUploadStep({
+        step,
+        userId: input.userId,
+        runId: input.runId,
+        diagnosticId: input.diagnosticId ?? input.runId,
+        priorArtifacts: input.priorArtifacts,
+      });
+    }
 
     default:
       return stepNotImplemented(step.type);

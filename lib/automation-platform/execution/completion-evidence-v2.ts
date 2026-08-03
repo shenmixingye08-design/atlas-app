@@ -9,6 +9,20 @@ import type { AutomationRun } from "@/lib/automation-platform/types/run";
 
 export const COMPLETION_EVIDENCE_VERSION = 1 as const;
 
+export type DriveStepEvidence = {
+  service: "google_drive";
+  fileId: string;
+  webViewLink: string;
+  size: number;
+  checksum: string;
+  targetFolderId: string;
+  fileName: string;
+  completedAt: string;
+  resultHash: string;
+  retryCount: number;
+  duplicatePrevented: boolean;
+};
+
 export type AutomationV2CompletionEvidence = {
   runId: string;
   jobId: string;
@@ -24,6 +38,9 @@ export type AutomationV2CompletionEvidence = {
   completionHash: string;
   completedAt: string;
   evidenceVersion: typeof COMPLETION_EVIDENCE_VERSION;
+  adapterMode: string | null;
+  environment: string | null;
+  driveResults: DriveStepEvidence[];
 };
 
 export type StepEvidenceFragment = {
@@ -32,6 +49,9 @@ export type StepEvidenceFragment = {
   externalActionIds?: string[];
   externalUrls?: string[];
   notificationIds?: string[];
+  adapterMode?: string;
+  environment?: string;
+  drive?: DriveStepEvidence;
 };
 
 function unique(values: string[]): string[] {
@@ -40,7 +60,22 @@ function unique(values: string[]): string[] {
 
 export function mergeEvidenceFragments(
   fragments: StepEvidenceFragment[],
-): Required<StepEvidenceFragment> {
+): Required<
+  Omit<StepEvidenceFragment, "adapterMode" | "environment" | "drive">
+> & {
+  adapterMode: string | null;
+  environment: string | null;
+  driveResults: DriveStepEvidence[];
+} {
+  const driveResults = fragments
+    .map((item) => item.drive)
+    .filter((item): item is DriveStepEvidence => Boolean(item));
+  const adapterMode =
+    fragments.map((item) => item.adapterMode).find((item) => item?.trim()) ??
+    null;
+  const environment =
+    fragments.map((item) => item.environment).find((item) => item?.trim()) ??
+    null;
   return {
     artifactIds: unique(fragments.flatMap((item) => item.artifactIds ?? [])),
     storageObjectIds: unique(
@@ -53,6 +88,9 @@ export function mergeEvidenceFragments(
     notificationIds: unique(
       fragments.flatMap((item) => item.notificationIds ?? []),
     ),
+    adapterMode,
+    environment,
+    driveResults,
   };
 }
 
@@ -102,6 +140,9 @@ export function buildCompletionEvidenceV2(input: {
     ].sort(),
     completedAt,
     evidenceVersion: COMPLETION_EVIDENCE_VERSION,
+    adapterMode: merged.adapterMode,
+    environment: merged.environment,
+    driveResults: merged.driveResults,
   };
 
   const completionHash = createHash("sha256")

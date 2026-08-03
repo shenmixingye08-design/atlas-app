@@ -168,6 +168,36 @@ const SCHEMAS: Record<AutomationCapabilityId, readonly CapabilityFieldSchema[]> 
       ],
     },
   ],
+  google_drive: [
+    {
+      key: "targetFolderId",
+      label: "保存先フォルダID",
+      type: "text",
+      helpText: "未指定時は ATLAS フォルダ構成を使用します",
+    },
+    {
+      key: "folderPath",
+      label: "保存先パス",
+      type: "text",
+      placeholder: "例: 営業資料/週次",
+    },
+    {
+      key: "conflictPolicy",
+      label: "同名ファイルの扱い",
+      type: "select",
+      options: [
+        { value: "fail", label: "失敗にする（既定）" },
+        { value: "rename", label: "名前を変えて保存" },
+        { value: "overwrite", label: "上書き（要確認）" },
+        { value: "create_revision", label: "改訂として更新" },
+      ],
+    },
+    {
+      key: "createFolderIfMissing",
+      label: "フォルダが無ければ作成",
+      type: "boolean",
+    },
+  ],
   notify: [
     { key: "message", label: "通知メッセージの要点", type: "textarea" },
   ],

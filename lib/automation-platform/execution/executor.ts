@@ -236,6 +236,8 @@ export async function executeQueuedRun(input: {
         approved: approved || !runStep.requiresApproval,
         resolvedInstruction: run.resolvedInstruction,
         memoryUsage: run.memoryUsage,
+        priorArtifacts: run.artifacts,
+        diagnosticId: run.diagnosticId,
       });
 
       const fake = rejectFakeSuccess({

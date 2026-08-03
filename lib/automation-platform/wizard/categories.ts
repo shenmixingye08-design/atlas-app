@@ -76,9 +76,9 @@ export const WORK_CATEGORIES: readonly WorkCategory[] = [
   {
     id: "storage",
     label: "ファイルを保存する",
-    description: "Dropboxなどへ保存",
+    description: "Google Drive・Dropboxなどへ保存",
     popular: true,
-    capabilityIds: ["dropbox"],
+    capabilityIds: ["google_drive", "dropbox"],
   },
   {
     id: "blog",
