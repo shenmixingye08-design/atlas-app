@@ -71,6 +71,14 @@ function isTestFile(file) {
   );
 }
 
+/** Audit package prose must not inflate production inventories. */
+function isAuditPackageNoise(file) {
+  return (
+    file.startsWith("lib/persistence/durable-sot-audit/") &&
+    !file.endsWith("production-diagnostics.ts")
+  );
+}
+
 function isCommentOrStringNoise(line) {
   const t = line.trim();
   return t.startsWith("//") || t.startsWith("*") || t.startsWith("/*");
@@ -357,22 +365,34 @@ function main() {
     setTimerHits.push(...r.setTimerHits);
   }
 
-  // Production-reachable = non-test source under lib/app
+  // Production-reachable = non-test source under lib/app (exclude audit prose)
   const prodGlobal = globalThisHits.filter(
-    (h) => !h.testFile && (h.file.startsWith("lib/") || h.file.startsWith("app/")),
+    (h) =>
+      !h.testFile &&
+      !isAuditPackageNoise(h.file) &&
+      (h.file.startsWith("lib/") || h.file.startsWith("app/")),
   );
   const prodMapSetStores = mapSetHits.filter(
     (h) =>
       !h.testFile &&
+      !isAuditPackageNoise(h.file) &&
       h.classification === "process_memory_store" &&
       (h.file.startsWith("lib/") || h.file.startsWith("app/")),
   );
   const prodFile = fileFallbackHits.filter(
-    (h) => !h.testFile && (h.file.startsWith("lib/") || h.file.startsWith("app/")),
+    (h) =>
+      !h.testFile &&
+      !isAuditPackageNoise(h.file) &&
+      (h.file.startsWith("lib/") || h.file.startsWith("app/")),
   );
-  const prodBrowser = browserStorageHits.filter((h) => !h.testFile);
+  const prodBrowser = browserStorageHits.filter(
+    (h) => !h.testFile && !isAuditPackageNoise(h.file),
+  );
   const prodDetached = detachedPromiseHits.filter(
-    (h) => !h.testFile && (h.file.startsWith("lib/") || h.file.startsWith("app/")),
+    (h) =>
+      !h.testFile &&
+      !isAuditPackageNoise(h.file) &&
+      (h.file.startsWith("lib/") || h.file.startsWith("app/")),
   );
 
   const globalSymbols = uniqueByKey(

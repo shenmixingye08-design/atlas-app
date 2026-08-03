@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-08-03T18:37:45.339Z",
+  "generatedAt": "2026-08-03T18:45:07.253Z",
   "phase": "1-1-durable-sot-audit",
-  "note": "Baseline fingerprints for Phase 1-1. CI fails only on NEW fingerprints.",
+  "note": "Baseline fingerprints for Phase 1-1. CI fails only on NEW fingerprints. Audit package prose excluded.",
   "productionReachable": {
     "processMemoryGlobalSymbols": 116,
     "processMemoryMapSetStores": 90,
-    "fileFallbackHits": 46,
-    "browserStorageHits": 72,
-    "detachedPromiseHits": 176
+    "fileFallbackHits": 38,
+    "browserStorageHits": 62,
+    "detachedPromiseHits": 158
   },
   "fingerprints": {
     "globalSymbols": [
@@ -134,14 +134,6 @@
       "lib/deliverables/fonts/japanese-pdf-fonts.ts:89:",
       "lib/deliverables/pdf-quality.ts:138:",
       "lib/deliverables/pdf-quality.ts:74:",
-      "lib/persistence/durable-sot-audit/domains.ts:104:",
-      "lib/persistence/durable-sot-audit/domains.ts:125:",
-      "lib/persistence/durable-sot-audit/domains.ts:212:",
-      "lib/persistence/durable-sot-audit/domains.ts:334:",
-      "lib/persistence/durable-sot-audit/domains.ts:44:",
-      "lib/persistence/durable-sot-audit/domains.ts:507:",
-      "lib/persistence/durable-sot-audit/index.ts:31:",
-      "lib/persistence/durable-sot-audit/restart-scenarios.ts:18:",
       "lib/vision/capture-wire-image.ts:138:",
       "lib/vision/capture-wire-image.ts:164:",
       "lib/vision/capture-wire-image.ts:168:",
@@ -315,24 +307,6 @@
       "lib/owner/monitoring/store.ts:61:.catch_swallow",
       "lib/owner/monitoring/store.ts:71:void_promise",
       "lib/owner/monitoring/store.ts:73:.catch_swallow",
-      "lib/persistence/durable-sot-audit/domains.ts:155:.catch_swallow",
-      "lib/persistence/durable-sot-audit/domains.ts:159:.catch_swallow",
-      "lib/persistence/durable-sot-audit/domains.ts:215:.catch_swallow",
-      "lib/persistence/durable-sot-audit/domains.ts:24:.catch_swallow",
-      "lib/persistence/durable-sot-audit/domains.ts:257:.catch_swallow",
-      "lib/persistence/durable-sot-audit/domains.ts:277:.catch_swallow",
-      "lib/persistence/durable-sot-audit/domains.ts:337:.catch_swallow",
-      "lib/persistence/durable-sot-audit/domains.ts:392:.catch_swallow",
-      "lib/persistence/durable-sot-audit/domains.ts:87:.catch_swallow",
-      "lib/persistence/durable-sot-audit/findings.ts:123:.catch_swallow",
-      "lib/persistence/durable-sot-audit/findings.ts:84:.catch_swallow",
-      "lib/persistence/durable-sot-audit/findings.ts:95:.catch_swallow",
-      "lib/persistence/durable-sot-audit/index.ts:38:.catch_swallow",
-      "lib/persistence/durable-sot-audit/migration-targets.ts:200:.catch_swallow",
-      "lib/persistence/durable-sot-audit/restart-scenarios.ts:119:.catch_swallow",
-      "lib/persistence/durable-sot-audit/restart-scenarios.ts:167:.catch_swallow",
-      "lib/persistence/durable-sot-audit/restart-scenarios.ts:61:.catch_swallow",
-      "lib/persistence/durable-sot-audit/restart-scenarios.ts:88:.catch_swallow",
       "lib/personal-memory/durable.ts:92:void_promise",
       "lib/projects/client.ts:34:.catch_swallow",
       "lib/projects/project-service.ts:43:void_promise",
@@ -388,16 +362,6 @@
       "lib/home/today-skipped-store.ts:39:localStorage",
       "lib/memory-apply/audit.ts:65:localStorage",
       "lib/owner/env-status/registry.ts:192:localStorage",
-      "lib/persistence/durable-sot-audit/domains.ts:257:localStorage",
-      "lib/persistence/durable-sot-audit/domains.ts:370:localStorage",
-      "lib/persistence/durable-sot-audit/domains.ts:372:localStorage",
-      "lib/persistence/durable-sot-audit/domains.ts:421:localStorage",
-      "lib/persistence/durable-sot-audit/domains.ts:455:localStorage",
-      "lib/persistence/durable-sot-audit/domains.ts:490:localStorage",
-      "lib/persistence/durable-sot-audit/domains.ts:492:localStorage",
-      "lib/persistence/durable-sot-audit/findings.ts:188:localStorage",
-      "lib/persistence/durable-sot-audit/findings.ts:203:localStorage",
-      "lib/persistence/durable-sot-audit/migration-targets.ts:290:localStorage",
       "lib/proactive-suggestions/persistence.ts:21:localStorage",
       "lib/proactive-suggestions/persistence.ts:38:localStorage",
       "lib/projects/repositories/local-storage-repository.ts:16:localStorage",
@@ -431,22 +395,22 @@
   },
   "totals": {
     "processMemory": {
-      "globalThisReferences": 640,
+      "globalThisReferences": 636,
       "uniqueGlobalSymbols": 116,
       "processMemoryMapSetAllocations": 90,
       "moduleSingletons": 1,
       "setTimers": 58
     },
     "fileFallback": {
-      "hits": 46
+      "hits": 38
     },
     "browser": {
-      "hits": 72,
-      "localStorage": 59,
+      "hits": 62,
+      "localStorage": 49,
       "sessionStorage": 13
     },
     "detached": {
-      "hits": 176
+      "hits": 158
     }
   }
 }
