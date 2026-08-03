@@ -79,12 +79,12 @@ function baseWorkflow(): CreateAutomationV2Input["workflow"] {
     version: 1,
     steps: [
       {
-        id: "step-orchestrate",
-        type: "orchestrate",
-        name: "仕事の遂行",
+        id: "step-excel",
+        type: "excel_generate",
+        name: "Excel生成",
         order: 1,
         inputBindings: {},
-        configuration: {},
+        configuration: { title: "テスト成果物" },
         requiresApproval: false,
         retryPolicy: { maxAttempts: 1, backoffMs: [] },
         timeoutMs: 60_000,

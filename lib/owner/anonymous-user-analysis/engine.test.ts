@@ -39,6 +39,7 @@ describe("anonymous user analysis engine", () => {
       userId: "clerk_user_secret_123",
       stripeCustomerId: null,
       stripeSubscriptionId: null,
+      stripePriceId: null,
       planId: "standard",
       status: "active",
       currentPeriodStart: now.toISOString(),

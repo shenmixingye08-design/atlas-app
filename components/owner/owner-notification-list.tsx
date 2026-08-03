@@ -1,4 +1,5 @@
 "use client";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -23,7 +24,9 @@ export function OwnerNotificationList() {
   }, []);
 
   useEffect(() => {
-    void reload();
+    return scheduleMountWork(() => {
+      void reload();
+    });
   }, [reload]);
 
   if (loading) {

@@ -5,7 +5,6 @@ import { useState } from "react";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 import {
-  formatWorkMemoryConfidence,
   getWorkMemoryTypeLabel,
   type WorkMemorySummary,
 } from "@/lib/work-memory";

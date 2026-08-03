@@ -136,15 +136,79 @@ export async function runOrchestrationForUser(
       const { resolveForContext } = await import(
         "@/lib/personal-memory/service"
       );
-      const { result: personalResolved } = await resolveForContext({
-        userId: input.userId,
-        notes: input.assignment,
-      });
-      if (personalResolved.injectionText) {
+      const isRegenerate = input.metadata?.regenerate === true;
+      const previousContent =
+        typeof input.metadata?.previousWorkRequest === "string"
+          ? input.metadata.previousWorkRequest
+          : input.assignment;
+
+      if (isRegenerate) {
+        const { applyMemoryForRegenerate } = await import(
+          "@/lib/memory-apply/regenerate"
+        );
+        const regen = await applyMemoryForRegenerate({
+          userId: input.userId,
+          previousContent,
+          improvementNotes:
+            typeof input.metadata?.improvementNotes === "string"
+              ? input.metadata.improvementNotes
+              : "差分再生成",
+        });
         personalMemoryMeta = {
-          personalMemory: personalResolved.injectionText,
-          personalMemoryTokenEstimate: personalResolved.tokenEstimate,
+          personalMemory: regen.content.slice(0, 1200),
+          personalMemoryIdsUsed: regen.memoryIdsUsed,
+          memoryApplyMode: "delta",
+          regenerateApplied: regen.applied,
         };
+      } else {
+        const { MemoryApply } = await import("@/lib/memory-apply/apply");
+        const { recordMemoryApplyEvent } = await import(
+          "@/lib/memory-apply/metrics"
+        );
+        const applied = await MemoryApply({
+          userId: input.userId,
+          channel: "commander",
+          baseline: input.assignment,
+          assignment: input.assignment,
+          artifactTypes: [
+            typeof input.metadata?.deliverableType === "string"
+              ? input.metadata.deliverableType
+              : "document",
+          ],
+          capabilities: ["commander", "orchestration"],
+        });
+        for (const channel of ["orchestration", "workflow"] as const) {
+          recordMemoryApplyEvent({
+            userId: input.userId,
+            channel,
+            memoryMode: applied.context.mode,
+            applied: applied.context.memoryIdsUsed.length > 0,
+            memoryIdsUsed: applied.context.memoryIdsUsed,
+            scopesUsed: applied.context.scopesUsed,
+            improvementRate: applied.quality.improvementRate,
+            success: true,
+          });
+        }
+        if (applied.prompt.injection.fullText) {
+          personalMemoryMeta = {
+            personalMemory: applied.prompt.injection.fullText,
+            personalMemoryTokenEstimate: applied.context.tokenEstimate,
+            personalMemoryIdsUsed: applied.context.memoryIdsUsed,
+            personalMemoryScopesUsed: applied.context.scopesUsed,
+          };
+        } else {
+          // Fallback resolve if injection empty but Memory still resolved
+          const { result: personalResolved } = await resolveForContext({
+            userId: input.userId,
+            notes: input.assignment,
+          });
+          if (personalResolved.injectionText) {
+            personalMemoryMeta = {
+              personalMemory: personalResolved.injectionText,
+              personalMemoryTokenEstimate: personalResolved.tokenEstimate,
+            };
+          }
+        }
       }
     } catch {
       personalMemoryMeta = null;

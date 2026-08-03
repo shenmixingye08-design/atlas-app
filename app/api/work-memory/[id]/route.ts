@@ -1,7 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 
 import {
-  deactivateWorkMemory,
   deleteWorkMemory,
   getWorkMemory,
   updateWorkMemory,

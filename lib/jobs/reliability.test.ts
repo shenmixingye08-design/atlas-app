@@ -83,14 +83,24 @@ describe("completion evidence", () => {
     });
     expect(ok.status).toBe("completed");
 
-    const partial = evaluateCompletionEvidence({
+    const missingProof = evaluateCompletionEvidence({
       templateId: "sns_post",
       orchestrationStatus: "completed",
       approved: true,
       deliverableCount: 0,
       snsPostFailure: null,
     });
-    expect(partial.status).toBe("partially_completed");
+    expect(missingProof.status).toBe("failed");
+  });
+
+  it("fails closed when deliverable exists without storage URL", () => {
+    const result = evaluateCompletionEvidence({
+      orchestrationStatus: "completed",
+      approved: true,
+      deliverableCount: 1,
+      snsPostFailure: null,
+    });
+    expect(result.status).toBe("failed");
   });
 
   it("marks waiting_for_approval when not approved", () => {

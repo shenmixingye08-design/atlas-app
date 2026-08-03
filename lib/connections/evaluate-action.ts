@@ -2,7 +2,6 @@ import type { ResolvedConnectorTarget } from "@/lib/connectors";
 
 import type {
   ActionExecutionEvaluation,
-  ActionPermissionStatus,
   ConnectionCenterSnapshot,
 } from "./types";
 import { permissionKey } from "./types";

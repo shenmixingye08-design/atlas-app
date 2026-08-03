@@ -4,13 +4,10 @@ import type {
   WorkflowRun,
   WorkflowRunTriggerType,
 } from "@/lib/memory/types/workflow-run";
-import { evaluateBillingAiUsage } from "@/lib/billing/access/snapshot";
-import { isAutomationSuspendedForUser } from "@/lib/billing/subscriptions/lifecycle";
 import { setAutomationTaskCount } from "@/lib/billing/usage/store";
 import { claimAutomationJob } from "@/lib/jobs/job-store";
 import { buildAutomationIdempotencyKey } from "@/lib/jobs/idempotency";
 
-import { isAutomationDue, computeNextRunIso } from "./schedule";
 import type {
   Automation,
   AutomationFilter,
@@ -27,8 +24,6 @@ import {
   schedulePersistAutomations,
 } from "./durable";
 import {
-  claimAutomationTickSlot,
-  listAutomationOwnerUserIds,
   registerAutomationUserId,
 } from "./global-durable";
 
@@ -210,79 +205,50 @@ export class AutomationService {
   }
 
   /**
-   * Vercel Cron due processor — hydrates each owner, claims tick slots,
-   * enforces billing, and persists results.
+   * Due processor — enqueues durable work-queue jobs and drains the worker.
+   * Does not synchronously execute the full pipeline inside the cron request
+   * beyond a bounded worker batch of leased steps/jobs.
    */
   async processDueAutomations(
     options: { requestOrigin?: string } = {},
   ): Promise<AutomationRunResult[]> {
-    const ownerIds = await listAutomationOwnerUserIds();
+    const { processWorkQueueTick } = await import("@/lib/work-queue/tick");
+    const tick = await processWorkQueueTick({
+      requestOrigin: options.requestOrigin,
+    });
+
     const results: AutomationRunResult[] = [];
-
-    // Also include any in-memory owners (single-instance / tests without Supabase).
-    const memoryOwners = new Set(
-      (await this.automations.list())
-        .map((row) => row.userId)
-        .filter((id): id is string => typeof id === "string" && id.length > 0),
-    );
-    for (const id of ownerIds) memoryOwners.add(id);
-
-    for (const userId of memoryOwners) {
-      await ensureAutomationsHydrated(userId);
-
-      if (isAutomationSuspendedForUser(userId)) {
-        continue;
-      }
-
-      const enabled = await this.automations.list({
-        enabled: true,
-        userId,
+    for (const job of tick.worker.completedJobs) {
+      if (!job.automationId) continue;
+      results.push({
+        automationId: job.automationId,
+        workflowRunId: job.runId,
+        status: "completed",
+        orchestrationStatus: "completed",
+        approved: true,
+        totalDurationMs: 0,
+        finalResponsePreview: "work-queue completed",
+        error: null,
+        deliverableCount: 1,
       });
-      const due = enabled.filter((automation) => isAutomationDue(automation));
-
-      for (const automation of due) {
-        if (automation.status === "running") continue;
-
-        const claimed = await claimAutomationTickSlot(
-          userId,
-          automation.id,
-          automation.nextRun,
-        );
-        if (!claimed) continue;
-
-        const { denial } = await evaluateBillingAiUsage(userId);
-        if (denial) {
-          await this.automations.update(automation.id, {
-            lastError: denial.reason,
-            status: "failed",
-            nextRun: computeNextRunIso(automation.schedule, new Date()),
-          });
-          schedulePersistAutomations(userId);
-          continue;
-        }
-
-        // Advance nextRun before execute so a second instance skips isAutomationDue.
-        const reservedNext = computeNextRunIso(automation.schedule, new Date());
-        await this.automations.update(automation.id, {
-          status: "running",
-          nextRun: reservedNext,
-          lastError: null,
-        });
-        schedulePersistAutomations(userId);
-
-        const result = await this.runNow(automation.id, {
-          userId,
-          requestOrigin: options.requestOrigin,
-          triggerType: "automation",
-          scheduledAt: automation.nextRun,
-        });
-        if (!result) continue;
-        if (result.dedupeSkipped) continue;
-        results.push(result);
-        schedulePersistAutomations(userId);
-      }
+      const automation = await this.automations.findById(job.automationId);
+      if (automation?.userId) schedulePersistAutomations(automation.userId);
     }
-
+    for (const job of tick.worker.failedJobs) {
+      if (!job.automationId) continue;
+      results.push({
+        automationId: job.automationId,
+        workflowRunId: job.runId,
+        status: "failed",
+        orchestrationStatus: "failed",
+        approved: false,
+        totalDurationMs: 0,
+        finalResponsePreview: null,
+        error: job.errorCode,
+        deliverableCount: 0,
+        errorCode: job.errorCode,
+      });
+    }
     return results;
   }
 

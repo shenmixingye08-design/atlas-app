@@ -90,6 +90,8 @@ describe("openAiVisionProvider request shape", () => {
       userText: "これは何？",
       hintType: "unknown",
       detail: "auto",
+      pageIndex: 0,
+      pageCount: 1,
     });
     expect(result.result.summary).toBeTruthy();
     const call = vi.mocked(createAtlasResponse).mock.calls[0]?.[0];

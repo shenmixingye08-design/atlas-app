@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 
@@ -252,21 +253,24 @@ export function WorkflowLearningPanel({
   }, [automationId]);
 
   useEffect(() => {
-    if (!enabled) {
-      setLoading(false);
-      return;
-    }
     let cancelled = false;
-    setLoading(true);
-    void reload()
-      .catch((err: Error) => {
-        if (!cancelled) setError(err.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const cancelInitialLoad = scheduleMountWork(() => {
+      if (!enabled) {
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      void reload()
+        .catch((err: Error) => {
+          if (!cancelled) setError(err.message);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    });
     return () => {
       cancelled = true;
+      cancelInitialLoad();
     };
   }, [enabled, reload]);
 

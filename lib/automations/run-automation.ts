@@ -583,20 +583,40 @@ export async function executeAutomationRun(
     });
 
     if (options.userId && jobId) {
-      if (effectiveStatus === "failed" || evidence.status === "failed") {
+      // Fail closed: only evidence.status === "completed" may mark the job done.
+      // waiting_for_approval is preserved; everything else is failed.
+      if (evidence.status === "waiting_for_approval") {
+        const priorJob = await getJobRecord(jobId, options.userId);
+        await markJobCompleted({
+          jobId,
+          userId: options.userId,
+          status: "waiting_for_approval",
+          artifactId: evidence.artifactId,
+          externalResultId: evidence.externalResultId,
+          externalResultUrl: evidence.externalResultUrl,
+          resultSummary: evidence.resultSummary ?? preview,
+          autoRecovered: (priorJob?.attemptCount ?? 0) > 0,
+        });
+      } else if (
+        effectiveStatus === "failed" ||
+        evidence.status !== "completed"
+      ) {
         await markJobFailed({
           jobId,
           userId: options.userId,
-          error: effectiveError ?? evidence.lastErrorMessage ?? "failed",
+          error:
+            effectiveError ??
+            evidence.lastErrorMessage ??
+            "completion evidence missing",
           automationId: automation.id,
-          errorCode: snsErrorCode,
+          errorCode: snsErrorCode ?? "missing_evidence",
         });
       } else {
         const priorJob = await getJobRecord(jobId, options.userId);
         await markJobCompleted({
           jobId,
           userId: options.userId,
-          status: evidence.status,
+          status: "completed",
           artifactId: evidence.artifactId,
           externalResultId: evidence.externalResultId,
           externalResultUrl: evidence.externalResultUrl,

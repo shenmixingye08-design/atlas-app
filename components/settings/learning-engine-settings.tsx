@@ -1,4 +1,5 @@
 "use client";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -109,7 +110,9 @@ export function LearningEngineSettings() {
   }, [apiPeriod]);
 
   useEffect(() => {
-    void reload();
+    return scheduleMountWork(() => {
+      void reload();
+    });
   }, [reload]);
 
   useEffect(() => {

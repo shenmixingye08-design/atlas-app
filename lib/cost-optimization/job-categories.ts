@@ -2,7 +2,6 @@ import type { Automation } from "@/lib/automations/types";
 import type { WorkflowTemplateId } from "@/lib/automations/types";
 
 import type { AutomationExecutionMode } from "./execution-mode";
-import { DEFAULT_EXECUTION_MODE } from "./execution-mode";
 
 /** Job categories shown in cost optimization settings. */
 export type JobCategoryId =

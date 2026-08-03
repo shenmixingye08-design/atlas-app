@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -241,8 +242,10 @@ export function AutomationsDashboard() {
     if (openedV2Ref.current === selectedV2Param) return;
     const match = automationsV2.find((item) => item.id === selectedV2Param);
     if (!match) return;
-    openedV2Ref.current = selectedV2Param;
-    setSelectedV2(match);
+    return scheduleMountWork(() => {
+      openedV2Ref.current = selectedV2Param;
+      setSelectedV2(match);
+    });
   }, [selectedV2Param, automationsV2]);
 
   const summary = useMemo(

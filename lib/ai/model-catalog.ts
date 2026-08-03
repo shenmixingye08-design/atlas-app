@@ -2,8 +2,6 @@
  * Internal model tier catalog — the only place OpenAI model ids are defined.
  * Departments and orchestration code must not reference these strings directly.
  */
-import type { ReasoningLevel } from "./model-policy";
-
 export type ModelTier = "strong" | "cheap";
 
 export type ModelTokenParamName = "max_output_tokens" | "max_tokens";

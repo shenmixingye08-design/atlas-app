@@ -1,4 +1,5 @@
 "use client";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -60,7 +61,9 @@ export function useDashboardHome(projects: Project[]) {
   }, []);
 
   useEffect(() => {
-    void loadExtras();
+    return scheduleMountWork(() => {
+      void loadExtras();
+    });
   }, [loadExtras]);
 
   const metrics = useMemo(

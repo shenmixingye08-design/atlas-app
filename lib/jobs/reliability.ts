@@ -171,17 +171,26 @@ export async function markJobCompleted(input: {
 }): Promise<JobRecord> {
   const existing = await getStoredJobRecord(input.jobId, input.userId);
   const now = new Date().toISOString();
+  // Never persist partially_completed as a terminal success.
+  const nextStatus =
+    input.status === "waiting_for_approval"
+      ? "waiting_for_approval"
+      : input.status === "completed" || input.status == null
+        ? "completed"
+        : input.status === "failed"
+          ? "failed"
+          : "failed";
   return persistJobRecord({
     id: input.jobId,
     userId: input.userId,
     automationId: existing?.automationId ?? null,
     jobType: existing?.jobType ?? "automation",
-    status: input.status ?? "completed",
+    status: nextStatus,
     scheduledAt: existing?.scheduledAt ?? null,
     queuedAt: existing?.queuedAt ?? null,
     startedAt: existing?.startedAt ?? null,
-    completedAt: now,
-    failedAt: null,
+    completedAt: nextStatus === "waiting_for_approval" ? null : now,
+    failedAt: nextStatus === "failed" ? now : null,
     currentStep: null,
     progressPercent: 100,
     attemptCount: existing?.attemptCount ?? 0,

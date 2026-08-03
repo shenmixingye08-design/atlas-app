@@ -47,9 +47,14 @@ export function verifyGeneratedExport(
       '"content":',
       "```json",
       "[object Object]",
-      "\\n",
     ]) {
       if (asUtf8.includes(marker)) reasons.push(`forbidden:${marker}`);
+    }
+    if (
+      (file.format === "md" || file.format === "txt") &&
+      asUtf8.includes("\\n")
+    ) {
+      reasons.push("forbidden:\\n");
     }
     if (/\bundefined\b/.test(asUtf8)) {
       reasons.push("forbidden:undefined");

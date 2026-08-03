@@ -43,6 +43,9 @@ import type {
 import { getWordCompanyBrand } from "./company-brand";
 import { detectWordPurpose, isWordTemplateId } from "./word-templates";
 import type { DocxGenerateOptions } from "./generators/docx-generator";
+import { applyMemoryForDeliverable } from "@/lib/memory-apply/deliverables";
+import type { MemoryDeliverableOverlay } from "@/lib/memory-apply/types";
+import { recordMemoryApplyEvent } from "@/lib/memory-apply/metrics";
 import {
   addDeliverableVersion,
   buildVersionedDisplayName,
@@ -132,6 +135,7 @@ async function generateVerifiedFile(
   content: string,
   baseFileName: string,
   docxOptions?: DocxGenerateOptions,
+  memoryOverlay?: MemoryDeliverableOverlay | null,
 ): Promise<{
   file: GeneratedDeliverableFile | null;
   reasons: string[];
@@ -157,6 +161,20 @@ async function generateVerifiedFile(
   let generateMs = 0;
   let verifyMs = 0;
 
+  const sharedOptions: Record<string, unknown> = {
+    ...(docxOptions ?? {}),
+    memoryOverlay: memoryOverlay ?? null,
+    brandColorHex:
+      memoryOverlay?.brandColorHex ?? docxOptions?.brand?.brandColorHex ?? null,
+    footerNote:
+      memoryOverlay?.footerNote ?? docxOptions?.footerNote ?? null,
+    companyName:
+      memoryOverlay?.companyName ?? docxOptions?.companyName ?? null,
+    excel: memoryOverlay?.excel ?? null,
+    powerpoint: memoryOverlay?.powerpoint ?? null,
+    pdf: memoryOverlay?.pdf ?? null,
+  };
+
   // Attempt + one automatic regenerate on verify failure (blank PDF forbidden).
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     attempts = attempt;
@@ -168,7 +186,7 @@ async function generateVerifiedFile(
       const file =
         format === "docx"
           ? await generator.generate(content, baseFileName, docxOptions)
-          : await generator.generate(content, baseFileName);
+          : await generator.generate(content, baseFileName, sharedOptions);
       generateMs += Date.now() - renderStarted;
       if (format === "docx" && consumeWordFault("docx_verify")) {
         lastReasons = ["Word生成失敗: fault_inject:docx_verify"];
@@ -445,11 +463,47 @@ export async function generateDeliverables(
   if (!needsWord) {
     const deliverables: Deliverable[] = [];
     const failures: Array<{ format: string; reasons: string[] }> = [];
+    let earlyMemoryOverlay: MemoryDeliverableOverlay | null = null;
+    try {
+      const earlyMemory = await applyMemoryForDeliverable({
+        userId: options.userId,
+        content: safeContent,
+        format: formats[0] ?? "pdf",
+        assignment: input.assignment,
+      });
+      earlyMemoryOverlay = earlyMemory.overlay;
+      if (earlyMemory.applied) safeContent = earlyMemory.content;
+      for (const format of formats) {
+        const channel =
+          format === "xlsx"
+            ? "excel"
+            : format === "pdf"
+              ? "pdf"
+              : format === "pptx"
+                ? "powerpoint"
+                : null;
+        if (!channel) continue;
+        recordMemoryApplyEvent({
+          userId: options.userId,
+          channel,
+          memoryMode: earlyMemory.applied ? "on" : "off",
+          applied: earlyMemory.applied,
+          memoryIdsUsed: earlyMemory.memoryIdsUsed,
+          scopesUsed: earlyMemory.overlay.scopesUsed,
+          improvementRate: earlyMemory.quality.improvementRate,
+          success: true,
+        });
+      }
+    } catch {
+      earlyMemoryOverlay = null;
+    }
     for (const format of formats) {
       const { file, reasons } = await generateVerifiedFile(
         format,
         safeContent,
         baseFileName,
+        undefined,
+        earlyMemoryOverlay,
       );
       if (!file) {
         failures.push({ format, reasons });
@@ -636,13 +690,70 @@ export async function generateDeliverables(
     const deliverables: Deliverable[] = [];
     const failures: Array<{ format: string; reasons: string[] }> = [];
 
-    const brand = await getWordCompanyBrand(options.userId);
+    // Memory apply before artifact generation (Personal Memory → overlays).
+    let memoryOverlay: MemoryDeliverableOverlay | null = null;
+    let memoryAppliedContent: string | null = null;
+    try {
+      const primaryFormat = formats.includes("docx")
+        ? "docx"
+        : formats[0] ?? "docx";
+      const memoryApplied = await applyMemoryForDeliverable({
+        userId: options.userId,
+        content: safeContent,
+        format: primaryFormat,
+        assignment: input.assignment,
+      });
+      memoryOverlay = memoryApplied.overlay;
+      if (memoryApplied.applied) {
+        memoryAppliedContent = memoryApplied.content;
+        safeContent = memoryApplied.content;
+      }
+      // Mark each requested format channel when Memory was resolved
+      for (const format of formats) {
+        if (format === "md" || format === "txt") continue;
+        const channel =
+          format === "docx"
+            ? "word"
+            : format === "xlsx"
+              ? "excel"
+              : format === "pdf"
+                ? "pdf"
+                : format === "pptx"
+                  ? "powerpoint"
+                  : null;
+        if (!channel) continue;
+        recordMemoryApplyEvent({
+          userId: options.userId,
+          channel,
+          memoryMode: memoryApplied.applied ? "on" : "off",
+          applied: memoryApplied.applied,
+          memoryIdsUsed: memoryApplied.memoryIdsUsed,
+          scopesUsed: memoryApplied.overlay.scopesUsed,
+          improvementRate: memoryApplied.quality.improvementRate,
+          success: true,
+        });
+      }
+    } catch {
+      memoryOverlay = null;
+      memoryAppliedContent = null;
+    }
+    void memoryAppliedContent;
+
+    const brand =
+      memoryOverlay?.brand ?? (await getWordCompanyBrand(options.userId));
     const explicitTemplateId =
       options.templateId && isWordTemplateId(options.templateId)
         ? options.templateId
         : null;
+    const memoryTemplateId =
+      !explicitTemplateId &&
+      memoryOverlay?.templateId &&
+      isWordTemplateId(memoryOverlay.templateId)
+        ? memoryOverlay.templateId
+        : null;
     const defaultTemplateId =
       !explicitTemplateId &&
+      !memoryTemplateId &&
       brand?.defaultTemplateId &&
       isWordTemplateId(brand.defaultTemplateId)
         ? brand.defaultTemplateId
@@ -652,7 +763,8 @@ export async function generateDeliverables(
       assignment: input.assignment,
       title: input.title,
       content: safeContent,
-      explicitTemplateId: explicitTemplateId ?? defaultTemplateId,
+      explicitTemplateId:
+        explicitTemplateId ?? memoryTemplateId ?? defaultTemplateId,
     });
     recordWordMetric("purpose_ms", Date.now() - purposeStarted);
     trackWordEvent({
@@ -688,11 +800,17 @@ export async function generateDeliverables(
       title: input.title,
       templateId: purpose.templateId,
       brand,
-      author: options.author ?? brand?.contactName,
-      companyName: options.companyName ?? brand?.companyName,
+      author:
+        options.author ??
+        memoryOverlay?.author ??
+        brand?.contactName,
+      companyName:
+        options.companyName ??
+        memoryOverlay?.companyName ??
+        brand?.companyName,
       recipient: options.recipient,
       createdAt: options.createdAt,
-      footerNote: brand?.footerText,
+      footerNote: memoryOverlay?.footerNote ?? brand?.footerText,
     };
 
     for (const format of formats) {
@@ -739,6 +857,7 @@ export async function generateDeliverables(
         safeContent,
         baseFileName,
         format === "docx" ? docxOptions : undefined,
+        memoryOverlay,
       );
 
       if (!file) {

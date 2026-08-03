@@ -6,13 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const clerkMeta = new Map<string, Record<string, unknown>>();
 let clerkUpdateCalls = 0;
-let clerkGetCalls = 0;
 
 vi.mock("@clerk/nextjs/server", () => ({
   clerkClient: async () => ({
     users: {
       getUser: async (userId: string) => {
-        clerkGetCalls += 1;
         return {
           id: userId,
           privateMetadata: { ...(clerkMeta.get(userId) ?? {}) },
@@ -120,6 +118,12 @@ import { schedulePersistWorkMemory } from "@/lib/work-memory/durable";
 import { schedulePersistLearning } from "@/lib/learning-engine/durable";
 import { persistCommanderRunToClerk } from "@/lib/commander/durable-store";
 import type { CommanderRunRecord } from "@/lib/commander/types";
+import { emptyDeliverable } from "@/lib/orchestration/deliverable-types";
+import type { OrchestrationResult } from "@/lib/orchestration/types";
+import {
+  WorkflowState,
+  type WorkflowStateRecord,
+} from "@/lib/orchestration/workflow-state";
 
 process.env.CLERK_SECRET_KEY = "sk_test_persistence_repeat";
 process.env.ATLAS_FORCE_EPHEMERAL_FS = "1";
@@ -129,6 +133,36 @@ process.env.VERCEL_ENV = "production";
 const USER = "user_persist_repeat_10";
 const ASSIGNMENT = "この画像を解析してWordにしてください";
 
+function workflowRecord(state: WorkflowState = WorkflowState.Completed): WorkflowStateRecord {
+  return {
+    workflowId: "wf-persist-repeat-test",
+    state,
+    transitions: [],
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function fakeOrchestrationResult(
+  overrides: Partial<OrchestrationResult> = {},
+): OrchestrationResult {
+  return {
+    assignment: ASSIGNMENT,
+    status: "completed",
+    ceo: null,
+    plannerPlan: null,
+    plannerTasks: null,
+    tasks: [],
+    executions: [],
+    deliverable: emptyDeliverable("document"),
+    reviewComments: "",
+    approved: true,
+    finalResponse: "Wordを作成しました",
+    totalDurationMs: 1,
+    workflow: workflowRecord(),
+    ...overrides,
+  };
+}
+
 function fakeCommanderRun(i: number): CommanderRunRecord {
   return {
     id: `run_${i}`,
@@ -136,16 +170,21 @@ function fakeCommanderRun(i: number): CommanderRunRecord {
     assignment: ASSIGNMENT,
     status: "completed",
     plan: {
+      assignment: ASSIGNMENT,
       classification: {
-        category: "document",
-        confidence: 1,
+        deliverableType: "document",
+        templateId: "generic",
         summary: "Word作成",
-        reasons: [],
+        keywords: [],
       },
       requiredAis: [],
-      requiredDepartments: [],
       requiredExternalServices: [],
-      requiredTemplate: { id: null, label: "general", reason: null },
+      requiredTemplate: {
+        templateId: "generic",
+        label: "general",
+        stepIds: [],
+        stepLabels: [],
+      },
       requiredMemory: {
         workMemoryIds: [],
         workMemoryTitles: [],
@@ -156,23 +195,12 @@ function fakeCommanderRun(i: number): CommanderRunRecord {
       executionOrder: [],
       maxRetries: 2,
       generatedAt: new Date().toISOString(),
-      title: "t",
-      summary: "s",
-      phases: [],
-      selectedAis: [],
-      externalServices: [],
-      templateId: null,
-      templateLabel: "general",
-      estimatedSteps: 1,
-      memoryHints: [],
-      automationHint: null,
-    } as unknown as CommanderRunRecord["plan"],
+    },
     confirmationReasons: [],
     attempts: [],
-    result: {
-      finalResponse: "Wordを作成しました",
+    result: fakeOrchestrationResult({
       fileDeliverables: [],
-    } as CommanderRunRecord["result"],
+    }),
     error: null,
     workflowRunId: null,
     cancelRequested: false,
@@ -281,9 +309,11 @@ async function simulateOneJobCycle(index: number): Promise<{
   createNotification({
     userId: USER,
     audience: "user",
-    type: "work_completed",
+    type: "completed",
     title: "完了",
     message: `job ${jobId} 完了`,
+    lineEvent: "work_completed",
+    eventCategory: "final_success",
     targetType: "deliverable",
     targetId: `dlv_${index}`,
     deliverableId: `dlv_${index}`,
@@ -308,7 +338,7 @@ async function simulateOneJobCycle(index: number): Promise<{
     maxAttempts: 3,
     error: null,
     visionGate: null,
-    result: {
+    result: fakeOrchestrationResult({
       finalResponse: "Wordを作成しました",
       fileDeliverables: [
         {
@@ -318,11 +348,12 @@ async function simulateOneJobCycle(index: number): Promise<{
           downloadUrl: `/api/deliverables/dlv_${index}`,
           mimeType:
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          generatedAt: new Date().toISOString(),
           sizeBytes: 1000,
           isPlaceholder: false,
         },
       ],
-    } as never,
+    }),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     completedAt: new Date().toISOString(),
@@ -339,7 +370,6 @@ describe("persistence repeat ×10 (Vercel ephemeral)", () => {
   beforeEach(() => {
     clerkMeta.clear();
     clerkUpdateCalls = 0;
-    clerkGetCalls = 0;
     sbStore.clear();
     resetPersistenceCounters();
     resetClerkPointerCacheForTests();
@@ -401,7 +431,7 @@ describe("persistence repeat ×10 (Vercel ephemeral)", () => {
     };
 
     // Evidence artifact for the completion report.
-    // eslint-disable-next-line no-console
+     
     console.info("[persistence-repeat-10]", JSON.stringify(report, null, 2));
 
     expect(failed.length, JSON.stringify(report)).toBe(0);

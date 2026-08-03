@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -28,17 +29,19 @@ export function ActivityHistoryPageContent() {
   const selected = selectedId ? getItem(selectedId) : null;
 
   useEffect(() => {
-    const itemId = searchParams.get("item");
-    if (!itemId || !isReady) return;
-    if (items.some((entry) => entry.id === itemId)) {
-      setSelectedId(itemId);
-      setDeepLinkMiss(null);
-    } else {
-      // The requested result is not in this browser's local list (other device
-      // / cold start / server-triggered run). Never fail silently — surface a
-      // link to the durable /projects/<id> page, which loads it from the server.
-      setDeepLinkMiss(itemId);
-    }
+    return scheduleMountWork(() => {
+      const itemId = searchParams.get("item");
+      if (!itemId || !isReady) return;
+      if (items.some((entry) => entry.id === itemId)) {
+        setSelectedId(itemId);
+        setDeepLinkMiss(null);
+      } else {
+        // The requested result is not in this browser's local list (other device
+        // / cold start / server-triggered run). Never fail silently — surface a
+        // link to the durable /projects/<id> page, which loads it from the server.
+        setDeepLinkMiss(itemId);
+      }
+    });
   }, [searchParams, items, isReady]);
 
   // Map an activity-history item id (`project-<projectId>`) to the durable

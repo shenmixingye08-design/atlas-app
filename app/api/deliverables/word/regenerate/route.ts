@@ -228,10 +228,20 @@ export async function POST(request: Request): Promise<Response> {
     });
     if (billingDenied) return billingDenied;
 
+    // Regenerate must reuse previous content + Memory overlays (never zero-from-scratch).
+    const { applyMemoryForRegenerate } = await import(
+      "@/lib/memory-apply/regenerate"
+    );
+    const memoryRegen = await applyMemoryForRegenerate({
+      userId,
+      previousContent: exportGuard.text,
+      improvementNotes: revisionReason,
+    });
+
     const result = await generateDeliverables(
       {
         assignment: title,
-        finalDeliverable: exportGuard.text,
+        finalDeliverable: memoryRegen.content,
         title,
         formats: ["docx"],
       },
@@ -239,11 +249,17 @@ export async function POST(request: Request): Promise<Response> {
       {
         userId,
         jobId: `dlvregen_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`,
-        templateId: templateId ?? parent.metadata?.templateId ?? null,
+        templateId:
+          templateId ??
+          memoryRegen.overlay.templateId ??
+          parent.metadata?.templateId ??
+          null,
         parentDeliverableId,
         versionGroupId: group.groupId,
         revisionReason,
         cost: { regenerateCount: 1 },
+        companyName: memoryRegen.overlay.companyName ?? undefined,
+        author: memoryRegen.overlay.author ?? undefined,
       },
     );
 

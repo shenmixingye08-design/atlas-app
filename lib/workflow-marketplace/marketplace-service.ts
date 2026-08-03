@@ -77,7 +77,7 @@ export class WorkflowMarketplaceService {
 
     const applyResult = await applyCompanyTemplate(templateId);
 
-    const record = saveServerInstalledPackage({
+    saveServerInstalledPackage({
       templateId,
       installedAt: getServerInstalledPackage(templateId)?.installedAt ?? now,
       updatedAt: now,

@@ -1,6 +1,7 @@
 import { appendAutomationAudit } from "@/lib/automation-platform/audit/log";
 import { AutomationPlatformError } from "@/lib/automation-platform/errors/messages";
 import { resolveRunApprovalRequirement } from "@/lib/automation-platform/execution/policy";
+import { validateStepsForProductionActivation } from "@/lib/automation-platform/execution/production-step-registry";
 import {
   buildIdempotencyKey,
   buildRunKey,
@@ -24,7 +25,7 @@ import {
   buildRunStepsFromAutomation,
   prepareRunSnapshot,
 } from "@/lib/automation-platform/execution/prepare-run";
-import { resolveMemoryForAutomation } from "@/lib/personal-memory/bridge/automation";
+import { applyMemoryForAutomation } from "@/lib/memory-apply/automation";
 import {
   memoryGetAutomation,
   memoryGetRun,
@@ -73,6 +74,39 @@ function assertRateLimit(userId: string, action: string): void {
   }
 }
 
+/**
+ * Refuse activating automations that contain Production-unregistered steps
+ * or unwired live adapters. Test harness may allow unwired externals so
+ * controlled invokers can exercise mechanics without inventing Production success.
+ */
+function assertProductionStepsActivatable(
+  steps: ReadonlyArray<{ id: string; type: string; enabled: boolean }>,
+): void {
+  const issues = validateStepsForProductionActivation(steps);
+  const allowUnwiredExternal =
+    process.env.VITEST === "true" ||
+    process.env.AUTOMATION_ALLOW_UNWIRED_EXTERNAL_ACTIVATION === "true";
+  const blocking = issues.filter((issue) => {
+    if (issue.errorCode === "live_adapter_missing" && allowUnwiredExternal) {
+      return false;
+    }
+    return true;
+  });
+  if (blocking.length === 0) return;
+  const first = blocking[0]!;
+  throw new AutomationPlatformError(
+    first.errorCode === "live_adapter_missing"
+      ? "automation_integration_required"
+      : "automation_unsupported_step",
+    {
+      stepId: first.stepId,
+      stepType: first.stepType,
+      reason: first.message,
+      issues: blocking,
+    },
+  );
+}
+
 export class AutomationPlatformService {
   async create(
     userId: string,
@@ -92,6 +126,9 @@ export class AutomationPlatformService {
     }
 
     const record = buildAutomationFromCreateInput(userId, input);
+    if (record.status === "active") {
+      assertProductionStepsActivatable(record.workflow.steps);
+    }
     let saved = persistAutomationV2Now(record);
 
     if (saved.status === "active") {
@@ -218,6 +255,10 @@ export class AutomationPlatformService {
         : current.executionPolicy,
       updatedAt: new Date().toISOString(),
     };
+
+    if (updated.status === "active") {
+      assertProductionStepsActivatable(updated.workflow.steps);
+    }
 
     let saved = persistAutomationV2Now(updated);
 
@@ -521,17 +562,8 @@ export class AutomationPlatformService {
           ).toISOString()
         : null;
 
-    const memoryResolved = await resolveMemoryForAutomation({ automation });
-    const memoryUsage = {
-      ...memoryResolved.memoryUsage,
-      memoryIdsUsed: memoryResolved.ledger.memoryIdsUsed,
-      memoryConflicts: memoryResolved.ledger.memoryConflicts.map((c) => ({
-        id: c.id,
-        message: c.message,
-        highRisk: c.highRisk,
-      })),
-      tokenEstimate: memoryResolved.tokenEstimate,
-    };
+    const memoryResolved = await applyMemoryForAutomation({ automation });
+    const memoryUsage = memoryResolved.memoryUsage;
     const preparation = prepareRunSnapshot({
       automation,
       scheduledFor,
@@ -567,7 +599,7 @@ export class AutomationPlatformService {
       failedStepId: null,
       retryable: false,
       needsUserInput: false,
-      resolvedInstruction: null,
+      resolvedInstruction: memoryResolved.resolvedInstruction,
       memoryUsage,
       memoryReferences: memoryUsage.used,
       statusHistory: [],

@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useEffect, useState } from "react";
 
 import {
@@ -81,8 +82,9 @@ export function VisionDiagnosticsPanel({
 
   useEffect(() => {
     if (canShowVisionDiagnostics()) {
-      setAllowed(true);
-      return;
+      return scheduleMountWork(() => {
+        setAllowed(true);
+      });
     }
     let cancelled = false;
     void fetch("/api/auth/owner-status", { cache: "no-store" })

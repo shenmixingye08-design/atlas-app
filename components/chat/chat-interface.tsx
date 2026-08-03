@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -39,10 +40,12 @@ export function ChatInterface() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    const prefill = searchParams.get("message");
-    if (prefill?.trim()) {
-      setInput(prefill);
-    }
+    return scheduleMountWork(() => {
+      const prefill = searchParams.get("message");
+      if (prefill?.trim()) {
+        setInput(prefill);
+      }
+    });
   }, [searchParams]);
 
   const scrollToBottom = useCallback(() => {
@@ -50,7 +53,9 @@ export function ChatInterface() {
   }, []);
 
   useEffect(() => {
-    scrollToBottom();
+    return scheduleMountWork(() => {
+      void scrollToBottom();
+    });
   }, [messages, isLoading, scrollToBottom]);
 
   const handleSend = async () => {

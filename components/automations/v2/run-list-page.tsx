@@ -14,16 +14,16 @@ import { LoadingState } from "@/components/ui/loading-state";
 
 const STATUS_FILTERS: Array<{ id: string; label: string; value: string }> = [
   { id: "all", label: "すべて", value: "" },
-  { id: "succeeded", label: "成功", value: "succeeded" },
-  { id: "failed", label: "失敗", value: "failed" },
+  { id: "succeeded", label: "完了", value: "succeeded" },
+  { id: "failed", label: "完了不可", value: "failed" },
   {
     id: "partial",
-    label: "一部成功",
+    label: "一部完了",
     value: "partially_succeeded",
   },
   { id: "running", label: "実行中", value: "running,queued,retrying,preparing" },
-  { id: "approval", label: "承認待ち", value: "awaiting_approval" },
-  { id: "input", label: "入力待ち", value: "needs_input" },
+  { id: "approval", label: "確認待ち", value: "awaiting_approval" },
+  { id: "input", label: "確認待ち", value: "needs_input" },
 ];
 
 export function RunListPage() {

@@ -1,5 +1,6 @@
 /**
  * AutomationRun executor — step timeline, retry classification, no Memory rewrite.
+ * Completion is decided only via evaluateRunCompletion + Completion Evidence.
  */
 
 import "server-only";
@@ -18,8 +19,22 @@ import {
 } from "@/lib/automation-platform/execution/retry-policy";
 import type { StepInvoker } from "@/lib/automation-platform/execution/step-invoker";
 import { strictStepInvoker } from "@/lib/automation-platform/execution/strict-step-invoker";
+import {
+  buildCompletionEvidenceV2,
+  evidenceSummaryLine,
+  type StepEvidenceFragment,
+} from "@/lib/automation-platform/execution/completion-evidence-v2";
+import {
+  evaluateRunCompletion,
+  runCompletionUserMessage,
+} from "@/lib/automation-platform/execution/run-completion";
+import { getProductionStep } from "@/lib/automation-platform/execution/production-step-registry";
 import { memoryUpdateRun } from "@/lib/automation-platform/repository/memory-store";
 import { persistAutomationRunNow } from "@/lib/automation-platform/durable-runs";
+import {
+  recordAutomationMemoryFailure,
+  recordAutomationMemorySuccess,
+} from "@/lib/memory-apply/automation";
 
 export type ExecuteRunResult = {
   run: AutomationRun;
@@ -76,6 +91,51 @@ function transition(
   };
 }
 
+function rejectFakeSuccess(result: {
+  ok: boolean;
+  artifacts: AutomationRun["artifacts"];
+  evidence?: StepEvidenceFragment;
+  stepType: string;
+}): { ok: false; summary: string; errorCode: string; errorMessage: string } | null {
+  if (!result.ok) return null;
+  const production = getProductionStep(result.stepType);
+  if (!production) {
+    return {
+      ok: false,
+      summary: "未実装の手順です",
+      errorCode: "step_not_implemented",
+      errorMessage: `step_not_implemented:${result.stepType}`,
+    };
+  }
+  if (production.completionRequirements.includes("artifact_with_url")) {
+    const hasUrl = result.artifacts.some(
+      (item) => Boolean(item.id) && Boolean(item.url?.trim()),
+    );
+    if (!hasUrl) {
+      return {
+        ok: false,
+        summary: "成果物URLなしの成功は禁止されています",
+        errorCode: "run_artifact_missing",
+        errorMessage: "artifact_url_required",
+      };
+    }
+  }
+  if (production.completionRequirements.includes("artifact_with_external_id")) {
+    const hasExternal =
+      result.artifacts.some((item) => Boolean(item.externalId?.trim())) ||
+      (result.evidence?.externalActionIds?.length ?? 0) > 0;
+    if (!hasExternal) {
+      return {
+        ok: false,
+        summary: "外部アクションIDなしの成功は禁止されています",
+        errorCode: "automation_run_failed",
+        errorMessage: "external_action_id_required",
+      };
+    }
+  }
+  return null;
+}
+
 export async function executeQueuedRun(input: {
   run: AutomationRun;
   automation: AutomationV2;
@@ -126,13 +186,19 @@ export async function executeQueuedRun(input: {
   let needsUserInput = false;
   let succeededCount = 0;
   let failedCount = 0;
+  const evidenceFragments: StepEvidenceFragment[] = [];
+  const completedStepIds: string[] = [];
+  const incompleteOptionalStepIds: string[] = [];
 
   const steps: AutomationRunStep[] = run.steps.map((s) => ({ ...s }));
 
   for (let i = 0; i < steps.length; i += 1) {
     const runStep = steps[i]!;
     if (runStep.status === "succeeded" || runStep.status === "skipped") {
-      if (runStep.status === "succeeded") succeededCount += 1;
+      if (runStep.status === "succeeded") {
+        succeededCount += 1;
+        completedStepIds.push(runStep.id);
+      }
       continue;
     }
 
@@ -142,8 +208,13 @@ export async function executeQueuedRun(input: {
         ...runStep,
         status: "skipped",
         completedAt: new Date().toISOString(),
-        outputSummary: "無効な手順のためスキップ",
+        outputSummary: !def
+          ? "定義欠落のためスキップ"
+          : "無効な手順のためスキップ",
       };
+      if (def?.configuration.optional === true || def?.enabled === false) {
+        incompleteOptionalStepIds.push(runStep.id);
+      }
       continue;
     }
 
@@ -157,13 +228,34 @@ export async function executeQueuedRun(input: {
     run = persist({ ...run, steps: steps.map((s) => ({ ...s })) });
 
     try {
-      const result = await invoker({
+      let result = await invoker({
         step: def,
         userId: run.userId,
         automationName: input.automation.name,
         runId: run.id,
         approved: approved || !runStep.requiresApproval,
+        resolvedInstruction: run.resolvedInstruction,
+        memoryUsage: run.memoryUsage,
       });
+
+      const fake = rejectFakeSuccess({
+        ok: result.ok,
+        artifacts: result.artifacts,
+        evidence: result.evidence,
+        stepType: def.type,
+      });
+      if (fake) {
+        result = {
+          ...result,
+          ok: false,
+          summary: fake.summary,
+          errorCode: fake.errorCode,
+          errorMessage: fake.errorMessage,
+          artifacts: [],
+          failedStage: "COMPLETION_GATE",
+          retryable: false,
+        };
+      }
 
       if (result.needsUserInput) {
         needsUserInput = true;
@@ -193,6 +285,9 @@ export async function executeQueuedRun(input: {
           errorMessage: lastErrorMessage,
           outputSummary: result.summary,
         };
+        if (def.configuration.optional === true) {
+          incompleteOptionalStepIds.push(runStep.id);
+        }
         if (input.automation.workflow.onFailure.strategy === "stop") {
           break;
         }
@@ -200,6 +295,24 @@ export async function executeQueuedRun(input: {
       }
 
       succeededCount += 1;
+      completedStepIds.push(runStep.id);
+      if (result.evidence) {
+        evidenceFragments.push(result.evidence);
+      } else if (result.artifacts.length > 0) {
+        evidenceFragments.push({
+          artifactIds: result.artifacts.map((item) => item.id),
+          storageObjectIds: result.artifacts
+            .filter((item) => item.kind === "deliverable")
+            .map((item) => item.id),
+          externalActionIds: result.artifacts
+            .map((item) => item.externalId)
+            .filter((id): id is string => Boolean(id)),
+          externalUrls: result.artifacts
+            .map((item) => item.url)
+            .filter((url): url is string => Boolean(url)),
+          notificationIds: [],
+        });
+      }
       steps[i] = {
         ...steps[i]!,
         status: "succeeded",
@@ -266,27 +379,19 @@ export async function executeQueuedRun(input: {
     return { run, terminal: false };
   }
 
-  if (failedCount === 0) {
-    run = persist({
-      ...transition(run, "succeeded", "all_steps_succeeded"),
-      resultSummary: `${succeededCount} 件の手順が完了しました`,
-      retryable: false,
-    });
-    return { run, terminal: true };
-  }
-
   const retryable = isRetryableFailure({
     errorCode: lastErrorCode,
     errorMessage: lastErrorMessage,
   });
-  const nextRetryAt = retryable
-    ? computeRetryAt({
-        attemptCount: run.attemptCount,
-        maxAttempts: run.maxAttempts,
-      })
-    : null;
+  const nextRetryAt =
+    failedCount > 0 && retryable
+      ? computeRetryAt({
+          attemptCount: run.attemptCount,
+          maxAttempts: run.maxAttempts,
+        })
+      : null;
 
-  if (retryable && nextRetryAt) {
+  if (nextRetryAt) {
     const withRetry = {
       ...transition(run, "retrying", "retry_scheduled"),
       nextRetryAt,
@@ -302,16 +407,85 @@ export async function executeQueuedRun(input: {
     return { run, terminal: false };
   }
 
-  const terminalStatus =
-    succeededCount > 0 ? "partially_succeeded" : "failed";
+  const evidence = buildCompletionEvidenceV2({
+    run,
+    completedStepIds,
+    fragments: evidenceFragments,
+    incompleteOptionalStepIds,
+    completedAt: finishedAt,
+  });
+
+  const decision = evaluateRunCompletion({
+    run: { ...run, steps },
+    workflowSteps: input.automation.workflow.steps,
+    artifacts: run.artifacts,
+    evidence,
+    needsUserInput: false,
+    retryScheduled: false,
+  });
+
+  // Hard gate: never persist succeeded without evidence.
+  if (
+    (decision.runStatus === "succeeded" ||
+      decision.runStatus === "partially_succeeded") &&
+    !evidence
+  ) {
+    run = persist({
+      ...transition(run, "failed", "completion_evidence_missing"),
+      retryable: false,
+      nextRetryAt: null,
+      completionEvidence: null,
+      resultSummary: "Completion Evidenceを作成できないため完了できません",
+      lastErrorCode: "automation_run_failed",
+      lastErrorMessage: "completion_evidence_missing",
+    });
+    return { run, terminal: true };
+  }
+
+  const userMessage = runCompletionUserMessage(decision.productStatus);
   run = persist({
-    ...transition(run, terminalStatus, "execution_failed"),
+    ...transition(run, decision.runStatus, decision.reason),
     retryable: false,
     nextRetryAt: null,
+    completionEvidence: evidence,
     resultSummary:
-      terminalStatus === "partially_succeeded"
-        ? `${succeededCount} 件成功 / ${failedCount} 件失敗`
-        : lastErrorMessage ?? "実行に失敗しました",
+      decision.runStatus === "succeeded"
+        ? `${userMessage}（${succeededCount} 件） ${evidence ? evidenceSummaryLine(evidence) : ""}`.trim()
+        : decision.runStatus === "partially_succeeded"
+          ? `${userMessage} ${evidence ? evidenceSummaryLine(evidence) : ""}`.trim()
+          : lastErrorMessage ?? userMessage,
+    lastErrorCode:
+      decision.runStatus === "failed"
+        ? lastErrorCode ?? "automation_run_failed"
+        : null,
+    lastErrorMessage:
+      decision.runStatus === "failed"
+        ? lastErrorMessage ?? decision.reason
+        : null,
   });
-  return { run, terminal: true };
+  if (decision.runStatus === "succeeded") {
+    void recordAutomationMemorySuccess({
+      userId: run.userId,
+      automationId: run.automationId,
+      runId: run.id,
+      memoryIdsUsed: run.memoryUsage.memoryIdsUsed ?? [],
+      summary: run.resultSummary,
+    });
+  } else if (decision.runStatus === "failed") {
+    void recordAutomationMemoryFailure({
+      userId: run.userId,
+      automationId: run.automationId,
+      runId: run.id,
+      errorCode: lastErrorCode,
+      errorMessage: lastErrorMessage,
+    });
+  }
+
+  return {
+    run,
+    terminal:
+      decision.runStatus === "succeeded" ||
+      decision.runStatus === "partially_succeeded" ||
+      decision.runStatus === "failed",
+  };
 }

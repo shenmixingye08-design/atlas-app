@@ -132,7 +132,6 @@ async function executeUnifiedWorkerRevision(
   params: QualityLoopParams,
   feedback: string,
   primaryEmployeeId: EmployeeId,
-  existingWorker: AgentPhaseResult | null,
 ): Promise<AgentPhaseResult> {
   params.trackStep("worker", 1);
   params.costMeter.assertWithinLimits();
@@ -175,7 +174,6 @@ export async function runQualityLoop(
   });
 
   let deterministicQa = runDeterministicQa(workflowDeliverable);
-  let latestFeedback = deterministicQa.feedback;
 
   reviews.push({
     attempt: 1,
@@ -200,7 +198,6 @@ export async function runQualityLoop(
         params,
         deterministicQa.feedback,
         primaryEmployeeId,
-        executions[0]?.worker ?? null,
       );
 
       executions = params.tasks.map((task, index) => ({
@@ -230,7 +227,6 @@ export async function runQualityLoop(
       });
 
       deterministicQa = runDeterministicQa(workflowDeliverable);
-      latestFeedback = deterministicQa.feedback;
       params.workflowState?.transition(WorkflowState.QA, "qa re-run after revision");
 
       reviews.push({
@@ -246,7 +242,7 @@ export async function runQualityLoop(
       });
     } catch (error) {
       if (error instanceof WorkflowLimitError) {
-        latestFeedback = `${deterministicQa.feedback}\n\n${error.message} — 要確認`;
+        // The limit itself is reflected by the unrevised deterministic QA result.
       } else {
         throw error;
       }
@@ -288,10 +284,6 @@ export async function runQualityLoop(
   const deliverableValidation = ensured.validation;
   if (!deliverableValidation.valid) {
     deterministicQa = runDeterministicQa(workflowDeliverable);
-    latestFeedback = [
-      deterministicQa.feedback,
-      `Missing deliverable fields: ${deliverableValidation.missingFields.join(", ")}`,
-    ].join("\n");
   }
 
   params.trackStep("ceo_approval");

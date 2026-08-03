@@ -12,8 +12,18 @@ import type { OrchestrationResult } from "@/lib/orchestration/types";
 import { assertWorkersProducedDeliverables } from "@/lib/orchestration/worker-validation";
 import { tryParseStoredDeliverable } from "@/lib/orchestration/worker-output";
 import { emptyDeliverable } from "@/lib/orchestration/deliverable-types";
+import { WorkflowState, type WorkflowStateRecord } from "@/lib/orchestration/workflow-state";
 
 const BLOG_WORKER_JSON = resolveMockLlmOutput("worker_deliverable", "ブログ記事");
+
+function workflowRecord(state: WorkflowState = WorkflowState.Completed): WorkflowStateRecord {
+  return {
+    workflowId: "wf-reliability-test",
+    state,
+    transitions: [],
+    updatedAt: new Date().toISOString(),
+  };
+}
 
 describe("reliability: mock blog worker", () => {
   it("returns structured JSON with required fields", () => {
@@ -57,7 +67,7 @@ describe("reliability: mock blog worker", () => {
 });
 
 describe("reliability: worker validation", () => {
-  it("rejects plain prose worker output", () => {
+  it("rejects non-worker phase output", () => {
     expect(() =>
       assertWorkersProducedDeliverables(
         [
@@ -69,7 +79,8 @@ describe("reliability: worker validation", () => {
                 agentId: "worker",
                 role: "worker",
                 name: "Worker",
-                outputText: "just plain text without json",
+                outputText:
+                  "## 目的\n依頼を整理します。\n\n## 優先事項\nPlanner → Worker に渡す準備をします。",
                 responseId: "x",
                 status: "completed",
                 model: "test",
@@ -136,7 +147,7 @@ describe("reliability: cost guard", () => {
 
 describe("reliability: persistence migration", () => {
   it("migrates legacy string deliverable", () => {
-    const legacy = {
+    const legacy: Parameters<typeof migrateOrchestrationResult>[0] = {
       assignment: "旧プロジェクト",
       status: "completed",
       deliverable: "# Legacy body\n\nContent here for migration test.",
@@ -149,7 +160,8 @@ describe("reliability: persistence migration", () => {
       plannerTasks: null,
       tasks: [],
       executions: [],
-    } as unknown as OrchestrationResult;
+      workflow: workflowRecord(),
+    };
 
     const migrated = migrateOrchestrationResult(legacy);
     expect(deliverableHasContent(migrated.deliverable)).toBe(true);
@@ -171,7 +183,8 @@ describe("reliability: persistence migration", () => {
       plannerTasks: null,
       tasks: [],
       executions: [],
-    } as OrchestrationResult;
+      workflow: workflowRecord(),
+    } satisfies OrchestrationResult;
 
     const migrated = migrateOrchestrationResult(legacy);
     expect(migrated.deliverable.content).toContain("x");
@@ -193,9 +206,20 @@ describe("reliability: client response sanitization", () => {
       plannerTasks: null,
       tasks: [],
       executions: [],
-      costDebug: { llmCallCount: 2 },
+      costDebug: {
+        llmCallCount: 2,
+        cacheHits: 0,
+        cacheMisses: 0,
+        estimatedInputTokens: 0,
+        estimatedOutputTokens: 0,
+        estimatedCostUsd: 0,
+        departmentBreakdown: {},
+        calls: [],
+        limitsReached: false,
+      },
       pipelineDebug: { stages: [], failureStage: null, deliverableReady: false, approved: false },
-    } as OrchestrationResult;
+      workflow: workflowRecord(),
+    } satisfies OrchestrationResult;
 
     const sanitized = sanitizeOrchestrationResultForClient(result);
     expect("costDebug" in sanitized).toBe(false);

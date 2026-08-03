@@ -1,6 +1,5 @@
 import type { DeliverableType } from "@/lib/orchestration/deliverable-types";
 import {
-  classifyDeliverableType,
   classifyKnowledgeEntryType,
   deliverableTypesRelated,
   knowledgeConflictsWithDeliverableType,
@@ -126,10 +125,7 @@ export function computeNormalizedRelevance(
   return Math.min(1, overlap * 0.7 + confidence * 0.3);
 }
 
-function resolveInjectionTarget(
-  entry: KnowledgeEntry,
-  deliverableType: DeliverableType,
-): KnowledgeInjectionTarget {
+function resolveInjectionTarget(entry: KnowledgeEntry): KnowledgeInjectionTarget {
   if (BLOCKED_INJECTION_CATEGORIES.has(entry.category)) return "none";
   if (REFERENCE_ONLY_CATEGORIES.has(entry.category)) return "reference";
 
@@ -149,7 +145,7 @@ function evaluateEntry(
 ): KnowledgeFilterDecision {
   const relevanceScore = computeNormalizedRelevance(entry, queryTokens);
   const entryType = classifyKnowledgeEntryType(entry);
-  const target = resolveInjectionTarget(entry, deliverableType);
+  const target = resolveInjectionTarget(entry);
 
   if (BLOCKED_INJECTION_CATEGORIES.has(entry.category)) {
     return {

@@ -272,9 +272,14 @@ describe("Automation Operations", () => {
   });
 
   it("2. labels run statuses in Japanese", () => {
-    expect(formatRunStatus("awaiting_approval")).toBe("承認待ち");
-    expect(formatRunStatus("partially_succeeded")).toBe("一部成功");
-    expect(formatRunStatus("needs_input")).toBe("入力待ち");
+    expect(formatRunStatus("awaiting_approval")).toBe("確認待ちです");
+    expect(formatRunStatus("succeeded")).toBe("仕事が完了しました");
+    expect(formatRunStatus("failed")).toBe("完了できませんでした");
+    expect(formatRunStatus("partially_succeeded")).toBe(
+      "一部完了しました。確認が必要です",
+    );
+    expect(formatRunStatus("preparing")).toBe("準備済みです");
+    expect(formatRunStatus("needs_input")).toBe("確認待ちです");
   });
 
   it("3. builds step timeline", () => {

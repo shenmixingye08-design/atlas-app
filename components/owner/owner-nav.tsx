@@ -26,7 +26,9 @@ type OwnerNavProps = {
     | "disasterRecovery"
     | "automationExecutionLogs"
     | "reliability"
-    | "wordDownloadDiagnostics";
+    | "scheduler"
+    | "wordDownloadDiagnostics"
+    | "memoryApply";
 };
 const LINKS = [
   { id: "dashboard" as const, href: "/owner", label: ui.owner.navDashboard },
@@ -96,9 +98,19 @@ const LINKS = [
     label: ui.owner.navSystemStatus,
   },
   {
+    id: "scheduler" as const,
+    href: "/owner/scheduler",
+    label: "Scheduler",
+  },
+  {
     id: "reliability" as const,
     href: "/owner/reliability",
     label: "Reliability (SRE)",
+  },
+  {
+    id: "memoryApply" as const,
+    href: "/owner/memory-apply",
+    label: "Memory Apply",
   },
   {
     id: "wordDownloadDiagnostics" as const,
