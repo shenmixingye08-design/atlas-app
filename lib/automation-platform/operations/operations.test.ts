@@ -273,7 +273,9 @@ describe("Automation Operations", () => {
 
   it("2. labels run statuses in Japanese", () => {
     expect(formatRunStatus("awaiting_approval")).toBe("承認待ち");
-    expect(formatRunStatus("partially_succeeded")).toBe("一部成功");
+    expect(formatRunStatus("partially_succeeded")).toBe(
+      "一部完了しました。確認が必要です",
+    );
     expect(formatRunStatus("needs_input")).toBe("入力待ち");
   });
 
