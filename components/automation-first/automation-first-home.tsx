@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AttentionCard } from "@/components/automation-first/attention-card";
-import { EmptyState } from "@/components/automation-first/empty-state";
+import { EmptyQuickStart } from "@/components/automation-first/empty-quick-start";
 import { ErrorState } from "@/components/automation-first/error-state";
 import { SectionHeader } from "@/components/automation-first/page-header";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
+import { SecretaryDashboard } from "@/components/automation-first/secretary-dashboard";
 import { Timeline } from "@/components/automation-first/timeline";
+import { WorkCompletionList } from "@/components/automation-first/work-completion-list";
 import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
 import {
   buildRunningJobsFromRuns,
@@ -40,6 +42,16 @@ import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 import { useFeatureAvailability } from "@/lib/feature-flags";
 import { cn } from "@/lib/design-system/cn";
+import {
+  buildSecretaryRoi,
+  buildWorkCompletionItems,
+  computeSecretaryLevel,
+  estimateSavedMinutesFromCompletions,
+  evaluateRetention,
+  markRetentionEmitted,
+  trackFirstValueEvent,
+} from "@/lib/first-value";
+import { buildSecretaryProactiveItems } from "@/lib/home/secretary-proactive";
 
 export type AutomationFirstHomeProps = {
   automations: Automation[];
@@ -170,6 +182,7 @@ function WeeklyStatsCard({ stats }: { stats: HomeWeeklyStats }) {
 
 export function AutomationFirstHome({
   automations,
+  projects,
 }: AutomationFirstHomeProps) {
   const { flags } = useFeatureAvailability();
   const opsEnabled =
@@ -315,6 +328,68 @@ export function AutomationFirstHome({
 
   const nextRun = opsSummary?.nextRun ?? null;
 
+  const workCompletions = useMemo(
+    () => buildWorkCompletionItems(recentCompleted),
+    [recentCompleted],
+  );
+
+  const suggestion = useMemo(() => {
+    const items = buildSecretaryProactiveItems({
+      projects,
+      automations,
+      notifications: [],
+      now,
+    });
+    // Exactly one suggestion — never a pile.
+    return items[0] ?? null;
+  }, [projects, automations, now]);
+
+  const todayCompleted = summary.completedRuns;
+  const estimatedTodayMinutes = estimateSavedMinutesFromCompletions(todayCompleted);
+  const estimatedWeekMinutes = estimateSavedMinutesFromCompletions(
+    weeklyStats.completedJobs,
+  );
+  const roi = useMemo(() => {
+    const todayMinutes =
+      weeklyStats.savedMinutes != null
+        ? Math.round(weeklyStats.savedMinutes / 7)
+        : estimatedTodayMinutes;
+    const weekMinutes = weeklyStats.savedMinutes ?? estimatedWeekMinutes;
+    return buildSecretaryRoi({
+      todayMinutesSaved: todayMinutes,
+      weekMinutesSaved: weekMinutes,
+      monthMinutesSaved:
+        weeklyStats.savedMinutes != null
+          ? weeklyStats.savedMinutes * 4
+          : weekMinutes * 4,
+      measured: weeklyStats.savedMinutes != null,
+    });
+  }, [weeklyStats.savedMinutes, estimatedTodayMinutes, estimatedWeekMinutes]);
+
+  const memoryUseCount = useMemo(
+    () =>
+      runs.reduce(
+        (sum, run) =>
+          sum +
+          (run.memoryUsage?.memoryIdsUsed?.length ??
+            run.memoryUsage?.used?.length ??
+            0),
+        0,
+      ),
+    [runs],
+  );
+
+  const secretaryLevel = useMemo(
+    () =>
+      computeSecretaryLevel({
+        automationCount: automations.length,
+        hoursSaved: roi.monthHoursSaved,
+        memoryActiveCount: memoryUseCount,
+      }),
+    [automations.length, roi.monthHoursSaved, memoryUseCount],
+  );
+
+  const funnelTracked = useRef(false);
   useEffect(() => {
     trackAutomationFirstEvent("home_viewed", {
       automations: automations.length,
@@ -322,16 +397,72 @@ export function AutomationFirstHome({
       attention: summary.attentionCount,
       ops: Boolean(opsSummary),
     });
+    if (funnelTracked.current) return;
+    funnelTracked.current = true;
+    trackFirstValueEvent("registration_home_viewed", {
+      automations: automations.length,
+    });
+    if (automations.length === 0) {
+      trackFirstValueEvent("empty_home_viewed", { source: "automation_first" });
+    }
+
+    const retention = evaluateRetention(now);
+    if (retention.emitDay7) {
+      trackFirstValueEvent("day7_return", {
+        days: retention.daysSinceFirstSeen,
+      });
+      markRetentionEmitted("day7");
+    }
+    if (retention.emitDay30) {
+      trackFirstValueEvent("day30_return", {
+        days: retention.daysSinceFirstSeen,
+      });
+      markRetentionEmitted("day30");
+    }
+
+    trackFirstValueEvent("automation_rate_snapshot", {
+      automations: automations.length,
+      successRate: weeklyStats.successRatePercent,
+    });
+    trackFirstValueEvent("memory_rate_snapshot", {
+      memoryUseCount,
+      memoryCompletionRate: secretaryLevel.memoryCompletionRate,
+    });
   }, [
     automations.length,
     summary.activeAutomationCount,
     summary.attentionCount,
     opsSummary,
+    now,
+    weeklyStats.successRatePercent,
+    memoryUseCount,
+    secretaryLevel.memoryCompletionRate,
   ]);
 
   const hasAutomations = automations.length > 0 || (opsSummary?.counts.activeAutomations ?? 0) > 0;
   const createHref = "/automations/new";
   const oneTimeHref = "/workspace";
+
+  const secretaryDashboard = (
+    <SecretaryDashboard
+      todayCompleted={todayCompleted}
+      todayHoursSaved={roi.todayHoursSaved}
+      runningCount={summary.runningRuns}
+      todayScheduled={summary.todayScheduledRuns}
+      suggestion={suggestion}
+      roi={roi}
+      level={secretaryLevel}
+      automationSuccessRate={weeklyStats.successRatePercent}
+      memoryUseCount={memoryUseCount}
+    />
+  );
+
+  const emptyQuickStart = <EmptyQuickStart oneTimeHref={oneTimeHref} />;
+
+  const completionSection =
+    workCompletions.length > 0 ? (
+      <WorkCompletionList items={workCompletions} />
+    ) : null;
 
   if (opsEnabled && opsLoading && !opsSummary && !opsError) {
     return <HomeSkeleton />;
@@ -444,43 +575,6 @@ export function AutomationFirstHome({
     </section>
   ) : null;
 
-  const recentSection =
-    recentCompleted.length > 0 ? (
-      <section aria-labelledby="af-completed-heading" className="space-y-3">
-        <SectionHeader title="最近完了した仕事" />
-        <ul className="divide-y divide-[var(--border)] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)]">
-          {recentCompleted.map((item) => (
-            <li
-              key={item.id}
-              className="flex items-center justify-between gap-3 px-4 py-3.5"
-            >
-              <div className="min-w-0">
-                <p className="truncate font-semibold text-[var(--text-primary)]">
-                  {item.title}
-                </p>
-                <p className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
-                  {item.detail}
-                  {item.meta ? ` · ${item.meta}` : ""}
-                </p>
-              </div>
-              <Link
-                href={item.href}
-                onClick={() =>
-                  trackAutomationFirstEvent("artifact_opened", {
-                    id: item.id,
-                    source: "home_completed",
-                  })
-                }
-                className="shrink-0 text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
-              >
-                確認
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
-    ) : null;
-
   return (
     <div className="automation-first-home space-y-8 pb-8 sm:space-y-10">
       <header className="space-y-3">
@@ -495,7 +589,7 @@ export function AutomationFirstHome({
             <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-secondary)]">
               {formatTodayDateLabel(now)}
               {" — "}
-              今日、MINERVOTが進める仕事です
+              会話ではなく、仕事が終わるAI秘書です
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
@@ -509,6 +603,8 @@ export function AutomationFirstHome({
         </div>
       </header>
 
+      {secretaryDashboard}
+
       {opsError ? (
         <ErrorState
           description={`運用データの取得に失敗しました: ${opsError}`}
@@ -518,8 +614,13 @@ export function AutomationFirstHome({
         />
       ) : null}
 
-      {/* Mobile order: attention → today → create → next → recent → one-time */}
+      {/* Mobile order: dashboard → empty/create → attention → today → completion */}
       <div className="space-y-8 lg:hidden">
+        {!hasAutomations ? (
+          emptyQuickStart
+        ) : (
+          <CtaBlock createHref={createHref} oneTimeHref={oneTimeHref} />
+        )}
         {attentionSection}
         {timelineSection}
         <RunningStepsPanel
@@ -531,31 +632,16 @@ export function AutomationFirstHome({
             })
           }
         />
-        {!hasAutomations ? (
-          <EmptyState
-            title="まだ自動化がありません"
-            description="繰り返す仕事を一度設定すると、MINERVOTが予定どおり進めます。"
-            primaryHref={createHref}
-            primaryLabel="新しい自動化を作る"
-            secondaryHref={oneTimeHref}
-            secondaryLabel="一度だけお願いする"
-            onPrimaryClick={() =>
-              trackAutomationFirstEvent("empty_state_cta_clicked", {
-                source: "home_empty",
-              })
-            }
-          />
-        ) : (
-          <CtaBlock createHref={createHref} oneTimeHref={oneTimeHref} />
-        )}
         {nextRunCard}
-        {recentSection}
+        {completionSection}
         {opsSummary ? <WeeklyStatsCard stats={weeklyStats} /> : null}
       </div>
 
       {/* PC: main + right rail */}
       <div className="hidden gap-8 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)]">
         <div className="space-y-8">
+          {!hasAutomations ? emptyQuickStart : null}
+
           <section className="rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-[var(--shadow-sm)]">
             <p className="text-[length:var(--text-label)] font-medium text-[var(--text-muted)]">
               今日の仕事
@@ -572,7 +658,11 @@ export function AutomationFirstHome({
                 <StatChip label="完了" value={summary.completedRuns} />
                 <StatChip label="失敗" value={summary.failedRuns} />
               </div>
-            ) : null}
+            ) : (
+              <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                上の Quick Start から最初の仕事を任せると、ここに今日の進み具合が表示されます。
+              </p>
+            )}
           </section>
 
           {timelineSection}
@@ -585,37 +675,28 @@ export function AutomationFirstHome({
               })
             }
           />
-          {recentSection}
-          {!hasAutomations ? (
-            <EmptyState
-              title="まだ自動化がありません"
-              description="繰り返す仕事を一度設定すると、MINERVOTが予定どおり進めます。"
-              primaryHref={createHref}
-              primaryLabel="新しい自動化を作る"
-              secondaryHref={oneTimeHref}
-              secondaryLabel="一度だけお願いする"
-              onPrimaryClick={() =>
-                trackAutomationFirstEvent("empty_state_cta_clicked", {
-                  source: "home_empty",
-                })
-              }
-            />
-          ) : null}
+          {completionSection}
         </div>
 
         <aside className="space-y-5">
           {attentionSection}
-          <section className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-            <h2 className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]">
-              自動化を作る
-            </h2>
-            <p className="mt-1 text-[length:var(--text-caption)] text-[var(--text-muted)]">
-              主役は自動化。単発のお願いも残せます。
-            </p>
-            <div className="mt-3">
-              <CtaBlock createHref={createHref} oneTimeHref={oneTimeHref} primary={false} />
-            </div>
-          </section>
+          {hasAutomations ? (
+            <section className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+              <h2 className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]">
+                自動化を作る
+              </h2>
+              <p className="mt-1 text-[length:var(--text-caption)] text-[var(--text-muted)]">
+                主役は自動化。単発のお願いも残せます。
+              </p>
+              <div className="mt-3">
+                <CtaBlock
+                  createHref={createHref}
+                  oneTimeHref={oneTimeHref}
+                  primary={false}
+                />
+              </div>
+            </section>
+          ) : null}
           {nextRunCard}
           {opsSummary ? <WeeklyStatsCard stats={weeklyStats} /> : null}
         </aside>

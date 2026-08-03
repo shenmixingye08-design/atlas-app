@@ -32,6 +32,7 @@ import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { isSecretaryWorkNotification } from "@/lib/first-value/notification-policy";
 
 const FILTERS: { id: NoticeFilter; label: string }[] = [
   { id: "all", label: ui.notifications.filterAll },
@@ -53,6 +54,11 @@ type NotificationListProps = {
    * (mobile fit) with the real card component when auth blocks production E2E.
    */
   items?: NotificationRecord[];
+  /**
+   * Secretary mode: 成果物完成 / Automation成功 / Memory改善 only.
+   * Blocks ad-like notifications from the inbox.
+   */
+  workOnly?: boolean;
 };
 
 function NoticeCard({
@@ -170,6 +176,7 @@ export function NotificationList({
   onNavigate,
   initialFilter = "all",
   items,
+  workOnly = false,
 }: NotificationListProps) {
   const isFixture = items != null;
   const [notifications, setNotifications] = useState<NotificationRecord[]>(
@@ -211,12 +218,15 @@ export function NotificationList({
   }, [reload, isFixture]);
 
   const visible = useMemo(() => {
-    const filtered = notifications.filter((item) =>
+    const scoped = workOnly
+      ? notifications.filter(isSecretaryWorkNotification)
+      : notifications;
+    const filtered = scoped.filter((item) =>
       matchesNoticeFilter(item, compact ? "all" : filter),
     );
     if (typeof limit === "number") return filtered.slice(0, limit);
     return filtered;
-  }, [notifications, filter, compact, limit]);
+  }, [notifications, filter, compact, limit, workOnly]);
 
   const handleMarkRead = async (id: string) => {
     await markNotificationRead(id);

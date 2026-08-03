@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { NextActionsBar } from "@/components/results/next-actions-bar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { FinalOutput } from "@/components/workspace/final-output";
+import { trackFirstValueEvent } from "@/lib/first-value/analytics";
 import { ui } from "@/lib/i18n";
 import {
   getDocumentBody,
@@ -86,6 +87,17 @@ export function SecretaryResultView({
   const { regenerate, isRegenerating, error: regenerateError } = useRegenerate(
     project.workRequest ?? "",
   );
+
+  const trackedDeliverable = useRef(false);
+  useEffect(() => {
+    if (trackedDeliverable.current) return;
+    if (!project.result?.deliverable && !project.result?.finalResponse) return;
+    trackedDeliverable.current = true;
+    trackFirstValueEvent("first_deliverable_ready", {
+      projectId: project.id,
+      targetType,
+    });
+  }, [project.id, project.result?.deliverable, project.result?.finalResponse, targetType]);
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">

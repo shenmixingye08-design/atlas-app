@@ -56,7 +56,7 @@ export function NotificationInbox() {
       <PageHeader
         eyebrow="MINERVOT"
         title="通知"
-        description="対応が必要な確認から、完了・情報まで分けて確認できます。"
+        description="成果物完成・Automation成功・Memory改善だけをお届けします。広告は送りません。"
       />
       <div
         role="tablist"
@@ -81,7 +81,7 @@ export function NotificationInbox() {
           </button>
         ))}
       </div>
-      <NotificationList key={filter} initialFilter={filter} />
+      <NotificationList key={filter} initialFilter={filter} workOnly />
     </div>
   );
 }
