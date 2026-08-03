@@ -40,9 +40,10 @@ export function ProactiveSuggestionsPanel({
       automations,
       profile: loadUserWorkProfile(),
     });
-    return filterVisibleProactiveSuggestions(generated).filter(
-      (item) => !hiddenIds.includes(item.id),
-    );
+    // First-value policy: show at most ONE proposal (do not change generators core).
+    return filterVisibleProactiveSuggestions(generated)
+      .filter((item) => !hiddenIds.includes(item.id))
+      .slice(0, 1);
   }, [automations, hiddenIds, refreshKey]);
 
   const hideLocally = useCallback((id: string) => {
