@@ -31,6 +31,11 @@ jobs:
       - name: Install dependencies (lockfile strict)
         run: npm ci
 
+      - name: Install PDF QA tools (poppler)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -43,12 +48,14 @@ jobs:
           # Keep tests deterministic; do not enable mock-success shortcuts.
           TZ: UTC
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Work-queue critical path
         run: npm test -- --run lib/work-queue lib/automations/durable.test.ts
         env:
           TZ: UTC
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Upload Vitest logs on failure
         if: failure()
@@ -57,7 +64,8 @@ jobs:
           name: vitest-logs
           path: |
             **/vitest*.log
-            /tmp/**
+            /tmp/vitest*
+            /tmp/atlas*
           if-no-files-found: ignore
           retention-days: 7
 

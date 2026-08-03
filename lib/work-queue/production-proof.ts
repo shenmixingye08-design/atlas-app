@@ -39,7 +39,10 @@ function artifactDir(): string {
 }
 
 export function writeSchedulerHundredProof(
-  input: Omit<SchedulerHundredProof, "generatedAt" | "verdict" | "note"> & {
+  input: Omit<
+    SchedulerHundredProof,
+    "generatedAt" | "verdict" | "note" | "missRate"
+  > & {
     note?: string;
   },
 ): SchedulerHundredProof {
