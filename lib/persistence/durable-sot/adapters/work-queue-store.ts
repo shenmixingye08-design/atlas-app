@@ -713,13 +713,21 @@ export class DurableSotWorkQueueStore implements WorkQueueStore {
   }
 }
 
-export function tryCreateDurableSotWorkQueueStore(): DurableSotWorkQueueStore | null {
+export function tryCreateDurableSotWorkQueueStore(options?: {
+  /** When false (production), ATLAS_DURABLE_SOT_QUEUE=false cannot opt out. */
+  allowOptOut?: boolean;
+}): DurableSotWorkQueueStore | null {
   const url =
     process.env.DURABLE_SOT_DATABASE_URL?.trim() ||
     resolveDurableSotDatabaseUrl();
   if (!url) return null;
-  if (process.env.ATLAS_DURABLE_SOT_QUEUE?.trim().toLowerCase() === "false") {
+  const allowOptOut = options?.allowOptOut ?? true;
+  if (
+    allowOptOut &&
+    process.env.ATLAS_DURABLE_SOT_QUEUE?.trim().toLowerCase() === "false"
+  ) {
     return null;
   }
+  // Production: ignore opt-out — Durable is mandatory.
   return new DurableSotWorkQueueStore(url);
 }

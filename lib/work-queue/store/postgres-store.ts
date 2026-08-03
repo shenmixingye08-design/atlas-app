@@ -100,8 +100,10 @@ function rowToStep(row: Record<string, unknown>): WorkStepRecord {
 }
 
 /**
- * Postgres-backed store using SKIP LOCKED leases.
- * Requires migration 20260802_atlas_work_queue.sql applied.
+ * @deprecated Phase 1-5 cutover — legacy `atlas_work_queue_*` store.
+ * Not selectable from `getWorkQueueStore()` in production.
+ * Use DurableSotWorkQueueStore / atlas_durable_* instead.
+ * Kept only for offline migration / historical reference.
  */
 export class PostgresWorkQueueStore implements WorkQueueStore {
   readonly kind = "postgres" as const;

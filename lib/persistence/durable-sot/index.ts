@@ -65,6 +65,19 @@ export {
   resolveStuckThresholdMs,
 } from "./lease-config";
 export {
+  isProductionRuntime,
+  resolveDurableSotCutoverFlags,
+} from "./cutover/flags";
+export {
+  DurableSotUnavailableError,
+  LegacyStoreAccessBlockedError,
+} from "./cutover/errors";
+export { logDurableSot } from "./cutover/observability";
+export {
+  migrateLegacyWorkQueueToDurable,
+  rollbackLegacyMigrationBatch,
+} from "./cutover/legacy-migration";
+export {
   loadDurableSotLeaseMigrationDownSql,
   loadDurableSotLeaseMigrationUpSql,
 } from "./migration";
