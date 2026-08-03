@@ -27,6 +27,52 @@ export type DispatchResult = {
   awaiting: number;
 };
 
+function buildGmailNotificationDetail(run: AutomationRun): string | null {
+  const gmail = run.completionEvidence?.gmailResults?.[0];
+  if (gmail) {
+    const isSend = Boolean(gmail.messageId) && gmail.action !== "draft";
+    if (isSend) {
+      return [
+        "Gmailで送信しました。",
+        `宛先ハッシュ: ${gmail.recipientHash.slice(0, 8)}…`,
+        `添付数: ${gmail.attachmentArtifactIds.length}`,
+        `messageId: ${gmail.messageId}`,
+        `実行時刻: ${gmail.completedAt}`,
+        "（Provider受付済み）",
+      ].join(" ");
+    }
+    return [
+      "Gmail下書きを作成しました。",
+      `添付数: ${gmail.attachmentArtifactIds.length}`,
+      `draftId: ${gmail.draftId}`,
+      gmail.deliveryGuarantee === "not_applicable" ? "承認待ちの場合は送信前に確認してください。" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const message = run.lastErrorMessage ?? run.resultSummary ?? "";
+  if (/missing_scope|権限/i.test(message)) {
+    return "権限不足です。Gmailを再接続してください。";
+  }
+  if (/reconnect|再接続|revok|expired|401/i.test(message)) {
+    return "再接続が必要です。Google連携をやり直してください。";
+  }
+  if (/invalid recipient|宛先/i.test(message)) {
+    return "宛先が不正です。";
+  }
+  if (/attachment|添付/i.test(message)) {
+    return "添付ファイルの取得に失敗しました。";
+  }
+  if (/retry|429|rate limit/i.test(message)) {
+    return "Gmail API制限のため再試行中です。";
+  }
+  if (/approval|承認/i.test(message)) {
+    return "Gmail送信の承認待ちです。下書きは作成済みの場合があります。";
+  }
+  return null;
+}
+
 function attachClaimTransition(run: AutomationRun): AutomationRun {
   if (run.status !== "running") return run;
   const last = run.statusHistory[run.statusHistory.length - 1];
@@ -141,6 +187,7 @@ export async function dispatchAutomationRuns(options?: {
     });
 
     result.processed += 1;
+    const gmailDetail = buildGmailNotificationDetail(execResult.run);
     if (execResult.run.status === "succeeded") {
       result.succeeded += 1;
       notifyAutomationRunEvent({
@@ -149,6 +196,7 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: wasRetry ? "retry_finished" : "succeeded",
+        detail: gmailDetail,
       });
     } else if (execResult.run.status === "partially_succeeded") {
       // Partial completion is not a success counter / completed notification.
@@ -159,6 +207,7 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "partially_succeeded",
+        detail: gmailDetail,
       });
     } else if (execResult.run.status === "failed") {
       result.failed += 1;
@@ -168,7 +217,7 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "failed",
-        detail: execResult.run.lastErrorMessage,
+        detail: gmailDetail || execResult.run.lastErrorMessage,
       });
     } else if (execResult.run.status === "retrying") {
       result.retrying += 1;
@@ -178,6 +227,7 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "retry_started",
+        detail: gmailDetail || "Gmail操作を再試行します",
       });
     } else if (execResult.run.status === "needs_input") {
       result.awaiting += 1;
@@ -187,6 +237,10 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "needs_input",
+        detail:
+          gmailDetail ||
+          execResult.run.resultSummary ||
+          "Gmail送信の承認待ちです",
       });
     }
   }

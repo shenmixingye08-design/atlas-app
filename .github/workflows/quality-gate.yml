@@ -45,6 +45,9 @@ jobs:
       - name: V2 stub-ban / Production registry gate
         run: node scripts/ci/v2-stub-ban.mjs
 
+      - name: Gmail Live Adapter Production gate
+        run: node scripts/ci/gmail-live-adapter.mjs
+
       - name: Unit / integration tests
         run: npm test
         env:

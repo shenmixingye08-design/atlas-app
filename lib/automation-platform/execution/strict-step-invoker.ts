@@ -20,6 +20,10 @@ import {
   getProductionStep,
   isLiveAdapterWired,
 } from "@/lib/automation-platform/execution/production-step-registry";
+import {
+  gmailStepAllowsWithoutApproval,
+  invokeGmailLiveStep,
+} from "@/lib/automation-platform/execution/gmail-step";
 import { getCapability } from "@/lib/automation-platform/step-registry/registry";
 import { createNotification } from "@/lib/notifications/service";
 
@@ -303,16 +307,23 @@ export const strictStepInvoker: StepInvoker = async (input) => {
   }
 
   if (capability.systemRequiresApproval && !approved) {
-    return {
-      ok: false,
-      summary: "承認が必要です",
-      artifacts: [],
-      errorCode: "automation_approval_required",
-      errorMessage: "高リスク手順は承認後のみ実行できます",
-      failedStage: "APPROVAL",
-      retryable: false,
-      needsUserInput: true,
-    };
+    // Gmail draft-only may proceed; send/reply are gated inside the live adapter
+    // after optional draft creation (never send before approval).
+    const gmailDraftOk =
+      step.type === "gmail" && gmailStepAllowsWithoutApproval(step);
+    const gmailSendDeferred = step.type === "gmail" && !gmailDraftOk;
+    if (!gmailDraftOk && !gmailSendDeferred) {
+      return {
+        ok: false,
+        summary: "承認が必要です",
+        artifacts: [],
+        errorCode: "automation_approval_required",
+        errorMessage: "高リスク手順は承認後のみ実行できます",
+        failedStage: "APPROVAL",
+        retryable: false,
+        needsUserInput: true,
+      };
+    }
   }
 
   const live = process.env.AUTOMATION_E2E_LIVE_EXTERNAL === "true";
@@ -356,16 +367,27 @@ export const strictStepInvoker: StepInvoker = async (input) => {
       const to =
         typeof step.configuration.to === "string"
           ? step.configuration.to.trim()
-          : "";
-      return invokeExternalGate(
-        "Gmail",
-        "google_gmail",
-        googleAppConfigured(),
-        live,
-        !to || to === "（宛先未設定）"
-          ? missingInput("メール送信先が設定されていません")
-          : null,
-      );
+          : Array.isArray(step.configuration.to)
+            ? step.configuration.to.join(",")
+            : "";
+      if (!to || to === "（宛先未設定）") {
+        return missingInput("メール送信先が設定されていません");
+      }
+      if (!googleAppConfigured()) {
+        return notConnected("Gmail");
+      }
+      if (!isLiveAdapterWired("google_gmail")) {
+        return liveAdapterMissing("Gmail");
+      }
+      return invokeGmailLiveStep({
+        step,
+        userId: input.userId,
+        runId: input.runId,
+        approved,
+        diagnosticId: input.diagnosticId ?? input.runId,
+        approvalId: input.approvalId ?? null,
+        priorArtifacts: input.priorArtifacts,
+      });
     }
     case "x_post": {
       const text =
