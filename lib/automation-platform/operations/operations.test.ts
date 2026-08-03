@@ -279,7 +279,7 @@ describe("Automation Operations", () => {
       "一部完了しました。確認が必要です",
     );
     expect(formatRunStatus("preparing")).toBe("準備済みです");
-    expect(formatRunStatus("needs_input")).toBe("入力待ち");
+    expect(formatRunStatus("needs_input")).toBe("確認待ちです");
   });
 
   it("3. builds step timeline", () => {
