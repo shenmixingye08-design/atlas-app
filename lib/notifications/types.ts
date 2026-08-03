@@ -129,7 +129,8 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   completedEnabled: true,
   awaitingReviewEnabled: true,
   errorEnabled: true,
-  recommendationEnabled: true,
+  /** Ads / promo recommendations disabled by default (first-value policy). */
+  recommendationEnabled: false,
   billingEnabled: true,
   integrationEnabled: true,
   automationEnabled: true,

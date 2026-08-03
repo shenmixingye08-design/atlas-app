@@ -396,14 +396,17 @@ export function AutomationCreateWizard({ initialDraftId, seedText }: Props) {
           <CompleteStep
             draft={draft}
             onView={() =>
-              router.push(`/automations?id=${draft.createdAutomationId}`)
+              // Wizard完了だけでは終わらせない — Quick Startで成果物まで保証
+              router.push("/automations/quick-start")
             }
             onTest={async () => {
               if (!draft.createdAutomationId) return;
               await runAutomationV2(draft.createdAutomationId);
-              router.push(`/automations?id=${draft.createdAutomationId}`);
+              // 実行後も成果物保証のため Quick Start / 完了一覧へ寄せる
+              router.push("/automations/quick-start");
             }}
-            onList={() => router.push("/automations")}
+            onList={() => router.push("/automations/quick-start")}
+            onFirstValue={() => router.push("/automations/quick-start")}
           />
         ) : null}
       </div>
@@ -1448,22 +1451,20 @@ function CompleteStep({
   onView,
   onTest,
   onList,
+  onFirstValue,
 }: {
   draft: AutomationWizardDraft;
   onView: () => void;
   onTest: () => Promise<void>;
   onList: () => void;
+  onFirstValue: () => void;
 }) {
   const [testing, setTesting] = useState(false);
   return (
     <div className="space-y-5 py-6">
       <SectionTitle
         title="自動化を作成しました"
-        description={
-          draft.activateOnCreate
-            ? "実行スケジュールへ登録済みです。"
-            : "下書きとして保存しました。一覧から有効化できます。"
-        }
+        description="スケジューラ待ちでは終わりません。今すぐ1回実行するか、Quick Startで成果物まで完了できます。"
       />
       <div className="rounded-2xl bg-[var(--surface-muted)] px-4 py-3 text-sm">
         <p className="font-medium">{draft.name}</p>
@@ -1471,22 +1472,24 @@ function CompleteStep({
         <p className="mt-2">{describeExecutionPolicy(draft)}</p>
       </div>
       <div className="flex flex-col gap-3">
-        <Button type="button" onClick={onView}>
-          自動化の詳細を見る
-        </Button>
         <Button
           type="button"
-          variant="secondary"
           isLoading={testing}
           onClick={() => {
             setTesting(true);
             void onTest().finally(() => setTesting(false));
           }}
         >
-          今すぐテスト実行
+          今すぐ実行して成果物へ
+        </Button>
+        <Button type="button" variant="secondary" onClick={onFirstValue}>
+          Quick Startで初回体験する
+        </Button>
+        <Button type="button" variant="ghost" onClick={onView}>
+          Quick Startで成果物まで完了する
         </Button>
         <Button type="button" variant="ghost" onClick={onList}>
-          一覧へ戻る
+          Quick Startへ
         </Button>
       </div>
     </div>

@@ -219,7 +219,8 @@ export function buildWeeklyStatsFromRuns(
     artifactCount,
     autoStepCount,
     estimatedSkippedActions,
-    savedMinutes: null,
+    // Measured ROI is hydrated on the client (see AutomationFirstHome).
+    savedMinutes: null as number | null,
   };
 }
 

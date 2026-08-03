@@ -1,9 +1,11 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { deferFirstExperience } from "@/lib/first-experience";
+import { trackFirstValueEvent } from "@/lib/first-value";
 import { completeOnboarding } from "@/lib/onboarding";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
@@ -113,6 +115,7 @@ function StepIllustration({ step }: { step: number }) {
 }
 
 export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
+  const router = useRouter();
   const [stepIndex, setStepIndex] = useState(0);
   const [visible, setVisible] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -143,11 +146,13 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
         preferredTasks: [],
         entryMode: mode,
       });
-      // ダミー業務・架空体験は自動起動しない
+      // Wizard完了で終わらせない — Quick Startへ直行し成果物まで保証
       deferFirstExperience();
+      trackFirstValueEvent("signup_landed", { entryMode: mode });
       onComplete();
+      router.push("/automations/quick-start?from=welcome");
     },
-    [onComplete],
+    [onComplete, router],
   );
 
   const step = ui.onboarding.steps[stepIndex];

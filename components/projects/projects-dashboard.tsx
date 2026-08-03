@@ -71,7 +71,7 @@ export function ProjectsDashboard() {
 
   const handleWizardComplete = useCallback(() => {
     setShowWizard(false);
-    // オンボーディング完了後は説明のみ。ダミー業務・架空体験は自動表示しない。
+    // Wizard完了禁止 — FirstSuccessモーダルではなく Quick Start → 成果物へ。
     setShowFirstExperience(false);
   }, []);
 

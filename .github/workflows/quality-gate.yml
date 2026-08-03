@@ -61,6 +61,15 @@ jobs:
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
           NODE_OPTIONS: --max-old-space-size=8192
 
+      - name: First-value experience gate (Blocker #5)
+        run: node scripts/ci/assert-first-value.mjs
+
+      - name: First-value unit tests
+        run: npm test -- --run lib/first-value/first-value.test.ts
+        env:
+          TZ: UTC
+          NODE_OPTIONS: --max-old-space-size=8192
+
       - name: Upload Vitest logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
