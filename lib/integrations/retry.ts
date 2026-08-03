@@ -1,4 +1,20 @@
-/** Retry an async operation with exponential backoff. */
+/**
+ * Integration retry — only 429 / timeout / network / 5xx.
+ * Arbitrary 4xx must not retry.
+ */
+
+import {
+  classifyError,
+  executeWithRetryPolicy,
+  isRetryable,
+  type RetryOutcome,
+  type RetryPolicyOptions,
+} from "@/lib/integration-platform/retry-policy";
+
+export { classifyError, isRetryable, executeWithRetryPolicy };
+export type { RetryOutcome, RetryPolicyOptions };
+
+/** Retry an async operation with exponential backoff (retryable errors only). */
 export async function withRetry<T>(
   operation: () => Promise<T>,
   options: {
@@ -7,29 +23,13 @@ export async function withRetry<T>(
     label?: string;
   } = {},
 ): Promise<T> {
-  const maxAttempts = options.maxAttempts ?? 3;
-  const baseDelayMs = options.baseDelayMs ?? 500;
-  const label = options.label ?? "operation";
-
-  let lastError: unknown;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error;
-
-      if (attempt >= maxAttempts) break;
-
-      const delayMs = baseDelayMs * 2 ** (attempt - 1);
-      console.warn(
-        `[withRetry] ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delayMs}ms`,
-        error,
-      );
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-  }
-
-  if (lastError instanceof Error) throw lastError;
-  throw new Error(`${label} failed after ${maxAttempts} attempts`);
+  const outcome = await executeWithRetryPolicy(
+    async () => operation(),
+    {
+      maxAttempts: options.maxAttempts ?? 3,
+      baseDelayMs: options.baseDelayMs ?? 500,
+      label: options.label ?? "operation",
+    },
+  );
+  return outcome.value;
 }

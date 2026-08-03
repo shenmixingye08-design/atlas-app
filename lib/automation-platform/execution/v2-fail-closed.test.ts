@@ -261,14 +261,14 @@ describe("V2 Production fail-closed", () => {
     }
   });
 
-  it("live adapter missing fails closed (no prepared success)", async () => {
+  it("gmail missing destination fails closed before Live Adapter", async () => {
     const result = await strictStepInvoker({
       step: baseStep({
         id: "g",
         type: "gmail",
         name: "Gmail",
         order: 0,
-        configuration: { to: "boss@example.com" },
+        configuration: { to: "（宛先未設定）" },
         requiresApproval: true,
       }),
       userId: "user_fc",
@@ -277,12 +277,35 @@ describe("V2 Production fail-closed", () => {
       approved: true,
     });
     expect(result.ok).toBe(false);
-    expect(
-      ["live_adapter_missing", "automation_integration_required", "automation_feature_disabled"].includes(
-        result.errorCode ?? "",
-      ),
-    ).toBe(true);
-    expect(result.failedStage).toBe("EXTERNAL_ADAPTER_RESOLUTION");
+    expect(result.errorCode).toBe("automation_integration_required");
+    expect(result.failedStage).toBe("EXTERNAL_INPUT");
+  });
+
+  it("gmail Live Adapter success requires non-fake externalActionId", async () => {
+    const result = await strictStepInvoker({
+      step: baseStep({
+        id: "g2",
+        type: "gmail",
+        name: "Gmail",
+        order: 0,
+        configuration: {
+          to: "boss@example.com",
+          body: "status update",
+          subject: "hello",
+        },
+        requiresApproval: true,
+      }),
+      userId: "user_fc",
+      automationName: "mail",
+      runId: "r_mail_ok",
+      approved: true,
+    });
+    // Vitest uses Test Registry — success must still carry real-shaped evidence.
+    expect(result.ok).toBe(true);
+    const externalId = result.artifacts[0]?.externalId ?? "";
+    expect(externalId.length).toBeGreaterThan(0);
+    expect(externalId).not.toMatch(/^(stub|fake|mock|placeholder)/i);
+    expect(result.evidence?.externalActionIds?.length).toBeGreaterThan(0);
   });
 
   it("partially_succeeded notification is not type=completed", () => {

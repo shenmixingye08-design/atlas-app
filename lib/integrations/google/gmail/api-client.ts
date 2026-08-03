@@ -520,5 +520,76 @@ export async function createGmailDraft(input: {
   return { id: payload.id };
 }
 
+function buildRfc822Compose(input: {
+  to: string;
+  subject: string;
+  body: string;
+  cc?: string | null;
+  bcc?: string | null;
+}): string {
+  const encodedBody = Buffer.from(input.body, "utf8").toString("base64");
+  const lines = [
+    `To: ${input.to}`,
+    `Subject: =?UTF-8?B?${Buffer.from(input.subject, "utf8").toString("base64")}?=`,
+    "MIME-Version: 1.0",
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+  ];
+  if (input.cc?.trim()) lines.splice(1, 0, `Cc: ${input.cc.trim()}`);
+  if (input.bcc?.trim()) lines.splice(1, 0, `Bcc: ${input.bcc.trim()}`);
+  lines.push("", encodedBody);
+  return lines.join("\r\n");
+}
+
+/** Compose + send a new Gmail message (not a reply). Requires message id on success. */
+export async function sendGmailCompose(input: {
+  accessToken: string;
+  to: string;
+  subject: string;
+  body: string;
+  cc?: string | null;
+  bcc?: string | null;
+}): Promise<{ id: string; threadId: string | null }> {
+  const raw = buildRfc822Compose(input);
+  const payload = await gmailFetch<{ id?: string; threadId?: string }>(
+    input.accessToken,
+    "/users/me/messages/send",
+    {
+      method: "POST",
+      body: JSON.stringify({ raw: encodeBase64Url(raw) }),
+    },
+  );
+  if (!payload.id) {
+    throw new Error("Gmail did not return a sent message id");
+  }
+  return { id: payload.id, threadId: payload.threadId ?? null };
+}
+
+/** Compose a new Gmail draft (not a reply). */
+export async function createGmailComposeDraft(input: {
+  accessToken: string;
+  to: string;
+  subject: string;
+  body: string;
+  cc?: string | null;
+  bcc?: string | null;
+}): Promise<{ id: string }> {
+  const raw = buildRfc822Compose(input);
+  const payload = await gmailFetch<{ id?: string }>(
+    input.accessToken,
+    "/users/me/drafts",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        message: { raw: encodeBase64Url(raw) },
+      }),
+    },
+  );
+  if (!payload.id) {
+    throw new Error("Gmail did not return a draft id");
+  }
+  return { id: payload.id };
+}
+
 /** Best-effort text extraction from PDF bytes (no extra dependency). */
 export { extractTextFromPdfBuffer } from "@/lib/documents/extract-pdf-text";

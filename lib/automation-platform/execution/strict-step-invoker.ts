@@ -1,8 +1,6 @@
 /**
- * Production V2 step invoker — real engines only, fail closed otherwise.
- *
- * Never marks unconnected external actions, unimplemented steps, or
- * placeholder artifacts as success.
+ * Production V2 step invoker — real engines + Live Adapter Registry.
+ * Never marks unconnected / unwired / sandbox external actions as success.
  */
 
 import "server-only";
@@ -16,12 +14,13 @@ import {
   invokeOcrStep,
   invokeVisionStep,
 } from "@/lib/automation-platform/execution/vision-step";
-import {
-  getProductionStep,
-  isLiveAdapterWired,
-} from "@/lib/automation-platform/execution/production-step-registry";
+import { getProductionStep } from "@/lib/automation-platform/execution/production-step-registry";
 import { getCapability } from "@/lib/automation-platform/step-registry/registry";
 import { createNotification } from "@/lib/notifications/service";
+import {
+  invokeLiveAdapterForStep,
+  mapCapabilityToIntegrationService,
+} from "@/lib/live-adapters";
 
 function stepNotImplemented(type: string): StepInvokeResult {
   return {
@@ -31,18 +30,6 @@ function stepNotImplemented(type: string): StepInvokeResult {
     errorCode: "step_not_implemented",
     errorMessage: `step_not_implemented:${type}`,
     failedStage: "STEP_DISPATCH",
-    retryable: false,
-  };
-}
-
-function liveAdapterMissing(service: string): StepInvokeResult {
-  return {
-    ok: false,
-    summary: `${service}の本番ライブ実行アダプタは未配線です`,
-    artifacts: [],
-    errorCode: "live_adapter_missing",
-    errorMessage: `${service}_live_adapter_not_wired`,
-    failedStage: "EXTERNAL_ADAPTER_RESOLUTION",
     retryable: false,
   };
 }
@@ -58,60 +45,6 @@ function missingInput(message: string): StepInvokeResult {
     retryable: false,
     needsUserInput: true,
   };
-}
-
-function notConnected(service: string): StepInvokeResult {
-  return {
-    ok: false,
-    summary: `${service}連携が未接続のため実行できません`,
-    artifacts: [],
-    errorCode: "automation_integration_required",
-    errorMessage: `${service} is not connected`,
-    failedStage: "EXTERNAL_ADAPTER_RESOLUTION",
-    retryable: false,
-    needsUserInput: true,
-  };
-}
-
-function liveExternalDisabled(service: string): StepInvokeResult {
-  return {
-    ok: false,
-    summary: `${service}連携のライブ外部実行フラグがOFFです`,
-    artifacts: [],
-    errorCode: "automation_feature_disabled",
-    errorMessage: "AUTOMATION_E2E_LIVE_EXTERNAL is not true",
-    failedStage: "EXTERNAL_ADAPTER_RESOLUTION",
-    retryable: false,
-  };
-}
-
-function envConfigured(keys: string[]): boolean {
-  return keys.some((key) => Boolean(process.env[key]?.trim()));
-}
-
-function googleAppConfigured(): boolean {
-  return (
-    envConfigured(["GOOGLE_CLIENT_ID"]) &&
-    envConfigured(["GOOGLE_CLIENT_SECRET"])
-  );
-}
-
-function xAppConfigured(): boolean {
-  return (
-    envConfigured(["X_TEST_ACCESS_TOKEN"]) ||
-    (envConfigured(["X_CLIENT_ID"]) && envConfigured(["X_CLIENT_SECRET"]))
-  );
-}
-
-function dropboxAppConfigured(): boolean {
-  return (
-    envConfigured(["DROPBOX_APP_KEY", "DROPBOX_CLIENT_ID"]) &&
-    envConfigured(["DROPBOX_APP_SECRET", "DROPBOX_CLIENT_SECRET"])
-  );
-}
-
-function wordpressAppConfigured(): boolean {
-  return envConfigured(["ATLAS_WORDPRESS_CREDENTIALS_ENCRYPTION_KEY"]);
 }
 
 async function invokeNotifyStep(input: {
@@ -192,7 +125,6 @@ function invokeWaitStep(step: Parameters<StepInvoker>[0]["step"]): StepInvokeRes
       retryable: false,
     };
   }
-  // Production workers must not sleep long; only zero-duration control passes.
   if (durationMs > 0) {
     return {
       ok: false,
@@ -265,25 +197,12 @@ function invokeConditionStep(
   };
 }
 
-async function invokeExternalGate(
-  service: string,
-  adapterId: string,
-  configured: boolean,
-  live: boolean,
-  inputOk: StepInvokeResult | null,
-): Promise<StepInvokeResult> {
-  if (inputOk) return inputOk;
-  if (!configured) return notConnected(service);
-  if (!live) return liveExternalDisabled(service);
-  if (!isLiveAdapterWired(adapterId)) return liveAdapterMissing(service);
-  return liveAdapterMissing(service);
-}
-
 /**
  * Strict invoker used by production dispatch.
+ * External OAuth steps → Live Adapter Registry only.
  */
 export const strictStepInvoker: StepInvoker = async (input) => {
-  const { step, approved } = input;
+  const { step, approved, userId, runId, automationName } = input;
   const production = getProductionStep(step.type);
   if (!production) {
     return stepNotImplemented(step.type);
@@ -314,8 +233,6 @@ export const strictStepInvoker: StepInvoker = async (input) => {
       needsUserInput: true,
     };
   }
-
-  const live = process.env.AUTOMATION_E2E_LIVE_EXTERNAL === "true";
 
   switch (step.type) {
     case "word_generate":
@@ -352,67 +269,78 @@ export const strictStepInvoker: StepInvoker = async (input) => {
     case "condition":
       return invokeConditionStep(step);
 
-    case "gmail": {
-      const to =
-        typeof step.configuration.to === "string"
-          ? step.configuration.to.trim()
-          : "";
-      return invokeExternalGate(
-        "Gmail",
-        "google_gmail",
-        googleAppConfigured(),
-        live,
-        !to || to === "（宛先未設定）"
-          ? missingInput("メール送信先が設定されていません")
-          : null,
-      );
-    }
-    case "x_post": {
-      const text =
-        typeof step.configuration.text === "string"
-          ? step.configuration.text.trim()
-          : "";
-      return invokeExternalGate(
-        "X",
-        "x",
-        xAppConfigured(),
-        live,
-        !text ? missingInput("投稿本文が設定されていません") : null,
-      );
-    }
-    case "dropbox": {
-      const dest =
-        typeof step.configuration.saveTarget === "string"
-          ? step.configuration.saveTarget.trim()
-          : typeof step.configuration.folderPath === "string"
-            ? step.configuration.folderPath.trim()
-            : "";
-      return invokeExternalGate(
-        "Dropbox",
-        "dropbox",
-        dropboxAppConfigured(),
-        live,
-        !dest
-          ? missingInput("Dropboxの保存先フォルダを選択してください")
-          : null,
-      );
-    }
+    case "gmail":
+    case "x_post":
+    case "dropbox":
     case "google_calendar":
-      return invokeExternalGate(
-        "Google Calendar",
-        "google_calendar",
-        googleAppConfigured(),
-        live,
-        null,
-      );
-    case "wordpress":
-      return invokeExternalGate(
-        "WordPress",
-        "wordpress",
-        wordpressAppConfigured(),
-        live,
-        null,
-      );
+    case "wordpress": {
+      if (step.type === "gmail") {
+        const to =
+          typeof step.configuration.to === "string"
+            ? step.configuration.to.trim()
+            : "";
+        if (!to || to === "（宛先未設定）") {
+          return missingInput("メール送信先が設定されていません");
+        }
+      }
+      if (step.type === "x_post") {
+        const text =
+          typeof step.configuration.text === "string"
+            ? step.configuration.text.trim()
+            : "";
+        if (!text) return missingInput("投稿本文が設定されていません");
+      }
+      if (step.type === "dropbox") {
+        const dest =
+          typeof step.configuration.saveTarget === "string"
+            ? step.configuration.saveTarget.trim()
+            : typeof step.configuration.folderPath === "string"
+              ? step.configuration.folderPath.trim()
+              : "";
+        if (!dest) {
+          return missingInput("Dropboxの保存先フォルダを選択してください");
+        }
+      }
+
+      const service = mapCapabilityToIntegrationService(step.type);
+      if (!service) {
+        return stepNotImplemented(step.type);
+      }
+
+      const result = await invokeLiveAdapterForStep({
+        step,
+        userId,
+        runId,
+        approved,
+        automationName,
+      });
+
+      if (result.ok) {
+        const externalIds = result.artifacts
+          .map((a) => a.externalId)
+          .filter((id): id is string => Boolean(id));
+        const externalUrls = result.artifacts
+          .map((a) => a.url)
+          .filter((url): url is string => Boolean(url));
+        return {
+          ...result,
+          evidence: {
+            ...(result.evidence ?? {}),
+            externalActionIds: externalIds,
+            externalUrls,
+            artifactIds: result.artifacts.map((a) => a.id),
+          },
+          failedStage: undefined,
+          retryable: false,
+        };
+      }
+
+      return {
+        ...result,
+        failedStage: result.failedStage ?? "EXTERNAL_ADAPTER_EXECUTION",
+        retryable: result.retryable ?? false,
+      };
+    }
 
     default:
       return stepNotImplemented(step.type);
