@@ -11,7 +11,8 @@
     "ci:v2-stub-ban": "node scripts/ci/v2-stub-ban.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts"
+    "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts",
+    "ci:durable-sot-audit": "node scripts/ci/durable-sot-audit.mjs && node scripts/ci/write-durable-sot-curated.mjs"
   },
   "dependencies": {
     "@clerk/localizations": "^4.13.5",

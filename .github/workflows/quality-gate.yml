@@ -45,6 +45,22 @@ jobs:
       - name: V2 stub-ban / Production registry gate
         run: node scripts/ci/v2-stub-ban.mjs
 
+      - name: Durable SoT audit (inventories + baseline diff gate)
+        run: npm run ci:durable-sot-audit
+        env:
+          DURABLE_SOT_OUT_DIR: artifacts/durable-sot-audit
+
+      - name: Upload Durable SoT audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: durable-sot-audit
+          path: |
+            artifacts/durable-sot-audit/**
+            docs/development/durable-sot-audit/migration-plan.md
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Unit / integration tests
         run: npm test
         env:
