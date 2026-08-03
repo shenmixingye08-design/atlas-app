@@ -52,6 +52,14 @@ export type WordPressPostResponse = {
   link: string;
   status: string;
   title?: { rendered?: string };
+  content?: { rendered?: string };
+};
+
+export type WordPressMediaResponse = {
+  id: number;
+  source_url?: string;
+  alt_text?: string;
+  mime_type?: string;
 };
 
 function basicAuthHeader(username: string, applicationPassword: string): string {
@@ -155,6 +163,42 @@ export async function fetchWordPressCurrentUser(
     throw new WordPressApiError(WP_CONNECTION_ERROR_MESSAGE, response.status);
   }
 
+  return payload;
+}
+
+export async function getWordPressPost(
+  auth: WordPressAuthContext,
+  postId: number,
+): Promise<WordPressPostResponse> {
+  const response = await wpFetch(
+    auth,
+    `/posts/${postId}?context=edit`,
+  );
+  const payload = (await assertOk(
+    response,
+    "記事の取得に失敗しました",
+  )) as WordPressPostResponse;
+  if (!payload?.id) {
+    throw new WordPressApiError("記事IDを取得できませんでした", response.status);
+  }
+  return payload;
+}
+
+export async function getWordPressMedia(
+  auth: WordPressAuthContext,
+  mediaId: number,
+): Promise<WordPressMediaResponse> {
+  const response = await wpFetch(auth, `/media/${mediaId}?context=edit`);
+  const payload = (await assertOk(
+    response,
+    "メディアの取得に失敗しました",
+  )) as WordPressMediaResponse;
+  if (!payload?.id) {
+    throw new WordPressApiError(
+      "メディアIDを取得できませんでした",
+      response.status,
+    );
+  }
   return payload;
 }
 

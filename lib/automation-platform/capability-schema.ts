@@ -120,27 +120,48 @@ const SCHEMAS: Record<AutomationCapabilityId, readonly CapabilityFieldSchema[]> 
       options: [
         { value: "draft", label: "下書きのみ作る" },
         { value: "send", label: "送信する（要確認）" },
+        { value: "reply", label: "返信する（要確認）" },
       ],
     },
     { key: "to", label: "宛先", type: "text", sensitive: true, helpText: "記憶だけで自動入力しません" },
     { key: "cc", label: "CC", type: "text", sensitive: true },
+    { key: "bcc", label: "BCC", type: "text", sensitive: true },
     { key: "subject", label: "件名", type: "text" },
+    { key: "textBody", label: "本文（テキスト）", type: "textarea" },
+    { key: "htmlBody", label: "本文（HTML）", type: "textarea" },
+    {
+      key: "approvalRequired",
+      label: "送信前に承認する",
+      type: "boolean",
+      helpText: "送信・返信は原則ON。下書きのみなら不要です",
+    },
   ],
   x_post: [
     { key: "includeImage", label: "画像を付ける", type: "boolean" },
     { key: "hashtags", label: "ハッシュタグ", type: "text", placeholder: "#例" },
   ],
   google_calendar: [
-    { key: "eventTitle", label: "予定タイトル", type: "text", required: true },
     {
       key: "action",
       label: "操作",
       type: "select",
+      required: true,
       options: [
         { value: "create", label: "新規登録" },
         { value: "update", label: "更新（要確認）" },
-        { value: "delete", label: "削除（要確認）" },
+        { value: "cancel", label: "取消（要確認）" },
       ],
+    },
+    { key: "eventTitle", label: "予定タイトル", type: "text", required: true },
+    { key: "startDateTime", label: "開始日時", type: "text", required: true },
+    { key: "endDateTime", label: "終了日時", type: "text", required: true },
+    { key: "timezone", label: "タイムゾーン", type: "text", placeholder: "Asia/Tokyo" },
+    { key: "attendees", label: "参加者", type: "text", sensitive: true },
+    {
+      key: "approvalRequired",
+      label: "外部招待前に承認する",
+      type: "boolean",
+      helpText: "参加者あり・更新・取消は原則ON",
     },
   ],
   wordpress: [
@@ -166,6 +187,36 @@ const SCHEMAS: Record<AutomationCapabilityId, readonly CapabilityFieldSchema[]> 
         { value: "overwrite", label: "上書き（要確認）" },
         { value: "skip", label: "スキップ" },
       ],
+    },
+  ],
+  google_drive: [
+    {
+      key: "targetFolderId",
+      label: "保存先フォルダID",
+      type: "text",
+      helpText: "未指定時は ATLAS フォルダ構成を使用します",
+    },
+    {
+      key: "folderPath",
+      label: "保存先パス",
+      type: "text",
+      placeholder: "例: 営業資料/週次",
+    },
+    {
+      key: "conflictPolicy",
+      label: "同名ファイルの扱い",
+      type: "select",
+      options: [
+        { value: "fail", label: "失敗にする（既定）" },
+        { value: "rename", label: "名前を変えて保存" },
+        { value: "overwrite", label: "上書き（要確認）" },
+        { value: "create_revision", label: "改訂として更新" },
+      ],
+    },
+    {
+      key: "createFolderIfMissing",
+      label: "フォルダが無ければ作成",
+      type: "boolean",
     },
   ],
   notify: [

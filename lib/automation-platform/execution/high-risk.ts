@@ -14,6 +14,50 @@ export function isConfigHighRisk(step: AutomationWorkflowStep): boolean {
 }
 
 export function isStepHighRisk(step: AutomationWorkflowStep): boolean {
+  if (step.type === "gmail") {
+    const mode = String(
+      step.configuration?.mode ?? step.configuration?.action ?? "send",
+    ).toLowerCase();
+    // Draft-only does not require pre-run approval; send/reply remain high-risk.
+    if (mode === "draft" || mode === "create_draft") {
+      return false;
+    }
+    return true;
+  }
+  if (step.type === "wordpress") {
+    const publishMode = String(
+      step.configuration?.publishMode ?? "",
+    ).toLowerCase();
+    if (publishMode === "publish") return true;
+    const mode = String(
+      step.configuration?.mode ??
+        step.configuration?.action ??
+        step.configuration?.publishMode ??
+        "draft",
+    ).toLowerCase();
+    if (mode === "draft" || mode === "create_draft" || mode === "save_draft") {
+      return false;
+    }
+    if (mode === "update") return false;
+    if (mode === "publish" || mode === "publish_post") return true;
+    return isConfigHighRisk(step);
+  }
+  if (step.type === "google_calendar") {
+    const action = String(
+      step.configuration?.action ?? step.configuration?.mode ?? "create",
+    ).toLowerCase();
+    const attendees =
+      step.configuration?.attendees ?? step.configuration?.guests;
+    const hasAttendees =
+      (Array.isArray(attendees) && attendees.length > 0) ||
+      (typeof attendees === "string" && attendees.trim().length > 0);
+    // Create without external attendees may run without pre-run approval.
+    // Invite / update / cancel remain high-risk.
+    if ((action === "create" || action === "") && !hasAttendees) {
+      return false;
+    }
+    return true;
+  }
   return (
     stepRequiresSystemApproval(step.type) ||
     isConfigHighRisk(step)

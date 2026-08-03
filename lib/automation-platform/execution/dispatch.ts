@@ -27,6 +27,223 @@ export type DispatchResult = {
   awaiting: number;
 };
 
+function buildCalendarNotificationDetail(run: AutomationRun): string | null {
+  const calendar = run.completionEvidence?.calendarResults?.[0];
+  if (calendar) {
+    if (calendar.action === "cancel") {
+      return [
+        "予定をキャンセルしました。",
+        `日時: ${calendar.startDateTime}〜${calendar.endDateTime}`,
+      ].join(" ");
+    }
+    if (calendar.action === "update") {
+      return [
+        "予定を更新しました。",
+        calendar.htmlLink ? `URL: ${calendar.htmlLink}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+    return [
+      "Google Calendarへ予定を登録しました。",
+      `日時: ${calendar.startDateTime}〜${calendar.endDateTime} (${calendar.timezone})`,
+      calendar.htmlLink ? `URL: ${calendar.htmlLink}` : "",
+      calendar.hangoutLink ? `Meet: ${calendar.hangoutLink}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const message = run.lastErrorMessage ?? run.resultSummary ?? "";
+  if (/missing_scope|権限/i.test(message)) {
+    return "権限不足です。Google Calendarを再接続してください。";
+  }
+  if (/reconnect|再接続|revok|expired|401/i.test(message)) {
+    return "再接続が必要です。Google連携をやり直してください。";
+  }
+  if (/datetime|日時/i.test(message)) {
+    return "日時が不正です。";
+  }
+  if (/attendee|参加/i.test(message)) {
+    return "参加者が不正です。";
+  }
+  if (/approval|承認/i.test(message)) {
+    return "Google Calendar操作の承認待ちです。";
+  }
+  if (/retry|429|rate limit/i.test(message)) {
+    return "Google Calendar API制限のため再試行中です。";
+  }
+  return null;
+}
+
+function buildGmailNotificationDetail(run: AutomationRun): string | null {
+  const gmail = run.completionEvidence?.gmailResults?.[0];
+  if (gmail) {
+    const isSend = Boolean(gmail.messageId) && gmail.action !== "draft";
+    if (isSend) {
+      return [
+        "Gmailで送信しました。",
+        `宛先ハッシュ: ${gmail.recipientHash.slice(0, 8)}…`,
+        `添付数: ${gmail.attachmentArtifactIds.length}`,
+        `messageId: ${gmail.messageId}`,
+        `実行時刻: ${gmail.completedAt}`,
+        "（Provider受付済み）",
+      ].join(" ");
+    }
+    return [
+      "Gmail下書きを作成しました。",
+      `添付数: ${gmail.attachmentArtifactIds.length}`,
+      `draftId: ${gmail.draftId}`,
+      gmail.deliveryGuarantee === "not_applicable"
+        ? "承認待ちの場合は送信前に確認してください。"
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const message = run.lastErrorMessage ?? run.resultSummary ?? "";
+  if (/missing_scope|権限/i.test(message)) {
+    return "権限不足です。Gmailを再接続してください。";
+  }
+  if (/reconnect|再接続|revok|expired|401/i.test(message)) {
+    return "再接続が必要です。Google連携をやり直してください。";
+  }
+  if (/invalid recipient|宛先/i.test(message)) {
+    return "宛先が不正です。";
+  }
+  if (/attachment|添付/i.test(message)) {
+    return "添付ファイルの取得に失敗しました。";
+  }
+  if (/retry|429|rate limit/i.test(message)) {
+    return "Gmail API制限のため再試行中です。";
+  }
+  if (/approval|承認/i.test(message)) {
+    return "Gmail送信の承認待ちです。下書きは作成済みの場合があります。";
+  }
+  return null;
+}
+
+function buildGoogleDriveNotificationDetail(run: AutomationRun): string | null {
+  const drive = run.completionEvidence?.driveResults?.[0];
+  if (drive) {
+    return [
+      "Google Driveへ保存しました。",
+      `ファイル: ${drive.fileName}`,
+      `フォルダID: ${drive.targetFolderId}`,
+      `URL: ${drive.webViewLink}`,
+      `実行時刻: ${drive.completedAt}`,
+    ].join(" ");
+  }
+
+  const external = run.artifacts.find(
+    (item) => item.kind === "external" && item.externalId && item.url,
+  );
+  if (external?.url) {
+    return `Google Driveへ保存しました。ファイル: ${external.label} URL: ${external.url}`;
+  }
+
+  const message = run.lastErrorMessage ?? "";
+  if (/missing_scope|権限/i.test(message)) {
+    return "権限不足です。Google Driveを再接続してください。";
+  }
+  if (/reconnect|再接続|revok|expired|401/i.test(message)) {
+    return "再接続が必要です。Google連携をやり直してください。";
+  }
+  if (/folder.*not found|フォルダ/i.test(message)) {
+    return "folder不存在、またはアクセスできません。";
+  }
+  if (/retry|429|rate limit/i.test(message)) {
+    return "Retry中または一時的な制限です。";
+  }
+  return null;
+}
+
+function buildDropboxNotificationDetail(run: AutomationRun): string | null {
+  const dropbox = run.completionEvidence?.dropboxResults?.[0];
+  if (dropbox) {
+    const url = dropbox.sharedLinkUrl ?? dropbox.pathDisplay;
+    return [
+      "Dropboxへ保存しました。",
+      `ファイル: ${dropbox.fileName}`,
+      `パス: ${dropbox.pathDisplay}`,
+      `rev: ${dropbox.rev}`,
+      `URL: ${url}`,
+      `実行時刻: ${dropbox.completedAt}`,
+    ].join(" ");
+  }
+
+  const message = run.lastErrorMessage ?? "";
+  if (/missing_scope|権限/i.test(message)) {
+    return "権限不足です。Dropboxを再接続してください。";
+  }
+  if (/reconnect|再接続|revok|expired|401/i.test(message)) {
+    return "再接続が必要です。Dropbox連携をやり直してください。";
+  }
+  if (/folder.*not found|フォルダ/i.test(message)) {
+    return "folder不存在、またはアクセスできません。";
+  }
+  if (/retry|429|rate limit/i.test(message)) {
+    return "Retry中または一時的な制限です。";
+  }
+  return null;
+}
+
+function buildWordPressNotificationDetail(run: AutomationRun): string | null {
+  const wp = run.completionEvidence?.wordpressResults?.[0];
+  if (wp) {
+    const isPublished =
+      wp.action === "publish" && wp.postStatus === "publish";
+    if (isPublished) {
+      return [
+        "WordPressに公開しました。",
+        `postId: ${wp.postId}`,
+        `URL: ${wp.link}`,
+        `実行時刻: ${wp.completedAt}`,
+      ].join(" ");
+    }
+    return [
+      "WordPress下書きを作成しました。",
+      `postId: ${wp.postId}`,
+      `編集: ${wp.editLink}`,
+      wp.action === "publish" ? "公開には承認が必要です。" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const message = run.lastErrorMessage ?? run.resultSummary ?? "";
+  if (/auth|認証|401|403/i.test(message)) {
+    return "WordPress認証に失敗しました。再接続してください。";
+  }
+  if (/reconnect|再接続/i.test(message)) {
+    return "再接続が必要です。WordPress連携をやり直してください。";
+  }
+  if (/title|本文|content/i.test(message)) {
+    return "タイトルまたは本文が不正です。";
+  }
+  if (/media|画像|artifact/i.test(message)) {
+    return "アイキャッチ画像の取得に失敗しました。";
+  }
+  if (/approval|承認/i.test(message)) {
+    return "WordPress公開の承認待ちです。下書きは作成済みの場合があります。";
+  }
+  if (/retry|429|rate limit/i.test(message)) {
+    return "WordPress API制限のため再試行中です。";
+  }
+  return null;
+}
+
+function buildExternalNotificationDetail(run: AutomationRun): string | null {
+  return (
+    buildGmailNotificationDetail(run) ||
+    buildCalendarNotificationDetail(run) ||
+    buildGoogleDriveNotificationDetail(run) ||
+    buildDropboxNotificationDetail(run) ||
+    buildWordPressNotificationDetail(run)
+  );
+}
+
 function attachClaimTransition(run: AutomationRun): AutomationRun {
   if (run.status !== "running") return run;
   const last = run.statusHistory[run.statusHistory.length - 1];
@@ -141,6 +358,7 @@ export async function dispatchAutomationRuns(options?: {
     });
 
     result.processed += 1;
+    const externalDetail = buildExternalNotificationDetail(execResult.run);
     if (execResult.run.status === "succeeded") {
       result.succeeded += 1;
       notifyAutomationRunEvent({
@@ -149,9 +367,9 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: wasRetry ? "retry_finished" : "succeeded",
+        detail: externalDetail,
       });
     } else if (execResult.run.status === "partially_succeeded") {
-      // Partial completion is not a success counter / completed notification.
       result.failed += 1;
       notifyAutomationRunEvent({
         userId: automation.userId,
@@ -159,6 +377,7 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "partially_succeeded",
+        detail: externalDetail,
       });
     } else if (execResult.run.status === "failed") {
       result.failed += 1;
@@ -168,7 +387,10 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "failed",
-        detail: execResult.run.lastErrorMessage,
+        detail:
+          externalDetail ||
+          execResult.run.lastErrorMessage ||
+          "外部連携または自動化の最終失敗",
       });
     } else if (execResult.run.status === "retrying") {
       result.retrying += 1;
@@ -178,6 +400,7 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "retry_started",
+        detail: externalDetail || "外部連携操作を再試行します",
       });
     } else if (execResult.run.status === "needs_input") {
       result.awaiting += 1;
@@ -187,6 +410,11 @@ export async function dispatchAutomationRuns(options?: {
         run: execResult.run,
         policy: automation.notificationPolicy,
         event: "needs_input",
+        detail:
+          externalDetail ||
+          execResult.run.resultSummary ||
+          execResult.run.lastErrorMessage ||
+          "再接続・権限・承認の確認が必要です",
       });
     }
   }

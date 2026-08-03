@@ -2,6 +2,9 @@ import { appendAutomationAudit } from "@/lib/automation-platform/audit/log";
 import { AutomationPlatformError } from "@/lib/automation-platform/errors/messages";
 import { resolveRunApprovalRequirement } from "@/lib/automation-platform/execution/policy";
 import { validateStepsForProductionActivation } from "@/lib/automation-platform/execution/production-step-registry";
+import { assertGmailPreflightForActivation } from "@/lib/automation-platform/execution/gmail-preflight";
+import { assertWordPressPreflightForActivation } from "@/lib/automation-platform/execution/wordpress-preflight";
+import { assertGoogleCalendarPreflightForActivation } from "@/lib/automation-platform/execution/google-calendar-preflight";
 import {
   buildIdempotencyKey,
   buildRunKey,
@@ -21,6 +24,8 @@ import {
 } from "@/lib/automation-platform/durable-runs";
 import { dispatchAutomationRuns } from "@/lib/automation-platform/execution/dispatch";
 import { notifyAutomationRunEvent } from "@/lib/automation-platform/execution/notify";
+import { assertGoogleDrivePreflightForActivation } from "@/lib/automation-platform/execution/google-drive-preflight";
+import { assertDropboxPreflightForActivation } from "@/lib/automation-platform/execution/dropbox-preflight";
 import {
   buildRunStepsFromAutomation,
   prepareRunSnapshot,
@@ -90,6 +95,8 @@ function assertProductionStepsActivatable(
     if (issue.errorCode === "live_adapter_missing" && allowUnwiredExternal) {
       return false;
     }
+    // google_drive is Production-wired — never bypass missing adapter in tests
+    // via the generic unwired allowlist when the step is google_drive and wired.
     return true;
   });
   if (blocking.length === 0) return;
@@ -105,6 +112,92 @@ function assertProductionStepsActivatable(
       issues: blocking,
     },
   );
+}
+
+async function assertExternalPreflightForActivation(
+  userId: string,
+  steps: ReadonlyArray<{
+    id: string;
+    type: string;
+    enabled: boolean;
+    configuration?: Readonly<Record<string, unknown>>;
+  }>,
+): Promise<void> {
+  assertProductionStepsActivatable(steps);
+  const allowSkip =
+    process.env.AUTOMATION_ALLOW_UNWIRED_EXTERNAL_ACTIVATION === "true" ||
+    process.env.VITEST === "true";
+  if (allowSkip) return;
+
+  const driveIssues = await assertGoogleDrivePreflightForActivation({
+    userId,
+    steps,
+  });
+  if (driveIssues.length > 0) {
+    const first = driveIssues[0]!;
+    throw new AutomationPlatformError("automation_integration_required", {
+      stepId: first.stepId,
+      stepType: "google_drive",
+      reason: first.message,
+      issues: driveIssues,
+    });
+  }
+
+  const dropboxIssues = await assertDropboxPreflightForActivation({
+    userId,
+    steps,
+  });
+  if (dropboxIssues.length > 0) {
+    const first = dropboxIssues[0]!;
+    throw new AutomationPlatformError("automation_integration_required", {
+      stepId: first.stepId,
+      stepType: "dropbox",
+      reason: first.message,
+      issues: dropboxIssues,
+    });
+  }
+
+  const gmailIssues = await assertGmailPreflightForActivation({
+    userId,
+    steps,
+  });
+  if (gmailIssues.length > 0) {
+    const first = gmailIssues[0]!;
+    throw new AutomationPlatformError("automation_integration_required", {
+      stepId: first.stepId,
+      stepType: "gmail",
+      reason: first.message,
+      issues: gmailIssues,
+    });
+  }
+
+  const calendarIssues = await assertGoogleCalendarPreflightForActivation({
+    userId,
+    steps,
+  });
+  if (calendarIssues.length > 0) {
+    const first = calendarIssues[0]!;
+    throw new AutomationPlatformError("automation_integration_required", {
+      stepId: first.stepId,
+      stepType: "google_calendar",
+      reason: first.message,
+      issues: calendarIssues,
+    });
+  }
+
+  const wordpressIssues = await assertWordPressPreflightForActivation({
+    userId,
+    steps,
+  });
+  if (wordpressIssues.length > 0) {
+    const first = wordpressIssues[0]!;
+    throw new AutomationPlatformError("automation_integration_required", {
+      stepId: first.stepId,
+      stepType: "wordpress",
+      reason: first.message,
+      issues: wordpressIssues,
+    });
+  }
 }
 
 export class AutomationPlatformService {
@@ -127,7 +220,10 @@ export class AutomationPlatformService {
 
     const record = buildAutomationFromCreateInput(userId, input);
     if (record.status === "active") {
-      assertProductionStepsActivatable(record.workflow.steps);
+      await assertExternalPreflightForActivation(
+        userId,
+        record.workflow.steps,
+      );
     }
     let saved = persistAutomationV2Now(record);
 
@@ -257,7 +353,10 @@ export class AutomationPlatformService {
     };
 
     if (updated.status === "active") {
-      assertProductionStepsActivatable(updated.workflow.steps);
+      await assertExternalPreflightForActivation(
+        userId,
+        updated.workflow.steps,
+      );
     }
 
     let saved = persistAutomationV2Now(updated);

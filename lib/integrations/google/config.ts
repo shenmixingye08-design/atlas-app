@@ -1,6 +1,9 @@
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 
-/** Google account OAuth scopes — Gmail (read/write), Calendar, Drive (+ profile). */
+/**
+ * Google account OAuth scopes — Gmail / Calendar / Drive.file (+ profile).
+ * Drive uses drive.file (app-created files) — not full drive.
+ */
 export const GOOGLE_ACCOUNT_SCOPES = [
   "openid",
   "email",
@@ -10,8 +13,60 @@ export const GOOGLE_ACCOUNT_SCOPES = [
   "https://www.googleapis.com/auth/gmail.compose",
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/calendar.readonly",
-  "https://www.googleapis.com/auth/drive",
+  "https://www.googleapis.com/auth/drive.file",
 ] as const;
+
+/** Least-privilege Drive upload scope (preferred). */
+export const GOOGLE_DRIVE_FILE_SCOPE =
+  "https://www.googleapis.com/auth/drive.file" as const;
+
+/** Legacy full Drive scope still accepted for already-connected accounts. */
+export const GOOGLE_DRIVE_FULL_SCOPE =
+  "https://www.googleapis.com/auth/drive" as const;
+
+const GOOGLE_ENCRYPTION_ENV_KEYS = [
+  "ATLAS_GOOGLE_CREDENTIALS_ENCRYPTION_KEY",
+  "ATLAS_OAUTH_CREDENTIALS_ENCRYPTION_KEY",
+] as const;
+
+/**
+ * 32-byte key as hex (64 chars) or base64.
+ * Required to persist Google OAuth tokens at rest in production.
+ */
+export function getGoogleCredentialsEncryptionKeyBytes(): Buffer | null {
+  for (const envKey of GOOGLE_ENCRYPTION_ENV_KEYS) {
+    const raw = process.env[envKey]?.trim();
+    if (!raw) continue;
+    if (/^[0-9a-fA-F]{64}$/.test(raw)) {
+      return Buffer.from(raw, "hex");
+    }
+    try {
+      const fromB64 = Buffer.from(raw, "base64");
+      if (fromB64.length === 32) return fromB64;
+    } catch {
+      // try next
+    }
+  }
+  return null;
+}
+
+export function isGoogleCredentialsEncryptionConfigured(): boolean {
+  return getGoogleCredentialsEncryptionKeyBytes() !== null;
+}
+
+export function requireGoogleCredentialsEncryptionKey(): Buffer {
+  const key = getGoogleCredentialsEncryptionKeyBytes();
+  if (key) return key;
+
+  if (isAtlasProduction()) {
+    throw new Error(
+      "ATLAS_GOOGLE_CREDENTIALS_ENCRYPTION_KEY (or ATLAS_OAUTH_CREDENTIALS_ENCRYPTION_KEY) must be configured in production",
+    );
+  }
+
+  // Dev/test fallback only — never used when NODE_ENV/VERCEL_ENV is production.
+  return Buffer.from("atlas-google-dev-only-key-32b!!", "utf8");
+}
 
 export const GOOGLE_OAUTH_AUTHORIZE_URL =
   "https://accounts.google.com/o/oauth2/v2/auth";

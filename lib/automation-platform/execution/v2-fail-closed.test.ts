@@ -261,14 +261,21 @@ describe("V2 Production fail-closed", () => {
     }
   });
 
-  it("live adapter missing fails closed (no prepared success)", async () => {
+  it("gmail live adapter fails closed without connection (no prepared success)", async () => {
+    vi.stubEnv("GOOGLE_CLIENT_ID", "test-google-client");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "test-google-secret");
     const result = await strictStepInvoker({
       step: baseStep({
         id: "g",
         type: "gmail",
         name: "Gmail",
         order: 0,
-        configuration: { to: "boss@example.com" },
+        configuration: {
+          mode: "draft",
+          to: "boss@example.com",
+          subject: "hello",
+          textBody: "body",
+        },
         requiresApproval: true,
       }),
       userId: "user_fc",
@@ -278,11 +285,47 @@ describe("V2 Production fail-closed", () => {
     });
     expect(result.ok).toBe(false);
     expect(
-      ["live_adapter_missing", "automation_integration_required", "automation_feature_disabled"].includes(
-        result.errorCode ?? "",
-      ),
+      [
+        "gmail_not_connected",
+        "gmail_reconnect_required",
+        "gmail_missing_scope",
+        "automation_integration_required",
+      ].includes(result.errorCode ?? ""),
     ).toBe(true);
-    expect(result.failedStage).toBe("EXTERNAL_ADAPTER_RESOLUTION");
+    expect(result.failedStage).toBe("EXTERNAL_ADAPTER_EXECUTION");
+  });
+
+  it("calendar live adapter fails closed without connection", async () => {
+    vi.stubEnv("GOOGLE_CLIENT_ID", "test-google-client");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "test-google-secret");
+    const result = await strictStepInvoker({
+      step: baseStep({
+        id: "c",
+        type: "google_calendar",
+        name: "Calendar",
+        order: 0,
+        configuration: {
+          action: "create",
+          eventTitle: "Meeting",
+          startDateTime: "2030-06-01T10:00:00.000Z",
+          endDateTime: "2030-06-01T11:00:00.000Z",
+          timezone: "Asia/Tokyo",
+        },
+        requiresApproval: true,
+      }),
+      userId: "user_fc",
+      automationName: "cal",
+      runId: "r_cal",
+      approved: true,
+    });
+    expect(result.ok).toBe(false);
+    expect(
+      [
+        "calendar_not_connected",
+        "calendar_reconnect_required",
+        "calendar_missing_scope",
+      ].includes(result.errorCode ?? ""),
+    ).toBe(true);
   });
 
   it("partially_succeeded notification is not type=completed", () => {

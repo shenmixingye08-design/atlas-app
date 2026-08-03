@@ -9,6 +9,98 @@ import type { AutomationRun } from "@/lib/automation-platform/types/run";
 
 export const COMPLETION_EVIDENCE_VERSION = 1 as const;
 
+export type DriveStepEvidence = {
+  service: "google_drive";
+  fileId: string;
+  webViewLink: string;
+  size: number;
+  checksum: string;
+  targetFolderId: string;
+  fileName: string;
+  completedAt: string;
+  resultHash: string;
+  retryCount: number;
+  duplicatePrevented: boolean;
+};
+
+export type DropboxStepEvidence = {
+  service: "dropbox";
+  fileId: string;
+  pathDisplay: string;
+  rev: string;
+  size: number;
+  contentHash: string;
+  targetPath: string;
+  fileName: string;
+  sharedLinkUrl: string | null;
+  completedAt: string;
+  resultHash: string;
+  retryCount: number;
+  duplicatePrevented: boolean;
+};
+
+export type GmailStepEvidence = {
+  service: "gmail";
+  action: string;
+  draftId: string | null;
+  messageId: string | null;
+  threadId: string | null;
+  recipientHash: string;
+  subjectHash: string;
+  attachmentArtifactIds: string[];
+  completedAt: string;
+  resultHash: string;
+  retryCount: number;
+  duplicatePrevented: boolean;
+  adapterMode: string;
+  environment: string;
+  approvalId: string | null;
+  providerRequestId: string | null;
+  deliveryGuarantee: "provider_accepted" | "not_applicable";
+};
+
+export type CalendarStepEvidence = {
+  service: "google_calendar";
+  action: string;
+  calendarId: string;
+  eventId: string | null;
+  htmlLink: string | null;
+  hangoutLink: string | null;
+  startDateTime: string;
+  endDateTime: string;
+  timezone: string;
+  attendeeHash: string;
+  completedAt: string;
+  resultHash: string;
+  retryCount: number;
+  duplicatePrevented: boolean;
+  adapterMode: string;
+  environment: string;
+  approvalId: string | null;
+  providerRequestId: string | null;
+};
+
+export type WordPressStepEvidence = {
+  service: "wordpress";
+  action: string;
+  postId: number;
+  postStatus: string;
+  link: string;
+  editLink: string;
+  titleHash: string;
+  contentHash: string;
+  mediaArtifactIds: string[];
+  mediaIds: number[];
+  completedAt: string;
+  resultHash: string;
+  retryCount: number;
+  duplicatePrevented: boolean;
+  adapterMode: string;
+  environment: string;
+  approvalId: string | null;
+  providerRequestId: string | null;
+};
+
 export type AutomationV2CompletionEvidence = {
   runId: string;
   jobId: string;
@@ -24,6 +116,13 @@ export type AutomationV2CompletionEvidence = {
   completionHash: string;
   completedAt: string;
   evidenceVersion: typeof COMPLETION_EVIDENCE_VERSION;
+  adapterMode: string | null;
+  environment: string | null;
+  driveResults: DriveStepEvidence[];
+  gmailResults: GmailStepEvidence[];
+  calendarResults: CalendarStepEvidence[];
+  dropboxResults: DropboxStepEvidence[];
+  wordpressResults: WordPressStepEvidence[];
 };
 
 export type StepEvidenceFragment = {
@@ -32,6 +131,13 @@ export type StepEvidenceFragment = {
   externalActionIds?: string[];
   externalUrls?: string[];
   notificationIds?: string[];
+  adapterMode?: string;
+  environment?: string;
+  drive?: DriveStepEvidence;
+  gmail?: GmailStepEvidence;
+  calendar?: CalendarStepEvidence;
+  dropbox?: DropboxStepEvidence;
+  wordpress?: WordPressStepEvidence;
 };
 
 function unique(values: string[]): string[] {
@@ -40,7 +146,41 @@ function unique(values: string[]): string[] {
 
 export function mergeEvidenceFragments(
   fragments: StepEvidenceFragment[],
-): Required<StepEvidenceFragment> {
+): Required<
+  Omit<
+    StepEvidenceFragment,
+    "adapterMode" | "environment" | "drive" | "gmail" | "calendar" | "dropbox" | "wordpress"
+  >
+> & {
+  adapterMode: string | null;
+  environment: string | null;
+  driveResults: DriveStepEvidence[];
+  gmailResults: GmailStepEvidence[];
+  calendarResults: CalendarStepEvidence[];
+  dropboxResults: DropboxStepEvidence[];
+  wordpressResults: WordPressStepEvidence[];
+} {
+  const driveResults = fragments
+    .map((item) => item.drive)
+    .filter((item): item is DriveStepEvidence => Boolean(item));
+  const gmailResults = fragments
+    .map((item) => item.gmail)
+    .filter((item): item is GmailStepEvidence => Boolean(item));
+  const calendarResults = fragments
+    .map((item) => item.calendar)
+    .filter((item): item is CalendarStepEvidence => Boolean(item));
+  const dropboxResults = fragments
+    .map((item) => item.dropbox)
+    .filter((item): item is DropboxStepEvidence => Boolean(item));
+  const wordpressResults = fragments
+    .map((item) => item.wordpress)
+    .filter((item): item is WordPressStepEvidence => Boolean(item));
+  const adapterMode =
+    fragments.map((item) => item.adapterMode).find((item) => item?.trim()) ??
+    null;
+  const environment =
+    fragments.map((item) => item.environment).find((item) => item?.trim()) ??
+    null;
   return {
     artifactIds: unique(fragments.flatMap((item) => item.artifactIds ?? [])),
     storageObjectIds: unique(
@@ -53,6 +193,13 @@ export function mergeEvidenceFragments(
     notificationIds: unique(
       fragments.flatMap((item) => item.notificationIds ?? []),
     ),
+    adapterMode,
+    environment,
+    driveResults,
+    gmailResults,
+    calendarResults,
+    dropboxResults,
+    wordpressResults,
   };
 }
 
@@ -102,6 +249,13 @@ export function buildCompletionEvidenceV2(input: {
     ].sort(),
     completedAt,
     evidenceVersion: COMPLETION_EVIDENCE_VERSION,
+    adapterMode: merged.adapterMode,
+    environment: merged.environment,
+    driveResults: merged.driveResults,
+    gmailResults: merged.gmailResults,
+    calendarResults: merged.calendarResults,
+    dropboxResults: merged.dropboxResults,
+    wordpressResults: merged.wordpressResults,
   };
 
   const completionHash = createHash("sha256")
@@ -114,7 +268,6 @@ export function buildCompletionEvidenceV2(input: {
   };
 }
 
-/** Attach evidence onto run resultSummary metadata channel (durable-friendly). */
 export function evidenceSummaryLine(
   evidence: AutomationV2CompletionEvidence,
 ): string {

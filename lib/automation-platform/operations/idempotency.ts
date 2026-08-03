@@ -9,6 +9,7 @@ export const EXTERNAL_ACTION_CAPABILITIES: ReadonlySet<AutomationCapabilityId> =
     "google_calendar",
     "wordpress",
     "dropbox",
+    "google_drive",
     "notify",
   ]);
 

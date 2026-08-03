@@ -189,6 +189,18 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     enabled: true,
   },
   {
+    id: "google_drive",
+    name: "Google Drive",
+    description: "Google Driveへ成果物を保存",
+    riskLevel: "medium",
+    handlerKind: "external_integration",
+    requiredFeatureFlag: "google",
+    requiredConnector: "google",
+    systemRequiresApproval: false,
+    invokeContract: "connectors.google.drive.upload",
+    enabled: true,
+  },
+  {
     id: "notify",
     name: "通知",
     description: "ユーザー通知",

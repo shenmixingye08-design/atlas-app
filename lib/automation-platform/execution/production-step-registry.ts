@@ -216,6 +216,17 @@ export const PRODUCTION_STEP_REGISTRY: readonly ProductionStepDefinition[] = [
     evidenceRequired: true,
     requireLiveAdapterAtActivation: true,
   },
+  {
+    type: "google_drive",
+    kind: "external",
+    productionInvoker: "strictStepInvoker",
+    requiredAdapter: "google_drive",
+    completionRequirements: ["artifact_with_external_id"],
+    retryableByDefault: true,
+    idempotent: true,
+    evidenceRequired: true,
+    requireLiveAdapterAtActivation: true,
+  },
 ] as const;
 
 const BY_TYPE = new Map(
@@ -264,6 +275,12 @@ export function isLiveAdapterWired(adapterId: string | null): boolean {
     // Internal engines (not external OAuth adapters)
     "openai_vision",
     "openai_vision_ocr",
+    // External Production Live adapters
+    "google_drive",
+    "google_gmail",
+    "google_calendar",
+    "dropbox",
+    "wordpress",
   ]);
   return wired.has(adapterId);
 }
