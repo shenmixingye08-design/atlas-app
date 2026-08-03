@@ -57,6 +57,155 @@ vi.mock("@/lib/personal-memory/bridge/automation", () => ({
   })),
 }));
 
+// Phase2: Automation Memory goes through MemoryApply (not bridge alone)
+vi.mock("@/lib/memory-apply/automation", () => ({
+  applyMemoryForAutomation: vi.fn(async (input: {
+    automation: { memoryPolicy: { enabled: boolean } };
+  }) => {
+    if (!input.automation.memoryPolicy.enabled) {
+      return {
+        injectionText: "",
+        memoryUsage: { used: [], updated: [], unusedScopes: [] },
+        ledger: {
+          memoryIdsUsed: [],
+          memoryValuesResolved: [],
+          memoryConflicts: [],
+          memoryOverrides: [],
+          memoryCandidateUpdates: [],
+          unusedMemoryIds: [],
+        },
+        resolvedInstruction: null,
+        diagnostics: {
+          channel: "automation",
+          applied: false,
+          memoryEnabled: false,
+          memoryIdsUsed: [],
+          scopesUsed: [],
+          injectionChars: 0,
+          tokenEstimate: 0,
+          quality: null,
+          notes: [],
+          at: new Date().toISOString(),
+        },
+        contentOverlay: {
+          injectionText: "",
+          writingStyle: null,
+          tone: null,
+          forbiddenExpressions: [],
+          signature: null,
+          contactLines: [],
+          workStyleNotes: [],
+          ocrDictionary: {},
+          visionHints: [],
+        },
+        deliverableOverlay: {
+          brand: null,
+          templateId: null,
+          companyName: null,
+          author: null,
+          footerNote: null,
+          brandColorHex: null,
+          defaultFont: null,
+          excel: {
+            headerColorArgb: null,
+            currency: null,
+            dateFormat: null,
+            decimalPlaces: null,
+            columnOrder: [],
+          },
+          powerpoint: {
+            brandColorHex: null,
+            fontFace: null,
+            titleAlign: null,
+          },
+          pdf: { brandColorHex: null, footerNote: null, marginPt: null },
+          memoryIdsUsed: [],
+          scopesUsed: [],
+        },
+      };
+    }
+    return {
+      injectionText: "丁寧語で書いてください",
+      memoryUsage: {
+        used: [
+          {
+            scope: "writing_style",
+            key: "tone",
+            summary: "丁寧語",
+            source: "user_memory",
+          },
+        ],
+        updated: [],
+        unusedScopes: [],
+        memoryIdsUsed: ["mem_1"],
+        tokenEstimate: 40,
+      },
+      ledger: {
+        memoryIdsUsed: ["mem_1"],
+        memoryValuesResolved: [],
+        memoryConflicts: [],
+        memoryOverrides: [],
+        memoryCandidateUpdates: [],
+        unusedMemoryIds: [],
+      },
+      resolvedInstruction: {
+        merged: { tone: "locked" },
+        freeformNotes: "丁寧語で書いてください",
+        conflicts: [],
+      },
+      diagnostics: {
+        channel: "automation",
+        applied: true,
+        memoryEnabled: true,
+        memoryIdsUsed: ["mem_1"],
+        scopesUsed: ["writing_style"],
+        injectionChars: 20,
+        tokenEstimate: 40,
+        quality: null,
+        notes: [],
+        at: new Date().toISOString(),
+      },
+      contentOverlay: {
+        injectionText: "丁寧語で書いてください",
+        writingStyle: "丁寧語",
+        tone: "丁寧",
+        forbiddenExpressions: [],
+        signature: null,
+        contactLines: [],
+        workStyleNotes: [],
+        ocrDictionary: {},
+        visionHints: [],
+      },
+      deliverableOverlay: {
+        brand: null,
+        templateId: null,
+        companyName: null,
+        author: null,
+        footerNote: null,
+        brandColorHex: null,
+        defaultFont: null,
+        excel: {
+          headerColorArgb: null,
+          currency: null,
+          dateFormat: null,
+          decimalPlaces: null,
+          columnOrder: [],
+        },
+        powerpoint: {
+          brandColorHex: null,
+          fontFace: null,
+          titleAlign: null,
+        },
+        pdf: { brandColorHex: null, footerNote: null, marginPt: null },
+        memoryIdsUsed: ["mem_1"],
+        scopesUsed: ["writing_style"],
+      },
+    };
+  }),
+  recordAutomationMemoryFailure: vi.fn(async () => undefined),
+  recordAutomationMemorySuccess: vi.fn(async () => undefined),
+}));
+
 import { createNotification } from "@/lib/notifications/service";
 import {
   resetAutomationAuditLogForTests,

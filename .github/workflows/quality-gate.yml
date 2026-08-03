@@ -65,6 +65,9 @@ jobs:
       - name: Cron SoT consistency
         run: node scripts/ci/assert-cron-sot.mjs
 
+      - name: Memory share SoT gate
+        run: node scripts/ci/assert-memory-share.mjs
+
       - name: Apply work-queue Postgres migrations (CI service)
         env:
           DATABASE_URL: postgresql://atlas:atlas@127.0.0.1:5432/atlas_work_queue
@@ -110,6 +113,23 @@ jobs:
           VITEST: ""
           NODE_ENV: test
           NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Memory share Phase2 proof
+        run: npm test -- --run lib/memory-apply/memory-apply.test.ts
+        env:
+          TZ: UTC
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Upload memory-share-proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-share-proof
+          path: |
+            artifacts/memory-share/memory-share-proof.json
+            /opt/cursor/artifacts/memory-share/memory-share-proof.json
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload Vitest logs on failure
         if: failure()

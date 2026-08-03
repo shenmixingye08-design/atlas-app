@@ -13,6 +13,11 @@ import {
   buildContentOverlay,
   buildDeliverableOverlay,
 } from "@/lib/memory-apply/overlays";
+import {
+  assertMemoryVersionComplete,
+  buildMemoryVersion,
+  type MemoryVersion,
+} from "@/lib/memory-apply/memory-version";
 
 export type PersonalizationContext = {
   userId: string;
@@ -27,6 +32,8 @@ export type PersonalizationContext = {
   tokenEstimate: number;
   memoryIdsUsed: string[];
   scopesUsed: string[];
+  /** Integrity metadata — required before AI execution */
+  memoryVersion: MemoryVersion;
   /** Structured facts for PromptBuilder */
   facts: {
     companyName: string | null;
@@ -79,6 +86,12 @@ export function buildPersonalizationContext(input: {
     .filter(Boolean)
     .join(" / ");
 
+  const memoryVersion = buildMemoryVersion({
+    channel: input.channel,
+    provider: input.provider,
+  });
+  assertMemoryVersionComplete(memoryVersion);
+
   return {
     userId: input.userId,
     organizationId: input.provider.organizationId,
@@ -91,6 +104,7 @@ export function buildPersonalizationContext(input: {
     tokenEstimate: input.provider.tokenEstimate,
     memoryIdsUsed: input.provider.memoryIdsUsed,
     scopesUsed: input.provider.scopesUsed,
+    memoryVersion,
     facts: {
       companyName: deliverable.companyName,
       department: firstContactLine(content.contactLines, (l) =>

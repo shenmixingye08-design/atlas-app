@@ -1,8 +1,11 @@
 import "server-only";
 
-import { createPersonalMemory, resolveForContext } from "@/lib/personal-memory/service";
-import { buildContentOverlay } from "@/lib/memory-apply/overlays";
-import { recordMemoryApplyEvent, recordMemoryUpdateEvent } from "@/lib/memory-apply/metrics";
+import { createPersonalMemory } from "@/lib/personal-memory/service";
+import { MemoryApply } from "@/lib/memory-apply/apply";
+import {
+  recordMemoryApplyEvent,
+  recordMemoryUpdateEvent,
+} from "@/lib/memory-apply/metrics";
 import {
   compareMemoryQuality,
   expectedTokensFromMemoryValues,
@@ -27,6 +30,9 @@ export function applyOcrCorrections(
   return next;
 }
 
+/**
+ * Path: MemoryApply → PersonalizationContext → OCR dictionary overlay.
+ */
 export async function resolveOcrMemoryDictionary(input: {
   userId: string;
 }): Promise<{
@@ -34,43 +40,19 @@ export async function resolveOcrMemoryDictionary(input: {
   memoryIdsUsed: string[];
   injectionText: string;
 }> {
-  const { result, ledger } = await resolveForContext({
-    userId: input.userId,
-    allowedScopes: [
-      "contact_info",
-      "work_content_style",
-      "writing_style",
-      "customer_info",
-    ],
-    capabilities: ["ocr"],
-  });
-  const overlay = buildContentOverlay({
-    values: ledger.memoryValuesResolved,
-    injectionText: result.injectionText,
-  });
-
-  // Contact fields also act as preferred spellings
-  for (const line of overlay.contactLines) {
-    const parts = line.split(":").map((p) => p.trim());
-    if (parts.length === 2 && parts[0] && parts[1]) {
-      // Do not invent reverse mappings for labels; only use structured dict.
-    }
-  }
-
-  recordMemoryApplyEvent({
+  const applied = await MemoryApply({
     userId: input.userId,
     channel: "ocr",
-    memoryMode: Object.keys(overlay.ocrDictionary).length > 0 ? "on" : "off",
-    applied: Object.keys(overlay.ocrDictionary).length > 0,
-    memoryIdsUsed: ledger.memoryIdsUsed,
-    scopesUsed: [...new Set(ledger.memoryValuesResolved.map((v) => v.scope))],
-    success: true,
+    baseline: "OCR correction",
+    capabilities: ["ocr"],
+    // Shared PersonalizationContext — no OCR-only Memory silo
   });
 
   return {
-    dictionary: overlay.ocrDictionary,
-    memoryIdsUsed: ledger.memoryIdsUsed,
-    injectionText: result.injectionText,
+    dictionary: applied.context.content.ocrDictionary,
+    memoryIdsUsed: applied.context.memoryIdsUsed,
+    injectionText:
+      applied.prompt.injection.fullText || applied.context.injectionText,
   };
 }
 
@@ -91,16 +73,6 @@ export async function correctOcrTextWithMemory(input: {
     after: corrected,
     memoryMode: Object.keys(resolved.dictionary).length > 0 ? "on" : "off",
     expectedMemoryTokens: expectedTokensFromMemoryValues(resolved.dictionary),
-  });
-
-  recordMemoryApplyEvent({
-    userId: input.userId,
-    channel: "ocr",
-    memoryMode: Object.keys(resolved.dictionary).length > 0 ? "on" : "off",
-    applied: corrected !== input.text || Object.keys(resolved.dictionary).length > 0,
-    memoryIdsUsed: resolved.memoryIdsUsed,
-    improvementRate: quality.improvementRate,
-    success: true,
   });
 
   return {
@@ -142,7 +114,7 @@ export async function saveOcrCorrectionToMemory(input: {
   recordMemoryUpdateEvent(input.userId, 1);
   recordMemoryApplyEvent({
     userId: input.userId,
-    channel: "ocr",
+    channel: "dashboard",
     memoryMode: "on",
     applied: true,
     memoryIdsUsed: [row.id],

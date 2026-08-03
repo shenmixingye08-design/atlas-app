@@ -44,6 +44,18 @@ export { resolveNotificationPreferencesWithMemory } from "./notifications";
 export { resolveSchedulerMemoryDefaults } from "./scheduler";
 export { applyMemoryForRegenerate } from "./regenerate";
 export { applyMemoryForDeliverable } from "./deliverables";
+export { applyMemoryForChat } from "./chat";
+export type { ChatMemoryInput, ChatMemoryApplyResult } from "./chat";
+export { applyMemoryForPlanner } from "./planner";
+export type { PlannerMemoryInput, PlannerMemoryApplyResult } from "./planner";
+export {
+  proveMemoryShare,
+  writeMemoryShareProof,
+  MEMORY_PATH_DIAGRAM,
+  MEMORY_EXECUTION_SEQUENCE,
+  listForbiddenParallelMemoryResolves,
+  type MemoryShareProof,
+} from "./share-proof";
 
 /** Unified secretary Memory API */
 export { MemoryProvider } from "./provider";
@@ -52,6 +64,21 @@ export {
   buildPersonalizationContext,
   type PersonalizationContext,
 } from "./personalization-context";
+export {
+  buildMemoryVersion,
+  assertMemoryVersionComplete,
+  type MemoryVersion,
+} from "./memory-version";
+export {
+  loadMemory,
+  saveMemory,
+  assertMemoryLoadedForAi,
+  withSharedMemory,
+  MemoryLoadError,
+  MemoryRequiredError,
+  type SaveMemoryCategory,
+  type SaveMemoryInput,
+} from "./pipeline";
 export {
   MemoryApply,
   MemoryApplyComparison,
