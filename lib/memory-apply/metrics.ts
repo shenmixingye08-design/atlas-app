@@ -23,6 +23,8 @@ const ALL_CHANNELS: MemoryApplyChannel[] = [
   "commander",
   "prediction",
   "workflow",
+  "chat",
+  "planner",
 ];
 
 type Bucket = {

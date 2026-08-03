@@ -1,7 +1,6 @@
 import "server-only";
 
-import { resolveForContext } from "@/lib/personal-memory/service";
-import { recordMemoryApplyEvent } from "@/lib/memory-apply/metrics";
+import { MemoryApply } from "@/lib/memory-apply/apply";
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -9,8 +8,7 @@ function asString(value: unknown): string | null {
 
 /**
  * Resolve timezone / notification method / priority from Personal Memory
- * for Scheduler defaults. Does not rewrite automation triggers silently when
- * an explicit timezone is already set.
+ * for Scheduler defaults via the unified MemoryApply path.
  */
 export async function resolveSchedulerMemoryDefaults(input: {
   userId: string;
@@ -23,14 +21,10 @@ export async function resolveSchedulerMemoryDefaults(input: {
   applied: boolean;
 }> {
   try {
-    const { ledger } = await resolveForContext({
+    const applied = await MemoryApply({
       userId: input.userId,
-      allowedScopes: [
-        "timezone",
-        "notification_preferences",
-        "automation_execution",
-        "recurring_work_preferences",
-      ],
+      channel: "scheduler",
+      baseline: "scheduler defaults",
       capabilities: ["schedule"],
     });
 
@@ -38,7 +32,7 @@ export async function resolveSchedulerMemoryDefaults(input: {
     let notifyMethod: string | null = null;
     let priority: string | null = null;
 
-    for (const row of ledger.memoryValuesResolved) {
+    for (const row of applied.provider.personalValues) {
       if (!timezone) {
         timezone =
           asString(row.value.timezone) ??
@@ -54,33 +48,14 @@ export async function resolveSchedulerMemoryDefaults(input: {
         priority ?? asString(row.value.priority) ?? asString(row.value.urgency);
     }
 
-    const applied = ledger.memoryIdsUsed.length > 0;
-    recordMemoryApplyEvent({
-      userId: input.userId,
-      channel: "scheduler",
-      memoryMode: applied ? "on" : "off",
-      applied,
-      memoryIdsUsed: ledger.memoryIdsUsed,
-      scopesUsed: [...new Set(ledger.memoryValuesResolved.map((v) => v.scope))],
-      success: true,
-    });
-
     return {
       timezone,
       notifyMethod,
       priority,
-      memoryIdsUsed: ledger.memoryIdsUsed,
-      applied,
+      memoryIdsUsed: applied.context.memoryIdsUsed,
+      applied: applied.context.memoryIdsUsed.length > 0,
     };
   } catch {
-    recordMemoryApplyEvent({
-      userId: input.userId,
-      channel: "scheduler",
-      memoryMode: "off",
-      applied: false,
-      success: false,
-      failureReason: "resolve_failed",
-    });
     return {
       timezone: input.explicitTimezone?.trim() || null,
       notifyMethod: null,

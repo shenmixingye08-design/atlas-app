@@ -1,9 +1,12 @@
 import "server-only";
 
 import type { VisionStyleSignals } from "@/lib/vision/types";
-import { createPersonalMemory, resolveForContext } from "@/lib/personal-memory/service";
-import { recordMemoryApplyEvent, recordMemoryUpdateEvent } from "@/lib/memory-apply/metrics";
-import { buildContentOverlay } from "@/lib/memory-apply/overlays";
+import { createPersonalMemory } from "@/lib/personal-memory/service";
+import { MemoryApply } from "@/lib/memory-apply/apply";
+import {
+  recordMemoryApplyEvent,
+  recordMemoryUpdateEvent,
+} from "@/lib/memory-apply/metrics";
 
 /**
  * Convert Vision style signals into Personal Memory candidates (approval required).
@@ -89,9 +92,10 @@ export async function createVisionStyleMemoryCandidates(input: {
     recordMemoryUpdateEvent(input.userId, candidateIds.length);
   }
 
+  // Candidate write is not apply — do not mark vision channel applied here.
   recordMemoryApplyEvent({
     userId: input.userId,
-    channel: "vision",
+    channel: "dashboard",
     memoryMode: "on",
     applied: candidateIds.length > 0,
     memoryIdsUsed: candidateIds,
@@ -104,6 +108,7 @@ export async function createVisionStyleMemoryCandidates(input: {
 
 /**
  * Resolve prior Vision/OCR format memory before analysis.
+ * Path: MemoryApply → PersonalizationContext → PromptBuilder.
  */
 export async function resolveVisionMemoryContext(input: {
   userId: string;
@@ -112,40 +117,26 @@ export async function resolveVisionMemoryContext(input: {
   hints: string[];
   memoryIdsUsed: string[];
 }> {
-  const { result, ledger } = await resolveForContext({
-    userId: input.userId,
-    allowedScopes: [
-      "writing_style",
-      "document_design",
-      "preferred_formats",
-      "contact_info",
-      "work_content_style",
-    ],
-    capabilities: ["vision", "ocr"],
-  });
-  const overlay = buildContentOverlay({
-    values: ledger.memoryValuesResolved,
-    injectionText: result.injectionText,
-  });
-  const hints = [
-    ...overlay.visionHints,
-    ...overlay.contactLines.slice(0, 5),
-    ...(overlay.writingStyle ? [overlay.writingStyle] : []),
-  ];
-
-  recordMemoryApplyEvent({
+  const applied = await MemoryApply({
     userId: input.userId,
     channel: "vision",
-    memoryMode: result.injectionText ? "on" : "off",
-    applied: ledger.memoryIdsUsed.length > 0,
-    memoryIdsUsed: ledger.memoryIdsUsed,
-    scopesUsed: [...new Set(ledger.memoryValuesResolved.map((v) => v.scope))],
-    success: true,
+    baseline: "Vision analysis",
+    capabilities: ["vision", "ocr"],
+    // Shared PersonalizationContext — no Vision-only Memory silo
   });
 
+  const hints = [
+    ...applied.context.content.visionHints,
+    ...applied.context.content.contactLines.slice(0, 5),
+    ...(applied.context.content.writingStyle
+      ? [applied.context.content.writingStyle]
+      : []),
+  ];
+
   return {
-    injectionText: result.injectionText,
+    injectionText:
+      applied.prompt.injection.fullText || applied.context.injectionText,
     hints,
-    memoryIdsUsed: ledger.memoryIdsUsed,
+    memoryIdsUsed: applied.context.memoryIdsUsed,
   };
 }

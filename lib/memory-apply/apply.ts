@@ -5,7 +5,10 @@
 import "server-only";
 
 import { MemoryProvider } from "@/lib/memory-apply/provider";
-import type { MemoryProviderRequest } from "@/lib/memory-apply/provider";
+import type {
+  MemoryProviderRequest,
+  MemoryProviderResult,
+} from "@/lib/memory-apply/provider";
 import {
   buildPersonalizationContext,
   type PersonalizationContext,
@@ -39,6 +42,8 @@ export type MemoryApplyInput = {
   /** Memory OFF for A/B comparison */
   memoryEnabled?: boolean;
   artifactIds?: string[];
+  automationOverrides?: Record<string, unknown> | null;
+  currentInstruction?: Record<string, unknown> | null;
 };
 
 export type MemoryApplyOutput = {
@@ -47,6 +52,8 @@ export type MemoryApplyOutput = {
   surface: SurfaceContextBundle;
   quality: MemoryQualityDiff;
   logId: string;
+  /** Raw provider result — adapters must not re-resolve Memory separately */
+  provider: MemoryProviderResult;
 };
 
 /**
@@ -67,6 +74,8 @@ export async function MemoryApply(
     artifactTypes: input.artifactTypes,
     capabilities: input.capabilities,
     memoryEnabled: input.memoryEnabled,
+    automationOverrides: input.automationOverrides,
+    currentInstruction: input.currentInstruction,
   };
 
   const provider = await MemoryProvider(providerRequest);
@@ -127,6 +136,7 @@ export async function MemoryApply(
     surface,
     quality,
     logId: log.id,
+    provider,
   };
 }
 

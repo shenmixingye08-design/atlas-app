@@ -752,6 +752,8 @@ describe("Memory Apply — metrics / audit / dashboard", () => {
       "commander",
       "prediction",
       "workflow",
+      "chat",
+      "planner",
     ] as const;
     for (const channel of channels) {
       recordMemoryApplyEvent({
@@ -903,5 +905,202 @@ describe("Memory Apply — unified secretary API", () => {
     expect(result.mode).toBe("off");
     expect(result.combinedInjectionText).toBe("");
     expect(result.memoryIdsUsed).toEqual([]);
+  });
+});
+
+describe("Memory Apply — Phase2 share rate 100%", () => {
+  beforeEach(() => {
+    clearAllPersonalMemoryData(USER);
+    writePersonalMemorySettings(USER, {
+      ...DEFAULT_PERSONAL_MEMORY_SETTINGS,
+      enabled: true,
+    });
+    resetMemoryApplyMetricsForTests();
+    resetMemoryApplyLogForTests();
+  });
+
+  it("41. same Memory applied across all AI secretary surfaces (100%)", async () => {
+    const style = seedMemory({
+      scope: "writing_style",
+      key: "tone",
+      title: "好きな文章",
+      summary: "丁寧で簡潔に、必ず敬語",
+      value: {
+        text: "丁寧で簡潔に、必ず敬語で書いてください",
+        tone: "丁寧語",
+      },
+      source: "explicit",
+      status: "active",
+    });
+    seedMemory({
+      scope: "contact_info",
+      key: "company",
+      title: "会社",
+      summary: "株式会社ミネルバ",
+      value: { companyName: "株式会社ミネルバ", signature: "敬具" },
+      kind: "work_preference",
+      source: "explicit",
+      status: "active",
+    });
+    seedMemory({
+      kind: "work_preference",
+      scope: "work_content_style",
+      key: "ocr_dictionary",
+      title: "OCR",
+      summary: "誤認→正解",
+      value: { dictionary: { 誤認: "正解" } },
+      source: "explicit",
+      status: "active",
+    });
+    seedMemory({
+      scope: "notification_preferences",
+      key: "notify",
+      title: "通知",
+      summary: "完了通知ON",
+      value: { completedEnabled: true, allEnabled: true },
+      source: "explicit",
+      status: "active",
+    });
+
+    const { resolveVisionMemoryContext } = await import(
+      "@/lib/memory-apply/vision"
+    );
+    const { correctOcrTextWithMemory } = await import("@/lib/memory-apply/ocr");
+    const { applyMemoryForChat } = await import("@/lib/memory-apply/chat");
+    const { applyMemoryForPlanner } = await import(
+      "@/lib/memory-apply/planner"
+    );
+    const { MemoryApply } = await import("@/lib/memory-apply/apply");
+    const { applyMemoryForPrediction } = await import(
+      "@/lib/memory-apply/prediction"
+    );
+    const { proveMemoryShare, MEMORY_PATH_DIAGRAM } = await import(
+      "@/lib/memory-apply/share-proof"
+    );
+    const { resolveNotificationPreferencesWithMemorySync } = await import(
+      "@/lib/memory-apply/notifications"
+    );
+
+    // Production adapters — not synthetic metrics
+    await applyMemoryForDeliverable({
+      userId: USER,
+      content: "提案書本文",
+      format: "docx",
+    });
+    await applyMemoryForDeliverable({
+      userId: USER,
+      content: "|A|B|\n|1|2|",
+      format: "xlsx",
+    });
+    await applyMemoryForDeliverable({
+      userId: USER,
+      content: "PDF本文",
+      format: "pdf",
+    });
+    await applyMemoryForDeliverable({
+      userId: USER,
+      content: "# スライド\n要点",
+      format: "pptx",
+    });
+    await resolveVisionMemoryContext({ userId: USER });
+    await correctOcrTextWithMemory({ userId: USER, text: "誤認商品" });
+    await applyMemoryForAutomation({
+      automation: sampleAutomation(true),
+    });
+    await applyMemoryForRegenerate({
+      userId: USER,
+      previousContent: "前回の成果物本文です。",
+      improvementNotes: "結論を先頭に",
+    });
+    await applyMemoryForChat({
+      userId: USER,
+      input: "好きな文章で提案書を書いて",
+    });
+    await applyMemoryForPlanner({
+      userId: USER,
+      assignment: "好きな文章で週次レポートを計画",
+    });
+    await MemoryApply({
+      userId: USER,
+      channel: "commander",
+      baseline: "好きな文章で仕事を進めて",
+      assignment: "好きな文章で仕事を進めて",
+    });
+
+    // Remaining required audit channels via real MemoryApply / adapters
+    await MemoryApply({
+      userId: USER,
+      channel: "orchestration",
+      baseline: "orchestration",
+    });
+    await MemoryApply({
+      userId: USER,
+      channel: "workflow",
+      baseline: "workflow",
+    });
+    await applyMemoryForPrediction({
+      userId: USER,
+      draft: "次の提案",
+    });
+    await resolveSchedulerMemoryDefaults({ userId: USER });
+    resolveNotificationPreferencesWithMemorySync({
+      userId: USER,
+      base: DEFAULT_NOTIFICATION_PREFERENCES,
+    });
+    await MemoryApply({
+      userId: USER,
+      channel: "dashboard",
+      baseline: "dashboard memory apply",
+    });
+
+    const proof = proveMemoryShare(USER);
+    expect(MEMORY_PATH_DIAGRAM).toMatch(/PersonalizationContext/);
+    expect(proof.unappliedCount).toBe(0);
+    expect(proof.missingChannels).toEqual([]);
+    expect(proof.shareRatePercent).toBe(100);
+    expect(proof.sharedMemoryIds).toContain(style.id);
+    expect(proof.pass).toBe(true);
+
+    const audit = auditMemoryApplyCoverage(USER);
+    expect(audit.missing).toEqual([]);
+    expect(audit.pass).toBe(true);
+  });
+
+  it("42. forbidden parallel Memory resolves list is empty", async () => {
+    const { listForbiddenParallelMemoryResolves } = await import(
+      "@/lib/memory-apply/share-proof"
+    );
+    expect(listForbiddenParallelMemoryResolves()).toEqual([]);
+  });
+
+  it("43. chat + planner adapters expose shared PersonalizationContext", async () => {
+    seedMemory({
+      scope: "writing_style",
+      key: "tone",
+      title: "文体",
+      summary: "ですます調",
+      value: { text: "ですます調" },
+      source: "explicit",
+      status: "active",
+    });
+    const { applyMemoryForChat } = await import("@/lib/memory-apply/chat");
+    const { applyMemoryForPlanner } = await import(
+      "@/lib/memory-apply/planner"
+    );
+    const chat = await applyMemoryForChat({
+      userId: USER,
+      input: "こんにちは",
+    });
+    const planner = await applyMemoryForPlanner({
+      userId: USER,
+      assignment: "計画を立てて",
+    });
+    expect(chat.context.channel).toBe("chat");
+    expect(planner.context.channel).toBe("planner");
+    expect(chat.instructions.length).toBeGreaterThan(0);
+    expect(planner.metadata?.personalMemory).toBeTruthy();
+    expect(chat.context.memoryIdsUsed.sort()).toEqual(
+      planner.context.memoryIdsUsed.sort(),
+    );
   });
 });
