@@ -16,7 +16,14 @@ import type {
   WorkQueueMetrics,
   WorkStepRecord,
 } from "../types";
+import { WORK_JOB_TRANSITIONS } from "../types";
 import type { WorkQueueStore } from "./interface";
+
+function allowedFromStatuses(to: WorkJobStatus): WorkJobStatus[] {
+  return (Object.keys(WORK_JOB_TRANSITIONS) as WorkJobStatus[]).filter((from) =>
+    WORK_JOB_TRANSITIONS[from].includes(to),
+  );
+}
 
 function resolveDatabaseUrl(): string | null {
   const url =
@@ -448,9 +455,14 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
       fields.push(`${col} = $${values.length}`);
     };
     if (patch.status !== undefined) add("status", patch.status);
+    if (patch.organizationId !== undefined) {
+      add("organization_id", patch.organizationId);
+    }
     if (patch.availableAt !== undefined) add("available_at", patch.availableAt);
     if (patch.startedAt !== undefined) add("started_at", patch.startedAt);
+    if (patch.claimedAt !== undefined) add("claimed_at", patch.claimedAt);
     if (patch.completedAt !== undefined) add("completed_at", patch.completedAt);
+    if (patch.failedAt !== undefined) add("failed_at", patch.failedAt);
     if (patch.leaseOwner !== undefined) add("lease_owner", patch.leaseOwner);
     if (patch.leaseExpiresAt !== undefined) {
       add("lease_expires_at", patch.leaseExpiresAt);
@@ -475,6 +487,15 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
     if (expectedLeaseOwner) {
       values.push(expectedLeaseOwner);
       sql += ` and lease_owner = $${values.length}`;
+    }
+    // P0-2: enforce FSM in SQL so cancel/complete cannot last-write-win.
+    if (patch.status !== undefined) {
+      const from = allowedFromStatuses(patch.status);
+      if (from.length === 0) return null;
+      values.push(from);
+      sql += ` and status = any($${values.length}::text[])`;
+    } else {
+      sql += ` and status not in ('completed', 'cancelled', 'dead_letter')`;
     }
     sql += " returning *";
     const res = await this.pool.query(sql, values);

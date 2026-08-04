@@ -9,6 +9,7 @@ import {
 import { dirname } from "node:path";
 
 import {
+  WORK_QUEUE_CLOCK_SKEW_MS,
   WORK_QUEUE_DEFAULT_MAX_ATTEMPTS,
   WORK_QUEUE_FILE_ENV,
   WORK_QUEUE_MEMORY_FAST_ENV,
@@ -248,9 +249,10 @@ export class FileWorkQueueStore implements WorkQueueStore {
           if (
             (job.status === "leased" || job.status === "running") &&
             job.leaseExpiresAt &&
-            new Date(job.leaseExpiresAt).getTime() < nowMs
+            new Date(job.leaseExpiresAt).getTime() <
+              nowMs - WORK_QUEUE_CLOCK_SKEW_MS
           ) {
-            return true; // expired lease reclaim
+            return true; // expired lease reclaim (clock-skew grace)
           }
           return false;
         })
@@ -393,7 +395,8 @@ export class FileWorkQueueStore implements WorkQueueStore {
       if (!(hb > 0 && hb < cutoff)) return null;
       const leaseExpired =
         !job.leaseExpiresAt ||
-        new Date(job.leaseExpiresAt).getTime() < input.nowMs;
+        new Date(job.leaseExpiresAt).getTime() <
+          input.nowMs - WORK_QUEUE_CLOCK_SKEW_MS;
       if (!leaseExpired) return null;
       const nowIso = new Date(input.nowMs).toISOString();
       job.status = input.status;

@@ -5,9 +5,19 @@
 
 import "server-only";
 
+import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
 import { consumeWordFault } from "./fault-inject";
+
+export class WordJobClaimUnavailableError extends Error {
+  readonly code = "word_job_claim_unavailable";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "WordJobClaimUnavailableError";
+  }
+}
 
 export const WORD_JOB_STAGES = [
   "REQUEST_RECEIVED",
@@ -102,7 +112,14 @@ function leaseExpiryIso(): string {
 async function upsertJobRemote(job: WordJobRecord): Promise<void> {
   try {
     const client = createServiceRoleClientIfConfigured();
-    if (!client) return;
+    if (!client) {
+      if (isAtlasProduction()) {
+        throw new WordJobClaimUnavailableError(
+          "[word-jobs] P0-2: Production refuses Map-only claim — Supabase required",
+        );
+      }
+      return;
+    }
     const { error } = await client.from("atlas_deliverable_jobs").upsert({
       id: job.id,
       user_id: job.userId,
@@ -126,9 +143,22 @@ async function upsertJobRemote(job: WordJobRecord): Promise<void> {
     } as never);
     if (error) {
       console.error("[atlas_deliverable_jobs] upsert failed", error.message);
+      if (isAtlasProduction()) {
+        throw new WordJobClaimUnavailableError(
+          `[word-jobs] P0-2: Production durable upsert failed — Map claim aborted (${error.message})`,
+        );
+      }
     }
   } catch (error) {
+    if (error instanceof WordJobClaimUnavailableError) throw error;
     console.error("[atlas_deliverable_jobs] upsert error", error);
+    if (isAtlasProduction()) {
+      throw new WordJobClaimUnavailableError(
+        `[word-jobs] P0-2: Production durable upsert threw — Map claim aborted (${
+          error instanceof Error ? error.message : String(error)
+        })`,
+      );
+    }
   }
 }
 
@@ -209,6 +239,11 @@ export async function claimWordJob(input: {
   | { ok: true; job: WordJobRecord; claimed: boolean }
   | { ok: false; reason: "owned_by_other" | "already_completed"; job: WordJobRecord }
 > {
+  if (isAtlasProduction() && !createServiceRoleClientIfConfigured()) {
+    throw new WordJobClaimUnavailableError(
+      "[word-jobs] P0-2: Production claimWordJob requires Supabase — Map/memory claim disabled",
+    );
+  }
   if (consumeWordFault("parallel_job_race")) {
     // Simulate another worker holding the lease.
     const ghost: WordJobRecord = {

@@ -1,6 +1,11 @@
 -- P0-2: Harden atlas_work_queue_jobs for Production durable atomic claim.
 -- Idempotent. Rollback: drop function / constraints added below (table data kept).
 -- Partial apply safe: IF NOT EXISTS / OR REPLACE throughout.
+-- claimedBy SoT column = lease_owner (existing). claimed_at = first durable claim time.
+-- Existing data: new columns nullable; no backfill required for claim safety.
+-- Idempotency unique already on atlas_work_queue_jobs.idempotency_key (20260802).
+-- Production without this migration: RPC missing → store uses inline SKIP LOCKED;
+-- Production without DB URL: WorkQueueStoreUnavailableError (no memory/file escape).
 
 -- Required columns (nullable for backfill / older rows)
 alter table public.atlas_work_queue_jobs
@@ -61,6 +66,24 @@ create index if not exists atlas_work_queue_jobs_lease_expiry_idx
 create index if not exists atlas_work_queue_jobs_org_idx
   on public.atlas_work_queue_jobs (organization_id, status)
   where organization_id is not null;
+
+-- Re-assert idempotency uniqueness (no-op when 20260802 already applied).
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'atlas_work_queue_jobs_idempotency_key_key'
+  ) then
+    begin
+      alter table public.atlas_work_queue_jobs
+        add constraint atlas_work_queue_jobs_idempotency_key_key unique (idempotency_key);
+    exception
+      when duplicate_object then null;
+      when unique_violation then
+        raise notice 'P0-2: idempotency_key duplicates exist — unique not added';
+    end;
+  end if;
+end $$;
 
 -- Atomic claim RPC (transactional SKIP LOCKED). Used by PostgresWorkQueueStore.
 create or replace function public.atlas_claim_work_queue_jobs(

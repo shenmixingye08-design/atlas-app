@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  WORK_QUEUE_CLOCK_SKEW_MS,
   WORK_QUEUE_FORCE_FILE_ENV,
   WORK_QUEUE_LEASE_MS,
   WORK_QUEUE_STUCK_MS,
@@ -86,7 +87,7 @@ describe("P0-2 durable job claim", () => {
       leaseMs: 1,
     });
     expect(leased?.jobId).toBe(job.jobId);
-    const nowMs = Date.now() + 50;
+    const nowMs = Date.now() + WORK_QUEUE_CLOCK_SKEW_MS + 50;
     const [reclaimed] = await store.leaseJobs({
       workerId: "rescue_worker",
       limit: 1,
@@ -130,7 +131,7 @@ describe("P0-2 durable job claim", () => {
       workerId: "new_w",
       limit: 1,
       leaseMs: 60_000,
-      nowMs: Date.now() + 20,
+      nowMs: Date.now() + WORK_QUEUE_CLOCK_SKEW_MS + 20,
     });
     expect(next?.leaseOwner).toBe("new_w");
   });
@@ -174,7 +175,9 @@ describe("P0-2 durable job claim", () => {
     await store.updateJob(job.jobId, {
       status: "running",
       heartbeatAt: new Date(Date.now() - WORK_QUEUE_STUCK_MS - 1000).toISOString(),
-      leaseExpiresAt: new Date(Date.now() - 10).toISOString(),
+      leaseExpiresAt: new Date(
+        Date.now() - WORK_QUEUE_CLOCK_SKEW_MS - 10,
+      ).toISOString(),
       leaseOwner: "w1",
       attempt: 1,
     });
@@ -305,6 +308,43 @@ describe("P0-2 durable job claim", () => {
     ).rejects.toBeInstanceOf(AutomationJobClaimUnavailableError);
   });
 
+  it("12b: Migration-missing Production still refuses file FORCE", () => {
+    // Same gate as 12 — missing RPC is handled by inline SKIP LOCKED in Postgres store;
+    // Production must never open file SoT when FORCE_FILE is set.
+    clearWorkQueueStoreSingletonForTests();
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv(WORK_QUEUE_FORCE_FILE_ENV, "true");
+    vi.stubEnv("DATABASE_URL", "postgresql://example.invalid/db");
+    expect(() => getWorkQueueStore()).toThrow(/FORCE_FILE is forbidden/);
+  });
+
+  it("word + work-job Production refuse Map-only claim", async () => {
+    vi.resetModules();
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("SUPABASE_URL", "");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+    const { claimWordJob, WordJobClaimUnavailableError } = await import(
+      "@/lib/deliverables/word-job-stages"
+    );
+    await expect(
+      claimWordJob({
+        jobId: "wj1",
+        userId: "u",
+        assignment: "x",
+        sourceContent: "y",
+        baseFileName: "z",
+      }),
+    ).rejects.toBeInstanceOf(WordJobClaimUnavailableError);
+
+    const { executeWorkJob } = await import("@/lib/work-jobs/run");
+    await expect(executeWorkJob("missing", "u")).rejects.toThrow(
+      /work_job_claim_unavailable/,
+    );
+  });
+
   it("stuck recovery uses atomic reclaim (single success)", async () => {
     const store = resetWorkQueueStoreForTests();
     const { job } = await store.enqueue(fixtureInput("occ_stuck_rec"));
@@ -317,7 +357,9 @@ describe("P0-2 durable job claim", () => {
       leased!.jobId,
       {
         status: "running",
-        leaseExpiresAt: new Date(Date.now() - 1000).toISOString(),
+        leaseExpiresAt: new Date(
+          Date.now() - WORK_QUEUE_CLOCK_SKEW_MS - 1000,
+        ).toISOString(),
         heartbeatAt: new Date(
           Date.now() - WORK_QUEUE_STUCK_MS - 5_000,
         ).toISOString(),

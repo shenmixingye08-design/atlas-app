@@ -346,8 +346,8 @@ describe("work-queue enqueue + worker", () => {
     });
     await store.updateJob(job.jobId, {
       heartbeatAt: new Date(Date.now() - 120_000).toISOString(),
-      // Lease must be expired for atomic reclaim (heartbeat stuck alone is not enough).
-      leaseExpiresAt: new Date(Date.now() - 1_000).toISOString(),
+      // Lease must be expired (+ clock-skew grace) for atomic reclaim.
+      leaseExpiresAt: new Date(Date.now() - 5_000).toISOString(),
       leaseOwner: "stuck_w",
       status: "running",
     });

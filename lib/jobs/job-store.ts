@@ -278,9 +278,13 @@ export async function claimAutomationJob(input: {
 
     return { action: "created", record: rowToRecord(data as DbRow) };
   } catch (error) {
-    console.warn("[jobs] claim skipped, using memory fallback");
-    const existing = memoryByIdempotency(input.idempotencyKey);
-    if (existing) return resolveClaim(existing);
+    // P0-2: never fall back to Map after a durable client path failure.
+    if (isAtlasProduction()) {
+      throw error instanceof Error
+        ? error
+        : new AutomationJobClaimUnavailableError(String(error));
+    }
+    console.warn("[jobs] claim failed (non-prod); rethrow without Map invent");
     throw error;
   }
 }
@@ -291,6 +295,11 @@ export async function getJobRecord(
 ): Promise<JobRecord | null> {
   const client = createServiceRoleClientIfConfigured();
   if (!client) {
+    if (isAtlasProduction()) {
+      throw new AutomationJobClaimUnavailableError(
+        "[jobs] P0-2: Production getJobRecord requires Supabase — Map fallback disabled",
+      );
+    }
     const row = getMemoryStore().get(jobId);
     return row && row.userId === userId ? row : null;
   }
@@ -302,10 +311,16 @@ export async function getJobRecord(
     .eq("user_id", userId)
     .maybeSingle();
 
-  if (error || !data) {
+  if (error) {
+    if (isAtlasProduction()) {
+      throw new AutomationJobClaimUnavailableError(
+        `[jobs] P0-2: Production getJobRecord failed — Map fallback disabled (${error.message})`,
+      );
+    }
     const mem = getMemoryStore().get(jobId);
     return mem && mem.userId === userId ? mem : null;
   }
+  if (!data) return null;
   return rowToRecord(data as DbRow);
 }
 
@@ -313,6 +328,7 @@ export async function upsertJobRecord(record: JobRecord): Promise<JobRecord> {
   const now = new Date().toISOString();
   const next = { ...record, updatedAt: now };
   const client = createServiceRoleClientIfConfigured();
+  assertDurableJobClientOrThrow(client);
 
   if (!client) {
     getMemoryStore().set(next.id, next);
@@ -326,6 +342,11 @@ export async function upsertJobRecord(record: JobRecord): Promise<JobRecord> {
     .single();
 
   if (error || !data) {
+    if (isAtlasProduction()) {
+      throw new AutomationJobClaimUnavailableError(
+        `[jobs] P0-2: Production upsert failed — Map fallback disabled (${error?.message ?? "no data"})`,
+      );
+    }
     console.warn("[jobs] upsert failed:", error?.message);
     getMemoryStore().set(next.id, next);
     return next;
@@ -336,6 +357,7 @@ export async function upsertJobRecord(record: JobRecord): Promise<JobRecord> {
 export async function listDueRetries(nowMs = Date.now()): Promise<JobRecord[]> {
   const now = new Date(nowMs).toISOString();
   const client = createServiceRoleClientIfConfigured();
+  assertDurableJobClientOrThrow(client);
 
   if (!client) {
     return [...getMemoryStore().values()].filter(
@@ -355,6 +377,11 @@ export async function listDueRetries(nowMs = Date.now()): Promise<JobRecord[]> {
     .limit(50);
 
   if (error || !Array.isArray(data)) {
+    if (isAtlasProduction()) {
+      throw new AutomationJobClaimUnavailableError(
+        `[jobs] P0-2: Production listDueRetries failed — Map fallback disabled (${error?.message ?? "invalid data"})`,
+      );
+    }
     return [...getMemoryStore().values()].filter(
       (job) =>
         job.status === "retrying" &&
@@ -370,6 +397,7 @@ export async function listStaleRunningJobs(
 ): Promise<JobRecord[]> {
   const cutoff = new Date(nowMs - JOB_HANG_TIMEOUT_MS).toISOString();
   const client = createServiceRoleClientIfConfigured();
+  assertDurableJobClientOrThrow(client);
 
   if (!client) {
     return [...getMemoryStore().values()].filter(
@@ -385,6 +413,11 @@ export async function listStaleRunningJobs(
     .limit(50);
 
   if (error || !Array.isArray(data)) {
+    if (isAtlasProduction()) {
+      throw new AutomationJobClaimUnavailableError(
+        `[jobs] P0-2: Production listStaleRunningJobs failed — Map fallback disabled (${error?.message ?? "invalid data"})`,
+      );
+    }
     return [...getMemoryStore().values()].filter(
       (job) => job.status === "running" && job.updatedAt <= cutoff,
     );

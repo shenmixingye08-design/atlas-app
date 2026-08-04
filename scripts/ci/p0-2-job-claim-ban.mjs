@@ -23,12 +23,7 @@ if (
     "lib/work-queue/store/index.ts: Production fail-closed WorkQueueStoreUnavailableError missing",
   );
 }
-if (
-  /isAtlasProduction\(\)[\s\S]{0,400}createFileWorkQueueStore\(\)/.test(
-    storeIndex.replace(/\s+/g, " "),
-  )
-) {
-  // Production branch must throw before createFileWorkQueueStore.
+if (storeIndex.includes("isAtlasProduction()")) {
   const prodBlock = storeIndex.split("if (isAtlasProduction())")[1] ?? "";
   const beforeElse = prodBlock.split("\n  }")[0] ?? "";
   if (beforeElse.includes("createFileWorkQueueStore")) {
@@ -36,6 +31,33 @@ if (
       "lib/work-queue/store/index.ts: Production branch must not call createFileWorkQueueStore",
     );
   }
+}
+
+const postgres = read("lib/work-queue/store/postgres-store.ts");
+if (!/for update skip locked/i.test(postgres) && !/atlas_claim_work_queue_jobs/.test(postgres)) {
+  violations.push(
+    "lib/work-queue/store/postgres-store.ts: atomic claim (SKIP LOCKED / RPC) missing",
+  );
+}
+if (!/allowedFromStatuses|WORK_JOB_TRANSITIONS/.test(postgres)) {
+  violations.push(
+    "lib/work-queue/store/postgres-store.ts: status FSM guard on updateJob missing",
+  );
+}
+if (!/reclaimStuckJob/.test(postgres)) {
+  violations.push(
+    "lib/work-queue/store/postgres-store.ts: reclaimStuckJob missing",
+  );
+}
+
+const worker = read("lib/work-queue/worker.ts");
+if (/reclaimStuckJob[\s\S]{0,80}else\s*\{[\s\S]{0,40}updateJob/.test(worker)) {
+  violations.push(
+    "lib/work-queue/worker.ts: non-atomic stuck updateJob fallback must be removed",
+  );
+}
+if (!/reclaimStuckJob/.test(worker)) {
+  violations.push("lib/work-queue/worker.ts: must use reclaimStuckJob");
 }
 
 const jobStore = read("lib/jobs/job-store.ts");
@@ -47,6 +69,30 @@ if (!/AutomationJobClaimUnavailableError/.test(jobStore)) {
 if (!/assertDurableJobClientOrThrow/.test(jobStore)) {
   violations.push(
     "lib/jobs/job-store.ts: assertDurableJobClientOrThrow missing on claim path",
+  );
+}
+if (/using memory fallback/.test(jobStore)) {
+  violations.push(
+    "lib/jobs/job-store.ts: memory fallback log/path after durable claim must not exist",
+  );
+}
+
+const word = read("lib/deliverables/word-job-stages.ts");
+if (!/WordJobClaimUnavailableError/.test(word)) {
+  violations.push(
+    "lib/deliverables/word-job-stages.ts: Production Map-only claim refusal missing",
+  );
+}
+if (!/isAtlasProduction\(\) && !createServiceRoleClientIfConfigured\(\)/.test(word)) {
+  violations.push(
+    "lib/deliverables/word-job-stages.ts: Production claimWordJob gate missing",
+  );
+}
+
+const workJobsRun = read("lib/work-jobs/run.ts");
+if (!/work_job_claim_unavailable|Map-only work-job claim/.test(workJobsRun)) {
+  violations.push(
+    "lib/work-jobs/run.ts: Production Map-only work-job claim refusal missing",
   );
 }
 

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   WORK_QUEUE_HEARTBEAT_MS,
   WORK_QUEUE_LEASE_MS,
+  WORK_QUEUE_MAX_EXECUTION_MS,
   WORK_QUEUE_STUCK_MS,
   WORK_QUEUE_WORKER_BATCH,
 } from "./constants";
@@ -89,6 +90,23 @@ async function processLeasedJob(
     for (const step of [...current.steps].sort(
       (a, b) => a.stepIndex - b.stepIndex,
     )) {
+      if (Date.now() - started > WORK_QUEUE_MAX_EXECUTION_MS) {
+        const failAt = new Date().toISOString();
+        await store.updateJob(
+          job.jobId,
+          {
+            status: "failed",
+            completedAt: failAt,
+            failedAt: failAt,
+            errorCode: "max_execution_exceeded",
+            lastError: "max execution time exceeded",
+            leaseOwner: null,
+            leaseExpiresAt: null,
+          },
+          workerId,
+        );
+        return "failed";
+      }
       if (step.status === "completed" || step.status === "skipped") {
         Object.assign(previousOutputs, step.outputBindings);
         continue;
@@ -316,52 +334,31 @@ export async function recoverStuckJobs(
           ? ("dead_letter" as const)
           : ("failed" as const);
 
-    // P0-2: atomic reclaim — never blind UPDATE after SELECT.
-    let reclaimed: Awaited<
-      ReturnType<NonNullable<typeof store.reclaimStuckJob>>
-    > = null;
-    if (store.reclaimStuckJob) {
-      reclaimed = await store.reclaimStuckJob({
+    // P0-2: atomic reclaim only — never SELECT-then-UPDATE fallback.
+    if (!store.reclaimStuckJob) {
+      logWorkQueue({
+        event: "STUCK_DETECTED",
         jobId: job.jobId,
-        nowMs,
-        stuckMs: WORK_QUEUE_STUCK_MS,
-        attempt,
-        retryAt: decision.retryAt ?? null,
-        status: nextStatus,
+        ownerId: job.ownerId,
         diagnosticId,
-        lastError:
-          nextStatus === "retry_scheduled"
-            ? "heartbeat timeout — scheduled for recovery"
-            : "stuck and not recoverable",
+        errorCode: "reclaim_unavailable",
       });
-    } else {
-      reclaimed = await store.updateJob(
-        job.jobId,
-        {
-          status: nextStatus,
-          attempt,
-          retryAt: decision.retryAt ?? null,
-          availableAt: decision.retryAt ?? job.availableAt,
-          errorCode: "stuck_recovered",
-          diagnosticId,
-          leaseOwner: null,
-          leaseExpiresAt: null,
-          completedAt:
-            nextStatus === "retry_scheduled"
-              ? null
-              : new Date(nowMs).toISOString(),
-          failedAt:
-            nextStatus === "retry_scheduled"
-              ? null
-              : new Date(nowMs).toISOString(),
-          lastError:
-            nextStatus === "retry_scheduled"
-              ? "heartbeat timeout — scheduled for recovery"
-              : "stuck and not recoverable",
-        },
-        job.leaseOwner ?? undefined,
-      );
+      await store.recordRecovery(false);
+      continue;
     }
+    const reclaimed = await store.reclaimStuckJob({
+      jobId: job.jobId,
+      nowMs,
+      stuckMs: WORK_QUEUE_STUCK_MS,
+      attempt,
+      retryAt: decision.retryAt ?? null,
+      status: nextStatus,
+      diagnosticId,
+      lastError:
+        nextStatus === "retry_scheduled"
+          ? "heartbeat timeout — scheduled for recovery"
+          : "stuck and not recoverable",
+    });
 
     if (!reclaimed) {
       await store.recordRecovery(false);
