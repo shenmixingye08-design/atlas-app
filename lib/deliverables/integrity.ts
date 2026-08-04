@@ -162,11 +162,14 @@ export function assertDownloadIntegrity(input: {
   if (isOffice && !hasPkHeader(buf)) issues.push("missing_pk");
 
   const mime = input.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  // P0-3: text/plain is valid for format=txt (charset may be stripped above).
+  // Still reject bare text/plain when the deliverable is an Office/PDF/md artifact.
+  const plainAllowed = input.format === "txt";
   if (
     mime === "text/html" ||
     mime === "application/json" ||
-    mime === "text/plain" ||
-    mime === "application/octet-stream"
+    mime === "application/octet-stream" ||
+    (mime === "text/plain" && !plainAllowed)
   ) {
     issues.push("wrong_mime");
   }

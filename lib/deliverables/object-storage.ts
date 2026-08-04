@@ -5,6 +5,11 @@ import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role
 import { ATLAS_DELIVERABLE_FILES_BUCKET } from "./constants";
 import { consumeWordFault } from "./fault-inject";
 import {
+  MEMORY_DURABLE_BUCKET,
+  memoryDurableGet,
+  memoryDurablePut,
+} from "./memory-durable-storage";
+import {
   allowDeliverableDiskFallback,
   isDeliverableStorageRequired,
   resolveDeliverableStorageBackend,
@@ -16,7 +21,7 @@ export type ObjectStorageUploadResult =
       ok: true;
       bucket: string;
       path: string;
-      backend: "supabase";
+      backend: "supabase" | "memory_durable";
     }
   | {
       ok: true;
@@ -27,13 +32,17 @@ export type ObjectStorageUploadResult =
   | {
       ok: false;
       error: string;
-      backend: "supabase" | "local";
+      backend: "supabase" | "memory_durable" | "local";
     };
 
 function sanitizeSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "unknown";
 }
 
+/**
+ * P0-3 path: deliverable-artifacts/{ownerId}/{artifactId}/{opaqueFileName}
+ * Never uses raw user fileName (path traversal / guessable names).
+ */
 export function buildDeliverableObjectPath(input: {
   userId: string;
   deliverableId: string;
@@ -42,11 +51,12 @@ export function buildDeliverableObjectPath(input: {
 }): string {
   const ext = input.format;
   const hashPrefix = input.sha256.slice(0, 16);
-  // Opaque path: user / uuid / hash.ext — prevents guessable sequential names.
+  const opaqueName = `${hashPrefix}.${ext}`;
   return [
+    "deliverable-artifacts",
     sanitizeSegment(input.userId),
     sanitizeSegment(input.deliverableId),
-    `${hashPrefix}.${ext}`,
+    opaqueName,
   ].join("/");
 }
 
@@ -191,6 +201,26 @@ export async function uploadDeliverableObject(input: {
     return { ok: true, bucket: null, path: null, backend: "local" };
   }
 
+  if (backend === "memory_durable") {
+    const path = buildDeliverableObjectPath(input);
+    const put = memoryDurablePut({
+      path,
+      buffer: input.buffer,
+      contentType: input.mimeType,
+      checksum: input.sha256,
+      overwrite: false,
+    });
+    if (!put.ok) {
+      return { ok: false, error: put.error, backend: "memory_durable" };
+    }
+    return {
+      ok: true,
+      bucket: MEMORY_DURABLE_BUCKET,
+      path,
+      backend: "memory_durable",
+    };
+  }
+
   const client = createServiceRoleClientIfConfigured();
   if (!client) {
     if (allowDeliverableDiskFallback()) {
@@ -250,6 +280,17 @@ export async function downloadDeliverableObject(input: {
     return { ok: false, error: "fault_inject:storage_download" };
   }
 
+  if (
+    input.bucket === MEMORY_DURABLE_BUCKET ||
+    resolveDeliverableStorageBackend() === "memory_durable"
+  ) {
+    const obj = memoryDurableGet(input.path);
+    if (!obj || obj.byteSize === 0) {
+      return { ok: false, error: "memory_durable_missing" };
+    }
+    return { ok: true, buffer: Buffer.from(obj.buffer) };
+  }
+
   const client = createServiceRoleClientIfConfigured();
   if (!client) {
     return { ok: false, error: "supabase_not_configured" };
@@ -270,8 +311,24 @@ export async function downloadDeliverableObject(input: {
   return { ok: true, buffer };
 }
 
+export async function deleteDeliverableObject(input: {
+  bucket: string;
+  path: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (input.bucket === MEMORY_DURABLE_BUCKET) {
+    const { memoryDurableDelete } = await import("./memory-durable-storage");
+    memoryDurableDelete(input.path);
+    return { ok: true };
+  }
+  const client = createServiceRoleClientIfConfigured();
+  if (!client) return { ok: false, error: "supabase_not_configured" };
+  const { error } = await client.storage.from(input.bucket).remove([input.path]);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
 export async function probeDeliverableStorage(): Promise<{
-  backend: "supabase" | "local";
+  backend: "supabase" | "memory_durable" | "local";
   required: boolean;
   serviceRoleConfigured: boolean;
   bucket: string;
@@ -295,6 +352,19 @@ export async function probeDeliverableStorage(): Promise<{
       ready: true,
       warning:
         "開発環境は memory/disk fallback を使用しています。本番では Supabase Storage が必須です。",
+      severity: "warn",
+    };
+  }
+
+  if (backend === "memory_durable") {
+    return {
+      backend,
+      required,
+      serviceRoleConfigured: false,
+      bucket: MEMORY_DURABLE_BUCKET,
+      bucketExists: true,
+      ready: true,
+      warning: "Test memory_durable SoT — Production uses Supabase Storage only.",
       severity: "warn",
     };
   }

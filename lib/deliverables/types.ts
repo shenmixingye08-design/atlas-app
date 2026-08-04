@@ -11,6 +11,14 @@ export type DeliverableMetadata = {
   version?: number | null;
   parentDeliverableId?: string | null;
   versionGroupId?: string | null;
+  /** P0-3 artifact contract fields (optional). */
+  organizationId?: string | null;
+  runId?: string | null;
+  jobId?: string | null;
+  stepId?: string | null;
+  diagnosticId?: string | null;
+  contextVersion?: string | null;
+  completionEvidenceId?: string | null;
 };
 
 export interface Deliverable {

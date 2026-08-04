@@ -48,6 +48,9 @@ jobs:
       - name: P0-2 durable job claim ban
         run: node scripts/ci/p0-2-job-claim-ban.mjs
 
+      - name: P0-3 durable deliverable artifact ban
+        run: node scripts/ci/p0-3-deliverable-artifact-ban.mjs
+
       - name: Unit / integration tests
         run: npm test
         env:

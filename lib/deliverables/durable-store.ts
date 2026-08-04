@@ -14,7 +14,11 @@ import {
   uploadDeliverableObject,
   writeDeliverableSidecarMeta,
 } from "./object-storage";
-import { allowDeliverableDiskFallback, isDeliverableStorageRequired } from "./storage-backend";
+import {
+  allowDeliverableDiskFallback,
+  isDeliverableStorageRequired,
+  resolveDeliverableStorageBackend,
+} from "./storage-backend";
 import type {
   DeliverableFormat,
   DeliverableMetadata,
@@ -156,7 +160,10 @@ export async function persistDurableDeliverable(
       buffer,
     });
 
-    if (uploaded.ok && uploaded.backend === "supabase") {
+    if (
+      uploaded.ok &&
+      (uploaded.backend === "supabase" || uploaded.backend === "memory_durable")
+    ) {
       next = {
         ...next,
         storageBucket: uploaded.bucket,
@@ -221,6 +228,7 @@ export async function persistDurableDeliverable(
   try {
     const client = createServiceRoleClientIfConfigured();
     if (client) {
+      const meta = next.metadata ?? null;
       const fullPayload = {
         id: next.id,
         user_id: next.userId,
@@ -244,6 +252,15 @@ export async function persistDurableDeliverable(
         deletion_reason: next.deletionReason,
         deleted_at: next.deletedAt,
         deliverable_metadata: next.metadata,
+        organization_id: meta?.organizationId ?? null,
+        run_id: meta?.runId ?? null,
+        job_id: meta?.jobId ?? null,
+        step_id: meta?.stepId ?? null,
+        diagnostic_id: meta?.diagnosticId ?? null,
+        context_version: meta?.contextVersion ?? null,
+        completion_evidence_id: meta?.completionEvidenceId ?? null,
+        stored_at:
+          next.storageStatus === "stored" ? new Date().toISOString() : null,
         generated_at: next.generatedAt,
         expires_at: next.expiresAt,
         created_at: next.generatedAt,
@@ -311,8 +328,13 @@ export async function persistDurableDeliverable(
         }
       }
     } else if (isDeliverableStorageRequired()) {
-      dbOk = false;
-      dbError = "supabase_service_role_missing";
+      if (resolveDeliverableStorageBackend() === "memory_durable") {
+        // Test durable SoT: process durable-memory row stands in for DB metadata.
+        dbOk = true;
+      } else {
+        dbOk = false;
+        dbError = "supabase_service_role_missing";
+      }
     }
   } catch (error) {
     dbOk = false;
@@ -379,14 +401,14 @@ export async function persistDurableDeliverable(
     }
   }
 
-  // Production: Storage object (+ DB or sidecar) OR emergency base64 row + DB.
+  // P0-3 Production / required storage: object must be `stored` (+ DB or sidecar).
+  // legacy_base64 alone is NOT durable when Storage is required.
   const durable = allowDeliverableDiskFallback()
     ? storageOk || Boolean(next.contentBase64) || Boolean(buffer?.byteLength)
-    : (dbOk &&
-        (next.storageStatus === "stored" ||
-          (next.storageStatus === "legacy_base64" &&
-            Boolean(next.contentBase64)))) ||
-      (next.storageStatus === "stored" && sidecarOk);
+    : next.storageStatus === "stored" &&
+      Boolean(next.storageBucket) &&
+      Boolean(next.storagePath) &&
+      (dbOk || sidecarOk);
 
   const resolvedError =
     durable
