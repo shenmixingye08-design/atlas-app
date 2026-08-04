@@ -301,7 +301,7 @@ async function handleCheckoutCompleted(
     }
   }
 
-  applyPaidPlanFromWebhook({
+  await applyPaidPlanFromWebhook({
     userId,
     stripeCustomerId: String(session.customer ?? ""),
     stripeSubscriptionId: subscriptionId ?? "",
@@ -357,7 +357,7 @@ async function handleSubscriptionUpsert(
   const status = mapSubscriptionStatus(subscription.status);
   const stripePriceId = resolvePriceIdFromSubscription(subscription);
 
-  applyPaidPlanFromWebhook({
+  await applyPaidPlanFromWebhook({
     userId,
     stripeCustomerId: String(subscription.customer),
     stripeSubscriptionId: subscription.id,
@@ -407,7 +407,7 @@ async function handleSubscriptionDeleted(
     });
   }
 
-  applyDowngradeFromWebhook(userId);
+  await applyDowngradeFromWebhook(userId);
 
   saveBillingSnapshot({
     userId,
@@ -474,7 +474,7 @@ async function handleInvoicePaymentSucceeded(
       stripePriceId = resolvePriceIdFromSubscription(subscription);
 
       if (resolvedPlan) {
-        applyPaidPlanFromWebhook({
+        await applyPaidPlanFromWebhook({
           userId,
           stripeCustomerId,
           stripeSubscriptionId,
@@ -533,7 +533,7 @@ async function handleInvoicePaymentFailed(
   }
 
   const subscription = resolveUserSubscription(userId);
-  schedulePaymentFailureGrace(userId);
+  await schedulePaymentFailureGrace(userId);
   notifyUserPaymentFailed(userId);
   notifyOwnerPaymentFailed(userId);
 

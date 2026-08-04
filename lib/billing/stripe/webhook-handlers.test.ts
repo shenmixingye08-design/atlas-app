@@ -50,7 +50,7 @@ describe("stripe webhook handlers", () => {
   it("downgrades to free and suspends automations on subscription deleted", async () => {
     const { applySubscriptionFromStripe } = await import("../subscriptions/service");
 
-    applySubscriptionFromStripe({
+    await applySubscriptionFromStripe({
       userId: "user_delete_1",
       stripeCustomerId: "cus_del",
       stripeSubscriptionId: "sub_del",
@@ -80,7 +80,7 @@ describe("stripe webhook handlers", () => {
   it("schedules grace period and notifies on invoice.payment_failed", async () => {
     const { applySubscriptionFromStripe } = await import("../subscriptions/service");
 
-    applySubscriptionFromStripe({
+    await applySubscriptionFromStripe({
       userId: "user_fail_1",
       stripeCustomerId: "cus_fail",
       stripeSubscriptionId: "sub_fail",
@@ -110,7 +110,7 @@ describe("stripe webhook handlers", () => {
       "../subscriptions/lifecycle"
     );
 
-    applySubscriptionFromStripe({
+    await applySubscriptionFromStripe({
       userId: "user_grace_1",
       stripeCustomerId: "cus_grace",
       stripeSubscriptionId: "sub_grace",
@@ -120,7 +120,7 @@ describe("stripe webhook handlers", () => {
       currentPeriodEnd: null,
       cancelAtPeriodEnd: false,
     });
-    schedulePaymentFailureGrace("user_grace_1");
+    await schedulePaymentFailureGrace("user_grace_1");
     const graceBefore =
       getUserSubscriptionView("user_grace_1").paymentFailureGraceEndsAt;
 
@@ -145,7 +145,7 @@ describe("stripe webhook handlers", () => {
   it("records charge.refunded in billing history without auto-downgrade", async () => {
     const { applySubscriptionFromStripe } = await import("../subscriptions/service");
 
-    applySubscriptionFromStripe({
+    await applySubscriptionFromStripe({
       userId: "user_refund_1",
       stripeCustomerId: "cus_refund",
       stripeSubscriptionId: "sub_refund",
@@ -196,7 +196,7 @@ describe("stripe webhook handlers", () => {
   it("treats invoice.paid like payment succeeded", async () => {
     const { applySubscriptionFromStripe } = await import("../subscriptions/service");
 
-    applySubscriptionFromStripe({
+    await applySubscriptionFromStripe({
       userId: "user_paid_1",
       stripeCustomerId: "cus_paid",
       stripeSubscriptionId: "sub_paid",

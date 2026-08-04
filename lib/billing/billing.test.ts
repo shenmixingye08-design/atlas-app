@@ -58,7 +58,7 @@ describe("billing subscriptions", () => {
       "@/lib/billing/subscriptions/service"
     );
 
-    applySubscriptionFromStripe({
+    await applySubscriptionFromStripe({
       userId: "user_test_2",
       stripeCustomerId: "cus_123",
       stripeSubscriptionId: "sub_456",
@@ -86,7 +86,7 @@ describe("billing subscriptions", () => {
     } = await import("@/lib/billing/subscriptions/service");
     const { evaluatePlanAccess } = await import("@/lib/billing/policy");
 
-    applySubscriptionFromStripe({
+    await applySubscriptionFromStripe({
       userId: "user_trial",
       stripeCustomerId: "cus_trial",
       stripeSubscriptionId: "sub_trial",
@@ -102,7 +102,7 @@ describe("billing subscriptions", () => {
       true,
     );
 
-    applySubscriptionFromStripe({
+    await applySubscriptionFromStripe({
       userId: "user_past",
       stripeCustomerId: "cus_past",
       stripeSubscriptionId: "sub_past",

@@ -84,12 +84,12 @@ async function cancelStripeIfNeeded(userId: string): Promise<boolean> {
     }
   }
 
-  cancelSubscriptionAtPeriodEnd(userId);
+  await cancelSubscriptionAtPeriodEnd(userId);
   return true;
 }
 
 async function stopAutomations(userId: string): Promise<boolean> {
-  suspendAutomationsForUser(userId);
+  await suspendAutomationsForUser(userId);
   const rows = await automationService.listForUser(userId);
   for (const row of rows) {
     if (row.enabled) {

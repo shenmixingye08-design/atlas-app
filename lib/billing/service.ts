@@ -37,10 +37,10 @@ export function listPublicPlans(): readonly PlanDefinition[] {
   return listPlanDefinitions();
 }
 
-export function completeMockCheckout(
+export async function completeMockCheckout(
   userId: string,
   planId: PlanId,
-): UserBillingSummary {
+): Promise<UserBillingSummary> {
   if (isAtlasProduction()) {
     throw new Error("Mock checkout is disabled in production");
   }
@@ -49,7 +49,7 @@ export function completeMockCheckout(
   const periodEnd = new Date(now);
   periodEnd.setMonth(periodEnd.getMonth() + 1);
 
-  applySubscriptionFromStripe({
+  await applySubscriptionFromStripe({
     userId,
     stripeCustomerId: `mock_cus_${userId.slice(0, 8)}`,
     stripeSubscriptionId: `mock_sub_${Date.now()}`,

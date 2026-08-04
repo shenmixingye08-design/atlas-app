@@ -119,7 +119,7 @@ export async function finalizeCheckoutSessionForUser(input: {
       cancel_at_period_end?: boolean;
     };
 
-    applyPaidPlanFromWebhook({
+    await applyPaidPlanFromWebhook({
       userId: input.userId,
       stripeCustomerId: String(session.customer ?? ""),
       stripeSubscriptionId: subscription.id,
