@@ -184,6 +184,7 @@ export class FileWorkQueueStore implements WorkQueueStore {
       jobId,
       runId,
       automationId: input.automationId,
+      organizationId: null,
       ownerId: input.ownerId,
       occurrenceKey: input.occurrenceKey,
       scheduleId: input.scheduleId ?? null,
@@ -192,7 +193,9 @@ export class FileWorkQueueStore implements WorkQueueStore {
       availableAt: now,
       scheduledAt: input.scheduledAt ?? null,
       startedAt: null,
+      claimedAt: null,
       completedAt: null,
+      failedAt: null,
       leaseOwner: null,
       leaseExpiresAt: null,
       heartbeatAt: null,
@@ -262,12 +265,17 @@ export class FileWorkQueueStore implements WorkQueueStore {
       const leased: WorkJobRecord[] = [];
       for (const job of candidates) {
         if (job.status === "completed" || job.status === "cancelled") continue;
+        const wasActiveLease =
+          job.status === "leased" || job.status === "running";
         job.status = "leased";
         job.leaseOwner = input.workerId;
         job.leaseExpiresAt = leaseExpires;
         job.heartbeatAt = nowIso;
         job.updatedAt = nowIso;
+        if (!job.claimedAt) job.claimedAt = nowIso;
         if (!job.startedAt) job.startedAt = nowIso;
+        if (wasActiveLease) job.attempt += 1;
+        else if (job.attempt < 1) job.attempt = 1;
         leased.push(structuredClone(job));
       }
       this.touchWorker(input.workerId, nowIso, leased.length > 0);
@@ -363,6 +371,48 @@ export class FileWorkQueueStore implements WorkQueueStore {
           return hb > 0 && hb < cutoff;
         })
         .map((j) => structuredClone(j));
+    });
+  }
+
+  async reclaimStuckJob(input: {
+    jobId: string;
+    nowMs: number;
+    stuckMs: number;
+    attempt: number;
+    retryAt: string | null;
+    status: "retry_scheduled" | "failed" | "dead_letter";
+    diagnosticId: string;
+    lastError: string;
+  }): Promise<WorkJobRecord | null> {
+    return this.withLock(() => {
+      const job = this.data.jobs.find((j) => j.jobId === input.jobId);
+      if (!job) return null;
+      if (job.status !== "leased" && job.status !== "running") return null;
+      const cutoff = input.nowMs - input.stuckMs;
+      const hb = job.heartbeatAt ? new Date(job.heartbeatAt).getTime() : 0;
+      if (!(hb > 0 && hb < cutoff)) return null;
+      const leaseExpired =
+        !job.leaseExpiresAt ||
+        new Date(job.leaseExpiresAt).getTime() < input.nowMs;
+      if (!leaseExpired) return null;
+      const nowIso = new Date(input.nowMs).toISOString();
+      job.status = input.status;
+      job.attempt = input.attempt;
+      job.retryAt = input.status === "retry_scheduled" ? input.retryAt : null;
+      if (input.status === "retry_scheduled" && input.retryAt) {
+        job.availableAt = input.retryAt;
+      }
+      job.errorCode = "stuck_recovered";
+      job.diagnosticId = input.diagnosticId;
+      job.leaseOwner = null;
+      job.leaseExpiresAt = null;
+      job.lastError = input.lastError;
+      job.updatedAt = nowIso;
+      if (input.status === "failed" || input.status === "dead_letter") {
+        job.completedAt = nowIso;
+        job.failedAt = nowIso;
+      }
+      return structuredClone(job);
     });
   }
 

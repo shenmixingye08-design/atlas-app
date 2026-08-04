@@ -33,6 +33,7 @@ function rowToJob(row: Record<string, unknown>, steps: WorkStepRecord[]): WorkJo
     jobId: String(row.job_id),
     runId: String(row.run_id),
     automationId: (row.automation_id as string | null) ?? null,
+    organizationId: (row.organization_id as string | null) ?? null,
     ownerId: String(row.owner_id),
     occurrenceKey: String(row.occurrence_key),
     scheduleId: (row.schedule_id as string | null) ?? null,
@@ -45,8 +46,14 @@ function rowToJob(row: Record<string, unknown>, steps: WorkStepRecord[]): WorkJo
     startedAt: row.started_at
       ? new Date(String(row.started_at)).toISOString()
       : null,
+    claimedAt: row.claimed_at
+      ? new Date(String(row.claimed_at)).toISOString()
+      : null,
     completedAt: row.completed_at
       ? new Date(String(row.completed_at)).toISOString()
+      : null,
+    failedAt: row.failed_at
+      ? new Date(String(row.failed_at)).toISOString()
       : null,
     leaseOwner: (row.lease_owner as string | null) ?? null,
     leaseExpiresAt: row.lease_expires_at
@@ -249,47 +256,149 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
     const client = await this.pool.connect();
     const nowMs = input.nowMs ?? Date.now();
     const nowIso = new Date(nowMs).toISOString();
-    const leaseExpires = new Date(nowMs + input.leaseMs).toISOString();
     try {
-      await client.query("begin");
-      const res = await client.query(
-        `with cte as (
-           select job_id from public.atlas_work_queue_jobs
-           where (
-             status in ('queued', 'retry_scheduled') and available_at <= $1::timestamptz
-           ) or (
-             status in ('leased', 'running')
-             and lease_expires_at is not null
-             and lease_expires_at < $1::timestamptz
+      // Prefer RPC (migration 20260804). Fall back to inline SKIP LOCKED SQL
+      // with identical semantics when the function is not yet applied.
+      let res: pg.QueryResult;
+      try {
+        res = await client.query(
+          `select * from public.atlas_claim_work_queue_jobs($1, $2, $3, $4::timestamptz)`,
+          [input.workerId, input.limit, input.leaseMs, nowIso],
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/atlas_claim_work_queue_jobs|function .* does not exist/i.test(message)) {
+          throw error;
+        }
+        await client.query("begin");
+        const leaseExpires = new Date(nowMs + input.leaseMs).toISOString();
+        res = await client.query(
+          `with cte as (
+             select job_id from public.atlas_work_queue_jobs
+             where (
+               status in ('queued', 'retry_scheduled') and available_at <= $1::timestamptz
+             ) or (
+               status in ('leased', 'running')
+               and lease_expires_at is not null
+               and lease_expires_at < $1::timestamptz
+             )
+             order by priority desc, available_at asc
+             for update skip locked
+             limit $2
            )
-           order by priority desc, available_at asc
-           for update skip locked
-           limit $2
-         )
-         update public.atlas_work_queue_jobs j
-         set status = 'leased',
-             lease_owner = $3,
-             lease_expires_at = $4::timestamptz,
-             heartbeat_at = $1::timestamptz,
-             started_at = coalesce(started_at, $1::timestamptz),
-             updated_at = $1::timestamptz
-         from cte
-         where j.job_id = cte.job_id
-         returning j.*`,
-        [nowIso, input.limit, input.workerId, leaseExpires],
-      );
+           update public.atlas_work_queue_jobs j
+           set status = 'leased',
+               lease_owner = $3,
+               lease_expires_at = $4::timestamptz,
+               heartbeat_at = $1::timestamptz,
+               claimed_at = coalesce(claimed_at, $1::timestamptz),
+               started_at = coalesce(started_at, $1::timestamptz),
+               attempt = case
+                 when j.status in ('leased', 'running') then j.attempt + 1
+                 when j.status = 'retry_scheduled' then j.attempt
+                 else greatest(j.attempt, 1)
+               end,
+               updated_at = $1::timestamptz
+           from cte
+           where j.job_id = cte.job_id
+           returning j.*`,
+          [nowIso, input.limit, input.workerId, leaseExpires],
+        );
+        await client.query("commit");
+      }
       const jobs: WorkJobRecord[] = [];
       for (const row of res.rows) {
         const steps = await this.loadSteps(client, String(row.job_id));
         jobs.push(rowToJob(row as Record<string, unknown>, steps));
       }
-      await client.query("commit");
       return jobs;
     } catch (error) {
-      await client.query("rollback");
+      try {
+        await client.query("rollback");
+      } catch {
+        /* ignore */
+      }
       throw error;
     } finally {
       client.release();
+    }
+  }
+
+  /**
+   * Atomically reclaim one stuck job (lease expired + stale heartbeat).
+   * Returns null when another worker already claimed/recovered it (P0-2).
+   */
+  async reclaimStuckJob(input: {
+    jobId: string;
+    nowMs: number;
+    stuckMs: number;
+    attempt: number;
+    retryAt: string | null;
+    status: "retry_scheduled" | "failed" | "dead_letter";
+    diagnosticId: string;
+    lastError: string;
+  }): Promise<WorkJobRecord | null> {
+    const nowIso = new Date(input.nowMs).toISOString();
+    const stuckBefore = new Date(input.nowMs - input.stuckMs).toISOString();
+    try {
+      const res = await this.pool.query(
+        `select * from public.atlas_reclaim_stuck_work_queue_job(
+           $1::uuid, $2::timestamptz, $3::timestamptz, $4, $5::timestamptz, $6, $7, $8
+         )`,
+        [
+          input.jobId,
+          nowIso,
+          stuckBefore,
+          input.attempt,
+          input.retryAt,
+          input.status,
+          input.diagnosticId,
+          input.lastError,
+        ],
+      );
+      if (!res.rowCount || !res.rows[0]) return null;
+      const steps = await this.loadSteps(this.pool, input.jobId);
+      return rowToJob(res.rows[0] as Record<string, unknown>, steps);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/atlas_reclaim_stuck_work_queue_job|function .* does not exist/i.test(message)) {
+        throw error;
+      }
+      // Inline fail-closed reclaim when RPC missing.
+      const res = await this.pool.query(
+        `update public.atlas_work_queue_jobs
+         set status = $1,
+             attempt = $2,
+             retry_at = $3,
+             available_at = coalesce($3, available_at),
+             error_code = 'stuck_recovered',
+             diagnostic_id = $4,
+             lease_owner = null,
+             lease_expires_at = null,
+             last_error = $5,
+             completed_at = case when $1 in ('failed','dead_letter') then $6::timestamptz else completed_at end,
+             failed_at = case when $1 in ('failed','dead_letter') then $6::timestamptz else failed_at end,
+             updated_at = $6::timestamptz
+         where job_id = $7::uuid
+           and status in ('leased', 'running')
+           and heartbeat_at is not null
+           and heartbeat_at < $8::timestamptz
+           and (lease_expires_at is null or lease_expires_at < $6::timestamptz)
+         returning *`,
+        [
+          input.status,
+          input.attempt,
+          input.retryAt,
+          input.diagnosticId,
+          input.lastError,
+          nowIso,
+          input.jobId,
+          stuckBefore,
+        ],
+      );
+      if (!res.rowCount || !res.rows[0]) return null;
+      const steps = await this.loadSteps(this.pool, input.jobId);
+      return rowToJob(res.rows[0] as Record<string, unknown>, steps);
     }
   }
 

@@ -35,4 +35,17 @@ export type WorkQueueStore = {
   recordExecutionMs(durationMs: number): Promise<void>;
   recordRecovery(success: boolean): Promise<void>;
   resetForTests(): Promise<void>;
+  /**
+   * Optional atomic stuck reclaim (Postgres). File store emulates with lock.
+   */
+  reclaimStuckJob?(input: {
+    jobId: string;
+    nowMs: number;
+    stuckMs: number;
+    attempt: number;
+    retryAt: string | null;
+    status: "retry_scheduled" | "failed" | "dead_letter";
+    diagnosticId: string;
+    lastError: string;
+  }): Promise<WorkJobRecord | null>;
 };

@@ -9,6 +9,8 @@ export { WORK_JOB_TRANSITIONS } from "./types";
 export {
   getWorkQueueStore,
   resetWorkQueueStoreForTests,
+  clearWorkQueueStoreSingletonForTests,
+  WorkQueueStoreUnavailableError,
 } from "./store";
 export { enqueueDueAutomations } from "./scheduler";
 export { drainWorkQueue, recoverStuckJobs } from "./worker";

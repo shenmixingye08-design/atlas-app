@@ -59,6 +59,8 @@ export type WorkJobRecord = {
   jobId: string;
   runId: string;
   automationId: string | null;
+  /** Optional org boundary (P0-2). Null = personal owner scope. */
+  organizationId: string | null;
   ownerId: string;
   occurrenceKey: string;
   scheduleId: string | null;
@@ -67,7 +69,11 @@ export type WorkJobRecord = {
   availableAt: string;
   scheduledAt: string | null;
   startedAt: string | null;
+  /** First durable claim timestamp (P0-2). */
+  claimedAt: string | null;
   completedAt: string | null;
+  failedAt: string | null;
+  /** Worker id that currently holds the lease (claimedBy). */
   leaseOwner: string | null;
   leaseExpiresAt: string | null;
   heartbeatAt: string | null;

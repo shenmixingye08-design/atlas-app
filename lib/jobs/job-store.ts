@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
 import type {
@@ -15,6 +16,26 @@ const TABLE = "atlas_automation_jobs" as const;
 
 /** Running jobs without heartbeat for this long are treated as hung. */
 export const JOB_HANG_TIMEOUT_MS = 30 * 60 * 1000;
+
+export class AutomationJobClaimUnavailableError extends Error {
+  readonly code = "automation_job_claim_unavailable";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "AutomationJobClaimUnavailableError";
+  }
+}
+
+function assertDurableJobClientOrThrow(
+  client: ReturnType<typeof createServiceRoleClientIfConfigured>,
+): asserts client is NonNullable<typeof client> {
+  if (client) return;
+  if (isAtlasProduction()) {
+    throw new AutomationJobClaimUnavailableError(
+      "[jobs] P0-2: Production refuses Map/memory claimAutomationJob fallback — Supabase service role required",
+    );
+  }
+}
 
 type DbRow = {
   id: string;
@@ -183,6 +204,7 @@ export async function claimAutomationJob(input: {
 }): Promise<ClaimJobResult> {
   const now = new Date().toISOString();
   const client = createServiceRoleClientIfConfigured();
+  assertDurableJobClientOrThrow(client);
 
   if (!client) {
     const existing = memoryByIdempotency(input.idempotencyKey);
