@@ -133,8 +133,8 @@ export type SaveDeliverableOptions = {
 };
 
 /**
- * Persist a generated file in process memory and durable storage.
- * Durable row enables Word/PDF GET across serverless instances.
+ * Process-memory cache only. Does NOT fire-and-forget durable persist (P0-3).
+ * Production completion paths MUST use saveDeliverableArtifact / Durable*.
  */
 export function saveDeliverableFile(
   file: GeneratedDeliverableFile,
@@ -168,27 +168,30 @@ export function saveDeliverableFile(
     baseFileName,
     contentSha256: integrity.sha256,
     metadata: options?.metadata ?? null,
+    storageStatus: "pending",
   };
 
   store.set(stored.id, stored);
-  void persistDurableDeliverable(toDurableRow(stored), stored.buffer);
+  // P0-3: no fire-and-forget persist — callers that need durability must await
+  // saveDeliverableArtifact / saveDeliverableFileDurable*.
   return stored;
 }
 
-/** Awaitable save — use when the caller must ensure durable write before respond. */
+/** Awaitable save — formal path via saveDeliverableArtifact (P0-3). */
 export async function saveDeliverableFileDurable(
   file: GeneratedDeliverableFile,
   userId: string,
   options: SaveDeliverableOptions,
 ): Promise<StoredDeliverable> {
-  const stored = saveDeliverableFile(file, userId, options);
-  const result = await persistDurableDeliverable(
-    toDurableRow(stored),
-    stored.buffer,
-  );
-  stored.storageStatus = result.storageStatus;
-  stored.contentSha256 = result.row.contentSha256;
-  getStoreBucket().set(stored.id, stored);
+  const { saveDeliverableArtifact } = await import("./artifact-persist");
+  const { stored } = await saveDeliverableArtifact({
+    file,
+    ownerId: userId,
+    sourceContent: options.sourceContent,
+    baseFileName: options.baseFileName,
+    deliverableId: options.deliverableId,
+    metadata: options.metadata,
+  });
   return stored;
 }
 
@@ -197,15 +200,36 @@ export async function saveDeliverableFileDurableDetailed(
   userId: string,
   options: SaveDeliverableOptions,
 ): Promise<{ stored: StoredDeliverable; persist: PersistDurableResult }> {
-  const stored = saveDeliverableFile(file, userId, options);
-  const persist = await persistDurableDeliverable(
-    toDurableRow(stored),
-    stored.buffer,
+  const { saveDeliverableArtifact, ArtifactPersistError } = await import(
+    "./artifact-persist"
   );
-  stored.storageStatus = persist.storageStatus;
-  stored.contentSha256 = persist.row.contentSha256;
-  getStoreBucket().set(stored.id, stored);
-  return { stored, persist };
+  try {
+    const result = await saveDeliverableArtifact({
+      file,
+      ownerId: userId,
+      sourceContent: options.sourceContent,
+      baseFileName: options.baseFileName,
+      deliverableId: options.deliverableId,
+      metadata: options.metadata,
+    });
+    return { stored: result.stored, persist: result.persist };
+  } catch (error) {
+    if (error instanceof ArtifactPersistError) {
+      // Preserve previous Detailed shape for engine failure handling.
+      const stored = saveDeliverableFile(file, userId, options);
+      return {
+        stored,
+        persist: {
+          ok: false,
+          durable: false,
+          storageStatus: "failed",
+          storageError: `${error.code}:${error.message}`,
+          row: toDurableRow(stored),
+        },
+      };
+    }
+    throw error;
+  }
 }
 
 export function getStoredDeliverable(id: string): StoredDeliverable | null {
@@ -264,7 +288,8 @@ async function regenerateFromSource(
     cacheInMemory(stored);
     const row = toDurableRow(stored);
     row.storageStatus = "regenerated";
-    void persistDurableDeliverable(row, stored.buffer);
+    // P0-3: await durable re-persist after regenerate (no fire-and-forget).
+    await persistDurableDeliverable(row, stored.buffer);
     return stored;
   } catch (error) {
     console.error("[deliverables] regenerate from durable failed", durable.id, error);

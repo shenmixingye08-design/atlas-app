@@ -193,6 +193,16 @@ export async function invokeDeliverableStep(input: {
         failures.push(`${format}:storage_incomplete`);
         continue;
       }
+      // P0-3: required Storage backends must report stored before evidence.
+      if (
+        (stored.storageStatus === "failed" ||
+          stored.storageStatus === "pending" ||
+          stored.storageStatus === "missing") &&
+        process.env.ATLAS_DELIVERABLE_STORAGE === "memory_durable"
+      ) {
+        failures.push(`${format}:not_durable:${stored.storageStatus ?? "none"}`);
+        continue;
+      }
       const downloadUrl = `/api/deliverables/${stored.id}`;
       artifacts.push({
         id: stored.id,

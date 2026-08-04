@@ -509,11 +509,22 @@ export async function generateDeliverables(
         failures.push({ format, reasons });
         continue;
       }
-      const { stored } = await saveDeliverableFileDurableDetailed(
+      const { stored, persist } = await saveDeliverableFileDurableDetailed(
         file,
         options.userId,
         { sourceContent: safeContent, baseFileName },
       );
+      // P0-3: all formats require durable Storage+DB verification before success.
+      if (!persist.durable) {
+        failures.push({
+          format,
+          reasons: [
+            `storage_failed:${persist.storageError ?? "unknown"}`,
+            "成果物は生成されましたが、Durable保存に失敗したため完了できません。",
+          ],
+        });
+        continue;
+      }
       deliverables.push(toDeliverableMetadata(stored, requestOrigin));
     }
     recordWordMetric("total_ms", Date.now() - startedAt);
