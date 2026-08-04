@@ -38,11 +38,18 @@ import {
   saveXPostHistoryRecord,
 } from "./history-store";
 import {
-  listDueXScheduledPosts,
+  claimDueScheduledXPosts,
   listXScheduledPosts,
   saveXScheduledPost,
-  updateXScheduledPost,
 } from "./schedule-store";
+import {
+  classifyXPostError,
+  markXPostUnknownOutcome,
+  scheduleXPostRetry,
+  transitionDurableXPostJob,
+  type XPostCompletionEvidence,
+} from "./durable-x-post-jobs";
+import { randomUUID } from "node:crypto";
 import type {
   XDraftPostsResult,
   XPostHistoryRecord,
@@ -250,7 +257,7 @@ async function executeTweetPost(input: {
     }
 
     await touchXConnectionLastUsed(input.userId);
-    notifyXPostSuccess(input.userId, input.text.trim(), {
+    await notifyXPostSuccess(input.userId, input.text.trim(), {
       historyId: history.id,
     });
 
@@ -275,7 +282,7 @@ async function executeTweetPost(input: {
         }),
       );
 
-      notifyXPostFailed(input.userId, error.message);
+      await notifyXPostFailed(input.userId, error.message);
 
       return {
         status: "error",
@@ -301,7 +308,7 @@ async function executeTweetPost(input: {
       }),
     );
 
-    notifyXPostFailed(input.userId, message);
+    await notifyXPostFailed(input.userId, message);
 
     return { status: "error", message };
   }
@@ -378,7 +385,7 @@ export async function saveXDraftForUser(input: {
     };
   }
 
-  const draft = saveXDraftPost({
+  const draft = await saveXDraftPost({
     userId: input.userId,
     text: input.text,
     id: input.draftId,
@@ -407,7 +414,7 @@ export async function getXDraftPostsForUser(input: {
 
   return {
     status: "ready",
-    drafts: listXDraftPosts(input.userId),
+    drafts: await listXDraftPosts(input.userId),
   };
 }
 
@@ -427,12 +434,12 @@ export async function deleteXDraftForUser(input: {
     };
   }
 
-  const existing = getXDraftPost(input.userId, input.draftId);
+  const existing = await getXDraftPost(input.userId, input.draftId);
   if (!existing) {
     return { status: "not_found", message: "下書きが見つかりません" };
   }
 
-  deleteXDraftPost(input.userId, input.draftId);
+  await deleteXDraftPost(input.userId, input.draftId);
   return { status: "ready" };
 }
 
@@ -477,7 +484,7 @@ export async function scheduleTweetForUser(input: {
     return { status: "error", message: "予約日時は未来の日時を指定してください" };
   }
 
-  const scheduled = saveXScheduledPost({
+  const scheduled = await saveXScheduledPost({
     userId: input.userId,
     text: input.text,
     scheduledFor: new Date(scheduledForMs).toISOString(),
@@ -506,25 +513,135 @@ export async function postTweetAutoForUser(input: {
   });
 }
 
+/**
+ * P0-5: claim-before-post. Cron is a wake trigger only.
+ * Duplicate workers cannot both claim the same due job.
+ */
 export async function processDueScheduledXPosts(input: {
   resolveContext: (userId: string) => Promise<FeatureAccessContext>;
+  workerId?: string;
+  limit?: number;
 }): Promise<Array<{ scheduledId: string; result: XPostResult }>> {
-  const due = listDueXScheduledPosts();
+  const workerId =
+    input.workerId?.trim() || `x_sched_${randomUUID().slice(0, 10)}`;
+  const claimed = await claimDueScheduledXPosts({
+    workerId,
+    limit: input.limit ?? 20,
+  });
   const results: Array<{ scheduledId: string; result: XPostResult }> = [];
 
-  for (const item of due) {
-    const context = await input.resolveContext(item.userId);
-    const result = await executeTweetPost({
-      userId: item.userId,
-      text: item.text,
-      mode: "scheduled",
-      context,
-      automationId: item.automationId,
-      scheduledFor: item.scheduledFor,
-    });
+  for (const job of claimed) {
+    // Move claimed → posting under owner+worker guard
+    try {
+      await transitionDurableXPostJob({
+        xPostJobId: job.xPostJobId,
+        ownerId: job.ownerId,
+        toStatus: "posting",
+        expectedClaimedBy: workerId,
+      });
+    } catch {
+      results.push({
+        scheduledId: job.xPostJobId,
+        result: {
+          status: "error",
+          message: "claim transition failed",
+        },
+      });
+      continue;
+    }
 
-    if (result.status === "ready" && result.history?.status === "success") {
-      updateXScheduledPost(item.id, { status: "posted", errorMessage: null });
+    // Already posted (provider id present) — never re-post
+    if (job.providerPostId) {
+      results.push({
+        scheduledId: job.xPostJobId,
+        result: {
+          status: "error",
+          message: "already has providerPostId — skip",
+        },
+      });
+      continue;
+    }
+
+    const context = await input.resolveContext(job.ownerId);
+    let result: XPostResult;
+    try {
+      result = await executeTweetPost({
+        userId: job.ownerId,
+        text: job.content,
+        mode: "scheduled",
+        context,
+        automationId: job.automationId,
+        scheduledFor: job.scheduledAt,
+      });
+    } catch (error) {
+      const classified = classifyXPostError(error);
+      await scheduleXPostRetry({
+        xPostJobId: job.xPostJobId,
+        ownerId: job.ownerId,
+        workerId,
+        errorCode: classified.code,
+        errorMessage:
+          error instanceof Error ? error.message : "Scheduled post failed",
+        delayMs: classified.delayMs * Math.max(1, job.attempt),
+        permanent: classified.permanent,
+      });
+      results.push({
+        scheduledId: job.xPostJobId,
+        result: {
+          status: "error",
+          message:
+            error instanceof Error ? error.message : "Scheduled post failed",
+        },
+      });
+      continue;
+    }
+
+    if (
+      result.status === "ready" &&
+      result.history?.status === "success" &&
+      result.history.tweetId
+    ) {
+      const postedAt = new Date().toISOString();
+      const evidence: XPostCompletionEvidence = {
+        xPostJobId: job.xPostJobId,
+        ownerId: job.ownerId,
+        contentHash: job.contentHash,
+        providerPostId: result.history.tweetId,
+        providerRequestId: job.providerRequestId,
+        postedAt,
+        connectionId: job.connectionId,
+        providerResponseHash: null,
+        diagnosticId: job.diagnosticId ?? `xdiag_${randomUUID().slice(0, 12)}`,
+        verifiedAt: postedAt,
+      };
+      try {
+        await transitionDurableXPostJob({
+          xPostJobId: job.xPostJobId,
+          ownerId: job.ownerId,
+          toStatus: "posted",
+          expectedClaimedBy: workerId,
+          patch: {
+            providerPostId: result.history.tweetId,
+            postedAt,
+            completionEvidence: evidence,
+            lastErrorMessage: null,
+            claimedBy: null,
+            leaseExpiresAt: null,
+          },
+        });
+      } catch (error) {
+        // Provider succeeded, DB update failed → unknown_outcome (never auto re-post)
+        await markXPostUnknownOutcome({
+          xPostJobId: job.xPostJobId,
+          ownerId: job.ownerId,
+          workerId,
+          providerPostId: result.history.tweetId,
+          errorMessage:
+            error instanceof Error
+              ? error.message
+              : "provider success but durable update failed",
+        });
+      }
     } else {
       const message =
         result.status === "validation_failed"
@@ -532,13 +649,23 @@ export async function processDueScheduledXPosts(input: {
           : result.status === "ready"
             ? result.history?.errorMessage
             : result.message;
-      updateXScheduledPost(item.id, {
-        status: "failed",
+      const classified = classifyXPostError(new Error(message ?? "failed"));
+      await scheduleXPostRetry({
+        xPostJobId: job.xPostJobId,
+        ownerId: job.ownerId,
+        workerId,
+        errorCode: classified.code,
         errorMessage: message ?? "Scheduled post failed",
+        delayMs: classified.delayMs * Math.max(1, job.attempt),
+        permanent:
+          classified.permanent ||
+          result.status === "validation_failed" ||
+          result.status === "x_not_connected" ||
+          result.status === "feature_disabled",
       });
     }
 
-    results.push({ scheduledId: item.id, result });
+    results.push({ scheduledId: job.xPostJobId, result });
   }
 
   return results;
@@ -617,7 +744,7 @@ export async function getXScheduledPostsForUser(input: {
 
   return {
     status: "ready",
-    posts: listXScheduledPosts(input.userId).filter(
+    posts: (await listXScheduledPosts(input.userId)).filter(
       (post) => post.status === "pending",
     ),
   };

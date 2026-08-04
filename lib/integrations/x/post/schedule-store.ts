@@ -1,76 +1,104 @@
 import "server-only";
 
+import {
+  cancelDurableXPostJob,
+  claimDueXPostJobs,
+  insertDurableXPostJob,
+  jobToLegacyScheduled,
+  listDurableXPostJobs,
+  resetDurableXPostJobsForTests,
+  transitionDurableXPostJob,
+  type DurableXPostJob,
+} from "./durable-x-post-jobs";
 import type { XScheduledPost } from "./types";
 
-type ScheduleStore = XScheduledPost[];
+/**
+ * P0-5: schedule-store is a thin façade over durable X post jobs.
+ * Production never uses module-level Map / array as SoT.
+ */
 
-function getBucket(): ScheduleStore {
-  const globalScope = globalThis as typeof globalThis & {
-    __atlasXScheduledPostsStore?: ScheduleStore;
-  };
-
-  if (!globalScope.__atlasXScheduledPostsStore) {
-    globalScope.__atlasXScheduledPostsStore = [];
-  }
-
-  return globalScope.__atlasXScheduledPostsStore;
+export async function listXScheduledPosts(
+  userId?: string,
+): Promise<XScheduledPost[]> {
+  if (!userId?.trim()) return [];
+  const jobs = await listDurableXPostJobs({ ownerId: userId });
+  return jobs.map(jobToLegacyScheduled);
 }
 
-export function listXScheduledPosts(userId?: string): XScheduledPost[] {
-  const items = getBucket();
-  if (!userId) return [...items];
-  return items.filter((item) => item.userId === userId);
+/** @deprecated Prefer claimDueXPostJobs — listing due without claim is racy. */
+export async function listDueXScheduledPosts(
+  now = new Date(),
+): Promise<XScheduledPost[]> {
+  // Intentionally empty for Production-safe path: callers must claim.
+  // Kept for test compatibility that still expect a list — returns [] when
+  // durable-required so accidental use cannot double-post.
+  void now;
+  return [];
 }
 
-export function listDueXScheduledPosts(now = new Date()): XScheduledPost[] {
-  const nowMs = now.getTime();
-  return getBucket().filter(
-    (item) =>
-      item.status === "pending" &&
-      new Date(item.scheduledFor).getTime() <= nowMs,
-  );
-}
-
-export function saveXScheduledPost(input: {
+export async function saveXScheduledPost(input: {
   userId: string;
   text: string;
   scheduledFor: string;
   automationId?: string | null;
-}): XScheduledPost {
-  const post: XScheduledPost = {
-    id: crypto.randomUUID(),
-    userId: input.userId,
-    text: input.text.trim(),
-    scheduledFor: input.scheduledFor,
+}): Promise<XScheduledPost> {
+  const { job } = await insertDurableXPostJob({
+    ownerId: input.userId,
+    content: input.text,
+    scheduledAt: input.scheduledFor,
     automationId: input.automationId ?? null,
-    createdAt: new Date().toISOString(),
-    status: "pending",
-    errorMessage: null,
-  };
-
-  getBucket().unshift(post);
-  return post;
+  });
+  return jobToLegacyScheduled(job);
 }
 
-export function updateXScheduledPost(
+export async function updateXScheduledPost(
   id: string,
   patch: Partial<Pick<XScheduledPost, "status" | "errorMessage">>,
-): XScheduledPost | null {
-  const bucket = getBucket();
-  const index = bucket.findIndex((item) => item.id === id);
-  if (index < 0) return null;
-
-  const updated: XScheduledPost = {
-    ...bucket[index]!,
-    ...patch,
+  options?: { ownerId: string; workerId?: string },
+): Promise<XScheduledPost | null> {
+  if (!options?.ownerId?.trim()) return null;
+  const statusMap: Record<
+    NonNullable<typeof patch.status>,
+    Parameters<typeof transitionDurableXPostJob>[0]["toStatus"]
+  > = {
+    pending: "scheduled",
+    posted: "posted",
+    failed: "failed",
+    cancelled: "canceled",
   };
-  bucket[index] = updated;
-  return updated;
+  if (!patch.status) return null;
+  const toStatus = statusMap[patch.status];
+  if (toStatus === "posted") {
+    // posted must go through completeClaimedXPostWithEvidence
+    return null;
+  }
+  if (toStatus === "canceled") {
+    const job = await cancelDurableXPostJob({
+      xPostJobId: id,
+      ownerId: options.ownerId,
+    });
+    return job ? jobToLegacyScheduled(job) : null;
+  }
+  const job = await transitionDurableXPostJob({
+    xPostJobId: id,
+    ownerId: options.ownerId,
+    toStatus,
+    expectedClaimedBy: options.workerId,
+    patch: {
+      lastErrorMessage: patch.errorMessage ?? null,
+    },
+  });
+  return job ? jobToLegacyScheduled(job) : null;
+}
+
+export async function claimDueScheduledXPosts(input: {
+  workerId: string;
+  limit?: number;
+  nowMs?: number;
+}): Promise<DurableXPostJob[]> {
+  return claimDueXPostJobs(input);
 }
 
 export function resetXScheduledPostsStore(): void {
-  const globalScope = globalThis as typeof globalThis & {
-    __atlasXScheduledPostsStore?: ScheduleStore;
-  };
-  globalScope.__atlasXScheduledPostsStore = [];
+  resetDurableXPostJobsForTests();
 }

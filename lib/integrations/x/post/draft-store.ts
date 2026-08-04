@@ -1,86 +1,52 @@
 import "server-only";
 
+import {
+  getDurableXDraft,
+  listDurableXDrafts,
+  resetDurableXDraftsForTests,
+  softDeleteDurableXDraft,
+  upsertDurableXDraft,
+} from "./durable-x-drafts";
 import type { XDraftPost } from "./types";
 
-type DraftStore = Map<string, XDraftPost[]>;
+/**
+ * P0-5: draft-store is a thin façade over durable X drafts.
+ * Production never uses module-level Map as SoT.
+ */
 
-function getStore(): DraftStore {
-  const globalScope = globalThis as typeof globalThis & {
-    __atlasXDraftPostStore?: DraftStore;
-  };
-
-  if (!globalScope.__atlasXDraftPostStore) {
-    globalScope.__atlasXDraftPostStore = new Map();
-  }
-
-  return globalScope.__atlasXDraftPostStore;
+export async function listXDraftPosts(userId: string): Promise<XDraftPost[]> {
+  if (!userId.trim()) return [];
+  return listDurableXDrafts(userId);
 }
 
-function userKey(userId: string): string {
-  return userId;
-}
-
-export function listXDraftPosts(userId: string): XDraftPost[] {
-  return [...(getStore().get(userKey(userId)) ?? [])].sort(
-    (a, b) =>
-      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-  );
-}
-
-export function getXDraftPost(
+export async function getXDraftPost(
   userId: string,
   draftId: string,
-): XDraftPost | null {
-  return (
-    listXDraftPosts(userId).find((draft) => draft.id === draftId) ?? null
-  );
+): Promise<XDraftPost | null> {
+  return getDurableXDraft({ ownerId: userId, draftId });
 }
 
-export function saveXDraftPost(input: {
+export async function saveXDraftPost(input: {
   userId: string;
   text: string;
   id?: string;
-}): XDraftPost {
-  const now = new Date().toISOString();
-  const bucket = getStore().get(userKey(input.userId)) ?? [];
-  const existingIndex = input.id
-    ? bucket.findIndex((draft) => draft.id === input.id)
-    : -1;
-
-  if (existingIndex >= 0) {
-    const updated: XDraftPost = {
-      ...bucket[existingIndex]!,
-      text: input.text.trim(),
-      updatedAt: now,
-    };
-    bucket[existingIndex] = updated;
-    getStore().set(userKey(input.userId), bucket);
-    return updated;
-  }
-
-  const draft: XDraftPost = {
-    id: crypto.randomUUID(),
-    userId: input.userId,
-    text: input.text.trim(),
-    createdAt: now,
-    updatedAt: now,
-  };
-  bucket.unshift(draft);
-  getStore().set(userKey(input.userId), bucket);
-  return draft;
+  expectedVersion?: number;
+}): Promise<XDraftPost> {
+  return upsertDurableXDraft({
+    ownerId: input.userId,
+    content: input.text,
+    draftId: input.id,
+    expectedVersion: input.expectedVersion,
+  });
 }
 
-export function deleteXDraftPost(userId: string, draftId: string): boolean {
-  const bucket = getStore().get(userKey(userId)) ?? [];
-  const next = bucket.filter((draft) => draft.id !== draftId);
-  if (next.length === bucket.length) return false;
-  getStore().set(userKey(userId), next);
-  return true;
+export async function deleteXDraftPost(
+  userId: string,
+  draftId: string,
+): Promise<boolean> {
+  return softDeleteDurableXDraft({ ownerId: userId, draftId });
 }
 
 export function resetXDraftPostStore(): void {
-  const globalScope = globalThis as typeof globalThis & {
-    __atlasXDraftPostStore?: DraftStore;
-  };
-  globalScope.__atlasXDraftPostStore = new Map();
+  resetDurableXDraftsForTests();
 }
