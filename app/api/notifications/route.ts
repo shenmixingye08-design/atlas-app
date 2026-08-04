@@ -16,9 +16,9 @@ export async function GET(): Promise<Response> {
   await ensureNotificationsHydrated(userId);
   await syncRecommendationNotifications(userId);
 
-  const notifications = listUserNotifications(userId);
+  const notifications = await listUserNotifications(userId);
   return Response.json({
     notifications,
-    unreadCount: countUnreadUserNotifications(userId),
+    unreadCount: await countUnreadUserNotifications(userId),
   });
 }

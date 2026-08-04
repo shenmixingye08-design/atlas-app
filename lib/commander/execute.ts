@@ -258,7 +258,7 @@ async function executeRememberHabitRun(input: {
     projectId: habitProjectId,
   });
 
-  notifyWorkCompleted(input.userId, {
+  await notifyWorkCompleted(input.userId, {
     title: "習慣候補を作成しました",
     message: summary,
     actionUrl: `/projects/${encodeURIComponent(habitProjectId)}`,
@@ -768,7 +768,7 @@ async function executeStoredRun(input: {
     // CRITICAL: `/results/<notificationId>` loads a Project by targetId.
     // Always point deliverableId/relatedTaskId/targetId at the commander
     // project id — NEVER the Word file UUID (that is only for download).
-    ensureNotificationDelivery(
+    await ensureNotificationDelivery(
       () =>
         notifyWorkCompleted(input.userId, {
           title: wordDeliverableId
@@ -812,7 +812,7 @@ async function executeStoredRun(input: {
         projectId: resultProjectId,
       });
     }
-    ensureNotificationDelivery(
+    await ensureNotificationDelivery(
       () =>
         notifyWorkFailed(input.userId, {
           title: wordFailedUserTitle ?? "Word生成失敗",
@@ -836,7 +836,7 @@ async function executeStoredRun(input: {
         projectId: resultProjectId,
       });
     }
-    ensureNotificationDelivery(
+    await ensureNotificationDelivery(
       () =>
         notifyWorkCompleted(input.userId, {
           title: "確認が必要です",
@@ -853,7 +853,7 @@ async function executeStoredRun(input: {
     );
     notificationCreated = true;
   } else if (finalStatus === "cancelled") {
-    ensureNotificationDelivery(
+    await ensureNotificationDelivery(
       () =>
         notifyWorkFailed(input.userId, {
           title: "作業を止めました",
@@ -895,7 +895,7 @@ async function executeStoredRun(input: {
       result: failedResult,
       projectId: resultProjectId,
     });
-    ensureNotificationDelivery(
+    await ensureNotificationDelivery(
       () =>
         notifyWorkFailed(input.userId, {
           title: "確認が必要です",

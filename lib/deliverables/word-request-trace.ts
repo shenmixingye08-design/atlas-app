@@ -215,7 +215,7 @@ export async function runWordRequestTrace(input?: {
   // 7–8 Notification
   let notificationId: string | null = null;
   // Intentionally use project id (correct) — mirrors the execute.ts fix.
-  const notification = createNotification({
+  const notification = await createNotification({
     audience: "user",
     userId: TRACE_USER,
     type: "completed",

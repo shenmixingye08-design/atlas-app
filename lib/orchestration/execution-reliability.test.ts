@@ -72,9 +72,9 @@ describe("execution reliability", () => {
     expect(overdue.timedOut).toBe(true);
   });
 
-  it("guarantees notification delivery with retries", () => {
+  it("guarantees notification delivery with retries", async () => {
     let calls = 0;
-    const record = ensureNotificationDelivery(
+    const record = await ensureNotificationDelivery(
       () => {
         calls += 1;
         if (calls < 2) throw new Error("transient");

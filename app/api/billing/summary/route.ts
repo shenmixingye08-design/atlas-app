@@ -17,7 +17,7 @@ export async function GET(): Promise<Response> {
   }
 
   await resolveUserSubscriptionDurable(userId);
-  return Response.json(getUserBillingSummary(userId), {
+  return Response.json(await getUserBillingSummary(userId), {
     headers: {
       "Cache-Control": "no-store, max-age=0",
     },

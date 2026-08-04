@@ -58,7 +58,7 @@ export async function schedulePaymentFailureGrace(
     paymentFailureGraceEndsAt: graceEndsAt.toISOString(),
   });
 
-  notifyUserPaymentGraceScheduled(userId, graceEndsAt.toISOString());
+  await notifyUserPaymentGraceScheduled(userId, graceEndsAt.toISOString());
   return record;
 }
 
@@ -79,7 +79,7 @@ export async function applyPaidPlanFromWebhook(input: {
   // past_due / unpaid / incomplete must keep grace set by invoice.payment_failed.
   if (input.status === "active" || input.status === "trialing") {
     await clearSubscriptionLifecycleFlags(input.userId);
-    notifyUserPlanChanged(input.userId, getPlanDefinition(input.planId).name);
+    await notifyUserPlanChanged(input.userId, getPlanDefinition(input.planId).name);
   }
 
   await syncUserPlanProfile(input.userId, input.planId);
@@ -92,7 +92,7 @@ export async function applyDowngradeFromWebhook(
   const record = await downgradeToFree(userId, { source: "stripe_webhook" });
   await suspendAutomationsForUser(userId);
   await syncUserPlanProfile(userId, "free");
-  notifyUserPlanDowngraded(userId);
+  await notifyUserPlanDowngraded(userId);
   return record;
 }
 

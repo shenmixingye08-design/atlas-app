@@ -1,6 +1,9 @@
 import type { NotificationPreferences, NotificationRecord } from "./types";
 import { DEFAULT_NOTIFICATION_PREFERENCES } from "./types";
 
+/** Per-user inbox cap (P0-4). Never a shared global buffer across users. */
+export const MAX_NOTIFICATIONS_PER_USER = 500;
+
 type NotificationBucket = NotificationRecord[];
 type PreferencesMap = Map<string, NotificationPreferences>;
 
@@ -44,12 +47,30 @@ function getPreferencesMap(): PreferencesMap {
   return scope.__atlasNotificationPreferences;
 }
 
-const MAX_NOTIFICATIONS = 500;
+/** @deprecated Use MAX_NOTIFICATIONS_PER_USER — global buffer removed (P0-4). */
+export const MAX_NOTIFICATIONS = MAX_NOTIFICATIONS_PER_USER;
+
+function trimUserNotifications(userId: string): void {
+  const bucket = getBucket();
+  const userRows = bucket.filter(
+    (r) => r.audience === "user" && r.userId === userId,
+  );
+  if (userRows.length <= MAX_NOTIFICATIONS_PER_USER) return;
+  const dropIds = new Set(
+    userRows
+      .slice(MAX_NOTIFICATIONS_PER_USER)
+      .map((r) => r.notificationId),
+  );
+  const next = bucket.filter((r) => !dropIds.has(r.notificationId));
+  bucket.length = 0;
+  bucket.push(...next);
+}
 
 export function appendNotification(record: NotificationRecord): NotificationRecord {
   getBucket().unshift(record);
-  if (getBucket().length > MAX_NOTIFICATIONS) {
-    getBucket().length = MAX_NOTIFICATIONS;
+  // P0-4: per-user retention only — never evict another user's rows.
+  if (record.userId) {
+    trimUserNotifications(record.userId);
   }
   return record;
 }
@@ -58,6 +79,10 @@ export function listStoredNotifications(filter?: {
   audience?: NotificationRecord["audience"];
   userId?: string;
 }): NotificationRecord[] {
+  // P0-4: ownerId/userId required for user audience lists (no full dump filter).
+  if (filter?.audience === "user" && !filter.userId?.trim()) {
+    return [];
+  }
   return getBucket().filter((record) => {
     if (filter?.audience && record.audience !== filter.audience) return false;
     if (filter?.userId && record.userId !== filter.userId) return false;
@@ -144,14 +169,11 @@ export function replaceUserNotifications(
   const kept = bucket.filter(
     (record) => !(record.audience === "user" && record.userId === userId),
   );
+  const userOnly = records
+    .filter((r) => r.userId === userId && r.audience === "user")
+    .slice(0, MAX_NOTIFICATIONS_PER_USER);
   bucket.length = 0;
-  bucket.push(
-    ...records.filter((r) => r.userId === userId && r.audience === "user"),
-    ...kept,
-  );
-  if (bucket.length > MAX_NOTIFICATIONS) {
-    bucket.length = MAX_NOTIFICATIONS;
-  }
+  bucket.push(...userOnly, ...kept);
 }
 
 export function resetNotificationStore(): void {

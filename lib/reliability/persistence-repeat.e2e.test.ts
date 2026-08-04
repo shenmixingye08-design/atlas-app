@@ -306,7 +306,7 @@ async function simulateOneJobCycle(index: number): Promise<{
   // memory / learning / notification
   schedulePersistWorkMemory(USER);
   schedulePersistLearning(USER);
-  createNotification({
+  await createNotification({
     userId: USER,
     audience: "user",
     type: "completed",

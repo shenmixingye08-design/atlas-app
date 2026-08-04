@@ -96,7 +96,7 @@ export async function dispatchAutomationRuns(options?: {
       );
       result.processed += 1;
       result.failed += 1;
-      notifyAutomationRunEvent({
+      await notifyAutomationRunEvent({
         userId: failed.userId,
         automationName: withHistory.automationName,
         run: failed,
@@ -114,7 +114,7 @@ export async function dispatchAutomationRuns(options?: {
 
     const wasRetry = candidate.status === "retrying";
     if (wasRetry) {
-      notifyAutomationRunEvent({
+      await notifyAutomationRunEvent({
         userId: automation.userId,
         automationName: automation.name,
         run: withHistory,
@@ -122,7 +122,7 @@ export async function dispatchAutomationRuns(options?: {
         event: "retry_started",
       });
     } else {
-      notifyAutomationRunEvent({
+      await notifyAutomationRunEvent({
         userId: automation.userId,
         automationName: automation.name,
         run: withHistory,
@@ -143,7 +143,7 @@ export async function dispatchAutomationRuns(options?: {
     result.processed += 1;
     if (execResult.run.status === "succeeded") {
       result.succeeded += 1;
-      notifyAutomationRunEvent({
+      await notifyAutomationRunEvent({
         userId: automation.userId,
         automationName: automation.name,
         run: execResult.run,
@@ -153,7 +153,7 @@ export async function dispatchAutomationRuns(options?: {
     } else if (execResult.run.status === "partially_succeeded") {
       // Partial completion is not a success counter / completed notification.
       result.failed += 1;
-      notifyAutomationRunEvent({
+      await notifyAutomationRunEvent({
         userId: automation.userId,
         automationName: automation.name,
         run: execResult.run,
@@ -162,7 +162,7 @@ export async function dispatchAutomationRuns(options?: {
       });
     } else if (execResult.run.status === "failed") {
       result.failed += 1;
-      notifyAutomationRunEvent({
+      await notifyAutomationRunEvent({
         userId: automation.userId,
         automationName: automation.name,
         run: execResult.run,
@@ -172,7 +172,7 @@ export async function dispatchAutomationRuns(options?: {
       });
     } else if (execResult.run.status === "retrying") {
       result.retrying += 1;
-      notifyAutomationRunEvent({
+      await notifyAutomationRunEvent({
         userId: automation.userId,
         automationName: automation.name,
         run: execResult.run,
@@ -181,7 +181,7 @@ export async function dispatchAutomationRuns(options?: {
       });
     } else if (execResult.run.status === "needs_input") {
       result.awaiting += 1;
-      notifyAutomationRunEvent({
+      await notifyAutomationRunEvent({
         userId: automation.userId,
         automationName: automation.name,
         run: execResult.run,

@@ -6,6 +6,20 @@ import { resolvePushEventCategory, resolvePushSeverity } from "@/lib/push/catego
 
 import { deliverLineWithAck, deliverWebPushWithAck } from "./delivery";
 import { schedulePersistNotifications } from "./durable";
+import {
+  buildNotificationIdempotencyKey,
+  countDurableUnread,
+  getDurableNotification,
+  insertDurableNotification,
+  listDurableNotifications,
+  markAllDurableNotificationsRead,
+  markDurableNotificationRead,
+  NotificationInboxUnavailableError,
+  scheduleDurableDeliveryRetry,
+  softDeleteDurableNotification,
+  updateDurableDeliveryState,
+} from "./durable-inbox";
+import { isNotificationDurableRequired } from "./notification-backend";
 import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
 import {
   appendNotification,
@@ -91,15 +105,24 @@ function resolveLineEvent(
   }
 }
 
-export function createNotification(
+/**
+ * Formal P0-4 create: Durable inbox insert BEFORE external delivery.
+ * Production never succeeds on process-memory alone.
+ */
+export async function createUserNotification(
   input: CreateNotificationInput,
-  options?: { skipDelivery?: boolean },
-): NotificationRecord | null {
+  options?: { skipDelivery?: boolean; eventVersion?: string },
+): Promise<NotificationRecord | null> {
   const lineEvent = resolveLineEvent(input);
   let shouldCreateInApp = true;
   let enabledLineEvent: LineNotifyEvent | null = null;
 
-  if (input.audience === "user" && input.userId) {
+  if (input.audience === "user") {
+    if (!input.userId?.trim()) {
+      throw new NotificationInboxUnavailableError(
+        "[notifications] P0-4: user audience requires ownerId/userId",
+      );
+    }
     const stored = getStoredPreferences(input.userId);
     const { preferences: prefs } = resolveNotificationPreferencesWithMemorySync({
       userId: input.userId,
@@ -119,10 +142,6 @@ export function createNotification(
     }
   }
 
-  // The notification id is the canonical key of the unified results route. When
-  // a result target is present, the button MUST open `/results/<id>` (which
-  // resolves the exact 成果物 from the notification alone) — not a stale
-  // `/projects/<id>` deep link that can dead-end.
   const notificationId = `ntf_${randomUUID()}`;
   const targetType = input.targetType ?? null;
   const targetId = input.targetId ?? null;
@@ -131,26 +150,13 @@ export function createNotification(
       ? `/results/${encodeURIComponent(notificationId)}`
       : (input.actionUrl ?? null);
 
-  if (!shouldCreateInApp) {
-    if (
-      !options?.skipDelivery &&
-      input.audience === "user" &&
-      input.userId &&
-      enabledLineEvent
-    ) {
-      void deliverLineWithAck({
-        notificationId,
-        userId: input.userId,
-        event: enabledLineEvent,
-        title: input.title,
-        message: input.message,
-        actionUrl: canonicalActionUrl,
-      }).catch((error) => console.warn("[LINE notify]", error));
-    }
+  // Prefer in-app durable row. LINE-only prefs still get a durable row first
+  // so external delivery never succeeds without SoT persistence.
+  if (!shouldCreateInApp && !(input.audience === "user" && enabledLineEvent)) {
     return null;
   }
 
-  const record = appendNotification({
+  const draft: NotificationRecord = {
     notificationId,
     userId: input.userId,
     audience: input.audience,
@@ -187,34 +193,112 @@ export function createNotification(
     pushFailedAt: null,
     pushFailureReason: null,
     readAt: null,
+  };
+
+  const sourceId =
+    input.requestId ??
+    input.relatedTaskId ??
+    input.deliverableId ??
+    input.automationId ??
+    input.workflowRunId ??
+    notificationId;
+
+  const idempotencyKey = buildNotificationIdempotencyKey({
+    ownerId: input.userId ?? "owner",
+    eventType: input.type,
+    sourceId,
+    channel: "in_app",
+    eventVersion: options?.eventVersion ?? "v1",
   });
+
+  // P0-4: Durable insert first (fail-closed). Cache is secondary.
+  let record: NotificationRecord;
+  if (input.audience === "user" && input.userId) {
+    const inserted = await insertDurableNotification(draft, {
+      idempotencyKey,
+      sourceType: input.type,
+      sourceId,
+      channel: shouldCreateInApp ? "in_app" : "line",
+      organizationId: input.organizationId ?? null,
+    });
+    record = inserted.record;
+    if (shouldCreateInApp) {
+      appendNotification(record);
+    }
+  } else {
+    // Owner-audience: still cache locally; not a multi-tenant user inbox.
+    record = appendNotification(draft);
+  }
+
   bumpPersistenceCounter("notificationCreate");
+  // Legacy blob snapshot kept for prefs; row SoT is durable-inbox.
   if (input.userId) schedulePersistNotifications(input.userId);
 
-  if (!options?.skipDelivery) {
-    // Delivery with ACK → Retry → DLQ. Scheduled (not blocking create), but never
-    // counted as success until deliver*WithAck completes.
-    if (input.audience === "user" && input.userId && enabledLineEvent) {
-      void deliverLineWithAck({
-        notificationId,
+  if (!options?.skipDelivery && input.audience === "user" && input.userId) {
+    let channelOk = true;
+    let lastError: string | null = null;
+
+    if (enabledLineEvent) {
+      const line = await deliverLineWithAck({
+        notificationId: record.notificationId,
         userId: input.userId,
         event: enabledLineEvent,
         title: input.title,
         message: input.message,
         actionUrl: canonicalActionUrl,
-      }).catch((error) => console.warn("[LINE notify]", error));
+      });
+      if (!line.ok) {
+        channelOk = false;
+        lastError = line.error ?? "line_delivery_failed";
+      }
     }
 
-    if (input.audience === "user" && input.userId) {
-      void deliverWebPushWithAck({
+    if (shouldCreateInApp) {
+      const push = await deliverWebPushWithAck({
         record,
         autoRecovered: input.autoRecovered,
         jobName: input.jobName ?? null,
-      }).catch((error) => console.warn("[push notify]", error));
+      });
+      if (!push.ok) {
+        channelOk = false;
+        lastError = push.error ?? lastError ?? "push_delivery_failed";
+        await updateDurableDeliveryState({
+          notificationId: record.notificationId,
+          ownerId: input.userId,
+          status: "retry_scheduled",
+          pushFailedAt: new Date().toISOString(),
+          pushFailureReason: lastError,
+        }).catch(() => undefined);
+      } else {
+        await updateDurableDeliveryState({
+          notificationId: record.notificationId,
+          ownerId: input.userId,
+          status: "delivered",
+          pushSentAt: new Date().toISOString(),
+        }).catch(() => undefined);
+      }
+    }
+
+    if (!channelOk && lastError) {
+      await scheduleDurableDeliveryRetry({
+        notificationId: record.notificationId,
+        ownerId: input.userId,
+        errorMessage: lastError,
+      }).catch(() => undefined);
     }
   }
 
+  // In-app disabled + LINE-only: durable row exists; do not expose as inbox item.
+  if (!shouldCreateInApp) return null;
   return record;
+}
+
+/** @deprecated Prefer createUserNotification — kept as async alias (P0-4). */
+export async function createNotification(
+  input: CreateNotificationInput,
+  options?: { skipDelivery?: boolean; eventVersion?: string },
+): Promise<NotificationRecord | null> {
+  return createUserNotification(input, options);
 }
 
 /** Awaited notification create for E2E reliability harnesses. */
@@ -226,7 +310,7 @@ export async function createNotificationWithDelivery(
   pushOk: boolean | null;
 }> {
   const lineEvent = resolveLineEvent(input);
-  const record = createNotification(input, { skipDelivery: true });
+  const record = await createUserNotification(input, { skipDelivery: true });
   if (!record || !input.userId) {
     return { record, lineOk: null, pushOk: null };
   }
@@ -257,7 +341,18 @@ export async function createNotificationWithDelivery(
   return { record, lineOk, pushOk };
 }
 
-export function listUserNotifications(userId: string): NotificationRecord[] {
+export async function listUserNotifications(
+  userId: string,
+): Promise<NotificationRecord[]> {
+  if (!userId.trim()) return [];
+  if (isNotificationDurableRequired()) {
+    const rows = await listDurableNotifications({ ownerId: userId });
+    // Keep process cache warm for legacy readers.
+    for (const row of rows) {
+      if (!findNotification(row.notificationId)) appendNotification(row);
+    }
+    return rows;
+  }
   return listStoredNotifications({ audience: "user", userId });
 }
 
@@ -265,14 +360,34 @@ export function listOwnerNotifications(): NotificationRecord[] {
   return listStoredNotifications({ audience: "owner" });
 }
 
-export function countUnreadUserNotifications(userId: string): number {
-  return listUserNotifications(userId).filter((n) => !n.isRead).length;
+export async function countUnreadUserNotifications(
+  userId: string,
+): Promise<number> {
+  if (!userId.trim()) return 0;
+  if (isNotificationDurableRequired()) {
+    return countDurableUnread(userId);
+  }
+  return (await listUserNotifications(userId)).filter((n) => !n.isRead).length;
 }
 
-export function markNotificationRead(
+export async function markNotificationRead(
   notificationId: string,
   userId: string,
-): NotificationRecord | null {
+): Promise<NotificationRecord | null> {
+  if (!userId.trim()) return null;
+  if (isNotificationDurableRequired()) {
+    const updated = await markDurableNotificationRead({
+      notificationId,
+      ownerId: userId,
+    });
+    if (updated) {
+      updateNotification(notificationId, {
+        isRead: true,
+        readAt: updated.readAt ?? new Date().toISOString(),
+      });
+    }
+    return updated;
+  }
   const record = findNotification(notificationId);
   if (!record || record.userId !== userId) return null;
   const updated = updateNotification(notificationId, {
@@ -283,9 +398,15 @@ export function markNotificationRead(
   return updated;
 }
 
-export function markAllUserNotificationsRead(userId: string): number {
+export async function markAllUserNotificationsRead(
+  userId: string,
+): Promise<number> {
+  if (!userId.trim()) return 0;
+  if (isNotificationDurableRequired()) {
+    return markAllDurableNotificationsRead({ ownerId: userId });
+  }
   let count = 0;
-  for (const record of listUserNotifications(userId)) {
+  for (const record of await listUserNotifications(userId)) {
     if (!record.isRead) {
       updateNotification(record.notificationId, {
         isRead: true,
@@ -298,15 +419,37 @@ export function markAllUserNotificationsRead(userId: string): number {
   return count;
 }
 
-export function removeUserNotification(
+export async function removeUserNotification(
   notificationId: string,
   userId: string,
-): boolean {
+): Promise<boolean> {
+  if (!userId.trim()) return false;
+  if (isNotificationDurableRequired()) {
+    const removed = await softDeleteDurableNotification({
+      notificationId,
+      ownerId: userId,
+    });
+    if (removed) deleteNotification(notificationId);
+    return removed;
+  }
   const record = findNotification(notificationId);
   if (!record || record.userId !== userId) return false;
   const removed = deleteNotification(notificationId);
   if (removed) schedulePersistNotifications(userId);
   return removed;
+}
+
+export async function getUserNotificationById(
+  notificationId: string,
+  userId: string,
+): Promise<NotificationRecord | null> {
+  if (!userId.trim()) return null;
+  if (isNotificationDurableRequired()) {
+    return getDurableNotification({ notificationId, ownerId: userId });
+  }
+  const record = findNotification(notificationId);
+  if (!record || record.userId !== userId) return null;
+  return record;
 }
 
 export function getUserNotificationPreferences(

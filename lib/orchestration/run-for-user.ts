@@ -259,7 +259,7 @@ export async function runOrchestrationForUser(
       });
     }
     if (notify) {
-      notifyWorkFailed(input.userId, {
+      await notifyWorkFailed(input.userId, {
         title: "仕事の実行に失敗しました",
         message: result.error ?? "処理中にエラーが発生しました。",
         ...(deepLink && {
@@ -288,7 +288,7 @@ export async function runOrchestrationForUser(
   }
   if (notify) {
     const completedTitle = completedTitleForDeliverable(result.deliverable?.type);
-    notifyWorkCompleted(input.userId, {
+    await notifyWorkCompleted(input.userId, {
       title: completedTitle,
       message: `${completedTitle}。ご確認をお願いいたします。`,
       ...(deepLink && {

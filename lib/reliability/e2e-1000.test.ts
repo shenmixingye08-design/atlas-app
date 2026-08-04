@@ -165,7 +165,7 @@ async function oneIteration(i: number): Promise<IterResult> {
     }
   }
 
-  const ntf = createNotification(
+  const ntf = await createNotification(
     {
       audience: "user",
       userId: USER,

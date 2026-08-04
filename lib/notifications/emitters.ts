@@ -17,12 +17,12 @@ function deliverableActionUrl(deliverableId: string): string {
   return `/projects/${encodeURIComponent(deliverableId)}`;
 }
 
-export function notifyAutomationCompleted(
+export async function notifyAutomationCompleted(
   userId: string | null | undefined,
   input: { automationId: string; name: string; templateId?: string },
 ) {
   if (!userId) return null;
-  return createNotification({
+  return await createNotification({
     audience: "user",
     userId,
     type: "completed",
@@ -36,12 +36,12 @@ export function notifyAutomationCompleted(
   });
 }
 
-export function notifyAutomationAwaitingReview(
+export async function notifyAutomationAwaitingReview(
   userId: string | null | undefined,
   input: { automationId: string; name: string },
 ) {
   if (!userId) return null;
-  return createNotification({
+  return await createNotification({
     audience: "user",
     userId,
     type: "awaiting_review",
@@ -55,12 +55,12 @@ export function notifyAutomationAwaitingReview(
   });
 }
 
-export function notifyAutomationFailed(
+export async function notifyAutomationFailed(
   userId: string | null | undefined,
   input: { automationId: string; name: string; error?: string },
 ) {
   if (!userId) return null;
-  return createNotification({
+  return await createNotification({
     audience: "user",
     userId,
     type: "automation",
@@ -74,13 +74,13 @@ export function notifyAutomationFailed(
   });
 }
 
-export function notifyXPostSuccess(
+export async function notifyXPostSuccess(
   userId: string,
   text?: string,
   options?: { historyId?: string | null },
 ) {
   const historyId = options?.historyId ?? null;
-  return createNotification({
+  return await createNotification({
     audience: "user",
     userId,
     type: "completed",
@@ -97,11 +97,11 @@ export function notifyXPostSuccess(
   });
 }
 
-export function notifyXPostFailed(userId: string, message: string) {
+export async function notifyXPostFailed(userId: string, message: string) {
   const detail =
     message.trim() ||
     "Xへの投稿に失敗しました。内容をご確認のうえ、設定画面からX連携をご確認ください。";
-  return createNotification({
+  return await createNotification({
     audience: "user",
     userId,
     type: "error",
@@ -114,12 +114,12 @@ export function notifyXPostFailed(userId: string, message: string) {
 }
 
 /** Recurring X post success — deep-links to the automation execution history. */
-export function notifyXRecurringPostSuccess(
+export async function notifyXRecurringPostSuccess(
   userId: string | null | undefined,
   input: { automationId: string; executionId: string },
 ) {
   if (!userId) return null;
-  return createNotification({
+  return await createNotification({
     audience: "user",
     userId,
     type: "completed",
@@ -135,7 +135,7 @@ export function notifyXRecurringPostSuccess(
 }
 
 /** Recurring X post failure — deep-links to the automation execution history. */
-export function notifyXRecurringPostFailed(
+export async function notifyXRecurringPostFailed(
   userId: string | null | undefined,
   input: {
     automationId: string;
@@ -144,7 +144,7 @@ export function notifyXRecurringPostFailed(
   },
 ) {
   if (!userId) return null;
-  return createNotification({
+  return await createNotification({
     audience: "user",
     userId,
     type: "error",
@@ -161,8 +161,8 @@ export function notifyXRecurringPostFailed(
   });
 }
 
-export function notifyXAutoPostDrafted(userId: string) {
-  return createNotification({
+export async function notifyXAutoPostDrafted(userId: string) {
+  return await createNotification({
     audience: "user",
     userId,
     type: "awaiting_review",
@@ -175,8 +175,8 @@ export function notifyXAutoPostDrafted(userId: string) {
   });
 }
 
-export function notifyDriveSaveComplete(userId: string, fileName?: string) {
-  return createNotification({
+export async function notifyDriveSaveComplete(userId: string, fileName?: string) {
+  return await createNotification({
     audience: "user",
     userId,
     type: "completed",
@@ -190,8 +190,8 @@ export function notifyDriveSaveComplete(userId: string, fileName?: string) {
   });
 }
 
-export function notifyGmailSummaryComplete(userId: string) {
-  return createNotification({
+export async function notifyGmailSummaryComplete(userId: string) {
+  return await createNotification({
     audience: "user",
     userId,
     type: "completed",
@@ -202,8 +202,8 @@ export function notifyGmailSummaryComplete(userId: string) {
   });
 }
 
-export function notifyCalendarReminder(userId: string, title: string) {
-  return createNotification({
+export async function notifyCalendarReminder(userId: string, title: string) {
+  return await createNotification({
     audience: "user",
     userId,
     type: "automation",
@@ -215,8 +215,8 @@ export function notifyCalendarReminder(userId: string, title: string) {
   });
 }
 
-export function notifyBillingPaymentFailed(userId: string) {
-  return createNotification({
+export async function notifyBillingPaymentFailed(userId: string) {
+  return await createNotification({
     audience: "user",
     userId,
     type: "billing",
@@ -228,8 +228,8 @@ export function notifyBillingPaymentFailed(userId: string) {
   });
 }
 
-export function notifyBillingPaymentSucceeded(userId: string, planLabel?: string) {
-  return createNotification({
+export async function notifyBillingPaymentSucceeded(userId: string, planLabel?: string) {
+  return await createNotification({
     audience: "user",
     userId,
     type: "billing",
@@ -242,8 +242,8 @@ export function notifyBillingPaymentSucceeded(userId: string, planLabel?: string
   });
 }
 
-export function notifyBillingPlanChanged(userId: string, planLabel: string) {
-  return createNotification({
+export async function notifyBillingPlanChanged(userId: string, planLabel: string) {
+  return await createNotification({
     audience: "user",
     userId,
     type: "billing",
@@ -254,8 +254,8 @@ export function notifyBillingPlanChanged(userId: string, planLabel: string) {
   });
 }
 
-export function notifyBillingPlanDowngraded(userId: string) {
-  return createNotification({
+export async function notifyBillingPlanDowngraded(userId: string) {
+  return await createNotification({
     audience: "user",
     userId,
     type: "billing",
@@ -266,9 +266,9 @@ export function notifyBillingPlanDowngraded(userId: string) {
   });
 }
 
-export function notifyBillingGraceScheduled(userId: string, graceEndsAt: string) {
+export async function notifyBillingGraceScheduled(userId: string, graceEndsAt: string) {
   const formatted = new Date(graceEndsAt).toLocaleString("ja-JP");
-  return createNotification({
+  return await createNotification({
     audience: "user",
     userId,
     type: "billing",
@@ -279,11 +279,11 @@ export function notifyBillingGraceScheduled(userId: string, graceEndsAt: string)
   });
 }
 
-export function notifyIntegrationError(
+export async function notifyIntegrationError(
   userId: string,
   input: { service: string; message: string },
 ) {
-  return createNotification({
+  return await createNotification({
     audience: "user",
     userId,
     type: "integration",
@@ -295,8 +295,8 @@ export function notifyIntegrationError(
   });
 }
 
-export function notifyIntegrationExpiring(userId: string, service: string) {
-  return createNotification({
+export async function notifyIntegrationExpiring(userId: string, service: string) {
+  return await createNotification({
     audience: "user",
     userId,
     type: "integration",
@@ -307,11 +307,11 @@ export function notifyIntegrationExpiring(userId: string, service: string) {
   });
 }
 
-export function notifyRecommendation(
+export async function notifyRecommendation(
   userId: string,
   input: { title: string; message: string; actionUrl?: string },
 ) {
-  return createNotification({
+  return await createNotification({
     audience: "user",
     userId,
     type: "recommendation",
@@ -325,35 +325,62 @@ export function notifyRecommendation(
  * Same requestId/jobId → update latest notification instead of creating duplicates.
  * Completing a deliverable must not leave an older failure as the "latest" state.
  */
-function upsertWorkNotificationByRequestId(input: {
+async function upsertWorkNotificationByRequestId(input: {
   userId: string;
   requestId: string | null | undefined;
-  build: () => NotificationRecord | null;
+  build: () => Promise<NotificationRecord | null> | NotificationRecord | null;
   patch: (existing: NotificationRecord) => Partial<NotificationRecord>;
-}): NotificationRecord | null {
+}): Promise<NotificationRecord | null> {
   const requestId = input.requestId?.trim() || null;
   if (requestId) {
-    const existing = listStoredNotifications({
-      audience: "user",
-      userId: input.userId,
-    }).find(
-      (n) =>
-        n.requestId === requestId ||
-        n.relatedTaskId === requestId ||
-        n.workflowRunId === requestId,
+    const {
+      findDurableNotificationByRequestId,
+      patchDurableNotification,
+    } = await import("./durable-inbox");
+    const { isNotificationDurableRequired } = await import(
+      "./notification-backend"
     );
+
+    let existing =
+      (await findDurableNotificationByRequestId({
+        ownerId: input.userId,
+        requestId,
+      })) ?? null;
+
+    if (!existing && !isNotificationDurableRequired()) {
+      existing =
+        listStoredNotifications({
+          audience: "user",
+          userId: input.userId,
+        }).find(
+          (n) =>
+            n.requestId === requestId ||
+            n.relatedTaskId === requestId ||
+            n.workflowRunId === requestId,
+        ) ?? null;
+    }
+
     if (existing) {
-      const updated = updateNotification(
-        existing.notificationId,
-        input.patch(existing),
-      );
-      return updated;
+      const patch = input.patch(existing);
+      if (Object.keys(patch).length === 0) return existing;
+      if (isNotificationDurableRequired()) {
+        const updated = await patchDurableNotification({
+          notificationId: existing.notificationId,
+          ownerId: input.userId,
+          patch,
+        });
+        if (updated) {
+          updateNotification(existing.notificationId, patch);
+        }
+        return updated ?? existing;
+      }
+      return updateNotification(existing.notificationId, patch);
     }
   }
-  return input.build();
+  return await input.build();
 }
 
-export function notifyWorkCompleted(
+export async function notifyWorkCompleted(
   userId: string | null | undefined,
   input: {
     title: string;
@@ -383,7 +410,7 @@ export function notifyWorkCompleted(
     ? `お待たせいたしました。${input.message}`
     : "お待たせいたしました。ご依頼の内容が完了しました。";
 
-  return upsertWorkNotificationByRequestId({
+  return await upsertWorkNotificationByRequestId({
     userId,
     requestId: input.requestId ?? input.workflowRunId ?? deliverableId,
     build: () =>
@@ -418,7 +445,7 @@ export function notifyWorkCompleted(
   });
 }
 
-export function notifyWorkFailed(
+export async function notifyWorkFailed(
   userId: string | null | undefined,
   input: {
     title: string;
@@ -443,7 +470,7 @@ export function notifyWorkFailed(
     ? `処理を完了できませんでした。${input.message.trim()}`
     : "処理を完了できませんでした。内容をご確認ください。";
 
-  return upsertWorkNotificationByRequestId({
+  return await upsertWorkNotificationByRequestId({
     userId,
     requestId: input.requestId ?? input.workflowRunId ?? deliverableId,
     build: () =>
@@ -485,12 +512,12 @@ export function notifyWorkFailed(
   });
 }
 
-export function notifyMailReceived(
+export async function notifyMailReceived(
   userId: string,
   input: { subject: string; sender?: string; count?: number },
 ) {
   const count = input.count ?? 1;
-  return createNotification({
+  return await createNotification({
     audience: "user",
     userId,
     type: "automation",
@@ -507,11 +534,11 @@ export function notifyMailReceived(
   });
 }
 
-export function notifyDocumentReady(
+export async function notifyDocumentReady(
   userId: string,
   input: { fileName: string; href?: string },
 ) {
-  return createNotification({
+  return await createNotification({
     audience: "user",
     userId,
     type: "completed",
@@ -523,11 +550,11 @@ export function notifyDocumentReady(
   });
 }
 
-export function notifyTodaysSchedule(
+export async function notifyTodaysSchedule(
   userId: string,
   input: { summary: string; eventCount: number },
 ) {
-  return createNotification({
+  return await createNotification({
     audience: "user",
     userId,
     type: "automation",
@@ -542,11 +569,11 @@ export function notifyTodaysSchedule(
   });
 }
 
-export function notifyMorningBriefing(
+export async function notifyMorningBriefing(
   userId: string,
   input: { summary: string },
 ) {
-  return createNotification({
+  return await createNotification({
     audience: "user",
     userId,
     type: "automation",
@@ -559,8 +586,8 @@ export function notifyMorningBriefing(
 }
 
 /** Owner-only notifications */
-export function notifyOwnerStripeWebhookFailed(message: string) {
-  return createNotification({
+export async function notifyOwnerStripeWebhookFailed(message: string) {
+  return await createNotification({
     audience: "owner",
     userId: null,
     type: "error",
@@ -571,8 +598,8 @@ export function notifyOwnerStripeWebhookFailed(message: string) {
   });
 }
 
-export function notifyOwnerApiBudgetExceeded(message: string) {
-  return createNotification({
+export async function notifyOwnerApiBudgetExceeded(message: string) {
+  return await createNotification({
     audience: "owner",
     userId: null,
     type: "error",
@@ -583,8 +610,8 @@ export function notifyOwnerApiBudgetExceeded(message: string) {
   });
 }
 
-export function notifyOwnerHighCostWarning(message: string) {
-  return createNotification({
+export async function notifyOwnerHighCostWarning(message: string) {
+  return await createNotification({
     audience: "owner",
     userId: null,
     type: "error",
@@ -595,8 +622,8 @@ export function notifyOwnerHighCostWarning(message: string) {
   });
 }
 
-export function notifyOwnerSystemIncident(message: string) {
-  return createNotification({
+export async function notifyOwnerSystemIncident(message: string) {
+  return await createNotification({
     audience: "owner",
     userId: null,
     type: "error",
@@ -607,8 +634,8 @@ export function notifyOwnerSystemIncident(message: string) {
   });
 }
 
-export function notifyOwnerExternalApiError(service: string, message: string) {
-  return createNotification({
+export async function notifyOwnerExternalApiError(service: string, message: string) {
+  return await createNotification({
     audience: "owner",
     userId: null,
     type: "error",
@@ -619,8 +646,8 @@ export function notifyOwnerExternalApiError(service: string, message: string) {
   });
 }
 
-export function notifyOwnerPaymentFailed(userId: string) {
-  return createNotification({
+export async function notifyOwnerPaymentFailed(userId: string) {
+  return await createNotification({
     audience: "owner",
     userId: null,
     type: "billing",

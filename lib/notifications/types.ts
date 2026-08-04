@@ -156,4 +156,6 @@ export type CreateNotificationInput = {
   eventCategory?: PushEventCategory | null;
   autoRecovered?: boolean;
   jobName?: string | null;
+  /** Optional tenant boundary for durable inbox rows. */
+  organizationId?: string | null;
 };

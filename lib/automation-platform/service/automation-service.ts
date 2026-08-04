@@ -684,7 +684,7 @@ export class AutomationPlatformService {
     }
 
     if (inserted.run.status === "awaiting_approval") {
-      notifyAutomationRunEvent({
+      await notifyAutomationRunEvent({
         userId: input.userId,
         automationName: automation.name,
         run: inserted.run,

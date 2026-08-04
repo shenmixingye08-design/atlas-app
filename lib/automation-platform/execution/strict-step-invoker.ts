@@ -129,7 +129,7 @@ async function invokeNotifyStep(input: {
       input.step.configuration.message.trim()) ||
     `「${input.automationName}」の通知手順を実行しました。`;
 
-  const record = createNotification({
+  const record = await createNotification({
     audience: "user",
     userId: input.userId,
     type: "automation",

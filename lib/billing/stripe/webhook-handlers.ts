@@ -534,8 +534,8 @@ async function handleInvoicePaymentFailed(
 
   const subscription = resolveUserSubscription(userId);
   await schedulePaymentFailureGrace(userId);
-  notifyUserPaymentFailed(userId);
-  notifyOwnerPaymentFailed(userId);
+  await notifyUserPaymentFailed(userId);
+  await notifyOwnerPaymentFailed(userId);
 
   saveBillingSnapshot({
     userId,

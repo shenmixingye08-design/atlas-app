@@ -12,7 +12,8 @@ export async function syncRecommendationNotifications(
   userId: string,
 ): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
-  const alreadySent = listUserNotifications(userId).some(
+  const existing = await listUserNotifications(userId);
+  const alreadySent = existing.some(
     (record) =>
       record.type === "recommendation" && record.createdAt.startsWith(today),
   );
@@ -27,7 +28,7 @@ export async function syncRecommendationNotifications(
   const top = suggestions[0];
   if (!top) return;
 
-  notifyRecommendation(userId, {
+  await notifyRecommendation(userId, {
     title: "MINERVOTからのおすすめ",
     message: top.message,
     actionUrl: top.action.automationId ? "/automations" : "/workspace",

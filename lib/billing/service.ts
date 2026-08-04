@@ -13,11 +13,14 @@ import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 export type { UserBillingSummary } from "./types";
 
-export function getUserBillingSummary(userId: string): UserBillingSummary {
+export async function getUserBillingSummary(
+  userId: string,
+): Promise<UserBillingSummary> {
   const subscription = getUserSubscriptionView(userId);
   const usage = getUserUsageLimitSummary(userId);
   const plan = getPlanDefinition(subscription.planId);
   const secretDiagnostics = getStripeSecretDiagnostics();
+  const notifications = await listUserBillingNotifications(userId);
 
   return {
     subscription,
@@ -29,7 +32,7 @@ export function getUserBillingSummary(userId: string): UserBillingSummary {
     secretPrefixValid: secretDiagnostics.secretPrefixValid,
     billingPortalAvailable: Boolean(subscription.stripeCustomerId),
     automationsSuspended: isAutomationSuspendedForUser(userId),
-    notifications: listUserBillingNotifications(userId).slice(0, 5),
+    notifications: notifications.slice(0, 5),
   };
 }
 
@@ -60,5 +63,5 @@ export async function completeMockCheckout(
     cancelAtPeriodEnd: false,
   });
 
-  return getUserBillingSummary(userId);
+  return await getUserBillingSummary(userId);
 }

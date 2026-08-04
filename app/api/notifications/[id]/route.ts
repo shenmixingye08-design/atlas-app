@@ -21,7 +21,7 @@ export async function DELETE(
   await ensureNotificationsHydrated(userId);
 
   const { id } = await context.params;
-  const removed = removeUserNotification(id, userId);
+  const removed = await removeUserNotification(id, userId);
   if (!removed) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
