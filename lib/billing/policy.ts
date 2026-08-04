@@ -39,11 +39,11 @@ export function evaluatePlanAccess(
   return checkFeatureAccess(resolveEffectivePlanId(userId), feature);
 }
 
-export function evaluateAutomationTaskAccess(
+export async function evaluateAutomationTaskAccess(
   userId: string,
   currentTaskCount: number,
-): PlanCheckResult {
-  enforcePaymentFailureGraceIfExpired(userId);
+): Promise<PlanCheckResult> {
+  await enforcePaymentFailureGraceIfExpired(userId);
 
   if (isAutomationSuspendedForUser(userId)) {
     const subscription = getUserSubscriptionView(userId);

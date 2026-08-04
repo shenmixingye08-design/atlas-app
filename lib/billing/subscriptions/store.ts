@@ -48,6 +48,100 @@ export function getUserSubscription(
   return getBucket().get(userId) ?? null;
 }
 
+/**
+ * True when durable paid state must not be replaced by an invented Free /
+ * free-shaped cold-start write. Explicit downgrade (plan=free + canceled)
+ * is allowed (P0-1).
+ */
+export function wouldOverwriteDurablePaidWithFreeInvent(
+  incoming: UserSubscriptionRecord,
+  durable: UserSubscriptionRecord,
+): boolean {
+  const durableLooksPaid =
+    durable.planId !== "free" || Boolean(durable.stripeSubscriptionId);
+  if (!durableLooksPaid) return false;
+
+  const explicitDowngrade =
+    incoming.planId === "free" && incoming.status === "canceled";
+  if (explicitDowngrade) return false;
+
+  return incoming.planId === "free" && durable.planId !== "free";
+}
+
+async function restoreDurablePaidInMemory(
+  durable: UserSubscriptionRecord,
+): Promise<void> {
+  const bucket = getBucket();
+  bucket.set(durable.userId, durable);
+  persistBucket(bucket);
+}
+
+/**
+ * Refuse Free-invent writes that would clobber paid state in Supabase or Clerk.
+ * Returns the durable paid record when refused; otherwise null.
+ */
+async function findBlockingDurablePaid(
+  record: UserSubscriptionRecord,
+): Promise<UserSubscriptionRecord | null> {
+  const fromSupabase = await loadSubscriptionFromSupabase(record.userId);
+  if (
+    fromSupabase &&
+    wouldOverwriteDurablePaidWithFreeInvent(record, fromSupabase)
+  ) {
+    return fromSupabase;
+  }
+
+  const fromClerk = await loadSubscriptionFromClerk(record.userId);
+  if (
+    fromClerk &&
+    wouldOverwriteDurablePaidWithFreeInvent(record, fromClerk)
+  ) {
+    return fromClerk;
+  }
+
+  return null;
+}
+
+async function persistSubscriptionToSupabaseGuarded(
+  record: UserSubscriptionRecord,
+): Promise<boolean> {
+  const blocked = await findBlockingDurablePaid(record);
+  if (blocked) {
+    console.error(
+      "[billing] P0-1 refused Free invent overwrite of durable paid subscription",
+      {
+        userId: record.userId,
+        durablePlanId: blocked.planId,
+        incomingPlanId: record.planId,
+        incomingStatus: record.status,
+      },
+    );
+    await restoreDurablePaidInMemory(blocked);
+    return false;
+  }
+  return persistSubscriptionToSupabase(record);
+}
+
+async function persistSubscriptionToClerkGuarded(
+  record: UserSubscriptionRecord,
+): Promise<void> {
+  const blocked = await findBlockingDurablePaid(record);
+  if (blocked) {
+    console.error(
+      "[billing] P0-1 refused Free invent overwrite of Clerk paid subscription",
+      {
+        userId: record.userId,
+        durablePlanId: blocked.planId,
+        incomingPlanId: record.planId,
+        incomingStatus: record.status,
+      },
+    );
+    await restoreDurablePaidInMemory(blocked);
+    return;
+  }
+  await persistSubscriptionToClerk(record);
+}
+
 export function saveUserSubscription(
   record: UserSubscriptionRecord,
 ): UserSubscriptionRecord {
@@ -58,7 +152,7 @@ export function saveUserSubscription(
   if (!isBillingSupabaseConfigured()) {
     warnIfProductionSupabaseServiceRoleMissing("atlas_billing_subscriptions");
   } else {
-    void persistSubscriptionToSupabase(record).then((ok) => {
+    void persistSubscriptionToSupabaseGuarded(record).then((ok) => {
       if (!ok) {
         console.warn(
           "[billing] Supabase subscription persist returned false for",
@@ -67,7 +161,7 @@ export function saveUserSubscription(
       }
     });
   }
-  void persistSubscriptionToClerk(record);
+  void persistSubscriptionToClerkGuarded(record);
   return record;
 }
 

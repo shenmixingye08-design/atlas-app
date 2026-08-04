@@ -143,7 +143,7 @@ describe("account deletion flow", () => {
       "@/lib/billing/subscriptions/service"
     );
 
-    applySubscriptionFromStripe({
+    await applySubscriptionFromStripe({
       userId: "user_paid",
       stripeCustomerId: "cus_1",
       stripeSubscriptionId: "sub_1",

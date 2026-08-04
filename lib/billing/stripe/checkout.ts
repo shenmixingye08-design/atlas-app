@@ -8,7 +8,6 @@ import { getPlanDefinition, isPlanId } from "../plans/registry";
 import type { PlanId } from "../plans/types";
 import { isPaidCapableStatus } from "../subscriptions/service";
 import {
-  getUserSubscription,
   resolveUserSubscriptionDurable,
   saveUserSubscription,
 } from "../subscriptions/store";
@@ -311,27 +310,22 @@ async function findOrCreateStripeCustomer(input: {
   return created.id;
 }
 
-function rememberStripeCustomerId(userId: string, stripeCustomerId: string): void {
-  const current = getUserSubscription(userId);
-  if (current?.stripeCustomerId === stripeCustomerId) return;
+/**
+ * Persist Stripe customer id only as a patch on the durable subscription.
+ * Never invent a Free record from an empty cold-start cache (P0-1).
+ */
+async function rememberStripeCustomerId(
+  userId: string,
+  stripeCustomerId: string,
+): Promise<void> {
+  const current = await resolveUserSubscriptionDurable(userId);
+  if (current.stripeCustomerId === stripeCustomerId) return;
 
-  const now = new Date().toISOString();
   saveUserSubscription({
-    ...(current ?? {
-      userId,
-      stripeCustomerId: null,
-      stripeSubscriptionId: null,
-      stripePriceId: null,
-      planId: "free" as PlanId,
-      status: "active" as const,
-      currentPeriodStart: now,
-      currentPeriodEnd: null,
-      cancelAtPeriodEnd: false,
-      updatedAt: now,
-    }),
+    ...current,
     userId,
     stripeCustomerId,
-    updatedAt: now,
+    updatedAt: new Date().toISOString(),
   });
 }
 
@@ -369,7 +363,7 @@ export async function createCheckoutSession(input: {
         (await resolveUserSubscriptionDurable(input.userId)).stripeCustomerId ??
         null,
     });
-    rememberStripeCustomerId(input.userId, customerId);
+    await rememberStripeCustomerId(input.userId, customerId);
 
     await assertNoDuplicatePaidSubscription({
       userId: input.userId,

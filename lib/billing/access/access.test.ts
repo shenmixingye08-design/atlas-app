@@ -49,7 +49,7 @@ describe("billing access enforcement", () => {
     const { applySubscriptionFromStripe } = await import(
       "@/lib/billing/subscriptions/service"
     );
-    applySubscriptionFromStripe({
+    await applySubscriptionFromStripe({
       userId,
       stripeCustomerId: `cus_${userId}`,
       stripeSubscriptionId: `sub_${userId}`,

@@ -6,6 +6,7 @@ import type { PlanId } from "../plans/types";
 import {
   createDefaultSubscription,
   getUserSubscription,
+  resolveUserSubscriptionDurable,
   saveUserSubscription,
 } from "./store";
 import type { SubscriptionStatus, UserSubscriptionRecord, UserSubscriptionView } from "./types";
@@ -21,12 +22,29 @@ function normalizeSubscriptionRecord(
   };
 }
 
+/**
+ * Memory-only resolve. May invent an ephemeral Free view when the process
+ * cache is cold — never use this as the base for durable writes (P0-1).
+ */
 export function resolveUserSubscription(
   userId: string,
 ): UserSubscriptionRecord {
   const existing = getUserSubscription(userId);
   if (existing) return normalizeSubscriptionRecord(existing);
   return createDefaultSubscription(userId);
+}
+
+/**
+ * Write-safe resolve: memory → Supabase → Clerk → default Free.
+ * Callers that persist must use this so cold-start cannot invent Free over a
+ * durable paid subscription (P0-1).
+ */
+export async function resolveUserSubscriptionForWrite(
+  userId: string,
+): Promise<UserSubscriptionRecord> {
+  return normalizeSubscriptionRecord(
+    await resolveUserSubscriptionDurable(userId),
+  );
 }
 
 export function isPaidCapableStatus(status: SubscriptionStatus): boolean {
@@ -45,14 +63,14 @@ export function getUserSubscriptionView(userId: string): UserSubscriptionView {
   };
 }
 
-export function upsertUserSubscription(
+export async function upsertUserSubscription(
   userId: string,
   patch: Partial<Omit<UserSubscriptionRecord, "userId">> & {
     planId?: PlanId;
     status?: SubscriptionStatus;
   },
-): UserSubscriptionRecord {
-  const current = resolveUserSubscription(userId);
+): Promise<UserSubscriptionRecord> {
+  const current = await resolveUserSubscriptionForWrite(userId);
   const next: UserSubscriptionRecord = {
     ...current,
     ...patch,
@@ -63,7 +81,7 @@ export function upsertUserSubscription(
   return saveUserSubscription(next);
 }
 
-export function applySubscriptionFromStripe(input: {
+export async function applySubscriptionFromStripe(input: {
   userId: string;
   stripeCustomerId: string;
   stripeSubscriptionId: string;
@@ -73,7 +91,7 @@ export function applySubscriptionFromStripe(input: {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   stripePriceId?: string | null;
-}): UserSubscriptionRecord {
+}): Promise<UserSubscriptionRecord> {
   return upsertUserSubscription(input.userId, {
     stripeCustomerId: input.stripeCustomerId,
     stripeSubscriptionId: input.stripeSubscriptionId,
@@ -86,23 +104,23 @@ export function applySubscriptionFromStripe(input: {
   });
 }
 
-export function cancelSubscriptionAtPeriodEnd(
+export async function cancelSubscriptionAtPeriodEnd(
   userId: string,
-): UserSubscriptionRecord {
+): Promise<UserSubscriptionRecord> {
   return upsertUserSubscription(userId, {
     cancelAtPeriodEnd: true,
     status: "active",
   });
 }
 
-export function downgradeToFree(
+export async function downgradeToFree(
   userId: string,
   options?: {
     reasonId?: CancellationReasonId;
     source?: "stripe_webhook" | "billing_portal" | "manual";
   },
-): UserSubscriptionRecord {
-  const current = resolveUserSubscription(userId);
+): Promise<UserSubscriptionRecord> {
+  const current = await resolveUserSubscriptionForWrite(userId);
 
   if (current.planId !== "free" && current.status !== "canceled") {
     recordSubscriptionCancellation({
