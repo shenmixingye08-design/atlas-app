@@ -68,27 +68,78 @@ export function wouldOverwriteDurablePaidWithFreeInvent(
   return incoming.planId === "free" && durable.planId !== "free";
 }
 
+async function restoreDurablePaidInMemory(
+  durable: UserSubscriptionRecord,
+): Promise<void> {
+  const bucket = getBucket();
+  bucket.set(durable.userId, durable);
+  persistBucket(bucket);
+}
+
+/**
+ * Refuse Free-invent writes that would clobber paid state in Supabase or Clerk.
+ * Returns the durable paid record when refused; otherwise null.
+ */
+async function findBlockingDurablePaid(
+  record: UserSubscriptionRecord,
+): Promise<UserSubscriptionRecord | null> {
+  const fromSupabase = await loadSubscriptionFromSupabase(record.userId);
+  if (
+    fromSupabase &&
+    wouldOverwriteDurablePaidWithFreeInvent(record, fromSupabase)
+  ) {
+    return fromSupabase;
+  }
+
+  const fromClerk = await loadSubscriptionFromClerk(record.userId);
+  if (
+    fromClerk &&
+    wouldOverwriteDurablePaidWithFreeInvent(record, fromClerk)
+  ) {
+    return fromClerk;
+  }
+
+  return null;
+}
+
 async function persistSubscriptionToSupabaseGuarded(
   record: UserSubscriptionRecord,
 ): Promise<boolean> {
-  const durable = await loadSubscriptionFromSupabase(record.userId);
-  if (durable && wouldOverwriteDurablePaidWithFreeInvent(record, durable)) {
+  const blocked = await findBlockingDurablePaid(record);
+  if (blocked) {
     console.error(
       "[billing] P0-1 refused Free invent overwrite of durable paid subscription",
       {
         userId: record.userId,
-        durablePlanId: durable.planId,
+        durablePlanId: blocked.planId,
         incomingPlanId: record.planId,
         incomingStatus: record.status,
       },
     );
-    // Keep process memory aligned with durable paid SoT.
-    const bucket = getBucket();
-    bucket.set(durable.userId, durable);
-    persistBucket(bucket);
+    await restoreDurablePaidInMemory(blocked);
     return false;
   }
   return persistSubscriptionToSupabase(record);
+}
+
+async function persistSubscriptionToClerkGuarded(
+  record: UserSubscriptionRecord,
+): Promise<void> {
+  const blocked = await findBlockingDurablePaid(record);
+  if (blocked) {
+    console.error(
+      "[billing] P0-1 refused Free invent overwrite of Clerk paid subscription",
+      {
+        userId: record.userId,
+        durablePlanId: blocked.planId,
+        incomingPlanId: record.planId,
+        incomingStatus: record.status,
+      },
+    );
+    await restoreDurablePaidInMemory(blocked);
+    return;
+  }
+  await persistSubscriptionToClerk(record);
 }
 
 export function saveUserSubscription(
@@ -110,7 +161,7 @@ export function saveUserSubscription(
       }
     });
   }
-  void persistSubscriptionToClerk(record);
+  void persistSubscriptionToClerkGuarded(record);
   return record;
 }
 

@@ -119,13 +119,51 @@ describe("P0-1 cold-start Free overwrite", () => {
     const invented = createDefaultSubscription(paidStandard.userId);
     saveUserSubscription(invented);
 
-    // Guard is async; allow microtask to run.
     await vi.waitFor(() => {
-      expect(persist).not.toHaveBeenCalled();
+      expect(getUserSubscription(paidStandard.userId)?.planId).toBe("standard");
+    });
+    expect(persist).not.toHaveBeenCalled();
+    expect(getUserSubscription(paidStandard.userId)?.stripeSubscriptionId).toBe(
+      "sub_paid_cold",
+    );
+  });
+
+  it("saveUserSubscription refuses Free invent when only Clerk holds paid", async () => {
+    const persistSupabase = vi.fn(async () => true);
+    const persistClerk = vi.fn(async () => undefined);
+
+    vi.doMock("./persistence", async () => {
+      const actual = await vi.importActual<typeof import("./persistence")>(
+        "./persistence",
+      );
+      return {
+        ...actual,
+        isBillingSupabaseConfigured: () => true,
+        loadSubscriptionFromSupabase: vi.fn(async () => null),
+        loadSubscriptionFromClerk: vi.fn(async (userId: string) =>
+          userId === paidStandard.userId ? { ...paidStandard } : null,
+        ),
+        persistSubscriptionToSupabase: persistSupabase,
+        persistSubscriptionToClerk: persistClerk,
+        readSubscriptionsFromDisk: () => new Map(),
+        writeSubscriptionsToDisk: () => undefined,
+      };
     });
 
-    const restored = getUserSubscription(paidStandard.userId);
-    expect(restored?.planId).toBe("standard");
-    expect(restored?.stripeSubscriptionId).toBe("sub_paid_cold");
+    const {
+      resetSubscriptionStore,
+      saveUserSubscription,
+      createDefaultSubscription,
+      getUserSubscription,
+    } = await import("./store");
+
+    resetSubscriptionStore();
+    saveUserSubscription(createDefaultSubscription(paidStandard.userId));
+
+    await vi.waitFor(() => {
+      expect(getUserSubscription(paidStandard.userId)?.planId).toBe("standard");
+    });
+    expect(persistSupabase).not.toHaveBeenCalled();
+    expect(persistClerk).not.toHaveBeenCalled();
   });
 });
