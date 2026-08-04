@@ -64,7 +64,8 @@ describe("resource ownership guards", () => {
       model: {
         schemaVersion: DOCUMENT_MODEL_SCHEMA_VERSION,
         documentType: "report",
-        templateId: "generic",
+        templateId: "report",
+        language: "ja",
         title: "Test",
         sections: [],
       },

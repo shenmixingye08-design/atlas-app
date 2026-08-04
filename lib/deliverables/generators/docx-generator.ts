@@ -25,9 +25,7 @@ import {
 } from "docx";
 
 import { ui } from "@/lib/i18n";
-import { parseDeliverableContent } from "../parse-content";
 import type { ContentBlock, ParsedDeliverable } from "../parse-content";
-import { MarkdownDeliverableGenerator } from "./markdown-generator";
 
 export type DocxGenerateOptions = {
   assignment?: string;

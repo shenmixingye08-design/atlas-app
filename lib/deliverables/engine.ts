@@ -1,15 +1,10 @@
 import "server-only";
 
-import { normalizeToDocumentModel } from "@/lib/documents/normalize";
-import {
-  DocumentRenderError,
-  renderDocumentModelToFile,
-} from "@/lib/documents/render/render-from-model";
+import { renderDocumentModelToFile } from "@/lib/documents/render/render-from-model";
 import { documentModelToExportText } from "@/lib/documents/render/bridge";
 import {
   getDocumentModel,
   saveDeliverableArtifact,
-  saveDocumentModel,
 } from "@/lib/documents/storage/document-store";
 import type { OutputFormat, TemplateId } from "@/lib/documents/schema/enums";
 

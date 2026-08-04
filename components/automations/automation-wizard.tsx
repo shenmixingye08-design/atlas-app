@@ -104,11 +104,14 @@ export function AutomationWizard({ initial }: AutomationWizardProps) {
       title: wizard.title,
       assignment: wizard.assignment,
       description: wizard.description,
+      destination: "none",
       frequency: wizard.frequency,
       dayOfWeek: wizard.dayOfWeek,
       dayOfMonth: wizard.dayOfMonth,
       hour: wizard.hour,
       minute: wizard.minute,
+      timezone: "Asia/Tokyo",
+      customCron: "",
       startDate: wizard.startDate,
       endType: wizard.endType,
       endDate: wizard.endDate,
@@ -117,6 +120,7 @@ export function AutomationWizard({ initial }: AutomationWizardProps) {
       executionMode: wizard.executionMode,
       snsBatchDays: null,
       executionFlow: { templateId: wizard.templateId, steps: [] },
+      enabled: true,
     });
     return buildSchedulePreview(formSchedule);
   }, [wizard]);

@@ -82,7 +82,6 @@ export const DELIVERABLE_FORMAT_LABELS: Record<DeliverableFormat, string> = {
   pptx: "PowerPoint (.pptx)",
   md: "Markdown (.md)",
   txt: "テキスト (.txt)",
-  xlsx: "Excel (.xlsx)",
 };
 
 export const DELIVERABLE_MIME_TYPES: Record<DeliverableFormat, string> = {
@@ -95,7 +94,6 @@ export const DELIVERABLE_MIME_TYPES: Record<DeliverableFormat, string> = {
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   md: "text/markdown; charset=utf-8",
   txt: "text/plain; charset=utf-8",
-  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 };
 
 export const DELIVERABLE_EXTENSIONS: Record<DeliverableFormat, string> = {
@@ -105,5 +103,4 @@ export const DELIVERABLE_EXTENSIONS: Record<DeliverableFormat, string> = {
   pptx: ".pptx",
   md: ".md",
   txt: ".txt",
-  xlsx: ".xlsx",
 };

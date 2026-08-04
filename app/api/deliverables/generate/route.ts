@@ -17,8 +17,6 @@ export const dynamic = "force-dynamic";
 /** Word/PDF multi-format generation can exceed default serverless limits. */
 export const maxDuration = 300;
 
-export const runtime = "nodejs";
-
 type RequestBody = {
   assignment?: unknown;
   finalDeliverable?: unknown;
@@ -223,8 +221,6 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({
       deliverables: result.deliverables,
       matchedRule: result.detection.matchedRule,
-      documentModelId: result.documentModelId,
-      formatRecommendation: result.formatRecommendation,
       uploads,
       jobId: result.jobId,
     });

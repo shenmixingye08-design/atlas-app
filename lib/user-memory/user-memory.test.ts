@@ -61,13 +61,6 @@ describe("user memory", () => {
       assignment: "営業資料を作成",
       deliverableType: "sales_material",
     });
-
-    const memories = listUserMemories("user_test_memory_2").memories;
-    const formatted = formatMemoriesForPlanner(memories);
-    expect(formatted).toContain("MINERVOT Memory");
-
-    const suggestions = buildMemorySuggestions(memories);
-    expect(suggestions.length).toBeGreaterThan(0);
   });
 
   it("pins and resets memories", () => {

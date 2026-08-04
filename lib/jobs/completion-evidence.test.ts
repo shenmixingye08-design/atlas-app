@@ -23,8 +23,9 @@ describe("completion evidence", () => {
       deliverableCount: 0,
       snsPostFailure: null,
     });
-    expect(withoutProof.status).toBe("partially_completed");
-    expect(withoutProof.resultSummary).toContain("証拠");
+    // main fail-closed: missing tweet proof is failed (not partially_completed).
+    expect(withoutProof.status).toBe("failed");
+    expect(withoutProof.lastErrorMessage).toContain("証拠");
   });
 
   it("marks waiting_for_approval when not approved", () => {

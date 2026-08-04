@@ -33,7 +33,8 @@ describe("Phase 5 regression guards", () => {
       deliverableCount: 0,
       snsPostFailure: null,
     });
-    expect(incomplete.status).toBe("partially_completed");
+    // main fail-closed: missing tweet proof is failed (not partially_completed).
+    expect(incomplete.status).toBe("failed");
   });
 
   it("builds stable manual idempotency keys", () => {

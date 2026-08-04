@@ -1,25 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { projectService } from "@/lib/projects/project-service";
 import { filterCompletedDeliverableProjects } from "@/lib/deliverables/completed-filter";
 import type { Project } from "@/lib/projects/types";
 import { ui } from "@/lib/i18n";
 import { Card } from "@/components/ui/card";
-import { LoadingState } from "@/components/ui/loading-state";
 
 export function DeliverablesListPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setProjects(projectService.list());
-    setLoading(false);
-  }, []);
-
-  if (loading) return <LoadingState message={ui.phase3.deliverablesLoading} />;
+  const [projects] = useState<Project[]>(() => projectService.list());
 
   const withResults = filterCompletedDeliverableProjects(projects);
 

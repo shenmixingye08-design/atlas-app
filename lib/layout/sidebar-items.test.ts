@@ -7,11 +7,10 @@ describe("SIDEBAR_PRIMARY_NAV", () => {
     expect(SIDEBAR_PRIMARY_NAV.some((item) => item.href === "/commander")).toBe(
       false,
     );
-    expect(SIDEBAR_PRIMARY_NAV.some((item) => item.href === "/workspace")).toBe(
-      false,
-    );
+    // Merged nav: main's /workspace (新しい依頼) + phase deliverables entry.
     expect(SIDEBAR_PRIMARY_NAV.map((item) => item.href)).toEqual([
       "/projects",
+      "/workspace",
       "/history",
       "/automations",
       "/deliverables",
