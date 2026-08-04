@@ -45,6 +45,9 @@ jobs:
       - name: V2 stub-ban / Production registry gate
         run: node scripts/ci/v2-stub-ban.mjs
 
+      - name: P0-2 durable job claim ban
+        run: node scripts/ci/p0-2-job-claim-ban.mjs
+
       - name: Unit / integration tests
         run: npm test
         env:

@@ -3,6 +3,8 @@ import "server-only";
 import { runCommanderRequest } from "@/lib/commander/service";
 import { recordReliabilityEvent, withRetry } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
+import { isAtlasProduction } from "@/lib/runtime/is-production";
+import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
 import { withPropagatedJobId } from "./job-id";
 import {
@@ -133,6 +135,12 @@ export async function executeWorkJob(
   jobId: string,
   userId: string,
 ): Promise<WorkJobRecord> {
+  if (isAtlasProduction() && !createServiceRoleClientIfConfigured()) {
+    throw new Error(
+      "work_job_claim_unavailable: Production refuses Map-only work-job claim",
+    );
+  }
+
   const existing = getWorkJob(jobId, userId);
   if (!existing) {
     throw new Error("job_not_found");

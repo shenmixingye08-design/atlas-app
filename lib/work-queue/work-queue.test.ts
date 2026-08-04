@@ -346,6 +346,8 @@ describe("work-queue enqueue + worker", () => {
     });
     await store.updateJob(job.jobId, {
       heartbeatAt: new Date(Date.now() - 120_000).toISOString(),
+      // Lease must be expired (+ clock-skew grace) for atomic reclaim.
+      leaseExpiresAt: new Date(Date.now() - 5_000).toISOString(),
       leaseOwner: "stuck_w",
       status: "running",
     });
@@ -564,6 +566,7 @@ describe("work-queue fail-closed completion", () => {
       jobId: "j1",
       runId: "r1",
       automationId: "a1",
+      organizationId: null,
       ownerId: "u1",
       occurrenceKey: "occ",
       scheduleId: null,
@@ -572,7 +575,9 @@ describe("work-queue fail-closed completion", () => {
       availableAt: new Date().toISOString(),
       scheduledAt: null,
       startedAt: null,
+      claimedAt: null,
       completedAt: null,
+      failedAt: null,
       leaseOwner: null,
       leaseExpiresAt: null,
       heartbeatAt: null,
@@ -795,6 +800,7 @@ describe("work-queue production trust extensions", () => {
       jobId: "j1",
       runId: "r1",
       automationId: "a1",
+      organizationId: null,
       ownerId: "u1",
       occurrenceKey: "occ",
       scheduleId: "s1",
@@ -803,7 +809,9 @@ describe("work-queue production trust extensions", () => {
       availableAt: new Date().toISOString(),
       scheduledAt: new Date().toISOString(),
       startedAt: new Date().toISOString(),
+      claimedAt: new Date().toISOString(),
       completedAt: null,
+      failedAt: null,
       leaseOwner: "w",
       leaseExpiresAt: null,
       heartbeatAt: null,
