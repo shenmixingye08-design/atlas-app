@@ -8,7 +8,12 @@ import { ui } from "@/lib/i18n";
 
 const ACTIONS = [
   { id: "add-work", href: "/workspace", label: ui.homeUx.quickAddWork, icon: "＋" },
-  { id: "automations", href: "/automations", label: ui.homeUx.quickAutomation, icon: "↻" },
+  {
+    id: "automations",
+    href: "/automations?create=1&destination=x",
+    label: ui.homeUx.quickAutomation,
+    icon: "↻",
+  },
   { id: "workflow", href: "/marketplace", label: ui.nav.marketplace, icon: "◈" },
   { id: "search", href: "/workspace", label: ui.homeUx.quickSearch, icon: "⌕" },
 ] as const;

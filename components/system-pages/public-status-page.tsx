@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -75,9 +76,14 @@ export function PublicStatusPageContent() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const cancelInitialLoad = scheduleMountWork(() => {
+      void load();
+    });
     const timer = window.setInterval(() => void load(), 15_000);
-    return () => window.clearInterval(timer);
+    return () => {
+      cancelInitialLoad();
+      window.clearInterval(timer);
+    };
   }, [load]);
 
   const overallUptime = snapshot ? computeOverallUptime(snapshot.services) : null;

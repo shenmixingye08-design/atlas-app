@@ -75,4 +75,12 @@ describe("AI Policy Engine", () => {
     expect(resolveTaskPolicy("reviewer_fallback").maxOutputTokens).toBe(768);
     expect(resolveTaskPolicy("chat").model).toBe("gpt-5.5");
   });
+
+  it("routes vision_analyze without reasoning tokens eating output budget", () => {
+    const decision = resolveTaskPolicy("vision_analyze");
+    expect(decision.taskType).toBe("vision_analyze");
+    expect(decision.model).toBe("gpt-5.5");
+    expect(decision.reasoningLevel).toBe("none");
+    expect(decision.maxOutputTokens).toBeGreaterThanOrEqual(4096);
+  });
 });

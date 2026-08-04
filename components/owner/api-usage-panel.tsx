@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useState } from "react";
 
 import type {
@@ -59,7 +60,9 @@ function ProviderUsageCard({
   const [budgetInput, setBudgetInput] = useState(String(provider.budgetUsd));
 
   useEffect(() => {
-    setBudgetInput(String(provider.budgetUsd));
+    return scheduleMountWork(() => {
+      setBudgetInput(String(provider.budgetUsd));
+    });
   }, [provider.budgetUsd]);
 
   const warningClasses = {
@@ -179,7 +182,9 @@ export function ApiUsagePanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    return scheduleMountWork(() => {
+      void load();
+    });
   }, [load]);
 
   const handleBudgetSave = async (

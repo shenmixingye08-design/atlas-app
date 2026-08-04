@@ -176,6 +176,16 @@ export function isRetryableFailure(error: unknown): boolean {
   if (/cancel/i.test(message)) return false;
   if (/unauthorized|forbidden|認証|権限/i.test(message)) return false;
 
+  // Production/worker deliverable failures historically used Japanese copy
+  // without 失敗/エラー, so Commander stopped at 試行1回. Treat as retryable.
+  if (
+    /\[Production\]/i.test(message) ||
+    /成果物をうまく作れませんでした/i.test(message) ||
+    /AI応答が空でした/i.test(message)
+  ) {
+    return true;
+  }
+
   return (
     /timeout|timed?\s*out|ETIMEDOUT|ECONNRESET|429|503|502|一時|タイムアウト|ネットワーク/i.test(
       message,

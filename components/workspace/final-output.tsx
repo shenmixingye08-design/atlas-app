@@ -2,15 +2,26 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { triggerBlobDownload } from "@/lib/browser/trigger-blob-download";
+import {
+  assignmentIsImageToExcel,
+  assignmentRequestsExcel,
+} from "@/lib/deliverables/excel-data";
+import { detectDeliverableFormats } from "@/lib/deliverables/detect-formats";
+import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
+import { WordPreviewPanel } from "@/components/deliverables/word-preview-panel";
+import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
+import { WordRevisionPanel } from "@/components/deliverables/word-revision-panel";
 import {
   deliverableHasContent,
   type Deliverable as WorkspaceDeliverable,
   type DeliverableType,
 } from "@/lib/orchestration/deliverable-types";
 import {
+  deliverableIsDisplaySafe,
   getBlogTags,
   getDocumentBody,
   getEmailDisplayFields,
@@ -20,6 +31,10 @@ import {
   sanitizeBodyTextForDisplay,
 } from "@/lib/orchestration/deliverable-display";
 import { getDeliverableExportText } from "@/lib/orchestration/final-deliverable";
+import {
+  assertSafeExportText,
+  isForbiddenTitle,
+} from "@/lib/orchestration/normalize-deliverable-payload";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import { ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -40,6 +55,9 @@ type FinalOutputProps = {
    * natural, contextual title instead (e.g. 「レポートができました」).
    */
   heading?: string;
+  /** Optional regenerate handler shown when display normalization fails. */
+  onRegenerate?: () => void;
+  isRegenerating?: boolean;
 };
 
 const TYPE_LABELS: Record<DeliverableType, string> = {
@@ -56,12 +74,7 @@ const TYPE_LABELS: Record<DeliverableType, string> = {
 
 function downloadMarkdown(content: string, fileName: string): void {
   const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  void triggerBlobDownload(blob, fileName);
 }
 
 function findGeneratedFile(
@@ -76,8 +89,16 @@ const DOWNLOAD_FORMAT_ORDER: GeneratedFile["format"][] = [
   "xlsx",
   "pdf",
   "docx",
+  "xlsx",
   "md",
 ];
+
+function formatDownloadLabel(format: GeneratedFile["format"]): string {
+  if (format === "docx") return "Word";
+  if (format === "pptx") return "PowerPoint";
+  if (format === "xlsx") return "Excel";
+  return DELIVERABLE_FORMAT_LABELS[format].split(" ")[0] ?? format;
+}
 
 function FormatDownloadButton({
   format,
@@ -89,35 +110,76 @@ function FormatDownloadButton({
   isGeneratingDeliverables: boolean;
 }) {
   const file = findGeneratedFile(deliverables, format);
-  const shortLabel =
-    format === "docx"
-      ? "Word"
-      : format === "xlsx"
-        ? "Excel"
-        : format === "pptx"
-          ? "PowerPoint"
-          : DELIVERABLE_FORMAT_LABELS[format].split(" ")[0];
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const shortLabel = formatDownloadLabel(format);
 
-  if (file) {
-    return (
-      <a href={file.downloadUrl} download={file.fileName}>
-        <Button variant="secondary" size="sm" type="button">
+  // Do not render disabled mystery buttons for formats that were never generated.
+  if (!file) {
+    if (isGeneratingDeliverables) {
+      return (
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled
+          className="min-h-11 min-w-[5.5rem] touch-manipulation"
+        >
           {shortLabel}
         </Button>
-      </a>
-    );
+      );
+    }
+    return null;
   }
 
+  const handleDownload = async () => {
+    setError(null);
+    setIsDownloading(true);
+    try {
+      await downloadDeliverableFile({
+        url: file.downloadUrl,
+        fileName: file.fileName,
+        mimeType: file.mimeType,
+        format: file.format,
+      });
+    } catch (downloadError) {
+      setError(
+        downloadError instanceof Error
+          ? downloadError.message
+          : ui.work.downloadFailed,
+      );
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   return (
-    <Button variant="secondary" size="sm" disabled={isGeneratingDeliverables}>
-      {shortLabel}
-    </Button>
+    <span className="inline-flex min-w-0 flex-col items-stretch gap-1 sm:items-start">
+      <Button
+        variant="secondary"
+        size="sm"
+        className="min-h-11 min-w-[5.5rem] touch-manipulation"
+        disabled={isGeneratingDeliverables || isDownloading}
+        onClick={() => void handleDownload()}
+      >
+        {isDownloading ? ui.work.downloadingFile : shortLabel}
+      </Button>
+      {error ? (
+        <span className="max-w-full break-words text-xs text-[var(--error)]">{error}</span>
+      ) : null}
+    </span>
   );
 }
 
 function DocumentHeading({ children }: { children: ReactNode }) {
+  if (typeof children === "string") {
+    const title = children.trim();
+    if (!title || isForbiddenTitle(title) || isDeliverableJsonText(title)) {
+      return null;
+    }
+  }
+
   return (
-    <h1 className="border-b border-[var(--border-subtle)] pb-4 text-2xl font-semibold tracking-tight text-foreground">
+    <h1 className="break-words border-b border-[var(--border-subtle)] pb-4 text-2xl font-semibold tracking-tight text-foreground">
       {children}
     </h1>
   );
@@ -145,7 +207,7 @@ function BodyBlock({ text }: { text: string }) {
   if (!safeText || isDeliverableJsonText(safeText)) return null;
 
   return (
-    <div className="whitespace-pre-wrap font-sans text-base leading-relaxed text-foreground">
+    <div className="whitespace-pre-wrap break-words font-sans text-base leading-relaxed text-foreground">
       {safeText}
     </div>
   );
@@ -239,14 +301,15 @@ function BlogPreview({ deliverable }: { deliverable: WorkspaceDeliverable }) {
 }
 
 function SocialPostPreview({ deliverable }: { deliverable: WorkspaceDeliverable }) {
-  const posts = getSocialPostCards(deliverable);
+  const normalized = normalizeDeliverableForDisplay(deliverable);
+  const posts = getSocialPostCards(normalized);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
         <TypeBadge type="social_post" />
       </div>
-      {deliverable.title && <DocumentHeading>{deliverable.title}</DocumentHeading>}
+      {normalized.title && <DocumentHeading>{normalized.title}</DocumentHeading>}
       <div className="grid gap-4">
         {posts.map((post, index) => (
           <Card key={`post-${index + 1}`} padding="md" className="bg-background">
@@ -332,31 +395,65 @@ export function FinalOutput({
   deliverablesError = null,
   expectedFormats,
   heading,
+  onRegenerate,
+  isRegenerating = false,
 }: FinalOutputProps) {
   const [copied, setCopied] = useState(false);
   const [driveSaved, setDriveSaved] = useState(false);
-  const showDebug = isAtlasClientDebugEnabled();
+  const [driveError, setDriveError] = useState<string | null>(null);
+  // Never surface debug JSON to end users — secretary UX forbids internal panels.
+  const showDebug = false && isAtlasClientDebugEnabled();
 
   const workspaceDeliverable = result?.deliverable ?? null;
-  const exportText = useMemo(
+  const normalizedDeliverable = useMemo(
     () =>
       workspaceDeliverable
-        ? getDeliverableExportText(workspaceDeliverable)
-        : "",
+        ? normalizeDeliverableForDisplay(workspaceDeliverable)
+        : null,
     [workspaceDeliverable],
+  );
+  const exportText = useMemo(() => {
+    if (!normalizedDeliverable) return "";
+    const text = getDeliverableExportText(normalizedDeliverable);
+    const guarded = assertSafeExportText(text);
+    return guarded.ok ? guarded.text : "";
+  }, [normalizedDeliverable]);
+  const isDisplaySafe = useMemo(
+    () =>
+      workspaceDeliverable
+        ? deliverableIsDisplaySafe(workspaceDeliverable) && Boolean(exportText)
+        : false,
+    [workspaceDeliverable, exportText],
   );
   const isReady = useMemo(
-    () => (workspaceDeliverable ? deliverableHasContent(workspaceDeliverable) : false),
-    [workspaceDeliverable],
+    () =>
+      workspaceDeliverable
+        ? deliverableHasContent(workspaceDeliverable) && isDisplaySafe
+        : false,
+    [workspaceDeliverable, isDisplaySafe],
   );
   const fileFormatsToShow = useMemo(() => {
+    const assignment = result?.assignment ?? "";
+    const generated = new Set(deliverables.map((item) => item.format));
+    const wantsExcel =
+      assignmentRequestsExcel(assignment) ||
+      assignmentIsImageToExcel(assignment) ||
+      generated.has("xlsx");
+
     if (expectedFormats && expectedFormats.length > 0) {
-      return DOWNLOAD_FORMAT_ORDER.filter((format) =>
-        expectedFormats.includes(format),
-      );
+      const allowed = new Set<GeneratedFile["format"]>(expectedFormats);
+      if (wantsExcel) allowed.add("xlsx");
+      for (const format of generated) allowed.add(format);
+      return DOWNLOAD_FORMAT_ORDER.filter((format) => allowed.has(format));
     }
-    return ["pdf", "docx"] as GeneratedFile["format"][];
-  }, [expectedFormats]);
+
+    const base = new Set<GeneratedFile["format"]>(["pdf", "docx"]);
+    if (wantsExcel) base.add("xlsx");
+    for (const format of generated) {
+      if (DOWNLOAD_FORMAT_ORDER.includes(format)) base.add(format);
+    }
+    return DOWNLOAD_FORMAT_ORDER.filter((format) => base.has(format));
+  }, [expectedFormats, deliverables, result?.assignment]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production" || !result) return;
@@ -376,10 +473,21 @@ export function FinalOutput({
     return null;
   }
 
-  if (!isReady || !workspaceDeliverable) {
+  if (!isReady || !workspaceDeliverable || !normalizedDeliverable) {
     const pipelineReason = result.isolationDebug?.pipeline?.needsReviewReason?.trim();
     const failedStage = result.isolationDebug?.pipeline?.failedStage ?? result.stepError?.step;
+    const raw = workspaceDeliverable;
+    const hasUnsafeJson = Boolean(
+      raw &&
+        (isForbiddenTitle(raw.title) ||
+          isDeliverableJsonText(raw.title) ||
+          isDeliverableJsonText(raw.summary) ||
+          isDeliverableJsonText(raw.content) ||
+          isDeliverableJsonText(raw.markdown) ||
+          isDeliverableJsonText(raw.plainText)),
+    );
     const failureMessage =
+      (hasUnsafeJson || (raw && !isDisplaySafe) ? ui.work.deliverableDisplayFailed : "") ||
       pipelineReason ||
       result.error?.trim() ||
       (result.stepError?.step === "worker" ? ui.work.workerDeliverableFailed : "") ||
@@ -387,39 +495,85 @@ export function FinalOutput({
       ui.work.deliverableEmpty;
 
     return (
-      <section className="space-y-4 animate-fade-in" aria-labelledby="output-heading">
+      <section
+        className="space-y-4 animate-fade-in pb-[env(safe-area-inset-bottom)]"
+        aria-labelledby="output-heading"
+      >
         <h2 id="output-heading" className="text-title text-foreground">
           {heading ?? ui.work.deliverableTitle}
         </h2>
         <Card padding="lg">
-          {failedStage && (
+          {failedStage && !hasUnsafeJson && (
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--status-warning)]">
               失敗ステージ: {failedStage}
             </p>
           )}
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground-muted)]">
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--foreground-muted)]">
             {failureMessage}
           </p>
+          {onRegenerate ? (
+            <div className="mt-4">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="min-h-11 touch-manipulation"
+                disabled={isRegenerating}
+                onClick={onRegenerate}
+              >
+                {isRegenerating ? ui.secretaryResult.regenerating : "再生成する"}
+              </Button>
+            </div>
+          ) : null}
         </Card>
       </section>
     );
   }
 
   const markdownFile = findGeneratedFile(deliverables, "md");
-  const baseName = markdownFile?.fileName ?? `${workspaceDeliverable.type}-deliverable.md`;
+  const docxFile = findGeneratedFile(deliverables, "docx");
+  const baseName = markdownFile?.fileName ?? `${normalizedDeliverable.type}-deliverable.md`;
 
   const handleCopy = async () => {
+    if (!exportText) return;
     await navigator.clipboard.writeText(exportText);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleMarkdownSave = () => {
+    if (!exportText) return;
+    downloadMarkdown(exportText, baseName);
+  };
+
   const handleDriveSave = () => {
+    setDriveError(null);
+    if (!exportText) {
+      setDriveError(ui.work.deliverableDisplayFailed);
+      return;
+    }
+    const guarded = assertSafeExportText(exportText);
+    if (!guarded.ok) {
+      setDriveError(guarded.safeMessage);
+      return;
+    }
     setDriveSaved(true);
   };
 
+  const readyFormats = fileFormatsToShow.filter(
+    (format) => findGeneratedFile(deliverables, format) || isGeneratingDeliverables,
+  );
+  const assignmentFormats = detectDeliverableFormats(result.assignment).formats;
+  const isGeneratingWord =
+    isGeneratingDeliverables &&
+    (expectedFormats?.includes("docx") ||
+      deliverables.some((item) => item.format === "docx") ||
+      assignmentFormats.includes("docx"));
+
   return (
-    <section className="space-y-6 animate-fade-in" aria-labelledby="output-heading">
+    <section
+      className="space-y-6 animate-fade-in overflow-x-hidden pb-[env(safe-area-inset-bottom)]"
+      aria-labelledby="output-heading"
+    >
       <div>
         <h2 id="output-heading" className="text-title text-foreground">
           {heading ?? ui.work.deliverableTitle}
@@ -432,30 +586,38 @@ export function FinalOutput({
       </div>
 
       <Card padding="lg" className="shadow-[var(--shadow-soft)]">
-        <div className="max-h-[560px] overflow-auto rounded-[var(--radius-xl)] bg-[var(--background-subtle)] px-6 py-8">
-          <DeliverablePreview deliverable={workspaceDeliverable} />
+        <div className="max-h-[560px] overflow-x-hidden overflow-y-auto rounded-[var(--radius-xl)] bg-[var(--background-subtle)] px-4 py-6 sm:px-6 sm:py-8">
+          <DeliverablePreview deliverable={normalizedDeliverable} />
         </div>
 
         {showDebug && (
           <div className="mt-4">
-            <DeliverableDebugPanel deliverable={workspaceDeliverable} />
+            <DeliverableDebugPanel deliverable={normalizedDeliverable} />
           </div>
         )}
 
         <div className="mt-6 flex flex-wrap gap-3">
-          <Button variant="secondary" size="sm" onClick={() => void handleCopy()}>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="min-h-11 touch-manipulation"
+            disabled={!exportText}
+            onClick={() => void handleCopy()}
+          >
             {copied ? ui.work.copied : ui.work.copy}
           </Button>
 
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => downloadMarkdown(exportText, baseName)}
+            className="min-h-11 touch-manipulation"
+            disabled={!exportText}
+            onClick={handleMarkdownSave}
           >
             {ui.work.saveMarkdown}
           </Button>
 
-          {fileFormatsToShow.map((format) => (
+          {readyFormats.map((format) => (
             <FormatDownloadButton
               key={format}
               format={format}
@@ -464,7 +626,13 @@ export function FinalOutput({
             />
           ))}
 
-          <Button variant="secondary" size="sm" onClick={handleDriveSave}>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="min-h-11 touch-manipulation"
+            disabled={!exportText}
+            onClick={handleDriveSave}
+          >
             {driveSaved ? ui.work.driveSaved : ui.work.saveToDrive}
           </Button>
         </div>
@@ -475,10 +643,20 @@ export function FinalOutput({
           </p>
         )}
 
+        {driveError && (
+          <div className="mt-4">
+            <ErrorState message={driveError} />
+          </div>
+        )}
+
         {isGeneratingDeliverables && (
-          <p className="mt-4 animate-soft-pulse text-caption">
-            {ui.work.preparingFiles}
-          </p>
+          isGeneratingWord ? (
+            <WordProgressStatus className="mt-4 animate-soft-pulse text-caption" />
+          ) : (
+            <p className="mt-4 animate-soft-pulse text-caption" aria-live="polite">
+              {ui.work.preparingFiles}
+            </p>
+          )
         )}
 
         {deliverablesError && (
@@ -487,13 +665,38 @@ export function FinalOutput({
           </div>
         )}
 
-        {deliverables.length > 0 && (
-          <p className="mt-4 text-caption">
-            {deliverables
-              .map((item) => DELIVERABLE_FORMAT_LABELS[item.format])
-              .join(" · ")}
-          </p>
-        )}
+        {docxFile ? (
+          <div className="mt-6 space-y-3">
+            <details className="group rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--background-muted)]/40 px-4 py-2">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-semibold text-foreground focus-ring">
+                <span className="text-xs transition-transform group-open:rotate-90" aria-hidden="true">
+                  ▸
+                </span>
+                プレビュー
+              </summary>
+              <div className="py-3">
+                <WordPreviewPanel deliverableId={docxFile.id} />
+              </div>
+            </details>
+
+            <details className="group rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--background-muted)]/40 px-4 py-2">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-semibold text-foreground focus-ring">
+                <span className="text-xs transition-transform group-open:rotate-90" aria-hidden="true">
+                  ▸
+                </span>
+                Wordを編集して再生成
+              </summary>
+              <div className="py-3">
+                <WordRevisionPanel
+                  parentDeliverableId={docxFile.id}
+                  initialTitle={normalizedDeliverable.title || docxFile.fileName}
+                  initialContent={exportText}
+                  initialTemplateId={docxFile.metadata?.templateId ?? null}
+                />
+              </div>
+            </details>
+          </div>
+        ) : null}
       </Card>
     </section>
   );
@@ -502,6 +705,7 @@ export function FinalOutput({
 export function useFinalOutputReady(result: OrchestrationResult | null): boolean {
   return useMemo(() => {
     if (!result?.deliverable) return false;
-    return deliverableHasContent(result.deliverable);
+    if (!deliverableHasContent(result.deliverable)) return false;
+    return deliverableIsDisplaySafe(result.deliverable);
   }, [result]);
 }

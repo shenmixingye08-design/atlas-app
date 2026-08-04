@@ -40,6 +40,22 @@ describe("user memory", () => {
   });
 
   it("formats planner context and builds suggestions", () => {
+    // Auto-learn no longer upserts active legacy memories (Personal Memory SoT).
+    createUserMemory("user_test_memory_2", {
+      category: "sales",
+      title: "営業資料の好み",
+      content: "青ベース",
+      confidence: 0.7,
+    });
+
+    const memories = listUserMemories("user_test_memory_2").memories;
+    const formatted = formatMemoriesForPlanner(memories);
+    expect(formatted).toContain("MINERVOT Memory");
+
+    const suggestions = buildMemorySuggestions(memories);
+    expect(suggestions.length).toBeGreaterThan(0);
+
+    // Still safe to call — must not throw / must not auto-activate legacy rows
     learnFromOrchestration({
       userId: "user_test_memory_2",
       assignment: "営業資料を作成",

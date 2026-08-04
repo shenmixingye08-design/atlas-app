@@ -96,6 +96,13 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     purpose: "自動化 tick（/api/automations/tick）の Cron 認証",
   },
   {
+    key: "ENABLE_SCHEDULED_CRON",
+    service: "vercel_cron",
+    requirement: "optional",
+    purpose:
+      "false で due 自動処理をスキップ（Hobby/Preview の誤実行抑制。既定は有効）",
+  },
+  {
     key: "OAUTH_STATE_SECRET",
     service: "atlas",
     requirement: "recommended",
@@ -155,7 +162,22 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     key: "SUPABASE_SERVICE_ROLE_KEY",
     service: "supabase",
     requirement: "recommended",
-    purpose: "サーバー専用（atlas_user_state 書き込み / RLS バイパス）",
+    purpose:
+      "サーバー専用（atlas_user_state / 画像Storage atlas-image-attachments / 成果物Storage atlas-deliverable-files 書き込み / RLS バイパス）",
+  },
+  {
+    key: "ATLAS_ATTACHMENT_STORAGE",
+    service: "supabase",
+    requirement: "optional",
+    purpose:
+      "画像保存先（local / supabase）。Vercel production/preview では常に supabase",
+  },
+  {
+    key: "ATLAS_DELIVERABLE_STORAGE",
+    service: "supabase",
+    requirement: "optional",
+    purpose:
+      "成果物バイナリ保存先（local / supabase）。Vercel production/preview では常に supabase（bucket: atlas-deliverable-files）",
   },
   {
     key: "ATLAS_USD_JPY_RATE",
@@ -226,19 +248,25 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
   {
     key: "VAPID_PUBLIC_KEY",
     service: "atlas",
+    requirement: "recommended",
+    purpose: "Web Push VAPID 公開鍵（サーバー。未設定時は NEXT_PUBLIC_VAPID_PUBLIC_KEY）",
+  },
+  {
+    key: "NEXT_PUBLIC_VAPID_PUBLIC_KEY",
+    service: "atlas",
     requirement: "optional",
-    purpose: "Web Push VAPID 公開鍵（クライアント subscription 用）",
+    purpose: "Web Push VAPID 公開鍵（クライアント埋め込み用・公開情報のみ）",
   },
   {
     key: "VAPID_PRIVATE_KEY",
     service: "atlas",
-    requirement: "optional",
-    purpose: "Web Push VAPID 秘密鍵（サーバー送信専用）",
+    requirement: "recommended",
+    purpose: "Web Push VAPID 秘密鍵（サーバー送信専用・クライアント禁止）",
   },
   {
     key: "VAPID_SUBJECT",
     service: "atlas",
-    requirement: "optional",
+    requirement: "recommended",
     purpose: "Web Push VAPID subject（mailto: または https:// URL）",
   },
 ] as const;

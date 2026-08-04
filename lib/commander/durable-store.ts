@@ -4,6 +4,7 @@ import {
   loadDurableDomain,
   persistDurableDomain,
 } from "@/lib/persistence/durable-domain";
+import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
 import { loadClerkPrivateMetadataKey } from "@/lib/persistence/clerk-private-metadata";
 import { createProjectFromOrchestration } from "@/lib/projects/domain";
 import {
@@ -15,6 +16,8 @@ import {
 import type { Project } from "@/lib/projects/types";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
+import { ATLAS_DELIVERABLE_FILES_BUCKET } from "@/lib/deliverables/constants";
+import { resolveDeliverableStorageBackend } from "@/lib/deliverables/storage-backend";
 
 import type { CommanderPlan, CommanderRunRecord } from "./types";
 
@@ -213,8 +216,12 @@ export async function persistCommanderRunToClerk(
       run.userId,
       COMMANDER_DOMAIN_KEY,
       { runs: next } satisfies DurableCommanderState,
-      { compact: (state) => ({ runs: compactRuns(state.runs) }) },
+      {
+        forceSupabase: true,
+        compact: (state) => ({ runs: compactRuns(state.runs) }),
+      },
     );
+    bumpPersistenceCounter("commanderPersist");
   } catch (error) {
     console.error("[commander] Failed to persist run:", error);
   }
@@ -233,7 +240,69 @@ export async function loadCommanderRunsFromClerk(
 /**
  * Best-effort project row upsert via service role (RLS denies anon).
  * Complements durable commander history for recent-work / briefing inputs.
+ * When the `projects` table is missing, falls back to Storage sidecar so
+ * `/results/<notificationId>` can still resolve the 成果物.
  */
+function sanitizeProjectSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120) || "unknown";
+}
+
+function projectSidecarPath(userId: string, projectId: string): string {
+  return [
+    "project-meta",
+    sanitizeProjectSegment(userId),
+    `${sanitizeProjectSegment(projectId)}.bin`,
+  ].join("/");
+}
+
+async function writeProjectSidecar(
+  userId: string,
+  project: Project,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const client = createServiceRoleClientIfConfigured();
+  if (!client) return { ok: false, error: "supabase_not_configured" };
+  if (resolveDeliverableStorageBackend() !== "supabase") {
+    return { ok: false, error: "storage_backend_not_supabase" };
+  }
+  const path = projectSidecarPath(userId, project.id);
+  const body = Buffer.from(
+    JSON.stringify({ userId, project, savedAt: new Date().toISOString() }),
+    "utf8",
+  );
+  const { error } = await client.storage
+    .from(ATLAS_DELIVERABLE_FILES_BUCKET)
+    .upload(path, body, {
+      contentType: "application/octet-stream",
+      upsert: true,
+    });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+async function readProjectSidecar(
+  userId: string,
+  projectId: string,
+): Promise<Project | null> {
+  const client = createServiceRoleClientIfConfigured();
+  if (!client?.storage?.from) return null;
+  try {
+    const path = projectSidecarPath(userId, projectId);
+    const { data, error } = await client.storage
+      .from(ATLAS_DELIVERABLE_FILES_BUCKET)
+      .download(path);
+    if (error || !data) return null;
+    const parsed = JSON.parse(await data.text()) as {
+      userId?: string;
+      project?: Project;
+    };
+    if (parsed.userId !== userId || !parsed.project?.id) return null;
+    if (parsed.project.id !== projectId) return null;
+    return parsed.project;
+  } catch {
+    return null;
+  }
+}
+
 export async function persistCommanderResultAsProject(input: {
   userId: string;
   assignment: string;
@@ -244,23 +313,31 @@ export async function persistCommanderResultAsProject(input: {
   const client = createServiceRoleClientIfConfigured();
   if (!client) return null;
 
+  const project = createProjectFromOrchestration(
+    input.assignment,
+    input.result,
+    input.projectId,
+  );
+
   try {
-    const project = createProjectFromOrchestration(
-      input.assignment,
-      input.result,
-      input.projectId,
-    );
     const row = mapProjectToRow(project, input.userId);
     const { error } = await client.from(PROJECTS_TABLE).upsert(row);
-    if (error) {
-      console.warn("[commander] Supabase project upsert failed:", error.message);
-      return null;
-    }
-    return project.id;
+    if (!error) return project.id;
+    console.warn("[commander] Supabase project upsert failed:", error.message);
   } catch (error) {
     console.warn("[commander] Supabase project persist skipped:", error);
-    return null;
   }
+
+  const sidecar = await writeProjectSidecar(input.userId, project);
+  if (sidecar.ok) {
+    console.warn(
+      "[commander] project durable via Storage sidecar",
+      project.id,
+    );
+    return project.id;
+  }
+  console.error("[commander] project sidecar write failed", sidecar.error);
+  return null;
 }
 
 /**
@@ -291,22 +368,24 @@ export async function loadPersistedProjectById(input: {
       .eq("user_id", input.userId)
       .maybeSingle();
 
+    if (!error && data) {
+      return {
+        project: mapRowToProject(data as ProjectRow),
+        found: true,
+        durable: true,
+      };
+    }
     if (error) {
       console.warn("[commander] project read failed:", error.message);
-      return { project: null, found: false, durable: false };
     }
-
-    if (!data) {
-      return { project: null, found: false, durable: true };
-    }
-
-    return {
-      project: mapRowToProject(data as ProjectRow),
-      found: true,
-      durable: true,
-    };
   } catch (error) {
     console.warn("[commander] project read skipped:", error);
-    return { project: null, found: false, durable: false };
   }
+
+  const sidecar = await readProjectSidecar(input.userId, input.projectId);
+  if (sidecar) {
+    return { project: sidecar, found: true, durable: true };
+  }
+
+  return { project: null, found: false, durable: true };
 }

@@ -14,11 +14,13 @@ type RequestBody = {
   instructions?: unknown;
   previous_response_id?: unknown;
   stream?: unknown;
+  attachmentIds?: unknown;
 };
 
 function parseRequestBody(body: RequestBody): {
   params: AtlasResponseRequest;
   stream: boolean;
+  attachmentIds: string[];
 } | { error: string } {
   if (typeof body.input !== "string" || !body.input.trim()) {
     return { error: "input is required and must be a non-empty string" };
@@ -42,6 +44,12 @@ function parseRequestBody(body: RequestBody): {
     return { error: "stream must be a boolean" };
   }
 
+  const attachmentIds = Array.isArray(body.attachmentIds)
+    ? body.attachmentIds.filter(
+        (id): id is string => typeof id === "string" && id.trim().length > 0,
+      )
+    : [];
+
   return {
     params: {
       input: body.input.trim(),
@@ -53,6 +61,7 @@ function parseRequestBody(body: RequestBody): {
       }),
     },
     stream: body.stream === true,
+    attachmentIds,
   };
 }
 
@@ -188,21 +197,44 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: parsed.error }, { status: 400 });
   }
 
-  const { params, stream } = parsed;
+  const { params, stream, attachmentIds } = parsed;
 
   try {
     const { runWithAiBillingUsage } = await import(
       "@/lib/billing/usage/request-context"
     );
 
+    let requestParams = params;
+    if (attachmentIds.length > 0) {
+      const { buildMultimodalChatInput } = await import(
+        "@/lib/vision/build-multimodal-chat-input"
+      );
+      const multimodal = await buildMultimodalChatInput({
+        userId,
+        text: typeof params.input === "string" ? params.input : "",
+        attachmentIds,
+      });
+      if (multimodal.missingIds.length === attachmentIds.length) {
+        return Response.json(
+          { error: "画像が見つからないか、アクセスできません" },
+          { status: 404 },
+        );
+      }
+      requestParams = {
+        ...params,
+        input: multimodal.input,
+        aiTaskType: "vision_analyze",
+      };
+    }
+
     if (stream) {
       const responseStream = await runWithAiBillingUsage(
         {
           userId,
           api: "responses",
-          feature: "content_writing",
+          feature: attachmentIds.length > 0 ? "vision_chat" : "content_writing",
         },
-        () => createAtlasResponseStream(params),
+        () => createAtlasResponseStream(requestParams),
       );
 
       return new Response(createSseStream(responseStream), {
@@ -218,9 +250,9 @@ export async function POST(request: Request): Promise<Response> {
       {
         userId,
         api: "responses",
-        feature: "content_writing",
+        feature: attachmentIds.length > 0 ? "vision_chat" : "content_writing",
       },
-      () => createAtlasResponse(params),
+      () => createAtlasResponse(requestParams),
     );
 
     return Response.json({

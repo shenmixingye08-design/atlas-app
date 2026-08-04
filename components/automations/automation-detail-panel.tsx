@@ -19,15 +19,14 @@ import {
   resolveEntrustedJobStatus,
   resolveScheduleMethod,
 } from "@/lib/automations/display";
-import {
-  metricsLast30Days,
-  isTestRun,
-} from "@/lib/automations/pause-resume";
+import { formatNextRunDisplay } from "@/lib/automations/form-utils";
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusChip } from "@/components/ui/status-chip";
+
+import { PendingXApprovalPanel } from "./pending-x-approval-panel";
 
 type AutomationDetailPanelProps = {
   automation: Automation;
@@ -58,15 +57,18 @@ export function AutomationDetailPanel({
 
   const status = resolveEntrustedJobStatus(automation);
   const schedule = resolveScheduleMethod(automation.schedule);
-  const critical = flowHasCriticalExternalActions(automation.executionFlow);
+  const isXDestination = automation.destination === "x";
+  const critical =
+    !isXDestination && flowHasCriticalExternalActions(automation.executionFlow);
   const procedure = describeProcedure(automation);
-  const metrics30d = metricsLast30Days(automation);
 
   const handleLevelChange = async (level: AutomationExecutionLevel) => {
     setSavingLevel(true);
     setLevelError(null);
     try {
-      const nextLevel = clampConfirmationLevel(level, automation.executionFlow);
+      const nextLevel = clampConfirmationLevel(level, automation.executionFlow, {
+        destination: automation.destination,
+      });
       if (level === "full_auto" && nextLevel !== "full_auto") {
         setLevelError(ui.entrustedJobs.criticalRequiresConfirm);
       }
@@ -280,32 +282,19 @@ export function AutomationDetailPanel({
             )}
           </section>
 
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-foreground">
-              直近30日（{metrics30d.label}）
-            </h3>
-            <dl className="grid gap-2 text-sm sm:grid-cols-3">
-              <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
-                <dt className="text-xs text-[var(--text-muted)]">完了</dt>
-                <dd className="mt-1 font-medium">{metrics30d.completed}件</dd>
-              </div>
-              <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
-                <dt className="text-xs text-[var(--text-muted)]">失敗</dt>
-                <dd className="mt-1 font-medium">{metrics30d.failed}件</dd>
-              </div>
-              <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
-                <dt className="text-xs text-[var(--text-muted)]">削減時間（推定）</dt>
-                <dd className="mt-1 font-medium">
-                  {Math.round(metrics30d.timeSavedMinutesEstimate / 60 * 10) / 10}時間
-                </dd>
-              </div>
-            </dl>
-          </section>
+          {isXDestination && (
+            <PendingXApprovalPanel automationId={automation.id} />
+          )}
 
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-foreground">
               {ui.entrustedJobs.runHistory}
             </h3>
+            {isXDestination && (
+              <p className="text-xs text-[var(--text-secondary)]">
+                投稿先: X / 仕事ID: {automation.id}
+              </p>
+            )}
             <dl className="grid gap-2 text-sm sm:grid-cols-2">
               <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
                 <dt className="text-xs text-[var(--text-muted)]">
@@ -321,7 +310,7 @@ export function AutomationDetailPanel({
                 </dt>
                 <dd className="mt-1 font-medium text-foreground">
                   {automation.enabled
-                    ? formatAutomationDateTime(automation.nextRun)
+                    ? formatNextRunDisplay(automation.nextRun)
                     : "—"}
                 </dd>
               </div>
@@ -351,21 +340,71 @@ export function AutomationDetailPanel({
                 </dd>
               </div>
             </dl>
-            <ul className="space-y-2">
+            <ul className="space-y-3">
               {(automation.runHistory ?? []).length === 0 ? (
                 <li className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-muted)]">
-                  {ui.entrustedJobs.fullHistoryComingSoon}
+                  まだ実行履歴はありません
                 </li>
               ) : (
                 (automation.runHistory ?? []).slice(0, 8).map((entry) => (
                   <li
                     key={entry.id}
-                    className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-secondary)]"
+                    id={`execution-${entry.id}`}
+                    className="space-y-2 rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-3 text-sm text-[var(--text-secondary)]"
                   >
-                    {formatAutomationDateTime(entry.completedAt)} —{" "}
-                    {isTestRun(entry) ? "テスト · " : ""}
-                    {entry.status === "completed" ? "成功" : "失敗"}
-                    {entry.error ? `（${entry.error}）` : ""}
+                    {entry.status === "completed" && entry.xPostUrl ? (
+                      <>
+                        <p className="font-medium text-foreground">
+                          Xへの投稿が完了しました
+                        </p>
+                        <p>投稿日時: {formatNextRunDisplay(entry.completedAt)}</p>
+                        {entry.generatedText ? (
+                          <p className="whitespace-pre-wrap">
+                            投稿内容: {entry.generatedText}
+                          </p>
+                        ) : null}
+                        <a
+                          href={entry.xPostUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-accent underline-offset-2 hover:underline"
+                        >
+                          Xで投稿を見る
+                        </a>
+                      </>
+                    ) : entry.status === "failed" ? (
+                      <>
+                        <p className="font-medium text-foreground">
+                          Xへの投稿に失敗しました
+                        </p>
+                        <p>原因: {entry.error ?? "不明なエラー"}</p>
+                        <p>
+                          対応:{" "}
+                          {entry.errorCode === "x_not_connected" ||
+                          entry.errorCode === "x_reconnect_required" ||
+                          entry.errorCode === "x_missing_access_token"
+                            ? "外部連携画面からXを再連携してください"
+                            : "実行内容と外部連携設定をご確認ください"}
+                        </p>
+                      </>
+                    ) : entry.status === "awaiting_approval" ? (
+                      <>
+                        <p className="font-medium text-foreground">
+                          投稿前の確認待ちです
+                        </p>
+                        <p>予定日時: {formatNextRunDisplay(entry.scheduledAt)}</p>
+                        {entry.generatedText ? (
+                          <p className="whitespace-pre-wrap">
+                            投稿予定文章: {entry.generatedText}
+                          </p>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        {formatAutomationDateTime(entry.completedAt)} — 成功
+                        {entry.error ? `（${entry.error}）` : ""}
+                      </>
+                    )}
                   </li>
                 ))
               )}

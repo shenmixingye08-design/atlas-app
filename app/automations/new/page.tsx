@@ -1,22 +1,36 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 
-import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
-import { AutomationWizard } from "@/components/automations/automation-wizard";
+import { AutomationCreateWizard } from "@/components/automations/v2/automation-create-wizard";
 import { LoadingState } from "@/components/ui/loading-state";
-import { ui } from "@/lib/i18n";
 
 export const metadata: Metadata = {
-  title: ui.phase3.wizardTitle,
-  description: ui.phase3.wizardSubtitle,
+  title: "自動化を作成 — MINERVOT",
+  description: "自動化したい仕事を引き継ぎます",
 };
 
-export default function NewAutomationPage() {
+function WizardEntry({
+  searchParams,
+}: {
+  searchParams: { draft?: string; seed?: string };
+}) {
   return (
-    <AtlasAppShell active="automations" width="narrow">
-      <Suspense fallback={<LoadingState />}>
-        <AutomationWizard />
-      </Suspense>
-    </AtlasAppShell>
+    <AutomationCreateWizard
+      initialDraftId={searchParams.draft ?? null}
+      seedText={searchParams.seed ?? null}
+    />
+  );
+}
+
+export default async function NewAutomationPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ draft?: string; seed?: string }>;
+}) {
+  const params = await searchParams;
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <WizardEntry searchParams={params} />
+    </Suspense>
   );
 }

@@ -23,7 +23,12 @@ type OwnerNavProps = {
     | "employeeTeam"
     | "accountDeletions"
     | "auditLog"
-    | "disasterRecovery";
+    | "disasterRecovery"
+    | "automationExecutionLogs"
+    | "reliability"
+    | "scheduler"
+    | "wordDownloadDiagnostics"
+    | "memoryApply";
 };
 const LINKS = [
   { id: "dashboard" as const, href: "/owner", label: ui.owner.navDashboard },
@@ -46,6 +51,11 @@ const LINKS = [
     id: "errorMonitoring" as const,
     href: "/owner/error-monitoring",
     label: ui.owner.navErrorMonitoring,
+  },
+  {
+    id: "automationExecutionLogs" as const,
+    href: "/owner/automation-execution-logs",
+    label: "定期実行ログ",
   },
   {
     id: "popularityRanking" as const,
@@ -86,6 +96,26 @@ const LINKS = [
     id: "systemStatus" as const,
     href: "/owner/system-status",
     label: ui.owner.navSystemStatus,
+  },
+  {
+    id: "scheduler" as const,
+    href: "/owner/scheduler",
+    label: "Scheduler",
+  },
+  {
+    id: "reliability" as const,
+    href: "/owner/reliability",
+    label: "Reliability (SRE)",
+  },
+  {
+    id: "memoryApply" as const,
+    href: "/owner/memory-apply",
+    label: "Memory Apply",
+  },
+  {
+    id: "wordDownloadDiagnostics" as const,
+    href: "/owner/diagnostics/word-download",
+    label: "Word DL診断",
   },
   {
     id: "externalServices" as const,

@@ -54,11 +54,18 @@ vi.mock("@/lib/notifications/emitters", () => ({
   notifyAutomationCompleted: vi.fn(),
   notifyAutomationFailed: vi.fn(),
   notifyOwnerSystemIncident: vi.fn(),
+  notifyWorkCompleted: vi.fn(),
 }));
 
 describe("automation persistence and cron tick", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    process.env.ATLAS_WORK_QUEUE_FORCE_FILE = "true";
+    const { resetWorkQueueStoreForTests } = await import("@/lib/work-queue");
+    const workQueue = resetWorkQueueStoreForTests(
+      `${process.cwd()}/.data/work-queue-durable-test.json`,
+    );
+    await workQueue.resetForTests();
     const { resetAutomationStore } = await import(
       "./repositories/server-automation-repository"
     );
@@ -129,6 +136,7 @@ describe("automation persistence and cron tick", () => {
       false,
     );
     expect(disabled?.enabled).toBe(false);
+    expect(disabled?.nextRun).toBeNull();
 
     const enabled = await automationService.setEnabledForUser(
       created.id,
@@ -136,6 +144,8 @@ describe("automation persistence and cron tick", () => {
       true,
     );
     expect(enabled?.enabled).toBe(true);
+    expect(enabled?.nextRun).toBeTruthy();
+    expect(new Date(enabled!.nextRun!).getTime()).toBeGreaterThan(Date.now() - 1000);
 
     const snap = snapshotAutomations("user_persist");
     expect(snap.automations).toHaveLength(1);

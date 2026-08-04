@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -22,6 +23,8 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
 import { ErrorState } from "@/components/ui/error-state";
 import { SecretaryProgress } from "@/components/home/secretary-progress";
+import { VisionFailurePanel } from "@/components/vision/vision-failure-panel";
+import { VisionDiagnosticsPanel } from "@/components/vision/vision-diagnostics-panel";
 
 function statusLabel(status: CommanderRunStatus): string {
   switch (status) {
@@ -190,6 +193,7 @@ export function CommanderDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [run, setRun] = useState<CommanderRunResult | null>(null);
+  const [showVisionDiagnostics, setShowVisionDiagnostics] = useState(false);
   const [savedProjectId, setSavedProjectId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const autoStartedRef = useRef(false);
@@ -213,7 +217,11 @@ export function CommanderDashboard() {
   }
 
   const runAssignment = useCallback(
-    async (text: string, mode: "plan" | "execute") => {
+    async (
+      text: string,
+      mode: "plan" | "execute",
+      metadata?: Readonly<Record<string, unknown>>,
+    ) => {
       const trimmed = text.trim();
       if (!trimmed || isLoadingRef.current) return;
 
@@ -230,6 +238,7 @@ export function CommanderDashboard() {
         const result = await submitCommanderRequest(trimmed, {
           signal: controller.signal,
           mode,
+          metadata,
         });
         setRun(result);
         maybeSaveProject(result, trimmed);
@@ -244,21 +253,26 @@ export function CommanderDashboard() {
   );
 
   useEffect(() => {
-    const prefill = searchParams.get("assignment");
-    if (prefill?.trim()) setAssignment(prefill);
-    // ホームから「送る」で届いた依頼は、確認不要ですぐに実行する（クリック削減）。
-    if (
-      searchParams.get("autostart") === "1" &&
-      prefill?.trim() &&
-      !autoStartedRef.current
-    ) {
-      autoStartedRef.current = true;
-      void runAssignment(prefill, "execute");
-    }
+    return scheduleMountWork(() => {
+      const prefill = searchParams.get("assignment");
+      if (prefill?.trim()) setAssignment(prefill);
+      // ホームから「送る」で届いた依頼は、確認不要ですぐに実行する（クリック削減）。
+      if (
+        searchParams.get("autostart") === "1" &&
+        prefill?.trim() &&
+        !autoStartedRef.current
+      ) {
+        autoStartedRef.current = true;
+        void runAssignment(prefill, "execute");
+      }
+    });
   }, [runAssignment, searchParams]);
 
-  async function handleSubmit(mode: "plan" | "execute") {
-    await runAssignment(assignment, mode);
+  async function handleSubmit(
+    mode: "plan" | "execute",
+    metadata?: Readonly<Record<string, unknown>>,
+  ) {
+    await runAssignment(assignment, mode, metadata);
   }
 
   async function handleConfirm() {
@@ -344,7 +358,29 @@ export function CommanderDashboard() {
 
       {isLoading && !run && <SecretaryProgress />}
 
-      {error && <ErrorState message={error} />}
+      {error && !run?.visionGate && <ErrorState message={error} />}
+
+      {run?.visionGate && (
+        <div className="space-y-3">
+          <VisionFailurePanel
+            gate={run.visionGate}
+            showDeveloperHint={Boolean(run.visionGate.diagnosticId)}
+            onRetryAnalyze={() =>
+              void handleSubmit("execute", {
+                forceVisionRefresh: true,
+                visionRetry: true,
+                visionRetryAt: new Date().toISOString(),
+              })
+            }
+          />
+          <VisionDiagnosticsPanel
+            diagnosticId={run.visionGate.diagnosticId}
+            enabled={showVisionDiagnostics}
+            showToggle={Boolean(run.visionGate.diagnosticId)}
+            onToggle={() => setShowVisionDiagnostics((v) => !v)}
+          />
+        </div>
+      )}
 
       {run && (
         <div className="space-y-6">

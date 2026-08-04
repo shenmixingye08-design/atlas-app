@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -8,6 +9,11 @@ import { OwnerNavLink } from "@/components/owner/owner-nav-link";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 import type { AtlasNavPage } from "@/lib/layout/nav-types";
+import {
+  AUTOMATION_FIRST_SIDEBAR_PRIMARY,
+  resolveAutomationFirstSidebarActive,
+} from "@/lib/automation-first/nav";
+import { useFeatureAvailability } from "@/lib/feature-flags";
 import {
   SIDEBAR_MORE_GROUPS,
   SIDEBAR_PRIMARY_NAV,
@@ -130,6 +136,7 @@ function SidebarPanel({
   onNavigate,
   onClose,
   showCloseButton,
+  primaryNav,
 }: {
   active: AtlasNavPage | null;
   moreExpanded: boolean;
@@ -137,6 +144,7 @@ function SidebarPanel({
   onNavigate?: () => void;
   onClose?: () => void;
   showCloseButton?: boolean;
+  primaryNav: SidebarNavItem[];
 }) {
   return (
     <div className="flex h-full flex-col">
@@ -144,7 +152,7 @@ function SidebarPanel({
         <Link
           href="/projects"
           onClick={onNavigate}
-          className="text-base font-semibold tracking-tight text-foreground focus-ring rounded-md"
+          className="text-lg font-semibold tracking-tight text-[var(--brand)] focus-ring rounded-md"
         >
           {ui.brand}
         </Link>
@@ -162,9 +170,9 @@ function SidebarPanel({
 
       <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="メイン">
         <div className="space-y-1">
-          {SIDEBAR_PRIMARY_NAV.map((item) => (
+          {primaryNav.map((item) => (
             <NavLink
-              key={item.href}
+              key={`${item.id}:${item.href}`}
               item={item}
               isActive={active === item.id}
               onNavigate={onNavigate}
@@ -188,7 +196,29 @@ function SidebarPanel({
 
 export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
   const pathname = usePathname() ?? "";
-  const resolvedActive = activeProp ?? resolveSidebarActiveId(pathname);
+  const { flags, loading } = useFeatureAvailability();
+  const isAutomationFirstPreview = pathname.startsWith(
+    "/dev/automation-first-preview",
+  );
+  // Never flash legacy sidebar while AF flags are loading on Preview/dev
+  // (client optimistic defaults keep automation_first_navigation_enabled true).
+  const afNav =
+    isAutomationFirstPreview ||
+    flags.automation_first_navigation_enabled === true;
+  const primaryNav = loading && !afNav
+    ? AUTOMATION_FIRST_SIDEBAR_PRIMARY.map((item) => ({
+        ...item,
+        label: "…",
+      }))
+    : afNav
+      ? AUTOMATION_FIRST_SIDEBAR_PRIMARY
+      : SIDEBAR_PRIMARY_NAV;
+  const resolvedActive =
+    (afNav
+      ? resolveAutomationFirstSidebarActive(pathname, activeProp)
+      : null) ??
+    activeProp ??
+    resolveSidebarActiveId(pathname);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [moreExpanded, setMoreExpanded] = useState(() =>
     isSidebarMoreActive(resolvedActive),
@@ -197,9 +227,10 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
   const closeMobile = useCallback(() => setMobileOpen(false), []);
 
   useEffect(() => {
-    if (isSidebarMoreActive(resolvedActive)) {
+    if (!isSidebarMoreActive(resolvedActive)) return;
+    return scheduleMountWork(() => {
       setMoreExpanded(true);
-    }
+    });
   }, [resolvedActive]);
 
   useEffect(() => {
@@ -230,7 +261,7 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
         </button>
         <Link
           href="/projects"
-          className="min-w-0 truncate text-sm font-semibold tracking-tight text-foreground focus-ring rounded-md"
+          className="min-w-0 truncate text-base font-semibold tracking-tight text-[var(--brand)] focus-ring rounded-md"
         >
           {ui.brand}
         </Link>
@@ -248,6 +279,7 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
           active={resolvedActive}
           moreExpanded={moreExpanded}
           onToggleMore={() => setMoreExpanded((value) => !value)}
+          primaryNav={primaryNav}
         />
       </aside>
 
@@ -277,6 +309,7 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
           onNavigate={closeMobile}
           onClose={closeMobile}
           showCloseButton
+          primaryNav={primaryNav}
         />
       </aside>
     </>

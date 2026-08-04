@@ -219,6 +219,10 @@ export async function resolveUserSubscriptionDurable(
   const cached = getUserSubscription(userId);
   if (cached) return cached;
 
+  // Dedicated table DDL is NOT attempted on the request hot path (service role
+  // cannot create tables). loadSubscriptionFromSupabase gates on schema cache
+  // and falls back to atlas_user_state domain atlasBilling when missing.
+
   const fromSupabase = await loadSubscriptionFromSupabase(userId);
   if (fromSupabase) {
     const bucket = getBucket();

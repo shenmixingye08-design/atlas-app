@@ -336,6 +336,66 @@ export type Database = {
         };
         Relationships: [];
       };
+      atlas_image_attachments: {
+        Row: {
+          id: string;
+          user_id: string;
+          job_id: string;
+          original_file_name: string;
+          mime_type: string;
+          original_mime_type: string | null;
+          original_bytes: number;
+          processed_bytes: number;
+          width: number;
+          height: number;
+          content_hash: string;
+          original_storage_path: string;
+          processed_storage_path: string;
+          retention_policy: string;
+          expires_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          user_id: string;
+          job_id?: string;
+          original_file_name: string;
+          mime_type: string;
+          original_mime_type?: string | null;
+          original_bytes: number;
+          processed_bytes: number;
+          width?: number;
+          height?: number;
+          content_hash: string;
+          original_storage_path: string;
+          processed_storage_path: string;
+          retention_policy?: string;
+          expires_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          job_id?: string;
+          original_file_name?: string;
+          mime_type?: string;
+          original_mime_type?: string | null;
+          original_bytes?: number;
+          processed_bytes?: number;
+          width?: number;
+          height?: number;
+          content_hash?: string;
+          original_storage_path?: string;
+          processed_storage_path?: string;
+          retention_policy?: string;
+          expires_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       atlas_push_subscriptions: {
         Row: {
           id: string;
@@ -346,10 +406,12 @@ export type Database = {
           platform: string | null;
           browser: string | null;
           device_name: string | null;
+          user_agent: string | null;
           failure_count: number;
           is_active: boolean;
           created_at: string;
           updated_at: string;
+          last_used_at: string | null;
         };
         Insert: {
           id?: string;
@@ -360,10 +422,12 @@ export type Database = {
           platform?: string | null;
           browser?: string | null;
           device_name?: string | null;
+          user_agent?: string | null;
           failure_count?: number;
           is_active?: boolean;
           created_at?: string;
           updated_at?: string;
+          last_used_at?: string | null;
         };
         Update: {
           id?: string;
@@ -374,8 +438,154 @@ export type Database = {
           platform?: string | null;
           browser?: string | null;
           device_name?: string | null;
+          user_agent?: string | null;
           failure_count?: number;
           is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+          last_used_at?: string | null;
+        };
+        Relationships: [];
+      };
+      atlas_deliverable_files: {
+        Row: {
+          id: string;
+          user_id: string;
+          file_name: string;
+          format: string;
+          mime_type: string;
+          is_placeholder: boolean;
+          source_content: string;
+          base_file_name: string;
+          size_bytes: number | null;
+          content_base64: string | null;
+          generated_at: string;
+          expires_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          user_id: string;
+          file_name: string;
+          format: string;
+          mime_type: string;
+          is_placeholder?: boolean;
+          source_content: string;
+          base_file_name: string;
+          size_bytes?: number | null;
+          content_base64?: string | null;
+          generated_at: string;
+          expires_at: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          file_name?: string;
+          format?: string;
+          mime_type?: string;
+          is_placeholder?: boolean;
+          source_content?: string;
+          base_file_name?: string;
+          size_bytes?: number | null;
+          content_base64?: string | null;
+          generated_at?: string;
+          expires_at?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      atlas_reliability_events: {
+        Row: {
+          id: string;
+          metric_key: string | null;
+          outcome: string | null;
+          duration_ms: number | null;
+          job_id: string | null;
+          diagnostic_id: string | null;
+          user_id: string | null;
+          stage: string | null;
+          severity: string | null;
+          error_code: string | null;
+          message: string | null;
+          error_message: string | null;
+          metadata: unknown;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          metric_key?: string | null;
+          outcome?: string | null;
+          duration_ms?: number | null;
+          job_id?: string | null;
+          diagnostic_id?: string | null;
+          user_id?: string | null;
+          stage?: string | null;
+          severity?: string | null;
+          error_code?: string | null;
+          message?: string | null;
+          error_message?: string | null;
+          metadata?: unknown;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          metric_key?: string | null;
+          outcome?: string | null;
+          duration_ms?: number | null;
+          job_id?: string | null;
+          diagnostic_id?: string | null;
+          user_id?: string | null;
+          stage?: string | null;
+          severity?: string | null;
+          error_code?: string | null;
+          message?: string | null;
+          error_message?: string | null;
+          metadata?: unknown;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      atlas_notification_dlq: {
+        Row: {
+          id: string;
+          notification_id: string;
+          user_id: string;
+          channel: string;
+          title: string;
+          message: string;
+          attempt_count: number;
+          last_error: string | null;
+          payload: unknown;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          notification_id: string;
+          user_id: string;
+          channel: string;
+          title: string;
+          message: string;
+          attempt_count?: number;
+          last_error?: string | null;
+          payload?: unknown;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          notification_id?: string;
+          user_id?: string;
+          channel?: string;
+          title?: string;
+          message?: string;
+          attempt_count?: number;
+          last_error?: string | null;
+          payload?: unknown;
+          status?: string;
           created_at?: string;
           updated_at?: string;
         };

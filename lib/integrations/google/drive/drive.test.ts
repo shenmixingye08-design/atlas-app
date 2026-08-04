@@ -9,6 +9,11 @@ vi.mock("@/lib/billing/access", () => ({
   getBillingFeatureDenial: vi.fn(async () => null),
 }));
 
+vi.mock("@/lib/billing/access", () => ({
+  getBillingFeatureDenial: vi.fn(async () => null),
+}));
+
+import { getBillingFeatureDenial } from "@/lib/billing/access";
 import { saveDeliverableFile } from "@/lib/deliverables/store";
 import { resetFeatureFlagStore, setFeatureFlagState } from "@/lib/feature-flags/store";
 import {
@@ -41,6 +46,7 @@ describe("Google Drive integration", () => {
     resetDriveFolderStore();
     setFeatureFlagState("google", "on");
     vi.restoreAllMocks();
+    vi.mocked(getBillingFeatureDenial).mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -156,13 +162,16 @@ describe("Google Drive integration", () => {
       updatedAt: new Date().toISOString(),
     });
 
-    const stored = saveDeliverableFile({
-      format: "pdf",
-      fileName: "report.pdf",
-      mimeType: "application/pdf",
-      buffer: Buffer.from("pdf-content"),
-      isPlaceholder: false,
-    });
+    const stored = saveDeliverableFile(
+      {
+        format: "pdf",
+        fileName: "report.pdf",
+        mimeType: "application/pdf",
+        buffer: Buffer.from("pdf-content"),
+        isPlaceholder: false,
+      },
+      "user_drive_test",
+    );
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);

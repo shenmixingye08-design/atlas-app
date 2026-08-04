@@ -11,7 +11,6 @@ import {
   getFullAutoJobs,
   getJobCategoryLabel,
   getTopFrequentJobs,
-  resetUserWorkProfile,
   saveManualOverride,
   type JobCategoryId,
   type ManualPreferenceEntry,

@@ -1,30 +1,26 @@
 import "server-only";
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import path from "path";
-
 import { clerkClient } from "@clerk/nextjs/server";
 
-import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 import { isPlanId } from "../plans/registry";
 import type { PlanId } from "../plans/types";
 
+import {
+  findSubscriptionByStripeCustomerIdFromDurable,
+  hasProcessedWebhookEventInDurable,
+  listSubscriptionsFromDurableDomain,
+  loadSubscriptionFromDurableDomain,
+  markWebhookEventProcessedInDurable,
+  persistSubscriptionToDurableDomain,
+} from "./durable-fallback";
+import { isBillingDedicatedTableReady } from "./table-ready";
 import type { SubscriptionStatus, UserSubscriptionRecord } from "./types";
-
-const DATA_DIR = path.join(process.cwd(), ".data", "billing");
-const SUBSCRIPTIONS_FILE = path.join(DATA_DIR, "subscriptions.json");
-const WEBHOOK_EVENTS_FILE = path.join(DATA_DIR, "processed-webhook-events.json");
 
 const CLERK_BILLING_KEY = "atlasBilling";
 
 const SUBSCRIPTIONS_TABLE = "atlas_billing_subscriptions" as const;
 const WEBHOOK_EVENTS_TABLE = "atlas_stripe_webhook_events" as const;
-
-type SubscriptionFileShape = {
-  version: 1;
-  records: Record<string, UserSubscriptionRecord>;
-};
 
 type BillingSubscriptionRow = {
   user_id: string;
@@ -41,17 +37,6 @@ type BillingSubscriptionRow = {
   payment_failure_grace_ends_at: string | null;
   plan_profile_synced_at: string | null;
 };
-
-function ensureDataDir(): void {
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
-/** Local/dev disk fallback only — never relied on for production correctness. */
-function allowDiskFallback(): boolean {
-  return !isAtlasProduction();
-}
 
 export function isBillingSupabaseConfigured(): boolean {
   return createServiceRoleClientIfConfigured() !== null;
@@ -107,65 +92,21 @@ function recordToRow(record: UserSubscriptionRecord): BillingSubscriptionRow {
   };
 }
 
-export function readSubscriptionsFromDisk(): Map<string, UserSubscriptionRecord> {
-  if (!allowDiskFallback()) return new Map();
-
-  try {
-    if (!existsSync(SUBSCRIPTIONS_FILE)) return new Map();
-    const raw = readFileSync(SUBSCRIPTIONS_FILE, "utf8");
-    const parsed = JSON.parse(raw) as SubscriptionFileShape;
-    if (!parsed?.records || typeof parsed.records !== "object") return new Map();
-    return new Map(Object.entries(parsed.records));
-  } catch {
-    return new Map();
-  }
-}
-
-export function writeSubscriptionsToDisk(
+export const writeSubscriptionsToDisk: (
   records: Map<string, UserSubscriptionRecord>,
-): void {
-  if (!allowDiskFallback()) return;
+) => void = () => undefined;
 
-  try {
-    ensureDataDir();
-    const payload: SubscriptionFileShape = {
-      version: 1,
-      records: Object.fromEntries(records.entries()),
-    };
-    writeFileSync(SUBSCRIPTIONS_FILE, JSON.stringify(payload, null, 2), "utf8");
-  } catch (error) {
-    console.error("[billing] Failed to persist subscriptions to disk:", error);
-  }
+export function readSubscriptionsFromDisk(): Map<string, UserSubscriptionRecord> {
+  return new Map();
 }
 
 export function readProcessedWebhookEventsFromDisk(): Set<string> {
-  if (!allowDiskFallback()) return new Set();
-
-  try {
-    if (!existsSync(WEBHOOK_EVENTS_FILE)) return new Set();
-    const raw = readFileSync(WEBHOOK_EVENTS_FILE, "utf8");
-    const parsed = JSON.parse(raw) as { eventIds?: string[] };
-    return new Set(Array.isArray(parsed.eventIds) ? parsed.eventIds : []);
-  } catch {
-    return new Set();
-  }
+  return new Set();
 }
 
-export function writeProcessedWebhookEventsToDisk(eventIds: Set<string>): void {
-  if (!allowDiskFallback()) return;
-
-  try {
-    ensureDataDir();
-    const ids = [...eventIds].slice(-2000);
-    writeFileSync(
-      WEBHOOK_EVENTS_FILE,
-      JSON.stringify({ version: 1, eventIds: ids }, null, 2),
-      "utf8",
-    );
-  } catch (error) {
-    console.error("[billing] Failed to persist webhook idempotency:", error);
-  }
-}
+export const writeProcessedWebhookEventsToDisk: (
+  eventIds: Set<string>,
+) => void = () => undefined;
 
 function isSubscriptionRecord(value: unknown): value is UserSubscriptionRecord {
   if (!value || typeof value !== "object") return false;
@@ -173,34 +114,30 @@ function isSubscriptionRecord(value: unknown): value is UserSubscriptionRecord {
   return typeof row.userId === "string" && typeof row.planId === "string";
 }
 
-/** Best-effort durable copy on Clerk privateMetadata (survives serverless restarts). */
+/**
+ * Persist subscription to atlas_user_state domain atlasBilling
+ * (supabase-only; does not write Clerk payloads).
+ */
 export async function persistSubscriptionToClerk(
   record: UserSubscriptionRecord,
 ): Promise<void> {
-  if (!process.env.CLERK_SECRET_KEY?.trim()) return;
-
-  try {
-    const client = await clerkClient();
-    const user = await client.users.getUser(record.userId);
-    const existing =
-      user.privateMetadata && typeof user.privateMetadata === "object"
-        ? { ...user.privateMetadata }
-        : {};
-
-    await client.users.updateUserMetadata(record.userId, {
-      privateMetadata: {
-        ...existing,
-        [CLERK_BILLING_KEY]: record,
-      },
-    });
-  } catch (error) {
-    console.error("[billing] Failed to persist subscription to Clerk:", error);
+  const ok = await persistSubscriptionToDurableDomain(record);
+  if (!ok) {
+    console.error(
+      "[billing] Failed to persist subscription durably to atlas_user_state",
+    );
   }
 }
 
+/**
+ * Load subscription: durable atlasBilling first, then legacy Clerk metadata.
+ */
 export async function loadSubscriptionFromClerk(
   userId: string,
 ): Promise<UserSubscriptionRecord | null> {
+  const fromDurable = await loadSubscriptionFromDurableDomain(userId);
+  if (fromDurable) return fromDurable;
+
   if (!process.env.CLERK_SECRET_KEY?.trim()) return null;
 
   try {
@@ -213,12 +150,26 @@ export async function loadSubscriptionFromClerk(
   }
 }
 
-/** Prefer Supabase as source of truth when service role is configured. */
+function isMissingBillingTableError(message: string | undefined): boolean {
+  return Boolean(
+    message &&
+      /schema cache|does not exist|Could not find the table/i.test(message),
+  );
+}
+
+/**
+ * Prefer dedicated atlas_billing_subscriptions when present;
+ * otherwise atlas_user_state domain atlasBilling (no schema-cache warn spam).
+ */
 export async function loadSubscriptionFromSupabase(
   userId: string,
 ): Promise<UserSubscriptionRecord | null> {
+  if (!(await isBillingDedicatedTableReady())) {
+    return loadSubscriptionFromDurableDomain(userId);
+  }
+
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return null;
+  if (!client) return loadSubscriptionFromDurableDomain(userId);
 
   try {
     const { data, error } = await client
@@ -228,25 +179,39 @@ export async function loadSubscriptionFromSupabase(
       .maybeSingle();
 
     if (error) {
-      console.warn(
+      if (isMissingBillingTableError(error.message)) {
+        const { markBillingDedicatedTableReadyUnknown } = await import(
+          "./table-ready"
+        );
+        markBillingDedicatedTableReadyUnknown();
+        return loadSubscriptionFromDurableDomain(userId);
+      }
+      console.error(
         "[billing] Supabase subscription load failed:",
         error.message,
       );
-      return null;
+      return loadSubscriptionFromDurableDomain(userId);
     }
-    if (!data) return null;
+    if (!data) return loadSubscriptionFromDurableDomain(userId);
     return rowToRecord(data as BillingSubscriptionRow);
   } catch (error) {
-    console.warn("[billing] Supabase subscription load skipped:", error);
-    return null;
+    console.error("[billing] Supabase subscription load skipped:", error);
+    return loadSubscriptionFromDurableDomain(userId);
   }
 }
 
 export async function persistSubscriptionToSupabase(
   record: UserSubscriptionRecord,
 ): Promise<boolean> {
+  // Always keep durable domain in sync (exists on Production today).
+  const durableOk = await persistSubscriptionToDurableDomain(record);
+
+  if (!(await isBillingDedicatedTableReady())) {
+    return durableOk;
+  }
+
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return false;
+  if (!client) return durableOk;
 
   try {
     const { error } = await client
@@ -254,24 +219,37 @@ export async function persistSubscriptionToSupabase(
       .upsert(recordToRow(record), { onConflict: "user_id" });
 
     if (error) {
-      console.warn(
+      if (isMissingBillingTableError(error.message)) {
+        const { markBillingDedicatedTableReadyUnknown } = await import(
+          "./table-ready"
+        );
+        markBillingDedicatedTableReadyUnknown();
+        return durableOk;
+      }
+      console.error(
         "[billing] Supabase subscription upsert failed:",
         error.message,
       );
-      return false;
+      return durableOk;
     }
     return true;
   } catch (error) {
-    console.warn("[billing] Supabase subscription upsert skipped:", error);
-    return false;
+    console.error("[billing] Supabase subscription upsert skipped:", error);
+    return durableOk;
   }
 }
 
 export async function findSubscriptionByStripeCustomerIdFromSupabase(
   stripeCustomerId: string,
 ): Promise<UserSubscriptionRecord | null> {
+  if (!(await isBillingDedicatedTableReady())) {
+    return findSubscriptionByStripeCustomerIdFromDurable(stripeCustomerId);
+  }
+
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return null;
+  if (!client) {
+    return findSubscriptionByStripeCustomerIdFromDurable(stripeCustomerId);
+  }
 
   try {
     const { data, error } = await client
@@ -282,50 +260,74 @@ export async function findSubscriptionByStripeCustomerIdFromSupabase(
       .maybeSingle();
 
     if (error) {
-      console.warn(
+      if (isMissingBillingTableError(error.message)) {
+        const { markBillingDedicatedTableReadyUnknown } = await import(
+          "./table-ready"
+        );
+        markBillingDedicatedTableReadyUnknown();
+        return findSubscriptionByStripeCustomerIdFromDurable(stripeCustomerId);
+      }
+      console.error(
         "[billing] Supabase customer lookup failed:",
         error.message,
       );
-      return null;
+      return findSubscriptionByStripeCustomerIdFromDurable(stripeCustomerId);
     }
-    if (!data) return null;
+    if (!data) {
+      return findSubscriptionByStripeCustomerIdFromDurable(stripeCustomerId);
+    }
     return rowToRecord(data as BillingSubscriptionRow);
   } catch {
-    return null;
+    return findSubscriptionByStripeCustomerIdFromDurable(stripeCustomerId);
   }
 }
 
 export async function listSubscriptionsFromSupabase(): Promise<
   UserSubscriptionRecord[]
 > {
+  if (!(await isBillingDedicatedTableReady())) {
+    return listSubscriptionsFromDurableDomain();
+  }
+
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return [];
+  if (!client) return listSubscriptionsFromDurableDomain();
 
   try {
     const { data, error } = await client.from(SUBSCRIPTIONS_TABLE).select("*");
     if (error || !data) {
+      if (error && isMissingBillingTableError(error.message)) {
+        const { markBillingDedicatedTableReadyUnknown } = await import(
+          "./table-ready"
+        );
+        markBillingDedicatedTableReadyUnknown();
+        return listSubscriptionsFromDurableDomain();
+      }
       if (error) {
-        console.warn(
+        console.error(
           "[billing] Supabase subscription list failed:",
           error.message,
         );
       }
-      return [];
+      return listSubscriptionsFromDurableDomain();
     }
 
     return data
       .map((row) => rowToRecord(row as BillingSubscriptionRow))
       .filter((row): row is UserSubscriptionRecord => row !== null);
   } catch {
-    return [];
+    return listSubscriptionsFromDurableDomain();
   }
 }
 
 export async function hasProcessedWebhookEventInSupabase(
   eventId: string,
 ): Promise<boolean> {
+  if (!(await isBillingDedicatedTableReady())) {
+    return hasProcessedWebhookEventInDurable(eventId);
+  }
+
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return false;
+  if (!client) return hasProcessedWebhookEventInDurable(eventId);
 
   try {
     const { data, error } = await client
@@ -335,15 +337,22 @@ export async function hasProcessedWebhookEventInSupabase(
       .maybeSingle();
 
     if (error) {
-      console.warn(
+      if (isMissingBillingTableError(error.message)) {
+        const { markBillingDedicatedTableReadyUnknown } = await import(
+          "./table-ready"
+        );
+        markBillingDedicatedTableReadyUnknown();
+        return hasProcessedWebhookEventInDurable(eventId);
+      }
+      console.error(
         "[billing] Supabase webhook idempotency check failed:",
         error.message,
       );
-      return false;
+      return hasProcessedWebhookEventInDurable(eventId);
     }
     return Boolean(data?.event_id);
   } catch {
-    return false;
+    return hasProcessedWebhookEventInDurable(eventId);
   }
 }
 
@@ -351,8 +360,15 @@ export async function markWebhookEventProcessedInSupabase(
   eventId: string,
   eventType?: string | null,
 ): Promise<boolean> {
+  // Always durable-mark so idempotency survives without dedicated table.
+  const durableOk = await markWebhookEventProcessedInDurable(eventId, eventType);
+
+  if (!(await isBillingDedicatedTableReady())) {
+    return durableOk;
+  }
+
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return false;
+  if (!client) return durableOk;
 
   try {
     const { error } = await client.from(WEBHOOK_EVENTS_TABLE).upsert(
@@ -365,15 +381,25 @@ export async function markWebhookEventProcessedInSupabase(
     );
 
     if (error) {
-      console.warn(
+      if (isMissingBillingTableError(error.message)) {
+        const { markBillingDedicatedTableReadyUnknown } = await import(
+          "./table-ready"
+        );
+        markBillingDedicatedTableReadyUnknown();
+        return durableOk;
+      }
+      console.error(
         "[billing] Supabase webhook idempotency write failed:",
         error.message,
       );
-      return false;
+      return durableOk;
     }
     return true;
   } catch (error) {
-    console.warn("[billing] Supabase webhook idempotency write skipped:", error);
-    return false;
+    console.error(
+      "[billing] Supabase webhook idempotency write skipped:",
+      error,
+    );
+    return durableOk;
   }
 }

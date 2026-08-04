@@ -57,17 +57,21 @@ function buildDetection(text: string): RecurringIntentDetection {
   const frequency = inferFrequency(text);
   const { hour, minute } = extractHourMinute(text);
   const title = inferTitle(text);
+  const destination =
+    /x\b|twitter|ツイート|sns|投稿/i.test(text) ? ("x" as const) : ("none" as const);
 
   const formDefaults = syncExecutionFlowFromJobText(
     defaultAutomationFormState({
       title,
       assignment: text.endsWith("。") ? text : `${text}。`,
       description: inferDescription(title, text),
+      destination,
       frequency,
       hour,
       minute,
       dayOfWeek: /月曜/.test(text) ? 1 : /金曜/.test(text) ? 5 : /水曜/.test(text) ? 3 : 1,
       dayOfMonth: 1,
+      executionLevel: destination === "x" ? "full_auto" : undefined,
     }),
   );
 
@@ -91,11 +95,15 @@ export function detectRecurringIntent(text: string): RecurringIntentResult {
 export function prefillFromAssignment(assignment: string): AutomationFormState {
   const result = detectRecurringIntent(assignment);
   if (result.detected) return result.formDefaults;
+  const destination =
+    /x\b|twitter|ツイート|sns|投稿/i.test(assignment) ? ("x" as const) : ("none" as const);
   return syncExecutionFlowFromJobText(
     defaultAutomationFormState({
       title: inferTitle(assignment),
       assignment,
       description: inferDescription(inferTitle(assignment), assignment),
+      destination,
+      executionLevel: destination === "x" ? "full_auto" : undefined,
     }),
   );
 }

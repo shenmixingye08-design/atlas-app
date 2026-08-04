@@ -1,8 +1,5 @@
 import "server-only";
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import path from "path";
-
 import type {
   CommanderAttemptRecord,
   CommanderPlan,
@@ -14,14 +11,6 @@ import {
   persistCommanderRunToClerk,
   snapshotToCommanderRun,
 } from "./durable-store";
-
-const DATA_DIR = path.join(process.cwd(), ".data", "commander");
-const RUNS_FILE = path.join(DATA_DIR, "runs.json");
-
-type RunsFileShape = {
-  version: 1;
-  runs: Record<string, CommanderRunRecord>;
-};
 
 type RunBucket = Map<string, CommanderRunRecord>;
 
@@ -40,52 +29,31 @@ function getBucket(): RunBucket {
     __atlasCommanderRunStore?: RunBucket;
   };
   if (!scope.__atlasCommanderRunStore) {
-    scope.__atlasCommanderRunStore = loadFromDisk();
+    scope.__atlasCommanderRunStore = new Map();
   }
   return scope.__atlasCommanderRunStore;
 }
 
-function ensureDataDir(): void {
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
+const TERMINAL_COMMANDER: ReadonlySet<CommanderRunStatus> = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+  "awaiting_confirmation",
+]);
 
-function loadFromDisk(): RunBucket {
-  try {
-    if (!existsSync(RUNS_FILE)) return new Map();
-    const raw = readFileSync(RUNS_FILE, "utf8");
-    const parsed = JSON.parse(raw) as RunsFileShape;
-    if (!parsed?.runs || typeof parsed.runs !== "object") return new Map();
-    return new Map(Object.entries(parsed.runs));
-  } catch {
-    return new Map();
-  }
-}
-
-/** Local/dev cache only — production durability is Clerk (+ optional Supabase). */
-function persistLocalCache(bucket: RunBucket): void {
-  try {
-    ensureDataDir();
-    const sorted = [...bucket.entries()].sort(
-      (a, b) =>
-        new Date(b[1].updatedAt).getTime() - new Date(a[1].updatedAt).getTime(),
-    );
-    const trimmed = sorted.slice(0, 500);
-    const payload: RunsFileShape = {
-      version: 1,
-      runs: Object.fromEntries(trimmed),
-    };
-    writeFileSync(RUNS_FILE, JSON.stringify(payload), "utf8");
-    bucket.clear();
-    for (const [id, run] of trimmed) bucket.set(id, run);
-  } catch {
-    // Non-fatal on serverless read-only filesystems.
-  }
-}
-
-function persistDurable(run: CommanderRunRecord): void {
-  persistLocalCache(getBucket());
+/**
+ * Durable persist only on create + terminal (or force).
+ * Intermediate `running` updates stay in-memory. Supabase only (no disk).
+ */
+function persistDurable(
+  run: CommanderRunRecord,
+  options?: { force?: boolean },
+): void {
+  const shouldDurable =
+    options?.force === true ||
+    TERMINAL_COMMANDER.has(run.status) ||
+    run.status === "planning";
+  if (!shouldDurable) return;
   void persistCommanderRunToClerk(run);
 }
 
@@ -127,7 +95,7 @@ export function getCommanderRun(
   return run;
 }
 
-/** Hydrate durable Clerk/Supabase snapshots into the hot memory bucket. */
+/** Hydrate durable Supabase snapshots into the hot memory bucket. */
 export async function ensureCommanderRunsHydrated(userId: string): Promise<void> {
   if (getHydratedUsers().has(userId)) return;
   getHydratedUsers().add(userId);
@@ -141,7 +109,6 @@ export async function ensureCommanderRunsHydrated(userId: string): Promise<void>
     if (bucket.has(snapshot.id)) continue;
     bucket.set(snapshot.id, snapshotToCommanderRun(snapshot));
   }
-  persistLocalCache(bucket);
 }
 
 export function listCommanderRunsForUser(
@@ -182,7 +149,13 @@ export function updateCommanderRun(
     updatedAt: new Date().toISOString(),
   };
   getBucket().set(runId, updated);
-  persistDurable(updated);
+  const statusChanged =
+    patch.status !== undefined && patch.status !== existing.status;
+  const becameTerminal =
+    statusChanged && TERMINAL_COMMANDER.has(updated.status);
+  persistDurable(updated, {
+    force: becameTerminal || updated.status === "planning",
+  });
   return updated;
 }
 
@@ -230,16 +203,8 @@ export function isCommanderCancelRequested(
 }
 
 export function resetCommanderRunStoreForTests(): void {
-  const bucket = getBucket();
-  bucket.clear();
+  getBucket().clear();
   getHydratedUsers().clear();
-  try {
-    if (existsSync(RUNS_FILE)) {
-      writeFileSync(RUNS_FILE, JSON.stringify({ version: 1, runs: {} }), "utf8");
-    }
-  } catch {
-    // ignore
-  }
 }
 
 /** Remove all commander runs for one user (account purge). */
@@ -251,9 +216,6 @@ export function clearCommanderRunsForUser(userId: string): number {
       bucket.delete(id);
       removed += 1;
     }
-  }
-  if (removed > 0) {
-    persistLocalCache(bucket);
   }
   getHydratedUsers().delete(userId);
   return removed;

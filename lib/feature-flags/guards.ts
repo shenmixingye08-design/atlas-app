@@ -154,6 +154,24 @@ export function featureDisabledMessage(flagId: FeatureFlagId): string {
       return "AI秘書機能は現在ご利用いただけません";
     case "high_quality_mode":
       return "高品質モードは現在ご利用いただけません";
+    case "automation_v2_enabled":
+      return "新しい自動化機能は現在ご利用いただけません";
+    case "automation_memory_enabled":
+      return "自動化の記憶連携は現在ご利用いただけません";
+    case "automation_approval_enabled":
+      return "自動化の承認フローは現在ご利用いただけません";
+    case "automation_first_home_enabled":
+      return "新しいホームは現在ご利用いただけません";
+    case "automation_first_navigation_enabled":
+      return "新しいナビゲーションは現在ご利用いただけません";
+    case "automation_design_system_enabled":
+      return "新しいデザインは現在ご利用いただけません";
+    case "automation_dashboard_v2_enabled":
+      return "新しい自動化一覧は現在ご利用いただけません";
+    case "workflow_learning_enabled":
+      return "改善提案機能は現在ご利用いただけません";
+    case "automation_operations_enabled":
+      return "自動化の運用画面は現在ご利用いただけません";
     default:
       return "この機能は現在ご利用いただけません";
   }

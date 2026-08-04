@@ -1,4 +1,3 @@
-import { automationService } from "@/lib/automations/automation-service";
 import { authorizeAutomationTick } from "@/lib/automations/tick-auth";
 import {
   processDueAutoPostsFromAutomationTick,
@@ -6,7 +5,8 @@ import {
 } from "@/lib/integrations/x/post/automation";
 
 function resolveOrigin(request: Request): string {
-  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  const host =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
   const protocol = request.headers.get("x-forwarded-proto") ?? "http";
 
   if (host) {
@@ -17,8 +17,14 @@ function resolveOrigin(request: Request): string {
 }
 
 /**
- * Process automations whose nextRun is due.
- * Auth: `Authorization: Bearer $CRON_SECRET` (Vercel Cron) or signed-in Clerk session.
+ * Minute-capable due tick.
+ * Scheduler enqueues durable jobs; worker drains leases (step-sized).
+ * Auth: `Authorization: Bearer $CRON_SECRET` or ATLAS owner session.
+ *
+ * Vercel Hobby cannot deploy `* * * * *` — use GitHub Actions minute workflow
+ * (`.github/workflows/minute-scheduler.yml`) as the production minute path.
+ * `vercel.json` keeps a daily fallback; Pro can switch to minute via
+ * `vercel.cron.pro.json`.
  */
 export async function POST(request: Request): Promise<Response> {
   const gate = await authorizeAutomationTick(request);
@@ -28,30 +34,49 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: gate.error }, { status: gate.status });
   }
 
+  const scheduledCronEnabled =
+    process.env.ENABLE_SCHEDULED_CRON?.trim().toLowerCase() !== "false";
+  if (!scheduledCronEnabled) {
+    return Response.json({
+      skipped: true,
+      reason: "ENABLE_SCHEDULED_CRON=false",
+      processed: 0,
+      results: [],
+    });
+  }
+
   try {
     const origin = resolveOrigin(request);
-
-    let reliability: {
-      retriesProcessed: number;
-      hangsDetected: number;
-      dedupeSkips: number;
-    } = {
-      retriesProcessed: 0,
-      hangsDetected: 0,
-      dedupeSkips: 0,
-    };
-    try {
-      const { processJobReliabilityTick } = await import(
-        "@/lib/jobs/tick-processor"
-      );
-      reliability = await processJobReliabilityTick({ requestOrigin: origin });
-    } catch (error) {
-      console.warn("[automation tick] job reliability skipped:", error);
-    }
-
-    const results = await automationService.processDueAutomations({
+    const { processWorkQueueTick } = await import("@/lib/work-queue/tick");
+    const workQueue = await processWorkQueueTick({
       requestOrigin: origin,
     });
+
+    let v2Schedule = {
+      due: 0,
+      enqueued: 0,
+      deduped: 0,
+      failed: 0,
+      dispatched: 0,
+    };
+    let v2Dispatch = { processed: 0 };
+    try {
+      const { processDueScheduledAutomationsV2 } = await import(
+        "@/lib/automation-platform/schedule/due-tick"
+      );
+      // V2: enqueue-only (dispatch false) — avoid sync heavy work in cron.
+      v2Schedule = await processDueScheduledAutomationsV2({
+        limit: 20,
+        dispatch: false,
+      });
+      const { dispatchAutomationRuns } = await import(
+        "@/lib/automation-platform/execution/dispatch"
+      );
+      v2Dispatch = await dispatchAutomationRuns({ limit: 10 });
+    } catch (error) {
+      console.warn("[automation tick] v2 schedule/dispatch skipped:", error);
+    }
+
     const scheduledXPosts = await processScheduledXPostsFromAutomationTick();
     const autoPosts = await processDueAutoPostsFromAutomationTick();
 
@@ -61,7 +86,9 @@ export async function POST(request: Request): Promise<Response> {
         "@/lib/reports/daily-dispatch"
       );
       const reportResults = await dispatchDailyReportsForDueUsers();
-      dailyReports = { processed: reportResults.filter((r) => r.sent).length };
+      dailyReports = {
+        processed: reportResults.filter((row) => row.sent).length,
+      };
     } catch (error) {
       console.warn("[automation tick] daily reports skipped:", error);
     }
@@ -69,22 +96,33 @@ export async function POST(request: Request): Promise<Response> {
     const { recordCronTickOutcome, recordMonitoringIncident } = await import(
       "@/lib/owner/monitoring"
     );
+    const { recordAutomationCronDebug } = await import(
+      "@/lib/automations/execution-log"
+    );
     recordCronTickOutcome(true);
 
-    const failed = results.filter((r) => r.status === "failed");
-    for (const row of failed.slice(0, 5)) {
+    recordAutomationCronDebug({
+      ok: true,
+      dueCount: workQueue.schedule.due,
+      successCount: workQueue.worker.completed,
+      failureCount: workQueue.worker.failed,
+    });
+
+    for (const alert of workQueue.alerts.filter((a) => a.severity === "critical")) {
       recordMonitoringIncident({
         kind: "automation_failure",
         targetId: "automation",
-        message: row.error ?? "Automation run failed",
+        message: `[work-queue] ${alert.code}: ${alert.message}`,
         critical: true,
         source: "automation_tick",
       });
     }
 
     return Response.json({
-      processed: results.length,
-      results,
+      processed: workQueue.worker.completed + workQueue.worker.failed,
+      workQueue,
+      v2Schedule,
+      v2Dispatch,
       scheduledXPosts: {
         processed: scheduledXPosts.length,
         results: scheduledXPosts,
@@ -94,13 +132,16 @@ export async function POST(request: Request): Promise<Response> {
         results: autoPosts,
       },
       dailyReports,
-      reliability,
     });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Automation tick failed";
     const { recordCronTickOutcome } = await import("@/lib/owner/monitoring");
+    const { recordAutomationCronDebug } = await import(
+      "@/lib/automations/execution-log"
+    );
     recordCronTickOutcome(false, message);
+    recordAutomationCronDebug({ ok: false, error: message });
     return Response.json({ error: message }, { status: 500 });
   }
 }

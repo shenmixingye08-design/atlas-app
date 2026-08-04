@@ -1,5 +1,5 @@
 export function LoadingState({
-  message = "読み込み中",
+  message = "準備しています…",
 }: {
   message?: string;
   className?: string;

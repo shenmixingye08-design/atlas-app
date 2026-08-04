@@ -2,12 +2,11 @@ import "server-only";
 
 import { randomUUID } from "crypto";
 
-import { dispatchLineNotification } from "@/lib/integrations/line/service";
-import { dispatchWebPushNotification } from "@/lib/push/dispatch";
 import { resolvePushEventCategory, resolvePushSeverity } from "@/lib/push/categories";
 
+import { deliverLineWithAck, deliverWebPushWithAck } from "./delivery";
 import { schedulePersistNotifications } from "./durable";
-import { countUnreadNotifications } from "./unread-rules";
+import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
 import {
   appendNotification,
   deleteNotification,
@@ -28,12 +27,20 @@ import {
   DEFAULT_LINE_EVENTS,
   DEFAULT_NOTIFICATION_PREFERENCES,
 } from "./types";
+import { resolveNotificationPreferencesWithMemorySync } from "@/lib/memory-apply/notifications";
 
 function isInAppTypeEnabled(
   prefs: NotificationPreferences,
   type: NotificationType,
 ): boolean {
   if (!prefs.allEnabled || !prefs.channels.inApp) return false;
+  return isNotificationTypeEnabled(prefs, type);
+}
+
+function isNotificationTypeEnabled(
+  prefs: NotificationPreferences,
+  type: NotificationType,
+): boolean {
   switch (type) {
     case "completed":
       return prefs.completedEnabled;
@@ -52,6 +59,17 @@ function isInAppTypeEnabled(
     default:
       return true;
   }
+}
+
+function isLineDeliveryEnabled(
+  prefs: NotificationPreferences,
+  type: NotificationType,
+  lineEvent: LineNotifyEvent | null,
+): lineEvent is LineNotifyEvent {
+  if (!lineEvent) return false;
+  if (!prefs.allEnabled || !isNotificationTypeEnabled(prefs, type)) return false;
+  if (!prefs.channels.line) return false;
+  return prefs.lineEvents[lineEvent] === true;
 }
 
 function resolveLineEvent(
@@ -75,8 +93,31 @@ function resolveLineEvent(
 
 export function createNotification(
   input: CreateNotificationInput,
+  options?: { skipDelivery?: boolean },
 ): NotificationRecord | null {
   const lineEvent = resolveLineEvent(input);
+  let shouldCreateInApp = true;
+  let enabledLineEvent: LineNotifyEvent | null = null;
+
+  if (input.audience === "user" && input.userId) {
+    const stored = getStoredPreferences(input.userId);
+    const { preferences: prefs } = resolveNotificationPreferencesWithMemorySync({
+      userId: input.userId,
+      base: stored,
+    });
+    if (!prefs.allEnabled) {
+      return null;
+    }
+
+    shouldCreateInApp = isInAppTypeEnabled(prefs, input.type);
+    enabledLineEvent = isLineDeliveryEnabled(prefs, input.type, lineEvent)
+      ? lineEvent
+      : null;
+
+    if (!shouldCreateInApp && !enabledLineEvent) {
+      return null;
+    }
+  }
 
   // The notification id is the canonical key of the unified results route. When
   // a result target is present, the button MUST open `/results/<id>` (which
@@ -90,26 +131,23 @@ export function createNotification(
       ? `/results/${encodeURIComponent(notificationId)}`
       : (input.actionUrl ?? null);
 
-  // Send the LINE message with the same canonical link the in-app button uses.
-  // LINE dispatch is independent of the in-app channel preference (each channel
-  // is gated separately inside the LINE service).
-  if (input.audience === "user" && input.userId && lineEvent) {
-    void dispatchLineNotification({
-      userId: input.userId,
-      event: lineEvent,
-      title: input.title,
-      message: input.message,
-      actionUrl: canonicalActionUrl,
-    }).catch((error) => {
-      console.warn("[LINE notify]", error);
-    });
-  }
-
-  if (input.audience === "user" && input.userId) {
-    const prefs = getStoredPreferences(input.userId);
-    if (!isInAppTypeEnabled(prefs, input.type)) {
-      return null;
+  if (!shouldCreateInApp) {
+    if (
+      !options?.skipDelivery &&
+      input.audience === "user" &&
+      input.userId &&
+      enabledLineEvent
+    ) {
+      void deliverLineWithAck({
+        notificationId,
+        userId: input.userId,
+        event: enabledLineEvent,
+        title: input.title,
+        message: input.message,
+        actionUrl: canonicalActionUrl,
+      }).catch((error) => console.warn("[LINE notify]", error));
     }
+    return null;
   }
 
   const record = appendNotification({
@@ -150,23 +188,73 @@ export function createNotification(
     pushFailureReason: null,
     readAt: null,
   });
+  bumpPersistenceCounter("notificationCreate");
   if (input.userId) schedulePersistNotifications(input.userId);
 
-  if (input.audience === "user" && input.userId) {
-    void dispatchWebPushNotification({
-      userId: input.userId,
-      record,
-      eventCategory: record.eventCategory ?? null,
-      severity: record.severity ?? null,
-      autoRecovered: input.autoRecovered,
-      jobName: input.jobName ?? null,
-      jobId: input.workflowRunId ?? null,
-    }).catch((error) => {
-      console.warn("[push notify]", error);
-    });
+  if (!options?.skipDelivery) {
+    // Delivery with ACK → Retry → DLQ. Scheduled (not blocking create), but never
+    // counted as success until deliver*WithAck completes.
+    if (input.audience === "user" && input.userId && enabledLineEvent) {
+      void deliverLineWithAck({
+        notificationId,
+        userId: input.userId,
+        event: enabledLineEvent,
+        title: input.title,
+        message: input.message,
+        actionUrl: canonicalActionUrl,
+      }).catch((error) => console.warn("[LINE notify]", error));
+    }
+
+    if (input.audience === "user" && input.userId) {
+      void deliverWebPushWithAck({
+        record,
+        autoRecovered: input.autoRecovered,
+        jobName: input.jobName ?? null,
+      }).catch((error) => console.warn("[push notify]", error));
+    }
   }
 
   return record;
+}
+
+/** Awaited notification create for E2E reliability harnesses. */
+export async function createNotificationWithDelivery(
+  input: CreateNotificationInput,
+): Promise<{
+  record: NotificationRecord | null;
+  lineOk: boolean | null;
+  pushOk: boolean | null;
+}> {
+  const lineEvent = resolveLineEvent(input);
+  const record = createNotification(input, { skipDelivery: true });
+  if (!record || !input.userId) {
+    return { record, lineOk: null, pushOk: null };
+  }
+
+  let lineOk: boolean | null = null;
+  let pushOk: boolean | null = null;
+  const prefs = getStoredPreferences(input.userId);
+  const enabledLineEvent = isLineDeliveryEnabled(prefs, input.type, lineEvent)
+    ? lineEvent
+    : null;
+  if (enabledLineEvent) {
+    const line = await deliverLineWithAck({
+      notificationId: record.notificationId,
+      userId: input.userId,
+      event: enabledLineEvent,
+      title: input.title,
+      message: input.message,
+      actionUrl: record.actionUrl,
+    });
+    lineOk = line.ok;
+  }
+  const push = await deliverWebPushWithAck({
+    record,
+    autoRecovered: input.autoRecovered,
+    jobName: input.jobName ?? null,
+  });
+  pushOk = push.ok;
+  return { record, lineOk, pushOk };
 }
 
 export function listUserNotifications(userId: string): NotificationRecord[] {
@@ -178,7 +266,7 @@ export function listOwnerNotifications(): NotificationRecord[] {
 }
 
 export function countUnreadUserNotifications(userId: string): number {
-  return countUnreadNotifications(listUserNotifications(userId));
+  return listUserNotifications(userId).filter((n) => !n.isRead).length;
 }
 
 export function markNotificationRead(

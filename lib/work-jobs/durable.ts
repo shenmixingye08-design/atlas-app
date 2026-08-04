@@ -1,0 +1,104 @@
+import "server-only";
+
+import {
+  loadDurableDomain,
+  persistDurableDomain,
+} from "@/lib/persistence/durable-domain";
+import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
+
+import type { WorkJobRecord } from "./store";
+
+const DOMAIN_KEY = "atlasWorkJobs";
+const MAX_JOBS = 30;
+
+type JobsPayload = { jobs: WorkJobRecord[] };
+
+export type WorkJobPersistResult = "supabase" | "failed";
+
+/** @deprecated Always true on Vercel — kept for tests. */
+export function isVercelEphemeralFs(): boolean {
+  return (
+    Boolean(process.env.VERCEL) ||
+    Boolean(process.env.VERCEL_ENV) ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME != null ||
+    process.env.ATLAS_FORCE_EPHEMERAL_FS === "1"
+  );
+}
+
+function slimJob(job: WorkJobRecord): WorkJobRecord {
+  return {
+    ...job,
+    result: job.result
+      ? {
+          ...job.result,
+          finalResponse: (job.result.finalResponse ?? "").slice(0, 12_000),
+        }
+      : null,
+  };
+}
+
+/**
+ * Persist job for cold-start / cross-instance recovery.
+ * Supabase only — no local disk, no Clerk payloads.
+ */
+export async function persistWorkJob(
+  job: WorkJobRecord,
+): Promise<WorkJobPersistResult> {
+  const slim = slimJob(job);
+  try {
+    const existing =
+      (await loadDurableDomain<JobsPayload>(job.userId, DOMAIN_KEY))?.jobs ?? [];
+    const next = [slim, ...existing.filter((j) => j.id !== slim.id)].slice(
+      0,
+      MAX_JOBS,
+    );
+    const result = await persistDurableDomain(
+      job.userId,
+      DOMAIN_KEY,
+      { jobs: next },
+      {
+        forceSupabase: true,
+        compact: (payload) => payload,
+      },
+    );
+    if (result !== "supabase") {
+      console.error("[work-jobs] durable supabase persist failed", {
+        jobId: job.id,
+        userId: job.userId,
+        result,
+      });
+      return "failed";
+    }
+    bumpPersistenceCounter("workJobPersist");
+    return "supabase";
+  } catch (error) {
+    console.error("[work-jobs] durable supabase persist threw", {
+      jobId: job.id,
+      userId: job.userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return "failed";
+  }
+}
+
+/** Disk lookup removed — always null (Supabase via loadWorkJobFromDurable). */
+export const loadWorkJobFromDisk: (
+  id: string,
+  userId: string,
+) => WorkJobRecord | null = () => {
+  return null;
+};
+
+export async function loadWorkJobFromDurable(
+  id: string,
+  userId: string,
+): Promise<WorkJobRecord | null> {
+  try {
+    const payload = await loadDurableDomain<JobsPayload>(userId, DOMAIN_KEY);
+    const job = payload?.jobs?.find((j) => j.id === id) ?? null;
+    if (!job || job.userId !== userId) return null;
+    return job;
+  } catch {
+    return null;
+  }
+}

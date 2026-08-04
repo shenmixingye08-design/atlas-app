@@ -22,13 +22,14 @@ export async function POST(
   request: Request,
   context: RouteContext,
 ): Promise<Response> {
-  const { id } = await context.params;
   const { userId } = await auth();
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const { id } = await context.params;
   const automation = await automationService.getByIdForUser(id, userId);
+
   if (!automation) {
     return Response.json({ error: "Automation not found" }, { status: 404 });
   }
@@ -104,15 +105,15 @@ export async function POST(
 }
 
 export async function GET(
-  request: Request,
+  _request: Request,
   context: RouteContext,
 ): Promise<Response> {
-  const { id } = await context.params;
   const { userId } = await auth();
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const { id } = await context.params;
   const automation = await automationService.getByIdForUser(id, userId);
   if (!automation) {
     return Response.json({ error: "Automation not found" }, { status: 404 });

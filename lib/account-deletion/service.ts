@@ -38,7 +38,6 @@ import {
 import {
   deleteAccountDeletionRecord,
   getAccountDeletionRecord,
-  saveAccountDeletionRecord,
 } from "./store";
 import {
   ACCOUNT_DELETION_CONFIRMATION,
@@ -258,6 +257,14 @@ export async function purgeAccount(
   resetWorkMemories(userId);
   resetLearningStores(userId);
   resetUserMemories(userId);
+  try {
+    const { wipePersonalMemoryForAccountDeletion } = await import(
+      "@/lib/personal-memory/service"
+    );
+    await wipePersonalMemoryForAccountDeletion(userId);
+  } catch {
+    // Personal memory wipe is best-effort during purge
+  }
   clearCommanderRunsForUser(userId);
   await serverAutomationRepository.replaceUserAutomations(userId, []);
   schedulePersistAutomations(userId);

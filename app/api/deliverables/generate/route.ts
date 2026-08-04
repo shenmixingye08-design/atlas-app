@@ -1,6 +1,21 @@
+import {
+  assertWordContentLimits,
+  assertWordTableLimits,
+  enforceWordGenerateRateLimit,
+  releaseWordGenerateSlot,
+} from "@/lib/deliverables/word-rate-limit";
 import { generateDeliverables } from "@/lib/deliverables/engine";
 import { uploadDeliverablesAfterGeneration } from "@/lib/integrations/deliverable-bridge";
 import type { IntegrationUploadSummary } from "@/lib/integrations/types";
+import {
+  assertSafeExportText,
+  needsRegenerationResponse,
+} from "@/lib/orchestration/normalize-deliverable-payload";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+/** Word/PDF multi-format generation can exceed default serverless limits. */
+export const maxDuration = 300;
 
 export const runtime = "nodejs";
 
@@ -14,6 +29,10 @@ type RequestBody = {
   templateId?: unknown;
   documentModelId?: unknown;
   jobId?: unknown;
+  companyName?: unknown;
+  recipient?: unknown;
+  author?: unknown;
+  createdAt?: unknown;
 };
 
 const VALID_FORMATS = new Set(["pdf", "docx", "xlsx", "pptx", "md", "txt"]);
@@ -61,6 +80,9 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const rateLimited = enforceWordGenerateRateLimit(userId);
+  if (rateLimited) return rateLimited;
+
   const { requireBillingForAssignment } = await import("@/lib/billing/access");
 
   let body: RequestBody;
@@ -68,10 +90,12 @@ export async function POST(request: Request): Promise<Response> {
   try {
     body = (await request.json()) as RequestBody;
   } catch {
+    releaseWordGenerateSlot(userId);
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   if (typeof body.assignment !== "string" || !body.assignment.trim()) {
+    releaseWordGenerateSlot(userId);
     return Response.json(
       { error: "assignment is required and must be a non-empty string" },
       { status: 400 },
@@ -81,24 +105,65 @@ export async function POST(request: Request): Promise<Response> {
   const billingDenied = await requireBillingForAssignment(userId, {
     assignment: body.assignment.trim(),
   });
-  if (billingDenied) return billingDenied;
+  if (billingDenied) {
+    releaseWordGenerateSlot(userId);
+    return billingDenied;
+  }
 
   if (
     typeof body.finalDeliverable !== "string" ||
     !body.finalDeliverable.trim()
   ) {
+    releaseWordGenerateSlot(userId);
     return Response.json(
       { error: "finalDeliverable is required and must be a non-empty string" },
       { status: 400 },
     );
   }
 
+  const contentLimit = assertWordContentLimits(body.finalDeliverable);
+  if (contentLimit) {
+    releaseWordGenerateSlot(userId);
+    return contentLimit;
+  }
+  const tableLimit = assertWordTableLimits(body.finalDeliverable);
+  if (tableLimit) {
+    releaseWordGenerateSlot(userId);
+    return tableLimit;
+  }
+
+  const exportGuard = assertSafeExportText(body.finalDeliverable);
+  if (!exportGuard.ok) {
+    releaseWordGenerateSlot(userId);
+    return Response.json(
+      {
+        ...needsRegenerationResponse(),
+        error: needsRegenerationResponse().message,
+      },
+      { status: 422 },
+    );
+  }
+
   if (body.title !== undefined && typeof body.title !== "string") {
+    releaseWordGenerateSlot(userId);
     return Response.json({ error: "title must be a string" }, { status: 400 });
   }
 
   if (body.workflowId !== undefined && typeof body.workflowId !== "string") {
+    releaseWordGenerateSlot(userId);
     return Response.json({ error: "workflowId must be a string" }, { status: 400 });
+  }
+
+  if (body.templateId !== undefined && typeof body.templateId !== "string") {
+    releaseWordGenerateSlot(userId);
+    return Response.json({ error: "templateId must be a string" }, { status: 400 });
+  }
+
+  for (const key of ["companyName", "recipient", "author", "createdAt"] as const) {
+    if (body[key] !== undefined && typeof body[key] !== "string") {
+      releaseWordGenerateSlot(userId);
+      return Response.json({ error: `${key} must be a string` }, { status: 400 });
+    }
   }
 
   try {
@@ -123,6 +188,18 @@ export async function POST(request: Request): Promise<Response> {
           typeof body.documentModelId === "string" ? body.documentModelId : undefined,
       },
       origin,
+      {
+        userId,
+        templateId:
+          typeof body.templateId === "string" ? body.templateId.trim() : null,
+        companyName:
+          typeof body.companyName === "string" ? body.companyName.trim() : undefined,
+        recipient:
+          typeof body.recipient === "string" ? body.recipient.trim() : undefined,
+        author: typeof body.author === "string" ? body.author.trim() : undefined,
+        createdAt:
+          typeof body.createdAt === "string" ? body.createdAt.trim() : undefined,
+      },
     );
 
     let uploads: IntegrationUploadSummary = {
@@ -149,6 +226,7 @@ export async function POST(request: Request): Promise<Response> {
       documentModelId: result.documentModelId,
       formatRecommendation: result.formatRecommendation,
       uploads,
+      jobId: result.jobId,
     });
   } catch (error) {
     console.error("[Atlas /api/deliverables/generate]", error);
@@ -156,5 +234,7 @@ export async function POST(request: Request): Promise<Response> {
       { error: "Failed to generate deliverables" },
       { status: 500 },
     );
+  } finally {
+    releaseWordGenerateSlot(userId);
   }
 }

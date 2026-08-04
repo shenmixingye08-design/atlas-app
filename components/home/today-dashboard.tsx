@@ -115,7 +115,7 @@ export function TodayDashboard({ automations, projects }: TodayDashboardProps) {
             {ui.todayDashboard.subtitle}
           </p>
         </div>
-        <Link href="/automations?create=1">
+        <Link href="/automations?create=1&destination=x">
           <Button variant="secondary" size="sm">
             {ui.habits.addHabit}
           </Button>

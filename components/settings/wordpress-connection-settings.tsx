@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -116,13 +117,16 @@ export function WordPressConnectionSettings() {
   }, []);
 
   useEffect(() => {
-    void load();
+    return scheduleMountWork(() => {
+      void load();
+    });
   }, [load]);
 
   useEffect(() => {
-    if (service?.connection.status === "connected") {
+    if (service?.connection.status !== "connected") return;
+    return scheduleMountWork(() => {
       void loadTaxonomies();
-    }
+    });
   }, [service?.connection.status, loadTaxonomies]);
 
   const handleConnect = async (isReconnect = false) => {

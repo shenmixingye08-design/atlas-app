@@ -10,6 +10,9 @@ export function sanitizeOrchestrationResultForClient(
     return result;
   }
 
-  const { costDebug: _cost, pipelineDebug: _pipe, isolationDebug: _iso, ...rest } = result;
+  const rest = { ...result };
+  delete rest.costDebug;
+  delete rest.pipelineDebug;
+  delete rest.isolationDebug;
   return rest;
 }

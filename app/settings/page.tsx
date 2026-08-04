@@ -1,51 +1,47 @@
 "use client";
 
 import { Suspense } from "react";
-import { useRouter } from "next/navigation";
 
 import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
-import { OnboardingSettings } from "@/components/settings/onboarding-settings";
-import { WorkProfileSettings } from "@/components/settings/work-profile-settings";
-import { ThemeSettings } from "@/components/settings/theme-settings";
-import { CostOptimizationSettings } from "@/components/settings/cost-optimization-settings";
 import { SettingsAccountLink } from "@/components/settings/settings-account-link";
 import { SettingsAccountRequestsLink } from "@/components/settings/settings-account-requests-link";
 import { SettingsBillingLink } from "@/components/settings/settings-billing-link";
-import { SettingsExportLink } from "@/components/settings/settings-export-link";
-import { SettingsMemoryLink } from "@/components/settings/settings-memory-link";
-import { SettingsWorkMemoryLink } from "@/components/settings/settings-work-memory-link";
-import { SettingsLearningLink } from "@/components/settings/settings-learning-link";
 import { SettingsNotificationsLink } from "@/components/settings/settings-notifications-link";
+import { SettingsHub } from "@/components/settings/settings-hub";
 import { ExternalServiceSettings } from "@/components/settings/external-service-settings";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ui } from "@/lib/i18n";
 
-function SettingsContent() {
-  const router = useRouter();
-
+function LegacySettingsBlocks() {
   return (
-    <div className="space-y-8 animate-fade-up">
-      <header className="space-y-3">
-        <p className="text-caption">{ui.brand}</p>
-        <h1 className="text-display text-foreground">{ui.workProfile.pageTitle}</h1>
-        <p className="text-body max-w-2xl">{ui.workProfile.pageSubtitle}</p>
-      </header>
-      <ThemeSettings />
-      <OnboardingSettings onRedo={() => router.push("/projects?welcome=1")} />
-      <WorkProfileSettings />
-      <SettingsWorkMemoryLink />
-      <SettingsLearningLink />
-      <SettingsMemoryLink />
-      <SettingsExportLink />
-      <SettingsAccountLink />
-      <SettingsAccountRequestsLink />
-      <SettingsBillingLink />
+    <>
       <SettingsNotificationsLink />
-      <CostOptimizationSettings />
-      <Suspense fallback={<LoadingState message={ui.loading} />}>
+      <Suspense fallback={<LoadingState message="準備しています…" />}>
         <ExternalServiceSettings />
       </Suspense>
-    </div>
+      <SettingsBillingLink />
+      <SettingsAccountLink />
+      <SettingsAccountRequestsLink />
+    </>
+  );
+}
+
+function SettingsContent() {
+  return (
+    <SettingsHub
+      legacy={
+        <div className="space-y-8 animate-fade-up">
+          <header className="space-y-3">
+            <p className="text-caption">{ui.brand}</p>
+            <h1 className="text-display text-foreground">設定</h1>
+            <p className="text-body max-w-2xl text-[var(--text-secondary)]">
+              お知らせ・連携・お支払い・アカウント・データの削除だけを管理します。
+            </p>
+          </header>
+          <LegacySettingsBlocks />
+        </div>
+      }
+    />
   );
 }
 

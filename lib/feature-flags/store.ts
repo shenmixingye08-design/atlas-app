@@ -1,17 +1,38 @@
 import { FEATURE_FLAG_IDS } from "./registry";
+import {
+  isAutomationFirstRolloutFlag,
+  resolveAutomationFirstDefaultState,
+} from "./rollout";
 import type { FeatureFlagId, FeatureFlagRecord, FeatureFlagState } from "./types";
 
 type FlagBucket = Map<FeatureFlagId, FeatureFlagRecord>;
 
 const DEFAULT_STATE: FeatureFlagState = "on";
 
+/**
+ * Platform flags that stay OFF until separately rolled out.
+ * Automation First formal-home flags use `resolveAutomationFirstDefaultState()`.
+ */
+const DEFAULT_STATE_BY_ID: Partial<Record<FeatureFlagId, FeatureFlagState>> = {
+  automation_memory_enabled: "off",
+  automation_approval_enabled: "off",
+  workflow_learning_enabled: "off",
+};
+
 function nowIso(): string {
   return new Date().toISOString();
 }
 
+function defaultStateFor(id: FeatureFlagId): FeatureFlagState {
+  if (isAutomationFirstRolloutFlag(id)) {
+    return resolveAutomationFirstDefaultState();
+  }
+  return DEFAULT_STATE_BY_ID[id] ?? DEFAULT_STATE;
+}
+
 function createDefaultRecord(id: FeatureFlagId): FeatureFlagRecord {
   const timestamp = nowIso();
-  return { id, state: DEFAULT_STATE, updatedAt: timestamp };
+  return { id, state: defaultStateFor(id), updatedAt: timestamp };
 }
 
 function getBucket(): FlagBucket {

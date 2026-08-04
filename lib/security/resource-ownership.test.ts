@@ -11,14 +11,17 @@ import { saveDocumentModel } from "@/lib/documents/storage/document-store";
 
 describe("resource ownership guards", () => {
   it("denies cross-user deliverable download", () => {
-    const stored = saveDeliverableFile({
-      format: "pdf",
-      fileName: "report.pdf",
-      mimeType: "application/pdf",
-      buffer: Buffer.from("pdf-bytes"),
-      isPlaceholder: false,
-      userId: "user_a",
-    });
+    const stored = saveDeliverableFile(
+      {
+        format: "pdf",
+        fileName: "report.pdf",
+        mimeType: "application/pdf",
+        buffer: Buffer.from("pdf-bytes"),
+        isPlaceholder: false,
+      },
+      "user_a",
+      { sourceContent: "x", baseFileName: "report" },
+    );
 
     const denied = assertDeliverableDownloadAccess({
       deliverableId: stored.id,
@@ -35,15 +38,18 @@ describe("resource ownership guards", () => {
   });
 
   it("rejects zero-byte deliverables", () => {
-    const stored = saveDeliverableFile({
-      format: "pdf",
-      fileName: "empty.pdf",
-      mimeType: "application/pdf",
-      buffer: Buffer.alloc(0),
-      isPlaceholder: false,
-      validationPassed: false,
-      userId: "user_a",
-    });
+    const stored = saveDeliverableFile(
+      {
+        format: "pdf",
+        fileName: "empty.pdf",
+        mimeType: "application/pdf",
+        buffer: Buffer.alloc(0),
+        isPlaceholder: false,
+        validationPassed: false,
+      },
+      "user_a",
+      { sourceContent: "x", baseFileName: "empty" },
+    );
 
     const result = assertDeliverableDownloadAccess({
       deliverableId: stored.id,

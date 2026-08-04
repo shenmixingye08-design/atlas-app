@@ -59,6 +59,9 @@ function parseCreateBody(body: unknown): CreateAutomationInput | { error: string
     ...(typeof record.executionFlow === "object" && record.executionFlow !== null
       ? { executionFlow: record.executionFlow as CreateAutomationInput["executionFlow"] }
       : {}),
+    ...(record.destination === "x" || record.destination === "none"
+      ? { destination: record.destination }
+      : {}),
     ...(typeof record.enabled === "boolean" ? { enabled: record.enabled } : {}),
   };
 }
@@ -117,9 +120,45 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const templateId = parsed.executionFlow?.templateId;
-  if (templateId === "sns_post") {
+  const destination =
+    parsed.destination === "x" ||
+    (parsed.workflow.metadata as { destination?: string } | undefined)
+      ?.destination === "x"
+      ? "x"
+      : "none";
+
+  if (templateId === "sns_post" || destination === "x") {
     const snsDenied = await requireBillingFeature(userId, "sns_auto_post");
     if (snsDenied) return snsDenied;
+
+    if (destination === "x") {
+      const { gateXRecurringConnection } = await import(
+        "@/lib/automations/x-recurring/connection-gate"
+      );
+      const gate = await gateXRecurringConnection({
+        userId,
+        context: accessContext,
+      });
+      if (!gate.ok) {
+        return Response.json(
+          {
+            error: gate.error.message,
+            errorCode: gate.error.code,
+            action: gate.error.action,
+          },
+          { status: 400 },
+        );
+      }
+      parsed.destination = "x";
+      if (!parsed.executionFlow) {
+        const { buildXDestinationExecutionFlow } = await import(
+          "@/lib/automations/x-recurring/destination"
+        );
+        parsed.executionFlow = buildXDestinationExecutionFlow(
+          parsed.executionLevel ?? "approve_then_run",
+        );
+      }
+    }
   }
   if (templateId === "blog") {
     const blogDenied = await requireBillingFeature(userId, "blog_creation");

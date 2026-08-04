@@ -5,10 +5,15 @@ import {
   setPushSubscriptionActive,
 } from "@/lib/push/subscription-store";
 
+export const runtime = "nodejs";
+
 export async function GET(): Promise<Response> {
   const { userId } = await auth();
   if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json(
+      { error: "Unauthorized", code: "authentication_required" },
+      { status: 401 },
+    );
   }
 
   const devices = await listAllPushSubscriptions(userId);
@@ -21,6 +26,7 @@ export async function GET(): Promise<Response> {
       isActive: d.isActive,
       failureCount: d.failureCount,
       updatedAt: d.updatedAt,
+      lastUsedAt: d.lastUsedAt,
     })),
   });
 }
@@ -28,26 +34,48 @@ export async function GET(): Promise<Response> {
 export async function PATCH(request: Request): Promise<Response> {
   const { userId } = await auth();
   if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json(
+      { error: "Unauthorized", code: "authentication_required" },
+      { status: 401 },
+    );
   }
 
-  const body = (await request.json()) as {
-    subscriptionId?: string;
-    isActive?: boolean;
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json(
+      { error: "Invalid JSON", code: "invalid_request" },
+      { status: 400 },
+    );
+  }
+
+  const payload = body as {
+    subscriptionId?: unknown;
+    isActive?: unknown;
   };
 
-  if (!body.subscriptionId || typeof body.isActive !== "boolean") {
-    return Response.json({ error: "Invalid request" }, { status: 400 });
+  if (
+    typeof payload.subscriptionId !== "string" ||
+    typeof payload.isActive !== "boolean"
+  ) {
+    return Response.json(
+      { error: "Invalid request", code: "invalid_request" },
+      { status: 400 },
+    );
   }
 
   const ok = await setPushSubscriptionActive({
     userId,
-    subscriptionId: body.subscriptionId,
-    isActive: body.isActive,
+    subscriptionId: payload.subscriptionId,
+    isActive: payload.isActive,
   });
 
   if (!ok) {
-    return Response.json({ error: "Not found" }, { status: 404 });
+    return Response.json(
+      { error: "Not found", code: "invalid_request" },
+      { status: 404 },
+    );
   }
 
   return Response.json({ ok: true });

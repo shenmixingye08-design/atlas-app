@@ -1,7 +1,6 @@
 import "server-only";
 
 import { serverCredentialRepository } from "../repositories/server-credential-repository";
-import type { OAuthCredentialRecord } from "../types";
 
 import {
   GOOGLE_DRIVE_API_BASE,

@@ -12,7 +12,7 @@ describe("morning brief", () => {
   });
 
   it("includes date label and atlas sections", () => {
-    const now = new Date("2026-07-09T10:00:00+09:00");
+    const now = new Date("2026-07-09T10:00:00");
     const brief = buildMorningBrief({
       automations: SEED_AUTOMATIONS,
       projects: [],

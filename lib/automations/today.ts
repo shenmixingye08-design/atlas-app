@@ -1,4 +1,4 @@
-import type { Automation, AutomationTiming, Timestamp } from "./types";
+import type { Automation, Timestamp } from "./types";
 import {
   DEFAULT_AUTOMATION_TIMEZONE,
   getZonedParts,

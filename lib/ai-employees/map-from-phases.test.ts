@@ -1,74 +1,137 @@
 import { describe, expect, it } from "vitest";
 
-import { ui } from "@/lib/i18n";
-import { defaultVisibleAiEmployeeDepartments } from "@/lib/ai-employees/registry";
 import { buildLoadingPhases, createInitialPhases } from "@/lib/workspace/constants";
 
 import { mapWorkflowPhasesToAiEmployees } from "./map-from-phases";
 
-function visibleIndex(id: string): number {
-  return defaultVisibleAiEmployeeDepartments.findIndex((dept) => dept.id === id);
-}
-
 describe("mapWorkflowPhasesToAiEmployees", () => {
+  function byId(
+    employees: ReturnType<typeof mapWorkflowPhasesToAiEmployees>,
+    id: string,
+  ) {
+    return employees.find((employee) => employee.id === id);
+  }
+
   it("starts with sales department running", () => {
     const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(0));
 
-    expect(employees).toHaveLength(defaultVisibleAiEmployeeDepartments.length);
-    expect(employees[visibleIndex("sales")]).toMatchObject({
+    expect(employees.map((employee) => employee.id)).toEqual([
+      "sales",
+      "secretary",
+      "sns",
+      "materials",
+      "quality",
+      "delivery",
+    ]);
+    expect(byId(employees, "sales")).toMatchObject({
       id: "sales",
       icon: "👔",
-      name: ui.aiEmployees.departments.sales.name,
-      task: ui.aiEmployees.departments.sales.tasks.running,
+      name: "営業部",
+      task: "依頼内容を分析中",
       status: "running",
     });
+    expect(byId(employees, "secretary")?.status).toBe("waiting");
   });
 
-  it("maps planner phases to materials department", () => {
-    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(2));
+  it("maps write phase to materials department", () => {
+    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(1));
 
-    expect(employees[visibleIndex("materials")]).toMatchObject({
+    expect(byId(employees, "materials")).toMatchObject({
       id: "materials",
       icon: "📊",
-      name: ui.aiEmployees.departments.materials.name,
-      task: ui.aiEmployees.departments.materials.tasks.running,
+      name: "資料作成部",
+      task: "資料作成中",
       status: "running",
     });
-    expect(employees[visibleIndex("sales")]?.status).toBe("completed");
+    expect(byId(employees, "sales")?.status).toBe("completed");
+    expect(byId(employees, "secretary")?.status).toBe("completed");
+    expect(byId(employees, "sns")?.status).toBe("completed");
   });
 
-  it("maps worker phases to materials department", () => {
-    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(4));
+  it("keeps legacy worker phases mapped to materials department", () => {
+    const employees = mapWorkflowPhasesToAiEmployees([
+      {
+        id: "worker-1",
+        label: "Worker",
+        subtitle: "Legacy worker phase",
+        status: "running",
+      },
+    ]);
 
-    expect(employees[visibleIndex("materials")]).toMatchObject({
+    expect(byId(employees, "materials")).toMatchObject({
       id: "materials",
       status: "running",
-      task: ui.aiEmployees.departments.materials.tasks.running,
+      task: "資料作成中",
     });
   });
 
-  it("maps reviewer and qa phases to quality department", () => {
-    const reviewer = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(8));
-    const qa = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(9));
+  it("maps polish phase to quality department", () => {
+    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(2));
 
-    expect(reviewer[visibleIndex("quality")]).toMatchObject({
+    expect(byId(employees, "quality")).toMatchObject({
       id: "quality",
       icon: "🧐",
-      name: ui.aiEmployees.departments.quality.name,
-      task: ui.aiEmployees.departments.quality.tasks.running,
+      name: "品質管理部",
+      task: "内容確認中",
       status: "running",
     });
-    expect(qa[visibleIndex("quality")]?.status).toBe("running");
   });
 
-  it("maps final deliverable phase to delivery department", () => {
-    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(11));
+  it("keeps legacy reviewer and qa phases mapped to quality department", () => {
+    const reviewer = mapWorkflowPhasesToAiEmployees([
+      {
+        id: "reviewer",
+        label: "Reviewer",
+        subtitle: "Legacy review phase",
+        status: "running",
+      },
+    ]);
+    const qa = mapWorkflowPhasesToAiEmployees([
+      {
+        id: "quality-assurance",
+        label: "Quality Assurance",
+        subtitle: "Legacy QA phase",
+        status: "running",
+      },
+    ]);
 
-    expect(employees[visibleIndex("delivery")]).toMatchObject({
+    expect(byId(reviewer, "quality")).toMatchObject({
+      id: "quality",
+      icon: "🧐",
+      name: "品質管理部",
+      task: "内容確認中",
+      status: "running",
+    });
+    expect(byId(qa, "quality")?.status).toBe("running");
+  });
+
+  it("maps done phase to delivery department", () => {
+    const employees = mapWorkflowPhasesToAiEmployees(buildLoadingPhases(3));
+
+    expect(byId(employees, "delivery")).toMatchObject({
       id: "delivery",
       icon: "📦",
-      name: ui.aiEmployees.departments.delivery.name,
-      task: ui.aiEmployees.departments.delivery.tasks.running,
+      name: "納品部",
+      task: "成果物準備中",
+      status: "running",
+    });
+  });
+
+  it("keeps legacy final deliverable phase mapped to delivery department", () => {
+    const employees = mapWorkflowPhasesToAiEmployees([
+      {
+        id: "final-deliverable",
+        label: "Final Deliverable",
+        subtitle: "Legacy delivery phase",
+        status: "running",
+      },
+    ]);
+
+    expect(byId(employees, "delivery")).toMatchObject({
+      id: "delivery",
+      icon: "📦",
+      name: "納品部",
+      task: "成果物準備中",
       status: "running",
     });
   });
@@ -81,8 +144,6 @@ describe("mapWorkflowPhasesToAiEmployees", () => {
     expect(employees.every((employee) => employee.status === "completed")).toBe(
       true,
     );
-    expect(employees[visibleIndex("delivery")]?.task).toBe(
-      ui.aiEmployees.departments.delivery.tasks.completed,
-    );
+    expect(byId(employees, "delivery")?.task).toBe("成果物準備完了");
   });
 });

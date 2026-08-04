@@ -8,6 +8,7 @@ export type ResultResolutionCode =
   | "pending"
   | "not_saved"
   | "generation_failed"
+  | "timeout"
   | "not_found"
   | "forbidden"
   | "legacy"
@@ -18,8 +19,9 @@ export type ResultResolutionCode =
 export const RESULT_MESSAGES: Record<ResultResolutionCode, string> = {
   deliverable: "成果物を表示しています。",
   pending: "まだ生成中です。少し時間をおいて、もう一度お試しください。",
-  not_saved: "成果物がまだ保存されていません。",
+  not_saved: "成果物の保存を確認しています。少し時間をおいて、もう一度お試しください。",
   generation_failed: "成果物の生成に失敗しました。",
+  timeout: "処理が時間内に終わりませんでした。もう一度お試しください。",
   not_found: "対象データが見つかりません。",
   forbidden: "この成果物を閲覧する権限がありません。",
   legacy: "この通知は旧形式のため結果を直接表示できません。",
@@ -30,8 +32,9 @@ export const RESULT_MESSAGES: Record<ResultResolutionCode, string> = {
 /** Shorter title shown above the detail message on the results page. */
 export const RESULT_TITLES: Partial<Record<ResultResolutionCode, string>> = {
   pending: "生成中です",
-  not_saved: "成果物が見つかりません",
+  not_saved: "保存を確認しています",
   generation_failed: "生成に失敗しました",
+  timeout: "Timeout",
   not_found: "結果が見つかりません",
   forbidden: "権限がありません",
   legacy: "旧形式の通知です",

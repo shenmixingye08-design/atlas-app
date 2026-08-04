@@ -2,7 +2,6 @@ import type { Automation } from "@/lib/automations/types";
 import type { IntegrationCatalog } from "@/lib/integrations/types";
 import { getDepartmentLabel, ui } from "@/lib/i18n";
 import type { KnowledgeEntry } from "@/lib/knowledge/types";
-import type { Project } from "@/lib/projects/types";
 import type { WorkflowPackageView } from "@/lib/workflow-marketplace/types";
 
 function dashboardDepartmentLabel(id: string): string {

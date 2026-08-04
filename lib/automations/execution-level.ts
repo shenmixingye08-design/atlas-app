@@ -21,25 +21,23 @@ export const EXECUTION_LEVEL_OPTIONS: readonly ExecutionLevelOption[] = [
   {
     level: "draft_save",
     icon: "💾",
-    label: "作成後に確認",
-    shortLabel: "作成後に確認",
-    description: "下書きまで作成し、その後確認します。",
+    label: "下書きのみ作成",
+    shortLabel: "下書きのみ",
+    description: "投稿文の下書きだけ作成し、自動投稿しません。",
   },
   {
     level: "approve_then_run",
     icon: "👀",
-    label: "最後の実行前に確認",
-    shortLabel: "実行前に確認",
-    description:
-      "投稿・送信などの重要操作の前に、必ず確認します。",
+    label: "投稿前に確認",
+    shortLabel: "投稿前確認",
+    description: "投稿文を用意したあと、投稿前に必ず確認します。",
   },
   {
     level: "full_auto",
     icon: "▶",
-    label: "確認せず実行",
-    shortLabel: "確認せず実行",
-    description:
-      "重要操作がない場合のみ、確認なしで進めます。",
+    label: "完全自動投稿",
+    shortLabel: "完全自動",
+    description: "指定時刻に生成し、確認なしで投稿まで実行します。",
   },
 ] as const;
 

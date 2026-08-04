@@ -27,7 +27,7 @@ export function TodaysAutomations({ items }: TodaysAutomationsProps) {
             {ui.home.todaysAutomationsHint}
           </p>
         </div>
-        <Link href="/automations?create=1">
+        <Link href="/automations?create=1&destination=x">
           <Button variant="secondary" size="sm">
             {ui.habits.addHabit}
           </Button>
@@ -40,7 +40,7 @@ export function TodaysAutomations({ items }: TodaysAutomationsProps) {
             <p className="text-body text-[var(--foreground-muted)]">
               {ui.home.todaysAutomationsEmpty}
             </p>
-            <Link href="/automations?create=1">
+            <Link href="/automations?create=1&destination=x">
               <Button variant="primary">{ui.habits.registerFirst}</Button>
             </Link>
           </div>

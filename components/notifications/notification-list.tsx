@@ -35,11 +35,9 @@ import { Card } from "@/components/ui/card";
 
 const FILTERS: { id: NoticeFilter; label: string }[] = [
   { id: "all", label: ui.notifications.filterAll },
-  { id: "unread", label: ui.notifications.filterUnread },
+  { id: "error", label: ui.notifications.filterImportant ?? "重要" },
   { id: "needs_review", label: ui.notifications.filterNeedsReview },
   { id: "completed", label: ui.notifications.filterCompleted },
-  { id: "improvement", label: ui.notifications.filterImprovement },
-  { id: "error", label: ui.notifications.filterError },
 ];
 
 type NotificationListProps = {
@@ -47,6 +45,8 @@ type NotificationListProps = {
   limit?: number;
   onUpdate?: () => void;
   onNavigate?: () => void;
+  /** Initial filter tab (Automation First inbox can pass attention-first). */
+  initialFilter?: NoticeFilter;
   /**
    * Fixture notifications. When provided, the list renders these directly and
    * skips fetching / mutations — used by the DEV panel preview to prove layout
@@ -168,6 +168,7 @@ export function NotificationList({
   limit,
   onUpdate,
   onNavigate,
+  initialFilter = "all",
   items,
 }: NotificationListProps) {
   const isFixture = items != null;
@@ -175,7 +176,7 @@ export function NotificationList({
     items ?? [],
   );
   const [loading, setLoading] = useState(!isFixture);
-  const [filter, setFilter] = useState<NoticeFilter>("all");
+  const [filter, setFilter] = useState<NoticeFilter>(initialFilter);
 
   const reload = useCallback(async () => {
     if (isFixture) return;
@@ -191,17 +192,19 @@ export function NotificationList({
 
   useEffect(() => {
     if (isFixture) return;
-    void reload();
+    const boot = window.setTimeout(() => void reload(), 0);
+    return () => window.clearTimeout(boot);
   }, [reload, isFixture]);
 
-  // Real-time: refetch when any tab / component signals a change (mark read,
-  // new notice) and when the window regains focus — no full page reload.
+  // Real-time: refetch on change / focus / short poll — no full page reload.
   useEffect(() => {
     if (isFixture) return;
+    const interval = window.setInterval(() => void reload(), 8_000);
     const unsubscribe = subscribeNotificationsChanged(() => void reload());
     const onFocus = () => void reload();
     window.addEventListener("focus", onFocus);
     return () => {
+      window.clearInterval(interval);
       unsubscribe();
       window.removeEventListener("focus", onFocus);
     };

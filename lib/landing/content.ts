@@ -135,8 +135,8 @@ export const LANDING_REQUEST_EXAMPLES = [
     input: "PDF・画像・各種資料",
     request: "内容をExcelへ分かりやすく整理してください",
     result: "必要な情報を抽出し、表形式にまとめます。",
-    // DeliverableFormat に xlsx なし、PDF/画像入力パースなし、excel connector は coming_soon
-    status: "upcoming" as const satisfies LandingExampleStatus,
+    // Excel(.xlsx) 出力は対応。PDF/画像からの自動抽出は未実装のため partial。
+    status: "partial" as const satisfies LandingExampleStatus,
   },
   {
     id: "past-posts",

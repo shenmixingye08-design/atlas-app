@@ -6,7 +6,8 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=()",
+    // Allow camera for mobile receipt / document capture on this origin only.
+    value: "camera=(self), microphone=(), geolocation=()",
   },
   {
     key: "Strict-Transport-Security",
@@ -36,6 +37,8 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_ATLAS_DEBUG: process.env.NEXT_PUBLIC_ATLAS_DEBUG ?? "false",
   },
+  // pg is used only by reliability schema probe / migration apply on the server.
+  serverExternalPackages: ["pg"],
   async headers() {
     return [
       {

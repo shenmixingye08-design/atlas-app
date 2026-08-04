@@ -129,6 +129,51 @@ export type CommanderRunRecord = {
   updatedAt: string;
 };
 
+export type CommanderVisionGate = {
+  status: "vision_failed" | "needs_image_retry" | "needs_input" | "config_missing";
+  analysisSuccess: boolean;
+  message: string;
+  userCode: string;
+  diagnosticId?: string | null;
+  /** Pipeline stage that failed (upload / AI / artifact / …). */
+  failedStage?: string | null;
+  /** Japanese label for the failed stage. */
+  failedStageLabel?: string | null;
+  /** Developer error code (VisionError.code). */
+  developerCode?: string | null;
+  /** Root cause — never a generic retry-only string when OpenAI details exist. */
+  cause?: string | null;
+  /** OpenAI error body fields for AI解析失敗画面. */
+  openai?: {
+    httpStatus: number | null;
+    type: string | null;
+    code: string | null;
+    message: string | null;
+    requestId: string | null;
+    rawErrorBody: string | null;
+  } | null;
+  /** Vercel x-vercel-id for log correlation. */
+  vercelRequestId?: string | null;
+  /** Safe debug only — never includes filenames as content substitutes. */
+  payloadAttachmentIds?: string[];
+};
+
+/**
+ * Durable artifact persistence outcome for work-job / vision completion gates.
+ * completed consumers may require projectPersisted (and Word when required).
+ */
+export type CommanderPersistenceReport = {
+  projectId: string | null;
+  projectPersisted: boolean;
+  wordRequired: boolean;
+  wordDeliverableId: string | null;
+  /** True when a downloadable Word deliverable id is present and verified. */
+  wordCompletionVerified: boolean;
+  notificationCreated: boolean;
+  wordErrorCode?: string | null;
+  wordFailedStep?: string | null;
+};
+
 export type CommanderRunResult = {
   runId: string | null;
   status: CommanderRunStatus;
@@ -139,6 +184,10 @@ export type CommanderRunResult = {
   confirmationReasons: string[];
   workMemory?: OrchestrationResult["workMemory"];
   workMemoryCandidates?: unknown[];
+  /** Present when image-attached work was blocked before Artifact Engine. */
+  visionGate?: CommanderVisionGate;
+  /** Artifact / notification persistence for completion gates. */
+  persistence?: CommanderPersistenceReport;
 };
 
 export type CommanderRequest = {

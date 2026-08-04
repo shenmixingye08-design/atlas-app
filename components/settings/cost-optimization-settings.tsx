@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useEffect, useState } from "react";
 
 import type { AutomationExecutionMode, JobCategoryId } from "@/lib/cost-optimization";
@@ -30,7 +31,9 @@ export function CostOptimizationSettings() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setModes(loadCategoryExecutionModes());
+    return scheduleMountWork(() => {
+      setModes(loadCategoryExecutionModes());
+    });
   }, []);
 
   const handleChange = (category: JobCategoryId, mode: AutomationExecutionMode) => {

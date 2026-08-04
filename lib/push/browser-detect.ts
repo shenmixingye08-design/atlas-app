@@ -8,7 +8,8 @@ export type PushBrowserInfo = {
 };
 
 export function detectPushBrowser(): PushBrowserInfo {
-  if (typeof navigator === "undefined" || typeof window === "undefined") {
+  // SSR / Node: never touch window/navigator browser APIs.
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
     return {
       platform: "unknown",
       browser: "unknown",
@@ -20,15 +21,18 @@ export function detectPushBrowser(): PushBrowserInfo {
   }
 
   const ua = navigator.userAgent;
-  const isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isIos =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const isAndroid = /Android/.test(ua);
   const isStandalone =
     window.matchMedia("(display-mode: standalone)").matches ||
-    ("standalone" in navigator && (navigator as { standalone?: boolean }).standalone === true);
+    ("standalone" in navigator &&
+      (navigator as { standalone?: boolean }).standalone === true);
 
   let browser = "unknown";
   if (/Edg\//.test(ua)) browser = "edge";
-  else if (/Chrome\//.test(ua)) browser = "chrome";
+  else if (/Chrome\//.test(ua) || /CriOS\//.test(ua)) browser = "chrome";
   else if (/Safari\//.test(ua)) browser = "safari";
   else if (/Firefox\//.test(ua)) browser = "firefox";
 
@@ -48,14 +52,30 @@ export function detectPushBrowser(): PushBrowserInfo {
   };
 }
 
-export type PushPermissionState = NotificationPermission | "unsupported" | "unregistered";
+export type PushPermissionUiState =
+  | "unsupported"
+  | "denied"
+  | "granted"
+  | "default"
+  | "unregistered";
 
+/**
+ * Map Notification.permission + registration to UI state.
+ * - unsupported: browser cannot do Web Push
+ * - denied: user blocked notifications
+ * - granted: permission granted (may or may not have DB subscription)
+ * - default: not yet asked
+ * - unregistered: granted locally but no active device row yet
+ */
 export function resolvePushPermissionState(
   permission: NotificationPermission | undefined,
   registered: boolean,
   supportsPush: boolean,
-): PushPermissionState {
+): PushPermissionUiState {
   if (!supportsPush) return "unsupported";
-  if (!registered && permission === "default") return "unregistered";
-  return permission ?? "default";
+  if (permission === "denied") return "denied";
+  if (permission === "granted") {
+    return registered ? "granted" : "unregistered";
+  }
+  return "default";
 }

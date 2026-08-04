@@ -5,6 +5,14 @@ export type DeliverableFormat = "pdf" | "docx" | "xlsx" | "pptx" | "md" | "txt";
 export type DeliverableTimestamp = string;
 
 /** Metadata returned to the client after server-side generation. */
+export type DeliverableMetadata = {
+  purpose?: string | null;
+  templateId?: string | null;
+  version?: number | null;
+  parentDeliverableId?: string | null;
+  versionGroupId?: string | null;
+};
+
 export interface Deliverable {
   id: string;
   fileName: string;
@@ -21,6 +29,7 @@ export interface Deliverable {
   validationPassed?: boolean;
   pageCount?: number | null;
   sheetCount?: number | null;
+  metadata?: DeliverableMetadata;
 }
 
 /** Input to the deliverables engine. */
@@ -62,6 +71,7 @@ export interface DeliverableGenerator {
   generate(
     content: string,
     baseFileName: string,
+    options?: Record<string, unknown>,
   ): Promise<GeneratedDeliverableFile>;
 }
 
@@ -72,6 +82,7 @@ export const DELIVERABLE_FORMAT_LABELS: Record<DeliverableFormat, string> = {
   pptx: "PowerPoint (.pptx)",
   md: "Markdown (.md)",
   txt: "テキスト (.txt)",
+  xlsx: "Excel (.xlsx)",
 };
 
 export const DELIVERABLE_MIME_TYPES: Record<DeliverableFormat, string> = {
@@ -84,6 +95,7 @@ export const DELIVERABLE_MIME_TYPES: Record<DeliverableFormat, string> = {
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   md: "text/markdown; charset=utf-8",
   txt: "text/plain; charset=utf-8",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 };
 
 export const DELIVERABLE_EXTENSIONS: Record<DeliverableFormat, string> = {
@@ -93,4 +105,5 @@ export const DELIVERABLE_EXTENSIONS: Record<DeliverableFormat, string> = {
   pptx: ".pptx",
   md: ".md",
   txt: ".txt",
+  xlsx: ".xlsx",
 };

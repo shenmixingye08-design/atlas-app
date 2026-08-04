@@ -43,6 +43,14 @@ describe("execution reliability", () => {
   it("classifies retryable failures and formats reasons", () => {
     expect(isRetryableFailure("Request timeout")).toBe(true);
     expect(isRetryableFailure("Cancelled by user")).toBe(false);
+    expect(
+      isRetryableFailure(
+        "[Production] 成果物をうまく作れませんでした。もう一度お試しください。\nRecommended action: 依頼内容を具体化して、もう一度実行してください。",
+      ),
+    ).toBe(true);
+    expect(
+      isRetryableFailure("AI応答が空でした（agent=worker status=completed）"),
+    ).toBe(true);
     expect(formatFailureReason("timeout while waiting")).toContain("時間内");
     expect(formatFailureReason("sk-abc123 failed")).not.toContain("sk-");
   });

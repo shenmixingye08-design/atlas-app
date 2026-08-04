@@ -10,19 +10,27 @@ import {
 
 describe("feature evaluation development rules", () => {
   it("defines product philosophy", () => {
-    expect(ATLAS_PRODUCT_PHILOSOPHY).toContain("AI秘書");
-    expect(ATLAS_PRODUCT_PHILOSOPHY).toContain("習慣的な作業");
+    expect(ATLAS_PRODUCT_PHILOSOPHY).toContain("AIチャットサービスではなく");
+    expect(ATLAS_PRODUCT_PHILOSOPHY).toContain("習慣的な作業を減らし");
+    expect(ATLAS_PRODUCT_PHILOSOPHY).toContain("お客様の時間を生み出す");
   });
 
-  it("includes development principles", () => {
-    expect(ATLAS_DEVELOPMENT_PRINCIPLES.length).toBeGreaterThanOrEqual(3);
-    expect(ATLAS_DEVELOPMENT_PRINCIPLES[0]).toContain("AIを使わ");
+  it("includes current development principles", () => {
+    expect(ATLAS_DEVELOPMENT_PRINCIPLES).toHaveLength(5);
+    expect(ATLAS_DEVELOPMENT_PRINCIPLES[0]).toContain("AIを使わない");
+    expect(ATLAS_DEVELOPMENT_PRINCIPLES).toContain(
+      "画像生成・動画生成は目的ではなく、仕事完了のための手段として扱う",
+    );
+    expect(ATLAS_DEVELOPMENT_PRINCIPLES).toContain(
+      "人間の負担を減らすことを最優先する",
+    );
   });
 
-  it("requires evaluation fields including priority", () => {
+  it("requires ten evaluation fields", () => {
     expect(ATLAS_FEATURE_EVALUATION_FIELDS).toContain("機能名");
+    expect(ATLAS_FEATURE_EVALUATION_FIELDS).toContain("コスト削減案");
     expect(ATLAS_FEATURE_EVALUATION_FIELDS).toContain("優先度");
-    expect(ATLAS_FEATURE_EVALUATION_FIELDS.length).toBeGreaterThanOrEqual(9);
+    expect(ATLAS_FEATURE_EVALUATION_FIELDS).toHaveLength(10);
   });
 
   it("requires eight cost reduction checklist items", () => {

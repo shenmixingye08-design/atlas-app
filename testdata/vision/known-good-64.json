@@ -1,0 +1,9 @@
+{
+  "path": "testdata/vision/known-good-64.jpg",
+  "byteLength": 292,
+  "format": "jpeg",
+  "width": 64,
+  "height": 64,
+  "headHex32": "ffd8ffdb0043000302020302020303030304030304050805050404050a070706",
+  "sha256": "5bcd1f0f035923bf7fe506480ca58167eb498c52ee9b99aa5b31b149c1890dec"
+}

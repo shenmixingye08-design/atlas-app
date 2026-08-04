@@ -24,9 +24,18 @@ export {
   PlainTextDeliverableGenerator,
   PptxDeliverableGenerator,
   PptxPlaceholderGenerator,
+  XlsxDeliverableGenerator,
   defaultDeliverableGenerators,
   getDeliverableGenerator,
 } from "./generators";
+
+export {
+  assignmentIsImageToExcel,
+  assignmentRequestsExcel,
+  contentHasMarkdownTable,
+  extractExcelSheets,
+  shouldGenerateXlsx,
+} from "./excel-data";
 
 export { parseDeliverableContent } from "./parse-content";
 export type {
@@ -37,3 +46,23 @@ export type {
 
 export type { GenerateDeliverablesResult } from "./engine";
 export { generateDeliverables, rerenderDeliverables } from "./engine";
+
+export {
+  DELIVERABLE_MEMORY_TTL_MS,
+  DELIVERABLE_METADATA_TTL_MS,
+  ATLAS_DELIVERABLE_FILES_BUCKET,
+} from "./constants";
+
+export {
+  validateWordSourceContent,
+  generateQualityWordContent,
+} from "./content-quality";
+
+export {
+  userMessageForFailure,
+  recoveryActionsForFailure,
+  classifyDeliverableError,
+  wordFailureTitle,
+  wordFailureUserMessage,
+  toWordFailureCategory,
+} from "./recovery-messages";

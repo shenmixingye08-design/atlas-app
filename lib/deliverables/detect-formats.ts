@@ -13,6 +13,48 @@ type FormatRule = {
 
 const FORMAT_RULES: readonly FormatRule[] = [
   {
+    id: "word-document",
+    keywords: [
+      "word",
+      "ワード",
+      "docx",
+      ".docx",
+      "wordファイル",
+      "ワードファイル",
+      "wordで",
+      "ワードで",
+      "word作成",
+      "ワード作成",
+      "wordにして",
+      "ワードにして",
+      "文書作成",
+      "書類作成",
+    ],
+    formats: ["docx", "pdf"],
+  },
+  {
+    id: "excel",
+    keywords: [
+      "excel",
+      "xlsx",
+      "エクセル",
+      "表計算",
+      "スプレッドシート",
+      "spreadsheet",
+      "一覧表",
+      "家計簿",
+      "レシート",
+      "領収書",
+      "請求書",
+      "経費精算",
+      "表にまと",
+      "表形式",
+      "excelにして",
+      "エクセルにして",
+    ],
+    formats: ["xlsx", "pdf", "docx"],
+  },
+  {
     id: "sales-deck",
     keywords: [
       "営業資料",
@@ -84,6 +126,61 @@ const DEFAULT_FORMATS: readonly DeliverableFormat[] = ["md", "txt", "pdf"];
 
 function normalizeHaystack(value: string): string {
   return value.toLowerCase();
+}
+
+/** True when the user explicitly needs a Word (.docx) file — not company defaults. */
+export function assignmentRequestsWordFile(
+  assignment: string,
+  metadata?: Readonly<Record<string, unknown>> | null,
+): boolean {
+  const preferred = metadata?.preferredDeliverableFormat;
+  if (typeof preferred === "string") {
+    const normalized = preferred.trim().toLowerCase();
+    if (normalized === "docx" || normalized === "word" || normalized === "doc") {
+      return true;
+    }
+    if (
+      normalized === "pdf" ||
+      normalized === "xlsx" ||
+      normalized === "pptx" ||
+      normalized === "md" ||
+      normalized === "txt"
+    ) {
+      return false;
+    }
+  }
+
+  const haystack = normalizeHaystack(assignment);
+  const explicitWordHints = [
+    "word",
+    "ワード",
+    "docx",
+    ".docx",
+    "wordファイル",
+    "ワードファイル",
+    "wordで",
+    "ワードで",
+    "word作成",
+    "ワード作成",
+    "wordにして",
+    "ワードにして",
+    "文書作成",
+    "書類作成",
+  ] as const;
+  if (explicitWordHints.some((hint) => haystack.includes(hint.toLowerCase()))) {
+    return true;
+  }
+
+  // Only intentional format rules (minutes/report/contract/blog/…) — never company :default.
+  const detection = detectDeliverableFormats(assignment);
+  if (
+    detection.matchedRule &&
+    !detection.matchedRule.endsWith(":default") &&
+    detection.formats.includes("docx")
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /** Infer which file formats to produce from the user's assignment text. */

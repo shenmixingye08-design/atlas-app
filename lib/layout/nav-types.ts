@@ -13,10 +13,13 @@ export type AtlasNavPage =
   | "billing"
   | "contact"
   | "help"
+  | "today"
+  | "notifications"
+  | "artifacts"
+  | "integrations"
   /** Legacy page ids — kept for existing routes; not shown in general nav. */
   | "mihon"
   | "company"
-  | "integrations"
   | "connectors"
   | "connections"
   | "chat";

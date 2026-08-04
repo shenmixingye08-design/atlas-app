@@ -6,8 +6,11 @@ import {
 import { submitCommanderRequest } from "@/lib/commander/client";
 import type { CommanderRunResult } from "@/lib/commander/types";
 
-/** Client-side timeout — covers commander retries. */
-export const ORCHESTRATE_CLIENT_TIMEOUT_MS = 180_000;
+/**
+ * Client-side timeout aligned with server work budget.
+ * UI switches to "accepted / background" copy after 3s; this is the hard stop.
+ */
+export const ORCHESTRATE_CLIENT_TIMEOUT_MS = 8 * 60_000;
 
 export class CommanderConfirmationRequiredError extends Error {
   readonly commander: CommanderRunResult;

@@ -5,7 +5,6 @@ import {
   formatKnowledgeEntries,
   KNOWLEDGE_RETRIEVAL_LIMIT,
 } from "./knowledge-filter";
-import type { KnowledgeFilterDiagnostics } from "./knowledge-filter";
 import type { KnowledgeEntry, KnowledgeRetrievalResult } from "./types";
 
 export { KNOWLEDGE_RELEVANCE_MIN, KNOWLEDGE_RETRIEVAL_LIMIT } from "./knowledge-filter";

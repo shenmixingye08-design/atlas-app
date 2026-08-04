@@ -81,6 +81,14 @@ export type WebhookHandleResult = {
   success: boolean;
 };
 
+export type StripeWebhookEvent = {
+  id: string;
+  type: StripeWebhookEventType | string;
+  data: {
+    object: unknown;
+  };
+};
+
 function periodIso(unixSeconds: number | null | undefined): string | null {
   if (!unixSeconds) return null;
   return new Date(unixSeconds * 1000).toISOString();
@@ -116,7 +124,7 @@ function resolvePlanFromSubscription(
 }
 
 function logWebhookResult(input: {
-  event: Stripe.Event;
+  event: StripeWebhookEvent;
   status: "success" | "failure" | "skipped";
   message: string;
   userId?: string | null;
@@ -252,7 +260,7 @@ async function resolveUserSubscriptionByCustomerId(customerId: string) {
 }
 
 async function handleCheckoutCompleted(
-  event: Stripe.Event,
+  event: StripeWebhookEvent,
 ): Promise<WebhookHandleResult> {
   const session = event.data.object as Stripe.Checkout.Session;
   const userId =
@@ -329,7 +337,7 @@ async function handleCheckoutCompleted(
 }
 
 async function handleSubscriptionUpsert(
-  event: Stripe.Event,
+  event: StripeWebhookEvent,
 ): Promise<WebhookHandleResult> {
   const subscription = event.data.object as Stripe.Subscription;
   const userId = subscription.metadata.userId ?? null;
@@ -385,7 +393,7 @@ async function handleSubscriptionUpsert(
 }
 
 async function handleSubscriptionDeleted(
-  event: Stripe.Event,
+  event: StripeWebhookEvent,
 ): Promise<WebhookHandleResult> {
   const subscription = event.data.object as Stripe.Subscription;
   const userId = subscription.metadata.userId ?? null;
@@ -425,7 +433,7 @@ async function handleSubscriptionDeleted(
 }
 
 async function handleInvoicePaymentSucceeded(
-  event: Stripe.Event,
+  event: StripeWebhookEvent,
 ): Promise<WebhookHandleResult> {
   const invoice = event.data.object as Stripe.Invoice;
   const userId = await resolveUserIdFromInvoice(invoice);
@@ -511,7 +519,7 @@ async function handleInvoicePaymentSucceeded(
 }
 
 async function handleInvoicePaymentFailed(
-  event: Stripe.Event,
+  event: StripeWebhookEvent,
 ): Promise<WebhookHandleResult> {
   const invoice = event.data.object as Stripe.Invoice;
   const userId = await resolveUserIdFromInvoice(invoice);
@@ -556,7 +564,7 @@ async function handleInvoicePaymentFailed(
 }
 
 async function handleChargeRefunded(
-  event: Stripe.Event,
+  event: StripeWebhookEvent,
 ): Promise<WebhookHandleResult> {
   const charge = event.data.object as Stripe.Charge;
   const customerId =
@@ -607,7 +615,7 @@ async function handleChargeRefunded(
 }
 
 export async function handleStripeWebhookEvent(
-  event: Stripe.Event,
+  event: StripeWebhookEvent,
 ): Promise<WebhookHandleResult> {
   switch (event.type) {
     case "checkout.session.completed":

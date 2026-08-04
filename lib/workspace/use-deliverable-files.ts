@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Deliverable, DeliverableFormat } from "@/lib/deliverables/types";
 import {
@@ -8,6 +8,7 @@ import {
   type GenerateDeliverablesResponse,
 } from "@/lib/deliverables/client";
 import { getDeliverableExportText } from "@/lib/orchestration/final-deliverable";
+import { assertSafeExportText } from "@/lib/orchestration/normalize-deliverable-payload";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 
 export type DeliverableFileOptions = {
@@ -29,27 +30,34 @@ export function useDeliverableFiles(
   const [isRerendering, setIsRerendering] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
+  const exportGuard = useMemo(() => {
+    if (!result?.deliverable) {
+      return { previewContent: "", guardError: null as string | null };
+    }
+    const rawExport = getDeliverableExportText(result.deliverable).trim();
+    if (!rawExport) {
+      return { previewContent: "", guardError: null as string | null };
+    }
+    const guarded = assertSafeExportText(rawExport);
+    if (!guarded.ok) {
+      return { previewContent: "", guardError: guarded.safeMessage };
+    }
+    return { previewContent: guarded.text, guardError: null as string | null };
+  }, [result]);
+
+  // Server already exported files (e.g. Word on work-job path) — do not re-call AI/export.
+  const serverFiles = result?.fileDeliverables;
+  const hasServerFiles = Boolean(serverFiles && serverFiles.length > 0);
+
+  const shouldGenerate = Boolean(
+    result &&
+      exportGuard.previewContent &&
+      !options?.skipFileGeneration &&
+      !hasServerFiles,
+  );
+
   useEffect(() => {
-    if (!result) {
-      setDeliverables([]);
-      setDeliverablesError(null);
-      return;
-    }
-
-    const previewContent = result.deliverable
-      ? getDeliverableExportText(result.deliverable).trim()
-      : "";
-
-    if (!previewContent) {
-      setDeliverables([]);
-      setDeliverablesError(null);
-      return;
-    }
-
-    if (options?.skipFileGeneration) {
-      setDeliverables([]);
-      setDeliverablesError(null);
-      setIsGeneratingDeliverables(false);
+    if (!shouldGenerate || !result || !exportGuard.previewContent) {
       return;
     }
 
@@ -57,46 +65,72 @@ export function useDeliverableFiles(
     const controller = new AbortController();
     abortRef.current = controller;
 
-    setIsGeneratingDeliverables(true);
-    setDeliverablesError(null);
-    setDeliverables([]);
+    void (async () => {
+      setIsGeneratingDeliverables(true);
+      setDeliverablesError(null);
+      setDeliverables([]);
 
-    void requestDeliverables(
-      {
-        assignment: result.assignment,
-        finalDeliverable: previewContent,
-        title:
-          result.deliverable &&
-          typeof result.deliverable === "object" &&
-          "title" in result.deliverable
-            ? String(result.deliverable.title ?? "").trim() || undefined
-            : undefined,
-        projectName: result.assignment.trim().slice(0, 80),
-        workflowId: result.knowledge?.workflowId,
-        formats:
-          options?.formats && options.formats.length > 0
-            ? options.formats
-            : undefined,
-      },
-      controller.signal,
-    )
-      .then((response) => {
+      try {
+        const response = await requestDeliverables(
+          {
+            assignment: result.assignment,
+            finalDeliverable: exportGuard.previewContent,
+            title:
+              result.deliverable &&
+              typeof result.deliverable === "object" &&
+              "title" in result.deliverable
+                ? String(result.deliverable.title ?? "").trim() || undefined
+                : undefined,
+            projectName: result.assignment.trim().slice(0, 80),
+            workflowId: result.knowledge?.workflowId,
+            formats:
+              options?.formats && options.formats.length > 0
+                ? options.formats
+                : undefined,
+          },
+          controller.signal,
+        );
+        if (controller.signal.aborted) return;
         setDeliverables(response.deliverables);
         setDocumentModelId(response.documentModelId ?? null);
         setFormatRecommendation(response.formatRecommendation ?? null);
-      })
-      .catch((err) => {
+      } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
+        if (controller.signal.aborted) return;
         setDeliverablesError(
           err instanceof Error ? err.message : "ファイル生成に失敗しました",
         );
-      })
-      .finally(() => {
-        setIsGeneratingDeliverables(false);
-      });
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsGeneratingDeliverables(false);
+        }
+      }
+    })();
 
     return () => controller.abort();
-  }, [result, options?.formats, options?.skipFileGeneration]);
+  }, [
+    shouldGenerate,
+    result,
+    exportGuard.previewContent,
+    options?.formats,
+    options?.skipFileGeneration,
+  ]);
+
+  if (hasServerFiles && serverFiles) {
+    return {
+      deliverables: serverFiles,
+      deliverablesError: exportGuard.guardError,
+      isGeneratingDeliverables: false,
+    };
+  }
+
+  if (!shouldGenerate) {
+    return {
+      deliverables: [] as Deliverable[],
+      deliverablesError: exportGuard.guardError,
+      isGeneratingDeliverables: false,
+    };
+  }
 
   const rerender = async (formats: ("docx" | "pdf" | "xlsx")[]) => {
     if (!documentModelId || !result) return;

@@ -24,6 +24,9 @@ import {
   notifyWorkCompleted,
   notifyWorkFailed,
 } from "@/lib/notifications/emitters";
+import { persistNotificationsNow } from "@/lib/notifications/durable";
+import { exportWordDeliverableOnServer } from "@/lib/deliverables/server-word-export";
+import { logWordPipeline } from "@/lib/deliverables/pipeline-log";
 import { runLearningAnalysis } from "@/lib/learning-engine/service";
 import { detectMemorySignals } from "@/lib/work-memory/learning";
 import { createWorkMemoryCandidate } from "@/lib/work-memory/service";
@@ -46,6 +49,7 @@ import {
 import type {
   CommanderAttemptRecord,
   CommanderCompletionReport,
+  CommanderPersistenceReport,
   CommanderPlan,
   CommanderRunResult,
   CommanderRunStatus,
@@ -149,6 +153,7 @@ function toRunResult(input: {
   externalMessages: string[];
   workMemory?: OrchestrationResult["workMemory"];
   workMemoryCandidates?: unknown[];
+  persistence?: CommanderPersistenceReport;
 }): CommanderRunResult {
   return {
     runId: input.runId,
@@ -170,6 +175,7 @@ function toRunResult(input: {
       input.workMemoryCandidates.length > 0 && {
         workMemoryCandidates: input.workMemoryCandidates,
       }),
+    ...(input.persistence && { persistence: input.persistence }),
   };
 }
 
@@ -631,6 +637,66 @@ async function executeStoredRun(input: {
     }
   }
 
+  // Server-side Word export before terminal status is frozen.
+  // Must not depend on a browser tab remaining open.
+  let wordDownloadUrl: string | null = null;
+  let wordDeliverableId: string | null = null;
+  let wordFailedReason: string | null = null;
+  let wordFailedUserTitle: string | null = null;
+  let wordFailedUserMessage: string | null = null;
+  let wordFailedJobId: string | null = null;
+  if (finalStatus === "completed" && lastResult) {
+    logWordPipeline({
+      stage: "AI_ORCHESTRATION_COMPLETED",
+      userId: input.userId,
+      requestId: input.runId,
+      detail: "commander",
+    });
+    const wordExport = await exportWordDeliverableOnServer({
+      userId: input.userId,
+      assignment: plan.assignment,
+      result: {
+        ...lastResult,
+        commanderRunId: input.runId,
+      },
+      requestId: input.runId,
+      jobId: `cmdword_${input.runId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20)}`,
+      metadata: input.metadata,
+      notify: false,
+    });
+    if (wordExport.attempted && wordExport.ok) {
+      wordDownloadUrl = wordExport.downloadUrl;
+      wordDeliverableId = wordExport.docx.id;
+      lastResult = {
+        ...lastResult,
+        commanderRunId: input.runId,
+        fileDeliverables: wordExport.files,
+      };
+    } else if (wordExport.attempted && !wordExport.ok) {
+      wordFailedReason = wordExport.reason;
+      wordFailedUserTitle = wordExport.userTitle;
+      wordFailedUserMessage = wordExport.userMessage;
+      wordFailedJobId = wordExport.jobId;
+      finalStatus = "failed";
+      lastResult = {
+        ...lastResult,
+        status: "failed",
+        error: `${wordExport.userTitle}: ${wordExport.userMessage} [${wordExport.jobId}] ${wordExport.reason}`,
+        commanderRunId: input.runId,
+      };
+      if (wordExport.stack) {
+        console.error(
+          "[word_pipeline] commander word export failed",
+          JSON.stringify({
+            jobId: wordExport.jobId,
+            reason: wordExport.reason,
+            stack: wordExport.stack.slice(0, 2000),
+          }),
+        );
+      }
+    }
+  }
+
   // Persist full attempt list
   updateCommanderRun(input.runId, input.userId, {
     attempts,
@@ -685,41 +751,85 @@ async function executeStoredRun(input: {
   // start, not only the browser tab that ran the request.
   const resultProjectId = `commander-${input.runId}`;
   const resultDeepLink = `/projects/${encodeURIComponent(resultProjectId)}`;
+  let persistedProjectId: string | null = null;
+  let notificationCreated = false;
 
   if (finalStatus === "completed") {
     // Persist first so the notification can deep-link straight to the saved
     // result (成果物) instead of a generic workspace page.
     if (lastResult) {
-      await persistCommanderResultAsProject({
+      persistedProjectId = await persistCommanderResultAsProject({
         userId: input.userId,
         assignment: plan.assignment,
         result: lastResult,
         projectId: resultProjectId,
       });
     }
+    // CRITICAL: `/results/<notificationId>` loads a Project by targetId.
+    // Always point deliverableId/relatedTaskId/targetId at the commander
+    // project id — NEVER the Word file UUID (that is only for download).
     ensureNotificationDelivery(
       () =>
         notifyWorkCompleted(input.userId, {
-          title: "AIオーケストレーター完了報告",
+          title: wordDeliverableId
+            ? "Wordファイルの準備ができました"
+            : "お仕事が完了しました",
           message: snsPublishedTweetUrl
             ? `「${plan.classification.summary}」が完了し、Xへ投稿しました。${snsPublishedTweetUrl}`
-            : `「${plan.classification.summary}」が完了しました。`,
+            : wordDeliverableId
+              ? `「${plan.classification.summary}」のWordファイルを作成しました。通知から開いてダウンロードできます。`
+              : `「${plan.classification.summary}」が完了しました。`,
           actionUrl: lastResult ? resultDeepLink : "/workspace",
-          relatedTaskId: lastResult ? resultProjectId : null,
-          deliverableId: lastResult ? resultProjectId : null,
+          relatedTaskId: resultProjectId,
+          deliverableId: resultProjectId,
           workflowRunId: workflowRun.id,
           requestId: input.runId,
         }),
       { runId: input.runId, userId: input.userId, kind: "completed" },
     );
+    notificationCreated = true;
+    await persistNotificationsNow(input.userId).catch(() => undefined);
+    logWordPipeline({
+      stage: "NOTIFICATION_CREATED",
+      userId: input.userId,
+      requestId: input.runId,
+      deliverableId: wordDeliverableId,
+      detail: wordDeliverableId
+        ? `word_ready;project=${resultProjectId}`
+        : "text_only",
+    });
     try {
       runLearningAnalysis(input.userId, { periodDays: 30 });
     } catch (error) {
       console.warn("[commander] Learning analysis failed:", error);
     }
+  } else if (wordFailedReason) {
+    if (lastResult) {
+      persistedProjectId = await persistCommanderResultAsProject({
+        userId: input.userId,
+        assignment: plan.assignment,
+        result: lastResult,
+        projectId: resultProjectId,
+      });
+    }
+    ensureNotificationDelivery(
+      () =>
+        notifyWorkFailed(input.userId, {
+          title: wordFailedUserTitle ?? "Word生成失敗",
+          message: `${wordFailedUserMessage ?? "文書内容は作成できましたが、Wordファイルの作成に失敗しました。もう一度お試しください。"}${wordFailedJobId ? `（jobId: ${wordFailedJobId}）` : ""}`,
+          actionUrl: resultDeepLink,
+          relatedTaskId: resultProjectId,
+          deliverableId: resultProjectId,
+          workflowRunId: workflowRun.id,
+          requestId: input.runId,
+        }),
+      { runId: input.runId, userId: input.userId, kind: "failed" },
+    );
+    notificationCreated = true;
+    await persistNotificationsNow(input.userId).catch(() => undefined);
   } else if (finalStatus === "partial") {
     if (lastResult) {
-      await persistCommanderResultAsProject({
+      persistedProjectId = await persistCommanderResultAsProject({
         userId: input.userId,
         assignment: plan.assignment,
         result: lastResult,
@@ -729,7 +839,7 @@ async function executeStoredRun(input: {
     ensureNotificationDelivery(
       () =>
         notifyWorkCompleted(input.userId, {
-          title: "AIオーケストレーター一部完了",
+          title: "確認が必要です",
           message: snsPublishReason
             ? `投稿文は準備できましたが、Xへの投稿に失敗しました: ${formatFailureReason(snsPublishReason)}`
             : "一部の成果は保存できます。内容を確認してください。",
@@ -741,15 +851,17 @@ async function executeStoredRun(input: {
         }),
       { runId: input.runId, userId: input.userId, kind: "partial" },
     );
+    notificationCreated = true;
   } else if (finalStatus === "cancelled") {
     ensureNotificationDelivery(
       () =>
         notifyWorkFailed(input.userId, {
-          title: "AIオーケストレーターを中止しました",
-          message: "実行はユーザー操作により中止されました。",
+          title: "作業を止めました",
+          message: "ご指示により、作業を中止しました。",
         }),
       { runId: input.runId, userId: input.userId, kind: "cancelled" },
     );
+    notificationCreated = true;
   } else {
     // Persist the failed run (with its error) so「確認する」deep-links to a page
     // that explains 生成に失敗しました + reason instead of a dead/blank list.
@@ -777,7 +889,7 @@ async function executeStoredRun(input: {
           ),
           error: failureReason,
         };
-    await persistCommanderResultAsProject({
+    persistedProjectId = await persistCommanderResultAsProject({
       userId: input.userId,
       assignment: plan.assignment,
       result: failedResult,
@@ -786,8 +898,8 @@ async function executeStoredRun(input: {
     ensureNotificationDelivery(
       () =>
         notifyWorkFailed(input.userId, {
-          title: "AIオーケストレーター失敗報告",
-          message: failureReason,
+          title: "確認が必要です",
+          message: "自動で修正を試しました。内容をご確認のうえ、もう一度お試しください。",
           actionUrl: resultDeepLink,
           relatedTaskId: resultProjectId,
           deliverableId: resultProjectId,
@@ -796,7 +908,20 @@ async function executeStoredRun(input: {
         }),
       { runId: input.runId, userId: input.userId, kind: "failed" },
     );
+    notificationCreated = true;
   }
+
+  const wordRequired = Boolean(wordDeliverableId || wordFailedReason);
+  const persistence: CommanderPersistenceReport = {
+    projectId: persistedProjectId ?? resultProjectId,
+    projectPersisted: Boolean(persistedProjectId),
+    wordRequired,
+    wordDeliverableId,
+    wordCompletionVerified: Boolean(wordDeliverableId && wordDownloadUrl),
+    notificationCreated,
+    wordErrorCode: wordFailedReason,
+    wordFailedStep: wordFailedReason ? "DOCX_GENERATION" : null,
+  };
 
   return toRunResult({
     runId: input.runId,
@@ -808,6 +933,7 @@ async function executeStoredRun(input: {
     externalMessages: external.messages,
     workMemory,
     workMemoryCandidates,
+    persistence,
   });
 }
 

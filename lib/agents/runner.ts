@@ -71,13 +71,44 @@ export async function runAgent(
     aiTaskType: input.aiTaskType,
   });
 
+  const outputText = response.output_text ?? "";
+  const status = response.status ?? "unknown";
+
+  // Empty / incomplete Responses must not collapse into a generic
+  // "成果物をうまく作れませんでした" with no developer signal.
+  if (!outputText.trim()) {
+    const detail = [
+      `agent=${agent.id}`,
+      `aiTaskType=${input.aiTaskType ?? "unknown"}`,
+      `status=${status}`,
+      `model=${response.model ?? "unknown"}`,
+      `responseId=${response.id ?? "none"}`,
+    ].join(" ");
+    console.error("[agents.runner] empty OpenAI output", {
+      agentId: agent.id,
+      aiTaskType: input.aiTaskType ?? null,
+      status,
+      model: response.model ?? null,
+      responseId: response.id ?? null,
+      jobId:
+        typeof input.context?.metadata?.jobId === "string"
+          ? input.context.metadata.jobId
+          : typeof input.context?.metadata?.workJobId === "string"
+            ? input.context.metadata.workJobId
+            : null,
+    });
+    throw new Error(
+      `AI応答が空でした（${detail}）。もう一度お試しください。`,
+    );
+  }
+
   return {
     agentId: agent.id,
     role: agent.role,
     name: agent.name,
-    outputText: response.output_text,
+    outputText,
     responseId: response.id,
-    status: response.status ?? "unknown",
+    status,
     model: response.model,
   };
 }

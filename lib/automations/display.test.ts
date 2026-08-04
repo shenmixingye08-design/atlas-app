@@ -31,6 +31,7 @@ function baseAutomation(overrides: Partial<Automation> = {}): Automation {
       templateId: "generic",
       steps: [{ id: "plan", enabled: true }],
     },
+    destination: "none",
     enabled: true,
     lastRun: null,
     nextRun: null,
@@ -87,7 +88,7 @@ describe("entrusted job display helpers", () => {
     expect(method.label).toBe("順次対応");
   });
 
-  it("blocks full_auto when critical external steps are enabled", () => {
+  it("allows full_auto for explicit X publish flows", () => {
     const flow: WorkExecutionFlow = {
       templateId: "sns_post",
       steps: [
@@ -95,7 +96,21 @@ describe("entrusted job display helpers", () => {
         { id: "publish", enabled: true },
       ],
     };
-    expect(clampConfirmationLevel("full_auto", flow)).toBe("approve_then_run");
+    expect(clampConfirmationLevel("full_auto", flow)).toBe("full_auto");
+    expect(
+      clampConfirmationLevel("full_auto", flow, { destination: "x" }),
+    ).toBe("full_auto");
     expect(clampConfirmationLevel("draft_save", flow)).toBe("draft_save");
+  });
+
+  it("still clamps non-SNS critical externals away from full_auto", () => {
+    const flow: WorkExecutionFlow = {
+      templateId: "blog",
+      steps: [
+        { id: "body", enabled: true },
+        { id: "wordpress_publish", enabled: true },
+      ],
+    };
+    expect(clampConfirmationLevel("full_auto", flow)).toBe("approve_then_run");
   });
 });

@@ -1,5 +1,5 @@
 import { hasResolvableResultTarget } from "./result-target";
-import type { NotificationRecord, NotificationType } from "./types";
+import type { NotificationRecord } from "./types";
 
 /** User-facing notice categories for the secretary inbox. */
 export type NoticeCategory =
@@ -15,14 +15,14 @@ export type NoticeCategory =
 export type NoticePriority = "normal" | "important" | "urgent";
 
 export const NOTICE_CATEGORY_LABELS: Record<NoticeCategory, string> = {
-  needs_review: "確認が必要",
-  completed: "仕事が完了",
-  scheduled: "実行予定",
-  improvement: "改善提案",
-  needs_material: "資料が必要",
-  error: "エラー",
-  ops: "運営からのお知らせ",
-  general: "お知らせ",
+  needs_review: "確認待ち",
+  completed: "完了",
+  scheduled: "確認待ち",
+  improvement: "確認待ち",
+  needs_material: "確認待ち",
+  error: "重要",
+  ops: "重要",
+  general: "完了",
 };
 
 export const NOTICE_PRIORITY_LABELS: Record<NoticePriority, string> = {
@@ -180,12 +180,13 @@ const GENERIC_TITLES = new Set<string>([
   "処理を完了できませんでした",
   "ご確認が必要な仕事がございます",
   "仕事の実行に失敗しました",
-  // Internal-sounding titles that must never surface to the user (ATLAS rule 10:
-  // 内部技術・複数エージェント構成を過度に見せない).
+  // Internal-sounding titles that must never surface to the user.
   "AIオーケストレーター完了報告",
   "AIオーケストレーター一部完了",
   "AIオーケストレーター失敗報告",
   "AIオーケストレーターを中止しました",
+  "確認が必要です",
+  "作業を止めました",
 ]);
 
 /**

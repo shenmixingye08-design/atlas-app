@@ -1,4 +1,5 @@
 "use client";
+import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -364,7 +365,9 @@ export function WorkMemorySettings() {
   }, [search, typeFilter]);
 
   useEffect(() => {
-    void reload();
+    return scheduleMountWork(() => {
+      void reload();
+    });
   }, [reload]);
 
   const stats = useMemo(() => {

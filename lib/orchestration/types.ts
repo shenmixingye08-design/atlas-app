@@ -200,6 +200,11 @@ export type OrchestrationResult = {
    * notification's deep link. Not part of the AI pipeline output.
    */
   commanderRunId?: string | null;
+  /**
+   * Server-generated file deliverables (e.g. .docx). When present, the client
+   * must not re-call /api/deliverables/generate for the same result.
+   */
+  fileDeliverables?: import("@/lib/deliverables/types").Deliverable[];
 };
 
 /** Cache and knowledge isolation diagnostics for Workflow Inspector. */

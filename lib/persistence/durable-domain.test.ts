@@ -1,24 +1,51 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  clearClerkPrivateMetadataKeys,
+  loadClerkPrivateMetadataKey,
+  persistClerkPrivateMetadataKey,
+} from "@/lib/persistence/clerk-private-metadata";
+import type {
+  loadSupabaseUserState,
+  upsertSupabaseUserState,
+} from "@/lib/persistence/supabase-user-state";
+import type { DurableDomainEnvelope } from "./durable-domain";
 
-const persistClerk = vi.fn(async () => true);
-const loadClerk = vi.fn(async () => null);
-const upsertSb = vi.fn(async () => false);
-const loadSb = vi.fn(async () => null);
+const persistClerk = vi.fn<typeof persistClerkPrivateMetadataKey>(
+  async () => true,
+);
+const loadClerk = vi.fn<typeof loadClerkPrivateMetadataKey>(async () => null);
+const upsertSb = vi.fn<typeof upsertSupabaseUserState>(async () => false);
+const loadSb = vi.fn<typeof loadSupabaseUserState>(async () => null);
+const clearClerk = vi.fn<typeof clearClerkPrivateMetadataKeys>(
+  async () => true,
+);
 
 vi.mock("@/lib/persistence/clerk-private-metadata", () => ({
-  persistClerkPrivateMetadataKey: (...args: unknown[]) => persistClerk(...args),
-  loadClerkPrivateMetadataKey: (...args: unknown[]) => loadClerk(...args),
+  persistClerkPrivateMetadataKey: (
+    ...args: Parameters<typeof persistClerkPrivateMetadataKey>
+  ) => persistClerk(...args),
+  loadClerkPrivateMetadataKey: <T,>(
+    ...args: Parameters<typeof loadClerkPrivateMetadataKey>
+  ) => loadClerk(...args) as ReturnType<typeof loadClerkPrivateMetadataKey<T>>,
+  clearClerkPrivateMetadataKeys: (
+    ...args: Parameters<typeof clearClerkPrivateMetadataKeys>
+  ) => clearClerk(...args),
 }));
 
 vi.mock("@/lib/persistence/supabase-user-state", () => ({
-  upsertSupabaseUserState: (...args: unknown[]) => upsertSb(...args),
-  loadSupabaseUserState: (...args: unknown[]) => loadSb(...args),
+  upsertSupabaseUserState: (
+    ...args: Parameters<typeof upsertSupabaseUserState>
+  ) => upsertSb(...args),
+  loadSupabaseUserState: <T,>(
+    ...args: Parameters<typeof loadSupabaseUserState>
+  ) => loadSb(...args) as ReturnType<typeof loadSupabaseUserState<T>>,
 }));
 
 import {
   CLERK_DOMAIN_SAFE_BYTES,
   loadDurableDomain,
   persistDurableDomain,
+  resetClerkPointerCacheForTests,
 } from "./durable-domain";
 
 describe("durable-domain", () => {
@@ -27,13 +54,16 @@ describe("durable-domain", () => {
     loadClerk.mockClear();
     upsertSb.mockClear();
     loadSb.mockClear();
+    clearClerk.mockClear();
     persistClerk.mockResolvedValue(true);
+    clearClerk.mockResolvedValue(true);
     upsertSb.mockResolvedValue(false);
     loadClerk.mockResolvedValue(null);
     loadSb.mockResolvedValue(null);
+    resetClerkPointerCacheForTests();
   });
 
-  it("stores small payloads in Clerk only", async () => {
+  it("stores small non-forced payloads in Clerk only", async () => {
     const result = await persistDurableDomain(
       "user_1",
       "atlasTest",
@@ -45,7 +75,26 @@ describe("durable-domain", () => {
     expect(upsertSb).not.toHaveBeenCalled();
   });
 
-  it("overflows to Supabase when payload exceeds Clerk safe bytes", async () => {
+  it("forceSupabase writes only to Supabase and clears heavy Clerk keys (no payload rewrite)", async () => {
+    upsertSb.mockResolvedValue(true);
+    const jobs = { jobs: [{ id: "j1", blob: "x".repeat(1000) }] };
+    const first = await persistDurableDomain("user_1", "atlasWorkJobs", jobs, {
+      forceSupabase: true,
+      compact: () => ({ jobs: [] }),
+    });
+    const second = await persistDurableDomain("user_1", "atlasWorkJobs", jobs, {
+      forceSupabase: true,
+      compact: () => ({ jobs: [] }),
+    });
+    expect(first).toBe("supabase");
+    expect(second).toBe("supabase");
+    expect(upsertSb).toHaveBeenCalled();
+    // No routine pointer/payload writes for supabase-only domains.
+    expect(persistClerk).not.toHaveBeenCalled();
+    expect(clearClerk).toHaveBeenCalled();
+  });
+
+  it("overflows oversized non-forced domains to Supabase without Clerk payload", async () => {
     upsertSb.mockResolvedValue(true);
     const huge = { blob: "x".repeat(CLERK_DOMAIN_SAFE_BYTES + 100) };
     const result = await persistDurableDomain("user_1", "atlasTest", huge, {
@@ -53,7 +102,7 @@ describe("durable-domain", () => {
     });
     expect(result).toBe("supabase");
     expect(upsertSb).toHaveBeenCalled();
-    expect(persistClerk).toHaveBeenCalled();
+    expect(persistClerk).not.toHaveBeenCalled();
   });
 
   it("does not pretend success with clerk_compact in production when Supabase fails", async () => {
@@ -80,23 +129,24 @@ describe("durable-domain", () => {
     vi.unstubAllEnvs();
   });
 
-  it("loads Supabase payload when Clerk marks storedInSupabase", async () => {
-    loadClerk.mockResolvedValue({
-      version: 1,
-      updatedAt: new Date().toISOString(),
-      storedInSupabase: true,
-      payload: { blob: "compact" },
-    });
-    loadSb.mockResolvedValue({
+  it("loads Supabase payload for supabase-only domains without Clerk", async () => {
+    const row = {
       payload: {
         version: 1,
         updatedAt: new Date().toISOString(),
         payload: { blob: "full" },
       },
       updatedAt: new Date().toISOString(),
-    });
+    } satisfies Awaited<
+      ReturnType<typeof loadSupabaseUserState<DurableDomainEnvelope<{ blob: string }>>>
+    >;
+    loadSb.mockResolvedValue(row);
 
-    const loaded = await loadDurableDomain<{ blob: string }>("user_1", "atlasTest");
+    const loaded = await loadDurableDomain<{ blob: string }>(
+      "user_1",
+      "atlasWorkJobs",
+    );
     expect(loaded).toEqual({ blob: "full" });
+    expect(loadClerk).not.toHaveBeenCalled();
   });
 });

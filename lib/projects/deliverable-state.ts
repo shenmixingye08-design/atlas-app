@@ -1,4 +1,8 @@
 import { deliverableHasContent } from "@/lib/orchestration/deliverable-types";
+import {
+  wordFailureTitle,
+  wordFailureUserMessage,
+} from "@/lib/deliverables/recovery-messages";
 
 import type { Project } from "./types";
 
@@ -11,11 +15,10 @@ import type { Project } from "./types";
 export type DeliverableDisplayState =
   | { kind: "ready" }
   | { kind: "generating"; message: string }
-  | { kind: "failed"; message: string; reason: string | null }
+  | { kind: "failed"; message: string; reason: string | null; title: string }
   | { kind: "not_found"; message: string };
 
 const GENERATING_MESSAGE = "まだ生成中です。少し時間をおいて、もう一度お試しください。";
-const FAILED_MESSAGE = "生成に失敗しました。内容をご確認ください。";
 const NOT_FOUND_MESSAGE =
   "この結果は見つかりませんでした。削除されたか、まだ保存が完了していない可能性があります。";
 
@@ -38,10 +41,12 @@ export function resolveDeliverableDisplayState(
 
   if (result) {
     if (result.status === "failed") {
+      const raw = project.error ?? result.error ?? null;
       return {
         kind: "failed",
-        message: FAILED_MESSAGE,
-        reason: sanitizeReason(project.error ?? result.error ?? null),
+        title: wordFailureTitle(raw),
+        message: wordFailureUserMessage(raw),
+        reason: sanitizeReason(raw),
       };
     }
 
@@ -62,7 +67,8 @@ export function resolveDeliverableDisplayState(
   if (project.error) {
     return {
       kind: "failed",
-      message: FAILED_MESSAGE,
+      title: wordFailureTitle(project.error),
+      message: wordFailureUserMessage(project.error),
       reason: sanitizeReason(project.error),
     };
   }
