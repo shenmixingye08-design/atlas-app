@@ -45,26 +45,120 @@ vi.mock("@clerk/nextjs/server", () => ({
 }));
 
 const sbStore = new Map<string, unknown>();
+const notificationRows = new Map<string, Record<string, unknown>>();
+
+function notificationQuery() {
+  const filters: Array<(row: Record<string, unknown>) => boolean> = [];
+  let orderAsc: boolean | null = null;
+  let limitN: number | null = null;
+  let mode: "select" | "insert" | "update" = "select";
+  let payload: Record<string, unknown> | null = null;
+
+  const api: Record<string, unknown> = {
+    insert(row: Record<string, unknown>) {
+      mode = "insert";
+      payload = row;
+      return api;
+    },
+    update(row: Record<string, unknown>) {
+      mode = "update";
+      payload = row;
+      return api;
+    },
+    select() {
+      return api;
+    },
+    eq(col: string, value: unknown) {
+      filters.push((row) => row[col] === value);
+      return api;
+    },
+    is(col: string, value: null) {
+      filters.push((row) => row[col] == null);
+      void value;
+      return api;
+    },
+    order(_col: string, opts?: { ascending?: boolean }) {
+      orderAsc = opts?.ascending ?? true;
+      return api;
+    },
+    limit(n: number) {
+      limitN = n;
+      return api;
+    },
+    async maybeSingle() {
+      if (mode === "insert" && payload) {
+        const key = String(payload.notification_id);
+        const conflict = [...notificationRows.values()].find(
+          (r) =>
+            r.owner_id === payload!.owner_id &&
+            r.idempotency_key === payload!.idempotency_key &&
+            r.deleted_at == null,
+        );
+        if (conflict) {
+          return {
+            data: null,
+            error: { code: "23505", message: "duplicate" },
+          };
+        }
+        notificationRows.set(key, { ...payload });
+        return { data: { ...payload }, error: null };
+      }
+      const rows = [...notificationRows.values()].filter((row) =>
+        filters.every((f) => f(row)),
+      );
+      if (mode === "update" && payload) {
+        const target = rows[0];
+        if (!target) return { data: null, error: null };
+        Object.assign(target, payload);
+        return { data: { ...target }, error: null };
+      }
+      return { data: rows[0] ?? null, error: null };
+    },
+    then(resolve: (value: { data: unknown; error: null }) => unknown) {
+      let rows = [...notificationRows.values()].filter((row) =>
+        filters.every((f) => f(row)),
+      );
+      if (orderAsc != null) {
+        rows = rows.sort((a, b) => {
+          const av = String(a.created_at ?? "");
+          const bv = String(b.created_at ?? "");
+          return orderAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+        });
+      }
+      if (limitN != null) rows = rows.slice(0, limitN);
+      return Promise.resolve(resolve({ data: rows, error: null }));
+    },
+  };
+  return api;
+}
 
 vi.mock("@/lib/supabase/service-role", () => ({
   createServiceRoleClientIfConfigured: () => ({
-    from: (table: string) => ({
-      upsert: async (row: { user_id: string; domain: string; payload: unknown }) => {
-        if (table !== "atlas_user_state") return { error: null };
-        sbStore.set(`${row.user_id}:${row.domain}`, row.payload);
-        return { error: null };
-      },
-      select: () => ({
-        eq: () => ({
+    from: (table: string) => {
+      if (table === "atlas_user_notifications") {
+        return notificationQuery();
+      }
+      return {
+        upsert: async (row: {
+          user_id: string;
+          domain: string;
+          payload: unknown;
+        }) => {
+          if (table !== "atlas_user_state") return { error: null };
+          sbStore.set(`${row.user_id}:${row.domain}`, row.payload);
+          return { error: null };
+        },
+        select: () => ({
           eq: () => ({
-            maybeSingle: async () => {
-              // filled by chain below — simplified in load path mock
-              return { data: null, error: null };
-            },
+            eq: () => ({
+              maybeSingle: async () => {
+                return { data: null, error: null };
+              },
+            }),
           }),
         }),
-      }),
-    }),
+      };
+    },
   }),
 }));
 
@@ -129,6 +223,10 @@ process.env.CLERK_SECRET_KEY = "sk_test_persistence_repeat";
 process.env.ATLAS_FORCE_EPHEMERAL_FS = "1";
 process.env.VERCEL = "1";
 process.env.VERCEL_ENV = "production";
+// P0-4: Production inbox requires service-role env (mock client handles rows).
+process.env.SUPABASE_URL = process.env.SUPABASE_URL || "https://example.supabase.co";
+process.env.SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || "service_role_test_key";
 
 const USER = "user_persist_repeat_10";
 const ASSIGNMENT = "この画像を解析してWordにしてください";
@@ -306,18 +404,22 @@ async function simulateOneJobCycle(index: number): Promise<{
   // memory / learning / notification
   schedulePersistWorkMemory(USER);
   schedulePersistLearning(USER);
-  createNotification({
-    userId: USER,
-    audience: "user",
-    type: "completed",
-    title: "完了",
-    message: `job ${jobId} 完了`,
-    lineEvent: "work_completed",
-    eventCategory: "final_success",
-    targetType: "deliverable",
-    targetId: `dlv_${index}`,
-    deliverableId: `dlv_${index}`,
-  });
+  await createNotification(
+    {
+      userId: USER,
+      audience: "user",
+      type: "completed",
+      title: "完了",
+      message: `job ${jobId} 完了`,
+      lineEvent: "work_completed",
+      eventCategory: "final_success",
+      targetType: "deliverable",
+      targetId: `dlv_${index}`,
+      deliverableId: `dlv_${index}`,
+      requestId: jobId,
+    },
+    { skipDelivery: true },
+  );
   await persistNotificationsNow(USER);
 
   // completed
@@ -371,6 +473,7 @@ describe("persistence repeat ×10 (Vercel ephemeral)", () => {
     clerkMeta.clear();
     clerkUpdateCalls = 0;
     sbStore.clear();
+    notificationRows.clear();
     resetPersistenceCounters();
     resetClerkPointerCacheForTests();
     // Seed oversized legacy Clerk payloads once — prune must migrate, not truncate-as-success.

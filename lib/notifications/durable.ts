@@ -10,6 +10,7 @@ import type {
   NotificationRecord,
 } from "./types";
 import { DEFAULT_NOTIFICATION_PREFERENCES } from "./types";
+// NotificationPreferences used by applyLoadedPreferences
 import {
   listStoredNotifications,
   replaceUserNotifications,
@@ -86,61 +87,78 @@ export async function persistNotificationsNow(userId: string): Promise<void> {
   );
 }
 
+function applyLoadedPreferences(
+  userId: string,
+  preferences: NotificationPreferences,
+): void {
+  saveStoredPreferences(userId, {
+    ...DEFAULT_NOTIFICATION_PREFERENCES,
+    ...preferences,
+    channels: {
+      ...DEFAULT_NOTIFICATION_PREFERENCES.channels,
+      ...preferences.channels,
+    },
+    lineEvents: {
+      ...DEFAULT_NOTIFICATION_PREFERENCES.lineEvents,
+      ...preferences.lineEvents,
+    },
+    push: {
+      ...DEFAULT_NOTIFICATION_PREFERENCES.push,
+      ...preferences.push,
+      events: {
+        ...DEFAULT_NOTIFICATION_PREFERENCES.push.events,
+        ...preferences.push?.events,
+      },
+      severities: {
+        ...DEFAULT_NOTIFICATION_PREFERENCES.push.severities,
+        ...preferences.push?.severities,
+      },
+      quietHoursStart:
+        preferences.push?.quietHoursStart ??
+        DEFAULT_NOTIFICATION_PREFERENCES.push.quietHoursStart,
+      quietHoursEnd:
+        preferences.push?.quietHoursEnd ??
+        DEFAULT_NOTIFICATION_PREFERENCES.push.quietHoursEnd,
+    },
+  });
+}
+
 export async function ensureNotificationsHydrated(
   userId: string,
 ): Promise<void> {
   if (isUserHydrated(userId)) return;
   markUserHydrated(userId);
 
-  const existing = listStoredNotifications({
-    audience: "user",
-    userId,
-  });
-
-  if (existing.length > 0) return;
-
-  const loaded =
-    await loadDurableDomain<DurableNotificationsState>(
-      userId,
-      NOTIFICATIONS_DOMAIN_KEY,
+  let hydratedFromRows = false;
+  try {
+    const { isNotificationDurableRequired } = await import(
+      "./notification-backend"
     );
+    if (isNotificationDurableRequired()) {
+      const { listDurableNotifications } = await import("./durable-inbox");
+      const rows = await listDurableNotifications({ ownerId: userId });
+      replaceUserNotifications(userId, rows);
+      hydratedFromRows = true;
+    }
+  } catch {
+    /* fall through to blob hydrate */
+  }
 
-  if (!loaded) return;
+  const loaded = await loadDurableDomain<DurableNotificationsState>(
+    userId,
+    NOTIFICATIONS_DOMAIN_KEY,
+  );
 
-  if (Array.isArray(loaded.notifications)) {
+  if (
+    !hydratedFromRows &&
+    loaded &&
+    Array.isArray(loaded.notifications) &&
+    listStoredNotifications({ audience: "user", userId }).length === 0
+  ) {
     replaceUserNotifications(userId, loaded.notifications);
   }
 
-  if (loaded.preferences) {
-    saveStoredPreferences(userId, {
-      ...DEFAULT_NOTIFICATION_PREFERENCES,
-      ...loaded.preferences,
-      channels: {
-        ...DEFAULT_NOTIFICATION_PREFERENCES.channels,
-        ...loaded.preferences.channels,
-      },
-      lineEvents: {
-        ...DEFAULT_NOTIFICATION_PREFERENCES.lineEvents,
-        ...loaded.preferences.lineEvents,
-      },
-      push: {
-        ...DEFAULT_NOTIFICATION_PREFERENCES.push,
-        ...loaded.preferences.push,
-        events: {
-          ...DEFAULT_NOTIFICATION_PREFERENCES.push.events,
-          ...loaded.preferences.push?.events,
-        },
-        severities: {
-          ...DEFAULT_NOTIFICATION_PREFERENCES.push.severities,
-          ...loaded.preferences.push?.severities,
-        },
-        quietHoursStart:
-          loaded.preferences.push?.quietHoursStart ??
-          DEFAULT_NOTIFICATION_PREFERENCES.push.quietHoursStart,
-        quietHoursEnd:
-          loaded.preferences.push?.quietHoursEnd ??
-          DEFAULT_NOTIFICATION_PREFERENCES.push.quietHoursEnd,
-      },
-    });
+  if (loaded?.preferences) {
+    applyLoadedPreferences(userId, loaded.preferences);
   }
 }

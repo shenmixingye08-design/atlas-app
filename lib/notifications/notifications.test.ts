@@ -6,6 +6,7 @@ import {
   notifyXPostSuccess,
 } from "./emitters";
 import { isSafeActionUrl } from "./display";
+import { resetDurableInboxForTests } from "./durable-inbox";
 import {
   createNotification,
   listUserNotifications,
@@ -18,10 +19,11 @@ const TEST_USER = "user_notification_test";
 describe("notifications", () => {
   beforeEach(() => {
     resetNotificationStore();
+    resetDurableInboxForTests();
   });
 
-  it("creates a user notification with required fields", () => {
-    const record = createNotification({
+  it("creates a user notification with required fields", async () => {
+    const record = await createNotification({
       audience: "user",
       userId: TEST_USER,
       type: "completed",
@@ -34,36 +36,36 @@ describe("notifications", () => {
     expect(record?.notificationId).toMatch(/^ntf_/);
     expect(record?.userId).toBe(TEST_USER);
     expect(record?.isRead).toBe(false);
-    expect(listUserNotifications(TEST_USER)).toHaveLength(1);
+    expect(await listUserNotifications(TEST_USER)).toHaveLength(1);
   });
 
-  it("skips notification when type preference is disabled", () => {
+  it("skips notification when type preference is disabled", async () => {
     updateUserNotificationPreferences(TEST_USER, {
       completedEnabled: false,
     });
 
-    const record = notifyAutomationCompleted(TEST_USER, {
+    const record = await notifyAutomationCompleted(TEST_USER, {
       automationId: "auto_1",
       name: "テスト自動化",
     });
 
     expect(record).toBeNull();
-    expect(listUserNotifications(TEST_USER)).toHaveLength(0);
+    expect(await listUserNotifications(TEST_USER)).toHaveLength(0);
   });
 
-  it("skips all notifications when master switch is off", () => {
+  it("skips all notifications when master switch is off", async () => {
     updateUserNotificationPreferences(TEST_USER, {
       allEnabled: false,
     });
 
-    const record = notifyXPostSuccess(TEST_USER, "hello");
+    const record = await notifyXPostSuccess(TEST_USER, "hello");
 
     expect(record).toBeNull();
-    expect(listUserNotifications(TEST_USER)).toHaveLength(0);
+    expect(await listUserNotifications(TEST_USER)).toHaveLength(0);
   });
 
-  it("deep-links a completed automation to its detail panel", () => {
-    const record = notifyAutomationCompleted(TEST_USER, {
+  it("deep-links a completed automation to its detail panel", async () => {
+    const record = await notifyAutomationCompleted(TEST_USER, {
       automationId: "auto_42",
       name: "テスト自動化",
     });
@@ -73,8 +75,8 @@ describe("notifications", () => {
     expect(isSafeActionUrl(record?.actionUrl)).toBe(true);
   });
 
-  it("deep-links a successful X post to the exact post result", () => {
-    const record = notifyXPostSuccess(TEST_USER, "hello", {
+  it("deep-links a successful X post to the exact post result", async () => {
+    const record = await notifyXPostSuccess(TEST_USER, "hello", {
       historyId: "hist_7",
     });
 
@@ -83,8 +85,8 @@ describe("notifications", () => {
     expect(isSafeActionUrl(record?.actionUrl)).toBe(true);
   });
 
-  it("gives an X post a task-type-specific title (not the generic one)", () => {
-    const record = notifyXPostSuccess(TEST_USER, "hello", {
+  it("gives an X post a task-type-specific title (not the generic one)", async () => {
+    const record = await notifyXPostSuccess(TEST_USER, "hello", {
       historyId: "hist_8",
     });
 
@@ -92,8 +94,8 @@ describe("notifications", () => {
     expect(record?.title).not.toBe("お仕事が完了しました");
   });
 
-  it("keeps the caller's task-type title on completed work", () => {
-    const record = notifyWorkCompleted(TEST_USER, {
+  it("keeps the caller's task-type title on completed work", async () => {
+    const record = await notifyWorkCompleted(TEST_USER, {
       title: "レポートを作成しました",
       message: "ご確認をお願いいたします。",
       actionUrl: "/projects/commander-run_x",
@@ -103,8 +105,8 @@ describe("notifications", () => {
     expect(record?.title).toBe("レポートを作成しました");
   });
 
-  it("persists deep-link targeting IDs on completed work", () => {
-    const record = notifyWorkCompleted(TEST_USER, {
+  it("persists deep-link targeting IDs on completed work", async () => {
+    const record = await notifyWorkCompleted(TEST_USER, {
       title: "レポートを作成しました",
       message: "完了しました。",
       actionUrl: "/projects/commander-run_ids",
@@ -122,10 +124,10 @@ describe("notifications", () => {
     expect(record?.targetId).toBe("commander-run_ids");
   });
 
-  it("canonicalizes completed work to the unified /results/<id> route", () => {
+  it("canonicalizes completed work to the unified /results/<id> route", async () => {
     // Even with a deliverableId (and NO explicit actionUrl) the button opens the
     // self-resolving results page keyed by the notification id.
-    const record = notifyWorkCompleted(TEST_USER, {
+    const record = await notifyWorkCompleted(TEST_USER, {
       title: "資料を作成しました",
       message: "完了しました。",
       deliverableId: "commander-run_auto",
@@ -137,10 +139,10 @@ describe("notifications", () => {
     expect(record?.deliverableId).toBe("commander-run_auto");
   });
 
-  it("overrides a stale /projects deep link with the canonical /results link", () => {
+  it("overrides a stale /projects deep link with the canonical /results link", async () => {
     // Callers may still pass a /projects actionUrl; the service upgrades it so
     // the result never dead-ends on a missing project row.
-    const record = notifyWorkCompleted(TEST_USER, {
+    const record = await notifyWorkCompleted(TEST_USER, {
       title: "完了",
       message: "完了しました",
       actionUrl: "/projects/commander-run_9",
@@ -153,8 +155,8 @@ describe("notifications", () => {
     expect(isSafeActionUrl(record?.actionUrl)).toBe(true);
   });
 
-  it("falls back to /workspace when no deep link / target is provided", () => {
-    const record = notifyWorkCompleted(TEST_USER, {
+  it("falls back to /workspace when no deep link / target is provided", async () => {
+    const record = await notifyWorkCompleted(TEST_USER, {
       title: "完了",
       message: "完了しました",
     });
@@ -163,8 +165,8 @@ describe("notifications", () => {
     expect(record?.targetType ?? null).toBeNull();
   });
 
-  it("creates owner notifications without user preferences", () => {
-    const record = createNotification({
+  it("creates owner notifications without user preferences", async () => {
+    const record = await createNotification({
       audience: "owner",
       userId: null,
       type: "error",

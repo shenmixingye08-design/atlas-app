@@ -57,15 +57,19 @@ function requireBillingRecord(
   };
 }
 
-export function notifyUserPaymentFailed(userId: string): BillingNotificationRecord {
+export async function notifyUserPaymentFailed(
+  userId: string,
+): Promise<BillingNotificationRecord> {
   return requireBillingRecord(
-    notifyBillingPaymentFailed(userId),
+    await notifyBillingPaymentFailed(userId),
     "お支払いに失敗しました",
   );
 }
 
-export function notifyOwnerPaymentFailed(userId: string): BillingNotificationRecord {
-  const record = emitOwnerPaymentFailed(userId);
+export async function notifyOwnerPaymentFailed(
+  userId: string,
+): Promise<BillingNotificationRecord> {
+  const record = await emitOwnerPaymentFailed(userId);
   return record
     ? toBillingRecord(record)
     : {
@@ -80,37 +84,39 @@ export function notifyOwnerPaymentFailed(userId: string): BillingNotificationRec
       };
 }
 
-export function notifyUserPlanChanged(
+export async function notifyUserPlanChanged(
   userId: string,
   planLabel: string,
-): BillingNotificationRecord {
+): Promise<BillingNotificationRecord> {
   return requireBillingRecord(
-    notifyBillingPlanChanged(userId, planLabel),
+    await notifyBillingPlanChanged(userId, planLabel),
     "プランが更新されました",
   );
 }
 
-export function notifyUserPlanDowngraded(userId: string): BillingNotificationRecord {
+export async function notifyUserPlanDowngraded(
+  userId: string,
+): Promise<BillingNotificationRecord> {
   return requireBillingRecord(
-    notifyBillingPlanDowngraded(userId),
+    await notifyBillingPlanDowngraded(userId),
     "Freeプランに変更されました",
   );
 }
 
-export function notifyUserPaymentGraceScheduled(
+export async function notifyUserPaymentGraceScheduled(
   userId: string,
   graceEndsAt: string,
-): BillingNotificationRecord {
+): Promise<BillingNotificationRecord> {
   return requireBillingRecord(
-    notifyBillingGraceScheduled(userId, graceEndsAt),
+    await notifyBillingGraceScheduled(userId, graceEndsAt),
     "自動停止予定",
   );
 }
 
-export function listUserBillingNotifications(
+export async function listUserBillingNotifications(
   userId: string,
-): BillingNotificationRecord[] {
-  return listUserNotifications(userId)
+): Promise<BillingNotificationRecord[]> {
+  return (await listUserNotifications(userId))
     .filter((record) => record.type === "billing")
     .map(toBillingRecord);
 }

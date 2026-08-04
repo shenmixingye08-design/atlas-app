@@ -3,6 +3,7 @@ import "server-only";
 import { listSupabaseUserIdsForDomain } from "@/lib/persistence/supabase-user-state";
 import { NOTIFICATIONS_DOMAIN_KEY } from "@/lib/notifications/durable";
 import { createNotification, listUserNotifications } from "@/lib/notifications/service";
+import type { NotificationRecord } from "@/lib/notifications/types";
 import {
   aggregateDailyReport,
   formatDailyReportPushBody,
@@ -28,7 +29,7 @@ function localDateKey(now: Date, timezone: string): string {
 }
 
 function alreadySentDailyReportToday(
-  notifications: ReturnType<typeof listUserNotifications>,
+  notifications: NotificationRecord[],
   dateKey: string,
 ): boolean {
   return notifications.some(
@@ -51,7 +52,7 @@ export async function dispatchDailyReportsForDueUsers(
   }
 
   for (const userId of userIds.slice(0, 200)) {
-    const notifications = listUserNotifications(userId);
+    const notifications = await listUserNotifications(userId);
     if (alreadySentDailyReportToday(notifications, dateKey)) {
       results.push({ userId, sent: false });
       continue;
@@ -63,7 +64,7 @@ export async function dispatchDailyReportsForDueUsers(
       continue;
     }
 
-    const record = createNotification({
+    const record = await createNotification({
       audience: "user",
       userId,
       type: "recommendation",

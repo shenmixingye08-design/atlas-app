@@ -82,7 +82,7 @@ async function emitWordTerminalNotification(input: {
   const requestId = `wordjob:${input.jobId}:${input.kind}`;
   try {
     if (input.kind === "completed" && input.deliverableId && input.downloadUrl) {
-      notifyWorkCompleted(input.userId, {
+      await notifyWorkCompleted(input.userId, {
         title: "Wordファイルの準備ができました",
         message: input.fileName
           ? `「${input.fileName}」を作成しました。通知から開いてダウンロードできます。`
@@ -93,7 +93,7 @@ async function emitWordTerminalNotification(input: {
         requestId,
       });
     } else {
-      notifyWorkFailed(input.userId, {
+      await notifyWorkFailed(input.userId, {
         title:
           input.kind === "timeout"
             ? "Word作成がタイムアウトしました"

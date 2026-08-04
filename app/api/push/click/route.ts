@@ -38,7 +38,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   await ensureNotificationsHydrated(userId);
-  const record = markNotificationRead(notificationId, userId);
+  const record = await markNotificationRead(notificationId, userId);
   if (record) {
     await persistNotificationsNow(userId);
   }

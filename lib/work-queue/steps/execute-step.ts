@@ -181,7 +181,7 @@ export async function executeWorkStep(input: {
           "@/lib/notifications/emitters"
         );
         const artifactId = input.previousOutputs.artifactId as string | undefined;
-        const record = notifyWorkCompleted(job.ownerId, {
+        const record = await notifyWorkCompleted(job.ownerId, {
           title: job.payload.automationName ?? "仕事が完了しました",
           message: "設定した時刻の仕事を完了しました。",
           deliverableId: artifactId ?? null,

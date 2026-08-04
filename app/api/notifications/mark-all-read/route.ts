@@ -12,10 +12,9 @@ export async function POST(): Promise<Response> {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Load durable notifications first so cold instances can mark them read.
   await ensureNotificationsHydrated(userId);
 
-  const count = markAllUserNotificationsRead(userId);
+  const count = await markAllUserNotificationsRead(userId);
   if (count > 0) {
     await persistNotificationsNow(userId);
   }

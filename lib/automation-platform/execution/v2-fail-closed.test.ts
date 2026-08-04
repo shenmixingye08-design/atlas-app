@@ -285,14 +285,14 @@ describe("V2 Production fail-closed", () => {
     expect(result.failedStage).toBe("EXTERNAL_ADAPTER_RESOLUTION");
   });
 
-  it("partially_succeeded notification is not type=completed", () => {
+  it("partially_succeeded notification is not type=completed", async () => {
     const run = {
       id: "run_partial",
       automationId: "auto_1",
       status: "partially_succeeded",
     } as AutomationRun;
 
-    notifyAutomationRunEvent({
+    await notifyAutomationRunEvent({
       userId: "user_fc",
       automationName: "一部",
       run,

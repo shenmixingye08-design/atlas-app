@@ -197,7 +197,7 @@ describe("Word Stage 3 production hardening", () => {
       baseFileName: "営業報告書",
     });
 
-    const completed = notifyWorkCompleted(OWNER, {
+    const completed = await notifyWorkCompleted(OWNER, {
       title: "報告書を作成しました",
       message: "Wordの準備ができました。",
       deliverableId: stored.id,
@@ -207,7 +207,7 @@ describe("Word Stage 3 production hardening", () => {
 
     // Side-channel notify failure must not downgrade completed notification.
     injectWordFault("notification_send");
-    const failed = notifyWorkFailed(OWNER, {
+    const failed = await notifyWorkFailed(OWNER, {
       title: "通知失敗",
       message: "通知だけ失敗",
       deliverableId: stored.id,
@@ -296,13 +296,13 @@ describe("Word Stage 3 production hardening", () => {
     const secondDocx = second.deliverables.find((d) => d.format === "docx");
     expect(secondDocx?.id).toBe(firstDocx!.id);
 
-    notifyWorkCompleted(OWNER, {
+    await notifyWorkCompleted(OWNER, {
       title: "完了",
       message: "完了",
       deliverableId: firstDocx!.id,
       requestId: jobId,
     });
-    notifyWorkCompleted(OWNER, {
+    await notifyWorkCompleted(OWNER, {
       title: "完了",
       message: "完了",
       deliverableId: firstDocx!.id,

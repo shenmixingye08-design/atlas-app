@@ -129,7 +129,7 @@ export async function exportWordDeliverableOnServer(input: {
       durationMs: Date.now() - started,
     });
     if (input.notify !== false) {
-      notifyWorkFailed(input.userId, {
+      await notifyWorkFailed(input.userId, {
         title: userTitle,
         message: `${userMessage}（jobId: ${jobId}）`,
         requestId: `${input.requestId}:word`,
@@ -234,7 +234,7 @@ export async function exportWordDeliverableOnServer(input: {
     });
 
     if (input.notify !== false) {
-      notifyWorkCompleted(input.userId, {
+      await notifyWorkCompleted(input.userId, {
         title: "Wordファイルの準備ができました",
         message: `「${docx.fileName}」を作成しました。通知から開いてダウンロードできます。`,
         actionUrl: docx.downloadUrl,

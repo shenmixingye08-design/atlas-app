@@ -219,21 +219,21 @@ export function formatFailureReason(error: unknown): string {
  * Retries a few times; on total failure, writes an execution log so the
  * incident is still visible to diagnostics.
  */
-export function ensureNotificationDelivery<T>(
-  create: () => T | null,
+export async function ensureNotificationDelivery<T>(
+  create: () => T | null | Promise<T | null>,
   context: {
     runId: string;
     userId: string;
     kind: "completed" | "failed" | "partial" | "cancelled";
     maxAttempts?: number;
   },
-): T | null {
+): Promise<T | null> {
   const maxAttempts = context.maxAttempts ?? 3;
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const record = create();
+      const record = await create();
       if (record) {
         appendExecutionLog({
           runId: context.runId,

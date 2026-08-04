@@ -109,21 +109,21 @@ const COPY: Record<RunNotificationEvent, NotifyCopy> = {
   },
 };
 
-export function notifyAutomationRunEvent(input: {
+export async function notifyAutomationRunEvent(input: {
   userId: string;
   automationName: string;
   run: AutomationRun;
   policy: AutomationNotificationPolicy;
   event: RunNotificationEvent;
   detail?: string | null;
-}): void {
+}): Promise<void> {
   if (!input.policy.channels.includes("in_app")) return;
   if (!shouldNotify(input.policy, input.event)) return;
 
   const copy = COPY[input.event];
   const detail = input.detail?.trim();
   try {
-    createNotification({
+    await createNotification({
       audience: "user",
       userId: input.userId,
       type: copy.type,
@@ -148,6 +148,7 @@ export function notifyAutomationRunEvent(input: {
               : undefined,
     });
   } catch {
-    // Notification delivery must never block execution.
+    // Durable create failure must not crash the automation runner; caller may
+    // still observe missing notification via inbox checks / job evidence.
   }
 }

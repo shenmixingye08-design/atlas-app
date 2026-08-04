@@ -51,6 +51,9 @@ jobs:
       - name: P0-3 durable deliverable artifact ban
         run: node scripts/ci/p0-3-deliverable-artifact-ban.mjs
 
+      - name: P0-4 durable notification inbox ban
+        run: node scripts/ci/p0-4-notification-inbox-ban.mjs
+
       - name: Unit / integration tests
         run: npm test
         env:

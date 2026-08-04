@@ -11,7 +11,7 @@ import { ui } from "@/lib/i18n";
 
 export default async function DailyReportPage() {
   const { userId } = await auth();
-  const notifications = userId ? listUserNotifications(userId) : [];
+  const notifications = userId ? await listUserNotifications(userId) : [];
   const report = aggregateDailyReport({ notifications });
 
   return (
