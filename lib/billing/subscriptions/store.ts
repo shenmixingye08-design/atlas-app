@@ -48,6 +48,49 @@ export function getUserSubscription(
   return getBucket().get(userId) ?? null;
 }
 
+/**
+ * True when durable paid state must not be replaced by an invented Free /
+ * free-shaped cold-start write. Explicit downgrade (plan=free + canceled)
+ * is allowed (P0-1).
+ */
+export function wouldOverwriteDurablePaidWithFreeInvent(
+  incoming: UserSubscriptionRecord,
+  durable: UserSubscriptionRecord,
+): boolean {
+  const durableLooksPaid =
+    durable.planId !== "free" || Boolean(durable.stripeSubscriptionId);
+  if (!durableLooksPaid) return false;
+
+  const explicitDowngrade =
+    incoming.planId === "free" && incoming.status === "canceled";
+  if (explicitDowngrade) return false;
+
+  return incoming.planId === "free" && durable.planId !== "free";
+}
+
+async function persistSubscriptionToSupabaseGuarded(
+  record: UserSubscriptionRecord,
+): Promise<boolean> {
+  const durable = await loadSubscriptionFromSupabase(record.userId);
+  if (durable && wouldOverwriteDurablePaidWithFreeInvent(record, durable)) {
+    console.error(
+      "[billing] P0-1 refused Free invent overwrite of durable paid subscription",
+      {
+        userId: record.userId,
+        durablePlanId: durable.planId,
+        incomingPlanId: record.planId,
+        incomingStatus: record.status,
+      },
+    );
+    // Keep process memory aligned with durable paid SoT.
+    const bucket = getBucket();
+    bucket.set(durable.userId, durable);
+    persistBucket(bucket);
+    return false;
+  }
+  return persistSubscriptionToSupabase(record);
+}
+
 export function saveUserSubscription(
   record: UserSubscriptionRecord,
 ): UserSubscriptionRecord {
@@ -58,7 +101,7 @@ export function saveUserSubscription(
   if (!isBillingSupabaseConfigured()) {
     warnIfProductionSupabaseServiceRoleMissing("atlas_billing_subscriptions");
   } else {
-    void persistSubscriptionToSupabase(record).then((ok) => {
+    void persistSubscriptionToSupabaseGuarded(record).then((ok) => {
       if (!ok) {
         console.warn(
           "[billing] Supabase subscription persist returned false for",

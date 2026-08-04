@@ -38,7 +38,7 @@ export default async function BillingSuccessPage({ searchParams }: PageProps) {
     isPlanId(planParam) &&
     !isAtlasProduction()
   ) {
-    completeMockCheckout(userId, planParam);
+    await completeMockCheckout(userId, planParam);
     redirect(`${BILLING_SETTINGS_PATH}?checkout=success&plan=${planParam}`);
   }
 

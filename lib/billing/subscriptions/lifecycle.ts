@@ -18,14 +18,19 @@ import { setAutomationTaskCount } from "../usage/store";
 
 const PAYMENT_FAILURE_GRACE_DAYS = 7;
 
-export function syncUserPlanProfile(userId: string, planId: PlanId): void {
-  upsertUserSubscription(userId, {
+export async function syncUserPlanProfile(
+  userId: string,
+  planId: PlanId,
+): Promise<void> {
+  await upsertUserSubscription(userId, {
     planId,
     planProfileSyncedAt: new Date().toISOString(),
   });
 }
 
-export function clearSubscriptionLifecycleFlags(userId: string): UserSubscriptionRecord {
+export async function clearSubscriptionLifecycleFlags(
+  userId: string,
+): Promise<UserSubscriptionRecord> {
   return upsertUserSubscription(userId, {
     automationsSuspended: false,
     paymentFailureGraceEndsAt: null,
@@ -33,18 +38,22 @@ export function clearSubscriptionLifecycleFlags(userId: string): UserSubscriptio
   });
 }
 
-export function suspendAutomationsForUser(userId: string): UserSubscriptionRecord {
+export async function suspendAutomationsForUser(
+  userId: string,
+): Promise<UserSubscriptionRecord> {
   setAutomationTaskCount(userId, 0);
   return upsertUserSubscription(userId, {
     automationsSuspended: true,
   });
 }
 
-export function schedulePaymentFailureGrace(userId: string): UserSubscriptionRecord {
+export async function schedulePaymentFailureGrace(
+  userId: string,
+): Promise<UserSubscriptionRecord> {
   const graceEndsAt = new Date();
   graceEndsAt.setDate(graceEndsAt.getDate() + PAYMENT_FAILURE_GRACE_DAYS);
 
-  const record = upsertUserSubscription(userId, {
+  const record = await upsertUserSubscription(userId, {
     status: "past_due",
     paymentFailureGraceEndsAt: graceEndsAt.toISOString(),
   });
@@ -53,7 +62,7 @@ export function schedulePaymentFailureGrace(userId: string): UserSubscriptionRec
   return record;
 }
 
-export function applyPaidPlanFromWebhook(input: {
+export async function applyPaidPlanFromWebhook(input: {
   userId: string;
   stripeCustomerId: string;
   stripeSubscriptionId: string;
@@ -63,24 +72,26 @@ export function applyPaidPlanFromWebhook(input: {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   stripePriceId?: string | null;
-}): UserSubscriptionRecord {
-  const record = applySubscriptionFromStripe(input);
+}): Promise<UserSubscriptionRecord> {
+  const record = await applySubscriptionFromStripe(input);
 
   // Only clear payment-failure grace when Stripe reports a healthy subscription.
   // past_due / unpaid / incomplete must keep grace set by invoice.payment_failed.
   if (input.status === "active" || input.status === "trialing") {
-    clearSubscriptionLifecycleFlags(input.userId);
+    await clearSubscriptionLifecycleFlags(input.userId);
     notifyUserPlanChanged(input.userId, getPlanDefinition(input.planId).name);
   }
 
-  syncUserPlanProfile(input.userId, input.planId);
+  await syncUserPlanProfile(input.userId, input.planId);
   return record;
 }
 
-export function applyDowngradeFromWebhook(userId: string): UserSubscriptionRecord {
-  const record = downgradeToFree(userId, { source: "stripe_webhook" });
-  suspendAutomationsForUser(userId);
-  syncUserPlanProfile(userId, "free");
+export async function applyDowngradeFromWebhook(
+  userId: string,
+): Promise<UserSubscriptionRecord> {
+  const record = await downgradeToFree(userId, { source: "stripe_webhook" });
+  await suspendAutomationsForUser(userId);
+  await syncUserPlanProfile(userId, "free");
   notifyUserPlanDowngraded(userId);
   return record;
 }
@@ -96,12 +107,14 @@ export function isAutomationSuspendedForUser(userId: string): boolean {
   return false;
 }
 
-export function enforcePaymentFailureGraceIfExpired(userId: string): void {
+export async function enforcePaymentFailureGraceIfExpired(
+  userId: string,
+): Promise<void> {
   const subscription = resolveUserSubscription(userId);
   if (!subscription.paymentFailureGraceEndsAt) return;
   if (subscription.automationsSuspended) return;
 
   if (new Date(subscription.paymentFailureGraceEndsAt).getTime() <= Date.now()) {
-    suspendAutomationsForUser(userId);
+    await suspendAutomationsForUser(userId);
   }
 }

@@ -11,6 +11,7 @@ export {
   getUserSubscriptionView,
   isPaidCapableStatus,
   resolveUserSubscription,
+  resolveUserSubscriptionForWrite,
   upsertUserSubscription,
 } from "./service";
 
@@ -20,4 +21,5 @@ export {
   resetSubscriptionStore,
   resolveUserSubscriptionDurable,
   findSubscriptionByStripeCustomerId,
+  wouldOverwriteDurablePaidWithFreeInvent,
 } from "./store";

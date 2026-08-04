@@ -186,7 +186,7 @@ export async function evaluateBillingAutomationTask(
 ): Promise<{ snapshot: BillingAccessSnapshot; denial: BillingDenial | null }> {
   const snapshot = await getBillingAccessSnapshot(userId);
   if (snapshot.isOwner) return { snapshot, denial: null };
-  const check = evaluateAutomationTaskAccess(userId, currentTaskCount);
+  const check = await evaluateAutomationTaskAccess(userId, currentTaskCount);
   if (check.allowed) return { snapshot, denial: null };
   return {
     snapshot,
