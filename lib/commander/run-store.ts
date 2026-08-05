@@ -96,12 +96,12 @@ export function getCommanderRun(
 }
 
 /** Hydrate durable Supabase snapshots into the hot memory bucket. */
-export async function ensureCommanderRunsHydrated(userId: string): Promise<void> {
-  if (getHydratedUsers().has(userId)) return;
+export async function ensureCommanderRunsHydrated(
+  userId: string,
+  options?: { force?: boolean },
+): Promise<void> {
+  if (!options?.force && getHydratedUsers().has(userId)) return;
   getHydratedUsers().add(userId);
-
-  const hasUserRuns = [...getBucket().values()].some((run) => run.userId === userId);
-  if (hasUserRuns) return;
 
   const snapshots = await loadCommanderRunsFromClerk(userId);
   const bucket = getBucket();
@@ -109,6 +109,24 @@ export async function ensureCommanderRunsHydrated(userId: string): Promise<void>
     if (bucket.has(snapshot.id)) continue;
     bucket.set(snapshot.id, snapshotToCommanderRun(snapshot));
   }
+}
+
+/**
+ * Resolve a Commander run after cold start — memory first, then durable hydrate.
+ * Never treat process-local Map as the only source of truth.
+ */
+export async function getCommanderRunDurable(
+  runId: string,
+  userId: string,
+): Promise<CommanderRunRecord | null> {
+  const local = getCommanderRun(runId, userId);
+  if (local) return local;
+  await ensureCommanderRunsHydrated(userId);
+  const afterHydrate = getCommanderRun(runId, userId);
+  if (afterHydrate) return afterHydrate;
+  // Hydrate flag may have been set earlier without this run — force reload.
+  await ensureCommanderRunsHydrated(userId, { force: true });
+  return getCommanderRun(runId, userId);
 }
 
 export function listCommanderRunsForUser(

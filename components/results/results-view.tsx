@@ -108,10 +108,26 @@ export function ResultsView({ notificationId }: ResultsViewProps) {
     return <ProjectDetailView projectId={result.targetId} />;
   }
 
+  const failureReason =
+    result.status === "error"
+      ? [
+          result.failedStage ? `失敗段階: ${result.failedStage}` : null,
+          result.diagnostic?.userMessage ?? result.projectError ?? null,
+          result.diagnostic?.errorCode
+            ? `code=${result.diagnostic.errorCode}`
+            : null,
+          result.diagnostic?.diagnosticId
+            ? `diagnosticId=${result.diagnostic.diagnosticId}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" / ")
+      : null;
+
   return (
     <div className="space-y-8">
       {backLink}
-      <ResultErrorNotice code={result.code} />
+      <ResultErrorNotice code={result.code} reason={failureReason} />
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { normalizeProjects } from "@/lib/compatibility";
 import type { ResultResolutionCode } from "@/lib/notifications/result-messages";
+import type { GenerationFailureDiagnostic } from "@/lib/orchestration/generation-failure";
 import type { Project } from "@/lib/projects/types";
 
 /**
@@ -10,10 +11,39 @@ import type { Project } from "@/lib/projects/types";
  * typed value (never throws) so the results page renders an explicit state.
  */
 export type NotificationResult =
-  | { status: "deliverable"; targetType: string; targetId: string; project: Project }
-  | { status: "redirect"; url: string }
-  | { status: "unavailable"; targetType: string; targetId: string }
-  | { status: "error"; code: ResultResolutionCode };
+  | {
+      status: "deliverable";
+      requestStatus?: "ok";
+      generationStatus?: "ready";
+      targetType: string;
+      targetId: string;
+      project: Project;
+    }
+  | {
+      status: "redirect";
+      requestStatus?: "ok";
+      generationStatus?: "ready";
+      url: string;
+    }
+  | {
+      status: "unavailable";
+      requestStatus?: "ok";
+      generationStatus?: "unknown";
+      targetType: string;
+      targetId: string;
+    }
+  | {
+      status: "error";
+      requestStatus?: "ok" | "error";
+      generationStatus?: "failed" | "pending" | "unknown";
+      code: ResultResolutionCode;
+      diagnostic?: GenerationFailureDiagnostic | null;
+      projectError?: string | null;
+      failedStage?: string | null;
+      workJobId?: string | null;
+      commanderRunId?: string | null;
+      wordFileFound?: boolean;
+    };
 
 export async function fetchNotificationResult(
   notificationId: string,

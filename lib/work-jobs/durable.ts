@@ -102,3 +102,59 @@ export async function loadWorkJobFromDurable(
     return null;
   }
 }
+
+/** Load all durable work jobs for a user (newest first). */
+export async function loadWorkJobsForUserFromDurable(
+  userId: string,
+): Promise<WorkJobRecord[]> {
+  try {
+    const payload = await loadDurableDomain<JobsPayload>(userId, DOMAIN_KEY);
+    return (payload?.jobs ?? []).filter((j) => j.userId === userId);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Resolve WorkJob by linked ids — never treat commanderRunId as jobId.
+ * Looks at: job.id, metadata.jobId, metadata.commanderRunId, metadata.projectId,
+ * result.commanderRunId.
+ */
+export async function findWorkJobByLinkedIds(input: {
+  userId: string;
+  workJobId?: string | null;
+  commanderRunId?: string | null;
+  projectId?: string | null;
+  requestId?: string | null;
+}): Promise<WorkJobRecord | null> {
+  const jobs = await loadWorkJobsForUserFromDurable(input.userId);
+  const byId = input.workJobId
+    ? jobs.find((j) => j.id === input.workJobId)
+    : null;
+  if (byId) return byId;
+
+  const commanderRunId = input.commanderRunId?.trim() || null;
+  const projectId = input.projectId?.trim() || null;
+  const requestId = input.requestId?.trim() || null;
+
+  for (const job of jobs) {
+    const meta = job.metadata ?? {};
+    const metaCommander =
+      typeof meta.commanderRunId === "string" ? meta.commanderRunId : null;
+    const metaProject =
+      typeof meta.projectId === "string" ? meta.projectId : null;
+    const resultCommander = job.result?.commanderRunId ?? null;
+    if (commanderRunId && (metaCommander === commanderRunId || resultCommander === commanderRunId)) {
+      return job;
+    }
+    if (projectId && metaProject === projectId) {
+      return job;
+    }
+    // requestId on notifications is often commander run id — do NOT match job.id
+    // unless explicitly equal (legacy rows that reused the same uuid).
+    if (requestId && job.id === requestId) {
+      return job;
+    }
+  }
+  return null;
+}
