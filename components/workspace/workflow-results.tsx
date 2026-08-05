@@ -6,6 +6,8 @@ import type { OrchestrationResult } from "@/lib/orchestration/types";
 import type { WorkflowPhaseState } from "@/lib/workspace/types";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
+import { OpsProgressStatus } from "@/components/ui/ops-progress-status";
+import type { OpsProgressStage } from "@/lib/reliability/ops-progress";
 
 type WorkflowResultsProps = {
   result: OrchestrationResult | null;
@@ -13,6 +15,21 @@ type WorkflowResultsProps = {
   isLoading: boolean;
   error: string | null;
 };
+
+function opsStageForPhase(phaseId: string | undefined): OpsProgressStage {
+  switch (phaseId) {
+    case "understand":
+      return "ai_thinking";
+    case "write":
+      return "deliverable_generating";
+    case "polish":
+      return "saving";
+    case "done":
+      return "completed";
+    default:
+      return "ai_thinking";
+  }
+}
 
 /**
  * Waiting UI for first-time users — human progress only.
@@ -44,8 +61,12 @@ export function WorkflowResults({
       <Card padding="lg" className="space-y-8 text-center shadow-[var(--shadow-md)]">
         <div className="space-y-2">
           <p className="text-sm font-medium text-accent">MINERVOT</p>
+          <OpsProgressStatus
+            stage={opsStageForPhase(current?.id)}
+            className="border-0 bg-transparent px-0 py-0 text-left sm:text-center"
+          />
           <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            {current?.label ?? ui.secretaryProgress.write}
+            {current?.label ?? ui.secretaryProgress.deliverableGenerating}
           </h2>
           <p className="text-sm text-[var(--foreground-muted)] sm:text-base">
             {current?.subtitle ?? ui.secretaryProgress.writeHint}

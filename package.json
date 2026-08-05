@@ -17,7 +17,8 @@
     "ci:p0-7-document-pipeline-ban": "node scripts/ci/p0-7-document-pipeline-ban.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts"
+    "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts",
+    "test:p06-e2e": "P06_E2E_RUNS=20 vitest run lib/reliability/p06-e2e-ops-verification.test.ts"
   },
   "dependencies": {
     "@clerk/localizations": "^4.13.5",

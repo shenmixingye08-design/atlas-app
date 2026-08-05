@@ -5,25 +5,26 @@ import { ui } from "@/lib/i18n";
  * User-facing wait steps only — no CEO / Planner / QA / pipeline jargon.
  * Kept short so first-time users always know what is happening.
  */
+/** P06: always show concrete secretary stages while work is in flight. */
 const SECRETARY_PHASES = [
   {
     id: "understand",
-    label: ui.secretaryProgress.understand,
+    label: ui.secretaryProgress.aiThinking,
     subtitle: ui.secretaryProgress.understandHint,
   },
   {
     id: "write",
-    label: ui.secretaryProgress.write,
+    label: ui.secretaryProgress.deliverableGenerating,
     subtitle: ui.secretaryProgress.writeHint,
   },
   {
     id: "polish",
-    label: ui.secretaryProgress.polish,
+    label: ui.secretaryProgress.saving,
     subtitle: ui.secretaryProgress.polishHint,
   },
   {
     id: "done",
-    label: ui.secretaryProgress.done,
+    label: ui.secretaryProgress.completed,
     subtitle: ui.secretaryProgress.doneHint,
   },
 ] as const;
