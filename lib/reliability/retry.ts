@@ -1,5 +1,7 @@
 import { classifyRetryError } from "@/lib/jobs/retry-classifier";
 
+import { isRetryableClassifiedFailure } from "./error-classification";
+
 /** Immediate-call retry delays (not job-scheduler delays). */
 export const IMMEDIATE_RETRY_BACKOFF_MS = [500, 1_500, 4_000] as const;
 export const MAX_IMMEDIATE_RETRIES = 3;
@@ -19,11 +21,14 @@ function sleep(ms: number): Promise<void> {
 }
 
 function defaultShouldRetry(error: unknown): boolean {
+  // P06: API / Storage / DB / Timeout all auto-retry when classified retryable.
+  if (isRetryableClassifiedFailure(error)) return true;
   if (classifyRetryError(error) === "retryable") return true;
   const message =
     error instanceof Error ? error.message : String(error ?? "");
-  // Status codes commonly thrown by our API helpers.
-  return /(?:^|\D)(429|500|502|503|504)(?:\D|$)/.test(message);
+  return /(?:^|\D)(429|500|502|503|504)(?:\D|$)|storage|supabase|database|db_|timeout|ETIMEDOUT/i.test(
+    message,
+  );
 }
 
 /**

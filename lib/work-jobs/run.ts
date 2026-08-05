@@ -1,7 +1,12 @@
 import "server-only";
 
 import { runCommanderRequest } from "@/lib/commander/service";
-import { recordReliabilityEvent, withRetry } from "@/lib/reliability";
+import {
+  recordDeveloperError,
+  recordReliabilityEvent,
+  toHumanReliabilityMessage,
+  withRetry,
+} from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
@@ -498,11 +503,29 @@ export async function executeWorkJob(
       completedAt: new Date().toISOString(),
     });
   } catch (error) {
+    const raw =
+      error instanceof Error ? error.message : String(error ?? "unknown");
+    const isTimeout = /timeout|ETIMEDOUT|aborted/i.test(raw);
     const message =
       error instanceof Error && error.message === "work_job_durable_persist_failed"
-        ? "ジョブ状態をSupabaseへ保存できませんでした"
+        ? toHumanReliabilityMessage(error)
         : toHumanReliabilityMessage(error);
-    const isTimeout = /timeout|ETIMEDOUT|aborted/i.test(message);
+
+    recordDeveloperError({
+      userId,
+      jobId,
+      step: isTimeout ? "timeout" : "work_job",
+      attempt: existing.attemptCount + 1,
+      maxAttempts: existing.maxAttempts,
+      error,
+      durationMs: Date.now() - startedAt,
+      cause: isTimeout ? "処理タイムアウト" : raw,
+      reproduction: `work job ${jobId} を同一 assignment で再実行`,
+      fixContent: isTimeout
+        ? "修正: withRetry + stale reclaim。途中成果物は保持"
+        : "修正: API/Storage/DB 失敗は自動再試行。ユーザーには再試行中のみ表示",
+    });
+
     recordReliabilityEvent("work_job", isTimeout ? "timeout" : "failure", 1, {
       durationMs: Date.now() - startedAt,
       errorCode: isTimeout ? "timeout" : "work_job_exception",
@@ -520,6 +543,7 @@ export async function executeWorkJob(
     if (isTimeout) recordReliabilityEvent("timeout", "timeout");
 
     // Best-effort failed persist — if this also fails, rethrow.
+    // P06: do not delete any partial deliverables already saved for this job.
     try {
       return await saveWorkJob({
         ...existing,
@@ -532,6 +556,15 @@ export async function executeWorkJob(
         completedAt: new Date().toISOString(),
       });
     } catch (persistError) {
+      recordDeveloperError({
+        userId,
+        jobId,
+        step: "work_job_persist_failed",
+        error: persistError,
+        cause: "failed status の durable persist にも失敗",
+        reproduction: `jobId=${jobId} の failed 保存を再試行`,
+        fixContent: "修正: saveWorkJob fail-closed。元の失敗原因も developer-log に残す",
+      });
       console.error("[work-jobs] failed to persist failed status", persistError);
       throw error;
     }

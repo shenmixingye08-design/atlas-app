@@ -166,17 +166,24 @@ export const ui = {
   /* AI秘書の進行状況フレーズ（読み込み表示に使用・AI不使用の固定文言） */
   secretaryProgress: {
     understanding: "内容を整理しています",
-    thinking: "進め方を考えています",
+    thinking: "AIが考えています...",
     executing: "作業を進めています",
     preparing: "準備しています",
     understand: "内容を整理しています",
     understandHint: "ご依頼の要点を確認しています",
-    write: "資料を書いています",
+    write: "成果物生成中...",
     writeHint: "本文を作成しています",
-    polish: "仕上げています",
+    polish: "保存しています...",
     polishHint: "読みやすさと抜け漏れを整えています",
-    done: "完成しました",
+    done: "完了しました",
     doneHint: "成果物をご確認ください",
+    /** P06 ops stages */
+    imageAnalyzing: "画像解析中...",
+    aiThinking: "AIが考えています...",
+    deliverableGenerating: "成果物生成中...",
+    saving: "保存しています...",
+    completed: "完了しました",
+    softRetry: "問題が発生しました。\n自動で再試行しています。",
   },
 
   /* ホーム「AI秘書の現在状況」パネル（実データのみ・空状態は上品に） */

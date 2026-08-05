@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import type { CommanderVisionGate } from "@/lib/commander/types";
+import { USER_SOFT_RETRY_MESSAGE } from "@/lib/reliability/ops-progress";
 import {
   isVisionPipelineStage,
   labelForVisionStage,
@@ -32,14 +33,13 @@ export function VisionFailurePanel({
     gate.failedStageLabel ??
     (failedStage ? labelForVisionStage(failedStage) : null);
 
+  // P06: ban error screens — soft auto-retry for transient failures.
   const title =
     gate.status === "needs_input"
       ? gate.message
       : gate.status === "config_missing"
-        ? "画像解析の設定が不足しています"
-        : stageLabel
-          ? `画像処理に失敗しました（${stageLabel}）`
-          : "画像の内容を解析できませんでした";
+        ? "確認が必要です"
+        : "自動で再試行しています";
 
   const isAiFailure =
     failedStage === "vision_response" ||
@@ -55,11 +55,9 @@ export function VisionFailurePanel({
       ? "画像は読み取れましたが、依頼の必須項目を確認できませんでした。成果物はまだ作成していません。"
       : gate.userCode === "missing_attachment_ids"
         ? "画像の添付IDが送信されていません。ファイル名だけでは解析できません。画像を選び直してください。"
-        : gate.message ||
-          (failedStage ? messageForVisionStage(failedStage) : null) ||
-          (gate.analysisSuccess
-            ? null
-            : "成果物の生成は停止しました。内容を確認して再試行してください。");
+        : USER_SOFT_RETRY_MESSAGE;
+  void messageForVisionStage;
+  void stageLabel;
 
   const openaiBody =
     gate.openai?.rawErrorBody?.trim() ||
@@ -89,15 +87,16 @@ export function VisionFailurePanel({
     .join(" / ");
 
   return (
-    <div className="space-y-3 rounded-xl border border-amber-300/70 bg-amber-50/50 p-4">
+    <div
+      role="status"
+      aria-live="polite"
+      className="space-y-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-4"
+    >
       <div>
         <p className="text-sm font-medium text-foreground">{title}</p>
         {detail && (
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">{detail}</p>
-        )}
-        {stageLabel && gate.status !== "needs_input" && (
-          <p className="mt-2 text-xs text-[var(--text-secondary)]">
-            失敗した工程: {stageLabel}
+          <p className="mt-1 whitespace-pre-line text-sm text-[var(--text-secondary)]">
+            {detail}
           </p>
         )}
 

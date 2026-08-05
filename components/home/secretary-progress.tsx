@@ -5,10 +5,13 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 
+/** P06: fixed loading stages (no AI). */
 const PHASES = [
-  ui.secretaryProgress.understanding,
-  ui.secretaryProgress.thinking,
-  ui.secretaryProgress.executing,
+  ui.secretaryProgress.imageAnalyzing,
+  ui.secretaryProgress.aiThinking,
+  ui.secretaryProgress.deliverableGenerating,
+  ui.secretaryProgress.saving,
+  ui.secretaryProgress.completed,
 ] as const;
 
 const PHASE_INTERVAL_MS = 2200;
