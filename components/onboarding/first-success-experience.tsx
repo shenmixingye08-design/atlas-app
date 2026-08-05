@@ -50,7 +50,13 @@ function ProgressBlocks({ filled, total }: { filled: number; total: number }) {
 export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExperienceProps) {
   const [step, setStep] = useState<ExperienceStep>("select");
   const [visible, setVisible] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<FirstExperienceTaskId | null>(null);
+  // Pre-select recommended job so first completion is one tap (no effect setState).
+  const [selectedTask, setSelectedTask] = useState<FirstExperienceTaskId | null>(
+    () =>
+      getRecommendedFirstExperienceTaskId(
+        getOnboardingState().preferredTasks,
+      ),
+  );
   const [customText, setCustomText] = useState("");
   const [progressFilled, setProgressFilled] = useState(0);
   const [employeeStep, setEmployeeStep] = useState<FirstExperienceEmployeeStep | null>(null);
@@ -61,11 +67,6 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
   const preferred = getOnboardingState().preferredTasks;
   const recommendedId = getRecommendedFirstExperienceTaskId(preferred);
   const clarityTasks = useMemo(() => getFirstRunClarityTasks(), []);
-
-  useEffect(() => {
-    // Pre-select recommended job so first completion is one tap.
-    setSelectedTask((current) => current ?? recommendedId);
-  }, [recommendedId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setVisible(true), 50);
