@@ -1,15 +1,21 @@
+import {
+  authorizeHealthProbe,
+  healthUnauthorizedResponse,
+} from "@/lib/health/authorize-health-probe";
+import { toPublicHealthResponse } from "@/lib/health/public-health-response";
 import { getMemoryApplyMetrics, listMemoryApplyEvents } from "@/lib/memory-apply/metrics";
 import { auditMemoryApplyCoverage } from "@/lib/memory-apply/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
+  const gate = await authorizeHealthProbe(request);
+  if (!gate.ok) return healthUnauthorizedResponse(gate);
+
   const metrics = getMemoryApplyMetrics();
   const audit = auditMemoryApplyCoverage();
-  const recent = listMemoryApplyEvents().slice(0, 30);
 
-  // Viewing health counts as dashboard channel activity (metrics surface).
   const { recordMemoryApplyEvent } = await import("@/lib/memory-apply/metrics");
   recordMemoryApplyEvent({
     userId: "system",
@@ -20,11 +26,13 @@ export async function GET(): Promise<Response> {
     improvementRate: metrics.averageImprovementRate,
   });
 
-  return Response.json({
-    ok: audit.pass,
-    metrics: getMemoryApplyMetrics(),
-    audit,
-    recent,
-    checkedAt: new Date().toISOString(),
+  // Do not return metrics/audit/recent details externally.
+  void listMemoryApplyEvents;
+  void audit;
+
+  const body = toPublicHealthResponse({ ok: audit.pass }, { cached: false });
+  return Response.json(body, {
+    status: audit.pass ? 200 : 503,
+    headers: { "Cache-Control": "no-store, max-age=0" },
   });
 }

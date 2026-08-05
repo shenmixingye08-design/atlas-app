@@ -1,4 +1,8 @@
-import { getHealthVersionPayload } from "@/lib/health/version-info";
+import {
+  authorizeHealthProbe,
+  healthUnauthorizedResponse,
+} from "@/lib/health/authorize-health-probe";
+import { toPublicHealthResponse } from "@/lib/health/public-health-response";
 import { runWordPipelineSmoke } from "@/lib/deliverables/word-pipeline-smoke";
 
 export const runtime = "nodejs";
@@ -6,30 +10,25 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Public Word pipeline smoke (no OpenAI).
- * Verifies: docx pack → Storage/DB persist → PK header / download URL.
- *
- * Rate-limited in-process so it cannot be used as a free docx farm.
+ * Word pipeline smoke (no OpenAI).
+ * Auth required. Public-safe status only.
  */
 let lastRunAtMs = 0;
-let lastResult: Awaited<ReturnType<typeof runWordPipelineSmoke>> | null = null;
+let lastOk = false;
 const MIN_INTERVAL_MS = 60_000;
 
 export async function GET(request: Request): Promise<Response> {
+  const gate = await authorizeHealthProbe(request);
+  if (!gate.ok) return healthUnauthorizedResponse(gate);
+
   const now = Date.now();
   const force = new URL(request.url).searchParams.get("force") === "1";
-  if (!force && lastResult && now - lastRunAtMs < MIN_INTERVAL_MS) {
-    return Response.json(
-      {
-        ...lastResult,
-        cached: true,
-        version: getHealthVersionPayload(),
-      },
-      {
-        status: lastResult.ok ? 200 : 503,
-        headers: { "Cache-Control": "no-store, max-age=0" },
-      },
-    );
+  if (!force && lastRunAtMs > 0 && now - lastRunAtMs < MIN_INTERVAL_MS) {
+    const body = toPublicHealthResponse({ ok: lastOk }, { cached: true });
+    return Response.json(body, {
+      status: lastOk ? 200 : 503,
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
   }
 
   const origin = (() => {
@@ -42,13 +41,14 @@ export async function GET(request: Request): Promise<Response> {
 
   const result = await runWordPipelineSmoke({ requestOrigin: origin });
   lastRunAtMs = Date.now();
-  lastResult = result;
+  lastOk = result.ok;
+  if (!result.ok) {
+    console.error("[health/word-pipeline] smoke failed", { ok: false });
+  }
 
-  return Response.json(
-    { ...result, cached: false },
-    {
-      status: result.ok ? 200 : 503,
-      headers: { "Cache-Control": "no-store, max-age=0" },
-    },
-  );
+  const body = toPublicHealthResponse({ ok: result.ok }, { cached: false });
+  return Response.json(body, {
+    status: result.ok ? 200 : 503,
+    headers: { "Cache-Control": "no-store, max-age=0" },
+  });
 }

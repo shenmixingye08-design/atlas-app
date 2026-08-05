@@ -148,7 +148,7 @@ export function LandingHeroSection() {
           </div>
         </div>
 
-        <div className="animate-fade-up delay-200 relative mx-auto w-full max-w-[720px] lg:mx-0">
+        <div className="animate-fade-up delay-200 relative mx-auto w-full max-w-[720px] overflow-hidden lg:mx-0">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute -inset-10 -z-20 rounded-[4rem] bg-[radial-gradient(circle,rgba(116,23,42,0.15)_0%,rgba(181,139,79,0.06)_40%,transparent_72%)] blur-3xl"

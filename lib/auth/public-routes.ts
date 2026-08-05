@@ -53,6 +53,8 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/maintenance(.*)",
   "/api/status(.*)",
   "/api/health/version(.*)",
+  // Health probes remain middleware-public so CRON Bearer can reach the handler,
+  // but each handler MUST call authorizeHealthProbe (P07 lockdown).
   "/api/health/word-pipeline(.*)",
   "/api/health/word-request-trace(.*)",
   "/api/health/reliability-events(.*)",

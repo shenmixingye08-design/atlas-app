@@ -253,7 +253,7 @@ function PricingSection() {
           </p>
         </LandingReveal>
 
-              <ul className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+              <ul className="mt-12 grid gap-5 overflow-x-clip md:grid-cols-2 xl:grid-cols-4">
           {plans.map((plan, index) => {
             const isPopular = plan.planId === "standard";
 
@@ -263,7 +263,7 @@ function PricingSection() {
                   className={cn(
                     "relative flex h-full flex-col overflow-hidden rounded-[24px] border p-6 transition-all duration-300 hover:-translate-y-1 sm:p-7",
                     isPopular
-                      ? "scale-[1.03] border-2 border-[#B58B4F] bg-[#FFFDFB] shadow-[0_28px_80px_rgba(116,23,42,0.12)]"
+                      ? "md:scale-[1.03] border-2 border-[#B58B4F] bg-[#FFFDFB] shadow-[0_28px_80px_rgba(116,23,42,0.12)]"
                       : "border-[#74172A]/10 bg-white shadow-[0_16px_50px_rgba(70,20,31,0.05)] hover:border-[#B58B4F]/40 hover:shadow-[0_22px_65px_rgba(70,20,31,0.10)]",
                   )}
                 >
@@ -410,7 +410,7 @@ function LandingFooter() {
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#FFFDFB] text-[#281A1E] selection:bg-[#74172A] selection:text-white">
+    <div className="min-h-screen overflow-x-clip bg-[#FFFDFB] text-[#281A1E] selection:bg-[#74172A] selection:text-white">
       <LandingHeader />
 
       <main>
