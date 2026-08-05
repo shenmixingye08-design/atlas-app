@@ -16,6 +16,7 @@ import {
   schedulePersistExternalAuth,
 } from "../external-services/durable";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
+import { recordOAuthLifecycleEvent } from "@/lib/integrations/production/oauth-lifecycle";
 
 import { X_OAUTH_SCOPES } from "./config";
 import { parseXGrantedScopes } from "./scopes";
@@ -99,6 +100,12 @@ export async function completeXAccountOAuth(
 
   saveExternalServiceConnection(userId, connection);
   await persistXAuthDurable(userId, connection);
+  recordOAuthLifecycleEvent({
+    integration: "x",
+    userId,
+    phase: "callback",
+    message: "X OAuth完了",
+  });
   return connection;
 }
 
@@ -134,6 +141,12 @@ export async function disconnectXAccount(
 
   saveExternalServiceConnection(userId, disconnected);
   schedulePersistExternalAuth(userId);
+  recordOAuthLifecycleEvent({
+    integration: "x",
+    userId,
+    phase: "disconnect",
+    message: "X接続を解除しました",
+  });
   return disconnected;
 }
 
@@ -160,6 +173,12 @@ export function markXConnectionNeedsReconnect(
     void persistXAuthToSupabase(credentials, next);
   }
   schedulePersistExternalAuth(userId);
+  recordOAuthLifecycleEvent({
+    integration: "x",
+    userId,
+    phase: "expired",
+    message,
+  });
   return next;
 }
 

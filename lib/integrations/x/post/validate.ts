@@ -1,3 +1,5 @@
+import { normalizeTweetText } from "@/lib/integrations/production/x/text-normalize";
+
 import type { XPostValidationSummary } from "./types";
 
 export const X_TWEET_MAX_CHARS = 280;
@@ -54,7 +56,7 @@ function isValidHashtag(hashtag: string): boolean {
 
 /** Validate tweet text before posting to X. */
 export function validateTweetText(text: string): XPostValidationSummary {
-  const trimmed = text.trim();
+  const trimmed = normalizeTweetText(text);
   const charCount = countTweetChars(trimmed);
   const urls = extractUrls(trimmed);
   const mentions = extractMentions(trimmed);

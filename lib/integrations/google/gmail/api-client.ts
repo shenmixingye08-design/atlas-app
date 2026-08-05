@@ -425,46 +425,148 @@ export async function fetchGmailAttachment(input: {
   return decodeBase64UrlToBuffer(payload.data);
 }
 
-function buildRfc822Reply(input: {
+export type GmailAttachmentInput = {
+  filename: string;
+  mimeType: string;
+  content: Buffer;
+};
+
+export type GmailComposeInput = {
   to: string;
   subject: string;
   body: string;
+  htmlBody?: string | null;
+  cc?: string[];
+  bcc?: string[];
   inReplyTo?: string | null;
   references?: string | null;
-}): string {
-  const encodedBody = Buffer.from(input.body, "utf8").toString("base64");
-  const lines = [
-    `To: ${input.to}`,
-    `Subject: =?UTF-8?B?${Buffer.from(input.subject, "utf8").toString("base64")}?=`,
-    "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: base64",
+  threadId?: string | null;
+  attachments?: GmailAttachmentInput[];
+};
+
+export type GmailComposeResult = {
+  id: string;
+  threadId: string | null;
+};
+
+function encodeRfc2047(value: string): string {
+  return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
+}
+
+function buildMimeBody(input: GmailComposeInput): string {
+  const hasHtml = Boolean(input.htmlBody?.trim());
+  const hasAttachments = Boolean(input.attachments?.length);
+
+  if (!hasHtml && !hasAttachments) {
+    const encodedBody = Buffer.from(input.body, "utf8").toString("base64");
+    return [
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      encodedBody,
+    ].join("\r\n");
+  }
+
+  if (hasHtml && !hasAttachments) {
+    const altBoundary = `alt_${Date.now().toString(36)}`;
+    const plainB64 = Buffer.from(input.body, "utf8").toString("base64");
+    const htmlB64 = Buffer.from(input.htmlBody ?? "", "utf8").toString("base64");
+    return [
+      `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+      "",
+      `--${altBoundary}`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      plainB64,
+      `--${altBoundary}`,
+      'Content-Type: text/html; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      htmlB64,
+      `--${altBoundary}--`,
+    ].join("\r\n");
+  }
+
+  const mixedBoundary = `mix_${Date.now().toString(36)}`;
+  const parts: string[] = [
+    `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`,
+    "",
   ];
 
+  if (hasHtml) {
+    const altBoundary = `alt_${Date.now().toString(36)}`;
+    const plainB64 = Buffer.from(input.body, "utf8").toString("base64");
+    const htmlB64 = Buffer.from(input.htmlBody ?? "", "utf8").toString("base64");
+    parts.push(
+      `--${mixedBoundary}`,
+      `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+      "",
+      `--${altBoundary}`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      plainB64,
+      `--${altBoundary}`,
+      'Content-Type: text/html; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      htmlB64,
+      `--${altBoundary}--`,
+      "",
+    );
+  } else {
+    const plainB64 = Buffer.from(input.body, "utf8").toString("base64");
+    parts.push(
+      `--${mixedBoundary}`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      plainB64,
+      "",
+    );
+  }
+
+  for (const attachment of input.attachments ?? []) {
+    const safeName = attachment.filename.replace(/[\r\n"]/g, "_");
+    parts.push(
+      `--${mixedBoundary}`,
+      `Content-Type: ${attachment.mimeType}; name="${safeName}"`,
+      "Content-Transfer-Encoding: base64",
+      `Content-Disposition: attachment; filename="${safeName}"`,
+      "",
+      attachment.content.toString("base64"),
+      "",
+    );
+  }
+
+  parts.push(`--${mixedBoundary}--`);
+  return parts.join("\r\n");
+}
+
+function buildRfc822Message(input: GmailComposeInput): string {
+  const lines = [
+    `To: ${input.to}`,
+    `Subject: ${encodeRfc2047(input.subject)}`,
+    "MIME-Version: 1.0",
+  ];
+
+  if (input.cc?.length) lines.push(`Cc: ${input.cc.join(", ")}`);
+  if (input.bcc?.length) lines.push(`Bcc: ${input.bcc.join(", ")}`);
   if (input.inReplyTo) {
     lines.push(`In-Reply-To: ${input.inReplyTo}`);
     lines.push(`References: ${input.references ?? input.inReplyTo}`);
   }
 
-  lines.push("", encodedBody);
+  lines.push(buildMimeBody(input));
   return lines.join("\r\n");
 }
 
-export async function sendGmailReply(input: {
+export async function sendGmailMessage(input: {
   accessToken: string;
-  message: GmailMessage;
-  to: string;
-  subject: string;
-  body: string;
-}): Promise<{ id: string; threadId: string | null }> {
-  const raw = buildRfc822Reply({
-    to: input.to,
-    subject: input.subject,
-    body: input.body,
-    inReplyTo: input.message.messageIdHeader,
-    references: input.message.messageIdHeader,
-  });
-
+  compose: GmailComposeInput;
+}): Promise<GmailComposeResult> {
+  const raw = buildRfc822Message(input.compose);
   const payload = await gmailFetch<{ id?: string; threadId?: string }>(
     input.accessToken,
     "/users/me/messages/send",
@@ -472,7 +574,7 @@ export async function sendGmailReply(input: {
       method: "POST",
       body: JSON.stringify({
         raw: encodeBase64Url(raw),
-        threadId: input.message.threadId ?? undefined,
+        threadId: input.compose.threadId ?? undefined,
       }),
     },
   );
@@ -484,22 +586,12 @@ export async function sendGmailReply(input: {
   return { id: payload.id, threadId: payload.threadId ?? null };
 }
 
-export async function createGmailDraft(input: {
+export async function createGmailDraftMessage(input: {
   accessToken: string;
-  message: GmailMessage;
-  to: string;
-  subject: string;
-  body: string;
-}): Promise<{ id: string }> {
-  const raw = buildRfc822Reply({
-    to: input.to,
-    subject: input.subject,
-    body: input.body,
-    inReplyTo: input.message.messageIdHeader,
-    references: input.message.messageIdHeader,
-  });
-
-  const payload = await gmailFetch<{ id?: string }>(
+  compose: GmailComposeInput;
+}): Promise<GmailComposeResult> {
+  const raw = buildRfc822Message(input.compose);
+  const payload = await gmailFetch<{ id?: string; message?: { id?: string; threadId?: string } }>(
     input.accessToken,
     "/users/me/drafts",
     {
@@ -507,17 +599,78 @@ export async function createGmailDraft(input: {
       body: JSON.stringify({
         message: {
           raw: encodeBase64Url(raw),
-          threadId: input.message.threadId ?? undefined,
+          threadId: input.compose.threadId ?? undefined,
         },
       }),
     },
   );
 
-  if (!payload.id) {
+  const id = payload.id ?? payload.message?.id;
+  if (!id) {
     throw new Error("Gmail did not return a draft id");
   }
 
-  return { id: payload.id };
+  return {
+    id,
+    threadId: payload.message?.threadId ?? input.compose.threadId ?? null,
+  };
+}
+
+export async function sendGmailReply(input: {
+  accessToken: string;
+  message: GmailMessage;
+  to: string;
+  subject: string;
+  body: string;
+  htmlBody?: string | null;
+  cc?: string[];
+  bcc?: string[];
+  attachments?: GmailAttachmentInput[];
+}): Promise<{ id: string; threadId: string | null }> {
+  return sendGmailMessage({
+    accessToken: input.accessToken,
+    compose: {
+      to: input.to,
+      subject: input.subject,
+      body: input.body,
+      htmlBody: input.htmlBody,
+      cc: input.cc,
+      bcc: input.bcc,
+      attachments: input.attachments,
+      inReplyTo: input.message.messageIdHeader,
+      references: input.message.messageIdHeader,
+      threadId: input.message.threadId,
+    },
+  });
+}
+
+export async function createGmailDraft(input: {
+  accessToken: string;
+  message: GmailMessage;
+  to: string;
+  subject: string;
+  body: string;
+  htmlBody?: string | null;
+  cc?: string[];
+  bcc?: string[];
+  attachments?: GmailAttachmentInput[];
+}): Promise<{ id: string }> {
+  const created = await createGmailDraftMessage({
+    accessToken: input.accessToken,
+    compose: {
+      to: input.to,
+      subject: input.subject,
+      body: input.body,
+      htmlBody: input.htmlBody,
+      cc: input.cc,
+      bcc: input.bcc,
+      attachments: input.attachments,
+      inReplyTo: input.message.messageIdHeader,
+      references: input.message.messageIdHeader,
+      threadId: input.message.threadId,
+    },
+  });
+  return { id: created.id };
 }
 
 /** Best-effort text extraction from PDF bytes (no extra dependency). */

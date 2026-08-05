@@ -81,7 +81,7 @@ function extractMeetLink(item: GoogleCalendarEventItem): string | null {
 }
 
 function toGoogleEventBody(input: CalendarEventInput): Record<string, unknown> {
-  const timeZone = CALENDAR_TIMEZONE;
+  const timeZone = input.timeZone?.trim() || CALENDAR_TIMEZONE;
   const body: Record<string, unknown> = {
     summary: input.title.trim(),
     description: input.description?.trim() || undefined,
@@ -111,6 +111,16 @@ function toGoogleEventBody(input: CalendarEventInput): Record<string, unknown> {
         conferenceSolutionKey: { type: "hangoutsMeet" },
       },
     };
+  }
+
+  if (input.attendees?.length) {
+    body.attendees = input.attendees
+      .map((attendee) => ({
+        email: attendee.email.trim(),
+        displayName: attendee.displayName?.trim() || undefined,
+        optional: attendee.optional === true ? true : undefined,
+      }))
+      .filter((attendee) => attendee.email.length > 0);
   }
 
   if (

@@ -19,6 +19,7 @@ type DropboxMetadata = {
   client_modified?: string;
   server_modified?: string;
   size?: number;
+  rev?: string;
 };
 
 type DropboxListFolderResponse = {
@@ -168,11 +169,59 @@ export async function searchDropboxFiles(input: {
     .filter((item): item is DropboxFileItem => item !== null && !item.isFolder);
 }
 
+export async function createDropboxFolder(input: {
+  accessToken: string;
+  path: string;
+}): Promise<DropboxFileItem | null> {
+  const path = input.path.startsWith("/") ? input.path : `/${input.path}`;
+  try {
+    const result = await dropboxRpc<{ metadata?: DropboxMetadata }>(
+      input.accessToken,
+      "/files/create_folder_v2",
+      { path, autorename: false },
+    );
+    return normalizeDropboxEntry({
+      ...(result.metadata ?? {}),
+      ".tag": "folder",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Folder already exists — treat as success for ensure semantics.
+    if (/conflict|already.?exists/i.test(message)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/** Create each parent folder for a file path (e.g. /a/b/c.txt → /a, /a/b). */
+export async function ensureDropboxFolderPath(input: {
+  accessToken: string;
+  filePath: string;
+}): Promise<void> {
+  const normalized = input.filePath.startsWith("/")
+    ? input.filePath
+    : `/${input.filePath}`;
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length <= 1) return;
+
+  let current = "";
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    current += `/${parts[i]}`;
+    await createDropboxFolder({
+      accessToken: input.accessToken,
+      path: current,
+    });
+  }
+}
+
 export async function uploadDropboxFile(input: {
   accessToken: string;
   path: string;
   buffer: Buffer;
   mode?: "add" | "overwrite";
+  autorename?: boolean;
+  mute?: boolean;
 }): Promise<DropboxFileItem> {
   const response = await fetchWithTimeout(
     `${DROPBOX_CONTENT_BASE}/files/upload`,
@@ -184,8 +233,10 @@ export async function uploadDropboxFile(input: {
         "Dropbox-API-Arg": JSON.stringify({
           path: input.path,
           mode: input.mode ?? "add",
-          autorename: true,
-          mute: false,
+          // Default autorename=true preserves prior behavior; production
+          // no-overwrite path passes autorename explicitly with mode=add.
+          autorename: input.autorename ?? true,
+          mute: input.mute ?? false,
         }),
       },
       body: new Uint8Array(input.buffer),
@@ -203,7 +254,11 @@ export async function uploadDropboxFile(input: {
 
   const normalized = normalizeDropboxEntry({ ...payload, ".tag": "file" });
   if (!normalized) throw new Error("Failed to normalize uploaded Dropbox file");
-  return normalized;
+  return {
+    ...normalized,
+    // Surface revision via id fallback when Dropbox returns rev.
+    id: payload.rev ? `${normalized.id}:${payload.rev}` : normalized.id,
+  };
 }
 
 export async function deleteDropboxPath(input: {
@@ -221,7 +276,7 @@ export async function deleteDropboxPath(input: {
 export async function downloadDropboxFile(input: {
   accessToken: string;
   path: string;
-}): Promise<{ file: DropboxFileItem; buffer: Buffer }> {
+}): Promise<{ file: DropboxFileItem; buffer: Buffer; rev: string | null }> {
   const response = await fetchWithTimeout(
     `${DROPBOX_CONTENT_BASE}/files/download`,
     {
@@ -250,7 +305,7 @@ export async function downloadDropboxFile(input: {
   if (!file) throw new Error("Failed to normalize downloaded Dropbox file");
 
   const buffer = Buffer.from(await response.arrayBuffer());
-  return { file, buffer };
+  return { file, buffer, rev: meta.rev ?? null };
 }
 
 export async function createDropboxSharedLink(input: {

@@ -149,10 +149,7 @@ export class ExternalServiceManager {
       };
     }
 
-    if (current.status === "connected") {
-      return { connection: current, message: "すでに接続済みです" };
-    }
-
+    // Dropbox: always allow connect/reconnect (token expiry / consent refresh).
     if (serviceId === "dropbox") {
       if (!requestOrigin) {
         throw new Error("Request origin is required for Dropbox OAuth");
@@ -161,12 +158,20 @@ export class ExternalServiceManager {
       markDropboxConnectionPending(userId);
       const pending = getExternalServiceConnection(userId, "dropbox");
       const authorizeUrl = buildDropboxAuthorizeUrl(requestOrigin, userId);
+      const isReconnect =
+        current.status === "connected" || current.status === "error";
 
       return {
         connection: pending,
-        message: "Dropbox認証画面へ移動します",
+        message: isReconnect
+          ? "Dropbox再認証画面へ移動します"
+          : "Dropbox認証画面へ移動します",
         authorizeUrl,
       };
+    }
+
+    if (current.status === "connected") {
+      return { connection: current, message: "すでに接続済みです" };
     }
 
     const definition = getExternalServiceDefinition(serviceId);

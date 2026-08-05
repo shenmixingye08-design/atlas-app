@@ -20,14 +20,13 @@ import {
   organizeCalendarEventsWithAi,
   proposeMeetingCandidatesWithAi,
 } from "./ai-assistant";
+import { mutateCalendarProduction } from "@/lib/integrations/production/calendar/events-production";
+
 import {
   computeFreeSlots,
-  createGoogleCalendarEvent,
-  deleteGoogleCalendarEvent,
   fetchGoogleCalendarEvents,
   fetchGoogleCalendarFreeBusy,
   listGoogleCalendars,
-  updateGoogleCalendarEvent,
 } from "./api-client";
 import { buildCalendarAutomationTriggers } from "./automation-plan";
 import { isCalendarRangeId, resolveCalendarRangeWindow } from "./ranges";
@@ -192,14 +191,20 @@ export async function createCalendarEventForUser(input: {
   userId: string;
   context: FeatureAccessContext;
   event: CalendarEventInput;
-}): Promise<{ status: "ready"; event: CalendarEvent } | GateFailure> {
+}): Promise<
+  | { status: "ready"; event: CalendarEvent; duplicate?: boolean }
+  | GateFailure
+> {
   const access = await requireCalendarAccess(input);
   if (isGateFailure(access)) return access;
 
-  const event = await createGoogleCalendarEvent({
+  const executed = await mutateCalendarProduction({
+    kind: "create",
+    userId: input.userId,
     accessToken: access.accessToken,
     event: input.event,
   });
+  const event = executed.value as CalendarEvent;
 
   if (
     typeof input.event.remindMinutesBefore === "number" &&
@@ -211,7 +216,7 @@ export async function createCalendarEventForUser(input: {
     );
   }
 
-  return { status: "ready", event };
+  return { status: "ready", event, duplicate: executed.duplicate };
 }
 
 export async function updateCalendarEventForUser(input: {
@@ -220,35 +225,43 @@ export async function updateCalendarEventForUser(input: {
   eventId: string;
   event: CalendarEventInput;
 }): Promise<
-  | { status: "ready"; event: CalendarEvent }
+  | { status: "ready"; event: CalendarEvent; duplicate?: boolean }
   | GateFailure
 > {
   const access = await requireCalendarAccess(input);
   if (isGateFailure(access)) return access;
 
-  const event = await updateGoogleCalendarEvent({
+  const executed = await mutateCalendarProduction({
+    kind: "update",
+    userId: input.userId,
     accessToken: access.accessToken,
     eventId: input.eventId,
     event: input.event,
   });
 
-  return { status: "ready", event };
+  return {
+    status: "ready",
+    event: executed.value as CalendarEvent,
+    duplicate: executed.duplicate,
+  };
 }
 
 export async function deleteCalendarEventForUser(input: {
   userId: string;
   context: FeatureAccessContext;
   eventId: string;
-}): Promise<{ status: "ready" } | GateFailure> {
+}): Promise<{ status: "ready"; duplicate?: boolean } | GateFailure> {
   const access = await requireCalendarAccess(input);
   if (isGateFailure(access)) return access;
 
-  await deleteGoogleCalendarEvent({
+  const executed = await mutateCalendarProduction({
+    kind: "delete",
+    userId: input.userId,
     accessToken: access.accessToken,
     eventId: input.eventId,
   });
 
-  return { status: "ready" };
+  return { status: "ready", duplicate: executed.duplicate };
 }
 
 export async function findFreeSlotsForUser(input: {

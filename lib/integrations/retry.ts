@@ -1,14 +1,21 @@
-/** Retry an async operation with exponential backoff. */
+import {
+  classifyIntegrationError,
+  computeBackoffDelayMs,
+} from "@/lib/integrations/production/retry";
+
+/** Retry an async operation with exponential backoff + jitter (429/5xx/timeout/network). */
 export async function withRetry<T>(
   operation: () => Promise<T>,
   options: {
     maxAttempts?: number;
     baseDelayMs?: number;
+    maxDelayMs?: number;
     label?: string;
   } = {},
 ): Promise<T> {
   const maxAttempts = options.maxAttempts ?? 3;
   const baseDelayMs = options.baseDelayMs ?? 500;
+  const maxDelayMs = options.maxDelayMs ?? 8_000;
   const label = options.label ?? "operation";
 
   let lastError: unknown;
@@ -18,12 +25,19 @@ export async function withRetry<T>(
       return await operation();
     } catch (error) {
       lastError = error;
+      const classification = classifyIntegrationError(error);
 
-      if (attempt >= maxAttempts) break;
+      if (classification === "non_retryable" || attempt >= maxAttempts) break;
 
-      const delayMs = baseDelayMs * 2 ** (attempt - 1);
+      const delayMs = computeBackoffDelayMs({
+        attempt,
+        baseDelayMs,
+        maxDelayMs,
+        classification,
+        random: Math.random,
+      });
       console.warn(
-        `[withRetry] ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delayMs}ms`,
+        `[withRetry] ${label} failed (attempt ${attempt}/${maxAttempts}, ${classification}), retrying in ${delayMs}ms`,
         error,
       );
       await new Promise((resolve) => setTimeout(resolve, delayMs));

@@ -14,7 +14,8 @@
     "ci:p0-4-notification-inbox-ban": "node scripts/ci/p0-4-notification-inbox-ban.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts"
+    "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts",
+    "test:integration-500": "INTEGRATION_DURABILITY_RUNS=500 vitest run lib/integrations/production/durability/integration-500.test.ts"
   },
   "dependencies": {
     "@clerk/localizations": "^4.13.5",

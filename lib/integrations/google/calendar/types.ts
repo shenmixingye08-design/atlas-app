@@ -12,6 +12,12 @@ export type CalendarEvent = {
   htmlLink: string | null;
 };
 
+export type CalendarAttendeeInput = {
+  email: string;
+  displayName?: string | null;
+  optional?: boolean;
+};
+
 export type CalendarEventInput = {
   title: string;
   startAt: string;
@@ -20,6 +26,9 @@ export type CalendarEventInput = {
   location?: string | null;
   isAllDay?: boolean;
   createMeet?: boolean;
+  /** IANA timezone for timed events (defaults to Asia/Tokyo). */
+  timeZone?: string | null;
+  attendees?: CalendarAttendeeInput[];
   /** Minutes before start for Google popup/email reminder. */
   remindMinutesBefore?: number | null;
 };

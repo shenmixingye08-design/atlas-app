@@ -3,6 +3,8 @@ import "server-only";
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
+import { buildIdempotencyKey } from "@/lib/integrations/production/idempotency";
+import { runIntegrationAction } from "@/lib/integrations/production/execute";
 
 import { ensureExternalAuthHydrated } from "../../external-services/durable";
 import { getExternalServiceConnection } from "../../external-services/store";
@@ -66,6 +68,22 @@ function buildPostBody(payload: WordPressPostPayload, featuredMediaId?: number) 
   if (typeof mediaId === "number" && mediaId > 0) {
     body.featured_media = mediaId;
   }
+  if (payload.seoSlug?.trim()) {
+    body.slug = payload.seoSlug.trim();
+  }
+
+  const meta: Record<string, string> = {};
+  if (payload.seoTitle?.trim()) {
+    meta._yoast_wpseo_title = payload.seoTitle.trim();
+    meta.atlas_seo_title = payload.seoTitle.trim();
+  }
+  if (payload.seoDescription?.trim()) {
+    meta._yoast_wpseo_metadesc = payload.seoDescription.trim();
+    meta.atlas_seo_description = payload.seoDescription.trim();
+  }
+  if (Object.keys(meta).length > 0) {
+    body.meta = meta;
+  }
   return body;
 }
 
@@ -122,10 +140,29 @@ export async function createWordPressPostForUser(input: {
       input.payload,
     );
     const status = input.payload.status ?? "draft";
-    const created = await createWordPressPost(
-      ctx.auth,
-      buildPostBody({ ...input.payload, title, content, status }, featuredMediaId),
+    const body = buildPostBody(
+      { ...input.payload, title, content, status },
+      featuredMediaId,
     );
+    const idempotencyKey = buildIdempotencyKey({
+      integration: "wordpress",
+      action: status === "publish" ? "publish" : "draft",
+      userId: input.userId,
+      fingerprint: JSON.stringify(body),
+    });
+
+    const executed = await runIntegrationAction(
+      {
+        integration: "wordpress",
+        action: status === "publish" ? "publish" : "draft",
+        userId: input.userId,
+        idempotencyKey,
+        preventDuplicate: true,
+        maxAttempts: 3,
+      },
+      () => createWordPressPost(ctx.auth, body),
+    );
+    const created = executed.value;
     await touchWordPressConnectionLastUsed(input.userId);
 
     return {
@@ -186,19 +223,33 @@ export async function updateWordPressPostForUser(input: {
       input.userId,
       input.payload,
     );
-    const updated = await updateWordPressPost(
-      ctx.auth,
-      input.postId,
-      buildPostBody(
-        {
-          ...input.payload,
-          title,
-          content,
-          status: input.payload.status ?? "draft",
-        },
-        featuredMediaId,
-      ),
+    const body = buildPostBody(
+      {
+        ...input.payload,
+        title,
+        content,
+        status: input.payload.status ?? "draft",
+      },
+      featuredMediaId,
     );
+    const idempotencyKey = buildIdempotencyKey({
+      integration: "wordpress",
+      action: "update",
+      userId: input.userId,
+      fingerprint: `${input.postId}|${JSON.stringify(body)}`,
+    });
+    const executed = await runIntegrationAction(
+      {
+        integration: "wordpress",
+        action: "update",
+        userId: input.userId,
+        idempotencyKey,
+        preventDuplicate: true,
+        maxAttempts: 3,
+      },
+      () => updateWordPressPost(ctx.auth, input.postId, body),
+    );
+    const updated = executed.value;
     await touchWordPressConnectionLastUsed(input.userId);
 
     return {
