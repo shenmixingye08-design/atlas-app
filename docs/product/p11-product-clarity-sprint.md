@@ -68,3 +68,18 @@ AIなしで実装可能：はい — UI/文言/オンボーディング順序/pr
 
 > 見た目の洗練が目的ではない。1000人に「これ使いたい」と思わせ、最初の完成まで届けることが目的。
 
+---
+
+## スクリーンショット（改善後）
+
+Artifacts:
+
+- `/opt/cursor/artifacts/p11-clarity/before-landing-hero-desktop.png` — 改善前LP第一画面（旧コピー再現）
+- `/opt/cursor/artifacts/p11-clarity/after-landing-hero-desktop.png` — 改善後LP第一画面
+- `/opt/cursor/artifacts/p11-clarity/after-chatgpt-contrast.png` — ChatGPT対比
+- `/opt/cursor/artifacts/p11-clarity/after-first-path-section.png` — 仕事を選ぶ→1回依頼→完成
+- `/opt/cursor/artifacts/p11-clarity/after-welcome-clarity.png` — 登録後ウェルカム（1画面）
+- `/opt/cursor/artifacts/p11-clarity/after-pick-job.png` — 最初の仕事選択
+- `/opt/cursor/artifacts/p11-clarity/after-success-time-saved.png` — 完了＋削減時間
+- `/opt/cursor/artifacts/p11-clarity/after-landing-hero-mobile.png` — モバイル第一画面
+
