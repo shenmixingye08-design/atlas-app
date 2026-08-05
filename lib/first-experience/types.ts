@@ -37,6 +37,8 @@ export type FirstExperienceTaskDefinition = {
     href: string;
   };
   onboardingTaskId: OnboardingTaskId;
+  /** Declared typical manual minutes for honest time-saved messaging. */
+  typicalManualMinutes: number | null;
 };
 
 export type FirstExperienceResult = {
