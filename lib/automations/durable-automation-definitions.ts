@@ -6,16 +6,43 @@ import {
   assertAutomationBackendReady,
   resolveAutomationStorageBackend,
 } from "./automation-backend";
+import {
+  buildAutomationDiagnosticId,
+  isSupabaseRelationMissingError,
+} from "./supabase-error";
 import type { Automation } from "./types";
 import { withAutomationDefaults } from "./repositories/server-automation-repository";
 
 export class AutomationStoreUnavailableError extends Error {
-  readonly code = "automation_store_unavailable";
+  readonly code: string = "automation_store_unavailable";
+  readonly diagnosticId: string;
 
-  constructor(message: string) {
+  constructor(message: string, diagnosticId?: string) {
     super(message);
     this.name = "AutomationStoreUnavailableError";
+    this.diagnosticId =
+      diagnosticId ?? buildAutomationDiagnosticId("store_unavailable");
   }
+}
+
+/** Migration `20260805_p0_6_durable_automation_engine.sql` not applied. */
+export class AutomationSchemaMissingError extends AutomationStoreUnavailableError {
+  override readonly code = "automation_schema_missing";
+
+  constructor(message: string, diagnosticId?: string) {
+    super(message, diagnosticId ?? buildAutomationDiagnosticId("schema_missing"));
+    this.name = "AutomationSchemaMissingError";
+  }
+}
+
+export function isAutomationSchemaMissingError(
+  error: unknown,
+): error is AutomationSchemaMissingError {
+  return (
+    error instanceof AutomationSchemaMissingError ||
+    (error instanceof Error &&
+      (error as { code?: string }).code === "automation_schema_missing")
+  );
 }
 
 export type DurableAutomationDefinitionRow = {
@@ -197,7 +224,10 @@ function toDbPayload(row: DurableAutomationDefinitionRow): Record<string, unknow
 
 async function upsertSupabase(
   row: DurableAutomationDefinitionRow,
-): Promise<{ ok: true; row: DurableAutomationDefinitionRow } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; row: DurableAutomationDefinitionRow }
+  | { ok: false; error: string; schemaMissing?: boolean }
+> {
   const client = createServiceRoleClientIfConfigured();
   if (!client) {
     return { ok: false, error: "supabase_not_configured" };
@@ -209,7 +239,11 @@ async function upsertSupabase(
     .maybeSingle();
 
   if (error) {
-    return { ok: false, error: error.message };
+    return {
+      ok: false,
+      error: error.message,
+      schemaMissing: isSupabaseRelationMissingError(error),
+    };
   }
   if (!data) {
     return { ok: false, error: "upsert_returned_empty" };
@@ -220,7 +254,7 @@ async function upsertSupabase(
 async function softDeleteMissingSupabase(
   ownerUserId: string,
   keepIds: Set<string>,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true } | { ok: false; error: string; schemaMissing?: boolean }> {
   const client = createServiceRoleClientIfConfigured();
   if (!client) {
     return { ok: false, error: "supabase_not_configured" };
@@ -232,7 +266,11 @@ async function softDeleteMissingSupabase(
     .is("deleted_at", null);
 
   if (error) {
-    return { ok: false, error: error.message };
+    return {
+      ok: false,
+      error: error.message,
+      schemaMissing: isSupabaseRelationMissingError(error),
+    };
   }
 
   const now = new Date().toISOString();
@@ -273,15 +311,31 @@ export async function replaceDurableAutomationsForOwner(
       });
       const result = await upsertSupabase(row);
       if (!result.ok) {
+        const diagnosticId = buildAutomationDiagnosticId("upsert");
+        if (result.schemaMissing) {
+          throw new AutomationSchemaMissingError(
+            `[automations] P0-6: durable definition upsert failed — schema missing (${result.error})`,
+            diagnosticId,
+          );
+        }
         throw new AutomationStoreUnavailableError(
           `[automations] P0-6: durable definition upsert failed — memory fallback disabled (${result.error})`,
+          diagnosticId,
         );
       }
     }
     const del = await softDeleteMissingSupabase(ownerUserId, keepIds);
     if (!del.ok) {
+      const diagnosticId = buildAutomationDiagnosticId("soft_delete");
+      if (del.schemaMissing) {
+        throw new AutomationSchemaMissingError(
+          `[automations] P0-6: durable definition soft-delete failed — schema missing (${del.error})`,
+          diagnosticId,
+        );
+      }
       throw new AutomationStoreUnavailableError(
         `[automations] P0-6: durable definition soft-delete failed — memory fallback disabled (${del.error})`,
+        diagnosticId,
       );
     }
     return;
@@ -338,8 +392,16 @@ export async function listDurableAutomationsForOwner(
       .is("deleted_at", null);
 
     if (error) {
+      const diagnosticId = buildAutomationDiagnosticId("list");
+      if (isSupabaseRelationMissingError(error)) {
+        throw new AutomationSchemaMissingError(
+          `[automations] P0-6: durable list failed — schema missing (${error.message})`,
+          diagnosticId,
+        );
+      }
       throw new AutomationStoreUnavailableError(
         `[automations] P0-6: durable list failed — memory fallback disabled (${error.message})`,
+        diagnosticId,
       );
     }
     return ((data as Record<string, unknown>[] | null) ?? []).map((row) =>
@@ -376,8 +438,16 @@ export async function getDurableAutomationById(
       .is("deleted_at", null)
       .maybeSingle();
     if (error) {
+      const diagnosticId = buildAutomationDiagnosticId("get");
+      if (isSupabaseRelationMissingError(error)) {
+        throw new AutomationSchemaMissingError(
+          `[automations] P0-6: durable get failed — schema missing (${error.message})`,
+          diagnosticId,
+        );
+      }
       throw new AutomationStoreUnavailableError(
         `[automations] P0-6: durable get failed — memory fallback disabled (${error.message})`,
+        diagnosticId,
       );
     }
     if (!data) return null;
@@ -433,9 +503,18 @@ export async function listDueDurableAutomationIds(options?: {
       .lte("next_run_at", nowIso)
       .order("next_run_at", { ascending: true })
       .limit(limit);
+
     if (error) {
+      const diagnosticId = buildAutomationDiagnosticId("due_list");
+      if (isSupabaseRelationMissingError(error)) {
+        throw new AutomationSchemaMissingError(
+          `[automations] P0-6: durable due-list failed — schema missing (${error.message})`,
+          diagnosticId,
+        );
+      }
       throw new AutomationStoreUnavailableError(
         `[automations] P0-6: durable due-list failed — memory fallback disabled (${error.message})`,
+        diagnosticId,
       );
     }
     return ((data as Array<{ id: string }> | null) ?? []).map((row) => row.id);

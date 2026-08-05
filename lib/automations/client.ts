@@ -8,15 +8,59 @@ import type {
   UpdateAutomationInput,
 } from "./types";
 
+export class AutomationsClientError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly requestId: string | null;
+
+  constructor(input: {
+    message: string;
+    status: number;
+    code?: string;
+    requestId?: string | null;
+  }) {
+    super(input.message);
+    this.name = "AutomationsClientError";
+    this.status = input.status;
+    this.code = input.code ?? "automations_client_error";
+    this.requestId = input.requestId ?? null;
+  }
+}
+
+async function readAutomationsError(
+  response: Response,
+  fallback: string,
+): Promise<AutomationsClientError> {
+  const body = (await response.json().catch(() => ({}))) as {
+    error?: string;
+    code?: string;
+    requestId?: string;
+  };
+  return new AutomationsClientError({
+    message: body.error ?? fallback,
+    status: response.status,
+    code: body.code,
+    requestId: body.requestId ?? null,
+  });
+}
+
 export async function fetchAutomations(): Promise<Automation[]> {
   const response = await fetch("/api/automations", { cache: "no-store" });
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? ui.error.loadFailed);
+    throw await readAutomationsError(response, ui.error.loadFailed);
   }
 
-  return response.json() as Promise<Automation[]>;
+  const payload = (await response.json()) as unknown;
+  // Contract: success body is an array (including []). Never treat [] as error.
+  if (!Array.isArray(payload)) {
+    throw new AutomationsClientError({
+      message: ui.error.loadFailed,
+      status: 502,
+      code: "automations_invalid_response",
+    });
+  }
+  return payload as Automation[];
 }
 
 export async function createAutomation(
@@ -29,8 +73,7 @@ export async function createAutomation(
   });
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? ui.error.generic);
+    throw await readAutomationsError(response, ui.error.generic);
   }
 
   return response.json() as Promise<Automation>;
@@ -47,8 +90,7 @@ export async function updateAutomation(
   });
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? ui.error.updateFailed);
+    throw await readAutomationsError(response, ui.error.updateFailed);
   }
 
   return response.json() as Promise<Automation>;
@@ -65,8 +107,7 @@ export async function setAutomationEnabled(
   });
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? ui.error.updateFailed);
+    throw await readAutomationsError(response, ui.error.updateFailed);
   }
 
   return response.json() as Promise<Automation>;
@@ -80,8 +121,7 @@ export async function runAutomationNow(
   });
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? ui.error.runFailed);
+    throw await readAutomationsError(response, ui.error.runFailed);
   }
 
   const result = (await response.json()) as AutomationRunResult;
@@ -97,8 +137,7 @@ export async function tickAutomations(): Promise<{
   const response = await fetch("/api/automations/tick", { method: "POST" });
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? ui.error.automationFailed);
+    throw await readAutomationsError(response, ui.error.automationFailed);
   }
 
   return response.json() as Promise<{
