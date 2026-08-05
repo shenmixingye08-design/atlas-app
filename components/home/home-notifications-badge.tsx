@@ -22,7 +22,7 @@ export function HomeNotificationsBadge() {
     const boot = window.setTimeout(() => void reload(), 0);
     // Real-time: refresh the count on in-app changes, focus, and a short poll —
     // no full page reload.
-    const interval = window.setInterval(() => void reload(), 8_000);
+    const interval = window.setInterval(() => void reload(), 30_000);
     const unsubscribe = subscribeNotificationsChanged(() => void reload());
     const onFocus = () => void reload();
     window.addEventListener("focus", onFocus);

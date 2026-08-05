@@ -622,6 +622,30 @@ export async function softDeleteDurableNotification(input: {
 }
 
 export async function countDurableUnread(ownerId: string): Promise<number> {
+  if (!ownerId) return 0;
+  const backend = resolveNotificationStorageBackend();
+  if (backend === "supabase") {
+    const client = createServiceRoleClientIfConfigured();
+    if (client) {
+      // P09: use indexed unread partial + count — avoid loading full inbox.
+      const { count, error } = await client
+        .from("atlas_user_notifications")
+        .select("notification_id", { count: "exact", head: true })
+        .eq("owner_id", ownerId)
+        .is("deleted_at", null)
+        .is("read_at", null);
+      if (error) {
+        throw new NotificationInboxUnavailableError(error.message);
+      }
+      return count ?? 0;
+    }
+    if (isNotificationDurableRequired()) {
+      throw new NotificationInboxUnavailableError(
+        "[notifications] P0-4: unread count requires Supabase",
+      );
+    }
+  }
+
   const list = await listDurableNotifications({
     ownerId,
     limit: MAX_NOTIFICATIONS_PER_USER,
