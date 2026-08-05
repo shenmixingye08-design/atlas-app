@@ -12,8 +12,7 @@ type WelcomeWizardProps = {
 };
 
 /**
- * Clarity first screen — one message, then pick a job.
- * Multi-step product tour removed to reduce drop-off before first completion.
+ * One-screen welcome → first job. Skip removed (conversion killer).
  */
 export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
   const [visible, setVisible] = useState(false);
@@ -39,17 +38,13 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
     dialogRef.current?.focus();
   }, []);
 
-  const finish = useCallback(
-    (mode: "guide" | "skip") => {
-      completeOnboarding({
-        preferredTasks: [],
-        entryMode: mode,
-      });
-      // Do NOT defer first experience — first completion is the product.
-      onComplete();
-    },
-    [onComplete],
-  );
+  const finish = useCallback(() => {
+    completeOnboarding({
+      preferredTasks: [],
+      entryMode: "guide",
+    });
+    onComplete();
+  }, [onComplete]);
 
   return (
     <div
@@ -63,18 +58,10 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
         aria-labelledby="welcome-wizard-title"
         tabIndex={-1}
         className={cn(
-          "relative w-full max-w-xl overflow-hidden rounded-[28px] border border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)] outline-none transition-all duration-500 ease-out",
-          visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+          "relative w-full max-w-xl overflow-hidden rounded-[28px] border border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)] outline-none",
+          visible ? "opacity-100" : "opacity-0",
         )}
       >
-        <button
-          type="button"
-          onClick={() => finish("skip")}
-          className="absolute right-4 top-4 z-10 rounded-full px-3 py-1.5 text-sm text-[var(--foreground-muted)] transition-colors hover:bg-[var(--background-subtle)] hover:text-foreground focus:outline-none focus:ring-2 focus:ring-accent/25"
-        >
-          {ui.onboarding.skip}
-        </button>
-
         <div className="px-6 pb-8 pt-12 sm:px-12 sm:pb-10 sm:pt-14">
           <p className="text-center text-xs font-medium tracking-wide text-accent">
             {ui.brand}
@@ -109,7 +96,7 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
               variant="primary"
               size="lg"
               className="w-full"
-              onClick={() => finish("guide")}
+              onClick={finish}
             >
               {ui.onboarding.clarityCta}
             </Button>

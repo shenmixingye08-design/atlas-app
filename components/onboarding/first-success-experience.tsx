@@ -223,7 +223,7 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
             <button
               type="button"
               onClick={handleDefer}
-              className="mt-4 w-full text-center text-sm text-[var(--foreground-muted)] hover:text-foreground"
+              className="mt-6 w-full text-center text-xs text-[var(--foreground-muted)]/80"
             >
               {ui.firstExperience.defer}
             </button>
