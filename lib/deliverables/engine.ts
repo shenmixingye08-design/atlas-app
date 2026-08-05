@@ -1073,14 +1073,25 @@ export async function generateDeliverables(
           versionRecord =
             findVersionGroupByDeliverableId(stored.id)?.record ?? null;
         }
-        stored.metadata = buildWordMetadata({
-          purpose: purpose.purpose ?? null,
-          templateId: purpose.templateId ?? null,
-          versionRecord,
-          fallbackVersion,
-          parentDeliverableId: options.parentDeliverableId ?? null,
-          versionGroupId: options.versionGroupId ?? null,
-        });
+        // P0-7: preserve completion evidence when attaching Word version metadata.
+        const priorMeta = stored.metadata;
+        stored.metadata = {
+          ...buildWordMetadata({
+            purpose: purpose.purpose ?? null,
+            templateId: purpose.templateId ?? null,
+            versionRecord,
+            fallbackVersion,
+            parentDeliverableId: options.parentDeliverableId ?? null,
+            versionGroupId: options.versionGroupId ?? null,
+          }),
+          organizationId: priorMeta?.organizationId ?? null,
+          runId: priorMeta?.runId ?? null,
+          jobId: priorMeta?.jobId ?? null,
+          stepId: priorMeta?.stepId ?? null,
+          diagnosticId: priorMeta?.diagnosticId ?? null,
+          contextVersion: priorMeta?.contextVersion ?? null,
+          completionEvidenceId: priorMeta?.completionEvidenceId ?? null,
+        };
         await updateStoredDeliverableMetadata(
           stored.id,
           options.userId,

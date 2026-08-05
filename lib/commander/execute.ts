@@ -25,7 +25,7 @@ import {
   notifyWorkFailed,
 } from "@/lib/notifications/emitters";
 import { persistNotificationsNow } from "@/lib/notifications/durable";
-import { exportWordDeliverableOnServer } from "@/lib/deliverables/server-word-export";
+import { exportDocumentsOnServer } from "@/lib/deliverables/server-document-export";
 import { logWordPipeline } from "@/lib/deliverables/pipeline-log";
 import { runLearningAnalysis } from "@/lib/learning-engine/service";
 import { detectMemorySignals } from "@/lib/work-memory/learning";
@@ -637,14 +637,17 @@ async function executeStoredRun(input: {
     }
   }
 
-  // Server-side Word export before terminal status is frozen.
-  // Must not depend on a browser tab remaining open.
+  // P0-7: Server-side unified document export before terminal status is frozen.
+  // Same pipeline for Home / お願い — must not depend on a browser tab.
   let wordDownloadUrl: string | null = null;
   let wordDeliverableId: string | null = null;
   let wordFailedReason: string | null = null;
   let wordFailedUserTitle: string | null = null;
   let wordFailedUserMessage: string | null = null;
   let wordFailedJobId: string | null = null;
+  let artifactsRequired = false;
+  let artifactsVerified = false;
+  let exportedFormats: string[] = [];
   if (finalStatus === "completed" && lastResult) {
     logWordPipeline({
       stage: "AI_ORCHESTRATION_COMPLETED",
@@ -652,7 +655,7 @@ async function executeStoredRun(input: {
       requestId: input.runId,
       detail: "commander",
     });
-    const wordExport = await exportWordDeliverableOnServer({
+    const documentExport = await exportDocumentsOnServer({
       userId: input.userId,
       assignment: plan.assignment,
       result: {
@@ -660,37 +663,49 @@ async function executeStoredRun(input: {
         commanderRunId: input.runId,
       },
       requestId: input.runId,
-      jobId: `cmdword_${input.runId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20)}`,
+      jobId: `cmddoc_${input.runId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20)}`,
+      workJobId: input.metadata?.workJobId
+        ? String(input.metadata.workJobId)
+        : null,
       metadata: input.metadata,
       notify: false,
     });
-    if (wordExport.attempted && wordExport.ok) {
-      wordDownloadUrl = wordExport.downloadUrl;
-      wordDeliverableId = wordExport.docx.id;
+    if (documentExport.attempted) {
+      artifactsRequired = true;
+      exportedFormats = documentExport.formats;
+    }
+    if (documentExport.attempted && documentExport.ok) {
+      wordDownloadUrl = documentExport.downloadUrl;
+      wordDeliverableId =
+        documentExport.files.find((f) => f.format === "docx")?.id ??
+        documentExport.files[0]?.id ??
+        null;
+      artifactsVerified = true;
       lastResult = {
         ...lastResult,
         commanderRunId: input.runId,
-        fileDeliverables: wordExport.files,
+        fileDeliverables: documentExport.files,
       };
-    } else if (wordExport.attempted && !wordExport.ok) {
-      wordFailedReason = wordExport.reason;
-      wordFailedUserTitle = wordExport.userTitle;
-      wordFailedUserMessage = wordExport.userMessage;
-      wordFailedJobId = wordExport.jobId;
+    } else if (documentExport.attempted && !documentExport.ok) {
+      wordFailedReason = documentExport.reason;
+      wordFailedUserTitle = documentExport.userTitle;
+      wordFailedUserMessage = documentExport.userMessage;
+      wordFailedJobId = documentExport.jobId;
+      artifactsVerified = false;
       finalStatus = "failed";
       lastResult = {
         ...lastResult,
         status: "failed",
-        error: `${wordExport.userTitle}: ${wordExport.userMessage} [${wordExport.jobId}] ${wordExport.reason}`,
+        error: `${documentExport.userTitle}: ${documentExport.userMessage} [${documentExport.jobId}] ${documentExport.reason}`,
         commanderRunId: input.runId,
       };
-      if (wordExport.stack) {
+      if (documentExport.stack) {
         console.error(
-          "[word_pipeline] commander word export failed",
+          "[document_pipeline] commander document export failed",
           JSON.stringify({
-            jobId: wordExport.jobId,
-            reason: wordExport.reason,
-            stack: wordExport.stack.slice(0, 2000),
+            jobId: documentExport.jobId,
+            reason: documentExport.reason,
+            stack: documentExport.stack.slice(0, 2000),
           }),
         );
       }
@@ -772,12 +787,12 @@ async function executeStoredRun(input: {
       () =>
         notifyWorkCompleted(input.userId, {
           title: wordDeliverableId
-            ? "Wordファイルの準備ができました"
+            ? "成果物ファイルの準備ができました"
             : "お仕事が完了しました",
           message: snsPublishedTweetUrl
             ? `「${plan.classification.summary}」が完了し、Xへ投稿しました。${snsPublishedTweetUrl}`
             : wordDeliverableId
-              ? `「${plan.classification.summary}」のWordファイルを作成しました。通知から開いてダウンロードできます。`
+              ? `「${plan.classification.summary}」の成果物ファイルを作成しました。通知から開いてダウンロードできます。`
               : `「${plan.classification.summary}」が完了しました。`,
           actionUrl: lastResult ? resultDeepLink : "/workspace",
           relatedTaskId: resultProjectId,
@@ -795,8 +810,10 @@ async function executeStoredRun(input: {
       requestId: input.runId,
       deliverableId: wordDeliverableId,
       detail: wordDeliverableId
-        ? `word_ready;project=${resultProjectId}`
-        : "text_only",
+        ? `artifacts_ready;formats=${exportedFormats.join(",")};project=${resultProjectId}`
+        : artifactsRequired
+          ? "artifacts_required_but_missing"
+          : "text_only",
     });
     try {
       runLearningAnalysis(input.userId, { periodDays: 30 });
@@ -815,8 +832,8 @@ async function executeStoredRun(input: {
     await ensureNotificationDelivery(
       () =>
         notifyWorkFailed(input.userId, {
-          title: wordFailedUserTitle ?? "Word生成失敗",
-          message: `${wordFailedUserMessage ?? "文書内容は作成できましたが、Wordファイルの作成に失敗しました。もう一度お試しください。"}${wordFailedJobId ? `（jobId: ${wordFailedJobId}）` : ""}`,
+          title: wordFailedUserTitle ?? "成果物ファイル生成失敗",
+          message: `${wordFailedUserMessage ?? "文書内容は作成できましたが、成果物ファイルの作成に失敗しました。もう一度お試しください。"}${wordFailedJobId ? `（jobId: ${wordFailedJobId}）` : ""}`,
           actionUrl: resultDeepLink,
           relatedTaskId: resultProjectId,
           deliverableId: resultProjectId,
@@ -911,16 +928,23 @@ async function executeStoredRun(input: {
     notificationCreated = true;
   }
 
-  const wordRequired = Boolean(wordDeliverableId || wordFailedReason);
+  const wordRequired = Boolean(
+    artifactsRequired || wordDeliverableId || wordFailedReason,
+  );
   const persistence: CommanderPersistenceReport = {
     projectId: persistedProjectId ?? resultProjectId,
     projectPersisted: Boolean(persistedProjectId),
     wordRequired,
     wordDeliverableId,
-    wordCompletionVerified: Boolean(wordDeliverableId && wordDownloadUrl),
+    wordCompletionVerified: Boolean(
+      artifactsVerified && wordDeliverableId && wordDownloadUrl,
+    ),
     notificationCreated,
     wordErrorCode: wordFailedReason,
-    wordFailedStep: wordFailedReason ? "DOCX_GENERATION" : null,
+    wordFailedStep: wordFailedReason ? "DOCUMENT_PIPELINE" : null,
+    artifactsRequired,
+    artifactsVerified,
+    exportedFormats,
   };
 
   return toRunResult({

@@ -172,6 +172,12 @@ export type CommanderPersistenceReport = {
   notificationCreated: boolean;
   wordErrorCode?: string | null;
   wordFailedStep?: string | null;
+  /** P0-7: document formats were requested on the server pipeline. */
+  artifactsRequired?: boolean;
+  /** P0-7: every requested format has durable verified downloadables. */
+  artifactsVerified?: boolean;
+  /** P0-7: formats exported on the unified pipeline. */
+  exportedFormats?: string[];
 };
 
 export type CommanderRunResult = {

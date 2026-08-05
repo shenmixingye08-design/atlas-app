@@ -172,13 +172,23 @@ export async function downloadDeliverableFile(
 
   const headerType = response.headers.get("Content-Type");
   const headerMime = headerType?.split(";")[0]?.trim().toLowerCase() ?? "";
-  if (FORBIDDEN_MIME.has(headerMime)) {
+  // P0-7: text/plain and text/markdown are valid for txt/md — not Office binaries.
+  const allowPlainText =
+    (format === "txt" && headerMime === "text/plain") ||
+    (format === "md" &&
+      (headerMime === "text/markdown" ||
+        headerMime === "text/plain" ||
+        headerMime.startsWith("text/markdown")));
+  if (FORBIDDEN_MIME.has(headerMime) && !allowPlainText) {
     throw new Error(
-      "サーバーが不正な形式でファイルを返しました。Word生成をやり直してください。",
+      "サーバーが不正な形式でファイルを返しました。ファイル生成をやり直してください。",
     );
   }
 
-  const mimeType = resolveMimeType(headerType, format, input.mimeType);
+  const mimeType =
+    allowPlainText && format
+      ? DELIVERABLE_MIME_TYPES[format].split(";")[0]!.trim()
+      : resolveMimeType(headerType, format, input.mimeType);
 
   // Read as ArrayBuffer only — never response.text() for binary formats.
   const arrayBuffer = await response.arrayBuffer();
@@ -232,7 +242,12 @@ export async function downloadDeliverableFile(
   if (blob.size === 0) {
     throw new Error("Blob生成に失敗しました。");
   }
-  if (FORBIDDEN_MIME.has(blob.type.split(";")[0]!.trim().toLowerCase())) {
+  const blobMime = blob.type.split(";")[0]!.trim().toLowerCase();
+  const blobPlainOk =
+    (format === "txt" && blobMime === "text/plain") ||
+    (format === "md" &&
+      (blobMime === "text/markdown" || blobMime === "text/plain"));
+  if (FORBIDDEN_MIME.has(blobMime) && !blobPlainOk) {
     throw new Error("不正なMIMEでBlob化されようとしました。");
   }
 

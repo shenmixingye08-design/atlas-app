@@ -60,6 +60,9 @@ jobs:
       - name: P0-6 durable automation engine ban
         run: node scripts/ci/p0-6-durable-automation-ban.mjs
 
+      - name: P0-7 document generation pipeline ban
+        run: node scripts/ci/p0-7-document-pipeline-ban.mjs
+
       - name: Unit / integration tests
         run: npm test
         env:
