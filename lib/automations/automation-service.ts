@@ -21,7 +21,7 @@ import { serverAutomationRepository } from "./repositories/server-automation-rep
 import { serverWorkflowRunRepository } from "./repositories/workflow-run-store";
 import {
   ensureAutomationsHydrated,
-  schedulePersistAutomations,
+  persistAutomationsNow,
 } from "./durable";
 import {
   registerAutomationUserId,
@@ -74,7 +74,7 @@ export class AutomationService {
     });
     await registerAutomationUserId(userId);
     await this.syncTaskCount(userId);
-    schedulePersistAutomations(userId);
+    await persistAutomationsNow(userId);
     return automation;
   }
 
@@ -93,7 +93,7 @@ export class AutomationService {
     const updated = await this.automations.update(id, patch);
     if (updated) {
       await this.syncTaskCount(userId);
-      schedulePersistAutomations(userId);
+      await persistAutomationsNow(userId);
     }
     return updated;
   }
@@ -200,7 +200,7 @@ export class AutomationService {
       scheduledAt,
     });
 
-    if (userId) schedulePersistAutomations(userId);
+    if (userId) await persistAutomationsNow(userId);
     return result;
   }
 
@@ -232,7 +232,7 @@ export class AutomationService {
         deliverableCount: 1,
       });
       const automation = await this.automations.findById(job.automationId);
-      if (automation?.userId) schedulePersistAutomations(automation.userId);
+      if (automation?.userId) await persistAutomationsNow(automation.userId);
     }
     for (const job of tick.worker.failedJobs) {
       if (!job.automationId) continue;

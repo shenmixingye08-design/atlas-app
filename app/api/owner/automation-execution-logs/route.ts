@@ -9,7 +9,7 @@ export async function GET(request: Request): Promise<Response> {
 
   const url = new URL(request.url);
   const automationId = url.searchParams.get("automationId") ?? undefined;
-  const logs = listAutomationExecutionLogs({
+  const logs = await listAutomationExecutionLogs({
     automationId: automationId ?? undefined,
     limit: 100,
   });

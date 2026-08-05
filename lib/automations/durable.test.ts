@@ -61,6 +61,7 @@ describe("automation persistence and cron tick", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     process.env.ATLAS_WORK_QUEUE_FORCE_FILE = "true";
+    process.env.ATLAS_AUTOMATION_STORAGE = "memory_durable";
     const { resetWorkQueueStoreForTests } = await import("@/lib/work-queue");
     const workQueue = resetWorkQueueStoreForTests(
       `${process.cwd()}/.data/work-queue-durable-test.json`,
@@ -72,8 +73,20 @@ describe("automation persistence and cron tick", () => {
     const { resetAutomationsGlobalDurableForTests } = await import(
       "./global-durable"
     );
+    const { resetDurableAutomationDefinitionsForTests } = await import(
+      "./durable-automation-definitions"
+    );
+    const { resetDurableAutomationExecutionsForTests } = await import(
+      "./durable-automation-executions"
+    );
+    const { resetAutomationExecutionLogStoreForTests } = await import(
+      "./execution-log/store"
+    );
     const { orchestrate } = await import("@/lib/orchestration/orchestrator");
     resetAutomationStore({ seed: false });
+    resetDurableAutomationDefinitionsForTests();
+    resetDurableAutomationExecutionsForTests();
+    resetAutomationExecutionLogStoreForTests();
     resetAutomationsGlobalDurableForTests();
     vi.mocked(orchestrate).mockReset();
     vi.mocked(orchestrate).mockResolvedValue({

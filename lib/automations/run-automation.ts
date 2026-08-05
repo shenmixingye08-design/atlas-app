@@ -264,7 +264,7 @@ export async function executeAutomationRun(
     let generatedTweetText = "";
     const scheduledAt = options.scheduledAt ?? automation.nextRun ?? startedAt;
 
-    const executionLog = recordAutomationExecutionLog({
+    const executionLog = await recordAutomationExecutionLog({
       automationId: automation.id,
       userId: options.userId ?? automation.userId,
       scheduledAt,
@@ -548,7 +548,7 @@ export async function executeAutomationRun(
       }),
     });
 
-    updateAutomationExecutionLog(executionLog.id, {
+    await updateAutomationExecutionLog(executionLog.id, {
       completedAt,
       status: awaiting
         ? "awaiting_approval"

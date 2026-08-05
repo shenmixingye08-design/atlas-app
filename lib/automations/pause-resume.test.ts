@@ -15,13 +15,18 @@ vi.mock("@/lib/persistence/supabase-user-state", () => ({
 
 describe("automation pause and resume scheduling", () => {
   beforeEach(async () => {
+    process.env.ATLAS_AUTOMATION_STORAGE = "memory_durable";
     const { resetAutomationStore } = await import(
       "./repositories/server-automation-repository"
     );
     const { resetAutomationsGlobalDurableForTests } = await import(
       "./global-durable"
     );
+    const { resetDurableAutomationDefinitionsForTests } = await import(
+      "./durable-automation-definitions"
+    );
     resetAutomationStore({ seed: false });
+    resetDurableAutomationDefinitionsForTests();
     resetAutomationsGlobalDurableForTests();
   });
 
