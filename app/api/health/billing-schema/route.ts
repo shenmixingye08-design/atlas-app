@@ -2,6 +2,7 @@ import {
   authorizeHealthProbe,
   healthUnauthorizedResponse,
 } from "@/lib/health/authorize-health-probe";
+import { toPublicHealthResponse } from "@/lib/health/public-health-response";
 import { probeBillingSubscriptionsSchema } from "@/lib/billing/subscriptions/schema-probe";
 
 export const runtime = "nodejs";
@@ -9,14 +10,12 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Billing schema probe for atlas_billing_subscriptions.
- * P07: requires CRON_SECRET Bearer or ATLAS owner (not anonymous).
- * - GET: check table + SELECT/UPSERT
- * - GET ?apply=1: attempt DDL via POSTGRES_URL / SUPABASE Management token
+ * Billing schema probe.
+ * Auth: CRON_SECRET Bearer or ATLAS owner.
+ * Response: public-safe status only (no SQL / migrations / schema names).
  */
 let lastRunAtMs = 0;
-let lastResult: Awaited<ReturnType<typeof probeBillingSubscriptionsSchema>> | null =
-  null;
+let lastOk = false;
 const MIN_INTERVAL_MS = 30_000;
 
 export async function GET(request: Request): Promise<Response> {
@@ -28,25 +27,29 @@ export async function GET(request: Request): Promise<Response> {
   const apply = url.searchParams.get("apply") === "1";
   const now = Date.now();
 
-  if (!force && !apply && lastResult && now - lastRunAtMs < MIN_INTERVAL_MS) {
-    return Response.json(
-      { ...lastResult, cached: true },
-      {
-        status: lastResult.ok ? 200 : 503,
-        headers: { "Cache-Control": "no-store, max-age=0" },
-      },
-    );
+  if (!force && !apply && lastRunAtMs > 0 && now - lastRunAtMs < MIN_INTERVAL_MS) {
+    const body = toPublicHealthResponse({ ok: lastOk }, { cached: true });
+    return Response.json(body, {
+      status: lastOk ? 200 : 503,
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
   }
 
   const result = await probeBillingSubscriptionsSchema({ apply });
   lastRunAtMs = Date.now();
-  lastResult = result;
+  lastOk = result.ok;
 
-  return Response.json(
-    { ...result, cached: false },
-    {
-      status: result.ok ? 200 : 503,
-      headers: { "Cache-Control": "no-store, max-age=0" },
-    },
-  );
+  // Internals stay in server logs only.
+  if (!result.ok) {
+    console.error("[health/billing-schema] probe failed", {
+      ok: result.ok,
+      errorClass: result.error ? "probe_error" : null,
+    });
+  }
+
+  const body = toPublicHealthResponse({ ok: result.ok }, { cached: false });
+  return Response.json(body, {
+    status: result.ok ? 200 : 503,
+    headers: { "Cache-Control": "no-store, max-age=0" },
+  });
 }

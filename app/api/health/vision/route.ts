@@ -1,8 +1,8 @@
-import { getHealthVersionPayload } from "@/lib/health/version-info";
 import {
   authorizeHealthProbe,
   healthUnauthorizedResponse,
 } from "@/lib/health/authorize-health-probe";
+import { toPublicHealthResponse } from "@/lib/health/public-health-response";
 import { runVisionProductionSmoke } from "@/lib/vision/vision-production-smoke";
 import { runVisionUserUploadSmoke } from "@/lib/vision/vision-user-upload-smoke";
 
@@ -11,19 +11,13 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Production vision smoke (uses OpenAI once).
- * P07: requires CRON_SECRET Bearer or ATLAS owner (not anonymous).
- *
- * Modes:
- * - default / ?mode=direct — known-good JPEG → Files API → Responses (no storage)
- * - ?mode=user_upload — uploadUserImages (storage) → analyzeUserImage (real user path)
+ * Vision smoke (uses OpenAI once).
+ * Auth required. HTTP body is public-safe status only (no model/request ids/errors).
  */
 let lastDirectAtMs = 0;
-let lastDirectResult: Awaited<ReturnType<typeof runVisionProductionSmoke>> | null =
-  null;
+let lastDirectOk = false;
 let lastUserAtMs = 0;
-let lastUserResult: Awaited<ReturnType<typeof runVisionUserUploadSmoke>> | null =
-  null;
+let lastUserOk = false;
 const MIN_INTERVAL_MS = 120_000;
 
 export async function GET(request: Request): Promise<Response> {
@@ -36,58 +30,50 @@ export async function GET(request: Request): Promise<Response> {
   const now = Date.now();
 
   if (mode === "user_upload") {
-    if (!force && lastUserResult && now - lastUserAtMs < MIN_INTERVAL_MS) {
-      return Response.json(
-        {
-          ...lastUserResult,
-          mode: "user_upload",
-          cached: true,
-          version: getHealthVersionPayload(),
-        },
-        {
-          status: lastUserResult.ok ? 200 : 503,
-          headers: { "Cache-Control": "no-store, max-age=0" },
-        },
-      );
+    if (!force && lastUserAtMs > 0 && now - lastUserAtMs < MIN_INTERVAL_MS) {
+      const body = toPublicHealthResponse({ ok: lastUserOk }, { cached: true });
+      return Response.json(body, {
+        status: lastUserOk ? 200 : 503,
+        headers: { "Cache-Control": "no-store, max-age=0" },
+      });
     }
 
     const result = await runVisionUserUploadSmoke();
     lastUserAtMs = Date.now();
-    lastUserResult = result;
-
-    return Response.json(
-      { ...result, mode: "user_upload", cached: false },
-      {
-        status: result.ok ? 200 : 503,
-        headers: { "Cache-Control": "no-store, max-age=0" },
-      },
-    );
+    lastUserOk = result.ok;
+    if (!result.ok) {
+      console.error("[health/vision] user_upload smoke failed", {
+        ok: false,
+        stage: result.stage,
+      });
+    }
+    const body = toPublicHealthResponse({ ok: result.ok }, { cached: false });
+    return Response.json(body, {
+      status: result.ok ? 200 : 503,
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
   }
 
-  if (!force && lastDirectResult && now - lastDirectAtMs < MIN_INTERVAL_MS) {
-    return Response.json(
-      {
-        ...lastDirectResult,
-        mode: "direct",
-        cached: true,
-        version: getHealthVersionPayload(),
-      },
-      {
-        status: lastDirectResult.ok ? 200 : 503,
-        headers: { "Cache-Control": "no-store, max-age=0" },
-      },
-    );
+  if (!force && lastDirectAtMs > 0 && now - lastDirectAtMs < MIN_INTERVAL_MS) {
+    const body = toPublicHealthResponse({ ok: lastDirectOk }, { cached: true });
+    return Response.json(body, {
+      status: lastDirectOk ? 200 : 503,
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
   }
 
   const result = await runVisionProductionSmoke();
   lastDirectAtMs = Date.now();
-  lastDirectResult = result;
-
-  return Response.json(
-    { ...result, mode: "direct", cached: false },
-    {
-      status: result.ok ? 200 : 503,
-      headers: { "Cache-Control": "no-store, max-age=0" },
-    },
-  );
+  lastDirectOk = result.ok;
+  if (!result.ok) {
+    console.error("[health/vision] direct smoke failed", {
+      ok: false,
+      stage: result.stage,
+    });
+  }
+  const body = toPublicHealthResponse({ ok: result.ok }, { cached: false });
+  return Response.json(body, {
+    status: result.ok ? 200 : 503,
+    headers: { "Cache-Control": "no-store, max-age=0" },
+  });
 }

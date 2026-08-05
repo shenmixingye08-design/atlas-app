@@ -23,12 +23,25 @@ describe("authorizeHealthProbe", () => {
     await expect(authorizeHealthProbe(req)).resolves.toEqual({ ok: true });
   });
 
-  it("returns unauthorized JSON for anonymous callers", () => {
-    const res = healthUnauthorizedResponse({
+  it("returns 401 JSON without internal error detail for anonymous callers", async () => {
+    vi.mocked(authorizeAutomationTick).mockResolvedValue({
       ok: false,
-      status: 401,
+      status: 503,
+      error: "CRON_SECRET is not configured",
+    });
+    const gate = await authorizeHealthProbe(
+      new Request("https://atlasapp.jp/api/health/vision"),
+    );
+    expect(gate).toEqual({ ok: false, status: 401, error: "Unauthorized" });
+    if (gate.ok) return;
+    const res = healthUnauthorizedResponse(gate);
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body).toEqual({
+      ok: false,
+      status: "unauthorized",
       error: "Unauthorized",
     });
-    expect(res.status).toBe(401);
+    expect(JSON.stringify(body)).not.toMatch(/CRON|SECRET|schema|sql/i);
   });
 });

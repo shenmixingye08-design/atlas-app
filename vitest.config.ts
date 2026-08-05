@@ -9,6 +9,8 @@ export default defineConfig({
     exclude: [
       "lib/reliability/e2e-1000.test.ts",
       "lib/reliability/x-post-1000.test.ts",
+      // Requires OPENAI_API_KEY — run via npm run test:p08-real-artifacts
+      "lib/reliability/p08-real-artifact-proof.test.ts",
     ],
   },
   resolve: {
