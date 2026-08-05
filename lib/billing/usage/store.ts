@@ -92,21 +92,45 @@ export function getUsageDayKey(now: Date = new Date()): string {
   return `${getUsageMonthKey(now)}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
-export function getUsageSnapshot(
+function emptyUsageSnapshot(
   userId: string,
-  month: UsageMonthKey = getUsageMonthKey(),
+  month: UsageMonthKey,
 ): UsageSnapshot {
-  const existing = getBucket().get(usageKey(userId, month));
-  if (existing) return existing;
-
   return {
     userId,
     month,
     aiRuns: 0,
     snsPosts: 0,
     automationTasksActive: 0,
+    deliverable_word: 0,
+    deliverable_excel: 0,
+    deliverable_image: 0,
+    deliverable_pdf: 0,
+    deliverable_powerpoint: 0,
     updatedAt: new Date().toISOString(),
   };
+}
+
+function normalizeUsageSnapshot(snapshot: UsageSnapshot): UsageSnapshot {
+  return {
+    ...emptyUsageSnapshot(snapshot.userId, snapshot.month),
+    ...snapshot,
+    deliverable_word: snapshot.deliverable_word ?? 0,
+    deliverable_excel: snapshot.deliverable_excel ?? 0,
+    deliverable_image: snapshot.deliverable_image ?? 0,
+    deliverable_pdf: snapshot.deliverable_pdf ?? 0,
+    deliverable_powerpoint: snapshot.deliverable_powerpoint ?? 0,
+  };
+}
+
+export function getUsageSnapshot(
+  userId: string,
+  month: UsageMonthKey = getUsageMonthKey(),
+): UsageSnapshot {
+  const existing = getBucket().get(usageKey(userId, month));
+  if (existing) return normalizeUsageSnapshot(existing);
+
+  return emptyUsageSnapshot(userId, month);
 }
 
 export function saveUsageSnapshot(snapshot: UsageSnapshot): UsageSnapshot {

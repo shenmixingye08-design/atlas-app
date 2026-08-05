@@ -57,6 +57,8 @@ export type AuditLogEntry = {
   targetId: string | null;
   result: AuditResult;
   reason: string | null;
+  /** Correlation id for security / billing / API traces. */
+  requestId: string | null;
 };
 
 export type AuditLogSettings = {
@@ -93,4 +95,5 @@ export type RecordAuditLogInput = {
   result: AuditResult;
   reason?: string | null;
   at?: string;
+  requestId?: string | null;
 };

@@ -1,5 +1,3 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
-
 import { isPlanId } from "@/lib/billing/plans";
 import { createCheckoutSession } from "@/lib/billing/stripe/checkout";
 import {
@@ -8,6 +6,14 @@ import {
 } from "@/lib/billing/stripe/errors";
 import { assertStripeSafeForProduction } from "@/lib/billing/stripe/production-guard";
 import { resolveUserSubscriptionDurable } from "@/lib/billing/subscriptions/store";
+import { enforceApiSecurity } from "@/lib/security/api/gate";
+import {
+  assertCheckoutNotDuplicate,
+  auditBillingOperation,
+  validateCheckoutPayload,
+} from "@/lib/security/billing/billing-security";
+import { recordAuditLogSafe } from "@/lib/owner/audit-log/record";
+import { secureLog } from "@/lib/security/secrets/redact";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,29 +52,36 @@ async function safeRecordStripeFailure(
 }
 
 export async function POST(request: Request): Promise<Response> {
-  console.info("[billing/checkout] POST start");
+  secureLog("info", "[billing/checkout] POST start");
 
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      console.info("[billing/checkout] unauthorized");
-      return Response.json(
-        { error: "Unauthorized", code: "unauthorized" },
-        { status: 401 },
-      );
-    }
+    const gate = await enforceApiSecurity({
+      request,
+      resource: "billing",
+      action: "checkout",
+      rateLimit: { max: 10, windowMs: 60_000, minIntervalMs: 1_000 },
+      csrf: true,
+      replay: false,
+      validate: () => ({ ok: true }),
+    });
+    if (!gate.ok) return gate.response;
+    const { userId, email, request_id } = gate;
 
     try {
       assertStripeSafeForProduction();
     } catch (error) {
       const classified = classifyCheckoutRouteError(error);
-      console.error("[billing/checkout] production guard failed", {
+      secureLog("error", "[billing/checkout] production guard failed", {
         code: classified.code,
         message: classified.logMessage,
       });
       await safeRecordStripeFailure(classified.logMessage, "billing_checkout");
       return Response.json(
-        { error: classified.userMessage, code: classified.code },
+        {
+          error: classified.userMessage,
+          code: classified.code,
+          request_id,
+        },
         { status: classified.status },
       );
     }
@@ -80,39 +93,53 @@ export async function POST(request: Request): Promise<Response> {
 
     // Clients may only select a plan — never a free-form Price ID or amount.
     if (body?.priceId != null) {
-      console.warn("[billing/checkout] rejected client priceId");
+      secureLog("warn", "[billing/checkout] rejected client priceId");
       return Response.json(
-        { error: "Invalid request", code: "invalid_request" },
+        { error: "Invalid request", code: "invalid_request", request_id },
         { status: 400 },
       );
     }
 
-    const planId = typeof body?.planId === "string" ? body.planId : null;
-    if (!planId || !isPlanId(planId)) {
-      console.warn("[billing/checkout] invalid plan", { planId });
-      return Response.json(
-        { error: "Invalid plan", code: "invalid_plan" },
-        { status: 400 },
-      );
-    }
-
-    if (planId === "free") {
+    const validated = validateCheckoutPayload({
+      planId: body?.planId,
+      priceId: body?.priceId,
+    });
+    if (!validated.ok) {
+      secureLog("warn", "[billing/checkout] invalid plan", {
+        reason: validated.reason,
+      });
       return Response.json(
         {
-          error: "Free plan does not require checkout",
-          code: "free_plan",
+          error: validated.reason,
+          code: validated.reason.includes("Free")
+            ? "free_plan"
+            : "invalid_plan",
+          request_id,
         },
         { status: 400 },
       );
     }
+    const { planId } = validated;
+    if (!isPlanId(planId)) {
+      return Response.json(
+        { error: "Invalid plan", code: "invalid_plan", request_id },
+        { status: 400 },
+      );
+    }
 
-    console.info("[billing/checkout] creating session", { planId, userId });
+    const duplicate = assertCheckoutNotDuplicate({ userId, planId });
+    if (!duplicate.ok) {
+      return Response.json(
+        {
+          error: duplicate.reason,
+          code: "duplicate_checkout",
+          request_id: duplicate.request_id,
+        },
+        { status: 409 },
+      );
+    }
 
-    const user = await currentUser();
-    const email =
-      user?.primaryEmailAddress?.emailAddress ??
-      user?.emailAddresses[0]?.emailAddress ??
-      null;
+    secureLog("info", "[billing/checkout] creating session", { planId, userId });
 
     const subscription = await resolveUserSubscriptionDurable(userId);
 
@@ -124,7 +151,25 @@ export async function POST(request: Request): Promise<Response> {
       existingStripeCustomerId: subscription.stripeCustomerId,
     });
 
-    console.info("[billing/checkout] session created", {
+    auditBillingOperation({
+      userId,
+      operation: "checkout",
+      success: true,
+      reason: `session:${session.sessionId}`,
+      requestId: request_id,
+    });
+    recordAuditLogSafe({
+      userId,
+      email,
+      category: "billing",
+      action: "stripe_payment",
+      targetId: planId,
+      result: "success",
+      reason: "checkout_session_created",
+      requestId: request_id,
+    });
+
+    secureLog("info", "[billing/checkout] session created", {
       planId,
       mode: session.mode,
       sessionId: session.sessionId,
@@ -134,12 +179,13 @@ export async function POST(request: Request): Promise<Response> {
       url: session.url,
       sessionId: session.sessionId,
       mode: session.mode,
+      request_id,
     });
   } catch (error) {
     if (isCheckoutBlockedError(error)) {
       // Delegate status: already_same_plan / use_portal → 409; price_mismatch → 400
       const classified = classifyCheckoutRouteError(error);
-      console.info("[billing/checkout] blocked", {
+      secureLog("info", "[billing/checkout] blocked", {
         code: classified.code,
         status: classified.status,
         message: classified.logMessage,
@@ -151,7 +197,7 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const classified = classifyCheckoutRouteError(error);
-    console.error("[billing/checkout] failed", {
+    secureLog("error", "[billing/checkout] failed", {
       code: classified.code,
       status: classified.status,
       message: classified.logMessage,

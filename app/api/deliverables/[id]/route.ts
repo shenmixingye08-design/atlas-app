@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 
 import {
   assertOfficeBinaryOrThrow,
@@ -20,6 +20,10 @@ import { recordWordMetric } from "@/lib/deliverables/word-metrics";
 import { buildAttachmentContentDisposition } from "@/lib/http/content-disposition";
 import { recordReliabilityEvent } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
+import {
+  assertArtifactAccess,
+  artifactAccessDeniedResponse,
+} from "@/lib/security/artifact/access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,7 +34,7 @@ type RouteContext = {
 };
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ): Promise<Response> {
   const downloadStarted = Date.now();
@@ -43,7 +47,28 @@ export async function GET(
   }
 
   const { id } = await context.params;
+  const user = await currentUser();
+  const email =
+    user?.primaryEmailAddress?.emailAddress ??
+    user?.emailAddresses?.[0]?.emailAddress ??
+    null;
   let stored = await getStoredDeliverableForUser(id, userId);
+
+  const access = assertArtifactAccess({
+    actorUserId: userId,
+    actorEmail: email,
+    artifactOwnerUserId: stored?.userId ?? null,
+    op: "download",
+    artifactId: id,
+    ip:
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      request.headers.get("x-real-ip"),
+  });
+  if (!access.allowed) {
+    recordReliabilityEvent("deliverable_download", "failure");
+    recordWordMetric("download_failure", 1, { stage: "lookup" });
+    return artifactAccessDeniedResponse(access);
+  }
 
   if (!stored) {
     recordReliabilityEvent("deliverable_download", "failure");
@@ -53,6 +78,7 @@ export async function GET(
         error: toHumanReliabilityMessage("not found or expired"),
         availability: "expired",
         actions: ["regenerate_word_only", "retry", "send_support_info"],
+        request_id: access.request_id,
       },
       { status: 404 },
     );

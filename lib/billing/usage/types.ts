@@ -6,6 +6,12 @@ export type UsageCounters = {
   aiRuns: number;
   snsPosts: number;
   automationTasksActive: number;
+  /** Monthly deliverable generation counters (security / free-user abuse control). */
+  deliverable_word: number;
+  deliverable_excel: number;
+  deliverable_image: number;
+  deliverable_pdf: number;
+  deliverable_powerpoint: number;
 };
 
 export type UsageSnapshot = UsageCounters & {
