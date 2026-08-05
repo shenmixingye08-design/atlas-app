@@ -1,25 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { getOnboardingState } from "@/lib/onboarding";
 import {
-  FIRST_EXPERIENCE_TASKS,
   completeFirstExperience,
   deferFirstExperience,
   getFirstExperienceTask,
+  getFirstRunClarityTasks,
   getRecommendedFirstExperienceTaskId,
   runFirstExperienceTask,
   type FirstExperienceEmployeeStep,
   type FirstExperienceResult,
   type FirstExperienceTaskId,
 } from "@/lib/first-experience";
+import {
+  buildTimeSavedBreakdown,
+  formatMeasuredDuration,
+  formatSavedAmount,
+} from "@/lib/product-clarity/time-saved";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 
-type ExperienceStep = "intro" | "select" | "running" | "complete";
+type ExperienceStep = "select" | "running" | "complete";
 
 type FirstSuccessExperienceProps = {
   onComplete: () => void;
@@ -43,7 +48,7 @@ function ProgressBlocks({ filled, total }: { filled: number; total: number }) {
 }
 
 export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExperienceProps) {
-  const [step, setStep] = useState<ExperienceStep>("intro");
+  const [step, setStep] = useState<ExperienceStep>("select");
   const [visible, setVisible] = useState(false);
   const [selectedTask, setSelectedTask] = useState<FirstExperienceTaskId | null>(null);
   const [customText, setCustomText] = useState("");
@@ -55,6 +60,7 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
 
   const preferred = getOnboardingState().preferredTasks;
   const recommendedId = getRecommendedFirstExperienceTaskId(preferred);
+  const clarityTasks = useMemo(() => getFirstRunClarityTasks(), []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setVisible(true), 50);
@@ -94,7 +100,7 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
         selectedTask === "custom" ? customText : undefined,
         {
           onProgress: (filled) => setProgressFilled(filled),
-          onEmployeeStep: (step) => setEmployeeStep(step),
+          onEmployeeStep: (next) => setEmployeeStep(next),
         },
       );
       completeFirstExperience(experienceResult);
@@ -120,9 +126,14 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
     }
   }, [customText, running, selectedTask]);
 
-  const handleGoHome = () => {
-    onComplete();
-  };
+  const timeSaved = useMemo(() => {
+    if (!result) return null;
+    const task = getFirstExperienceTask(result.taskId, customText);
+    return buildTimeSavedBreakdown({
+      measuredSec: result.durationSec,
+      typicalManualMinutes: task.typicalManualMinutes,
+    });
+  }, [customText, result]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm sm:p-6">
@@ -137,45 +148,21 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
           visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
         )}
       >
-        {step === "intro" && (
-          <div className="px-6 py-8 text-center sm:px-10 sm:py-10">
-            <p className="text-4xl" aria-hidden>
-              🎉
-            </p>
-            <h2
-              id="first-experience-title"
-              className="mt-4 text-2xl font-semibold tracking-tight text-foreground"
-            >
-              {ui.firstExperience.introTitle}
-            </h2>
-            <p className="mt-3 text-sm text-[var(--foreground-muted)] sm:text-base">
-              {ui.firstExperience.introSubtitle}
-            </p>
-            <Button
-              variant="primary"
-              size="lg"
-              className="mt-8 w-full"
-              onClick={() => setStep("select")}
-            >
-              {ui.firstExperience.startSelect}
-            </Button>
-            <button
-              type="button"
-              onClick={handleDefer}
-              className="mt-4 text-sm text-[var(--foreground-muted)] underline-offset-2 hover:text-foreground hover:underline"
-            >
-              {ui.firstExperience.defer}
-            </button>
-          </div>
-        )}
-
         {step === "select" && (
           <div className="px-6 py-8 sm:px-10 sm:py-10">
-            <h2 className="text-xl font-semibold text-foreground">
+            <p className="text-xs font-medium tracking-wide text-accent">{ui.brand}</p>
+            <h2
+              id="first-experience-title"
+              className="mt-2 text-xl font-semibold text-foreground sm:text-2xl"
+            >
               {ui.firstExperience.selectTitle}
             </h2>
+            <p className="mt-2 text-sm text-[var(--foreground-muted)]">
+              {ui.firstExperience.selectHint}
+            </p>
+
             <ul className="mt-5 grid gap-2 sm:grid-cols-2">
-              {FIRST_EXPERIENCE_TASKS.map((task) => (
+              {clarityTasks.map((task) => (
                 <li key={task.id}>
                   <button
                     type="button"
@@ -279,11 +266,28 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
           </div>
         )}
 
-        {step === "complete" && result && (
+        {step === "complete" && result && timeSaved && (
           <div className="px-6 py-8 sm:px-10 sm:py-10">
             <h2 className="text-xl font-semibold text-foreground">
               {ui.firstExperience.completeTitle}
             </h2>
+
+            {timeSaved.savedMinutes != null && timeSaved.savedMinutes > 0 ? (
+              <div className="mt-4 rounded-[var(--radius-xl)] border border-accent/25 bg-[var(--accent-muted)] px-4 py-4">
+                <p className="text-base font-semibold text-foreground">
+                  {ui.firstExperience.savedWorkValue(
+                    formatSavedAmount(timeSaved.savedMinutes),
+                  )}
+                </p>
+                <p className="mt-1 text-xs text-[var(--foreground-muted)]">
+                  {ui.firstExperience.savedWorkHint}
+                </p>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-[var(--foreground-muted)]">
+                {ui.firstExperience.noSavedEstimate}
+              </p>
+            )}
 
             <div className="landing-glass mt-6 rounded-[var(--radius-xl)] border border-[var(--border-subtle)] p-4">
               <p className="text-xs text-[var(--foreground-muted)]">
@@ -300,17 +304,21 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
             <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-[var(--radius-lg)] bg-[var(--card)]/60 px-3 py-3">
                 <dt className="text-xs text-[var(--foreground-muted)]">
-                  {ui.firstExperience.durationLabel}
+                  {ui.firstExperience.measuredDurationLabel}
                 </dt>
                 <dd className="mt-1 font-semibold text-foreground">
-                  {ui.firstExperience.durationValue(result.durationSec)}
+                  {formatMeasuredDuration(timeSaved.measuredSec)}
                 </dd>
               </div>
               <div className="rounded-[var(--radius-lg)] bg-[var(--card)]/60 px-3 py-3">
                 <dt className="text-xs text-[var(--foreground-muted)]">
-                  {ui.firstExperience.employeeLabel}
+                  {ui.firstExperience.typicalManualLabel}
                 </dt>
-                <dd className="mt-1 font-semibold text-foreground">{result.leadEmployee}</dd>
+                <dd className="mt-1 font-semibold text-foreground">
+                  {timeSaved.typicalManualMinutes != null
+                    ? `${timeSaved.typicalManualMinutes}分`
+                    : "—"}
+                </dd>
               </div>
               <div className="col-span-2 rounded-[var(--radius-lg)] bg-[var(--card)]/60 px-3 py-3">
                 <dt className="text-xs text-[var(--foreground-muted)]">
@@ -335,7 +343,7 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
               <span className="text-sm text-accent">→</span>
             </Link>
 
-            <Button variant="primary" size="lg" className="mt-6 w-full" onClick={handleGoHome}>
+            <Button variant="primary" size="lg" className="mt-6 w-full" onClick={onComplete}>
               {ui.firstExperience.goHome}
             </Button>
           </div>

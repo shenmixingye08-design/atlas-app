@@ -29,7 +29,7 @@ export function getSiteOrigin(): string {
 }
 
 export const MINERVOT_DEFAULT_TITLE =
-  "MINERVOT | あなた専属のAI秘書";
+  "MINERVOT | あなたの仕事を代わりに終わらせます";
 
 export const MINERVOT_DEFAULT_DESCRIPTION =
-  "MINERVOTは、仕事を覚え、実行し、分析し、改善まで提案する、あなた専属のAI秘書です。メール・SNS・資料作成・スケジュール管理など、毎日の繰り返し業務を効率化します。";
+  "MINERVOTは会話で終わりません。仕事を選んで1回依頼するだけで、完成まで代わりに進めます。メール・SNS・資料作成など、毎日の繰り返し業務を終わらせて時間を生み出します。";
