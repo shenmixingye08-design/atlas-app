@@ -53,6 +53,8 @@ export type AutomationRunArtifact = {
   url: string | null;
   externalId: string | null;
   createdAt: Timestamp;
+  /** Binary/output size when known — required for deliverable completion evidence */
+  sizeBytes?: number | null;
 };
 
 export type AutomationRunAttempt = {
@@ -149,16 +151,23 @@ export type AutomationRun = {
     jobId: string;
     automationId: string;
     ownerId: string;
+    executionId?: string;
     completedStepIds: string[];
     artifactIds: string[];
     storageObjectIds: string[];
+    storageUrls?: string[];
     externalActionIds: string[];
     externalUrls: string[];
     notificationIds: string[];
     incompleteOptionalStepIds: string[];
+    outputSizeBytes?: number;
     completionHash: string;
     completedAt: string;
     evidenceVersion: number;
+    retryCount?: number;
+    retryReason?: string | null;
+    retryTime?: string | null;
+    stepEvidence?: Record<string, unknown>;
   } | null;
   /** @deprecated use memoryUsage.used */
   memoryReferences: MemoryReferenceRecord[];

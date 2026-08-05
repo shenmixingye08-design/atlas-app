@@ -106,6 +106,11 @@ export function createControlledInvoker(options?: {
       "dropbox",
       "wordpress",
       "google_calendar",
+      "google_drive",
+      "line_notify",
+      "slack",
+      "discord",
+      "notion",
     ]);
 
     if (external.has(step.type)) {
