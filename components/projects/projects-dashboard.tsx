@@ -71,8 +71,8 @@ export function ProjectsDashboard() {
 
   const handleWizardComplete = useCallback(() => {
     setShowWizard(false);
-    // オンボーディング完了後は説明のみ。ダミー業務・架空体験は自動表示しない。
-    setShowFirstExperience(false);
+    // Clarity path: after the one-screen welcome, always start first completion.
+    setShowFirstExperience(true);
   }, []);
 
   const handleFirstExperienceComplete = useCallback(() => {

@@ -18,6 +18,10 @@ import { QUICK_REQUEST_PRESETS } from "@/lib/workspace/quick-request-presets";
 import { assignmentImpliesImageWork } from "@/lib/vision/gate";
 import type { DocumentExtractClient } from "@/lib/attachments/documents/client-upload";
 import {
+  shouldShowAdvancedRequestControls,
+  shouldShowDeliverableFormatPicker,
+} from "@/lib/product-clarity/first-run";
+import {
   buildWorkRequestSubmitPayload,
   type PreferredDeliverableFormat,
   type WorkRequestSubmitPayload,
@@ -50,6 +54,10 @@ export function WorkRequestForm({
   const [attachError, setAttachError] = useState<string | null>(null);
   const [preferredFormat, setPreferredFormat] =
     useState<PreferredDeliverableFormat>("auto");
+  const [showAttach, setShowAttach] = useState(false);
+  const [showFormat, setShowFormat] = useState(false);
+  const advancedUnlocked = shouldShowAdvancedRequestControls();
+  const formatUnlocked = shouldShowDeliverableFormatPicker();
 
   useEffect(() => {
     if (searchParams.get("attach") === "text") {
@@ -79,6 +87,7 @@ export function WorkRequestForm({
       uploadedIds.length === 0 &&
       documents.length === 0
     ) {
+      setShowAttach(true);
       setAttachError(
         "この依頼には画像またはファイルの添付が必要です。レシート・請求書・表などを添付してください。",
       );
@@ -91,7 +100,7 @@ export function WorkRequestForm({
         assignment: trimmed,
         attachmentIds: uploadedIds,
         documents,
-        preferredFormat,
+        preferredFormat: formatUnlocked ? preferredFormat : "auto",
       }),
     );
   };
@@ -166,54 +175,81 @@ export function WorkRequestForm({
           className="min-h-[180px] resize-y border-none bg-transparent px-0 py-0 text-lg leading-relaxed shadow-none focus:ring-0"
         />
 
-        <div className="border-t border-[var(--border-subtle)] pt-4">
-          <p className="mb-2 text-sm font-medium text-foreground">
-            {ui.work.attachmentsLabel}
-          </p>
-          <p className="mb-3 text-xs text-[var(--text-secondary)]">
-            {ui.work.attachmentsHint}
-          </p>
-          <ImageAttachmentPicker
-            value={imageDrafts}
-            onChange={setImageDrafts}
-            disabled={isLoading}
-            preferReadableText
-          />
-          <div className="mt-4">
-            <RequestDocumentPicker
-              value={documents}
-              onChange={setDocuments}
-              disabled={isLoading}
-            />
-          </div>
-          {(uploadedIds.length > 0 || documents.length > 0) && (
-            <p className="mt-2 text-xs text-[var(--text-secondary)]">
-              添付 {uploadedIds.length + documents.length} 件
-              {uploadedIds.length > 0 ? `（画像 ${uploadedIds.length}）` : ""}
-              {documents.length > 0 ? `（文書 ${documents.length}）` : ""}
+        {(advancedUnlocked || showAttach) && (
+          <div className="border-t border-[var(--border-subtle)] pt-4">
+            <p className="mb-2 text-sm font-medium text-foreground">
+              {ui.work.attachmentsLabel}
             </p>
-          )}
-        </div>
+            <p className="mb-3 text-xs text-[var(--text-secondary)]">
+              {ui.work.attachmentsHint}
+            </p>
+            <ImageAttachmentPicker
+              value={imageDrafts}
+              onChange={setImageDrafts}
+              disabled={isLoading}
+              preferReadableText
+            />
+            <div className="mt-4">
+              <RequestDocumentPicker
+                value={documents}
+                onChange={setDocuments}
+                disabled={isLoading}
+              />
+            </div>
+            {(uploadedIds.length > 0 || documents.length > 0) && (
+              <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                添付 {uploadedIds.length + documents.length} 件
+                {uploadedIds.length > 0 ? `（画像 ${uploadedIds.length}）` : ""}
+                {documents.length > 0 ? `（文書 ${documents.length}）` : ""}
+              </p>
+            )}
+          </div>
+        )}
 
-        <label className="block text-sm">
-          <span className="font-medium text-foreground">成果物形式</span>
-          <select
-            className="mt-1 min-h-[44px] w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2"
-            value={preferredFormat}
+        {!advancedUnlocked && !showAttach && (
+          <button
+            type="button"
             disabled={isLoading}
-            onChange={(event) =>
-              setPreferredFormat(
-                event.target.value as PreferredDeliverableFormat,
-              )
-            }
+            onClick={() => setShowAttach(true)}
+            className="text-sm text-[var(--text-secondary)] underline-offset-2 hover:text-foreground hover:underline"
           >
-            <option value="auto">自動判定</option>
-            <option value="xlsx">Excel</option>
-            <option value="docx">Word</option>
-            <option value="pdf">PDF</option>
-            <option value="txt">テキスト</option>
-          </select>
-        </label>
+            {ui.secretaryHome.attachToggle}
+          </button>
+        )}
+
+        {formatUnlocked &&
+          (!showFormat ? (
+            <button
+              type="button"
+              disabled={isLoading}
+              onClick={() => setShowFormat(true)}
+              className="block text-sm text-[var(--text-secondary)] underline-offset-2 hover:text-foreground hover:underline"
+            >
+              {ui.secretaryHome.formatToggle}
+            </button>
+          ) : (
+            <label className="block text-sm">
+              <span className="font-medium text-foreground">
+                {ui.secretaryHome.formatLabel}
+              </span>
+              <select
+                className="mt-1 min-h-[44px] w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2"
+                value={preferredFormat}
+                disabled={isLoading}
+                onChange={(event) =>
+                  setPreferredFormat(
+                    event.target.value as PreferredDeliverableFormat,
+                  )
+                }
+              >
+                <option value="auto">自動判定</option>
+                <option value="xlsx">Excel</option>
+                <option value="docx">Word</option>
+                <option value="pdf">PDF</option>
+                <option value="txt">テキスト</option>
+              </select>
+            </label>
+          ))}
       </Card>
 
       {attachError && (

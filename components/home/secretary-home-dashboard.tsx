@@ -14,8 +14,8 @@ type SecretaryHomeDashboardProps = {
 
 /**
  * Post-login home — 迷いゼロの第一画面。
- * 目立つのは「何をしてほしいですか？」入力と送信だけ。
- * ダッシュボード・分析・おすすめは初回導線に出さない。
+ * Lead with work completion, not "AI秘書です".
+ * Dashboard / analytics / recommendations stay out of the first path.
  */
 export function SecretaryHomeDashboard({
   automations,
