@@ -64,7 +64,7 @@ export function LandingFirstPath() {
               size="lg"
               className="min-h-13 min-w-[220px] rounded-full border border-[#74172A] bg-[#74172A] px-7 text-sm font-semibold text-white"
             >
-              無料で最初の仕事を終わらせる
+              今すぐ1件終わらせる
             </Button>
           </Link>
         </div>

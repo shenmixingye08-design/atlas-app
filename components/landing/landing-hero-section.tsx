@@ -10,9 +10,7 @@ import { LandingChatgptContrast } from "./landing-chatgpt-contrast";
 import { LandingHeroMockup } from "./landing-hero-mockup";
 
 /**
- * Conversion hero — copy/structure only.
- * Must answer in 5 seconds: what / who / what finishes / price / vs chat AI.
- * No new design system, no new animations, no new features.
+ * Decision hero — not "what is it", but "why pay / why now".
  */
 export function LandingHeroSection() {
   return (
@@ -20,16 +18,6 @@ export function LandingHeroSection() {
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 -z-30 bg-[linear-gradient(180deg,#FFFDFB_0%,#FAF6F5_52%,#FFFFFF_100%)]"
-      />
-
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute left-[-15%] top-[-20%] -z-20 h-[620px] w-[620px] rounded-full bg-[radial-gradient(circle,rgba(116,23,42,0.12)_0%,rgba(116,23,42,0.04)_42%,transparent_72%)] blur-3xl"
-      />
-
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute right-[-10%] top-[5%] -z-20 h-[760px] w-[760px] rounded-full bg-[radial-gradient(circle,rgba(181,139,79,0.10)_0%,rgba(116,23,42,0.05)_36%,transparent_70%)] blur-3xl"
       />
 
       <div className="mx-auto grid max-w-[1240px] items-center gap-12 lg:grid-cols-[0.92fr_1.08fr] lg:gap-16 xl:gap-20">
@@ -40,24 +28,23 @@ export function LandingHeroSection() {
 
           <div className="mt-7">
             <p className="text-[clamp(1.85rem,4vw,3.4rem)] font-medium leading-[1.12] tracking-[-0.04em] text-[#281A1E]">
-              あなたの仕事を
+              朝のメールと投稿を、
               <br />
-              代わりに終わらせます
+              自分の手から外す。
             </p>
           </div>
 
           <p className="mx-auto mt-5 max-w-[520px] text-sm leading-7 text-[#75686B] sm:text-base sm:leading-8 lg:mx-0">
             個人事業主・忙しい会社員向け。
-            <br className="hidden sm:block" />
-            SNS投稿・メール・資料が、選んで依頼するだけで完成します。
+            依頼 → 作業中 → 完成通知 → 完成物。会話ではなく、仕事が終わります。
           </p>
 
           <p className="mx-auto mt-4 max-w-[520px] text-sm font-medium leading-7 text-[#74172A] sm:text-base lg:mx-0">
-            ChatGPT・Claude・Geminiは答えて終わる。MINERVOTは仕事を終わらせる。
+            チャットAIの上位互換ではありません。仕事完了の別カテゴリです。
           </p>
 
           <p className="mx-auto mt-3 max-w-[520px] text-sm leading-7 text-[#75686B] lg:mx-0">
-            無料で始めて、月980円から。クレジットカード不要。
+            登録後60秒以内に1件完成を目指せます。合えば月980円。
           </p>
 
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row lg:justify-start">
@@ -65,9 +52,9 @@ export function LandingHeroSection() {
               <Link href="/sign-up" className="w-full sm:w-auto">
                 <Button
                   size="lg"
-                  className="min-h-13 w-full min-w-[240px] rounded-full border border-[#74172A] bg-[#74172A] px-7 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(116,23,42,0.22)] sm:w-auto"
+                  className="min-h-13 w-full min-w-[260px] rounded-full border border-[#74172A] bg-[#74172A] px-7 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(116,23,42,0.22)] sm:w-auto"
                 >
-                  無料で最初の仕事を終わらせる
+                  今すぐ1件終わらせる
                 </Button>
               </Link>
             </Show>
@@ -76,21 +63,22 @@ export function LandingHeroSection() {
               <Link href={ATLAS_APP_HOME_PATH} className="w-full sm:w-auto">
                 <Button
                   size="lg"
-                  className="min-h-13 w-full min-w-[240px] rounded-full border border-[#74172A] bg-[#74172A] px-7 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(116,23,42,0.22)] sm:w-auto"
+                  className="min-h-13 w-full min-w-[260px] rounded-full border border-[#74172A] bg-[#74172A] px-7 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(116,23,42,0.22)] sm:w-auto"
                 >
-                  仕事を終わらせる
+                  今すぐ仕事を終わらせる
                 </Button>
               </Link>
             </Show>
           </div>
 
           <p className="mx-auto mt-3 text-xs text-[#9A8D90] lg:mx-0">
-            <a href="#proof" className="underline-offset-2 hover:underline">
-              完成見本（証拠）を見る
+            クレジットカード不要 ·{" "}
+            <a href="#finish-story" className="underline-offset-2 hover:underline">
+              終わる瞬間を見る
             </a>
             {" · "}
-            <a href="#pricing" className="underline-offset-2 hover:underline">
-              月980円の理由
+            <a href="#price-value" className="underline-offset-2 hover:underline">
+              980円の比較を見る
             </a>
           </p>
 

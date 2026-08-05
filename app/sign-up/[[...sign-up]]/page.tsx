@@ -6,17 +6,17 @@ import { ATLAS_APP_HOME_PATH } from "@/lib/auth/public-routes";
 import { atlasClerkAppearance } from "@/lib/clerk/appearance";
 
 export const metadata: Metadata = {
-  title: "無料で最初の仕事を終わらせる",
+  title: "今すぐ1件終わらせる",
   description:
-    "ChatGPT・Claude・Geminiは答えて終わる。MINERVOTは仕事を終わらせます。無料で1件完成まで。月980円から。",
+    "登録後60秒以内に1件完成を目指せます。ChatGPTは答えて終わる。MINERVOTは仕事を終わらせます。合えば月980円。",
   robots: { index: false, follow: true },
 };
 
 export default function SignUpPage() {
   return (
     <AuthShell
-      title="無料で最初の仕事を終わらせる"
-      subtitle="登録後、仕事を1つ選ぶだけ。会話ではなく、完成まで進みます。"
+      title="今すぐ1件終わらせる"
+      subtitle="設定なし。仕事を1つ選ぶだけ。終わった瞬間に元が取れたと感じる体験から始めます。"
     >
       <SignUp
         appearance={atlasClerkAppearance}

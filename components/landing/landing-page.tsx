@@ -10,8 +10,13 @@ import {
 import { cn } from "@/lib/design-system/cn";
 
 import { LandingCtaSection } from "./landing-cta-section";
+import { LandingDailyHabit } from "./landing-daily-habit";
+import { LandingFinishStory } from "./landing-finish-story";
 import { LandingFirstPath } from "./landing-first-path";
+import { LandingFutureSection } from "./landing-future-section";
 import { LandingHeroSection } from "./landing-hero-section";
+import { LandingObjectionKillers } from "./landing-objection-killers";
+import { LandingPriceValue } from "./landing-price-value";
 import { LandingProofSection } from "./landing-proof-section";
 
 function MinervotLogo() {
@@ -22,7 +27,6 @@ function MinervotLogo() {
           M
         </span>
       </span>
-
       <span>
         <span className="block text-sm font-semibold tracking-[0.08em] text-[#74172A]">
           MINERVOT
@@ -47,22 +51,16 @@ function LandingHeader() {
         </Link>
 
         <nav className="hidden items-center gap-7 md:flex">
-          <a
-            href="#proof"
-            className="text-xs font-medium text-[#6F6265] hover:text-[#74172A]"
-          >
+          <a href="#finish-story" className="text-xs font-medium text-[#6F6265] hover:text-[#74172A]">
+            終わる瞬間
+          </a>
+          <a href="#proof" className="text-xs font-medium text-[#6F6265] hover:text-[#74172A]">
             見本
           </a>
-          <a
-            href="#first-path"
-            className="text-xs font-medium text-[#6F6265] hover:text-[#74172A]"
-          >
-            使い方
+          <a href="#price-value" className="text-xs font-medium text-[#6F6265] hover:text-[#74172A]">
+            980円
           </a>
-          <a
-            href="#pricing"
-            className="text-xs font-medium text-[#6F6265] hover:text-[#74172A]"
-          >
+          <a href="#pricing" className="text-xs font-medium text-[#6F6265] hover:text-[#74172A]">
             料金
           </a>
           <AtlasLandingAuth />
@@ -87,10 +85,15 @@ function PricingSection() {
       <div className="relative mx-auto max-w-[1240px]">
         <div className="mx-auto max-w-3xl text-center">
           <h2 className="text-3xl font-semibold tracking-[-0.04em] text-[#26191C] sm:text-4xl">
-            月980円で、繰り返し仕事を手放す。
+            合えば、月980円。
           </h2>
           <p className="mt-5 text-sm leading-7 text-[#75686B] sm:text-base">
-            無料で1件完成まで体験。毎月の投稿・メール・資料を自分で抱え続けないなら、Light（月980円）から。
+            無料で1件完成させて判断。毎日の投稿・メールを手放すなら Light。
+            価格の比較は
+            <a href="#price-value" className="mx-1 text-[#74172A] underline-offset-2 hover:underline">
+              こちら
+            </a>
+            。
           </p>
         </div>
 
@@ -119,7 +122,7 @@ function PricingSection() {
                   </h3>
                   {isRecommended && (
                     <span className="rounded-full bg-[#74172A] px-3 py-1 text-[10px] font-semibold tracking-[0.12em] text-white">
-                      まずこれ
+                      元が取りやすい
                     </span>
                   )}
                 </div>
@@ -150,9 +153,9 @@ function PricingSection() {
                   )}
                 >
                   {plan.planId === "light"
-                    ? "毎月の投稿・文章・基本の自動化を、自分で抱えなくてよくする定番プラン。"
+                    ? "毎日の投稿・メールを手放す定番。缶コーヒー数本分の比較は上のセクション。"
                     : plan.planId === "free"
-                      ? "まずは1件、仕事が終わる体験まで。クレジットカード不要。"
+                      ? "60秒以内に1件完成を体験。クレジットカード不要。"
                       : plan.description}
                 </p>
 
@@ -193,9 +196,9 @@ function PricingSection() {
                     className="min-h-11 w-full rounded-full bg-[#74172A] text-xs font-semibold text-white hover:bg-[#5D1020]"
                   >
                     {plan.planId === "free"
-                      ? "無料で始める"
+                      ? "今すぐ1件終わらせる"
                       : plan.planId === "light"
-                        ? "月980円ではじめる"
+                        ? "月980円で毎日任せる"
                         : "このプランで始める"}
                   </Button>
                 </Link>
@@ -205,7 +208,7 @@ function PricingSection() {
         </ul>
 
         <p className="mt-8 text-center text-xs text-[#8B7E81]">
-          解約はいつでも設定から。まずは無料で1件完成まで進めてください。
+          解約はいつでも設定から。まずは1件完成させて「元が取れるか」を体で確認してください。
         </p>
       </div>
     </section>
@@ -229,8 +232,8 @@ function LandingFooter() {
 }
 
 /**
- * Conversion landing — only the path that sells registration.
- * Deleted from main path: examples, pain, reasons, trust, audience, capabilities.
+ * Pay-decision landing order:
+ * hero → finish story → future → daily → objections → proof → price value → path → pricing → CTA
  */
 export function LandingPage() {
   return (
@@ -238,7 +241,12 @@ export function LandingPage() {
       <LandingHeader />
       <main>
         <LandingHeroSection />
+        <LandingFinishStory />
+        <LandingFutureSection />
+        <LandingDailyHabit />
+        <LandingObjectionKillers />
         <LandingProofSection />
+        <LandingPriceValue />
         <LandingFirstPath />
         <PricingSection />
         <LandingCtaSection />
