@@ -258,7 +258,7 @@ export function SecretaryChatComposer() {
           value={text}
           onChange={(event) => setText(event.target.value)}
           rows={4}
-          placeholder="例：このPDFを要約して / 今日のSNS投稿を作成して"
+          placeholder="例：営業資料を作って整えて / 請求書をまとめて / 議事録を残して"
           className="mt-5 w-full resize-none rounded-[20px] border border-[var(--border-subtle)] bg-[var(--background-subtle)]/60 px-4 py-4 text-base leading-relaxed text-foreground outline-none transition-colors placeholder:text-[var(--foreground-muted)] focus:border-accent/40 focus:bg-[var(--card)] focus:ring-2 focus:ring-accent/15 sm:min-h-[140px] sm:px-5 sm:text-[17px]"
           onKeyDown={(event) => {
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {

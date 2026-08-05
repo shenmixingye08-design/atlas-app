@@ -22,7 +22,7 @@ const SECRETARY_PHASES = [
     subtitle: ui.secretaryProgress.polishHint,
   },
   {
-    id: "done",
+    id: "finish",
     label: ui.secretaryProgress.done,
     subtitle: ui.secretaryProgress.doneHint,
   },

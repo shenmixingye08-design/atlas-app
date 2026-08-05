@@ -34,26 +34,18 @@ export function WorkflowResults({
   const total = Math.max(loadingPhases.length, 1);
   const filled = Math.min(runningIndex + 1, total);
   const current = loadingPhases[runningIndex] ?? loadingPhases[0];
-  const remaining = loadingPhases
-    .slice(runningIndex + 1)
-    .map((p) => p.label)
-    .filter(Boolean);
 
   return (
     <div className="mx-auto max-w-lg space-y-8 animate-fade-in py-10">
-      <Card padding="lg" className="space-y-8 text-center shadow-[var(--shadow-md)]">
+      <Card padding="lg" className="space-y-8 text-center shadow-none">
         <div className="space-y-2">
-          <p className="text-sm font-medium text-accent">MINERVOT</p>
           <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
             {current?.label ?? ui.secretaryProgress.write}
           </h2>
-          <p className="text-sm text-[var(--foreground-muted)] sm:text-base">
-            {current?.subtitle ?? ui.secretaryProgress.writeHint}
-          </p>
         </div>
 
         <div
-          className="mx-auto h-3 w-full max-w-sm overflow-hidden rounded-full bg-[var(--surface-muted)]"
+          className="mx-auto h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-[var(--surface-muted)]"
           role="progressbar"
           aria-valuemin={0}
           aria-valuemax={total}
@@ -61,7 +53,7 @@ export function WorkflowResults({
           aria-label={current?.label ?? "進捗"}
         >
           <div
-            className="h-full rounded-full bg-accent transition-all duration-500"
+            className="h-full rounded-full bg-foreground/80 transition-all duration-500"
             style={{ width: `${Math.round((filled / total) * 100)}%` }}
           />
         </div>
@@ -71,9 +63,9 @@ export function WorkflowResults({
             <li
               key={phase.id}
               className={cn(
-                "flex items-center gap-3 rounded-2xl px-3 py-2",
-                index < runningIndex && "text-[var(--status-success)]",
-                index === runningIndex && "bg-accent/5 font-medium text-foreground",
+                "flex items-center gap-3 px-1 py-1",
+                index < runningIndex && "text-foreground",
+                index === runningIndex && "font-medium text-foreground",
               )}
             >
               <span aria-hidden className="w-5 text-center">
@@ -83,12 +75,6 @@ export function WorkflowResults({
             </li>
           ))}
         </ol>
-
-        {remaining.length > 0 && (
-          <p className="text-xs text-[var(--foreground-muted)]">
-            残り: {remaining.join(" → ")}
-          </p>
-        )}
       </Card>
 
       {error && <ErrorState message={error} />}

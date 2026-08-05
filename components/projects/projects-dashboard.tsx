@@ -8,8 +8,6 @@ import { AutomationFirstHome } from "@/components/automation-first/automation-fi
 import { fetchAutomations } from "@/lib/automations/client";
 import type { Automation } from "@/lib/automations/types";
 import { normalizeAutomations, normalizeProjects } from "@/lib/compatibility";
-import { shouldShowFirstExperience } from "@/lib/first-experience";
-import { shouldShowWelcomeWizard } from "@/lib/onboarding";
 import { useProjects } from "@/lib/projects/use-projects";
 import { ui } from "@/lib/i18n";
 import { useFeatureAvailability } from "@/lib/feature-flags";
@@ -55,12 +53,11 @@ export function ProjectsDashboard() {
   }, []);
 
   const refreshExperienceState = useCallback(() => {
+    // Phase1: never auto-interrupt the home. Opt-in via query only.
     const forceWelcome = searchParams.get("welcome") === "1";
     const forceExperience = searchParams.get("experience") === "1";
-    setShowWizard(forceWelcome || shouldShowWelcomeWizard());
-    setShowFirstExperience(
-      !forceWelcome && (forceExperience || shouldShowFirstExperience()),
-    );
+    setShowWizard(forceWelcome);
+    setShowFirstExperience(!forceWelcome && forceExperience);
   }, [searchParams]);
 
   useEffect(() => {
