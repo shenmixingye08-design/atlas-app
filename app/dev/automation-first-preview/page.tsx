@@ -100,7 +100,11 @@ const SAMPLE_AUTOMATIONS: Automation[] = [
 
 const SAMPLE_PROJECTS: Project[] = [];
 
-export default async function DevAutomationFirstPreviewPage() {
+export default async function DevAutomationFirstPreviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string; theme?: string }>;
+}) {
   if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
     notFound();
   }
@@ -115,10 +119,31 @@ export default async function DevAutomationFirstPreviewPage() {
     }
   }
 
+  const params = await searchParams;
+  const viewRaw = params.view;
+  const initialView =
+    viewRaw === "home" ||
+    viewRaw === "empty" ||
+    viewRaw === "today" ||
+    viewRaw === "settings"
+      ? viewRaw
+      : "home";
+  const initialTheme = params.theme === "dark" ? "dark" : "light";
+
   return (
-    <AutomationFirstPreviewClient
-      automations={SAMPLE_AUTOMATIONS}
-      projects={SAMPLE_PROJECTS}
-    />
+    <>
+      {/* Ensure AF tokens apply even before client hydration (design sandbox). */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `document.documentElement.classList.add('automation-design-system');document.documentElement.setAttribute('data-theme','${initialTheme}');`,
+        }}
+      />
+      <AutomationFirstPreviewClient
+        automations={SAMPLE_AUTOMATIONS}
+        projects={SAMPLE_PROJECTS}
+        initialView={initialView}
+        initialTheme={initialTheme}
+      />
+    </>
   );
 }

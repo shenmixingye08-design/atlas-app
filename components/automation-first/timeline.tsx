@@ -64,7 +64,7 @@ export function Timeline({ items, className, onItemOpen }: TimelineProps) {
                 <span className="mt-1 w-px flex-1 bg-[var(--border)]" aria-hidden />
               ) : null}
             </div>
-            <div className="min-w-0 flex-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5 sm:p-4">
+            <div className="af-card min-w-0 flex-1 p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <StatusBadge status={item.status} label={item.statusLabel} />

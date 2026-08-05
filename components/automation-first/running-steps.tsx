@@ -46,7 +46,7 @@ export function RunningStepsPanel({
         {jobs.map((job) => (
           <li
             key={job.id}
-            className="rounded-[var(--radius-lg)] border border-[color-mix(in_srgb,var(--status-running)_35%,var(--border))] bg-[var(--status-running-bg)] p-4"
+            className="af-card border-[color-mix(in_srgb,var(--status-running)_35%,var(--border))] bg-[var(--status-running-bg)] p-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">

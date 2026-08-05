@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/automation-first/empty-state";
 import { ErrorState } from "@/components/automation-first/error-state";
+import { KpiCard } from "@/components/automation-first/kpi-card";
 import { PageHeader } from "@/components/automation-first/page-header";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
 import { Timeline } from "@/components/automation-first/timeline";
@@ -166,9 +167,9 @@ export function TodayWorkPage({
       {timeline.length === 0 ? (
         <EmptyState
           title="今日の予定はまだありません"
-          description="自動化を作成すると、ここに今日の流れが表示されます。"
+          description="最初の自動化を作成すると、MINERVOTが自動で仕事を実行し、ここに今日の流れが表示されます。"
           primaryHref="/automations/new"
-          primaryLabel="新しい自動化を作る"
+          primaryLabel="最初の自動化を作る"
           secondaryHref="/workspace"
           secondaryLabel="一度だけお願いする"
           onPrimaryClick={() =>
@@ -200,45 +201,47 @@ export function TodayWorkPage({
             />
           </div>
           <aside className="mt-6 space-y-4 lg:mt-0">
-            <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+            <div className="af-card space-y-4 p-4">
               <h2 className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]">
                 今日の状況
               </h2>
               {opsSummary ? (
-                <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <dt className="text-[var(--text-muted)]">実行中</dt>
-                    <dd className="text-lg font-semibold">
-                      {opsSummary.counts.running}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[var(--text-muted)]">承認待ち</dt>
-                    <dd className="text-lg font-semibold">
-                      {opsSummary.counts.awaitingApproval}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[var(--text-muted)]">入力待ち</dt>
-                    <dd className="text-lg font-semibold">
-                      {opsSummary.counts.needsInput}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[var(--text-muted)]">本日失敗</dt>
-                    <dd className="text-lg font-semibold">
-                      {opsSummary.counts.failedToday}
-                    </dd>
-                  </div>
-                </dl>
+                <div className="grid grid-cols-2 gap-4">
+                  <KpiCard
+                    label="実行中"
+                    description="いま進んでいる仕事"
+                    value={opsSummary.counts.running}
+                    emptyHint="実行中の仕事はありません"
+                  />
+                  <KpiCard
+                    label="確認待ち"
+                    description="承認や確認が必要"
+                    value={opsSummary.counts.awaitingApproval}
+                    emphasize={opsSummary.counts.awaitingApproval > 0}
+                    emptyHint="確認待ちはありません"
+                  />
+                  <KpiCard
+                    label="入力待ち"
+                    description="追加情報が必要"
+                    value={opsSummary.counts.needsInput}
+                    emptyHint="入力待ちはありません"
+                  />
+                  <KpiCard
+                    label="本日失敗"
+                    description="修復が必要な仕事"
+                    value={opsSummary.counts.failedToday}
+                    emphasize={opsSummary.counts.failedToday > 0}
+                    emptyHint="本日の失敗はありません"
+                  />
+                </div>
               ) : (
-                <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-secondary)]">
+                <p className="text-[length:var(--text-body)] text-[var(--text-secondary)]">
                   確認待ちは詳細から承認できます。失敗した仕事は実行詳細から修復できます。
                 </p>
               )}
               <Link
                 href="/automations"
-                className="mt-4 inline-flex min-h-[var(--touch-target)] items-center text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+                className="inline-flex min-h-[var(--touch-target)] items-center text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
               >
                 自動化一覧へ
               </Link>

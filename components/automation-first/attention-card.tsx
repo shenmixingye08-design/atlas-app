@@ -65,7 +65,7 @@ export function AttentionCard({
   return (
     <article
       className={cn(
-        "rounded-[var(--radius-lg)] border p-4 shadow-[var(--shadow-sm)]",
+        "af-card p-4",
         kind === "approval" &&
           "border-[color-mix(in_srgb,var(--status-pending-approval)_45%,var(--border))] bg-[var(--status-pending-approval-bg)]",
         kind === "input" &&
@@ -81,7 +81,7 @@ export function AttentionCard({
         <span
           aria-hidden
           className={cn(
-            "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-bold",
+            "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-[length:var(--text-caption)] font-bold",
             kind === "approval" &&
               "bg-[var(--status-pending-approval)] text-white",
             kind === "input" && "bg-[var(--status-needs-input)] text-white",

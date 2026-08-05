@@ -15,12 +15,16 @@ type View = "home" | "today" | "settings" | "empty";
 export function AutomationFirstPreviewClient({
   automations,
   projects,
+  initialView = "home",
+  initialTheme = "light",
 }: {
   automations: Automation[];
   projects: Project[];
+  initialView?: View;
+  initialTheme?: "light" | "dark";
 }) {
-  const [view, setView] = useState<View>("home");
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [view, setView] = useState<View>(initialView);
+  const [theme, setTheme] = useState<"light" | "dark">(initialTheme);
 
   useEffect(() => {
     document.documentElement.classList.add("automation-design-system");
