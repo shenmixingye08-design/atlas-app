@@ -348,6 +348,52 @@ export async function saveDeliverableArtifact(
     );
   }
 
+  // P0-7: write completion evidence back onto metadata + durable row.
+  const evidenceMetadata = {
+    ...(stored.metadata ?? {}),
+    organizationId: input.organizationId ?? stored.metadata?.organizationId ?? null,
+    runId: input.runId ?? stored.metadata?.runId ?? null,
+    jobId: input.jobId ?? stored.metadata?.jobId ?? null,
+    stepId: input.stepId ?? stored.metadata?.stepId ?? null,
+    diagnosticId,
+    contextVersion: ARTIFACT_CONTEXT_VERSION,
+    completionEvidenceId: evidence.completionEvidenceId,
+  };
+  stored.metadata = evidenceMetadata;
+  stored.storageStatus = "verified";
+  getStoreBucketForArtifact().set(stored.id, stored);
+
+  const { updateDurableDeliverableMetadata } = await import("./durable-store");
+  await updateDurableDeliverableMetadata({
+    id: stored.id,
+    userId: ownerId,
+    metadata: evidenceMetadata,
+  });
+
+  // Persist verified_at / completion_evidence_id when Supabase is available.
+  try {
+    const client = (await import("@/lib/supabase/service-role"))
+      .createServiceRoleClientIfConfigured();
+    if (client) {
+      await client
+        .from("atlas_deliverable_files")
+        .update({
+          verified_at: verifiedAt,
+          stored_at: verifiedAt,
+          completion_evidence_id: evidence.completionEvidenceId,
+          diagnostic_id: diagnosticId,
+          context_version: ARTIFACT_CONTEXT_VERSION,
+          storage_status: "verified",
+          content_sha256: checksum,
+          updated_at: verifiedAt,
+        } as never)
+        .eq("id", stored.id)
+        .eq("user_id", ownerId);
+    }
+  } catch {
+    // memory_durable / local: metadata write above is sufficient
+  }
+
   return { stored, persist, contract, evidence };
 }
 

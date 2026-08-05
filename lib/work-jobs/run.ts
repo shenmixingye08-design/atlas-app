@@ -79,8 +79,35 @@ function evaluateCompletionGate(input: {
   const persistence = commander.persistence;
   const files = commander.result.fileDeliverables ?? [];
   const hasDownloadable = files.some((f) =>
-    Boolean(f.downloadUrl?.includes(`/api/deliverables/${f.id}`)),
+    Boolean(
+      f.downloadUrl?.includes(`/api/deliverables/${f.id}`) && f.sizeBytes > 0,
+    ),
   );
+  const exportedFormats = persistence?.exportedFormats ?? [];
+  const allRequestedPresent =
+    exportedFormats.length === 0 ||
+    exportedFormats.every((format) =>
+      files.some(
+        (f) =>
+          f.format === format &&
+          Boolean(f.downloadUrl?.includes(`/api/deliverables/${f.id}`)) &&
+          f.sizeBytes > 0,
+      ),
+    );
+
+  // P0-7: completed without artifact is forbidden when documents were required.
+  if (
+    persistence?.artifactsRequired &&
+    (!persistence.artifactsVerified || !hasDownloadable || !allRequestedPresent)
+  ) {
+    return {
+      ok: false,
+      error:
+        persistence.wordErrorCode
+          ? `成果物の保存に失敗しました（${persistence.wordErrorCode}）`
+          : "成果物ファイルを確認できませんでした（completed without artifact 禁止）",
+    };
+  }
 
   if (persistence?.wordRequired && !persistence.wordCompletionVerified && !hasDownloadable) {
     return {
