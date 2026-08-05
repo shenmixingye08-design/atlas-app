@@ -29,7 +29,7 @@ export function getSiteOrigin(): string {
 }
 
 export const MINERVOT_DEFAULT_TITLE =
-  "MINERVOT | あなた専属のAI秘書";
+  "MINERVOT | 朝のメールと投稿を、自分の手から外す";
 
 export const MINERVOT_DEFAULT_DESCRIPTION =
-  "MINERVOTは、仕事を覚え、実行し、分析し、改善まで提案する、あなた専属のAI秘書です。メール・SNS・資料作成・スケジュール管理など、毎日の繰り返し業務を効率化します。";
+  "依頼→作業中→完成通知→完成物。チャットAIの上位互換ではなく仕事完了の別カテゴリ。登録後60秒以内に1件完成を目指せます。合えば月980円。";

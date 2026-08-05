@@ -6,16 +6,17 @@ import { ATLAS_APP_HOME_PATH } from "@/lib/auth/public-routes";
 import { atlasClerkAppearance } from "@/lib/clerk/appearance";
 
 export const metadata: Metadata = {
-  title: "新規登録",
-  description: "無料でMINERVOTアカウントを作成し、あなた専属のAI秘書を始めましょう。",
+  title: "今すぐ1件終わらせる",
+  description:
+    "登録後60秒以内に1件完成を目指せます。ChatGPTは答えて終わる。MINERVOTは仕事を終わらせます。合えば月980円。",
   robots: { index: false, follow: true },
 };
 
 export default function SignUpPage() {
   return (
     <AuthShell
-      title="新規登録"
-      subtitle="Googleまたはメールアドレスで、無料でMINERVOTアカウントを作成できます"
+      title="今すぐ1件終わらせる"
+      subtitle="設定なし。仕事を1つ選ぶだけ。終わった瞬間に元が取れたと感じる体験から始めます。"
     >
       <SignUp
         appearance={atlasClerkAppearance}

@@ -55,7 +55,7 @@ export const PLAN_DEFINITIONS: readonly PlanDefinition[] = [
   {
     planId: "light",
     name: "Light",
-    description: "文章作成とSNS投稿補助、基本的な自動化",
+    description: "毎月の投稿・文章・基本自動化を、自分で抱えなくてよくする定番",
     monthlyPriceJpy: 980,
     stripePriceId: process.env.STRIPE_PRICE_LIGHT?.trim() || null,
     limits: {
