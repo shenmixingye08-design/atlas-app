@@ -39,6 +39,11 @@ const GROUPS: SettingsGroup[] = [
         description: "稼働・一時停止・次回実行",
       },
       {
+        href: "/settings/secretary",
+        title: "秘書モード",
+        description: "OFF / 提案のみ / 半自動 / 完全自動",
+      },
+      {
         href: "/settings/learning",
         title: "改善提案",
         description: "過去の修正から次の進め方を提案",

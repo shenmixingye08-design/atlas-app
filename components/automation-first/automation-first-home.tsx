@@ -36,6 +36,7 @@ import {
 } from "@/lib/automation-platform/client";
 import type { AutomationOperationsSummary } from "@/lib/automation-platform/operations/summary";
 import type { AutomationRun } from "@/lib/automation-platform/types";
+import { ExecutiveAssistantPanel } from "@/components/home/executive-assistant-panel";
 import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 import { useFeatureAvailability } from "@/lib/feature-flags";
@@ -170,6 +171,7 @@ function WeeklyStatsCard({ stats }: { stats: HomeWeeklyStats }) {
 
 export function AutomationFirstHome({
   automations,
+  projects,
 }: AutomationFirstHomeProps) {
   const { flags } = useFeatureAvailability();
   const opsEnabled =
@@ -508,6 +510,11 @@ export function AutomationFirstHome({
           </div>
         </div>
       </header>
+
+      <ExecutiveAssistantPanel
+        automations={automations}
+        projects={projects}
+      />
 
       {opsError ? (
         <ErrorState

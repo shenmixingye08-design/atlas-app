@@ -6,6 +6,7 @@ import { ui } from "@/lib/i18n";
 
 import { HomeChatBar } from "./home-chat-bar";
 import { HomeGreetingHeader } from "./home-greeting-header";
+import { ExecutiveAssistantPanel } from "./executive-assistant-panel";
 
 type SecretaryHomeDashboardProps = {
   automations: Automation[];
@@ -13,9 +14,7 @@ type SecretaryHomeDashboardProps = {
 };
 
 /**
- * Post-login home — 迷いゼロの第一画面。
- * 目立つのは「何をしてほしいですか？」入力と送信だけ。
- * ダッシュボード・分析・おすすめは初回導線に出さない。
+ * Post-login home — 迷いゼロの第一画面 + AI秘書の先行提案。
  */
 export function SecretaryHomeDashboard({
   automations,
@@ -34,6 +33,14 @@ export function SecretaryHomeDashboard({
       </header>
 
       <HomeChatBar />
+
+      <div className="w-full">
+        <ExecutiveAssistantPanel
+          automations={automations}
+          projects={projects}
+          compact
+        />
+      </div>
     </div>
   );
 }
