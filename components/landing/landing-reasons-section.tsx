@@ -66,9 +66,9 @@ export function LandingReasonsSection() {
             </p>
 
             <p className="mt-3 text-lg font-semibold leading-8 text-[#281A1E] sm:text-xl">
-              あなたの時間を生み出すための、
+              あなたの仕事を代わりに終わらせ、
               <br className="sm:hidden" />
-              専属AI秘書です。
+              時間を生み出すためのサービスです。
             </p>
 
             <p className="mx-auto mt-5 max-w-xl text-sm leading-7 text-[#75686B] sm:text-base">

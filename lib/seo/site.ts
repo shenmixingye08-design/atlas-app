@@ -29,7 +29,7 @@ export function getSiteOrigin(): string {
 }
 
 export const MINERVOT_DEFAULT_TITLE =
-  "MINERVOT | あなた専属のAI秘書";
+  "MINERVOT | 仕事を代わりに終わらせます（月980円から）";
 
 export const MINERVOT_DEFAULT_DESCRIPTION =
-  "MINERVOTは、仕事を覚え、実行し、分析し、改善まで提案する、あなた専属のAI秘書です。メール・SNS・資料作成・スケジュール管理など、毎日の繰り返し業務を効率化します。";
+  "個人事業主・忙しい会社員向け。SNS投稿・メール・資料を選んで依頼するだけで完成。ChatGPT・Claude・Geminiは答えて終わる。MINERVOTは仕事を終わらせます。無料体験あり、月980円から。";

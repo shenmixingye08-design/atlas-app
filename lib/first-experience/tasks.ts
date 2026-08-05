@@ -1,12 +1,22 @@
+import { FIRST_EXPERIENCE_TYPICAL_MANUAL_MINUTES } from "@/lib/product-clarity/time-saved";
+
 import type {
   FirstExperienceTaskDefinition,
   FirstExperienceTaskId,
 } from "./types";
 
 const BASE_EMPLOYEE_TAIL: FirstExperienceTaskDefinition["employeeSteps"] = [
-  { icon: "📧", role: "秘書", status: "整理中" },
+  { icon: "✓", role: "MINERVOT", status: "仕上げ中" },
   { icon: "✅", role: "MINERVOT", status: "完了" },
 ];
+
+/** Jobs shown on the first-run clarity path (pick → request → done). */
+export const FIRST_RUN_CLARITY_TASK_IDS: readonly FirstExperienceTaskId[] = [
+  "sns",
+  "blog",
+  "sales_material",
+  "email",
+] as const;
 
 export const FIRST_EXPERIENCE_TASKS: readonly FirstExperienceTaskDefinition[] = [
   {
@@ -15,8 +25,9 @@ export const FIRST_EXPERIENCE_TASKS: readonly FirstExperienceTaskDefinition[] = 
     label: "SNS投稿",
     jobCategory: "sns_post",
     assignment: "X向けの短いビジネス投稿文を1件作成してください。",
-    leadEmployee: "SNS担当",
+    leadEmployee: "MINERVOT",
     saveLocation: "MINERVOT",
+    typicalManualMinutes: FIRST_EXPERIENCE_TYPICAL_MANUAL_MINUTES.sns,
     deliverable: {
       title: "SNS投稿文",
       preview:
@@ -24,8 +35,8 @@ export const FIRST_EXPERIENCE_TASKS: readonly FirstExperienceTaskDefinition[] = 
       format: "テキスト",
     },
     employeeSteps: [
-      { icon: "📱", role: "SNS担当", status: "分析中" },
-      { icon: "📱", role: "SNS担当", status: "作成中" },
+      { icon: "📱", role: "MINERVOT", status: "内容を整理中" },
+      { icon: "📱", role: "MINERVOT", status: "投稿文を作成中" },
       ...BASE_EMPLOYEE_TAIL,
     ],
     nextIntegration: { label: "X連携しましょう", href: "/settings/x" },
@@ -37,8 +48,9 @@ export const FIRST_EXPERIENCE_TASKS: readonly FirstExperienceTaskDefinition[] = 
     label: "ブログ",
     jobCategory: "blog",
     assignment: "短いブログ記事の下書きを作成してください。",
-    leadEmployee: "ブログ担当",
+    leadEmployee: "MINERVOT",
     saveLocation: "MINERVOT",
+    typicalManualMinutes: FIRST_EXPERIENCE_TYPICAL_MANUAL_MINUTES.blog,
     deliverable: {
       title: "ブログ下書き",
       preview:
@@ -46,10 +58,9 @@ export const FIRST_EXPERIENCE_TASKS: readonly FirstExperienceTaskDefinition[] = 
       format: "Markdown",
     },
     employeeSteps: [
-      { icon: "📝", role: "ブログ担当", status: "分析中" },
-      { icon: "📝", role: "ブログ担当", status: "作成中" },
-      { icon: "📄", role: "資料担当", status: "確認中" },
-      ...BASE_EMPLOYEE_TAIL.slice(1),
+      { icon: "📝", role: "MINERVOT", status: "構成を整理中" },
+      { icon: "📝", role: "MINERVOT", status: "下書きを作成中" },
+      ...BASE_EMPLOYEE_TAIL,
     ],
     nextIntegration: { label: "WordPressを連携しましょう", href: "/settings" },
     onboardingTaskId: "blog",
@@ -60,19 +71,19 @@ export const FIRST_EXPERIENCE_TASKS: readonly FirstExperienceTaskDefinition[] = 
     label: "営業資料",
     jobCategory: "sales_material",
     assignment: "1枚構成の営業資料アウトラインを作成してください。",
-    leadEmployee: "資料担当",
+    leadEmployee: "MINERVOT",
     saveLocation: "Google Drive（連携後）",
+    typicalManualMinutes: FIRST_EXPERIENCE_TYPICAL_MANUAL_MINUTES.sales_material,
     deliverable: {
       title: "営業資料アウトライン",
       preview:
-        "1. 課題提起\n2. 解決策\n3. 導入効果\n4. 次のアクション\n— PowerPoint化もMINERVOTが担当できます。",
+        "1. 課題提起\n2. 解決策\n3. 導入効果\n4. 次のアクション\n— 資料化もMINERVOTが担当できます。",
       format: "アウトライン",
     },
     employeeSteps: [
-      { icon: "📄", role: "資料担当", status: "分析中" },
-      { icon: "📄", role: "資料担当", status: "作成中" },
-      { icon: "📝", role: "ブログ担当", status: "確認中" },
-      ...BASE_EMPLOYEE_TAIL.slice(1),
+      { icon: "📄", role: "MINERVOT", status: "構成を整理中" },
+      { icon: "📄", role: "MINERVOT", status: "アウトライン作成中" },
+      ...BASE_EMPLOYEE_TAIL,
     ],
     nextIntegration: {
       label: "Google Driveを連携しましょう",
@@ -86,8 +97,9 @@ export const FIRST_EXPERIENCE_TASKS: readonly FirstExperienceTaskDefinition[] = 
     label: "メール整理",
     jobCategory: "email",
     assignment: "顧客へのフォローアップメールの返信下書きを作成してください。",
-    leadEmployee: "秘書",
+    leadEmployee: "MINERVOT",
     saveLocation: "Gmail（連携後）",
+    typicalManualMinutes: FIRST_EXPERIENCE_TYPICAL_MANUAL_MINUTES.email,
     deliverable: {
       title: "メール返信下書き",
       preview:
@@ -95,9 +107,9 @@ export const FIRST_EXPERIENCE_TASKS: readonly FirstExperienceTaskDefinition[] = 
       format: "メール下書き",
     },
     employeeSteps: [
-      { icon: "📧", role: "秘書", status: "分析中" },
-      { icon: "📧", role: "秘書", status: "作成中" },
-      ...BASE_EMPLOYEE_TAIL.slice(1),
+      { icon: "📧", role: "MINERVOT", status: "内容を整理中" },
+      { icon: "📧", role: "MINERVOT", status: "返信文を作成中" },
+      ...BASE_EMPLOYEE_TAIL,
     ],
     nextIntegration: { label: "Gmailを連携しましょう", href: "/settings/google/gmail" },
     onboardingTaskId: "email",
@@ -110,6 +122,7 @@ export const FIRST_EXPERIENCE_TASKS: readonly FirstExperienceTaskDefinition[] = 
     assignment: "繰り返し作業を減らすため、最初に任せるべき仕事を提案してください。",
     leadEmployee: "MINERVOT",
     saveLocation: "MINERVOT",
+    typicalManualMinutes: FIRST_EXPERIENCE_TYPICAL_MANUAL_MINUTES.ai_chat,
     deliverable: {
       title: "依頼への回答",
       preview:
@@ -119,7 +132,7 @@ export const FIRST_EXPERIENCE_TASKS: readonly FirstExperienceTaskDefinition[] = 
     employeeSteps: [
       { icon: "📝", role: "MINERVOT", status: "分析中" },
       { icon: "📝", role: "MINERVOT", status: "回答作成中" },
-      ...BASE_EMPLOYEE_TAIL.slice(1),
+      ...BASE_EMPLOYEE_TAIL,
     ],
     nextIntegration: { label: "追加依頼を開く", href: "/chat" },
     onboardingTaskId: "ai_chat",
@@ -130,8 +143,9 @@ export const FIRST_EXPERIENCE_TASKS: readonly FirstExperienceTaskDefinition[] = 
     label: "ファイル整理",
     jobCategory: "file_organize",
     assignment: "Google Drive内の資料フォルダ整理プランを作成してください。",
-    leadEmployee: "資料担当",
+    leadEmployee: "MINERVOT",
     saveLocation: "Google Drive（連携後）",
+    typicalManualMinutes: FIRST_EXPERIENCE_TYPICAL_MANUAL_MINUTES.files,
     deliverable: {
       title: "フォルダ整理プラン",
       preview:
@@ -139,8 +153,8 @@ export const FIRST_EXPERIENCE_TASKS: readonly FirstExperienceTaskDefinition[] = 
       format: "整理案",
     },
     employeeSteps: [
-      { icon: "📂", role: "資料担当", status: "分析中" },
-      { icon: "📂", role: "資料担当", status: "整理案作成中" },
+      { icon: "📂", role: "MINERVOT", status: "整理方針を作成中" },
+      { icon: "📂", role: "MINERVOT", status: "プランを仕上げ中" },
       ...BASE_EMPLOYEE_TAIL,
     ],
     nextIntegration: {
@@ -169,14 +183,15 @@ export function getFirstExperienceTask(
       assignment: text,
       leadEmployee: "MINERVOT",
       saveLocation: "MINERVOT",
+      typicalManualMinutes: null,
       deliverable: {
-        title: "成果物",
+        title: "完成した内容",
         preview: `${text}について、MINERVOTが対応方針をまとめました。ホームから本格的な仕事を続けられます。`,
         format: "テキスト",
       },
       employeeSteps: [
-        { icon: "🤖", role: "MINERVOT", status: "分析中" },
-        { icon: "🤖", role: "MINERVOT", status: "作成中" },
+        { icon: "✓", role: "MINERVOT", status: "分析中" },
+        { icon: "✓", role: "MINERVOT", status: "作成中" },
         ...BASE_EMPLOYEE_TAIL.slice(1),
       ],
       nextIntegration: { label: "連携設定を見る", href: "/settings" },
@@ -201,6 +216,10 @@ export function getRecommendedFirstExperienceTaskId(
     if (preferredTasks.includes(id)) return id;
   }
   return "sns";
+}
+
+export function getFirstRunClarityTasks(): FirstExperienceTaskDefinition[] {
+  return FIRST_RUN_CLARITY_TASK_IDS.map((id) => getFirstExperienceTask(id));
 }
 
 /** Progress bar fill levels (0–8). */

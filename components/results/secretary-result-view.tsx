@@ -21,6 +21,11 @@ import {
   deriveResultIntent,
   deriveTargetType,
 } from "@/lib/results/completion";
+import {
+  buildProjectTimeSaved,
+  formatMeasuredDuration,
+  formatSavedAmount,
+} from "@/lib/results/time-saved-display";
 import { useRegenerate } from "@/lib/results/use-regenerate";
 import { useDeliverableFiles } from "@/lib/workspace/use-deliverable-files";
 
@@ -87,6 +92,8 @@ export function SecretaryResultView({
     project.workRequest ?? "",
   );
 
+  const timeSaved = useMemo(() => buildProjectTimeSaved(project), [project]);
+
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <div className="space-y-4">
@@ -105,8 +112,29 @@ export function SecretaryResultView({
             {ui.secretaryResult.completedAt(formatProjectDate(project.updatedAt))}
           </p>
           <p className="text-base text-foreground">
-            すべて完了しました。成果物をご確認ください。
+            {ui.secretaryResult.allDone}
           </p>
+          {timeSaved && (
+            <div className="mt-3 rounded-[var(--radius-xl)] border border-accent/20 bg-[var(--accent-muted)] px-4 py-3 text-left">
+              {timeSaved.savedMinutes != null && timeSaved.savedMinutes > 0 ? (
+                <>
+                  <p className="text-base font-semibold text-foreground">
+                    {ui.secretaryResult.savedWork(
+                      formatSavedAmount(timeSaved.savedMinutes),
+                    )}
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--foreground-muted)]">
+                    {ui.secretaryResult.savedWorkHint}
+                  </p>
+                </>
+              ) : null}
+              <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+                {ui.secretaryResult.measuredDuration(
+                  formatMeasuredDuration(timeSaved.measuredSec),
+                )}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -132,7 +160,7 @@ export function SecretaryResultView({
       ) : (
         <div className="space-y-6">
           <FinalOutput
-            heading="成果物"
+            heading={ui.secretaryResult.deliverableHeading}
             result={project.result}
             isLoading={false}
             deliverables={deliverables}
