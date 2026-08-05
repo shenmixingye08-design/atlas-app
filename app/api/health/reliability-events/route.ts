@@ -1,3 +1,7 @@
+import {
+  authorizeHealthProbe,
+  healthUnauthorizedResponse,
+} from "@/lib/health/authorize-health-probe";
 import { probeReliabilityEventsSchema } from "@/lib/reliability/schema-probe";
 
 export const runtime = "nodejs";
@@ -5,11 +9,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Public reliability-events schema probe.
- * - GET: check table + INSERT
- * - GET ?apply=1: attempt DDL via POSTGRES_URL / SUPABASE_DB_URL when present
- *
- * Rate-limited so it cannot be used as a write farm.
+ * Reliability-events schema probe.
+ * P07: requires CRON_SECRET Bearer or ATLAS owner (not anonymous).
  */
 let lastRunAtMs = 0;
 let lastResult: Awaited<ReturnType<typeof probeReliabilityEventsSchema>> | null =
@@ -17,6 +18,9 @@ let lastResult: Awaited<ReturnType<typeof probeReliabilityEventsSchema>> | null 
 const MIN_INTERVAL_MS = 30_000;
 
 export async function GET(request: Request): Promise<Response> {
+  const gate = await authorizeHealthProbe(request);
+  if (!gate.ok) return healthUnauthorizedResponse(gate);
+
   const url = new URL(request.url);
   const force = url.searchParams.get("force") === "1";
   const apply = url.searchParams.get("apply") === "1";

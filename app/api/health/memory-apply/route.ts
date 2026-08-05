@@ -1,10 +1,17 @@
+import {
+  authorizeHealthProbe,
+  healthUnauthorizedResponse,
+} from "@/lib/health/authorize-health-probe";
 import { getMemoryApplyMetrics, listMemoryApplyEvents } from "@/lib/memory-apply/metrics";
 import { auditMemoryApplyCoverage } from "@/lib/memory-apply/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
+  const gate = await authorizeHealthProbe(request);
+  if (!gate.ok) return healthUnauthorizedResponse(gate);
+
   const metrics = getMemoryApplyMetrics();
   const audit = auditMemoryApplyCoverage();
   const recent = listMemoryApplyEvents().slice(0, 30);

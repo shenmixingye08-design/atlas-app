@@ -1,4 +1,8 @@
 import { getHealthVersionPayload } from "@/lib/health/version-info";
+import {
+  authorizeHealthProbe,
+  healthUnauthorizedResponse,
+} from "@/lib/health/authorize-health-probe";
 import { runVisionProductionSmoke } from "@/lib/vision/vision-production-smoke";
 import { runVisionUserUploadSmoke } from "@/lib/vision/vision-user-upload-smoke";
 
@@ -7,13 +11,12 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Public Production vision smoke (uses OpenAI once).
+ * Production vision smoke (uses OpenAI once).
+ * P07: requires CRON_SECRET Bearer or ATLAS owner (not anonymous).
  *
  * Modes:
  * - default / ?mode=direct — known-good JPEG → Files API → Responses (no storage)
  * - ?mode=user_upload — uploadUserImages (storage) → analyzeUserImage (real user path)
- *
- * Rate-limited in-process to avoid abuse / cost spikes.
  */
 let lastDirectAtMs = 0;
 let lastDirectResult: Awaited<ReturnType<typeof runVisionProductionSmoke>> | null =
@@ -24,6 +27,9 @@ let lastUserResult: Awaited<ReturnType<typeof runVisionUserUploadSmoke>> | null 
 const MIN_INTERVAL_MS = 120_000;
 
 export async function GET(request: Request): Promise<Response> {
+  const gate = await authorizeHealthProbe(request);
+  if (!gate.ok) return healthUnauthorizedResponse(gate);
+
   const url = new URL(request.url);
   const force = url.searchParams.get("force") === "1";
   const mode = url.searchParams.get("mode") === "user_upload" ? "user_upload" : "direct";

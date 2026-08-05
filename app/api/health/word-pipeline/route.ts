@@ -1,4 +1,8 @@
 import { getHealthVersionPayload } from "@/lib/health/version-info";
+import {
+  authorizeHealthProbe,
+  healthUnauthorizedResponse,
+} from "@/lib/health/authorize-health-probe";
 import { runWordPipelineSmoke } from "@/lib/deliverables/word-pipeline-smoke";
 
 export const runtime = "nodejs";
@@ -6,16 +10,17 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Public Word pipeline smoke (no OpenAI).
- * Verifies: docx pack → Storage/DB persist → PK header / download URL.
- *
- * Rate-limited in-process so it cannot be used as a free docx farm.
+ * Word pipeline smoke (no OpenAI).
+ * P07: requires CRON_SECRET Bearer or ATLAS owner (not anonymous).
  */
 let lastRunAtMs = 0;
 let lastResult: Awaited<ReturnType<typeof runWordPipelineSmoke>> | null = null;
 const MIN_INTERVAL_MS = 60_000;
 
 export async function GET(request: Request): Promise<Response> {
+  const gate = await authorizeHealthProbe(request);
+  if (!gate.ok) return healthUnauthorizedResponse(gate);
+
   const now = Date.now();
   const force = new URL(request.url).searchParams.get("force") === "1";
   if (!force && lastResult && now - lastRunAtMs < MIN_INTERVAL_MS) {

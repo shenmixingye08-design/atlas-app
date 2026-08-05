@@ -1,3 +1,7 @@
+import {
+  authorizeHealthProbe,
+  healthUnauthorizedResponse,
+} from "@/lib/health/authorize-health-probe";
 import { runWordRequestTrace } from "@/lib/deliverables/word-request-trace";
 
 export const runtime = "nodejs";
@@ -9,10 +13,13 @@ let lastResult: Awaited<ReturnType<typeof runWordRequestTrace>> | null = null;
 const MIN_INTERVAL_MS = 60_000;
 
 /**
- * Public Word request trace — 9 pipeline checkpoints.
- * No OpenAI. Rate-limited.
+ * Word request trace — 9 pipeline checkpoints.
+ * P07: requires CRON_SECRET Bearer or ATLAS owner (not anonymous).
  */
 export async function GET(request: Request): Promise<Response> {
+  const gate = await authorizeHealthProbe(request);
+  if (!gate.ok) return healthUnauthorizedResponse(gate);
+
   const now = Date.now();
   const force = new URL(request.url).searchParams.get("force") === "1";
   if (!force && lastResult && now - lastRunAtMs < MIN_INTERVAL_MS) {

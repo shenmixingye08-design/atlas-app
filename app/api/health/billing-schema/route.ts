@@ -1,3 +1,7 @@
+import {
+  authorizeHealthProbe,
+  healthUnauthorizedResponse,
+} from "@/lib/health/authorize-health-probe";
 import { probeBillingSubscriptionsSchema } from "@/lib/billing/subscriptions/schema-probe";
 
 export const runtime = "nodejs";
@@ -5,11 +9,10 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Public billing schema probe for atlas_billing_subscriptions.
+ * Billing schema probe for atlas_billing_subscriptions.
+ * P07: requires CRON_SECRET Bearer or ATLAS owner (not anonymous).
  * - GET: check table + SELECT/UPSERT
  * - GET ?apply=1: attempt DDL via POSTGRES_URL / SUPABASE Management token
- *
- * Rate-limited so it cannot be used as a write farm.
  */
 let lastRunAtMs = 0;
 let lastResult: Awaited<ReturnType<typeof probeBillingSubscriptionsSchema>> | null =
@@ -17,6 +20,9 @@ let lastResult: Awaited<ReturnType<typeof probeBillingSubscriptionsSchema>> | nu
 const MIN_INTERVAL_MS = 30_000;
 
 export async function GET(request: Request): Promise<Response> {
+  const gate = await authorizeHealthProbe(request);
+  if (!gate.ok) return healthUnauthorizedResponse(gate);
+
   const url = new URL(request.url);
   const force = url.searchParams.get("force") === "1";
   const apply = url.searchParams.get("apply") === "1";
