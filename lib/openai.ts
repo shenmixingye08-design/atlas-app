@@ -52,7 +52,9 @@ export function isOpenAIConfigured(): boolean {
  */
 export function getOpenAIClient(): OpenAI {
   if (!client) {
-    client = new OpenAI({ apiKey: getApiKey(), maxRetries: 0 });
+    // P09: allow bounded SDK retries for transient 429/5xx (was 0 = every blip bubbled).
+    // Callers that need stricter control still use lib/reliability/withRetry.
+    client = new OpenAI({ apiKey: getApiKey(), maxRetries: 2 });
   }
 
   return client;

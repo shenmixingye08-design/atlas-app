@@ -27,8 +27,8 @@ export function NotificationBell() {
 
   useEffect(() => {
     const boot = window.setTimeout(() => void refreshCount(), 0);
-    // Fast poll so phone/desktop see unread without full reload (was 60s).
-    const interval = window.setInterval(() => void refreshCount(), 8_000);
+    // P09: 30s poll (was 8s) — focus + in-app events still refresh immediately.
+    const interval = window.setInterval(() => void refreshCount(), 30_000);
     // Real-time: update the badge immediately on in-app changes (mark read /
     // new notice) and when the tab regains focus — no full page reload.
     const unsubscribe = subscribeNotificationsChanged(() => void refreshCount());

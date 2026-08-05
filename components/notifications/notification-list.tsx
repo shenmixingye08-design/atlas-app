@@ -199,7 +199,7 @@ export function NotificationList({
   // Real-time: refetch on change / focus / short poll — no full page reload.
   useEffect(() => {
     if (isFixture) return;
-    const interval = window.setInterval(() => void reload(), 8_000);
+    const interval = window.setInterval(() => void reload(), 30_000);
     const unsubscribe = subscribeNotificationsChanged(() => void reload());
     const onFocus = () => void reload();
     window.addEventListener("focus", onFocus);
