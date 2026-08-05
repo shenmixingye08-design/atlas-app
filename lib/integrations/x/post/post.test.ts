@@ -371,20 +371,25 @@ describe("X post service", () => {
   it("processes due scheduled posts", async () => {
     connectXAccount();
 
-    const scheduled = saveXScheduledPost({
+    const scheduled = await saveXScheduledPost({
       userId: TEST_USER_ID,
       text: "Due tweet",
       scheduledFor: new Date(Date.now() - 1000).toISOString(),
     });
 
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          data: { id: "555", text: "Due tweet" },
-        }),
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/tweets/") && !url.endsWith("/tweets")) {
+        return new Response(
+          JSON.stringify({ data: { id: "555", text: "Due tweet" } }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({ data: { id: "555", text: "Due tweet" } }),
         { status: 201 },
-      ),
-    );
+      );
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const processed = await processDueScheduledXPosts({
