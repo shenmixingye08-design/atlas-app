@@ -85,8 +85,12 @@ export function LandingHeroSection() {
           </div>
 
           <p className="mx-auto mt-3 text-xs text-[#9A8D90] lg:mx-0">
+            <a href="#proof" className="underline-offset-2 hover:underline">
+              完成見本（証拠）を見る
+            </a>
+            {" · "}
             <a href="#pricing" className="underline-offset-2 hover:underline">
-              月980円で何が終わるか見る
+              月980円の理由
             </a>
           </p>
 

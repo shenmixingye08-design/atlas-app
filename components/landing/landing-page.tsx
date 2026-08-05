@@ -12,6 +12,7 @@ import { cn } from "@/lib/design-system/cn";
 import { LandingCtaSection } from "./landing-cta-section";
 import { LandingFirstPath } from "./landing-first-path";
 import { LandingHeroSection } from "./landing-hero-section";
+import { LandingProofSection } from "./landing-proof-section";
 
 function MinervotLogo() {
   return (
@@ -46,6 +47,12 @@ function LandingHeader() {
         </Link>
 
         <nav className="hidden items-center gap-7 md:flex">
+          <a
+            href="#proof"
+            className="text-xs font-medium text-[#6F6265] hover:text-[#74172A]"
+          >
+            見本
+          </a>
           <a
             href="#first-path"
             className="text-xs font-medium text-[#6F6265] hover:text-[#74172A]"
@@ -231,6 +238,7 @@ export function LandingPage() {
       <LandingHeader />
       <main>
         <LandingHeroSection />
+        <LandingProofSection />
         <LandingFirstPath />
         <PricingSection />
         <LandingCtaSection />
