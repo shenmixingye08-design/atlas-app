@@ -5,7 +5,10 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { AutomationFirstHome } from "@/components/automation-first/automation-first-home";
-import { fetchAutomations } from "@/lib/automations/client";
+import {
+  AutomationsClientError,
+  fetchAutomations,
+} from "@/lib/automations/client";
 import type { Automation } from "@/lib/automations/types";
 import { normalizeAutomations, normalizeProjects } from "@/lib/compatibility";
 import { shouldShowFirstExperience } from "@/lib/first-experience";
@@ -44,11 +47,29 @@ export function ProjectsDashboard() {
   const reloadAutomations = useCallback(() => {
     void fetchAutomations()
       .then((items) => {
+        // [] is a valid empty home — never map it to load error.
         setAutomations(normalizeAutomations(items));
         setAutomationsError(false);
       })
       .catch((error) => {
-        console.error("[ProjectsDashboard] Failed to load automations:", error);
+        if (
+          error instanceof AutomationsClientError &&
+          error.status === 401
+        ) {
+          console.error("[ProjectsDashboard] automations unauthorized", {
+            code: error.code,
+            requestId: error.requestId,
+          });
+          window.location.assign("/sign-in?redirect_url=/projects");
+          return;
+        }
+        console.error("[ProjectsDashboard] Failed to load automations:", {
+          message: error instanceof Error ? error.message : "unknown",
+          code: error instanceof AutomationsClientError ? error.code : null,
+          requestId:
+            error instanceof AutomationsClientError ? error.requestId : null,
+          status: error instanceof AutomationsClientError ? error.status : null,
+        });
         setAutomations([]);
         setAutomationsError(true);
       });

@@ -1,8 +1,14 @@
 import type { CreateAutomationInput } from "@/lib/automations/types";
 import { automationService } from "@/lib/automations/automation-service";
+import {
+  AutomationSchemaMissingError,
+  AutomationStoreUnavailableError,
+} from "@/lib/automations/durable-automation-definitions";
+import { buildAutomationDiagnosticId } from "@/lib/automations/supabase-error";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { validateAutomationFeatureAccess } from "@/lib/feature-flags/guards";
 import { auth } from "@clerk/nextjs/server";
+import { ui } from "@/lib/i18n";
 
 function parseCreateBody(body: unknown): CreateAutomationInput | { error: string } {
   if (typeof body !== "object" || body === null) {
@@ -66,14 +72,58 @@ function parseCreateBody(body: unknown): CreateAutomationInput | { error: string
   };
 }
 
+function automationsStoreFailureResponse(error: unknown, userId: string): Response {
+  const diagnosticId =
+    error instanceof AutomationStoreUnavailableError
+      ? error.diagnosticId
+      : buildAutomationDiagnosticId("list_api");
+  const code =
+    error instanceof AutomationSchemaMissingError
+      ? error.code
+      : error instanceof AutomationStoreUnavailableError
+        ? error.code
+        : "automation_list_failed";
+
+  console.error("[api/automations] GET list failed", {
+    diagnosticId,
+    code,
+    userId,
+    message: error instanceof Error ? error.message : "unknown",
+  });
+
+  // User-facing body stays generic — details stay in server logs only.
+  return Response.json(
+    {
+      error: ui.error.loadFailed,
+      code,
+      requestId: diagnosticId,
+    },
+    { status: 503 },
+  );
+}
+
 export async function GET(): Promise<Response> {
   const { userId } = await auth();
   if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json(
+      { error: "Unauthorized", code: "unauthorized" },
+      { status: 401 },
+    );
   }
 
-  const automations = await automationService.listForUser(userId);
-  return Response.json(automations);
+  try {
+    const automations = await automationService.listForUser(userId);
+    // Empty array is a valid success (0 jobs today / no habits yet).
+    return Response.json(automations);
+  } catch (error) {
+    if (
+      error instanceof AutomationStoreUnavailableError ||
+      error instanceof AutomationSchemaMissingError
+    ) {
+      return automationsStoreFailureResponse(error, userId);
+    }
+    return automationsStoreFailureResponse(error, userId);
+  }
 }
 
 export async function POST(request: Request): Promise<Response> {

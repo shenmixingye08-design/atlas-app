@@ -26,6 +26,7 @@ import {
 } from "./automation-backend";
 import {
   AutomationStoreUnavailableError,
+  isAutomationSchemaMissingError,
   listDurableAutomationsForOwner,
   replaceDurableAutomationsForOwner,
 } from "./durable-automation-definitions";
@@ -140,23 +141,44 @@ export function schedulePersistAutomations(userId: string): void {
 export async function ensureAutomationsHydrated(userId: string): Promise<void> {
   if (isAutomationsHydrated(userId)) return;
 
+  let schemaMissing = false;
+
   // P0-6: Prefer durable definition rows (survives Cold Start / process kill).
   if (isAutomationDurableRequired()) {
-    const fromRows = await listDurableAutomationsForOwner(userId);
-    if (fromRows.length > 0) {
-      const normalized = fromRows.map((row) =>
-        withAutomationDefaults({
-          ...row,
+    try {
+      const fromRows = await listDurableAutomationsForOwner(userId);
+      if (fromRows.length > 0) {
+        const normalized = fromRows.map((row) =>
+          withAutomationDefaults({
+            ...row,
+            userId,
+            runHistory: Array.isArray(row.runHistory)
+              ? row.runHistory.slice(0, MAX_AUTOMATION_RUN_HISTORY)
+              : [],
+          }),
+        );
+        await serverAutomationRepository.replaceUserAutomations(
           userId,
-          runHistory: Array.isArray(row.runHistory)
-            ? row.runHistory.slice(0, MAX_AUTOMATION_RUN_HISTORY)
-            : [],
-        }),
-      );
-      await serverAutomationRepository.replaceUserAutomations(userId, normalized);
-      markAutomationsHydrated(userId);
-      await registerAutomationUserId(userId);
-      return;
+          normalized,
+        );
+        markAutomationsHydrated(userId);
+        await registerAutomationUserId(userId);
+        return;
+      }
+    } catch (error) {
+      // Schema not applied: fall through to atlas_user_state blob hydrate.
+      // Empty owner (0 jobs) must render as empty home — not a permanent error.
+      // Mutations still fail-closed until migration is applied.
+      if (isAutomationSchemaMissingError(error)) {
+        schemaMissing = true;
+        console.error("[automations] P0-6: schema missing on hydrate — blob fallback", {
+          userId,
+          diagnosticId: error.diagnosticId,
+          code: error.code,
+        });
+      } else {
+        throw error;
+      }
     }
   }
 
@@ -186,8 +208,24 @@ export async function ensureAutomationsHydrated(userId: string): Promise<void> {
   if (normalized.length > 0) {
     await registerAutomationUserId(userId);
     // Write-through migrate blob → definition rows when durable required.
-    if (isAutomationDurableRequired()) {
-      await replaceDurableAutomationsForOwner(userId, normalized);
+    // Skip when schema is missing — otherwise hydrate itself bricks home.
+    if (isAutomationDurableRequired() && !schemaMissing) {
+      try {
+        await replaceDurableAutomationsForOwner(userId, normalized);
+      } catch (error) {
+        if (isAutomationSchemaMissingError(error)) {
+          console.error(
+            "[automations] P0-6: schema missing on blob migrate — kept memory hydrate",
+            {
+              userId,
+              diagnosticId: error.diagnosticId,
+              code: error.code,
+            },
+          );
+          return;
+        }
+        throw error;
+      }
     }
   }
 }
