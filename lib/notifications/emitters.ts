@@ -395,6 +395,8 @@ export async function notifyWorkCompleted(
     workflowRunId?: string | null;
     /** Originating request/run id. */
     requestId?: string | null;
+    /** Optional minutes saved — appends「今日は◯分節約しました」. */
+    minutesSaved?: number | null;
   },
 ) {
   if (!userId) return null;
@@ -406,9 +408,17 @@ export async function notifyWorkCompleted(
     input.actionUrl ??
     (deliverableId ? deliverableActionUrl(deliverableId) : "/workspace");
   const title = input.title?.trim() || "お仕事が完了しました";
-  const message = input.message
+  const minutes = input.minutesSaved;
+  const savingsLine =
+    typeof minutes === "number" && minutes > 0
+      ? `今日は${Math.round(minutes)}分節約しました。`
+      : "";
+  const baseMessage = input.message
     ? `お待たせいたしました。${input.message}`
     : "お待たせいたしました。ご依頼の内容が完了しました。";
+  const message = savingsLine
+    ? `${baseMessage} ${savingsLine}`.trim()
+    : baseMessage;
 
   return await upsertWorkNotificationByRequestId({
     userId,

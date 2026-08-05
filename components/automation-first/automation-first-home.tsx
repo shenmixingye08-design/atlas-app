@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/automation-first/error-state";
 import { SectionHeader } from "@/components/automation-first/page-header";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
 import { Timeline } from "@/components/automation-first/timeline";
+import { ValueHomeStrip } from "@/components/home/value/value-home-strip";
 import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
 import {
   buildRunningJobsFromRuns,
@@ -170,6 +171,7 @@ function WeeklyStatsCard({ stats }: { stats: HomeWeeklyStats }) {
 
 export function AutomationFirstHome({
   automations,
+  projects,
 }: AutomationFirstHomeProps) {
   const { flags } = useFeatureAvailability();
   const opsEnabled =
@@ -483,19 +485,22 @@ export function AutomationFirstHome({
 
   return (
     <div className="automation-first-home space-y-8 pb-8 sm:space-y-10">
-      <header className="space-y-3">
+      {/* Outcome-first value surface — 980円の理由を毎回見える化 */}
+      <ValueHomeStrip automations={automations} projects={projects} />
+
+      <header className="space-y-3 border-t border-[var(--border)] pt-8">
         <p className="text-[length:var(--text-label)] font-semibold tracking-[0.08em] text-[var(--brand)]">
-          MINERVOT
+          今日の進行
         </p>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-[length:var(--text-display)] font-semibold tracking-tight text-[var(--text-primary)]">
+            <h2 className="text-[length:var(--text-page-title)] font-semibold tracking-tight text-[var(--text-primary)]">
               {greetingForHour(now.getHours())}
-            </h1>
+            </h2>
             <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-secondary)]">
               {formatTodayDateLabel(now)}
               {" — "}
-              今日、MINERVOTが進める仕事です
+              進行中の仕事と次回予定
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
