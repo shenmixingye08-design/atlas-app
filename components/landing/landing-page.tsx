@@ -13,16 +13,13 @@ import {
 import { cn } from "@/lib/design-system/cn";
 
 import { LandingAudienceSection } from "./landing-audience-section";
-import { LandingAiTeamCards } from "./landing-ai-team-cards";
 import { LandingCtaSection } from "./landing-cta-section";
+import { LandingFirstPath } from "./landing-first-path";
 import { LandingHeroSection } from "./landing-hero-section";
-import { LandingLearningSection } from "./landing-learning-section";
 import { LandingReasonsSection } from "./landing-reasons-section";
 import { LandingRequestExamplesSection } from "./landing-request-examples-section";
-import { LandingResultsDashboard } from "./landing-results-dashboard";
 import { LandingReveal } from "./landing-reveal";
 import { LandingTrustSection } from "./landing-trust-section";
-import { LandingWorkflowExperience } from "./landing-workflow-experience";
 
 function MinervotLogo() {
   return (
@@ -44,7 +41,7 @@ function MinervotLogo() {
         </span>
 
         <span className="block text-[9px] font-medium uppercase tracking-[0.18em] text-[#9A8D90]">
-          Personal AI Secretary
+          Work finished, not just answered
         </span>
       </span>
      </span>
@@ -64,17 +61,10 @@ function LandingHeader() {
 
         <nav className="hidden items-center gap-7 md:flex">
           <a
-            href="#capabilities"
+            href="#first-path"
             className="text-xs font-medium text-[#6F6265] transition-colors hover:text-[#74172A]"
           >
-            できること
-          </a>
-
-          <a
-            href="#workflow"
-            className="text-xs font-medium text-[#6F6265] transition-colors hover:text-[#74172A]"
-          >
-            仕組み
+            使い方
           </a>
 
           <a
@@ -130,15 +120,15 @@ function CapabilitiesSection() {
           <SectionLabel>Capabilities</SectionLabel>
 
           <h2 className="mt-6 text-3xl font-semibold tracking-[-0.045em] text-[#26191C] sm:text-4xl lg:text-5xl">
-            あなたの仕事を、
+            会話ではなく、
             <br />
-            MINERVOTが引き受けます。
+            仕事が終わる。
           </h2>
 
           <p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-[#75686B] sm:text-base sm:leading-8">
-            単に質問へ答えるだけではありません。
+            ChatGPTのように答えて終わりません。
             <br className="hidden sm:block" />
-            仕事を覚え、実行し、結果を分析して、次の改善まで提案します。
+            依頼した仕事を最後まで進め、完成した内容を返します。
           </p>
         </LandingReveal>
 
@@ -191,7 +181,7 @@ function PainSolutionsSection() {
           </h2>
 
           <p className="mt-5 text-sm leading-7 text-[#75686B] sm:text-base">
-            いつもの悩みを、専属AI秘書が実行可能な仕事へ変えます。
+            いつもの悩みを、終わった仕事へ変えます。
           </p>
         </LandingReveal>
 
@@ -245,11 +235,11 @@ function PricingSection() {
           <SectionLabel>Pricing</SectionLabel>
 
           <h2 className="mt-6 text-3xl font-semibold tracking-[-0.04em] text-[#26191C] sm:text-4xl">
-            あなたに合ったAI秘書を。
+            無料から、仕事を終わらせる。
           </h2>
 
           <p className="mt-5 text-sm leading-7 text-[#75686B] sm:text-base">
-            無料から始めて、仕事量に合わせてアップグレードできます。
+            まずは1件完了。仕事量に合わせてアップグレードできます。
           </p>
         </LandingReveal>
 
@@ -415,18 +405,16 @@ export function LandingPage() {
 
       <main>
         <LandingHeroSection />
-        <LandingAudienceSection />
-        <CapabilitiesSection />
-        <LandingWorkflowExperience />
-        <LandingLearningSection />
+        <LandingFirstPath />
         <LandingRequestExamplesSection />
-        <LandingTrustSection />
-        <LandingReasonsSection />
         <PainSolutionsSection />
-        <LandingAiTeamCards />
-        <LandingResultsDashboard />
         <PricingSection />
         <LandingCtaSection />
+        {/* Secondary detail — kept below the conversion path */}
+        <LandingReasonsSection />
+        <LandingTrustSection />
+        <LandingAudienceSection />
+        <CapabilitiesSection />
       </main>
 
       <LandingFooter />

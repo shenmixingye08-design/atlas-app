@@ -23,13 +23,13 @@ export function LandingCtaSection() {
             <h2 className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-[#281A1E] sm:text-5xl">
               あなたの仕事を、
               <br />
-              今日からMINERVOTへ。
+              代わりに終わらせます。
             </h2>
 
             <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-[#75686B]">
-              毎日の繰り返し作業を専属AI秘書に任せて、
+              会話で終わりません。仕事を選んで1回依頼するだけ。
               <br className="hidden sm:inline" />
-              本当に集中したい仕事のための時間を生み出しましょう。
+              完成まで進めて、本当に集中したい仕事の時間を生み出します。
             </p>
 
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
