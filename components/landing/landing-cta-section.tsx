@@ -4,82 +4,64 @@ import Link from "next/link";
 import { Show } from "@clerk/nextjs";
 
 import { Button } from "@/components/ui/button";
-import { LANDING_CTA_TRUST } from "@/lib/landing/demo-data";
 import { ATLAS_APP_HOME_PATH } from "@/lib/auth/public-routes";
 
-import { LandingReveal } from "./landing-reveal";
+const LINES = [
+  "ChatGPTに聞いて終わる仕事、これだと完成までやってくれる。",
+  "朝のメール10分を手放せたら、月980円でも安い（見本目安）。",
+  "登録して仕事を1つ選ぶだけ。60秒以内に1件終わる流れ。",
+] as const;
 
 export function LandingCtaSection() {
   return (
-    <section className="border-t border-[#74172A]/8 bg-[#FAF6F5] px-4 py-20 sm:px-8 sm:py-28 lg:py-32">
+    <section className="border-t border-[#74172A]/8 bg-[#FAF6F5] px-4 py-20 sm:px-8 sm:py-28">
       <div className="mx-auto max-w-5xl">
-        <LandingReveal>
-          <div className="overflow-hidden rounded-[34px] border border-[#B58B4F]/20 bg-white px-6 py-16 text-center shadow-[0_30px_90px_rgba(70,20,31,0.08)] sm:px-12 sm:py-20">
+        <div className="overflow-hidden rounded-[34px] border border-[#B58B4F]/20 bg-white px-6 py-16 text-center sm:px-12 sm:py-20">
+          <h2 className="text-3xl font-semibold tracking-[-0.04em] text-[#281A1E] sm:text-5xl">
+            「あとで」ではなく、
+            <br />
+            「今試そう」。
+          </h2>
 
-            <p className="text-sm font-semibold tracking-[0.18em] text-[#B58B4F]">
-              START WITH MINERVOT
-            </p>
+          <ul className="mx-auto mt-8 max-w-2xl space-y-3 text-left">
+            {LINES.map((line) => (
+              <li
+                key={line}
+                className="rounded-2xl border border-[#74172A]/8 bg-[#FFFDFB] px-4 py-3 text-sm leading-7 text-[#49373C]"
+              >
+                「{line}」
+              </li>
+            ))}
+          </ul>
 
-            <h2 className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-[#281A1E] sm:text-5xl">
-              あなたの仕事を、
-              <br />
-              今日からMINERVOTへ。
-            </h2>
-
-            <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-[#75686B]">
-              毎日の繰り返し作業を専属AI秘書に任せて、
-              <br className="hidden sm:inline" />
-              本当に集中したい仕事のための時間を生み出しましょう。
-            </p>
-
-            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <Show when="signed-out">
-                <Link href="/sign-up">
-                  <Button
-                    size="lg"
-                    className="min-w-[220px] rounded-full bg-[#74172A] px-8 py-6 text-white shadow-[0_14px_40px_rgba(116,23,42,0.22)] hover:bg-[#5F1222]"
-                  >
-                    無料で始める
-                  </Button>
-                </Link>
-
-                <Link href="/sign-in">
-                  <Button
-                    size="lg"
-                    variant="secondary"
-                    className="min-w-[220px] rounded-full border-[#74172A]/20 bg-white text-[#74172A] hover:bg-[#FAF6F5]"
-                  >
-                    ログイン
-                  </Button>
-                </Link>
-              </Show>
-
-              <Show when="signed-in">
-                <Link href={ATLAS_APP_HOME_PATH}>
-                  <Button
-                    size="lg"
-                    className="min-w-[220px] rounded-full bg-[#74172A] px-8 py-6 text-white shadow-[0_14px_40px_rgba(116,23,42,0.22)] hover:bg-[#5F1222]"
-                  >
-                    MINERVOTを開く
-                  </Button>
-                </Link>
-              </Show>
-            </div>
-
-            <ul className="mt-10 flex flex-wrap items-center justify-center gap-x-8 gap-y-3">
-              {LANDING_CTA_TRUST.map((item) => (
-                <li
-                  key={item}
-                  className="flex items-center gap-2 text-sm text-[#75686B]"
+          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+            <Show when="signed-out">
+              <Link href="/sign-up">
+                <Button
+                  size="lg"
+                  className="min-w-[240px] rounded-full bg-[#74172A] px-8 py-6 text-white hover:bg-[#5F1222]"
                 >
-                  <span className="text-[#B58B4F]">✓</span>
-                  {item}
-                </li>
-              ))}
-            </ul>
+                  今すぐ1件終わらせる
+                </Button>
+              </Link>
+            </Show>
 
+            <Show when="signed-in">
+              <Link href={ATLAS_APP_HOME_PATH}>
+                <Button
+                  size="lg"
+                  className="min-w-[240px] rounded-full bg-[#74172A] px-8 py-6 text-white hover:bg-[#5F1222]"
+                >
+                  今すぐ仕事を終わらせる
+                </Button>
+              </Link>
+            </Show>
           </div>
-        </LandingReveal>
+
+          <p className="mt-8 text-sm text-[#75686B]">
+            クレジットカード不要 · 登録後は仕事を選ぶだけ · 合えば月980円
+          </p>
+        </div>
       </div>
     </section>
   );

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
-  title: "料金",
+  title: "料金 | 月980円から",
   description:
-    "MINERVOTの料金プラン。あなた専属のAI秘書を無料から始められます。",
+    "無料で1件完成まで体験。毎月の投稿・メール・資料を自分で抱え続けないなら、Light（月980円）から。",
 };
 
 /** 公開用ショートカット。本体はホームページの料金セクション。 */
