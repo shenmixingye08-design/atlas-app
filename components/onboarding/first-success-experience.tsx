@@ -63,6 +63,11 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
   const clarityTasks = useMemo(() => getFirstRunClarityTasks(), []);
 
   useEffect(() => {
+    // Pre-select recommended job so first completion is one tap.
+    setSelectedTask((current) => current ?? recommendedId);
+  }, [recommendedId]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => setVisible(true), 50);
     return () => window.clearTimeout(timer);
   }, []);
@@ -288,6 +293,10 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
                 {ui.firstExperience.noSavedEstimate}
               </p>
             )}
+
+            <p className="mt-4 text-sm leading-relaxed text-foreground">
+              {ui.firstExperience.sixtySecondWin}
+            </p>
 
             <div className="landing-glass mt-6 rounded-[var(--radius-xl)] border border-[var(--border-subtle)] p-4">
               <p className="text-xs text-[var(--foreground-muted)]">

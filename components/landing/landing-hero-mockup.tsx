@@ -1,22 +1,22 @@
 "use client";
 
 import { cn } from "@/lib/design-system/cn";
-
-import { LandingReveal } from "./landing-reveal";
+import { PROOF_SNS_SAMPLE } from "@/lib/landing/proof-samples";
 
 const FLOW = [
-  { id: "1", title: "仕事を選ぶ", detail: "SNS投稿", state: "done" as const },
-  { id: "2", title: "1回依頼", detail: "投稿文を1件作って", state: "done" as const },
-  { id: "3", title: "完成", detail: "投稿文が手元に残る", state: "active" as const },
+  { id: "1", title: "依頼", detail: PROOF_SNS_SAMPLE.before.slice(0, 22) + "…", state: "done" as const },
+  { id: "2", title: "AIが作業中", detail: "MINERVOTが進めています", state: "done" as const },
+  { id: "3", title: "完成通知", detail: "仕事が完了しました", state: "done" as const },
+  { id: "4", title: "完成物", detail: "投稿文が手元に残る", state: "active" as const },
 ] as const;
 
 /**
- * Hero visual: completion path, not a feature dashboard.
+ * Hero visual = finish story, not a feature dashboard.
  */
 export function LandingHeroMockup() {
   return (
-    <LandingReveal className="mx-auto w-full max-w-[720px]" delayMs={200}>
-      <div className="animate-landing-float overflow-hidden rounded-[28px] border border-[#74172A]/10 bg-white/85 shadow-[0_35px_100px_rgba(74,18,31,0.16)] backdrop-blur-2xl">
+    <div className="mx-auto w-full max-w-[720px]">
+      <div className="overflow-hidden rounded-[28px] border border-[#74172A]/10 bg-white/85 shadow-[0_35px_100px_rgba(74,18,31,0.16)]">
         <div className="flex items-center justify-between border-b border-[#74172A]/10 bg-white/75 px-4 py-3 sm:px-5">
           <div className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F57]" />
@@ -24,34 +24,31 @@ export function LandingHeroMockup() {
             <span className="h-2.5 w-2.5 rounded-full bg-[#28C840]" />
           </div>
           <div className="rounded-full border border-[#74172A]/10 bg-white/85 px-4 py-1.5 text-[10px] font-medium text-[#8B7D80]">
-            minervot.app / 最初の仕事
+            依頼 → 完成
           </div>
           <span className="text-[9px] font-bold tracking-[0.16em] text-emerald-700">
             DONE
           </span>
         </div>
 
-        <div className="relative space-y-5 p-5 sm:p-7">
+        <div className="space-y-4 p-5 sm:p-7">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#A17B42]">
-              Work finished
+              仕事が終わる瞬間
             </p>
             <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#2C1C20] sm:text-2xl">
-              仕事が完了しました。
+              完成通知が来て、文面が残る。
             </h2>
-            <p className="mt-2 text-sm text-[#827579]">
-              会話ではなく、完成した内容が残ります。
-            </p>
           </div>
 
-          <ol className="space-y-3">
+          <ol className="space-y-2">
             {FLOW.map((step, index) => (
               <li
                 key={step.id}
                 className={cn(
                   "flex items-start gap-3 rounded-2xl border px-4 py-3",
                   step.state === "active"
-                    ? "border-[#74172A]/20 bg-[linear-gradient(135deg,#fff9ef,#fffdfb)]"
+                    ? "border-[#74172A]/20 bg-[#FFFDFB]"
                     : "border-[#74172A]/8 bg-white/80",
                 )}
               >
@@ -75,14 +72,14 @@ export function LandingHeroMockup() {
 
           <div className="rounded-2xl border border-[#74172A]/10 bg-[#FFFDFB] px-4 py-4">
             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9A8D90]">
-              完成した内容
+              完成した内容（見本）
             </p>
-            <p className="mt-2 text-sm leading-6 text-[#49373C]">
-              【今日のひとこと】毎日の投稿準備をMINERVOTに任せると、確認するだけで進められます。
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#49373C]">
+              {PROOF_SNS_SAMPLE.after.split("\n").slice(0, 4).join("\n")}
             </p>
           </div>
         </div>
       </div>
-    </LandingReveal>
+    </div>
   );
 }
