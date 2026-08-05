@@ -1,4 +1,7 @@
-import { ensureAutomationsHydrated } from "@/lib/automations/durable";
+import {
+  ensureAutomationsHydrated,
+  persistAutomationsNow,
+} from "@/lib/automations/durable";
 import {
   listAutomationOwnerUserIds,
 } from "@/lib/automations/global-durable";
@@ -66,6 +69,10 @@ export async function processWorkQueueTick(options?: {
         status: automation.status === "running" ? "idle" : automation.status,
         lastError: null,
       });
+      // P0-6: nextRun must be durable — Cold Start must not replay the same slot.
+      if (automation.userId) {
+        await persistAutomationsNow(automation.userId);
+      }
       return next;
     },
   });

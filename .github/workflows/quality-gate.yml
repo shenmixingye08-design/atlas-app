@@ -57,6 +57,9 @@ jobs:
       - name: P0-5 durable X scheduled posts ban
         run: node scripts/ci/p0-5-x-scheduled-posts-ban.mjs
 
+      - name: P0-6 durable automation engine ban
+        run: node scripts/ci/p0-6-durable-automation-ban.mjs
+
       - name: Unit / integration tests
         run: npm test
         env:

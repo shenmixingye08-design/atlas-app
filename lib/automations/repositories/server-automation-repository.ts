@@ -223,6 +223,10 @@ export function listStoredAutomationsForUser(userId: string): Automation[] {
     .filter((row) => row.userId === userId);
 }
 
+/**
+ * Clears process-local automation cache (Cold Start simulation).
+ * Does NOT clear durable SoT — use resetDurableAutomationDefinitionsForTests.
+ */
 export function resetAutomationStore(options?: { seed?: boolean }): void {
   const globalScope = globalThis as typeof globalThis & {
     __atlasAutomationStore?: AutomationBucket;
@@ -235,6 +239,11 @@ export function resetAutomationStore(options?: { seed?: boolean }): void {
       : [],
   );
   globalScope.__atlasAutomationHydratedUsers = new Set();
+}
+
+/** Alias for Cold Start / process-kill tests — cache only. */
+export function clearAutomationProcessCacheForTests(): void {
+  resetAutomationStore({ seed: false });
 }
 
 export const MAX_AUTOMATION_RUN_HISTORY = MAX_RUN_HISTORY;
