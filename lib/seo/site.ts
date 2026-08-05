@@ -29,7 +29,7 @@ export function getSiteOrigin(): string {
 }
 
 export const MINERVOT_DEFAULT_TITLE =
-  "MINERVOT | あなたの仕事を代わりに終わらせます";
+  "MINERVOT | 仕事を代わりに終わらせます（月980円から）";
 
 export const MINERVOT_DEFAULT_DESCRIPTION =
-  "MINERVOTは会話で終わりません。仕事を選んで1回依頼するだけで、完成まで代わりに進めます。メール・SNS・資料作成など、毎日の繰り返し業務を終わらせて時間を生み出します。";
+  "個人事業主・忙しい会社員向け。SNS投稿・メール・資料を選んで依頼するだけで完成。ChatGPT・Claude・Geminiは答えて終わる。MINERVOTは仕事を終わらせます。無料体験あり、月980円から。";

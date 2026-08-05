@@ -202,12 +202,12 @@ export const ui = {
 
   secretaryHome: {
     brandTagline: "あなたの仕事を代わりに終わらせます",
-    zeroFrictionHint: "仕事を選ぶか書いて送るだけ。会話ではなく、完成まで進めます。",
+    zeroFrictionHint: "すごい操作は不要です。書いて送るだけ、あとはMINERVOTが進めます。",
     askTitle: "どの仕事を終わらせますか？",
     askPlaceholder:
       "例）営業資料を作る / 毎日の投稿文を用意する / 議事録をまとめる",
     askSubmit: "お願いする",
-    askHint: "送信後、すぐ取りかかり、完成まで進めます。",
+    askHint: "難しい設定は不要。送信後、完成まで進みます。",
     firstRunPickTitle: "最初の仕事を選ぶ",
     firstRunPickHint: "1つ選んで依頼すると、完成まで進みます。",
     attachToggle: "ファイルを添付する",
@@ -417,7 +417,7 @@ export const ui = {
     stepLabel: (current: number, total: number) => `${current} / ${total}`,
     clarityHeadline: "あなたの仕事を代わりに終わらせます",
     clarityBody:
-      "最初はこれだけです。\n仕事を選ぶ → 1回依頼 → 完成。\n会話ではなく、仕事が終わる体験から始めます。",
+      "覚えることはありません。\n仕事を選ぶ → 1回依頼 → 完成。\nChatGPTで終わらせず、仕事を終わらせます。",
     clarityCta: "最初の仕事を選ぶ",
     claritySteps: ["仕事を選ぶ", "1回依頼", "完成"],
     steps: [
@@ -494,9 +494,9 @@ export const ui = {
     introTitle: "最初の仕事を終わらせましょう",
     introSubtitle: "仕事を選ぶ → 1回依頼 → 完成。これだけで体験できます。",
     startSelect: "最初の仕事を選ぶ",
-    defer: "あとで続ける",
+    defer: "今は選ばない",
     selectTitle: "仕事を選ぶ",
-    selectHint: "1つ選んで依頼すると、完成まで進みます。",
+    selectHint: "1つ選ぶだけ。難しい設定はありません。",
     customLabel: "または自由入力",
     customPlaceholder: "MINERVOTにお願いしたい仕事を書いてください",
     delegate: "この仕事を終わらせる",

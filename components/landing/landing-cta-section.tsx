@@ -4,82 +4,68 @@ import Link from "next/link";
 import { Show } from "@clerk/nextjs";
 
 import { Button } from "@/components/ui/button";
-import { LANDING_CTA_TRUST } from "@/lib/landing/demo-data";
 import { ATLAS_APP_HOME_PATH } from "@/lib/auth/public-routes";
 
-import { LandingReveal } from "./landing-reveal";
+const REFERRAL_LINES = [
+  "ChatGPTに聞いて終わる仕事、これだと完成までやってくれる。",
+  "投稿も資料も、自分で抱えなくてよくなった。月980円から。",
+  "登録して仕事を1つ選ぶだけ。会話じゃなくて、仕事が終わる。",
+] as const;
 
 export function LandingCtaSection() {
   return (
-    <section className="border-t border-[#74172A]/8 bg-[#FAF6F5] px-4 py-20 sm:px-8 sm:py-28 lg:py-32">
+    <section className="border-t border-[#74172A]/8 bg-[#FAF6F5] px-4 py-20 sm:px-8 sm:py-28">
       <div className="mx-auto max-w-5xl">
-        <LandingReveal>
-          <div className="overflow-hidden rounded-[34px] border border-[#B58B4F]/20 bg-white px-6 py-16 text-center shadow-[0_30px_90px_rgba(70,20,31,0.08)] sm:px-12 sm:py-20">
+        <div className="overflow-hidden rounded-[34px] border border-[#B58B4F]/20 bg-white px-6 py-16 text-center sm:px-12 sm:py-20">
+          <h2 className="text-3xl font-semibold tracking-[-0.04em] text-[#281A1E] sm:text-5xl">
+            友達に「これ使え」と
+            <br />
+            言いたくなる理由。
+          </h2>
 
-            <p className="text-sm font-semibold tracking-[0.18em] text-[#B58B4F]">
-              START WITH MINERVOT
-            </p>
+          <ul className="mx-auto mt-8 max-w-2xl space-y-3 text-left">
+            {REFERRAL_LINES.map((line) => (
+              <li
+                key={line}
+                className="rounded-2xl border border-[#74172A]/8 bg-[#FFFDFB] px-4 py-3 text-sm leading-7 text-[#49373C]"
+              >
+                「{line}」
+              </li>
+            ))}
+          </ul>
 
-            <h2 className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-[#281A1E] sm:text-5xl">
-              あなたの仕事を、
-              <br />
-              代わりに終わらせます。
-            </h2>
+          <p className="mx-auto mt-8 max-w-2xl text-base leading-8 text-[#75686B]">
+            すごいAIではありません。楽になるための仕事完了です。
+          </p>
 
-            <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-[#75686B]">
-              会話で終わりません。仕事を選んで1回依頼するだけ。
-              <br className="hidden sm:inline" />
-              完成まで進めて、本当に集中したい仕事の時間を生み出します。
-            </p>
-
-            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <Show when="signed-out">
-                <Link href="/sign-up">
-                  <Button
-                    size="lg"
-                    className="min-w-[220px] rounded-full bg-[#74172A] px-8 py-6 text-white shadow-[0_14px_40px_rgba(116,23,42,0.22)] hover:bg-[#5F1222]"
-                  >
-                    無料で始める
-                  </Button>
-                </Link>
-
-                <Link href="/sign-in">
-                  <Button
-                    size="lg"
-                    variant="secondary"
-                    className="min-w-[220px] rounded-full border-[#74172A]/20 bg-white text-[#74172A] hover:bg-[#FAF6F5]"
-                  >
-                    ログイン
-                  </Button>
-                </Link>
-              </Show>
-
-              <Show when="signed-in">
-                <Link href={ATLAS_APP_HOME_PATH}>
-                  <Button
-                    size="lg"
-                    className="min-w-[220px] rounded-full bg-[#74172A] px-8 py-6 text-white shadow-[0_14px_40px_rgba(116,23,42,0.22)] hover:bg-[#5F1222]"
-                  >
-                    MINERVOTを開く
-                  </Button>
-                </Link>
-              </Show>
-            </div>
-
-            <ul className="mt-10 flex flex-wrap items-center justify-center gap-x-8 gap-y-3">
-              {LANDING_CTA_TRUST.map((item) => (
-                <li
-                  key={item}
-                  className="flex items-center gap-2 text-sm text-[#75686B]"
+          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+            <Show when="signed-out">
+              <Link href="/sign-up">
+                <Button
+                  size="lg"
+                  className="min-w-[220px] rounded-full bg-[#74172A] px-8 py-6 text-white hover:bg-[#5F1222]"
                 >
-                  <span className="text-[#B58B4F]">✓</span>
-                  {item}
-                </li>
-              ))}
-            </ul>
+                  無料で最初の仕事を終わらせる
+                </Button>
+              </Link>
+            </Show>
 
+            <Show when="signed-in">
+              <Link href={ATLAS_APP_HOME_PATH}>
+                <Button
+                  size="lg"
+                  className="min-w-[220px] rounded-full bg-[#74172A] px-8 py-6 text-white hover:bg-[#5F1222]"
+                >
+                  仕事を終わらせる
+                </Button>
+              </Link>
+            </Show>
           </div>
-        </LandingReveal>
+
+          <p className="mt-8 text-sm text-[#75686B]">
+            クレジットカード不要 · 無料で1件完成まで · 月980円から
+          </p>
+        </div>
       </div>
     </section>
   );
