@@ -31,8 +31,8 @@ export const COLORS = {
 
   success: "#5f1222",
   successBg: "rgba(116, 23, 42, 0.08)",
-  warning: "#9a7137",
-  warningBg: "rgba(154, 113, 55, 0.1)",
+  warning: "#75686b",
+  warningBg: "rgba(117, 104, 107, 0.12)",
   error: "#c40014",
   errorBg: "rgba(196, 0, 20, 0.06)",
   info: "#74172a",
@@ -90,8 +90,8 @@ export const COLORS_DARK = {
 
   success: "#c48a96",
   successBg: "rgba(196, 138, 150, 0.14)",
-  warning: "#d4b07a",
-  warningBg: "rgba(212, 176, 122, 0.14)",
+  warning: "#c9bdbf",
+  warningBg: "rgba(201, 189, 191, 0.14)",
   error: "#ff6b7a",
   errorBg: "rgba(255, 107, 122, 0.12)",
 
@@ -128,8 +128,8 @@ export const COLORS_LUX = {
 
   success: "#5f1222",
   successBg: "rgba(116, 23, 42, 0.08)",
-  warning: "#9a7137",
-  warningBg: "rgba(154, 113, 55, 0.1)",
+  warning: "#75686b",
+  warningBg: "rgba(117, 104, 107, 0.12)",
   error: "#c40014",
   errorBg: "rgba(196, 0, 20, 0.06)",
 
