@@ -53,8 +53,8 @@
   /* Semantic status — no emerald/teal brand greens */
   --success: #5f1222;
   --success-bg: rgba(116, 23, 42, 0.08);
-  --warning: #9a7137;
-  --warning-bg: rgba(154, 113, 55, 0.1);
+  --warning: #75686b;
+  --warning-bg: rgba(117, 104, 107, 0.12);
   --error: #c40014;
   --error-bg: rgba(196, 0, 20, 0.06);
   --info: #74172a;
@@ -63,8 +63,8 @@
   /* Automation run / attention states */
   --status-paused: #8b7e81;
   --status-paused-bg: rgba(139, 126, 129, 0.12);
-  --status-pending-approval: #9a7137;
-  --status-pending-approval-bg: rgba(154, 113, 55, 0.12);
+  --status-pending-approval: #74172a;
+  --status-pending-approval-bg: rgba(116, 23, 42, 0.1);
   --status-needs-input: #75686b;
   --status-needs-input-bg: rgba(117, 104, 107, 0.12);
   --status-running: #74172a;
@@ -283,8 +283,8 @@ html[data-theme="light-warm"] {
 
   --success: #5f1222;
   --success-bg: rgba(116, 23, 42, 0.08);
-  --warning: #9a7137;
-  --warning-bg: rgba(154, 113, 55, 0.1);
+  --warning: #75686b;
+  --warning-bg: rgba(117, 104, 107, 0.12);
   --error: #9a1c33;
   --error-bg: rgba(154, 28, 51, 0.1);
 
@@ -345,8 +345,8 @@ html[data-theme="light-warm"] {
 
   --success: #5f1222;
   --success-bg: rgba(116, 23, 42, 0.08);
-  --warning: #9a7137;
-  --warning-bg: rgba(154, 113, 55, 0.1);
+  --warning: #75686b;
+  --warning-bg: rgba(117, 104, 107, 0.12);
   --error: #c40014;
   --error-bg: rgba(196, 0, 20, 0.06);
 
@@ -437,8 +437,8 @@ html[data-theme="light-warm"] .minervot-lux {
 
   --success: #5f1222;
   --success-bg: rgba(116, 23, 42, 0.08);
-  --warning: #9a7137;
-  --warning-bg: rgba(154, 113, 55, 0.1);
+  --warning: #75686b;
+  --warning-bg: rgba(117, 104, 107, 0.12);
   --error: #c40014;
   --error-bg: rgba(196, 0, 20, 0.06);
 
