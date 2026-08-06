@@ -1,13 +1,26 @@
 "use client";
 
-import { formatDuration, getCategoryIcon, type ActivityHistoryItem } from "@/lib/activity-history";
+import {
+  formatDuration,
+  getCategoryIcon,
+  type ActivityHistoryItem,
+} from "@/lib/activity-history";
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
+import {
+  IconDownload,
+  IconReuse,
+  IconShare,
+  IconUser,
+} from "@/components/ui/icons";
 
 type ActivityHistoryCardProps = {
   item: ActivityHistoryItem;
   selected?: boolean;
   onSelect?: (item: ActivityHistoryItem) => void;
+  onReuse?: (item: ActivityHistoryItem) => void;
+  onShare?: (item: ActivityHistoryItem) => void;
+  onDownload?: (item: ActivityHistoryItem) => void;
   variant?: "interactive" | "static";
 };
 
@@ -20,70 +33,94 @@ const STATUS_CLASS: Record<string, string> = {
 };
 
 const CARD_CLASS =
-  "activity-history-card w-full rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)] p-4 text-left shadow-[var(--shadow-sm)] transition-all sm:p-5";
+  "activity-history-card w-full rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface)] p-3 text-left shadow-[var(--shadow-sm)] transition-all duration-[var(--motion-fast)] sm:p-3.5";
 
 export function ActivityHistoryCard({
   item,
   selected,
   onSelect,
+  onReuse,
+  onShare,
+  onDownload,
   variant = "interactive",
 }: ActivityHistoryCardProps) {
   const statusLabel =
-    ui.activityHistory.statuses[item.status as keyof typeof ui.activityHistory.statuses] ??
-    item.status;
+    ui.activityHistory.statuses[
+      item.status as keyof typeof ui.activityHistory.statuses
+    ] ?? item.status;
+
+  const secretary =
+    item.employees[0] ??
+    item.services[0] ??
+    "AI秘書";
+
+  const actions = (
+    <div
+      className="mt-2.5 flex flex-wrap gap-1.5"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={() => onReuse?.(item)}
+        className="inline-flex min-h-[32px] items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 text-[length:var(--text-meta)] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--brand)] hover:text-[var(--brand)]"
+      >
+        <IconReuse className="h-3.5 w-3.5" />
+        再利用
+      </button>
+      <button
+        type="button"
+        onClick={() => onShare?.(item)}
+        className="inline-flex min-h-[32px] items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 text-[length:var(--text-meta)] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--brand)] hover:text-[var(--brand)]"
+      >
+        <IconShare className="h-3.5 w-3.5" />
+        共有
+      </button>
+      <button
+        type="button"
+        onClick={() => onDownload?.(item)}
+        className="inline-flex min-h-[32px] items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 text-[length:var(--text-meta)] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--brand)] hover:text-[var(--brand)]"
+      >
+        <IconDownload className="h-3.5 w-3.5" />
+        ダウンロード
+      </button>
+    </div>
+  );
 
   const content = (
     <>
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-muted)] text-lg">
+      <div className="flex items-start gap-2.5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--brand-muted)] text-base text-[var(--brand)]">
           {getCategoryIcon(item.category)}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="font-medium text-foreground">{item.title}</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="text-sm font-semibold text-foreground">{item.title}</p>
             {item.metadata.favorite ? (
-              <span aria-hidden className="text-amber-500">
+              <span aria-hidden className="text-[var(--brand)]">
                 ★
               </span>
             ) : null}
-          </div>
-          <p className="mt-1 line-clamp-2 text-sm text-[var(--text-secondary)]">
-            {item.workRequest}
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full bg-[var(--surface-muted)] px-2.5 py-1 text-[var(--text-secondary)]">
-              {new Date(item.completedAt).toLocaleString("ja-JP")}
-            </span>
-            <span className="rounded-full bg-[var(--surface-muted)] px-2.5 py-1 text-[var(--text-secondary)]">
-              {item.categoryLabel}
-            </span>
             <span
               className={cn(
-                "rounded-full px-2.5 py-1 font-medium",
+                "rounded-full px-2 py-0.5 text-[length:var(--text-meta)] font-medium",
                 STATUS_CLASS[item.status] ?? STATUS_CLASS.review,
               )}
             >
               {statusLabel}
             </span>
-            <span className="rounded-full bg-[var(--surface-muted)] px-2.5 py-1 text-[var(--text-secondary)]">
-              {formatDuration(item.durationMs)}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+            <span>{new Date(item.completedAt).toLocaleString("ja-JP")}</span>
+            <span aria-hidden>·</span>
+            <span>{formatDuration(item.durationMs)}</span>
+            <span aria-hidden>·</span>
+            <span className="inline-flex items-center gap-1">
+              <IconUser className="h-3 w-3" />
+              {secretary}
             </span>
           </div>
-          <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-[var(--text-muted)]">
-            {item.employees.slice(0, 3).map((employee) => (
-              <span key={employee}>{employee}</span>
-            ))}
-            {item.services.map((service) => (
-              <span key={service} className="rounded bg-[var(--surface-muted)] px-1.5 py-0.5">
-                {service}
-              </span>
-            ))}
-          </div>
-          {item.metadata.memoryLearned ? (
-            <p className="mt-2 text-xs text-[var(--accent)]">
-              {ui.activityHistory.memoryLearned}
-            </p>
-          ) : null}
+          {actions}
         </div>
       </div>
     </>
@@ -91,28 +128,30 @@ export function ActivityHistoryCard({
 
   if (variant === "static") {
     return (
-      <div
-        className={cn(
-          CARD_CLASS,
-          "hover:border-[var(--border-strong)]",
-        )}
-      >
+      <div className={cn(CARD_CLASS, "hover:border-[var(--border-strong)]")}>
         {content}
       </div>
     );
   }
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect?.(item)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect?.(item);
+        }
+      }}
       className={cn(
         CARD_CLASS,
-        "hover:border-[var(--border-strong)]",
+        "cursor-pointer hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-md)] active:scale-[0.995]",
         selected && "border-[var(--accent)] ring-2 ring-[var(--accent)]/20",
       )}
     >
       {content}
-    </button>
+    </div>
   );
 }

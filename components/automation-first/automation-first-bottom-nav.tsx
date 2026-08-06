@@ -5,6 +5,13 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 import { CreateSheet } from "@/components/automation-first/create-sheet";
+import {
+  IconArtifact,
+  IconAutomation,
+  IconPlus,
+  IconSettings,
+  IconToday,
+} from "@/components/ui/icons";
 import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
 import {
   resolveAutomationFirstBottomNavId,
@@ -17,15 +24,37 @@ const ITEMS: Array<{
   id: AutomationFirstBottomNavId;
   href?: string;
   label: string;
-  icon: string;
   primary?: boolean;
 }> = [
-  { id: "today", href: "/today", label: "今日", icon: "◎" },
-  { id: "automation", href: "/automations", label: "自動化", icon: "↻" },
-  { id: "create", label: "追加", icon: "＋", primary: true },
-  { id: "artifacts", href: "/history", label: "成果物", icon: "◇" },
-  { id: "settings", href: "/settings", label: "設定", icon: "⚙" },
+  { id: "today", href: "/today", label: "今日" },
+  { id: "automation", href: "/automations", label: "自動化" },
+  { id: "create", label: "追加", primary: true },
+  { id: "artifacts", href: "/history", label: "成果物" },
+  { id: "settings", href: "/settings", label: "設定" },
 ];
+
+function BottomIcon({
+  id,
+  className,
+}: {
+  id: AutomationFirstBottomNavId;
+  className?: string;
+}) {
+  switch (id) {
+    case "today":
+      return <IconToday className={className} />;
+    case "automation":
+      return <IconAutomation className={className} />;
+    case "create":
+      return <IconPlus className={className} />;
+    case "artifacts":
+      return <IconArtifact className={className} />;
+    case "settings":
+      return <IconSettings className={className} />;
+    default:
+      return <IconToday className={className} />;
+  }
+}
 
 export function AutomationFirstBottomNav() {
   const pathname = usePathname() ?? "";
@@ -60,10 +89,10 @@ export function AutomationFirstBottomNav() {
                     className="flex min-h-[56px] w-full flex-col items-center justify-center gap-1 px-0.5 text-[11px] font-medium leading-tight focus-ring"
                   >
                     <span
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--brand)] text-lg leading-none text-[var(--brand-foreground)]"
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--brand)] text-[var(--brand-foreground)] shadow-[var(--shadow-cta)] transition-transform duration-[var(--motion-fast)] active:scale-95"
                       aria-hidden
                     >
-                      {item.icon}
+                      <BottomIcon id={item.id} className="h-5 w-5" />
                     </span>
                     <span className="text-[var(--brand)]">{item.label}</span>
                   </button>
@@ -88,8 +117,8 @@ export function AutomationFirstBottomNav() {
                   )}
                   aria-current={isActive ? "page" : undefined}
                 >
-                  <span className="text-lg leading-none" aria-hidden>
-                    {item.icon}
+                  <span aria-hidden>
+                    <BottomIcon id={item.id} className="h-5 w-5" />
                   </span>
                   <span>{item.label}</span>
                 </Link>
