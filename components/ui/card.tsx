@@ -7,9 +7,9 @@ type CardProps = React.HTMLAttributes<HTMLDivElement> & {
 
 const PADDING: Record<NonNullable<CardProps["padding"]>, string> = {
   none: "",
-  sm: "p-5",
-  md: "p-6 sm:p-8",
-  lg: "p-8 sm:p-10",
+  sm: "p-3.5 sm:p-4",
+  md: "p-4 sm:p-5",
+  lg: "p-5 sm:p-7",
 };
 
 export function Card({

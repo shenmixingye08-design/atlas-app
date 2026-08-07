@@ -11,14 +11,14 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   primary:
-    "bg-accent text-[var(--accent-foreground)] hover:bg-[var(--accent-hover)] active:scale-[0.98] shadow-sm",
+    "bg-[var(--brand)] text-[var(--brand-foreground)] hover:bg-[var(--brand-hover)] active:scale-[0.98] shadow-[var(--shadow-cta)] hover:shadow-[0_16px_40px_rgba(116,23,42,0.24)]",
   secondary:
-    "bg-[var(--surface-muted)] text-foreground hover:bg-[var(--secondary-hover)]",
+    "bg-[var(--surface-muted)] text-foreground hover:bg-[var(--secondary-hover)] active:scale-[0.98]",
   ghost:
-    "text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-foreground",
+    "text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-foreground active:scale-[0.98]",
   danger:
-    "bg-[var(--error-bg)] text-[var(--error)] hover:bg-[var(--error-bg)]",
-};
+    "bg-[var(--error-bg)] text-[var(--error)] hover:bg-[var(--error-bg)] active:scale-[0.98]",
+}
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
   sm: "min-h-[44px] px-4 text-sm rounded-full",

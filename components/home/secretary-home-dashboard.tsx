@@ -22,18 +22,23 @@ export function SecretaryHomeDashboard({
   projects,
 }: SecretaryHomeDashboardProps) {
   return (
-    <div className="home-dashboard mx-auto flex min-h-[70vh] w-full max-w-2xl flex-col justify-center space-y-10 pb-16 pt-8 sm:space-y-12 sm:pb-20 sm:pt-12">
-      <header className="space-y-3 text-center sm:space-y-4">
-        <p className="text-sm font-medium tracking-wide text-accent">
+    <div className="home-dashboard mx-auto flex min-h-[60vh] w-full max-w-2xl flex-col justify-center space-y-6 pb-10 pt-6 sm:space-y-8 sm:pb-14 sm:pt-10">
+      <header className="animate-card-enter space-y-2 text-center sm:space-y-3">
+        <p className="text-[length:var(--text-label)] font-semibold tracking-[0.1em] text-[var(--brand)]">
+          MINERVOT
+        </p>
+        <p className="text-sm font-medium tracking-wide text-[var(--brand)]">
           {ui.secretaryHome.brandTagline}
         </p>
         <HomeGreetingHeader automations={automations} projects={projects} />
-        <p className="mx-auto max-w-md text-base text-[var(--foreground-muted)] sm:text-lg">
+        <p className="mx-auto max-w-md text-sm text-[var(--foreground-muted)] sm:text-base">
           {ui.secretaryHome.zeroFrictionHint}
         </p>
       </header>
 
-      <HomeChatBar />
+      <div className="animate-card-enter">
+        <HomeChatBar />
+      </div>
     </div>
   );
 }

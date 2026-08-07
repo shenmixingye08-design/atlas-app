@@ -42,8 +42,17 @@ import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  IconAlert,
+  IconCheck,
+  IconClock,
+  IconEmptyWork,
+  IconPause,
+  IconSpark,
+} from "@/components/ui/icons";
 import { AutomationRow } from "@/components/automation-first/automation-row";
 import { PageHeader } from "@/components/automation-first/page-header";
+import { cn } from "@/lib/design-system/cn";
 
 import { AutomationCard } from "./automation-card";
 import { AutomationDetailPanel } from "./automation-detail-panel";
@@ -326,24 +335,93 @@ export function AutomationsDashboard() {
     return <LoadingState />;
   }
 
-  const summaryCards = [
-    { label: ui.entrustedJobs.summaryScheduled, value: summary.scheduled },
-    { label: ui.entrustedJobs.summaryNeedsReview, value: summary.needsReview },
-    { label: ui.entrustedJobs.summaryCompleted, value: summary.completed },
-    { label: ui.entrustedJobs.summaryPaused, value: summary.paused },
+  const runningCount = automations.filter((item) => item.status === "running").length;
+  const timelineLanes = [
+    {
+      key: "next",
+      label: "次回実行",
+      value: summary.scheduled,
+      hint: "予定されている仕事",
+      icon: <IconClock className="h-4 w-4" />,
+      live: summary.scheduled > 0,
+    },
+    {
+      key: "running",
+      label: "進行中",
+      value: runningCount,
+      hint: runningCount > 0 ? "AIがいま動かしています" : "待機中",
+      icon: <IconSpark className="h-4 w-4" />,
+      live: runningCount > 0,
+    },
+    {
+      key: "review",
+      label: "確認待ち",
+      value: summary.needsReview,
+      hint: "あなたの判断が必要",
+      icon: <IconAlert className="h-4 w-4" />,
+      live: summary.needsReview > 0,
+    },
+    {
+      key: "done",
+      label: "完了",
+      value: summary.completed,
+      hint: "仕上げ済み",
+      icon: <IconCheck className="h-4 w-4" />,
+      live: false,
+    },
+    {
+      key: "paused",
+      label: "停止",
+      value: summary.paused,
+      hint: "一時停止中",
+      icon: <IconPause className="h-4 w-4" />,
+      live: false,
+    },
   ] as const;
 
+  const activityPulse = [
+    ...automations
+      .filter((item) => item.enabled && item.nextRun)
+      .slice(0, 3)
+      .map((item) => ({
+        id: `next-${item.id}`,
+        title: item.name,
+        meta: item.nextRun
+          ? `次回 ${formatRunInstant(item.nextRun)}`
+          : "次回未定",
+        tone: "next" as const,
+      })),
+    ...automations
+      .filter((item) => item.status === "running")
+      .slice(0, 3)
+      .map((item) => ({
+        id: `run-${item.id}`,
+        title: item.name,
+        meta: "進行中",
+        tone: "running" as const,
+      })),
+    ...automations
+      .filter((item) => !item.enabled)
+      .slice(0, 2)
+      .map((item) => ({
+        id: `pause-${item.id}`,
+        title: item.name,
+        meta: "停止中",
+        tone: "paused" as const,
+      })),
+  ].slice(0, 6);
+
   return (
-    <div className="space-y-10 sm:space-y-12 animate-fade-up pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+    <div className="space-y-5 sm:space-y-6 animate-fade-up pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
       {dashboardV2 ? (
         <PageHeader
           eyebrow={ui.brand}
           title="自動化"
-          description="稼働中の仕事、次回実行、最終結果を一覧で運用できます。"
+          description="AIが動いている様子を、次回実行から完了までひと続きで確認できます。"
           actions={
             <Button
               variant="primary"
-              className="min-h-[var(--touch-target)] rounded-[var(--radius-md)] px-5"
+              className="btn-brand min-h-[var(--touch-target)] shadow-[var(--shadow-cta)]"
               onClick={openCreate}
             >
               新しい自動化を作る
@@ -351,20 +429,22 @@ export function AutomationsDashboard() {
           }
         />
       ) : (
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-3">
-            <p className="text-sm font-medium text-accent">{ui.brand}</p>
-            <h1 className="text-display text-foreground">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1.5">
+            <p className="text-[length:var(--text-label)] font-semibold tracking-[0.1em] text-[var(--brand)]">
+              {ui.brand}
+            </p>
+            <h1 className="text-[length:var(--text-page-title)] font-semibold tracking-tight text-foreground sm:text-display">
               {ui.entrustedJobs.title}
             </h1>
-            <p className="text-body max-w-2xl text-[var(--text-secondary)]">
-              {ui.entrustedJobs.subtitle}
+            <p className="text-[length:var(--text-caption)] text-[var(--text-secondary)] sm:text-body">
+              AIが仕事を進めている状態を、タイムラインで把握できます。
             </p>
           </div>
           <div className="flex shrink-0 flex-col gap-2 self-start sm:items-end">
             <Button
               variant="primary"
-              className="min-h-[48px] rounded-full px-6"
+              className="btn-brand min-h-[48px] shadow-[var(--shadow-cta)]"
               onClick={openCreate}
             >
               {ui.entrustedJobs.registerHere}
@@ -392,22 +472,91 @@ export function AutomationsDashboard() {
         </header>
       )}
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {summaryCards.map((item) => (
-          <Card
-            key={item.label}
-            padding="md"
-            className="border border-[var(--border-subtle)] bg-[var(--card)] text-center"
+      {/* Compact status rail — AI is moving */}
+      <section
+        aria-label="自動化の稼働状況"
+        className="animate-stagger grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
+      >
+        {timelineLanes.map((item) => (
+          <div
+            key={item.key}
+            className="stat-tile"
+            data-live={item.live ? "true" : "false"}
           >
-            <p className="text-xs text-[var(--text-muted)]">{item.label}</p>
-            <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-              {item.value}
-              <span className="ml-1 text-sm font-medium text-[var(--text-secondary)]">
+            <div className="flex items-center justify-between gap-1">
+              <p className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">
+                {item.label}
+              </p>
+              <span className="text-[var(--brand)]" aria-hidden>
+                {item.icon}
+              </span>
+            </div>
+            <div className="mt-1 flex items-baseline gap-1">
+              {item.live ? <span className="stat-dot" aria-hidden /> : null}
+              <p className="text-xl font-semibold tabular-nums tracking-tight text-foreground">
+                {item.value}
+              </p>
+              <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 {ui.entrustedJobs.countSuffix}
               </span>
+            </div>
+            <p className="mt-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+              {item.hint}
             </p>
-          </Card>
+          </div>
         ))}
+      </section>
+
+      <section
+        aria-label="AIの動き"
+        className="animate-card-enter rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+            AIが動いている流れ
+          </h2>
+          <Link
+            href="/automations/runs"
+            className="text-[length:var(--text-caption)] font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+          >
+            実行履歴
+          </Link>
+        </div>
+        {activityPulse.length === 0 ? (
+          <div className="mt-3 flex items-start gap-3 rounded-[var(--radius-md)] bg-[var(--surface-muted)] px-3 py-3">
+            <IconEmptyWork className="mt-0.5 text-[var(--brand)] opacity-70" />
+            <div>
+              <p className="text-sm font-medium text-[var(--text-primary)]">
+                まだ動きはありません
+              </p>
+              <p className="mt-0.5 text-[length:var(--text-caption)] text-[var(--text-muted)]">
+                自動化を作ると、次回実行・進行中・完了がここに並びます。
+              </p>
+            </div>
+          </div>
+        ) : (
+          <ol className="relative mt-3 space-y-0 border-l border-[var(--border)] pl-4">
+            {activityPulse.map((item) => (
+              <li key={item.id} className="relative pb-3 last:pb-0">
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute -left-[1.3rem] top-1.5 h-2 w-2 rounded-full",
+                    item.tone === "running" && "bg-[var(--brand)] animate-soft-pulse",
+                    item.tone === "next" && "bg-[var(--brand)]",
+                    item.tone === "paused" && "bg-[var(--text-muted)]",
+                  )}
+                />
+                <p className="text-sm font-medium text-[var(--text-primary)]">
+                  {item.title}
+                </p>
+                <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                  {item.meta}
+                </p>
+              </li>
+            ))}
+          </ol>
+        )}
       </section>
 
       {showCreate && !v2Enabled ? (
@@ -551,19 +700,25 @@ export function AutomationsDashboard() {
           <LoadingState />
         ) : automations.length === 0 && automationsV2.length === 0 && !showCreate ? (
           <Card
-            padding="lg"
-            className="border border-dashed border-[var(--border-subtle)] bg-[var(--surface-muted)]/40 px-6 py-14 text-center"
+            padding="md"
+            className="border border-dashed border-[var(--border-subtle)] bg-[linear-gradient(180deg,var(--surface-elevated),var(--surface-muted))] px-5 py-10 text-center"
           >
-            <h2 className="text-title text-foreground">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--brand-muted)] text-[var(--brand)]">
+              <IconEmptyWork className="h-7 w-7" />
+            </div>
+            <h2 className="mt-4 text-title text-foreground">
               {ui.entrustedJobs.emptyTitle}
             </h2>
-            <p className="mx-auto mt-3 max-w-md text-body text-[var(--text-secondary)]">
+            <p className="mx-auto mt-2 max-w-md text-sm text-[var(--text-secondary)]">
               {ui.entrustedJobs.emptyDescription}
             </p>
-            <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <p className="mx-auto mt-2 max-w-sm text-[length:var(--text-caption)] text-[var(--text-muted)]">
+              おすすめの最初の仕事：朝のメール下書き、またはSNS投稿。
+            </p>
+            <div className="mt-5 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Button
                 variant="primary"
-                className="min-h-[48px]"
+                className="btn-brand min-h-[48px] shadow-[var(--shadow-cta)]"
                 onClick={openCreate}
               >
                 {ui.entrustedJobs.emptyCta}

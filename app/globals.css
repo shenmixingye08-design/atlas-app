@@ -1,23 +1,23 @@
 @import "tailwindcss";
 
-/* ─── ATLAS Design Philosophy ───
-   "Less, but Better."
-   Pure white · near-black text · Apple blue only · calm · spacious
+/* ─── MINERVOT Design Philosophy ───
+   LP-aligned: wine red · off-white · light gray
+   Calm · premium · AI secretary (not admin console)
    ─────────────────────────────────────────────────────────────── */
 
 :root {
-  /* ── Semantic surfaces (light) ── */
-  --background: #ffffff;
-  --surface: #ffffff;
+  /* ── Semantic surfaces (light) — LP off-white ── */
+  --background: #fffdfb;
+  --surface: #fffdfb;
   --surface-elevated: #ffffff;
-  --surface-muted: #f5f5f7;
+  --surface-muted: #faf6f5;
   --card: #ffffff;
-  --card-glass: rgba(255, 255, 255, 0.86);
+  --card-glass: rgba(255, 253, 251, 0.9);
 
-  /* ── Text hierarchy ── */
-  --text-primary: #111111;
-  --text-secondary: #3a3a3c;
-  --text-muted: #515154;
+  /* ── Text hierarchy — LP near-black / muted rose-gray ── */
+  --text-primary: #281a1e;
+  --text-secondary: #75686b;
+  --text-muted: #9a8d90;
 
   /* Legacy aliases — keep for existing components */
   --foreground: var(--text-primary);
@@ -27,48 +27,48 @@
   --background-subtle: var(--surface-muted);
   --background-muted: var(--surface-muted);
 
-  /* Apple Blue — single CTA accent */
-  --accent: #0071e3;
-  --accent-hover: #0077ed;
-  --accent-muted: rgba(0, 113, 227, 0.1);
-  --accent-glow: transparent;
+  /* Wine red — single CTA accent (matches LP #74172A) */
+  --accent: #74172a;
+  --accent-hover: #5d1020;
+  --accent-muted: rgba(116, 23, 42, 0.1);
+  --accent-glow: rgba(116, 23, 42, 0.18);
   --accent-foreground: #ffffff;
-  --secondary-hover: #e8e8ed;
+  --secondary-hover: #f5f1f0;
 
   /* Shimmer mid-tone (light) */
-  --shimmer-mid: #ececee;
+  --shimmer-mid: #f0ebea;
 
   /* Borders */
-  --border: rgba(0, 0, 0, 0.08);
-  --border-strong: rgba(0, 0, 0, 0.12);
-  --border-focus: rgba(0, 113, 227, 0.5);
+  --border: rgba(40, 26, 30, 0.08);
+  --border-strong: rgba(40, 26, 30, 0.14);
+  --border-focus: rgba(116, 23, 42, 0.45);
   --border-subtle: var(--border);
 
-  /* Brand (calm secretary — teal, not chat-purple) */
-  --brand: #0f5c4c;
-  --brand-hover: #0c4a3d;
-  --brand-muted: rgba(15, 92, 76, 0.1);
+  /* Brand = wine (green/teal abolished) */
+  --brand: #74172a;
+  --brand-hover: #5d1020;
+  --brand-muted: rgba(116, 23, 42, 0.1);
   --brand-foreground: #ffffff;
 
-  /* Semantic status */
-  --success: #1d7a34;
-  --success-bg: rgba(29, 122, 52, 0.08);
-  --warning: #b35000;
-  --warning-bg: rgba(179, 80, 0, 0.08);
+  /* Semantic status — no emerald/teal brand greens */
+  --success: #5f1222;
+  --success-bg: rgba(116, 23, 42, 0.08);
+  --warning: #75686b;
+  --warning-bg: rgba(117, 104, 107, 0.12);
   --error: #c40014;
   --error-bg: rgba(196, 0, 20, 0.06);
-  --info: #0b6bcb;
-  --info-bg: rgba(11, 107, 203, 0.08);
+  --info: #74172a;
+  --info-bg: rgba(116, 23, 42, 0.08);
 
-  /* Automation run / attention states (distinct from brand) */
-  --status-paused: #5c6570;
-  --status-paused-bg: rgba(92, 101, 112, 0.1);
-  --status-pending-approval: #9a6700;
-  --status-pending-approval-bg: rgba(154, 103, 0, 0.12);
-  --status-needs-input: #8759c0;
-  --status-needs-input-bg: rgba(135, 89, 192, 0.1);
-  --status-running: #0b6bcb;
-  --status-running-bg: rgba(11, 107, 203, 0.1);
+  /* Automation run / attention states */
+  --status-paused: #8b7e81;
+  --status-paused-bg: rgba(139, 126, 129, 0.12);
+  --status-pending-approval: #74172a;
+  --status-pending-approval-bg: rgba(116, 23, 42, 0.1);
+  --status-needs-input: #75686b;
+  --status-needs-input-bg: rgba(117, 104, 107, 0.12);
+  --status-running: #74172a;
+  --status-running-bg: rgba(116, 23, 42, 0.1);
   --status-completed: var(--success);
   --status-completed-bg: var(--success-bg);
   --status-failed: var(--error);
@@ -118,11 +118,12 @@
   --radius-xl: 20px;
   --radius-2xl: 24px;
 
-  /* Shadows — soft only */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.08);
-  --shadow-glow: none;
+  /* Shadows — soft wine-tinted elevation (LP CTA feel) */
+  --shadow-sm: 0 1px 3px rgba(40, 26, 30, 0.04);
+  --shadow-md: 0 4px 20px rgba(40, 26, 30, 0.06);
+  --shadow-lg: 0 12px 36px rgba(116, 23, 42, 0.1);
+  --shadow-glow: 0 10px 28px rgba(116, 23, 42, 0.16);
+  --shadow-cta: 0 14px 36px rgba(116, 23, 42, 0.2);
 
   /* Motion — 150–250ms, no bounce */
   --motion-fast: 150ms cubic-bezier(0.25, 0.1, 0.25, 1);
@@ -159,22 +160,22 @@ html.automation-design-system {
   --border-focus: color-mix(in srgb, var(--brand) 55%, transparent);
 }
 
-/* Override luxury gold shell when Automation First design system is on */
+/* Automation First design system — keep wine brand (no teal/green) */
 html.automation-design-system .minervot-lux {
   --accent: var(--brand);
   --accent-hover: var(--brand-hover);
   --accent-muted: var(--brand-muted);
-  --accent-glow: transparent;
+  --accent-glow: rgba(116, 23, 42, 0.18);
   --accent-foreground: var(--brand-foreground);
   --border-focus: color-mix(in srgb, var(--brand) 55%, transparent);
-  --success: #1d7a34;
-  --success-bg: rgba(29, 122, 52, 0.08);
+  --success: #5f1222;
+  --success-bg: rgba(116, 23, 42, 0.08);
 }
 
 html.automation-design-system[data-theme="dark"] .minervot-lux,
 html[data-theme="dark"].automation-design-system .minervot-lux {
-  --success: #30d158;
-  --success-bg: rgba(48, 209, 88, 0.12);
+  --success: #c48a96;
+  --success-bg: rgba(196, 138, 150, 0.14);
   --accent: var(--brand);
   --accent-hover: var(--brand-hover);
   --accent-muted: var(--brand-muted);
@@ -205,41 +206,41 @@ html[data-theme="dark"] {
   --text-secondary: #c7c7cc;
   --text-muted: #8e8e93;
 
-  --accent: #0071e3;
-  --accent-hover: #0077ed;
-  --accent-muted: rgba(0, 113, 227, 0.18);
-  --accent-glow: transparent;
-  --accent-foreground: #ffffff;
+  --accent: #c48a96;
+  --accent-hover: #d4a3ad;
+  --accent-muted: rgba(196, 138, 150, 0.18);
+  --accent-glow: rgba(196, 138, 150, 0.2);
+  --accent-foreground: #1a0e12;
   --secondary-hover: #252a33;
   --shimmer-mid: #262b33;
 
   --border: rgba(255, 255, 255, 0.1);
   --border-strong: rgba(255, 255, 255, 0.16);
-  --border-focus: rgba(0, 113, 227, 0.55);
+  --border-focus: rgba(196, 138, 150, 0.5);
   --border-subtle: var(--border);
 
-  --brand: #3d9b86;
-  --brand-hover: #4aaf98;
-  --brand-muted: rgba(61, 155, 134, 0.18);
-  --brand-foreground: #0a1210;
+  --brand: #c48a96;
+  --brand-hover: #d4a3ad;
+  --brand-muted: rgba(196, 138, 150, 0.18);
+  --brand-foreground: #1a0e12;
 
-  --success: #30d158;
-  --success-bg: rgba(48, 209, 88, 0.12);
-  --warning: #ff9f0a;
-  --warning-bg: rgba(255, 159, 10, 0.12);
-  --error: #ff453a;
-  --error-bg: rgba(255, 69, 58, 0.12);
-  --info: #64d2ff;
-  --info-bg: rgba(100, 210, 255, 0.12);
+  --success: #c48a96;
+  --success-bg: rgba(196, 138, 150, 0.14);
+  --warning: #d4b07a;
+  --warning-bg: rgba(212, 176, 122, 0.14);
+  --error: #ff6b7a;
+  --error-bg: rgba(255, 107, 122, 0.12);
+  --info: #c48a96;
+  --info-bg: rgba(196, 138, 150, 0.14);
 
   --status-paused: #98989d;
   --status-paused-bg: rgba(152, 152, 157, 0.14);
-  --status-pending-approval: #ffd60a;
-  --status-pending-approval-bg: rgba(255, 214, 10, 0.14);
-  --status-needs-input: #bf5af2;
-  --status-needs-input-bg: rgba(191, 90, 242, 0.14);
-  --status-running: #64d2ff;
-  --status-running-bg: rgba(100, 210, 255, 0.14);
+  --status-pending-approval: #d4b07a;
+  --status-pending-approval-bg: rgba(212, 176, 122, 0.14);
+  --status-needs-input: #b9bec7;
+  --status-needs-input-bg: rgba(185, 190, 199, 0.14);
+  --status-running: #c48a96;
+  --status-running-bg: rgba(196, 138, 150, 0.14);
   --status-completed: var(--success);
   --status-completed-bg: var(--success-bg);
   --status-failed: var(--error);
@@ -254,67 +255,65 @@ html[data-theme="dark"] {
   --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.35);
 }
 
-/* ── Warm light theme (赤ゴールド) ── */
+/* ── Warm light theme — LP off-white / wine (gold abolished) ── */
 html[data-theme="light-warm"] {
-  --background: #f7f2eb;
-  --surface: #f7f2eb;
-  --surface-elevated: #fff7f0;
-  --surface-muted: #efe6d8;
-  --card: #fff7f0;
-  --card-glass: rgba(255, 247, 240, 0.9);
+  --background: #fffdfb;
+  --surface: #fffdfb;
+  --surface-elevated: #ffffff;
+  --surface-muted: #faf6f5;
+  --card: #ffffff;
+  --card-glass: rgba(255, 253, 251, 0.92);
 
-  --text-primary: #2a2a2a;
-  --text-secondary: #5c4f42;
-  --text-muted: #8a7b6a;
+  --text-primary: #281a1e;
+  --text-secondary: #75686b;
+  --text-muted: #9a8d90;
 
-  --accent: #b8860b;
-  --accent-hover: #c89a2b;
-  --accent-muted: rgba(184, 134, 11, 0.14);
-  --accent-glow: rgba(184, 134, 11, 0.28);
-  --accent-foreground: #fffaf3;
-  --secondary-hover: #efe6d8;
-  --shimmer-mid: #e8ddd0;
+  --accent: #74172a;
+  --accent-hover: #5d1020;
+  --accent-muted: rgba(116, 23, 42, 0.1);
+  --accent-glow: rgba(116, 23, 42, 0.18);
+  --accent-foreground: #ffffff;
+  --secondary-hover: #f5f1f0;
+  --shimmer-mid: #f0ebea;
 
-  --border: rgba(90, 70, 45, 0.12);
-  --border-strong: rgba(90, 70, 45, 0.2);
-  --border-focus: rgba(184, 134, 11, 0.55);
+  --border: rgba(40, 26, 30, 0.08);
+  --border-strong: rgba(40, 26, 30, 0.14);
+  --border-focus: rgba(116, 23, 42, 0.45);
   --border-subtle: var(--border);
 
-  --success: #8b6914;
-  --success-bg: rgba(184, 134, 11, 0.12);
-  --warning: #a67c00;
-  --warning-bg: rgba(200, 154, 43, 0.14);
+  --success: #5f1222;
+  --success-bg: rgba(116, 23, 42, 0.08);
+  --warning: #75686b;
+  --warning-bg: rgba(117, 104, 107, 0.12);
   --error: #9a1c33;
   --error-bg: rgba(154, 28, 51, 0.1);
 
   --status-neutral: var(--text-muted);
-  --status-neutral-bg: rgba(90, 70, 45, 0.06);
+  --status-neutral-bg: rgba(40, 26, 30, 0.05);
 
-  --shadow-sm: 0 1px 3px rgba(90, 70, 45, 0.08);
-  --shadow-md: 0 4px 24px rgba(90, 70, 45, 0.1);
-  --shadow-lg: 0 8px 40px rgba(90, 70, 45, 0.12);
-  --shadow-soft: 0 2px 12px rgba(90, 70, 45, 0.08);
+  --shadow-sm: 0 1px 3px rgba(40, 26, 30, 0.04);
+  --shadow-md: 0 4px 20px rgba(40, 26, 30, 0.06);
+  --shadow-lg: 0 12px 36px rgba(116, 23, 42, 0.1);
+  --shadow-soft: 0 2px 12px rgba(40, 26, 30, 0.05);
 }
 
-/* ─── MINERVOT Luxury Shell ───
-   Dark concierge palette scoped to the post-login app shell.
-   Concierge hotel + luxury car interior + Apple restraint.
-   Gold (#D4AF37) = primary action / success · Dark red (#7B1124) = notice.
-   Applied via .minervot-lux on AtlasAppShell — auth/landing stay untouched.
+/* ─── MINERVOT App Shell ───
+   LP-aligned wine · off-white · light gray.
+   Applied via .minervot-lux on AtlasAppShell — matches landing brand.
    ─────────────────────────────────────────────────────────────── */
 .minervot-lux {
-  color-scheme: dark;
+  color-scheme: light;
 
-  --background: #0e0f13;
-  --surface: #0e0f13;
-  --surface-elevated: #171a20;
-  --surface-muted: #1b1f27;
-  --card: #171a20;
-  --card-glass: rgba(14, 15, 19, 0.82);
+  --background: #fffdfb;
+  --surface: #fffdfb;
+  --surface-elevated: #ffffff;
+  --surface-muted: #faf6f5;
+  --card: #ffffff;
+  --card-glass: rgba(255, 253, 251, 0.92);
 
-  --text-primary: #f4f2ec;
-  --text-secondary: #b9bec7;
-  --text-muted: #868c96;
+  --text-primary: #281a1e;
+  --text-secondary: #75686b;
+  --text-muted: #9a8d90;
 
   --foreground: var(--text-primary);
   --foreground-muted: var(--text-secondary);
@@ -323,30 +322,33 @@ html[data-theme="light-warm"] {
   --background-subtle: var(--surface-muted);
   --background-muted: var(--surface-muted);
 
-  /* Gold — primary CTA (送る / 実行 / 開始) & success */
-  --accent: #d4af37;
-  --accent-hover: #e6c458;
-  --accent-muted: rgba(212, 175, 55, 0.12);
-  --accent-glow: rgba(212, 175, 55, 0.35);
-  --accent-foreground: #12130f;
-  --secondary-hover: #232833;
+  /* Wine — primary CTA */
+  --accent: #74172a;
+  --accent-hover: #5d1020;
+  --accent-muted: rgba(116, 23, 42, 0.1);
+  --accent-glow: rgba(116, 23, 42, 0.18);
+  --accent-foreground: #ffffff;
+  --secondary-hover: #f5f1f0;
 
-  /* Accent red — notices / destructive */
-  --accent-red: #7b1124;
-  --accent-red-strong: #9a1c33;
+  --accent-red: #74172a;
+  --accent-red-strong: #5d1020;
 
-  --border: #2a2f38;
-  --border-strong: #3a414d;
-  --border-focus: rgba(212, 175, 55, 0.55);
+  --brand: #74172a;
+  --brand-hover: #5d1020;
+  --brand-muted: rgba(116, 23, 42, 0.1);
+  --brand-foreground: #ffffff;
+
+  --border: rgba(40, 26, 30, 0.08);
+  --border-strong: rgba(40, 26, 30, 0.14);
+  --border-focus: rgba(116, 23, 42, 0.45);
   --border-subtle: var(--border);
 
-  /* Success = gold · Notification / error = dark red */
-  --success: #d4af37;
-  --success-bg: rgba(212, 175, 55, 0.12);
-  --warning: #c9a227;
-  --warning-bg: rgba(201, 162, 39, 0.12);
-  --error: #d24359;
-  --error-bg: rgba(123, 17, 36, 0.22);
+  --success: #5f1222;
+  --success-bg: rgba(116, 23, 42, 0.08);
+  --warning: #75686b;
+  --warning-bg: rgba(117, 104, 107, 0.12);
+  --error: #c40014;
+  --error-bg: rgba(196, 0, 20, 0.06);
 
   --status-success: var(--success);
   --status-success-bg: var(--success-bg);
@@ -357,43 +359,54 @@ html[data-theme="light-warm"] {
   --status-info: var(--accent);
   --status-info-bg: var(--accent-muted);
   --status-neutral: var(--text-muted);
-  --status-neutral-bg: rgba(255, 255, 255, 0.05);
+  --status-neutral-bg: rgba(40, 26, 30, 0.05);
   --status-running: var(--accent);
+  --status-running-bg: var(--accent-muted);
 
   --glass-bg: var(--card);
   --glass-bg-strong: var(--card);
 
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 6px 28px rgba(0, 0, 0, 0.55);
-  --shadow-lg: 0 14px 48px rgba(0, 0, 0, 0.62);
-  --shadow-soft: 0 2px 14px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 0 1px rgba(212, 175, 55, 0.25), 0 8px 40px rgba(212, 175, 55, 0.14);
+  --shadow-sm: 0 1px 3px rgba(40, 26, 30, 0.04);
+  --shadow-md: 0 4px 20px rgba(40, 26, 30, 0.06);
+  --shadow-lg: 0 12px 36px rgba(116, 23, 42, 0.1);
+  --shadow-soft: 0 2px 12px rgba(40, 26, 30, 0.05);
+  --shadow-glow: 0 10px 28px rgba(116, 23, 42, 0.14);
+  --shadow-cta: 0 14px 36px rgba(116, 23, 42, 0.2);
 
-  --shimmer-mid: #2a2f38;
+  --shimmer-mid: #f0ebea;
+
+  --form-control-bg: #ffffff;
+  --form-control-surface: #faf6f5;
+  --form-control-text: #281a1e;
+  --form-control-muted: #9a8d90;
+  --form-control-border: rgba(40, 26, 30, 0.12);
+  --form-control-focus: #74172a;
+  --form-control-hover: #f5f1f0;
 }
 
-/* Warm ivory luxury shell — ライト（赤ゴールド） */
+/* Light / warm light — same LP wine shell (gold/beige abolished) */
+html[data-theme="light"] .minervot-lux,
 html[data-theme="light-warm"] .minervot-lux {
   color-scheme: light;
 
-  --form-control-bg: #fff9f2;
-  --form-control-surface: #f7f1e8;
-  --form-control-text: #2b2118;
-  --form-control-muted: #6b5a49;
-  --form-control-border: #d8c3a5;
-  --form-control-focus: #b8860b;
-  --form-control-hover: #f3e4cf;
+  --form-control-bg: #ffffff;
+  --form-control-surface: #faf6f5;
+  --form-control-text: #281a1e;
+  --form-control-muted: #9a8d90;
+  --form-control-border: rgba(40, 26, 30, 0.12);
+  --form-control-focus: #74172a;
+  --form-control-hover: #f5f1f0;
 
-  --background: #f7f2eb;
-  --surface: #f7f2eb;
-  --surface-elevated: #fff7f0;
-  --surface-muted: #efe6d8;
-  --card: #fff7f0;
-  --card-glass: rgba(255, 247, 240, 0.92);
+  --background: #fffdfb;
+  --surface: #fffdfb;
+  --surface-elevated: #ffffff;
+  --surface-muted: #faf6f5;
+  --card: #ffffff;
+  --card-glass: rgba(255, 253, 251, 0.92);
 
-  --text-primary: #2a2a2a;
-  --text-secondary: #5c4f42;
-  --text-muted: #8a7b6a;
+  --text-primary: #281a1e;
+  --text-secondary: #75686b;
+  --text-muted: #9a8d90;
 
   --foreground: var(--text-primary);
   --foreground-muted: var(--text-secondary);
@@ -402,27 +415,32 @@ html[data-theme="light-warm"] .minervot-lux {
   --background-subtle: var(--surface-muted);
   --background-muted: var(--surface-muted);
 
-  --accent: #b8860b;
-  --accent-hover: #c89a2b;
-  --accent-muted: rgba(184, 134, 11, 0.14);
-  --accent-glow: rgba(184, 134, 11, 0.28);
-  --accent-foreground: #fffaf3;
-  --secondary-hover: #efe6d8;
+  --accent: #74172a;
+  --accent-hover: #5d1020;
+  --accent-muted: rgba(116, 23, 42, 0.1);
+  --accent-glow: rgba(116, 23, 42, 0.18);
+  --accent-foreground: #ffffff;
+  --secondary-hover: #f5f1f0;
 
-  --accent-red: #9a1c33;
-  --accent-red-strong: #7b1124;
+  --accent-red: #74172a;
+  --accent-red-strong: #5d1020;
 
-  --border: rgba(90, 70, 45, 0.14);
-  --border-strong: rgba(90, 70, 45, 0.22);
-  --border-focus: rgba(184, 134, 11, 0.55);
+  --brand: #74172a;
+  --brand-hover: #5d1020;
+  --brand-muted: rgba(116, 23, 42, 0.1);
+  --brand-foreground: #ffffff;
+
+  --border: rgba(40, 26, 30, 0.08);
+  --border-strong: rgba(40, 26, 30, 0.14);
+  --border-focus: rgba(116, 23, 42, 0.45);
   --border-subtle: var(--border);
 
-  --success: #b8860b;
-  --success-bg: rgba(184, 134, 11, 0.12);
-  --warning: #c89a2b;
-  --warning-bg: rgba(200, 154, 43, 0.14);
-  --error: #9a1c33;
-  --error-bg: rgba(154, 28, 51, 0.1);
+  --success: #5f1222;
+  --success-bg: rgba(116, 23, 42, 0.08);
+  --warning: #75686b;
+  --warning-bg: rgba(117, 104, 107, 0.12);
+  --error: #c40014;
+  --error-bg: rgba(196, 0, 20, 0.06);
 
   --status-success: var(--success);
   --status-success-bg: var(--success-bg);
@@ -433,84 +451,24 @@ html[data-theme="light-warm"] .minervot-lux {
   --status-info: var(--accent);
   --status-info-bg: var(--accent-muted);
   --status-neutral: var(--text-muted);
-  --status-neutral-bg: rgba(90, 70, 45, 0.06);
+  --status-neutral-bg: rgba(40, 26, 30, 0.05);
   --status-running: var(--accent);
+  --status-running-bg: var(--accent-muted);
 
-  --shadow-sm: 0 1px 3px rgba(90, 70, 45, 0.08);
-  --shadow-md: 0 6px 28px rgba(90, 70, 45, 0.1);
-  --shadow-lg: 0 14px 48px rgba(90, 70, 45, 0.12);
-  --shadow-soft: 0 2px 14px rgba(90, 70, 45, 0.08);
-  --shadow-glow: 0 0 0 1px rgba(184, 134, 11, 0.22), 0 8px 40px rgba(184, 134, 11, 0.12);
+  --shadow-sm: 0 1px 3px rgba(40, 26, 30, 0.04);
+  --shadow-md: 0 4px 20px rgba(40, 26, 30, 0.06);
+  --shadow-lg: 0 12px 36px rgba(116, 23, 42, 0.1);
+  --shadow-soft: 0 2px 12px rgba(40, 26, 30, 0.05);
+  --shadow-glow: 0 10px 28px rgba(116, 23, 42, 0.14);
+  --shadow-cta: 0 14px 36px rgba(116, 23, 42, 0.2);
 
-  --shimmer-mid: #e8ddd0;
+  --shimmer-mid: #f0ebea;
 }
 
-/* Standard light inside luxury shell — gold accent, not pure white */
-html[data-theme="light"] .minervot-lux {
-  color-scheme: light;
-
-  --form-control-bg: #fff9f2;
-  --form-control-surface: #f7f1e8;
-  --form-control-text: #2b2118;
-  --form-control-muted: #6b5a49;
-  --form-control-border: #d8c3a5;
-  --form-control-focus: #b8860b;
-  --form-control-hover: #f3e4cf;
-
-  --background: #f5f5f7;
-  --surface: #f5f5f7;
-  --surface-elevated: #ffffff;
-  --surface-muted: #ececee;
-  --card: #ffffff;
-  --card-glass: rgba(255, 255, 255, 0.9);
-
-  --text-primary: #111111;
-  --text-secondary: #3a3a3c;
-  --text-muted: #515154;
-
-  --foreground: var(--text-primary);
-  --foreground-muted: var(--text-secondary);
-  --foreground-subtle: var(--text-muted);
-  --background-elevated: var(--surface-elevated);
-  --background-subtle: var(--surface-muted);
-  --background-muted: var(--surface-muted);
-
-  --accent: #b8860b;
-  --accent-hover: #c89a2b;
-  --accent-muted: rgba(184, 134, 11, 0.12);
-  --accent-glow: rgba(184, 134, 11, 0.2);
-  --accent-foreground: #fffaf3;
-  --secondary-hover: #e8e8ed;
-
-  --accent-red: #7b1124;
-  --accent-red-strong: #9a1c33;
-
-  --border: rgba(0, 0, 0, 0.08);
-  --border-strong: rgba(0, 0, 0, 0.12);
-  --border-focus: rgba(184, 134, 11, 0.5);
-  --border-subtle: var(--border);
-
-  --success: #8b6914;
-  --success-bg: rgba(184, 134, 11, 0.1);
-  --warning: #a67c00;
-  --warning-bg: rgba(200, 154, 43, 0.12);
-  --error: #9a1c33;
-  --error-bg: rgba(154, 28, 51, 0.08);
-
-  --status-neutral: var(--text-muted);
-  --status-neutral-bg: rgba(0, 0, 0, 0.04);
-
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.08);
-  --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.05);
-  --shadow-glow: 0 0 0 1px rgba(184, 134, 11, 0.18), 0 8px 40px rgba(184, 134, 11, 0.08);
-
-  --shimmer-mid: #ececee;
-}
-
-/* Dark luxury shell — native controls follow dark palette */
+/* Dark shell — wine rose accent (no gold / no teal) */
 html[data-theme="dark"] .minervot-lux {
+  color-scheme: dark;
+
   --form-control-bg: var(--surface-muted);
   --form-control-surface: var(--surface-elevated);
   --form-control-text: var(--text-primary);
@@ -518,6 +476,48 @@ html[data-theme="dark"] .minervot-lux {
   --form-control-border: var(--border);
   --form-control-focus: var(--accent);
   --form-control-hover: var(--secondary-hover);
+
+  --background: #141014;
+  --surface: #141014;
+  --surface-elevated: #1c1719;
+  --surface-muted: #241e21;
+  --card: #1c1719;
+  --card-glass: rgba(20, 16, 20, 0.9);
+
+  --text-primary: #faf6f5;
+  --text-secondary: #c9bdbf;
+  --text-muted: #9a8d90;
+
+  --accent: #c48a96;
+  --accent-hover: #d4a3ad;
+  --accent-muted: rgba(196, 138, 150, 0.16);
+  --accent-glow: rgba(196, 138, 150, 0.22);
+  --accent-foreground: #1a0e12;
+  --secondary-hover: #2a2226;
+
+  --brand: #c48a96;
+  --brand-hover: #d4a3ad;
+  --brand-muted: rgba(196, 138, 150, 0.16);
+  --brand-foreground: #1a0e12;
+
+  --accent-red: #c48a96;
+  --accent-red-strong: #d4a3ad;
+
+  --border: rgba(250, 246, 245, 0.1);
+  --border-strong: rgba(250, 246, 245, 0.16);
+  --border-focus: rgba(196, 138, 150, 0.5);
+
+  --success: #c48a96;
+  --success-bg: rgba(196, 138, 150, 0.14);
+  --warning: #d4b07a;
+  --warning-bg: rgba(212, 176, 122, 0.14);
+  --error: #ff6b7a;
+  --error-bg: rgba(255, 107, 122, 0.12);
+
+  --status-running: var(--accent);
+  --status-running-bg: var(--accent-muted);
+  --shadow-glow: 0 10px 28px rgba(196, 138, 150, 0.12);
+  --shadow-cta: 0 14px 36px rgba(196, 138, 150, 0.18);
 }
 
 /* Light-theme form controls inside the app shell */
@@ -869,8 +869,78 @@ html[data-theme-transitioning] *::after {
 }
 
 @keyframes landing-step-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 113, 227, 0.2); }
-  50% { box-shadow: 0 0 24px 4px rgba(0, 113, 227, 0.15); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(116, 23, 42, 0.16); }
+  50% { box-shadow: 0 0 24px 4px rgba(116, 23, 42, 0.12); }
+}
+
+/* Premium micro-interactions for post-login UI */
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.animate-card-enter {
+  animation: card-enter 0.28s cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+
+.animate-stagger > * {
+  animation: card-enter 0.28s cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+.animate-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.animate-stagger > *:nth-child(2) { animation-delay: 40ms; }
+.animate-stagger > *:nth-child(3) { animation-delay: 80ms; }
+.animate-stagger > *:nth-child(4) { animation-delay: 120ms; }
+.animate-stagger > *:nth-child(5) { animation-delay: 160ms; }
+.animate-stagger > *:nth-child(6) { animation-delay: 200ms; }
+
+.btn-brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target);
+  border-radius: 9999px;
+  background: var(--brand);
+  color: var(--brand-foreground);
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0 1.35rem;
+  box-shadow: var(--shadow-cta);
+  transition:
+    background var(--motion-fast),
+    transform var(--motion-fast),
+    box-shadow var(--motion-fast);
+}
+.btn-brand:hover {
+  background: var(--brand-hover);
+  box-shadow: 0 16px 40px rgba(116, 23, 42, 0.24);
+}
+.btn-brand:active {
+  transform: scale(0.98);
+  box-shadow: var(--shadow-sm);
+}
+
+.stat-tile {
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+  border-radius: var(--radius-md);
+  padding: 0.65rem 0.75rem;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+.stat-tile[data-live="true"] {
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--border));
+  background: var(--brand-muted);
+}
+.stat-tile .stat-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 9999px;
+  background: var(--brand);
+  animation: pulse-soft 1.8s ease-in-out infinite;
 }
 
 .animate-landing-float {

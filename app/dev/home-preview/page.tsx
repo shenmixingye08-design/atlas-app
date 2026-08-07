@@ -1,13 +1,13 @@
 import { notFound } from "next/navigation";
 
+import { AutomationFirstHome } from "@/components/automation-first/automation-first-home";
 import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
-import { SecretaryHomeDashboard } from "@/components/home/secretary-home-dashboard";
 import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 
 /**
- * DEV-ONLY visual preview of the post-login home shell.
- * Renders SecretaryHomeDashboard without authentication so themes can be
+ * DEV-ONLY visual preview of the post-login Automation First home.
+ * Renders AutomationFirstHome without authentication so themes can be
  * screenshot-verified locally. Returns 404 in production.
  */
 export const dynamic = "force-static";
@@ -130,7 +130,7 @@ export default function DevHomePreviewPage() {
 
   return (
     <AtlasAppShell active="projects" width="wide">
-      <SecretaryHomeDashboard
+      <AutomationFirstHome
         automations={SAMPLE_AUTOMATIONS}
         projects={SAMPLE_PROJECTS}
       />

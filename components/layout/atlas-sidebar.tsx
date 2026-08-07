@@ -25,11 +25,50 @@ import {
   resolveSidebarActiveId,
 } from "@/lib/layout/sidebar-nav";
 
+import {
+  IconArtifact,
+  IconAutomation,
+  IconBell,
+  IconHome,
+  IconLink,
+  IconList,
+  IconSettings,
+  IconToday,
+} from "@/components/ui/icons";
+
 import { AtlasTopActions } from "./atlas-top-actions";
 
 type AtlasSidebarProps = {
   active?: AtlasNavPage;
 };
+
+function SidebarIcon({ id }: { id: AtlasNavPage }) {
+  const className = "h-[1.15rem] w-[1.15rem]";
+  switch (id) {
+    case "projects":
+      return <IconHome className={className} />;
+    case "today":
+      return <IconToday className={className} />;
+    case "automations":
+      return <IconAutomation className={className} />;
+    case "history":
+      return <IconList className={className} />;
+    case "artifacts":
+      return <IconArtifact className={className} />;
+    case "notifications":
+      return <IconBell className={className} />;
+    case "integrations":
+    case "connections":
+      return <IconLink className={className} />;
+    case "settings":
+    case "billing":
+      return <IconSettings className={className} />;
+    case "workspace":
+      return <IconList className={className} />;
+    default:
+      return <IconHome className={className} />;
+  }
+}
 
 function NavLink({
   item,
@@ -52,8 +91,8 @@ function NavLink({
           : "text-[var(--text-secondary)] hover:bg-[var(--accent-muted)] hover:text-[var(--accent)]",
       )}
     >
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center text-base leading-none" aria-hidden>
-        {item.icon}
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden>
+        <SidebarIcon id={item.id} />
       </span>
       <span className="truncate">{item.label}</span>
     </Link>
