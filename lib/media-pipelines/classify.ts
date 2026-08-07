@@ -79,6 +79,10 @@ function parseKindJson(text: string): MediaClassification {
 /**
  * Classify a single image into a MediaKind.
  * Filename high-confidence shortcuts avoid Vision cost (eco).
+ *
+ * P0-01 fail-closed:
+ * - Never invent "receipt" when OpenAI is unavailable in production.
+ * - Mock receipt fallback only when isMockLlmEnabled() (non-production + flag).
  */
 export async function classifyMediaImage(
   image: MediaImageInput,
@@ -94,50 +98,72 @@ export async function classifyMediaImage(
     return byName;
   }
 
-  if (isMockLlmEnabled() || !isOpenAIConfigured()) {
+  // Dev/test mock only — production always false via isMockLlmEnabled().
+  if (isMockLlmEnabled()) {
     if (byName) return byName;
-    // Dev/mock fallback: treat unlabeled images as receipt when hint empty —
-    // caller should still validate extract success before ledger write.
     return {
       kind: "receipt",
       confidence: 0.55,
-      reason: isMockLlmEnabled() ? "mock" : "no_openai_fallback",
+      reason: "mock",
     };
   }
 
-  const client = getOpenAIClient();
-  const response = await client.responses.create({
-    model: CHEAP_MODEL,
-    max_output_tokens: 256,
-    input: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: [
-              "この画像の種類を1つだけ判定し、JSONのみ返してください。",
-              '形式: {"kind":"receipt|invoice|business_card|contract|sales_material|whiteboard|other","confidence":0.0-1.0,"reason":"..."}',
-              "receipt=レシート/領収書の購入明細。invoice=請求書。business_card=名刺。",
-              options?.userHint
-                ? `ユーザーの言葉: ${options.userHint.slice(0, 200)}`
-                : "",
-            ]
-              .filter(Boolean)
-              .join("\n"),
-          },
-          {
-            type: "input_image",
-            image_url: image.dataUrl,
-            detail: "auto",
-          },
-        ],
-      },
-    ],
-  });
+  // P0-01: no_openai must NOT invent receipt / fake household data.
+  if (!isOpenAIConfigured()) {
+    if (byName) return byName;
+    return {
+      kind: "other",
+      confidence: 0,
+      reason: "openai_unavailable",
+    };
+  }
 
-  const text = response.output_text?.trim() ?? "";
-  return parseKindJson(text);
+  try {
+    const client = getOpenAIClient();
+    const response = await client.responses.create({
+      model: CHEAP_MODEL,
+      max_output_tokens: 256,
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: [
+                "この画像の種類を1つだけ判定し、JSONのみ返してください。",
+                '形式: {"kind":"receipt|invoice|business_card|contract|sales_material|whiteboard|other","confidence":0.0-1.0,"reason":"..."}',
+                "receipt=レシート/領収書の購入明細。invoice=請求書。business_card=名刺。",
+                options?.userHint
+                  ? `ユーザーの言葉: ${options.userHint.slice(0, 200)}`
+                  : "",
+              ]
+                .filter(Boolean)
+                .join("\n"),
+            },
+            {
+              type: "input_image",
+              image_url: image.dataUrl,
+              detail: "auto",
+            },
+          ],
+        },
+      ],
+    });
+
+    const text = response.output_text?.trim() ?? "";
+    return parseKindJson(text);
+  } catch (error) {
+    console.error("[media-pipelines:classify] provider failure", {
+      message: error instanceof Error ? error.message : "unknown",
+    });
+    // Fail closed: do not invent a receipt classification.
+    if (byName) return byName;
+    return {
+      kind: "other",
+      confidence: 0,
+      reason: "openai_error",
+    };
+  }
 }
 
 export function routeMediaPipeline(

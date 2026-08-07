@@ -5,6 +5,13 @@ import { isMockLlmEnabled } from "@/lib/ai/mock-responses";
 import { isOpenAIConfigured, getOpenAIClient } from "@/lib/openai";
 import type { MediaImageInput } from "@/lib/media-pipelines";
 
+import {
+  failureConfigMissing,
+  failureFromProviderError,
+  failureParseFailed,
+  failureUnreadable,
+  type ReceiptAiFailure,
+} from "./errors";
 import type { ReceiptLineItem, ReceiptSchema } from "./types";
 
 const EXTRACT_PROMPT = `あなたは日本のレシート読取エンジンです。
@@ -34,7 +41,10 @@ const EXTRACT_PROMPT = `あなたは日本のレシート読取エンジンで�
 
 読めない項目は null。推測で埋めない。レシートでない/読めない場合は visionSucceeded=false。`;
 
-function emptySchema(imageIds: string[], reason: string): ReceiptSchema {
+function failedSchema(
+  imageIds: string[],
+  failure: ReceiptAiFailure,
+): ReceiptSchema {
   return {
     storeName: null,
     phone: null,
@@ -50,11 +60,13 @@ function emptySchema(imageIds: string[], reason: string): ReceiptSchema {
     registerNo: null,
     staff: null,
     cardType: null,
-    rawNotes: reason,
+    rawNotes: failure.userMessage,
     overallConfidence: 0,
     fieldConfidence: {},
     visionSucceeded: false,
     sourceImageIds: imageIds,
+    failureCode: failure.code,
+    retryable: failure.retryable,
   };
 }
 
@@ -90,7 +102,7 @@ function normalizeItems(raw: unknown): ReceiptLineItem[] {
 
 function parseSchema(text: string, imageIds: string[], model?: string): ReceiptSchema {
   const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return emptySchema(imageIds, "JSONを解析できませんでした");
+  if (!match) return failedSchema(imageIds, failureParseFailed());
   try {
     const parsed = JSON.parse(match[0]) as Record<string, unknown>;
     const visionSucceeded = parsed.visionSucceeded !== false;
@@ -102,7 +114,7 @@ function parseSchema(text: string, imageIds: string[], model?: string): ReceiptS
       total != null ||
       items.length > 0;
     if (!visionSucceeded || !hasSignal) {
-      return emptySchema(imageIds, "レシートを読み取れませんでした");
+      return failedSchema(imageIds, failureUnreadable());
     }
     const fieldConfidence =
       parsed.fieldConfidence && typeof parsed.fieldConfidence === "object"
@@ -142,11 +154,14 @@ function parseSchema(text: string, imageIds: string[], model?: string): ReceiptS
       sourceImageIds: imageIds,
     };
   } catch {
-    return emptySchema(imageIds, "JSONパースに失敗しました");
+    return failedSchema(imageIds, failureParseFailed());
   }
 }
 
-/** Deterministic mock extract for tests / offline. */
+/**
+ * Deterministic mock extract for tests / offline.
+ * Must only be reached via isMockLlmEnabled() (non-production + ATLAS_MOCK_LLM=true).
+ */
 export function mockExtractReceipt(
   image: MediaImageInput,
   index = 0,
@@ -194,12 +209,25 @@ export function mockExtractReceipt(
   };
 }
 
+/**
+ * Extract structured receipt data.
+ *
+ * P0-01 fail-closed:
+ * - Mock data ONLY when isMockLlmEnabled() (never production, even if ATLAS_MOCK_LLM=true).
+ * - Missing OpenAI config → explicit failure (NOT mock).
+ * - Provider / parse / unreadable → visionSucceeded=false (no fake totals).
+ */
 export async function extractReceiptSchema(
   image: MediaImageInput,
   index = 0,
 ): Promise<ReceiptSchema> {
-  if (isMockLlmEnabled() || !isOpenAIConfigured()) {
+  // Dev/test only. Production always false inside isMockLlmEnabled().
+  if (isMockLlmEnabled()) {
     return mockExtractReceipt(image, index);
+  }
+
+  if (!isOpenAIConfigured()) {
+    return failedSchema([image.id], failureConfigMissing());
   }
 
   try {
@@ -222,13 +250,15 @@ export async function extractReceiptSchema(
       ],
     });
     const text = response.output_text?.trim() ?? "";
-    if (!text) return emptySchema([image.id], "Vision出力が空です");
+    if (!text) return failedSchema([image.id], failureUnreadable());
     return parseSchema(text, [image.id], CHEAP_MODEL);
   } catch (error) {
-    return emptySchema(
-      [image.id],
-      error instanceof Error ? error.message : "Vision呼び出しに失敗しました",
-    );
+    const failure = failureFromProviderError(error);
+    console.error("[receipt:extract] provider failure", {
+      failureCode: failure.code,
+      retryable: failure.retryable,
+    });
+    return failedSchema([image.id], failure);
   }
 }
 

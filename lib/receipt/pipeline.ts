@@ -17,6 +17,11 @@ import {
   applyFieldAnswers,
   collectLowConfidenceFields,
 } from "./confidence";
+import {
+  failureNotReceipt,
+  RECEIPT_USER_ERROR,
+  type ReceiptAiFailure,
+} from "./errors";
 import { extractReceiptSchemas } from "./extract";
 import { buildReceiptSuggestions } from "./suggestions";
 import {
@@ -110,9 +115,53 @@ export type ProcessReceiptInput = {
   hasBusinessContext?: boolean;
 };
 
+function resolveExtractFailure(schemas: ReceiptSchema[]): ReceiptAiFailure {
+  const first = schemas.find((schema) => !schema.visionSucceeded);
+  if (!first?.failureCode) {
+    return {
+      code: "unreadable",
+      userMessage: RECEIPT_USER_ERROR.analysisFailed,
+      retryable: false,
+    };
+  }
+  return {
+    code: first.failureCode,
+    userMessage: first.rawNotes ?? RECEIPT_USER_ERROR.analysisFailed,
+    retryable: Boolean(first.retryable),
+  };
+}
+
+function buildFailedSession(input: {
+  sessionId: string;
+  userId: string;
+  createdAt: string;
+  schemas: ReceiptSchema[];
+  failure: ReceiptAiFailure;
+}): ReceiptSession {
+  return {
+    id: input.sessionId,
+    userId: input.userId,
+    status: "failed",
+    schemas: input.schemas,
+    pendingFields: [],
+    suggestedCategory: "その他",
+    moneyUseGuess: "unknown",
+    askExpenseConfirmation: false,
+    entriesPreview: [],
+    suggestions: [],
+    error: input.failure.userMessage,
+    errorCode: input.failure.code,
+    retryable: input.failure.retryable,
+    createdAt: input.createdAt,
+    updatedAt: nowIso(),
+  };
+}
+
 /**
  * Receipt Pipeline:
  * images → classify → extract → confidence → preview ledger (not registered until confirm)
+ *
+ * P0-01: AI failure never auto-registers ledger entries or invents totals.
  */
 export async function runReceiptPipeline(
   input: ProcessReceiptInput,
@@ -126,21 +175,22 @@ export async function runReceiptPipeline(
       userHint: input.userHint,
     });
     if (route.pipelineId !== "receipt") {
-      const failed: ReceiptSession = {
-        id: sessionId,
+      const failure =
+        route.classification.reason === "openai_unavailable" ||
+        route.classification.reason === "openai_error"
+          ? {
+              code: "openai_unavailable" as const,
+              userMessage: RECEIPT_USER_ERROR.analysisFailed,
+              retryable: route.classification.reason === "openai_error",
+            }
+          : failureNotReceipt(route.classification.kind);
+      const failed = buildFailedSession({
+        sessionId,
         userId: input.userId,
-        status: "failed",
-        schemas: [],
-        pendingFields: [],
-        suggestedCategory: "その他",
-        moneyUseGuess: "unknown",
-        askExpenseConfirmation: false,
-        entriesPreview: [],
-        suggestions: [],
-        error: `レシート以外の画像です（判定: ${route.classification.kind}）。家計簿は生成しません。`,
         createdAt,
-        updatedAt: nowIso(),
-      };
+        schemas: [],
+        failure,
+      });
       saveReceiptSession(input.userId, failed);
       schedulePersistHouseholdLedger(input.userId);
       return failed;
@@ -150,21 +200,13 @@ export async function runReceiptPipeline(
   const schemas = await extractReceiptSchemas(input.images);
   const anySuccess = schemas.some((schema) => schema.visionSucceeded);
   if (!anySuccess) {
-    const failed: ReceiptSession = {
-      id: sessionId,
+    const failed = buildFailedSession({
+      sessionId,
       userId: input.userId,
-      status: "failed",
-      schemas,
-      pendingFields: [],
-      suggestedCategory: "その他",
-      moneyUseGuess: "unknown",
-      askExpenseConfirmation: false,
-      entriesPreview: [],
-      suggestions: [],
-      error: "Visionでの読み取りに失敗したため、家計簿は生成しませんでした。",
       createdAt,
-      updatedAt: nowIso(),
-    };
+      schemas,
+      failure: resolveExtractFailure(schemas),
+    });
     saveReceiptSession(input.userId, failed);
     schedulePersistHouseholdLedger(input.userId);
     return failed;
