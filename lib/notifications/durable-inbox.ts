@@ -859,6 +859,113 @@ export async function scheduleDurableDeliveryRetry(input: {
   });
 }
 
+/** Soft lease while a tick worker processes a due retry (no schema change). */
+export const NOTIFICATION_RETRY_CLAIM_LEASE_MS = 60_000;
+
+type ClaimLockBucket = Map<string, Promise<void>>;
+
+function getClaimLocks(): ClaimLockBucket {
+  const scope = globalThis as typeof globalThis & {
+    __atlasNotificationRetryClaimLocks?: ClaimLockBucket;
+  };
+  if (!scope.__atlasNotificationRetryClaimLocks) {
+    scope.__atlasNotificationRetryClaimLocks = new Map();
+  }
+  return scope.__atlasNotificationRetryClaimLocks;
+}
+
+async function withRetryClaimLock<T>(
+  key: string,
+  fn: () => Promise<T> | T,
+): Promise<T> {
+  const locks = getClaimLocks();
+  const previous = locks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  locks.set(
+    key,
+    previous.then(() => gate).catch(() => gate),
+  );
+  await previous.catch(() => undefined);
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
+/**
+ * Multi-instance claim for a due retry row.
+ * Wins by pushing next_retry_at into the future (lease) while status stays
+ * retry_scheduled — other tick workers will not see it as due.
+ */
+export async function claimDueDeliveryRetry(input: {
+  notificationId: string;
+  ownerId: string;
+  leaseOwner: string;
+  leaseMs?: number;
+  nowMs?: number;
+}): Promise<DurableInboxRow | null> {
+  const now = input.nowMs ?? Date.now();
+  const nowIso = new Date(now).toISOString();
+  const leaseMs = input.leaseMs ?? NOTIFICATION_RETRY_CLAIM_LEASE_MS;
+  const leaseUntil = new Date(now + leaseMs).toISOString();
+  const lockKey = `${input.ownerId}:${input.notificationId}`;
+
+  return withRetryClaimLock(lockKey, async () => {
+    const backend = resolveNotificationStorageBackend();
+
+    if (backend === "supabase") {
+      assertNotificationBackendReady();
+      const client = createServiceRoleClientIfConfigured();
+      if (!client) {
+        throw new NotificationInboxUnavailableError(
+          "[notifications] P1-02: retry claim requires Supabase",
+        );
+      }
+      const { data, error } = await client
+        .from("atlas_user_notifications")
+        .update({
+          next_retry_at: leaseUntil,
+          updated_at: new Date().toISOString(),
+          push_failure_reason: `claimed:${input.leaseOwner}`.slice(0, 500),
+        } as never)
+        .eq("notification_id", input.notificationId)
+        .eq("owner_id", input.ownerId)
+        .eq("status", "retry_scheduled")
+        .is("deleted_at", null)
+        .lte("next_retry_at", nowIso)
+        .select("*")
+        .maybeSingle();
+      if (error) {
+        throw new NotificationInboxUnavailableError(error.message);
+      }
+      if (!data) return null;
+      const row = dbRowToDurable(data as Record<string, unknown>);
+      if (row.ownerId !== input.ownerId) return null;
+      return row;
+    }
+
+    const row = getMemoryBucket().get(input.notificationId);
+    if (
+      !row ||
+      row.ownerId !== input.ownerId ||
+      row.deletedAt ||
+      row.status !== "retry_scheduled" ||
+      !row.nextRetryAt ||
+      row.nextRetryAt > nowIso
+    ) {
+      return null;
+    }
+    row.nextRetryAt = leaseUntil;
+    row.updatedAt = new Date().toISOString();
+    row.pushFailureReason = `claimed:${input.leaseOwner}`.slice(0, 500);
+    return structuredClone(row);
+  });
+}
+
 export async function listDueDeliveryRetries(input?: {
   limit?: number;
   nowMs?: number;
