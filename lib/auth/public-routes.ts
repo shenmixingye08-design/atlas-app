@@ -67,6 +67,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/health/automation-v2-db(.*)",
   "/api/health/side-effect-idempotency(.*)",
   "/api/health/notification-retry(.*)",
+  "/api/health/external-monitor(.*)",
   "/api/health/vision(.*)",
   "/api/contact(.*)",
   "/api/automations/tick(.*)",
