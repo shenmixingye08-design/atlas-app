@@ -49,6 +49,8 @@ jobs:
             -d "$BODY")
           CODE=$(echo "$RESP" | tail -n1)
           BODY_OUT=$(echo "$RESP" | sed '$d')
+          # P0-04: never echo Management API body (may include SQL errors / metadata).
+          BYTES=$(printf '%s' "$BODY_OUT" | wc -c | tr -d ' ')
           echo "management_api_status=$CODE"
-          echo "$BODY_OUT" | head -c 500
+          echo "management_api_body_bytes=$BYTES"
           test "$CODE" = "200" -o "$CODE" = "201"

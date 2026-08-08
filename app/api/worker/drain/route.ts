@@ -1,5 +1,6 @@
 import { authorizeAutomationTick } from "@/lib/automations/tick-auth";
 import { drainWorkQueue } from "@/lib/work-queue";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 /**
  * Independent worker drain endpoint — not tied to a user HTTP session.
@@ -23,7 +24,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ ok: true, ...result });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Worker drain failed";
+      clientSafeMessage(error, "Worker drain failed");
     return Response.json({ ok: false, error: message }, { status: 500 });
   }
 }

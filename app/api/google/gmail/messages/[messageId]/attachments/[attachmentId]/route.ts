@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { getAttachmentBytesForUser } from "@/lib/integrations/google/gmail/service";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type Params = {
   params: Promise<{ messageId: string; attachmentId: string }>;
@@ -40,7 +41,7 @@ export async function GET(_request: Request, { params }: Params): Promise<Respon
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to download attachment";
+      clientSafeMessage(error, "Failed to download attachment");
     recordGoogleAuthFailure(message, "google_gmail_attachment_download");
     return Response.json({ message }, { status: 500 });
   }

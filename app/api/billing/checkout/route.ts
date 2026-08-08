@@ -1,3 +1,5 @@
+import { createHash } from "crypto";
+
 import { auth, currentUser } from "@clerk/nextjs/server";
 
 import { isPlanId } from "@/lib/billing/plans";
@@ -8,6 +10,11 @@ import {
 } from "@/lib/billing/stripe/errors";
 import { assertStripeSafeForProduction } from "@/lib/billing/stripe/production-guard";
 import { resolveUserSubscriptionDurable } from "@/lib/billing/subscriptions/store";
+import { safeLog } from "@/lib/security/redact";
+
+function userIdFingerprint(userId: string): string {
+  return createHash("sha256").update(userId).digest("hex").slice(0, 12);
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -106,7 +113,10 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    console.info("[billing/checkout] creating session", { planId, userId });
+    safeLog("info", "[billing/checkout] creating session", {
+      planId,
+      userFingerprint: userIdFingerprint(userId),
+    });
 
     const user = await currentUser();
     const email =

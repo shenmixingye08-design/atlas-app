@@ -4,6 +4,7 @@ import { isPushErrorCode } from "@/lib/push/errors";
 import { sendTestPush } from "@/lib/push/dispatch";
 import { checkPushRateLimit } from "@/lib/push/rate-limit";
 import { logVapidConfigIssues } from "@/lib/push/vapid";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export const runtime = "nodejs";
 
@@ -58,7 +59,7 @@ export async function POST(): Promise<Response> {
       invalid: result.invalid,
     });
   } catch (error) {
-    const raw = error instanceof Error ? error.message : "delivery_failed";
+    const raw = clientSafeMessage(error, "delivery_failed");
     const code = isPushErrorCode(raw) ? raw : "delivery_failed";
     return Response.json({ error: "Test push failed", code }, { status: 500 });
   }

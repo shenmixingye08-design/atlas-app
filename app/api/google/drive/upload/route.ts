@@ -5,6 +5,7 @@ import { isDriveCategoryId } from "@/lib/integrations/google/drive/categories";
 import { uploadFileToGoogleDriveForUser } from "@/lib/integrations/google/drive/service";
 import type { DriveCategoryId } from "@/lib/integrations/google/drive/types";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function POST(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -69,7 +70,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to upload to Drive";
+      clientSafeMessage(error, "Failed to upload to Drive");
     recordGoogleAuthFailure(message, "google_drive_upload");
     return Response.json({ status: "error", message }, { status: 500 });
   }

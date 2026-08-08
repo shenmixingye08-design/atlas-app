@@ -8,6 +8,7 @@ import {
 import { getGmailMessageForUser } from "@/lib/integrations/google/gmail/service";
 import type { GmailMessage } from "@/lib/integrations/google/gmail/types";
 import { notifyGmailSummaryComplete } from "@/lib/notifications/emitters";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type RequestBody = {
   messageIds?: unknown;
@@ -92,7 +93,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ analyses, important });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to analyze Gmail messages";
+      clientSafeMessage(error, "Failed to analyze Gmail messages");
     return Response.json({ message }, { status: 500 });
   }
 }

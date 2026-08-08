@@ -4,6 +4,7 @@ import {
   deleteAllPersonalMemories,
   pauseAllPersonalMemories,
 } from "@/lib/personal-memory/service";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function POST(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -22,7 +23,7 @@ export async function POST(request: Request): Promise<Response> {
     }
     return Response.json({ error: "unknown_action" }, { status: 400 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "bulk_failed";
+    const message = clientSafeMessage(error, "bulk_failed");
     return Response.json({ error: message }, { status: 400 });
   }
 }

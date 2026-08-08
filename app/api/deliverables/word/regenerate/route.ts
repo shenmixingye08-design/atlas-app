@@ -20,6 +20,7 @@ import {
 } from "@/lib/deliverables/versioning";
 import { isWordTemplateId } from "@/lib/deliverables/word-templates";
 import { assertSafeExportText } from "@/lib/orchestration/normalize-deliverable-payload";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -290,7 +291,7 @@ export async function POST(request: Request): Promise<Response> {
       jobId: result.jobId,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "regenerate_failed";
+    const message = clientSafeMessage(error, "regenerate_failed");
     return Response.json({ error: message }, { status: 400 });
   } finally {
     releaseWordGenerateSlot(userId);

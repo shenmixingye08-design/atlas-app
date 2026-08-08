@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 
 import { rejectCandidate } from "@/lib/personal-memory/service";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -17,7 +18,7 @@ export async function POST(
     const memory = await rejectCandidate(userId, id);
     return Response.json({ memory });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "reject_failed";
+    const message = clientSafeMessage(error, "reject_failed");
     return Response.json({ error: message }, { status: 400 });
   }
 }

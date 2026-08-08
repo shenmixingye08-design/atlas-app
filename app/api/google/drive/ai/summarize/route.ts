@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { summarizeGoogleDriveFileForUser } from "@/lib/integrations/google/drive/service";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function POST(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -50,7 +51,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to summarize Drive file";
+      clientSafeMessage(error, "Failed to summarize Drive file");
     recordGoogleAuthFailure(message, "google_drive_ai_summarize");
     return Response.json({ status: "error", message }, { status: 500 });
   }

@@ -6,6 +6,7 @@ import {
   parseDriveCategoryParam,
 } from "@/lib/integrations/google/drive/service";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function GET(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -40,7 +41,7 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to load Google Drive files";
+      clientSafeMessage(error, "Failed to load Google Drive files");
     recordGoogleAuthFailure(message, "google_drive_list");
     return Response.json({ status: "error", message }, { status: 500 });
   }

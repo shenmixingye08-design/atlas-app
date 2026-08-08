@@ -6,6 +6,7 @@ import {
   updatePersonalMemory,
 } from "@/lib/personal-memory/service";
 import type { UpdatePersonalMemoryInput } from "@/lib/personal-memory/types";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -40,7 +41,7 @@ export async function PATCH(
     const memory = await updatePersonalMemory(userId, id, body);
     return Response.json({ memory });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "update_failed";
+    const message = clientSafeMessage(error, "update_failed");
     const status = message === "MEMORY_NOT_FOUND" ? 404 : 400;
     return Response.json({ error: message }, { status });
   }

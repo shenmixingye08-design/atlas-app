@@ -3,6 +3,7 @@ import {
   processDueAutoPostsFromAutomationTick,
   processScheduledXPostsFromAutomationTick,
 } from "@/lib/integrations/x/post/automation";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 function resolveOrigin(request: Request): string {
   const host =
@@ -135,7 +136,7 @@ export async function POST(request: Request): Promise<Response> {
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Automation tick failed";
+      clientSafeMessage(error, "Automation tick failed");
     const { recordCronTickOutcome } = await import("@/lib/owner/monitoring");
     const { recordAutomationCronDebug } = await import(
       "@/lib/automations/execution-log"

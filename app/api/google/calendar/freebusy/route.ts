@@ -6,6 +6,7 @@ import {
   parseCalendarRangeParam,
 } from "@/lib/integrations/google/calendar/service";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function GET(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -35,7 +36,7 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to find free slots";
+      clientSafeMessage(error, "Failed to find free slots");
     recordGoogleAuthFailure(message, "google_calendar_freebusy");
     return Response.json({ message: "空き時間の取得に失敗しました" }, { status: 500 });
   }

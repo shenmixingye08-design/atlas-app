@@ -10,6 +10,7 @@ import {
   scheduleTweetForUser,
 } from "@/lib/integrations/x/post/service";
 import { recordXPostFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type RequestBody = {
   text?: unknown;
@@ -148,7 +149,7 @@ export async function POST(request: Request): Promise<Response> {
     return mapPostResult(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to post to X";
+      clientSafeMessage(error, "Failed to post to X");
     recordXPostFailure(message, "x_post_api");
     return Response.json({ status: "error", message }, { status: 500 });
   }

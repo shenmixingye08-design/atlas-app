@@ -6,6 +6,7 @@ import {
   parseDriveCategoryParam,
 } from "@/lib/integrations/google/drive/service";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function POST(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -51,7 +52,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to AI-search Drive";
+      clientSafeMessage(error, "Failed to AI-search Drive");
     recordGoogleAuthFailure(message, "google_drive_ai_search");
     return Response.json({ status: "error", message }, { status: 500 });
   }

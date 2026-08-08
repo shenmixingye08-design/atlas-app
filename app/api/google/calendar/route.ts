@@ -9,6 +9,7 @@ import {
 import type { CalendarEventInput } from "@/lib/integrations/google/calendar/types";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
 import { notifyCalendarReminder } from "@/lib/notifications/emitters";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 function parseEventBody(body: unknown): CalendarEventInput | null {
   if (!body || typeof body !== "object") return null;
@@ -75,7 +76,7 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to load calendar";
+      clientSafeMessage(error, "Failed to load calendar");
     recordGoogleAuthFailure(message, "google_calendar_list");
     return Response.json(
       { status: "error", message: "予定の取得に失敗しました" },
@@ -114,7 +115,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to create event";
+      clientSafeMessage(error, "Failed to create event");
     recordGoogleAuthFailure(message, "google_calendar_create");
     return Response.json({ message: "予定の追加に失敗しました" }, { status: 500 });
   }

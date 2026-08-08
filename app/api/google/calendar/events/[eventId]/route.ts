@@ -7,6 +7,7 @@ import {
 } from "@/lib/integrations/google/calendar/service";
 import type { CalendarEventInput } from "@/lib/integrations/google/calendar/types";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type Params = { params: Promise<{ eventId: string }> };
 
@@ -64,7 +65,7 @@ export async function PATCH(request: Request, { params }: Params): Promise<Respo
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to update event";
+      clientSafeMessage(error, "Failed to update event");
     recordGoogleAuthFailure(message, "google_calendar_update");
     return Response.json({ message: "予定の変更に失敗しました" }, { status: 500 });
   }
@@ -95,7 +96,7 @@ export async function DELETE(
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to delete event";
+      clientSafeMessage(error, "Failed to delete event");
     recordGoogleAuthFailure(message, "google_calendar_delete");
     return Response.json({ message: "予定の削除に失敗しました" }, { status: 500 });
   }

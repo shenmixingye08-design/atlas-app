@@ -1,11 +1,14 @@
 import { auth } from "@clerk/nextjs/server";
 
 import { runWithAiBillingUsage } from "@/lib/billing/usage/request-context";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
+import { safeLog } from "@/lib/security/redact";
 import { isVisionDetectedType } from "@/lib/vision/schemas";
 import { analyzeUserImageBatch } from "@/lib/vision/analyze-batch";
+import { labelForDetectedType } from "@/lib/vision/classify";
 import { logVisionPipeline } from "@/lib/vision/pipeline-log";
 import { VisionError } from "@/lib/vision/types";
-import { labelForDetectedType } from "@/lib/vision/classify";
+import { userMessageForVisionFailure } from "@/lib/vision/user-error";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -117,12 +120,29 @@ export async function POST(request: Request): Promise<Response> {
             ? 404
             : 422;
       const details = error.details ?? null;
-      console.error("[vision] analyze VisionError", {
+      const openaiCode =
+        typeof details?.openaiErrorCode === "string"
+          ? details.openaiErrorCode
+          : null;
+      const publicMessage = userMessageForVisionFailure({
         code: error.code,
-        message: error.message,
+        failedStage: error.failedStage,
+        openaiCode,
+        openaiMessage:
+          typeof details?.safeMessage === "string"
+            ? details.safeMessage
+            : null,
+        httpStatus:
+          typeof details?.httpStatus === "number" ? details.httpStatus : null,
+      });
+
+      // Server-only: never log rawErrorBody / provider payload.
+      safeLog("error", "[vision] analyze VisionError", {
+        code: error.code,
         diagnosticId: error.diagnosticId,
         failedStage: error.failedStage,
-        details,
+        openaiErrorCode: openaiCode,
+        httpStatus: details?.httpStatus ?? null,
       });
       logVisionPipeline({
         stage: "return_to_frontend",
@@ -130,53 +150,37 @@ export async function POST(request: Request): Promise<Response> {
         diagnosticId: error.diagnosticId ?? null,
         attachmentIds,
         dropReason: error.code,
-        openAiErrorCode:
-          typeof details?.openaiErrorCode === "string"
-            ? details.openaiErrorCode
-            : null,
-        openAiErrorMessage: error.message.slice(0, 200),
+        openAiErrorCode: openaiCode,
+        openAiErrorMessage: publicMessage.slice(0, 200),
       });
+
+      // P0-04: public body — code + diagnosticId only; no rawErrorBody/details/cause/stack.
       return Response.json(
         {
-          error: error.message,
+          error: publicMessage,
           code: error.code,
-          diagnosticId: error.diagnosticId,
-          failedStage: error.failedStage,
-          cause: error.message,
-          openai: details
-            ? {
-                status: details.httpStatus ?? null,
-                type: details.openaiErrorType ?? null,
-                code: details.openaiErrorCode ?? null,
-                message: details.safeMessage ?? error.message,
-                request_id: details.requestId ?? null,
-                rawErrorBody: details.rawErrorBody ?? null,
-              }
-            : null,
-          details,
+          diagnosticId: error.diagnosticId ?? null,
+          failedStage: error.failedStage ?? null,
+          openai: {
+            code: openaiCode,
+          },
         },
         { status },
       );
     }
-    const message =
-      error instanceof Error ? error.message : "unknown_vision_analyze_error";
-    console.error("[vision] analyze failed", {
-      message,
+    const message = clientSafeMessage(
+      error,
+      "画像処理に失敗しました。内容を確認して再試行してください。",
+    );
+    safeLog("error", "[vision] analyze failed", {
       name: error instanceof Error ? error.name : typeof error,
+      message,
     });
     return Response.json(
       {
         error: message,
         code: "openai_failed",
-        cause: message,
-        openai: {
-          status: null,
-          type: error instanceof Error ? error.name : "unknown",
-          code: "unhandled_exception",
-          message,
-          request_id: null,
-          rawErrorBody: null,
-        },
+        diagnosticId: null,
       },
       { status: 500 },
     );

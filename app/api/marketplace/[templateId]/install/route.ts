@@ -2,6 +2,7 @@ import { requireAuthenticatedUserId } from "@/lib/auth/require-authenticated-use
 import type { CompanyTemplateId } from "@/lib/company-templates/types";
 import { findCompanyTemplate } from "@/lib/company-templates/registry";
 import { workflowMarketplaceService } from "@/lib/workflow-marketplace/marketplace-service";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type RouteContext = {
   params: Promise<{ templateId: string }>;
@@ -33,7 +34,7 @@ export async function POST(
     return Response.json(result, { status: 201 });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to install package";
+      clientSafeMessage(error, "Failed to install package");
     return Response.json({ error: message }, { status: 500 });
   }
 }

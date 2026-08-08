@@ -6,6 +6,7 @@ import {
   type WordCompanyBrand,
 } from "@/lib/deliverables/company-brand";
 import { isWordTemplateId } from "@/lib/deliverables/word-templates";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,7 +81,7 @@ export async function PUT(request: Request): Promise<Response> {
     const brand = await saveWordCompanyBrand(userId, parseBrandPatch(body));
     return Response.json({ brand });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "invalid_brand";
+    const message = clientSafeMessage(error, "invalid_brand");
     return Response.json({ error: message }, { status: 400 });
   }
 }

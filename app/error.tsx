@@ -12,7 +12,11 @@ export default function RootError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("[ATLAS error]", error);
+    // P0-04: log digest/name only — never full Error (may embed request data).
+    console.error("[ATLAS error]", {
+      name: error.name,
+      digest: error.digest ?? null,
+    });
   }, [error]);
 
   const fallbackId = useId();

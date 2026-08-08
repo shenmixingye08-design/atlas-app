@@ -11,6 +11,7 @@ import {
   disableMaintenanceManually,
 } from "@/lib/owner/disaster-recovery";
 import type { DrTargetId } from "@/lib/owner/disaster-recovery/types";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function GET(request: Request): Promise<Response> {
   await requireAtlasOwner();
@@ -82,7 +83,7 @@ export async function POST(request: Request): Promise<Response> {
       });
     } catch (error) {
       return Response.json(
-        { error: error instanceof Error ? error.message : "Restore failed" },
+        { error: clientSafeMessage(error, "Restore failed") },
         { status: 400 },
       );
     }

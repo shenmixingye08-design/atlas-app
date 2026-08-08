@@ -5,6 +5,7 @@ import { GOOGLE_OAUTH_USER_ERROR } from "@/lib/integrations/google/errors";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 function resolveOrigin(request: Request): string {
   const host =
@@ -87,7 +88,7 @@ export async function GET(request: Request): Promise<Response> {
     return Response.redirect(authorizeUrl, 302);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : GOOGLE_OAUTH_USER_ERROR;
+      clientSafeMessage(error, GOOGLE_OAUTH_USER_ERROR);
     recordGoogleAuthFailure(message, "google_oauth_authorize");
     return redirectToSettings(origin, { google_error: "1" });
   }

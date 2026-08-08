@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { listGoogleCalendarsForUser } from "@/lib/integrations/google/calendar/service";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function GET(): Promise<Response> {
   const { userId } = await auth();
@@ -34,7 +35,7 @@ export async function GET(): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to list calendars";
+      clientSafeMessage(error, "Failed to list calendars");
     recordGoogleAuthFailure(message, "google_calendar_list_calendars");
     return Response.json(
       { status: "error", message: "カレンダー一覧の取得に失敗しました" },

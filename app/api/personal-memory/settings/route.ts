@@ -5,6 +5,7 @@ import {
   updatePersonalMemorySettings,
 } from "@/lib/personal-memory/service";
 import type { PersonalMemorySettings } from "@/lib/personal-memory/types";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function GET(): Promise<Response> {
   const { userId } = await auth();
@@ -27,7 +28,7 @@ export async function PUT(request: Request): Promise<Response> {
     const settings = await updatePersonalMemorySettings(userId, body);
     return Response.json({ settings });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "settings_failed";
+    const message = clientSafeMessage(error, "settings_failed");
     return Response.json({ error: message }, { status: 400 });
   }
 }

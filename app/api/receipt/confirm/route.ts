@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 
 import { confirmReceiptSession } from "@/lib/receipt";
 import type { MoneyUse, ReceiptCategory } from "@/lib/receipt";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function POST(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -40,7 +41,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(
       {
         error:
-          error instanceof Error ? error.message : "確認処理に失敗しました",
+          clientSafeMessage(error, "確認処理に失敗しました"),
       },
       { status: 400 },
     );

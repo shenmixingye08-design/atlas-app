@@ -136,10 +136,12 @@ export async function fetchGoogleUserInfo(
 }
 
 export async function revokeGoogleToken(token: string): Promise<void> {
-  const response = await fetch(
-    `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`,
-    { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" } },
-  );
+  // P0-04: token in POST body only — never query string (access logs / referrers).
+  const response = await fetch("https://oauth2.googleapis.com/revoke", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ token }),
+  });
 
   if (!response.ok) {
     console.warn("[Google OAuth] Token revoke failed:", response.status);

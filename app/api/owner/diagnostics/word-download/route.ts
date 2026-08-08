@@ -8,6 +8,7 @@ import {
 } from "@/lib/deliverables/store";
 import { hasPkHeader, sha256Hex } from "@/lib/deliverables/integrity";
 import { mimeTypeForFormat } from "@/lib/deliverables/binary-guards";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -108,7 +109,7 @@ export async function GET(request: Request): Promise<Response> {
         durationMs: Date.now() - started,
         stages,
         ok: false,
-        error: error instanceof Error ? error.message.slice(0, 200) : "probe_failed",
+        error: clientSafeMessage(error, "probe_failed"),
       };
     }
   }
