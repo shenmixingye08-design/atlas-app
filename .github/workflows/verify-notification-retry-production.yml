@@ -1,0 +1,47 @@
+name: Verify Notification Retry Production (P1-02)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "lib/notifications/**"
+      - "app/api/automations/tick/**"
+      - "app/api/health/notification-retry/**"
+      - ".github/workflows/verify-notification-retry-production.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe production notification-retry readiness
+        env:
+          PROD_URL: https://atlasapp.jp
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            CODE=$(curl -sS -o /tmp/notification-retry.json -w "%{http_code}" \
+              "$PROD_URL/api/health/notification-retry?force=1" || echo "000")
+            echo "attempt=$i http=$CODE"
+            python3 - <<'PY'
+          import json,sys
+          try:
+            d=json.load(open("/tmp/notification-retry.json"))
+          except Exception as e:
+            print("parse_error", e)
+            sys.exit(2)
+          print({k:d.get(k) for k in [
+            "ok","inboxTableOk","dlqTableOk","tickWired",
+            "retryDrainReady","memoryNotSot","commitShaShort"
+          ]})
+          sys.exit(0 if d.get("ok") is True and d.get("retryDrainReady") is True and d.get("tickWired") is True else 3)
+          PY
+            STATUS=$?
+            if [ "$STATUS" -eq 0 ]; then
+              echo "notification_retry_ready=true"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::Production /api/health/notification-retry is not ready."
+          exit 1

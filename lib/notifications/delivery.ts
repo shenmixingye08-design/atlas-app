@@ -19,6 +19,8 @@ export async function deliverLineWithAck(input: {
   title: string;
   message: string;
   actionUrl: string | null;
+  /** P1-02 retry drain: skip channel DLQ (drain owns terminal DLQ). */
+  skipDlq?: boolean;
 }): Promise<{ ok: boolean; attempts: number; error?: string }> {
   let attempts = 0;
   try {
@@ -60,16 +62,18 @@ export async function deliverLineWithAck(input: {
     recordReliabilityEvent("notification_ack", "failure", 1, {
       errorMessage: message,
     });
-    await enqueueNotificationDlq({
-      notificationId: input.notificationId,
-      userId: input.userId,
-      channel: "line",
-      title: input.title,
-      message: input.message,
-      attemptCount: attempts || MAX_NOTIFY_ATTEMPTS,
-      lastError: message,
-      status: "dead",
-    });
+    if (!input.skipDlq) {
+      await enqueueNotificationDlq({
+        notificationId: input.notificationId,
+        userId: input.userId,
+        channel: "line",
+        title: input.title,
+        message: input.message,
+        attemptCount: attempts || MAX_NOTIFY_ATTEMPTS,
+        lastError: message,
+        status: "dead",
+      });
+    }
     return { ok: false, attempts: attempts || MAX_NOTIFY_ATTEMPTS, error: message };
   }
 }
@@ -81,6 +85,8 @@ export async function deliverWebPushWithAck(input: {
   record: NotificationRecord;
   autoRecovered?: boolean;
   jobName?: string | null;
+  /** P1-02 retry drain: skip channel DLQ (drain owns terminal DLQ). */
+  skipDlq?: boolean;
 }): Promise<{ ok: boolean; attempts: number; error?: string }> {
   if (!input.record.userId) {
     return { ok: false, attempts: 0, error: "missing_user" };
@@ -117,16 +123,18 @@ export async function deliverWebPushWithAck(input: {
     recordReliabilityEvent("notification_ack", "failure", 1, {
       errorMessage: message,
     });
-    await enqueueNotificationDlq({
-      notificationId: input.record.notificationId,
-      userId: input.record.userId!,
-      channel: "web_push",
-      title: input.record.title,
-      message: input.record.message,
-      attemptCount: attempts || MAX_NOTIFY_ATTEMPTS,
-      lastError: message,
-      status: "dead",
-    });
+    if (!input.skipDlq) {
+      await enqueueNotificationDlq({
+        notificationId: input.record.notificationId,
+        userId: input.record.userId!,
+        channel: "web_push",
+        title: input.record.title,
+        message: input.record.message,
+        attemptCount: attempts || MAX_NOTIFY_ATTEMPTS,
+        lastError: message,
+        status: "dead",
+      });
+    }
     return { ok: false, attempts: attempts || MAX_NOTIFY_ATTEMPTS, error: message };
   }
 }

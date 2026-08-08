@@ -213,6 +213,7 @@ export async function createUserNotification(
 
   // P0-4: Durable insert first (fail-closed). Cache is secondary.
   let record: NotificationRecord;
+  let created = true;
   if (input.audience === "user" && input.userId) {
     const inserted = await insertDurableNotification(draft, {
       idempotencyKey,
@@ -222,6 +223,7 @@ export async function createUserNotification(
       organizationId: input.organizationId ?? null,
     });
     record = inserted.record;
+    created = inserted.created;
     if (shouldCreateInApp) {
       appendNotification(record);
     }
@@ -234,7 +236,14 @@ export async function createUserNotification(
   // Legacy blob snapshot kept for prefs; row SoT is durable-inbox.
   if (input.userId) schedulePersistNotifications(input.userId);
 
-  if (!options?.skipDelivery && input.audience === "user" && input.userId) {
+  // P1-02: idempotent reuse must not re-fire external channels.
+  // Retry redelivery is owned exclusively by processDurableNotificationRetries.
+  if (
+    !options?.skipDelivery &&
+    created &&
+    input.audience === "user" &&
+    input.userId
+  ) {
     let channelOk = true;
     let lastError: string | null = null;
 

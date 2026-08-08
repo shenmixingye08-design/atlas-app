@@ -54,6 +54,9 @@ jobs:
       - name: P0-4 durable notification inbox ban
         run: node scripts/ci/p0-4-notification-inbox-ban.mjs
 
+      - name: P1-02 notification retry → automation tick ban
+        run: node scripts/ci/p1-02-notification-retry-tick-ban.mjs
+
       - name: P0-5 durable X scheduled posts ban
         run: node scripts/ci/p0-5-x-scheduled-posts-ban.mjs
 

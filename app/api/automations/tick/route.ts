@@ -112,6 +112,28 @@ export async function POST(request: Request): Promise<Response> {
       console.warn("[automation tick] daily reports skipped:", error);
     }
 
+    // P1-02: drain durable notification delivery retries (not DLQ replay).
+    let notificationRetries = {
+      due: 0,
+      claimed: 0,
+      delivered: 0,
+      rescheduled: 0,
+      deadLettered: 0,
+      skipped: 0,
+      failed: 0,
+      dlqReinjected: 0,
+    };
+    try {
+      const { processDurableNotificationRetries } = await import(
+        "@/lib/notifications/retry-drain"
+      );
+      notificationRetries = await processDurableNotificationRetries({
+        limit: 20,
+      });
+    } catch (error) {
+      console.warn("[automation tick] notification retry drain skipped:", error);
+    }
+
     const { recordCronTickOutcome, recordMonitoringIncident } = await import(
       "@/lib/owner/monitoring"
     );
@@ -151,6 +173,7 @@ export async function POST(request: Request): Promise<Response> {
         results: autoPosts,
       },
       dailyReports,
+      notificationRetries,
     });
   } catch (error) {
     const message =
