@@ -1,12 +1,12 @@
 /**
  * P06 End-to-End 運用検証
  *
- * Real user path (mock LLM / memory_durable):
- * image→analysis→deliverable, Word/Excel/PDF/PPT, notify, history,
+ * Ops verification path (explicit ATLAS_MOCK_LLM — not a live OpenAI certificate):
+ * image→analysis→deliverable, Word/Excel/PDF/PPT, inbox notify, history,
  * download, re-download, failure retry.
  *
  * Writes measured report under /opt/cursor/artifacts/p06-e2e-ops-verification/
- * Gate: success rate ≥ 95%.
+ * Gate: success rate ≥ 95%. Channel soft-success is not counted as notify pass.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -172,6 +172,8 @@ async function makeLabeledPng(label: string): Promise<Buffer> {
 }
 
 function assertProgressStages(trail: string[]): boolean {
+  // P1-09: validate the trail that the iteration actually recorded — never
+  // push expected messages into the trail and then assert them.
   const required = [
     OPS_PROGRESS_MESSAGES.imageAnalyzing,
     OPS_PROGRESS_MESSAGES.aiThinking,
@@ -180,8 +182,8 @@ function assertProgressStages(trail: string[]): boolean {
     OPS_PROGRESS_MESSAGES.completed,
   ];
   for (const msg of required) {
-    trail.push(msg);
-    if (!msg || messageForOpsProgressStage(
+    if (!trail.includes(msg)) return false;
+    const stage =
       msg === OPS_PROGRESS_MESSAGES.imageAnalyzing
         ? "image_analyzing"
         : msg === OPS_PROGRESS_MESSAGES.aiThinking
@@ -190,19 +192,17 @@ function assertProgressStages(trail: string[]): boolean {
             ? "deliverable_generating"
             : msg === OPS_PROGRESS_MESSAGES.saving
               ? "saving"
-              : "completed",
-    ) !== msg) {
-      return false;
-    }
+              : "completed";
+    if (messageForOpsProgressStage(stage) !== msg) return false;
   }
   const phases = buildLoadingPhases(1);
   const labels = phases.map((p) => p.label);
   return (
-    labels.includes(ui.secretaryProgress.aiThinking) ||
-    labels.includes(ui.secretaryProgress.deliverableGenerating)
-  ) &&
+    (labels.includes(ui.secretaryProgress.aiThinking) ||
+      labels.includes(ui.secretaryProgress.deliverableGenerating)) &&
     labels.includes(ui.secretaryProgress.saving) &&
-    Boolean(ui.secretaryProgress.completed);
+    Boolean(ui.secretaryProgress.completed)
+  );
 }
 
 async function oneIteration(i: number): Promise<IterResult> {
@@ -236,10 +236,6 @@ async function oneIteration(i: number): Promise<IterResult> {
   resetDurableInboxForTests();
   resetDeveloperErrorLogsForTests();
   clearWordFaults();
-
-  // 【3】Loading stages always present
-  checks.progress_stages = assertProgressStages(progressTrail);
-  if (!checks.progress_stages) reasons.push("progress_stages_missing");
 
   // 【4】Soft error UX — never technical error screen
   const soft = toHumanReliabilityMessage(new Error("ETIMEDOUT supabase 503"));
@@ -405,38 +401,20 @@ async function oneIteration(i: number): Promise<IterResult> {
     },
     { skipDelivery: true },
   );
-  const line = await deliverLineWithAck({
-    notificationId: ntf?.notificationId ?? `ntf_p06_${i}`,
-    userId: USER,
-    event: "work_completed",
-    title: "仕事が完了しました",
-    message: `P06成果物を用意しました (#${i})`,
-    actionUrl: null,
-  });
-  const fallback = {
-    notificationId: `ntf_p06_${i}`,
-    userId: USER,
-    audience: "user" as const,
-    type: "completed" as const,
-    title: "仕事が完了しました",
-    message: `P06成果物を用意しました (#${i})`,
-    relatedTaskId: null,
-    relatedService: null,
-    isRead: false,
-    createdAt: new Date().toISOString(),
-    actionUrl: null,
-    lineEvent: "work_completed" as const,
-    severity: "info" as const,
-    eventCategory: "final_success" as const,
-    pushSentAt: null,
-    pushFailedAt: null,
-    pushFailureReason: null,
-    readAt: null,
-  };
-  const push = await deliverWebPushWithAck({
-    record: ntf ?? fallback,
-  });
-  checks.notify = Boolean(ntf?.notificationId) && line.ok && push.ok;
+  // P1-09: inbox create is the notify gate. Channel soft-success (not_configured)
+  // must not green-wash notification success.
+  if (ntf) {
+    await deliverLineWithAck({
+      notificationId: ntf.notificationId,
+      userId: USER,
+      event: "work_completed",
+      title: "仕事が完了しました",
+      message: `P06成果物を用意しました (#${i})`,
+      actionUrl: null,
+    });
+    await deliverWebPushWithAck({ record: ntf });
+  }
+  checks.notify = Boolean(ntf?.notificationId);
   if (!checks.notify) reasons.push("notify_failed");
 
   const history = await listUserNotifications(USER);
@@ -504,6 +482,10 @@ async function oneIteration(i: number): Promise<IterResult> {
   }
 
   progressTrail.push(OPS_PROGRESS_MESSAGES.completed);
+
+  // 【3】Loading stages — assert after the iteration actually recorded them.
+  checks.progress_stages = assertProgressStages(progressTrail);
+  if (!checks.progress_stages) reasons.push("progress_stages_missing");
 
   const ok = (Object.keys(checks) as CheckId[]).every((k) => checks[k]);
 

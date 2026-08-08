@@ -177,38 +177,23 @@ async function oneIteration(i: number): Promise<IterResult> {
     { skipDelivery: true },
   );
 
-  const line = await deliverLineWithAck({
-    notificationId: ntf?.notificationId ?? `ntf_test_${i}`,
-    userId: USER,
-    event: "work_completed",
-    title: "仕事が完了しました",
-    message: `成果物を用意しました (#${i})`,
-    actionUrl: null,
-  });
-  const fallbackNotification = {
-    notificationId: `ntf_test_${i}`,
-    userId: USER,
-    audience: "user",
-    type: "completed",
-    title: "仕事が完了しました",
-    message: `成果物を用意しました (#${i})`,
-    relatedTaskId: null,
-    relatedService: null,
-    isRead: false,
-    createdAt: new Date().toISOString(),
-    actionUrl: null,
-    lineEvent: "work_completed",
-    severity: "info",
-    eventCategory: "final_success",
-    pushSentAt: null,
-    pushFailedAt: null,
-    pushFailureReason: null,
-    readAt: null,
-  } satisfies NonNullable<typeof ntf>;
-  const push = await deliverWebPushWithAck({
-    record: ntf ?? fallbackNotification,
-  });
-  notifyOk = line.ok && push.ok;
+  // Inbox create is the measured notify path. Channel soft-success
+  // (not_configured / not_linked / empty push) must NOT count as notifyOk.
+  notifyOk = Boolean(ntf?.notificationId);
+  if (ntf) {
+    // Exercise ACK helpers for coverage, but ignore soft-success ok flags.
+    await deliverLineWithAck({
+      notificationId: ntf.notificationId,
+      userId: USER,
+      event: "work_completed",
+      title: "仕事が完了しました",
+      message: `成果物を用意しました (#${i})`,
+      actionUrl: null,
+    });
+    await deliverWebPushWithAck({ record: ntf });
+  } else {
+    reasons.push("notification_create_failed");
+  }
   historyOk = Boolean(ntf?.notificationId) && (wordOk || pdfOk);
 
   const ok =
@@ -223,7 +208,7 @@ async function oneIteration(i: number): Promise<IterResult> {
   recordReliabilityEvent("work_job", ok ? "success" : "failure", 1, {
     durationMs: Date.now() - started,
   });
-  recordReliabilityEvent("post_x", "success");
+  // P1-09: never invent post_x success — X posts are measured only via createTweet.
 
   return {
     ok,
@@ -277,18 +262,21 @@ describe("reliability e2e measured gate", () => {
       const avg =
         durations.reduce((a, b) => a + b, 0) / Math.max(1, durations.length);
 
+      const retried = results.filter((r) => r.retries > 0);
       const gates = {
         deliverableSuccessRate: successCount / RUNS,
         pdfSuccessRate: pdfSuccess / RUNS,
         wordSuccessRate: wordSuccess / RUNS,
+        // Inbox create success only (channel soft-success excluded).
         notificationSuccessRate: notifySuccess / RUNS,
-        postSuccessRate: 1,
-        timeoutRate: 0,
+        // Not measured in this harness — omit from gatePass (never hard-code 1).
+        postSuccessRate: null as number | null,
+        timeoutRate: null as number | null,
         retryThenSuccessRate:
-          retryCount === 0
-            ? 1
+          retried.length === 0
+            ? null
             : results.filter((r) => r.retries > 0 && r.ok).length /
-              Math.max(1, results.filter((r) => r.retries > 0).length),
+              retried.length,
         download404,
         blankPdf,
         emptyDeliverable,
@@ -299,9 +287,8 @@ describe("reliability e2e measured gate", () => {
         gates.pdfSuccessRate >= 0.99 &&
         gates.wordSuccessRate >= 0.99 &&
         gates.notificationSuccessRate >= 0.99 &&
-        gates.postSuccessRate >= 0.99 &&
-        gates.timeoutRate < 0.01 &&
-        gates.retryThenSuccessRate >= 0.99 &&
+        (gates.retryThenSuccessRate == null ||
+          gates.retryThenSuccessRate >= 0.99) &&
         gates.download404 === 0 &&
         gates.blankPdf === 0 &&
         gates.emptyDeliverable === 0;
@@ -320,9 +307,7 @@ describe("reliability e2e measured gate", () => {
         gatePass,
         metricsSnapshot: getReliabilityMetricsSnapshot(),
         failureSample: failures.slice(0, 50),
-        scoreHint: gatePass
-          ? 96
-          : Math.min(94, Math.round(gates.deliverableSuccessRate * 100)),
+        scoreHint: Math.round(gates.deliverableSuccessRate * 100),
       };
 
       writeFileSync(join(OUT_DIR, "report.json"), JSON.stringify(report, null, 2));
@@ -347,10 +332,10 @@ describe("reliability e2e measured gate", () => {
 | Deliverable success | ${pct(gates.deliverableSuccessRate)} | ${gates.deliverableSuccessRate >= 0.99} |
 | PDF success | ${pct(gates.pdfSuccessRate)} | ${gates.pdfSuccessRate >= 0.99} |
 | Word success | ${pct(gates.wordSuccessRate)} | ${gates.wordSuccessRate >= 0.99} |
-| Notification success | ${pct(gates.notificationSuccessRate)} | ${gates.notificationSuccessRate >= 0.99} |
-| Post success | ${pct(gates.postSuccessRate)} | ${gates.postSuccessRate >= 0.99} |
-| Timeout rate | ${pct(gates.timeoutRate)} | ${gates.timeoutRate < 0.01} |
-| Retry-then-success | ${pct(gates.retryThenSuccessRate)} | ${gates.retryThenSuccessRate >= 0.99} |
+| Notification success (inbox) | ${pct(gates.notificationSuccessRate)} | ${gates.notificationSuccessRate >= 0.99} |
+| Post success | 未計測(本ハーネス対象外) | n/a |
+| Timeout rate | 未計測(本ハーネス対象外) | n/a |
+| Retry-then-success | ${pct(gates.retryThenSuccessRate)} | ${gates.retryThenSuccessRate == null || gates.retryThenSuccessRate >= 0.99} |
 | Download404 | ${download404} | ${download404 === 0} |
 | Blank PDF | ${blankPdf} | ${blankPdf === 0} |
 | Empty deliverable | ${emptyDeliverable} | ${emptyDeliverable === 0} |
