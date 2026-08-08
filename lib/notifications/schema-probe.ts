@@ -10,6 +10,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { ATLAS_NOTIFICATION_RETRY_DLQ_MIGRATION_SQL } from "./migration-sql";
+import {
+  runNotificationRetryProductionSmoke,
+  type NotificationRetryProductionSmoke,
+} from "./production-smoke";
 
 export type NotificationRetrySchemaProbe = {
   ok: boolean;
@@ -18,9 +22,15 @@ export type NotificationRetrySchemaProbe = {
   tickWired: boolean;
   retryDrainReady: boolean;
   memoryNotSot: boolean;
+  drainSmokeOk: boolean;
+  noDoubleSendOk: boolean;
+  dlqTerminalOk: boolean;
+  dlqNotReinjectedOk: boolean;
   appliedViaPostgres: boolean;
   appliedViaManagementApi: boolean;
   error: string | null;
+  ownerHint: string | null;
+  smoke: NotificationRetryProductionSmoke | null;
   envPresence: ReturnType<typeof getMigrationEnvPresence>;
   version: ReturnType<typeof getHealthVersionPayload>;
 };
@@ -74,8 +84,20 @@ async function probeTables(client: NonNullable<
   };
 }
 
+function ownerHintFor(error: string | null): string | null {
+  if (!error) return null;
+  if (/schema cache|Could not find the table/i.test(error)) {
+    return "Tables may exist but PostgREST cache is stale. In Supabase SQL Editor run: NOTIFY pgrst, 'reload schema'; then re-probe.";
+  }
+  if (/no_postgres_url_or_management_token/i.test(error)) {
+    return "Apply 20260804_p0_4 + 20260726_dlq in the Supabase project linked to Production Vercel, then NOTIFY pgrst, 'reload schema';";
+  }
+  return "Confirm DDL was applied to the same Supabase project as Production SUPABASE_URL, then NOTIFY pgrst, 'reload schema';";
+}
+
 export async function probeNotificationRetrySchema(input?: {
   apply?: boolean;
+  smoke?: boolean;
 }): Promise<NotificationRetrySchemaProbe> {
   const version = getHealthVersionPayload();
   const tickWired = tickWiredFromSource();
@@ -83,6 +105,7 @@ export async function probeNotificationRetrySchema(input?: {
   let appliedViaManagementApi = false;
   let error: string | null = null;
   let envPresence = getMigrationEnvPresence();
+  let smoke: NotificationRetryProductionSmoke | null = null;
 
   if (input?.apply) {
     const applyResult = await applyMigrationSql({
@@ -104,23 +127,23 @@ export async function probeNotificationRetrySchema(input?: {
       tickWired,
       retryDrainReady: false,
       memoryNotSot: true,
+      drainSmokeOk: false,
+      noDoubleSendOk: false,
+      dlqTerminalOk: false,
+      dlqNotReinjectedOk: false,
       appliedViaPostgres,
       appliedViaManagementApi,
       error: error ?? "supabase_service_role_not_configured",
+      ownerHint: "Configure SUPABASE_SERVICE_ROLE_KEY on Production.",
+      smoke: null,
       envPresence,
       version,
     };
   }
 
   let tables = await probeTables(client);
-  const missing =
-    !tables.inboxTableOk ||
-    !tables.dlqTableOk ||
-    (tables.inboxError && isMissing(tables.inboxError)) ||
-    (tables.dlqError && isMissing(tables.dlqError));
+  const missing = !tables.inboxTableOk || !tables.dlqTableOk;
 
-  // Auto-apply once when either table is not readable (same pattern as P1-03/P1-04).
-  // Service role alone cannot DDL — requires POSTGRES_URL or management token.
   if (missing && !input?.apply) {
     const applyResult = await applyMigrationSql({
       sql: ATLAS_NOTIFICATION_RETRY_DLQ_MIGRATION_SQL,
@@ -133,26 +156,56 @@ export async function probeNotificationRetrySchema(input?: {
     if (applyResult.error) error = applyResult.error;
     tables = await probeTables(client);
   } else if (input?.apply) {
-    // Apply already attempted above; re-probe after DDL.
     tables = await probeTables(client);
   }
 
-  const ok = tables.inboxTableOk && tables.dlqTableOk && tickWired;
+  const tablesOk = tables.inboxTableOk && tables.dlqTableOk;
+  if (!tablesOk) {
+    error =
+      error ??
+      tables.inboxError ??
+      tables.dlqError ??
+      "notification_tables_unavailable";
+  }
+
+  const runSmoke = Boolean(input?.smoke ?? true);
+  if (tablesOk && tickWired && runSmoke) {
+    smoke = await runNotificationRetryProductionSmoke();
+    if (!smoke.ok && !error) error = smoke.error;
+  }
+
+  const drainSmokeOk = Boolean(smoke?.drainOk);
+  const noDoubleSendOk = Boolean(smoke?.noDoubleSendOk);
+  const dlqTerminalOk = Boolean(smoke?.dlqTerminalOk);
+  const dlqNotReinjectedOk = Boolean(smoke?.dlqNotReinjectedOk);
+  const retryDrainReady =
+    tablesOk &&
+    tickWired &&
+    drainSmokeOk &&
+    noDoubleSendOk &&
+    dlqTerminalOk &&
+    dlqNotReinjectedOk;
+  const ok = retryDrainReady;
+
   return {
     ok,
     inboxTableOk: tables.inboxTableOk,
     dlqTableOk: tables.dlqTableOk,
     tickWired,
-    retryDrainReady: ok,
+    retryDrainReady,
     memoryNotSot: true,
+    drainSmokeOk,
+    noDoubleSendOk,
+    dlqTerminalOk,
+    dlqNotReinjectedOk,
     appliedViaPostgres,
     appliedViaManagementApi,
     error: ok
       ? null
       : error ??
-        tables.inboxError ??
-        tables.dlqError ??
         (!tickWired ? "tick_not_wired" : "unavailable"),
+    ownerHint: ok ? null : ownerHintFor(error),
+    smoke,
     envPresence,
     version,
   };

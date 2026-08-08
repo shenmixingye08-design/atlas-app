@@ -11,8 +11,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * P1-02: Notification retry/DLQ readiness + tick wiring probe.
- * Read-only (default): public boolean flags only.
+ * P1-02: Notification retry/DLQ readiness + tick wiring + production smoke.
+ * Read-only flags + safe smoke evidence (default on force=1).
  * apply=1: CRON_SECRET / owner only — applies durable inbox + DLQ DDL if missing.
  */
 
@@ -32,6 +32,13 @@ function buildSafeBody(
     tickWired: result.tickWired,
     retryDrainReady: result.retryDrainReady,
     memoryNotSot: result.memoryNotSot,
+    drainSmokeOk: result.drainSmokeOk,
+    noDoubleSendOk: result.noDoubleSendOk,
+    dlqTerminalOk: result.dlqTerminalOk,
+    dlqNotReinjectedOk: result.dlqNotReinjectedOk,
+    error: result.error,
+    ownerHint: result.ownerHint,
+    smokeEvidence: result.smoke?.evidence ?? null,
     commitShaShort: version.commitShaShort,
     environment: version.environment,
   };
@@ -41,6 +48,8 @@ export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const force = url.searchParams.get("force") === "1";
   const apply = url.searchParams.get("apply") === "1";
+  const smokeParam = url.searchParams.get("smoke");
+  const smoke = smokeParam === "0" ? false : true;
 
   if (apply) {
     const gate = await authorizeHealthProbe(request);
@@ -61,7 +70,7 @@ export async function GET(request: Request): Promise<Response> {
     );
   }
 
-  const result = await probeNotificationRetrySchema({ apply });
+  const result = await probeNotificationRetrySchema({ apply, smoke });
   lastRunAtMs = Date.now();
   lastOk = result.ok;
   const safe = buildSafeBody(result);
@@ -72,6 +81,7 @@ export async function GET(request: Request): Promise<Response> {
     inboxTableOk: result.inboxTableOk,
     dlqTableOk: result.dlqTableOk,
     tickWired: result.tickWired,
+    drainSmokeOk: result.drainSmokeOk,
     applyRequested: apply,
     appliedViaPostgres: result.appliedViaPostgres,
     appliedViaManagementApi: result.appliedViaManagementApi,
@@ -79,14 +89,11 @@ export async function GET(request: Request): Promise<Response> {
     envPresence: result.envPresence,
   });
 
-  // Authenticated apply responses include diagnostics so Owner can see why DDL
-  // apply failed (missing POSTGRES_URL / management token, SQL error, etc.).
   const body = apply
     ? {
         ...safe,
         appliedViaPostgres: result.appliedViaPostgres,
         appliedViaManagementApi: result.appliedViaManagementApi,
-        error: result.error,
         envPresence: {
           serviceRole: result.envPresence.serviceRole,
           postgresUrl: result.envPresence.postgresUrl,
@@ -96,7 +103,8 @@ export async function GET(request: Request): Promise<Response> {
         ownerAction:
           result.ok
             ? null
-            : "Apply lib/notifications/migration-sql.ts (or 20260804_p0_4 + 20260726_dlq) in Supabase SQL editor, then re-probe ?force=1",
+            : result.ownerHint ??
+              "Apply DDL + NOTIFY pgrst, 'reload schema'; then re-probe ?force=1",
       }
     : safe;
 

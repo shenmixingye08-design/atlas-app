@@ -36,6 +36,24 @@ vi.mock("@/lib/health/version-info", () => ({
   }),
 }));
 
+vi.mock("./production-smoke", () => ({
+  runNotificationRetryProductionSmoke: vi.fn(async () => ({
+    ok: true,
+    drainOk: true,
+    noDoubleSendOk: true,
+    dlqTerminalOk: true,
+    dlqNotReinjectedOk: true,
+    error: null,
+    evidence: {
+      drain: { due: 1, claimed: 1, delivered: 1, dlqReinjected: 0 },
+      secondDrainDue: 0,
+      deadLettered: 1,
+      dlqDeadRows: 1,
+      sideEffectExecuteCalls: 1,
+    },
+  })),
+}));
+
 vi.mock("node:fs", async () => {
   const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
   return {
@@ -52,6 +70,7 @@ vi.mock("node:fs", async () => {
 import { applyMigrationSql } from "@/lib/supabase/apply-migration-sql";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 import { probeNotificationRetrySchema } from "./schema-probe";
+import { runNotificationRetryProductionSmoke } from "./production-smoke";
 
 function mockClient(opts: {
   inboxError?: { message: string } | null;
@@ -82,7 +101,7 @@ describe("probeNotificationRetrySchema", () => {
     vi.clearAllMocks();
   });
 
-  it("reports ok when inbox + dlq present and tick wired", async () => {
+  it("reports ok when inbox + dlq present, tick wired, and smoke passes", async () => {
     vi.mocked(createServiceRoleClientIfConfigured).mockReturnValue(
       mockClient({}) as never,
     );
@@ -92,7 +111,9 @@ describe("probeNotificationRetrySchema", () => {
     expect(result.dlqTableOk).toBe(true);
     expect(result.tickWired).toBe(true);
     expect(result.retryDrainReady).toBe(true);
+    expect(result.drainSmokeOk).toBe(true);
     expect(result.memoryNotSot).toBe(true);
+    expect(runNotificationRetryProductionSmoke).toHaveBeenCalled();
     expect(applyMigrationSql).not.toHaveBeenCalled();
   });
 
@@ -125,5 +146,36 @@ describe("probeNotificationRetrySchema", () => {
     const result = await probeNotificationRetrySchema({ apply: true });
     expect(applyMigrationSql).toHaveBeenCalled();
     expect(result.ok).toBe(true);
+  });
+
+  it("exposes ownerHint when tables missing and apply cannot run", async () => {
+    vi.mocked(createServiceRoleClientIfConfigured).mockReturnValue(
+      mockClient({
+        inboxError: {
+          message:
+            "Could not find the table 'public.atlas_user_notifications' in the schema cache",
+        },
+        dlqError: {
+          message:
+            "Could not find the table 'public.atlas_notification_dlq' in the schema cache",
+        },
+      }) as never,
+    );
+    vi.mocked(applyMigrationSql).mockResolvedValueOnce({
+      appliedViaPostgres: false,
+      appliedViaManagementApi: false,
+      error: "no_postgres_url_or_management_token",
+      envPresence: {
+        serviceRole: true,
+        postgresUrl: false,
+        supabaseAccessToken: false,
+        projectRef: "test",
+        postgresEnvKeys: [],
+      },
+    });
+    const result = await probeNotificationRetrySchema({ smoke: false });
+    expect(result.ok).toBe(false);
+    expect(result.ownerHint).toMatch(/NOTIFY pgrst|Supabase/i);
+    expect(result.error).toBeTruthy();
   });
 });
