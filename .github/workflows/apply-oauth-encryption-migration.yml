@@ -33,8 +33,13 @@ jobs:
             exit 0
           fi
           if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ] || [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
+<<<<<<< HEAD
             echo "::error::No DATABASE_URL/POSTGRES_URL and no SUPABASE_ACCESS_TOKEN+SUPABASE_PROJECT_REF — P0-02 DDL not applied. Do not merge/deploy OAuth encryption without this migration."
             exit 1
+=======
+            echo "::warning::No DATABASE_URL/POSTGRES_URL and no SUPABASE_ACCESS_TOKEN+SUPABASE_PROJECT_REF — Actions could not apply DDL. If you already applied supabase/migrations/20260808_p0_02_oauth_token_encryption.sql in Supabase SQL Editor, this is OK."
+            exit 0
+>>>>>>> 43e8ae9 (ci(security): add production oauth-encryption verify workflow for P0-02)
           fi
           BODY=$(python3 - <<'PY'
           import json, pathlib
