@@ -188,6 +188,57 @@ export async function hasProcessedWebhookEventInDurable(
   return Boolean(payload.events[eventId]);
 }
 
+/**
+ * P0-06: claim-before-process for durable fallback.
+ * Returns false when the event id is already present.
+ */
+export async function claimWebhookEventInDurable(
+  eventId: string,
+  eventType?: string | null,
+): Promise<boolean> {
+  const payload = await loadWebhookEventsPayload();
+  if (payload.events[eventId]) return false;
+  payload.events[eventId] = {
+    type: eventType ?? null,
+    processedAt: new Date().toISOString(),
+  };
+  const keys = Object.keys(payload.events);
+  if (keys.length > MAX_WEBHOOK_EVENTS) {
+    const sorted = keys.sort(
+      (a, b) =>
+        (payload.events[a]?.processedAt ?? "").localeCompare(
+          payload.events[b]?.processedAt ?? "",
+        ),
+    );
+    for (const key of sorted.slice(0, keys.length - MAX_WEBHOOK_EVENTS)) {
+      delete payload.events[key];
+    }
+  }
+  payload.updatedAt = new Date().toISOString();
+  // Best-effort durable mirror — local claim win is authoritative for this path.
+  await upsertSupabaseUserState(WEBHOOK_EVENTS_USER_ID, WEBHOOK_EVENTS_DOMAIN, {
+    version: 1,
+    updatedAt: payload.updatedAt,
+    payload,
+  });
+  return true;
+}
+
+/** Release a claim so Stripe can retry after a failed handler. */
+export async function releaseWebhookEventClaimInDurable(
+  eventId: string,
+): Promise<void> {
+  const payload = await loadWebhookEventsPayload();
+  if (!payload.events[eventId]) return;
+  delete payload.events[eventId];
+  payload.updatedAt = new Date().toISOString();
+  await upsertSupabaseUserState(WEBHOOK_EVENTS_USER_ID, WEBHOOK_EVENTS_DOMAIN, {
+    version: 1,
+    updatedAt: payload.updatedAt,
+    payload,
+  });
+}
+
 export async function markWebhookEventProcessedInDurable(
   eventId: string,
   eventType?: string | null,

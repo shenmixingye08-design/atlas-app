@@ -7,12 +7,14 @@ import { isPlanId } from "../plans/registry";
 import type { PlanId } from "../plans/types";
 
 import {
+  claimWebhookEventInDurable,
   findSubscriptionByStripeCustomerIdFromDurable,
   hasProcessedWebhookEventInDurable,
   listSubscriptionsFromDurableDomain,
   loadSubscriptionFromDurableDomain,
   markWebhookEventProcessedInDurable,
   persistSubscriptionToDurableDomain,
+  releaseWebhookEventClaimInDurable,
 } from "./durable-fallback";
 import { isBillingDedicatedTableReady } from "./table-ready";
 import type { SubscriptionStatus, UserSubscriptionRecord } from "./types";
@@ -401,5 +403,101 @@ export async function markWebhookEventProcessedInSupabase(
       error,
     );
     return durableOk;
+  }
+}
+
+export type WebhookClaimResult =
+  | { ok: true; claimed: true }
+  | { ok: true; claimed: false; reason: "duplicate" }
+  | { ok: false; reason: "unavailable" };
+
+/**
+ * P0-06: atomic claim-before-process.
+ * Inserts event_id first; conflict means another worker owns/processed it.
+ */
+export async function claimWebhookEventInSupabase(
+  eventId: string,
+  eventType?: string | null,
+): Promise<WebhookClaimResult> {
+  if (!(await isBillingDedicatedTableReady())) {
+    const claimed = await claimWebhookEventInDurable(eventId, eventType);
+    return claimed
+      ? { ok: true, claimed: true }
+      : { ok: true, claimed: false, reason: "duplicate" };
+  }
+
+  const client = createServiceRoleClientIfConfigured();
+  if (!client) {
+    const claimed = await claimWebhookEventInDurable(eventId, eventType);
+    return claimed
+      ? { ok: true, claimed: true }
+      : { ok: true, claimed: false, reason: "duplicate" };
+  }
+
+  try {
+    const { error } = await client.from(WEBHOOK_EVENTS_TABLE).insert({
+      event_id: eventId,
+      event_type: eventType ?? null,
+      processed_at: new Date().toISOString(),
+    });
+
+    if (!error) {
+      // Mirror into durable blob for fallback continuity.
+      await claimWebhookEventInDurable(eventId, eventType);
+      return { ok: true, claimed: true };
+    }
+
+    // Unique violation → already claimed/processed.
+    if (
+      error.code === "23505" ||
+      /duplicate|unique/i.test(error.message ?? "")
+    ) {
+      return { ok: true, claimed: false, reason: "duplicate" };
+    }
+
+    if (isMissingBillingTableError(error.message)) {
+      const { markBillingDedicatedTableReadyUnknown } = await import(
+        "./table-ready"
+      );
+      markBillingDedicatedTableReadyUnknown();
+      const claimed = await claimWebhookEventInDurable(eventId, eventType);
+      return claimed
+        ? { ok: true, claimed: true }
+        : { ok: true, claimed: false, reason: "duplicate" };
+    }
+
+    console.error(
+      "[billing] Supabase webhook claim failed:",
+      error.message,
+    );
+    return { ok: false, reason: "unavailable" };
+  } catch (error) {
+    console.error("[billing] Supabase webhook claim exception:", error);
+    return { ok: false, reason: "unavailable" };
+  }
+}
+
+export async function releaseWebhookEventClaimInSupabase(
+  eventId: string,
+): Promise<void> {
+  await releaseWebhookEventClaimInDurable(eventId);
+
+  if (!(await isBillingDedicatedTableReady())) return;
+  const client = createServiceRoleClientIfConfigured();
+  if (!client) return;
+
+  try {
+    const { error } = await client
+      .from(WEBHOOK_EVENTS_TABLE)
+      .delete()
+      .eq("event_id", eventId);
+    if (error && !isMissingBillingTableError(error.message)) {
+      console.error(
+        "[billing] Supabase webhook claim release failed:",
+        error.message,
+      );
+    }
+  } catch (error) {
+    console.error("[billing] Supabase webhook claim release exception:", error);
   }
 }

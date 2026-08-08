@@ -25,6 +25,7 @@ import { recordUserAiUsageFromTexts } from "@/lib/billing/usage/meter";
 export const ATLAS_MODEL = decisionToModelPolicy(resolveTaskPolicy("chat")).model;
 
 import { ATLAS_CHAT_INSTRUCTIONS } from "@/lib/atlas-personality";
+import { RELIABILITY_TIMEOUTS } from "@/lib/reliability/timeouts";
 
 /** Base system instructions for chat and default Responses API calls. */
 export const DEFAULT_INSTRUCTIONS = ATLAS_CHAT_INSTRUCTIONS;
@@ -53,8 +54,13 @@ export function isOpenAIConfigured(): boolean {
 export function getOpenAIClient(): OpenAI {
   if (!client) {
     // P09: allow bounded SDK retries for transient 429/5xx (was 0 = every blip bubbled).
+    // P0-06: hard timeout prevents hung LLM calls from holding cron/worker slots.
     // Callers that need stricter control still use lib/reliability/withRetry.
-    client = new OpenAI({ apiKey: getApiKey(), maxRetries: 2 });
+    client = new OpenAI({
+      apiKey: getApiKey(),
+      maxRetries: 2,
+      timeout: RELIABILITY_TIMEOUTS.openai,
+    });
   }
 
   return client;

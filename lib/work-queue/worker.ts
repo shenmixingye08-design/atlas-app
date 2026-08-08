@@ -47,6 +47,24 @@ function mergeOutputs(steps: WorkStepRecord[]): Record<string, unknown> {
   return out;
 }
 
+const SIDE_EFFECT_STEP_TYPES = new Set([
+  "run_automation",
+  "notify_complete",
+  "upload_storage",
+]);
+
+function hasSideEffectEvidence(step: WorkStepRecord): boolean {
+  const out = step.outputBindings ?? {};
+  return Boolean(
+    out.notified === true ||
+      out.notificationId ||
+      out.workflowRunId ||
+      out.notifyReceipt ||
+      out.externalApplied === true ||
+      (Array.isArray(step.artifactIds) && step.artifactIds.length > 0),
+  );
+}
+
 async function processLeasedJob(
   job: WorkJobRecord,
   workerId: string,
@@ -115,6 +133,70 @@ async function processLeasedJob(
         break;
       }
 
+      // P0-06: reclaim of an in-flight side-effect step must not re-execute.
+      if (step.status === "running") {
+        if (hasSideEffectEvidence(step)) {
+          const doneAt = new Date().toISOString();
+          const completedStep: WorkStepRecord = {
+            ...step,
+            status: "completed",
+            completedAt: doneAt,
+            updatedAt: doneAt,
+            outputBindings: {
+              ...step.outputBindings,
+              externalApplied: true,
+              recoveredFromRunning: true,
+            },
+          };
+          await store.updateStep(completedStep);
+          Object.assign(previousOutputs, completedStep.outputBindings);
+          continue;
+        }
+        if (SIDE_EFFECT_STEP_TYPES.has(step.stepType)) {
+          const failAt = new Date().toISOString();
+          const failedStep: WorkStepRecord = {
+            ...step,
+            status: "failed",
+            completedAt: failAt,
+            updatedAt: failAt,
+            errorCode: "unknown_outcome",
+            errorMessage:
+              "Ambiguous reclaim of side-effect step — not re-executed",
+          };
+          await store.updateStep(failedStep);
+          const diagnosticId =
+            current.diagnosticId ?? buildDiagnosticId("step");
+          await store.updateJob(
+            job.jobId,
+            {
+              status: "failed",
+              attempt: current.attempt + 1,
+              errorCode: "unknown_outcome",
+              failedStage: step.stepId,
+              diagnosticId,
+              firstError: current.firstError ?? failedStep.errorMessage,
+              lastError: failedStep.errorMessage,
+              completedAt: failAt,
+              leaseOwner: null,
+              leaseExpiresAt: null,
+              resultSummary:
+                "Side-effect step was interrupted; not re-run to avoid duplicates",
+            },
+            workerId,
+          );
+          logWorkQueue({
+            event: "JOB_FAILED",
+            jobId: job.jobId,
+            stepId: step.stepId,
+            ownerId: job.ownerId,
+            errorCode: "unknown_outcome",
+            diagnosticId,
+          });
+          return "failed";
+        }
+        // Non-side-effect running steps may safely retry generate/fixture work.
+      }
+
       const stepStarted = new Date().toISOString();
       const runningStep: WorkStepRecord = {
         ...step,
@@ -148,6 +230,7 @@ async function processLeasedJob(
           outputBindings: {
             ...runningStep.outputBindings,
             ...(result.outputBindings ?? {}),
+            ...(result.externalApplied ? { externalApplied: true } : {}),
           },
           artifactIds: result.artifactIds ?? runningStep.artifactIds,
           errorCode: null,
