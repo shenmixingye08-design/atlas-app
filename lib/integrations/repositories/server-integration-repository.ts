@@ -28,6 +28,11 @@ function getBucket(): IntegrationBucket {
 function matchesFilter(integration: Integration, filter?: IntegrationFilter): boolean {
   if (!filter) return true;
 
+  // P0-03: tenant isolation. Legacy rows without userId never match a user filter.
+  if (filter.userId !== undefined) {
+    if (!integration.userId || integration.userId !== filter.userId) return false;
+  }
+
   if (filter.connected !== undefined && integration.connected !== filter.connected) {
     return false;
   }
@@ -68,12 +73,29 @@ export class ServerIntegrationRepository implements IntegrationRepository {
     return getBucket().get(id) ?? null;
   }
 
+  async findByIdForUser(id: string, userId: string): Promise<Integration | null> {
+    const item = getBucket().get(id) ?? null;
+    if (!item || item.userId !== userId) return null;
+    return item;
+  }
+
   async findByProvider(
     provider: IntegrationProviderId,
   ): Promise<Integration | null> {
     return (
       [...getBucket().values()].find((item) => item.provider === provider) ??
       null
+    );
+  }
+
+  async findByProviderForUser(
+    provider: IntegrationProviderId,
+    userId: string,
+  ): Promise<Integration | null> {
+    return (
+      [...getBucket().values()].find(
+        (item) => item.provider === provider && item.userId === userId,
+      ) ?? null
     );
   }
 
@@ -84,6 +106,9 @@ export class ServerIntegrationRepository implements IntegrationRepository {
   }
 
   async save(integration: Integration): Promise<Integration> {
+    if (!integration.userId) {
+      throw new Error("Integration.userId is required");
+    }
     getBucket().set(integration.id, integration);
     return integration;
   }
@@ -98,6 +123,7 @@ export class ServerIntegrationRepository implements IntegrationRepository {
     const updated: Integration = {
       ...existing,
       ...patch,
+      userId: existing.userId,
       metadata: patch.metadata
         ? { ...existing.metadata, ...patch.metadata }
         : existing.metadata,
@@ -111,6 +137,19 @@ export class ServerIntegrationRepository implements IntegrationRepository {
   async delete(id: string): Promise<boolean> {
     return getBucket().delete(id);
   }
+
+  async deleteForUser(id: string, userId: string): Promise<boolean> {
+    const existing = getBucket().get(id);
+    if (!existing || existing.userId !== userId) return false;
+    return getBucket().delete(id);
+  }
 }
 
 export const serverIntegrationRepository = new ServerIntegrationRepository();
+
+export function resetIntegrationStoreForTests(): void {
+  const globalScope = globalThis as typeof globalThis & {
+    __atlasIntegrationStore?: IntegrationBucket;
+  };
+  globalScope.__atlasIntegrationStore = new Map();
+}

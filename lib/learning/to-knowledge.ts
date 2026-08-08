@@ -63,11 +63,13 @@ function formatLearningContent(record: LearningRecord): string {
 export function companyLearningToKnowledgeInputs(
   learning: CompanyLearning,
   input: {
+    userId: string;
     workflowId: string;
     assignment: string;
   },
 ): CreateKnowledgeInput[] {
   return learning.records.map((record) => ({
+    userId: input.userId,
     title: preview(record.recommendation, 80),
     category: "company_learning",
     tags: buildLearningTags(record, input.assignment),
@@ -83,7 +85,7 @@ export function companyLearningToKnowledgeInputs(
 /** Extract company learning knowledge entries for workflow ingest. */
 export function extractCompanyLearningKnowledge(
   result: OrchestrationResult,
-  input: { workflowId: string; assignment: string },
+  input: { userId: string; workflowId: string; assignment: string },
 ): CreateKnowledgeInput[] {
   const learning = generateCompanyLearning(result);
   if (!learning) return [];

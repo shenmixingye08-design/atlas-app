@@ -8,6 +8,7 @@ import type { KnowledgeEntry } from "@/lib/knowledge/types";
 
 function entry(partial: Partial<KnowledgeEntry> & Pick<KnowledgeEntry, "id" | "title" | "category" | "summary">): KnowledgeEntry {
   return {
+    userId: "user_test",
     tags: [],
     sourceWorkflowId: null,
     reusable: true,

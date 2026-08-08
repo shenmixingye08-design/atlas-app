@@ -202,6 +202,7 @@ export async function POST(request: Request): Promise<Response> {
 
     if (result.deliverables.length > 0) {
       uploads = await uploadDeliverablesAfterGeneration({
+        userId,
         deliverables: result.deliverables,
         projectName,
         workflowId,

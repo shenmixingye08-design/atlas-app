@@ -1,7 +1,7 @@
 import { getCompanyTemplate } from "./registry";
 import {
   getClientActiveCompanyState,
-  getServerActiveCompanyState,
+  getServerActiveCompanyStateForUser,
   setClientActiveCompanyState,
 } from "./store";
 import type {
@@ -19,14 +19,15 @@ export function loadCompanyTemplate(
   return getCompanyTemplate(id);
 }
 
-/** Resolve the active company configuration for runtime modules. */
-export function getActiveCompanyConfig(
+/** Resolve the active company configuration for a specific user (P0-03). */
+export function getActiveCompanyConfigForUser(
+  userId: string,
   templateId?: CompanyTemplateId | null,
 ): ActiveCompanyConfig {
   const state =
     typeof window !== "undefined"
       ? getClientActiveCompanyState()
-      : getServerActiveCompanyState();
+      : getServerActiveCompanyStateForUser(userId);
 
   const id = templateId ?? state.templateId;
   const template = getCompanyTemplate(id);
@@ -34,6 +35,21 @@ export function getActiveCompanyConfig(
   return {
     ...template,
     selectedAt: state.selectedAt,
+  };
+}
+
+/** Resolve active company config. Prefer getActiveCompanyConfigForUser on server. */
+export function getActiveCompanyConfig(
+  templateId?: CompanyTemplateId | null,
+): ActiveCompanyConfig {
+  if (typeof window !== "undefined") {
+    return getActiveCompanyConfigForUser("", templateId);
+  }
+  // Server without user: default template only (no cross-user state).
+  const template = getCompanyTemplate(templateId ?? DEFAULT_COMPANY_TEMPLATE_ID);
+  return {
+    ...template,
+    selectedAt: new Date(0).toISOString(),
   };
 }
 

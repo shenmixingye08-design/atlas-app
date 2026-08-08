@@ -41,7 +41,7 @@ import {
 } from "./execution-flow";
 import { computeNextRunIso } from "./schedule";
 import { buildCompanyOrchestrationMetadata } from "@/lib/company-templates/loader";
-import { getServerActiveCompanyState } from "@/lib/company-templates/store";
+import { getServerActiveCompanyStateForUser } from "@/lib/company-templates/store";
 import {
   maybeAutoPostToXAfterAutomation,
   resolveTweetTextForPublish,
@@ -179,7 +179,9 @@ export async function executeAutomationRun(
         assignment,
         metadata: {
           ...buildCompanyOrchestrationMetadata(
-            getServerActiveCompanyState().templateId,
+            options.userId
+              ? getServerActiveCompanyStateForUser(options.userId).templateId
+              : undefined,
           ),
           automationId: automation.id,
           automationName: automation.name,
@@ -449,6 +451,7 @@ export async function executeAutomationRun(
         if (generated.deliverables.length > 0) {
           try {
             const uploadResult = await uploadDeliverablesAfterGeneration({
+              userId: options.userId ?? "",
               deliverables: generated.deliverables,
               projectName: automation.name,
               workflowId: workflowRun.id,

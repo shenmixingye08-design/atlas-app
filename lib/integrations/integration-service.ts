@@ -46,16 +46,26 @@ export class IntegrationService {
     return this.repository.list(filter);
   }
 
+  listForUser(userId: string): Promise<Integration[]> {
+    return this.repository.list({ userId });
+  }
+
   getById(id: string): Promise<Integration | null> {
     return this.repository.findById(id);
+  }
+
+  getByIdForUser(id: string, userId: string): Promise<Integration | null> {
+    return this.repository
+      .list({ userId, ids: [id] })
+      .then((rows) => rows[0] ?? null);
   }
 
   getByProvider(provider: ConnectIntegrationInput["provider"]): Promise<Integration | null> {
     return this.repository.findByProvider(provider);
   }
 
-  async getCatalog(): Promise<IntegrationCatalog> {
-    const connections = await this.repository.list();
+  async getCatalogForUser(userId: string): Promise<IntegrationCatalog> {
+    const connections = await this.repository.list({ userId });
     const connectionByProvider = new Map(
       connections.map((connection) => [connection.provider, connection]),
     );
@@ -70,15 +80,28 @@ export class IntegrationService {
     return { providers, connections };
   }
 
+  /** @deprecated Prefer getCatalogForUser */
+  async getCatalog(): Promise<IntegrationCatalog> {
+    return this.getCatalogForUser("__unscoped__");
+  }
+
   /** Placeholder connect for providers without real OAuth yet. */
   async connect(input: ConnectIntegrationInput): Promise<Integration> {
+    if (!input.userId?.trim()) {
+      throw new Error("Integration.userId is required");
+    }
     if (input.provider === "google_drive") {
       throw new Error(
         "Google Drive requires OAuth. Use the authorize endpoint instead.",
       );
     }
 
-    const existing = await this.repository.findByProvider(input.provider);
+    const existing = (
+      await this.repository.list({
+        userId: input.userId,
+        provider: input.provider,
+      })
+    )[0];
     if (existing?.connected) {
       return existing;
     }
@@ -93,7 +116,11 @@ export class IntegrationService {
   async completeGoogleDriveOAuth(
     code: string,
     requestOrigin: string,
+    userId: string,
   ): Promise<Integration> {
+    if (!userId.trim()) {
+      throw new Error("Integration.userId is required");
+    }
     const token = await exchangeGoogleAuthCode(code, requestOrigin);
     const profile = await fetchGoogleUserInfo(token.access_token);
 
@@ -108,7 +135,9 @@ export class IntegrationService {
       Date.now() + token.expires_in * 1000,
     ).toISOString();
 
-    const existing = await this.repository.findByProvider("google_drive");
+    const existing = (
+      await this.repository.list({ userId, provider: "google_drive" })
+    )[0];
     if (existing) {
       await serverCredentialRepository.deleteByIntegrationId(existing.id);
       await this.repository.delete(existing.id);
@@ -117,6 +146,7 @@ export class IntegrationService {
     const providerDef = getIntegrationProvider("google_drive");
     const integration: Integration = {
       id: randomUUID(),
+      userId,
       provider: "google_drive",
       name: profile.email,
       status: "connected",
@@ -155,8 +185,8 @@ export class IntegrationService {
     return integration;
   }
 
-  async disconnect(id: string): Promise<boolean> {
-    const integration = await this.repository.findById(id);
+  async disconnectForUser(id: string, userId: string): Promise<boolean> {
+    const integration = await this.getByIdForUser(id, userId);
     if (!integration) return false;
 
     if (integration.provider === "google_drive") {
@@ -174,6 +204,11 @@ export class IntegrationService {
     return this.repository.delete(id);
   }
 
+  /** @deprecated Prefer disconnectForUser */
+  async disconnect(id: string): Promise<boolean> {
+    return this.disconnectForUser(id, "__unscoped__");
+  }
+
   async uploadDeliverables(
     input: UploadDeliverablesInput,
   ): Promise<IntegrationUploadSummary> {
@@ -183,8 +218,12 @@ export class IntegrationService {
   async dispatchDeliverable(
     request: DeliverableDispatchRequest,
     deliverable: Deliverable,
+    userId: string,
   ): Promise<DeliverableDispatchResult> {
-    const integration = await this.repository.findById(request.integrationId);
+    const integration = await this.getByIdForUser(
+      request.integrationId,
+      userId,
+    );
 
     if (!integration || !integration.connected) {
       return {
@@ -206,6 +245,7 @@ export class IntegrationService {
     }
 
     const summary = await uploadDeliverablesToIntegrations({
+      userId,
       deliverables: [deliverable],
       projectName:
         typeof request.metadata?.projectName === "string"
