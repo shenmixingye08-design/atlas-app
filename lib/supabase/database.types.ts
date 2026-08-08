@@ -1098,6 +1098,189 @@ export type Database = {
         };
         Relationships: [];
       };
+      atlas_monitor_check_runs: {
+        Row: {
+          id: string;
+          check_id: string;
+          status: string;
+          severity: string;
+          observed_at: string;
+          metrics: unknown;
+          instance_id: string | null;
+          synthetic: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          check_id: string;
+          status: string;
+          severity?: string;
+          observed_at?: string;
+          metrics?: unknown;
+          instance_id?: string | null;
+          synthetic?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          check_id?: string;
+          status?: string;
+          severity?: string;
+          observed_at?: string;
+          metrics?: unknown;
+          instance_id?: string | null;
+          synthetic?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      atlas_alert_incidents: {
+        Row: {
+          id: string;
+          fingerprint: string;
+          check_id: string;
+          severity: string;
+          status: string;
+          title: string;
+          summary: string;
+          details: unknown;
+          failure_class: string;
+          affected_users_estimate: number;
+          first_seen_at: string;
+          last_seen_at: string;
+          resolved_at: string | null;
+          last_notified_at: string | null;
+          notify_count: number;
+          continuation_count: number;
+          claim_owner: string | null;
+          claim_until: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          fingerprint: string;
+          check_id: string;
+          severity: string;
+          status?: string;
+          title: string;
+          summary: string;
+          details?: unknown;
+          failure_class?: string;
+          affected_users_estimate?: number;
+          first_seen_at?: string;
+          last_seen_at?: string;
+          resolved_at?: string | null;
+          last_notified_at?: string | null;
+          notify_count?: number;
+          continuation_count?: number;
+          claim_owner?: string | null;
+          claim_until?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          fingerprint?: string;
+          check_id?: string;
+          severity?: string;
+          status?: string;
+          title?: string;
+          summary?: string;
+          details?: unknown;
+          failure_class?: string;
+          affected_users_estimate?: number;
+          first_seen_at?: string;
+          last_seen_at?: string;
+          resolved_at?: string | null;
+          last_notified_at?: string | null;
+          notify_count?: number;
+          continuation_count?: number;
+          claim_owner?: string | null;
+          claim_until?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      atlas_alert_deliveries: {
+        Row: {
+          id: string;
+          incident_id: string;
+          delivery_kind: string;
+          channel: string;
+          status: string;
+          dedupe_key: string;
+          claimed_by: string;
+          claimed_at: string;
+          delivered_at: string | null;
+          error_code: string | null;
+          error_message: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          incident_id: string;
+          delivery_kind: string;
+          channel: string;
+          status?: string;
+          dedupe_key: string;
+          claimed_by: string;
+          claimed_at?: string;
+          delivered_at?: string | null;
+          error_code?: string | null;
+          error_message?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          incident_id?: string;
+          delivery_kind?: string;
+          channel?: string;
+          status?: string;
+          dedupe_key?: string;
+          claimed_by?: string;
+          claimed_at?: string;
+          delivered_at?: string | null;
+          error_code?: string | null;
+          error_message?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      atlas_monitor_injections: {
+        Row: {
+          id: string;
+          injection_kind: string;
+          active: boolean;
+          expires_at: string;
+          created_by: string | null;
+          metadata: unknown;
+          cleared_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          injection_kind: string;
+          active?: boolean;
+          expires_at: string;
+          created_by?: string | null;
+          metadata?: unknown;
+          cleared_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          injection_kind?: string;
+          active?: boolean;
+          expires_at?: string;
+          created_by?: string | null;
+          metadata?: unknown;
+          cleared_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -1117,6 +1300,17 @@ export type Database = {
       atlas_claim_x_post_jobs: {
         Args: Record<string, unknown>;
         Returns: unknown;
+      };
+      atlas_claim_alert_delivery: {
+        Args: {
+          p_id: string;
+          p_incident_id: string;
+          p_delivery_kind: string;
+          p_channel: string;
+          p_dedupe_key: string;
+          p_claimed_by: string;
+        };
+        Returns: Database["public"]["Tables"]["atlas_alert_deliveries"]["Row"] | null;
       };
     };
     Enums: Record<string, never>;
