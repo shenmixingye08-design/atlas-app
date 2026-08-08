@@ -33,14 +33,20 @@ jobs:
           ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
         run: |
           set -euo pipefail
-          if [ -z "${CRON_SECRET:-}" ]; then
-            echo "::error::CRON_SECRET secret is required for health probe"
-            exit 1
-          fi
+          # Read-only readiness is public (boolean/count flags only).
+          # CRON_SECRET is optional; used when present so Actions can also
+          # exercise the authenticated path without failing when the secret
+          # is not configured in GitHub.
           BASE_URL="${ATLAS_APP_URL:-https://atlasapp.jp}"
           BASE_URL="${BASE_URL%/}"
+          AUTH_ARGS=()
+          if [ -n "${CRON_SECRET:-}" ]; then
+            AUTH_ARGS=(-H "Authorization: Bearer ${CRON_SECRET}")
+          else
+            echo "::warning::CRON_SECRET not set in GitHub Actions — using public read-only probe"
+          fi
           curl -fsS \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${AUTH_ARGS[@]}" \
             -H "Cache-Control: no-store" \
             "${BASE_URL}/api/health/oauth-encryption?force=1" \
             -o /tmp/oauth-encryption.json
