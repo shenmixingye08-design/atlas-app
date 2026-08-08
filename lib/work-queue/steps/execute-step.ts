@@ -134,17 +134,40 @@ export async function executeWorkStep(input: {
           errorMessage: "missing artifact from previous step",
         };
       }
-      // Persist a storage receipt next to the artifact (local durable proof).
+      // Persist a storage receipt next to the artifact (local durable proof),
+      // gated by P1-04 durable side-effect claim (at-most-once).
       const receipt = `${artifactPath}.uploaded.json`;
-      writeFileSync(
-        receipt,
-        JSON.stringify({
-          artifactId,
-          uploadedAt: new Date().toISOString(),
-          ownerId: job.ownerId,
-          jobId: job.jobId,
-        }),
-        "utf8",
+      const { executeIdempotentSideEffect } = await import(
+        "@/lib/side-effects/execute"
+      );
+      await executeIdempotentSideEffect(
+        {
+          userId: job.ownerId,
+          provider: "storage",
+          actionType: "upload",
+          destination: artifactPath,
+          automationId: job.automationId,
+          runId: job.runId,
+          occurrenceKey: job.occurrenceKey,
+          discriminator: artifactId,
+        },
+        async () => {
+          writeFileSync(
+            receipt,
+            JSON.stringify({
+              artifactId,
+              uploadedAt: new Date().toISOString(),
+              ownerId: job.ownerId,
+              jobId: job.jobId,
+            }),
+            "utf8",
+          );
+          return {
+            providerResourceId: artifactId,
+            result: { receipt },
+            evidence: { provider: "storage", jobId: job.jobId },
+          };
+        },
       );
       return {
         ok: true,
@@ -180,41 +203,75 @@ export async function executeWorkStep(input: {
         const { notifyWorkCompleted } = await import(
           "@/lib/notifications/emitters"
         );
+        const { executeIdempotentSideEffect } = await import(
+          "@/lib/side-effects/execute"
+        );
         const artifactId = input.previousOutputs.artifactId as string | undefined;
-        const record = await notifyWorkCompleted(job.ownerId, {
-          title: job.payload.automationName ?? "仕事が完了しました",
-          message: "設定した時刻の仕事を完了しました。",
-          deliverableId: artifactId ?? null,
-          relatedTaskId: job.automationId,
-          requestId: job.runId,
-        });
-        if (!record) {
-          // Preferences disabled or createNotification returned null — fail closed.
-          // Offline/unit: durable local receipt counts as evidence only when
-          // ATLAS_WORK_QUEUE_OFFLINE_NOTIFY=1 (tests / local without Clerk user).
-          if (process.env.ATLAS_WORK_QUEUE_OFFLINE_NOTIFY === "1") {
-            const receiptPath = join(
-              process.cwd(),
-              ".data",
-              "work-queue-artifacts",
-              `${job.jobId}.notify.json`,
-            );
-            mkdirSync(join(process.cwd(), ".data", "work-queue-artifacts"), {
-              recursive: true,
+        type NotifySideEffectResult = {
+          record: Awaited<ReturnType<typeof notifyWorkCompleted>>;
+          notifyReceipt: string | null;
+        };
+        const sideEffect = await executeIdempotentSideEffect<NotifySideEffectResult>(
+          {
+            userId: job.ownerId,
+            provider: "notification",
+            actionType: "notify",
+            destination: "work_queue_complete",
+            automationId: job.automationId,
+            runId: job.runId,
+            occurrenceKey: job.occurrenceKey,
+            discriminator: "notify_complete",
+          },
+          async () => {
+            const created = await notifyWorkCompleted(job.ownerId, {
+              title: job.payload.automationName ?? "仕事が完了しました",
+              message: "設定した時刻の仕事を完了しました。",
+              deliverableId: artifactId ?? null,
+              relatedTaskId: job.automationId,
+              requestId: job.runId,
             });
-            writeFileSync(
-              receiptPath,
-              JSON.stringify({
-                jobId: job.jobId,
-                notifiedAt: new Date().toISOString(),
-                offline: true,
-              }),
-              "utf8",
-            );
+            if (!created?.notificationId) {
+              if (process.env.ATLAS_WORK_QUEUE_OFFLINE_NOTIFY === "1") {
+                const receiptPath = join(
+                  process.cwd(),
+                  ".data",
+                  "work-queue-artifacts",
+                  `${job.jobId}.notify.json`,
+                );
+                mkdirSync(join(process.cwd(), ".data", "work-queue-artifacts"), {
+                  recursive: true,
+                });
+                writeFileSync(
+                  receiptPath,
+                  JSON.stringify({
+                    jobId: job.jobId,
+                    notifiedAt: new Date().toISOString(),
+                    offline: true,
+                  }),
+                  "utf8",
+                );
+                return {
+                  providerResourceId: `offline_${job.jobId}`,
+                  result: { record: null, notifyReceipt: receiptPath },
+                  evidence: { provider: "notification", offline: true },
+                };
+              }
+              throw new Error("notification_create_failed");
+            }
+            return {
+              providerResourceId: created.notificationId,
+              result: { record: created, notifyReceipt: null },
+              evidence: { provider: "notification", jobId: job.jobId },
+            };
+          },
+        );
+        const record = sideEffect.result.record;
+        if (!record) {
+          if (sideEffect.result.notifyReceipt) {
             return {
               ok: true,
               externalApplied: true,
-              outputBindings: { notifyReceipt: receiptPath },
+              outputBindings: { notifyReceipt: sideEffect.result.notifyReceipt },
             };
           }
           return {

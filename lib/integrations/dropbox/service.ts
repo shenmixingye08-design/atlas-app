@@ -131,13 +131,41 @@ export async function uploadDropboxFileForUser(input: {
   const safeName = input.fileName.replace(/[\\/]/g, "-");
   const path = `${parent}/${safeName}`.replace(/\/+/g, "/");
 
-  const file = await uploadDropboxFile({
-    accessToken: access.accessToken,
-    path: path.startsWith("/") ? path : `/${path}`,
-    buffer: input.buffer,
-  });
+  const targetPath = path.startsWith("/") ? path : `/${path}`;
+  const { createHash } = await import("node:crypto");
+  const { executeIdempotentSideEffect } = await import(
+    "@/lib/side-effects/execute"
+  );
+  const contentHash = createHash("sha256")
+    .update(input.buffer)
+    .digest("hex")
+    .slice(0, 24);
+  const sideEffect = await executeIdempotentSideEffect(
+    {
+      userId: input.userId,
+      provider: "dropbox",
+      actionType: "upload",
+      destination: targetPath,
+      automationId: null,
+      runId: null,
+      occurrenceKey: null,
+      discriminator: contentHash,
+    },
+    async () => {
+      const file = await uploadDropboxFile({
+        accessToken: access.accessToken,
+        path: targetPath,
+        buffer: input.buffer,
+      });
+      return {
+        providerResourceId: file.id,
+        result: { file },
+        evidence: { provider: "dropbox", path: targetPath, contentHash },
+      };
+    },
+  );
 
-  return { status: "ready", file };
+  return { status: "ready", file: sideEffect.result.file };
 }
 
 export async function deleteDropboxFileForUser(input: {

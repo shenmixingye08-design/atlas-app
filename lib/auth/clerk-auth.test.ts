@@ -142,6 +142,9 @@ describe("auth route matchers", () => {
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
       "/api/health/automation-v2-db(.*)",
     );
+    expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
+      "/api/health/side-effect-idempotency(.*)",
+    );
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain("/api/health/vision(.*)");
     expect(ATLAS_PROTECTED_PAGE_MATCHERS).toContain("/owner(.*)");
     expect(ATLAS_PROTECTED_PAGE_MATCHERS).toContain("/projects(.*)");

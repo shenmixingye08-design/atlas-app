@@ -196,10 +196,37 @@ export async function createCalendarEventForUser(input: {
   const access = await requireCalendarAccess(input);
   if (isGateFailure(access)) return access;
 
-  const event = await createGoogleCalendarEvent({
-    accessToken: access.accessToken,
-    event: input.event,
-  });
+  const { executeIdempotentSideEffect } = await import(
+    "@/lib/side-effects/execute"
+  );
+  const sideEffect = await executeIdempotentSideEffect(
+    {
+      userId: input.userId,
+      provider: "google_calendar",
+      actionType: "create_event",
+      destination: "primary",
+      automationId: null,
+      runId: null,
+      occurrenceKey: null,
+      discriminator: [
+        input.event.title ?? "",
+        input.event.startAt ?? "",
+        input.event.endAt ?? "",
+      ].join("|"),
+    },
+    async () => {
+      const event = await createGoogleCalendarEvent({
+        accessToken: access.accessToken,
+        event: input.event,
+      });
+      return {
+        providerResourceId: event.id,
+        result: { event },
+        evidence: { provider: "google_calendar" },
+      };
+    },
+  );
+  const event = sideEffect.result.event;
 
   if (
     typeof input.event.remindMinutesBefore === "number" &&

@@ -129,19 +129,50 @@ async function invokeNotifyStep(input: {
       input.step.configuration.message.trim()) ||
     `「${input.automationName}」の通知手順を実行しました。`;
 
-  const record = await createNotification({
-    audience: "user",
-    userId: input.userId,
-    type: "automation",
-    title,
-    message,
-    relatedTaskId: input.runId,
-    relatedService: "atlas",
-    actionUrl: `/automations/runs/${encodeURIComponent(input.runId)}`,
-    targetType: "automation_run",
-    targetId: input.runId,
-    requestId: input.runId,
-  });
+  const { executeIdempotentSideEffect } = await import(
+    "@/lib/side-effects/execute"
+  );
+  let record: Awaited<ReturnType<typeof createNotification>> = null;
+  try {
+    const sideEffect = await executeIdempotentSideEffect(
+      {
+        userId: input.userId,
+        provider: "notification",
+        actionType: "notify",
+        destination: "in_app",
+        automationId: null,
+        runId: input.runId,
+        occurrenceKey: input.runId,
+        discriminator: input.step.id,
+      },
+      async () => {
+        const created = await createNotification({
+          audience: "user",
+          userId: input.userId,
+          type: "automation",
+          title,
+          message,
+          relatedTaskId: input.runId,
+          relatedService: "atlas",
+          actionUrl: `/automations/runs/${encodeURIComponent(input.runId)}`,
+          targetType: "automation_run",
+          targetId: input.runId,
+          requestId: input.runId,
+        });
+        if (!created?.notificationId) {
+          throw new Error("notification_create_failed");
+        }
+        return {
+          providerResourceId: created.notificationId,
+          result: { record: created },
+          evidence: { provider: "notification", stepId: input.step.id },
+        };
+      },
+    );
+    record = sideEffect.result.record;
+  } catch {
+    record = null;
+  }
 
   if (!record?.notificationId) {
     return {
