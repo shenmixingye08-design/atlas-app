@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { getRecentGoogleDriveFilesForUser } from "@/lib/integrations/google/drive/service";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function GET(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -32,7 +33,7 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to load recent Drive files";
+      clientSafeMessage(error, "Failed to load recent Drive files");
     recordGoogleAuthFailure(message, "google_drive_recent");
     return Response.json({ status: "error", message }, { status: 500 });
   }

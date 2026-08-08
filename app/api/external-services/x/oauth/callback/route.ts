@@ -6,6 +6,7 @@ import {
 import { X_OAUTH_USER_ERROR } from "@/lib/integrations/x/errors";
 import { recordXAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
 import { notifyIntegrationError } from "@/lib/notifications/emitters";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 function resolveOrigin(request: Request): string {
   const host =
@@ -74,7 +75,7 @@ export async function GET(request: Request): Promise<Response> {
       username: connection.account?.username ?? connection.account?.email ?? "",
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : X_OAUTH_USER_ERROR;
+    const message = clientSafeMessage(error, X_OAUTH_USER_ERROR);
     // Never log tokens / auth codes — message only.
     console.error("[X OAuth callback]", message);
     markXConnectionError(userId, message);

@@ -9,6 +9,7 @@ import type {
   CreatePersonalMemoryInput,
   MemoryStatus,
 } from "@/lib/personal-memory/types";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function GET(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -41,7 +42,7 @@ export async function POST(request: Request): Promise<Response> {
     });
     return Response.json({ memory }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "create_failed";
+    const message = clientSafeMessage(error, "create_failed");
     return Response.json({ error: message }, { status: 400 });
   }
 }

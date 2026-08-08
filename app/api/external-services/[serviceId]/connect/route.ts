@@ -8,6 +8,7 @@ import {
   recordDropboxIntegrationUsage,
   recordGoogleIntegrationUsage,
 } from "@/lib/owner/popularity-ranking/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type RouteContext = {
   params: Promise<{ serviceId: string }>;
@@ -101,7 +102,7 @@ export async function POST(
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Connection failed";
+      clientSafeMessage(error, "Connection failed");
     const status = message.includes("ご利用いただけません") ? 403 : 500;
     return Response.json({ error: message }, { status });
   }

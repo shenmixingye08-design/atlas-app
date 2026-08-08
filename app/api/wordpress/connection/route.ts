@@ -11,6 +11,7 @@ import {
 } from "@/lib/integrations/wordpress/connection-service";
 import { checkWordPressConnectionForUser } from "@/lib/integrations/wordpress/connection-status";
 import type { WordPressConnectInput } from "@/lib/integrations/wordpress/types";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 /**
  * GET — connection status (no credentials).
@@ -109,7 +110,7 @@ export async function POST(request: Request): Promise<Response> {
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "WordPress接続に失敗しました";
+      clientSafeMessage(error, "WordPress接続に失敗しました");
     const status =
       message.includes("ご利用いただけません") || message.includes("プラン")
         ? 403
@@ -134,9 +135,7 @@ export async function DELETE(): Promise<Response> {
     return Response.json(connection);
   } catch (error) {
     const message =
-      error instanceof Error
-        ? error.message
-        : "WordPress連携の解除に失敗しました";
+      clientSafeMessage(error, "WordPress連携の解除に失敗しました");
     return Response.json({ error: message }, { status: 500 });
   }
 }

@@ -5,6 +5,7 @@ import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import { buildXAuthorizeUrl } from "@/lib/integrations/x/oauth";
 import { X_OAUTH_USER_ERROR } from "@/lib/integrations/x/errors";
 import { recordXAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 function resolveOrigin(request: Request): string {
   const host =
@@ -47,7 +48,7 @@ export async function GET(request: Request): Promise<Response> {
     const authorizeUrl = buildXAuthorizeUrl(origin, userId);
     return Response.redirect(authorizeUrl, 302);
   } catch (error) {
-    const message = error instanceof Error ? error.message : X_OAUTH_USER_ERROR;
+    const message = clientSafeMessage(error, X_OAUTH_USER_ERROR);
     recordXAuthFailure(message, "x_oauth_authorize");
     return redirectToSettings(origin, { x_error: "1" });
   }

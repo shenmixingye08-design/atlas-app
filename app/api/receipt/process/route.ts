@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { prepareMediaImages } from "@/lib/media-pipelines";
 import { RECEIPT_USER_ERROR } from "@/lib/receipt/errors";
 import { processReceiptImages } from "@/lib/receipt";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export const runtime = "nodejs";
 
@@ -71,7 +72,7 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     // Never leak API keys / provider internals to the client.
     console.error("[receipt/process] unexpected failure", {
-      message: error instanceof Error ? error.message : "unknown",
+      message: clientSafeMessage(error, "unknown"),
     });
     return Response.json(
       {

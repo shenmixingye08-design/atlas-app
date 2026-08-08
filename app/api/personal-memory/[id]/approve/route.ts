@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 
 import { approveCandidate } from "@/lib/personal-memory/service";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -29,7 +30,7 @@ export async function POST(
     const memory = await approveCandidate(userId, id, { scope, automationId });
     return Response.json({ memory });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "approve_failed";
+    const message = clientSafeMessage(error, "approve_failed");
     return Response.json({ error: message }, { status: 400 });
   }
 }

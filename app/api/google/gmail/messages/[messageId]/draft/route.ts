@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { saveGmailDraftForUser } from "@/lib/integrations/google/gmail/service";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type Params = { params: Promise<{ messageId: string }> };
 
@@ -56,7 +57,7 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to save Gmail draft";
+      clientSafeMessage(error, "Failed to save Gmail draft");
     recordGoogleAuthFailure(message, "google_gmail_draft");
     return Response.json({ message: "下書きの保存に失敗しました" }, { status: 500 });
   }

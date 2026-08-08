@@ -6,6 +6,7 @@ import {
   parseGmailFilterParam,
 } from "@/lib/integrations/google/gmail/service";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function GET(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -39,7 +40,7 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to load Gmail messages";
+      clientSafeMessage(error, "Failed to load Gmail messages");
 
     console.error("[Google Gmail API] Failed to load messages:", error);
 

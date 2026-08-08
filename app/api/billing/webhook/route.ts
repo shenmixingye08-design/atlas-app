@@ -1,6 +1,7 @@
 import { processStripeWebhookRequest } from "@/lib/billing/stripe/webhook";
 import { recordWebhookFailure } from "@/lib/owner/error-monitoring/telemetry";
 import { recordServiceHealthSuccess } from "@/lib/owner/system-status/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function POST(request: Request): Promise<Response> {
   const rawBody = await request.text();
@@ -15,7 +16,7 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     // Return 5xx so Stripe retries on unexpected failures.
     const message =
-      error instanceof Error ? error.message : "Webhook processing failed";
+      clientSafeMessage(error, "Webhook processing failed");
     recordWebhookFailure(message, "billing_webhook");
     console.error("[billing:webhook] route exception:", message);
     return Response.json({ error: "Webhook processing failed" }, { status: 500 });

@@ -11,6 +11,7 @@ import {
   recoveryActionsForFailure,
   userMessageForFailure,
 } from "@/lib/deliverables/recovery-messages";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -130,7 +131,7 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     console.error("[Atlas /api/deliverables/resume]", error);
     const message =
-      error instanceof Error ? error.message : "resume_failed";
+      clientSafeMessage(error, "resume_failed");
     await failWordJobIfStillRunning(jobId, resumeFrom, message);
     return Response.json(
       {

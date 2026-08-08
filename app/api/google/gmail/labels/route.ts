@@ -6,6 +6,7 @@ import {
   listGmailLabelsForUser,
 } from "@/lib/integrations/google/gmail/service";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function GET(): Promise<Response> {
   const { userId } = await auth();
@@ -24,7 +25,7 @@ export async function GET(): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to list Gmail labels";
+      clientSafeMessage(error, "Failed to list Gmail labels");
     recordGoogleAuthFailure(message, "google_gmail_labels");
     return Response.json({ message }, { status: 500 });
   }
@@ -55,7 +56,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to create Gmail label";
+      clientSafeMessage(error, "Failed to create Gmail label");
     recordGoogleAuthFailure(message, "google_gmail_create_label");
     return Response.json({ message }, { status: 500 });
   }

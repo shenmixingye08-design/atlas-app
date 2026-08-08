@@ -11,6 +11,7 @@ import {
 } from "@/lib/feature-flags/guards";
 import { recordOpenAiFailureIfApplicable } from "@/lib/owner/error-monitoring/telemetry";
 import { enforceAiRateLimit } from "@/lib/http/enforce-ai-rate-limit";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type RequestBody = {
   assignment?: unknown;
@@ -172,7 +173,7 @@ export async function POST(request: Request): Promise<Response> {
         action: "request_create",
         targetId: null,
         result: "failure",
-        reason: error instanceof Error ? error.message : "request failed",
+        reason: clientSafeMessage(error, "request failed"),
       });
     } catch {
       // ignore

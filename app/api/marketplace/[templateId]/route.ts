@@ -1,6 +1,7 @@
 import { requireAuthenticatedUserId } from "@/lib/auth/require-authenticated-user";
 import { findCompanyTemplate } from "@/lib/company-templates/registry";
 import { workflowMarketplaceService } from "@/lib/workflow-marketplace/marketplace-service";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type RouteContext = {
   params: Promise<{ templateId: string }>;
@@ -47,7 +48,7 @@ export async function DELETE(
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to remove package";
+      clientSafeMessage(error, "Failed to remove package");
     return Response.json({ error: message }, { status: 400 });
   }
 }

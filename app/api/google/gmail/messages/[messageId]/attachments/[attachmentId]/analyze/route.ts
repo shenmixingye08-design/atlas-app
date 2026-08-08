@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { analyzePdfAttachmentForUser } from "@/lib/integrations/google/gmail/service";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type Params = {
   params: Promise<{ messageId: string; attachmentId: string }>;
@@ -39,7 +40,7 @@ export async function POST(_request: Request, { params }: Params): Promise<Respo
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to analyze PDF";
+      clientSafeMessage(error, "Failed to analyze PDF");
     recordGoogleAuthFailure(message, "google_gmail_pdf_analyze");
     return Response.json({ message: "PDF解析に失敗しました" }, { status: 500 });
   }

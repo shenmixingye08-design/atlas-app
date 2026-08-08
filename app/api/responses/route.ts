@@ -8,6 +8,7 @@ import {
 } from "@/lib/openai";
 import { recordOpenAiFailureIfApplicable, isOpenAiRelatedError } from "@/lib/owner/error-monitoring/telemetry";
 import { enforceAiRateLimit } from "@/lib/http/enforce-ai-rate-limit";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type RequestBody = {
   input?: unknown;
@@ -127,7 +128,7 @@ function handleError(error: unknown): Response {
         kind: "api_500",
         targetId: "api",
         message:
-          error instanceof Error ? error.message : "Responses API 500",
+          clientSafeMessage(error, "Responses API 500"),
         critical: true,
         source: "responses",
       });

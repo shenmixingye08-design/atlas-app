@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { createGmailReplyDraft } from "@/lib/integrations/google/gmail/ai-assistant";
 import { getGmailMessageForUser } from "@/lib/integrations/google/gmail/service";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type RouteContext = {
   params: Promise<{ messageId: string }>;
@@ -61,7 +62,7 @@ export async function POST(
     return Response.json({ draft });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to create reply draft";
+      clientSafeMessage(error, "Failed to create reply draft");
     return Response.json({ message }, { status: 500 });
   }
 }

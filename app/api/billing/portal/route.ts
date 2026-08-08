@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { resolveUserSubscriptionDurable } from "@/lib/billing/subscriptions/store";
 import { createBillingPortalSession } from "@/lib/billing/stripe/checkout";
 import { assertStripeSafeForProduction } from "@/lib/billing/stripe/production-guard";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,7 +69,7 @@ export async function POST(request: Request): Promise<Response> {
       assertStripeSafeForProduction();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Stripe is not configured";
+        clientSafeMessage(error, "Stripe is not configured");
       console.error("[billing/portal] production guard failed", { message });
       await safeRecordStripeFailure(message, "billing_portal");
       return Response.json(
@@ -95,7 +96,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(portal);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to open billing portal";
+      clientSafeMessage(error, "Failed to open billing portal");
     console.error("[billing/portal] failed", { message });
     await safeRecordStripeFailure(message, "billing_portal");
     return Response.json(

@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { archiveMessageForUser } from "@/lib/integrations/google/gmail/service";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type Params = { params: Promise<{ messageId: string }> };
 
@@ -24,7 +25,7 @@ export async function POST(_request: Request, { params }: Params): Promise<Respo
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to archive message";
+      clientSafeMessage(error, "Failed to archive message");
     recordGoogleAuthFailure(message, "google_gmail_archive");
     return Response.json({ message: "アーカイブに失敗しました" }, { status: 500 });
   }

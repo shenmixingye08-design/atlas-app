@@ -18,6 +18,7 @@ import {
   resolveOrchestrationFeatureFlag,
 } from "@/lib/feature-flags/guards";
 import { recordOpenAiFailureIfApplicable } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 function handleError(error: unknown): Response {
   if (
@@ -161,7 +162,7 @@ export async function POST(request: Request): Promise<Response> {
           action: "commander_run",
           targetId: null,
           result: "failure",
-          reason: error instanceof Error ? error.message : "commander failed",
+          reason: clientSafeMessage(error, "commander failed"),
         });
         const { recordMonitoringIncident } = await import(
           "@/lib/owner/monitoring"
@@ -170,7 +171,7 @@ export async function POST(request: Request): Promise<Response> {
           kind: "commander_failure",
           targetId: "commander",
           message:
-            error instanceof Error ? error.message : "commander failed",
+            clientSafeMessage(error, "commander failed"),
           userId: userId ?? null,
           critical: true,
           source: "commander",

@@ -6,6 +6,7 @@ import { saveDeliverableToGoogleDriveForUser } from "@/lib/integrations/google/d
 import type { DriveCategoryId } from "@/lib/integrations/google/drive/types";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
 import { notifyDriveSaveComplete } from "@/lib/notifications/emitters";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type RequestBody = {
   deliverableId?: unknown;
@@ -79,7 +80,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to save to Google Drive";
+      clientSafeMessage(error, "Failed to save to Google Drive");
     recordGoogleAuthFailure(message, "google_drive_save");
     return Response.json({ status: "error", message }, { status: 500 });
   }

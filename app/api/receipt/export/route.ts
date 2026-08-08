@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 
 import { exportHouseholdExcel } from "@/lib/receipt";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function GET(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -24,7 +25,7 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json(
       {
         error:
-          error instanceof Error ? error.message : "Excel出力に失敗しました",
+          clientSafeMessage(error, "Excel出力に失敗しました"),
       },
       { status: 500 },
     );

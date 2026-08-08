@@ -11,6 +11,7 @@ import { googleServiceDefinition } from "@/lib/integrations/google/definition";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
 import { notifyIntegrationError } from "@/lib/notifications/emitters";
 import { recordGoogleIntegrationUsage } from "@/lib/owner/popularity-ranking/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 function resolveOrigin(request: Request): string {
   const host =
@@ -105,10 +106,10 @@ export async function GET(request: Request): Promise<Response> {
     safeOAuthLog(
       "error",
       "[Google Account OAuth callback]",
-      error instanceof Error ? error.message : "oauth_callback_failed",
+      clientSafeMessage(error, "oauth_callback_failed"),
     );
     const message =
-      error instanceof Error ? error.message : GOOGLE_OAUTH_USER_ERROR;
+      clientSafeMessage(error, GOOGLE_OAUTH_USER_ERROR);
     markGoogleConnectionError(userId, message);
     const { recordAuditLogSafe, auditRequestContext } = await import(
       "@/lib/owner/audit-log"

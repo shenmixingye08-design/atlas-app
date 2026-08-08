@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { uploadBackupToGoogleDriveForUser } from "@/lib/integrations/google/drive/service";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type RequestBody = {
   fileName?: unknown;
@@ -73,7 +74,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to upload backup";
+      clientSafeMessage(error, "Failed to upload backup");
     recordGoogleAuthFailure(message, "google_drive_backup");
     return Response.json({ status: "error", message }, { status: 500 });
   }

@@ -7,6 +7,7 @@ import {
   purgeAccount,
   requestAccountWithdrawal,
 } from "@/lib/account-deletion";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function GET(): Promise<Response> {
   const { userId } = await auth();
@@ -126,7 +127,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Account deletion failed";
+      clientSafeMessage(error, "Account deletion failed");
     const { recordAuditLogSafe, auditRequestContext } = await import(
       "@/lib/owner/audit-log"
     );

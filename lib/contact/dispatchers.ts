@@ -1,6 +1,15 @@
+import { createHash } from "crypto";
+
 import { getContactCategoryLabel } from "./categories";
 import { saveContactRecord } from "./store";
 import type { ContactDispatcher, ContactRecord } from "./types";
+
+function emailFingerprint(email: string): string {
+  return createHash("sha256")
+    .update(email.trim().toLowerCase())
+    .digest("hex")
+    .slice(0, 12);
+}
 
 /** Persists submissions in the in-memory store. */
 export const storeContactDispatcher: ContactDispatcher = {
@@ -15,11 +24,12 @@ export const storeContactDispatcher: ContactDispatcher = {
 export const logContactDispatcher: ContactDispatcher = {
   name: "log",
   async dispatch(record) {
+    // P0-04: never log raw email / subject / message body (client-safe module).
     console.info("[ATLAS contact]", {
       id: record.id,
       category: getContactCategoryLabel(record.category),
-      email: record.email,
-      subject: record.subject,
+      emailFingerprint: emailFingerprint(record.email),
+      subjectLength: record.subject?.length ?? 0,
       createdAt: record.createdAt,
     });
     return { channel: "log", ok: true };
@@ -43,7 +53,9 @@ export async function dispatchContactRecord(
       try {
         await dispatcher.dispatch(record);
       } catch (error) {
-        console.error(`[ATLAS contact] ${dispatcher.name} dispatch failed`, error);
+        console.error(`[ATLAS contact] ${dispatcher.name} dispatch failed`, {
+          name: error instanceof Error ? error.name : typeof error,
+        });
       }
     }),
   );

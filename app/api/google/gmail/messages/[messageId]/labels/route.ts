@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { addLabelToMessageForUser } from "@/lib/integrations/google/gmail/service";
 import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type Params = { params: Promise<{ messageId: string }> };
 
@@ -40,7 +41,7 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to add label";
+      clientSafeMessage(error, "Failed to add label");
     recordGoogleAuthFailure(message, "google_gmail_add_label");
     return Response.json({ message: "ラベル追加に失敗しました" }, { status: 500 });
   }

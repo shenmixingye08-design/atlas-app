@@ -9,6 +9,7 @@ import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context
 import { validateAutomationFeatureAccess } from "@/lib/feature-flags/guards";
 import { auth } from "@clerk/nextjs/server";
 import { ui } from "@/lib/i18n";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 function parseCreateBody(body: unknown): CreateAutomationInput | { error: string } {
   if (typeof body !== "object" || body === null) {
@@ -88,7 +89,7 @@ function automationsStoreFailureResponse(error: unknown, userId: string): Respon
     diagnosticId,
     code,
     userId,
-    message: error instanceof Error ? error.message : "unknown",
+    message: clientSafeMessage(error, "unknown"),
   });
 
   // User-facing body stays generic — details stay in server logs only.

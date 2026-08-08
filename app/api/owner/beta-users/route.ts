@@ -4,6 +4,7 @@ import {
   getBetaUserManagementSnapshot,
   parseBetaUserPatchBody,
 } from "@/lib/owner/beta-users/service";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function GET(): Promise<Response> {
   await requireAtlasOwner();
@@ -29,7 +30,7 @@ export async function PATCH(request: Request): Promise<Response> {
     return Response.json(applyBetaUserPatch(parsed));
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to update beta user";
+      clientSafeMessage(error, "Failed to update beta user");
     return Response.json({ error: message }, { status: 400 });
   }
 }

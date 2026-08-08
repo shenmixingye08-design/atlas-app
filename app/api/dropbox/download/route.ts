@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { downloadDropboxFileForUser } from "@/lib/integrations/dropbox/service";
 import { recordDropboxAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function GET(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -50,7 +51,7 @@ export async function GET(request: Request): Promise<Response> {
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to download Dropbox file";
+      clientSafeMessage(error, "Failed to download Dropbox file");
     recordDropboxAuthFailure(message, "dropbox_download");
     return Response.json({ status: "error", message }, { status: 500 });
   }

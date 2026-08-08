@@ -9,6 +9,7 @@ import {
 import { dropboxServiceDefinition } from "@/lib/integrations/dropbox/definition";
 import { recordDropboxAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
 import { notifyIntegrationError } from "@/lib/notifications/emitters";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 function resolveOrigin(request: Request): string {
   const host =
@@ -96,10 +97,10 @@ export async function GET(request: Request): Promise<Response> {
     safeOAuthLog(
       "error",
       "[Dropbox OAuth callback]",
-      error instanceof Error ? error.message : "oauth_callback_failed",
+      clientSafeMessage(error, "oauth_callback_failed"),
     );
     const message =
-      error instanceof Error ? error.message : DROPBOX_OAUTH_USER_ERROR;
+      clientSafeMessage(error, DROPBOX_OAUTH_USER_ERROR);
     markDropboxConnectionError(userId, message);
     const { recordAuditLogSafe, auditRequestContext } = await import(
       "@/lib/owner/audit-log"

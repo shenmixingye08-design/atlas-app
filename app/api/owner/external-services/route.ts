@@ -4,6 +4,7 @@ import {
   parseOwnerExternalServiceReconnectBody,
   reconnectOwnerExternalService,
 } from "@/lib/owner/external-services";
+import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 function resolveOrigin(request: Request): string {
   const host =
@@ -45,7 +46,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Reconnect failed";
+      clientSafeMessage(error, "Reconnect failed");
     const status =
       message === "Unauthorized"
         ? 401
