@@ -27,3 +27,7 @@ export {
   type DecodedTokenPair,
   type StoredTokenPair,
 } from "./token-codec";
+export {
+  probeOAuthTokenEncryptionSchema,
+  type OAuthSchemaProbe,
+} from "./schema-probe";
