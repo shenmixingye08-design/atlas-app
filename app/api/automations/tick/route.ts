@@ -159,6 +159,28 @@ export async function POST(request: Request): Promise<Response> {
       });
     }
 
+    // P1-07: external monitor cycle after tick success is durable-recorded.
+    let externalMonitor = {
+      ok: false,
+      openIncidents: 0,
+      deliveriesSent: 0,
+      resolvedThisCycle: 0,
+    };
+    try {
+      const { runExternalMonitorCycle } = await import(
+        "@/lib/external-monitor"
+      );
+      const cycle = await runExternalMonitorCycle();
+      externalMonitor = {
+        ok: cycle.ok,
+        openIncidents: cycle.openIncidents,
+        deliveriesSent: cycle.deliveriesSent,
+        resolvedThisCycle: cycle.resolvedThisCycle,
+      };
+    } catch (error) {
+      console.warn("[automation tick] external monitor skipped:", error);
+    }
+
     return Response.json({
       processed: workQueue.worker.completed + workQueue.worker.failed,
       workQueue,
@@ -174,6 +196,7 @@ export async function POST(request: Request): Promise<Response> {
       },
       dailyReports,
       notificationRetries,
+      externalMonitor,
     });
   } catch (error) {
     const message =

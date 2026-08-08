@@ -60,6 +60,9 @@ jobs:
       - name: P1-09 reliability fabrication ban
         run: node scripts/ci/p1-09-reliability-fabrication-ban.mjs
 
+      - name: P1-07 external monitor / alert integrity ban
+        run: node scripts/ci/p1-07-external-monitor-ban.mjs
+
       - name: P0-5 durable X scheduled posts ban
         run: node scripts/ci/p0-5-x-scheduled-posts-ban.mjs
 
