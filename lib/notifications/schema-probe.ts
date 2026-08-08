@@ -134,6 +134,8 @@ export async function probeNotificationRetrySchema(input?: {
 
   let tables = await probeTables(client);
   const missing = !tables.inboxTableOk || !tables.dlqTableOk;
+  const tableErrorBeforeApply =
+    tables.inboxError ?? tables.dlqError ?? null;
 
   if (missing && !input?.apply) {
     const applyResult = await applyMigrationSql({
@@ -144,7 +146,10 @@ export async function probeNotificationRetrySchema(input?: {
     appliedViaManagementApi =
       applyResult.appliedViaManagementApi || appliedViaManagementApi;
     envPresence = applyResult.envPresence;
-    if (applyResult.error) error = applyResult.error;
+    // Prefer PostgREST table error over apply infra error for Owner guidance.
+    if (applyResult.error && !tableErrorBeforeApply) {
+      error = applyResult.error;
+    }
     tables = await probeTables(client);
   } else if (input?.apply) {
     tables = await probeTables(client);
@@ -153,9 +158,10 @@ export async function probeNotificationRetrySchema(input?: {
   const tablesOk = tables.inboxTableOk && tables.dlqTableOk;
   if (!tablesOk) {
     error =
-      error ??
       tables.inboxError ??
       tables.dlqError ??
+      tableErrorBeforeApply ??
+      error ??
       "notification_tables_unavailable";
   }
 
