@@ -245,6 +245,40 @@ describe("P1-02 notification retry/DLQ → automation tick", () => {
     expect(src).toContain("notificationRetries");
   });
 
+  it("8b: forceDeliveryFailureForOwner at max retries → DLQ (prod smoke path)", async () => {
+    const n = await seedRetry({ userId: USER_A, requestId: "req_force_dlq" });
+    await updateDurableDeliveryState({
+      notificationId: n.notificationId,
+      ownerId: USER_A,
+      status: "retry_scheduled",
+      retryCount: 5,
+      nextRetryAt: new Date(Date.now() - 1000).toISOString(),
+    });
+    // Soft-success LINE would otherwise mark delivered; force failure like prod smoke.
+    vi.mocked(deliverLineWithAck).mockImplementation(async () => ({
+      ok: true,
+      attempts: 1,
+    }));
+    vi.mocked(deliverWebPushWithAck).mockImplementation(async () => ({
+      ok: true,
+      attempts: 1,
+    }));
+    const result = await processDurableNotificationRetries({
+      nowMs: Date.now(),
+      leaseOwner: "force_dlq",
+      forceDeliveryFailureForOwner: USER_A,
+    });
+    expect(result.deadLettered).toBeGreaterThanOrEqual(1);
+    expect(result.dlqReinjected).toBe(0);
+    const dlq = await listNotificationDlq(50);
+    expect(
+      dlq.some(
+        (row) =>
+          row.notificationId === n.notificationId && row.status === "dead",
+      ),
+    ).toBe(true);
+  });
+
   it("8: crash-after-success style reclaim does not double-send (P1-04)", async () => {
     const n = await seedRetry({ userId: USER_A, requestId: "req_crash" });
     await processDurableNotificationRetries({

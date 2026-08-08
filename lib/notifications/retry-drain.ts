@@ -209,6 +209,12 @@ export async function processDurableNotificationRetries(options?: {
   limit?: number;
   nowMs?: number;
   leaseOwner?: string;
+  /**
+   * Production/unit smoke only: force channel delivery failure for one owner
+   * so max-retry → DLQ can be proven when LINE/push are not_configured
+   * (those reasons are treated as soft-success by deliver*WithAck).
+   */
+  forceDeliveryFailureForOwner?: string;
 }): Promise<NotificationRetryDrainResult> {
   const result: NotificationRetryDrainResult = {
     due: 0,
@@ -247,7 +253,16 @@ export async function processDurableNotificationRetries(options?: {
     result.claimed += 1;
 
     try {
-      const delivery = await redeliverChannels(claimed);
+      const delivery =
+        options?.forceDeliveryFailureForOwner &&
+        claimed.ownerId === options.forceDeliveryFailureForOwner
+          ? {
+              ok: false as const,
+              error: "p102_smoke_force_delivery_failure",
+              lineAttempted: true,
+              pushAttempted: true,
+            }
+          : await redeliverChannels(claimed);
       if (delivery.ok) {
         await updateDurableDeliveryState({
           notificationId: claimed.notificationId,
