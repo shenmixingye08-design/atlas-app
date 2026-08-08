@@ -1,6 +1,7 @@
 -- Durable Stripe billing state for serverless (no .data FS dependency).
 -- Apply in Supabase SQL editor when SUPABASE_SERVICE_ROLE_KEY is configured.
 -- Writes use the service role key (bypasses RLS). Anon / authenticated cannot access.
+-- Includes P0 FINAL GATE webhook claim lease columns (processing vs processed).
 
 create table if not exists public.atlas_billing_subscriptions (
   user_id text primary key,
@@ -29,8 +30,56 @@ create index if not exists atlas_billing_subscriptions_stripe_subscription_id_id
 create table if not exists public.atlas_stripe_webhook_events (
   event_id text primary key,
   event_type text,
-  processed_at timestamptz not null default now()
+  status text not null default 'processed',
+  claimed_at timestamptz not null default now(),
+  lease_expires_at timestamptz not null default now(),
+  processed_at timestamptz
 );
+
+-- Idempotent upgrades for older installs that only had processed_at.
+alter table public.atlas_stripe_webhook_events
+  add column if not exists status text;
+alter table public.atlas_stripe_webhook_events
+  add column if not exists claimed_at timestamptz;
+alter table public.atlas_stripe_webhook_events
+  add column if not exists lease_expires_at timestamptz;
+alter table public.atlas_stripe_webhook_events
+  alter column processed_at drop not null;
+
+update public.atlas_stripe_webhook_events
+set
+  status = coalesce(nullif(status, ''), 'processed'),
+  claimed_at = coalesce(claimed_at, processed_at, now()),
+  lease_expires_at = coalesce(lease_expires_at, processed_at, now()),
+  processed_at = coalesce(processed_at, now())
+where status is null
+   or claimed_at is null
+   or lease_expires_at is null;
+
+alter table public.atlas_stripe_webhook_events
+  alter column status set default 'processed';
+update public.atlas_stripe_webhook_events set status = 'processed' where status is null;
+alter table public.atlas_stripe_webhook_events
+  alter column status set not null;
+
+update public.atlas_stripe_webhook_events
+set claimed_at = coalesce(claimed_at, now()) where claimed_at is null;
+alter table public.atlas_stripe_webhook_events
+  alter column claimed_at set default now();
+alter table public.atlas_stripe_webhook_events
+  alter column claimed_at set not null;
+
+update public.atlas_stripe_webhook_events
+set lease_expires_at = coalesce(lease_expires_at, claimed_at, now())
+where lease_expires_at is null;
+alter table public.atlas_stripe_webhook_events
+  alter column lease_expires_at set default now();
+alter table public.atlas_stripe_webhook_events
+  alter column lease_expires_at set not null;
+
+create index if not exists atlas_stripe_webhook_events_processing_lease_idx
+  on public.atlas_stripe_webhook_events (status, lease_expires_at)
+  where status = 'processing';
 
 alter table public.atlas_billing_subscriptions enable row level security;
 alter table public.atlas_stripe_webhook_events enable row level security;

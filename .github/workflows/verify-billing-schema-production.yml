@@ -1,0 +1,52 @@
+name: Verify Billing Schema Production (P0 FINAL)
+
+# Public read-only probe — no secrets required for the check itself.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20260713_atlas_billing_subscriptions.sql"
+      - "supabase/migrations/20260808_p0_final_webhook_claim_lease.sql"
+      - "lib/billing/subscriptions/**"
+      - "app/api/health/billing-schema/**"
+      - ".github/workflows/verify-billing-schema-production.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe production billing-schema readiness
+        env:
+          PROD_URL: https://atlasapp.jp
+        run: |
+          set -euo pipefail
+          # Allow deploy propagation.
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            CODE=$(curl -sS -o /tmp/billing-schema.json -w "%{http_code}" \
+              "$PROD_URL/api/health/billing-schema?force=1" || echo "000")
+            echo "attempt=$i http=$CODE"
+            python3 - <<'PY'
+          import json,sys
+          try:
+            d=json.load(open("/tmp/billing-schema.json"))
+          except Exception as e:
+            print("parse_error", e)
+            sys.exit(2)
+          print({k:d.get(k) for k in [
+            "ok","subscriptionsTableOk","webhookEventsTableOk",
+            "webhookClaimLeaseOk","atomicWebhookClaimReady",
+            "durableWebhookFallbackDisabled","commitShaShort"
+          ]})
+          sys.exit(0 if d.get("ok") is True and d.get("atomicWebhookClaimReady") is True else 3)
+          PY
+            STATUS=$?
+            if [ "$STATUS" -eq 0 ]; then
+              echo "billing_schema_ready=true"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::Production /api/health/billing-schema is not ready (ok!=true)."
+          echo "::error::Apply supabase/migrations/20260713_atlas_billing_subscriptions.sql in Supabase SQL Editor (or set Actions DB secrets and re-run Apply Billing Migration)."
+          exit 1
