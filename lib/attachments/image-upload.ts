@@ -1,5 +1,11 @@
 import "server-only";
 
+import {
+  assertImageMagicMatchesDeclaration,
+  looksLikeSvgOrHtml,
+} from "@/lib/security/file-magic";
+import { sanitizeDisplayFileName } from "@/lib/security/upload-path";
+
 import { hashImageBytes } from "./image-hash";
 import { preprocessImageBuffer } from "./preprocess";
 import {
@@ -24,11 +30,38 @@ export async function uploadUserImage(input: {
   jobId?: string | null;
   retentionPolicy?: AttachmentRetentionPolicy;
 }): Promise<AttachmentUploadResult> {
+  let safeName: string;
+  try {
+    safeName = sanitizeDisplayFileName(input.fileName);
+  } catch {
+    throw new ImageValidationError("unsupported_type", "不正なファイル名です");
+  }
+
   const mime = assertSupportedImage({
     mimeType: input.mimeType,
-    fileName: input.fileName,
+    fileName: safeName,
     byteLength: input.buffer.length,
   });
+
+  // P0-05: never trust client MIME/extension alone — magic bytes required.
+  if (looksLikeSvgOrHtml(input.buffer)) {
+    throw new ImageValidationError(
+      "unsupported_type",
+      "SVG/HTML 画像はアップロードできません",
+    );
+  }
+  try {
+    assertImageMagicMatchesDeclaration({
+      declaredMime: mime,
+      fileName: safeName,
+      buffer: input.buffer,
+    });
+  } catch {
+    throw new ImageValidationError(
+      "unsupported_type",
+      "画像形式を確認できませんでした。JPEG/PNG/WEBPで送り直してください",
+    );
+  }
 
   const contentHash = hashImageBytes(input.buffer);
   const existing = await findAttachmentByHash(input.userId, contentHash);
@@ -84,7 +117,7 @@ export async function uploadUserImage(input: {
   const attachment = await saveImageAttachment({
     userId: input.userId,
     jobId: input.jobId,
-    originalFileName: input.fileName,
+    originalFileName: safeName,
     mimeType: mime,
     originalBuffer: input.buffer,
     processedBuffer: processed.buffer,

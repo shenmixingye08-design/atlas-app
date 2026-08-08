@@ -1,5 +1,7 @@
 import ExcelJS from "exceljs";
 
+import { neutralizeSpreadsheetCell } from "@/lib/security/spreadsheet-formula";
+
 import type { LedgerEntry } from "./types";
 import { buildMonthlyAnalytics } from "./analytics";
 
@@ -36,16 +38,16 @@ export async function buildHouseholdLedgerWorkbook(
   detail.addRow([...HEADERS]);
   for (const entry of entries) {
     detail.addRow([
-      entry.date,
-      entry.storeName,
-      entry.category,
-      entry.itemName,
+      neutralizeSpreadsheetCell(entry.date),
+      neutralizeSpreadsheetCell(entry.storeName),
+      neutralizeSpreadsheetCell(entry.category),
+      neutralizeSpreadsheetCell(entry.itemName),
       entry.quantity,
       entry.unitPrice,
       entry.tax,
       entry.amountInclTax,
-      entry.paymentMethod,
-      entry.note,
+      neutralizeSpreadsheetCell(entry.paymentMethod),
+      neutralizeSpreadsheetCell(entry.note),
     ]);
   }
   detail.getRow(1).font = { bold: true };

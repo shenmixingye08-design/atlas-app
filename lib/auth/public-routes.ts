@@ -62,6 +62,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/health/oauth-encryption(.*)",
   "/api/health/authz(.*)",
   "/api/health/secrets-leakage(.*)",
+  "/api/health/upload-ssrf(.*)",
   "/api/health/vision(.*)",
   "/api/contact(.*)",
   "/api/automations/tick(.*)",

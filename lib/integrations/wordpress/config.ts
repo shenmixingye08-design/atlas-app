@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isAtlasProduction } from "@/lib/runtime/is-production";
+import { assertSafeOutboundUrl } from "@/lib/security/ssrf";
 
 import { WP_MISSING_ENCRYPTION_KEY_MESSAGE } from "./errors";
 
@@ -56,15 +57,14 @@ export function normalizeWordPressSiteUrl(input: string): string {
     withProtocol = `https://${withProtocol}`;
   }
 
+  // P0-05: reject localhost / private IP / credentials / non-http(s).
   let url: URL;
   try {
-    url = new URL(withProtocol);
-  } catch {
-    throw new Error("無効なサイトURLです");
-  }
-
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("http または https のURLのみ対応しています");
+    url = assertSafeOutboundUrl(withProtocol);
+  } catch (error) {
+    throw new Error(
+      error instanceof Error ? error.message : "無効なサイトURLです",
+    );
   }
 
   // Drop path/query/hash — site root only.

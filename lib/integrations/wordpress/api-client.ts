@@ -6,6 +6,11 @@ import {
   withCircuitBreaker,
   withRetry,
 } from "@/lib/reliability";
+import {
+  assertImageMagicMatchesDeclaration,
+  looksLikeSvgOrHtml,
+} from "@/lib/security/file-magic";
+import { fetchSafeOutboundUrl, SsrfBlockedError } from "@/lib/security/ssrf";
 
 import {
   buildWordPressRestBase,
@@ -297,23 +302,38 @@ export async function uploadWordPressMediaFromUrl(input: {
   altText?: string;
   filename?: string;
 }): Promise<WordPressMediaUploadResult> {
-  let imageResponse: Response;
+  let fetched: Awaited<ReturnType<typeof fetchSafeOutboundUrl>>;
   try {
-    imageResponse = await fetch(input.imageUrl, { cache: "no-store" });
-  } catch {
+    fetched = await fetchSafeOutboundUrl(input.imageUrl, {
+      timeoutMs: 10_000,
+      maxBytes: 5 * 1024 * 1024,
+      maxRedirects: 3,
+    });
+  } catch (error) {
+    if (error instanceof SsrfBlockedError) {
+      throw new WordPressApiError(error.message, 400);
+    }
     throw new WordPressApiError("アイキャッチ画像の取得に失敗しました", 0);
   }
 
-  if (!imageResponse.ok) {
-    throw new WordPressApiError(
-      "アイキャッチ画像の取得に失敗しました",
-      imageResponse.status,
-    );
+  const declaredMime =
+    fetched.response.headers.get("content-type")?.split(";")[0]?.trim() ||
+    "image/jpeg";
+  if (looksLikeSvgOrHtml(fetched.bytes)) {
+    throw new WordPressApiError("SVG/HTML 画像は使用できません", 400);
+  }
+  let mimeType: string;
+  try {
+    mimeType = assertImageMagicMatchesDeclaration({
+      declaredMime: declaredMime.startsWith("image/")
+        ? declaredMime
+        : "image/jpeg",
+      buffer: fetched.bytes,
+    }).mime;
+  } catch {
+    throw new WordPressApiError("画像形式を確認できませんでした", 400);
   }
 
-  const mimeType =
-    imageResponse.headers.get("content-type")?.split(";")[0]?.trim() ||
-    "image/jpeg";
   const extension =
     mimeType === "image/png"
       ? "png"
@@ -326,10 +346,9 @@ export async function uploadWordPressMediaFromUrl(input: {
     input.filename?.trim() ||
     `atlas-featured-${Date.now()}.${extension}`;
 
-  const bytes = await imageResponse.arrayBuffer();
   return uploadWordPressMedia({
     auth: input.auth,
-    bytes,
+    bytes: fetched.bytes,
     filename,
     mimeType,
     altText: input.altText,

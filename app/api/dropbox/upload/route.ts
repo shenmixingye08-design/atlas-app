@@ -37,7 +37,21 @@ export async function POST(request: Request): Promise<Response> {
       : null;
 
   const context = await resolveFeatureAccessContext();
+  // P0-05: bound memory — reject oversized uploads before buffering.
+  const MAX_DROPBOX_UPLOAD_BYTES = 20 * 1024 * 1024;
+  if (typeof file.size === "number" && file.size > MAX_DROPBOX_UPLOAD_BYTES) {
+    return Response.json(
+      { status: "error", message: "ファイルサイズが上限を超えています" },
+      { status: 413 },
+    );
+  }
   const buffer = Buffer.from(await file.arrayBuffer());
+  if (buffer.byteLength > MAX_DROPBOX_UPLOAD_BYTES) {
+    return Response.json(
+      { status: "error", message: "ファイルサイズが上限を超えています" },
+      { status: 413 },
+    );
+  }
 
   try {
     const result = await uploadDropboxFileForUser({

@@ -47,7 +47,20 @@ describe("document attachment security", () => {
     ).toThrow(/合計/);
   });
 
-  it("sanitizes path traversal in file names", () => {
-    expect(sanitizeOriginalFileName("../../etc/passwd.pdf")).toBe("passwd.pdf");
+  it("rejects path traversal in file names (fail-closed)", () => {
+    expect(() => sanitizeOriginalFileName("../../etc/passwd.pdf")).toThrow(
+      DocumentValidationError,
+    );
+  });
+
+  it("rejects fake pdf magic when buffer provided", () => {
+    expect(() =>
+      assertSupportedDocument({
+        fileName: "invoice.pdf",
+        mimeType: "application/pdf",
+        bytes: 32,
+        buffer: Buffer.from("MZ not a pdf file contents here"),
+      }),
+    ).toThrow(DocumentValidationError);
   });
 });
