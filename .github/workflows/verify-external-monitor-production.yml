@@ -1,0 +1,118 @@
+# Production proof for P1-07: apply → inject → detect → Owner notify → recover.
+name: Verify External Monitor Production (P1-07)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "lib/external-monitor/**"
+      - "app/api/automations/tick/**"
+      - "app/api/health/external-monitor/**"
+      - ".github/workflows/verify-external-monitor-production.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Probe + failure injection + recovery on Production
+        env:
+          PROD_URL: https://atlasapp.jp
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::CRON_SECRET is required for P1-07 Production proof (apply/inject/notify)."
+            exit 1
+          fi
+
+          AUTH=(-H "Authorization: Bearer ${CRON_SECRET}")
+
+          echo "== apply DDL =="
+          curl -sS -o /tmp/p107-apply.json -w "http=%{http_code}\n" \
+            "${AUTH[@]}" \
+            "$PROD_URL/api/health/external-monitor?force=1&apply=1&smoke=0" || true
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/p107-apply.json"))
+          print({k:d.get(k) for k in [
+            "ok","durableReady","tickWired","incidentsTableOk","claimRpcOk",
+            "commitShaShort","error","ownerHint"
+          ]})
+          PY
+
+          echo "== wait for deploy/schema =="
+          READY=0
+          for i in $(seq 1 24); do
+            curl -sS -o /tmp/p107.json -w "http=%{http_code}\n" \
+              "$PROD_URL/api/health/external-monitor?force=1&smoke=0" || true
+            python3 - <<'PY'
+          import json,sys
+          d=json.load(open("/tmp/p107.json"))
+          print({k:d.get(k) for k in [
+            "ok","durableReady","tickWired","memoryNotSot","commitShaShort","error"
+          ]})
+          sys.exit(0 if (
+            d.get("durableReady") is True and d.get("tickWired") is True
+          ) else 3)
+          PY
+            if [ $? -eq 0 ]; then READY=1; break; fi
+            sleep 15
+          done
+          if [ "$READY" -ne 1 ]; then
+            echo "::error::external monitor schema/tick not ready"
+            exit 1
+          fi
+
+          echo "== inject tick_failure =="
+          curl -sS -o /tmp/p107-inject.json -w "http=%{http_code}\n" \
+            "${AUTH[@]}" \
+            "$PROD_URL/api/health/external-monitor?inject=tick_failure"
+          python3 - <<'PY'
+          import json,sys
+          d=json.load(open("/tmp/p107-inject.json"))
+          print({k:d.get(k) for k in [
+            "ok","action","injectionId","kind","openIncidents","deliveriesSent","commitShaShort"
+          ]})
+          sys.exit(0 if d.get("ok") is True and int(d.get("openIncidents") or 0) >= 1 else 3)
+          PY
+
+          echo "== smoke (inject→notify→recover) =="
+          curl -sS -o /tmp/p107-smoke.json -w "http=%{http_code}\n" \
+            "${AUTH[@]}" \
+            "$PROD_URL/api/health/external-monitor?force=1&smoke=1"
+          python3 - <<'PY'
+          import json,sys
+          d=json.load(open("/tmp/p107-smoke.json"))
+          ev=d.get("smokeEvidence") or {}
+          print({
+            "ok": d.get("ok"),
+            "smokeOk": d.get("smokeOk"),
+            "commitShaShort": d.get("commitShaShort"),
+            "evidence": {
+              k: ev.get(k) for k in [
+                "injectionKind","incidentId","detectedAt","deliveryStatus",
+                "recoveryAt","recoveryDeliveryStatus","ownerNotifyPath","lineConfigured"
+              ]
+            },
+            "error": d.get("error"),
+          })
+          ok = (
+            d.get("smokeOk") is True
+            and ev.get("incidentId")
+            and ev.get("detectedAt")
+            and ev.get("deliveryStatus") == "sent"
+            and ev.get("recoveryAt")
+            and ev.get("ownerNotifyPath") in ("line", "system")
+          )
+          sys.exit(0 if ok else 3)
+          PY
+
+          echo "== clear injections =="
+          curl -sS -o /tmp/p107-clear.json -w "http=%{http_code}\n" \
+            "${AUTH[@]}" \
+            "$PROD_URL/api/health/external-monitor?clearInject=1" || true
+
+          echo "p1_07_production_proof=true"
