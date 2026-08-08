@@ -17,12 +17,18 @@ import {
 } from "./store";
 import type { GooglePersistedAuth } from "@/lib/integrations/google/credential-persistence";
 import type { XPersistedAuth } from "@/lib/integrations/x/credential-persistence";
+import type { DropboxPersistedAuth } from "@/lib/integrations/dropbox/credential-persistence";
 import type { WordPressPersistedAuth } from "@/lib/integrations/wordpress/types";
 
 export const EXTERNAL_AUTH_DOMAIN_KEY = "atlasExternalAuth";
 
 /** Services whose tokens live in dedicated Supabase tables — never Clerk overflow. */
-const SUPABASE_BACKED_SERVICE_IDS = new Set(["google", "x", "wordpress"]);
+const SUPABASE_BACKED_SERVICE_IDS = new Set([
+  "google",
+  "x",
+  "dropbox",
+  "wordpress",
+]);
 
 export type DurableExternalAuthState = {
   credentials: ExternalServiceCredentialRecord[];
@@ -131,6 +137,17 @@ export async function ensureExternalAuthHydrated(userId: string): Promise<void> 
       appliedDurable = true;
     }
 
+    // Dropbox tokens: encrypted dedicated Supabase table (P0-02).
+    const { loadDropboxAuthFromSupabase } = await import(
+      "@/lib/integrations/dropbox/credential-persistence"
+    );
+    const dropboxAuth = await loadDropboxAuthFromSupabase(userId);
+    if (dropboxAuth) {
+      saveExternalServiceCredentials(dropboxAuth.credentials);
+      saveExternalServiceConnection(userId, dropboxAuth.connection);
+      appliedDurable = true;
+    }
+
     // WordPress Application Passwords: encrypted Supabase table (never Clerk overflow).
     const { loadWordPressAuthFromSupabase } = await import(
       "@/lib/integrations/wordpress/credential-persistence"
@@ -154,11 +171,15 @@ export async function ensureExternalAuthHydrated(userId: string): Promise<void> 
       hydrateDurableDomain(userId, loaded, {
         googleAuth,
         xAuth,
+        dropboxAuth,
         wordpressAuth,
       });
     }
   } catch (error) {
-    console.warn("[external-auth] Hydration failed:", error);
+    console.warn(
+      "[external-auth] Hydration failed:",
+      error instanceof Error ? error.message : "hydration_failed",
+    );
   } finally {
     if (!appliedDurable) {
       // Allow a quick retry instead of caching a possibly-stale disconnected
@@ -177,10 +198,11 @@ function hydrateDurableDomain(
   applied: {
     googleAuth: GooglePersistedAuth | null;
     xAuth: XPersistedAuth | null;
+    dropboxAuth: DropboxPersistedAuth | null;
     wordpressAuth: WordPressPersistedAuth | null;
   },
 ): void {
-  const { googleAuth, xAuth, wordpressAuth } = applied;
+  const { googleAuth, xAuth, dropboxAuth, wordpressAuth } = applied;
 
   if (Array.isArray(loaded.credentials)) {
     const usable = loaded.credentials.filter(
@@ -188,7 +210,7 @@ function hydrateDurableDomain(
         row.userId === userId &&
         typeof row.refreshToken === "string" &&
         row.refreshToken.length > 0 &&
-        // Never overwrite durable Google/X/WP tokens with stripped Clerk overflow empties.
+        // Never overwrite durable Google/X/Dropbox/WP tokens with stripped Clerk overflow empties.
         !SUPABASE_BACKED_SERVICE_IDS.has(row.serviceId),
     );
     const existing = listExternalServiceCredentialsForUser(userId);
@@ -205,6 +227,9 @@ function hydrateDurableDomain(
     const connections = loaded.connections.map((row) => {
       if (googleAuth && row.serviceId === "google") return googleAuth.connection;
       if (xAuth && row.serviceId === "x") return xAuth.connection;
+      if (dropboxAuth && row.serviceId === "dropbox") {
+        return dropboxAuth.connection;
+      }
       if (wordpressAuth && row.serviceId === "wordpress") {
         return wordpressAuth.connection;
       }
@@ -215,6 +240,12 @@ function hydrateDurableDomain(
     }
     if (xAuth && !connections.some((row) => row.serviceId === "x")) {
       connections.push(xAuth.connection);
+    }
+    if (
+      dropboxAuth &&
+      !connections.some((row) => row.serviceId === "dropbox")
+    ) {
+      connections.push(dropboxAuth.connection);
     }
     if (
       wordpressAuth &&

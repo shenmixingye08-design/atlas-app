@@ -101,7 +101,12 @@ export async function GET(request: Request): Promise<Response> {
       account: connection.account?.email ?? connection.serviceName,
     });
   } catch (error) {
-    console.error("[Google Account OAuth callback]", error);
+    const { safeOAuthLog } = await import("@/lib/integrations/oauth-crypto");
+    safeOAuthLog(
+      "error",
+      "[Google Account OAuth callback]",
+      error instanceof Error ? error.message : "oauth_callback_failed",
+    );
     const message =
       error instanceof Error ? error.message : GOOGLE_OAUTH_USER_ERROR;
     markGoogleConnectionError(userId, message);

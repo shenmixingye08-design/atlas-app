@@ -62,6 +62,8 @@
 | `X_AUTOPOST_CATCHUP_MINUTES` | X auto-post catch-up window | 任意 | scheduler検証で任意 | 運用調整で任意 | いいえ | Vercel env | 未確認 | default catch-up window を使用 |
 | `X_TEST_ACCESS_TOKEN` | `scripts/verify-x-post.mjs` live投稿検証用 | script-only必須 | live検証時のみ | 不要（runtime不要） | はい | X OAuth user token | 未確認 | script が BLOCKED で終了 |
 | `ATLAS_WORDPRESS_CREDENTIALS_ENCRYPTION_KEY` | WordPress Application Password 暗号化鍵 | WordPress連携時必須 | WP Previewで必要 | WP連携時必須 | はい | 運営生成 | 未確認 | Productionで例外。非Productionは dev-only deterministic key |
+| `ATLAS_OAUTH_CREDENTIALS_ENCRYPTION_KEY` | Google/X/Dropbox OAuth token 暗号化鍵 (AES-256-GCM, 32bytes hex/base64) | Google/X/Dropbox連携時必須 | Previewで必要 | 連携時必須 | はい | `openssl rand -hex 32` | 未確認 | Productionは平文保存禁止で fail-closed。未設定時は persist/load 拒否 |
+| `ATLAS_OAUTH_CREDENTIALS_ENCRYPTION_KEY_VERSION` | 現行鍵バージョン (default 1) | 任意 | 任意 | rotation rotation時 | いいえ | 運営設定 | 未確認 | 省略時は 1。旧鍵は `ATLAS_OAUTH_CREDENTIALS_ENCRYPTION_KEY_V{n}` |
 | `DROPBOX_APP_KEY` | Dropbox OAuth app key | Dropbox連携時必須 | Dropbox Previewで必要 | Dropbox連携時必須 | いいえ | Dropbox App Console | 未確認 | Dropbox連携開始時に例外 |
 | `DROPBOX_APP_SECRET` | Dropbox OAuth app secret | Dropbox連携時必須 | Dropbox Previewで必要 | Dropbox連携時必須 | はい | Dropbox App Console | 未確認 | Dropbox連携開始時に例外。dev OAuth state fallback候補 |
 | `DROPBOX_REDIRECT_URI` | Dropbox OAuth redirect URI | Dropbox連携時推奨 | Previewで推奨 | Dropbox連携時必要 | いいえ | Dropbox App Console / Vercel env | 未確認 | request origin から callback path を生成 |

@@ -192,6 +192,20 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     purpose: "Projects 保存先（supabase / localStorage）",
   },
   {
+    key: "ATLAS_OAUTH_CREDENTIALS_ENCRYPTION_KEY",
+    service: "atlas",
+    requirement: "required",
+    purpose:
+      "Google/X/Dropbox OAuth token 暗号化鍵（AES-256-GCM, 32bytes）。Production必須。値は表示しない",
+  },
+  {
+    key: "ATLAS_OAUTH_CREDENTIALS_ENCRYPTION_KEY_VERSION",
+    service: "atlas",
+    requirement: "recommended",
+    purpose:
+      "OAuth 暗号化鍵バージョン（未設定時は 1）。rotation 時に更新",
+  },
+  {
     key: "GOOGLE_CLIENT_ID",
     service: "google",
     requirement: "recommended",
