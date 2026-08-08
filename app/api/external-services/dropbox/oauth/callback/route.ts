@@ -92,7 +92,12 @@ export async function GET(request: Request): Promise<Response> {
     });
     return redirectToFiles(origin, { connected: "dropbox" });
   } catch (error) {
-    console.error("[Dropbox OAuth callback]", error);
+    const { safeOAuthLog } = await import("@/lib/integrations/oauth-crypto");
+    safeOAuthLog(
+      "error",
+      "[Dropbox OAuth callback]",
+      error instanceof Error ? error.message : "oauth_callback_failed",
+    );
     const message =
       error instanceof Error ? error.message : DROPBOX_OAUTH_USER_ERROR;
     markDropboxConnectionError(userId, message);

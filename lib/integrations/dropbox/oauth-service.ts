@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isAtlasProduction } from "@/lib/runtime/is-production";
 import {
   deleteExternalServiceCredentials,
   getExternalServiceCredentials,
@@ -11,8 +12,17 @@ import {
 } from "../external-services/store";
 import type { ExternalServiceConnection } from "../external-services/types";
 import { createDefaultConnection } from "../external-services/registry";
+import {
+  ensureExternalAuthHydrated,
+  schedulePersistExternalAuth,
+} from "../external-services/durable";
+import { safeOAuthLog } from "@/lib/integrations/oauth-crypto";
 
 import { DROPBOX_OAUTH_SCOPES } from "./config";
+import {
+  deleteDropboxAuthFromSupabase,
+  persistDropboxAuthToSupabase,
+} from "./credential-persistence";
 import { dropboxServiceDefinition } from "./definition";
 import {
   exchangeDropboxAuthCode,
@@ -21,12 +31,31 @@ import {
   revokeDropboxToken,
 } from "./oauth";
 
+async function persistDropboxAuthDurable(
+  userId: string,
+  connection: ExternalServiceConnection,
+): Promise<void> {
+  const credentials = getExternalServiceCredentials(userId, "dropbox");
+  if (credentials) {
+    const ok = await persistDropboxAuthToSupabase(credentials, connection);
+    if (!ok && isAtlasProduction()) {
+      throw new Error(
+        "Dropbox連携の保存に失敗しました。しばらくしてから再度お試しください",
+      );
+    }
+  } else {
+    await deleteDropboxAuthFromSupabase(userId);
+  }
+  schedulePersistExternalAuth(userId);
+}
+
 export async function completeDropboxAccountOAuth(
   userId: string,
   code: string,
   codeVerifier: string,
   requestOrigin: string,
 ): Promise<ExternalServiceConnection> {
+  await ensureExternalAuthHydrated(userId);
   const token = await exchangeDropboxAuthCode(code, codeVerifier, requestOrigin);
 
   if (!token.refresh_token) {
@@ -68,18 +97,24 @@ export async function completeDropboxAccountOAuth(
   };
 
   saveExternalServiceConnection(userId, connection);
+  await persistDropboxAuthDurable(userId, connection);
   return connection;
 }
 
 export async function disconnectDropboxAccount(
   userId: string,
 ): Promise<ExternalServiceConnection> {
+  await ensureExternalAuthHydrated(userId);
   const credentials = getExternalServiceCredentials(userId, "dropbox");
   if (credentials) {
     try {
       await revokeDropboxToken(credentials.accessToken);
     } catch (error) {
-      console.warn("[Dropbox] Token revoke failed:", error);
+      safeOAuthLog(
+        "warn",
+        "[Dropbox] Token revoke failed",
+        error instanceof Error ? error.message : "revoke_failed",
+      );
     }
     deleteExternalServiceCredentials(userId, "dropbox");
   }
@@ -96,12 +131,15 @@ export async function disconnectDropboxAccount(
   };
 
   saveExternalServiceConnection(userId, disconnected);
+  await deleteDropboxAuthFromSupabase(userId);
+  schedulePersistExternalAuth(userId);
   return disconnected;
 }
 
 export async function getDropboxAccessToken(
   userId: string,
 ): Promise<string | null> {
+  await ensureExternalAuthHydrated(userId);
   const credentials = getExternalServiceCredentials(userId, "dropbox");
   if (!credentials) return null;
 
@@ -121,18 +159,27 @@ export async function getDropboxAccessToken(
       Date.now() + (refreshed.expires_in ?? 14400) * 1000,
     ).toISOString();
 
-    saveExternalServiceCredentials({
+    const nextCredentials = {
       ...credentials,
       accessToken: refreshed.access_token,
       refreshToken: refreshed.refresh_token ?? credentials.refreshToken,
       expiresAt,
       scope: refreshed.scope ?? credentials.scope,
       updatedAt: now,
-    });
+    };
+    saveExternalServiceCredentials(nextCredentials);
+
+    const connection = getExternalServiceConnection(userId, "dropbox");
+    void persistDropboxAuthToSupabase(nextCredentials, connection);
+    schedulePersistExternalAuth(userId);
 
     return refreshed.access_token;
   } catch (error) {
-    console.warn("[Dropbox] Token refresh failed:", error);
+    safeOAuthLog(
+      "warn",
+      "[Dropbox] Token refresh failed",
+      error instanceof Error ? error.message : "refresh_failed",
+    );
     return null;
   }
 }

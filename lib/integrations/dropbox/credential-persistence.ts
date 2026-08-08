@@ -2,7 +2,6 @@ import "server-only";
 
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
-import { warnIfProductionSupabaseServiceRoleMissing } from "@/lib/persistence/production-guard";
 import {
   decodeOAuthTokenPairFromStorage,
   encodeOAuthTokenPairForStorage,
@@ -14,11 +13,11 @@ import {
 import type { ExternalServiceCredentialRecord } from "../external-services/credential-store";
 import type { ExternalServiceConnection } from "../external-services/types";
 import { createDefaultConnection } from "../external-services/registry";
-import { googleServiceDefinition } from "./definition";
+import { dropboxServiceDefinition } from "./definition";
 
-const TABLE = "atlas_google_oauth_credentials" as const;
+const TABLE = "atlas_dropbox_oauth_credentials" as const;
 
-type GoogleCredentialRow = {
+type DropboxCredentialRow = {
   user_id: string;
   access_token: string;
   refresh_token: string;
@@ -30,19 +29,19 @@ type GoogleCredentialRow = {
   account_email: string | null;
   account_name: string | null;
   account_picture_url: string | null;
+  provider_user_id: string | null;
   error_message: string | null;
   encryption_key_version: number | null;
   updated_at: string;
 };
 
-export type GooglePersistedAuth = {
+export type DropboxPersistedAuth = {
   credentials: ExternalServiceCredentialRecord;
   connection: ExternalServiceConnection;
-  /** Legacy plaintext was loaded — caller should re-persist to encrypt. */
   needsReencrypt?: boolean;
 };
 
-export function isGoogleOAuthSupabaseConfigured(): boolean {
+export function isDropboxOAuthSupabaseConfigured(): boolean {
   return createServiceRoleClientIfConfigured() !== null;
 }
 
@@ -57,7 +56,7 @@ function isConnectionStatus(
   );
 }
 
-function rowToPersisted(row: GoogleCredentialRow): GooglePersistedAuth | null {
+function rowToPersisted(row: DropboxCredentialRow): DropboxPersistedAuth | null {
   if (
     !row.user_id ||
     !row.access_token ||
@@ -76,7 +75,7 @@ function rowToPersisted(row: GoogleCredentialRow): GooglePersistedAuth | null {
   } catch (error) {
     safeOAuthLog(
       "warn",
-      "[Google OAuth] Failed to decode stored credentials (missing key, tamper, or corrupt payload)",
+      "[Dropbox OAuth] Failed to decode stored credentials (missing key, tamper, or corrupt payload)",
       error instanceof Error ? error.message : "decode_failed",
     );
     return null;
@@ -88,29 +87,31 @@ function rowToPersisted(row: GoogleCredentialRow): GooglePersistedAuth | null {
 
   const scopes = row.scope
     ? row.scope.split(/[\s,]+/).filter(Boolean)
-    : [...googleServiceDefinition.plannedScopes];
+    : [...dropboxServiceDefinition.plannedScopes];
 
   const connection: ExternalServiceConnection = {
-    ...createDefaultConnection(googleServiceDefinition),
+    ...createDefaultConnection(dropboxServiceDefinition),
     status,
     connectedAt: row.connected_at,
     lastUsedAt: row.last_used_at,
     scopes,
-    features: [...googleServiceDefinition.plannedFeatures],
+    features: [...dropboxServiceDefinition.plannedFeatures],
     errorMessage: row.error_message,
-    account: row.account_email
-      ? {
-          email: row.account_email,
-          name: row.account_name,
-          pictureUrl: row.account_picture_url,
-        }
-      : undefined,
+    account:
+      row.account_email || row.provider_user_id
+        ? {
+            email: row.account_email ?? "",
+            name: row.account_name,
+            pictureUrl: row.account_picture_url,
+            providerUserId: row.provider_user_id ?? undefined,
+          }
+        : undefined,
   };
 
   return {
     credentials: {
       userId: row.user_id,
-      serviceId: "google",
+      serviceId: "dropbox",
       accessToken: decoded.accessToken,
       refreshToken: decoded.refreshToken,
       expiresAt: row.expires_at,
@@ -125,7 +126,7 @@ function rowToPersisted(row: GoogleCredentialRow): GooglePersistedAuth | null {
 function toRow(
   credentials: ExternalServiceCredentialRecord,
   connection: ExternalServiceConnection,
-): GoogleCredentialRow {
+): DropboxCredentialRow {
   const encoded = encodeOAuthTokenPairForStorage({
     accessToken: credentials.accessToken,
     refreshToken: credentials.refreshToken,
@@ -142,22 +143,22 @@ function toRow(
     account_email: connection.account?.email ?? null,
     account_name: connection.account?.name ?? null,
     account_picture_url: connection.account?.pictureUrl ?? null,
+    provider_user_id: connection.account?.providerUserId ?? null,
     error_message: connection.errorMessage,
     encryption_key_version: encoded.keyVersion,
     updated_at: credentials.updatedAt || new Date().toISOString(),
   };
 }
 
-/** Load Google OAuth credentials + connection metadata for one user. */
-export async function loadGoogleAuthFromSupabase(
+export async function loadDropboxAuthFromSupabase(
   userId: string,
-): Promise<GooglePersistedAuth | null> {
+): Promise<DropboxPersistedAuth | null> {
   const client = createServiceRoleClientIfConfigured();
   if (!client) return null;
 
   if (!isOAuthEncryptionConfigured() && isAtlasProduction()) {
     console.error(
-      "[Google OAuth] Production refuse credential load without ATLAS_OAUTH_CREDENTIALS_ENCRYPTION_KEY",
+      "[Dropbox OAuth] Production refuse credential load without ATLAS_OAUTH_CREDENTIALS_ENCRYPTION_KEY",
     );
     return null;
   }
@@ -171,16 +172,15 @@ export async function loadGoogleAuthFromSupabase(
 
     if (error) {
       console.warn(
-        "[Google OAuth] Supabase credential load failed:",
+        "[Dropbox OAuth] Supabase credential load failed:",
         error.message,
       );
       return null;
     }
     if (!data) return null;
-    const persisted = rowToPersisted(data as GoogleCredentialRow);
+    const persisted = rowToPersisted(data as DropboxCredentialRow);
     if (persisted?.needsReencrypt && isOAuthEncryptionConfigured()) {
-      // Lazy plaintext → ciphertext migration (idempotent).
-      void persistGoogleAuthToSupabase(
+      void persistDropboxAuthToSupabase(
         persisted.credentials,
         persisted.connection,
       );
@@ -189,31 +189,31 @@ export async function loadGoogleAuthFromSupabase(
   } catch (error) {
     safeOAuthLog(
       "warn",
-      "[Google OAuth] Supabase credential load skipped",
+      "[Dropbox OAuth] Supabase credential load skipped",
       error instanceof Error ? error.message : "load_failed",
     );
     return null;
   }
 }
 
-/**
- * Persist Google tokens + connection metadata (always encrypted at rest).
- * Never falls back to plaintext. Returns false when Supabase/key unavailable.
- */
-export async function persistGoogleAuthToSupabase(
+export async function persistDropboxAuthToSupabase(
   credentials: ExternalServiceCredentialRecord,
   connection: ExternalServiceConnection,
 ): Promise<boolean> {
   const client = createServiceRoleClientIfConfigured();
   if (!client) {
-    warnIfProductionSupabaseServiceRoleMissing("atlas_google_oauth_credentials");
+    if (isAtlasProduction()) {
+      console.error(
+        "[Dropbox OAuth] Production refuse token persist without SUPABASE_SERVICE_ROLE_KEY",
+      );
+    }
     return false;
   }
 
   if (!isOAuthEncryptionConfigured()) {
     if (isAtlasProduction()) {
       console.error(
-        "[Google OAuth] Production refuse credential persist without ATLAS_OAUTH_CREDENTIALS_ENCRYPTION_KEY",
+        "[Dropbox OAuth] Production refuse credential persist without ATLAS_OAUTH_CREDENTIALS_ENCRYPTION_KEY",
       );
       return false;
     }
@@ -221,7 +221,6 @@ export async function persistGoogleAuthToSupabase(
 
   try {
     const row = toRow(credentials, connection);
-    // Defense-in-depth: never write values that still look like raw OAuth tokens.
     if (
       !row.access_token.startsWith("enc:v") ||
       !row.refresh_token.startsWith("enc:v")
@@ -235,7 +234,7 @@ export async function persistGoogleAuthToSupabase(
 
     if (error) {
       console.warn(
-        "[Google OAuth] Supabase credential upsert failed:",
+        "[Dropbox OAuth] Supabase credential upsert failed:",
         error.message,
       );
       return false;
@@ -246,19 +245,19 @@ export async function persistGoogleAuthToSupabase(
       error instanceof Error &&
       error.message === OAUTH_MISSING_ENCRYPTION_KEY_MESSAGE
     ) {
-      console.error("[Google OAuth]", OAUTH_MISSING_ENCRYPTION_KEY_MESSAGE);
+      console.error("[Dropbox OAuth]", OAUTH_MISSING_ENCRYPTION_KEY_MESSAGE);
       return false;
     }
     safeOAuthLog(
       "warn",
-      "[Google OAuth] Supabase credential upsert skipped",
+      "[Dropbox OAuth] Supabase credential upsert skipped",
       error instanceof Error ? error.message : "upsert_failed",
     );
     return false;
   }
 }
 
-export async function deleteGoogleAuthFromSupabase(
+export async function deleteDropboxAuthFromSupabase(
   userId: string,
 ): Promise<boolean> {
   const client = createServiceRoleClientIfConfigured();
@@ -268,7 +267,7 @@ export async function deleteGoogleAuthFromSupabase(
     const { error } = await client.from(TABLE).delete().eq("user_id", userId);
     if (error) {
       console.warn(
-        "[Google OAuth] Supabase credential delete failed:",
+        "[Dropbox OAuth] Supabase credential delete failed:",
         error.message,
       );
       return false;
@@ -277,7 +276,7 @@ export async function deleteGoogleAuthFromSupabase(
   } catch (error) {
     safeOAuthLog(
       "warn",
-      "[Google OAuth] Supabase credential delete skipped",
+      "[Dropbox OAuth] Supabase credential delete skipped",
       error instanceof Error ? error.message : "delete_failed",
     );
     return false;
