@@ -20,6 +20,8 @@ export type KnowledgeCategory =
 /** A single item in the Company Knowledge Base. */
 export interface KnowledgeEntry {
   id: EntityId;
+  /** Clerk user id owner. Required for tenant isolation (P0-03). */
+  userId: string;
   title: string;
   category: KnowledgeCategory;
   tags: readonly string[];
@@ -36,6 +38,8 @@ export interface KnowledgeEntry {
 }
 
 export type CreateKnowledgeInput = {
+  /** Required — knowledge must never be global across users. */
+  userId: string;
   title: string;
   category: KnowledgeCategory;
   tags?: readonly string[];
@@ -48,6 +52,8 @@ export type CreateKnowledgeInput = {
 };
 
 export type KnowledgeFilter = {
+  /** Required for list/search from user-facing APIs. */
+  userId?: string;
   category?: KnowledgeCategory | KnowledgeCategory[];
   tags?: readonly string[];
   reusable?: boolean;
@@ -56,6 +62,7 @@ export type KnowledgeFilter = {
 };
 
 export type KnowledgeSearchParams = {
+  userId: string;
   query: string;
   limit?: number;
   reusableOnly?: boolean;
@@ -87,6 +94,7 @@ export type KnowledgeUsedResult = {
 };
 
 export type IngestWorkflowInput = {
+  userId: string;
   workflowId: EntityId;
   assignment: string;
   userFeedback?: string | null;

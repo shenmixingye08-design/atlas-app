@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getStoredDeliverable } from "@/lib/deliverables/store";
+import { getStoredDeliverableForUser } from "@/lib/deliverables/store";
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
@@ -334,7 +334,11 @@ export async function saveDeliverableToGoogleDriveForUser(input: {
     return { status: access.status, message: access.message };
   }
 
-  const stored = getStoredDeliverable(input.deliverableId);
+  // P0-03: never load another user's deliverable by id alone.
+  const stored = await getStoredDeliverableForUser(
+    input.deliverableId,
+    input.userId,
+  );
   if (!stored) {
     return {
       status: "not_found",

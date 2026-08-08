@@ -60,6 +60,8 @@ export interface IntegrationProviderDefinition {
 /** A connected external service instance. */
 export interface Integration {
   id: EntityId;
+  /** Clerk user id owner (P0-03 tenant isolation). */
+  userId: string;
   provider: IntegrationProviderId;
   name: string;
   status: IntegrationStatus;
@@ -99,11 +101,13 @@ export type IntegrationCatalog = {
 };
 
 export type ConnectIntegrationInput = {
+  userId: string;
   provider: IntegrationProviderId;
   name?: string;
 };
 
 export type IntegrationFilter = {
+  userId?: string;
   provider?: IntegrationProviderId | IntegrationProviderId[];
   connected?: boolean;
   status?: IntegrationStatus | IntegrationStatus[];

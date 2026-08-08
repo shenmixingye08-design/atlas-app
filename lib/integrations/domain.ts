@@ -13,8 +13,14 @@ export function createIntegrationFromInput(
   const provider = getIntegrationProvider(input.provider);
   const now = new Date().toISOString();
 
+  const userId = input.userId.trim();
+  if (!userId) {
+    throw new Error("Integration.userId is required");
+  }
+
   return {
     id: randomUUID(),
+    userId,
     provider: input.provider,
     name: input.name?.trim() || provider.displayName,
     status: "connected",

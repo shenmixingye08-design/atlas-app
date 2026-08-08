@@ -27,7 +27,11 @@ export async function connectIntegration(
     return;
   }
 
-  const body: ConnectIntegrationInput = { provider, ...(name ? { name } : {}) };
+  // Server binds userId from Clerk session — never send client identity.
+  const body: Omit<ConnectIntegrationInput, "userId"> = {
+    provider,
+    ...(name ? { name } : {}),
+  };
 
   const response = await fetch("/api/integrations", {
     method: "POST",

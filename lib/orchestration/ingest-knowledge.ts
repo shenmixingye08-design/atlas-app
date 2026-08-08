@@ -9,8 +9,16 @@ export async function ingestWorkflowKnowledge(
 ): Promise<void> {
   const userFeedback =
     typeof metadata?.userFeedback === "string" ? metadata.userFeedback : null;
+  const userId =
+    typeof metadata?.userId === "string" && metadata.userId.trim()
+      ? metadata.userId.trim()
+      : null;
+
+  // P0-03: never ingest into a global unscoped knowledge bucket.
+  if (!userId) return;
 
   await knowledgeService.ingestFromWorkflow(result, {
+    userId,
     workflowId,
     assignment: result.assignment,
     userFeedback,

@@ -7,6 +7,12 @@ export async function retrieveExecutiveMemory(
   assignment: string,
   workflowId: string,
   deliverableType: DeliverableType,
+  userId?: string | null,
 ): Promise<KnowledgeRetrievalResult> {
-  return knowledgeService.retrieveForWorkflow(assignment, workflowId, deliverableType);
+  return knowledgeService.retrieveForWorkflow(
+    assignment,
+    workflowId,
+    deliverableType,
+    userId,
+  );
 }

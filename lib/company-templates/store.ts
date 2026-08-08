@@ -14,30 +14,58 @@ function createDefaultState(): ActiveCompanyState {
   };
 }
 
-function getServerBucket(): ActiveCompanyState {
+type CompanyStateBucket = Map<string, ActiveCompanyState>;
+
+function getServerUserBucket(): CompanyStateBucket {
   const globalScope = globalThis as typeof globalThis & {
+    __atlasActiveCompanyByUser?: CompanyStateBucket;
+    /** @deprecated legacy global slot — ignored for reads after P0-03 */
     __atlasActiveCompany?: ActiveCompanyState;
   };
 
-  if (!globalScope.__atlasActiveCompany) {
-    globalScope.__atlasActiveCompany = createDefaultState();
+  if (!globalScope.__atlasActiveCompanyByUser) {
+    globalScope.__atlasActiveCompanyByUser = new Map();
   }
 
-  return globalScope.__atlasActiveCompany;
+  return globalScope.__atlasActiveCompanyByUser;
 }
 
-/** Read active template id on the server (API routes, deliverables, orchestration). */
+/** Read active template id for a specific user on the server. */
+export function getServerActiveCompanyStateForUser(
+  userId: string,
+): ActiveCompanyState {
+  if (!userId) return createDefaultState();
+  const bucket = getServerUserBucket();
+  const existing = bucket.get(userId);
+  if (existing) return existing;
+  const created = createDefaultState();
+  bucket.set(userId, created);
+  return created;
+}
+
+export function setServerActiveCompanyStateForUser(
+  userId: string,
+  state: ActiveCompanyState,
+): ActiveCompanyState {
+  if (!userId) return state;
+  getServerUserBucket().set(userId, state);
+  return state;
+}
+
+/**
+ * @deprecated Global active company is no longer authoritative (P0-03).
+ * Prefer getServerActiveCompanyStateForUser.
+ */
 export function getServerActiveCompanyState(): ActiveCompanyState {
-  return getServerBucket();
+  return createDefaultState();
 }
 
+/**
+ * @deprecated Prefer setServerActiveCompanyStateForUser.
+ */
 export function setServerActiveCompanyState(
   state: ActiveCompanyState,
 ): ActiveCompanyState {
-  const globalScope = globalThis as typeof globalThis & {
-    __atlasActiveCompany?: ActiveCompanyState;
-  };
-  globalScope.__atlasActiveCompany = state;
   return state;
 }
 
@@ -74,5 +102,6 @@ export function resolveActiveTemplateId(
     return getClientActiveCompanyState().templateId;
   }
 
-  return getServerActiveCompanyState().templateId;
+  // Server callers without user context get the default (fail-closed).
+  return DEFAULT_COMPANY_TEMPLATE_ID;
 }

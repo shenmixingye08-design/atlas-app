@@ -16,10 +16,11 @@ export type { IntegrationUploadSummary };
  * Upload failures are captured and never thrown to callers.
  */
 export async function dispatchDeliverablesToIntegrations(
+  userId: string,
   deliverables: readonly Deliverable[],
   requests: readonly DeliverableDispatchRequest[],
 ): Promise<DeliverableDispatchResult[]> {
-  if (deliverables.length === 0 || requests.length === 0) {
+  if (!userId || deliverables.length === 0 || requests.length === 0) {
     return [];
   }
 
@@ -38,7 +39,7 @@ export async function dispatchDeliverablesToIntegrations(
     }
 
     results.push(
-      await integrationService.dispatchDeliverable(request, deliverable),
+      await integrationService.dispatchDeliverable(request, deliverable, userId),
     );
   }
 
@@ -46,6 +47,7 @@ export async function dispatchDeliverablesToIntegrations(
 }
 
 export async function uploadDeliverablesAfterGeneration(input: {
+  userId: string;
   deliverables: readonly Deliverable[];
   projectName: string;
   workflowId?: string | null;

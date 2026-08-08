@@ -1,3 +1,4 @@
+import { requireAuthenticatedUserId } from "@/lib/auth/require-authenticated-user";
 import type { CompanyTemplateId } from "@/lib/company-templates/types";
 import { findCompanyTemplate } from "@/lib/company-templates/registry";
 import { workflowMarketplaceService } from "@/lib/workflow-marketplace/marketplace-service";
@@ -14,6 +15,9 @@ export async function POST(
   _request: Request,
   context: RouteContext,
 ): Promise<Response> {
+  const gate = await requireAuthenticatedUserId();
+  if (!gate.ok) return gate.response;
+
   const { templateId } = await context.params;
   const id = parseTemplateId(templateId);
 
@@ -22,7 +26,10 @@ export async function POST(
   }
 
   try {
-    const result = await workflowMarketplaceService.installPackage(id);
+    const result = await workflowMarketplaceService.installPackageForUser(
+      gate.userId,
+      id,
+    );
     return Response.json(result, { status: 201 });
   } catch (error) {
     const message =

@@ -163,7 +163,7 @@ describe("Google Drive integration", () => {
         buffer: Buffer.from("pdf-content"),
         isPlaceholder: false,
       },
-      "user_drive_test",
+      TEST_USER_ID,
     );
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

@@ -1,9 +1,9 @@
 import "server-only";
 
-import { applyCompanyTemplate } from "@/lib/company-templates/apply-template.server";
+import { applyCompanyTemplateForUser } from "@/lib/company-templates/apply-template.server";
 import { getCompanyTemplate, companyTemplates } from "@/lib/company-templates/registry";
 import {
-  getServerActiveCompanyState,
+  getServerActiveCompanyStateForUser,
   setClientActiveCompanyState,
 } from "@/lib/company-templates/store";
 import type { CompanyTemplateId } from "@/lib/company-templates/types";
@@ -15,10 +15,10 @@ import {
 } from "./catalog";
 import { getWorkflowPackageMetadata } from "./definitions/packages";
 import {
-  getServerInstalledPackage,
-  getServerInstalledPackages,
-  removeServerInstalledPackage,
-  saveServerInstalledPackage,
+  getServerInstalledPackageForUser,
+  getServerInstalledPackagesForUser,
+  removeServerInstalledPackageForUser,
+  saveServerInstalledPackageForUser,
   setClientInstalledPackages,
 } from "./installed-store";
 import type {
@@ -29,15 +29,20 @@ import type {
   WorkflowPackageView,
 } from "./types";
 
-function resolveInstalledMap(): Map<CompanyTemplateId, ReturnType<typeof getServerInstalledPackage>> {
+function resolveInstalledMap(
+  userId: string,
+): Map<CompanyTemplateId, ReturnType<typeof getServerInstalledPackageForUser>> {
   return new Map(
-    getServerInstalledPackages().map((record) => [record.templateId, record]),
+    getServerInstalledPackagesForUser(userId).map((record) => [
+      record.templateId,
+      record,
+    ]),
   );
 }
 
-function buildCatalogViews(): WorkflowPackageView[] {
-  const activeTemplateId = getServerActiveCompanyState().templateId;
-  const installedMap = resolveInstalledMap();
+function buildCatalogViews(userId: string): WorkflowPackageView[] {
+  const activeTemplateId = getServerActiveCompanyStateForUser(userId).templateId;
+  const installedMap = resolveInstalledMap(userId);
 
   return companyTemplates.map((template) =>
     buildPackageView(template, {
@@ -48,22 +53,25 @@ function buildCatalogViews(): WorkflowPackageView[] {
 }
 
 export class WorkflowMarketplaceService {
-  getCatalog(): WorkflowMarketplaceCatalog {
-    const packages = buildCatalogViews();
-    const activeTemplateId = getServerActiveCompanyState().templateId;
+  getCatalogForUser(userId: string): WorkflowMarketplaceCatalog {
+    const packages = buildCatalogViews(userId);
+    const activeTemplateId = getServerActiveCompanyStateForUser(userId).templateId;
 
     return {
       packages,
-      installed: getServerInstalledPackages(),
+      installed: getServerInstalledPackagesForUser(userId),
       activeTemplateId,
       sections: buildSectionIndex(packages),
     };
   }
 
-  getPackage(templateId: CompanyTemplateId): WorkflowPackageView {
+  getPackageForUser(
+    userId: string,
+    templateId: CompanyTemplateId,
+  ): WorkflowPackageView {
     const template = getCompanyTemplate(templateId);
-    const installed = getServerInstalledPackage(templateId);
-    const activeTemplateId = getServerActiveCompanyState().templateId;
+    const installed = getServerInstalledPackageForUser(userId, templateId);
+    const activeTemplateId = getServerActiveCompanyStateForUser(userId).templateId;
 
     return buildPackageView(template, {
       installed,
@@ -71,58 +79,69 @@ export class WorkflowMarketplaceService {
     });
   }
 
-  async installPackage(templateId: CompanyTemplateId): Promise<InstallPackageResult> {
+  async installPackageForUser(
+    userId: string,
+    templateId: CompanyTemplateId,
+  ): Promise<InstallPackageResult> {
     const metadata = getWorkflowPackageMetadata(templateId);
     const now = new Date().toISOString();
 
-    const applyResult = await applyCompanyTemplate(templateId);
+    const applyResult = await applyCompanyTemplateForUser(userId, templateId);
 
-    saveServerInstalledPackage({
+    saveServerInstalledPackageForUser(userId, {
       templateId,
-      installedAt: getServerInstalledPackage(templateId)?.installedAt ?? now,
+      installedAt:
+        getServerInstalledPackageForUser(userId, templateId)?.installedAt ?? now,
       updatedAt: now,
       installedVersion: metadata.version,
     });
 
-    setClientInstalledPackages(getServerInstalledPackages());
+    setClientInstalledPackages(getServerInstalledPackagesForUser(userId));
     setClientActiveCompanyState(applyResult.state);
 
     return {
-      package: this.getPackage(templateId),
+      package: this.getPackageForUser(userId, templateId),
       automationsMerged: applyResult.automationsMerged,
       activated: true,
     };
   }
 
-  async updatePackage(templateId: CompanyTemplateId): Promise<UpdatePackageResult> {
-    const installed = getServerInstalledPackage(templateId);
+  async updatePackageForUser(
+    userId: string,
+    templateId: CompanyTemplateId,
+  ): Promise<UpdatePackageResult> {
+    const installed = getServerInstalledPackageForUser(userId, templateId);
     if (!installed) {
       throw new Error("Package is not installed. Install it before updating.");
     }
 
-    return this.installPackage(templateId);
+    return this.installPackageForUser(userId, templateId);
   }
 
-  async removePackage(templateId: CompanyTemplateId): Promise<RemovePackageResult> {
-    const installed = getServerInstalledPackage(templateId);
+  async removePackageForUser(
+    userId: string,
+    templateId: CompanyTemplateId,
+  ): Promise<RemovePackageResult> {
+    const installed = getServerInstalledPackageForUser(userId, templateId);
     if (!installed) {
       throw new Error("Package is not installed.");
     }
 
-    removeServerInstalledPackage(templateId);
+    removeServerInstalledPackageForUser(userId, templateId);
 
-    let activeTemplateId = getServerActiveCompanyState().templateId;
+    let activeTemplateId = getServerActiveCompanyStateForUser(userId).templateId;
 
     if (activeTemplateId === templateId) {
-      const fallback = getServerInstalledPackages()[0]?.templateId
-        ?? DEFAULT_COMPANY_TEMPLATE_ID;
+      const fallback =
+        getServerInstalledPackagesForUser(userId)[0]?.templateId ??
+        DEFAULT_COMPANY_TEMPLATE_ID;
 
-      const applyResult = await applyCompanyTemplate(fallback);
+      const applyResult = await applyCompanyTemplateForUser(userId, fallback);
       activeTemplateId = applyResult.state.templateId;
       setClientActiveCompanyState(applyResult.state);
     }
 
-    setClientInstalledPackages(getServerInstalledPackages());
+    setClientInstalledPackages(getServerInstalledPackagesForUser(userId));
 
     return {
       removed: templateId,

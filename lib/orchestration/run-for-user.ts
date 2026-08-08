@@ -5,7 +5,7 @@ import { sanitizeOrchestrationResultForClient } from "@/lib/orchestration/saniti
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import { buildCompanyOrchestrationMetadata } from "@/lib/company-templates/loader";
 import { resolveCompanyTemplateIdFromMetadata } from "@/lib/company-templates/context";
-import { getServerActiveCompanyState } from "@/lib/company-templates/store";
+import { getServerActiveCompanyStateForUser } from "@/lib/company-templates/store";
 import { notifyWorkCompleted, notifyWorkFailed } from "@/lib/notifications/emitters";
 import { persistCommanderResultAsProject } from "@/lib/commander/durable-store";
 import { buildAtlasMemoryMetadata } from "@/lib/user-memory/metadata";
@@ -101,7 +101,9 @@ export async function runOrchestrationForUser(
 
   const templateId =
     resolveCompanyTemplateIdFromMetadata(input.metadata) ??
-    getServerActiveCompanyState().templateId;
+    (input.userId
+      ? getServerActiveCompanyStateForUser(input.userId).templateId
+      : undefined);
 
   const skipWorkMemory = shouldSkipWorkMemory(input.metadata);
   const workMemoryEnabled =

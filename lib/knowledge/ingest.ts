@@ -34,6 +34,7 @@ export function extractKnowledgeFromWorkflow(
   const workflowId = input.workflowId;
 
   entries.push({
+    userId: input.userId,
     title: `プロジェクト: ${preview(input.assignment, 80)}`,
     category: "project_summary",
     tags,
@@ -48,6 +49,7 @@ export function extractKnowledgeFromWorkflow(
   if (result.finalResponse.trim()) {
     const formats = detectDeliverableFormats(input.assignment);
     entries.push({
+    userId: input.userId,
       title: "最終成果物",
       category: "deliverable",
       tags: [...tags, ...formats.formats.map((format) => `format:${format}`)],
@@ -63,6 +65,7 @@ export function extractKnowledgeFromWorkflow(
   if (result.research?.report) {
     const report = result.research.report;
     entries.push({
+    userId: input.userId,
       title: "調査レポート",
       category: "research",
       tags: [...tags, "research"],
@@ -79,6 +82,7 @@ export function extractKnowledgeFromWorkflow(
     const latestReview = result.qualityLoop.reviews.at(-1);
     if (latestReview) {
       entries.push({
+    userId: input.userId,
         title: `品質スコア ${latestReview.score}/100`,
         category: "quality",
         tags: [...tags, "qa"],
@@ -92,6 +96,7 @@ export function extractKnowledgeFromWorkflow(
 
       if (!latestReview.passed || latestReview.score < 95) {
         entries.push({
+    userId: input.userId,
           title: "品質改善ポイント",
           category: "mistake",
           tags: [...tags, "qa", "mistake"],
@@ -108,6 +113,7 @@ export function extractKnowledgeFromWorkflow(
     if (result.qualityLoop.ceoApproval) {
       const approval = result.qualityLoop.ceoApproval;
       entries.push({
+    userId: input.userId,
         title: approval.approved ? "CEO承認済み成果物" : "CEO修正依頼",
         category: "ceo_approval",
         tags: [...tags, "ceo"],
@@ -125,6 +131,7 @@ export function extractKnowledgeFromWorkflow(
 
     if (result.qualityLoop.revisionCount > 0) {
       entries.push({
+    userId: input.userId,
         title: "修正から学んだこと",
         category: "lesson_learned",
         tags: [...tags, "revision", "lesson"],
@@ -139,6 +146,7 @@ export function extractKnowledgeFromWorkflow(
 
     if (result.approved && (result.qualityLoop.currentScore ?? 0) >= 95) {
       entries.push({
+    userId: input.userId,
         title: "成功した進め方",
         category: "reusable_strategy",
         tags: [...tags, "strategy", "success"],
@@ -154,6 +162,7 @@ export function extractKnowledgeFromWorkflow(
 
   if (input.userFeedback?.trim()) {
     entries.push({
+    userId: input.userId,
       title: "ユーザーフィードバック",
       category: "user_feedback",
       tags: [...tags, "feedback"],
@@ -172,6 +181,7 @@ export function extractKnowledgeFromWorkflow(
 
   for (const execution of failedTasks.slice(0, 3)) {
     entries.push({
+    userId: input.userId,
       title: `タスク ${execution.task.id} の失敗パターン`,
       category: "mistake",
       tags: [...tags, `task:${execution.task.id}`, "failure"],
@@ -188,6 +198,7 @@ export function extractKnowledgeFromWorkflow(
 
   entries.push(
     ...extractCompanyLearningKnowledge(result, {
+      userId: input.userId,
       workflowId,
       assignment: input.assignment,
     }),

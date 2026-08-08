@@ -1,3 +1,5 @@
+import { requireAuthenticatedUserId } from "@/lib/auth/require-authenticated-user";
+import { rejectClientIdentityOverride } from "@/lib/auth/ownership";
 import { isIntegrationProviderId } from "@/lib/integrations/domain";
 import { integrationService } from "@/lib/integrations/integration-service";
 import type {
@@ -5,7 +7,10 @@ import type {
   IntegrationProviderId,
 } from "@/lib/integrations/types";
 
-function parseConnectBody(body: unknown): ConnectIntegrationInput | { error: string } {
+function parseConnectBody(
+  body: unknown,
+  userId: string,
+): ConnectIntegrationInput | { error: string } {
   if (typeof body !== "object" || body === null) {
     return { error: "Request body must be an object" };
   }
@@ -25,17 +30,24 @@ function parseConnectBody(body: unknown): ConnectIntegrationInput | { error: str
   }
 
   return {
+    userId,
     provider,
     ...(typeof record.name === "string" ? { name: record.name.trim() } : {}),
   };
 }
 
 export async function GET(): Promise<Response> {
-  const catalog = await integrationService.getCatalog();
+  const gate = await requireAuthenticatedUserId();
+  if (!gate.ok) return gate.response;
+
+  const catalog = await integrationService.getCatalogForUser(gate.userId);
   return Response.json(catalog);
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const gate = await requireAuthenticatedUserId();
+  if (!gate.ok) return gate.response;
+
   let body: unknown;
 
   try {
@@ -44,7 +56,13 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const parsed = parseConnectBody(body);
+  const identity = rejectClientIdentityOverride({
+    authenticatedUserId: gate.userId,
+    bodyUserId: (body as { userId?: unknown } | null)?.userId,
+  });
+  if (!identity.ok) return identity.response;
+
+  const parsed = parseConnectBody(body, gate.userId);
   if ("error" in parsed) {
     return Response.json({ error: parsed.error }, { status: 400 });
   }

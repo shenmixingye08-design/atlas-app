@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getStoredDeliverable } from "@/lib/deliverables/store";
+import { getStoredDeliverableForUser } from "@/lib/deliverables/store";
 import type { Deliverable } from "@/lib/deliverables/types";
 
 import { getUploadProvider } from "./providers/upload-registry";
@@ -14,6 +14,8 @@ import type {
 } from "./types";
 
 export type UploadDeliverablesInput = {
+  /** Required for P0-03 — never upload using another user's connection. */
+  userId: string;
   deliverables: readonly Deliverable[];
   projectName: string;
   workflowId?: string | null;
@@ -51,7 +53,12 @@ export async function uploadDeliverablesToIntegrations(
     return emptySummary;
   }
 
+  if (!input.userId?.trim()) {
+    return emptySummary;
+  }
+
   const connections = await serverIntegrationRepository.list({
+    userId: input.userId,
     connected: true,
   });
 
@@ -74,7 +81,10 @@ export async function uploadDeliverablesToIntegrations(
   const uploadedAt = new Date().toISOString();
 
   for (const deliverable of input.deliverables) {
-    const stored = getStoredDeliverable(deliverable.id);
+    const stored = await getStoredDeliverableForUser(
+      deliverable.id,
+      input.userId,
+    );
 
     if (!stored) {
       uploads.push({
