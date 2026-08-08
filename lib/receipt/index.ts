@@ -4,12 +4,18 @@ export type {
   LowConfidenceField,
   MoneyUse,
   MonthlyAnalytics,
+  ReceiptAiFailureCode,
   ReceiptCategory,
   ReceiptLineItem,
   ReceiptSchema,
   ReceiptSession,
 } from "./types";
 export { RECEIPT_CATEGORIES } from "./types";
+export {
+  RECEIPT_USER_ERROR,
+  failureConfigMissing,
+  failureFromProviderError,
+} from "./errors";
 export {
   processReceiptImages,
   confirmReceiptSession,

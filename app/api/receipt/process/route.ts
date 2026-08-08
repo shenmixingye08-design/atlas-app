@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 
 import { prepareMediaImages } from "@/lib/media-pipelines";
+import { RECEIPT_USER_ERROR } from "@/lib/receipt/errors";
 import { processReceiptImages } from "@/lib/receipt";
 
 export const runtime = "nodejs";
@@ -52,14 +53,33 @@ export async function POST(request: Request): Promise<Response> {
       hasBusinessContext: Boolean(companyHint.trim()),
     });
 
+    // P0-01: failed sessions are explicit — never HTTP 200 with fake registered data.
+    if (session.status === "failed") {
+      const status = session.retryable ? 503 : 422;
+      return Response.json(
+        {
+          session,
+          error: session.error ?? RECEIPT_USER_ERROR.analysisFailed,
+          errorCode: session.errorCode ?? null,
+          retryable: Boolean(session.retryable),
+        },
+        { status },
+      );
+    }
+
     return Response.json({ session });
   } catch (error) {
+    // Never leak API keys / provider internals to the client.
+    console.error("[receipt/process] unexpected failure", {
+      message: error instanceof Error ? error.message : "unknown",
+    });
     return Response.json(
       {
-        error:
-          error instanceof Error ? error.message : "レシート処理に失敗しました",
+        error: RECEIPT_USER_ERROR.analysisFailed,
+        errorCode: "provider_error",
+        retryable: true,
       },
-      { status: 400 },
+      { status: 503 },
     );
   }
 }

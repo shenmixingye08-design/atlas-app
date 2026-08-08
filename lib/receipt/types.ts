@@ -25,6 +25,14 @@ export type ReceiptLineItem = {
   confidence: number;
 };
 
+export type ReceiptAiFailureCode =
+  | "config_missing"
+  | "provider_error"
+  | "unreadable"
+  | "parse_failed"
+  | "not_receipt"
+  | "openai_unavailable";
+
 export type ReceiptSchema = {
   storeName: string | null;
   phone: string | null;
@@ -40,12 +48,17 @@ export type ReceiptSchema = {
   registerNo: string | null;
   staff: string | null;
   cardType: string | null;
+  /** Safe diagnostic note only — never API keys or provider raw bodies. */
   rawNotes: string | null;
   overallConfidence: number;
   fieldConfidence: Record<string, number>;
   visionSucceeded: boolean;
   model?: string;
   sourceImageIds: string[];
+  /** Set when visionSucceeded is false (P0-01 fail-closed). */
+  failureCode?: ReceiptAiFailureCode;
+  /** Whether the client may usefully retry the same request. */
+  retryable?: boolean;
 };
 
 export type LowConfidenceField = {
@@ -100,7 +113,12 @@ export type ReceiptSession = {
   askExpenseConfirmation: boolean;
   entriesPreview: Omit<LedgerEntry, "id" | "createdAt" | "updatedAt">[];
   suggestions: string[];
+  /** User-safe message when status is failed. */
   error: string | null;
+  /** Machine-readable failure (P0-01). */
+  errorCode?: ReceiptAiFailureCode | null;
+  /** True when retrying the same request may succeed. */
+  retryable?: boolean;
   createdAt: string;
   updatedAt: string;
 };
