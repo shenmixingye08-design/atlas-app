@@ -68,9 +68,8 @@ export async function GET(request: Request): Promise<Response> {
   const apply = url.searchParams.get("apply") === "1";
   const run = url.searchParams.get("run") === "1";
   const smokeParam = url.searchParams.get("smoke");
-  // Default off — smoke sends Owner alerts. Enable with smoke=1 or force=1.
-  const smoke =
-    smokeParam === "1" || (force && smokeParam !== "0");
+  // Default off — smoke sends Owner alerts. Enable only with explicit smoke=1.
+  const smoke = smokeParam === "1";
   const inject = url.searchParams.get("inject");
   const clearInject = url.searchParams.get("clearInject");
 
