@@ -210,10 +210,13 @@ export async function runNotificationRetryProductionSmoke(): Promise<Notificatio
       pushFailureReason: "p102_smoke_force_dlq",
     });
 
+    // Force hard delivery failure for the probe owner only. In Production,
+    // LINE not_linked / push with zero subs soft-succeed and would never DLQ.
     const dlqDrain = await processDurableNotificationRetries({
       limit: 50,
       nowMs: Date.now(),
       leaseOwner: `p102_dlq_${randomUUID().slice(0, 6)}`,
+      forceDeliveryFailureForOwner: P102_PROBE_OWNER,
     });
     evidence.deadLettered = dlqDrain.deadLettered;
     if (evidence.drain) {
