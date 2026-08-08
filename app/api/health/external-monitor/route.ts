@@ -74,7 +74,8 @@ export async function GET(request: Request): Promise<Response> {
   const inject = url.searchParams.get("inject");
   const clearInject = url.searchParams.get("clearInject");
 
-  const needsAuth = apply || run || Boolean(inject) || Boolean(clearInject);
+  const needsAuth =
+    apply || run || smoke || Boolean(inject) || Boolean(clearInject);
   if (needsAuth) {
     const gate = await authorizeHealthProbe(request);
     if (!gate.ok) return healthUnauthorizedResponse(gate);
