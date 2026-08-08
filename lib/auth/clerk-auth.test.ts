@@ -138,6 +138,7 @@ describe("auth route matchers", () => {
       "/api/health/secrets-leakage(.*)",
     );
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain("/api/health/upload-ssrf(.*)");
+    expect(ATLAS_PUBLIC_API_MATCHERS).toContain("/api/health/reliability(.*)");
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain("/api/health/vision(.*)");
     expect(ATLAS_PROTECTED_PAGE_MATCHERS).toContain("/owner(.*)");
     expect(ATLAS_PROTECTED_PAGE_MATCHERS).toContain("/projects(.*)");

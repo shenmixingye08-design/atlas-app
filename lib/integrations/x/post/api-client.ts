@@ -122,16 +122,10 @@ export async function createTweet(input: {
   }
 
   try {
+    // P0-06: never retry the POST itself — timeout after success would double-post.
+    // Existence confirmation below may retry safely (read-only).
     const created = await withCircuitBreaker("x", async () =>
-      withRetry(
-        async (attempt) => {
-          if (attempt > 1) recordReliabilityEvent("retry", "retry");
-          return createTweetOnce(input);
-        },
-        {
-          onRetry: () => recordReliabilityEvent("post_x", "retry"),
-        },
-      ),
+      createTweetOnce(input),
     );
 
     // Existence confirmation — success only when the tweet can be read back.

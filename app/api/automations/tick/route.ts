@@ -70,10 +70,17 @@ export async function POST(request: Request): Promise<Response> {
         limit: 20,
         dispatch: false,
       });
-      const { dispatchAutomationRuns } = await import(
-        "@/lib/automation-platform/execution/dispatch"
-      );
-      v2Dispatch = await dispatchAutomationRuns({ limit: 10 });
+      // P0-06: V2 memoryClaimRun is process-local — unsafe under multi-instance cron.
+      // Production relies on durable work-queue; skip memory dispatch there.
+      const { isAtlasProduction } = await import("@/lib/runtime/is-production");
+      if (!isAtlasProduction()) {
+        const { dispatchAutomationRuns } = await import(
+          "@/lib/automation-platform/execution/dispatch"
+        );
+        v2Dispatch = await dispatchAutomationRuns({ limit: 10 });
+      } else {
+        v2Dispatch = { processed: 0 };
+      }
     } catch (error) {
       console.warn("[automation tick] v2 schedule/dispatch skipped:", error);
     }

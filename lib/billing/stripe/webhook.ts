@@ -7,8 +7,10 @@ import { getStripeWebhookSecret } from "./config";
 import { assertStripeWebhookSafeForProduction } from "./production-guard";
 import { handleStripeWebhookEvent } from "./webhook-handlers";
 import {
+  claimStripeEventForProcessing,
   hasProcessedStripeEvent,
   markStripeEventProcessed,
+  releaseStripeEventClaim,
 } from "./webhook-idempotency";
 
 /** Structured log without secrets, card data, or full event payloads. */
@@ -71,7 +73,40 @@ export async function processStripeWebhookRequest(
     };
   }
 
+  // Fast-path duplicate check (optional); claim is the real mutex.
   if (await hasProcessedStripeEvent(event.id)) {
+    logWebhookOutcome({
+      eventId: event.id,
+      eventType: event.type,
+      status: 200,
+      duplicate: true,
+    });
+    return {
+      status: 200,
+      body: {
+        received: true,
+        duplicate: true,
+        eventId: event.id,
+        eventType: event.type,
+      },
+    };
+  }
+
+  // P0-06: claim-before-process — only the insert winner runs side effects.
+  const claim = await claimStripeEventForProcessing(event.id, event.type);
+  if (!claim.ok) {
+    logWebhookOutcome({
+      eventId: event.id,
+      eventType: event.type,
+      status: 503,
+      success: false,
+    });
+    return {
+      status: 503,
+      body: { error: "Webhook idempotency store unavailable" },
+    };
+  }
+  if (!claim.claimed) {
     logWebhookOutcome({
       eventId: event.id,
       eventType: event.type,
@@ -93,13 +128,14 @@ export async function processStripeWebhookRequest(
   try {
     result = await handleStripeWebhookEvent(event);
   } catch (error) {
-    // Transient / unexpected — return 5xx so Stripe retries.
+    // Transient / unexpected — release claim so Stripe retries.
     const message =
       error instanceof Error ? error.message : "Webhook handler threw";
     console.error(
       `[billing:webhook] handler exception eventId=${event.id} type=${event.type}:`,
       message,
     );
+    await releaseStripeEventClaim(event.id);
     return {
       status: 500,
       body: {
@@ -113,6 +149,12 @@ export async function processStripeWebhookRequest(
   }
 
   if (result.success) {
+    await markStripeEventProcessed(event.id, event.type);
+  } else if (result.handled) {
+    // Handled but unsuccessful — release so Stripe can retry safely.
+    await releaseStripeEventClaim(event.id);
+  } else {
+    // Unhandled/skipped: keep claim to avoid replaying unknown noise forever.
     await markStripeEventProcessed(event.id, event.type);
   }
 
