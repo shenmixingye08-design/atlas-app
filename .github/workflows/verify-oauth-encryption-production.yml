@@ -66,6 +66,9 @@ jobs:
             "encryptionKeyConfigured": data.get("encryptionKeyConfigured"),
             "encryptionKeyVersionConfigured": data.get("encryptionKeyVersionConfigured"),
             "encryptionKeyVersion": data.get("encryptionKeyVersion"),
+            "encryptionSelfTestOk": data.get("encryptionSelfTestOk"),
+            "canaryPersistOk": data.get("canaryPersistOk"),
+            "legacyReencrypted": data.get("legacyReencrypted"),
             "tokenShape": data.get("tokenShape"),
             "appliedViaPostgres": data.get("appliedViaPostgres"),
             "appliedViaManagementApi": data.get("appliedViaManagementApi"),
@@ -84,6 +87,8 @@ jobs:
             "googleEncryptionColumnOk",
             "xEncryptionColumnOk",
             "dropboxEncryptionColumnOk",
+            "encryptionSelfTestOk",
+            "canaryPersistOk",
           ]
           for key in required:
             if data.get(key) is not True:
