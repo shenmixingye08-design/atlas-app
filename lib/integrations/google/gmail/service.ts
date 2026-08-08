@@ -302,15 +302,37 @@ export async function sendReplyForUser(input: {
     return { status: "not_found", message: "メールが見つかりません" };
   }
 
-  const sent = await sendGmailReply({
-    accessToken: access.accessToken,
-    message,
-    to: input.draft.to,
-    subject: input.draft.subject,
-    body: input.draft.body,
-  });
+  const { executeIdempotentSideEffect } = await import(
+    "@/lib/side-effects/execute"
+  );
+  const sideEffect = await executeIdempotentSideEffect(
+    {
+      userId: input.userId,
+      provider: "gmail",
+      actionType: "send",
+      destination: input.draft.to,
+      automationId: null,
+      runId: null,
+      occurrenceKey: input.messageId,
+      discriminator: `${input.messageId}|${input.draft.subject}`,
+    },
+    async () => {
+      const sent = await sendGmailReply({
+        accessToken: access.accessToken,
+        message,
+        to: input.draft.to,
+        subject: input.draft.subject,
+        body: input.draft.body,
+      });
+      return {
+        providerResourceId: sent.id,
+        result: { sentMessageId: sent.id },
+        evidence: { provider: "gmail", messageId: input.messageId },
+      };
+    },
+  );
 
-  return { status: "ready", sentMessageId: sent.id };
+  return { status: "ready", sentMessageId: sideEffect.result.sentMessageId };
 }
 
 export async function saveGmailDraftForUser(input: {

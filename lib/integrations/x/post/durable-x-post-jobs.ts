@@ -489,22 +489,22 @@ export async function claimDueXPostJobs(input: {
         "[x-post] P0-5: claim requires Supabase — Map fallback disabled",
       );
     }
-    const { data, error } = await client.rpc(
-      "atlas_claim_x_post_jobs" as "atlas_claim_work_queue_jobs",
-      {
-        p_worker_id: input.workerId,
-        p_limit: limit,
-        p_lease_ms: leaseMs,
-        p_now: nowIso,
-      } as never,
-    );
+    const { data, error } = await client.rpc("atlas_claim_x_post_jobs", {
+      p_worker_id: input.workerId,
+      p_limit: limit,
+      p_lease_ms: leaseMs,
+      p_now: nowIso,
+    });
     if (error) {
       // Migration missing RPC → fail-closed (no Map claim)
       throw new XPostStoreUnavailableError(
         `[x-post] P0-5: claim RPC unavailable — fail-closed (${error.message})`,
       );
     }
-    const rows = (data ?? []) as Record<string, unknown>[];
+    const rows = (Array.isArray(data) ? data : data ? [data] : []) as Record<
+      string,
+      unknown
+    >[];
     return rows.map((row) => dbRowToJob(row));
   }
 

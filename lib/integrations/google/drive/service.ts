@@ -412,18 +412,45 @@ export async function uploadFileToGoogleDriveForUser(input: {
   const parentFolderId =
     input.parentId?.trim() || folders.categories[category].folderId;
 
-  const file = await createDriveFile({
-    accessToken: access.accessToken,
-    fileName: input.fileName,
-    mimeType: input.mimeType || "application/octet-stream",
-    buffer: input.buffer,
-    parentFolderId,
-    category,
-  });
+  const { createHash } = await import("node:crypto");
+  const { executeIdempotentSideEffect } = await import(
+    "@/lib/side-effects/execute"
+  );
+  const contentHash = createHash("sha256")
+    .update(input.buffer)
+    .digest("hex")
+    .slice(0, 24);
+  const sideEffect = await executeIdempotentSideEffect(
+    {
+      userId: input.userId,
+      provider: "drive",
+      actionType: "upload",
+      destination: `${parentFolderId}/${input.fileName}`,
+      automationId: null,
+      runId: null,
+      occurrenceKey: null,
+      discriminator: contentHash,
+    },
+    async () => {
+      const file = await createDriveFile({
+        accessToken: access.accessToken,
+        fileName: input.fileName,
+        mimeType: input.mimeType || "application/octet-stream",
+        buffer: input.buffer,
+        parentFolderId,
+        category,
+      });
+      return {
+        providerResourceId: file.id,
+        result: { file },
+        evidence: { provider: "drive", contentHash, category },
+      };
+    },
+  );
 
   return {
     status: "ready",
-    file,
+    file: sideEffect.result.file,
     overwritten: false,
     folderUrl: folders.categories[category].folderUrl,
   };

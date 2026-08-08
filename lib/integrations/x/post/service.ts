@@ -219,10 +219,36 @@ async function executeTweetPost(input: {
   }
 
   try {
-    const tweet = await createTweet({
-      accessToken: access.accessToken,
-      text: input.text.trim(),
-    });
+    const { createHash } = await import("node:crypto");
+    const { executeIdempotentSideEffect } = await import(
+      "@/lib/side-effects/execute"
+    );
+    const text = input.text.trim();
+    const contentHash = createHash("sha256").update(text).digest("hex").slice(0, 24);
+    const sideEffect = await executeIdempotentSideEffect(
+      {
+        userId: input.userId,
+        provider: "x",
+        actionType: "post",
+        destination: access.username ?? "x",
+        automationId: input.automationId ?? null,
+        runId: null,
+        occurrenceKey: input.scheduledFor ?? null,
+        discriminator: contentHash,
+      },
+      async () => {
+        const tweet = await createTweet({
+          accessToken: access.accessToken,
+          text,
+        });
+        return {
+          providerResourceId: tweet.tweetId,
+          result: tweet,
+          evidence: { provider: "x", contentHash },
+        };
+      },
+    );
+    const tweet = sideEffect.result;
 
     const tweetUrl =
       access.username != null

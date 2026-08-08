@@ -65,6 +65,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/health/upload-ssrf(.*)",
   "/api/health/reliability(.*)",
   "/api/health/automation-v2-db(.*)",
+  "/api/health/side-effect-idempotency(.*)",
   "/api/health/vision(.*)",
   "/api/contact(.*)",
   "/api/automations/tick(.*)",

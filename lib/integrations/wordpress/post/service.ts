@@ -122,10 +122,41 @@ export async function createWordPressPostForUser(input: {
       input.payload,
     );
     const status = input.payload.status ?? "draft";
-    const created = await createWordPressPost(
-      ctx.auth,
-      buildPostBody({ ...input.payload, title, content, status }, featuredMediaId),
+    const { createHash } = await import("node:crypto");
+    const { executeIdempotentSideEffect } = await import(
+      "@/lib/side-effects/execute"
     );
+    const contentHash = createHash("sha256")
+      .update(`${title}\n${content}\n${status}`)
+      .digest("hex")
+      .slice(0, 24);
+    const sideEffect = await executeIdempotentSideEffect(
+      {
+        userId: input.userId,
+        provider: "wordpress",
+        actionType: status === "publish" ? "publish" : "post",
+        destination: ctx.auth.siteUrl ?? "wordpress",
+        automationId: null,
+        runId: null,
+        occurrenceKey: null,
+        discriminator: contentHash,
+      },
+      async () => {
+        const created = await createWordPressPost(
+          ctx.auth,
+          buildPostBody(
+            { ...input.payload, title, content, status },
+            featuredMediaId,
+          ),
+        );
+        return {
+          providerResourceId: String(created.id),
+          result: { created },
+          evidence: { provider: "wordpress", status, contentHash },
+        };
+      },
+    );
+    const created = sideEffect.result.created;
     await touchWordPressConnectionLastUsed(input.userId);
 
     return {

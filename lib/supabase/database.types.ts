@@ -660,6 +660,84 @@ export type Database = {
         };
         Relationships: [];
       };
+      atlas_side_effect_claims: {
+        Row: {
+          id: string;
+          user_id: string;
+          idempotency_key: string;
+          provider: string;
+          action_type: string;
+          automation_id: string | null;
+          run_id: string | null;
+          occurrence_key: string | null;
+          destination_fingerprint: string;
+          status: string;
+          lease_owner: string | null;
+          lease_expires_at: string | null;
+          attempt_count: number;
+          max_attempts: number;
+          provider_resource_id: string | null;
+          provider_request_id: string | null;
+          evidence: unknown;
+          result_payload: unknown;
+          last_error_code: string | null;
+          last_error_message: string | null;
+          created_at: string;
+          updated_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          id: string;
+          user_id: string;
+          idempotency_key: string;
+          provider: string;
+          action_type: string;
+          automation_id?: string | null;
+          run_id?: string | null;
+          occurrence_key?: string | null;
+          destination_fingerprint?: string;
+          status?: string;
+          lease_owner?: string | null;
+          lease_expires_at?: string | null;
+          attempt_count?: number;
+          max_attempts?: number;
+          provider_resource_id?: string | null;
+          provider_request_id?: string | null;
+          evidence?: unknown;
+          result_payload?: unknown;
+          last_error_code?: string | null;
+          last_error_message?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          idempotency_key?: string;
+          provider?: string;
+          action_type?: string;
+          automation_id?: string | null;
+          run_id?: string | null;
+          occurrence_key?: string | null;
+          destination_fingerprint?: string;
+          status?: string;
+          lease_owner?: string | null;
+          lease_expires_at?: string | null;
+          attempt_count?: number;
+          max_attempts?: number;
+          provider_resource_id?: string | null;
+          provider_request_id?: string | null;
+          evidence?: unknown;
+          result_payload?: unknown;
+          last_error_code?: string | null;
+          last_error_message?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          completed_at?: string | null;
+        };
+        Relationships: [];
+      };
       atlas_automations: {
         Row: {
           id: string;
@@ -896,7 +974,25 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      atlas_claim_side_effect: {
+        Args: {
+          p_id: string;
+          p_user_id: string;
+          p_lease_owner: string;
+          p_lease_ms?: number;
+        };
+        Returns: Database["public"]["Tables"]["atlas_side_effect_claims"]["Row"] | null;
+      };
+      atlas_claim_work_queue_jobs: {
+        Args: Record<string, unknown>;
+        Returns: unknown;
+      };
+      atlas_claim_x_post_jobs: {
+        Args: Record<string, unknown>;
+        Returns: unknown;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

@@ -1,0 +1,49 @@
+name: Verify Side-Effect Idempotency Production (P1-04)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20260808_p1_04_side_effect_idempotency.sql"
+      - "lib/side-effects/**"
+      - "app/api/health/side-effect-idempotency/**"
+      - ".github/workflows/verify-side-effect-idempotency-production.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe production side-effect-idempotency readiness
+        env:
+          PROD_URL: https://atlasapp.jp
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            CODE=$(curl -sS -o /tmp/side-effect.json -w "%{http_code}" \
+              "$PROD_URL/api/health/side-effect-idempotency?force=1" || echo "000")
+            echo "attempt=$i http=$CODE"
+            python3 - <<'PY'
+          import json,sys
+          try:
+            d=json.load(open("/tmp/side-effect.json"))
+          except Exception as e:
+            print("parse_error", e)
+            sys.exit(2)
+          print({k:d.get(k) for k in [
+            "ok","claimsTableOk","claimRpcOk",
+            "durableIdempotencyReady","memoryNotSot","commitShaShort"
+          ]})
+          sys.exit(0 if d.get("ok") is True and d.get("durableIdempotencyReady") is True else 3)
+          PY
+            STATUS=$?
+            if [ "$STATUS" -eq 0 ]; then
+              echo "side_effect_idempotency_ready=true"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::Production /api/health/side-effect-idempotency is not ready (ok!=true)."
+          echo "::error::Apply supabase/migrations/20260808_p1_04_side_effect_idempotency.sql,"
+          echo "::error::then re-check the probe."
+          exit 1
