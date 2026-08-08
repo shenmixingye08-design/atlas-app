@@ -32,7 +32,12 @@ async function probe(
       },
     });
     const status = response.status;
-    const denied = status === 401 || status === 403 || status === 404;
+    // 401/403/404 = authz denial. 503 on cron/tick = fail-closed when secret missing.
+    const denied =
+      status === 401 ||
+      status === 403 ||
+      status === 404 ||
+      (status === 503 && path.includes("/api/automations/tick"));
     // Drain body without inspecting foreign content.
     await response.arrayBuffer().catch(() => undefined);
     return { path, status, denied };
