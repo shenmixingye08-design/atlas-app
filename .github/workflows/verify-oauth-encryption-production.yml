@@ -1,0 +1,94 @@
+name: Verify OAuth Encryption Production (P0-02)
+
+# Calls production /api/health/oauth-encryption with CRON_SECRET.
+# Logs only boolean/count fields — never token values.
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Quality Gate"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: verify-oauth-encryption-production
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe production oauth-encryption health
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::CRON_SECRET secret is required for health probe"
+            exit 1
+          fi
+          BASE_URL="${ATLAS_APP_URL:-https://atlasapp.jp}"
+          BASE_URL="${BASE_URL%/}"
+          curl -fsS \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Cache-Control: no-store" \
+            "${BASE_URL}/api/health/oauth-encryption?force=1" \
+            -o /tmp/oauth-encryption.json
+          python3 - <<'PY'
+          import json, sys
+          data = json.load(open("/tmp/oauth-encryption.json"))
+          # Allowlist only safe fields for CI logs.
+          safe = {
+            "ok": data.get("ok"),
+            "status": data.get("status"),
+            "googleTableOk": data.get("googleTableOk"),
+            "xTableOk": data.get("xTableOk"),
+            "dropboxTableOk": data.get("dropboxTableOk"),
+            "googleEncryptionColumnOk": data.get("googleEncryptionColumnOk"),
+            "xEncryptionColumnOk": data.get("xEncryptionColumnOk"),
+            "dropboxEncryptionColumnOk": data.get("dropboxEncryptionColumnOk"),
+            "encryptionKeyConfigured": data.get("encryptionKeyConfigured"),
+            "encryptionKeyVersionConfigured": data.get("encryptionKeyVersionConfigured"),
+            "encryptionKeyVersion": data.get("encryptionKeyVersion"),
+            "tokenShape": data.get("tokenShape"),
+            "appliedViaPostgres": data.get("appliedViaPostgres"),
+            "appliedViaManagementApi": data.get("appliedViaManagementApi"),
+          }
+          print(json.dumps(safe, indent=2, sort_keys=True))
+          open("/tmp/oauth-encryption.safe.json", "w").write(json.dumps(safe, indent=2))
+          if not data.get("ok"):
+            sys.exit(2)
+          if data.get("encryptionKeyConfigured") is not True:
+            print("::error::encryptionKeyConfigured is not true", file=sys.stderr)
+            sys.exit(3)
+          required = [
+            "googleTableOk",
+            "xTableOk",
+            "dropboxTableOk",
+            "googleEncryptionColumnOk",
+            "xEncryptionColumnOk",
+            "dropboxEncryptionColumnOk",
+          ]
+          for key in required:
+            if data.get(key) is not True:
+              print(f"::error::{key} is not true", file=sys.stderr)
+              sys.exit(4)
+          print("P0-02 production health probe PASSED")
+          PY
+      - name: Upload safe probe artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oauth-encryption-probe
+          path: /tmp/oauth-encryption.safe.json
+          if-no-files-found: ignore
