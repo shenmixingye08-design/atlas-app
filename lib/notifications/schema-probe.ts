@@ -114,10 +114,13 @@ export async function probeNotificationRetrySchema(input?: {
 
   let tables = await probeTables(client);
   const missing =
+    !tables.inboxTableOk ||
+    !tables.dlqTableOk ||
     (tables.inboxError && isMissing(tables.inboxError)) ||
     (tables.dlqError && isMissing(tables.dlqError));
 
-  // Auto-apply once when tables/columns are missing (same pattern as P1-03/P1-04).
+  // Auto-apply once when either table is not readable (same pattern as P1-03/P1-04).
+  // Service role alone cannot DDL — requires POSTGRES_URL or management token.
   if (missing && !input?.apply) {
     const applyResult = await applyMigrationSql({
       sql: ATLAS_NOTIFICATION_RETRY_DLQ_MIGRATION_SQL,
@@ -129,8 +132,8 @@ export async function probeNotificationRetrySchema(input?: {
     envPresence = applyResult.envPresence;
     if (applyResult.error) error = applyResult.error;
     tables = await probeTables(client);
-  } else if (missing && input?.apply) {
-    // Apply already attempted above; re-probe.
+  } else if (input?.apply) {
+    // Apply already attempted above; re-probe after DDL.
     tables = await probeTables(client);
   }
 

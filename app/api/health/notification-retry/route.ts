@@ -64,8 +64,8 @@ export async function GET(request: Request): Promise<Response> {
   const result = await probeNotificationRetrySchema({ apply });
   lastRunAtMs = Date.now();
   lastOk = result.ok;
-  const body = buildSafeBody(result);
-  lastSafeBody = body;
+  const safe = buildSafeBody(result);
+  lastSafeBody = safe;
 
   console.info("[health/notification-retry]", {
     ok: result.ok,
@@ -76,7 +76,29 @@ export async function GET(request: Request): Promise<Response> {
     appliedViaPostgres: result.appliedViaPostgres,
     appliedViaManagementApi: result.appliedViaManagementApi,
     error: result.error,
+    envPresence: result.envPresence,
   });
+
+  // Authenticated apply responses include diagnostics so Owner can see why DDL
+  // apply failed (missing POSTGRES_URL / management token, SQL error, etc.).
+  const body = apply
+    ? {
+        ...safe,
+        appliedViaPostgres: result.appliedViaPostgres,
+        appliedViaManagementApi: result.appliedViaManagementApi,
+        error: result.error,
+        envPresence: {
+          serviceRole: result.envPresence.serviceRole,
+          postgresUrl: result.envPresence.postgresUrl,
+          supabaseAccessToken: result.envPresence.supabaseAccessToken,
+          projectRefPresent: Boolean(result.envPresence.projectRef),
+        },
+        ownerAction:
+          result.ok
+            ? null
+            : "Apply lib/notifications/migration-sql.ts (or 20260804_p0_4 + 20260726_dlq) in Supabase SQL editor, then re-probe ?force=1",
+      }
+    : safe;
 
   return Response.json(body, {
     status: result.ok ? 200 : 503,
