@@ -13,10 +13,14 @@ import { validateMemoryPolicy } from "@/lib/automation-platform/memory/contract"
 import { syncV2ToV1Scheduler } from "@/lib/automation-platform/bridge/v2-to-v1-scheduler";
 import {
   ensureAutomationsV2Hydrated,
+  getAutomationV2FromSot,
+  listAutomationsV2FromSot,
   persistAutomationV2Now,
 } from "@/lib/automation-platform/durable";
 import {
   ensureAutomationRunsV2Hydrated,
+  getAutomationRunFromSot,
+  insertAutomationRunSot,
   persistAutomationRunNow,
 } from "@/lib/automation-platform/durable-runs";
 import { dispatchAutomationRuns } from "@/lib/automation-platform/execution/dispatch";
@@ -27,11 +31,10 @@ import {
 } from "@/lib/automation-platform/execution/prepare-run";
 import { applyMemoryForAutomation } from "@/lib/memory-apply/automation";
 import {
-  memoryGetAutomation,
+  dbListRunsForAutomation,
+} from "@/lib/automation-platform/repository/db-store";
+import {
   memoryGetRun,
-  memoryInsertRun,
-  memoryListAutomationsForUser,
-  memoryListRunsForAutomation,
   memoryListRunsForUser,
   memoryUpdateRun,
 } from "@/lib/automation-platform/repository/memory-store";
@@ -129,7 +132,7 @@ export class AutomationPlatformService {
     if (record.status === "active") {
       assertProductionStepsActivatable(record.workflow.steps);
     }
-    let saved = persistAutomationV2Now(record);
+    let saved = await persistAutomationV2Now(record);
 
     if (saved.status === "active") {
       saved = await this.registerWithScheduler(saved);
@@ -168,7 +171,7 @@ export class AutomationPlatformService {
     assertV2Enabled(context);
     assertRateLimit(userId, "list");
     await ensureAutomationsV2Hydrated(userId);
-    return memoryListAutomationsForUser(userId);
+    return listAutomationsV2FromSot(userId);
   }
 
   async get(
@@ -178,7 +181,7 @@ export class AutomationPlatformService {
   ): Promise<AutomationV2> {
     assertV2Enabled(context);
     await ensureAutomationsV2Hydrated(userId);
-    return assertOwner(memoryGetAutomation(id), userId);
+    return assertOwner(await getAutomationV2FromSot(id, userId), userId);
   }
 
   async update(
@@ -190,7 +193,10 @@ export class AutomationPlatformService {
     assertV2Enabled(context);
     assertRateLimit(userId, "update");
     await ensureAutomationsV2Hydrated(userId);
-    const current = assertOwner(memoryGetAutomation(id), userId);
+    const current = assertOwner(
+      await getAutomationV2FromSot(id, userId),
+      userId,
+    );
 
     if (patch.status && patch.status !== current.status) {
       assertDefinitionTransition(current.status, patch.status);
@@ -260,7 +266,7 @@ export class AutomationPlatformService {
       assertProductionStepsActivatable(updated.workflow.steps);
     }
 
-    let saved = persistAutomationV2Now(updated);
+    let saved = await persistAutomationV2Now(updated);
 
     if (
       saved.status === "active" ||
@@ -300,7 +306,7 @@ export class AutomationPlatformService {
       },
       updatedAt: new Date().toISOString(),
     };
-    return persistAutomationV2Now(next);
+    return await persistAutomationV2Now(next);
   }
 
   async duplicate(
@@ -362,7 +368,7 @@ export class AutomationPlatformService {
     );
 
     await ensureAutomationRunsV2Hydrated(userId);
-    const runs = memoryListRunsForAutomation({ userId, automationId: id });
+    const runs = await dbListRunsForAutomation({ userId, automationId: id });
     let runningEffect: "continued" | "cancelled" = "continued";
     let approvalEffect: "kept" | "cancelled" = "kept";
 
@@ -485,7 +491,7 @@ export class AutomationPlatformService {
     await ensureAutomationRunsV2Hydrated(input.userId);
 
     const automation = assertOwner(
-      memoryGetAutomation(input.automationId),
+      await getAutomationV2FromSot(input.automationId, input.userId),
       input.userId,
     );
 
@@ -538,10 +544,12 @@ export class AutomationPlatformService {
       clientKey: input.clientIdempotencyKey,
     });
 
-    const priorApprovals = memoryListRunsForAutomation({
-      userId: input.userId,
-      automationId: automation.id,
-    }).filter((run) => run.approval?.status === "approved").length;
+    const priorApprovals = (
+      await dbListRunsForAutomation({
+        userId: input.userId,
+        automationId: automation.id,
+      })
+    ).filter((run) => run.approval?.status === "approved").length;
 
     const approvalRequirement = resolveRunApprovalRequirement({
       policy: automation.executionPolicy,
@@ -655,7 +663,7 @@ export class AutomationPlatformService {
       updatedAt: now,
     };
 
-    const inserted = memoryInsertRun(run);
+    const inserted = await insertAutomationRunSot(run);
     if (!inserted.created) {
       appendAutomationAudit({
         actorUserId: input.userId,
@@ -669,14 +677,14 @@ export class AutomationPlatformService {
       return inserted;
     }
 
-    persistAutomationRunNow(inserted.run);
+    await persistAutomationRunNow(inserted.run);
 
     if (input.triggerType === "schedule" && scheduledFor) {
       const next = computeNextRunIsoFromTrigger(
         automation.trigger,
         new Date(scheduledFor),
       );
-      persistAutomationV2Now({
+      await persistAutomationV2Now({
         ...automation,
         nextRunAt: next,
         updatedAt: now,
@@ -706,8 +714,9 @@ export class AutomationPlatformService {
     const shouldDispatch = input.dispatch !== false && inserted.run.status === "queued";
     if (shouldDispatch) {
       await dispatchAutomationRuns({ runIds: [inserted.run.id] });
-      const latest = memoryGetRun(inserted.run.id) ?? inserted.run;
-      persistAutomationV2Now({
+      const latest =
+        (await getAutomationRunFromSot(inserted.run.id)) ?? inserted.run;
+      await persistAutomationV2Now({
         ...automation,
         lastRunAt: latest.completedAt ?? latest.updatedAt,
         updatedAt: new Date().toISOString(),
@@ -726,8 +735,8 @@ export class AutomationPlatformService {
     assertV2Enabled(context);
     await ensureAutomationsV2Hydrated(userId);
     await ensureAutomationRunsV2Hydrated(userId);
-    assertOwner(memoryGetAutomation(automationId), userId);
-    return memoryListRunsForAutomation({ userId, automationId });
+    assertOwner(await getAutomationV2FromSot(automationId, userId), userId);
+    return dbListRunsForAutomation({ userId, automationId });
   }
 
   async listAllRuns(
@@ -808,7 +817,7 @@ export class AutomationPlatformService {
         type: "system",
         component: "approval_timeout",
       }, "approval_expired");
-      persistAutomationRunNow(expired);
+      await persistAutomationRunNow(expired);
       throw new AutomationPlatformError("automation_approval_expired", {
         runId: expired.id,
       });
@@ -835,7 +844,7 @@ export class AutomationPlatformService {
       { type: "user", userId },
       "approved",
     );
-    persistAutomationRunNow(updated);
+    await persistAutomationRunNow(updated);
 
     appendAutomationAudit({
       actorUserId: userId,
@@ -878,7 +887,7 @@ export class AutomationPlatformService {
       { type: "user", userId },
       "rejected",
     );
-    persistAutomationRunNow(updated);
+    await persistAutomationRunNow(updated);
     appendAutomationAudit({
       actorUserId: userId,
       action: "automation.run.reject",
@@ -943,7 +952,7 @@ export class AutomationPlatformService {
           ? `cancelled_by_user:${options.reason.trim().slice(0, 80)}`
           : "cancelled_by_user",
       );
-      persistAutomationRunNow(updated);
+      await persistAutomationRunNow(updated);
       appendAutomationAudit({
         actorUserId: userId,
         action: "automation.run.cancel",
@@ -1136,7 +1145,7 @@ export class AutomationPlatformService {
       );
     }
 
-    persistAutomationRunNow(run);
+    await persistAutomationRunNow(run);
     appendAutomationAudit({
       actorUserId: userId,
       action: "automation.run.safe_retry",
@@ -1210,7 +1219,7 @@ export class AutomationPlatformService {
       { type: "user", userId },
       "resumed_after_input",
     );
-    persistAutomationRunNow(updated);
+    await persistAutomationRunNow(updated);
     if (options?.dispatch === false) {
       return updated;
     }
@@ -1229,7 +1238,7 @@ export class AutomationPlatformService {
       "@/lib/automation-platform/operations/summary"
     );
     return buildAutomationOperationsSummary({
-      automations: memoryListAutomationsForUser(userId),
+      automations: await listAutomationsV2FromSot(userId),
       runs: memoryListRunsForUser(userId),
     });
   }

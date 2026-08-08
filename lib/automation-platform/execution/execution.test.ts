@@ -22,6 +22,7 @@ import {
 } from "@/lib/automation-platform/execution/retry-policy";
 import { resolveRunApprovalRequirement } from "@/lib/automation-platform/execution/policy";
 import { normalizeExecutionPolicy } from "@/lib/automation-platform/execution/policy";
+import { resetAutomationV2DbStoreForTests } from "@/lib/automation-platform/repository/db-store";
 import { resetAutomationPlatformStoreForTests } from "@/lib/automation-platform/repository/memory-store";
 import { resetAutomationRateLimitForTests } from "@/lib/automation-platform/security/rate-limit";
 import { automationPlatformService } from "@/lib/automation-platform/service/automation-service";
@@ -109,6 +110,7 @@ async function createActive(
 describe("Automation Execution System", () => {
   beforeEach(() => {
     resetAutomationPlatformStoreForTests();
+    resetAutomationV2DbStoreForTests();
     resetAutomationAuditLogForTests();
     resetAutomationRateLimitForTests();
     resetFeatureFlagStore();

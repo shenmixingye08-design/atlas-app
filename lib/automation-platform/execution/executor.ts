@@ -43,7 +43,8 @@ export type ExecuteRunResult = {
 
 function persist(run: AutomationRun): AutomationRun {
   const saved = memoryUpdateRun(run);
-  persistAutomationRunNow(saved);
+  // Fire-and-await sync path for executor internals; durable write is async.
+  void persistAutomationRunNow(saved);
   return saved;
 }
 

@@ -8,15 +8,14 @@ import { executeQueuedRun } from "@/lib/automation-platform/execution/executor";
 import { notifyAutomationRunEvent } from "@/lib/automation-platform/execution/notify";
 import type { StepInvoker } from "@/lib/automation-platform/execution/step-invoker";
 import { strictStepInvoker } from "@/lib/automation-platform/execution/strict-step-invoker";
-import {
-  memoryClaimRun,
-  memoryGetAutomation,
-  memoryGetRun,
-  memoryListDispatchableRuns,
-  memoryUpdateRun,
-} from "@/lib/automation-platform/repository/memory-store";
-import { createStatusTransition } from "@/lib/automation-platform/state-machine/transitions";
+import { getAutomationV2FromSot } from "@/lib/automation-platform/durable";
 import { persistAutomationRunNow } from "@/lib/automation-platform/durable-runs";
+import {
+  dbClaimRun,
+  dbGetRun,
+  dbListDispatchableRuns,
+} from "@/lib/automation-platform/repository/db-store";
+import { createStatusTransition } from "@/lib/automation-platform/state-machine/transitions";
 import type { AutomationRun } from "@/lib/automation-platform/types";
 
 export type DispatchResult = {
@@ -27,7 +26,7 @@ export type DispatchResult = {
   awaiting: number;
 };
 
-function attachClaimTransition(run: AutomationRun): AutomationRun {
+async function attachClaimTransition(run: AutomationRun): Promise<AutomationRun> {
   if (run.status !== "running") return run;
   const last = run.statusHistory[run.statusHistory.length - 1];
   if (last?.nextStatus === "running") return run;
@@ -51,7 +50,7 @@ function attachClaimTransition(run: AutomationRun): AutomationRun {
       statusHistory: [...run.statusHistory, entry],
       updatedAt: entry.timestamp,
     };
-    return persistAutomationRunNow(memoryUpdateRun(updated));
+    return persistAutomationRunNow(updated);
   } catch {
     return run;
   }
@@ -72,28 +71,26 @@ export async function dispatchAutomationRuns(options?: {
 
   const candidates =
     options?.runIds && options.runIds.length > 0
-      ? options.runIds
-          .map((id) => memoryGetRun(id))
-          .filter((run): run is AutomationRun => Boolean(run))
-      : memoryListDispatchableRuns(options?.limit ?? 20);
+      ? (
+          await Promise.all(options.runIds.map((id) => dbGetRun(id)))
+        ).filter((run): run is AutomationRun => Boolean(run))
+      : await dbListDispatchableRuns(options?.limit ?? 20);
 
   for (const candidate of candidates) {
-    const claimed = memoryClaimRun(candidate.id);
+    const claimed = await dbClaimRun(candidate.id);
     if (!claimed) continue;
 
-    const withHistory = attachClaimTransition(claimed);
-    const automation = memoryGetAutomation(withHistory.automationId);
+    const withHistory = await attachClaimTransition(claimed);
+    const automation = await getAutomationV2FromSot(withHistory.automationId);
     if (!automation) {
-      const failed = persistAutomationRunNow(
-        memoryUpdateRun({
-          ...withHistory,
-          status: "failed",
-          lastErrorCode: "automation_not_found",
-          lastErrorMessage: "自動化定義が見つかりません",
-          completedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }),
-      );
+      const failed = await persistAutomationRunNow({
+        ...withHistory,
+        status: "failed",
+        lastErrorCode: "automation_not_found",
+        lastErrorMessage: "自動化定義が見つかりません",
+        completedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
       result.processed += 1;
       result.failed += 1;
       await notifyAutomationRunEvent({

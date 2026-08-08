@@ -65,20 +65,31 @@ export async function POST(request: Request): Promise<Response> {
       const { processDueScheduledAutomationsV2 } = await import(
         "@/lib/automation-platform/schedule/due-tick"
       );
-      // V2: enqueue-only (dispatch false) — avoid sync heavy work in cron.
+      // V2: enqueue from DB SoT (dispatch false here; separate durable claim below).
       v2Schedule = await processDueScheduledAutomationsV2({
         limit: 20,
         dispatch: false,
       });
-      // P0-06: V2 memoryClaimRun is process-local — unsafe under multi-instance cron.
-      // Production relies on durable work-queue; skip memory dispatch there.
-      const { isAtlasProduction } = await import("@/lib/runtime/is-production");
-      if (!isAtlasProduction()) {
+      // P1-03: DB claim is multi-instance safe — dispatch in all environments
+      // when atlas_automations / atlas_automation_runs SoT is ready.
+      // Never fall back to process-local memory claim.
+      const { isAutomationV2DbSotReady } = await import(
+        "@/lib/automation-platform/repository/table-ready"
+      );
+      if (await isAutomationV2DbSotReady()) {
         const { dispatchAutomationRuns } = await import(
           "@/lib/automation-platform/execution/dispatch"
         );
         v2Dispatch = await dispatchAutomationRuns({ limit: 10 });
       } else {
+        const { isAtlasProduction } = await import(
+          "@/lib/runtime/is-production"
+        );
+        if (isAtlasProduction()) {
+          console.error(
+            "[automation tick] P1-03: V2 DB SoT not ready — skipping dispatch (fail-closed)",
+          );
+        }
         v2Dispatch = { processed: 0 };
       }
     } catch (error) {

@@ -251,13 +251,15 @@ describe("P0-06 reliability / billing / recovery", () => {
     expect(src).toMatch(/rejected client priceId|Invalid request/);
   });
 
-  it("production tick disables V2 memory dispatch", async () => {
+  it("production tick uses DB SoT dispatch (never memoryClaimRun fallback)", async () => {
     const fs = await import("node:fs/promises");
     const src = await fs.readFile(
       "app/api/automations/tick/route.ts",
       "utf8",
     );
-    expect(src).toContain("isAtlasProduction");
+    expect(src).toContain("isAutomationV2DbSotReady");
     expect(src).toContain("dispatchAutomationRuns");
+    expect(src).toContain("fail-closed");
+    expect(src).not.toContain("memoryClaimRun");
   });
 });
