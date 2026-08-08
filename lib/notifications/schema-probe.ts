@@ -35,15 +35,6 @@ export type NotificationRetrySchemaProbe = {
   version: ReturnType<typeof getHealthVersionPayload>;
 };
 
-function isMissing(message: string | undefined): boolean {
-  return Boolean(
-    message &&
-      /schema cache|does not exist|Could not find the table|Could not find the .* column/i.test(
-        message,
-      ),
-  );
-}
-
 function tickWiredFromSource(): boolean {
   try {
     const src = readFileSync(
