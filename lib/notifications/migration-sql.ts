@@ -131,4 +131,7 @@ create policy "atlas_notification_dlq_deny_anon"
   on public.atlas_notification_dlq
   for all to anon, authenticated
   using (false) with check (false);
+
+-- Refresh PostgREST schema cache so new tables are visible immediately.
+notify pgrst, 'reload schema';
 `;

@@ -59,9 +59,19 @@ jobs:
             sys.exit(2)
           print({k:d.get(k) for k in [
             "ok","inboxTableOk","dlqTableOk","tickWired",
-            "retryDrainReady","memoryNotSot","commitShaShort"
+            "retryDrainReady","memoryNotSot","drainSmokeOk",
+            "noDoubleSendOk","dlqTerminalOk","dlqNotReinjectedOk",
+            "error","ownerHint","commitShaShort"
           ]})
-          sys.exit(0 if d.get("ok") is True and d.get("retryDrainReady") is True and d.get("tickWired") is True else 3)
+          sys.exit(0 if (
+            d.get("ok") is True
+            and d.get("retryDrainReady") is True
+            and d.get("tickWired") is True
+            and d.get("drainSmokeOk") is True
+            and d.get("noDoubleSendOk") is True
+            and d.get("dlqTerminalOk") is True
+            and d.get("dlqNotReinjectedOk") is True
+          ) else 3)
           PY
             STATUS=$?
             if [ "$STATUS" -eq 0 ]; then
