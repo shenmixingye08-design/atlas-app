@@ -73,6 +73,7 @@ export async function POST(request: Request): Promise<Response> {
         fileName: item.fileName,
         mimeType: item.mimeType,
         bytes: item.bytes,
+        buffer: item.buffer,
       });
 
       const extracted = await extractDocumentText({

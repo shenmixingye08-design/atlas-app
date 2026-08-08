@@ -1,5 +1,11 @@
 import { createHash } from "crypto";
 
+import {
+  assertImageMagicMatchesDeclaration,
+  looksLikeSvgOrHtml,
+} from "@/lib/security/file-magic";
+import { sanitizeDisplayFileName } from "@/lib/security/upload-path";
+
 import { RECEIPT_PIPELINE_EVALUATION } from "./feature-evaluation";
 import type { MediaImageInput } from "./types";
 
@@ -34,18 +40,40 @@ export async function prepareMediaImages(
   }
 
   return files.map((file, index) => {
-    const mime = file.mimeType || "image/jpeg";
-    if (!isAllowedImageMime(mime) && !/\.(jpe?g|png|webp|gif|heic|heif)$/i.test(file.filename)) {
-      throw new Error(`対応していない画像形式です: ${file.filename}`);
+    let filename: string;
+    try {
+      filename = sanitizeDisplayFileName(file.filename);
+    } catch {
+      throw new Error("不正なファイル名です");
+    }
+    if (file.bytes.length <= 0) {
+      throw new Error(`画像ファイルが空です: ${filename}`);
     }
     if (file.bytes.length > RECEIPT_PIPELINE_EVALUATION.maxImageBytes) {
-      throw new Error(`画像が大きすぎます: ${file.filename}`);
+      throw new Error(`画像が大きすぎます: ${filename}`);
+    }
+    if (looksLikeSvgOrHtml(file.bytes)) {
+      throw new Error("SVG/HTML 画像は処理できません");
+    }
+    const declared = file.mimeType || "image/jpeg";
+    if (!isAllowedImageMime(declared) && !/\.(jpe?g|png|webp|gif|heic|heif)$/i.test(filename)) {
+      throw new Error(`対応していない画像形式です: ${filename}`);
+    }
+    let mime: string;
+    try {
+      mime = assertImageMagicMatchesDeclaration({
+        declaredMime: isAllowedImageMime(declared) ? declared : "image/jpeg",
+        fileName: filename,
+        buffer: file.bytes,
+      }).mime;
+    } catch {
+      throw new Error(`画像形式を確認できませんでした: ${filename}`);
     }
     const contentHash = hashImageBytes(file.bytes);
     const dataUrl = `data:${mime};base64,${file.bytes.toString("base64")}`;
     return {
       id: `img_${contentHash.slice(0, 12)}_${index}`,
-      filename: file.filename,
+      filename,
       mimeType: mime,
       bytes: file.bytes,
       dataUrl,

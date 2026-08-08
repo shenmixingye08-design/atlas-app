@@ -17,7 +17,7 @@ import type { ReceiptSchema } from "./types";
 const userId = "user_receipt_test";
 
 function tinyPng(): Buffer {
-  // 1x1 PNG
+  // 1x1 PNG — magic must match declared MIME (P0-05).
   return Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
     "base64",
@@ -38,8 +38,8 @@ describe("receipt household ledger", () => {
   it("runs receipt pipeline and auto-registers high-confidence mock extract", async () => {
     const images = await prepareMediaImages([
       {
-        filename: "receipt-lawson.jpg",
-        mimeType: "image/jpeg",
+        filename: "receipt-lawson.png",
+        mimeType: "image/png",
         bytes: tinyPng(),
       },
     ]);
@@ -57,13 +57,13 @@ describe("receipt household ledger", () => {
   it("merges multiple receipts into one registration batch", async () => {
     const images = await prepareMediaImages([
       {
-        filename: "receipt-a.jpg",
-        mimeType: "image/jpeg",
+        filename: "receipt-a.png",
+        mimeType: "image/png",
         bytes: tinyPng(),
       },
       {
-        filename: "receipt-b.jpg",
-        mimeType: "image/jpeg",
+        filename: "receipt-b.png",
+        mimeType: "image/png",
         bytes: tinyPng(),
       },
     ]);
@@ -81,8 +81,8 @@ describe("receipt household ledger", () => {
     const schema = mockExtractReceipt(
       {
         id: "i1",
-        filename: "receipt.jpg",
-        mimeType: "image/jpeg",
+        filename: "receipt.png",
+        mimeType: "image/png",
         bytes: tinyPng(),
         dataUrl: "data:image/png;base64,aa",
         contentHash: "abc",
@@ -100,8 +100,8 @@ describe("receipt household ledger", () => {
       ...mockExtractReceipt(
         {
           id: "i1",
-          filename: "x.jpg",
-          mimeType: "image/jpeg",
+          filename: "x.png",
+          mimeType: "image/png",
           bytes: tinyPng(),
           dataUrl: "data:image/png;base64,aa",
           contentHash: "abc",
@@ -120,8 +120,8 @@ describe("receipt household ledger", () => {
   it("builds excel workbook with required columns", async () => {
     const images = await prepareMediaImages([
       {
-        filename: "receipt.jpg",
-        mimeType: "image/jpeg",
+        filename: "receipt.png",
+        mimeType: "image/png",
         bytes: tinyPng(),
       },
     ]);
@@ -139,8 +139,8 @@ describe("receipt household ledger", () => {
   it("builds monthly analytics comment without markdown dump", async () => {
     const images = await prepareMediaImages([
       {
-        filename: "receipt.jpg",
-        mimeType: "image/jpeg",
+        filename: "receipt.png",
+        mimeType: "image/png",
         bytes: tinyPng(),
       },
     ]);
@@ -178,8 +178,8 @@ describe("receipt household ledger", () => {
   it("confirm path registers after field answers", async () => {
     const images = await prepareMediaImages([
       {
-        filename: "receipt.jpg",
-        mimeType: "image/jpeg",
+        filename: "receipt.png",
+        mimeType: "image/png",
         bytes: tinyPng(),
       },
     ]);

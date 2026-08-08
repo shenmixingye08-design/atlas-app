@@ -1,3 +1,9 @@
+import { detectDocumentKindFromBytes } from "@/lib/security/file-magic";
+import {
+  sanitizeDisplayFileName,
+  UnsafePathError,
+} from "@/lib/security/upload-path";
+
 import { DOCUMENT_ATTACHMENT_LIMITS, SUPPORTED_DOCUMENT_MIME_TYPES } from "./types";
 
 const BLOCKED_EXTENSIONS = new Set([
@@ -33,6 +39,9 @@ const EXT_TO_MIME: Record<string, string> = {
   rtf: "application/rtf",
 };
 
+const OOXML_EXT = new Set(["docx", "xlsx", "pptx"]);
+const OLE_EXT = new Set(["doc", "xls", "ppt"]);
+
 export class DocumentValidationError extends Error {
   readonly code: string;
 
@@ -44,8 +53,14 @@ export class DocumentValidationError extends Error {
 }
 
 export function sanitizeOriginalFileName(name: string): string {
-  const base = name.split(/[/\\]/).pop() ?? "file";
-  return base.replace(/[^\w.\u3040-\u30ff\u4e00-\u9fff()-]+/g, "_").slice(0, 180);
+  try {
+    return sanitizeDisplayFileName(name);
+  } catch (error) {
+    if (error instanceof UnsafePathError) {
+      throw new DocumentValidationError("unsupported_file_type", error.message);
+    }
+    throw error;
+  }
 }
 
 export function normalizeDocumentMime(
@@ -54,19 +69,22 @@ export function normalizeDocumentMime(
 ): string {
   const declared = declaredMime.toLowerCase().trim();
   const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+  // Prefer extension over client-declared MIME (P0-05).
+  if (EXT_TO_MIME[ext]) return EXT_TO_MIME[ext]!;
   if (
     declared &&
     (SUPPORTED_DOCUMENT_MIME_TYPES as readonly string[]).includes(declared)
   ) {
     return declared;
   }
-  return EXT_TO_MIME[ext] ?? declared;
+  return declared;
 }
 
 export function assertSupportedDocument(input: {
   fileName: string;
   mimeType: string;
   bytes: number;
+  buffer?: Buffer;
 }): string {
   const safeName = sanitizeOriginalFileName(input.fileName);
   const ext = safeName.split(".").pop()?.toLowerCase() ?? "";
@@ -98,6 +116,34 @@ export function assertSupportedDocument(input: {
       "file_too_large",
       "ファイルサイズが上限を超えています",
     );
+  }
+
+  if (input.buffer) {
+    const kind = detectDocumentKindFromBytes(input.buffer);
+    if (ext === "pdf" && kind !== "pdf") {
+      throw new DocumentValidationError(
+        "unsupported_file_type",
+        "PDF形式を確認できませんでした",
+      );
+    }
+    if (OOXML_EXT.has(ext) && kind !== "ooxml_zip") {
+      throw new DocumentValidationError(
+        "unsupported_file_type",
+        "Office文書形式を確認できませんでした",
+      );
+    }
+    if (OLE_EXT.has(ext) && kind !== "ole" && kind !== "ooxml_zip") {
+      throw new DocumentValidationError(
+        "unsupported_file_type",
+        "Office文書形式を確認できませんでした",
+      );
+    }
+    if ((ext === "txt" || ext === "csv" || ext === "rtf") && kind === "ooxml_zip") {
+      throw new DocumentValidationError(
+        "unsupported_file_type",
+        "テキスト形式を確認できませんでした",
+      );
+    }
   }
 
   return mime;

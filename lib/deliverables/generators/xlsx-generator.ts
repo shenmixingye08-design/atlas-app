@@ -1,5 +1,7 @@
 import ExcelJS from "exceljs";
 
+import { neutralizeSpreadsheetCell } from "@/lib/security/spreadsheet-formula";
+
 import { extractExcelSheets } from "../excel-data";
 import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
 import { createDeliverableFile } from "./shared";
@@ -133,11 +135,12 @@ export class XlsxDeliverableGenerator implements DeliverableGenerator {
       );
       const header = [...headers];
       while (header.length < columnCount) header.push("");
-      sheet.addRow(header);
+      sheet.addRow(header.map((cell) => neutralizeSpreadsheetCell(cell)));
       for (const row of rows) {
         const cells = [...row];
         while (cells.length < columnCount) cells.push("");
         // Memory-driven number formatting (currency / decimals)
+        // P0-05: neutralize formula / HYPERLINK injection from user/OCR text.
         sheet.addRow(
           cells.map((cell) => {
             if (
@@ -147,7 +150,7 @@ export class XlsxDeliverableGenerator implements DeliverableGenerator {
             ) {
               return Number(Number(cell).toFixed(options.excel.decimalPlaces));
             }
-            return cell;
+            return neutralizeSpreadsheetCell(cell);
           }),
         );
       }
