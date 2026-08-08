@@ -35,6 +35,9 @@ function buildSafeBody(result: Awaited<ReturnType<typeof probeOAuthTokenEncrypti
     encryptionKeyConfigured: result.encryptionKeyConfigured,
     encryptionKeyVersionConfigured: result.encryptionKeyVersionConfigured,
     encryptionKeyVersion: result.encryptionKeyVersion,
+    encryptionSelfTestOk: result.encryptionSelfTestOk,
+    canaryPersistOk: result.canaryPersistOk,
+    legacyReencrypted: result.legacyReencrypted,
     tokenShape: result.tokenShape,
   };
 }
@@ -78,6 +81,9 @@ export async function GET(request: Request): Promise<Response> {
     encryptionKeyConfigured: result.encryptionKeyConfigured,
     encryptionKeyVersionConfigured: result.encryptionKeyVersionConfigured,
     encryptionKeyVersion: result.encryptionKeyVersion,
+    encryptionSelfTestOk: result.encryptionSelfTestOk,
+    canaryPersistOk: result.canaryPersistOk,
+    legacyReencrypted: result.legacyReencrypted,
     tokenShape: result.tokenShape,
     appliedViaPostgres: result.appliedViaPostgres,
     appliedViaManagementApi: result.appliedViaManagementApi,
