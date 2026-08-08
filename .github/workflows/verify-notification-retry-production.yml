@@ -1,3 +1,5 @@
+# Calls production /api/health/notification-retry.
+# When CRON_SECRET is present, also attempts apply=1 (DDL) then re-probes.
 name: Verify Notification Retry Production (P1-02)
 
 on:
@@ -17,8 +19,33 @@ jobs:
       - name: Probe production notification-retry readiness
         env:
           PROD_URL: https://atlasapp.jp
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           set -euo pipefail
+
+          AUTH_ARGS=()
+          if [ -n "${CRON_SECRET:-}" ]; then
+            AUTH_ARGS=(-H "Authorization: Bearer ${CRON_SECRET}")
+            echo "Attempting apply=1 with CRON_SECRET"
+            curl -sS -o /tmp/notification-retry-apply.json -w "%{http_code}" \
+              "${AUTH_ARGS[@]}" \
+              "$PROD_URL/api/health/notification-retry?force=1&apply=1" || true
+            echo
+            python3 - <<'PY'
+          import json
+          try:
+            d=json.load(open("/tmp/notification-retry-apply.json"))
+            print({k:d.get(k) for k in [
+              "ok","inboxTableOk","dlqTableOk","tickWired",
+              "retryDrainReady","commitShaShort"
+            ]})
+          except Exception as e:
+            print("apply_parse", e)
+          PY
+          else
+            echo "::warning::CRON_SECRET not set in GitHub Actions — using public read-only probe"
+          fi
+
           for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
             CODE=$(curl -sS -o /tmp/notification-retry.json -w "%{http_code}" \
               "$PROD_URL/api/health/notification-retry?force=1" || echo "000")
