@@ -13,12 +13,19 @@ export type BillingSchemaProbe = {
   ok: boolean;
   subscriptionsTableExists: boolean;
   webhookEventsTableExists: boolean;
+  /** status / claimed_at / lease_expires_at present for atomic reclaim. */
+  webhookClaimLeaseColumnsOk: boolean;
   selectOk: boolean;
   upsertOk: boolean;
   appliedViaPostgres: boolean;
   appliedViaManagementApi: boolean;
-  /** When dedicated tables are missing, runtime uses atlas_user_state. */
+  /**
+   * True when dedicated tables are missing.
+   * Production webhook claim path must fail-closed (no non-atomic fallback).
+   */
   usingDurableFallback: boolean;
+  /** Production webhook mutex uses dedicated table only. */
+  atomicWebhookClaimRequired: boolean;
   error: string | null;
   migrationFiles: string[];
   sqlPreview: string | null;
@@ -50,6 +57,7 @@ async function probeTables(client: NonNullable<
 >): Promise<{
   subscriptionsTableExists: boolean;
   webhookEventsTableExists: boolean;
+  webhookClaimLeaseColumnsOk: boolean;
   selectOk: boolean;
   upsertOk: boolean;
   error: string | null;
@@ -66,6 +74,7 @@ async function probeTables(client: NonNullable<
     return {
       subscriptionsTableExists: false,
       webhookEventsTableExists: false,
+      webhookClaimLeaseColumnsOk: false,
       selectOk: false,
       upsertOk: false,
       error: selectError?.message ?? "subscriptions_table_missing",
@@ -75,6 +84,7 @@ async function probeTables(client: NonNullable<
     return {
       subscriptionsTableExists: true,
       webhookEventsTableExists: false,
+      webhookClaimLeaseColumnsOk: false,
       selectOk: false,
       upsertOk: false,
       error: selectError.message,
@@ -107,6 +117,7 @@ async function probeTables(client: NonNullable<
     return {
       subscriptionsTableExists: true,
       webhookEventsTableExists: false,
+      webhookClaimLeaseColumnsOk: false,
       selectOk: true,
       upsertOk: false,
       error: upsertError.message,
@@ -121,18 +132,37 @@ async function probeTables(client: NonNullable<
 
   const { error: webhookError } = await client
     .from("atlas_stripe_webhook_events")
-    .select("event_id")
+    .select("event_id, status, claimed_at, lease_expires_at, processed_at")
     .limit(1);
 
   const webhookMissing = isMissingTableError(webhookError?.message);
+  if (webhookMissing) {
+    return {
+      subscriptionsTableExists: true,
+      webhookEventsTableExists: false,
+      webhookClaimLeaseColumnsOk: false,
+      selectOk: true,
+      upsertOk: true,
+      error: webhookError?.message ?? "webhook_events_table_missing",
+    };
+  }
+
+  const claimColumnsMissing = Boolean(
+    webhookError?.message &&
+      /column .*status|claimed_at|lease_expires_at|processed_at/i.test(
+        webhookError.message,
+      ),
+  );
+
   return {
     subscriptionsTableExists: true,
-    webhookEventsTableExists: !webhookMissing,
+    webhookEventsTableExists: true,
+    webhookClaimLeaseColumnsOk: !claimColumnsMissing && !webhookError,
     selectOk: true,
     upsertOk: true,
-    error: webhookMissing
-      ? webhookError?.message ?? "webhook_events_table_missing"
-      : null,
+    error: claimColumnsMissing
+      ? webhookError?.message ?? "webhook_claim_lease_columns_missing"
+      : webhookError?.message ?? null,
   };
 }
 
@@ -144,7 +174,10 @@ export async function probeBillingSubscriptionsSchema(input?: {
   apply?: boolean;
 }): Promise<BillingSchemaProbe> {
   const version = getHealthVersionPayload();
-  const files = ["20260713_atlas_billing_subscriptions.sql"];
+  const files = [
+    "20260713_atlas_billing_subscriptions.sql",
+    "20260808_p0_final_webhook_claim_lease.sql",
+  ];
   const sql = ATLAS_BILLING_SUBSCRIPTIONS_MIGRATION_SQL;
   let appliedViaPostgres = false;
   let appliedViaManagementApi = false;
@@ -168,11 +201,13 @@ export async function probeBillingSubscriptionsSchema(input?: {
       ok: false,
       subscriptionsTableExists: false,
       webhookEventsTableExists: false,
+      webhookClaimLeaseColumnsOk: false,
       selectOk: false,
       upsertOk: false,
       appliedViaPostgres,
       appliedViaManagementApi,
       usingDurableFallback: true,
+      atomicWebhookClaimRequired: true,
       error: error ?? "supabase_service_role_not_configured",
       migrationFiles: files,
       sqlPreview: sql.slice(0, 1200),
@@ -184,7 +219,9 @@ export async function probeBillingSubscriptionsSchema(input?: {
   let probe = await probeTables(client);
 
   if (
-    (!probe.subscriptionsTableExists || !probe.webhookEventsTableExists) &&
+    (!probe.subscriptionsTableExists ||
+      !probe.webhookEventsTableExists ||
+      !probe.webhookClaimLeaseColumnsOk) &&
     !appliedViaPostgres &&
     !appliedViaManagementApi
   ) {
@@ -200,7 +237,14 @@ export async function probeBillingSubscriptionsSchema(input?: {
     // Schema cache can lag briefly after DDL.
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       probe = await probeTables(client);
-      if (probe.subscriptionsTableExists && probe.upsertOk) break;
+      if (
+        probe.subscriptionsTableExists &&
+        probe.webhookEventsTableExists &&
+        probe.webhookClaimLeaseColumnsOk &&
+        probe.upsertOk
+      ) {
+        break;
+      }
       await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
     }
   }
@@ -208,6 +252,7 @@ export async function probeBillingSubscriptionsSchema(input?: {
   const ok =
     probe.subscriptionsTableExists &&
     probe.webhookEventsTableExists &&
+    probe.webhookClaimLeaseColumnsOk &&
     probe.selectOk &&
     probe.upsertOk;
 
@@ -222,11 +267,13 @@ export async function probeBillingSubscriptionsSchema(input?: {
     ok,
     subscriptionsTableExists: probe.subscriptionsTableExists,
     webhookEventsTableExists: probe.webhookEventsTableExists,
+    webhookClaimLeaseColumnsOk: probe.webhookClaimLeaseColumnsOk,
     selectOk: probe.selectOk,
     upsertOk: probe.upsertOk,
     appliedViaPostgres,
     appliedViaManagementApi,
     usingDurableFallback: !ok,
+    atomicWebhookClaimRequired: true,
     error: ok ? null : error ?? probe.error,
     migrationFiles: files,
     sqlPreview: ok ? null : sql.slice(0, 1200),

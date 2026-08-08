@@ -95,7 +95,9 @@ describe("P0-06 reliability / billing / recovery", () => {
     const second = await claimStripeEventForProcessing(eventId, "invoice.paid");
     expect(first.ok && first.claimed).toBe(true);
     expect(second.ok && !second.claimed).toBe(true);
-    expect(await hasProcessedStripeEvent(eventId)).toBe(true);
+    // Claimed ≠ processed (P0 FINAL GATE lease semantics).
+    expect(await hasProcessedStripeEvent(eventId)).toBe(false);
+    expect(second).toMatchObject({ reason: "in_progress" });
   });
 
   it("C/D: Stripe claim release allows safe retry after failure", async () => {

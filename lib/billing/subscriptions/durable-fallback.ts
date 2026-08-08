@@ -189,8 +189,9 @@ export async function hasProcessedWebhookEventInDurable(
 }
 
 /**
- * P0-06: claim-before-process for durable fallback.
- * Returns false when the event id is already present.
+ * @deprecated P0 FINAL GATE: non-atomic. Do NOT use for Production webhook mutex.
+ * Production must use atlas_stripe_webhook_events claim lease (or 503 fail-closed).
+ * Kept only for legacy non-production tooling / tests of durable blob helpers.
  */
 export async function claimWebhookEventInDurable(
   eventId: string,

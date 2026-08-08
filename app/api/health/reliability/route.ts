@@ -42,6 +42,8 @@ export async function GET(request: Request): Promise<Response> {
 
   // Static source posture (no secret values).
   let stripeClaimBeforeProcess = false;
+  let stripeClaimLease = false;
+  let stripeClaimFailClosed = false;
   let workQueueReclaimGuard = false;
   let xPostNoRetry = false;
   let v2ProdDispatchDisabled = false;
@@ -55,7 +57,25 @@ export async function GET(request: Request): Promise<Response> {
     );
     stripeClaimBeforeProcess =
       webhook.includes("claimStripeEventForProcessing") &&
-      webhook.includes("releaseStripeEventClaim");
+      webhook.includes("releaseStripeEventClaim") &&
+      webhook.includes("in_progress");
+
+    const claimLease = await fs.readFile(
+      path.join(root, "lib/billing/stripe/webhook-claim-lease.ts"),
+      "utf8",
+    );
+    const persistence = await fs.readFile(
+      path.join(root, "lib/billing/subscriptions/persistence.ts"),
+      "utf8",
+    );
+    stripeClaimLease =
+      claimLease.includes("leaseExpiresAtMs") &&
+      persistence.includes("lease_expires_at") &&
+      persistence.includes("WEBHOOK_CLAIM_STATUS.processing");
+    stripeClaimFailClosed =
+      persistence.includes("isAtlasProduction()") &&
+      persistence.includes('reason: "unavailable"') &&
+      !persistence.includes("claimWebhookEventInDurable(");
 
     const worker = await fs.readFile(
       path.join(root, "lib/work-queue/worker.ts"),
@@ -86,6 +106,8 @@ export async function GET(request: Request): Promise<Response> {
 
   flagChecks.push(
     { id: "stripe_claim_before_process", ok: stripeClaimBeforeProcess },
+    { id: "stripe_claim_lease", ok: stripeClaimLease },
+    { id: "stripe_claim_fail_closed", ok: stripeClaimFailClosed },
     { id: "work_queue_reclaim_guard", ok: workQueueReclaimGuard },
     { id: "x_post_no_retry", ok: xPostNoRetry },
     { id: "v2_prod_dispatch_guard", ok: v2ProdDispatchDisabled },

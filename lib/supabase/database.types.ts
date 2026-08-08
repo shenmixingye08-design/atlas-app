@@ -121,17 +121,26 @@ export type Database = {
         Row: {
           event_id: string;
           event_type: string | null;
-          processed_at: string;
+          status: string;
+          claimed_at: string;
+          lease_expires_at: string;
+          processed_at: string | null;
         };
         Insert: {
           event_id: string;
           event_type?: string | null;
-          processed_at?: string;
+          status?: string;
+          claimed_at?: string;
+          lease_expires_at?: string;
+          processed_at?: string | null;
         };
         Update: {
           event_id?: string;
           event_type?: string | null;
-          processed_at?: string;
+          status?: string;
+          claimed_at?: string;
+          lease_expires_at?: string;
+          processed_at?: string | null;
         };
         Relationships: [];
       };
