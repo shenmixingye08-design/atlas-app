@@ -139,8 +139,12 @@ async function createActive(input?: Partial<CreateAutomationV2Input>): Promise<A
   );
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   resetAutomationPlatformStoreForTests();
+  const { resetAutomationV2DbStoreForTests } = await import(
+    "@/lib/automation-platform/repository/db-store"
+  );
+  resetAutomationV2DbStoreForTests();
   resetAutomationAuditLogForTests();
   resetAutomationRateLimitForTests();
   resetFeatureFlagStore();

@@ -1,0 +1,53 @@
+name: Verify Automation V2 DB SoT Production (P1-03)
+
+# Public read-only probe — no secrets required for the check itself.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20260801_atlas_automations_v2.sql"
+      - "supabase/migrations/20260808_p1_03_automation_v2_db_sot.sql"
+      - "lib/automation-platform/repository/**"
+      - "app/api/health/automation-v2-db/**"
+      - ".github/workflows/verify-automation-v2-db-sot-production.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe production automation-v2-db readiness
+        env:
+          PROD_URL: https://atlasapp.jp
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            CODE=$(curl -sS -o /tmp/automation-v2-db.json -w "%{http_code}" \
+              "$PROD_URL/api/health/automation-v2-db?force=1" || echo "000")
+            echo "attempt=$i http=$CODE"
+            python3 - <<'PY'
+          import json,sys
+          try:
+            d=json.load(open("/tmp/automation-v2-db.json"))
+          except Exception as e:
+            print("parse_error", e)
+            sys.exit(2)
+          print({k:d.get(k) for k in [
+            "ok","automationsTableOk","runsTableOk",
+            "runsPayloadColumnOk","dbSotReady","memoryNotSot",
+            "commitShaShort"
+          ]})
+          sys.exit(0 if d.get("ok") is True and d.get("dbSotReady") is True else 3)
+          PY
+            STATUS=$?
+            if [ "$STATUS" -eq 0 ]; then
+              echo "automation_v2_db_sot_ready=true"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::Production /api/health/automation-v2-db is not ready (ok!=true)."
+          echo "::error::Apply supabase/migrations/20260801_atlas_automations_v2.sql and"
+          echo "::error::supabase/migrations/20260808_p1_03_automation_v2_db_sot.sql,"
+          echo "::error::then re-check the probe."
+          exit 1

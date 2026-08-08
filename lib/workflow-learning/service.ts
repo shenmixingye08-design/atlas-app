@@ -3,11 +3,10 @@ import "server-only";
 import {
   memoryGetAutomation,
   memoryListRunsForAutomation,
-  memoryUpdateAutomation,
 } from "@/lib/automation-platform/repository/memory-store";
 import {
   ensureAutomationsV2Hydrated,
-  schedulePersistAutomationsV2,
+  persistAutomationV2Now,
 } from "@/lib/automation-platform/durable";
 import { ensureAutomationRunsV2Hydrated } from "@/lib/automation-platform/durable-runs";
 import { buildFeatureAccessContext, isFeatureEnabled } from "@/lib/feature-flags/access";
@@ -298,8 +297,8 @@ export async function applyCandidate(input: {
   });
 
   // Never overwrite without revision — update live definition after snapshot chain
-  memoryUpdateAutomation(next);
-  schedulePersistAutomationsV2(input.userId);
+  // P1-03: DB is SoT for automation definitions (memory is cache only).
+  await persistAutomationV2Now(next);
 
   const revision = createRevisionFromAutomation({
     automation: next,
@@ -394,8 +393,8 @@ export async function rollbackAutomationRevision(input: {
 
   const restored = structuredClone(target.snapshot);
   restored.updatedAt = new Date().toISOString();
-  memoryUpdateAutomation(restored);
-  schedulePersistAutomationsV2(input.userId);
+  // P1-03: DB is SoT for automation definitions (memory is cache only).
+  await persistAutomationV2Now(restored);
 
   const revision = createRevisionFromAutomation({
     automation: restored,

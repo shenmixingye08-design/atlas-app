@@ -73,11 +73,12 @@ import {
   percentile,
   type E2EEvidence,
 } from "@/lib/automation-platform/e2e/harness";
+import { persistAutomationV2Now } from "@/lib/automation-platform/durable";
 import { dispatchAutomationRuns } from "@/lib/automation-platform/execution/dispatch";
+import { resetAutomationV2DbStoreForTests } from "@/lib/automation-platform/repository/db-store";
 import {
   memoryDeleteRunForTests,
   memoryGetAutomation,
-  memoryUpdateAutomation,
   resetAutomationPlatformStoreForTests,
 } from "@/lib/automation-platform/repository/memory-store";
 import { processDueScheduledAutomationsV2 } from "@/lib/automation-platform/schedule/due-tick";
@@ -189,6 +190,7 @@ function hasLiveExternal(): boolean {
 describe("Automation E2E Reliability", () => {
   beforeEach(() => {
     resetAutomationPlatformStoreForTests();
+    resetAutomationV2DbStoreForTests();
     resetAutomationAuditLogForTests();
     resetAutomationRateLimitForTests();
     resetAutomationRunCostsForTests();
@@ -629,7 +631,8 @@ describe("Automation E2E Reliability", () => {
           Date.UTC(2026, 0, 1 + i, 0, 0, 0),
         ).toISOString();
         const current = memoryGetAutomation(auto.id)!;
-        memoryUpdateAutomation({
+        // P1-03: schedule SoT is DB — do not poke process memory alone.
+        await persistAutomationV2Now({
           ...current,
           status: "active",
           nextRunAt: scheduledAt,
@@ -638,7 +641,7 @@ describe("Automation E2E Reliability", () => {
         const nowMs = Date.parse(scheduledAt) + 250 + (i % 7) * 10;
         const tick = await processDueScheduledAutomationsV2({
           nowMs,
-          limit: 5,
+          limit: 50,
           dispatch: false,
         });
         const firing = tick.firings.find((f) => f.automationId === auto.id);
@@ -661,8 +664,9 @@ describe("Automation E2E Reliability", () => {
         ownerContext,
       );
       expect(paused.automation.status).toBe("paused");
-      memoryUpdateAutomation({
+      await persistAutomationV2Now({
         ...memoryGetAutomation(auto.id)!,
+        status: "paused",
         nextRunAt: new Date(Date.UTC(2026, 6, 1, 0, 0, 0)).toISOString(),
       });
       const pauseTick = await processDueScheduledAutomationsV2({

@@ -12,9 +12,7 @@ import {
 } from "@/lib/automation-platform/durable";
 import { ensureAutomationRunsV2Hydrated } from "@/lib/automation-platform/durable-runs";
 import { dispatchAutomationRuns } from "@/lib/automation-platform/execution/dispatch";
-import {
-  memoryListDueActiveAutomations,
-} from "@/lib/automation-platform/repository/memory-store";
+import { dbListDueActiveAutomations } from "@/lib/automation-platform/repository/db-store";
 import { automationPlatformService } from "@/lib/automation-platform/service/automation-service";
 import {
   buildFeatureAccessContext,
@@ -74,7 +72,8 @@ export async function processDueScheduledAutomationsV2(options?: {
     await ensureAutomationRunsV2Hydrated(userId);
   }
 
-  const due = memoryListDueActiveAutomations(nowMs, options?.limit ?? 50);
+  // P1-03: due set comes from DB SoT — not process-local memory Maps.
+  const due = await dbListDueActiveAutomations(nowMs, options?.limit ?? 50);
   result.due = due.length;
   const runIds: string[] = [];
 
@@ -107,7 +106,7 @@ export async function processDueScheduledAutomationsV2(options?: {
           automation.trigger,
           new Date(Math.max(nowMs, Date.parse(scheduledAt) + 1)),
         );
-        persistAutomationV2Now({
+        await persistAutomationV2Now({
           ...automation,
           nextRunAt: next,
           updatedAt: new Date().toISOString(),
@@ -152,7 +151,7 @@ export async function processDueScheduledAutomationsV2(options?: {
         automation.trigger,
         new Date(Math.max(nowMs, Date.parse(scheduledAt) + 1)),
       );
-      persistAutomationV2Now({
+      await persistAutomationV2Now({
         ...automation,
         nextRunAt: next,
         updatedAt: new Date().toISOString(),
