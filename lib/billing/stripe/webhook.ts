@@ -92,7 +92,7 @@ export async function processStripeWebhookRequest(
     };
   }
 
-  // P0-06: claim-before-process — only the insert winner runs side effects.
+  // P0 FINAL GATE: claim-before-process with lease — only winner runs side effects.
   const claim = await claimStripeEventForProcessing(event.id, event.type);
   if (!claim.ok) {
     logWebhookOutcome({
@@ -107,6 +107,25 @@ export async function processStripeWebhookRequest(
     };
   }
   if (!claim.claimed) {
+    // in_progress: another worker holds a valid lease → 503 so Stripe retries.
+    // duplicate: already processed → 200 ack (no side effects).
+    if (claim.reason === "in_progress") {
+      logWebhookOutcome({
+        eventId: event.id,
+        eventType: event.type,
+        status: 503,
+        success: false,
+      });
+      return {
+        status: 503,
+        body: {
+          received: true,
+          inProgress: true,
+          eventId: event.id,
+          eventType: event.type,
+        },
+      };
+    }
     logWebhookOutcome({
       eventId: event.id,
       eventType: event.type,

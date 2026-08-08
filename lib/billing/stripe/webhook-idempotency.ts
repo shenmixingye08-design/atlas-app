@@ -1,138 +1,98 @@
 import "server-only";
 
 import { warnIfProductionSupabaseServiceRoleMissing } from "@/lib/persistence/production-guard";
+import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 import {
   claimWebhookEventInSupabase,
   hasProcessedWebhookEventInSupabase,
   isBillingSupabaseConfigured,
   markWebhookEventProcessedInSupabase,
-  readProcessedWebhookEventsFromDisk,
   releaseWebhookEventClaimInSupabase,
-  writeProcessedWebhookEventsToDisk,
   type WebhookClaimResult,
 } from "../subscriptions/persistence";
+import {
+  claimWebhookEventInMemory,
+  hasProcessedWebhookEventInMemory,
+  markWebhookEventProcessedInMemory,
+  releaseWebhookEventClaimInMemory,
+  resetWebhookClaimLeaseStoreForTests,
+} from "./webhook-claim-lease";
 
-type ProcessedEventBucket = Set<string>;
-
-function getBucket(): ProcessedEventBucket {
-  const globalScope = globalThis as typeof globalThis & {
-    __atlasStripeProcessedWebhookEvents?: ProcessedEventBucket;
-    __atlasStripeProcessedWebhookEventsHydrated?: boolean;
-    __atlasStripeClaimingWebhookEvents?: Set<string>;
-  };
-
-  if (!globalScope.__atlasStripeProcessedWebhookEvents) {
-    globalScope.__atlasStripeProcessedWebhookEvents = new Set();
-  }
-
-  if (!globalScope.__atlasStripeProcessedWebhookEventsHydrated) {
-    for (const id of readProcessedWebhookEventsFromDisk()) {
-      globalScope.__atlasStripeProcessedWebhookEvents.add(id);
-    }
-    globalScope.__atlasStripeProcessedWebhookEventsHydrated = true;
-  }
-
-  return globalScope.__atlasStripeProcessedWebhookEvents;
-}
-
-function getClaimingBucket(): Set<string> {
-  const globalScope = globalThis as typeof globalThis & {
-    __atlasStripeClaimingWebhookEvents?: Set<string>;
-  };
-  if (!globalScope.__atlasStripeClaimingWebhookEvents) {
-    globalScope.__atlasStripeClaimingWebhookEvents = new Set();
-  }
-  return globalScope.__atlasStripeClaimingWebhookEvents;
-}
+export type { WebhookClaimResult };
 
 /**
- * Durable-first idempotency check.
- * Memory/disk are process-local; Supabase is the production source of truth.
+ * Durable-first processed check.
+ * Claimed/processing must NOT count as processed.
  */
 export async function hasProcessedStripeEvent(eventId: string): Promise<boolean> {
-  if (getBucket().has(eventId)) return true;
+  if (hasProcessedWebhookEventInMemory(eventId)) return true;
 
-  const durable = await hasProcessedWebhookEventInSupabase(eventId);
-  if (durable) {
-    getBucket().add(eventId);
-    return true;
+  if (!isBillingSupabaseConfigured()) {
+    if (isAtlasProduction()) {
+      warnIfProductionSupabaseServiceRoleMissing("atlas_stripe_webhook_events");
+    }
+    return false;
   }
 
-  return false;
+  return hasProcessedWebhookEventInSupabase(eventId);
 }
 
 /**
- * P0-06: claim-before-process.
+ * Claim-before-process with lease.
  * Only `{ claimed: true }` may run billing side effects.
  */
 export async function claimStripeEventForProcessing(
   eventId: string,
   eventType?: string | null,
 ): Promise<WebhookClaimResult> {
-  const claiming = getClaimingBucket();
-  if (claiming.has(eventId) || getBucket().has(eventId)) {
-    return { ok: true, claimed: false, reason: "duplicate" };
-  }
-  // Process-local mutex (single-threaded) before durable claim.
-  claiming.add(eventId);
-
-  try {
-    if (!isBillingSupabaseConfigured()) {
+  if (!isBillingSupabaseConfigured()) {
+    if (isAtlasProduction()) {
       warnIfProductionSupabaseServiceRoleMissing("atlas_stripe_webhook_events");
+      return { ok: false, reason: "unavailable" };
     }
-
-    const result = await claimWebhookEventInSupabase(eventId, eventType);
-    if (!result.ok) {
-      claiming.delete(eventId);
-      return result;
-    }
-    if (!result.claimed) {
-      claiming.delete(eventId);
-      getBucket().add(eventId);
-      return result;
-    }
-    getBucket().add(eventId);
-    writeProcessedWebhookEventsToDisk(getBucket());
-    return result;
-  } catch (error) {
-    claiming.delete(eventId);
-    throw error;
+    return claimWebhookEventInMemory(eventId, eventType);
   }
+
+  return claimWebhookEventInSupabase(eventId, eventType);
 }
 
 /** Release claim after handler failure so Stripe can retry safely. */
 export async function releaseStripeEventClaim(eventId: string): Promise<void> {
-  getClaimingBucket().delete(eventId);
-  getBucket().delete(eventId);
-  writeProcessedWebhookEventsToDisk(getBucket());
+  releaseWebhookEventClaimInMemory(eventId);
+  if (!isBillingSupabaseConfigured()) {
+    if (isAtlasProduction()) {
+      warnIfProductionSupabaseServiceRoleMissing("atlas_stripe_webhook_events");
+    }
+    return;
+  }
   await releaseWebhookEventClaimInSupabase(eventId);
 }
 
 /**
- * Mark after successful handler (allows Stripe retries on failure via release).
- * Writes Supabase when configured; disk only in non-production fallback.
+ * Mark after successful handler only.
  */
 export async function markStripeEventProcessed(
   eventId: string,
   eventType?: string | null,
 ): Promise<void> {
-  const bucket = getBucket();
-  bucket.add(eventId);
-  getClaimingBucket().delete(eventId);
-  writeProcessedWebhookEventsToDisk(bucket);
+  markWebhookEventProcessedInMemory(eventId, eventType);
 
   if (!isBillingSupabaseConfigured()) {
-    warnIfProductionSupabaseServiceRoleMissing("atlas_stripe_webhook_events");
+    if (isAtlasProduction()) {
+      warnIfProductionSupabaseServiceRoleMissing("atlas_stripe_webhook_events");
+    }
     return;
   }
 
-  await markWebhookEventProcessedInSupabase(eventId, eventType);
+  const ok = await markWebhookEventProcessedInSupabase(eventId, eventType);
+  if (!ok && isAtlasProduction()) {
+    console.error(
+      `[billing:webhook] failed to durably mark processed eventId=${eventId}`,
+    );
+  }
 }
 
 export function resetProcessedStripeEvents(): void {
-  const bucket = getBucket();
-  bucket.clear();
-  getClaimingBucket().clear();
-  writeProcessedWebhookEventsToDisk(bucket);
+  resetWebhookClaimLeaseStoreForTests();
 }

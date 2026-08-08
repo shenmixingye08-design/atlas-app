@@ -7,17 +7,25 @@ import { isPlanId } from "../plans/registry";
 import type { PlanId } from "../plans/types";
 
 import {
-  claimWebhookEventInDurable,
   findSubscriptionByStripeCustomerIdFromDurable,
-  hasProcessedWebhookEventInDurable,
   listSubscriptionsFromDurableDomain,
   loadSubscriptionFromDurableDomain,
-  markWebhookEventProcessedInDurable,
   persistSubscriptionToDurableDomain,
-  releaseWebhookEventClaimInDurable,
 } from "./durable-fallback";
+import { isAtlasProduction } from "@/lib/runtime/is-production";
+import {
+  claimWebhookEventInMemory,
+  getWebhookClaimLeaseMs,
+  hasProcessedWebhookEventInMemory,
+  markWebhookEventProcessedInMemory,
+  releaseWebhookEventClaimInMemory,
+  WEBHOOK_CLAIM_STATUS,
+  type WebhookClaimResult,
+} from "../stripe/webhook-claim-lease";
 import { isBillingDedicatedTableReady } from "./table-ready";
 import type { SubscriptionStatus, UserSubscriptionRecord } from "./types";
+
+export type { WebhookClaimResult };
 
 const CLERK_BILLING_KEY = "atlasBilling";
 
@@ -321,21 +329,30 @@ export async function listSubscriptionsFromSupabase(): Promise<
   }
 }
 
+/**
+ * True only when the event is fully processed (not merely claimed/processing).
+ * Production: dedicated table only — never non-atomic durable fallback.
+ */
 export async function hasProcessedWebhookEventInSupabase(
   eventId: string,
 ): Promise<boolean> {
   if (!(await isBillingDedicatedTableReady())) {
-    return hasProcessedWebhookEventInDurable(eventId);
+    if (isAtlasProduction()) return false;
+    return hasProcessedWebhookEventInMemory(eventId);
   }
 
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return hasProcessedWebhookEventInDurable(eventId);
+  if (!client) {
+    if (isAtlasProduction()) return false;
+    return hasProcessedWebhookEventInMemory(eventId);
+  }
 
   try {
     const { data, error } = await client
       .from(WEBHOOK_EVENTS_TABLE)
-      .select("event_id")
+      .select("event_id, status")
       .eq("event_id", eventId)
+      .eq("status", WEBHOOK_CLAIM_STATUS.processed)
       .maybeSingle();
 
     if (error) {
@@ -344,40 +361,59 @@ export async function hasProcessedWebhookEventInSupabase(
           "./table-ready"
         );
         markBillingDedicatedTableReadyUnknown();
-        return hasProcessedWebhookEventInDurable(eventId);
+        if (isAtlasProduction()) return false;
+        return hasProcessedWebhookEventInMemory(eventId);
+      }
+      // Missing status column (pre-lease schema) → fail closed in production.
+      if (/column .*status/i.test(error.message ?? "")) {
+        console.error(
+          "[billing] webhook claim columns missing; treat as not processed",
+        );
+        return false;
       }
       console.error(
         "[billing] Supabase webhook idempotency check failed:",
         error.message,
       );
-      return hasProcessedWebhookEventInDurable(eventId);
+      return false;
     }
     return Boolean(data?.event_id);
   } catch {
-    return hasProcessedWebhookEventInDurable(eventId);
+    return false;
   }
 }
 
+/**
+ * Mark processed only after handler success.
+ * Production requires dedicated table — no durable fallback.
+ */
 export async function markWebhookEventProcessedInSupabase(
   eventId: string,
   eventType?: string | null,
 ): Promise<boolean> {
-  // Always durable-mark so idempotency survives without dedicated table.
-  const durableOk = await markWebhookEventProcessedInDurable(eventId, eventType);
-
   if (!(await isBillingDedicatedTableReady())) {
-    return durableOk;
+    if (isAtlasProduction()) return false;
+    markWebhookEventProcessedInMemory(eventId, eventType);
+    return true;
   }
 
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return durableOk;
+  if (!client) {
+    if (isAtlasProduction()) return false;
+    markWebhookEventProcessedInMemory(eventId, eventType);
+    return true;
+  }
 
+  const now = new Date().toISOString();
   try {
     const { error } = await client.from(WEBHOOK_EVENTS_TABLE).upsert(
       {
         event_id: eventId,
         event_type: eventType ?? null,
-        processed_at: new Date().toISOString(),
+        status: WEBHOOK_CLAIM_STATUS.processed,
+        claimed_at: now,
+        lease_expires_at: now,
+        processed_at: now,
       },
       { onConflict: "event_id" },
     );
@@ -388,109 +424,206 @@ export async function markWebhookEventProcessedInSupabase(
           "./table-ready"
         );
         markBillingDedicatedTableReadyUnknown();
-        return durableOk;
+        if (isAtlasProduction()) return false;
+        markWebhookEventProcessedInMemory(eventId, eventType);
+        return true;
       }
       console.error(
-        "[billing] Supabase webhook idempotency write failed:",
+        "[billing] Supabase webhook processed mark failed:",
         error.message,
       );
-      return durableOk;
+      return false;
+    }
+    if (!isAtlasProduction()) {
+      markWebhookEventProcessedInMemory(eventId, eventType);
     }
     return true;
   } catch (error) {
     console.error(
-      "[billing] Supabase webhook idempotency write skipped:",
+      "[billing] Supabase webhook processed mark exception:",
       error,
     );
-    return durableOk;
+    return false;
   }
 }
 
-export type WebhookClaimResult =
-  | { ok: true; claimed: true }
-  | { ok: true; claimed: false; reason: "duplicate" }
-  | { ok: false; reason: "unavailable" };
-
 /**
- * P0-06: atomic claim-before-process.
- * Inserts event_id first; conflict means another worker owns/processed it.
+ * P0 FINAL GATE: claim-before-process with processing lease.
+ * - Insert status=processing + lease
+ * - Conflict: processed → duplicate; fresh processing → in_progress; stale → reclaim
+ * - Production: dedicated table required (no non-atomic durable fallback)
  */
 export async function claimWebhookEventInSupabase(
   eventId: string,
   eventType?: string | null,
 ): Promise<WebhookClaimResult> {
   if (!(await isBillingDedicatedTableReady())) {
-    const claimed = await claimWebhookEventInDurable(eventId, eventType);
-    return claimed
-      ? { ok: true, claimed: true }
-      : { ok: true, claimed: false, reason: "duplicate" };
+    if (isAtlasProduction()) {
+      // Best-effort DDL ensure (Postgres URL / Management token). Still fail-closed if unusable.
+      try {
+        const { ensureBillingSubscriptionsSchema } = await import(
+          "./schema-probe"
+        );
+        await ensureBillingSubscriptionsSchema();
+      } catch (error) {
+        console.error("[billing] webhook claim schema ensure failed:", error);
+      }
+      if (!(await isBillingDedicatedTableReady())) {
+        return { ok: false, reason: "unavailable" };
+      }
+    } else {
+      return claimWebhookEventInMemory(eventId, eventType);
+    }
   }
 
   const client = createServiceRoleClientIfConfigured();
   if (!client) {
-    const claimed = await claimWebhookEventInDurable(eventId, eventType);
-    return claimed
-      ? { ok: true, claimed: true }
-      : { ok: true, claimed: false, reason: "duplicate" };
+    if (isAtlasProduction()) {
+      return { ok: false, reason: "unavailable" };
+    }
+    return claimWebhookEventInMemory(eventId, eventType);
   }
+
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  const leaseExpiresIso = new Date(
+    nowMs + getWebhookClaimLeaseMs(),
+  ).toISOString();
 
   try {
     const { error } = await client.from(WEBHOOK_EVENTS_TABLE).insert({
       event_id: eventId,
       event_type: eventType ?? null,
-      processed_at: new Date().toISOString(),
+      status: WEBHOOK_CLAIM_STATUS.processing,
+      claimed_at: nowIso,
+      lease_expires_at: leaseExpiresIso,
+      processed_at: null,
     });
 
     if (!error) {
-      // Mirror into durable blob for fallback continuity.
-      await claimWebhookEventInDurable(eventId, eventType);
       return { ok: true, claimed: true };
     }
 
-    // Unique violation → already claimed/processed.
-    if (
+    const uniqueConflict =
       error.code === "23505" ||
-      /duplicate|unique/i.test(error.message ?? "")
-    ) {
+      /duplicate|unique/i.test(error.message ?? "");
+
+    if (!uniqueConflict) {
+      if (isMissingBillingTableError(error.message)) {
+        const { markBillingDedicatedTableReadyUnknown } = await import(
+          "./table-ready"
+        );
+        markBillingDedicatedTableReadyUnknown();
+        if (isAtlasProduction()) {
+          return { ok: false, reason: "unavailable" };
+        }
+        return claimWebhookEventInMemory(eventId, eventType);
+      }
+      if (/column .*status|lease_expires_at|claimed_at/i.test(error.message ?? "")) {
+        console.error(
+          "[billing] webhook claim lease columns missing — fail closed",
+          error.message,
+        );
+        return { ok: false, reason: "unavailable" };
+      }
+      console.error("[billing] Supabase webhook claim failed:", error.message);
+      return { ok: false, reason: "unavailable" };
+    }
+
+    // Conflict: inspect existing row for processed / in-progress / stale reclaim.
+    const { data: existing, error: readError } = await client
+      .from(WEBHOOK_EVENTS_TABLE)
+      .select("event_id, status, lease_expires_at")
+      .eq("event_id", eventId)
+      .maybeSingle();
+
+    if (readError || !existing) {
+      console.error(
+        "[billing] webhook claim conflict read failed:",
+        readError?.message ?? "missing_row",
+      );
+      return { ok: false, reason: "unavailable" };
+    }
+
+    if (existing.status === WEBHOOK_CLAIM_STATUS.processed) {
       return { ok: true, claimed: false, reason: "duplicate" };
     }
 
-    if (isMissingBillingTableError(error.message)) {
-      const { markBillingDedicatedTableReadyUnknown } = await import(
-        "./table-ready"
-      );
-      markBillingDedicatedTableReadyUnknown();
-      const claimed = await claimWebhookEventInDurable(eventId, eventType);
-      return claimed
-        ? { ok: true, claimed: true }
-        : { ok: true, claimed: false, reason: "duplicate" };
+    const leaseExpiresAt = Date.parse(
+      String(existing.lease_expires_at ?? ""),
+    );
+    if (
+      existing.status === WEBHOOK_CLAIM_STATUS.processing &&
+      Number.isFinite(leaseExpiresAt) &&
+      leaseExpiresAt > nowMs
+    ) {
+      return { ok: true, claimed: false, reason: "in_progress" };
     }
 
-    console.error(
-      "[billing] Supabase webhook claim failed:",
-      error.message,
-    );
-    return { ok: false, reason: "unavailable" };
+    // Stale processing (or unknown status) → atomic reclaim.
+    const { data: reclaimed, error: reclaimError } = await client
+      .from(WEBHOOK_EVENTS_TABLE)
+      .update({
+        event_type: eventType ?? null,
+        status: WEBHOOK_CLAIM_STATUS.processing,
+        claimed_at: nowIso,
+        lease_expires_at: leaseExpiresIso,
+        processed_at: null,
+      })
+      .eq("event_id", eventId)
+      .eq("status", WEBHOOK_CLAIM_STATUS.processing)
+      .lt("lease_expires_at", nowIso)
+      .select("event_id")
+      .maybeSingle();
+
+    if (reclaimError) {
+      console.error(
+        "[billing] webhook stale claim reclaim failed:",
+        reclaimError.message,
+      );
+      return { ok: false, reason: "unavailable" };
+    }
+
+    if (reclaimed?.event_id) {
+      return { ok: true, claimed: true };
+    }
+
+    // Lost race to another reclaim/process — treat as in-progress (Stripe retries).
+    return { ok: true, claimed: false, reason: "in_progress" };
   } catch (error) {
     console.error("[billing] Supabase webhook claim exception:", error);
     return { ok: false, reason: "unavailable" };
   }
 }
 
+/**
+ * Release processing claim so Stripe can retry.
+ * Never deletes a processed row.
+ */
 export async function releaseWebhookEventClaimInSupabase(
   eventId: string,
 ): Promise<void> {
-  await releaseWebhookEventClaimInDurable(eventId);
+  if (!(await isBillingDedicatedTableReady())) {
+    if (!isAtlasProduction()) {
+      releaseWebhookEventClaimInMemory(eventId);
+    }
+    return;
+  }
 
-  if (!(await isBillingDedicatedTableReady())) return;
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return;
+  if (!client) {
+    if (!isAtlasProduction()) {
+      releaseWebhookEventClaimInMemory(eventId);
+    }
+    return;
+  }
 
   try {
     const { error } = await client
       .from(WEBHOOK_EVENTS_TABLE)
       .delete()
-      .eq("event_id", eventId);
+      .eq("event_id", eventId)
+      .eq("status", WEBHOOK_CLAIM_STATUS.processing);
     if (error && !isMissingBillingTableError(error.message)) {
       console.error(
         "[billing] Supabase webhook claim release failed:",
@@ -499,5 +632,9 @@ export async function releaseWebhookEventClaimInSupabase(
     }
   } catch (error) {
     console.error("[billing] Supabase webhook claim release exception:", error);
+  }
+
+  if (!isAtlasProduction()) {
+    releaseWebhookEventClaimInMemory(eventId);
   }
 }
