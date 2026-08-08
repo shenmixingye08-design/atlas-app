@@ -178,16 +178,8 @@ async function oneIteration(i: number): Promise<IterResult> {
     { skipDelivery: true },
   );
 
-  // Channels not configured → ACK path returns ok for skip reasons; we still
-  // exercise retry/DLQ machinery via deliver helpers.
-  const line = await deliverLineWithAck({
-    notificationId: ntf?.notificationId ?? `ntf_test_${i}`,
-    userId: USER,
-    event: "work_completed",
-    title: "仕事が完了しました",
-    message: `成果物を用意しました (#${i})`,
-    actionUrl: null,
-  });
+  // Inbox create is the measured notify path. Channel soft-success must not
+  // count as notifyOk (P1-09).
   if (!ntf) {
     return {
       ok: false,
@@ -203,12 +195,18 @@ async function oneIteration(i: number): Promise<IterResult> {
       reasons: [...reasons, "notification_create_failed"],
     };
   }
-  const push = await deliverWebPushWithAck({ record: ntf });
-  // Not configured / not linked counts as successful ACK of the delivery attempt
-  // (no throw, no DLQ) — same as production gating.
-  notifyOk = (line.ok || line.error == null) && (push.ok || push.error == null);
+  notifyOk = Boolean(ntf.notificationId);
+  await deliverLineWithAck({
+    notificationId: ntf.notificationId,
+    userId: USER,
+    event: "work_completed",
+    title: "仕事が完了しました",
+    message: `成果物を用意しました (#${i})`,
+    actionUrl: null,
+  });
+  await deliverWebPushWithAck({ record: ntf });
 
-  historyOk = Boolean(ntf?.notificationId) && (wordOk || pdfOk);
+  historyOk = Boolean(ntf.notificationId) && (wordOk || pdfOk);
 
   const ok =
     wordOk &&
@@ -222,9 +220,7 @@ async function oneIteration(i: number): Promise<IterResult> {
   recordReliabilityEvent("work_job", ok ? "success" : "failure", 1, {
     durationMs: Date.now() - started,
   });
-
-  // Simulated post path (no live X): confirm idempotent success marker.
-  recordReliabilityEvent("post_x", "success");
+  // P1-09: never invent post_x success markers.
 
   return {
     ok,
@@ -280,18 +276,18 @@ async function main() {
 
   const snap = getReliabilityMetricsSnapshot();
 
+  const retried = results.filter((r) => r.retries > 0);
   const gates = {
     deliverableSuccessRate: successCount / RUNS,
     pdfSuccessRate: pdfSuccess / RUNS,
     wordSuccessRate: wordSuccess / RUNS,
     notificationSuccessRate: notifySuccess / RUNS,
-    postSuccessRate: 1, // measured via in-process post_x success markers this run
-    timeoutRate: 0,
+    postSuccessRate: null as number | null,
+    timeoutRate: null as number | null,
     retryThenSuccessRate:
-      retryCount === 0
-        ? 1
-        : results.filter((r) => r.retries > 0 && r.ok).length /
-          Math.max(1, results.filter((r) => r.retries > 0).length),
+      retried.length === 0
+        ? null
+        : results.filter((r) => r.retries > 0 && r.ok).length / retried.length,
     download404,
     blankPdf,
     emptyDeliverable,
@@ -302,9 +298,8 @@ async function main() {
     gates.pdfSuccessRate >= 0.99 &&
     gates.wordSuccessRate >= 0.99 &&
     gates.notificationSuccessRate >= 0.99 &&
-    gates.postSuccessRate >= 0.99 &&
-    gates.timeoutRate < 0.01 &&
-    gates.retryThenSuccessRate >= 0.99 &&
+    (gates.retryThenSuccessRate == null ||
+      gates.retryThenSuccessRate >= 0.99) &&
     gates.download404 === 0 &&
     gates.blankPdf === 0 &&
     gates.emptyDeliverable === 0;
@@ -323,7 +318,7 @@ async function main() {
     gatePass,
     metricsSnapshot: snap,
     failureSample: failures.slice(0, 50),
-    scoreHint: gatePass ? 96 : Math.min(94, Math.round(gates.deliverableSuccessRate * 100)),
+    scoreHint: Math.round(gates.deliverableSuccessRate * 100),
   };
 
   writeFileSync(join(OUT_DIR, "report.json"), JSON.stringify(report, null, 2));
@@ -348,10 +343,10 @@ async function main() {
 | Deliverable success | ${pct(gates.deliverableSuccessRate)} | ${gates.deliverableSuccessRate >= 0.99} |
 | PDF success | ${pct(gates.pdfSuccessRate)} | ${gates.pdfSuccessRate >= 0.99} |
 | Word success | ${pct(gates.wordSuccessRate)} | ${gates.wordSuccessRate >= 0.99} |
-| Notification success | ${pct(gates.notificationSuccessRate)} | ${gates.notificationSuccessRate >= 0.99} |
-| Post success | ${pct(gates.postSuccessRate)} | ${gates.postSuccessRate >= 0.99} |
-| Timeout rate | ${pct(gates.timeoutRate)} | ${gates.timeoutRate < 0.01} |
-| Retry-then-success | ${pct(gates.retryThenSuccessRate)} | ${gates.retryThenSuccessRate >= 0.99} |
+| Notification success (inbox) | ${pct(gates.notificationSuccessRate)} | ${gates.notificationSuccessRate >= 0.99} |
+| Post success | 未計測(本ハーネス対象外) | n/a |
+| Timeout rate | 未計測(本ハーネス対象外) | n/a |
+| Retry-then-success | ${pct(gates.retryThenSuccessRate)} | ${gates.retryThenSuccessRate == null || gates.retryThenSuccessRate >= 0.99} |
 | Download404 | ${download404} | ${download404 === 0} |
 | Blank PDF | ${blankPdf} | ${blankPdf === 0} |
 | Empty deliverable | ${emptyDeliverable} | ${emptyDeliverable === 0} |

@@ -1,6 +1,7 @@
 /**
- * Measured X post path (retry + existence confirm + dedupe) with mocked HTTP.
- * Live credentials are not required; speculation is forbidden — counts come from this run.
+ * X post path unit reliability under mocked HTTP (create + existence confirm + dedupe).
+ * NOT a live Production X reliability certificate — HTTP is injected.
+ * Opt-in via npm run test:reliability-1000 (excluded from default vitest).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
