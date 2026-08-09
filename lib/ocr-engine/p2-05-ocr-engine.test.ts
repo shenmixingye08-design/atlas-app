@@ -19,6 +19,12 @@ describe("P2-05 OCR engine evaluation", () => {
     expect(perfect.accuracy).toBe(1);
     expect(perfect.accuracyGateOk).toBe(true);
 
+    const normalized = scoreOcrAccuracy({
+      extractedText: "minervot atlas ocr 7842 total 1280",
+      tokensExpected: OCR_GROUND_TRUTH_TOKENS,
+    });
+    expect(normalized.accuracyGateOk).toBe(true);
+
     const partial = scoreOcrAccuracy({
       extractedText: "MINERVOT only",
       tokensExpected: OCR_GROUND_TRUTH_TOKENS,

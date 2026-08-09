@@ -1,6 +1,24 @@
 import type { OcrAccuracyResult } from "./types";
 import { OCR_ACCURACY_THRESHOLD } from "./types";
 
+function normalizeOcrHaystack(text: string): string {
+  return text
+    .toUpperCase()
+    .replace(/[‐‑‒–—―]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenMatches(haystack: string, token: string): boolean {
+  const h = normalizeOcrHaystack(haystack);
+  const t = normalizeOcrHaystack(token);
+  if (h.includes(t)) return true;
+  // Allow OCR dropping hyphens: ATLAS-OCR-7842 ↔ ATLAS OCR 7842 / ATLASOCR7842
+  const compactH = h.replace(/[\s-]/g, "");
+  const compactT = t.replace(/[\s-]/g, "");
+  return compactH.includes(compactT);
+}
+
 export function scoreOcrAccuracy(input: {
   extractedText: string;
   tokensExpected: readonly string[];
@@ -8,7 +26,7 @@ export function scoreOcrAccuracy(input: {
 }): OcrAccuracyResult {
   const text = input.extractedText ?? "";
   const tokensHit = input.tokensExpected.filter((token) =>
-    text.includes(token),
+    tokenMatches(text, token),
   );
   const accuracy =
     input.tokensExpected.length === 0
