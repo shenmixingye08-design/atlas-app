@@ -204,6 +204,42 @@ describe("P1-07 external monitor integrity", () => {
     expect(smoke.evidence.localHeartbeatStamped).toBe(true);
   });
 
+  it("sequential incidents for same check can each send opened notify", async () => {
+    await activateFailureInjection({
+      kind: "tick_failure",
+      ttlMs: 60_000,
+    });
+    const first = await runExternalMonitorCycle({ nowMs: Date.now() });
+    expect(first.deliveriesSent).toBeGreaterThanOrEqual(1);
+    const open1 = await listOpenIncidents();
+    const incident1 = open1.find((i) => i.checkId === "scheduler.tick");
+    expect(incident1).toBeTruthy();
+
+    await deactivateFailureInjection({ kind: "tick_failure" });
+    recordCronTickSuccess(new Date().toISOString());
+    const recover = await runExternalMonitorCycle({
+      nowMs: Date.now() + 2_000,
+    });
+    expect(recover.resolvedThisCycle).toBeGreaterThanOrEqual(1);
+
+    await activateFailureInjection({
+      kind: "tick_failure",
+      ttlMs: 60_000,
+    });
+    const second = await runExternalMonitorCycle({
+      nowMs: Date.now() + 3_000,
+    });
+    expect(second.deliveriesSent).toBeGreaterThanOrEqual(1);
+    const open2 = await listOpenIncidents();
+    const incident2 = open2.find((i) => i.checkId === "scheduler.tick");
+    expect(incident2).toBeTruthy();
+    expect(incident2!.id).not.toBe(incident1!.id);
+    const opened2 = await listDeliveriesForIncident(incident2!.id);
+    expect(
+      opened2.some((d) => d.deliveryKind === "opened" && d.status === "sent"),
+    ).toBe(true);
+  });
+
   it("system-only Owner notify is attributed as system (not line)", async () => {
     const { deliverOwnerAlert } = await import("./notify");
     const notify = vi.mocked(deliverOwnerAlert);
@@ -270,11 +306,15 @@ describe("P1-07 external monitor integrity", () => {
 
     // Dedupe keys restored → second opened claim loses.
     const incident = after.find((i) => i.checkId === "automation.worker")!;
+    const opened = (await listDeliveriesForIncident(incident.id)).find(
+      (d) => d.deliveryKind === "opened" && d.channel === "line",
+    );
+    expect(opened?.dedupeKey).toBeTruthy();
     const lost = await claimAlertDelivery({
       incidentId: incident.id,
       deliveryKind: "opened",
       channel: "line",
-      dedupeKey: `${incident.fingerprint}:opened:g0:line`,
+      dedupeKey: opened!.dedupeKey,
       claimedBy: "after_restart",
     });
     expect(lost).toBeNull();

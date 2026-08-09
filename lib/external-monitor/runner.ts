@@ -76,11 +76,14 @@ async function notifyOnce(input: {
 
   // Prefer LINE channel claim; also claim system as separate dedupe key so
   // multi-instance still single-winner per channel+kind+incident generation.
+  // Include incident.id — fingerprint-only keys permanently block later
+  // incidents for the same check after the first opened:g0 delivery.
   const generation =
     input.deliveryKind === "opened"
       ? "g0"
       : `g${incident.notifyCount}`;
   const dedupeKey = [
+    incident.id,
     incident.fingerprint,
     input.deliveryKind,
     generation,
@@ -116,7 +119,7 @@ async function notifyOnce(input: {
       at: input.nowIso,
       continuation: input.deliveryKind === "continuation",
     });
-    const sysDedupe = `${incident.fingerprint}:${input.deliveryKind}:${generation}:system`;
+    const sysDedupe = `${incident.id}:${incident.fingerprint}:${input.deliveryKind}:${generation}:system`;
     const sysClaim = await claimAlertDelivery({
       incidentId: incident.id,
       deliveryKind: input.deliveryKind,
