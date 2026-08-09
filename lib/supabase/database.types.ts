@@ -1397,13 +1397,8 @@ export type Database = {
           p_window_ms: number;
           p_min_interval_ms?: number;
         };
-        Returns: {
-          allowed: boolean;
-          remaining: number;
-          retry_after_ms: number;
-          hit_count: number;
-          window_started_at: string;
-        };
+        // PostgREST may return jsonb object or TABLE rows as an array of 1.
+        Returns: unknown;
       };
       atlas_claim_side_effect: {
         Args: {

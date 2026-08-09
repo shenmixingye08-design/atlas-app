@@ -1,43 +1,8 @@
-/**
- * Inline SQL for Production apply / health probe.
- * Mirrors:
- * - supabase/migrations/20260809_p1_06_distributed_rate_limit.sql
- * - supabase/migrations/20260809_p1_06_rate_limit_rpc_returns_table.sql
- */
-export const ATLAS_DISTRIBUTED_RATE_LIMIT_MIGRATION_SQL = `
--- P1-06: Distributed rate limit counters (Production DB SoT).
-create table if not exists public.atlas_rate_limit_counters (
-  id text primary key,
-  bucket text not null,
-  subject_key text not null,
-  window_started_at timestamptz not null,
-  window_ms integer not null,
-  hit_count integer not null default 0,
-  last_hit_at timestamptz not null default now(),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint atlas_rate_limit_counters_hit_check check (hit_count >= 0),
-  constraint atlas_rate_limit_counters_window_check check (window_ms > 0)
-);
+-- P1-06 follow-up: make atlas_consume_rate_limit PostgREST-stable.
+-- Change return type from jsonb → TABLE row (array of 1 in supabase-js).
+-- SAFE: recreates function only. Table data preserved.
+-- Also reloads PostgREST schema cache.
 
-create unique index if not exists atlas_rate_limit_counters_bucket_subject_window_uidx
-  on public.atlas_rate_limit_counters (bucket, subject_key, window_started_at);
-
-create index if not exists atlas_rate_limit_counters_bucket_subject_idx
-  on public.atlas_rate_limit_counters (bucket, subject_key, updated_at desc);
-
-alter table public.atlas_rate_limit_counters enable row level security;
-
-drop policy if exists "atlas_rate_limit_counters_deny_anon"
-  on public.atlas_rate_limit_counters;
-create policy "atlas_rate_limit_counters_deny_anon"
-  on public.atlas_rate_limit_counters
-  for all
-  to anon, authenticated
-  using (false)
-  with check (false);
-
--- PostgREST-stable return shape (TABLE row).
 drop function if exists public.atlas_consume_rate_limit(text, text, integer, integer, integer);
 
 create or replace function public.atlas_consume_rate_limit(
@@ -144,8 +109,3 @@ grant execute on function public.atlas_consume_rate_limit(text, text, integer, i
   to service_role;
 
 notify pgrst, 'reload schema';
-`;
-
-export const RATE_LIMIT_TABLE = "atlas_rate_limit_counters" as const;
-export const RATE_LIMIT_RPC = "atlas_consume_rate_limit" as const;
-export const RATE_LIMIT_MIGRATION_NAME = "atlas_distributed_rate_limit" as const;
