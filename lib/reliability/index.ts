@@ -40,7 +40,11 @@ export {
 } from "./error-classification";
 export {
   recordDeveloperError,
+  recordDeveloperErrorDurable,
   listDeveloperErrorLogs,
+  listDeveloperErrorLogsDurable,
+  awaitDeveloperErrorPersist,
+  awaitAllDeveloperErrorPersists,
   resetDeveloperErrorLogsForTests,
   type DeveloperErrorLog,
   type RecordDeveloperErrorInput,
