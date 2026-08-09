@@ -20,6 +20,8 @@ export type WorkQueueProbeResult = {
   ok: boolean;
   postgresUrlConfigured: boolean;
   extendedPostgresUrlOnly: boolean;
+  /** Count of recognized Postgres URL env keys present (names only counted, never values). */
+  postgresUrlKeyCount: number;
   storeReady: boolean;
   tablesOk: boolean;
   metricsOk: boolean;
@@ -36,6 +38,7 @@ export async function probeWorkQueueSchema(): Promise<WorkQueueProbeResult> {
   const url = resolveAtlasPostgresUrl();
   const postgresUrlConfigured = Boolean(url.connectionString);
   const extendedPostgresUrlOnly = url.extendedOnlyPresent;
+  const postgresUrlKeyCount = url.presentKeys.length;
 
   let storeReady = false;
   let tablesOk = false;
@@ -82,6 +85,7 @@ export async function probeWorkQueueSchema(): Promise<WorkQueueProbeResult> {
     ok,
     postgresUrlConfigured,
     extendedPostgresUrlOnly,
+    postgresUrlKeyCount,
     storeReady,
     tablesOk,
     metricsOk,
