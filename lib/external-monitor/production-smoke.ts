@@ -159,9 +159,11 @@ async function reestablishTickHeartbeat(): Promise<{
 
 export async function runExternalMonitorProductionSmoke(): Promise<ExternalMonitorProductionSmoke> {
   const version = getHealthVersionPayload();
+  const { isLineMessagingConfigured } = await import(
+    "@/lib/integrations/line/config"
+  );
   const lineConfigured = Boolean(
-    process.env.ATLAS_OWNER_LINE_USER_ID?.trim() &&
-      process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim(),
+    process.env.ATLAS_OWNER_LINE_USER_ID?.trim() && isLineMessagingConfigured(),
   );
 
   const evidence: ExternalMonitorProductionSmoke["evidence"] = {
