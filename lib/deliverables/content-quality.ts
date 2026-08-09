@@ -131,6 +131,9 @@ function looksTruncated(text: string): boolean {
 }
 
 function headingsOnly(text: string): boolean {
+  // Structured tables / metric sheets are real body even when prose is short.
+  // stripMarkdownNoise() collapses pipes and can falsely flag them as headings-only.
+  if (hasSpreadsheetStructure(text)) return false;
   const lines = text
     .split("\n")
     .map((l) => l.trim())
@@ -179,11 +182,17 @@ function collectCommonIssues(text: string): ContentQualityIssue[] {
   if (looksTruncated(text)) issues.push("truncated");
   if (headingsOnly(text)) issues.push("headings_only");
 
+  const structuredSheet = hasSpreadsheetStructure(text);
   const body = stripMarkdownNoise(text);
-  if (body.length < WORD_CONTENT_MIN_CHARS) {
-    if (!issues.includes("headings_only") && !issues.includes("too_short")) {
-      issues.push("too_short");
-    }
+  // Prose length gate does not apply to structured spreadsheet content:
+  // a compact markdown/TSV table is a valid Excel source even under 80 chars.
+  if (
+    !structuredSheet &&
+    body.length < WORD_CONTENT_MIN_CHARS &&
+    !issues.includes("headings_only") &&
+    !issues.includes("too_short")
+  ) {
+    issues.push("too_short");
   }
 
   if (!hasRequiredLanguage(text)) issues.push("no_body_language");

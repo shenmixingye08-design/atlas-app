@@ -113,6 +113,24 @@ describe("P2-02 non-Word quality gate — happy / invalid / failure", () => {
     expect(validateFormatSpecificSourceContent(flat, "xlsx").ok).toBe(false);
     expect(validateFormatSpecificSourceContent(flat, "pptx").ok).toBe(false);
   });
+
+  it("happy path: compact vision table seed passes xlsx (not headings_only/too_short)", () => {
+    const compactTable = [
+      "# 表データ",
+      "| 品目 | 数量 | 金額 |",
+      "| --- | --- | --- |",
+      "| A | 2 | 1000 |",
+      "| B | 1 | 500 |",
+    ].join("\n");
+    expect(validateCommonSourceContent(compactTable).ok).toBe(true);
+    expect(validateDeliverableSourceContent(compactTable, ["xlsx"]).ok).toBe(
+      true,
+    );
+    // Still fail-closed for unstructured short text
+    expect(validateDeliverableSourceContent("# 表データ\nなし", ["xlsx"]).ok).toBe(
+      false,
+    );
+  });
 });
 
 describe("P2-02 — retry / duplicate / concurrency", () => {
