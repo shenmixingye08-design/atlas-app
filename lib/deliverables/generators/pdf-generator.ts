@@ -397,6 +397,8 @@ type PdfGenerateOptions = {
   companyName?: string | null;
   footerNote?: string | null;
   brandColorHex?: string | null;
+  /** Optional keywords written into PDF metadata (P1-01 Production probe). */
+  verificationKeywords?: string[] | null;
   pdf?: {
     brandColorHex?: string | null;
     footerNote?: string | null;
@@ -527,6 +529,14 @@ async function buildJapanesePdf(
       font: footerFont,
       color: rgb(0.35, 0.35, 0.35),
     });
+  }
+
+  const keywords = (options?.verificationKeywords ?? [])
+    .map((k) => k.trim())
+    .filter(Boolean);
+  if (keywords.length > 0) {
+    pdfDoc.setSubject(`p101:${keywords.join(",")}`);
+    pdfDoc.setKeywords(keywords);
   }
 
   return {
