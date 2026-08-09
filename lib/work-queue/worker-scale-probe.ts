@@ -67,13 +67,19 @@ function minuteSchedulerFansOut(): boolean {
       join(process.cwd(), ".github/workflows/minute-scheduler.yml"),
       "utf8",
     );
+    const routes = readFileSync(
+      join(process.cwd(), "lib/auth/public-routes.ts"),
+      "utf8",
+    );
     const minuteCron =
       src.includes('cron: "* * * * *"') || src.includes("cron: '* * * * *'");
     return (
       minuteCron &&
       src.includes("/api/automations/tick") &&
       src.includes("/api/worker/drain") &&
-      src.includes("worker_horizontal_fanout")
+      src.includes("worker_horizontal_fanout") &&
+      // CRON fan-out must reach the handler (Clerk middleware bypass + route auth).
+      routes.includes("/api/worker/drain")
     );
   } catch {
     return false;

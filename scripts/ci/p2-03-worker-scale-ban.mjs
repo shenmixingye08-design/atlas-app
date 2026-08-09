@@ -80,6 +80,11 @@ const publicRoutes = read("lib/auth/public-routes.ts");
 if (!/\/api\/health\/worker-scale/.test(publicRoutes)) {
   violations.push("public-routes.ts: worker-scale must be public");
 }
+if (!/\/api\/worker\/drain/.test(publicRoutes)) {
+  violations.push(
+    "public-routes.ts: /api/worker/drain must be public (CRON fan-out; handler auth remains)",
+  );
+}
 
 const contracts = read("lib/api-contracts/critical-contracts.ts");
 if (!/health\.worker-scale/.test(contracts)) {

@@ -79,6 +79,8 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/health/vision(.*)",
   "/api/contact(.*)",
   "/api/automations/tick(.*)",
+  // P2-03: Minute Scheduler horizontal drain fan-out (handler still CRON/owner gated).
+  "/api/worker/drain(.*)",
   "/api/feature-flags/availability(.*)",
   "/api/external-services/google/oauth/callback(.*)",
   "/api/external-services/x/oauth/callback(.*)",
