@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import pg from "pg";
 
+import { resolveAtlasPostgresUrl } from "@/lib/db/postgres-url";
+
 import {
   WORK_QUEUE_DEFAULT_MAX_ATTEMPTS,
 } from "../constants";
@@ -26,13 +28,9 @@ function allowedFromStatuses(to: WorkJobStatus): WorkJobStatus[] {
 }
 
 function resolveDatabaseUrl(): string | null {
-  const url =
-    process.env.DATABASE_URL?.trim() ||
-    process.env.POSTGRES_URL?.trim() ||
-    process.env.SUPABASE_DB_URL?.trim() ||
-    process.env.DIRECT_URL?.trim() ||
-    "";
-  return url || null;
+  // Must match migration-apply env keys — legacy 4-key set caused Production
+  // tick 500 when only POSTGRES_URL_NON_POOLING / SUPABASE_POSTGRES_URL* were set.
+  return resolveAtlasPostgresUrl().connectionString;
 }
 
 function rowToJob(row: Record<string, unknown>, steps: WorkStepRecord[]): WorkJobRecord {

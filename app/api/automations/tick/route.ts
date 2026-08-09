@@ -4,6 +4,7 @@ import {
   processScheduledXPostsFromAutomationTick,
 } from "@/lib/integrations/x/post/automation";
 import { clientSafeMessage } from "@/lib/security/client-safe-message";
+import { classifyTickFailure } from "@/lib/work-queue/tick-diagnostics";
 
 function resolveOrigin(request: Request): string {
   const host =
@@ -46,9 +47,12 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
+  let failedStage: "work_queue" | "post_success_record" | "unknown" = "unknown";
+
   try {
     const origin = resolveOrigin(request);
     const { processWorkQueueTick } = await import("@/lib/work-queue/tick");
+    failedStage = "work_queue";
     const workQueue = await processWorkQueueTick({
       requestOrigin: origin,
     });
@@ -151,6 +155,7 @@ export async function POST(request: Request): Promise<Response> {
       console.warn("[automation tick] notification retry drain skipped:", error);
     }
 
+    failedStage = "post_success_record";
     const { recordCronTickOutcome, recordMonitoringIncident } = await import(
       "@/lib/owner/monitoring"
     );
@@ -199,32 +204,58 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     return Response.json({
+      ok: true,
       processed: workQueue.worker.completed + workQueue.worker.failed,
-      workQueue,
+      workQueue: {
+        schedule: workQueue.schedule,
+        worker: {
+          completed: workQueue.worker.completed,
+          failed: workQueue.worker.failed,
+          leased: workQueue.worker.leased,
+        },
+        alertCount: workQueue.alerts.length,
+      },
       v2Schedule,
       v2Dispatch,
       scheduledXPosts: {
         processed: scheduledXPosts.length,
-        results: scheduledXPosts,
       },
       autoPosts: {
         processedUsers: autoPosts.length,
-        results: autoPosts,
       },
       dailyReports,
       notificationRetries,
       externalMonitor,
     });
   } catch (error) {
-    const message =
-      clientSafeMessage(error, "Automation tick failed");
+    const message = clientSafeMessage(error, "Automation tick failed");
+    const diag = classifyTickFailure(error, failedStage);
+    console.error("[automation tick] failed", {
+      failedStage: diag.failedStage,
+      developerCode: diag.developerCode,
+      postgresUrlConfigured: diag.postgresUrlConfigured,
+      extendedPostgresUrlOnly: diag.extendedPostgresUrlOnly,
+      errorName: error instanceof Error ? error.name : typeof error,
+    });
     const { recordCronTickOutcome } = await import("@/lib/owner/monitoring");
     const { recordAutomationCronDebug } = await import(
       "@/lib/automations/execution-log"
     );
-    recordCronTickOutcome(false, message);
-    recordAutomationCronDebug({ ok: false, error: message });
-    return Response.json({ error: message }, { status: 500 });
+    recordCronTickOutcome(false, `${diag.developerCode}:${message}`);
+    recordAutomationCronDebug({
+      ok: false,
+      error: `${diag.developerCode}:${message}`,
+    });
+    return Response.json(
+      {
+        error: message,
+        failedStage: diag.failedStage,
+        developerCode: diag.developerCode,
+        postgresUrlConfigured: diag.postgresUrlConfigured,
+        extendedPostgresUrlOnly: diag.extendedPostgresUrlOnly,
+      },
+      { status: 500 },
+    );
   }
 }
 
