@@ -1,3 +1,7 @@
+import {
+  authorizeHealthProbe,
+  healthUnauthorizedResponse,
+} from "@/lib/health/authorize-health-probe";
 import { toPublicHealthResponse } from "@/lib/health/public-health-response";
 import { probeWorkQueueSchema } from "@/lib/work-queue/schema-probe";
 
@@ -8,6 +12,7 @@ export const maxDuration = 60;
 /**
  * Work-queue / minute-tick durability probe (public, boolean flags only).
  * Used to diagnose Production `/api/automations/tick` HTTP 500 without secrets.
+ * apply=1: CRON_SECRET / owner only — applies work-queue + durable-claim DDL.
  */
 
 let lastRunAtMs = 0;
@@ -18,9 +23,15 @@ const MIN_INTERVAL_MS = 30_000;
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const force = url.searchParams.get("force") === "1";
+  const apply = url.searchParams.get("apply") === "1";
+
+  if (apply) {
+    const gate = await authorizeHealthProbe(request);
+    if (!gate.ok) return healthUnauthorizedResponse(gate);
+  }
 
   const now = Date.now();
-  if (!force && lastSafeBody && now - lastRunAtMs < MIN_INTERVAL_MS) {
+  if (!force && !apply && lastSafeBody && now - lastRunAtMs < MIN_INTERVAL_MS) {
     return Response.json(
       {
         ...lastSafeBody,
@@ -33,7 +44,7 @@ export async function GET(request: Request): Promise<Response> {
     );
   }
 
-  const result = await probeWorkQueueSchema();
+  const result = await probeWorkQueueSchema({ apply });
   lastRunAtMs = Date.now();
   lastOk = result.ok;
   const body = {
@@ -46,6 +57,13 @@ export async function GET(request: Request): Promise<Response> {
     metricsOk: result.metricsOk,
     memoryNotSot: result.memoryNotSot,
     multiInstanceSafe: result.multiInstanceSafe,
+    // Apply outcome flags only when apply was requested (avoid noise on public GET).
+    ...(apply
+      ? {
+          appliedViaPostgres: result.appliedViaPostgres,
+          appliedViaManagementApi: result.appliedViaManagementApi,
+        }
+      : {}),
     developerCode: result.developerCode,
     error: result.error,
     commitShaShort: result.commitShaShort,
@@ -60,6 +78,9 @@ export async function GET(request: Request): Promise<Response> {
     postgresUrlKeyCount: result.postgresUrlKeyCount,
     storeReady: result.storeReady,
     tablesOk: result.tablesOk,
+    applyRequested: apply,
+    appliedViaPostgres: result.appliedViaPostgres,
+    appliedViaManagementApi: result.appliedViaManagementApi,
     developerCode: result.developerCode,
   });
 

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { resolveAtlasPostgresUrl } from "@/lib/db/postgres-url";
 import { getSupabaseServiceRoleEnv } from "@/lib/supabase/env";
 
 export type MigrationApplyResult = {
@@ -26,54 +27,19 @@ function projectRefFromUrl(url: string | null | undefined): string | null {
   }
 }
 
-const POSTGRES_ENV_KEYS = [
-  "POSTGRES_URL",
-  "POSTGRES_URL_NON_POOLING",
-  "POSTGRES_PRISMA_URL",
-  "DATABASE_URL",
-  "DIRECT_URL",
-  "SUPABASE_DB_URL",
-  "SUPABASE_DATABASE_URL",
-  "SUPABASE_POSTGRES_URL",
-  "SUPABASE_POSTGRES_URL_NON_POOLING",
-] as const;
-
-const DB_PASSWORD_ENV_KEYS = [
-  "SUPABASE_DB_PASSWORD",
-  "POSTGRES_PASSWORD",
-  "SUPABASE_DATABASE_PASSWORD",
-  "DATABASE_PASSWORD",
-] as const;
-
+/**
+ * Prefer shared literal env resolution (Next.js-safe) so Production apply=1
+ * can use the same DATABASE_URL that work-queue health already sees.
+ */
 function resolvePostgresConnectionString(): {
   connectionString: string;
   presentKeys: string[];
 } {
-  const presentKeys = [
-    ...POSTGRES_ENV_KEYS.filter((key) => Boolean(process.env[key]?.trim())),
-    ...DB_PASSWORD_ENV_KEYS.filter((key) => Boolean(process.env[key]?.trim())),
-  ];
-  for (const key of POSTGRES_ENV_KEYS) {
-    const value = process.env[key]?.trim();
-    if (value) return { connectionString: value, presentKeys };
-  }
-
-  // Construct from project ref + DB password when full URL is absent.
-  const password = DB_PASSWORD_ENV_KEYS.map((k) => process.env[k]?.trim()).find(
-    Boolean,
-  );
-  const ref =
-    process.env.SUPABASE_PROJECT_REF?.trim() ||
-    projectRefFromUrl(getSupabaseServiceRoleEnv()?.url);
-  if (password && ref) {
-    const encoded = encodeURIComponent(password);
-    return {
-      connectionString: `postgresql://postgres.${ref}:${encoded}@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres`,
-      presentKeys,
-    };
-  }
-
-  return { connectionString: "", presentKeys };
+  const resolved = resolveAtlasPostgresUrl();
+  return {
+    connectionString: resolved.connectionString ?? "",
+    presentKeys: resolved.presentKeys,
+  };
 }
 
 export function getMigrationEnvPresence(): MigrationApplyResult["envPresence"] {
