@@ -1,29 +1,29 @@
 {
   "label": "sample",
   "disclaimer": "以下はすべて見本です。作成時間は見本生成時の実測値です。削減時間は手作業の目安（見本定義）と実測作成時間の差であり、特定ユーザーの実績ではありません。",
-  "measuredAt": "2026-08-09T10:28:59.603Z",
+  "measuredAt": "2026-08-05T15:19:49.026Z",
   "entries": [
     {
       "id": "docx-weekly-report",
       "kind": "docx",
       "fileName": "weekly-report.docx",
       "href": "/samples/weekly-report.docx",
-      "bytes": 10636,
-      "creationMs": 49,
+      "bytes": 10637,
+      "creationMs": 46,
       "generator": "DocxDeliverableGenerator",
       "creationSec": 0.1,
-      "measuredAt": "2026-08-09T10:28:59.603Z"
+      "measuredAt": "2026-08-05T15:19:49.026Z"
     },
     {
       "id": "xlsx-cost-table",
       "kind": "xlsx",
       "fileName": "cost-table.xlsx",
       "href": "/samples/cost-table.xlsx",
-      "bytes": 7103,
-      "creationMs": 34,
+      "bytes": 7104,
+      "creationMs": 31,
       "generator": "XlsxDeliverableGenerator",
       "creationSec": 0.1,
-      "measuredAt": "2026-08-09T10:28:59.603Z"
+      "measuredAt": "2026-08-05T15:19:49.026Z"
     },
     {
       "id": "pdf-proposal-outline",
@@ -31,10 +31,10 @@
       "fileName": "proposal-outline.pdf",
       "href": "/samples/proposal-outline.pdf",
       "bytes": 140860,
-      "creationMs": 218,
+      "creationMs": 219,
       "generator": "PdfDeliverableGenerator",
       "creationSec": 0.2,
-      "measuredAt": "2026-08-09T10:28:59.603Z"
+      "measuredAt": "2026-08-05T15:19:49.026Z"
     },
     {
       "id": "sns-solar",
@@ -42,10 +42,10 @@
       "fileName": "sns-post.txt",
       "href": "/samples/sns-post.txt",
       "bytes": 328,
-      "creationMs": 105,
+      "creationMs": 139,
       "generator": "PdfDeliverableGenerator",
       "creationSec": 0.1,
-      "measuredAt": "2026-08-09T10:28:59.603Z"
+      "measuredAt": "2026-08-05T15:19:49.026Z"
     },
     {
       "id": "email-followup",
@@ -53,10 +53,10 @@
       "fileName": "email-draft.txt",
       "href": "/samples/email-draft.txt",
       "bytes": 320,
-      "creationMs": 98,
+      "creationMs": 100,
       "generator": "PdfDeliverableGenerator",
       "creationSec": 0.1,
-      "measuredAt": "2026-08-09T10:28:59.603Z"
+      "measuredAt": "2026-08-05T15:19:49.026Z"
     }
   ]
 }
