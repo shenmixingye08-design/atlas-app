@@ -43,6 +43,7 @@ export async function GET(request: Request): Promise<Response> {
     renderedTableCount: result.renderedTableCount,
     markersFound: result.markersFound,
     pdfBytes: result.pdfBytes,
+    pageCount: result.pageCount,
     error: result.error,
     commitShaShort: result.commitShaShort,
     environment: result.environment,

@@ -99,4 +99,14 @@ describe("P1-01 PDF table render + fail-closed", () => {
     const text = extractPdfText(file.buffer);
     expect(text).toContain("TBLCELL_ALPHA_991");
   });
+
+  it("probe metadata keywords prove markers without pdftotext", async () => {
+    const { probePdfTableRendering } = await import("./pdf-table-probe");
+    const result = await probePdfTableRendering();
+    expect(result.ok).toBe(true);
+    expect(result.tablesRendered).toBe(true);
+    expect(result.markersFound).toBe(true);
+    expect(result.pageCount).toBeGreaterThanOrEqual(1);
+    expect(result.error).toBeNull();
+  });
 });
