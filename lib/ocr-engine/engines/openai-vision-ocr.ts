@@ -47,14 +47,17 @@ export const openaiVisionOcrEngine: OcrEngine = {
         instructions:
           "You are a strict OCR engine. Return ONLY JSON: " +
           '{"extractedText":"...","confidence":0.0-1.0}. ' +
-          "Transcribe visible text exactly. Do not invent missing text. No markdown.",
+          "Copy every visible character exactly (codes, totals, labels). " +
+          "Do not summarize. Do not invent missing text. No markdown.",
         input: [
           {
             role: "user",
             content: [
               {
                 type: "input_text",
-                text: `OCR correlationId=${input.correlationId}. Extract every visible character.`,
+                text:
+                  `OCR correlationId=${input.correlationId}. ` +
+                  "Literal transcription of ALL visible text lines.",
               },
               {
                 type: "input_image",

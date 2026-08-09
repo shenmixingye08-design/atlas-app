@@ -1,8 +1,10 @@
 /**
  * Ground-truth OCR fixture for P2-05 evaluation.
- * Image is generated at runtime (sharp) so deploy artifacts never miss it.
- * Tokens are ASCII-safe so serverless fonts can render glyphs reliably.
+ * Prefer committed PNG (fonts baked in). Fallback: render with bundled TTF.
  */
+
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
 
 import sharp from "sharp";
 
@@ -14,11 +16,22 @@ export const OCR_GROUND_TRUTH_TOKENS = [
   "1280",
 ] as const;
 
-export async function buildOcrGroundTruthImage(): Promise<{
-  bytes: Buffer;
-  mimeType: "image/png";
-  tokens: readonly string[];
-}> {
+function committedPngPath(): string {
+  return join(process.cwd(), "testdata/ocr/ground-truth.png");
+}
+
+function bundledFontPath(): string {
+  return join(process.cwd(), "testdata/ocr/fonts/DejaVuSans.ttf");
+}
+
+async function renderWithBundledFont(): Promise<Buffer> {
+  const fontPath = bundledFontPath();
+  const fontFace = existsSync(fontPath)
+    ? `@font-face { font-family: 'ProbeFont'; src: url('file://${fontPath}'); }`
+    : "";
+  const family = existsSync(fontPath)
+    ? "ProbeFont, DejaVu Sans, sans-serif"
+    : "DejaVu Sans, Liberation Sans, Arial, sans-serif";
   const lines = [
     "MINERVOT OCR EVAL",
     "ATLAS-OCR-7842",
@@ -26,16 +39,32 @@ export async function buildOcrGroundTruthImage(): Promise<{
     "TOTAL 1280",
   ];
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="720" height="360">
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="480">
+  <defs><style>${fontFace}</style></defs>
   <rect width="100%" height="100%" fill="#ffffff"/>
-  <text x="36" y="80" font-size="40" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" fill="#111111">${lines[0]}</text>
-  <text x="36" y="150" font-size="44" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" fill="#111111">${lines[1]}</text>
-  <text x="36" y="220" font-size="36" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" fill="#111111">${lines[2]}</text>
-  <text x="36" y="290" font-size="44" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" fill="#111111">${lines[3]}</text>
+  <text x="48" y="100" font-size="48" font-family="${family}" fill="#000000">${lines[0]}</text>
+  <text x="48" y="190" font-size="56" font-family="${family}" fill="#000000">${lines[1]}</text>
+  <text x="48" y="280" font-size="44" font-family="${family}" fill="#000000">${lines[2]}</text>
+  <text x="48" y="370" font-size="56" font-family="${family}" fill="#000000">${lines[3]}</text>
 </svg>`;
-  const bytes = await sharp(Buffer.from(svg)).png().toBuffer();
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+export async function buildOcrGroundTruthImage(): Promise<{
+  bytes: Buffer;
+  mimeType: "image/png";
+  tokens: readonly string[];
+}> {
+  const committed = committedPngPath();
+  if (existsSync(committed)) {
+    return {
+      bytes: readFileSync(committed),
+      mimeType: "image/png",
+      tokens: OCR_GROUND_TRUTH_TOKENS,
+    };
+  }
   return {
-    bytes,
+    bytes: await renderWithBundledFont(),
     mimeType: "image/png",
     tokens: OCR_GROUND_TRUTH_TOKENS,
   };

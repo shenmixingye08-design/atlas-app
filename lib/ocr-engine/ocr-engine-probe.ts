@@ -265,6 +265,9 @@ async function probeOnce(): Promise<OcrEngineProbeResult> {
             !retrySafe ? "retry_not_safe" : null,
             !multiInstanceSafe ? "multi_instance_failed" : null,
             !ownershipIsolationOk ? "ownership_leak" : null,
+            evaluation.record?.metadata?.visionPreview
+              ? `visionPreview=${String(evaluation.record.metadata.visionPreview).slice(0, 120)}`
+              : null,
           ]
             .filter(Boolean)
             .join(","),

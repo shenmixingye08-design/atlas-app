@@ -124,6 +124,7 @@ export async function runOcrEngineEvaluation(input?: {
         : visionExtract.confidence,
       metadata: {
         visionError: visionExtract.error,
+        visionPreview: redactOcrText(visionExtract.extractedText, 240),
         dedicatedConfigured: dedicatedExtract.configured,
         softSuccess: false,
       },
@@ -199,8 +200,10 @@ export async function runOcrEngineEvaluation(input?: {
     tokensHit: finalScore.tokensHit,
     extractedTextPreview: redactOcrText(finalExtract.extractedText),
     confidence: finalExtract.confidence,
-    metadata: {
+      metadata: {
       visionAccuracy: visionScore.accuracy,
+      visionPreview: redactOcrText(visionExtract.extractedText, 240),
+      visionTokensHit: visionScore.tokensHit,
       dedicatedConfigured: Boolean(dedicatedExtract?.configured),
       softSuccess: false,
       p2: "P2-05",
