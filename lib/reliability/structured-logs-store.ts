@@ -17,6 +17,12 @@ const TABLE = "atlas_structured_logs";
 const SENSITIVE_KEY =
   /^(authorization|cookie|token|password|secret|api[_-]?key|private[_-]?key|content_base64|image(_data|_base64)?|data_url|raw_image)$/i;
 
+/** Supabase/GoTrue clock skew right after cold start / deploy. */
+export function isTransientJwtClockError(message: string | null | undefined): boolean {
+  if (!message) return false;
+  return /JWT issued at future|token used before issued|iat/i.test(message);
+}
+
 export type StructuredLogRow = {
   id: string;
   correlation_id: string;
@@ -319,7 +325,7 @@ export async function persistStructuredLog(
   const row = developerLogToRow(entry);
   let lastError: string | null = null;
 
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
     const { error } = await client.from(TABLE).upsert(row as never, {
       onConflict: "id",
     });
@@ -330,15 +336,17 @@ export async function persistStructuredLog(
     const missing = /schema cache|does not exist|Could not find the table/i.test(
       error.message,
     );
+    const jwtSkew = isTransientJwtClockError(error.message);
     if (missing && attempt === 1) {
       await applyStructuredLogsMigration();
     } else if (
       !missing &&
+      !jwtSkew &&
       !/duplicate|unique|conflict/i.test(error.message)
     ) {
       break;
     }
-    await new Promise((r) => setTimeout(r, 200 * attempt));
+    await new Promise((r) => setTimeout(r, jwtSkew ? 500 * attempt : 200 * attempt));
   }
 
   // Treat unique conflict after successful prior write as idempotent OK.
