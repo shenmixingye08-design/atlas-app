@@ -1,24 +1,31 @@
 import {
   AI_API_RATE_LIMIT,
-  checkRateLimit,
-  recordRateLimitHit,
+  consumeDistributedRateLimit,
 } from "@/lib/http/rate-limit";
 
-export function enforceAiRateLimit(userId: string): Response | null {
-  const gate = checkRateLimit(userId, AI_API_RATE_LIMIT);
+/**
+ * Enforce distributed AI burst limit for an authenticated user.
+ * Must be awaited at every AI/OpenAI entry route (P1-06).
+ */
+export async function enforceAiRateLimit(
+  userId: string,
+): Promise<Response | null> {
+  const gate = await consumeDistributedRateLimit(userId, AI_API_RATE_LIMIT);
   if (!gate.allowed) {
     const retryAfterSec = Math.max(
       1,
-      Math.ceil((gate.retryAfterMs ?? 1000) / 1000),
+      Math.ceil((gate.retryAfterMs || 1000) / 1000),
     );
     return Response.json(
-      { error: "Too many requests. Please try again later." },
+      {
+        error: "Too many requests. Please try again later.",
+        code: "rate_limited",
+      },
       {
         status: 429,
         headers: { "Retry-After": String(retryAfterSec) },
       },
     );
   }
-  recordRateLimitHit(userId, AI_API_RATE_LIMIT);
   return null;
 }

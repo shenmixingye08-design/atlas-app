@@ -5,6 +5,7 @@ import {
   releaseWordGenerateSlot,
 } from "@/lib/deliverables/word-rate-limit";
 import { generateDeliverables } from "@/lib/deliverables/engine";
+import { enforceAiRateLimit } from "@/lib/http/enforce-ai-rate-limit";
 import { uploadDeliverablesAfterGeneration } from "@/lib/integrations/deliverable-bridge";
 import type { IntegrationUploadSummary } from "@/lib/integrations/types";
 import {
@@ -76,7 +77,10 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimited = enforceWordGenerateRateLimit(userId);
+  const aiLimited = await enforceAiRateLimit(userId);
+  if (aiLimited) return aiLimited;
+
+  const rateLimited = await enforceWordGenerateRateLimit(userId);
   if (rateLimited) return rateLimited;
 
   const { requireBillingForAssignment } = await import("@/lib/billing/access");

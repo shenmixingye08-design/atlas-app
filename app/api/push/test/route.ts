@@ -29,7 +29,7 @@ export async function POST(): Promise<Response> {
   }
 
   // Strict limit: prevent test notification abuse.
-  if (!checkPushRateLimit(`test:${userId}`, 3, 60_000)) {
+  if (!(await checkPushRateLimit(`test:${userId}`, 3, 60_000))) {
     return Response.json(
       { error: "Rate limit exceeded", code: "rate_limit_exceeded" },
       { status: 429 },

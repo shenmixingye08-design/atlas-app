@@ -24,7 +24,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  if (!checkPushRateLimit(`doc-upload:${userId}`, 20, 60_000)) {
+  if (!(await checkPushRateLimit(`doc-upload:${userId}`, 20, 60_000))) {
     return Response.json(
       { error: "アップロードが集中しています。少し待って再試行してください", code: "rate_limit_exceeded" },
       { status: 429 },

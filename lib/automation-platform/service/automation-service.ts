@@ -70,8 +70,8 @@ function assertOwner(automation: AutomationV2 | null, userId: string): Automatio
   return automation;
 }
 
-function assertRateLimit(userId: string, action: string): void {
-  const result = checkAutomationRateLimit({ userId, action });
+async function assertRateLimit(userId: string, action: string): Promise<void> {
+  const result = await checkAutomationRateLimit({ userId, action });
   if (!result.allowed) {
     throw new AutomationPlatformError("automation_rate_limited", { action });
   }
@@ -117,7 +117,7 @@ export class AutomationPlatformService {
     context: FeatureAccessContext,
   ): Promise<AutomationV2> {
     assertV2Enabled(context);
-    assertRateLimit(userId, "create");
+    await assertRateLimit(userId, "create");
     await ensureAutomationsV2Hydrated(userId);
 
     if (input.memoryPolicy?.enabled) {
@@ -169,7 +169,7 @@ export class AutomationPlatformService {
     context: FeatureAccessContext,
   ): Promise<AutomationV2[]> {
     assertV2Enabled(context);
-    assertRateLimit(userId, "list");
+    await assertRateLimit(userId, "list");
     await ensureAutomationsV2Hydrated(userId);
     return listAutomationsV2FromSot(userId);
   }
@@ -191,7 +191,7 @@ export class AutomationPlatformService {
     context: FeatureAccessContext,
   ): Promise<AutomationV2> {
     assertV2Enabled(context);
-    assertRateLimit(userId, "update");
+    await assertRateLimit(userId, "update");
     await ensureAutomationsV2Hydrated(userId);
     const current = assertOwner(
       await getAutomationV2FromSot(id, userId),
@@ -486,7 +486,7 @@ export class AutomationPlatformService {
     dispatch?: boolean;
   }): Promise<{ run: AutomationRun; created: boolean }> {
     assertV2Enabled(input.context);
-    assertRateLimit(input.userId, "run");
+    await assertRateLimit(input.userId, "run");
     await ensureAutomationsV2Hydrated(input.userId);
     await ensureAutomationRunsV2Hydrated(input.userId);
 
@@ -799,7 +799,7 @@ export class AutomationPlatformService {
     assertV2Enabled(context);
     // Approval API remains available whenever V2 is on — cannot leave runs stuck
     // behind a secondary flag (fail closed for skipping, fail open for deciding).
-    assertRateLimit(userId, "approve");
+    await assertRateLimit(userId, "approve");
 
     const run = await this.getRun(userId, runId, context);
     if (run.status !== "awaiting_approval" && run.status !== "needs_input") {
@@ -988,7 +988,7 @@ export class AutomationPlatformService {
     context: FeatureAccessContext,
   ): Promise<AutomationRun> {
     assertV2Enabled(context);
-    assertRateLimit(userId, "retry");
+    await assertRateLimit(userId, "retry");
     const run = await this.getRun(userId, runId, context);
 
     if (run.status === "retrying" || run.status === "queued") {
@@ -1040,7 +1040,7 @@ export class AutomationPlatformService {
     },
   ): Promise<AutomationRun> {
     assertV2Enabled(context);
-    assertRateLimit(userId, "retry");
+    await assertRateLimit(userId, "retry");
     const { prepareStepsForSafeRetry, shouldSkipOnRetry } = await import(
       "@/lib/automation-platform/operations/idempotency"
     );

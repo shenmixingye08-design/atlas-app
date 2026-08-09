@@ -595,8 +595,8 @@ describe("Word Stage 4 templates / model / versions", () => {
   it(
     "prevents edit regenerate double-submit with job idempotency, versions, and rate limit",
     async () => {
-      expect(enforceWordGenerateRateLimit(`${OWNER}_regenerate`)).toBeNull();
-      const limited = enforceWordGenerateRateLimit(`${OWNER}_regenerate`);
+      expect(await enforceWordGenerateRateLimit(`${OWNER}_regenerate`)).toBeNull();
+      const limited = await enforceWordGenerateRateLimit(`${OWNER}_regenerate`);
       expect(limited?.status).toBe(429);
 
       const jobId = "stage4_double_submit_job";
@@ -721,12 +721,12 @@ describe("Word Stage 4 templates / model / versions", () => {
     });
   });
 
-  it("rate limit returns 429 after burst", () => {
+  it("rate limit returns 429 after burst", async () => {
     resetWordRateLimitsForTests();
     // First call ok
-    expect(enforceWordGenerateRateLimit(OWNER)).toBeNull();
+    expect(await enforceWordGenerateRateLimit(OWNER)).toBeNull();
     // Immediate second call blocked by minInterval
-    const limited = enforceWordGenerateRateLimit(OWNER);
+    const limited = await enforceWordGenerateRateLimit(OWNER);
     expect(limited?.status).toBe(429);
     expect(limited?.headers.get("Retry-After")).toBeTruthy();
   });

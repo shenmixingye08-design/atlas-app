@@ -17,7 +17,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  if (!checkPushRateLimit(`unsubscribe:${userId}`, 20, 60_000)) {
+  if (!(await checkPushRateLimit(`unsubscribe:${userId}`, 20, 60_000))) {
     return Response.json(
       { error: "Rate limit exceeded", code: "rate_limit_exceeded" },
       { status: 429 },

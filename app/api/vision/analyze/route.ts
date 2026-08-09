@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 
 import { runWithAiBillingUsage } from "@/lib/billing/usage/request-context";
+import { enforceAiRateLimit } from "@/lib/http/enforce-ai-rate-limit";
 import { clientSafeMessage } from "@/lib/security/client-safe-message";
 import { safeLog } from "@/lib/security/redact";
 import { isVisionDetectedType } from "@/lib/vision/schemas";
@@ -27,6 +28,9 @@ export async function POST(request: Request): Promise<Response> {
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const limited = await enforceAiRateLimit(userId);
+  if (limited) return limited;
 
   let body: Body;
   try {

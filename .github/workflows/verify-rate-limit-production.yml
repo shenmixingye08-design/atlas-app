@@ -1,0 +1,59 @@
+name: Verify Distributed Rate Limit Production (P1-06)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20260809_p1_06_distributed_rate_limit.sql"
+      - "lib/rate-limit/**"
+      - "lib/http/rate-limit.ts"
+      - "lib/http/enforce-ai-rate-limit.ts"
+      - "app/api/health/rate-limit/**"
+      - ".github/workflows/verify-rate-limit-production.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe production rate-limit readiness
+        env:
+          PROD_URL: https://atlasapp.jp
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+            CODE=$(curl -sS -o /tmp/rate-limit.json -w "%{http_code}" \
+              "$PROD_URL/api/health/rate-limit?force=1" || echo "000")
+            echo "attempt=$i http=$CODE"
+            python3 - <<'PY'
+          import json,sys
+          try:
+            d=json.load(open("/tmp/rate-limit.json"))
+          except Exception as e:
+            print("parse_error", e)
+            sys.exit(2)
+          print({k:d.get(k) for k in [
+            "ok","rateLimitTableOk","consumeRpcOk","dbSotReady",
+            "memoryNotSot","allAiPathsCovered","multiInstanceSafe","commitShaShort"
+          ]})
+          sys.exit(0 if (
+            d.get("ok") is True
+            and d.get("rateLimitTableOk") is True
+            and d.get("consumeRpcOk") is True
+            and d.get("dbSotReady") is True
+            and d.get("memoryNotSot") is True
+            and d.get("allAiPathsCovered") is True
+            and d.get("multiInstanceSafe") is True
+          ) else 3)
+          PY
+            STATUS=$?
+            if [ "$STATUS" -eq 0 ]; then
+              echo "distributed_rate_limit_ready=true"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::Production /api/health/rate-limit is not ready (ok!=true)."
+          echo "::error::Apply supabase/migrations/20260809_p1_06_distributed_rate_limit.sql,"
+          echo "::error::then re-check the probe."
+          exit 1

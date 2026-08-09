@@ -108,7 +108,7 @@ export async function POST(request: Request): Promise<Response> {
       });
       if (billingDenied) return billingDenied;
 
-      const limited = enforceAiRateLimit(userId);
+      const limited = await enforceAiRateLimit(userId);
       if (limited) return limited;
     }
 

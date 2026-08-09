@@ -1,31 +1,33 @@
 import { contactSpamConfig } from "./spam";
 import {
-  checkRateLimit,
-  recordRateLimitHit,
-  resetRateLimitBucket,
+  consumeDistributedRateLimit,
+  resetDistributedRateLimitStoreForTests,
 } from "@/lib/http/rate-limit";
 
 const CONTACT_BUCKET = "contact";
 
-export function checkContactRateLimit(clientIp: string): {
+export async function checkContactRateLimit(clientIp: string): Promise<{
   allowed: boolean;
   retryAfterMs?: number;
-} {
-  return checkRateLimit(clientIp, {
+}> {
+  // Atomic consume — counts the attempt (spam-resistant; no check/record race).
+  const result = await consumeDistributedRateLimit(clientIp, {
     bucket: CONTACT_BUCKET,
     max: contactSpamConfig.maxSubmissionsPerHour,
     windowMs: 60 * 60 * 1000,
     minIntervalMs: contactSpamConfig.minSubmitIntervalMs,
   });
+  return {
+    allowed: result.allowed,
+    retryAfterMs: result.retryAfterMs,
+  };
 }
 
-export function recordContactSubmission(clientIp: string): void {
-  recordRateLimitHit(clientIp, {
-    bucket: CONTACT_BUCKET,
-    windowMs: 60 * 60 * 1000,
-  });
+/** @deprecated consume happens in checkContactRateLimit */
+export async function recordContactSubmission(clientIp: string): Promise<void> {
+  void clientIp;
 }
 
 export function resetContactRateLimitStore(): void {
-  resetRateLimitBucket(CONTACT_BUCKET);
+  void resetDistributedRateLimitStoreForTests();
 }

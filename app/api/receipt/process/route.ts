@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { enforceAiRateLimit } from "@/lib/http/enforce-ai-rate-limit";
 import { prepareMediaImages } from "@/lib/media-pipelines";
 import { RECEIPT_USER_ERROR } from "@/lib/receipt/errors";
 import { processReceiptImages } from "@/lib/receipt";
@@ -12,6 +13,9 @@ export async function POST(request: Request): Promise<Response> {
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const limited = await enforceAiRateLimit(userId);
+  if (limited) return limited;
 
   let form: FormData;
   try {

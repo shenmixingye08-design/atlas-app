@@ -864,6 +864,42 @@ export type Database = {
         };
         Relationships: [];
       };
+      atlas_rate_limit_counters: {
+        Row: {
+          id: string;
+          bucket: string;
+          subject_key: string;
+          window_started_at: string;
+          window_ms: number;
+          hit_count: number;
+          last_hit_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          bucket: string;
+          subject_key: string;
+          window_started_at: string;
+          window_ms: number;
+          hit_count?: number;
+          last_hit_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          bucket?: string;
+          subject_key?: string;
+          window_started_at?: string;
+          window_ms?: number;
+          hit_count?: number;
+          last_hit_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       atlas_household_ledger_entries: {
         Row: {
           id: string;
@@ -1353,6 +1389,22 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      atlas_consume_rate_limit: {
+        Args: {
+          p_bucket: string;
+          p_subject_key: string;
+          p_max: number;
+          p_window_ms: number;
+          p_min_interval_ms?: number;
+        };
+        Returns: {
+          allowed: boolean;
+          remaining: number;
+          retry_after_ms: number;
+          hit_count: number;
+          window_started_at: string;
+        };
+      };
       atlas_claim_side_effect: {
         Args: {
           p_id: string;

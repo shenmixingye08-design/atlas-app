@@ -181,7 +181,7 @@ export async function POST(request: Request): Promise<Response> {
   const usageDenied = await requireBillingAiUsage(userId);
   if (usageDenied) return usageDenied;
 
-  const limited = enforceAiRateLimit(userId);
+  const limited = await enforceAiRateLimit(userId);
   if (limited) return limited;
 
   let body: RequestBody;
