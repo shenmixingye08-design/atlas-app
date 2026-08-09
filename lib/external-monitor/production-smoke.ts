@@ -8,6 +8,7 @@ import "server-only";
 import { getHealthVersionPayload } from "@/lib/health/version-info";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 
+import { evaluateAllChecks } from "./checks";
 import {
   activateFailureInjection,
   deactivateFailureInjection,
@@ -36,10 +37,81 @@ export type ExternalMonitorProductionSmoke = {
     commitShaShort: string;
     lineConfigured: boolean;
     ownerNotifyPath: "line" | "system" | "none";
+    /** Post-clear tick check status (must be ok for recovery). */
+    postClearTickStatus: string | null;
+    /** Incident status after recovery cycle. */
+    incidentStatusAfterRecovery: string | null;
+    /** Real tick HTTP used to re-establish heartbeat before recovery. */
+    tickReestablishHttpStatus: number | null;
+    tickReestablishOk: boolean;
+    resolvedThisCycle: number | null;
   };
 };
 
 const SMOKE_KIND: InjectionKind = "tick_failure";
+
+function productionBaseUrl(): string {
+  const raw =
+    process.env.ATLAS_APP_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    "https://atlasapp.jp";
+  return raw.replace(/\/$/, "");
+}
+
+/**
+ * Re-establish a real successful tick heartbeat after clearing synthetic
+ * tick_failure. Without this, a long-stopped Minute Scheduler leaves
+ * scheduler.tick non-ok and recovery cannot resolve the incident.
+ */
+async function reestablishTickHeartbeat(): Promise<{
+  ok: boolean;
+  httpStatus: number | null;
+}> {
+  const secret = process.env.CRON_SECRET?.trim();
+  if (!secret) {
+    // Fall back to in-process success markers when secret absent (non-prod).
+    try {
+      const { recordCronTickSuccess } = await import(
+        "@/lib/owner/monitoring/store"
+      );
+      recordCronTickSuccess(new Date().toISOString());
+      const { getWorkQueueStore } = await import("@/lib/work-queue/store");
+      await getWorkQueueStore().recordSchedulerSuccess(new Date().toISOString());
+      return { ok: true, httpStatus: null };
+    } catch {
+      return { ok: false, httpStatus: null };
+    }
+  }
+
+  try {
+    const response = await fetch(`${productionBaseUrl()}/api/automations/tick`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    });
+    // Also stamp in-process markers for this instance immediately.
+    if (response.ok) {
+      const { recordCronTickSuccess } = await import(
+        "@/lib/owner/monitoring/store"
+      );
+      recordCronTickSuccess(new Date().toISOString());
+      try {
+        const { getWorkQueueStore } = await import("@/lib/work-queue/store");
+        await getWorkQueueStore().recordSchedulerSuccess(
+          new Date().toISOString(),
+        );
+      } catch {
+        // optional
+      }
+    }
+    return { ok: response.ok, httpStatus: response.status };
+  } catch {
+    return { ok: false, httpStatus: null };
+  }
+}
 
 export async function runExternalMonitorProductionSmoke(): Promise<ExternalMonitorProductionSmoke> {
   const version = getHealthVersionPayload();
@@ -60,6 +132,11 @@ export async function runExternalMonitorProductionSmoke(): Promise<ExternalMonit
     commitShaShort: version.commitShaShort,
     lineConfigured,
     ownerNotifyPath: "none",
+    postClearTickStatus: null,
+    incidentStatusAfterRecovery: null,
+    tickReestablishHttpStatus: null,
+    tickReestablishOk: false,
+    resolvedThisCycle: null,
   };
 
   if (!(await isExternalMonitorDurableReady()) && isAtlasProduction()) {
@@ -123,12 +200,34 @@ export async function runExternalMonitorProductionSmoke(): Promise<ExternalMonit
 
   await deactivateFailureInjection({ injectionId: injection.id });
 
+  // Critical: synthetic clear alone is not enough when Minute Scheduler has
+  // been stopped — scheduler.tick stays non-ok and resolve is skipped.
+  const tickReestablish = await reestablishTickHeartbeat();
+  evidence.tickReestablishOk = tickReestablish.ok;
+  evidence.tickReestablishHttpStatus = tickReestablish.httpStatus;
+
+  const postClearChecks = await evaluateAllChecks(Date.now());
+  const tickAfterClear = postClearChecks.find(
+    (c) => c.checkId === "scheduler.tick",
+  );
+  evidence.postClearTickStatus = tickAfterClear?.status ?? null;
+
+  if (tickAfterClear && tickAfterClear.status !== "ok") {
+    return {
+      ok: false,
+      error: "tick_still_unhealthy_after_clear",
+      evidence,
+    };
+  }
+
   const recoverCycle = await runExternalMonitorCycle({
-    nowMs: Date.now() + 1000,
+    nowMs: Date.now(),
   });
   evidence.recoveryAt = recoverCycle.observedAt;
+  evidence.resolvedThisCycle = recoverCycle.resolvedThisCycle;
 
   const after = await getIncidentById(incident.id);
+  evidence.incidentStatusAfterRecovery = after?.status ?? null;
   if (!after || after.status !== "resolved") {
     return {
       ok: false,

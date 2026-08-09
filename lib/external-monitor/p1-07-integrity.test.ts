@@ -189,6 +189,20 @@ describe("P1-07 external monitor integrity", () => {
     expect(deliveries.some((d) => d.deliveryKind === "resolved")).toBe(true);
   });
 
+  it("tick_failure smoke re-establishes heartbeat so recovery can resolve", async () => {
+    const { runExternalMonitorProductionSmoke } = await import(
+      "./production-smoke"
+    );
+    const smoke = await runExternalMonitorProductionSmoke();
+    expect(smoke.error).not.toBe("tick_still_unhealthy_after_clear");
+    expect(smoke.error).not.toBe("incident_not_resolved");
+    // In test memory mode, Owner notify is mocked via deliverOwnerAlert mock.
+    expect(smoke.ok).toBe(true);
+    expect(smoke.evidence.incidentId).toBeTruthy();
+    expect(smoke.evidence.deliveryStatus).toBe("sent");
+    expect(smoke.evidence.incidentStatusAfterRecovery).toBe("resolved");
+  });
+
   it("cross-user isolation: injection metadata is synthetic-only", async () => {
     const inj = await activateFailureInjection({
       kind: "side_effect_failure",
