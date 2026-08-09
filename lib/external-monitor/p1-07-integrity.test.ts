@@ -201,6 +201,37 @@ describe("P1-07 external monitor integrity", () => {
     expect(smoke.evidence.incidentId).toBeTruthy();
     expect(smoke.evidence.deliveryStatus).toBe("sent");
     expect(smoke.evidence.incidentStatusAfterRecovery).toBe("resolved");
+    expect(smoke.evidence.localHeartbeatStamped).toBe(true);
+  });
+
+  it("system-only Owner notify is attributed as system (not line)", async () => {
+    const { deliverOwnerAlert } = await import("./notify");
+    const notify = vi.mocked(deliverOwnerAlert);
+    notify.mockResolvedValueOnce({
+      lineAttempted: false,
+      lineSent: false,
+      systemAttempted: true,
+      systemSent: true,
+      errorCode: null,
+    });
+
+    await activateFailureInjection({
+      kind: "tick_failure",
+      ttlMs: 60_000,
+    });
+    await runExternalMonitorCycle({ nowMs: Date.now() });
+    const open = await listOpenIncidents();
+    const incident = open.find((i) => i.checkId === "scheduler.tick");
+    expect(incident).toBeTruthy();
+    const deliveries = await listDeliveriesForIncident(incident!.id);
+    const lineOpened = deliveries.find(
+      (d) => d.deliveryKind === "opened" && d.channel === "line",
+    );
+    const systemOpened = deliveries.find(
+      (d) => d.deliveryKind === "opened" && d.channel === "system",
+    );
+    expect(lineOpened?.status).toBe("skipped");
+    expect(systemOpened?.status).toBe("sent");
   });
 
   it("cross-user isolation: injection metadata is synthetic-only", async () => {

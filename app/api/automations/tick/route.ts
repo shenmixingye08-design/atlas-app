@@ -96,8 +96,25 @@ export async function POST(request: Request): Promise<Response> {
       console.warn("[automation tick] v2 schedule/dispatch skipped:", error);
     }
 
-    const scheduledXPosts = await processScheduledXPostsFromAutomationTick();
-    const autoPosts = await processDueAutoPostsFromAutomationTick();
+    // Non-critical side steps: never fail the whole minute tick (P1-07).
+    // A throw here previously returned HTTP 500 and blocked monitor recovery.
+    let scheduledXPosts: Awaited<
+      ReturnType<typeof processScheduledXPostsFromAutomationTick>
+    > = [];
+    try {
+      scheduledXPosts = await processScheduledXPostsFromAutomationTick();
+    } catch (error) {
+      console.warn("[automation tick] scheduled X posts skipped:", error);
+    }
+
+    let autoPosts: Awaited<
+      ReturnType<typeof processDueAutoPostsFromAutomationTick>
+    > = [];
+    try {
+      autoPosts = await processDueAutoPostsFromAutomationTick();
+    } catch (error) {
+      console.warn("[automation tick] auto posts skipped:", error);
+    }
 
     let dailyReports: { processed: number } = { processed: 0 };
     try {
