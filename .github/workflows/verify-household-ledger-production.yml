@@ -1,0 +1,56 @@
+name: Verify Household Ledger Production (P1-05)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20260809_p1_05_household_ledger_entries.sql"
+      - "lib/receipt/**"
+      - "app/api/health/household-ledger/**"
+      - ".github/workflows/verify-household-ledger-production.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe production household-ledger readiness
+        env:
+          PROD_URL: https://atlasapp.jp
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            CODE=$(curl -sS -o /tmp/household-ledger.json -w "%{http_code}" \
+              "$PROD_URL/api/health/household-ledger?force=1" || echo "000")
+            echo "attempt=$i http=$CODE"
+            python3 - <<'PY'
+          import json,sys
+          try:
+            d=json.load(open("/tmp/household-ledger.json"))
+          except Exception as e:
+            print("parse_error", e)
+            sys.exit(2)
+          print({k:d.get(k) for k in [
+            "ok","ledgerTableOk","dbSotReady","legacyLimitRemoved",
+            "memoryNotSot","ownershipOk","commitShaShort"
+          ]})
+          sys.exit(0 if (
+            d.get("ok") is True
+            and d.get("ledgerTableOk") is True
+            and d.get("dbSotReady") is True
+            and d.get("legacyLimitRemoved") is True
+            and d.get("memoryNotSot") is True
+            and d.get("ownershipOk") is True
+          ) else 3)
+          PY
+            STATUS=$?
+            if [ "$STATUS" -eq 0 ]; then
+              echo "household_ledger_db_sot_ready=true"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::Production /api/health/household-ledger is not ready (ok!=true)."
+          echo "::error::Apply supabase/migrations/20260809_p1_05_household_ledger_entries.sql,"
+          echo "::error::then re-check the probe."
+          exit 1
