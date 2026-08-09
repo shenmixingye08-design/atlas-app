@@ -33,7 +33,7 @@ export type LedgerListOptions = {
 type LedgerRow = {
   id: string;
   user_id: string;
-  amount: number | string;
+  amount: number;
   currency: string;
   occurred_at: string;
   occurred_on: string;
@@ -43,14 +43,25 @@ type LedgerRow = {
   description: string;
   source: string;
   receipt_id: string | null;
-  source_image_ids: unknown;
-  quantity: number | string | null;
-  unit_price: number | string | null;
-  tax: number | string | null;
+  source_image_ids: string[];
+  quantity: number | null;
+  unit_price: number | null;
+  tax: number | null;
   payment_method: string | null;
   money_use: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type LedgerRowRead = Omit<
+  LedgerRow,
+  "amount" | "quantity" | "unit_price" | "tax" | "source_image_ids"
+> & {
+  amount: number | string;
+  quantity: number | string | null;
+  unit_price: number | string | null;
+  tax: number | string | null;
+  source_image_ids: unknown;
 };
 
 type LocalDb = {
@@ -152,7 +163,7 @@ export function toLedgerRow(
   };
 }
 
-export function fromLedgerRow(row: LedgerRow): LedgerEntry {
+export function fromLedgerRow(row: LedgerRowRead): LedgerEntry {
   const images = Array.isArray(row.source_image_ids)
     ? (row.source_image_ids as string[])
     : [];
@@ -326,7 +337,7 @@ export async function dbListLedgerEntries(
     }
     throw new Error(`[household-ledger] list failed: ${error.message}`);
   }
-  return (data as LedgerRow[] | null)?.map(fromLedgerRow) ?? [];
+  return (data as LedgerRowRead[] | null)?.map(fromLedgerRow) ?? [];
 }
 
 export async function dbGetLedgerEntryForUser(
@@ -359,7 +370,7 @@ export async function dbGetLedgerEntryForUser(
     }
     throw new Error(`[household-ledger] get failed: ${error.message}`);
   }
-  return data ? fromLedgerRow(data as LedgerRow) : null;
+  return data ? fromLedgerRow(data as LedgerRowRead) : null;
 }
 
 export async function dbUpdateLedgerEntryForUser(
