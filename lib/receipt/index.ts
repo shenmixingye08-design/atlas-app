@@ -20,11 +20,17 @@ export {
   processReceiptImages,
   confirmReceiptSession,
   listHouseholdEntries,
+  createManualLedgerEntry,
   updateLedgerEntryCategory,
+  updateHouseholdLedgerEntry,
+  deleteHouseholdLedgerEntry,
   exportHouseholdExcel,
   getHouseholdAnalytics,
   getHouseholdSession,
   HOUSEHOLD_LEDGER_DOMAIN_KEY,
 } from "./service";
-export { resetHouseholdLedgerStoreForTests } from "./store";
+export {
+  resetHouseholdLedgerStoreForTests,
+  resetHouseholdLedgerProcessCacheForTests,
+} from "./store";
 export { mockExtractReceipt } from "./extract";

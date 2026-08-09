@@ -129,7 +129,7 @@ describe("receipt household ledger", () => {
     expect(session.status).toBe("registered");
     // entries already persisted by auto-register
     const { listLedgerEntries } = await import("./store");
-    const entries = listLedgerEntries(userId);
+    const entries = await listLedgerEntries(userId);
     const buffer = await buildHouseholdLedgerWorkbook(entries);
     expect(buffer.byteLength).toBeGreaterThan(1000);
     // xlsx zip header
@@ -146,7 +146,7 @@ describe("receipt household ledger", () => {
     ]);
     await runReceiptPipeline({ userId, images });
     const { listLedgerEntries } = await import("./store");
-    const entries = listLedgerEntries(userId);
+    const entries = await listLedgerEntries(userId);
     const ym = entries[0]?.date.slice(0, 7) ?? "2026-07";
     const analytics = buildMonthlyAnalytics(entries, ym);
     expect(analytics.totalSpend).toBeGreaterThan(0);
@@ -195,7 +195,7 @@ describe("receipt household ledger", () => {
       session.status,
     );
     if (session.status === "awaiting_expense_choice") {
-      const registered = confirmAndRegisterReceipt({
+      const registered = await confirmAndRegisterReceipt({
         userId,
         sessionId: session.id,
         registerAsExpense: true,

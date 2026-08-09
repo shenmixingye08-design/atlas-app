@@ -4,6 +4,16 @@ import type {
   LedgerEntry,
   ReceiptSession,
 } from "./types";
+import {
+  dbDeleteLedgerEntryForUser,
+  dbGetLedgerEntryForUser,
+  dbListLedgerEntries,
+  dbUpdateLedgerEntryForUser,
+  dbUpsertLedgerEntries,
+  inferEntrySource,
+  resetHouseholdLedgerDbStoreForTests,
+  type LedgerListOptions,
+} from "./repository/db-store";
 
 type GlobalScope = typeof globalThis & {
   __atlasHouseholdLedgerStore?: Map<string, HouseholdLedgerState>;
@@ -26,19 +36,24 @@ function hydrated(): Set<string> {
   return scope.__atlasHouseholdLedgerHydrated;
 }
 
-function emptyState(): HouseholdLedgerState {
+function emptyMetaState(): HouseholdLedgerState {
+  // entries are never the durable SoT in this Map — DB is.
   return { entries: [], categoryRules: [], sessions: [] };
 }
 
 export function getHouseholdLedgerState(userId: string): HouseholdLedgerState {
-  return buckets().get(userId) ?? emptyState();
+  return buckets().get(userId) ?? emptyMetaState();
 }
 
 export function setHouseholdLedgerState(
   userId: string,
   state: HouseholdLedgerState,
 ): void {
-  buckets().set(userId, state);
+  buckets().set(userId, {
+    ...state,
+    // Never keep entries as durable SoT in process memory.
+    entries: [],
+  });
 }
 
 export function isHouseholdLedgerHydrated(userId: string): boolean {
@@ -49,25 +64,47 @@ export function markHouseholdLedgerHydrated(userId: string): void {
   hydrated().add(userId);
 }
 
-export function listLedgerEntries(userId: string): LedgerEntry[] {
-  return [...getHouseholdLedgerState(userId).entries];
+export async function listLedgerEntries(
+  userId: string,
+  options?: LedgerListOptions,
+): Promise<LedgerEntry[]> {
+  return dbListLedgerEntries(userId, options);
 }
 
 export function listCategoryRules(userId: string): CategoryLearningRule[] {
   return [...getHouseholdLedgerState(userId).categoryRules];
 }
 
-export function upsertLedgerEntries(
+export async function upsertLedgerEntries(
   userId: string,
   entries: LedgerEntry[],
-): void {
-  const state = getHouseholdLedgerState(userId);
-  const byId = new Map(state.entries.map((entry) => [entry.id, entry]));
-  for (const entry of entries) byId.set(entry.id, entry);
-  setHouseholdLedgerState(userId, {
-    ...state,
-    entries: [...byId.values()].sort((a, b) => b.date.localeCompare(a.date)),
-  });
+): Promise<void> {
+  const owned = entries.filter((entry) => entry.userId === userId);
+  if (owned.length === 0) return;
+  const source = inferEntrySource(owned[0]!);
+  await dbUpsertLedgerEntries(owned, { source });
+}
+
+export async function getLedgerEntryForUser(
+  userId: string,
+  entryId: string,
+): Promise<LedgerEntry | null> {
+  return dbGetLedgerEntryForUser(userId, entryId);
+}
+
+export async function updateLedgerEntryForUser(
+  userId: string,
+  entryId: string,
+  patch: Parameters<typeof dbUpdateLedgerEntryForUser>[2],
+): Promise<LedgerEntry | null> {
+  return dbUpdateLedgerEntryForUser(userId, entryId, patch);
+}
+
+export async function deleteLedgerEntryForUser(
+  userId: string,
+  entryId: string,
+): Promise<boolean> {
+  return dbDeleteLedgerEntryForUser(userId, entryId);
 }
 
 export function replaceCategoryRules(
@@ -100,7 +137,13 @@ export function getReceiptSession(
   );
 }
 
-export function resetHouseholdLedgerStoreForTests(): void {
+/** Clears process cache only (DB stand-in remains) — restart durability tests. */
+export function resetHouseholdLedgerProcessCacheForTests(): void {
   buckets().clear();
   hydrated().clear();
+}
+
+export function resetHouseholdLedgerStoreForTests(): void {
+  resetHouseholdLedgerProcessCacheForTests();
+  resetHouseholdLedgerDbStoreForTests();
 }
