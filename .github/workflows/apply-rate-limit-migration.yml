@@ -26,6 +26,7 @@ jobs:
           SQL_FILES=(
             "supabase/migrations/20260809_p1_06_distributed_rate_limit.sql"
             "supabase/migrations/20260809_p1_06_rate_limit_rpc_returns_table.sql"
+            "supabase/migrations/20260809_p1_06_rate_limit_rpc_returns_json.sql"
           )
 
           apply_psql() {
@@ -69,6 +70,7 @@ jobs:
             echo "::error::OR apply these files in order in Supabase SQL Editor:"
             echo "::error::1) supabase/migrations/20260809_p1_06_distributed_rate_limit.sql"
             echo "::error::2) supabase/migrations/20260809_p1_06_rate_limit_rpc_returns_table.sql"
+            echo "::error::3) supabase/migrations/20260809_p1_06_rate_limit_rpc_returns_json.sql"
             echo "::error::then confirm https://atlasapp.jp/api/health/rate-limit shows ok=true."
             exit 1
           fi

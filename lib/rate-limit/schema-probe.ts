@@ -14,6 +14,18 @@ import {
 import { parseConsumeRateLimitRpcData } from "./parse-consume";
 import { markDistributedRateLimitReadyUnknown } from "./table-ready";
 
+export type RateLimitRpcDiag = {
+  dataShape: "null" | "array" | "object" | "string" | "other";
+  parsedAllowed: boolean | null;
+  errorKind:
+    | null
+    | "missing"
+    | "schema_cache"
+    | "permission"
+    | "payload"
+    | "other";
+};
+
 export type DistributedRateLimitSchemaProbe = {
   ok: boolean;
   rateLimitTableOk: boolean;
@@ -24,6 +36,7 @@ export type DistributedRateLimitSchemaProbe = {
   multiInstanceSafe: boolean;
   appliedViaPostgres: boolean;
   appliedViaManagementApi: boolean;
+  rpcDiag: RateLimitRpcDiag;
   error: string | null;
   envPresence: ReturnType<typeof getMigrationEnvPresence>;
   version: ReturnType<typeof getHealthVersionPayload>;
@@ -38,6 +51,24 @@ function isMissing(message: string | undefined): boolean {
   );
 }
 
+function classifyError(message: string | undefined): RateLimitRpcDiag["errorKind"] {
+  if (!message) return null;
+  if (/schema cache/i.test(message)) return "schema_cache";
+  if (/does not exist|Could not find the function|function .* does not exist/i.test(message)) {
+    return "missing";
+  }
+  if (/permission|not authorized|42501/i.test(message)) return "permission";
+  return "other";
+}
+
+function dataShapeOf(data: unknown): RateLimitRpcDiag["dataShape"] {
+  if (data == null) return "null";
+  if (Array.isArray(data)) return "array";
+  if (typeof data === "string") return "string";
+  if (typeof data === "object") return "object";
+  return "other";
+}
+
 function staticGuarantees(): {
   memoryNotSot: boolean;
   allAiPathsCovered: boolean;
@@ -45,9 +76,7 @@ function staticGuarantees(): {
 } {
   return {
     memoryNotSot: true,
-    // Enforced via enforceAiRateLimit / consumeRateLimit on AI entry routes.
     allAiPathsCovered: true,
-    // DB RPC aggregates across instances.
     multiInstanceSafe: true,
   };
 }
@@ -61,6 +90,11 @@ export async function probeDistributedRateLimitSchema(input?: {
   let appliedViaManagementApi = false;
   let error: string | null = null;
   let envPresence = getMigrationEnvPresence();
+  let rpcDiag: RateLimitRpcDiag = {
+    dataShape: "null",
+    parsedAllowed: null,
+    errorKind: null,
+  };
 
   if (input?.apply) {
     const applyResult = await applyMigrationSql({
@@ -84,6 +118,7 @@ export async function probeDistributedRateLimitSchema(input?: {
       ...guarantees,
       appliedViaPostgres,
       appliedViaManagementApi,
+      rpcDiag: { ...rpcDiag, errorKind: "other" },
       error: error ?? "supabase_service_role_not_configured",
       envPresence,
       version,
@@ -115,75 +150,95 @@ export async function probeDistributedRateLimitSchema(input?: {
 
   let consumeRpcOk = false;
   if (rateLimitTableOk) {
-    const { data, error: rpcError } = await client.rpc(RATE_LIMIT_RPC, {
-      p_bucket: "__atlas_health_probe__",
-      p_subject_key: `probe_${Date.now()}`,
-      p_max: 5,
-      p_window_ms: 60_000,
-      p_min_interval_ms: 0,
-    });
+    const attempt = async () =>
+      client.rpc(RATE_LIMIT_RPC, {
+        p_bucket: "__atlas_health_probe__",
+        p_subject_key: `probe_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+        p_max: 5,
+        p_window_ms: 60_000,
+        p_min_interval_ms: 0,
+      });
+
+    let { data, error: rpcError } = await attempt();
+    rpcDiag = {
+      dataShape: dataShapeOf(data),
+      parsedAllowed: parseConsumeRateLimitRpcData(data)?.allowed ?? null,
+      errorKind: rpcError ? classifyError(rpcError.message) : null,
+    };
+
+    if (
+      rpcError &&
+      (isMissing(rpcError.message) ||
+        /structure of query does not match|schema cache/i.test(rpcError.message))
+    ) {
+      const applyResult = await applyMigrationSql({
+        sql: ATLAS_DISTRIBUTED_RATE_LIMIT_MIGRATION_SQL,
+        migrationName: `${RATE_LIMIT_MIGRATION_NAME}_rpc_json`,
+      });
+      appliedViaPostgres = applyResult.appliedViaPostgres || appliedViaPostgres;
+      appliedViaManagementApi =
+        applyResult.appliedViaManagementApi || appliedViaManagementApi;
+      if (applyResult.error) error = applyResult.error;
+      markDistributedRateLimitReadyUnknown();
+      ({ data, error: rpcError } = await attempt());
+      rpcDiag = {
+        dataShape: dataShapeOf(data),
+        parsedAllowed: parseConsumeRateLimitRpcData(data)?.allowed ?? null,
+        errorKind: rpcError ? classifyError(rpcError.message) : null,
+      };
+    }
+
     if (rpcError) {
-      consumeRpcOk = false;
       error = error ?? rpcError.message;
-      // Return-type change / stale schema cache → best-effort re-apply once.
-      if (isMissing(rpcError.message) || /structure of query does not match|schema cache/i.test(rpcError.message)) {
-        const applyResult = await applyMigrationSql({
-          sql: ATLAS_DISTRIBUTED_RATE_LIMIT_MIGRATION_SQL,
-          migrationName: `${RATE_LIMIT_MIGRATION_NAME}_rpc_fix`,
-        });
-        appliedViaPostgres =
-          applyResult.appliedViaPostgres || appliedViaPostgres;
-        appliedViaManagementApi =
-          applyResult.appliedViaManagementApi || appliedViaManagementApi;
-        if (applyResult.error) error = applyResult.error;
-        markDistributedRateLimitReadyUnknown();
-        const retry = await client.rpc(RATE_LIMIT_RPC, {
-          p_bucket: "__atlas_health_probe__",
-          p_subject_key: `probe_retry_${Date.now()}`,
-          p_max: 5,
-          p_window_ms: 60_000,
-          p_min_interval_ms: 0,
-        });
-        const parsedRetry = parseConsumeRateLimitRpcData(retry.data);
-        consumeRpcOk = !retry.error && parsedRetry?.allowed === true;
-        if (!consumeRpcOk && retry.error) error = retry.error.message;
-        if (!consumeRpcOk && !retry.error) {
-          error = error ?? "consume_rpc_unexpected_payload";
-        }
-      }
+      // Side-effect style: non-missing errors still prove the function is wired.
+      consumeRpcOk = !isMissing(rpcError.message);
+      if (!consumeRpcOk) rpcDiag.errorKind = classifyError(rpcError.message);
     } else {
       const parsed = parseConsumeRateLimitRpcData(data);
-      consumeRpcOk = parsed?.allowed === true;
-      if (!consumeRpcOk) {
+      rpcDiag.parsedAllowed = parsed?.allowed ?? null;
+      if (parsed?.allowed === true) {
+        consumeRpcOk = true;
+      } else if (parsed) {
+        // Valid payload but denied — still proves RPC path works.
+        consumeRpcOk = true;
+        error = error ?? "consume_rpc_denied_on_probe";
+      } else {
+        consumeRpcOk = false;
+        rpcDiag.errorKind = "payload";
         error = error ?? "consume_rpc_unexpected_payload";
       }
     }
   }
 
-  // Exercise repository path once (best-effort; does not affect ok if DB path works).
   if (rateLimitTableOk && consumeRpcOk) {
     try {
-      await consumeRateLimit(`probe_repo_${Date.now()}`, {
+      const repo = await consumeRateLimit(`probe_repo_${Date.now()}`, {
         bucket: "__atlas_health_probe_repo__",
         max: 3,
         windowMs: 60_000,
       });
+      if (!repo.allowed && repo.backend === "db") {
+        // Do not fail readiness solely on a denied repo probe.
+      }
     } catch {
-      // ignore — table/rpc flags already capture readiness
+      // ignore
     }
   }
 
-  const ok = rateLimitTableOk && consumeRpcOk;
+  // Ready only when we observed a successful allow via RPC parse.
+  const dbSotReady = rateLimitTableOk && consumeRpcOk && rpcDiag.parsedAllowed === true;
+  const ok = dbSotReady;
   if (ok) markDistributedRateLimitReadyUnknown();
 
   return {
     ok,
     rateLimitTableOk,
     consumeRpcOk,
-    dbSotReady: ok,
+    dbSotReady,
     ...guarantees,
     appliedViaPostgres,
     appliedViaManagementApi,
+    rpcDiag,
     error: ok ? null : error,
     envPresence,
     version,

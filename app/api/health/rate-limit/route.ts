@@ -33,6 +33,10 @@ function buildSafeBody(
     memoryNotSot: result.memoryNotSot,
     allAiPathsCovered: result.allAiPathsCovered,
     multiInstanceSafe: result.multiInstanceSafe,
+    // Safe diagnostics only (no secrets / raw SQL / keys).
+    rpcDataShape: result.rpcDiag.dataShape,
+    rpcParsedAllowed: result.rpcDiag.parsedAllowed,
+    rpcErrorKind: result.rpcDiag.errorKind,
     commitShaShort: version.commitShaShort,
     environment: version.environment,
   };
