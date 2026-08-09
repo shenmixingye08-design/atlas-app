@@ -92,3 +92,5 @@ python3 -c 'import json,sys; d=json.load(open("/tmp/p107-smoke.json")); ev=d.get
 # P1 FINAL AUDIT re-trigger 20260809T130856Z
 
 # P2-01 regression re-trigger 20260809T133956Z
+
+# P2-02 post-deploy: re-trigger P1-07 Production smoke on SHA 2ff2567
