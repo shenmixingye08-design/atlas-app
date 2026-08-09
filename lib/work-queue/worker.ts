@@ -469,6 +469,11 @@ export async function drainWorkQueue(options?: {
   leaseMs?: number;
   /** Graceful shutdown — stop leasing new work when aborted. */
   signal?: AbortSignal;
+  /**
+   * P2-03: when true, skip stuck recovery (caller already recovered once
+   * before horizontal fan-out).
+   */
+  skipRecover?: boolean;
 }): Promise<WorkerDrainResult> {
   const store = getWorkQueueStore();
   const workerId = options?.workerId ?? `worker_${randomUUID().slice(0, 8)}`;
@@ -488,7 +493,7 @@ export async function drainWorkQueue(options?: {
     };
   }
 
-  const recovered = await recoverStuckJobs();
+  const recovered = options?.skipRecover ? 0 : await recoverStuckJobs();
   const leased = await store.leaseJobs({ workerId, limit, leaseMs });
   let completed = 0;
   let failed = 0;

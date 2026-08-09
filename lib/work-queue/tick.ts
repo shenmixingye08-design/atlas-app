@@ -11,10 +11,13 @@ import { isAutomationSuspendedForUser } from "@/lib/billing/subscriptions/lifecy
 
 import { evaluateWorkQueueAlerts } from "./alerts";
 import { enqueueDueAutomations } from "./scheduler";
-import { drainWorkQueue } from "./worker";
+import {
+  drainWorkQueueHorizontal,
+  type HorizontalDrainResult,
+} from "./worker-scale";
 
 /**
- * Production tick: schedule enqueue (light) then worker drain (step-sized).
+ * Production tick: schedule enqueue (light) then horizontal worker drain (P2-03).
  * Replaces synchronous run-inside-cron for due automations.
  */
 export async function processWorkQueueTick(options?: {
@@ -22,9 +25,12 @@ export async function processWorkQueueTick(options?: {
   scheduleLimit?: number;
   workerLimit?: number;
   workerId?: string;
+  /** Override horizontal fan-out (tests / ops). Default: adaptive plan. */
+  workerFanOut?: number;
 }): Promise<{
   schedule: Awaited<ReturnType<typeof enqueueDueAutomations>>;
-  worker: Awaited<ReturnType<typeof drainWorkQueue>>;
+  /** Aggregated horizontal drain (P2-03). */
+  worker: HorizontalDrainResult;
   alerts: Awaited<ReturnType<typeof evaluateWorkQueueAlerts>>;
 }> {
   const ownerIds = await listAutomationOwnerUserIds();
@@ -77,9 +83,11 @@ export async function processWorkQueueTick(options?: {
     },
   });
 
-  const worker = await drainWorkQueue({
-    limit: options?.workerLimit,
-    workerId: options?.workerId,
+  // P2-03: horizontal fan-out (SKIP LOCKED) instead of single-worker batch-10 drain.
+  const worker = await drainWorkQueueHorizontal({
+    claimLimit: options?.workerLimit,
+    fanOut: options?.workerFanOut,
+    workerIdPrefix: options?.workerId ?? undefined,
   });
 
   // Keep legacy reliability processor for V1 job table during transition.

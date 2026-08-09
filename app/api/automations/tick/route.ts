@@ -212,6 +212,11 @@ export async function POST(request: Request): Promise<Response> {
           completed: workQueue.worker.completed,
           failed: workQueue.worker.failed,
           leased: workQueue.worker.leased,
+          // P2-03 safe counts only (no job/user ids).
+          fanOut: workQueue.worker.plan.fanOut,
+          claimLimit: workQueue.worker.plan.claimLimit,
+          backpressure: workQueue.worker.plan.backpressure,
+          workerCount: workQueue.worker.workerIds.length,
         },
         alertCount: workQueue.alerts.length,
       },
