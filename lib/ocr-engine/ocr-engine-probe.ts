@@ -239,6 +239,18 @@ async function probeOnce(): Promise<OcrEngineProbeResult> {
       failClosedOnMissingProvider &&
       evaluation.ok;
 
+    if (!ok) {
+      console.error("[ocr-engine-probe] failed", {
+        accuracyGateOk,
+        dedicatedEngineRequired,
+        dedicatedEnginePolicyOk,
+        visionTokensHit: evaluation.record?.metadata?.visionTokensHit ?? null,
+        visionPreview: evaluation.record?.metadata?.visionPreview ?? null,
+        visionError: evaluation.visionExtract?.error ?? null,
+        error: evaluation.error,
+      });
+    }
+
     return {
       ok,
       evaluationComplete,
@@ -265,9 +277,6 @@ async function probeOnce(): Promise<OcrEngineProbeResult> {
             !retrySafe ? "retry_not_safe" : null,
             !multiInstanceSafe ? "multi_instance_failed" : null,
             !ownershipIsolationOk ? "ownership_leak" : null,
-            evaluation.record?.metadata?.visionPreview
-              ? `visionPreview=${String(evaluation.record.metadata.visionPreview).slice(0, 120)}`
-              : null,
           ]
             .filter(Boolean)
             .join(","),
