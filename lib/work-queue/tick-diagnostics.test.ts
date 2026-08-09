@@ -57,4 +57,14 @@ describe("tick diagnostics / postgres url resolution", () => {
     expect(resolved.legacyPresent).toBe(false);
     expect(resolved.extendedOnlyPresent).toBe(true);
   });
+
+  it("resolves literal DATABASE_URL", () => {
+    for (const key of ENV_KEYS) stash(key);
+    for (const key of ENV_KEYS) delete process.env[key];
+    process.env.DATABASE_URL = "postgresql://literal/db";
+    const resolved = resolveAtlasPostgresUrl();
+    expect(resolved.connectionString).toBe("postgresql://literal/db");
+    expect(resolved.presentKeys).toContain("DATABASE_URL");
+    expect(resolved.legacyPresent).toBe(true);
+  });
 });
