@@ -6,7 +6,12 @@ export type ContentBlock =
   | { type: "bulletList"; items: string[] }
   | { type: "numberedList"; items: string[] }
   | { type: "table"; headers: string[]; rows: string[][] }
-  | { type: "imagePlaceholder"; caption: string };
+  | {
+      type: "imagePlaceholder";
+      caption: string;
+      /** Optional trusted data URL for real image embed (P1-08). */
+      dataUrl?: string;
+    };
 
 /** A logical section (usually from `##` headings). */
 export type ParsedSection = {
@@ -28,6 +33,8 @@ const HEADING_PATTERN = /^(#{1,3})\s+(.+)$/;
 const BULLET_PATTERN = /^[-*•]\s+(.+)$/;
 const NUMBERED_PATTERN = /^\d+[.)]\s+(.+)$/;
 const TABLE_SEPARATOR_PATTERN = /^\|?[\s:-]+\|[\s|:-]+$/;
+const IMAGE_DATA_URL_PATTERN =
+  /^!\[(.*?)\]\((data:image\/(?:png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=\s]+)\)$/i;
 const IMAGE_PLACEHOLDER_PATTERN =
   /^!\[(.*?)\]\((?:placeholder|image-placeholder|#)\)|^\[(Image(?: placeholder)?(?:[:\s].*)?)\]$/i;
 const HORIZONTAL_RULE = /^-{3,}$/;
@@ -100,11 +107,25 @@ function parseBlocks(lines: string[]): ContentBlock[] {
       continue;
     }
 
+    const imageDataMatch = line.match(IMAGE_DATA_URL_PATTERN);
+    if (imageDataMatch) {
+      blocks.push({
+        type: "imagePlaceholder",
+        caption: imageDataMatch[1]?.trim() || ui.generated.imagePlaceholder,
+        dataUrl: (imageDataMatch[2] ?? "").replace(/\s+/g, ""),
+      });
+      index += 1;
+      continue;
+    }
+
     const imageMatch = line.match(IMAGE_PLACEHOLDER_PATTERN);
     if (imageMatch) {
       blocks.push({
         type: "imagePlaceholder",
-        caption: imageMatch[1]?.trim() || ui.generated.imagePlaceholder,
+        caption:
+          imageMatch[1]?.trim() ||
+          imageMatch[2]?.trim() ||
+          ui.generated.imagePlaceholder,
       });
       index += 1;
       continue;

@@ -90,9 +90,15 @@ function normalizeBlocks(blocks: DocumentModelBlock[]): DocumentModelBlock[] {
         break;
       }
       case "imagePlaceholder": {
+        const dataUrl =
+          typeof block.dataUrl === "string" &&
+          /^data:image\/(png|jpeg|jpg|webp);base64,/i.test(block.dataUrl)
+            ? block.dataUrl
+            : undefined;
         result.push({
           type: "imagePlaceholder",
           caption: sanitizeText(block.caption) || "画像",
+          ...(dataUrl ? { dataUrl } : {}),
         });
         break;
       }
