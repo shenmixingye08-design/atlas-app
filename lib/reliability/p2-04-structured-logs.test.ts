@@ -193,4 +193,10 @@ describe("P2-04 structured logs", () => {
     );
     expect(ATLAS_STRUCTURED_LOGS_MIGRATION_SQL).toContain("correlation_id");
   });
+
+  it("treats Supabase JWT clock skew as transient (retryable)", async () => {
+    const { isTransientJwtClockError } = await import("./structured-logs-store");
+    expect(isTransientJwtClockError("JWT issued at future")).toBe(true);
+    expect(isTransientJwtClockError("permission denied")).toBe(false);
+  });
 });

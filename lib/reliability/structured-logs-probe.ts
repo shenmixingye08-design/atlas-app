@@ -21,6 +21,7 @@ import {
   applyStructuredLogsMigration,
   deleteStructuredLogsByIds,
   getStructuredLogsByCorrelationId,
+  isTransientJwtClockError,
   listStructuredLogsDurable,
   persistStructuredLog,
   redactSecrets,
@@ -62,30 +63,37 @@ async function ensureTable(): Promise<{ ok: boolean; error: string | null }> {
     return { ok: false, error: "supabase_service_role_not_configured" };
   }
 
-  const { error: selectError } = await client
-    .from("atlas_structured_logs")
-    .select("id")
-    .limit(1);
+  let lastError: string | null = null;
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
+    const { error: selectError } = await client
+      .from("atlas_structured_logs")
+      .select("id")
+      .limit(1);
 
-  const missing =
-    !!selectError &&
-    /schema cache|does not exist|Could not find the table/i.test(
+    if (!selectError) {
+      return { ok: true, error: null };
+    }
+    lastError = selectError.message;
+
+    const missing = /schema cache|does not exist|Could not find the table/i.test(
       selectError.message,
     );
-
-  if (missing) {
-    const applied = await applyStructuredLogsMigration();
-    if (!applied.appliedViaPostgres && !applied.appliedViaManagementApi) {
-      return {
-        ok: false,
-        error: applied.error ?? "structured_logs_migration_failed",
-      };
+    if (missing) {
+      const applied = await applyStructuredLogsMigration();
+      if (!applied.appliedViaPostgres && !applied.appliedViaManagementApi) {
+        return {
+          ok: false,
+          error: applied.error ?? "structured_logs_migration_failed",
+        };
+      }
+    } else if (!isTransientJwtClockError(selectError.message)) {
+      return { ok: false, error: selectError.message };
     }
-  } else if (selectError) {
-    return { ok: false, error: selectError.message };
+
+    await new Promise((r) => setTimeout(r, 500 * attempt));
   }
 
-  return { ok: true, error: null };
+  return { ok: false, error: lastError ?? "table_unavailable" };
 }
 
 function buildProbeEntry(
@@ -122,7 +130,7 @@ function buildProbeEntry(
   };
 }
 
-export async function probeStructuredLogs(): Promise<StructuredLogsProbeResult> {
+async function probeStructuredLogsOnce(): Promise<StructuredLogsProbeResult> {
   const { commitShaShort, environment } = versionBits();
   const cleanupIds: string[] = [];
 
@@ -356,4 +364,18 @@ export async function probeStructuredLogs(): Promise<StructuredLogsProbeResult> 
       // best-effort cleanup
     }
   }
+}
+
+/**
+ * Production probe with retry on transient Supabase JWT clock skew
+ * (common immediately after deploy). Soft-success remains forbidden.
+ */
+export async function probeStructuredLogs(): Promise<StructuredLogsProbeResult> {
+  let last = await probeStructuredLogsOnce();
+  for (let attempt = 1; attempt <= 4 && !last.ok; attempt += 1) {
+    if (!isTransientJwtClockError(last.error)) break;
+    await new Promise((r) => setTimeout(r, 1000 * attempt));
+    last = await probeStructuredLogsOnce();
+  }
+  return last;
 }
