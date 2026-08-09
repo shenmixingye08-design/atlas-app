@@ -149,6 +149,7 @@ function buildInvoiceMarkdown(batch: VisionBatchResult): string {
 function buildTableMarkdown(batch: VisionBatchResult): string {
   const table = batch.mergedTables[0] ?? batch.images[0]?.tables[0];
   if (!table) {
+    // Intentionally unstructured: quality gate must fail-closed (no fake Excel).
     return ["# 表データ", batch.combinedSummary, "表を十分に読み取れませんでした。"].join(
       "\n\n",
     );
