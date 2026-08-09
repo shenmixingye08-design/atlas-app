@@ -57,6 +57,9 @@ jobs:
       - name: P1-01 PDF table render fail-closed ban
         run: node scripts/ci/p1-01-pdf-table-ban.mjs
 
+      - name: P1-08 deliverable practical quality ban
+        run: node scripts/ci/p1-08-deliverable-quality-ban.mjs
+
       - name: P1-02 notification retry → automation tick ban
         run: node scripts/ci/p1-02-notification-retry-tick-ban.mjs
 

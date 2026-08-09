@@ -50,6 +50,7 @@ export const documentModelBlockSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("imagePlaceholder"),
     caption: z.string(),
+    dataUrl: z.string().optional(),
   }),
   z.object({
     type: z.literal("pageBreak"),

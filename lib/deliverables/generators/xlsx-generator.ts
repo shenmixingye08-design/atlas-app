@@ -50,6 +50,117 @@ type XlsxGenerateOptions = {
   companyName?: string | null;
 };
 
+type ColumnKind = "currency" | "date" | "number" | "text";
+
+function currencyNumFmt(currency: string | null | undefined): string {
+  const code = (currency ?? "JPY").trim().toUpperCase();
+  if (code === "USD" || code === "$") return '"$"#,##0.00';
+  if (code === "EUR" || code === "€") return '"€"#,##0.00';
+  // Default JPY / ¥
+  return '"¥"#,##0';
+}
+
+function dateNumFmt(dateFormat: string | null | undefined): string {
+  const raw = (dateFormat ?? "yyyy-mm-dd").trim().toLowerCase();
+  if (raw.includes("yyyy/m/d") || raw === "ja-slash") return "yyyy/m/d";
+  if (raw.includes("yyyy年")) return "yyyy年m月d日";
+  if (raw.includes("mm/dd") || raw.includes("m/d/yy")) return "yyyy-mm-dd";
+  return "yyyy-mm-dd";
+}
+
+function headerSuggestsCurrency(header: string): boolean {
+  return /金額|価格|売上|単価|料金|費用|amount|price|cost|revenue|円|currency/i.test(
+    header,
+  );
+}
+
+function headerSuggestsDate(header: string): boolean {
+  return /日付|日時|年月日|date|day|期間/i.test(header);
+}
+
+function headerSuggestsNumber(header: string): boolean {
+  return /数量|個数|件数|qty|quantity|count|人数|率|%/i.test(header);
+}
+
+function looksNumeric(value: string): boolean {
+  const cleaned = value.replace(/[,，\s¥￥円$€]/g, "");
+  return /^-?\d+(\.\d+)?%?$/.test(cleaned);
+}
+
+function looksDate(value: string): boolean {
+  return (
+    /^\d{4}[/-年]\d{1,2}[/-月]\d{1,2}/.test(value.trim()) ||
+    /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(value.trim())
+  );
+}
+
+function looksCurrency(value: string): boolean {
+  return /[円¥￥$€]/.test(value) || /^-?[\d,，]+(\.\d+)?円$/.test(value.trim());
+}
+
+function inferColumnKind(
+  header: string,
+  samples: string[],
+  options?: XlsxGenerateOptions,
+): ColumnKind {
+  if (headerSuggestsCurrency(header) || options?.excel?.currency) {
+    if (
+      headerSuggestsCurrency(header) ||
+      samples.some((s) => looksCurrency(s) || looksNumeric(s))
+    ) {
+      if (headerSuggestsCurrency(header) || samples.some(looksCurrency)) {
+        return "currency";
+      }
+    }
+  }
+  if (headerSuggestsDate(header) || options?.excel?.dateFormat) {
+    if (headerSuggestsDate(header) || samples.some(looksDate)) {
+      return "date";
+    }
+  }
+  if (headerSuggestsNumber(header) || samples.every((s) => !s || looksNumeric(s))) {
+    if (samples.some(looksNumeric)) return "number";
+  }
+  if (samples.filter(Boolean).every((s) => looksDate(s))) return "date";
+  if (samples.filter(Boolean).every((s) => looksCurrency(s) || looksNumeric(s))) {
+    if (samples.some(looksCurrency) || headerSuggestsCurrency(header)) {
+      return "currency";
+    }
+  }
+  return "text";
+}
+
+function parseNumber(raw: string, decimalPlaces: number | null | undefined): number | null {
+  const cleaned = raw.replace(/[,，\s¥￥円$€]/g, "").replace(/%$/, "");
+  if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return null;
+  const num = Number(cleaned);
+  if (!Number.isFinite(num)) return null;
+  if (decimalPlaces != null) {
+    return Number(num.toFixed(decimalPlaces));
+  }
+  return num;
+}
+
+function parseDate(raw: string): Date | null {
+  const trimmed = raw.trim();
+  const iso = trimmed.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  if (iso) {
+    const y = Number(iso[1]);
+    const m = Number(iso[2]);
+    const d = Number(iso[3]);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  }
+  const ja = trimmed.match(/^(\d{4})年(\d{1,2})月(\d{1,2})/);
+  if (ja) {
+    const dt = new Date(
+      Date.UTC(Number(ja[1]), Number(ja[2]) - 1, Number(ja[3])),
+    );
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  }
+  return null;
+}
+
 function applySheetFormatting(
   sheet: ExcelJS.Worksheet,
   rowCount: number,
@@ -82,7 +193,7 @@ function applySheetFormatting(
       cell.border = THIN_BORDER;
       cell.alignment = {
         vertical: "middle",
-        horizontal: "left",
+        horizontal: typeof cell.value === "number" ? "right" : "left",
         wrapText: true,
       };
     }
@@ -98,6 +209,7 @@ function applySheetFormatting(
 
 /**
  * Excel (.xlsx) generator — builds worksheets from AI table data via exceljs.
+ * P1-08: typed cells + numFmt (no currency/date sidecar text columns).
  */
 export class XlsxDeliverableGenerator implements DeliverableGenerator {
   readonly format = "xlsx" as const;
@@ -112,6 +224,8 @@ export class XlsxDeliverableGenerator implements DeliverableGenerator {
     workbook.created = new Date();
 
     const sheets = extractExcelSheets(content);
+    let appliedNumFmt = false;
+
     for (const data of sheets) {
       const sheet = workbook.addWorksheet(data.name);
       let headers = [...data.headers];
@@ -135,32 +249,77 @@ export class XlsxDeliverableGenerator implements DeliverableGenerator {
       );
       const header = [...headers];
       while (header.length < columnCount) header.push("");
+
+      const kinds: ColumnKind[] = header.map((h, colIdx) => {
+        const samples = rows.map((row) => String(row[colIdx] ?? ""));
+        // Currency option alone must not force every column — only currency-like ones.
+        const scoped: XlsxGenerateOptions = {
+          ...options,
+          excel: {
+            ...options?.excel,
+            currency: headerSuggestsCurrency(h) || samples.some(looksCurrency)
+              ? options?.excel?.currency
+              : undefined,
+            dateFormat:
+              headerSuggestsDate(h) || samples.some(looksDate)
+                ? options?.excel?.dateFormat
+                : undefined,
+          },
+        };
+        return inferColumnKind(h, samples, scoped);
+      });
+
       sheet.addRow(header.map((cell) => neutralizeSpreadsheetCell(cell)));
+
       for (const row of rows) {
         const cells = [...row];
         while (cells.length < columnCount) cells.push("");
-        // Memory-driven number formatting (currency / decimals)
-        // P0-05: neutralize formula / HYPERLINK injection from user/OCR text.
-        sheet.addRow(
-          cells.map((cell) => {
+        const excelRow = sheet.addRow(
+          cells.map((cell, colIdx) => {
+            const raw = String(cell ?? "");
+            const kind = kinds[colIdx] ?? "text";
+            if (kind === "currency" || kind === "number") {
+              const num = parseNumber(raw, options?.excel?.decimalPlaces);
+              if (num != null) return num;
+            }
+            if (kind === "date") {
+              const dt = parseDate(raw);
+              if (dt) return dt;
+            }
             if (
               options?.excel?.decimalPlaces != null &&
-              typeof cell === "string" &&
-              /^-?\d+(\.\d+)?$/.test(cell)
+              /^-?\d+(\.\d+)?$/.test(raw)
             ) {
-              return Number(Number(cell).toFixed(options.excel.decimalPlaces));
+              return Number(Number(raw).toFixed(options.excel.decimalPlaces));
             }
-            return neutralizeSpreadsheetCell(cell);
+            return neutralizeSpreadsheetCell(raw);
           }),
         );
+
+        for (let col = 1; col <= columnCount; col += 1) {
+          const kind = kinds[col - 1] ?? "text";
+          const cell = excelRow.getCell(col);
+          if (kind === "currency" && typeof cell.value === "number") {
+            cell.numFmt = currencyNumFmt(options?.excel?.currency);
+            appliedNumFmt = true;
+          } else if (kind === "number" && typeof cell.value === "number") {
+            const places = options?.excel?.decimalPlaces;
+            cell.numFmt =
+              places != null && places > 0
+                ? `0.${"0".repeat(places)}`
+                : "#,##0";
+            appliedNumFmt = true;
+          } else if (kind === "date" && cell.value instanceof Date) {
+            cell.numFmt = dateNumFmt(options?.excel?.dateFormat);
+            appliedNumFmt = true;
+          }
+        }
       }
+
       applySheetFormatting(sheet, rows.length + 1, columnCount, options);
-      if (options?.excel?.currency) {
-        sheet.getCell(1, columnCount + 1).value = `通貨:${options.excel.currency}`;
-      }
-      if (options?.excel?.dateFormat) {
-        sheet.getCell(2, columnCount + 1).value = `日付:${options.excel.dateFormat}`;
-      }
+
+      // P1-08: never write sidecar 通貨:/日付: text columns — numFmt is SoT.
+      void appliedNumFmt;
     }
 
     const arrayBuffer = await workbook.xlsx.writeBuffer();

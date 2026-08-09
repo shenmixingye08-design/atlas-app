@@ -1,0 +1,75 @@
+name: Verify P1-08 deliverable quality (Production)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "lib/deliverables/generators/xlsx-generator.ts"
+      - "lib/deliverables/generators/pptx-generator.ts"
+      - "lib/deliverables/generators/docx-renderer.ts"
+      - "lib/deliverables/deliverable-quality-probe.ts"
+      - "lib/deliverables/p1-08-deliverable-quality.test.ts"
+      - "app/api/health/deliverable-quality/**"
+      - ".github/workflows/verify-deliverable-quality-production.yml"
+
+jobs:
+  verify-production-deliverable-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Call Production deliverable-quality probe
+        env:
+          PROD_URL: https://atlasapp.jp
+        run: |
+          set -euo pipefail
+          HTTP_CODE=$(curl -sS -o /tmp/p108-probe.json -w "%{http_code}" \
+            "${PROD_URL}/api/health/deliverable-quality?force=1" || echo "000")
+          echo "HTTP ${HTTP_CODE}"
+          cat /tmp/p108-probe.json || true
+          python3 - <<'PY'
+          import json, sys
+          data = json.load(open("/tmp/p108-probe.json"))
+          required = [
+            "ok",
+            "excelNumFmtOk",
+            "excelSidecarAbsent",
+            "pptxTableOk",
+            "pptxImageOk",
+            "wordImageEmbedOk",
+            "memoryNotSot",
+            "failClosedOnOmission",
+            "commitShaShort",
+            "environment",
+          ]
+          failures = []
+          for key in required:
+            if key not in data:
+              failures.append(f"missing:{key}")
+          if data.get("environment") != "production":
+              failures.append("environment!=production")
+          if data.get("ok") is not True:
+              failures.append("ok!=true")
+          for key in [
+              "excelNumFmtOk",
+              "excelSidecarAbsent",
+              "pptxTableOk",
+              "pptxImageOk",
+              "wordImageEmbedOk",
+              "memoryNotSot",
+              "failClosedOnOmission",
+          ]:
+              if data.get(key) is not True:
+                  failures.append(f"{key}!=true")
+          if failures:
+              print("::error::P1-08 Production deliverable-quality failed:", ", ".join(failures))
+              sys.exit(1)
+          print("P1-08 Production deliverable-quality OK", data.get("commitShaShort"))
+          PY
+          case "${HTTP_CODE}" in
+            2*) ;;
+            *)
+              echo "::error::Production deliverable-quality HTTP ${HTTP_CODE} (non-2xx)."
+              exit 1
+              ;;
+          esac

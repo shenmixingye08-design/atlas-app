@@ -4,6 +4,7 @@ import {
   Footer,
   Header,
   HeadingLevel,
+  ImageRun,
   PageNumber,
   Packer,
   PageBreak,
@@ -20,6 +21,7 @@ import {
 } from "docx";
 
 import type { DocumentModel, DocumentModelBlock } from "../document-model/document-model-schema";
+import { resolveEmbeddedImage } from "../embedded-image";
 import { formatGeneratedDate } from "./shared";
 import {
   formatCompanyLetterhead,
@@ -205,12 +207,12 @@ function buildTable(
   });
 }
 
-function blocksToChildren(
+async function blocksToChildren(
   blocks: DocumentModelBlock[],
   template: WordTemplateDefinition,
   brand: WordCompanyBrand | null,
   landscape: boolean,
-): Array<Paragraph | Table> {
+): Promise<Array<Paragraph | Table>> {
   const children: Array<Paragraph | Table> = [];
   const indent = template.typography.firstLineIndentDxa;
 
@@ -320,16 +322,27 @@ function blocksToChildren(
           );
         }
         break;
-      case "imagePlaceholder":
+      case "imagePlaceholder": {
+        // P1-08: real ImageRun embed (never text-only gray placeholder success).
+        const image = await resolveEmbeddedImage({
+          dataUrl: block.dataUrl,
+          caption: block.caption,
+          marker: "P108IMG",
+        });
         children.push(
           new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { before: 120, after: 80 },
-            shading: { fill: "F2F2F2", type: ShadingType.CLEAR },
             children: [
-              run(`[ 画像プレースホルダ ]`, template, brand, {
-                color: "888888",
-                bold: true,
+              new ImageRun({
+                type: image.docxType,
+                data: image.buffer,
+                transformation: { width: 420, height: 140 },
+                altText: {
+                  title: block.caption || "image",
+                  description: block.caption || "embedded image",
+                  name: block.caption || "image",
+                },
               }),
             ],
           }),
@@ -345,6 +358,7 @@ function blocksToChildren(
           }),
         );
         break;
+      }
       case "pageBreak":
         children.push(
           new Paragraph({
@@ -481,9 +495,33 @@ export async function renderDocumentModelToDocx(
     template.colors.headerFillHex = brand.brandColorHex;
   }
 
-  const children: Array<Paragraph | Table> = [];
+  const children: Array<Paragraph | Table | TableOfContents> = [];
 
-  // Title / letter cover
+  // Title / letter cover — P1-08: embed company logo via ImageRun when present.
+  if (brand?.logoDataUrl) {
+    const logo = await resolveEmbeddedImage({
+      dataUrl: brand.logoDataUrl,
+      caption: brand.companyName ?? "logo",
+    });
+    children.push(
+      new Paragraph({
+        spacing: { after: 120 },
+        children: [
+          new ImageRun({
+            type: logo.docxType,
+            data: logo.buffer,
+            transformation: { width: 140, height: 48 },
+            altText: {
+              title: brand.companyName ?? "logo",
+              description: "Company logo",
+              name: "company-logo",
+            },
+          }),
+        ],
+      }),
+    );
+  }
+
   if (template.showCompanyInfo && letterhead.lines.length > 0) {
     for (const line of letterhead.lines.slice(0, 4)) {
       children.push(
@@ -617,7 +655,8 @@ export async function renderDocumentModelToDocx(
     );
   }
 
-  input.model.sections.forEach((section, index) => {
+  for (let index = 0; index < input.model.sections.length; index += 1) {
+    const section = input.model.sections[index]!;
     if (section.pageBreakBefore && index > 0) {
       children.push(new Paragraph({ children: [new PageBreak()] }));
     }
@@ -653,9 +692,9 @@ export async function renderDocumentModelToDocx(
       }),
     );
     children.push(
-      ...blocksToChildren(section.blocks, template, brand, landscape),
+      ...(await blocksToChildren(section.blocks, template, brand, landscape)),
     );
-  });
+  }
 
   if (wide && template.orientation === "auto") {
     children.unshift(
