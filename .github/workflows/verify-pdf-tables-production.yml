@@ -1,0 +1,101 @@
+# P1-01 Production PDF table rendering proof.
+name: Verify PDF Tables Production (P1-01)
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why this Production probe is being run"
+        required: false
+        default: "P1-01 PDF table proof"
+  push:
+    branches: [main]
+    paths:
+      - "lib/deliverables/generators/pdf-generator.ts"
+      - "lib/deliverables/pdf-table-probe.ts"
+      - "lib/deliverables/pdf-table-p1-01.test.ts"
+      - "app/api/health/pdf-tables/**"
+      - ".github/workflows/verify-pdf-tables-production.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-production-pdf-tables:
+    name: Production PDF table probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Call Production pdf-tables probe
+        env:
+          PROD_URL: https://atlasapp.jp
+        run: |
+          set -euo pipefail
+          EXPECTED_SHA_SHORT="$(printf '%s' "${GITHUB_SHA}" | cut -c1-7)"
+          echo "expected_commit_sha_short=${EXPECTED_SHA_SHORT}"
+
+          DEPLOYED=""
+          PROD_SHA=""
+          for i in $(seq 1 24); do
+            curl -sS -o /tmp/p101-probe.json "${PROD_URL}/api/health/pdf-tables?force=1" || true
+            PROD_SHA="$(python3 -c 'import json; d=json.load(open("/tmp/p101-probe.json")); print(d.get("commitShaShort") or "")' 2>/dev/null || true)"
+            echo "probe=${i} production_commit_sha_short=${PROD_SHA}"
+            if [ "${PROD_SHA}" = "${EXPECTED_SHA_SHORT}" ]; then
+              DEPLOYED=1
+              break
+            fi
+            # Workflow-only changes may not redeploy; accept live probe when healthy.
+            APP_CHANGED=0
+            if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+              if git diff --name-only HEAD^ HEAD | grep -E '^(lib/|app/)' >/dev/null 2>&1; then
+                APP_CHANGED=1
+              fi
+            else
+              APP_CHANGED=1
+            fi
+            if [ "${APP_CHANGED}" = "0" ] && [ -n "${PROD_SHA}" ]; then
+              READY="$(python3 -c 'import json; d=json.load(open("/tmp/p101-probe.json")); print("1" if d.get("ok") else "0")' 2>/dev/null || echo 0)"
+              if [ "${READY}" = "1" ]; then
+                echo "workflow_only_or_live_ok smoking_live_production_sha=${PROD_SHA}"
+                DEPLOYED=1
+                break
+              fi
+            fi
+            sleep 15
+          done
+          if [ -z "${DEPLOYED}" ]; then
+            echo "::error::Production deploy not ready (got ${PROD_SHA:-unknown}, expected ${EXPECTED_SHA_SHORT}). Soft-success forbidden."
+            exit 1
+          fi
+
+          HTTP_CODE=$(curl -sS -o /tmp/p101-probe.json -w "%{http_code}" \
+            "${PROD_URL}/api/health/pdf-tables?force=1")
+          echo "http_status=${HTTP_CODE}"
+          python3 -c 'import json,sys; d=json.load(open("/tmp/p101-probe.json")); print({k:d.get(k) for k in ["ok","tablesRendered","sourceTableCount","renderedTableCount","markersFound","pdfBytes","error","commitShaShort"]})'
+          case "${HTTP_CODE}" in
+            2*) ;;
+            *)
+              echo "::error::Production pdf-tables HTTP ${HTTP_CODE} (non-2xx). Soft-success forbidden."
+              exit 1
+              ;;
+          esac
+          python3 - <<'PY'
+          import json,sys
+          d=json.load(open("/tmp/p101-probe.json"))
+          failures=[]
+          if d.get("ok") is not True: failures.append("ok!=true")
+          if d.get("tablesRendered") is not True: failures.append("tablesRendered!=true")
+          if d.get("markersFound") is not True: failures.append("markersFound!=true")
+          if not d.get("sourceTableCount"): failures.append("sourceTableCount missing")
+          if d.get("renderedTableCount") != d.get("sourceTableCount"):
+            failures.append("rendered!=source")
+          if failures:
+            print("::error::P1-01 Production pdf-tables failed:", ", ".join(failures))
+            sys.exit(1)
+          print("p1_01_production_pdf_tables=pass")
+          PY

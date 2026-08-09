@@ -54,6 +54,9 @@ jobs:
       - name: P0-4 durable notification inbox ban
         run: node scripts/ci/p0-4-notification-inbox-ban.mjs
 
+      - name: P1-01 PDF table render fail-closed ban
+        run: node scripts/ci/p1-01-pdf-table-ban.mjs
+
       - name: P1-02 notification retry → automation tick ban
         run: node scripts/ci/p1-02-notification-retry-tick-ban.mjs
 
