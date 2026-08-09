@@ -1,87 +1,68 @@
-type RateLimitOptions = {
-  /** Logical bucket name (isolates API families). */
-  bucket: string;
-  max: number;
-  windowMs: number;
-  minIntervalMs?: number;
-};
+/**
+ * HTTP / AI rate limiting entrypoint.
+ * P1-06: durable consume goes through distributed DB SoT (`lib/rate-limit`).
+ */
 
-type RateLimitBucket = Map<string, number[]>;
+import {
+  consumeRateLimit,
+  resetDistributedRateLimitStoreForTests,
+  type RateLimitConsumeResult,
+  type RateLimitOptions,
+} from "@/lib/rate-limit/db-store";
 
-function getBucket(name: string): RateLimitBucket {
-  const scope = globalThis as typeof globalThis & {
-    __atlasHttpRateLimits?: Map<string, RateLimitBucket>;
-  };
-  if (!scope.__atlasHttpRateLimits) {
-    scope.__atlasHttpRateLimits = new Map();
-  }
-  let bucket = scope.__atlasHttpRateLimits.get(name);
-  if (!bucket) {
-    bucket = new Map();
-    scope.__atlasHttpRateLimits.set(name, bucket);
-  }
-  return bucket;
-}
+export type { RateLimitOptions, RateLimitConsumeResult };
 
-function pruneTimestamps(
-  timestamps: number[],
-  now: number,
-  windowMs: number,
-): number[] {
-  const cutoff = now - windowMs;
-  return timestamps.filter((value) => value >= cutoff);
-}
-
-export function checkRateLimit(
-  key: string,
-  options: RateLimitOptions,
-): { allowed: boolean; retryAfterMs?: number } {
-  const now = Date.now();
-  const bucket = getBucket(options.bucket);
-  const existing = pruneTimestamps(bucket.get(key) ?? [], now, options.windowMs);
-
-  if (existing.length >= options.max) {
-    const oldest = existing[0] ?? now;
-    return {
-      allowed: false,
-      retryAfterMs: Math.max(0, oldest + options.windowMs - now),
-    };
-  }
-
-  const latest = existing[existing.length - 1];
-  if (
-    options.minIntervalMs !== undefined &&
-    latest !== undefined &&
-    now - latest < options.minIntervalMs
-  ) {
-    return {
-      allowed: false,
-      retryAfterMs: options.minIntervalMs - (now - latest),
-    };
-  }
-
-  return { allowed: true };
-}
-
-export function recordRateLimitHit(
-  key: string,
-  options: Pick<RateLimitOptions, "bucket" | "windowMs">,
-): void {
-  const now = Date.now();
-  const bucket = getBucket(options.bucket);
-  const existing = pruneTimestamps(bucket.get(key) ?? [], now, options.windowMs);
-  existing.push(now);
-  bucket.set(key, existing);
-}
-
-export function resetRateLimitBucket(bucket: string): void {
-  getBucket(bucket).clear();
-}
-
-/** Costly AI endpoints — per authenticated user. */
+/** Costly AI endpoints — per authenticated user (distributed). */
 export const AI_API_RATE_LIMIT = {
   bucket: "ai-api",
   max: 60,
   windowMs: 60 * 60 * 1000,
   minIntervalMs: 500,
 } as const satisfies RateLimitOptions;
+
+/**
+ * Atomic check+record against the distributed SoT.
+ * Prefer this over separate check/record to avoid TOCTOU races.
+ */
+export async function consumeDistributedRateLimit(
+  key: string,
+  options: RateLimitOptions,
+): Promise<RateLimitConsumeResult> {
+  return consumeRateLimit(key, options);
+}
+
+/**
+ * Backward-compatible name: performs atomic consume (check+record).
+ * Callers that previously checked then recorded should call this once.
+ */
+export async function checkRateLimit(
+  key: string,
+  options: RateLimitOptions,
+): Promise<{ allowed: boolean; retryAfterMs?: number; remaining?: number }> {
+  const result = await consumeRateLimit(key, options);
+  return {
+    allowed: result.allowed,
+    retryAfterMs: result.retryAfterMs,
+    remaining: result.remaining,
+  };
+}
+
+/**
+ * No-op under distributed SoT when paired with checkRateLimit/consume
+ * (consume already recorded). Kept for call-site compatibility.
+ */
+export async function recordRateLimitHit(
+  key: string,
+  options: Pick<RateLimitOptions, "bucket" | "windowMs">,
+): Promise<void> {
+  void key;
+  void options;
+  // Atomic consume already recorded the hit.
+}
+
+export async function resetRateLimitBucket(bucket: string): Promise<void> {
+  void bucket;
+  resetDistributedRateLimitStoreForTests();
+}
+
+export { resetDistributedRateLimitStoreForTests };

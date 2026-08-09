@@ -43,7 +43,7 @@ export async function submitContactInquiry(
     return { ok: false, error: recaptcha.reason };
   }
 
-  const rateLimit = checkContactRateLimit(context.clientIp);
+  const rateLimit = await checkContactRateLimit(context.clientIp);
   if (!rateLimit.allowed) {
     const seconds = Math.ceil((rateLimit.retryAfterMs ?? 30_000) / 1000);
     return {
@@ -65,7 +65,7 @@ export async function submitContactInquiry(
   };
 
   await dispatchContactRecord(record);
-  recordContactSubmission(context.clientIp);
+  await recordContactSubmission(context.clientIp);
 
   return { ok: true, id: record.id };
 }

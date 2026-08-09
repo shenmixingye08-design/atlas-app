@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { enforceAiRateLimit } from "@/lib/http/enforce-ai-rate-limit";
 import { generateSalesMaterialOutline } from "@/lib/workspace/sales-material/generate-outline";
 import type { SalesCostMode } from "@/lib/workspace/sales-material/types";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
@@ -23,6 +24,9 @@ export async function POST(request: Request): Promise<Response> {
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const limited = await enforceAiRateLimit(userId);
+  if (limited) return limited;
 
   let body: RequestBody;
 

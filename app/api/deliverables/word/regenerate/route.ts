@@ -19,6 +19,7 @@ import {
   listDeliverableVersionsAsync,
 } from "@/lib/deliverables/versioning";
 import { isWordTemplateId } from "@/lib/deliverables/word-templates";
+import { enforceAiRateLimit } from "@/lib/http/enforce-ai-rate-limit";
 import { assertSafeExportText } from "@/lib/orchestration/normalize-deliverable-payload";
 import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
@@ -116,7 +117,10 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimited = enforceWordGenerateRateLimit(userId);
+  const aiLimited = await enforceAiRateLimit(userId);
+  if (aiLimited) return aiLimited;
+
+  const rateLimited = await enforceWordGenerateRateLimit(userId);
   if (rateLimited) return rateLimited;
 
   try {

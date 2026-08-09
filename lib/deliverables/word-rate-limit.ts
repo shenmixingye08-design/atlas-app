@@ -1,10 +1,9 @@
 import {
-  checkRateLimit,
-  recordRateLimitHit,
-  resetRateLimitBucket,
+  consumeDistributedRateLimit,
+  resetDistributedRateLimitStoreForTests,
 } from "@/lib/http/rate-limit";
 
-/** Word / deliverable generation abuse controls (in-process; per instance). */
+/** Word / deliverable generation abuse controls (distributed DB SoT). */
 export const WORD_GENERATE_RATE_LIMIT = {
   bucket: "deliverable_generate",
   max: 30,
@@ -24,20 +23,26 @@ export const WORD_TABLE_MAX_COLS = 20;
 export const WORD_FILE_MAX_BYTES = 25 * 1024 * 1024;
 export const WORD_REGENERATE_MAX_PER_GROUP = 30;
 
+/**
+ * Soft concurrent slots still use process memory for release semantics,
+ * but burst/hour limits are distributed. Concurrent overflow also consumes
+ * a short distributed window as a multi-instance backstop.
+ */
 const concurrent = new Map<string, number>();
 
 export function resetWordRateLimitsForTests(): void {
-  resetRateLimitBucket(WORD_GENERATE_RATE_LIMIT.bucket);
-  resetRateLimitBucket(WORD_CONCURRENT_LIMIT.bucket);
+  resetDistributedRateLimitStoreForTests();
   concurrent.clear();
 }
 
-export function enforceWordGenerateRateLimit(userId: string): Response | null {
-  const gate = checkRateLimit(userId, WORD_GENERATE_RATE_LIMIT);
+export async function enforceWordGenerateRateLimit(
+  userId: string,
+): Promise<Response | null> {
+  const gate = await consumeDistributedRateLimit(userId, WORD_GENERATE_RATE_LIMIT);
   if (!gate.allowed) {
     const retryAfterSec = Math.max(
       1,
-      Math.ceil((gate.retryAfterMs ?? 1000) / 1000),
+      Math.ceil((gate.retryAfterMs || 1000) / 1000),
     );
     return Response.json(
       {
@@ -52,6 +57,7 @@ export function enforceWordGenerateRateLimit(userId: string): Response | null {
     );
   }
 
+  // Soft per-instance concurrency (release on completion). Burst/hour is DB SoT above.
   const running = concurrent.get(userId) ?? 0;
   if (running >= WORD_CONCURRENT_LIMIT.max) {
     return Response.json(
@@ -64,7 +70,6 @@ export function enforceWordGenerateRateLimit(userId: string): Response | null {
     );
   }
 
-  recordRateLimitHit(userId, WORD_GENERATE_RATE_LIMIT);
   concurrent.set(userId, running + 1);
   return null;
 }

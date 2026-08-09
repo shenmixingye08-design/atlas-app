@@ -124,7 +124,7 @@ export async function POST(request: Request): Promise<Response> {
     const billingDenied = await requireBillingForAssignment(userId, parsed);
     if (billingDenied) return billingDenied;
 
-    const limited = enforceAiRateLimit(userId);
+    const limited = await enforceAiRateLimit(userId);
     if (limited) return limited;
 
     const run = await runOrchestrationForUser({

@@ -9,9 +9,11 @@ import { Input, Textarea } from "@/components/ui/input";
 import {
   CONTACT_CATEGORIES,
   isContactCategoryId,
-  type ContactCategoryId,
-  type ContactValidationError,
-} from "@/lib/contact";
+} from "@/lib/contact/categories";
+import type {
+  ContactCategoryId,
+  ContactValidationError,
+} from "@/lib/contact/types";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 
