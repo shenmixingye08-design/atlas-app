@@ -39,11 +39,11 @@ AIなしで実装可能：はい — Vitest 契約テスト + HTTP smoke + CI ba
 
 P2 全5項目（15–19 → P2-01–P2-05）:
 
-1. P2-01 API契約テスト拡充
-2. P2-02 非Word品質ゲート統一
-3. P2-03 worker水平スケール
-4. P2-04 相関ID付き構造化ログの永続化
-5. P2-05 OCR専用エンジン評価（必要な場合のみ）
+1. P2-01 API契約テスト拡充 — COMPLETE
+2. P2-02 非Word品質ゲート統一 — COMPLETE
+3. P2-03 worker水平スケール — COMPLETE
+4. P2-04 相関ID付き構造化ログの永続化 — see feature-evaluation-p2-04-structured-logs.md
+5. P2-05 OCR専用エンジン評価（必要な場合のみ）— 未着手（P2-04完了まで禁止）
 
 ## Acceptance Criteria
 

@@ -1,0 +1,85 @@
+# P2-04 Production structured logs (correlation + Postgres SoT) proof.
+name: Verify Structured Logs Production (P2-04)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "lib/reliability/developer-log.ts"
+      - "lib/reliability/structured-logs-store.ts"
+      - "lib/reliability/structured-logs-probe.ts"
+      - "lib/reliability/structured-logs-migration-sql.ts"
+      - "lib/reliability/p2-04-structured-logs.test.ts"
+      - "app/api/health/structured-logs/**"
+      - "scripts/ci/p2-04-structured-logs-ban.mjs"
+      - "supabase/migrations/20260809_p2_04_structured_logs.sql"
+      - ".github/workflows/verify-structured-logs-production.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe Production structured-logs
+        env:
+          PROD_URL: https://atlasapp.jp
+        run: |
+          set -euo pipefail
+          EXPECTED_SHA_SHORT="$(printf '%s' "${GITHUB_SHA:-}" | cut -c1-7)"
+          echo "expected_commit_sha_short=${EXPECTED_SHA_SHORT}"
+          APP_CODE_CHANGED=0
+          if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            if git diff --name-only HEAD^ HEAD | grep -E '^(lib/|app/)' >/dev/null 2>&1; then
+              APP_CODE_CHANGED=1
+            fi
+          else
+            APP_CODE_CHANGED=1
+          fi
+          echo "app_code_changed=${APP_CODE_CHANGED}"
+
+          READY=""
+          for i in $(seq 1 30); do
+            curl -sS -o /tmp/p204.json "${PROD_URL}/api/health/structured-logs?force=1" || true
+            PROD_SHA="$(python3 -c 'import json;d=json.load(open("/tmp/p204.json"));print(d.get("commitShaShort") or "")' 2>/dev/null || true)"
+            echo "probe=${i} production_commit_sha_short=${PROD_SHA}"
+            if [ -n "${EXPECTED_SHA_SHORT}" ] && [ "${PROD_SHA}" = "${EXPECTED_SHA_SHORT}" ]; then
+              READY=1
+              break
+            fi
+            if [ "${APP_CODE_CHANGED}" = "0" ] && [ -n "${PROD_SHA}" ]; then
+              echo "workflow_only_change=true smoking_live_production_sha=${PROD_SHA}"
+              READY=1
+              break
+            fi
+            sleep 15
+          done
+          if [ -z "${READY}" ]; then
+            echo "::error::Production structured-logs not ready. Soft-success forbidden."
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import json,sys
+          d=json.load(open("/tmp/p204.json"))
+          print({k:d.get(k) for k in [
+            "ok","tableOk","correlationPresent","durableWriteOk","durableReadOk",
+            "restartDurableOk","multiInstanceOk","duplicateIdempotentOk","concurrentOk",
+            "crossUserIsolated","secretsRedacted","memoryNotSot","failClosedDbUnavailable",
+            "commitShaShort","error"
+          ]})
+          failures=[]
+          for k in ("ok","tableOk","correlationPresent","durableWriteOk","durableReadOk",
+                    "restartDurableOk","multiInstanceOk","duplicateIdempotentOk","concurrentOk",
+                    "crossUserIsolated","secretsRedacted","memoryNotSot","failClosedDbUnavailable"):
+            if d.get(k) is not True:
+              failures.append(f"{k}!=true")
+          if failures:
+            print("::error::P2-04 Production structured-logs failed:", ", ".join(failures))
+            sys.exit(1)
+          print("p2_04_production_structured_logs=pass")
+          PY

@@ -1,7 +1,10 @@
 /**
  * Developer diagnostic logs for work failures.
  * Every error must be investigable: StackTrace, API response summary,
- * JobID, WorkflowID, UserID — never an opaque「処理できませんでした」.
+ * JobID, WorkflowID, UserID, correlationId — never an opaque「処理できませんでした」.
+ *
+ * P2-04: Postgres `atlas_structured_logs` is the source of truth.
+ * Process memory is a local cache only (not SoT across restart / multi-instance).
  */
 
 import {
@@ -13,6 +16,10 @@ import {
 export type DeveloperErrorLog = {
   id: string;
   at: string;
+  /** Stable cross-instance correlation key (required P2-04). */
+  correlationId: string;
+  vercelRequestId: string | null;
+  diagnosticId: string | null;
   userId: string | null;
   jobId: string | null;
   workflowId: string | null;
@@ -38,9 +45,15 @@ export type DeveloperErrorLog = {
 
 const MAX_DEV_LOGS = 2000;
 
+type PendingDurable = {
+  entryId: string;
+  promise: Promise<{ ok: boolean; error: string | null }>;
+};
+
 function getGlobalScope() {
   return globalThis as typeof globalThis & {
     __minervotDeveloperErrorLogs?: DeveloperErrorLog[];
+    __minervotDeveloperErrorDurablePending?: PendingDurable[];
   };
 }
 
@@ -50,6 +63,14 @@ function getLogs(): DeveloperErrorLog[] {
     scope.__minervotDeveloperErrorLogs = [];
   }
   return scope.__minervotDeveloperErrorLogs;
+}
+
+function getPending(): PendingDurable[] {
+  const scope = getGlobalScope();
+  if (!scope.__minervotDeveloperErrorDurablePending) {
+    scope.__minervotDeveloperErrorDurablePending = [];
+  }
+  return scope.__minervotDeveloperErrorDurablePending;
 }
 
 function truncate(value: string, max = 4000): string {
@@ -114,6 +135,15 @@ export type RecordDeveloperErrorInput = {
   reproduction?: string | null;
   fixContent?: string | null;
   metadata?: Readonly<Record<string, unknown>>;
+  /** Explicit correlation id (preferred). */
+  correlationId?: string | null;
+  vercelRequestId?: string | null;
+  diagnosticId?: string | null;
+  /**
+   * When true, await durable Postgres persist before returning.
+   * Default false so hot paths are not blocked; Production probe awaits.
+   */
+  awaitDurable?: boolean;
 };
 
 function defaultReproduction(input: RecordDeveloperErrorInput): string {
@@ -146,7 +176,61 @@ function defaultFixContent(failureClass: FailureClass): string {
   }
 }
 
-/** Persist a developer-facing error log (in-memory + console for Vercel logs). */
+function resolveCorrelationId(input: RecordDeveloperErrorInput): string {
+  const explicit = input.correlationId?.trim();
+  if (explicit) return explicit.slice(0, 200);
+  if (input.diagnosticId?.trim()) {
+    return `corr_diag_${input.diagnosticId.trim()}`.slice(0, 200);
+  }
+  if (input.jobId?.trim()) {
+    const attempt = input.attempt != null ? `_a${input.attempt}` : "";
+    return `corr_job_${input.jobId.trim()}${attempt}`.slice(0, 200);
+  }
+  if (input.commanderRunId?.trim()) {
+    return `corr_run_${input.commanderRunId.trim()}`.slice(0, 200);
+  }
+  if (input.vercelRequestId?.trim()) {
+    return `corr_vercel_${input.vercelRequestId.trim()}`.slice(0, 200);
+  }
+  return `corr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function enqueueDurablePersist(entry: DeveloperErrorLog): PendingDurable {
+  const promise = (async () => {
+    try {
+      const { persistStructuredLog } = await import("./structured-logs-store");
+      const result = await persistStructuredLog(entry);
+      if (!result.ok) {
+        console.warn("[atlas_structured_logs] durable persist failed", {
+          id: entry.id,
+          correlationId: entry.correlationId,
+          error: result.error,
+        });
+      }
+      return { ok: result.ok, error: result.error };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[atlas_structured_logs] durable persist error", {
+        id: entry.id,
+        correlationId: entry.correlationId,
+        error: message,
+      });
+      return { ok: false, error: message };
+    }
+  })();
+  const pending: PendingDurable = { entryId: entry.id, promise };
+  const queue = getPending();
+  queue.push(pending);
+  if (queue.length > 200) queue.splice(0, queue.length - 200);
+  return pending;
+}
+
+/**
+ * Persist a developer-facing error log.
+ * Always: structured console + local memory cache.
+ * Always (best-effort): durable Postgres append with correlationId (P2-04).
+ * Memory is NOT SoT — Production investigation must use DB / correlationId.
+ */
 export function recordDeveloperError(
   input: RecordDeveloperErrorInput,
 ): DeveloperErrorLog {
@@ -158,10 +242,17 @@ export function recordDeveloperError(
         ? input.error
         : String(input.error ?? "unknown error");
   const api = extractApiSummary(input.error);
+  const correlationId = resolveCorrelationId(input);
+  const diagnosticId =
+    input.diagnosticId?.trim() ||
+    (input.jobId ? `diag_${input.jobId}` : null);
 
   const entry: DeveloperErrorLog = {
     id: `dlog_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
     at: new Date().toISOString(),
+    correlationId,
+    vercelRequestId: input.vercelRequestId?.trim() || null,
+    diagnosticId,
     userId: input.userId ?? null,
     jobId: input.jobId ?? null,
     workflowId: input.workflowId ?? null,
@@ -201,6 +292,9 @@ export function recordDeveloperError(
   // Always emit structured console output so production logs are investigable.
   console.error("[minervot-developer-error]", {
     id: entry.id,
+    correlationId: entry.correlationId,
+    vercelRequestId: entry.vercelRequestId,
+    diagnosticId: entry.diagnosticId,
     failureClass: entry.failureClass,
     message: entry.message,
     cause: entry.cause,
@@ -221,14 +315,57 @@ export function recordDeveloperError(
     metadata: entry.metadata ?? null,
   });
 
+  const pending = enqueueDurablePersist(entry);
+  if (input.awaitDurable) {
+    // Sync API cannot truly await; callers needing await should use
+    // recordDeveloperErrorDurable. Still schedule immediately.
+    void pending.promise;
+  }
+
   return entry;
 }
 
+/**
+ * Record + await durable Postgres persist. Fail-closed on DB errors
+ * (returns entry with durableOk=false; does not throw to preserve call sites).
+ */
+export async function recordDeveloperErrorDurable(
+  input: Omit<RecordDeveloperErrorInput, "awaitDurable">,
+): Promise<{ entry: DeveloperErrorLog; durableOk: boolean; error: string | null }> {
+  const entry = recordDeveloperError({ ...input, awaitDurable: false });
+  const durable = await awaitDeveloperErrorPersist(entry.id);
+  return {
+    entry,
+    durableOk: durable.ok,
+    error: durable.error,
+  };
+}
+
+/** Wait for durable persist of a recorded entry (tests / probes). */
+export async function awaitDeveloperErrorPersist(
+  entryId: string,
+): Promise<{ ok: boolean; error: string | null }> {
+  const pending = getPending().find((p) => p.entryId === entryId);
+  if (!pending) {
+    return { ok: false, error: "no_pending_durable_persist" };
+  }
+  return pending.promise;
+}
+
+export async function awaitAllDeveloperErrorPersists(): Promise<void> {
+  const pending = [...getPending()];
+  await Promise.all(pending.map((p) => p.promise));
+}
+
+/**
+ * Memory-only list (cache). Prefer listDeveloperErrorLogsDurable in Production.
+ */
 export function listDeveloperErrorLogs(filter: {
   userId?: string;
   jobId?: string;
   workflowId?: string;
   commanderRunId?: string;
+  correlationId?: string;
   limit?: number;
 }): DeveloperErrorLog[] {
   const limit = filter.limit ?? 50;
@@ -245,11 +382,31 @@ export function listDeveloperErrorLogs(filter: {
       ) {
         return false;
       }
+      if (
+        filter.correlationId &&
+        entry.correlationId !== filter.correlationId
+      ) {
+        return false;
+      }
       return true;
     })
     .slice(0, limit);
 }
 
+/** Durable SoT list (Postgres). */
+export async function listDeveloperErrorLogsDurable(filter: {
+  userId?: string;
+  jobId?: string;
+  workflowId?: string;
+  commanderRunId?: string;
+  correlationId?: string;
+  limit?: number;
+}): Promise<DeveloperErrorLog[]> {
+  const { listStructuredLogsDurable } = await import("./structured-logs-store");
+  return listStructuredLogsDurable(filter);
+}
+
 export function resetDeveloperErrorLogsForTests(): void {
   getGlobalScope().__minervotDeveloperErrorLogs = [];
+  getGlobalScope().__minervotDeveloperErrorDurablePending = [];
 }

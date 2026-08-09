@@ -26,6 +26,8 @@ describe("developer error logs", () => {
     expect(entry.userId).toBe("user_1");
     expect(entry.jobId).toBe("job_1");
     expect(entry.workflowId).toBe("wf_1");
+    expect(entry.correlationId).toBe("corr_job_job_1_a2");
+    expect(entry.diagnosticId).toBe("diag_job_1");
     expect(entry.stackTrace).toContain("Error: OpenAI timeout");
     expect(entry.failureClass).toBe("timeout");
     expect(entry.cause.length).toBeGreaterThan(0);
