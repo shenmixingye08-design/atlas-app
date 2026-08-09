@@ -72,6 +72,9 @@ jobs:
       - name: P2-01 API contract ban
         run: node scripts/ci/p2-01-api-contract-ban.mjs
 
+      - name: P2-02 non-Word quality gate ban
+        run: node scripts/ci/p2-02-nonword-quality-gate-ban.mjs
+
       - name: P0-5 durable X scheduled posts ban
         run: node scripts/ci/p0-5-x-scheduled-posts-ban.mjs
 
@@ -99,6 +102,12 @@ jobs:
 
       - name: P2-01 API contracts
         run: npm run test:api-contracts
+        env:
+          TZ: UTC
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: P2-02 content quality gate
+        run: npm run test:content-quality-gate
         env:
           TZ: UTC
           NODE_OPTIONS: --max-old-space-size=8192

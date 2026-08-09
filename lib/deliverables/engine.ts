@@ -12,8 +12,8 @@ import { persistNotificationsNow } from "@/lib/notifications/durable";
 import { recordReliabilityEvent } from "@/lib/reliability";
 
 import {
-  generateQualityWordContent,
-  validateWordSourceContent,
+  generateQualityDeliverableContent,
+  validateDeliverableSourceContent,
 } from "./content-quality";
 import { detectDeliverableFormats } from "./detect-formats";
 import {
@@ -463,6 +463,55 @@ export async function generateDeliverables(
   if (!needsWord) {
     const deliverables: Deliverable[] = [];
     const failures: Array<{ format: string; reasons: string[] }> = [];
+
+    // P2-02: unified content quality gate for pdf/xlsx/pptx (was Word-only).
+    // Fail-closed before any binary generation / durable persist.
+    if (!options.contentAlreadyApproved) {
+      const nonWordQuality = await generateQualityDeliverableContent({
+        initialContent: safeContent,
+        formats,
+        regenerate: options.regenerateContent,
+      });
+      if (!nonWordQuality.ok) {
+        recordWordMetric("ai_content_failure");
+        return {
+          deliverables: [],
+          detection,
+          failures: [
+            {
+              format: "*",
+              reasons: [
+                `content_quality:${nonWordQuality.issues.join(",")}`,
+                nonWordQuality.message,
+              ],
+            },
+          ],
+          jobId,
+        };
+      }
+      safeContent = nonWordQuality.text;
+    } else {
+      const approved = validateDeliverableSourceContent(safeContent, formats);
+      if (!approved.ok) {
+        recordWordMetric("ai_content_failure");
+        return {
+          deliverables: [],
+          detection,
+          failures: [
+            {
+              format: "*",
+              reasons: [
+                `content_quality:${approved.issues.join(",")}`,
+                approved.message,
+              ],
+            },
+          ],
+          jobId,
+        };
+      }
+      safeContent = approved.text;
+    }
+
     let earlyMemoryOverlay: MemoryDeliverableOverlay | null = null;
     try {
       const earlyMemory = await applyMemoryForDeliverable({
@@ -473,6 +522,26 @@ export async function generateDeliverables(
       });
       earlyMemoryOverlay = earlyMemory.overlay;
       if (earlyMemory.applied) safeContent = earlyMemory.content;
+      // Re-validate after memory overlay — overlays must not reintroduce garbage.
+      const afterMemory = validateDeliverableSourceContent(safeContent, formats);
+      if (!afterMemory.ok) {
+        recordWordMetric("ai_content_failure");
+        return {
+          deliverables: [],
+          detection,
+          failures: [
+            {
+              format: "*",
+              reasons: [
+                `content_quality:${afterMemory.issues.join(",")}`,
+                afterMemory.message,
+              ],
+            },
+          ],
+          jobId,
+        };
+      }
+      safeContent = afterMemory.text;
       for (const format of formats) {
         const channel =
           format === "xlsx"
@@ -596,8 +665,10 @@ export async function generateDeliverables(
       await advanceWordJobStage(jobId, "AI_CONTENT_STARTED");
       await heartbeatWordJob(jobId);
       const modelStarted = Date.now();
-      const quality = await generateQualityWordContent({
+      // P2-02: gate all requested formats (docx + companions), not docx alone.
+      const quality = await generateQualityDeliverableContent({
         initialContent: safeContent,
+        formats,
         regenerate: options.regenerateContent,
       });
       recordWordMetric("model_ms", Date.now() - modelStarted);
@@ -646,7 +717,7 @@ export async function generateDeliverables(
         };
       }
       safeContent = quality.text;
-      const again = validateWordSourceContent(safeContent);
+      const again = validateDeliverableSourceContent(safeContent, formats);
       if (!again.ok) {
         recordWordMetric("ai_content_failure");
         trackWordEvent({

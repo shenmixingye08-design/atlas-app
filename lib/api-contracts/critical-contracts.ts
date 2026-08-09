@@ -163,6 +163,23 @@ export const CRITICAL_API_CONTRACTS: readonly ApiContract[] = [
     },
   },
   {
+    id: "health.content-quality-gate",
+    method: "GET",
+    path: "/api/health/content-quality-gate?force=1",
+    status: 200,
+    publicFetch: true,
+    criticalReason: "P2-02 unified non-Word content quality gate",
+    fields: {
+      ...healthOkFields,
+      commonGateOk: { type: "boolean" },
+      nonWordFormatsGated: { type: "boolean" },
+      formatSpecificOk: { type: "boolean" },
+      engineNonWordPathGated: { type: "boolean" },
+      failClosedOnGarbage: { type: "boolean" },
+      commitShaShort: { type: "string" },
+    },
+  },
+  {
     id: "health.billing-schema",
     method: "GET",
     path: "/api/health/billing-schema?force=1",
