@@ -76,7 +76,8 @@ jobs:
                   "incidentId","deliveryStatus","recoveryDeliveryStatus",
                   "ownerNotifyPath","postClearTickStatus",
                   "incidentStatusAfterRecovery","tickReestablishHttpStatus",
-                  "tickReestablishOk","resolvedThisCycle","lineConfigured",
+                  "tickReestablishOk","tickReestablishErrorCode",
+                  "localHeartbeatStamped","resolvedThisCycle","lineConfigured",
                   "detectedAt","recoveryAt"
                 ]
               },
@@ -105,6 +106,9 @@ jobs:
             "detectedAt": ev.get("detectedAt"),
             "recoveryAt": ev.get("recoveryAt"),
             "lineConfigured": ev.get("lineConfigured"),
+            "tickReestablishHttpStatus": ev.get("tickReestablishHttpStatus"),
+            "tickReestablishErrorCode": ev.get("tickReestablishErrorCode"),
+            "localHeartbeatStamped": ev.get("localHeartbeatStamped"),
           }
           print(summary)
 

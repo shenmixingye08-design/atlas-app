@@ -61,6 +61,9 @@ function buildSafeBody(
           tickReestablishHttpStatus:
             result.smoke.evidence.tickReestablishHttpStatus,
           tickReestablishOk: result.smoke.evidence.tickReestablishOk,
+          tickReestablishErrorCode:
+            result.smoke.evidence.tickReestablishErrorCode,
+          localHeartbeatStamped: result.smoke.evidence.localHeartbeatStamped,
           resolvedThisCycle: result.smoke.evidence.resolvedThisCycle,
         }
       : null,

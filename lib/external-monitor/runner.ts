@@ -102,16 +102,20 @@ async function notifyOnce(input: {
   });
 
   if (ownerNotifySucceeded(result)) {
+    // Attribute the primary LINE claim accurately: only "sent" when LINE
+    // actually accepted. System-only success must not be recorded as LINE.
     await markDeliveryResult({
       deliveryId: claimed.id,
-      status: "sent",
+      status: result.lineSent ? "sent" : "skipped",
+      errorCode: result.lineSent
+        ? null
+        : (result.errorCode ?? "line_not_sent_system_fallback"),
     });
     await markIncidentNotified({
       incidentId: incident.id,
       at: input.nowIso,
       continuation: input.deliveryKind === "continuation",
     });
-    // Record system channel evidence without second Owner spam when LINE won.
     const sysDedupe = `${incident.fingerprint}:${input.deliveryKind}:${generation}:system`;
     const sysClaim = await claimAlertDelivery({
       incidentId: incident.id,
@@ -124,7 +128,11 @@ async function notifyOnce(input: {
       await markDeliveryResult({
         deliveryId: sysClaim.id,
         status: result.systemSent ? "sent" : "skipped",
-        errorCode: result.systemSent ? null : "system_optional",
+        errorCode: result.systemSent
+          ? null
+          : result.lineSent
+            ? "system_optional"
+            : (result.errorCode ?? "system_not_sent"),
       });
     }
     return "sent";

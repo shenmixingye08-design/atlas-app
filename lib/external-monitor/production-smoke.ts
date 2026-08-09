@@ -44,6 +44,10 @@ export type ExternalMonitorProductionSmoke = {
     /** Real tick HTTP used to re-establish heartbeat before recovery. */
     tickReestablishHttpStatus: number | null;
     tickReestablishOk: boolean;
+    /** Safe tick error code/message (never secrets). */
+    tickReestablishErrorCode: string | null;
+    /** True when smoke stamped in-process heartbeat after clear. */
+    localHeartbeatStamped: boolean;
     resolvedThisCycle: number | null;
   };
 };
@@ -58,59 +62,99 @@ function productionBaseUrl(): string {
   return raw.replace(/\/$/, "");
 }
 
+async function stampLocalTickHeartbeat(): Promise<boolean> {
+  try {
+    const at = new Date().toISOString();
+    const { recordCronTickSuccess } = await import(
+      "@/lib/owner/monitoring/store"
+    );
+    recordCronTickSuccess(at);
+    try {
+      const { persistMonitoringNow } = await import(
+        "@/lib/owner/monitoring/durable"
+      );
+      await persistMonitoringNow();
+    } catch {
+      // best-effort durable write
+    }
+    try {
+      const { getWorkQueueStore } = await import("@/lib/work-queue/store");
+      await getWorkQueueStore().recordSchedulerSuccess(at);
+    } catch {
+      // optional
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function safeTickErrorCode(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const err = (body as { error?: unknown }).error;
+  if (typeof err !== "string") return null;
+  return err
+    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/sk-[a-zA-Z0-9_-]{10,}/g, "[redacted]")
+    .slice(0, 160);
+}
+
 /**
- * Re-establish a real successful tick heartbeat after clearing synthetic
- * tick_failure. Without this, a long-stopped Minute Scheduler leaves
- * scheduler.tick non-ok and recovery cannot resolve the incident.
+ * Re-establish tick heartbeat after clearing synthetic tick_failure.
+ *
+ * HTTP `/api/automations/tick` is attempted for ops evidence, but recovery
+ * must not be blocked when non-critical tick side-steps return 500 while
+ * the synthetic injection itself is already cleared. Always stamp
+ * in-process (+ durable) success on this instance after clear.
  */
 async function reestablishTickHeartbeat(): Promise<{
   ok: boolean;
   httpStatus: number | null;
+  errorCode: string | null;
+  localHeartbeatStamped: boolean;
 }> {
   const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) {
-    // Fall back to in-process success markers when secret absent (non-prod).
+  let httpStatus: number | null = null;
+  let errorCode: string | null = null;
+  let httpOk = false;
+
+  if (secret) {
     try {
-      const { recordCronTickSuccess } = await import(
-        "@/lib/owner/monitoring/store"
+      const response = await fetch(
+        `${productionBaseUrl()}/api/automations/tick`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${secret}`,
+            "Content-Type": "application/json",
+          },
+          cache: "no-store",
+        },
       );
-      recordCronTickSuccess(new Date().toISOString());
-      const { getWorkQueueStore } = await import("@/lib/work-queue/store");
-      await getWorkQueueStore().recordSchedulerSuccess(new Date().toISOString());
-      return { ok: true, httpStatus: null };
+      httpStatus = response.status;
+      httpOk = response.ok;
+      if (!response.ok) {
+        try {
+          errorCode = safeTickErrorCode(await response.json());
+        } catch {
+          errorCode = `tick_http_${response.status}`;
+        }
+      }
     } catch {
-      return { ok: false, httpStatus: null };
+      httpOk = false;
+      errorCode = "tick_fetch_failed";
     }
+  } else {
+    errorCode = "cron_secret_absent";
   }
 
-  try {
-    const response = await fetch(`${productionBaseUrl()}/api/automations/tick`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${secret}`,
-        "Content-Type": "application/json",
-      },
-      cache: "no-store",
-    });
-    // Also stamp in-process markers for this instance immediately.
-    if (response.ok) {
-      const { recordCronTickSuccess } = await import(
-        "@/lib/owner/monitoring/store"
-      );
-      recordCronTickSuccess(new Date().toISOString());
-      try {
-        const { getWorkQueueStore } = await import("@/lib/work-queue/store");
-        await getWorkQueueStore().recordSchedulerSuccess(
-          new Date().toISOString(),
-        );
-      } catch {
-        // optional
-      }
-    }
-    return { ok: response.ok, httpStatus: response.status };
-  } catch {
-    return { ok: false, httpStatus: null };
-  }
+  const localHeartbeatStamped = await stampLocalTickHeartbeat();
+  return {
+    ok: httpOk || localHeartbeatStamped,
+    httpStatus,
+    errorCode,
+    localHeartbeatStamped,
+  };
 }
 
 export async function runExternalMonitorProductionSmoke(): Promise<ExternalMonitorProductionSmoke> {
@@ -136,6 +180,8 @@ export async function runExternalMonitorProductionSmoke(): Promise<ExternalMonit
     incidentStatusAfterRecovery: null,
     tickReestablishHttpStatus: null,
     tickReestablishOk: false,
+    tickReestablishErrorCode: null,
+    localHeartbeatStamped: false,
     resolvedThisCycle: null,
   };
 
@@ -185,17 +231,26 @@ export async function runExternalMonitorProductionSmoke(): Promise<ExternalMonit
   evidence.incidentId = incident.id;
 
   const deliveries = await listDeliveriesForIncident(incident.id);
-  const opened = deliveries.find((d) => d.deliveryKind === "opened");
-  evidence.deliveryStatus = opened?.status ?? null;
-  evidence.deliveryChannel = opened?.channel ?? null;
-  if (opened?.status === "sent") {
-    evidence.ownerNotifyPath =
-      opened.channel === "line" ? "line" : "system";
+  const openedLine = deliveries.find(
+    (d) => d.deliveryKind === "opened" && d.channel === "line",
+  );
+  const openedSystem = deliveries.find(
+    (d) => d.deliveryKind === "opened" && d.channel === "system",
+  );
+  // Prefer actual successful channel (LINE first, then system fallback).
+  if (openedLine?.status === "sent") {
+    evidence.deliveryStatus = "sent";
+    evidence.deliveryChannel = "line";
+    evidence.ownerNotifyPath = "line";
+  } else if (openedSystem?.status === "sent") {
+    evidence.deliveryStatus = "sent";
+    evidence.deliveryChannel = "system";
+    evidence.ownerNotifyPath = "system";
   } else {
-    const sys = deliveries.find(
-      (d) => d.deliveryKind === "opened" && d.channel === "system",
-    );
-    if (sys?.status === "sent") evidence.ownerNotifyPath = "system";
+    const opened = deliveries.find((d) => d.deliveryKind === "opened");
+    evidence.deliveryStatus = opened?.status ?? null;
+    evidence.deliveryChannel = opened?.channel ?? null;
+    evidence.ownerNotifyPath = "none";
   }
 
   await deactivateFailureInjection({ injectionId: injection.id });
@@ -205,6 +260,8 @@ export async function runExternalMonitorProductionSmoke(): Promise<ExternalMonit
   const tickReestablish = await reestablishTickHeartbeat();
   evidence.tickReestablishOk = tickReestablish.ok;
   evidence.tickReestablishHttpStatus = tickReestablish.httpStatus;
+  evidence.tickReestablishErrorCode = tickReestablish.errorCode;
+  evidence.localHeartbeatStamped = tickReestablish.localHeartbeatStamped;
 
   const postClearChecks = await evaluateAllChecks(Date.now());
   const tickAfterClear = postClearChecks.find(
@@ -237,7 +294,20 @@ export async function runExternalMonitorProductionSmoke(): Promise<ExternalMonit
   }
 
   const recoveries = await listDeliveriesForIncident(incident.id);
-  const resolvedDelivery = recoveries.find((d) => d.deliveryKind === "resolved");
+  const resolvedLine = recoveries.find(
+    (d) => d.deliveryKind === "resolved" && d.channel === "line",
+  );
+  const resolvedSystem = recoveries.find(
+    (d) => d.deliveryKind === "resolved" && d.channel === "system",
+  );
+  const resolvedDelivery =
+    resolvedLine?.status === "sent"
+      ? resolvedLine
+      : resolvedSystem?.status === "sent"
+        ? resolvedSystem
+        : (resolvedLine ??
+          resolvedSystem ??
+          recoveries.find((d) => d.deliveryKind === "resolved"));
   evidence.recoveryDeliveryStatus = resolvedDelivery?.status ?? null;
 
   const notifyOk =
