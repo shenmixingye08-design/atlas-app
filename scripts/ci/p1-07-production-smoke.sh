@@ -90,3 +90,5 @@ python3 -c 'import json,sys; d=json.load(open("/tmp/p107-smoke.json")); ev=d.get
 # fresh-evidence re-trigger after resolved incident
 
 # P1 FINAL AUDIT re-trigger 20260809T130856Z
+
+# P2-01 regression re-trigger 20260809T133956Z
