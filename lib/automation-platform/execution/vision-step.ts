@@ -121,6 +121,7 @@ export async function invokeVisionStep(input: {
 
 /**
  * OCR must produce extracted text — summary-only Vision output is not OCR success.
+ * P2-05: honor durable OCR engine evaluation policy (Document AI only if required).
  */
 export async function invokeOcrStep(input: {
   step: AutomationWorkflowStep;
@@ -139,6 +140,28 @@ export async function invokeOcrStep(input: {
       retryable: false,
       needsUserInput: true,
     };
+  }
+
+  // P2-05: if evaluation required a dedicated engine but it is not configured,
+  // fail closed — never pretend Vision OCR is product OCR.
+  try {
+    const { resolveActiveOcrPolicy } = await import("@/lib/ocr-engine/policy");
+    const policy = await resolveActiveOcrPolicy();
+    if (policy.failClosedReason) {
+      return {
+        ok: false,
+        summary: "専用OCRエンジンが必要な状態ですが未設定です",
+        artifacts: [],
+        errorCode: "automation_run_failed",
+        errorMessage: policy.failClosedReason,
+        failedStage: "OCR_ENGINE_POLICY",
+        retryable: false,
+      };
+    }
+  } catch (error) {
+    console.warn("[ocr] policy resolve failed; continuing with Vision OCR path", {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
   const userText =

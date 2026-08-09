@@ -81,6 +81,9 @@ jobs:
       - name: P2-04 structured logs ban
         run: node scripts/ci/p2-04-structured-logs-ban.mjs
 
+      - name: P2-05 OCR engine evaluation ban
+        run: node scripts/ci/p2-05-ocr-engine-ban.mjs
+
       - name: P0-5 durable X scheduled posts ban
         run: node scripts/ci/p0-5-x-scheduled-posts-ban.mjs
 
@@ -127,6 +130,12 @@ jobs:
 
       - name: P2-04 structured logs
         run: npm run test:structured-logs
+        env:
+          TZ: UTC
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: P2-05 OCR engine evaluation
+        run: npm run test:ocr-engine
         env:
           TZ: UTC
           NODE_OPTIONS: --max-old-space-size=8192
