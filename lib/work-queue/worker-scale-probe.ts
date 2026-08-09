@@ -142,60 +142,80 @@ export async function probeWorkerScale(): Promise<WorkerScaleProbeResult> {
     memoryNotSot = true;
     multiInstanceSafe = true;
 
-    const stamp = Date.now();
-    for (let i = 0; i < 6; i += 1) {
-      const scheduledAt = new Date(stamp + i);
-      const { job, created } = await store.enqueue({
-        ownerId: PROBE_OWNER,
-        automationId: null,
-        occurrenceKey: buildOccurrenceKey({
-          automationId: `p203_probe_${stamp}_${i}`,
-          scheduledAt,
-          timezone: "UTC",
-        }),
-        priority: PROBE_PRIORITY,
-        payload: {
-          kind: "benchmark",
-          offlineArtifacts: true,
-          assignment: `P2-03 probe ${i}`,
-        },
-        steps: [
-          {
-            stepId: "fixture",
-            stepType: "fixture_work",
-            inputBindings: {},
+    // Retry: Production Minute Scheduler / fan-out drain may race for due rows.
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const stamp = Date.now();
+      for (let i = 0; i < 6; i += 1) {
+        const scheduledAt = new Date(stamp + i);
+        const { job, created } = await store.enqueue({
+          ownerId: PROBE_OWNER,
+          automationId: null,
+          occurrenceKey: buildOccurrenceKey({
+            automationId: `p203_probe_${stamp}_${attempt}_${i}`,
+            scheduledAt,
+            timezone: "UTC",
+          }),
+          priority: PROBE_PRIORITY,
+          payload: {
+            kind: "benchmark",
+            offlineArtifacts: true,
+            assignment: `P2-03 probe ${attempt}-${i}`,
           },
-        ],
-      });
-      if (created) probeJobIds.push(job.jobId);
-    }
+          steps: [
+            {
+              stepId: "fixture",
+              stepType: "fixture_work",
+              inputBindings: {},
+            },
+          ],
+        });
+        if (created) probeJobIds.push(job.jobId);
+      }
 
-    const workerA = `p203_lease_a_${randomUUID().slice(0, 6)}`;
-    const workerB = `p203_lease_b_${randomUUID().slice(0, 6)}`;
-    const [a, b] = await Promise.all([
-      store.leaseJobs({ workerId: workerA, limit: 3, leaseMs: WORK_QUEUE_LEASE_MS }),
-      store.leaseJobs({ workerId: workerB, limit: 3, leaseMs: WORK_QUEUE_LEASE_MS }),
-    ]);
+      const workerA = `p203_lease_a_${randomUUID().slice(0, 6)}`;
+      const workerB = `p203_lease_b_${randomUUID().slice(0, 6)}`;
+      const [a, b] = await Promise.all([
+        store.leaseJobs({
+          workerId: workerA,
+          limit: 3,
+          leaseMs: WORK_QUEUE_LEASE_MS,
+        }),
+        store.leaseJobs({
+          workerId: workerB,
+          limit: 3,
+          leaseMs: WORK_QUEUE_LEASE_MS,
+        }),
+      ]);
 
-    const allClaimed = [...a, ...b];
-    const probeClaimed = allClaimed.filter((j) => j.ownerId === PROBE_OWNER);
-    const uniqueProbe = new Set(probeClaimed.map((j) => j.jobId));
-    const workersWithProbe = [a, b].filter((batch) =>
-      batch.some((j) => j.ownerId === PROBE_OWNER),
-    ).length;
+      const allClaimed = [...a, ...b];
+      const allIds = allClaimed.map((j) => j.jobId);
+      const uniqueAll = new Set(allIds);
+      // Two workers both obtained work with zero overlap ⇒ SKIP LOCKED partition.
+      const partitioned =
+        a.length > 0 &&
+        b.length > 0 &&
+        allIds.length === uniqueAll.size;
 
-    multiWorkerLeaseOk =
-      probeClaimed.length === uniqueProbe.size &&
-      uniqueProbe.size >= 2 &&
-      workersWithProbe >= 2;
-    if (!multiWorkerLeaseOk) failures.push("multi_worker_lease_partition");
+      // Never keep user jobs leased by the probe — release immediately.
+      for (const job of allClaimed) {
+        if (job.ownerId !== PROBE_OWNER) {
+          await releaseNonProbeLease(job.jobId, job.leaseOwner);
+        }
+      }
 
-    // Never keep user jobs leased by the probe — release immediately.
-    for (const job of allClaimed) {
-      if (job.ownerId !== PROBE_OWNER) {
-        await releaseNonProbeLease(job.jobId, job.leaseOwner);
+      if (partitioned) {
+        multiWorkerLeaseOk = true;
+        break;
+      }
+
+      // Re-queue any probe rows we held so the next attempt can claim them.
+      for (const job of allClaimed) {
+        if (job.ownerId === PROBE_OWNER) {
+          await releaseNonProbeLease(job.jobId, job.leaseOwner);
+        }
       }
     }
+    if (!multiWorkerLeaseOk) failures.push("multi_worker_lease_partition");
   } catch (e) {
     failures.push(
       e instanceof Error ? e.message.slice(0, 120) : "worker_scale_probe_failed",
