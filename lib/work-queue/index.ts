@@ -14,6 +14,10 @@ export {
 } from "./store";
 export { enqueueDueAutomations } from "./scheduler";
 export { drainWorkQueue, recoverStuckJobs } from "./worker";
+export {
+  computeWorkerScalePlan,
+  drainWorkQueueHorizontal,
+} from "./worker-scale";
 export { processWorkQueueTick } from "./tick";
 export { evaluateWorkQueueAlerts } from "./alerts";
 export { buildOccurrenceKey } from "./occurrence";

@@ -133,3 +133,29 @@ jobs:
               exit 1
               ;;
           esac
+          # P2-03: horizontal worker fan-out via independent drain endpoint.
+          # Tick already drains in-process with fan-out; this adds extra runners
+          # so backlog clears even if a single tick invocation hits time limits.
+          FANOUT=3
+          echo "worker_horizontal_fanout=${FANOUT}"
+          for i in $(seq 1 "$FANOUT"); do
+            (
+              D_CODE=$(curl -sS -o "/tmp/drain_${i}.json" -w "%{http_code}" -X POST \
+                -H "Authorization: Bearer ${CRON_SECRET}" \
+                -H "Content-Type: application/json" \
+                "${BASE_URL}/api/worker/drain?workerId=gha_w_${i}&limit=20" || echo "000")
+              echo "drain_${i}_http=${D_CODE}"
+              python3 - <<PY
+          import json
+          try:
+            d=json.load(open("/tmp/drain_${i}.json"))
+            print("drain_${i}_safe=" + json.dumps({
+              k: d.get(k) for k in ("ok","leased","completed","failed","workerId") if k in d
+            }, ensure_ascii=False))
+          except Exception:
+            print("drain_${i}_parse_error=true")
+          PY
+            ) &
+          done
+          wait
+          rm -f /tmp/drain_*.json

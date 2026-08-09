@@ -18,10 +18,12 @@
     "ci:p1-09-reliability-fabrication-ban": "node scripts/ci/p1-09-reliability-fabrication-ban.mjs",
     "ci:p2-01-api-contract-ban": "node scripts/ci/p2-01-api-contract-ban.mjs",
     "ci:p2-02-nonword-quality-gate-ban": "node scripts/ci/p2-02-nonword-quality-gate-ban.mjs",
+    "ci:p2-03-worker-scale-ban": "node scripts/ci/p2-03-worker-scale-ban.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:api-contracts": "vitest run lib/api-contracts",
     "test:content-quality-gate": "vitest run lib/deliverables/p2-02-nonword-quality-gate.test.ts lib/deliverables/content-quality.test.ts",
+    "test:worker-scale": "vitest run lib/work-queue/p2-03-worker-scale.test.ts",
 
     "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts",
     "test:p06-e2e": "P06_E2E_RUNS=20 vitest run lib/reliability/p06-e2e-ops-verification.test.ts",

@@ -166,6 +166,9 @@ describe("auth route matchers", () => {
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
       "/api/health/content-quality-gate(.*)",
     );
+    expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
+      "/api/health/worker-scale(.*)",
+    );
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain("/api/health/vision(.*)");
     expect(ATLAS_PROTECTED_PAGE_MATCHERS).toContain("/owner(.*)");
     expect(ATLAS_PROTECTED_PAGE_MATCHERS).toContain("/projects(.*)");
