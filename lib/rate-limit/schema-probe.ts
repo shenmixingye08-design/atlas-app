@@ -11,6 +11,7 @@ import {
   RATE_LIMIT_RPC,
   RATE_LIMIT_TABLE,
 } from "./migration-sql";
+import { parseConsumeRateLimitRpcData } from "./parse-consume";
 import { markDistributedRateLimitReadyUnknown } from "./table-ready";
 
 export type DistributedRateLimitSchemaProbe = {
@@ -124,10 +125,35 @@ export async function probeDistributedRateLimitSchema(input?: {
     if (rpcError) {
       consumeRpcOk = false;
       error = error ?? rpcError.message;
+      // Return-type change / stale schema cache → best-effort re-apply once.
+      if (isMissing(rpcError.message) || /structure of query does not match|schema cache/i.test(rpcError.message)) {
+        const applyResult = await applyMigrationSql({
+          sql: ATLAS_DISTRIBUTED_RATE_LIMIT_MIGRATION_SQL,
+          migrationName: `${RATE_LIMIT_MIGRATION_NAME}_rpc_fix`,
+        });
+        appliedViaPostgres =
+          applyResult.appliedViaPostgres || appliedViaPostgres;
+        appliedViaManagementApi =
+          applyResult.appliedViaManagementApi || appliedViaManagementApi;
+        if (applyResult.error) error = applyResult.error;
+        markDistributedRateLimitReadyUnknown();
+        const retry = await client.rpc(RATE_LIMIT_RPC, {
+          p_bucket: "__atlas_health_probe__",
+          p_subject_key: `probe_retry_${Date.now()}`,
+          p_max: 5,
+          p_window_ms: 60_000,
+          p_min_interval_ms: 0,
+        });
+        const parsedRetry = parseConsumeRateLimitRpcData(retry.data);
+        consumeRpcOk = !retry.error && parsedRetry?.allowed === true;
+        if (!consumeRpcOk && retry.error) error = retry.error.message;
+        if (!consumeRpcOk && !retry.error) {
+          error = error ?? "consume_rpc_unexpected_payload";
+        }
+      }
     } else {
-      const payload =
-        data && typeof data === "object" ? (data as { allowed?: boolean }) : {};
-      consumeRpcOk = payload.allowed === true;
+      const parsed = parseConsumeRateLimitRpcData(data);
+      consumeRpcOk = parsed?.allowed === true;
       if (!consumeRpcOk) {
         error = error ?? "consume_rpc_unexpected_payload";
       }

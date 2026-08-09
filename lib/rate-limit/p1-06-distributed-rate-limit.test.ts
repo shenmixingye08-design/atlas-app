@@ -14,6 +14,7 @@ import {
   consumeRateLimit,
   resetDistributedRateLimitStoreForTests,
 } from "@/lib/rate-limit/db-store";
+import { parseConsumeRateLimitRpcData } from "@/lib/rate-limit/parse-consume";
 import { setDistributedRateLimitReadyForTests } from "@/lib/rate-limit/table-ready";
 
 describe("P1-06 distributed rate limit", () => {
@@ -117,6 +118,37 @@ describe("P1-06 distributed rate limit", () => {
         `${relative} missing await enforceAiRateLimit`,
       ).toBe(true);
     }
+  });
+
+  it("H2: RPC payload parser accepts jsonb object, string, and table-row array", () => {
+    expect(
+      parseConsumeRateLimitRpcData({
+        allowed: true,
+        remaining: 2,
+        retry_after_ms: 0,
+        hit_count: 1,
+      })?.allowed,
+    ).toBe(true);
+    expect(
+      parseConsumeRateLimitRpcData(
+        JSON.stringify({
+          allowed: true,
+          remaining: 1,
+          retry_after_ms: 0,
+          hit_count: 2,
+        }),
+      )?.hitCount,
+    ).toBe(2);
+    expect(
+      parseConsumeRateLimitRpcData([
+        {
+          allowed: false,
+          remaining: 0,
+          retry_after_ms: 1200,
+          hit_count: 5,
+        },
+      ])?.retryAfterMs,
+    ).toBe(1200);
   });
 
   it("H: memory Map helpers are not Production SoT (source check)", () => {

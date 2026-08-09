@@ -23,7 +23,10 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
-          SQL_FILE="supabase/migrations/20260809_p1_06_distributed_rate_limit.sql"
+          SQL_FILES=(
+            "supabase/migrations/20260809_p1_06_distributed_rate_limit.sql"
+            "supabase/migrations/20260809_p1_06_rate_limit_rpc_returns_table.sql"
+          )
 
           apply_psql() {
             echo "Applying via psql: $1"
@@ -53,7 +56,9 @@ jobs:
           if [ -n "${DATABASE_URL:-}${POSTGRES_URL:-}${SUPABASE_DB_URL:-}" ]; then
             CONN="${DATABASE_URL:-${POSTGRES_URL:-$SUPABASE_DB_URL}}"
             sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
-            apply_psql "$SQL_FILE"
+            for SQL_FILE in "${SQL_FILES[@]}"; do
+              apply_psql "$SQL_FILE"
+            done
             echo "Applied distributed rate limit schema via psql"
             exit 0
           fi
@@ -61,10 +66,14 @@ jobs:
           if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ] || [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
             echo "::error::P1-06: rate limit DDL credentials missing."
             echo "::error::Set GitHub Actions secrets DATABASE_URL (or POSTGRES_URL) OR SUPABASE_ACCESS_TOKEN+SUPABASE_PROJECT_REF,"
-            echo "::error::OR apply supabase/migrations/20260809_p1_06_distributed_rate_limit.sql in Supabase SQL Editor,"
+            echo "::error::OR apply these files in order in Supabase SQL Editor:"
+            echo "::error::1) supabase/migrations/20260809_p1_06_distributed_rate_limit.sql"
+            echo "::error::2) supabase/migrations/20260809_p1_06_rate_limit_rpc_returns_table.sql"
             echo "::error::then confirm https://atlasapp.jp/api/health/rate-limit shows ok=true."
             exit 1
           fi
 
-          apply_management "$SQL_FILE"
+          for SQL_FILE in "${SQL_FILES[@]}"; do
+            apply_management "$SQL_FILE"
+          done
           echo "Applied distributed rate limit schema via Management API"

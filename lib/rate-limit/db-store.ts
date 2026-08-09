@@ -9,6 +9,7 @@ import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
 import { RATE_LIMIT_RPC, RATE_LIMIT_TABLE } from "./migration-sql";
+import { parseConsumeRateLimitRpcData } from "./parse-consume";
 import {
   isDistributedRateLimitReady,
   markDistributedRateLimitReadyUnknown,
@@ -202,22 +203,25 @@ export async function consumeRateLimit(
     return consumeLocal(subjectKey, options);
   }
 
-  const payload =
-    data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const parsed = parseConsumeRateLimitRpcData(data);
+  if (!parsed) {
+    if (isAtlasProduction()) {
+      console.error("[rate-limit] consume RPC unexpected payload (fail-closed)");
+      return {
+        allowed: false,
+        remaining: 0,
+        retryAfterMs: 5_000,
+        hitCount: 0,
+        backend: "db",
+      };
+    }
+    return consumeLocal(subjectKey, options);
+  }
   return {
-    allowed: payload.allowed === true,
-    remaining:
-      typeof payload.remaining === "number"
-        ? payload.remaining
-        : Number(payload.remaining ?? 0) || 0,
-    retryAfterMs:
-      typeof payload.retry_after_ms === "number"
-        ? payload.retry_after_ms
-        : Number(payload.retry_after_ms ?? 0) || 0,
-    hitCount:
-      typeof payload.hit_count === "number"
-        ? payload.hit_count
-        : Number(payload.hit_count ?? 0) || 0,
+    allowed: parsed.allowed,
+    remaining: parsed.remaining,
+    retryAfterMs: parsed.retryAfterMs,
+    hitCount: parsed.hitCount,
     backend: "db",
   };
 }
