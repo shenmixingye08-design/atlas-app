@@ -45,6 +45,46 @@ jobs:
           from urllib.parse import urlparse
           print("tick_target_host=" + urlparse("${BASE_URL}").netloc)
           PY
+          # Self-heal: if work-queue tables are missing, apply idempotent DDL via
+          # Production DATABASE_URL (CRON-gated). Does not change tick pipeline.
+          WQ_CODE=$(curl -sS -o /tmp/wq-probe.json -w "%{http_code}" \
+            "${BASE_URL}/api/health/work-queue?force=1" || echo "000")
+          echo "work_queue_probe_http=${WQ_CODE}"
+          NEED_APPLY=$(python3 - <<'PY'
+          import json
+          try:
+            d=json.load(open("/tmp/wq-probe.json"))
+          except Exception:
+            print("1"); raise SystemExit
+          print("0" if d.get("ok") is True and d.get("tablesOk") is True else "1")
+          print("work_queue_probe_safe=" + json.dumps({
+            k: d.get(k) for k in (
+              "ok","postgresUrlConfigured","tablesOk","storeReady",
+              "developerCode","error","commitShaShort"
+            ) if k in d
+          }, ensure_ascii=False), file=__import__("sys").stderr)
+          PY
+          )
+          if [ "$NEED_APPLY" = "1" ]; then
+            echo "work_queue_apply_attempt=1"
+            APPLY_CODE=$(curl -sS -o /tmp/wq-apply.json -w "%{http_code}" \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              "${BASE_URL}/api/health/work-queue?force=1&apply=1" || echo "000")
+            echo "work_queue_apply_http=${APPLY_CODE}"
+            python3 - <<'PY'
+          import json
+          try:
+            d=json.load(open("/tmp/wq-apply.json"))
+            print("work_queue_apply_safe=" + json.dumps({
+              k: d.get(k) for k in (
+                "ok","tablesOk","appliedViaPostgres","appliedViaManagementApi",
+                "developerCode","error","commitShaShort"
+              ) if k in d
+            }, ensure_ascii=False))
+          except Exception as e:
+            print("work_queue_apply_parse_error=true")
+          PY
+          fi
           # P0-04: never dump full tick JSON (may contain userIds / job metadata).
           # Safe diagnostics only: ok / processed / developerCode / failedStage / postgres flags.
           HTTP_CODE=$(curl -sS -o /tmp/tick.json -w "%{http_code}" -X POST \
