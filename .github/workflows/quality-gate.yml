@@ -69,6 +69,9 @@ jobs:
       - name: P1-07 external monitor / alert integrity ban
         run: node scripts/ci/p1-07-external-monitor-ban.mjs
 
+      - name: P2-01 API contract ban
+        run: node scripts/ci/p2-01-api-contract-ban.mjs
+
       - name: P0-5 durable X scheduled posts ban
         run: node scripts/ci/p0-5-x-scheduled-posts-ban.mjs
 
@@ -92,6 +95,12 @@ jobs:
         env:
           TZ: UTC
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: P2-01 API contracts
+        run: npm run test:api-contracts
+        env:
+          TZ: UTC
           NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Upload Vitest logs on failure
