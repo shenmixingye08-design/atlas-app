@@ -55,6 +55,13 @@ function buildSafeBody(
           ownerNotifyPath: result.smoke.evidence.ownerNotifyPath,
           lineConfigured: result.smoke.evidence.lineConfigured,
           commitShaShort: result.smoke.evidence.commitShaShort,
+          postClearTickStatus: result.smoke.evidence.postClearTickStatus,
+          incidentStatusAfterRecovery:
+            result.smoke.evidence.incidentStatusAfterRecovery,
+          tickReestablishHttpStatus:
+            result.smoke.evidence.tickReestablishHttpStatus,
+          tickReestablishOk: result.smoke.evidence.tickReestablishOk,
+          resolvedThisCycle: result.smoke.evidence.resolvedThisCycle,
         }
       : null,
     commitShaShort: version.commitShaShort,

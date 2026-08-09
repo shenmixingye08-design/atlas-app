@@ -62,10 +62,25 @@ jobs:
           import json
           try:
             d=json.load(open("/tmp/p107-smoke.json"))
+            ev=d.get("smokeEvidence") or {}
             # Safe keys only — never dump secrets.
-            print({k:d.get(k) for k in [
-              "ok","smokeOk","error","ownerHint","commitShaShort","status"
-            ]})
+            print({
+              "ok": d.get("ok"),
+              "smokeOk": d.get("smokeOk"),
+              "error": d.get("error"),
+              "ownerHint": d.get("ownerHint"),
+              "commitShaShort": d.get("commitShaShort"),
+              "status": d.get("status"),
+              "smokeEvidence": {
+                k: ev.get(k) for k in [
+                  "incidentId","deliveryStatus","recoveryDeliveryStatus",
+                  "ownerNotifyPath","postClearTickStatus",
+                  "incidentStatusAfterRecovery","tickReestablishHttpStatus",
+                  "tickReestablishOk","resolvedThisCycle","lineConfigured",
+                  "detectedAt","recoveryAt"
+                ]
+              },
+            })
           except Exception as e:
             print("body_parse_failed", type(e).__name__)
           PY
