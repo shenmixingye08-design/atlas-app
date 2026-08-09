@@ -37,7 +37,16 @@ jobs:
             exit 1
           fi
           BASE_URL="${BASE_URL%/}"
-          # P0-04: never dump tick JSON (may contain userIds / job metadata).
+          # Prefer canonical Production host; warn if secret differs (no secret values printed).
+          if [ "$BASE_URL" != "https://atlasapp.jp" ]; then
+            echo "::warning::ATLAS_APP_URL is not https://atlasapp.jp — verify Production vs Preview mix-up"
+          fi
+          python3 - <<PY
+          from urllib.parse import urlparse
+          print("tick_target_host=" + urlparse("${BASE_URL}").netloc)
+          PY
+          # P0-04: never dump full tick JSON (may contain userIds / job metadata).
+          # Safe diagnostics only: ok / processed / developerCode / failedStage / postgres flags.
           HTTP_CODE=$(curl -sS -o /tmp/tick.json -w "%{http_code}" -X POST \
             -H "Authorization: Bearer ${CRON_SECRET}" \
             -H "Content-Type: application/json" \
@@ -45,6 +54,37 @@ jobs:
           BYTES=$(wc -c < /tmp/tick.json | tr -d ' ')
           echo "tick_http_status=${HTTP_CODE}"
           echo "tick_body_bytes=${BYTES}"
+          python3 - <<'PY'
+          import json, sys
+          try:
+            d = json.load(open("/tmp/tick.json"))
+          except Exception as e:
+            print("tick_parse_error=true")
+            sys.exit(0)
+          safe_keys = [
+            "ok",
+            "processed",
+            "error",
+            "failedStage",
+            "developerCode",
+            "postgresUrlConfigured",
+            "extendedPostgresUrlOnly",
+            "skipped",
+            "reason",
+          ]
+          print("tick_safe=" + json.dumps({k: d.get(k) for k in safe_keys if k in d}, ensure_ascii=False))
+          # Nested safe counts only (no user identifiers).
+          nr = d.get("notificationRetries") if isinstance(d.get("notificationRetries"), dict) else None
+          if nr is not None:
+            print("notification_retries=" + json.dumps({
+              k: nr.get(k) for k in ("due","claimed","delivered","deadLettered","failed","dlqReinjected")
+            }, ensure_ascii=False))
+          em = d.get("externalMonitor") if isinstance(d.get("externalMonitor"), dict) else None
+          if em is not None:
+            print("external_monitor=" + json.dumps({
+              k: em.get(k) for k in ("ok","openIncidents","deliveriesSent","resolvedThisCycle")
+            }, ensure_ascii=False))
+          PY
           rm -f /tmp/tick.json
           case "$HTTP_CODE" in
             200|202|204) ;;

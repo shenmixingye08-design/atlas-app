@@ -72,6 +72,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/health/household-ledger(.*)",
   "/api/health/rate-limit(.*)",
   "/api/health/deliverable-quality(.*)",
+  "/api/health/work-queue(.*)",
   "/api/health/vision(.*)",
   "/api/contact(.*)",
   "/api/automations/tick(.*)",

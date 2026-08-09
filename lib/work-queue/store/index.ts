@@ -43,7 +43,7 @@ export function getWorkQueueStore(): WorkQueueStore {
     const pg = tryCreatePostgresWorkQueueStore();
     if (!pg) {
       throw new WorkQueueStoreUnavailableError(
-        "[work-queue] P0-2: Production requires DATABASE_URL/POSTGRES_URL for durable job claim — file/memory fallback disabled",
+        "[work-queue] P0-2: Production requires a Postgres URL env (DATABASE_URL/POSTGRES_URL/POSTGRES_URL_NON_POOLING/SUPABASE_*) for durable job claim — file/memory fallback disabled",
       );
     }
     singleton = pg;
