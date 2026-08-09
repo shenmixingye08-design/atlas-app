@@ -220,6 +220,15 @@ export const CRITICAL_API_CONTRACTS: readonly ApiContract[] = [
     fields: unauthorizedErrorFields,
   },
   {
+    id: "worker.drain.unauthorized",
+    method: "POST",
+    path: "/api/worker/drain",
+    status: 401,
+    publicFetch: true,
+    criticalReason: "P2-03 drain fan-out must fail-closed without CRON_SECRET",
+    fields: unauthorizedErrorFields,
+  },
+  {
     id: "automations.list.unauthorized",
     method: "GET",
     path: "/api/automations",

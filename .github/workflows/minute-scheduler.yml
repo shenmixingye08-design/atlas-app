@@ -138,6 +138,7 @@ jobs:
           # so backlog clears even if a single tick invocation hits time limits.
           FANOUT=3
           echo "worker_horizontal_fanout=${FANOUT}"
+          FAIL_DRAIN=0
           for i in $(seq 1 "$FANOUT"); do
             (
               D_CODE=$(curl -sS -o "/tmp/drain_${i}.json" -w "%{http_code}" -X POST \
@@ -155,7 +156,21 @@ jobs:
           except Exception:
             print("drain_${i}_parse_error=true")
           PY
+              case "$D_CODE" in
+                200|202|204) ;;
+                *) echo "drain_${i}_failed=1" > "/tmp/drain_${i}.fail" ;;
+              esac
             ) &
           done
           wait
-          rm -f /tmp/drain_*.json
+          for i in $(seq 1 "$FANOUT"); do
+            if [ -f "/tmp/drain_${i}.fail" ]; then
+              FAIL_DRAIN=1
+            fi
+          done
+          rm -f /tmp/drain_*.json /tmp/drain_*.fail
+          if [ "$FAIL_DRAIN" != "0" ]; then
+            echo "::error::P2-03 horizontal drain fan-out failed (soft-success forbidden)"
+            exit 1
+          fi
+          echo "worker_horizontal_fanout_ok=true"
