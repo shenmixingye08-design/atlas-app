@@ -864,6 +864,75 @@ export type Database = {
         };
         Relationships: [];
       };
+      atlas_household_ledger_entries: {
+        Row: {
+          id: string;
+          user_id: string;
+          amount: number;
+          currency: string;
+          occurred_at: string;
+          occurred_on: string;
+          category: string;
+          merchant: string;
+          item_name: string;
+          description: string;
+          source: string;
+          receipt_id: string | null;
+          source_image_ids: unknown;
+          quantity: number | null;
+          unit_price: number | null;
+          tax: number | null;
+          payment_method: string | null;
+          money_use: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          user_id: string;
+          amount?: number;
+          currency?: string;
+          occurred_at: string;
+          occurred_on: string;
+          category?: string;
+          merchant?: string;
+          item_name?: string;
+          description?: string;
+          source?: string;
+          receipt_id?: string | null;
+          source_image_ids?: unknown;
+          quantity?: number | null;
+          unit_price?: number | null;
+          tax?: number | null;
+          payment_method?: string | null;
+          money_use?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          amount?: number;
+          currency?: string;
+          occurred_at?: string;
+          occurred_on?: string;
+          category?: string;
+          merchant?: string;
+          item_name?: string;
+          description?: string;
+          source?: string;
+          receipt_id?: string | null;
+          source_image_ids?: unknown;
+          quantity?: number | null;
+          unit_price?: number | null;
+          tax?: number | null;
+          payment_method?: string | null;
+          money_use?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       atlas_automations: {
         Row: {
           id: string;

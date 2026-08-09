@@ -228,9 +228,10 @@ export async function runReceiptPipeline(
     category,
     moneyUse: business.moneyUse,
   });
+  const existingEntries = await listLedgerEntries(input.userId);
   const suggestions = buildReceiptSuggestions({
     schemas: succeeded,
-    entries: listLedgerEntries(input.userId),
+    entries: existingEntries,
     newEntries: preview,
   });
 
@@ -247,7 +248,7 @@ export async function runReceiptPipeline(
       createdAt: now,
       updatedAt: now,
     }));
-    upsertLedgerEntries(input.userId, entries);
+    await upsertLedgerEntries(input.userId, entries);
     const session: ReceiptSession = {
       id: sessionId,
       userId: input.userId,
@@ -297,9 +298,9 @@ export type ConfirmReceiptInput = {
   registerAsExpense?: boolean;
 };
 
-export function confirmAndRegisterReceipt(
+export async function confirmAndRegisterReceipt(
   input: ConfirmReceiptInput,
-): ReceiptSession {
+): Promise<ReceiptSession> {
   const session = getReceiptSession(input.userId, input.sessionId);
   if (!session) {
     throw new Error("セッションが見つかりません");
@@ -377,7 +378,7 @@ export function confirmAndRegisterReceipt(
     createdAt: now,
     updatedAt: now,
   }));
-  upsertLedgerEntries(input.userId, entries);
+  await upsertLedgerEntries(input.userId, entries);
 
   const registered: ReceiptSession = {
     ...session,
@@ -396,6 +397,7 @@ export function confirmAndRegisterReceipt(
   return registered;
 }
 
-export function getLedgerAnalytics(userId: string, yearMonth: string) {
-  return buildMonthlyAnalytics(listLedgerEntries(userId), yearMonth);
+export async function getLedgerAnalytics(userId: string, yearMonth: string) {
+  const entries = await listLedgerEntries(userId);
+  return buildMonthlyAnalytics(entries, yearMonth);
 }

@@ -137,7 +137,7 @@ describe("P0-01 receipt mock fail-closed", () => {
     expect(session.errorCode).toBe("config_missing");
     expect(session.retryable).toBe(false);
     expect(session.entriesPreview).toEqual([]);
-    expect(listLedgerEntries("user_p001_b")).toHaveLength(0);
+    expect(await listLedgerEntries("user_p001_b")).toHaveLength(0);
     expect(session.schemas.every((s) => s.visionSucceeded === false)).toBe(true);
     expect(session.schemas.some((s) => s.storeName === "ローソン")).toBe(false);
     expect(createMock).not.toHaveBeenCalled();
@@ -167,7 +167,7 @@ describe("P0-01 receipt mock fail-closed", () => {
     expect(session.errorCode).toBe("provider_error");
     expect(session.retryable).toBe(true);
     expect(session.entriesPreview).toEqual([]);
-    expect(listLedgerEntries("user_p001_c")).toHaveLength(0);
+    expect(await listLedgerEntries("user_p001_c")).toHaveLength(0);
     expect(JSON.stringify(session)).not.toMatch(/sk-test|OPENAI_API_KEY|rate limit/i);
   });
 
@@ -201,7 +201,7 @@ describe("P0-01 receipt mock fail-closed", () => {
     expect(session.errorCode).toBe("unreadable");
     expect(session.error).toBe(RECEIPT_USER_ERROR.unreadable);
     expect(session.retryable).toBe(false);
-    expect(listLedgerEntries("user_p001_d")).toHaveLength(0);
+    expect(await listLedgerEntries("user_p001_d")).toHaveLength(0);
   });
 
   it("E: non-production + ATLAS_MOCK_LLM=true → mock extract allowed", async () => {
@@ -226,7 +226,7 @@ describe("P0-01 receipt mock fail-closed", () => {
     expect(session.status).toBe("registered");
     expect(session.schemas[0]?.model).toBe("atlas-mock");
     expect(session.schemas[0]?.storeName).toBe("ローソン");
-    expect(listLedgerEntries("user_p001_e").length).toBeGreaterThan(0);
+    expect((await listLedgerEntries("user_p001_e")).length).toBeGreaterThan(0);
     expect(createMock).not.toHaveBeenCalled();
   });
 
@@ -258,7 +258,7 @@ describe("P0-01 receipt mock fail-closed", () => {
       userHint: "家計簿にして",
     });
     expect(session.status).toBe("failed");
-    expect(listLedgerEntries("user_p001_f")).toHaveLength(0);
+    expect(await listLedgerEntries("user_p001_f")).toHaveLength(0);
     expect(session.schemas.some((s) => s.storeName === "ローソン")).toBe(false);
   });
 
