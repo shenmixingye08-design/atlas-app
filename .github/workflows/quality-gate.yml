@@ -84,6 +84,9 @@ jobs:
       - name: P2-05 OCR engine evaluation ban
         run: node scripts/ci/p2-05-ocr-engine-ban.mjs
 
+      - name: P3-01 JWT連携RLS ban
+        run: node scripts/ci/p3-01-jwt-rls-ban.mjs
+
       - name: P0-5 durable X scheduled posts ban
         run: node scripts/ci/p0-5-x-scheduled-posts-ban.mjs
 
@@ -136,6 +139,12 @@ jobs:
 
       - name: P2-05 OCR engine evaluation
         run: npm run test:ocr-engine
+        env:
+          TZ: UTC
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: P3-01 JWT連携RLS
+        run: npm run test:jwt-rls
         env:
           TZ: UTC
           NODE_OPTIONS: --max-old-space-size=8192

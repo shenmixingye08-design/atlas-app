@@ -175,6 +175,9 @@ describe("auth route matchers", () => {
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
       "/api/health/ocr-engine(.*)",
     );
+    expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
+      "/api/health/jwt-rls(.*)",
+    );
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain("/api/worker/drain(.*)");
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain("/api/health/vision(.*)");
     expect(ATLAS_PROTECTED_PAGE_MATCHERS).toContain("/owner(.*)");
