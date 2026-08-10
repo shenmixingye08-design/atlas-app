@@ -5,7 +5,8 @@ import { isAtlasOwnerEmail } from "@/lib/auth/is-atlas-owner";
 import { isAtlasBetaUserEmail } from "@/lib/feature-flags/access";
 import { siteConfig } from "@/lib/config/site";
 
-import { getPlanDefinition, listPlanDefinitions } from "../plans/registry";
+import { resolveMinimumOfferedPlanForFeature } from "../plans/offered-capabilities";
+import { getPlanDefinition } from "../plans/registry";
 import type { BillingFeatureId, PlanId } from "../plans/types";
 import { resolveUserSubscriptionDurable } from "../subscriptions/store";
 import {
@@ -43,13 +44,15 @@ export type BillingAccessSnapshot = {
   automationsSuspended: boolean;
 };
 
-export function getMinimumPlanForFeature(feature: BillingFeatureId): PlanId {
-  for (const plan of listPlanDefinitions()) {
-    if (plan.limits.features.includes(feature)) {
-      return plan.planId;
-    }
-  }
-  return "premium";
+/**
+ * Lowest plan that includes the feature.
+ * Returns null when the feature is not offered on any plan (N-01:
+ * never imply "upgrade to Premium" for unimplemented media generation).
+ */
+export function getMinimumPlanForFeature(
+  feature: BillingFeatureId,
+): PlanId | null {
+  return resolveMinimumOfferedPlanForFeature(feature);
 }
 
 export async function getBillingAccessSnapshot(
@@ -108,9 +111,25 @@ export async function evaluateBillingFeature(
   }
 
   const check = evaluatePlanAccess(userId, feature);
-  const requiredPlan = getMinimumPlanForFeature(feature);
   if (check.allowed) {
     return { snapshot, denial: null };
+  }
+
+  const requiredPlan = getMinimumPlanForFeature(feature);
+  if (!requiredPlan) {
+    return {
+      snapshot,
+      denial: {
+        kind: "plan",
+        status: 403,
+        reason: "この機能は現在ご利用いただけません",
+        currentPlan: snapshot.effectivePlanId,
+        currentPlanName: snapshot.effectivePlanName,
+        requiredPlan: null,
+        requiredPlanName: null,
+        upgradePath: BILLING_UPGRADE_PATH,
+      },
+    };
   }
 
   const planName = getPlanDefinition(requiredPlan).name;
@@ -245,11 +264,17 @@ export function resolveBillingFeatureForAssignment(input: {
   if (/ブログ|blog|wordpress|記事/.test(text)) {
     return "blog_creation";
   }
-  if (/動画|video|youtube|ユーチューブ|ショート/.test(text)) {
+  // N-01: Only explicit media-generation intents map to unoffered features.
+  // Broad words like「動画」「サムネ」alone must not deny ordinary copywriting.
+  if (
+    /動画生成|video generation|generate video|動画を作|動画制作|動画編集/.test(
+      text,
+    )
+  ) {
     return "video_generation";
   }
   if (
-    /画像生成|image generation|アイキャッチ|サムネ|thumbnail|イラスト生成/.test(
+    /画像生成|image generation|generate image|イラスト生成|画像を生成/.test(
       text,
     )
   ) {

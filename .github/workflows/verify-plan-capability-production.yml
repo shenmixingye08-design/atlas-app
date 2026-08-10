@@ -1,0 +1,86 @@
+# N-01 Production plan/capability honesty proof.
+name: Verify Plan Capability Production (N-01)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "lib/billing/plans/**"
+      - "lib/feature-flags/**"
+      - "lib/workspace/quick-request-presets.ts"
+      - "lib/landing/content.ts"
+      - "lib/legal/terms-content.ts"
+      - "lib/legal/privacy-content.ts"
+      - "lib/connectors/definitions.ts"
+      - "lib/automations/workflow-templates.ts"
+      - "lib/automation-platform/step-registry/**"
+      - "app/api/health/plan-capability/**"
+      - "scripts/ci/n01-premium-capability-ban.mjs"
+      - ".github/workflows/verify-plan-capability-production.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe Production plan-capability
+        env:
+          PROD_URL: https://atlasapp.jp
+        run: |
+          set -euo pipefail
+          EXPECTED_SHA_SHORT="$(printf '%s' "${GITHUB_SHA:-}" | cut -c1-7)"
+          echo "expected_commit_sha_short=${EXPECTED_SHA_SHORT}"
+          APP_CODE_CHANGED=0
+          if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            if git diff --name-only HEAD^ HEAD | grep -E '^(lib/|app/)' >/dev/null 2>&1; then
+              APP_CODE_CHANGED=1
+            fi
+          else
+            APP_CODE_CHANGED=1
+          fi
+          echo "app_code_changed=${APP_CODE_CHANGED}"
+
+          READY=""
+          for i in $(seq 1 40); do
+            curl -sS -o /tmp/n01.json "${PROD_URL}/api/health/plan-capability?force=1" || true
+            PROD_SHA="$(python3 -c 'import json;d=json.load(open("/tmp/n01.json"));print(d.get("commitShaShort") or "")' 2>/dev/null || true)"
+            OK="$(python3 -c 'import json;d=json.load(open("/tmp/n01.json"));print(d.get("ok"))' 2>/dev/null || true)"
+            ERR="$(python3 -c 'import json;d=json.load(open("/tmp/n01.json"));print(d.get("error") or "")' 2>/dev/null || true)"
+            echo "probe=${i} production_commit_sha_short=${PROD_SHA} ok=${OK} error=${ERR}"
+            if [ -n "${EXPECTED_SHA_SHORT}" ] && [ "${PROD_SHA}" = "${EXPECTED_SHA_SHORT}" ] && [ "${OK}" = "True" ]; then
+              READY=1
+              break
+            fi
+            if [ "${APP_CODE_CHANGED}" = "0" ] && [ -n "${PROD_SHA}" ] && [ "${OK}" = "True" ]; then
+              echo "workflow_only_change=true smoking_live_production_sha=${PROD_SHA}"
+              READY=1
+              break
+            fi
+            sleep 15
+          done
+          if [ -z "${READY}" ]; then
+            echo "::error::Production plan-capability not ready. Soft-success forbidden."
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import json,sys
+          d=json.load(open("/tmp/n01.json"))
+          keys=(
+            "ok","planCatalogHonest","premiumMediaLimitsOff","mediaFlagsDefaultOff",
+            "quickPresetsHonest","landingExamplesHonest","workflowLabelsHonest",
+            "openaiImagesComingSoon","visionNotGatedOnImageGen",
+            "offeredPremiumFeaturesPresent","memoryNotSot","failClosed",
+          )
+          print({k:d.get(k) for k in keys})
+          failures=[f"{k}!=true" for k in keys if d.get(k) is not True]
+          if failures:
+            print("::error::N-01 Production plan-capability failed:", ", ".join(failures))
+            sys.exit(1)
+          print("n01_production_plan_capability=pass")
+          PY

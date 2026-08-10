@@ -97,15 +97,17 @@ describe("billing access enforcement", () => {
     ).toBe("premium");
   });
 
-  it("allows premium image and video features", async () => {
+  it("denies image/video generation on every plan including premium (N-01)", async () => {
     const { evaluateBillingFeature } = await import("@/lib/billing/access");
     await setPlan("user_prem", "premium");
-    expect(
-      (await evaluateBillingFeature("user_prem", "image_generation")).denial,
-    ).toBeNull();
-    expect(
-      (await evaluateBillingFeature("user_prem", "video_generation")).denial,
-    ).toBeNull();
+    const image = await evaluateBillingFeature("user_prem", "image_generation");
+    const video = await evaluateBillingFeature("user_prem", "video_generation");
+    expect(image.denial).not.toBeNull();
+    expect(video.denial).not.toBeNull();
+    expect(image.denial?.requiredPlan).toBeNull();
+    expect(video.denial?.requiredPlan).toBeNull();
+    expect(image.denial?.reason).toContain("現在ご利用いただけません");
+    expect(video.denial?.reason).toContain("現在ご利用いただけません");
   });
 
   it("treats trialing as entitled and past_due/canceled as free limits", async () => {

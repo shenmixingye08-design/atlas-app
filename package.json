@@ -19,6 +19,7 @@
     "ci:p2-01-api-contract-ban": "node scripts/ci/p2-01-api-contract-ban.mjs",
     "ci:p2-02-nonword-quality-gate-ban": "node scripts/ci/p2-02-nonword-quality-gate-ban.mjs",
     "ci:p2-03-worker-scale-ban": "node scripts/ci/p2-03-worker-scale-ban.mjs",
+    "ci:n01-premium-capability-ban": "node scripts/ci/n01-premium-capability-ban.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:api-contracts": "vitest run lib/api-contracts",
@@ -30,6 +31,7 @@
     "test:company-template": "vitest run lib/company-templates/p3-02-company-template-tenant.test.ts",
     "test:excel-advanced": "vitest run lib/deliverables/excel-advanced/p3-03-advanced-excel.test.ts",
     "test:pptx-design": "vitest run lib/deliverables/pptx-templates/p3-04-pptx-design.test.ts",
+    "test:plan-capability": "vitest run lib/billing/plans/n01-premium-capability-honesty.test.ts",
 
     "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts",
     "test:p06-e2e": "P06_E2E_RUNS=20 vitest run lib/reliability/p06-e2e-ops-verification.test.ts",

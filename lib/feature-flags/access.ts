@@ -54,6 +54,15 @@ export function isFeatureEnabled(
   id: FeatureFlagId,
   context: FeatureAccessContext,
 ): boolean {
+  // N-01: Media generation is not a Production-offered capability.
+  // Keep a hard closed gate for non-owners even if an owner toggles the flag
+  // on a single instance (flags are not a durable SoT).
+  if (
+    (id === "video_generation" || id === "image_generation") &&
+    !context.isOwner
+  ) {
+    return false;
+  }
   const state = getFeatureFlagState(id);
   return isFeatureAvailableForContext(state, context);
 }

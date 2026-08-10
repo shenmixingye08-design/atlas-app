@@ -38,7 +38,9 @@ export const CAPABILITY_REGISTRY: readonly CapabilityDefinition[] = [
     description: "画像・資料の視覚解析",
     riskLevel: "low",
     handlerKind: "internal_engine",
-    requiredFeatureFlag: "image_generation",
+    // N-01: Vision/OCR analysis is not image generation. Do not gate on
+    // the unimplemented image_generation billing/flag capability.
+    requiredFeatureFlag: null,
     requiredConnector: null,
     systemRequiresApproval: false,
     invokeContract: "engines.vision.analyze",

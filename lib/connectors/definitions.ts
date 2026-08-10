@@ -75,13 +75,14 @@ export const connectorProviders: readonly ConnectorProviderDefinition[] = [
     id: "openai",
     name: "OpenAI",
     icon: "AI",
-    description: "GPT モデルと画像生成 API。",
-    permissions: ["chat.completions", "images.generate"],
+    description: "GPT モデルによるテキスト生成。",
+    permissions: ["chat.completions"],
     defaultStatus: "available",
     oauth: oauthStub(),
     services: [
       svc("chat", "Chat Completions", "テキスト生成", ["chat.completions"]),
-      svc("images", "Images", "画像生成", ["images.generate"]),
+      // N-01: Image generation is not an offered Production capability.
+      svc("images", "Images", "画像生成", ["images.generate"], "coming_soon"),
     ],
   },
   {

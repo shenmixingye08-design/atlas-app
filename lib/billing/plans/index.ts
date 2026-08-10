@@ -17,6 +17,15 @@ export {
 } from "./registry";
 
 export {
+  assertPlanCatalogMediaGenerationHonesty,
+  FORBIDDEN_MEDIA_GENERATION_CLAIM_PATTERNS,
+  isBillingFeatureOfferedOnAnyPlan,
+  isProductionUnofferedBillingFeature,
+  PRODUCTION_UNOFFERED_BILLING_FEATURES,
+  resolveMinimumOfferedPlanForFeature,
+} from "./offered-capabilities";
+
+export {
   canUseEcoMode,
   canUseGoogleIntegration,
   canUseHighQualityMode,

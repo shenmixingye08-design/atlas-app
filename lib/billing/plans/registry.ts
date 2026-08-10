@@ -18,6 +18,11 @@ const STANDARD_FEATURES = [
   "eco_mode",
 ] as const satisfies readonly BillingFeatureId[];
 
+/**
+ * Premium entitlements that are actually offered in Production.
+ * N-01: video_generation / image_generation are intentionally absent —
+ * they must never appear as paid unlocks until real engines ship.
+ */
 const PREMIUM_FEATURES = [
   "content_writing",
   "sns_assist",
@@ -29,8 +34,6 @@ const PREMIUM_FEATURES = [
   "multi_external_integration",
   "high_quality_mode",
   "priority_processing",
-  "video_generation",
-  "image_generation",
 ] as const satisfies readonly BillingFeatureId[];
 
 export const PLAN_DEFINITIONS: readonly PlanDefinition[] = [
@@ -105,8 +108,8 @@ export const PLAN_DEFINITIONS: readonly PlanDefinition[] = [
       automationTasks: 50,
       snsPostsMonthly: 500,
       highQualityMode: true,
-      videoGeneration: true,
-      imageGeneration: true,
+      videoGeneration: false,
+      imageGeneration: false,
       features: PREMIUM_FEATURES,
     },
     highlights: [

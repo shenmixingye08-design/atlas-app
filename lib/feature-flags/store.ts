@@ -17,6 +17,9 @@ const DEFAULT_STATE_BY_ID: Partial<Record<FeatureFlagId, FeatureFlagState>> = {
   automation_memory_enabled: "off",
   automation_approval_enabled: "off",
   workflow_learning_enabled: "off",
+  // N-01: media generation engines are not Production-ready — never default ON.
+  video_generation: "off",
+  image_generation: "off",
 };
 
 function nowIso(): string {
