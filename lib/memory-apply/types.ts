@@ -74,6 +74,10 @@ export type MemoryDeliverableOverlay = {
     brandColorHex: string | null;
     fontFace: string | null;
     titleAlign: "left" | "center" | "right" | null;
+    /** P3-04 design template id */
+    templateId: string | null;
+    theme: string | null;
+    logoDataUrl: string | null;
   };
   pdf: {
     brandColorHex: string | null;

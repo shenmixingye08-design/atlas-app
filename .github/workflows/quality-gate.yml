@@ -93,6 +93,9 @@ jobs:
       - name: P3-03 Advanced Excel ban
         run: node scripts/ci/p3-03-advanced-excel-ban.mjs
 
+      - name: P3-04 PPTX design templates ban
+        run: node scripts/ci/p3-04-pptx-design-ban.mjs
+
       - name: P0-5 durable X scheduled posts ban
         run: node scripts/ci/p0-5-x-scheduled-posts-ban.mjs
 
@@ -163,6 +166,12 @@ jobs:
 
       - name: P3-03 Advanced Excel
         run: npm run test:excel-advanced
+        env:
+          TZ: UTC
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: P3-04 PPTX design templates
+        run: npm run test:pptx-design
         env:
           TZ: UTC
           NODE_OPTIONS: --max-old-space-size=8192

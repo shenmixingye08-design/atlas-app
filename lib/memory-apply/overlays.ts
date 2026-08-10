@@ -256,7 +256,20 @@ export function buildDeliverableOverlay(
     powerpoint: {
       brandColorHex: brandColorHex?.replace(/^#/, "") ?? null,
       fontFace: defaultFont,
-      titleAlign: "center",
+      titleAlign: (() => {
+        const raw = readField(values, ["titleAlign", "title_align", "整列"]);
+        if (raw === "left" || raw === "right" || raw === "center") return raw;
+        return "center";
+      })(),
+      templateId:
+        readField(values, [
+          "pptxTemplateId",
+          "powerpoint_template",
+          "ppt_template",
+          "templateId",
+        ]) ?? null,
+      theme: readField(values, ["powerpoint_theme", "ppt_theme", "theme"]) ?? null,
+      logoDataUrl: brand?.logoDataUrl ?? null,
     },
     pdf: {
       brandColorHex: brandColorHex?.replace(/^#/, "") ?? null,
