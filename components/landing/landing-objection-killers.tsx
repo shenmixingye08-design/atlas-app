@@ -17,7 +17,7 @@ const OBJECTIONS = [
   },
   {
     fear: "本当に動く？",
-    kill: "ホームページ上に、実ファイルの完成見本（Word / Excel / PDF）があります。開いて確認できます。",
+    kill: "ホームページ上に、実ファイルの完成見本（Word / Excel / PowerPoint / PDF）があります。開いて確認できます。",
   },
 ] as const;
 

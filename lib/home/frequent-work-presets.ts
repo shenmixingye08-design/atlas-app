@@ -14,8 +14,8 @@ export const HOME_FREQUENT_WORK_PRESETS: readonly QuickRequestPreset[] = [
   },
   {
     id: "sales",
-    label: "営業資料",
-    prompt: "営業資料を作ってください",
+    label: "PowerPoint",
+    prompt: "営業資料をPowerPointで作ってください",
   },
   {
     id: "email",

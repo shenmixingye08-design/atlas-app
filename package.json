@@ -25,6 +25,7 @@
     "ci:n08-automation-unify-ban": "node scripts/ci/n08-automation-unify-ban.mjs",
     "ci:n07-soft-success-ban": "node scripts/ci/n07-soft-success-ban.mjs",
     "ci:n04-stub-exposure-ban": "node scripts/ci/n04-stub-exposure-ban.mjs",
+    "ci:n03-powerpoint-product-surface-ban": "node scripts/ci/n03-powerpoint-product-surface-ban.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:api-contracts": "vitest run lib/api-contracts",
@@ -42,6 +43,7 @@
     "test:n08-automation-unify": "vitest run lib/automations/canonical/n08-automation-unify.test.ts",
     "test:n07-soft-success": "vitest run lib/notifications/n07-soft-success.test.ts",
     "test:n04-stub-exposure": "vitest run lib/integrations/n04-stub-exposure.test.ts",
+    "test:n03-powerpoint-product-surface": "vitest run lib/deliverables/n03-powerpoint-product-surface.test.ts",
 
     "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts",
     "test:p06-e2e": "P06_E2E_RUNS=20 vitest run lib/reliability/p06-e2e-ops-verification.test.ts",

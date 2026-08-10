@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { DocxDeliverableGenerator } from "@/lib/deliverables/generators/docx-generator";
 import { PdfDeliverableGenerator } from "@/lib/deliverables/generators/pdf-generator";
 import { PlainTextDeliverableGenerator } from "@/lib/deliverables/generators/plain-text-generator";
+import { PptxDeliverableGenerator } from "@/lib/deliverables/generators/pptx-generator";
 import { XlsxDeliverableGenerator } from "@/lib/deliverables/generators/xlsx-generator";
 import { verifyGeneratedExportAsync } from "@/lib/deliverables/export-verify";
 
@@ -18,6 +19,7 @@ import {
   PROOF_DOCX_BODY,
   PROOF_EMAIL_SAMPLE,
   PROOF_PDF_BODY,
+  PROOF_PPTX_BODY,
   PROOF_SNS_SAMPLE,
   PROOF_XLSX_BODY,
   creationSecFromMs,
@@ -29,7 +31,7 @@ const OUT_DIR = join(process.cwd(), "public", "samples");
 
 describe("landing proof sample generation", () => {
   it(
-    "writes openable Word/Excel/PDF + text samples with measured creationMs",
+    "writes openable Word/Excel/PowerPoint/PDF + text samples with measured creationMs",
     async () => {
       mkdirSync(OUT_DIR, { recursive: true });
       const measuredAt = new Date().toISOString();
@@ -94,6 +96,30 @@ describe("landing proof sample generation", () => {
         bytes: xlsx.buffer.byteLength,
         creationMs: xlsx.creationMs,
         generator: "XlsxDeliverableGenerator",
+      });
+
+      const pptx = await timed(() =>
+        new PptxDeliverableGenerator().generate(
+          PROOF_PPTX_BODY,
+          "minervot-sample-sales-deck",
+          {
+            title: "営業提案スライド（見本）",
+            assignment: "営業資料をPowerPointで作ってください（見本）",
+          },
+        ),
+      );
+      expect((await verifyGeneratedExportAsync(pptx)).ok).toBe(true);
+      // OOXML packages are ZIP files (PK header).
+      expect(pptx.buffer.subarray(0, 2).toString("utf8")).toBe("PK");
+      writeFileSync(join(OUT_DIR, "sales-deck.pptx"), pptx.buffer);
+      pushEntry({
+        id: "pptx-sales-deck",
+        kind: "pptx",
+        fileName: "sales-deck.pptx",
+        href: "/samples/sales-deck.pptx",
+        bytes: pptx.buffer.byteLength,
+        creationMs: pptx.creationMs,
+        generator: "PptxDeliverableGenerator",
       });
 
       const pdf = await timed(() =>
@@ -172,7 +198,7 @@ describe("landing proof sample generation", () => {
         `${JSON.stringify(manifest, null, 2)}\n`,
       );
 
-      expect(entries).toHaveLength(5);
+      expect(entries).toHaveLength(6);
       for (const entry of entries) {
         expect(entry.creationMs).toBeGreaterThan(0);
         expect(entry.bytes ?? 0).toBeGreaterThan(20);

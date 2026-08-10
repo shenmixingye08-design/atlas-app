@@ -32,9 +32,9 @@ export const QUICK_REQUEST_PRESETS: readonly QuickRequestPreset[] = [
   },
   {
     id: "materials",
-    label: "資料作成",
+    label: "PowerPoint資料",
     prompt:
-      "営業資料を作ってください。目的・課題・提案・効果・次のアクションが伝わる構成にしてください。",
+      "営業資料をPowerPointで作ってください。目的・課題・提案・効果・次のアクションが伝わるスライド構成にしてください。",
   },
   {
     id: "minutes",

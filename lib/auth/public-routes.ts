@@ -88,6 +88,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/health/n08-automation-unify(.*)",
   "/api/health/n07-soft-success(.*)",
   "/api/health/n04-stub-exposure(.*)",
+  "/api/health/n03-powerpoint-product-surface(.*)",
   "/api/health/vision(.*)",
   "/api/contact(.*)",
   "/api/automations/tick(.*)",

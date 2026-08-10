@@ -10,7 +10,7 @@ describe("QUICK_REQUEST_PRESETS", () => {
       "X投稿を作る",
       "ブログを書く",
       "営業メール作成",
-      "資料作成",
+      "PowerPoint資料",
       "議事録作成",
       "市場調査",
     ]);
@@ -22,8 +22,10 @@ describe("QUICK_REQUEST_PRESETS", () => {
     }
   });
 
-  it("maps materials preset to sales material wizard trigger text", () => {
+  it("maps materials preset to PowerPoint sales-material trigger text", () => {
     const materials = QUICK_REQUEST_PRESETS.find((item) => item.id === "materials");
-    expect(materials?.prompt).toContain("営業資料を作ってください");
+    expect(materials?.label).toContain("PowerPoint");
+    expect(materials?.prompt).toContain("PowerPoint");
+    expect(materials?.prompt).toContain("営業資料");
   });
 });

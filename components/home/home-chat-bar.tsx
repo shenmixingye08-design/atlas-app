@@ -165,6 +165,7 @@ export function HomeChatBar() {
                   <option value="auto">自動判定</option>
                   <option value="xlsx">Excel</option>
                   <option value="docx">Word</option>
+                  <option value="pptx">PowerPoint</option>
                   <option value="pdf">PDF</option>
                   <option value="txt">テキスト</option>
                 </select>

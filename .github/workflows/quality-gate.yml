@@ -114,6 +114,9 @@ jobs:
       - name: N-04 Notion/YouTube stub exposure ban
         run: node scripts/ci/n04-stub-exposure-ban.mjs
 
+      - name: N-03 PowerPoint product surface ban
+        run: node scripts/ci/n03-powerpoint-product-surface-ban.mjs
+
       - name: P0-5 durable X scheduled posts ban
         run: node scripts/ci/p0-5-x-scheduled-posts-ban.mjs
 
@@ -230,6 +233,12 @@ jobs:
 
       - name: N-04 Notion/YouTube stub exposure
         run: npm run test:n04-stub-exposure
+        env:
+          TZ: UTC
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: N-03 PowerPoint product surface
+        run: npm run test:n03-powerpoint-product-surface
         env:
           TZ: UTC
           NODE_OPTIONS: --max-old-space-size=8192

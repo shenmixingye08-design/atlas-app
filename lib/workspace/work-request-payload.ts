@@ -10,6 +10,7 @@ export type PreferredDeliverableFormat =
   | "auto"
   | "xlsx"
   | "docx"
+  | "pptx"
   | "pdf"
   | "txt";
 

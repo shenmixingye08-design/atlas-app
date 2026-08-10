@@ -55,6 +55,31 @@ const FORMAT_RULES: readonly FormatRule[] = [
     formats: ["xlsx", "pdf", "docx"],
   },
   {
+    // N-03: explicit PowerPoint / パワポ intents must require pptx export.
+    id: "powerpoint",
+    keywords: [
+      "powerpoint",
+      "power point",
+      "パワーポイント",
+      "ぱわーぽいんと",
+      "パワポ",
+      "ぱわぽ",
+      "pptx",
+      ".pptx",
+      "powerpointで",
+      "パワーポイントで",
+      "パワポで",
+      "powerpointにして",
+      "パワーポイントにして",
+      "パワポにして",
+      "スライドを作",
+      "スライド作成",
+      "プレゼンを作",
+      "プレゼン作成",
+    ],
+    formats: ["pptx", "pdf"],
+  },
+  {
     id: "sales-deck",
     keywords: [
       "営業資料",
@@ -111,6 +136,62 @@ const DEFAULT_FORMATS: readonly DeliverableFormat[] = ["md", "txt", "pdf"];
 
 function normalizeHaystack(value: string): string {
   return value.toLowerCase();
+}
+
+/** True when the user explicitly needs a PowerPoint (.pptx) file. */
+export function assignmentRequestsPowerpoint(
+  assignment: string,
+  metadata?: Readonly<Record<string, unknown>> | null,
+): boolean {
+  const preferred = metadata?.preferredDeliverableFormat;
+  if (typeof preferred === "string") {
+    const normalized = preferred.trim().toLowerCase();
+    if (
+      normalized === "pptx" ||
+      normalized === "powerpoint" ||
+      normalized === "ppt"
+    ) {
+      return true;
+    }
+    if (
+      normalized === "pdf" ||
+      normalized === "xlsx" ||
+      normalized === "docx" ||
+      normalized === "md" ||
+      normalized === "txt"
+    ) {
+      return false;
+    }
+  }
+
+  const haystack = normalizeHaystack(assignment);
+  const explicitHints = [
+    "powerpoint",
+    "power point",
+    "パワーポイント",
+    "パワポ",
+    "pptx",
+    ".pptx",
+    "スライドを作",
+    "スライド作成",
+    "プレゼンを作",
+    "プレゼン作成",
+    "プレゼン資料",
+    "営業資料",
+  ] as const;
+  if (explicitHints.some((hint) => haystack.includes(hint.toLowerCase()))) {
+    return true;
+  }
+
+  const detection = detectDeliverableFormats(assignment);
+  if (
+    detection.matchedRule &&
+    !detection.matchedRule.endsWith(":default") &&
+    detection.formats.includes("pptx")
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /** True when the user explicitly needs a Word (.docx) file — not company defaults. */

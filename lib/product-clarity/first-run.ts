@@ -16,7 +16,7 @@ export function isClarityFirstRun(
   return onboarding.firstExperienceCompleted !== true;
 }
 
-/** Show Word/Excel/PDF format picker only after first success. */
+/** Show Word/Excel/PowerPoint/PDF format picker only after first success. */
 export function shouldShowDeliverableFormatPicker(
   profile: UserWorkProfile = loadUserWorkProfile(),
 ): boolean {
