@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getSupabaseServiceRoleEnv } from "@/lib/supabase/env";
+import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
 import type { ResolveJwtSecretResult } from "./types";
 
@@ -32,11 +33,51 @@ function readEnvSecret(): string | null {
  * Cache is NOT SoT — authorization decisions always go through live PostgREST RLS.
  */
 let cached:
-  | { secret: string; source: "env" | "management_api"; expiresAtMs: number }
+  | {
+      secret: string;
+      source: "env" | "management_api" | "db_bridge";
+      expiresAtMs: number;
+    }
   | null = null;
 
 export function clearJwtSecretCacheForTests(): void {
   cached = null;
+}
+
+async function fetchJwtSecretFromDbBridge(): Promise<{
+  secret: string | null;
+  error: string | null;
+}> {
+  const client = createServiceRoleClientIfConfigured();
+  if (!client) {
+    return { secret: null, error: "supabase_service_role_not_configured" };
+  }
+  try {
+    const { data, error } = await client
+      .from("atlas_jwt_rls_bridge_secret")
+      .select("secret")
+      .eq("id", "default")
+      .maybeSingle();
+    if (error) {
+      if (/schema cache|does not exist/i.test(error.message)) {
+        return { secret: null, error: "bridge_secret_table_missing" };
+      }
+      return { secret: null, error: error.message };
+    }
+    const secret =
+      data && typeof (data as { secret?: unknown }).secret === "string"
+        ? String((data as { secret: string }).secret).trim()
+        : "";
+    if (!secret || secret.length < 16) {
+      return { secret: null, error: "bridge_secret_absent" };
+    }
+    return { secret, error: null };
+  } catch (error) {
+    return {
+      secret: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function fetchJwtSecretViaManagementApi(): Promise<{
@@ -91,7 +132,8 @@ async function fetchJwtSecretViaManagementApi(): Promise<{
 
 /**
  * Resolve Supabase JWT signing secret for Clerk↔Supabase bridge.
- * Order: env → Management API postgrest config. Fail-closed when neither works.
+ * Order: env → Postgres bridge table (CI-synced) → Management API.
+ * Fail-closed when none work.
  */
 export async function resolveSupabaseJwtSecret(options?: {
   forceRefresh?: boolean;
@@ -116,6 +158,16 @@ export async function resolveSupabaseJwtSecret(options?: {
     return { ok: true, secret: fromEnv, source: "env" };
   }
 
+  const fromDb = await fetchJwtSecretFromDbBridge();
+  if (fromDb.secret) {
+    cached = {
+      secret: fromDb.secret,
+      source: "db_bridge",
+      expiresAtMs: now + 5 * 60_000,
+    };
+    return { ok: true, secret: fromDb.secret, source: "db_bridge" };
+  }
+
   const fromApi = await fetchJwtSecretViaManagementApi();
   if (fromApi.secret) {
     cached = {
@@ -131,6 +183,25 @@ export async function resolveSupabaseJwtSecret(options?: {
     ok: false,
     secret: null,
     source: "none",
-    error: fromApi.error ?? "supabase_jwt_secret_not_configured",
+    error:
+      fromDb.error && fromDb.error !== "bridge_secret_absent"
+        ? fromDb.error
+        : (fromApi.error ?? "supabase_jwt_secret_not_configured"),
+  };
+}
+
+/** Env presence flags only — never values. */
+export function getJwtSecretEnvPresence(): {
+  supabaseJwtSecret: boolean;
+  supabaseAccessToken: boolean;
+  serviceRole: boolean;
+} {
+  return {
+    supabaseJwtSecret: Boolean(readEnvSecret()),
+    supabaseAccessToken: Boolean(
+      process.env.SUPABASE_ACCESS_TOKEN?.trim() ||
+        process.env.SUPABASE_MANAGEMENT_TOKEN?.trim(),
+    ),
+    serviceRole: Boolean(getSupabaseServiceRoleEnv()),
   };
 }

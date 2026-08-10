@@ -24,6 +24,7 @@ const required = [
   "docs/development/feature-evaluation-p3-01-jwt-rls.md",
   "supabase/migrations/20260810_p3_01_jwt_rls.sql",
   ".github/workflows/verify-jwt-rls-production.yml",
+  "scripts/ci/sync-jwt-rls-bridge-secret.mjs",
 ];
 
 for (const f of required) {

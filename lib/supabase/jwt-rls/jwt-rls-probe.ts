@@ -15,7 +15,10 @@ import {
   createClerkJwtSupabaseClient,
 } from "./client";
 import { mintClerkSupabaseJwt } from "./mint-clerk-jwt";
-import { resolveSupabaseJwtSecret } from "./resolve-jwt-secret";
+import {
+  getJwtSecretEnvPresence,
+  resolveSupabaseJwtSecret,
+} from "./resolve-jwt-secret";
 import {
   applyJwtRlsMigration,
   deleteJwtRlsSubjectsByIds,
@@ -46,7 +49,8 @@ export type JwtRlsProbeResult = {
   anonDenied: boolean;
   forgedJwtDenied: boolean;
   projectsJwtPolicyOk: boolean;
-  secretSource: "env" | "management_api" | "none";
+  secretSource: "env" | "management_api" | "db_bridge" | "none";
+  ownerActionRequired: boolean;
   error: string | null;
   commitShaShort: string;
   environment: string;
@@ -81,6 +85,7 @@ function baseFail(
     forgedJwtDenied: false,
     projectsJwtPolicyOk: false,
     secretSource: "none",
+    ownerActionRequired: true,
     error,
     commitShaShort,
     environment,
@@ -152,27 +157,30 @@ async function probeOnce(): Promise<JwtRlsProbeResult> {
   const correlationId = `corr_p301_${randomUUID()}`;
 
   try {
-    // Fail-closed when secret missing (before/without table work).
+    // Apply DDL first so CI-synced bridge secret table / RLS policies exist.
+    await applyJwtRlsMigration();
+    const table = await ensureTable();
+
     const secret = await resolveSupabaseJwtSecret({ forceRefresh: true });
+    const envPresence = getJwtSecretEnvPresence();
     if (!secret.ok) {
       return baseFail(secret.error || "supabase_jwt_secret_not_configured", {
         failClosed: true,
+        tableOk: table.ok,
         secretSource: "none",
+        ownerActionRequired: true,
         commitShaShort,
         environment,
       });
     }
 
-    const table = await ensureTable();
-    // Re-apply policies even when table already exists (idempotent).
-    await applyJwtRlsMigration();
     if (!table.ok) {
       return baseFail(table.error ?? "table_unavailable", {
         failClosed: true,
         secretSource: secret.source,
+        ownerActionRequired: !envPresence.supabaseJwtSecret,
       });
     }
-
     const rowA: JwtRlsSubjectRow = {
       id: `p301_${randomUUID()}`,
       user_id: JWT_RLS_PROBE_USER_A,
@@ -377,6 +385,7 @@ async function probeOnce(): Promise<JwtRlsProbeResult> {
       forgedJwtDenied,
       projectsJwtPolicyOk,
       secretSource: secret.source,
+      ownerActionRequired: false,
       error: ok
         ? null
         : [

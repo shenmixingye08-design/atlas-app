@@ -60,6 +60,29 @@ create policy "atlas_jwt_rls_subjects_delete_own"
 comment on table public.atlas_jwt_rls_subjects is
   'P3-01 JWT連携RLS subjects. Authenticated JWT sub must equal user_id. Service role bypasses RLS.';
 
+-- Bridge signing secret cache (service role only). Preferred source remains env SUPABASE_JWT_SECRET.
+-- Populated by CI sync from Supabase Management API when Vercel env is absent.
+create table if not exists public.atlas_jwt_rls_bridge_secret (
+  id text primary key,
+  secret text not null,
+  source text not null default 'unknown',
+  updated_at timestamptz not null default now(),
+  constraint atlas_jwt_rls_bridge_secret_singleton check (id = 'default')
+);
+
+alter table public.atlas_jwt_rls_bridge_secret enable row level security;
+
+drop policy if exists "atlas_jwt_rls_bridge_secret_deny_all" on public.atlas_jwt_rls_bridge_secret;
+create policy "atlas_jwt_rls_bridge_secret_deny_all"
+  on public.atlas_jwt_rls_bridge_secret
+  for all
+  to anon, authenticated
+  using (false)
+  with check (false);
+
+comment on table public.atlas_jwt_rls_bridge_secret is
+  'P3-01 JWT bridge signing secret cache. Service role only. Never expose via public API.';
+
 -- projects: enable JWT-linked access for own rows (Clerk sub ↔ user_id).
 do $$
 begin

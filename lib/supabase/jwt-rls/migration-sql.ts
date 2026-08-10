@@ -56,6 +56,24 @@ create policy "atlas_jwt_rls_subjects_delete_own"
   to authenticated
   using (user_id = (auth.jwt() ->> 'sub'));
 
+create table if not exists public.atlas_jwt_rls_bridge_secret (
+  id text primary key,
+  secret text not null,
+  source text not null default 'unknown',
+  updated_at timestamptz not null default now(),
+  constraint atlas_jwt_rls_bridge_secret_singleton check (id = 'default')
+);
+
+alter table public.atlas_jwt_rls_bridge_secret enable row level security;
+
+drop policy if exists "atlas_jwt_rls_bridge_secret_deny_all" on public.atlas_jwt_rls_bridge_secret;
+create policy "atlas_jwt_rls_bridge_secret_deny_all"
+  on public.atlas_jwt_rls_bridge_secret
+  for all
+  to anon, authenticated
+  using (false)
+  with check (false);
+
 do $$
 begin
   if to_regclass('public.projects') is null then
