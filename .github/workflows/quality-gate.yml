@@ -117,6 +117,9 @@ jobs:
       - name: N-03 PowerPoint product surface ban
         run: node scripts/ci/n03-powerpoint-product-surface-ban.mjs
 
+      - name: CORE LOOP E2E harness ban
+        run: node scripts/ci/core-loop-e2e-harness-ban.mjs
+
       - name: P0-5 durable X scheduled posts ban
         run: node scripts/ci/p0-5-x-scheduled-posts-ban.mjs
 

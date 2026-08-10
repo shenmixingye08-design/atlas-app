@@ -1,0 +1,92 @@
+# Production CORE LOOP E2E — dedicated Clerk user + Sign-in Token (no auth bypass).
+# Secrets required: CLERK_SECRET_KEY, E2E_CLERK_USER_ID, E2E_CLERK_USER_B_ID
+# Manual only: does not run on every push (AI cost).
+name: Verify CORE LOOP Production E2E
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-loop-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Guard — required Secrets present (names only)
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          E2E_CLERK_USER_ID: ${{ secrets.E2E_CLERK_USER_ID }}
+          E2E_CLERK_USER_B_ID: ${{ secrets.E2E_CLERK_USER_B_ID }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in CLERK_SECRET_KEY E2E_CLERK_USER_ID E2E_CLERK_USER_B_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing GitHub Secret: ${name}. See docs/development/core-loop-production-e2e-setup.md"
+              missing=1
+            else
+              echo "secret_present=${name}"
+            fi
+          done
+          if [ "${missing}" = "1" ]; then
+            exit 2
+          fi
+          case "${CLERK_SECRET_KEY}" in
+            sk_live_*) echo "clerk_secret_prefix=sk_live_" ;;
+            *)
+              echo "::error::CLERK_SECRET_KEY must be Production sk_live_"
+              exit 2
+              ;;
+          esac
+
+      - name: Run Production CORE LOOP E2E
+        id: e2e
+        env:
+          ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          E2E_CLERK_USER_ID: ${{ secrets.E2E_CLERK_USER_ID }}
+          E2E_CLERK_USER_B_ID: ${{ secrets.E2E_CLERK_USER_B_ID }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CORE_LOOP_E2E_OUT: ${{ runner.temp }}/core-loop-e2e
+        run: |
+          set -euo pipefail
+          export ATLAS_APP_URL="${ATLAS_APP_URL:-https://atlasapp.jp}"
+          mkdir -p "${CORE_LOOP_E2E_OUT}"
+          set +e
+          node scripts/ci/core-loop-production-e2e.mjs
+          code=$?
+          set -e
+          echo "e2e_exit=${code}"
+          if [ "${code}" = "2" ]; then
+            echo "::error::OWNER_SETUP_REQUIRED — configure Clerk users + GitHub Secrets (docs/development/core-loop-production-e2e-setup.md)"
+            exit 2
+          fi
+          if [ "${code}" != "0" ]; then
+            echo "::error::CORE LOOP Production E2E FAILED"
+            exit 1
+          fi
+          echo "core_loop_production_e2e=pass"
+
+      - name: Upload redacted evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-loop-e2e-evidence
+          path: ${{ runner.temp }}/core-loop-e2e/
+          if-no-files-found: warn
+          retention-days: 14
