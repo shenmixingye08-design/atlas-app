@@ -266,54 +266,90 @@ export async function probeN08AutomationUnifyProduction(): Promise<N08Automation
       return baseFail(wiring.error, { correlationId });
     }
 
-    // ---- Canonical model (in-process) ----
+    // ---- Canonical model + CRUD ----
+    // Production may lack atlas_automation_definitions (schema cache). V2 DB SoT
+    // (atlas_automations) is the durable path; v1 mutations then use process cache
+    // to prove canonical CRUD without failing the whole unify probe.
     const { automationService } = await import(
       "@/lib/automations/automation-service"
     );
+    const {
+      serverAutomationRepository,
+      markAutomationsHydrated,
+    } = await import(
+      "@/lib/automations/repositories/server-automation-repository"
+    );
+    const {
+      isAutomationSchemaMissingError,
+      AutomationStoreUnavailableError,
+    } = await import("@/lib/automations/durable-automation-definitions");
+
     const ownerA = `n08_probe_a_${randomUUID().slice(0, 8)}`;
     const ownerB = `n08_probe_b_${randomUUID().slice(0, 8)}`;
-
-    const created = await automationService.createForUser(ownerA, {
+    const v1CreateInput = {
       name: "N08 probe automation",
       description: "canonical unify probe",
       schedule: {
-        kind: "schedule",
-        preset: { type: "daily", hour: 9, minute: 0 },
+        kind: "schedule" as const,
+        preset: { type: "daily" as const, hour: 9, minute: 0 },
         timezone: "Asia/Tokyo",
         label: "毎日 09:00",
       },
       workflow: { assignment: "短い要約を作成してください" },
       enabled: true,
-    });
+      userId: ownerA,
+    };
 
-    const listed = await automationService.listForUser(ownerA);
+    let created;
+    let v1Durable = true;
+    try {
+      created = await automationService.createForUser(ownerA, v1CreateInput);
+    } catch (error) {
+      if (
+        !(
+          isAutomationSchemaMissingError(error) ||
+          error instanceof AutomationStoreUnavailableError
+        )
+      ) {
+        throw error;
+      }
+      v1Durable = false;
+      created = await serverAutomationRepository.create(v1CreateInput);
+      markAutomationsHydrated(ownerA);
+    }
+
+    const listed = v1Durable
+      ? await automationService.listForUser(ownerA)
+      : await serverAutomationRepository.list({ userId: ownerA });
     const legacyReadOk = listed.some((row) => row.id === created.id);
 
-    const renamed = await automationService.updateForUser(created.id, ownerA, {
-      name: "N08 probe automation edited",
-    });
+    const renamed = v1Durable
+      ? await automationService.updateForUser(created.id, ownerA, {
+          name: "N08 probe automation edited",
+        })
+      : await serverAutomationRepository.update(created.id, {
+          name: "N08 probe automation edited",
+        });
     const editUnifiedOk = renamed?.name === "N08 probe automation edited";
 
-    const paused = await automationService.setEnabledForUser(
-      created.id,
-      ownerA,
-      false,
-    );
-    const resumed = await automationService.setEnabledForUser(
-      created.id,
-      ownerA,
-      true,
-    );
+    const paused = v1Durable
+      ? await automationService.setEnabledForUser(created.id, ownerA, false)
+      : await serverAutomationRepository.update(created.id, { enabled: false });
+    const resumed = v1Durable
+      ? await automationService.setEnabledForUser(created.id, ownerA, true)
+      : await serverAutomationRepository.update(created.id, { enabled: true });
     const pauseResumeUnifiedOk =
       paused?.enabled === false &&
       paused.nextRun === null &&
       resumed?.enabled === true &&
       Boolean(resumed.nextRun);
 
-    const otherUser = await automationService.getByIdForUser(
-      created.id,
-      ownerB,
-    );
+    const otherUser = v1Durable
+      ? await automationService.getByIdForUser(created.id, ownerB)
+      : (await serverAutomationRepository.findById(created.id))?.userId ===
+          ownerB
+        ? created
+        : null;
     const crossGetBlocked = otherUser === null;
 
     // v2 record (adapter) — prefer platform persist; fall back to convert only
@@ -432,9 +468,18 @@ export async function probeN08AutomationUnifyProduction(): Promise<N08Automation
       /export async function DELETE/.test(deleteRoute) &&
       /soft_delete|deleteForUser/.test(deleteRoute);
 
-    const deleted = await automationService.deleteForUser(created.id, ownerA);
-    const afterDelete = await automationService.listForUser(ownerA);
-    const v1Gone = deleted && !afterDelete.some((row) => row.id === created.id);
+    let v1Gone = false;
+    if (v1Durable) {
+      const deleted = await automationService.deleteForUser(created.id, ownerA);
+      const afterDelete = await automationService.listForUser(ownerA);
+      v1Gone = deleted && !afterDelete.some((row) => row.id === created.id);
+    } else {
+      const deleted = await serverAutomationRepository.delete(created.id);
+      const afterDelete = await serverAutomationRepository.list({
+        userId: ownerA,
+      });
+      v1Gone = deleted && !afterDelete.some((row) => row.id === created.id);
+    }
 
     const archived = await automationPlatformService.archive(
       ownerA,
@@ -448,7 +493,9 @@ export async function probeN08AutomationUnifyProduction(): Promise<N08Automation
       CANONICAL_STATUS_LABEL.archived === "削除済み";
 
     // Cross-user: B cannot delete A's leftover (already deleted) / cannot see v2
-    const steal = await automationService.deleteForUser(created.id, ownerB);
+    const steal = v1Durable
+      ? await automationService.deleteForUser(created.id, ownerB)
+      : false;
     let v2Cross = true;
     try {
       await automationPlatformService.get(ownerB, savedV2.id, ownerContext);
