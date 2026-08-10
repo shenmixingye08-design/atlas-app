@@ -1,16 +1,24 @@
 #!/usr/bin/env node
 /**
- * Production CORE LOOP E2E (dedicated Clerk user + Sign-in Token).
+ * Production CORE LOOP E2E — Clerk official Playwright testing helpers.
  *
- * Auth path (no app bypass):
- *   1) Backend API: POST /v1/sign_in_tokens
- *   2) Backend API: POST /v1/testing_tokens  (Production bot-protection bypass)
- *   3) Load atlasapp.jp so Clerk JS initializes
- *   4) clerk.client.signIn.create({ strategy: 'ticket', ticket }) + setActive
- *   5) Prove session via authenticated API (!= 401)
+ * Auth path (no app bypass, no ticket URL retry):
+ *   1) clerkSetup() — mint Testing Token via Clerk Backend API
+ *   2) createAgentTestingTask({ onBehalfOf: { userId } }) — official session URL
+ *   3) setupClerkTestingToken({ page }) — attach Testing Token to FAPI
+ *   4) page.goto(agentTask.url) — establish Production Clerk session
+ *   5) Prove session via Clerk.user.id + authenticated API (== 200)
+ *
+ * Why not clerk.signIn({ emailAddress })?
+ *   That helper still mints a Sign-in Token and uses strategy:"ticket".
+ *   Production Google-only + prior evidence already showed ticket redemption
+ *   leaves the browser on /sign-in with authApiStatus=401.
+ *   Agent Tasks is Clerk's documented Playwright path for userId-based
+ *   authenticated sessions without the standard sign-in UI.
  *
  * Secrets (never logged):
  *   CLERK_SECRET_KEY
+ *   CLERK_PUBLISHABLE_KEY or NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
  *   E2E_CLERK_USER_ID
  *   E2E_CLERK_USER_B_ID
  * Optional:
@@ -23,6 +31,11 @@
  */
 
 import { chromium } from "playwright";
+import {
+  clerkSetup,
+  createAgentTestingTask,
+  setupClerkTestingToken,
+} from "@clerk/testing/playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -41,6 +54,10 @@ const ASSIGNMENT = [
 ].join("\n");
 
 const CLERK_SECRET = process.env.CLERK_SECRET_KEY?.trim() || "";
+const CLERK_PUBLISHABLE =
+  process.env.CLERK_PUBLISHABLE_KEY?.trim() ||
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim() ||
+  "";
 const USER_A = process.env.E2E_CLERK_USER_ID?.trim() || "";
 const USER_B = process.env.E2E_CLERK_USER_B_ID?.trim() || "";
 
@@ -54,6 +71,9 @@ function assertNoSecretLeak(text) {
   const hay = String(text ?? "");
   if (CLERK_SECRET && hay.includes(CLERK_SECRET)) {
     throw new Error("secrets_redaction_failed: clerk secret leaked");
+  }
+  if (CLERK_PUBLISHABLE && hay.includes(CLERK_PUBLISHABLE)) {
+    throw new Error("secrets_redaction_failed: clerk publishable leaked");
   }
   if (/sk_live_[A-Za-z0-9]+/.test(hay) || /sk_test_[A-Za-z0-9]+/.test(hay)) {
     throw new Error("secrets_redaction_failed: sk_ pattern in evidence");
@@ -75,32 +95,28 @@ function ownerSetupExit(reason) {
 function safeUrlMeta(urlString) {
   try {
     const u = new URL(urlString);
-    const ticketQueryPresent =
-      u.searchParams.has("__clerk_ticket") ||
-      u.searchParams.has("ticket") ||
-      u.pathname.includes("/ticket");
     const redacted = new URL(u.toString());
     for (const key of [
       "__clerk_ticket",
       "ticket",
       "__clerk_testing_token",
       "redirect_url",
+      "token",
     ]) {
       if (redacted.searchParams.has(key)) {
         redacted.searchParams.set(key, "[REDACTED]");
       }
     }
+    // Agent Task accept URLs often embed opaque path tokens — keep origin+pathname only.
     return {
       origin: u.origin,
       pathname: u.pathname,
-      ticketQueryPresent,
-      redactedUrl: `${redacted.origin}${redacted.pathname}${redacted.search}`,
+      redactedUrl: `${redacted.origin}${redacted.pathname}`,
     };
   } catch {
     return {
       origin: null,
       pathname: null,
-      ticketQueryPresent: false,
       redactedUrl: null,
     };
   }
@@ -114,110 +130,88 @@ async function fetchProductionVersion() {
   return { httpStatus: res.status, ...json };
 }
 
-async function clerkBackendPost(path, body) {
-  const res = await fetch(`https://api.clerk.com/v1${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${CLERK_SECRET}`,
-      "Content-Type": "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const text = await res.text();
-  assertNoSecretLeak(text);
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    throw new Error(`clerk_api_invalid_json path=${path} status=${res.status}`);
-  }
-  if (!res.ok) {
-    const msg =
-      json?.errors?.[0]?.message || json?.message || `status=${res.status}`;
-    throw new Error(`clerk_api_failed path=${path}: ${msg}`);
-  }
-  return json;
-}
-
-async function createSignInToken(userId) {
-  const json = await clerkBackendPost("/sign_in_tokens", {
-    user_id: userId,
-    expires_in_seconds: 300,
-  });
-  const token = json.token;
-  if (!token || typeof token !== "string") {
-    throw new Error("clerk_sign_in_token_missing_token");
-  }
-  const clerkUrl =
-    typeof json.url === "string" && json.url.startsWith("http") ? json.url : null;
-  // App URL with __clerk_ticket is the documented SignIn component consume form.
-  const constructedUrl = `${APP_URL}/sign-in?__clerk_ticket=${encodeURIComponent(token)}`;
-  const preferredUrl = clerkUrl || constructedUrl;
-  const meta = safeUrlMeta(preferredUrl);
-  return {
-    token,
-    tokenCreated: true,
-    clerkUrlPresent: Boolean(clerkUrl),
-    clerkUrl,
-    constructedUrl,
-    preferredUrl,
-    constructedUrlMeta: safeUrlMeta(constructedUrl),
-    preferredUrlMeta: meta,
-    ticketUrlConstructed: true,
-    ticketQueryPresent: true,
-  };
-}
-
-async function createTestingToken() {
-  // POST /v1/testing_tokens — empty JSON object is accepted by Clerk Backend API.
-  const json = await clerkBackendPost("/testing_tokens", {});
-  const token = json.token;
-  if (!token || typeof token !== "string") {
-    throw new Error("clerk_testing_token_missing_token");
-  }
-  return { token, tokenCreated: true };
-}
-
 /**
- * Establish a real Production Clerk session for expectedUserId.
- * Uses official ticket strategy + Production testing token (bot bypass).
+ * Establish a real Production Clerk session for expectedUserId via
+ * @clerk/testing/playwright Agent Tasks + Testing Tokens.
  * Does NOT add app-level auth bypass.
  */
-async function signInWithTicket(browser, expectedUserId) {
+async function signInWithClerkOfficial(browser, expectedUserId) {
   const auth = {
-    tokenCreated: false,
-    testingTokenCreated: false,
-    ticketUrlConstructed: false,
-    ticketQueryPresent: false,
-    clerkUrlPresent: false,
-    initialHttpStatus: null,
-    redirectChain: [],
-    finalUrlPath: null,
+    clerkSetupOk: false,
+    clerkSignInOk: false,
     clerkSessionDetected: false,
     authenticatedUserIdMatchesExpected: false,
     authApiStatus: null,
-    signInStatus: null,
+    protectedPageAccessible: false,
+    testingTokenReady: false,
+    agentTaskCreated: false,
+    agentTaskUrlPresent: false,
+    initialHttpStatus: null,
+    redirectChain: [],
+    finalUrlPath: null,
     failureStage: "init",
+    authMethod: "clerk_testing_agent_task",
     expectedUserIdRedacted: redactId(expectedUserId),
   };
 
-  let signInToken;
-  let testingToken;
   try {
-    auth.failureStage = "create_sign_in_token";
-    signInToken = await createSignInToken(expectedUserId);
-    auth.tokenCreated = true;
-    auth.ticketUrlConstructed = signInToken.ticketUrlConstructed;
-    auth.ticketQueryPresent = signInToken.ticketQueryPresent;
-    auth.clerkUrlPresent = signInToken.clerkUrlPresent;
-
-    auth.failureStage = "create_testing_token";
-    testingToken = await createTestingToken();
-    auth.testingTokenCreated = true;
+    auth.failureStage = "clerk_setup";
+    await clerkSetup({
+      publishableKey: CLERK_PUBLISHABLE,
+      secretKey: CLERK_SECRET,
+      dotenv: false,
+    });
+    auth.clerkSetupOk = Boolean(process.env.CLERK_TESTING_TOKEN);
+    if (!auth.clerkSetupOk) {
+      throw new Error("clerk_setup_missing_testing_token");
+    }
   } catch (err) {
-    auth.failureStage = auth.failureStage || "token_api";
-    const error = new Error(String(err?.message || err));
+    auth.failureStage = "clerk_setup_failed";
+    const message = String(err?.message || err);
+    if (/agent.?task|beta|not.?enabled|403|404|forbidden/i.test(message)) {
+      const error = new Error(`OWNER_SETUP_REQUIRED: ${message.slice(0, 240)}`);
+      error.auth = auth;
+      error.ownerSetup = true;
+      throw error;
+    }
+    const error = new Error(`clerk_setup_failed: ${message.slice(0, 240)}`);
     error.auth = auth;
+    throw error;
+  }
+
+  let agentTask;
+  try {
+    auth.failureStage = "create_agent_testing_task";
+    agentTask = await createAgentTestingTask({
+      secretKey: CLERK_SECRET,
+      onBehalfOf: { userId: expectedUserId },
+      permissions: "*",
+      agentName: "minervot-core-loop-e2e",
+      taskDescription: "production-core-loop-auth",
+      redirectUrl: `${APP_URL}/projects`,
+      sessionMaxDurationInSeconds: 1800,
+    });
+    auth.agentTaskCreated = true;
+    auth.agentTaskUrlPresent = Boolean(
+      agentTask?.url && typeof agentTask.url === "string",
+    );
+    if (!auth.agentTaskUrlPresent) {
+      throw new Error("agent_task_url_missing");
+    }
+  } catch (err) {
+    auth.failureStage = "agent_task_create_failed";
+    const message = String(err?.message || err);
+    const ownerHint =
+      /beta|not.?enabled|forbidden|403|404|feature|unavailable|permission/i.test(
+        message,
+      );
+    const error = new Error(
+      ownerHint
+        ? `OWNER_SETUP_REQUIRED: Agent Tasks API failed — enable Agent Tasks (beta) on Production Clerk or check Secret. detail=${message.slice(0, 200)}`
+        : `agent_task_create_failed: ${message.slice(0, 240)}`,
+    );
+    error.auth = auth;
+    error.ownerSetup = ownerHint;
     throw error;
   }
 
@@ -235,166 +229,122 @@ async function signInWithTicket(browser, expectedUserId) {
     }
   });
 
-  // Official Production E2E pattern: attach __clerk_testing_token to Clerk FAPI calls.
-  await page.route("**/*", async (route) => {
-    const url = route.request().url();
-    const isClerkFapi =
-      url.includes("clerk.atlasapp.jp") ||
-      url.includes(".clerk.accounts.") ||
-      /\/v1\/client(\/|\?|$)/.test(url);
-    if (!isClerkFapi) {
-      await route.continue();
-      return;
-    }
-    try {
-      const u = new URL(url);
-      if (!u.searchParams.has("__clerk_testing_token")) {
-        u.searchParams.set("__clerk_testing_token", testingToken.token);
-        await route.continue({ url: u.toString() });
-        return;
-      }
-    } catch {
-      // fall through
-    }
-    await route.continue();
-  });
-
   try {
-    // Official Sign-in Token consumption for custom /sign-in pages:
-    // open /sign-in?__clerk_ticket=... so SignInTicketConsumer runs
-    // signIn.ticket() + finalize() (Clerk SignInFuture custom flow).
-    auth.failureStage = "open_signin_with_ticket";
-    const ticketPageUrl =
-      `${APP_URL}/sign-in?__clerk_ticket=${encodeURIComponent(signInToken.token)}` +
-      `&redirect_url=${encodeURIComponent("/projects")}` +
-      `&__clerk_testing_token=${encodeURIComponent(testingToken.token)}`;
-    auth.ticketQueryPresent = true;
-    auth.ticketUrlConstructed = true;
-    auth.clerkUrlMeta = signInToken.clerkUrl
-      ? safeUrlMeta(signInToken.clerkUrl)
-      : null;
+    auth.failureStage = "setup_clerk_testing_token";
+    await setupClerkTestingToken({ page });
+    auth.testingTokenReady = true;
 
-    const signInResp = await page.goto(ticketPageUrl, {
+    auth.failureStage = "open_agent_task_url";
+    const agentMeta = safeUrlMeta(agentTask.url);
+    auth.agentTaskOrigin = agentMeta.origin;
+    auth.agentTaskPath = agentMeta.pathname;
+
+    const navResp = await page.goto(agentTask.url, {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
-    auth.initialHttpStatus = signInResp?.status() ?? null;
+    auth.initialHttpStatus = navResp?.status() ?? null;
 
-    auth.failureStage = "wait_ticket_consumer_session";
-    await page
-      .waitForFunction(
-        () => {
-          const path = window.location.pathname;
-          const signedIn = Boolean(window.Clerk?.user?.id || window.Clerk?.session);
-          return signedIn || (path !== "/sign-in" && path !== "/sign-up");
-        },
-        { timeout: 75_000 },
-      )
-      .catch(() => null);
+    // Agent Task accept redirects through Clerk-hosted hosts, then to redirectUrl.
+    // Clerk JS for our app is only available after we land on APP_URL.
+    auth.failureStage = "wait_app_origin_after_agent_task";
+    const appOrigin = new URL(APP_URL).origin;
+    if (!page.url().startsWith(appOrigin)) {
+      await page
+        .waitForURL(
+          (url) => {
+            try {
+              return new URL(url).origin === appOrigin;
+            } catch {
+              return false;
+            }
+          },
+          { timeout: 75_000 },
+        )
+        .catch(() => null);
+    }
 
-    // If still on /sign-in, try Clerk-provided accept URL once (still Sign-in Token).
-    let pathNow = safeUrlMeta(page.url()).pathname;
-    if (
-      (pathNow === "/sign-in" || pathNow === "/sign-up") &&
-      signInToken.clerkUrl
-    ) {
-      auth.failureStage = "clerk_provided_ticket_url";
-      auth.clerkUrlMeta = safeUrlMeta(signInToken.clerkUrl);
-      // Mint a fresh token — previous ticket may already be single-use consumed/failed.
-      const fresh = await createSignInToken(expectedUserId);
-      auth.tokenCreated = true;
-      const freshUrl = fresh.clerkUrl || fresh.constructedUrl;
-      await page.goto(freshUrl, {
+    if (!page.url().startsWith(appOrigin)) {
+      // Force navigation to protected page; session cookies from Agent Task should apply.
+      await page.goto(`${APP_URL}/projects`, {
         waitUntil: "domcontentloaded",
         timeout: 60_000,
       });
-      await page
-        .waitForFunction(
-          () => Boolean(window.Clerk?.user?.id || window.Clerk?.session),
-          { timeout: 45_000 },
-        )
-        .catch(() => null);
-      // If Clerk accept URL bounced to our /sign-in with ticket, consumer may still run.
-      if (page.url().includes("/sign-in") && page.url().includes("__clerk_ticket")) {
-        await page
-          .waitForFunction(
-            () => Boolean(window.Clerk?.user?.id || window.Clerk?.session),
-            { timeout: 45_000 },
-          )
-          .catch(() => null);
-      }
     }
 
-    const ticketDomError = await page
-      .locator('[data-testid="sign-in-ticket-error"]')
-      .textContent()
+    auth.failureStage = "wait_clerk_session";
+    await page
+      .waitForFunction(
+        () => Boolean(window.Clerk?.loaded && (window.Clerk?.user?.id || window.Clerk?.session)),
+        { timeout: 60_000 },
+      )
       .catch(() => null);
-    if (ticketDomError) {
-      auth.signInStatus = ticketDomError.trim().slice(0, 180);
-    }
 
-    const sessionUserId = await page.evaluate(
-      () => window.Clerk?.user?.id ?? null,
-    );
+    const sessionUserId = await page
+      .evaluate(() => window.Clerk?.user?.id ?? null)
+      .catch(() => null);
     auth.clerkSessionDetected = Boolean(sessionUserId);
     auth.authenticatedUserIdMatchesExpected = sessionUserId === expectedUserId;
+    auth.clerkSignInOk =
+      auth.clerkSessionDetected && auth.authenticatedUserIdMatchesExpected;
 
     auth.failureStage = "auth_api_probe";
     const apiProbe = await page.request.get(`${APP_URL}/api/notifications`);
     auth.authApiStatus = apiProbe.status();
 
-    if (!auth.clerkSessionDetected || page.url().includes("/sign-in")) {
-      auth.failureStage = "post_auth_navigation";
-      await page.goto(`${APP_URL}/projects`, {
-        waitUntil: "domcontentloaded",
-        timeout: 60_000,
-      });
-      await page.waitForTimeout(1200);
-    }
-
+    auth.failureStage = "protected_page";
+    await page.goto(`${APP_URL}/projects`, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
+    await page.waitForTimeout(800);
     const finalUrl = page.url();
     auth.finalUrlPath = safeUrlMeta(finalUrl).pathname;
+    auth.protectedPageAccessible =
+      !finalUrl.includes("/sign-in") &&
+      !finalUrl.includes("/sign-up") &&
+      auth.authApiStatus === 200 &&
+      auth.clerkSignInOk;
 
-    if (finalUrl.includes("/sign-in") || finalUrl.includes("/sign-up")) {
-      auth.failureStage = "ticket_sign_in_failed";
-      const error = new Error(
-        `ticket_sign_in_failed url=${finalUrl.split("?")[0]} stage=${auth.failureStage} signInStatus=${auth.signInStatus || "null"}`,
+    if (!auth.clerkSetupOk) {
+      auth.failureStage = "clerk_setup_not_ok";
+      throw new Error("clerkSetupOk=false");
+    }
+    if (!auth.clerkSignInOk) {
+      auth.failureStage = "clerk_sign_in_failed";
+      throw new Error(
+        `clerkSignInOk=false session=${auth.clerkSessionDetected} userMatch=${auth.authenticatedUserIdMatchesExpected} path=${auth.finalUrlPath}`,
       );
-      error.auth = auth;
-      throw error;
     }
     if (!auth.clerkSessionDetected) {
       auth.failureStage = "clerk_session_missing";
-      const error = new Error("clerk_session_missing_after_ticket");
-      error.auth = auth;
-      throw error;
+      throw new Error("clerk_session_missing_after_agent_task");
     }
     if (!auth.authenticatedUserIdMatchesExpected) {
       auth.failureStage = "user_mismatch";
-      const error = new Error(
+      throw new Error(
         `authenticated_user_mismatch got=${redactId(sessionUserId)}`,
       );
-      error.auth = auth;
-      throw error;
     }
     if (auth.authApiStatus !== 200) {
       auth.failureStage =
         auth.authApiStatus === 401 ? "auth_api_still_401" : "auth_api_not_200";
-      const error = new Error(
-        `authenticated_api_status_${auth.authApiStatus}`,
+      throw new Error(`authenticated_api_status_${auth.authApiStatus}`);
+    }
+    if (!auth.protectedPageAccessible) {
+      auth.failureStage = "protected_page_blocked";
+      throw new Error(
+        `protected_page_not_accessible path=${auth.finalUrlPath}`,
       );
-      error.auth = auth;
-      throw error;
     }
 
     auth.failureStage = "auth_ok";
-    auth.signInStatus = auth.signInStatus || "complete";
     return { context, page, url: finalUrl.split("?")[0], auth };
   } catch (err) {
     await context.close().catch(() => null);
     if (!err.auth) err.auth = auth;
     if (!auth.failureStage || auth.failureStage === "auth_ok") {
-      auth.failureStage = "ticket_sign_in_failed";
+      auth.failureStage = "clerk_sign_in_failed";
     }
     throw err;
   }
@@ -462,17 +412,26 @@ async function main() {
     failureStage: null,
   };
 
-  if (!CLERK_SECRET || !USER_A || !USER_B) {
+  if (!CLERK_SECRET || !USER_A || !USER_B || !CLERK_PUBLISHABLE) {
     ownerSetupExit(
-      "Missing CLERK_SECRET_KEY and/or E2E_CLERK_USER_ID and/or E2E_CLERK_USER_B_ID",
+      "Missing CLERK_SECRET_KEY and/or CLERK_PUBLISHABLE_KEY|NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and/or E2E_CLERK_USER_ID and/or E2E_CLERK_USER_B_ID",
     );
   }
   if (CLERK_SECRET.startsWith("sk_test_")) {
     ownerSetupExit("CLERK_SECRET_KEY must be Production sk_live_ (not sk_test_)");
   }
+  if (!CLERK_PUBLISHABLE.startsWith("pk_live_")) {
+    ownerSetupExit(
+      "CLERK_PUBLISHABLE_KEY / NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY must be Production pk_live_",
+    );
+  }
   if (USER_A === USER_B) {
     ownerSetupExit("E2E_CLERK_USER_ID and E2E_CLERK_USER_B_ID must be different");
   }
+
+  // Ensure @clerk/testing helpers see canonical env names.
+  process.env.CLERK_SECRET_KEY = CLERK_SECRET;
+  process.env.CLERK_PUBLISHABLE_KEY = CLERK_PUBLISHABLE;
 
   try {
     const version = await fetchProductionVersion();
@@ -486,13 +445,16 @@ async function main() {
     let contextA;
     let page;
     try {
-      const signedA = await signInWithTicket(browser, USER_A);
+      const signedA = await signInWithClerkOfficial(browser, USER_A);
       contextA = signedA.context;
       page = signedA.page;
       evidence.auth = signedA.auth;
       evidence.notificationOrState = {
         signedInUrl: signedA.url,
         authApiStatus: signedA.auth.authApiStatus,
+        clerkSetupOk: signedA.auth.clerkSetupOk,
+        clerkSignInOk: signedA.auth.clerkSignInOk,
+        protectedPageAccessible: signedA.auth.protectedPageAccessible,
       };
 
       let acceptedJobId = null;
@@ -520,7 +482,7 @@ async function main() {
       });
       await page.waitForTimeout(1200);
       if (page.url().includes("/sign-in")) {
-        throw new Error("workspace_requires_sign_in_after_ticket");
+        throw new Error("workspace_requires_sign_in_after_clerk_official_auth");
       }
 
       evidence.failureStage = "submit_request";
@@ -651,7 +613,7 @@ async function main() {
       }
 
       evidence.failureStage = "cross_user_isolation";
-      const signedB = await signInWithTicket(browser, USER_B);
+      const signedB = await signInWithClerkOfficial(browser, USER_B);
       try {
         const denied = await signedB.page.request.get(
           `${APP_URL}/api/deliverables/${encodeURIComponent(artifactId)}`,
@@ -677,6 +639,9 @@ async function main() {
       await browser.close();
     }
   } catch (err) {
+    if (err?.ownerSetup) {
+      ownerSetupExit(String(err.message || err).slice(0, 400));
+    }
     evidence.ok = false;
     evidence.status = "FAIL";
     evidence.error = String(err?.message || err).slice(0, 500);
@@ -700,10 +665,11 @@ async function main() {
     evidencePath: outPath,
     productionShaShort: evidence.productionShaShort,
     failureStage: evidence.failureStage,
-    tokenCreated: evidence.auth?.tokenCreated ?? null,
-    testingTokenCreated: evidence.auth?.testingTokenCreated ?? null,
-    ticketUrlConstructed: evidence.auth?.ticketUrlConstructed ?? null,
-    ticketQueryPresent: evidence.auth?.ticketQueryPresent ?? null,
+    clerkSetupOk: evidence.auth?.clerkSetupOk ?? null,
+    clerkSignInOk: evidence.auth?.clerkSignInOk ?? null,
+    testingTokenReady: evidence.auth?.testingTokenReady ?? null,
+    agentTaskCreated: evidence.auth?.agentTaskCreated ?? null,
+    agentTaskUrlPresent: evidence.auth?.agentTaskUrlPresent ?? null,
     initialHttpStatus: evidence.auth?.initialHttpStatus ?? null,
     redirectChain: evidence.auth?.redirectChain ?? null,
     finalUrlPath: evidence.auth?.finalUrlPath ?? null,
@@ -711,6 +677,8 @@ async function main() {
     authenticatedUserIdMatchesExpected:
       evidence.auth?.authenticatedUserIdMatchesExpected ?? null,
     authApiStatus: evidence.auth?.authApiStatus ?? null,
+    protectedPageAccessible: evidence.auth?.protectedPageAccessible ?? null,
+    authMethod: evidence.auth?.authMethod ?? null,
     jobId: evidence.jobId,
     artifactId: evidence.artifactId ? redactId(evidence.artifactId) : null,
     durationMs: evidence.durationMs,
@@ -725,6 +693,9 @@ async function main() {
 }
 
 main().catch((err) => {
+  if (err?.ownerSetup) {
+    ownerSetupExit(String(err.message || err).slice(0, 400));
+  }
   console.error(
     JSON.stringify({
       ok: false,
