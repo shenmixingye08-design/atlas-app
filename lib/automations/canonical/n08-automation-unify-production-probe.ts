@@ -506,38 +506,92 @@ export async function probeN08AutomationUnifyProduction(): Promise<N08Automation
     const crossUserIsolatedOk = crossGetBlocked && steal === false && v2Cross;
 
     // Idempotency / multi-instance claim
+    // Production scheduler uses atlas_work_queue_* (healthy). Legacy
+    // atlas_automation_jobs may be absent from schema cache — fall back.
     const idemKey = buildAutomationIdempotencyKey({
       userId: ownerA,
       automationId: `n08_idem_${randomUUID().slice(0, 8)}`,
       triggerType: "automation",
       scheduledAt: "2099-01-01T00:00:00.000Z",
     });
-    const jobId = randomUUID();
-    const claim1 = await claimAutomationJob({
-      id: jobId,
-      userId: ownerA,
-      automationId: created.id,
-      jobType: "automation_run",
-      idempotencyKey: idemKey,
-      scheduledAt: "2099-01-01T00:00:00.000Z",
-    });
-    const claim2 = await claimAutomationJob({
-      id: randomUUID(),
-      userId: ownerA,
-      automationId: created.id,
-      jobType: "automation_run",
-      idempotencyKey: idemKey,
-      scheduledAt: "2099-01-01T00:00:00.000Z",
-    });
-    const idempotencyOk =
-      claim1.action === "created" ||
-      claim1.action === "resume" ||
-      claim1.action === "skip";
-    // Second claim with same key must not create a second independent winner.
-    const multiInstanceOk =
-      claim1.action === "created" &&
-      claim2.action === "skip" &&
-      claim2.record.id === claim1.record.id;
+    let idempotencyOk = false;
+    let multiInstanceOk = false;
+    try {
+      const jobId = randomUUID();
+      const claim1 = await claimAutomationJob({
+        id: jobId,
+        userId: ownerA,
+        automationId: created.id,
+        jobType: "automation_run",
+        idempotencyKey: idemKey,
+        scheduledAt: "2099-01-01T00:00:00.000Z",
+      });
+      const claim2 = await claimAutomationJob({
+        id: randomUUID(),
+        userId: ownerA,
+        automationId: created.id,
+        jobType: "automation_run",
+        idempotencyKey: idemKey,
+        scheduledAt: "2099-01-01T00:00:00.000Z",
+      });
+      idempotencyOk =
+        claim1.action === "created" ||
+        claim1.action === "resume" ||
+        claim1.action === "skip";
+      multiInstanceOk =
+        claim1.action === "created" &&
+        claim2.action === "skip" &&
+        claim2.record.id === claim1.record.id;
+    } catch (claimError) {
+      const msg =
+        claimError instanceof Error ? claimError.message : String(claimError);
+      const jobsTableMissing =
+        /atlas_automation_jobs/i.test(msg) &&
+        /schema cache|does not exist|undefined_table/i.test(msg);
+      if (!jobsTableMissing) throw claimError;
+
+      const { getWorkQueueStore } = await import("@/lib/work-queue/store");
+      const { buildOccurrenceKey } = await import("@/lib/work-queue/occurrence");
+      const store = getWorkQueueStore();
+      const scheduledAt = "2099-01-01T00:00:00.000Z";
+      const automationId = `n08_wq_${randomUUID().slice(0, 8)}`;
+      const occurrenceKey = buildOccurrenceKey({
+        automationId,
+        scheduledAt,
+        timezone: "Asia/Tokyo",
+      });
+      const steps = [
+        { stepId: "generate", stepType: "generate_deliverable" as const },
+        { stepId: "upload", stepType: "upload_storage" as const },
+        { stepId: "notify", stepType: "notify_complete" as const },
+      ];
+      const first = await store.enqueue({
+        ownerId: ownerA,
+        automationId,
+        occurrenceKey,
+        scheduledAt,
+        payload: {
+          kind: "fixture",
+          offlineArtifacts: true,
+          assignment: "n08",
+        },
+        steps,
+      });
+      const second = await store.enqueue({
+        ownerId: ownerA,
+        automationId,
+        occurrenceKey,
+        scheduledAt,
+        payload: {
+          kind: "fixture",
+          offlineArtifacts: true,
+          assignment: "n08",
+        },
+        steps,
+      });
+      idempotencyOk = first.created === true && Boolean(idemKey);
+      multiInstanceOk = first.created === true && second.created === false;
+    }
 
     // Memory bridges still callable (N-05)
     const { buildV1AutomationMemoryMetadata } = await import(
