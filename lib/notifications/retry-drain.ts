@@ -57,12 +57,18 @@ function isLineEvent(value: string | null): value is LineNotifyEvent {
 
 async function redeliverChannels(row: DurableInboxRow): Promise<{
   ok: boolean;
+  /** At least one channel actually sent a message. */
+  channelDelivered: boolean;
+  /** All attempted channels were intentional skips (or none attempted). */
+  channelSkipped: boolean;
   error: string | null;
   lineAttempted: boolean;
   pushAttempted: boolean;
 }> {
   const record = rowToRecord(row);
   let ok = true;
+  let channelDelivered = false;
+  let channelSkipped = false;
   let error: string | null = null;
   let lineAttempted = false;
   let pushAttempted = false;
@@ -71,7 +77,11 @@ async function redeliverChannels(row: DurableInboxRow): Promise<{
   if (lineEvent && row.ownerId) {
     lineAttempted = true;
     try {
-      await executeIdempotentSideEffect(
+      const sideEffect = await executeIdempotentSideEffect<{
+        ok: true;
+        attempts: number;
+        status: "delivered" | "skipped";
+      }>(
         {
           userId: row.ownerId,
           provider: "notification",
@@ -92,19 +102,28 @@ async function redeliverChannels(row: DurableInboxRow): Promise<{
             actionUrl: row.actionUrl,
             skipDlq: true,
           });
-          if (!result.ok) {
+          if (result.status === "failed") {
             throw new Error(result.error ?? "line_delivery_failed");
           }
           return {
             providerResourceId: `${row.notificationId}:line:r${row.retryCount}`,
-            result: { ok: true as const, attempts: result.attempts },
-            evidence: { channel: "line", retryCount: row.retryCount },
+            result: {
+              ok: true as const,
+              attempts: result.attempts,
+              status: result.status,
+            },
+            evidence: {
+              channel: "line",
+              retryCount: row.retryCount,
+              ackStatus: result.status,
+            },
           };
         },
       );
+      if (sideEffect.result?.status === "delivered") channelDelivered = true;
+      if (sideEffect.result?.status === "skipped") channelSkipped = true;
     } catch (err) {
       if (err instanceof SideEffectFailClosedError) {
-        // Ambiguous prior outcome — do not resend; treat as non-success for status.
         ok = false;
         error = err.message;
       } else {
@@ -118,7 +137,11 @@ async function redeliverChannels(row: DurableInboxRow): Promise<{
   if (row.channel === "in_app" || row.channel === "push") {
     pushAttempted = true;
     try {
-      await executeIdempotentSideEffect(
+      const sideEffect = await executeIdempotentSideEffect<{
+        ok: true;
+        attempts: number;
+        status: "delivered" | "skipped";
+      }>(
         {
           userId: row.ownerId,
           provider: "notification",
@@ -134,16 +157,26 @@ async function redeliverChannels(row: DurableInboxRow): Promise<{
             record,
             skipDlq: true,
           });
-          if (!result.ok) {
+          if (result.status === "failed") {
             throw new Error(result.error ?? "web_push_failed");
           }
           return {
             providerResourceId: `${row.notificationId}:web_push:r${row.retryCount}`,
-            result: { ok: true as const, attempts: result.attempts },
-            evidence: { channel: "web_push", retryCount: row.retryCount },
+            result: {
+              ok: true as const,
+              attempts: result.attempts,
+              status: result.status,
+            },
+            evidence: {
+              channel: "web_push",
+              retryCount: row.retryCount,
+              ackStatus: result.status,
+            },
           };
         },
       );
+      if (sideEffect.result?.status === "delivered") channelDelivered = true;
+      if (sideEffect.result?.status === "skipped") channelSkipped = true;
     } catch (err) {
       if (err instanceof SideEffectFailClosedError) {
         ok = false;
@@ -155,12 +188,26 @@ async function redeliverChannels(row: DurableInboxRow): Promise<{
     }
   }
 
-  // Nothing to deliver (prefs/channels off) → treat as delivered to stop retry loops.
+  // Nothing to deliver (prefs/channels off) → suppressed (not delivered).
   if (!lineAttempted && !pushAttempted) {
-    return { ok: true, error: null, lineAttempted, pushAttempted };
+    return {
+      ok: true,
+      channelDelivered: false,
+      channelSkipped: true,
+      error: null,
+      lineAttempted,
+      pushAttempted,
+    };
   }
 
-  return { ok, error, lineAttempted, pushAttempted };
+  return {
+    ok,
+    channelDelivered,
+    channelSkipped: channelSkipped && !channelDelivered,
+    error,
+    lineAttempted,
+    pushAttempted,
+  };
 }
 
 async function deadLetter(row: DurableInboxRow, lastError: string): Promise<void> {
@@ -211,8 +258,7 @@ export async function processDurableNotificationRetries(options?: {
   leaseOwner?: string;
   /**
    * Production/unit smoke only: force channel delivery failure for one owner
-   * so max-retry → DLQ can be proven when LINE/push are not_configured
-   * (those reasons are treated as soft-success by deliver*WithAck).
+   * so max-retry → DLQ can be proven when LINE/push are skipped (not_configured).
    */
   forceDeliveryFailureForOwner?: string;
 }): Promise<NotificationRetryDrainResult> {
@@ -258,12 +304,14 @@ export async function processDurableNotificationRetries(options?: {
         claimed.ownerId === options.forceDeliveryFailureForOwner
           ? {
               ok: false as const,
+              channelDelivered: false,
+              channelSkipped: false,
               error: "p102_smoke_force_delivery_failure",
               lineAttempted: true,
               pushAttempted: true,
             }
           : await redeliverChannels(claimed);
-      if (delivery.ok) {
+      if (delivery.ok && delivery.channelDelivered) {
         await updateDurableDeliveryState({
           notificationId: claimed.notificationId,
           ownerId: claimed.ownerId,
@@ -273,6 +321,18 @@ export async function processDurableNotificationRetries(options?: {
           retryCount: claimed.retryCount,
         });
         result.delivered += 1;
+        continue;
+      }
+      if (delivery.ok && delivery.channelSkipped) {
+        // N-07: intentional skip stops retries without claiming delivery success.
+        await updateDurableDeliveryState({
+          notificationId: claimed.notificationId,
+          ownerId: claimed.ownerId,
+          status: "suppressed",
+          nextRetryAt: null,
+          retryCount: claimed.retryCount,
+        });
+        result.skipped += 1;
         continue;
       }
 

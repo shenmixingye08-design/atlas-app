@@ -256,7 +256,8 @@ export async function createUserNotification(
         message: input.message,
         actionUrl: canonicalActionUrl,
       });
-      if (!line.ok) {
+      // N-07: skipped (not_configured etc.) is ok for retry loops but not failure.
+      if (line.status === "failed") {
         channelOk = false;
         lastError = line.error ?? "line_delivery_failed";
       }
@@ -268,7 +269,7 @@ export async function createUserNotification(
         autoRecovered: input.autoRecovered,
         jobName: input.jobName ?? null,
       });
-      if (!push.ok) {
+      if (push.status === "failed") {
         channelOk = false;
         lastError = push.error ?? lastError ?? "push_delivery_failed";
         await updateDurableDeliveryState({
@@ -278,12 +279,19 @@ export async function createUserNotification(
           pushFailedAt: new Date().toISOString(),
           pushFailureReason: lastError,
         }).catch(() => undefined);
-      } else {
+      } else if (push.status === "delivered") {
         await updateDurableDeliveryState({
           notificationId: record.notificationId,
           ownerId: input.userId,
           status: "delivered",
           pushSentAt: new Date().toISOString(),
+        }).catch(() => undefined);
+      } else {
+        // skipped: no subscription / prefs — never mark delivered or pushSentAt
+        await updateDurableDeliveryState({
+          notificationId: record.notificationId,
+          ownerId: input.userId,
+          status: "suppressed",
         }).catch(() => undefined);
       }
     }
@@ -339,14 +347,15 @@ export async function createNotificationWithDelivery(
       message: input.message,
       actionUrl: record.actionUrl,
     });
-    lineOk = line.ok;
+    // True only when a message was actually sent (not skipped soft-ACK).
+    lineOk = line.status === "delivered";
   }
   const push = await deliverWebPushWithAck({
     record,
     autoRecovered: input.autoRecovered,
     jobName: input.jobName ?? null,
   });
-  pushOk = push.ok;
+  pushOk = push.status === "delivered";
   return { record, lineOk, pushOk };
 }
 

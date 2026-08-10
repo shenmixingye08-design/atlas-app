@@ -255,7 +255,7 @@ const DELIVERABLE_KIND_RULES: {
   },
   {
     pattern: /メール|返信|gmail/i,
-    completed: "メールの準備が完了しました",
+    completed: "メール作業が完了しました",
     failed: "メールの処理を完了できませんでした",
   },
   {

@@ -137,9 +137,11 @@ export async function runNotificationRetryProductionSmoke(): Promise<Notificatio
       delivered: drain.delivered,
       dlqReinjected: drain.dlqReinjected,
     };
+    // N-07: email-only rows have no LINE/push fan-out → suppressed (skipped),
+    // not falsely marked delivered. Either terminal path proves drain works.
     drainOk =
       drain.claimed >= 1 &&
-      drain.delivered >= 1 &&
+      (drain.delivered >= 1 || drain.skipped >= 1) &&
       drain.dlqReinjected === 0;
 
     // 2) Second drain must not re-process the delivered row (no double send).

@@ -240,7 +240,8 @@ export async function ensureNotificationDelivery<T>(
           userId: context.userId,
           level: "info",
           event: "notification_delivered",
-          message: `完了通知を保証しました（${context.kind}）`,
+          // N-07: inbox persist guarantee — not a claim that work completed.
+          message: `通知の保存を保証しました（${context.kind}）`,
           attempt,
         });
         return record;
@@ -269,7 +270,7 @@ export async function ensureNotificationDelivery<T>(
     userId: context.userId,
     level: "error",
     event: "notification_failed",
-    message: "完了通知の保証に失敗しました",
+    message: "通知の保存保証に失敗しました",
     metadata: {
       kind: context.kind,
       error: formatFailureReason(lastError),
