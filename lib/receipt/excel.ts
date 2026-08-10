@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 
+import { enhanceWorkbookWithAdvancedExcel } from "@/lib/deliverables/excel-advanced";
 import { neutralizeSpreadsheetCell } from "@/lib/security/spreadsheet-formula";
 
 import type { LedgerEntry } from "./types";
@@ -88,6 +89,17 @@ export async function buildHouseholdLedgerWorkbook(
     chartData.addRow([row.category, row.amount]);
   }
 
-  const buffer = await workbook.xlsx.writeBuffer();
-  return Buffer.from(buffer);
+  // P3-03: real pivot sheet + OOXML chart (グラフ用データ alone is not a chart).
+  const hasCategories = analytics.byCategory.length > 0;
+  const enhanced = await enhanceWorkbookWithAdvancedExcel(workbook, {
+    includeChart: hasCategories ? true : false,
+    includePivot: hasCategories ? true : false,
+    chartTitle: "カテゴリ別支出",
+  });
+  if (hasCategories && (!enhanced.chartInjected || !enhanced.pivotAdded)) {
+    throw new Error(
+      `household_excel_advanced_failed:${enhanced.skippedReason ?? "unknown"}`,
+    );
+  }
+  return enhanced.buffer;
 }

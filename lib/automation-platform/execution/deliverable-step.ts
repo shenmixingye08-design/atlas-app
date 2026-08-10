@@ -34,6 +34,24 @@ function stringConfig(
   return typeof value === "string" ? value.trim() : "";
 }
 
+function booleanConfig(
+  configuration: Readonly<Record<string, unknown>>,
+  key: string,
+): boolean | null {
+  const value = configuration[key];
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(trimmed)) return true;
+    if (["0", "false", "no", "off"].includes(trimmed)) return false;
+  }
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  return null;
+}
+
 function resolveContent(
   step: AutomationWorkflowStep,
   automationName: string,
@@ -151,9 +169,26 @@ export async function invokeDeliverableStep(input: {
       continue;
     }
     try {
+      // P3-03: wire excel_generate includeChart / includePivot into generator.
+      const includeChart = booleanConfig(
+        input.step.configuration,
+        "includeChart",
+      );
+      const includePivot = booleanConfig(
+        input.step.configuration,
+        "includePivot",
+      );
       const file = await generator.generate(content, baseFileName, {
         assignment: input.automationName,
         title,
+        excel:
+          format === "xlsx"
+            ? {
+                includeChart,
+                includePivot,
+                chartTitle: stringConfig(input.step.configuration, "chartTitle") || null,
+              }
+            : undefined,
       });
       if (!file.buffer || file.buffer.byteLength <= 0) {
         failures.push(`${format}:empty_binary`);

@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 
 import { neutralizeSpreadsheetCell } from "@/lib/security/spreadsheet-formula";
 
+import { enhanceWorkbookWithAdvancedExcel } from "../excel-advanced";
 import { extractExcelSheets } from "../excel-data";
 import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
 import { createDeliverableFile } from "./shared";
@@ -46,6 +47,11 @@ type XlsxGenerateOptions = {
     dateFormat?: string | null;
     decimalPlaces?: number | null;
     columnOrder?: string[];
+    /** P3-03: embed OOXML chart (default auto when aggregatable). */
+    includeChart?: boolean | null;
+    /** P3-03: add ピボット集計 sheet (default auto when aggregatable). */
+    includePivot?: boolean | null;
+    chartTitle?: string | null;
   } | null;
   companyName?: string | null;
 };
@@ -210,6 +216,7 @@ function applySheetFormatting(
 /**
  * Excel (.xlsx) generator — builds worksheets from AI table data via exceljs.
  * P1-08: typed cells + numFmt (no currency/date sidecar text columns).
+ * P3-03: ピボット集計 sheet + embedded OOXML chart (xl/charts + xl/drawings).
  */
 export class XlsxDeliverableGenerator implements DeliverableGenerator {
   readonly format = "xlsx" as const;
@@ -322,9 +329,13 @@ export class XlsxDeliverableGenerator implements DeliverableGenerator {
       void appliedNumFmt;
     }
 
-    const arrayBuffer = await workbook.xlsx.writeBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    // P3-03: pivot summary + real embedded chart (not sheet-name theater).
+    const enhanced = await enhanceWorkbookWithAdvancedExcel(workbook, {
+      includeChart: options?.excel?.includeChart,
+      includePivot: options?.excel?.includePivot,
+      chartTitle: options?.excel?.chartTitle,
+    });
 
-    return createDeliverableFile("xlsx", baseFileName, buffer, false);
+    return createDeliverableFile("xlsx", baseFileName, enhanced.buffer, false);
   }
 }

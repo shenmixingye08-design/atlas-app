@@ -80,6 +80,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/health/ocr-engine(.*)",
   "/api/health/jwt-rls(.*)",
   "/api/health/company-template(.*)",
+  "/api/health/excel-advanced(.*)",
   "/api/health/vision(.*)",
   "/api/contact(.*)",
   "/api/automations/tick(.*)",

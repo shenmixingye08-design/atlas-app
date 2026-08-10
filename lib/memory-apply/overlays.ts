@@ -237,6 +237,21 @@ export function buildDeliverableOverlay(
           ? decimalPlaces
           : null,
       columnOrder: [...new Set(columnOrder)],
+      // null = generator auto (P3-03). Explicit memory keys can force.
+      includeChart: (() => {
+        const raw = readField(values, ["includeChart", "include_chart", "グラフ"]);
+        if (raw == null) return null;
+        if (/^(0|false|no|off|なし)$/i.test(raw)) return false;
+        if (/^(1|true|yes|on|あり)$/i.test(raw)) return true;
+        return null;
+      })(),
+      includePivot: (() => {
+        const raw = readField(values, ["includePivot", "include_pivot", "ピボット"]);
+        if (raw == null) return null;
+        if (/^(0|false|no|off|なし)$/i.test(raw)) return false;
+        if (/^(1|true|yes|on|あり)$/i.test(raw)) return true;
+        return null;
+      })(),
     },
     powerpoint: {
       brandColorHex: brandColorHex?.replace(/^#/, "") ?? null,

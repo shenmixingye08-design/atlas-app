@@ -66,6 +66,9 @@ export type MemoryDeliverableOverlay = {
     dateFormat: string | null;
     decimalPlaces: number | null;
     columnOrder: string[];
+    /** P3-03 — null means generator auto. */
+    includeChart: boolean | null;
+    includePivot: boolean | null;
   };
   powerpoint: {
     brandColorHex: string | null;
