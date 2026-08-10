@@ -87,6 +87,9 @@ jobs:
       - name: P3-01 JWT連携RLS ban
         run: node scripts/ci/p3-01-jwt-rls-ban.mjs
 
+      - name: P3-02 Company template tenant isolation ban
+        run: node scripts/ci/p3-02-company-template-tenant-ban.mjs
+
       - name: P0-5 durable X scheduled posts ban
         run: node scripts/ci/p0-5-x-scheduled-posts-ban.mjs
 
@@ -145,6 +148,12 @@ jobs:
 
       - name: P3-01 JWT連携RLS
         run: npm run test:jwt-rls
+        env:
+          TZ: UTC
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: P3-02 Company template tenant isolation
+        run: npm run test:company-template
         env:
           TZ: UTC
           NODE_OPTIONS: --max-old-space-size=8192

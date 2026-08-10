@@ -5,7 +5,7 @@ import { sanitizeOrchestrationResultForClient } from "@/lib/orchestration/saniti
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import { buildCompanyOrchestrationMetadata } from "@/lib/company-templates/loader";
 import { resolveCompanyTemplateIdFromMetadata } from "@/lib/company-templates/context";
-import { getServerActiveCompanyStateForUser } from "@/lib/company-templates/store";
+import type { CompanyTemplateId } from "@/lib/company-templates/types";
 import { notifyWorkCompleted, notifyWorkFailed } from "@/lib/notifications/emitters";
 import { persistCommanderResultAsProject } from "@/lib/commander/durable-store";
 import { buildAtlasMemoryMetadata } from "@/lib/user-memory/metadata";
@@ -95,16 +95,32 @@ export async function runOrchestrationForUser(
     } catch {
       // hydration best-effort
     }
+    try {
+      const { ensureActiveCompanyHydrated } = await import(
+        "@/lib/company-templates/durable"
+      );
+      await ensureActiveCompanyHydrated(input.userId);
+    } catch {
+      // hydration best-effort
+    }
   }
   const notify = input.notify !== false;
   const recordLearning = input.recordLearning !== false;
 
-  const templateId =
-    resolveCompanyTemplateIdFromMetadata(input.metadata) ??
-    (input.userId
-      ? getServerActiveCompanyStateForUser(input.userId).templateId
-      : undefined);
-
+  // P3-02: server SoT wins — client metadata cannot spoof another template.
+  let templateId: CompanyTemplateId | undefined;
+  if (input.userId) {
+    const { resolveAuthoritativeTemplateId } = await import(
+      "@/lib/company-templates/durable"
+    );
+    templateId = resolveAuthoritativeTemplateId({
+      userId: input.userId,
+      metadataTemplateId: resolveCompanyTemplateIdFromMetadata(input.metadata),
+    });
+  } else {
+    templateId =
+      resolveCompanyTemplateIdFromMetadata(input.metadata) ?? undefined;
+  }
   const skipWorkMemory = shouldSkipWorkMemory(input.metadata);
   const workMemoryEnabled =
     input.userId != null && isWorkMemoryEnabled(input.userId);

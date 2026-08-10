@@ -5,6 +5,7 @@ import { serverAutomationRepository } from "@/lib/automations/repositories/serve
 import { registerAutomationUserId } from "@/lib/automations/global-durable";
 import { persistAutomationsNow } from "@/lib/automations/durable";
 
+import { persistActiveCompanyNow } from "./durable";
 import { getCompanyTemplate } from "./registry";
 import {
   setClientActiveCompanyState,
@@ -76,7 +77,14 @@ export async function applyCompanyTemplateForUser(
   };
 
   setServerActiveCompanyStateForUser(userId, state);
-  setClientActiveCompanyState(state);
+  // Browser cache only when invoked from a Client Component path; server no-op.
+  setClientActiveCompanyState(state, userId);
+
+  const persisted = await persistActiveCompanyNow(userId);
+  if (persisted !== "supabase") {
+    // Fail-closed: SoT must be Postgres (never memory-only success).
+    throw new Error(`active_company_persist_${persisted}`);
+  }
 
   const automationsMerged = await mergeAutomationPresetsForUser(
     userId,

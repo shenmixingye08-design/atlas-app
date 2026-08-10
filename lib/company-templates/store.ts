@@ -30,17 +30,24 @@ function getServerUserBucket(): CompanyStateBucket {
   return globalScope.__atlasActiveCompanyByUser;
 }
 
-/** Read active template id for a specific user on the server. */
+/** True when this instance has a cached (possibly hydrated) selection. */
+export function hasServerActiveCompanyStateForUser(userId: string): boolean {
+  if (!userId) return false;
+  return getServerUserBucket().has(userId);
+}
+
+/**
+ * Read active template for a user.
+ * P3-02: Map is cache only — miss returns default WITHOUT seeding the Map
+ * (so hydrate can load Postgres SoT).
+ */
 export function getServerActiveCompanyStateForUser(
   userId: string,
 ): ActiveCompanyState {
   if (!userId) return createDefaultState();
-  const bucket = getServerUserBucket();
-  const existing = bucket.get(userId);
+  const existing = getServerUserBucket().get(userId);
   if (existing) return existing;
-  const created = createDefaultState();
-  bucket.set(userId, created);
-  return created;
+  return createDefaultState();
 }
 
 export function setServerActiveCompanyStateForUser(
@@ -50,6 +57,11 @@ export function setServerActiveCompanyStateForUser(
   if (!userId) return state;
   getServerUserBucket().set(userId, state);
   return state;
+}
+
+export function clearServerActiveCompanyStateForUser(userId: string): void {
+  if (!userId) return;
+  getServerUserBucket().delete(userId);
 }
 
 /**
@@ -69,15 +81,28 @@ export function setServerActiveCompanyState(
   return state;
 }
 
-/** Read active template id in the browser. */
-export function getClientActiveCompanyState(): ActiveCompanyState {
+/**
+ * Browser UI cache only (P3-02: not SoT).
+ * Optionally scoped by userId when provided to reduce account-switch bleed.
+ */
+export function getClientActiveCompanyState(
+  userId?: string | null,
+): ActiveCompanyState {
   if (typeof window === "undefined") {
     return createDefaultState();
   }
 
   try {
-    const raw = localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY);
-    if (!raw) return createDefaultState();
+    const key = clientStorageKey(userId);
+    const raw = localStorage.getItem(key);
+    if (!raw) {
+      // Legacy unscoped key migration (read-only fallback).
+      if (userId) {
+        const legacy = localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY);
+        if (legacy) return JSON.parse(legacy) as ActiveCompanyState;
+      }
+      return createDefaultState();
+    }
     return JSON.parse(raw) as ActiveCompanyState;
   } catch {
     return createDefaultState();
@@ -86,11 +111,19 @@ export function getClientActiveCompanyState(): ActiveCompanyState {
 
 export function setClientActiveCompanyState(
   state: ActiveCompanyState,
+  userId?: string | null,
 ): ActiveCompanyState {
   if (typeof window !== "undefined") {
-    localStorage.setItem(ACTIVE_COMPANY_STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(clientStorageKey(userId), JSON.stringify(state));
   }
   return state;
+}
+
+function clientStorageKey(userId?: string | null): string {
+  const id = userId?.trim();
+  return id
+    ? `${ACTIVE_COMPANY_STORAGE_KEY}:${id}`
+    : ACTIVE_COMPANY_STORAGE_KEY;
 }
 
 export function resolveActiveTemplateId(

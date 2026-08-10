@@ -39,6 +39,7 @@ export const ACCOUNT_WIPE_DOMAIN_KEYS = [
   "atlasVisionDiagnostics",
   "atlasPersistenceReport",
   "atlasErrorHistory",
+  "atlasActiveCompany",
 ] as const;
 
 type GlobalIndex = {
