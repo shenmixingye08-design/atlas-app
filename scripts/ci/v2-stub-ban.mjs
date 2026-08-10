@@ -37,6 +37,8 @@ for (const rel of SCAN_DIRS) {
   for (const file of walk(abs)) {
     const base = file.split("/").pop() ?? file;
     if (base.endsWith(".test.ts")) continue;
+    // Proof helpers may call defaultStepInvoker to assert it never succeeds.
+    if (base === "v2-real-proof.ts") continue;
     const source = readFileSync(file, "utf8");
 
     if (
@@ -101,8 +103,25 @@ const strict = readFileSync(
 if (strict.includes("defaultStepInvoker")) {
   violations.push("strict-step-invoker must not call defaultStepInvoker");
 }
-if (!strict.includes("live_adapter_missing")) {
-  violations.push("strict-step-invoker must fail with live_adapter_missing");
+const liveAdapters = readFileSync(
+  join(ROOT, "lib/automation-platform/execution/live-adapters/types.ts"),
+  "utf8",
+);
+const liveExternal = readFileSync(
+  join(ROOT, "lib/automation-platform/execution/live-adapters/external.ts"),
+  "utf8",
+);
+if (
+  !strict.includes("live_adapter_missing") &&
+  !liveAdapters.includes("live_adapter_missing") &&
+  !liveExternal.includes("live_adapter_missing")
+) {
+  violations.push(
+    "strict-step-invoker / live-adapters must fail with live_adapter_missing",
+  );
+}
+if (!strict.includes("invokeLiveAdapter")) {
+  violations.push("strict-step-invoker must route externals via invokeLiveAdapter");
 }
 
 const notify = readFileSync(

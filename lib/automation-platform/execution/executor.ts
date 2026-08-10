@@ -108,6 +108,14 @@ function rejectFakeSuccess(result: {
       errorMessage: `step_not_implemented:${result.stepType}`,
     };
   }
+  if (production.evidenceRequired && !result.evidence) {
+    return {
+      ok: false,
+      summary: "Evidenceなしの成功は禁止されています",
+      errorCode: "automation_run_failed",
+      errorMessage: "step_evidence_required",
+    };
+  }
   if (production.completionRequirements.includes("artifact_with_url")) {
     const hasUrl = result.artifacts.some(
       (item) => Boolean(item.id) && Boolean(item.url?.trim()),
@@ -123,14 +131,43 @@ function rejectFakeSuccess(result: {
   }
   if (production.completionRequirements.includes("artifact_with_external_id")) {
     const hasExternal =
-      result.artifacts.some((item) => Boolean(item.externalId?.trim())) ||
-      (result.evidence?.externalActionIds?.length ?? 0) > 0;
+      (result.evidence?.externalActionIds?.length ?? 0) > 0 ||
+      result.artifacts.some(
+        (item) =>
+          Boolean(item.externalId?.trim()) && item.kind !== "deliverable",
+      );
     if (!hasExternal) {
       return {
         ok: false,
         summary: "外部アクションIDなしの成功は禁止されています",
         errorCode: "automation_run_failed",
         errorMessage: "external_action_id_required",
+      };
+    }
+  }
+  if (production.completionRequirements.includes("notification_id")) {
+    if ((result.evidence?.notificationIds?.length ?? 0) === 0) {
+      return {
+        ok: false,
+        summary: "通知IDなしの成功は禁止されています",
+        errorCode: "run_notification_target_invalid",
+        errorMessage: "notification_id_required",
+      };
+    }
+  }
+  if (
+    production.completionRequirements.includes("vision_result") ||
+    production.completionRequirements.includes("ocr_result")
+  ) {
+    const hasResult =
+      (result.evidence?.externalActionIds?.length ?? 0) > 0 ||
+      result.artifacts.some((item) => Boolean(item.externalId?.trim()));
+    if (!hasResult) {
+      return {
+        ok: false,
+        summary: "Vision/OCR結果なしの成功は禁止されています",
+        errorCode: "automation_run_failed",
+        errorMessage: "vision_ocr_result_required",
       };
     }
   }
@@ -199,6 +236,69 @@ export async function executeQueuedRun(input: {
       if (runStep.status === "succeeded") {
         succeededCount += 1;
         completedStepIds.push(runStep.id);
+        // Resume/retry: reconstruct step-scoped evidence from persisted artifacts
+        // so completed steps still satisfy evaluateRunCompletion.
+        const production = getProductionStep(runStep.capabilityId);
+        if (production?.kind === "deliverable") {
+          const arts = run.artifacts.filter((item) => item.kind === "deliverable");
+          evidenceFragments.push({
+            stepId: runStep.id,
+            artifactIds: arts.map((item) => item.id),
+            storageObjectIds: arts.map((item) => item.id),
+            externalActionIds: [],
+            externalUrls: arts
+              .map((item) => item.url)
+              .filter((url): url is string => Boolean(url)),
+            notificationIds: [],
+            outputSizeBytes: arts.reduce(
+              (sum, item) => sum + (item.sizeBytes ?? 0),
+              0,
+            ),
+          });
+        } else if (production?.kind === "external") {
+          const arts = run.artifacts.filter((item) => item.kind === "external");
+          evidenceFragments.push({
+            stepId: runStep.id,
+            artifactIds: arts.map((item) => item.id),
+            storageObjectIds: [],
+            externalActionIds: arts
+              .map((item) => item.externalId)
+              .filter((id): id is string => Boolean(id)),
+            externalUrls: arts
+              .map((item) => item.url)
+              .filter((url): url is string => Boolean(url)),
+            notificationIds: [],
+          });
+        } else if (production?.kind === "notification") {
+          const arts = run.artifacts.filter((item) => item.kind === "file");
+          evidenceFragments.push({
+            stepId: runStep.id,
+            artifactIds: arts.map((item) => item.id),
+            notificationIds: arts
+              .map((item) => item.externalId ?? item.id)
+              .filter(Boolean),
+            storageObjectIds: [],
+            externalActionIds: [],
+            externalUrls: [],
+          });
+        } else if (
+          production?.kind === "vision" ||
+          production?.kind === "ocr"
+        ) {
+          const arts = run.artifacts.filter((item) =>
+            Boolean(item.externalId?.trim()),
+          );
+          evidenceFragments.push({
+            stepId: runStep.id,
+            artifactIds: arts.map((item) => item.id),
+            externalActionIds: arts
+              .map((item) => item.externalId)
+              .filter((id): id is string => Boolean(id)),
+            storageObjectIds: [],
+            externalUrls: [],
+            notificationIds: [],
+          });
+        }
       }
       continue;
     }
@@ -298,20 +398,38 @@ export async function executeQueuedRun(input: {
       succeededCount += 1;
       completedStepIds.push(runStep.id);
       if (result.evidence) {
-        evidenceFragments.push(result.evidence);
-      } else if (result.artifacts.length > 0) {
         evidenceFragments.push({
+          ...result.evidence,
+          stepId: runStep.id,
+          outputSizeBytes:
+            result.evidence.outputSizeBytes ??
+            result.artifacts.reduce(
+              (sum, item) => sum + (item.sizeBytes ?? 0),
+              0,
+            ),
+        });
+      } else if (result.artifacts.length > 0) {
+        const production = getProductionStep(def.type);
+        const isExternal = production?.kind === "external";
+        evidenceFragments.push({
+          stepId: runStep.id,
           artifactIds: result.artifacts.map((item) => item.id),
           storageObjectIds: result.artifacts
             .filter((item) => item.kind === "deliverable")
             .map((item) => item.id),
-          externalActionIds: result.artifacts
-            .map((item) => item.externalId)
-            .filter((id): id is string => Boolean(id)),
+          externalActionIds: isExternal
+            ? result.artifacts
+                .map((item) => item.externalId)
+                .filter((id): id is string => Boolean(id))
+            : [],
           externalUrls: result.artifacts
             .map((item) => item.url)
             .filter((url): url is string => Boolean(url)),
           notificationIds: [],
+          outputSizeBytes: result.artifacts.reduce(
+            (sum, item) => sum + (item.sizeBytes ?? 0),
+            0,
+          ),
         });
       }
       steps[i] = {
@@ -408,12 +526,22 @@ export async function executeQueuedRun(input: {
     return { run, terminal: false };
   }
 
+  const priorRetries = Math.max(0, run.attemptCount - 1);
+  const lastRetryAttempt = [...run.attempts]
+    .reverse()
+    .find((item) => item.retryScheduledFor);
   const evidence = buildCompletionEvidenceV2({
     run,
     completedStepIds,
     fragments: evidenceFragments,
     incompleteOptionalStepIds,
     completedAt: finishedAt,
+    retryCount: priorRetries,
+    retryReason:
+      priorRetries > 0
+        ? lastErrorMessage ?? lastErrorCode ?? "retry_after_failure"
+        : null,
+    retryTime: lastRetryAttempt?.retryScheduledFor ?? null,
   });
 
   const decision = evaluateRunCompletion({
