@@ -125,6 +125,39 @@ describe("N-05 memory apply production honesty", () => {
     expect(PERSONAL_MEMORY_DOMAIN_KEY).toBe("atlasPersonalMemory");
   });
 
+  it("artifact overlay keeps conclusion before bullets even with headers", () => {
+    const value = buildExplicitWritingPreferenceValue(
+      "今後、文章は短め・箇条書き中心・結論を最初にしてください",
+    );
+    const rows: ResolvedMemoryValue[] = [
+      {
+        memoryId: "m_header",
+        scope: "writing_style",
+        key: "writing_preference",
+        value,
+        title: "文章の好み",
+        summary: value.text,
+        source: "explicit",
+        layer: "global_memory",
+        sensitivity: "normal",
+      },
+    ];
+    const overlay = buildContentOverlay({
+      values: rows,
+      injectionText: "injection-header",
+    });
+    const text = applyContentOverlayToText(
+      "長い導入です。背景です。結論は方針確定です。補足です。",
+      overlay,
+    );
+    const conclusionIdx = text.indexOf("結論：");
+    const bulletIdx = text.search(/(^|\n)- /);
+    expect(conclusionIdx).toBeGreaterThanOrEqual(0);
+    expect(bulletIdx).toBeGreaterThanOrEqual(0);
+    expect(conclusionIdx).toBeLessThan(bulletIdx);
+    expect(text).toContain("【適用する好み】");
+  });
+
   it("detects and structurally applies short/bullets/conclusion-first", () => {
     const value = buildExplicitWritingPreferenceValue(
       "今後、文章は短め・箇条書き中心・結論を最初にしてください",

@@ -41,6 +41,9 @@ if (!/evictPersonalMemoryCacheForUser/.test(personalDurable)) {
 if (!/forceSupabase:\s*true/.test(personalDurable)) {
   violations.push("personal-memory/durable.ts: forceSupabase required");
 }
+if (!/personalMemoryPersistChains/.test(personalDurable)) {
+  violations.push("personal-memory/durable.ts: per-user persist serialization required");
+}
 
 const probe = read("lib/memory-apply/memory-apply-production-probe.ts");
 for (const key of [

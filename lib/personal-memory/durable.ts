@@ -92,20 +92,39 @@ export function schedulePersistPersonalMemory(userId: string): void {
   void persistPersonalMemoryNow(userId);
 }
 
+type PersistResult = "clerk" | "supabase" | "clerk_compact" | "skipped";
+
+/** Serialize durable writes per user so a stale async snapshot cannot overwrite a newer SoT. */
+const personalMemoryPersistChains = new Map<string, Promise<PersistResult>>();
+
 /** Awaitable Postgres SoT write — required for Production probe / restart proof. */
 export async function persistPersonalMemoryNow(
   userId: string,
-): Promise<"clerk" | "supabase" | "clerk_compact" | "skipped"> {
+): Promise<PersistResult> {
   if (!userId.trim()) return "skipped";
-  return persistDurableDomain(
-    userId,
-    PERSONAL_MEMORY_DOMAIN_KEY,
-    snapshot(userId),
-    {
-      compact,
-      forceSupabase: true,
-    },
-  );
+  const previous =
+    personalMemoryPersistChains.get(userId) ?? Promise.resolve<PersistResult>("skipped");
+  const next = previous
+    .catch(() => "skipped" as PersistResult)
+    .then(() =>
+      persistDurableDomain(
+        userId,
+        PERSONAL_MEMORY_DOMAIN_KEY,
+        snapshot(userId),
+        {
+          compact,
+          forceSupabase: true,
+        },
+      ),
+    );
+  personalMemoryPersistChains.set(userId, next);
+  try {
+    return await next;
+  } finally {
+    if (personalMemoryPersistChains.get(userId) === next) {
+      personalMemoryPersistChains.delete(userId);
+    }
+  }
 }
 
 export async function ensurePersonalMemoryHydrated(
