@@ -32,9 +32,17 @@ describe("feature flag store and service", () => {
     const legacyFlags = snapshot.flags.filter(
       (flag) =>
         !flag.id.startsWith("automation_") &&
-        !flag.id.startsWith("workflow_"),
+        !flag.id.startsWith("workflow_") &&
+        flag.id !== "video_generation" &&
+        flag.id !== "image_generation",
     );
     expect(legacyFlags.every((flag) => flag.state === "on")).toBe(true);
+    expect(
+      snapshot.flags.find((flag) => flag.id === "video_generation")?.state,
+    ).toBe("off");
+    expect(
+      snapshot.flags.find((flag) => flag.id === "image_generation")?.state,
+    ).toBe("off");
   });
 
   it("updates a single flag state", () => {

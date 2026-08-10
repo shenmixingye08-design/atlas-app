@@ -36,21 +36,22 @@ const SNS_KEYWORDS = [
   "ソーシャル",
 ] as const;
 
+/** Explicit generation intents only (N-01). Do not block title/caption copy. */
 const VIDEO_KEYWORDS = [
-  "動画",
-  "video",
-  "youtube",
-  "ユーチューブ",
-  "ショート",
+  "動画生成",
+  "video generation",
+  "generate video",
+  "動画を作",
+  "動画制作",
+  "動画編集",
 ] as const;
 
 const IMAGE_KEYWORDS = [
   "画像生成",
   "image generation",
-  "アイキャッチ",
-  "サムネ",
-  "thumbnail",
+  "generate image",
   "イラスト生成",
+  "画像を生成",
 ] as const;
 
 function includesKeyword(haystack: string, keywords: readonly string[]): boolean {

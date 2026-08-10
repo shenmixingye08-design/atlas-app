@@ -148,16 +148,8 @@ export const LANDING_REQUEST_EXAMPLES = [
     // SNS文案生成・Work Memory・ナレッジ再利用は可。画面キャプチャ解析・画像入力は未対応
     status: "partial" as const satisfies LandingExampleStatus,
   },
-  {
-    id: "video",
-    icon: "🎬",
-    title: "動画",
-    input: "完成した動画",
-    request: "投稿に必要な内容をまとめてください",
-    result: "タイトル・説明文・投稿文などの準備をお手伝いします。",
-    // テキスト依頼での文案生成は可。動画ファイル解析・アップロードは未実装
-    status: "partial" as const satisfies LandingExampleStatus,
-  },
+  // N-01: Video file ingest / video generation is not a Production-offered
+  // capability. Do not advertise a "動画" request card as available/partial.
   {
     id: "vehicle-log",
     icon: "🚗",

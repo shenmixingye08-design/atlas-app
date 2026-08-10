@@ -48,10 +48,6 @@ export const QUICK_REQUEST_PRESETS: readonly QuickRequestPreset[] = [
     prompt:
       "指定テーマについて市場調査を行い、概況・競合・機会・リスク・おすすめアクションをまとめてください。",
   },
-  {
-    id: "image",
-    label: "画像生成",
-    prompt:
-      "仕事で使える画像の生成指示とキャプション案を作ってください。用途・トーン・構図・避けたい要素を明確にしてください。",
-  },
+  // N-01: Do not expose an "画像生成" preset while Production image generation
+  // is not an offered capability.
 ] as const;

@@ -17,7 +17,8 @@ export const WORKFLOW_TEMPLATES: Record<WorkflowTemplateId, WorkflowTemplate> = 
     label: "SNS投稿",
     steps: [
       { id: "copywriting", label: "文章作成", integration: "atlas" },
-      { id: "image_generation", label: "画像生成", integration: "atlas" },
+      // Keep stable step id for existing flows; label must not claim generation.
+      { id: "image_generation", label: "画像は別途用意", integration: "atlas" },
       { id: "schedule_post", label: "投稿予約", integration: "sns" },
       { id: "publish", label: "投稿", integration: "sns" },
       { id: "post_report", label: "投稿後レポート", integration: "atlas" },
