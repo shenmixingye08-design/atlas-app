@@ -7,7 +7,10 @@ import {
   assignmentIsImageToExcel,
   assignmentRequestsExcel,
 } from "@/lib/deliverables/excel-data";
-import { detectDeliverableFormats } from "@/lib/deliverables/detect-formats";
+import {
+  assignmentRequestsPowerpoint,
+  detectDeliverableFormats,
+} from "@/lib/deliverables/detect-formats";
 import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
@@ -438,16 +441,21 @@ export function FinalOutput({
       assignmentRequestsExcel(assignment) ||
       assignmentIsImageToExcel(assignment) ||
       generated.has("xlsx");
+    // N-03: expose PowerPoint download when requested or already generated.
+    const wantsPowerpoint =
+      assignmentRequestsPowerpoint(assignment) || generated.has("pptx");
 
     if (expectedFormats && expectedFormats.length > 0) {
       const allowed = new Set<GeneratedFile["format"]>(expectedFormats);
       if (wantsExcel) allowed.add("xlsx");
+      if (wantsPowerpoint) allowed.add("pptx");
       for (const format of generated) allowed.add(format);
       return DOWNLOAD_FORMAT_ORDER.filter((format) => allowed.has(format));
     }
 
     const base = new Set<GeneratedFile["format"]>(["pdf", "docx"]);
     if (wantsExcel) base.add("xlsx");
+    if (wantsPowerpoint) base.add("pptx");
     for (const format of generated) {
       if (DOWNLOAD_FORMAT_ORDER.includes(format)) base.add(format);
     }

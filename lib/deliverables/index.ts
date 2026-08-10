@@ -13,7 +13,11 @@ export {
   DELIVERABLE_MIME_TYPES,
 } from "./types";
 
-export { detectDeliverableFormats } from "./detect-formats";
+export {
+  assignmentRequestsPowerpoint,
+  assignmentRequestsWordFile,
+  detectDeliverableFormats,
+} from "./detect-formats";
 export { buildDeliverableBaseName, buildFileName } from "./filename";
 
 export {

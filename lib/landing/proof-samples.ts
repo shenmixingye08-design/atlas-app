@@ -7,7 +7,7 @@
  * - usedAi: MINERVOT capability label only (no model names / multi-agent)
  */
 
-export type ProofSampleKind = "sns" | "email" | "docx" | "xlsx" | "pdf";
+export type ProofSampleKind = "sns" | "email" | "docx" | "xlsx" | "pdf" | "pptx";
 
 export type ProofTextSample = {
   kind: "sns" | "email";
@@ -26,7 +26,7 @@ export type ProofTextSample = {
 };
 
 export type ProofFileSample = {
-  kind: "docx" | "xlsx" | "pdf";
+  kind: "docx" | "xlsx" | "pdf" | "pptx";
   id: string;
   title: string;
   formatLabel: string;
@@ -163,6 +163,35 @@ export const PROOF_PDF_BODY = `# 提案アウトライン（見本）
 本PDFは見本です。特定企業の提案内容ではありません。
 `;
 
+/** N-03: PowerPoint proof body — must produce a real openable .pptx. */
+export const PROOF_PPTX_BODY = `# 営業提案スライド（見本）
+
+## 目的
+本資料は MINERVOT が見本として作成した PowerPoint です。完成形式の確認用であり、特定企業の提案内容ではありません。
+
+## 課題
+- 資料作成に毎回時間がかかる
+- 構成が担当者ごとにばらつく
+- 確認前に形が揃わない
+
+## 提案
+- 依頼文からスライド構成まで一気に用意する
+- 目的・課題・提案・効果・次のアクションを固定順で揃える
+- 完成ファイル（.pptx）をそのまま共有できる
+
+## 効果
+| 項目 | 内容 |
+| --- | --- |
+| 形式 | PowerPoint（.pptx） |
+| 用途 | 営業・社内説明の見本 |
+| 注意 | 数値・固有名詞は見本 |
+
+## 次のアクション
+1. 見本ファイルをダウンロードして開く
+2. 実際の依頼文で1件作ってみる
+3. 必要ならテンプレやトーンを記憶させる
+`;
+
 export const PROOF_FILE_DEFS: Omit<
   ProofFileSample,
   "creationSec" | "bytes" | "href" | "fileName"
@@ -184,6 +213,16 @@ export const PROOF_FILE_DEFS: Omit<
     summary: "月次コスト整理表の完成見本。実ファイルとして開けます。",
     usedAi: "MINERVOT（資料作成・Excel）",
     typicalManualMinutes: 45,
+  },
+  {
+    kind: "pptx",
+    id: "pptx-sales-deck",
+    title: "PowerPoint",
+    formatLabel: "PowerPoint（.pptx）",
+    summary:
+      "営業提案スライドの完成見本。ダウンロードして実ファイルを確認できます。",
+    usedAi: "MINERVOT（資料作成・PowerPoint）",
+    typicalManualMinutes: 90,
   },
   {
     kind: "pdf",

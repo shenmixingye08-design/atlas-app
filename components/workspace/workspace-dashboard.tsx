@@ -85,9 +85,10 @@ export function WorkspaceDashboard() {
   const preferredFormats =
     preferredFormat === "xlsx" ||
     preferredFormat === "docx" ||
+    preferredFormat === "pptx" ||
     preferredFormat === "pdf" ||
     preferredFormat === "txt"
-      ? ([preferredFormat] as Array<"xlsx" | "docx" | "pdf" | "txt">)
+      ? ([preferredFormat] as Array<"xlsx" | "docx" | "pptx" | "pdf" | "txt">)
       : undefined;
 
   const deliverableOptions = salesMaterialConfig
