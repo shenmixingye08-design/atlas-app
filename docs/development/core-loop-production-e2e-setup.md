@@ -8,9 +8,10 @@
 - 一般ユーザーの Google ログインを壊さない
 - Production に認証バイパスを追加しない
 - Clerk **Sign-in Token（ticket）** で E2E 専用ユーザーの正規セッションを短命発行
+- `/sign-in` が `__clerk_ticket` を公式 SignInFuture（`ticket()` + `finalize()`）で消費する
 - Clerk **Testing Token** で Production の bot 対策を E2E だけ迂回（一般ユーザー認証は変更しない）
 - Playwright が `https://atlasapp.jp` の UI/API 正規経路を通る
-- アプリ側の認証バイパス route は追加しない
+- アプリ側の認証バイパス route は追加しない（ticket 無しの Google ログインは従来どおり）
 
 ## 必要な GitHub Secrets
 
