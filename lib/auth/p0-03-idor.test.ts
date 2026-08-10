@@ -9,7 +9,8 @@ vi.mock("@clerk/nextjs/server", () => ({
 vi.mock("server-only", () => ({}));
 
 vi.mock("@/lib/persistence/durable-domain", () => ({
-  persistDurableDomain: vi.fn(async () => "clerk"),
+  // P3-02: atlasActiveCompany is supabase-only — tests must not fake Clerk SoT.
+  persistDurableDomain: vi.fn(async () => "supabase"),
   loadDurableDomain: vi.fn(async () => null),
 }));
 
