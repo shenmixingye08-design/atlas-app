@@ -26,6 +26,7 @@
     "test:worker-scale": "vitest run lib/work-queue/p2-03-worker-scale.test.ts",
     "test:structured-logs": "vitest run lib/reliability/p2-04-structured-logs.test.ts lib/reliability/developer-log.test.ts",
     "test:ocr-engine": "vitest run lib/ocr-engine/p2-05-ocr-engine.test.ts",
+    "test:jwt-rls": "vitest run lib/supabase/jwt-rls/p3-01-jwt-rls.test.ts",
 
     "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts",
     "test:p06-e2e": "P06_E2E_RUNS=20 vitest run lib/reliability/p06-e2e-ops-verification.test.ts",

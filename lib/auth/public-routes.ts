@@ -78,6 +78,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/health/worker-scale(.*)",
   "/api/health/structured-logs(.*)",
   "/api/health/ocr-engine(.*)",
+  "/api/health/jwt-rls(.*)",
   "/api/health/vision(.*)",
   "/api/contact(.*)",
   "/api/automations/tick(.*)",

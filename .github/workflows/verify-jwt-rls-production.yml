@@ -1,0 +1,88 @@
+# P3-01 Production JWT連携RLS proof.
+name: Verify JWT RLS Production (P3-01)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "lib/supabase/jwt-rls/**"
+      - "app/api/health/jwt-rls/**"
+      - "scripts/ci/p3-01-jwt-rls-ban.mjs"
+      - "supabase/migrations/20260810_p3_01_jwt_rls.sql"
+      - ".github/workflows/verify-jwt-rls-production.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe Production jwt-rls
+        env:
+          PROD_URL: https://atlasapp.jp
+        run: |
+          set -euo pipefail
+          EXPECTED_SHA_SHORT="$(printf '%s' "${GITHUB_SHA:-}" | cut -c1-7)"
+          echo "expected_commit_sha_short=${EXPECTED_SHA_SHORT}"
+          APP_CODE_CHANGED=0
+          if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            if git diff --name-only HEAD^ HEAD | grep -E '^(lib/|app/)' >/dev/null 2>&1; then
+              APP_CODE_CHANGED=1
+            fi
+          else
+            APP_CODE_CHANGED=1
+          fi
+          echo "app_code_changed=${APP_CODE_CHANGED}"
+
+          READY=""
+          for i in $(seq 1 40); do
+            curl -sS -o /tmp/p301.json "${PROD_URL}/api/health/jwt-rls?force=1" || true
+            PROD_SHA="$(python3 -c 'import json;d=json.load(open("/tmp/p301.json"));print(d.get("commitShaShort") or "")' 2>/dev/null || true)"
+            OK="$(python3 -c 'import json;d=json.load(open("/tmp/p301.json"));print(d.get("ok"))' 2>/dev/null || true)"
+            ERR="$(python3 -c 'import json;d=json.load(open("/tmp/p301.json"));print(d.get("error") or "")' 2>/dev/null || true)"
+            echo "probe=${i} production_commit_sha_short=${PROD_SHA} ok=${OK} error=${ERR}"
+            if [ -n "${EXPECTED_SHA_SHORT}" ] && [ "${PROD_SHA}" = "${EXPECTED_SHA_SHORT}" ] && [ "${OK}" = "True" ]; then
+              READY=1
+              break
+            fi
+            if [ "${APP_CODE_CHANGED}" = "0" ] && [ -n "${PROD_SHA}" ] && [ "${OK}" = "True" ]; then
+              echo "workflow_only_change=true smoking_live_production_sha=${PROD_SHA}"
+              READY=1
+              break
+            fi
+            sleep 15
+          done
+          if [ -z "${READY}" ]; then
+            echo "::error::Production jwt-rls not ready. Soft-success forbidden."
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import json,sys
+          d=json.load(open("/tmp/p301.json"))
+          print({k:d.get(k) for k in [
+            "ok","jwtBridgeOk","rlsEnforced","tableOk",
+            "restartDurableOk","retrySafe","idempotent","multiInstanceSafe",
+            "memoryNotSot","ownershipIsolationOk","failClosed",
+            "anonDenied","forgedJwtDenied","projectsJwtPolicyOk",
+            "secretSource","commitShaShort","error"
+          ]})
+          failures=[]
+          for k in ("ok","jwtBridgeOk","rlsEnforced","tableOk",
+                    "restartDurableOk","retrySafe","idempotent",
+                    "multiInstanceSafe","memoryNotSot","ownershipIsolationOk",
+                    "failClosed","anonDenied","forgedJwtDenied",
+                    "projectsJwtPolicyOk"):
+            if d.get(k) is not True:
+              failures.append(f"{k}!=true")
+          if d.get("secretSource") not in ("env","management_api"):
+            failures.append("secretSource_invalid")
+          if failures:
+            print("::error::P3-01 Production jwt-rls failed:", ", ".join(failures))
+            sys.exit(1)
+          print("p3_01_production_jwt_rls=pass")
+          PY
