@@ -26,6 +26,8 @@
     "ci:n07-soft-success-ban": "node scripts/ci/n07-soft-success-ban.mjs",
     "ci:n04-stub-exposure-ban": "node scripts/ci/n04-stub-exposure-ban.mjs",
     "ci:n03-powerpoint-product-surface-ban": "node scripts/ci/n03-powerpoint-product-surface-ban.mjs",
+    "ci:core-loop-e2e-harness-ban": "node scripts/ci/core-loop-e2e-harness-ban.mjs",
+    "test:core-loop-production-e2e": "node scripts/ci/core-loop-production-e2e.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:api-contracts": "vitest run lib/api-contracts",
