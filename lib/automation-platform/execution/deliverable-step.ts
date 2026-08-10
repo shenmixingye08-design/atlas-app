@@ -178,6 +178,16 @@ export async function invokeDeliverableStep(input: {
         input.step.configuration,
         "includePivot",
       );
+      // P3-04: wire powerpoint_generate theme / slideCountHint / templateId.
+      const pptTheme = stringConfig(input.step.configuration, "theme");
+      const pptTemplateId = stringConfig(input.step.configuration, "templateId");
+      const slideCountRaw = input.step.configuration.slideCountHint;
+      const slideCountHint =
+        typeof slideCountRaw === "number"
+          ? slideCountRaw
+          : typeof slideCountRaw === "string" && slideCountRaw.trim()
+            ? Number(slideCountRaw)
+            : null;
       const file = await generator.generate(content, baseFileName, {
         assignment: input.automationName,
         title,
@@ -187,6 +197,17 @@ export async function invokeDeliverableStep(input: {
                 includeChart,
                 includePivot,
                 chartTitle: stringConfig(input.step.configuration, "chartTitle") || null,
+              }
+            : undefined,
+        powerpoint:
+          format === "pptx"
+            ? {
+                theme: pptTheme || null,
+                templateId: pptTemplateId || null,
+                slideCountHint:
+                  slideCountHint != null && Number.isFinite(slideCountHint)
+                    ? slideCountHint
+                    : null,
               }
             : undefined,
       });

@@ -81,6 +81,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/health/jwt-rls(.*)",
   "/api/health/company-template(.*)",
   "/api/health/excel-advanced(.*)",
+  "/api/health/pptx-design(.*)",
   "/api/health/vision(.*)",
   "/api/contact(.*)",
   "/api/automations/tick(.*)",

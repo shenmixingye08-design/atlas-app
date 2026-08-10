@@ -170,6 +170,11 @@ async function generateVerifiedFile(
       memoryOverlay?.footerNote ?? docxOptions?.footerNote ?? null,
     companyName:
       memoryOverlay?.companyName ?? docxOptions?.companyName ?? null,
+    // P3-04: brand logo must reach PPTX (not only docxOptions path).
+    logoDataUrl:
+      memoryOverlay?.powerpoint?.logoDataUrl ??
+      docxOptions?.brand?.logoDataUrl ??
+      null,
     excel: memoryOverlay?.excel ?? null,
     powerpoint: memoryOverlay?.powerpoint ?? null,
     pdf: memoryOverlay?.pdf ?? null,
