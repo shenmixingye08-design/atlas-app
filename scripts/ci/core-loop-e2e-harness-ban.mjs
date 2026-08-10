@@ -2,7 +2,9 @@
 /**
  * Guardrails for CORE LOOP E2E harness:
  * - harness + workflow + setup docs must exist
+ * - must use Clerk official Playwright testing helpers
  * - must NOT introduce Production auth bypass
+ * - must NOT reintroduce ticket-URL-only auth as the primary path
  */
 
 import { readFileSync, existsSync } from "node:fs";
@@ -21,40 +23,26 @@ const required = [
   ".github/workflows/verify-core-loop-production-e2e.yml",
   "docs/development/core-loop-production-e2e-setup.md",
   "docs/development/feature-evaluation-core-loop-e2e.md",
-  "components/auth/sign-in-ticket-consumer.tsx",
 ];
 for (const rel of required) {
   if (!existsSync(join(root, rel))) violations.push(`missing:${rel}`);
 }
 
-const ticketConsumer = read("components/auth/sign-in-ticket-consumer.tsx");
-for (const keep of ["__clerk_ticket", "signIn.ticket", "finalize", "useSignIn"]) {
-  if (!ticketConsumer.includes(keep)) {
-    violations.push(`ticket_consumer_missing:${keep}`);
-  }
-}
-if (/e2e-bypass|skipAuth|auth-bypass/i.test(ticketConsumer)) {
-  violations.push("ticket_consumer_must_not_bypass_auth");
-}
-
-const signInPage = read("components/auth/sign-in-page-client.tsx");
-if (!/SignInTicketConsumer/.test(signInPage)) {
-  violations.push("sign-in-page must wrap SignInTicketConsumer");
-}
-
 const script = read("scripts/ci/core-loop-production-e2e.mjs");
 for (const keep of [
+  "@clerk/testing/playwright",
+  "clerkSetup",
+  "createAgentTestingTask",
+  "setupClerkTestingToken",
   "E2E_CLERK_USER_ID",
   "CLERK_SECRET_KEY",
-  "sign_in_tokens",
-  "testing_tokens",
-  "__clerk_testing_token",
-  "strategy",
-  "ticket",
-  "failureStage",
-  "tokenCreated",
+  "clerkSetupOk",
+  "clerkSignInOk",
   "clerkSessionDetected",
   "authenticatedUserIdMatchesExpected",
+  "authApiStatus",
+  "protectedPageAccessible",
+  "failureStage",
   "/api/work/jobs",
   "/api/deliverables/",
   "OWNER_SETUP_REQUIRED",
@@ -62,6 +50,14 @@ for (const keep of [
   "assertNoSecretLeak",
 ]) {
   if (!script.includes(keep)) violations.push(`e2e_script_missing:${keep}`);
+}
+
+// Primary auth must be Agent Tasks / official helpers — not /sign-in?ticket= retry.
+if (/sign_in_tokens/.test(script)) {
+  violations.push("e2e_script_must_not_use_sign_in_tokens_primary");
+}
+if (/\/sign-in\?__clerk_ticket|\/sign-in\?ticket=/.test(script)) {
+  violations.push("e2e_script_must_not_use_ticket_url_primary");
 }
 if (/e2e-bypass|auth-bypass|skipAuthForE2E|ATLAS_SCREENSHOT_MODE\s*=\s*['\"]1['\"]/.test(script)) {
   violations.push("e2e_script_must_not_add_auth_bypass");
@@ -82,6 +78,27 @@ if (!/workflow_dispatch/.test(wf)) {
 if (!/CLERK_SECRET_KEY/.test(wf) || !/E2E_CLERK_USER_ID/.test(wf)) {
   violations.push("workflow_missing_secret_refs");
 }
+if (
+  !/NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY|CLERK_PUBLISHABLE_KEY/.test(wf)
+) {
+  violations.push("workflow_missing_publishable_key_secret");
+}
+if (!/@clerk\/testing/.test(wf) && !/core-loop-production-e2e/.test(wf)) {
+  violations.push("workflow_must_run_core_loop_e2e");
+}
+
+const docs = read("docs/development/core-loop-production-e2e-setup.md");
+for (const keep of [
+  "@clerk/testing",
+  "clerkSetup",
+  "createAgentTestingTask",
+  "Testing Token",
+  "Agent Tasks",
+  "CLERK_SECRET_KEY",
+  "E2E_CLERK_USER_ID",
+]) {
+  if (!docs.includes(keep)) violations.push(`setup_doc_missing:${keep}`);
+}
 
 const qg = read(".github/workflows/quality-gate.yml");
 if (!/core-loop-e2e-harness-ban\.mjs/.test(qg)) {
@@ -94,6 +111,12 @@ if (!/ci:core-loop-e2e-harness-ban/.test(pkg)) {
 }
 if (!/test:core-loop-production-e2e/.test(pkg)) {
   violations.push("package.json: missing test:core-loop-production-e2e");
+}
+if (!/"@clerk\/testing"/.test(pkg)) {
+  violations.push("package.json: missing @clerk/testing dependency");
+}
+if (!/"@playwright\/test"/.test(pkg)) {
+  violations.push("package.json: missing @playwright/test peer for @clerk/testing");
 }
 
 // Production auth bypass ban (app code).

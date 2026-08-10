@@ -1,5 +1,8 @@
-# Production CORE LOOP E2E — dedicated Clerk user + Sign-in Token (no auth bypass).
-# Secrets required: CLERK_SECRET_KEY, E2E_CLERK_USER_ID, E2E_CLERK_USER_B_ID
+# Production CORE LOOP E2E — Clerk official Playwright helpers (no auth bypass).
+# Auth: @clerk/testing clerkSetup + Testing Token + createAgentTestingTask(userId)
+# Secrets required:
+#   CLERK_SECRET_KEY, NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+#   E2E_CLERK_USER_ID, E2E_CLERK_USER_B_ID
 # Manual only: does not run on every push (AI cost).
 name: Verify CORE LOOP Production E2E
 
@@ -30,11 +33,14 @@ jobs:
       - name: Guard — required Secrets present (names only)
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY }}
           E2E_CLERK_USER_ID: ${{ secrets.E2E_CLERK_USER_ID }}
           E2E_CLERK_USER_B_ID: ${{ secrets.E2E_CLERK_USER_B_ID }}
         run: |
           set -euo pipefail
           missing=0
+          PUBLISHABLE="${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-${CLERK_PUBLISHABLE_KEY:-}}"
           for name in CLERK_SECRET_KEY E2E_CLERK_USER_ID E2E_CLERK_USER_B_ID; do
             if [ -z "${!name}" ]; then
               echo "::error::Missing GitHub Secret: ${name}. See docs/development/core-loop-production-e2e-setup.md"
@@ -43,6 +49,12 @@ jobs:
               echo "secret_present=${name}"
             fi
           done
+          if [ -z "${PUBLISHABLE}" ]; then
+            echo "::error::Missing GitHub Secret: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY (or CLERK_PUBLISHABLE_KEY). Required for clerkSetup()"
+            missing=1
+          else
+            echo "secret_present=CLERK_PUBLISHABLE_KEY_FAMILY"
+          fi
           if [ "${missing}" = "1" ]; then
             exit 2
           fi
@@ -53,19 +65,31 @@ jobs:
               exit 2
               ;;
           esac
+          case "${PUBLISHABLE}" in
+            pk_live_*) echo "clerk_publishable_prefix=pk_live_" ;;
+            *)
+              echo "::error::Publishable key must be Production pk_live_"
+              exit 2
+              ;;
+          esac
 
       - name: Run Production CORE LOOP E2E
         id: e2e
         env:
           ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY }}
           E2E_CLERK_USER_ID: ${{ secrets.E2E_CLERK_USER_ID }}
           E2E_CLERK_USER_B_ID: ${{ secrets.E2E_CLERK_USER_B_ID }}
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           CORE_LOOP_E2E_OUT: ${{ runner.temp }}/core-loop-e2e
         run: |
           set -euo pipefail
           export ATLAS_APP_URL="${ATLAS_APP_URL:-https://atlasapp.jp}"
+          # Prefer explicit CLERK_PUBLISHABLE_KEY; else map from NEXT_PUBLIC_*.
+          if [ -z "${CLERK_PUBLISHABLE_KEY:-}" ] && [ -n "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" ]; then
+            export CLERK_PUBLISHABLE_KEY="${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}"
+          fi
           mkdir -p "${CORE_LOOP_E2E_OUT}"
           set +e
           node scripts/ci/core-loop-production-e2e.mjs
@@ -73,7 +97,7 @@ jobs:
           set -e
           echo "e2e_exit=${code}"
           if [ "${code}" = "2" ]; then
-            echo "::error::OWNER_SETUP_REQUIRED — configure Clerk users + GitHub Secrets (docs/development/core-loop-production-e2e-setup.md)"
+            echo "::error::OWNER_SETUP_REQUIRED — configure Clerk Agent Tasks + GitHub Secrets (docs/development/core-loop-production-e2e-setup.md)"
             exit 2
           fi
           if [ "${code}" != "0" ]; then

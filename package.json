@@ -46,7 +46,6 @@
     "test:n07-soft-success": "vitest run lib/notifications/n07-soft-success.test.ts",
     "test:n04-stub-exposure": "vitest run lib/integrations/n04-stub-exposure.test.ts",
     "test:n03-powerpoint-product-surface": "vitest run lib/deliverables/n03-powerpoint-product-surface.test.ts",
-
     "test:reliability-1000": "RELIABILITY_RUNS=1000 vitest run lib/reliability/e2e-1000.test.ts lib/reliability/x-post-1000.test.ts",
     "test:p06-e2e": "P06_E2E_RUNS=20 vitest run lib/reliability/p06-e2e-ops-verification.test.ts",
     "test:p08-real-artifacts": "vitest run lib/reliability/p08-real-artifact-proof.test.ts",
@@ -77,6 +76,8 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@clerk/testing": "^2.2.19",
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pdfkit": "^0.17.6",
