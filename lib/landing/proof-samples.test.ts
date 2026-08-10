@@ -32,7 +32,7 @@ describe("landing proof samples", () => {
     expect(texts[0]?.creationMs).toBeGreaterThan(0);
     expect(texts[0]?.usedAi).toContain("MINERVOT");
     const files = getProofFileSamples();
-    expect(files.map((f) => f.kind).sort()).toEqual(["docx", "pdf", "xlsx"]);
+    expect(files.map((f) => f.kind).sort()).toEqual(["docx", "pdf", "pptx", "xlsx"]);
     for (const file of files) {
       expect(file.href.startsWith("/samples/")).toBe(true);
       expect(file.creationMs).toBeGreaterThan(0);

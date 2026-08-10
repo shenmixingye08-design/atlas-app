@@ -10,7 +10,7 @@ describe("QUICK_REQUEST_PRESETS", () => {
       "X投稿を作る",
       "ブログを書く",
       "営業メール作成",
-      "資料作成",
+      "PowerPoint資料",
       "議事録作成",
       "市場調査",
     ]);
