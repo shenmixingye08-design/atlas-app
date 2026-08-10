@@ -8,7 +8,7 @@ import { atlasClerkAppearance } from "@/lib/clerk/appearance";
 export const metadata: Metadata = {
   title: "今すぐ1件終わらせる",
   description:
-    "登録後60秒以内に1件完成を目指せます。ChatGPTは答えて終わる。MINERVOTは仕事を終わらせます。合えば月980円。",
+    "ChatGPTは答えて終わる。MINERVOTは仕事を終わらせます。依頼した仕事を進め、完成したらお知らせします。合えば月980円。",
   robots: { index: false, follow: true },
 };
 

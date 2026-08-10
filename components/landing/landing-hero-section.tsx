@@ -44,7 +44,7 @@ export function LandingHeroSection() {
           </p>
 
           <p className="mx-auto mt-3 max-w-[520px] text-sm leading-7 text-[#75686B] lg:mx-0">
-            登録後60秒以内に1件完成を目指せます。合えば月980円。
+            依頼した仕事を進め、完成したらお知らせします。合えば月980円。
           </p>
 
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row lg:justify-start">

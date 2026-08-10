@@ -87,6 +87,6 @@ export const LANDING_DASHBOARD_STATS = [
 
 export const LANDING_CTA_TRUST = [
   "クレジットカード不要",
-  "数分で開始",
+  "選んで依頼するだけ",
   "Google連携対応",
 ] as const;
