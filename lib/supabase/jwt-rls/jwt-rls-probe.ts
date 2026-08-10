@@ -51,6 +51,12 @@ export type JwtRlsProbeResult = {
   projectsJwtPolicyOk: boolean;
   secretSource: "env" | "management_api" | "db_bridge" | "none";
   ownerActionRequired: boolean;
+  /** Presence flags only — never secret values. */
+  envPresence: {
+    supabaseJwtSecret: boolean;
+    supabaseAccessToken: boolean;
+    serviceRole: boolean;
+  };
   error: string | null;
   commitShaShort: string;
   environment: string;
@@ -86,6 +92,7 @@ function baseFail(
     projectsJwtPolicyOk: false,
     secretSource: "none",
     ownerActionRequired: true,
+    envPresence: getJwtSecretEnvPresence(),
     error,
     commitShaShort,
     environment,
@@ -386,6 +393,7 @@ async function probeOnce(): Promise<JwtRlsProbeResult> {
       projectsJwtPolicyOk,
       secretSource: secret.source,
       ownerActionRequired: false,
+      envPresence: getJwtSecretEnvPresence(),
       error: ok
         ? null
         : [
