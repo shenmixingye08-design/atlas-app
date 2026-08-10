@@ -16,11 +16,10 @@ export type MintClerkSupabaseJwtInput = {
   secret: string;
 };
 
-export type JwtSecretSource = "env" | "management_api" | "none";
+export type JwtSecretSource = "env" | "management_api" | "db_bridge" | "none";
 
 export type ResolveJwtSecretResult =
   | { ok: true; secret: string; source: Exclude<JwtSecretSource, "none"> }
   | { ok: false; secret: null; source: "none"; error: string };
-
 export const JWT_RLS_PROBE_USER_A = "user_p301_probe_a";
 export const JWT_RLS_PROBE_USER_B = "user_p301_probe_b";

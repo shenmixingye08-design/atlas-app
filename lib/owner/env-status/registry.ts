@@ -166,6 +166,14 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
       "サーバー専用（atlas_user_state / 画像Storage atlas-image-attachments / 成果物Storage atlas-deliverable-files 書き込み / RLS バイパス）",
   },
   {
+    key: "SUPABASE_JWT_SECRET",
+    service: "supabase",
+    requirement: "recommended",
+    purpose:
+      "P3-01 JWT連携RLS（Clerk userId→Supabase JWT 署名）。未設定時は CI が bridge テーブルへ同期",
+    aliases: ["SUPABASE_JWT_SECRET_KEY"],
+  },
+  {
     key: "ATLAS_ATTACHMENT_STORAGE",
     service: "supabase",
     requirement: "optional",

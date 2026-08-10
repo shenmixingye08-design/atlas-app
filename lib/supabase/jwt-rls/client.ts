@@ -12,7 +12,7 @@ export type ClerkJwtSupabaseClientResult =
       ok: true;
       client: SupabaseClient;
       userId: string;
-      secretSource: "env" | "management_api";
+      secretSource: "env" | "management_api" | "db_bridge";
     }
   | { ok: false; client: null; error: string };
 

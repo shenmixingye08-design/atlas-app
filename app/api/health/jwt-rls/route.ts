@@ -51,6 +51,7 @@ export async function GET(request: Request): Promise<Response> {
     forgedJwtDenied: result.forgedJwtDenied,
     projectsJwtPolicyOk: result.projectsJwtPolicyOk,
     secretSource: result.secretSource,
+    ownerActionRequired: result.ownerActionRequired,
     error: result.error,
     commitShaShort: result.commitShaShort,
     environment: result.environment,
