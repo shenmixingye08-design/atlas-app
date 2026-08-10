@@ -189,27 +189,48 @@ export async function syncV2ToV1Scheduler(
       ? automation.instruction.structuredOptions.v1SchedulerId
       : null;
 
-  if (existingV1Id) {
-    const updated = await automationService.updateForUser(
-      existingV1Id,
-      automation.userId,
-      {
-        name: input.name,
-        description: input.description,
-        schedule: input.schedule,
-        workflow: input.workflow,
-        timing: input.timing,
-        executionLevel: input.executionLevel,
-        destination: input.destination,
-        enabled: input.enabled,
-      },
-    );
-    return { v1Id: updated?.id ?? existingV1Id, registered: Boolean(updated) };
-  }
+  try {
+    if (existingV1Id) {
+      const updated = await automationService.updateForUser(
+        existingV1Id,
+        automation.userId,
+        {
+          name: input.name,
+          description: input.description,
+          schedule: input.schedule,
+          workflow: input.workflow,
+          timing: input.timing,
+          executionLevel: input.executionLevel,
+          destination: input.destination,
+          enabled: input.enabled,
+        },
+      );
+      return { v1Id: updated?.id ?? existingV1Id, registered: Boolean(updated) };
+    }
 
-  const created = await automationService.createForUser(
-    automation.userId,
-    input,
-  );
-  return { v1Id: created.id, registered: true };
+    const created = await automationService.createForUser(
+      automation.userId,
+      input,
+    );
+    return { v1Id: created.id, registered: true };
+  } catch (error) {
+    // N-08: V2 due-tick uses atlas_automations SoT. V1 shadow is best-effort.
+    // Missing atlas_automation_definitions must not block V2 active/pause/resume.
+    const { isAutomationSchemaMissingError, AutomationStoreUnavailableError } =
+      await import("@/lib/automations/durable-automation-definitions");
+    if (
+      isAutomationSchemaMissingError(error) ||
+      error instanceof AutomationStoreUnavailableError
+    ) {
+      console.warn(
+        "[automation-platform] v2→v1 scheduler bridge skipped (v1 durable unavailable)",
+        {
+          automationId: automation.id,
+          error: error instanceof Error ? error.message : "unknown",
+        },
+      );
+      return { v1Id: existingV1Id, registered: false };
+    }
+    throw error;
+  }
 }
