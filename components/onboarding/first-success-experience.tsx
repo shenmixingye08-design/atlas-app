@@ -296,7 +296,7 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
             )}
 
             <p className="mt-4 text-sm leading-relaxed text-foreground">
-              {ui.firstExperience.sixtySecondWin}
+              {ui.firstExperience.firstWinMessage}
             </p>
 
             <div className="landing-glass mt-6 rounded-[var(--radius-xl)] border border-[var(--border-subtle)] p-4">

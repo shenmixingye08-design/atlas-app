@@ -9,7 +9,7 @@ import { ATLAS_APP_HOME_PATH } from "@/lib/auth/public-routes";
 const LINES = [
   "ChatGPTに聞いて終わる仕事、これだと完成までやってくれる。",
   "朝のメール10分を手放せたら、月980円でも安い（見本目安）。",
-  "登録して仕事を1つ選ぶだけ。60秒以内に1件終わる流れ。",
+  "登録して仕事を1つ選ぶだけ。完成したらお知らせします。",
 ] as const;
 
 export function LandingCtaSection() {

@@ -1,0 +1,85 @@
+# N-02 Production unproven speed-claim honesty proof.
+name: Verify Unproven Speed Claims Production (N-02)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "lib/marketing/**"
+      - "lib/seo/site.ts"
+      - "lib/i18n/ja.ts"
+      - "lib/landing/**"
+      - "components/landing/**"
+      - "components/onboarding/first-success-experience.tsx"
+      - "app/sign-up/**"
+      - "app/pricing/**"
+      - "app/page.tsx"
+      - "app/layout.tsx"
+      - "app/api/health/unproven-speed-claims/**"
+      - "scripts/ci/n02-unproven-speed-claims-ban.mjs"
+      - ".github/workflows/verify-unproven-speed-claims-production.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe Production unproven-speed-claims
+        env:
+          PROD_URL: https://atlasapp.jp
+        run: |
+          set -euo pipefail
+          EXPECTED_SHA_SHORT="$(printf '%s' "${GITHUB_SHA:-}" | cut -c1-7)"
+          echo "expected_commit_sha_short=${EXPECTED_SHA_SHORT}"
+          APP_CODE_CHANGED=0
+          if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            if git diff --name-only HEAD^ HEAD | grep -E '^(lib/|app/|components/)' >/dev/null 2>&1; then
+              APP_CODE_CHANGED=1
+            fi
+          else
+            APP_CODE_CHANGED=1
+          fi
+          echo "app_code_changed=${APP_CODE_CHANGED}"
+
+          READY=""
+          for i in $(seq 1 40); do
+            curl -sS -o /tmp/n02.json "${PROD_URL}/api/health/unproven-speed-claims?force=1" || true
+            PROD_SHA="$(python3 -c 'import json;d=json.load(open("/tmp/n02.json"));print(d.get("commitShaShort") or "")' 2>/dev/null || true)"
+            OK="$(python3 -c 'import json;d=json.load(open("/tmp/n02.json"));print(d.get("ok"))' 2>/dev/null || true)"
+            ERR="$(python3 -c 'import json;d=json.load(open("/tmp/n02.json"));print(d.get("error") or "")' 2>/dev/null || true)"
+            echo "probe=${i} production_commit_sha_short=${PROD_SHA} ok=${OK} error=${ERR}"
+            if [ -n "${EXPECTED_SHA_SHORT}" ] && [ "${PROD_SHA}" = "${EXPECTED_SHA_SHORT}" ] && [ "${OK}" = "True" ]; then
+              READY=1
+              break
+            fi
+            if [ "${APP_CODE_CHANGED}" = "0" ] && [ -n "${PROD_SHA}" ] && [ "${OK}" = "True" ]; then
+              echo "workflow_only_change=true smoking_live_production_sha=${PROD_SHA}"
+              READY=1
+              break
+            fi
+            sleep 15
+          done
+          if [ -z "${READY}" ]; then
+            echo "::error::Production unproven-speed-claims not ready. Soft-success forbidden."
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import json,sys
+          d=json.load(open("/tmp/n02.json"))
+          keys=(
+            "ok","metadataHonest","onboardingCopyHonest","landingSurfacesHonest",
+            "pricingHonest","postLoginUiHonest","identifierHonest","failClosed",
+          )
+          print({k:d.get(k) for k in keys})
+          failures=[f"{k}!=true" for k in keys if d.get(k) is not True]
+          if failures:
+            print("::error::N-02 Production unproven-speed-claims failed:", ", ".join(failures))
+            sys.exit(1)
+          print("n02_production_unproven_speed_claims=pass")
+          PY

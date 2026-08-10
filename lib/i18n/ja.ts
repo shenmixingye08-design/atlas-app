@@ -415,7 +415,7 @@ export const ui = {
     badge: "はじめての方へ",
     skip: "スキップ",
     stepLabel: (current: number, total: number) => `${current} / ${total}`,
-    clarityHeadline: "60秒以内に、1件終わらせます",
+    clarityHeadline: "最初の1件を、終わらせるところから始めます",
     clarityBody:
       "設定は不要です。\n仕事を選ぶ → 1回依頼 → 完成。\n終わった瞬間に「もう元が取れた」と感じる体験から始めます。",
     clarityCta: "最初の仕事を選ぶ（設定なし）",
@@ -491,7 +491,7 @@ export const ui = {
   },
 
   firstExperience: {
-    introTitle: "60秒以内に、最初の仕事を終わらせます",
+    introTitle: "最初の仕事を、終わらせるところから始めます",
     introSubtitle: "設定なし。選んで依頼するだけです。",
     startSelect: "最初の仕事を選ぶ",
     defer: "今は選ばない",
@@ -514,7 +514,7 @@ export const ui = {
     savedWorkHint: "手作業の目安と、今回の実測完了時間の差です（見本定義との比較）。",
     noSavedEstimate:
       "完了時間は実測値です。手作業との差は、同種の仕事が続くと表示できます。",
-    sixtySecondWin:
+    firstWinMessage:
       "登録からここまでが、最初の成功体験です。毎日のメールやSNSも同じ流れで任せられます。",
     employeeLabel: "担当",
     saveLabel: "保存先",
@@ -522,7 +522,7 @@ export const ui = {
     goHome: "次の仕事へ進む",
     cardBadge: "初回体験",
     cardTitle: "最初の仕事を終わらせる",
-    cardHint: "選ぶ → 依頼 → 完成。60秒以内の成功を目指せます。",
+    cardHint: "選ぶ → 依頼 → 完成。設定なしで始められます。",
     cardCta: "仕事を選ぶ",
   },
 

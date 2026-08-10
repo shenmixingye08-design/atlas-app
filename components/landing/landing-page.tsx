@@ -155,7 +155,7 @@ function PricingSection() {
                   {plan.planId === "light"
                     ? "毎日の投稿・メールを手放す定番。缶コーヒー数本分の比較は上のセクション。"
                     : plan.planId === "free"
-                      ? "60秒以内に1件完成を体験。クレジットカード不要。"
+                      ? "無料で1件完成まで体験。クレジットカード不要。"
                       : plan.description}
                 </p>
 
