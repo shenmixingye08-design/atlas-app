@@ -25,6 +25,7 @@ import {
 } from "./durable";
 import {
   registerAutomationUserId,
+  unregisterAutomationUserIdIfEmpty,
 } from "./global-durable";
 
 export type AutomationServiceOptions = {
@@ -112,6 +113,22 @@ export class AutomationService {
 
   setEnabled(id: string, enabled: boolean): Promise<Automation | null> {
     return this.automations.update(id, { enabled });
+  }
+
+  /**
+   * Soft-delete for the owner: removes from active list and persists.
+   * Durable SoT sets deleted_at — not a silent hide, not hard purge.
+   */
+  async deleteForUser(id: string, userId: string): Promise<boolean> {
+    await ensureAutomationsHydrated(userId);
+    const existing = await this.automations.findById(id);
+    if (!existing || existing.userId !== userId) return false;
+    const removed = await this.automations.delete(id);
+    if (!removed) return false;
+    await this.syncTaskCount(userId);
+    await persistAutomationsNow(userId);
+    await unregisterAutomationUserIdIfEmpty(userId);
+    return true;
   }
 
   async runNow(

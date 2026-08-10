@@ -113,6 +113,29 @@ export async function setAutomationEnabled(
   return response.json() as Promise<Automation>;
 }
 
+/** Soft-delete: removes from list and stops future runs (not pause). */
+export async function deleteAutomation(id: string): Promise<{
+  ok: true;
+  id: string;
+  deleteSemantics: "soft_delete";
+  message: string;
+}> {
+  const response = await fetch(`/api/automations/${id}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    throw await readAutomationsError(response, ui.error.updateFailed);
+  }
+
+  return response.json() as Promise<{
+    ok: true;
+    id: string;
+    deleteSemantics: "soft_delete";
+    message: string;
+  }>;
+}
+
 export async function runAutomationNow(
   id: string,
 ): Promise<AutomationRunResult> {

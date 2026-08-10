@@ -283,8 +283,9 @@ export function AutomationV2DetailPanel({
               className="min-h-12"
               disabled={busy}
               onClick={onArchive}
+              title="一覧から削除し、今後の自動実行を止めます"
             >
-              Archive
+              削除
             </Button>
             <Link
               href={`/automations/new?edit=${encodeURIComponent(automation.id)}`}

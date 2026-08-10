@@ -12,6 +12,7 @@ import { defaultAutomationFormState } from "@/lib/automations/form-utils";
 import { summarizeEntrustedJobs } from "@/lib/automations/display";
 import { ui } from "@/lib/i18n";
 import {
+  deleteAutomation,
   fetchAutomations,
   runAutomationNow,
   setAutomationEnabled,
@@ -33,6 +34,11 @@ import {
   type AutomationListFilter,
   type AutomationListSort,
 } from "@/lib/automation-platform/operations/list-model";
+import {
+  DELETE_CONFIRM_MESSAGE_JA,
+  extractV1ShadowId,
+  resolveAutomationIdTarget,
+} from "@/lib/automations/canonical";
 import { fetchFeatureAvailability } from "@/lib/feature-flags/client";
 import {
   automationToVisualStatus,
@@ -108,10 +114,9 @@ function parseInitialFormFromSearchParams(
 export function AutomationsDashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const selectedIdParam = searchParams.get("id");
-  const selectedV2Param = searchParams.get("v2");
+  // N-08: deep links use ?id= only. Legacy ?v2= is accepted silently (no UI label).
+  const selectedIdParam = searchParams.get("id") ?? searchParams.get("v2");
   const openedIdRef = useRef<string | null>(null);
-  const openedV2Ref = useRef<string | null>(null);
   const initialForm = useMemo(
     () => parseInitialFormFromSearchParams(searchParams),
     [searchParams],
@@ -231,31 +236,41 @@ export function AutomationsDashboard() {
   }, [loadV2]);
 
   useEffect(() => {
-    if (!selectedIdParam || automations.length === 0) return;
+    if (!selectedIdParam) return;
     if (openedIdRef.current === selectedIdParam) return;
-    const match = automations.find((item) => item.id === selectedIdParam);
-    if (!match) return;
-    let cancelled = false;
-    void Promise.resolve().then(() => {
-      if (cancelled) return;
-      openedIdRef.current = selectedIdParam;
-      setSelected(match);
+    if (automations.length === 0 && automationsV2.length === 0) return;
+    const target = resolveAutomationIdTarget(selectedIdParam, {
+      v1: automations,
+      v2: automationsV2,
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedIdParam, automations]);
-
-  useEffect(() => {
-    if (!selectedV2Param || automationsV2.length === 0) return;
-    if (openedV2Ref.current === selectedV2Param) return;
-    const match = automationsV2.find((item) => item.id === selectedV2Param);
-    if (!match) return;
+    if (!target) return;
     return scheduleMountWork(() => {
-      openedV2Ref.current = selectedV2Param;
-      setSelectedV2(match);
+      openedIdRef.current = selectedIdParam;
+      if (target.generation === "v2") {
+        const match = automationsV2.find((item) => item.id === target.id);
+        if (match) {
+          setSelected(null);
+          setSelectedV2(match);
+        }
+        return;
+      }
+      const match = automations.find((item) => item.id === target.id);
+      if (match) {
+        setSelectedV2(null);
+        setSelected(match);
+      }
     });
-  }, [selectedV2Param, automationsV2]);
+  }, [selectedIdParam, automations, automationsV2]);
+
+  const orphanV1Automations = useMemo(() => {
+    if (!v2Enabled) return automations;
+    const shadowed = new Set(
+      automationsV2
+        .map((row) => extractV1ShadowId(row))
+        .filter((id): id is string => Boolean(id)),
+    );
+    return automations.filter((row) => !shadowed.has(row.id));
+  }, [automations, automationsV2, v2Enabled]);
 
   const summary = useMemo(
     () => summarizeEntrustedJobs(automations),
@@ -271,15 +286,30 @@ export function AutomationsDashboard() {
   }, [automationsV2, runsV2, listFilter, listQuery, listSort]);
 
   const openV2Detail = (automation: AutomationV2) => {
+    setSelected(null);
     setSelectedV2(automation);
-    router.replace(`/automations?v2=${encodeURIComponent(automation.id)}`);
+    router.replace(`/automations?id=${encodeURIComponent(automation.id)}`);
+  };
+
+  const openV1Detail = (automation: Automation) => {
+    setSelectedV2(null);
+    setSelected(automation);
+    router.replace(`/automations?id=${encodeURIComponent(automation.id)}`);
   };
 
   const closeV2Detail = () => {
     setSelectedV2(null);
-    openedV2Ref.current = null;
+    openedIdRef.current = null;
     router.replace("/automations");
   };
+
+  const closeV1Detail = () => {
+    setSelected(null);
+    openedIdRef.current = null;
+    router.replace("/automations");
+  };
+
+  const confirmDelete = () => window.confirm(DELETE_CONFIRM_MESSAGE_JA);
 
   const handleToggle = async (id: string, enabled: boolean) => {
     setUpdatingId(id);
@@ -579,7 +609,7 @@ export function AutomationsDashboard() {
       {v2Enabled ? (
         <section className="space-y-4">
           <div className="flex items-end justify-between gap-3">
-            <h2 className="text-title">あなたの自動化</h2>
+            <h2 className="text-title">{ui.entrustedJobs.title}</h2>
             <Link
               href="/automations/runs"
               className="text-sm text-accent underline"
@@ -597,7 +627,7 @@ export function AutomationsDashboard() {
               onQueryChange={setListQuery}
             />
           ) : null}
-          {automationsV2.length === 0 ? (
+          {automationsV2.length === 0 && orphanV1Automations.length === 0 ? (
             <p className="text-sm text-[var(--muted)]">
               まだ自動化がありません。新しい自動化を作成してください。
             </p>
@@ -664,6 +694,7 @@ export function AutomationsDashboard() {
                       .finally(() => setRunningId(null));
                   }}
                   onArchive={() => {
+                    if (!confirmDelete()) return;
                     setUpdatingId(automation.id);
                     void archiveAutomationV2(automation.id)
                       .then(loadV2)
@@ -688,84 +719,93 @@ export function AutomationsDashboard() {
                 );
               },
             )}
-          </ul>
-        </section>
-      ) : null}
-
-      <section className="space-y-4">
-        {v2Enabled && automations.length > 0 ? (
-          <h2 className="text-title">これまでのスケジュール型の仕事</h2>
-        ) : null}
-        {isLoading ? (
-          <LoadingState />
-        ) : automations.length === 0 && automationsV2.length === 0 && !showCreate ? (
-          <Card
-            padding="md"
-            className="border border-dashed border-[var(--border-subtle)] bg-[linear-gradient(180deg,var(--surface-elevated),var(--surface-muted))] px-5 py-10 text-center"
-          >
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--brand-muted)] text-[var(--brand)]">
-              <IconEmptyWork className="h-7 w-7" />
-            </div>
-            <h2 className="mt-4 text-title text-foreground">
-              {ui.entrustedJobs.emptyTitle}
-            </h2>
-            <p className="mx-auto mt-2 max-w-md text-sm text-[var(--text-secondary)]">
-              {ui.entrustedJobs.emptyDescription}
-            </p>
-            <p className="mx-auto mt-2 max-w-sm text-[length:var(--text-caption)] text-[var(--text-muted)]">
-              おすすめの最初の仕事：朝のメール下書き、またはSNS投稿。
-            </p>
-            <div className="mt-5 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <Button
-                variant="primary"
-                className="btn-brand min-h-[48px] shadow-[var(--shadow-cta)]"
-                onClick={openCreate}
-              >
-                {ui.entrustedJobs.emptyCta}
-              </Button>
-            </div>
-          </Card>
-        ) : dashboardV2 ? (
-          <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)]">
-            <div className="hidden border-b border-[var(--border)] px-3 py-2 text-[length:var(--text-caption)] text-[var(--text-muted)] sm:grid sm:grid-cols-[minmax(0,1.4fr)_auto_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
-              <span>自動化</span>
-              <span>状態</span>
-              <span>次回</span>
-              <span>最終</span>
-            </div>
-            {automations.map((automation) => (
-              <AutomationRow
-                key={automation.id}
-                id={automation.id}
-                name={automation.name}
-                description={automation.schedule.label}
-                status={automationToVisualStatus(automation)}
-                nextRunLabel={formatRunInstant(automation.nextRun)}
-                lastRunLabel={formatRunInstant(automation.lastRun)}
-                href={`/automations?id=${encodeURIComponent(automation.id)}`}
-              />
-            ))}
-          </div>
-        ) : (
-          <ul className="space-y-4">
-            {automations.map((automation) => (
-              <li key={automation.id}>
+            {orphanV1Automations.map((automation) => (
+              <li key={`legacy-${automation.id}`}>
                 <AutomationCard
                   automation={automation}
-                  onOpen={setSelected}
+                  onOpen={openV1Detail}
                   onToggleEnabled={(id, enabled) => void handleToggle(id, enabled)}
                   isUpdating={updatingId === automation.id}
                 />
               </li>
             ))}
           </ul>
-        )}
-      </section>
+        </section>
+      ) : null}
+
+      {!v2Enabled ? (
+        <section className="space-y-4">
+          {isLoading ? (
+            <LoadingState />
+          ) : automations.length === 0 && !showCreate ? (
+            <Card
+              padding="md"
+              className="border border-dashed border-[var(--border-subtle)] bg-[linear-gradient(180deg,var(--surface-elevated),var(--surface-muted))] px-5 py-10 text-center"
+            >
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--brand-muted)] text-[var(--brand)]">
+                <IconEmptyWork className="h-7 w-7" />
+              </div>
+              <h2 className="mt-4 text-title text-foreground">
+                {ui.entrustedJobs.emptyTitle}
+              </h2>
+              <p className="mx-auto mt-2 max-w-md text-sm text-[var(--text-secondary)]">
+                {ui.entrustedJobs.emptyDescription}
+              </p>
+              <p className="mx-auto mt-2 max-w-sm text-[length:var(--text-caption)] text-[var(--text-muted)]">
+                おすすめの最初の仕事：朝のメール下書き、またはSNS投稿。
+              </p>
+              <div className="mt-5 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                <Button
+                  variant="primary"
+                  className="btn-brand min-h-[48px] shadow-[var(--shadow-cta)]"
+                  onClick={openCreate}
+                >
+                  {ui.entrustedJobs.emptyCta}
+                </Button>
+              </div>
+            </Card>
+          ) : dashboardV2 ? (
+            <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)]">
+              <div className="hidden border-b border-[var(--border)] px-3 py-2 text-[length:var(--text-caption)] text-[var(--text-muted)] sm:grid sm:grid-cols-[minmax(0,1.4fr)_auto_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
+                <span>自動化</span>
+                <span>状態</span>
+                <span>次回</span>
+                <span>最終</span>
+              </div>
+              {automations.map((automation) => (
+                <AutomationRow
+                  key={automation.id}
+                  id={automation.id}
+                  name={automation.name}
+                  description={automation.schedule.label}
+                  status={automationToVisualStatus(automation)}
+                  nextRunLabel={formatRunInstant(automation.nextRun)}
+                  lastRunLabel={formatRunInstant(automation.lastRun)}
+                  href={`/automations?id=${encodeURIComponent(automation.id)}`}
+                />
+              ))}
+            </div>
+          ) : (
+            <ul className="space-y-4">
+              {automations.map((automation) => (
+                <li key={automation.id}>
+                  <AutomationCard
+                    automation={automation}
+                    onOpen={openV1Detail}
+                    onToggleEnabled={(id, enabled) => void handleToggle(id, enabled)}
+                    isUpdating={updatingId === automation.id}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
 
       {selected ? (
         <AutomationDetailPanel
           automation={selected}
-          onClose={() => setSelected(null)}
+          onClose={closeV1Detail}
           onUpdated={(updated) => {
             setAutomations((prev) =>
               prev.map((item) => (item.id === updated.id ? updated : item)),
@@ -774,6 +814,18 @@ export function AutomationsDashboard() {
           }}
           onRunNow={(id) => void handleRunNow(id)}
           onToggleEnabled={(id, enabled) => void handleToggle(id, enabled)}
+          onDelete={async (id) => {
+            setUpdatingId(id);
+            try {
+              await deleteAutomation(id);
+              setAutomations((prev) => prev.filter((item) => item.id !== id));
+              closeV1Detail();
+            } catch (err) {
+              setError(err instanceof Error ? err.message : ui.error.updateFailed);
+            } finally {
+              setUpdatingId(null);
+            }
+          }}
           isRunning={runningId === selected.id}
           isUpdating={updatingId === selected.id}
         />
@@ -846,6 +898,7 @@ export function AutomationsDashboard() {
               .finally(() => setUpdatingId(null));
           }}
           onArchive={() => {
+            if (!confirmDelete()) return;
             setUpdatingId(selectedV2.id);
             void archiveAutomationV2(selectedV2.id)
               .then(async () => {

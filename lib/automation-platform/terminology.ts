@@ -39,10 +39,13 @@ export const USER_FACING_NAME_CANDIDATES = [
   },
 ] as const;
 
-/** Recommended interim user-facing label while V1 UI remains. */
+/**
+ * N-08: product noun is always 「自動化」 for users.
+ * legacyJa is historical only — never render in UI.
+ */
 export const RECOMMENDED_USER_FACING_LABEL = {
-  id: "automated_work",
-  ja: "自動化する仕事",
+  id: "automation",
+  ja: "自動化",
   legacyJa: "定期の仕事",
 } as const;
 

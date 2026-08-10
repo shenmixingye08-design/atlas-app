@@ -189,6 +189,12 @@ describe("auth route matchers", () => {
     );
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain("/api/worker/drain(.*)");
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain("/api/health/vision(.*)");
+    expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
+      "/api/health/memory-apply(.*)",
+    );
+    expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
+      "/api/health/n08-automation-unify(.*)",
+    );
     expect(ATLAS_PROTECTED_PAGE_MATCHERS).toContain("/owner(.*)");
     expect(ATLAS_PROTECTED_PAGE_MATCHERS).toContain("/projects(.*)");
     expect(ATLAS_APP_HOME_PATH).toBe("/projects");

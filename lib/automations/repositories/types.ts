@@ -14,5 +14,7 @@ export interface AutomationRepository {
   findById(id: string): Promise<Automation | null>;
   create(input: CreateAutomationInput): Promise<Automation>;
   update(id: string, patch: UpdateAutomationInput): Promise<Automation | null>;
+  /** Soft-delete: remove from active store; durable layer marks deleted_at. */
+  delete(id: string): Promise<boolean>;
   saveAll(automations: Automation[]): Promise<void>;
 }

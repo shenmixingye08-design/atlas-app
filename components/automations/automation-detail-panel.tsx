@@ -34,6 +34,7 @@ type AutomationDetailPanelProps = {
   onUpdated: (automation: Automation) => void;
   onRunNow: (id: string) => void;
   onToggleEnabled: (id: string, enabled: boolean) => void;
+  onDelete?: (id: string) => void | Promise<void>;
   isRunning: boolean;
   isUpdating: boolean;
 };
@@ -44,6 +45,7 @@ export function AutomationDetailPanel({
   onUpdated,
   onRunNow,
   onToggleEnabled,
+  onDelete,
   isRunning,
   isUpdating,
 }: AutomationDetailPanelProps) {
@@ -54,6 +56,7 @@ export function AutomationDetailPanel({
   const [description, setDescription] = useState(automation.description);
   const [assignment, setAssignment] = useState(automation.workflow.assignment);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const status = resolveEntrustedJobStatus(automation);
   const schedule = resolveScheduleMethod(automation.schedule);
@@ -519,10 +522,19 @@ export function AutomationDetailPanel({
             variant="ghost"
             size="sm"
             className="min-h-[48px]"
-            disabled
-            title={ui.entrustedJobs.deleteComingSoon}
+            disabled={isUpdating || deleting || !onDelete}
+            title={ui.entrustedJobs.deleteSemanticsHint}
+            isLoading={deleting}
+            onClick={() => {
+              if (!onDelete) return;
+              if (!window.confirm(ui.entrustedJobs.deleteConfirm)) return;
+              setDeleting(true);
+              void Promise.resolve(onDelete(automation.id)).finally(() =>
+                setDeleting(false),
+              );
+            }}
           >
-            {ui.entrustedJobs.delete}（{ui.entrustedJobs.comingSoon}）
+            {ui.entrustedJobs.delete}
           </Button>
         </div>
       </Card>
