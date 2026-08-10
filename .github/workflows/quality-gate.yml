@@ -102,6 +102,9 @@ jobs:
       - name: N-02 Unproven speed claims ban
         run: node scripts/ci/n02-unproven-speed-claims-ban.mjs
 
+      - name: N-05 Memory apply production ban
+        run: node scripts/ci/n05-memory-apply-ban.mjs
+
       - name: P0-5 durable X scheduled posts ban
         run: node scripts/ci/p0-5-x-scheduled-posts-ban.mjs
 
@@ -190,6 +193,12 @@ jobs:
 
       - name: N-02 Unproven speed claims
         run: npm run test:unproven-speed-claims
+        env:
+          TZ: UTC
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: N-05 Memory apply production
+        run: npm run test:memory-apply
         env:
           TZ: UTC
           NODE_OPTIONS: --max-old-space-size=8192

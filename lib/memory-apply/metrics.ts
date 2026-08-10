@@ -57,18 +57,34 @@ export function recordMemoryApplyEvent(input: {
   improvementRate?: number;
   success?: boolean;
   failureReason?: string | null;
+  memoryRetrieved?: boolean;
+  memoryApplied?: boolean;
+  memorySource?: "atlasPersonalMemory" | "none";
+  appliedPreferenceKeys?: string[];
+  correlationId?: string | null;
 }): MemoryApplyEvent {
+  const memoryIdsUsed = input.memoryIdsUsed ?? [];
+  const memoryRetrieved =
+    input.memoryRetrieved ?? memoryIdsUsed.length > 0;
+  const memoryApplied = input.memoryApplied ?? input.applied;
   const event: MemoryApplyEvent = {
     id: `mae_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`,
     userId: input.userId,
     channel: input.channel,
     memoryMode: input.memoryMode,
     applied: input.applied,
-    memoryIdsUsed: input.memoryIdsUsed ?? [],
+    memoryRetrieved,
+    memoryApplied,
+    memorySource:
+      input.memorySource ??
+      (memoryRetrieved ? "atlasPersonalMemory" : "none"),
+    appliedPreferenceKeys: input.appliedPreferenceKeys ?? [],
+    memoryIdsUsed,
     scopesUsed: input.scopesUsed ?? [],
     improvementRate: input.improvementRate ?? 0,
     success: input.success ?? input.applied,
     failureReason: input.failureReason ?? null,
+    correlationId: input.correlationId ?? null,
     at: new Date().toISOString(),
   };
   const bucket = getBucket();

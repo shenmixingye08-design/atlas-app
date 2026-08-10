@@ -175,6 +175,17 @@ export async function executeAutomationRun(
     }
 
     if (!result) {
+      // N-05: v1 automation must apply Personal Memory (same SoT as v2 / commander).
+      const personalMemoryMeta = options.userId
+        ? await (
+            await import("@/lib/memory-apply/v1-automation-bridge")
+          ).buildV1AutomationMemoryMetadata({
+            userId: options.userId,
+            assignment,
+            automationId: automation.id,
+          })
+        : {};
+
       result = await orchestrate({
         assignment,
         metadata: {
@@ -196,6 +207,8 @@ export async function executeAutomationRun(
             costMode: executionModeToCostSavingMode(executionMode),
           },
           ...(automation.workflow.metadata ?? {}),
+          // N-05: Personal Memory metadata must win over workflow bag.
+          ...personalMemoryMeta,
         },
       });
 

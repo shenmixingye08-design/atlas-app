@@ -41,6 +41,9 @@ export type DeliverableMemoryApply = {
   quality: MemoryQualityDiff;
   applied: boolean;
   channel: MemoryApplyChannel;
+  memoryRetrieved: boolean;
+  memoryApplied: boolean;
+  appliedPreferenceKeys: string[];
 };
 
 /**
@@ -91,7 +94,11 @@ export async function applyMemoryForDeliverable(input: {
   for (const row of ledger.memoryValuesResolved) Object.assign(flat, row.value);
 
   const channel = channelForFormat(input.format);
-  const applied = ledger.memoryIdsUsed.length > 0 || Boolean(overlay.brand);
+  const memoryRetrieved = ledger.memoryIdsUsed.length > 0;
+  const preferenceApplied =
+    contentOverlay.preferenceKeys.length > 0 && next !== input.content.trim();
+  const applied =
+    memoryRetrieved || Boolean(overlay.brand) || preferenceApplied;
   const quality = compareMemoryQuality({
     before: input.content,
     after: next,
@@ -104,10 +111,18 @@ export async function applyMemoryForDeliverable(input: {
     channel,
     memoryMode: applied ? "on" : "off",
     applied,
+    memoryRetrieved,
+    memoryApplied: applied && next !== input.content.trim(),
+    memorySource: memoryRetrieved ? "atlasPersonalMemory" : "none",
+    appliedPreferenceKeys: contentOverlay.preferenceKeys,
     memoryIdsUsed: ledger.memoryIdsUsed,
     scopesUsed: overlay.scopesUsed,
     improvementRate: quality.improvementRate,
     success: true,
+    correlationId:
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? `corr_deliverable_${crypto.randomUUID().slice(0, 8)}`
+        : null,
   });
 
   return {
@@ -117,5 +132,8 @@ export async function applyMemoryForDeliverable(input: {
     quality,
     applied,
     channel,
+    memoryRetrieved,
+    memoryApplied: applied && next !== input.content.trim(),
+    appliedPreferenceKeys: contentOverlay.preferenceKeys,
   };
 }

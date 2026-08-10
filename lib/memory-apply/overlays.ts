@@ -1,6 +1,10 @@
 import type { WordCompanyBrand } from "@/lib/deliverables/company-brand";
 import type { WordTemplateId } from "@/lib/deliverables/word-templates";
 import { isWordTemplateId } from "@/lib/deliverables/word-templates";
+import {
+  applyWritingPreferenceStructure,
+  detectWritingPreferenceStructure,
+} from "@/lib/memory-apply/preference-structure";
 import type {
   BuildOverlaysInput,
   MemoryContentOverlay,
@@ -124,6 +128,8 @@ export function buildContentOverlay(input: {
     .map((v) => v.summary)
     .filter(Boolean);
 
+  const structure = detectWritingPreferenceStructure(values);
+
   return {
     injectionText: input.injectionText?.trim() ?? "",
     writingStyle,
@@ -141,6 +147,10 @@ export function buildContentOverlay(input: {
       ),
     ),
     visionHints: [...new Set(visionHints)].slice(0, 20),
+    preferenceKeys: structure.keys,
+    preferShort: structure.short,
+    preferBullets: structure.bullets,
+    preferConclusionFirst: structure.conclusionFirst,
   };
 }
 
@@ -305,6 +315,9 @@ export function applyContentOverlayToText(
   if (overlay.contactLines.length > 0) {
     parts.push(`【連絡先】\n${overlay.contactLines.join("\n")}`);
   }
+  if (overlay.preferenceKeys.length > 0) {
+    parts.push(`【適用する好み】${overlay.preferenceKeys.join(" / ")}`);
+  }
 
   let body = base.trim();
   // Strip forbidden expressions when Memory ON
@@ -312,6 +325,14 @@ export function applyContentOverlayToText(
     if (!forbidden) continue;
     body = body.split(forbidden).join("");
   }
+
+  const structured = applyWritingPreferenceStructure(body, {
+    short: overlay.preferShort,
+    bullets: overlay.preferBullets,
+    conclusionFirst: overlay.preferConclusionFirst,
+    keys: overlay.preferenceKeys,
+  });
+  body = structured.text;
 
   const header = parts.length > 0 ? `${parts.join("\n")}\n\n` : "";
   const signature = overlay.signature ? `\n\n${overlay.signature}` : "";
