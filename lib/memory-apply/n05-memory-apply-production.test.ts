@@ -125,7 +125,7 @@ describe("N-05 memory apply production honesty", () => {
     expect(PERSONAL_MEMORY_DOMAIN_KEY).toBe("atlasPersonalMemory");
   });
 
-  it("artifact overlay keeps conclusion before bullets even with headers", () => {
+  it("artifact overlay keeps conclusion-first even when injection has dash lines", () => {
     const value = buildExplicitWritingPreferenceValue(
       "今後、文章は短め・箇条書き中心・結論を最初にしてください",
     );
@@ -144,18 +144,19 @@ describe("N-05 memory apply production honesty", () => {
     ];
     const overlay = buildContentOverlay({
       values: rows,
-      injectionText: "injection-header",
+      // Mimic buildInjectionText style lines that appear before transformed body.
+      injectionText: "- 文体: 短め・箇条書き・結論先",
     });
     const text = applyContentOverlayToText(
       "長い導入です。背景です。結論は方針確定です。補足です。",
       overlay,
     );
     const conclusionIdx = text.indexOf("結論：");
-    const bulletIdx = text.search(/(^|\n)- /);
     expect(conclusionIdx).toBeGreaterThanOrEqual(0);
-    expect(bulletIdx).toBeGreaterThanOrEqual(0);
-    expect(conclusionIdx).toBeLessThan(bulletIdx);
+    expect(text.slice(0, conclusionIdx)).toContain("- 文体:");
+    expect(/(?:^|\n)- /.test(text.slice(conclusionIdx))).toBe(true);
     expect(text).toContain("【適用する好み】");
+    expect(text).toContain("【好み反映】");
   });
 
   it("detects and structurally applies short/bullets/conclusion-first", () => {

@@ -215,19 +215,20 @@ function stubAutomation(userId: string, id: string): AutomationV2 {
 }
 
 function artifactShowsPreferences(text: string): boolean {
-  // Overlay headers are prepended; conclusion marker is in the transformed body.
+  // Injection headers may contain "- label: ..." lines before the transformed body.
+  // Prove conclusion-first by requiring bullets AFTER the 結論： marker, not before it.
   const conclusionIdx = text.indexOf("結論：");
-  const bulletIdx = text.search(/(^|\n)- /);
+  const bodyAfterConclusion =
+    conclusionIdx >= 0 ? text.slice(conclusionIdx) : "";
   const hasConclusionFirst =
-    conclusionIdx >= 0 && (bulletIdx < 0 || conclusionIdx < bulletIdx);
-  const hasBullets = bulletIdx >= 0;
+    conclusionIdx >= 0 && /(?:^|\n)- /.test(bodyAfterConclusion);
   const hasShortMarker =
     text.includes("length:short") || text.includes("【好み反映】");
   const hasKeys =
     text.includes("structure:bullets") ||
     text.includes("conclusion:first") ||
     text.includes("【適用する好み】");
-  return hasConclusionFirst && hasBullets && (hasShortMarker || hasKeys);
+  return hasConclusionFirst && (hasShortMarker || hasKeys);
 }
 
 async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
@@ -352,13 +353,15 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
     });
     // Drain any fire-and-forget persist from resolve/apply before mutating Memory.
     await persistPersonalMemoryNow(probeUserA);
-    const artifactPreferenceAppliedOk =
-      artifact.memoryRetrieved &&
-      artifact.memoryApplied &&
-      artifactShowsPreferences(artifact.content) &&
+    const artifactKeysOk =
       artifact.appliedPreferenceKeys.includes("length:short") &&
       artifact.appliedPreferenceKeys.includes("structure:bullets") &&
       artifact.appliedPreferenceKeys.includes("conclusion:first");
+    const artifactPreferenceAppliedOk =
+      artifact.memoryRetrieved &&
+      artifact.memoryApplied &&
+      artifactKeysOk &&
+      artifactShowsPreferences(artifact.content);
 
     // automation apply (v2 path)
     const auto = await applyMemoryForAutomation({
@@ -488,7 +491,7 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
         : [
             !saveRetrieveOk ? "save_retrieve_failed" : null,
             !artifactPreferenceAppliedOk
-              ? `artifact_apply_failed(keys=${artifact.appliedPreferenceKeys.join(",") || "none"};concl=${artifact.content.includes("結論：")};bullets=${/(^|\n)- /.test(artifact.content)})`
+              ? `artifact_apply_failed(retrieved=${artifact.memoryRetrieved};applied=${artifact.memoryApplied};keysOk=${artifactKeysOk};shows=${artifactShowsPreferences(artifact.content)};keys=${artifact.appliedPreferenceKeys.join(",") || "none"})`
               : null,
             !automationPreferenceAppliedOk ? "automation_apply_failed" : null,
             !restartDurableOk ? "restart_durable_failed" : null,
