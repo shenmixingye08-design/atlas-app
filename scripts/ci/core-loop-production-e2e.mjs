@@ -158,11 +158,13 @@ async function createSignInToken(userId) {
     token,
     tokenCreated: true,
     clerkUrlPresent: Boolean(clerkUrl),
+    clerkUrl,
+    constructedUrl,
     preferredUrl,
     constructedUrlMeta: safeUrlMeta(constructedUrl),
     preferredUrlMeta: meta,
     ticketUrlConstructed: true,
-    ticketQueryPresent: meta.ticketQueryPresent || Boolean(clerkUrl),
+    ticketQueryPresent: true,
   };
 }
 
@@ -258,70 +260,51 @@ async function signInWithTicket(browser, expectedUserId) {
   });
 
   try {
-    auth.failureStage = "load_app_for_clerk_js";
-    const homeResp = await page.goto(`${APP_URL}/`, {
+    // Official Sign-in Token consumption for custom /sign-in pages:
+    // open /sign-in?__clerk_ticket=... so SignInTicketConsumer runs
+    // signIn.ticket() + finalize() (Clerk SignInFuture custom flow).
+    auth.failureStage = "open_signin_with_ticket";
+    const ticketPageUrl =
+      `${APP_URL}/sign-in?__clerk_ticket=${encodeURIComponent(signInToken.token)}` +
+      `&redirect_url=${encodeURIComponent("/projects")}` +
+      `&__clerk_testing_token=${encodeURIComponent(testingToken.token)}`;
+    auth.ticketQueryPresent = true;
+    auth.ticketUrlConstructed = true;
+    auth.clerkUrlMeta = signInToken.clerkUrl
+      ? safeUrlMeta(signInToken.clerkUrl)
+      : null;
+
+    const signInResp = await page.goto(ticketPageUrl, {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
-    auth.initialHttpStatus = homeResp?.status() ?? null;
+    auth.initialHttpStatus = signInResp?.status() ?? null;
 
-    auth.failureStage = "wait_clerk_js";
-    await page.waitForFunction(
-      () =>
-        Boolean(
-          window.Clerk &&
-            (window.Clerk.loaded || window.Clerk.client || window.Clerk.session),
-        ),
-      { timeout: 60_000 },
-    );
+    auth.failureStage = "wait_ticket_consumer_session";
+    await page
+      .waitForFunction(
+        () => {
+          const path = window.location.pathname;
+          const signedIn = Boolean(window.Clerk?.user?.id || window.Clerk?.session);
+          return signedIn || (path !== "/sign-in" && path !== "/sign-up");
+        },
+        { timeout: 75_000 },
+      )
+      .catch(() => null);
 
-    auth.failureStage = "ticket_strategy_redeem";
-    const redeem = await page.evaluate(async (ticket) => {
-      const clerk = window.Clerk;
-      if (!clerk) return { ok: false, stage: "clerk_missing" };
-      try {
-        if (typeof clerk.load === "function" && !clerk.client) {
-          await clerk.load();
-        }
-        if (!clerk.client?.signIn) {
-          return { ok: false, stage: "clerk_client_signin_missing" };
-        }
-        const signIn = await clerk.client.signIn.create({
-          strategy: "ticket",
-          ticket,
-        });
-        if (signIn.status === "complete" && signIn.createdSessionId) {
-          await clerk.setActive({ session: signIn.createdSessionId });
-          return {
-            ok: true,
-            status: signIn.status,
-            userId: clerk.user?.id ?? null,
-          };
-        }
-        return {
-          ok: false,
-          stage: "ticket_incomplete",
-          status: signIn.status ?? null,
-        };
-      } catch (e) {
-        return {
-          ok: false,
-          stage: "ticket_threw",
-          message: String(e?.message || e).slice(0, 180),
-        };
-      }
-    }, signInToken.token);
-
-    auth.signInStatus = redeem.status || redeem.stage || null;
-    if (!redeem.ok) {
-      auth.failureStage = redeem.stage || "ticket_redeem_failed";
-      // Fallback: navigate SignIn page with __clerk_ticket (still no bypass).
-      auth.failureStage = "signin_page_ticket_fallback";
-      const ticketPageUrl = `${APP_URL}/sign-in?__clerk_ticket=${encodeURIComponent(
-        signInToken.token,
-      )}&__clerk_testing_token=${encodeURIComponent(testingToken.token)}`;
-      auth.ticketQueryPresent = true;
-      await page.goto(ticketPageUrl, {
+    // If still on /sign-in, try Clerk-provided accept URL once (still Sign-in Token).
+    let pathNow = safeUrlMeta(page.url()).pathname;
+    if (
+      (pathNow === "/sign-in" || pathNow === "/sign-up") &&
+      signInToken.clerkUrl
+    ) {
+      auth.failureStage = "clerk_provided_ticket_url";
+      auth.clerkUrlMeta = safeUrlMeta(signInToken.clerkUrl);
+      // Mint a fresh token — previous ticket may already be single-use consumed/failed.
+      const fresh = await createSignInToken(expectedUserId);
+      auth.tokenCreated = true;
+      const freshUrl = fresh.clerkUrl || fresh.constructedUrl;
+      await page.goto(freshUrl, {
         waitUntil: "domcontentloaded",
         timeout: 60_000,
       });
@@ -331,9 +314,28 @@ async function signInWithTicket(browser, expectedUserId) {
           { timeout: 45_000 },
         )
         .catch(() => null);
+      // If Clerk accept URL bounced to our /sign-in with ticket, consumer may still run.
+      if (page.url().includes("/sign-in") && page.url().includes("__clerk_ticket")) {
+        await page
+          .waitForFunction(
+            () => Boolean(window.Clerk?.user?.id || window.Clerk?.session),
+            { timeout: 45_000 },
+          )
+          .catch(() => null);
+      }
     }
 
-    const sessionUserId = await page.evaluate(() => window.Clerk?.user?.id ?? null);
+    const ticketDomError = await page
+      .locator('[data-testid="sign-in-ticket-error"]')
+      .textContent()
+      .catch(() => null);
+    if (ticketDomError) {
+      auth.signInStatus = ticketDomError.trim().slice(0, 180);
+    }
+
+    const sessionUserId = await page.evaluate(
+      () => window.Clerk?.user?.id ?? null,
+    );
     auth.clerkSessionDetected = Boolean(sessionUserId);
     auth.authenticatedUserIdMatchesExpected = sessionUserId === expectedUserId;
 
@@ -341,19 +343,22 @@ async function signInWithTicket(browser, expectedUserId) {
     const apiProbe = await page.request.get(`${APP_URL}/api/notifications`);
     auth.authApiStatus = apiProbe.status();
 
-    auth.failureStage = "post_auth_navigation";
-    await page.goto(`${APP_URL}/projects`, {
-      waitUntil: "domcontentloaded",
-      timeout: 60_000,
-    });
-    await page.waitForTimeout(1200);
+    if (!auth.clerkSessionDetected || page.url().includes("/sign-in")) {
+      auth.failureStage = "post_auth_navigation";
+      await page.goto(`${APP_URL}/projects`, {
+        waitUntil: "domcontentloaded",
+        timeout: 60_000,
+      });
+      await page.waitForTimeout(1200);
+    }
+
     const finalUrl = page.url();
     auth.finalUrlPath = safeUrlMeta(finalUrl).pathname;
 
     if (finalUrl.includes("/sign-in") || finalUrl.includes("/sign-up")) {
       auth.failureStage = "ticket_sign_in_failed";
       const error = new Error(
-        `ticket_sign_in_failed url=${finalUrl.split("?")[0]} stage=${auth.failureStage}`,
+        `ticket_sign_in_failed url=${finalUrl.split("?")[0]} stage=${auth.failureStage} signInStatus=${auth.signInStatus || "null"}`,
       );
       error.auth = auth;
       throw error;
@@ -372,14 +377,18 @@ async function signInWithTicket(browser, expectedUserId) {
       error.auth = auth;
       throw error;
     }
-    if (auth.authApiStatus === 401) {
-      auth.failureStage = "auth_api_still_401";
-      const error = new Error("authenticated_api_still_401");
+    if (auth.authApiStatus !== 200) {
+      auth.failureStage =
+        auth.authApiStatus === 401 ? "auth_api_still_401" : "auth_api_not_200";
+      const error = new Error(
+        `authenticated_api_status_${auth.authApiStatus}`,
+      );
       error.auth = auth;
       throw error;
     }
 
     auth.failureStage = "auth_ok";
+    auth.signInStatus = auth.signInStatus || "complete";
     return { context, page, url: finalUrl.split("?")[0], auth };
   } catch (err) {
     await context.close().catch(() => null);

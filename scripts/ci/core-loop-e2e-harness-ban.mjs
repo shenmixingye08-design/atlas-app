@@ -21,9 +21,25 @@ const required = [
   ".github/workflows/verify-core-loop-production-e2e.yml",
   "docs/development/core-loop-production-e2e-setup.md",
   "docs/development/feature-evaluation-core-loop-e2e.md",
+  "components/auth/sign-in-ticket-consumer.tsx",
 ];
 for (const rel of required) {
   if (!existsSync(join(root, rel))) violations.push(`missing:${rel}`);
+}
+
+const ticketConsumer = read("components/auth/sign-in-ticket-consumer.tsx");
+for (const keep of ["__clerk_ticket", "signIn.ticket", "finalize", "useSignIn"]) {
+  if (!ticketConsumer.includes(keep)) {
+    violations.push(`ticket_consumer_missing:${keep}`);
+  }
+}
+if (/e2e-bypass|skipAuth|auth-bypass/i.test(ticketConsumer)) {
+  violations.push("ticket_consumer_must_not_bypass_auth");
+}
+
+const signInPage = read("components/auth/sign-in-page-client.tsx");
+if (!/SignInTicketConsumer/.test(signInPage)) {
+  violations.push("sign-in-page must wrap SignInTicketConsumer");
 }
 
 const script = read("scripts/ci/core-loop-production-e2e.mjs");
