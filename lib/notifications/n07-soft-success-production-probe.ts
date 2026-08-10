@@ -373,7 +373,7 @@ export async function probeN07SoftSuccessProduction(): Promise<N07SoftSuccessPro
       channelSkipHonest =
         lineAck.softSuccess === false &&
         (lineAck.status === "skipped" || lineAck.status === "failed") &&
-        !(lineAck.status === "delivered" && lineAck.sentCount === 0);
+        lineAck.sentCount === 0;
     } catch {
       channelSkipHonest = false;
     }
