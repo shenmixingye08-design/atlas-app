@@ -143,6 +143,10 @@ export class ServerAutomationRepository implements AutomationRepository {
     return automation;
   }
 
+  async delete(id: string): Promise<boolean> {
+    return getBucket().delete(id);
+  }
+
   async update(
     id: string,
     patch: UpdateAutomationInput,

@@ -70,7 +70,7 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
   {
     id: "automation_v2_enabled",
     label: "自動化プラットフォーム v2",
-    description: "新しい Automation Platform API / モデル（既存の定期の仕事は維持）",
+    description: "新しい Automation Platform API / モデル（既存の自動化は維持）",
     category: "capability",
   },
   {

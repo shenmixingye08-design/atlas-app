@@ -621,7 +621,7 @@ export function RunReviewPanel({
             </Button>
           ) : null}
           <Link
-            href={`/automations?v2=${encodeURIComponent(run.automationId)}`}
+            href={`/automations?id=${encodeURIComponent(run.automationId)}`}
             className="inline-flex min-h-12 items-center justify-center rounded-xl px-3 text-sm text-[var(--muted)]"
           >
             自動化へ

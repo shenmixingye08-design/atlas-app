@@ -20,13 +20,14 @@ export type EntrustedJobStatus =
   | "paused"
   | "error";
 
+/** Aligned with N-08 canonical status vocabulary (有効/一時停止/実行中/完了/失敗). */
 export const ENTRUSTED_JOB_STATUS_LABELS: Record<EntrustedJobStatus, string> = {
-  scheduled: "実行予定",
-  running: "処理中",
+  scheduled: "有効",
+  running: "実行中",
   needs_review: "確認待ち",
   completed: "完了",
-  paused: "停止中",
-  error: "エラー",
+  paused: "一時停止",
+  error: "失敗",
 };
 
 /** Confirmation scope mapped onto existing executionLevel values. */

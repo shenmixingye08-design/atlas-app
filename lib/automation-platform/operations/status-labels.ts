@@ -29,15 +29,16 @@ export const STEP_STATUS_LABEL: Record<RunStepStatus, string> = {
   retrying: "再試行中",
 };
 
+/** N-08: same user-facing vocabulary as canonical Automation statuses. */
 export const AUTOMATION_STATUS_LABEL: Record<
   AutomationDefinitionStatus,
   string
 > = {
   draft: "下書き",
-  active: "稼働中",
+  active: "有効",
   paused: "一時停止",
-  disabled: "無効",
-  archived: "保管済み",
+  disabled: "一時停止",
+  archived: "削除済み",
 };
 
 export const TRIGGER_LABEL: Record<

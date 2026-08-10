@@ -201,3 +201,42 @@ export async function PATCH(
 
   return Response.json(updated);
 }
+
+export async function DELETE(
+  request: Request,
+  context: RouteContext,
+): Promise<Response> {
+  const { auth } = await import("@clerk/nextjs/server");
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await context.params;
+  const deleted = await automationService.deleteForUser(id, userId);
+  if (!deleted) {
+    return Response.json({ error: "Automation not found" }, { status: 404 });
+  }
+
+  const { recordAuditLogSafe, auditRequestContext } = await import(
+    "@/lib/owner/audit-log"
+  );
+  const ctx = auditRequestContext(request);
+  recordAuditLogSafe({
+    userId,
+    ip: ctx.ip,
+    userAgent: ctx.userAgent,
+    category: "automation",
+    action: "automation_delete",
+    targetId: id,
+    result: "success",
+    reason: "Automation soft-deleted (removed from list; execution stopped)",
+  });
+
+  return Response.json({
+    ok: true,
+    id,
+    deleteSemantics: "soft_delete",
+    message: "自動化を削除しました。一覧から消え、今後は自動実行されません。",
+  });
+}

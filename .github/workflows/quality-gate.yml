@@ -105,6 +105,9 @@ jobs:
       - name: N-05 Memory apply production ban
         run: node scripts/ci/n05-memory-apply-ban.mjs
 
+      - name: N-08 Automation canonical unify ban
+        run: node scripts/ci/n08-automation-unify-ban.mjs
+
       - name: P0-5 durable X scheduled posts ban
         run: node scripts/ci/p0-5-x-scheduled-posts-ban.mjs
 
@@ -201,6 +204,14 @@ jobs:
         run: npm run test:memory-apply
         env:
           TZ: UTC
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: N-08 Automation canonical unify
+        run: npm run test:n08-automation-unify
+        env:
+          TZ: UTC
+          ATLAS_AUTOMATION_STORAGE: "memory_durable"
+          ATLAS_WORK_QUEUE_FORCE_FILE: "true"
           NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Upload Vitest logs on failure

@@ -2,15 +2,10 @@
 
 import { Button } from "@/components/ui/button";
 import type { AutomationV2 } from "@/lib/automation-platform/types";
+import { AUTOMATION_STATUS_LABEL } from "@/lib/automation-platform/operations/status-labels";
 import { cn } from "@/lib/design-system/cn";
 
-const STATUS_LABEL: Record<AutomationV2["status"], string> = {
-  draft: "下書き",
-  active: "稼働中",
-  paused: "一時停止",
-  disabled: "無効",
-  archived: "保管済み",
-};
+const STATUS_LABEL = AUTOMATION_STATUS_LABEL;
 
 const POLICY_LABEL: Record<AutomationV2["executionPolicy"]["mode"], string> = {
   review_before_run: "毎回確認",
@@ -143,8 +138,9 @@ export function AutomationV2Card({
           variant="ghost"
           disabled={busy}
           onClick={onArchive}
+          title="一覧から削除し、今後の自動実行を止めます"
         >
-          保管
+          削除
         </Button>
       </div>
     </article>

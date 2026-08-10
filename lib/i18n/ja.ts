@@ -984,7 +984,7 @@ export const ui = {
     summaryScheduled: "実行予定",
     summaryNeedsReview: "確認待ち",
     summaryCompleted: "完了",
-    summaryPaused: "停止中",
+    summaryPaused: "一時停止",
     scheduleMethod: "実行方法",
     nextRun: "次回実行予定",
     lastRun: "最終実行日時",
@@ -1015,7 +1015,11 @@ export const ui = {
     pause: "一時停止",
     resume: "再開",
     delete: "削除",
-    deleteComingSoon: "削除は順次対応予定です",
+    deleteConfirm:
+      "この自動化を削除します。一覧から消え、今後は自動実行されません。よろしいですか？",
+    deleteSemanticsHint:
+      "削除は一覧からの除去と実行停止です。一時停止とは異なります。",
+    deleteSuccess: "自動化を削除しました",
     runNow: "今すぐ実行",
     criticalNotice:
       "メール送信・SNS投稿・外部変更など重要操作があるため、確認なし実行はできません。",
