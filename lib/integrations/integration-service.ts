@@ -65,17 +65,23 @@ export class IntegrationService {
   }
 
   async getCatalogForUser(userId: string): Promise<IntegrationCatalog> {
+    const { isIntegrationProviderUserVisible } = await import(
+      "@/lib/integrations/production-capability"
+    );
     const connections = await this.repository.list({ userId });
     const connectionByProvider = new Map(
       connections.map((connection) => [connection.provider, connection]),
     );
 
-    const providers = integrationProviders.map((provider) =>
-      mergeProviderWithConnection(
-        provider,
-        connectionByProvider.get(provider.id) ?? null,
-      ),
-    );
+    // N-04: hide Notion stub from user integrations catalog.
+    const providers = integrationProviders
+      .filter((provider) => isIntegrationProviderUserVisible(provider.id))
+      .map((provider) =>
+        mergeProviderWithConnection(
+          provider,
+          connectionByProvider.get(provider.id) ?? null,
+        ),
+      );
 
     return { providers, connections };
   }
@@ -89,6 +95,12 @@ export class IntegrationService {
   async connect(input: ConnectIntegrationInput): Promise<Integration> {
     if (!input.userId?.trim()) {
       throw new Error("Integration.userId is required");
+    }
+    const { isIntegrationProviderConnectable, unsupportedExternalServiceMessage } =
+      await import("@/lib/integrations/production-capability");
+    // N-04: Notion (and other unoffered providers) must never stub-connect.
+    if (!isIntegrationProviderConnectable(input.provider)) {
+      throw new Error(unsupportedExternalServiceMessage(input.provider));
     }
     if (input.provider === "google_drive") {
       throw new Error(

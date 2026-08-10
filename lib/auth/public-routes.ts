@@ -87,6 +87,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/health/memory-apply(.*)",
   "/api/health/n08-automation-unify(.*)",
   "/api/health/n07-soft-success(.*)",
+  "/api/health/n04-stub-exposure(.*)",
   "/api/health/vision(.*)",
   "/api/contact(.*)",
   "/api/automations/tick(.*)",

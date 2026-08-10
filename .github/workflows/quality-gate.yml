@@ -111,6 +111,9 @@ jobs:
       - name: N-07 Soft-success elimination ban
         run: node scripts/ci/n07-soft-success-ban.mjs
 
+      - name: N-04 Notion/YouTube stub exposure ban
+        run: node scripts/ci/n04-stub-exposure-ban.mjs
+
       - name: P0-5 durable X scheduled posts ban
         run: node scripts/ci/p0-5-x-scheduled-posts-ban.mjs
 
@@ -223,6 +226,12 @@ jobs:
           TZ: UTC
           ATLAS_NOTIFICATION_STORAGE: "memory_durable"
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: N-04 Notion/YouTube stub exposure
+        run: npm run test:n04-stub-exposure
+        env:
+          TZ: UTC
           NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Upload Vitest logs on failure

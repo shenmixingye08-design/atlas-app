@@ -1,0 +1,91 @@
+# N-04 Production Notion/YouTube stub exposure honesty proof.
+name: Verify N-04 Stub Exposure Production
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "lib/integrations/**"
+      - "lib/connectors/**"
+      - "lib/connections/**"
+      - "lib/automations/workflow-templates.ts"
+      - "lib/commander/**"
+      - "lib/feature-flags/guards.ts"
+      - "lib/workflow-marketplace/**"
+      - "app/api/external-services/**"
+      - "app/api/integrations/**"
+      - "app/api/health/n04-stub-exposure/**"
+      - "scripts/ci/n04-stub-exposure-ban.mjs"
+      - ".github/workflows/verify-n04-stub-exposure-production.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe Production N-04 stub exposure
+        env:
+          PROD_URL: https://atlasapp.jp
+        run: |
+          set -euo pipefail
+          EXPECTED_SHA_SHORT="$(printf '%s' "${GITHUB_SHA:-}" | cut -c1-7)"
+          echo "expected_commit_sha_short=${EXPECTED_SHA_SHORT}"
+          APP_CODE_CHANGED=0
+          if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            if git diff --name-only HEAD^ HEAD | grep -E '^(lib/|app/|components/)' >/dev/null 2>&1; then
+              APP_CODE_CHANGED=1
+            fi
+          else
+            APP_CODE_CHANGED=1
+          fi
+          echo "app_code_changed=${APP_CODE_CHANGED}"
+
+          READY=""
+          for i in $(seq 1 40); do
+            curl -sS -o /tmp/n04.json "${PROD_URL}/api/health/n04-stub-exposure?force=1" || true
+            PROD_SHA="$(python3 -c 'import json;d=json.load(open("/tmp/n04.json"));print(d.get("commitShaShort") or "")' 2>/dev/null || true)"
+            OK="$(python3 -c 'import json;d=json.load(open("/tmp/n04.json"));print(d.get("ok"))' 2>/dev/null || true)"
+            ERR="$(python3 -c 'import json;d=json.load(open("/tmp/n04.json"));print(d.get("error") or "")' 2>/dev/null || true)"
+            echo "probe=${i} production_commit_sha_short=${PROD_SHA} ok=${OK} error=${ERR}"
+            if [ -n "${EXPECTED_SHA_SHORT}" ] && [ "${PROD_SHA}" = "${EXPECTED_SHA_SHORT}" ] && [ "${OK}" = "True" ]; then
+              READY=1
+              break
+            fi
+            if [ "${APP_CODE_CHANGED}" = "0" ] && [ -n "${PROD_SHA}" ] && [ "${OK}" = "True" ]; then
+              echo "workflow_only_change=true smoking_live_production_sha=${PROD_SHA}"
+              READY=1
+              break
+            fi
+            sleep 15
+          done
+          if [ -z "${READY}" ]; then
+            echo "::error::Production N-04 stub exposure honesty not ready. Soft-success forbidden."
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import json,sys
+          d=json.load(open("/tmp/n04.json"))
+          true_keys=(
+            "ok","canonicalCapabilityOk","notionCapabilityTruthfulOk",
+            "youtubeCapabilityTruthfulOk","notionUiExposureOk","youtubeUiExposureOk",
+            "notionAutomationExposureOk","youtubeAutomationExposureOk",
+            "pricingExposureOk","landingExposureOk","onboardingExposureOk",
+            "unsupportedApiFailClosedOk","stubCannotReturnSuccessOk",
+            "existingAutomationSafeOk","crossUserIsolatedOk","secretsRedactedOk",
+          )
+          print({k:d.get(k) for k in true_keys})
+          failures=[]
+          for k in true_keys:
+            if d.get(k) is not True:
+              failures.append(f"{k}!=true")
+          if failures:
+            print("::error::N-04 Production stub exposure failed:", ", ".join(failures))
+            sys.exit(1)
+          print("n04_production_stub_exposure=pass")
+          PY

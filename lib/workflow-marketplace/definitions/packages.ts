@@ -10,7 +10,7 @@ export const workflowPackageMetadata: readonly WorkflowPackageMetadata[] = [
     publisher: "atlas",
     tagline: "キャンペーン調査とクライアント向け成果物の総合代理店ワークフロー",
     sections: ["featured", "popular", "marketing"],
-    recommendedIntegrations: ["google_drive", "slack", "notion"],
+    recommendedIntegrations: ["google_drive", "slack"],
     communityReady: true,
   },
   {
@@ -65,7 +65,7 @@ export const workflowPackageMetadata: readonly WorkflowPackageMetadata[] = [
     publisher: "atlas",
     tagline: "物件文案・市場レポート・クライアント向け提案資料",
     sections: ["sales"],
-    recommendedIntegrations: ["google_drive", "gmail", "notion"],
+    recommendedIntegrations: ["google_drive", "gmail"],
     communityReady: true,
   },
   {
@@ -87,7 +87,7 @@ export const workflowPackageMetadata: readonly WorkflowPackageMetadata[] = [
     publisher: "atlas",
     tagline: "リリースノート・ドキュメント・オンボーディング・プロダクトマーケ",
     sections: ["new", "development"],
-    recommendedIntegrations: ["google_drive", "github", "notion", "slack"],
+    recommendedIntegrations: ["google_drive", "github", "slack"],
     communityReady: true,
   },
 ] as const;

@@ -1,5 +1,6 @@
 import { isBlogRelatedRequest } from "@/lib/orchestration/deliverable-types";
 import type { ExternalServiceId } from "@/lib/integrations/external-services/types";
+import { isExternalServiceProductionAvailable } from "@/lib/integrations/production-capability";
 import type { WorkflowTemplateId } from "@/lib/automations/types";
 import { isSalesMaterialRequest } from "@/lib/workspace/sales-material/detect";
 
@@ -69,6 +70,10 @@ export function isExternalServiceFeatureEnabled(
   serviceId: ExternalServiceId,
   context: FeatureAccessContext,
 ): boolean {
+  // N-04: Production capability SoT — stubs never enabled via missing flag.
+  if (!isExternalServiceProductionAvailable(serviceId)) {
+    return false;
+  }
   const flagId = getExternalServiceFeatureFlag(serviceId);
   if (!flagId) return true;
   return isFeatureEnabled(flagId, context);

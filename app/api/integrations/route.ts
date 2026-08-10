@@ -67,6 +67,24 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: parsed.error }, { status: 400 });
   }
 
-  const integration = await integrationService.connect(parsed);
-  return Response.json(integration, { status: 201 });
+  try {
+    const integration = await integrationService.connect(parsed);
+    return Response.json(integration, { status: 201 });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Connection failed";
+    if (message.includes("ご利用いただけません")) {
+      return Response.json(
+        {
+          error: message,
+          unsupported: true,
+          softSuccess: false,
+          connected: false,
+          success: false,
+        },
+        { status: 403 },
+      );
+    }
+    return Response.json({ error: message }, { status: 500 });
+  }
 }
