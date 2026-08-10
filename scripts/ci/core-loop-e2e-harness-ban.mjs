@@ -31,6 +31,14 @@ for (const keep of [
   "E2E_CLERK_USER_ID",
   "CLERK_SECRET_KEY",
   "sign_in_tokens",
+  "testing_tokens",
+  "__clerk_testing_token",
+  "strategy",
+  "ticket",
+  "failureStage",
+  "tokenCreated",
+  "clerkSessionDetected",
+  "authenticatedUserIdMatchesExpected",
   "/api/work/jobs",
   "/api/deliverables/",
   "OWNER_SETUP_REQUIRED",
@@ -38,6 +46,9 @@ for (const keep of [
   "assertNoSecretLeak",
 ]) {
   if (!script.includes(keep)) violations.push(`e2e_script_missing:${keep}`);
+}
+if (/e2e-bypass|auth-bypass|skipAuthForE2E|ATLAS_SCREENSHOT_MODE\s*=\s*['\"]1['\"]/.test(script)) {
+  violations.push("e2e_script_must_not_add_auth_bypass");
 }
 
 // Must not hardcode live secrets or pretend probe/sample is enough.
