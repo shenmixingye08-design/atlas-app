@@ -53,11 +53,33 @@ const EXPLICIT_PATTERNS: Array<{
     map: (m) => ({ formats: [m[1]!.toLowerCase()], text: `今後は${m[1]}も作成` }),
   },
   {
-    re: /今後は?\s*(短く|簡潔に|丁寧に|カジュアルに)/,
+    // N-05: short + bullets + conclusion-first as structured writing prefs
+    re: /(?:今後|いつも|毎回|これから).*(?:短め|短く|簡潔).*(?:箇条書き)|(?:今後|いつも|毎回|これから).*(?:箇条書き).*(?:短め|短く|簡潔)|(?:今後|いつも|毎回|これから).*(?:結論を最初|結論を先|結論先)/,
+    scope: "writing_style",
+    key: "writing_preference",
+    title: "文章の好み",
+    map: (_m, text) => {
+      const cleaned = sanitizeUserFacingMemoryText(text);
+      const value: Record<string, unknown> = { text: cleaned };
+      if (/短め|短く|簡潔/.test(cleaned)) value.length = "short";
+      if (/箇条書き/.test(cleaned)) value.structure = "bullets";
+      if (/結論を最初|結論を先|結論先|結論から/.test(cleaned)) {
+        value.conclusion = "first";
+      }
+      return value;
+    },
+  },
+  {
+    re: /今後は?\s*(短く|短め|簡潔に|丁寧に|カジュアルに)/,
     scope: "writing_style",
     key: "tone",
     title: "文体",
-    map: (_m, text) => ({ text: sanitizeUserFacingMemoryText(text) }),
+    map: (_m, text) => {
+      const cleaned = sanitizeUserFacingMemoryText(text);
+      const value: Record<string, unknown> = { text: cleaned };
+      if (/短く|短め|簡潔/.test(cleaned)) value.length = "short";
+      return value;
+    },
   },
   {
     re: /今後は?\s*(青系|赤系|緑系|モノクロ)/,
@@ -73,8 +95,38 @@ const CORRECTION_PATTERNS: Array<{
   scope: PersonalMemoryScope;
   key: string;
   title: string;
+  map?: (text: string) => Record<string, unknown>;
 }> = [
-  { re: /もっと短く|短めに|簡潔に/, scope: "writing_style", key: "length", title: "文章の長さ" },
+  {
+    re: /もっと短く|短めに|簡潔に|文章は短め/,
+    scope: "writing_style",
+    key: "length",
+    title: "文章の長さ",
+    map: (text) => ({
+      text: sanitizeUserFacingMemoryText(text),
+      length: "short",
+    }),
+  },
+  {
+    re: /箇条書き|ポイントで整理/,
+    scope: "writing_style",
+    key: "structure",
+    title: "文章構成",
+    map: (text) => ({
+      text: sanitizeUserFacingMemoryText(text),
+      structure: "bullets",
+    }),
+  },
+  {
+    re: /結論を最初|結論を先|結論先|結論から書いて/,
+    scope: "writing_style",
+    key: "conclusion",
+    title: "結論の位置",
+    map: (text) => ({
+      text: sanitizeUserFacingMemoryText(text),
+      conclusion: "first",
+    }),
+  },
   { re: /もっと丁寧|敬語/, scope: "writing_style", key: "tone", title: "文体" },
   { re: /絵文字(なし|やめて)/, scope: "writing_style", key: "emoji", title: "絵文字" },
   { re: /青系|ブルー/, scope: "color_palette", key: "palette", title: "配色" },
@@ -107,7 +159,9 @@ export function inferPreferenceFromText(
       key: pattern.key,
       title: pattern.title,
       summary: sanitizeUserFacingMemoryText(trimmed).slice(0, 120),
-      value: { text: sanitizeUserFacingMemoryText(trimmed) },
+      value: pattern.map
+        ? pattern.map(trimmed)
+        : { text: sanitizeUserFacingMemoryText(trimmed) },
       explicit: /今後|毎回|いつも|これから/.test(trimmed),
     };
   }

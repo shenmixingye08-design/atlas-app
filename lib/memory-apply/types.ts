@@ -50,6 +50,11 @@ export type MemoryContentOverlay = {
   ocrDictionary: Record<string, string>;
   /** Vision prior format hints */
   visionHints: string[];
+  /** N-05 structured writing prefs (short / bullets / conclusion-first) */
+  preferenceKeys: string[];
+  preferShort: boolean;
+  preferBullets: boolean;
+  preferConclusionFirst: boolean;
 };
 
 export type MemoryDeliverableOverlay = {
@@ -132,11 +137,18 @@ export type MemoryApplyEvent = {
   channel: MemoryApplyChannel;
   memoryMode: MemoryApplyMode;
   applied: boolean;
+  /** N-05: memory ids were resolved for this job */
+  memoryRetrieved: boolean;
+  /** N-05: overlays/transforms actually mutated output or injection */
+  memoryApplied: boolean;
+  memorySource: "atlasPersonalMemory" | "none";
+  appliedPreferenceKeys: string[];
   memoryIdsUsed: string[];
   scopesUsed: string[];
   improvementRate: number;
   success: boolean;
   failureReason: string | null;
+  correlationId: string | null;
   at: string;
 };
 

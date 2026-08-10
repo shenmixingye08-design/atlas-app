@@ -101,10 +101,16 @@ export async function applyMemoryForAutomation(input: {
     expectedMemoryTokens: expectedTokensFromMemoryValues(flat),
   });
 
+  const memoryRetrieved = ledger.memoryIdsUsed.length > 0;
+  const preferenceApplied =
+    memoryEnabled &&
+    contentOverlay.preferenceKeys.length > 0 &&
+    appliedText !== baseline;
   const applied =
     memoryEnabled &&
-    (ledger.memoryIdsUsed.length > 0 ||
+    (memoryRetrieved ||
       injectionText.trim().length > 0 ||
+      preferenceApplied ||
       Object.keys(input.automation.memoryPolicy.lockedOverrides).length > 0);
 
   recordMemoryApplyEvent({
@@ -112,10 +118,15 @@ export async function applyMemoryForAutomation(input: {
     channel: "automation",
     memoryMode: memoryEnabled ? "on" : "off",
     applied,
+    memoryRetrieved,
+    memoryApplied: Boolean(applied && memoryEnabled),
+    memorySource: memoryRetrieved ? "atlasPersonalMemory" : "none",
+    appliedPreferenceKeys: contentOverlay.preferenceKeys,
     memoryIdsUsed: ledger.memoryIdsUsed,
     scopesUsed: deliverableOverlay.scopesUsed,
     improvementRate: quality.improvementRate,
     success: true,
+    correlationId: `corr_auto_${input.automation.id.slice(0, 12)}`,
   });
 
   const memoryUsage: MemoryUsageRecord = {

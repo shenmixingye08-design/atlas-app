@@ -364,6 +364,10 @@ describe("Memory Apply — content / deliverable overlays", () => {
       workStyleNotes: [],
       ocrDictionary: {},
       visionHints: [],
+      preferenceKeys: [],
+      preferShort: false,
+      preferBullets: false,
+      preferConclusionFirst: false,
     });
     // Body is cleaned; header may list the ban for generators/planner.
     expect(text).toContain("【禁止表現】");

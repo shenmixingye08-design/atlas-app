@@ -89,15 +89,29 @@ function compact(
 }
 
 export function schedulePersistPersonalMemory(userId: string): void {
-  void persistDurableDomain(userId, PERSONAL_MEMORY_DOMAIN_KEY, snapshot(userId), {
-    compact,
-    forceSupabase: true,
-  });
+  void persistPersonalMemoryNow(userId);
+}
+
+/** Awaitable Postgres SoT write — required for Production probe / restart proof. */
+export async function persistPersonalMemoryNow(
+  userId: string,
+): Promise<"clerk" | "supabase" | "clerk_compact" | "skipped"> {
+  if (!userId.trim()) return "skipped";
+  return persistDurableDomain(
+    userId,
+    PERSONAL_MEMORY_DOMAIN_KEY,
+    snapshot(userId),
+    {
+      compact,
+      forceSupabase: true,
+    },
+  );
 }
 
 export async function ensurePersonalMemoryHydrated(
   userId: string,
 ): Promise<void> {
+  if (!userId.trim()) return;
   const hydrated = getHydrated();
   if (hydrated.has(userId)) return;
   hydrated.add(userId);
@@ -138,6 +152,12 @@ export async function ensurePersonalMemoryHydrated(
   if (store && Array.isArray(loaded.rejectedFingerprints)) {
     store.rejectedFingerprints.set(userId, new Set(loaded.rejectedFingerprints));
   }
+}
+
+/** Probe/test helper: drop cache so next hydrate must hit Postgres. */
+export function evictPersonalMemoryCacheForUser(userId: string): void {
+  clearAllPersonalMemoryData(userId);
+  getHydrated().delete(userId);
 }
 
 export function wipePersonalMemoryDurable(userId: string): void {
