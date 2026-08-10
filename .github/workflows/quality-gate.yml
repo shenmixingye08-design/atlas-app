@@ -18,6 +18,20 @@ jobs:
     name: typecheck · lint · test · build
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: atlas
+          POSTGRES_DB: atlas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atlas -d atlas"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,6 +49,15 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq poppler-utils
+
+      - name: Prepare Durable SoT test databases
+        env:
+          PGPASSWORD: atlas
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          psql -h 127.0.0.1 -U atlas -d atlas -c "create database atlas_durable_sot_mig owner atlas;"
+          psql -h 127.0.0.1 -U atlas -d atlas -c "create database atlas_durable_sot_crud owner atlas;"
 
       - name: Typecheck
         run: npm run typecheck
@@ -104,6 +127,16 @@ jobs:
           ATLAS_WORK_QUEUE_FORCE_FILE: "true"
           # Vitest workers serialize large fixtures; default heap OOMs on ubuntu-latest.
           NODE_OPTIONS: --max-old-space-size=8192
+          DURABLE_SOT_MIGRATION_DATABASE_URL: postgresql://atlas:atlas@127.0.0.1:5432/atlas_durable_sot_mig
+          DURABLE_SOT_CRUD_DATABASE_URL: postgresql://atlas:atlas@127.0.0.1:5432/atlas_durable_sot_crud
+
+      - name: Durable SoT foundation (migration + repository)
+        run: npm test -- --run lib/persistence/durable-sot
+        env:
+          TZ: UTC
+          NODE_OPTIONS: --max-old-space-size=8192
+          DURABLE_SOT_MIGRATION_DATABASE_URL: postgresql://atlas:atlas@127.0.0.1:5432/atlas_durable_sot_mig
+          DURABLE_SOT_CRUD_DATABASE_URL: postgresql://atlas:atlas@127.0.0.1:5432/atlas_durable_sot_crud
 
       - name: Work-queue critical path
         run: npm test -- --run lib/work-queue lib/automations/durable.test.ts

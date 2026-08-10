@@ -21,3 +21,10 @@
 --
 -- Dashboard apply status cannot be inferred from the repo — verify tables/policies in
 -- Supabase → Table Editor / Authentication → Policies after running the SQL files.
+--
+-- Phase 1-2 Durable SoT foundation (not wired to Queue/Worker yet):
+--   Up:   20260803_atlas_durable_sot.sql
+--   Down: 20260803_atlas_durable_sot.down.sql
+-- Tables: atlas_durable_runs / steps / leases / heartbeats / retry_states /
+--         recovery_states / scheduler_occurrences / completion_evidence /
+--         idempotency_keys
