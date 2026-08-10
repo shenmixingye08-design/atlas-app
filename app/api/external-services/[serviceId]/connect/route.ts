@@ -3,6 +3,10 @@ import { auth } from "@clerk/nextjs/server";
 import { isExternalServiceId } from "@/lib/integrations/external-services/registry";
 import { externalServiceManager } from "@/lib/integrations/external-services/service";
 import { ensureExternalAuthHydrated } from "@/lib/integrations/external-services/durable";
+import {
+  isExternalServiceConnectable,
+  unsupportedExternalServiceMessage,
+} from "@/lib/integrations/production-capability";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import {
   recordDropboxIntegrationUsage,
@@ -39,6 +43,20 @@ export async function POST(
 
   if (!isExternalServiceId(serviceId)) {
     return Response.json({ error: "Unknown service" }, { status: 404 });
+  }
+
+  // N-04: fail-closed before billing / stub connect.
+  if (!isExternalServiceConnectable(serviceId)) {
+    return Response.json(
+      {
+        error: unsupportedExternalServiceMessage(serviceId),
+        unsupported: true,
+        softSuccess: false,
+        connected: false,
+        success: false,
+      },
+      { status: 403 },
+    );
   }
 
   try {

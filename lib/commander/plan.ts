@@ -9,6 +9,7 @@ import { getLineLinkByAtlasUserId } from "@/lib/integrations/line/link-store";
 import { isLineMessagingConfigured } from "@/lib/integrations/line/config";
 import { externalServiceManager } from "@/lib/integrations/external-services/service";
 import type { ExternalServiceId } from "@/lib/integrations/external-services/types";
+import { isExternalServiceConnectable } from "@/lib/integrations/production-capability";
 import { isStripeConfigured } from "@/lib/billing/stripe/config";
 import {
   getMemoriesForAssignment,
@@ -85,6 +86,14 @@ function resolveExternalNeeds(
       return {
         ...need,
         connectionStatus: "disconnected" as const,
+      };
+    }
+
+    // N-04: existing inferences for unoffered stubs stay unsupported.
+    if (!isExternalServiceConnectable(need.serviceId)) {
+      return {
+        ...need,
+        connectionStatus: "unavailable" as const,
       };
     }
 

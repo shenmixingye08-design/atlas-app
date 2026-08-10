@@ -1,7 +1,7 @@
 import type { ExternalServiceDefinition } from "../external-services/types";
 import {
-  stubConnectService,
   stubDisconnectService,
+  unsupportedConnectService,
   type ExternalServiceConnectorModule,
 } from "../connector-types";
 
@@ -17,7 +17,8 @@ export const youtubeServiceDefinition: ExternalServiceDefinition = {
   plannedFeatures: ["動画メタデータ登録", "公開・限定公開の切り替え"],
 };
 
+/** N-04: YouTube API is a Production stub — connect is fail-closed. */
 export const youtubeConnector: ExternalServiceConnectorModule = {
-  connect: stubConnectService,
+  connect: unsupportedConnectService,
   disconnect: stubDisconnectService,
 };

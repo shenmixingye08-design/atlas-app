@@ -55,7 +55,8 @@ export const WORKFLOW_TEMPLATES: Record<WorkflowTemplateId, WorkflowTemplate> = 
       { id: "title", label: "タイトル作成", integration: "atlas" },
       { id: "description", label: "説明文作成", integration: "atlas" },
       { id: "sns_post", label: "SNS投稿", integration: "sns" },
-      { id: "youtube_publish", label: "YouTube投稿", integration: "youtube" },
+      // N-04: YouTube API publish is not Production-offered — no publish CTA.
+      { id: "youtube_publish", label: "公開先は別途用意", integration: "atlas" },
     ],
   },
   generic: {

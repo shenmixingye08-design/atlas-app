@@ -24,8 +24,9 @@ export function generateExecutionSummary(action: ActionRequest): ExecutionSummar
         detail: ui.execution.detailEmailQueued,
       };
     case "notion:pages":
+      // N-04: Notion is not Production-offered — never claim page created.
       return {
-        summary: ui.execution.summaryNotionPage,
+        summary: "Notion連携は現在ご利用いただけません",
         detail: null,
       };
     case "google:google_calendar":

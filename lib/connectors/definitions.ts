@@ -125,13 +125,20 @@ export const connectorProviders: readonly ConnectorProviderDefinition[] = [
     id: "notion",
     name: "Notion",
     icon: "N",
-    description: "ページとデータベース連携。",
+    // N-04: Notion API is not a Production-offered connector.
+    description: "ページとデータベース連携（現在ご利用いただけません）。",
     permissions: ["pages.write", "databases.read"],
-    defaultStatus: "available",
+    defaultStatus: "coming_soon",
     oauth: oauthStub(["insert_content", "read_content"]),
     services: [
-      svc("pages", "Pages", "ページ作成", ["pages.write"]),
-      svc("databases", "Databases", "DBレコード追加", ["databases.read"]),
+      svc("pages", "Pages", "ページ作成", ["pages.write"], "coming_soon"),
+      svc(
+        "databases",
+        "Databases",
+        "DBレコード追加",
+        ["databases.read"],
+        "coming_soon",
+      ),
     ],
   },
   {

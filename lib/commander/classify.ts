@@ -112,12 +112,7 @@ export function inferRequiredExternalServices(
         });
         break;
       case "youtube":
-        add({
-          serviceId: "youtube",
-          label: "YouTube",
-          required: false,
-          reason: `テンプレート「${template.label}」の ${step.label}`,
-        });
+        // N-04: YouTube API stub — do not surface as connectable need.
         break;
       case "email":
         add({
@@ -186,14 +181,7 @@ export function inferRequiredExternalServices(
       reason: "依頼文に決済関連の言及があります",
     });
   }
-  if (/notion/i.test(assignment)) {
-    add({
-      serviceId: "notion",
-      label: "Notion",
-      required: false,
-      reason: "依頼文に Notion の言及があります",
-    });
-  }
+  // N-04: Notion API stub — do not surface as connectable need.
 
   return Array.from(needs.values());
 }

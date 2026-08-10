@@ -1,7 +1,7 @@
 import type { ExternalServiceDefinition } from "../external-services/types";
 import {
-  stubConnectService,
   stubDisconnectService,
+  unsupportedConnectService,
   type ExternalServiceConnectorModule,
 } from "../connector-types";
 
@@ -14,7 +14,8 @@ export const notionServiceDefinition: ExternalServiceDefinition = {
   plannedFeatures: ["成果物ページ作成", "タスク一覧への追加"],
 };
 
+/** N-04: Notion is a Production stub — connect is fail-closed. */
 export const notionConnector: ExternalServiceConnectorModule = {
-  connect: stubConnectService,
+  connect: unsupportedConnectService,
   disconnect: stubDisconnectService,
 };

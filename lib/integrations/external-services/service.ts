@@ -33,6 +33,11 @@ import {
   getExternalServiceFeatureFlag,
   isExternalServiceFeatureEnabled,
 } from "@/lib/feature-flags/guards";
+import {
+  isExternalServiceConnectable,
+  isExternalServiceUserVisible,
+  unsupportedExternalServiceMessage,
+} from "@/lib/integrations/production-capability";
 
 export class ExternalServiceManager {
   getCatalog(
@@ -44,16 +49,19 @@ export class ExternalServiceManager {
       connections.map((connection) => [connection.serviceId, connection]),
     );
 
-    const services = externalServiceDefinitions.map((definition) => ({
-      ...mergeExternalServiceView(
-        definition,
-        connectionById.get(definition.serviceId) ?? null,
-      ),
-      featureEnabled: isExternalServiceFeatureEnabled(
-        definition.serviceId,
-        context,
-      ),
-    }));
+    // N-04: hide Production-unoffered stubs (Notion / YouTube) from settings UI.
+    const services = externalServiceDefinitions
+      .filter((definition) => isExternalServiceUserVisible(definition.serviceId))
+      .map((definition) => ({
+        ...mergeExternalServiceView(
+          definition,
+          connectionById.get(definition.serviceId) ?? null,
+        ),
+        featureEnabled: isExternalServiceFeatureEnabled(
+          definition.serviceId,
+          context,
+        ),
+      }));
 
     return { services };
   }
@@ -69,6 +77,10 @@ export class ExternalServiceManager {
     serviceId: ExternalServiceId,
     context: FeatureAccessContext,
   ): void {
+    // N-04: capability SoT before feature flags.
+    if (!isExternalServiceConnectable(serviceId)) {
+      throw new Error(unsupportedExternalServiceMessage(serviceId));
+    }
     if (isExternalServiceFeatureEnabled(serviceId, context)) {
       return;
     }
@@ -85,6 +97,11 @@ export class ExternalServiceManager {
     requestOrigin?: string,
     context?: FeatureAccessContext,
   ): Promise<ExternalServiceConnectResult> {
+    // Always fail-closed for unoffered connectors (even without feature context).
+    if (!isExternalServiceConnectable(serviceId)) {
+      throw new Error(unsupportedExternalServiceMessage(serviceId));
+    }
+
     if (context) {
       this.assertServiceAvailable(serviceId, context);
     }

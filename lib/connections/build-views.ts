@@ -73,6 +73,8 @@ function deriveConnectionStatus(
   };
 
   const legacyId = legacyMap[providerId];
+  // N-04: coming_soon / stub providers must never appear connected via legacy stubs.
+  if (defaultComingSoon) return "not_connected";
   if (legacyId && ctx.errorLegacyIds.has(legacyId)) {
     return "needs_reconnect";
   }
@@ -80,7 +82,6 @@ function deriveConnectionStatus(
     return "connected";
   }
 
-  if (defaultComingSoon) return "not_connected";
   return "not_connected";
 }
 
