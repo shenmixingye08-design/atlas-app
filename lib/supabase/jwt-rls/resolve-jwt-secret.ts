@@ -5,6 +5,30 @@ import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role
 
 import type { ResolveJwtSecretResult } from "./types";
 
+/**
+ * Runtime-only env read — avoid static `process.env.SUPABASE_JWT_SECRET`
+ * member access so the bundler cannot replace it with a build-time undefined
+ * (same pattern as Stripe `readRuntimeEnv` / P1 postgres URL fix).
+ */
+function readRuntimeEnv(name: string): string | undefined {
+  const env = process.env;
+  return env[name];
+}
+
+/** Strip BOM / surrounding quotes from Vercel paste artifacts. Never log value. */
+function sanitizeSecret(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  let value = raw.replace(/^\uFEFF/, "").trim();
+  if (value.length >= 2) {
+    const first = value[0];
+    const last = value[value.length - 1];
+    if ((first === '"' || first === "'") && first === last) {
+      value = value.slice(1, -1).trim();
+    }
+  }
+  return value.length > 0 ? value : null;
+}
+
 function projectRefFromUrl(url: string | null | undefined): string | null {
   if (!url) return null;
   try {
@@ -17,12 +41,14 @@ function projectRefFromUrl(url: string | null | undefined): string | null {
 }
 
 function readEnvSecret(): string | null {
-  const candidates = [
-    process.env.SUPABASE_JWT_SECRET?.trim(),
-    process.env.SUPABASE_JWT_SECRET_KEY?.trim(),
-    process.env.JWT_SECRET?.trim(),
+  // Build key names at runtime to defeat static env inlining of the name+value pair.
+  const names = [
+    ["SUPABASE", "JWT", "SECRET"].join("_"),
+    ["SUPABASE", "JWT", "SECRET", "KEY"].join("_"),
+    ["JWT", "SECRET"].join("_"),
   ];
-  for (const value of candidates) {
+  for (const name of names) {
+    const value = sanitizeSecret(readRuntimeEnv(name));
     if (value && value.length >= 16) return value;
   }
   return null;
@@ -64,10 +90,11 @@ async function fetchJwtSecretFromDbBridge(): Promise<{
       }
       return { secret: null, error: error.message };
     }
-    const secret =
+    const secret = sanitizeSecret(
       data && typeof (data as { secret?: unknown }).secret === "string"
-        ? String((data as { secret: string }).secret).trim()
-        : "";
+        ? String((data as { secret: string }).secret)
+        : null,
+    );
     if (!secret || secret.length < 16) {
       return { secret: null, error: "bridge_secret_absent" };
     }
@@ -85,11 +112,11 @@ async function fetchJwtSecretViaManagementApi(): Promise<{
   error: string | null;
 }> {
   const token =
-    process.env.SUPABASE_ACCESS_TOKEN?.trim() ||
-    process.env.SUPABASE_MANAGEMENT_TOKEN?.trim() ||
+    sanitizeSecret(readRuntimeEnv("SUPABASE_ACCESS_TOKEN")) ||
+    sanitizeSecret(readRuntimeEnv("SUPABASE_MANAGEMENT_TOKEN")) ||
     "";
   const ref =
-    process.env.SUPABASE_PROJECT_REF?.trim() ||
+    sanitizeSecret(readRuntimeEnv("SUPABASE_PROJECT_REF")) ||
     projectRefFromUrl(getSupabaseServiceRoleEnv()?.url) ||
     "";
   if (!token || !ref) {
@@ -117,7 +144,9 @@ async function fetchJwtSecretViaManagementApi(): Promise<{
     }
     const body = (await response.json()) as { jwt_secret?: unknown };
     const secret =
-      typeof body.jwt_secret === "string" ? body.jwt_secret.trim() : "";
+      typeof body.jwt_secret === "string"
+        ? sanitizeSecret(body.jwt_secret)
+        : null;
     if (!secret || secret.length < 16) {
       return { secret: null, error: "management_api_jwt_secret_absent" };
     }
@@ -179,18 +208,24 @@ export async function resolveSupabaseJwtSecret(options?: {
   }
 
   cached = null;
+  const errors = [
+    "supabase_jwt_secret_env_missing",
+    fromDb.error && fromDb.error !== "bridge_secret_absent"
+      ? `db:${fromDb.error}`
+      : fromDb.error === "bridge_secret_absent"
+        ? "bridge_secret_absent"
+        : null,
+    fromApi.error ? `mgmt:${fromApi.error}` : null,
+  ].filter(Boolean);
   return {
     ok: false,
     secret: null,
     source: "none",
-    error:
-      fromDb.error && fromDb.error !== "bridge_secret_absent"
-        ? fromDb.error
-        : (fromApi.error ?? "supabase_jwt_secret_not_configured"),
+    error: errors.join("|") || "supabase_jwt_secret_not_configured",
   };
 }
 
-/** Env presence flags only — never values. */
+/** Env presence flags only — never values. Uses runtime reads. */
 export function getJwtSecretEnvPresence(): {
   supabaseJwtSecret: boolean;
   supabaseAccessToken: boolean;
@@ -199,8 +234,8 @@ export function getJwtSecretEnvPresence(): {
   return {
     supabaseJwtSecret: Boolean(readEnvSecret()),
     supabaseAccessToken: Boolean(
-      process.env.SUPABASE_ACCESS_TOKEN?.trim() ||
-        process.env.SUPABASE_MANAGEMENT_TOKEN?.trim(),
+      sanitizeSecret(readRuntimeEnv("SUPABASE_ACCESS_TOKEN")) ||
+        sanitizeSecret(readRuntimeEnv("SUPABASE_MANAGEMENT_TOKEN")),
     ),
     serviceRole: Boolean(getSupabaseServiceRoleEnv()),
   };

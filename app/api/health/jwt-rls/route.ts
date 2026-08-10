@@ -52,6 +52,7 @@ export async function GET(request: Request): Promise<Response> {
     projectsJwtPolicyOk: result.projectsJwtPolicyOk,
     secretSource: result.secretSource,
     ownerActionRequired: result.ownerActionRequired,
+    envPresence: result.envPresence,
     error: result.error,
     commitShaShort: result.commitShaShort,
     environment: result.environment,

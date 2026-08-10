@@ -115,6 +115,18 @@ describe("P3-01 JWT連携RLS", () => {
     }
   });
 
+  it("strips surrounding quotes from Vercel-pasted JWT secret", async () => {
+    vi.stubEnv("SUPABASE_JWT_SECRET", '"quoted-secret-16chars"');
+    const { resolveSupabaseJwtSecret } = await import("./resolve-jwt-secret");
+    clearJwtSecretCacheForTests();
+    const result = await resolveSupabaseJwtSecret({ forceRefresh: true });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.secret).toBe("quoted-secret-16chars");
+      expect(result.source).toBe("env");
+    }
+  });
+
   it("duplicate/forged signature path: wrong secret does not match", () => {
     const good = mintClerkSupabaseJwt({
       userId: "user_x",

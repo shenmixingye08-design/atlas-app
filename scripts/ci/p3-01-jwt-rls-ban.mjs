@@ -38,6 +38,17 @@ for (const marker of ["mintClerkSupabaseJwt", "authenticated", "sub"]) {
   }
 }
 
+const resolve = read("lib/supabase/jwt-rls/resolve-jwt-secret.ts");
+for (const marker of [
+  "readRuntimeEnv",
+  '["SUPABASE", "JWT", "SECRET"].join("_")',
+  "sanitizeSecret",
+]) {
+  if (!resolve.includes(marker)) {
+    violations.push(`resolve-jwt-secret.ts: missing ${marker}`);
+  }
+}
+
 const sql = read("supabase/migrations/20260810_p3_01_jwt_rls.sql");
 for (const marker of [
   "atlas_jwt_rls_subjects",
