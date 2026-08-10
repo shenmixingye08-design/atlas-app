@@ -23,6 +23,7 @@ import {
   notifyAutomationAwaitingReview,
   notifyWorkCompleted,
   notifyWorkFailed,
+  notifyWorkNeedsReview,
 } from "@/lib/notifications/emitters";
 import { persistNotificationsNow } from "@/lib/notifications/durable";
 import { exportDocumentsOnServer } from "@/lib/deliverables/server-document-export";
@@ -855,11 +856,11 @@ async function executeStoredRun(input: {
     }
     await ensureNotificationDelivery(
       () =>
-        notifyWorkCompleted(input.userId, {
-          title: "確認が必要です",
+        notifyWorkNeedsReview(input.userId, {
+          title: "確認が必要です（一部のみ完了）",
           message: snsPublishReason
-            ? `投稿文は準備できましたが、Xへの投稿に失敗しました: ${formatFailureReason(snsPublishReason)}`
-            : "一部の成果は保存できます。内容を確認してください。",
+            ? `投稿文は保存できましたが、Xへの投稿は失敗しました: ${formatFailureReason(snsPublishReason)}。全体は未完了です。`
+            : "一部の成果は保存できますが、全体は未完了です。内容を確認してください。",
           actionUrl: lastResult ? resultDeepLink : "/workspace",
           relatedTaskId: lastResult ? resultProjectId : null,
           deliverableId: lastResult ? resultProjectId : null,

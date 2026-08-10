@@ -8,14 +8,30 @@ const pushDeliveries: string[] = [];
 vi.mock("@/lib/notifications/delivery", () => ({
   deliverLineWithAck: vi.fn(async (input: { notificationId: string; skipDlq?: boolean }) => {
     lineDeliveries.push(input.notificationId);
-    return { ok: true, attempts: 1 };
+    return {
+      ok: true,
+      status: "delivered" as const,
+      attempts: 1,
+      sentCount: 1,
+      skipReason: null,
+      error: null,
+      softSuccess: false as const,
+    };
   }),
   deliverWebPushWithAck: vi.fn(async (input: {
     record: { notificationId: string };
     skipDlq?: boolean;
   }) => {
     pushDeliveries.push(input.record.notificationId);
-    return { ok: true, attempts: 1 };
+    return {
+      ok: true,
+      status: "delivered" as const,
+      attempts: 1,
+      sentCount: 1,
+      skipReason: null,
+      error: null,
+      softSuccess: false as const,
+    };
   }),
 }));
 
@@ -78,11 +94,27 @@ describe("P1-02 notification retry/DLQ → automation tick", () => {
     vi.mocked(deliverWebPushWithAck).mockClear();
     vi.mocked(deliverLineWithAck).mockImplementation(async (input) => {
       lineDeliveries.push(input.notificationId);
-      return { ok: true, attempts: 1 };
+      return {
+        ok: true,
+        status: "delivered",
+        attempts: 1,
+        sentCount: 1,
+        skipReason: null,
+        error: null,
+        softSuccess: false,
+      };
     });
     vi.mocked(deliverWebPushWithAck).mockImplementation(async (input) => {
       pushDeliveries.push(input.record.notificationId);
-      return { ok: true, attempts: 1 };
+      return {
+        ok: true,
+        status: "delivered",
+        attempts: 1,
+        sentCount: 1,
+        skipReason: null,
+        error: null,
+        softSuccess: false,
+      };
     });
   });
 
@@ -129,13 +161,21 @@ describe("P1-02 notification retry/DLQ → automation tick", () => {
     const n = await seedRetry({ userId: USER_A, requestId: "req_dlq" });
     vi.mocked(deliverLineWithAck).mockImplementation(async () => ({
       ok: false,
+      status: "failed" as const,
       attempts: 3,
+      sentCount: 0,
+      skipReason: null,
       error: "line_down",
+      softSuccess: false as const,
     }));
     vi.mocked(deliverWebPushWithAck).mockImplementation(async () => ({
       ok: false,
+      status: "failed" as const,
       attempts: 3,
+      sentCount: 0,
+      skipReason: null,
       error: "push_down",
+      softSuccess: false as const,
     }));
 
     // Force retryCount to max so next failure dead-letters.
@@ -257,11 +297,21 @@ describe("P1-02 notification retry/DLQ → automation tick", () => {
     // Soft-success LINE would otherwise mark delivered; force failure like prod smoke.
     vi.mocked(deliverLineWithAck).mockImplementation(async () => ({
       ok: true,
+      status: "skipped" as const,
       attempts: 1,
+      sentCount: 0,
+      skipReason: "not_configured",
+      error: null,
+      softSuccess: false as const,
     }));
     vi.mocked(deliverWebPushWithAck).mockImplementation(async () => ({
       ok: true,
+      status: "skipped" as const,
       attempts: 1,
+      sentCount: 0,
+      skipReason: "no_subscription_or_disabled",
+      error: null,
+      softSuccess: false as const,
     }));
     const result = await processDurableNotificationRetries({
       nowMs: Date.now(),

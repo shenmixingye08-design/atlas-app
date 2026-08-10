@@ -85,8 +85,9 @@ export async function notifyXPostSuccess(
     userId,
     type: "completed",
     title: "X自動投稿が完了しました",
+    // N-07: never imply "準備" when the post itself succeeded.
     message: text
-      ? `お待たせいたしました。投稿の準備が完了しました。`
+      ? "お待たせいたしました。Xへの投稿が完了しました。"
       : "お待たせいたしました。投稿が完了しました。",
     relatedTaskId: historyId,
     relatedService: "x",
@@ -194,11 +195,13 @@ export async function notifyGmailSummaryComplete(userId: string) {
   return await createNotification({
     audience: "user",
     userId,
-    type: "completed",
-    title: "メールの要約が完了しました",
-    message: "お待たせいたしました。メールの要約と返信案の準備が完了しました。",
+    // N-07: draft/summary prep is review, not final SUCCESS.
+    type: "awaiting_review",
+    title: "メールの要約をご確認ください",
+    message: "メールの要約と返信案を用意しました。内容をご確認ください。",
     relatedService: "google",
     actionUrl: "/workspace/mail",
+    lineEvent: "confirmation_request",
   });
 }
 
@@ -445,6 +448,64 @@ export async function notifyWorkCompleted(
   });
 }
 
+/** N-07: PARTIAL work — never type "completed". */
+export async function notifyWorkNeedsReview(
+  userId: string | null | undefined,
+  input: {
+    title: string;
+    message: string;
+    actionUrl?: string | null;
+    relatedTaskId?: string | null;
+    deliverableId?: string | null;
+    workflowRunId?: string | null;
+    requestId?: string | null;
+  },
+) {
+  if (!userId) return null;
+  const deliverableId = input.deliverableId ?? input.relatedTaskId ?? null;
+  const actionUrl =
+    input.actionUrl ??
+    (deliverableId ? deliverableActionUrl(deliverableId) : "/workspace");
+  const title = input.title?.trim() || "確認が必要です";
+  const message = input.message?.trim()
+    ? input.message.trim()
+    : "一部の処理は完了しましたが、確認が必要な項目があります。";
+
+  return await upsertWorkNotificationByRequestId({
+    userId,
+    requestId: input.requestId ?? input.workflowRunId ?? deliverableId,
+    build: () =>
+      createNotification({
+        audience: "user",
+        userId,
+        type: "awaiting_review",
+        title,
+        message,
+        relatedTaskId: input.relatedTaskId ?? deliverableId,
+        actionUrl,
+        targetType: deliverableId ? "deliverable" : null,
+        targetId: deliverableId,
+        deliverableId,
+        workflowRunId: input.workflowRunId ?? null,
+        requestId: input.requestId ?? null,
+        lineEvent: "confirmation_request",
+      }),
+    patch: () => ({
+      type: "awaiting_review" as const,
+      title,
+      message,
+      deliverableId,
+      targetType: deliverableId ? ("deliverable" as const) : null,
+      targetId: deliverableId,
+      relatedTaskId: input.relatedTaskId ?? deliverableId,
+      workflowRunId: input.workflowRunId ?? null,
+      requestId: input.requestId ?? null,
+      lineEvent: "confirmation_request" as const,
+      isRead: false,
+    }),
+  });
+}
+
 export async function notifyWorkFailed(
   userId: string | null | undefined,
   input: {
@@ -543,7 +604,7 @@ export async function notifyDocumentReady(
     userId,
     type: "completed",
     title: "資料が完成しました",
-    message: `お待たせいたしました。「${input.fileName}」の準備が完了しました。`,
+    message: `お待たせいたしました。「${input.fileName}」の保存が完了しました。`,
     relatedService: "atlas",
     actionUrl: input.href ?? "/workspace/drive",
     lineEvent: "document_ready",
