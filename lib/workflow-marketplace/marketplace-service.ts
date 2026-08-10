@@ -97,7 +97,7 @@ export class WorkflowMarketplaceService {
     });
 
     setClientInstalledPackages(getServerInstalledPackagesForUser(userId));
-    setClientActiveCompanyState(applyResult.state);
+    setClientActiveCompanyState(applyResult.state, userId);
 
     return {
       package: this.getPackageForUser(userId, templateId),
@@ -138,7 +138,7 @@ export class WorkflowMarketplaceService {
 
       const applyResult = await applyCompanyTemplateForUser(userId, fallback);
       activeTemplateId = applyResult.state.templateId;
-      setClientActiveCompanyState(applyResult.state);
+      setClientActiveCompanyState(applyResult.state, userId);
     }
 
     setClientInstalledPackages(getServerInstalledPackagesForUser(userId));

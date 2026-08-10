@@ -35,6 +35,8 @@ export const SUPABASE_ONLY_DOMAIN_KEYS = [
   "atlasErrorHistory",
   "atlasBilling",
   "atlasBillingUsage",
+  /** P3-02: active company template tenant SoT */
+  "atlasActiveCompany",
 ] as const;
 
 export type SupabaseOnlyDomainKey = (typeof SUPABASE_ONLY_DOMAIN_KEYS)[number];
