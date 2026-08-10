@@ -58,9 +58,6 @@ export type MemoryApplyProductionProbeResult = {
   correlationId: string;
 };
 
-const PROBE_USER_A = "user_n05_memory_probe_a";
-const PROBE_USER_B = "user_n05_memory_probe_b";
-
 const PREFERENCE_TEXT =
   "今後、文章は短め・箇条書き中心・結論を最初にしてください";
 
@@ -131,17 +128,18 @@ async function atlasUserStateReadable(): Promise<{
   return { ok: true, error: null };
 }
 
-async function cleanupProbeUsers(): Promise<void> {
+async function cleanupProbeUsers(userIds: readonly string[]): Promise<void> {
   const client = createServiceRoleClientIfConfigured();
-  if (client) {
+  if (client && userIds.length > 0) {
     await client
       .from("atlas_user_state")
       .delete()
-      .in("user_id", [PROBE_USER_A, PROBE_USER_B])
+      .in("user_id", [...userIds])
       .eq("domain", PERSONAL_MEMORY_DOMAIN_KEY);
   }
-  evictPersonalMemoryCacheForUser(PROBE_USER_A);
-  evictPersonalMemoryCacheForUser(PROBE_USER_B);
+  for (const userId of userIds) {
+    evictPersonalMemoryCacheForUser(userId);
+  }
 }
 
 function stubAutomation(userId: string, id: string): AutomationV2 {
@@ -217,8 +215,12 @@ function stubAutomation(userId: string, id: string): AutomationV2 {
 }
 
 function artifactShowsPreferences(text: string): boolean {
-  const hasConclusionFirst = text.trimStart().startsWith("結論：");
-  const hasBullets = /^- /m.test(text) || text.includes("\n- ");
+  // Overlay headers are prepended; conclusion marker is in the transformed body.
+  const conclusionIdx = text.indexOf("結論：");
+  const bulletIdx = text.search(/(^|\n)- /);
+  const hasConclusionFirst =
+    conclusionIdx >= 0 && (bulletIdx < 0 || conclusionIdx < bulletIdx);
+  const hasBullets = bulletIdx >= 0;
   const hasShortMarker =
     text.includes("length:short") || text.includes("【好み反映】");
   const hasKeys =
@@ -231,6 +233,10 @@ function artifactShowsPreferences(text: string): boolean {
 async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
   const { commitShaShort, environment } = versionBits();
   const correlationId = `corr_n05_${randomUUID().slice(0, 8)}`;
+  const runId = randomUUID().slice(0, 8);
+  const probeUserA = `user_n05_mem_a_${runId}`;
+  const probeUserB = `user_n05_mem_b_${runId}`;
+  const probeUsers = [probeUserA, probeUserB] as const;
 
   try {
     const dbSotOk = (SUPABASE_ONLY_DOMAIN_KEYS as readonly string[]).includes(
@@ -251,7 +257,7 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
       });
     }
 
-    await cleanupProbeUsers();
+    await cleanupProbeUsers(probeUsers);
     resetPersonalMemoryDurableForTests();
 
     // fail-closed: empty userId must not throw cross-user data
@@ -264,7 +270,7 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
     }
 
     const preferenceValue = buildExplicitWritingPreferenceValue(PREFERENCE_TEXT);
-    const saved = await createPersonalMemory(PROBE_USER_A, {
+    const saved = await createPersonalMemory(probeUserA, {
       kind: "user_preference",
       scope: "writing_style",
       key: "writing_preference",
@@ -276,11 +282,11 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
       confidence: 0.95,
       appliesTo: { global: true, automationIds: [], artifactTypes: [], capabilities: [] },
     });
-    const persistA = await persistPersonalMemoryNow(PROBE_USER_A);
+    const persistA = await persistPersonalMemoryNow(probeUserA);
     const memorySaved = persistA === "supabase" && Boolean(saved.id);
 
     // User B different preference (must never leak to A)
-    await createPersonalMemory(PROBE_USER_B, {
+    await createPersonalMemory(probeUserB, {
       kind: "user_preference",
       scope: "writing_style",
       key: "writing_preference",
@@ -292,7 +298,7 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
       confidence: 0.9,
       appliesTo: { global: true, automationIds: [], artifactTypes: [], capabilities: [] },
     });
-    const persistB = await persistPersonalMemoryNow(PROBE_USER_B);
+    const persistB = await persistPersonalMemoryNow(probeUserB);
     if (persistB !== "supabase") {
       return baseFail(`persist_b_${persistB}`, {
         dbSotOk: true,
@@ -303,19 +309,19 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
     }
 
     // restart / multi-instance: evict process cache, rehydrate from Postgres
-    evictPersonalMemoryCacheForUser(PROBE_USER_A);
-    evictPersonalMemoryCacheForUser(PROBE_USER_B);
+    evictPersonalMemoryCacheForUser(probeUserA);
+    evictPersonalMemoryCacheForUser(probeUserB);
     const memoryEmptyAfterEvict =
-      listStoredPersonalMemories(PROBE_USER_A).length === 0 &&
-      listStoredPersonalMemories(PROBE_USER_B).length === 0;
+      listStoredPersonalMemories(probeUserA).length === 0 &&
+      listStoredPersonalMemories(probeUserB).length === 0;
 
-    await ensurePersonalMemoryHydrated(PROBE_USER_A);
-    await ensurePersonalMemoryHydrated(PROBE_USER_B);
+    await ensurePersonalMemoryHydrated(probeUserA);
+    await ensurePersonalMemoryHydrated(probeUserB);
     const durableA = await loadDurableDomain<DurablePersonalMemoryState>(
-      PROBE_USER_A,
+      probeUserA,
       PERSONAL_MEMORY_DOMAIN_KEY,
     );
-    const hydratedA = listStoredPersonalMemories(PROBE_USER_A).filter(
+    const hydratedA = listStoredPersonalMemories(probeUserA).filter(
       (m) => m.status === "active",
     );
     const restartDurableOk =
@@ -323,14 +329,14 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
       hydratedA.some((m) => m.id === saved.id) &&
       Boolean(
         durableA?.memories?.some(
-          (m) => m.id === saved.id && m.userId === PROBE_USER_A,
+          (m) => m.id === saved.id && m.userId === probeUserA,
         ),
       );
 
     // retrieve without restating preference (job 2 assignment has no preference text)
     const job2Assignment = "週次の進捗メモを作成してください";
     const resolved = await resolveForContext({
-      userId: PROBE_USER_A,
+      userId: probeUserA,
       notes: job2Assignment,
       artifactTypes: ["docx"],
     });
@@ -339,11 +345,13 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
 
     // artifact apply
     const artifact = await applyMemoryForDeliverable({
-      userId: PROBE_USER_A,
+      userId: probeUserA,
       content: ARTIFACT_BASELINE,
       format: "docx",
       assignment: job2Assignment,
     });
+    // Drain any fire-and-forget persist from resolve/apply before mutating Memory.
+    await persistPersonalMemoryNow(probeUserA);
     const artifactPreferenceAppliedOk =
       artifact.memoryRetrieved &&
       artifact.memoryApplied &&
@@ -354,7 +362,7 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
 
     // automation apply (v2 path)
     const auto = await applyMemoryForAutomation({
-      automation: stubAutomation(PROBE_USER_A, `auto_n05_${randomUUID().slice(0, 8)}`),
+      automation: stubAutomation(probeUserA, `auto_n05_${runId}`),
     });
     const automationPreferenceAppliedOk =
       auto.diagnostics.applied &&
@@ -367,7 +375,7 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
 
     // ownership isolation / cross-user leak
     const resolvedB = await resolveForContext({
-      userId: PROBE_USER_B,
+      userId: probeUserB,
       notes: job2Assignment,
     });
     const aIds = new Set(resolved.ledger.memoryIdsUsed);
@@ -377,10 +385,10 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
       !crossUserMemoryLeak &&
       aIds.has(saved.id) &&
       !bIds.has(saved.id) &&
-      hydratedA.every((m) => m.userId === PROBE_USER_A);
+      hydratedA.every((m) => m.userId === probeUserA);
 
     // update propagation
-    const updated = await updatePersonalMemory(PROBE_USER_A, saved.id, {
+    const updated = await updatePersonalMemory(probeUserA, saved.id, {
       summary: "今後、文章は短め・箇条書き中心にしてください（更新）",
       value: {
         text: "短め・箇条書き（更新）",
@@ -389,33 +397,36 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
         // conclusion removed on purpose
       },
     });
-    await persistPersonalMemoryNow(PROBE_USER_A);
-    evictPersonalMemoryCacheForUser(PROBE_USER_A);
-    await ensurePersonalMemoryHydrated(PROBE_USER_A);
+    const persistUpdated = await persistPersonalMemoryNow(probeUserA);
+    evictPersonalMemoryCacheForUser(probeUserA);
+    await ensurePersonalMemoryHydrated(probeUserA);
     const afterUpdate = await applyMemoryForDeliverable({
-      userId: PROBE_USER_A,
+      userId: probeUserA,
       content: ARTIFACT_BASELINE,
       format: "docx",
       assignment: "更新後の別依頼",
     });
+    await persistPersonalMemoryNow(probeUserA);
     const updatePropagationOk =
+      persistUpdated === "supabase" &&
       updated.summary.includes("更新") &&
       afterUpdate.appliedPreferenceKeys.includes("length:short") &&
       afterUpdate.appliedPreferenceKeys.includes("structure:bullets") &&
       !afterUpdate.appliedPreferenceKeys.includes("conclusion:first");
 
     // delete propagation
-    await deletePersonalMemory(PROBE_USER_A, saved.id);
-    await persistPersonalMemoryNow(PROBE_USER_A);
-    evictPersonalMemoryCacheForUser(PROBE_USER_A);
-    await ensurePersonalMemoryHydrated(PROBE_USER_A);
+    await deletePersonalMemory(probeUserA, saved.id);
+    const persistDeleted = await persistPersonalMemoryNow(probeUserA);
+    evictPersonalMemoryCacheForUser(probeUserA);
+    await ensurePersonalMemoryHydrated(probeUserA);
     const afterDelete = await applyMemoryForDeliverable({
-      userId: PROBE_USER_A,
+      userId: probeUserA,
       content: ARTIFACT_BASELINE,
       format: "docx",
       assignment: "削除後の別依頼",
     });
     const deletePropagationOk =
+      persistDeleted === "supabase" &&
       !afterDelete.memoryIdsUsed.includes(saved.id) &&
       !afterDelete.appliedPreferenceKeys.includes("length:short");
 
@@ -476,12 +487,16 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
         ? null
         : [
             !saveRetrieveOk ? "save_retrieve_failed" : null,
-            !artifactPreferenceAppliedOk ? "artifact_apply_failed" : null,
+            !artifactPreferenceAppliedOk
+              ? `artifact_apply_failed(keys=${artifact.appliedPreferenceKeys.join(",") || "none"};concl=${artifact.content.includes("結論：")};bullets=${/(^|\n)- /.test(artifact.content)})`
+              : null,
             !automationPreferenceAppliedOk ? "automation_apply_failed" : null,
             !restartDurableOk ? "restart_durable_failed" : null,
             !ownershipIsolationOk ? "ownership_isolation_failed" : null,
             crossUserMemoryLeak ? "cross_user_leak" : null,
-            !updatePropagationOk ? "update_propagation_failed" : null,
+            !updatePropagationOk
+              ? `update_propagation_failed(keys=${afterUpdate.appliedPreferenceKeys.join(",") || "none"})`
+              : null,
             !deletePropagationOk ? "delete_propagation_failed" : null,
             !secretsRedacted ? "secrets_not_redacted" : null,
             !failClosedOk ? "fail_closed_failed" : null,
@@ -498,7 +513,7 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
       correlationId,
     });
   } finally {
-    await cleanupProbeUsers().catch(() => undefined);
+    await cleanupProbeUsers(probeUsers).catch(() => undefined);
   }
 }
 
@@ -507,7 +522,9 @@ export async function probeMemoryApplyProduction(): Promise<MemoryApplyProductio
   if (first.ok) return first;
   if (
     first.error &&
-    /schema cache|JWT|clock|does not exist|persist|supabase/i.test(first.error)
+    /schema cache|JWT|clock|does not exist|persist|supabase|MEMORY_NOT_FOUND|artifact_apply|update_propagation/i.test(
+      first.error,
+    )
   ) {
     await new Promise((r) => setTimeout(r, 800));
     return probeOnce();
