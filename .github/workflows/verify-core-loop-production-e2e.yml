@@ -8,8 +8,8 @@
 # - workflow_dispatch (manual)
 # - push to main when harness/workflow changes (auto after merge; AI cost gated by path filter)
 #
-# Retrigger after #278: PDF QA soft-fails when pdftoppm missing on Vercel
-# (Word+PDF companion no longer dies with rasterize_failed).
+# Retrigger after #279: harness reads result.fileDeliverables for artifactId
+# (job completed with 2 files; pickDeliverableId must not look only at .files).
 # Prove full loop: auth → job completed → artifact → download → User B isolation.
 name: Verify CORE LOOP Production E2E
 
