@@ -9,12 +9,7 @@ const getMigrationEnvPresence = vi.fn(() => ({
   postgresEnvKeys: ["DATABASE_URL"],
 }));
 
-const selectLimit = vi.fn();
-const fromMock = vi.fn(() => ({
-  select: () => ({
-    limit: selectLimit,
-  }),
-}));
+const fromMock = vi.fn();
 
 vi.mock("@/lib/supabase/apply-migration-sql", () => ({
   applyMigrationSql: (...args: unknown[]) => applyMigrationSql(...args),
@@ -34,6 +29,21 @@ vi.mock("@/lib/health/version-info", () => ({
   }),
 }));
 
+function mockTableOk(table: string, ok: boolean) {
+  return {
+    select: () => ({
+      limit: async () =>
+        ok
+          ? { error: null }
+          : {
+              error: {
+                message: `Could not find the table 'public.${table}' in the schema cache`,
+              },
+            },
+    }),
+  };
+}
+
 describe("probeDocumentPipelineSchema", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -43,47 +53,43 @@ describe("probeDocumentPipelineSchema", () => {
       error: null,
       envPresence: getMigrationEnvPresence(),
     });
+    fromMock.mockImplementation((table: string) => mockTableOk(table, true));
   });
 
-  it("reports ok when table is readable", async () => {
-    selectLimit.mockResolvedValue({ error: null });
+  it("reports ok when both Word durable tables are readable", async () => {
     const { probeDocumentPipelineSchema } = await import(
       "./document-pipeline-schema-probe"
     );
     const result = await probeDocumentPipelineSchema();
     expect(result.ok).toBe(true);
     expect(result.tableOk).toBe(true);
+    expect(result.documentGenerationJobsOk).toBe(true);
+    expect(result.deliverableJobsOk).toBe(true);
     expect(applyMigrationSql).not.toHaveBeenCalled();
   });
 
-  it("applies migration when apply=true then probes table", async () => {
-    selectLimit.mockResolvedValue({ error: null });
-
+  it("applies migration when apply=true then probes tables", async () => {
     const { probeDocumentPipelineSchema } = await import(
       "./document-pipeline-schema-probe"
     );
     const result = await probeDocumentPipelineSchema({ apply: true });
     expect(applyMigrationSql).toHaveBeenCalled();
     expect(result.ok).toBe(true);
-    expect(result.tableOk).toBe(true);
     expect(result.appliedViaPostgres).toBe(true);
   });
 
-  it("does not apply DDL on public probe without apply=true", async () => {
-    selectLimit.mockResolvedValue({
-      error: {
-        message:
-          "Could not find the table 'public.atlas_document_generation_jobs' in the schema cache",
-      },
-    });
-
+  it("fails when atlas_deliverable_jobs is missing", async () => {
+    fromMock.mockImplementation((table: string) =>
+      mockTableOk(table, table !== "atlas_deliverable_jobs"),
+    );
     const { probeDocumentPipelineSchema } = await import(
       "./document-pipeline-schema-probe"
     );
     const result = await probeDocumentPipelineSchema();
     expect(applyMigrationSql).not.toHaveBeenCalled();
     expect(result.ok).toBe(false);
-    expect(result.tableOk).toBe(false);
+    expect(result.deliverableJobsOk).toBe(false);
+    expect(result.documentGenerationJobsOk).toBe(true);
     expect(result.ownerHint).toMatch(/apply=1|NOTIFY pgrst/i);
   });
 });

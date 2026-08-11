@@ -1,8 +1,10 @@
 /**
  * Inline SQL for Production apply=1 (serverless may omit supabase/migrations).
- * Mirrors supabase/migrations/20260805_p0_7_document_generation_pipeline.sql
- * for atlas_document_generation_jobs only (idempotent; P0-3 artifact indexes omitted
- * so apply does not fail when deliverable_files columns differ).
+ * Covers Word CORE LOOP durable SoT tables:
+ * - atlas_document_generation_jobs (P0-7)
+ * - atlas_deliverable_jobs (P0-2 / 20260727)
+ * Idempotent. Omits ALTER on atlas_deliverable_files so apply does not fail when
+ * that table/columns differ.
  */
 
 export const ATLAS_DOCUMENT_PIPELINE_MIGRATION_SQL = `
@@ -86,6 +88,44 @@ create policy "atlas_document_generation_jobs_deny_anon"
 
 comment on table public.atlas_document_generation_jobs is
   'P0-7 unified document generation pipeline progress / retry / cancel.';
+
+-- Job stage persistence for resumable Word pipeline (20260727).
+create table if not exists public.atlas_deliverable_jobs (
+  id text primary key,
+  user_id text not null,
+  format text not null default 'docx',
+  stage text not null,
+  status text not null default 'running',
+  assignment text not null default '',
+  source_content text not null default '',
+  base_file_name text not null default 'document',
+  deliverable_id uuid,
+  lease_owner text,
+  lease_expires_at timestamptz,
+  heartbeat_at timestamptz,
+  attempt_count integer not null default 0,
+  last_error_stage text,
+  last_error_message text,
+  notification_id text,
+  notification_status text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists atlas_deliverable_jobs_user_updated_idx
+  on public.atlas_deliverable_jobs (user_id, updated_at desc);
+
+create index if not exists atlas_deliverable_jobs_status_lease_idx
+  on public.atlas_deliverable_jobs (status, lease_expires_at);
+
+alter table public.atlas_deliverable_jobs enable row level security;
+
+drop policy if exists "atlas_deliverable_jobs_deny_anon"
+  on public.atlas_deliverable_jobs;
+create policy "atlas_deliverable_jobs_deny_anon"
+  on public.atlas_deliverable_jobs
+  for all to anon, authenticated
+  using (false) with check (false);
 
 -- Refresh PostgREST schema cache so new tables are visible immediately.
 notify pgrst, 'reload schema';

@@ -50,6 +50,8 @@ export async function GET(request: Request): Promise<Response> {
   const body = {
     ...toPublicHealthResponse({ ok: result.ok }, { cached: false }),
     tableOk: result.tableOk,
+    documentGenerationJobsOk: result.documentGenerationJobsOk,
+    deliverableJobsOk: result.deliverableJobsOk,
     memoryNotSot: result.memoryNotSot,
     ...(apply
       ? {
