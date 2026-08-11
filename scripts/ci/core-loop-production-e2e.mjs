@@ -378,17 +378,6 @@ async function ensureUserIdentification(userId) {
   return result;
 }
 
-/** @deprecated name kept for harness-ban string stability */
-async function ensureVerifiedTestEmail(userId) {
-  const r = await ensureUserIdentification(userId);
-  if (r.email) {
-    return { email: r.email, provisioned: r.emailProvisioned };
-  }
-  throw new Error(
-    `ensure_e2e_email_failed:${r.emailFeatureEnabled === false ? "feature_not_enabled" : "no_email"}`,
-  );
-}
-
 async function collectAuthDiagnostics(page) {
   const cookies = await page.context().cookies();
   const cookieNames = cookies

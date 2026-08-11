@@ -60,7 +60,6 @@ for (const keep of [
   "backend_session_cookie",
   "waitForProductionSha",
   "CORE_LOOP_EXPECT_SHA",
-  "ensureVerifiedTestEmail",
   "ensureUserIdentification",
   "setupClerkTestingToken({ context })",
   "+clerk_test",
