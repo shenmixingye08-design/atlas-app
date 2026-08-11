@@ -61,10 +61,12 @@ for (const keep of [
   "waitForProductionSha",
   "CORE_LOOP_EXPECT_SHA",
   "ensureVerifiedTestEmail",
+  "ensureUserIdentification",
   "setupClerkTestingToken({ context })",
   "+clerk_test",
   "feature_not_enabled",
-  "email_feature_not_enabled_continue_ticket",
+  "createPhoneNumber",
+  "associated identification",
 ]) {
   if (!script.includes(keep)) violations.push(`e2e_script_missing:${keep}`);
 }
