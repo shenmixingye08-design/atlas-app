@@ -3,11 +3,23 @@
 # Secrets required:
 #   CLERK_SECRET_KEY, NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
 #   E2E_CLERK_USER_ID, E2E_CLERK_USER_B_ID
-# Manual only: does not run on every push (AI cost).
+#
+# Triggers:
+# - workflow_dispatch (manual)
+# - push to main when harness/workflow changes (auto after merge; AI cost gated by path filter)
 name: Verify CORE LOOP Production E2E
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/ci/core-loop-production-e2e.mjs"
+      - ".github/workflows/verify-core-loop-production-e2e.yml"
+
+concurrency:
+  group: verify-core-loop-production-e2e
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -90,6 +102,8 @@ jobs:
             export CLERK_PUBLISHABLE_KEY="${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}"
           fi
           mkdir -p "${CORE_LOOP_E2E_OUT}"
+          echo "harness_ref=$(git rev-parse --short HEAD)"
+          echo "trigger=${{ github.event_name }}"
           set +e
           node scripts/ci/core-loop-production-e2e.mjs
           code=$?
