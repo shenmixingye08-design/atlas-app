@@ -44,7 +44,7 @@ jobs:
       - name: Diagnose via Production CRON health (structured logs SoT)
         id: cron_diagnose
         env:
-          DIAGNOSE_JOB_ID: ${{ github.event.inputs.job_id || '118dce27-2791-4eb8-a62b-8196eef308ae' }}
+          DIAGNOSE_JOB_ID: ${{ github.event.inputs.job_id || '9c4ea5fc-f715-4e5c-a500-470637ff20a6' }}
           ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           E2E_CLERK_USER_ID: ${{ secrets.E2E_CLERK_USER_ID }}
@@ -94,7 +94,7 @@ jobs:
 
       - name: Fetch job via E2E Clerk session (API surface)
         env:
-          DIAGNOSE_JOB_ID: ${{ github.event.inputs.job_id || '118dce27-2791-4eb8-a62b-8196eef308ae' }}
+          DIAGNOSE_JOB_ID: ${{ github.event.inputs.job_id || '9c4ea5fc-f715-4e5c-a500-470637ff20a6' }}
           ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
