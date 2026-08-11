@@ -7,6 +7,10 @@
 # Triggers:
 # - workflow_dispatch (manual)
 # - push to main when harness/workflow changes (auto after merge; AI cost gated by path filter)
+#
+# Retrigger after #272: Production job failed at worker/commander_failed when
+# ATLAS_ANON_SALT was unset; anonymous telemetry is now fail-soft so CORE LOOP
+# can complete (auth → job → artifact → download → User B isolation).
 name: Verify CORE LOOP Production E2E
 
 on:
