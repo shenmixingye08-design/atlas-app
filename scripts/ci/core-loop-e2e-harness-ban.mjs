@@ -56,6 +56,8 @@ for (const keep of [
   "setupClerkTestingToken",
   "ticketRedeemStatus",
   "cookieDomains",
+  "createSession",
+  "backend_session_cookie",
 ]) {
   if (!script.includes(keep)) violations.push(`e2e_script_missing:${keep}`);
 }

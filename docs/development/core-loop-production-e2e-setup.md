@@ -10,7 +10,8 @@
 - Clerk 公式 Playwright ヘルパー（`@clerk/testing/playwright`）で E2E 専用ユーザーの正規セッションを確立する
   - `clerkSetup()` — Testing Token 取得（Production 対応）
   - email がある場合: `clerk.signIn({ emailAddress })`
-  - email が無い場合（Production 実証済み）: `E2E_CLERK_USER_ID` から Sign-in Token を発行し、Clerk `token.url` accept または `clerk.signIn({ strategy:'ticket' })`
+  - email が無い場合: Sign-in Token（accept URL / client ticket）
+  - client ticket が Production bot 保護でハングする場合: Backend `sessions.createSession(userId)` + session JWT を `__session` cookie として設定（固定cookieや偽userIdではない。Clerk が当該 E2E user に発行した実セッション）
 - Email/Password ログインの公開有効化は不要（Google 設定も変更しない）
 - Playwright が `https://atlasapp.jp` の UI/API 正規経路を通る
 
