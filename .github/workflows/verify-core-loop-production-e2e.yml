@@ -8,8 +8,8 @@
 # - workflow_dispatch (manual)
 # - push to main when harness/workflow changes (auto after merge; AI cost gated by path filter)
 #
-# Retrigger after #272 (anon telemetry soft-fail) + #274 (document pipeline
-# schema apply: atlas_document_generation_jobs tableOk on Production).
+# Retrigger after #272/#274/#276: Word durable tables ready on Production
+# (document_generation_jobs + deliverable_jobs). Prove full CORE LOOP.
 # Prove full loop: auth → job completed → artifact → download → User B isolation.
 name: Verify CORE LOOP Production E2E
 
