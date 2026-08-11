@@ -8,8 +8,8 @@
 # - workflow_dispatch (manual)
 # - push to main when harness/workflow changes (auto after merge; AI cost gated by path filter)
 #
-# Retrigger after #272/#274/#276: Word durable tables ready on Production
-# (document_generation_jobs + deliverable_jobs). Prove full CORE LOOP.
+# Retrigger after #278: PDF QA soft-fails when pdftoppm missing on Vercel
+# (Word+PDF companion no longer dies with rasterize_failed).
 # Prove full loop: auth → job completed → artifact → download → User B isolation.
 name: Verify CORE LOOP Production E2E
 
