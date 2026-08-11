@@ -34,7 +34,7 @@ for (const keep of [
   "@clerk/testing/playwright",
   "clerkSetup",
   "clerk.signIn",
-  "emailAddress",
+  "createSignInToken",
   "E2E_CLERK_USER_ID",
   "CLERK_SECRET_KEY",
   "verifyInstancePairing",
