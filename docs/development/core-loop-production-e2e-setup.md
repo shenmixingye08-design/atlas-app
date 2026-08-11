@@ -14,7 +14,7 @@
   - **必ず** `setupClerkTestingToken({ context })` を最初の navigation 前に実行（FAPI captcha_bypass）
   - 主経路: 公式 `clerk.signIn({ emailAddress })`（内部で Sign-in Token + ticket）
   - 予備: 公式 `clerk.signIn({ signInParams: { strategy:'ticket' }})`
-  - `sessions.createSession` は Clerk 文档どおり Production では不可（Bad Request）。最後の診断用のみ
+  - `sessions.createSession` は Clerk ドキュメントどおり Production では不可（Bad Request）。最後の診断用のみ
   - CI は `CORE_LOOP_EXPECT_SHA`（= `github.sha`）と Production `/api/health/version` が一致するまで待ってから検証する（デプロイ競合防止）
 - Email/Password ログインの公開有効化は不要（Google 設定も変更しない）
 - Playwright が `https://atlasapp.jp` の UI/API 正規経路を通る
