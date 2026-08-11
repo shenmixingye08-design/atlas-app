@@ -63,6 +63,8 @@ for (const keep of [
   "ensureVerifiedTestEmail",
   "setupClerkTestingToken({ context })",
   "+clerk_test",
+  "feature_not_enabled",
+  "email_feature_not_enabled_continue_ticket",
 ]) {
   if (!script.includes(keep)) violations.push(`e2e_script_missing:${keep}`);
 }

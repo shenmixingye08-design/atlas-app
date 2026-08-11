@@ -10,12 +10,12 @@
 - Clerk 公式 Playwright ヘルパー（`@clerk/testing/playwright`）で E2E 専用ユーザーの正規セッションを確立する
   - `clerkSetup()` — Testing Token 取得（Production 対応）
   - email がある場合: `clerk.signIn({ emailAddress })`
-  - E2E user に email が無い場合: Backend `emailAddresses.createEmailAddress` で verified な `+clerk_test` アドレスを付与（公開の Email/Password 設定は変更しない）
-  - **必ず** `setupClerkTestingToken({ context })` を最初の navigation 前に実行（FAPI captcha_bypass）
-  - 主経路: 公式 `clerk.signIn({ emailAddress })`（内部で Sign-in Token + ticket）
-  - 予備: 公式 `clerk.signIn({ signInParams: { strategy:'ticket' }})`
-  - `sessions.createSession` は Clerk ドキュメントどおり Production では不可（Bad Request）。最後の診断用のみ
-  - CI は `CORE_LOOP_EXPECT_SHA`（= `github.sha`）と Production `/api/health/version` が一致するまで待ってから検証する（デプロイ競合防止）
+  - E2E user に email が無い場合: Backend で `+clerk_test` 付与を試行。Production で `feature_not_enabled`（email identifier 未有効）なら **停止せず** userId Sign-in Token 経路へ続行
+  - **必ず** `setupClerkTestingToken({ context })` を最初の navigation 前に実行（FAPI captcha_bypass）— ticket hang の主因対策
+  - email がある場合: 公式 `clerk.signIn({ emailAddress })`
+  - email が無い / 失敗時: 公式 `clerk.signIn({ signInParams: { strategy:'ticket' }})` + userId Sign-in Token
+  - `sessions.createSession` は Production では不可（Bad Request）。最後の診断用のみ
+  - CI は `CORE_LOOP_EXPECT_SHA` と Production `/api/health/version` 一致待ち
 - Email/Password ログインの公開有効化は不要（Google 設定も変更しない）
 - Playwright が `https://atlasapp.jp` の UI/API 正規経路を通る
 

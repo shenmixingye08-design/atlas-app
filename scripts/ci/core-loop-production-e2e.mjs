@@ -356,6 +356,7 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     frontendApiMatchesAppHost: false,
     emailResolved: false,
     emailProvisioned: false,
+    emailFeatureEnabled: null,
     emailRedacted: null,
     testingTokenRouted: false,
     signInPath: "clerk.signIn.emailAddress",
@@ -426,14 +427,29 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     const ensured = await ensureVerifiedTestEmail(expectedUserId);
     email = ensured.email;
     auth.emailProvisioned = Boolean(ensured.provisioned);
+    auth.emailFeatureEnabled = true;
     auth.emailResolved = Boolean(email);
     auth.emailRedacted = redactEmail(email);
-    if (!email) {
-      throw new Error("e2e_user_email_unresolved_after_ensure");
-    }
   } catch (err) {
-    if (!err.auth) err.auth = auth;
-    throw err;
+    const detail = sanitizeClerkError(err);
+    // Production evidence 31474266691: email identifier feature disabled
+    // (Google-only instance). Do NOT abort — continue with userId Sign-in Token
+    // after setupClerkTestingToken({ context }) is installed.
+    if (/feature_not_enabled/i.test(detail)) {
+      auth.emailFeatureEnabled = false;
+      auth.emailResolved = false;
+      auth.emailProvisioned = false;
+      auth.emailRedacted = null;
+      console.log(
+        JSON.stringify({
+          progress: "email_feature_not_enabled_continue_ticket",
+          detail: detail.slice(0, 120),
+        }),
+      );
+    } else {
+      if (!err.auth) err.auth = auth;
+      throw err;
+    }
   }
 
   const context = await browser.newContext({
@@ -694,45 +710,65 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     auth.failureStage = "open_public_clerk_page";
     await openPublicClerkPage();
 
-    // Path A: official email helper (Sign-in Token + ticket; captcha bypass already on).
-    auth.failureStage = "clerk_sign_in_email";
-    console.log(
-      JSON.stringify({
-        progress: "clerk_sign_in_email",
-        emailProvisioned: auth.emailProvisioned,
-      }),
-    );
-    try {
-      await withTimeout(
-        clerk.signIn({ page, emailAddress: email }),
-        90_000,
-        "clerk_sign_in_email",
+    // Path A: official email helper when email identifier exists / was provisioned.
+    if (email) {
+      auth.failureStage = "clerk_sign_in_email";
+      console.log(
+        JSON.stringify({
+          progress: "clerk_sign_in_email",
+          emailProvisioned: auth.emailProvisioned,
+        }),
       );
-      auth.signInPath = "clerk.signIn.emailAddress";
-      auth.signInTokenCreated = true;
-    } catch (err) {
-      pathErrors.push(`email:${sanitizeClerkError(err)}`);
-      auth.signInError = sanitizeClerkError(err);
+      try {
+        await withTimeout(
+          clerk.signIn({ page, emailAddress: email }),
+          90_000,
+          "clerk_sign_in_email",
+        );
+        auth.signInPath = "clerk.signIn.emailAddress";
+        auth.signInTokenCreated = true;
+      } catch (err) {
+        pathErrors.push(`email:${sanitizeClerkError(err)}`);
+        auth.signInError = sanitizeClerkError(err);
+      }
     }
 
     let sessionProbe = await waitForSessionUserId(12_000);
     if (sessionProbe !== expectedUserId) {
-      // Path B: fresh Sign-in Token via official ticket helper (testing token already routed).
+      // Path B: userId Sign-in Token + official ticket helper.
+      // Critical: setupClerkTestingToken already routed on this context
+      // (captcha_bypass). Prior hangs (31470602669) lacked that ordering.
       auth.failureStage = "clerk_sign_in_ticket";
       auth.signInPath = "clerk.signIn.ticket";
-      console.log(JSON.stringify({ progress: "clerk_sign_in_ticket" }));
+      auth.authMethod = "clerk_testing_userid_token";
+      console.log(
+        JSON.stringify({
+          progress: "clerk_sign_in_ticket",
+          testingTokenRouted: auth.testingTokenRouted,
+          emailFeatureEnabled: auth.emailFeatureEnabled,
+        }),
+      );
       const token = await mintSignInToken();
-      // Optional accept URL attempt (short) — may establish client state.
-      await consumeAcceptUrl(token).catch(() => false);
-      sessionProbe = await waitForSessionUserId(8_000);
-      if (sessionProbe !== expectedUserId) {
+      // Prefer direct official ticket redeem first (faster than accept URL).
+      const redeemed = await redeemTicketViaOfficialHelper(token.token);
+      if (redeemed.ok) {
+        auth.signInPath = "clerk.signIn.ticket";
+      } else {
+        pathErrors.push(`ticket:${redeemed.error || "failed"}`);
+        auth.signInError = pathErrors.join(" | ").slice(0, 280);
+        // Second chance: accept URL then fresh ticket (still with testing token).
         const token2 = await mintSignInToken();
-        const redeemed = await redeemTicketViaOfficialHelper(token2.token);
-        if (!redeemed.ok) {
-          pathErrors.push(`ticket:${redeemed.error || "failed"}`);
-          auth.signInError = pathErrors.join(" | ").slice(0, 280);
-        } else {
-          auth.signInPath = "clerk.signIn.ticket";
+        await consumeAcceptUrl(token2).catch(() => false);
+        sessionProbe = await waitForSessionUserId(8_000);
+        if (sessionProbe !== expectedUserId) {
+          const token3 = await mintSignInToken();
+          const redeemed2 = await redeemTicketViaOfficialHelper(token3.token);
+          if (!redeemed2.ok) {
+            pathErrors.push(`ticket2:${redeemed2.error || "failed"}`);
+            auth.signInError = pathErrors.join(" | ").slice(0, 280);
+          } else {
+            auth.signInPath = "clerk.signIn.ticket_after_accept";
+          }
         }
       }
     }
