@@ -4,11 +4,13 @@
  *
  * Auth path (Clerk docs / Production Testing Tokens changelog):
  *   1) clerkSetup() — mint Testing Token (works on Production instances)
- *   2) Resolve E2E user email via Backend API from E2E_CLERK_USER_ID
- *      (no Email/Password public enablement; email is identity metadata)
- *   3) page.goto(public page that loads Clerk)
- *   4) clerk.signIn({ page, emailAddress }) — official helper
- *      (server-side sign-in token + client ticket redeem + setActive)
+ *   2) Resolve optional email via Backend API from E2E_CLERK_USER_ID
+ *      (E2E users may have no emailAddresses — do NOT require Email/Password)
+ *   3) page.goto(/sign-in) so Clerk loads (no ticket query)
+ *   4) Auth paths (in order):
+ *      A) clerk.signIn({ emailAddress }) when email exists
+ *      B) Sign-in Token token.url accept (/v1/tickets/accept) by userId
+ *      C) clerk.signIn({ strategy:'ticket' }) with fresh userId token
  *   5) Prove session: Clerk.user.id + authenticated API == 200 + protected page
  *
  * NOT used:
@@ -188,7 +190,7 @@ async function verifyInstancePairing(expectedUserId) {
   };
 }
 
-async function resolveUserEmail(userId) {
+async function resolveUserEmailOrNull(userId) {
   const client = buildClerkClient();
   const user = await client.users.getUser(userId);
   const emails = Array.isArray(user.emailAddresses) ? user.emailAddresses : [];
@@ -198,14 +200,6 @@ async function resolveUserEmail(userId) {
     primary && typeof primary.emailAddress === "string"
       ? primary.emailAddress
       : null;
-  if (!email) {
-    throw Object.assign(
-      new Error(
-        "OWNER_SETUP_REQUIRED: E2E Clerk user has no email address on the user record. Google OAuth users normally have one. Do NOT enable public Email/Password — ensure the E2E user has an email identifier in Clerk Users.",
-      ),
-      { ownerSetup: true },
-    );
-  }
   return { email, userId: user.id };
 }
 
@@ -306,12 +300,12 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     throw error;
   }
 
-  let email;
+  let email = null;
   try {
     auth.failureStage = "resolve_user_email";
-    const resolved = await resolveUserEmail(expectedUserId);
+    const resolved = await resolveUserEmailOrNull(expectedUserId);
     email = resolved.email;
-    auth.emailResolved = true;
+    auth.emailResolved = Boolean(email);
     auth.emailRedacted = redactEmail(email);
   } catch (err) {
     if (!err.auth) err.auth = auth;
@@ -354,87 +348,107 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     await clerk.loaded({ page }).catch(() => null);
   }
 
+  async function mintSignInToken() {
+    const client = buildClerkClient();
+    const token = await client.signInTokens.createSignInToken({
+      userId: expectedUserId,
+      expiresInSeconds: 300,
+    });
+    if (!token?.token) throw new Error("sign_in_token_missing");
+    auth.signInTokenCreated = true;
+    return token;
+  }
+
+  async function consumeAcceptUrl(token) {
+    const acceptUrl =
+      typeof token.url === "string" && token.url.startsWith("http")
+        ? token.url
+        : null;
+    auth.acceptUrlPresent = Boolean(acceptUrl);
+    if (!acceptUrl) return false;
+    const acceptMeta = safeUrlMeta(acceptUrl);
+    auth.acceptUrlOrigin = acceptMeta.origin;
+    auth.acceptUrlPath = acceptMeta.pathname;
+    const testing = process.env.CLERK_TESTING_TOKEN;
+    let navUrl = acceptUrl;
+    try {
+      const u = new URL(acceptUrl);
+      if (testing && !u.searchParams.has("__clerk_testing_token")) {
+        u.searchParams.set("__clerk_testing_token", testing);
+      }
+      navUrl = u.toString();
+    } catch {
+      // use raw acceptUrl
+    }
+    await page.goto(navUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
+    const appOrigin = new URL(APP_URL).origin;
+    if (!page.url().startsWith(appOrigin)) {
+      await page
+        .waitForURL(
+          (url) => {
+            try {
+              return new URL(url).origin === appOrigin;
+            } catch {
+              return false;
+            }
+          },
+          { timeout: 60_000 },
+        )
+        .catch(() => null);
+    }
+    if (!page.url().startsWith(appOrigin)) {
+      await page.goto(`${APP_URL}/projects`, {
+        waitUntil: "domcontentloaded",
+        timeout: 60_000,
+      });
+    }
+    return true;
+  }
+
   try {
-    // Path A (Clerk official recommended): clerk.signIn({ emailAddress })
+    const pathErrors = [];
     auth.failureStage = "open_public_clerk_page";
     await openPublicClerkPage();
 
-    auth.failureStage = "clerk_sign_in_email";
-    let pathErrors = [];
-    try {
-      await clerk.signIn({ page, emailAddress: email });
-      auth.signInPath = "clerk.signIn.emailAddress";
-    } catch (err) {
-      pathErrors.push(`email:${sanitizeClerkError(err)}`);
-      auth.signInError = sanitizeClerkError(err);
+    // Path A: official email helper when the E2E user has an email identifier.
+    if (email) {
+      auth.failureStage = "clerk_sign_in_email";
+      try {
+        await clerk.signIn({ page, emailAddress: email });
+        auth.signInPath = "clerk.signIn.emailAddress";
+      } catch (err) {
+        pathErrors.push(`email:${sanitizeClerkError(err)}`);
+        auth.signInError = sanitizeClerkError(err);
+        email = null; // fall through to userId token paths
+      }
+    }
 
-      // Path B: Clerk Backend accept URL (token.url → /v1/tickets/accept)
-      // This is NOT the app /sign-in?ticket query path that previously looped.
+    // Path B/C: userId Sign-in Token (works when emailAddresses is empty).
+    // Production evidence (run 31466769298): E2E users had no email on record.
+    let sessionProbe = await waitForSessionUserId(8_000);
+    if (sessionProbe === expectedUserId) {
+      auth.signInPath = auth.signInPath || "clerk.signIn.emailAddress";
+    } else {
       auth.failureStage = "clerk_ticket_accept_url";
       auth.signInPath = "sign_in_token.accept_url";
-      const client = buildClerkClient();
-      const token = await client.signInTokens.createSignInToken({
-        userId: expectedUserId,
-        expiresInSeconds: 300,
-      });
-      if (!token?.token) {
-        throw new Error("sign_in_token_missing");
-      }
-      auth.signInTokenCreated = true;
-      const acceptUrl =
-        typeof token.url === "string" && token.url.startsWith("http")
-          ? token.url
-          : null;
-      auth.acceptUrlPresent = Boolean(acceptUrl);
-      if (acceptUrl) {
-        const acceptMeta = safeUrlMeta(acceptUrl);
-        auth.acceptUrlOrigin = acceptMeta.origin;
-        auth.acceptUrlPath = acceptMeta.pathname;
-        const testing = process.env.CLERK_TESTING_TOKEN;
-        let navUrl = acceptUrl;
-        try {
-          const u = new URL(acceptUrl);
-          if (testing && !u.searchParams.has("__clerk_testing_token")) {
-            u.searchParams.set("__clerk_testing_token", testing);
-          }
-          navUrl = u.toString();
-        } catch {
-          // use raw acceptUrl
-        }
-        await page.goto(navUrl, {
-          waitUntil: "domcontentloaded",
-          timeout: 60_000,
-        });
-        const appOrigin = new URL(APP_URL).origin;
-        if (!page.url().startsWith(appOrigin)) {
-          await page
-            .waitForURL(
-              (url) => {
-                try {
-                  return new URL(url).origin === appOrigin;
-                } catch {
-                  return false;
-                }
-              },
-              { timeout: 60_000 },
-            )
-            .catch(() => null);
-        }
-        if (!page.url().startsWith(appOrigin)) {
-          await page.goto(`${APP_URL}/projects`, {
-            waitUntil: "domcontentloaded",
-            timeout: 60_000,
-          });
-        }
-      } else {
-        // Path C: official helper ticket strategy on a Clerk-loaded page
+      const token = await mintSignInToken();
+      const usedAccept = await consumeAcceptUrl(token);
+      sessionProbe = await waitForSessionUserId(25_000);
+      if (sessionProbe !== expectedUserId) {
         auth.failureStage = "clerk_sign_in_ticket_helper";
-        auth.signInPath = "clerk.signIn.ticket_helper_fallback";
+        auth.signInPath = usedAccept
+          ? "clerk.signIn.ticket_helper_after_accept"
+          : "clerk.signIn.ticket_helper";
         await openPublicClerkPage();
+        // Mint a fresh token — accept URL may have consumed the previous one.
+        const token2 = await mintSignInToken();
         try {
           await clerk.signIn({
             page,
-            signInParams: { strategy: "ticket", ticket: token.token },
+            signInParams: { strategy: "ticket", ticket: token2.token },
           });
         } catch (err2) {
           pathErrors.push(`ticket_helper:${sanitizeClerkError(err2)}`);

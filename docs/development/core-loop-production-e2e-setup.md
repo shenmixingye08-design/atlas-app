@@ -9,8 +9,9 @@
 - Production に認証バイパスを追加しない
 - Clerk 公式 Playwright ヘルパー（`@clerk/testing/playwright`）で E2E 専用ユーザーの正規セッションを確立する
   - `clerkSetup()` — Testing Token 取得（Production 対応）
-  - `clerk.signIn({ emailAddress })` — Backend の server-side token 経由でセッション確立（公式推奨）
-- Email は **Clerk User レコード上の識別子** として Backend API から取得する（Email/Password ログインの公開有効化は不要）
+  - email がある場合: `clerk.signIn({ emailAddress })`
+  - email が無い場合（Production 実証済み）: `E2E_CLERK_USER_ID` から Sign-in Token を発行し、Clerk `token.url` accept または `clerk.signIn({ strategy:'ticket' })`
+- Email/Password ログインの公開有効化は不要（Google 設定も変更しない）
 - Playwright が `https://atlasapp.jp` の UI/API 正規経路を通る
 
 ## なぜ以前の方式を使わないか
@@ -37,8 +38,8 @@
 ### 1) Clerk Dashboard — Users
 
 1. [Clerk Dashboard](https://dashboard.clerk.com) → **Production**（`atlasapp.jp`）  
-2. 検証ユーザー A / B が存在し、各ユーザーに **email 識別子** があること（Google 連携ユーザーは通常あり）  
-3. User ID（`user_…`）を GitHub Secrets に登録済みであること  
+2. 検証ユーザー A / B が存在し、User ID（`user_…`）が GitHub Secrets に登録済みであること  
+3. email 識別子は任意（無くても userId Sign-in Token 経路で認証する）  
 4. **一般ユーザー向け Email/Password を公開有効化しない**  
 5. **Google ログイン設定を変更しない**
 
