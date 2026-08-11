@@ -273,6 +273,9 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     clerkState: null,
     ticketRedeemStatus: null,
     ticketRedeemError: null,
+    backendSessionCreated: false,
+    backendSessionTokenMinted: false,
+    cookieSuffix: null,
     signInError: null,
     failureStage: "init",
     authMethod: "clerk_testing_userid_token",
@@ -478,7 +481,7 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     await setupClerkTestingToken({ page });
     await openPublicClerkPage();
     const result = await page.evaluate(async (t) => {
-      try {
+      const work = async () => {
         if (!window.Clerk?.client?.signIn?.create) {
           return { ok: false, error: "missing_client_signIn_create" };
         }
@@ -499,6 +502,17 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
           status: signIn.status ?? null,
           error: `incomplete_status:${signIn.status}`,
         };
+      };
+      try {
+        return await Promise.race([
+          work(),
+          new Promise((resolve) =>
+            setTimeout(
+              () => resolve({ ok: false, error: "browser_ticket_create_timeout" }),
+              20_000,
+            ),
+          ),
+        ]);
       } catch (e) {
         return {
           ok: false,
@@ -511,6 +525,67 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
       ? sanitizeClerkError(result.error)
       : null;
     return result;
+  }
+
+  /**
+   * Backend Session API → real session JWT → Clerk __session cookie(s).
+   * Not a fixed/fake cookie: JWT is minted by Clerk for the real E2E userId.
+   * Used when client ticket redeem hangs under Production bot protection.
+   */
+  async function signInViaBackendSession() {
+    auth.failureStage = "backend_create_session";
+    console.log(JSON.stringify({ progress: "backend_create_session" }));
+    const client = buildClerkClient();
+    let session;
+    try {
+      session = await client.sessions.createSession({
+        userId: expectedUserId,
+      });
+    } catch (err) {
+      auth.signInError = sanitizeClerkError(err);
+      return { ok: false, error: auth.signInError };
+    }
+    auth.backendSessionCreated = Boolean(session?.id);
+    const tokenObj = await client.sessions.getToken(session.id);
+    const jwt = typeof tokenObj?.jwt === "string" ? tokenObj.jwt : null;
+    if (!jwt) {
+      return { ok: false, error: "session_jwt_missing" };
+    }
+    auth.backendSessionTokenMinted = true;
+
+    // Detect Clerk cookie suffix from existing client_uat_* cookies when present.
+    const existing = await context.cookies();
+    const suffixMatch = existing
+      .map((c) => c.name)
+      .find((n) => n.startsWith("__client_uat_"));
+    const suffix = suffixMatch ? suffixMatch.slice("__client_uat_".length) : null;
+    auth.cookieSuffix = suffix;
+
+    const cookieNames = suffix
+      ? [`__session_${suffix}`, "__session"]
+      : ["__session"];
+    const domains = [".atlasapp.jp", "atlasapp.jp"];
+    const cookies = [];
+    for (const domain of domains) {
+      for (const name of cookieNames) {
+        cookies.push({
+          name,
+          value: jwt,
+          domain,
+          path: "/",
+          secure: true,
+          httpOnly: false,
+          sameSite: "Lax",
+        });
+      }
+    }
+    await context.addCookies(cookies);
+    auth.signInPath = "backend_session_cookie";
+    await page.goto(`${APP_URL}/projects`, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
+    return { ok: true, sessionIdPrefix: String(session.id).slice(0, 8) };
   }
 
   try {
@@ -560,7 +635,7 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
         const token2 = await mintSignInToken();
         const redeemed = await withTimeout(
           redeemTicketOnApp(token2.token),
-          60_000,
+          45_000,
           "ticket_redeem_on_app",
         );
         if (!redeemed?.ok) {
@@ -568,13 +643,34 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
             `ticket_redeem:${redeemed?.error || redeemed?.status || "failed"}`,
           );
           auth.signInError = pathErrors.join(" | ").slice(0, 280);
-          throw new Error(auth.signInError);
+          // Path D: Backend createSession + session JWT cookies (real Clerk session).
+          const backend = await signInViaBackendSession();
+          if (!backend.ok) {
+            pathErrors.push(`backend_session:${backend.error}`);
+            auth.signInError = pathErrors.join(" | ").slice(0, 280);
+            throw new Error(auth.signInError);
+          }
+        }
+      }
+    }
+
+    // If still unsigned after token paths (e.g. accept URL left us on /sign-in), try Backend session.
+    sessionProbe = await waitForSessionUserId(8_000);
+    if (sessionProbe !== expectedUserId) {
+      const apiProbeEarly = await page.request
+        .get(`${APP_URL}/api/notifications`)
+        .catch(() => null);
+      if (apiProbeEarly?.status() !== 200) {
+        const backend = await signInViaBackendSession();
+        if (!backend.ok) {
+          pathErrors.push(`backend_session_final:${backend.error}`);
+          auth.signInError = pathErrors.join(" | ").slice(0, 280);
         }
       }
     }
 
     auth.failureStage = "wait_clerk_session";
-    let sessionUserId = await waitForSessionUserId(45_000);
+    let sessionUserId = await waitForSessionUserId(20_000);
 
     // If Clerk JS user is set but cookies may lag, reload once on app origin.
     if (sessionUserId === expectedUserId) {
@@ -582,13 +678,8 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
         waitUntil: "domcontentloaded",
         timeout: 60_000,
       });
-      sessionUserId = await waitForSessionUserId(30_000);
+      sessionUserId = await waitForSessionUserId(20_000);
     }
-
-    auth.clerkSessionDetected = Boolean(sessionUserId);
-    auth.authenticatedUserIdMatchesExpected = sessionUserId === expectedUserId;
-    auth.clerkSignInOk =
-      auth.clerkSessionDetected && auth.authenticatedUserIdMatchesExpected;
 
     const diag = await collectAuthDiagnostics(page);
     auth.cookieNames = diag.cookieNames;
@@ -609,6 +700,21 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
         auth.authApiErrorCode = `http_${auth.authApiStatus}`;
       }
     }
+
+    // Session proof: Clerk.user OR (Backend-minted session cookie + authenticated API).
+    const sessionCookiePresent = (auth.cookieNames || []).some((n) =>
+      n.startsWith("__session"),
+    );
+    auth.clerkSessionDetected = Boolean(
+      sessionUserId || (sessionCookiePresent && auth.authApiStatus === 200),
+    );
+    auth.authenticatedUserIdMatchesExpected =
+      sessionUserId === expectedUserId ||
+      (auth.backendSessionTokenMinted &&
+        auth.authApiStatus === 200 &&
+        auth.backendSessionCreated);
+    auth.clerkSignInOk =
+      auth.clerkSessionDetected && auth.authenticatedUserIdMatchesExpected;
 
     auth.failureStage = "protected_page";
     await page.goto(`${APP_URL}/projects`, {
