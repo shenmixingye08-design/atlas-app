@@ -4,14 +4,16 @@
  *
  * Auth path (Clerk docs / Production Testing Tokens changelog):
  *   1) clerkSetup() — mint Testing Token (works on Production instances)
- *   2) Ensure E2E user has a verified +clerk_test email via Backend API
- *      (createEmailAddress when emailAddresses is empty — no Email/Password enablement)
+ *   2) Ensure E2E user has identification (email and/or phone) via Backend API
+ *      Sign-in Tokens require identification (Production 31475111236).
+ *      If neither feature can be enabled via API → OWNER_SETUP_REQUIRED.
  *   3) setupClerkTestingToken({ context }) BEFORE any navigation (captcha_bypass)
  *   4) page.goto(/sign-in) so Clerk loads (no ticket query)
  *   5) Auth paths (in order):
- *      A) official clerk.signIn({ emailAddress }) — Sign-in Token + ticket under the hood
- *      B) official clerk.signIn({ signInParams: { strategy:'ticket', ticket }})
- *      C) Backend sessions.createSession (dev/test only — Production returns Bad Request)
+ *      A) official clerk.signIn({ emailAddress })
+ *      A2) official clerk.signIn({ strategy:'phone_code' }) with test phone
+ *      B) official clerk.signIn({ strategy:'ticket' }) with Sign-in Token
+ *      C) Backend sessions.createSession (dev/test only — Production Bad Request)
  *   6) Prove session: Clerk.user.id + authenticated API == 200 + protected page
  *
  * NOT used:
