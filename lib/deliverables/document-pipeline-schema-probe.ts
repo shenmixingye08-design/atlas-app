@@ -12,6 +12,8 @@ import { ATLAS_DOCUMENT_PIPELINE_MIGRATION_SQL } from "./document-pipeline-migra
 export type DocumentPipelineSchemaProbe = {
   ok: boolean;
   tableOk: boolean;
+  documentGenerationJobsOk: boolean;
+  deliverableJobsOk: boolean;
   memoryNotSot: boolean;
   appliedViaPostgres: boolean;
   appliedViaManagementApi: boolean;
@@ -22,13 +24,11 @@ export type DocumentPipelineSchemaProbe = {
   environment: string;
 };
 
-async function probeTable(
+async function probeNamedTable(
   client: NonNullable<ReturnType<typeof createServiceRoleClientIfConfigured>>,
+  table: "atlas_document_generation_jobs" | "atlas_deliverable_jobs",
 ): Promise<{ ok: boolean; error: string | null }> {
-  const { error } = await client
-    .from("atlas_document_generation_jobs" as never)
-    .select("id")
-    .limit(1);
+  const { error } = await client.from(table as never).select("id").limit(1);
   return { ok: !error, error: error?.message ?? null };
 }
 
@@ -40,7 +40,7 @@ function ownerHintFor(error: string | null): string | null {
   if (/no_postgres_url_or_management_token/i.test(error)) {
     return "Configure DATABASE_URL/POSTGRES_URL or SUPABASE_ACCESS_TOKEN on Production for apply=1.";
   }
-  return "Confirm P0-7 DDL on the Production Supabase project, then reload PostgREST schema.";
+  return "Confirm Word durable DDL on the Production Supabase project, then reload PostgREST schema.";
 }
 
 export async function probeDocumentPipelineSchema(input?: {
@@ -55,7 +55,7 @@ export async function probeDocumentPipelineSchema(input?: {
   if (input?.apply) {
     const applyResult = await applyMigrationSql({
       sql: ATLAS_DOCUMENT_PIPELINE_MIGRATION_SQL,
-      migrationName: "atlas_document_generation_pipeline_p0_7",
+      migrationName: "atlas_word_durable_pipeline_schema",
     });
     appliedViaPostgres = applyResult.appliedViaPostgres;
     appliedViaManagementApi = applyResult.appliedViaManagementApi;
@@ -68,6 +68,8 @@ export async function probeDocumentPipelineSchema(input?: {
     return {
       ok: false,
       tableOk: false,
+      documentGenerationJobsOk: false,
+      deliverableJobsOk: false,
       memoryNotSot: true,
       appliedViaPostgres,
       appliedViaManagementApi,
@@ -79,22 +81,37 @@ export async function probeDocumentPipelineSchema(input?: {
     };
   }
 
-  // Probe after optional apply (CRON/owner gated by health route).
-  const table = await probeTable(client);
-  if (!table.ok) {
-    error = error ?? table.error ?? "document_pipeline_schema_missing";
+  const documentGeneration = await probeNamedTable(
+    client,
+    "atlas_document_generation_jobs",
+  );
+  const deliverableJobs = await probeNamedTable(
+    client,
+    "atlas_deliverable_jobs",
+  );
+
+  const documentGenerationJobsOk = documentGeneration.ok;
+  const deliverableJobsOk = deliverableJobs.ok;
+  const tableOk = documentGenerationJobsOk && deliverableJobsOk;
+  if (!tableOk) {
+    error =
+      error ??
+      documentGeneration.error ??
+      deliverableJobs.error ??
+      "document_pipeline_schema_missing";
   }
 
-  const tableOk = table.ok;
   const ok = tableOk;
   return {
     ok,
     tableOk,
+    documentGenerationJobsOk,
+    deliverableJobsOk,
     memoryNotSot: tableOk,
     appliedViaPostgres,
     appliedViaManagementApi,
     error: ok ? null : error,
-    ownerHint: ok ? null : ownerHintFor(error ?? table.error),
+    ownerHint: ok ? null : ownerHintFor(error),
     envPresence,
     commitShaShort: version.commitShaShort,
     environment: version.environment,
