@@ -4,14 +4,16 @@
  *
  * Auth path (Clerk docs / Production Testing Tokens changelog):
  *   1) clerkSetup() — mint Testing Token (works on Production instances)
- *   2) Ensure E2E user has a verified +clerk_test email via Backend API
- *      (createEmailAddress when emailAddresses is empty — no Email/Password enablement)
+ *   2) Ensure E2E user has identification (email and/or phone) via Backend API
+ *      Sign-in Tokens require identification (Production 31475111236).
+ *      If neither feature can be enabled via API → OWNER_SETUP_REQUIRED.
  *   3) setupClerkTestingToken({ context }) BEFORE any navigation (captcha_bypass)
  *   4) page.goto(/sign-in) so Clerk loads (no ticket query)
  *   5) Auth paths (in order):
- *      A) official clerk.signIn({ emailAddress }) — Sign-in Token + ticket under the hood
- *      B) official clerk.signIn({ signInParams: { strategy:'ticket', ticket }})
- *      C) Backend sessions.createSession (dev/test only — Production returns Bad Request)
+ *      A) official clerk.signIn({ emailAddress })
+ *      A2) official clerk.signIn({ strategy:'phone_code' }) with test phone
+ *      B) official clerk.signIn({ strategy:'ticket' }) with Sign-in Token
+ *      C) Backend sessions.createSession (dev/test only — Production Bad Request)
  *   6) Prove session: Clerk.user.id + authenticated API == 200 + protected page
  *
  * NOT used:
@@ -258,49 +260,122 @@ async function verifyInstancePairing(expectedUserId) {
   };
 }
 
-async function resolveUserEmailOrNull(userId) {
+async function resolveUserIdentifiers(userId) {
   const client = buildClerkClient();
   const user = await client.users.getUser(userId);
   const emails = Array.isArray(user.emailAddresses) ? user.emailAddresses : [];
-  const primary =
+  const phones = Array.isArray(user.phoneNumbers) ? user.phoneNumbers : [];
+  const primaryEmail =
     emails.find((e) => e.id === user.primaryEmailAddressId) || emails[0];
+  const primaryPhone =
+    phones.find((p) => p.id === user.primaryPhoneNumberId) || phones[0];
   const email =
-    primary && typeof primary.emailAddress === "string"
-      ? primary.emailAddress
+    primaryEmail && typeof primaryEmail.emailAddress === "string"
+      ? primaryEmail.emailAddress
       : null;
-  return { email, userId: user.id };
+  const phone =
+    primaryPhone && typeof primaryPhone.phoneNumber === "string"
+      ? primaryPhone.phoneNumber
+      : null;
+  return {
+    userId: user.id,
+    email,
+    phone,
+    username: typeof user.username === "string" ? user.username : null,
+    emailCount: emails.length,
+    phoneCount: phones.length,
+  };
+}
+
+function clerkTestPhoneForUser(userId) {
+  // Clerk reserved test range: +1XXX55501XX (code 424242).
+  const n =
+    parseInt(createHash("sha256").update(userId).digest("hex").slice(0, 2), 16) %
+    100;
+  return `+121255501${String(n).padStart(2, "0")}`;
 }
 
 /**
- * Official clerk.signIn({ emailAddress }) needs an email identifier.
- * Production E2E users previously had none (run 31466769298). Attach a
- * verified +clerk_test address via Backend API (no public Email/Password change).
+ * Sign-in Tokens require an identification on the user
+ * (Production error 31475111236: "token doesn't have an associated identification").
+ * Try email then phone via Backend API. No public Email/Password / Google changes.
  */
-async function ensureVerifiedTestEmail(userId) {
-  const existing = await resolveUserEmailOrNull(userId);
-  if (existing.email) {
-    return { email: existing.email, provisioned: false };
-  }
-  const hash = createHash("sha256").update(userId).digest("hex").slice(0, 12);
-  const emailAddress = `atlas-e2e-${hash}+clerk_test@example.com`;
+async function ensureUserIdentification(userId) {
   const client = buildClerkClient();
-  try {
-    await client.emailAddresses.createEmailAddress({
-      userId,
-      emailAddress,
-      verified: true,
-      primary: true,
-    });
-    return { email: emailAddress, provisioned: true };
-  } catch (err) {
-    const again = await resolveUserEmailOrNull(userId).catch(() => ({
-      email: null,
-    }));
-    if (again.email) {
-      return { email: again.email, provisioned: false };
+  let ids = await resolveUserIdentifiers(userId);
+  const result = {
+    email: ids.email,
+    phone: ids.phone,
+    emailProvisioned: false,
+    phoneProvisioned: false,
+    emailFeatureEnabled: null,
+    phoneFeatureEnabled: null,
+    hasIdentification: Boolean(ids.email || ids.phone || ids.username),
+    attempts: [],
+  };
+
+  if (!ids.email) {
+    const hash = createHash("sha256").update(userId).digest("hex").slice(0, 12);
+    const emailAddress = `atlas-e2e-${hash}+clerk_test@example.com`;
+    try {
+      await client.emailAddresses.createEmailAddress({
+        userId,
+        emailAddress,
+        verified: true,
+        primary: true,
+      });
+      result.email = emailAddress;
+      result.emailProvisioned = true;
+      result.emailFeatureEnabled = true;
+      result.attempts.push("email_created");
+    } catch (err) {
+      const detail = sanitizeClerkError(err);
+      result.attempts.push(`email_failed:${detail.slice(0, 80)}`);
+      if (/feature_not_enabled/i.test(detail)) {
+        result.emailFeatureEnabled = false;
+      }
     }
-    throw new Error(`ensure_e2e_email_failed:${sanitizeClerkError(err)}`);
+  } else {
+    result.emailFeatureEnabled = true;
+    result.attempts.push("email_existing");
   }
+
+  ids = await resolveUserIdentifiers(userId).catch(() => ids);
+  result.email = result.email || ids.email;
+  result.phone = ids.phone;
+
+  if (!result.phone) {
+    const phoneNumber = clerkTestPhoneForUser(userId);
+    try {
+      await client.phoneNumbers.createPhoneNumber({
+        userId,
+        phoneNumber,
+        verified: true,
+        primary: true,
+      });
+      result.phone = phoneNumber;
+      result.phoneProvisioned = true;
+      result.phoneFeatureEnabled = true;
+      result.attempts.push("phone_created");
+    } catch (err) {
+      const detail = sanitizeClerkError(err);
+      result.attempts.push(`phone_failed:${detail.slice(0, 80)}`);
+      if (/feature_not_enabled/i.test(detail)) {
+        result.phoneFeatureEnabled = false;
+      }
+    }
+  } else {
+    result.phoneFeatureEnabled = true;
+    result.attempts.push("phone_existing");
+  }
+
+  ids = await resolveUserIdentifiers(userId).catch(() => ids);
+  result.email = result.email || ids.email;
+  result.phone = result.phone || ids.phone;
+  result.hasIdentification = Boolean(
+    result.email || result.phone || ids.username,
+  );
+  return result;
 }
 
 async function collectAuthDiagnostics(page) {
@@ -358,6 +433,12 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     emailProvisioned: false,
     emailFeatureEnabled: null,
     emailRedacted: null,
+    phoneResolved: false,
+    phoneProvisioned: false,
+    phoneFeatureEnabled: null,
+    phoneRedacted: null,
+    hasIdentification: false,
+    identificationAttempts: null,
     testingTokenRouted: false,
     signInPath: "clerk.signIn.emailAddress",
     signInTokenCreated: false,
@@ -422,34 +503,54 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
   }
 
   let email = null;
+  let phone = null;
   try {
-    auth.failureStage = "ensure_user_email";
-    const ensured = await ensureVerifiedTestEmail(expectedUserId);
+    auth.failureStage = "ensure_user_identification";
+    const ensured = await ensureUserIdentification(expectedUserId);
     email = ensured.email;
-    auth.emailProvisioned = Boolean(ensured.provisioned);
-    auth.emailFeatureEnabled = true;
+    phone = ensured.phone;
+    auth.emailProvisioned = Boolean(ensured.emailProvisioned);
+    auth.emailFeatureEnabled = ensured.emailFeatureEnabled;
     auth.emailResolved = Boolean(email);
     auth.emailRedacted = redactEmail(email);
-  } catch (err) {
-    const detail = sanitizeClerkError(err);
-    // Production evidence 31474266691: email identifier feature disabled
-    // (Google-only instance). Do NOT abort — continue with userId Sign-in Token
-    // after setupClerkTestingToken({ context }) is installed.
-    if (/feature_not_enabled/i.test(detail)) {
-      auth.emailFeatureEnabled = false;
-      auth.emailResolved = false;
-      auth.emailProvisioned = false;
-      auth.emailRedacted = null;
-      console.log(
-        JSON.stringify({
-          progress: "email_feature_not_enabled_continue_ticket",
-          detail: detail.slice(0, 120),
-        }),
+    auth.phoneProvisioned = Boolean(ensured.phoneProvisioned);
+    auth.phoneFeatureEnabled = ensured.phoneFeatureEnabled;
+    auth.phoneResolved = Boolean(phone);
+    auth.phoneRedacted = phone
+      ? `+1…${String(phone).slice(-4)}`
+      : null;
+    auth.hasIdentification = Boolean(ensured.hasIdentification);
+    auth.identificationAttempts = ensured.attempts;
+    console.log(
+      JSON.stringify({
+        progress: "ensure_user_identification",
+        hasIdentification: auth.hasIdentification,
+        emailResolved: auth.emailResolved,
+        phoneResolved: auth.phoneResolved,
+        emailFeatureEnabled: auth.emailFeatureEnabled,
+        phoneFeatureEnabled: auth.phoneFeatureEnabled,
+        attempts: ensured.attempts,
+      }),
+    );
+    if (!ensured.hasIdentification) {
+      throw Object.assign(
+        new Error(
+          [
+            "OWNER_SETUP_REQUIRED: E2E Clerk users have no identification (email/phone/username).",
+            "Sign-in Tokens fail with: token doesn't have an associated identification (run 31475111236).",
+            "createSession is unavailable on Production. Agent Tasks are not available on this Dashboard.",
+            "Do ONE action in Clerk Dashboard → Production:",
+            "(1) User & Authentication → Email → enable Email address identifier (NOT Email+Password public login), then re-run — harness auto-attaches +clerk_test emails;",
+            "OR (2) Users → open E2E_CLERK_USER_ID and E2E_CLERK_USER_B_ID → add a verified email or phone to each.",
+            "Do not change Google login. Do not enable Agent Tasks.",
+          ].join(" "),
+        ),
+        { ownerSetup: true },
       );
-    } else {
-      if (!err.auth) err.auth = auth;
-      throw err;
     }
+  } catch (err) {
+    if (!err.auth) err.auth = auth;
+    throw err;
   }
 
   const context = await browser.newContext({
@@ -734,10 +835,37 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     }
 
     let sessionProbe = await waitForSessionUserId(12_000);
+
+    // Path A2: phone_code with Clerk test number (424242) when phone exists.
+    if (sessionProbe !== expectedUserId && phone) {
+      auth.failureStage = "clerk_sign_in_phone_code";
+      console.log(
+        JSON.stringify({
+          progress: "clerk_sign_in_phone_code",
+          phoneProvisioned: auth.phoneProvisioned,
+        }),
+      );
+      try {
+        await withTimeout(
+          clerk.signIn({
+            page,
+            signInParams: { strategy: "phone_code", identifier: phone },
+          }),
+          90_000,
+          "clerk_sign_in_phone_code",
+        );
+        auth.signInPath = "clerk.signIn.phone_code";
+        auth.authMethod = "clerk_testing_phone_code";
+      } catch (err) {
+        pathErrors.push(`phone:${sanitizeClerkError(err)}`);
+        auth.signInError = pathErrors.join(" | ").slice(0, 280);
+      }
+      sessionProbe = await waitForSessionUserId(12_000);
+    }
+
     if (sessionProbe !== expectedUserId) {
       // Path B: userId Sign-in Token + official ticket helper.
-      // Critical: setupClerkTestingToken already routed on this context
-      // (captcha_bypass). Prior hangs (31470602669) lacked that ordering.
+      // Requires identification on the user (run 31475111236).
       auth.failureStage = "clerk_sign_in_ticket";
       auth.signInPath = "clerk.signIn.ticket";
       auth.authMethod = "clerk_testing_userid_token";
@@ -745,18 +873,16 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
         JSON.stringify({
           progress: "clerk_sign_in_ticket",
           testingTokenRouted: auth.testingTokenRouted,
-          emailFeatureEnabled: auth.emailFeatureEnabled,
+          hasIdentification: auth.hasIdentification,
         }),
       );
       const token = await mintSignInToken();
-      // Prefer direct official ticket redeem first (faster than accept URL).
       const redeemed = await redeemTicketViaOfficialHelper(token.token);
       if (redeemed.ok) {
         auth.signInPath = "clerk.signIn.ticket";
       } else {
         pathErrors.push(`ticket:${redeemed.error || "failed"}`);
         auth.signInError = pathErrors.join(" | ").slice(0, 280);
-        // Second chance: accept URL then fresh ticket (still with testing token).
         const token2 = await mintSignInToken();
         await consumeAcceptUrl(token2).catch(() => false);
         sessionProbe = await waitForSessionUserId(8_000);
