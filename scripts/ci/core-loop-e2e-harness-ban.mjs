@@ -51,6 +51,8 @@ for (const keep of [
   "OWNER_SETUP_REQUIRED",
   "crossUserIsolated",
   "assertNoSecretLeak",
+  "setDefaultTimeout",
+  "withTimeout",
 ]) {
   if (!script.includes(keep)) violations.push(`e2e_script_missing:${keep}`);
 }

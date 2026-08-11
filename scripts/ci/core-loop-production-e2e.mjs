@@ -315,6 +315,11 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
   });
+  // Playwright library default timeout is 0 (unlimited). @clerk/testing helpers
+  // call waitForFunction without an explicit timeout — without this, a failed
+  // sign-in hangs until the GitHub job limit (evidence: run 31467514024).
+  context.setDefaultTimeout(60_000);
+  context.setDefaultNavigationTimeout(60_000);
   const page = await context.newPage();
 
   page.on("framenavigated", (frame) => {
@@ -336,8 +341,31 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     return page.evaluate(() => window.Clerk?.user?.id ?? null).catch(() => null);
   }
 
+  async function withTimeout(promise, ms, label) {
+    let timer;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`timeout_${label}_${ms}ms`)),
+            ms,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function openPublicClerkPage() {
     // Prefer /sign-in (public, guaranteed Clerk bootstrap) without ticket query.
+    console.log(
+      JSON.stringify({
+        progress: "open_public_clerk_page",
+        expectedUserIdRedacted: auth.expectedUserIdRedacted,
+      }),
+    );
     const publicResp = await page.goto(`${APP_URL}/sign-in`, {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
@@ -345,7 +373,9 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     if (auth.initialHttpStatus == null) {
       auth.initialHttpStatus = publicResp?.status() ?? null;
     }
-    await clerk.loaded({ page }).catch(() => null);
+    await withTimeout(clerk.loaded({ page }), 45_000, "clerk_loaded").catch(
+      () => null,
+    );
   }
 
   async function mintSignInToken() {
@@ -416,8 +446,13 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     // Path A: official email helper when the E2E user has an email identifier.
     if (email) {
       auth.failureStage = "clerk_sign_in_email";
+      console.log(JSON.stringify({ progress: "clerk_sign_in_email" }));
       try {
-        await clerk.signIn({ page, emailAddress: email });
+        await withTimeout(
+          clerk.signIn({ page, emailAddress: email }),
+          60_000,
+          "clerk_sign_in_email",
+        );
         auth.signInPath = "clerk.signIn.emailAddress";
       } catch (err) {
         pathErrors.push(`email:${sanitizeClerkError(err)}`);
@@ -434,6 +469,7 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     } else {
       auth.failureStage = "clerk_ticket_accept_url";
       auth.signInPath = "sign_in_token.accept_url";
+      console.log(JSON.stringify({ progress: "clerk_ticket_accept_url" }));
       const token = await mintSignInToken();
       const usedAccept = await consumeAcceptUrl(token);
       sessionProbe = await waitForSessionUserId(25_000);
@@ -442,14 +478,21 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
         auth.signInPath = usedAccept
           ? "clerk.signIn.ticket_helper_after_accept"
           : "clerk.signIn.ticket_helper";
+        console.log(
+          JSON.stringify({ progress: "clerk_sign_in_ticket_helper" }),
+        );
         await openPublicClerkPage();
         // Mint a fresh token — accept URL may have consumed the previous one.
         const token2 = await mintSignInToken();
         try {
-          await clerk.signIn({
-            page,
-            signInParams: { strategy: "ticket", ticket: token2.token },
-          });
+          await withTimeout(
+            clerk.signIn({
+              page,
+              signInParams: { strategy: "ticket", ticket: token2.token },
+            }),
+            60_000,
+            "clerk_sign_in_ticket_helper",
+          );
         } catch (err2) {
           pathErrors.push(`ticket_helper:${sanitizeClerkError(err2)}`);
           auth.signInError = pathErrors.join(" | ").slice(0, 280);
