@@ -1,0 +1,102 @@
+name: Apply Document Pipeline Migration (P0-7)
+
+# Prefer Production apply=1 with CRON_SECRET (Vercel holds DATABASE_URL).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20260805_p0_7_document_generation_pipeline.sql"
+      - "lib/deliverables/document-pipeline-migration-sql.ts"
+      - "lib/deliverables/document-pipeline-schema-probe.ts"
+      - "app/api/health/document-pipeline/**"
+      - ".github/workflows/apply-document-pipeline-migration.yml"
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for Production SHA then apply document-pipeline schema
+        env:
+          PROD_URL: https://atlasapp.jp
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          EXPECT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          EXPECT_SHORT=$(echo "${EXPECT_SHA}" | cut -c1-7)
+          echo "expect_sha_short=${EXPECT_SHORT}"
+
+          for i in $(seq 1 40); do
+            CODE=$(curl -sS -o /tmp/ver.json -w "%{http_code}" \
+              "$PROD_URL/api/health/version" || echo "000")
+            SHA=$(python3 - <<'PY'
+          import json
+          try:
+            print(json.load(open("/tmp/ver.json")).get("commitSha",""))
+          except Exception:
+            print("")
+          PY
+            )
+            SHORT=$(echo "${SHA}" | cut -c1-7)
+            echo "[$i] version_http=${CODE} prod=${SHORT}"
+            if [ "${SHA}" = "${EXPECT_SHA}" ]; then
+              echo "production_sha_matched=true"
+              break
+            fi
+            if [ "$i" = "40" ]; then
+              echo "::error::Production SHA did not reach ${EXPECT_SHORT}"
+              exit 1
+            fi
+            sleep 15
+          done
+
+          probe_ok() {
+            CODE=$(curl -sS -o /tmp/dp-probe.json -w "%{http_code}" \
+              "$PROD_URL/api/health/document-pipeline?force=1" || echo "000")
+            echo "probe_http=$CODE"
+            python3 - <<'PY'
+          import json,sys
+          d=json.load(open("/tmp/dp-probe.json"))
+          print({k:d.get(k) for k in ["ok","tableOk","error","commitShaShort","ownerHint"]})
+          sys.exit(0 if d.get("ok") is True and d.get("tableOk") is True else 1)
+          PY
+          }
+
+          if probe_ok; then
+            echo "document_pipeline_already_ready=true"
+            exit 0
+          fi
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::CRON_SECRET required to apply Production document-pipeline schema"
+            exit 1
+          fi
+
+          echo "Attempting Production apply=1 with CRON_SECRET"
+          APPLY_CODE=$(curl -sS -o /tmp/dp-apply.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "$PROD_URL/api/health/document-pipeline?force=1&apply=1" || echo "000")
+          echo "apply_http=$APPLY_CODE"
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/dp-apply.json"))
+          print({k:d.get(k) for k in [
+            "ok","tableOk","appliedViaPostgres","appliedViaManagementApi",
+            "error","commitShaShort","ownerHint"
+          ]})
+          PY
+
+          # PostgREST cache may lag briefly after NOTIFY.
+          for j in 1 2 3 4 5 6; do
+            if probe_ok; then
+              echo "document_pipeline_ready_via_production_apply=true"
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "::error::document-pipeline schema still not ready after apply"
+          exit 1
