@@ -35,7 +35,11 @@
 import { chromium } from "playwright";
 import { createClerkClient } from "@clerk/backend";
 import { parsePublishableKey } from "@clerk/shared/keys";
-import { clerk, clerkSetup } from "@clerk/testing/playwright";
+import {
+  clerk,
+  clerkSetup,
+  setupClerkTestingToken,
+} from "@clerk/testing/playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -204,15 +208,25 @@ async function resolveUserEmailOrNull(userId) {
 }
 
 async function collectAuthDiagnostics(page) {
-  const cookieNames = (await page.context().cookies())
+  const cookies = await page.context().cookies();
+  const cookieNames = cookies
+    .filter((c) => /clerk|__session|__client/i.test(c.name))
     .map((c) => c.name)
-    .filter((n) => /clerk|__session|__client/i.test(n))
     .sort();
+  // Domains only (never values) — critical to detect accounts.* vs app host cookies.
+  const cookieDomains = [
+    ...new Set(
+      cookies
+        .filter((c) => /clerk|__session|__client/i.test(c.name))
+        .map((c) => `${c.name}@${c.domain}`),
+    ),
+  ].sort();
   const clerkState = await page
     .evaluate(() => ({
       clerkLoaded: Boolean(window.Clerk?.loaded),
       hasUser: Boolean(window.Clerk?.user?.id),
       hasSession: Boolean(window.Clerk?.session?.id),
+      hasClientSignIn: Boolean(window.Clerk?.client?.signIn?.create),
       userIdPrefix:
         typeof window.Clerk?.user?.id === "string"
           ? window.Clerk.user.id.slice(0, 6)
@@ -222,9 +236,10 @@ async function collectAuthDiagnostics(page) {
       clerkLoaded: false,
       hasUser: false,
       hasSession: false,
+      hasClientSignIn: false,
       userIdPrefix: null,
     }));
-  return { cookieNames, clerkState };
+  return { cookieNames, cookieDomains, clerkState };
 }
 
 /**
@@ -254,10 +269,13 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     redirectChain: [],
     finalUrlPath: null,
     cookieNames: null,
+    cookieDomains: null,
     clerkState: null,
+    ticketRedeemStatus: null,
+    ticketRedeemError: null,
     signInError: null,
     failureStage: "init",
-    authMethod: "clerk_testing_sign_in_email",
+    authMethod: "clerk_testing_userid_token",
     expectedUserIdRedacted: redactId(expectedUserId),
   };
 
@@ -390,52 +408,109 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
   }
 
   async function consumeAcceptUrl(token) {
-    const acceptUrl =
-      typeof token.url === "string" && token.url.startsWith("http")
-        ? token.url
-        : null;
-    auth.acceptUrlPresent = Boolean(acceptUrl);
-    if (!acceptUrl) return false;
-    const acceptMeta = safeUrlMeta(acceptUrl);
-    auth.acceptUrlOrigin = acceptMeta.origin;
-    auth.acceptUrlPath = acceptMeta.pathname;
+    const candidates = [];
+    if (typeof token.url === "string" && token.url.startsWith("http")) {
+      candidates.push(token.url);
+    }
+    // Explicit FAPI ticket accept (Clerk JS allowlist includes /v1/tickets/accept).
+    if (auth.publishableFrontendApi && token.token) {
+      candidates.push(
+        `https://${auth.publishableFrontendApi}/v1/tickets/accept?ticket=${encodeURIComponent(token.token)}&redirect_url=${encodeURIComponent(`${APP_URL}/projects`)}`,
+      );
+    }
+    auth.acceptUrlPresent = candidates.length > 0;
+    if (!candidates.length) return false;
+
     const testing = process.env.CLERK_TESTING_TOKEN;
-    let navUrl = acceptUrl;
-    try {
-      const u = new URL(acceptUrl);
-      if (testing && !u.searchParams.has("__clerk_testing_token")) {
-        u.searchParams.set("__clerk_testing_token", testing);
-      }
-      navUrl = u.toString();
-    } catch {
-      // use raw acceptUrl
-    }
-    await page.goto(navUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 60_000,
-    });
     const appOrigin = new URL(APP_URL).origin;
-    if (!page.url().startsWith(appOrigin)) {
-      await page
-        .waitForURL(
-          (url) => {
-            try {
-              return new URL(url).origin === appOrigin;
-            } catch {
-              return false;
-            }
-          },
-          { timeout: 60_000 },
-        )
-        .catch(() => null);
-    }
-    if (!page.url().startsWith(appOrigin)) {
-      await page.goto(`${APP_URL}/projects`, {
+    for (const acceptUrl of candidates) {
+      const acceptMeta = safeUrlMeta(acceptUrl);
+      auth.acceptUrlOrigin = acceptMeta.origin;
+      auth.acceptUrlPath = acceptMeta.pathname;
+      let navUrl = acceptUrl;
+      try {
+        const u = new URL(acceptUrl);
+        if (testing && !u.searchParams.has("__clerk_testing_token")) {
+          u.searchParams.set("__clerk_testing_token", testing);
+        }
+        navUrl = u.toString();
+      } catch {
+        // use raw
+      }
+      console.log(
+        JSON.stringify({
+          progress: "consume_accept_url",
+          origin: acceptMeta.origin,
+          path: acceptMeta.pathname,
+        }),
+      );
+      await page.goto(navUrl, {
         waitUntil: "domcontentloaded",
         timeout: 60_000,
       });
+      if (!page.url().startsWith(appOrigin)) {
+        await page
+          .waitForURL(
+            (url) => {
+              try {
+                return new URL(url).origin === appOrigin;
+              } catch {
+                return false;
+              }
+            },
+            { timeout: 45_000 },
+          )
+          .catch(() => null);
+      }
+      if (!page.url().startsWith(appOrigin)) {
+        await page.goto(`${APP_URL}/projects`, {
+          waitUntil: "domcontentloaded",
+          timeout: 60_000,
+        });
+      }
+      const uid = await waitForSessionUserId(15_000);
+      if (uid === expectedUserId) return true;
     }
-    return true;
+    return false;
+  }
+
+  async function redeemTicketOnApp(ticket) {
+    await setupClerkTestingToken({ page });
+    await openPublicClerkPage();
+    const result = await page.evaluate(async (t) => {
+      try {
+        if (!window.Clerk?.client?.signIn?.create) {
+          return { ok: false, error: "missing_client_signIn_create" };
+        }
+        const signIn = await window.Clerk.client.signIn.create({
+          strategy: "ticket",
+          ticket: t,
+        });
+        if (signIn.status === "complete" && signIn.createdSessionId) {
+          await window.Clerk.setActive({ session: signIn.createdSessionId });
+          return {
+            ok: true,
+            status: signIn.status,
+            userId: window.Clerk.user?.id ?? null,
+          };
+        }
+        return {
+          ok: false,
+          status: signIn.status ?? null,
+          error: `incomplete_status:${signIn.status}`,
+        };
+      } catch (e) {
+        return {
+          ok: false,
+          error: String(e?.message || e).slice(0, 220),
+        };
+      }
+    }, ticket);
+    auth.ticketRedeemStatus = result?.status ?? null;
+    auth.ticketRedeemError = result?.error
+      ? sanitizeClerkError(result.error)
+      : null;
+    return result;
   }
 
   try {
@@ -474,29 +549,26 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
       const usedAccept = await consumeAcceptUrl(token);
       sessionProbe = await waitForSessionUserId(25_000);
       if (sessionProbe !== expectedUserId) {
-        auth.failureStage = "clerk_sign_in_ticket_helper";
+        auth.failureStage = "clerk_ticket_redeem_on_app";
         auth.signInPath = usedAccept
-          ? "clerk.signIn.ticket_helper_after_accept"
-          : "clerk.signIn.ticket_helper";
+          ? "ticket_redeem_after_accept"
+          : "ticket_redeem_on_app";
         console.log(
-          JSON.stringify({ progress: "clerk_sign_in_ticket_helper" }),
+          JSON.stringify({ progress: "clerk_ticket_redeem_on_app" }),
         );
-        await openPublicClerkPage();
         // Mint a fresh token — accept URL may have consumed the previous one.
         const token2 = await mintSignInToken();
-        try {
-          await withTimeout(
-            clerk.signIn({
-              page,
-              signInParams: { strategy: "ticket", ticket: token2.token },
-            }),
-            60_000,
-            "clerk_sign_in_ticket_helper",
+        const redeemed = await withTimeout(
+          redeemTicketOnApp(token2.token),
+          60_000,
+          "ticket_redeem_on_app",
+        );
+        if (!redeemed?.ok) {
+          pathErrors.push(
+            `ticket_redeem:${redeemed?.error || redeemed?.status || "failed"}`,
           );
-        } catch (err2) {
-          pathErrors.push(`ticket_helper:${sanitizeClerkError(err2)}`);
           auth.signInError = pathErrors.join(" | ").slice(0, 280);
-          throw err2;
+          throw new Error(auth.signInError);
         }
       }
     }
@@ -520,6 +592,7 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
 
     const diag = await collectAuthDiagnostics(page);
     auth.cookieNames = diag.cookieNames;
+    auth.cookieDomains = diag.cookieDomains;
     auth.clerkState = diag.clerkState;
 
     auth.failureStage = "auth_api_probe";
@@ -581,6 +654,7 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     const diag = await collectAuthDiagnostics(page).catch(() => null);
     if (diag) {
       auth.cookieNames = diag.cookieNames;
+      auth.cookieDomains = diag.cookieDomains;
       auth.clerkState = diag.clerkState;
     }
     await context.close().catch(() => null);
