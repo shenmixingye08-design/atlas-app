@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 /**
- * Production CORE LOOP E2E — Clerk official Playwright testing helpers.
+ * Production CORE LOOP E2E — Clerk official Playwright helpers (no app bypass).
  *
- * Auth path (no app bypass, no ticket URL retry):
- *   1) clerkSetup() — mint Testing Token via Clerk Backend API
- *   2) createAgentTestingTask({ onBehalfOf: { userId } }) — official session URL
- *   3) setupClerkTestingToken({ page }) — attach Testing Token to FAPI
- *   4) page.goto(agentTask.url) — establish Production Clerk session
- *   5) Prove session via Clerk.user.id + authenticated API (== 200)
+ * Auth path (Clerk docs / Production Testing Tokens changelog):
+ *   1) clerkSetup() — mint Testing Token (works on Production instances)
+ *   2) Resolve E2E user email via Backend API from E2E_CLERK_USER_ID
+ *      (no Email/Password public enablement; email is identity metadata)
+ *   3) page.goto(public page that loads Clerk)
+ *   4) clerk.signIn({ page, emailAddress }) — official helper
+ *      (server-side sign-in token + client ticket redeem + setActive)
+ *   5) Prove session: Clerk.user.id + authenticated API == 200 + protected page
  *
- * Why not clerk.signIn({ emailAddress })?
- *   That helper still mints a Sign-in Token and uses strategy:"ticket".
- *   Production Google-only + prior evidence already showed ticket redemption
- *   leaves the browser on /sign-in with authApiStatus=401.
- *   Agent Tasks is Clerk's documented Playwright path for userId-based
- *   authenticated sessions without the standard sign-in UI.
+ * NOT used:
+ *   - Agent Tasks API (not present in this Production Dashboard)
+ *   - ticket-query sign-in URL primary path (prior Production FAIL)
+ *   - App auth bypass / middleware skip / mock auth
  *
  * Secrets (never logged):
  *   CLERK_SECRET_KEY
@@ -31,11 +31,9 @@
  */
 
 import { chromium } from "playwright";
-import {
-  clerkSetup,
-  createAgentTestingTask,
-  setupClerkTestingToken,
-} from "@clerk/testing/playwright";
+import { createClerkClient } from "@clerk/backend";
+import { parsePublishableKey } from "@clerk/shared/keys";
+import { clerk, clerkSetup } from "@clerk/testing/playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -65,6 +63,13 @@ function redactId(id) {
   if (!id || typeof id !== "string") return null;
   if (id.length <= 8) return "***";
   return `${id.slice(0, 6)}…${id.slice(-4)}`;
+}
+
+function redactEmail(email) {
+  if (!email || typeof email !== "string") return null;
+  const at = email.indexOf("@");
+  if (at <= 1) return "***";
+  return `${email.slice(0, 2)}…@${email.slice(at + 1)}`;
 }
 
 function assertNoSecretLeak(text) {
@@ -107,19 +112,25 @@ function safeUrlMeta(urlString) {
         redacted.searchParams.set(key, "[REDACTED]");
       }
     }
-    // Agent Task accept URLs often embed opaque path tokens — keep origin+pathname only.
     return {
       origin: u.origin,
       pathname: u.pathname,
-      redactedUrl: `${redacted.origin}${redacted.pathname}`,
+      redactedUrl: `${redacted.origin}${redacted.pathname}${redacted.search}`,
     };
   } catch {
-    return {
-      origin: null,
-      pathname: null,
-      redactedUrl: null,
-    };
+    return { origin: null, pathname: null, redactedUrl: null };
   }
+}
+
+function sanitizeClerkError(err) {
+  const raw = String(err?.message || err || "");
+  return raw
+    .replace(/sk_live_[A-Za-z0-9]+/g, "[REDACTED]")
+    .replace(/sk_test_[A-Za-z0-9]+/g, "[REDACTED]")
+    .replace(/pk_live_[A-Za-z0-9]+/g, "[REDACTED]")
+    .replace(/pk_test_[A-Za-z0-9]+/g, "[REDACTED]")
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[EMAIL]")
+    .slice(0, 280);
 }
 
 async function fetchProductionVersion() {
@@ -130,10 +141,100 @@ async function fetchProductionVersion() {
   return { httpStatus: res.status, ...json };
 }
 
+function buildClerkClient() {
+  return createClerkClient({ secretKey: CLERK_SECRET });
+}
+
 /**
- * Establish a real Production Clerk session for expectedUserId via
- * @clerk/testing/playwright Agent Tasks + Testing Tokens.
- * Does NOT add app-level auth bypass.
+ * Safe pairing check: publishable frontendApi + secret can read E2E user.
+ * Does not log key material.
+ */
+async function verifyInstancePairing(expectedUserId) {
+  const parsed = parsePublishableKey(CLERK_PUBLISHABLE);
+  const frontendApi =
+    typeof parsed?.frontendApi === "string" ? parsed.frontendApi : null;
+  if (!frontendApi) {
+    throw Object.assign(new Error("publishable_key_frontend_api_unparsed"), {
+      ownerSetup: true,
+    });
+  }
+
+  const client = buildClerkClient();
+  let user;
+  try {
+    user = await client.users.getUser(expectedUserId);
+  } catch (err) {
+    throw Object.assign(
+      new Error(
+        `OWNER_SETUP_REQUIRED: CLERK_SECRET_KEY cannot read E2E_CLERK_USER_ID (instance mismatch or wrong user). detail=${sanitizeClerkError(err)}`,
+      ),
+      { ownerSetup: true },
+    );
+  }
+
+  const appHost = new URL(APP_URL).hostname;
+  // Production custom FAPI is typically clerk.<app-domain>.
+  const frontendApiMatchesApp =
+    frontendApi === `clerk.${appHost}` ||
+    frontendApi.endsWith(`.${appHost}`) ||
+    frontendApi.includes("atlasapp");
+
+  return {
+    publishableFrontendApi: frontendApi,
+    secretCanReadE2EUser: user.id === expectedUserId,
+    frontendApiMatchesAppHost: frontendApiMatchesApp,
+    instancePairOk:
+      user.id === expectedUserId && Boolean(frontendApi) && frontendApiMatchesApp,
+  };
+}
+
+async function resolveUserEmail(userId) {
+  const client = buildClerkClient();
+  const user = await client.users.getUser(userId);
+  const emails = Array.isArray(user.emailAddresses) ? user.emailAddresses : [];
+  const primary =
+    emails.find((e) => e.id === user.primaryEmailAddressId) || emails[0];
+  const email =
+    primary && typeof primary.emailAddress === "string"
+      ? primary.emailAddress
+      : null;
+  if (!email) {
+    throw Object.assign(
+      new Error(
+        "OWNER_SETUP_REQUIRED: E2E Clerk user has no email address on the user record. Google OAuth users normally have one. Do NOT enable public Email/Password — ensure the E2E user has an email identifier in Clerk Users.",
+      ),
+      { ownerSetup: true },
+    );
+  }
+  return { email, userId: user.id };
+}
+
+async function collectAuthDiagnostics(page) {
+  const cookieNames = (await page.context().cookies())
+    .map((c) => c.name)
+    .filter((n) => /clerk|__session|__client/i.test(n))
+    .sort();
+  const clerkState = await page
+    .evaluate(() => ({
+      clerkLoaded: Boolean(window.Clerk?.loaded),
+      hasUser: Boolean(window.Clerk?.user?.id),
+      hasSession: Boolean(window.Clerk?.session?.id),
+      userIdPrefix:
+        typeof window.Clerk?.user?.id === "string"
+          ? window.Clerk.user.id.slice(0, 6)
+          : null,
+    }))
+    .catch(() => ({
+      clerkLoaded: false,
+      hasUser: false,
+      hasSession: false,
+      userIdPrefix: null,
+    }));
+  return { cookieNames, clerkState };
+}
+
+/**
+ * Establish Production Clerk session via official clerk.signIn({ emailAddress }).
  */
 async function signInWithClerkOfficial(browser, expectedUserId) {
   const auth = {
@@ -142,17 +243,45 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     clerkSessionDetected: false,
     authenticatedUserIdMatchesExpected: false,
     authApiStatus: null,
+    authApiErrorCode: null,
     protectedPageAccessible: false,
-    testingTokenReady: false,
-    agentTaskCreated: false,
-    agentTaskUrlPresent: false,
+    instancePairOk: false,
+    publishableFrontendApi: null,
+    secretCanReadE2EUser: false,
+    frontendApiMatchesAppHost: false,
+    emailResolved: false,
+    emailRedacted: null,
+    signInPath: "clerk.signIn.emailAddress",
     initialHttpStatus: null,
     redirectChain: [],
     finalUrlPath: null,
+    cookieNames: null,
+    clerkState: null,
+    signInError: null,
     failureStage: "init",
-    authMethod: "clerk_testing_agent_task",
+    authMethod: "clerk_testing_sign_in_email",
     expectedUserIdRedacted: redactId(expectedUserId),
   };
+
+  try {
+    auth.failureStage = "verify_instance_pairing";
+    const pair = await verifyInstancePairing(expectedUserId);
+    auth.publishableFrontendApi = pair.publishableFrontendApi;
+    auth.secretCanReadE2EUser = pair.secretCanReadE2EUser;
+    auth.frontendApiMatchesAppHost = pair.frontendApiMatchesAppHost;
+    auth.instancePairOk = pair.instancePairOk;
+    if (!pair.instancePairOk) {
+      throw Object.assign(
+        new Error(
+          `OWNER_SETUP_REQUIRED: publishable/secret/user instance pairing failed frontendApi=${pair.publishableFrontendApi} secretCanReadUser=${pair.secretCanReadE2EUser} frontendApiMatchesApp=${pair.frontendApiMatchesAppHost}`,
+        ),
+        { ownerSetup: true },
+      );
+    }
+  } catch (err) {
+    if (!err.auth) err.auth = auth;
+    throw err;
+  }
 
   try {
     auth.failureStage = "clerk_setup";
@@ -167,52 +296,22 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     }
   } catch (err) {
     auth.failureStage = "clerk_setup_failed";
-    const message = String(err?.message || err);
-    if (/agent.?task|beta|not.?enabled|403|404|forbidden/i.test(message)) {
-      const error = new Error(`OWNER_SETUP_REQUIRED: ${message.slice(0, 240)}`);
-      error.auth = auth;
-      error.ownerSetup = true;
-      throw error;
-    }
-    const error = new Error(`clerk_setup_failed: ${message.slice(0, 240)}`);
+    auth.signInError = sanitizeClerkError(err);
+    const error = new Error(`clerk_setup_failed: ${auth.signInError}`);
     error.auth = auth;
     throw error;
   }
 
-  let agentTask;
+  let email;
   try {
-    auth.failureStage = "create_agent_testing_task";
-    agentTask = await createAgentTestingTask({
-      secretKey: CLERK_SECRET,
-      onBehalfOf: { userId: expectedUserId },
-      permissions: "*",
-      agentName: "minervot-core-loop-e2e",
-      taskDescription: "production-core-loop-auth",
-      redirectUrl: `${APP_URL}/projects`,
-      sessionMaxDurationInSeconds: 1800,
-    });
-    auth.agentTaskCreated = true;
-    auth.agentTaskUrlPresent = Boolean(
-      agentTask?.url && typeof agentTask.url === "string",
-    );
-    if (!auth.agentTaskUrlPresent) {
-      throw new Error("agent_task_url_missing");
-    }
+    auth.failureStage = "resolve_user_email";
+    const resolved = await resolveUserEmail(expectedUserId);
+    email = resolved.email;
+    auth.emailResolved = true;
+    auth.emailRedacted = redactEmail(email);
   } catch (err) {
-    auth.failureStage = "agent_task_create_failed";
-    const message = String(err?.message || err);
-    const ownerHint =
-      /beta|not.?enabled|forbidden|403|404|feature|unavailable|permission/i.test(
-        message,
-      );
-    const error = new Error(
-      ownerHint
-        ? `OWNER_SETUP_REQUIRED: Agent Tasks API failed — enable Agent Tasks (beta) on Production Clerk or check Secret. detail=${message.slice(0, 200)}`
-        : `agent_task_create_failed: ${message.slice(0, 240)}`,
-    );
-    error.auth = auth;
-    error.ownerSetup = ownerHint;
-    throw error;
+    if (!err.auth) err.auth = auth;
+    throw err;
   }
 
   const context = await browser.newContext({
@@ -230,53 +329,46 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
   });
 
   try {
-    auth.failureStage = "setup_clerk_testing_token";
-    await setupClerkTestingToken({ page });
-    auth.testingTokenReady = true;
-
-    auth.failureStage = "open_agent_task_url";
-    const agentMeta = safeUrlMeta(agentTask.url);
-    auth.agentTaskOrigin = agentMeta.origin;
-    auth.agentTaskPath = agentMeta.pathname;
-
-    const navResp = await page.goto(agentTask.url, {
+    // Official requirement: navigate to a non-protected page that loads Clerk
+    // BEFORE clerk.signIn (helper attaches Testing Token + waits for Clerk.loaded).
+    auth.failureStage = "open_public_clerk_page";
+    const publicResp = await page.goto(`${APP_URL}/`, {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
-    auth.initialHttpStatus = navResp?.status() ?? null;
+    auth.initialHttpStatus = publicResp?.status() ?? null;
 
-    // Agent Task accept redirects through Clerk-hosted hosts, then to redirectUrl.
-    // Clerk JS for our app is only available after we land on APP_URL.
-    auth.failureStage = "wait_app_origin_after_agent_task";
-    const appOrigin = new URL(APP_URL).origin;
-    if (!page.url().startsWith(appOrigin)) {
-      await page
-        .waitForURL(
-          (url) => {
-            try {
-              return new URL(url).origin === appOrigin;
-            } catch {
-              return false;
-            }
-          },
-          { timeout: 75_000 },
-        )
-        .catch(() => null);
-    }
-
-    if (!page.url().startsWith(appOrigin)) {
-      // Force navigation to protected page; session cookies from Agent Task should apply.
-      await page.goto(`${APP_URL}/projects`, {
+    auth.failureStage = "clerk_sign_in_email";
+    try {
+      await clerk.signIn({ page, emailAddress: email });
+    } catch (err) {
+      auth.signInError = sanitizeClerkError(err);
+      // Fallback: official ticket strategy helper (still NOT /sign-in?ticket URL).
+      auth.failureStage = "clerk_sign_in_ticket_helper";
+      auth.signInPath = "clerk.signIn.ticket_helper_fallback";
+      const client = buildClerkClient();
+      const token = await client.signInTokens.createSignInToken({
+        userId: expectedUserId,
+        expiresInSeconds: 300,
+      });
+      if (!token?.token) {
+        throw new Error("sign_in_token_missing_for_ticket_helper_fallback");
+      }
+      await page.goto(`${APP_URL}/`, {
         waitUntil: "domcontentloaded",
         timeout: 60_000,
+      });
+      await clerk.signIn({
+        page,
+        signInParams: { strategy: "ticket", ticket: token.token },
       });
     }
 
     auth.failureStage = "wait_clerk_session";
     await page
       .waitForFunction(
-        () => Boolean(window.Clerk?.loaded && (window.Clerk?.user?.id || window.Clerk?.session)),
-        { timeout: 60_000 },
+        () => Boolean(window.Clerk?.loaded && window.Clerk?.user?.id),
+        { timeout: 45_000 },
       )
       .catch(() => null);
 
@@ -288,9 +380,24 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     auth.clerkSignInOk =
       auth.clerkSessionDetected && auth.authenticatedUserIdMatchesExpected;
 
+    const diag = await collectAuthDiagnostics(page);
+    auth.cookieNames = diag.cookieNames;
+    auth.clerkState = diag.clerkState;
+
     auth.failureStage = "auth_api_probe";
     const apiProbe = await page.request.get(`${APP_URL}/api/notifications`);
     auth.authApiStatus = apiProbe.status();
+    if (auth.authApiStatus !== 200) {
+      const bodyText = await apiProbe.text().catch(() => "");
+      assertNoSecretLeak(bodyText);
+      try {
+        const body = JSON.parse(bodyText);
+        auth.authApiErrorCode =
+          typeof body?.error === "string" ? body.error.slice(0, 80) : "non_200";
+      } catch {
+        auth.authApiErrorCode = `http_${auth.authApiStatus}`;
+      }
+    }
 
     auth.failureStage = "protected_page";
     await page.goto(`${APP_URL}/projects`, {
@@ -313,23 +420,15 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     if (!auth.clerkSignInOk) {
       auth.failureStage = "clerk_sign_in_failed";
       throw new Error(
-        `clerkSignInOk=false session=${auth.clerkSessionDetected} userMatch=${auth.authenticatedUserIdMatchesExpected} path=${auth.finalUrlPath}`,
-      );
-    }
-    if (!auth.clerkSessionDetected) {
-      auth.failureStage = "clerk_session_missing";
-      throw new Error("clerk_session_missing_after_agent_task");
-    }
-    if (!auth.authenticatedUserIdMatchesExpected) {
-      auth.failureStage = "user_mismatch";
-      throw new Error(
-        `authenticated_user_mismatch got=${redactId(sessionUserId)}`,
+        `clerkSignInOk=false session=${auth.clerkSessionDetected} userMatch=${auth.authenticatedUserIdMatchesExpected} path=${auth.finalUrlPath} signInError=${auth.signInError || "null"} cookies=${(auth.cookieNames || []).join(",")}`,
       );
     }
     if (auth.authApiStatus !== 200) {
       auth.failureStage =
         auth.authApiStatus === 401 ? "auth_api_still_401" : "auth_api_not_200";
-      throw new Error(`authenticated_api_status_${auth.authApiStatus}`);
+      throw new Error(
+        `authenticated_api_status_${auth.authApiStatus} error=${auth.authApiErrorCode}`,
+      );
     }
     if (!auth.protectedPageAccessible) {
       auth.failureStage = "protected_page_blocked";
@@ -341,11 +440,17 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     auth.failureStage = "auth_ok";
     return { context, page, url: finalUrl.split("?")[0], auth };
   } catch (err) {
+    const diag = await collectAuthDiagnostics(page).catch(() => null);
+    if (diag) {
+      auth.cookieNames = diag.cookieNames;
+      auth.clerkState = diag.clerkState;
+    }
     await context.close().catch(() => null);
     if (!err.auth) err.auth = auth;
     if (!auth.failureStage || auth.failureStage === "auth_ok") {
       auth.failureStage = "clerk_sign_in_failed";
     }
+    if (!auth.signInError) auth.signInError = sanitizeClerkError(err);
     throw err;
   }
 }
@@ -429,7 +534,6 @@ async function main() {
     ownerSetupExit("E2E_CLERK_USER_ID and E2E_CLERK_USER_B_ID must be different");
   }
 
-  // Ensure @clerk/testing helpers see canonical env names.
   process.env.CLERK_SECRET_KEY = CLERK_SECRET;
   process.env.CLERK_PUBLISHABLE_KEY = CLERK_PUBLISHABLE;
 
@@ -455,6 +559,8 @@ async function main() {
         clerkSetupOk: signedA.auth.clerkSetupOk,
         clerkSignInOk: signedA.auth.clerkSignInOk,
         protectedPageAccessible: signedA.auth.protectedPageAccessible,
+        instancePairOk: signedA.auth.instancePairOk,
+        signInPath: signedA.auth.signInPath,
       };
 
       let acceptedJobId = null;
@@ -644,7 +750,7 @@ async function main() {
     }
     evidence.ok = false;
     evidence.status = "FAIL";
-    evidence.error = String(err?.message || err).slice(0, 500);
+    evidence.error = sanitizeClerkError(err).slice(0, 500);
     if (err?.auth) evidence.auth = err.auth;
     evidence.failureStage =
       err?.auth?.failureStage || evidence.failureStage || "unknown";
@@ -667,9 +773,10 @@ async function main() {
     failureStage: evidence.failureStage,
     clerkSetupOk: evidence.auth?.clerkSetupOk ?? null,
     clerkSignInOk: evidence.auth?.clerkSignInOk ?? null,
-    testingTokenReady: evidence.auth?.testingTokenReady ?? null,
-    agentTaskCreated: evidence.auth?.agentTaskCreated ?? null,
-    agentTaskUrlPresent: evidence.auth?.agentTaskUrlPresent ?? null,
+    instancePairOk: evidence.auth?.instancePairOk ?? null,
+    publishableFrontendApi: evidence.auth?.publishableFrontendApi ?? null,
+    emailResolved: evidence.auth?.emailResolved ?? null,
+    signInPath: evidence.auth?.signInPath ?? null,
     initialHttpStatus: evidence.auth?.initialHttpStatus ?? null,
     redirectChain: evidence.auth?.redirectChain ?? null,
     finalUrlPath: evidence.auth?.finalUrlPath ?? null,
@@ -677,7 +784,9 @@ async function main() {
     authenticatedUserIdMatchesExpected:
       evidence.auth?.authenticatedUserIdMatchesExpected ?? null,
     authApiStatus: evidence.auth?.authApiStatus ?? null,
+    authApiErrorCode: evidence.auth?.authApiErrorCode ?? null,
     protectedPageAccessible: evidence.auth?.protectedPageAccessible ?? null,
+    cookieNames: evidence.auth?.cookieNames ?? null,
     authMethod: evidence.auth?.authMethod ?? null,
     jobId: evidence.jobId,
     artifactId: evidence.artifactId ? redactId(evidence.artifactId) : null,
@@ -694,14 +803,14 @@ async function main() {
 
 main().catch((err) => {
   if (err?.ownerSetup) {
-    ownerSetupExit(String(err.message || err).slice(0, 400));
+    ownerSetupExit(sanitizeClerkError(err).slice(0, 400));
   }
   console.error(
     JSON.stringify({
       ok: false,
       status: "FAIL",
       failureStage: err?.auth?.failureStage || "fatal",
-      error: String(err?.message || err).slice(0, 500),
+      error: sanitizeClerkError(err).slice(0, 500),
     }),
   );
   process.exit(1);

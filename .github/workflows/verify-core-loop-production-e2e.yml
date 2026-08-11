@@ -1,5 +1,5 @@
 # Production CORE LOOP E2E — Clerk official Playwright helpers (no auth bypass).
-# Auth: @clerk/testing clerkSetup + Testing Token + createAgentTestingTask(userId)
+# Auth: @clerk/testing clerkSetup + clerk.signIn({ emailAddress })
 # Secrets required:
 #   CLERK_SECRET_KEY, NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
 #   E2E_CLERK_USER_ID, E2E_CLERK_USER_B_ID
@@ -86,7 +86,6 @@ jobs:
         run: |
           set -euo pipefail
           export ATLAS_APP_URL="${ATLAS_APP_URL:-https://atlasapp.jp}"
-          # Prefer explicit CLERK_PUBLISHABLE_KEY; else map from NEXT_PUBLIC_*.
           if [ -z "${CLERK_PUBLISHABLE_KEY:-}" ] && [ -n "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" ]; then
             export CLERK_PUBLISHABLE_KEY="${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}"
           fi
@@ -97,7 +96,7 @@ jobs:
           set -e
           echo "e2e_exit=${code}"
           if [ "${code}" = "2" ]; then
-            echo "::error::OWNER_SETUP_REQUIRED — configure Clerk Agent Tasks + GitHub Secrets (docs/development/core-loop-production-e2e-setup.md)"
+            echo "::error::OWNER_SETUP_REQUIRED — see docs/development/core-loop-production-e2e-setup.md"
             exit 2
           fi
           if [ "${code}" != "0" ]; then
