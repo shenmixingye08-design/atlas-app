@@ -1221,15 +1221,47 @@ async function main() {
         jobBody?.result?.correlationId ||
         jobBody?.diagnosticId ||
         null;
-      evidence.diagnosticId = jobBody?.diagnosticId || evidence.correlationId;
+      evidence.diagnosticId =
+        jobBody?.diagnosticId ||
+        jobBody?.failureDiagnostic?.diagnosticId ||
+        jobBody?.visionGate?.diagnosticId ||
+        evidence.correlationId;
       evidence.aiExecution = {
         status: jobStatus,
         hasResult: Boolean(jobBody?.result),
         resultStatus: jobBody?.result?.status ?? null,
+        jobError: jobBody?.error
+          ? String(jobBody.error).slice(0, 400)
+          : null,
+        failedStage:
+          jobBody?.failedStage ||
+          jobBody?.failureDiagnostic?.failedStage ||
+          jobBody?.visionGate?.failedStage ||
+          null,
+        developerCode:
+          jobBody?.developerCode ||
+          jobBody?.failureDiagnostic?.developerCode ||
+          jobBody?.visionGate?.developerCode ||
+          null,
+        failureClass: jobBody?.failureDiagnostic?.failureClass || null,
+        cause: jobBody?.failureDiagnostic?.cause
+          ? String(jobBody.failureDiagnostic.cause).slice(0, 400)
+          : jobBody?.visionGate?.cause
+            ? String(jobBody.visionGate.cause).slice(0, 400)
+            : null,
       };
 
       if (jobStatus !== "completed" || !jobBody?.result) {
-        throw new Error(`job_not_completed status=${jobStatus}`);
+        throw new Error(
+          [
+            `job_not_completed status=${jobStatus}`,
+            `failedStage=${evidence.aiExecution.failedStage || "null"}`,
+            `developerCode=${evidence.aiExecution.developerCode || "null"}`,
+            `diagnosticId=${evidence.diagnosticId || "null"}`,
+            `cause=${(evidence.aiExecution.cause || "null").slice(0, 200)}`,
+            `jobError=${(evidence.aiExecution.jobError || "null").slice(0, 200)}`,
+          ].join(" "),
+        );
       }
 
       const artifactId = pickDeliverableId(jobBody.result);

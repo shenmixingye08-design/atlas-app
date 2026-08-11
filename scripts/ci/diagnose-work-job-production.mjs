@@ -185,14 +185,7 @@ async function viaSupabase() {
     out.reliabilityEvents = (events || []).map(slimEvent);
   }
 
-  // Prefer E2E user A, else scan recent work-job domains is not feasible at scale.
-  // Try USER_A first; if missing, try any user_id from reliability events.
-  const candidateUsers = [
-    USER_A,
-    ...out.reliabilityEvents.map((e) => e.user_id_redacted && null),
-  ].filter(Boolean);
-
-  // Recover real user ids from raw events before redaction
+  // Prefer E2E user A, then any user_id from reliability events.
   const rawUserIds = [
     USER_A,
     ...((events || []).map((e) => e.user_id).filter((u) => typeof u === "string")),
