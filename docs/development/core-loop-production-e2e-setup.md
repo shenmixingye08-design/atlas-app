@@ -10,8 +10,11 @@
 - Clerk 公式 Playwright ヘルパー（`@clerk/testing/playwright`）で E2E 専用ユーザーの正規セッションを確立する
   - `clerkSetup()` — Testing Token 取得（Production 対応）
   - email がある場合: `clerk.signIn({ emailAddress })`
-  - email が無い場合: Sign-in Token（accept URL / client ticket）
-  - client ticket が Production bot 保護でハング / timeout する場合: Backend `sessions.createSession(userId)` + session JWT を `__session` / `__client_uat` cookie として設定（固定cookieや偽userIdではない。Clerk が当該 E2E user に発行した実セッション）。timeout が throw しても Path D に必ず到達する
+  - E2E user に email が無い場合: Backend `emailAddresses.createEmailAddress` で verified な `+clerk_test` アドレスを付与（公開の Email/Password 設定は変更しない）
+  - **必ず** `setupClerkTestingToken({ context })` を最初の navigation 前に実行（FAPI captcha_bypass）
+  - 主経路: 公式 `clerk.signIn({ emailAddress })`（内部で Sign-in Token + ticket）
+  - 予備: 公式 `clerk.signIn({ signInParams: { strategy:'ticket' }})`
+  - `sessions.createSession` は Clerk ドキュメントどおり Production では不可（Bad Request）。最後の診断用のみ
   - CI は `CORE_LOOP_EXPECT_SHA`（= `github.sha`）と Production `/api/health/version` が一致するまで待ってから検証する（デプロイ競合防止）
 - Email/Password ログインの公開有効化は不要（Google 設定も変更しない）
 - Playwright が `https://atlasapp.jp` の UI/API 正規経路を通る

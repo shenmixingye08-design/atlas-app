@@ -4,21 +4,21 @@
  *
  * Auth path (Clerk docs / Production Testing Tokens changelog):
  *   1) clerkSetup() — mint Testing Token (works on Production instances)
- *   2) Resolve optional email via Backend API from E2E_CLERK_USER_ID
- *      (E2E users may have no emailAddresses — do NOT require Email/Password)
- *   3) page.goto(/sign-in) so Clerk loads (no ticket query)
- *   4) Auth paths (in order):
- *      A) clerk.signIn({ emailAddress }) when email exists
- *      B) Sign-in Token token.url accept (/v1/tickets/accept) by userId
- *      C) client.signIn.create({ strategy:'ticket' }) with fresh userId token
- *      D) Backend sessions.createSession + real __session JWT cookie (fallback)
- *         — always reached even when Path C times out (withTimeout must not abort)
- *   5) Prove session: Clerk.user.id OR (Backend JWT cookie + API 200) + protected page
+ *   2) Ensure E2E user has a verified +clerk_test email via Backend API
+ *      (createEmailAddress when emailAddresses is empty — no Email/Password enablement)
+ *   3) setupClerkTestingToken({ context }) BEFORE any navigation (captcha_bypass)
+ *   4) page.goto(/sign-in) so Clerk loads (no ticket query)
+ *   5) Auth paths (in order):
+ *      A) official clerk.signIn({ emailAddress }) — Sign-in Token + ticket under the hood
+ *      B) official clerk.signIn({ signInParams: { strategy:'ticket', ticket }})
+ *      C) Backend sessions.createSession (dev/test only — Production returns Bad Request)
+ *   6) Prove session: Clerk.user.id + authenticated API == 200 + protected page
  *
  * NOT used:
  *   - Agent Tasks API (not present in this Production Dashboard)
  *   - ticket-query sign-in URL primary path (prior Production FAIL)
  *   - App auth bypass / middleware skip / mock auth
+ *   - Relying on createSession on Production (Clerk: testing-only API)
  *
  * Secrets (never logged):
  *   CLERK_SECRET_KEY
@@ -131,7 +131,18 @@ function safeUrlMeta(urlString) {
 }
 
 function sanitizeClerkError(err) {
-  const raw = String(err?.message || err || "");
+  const code =
+    err?.errors?.[0]?.code ||
+    err?.clerkError?.errors?.[0]?.code ||
+    err?.data?.[0]?.code ||
+    null;
+  const msg =
+    err?.errors?.[0]?.longMessage ||
+    err?.errors?.[0]?.message ||
+    err?.message ||
+    err ||
+    "";
+  const raw = [code, String(msg)].filter(Boolean).join(":");
   return raw
     .replace(/sk_live_[A-Za-z0-9]+/g, "[REDACTED]")
     .replace(/sk_test_[A-Za-z0-9]+/g, "[REDACTED]")
@@ -260,6 +271,38 @@ async function resolveUserEmailOrNull(userId) {
   return { email, userId: user.id };
 }
 
+/**
+ * Official clerk.signIn({ emailAddress }) needs an email identifier.
+ * Production E2E users previously had none (run 31466769298). Attach a
+ * verified +clerk_test address via Backend API (no public Email/Password change).
+ */
+async function ensureVerifiedTestEmail(userId) {
+  const existing = await resolveUserEmailOrNull(userId);
+  if (existing.email) {
+    return { email: existing.email, provisioned: false };
+  }
+  const hash = createHash("sha256").update(userId).digest("hex").slice(0, 12);
+  const emailAddress = `atlas-e2e-${hash}+clerk_test@example.com`;
+  const client = buildClerkClient();
+  try {
+    await client.emailAddresses.createEmailAddress({
+      userId,
+      emailAddress,
+      verified: true,
+      primary: true,
+    });
+    return { email: emailAddress, provisioned: true };
+  } catch (err) {
+    const again = await resolveUserEmailOrNull(userId).catch(() => ({
+      email: null,
+    }));
+    if (again.email) {
+      return { email: again.email, provisioned: false };
+    }
+    throw new Error(`ensure_e2e_email_failed:${sanitizeClerkError(err)}`);
+  }
+}
+
 async function collectAuthDiagnostics(page) {
   const cookies = await page.context().cookies();
   const cookieNames = cookies
@@ -312,7 +355,9 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     secretCanReadE2EUser: false,
     frontendApiMatchesAppHost: false,
     emailResolved: false,
+    emailProvisioned: false,
     emailRedacted: null,
+    testingTokenRouted: false,
     signInPath: "clerk.signIn.emailAddress",
     signInTokenCreated: false,
     acceptUrlPresent: false,
@@ -328,10 +373,11 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     ticketRedeemError: null,
     backendSessionCreated: false,
     backendSessionTokenMinted: false,
+    backendSessionUnavailableOnProduction: false,
     cookieSuffix: null,
     signInError: null,
     failureStage: "init",
-    authMethod: "clerk_testing_userid_token",
+    authMethod: "clerk_testing_email_signin",
     expectedUserIdRedacted: redactId(expectedUserId),
   };
 
@@ -376,11 +422,15 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
 
   let email = null;
   try {
-    auth.failureStage = "resolve_user_email";
-    const resolved = await resolveUserEmailOrNull(expectedUserId);
-    email = resolved.email;
+    auth.failureStage = "ensure_user_email";
+    const ensured = await ensureVerifiedTestEmail(expectedUserId);
+    email = ensured.email;
+    auth.emailProvisioned = Boolean(ensured.provisioned);
     auth.emailResolved = Boolean(email);
     auth.emailRedacted = redactEmail(email);
+    if (!email) {
+      throw new Error("e2e_user_email_unresolved_after_ensure");
+    }
   } catch (err) {
     if (!err.auth) err.auth = auth;
     throw err;
@@ -395,6 +445,12 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
   context.setDefaultTimeout(60_000);
   context.setDefaultNavigationTimeout(60_000);
   const page = await context.newPage();
+
+  // MUST run before any navigation: injects __clerk_testing_token on FAPI and
+  // forces captcha_bypass. Evidence 31472747307 hung on ticket create when this
+  // ran only after accept-url navigations.
+  await setupClerkTestingToken({ context });
+  auth.testingTokenRouted = true;
 
   page.on("framenavigated", (frame) => {
     if (frame !== page.mainFrame()) return;
@@ -530,60 +586,32 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     return false;
   }
 
-  async function redeemTicketOnApp(ticket) {
-    await setupClerkTestingToken({ page });
+  async function redeemTicketViaOfficialHelper(ticket) {
     await openPublicClerkPage();
-    const result = await page.evaluate(async (t) => {
-      const work = async () => {
-        if (!window.Clerk?.client?.signIn?.create) {
-          return { ok: false, error: "missing_client_signIn_create" };
-        }
-        const signIn = await window.Clerk.client.signIn.create({
-          strategy: "ticket",
-          ticket: t,
-        });
-        if (signIn.status === "complete" && signIn.createdSessionId) {
-          await window.Clerk.setActive({ session: signIn.createdSessionId });
-          return {
-            ok: true,
-            status: signIn.status,
-            userId: window.Clerk.user?.id ?? null,
-          };
-        }
-        return {
-          ok: false,
-          status: signIn.status ?? null,
-          error: `incomplete_status:${signIn.status}`,
-        };
-      };
-      try {
-        return await Promise.race([
-          work(),
-          new Promise((resolve) =>
-            setTimeout(
-              () => resolve({ ok: false, error: "browser_ticket_create_timeout" }),
-              20_000,
-            ),
-          ),
-        ]);
-      } catch (e) {
-        return {
-          ok: false,
-          error: String(e?.message || e).slice(0, 220),
-        };
-      }
-    }, ticket);
-    auth.ticketRedeemStatus = result?.status ?? null;
-    auth.ticketRedeemError = result?.error
-      ? sanitizeClerkError(result.error)
-      : null;
-    return result;
+    try {
+      await withTimeout(
+        clerk.signIn({
+          page,
+          signInParams: { strategy: "ticket", ticket },
+        }),
+        45_000,
+        "clerk_sign_in_ticket",
+      );
+      auth.ticketRedeemStatus = "complete";
+      auth.ticketRedeemError = null;
+      return { ok: true, status: "complete" };
+    } catch (err) {
+      const detail = sanitizeClerkError(err);
+      auth.ticketRedeemStatus = null;
+      auth.ticketRedeemError = detail;
+      return { ok: false, error: detail };
+    }
   }
 
   /**
    * Backend Session API → real session JWT → Clerk __session cookie(s).
-   * Not a fixed/fake cookie: JWT is minted by Clerk for the real E2E userId.
-   * Used when client ticket redeem hangs under Production bot protection.
+   * Clerk documents createSession as testing-only and unavailable on Production
+   * (evidence 31472747307: Bad Request). Kept as last-resort with clear flag.
    */
   async function signInViaBackendSession() {
     auth.failureStage = "backend_create_session";
@@ -595,8 +623,12 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
         userId: expectedUserId,
       });
     } catch (err) {
-      auth.signInError = sanitizeClerkError(err);
-      return { ok: false, error: auth.signInError };
+      const detail = sanitizeClerkError(err);
+      auth.signInError = detail;
+      if (/bad request|not available|testing|production/i.test(detail)) {
+        auth.backendSessionUnavailableOnProduction = true;
+      }
+      return { ok: false, error: detail };
     }
     auth.backendSessionCreated = Boolean(session?.id);
     const tokenObj = await client.sessions.getToken(session.id);
@@ -662,95 +694,60 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     auth.failureStage = "open_public_clerk_page";
     await openPublicClerkPage();
 
-    // Path A: official email helper when the E2E user has an email identifier.
-    if (email) {
-      auth.failureStage = "clerk_sign_in_email";
-      console.log(JSON.stringify({ progress: "clerk_sign_in_email" }));
-      try {
-        await withTimeout(
-          clerk.signIn({ page, emailAddress: email }),
-          60_000,
-          "clerk_sign_in_email",
-        );
-        auth.signInPath = "clerk.signIn.emailAddress";
-      } catch (err) {
-        pathErrors.push(`email:${sanitizeClerkError(err)}`);
-        auth.signInError = sanitizeClerkError(err);
-        email = null; // fall through to userId token paths
-      }
+    // Path A: official email helper (Sign-in Token + ticket; captcha bypass already on).
+    auth.failureStage = "clerk_sign_in_email";
+    console.log(
+      JSON.stringify({
+        progress: "clerk_sign_in_email",
+        emailProvisioned: auth.emailProvisioned,
+      }),
+    );
+    try {
+      await withTimeout(
+        clerk.signIn({ page, emailAddress: email }),
+        90_000,
+        "clerk_sign_in_email",
+      );
+      auth.signInPath = "clerk.signIn.emailAddress";
+      auth.signInTokenCreated = true;
+    } catch (err) {
+      pathErrors.push(`email:${sanitizeClerkError(err)}`);
+      auth.signInError = sanitizeClerkError(err);
     }
 
-    // Path B/C: userId Sign-in Token (works when emailAddresses is empty).
-    // Production evidence (run 31466769298): E2E users had no email on record.
-    let sessionProbe = await waitForSessionUserId(8_000);
-    if (sessionProbe === expectedUserId) {
-      auth.signInPath = auth.signInPath || "clerk.signIn.emailAddress";
-    } else {
-      auth.failureStage = "clerk_ticket_accept_url";
-      auth.signInPath = "sign_in_token.accept_url";
-      console.log(JSON.stringify({ progress: "clerk_ticket_accept_url" }));
+    let sessionProbe = await waitForSessionUserId(12_000);
+    if (sessionProbe !== expectedUserId) {
+      // Path B: fresh Sign-in Token via official ticket helper (testing token already routed).
+      auth.failureStage = "clerk_sign_in_ticket";
+      auth.signInPath = "clerk.signIn.ticket";
+      console.log(JSON.stringify({ progress: "clerk_sign_in_ticket" }));
       const token = await mintSignInToken();
-      const usedAccept = await consumeAcceptUrl(token);
-      sessionProbe = await waitForSessionUserId(25_000);
+      // Optional accept URL attempt (short) — may establish client state.
+      await consumeAcceptUrl(token).catch(() => false);
+      sessionProbe = await waitForSessionUserId(8_000);
       if (sessionProbe !== expectedUserId) {
-        auth.failureStage = "clerk_ticket_redeem_on_app";
-        auth.signInPath = usedAccept
-          ? "ticket_redeem_after_accept"
-          : "ticket_redeem_on_app";
-        console.log(
-          JSON.stringify({ progress: "clerk_ticket_redeem_on_app" }),
-        );
-        // Mint a fresh token — accept URL may have consumed the previous one.
-        // Production evidence (31470602669 / 31471647287): client ticket create
-        // can hang under bot protection. withTimeout MUST NOT abort the outer
-        // try — otherwise Path D Backend session never runs.
         const token2 = await mintSignInToken();
-        let redeemed = null;
-        try {
-          redeemed = await withTimeout(
-            redeemTicketOnApp(token2.token),
-            // Shorter when no email: Path D is the proven fallback.
-            email ? 45_000 : 25_000,
-            "ticket_redeem_on_app",
-          );
-        } catch (err) {
-          redeemed = { ok: false, error: sanitizeClerkError(err) };
-          pathErrors.push(`ticket_redeem:${redeemed.error}`);
+        const redeemed = await redeemTicketViaOfficialHelper(token2.token);
+        if (!redeemed.ok) {
+          pathErrors.push(`ticket:${redeemed.error || "failed"}`);
           auth.signInError = pathErrors.join(" | ").slice(0, 280);
-          auth.ticketRedeemError = redeemed.error;
-        }
-        if (!redeemed?.ok) {
-          if (!pathErrors.some((e) => e.startsWith("ticket_redeem:"))) {
-            pathErrors.push(
-              `ticket_redeem:${redeemed?.error || redeemed?.status || "failed"}`,
-            );
-          }
-          auth.signInError = pathErrors.join(" | ").slice(0, 280);
-          // Path D: Backend createSession + session JWT cookies (real Clerk session).
-          const backend = await signInViaBackendSession();
-          if (!backend.ok) {
-            pathErrors.push(`backend_session:${backend.error}`);
-            auth.signInError = pathErrors.join(" | ").slice(0, 280);
-            throw new Error(auth.signInError);
-          }
+        } else {
+          auth.signInPath = "clerk.signIn.ticket";
         }
       }
     }
 
-    // If still unsigned after token paths (e.g. accept URL left us on /sign-in), try Backend session.
-    // Also covers cases where ticket redeem "succeeded" in status but no session cookie landed.
     sessionProbe = await waitForSessionUserId(8_000);
     if (sessionProbe !== expectedUserId) {
       const apiProbeEarly = await page.request
         .get(`${APP_URL}/api/notifications`)
         .catch(() => null);
-      if (apiProbeEarly?.status() !== 200) {
-        if (!auth.backendSessionCreated) {
-          const backend = await signInViaBackendSession();
-          if (!backend.ok) {
-            pathErrors.push(`backend_session_final:${backend.error}`);
-            auth.signInError = pathErrors.join(" | ").slice(0, 280);
-          }
+      if (apiProbeEarly?.status() !== 200 && !auth.backendSessionCreated) {
+        // Path C: createSession — expected to fail on Production instances.
+        const backend = await signInViaBackendSession();
+        if (!backend.ok) {
+          pathErrors.push(`backend_session:${backend.error}`);
+          auth.signInError = pathErrors.join(" | ").slice(0, 280);
         }
       }
     }
