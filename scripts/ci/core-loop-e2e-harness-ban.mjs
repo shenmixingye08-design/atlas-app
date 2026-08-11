@@ -58,6 +58,8 @@ for (const keep of [
   "cookieDomains",
   "createSession",
   "backend_session_cookie",
+  "waitForProductionSha",
+  "CORE_LOOP_EXPECT_SHA",
 ]) {
   if (!script.includes(keep)) violations.push(`e2e_script_missing:${keep}`);
 }

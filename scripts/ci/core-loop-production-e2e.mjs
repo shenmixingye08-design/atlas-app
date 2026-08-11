@@ -10,8 +10,10 @@
  *   4) Auth paths (in order):
  *      A) clerk.signIn({ emailAddress }) when email exists
  *      B) Sign-in Token token.url accept (/v1/tickets/accept) by userId
- *      C) clerk.signIn({ strategy:'ticket' }) with fresh userId token
- *   5) Prove session: Clerk.user.id + authenticated API == 200 + protected page
+ *      C) client.signIn.create({ strategy:'ticket' }) with fresh userId token
+ *      D) Backend sessions.createSession + real __session JWT cookie (fallback)
+ *         — always reached even when Path C times out (withTimeout must not abort)
+ *   5) Prove session: Clerk.user.id OR (Backend JWT cookie + API 200) + protected page
  *
  * NOT used:
  *   - Agent Tasks API (not present in this Production Dashboard)
@@ -145,6 +147,57 @@ async function fetchProductionVersion() {
   });
   const json = await res.json();
   return { httpStatus: res.status, ...json };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Wait until Production /api/health/version matches the expected git SHA.
+ * Avoids racing Vercel Production deploy after merge-to-main (evidence run
+ * 31471647287 ran against stale SHA d513789 while main was already b2e1029).
+ */
+async function waitForProductionSha(expectedSha, { timeoutMs = 10 * 60_000 } = {}) {
+  const full = String(expectedSha || "").trim();
+  if (!full || full.length < 7) return null;
+  const short = full.slice(0, 7);
+  const deadline = Date.now() + timeoutMs;
+  let last = null;
+  while (Date.now() < deadline) {
+    last = await fetchProductionVersion().catch((err) => ({
+      ok: false,
+      error: sanitizeClerkError(err),
+    }));
+    const got = last?.commitSha || "";
+    const gotShort = last?.commitShaShort || got.slice(0, 7);
+    if (
+      last?.ok &&
+      last?.environment === "production" &&
+      (got === full || gotShort === short || got.startsWith(short))
+    ) {
+      console.log(
+        JSON.stringify({
+          progress: "production_sha_matched",
+          expectedShort: short,
+          productionShaShort: gotShort,
+        }),
+      );
+      return last;
+    }
+    console.log(
+      JSON.stringify({
+        progress: "wait_production_sha",
+        expectedShort: short,
+        productionShaShort: gotShort || null,
+        environment: last?.environment ?? null,
+      }),
+    );
+    await sleep(15_000);
+  }
+  throw new Error(
+    `production_sha_timeout expected=${short} last=${last?.commitShaShort || last?.commitSha || "null"}`,
+  );
 }
 
 function buildClerkClient() {
@@ -564,6 +617,11 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     const cookieNames = suffix
       ? [`__session_${suffix}`, "__session"]
       : ["__session"];
+    // Clerk middleware often pairs session JWT with client_uat; set both.
+    const uatValue = String(Math.floor(Date.now() / 1000));
+    const uatNames = suffix
+      ? [`__client_uat_${suffix}`, "__client_uat"]
+      : ["__client_uat"];
     const domains = [".atlasapp.jp", "atlasapp.jp"];
     const cookies = [];
     for (const domain of domains) {
@@ -571,6 +629,17 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
         cookies.push({
           name,
           value: jwt,
+          domain,
+          path: "/",
+          secure: true,
+          httpOnly: false,
+          sameSite: "Lax",
+        });
+      }
+      for (const name of uatNames) {
+        cookies.push({
+          name,
+          value: uatValue,
           domain,
           path: "/",
           secure: true,
@@ -632,16 +701,30 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
           JSON.stringify({ progress: "clerk_ticket_redeem_on_app" }),
         );
         // Mint a fresh token — accept URL may have consumed the previous one.
+        // Production evidence (31470602669 / 31471647287): client ticket create
+        // can hang under bot protection. withTimeout MUST NOT abort the outer
+        // try — otherwise Path D Backend session never runs.
         const token2 = await mintSignInToken();
-        const redeemed = await withTimeout(
-          redeemTicketOnApp(token2.token),
-          45_000,
-          "ticket_redeem_on_app",
-        );
-        if (!redeemed?.ok) {
-          pathErrors.push(
-            `ticket_redeem:${redeemed?.error || redeemed?.status || "failed"}`,
+        let redeemed = null;
+        try {
+          redeemed = await withTimeout(
+            redeemTicketOnApp(token2.token),
+            // Shorter when no email: Path D is the proven fallback.
+            email ? 45_000 : 25_000,
+            "ticket_redeem_on_app",
           );
+        } catch (err) {
+          redeemed = { ok: false, error: sanitizeClerkError(err) };
+          pathErrors.push(`ticket_redeem:${redeemed.error}`);
+          auth.signInError = pathErrors.join(" | ").slice(0, 280);
+          auth.ticketRedeemError = redeemed.error;
+        }
+        if (!redeemed?.ok) {
+          if (!pathErrors.some((e) => e.startsWith("ticket_redeem:"))) {
+            pathErrors.push(
+              `ticket_redeem:${redeemed?.error || redeemed?.status || "failed"}`,
+            );
+          }
           auth.signInError = pathErrors.join(" | ").slice(0, 280);
           // Path D: Backend createSession + session JWT cookies (real Clerk session).
           const backend = await signInViaBackendSession();
@@ -655,16 +738,19 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     }
 
     // If still unsigned after token paths (e.g. accept URL left us on /sign-in), try Backend session.
+    // Also covers cases where ticket redeem "succeeded" in status but no session cookie landed.
     sessionProbe = await waitForSessionUserId(8_000);
     if (sessionProbe !== expectedUserId) {
       const apiProbeEarly = await page.request
         .get(`${APP_URL}/api/notifications`)
         .catch(() => null);
       if (apiProbeEarly?.status() !== 200) {
-        const backend = await signInViaBackendSession();
-        if (!backend.ok) {
-          pathErrors.push(`backend_session_final:${backend.error}`);
-          auth.signInError = pathErrors.join(" | ").slice(0, 280);
+        if (!auth.backendSessionCreated) {
+          const backend = await signInViaBackendSession();
+          if (!backend.ok) {
+            pathErrors.push(`backend_session_final:${backend.error}`);
+            auth.signInError = pathErrors.join(" | ").slice(0, 280);
+          }
         }
       }
     }
@@ -856,7 +942,13 @@ async function main() {
   process.env.CLERK_PUBLISHABLE_KEY = CLERK_PUBLISHABLE;
 
   try {
-    const version = await fetchProductionVersion();
+    const expectSha =
+      process.env.CORE_LOOP_EXPECT_SHA?.trim() ||
+      process.env.GITHUB_SHA?.trim() ||
+      "";
+    const version = expectSha
+      ? await waitForProductionSha(expectSha)
+      : await fetchProductionVersion();
     evidence.productionSha = version.commitSha || null;
     evidence.productionShaShort = version.commitShaShort || null;
     if (!version.ok || version.environment !== "production") {
