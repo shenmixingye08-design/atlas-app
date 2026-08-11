@@ -49,11 +49,12 @@
 ### 3) 実行
 
 1. 本ハーネスの PR を main へ Merge  
-2. Production `/api/health/version` の SHA が merge を含むことを確認  
-3. Actions: **Verify CORE LOOP Production E2E** を **Run workflow**  
+2. `scripts/ci/core-loop-production-e2e.mjs` または本 workflow を含む push は、Actions **Verify CORE LOOP Production E2E** を **自動起動**する（手動 Run 不要）  
+3. Production `/api/health/version` の SHA が merge を含むことを確認（E2E は Production URL を叩く）  
 4. 認証証拠の最低条件:  
    `clerkSetupOk=true` / `clerkSignInOk=true` / `clerkSessionDetected=true` /  
-   `authenticatedUserIdMatchesExpected=true` / `authApiStatus=200` / `protectedPageAccessible=true`
+   `authenticatedUserIdMatchesExpected=true` / `authApiStatus=200` / `protectedPageAccessible=true`  
+5. 必要なら Actions から手動 `workflow_dispatch` も可能
 
 ## 禁止事項
 

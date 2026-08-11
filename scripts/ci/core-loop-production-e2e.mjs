@@ -252,6 +252,10 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     emailResolved: false,
     emailRedacted: null,
     signInPath: "clerk.signIn.emailAddress",
+    signInTokenCreated: false,
+    acceptUrlPresent: false,
+    acceptUrlOrigin: null,
+    acceptUrlPath: null,
     initialHttpStatus: null,
     redirectChain: [],
     finalUrlPath: null,
@@ -328,53 +332,130 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     }
   });
 
-  try {
-    // Official requirement: navigate to a non-protected page that loads Clerk
-    // BEFORE clerk.signIn (helper attaches Testing Token + waits for Clerk.loaded).
-    auth.failureStage = "open_public_clerk_page";
-    const publicResp = await page.goto(`${APP_URL}/`, {
+  async function waitForSessionUserId(timeoutMs = 45_000) {
+    await page
+      .waitForFunction(
+        () => Boolean(window.Clerk?.loaded && window.Clerk?.user?.id),
+        { timeout: timeoutMs },
+      )
+      .catch(() => null);
+    return page.evaluate(() => window.Clerk?.user?.id ?? null).catch(() => null);
+  }
+
+  async function openPublicClerkPage() {
+    // Prefer /sign-in (public, guaranteed Clerk bootstrap) without ticket query.
+    const publicResp = await page.goto(`${APP_URL}/sign-in`, {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
-    auth.initialHttpStatus = publicResp?.status() ?? null;
+    if (auth.initialHttpStatus == null) {
+      auth.initialHttpStatus = publicResp?.status() ?? null;
+    }
+    await clerk.loaded({ page }).catch(() => null);
+  }
+
+  try {
+    // Path A (Clerk official recommended): clerk.signIn({ emailAddress })
+    auth.failureStage = "open_public_clerk_page";
+    await openPublicClerkPage();
 
     auth.failureStage = "clerk_sign_in_email";
+    let pathErrors = [];
     try {
       await clerk.signIn({ page, emailAddress: email });
+      auth.signInPath = "clerk.signIn.emailAddress";
     } catch (err) {
+      pathErrors.push(`email:${sanitizeClerkError(err)}`);
       auth.signInError = sanitizeClerkError(err);
-      // Fallback: official ticket strategy helper (still NOT /sign-in?ticket URL).
-      auth.failureStage = "clerk_sign_in_ticket_helper";
-      auth.signInPath = "clerk.signIn.ticket_helper_fallback";
+
+      // Path B: Clerk Backend accept URL (token.url → /v1/tickets/accept)
+      // This is NOT the app /sign-in?ticket query path that previously looped.
+      auth.failureStage = "clerk_ticket_accept_url";
+      auth.signInPath = "sign_in_token.accept_url";
       const client = buildClerkClient();
       const token = await client.signInTokens.createSignInToken({
         userId: expectedUserId,
         expiresInSeconds: 300,
       });
       if (!token?.token) {
-        throw new Error("sign_in_token_missing_for_ticket_helper_fallback");
+        throw new Error("sign_in_token_missing");
       }
-      await page.goto(`${APP_URL}/`, {
-        waitUntil: "domcontentloaded",
-        timeout: 60_000,
-      });
-      await clerk.signIn({
-        page,
-        signInParams: { strategy: "ticket", ticket: token.token },
-      });
+      auth.signInTokenCreated = true;
+      const acceptUrl =
+        typeof token.url === "string" && token.url.startsWith("http")
+          ? token.url
+          : null;
+      auth.acceptUrlPresent = Boolean(acceptUrl);
+      if (acceptUrl) {
+        const acceptMeta = safeUrlMeta(acceptUrl);
+        auth.acceptUrlOrigin = acceptMeta.origin;
+        auth.acceptUrlPath = acceptMeta.pathname;
+        const testing = process.env.CLERK_TESTING_TOKEN;
+        let navUrl = acceptUrl;
+        try {
+          const u = new URL(acceptUrl);
+          if (testing && !u.searchParams.has("__clerk_testing_token")) {
+            u.searchParams.set("__clerk_testing_token", testing);
+          }
+          navUrl = u.toString();
+        } catch {
+          // use raw acceptUrl
+        }
+        await page.goto(navUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: 60_000,
+        });
+        const appOrigin = new URL(APP_URL).origin;
+        if (!page.url().startsWith(appOrigin)) {
+          await page
+            .waitForURL(
+              (url) => {
+                try {
+                  return new URL(url).origin === appOrigin;
+                } catch {
+                  return false;
+                }
+              },
+              { timeout: 60_000 },
+            )
+            .catch(() => null);
+        }
+        if (!page.url().startsWith(appOrigin)) {
+          await page.goto(`${APP_URL}/projects`, {
+            waitUntil: "domcontentloaded",
+            timeout: 60_000,
+          });
+        }
+      } else {
+        // Path C: official helper ticket strategy on a Clerk-loaded page
+        auth.failureStage = "clerk_sign_in_ticket_helper";
+        auth.signInPath = "clerk.signIn.ticket_helper_fallback";
+        await openPublicClerkPage();
+        try {
+          await clerk.signIn({
+            page,
+            signInParams: { strategy: "ticket", ticket: token.token },
+          });
+        } catch (err2) {
+          pathErrors.push(`ticket_helper:${sanitizeClerkError(err2)}`);
+          auth.signInError = pathErrors.join(" | ").slice(0, 280);
+          throw err2;
+        }
+      }
     }
 
     auth.failureStage = "wait_clerk_session";
-    await page
-      .waitForFunction(
-        () => Boolean(window.Clerk?.loaded && window.Clerk?.user?.id),
-        { timeout: 45_000 },
-      )
-      .catch(() => null);
+    let sessionUserId = await waitForSessionUserId(45_000);
 
-    const sessionUserId = await page
-      .evaluate(() => window.Clerk?.user?.id ?? null)
-      .catch(() => null);
+    // If Clerk JS user is set but cookies may lag, reload once on app origin.
+    if (sessionUserId === expectedUserId) {
+      await page.goto(`${APP_URL}/projects`, {
+        waitUntil: "domcontentloaded",
+        timeout: 60_000,
+      });
+      sessionUserId = await waitForSessionUserId(30_000);
+    }
+
     auth.clerkSessionDetected = Boolean(sessionUserId);
     auth.authenticatedUserIdMatchesExpected = sessionUserId === expectedUserId;
     auth.clerkSignInOk =

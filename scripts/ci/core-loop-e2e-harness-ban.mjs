@@ -77,7 +77,10 @@ if (/sample.*PASS|health probe.*PASS/i.test(script) && !script.includes("health/
 
 const wf = read(".github/workflows/verify-core-loop-production-e2e.yml");
 if (!/workflow_dispatch/.test(wf)) {
-  violations.push("workflow_must_be_manual_dispatch");
+  violations.push("workflow_must_allow_manual_dispatch");
+}
+if (!/push:/.test(wf) || !/core-loop-production-e2e\.mjs/.test(wf)) {
+  violations.push("workflow_must_auto_trigger_on_harness_push");
 }
 if (!/CLERK_SECRET_KEY/.test(wf) || !/E2E_CLERK_USER_ID/.test(wf)) {
   violations.push("workflow_missing_secret_refs");
