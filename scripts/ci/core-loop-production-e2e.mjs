@@ -1019,19 +1019,35 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
 }
 
 function pickDeliverableId(result) {
-  const files = result?.files;
-  if (!Array.isArray(files)) return null;
-  for (const f of files) {
-    if (f && typeof f.id === "string" && f.id.length > 0) return f.id;
-    if (f && typeof f.deliverableId === "string") return f.deliverableId;
-  }
-  const nested = result?.deliverables;
-  if (Array.isArray(nested)) {
-    for (const f of nested) {
-      if (f && typeof f.id === "string") return f.id;
+  // Production SoT uses fileDeliverables (commander/document export).
+  // Also accept legacy aliases files / deliverables if present.
+  const lists = [
+    result?.fileDeliverables,
+    result?.files,
+    result?.deliverables,
+  ];
+  for (const files of lists) {
+    if (!Array.isArray(files)) continue;
+    for (const f of files) {
+      if (f && typeof f.id === "string" && f.id.length > 0) return f.id;
+      if (f && typeof f.deliverableId === "string" && f.deliverableId.length > 0) {
+        return f.deliverableId;
+      }
     }
   }
   return null;
+}
+
+function listJobDeliverableFiles(result) {
+  const lists = [
+    result?.fileDeliverables,
+    result?.files,
+    result?.deliverables,
+  ];
+  for (const files of lists) {
+    if (Array.isArray(files) && files.length > 0) return files;
+  }
+  return [];
 }
 
 function scanSecretsInUiText(text) {
@@ -1266,11 +1282,9 @@ async function main() {
 
       const artifactId = pickDeliverableId(jobBody.result);
       evidence.artifactId = artifactId;
-      const fileMeta = (
-        jobBody.result.files ||
-        jobBody.result.deliverables ||
-        []
-      ).find((f) => f && (f.id === artifactId || f.deliverableId === artifactId));
+      const fileMeta = listJobDeliverableFiles(jobBody.result).find(
+        (f) => f && (f.id === artifactId || f.deliverableId === artifactId),
+      );
       evidence.artifactType =
         fileMeta?.format || fileMeta?.mimeType || fileMeta?.fileName || null;
 
