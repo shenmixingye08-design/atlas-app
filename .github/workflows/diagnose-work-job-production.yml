@@ -1,6 +1,7 @@
 # Production work-job diagnostic via E2E Clerk auth → GET /api/work/jobs/:id
 # (DB secrets are not available in Actions; Vercel holds Supabase SoT.)
 name: Diagnose Work Job Production
+# retrigger: f2bf785 public health match
 
 on:
   workflow_dispatch:
