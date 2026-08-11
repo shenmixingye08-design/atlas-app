@@ -11,7 +11,8 @@
   - `clerkSetup()` — Testing Token 取得（Production 対応）
   - email がある場合: `clerk.signIn({ emailAddress })`
   - email が無い場合: Sign-in Token（accept URL / client ticket）
-  - client ticket が Production bot 保護でハングする場合: Backend `sessions.createSession(userId)` + session JWT を `__session` cookie として設定（固定cookieや偽userIdではない。Clerk が当該 E2E user に発行した実セッション）
+  - client ticket が Production bot 保護でハング / timeout する場合: Backend `sessions.createSession(userId)` + session JWT を `__session` / `__client_uat` cookie として設定（固定cookieや偽userIdではない。Clerk が当該 E2E user に発行した実セッション）。timeout が throw しても Path D に必ず到達する
+  - CI は `CORE_LOOP_EXPECT_SHA`（= `github.sha`）と Production `/api/health/version` が一致するまで待ってから検証する（デプロイ競合防止）
 - Email/Password ログインの公開有効化は不要（Google 設定も変更しない）
 - Playwright が `https://atlasapp.jp` の UI/API 正規経路を通る
 

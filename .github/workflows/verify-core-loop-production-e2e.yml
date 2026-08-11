@@ -95,6 +95,10 @@ jobs:
           E2E_CLERK_USER_ID: ${{ secrets.E2E_CLERK_USER_ID }}
           E2E_CLERK_USER_B_ID: ${{ secrets.E2E_CLERK_USER_B_ID }}
           CORE_LOOP_E2E_OUT: ${{ runner.temp }}/core-loop-e2e
+          # Match Vercel Production to this commit before asserting CORE LOOP
+          # (prevents stale-SHA false FAIL like run 31471647287 vs d513789).
+          CORE_LOOP_EXPECT_SHA: ${{ github.sha }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           export ATLAS_APP_URL="${ATLAS_APP_URL:-https://atlasapp.jp}"
@@ -103,6 +107,7 @@ jobs:
           fi
           mkdir -p "${CORE_LOOP_E2E_OUT}"
           echo "harness_ref=$(git rev-parse --short HEAD)"
+          echo "expect_sha_short=$(echo "${GITHUB_SHA}" | cut -c1-7)"
           echo "trigger=${{ github.event_name }}"
           set +e
           node scripts/ci/core-loop-production-e2e.mjs
