@@ -1,0 +1,92 @@
+/**
+ * Inline SQL for Production apply=1 (serverless may omit supabase/migrations).
+ * Mirrors supabase/migrations/20260805_p0_7_document_generation_pipeline.sql
+ * for atlas_document_generation_jobs only (idempotent; P0-3 artifact indexes omitted
+ * so apply does not fail when deliverable_files columns differ).
+ */
+
+export const ATLAS_DOCUMENT_PIPELINE_MIGRATION_SQL = `
+-- P0-7: Document generation pipeline jobs (progress / retry / cancel).
+-- SAFE: additive. Does not alter Planner/Deliverable cores.
+
+create table if not exists public.atlas_document_generation_jobs (
+  id text primary key,
+  owner_user_id text not null,
+  organization_id text,
+  work_job_id text,
+  run_id text,
+  status text not null
+    check (status in (
+      'queued',
+      'planning',
+      'generating',
+      'rendering',
+      'exporting',
+      'persisting',
+      'verifying',
+      'completed',
+      'failed',
+      'cancelled',
+      'retry_scheduled',
+      'timed_out'
+    )),
+  stage text not null default 'queued',
+  requested_formats text[] not null default '{}',
+  completed_formats text[] not null default '{}',
+  failed_formats text[] not null default '{}',
+  progress_pct integer not null default 0
+    check (progress_pct >= 0 and progress_pct <= 100),
+  attempt integer not null default 1,
+  max_attempts integer not null default 3,
+  retry_count integer not null default 0,
+  next_retry_at timestamptz,
+  error_code text,
+  error_message text,
+  artifact_ids text[] not null default '{}',
+  completion_evidence_ids text[] not null default '{}',
+  checksums text[] not null default '{}',
+  byte_sizes bigint[] not null default '{}',
+  cancelled_at timestamptz,
+  timed_out_at timestamptz,
+  started_at timestamptz,
+  finished_at timestamptz,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists atlas_document_generation_jobs_owner_idx
+  on public.atlas_document_generation_jobs (owner_user_id, created_at desc);
+
+create index if not exists atlas_document_generation_jobs_status_idx
+  on public.atlas_document_generation_jobs (status, updated_at desc);
+
+create index if not exists atlas_document_generation_jobs_retry_idx
+  on public.atlas_document_generation_jobs (status, next_retry_at)
+  where status = 'retry_scheduled';
+
+create index if not exists atlas_document_generation_jobs_work_job_idx
+  on public.atlas_document_generation_jobs (work_job_id)
+  where work_job_id is not null;
+
+create index if not exists atlas_document_generation_jobs_org_idx
+  on public.atlas_document_generation_jobs (organization_id)
+  where organization_id is not null;
+
+alter table public.atlas_document_generation_jobs enable row level security;
+
+drop policy if exists "atlas_document_generation_jobs_deny_anon"
+  on public.atlas_document_generation_jobs;
+create policy "atlas_document_generation_jobs_deny_anon"
+  on public.atlas_document_generation_jobs
+  for all
+  to anon, authenticated
+  using (false)
+  with check (false);
+
+comment on table public.atlas_document_generation_jobs is
+  'P0-7 unified document generation pipeline progress / retry / cancel.';
+
+-- Refresh PostgREST schema cache so new tables are visible immediately.
+notify pgrst, 'reload schema';
+`;
