@@ -543,11 +543,34 @@ export async function executeWorkJob(
 
     // Best-effort failed persist — if this also fails, rethrow.
     // P06: do not delete any partial deliverables already saved for this job.
+    // Persist failureDiagnostic so GET /api/work/jobs/:id and E2E can see stage/code
+    // (user-facing error stays soft-retry; raw cause stays in developer-log / diagnostic).
+    const failureClass = /timeout|ETIMEDOUT|aborted/i.test(raw)
+      ? "timeout"
+      : /work_job_claim_unavailable|service.?role|supabase/i.test(raw)
+        ? "persistence"
+        : /openai|rate.?limit|429/i.test(raw)
+          ? "external_ai"
+          : "work_job_exception";
     try {
       return await saveWorkJob({
         ...existing,
         status: "failed",
-        metadata: withPropagatedJobId(existing.metadata, jobId),
+        metadata: withPropagatedJobId(
+          {
+            ...(existing.metadata ?? {}),
+            failureDiagnostic: {
+              jobId,
+              diagnosticId: `diag_${jobId}`,
+              failedStage: isTimeout ? "timeout" : "work_job",
+              developerCode: failureClass,
+              failureClass,
+              cause: raw.slice(0, 500),
+              safeMessage: message,
+            },
+          },
+          jobId,
+        ),
         attemptCount: existing.attemptCount + 1,
         error: message,
         visionGate: existing.visionGate ?? null,

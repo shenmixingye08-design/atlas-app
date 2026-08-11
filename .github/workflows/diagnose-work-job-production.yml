@@ -1,0 +1,120 @@
+# Production work-job diagnostic via E2E Clerk auth → GET /api/work/jobs/:id
+# (DB secrets are not available in Actions; Vercel holds Supabase SoT.)
+name: Diagnose Work Job Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Work job UUID to diagnose
+        required: true
+        type: string
+  push:
+    branches: [main, "cursor/**"]
+    paths:
+      - "scripts/ci/fetch-work-job-via-e2e-auth.mjs"
+      - "scripts/ci/diagnose-work-job-production.mjs"
+      - ".github/workflows/diagnose-work-job-production.yml"
+
+concurrency:
+  group: diagnose-work-job-production
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Diagnose via Production CRON health (structured logs SoT)
+        id: cron_diagnose
+        env:
+          DIAGNOSE_JOB_ID: ${{ github.event.inputs.job_id || '118dce27-2791-4eb8-a62b-8196eef308ae' }}
+          ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          E2E_CLERK_USER_ID: ${{ secrets.E2E_CLERK_USER_ID }}
+          DIAGNOSE_OUT: ${{ runner.temp }}/diagnose-work-job
+        run: |
+          set -euo pipefail
+          export ATLAS_APP_URL="${ATLAS_APP_URL:-https://atlasapp.jp}"
+          mkdir -p "${DIAGNOSE_OUT}"
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "cron_diagnose=skip_no_secret"
+            echo "cron_ok=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          URL="${ATLAS_APP_URL}/api/health/work-job-diagnose?jobId=${DIAGNOSE_JOB_ID}&force=1"
+          if [ -n "${E2E_CLERK_USER_ID:-}" ]; then
+            URL="${URL}&userId=${E2E_CLERK_USER_ID}"
+          fi
+          code=$(curl -sS -o "${DIAGNOSE_OUT}/cron-diagnose.json" -w "%{http_code}" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Cache-Control: no-store" \
+            "${URL}" || true)
+          echo "cron_http=${code}"
+          echo "cron_http=${code}" >> "$GITHUB_OUTPUT"
+          if [ "${code}" = "200" ]; then
+            echo "cron_ok=1" >> "$GITHUB_OUTPUT"
+            python3 - <<'PY'
+          import json
+          d=json.load(open("/home/runner/work/_temp/diagnose-work-job/cron-diagnose.json"))
+          der=d.get("derived") or {}
+          print(json.dumps({
+            "ok": d.get("ok"),
+            "status": der.get("status"),
+            "failedStage": der.get("failedStage"),
+            "developerCode": der.get("developerCode"),
+            "failureClass": der.get("failureClass"),
+            "diagnosticId": der.get("diagnosticId"),
+            "cause": (der.get("cause") or "")[:200],
+            "step": der.get("step"),
+            "structuredLogCount": len(d.get("structuredLogs") or []),
+            "reliabilityEventCount": len(d.get("reliabilityEvents") or []),
+          }))
+          PY
+          else
+            echo "cron_ok=0" >> "$GITHUB_OUTPUT"
+            head -c 400 "${DIAGNOSE_OUT}/cron-diagnose.json" || true
+          fi
+
+      - name: Fetch job via E2E Clerk session (API surface)
+        env:
+          DIAGNOSE_JOB_ID: ${{ github.event.inputs.job_id || '118dce27-2791-4eb8-a62b-8196eef308ae' }}
+          ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY }}
+          E2E_CLERK_USER_ID: ${{ secrets.E2E_CLERK_USER_ID }}
+          DIAGNOSE_OUT: ${{ runner.temp }}/diagnose-work-job
+        run: |
+          set -euo pipefail
+          export ATLAS_APP_URL="${ATLAS_APP_URL:-https://atlasapp.jp}"
+          if [ -z "${CLERK_PUBLISHABLE_KEY:-}" ] && [ -n "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" ]; then
+            export CLERK_PUBLISHABLE_KEY="${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}"
+          fi
+          mkdir -p "${DIAGNOSE_OUT}"
+          echo "diagnose_job_id_prefix=$(echo "${DIAGNOSE_JOB_ID}" | cut -c1-8)"
+          node scripts/ci/fetch-work-job-via-e2e-auth.mjs
+
+      - name: Upload redacted diagnosis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnose-work-job
+          path: ${{ runner.temp }}/diagnose-work-job/
+          if-no-files-found: warn

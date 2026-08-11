@@ -49,6 +49,15 @@ export async function GET(
     job = (await getWorkJobDurable(id, userId)) ?? job;
   }
 
+  const meta =
+    job.metadata && typeof job.metadata === "object"
+      ? (job.metadata as Record<string, unknown>)
+      : {};
+  const failureDiagnostic =
+    meta.failureDiagnostic && typeof meta.failureDiagnostic === "object"
+      ? (meta.failureDiagnostic as Record<string, unknown>)
+      : null;
+
   return Response.json({
     ok: true,
     jobId: job.id,
@@ -57,6 +66,53 @@ export async function GET(
     visionGate: job.visionGate,
     result: job.result,
     completedAt: job.completedAt,
+    // Owner/E2E diagnostics — no secrets; raw cause already truncated at write time.
+    failureDiagnostic: failureDiagnostic
+      ? {
+          diagnosticId:
+            typeof failureDiagnostic.diagnosticId === "string"
+              ? failureDiagnostic.diagnosticId
+              : null,
+          failedStage:
+            typeof failureDiagnostic.failedStage === "string"
+              ? failureDiagnostic.failedStage
+              : null,
+          developerCode:
+            typeof failureDiagnostic.developerCode === "string"
+              ? failureDiagnostic.developerCode
+              : null,
+          failureClass:
+            typeof failureDiagnostic.failureClass === "string"
+              ? failureDiagnostic.failureClass
+              : null,
+          cause:
+            typeof failureDiagnostic.cause === "string"
+              ? failureDiagnostic.cause.slice(0, 500)
+              : null,
+          safeMessage:
+            typeof failureDiagnostic.safeMessage === "string"
+              ? failureDiagnostic.safeMessage.slice(0, 500)
+              : null,
+        }
+      : null,
+    diagnosticId:
+      (typeof failureDiagnostic?.diagnosticId === "string"
+        ? failureDiagnostic.diagnosticId
+        : null) ??
+      job.visionGate?.diagnosticId ??
+      null,
+    failedStage:
+      (typeof failureDiagnostic?.failedStage === "string"
+        ? failureDiagnostic.failedStage
+        : null) ??
+      job.visionGate?.failedStage ??
+      null,
+    developerCode:
+      (typeof failureDiagnostic?.developerCode === "string"
+        ? failureDiagnostic.developerCode
+        : null) ??
+      job.visionGate?.developerCode ??
+      null,
     message:
       job.status === "queued" || job.status === "running"
         ? "依頼を受け付けました。バックグラウンドで処理しています。"
