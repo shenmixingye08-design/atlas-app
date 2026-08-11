@@ -21,6 +21,8 @@ export type PdfQualityReport = {
   /** Number of rasterized page images successfully produced. */
   rasterizedPages: number;
   reasons: string[];
+  /** False on Vercel/serverless when poppler pdftoppm is not installed. */
+  rasterizeToolAvailable?: boolean;
 };
 
 function countBlankLinesRatio(text: string): number {
@@ -41,6 +43,39 @@ async function extractWithPdftotext(pdfPath: string): Promise<string> {
   } catch {
     return "";
   }
+}
+
+let pdftoppmAvailableCache: boolean | null = null;
+
+/** Cached probe: Production Vercel images typically lack poppler-utils. */
+export async function isPdftoppmAvailable(): Promise<boolean> {
+  if (pdftoppmAvailableCache != null) return pdftoppmAvailableCache;
+  try {
+    await execFileAsync("pdftoppm", ["-v"], { timeout: 3_000 });
+    pdftoppmAvailableCache = true;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException & { stderr?: string };
+    if (err.code === "ENOENT") {
+      pdftoppmAvailableCache = false;
+    } else {
+      // Binary present but -v may exit non-zero while printing version on stderr.
+      const stderr = String(err.stderr ?? "");
+      const message = error instanceof Error ? error.message : String(error);
+      pdftoppmAvailableCache =
+        /pdftoppm|poppler/i.test(stderr) || /pdftoppm|poppler/i.test(message);
+    }
+  }
+  return pdftoppmAvailableCache;
+}
+
+/** Test-only: reset pdftoppm availability cache. */
+export function resetPdftoppmAvailabilityCacheForTests(): void {
+  pdftoppmAvailableCache = null;
+}
+
+/** Test-only: force availability without spawning. */
+export function setPdftoppmAvailabilityForTests(value: boolean | null): void {
+  pdftoppmAvailableCache = value;
 }
 
 async function rasterizePageCount(
@@ -92,7 +127,10 @@ async function rasterizePageCount(
  * page count · text extract · blank ratio · char count · rasterize sample pages.
  *
  * Note: Japanese CID/subset fonts often yield empty pdftotext. In that case we
- * still require pages + rasterize + embedded font/content evidence (not blank).
+ * still require pages + (rasterize when pdftoppm exists) + embedded font/content
+ * evidence (not blank). On Vercel without poppler, rasterize is skipped and
+ * structural proof is required instead — do not fail CORE LOOP solely for
+ * missing host binaries.
  */
 export async function verifyPdfQuality(
   file: GeneratedDeliverableFile,
@@ -130,6 +168,7 @@ export async function verifyPdfQuality(
 
   if (pageCount < 1) reasons.push("zero_pages");
 
+  const rasterizeToolAvailable = await isPdftoppmAvailable();
   const dir = mkdtempSync(join(tmpdir(), "atlas-pdf-qa-"));
   const pdfPath = join(dir, "doc.pdf");
   let extractedText = "";
@@ -137,7 +176,9 @@ export async function verifyPdfQuality(
   try {
     writeFileSync(pdfPath, file.buffer);
     extractedText = await extractWithPdftotext(pdfPath);
-    rasterizedPages = await rasterizePageCount(pdfPath, dir);
+    if (rasterizeToolAvailable) {
+      rasterizedPages = await rasterizePageCount(pdfPath, dir);
+    }
   } finally {
     try {
       rmSync(dir, { recursive: true, force: true });
@@ -152,7 +193,11 @@ export async function verifyPdfQuality(
   const hasContentStream = /BT[\s\S]*?ET/.test(latin) || /Tj|TJ/.test(latin);
   const hasFont = /\/Font|FontFile|CIDFont|ToUnicode/.test(latin);
 
-  if (pageCount >= 1 && rasterizedPages < 1) reasons.push("rasterize_failed");
+  // Only hard-fail rasterize when the host actually has pdftoppm.
+  // Missing poppler on serverless must not abort Word+PDF companion exports.
+  if (pageCount >= 1 && rasterizeToolAvailable && rasterizedPages < 1) {
+    reasons.push("rasterize_failed");
+  }
 
   if (charCount > 0) {
     if (charCount < minChars) reasons.push("insufficient_text");
@@ -176,5 +221,6 @@ export async function verifyPdfQuality(
     blankRatio,
     rasterizedPages,
     reasons,
+    rasterizeToolAvailable,
   };
 }
