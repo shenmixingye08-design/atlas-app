@@ -654,6 +654,7 @@ async function signInWithClerkOfficial(browser, expectedUserId) {
     const diag = await collectAuthDiagnostics(page).catch(() => null);
     if (diag) {
       auth.cookieNames = diag.cookieNames;
+      auth.cookieDomains = diag.cookieDomains;
       auth.clerkState = diag.clerkState;
     }
     await context.close().catch(() => null);
