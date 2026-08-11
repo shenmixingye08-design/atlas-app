@@ -60,6 +60,9 @@ for (const keep of [
   "backend_session_cookie",
   "waitForProductionSha",
   "CORE_LOOP_EXPECT_SHA",
+  "ensureVerifiedTestEmail",
+  "setupClerkTestingToken({ context })",
+  "+clerk_test",
 ]) {
   if (!script.includes(keep)) violations.push(`e2e_script_missing:${keep}`);
 }
