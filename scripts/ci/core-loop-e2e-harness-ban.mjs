@@ -53,6 +53,9 @@ for (const keep of [
   "assertNoSecretLeak",
   "setDefaultTimeout",
   "withTimeout",
+  "setupClerkTestingToken",
+  "ticketRedeemStatus",
+  "cookieDomains",
 ]) {
   if (!script.includes(keep)) violations.push(`e2e_script_missing:${keep}`);
 }
