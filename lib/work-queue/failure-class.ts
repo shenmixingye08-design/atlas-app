@@ -5,12 +5,15 @@
 
 import { resolveAtlasPostgresUrl } from "@/lib/db/postgres-url";
 
+import { extractPostgresConstraintName } from "./attempt-cap";
 import { WorkQueueStoreUnavailableError } from "./store";
 
 export type WorkQueueDeveloperCode =
   | "work_queue_store_unavailable"
   | "work_queue_force_file_forbidden"
   | "work_queue_schema_missing"
+  | "work_queue_check_violation"
+  | "work_queue_invalid_transition"
   | "work_queue_db_unreachable"
   | "work_queue_pool_exhausted"
   | "work_queue_query_failed"
@@ -32,6 +35,8 @@ export type WorkQueueFailureDiagnostics = {
   errorName: string | null;
   /** Postgres SQLSTATE when present (e.g. 53300) — safe short code. */
   pgCode: string | null;
+  /** Postgres constraint name when present (safe identifier only). */
+  constraintName: string | null;
   /** Optional substage tag from processWorkQueueTick / drain. */
   substage: string | null;
 };
@@ -53,6 +58,16 @@ function pgCodeOf(error: unknown): string | null {
     return code.toUpperCase();
   }
   return null;
+}
+
+function constraintNameOf(error: unknown, message: string): string | null {
+  if (error && typeof error === "object") {
+    const constraint = (error as { constraint?: unknown }).constraint;
+    if (typeof constraint === "string" && /^[a-zA-Z0-9_]{1,128}$/.test(constraint)) {
+      return constraint;
+    }
+  }
+  return extractPostgresConstraintName(message);
 }
 
 function substageOf(error: unknown): string | null {
@@ -93,12 +108,14 @@ export function classifyWorkQueueFailure(
   stage: WorkQueueFailureDiagnostics["failedStage"] = "unknown",
 ): WorkQueueFailureDiagnostics {
   const url = resolveAtlasPostgresUrl();
+  const msg = messageOf(error);
   const base = {
     failedStage: stage,
     postgresUrlConfigured: Boolean(url.connectionString),
     extendedPostgresUrlOnly: url.extendedOnlyPresent,
     errorName: errorNameOf(error),
     pgCode: pgCodeOf(error),
+    constraintName: constraintNameOf(error, msg),
     substage: substageOf(error),
   };
 
@@ -119,12 +136,37 @@ export function classifyWorkQueueFailure(
     };
   }
 
-  const msg = messageOf(error);
   const lower = msg.toLowerCase();
   const pg = base.pgCode;
 
+  // 23514 = check_violation. Must NOT be classified as schema_missing
+  // (Production misclassification: constraint name contains atlas_work_queue_).
+  if (pg === "23514" || /violates check constraint/i.test(msg)) {
+    return {
+      ...base,
+      failedStage: stage === "drain" ? "drain" : "work_queue",
+      developerCode: "work_queue_check_violation",
+      // App/transition bug after deploy — retrying the same bad write will not help.
+      failureClass: "fatal",
+    };
+  }
+
+  if (/invalid_transition:/i.test(msg)) {
+    return {
+      ...base,
+      failedStage: stage === "drain" ? "drain" : "work_queue",
+      developerCode: "work_queue_invalid_transition",
+      failureClass: "fatal",
+    };
+  }
+
+  // Real schema/relation/function missing only — never match bare table/constraint names.
   if (
-    /does not exist|undefined_table|schema cache|atlas_work_queue_/i.test(msg)
+    pg === "42P01" ||
+    pg === "42883" ||
+    ((/does not exist|undefined_table|undefined_function|schema cache/i.test(msg) ||
+      /relation ["'][^"']+["'] does not exist/i.test(msg)) &&
+      !/violates check constraint/i.test(msg))
   ) {
     return {
       ...base,

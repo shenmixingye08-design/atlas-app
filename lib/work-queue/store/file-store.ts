@@ -269,15 +269,34 @@ export class FileWorkQueueStore implements WorkQueueStore {
         if (job.status === "completed" || job.status === "cancelled") continue;
         const wasActiveLease =
           job.status === "leased" || job.status === "running";
+        if (!job.claimedAt) job.claimedAt = nowIso;
+        if (!job.startedAt) job.startedAt = nowIso;
+        if (wasActiveLease) {
+          // Mirror Postgres claim: exhausted expired leases → dead_letter
+          // (never write attempt > max_attempts + 1).
+          if (job.attempt >= job.maxAttempts) {
+            job.attempt = Math.min(job.attempt + 1, job.maxAttempts + 1);
+            job.status = "dead_letter";
+            job.leaseOwner = null;
+            job.leaseExpiresAt = null;
+            job.completedAt = nowIso;
+            job.failedAt = nowIso;
+            job.errorCode =
+              job.errorCode ?? "max_attempts_exhausted_on_reclaim";
+            job.lastError =
+              job.lastError ?? "max_attempts_exhausted_on_reclaim";
+            job.updatedAt = nowIso;
+            continue;
+          }
+          job.attempt = Math.min(job.attempt + 1, job.maxAttempts + 1);
+        } else if (job.attempt < 1) {
+          job.attempt = 1;
+        }
         job.status = "leased";
         job.leaseOwner = input.workerId;
         job.leaseExpiresAt = leaseExpires;
         job.heartbeatAt = nowIso;
         job.updatedAt = nowIso;
-        if (!job.claimedAt) job.claimedAt = nowIso;
-        if (!job.startedAt) job.startedAt = nowIso;
-        if (wasActiveLease) job.attempt += 1;
-        else if (job.attempt < 1) job.attempt = 1;
         leased.push(structuredClone(job));
       }
       this.touchWorker(input.workerId, nowIso, leased.length > 0);
@@ -400,7 +419,10 @@ export class FileWorkQueueStore implements WorkQueueStore {
       if (!leaseExpired) return null;
       const nowIso = new Date(input.nowMs).toISOString();
       job.status = input.status;
-      job.attempt = input.attempt;
+      job.attempt = Math.min(
+        Math.max(0, Math.floor(input.attempt)),
+        job.maxAttempts + 1,
+      );
       job.retryAt = input.status === "retry_scheduled" ? input.retryAt : null;
       if (input.status === "retry_scheduled" && input.retryAt) {
         job.availableAt = input.retryAt;

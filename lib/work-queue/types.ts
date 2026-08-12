@@ -148,7 +148,16 @@ export const WORK_JOB_TRANSITIONS: Readonly<
   Record<WorkJobStatus, readonly WorkJobStatus[]>
 > = {
   queued: ["leased", "cancelled"],
-  leased: ["running", "queued", "cancelled", "failed"],
+  // leased → dead_letter: expired-lease reclaim when attempts exhausted
+  // leased → retry_scheduled: stuck recovery before running transition
+  leased: [
+    "running",
+    "queued",
+    "cancelled",
+    "failed",
+    "dead_letter",
+    "retry_scheduled",
+  ],
   running: [
     "waiting_approval",
     "waiting_input",

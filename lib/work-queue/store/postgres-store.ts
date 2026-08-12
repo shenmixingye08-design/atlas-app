@@ -282,6 +282,7 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
         }
         await client.query("begin");
         const leaseExpires = new Date(nowMs + input.leaseMs).toISOString();
+        // Mirror atlas_claim_work_queue_jobs attempt cap (23514 guard).
         res = await client.query(
           `with cte as (
              select job_id from public.atlas_work_queue_jobs
@@ -295,29 +296,82 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
              order by priority desc, available_at asc
              for update skip locked
              limit $2
+           ),
+           updated as (
+             update public.atlas_work_queue_jobs j
+             set status = case
+                   when j.status in ('leased', 'running')
+                     and j.attempt >= j.max_attempts
+                     then 'dead_letter'
+                   else 'leased'
+                 end,
+                 lease_owner = case
+                   when j.status in ('leased', 'running')
+                     and j.attempt >= j.max_attempts
+                     then null
+                   else $3
+                 end,
+                 lease_expires_at = case
+                   when j.status in ('leased', 'running')
+                     and j.attempt >= j.max_attempts
+                     then null
+                   else $4::timestamptz
+                 end,
+                 heartbeat_at = case
+                   when j.status in ('leased', 'running')
+                     and j.attempt >= j.max_attempts
+                     then j.heartbeat_at
+                   else $1::timestamptz
+                 end,
+                 claimed_at = coalesce(claimed_at, $1::timestamptz),
+                 started_at = coalesce(started_at, $1::timestamptz),
+                 attempt = least(
+                   case
+                     when j.status in ('leased', 'running') then j.attempt + 1
+                     when j.status = 'retry_scheduled' then j.attempt
+                     else greatest(j.attempt, 1)
+                   end,
+                   j.max_attempts + 1
+                 ),
+                 completed_at = case
+                   when j.status in ('leased', 'running')
+                     and j.attempt >= j.max_attempts
+                     then $1::timestamptz
+                   else j.completed_at
+                 end,
+                 failed_at = case
+                   when j.status in ('leased', 'running')
+                     and j.attempt >= j.max_attempts
+                     then $1::timestamptz
+                   else j.failed_at
+                 end,
+                 error_code = case
+                   when j.status in ('leased', 'running')
+                     and j.attempt >= j.max_attempts
+                     then coalesce(j.error_code, 'max_attempts_exhausted_on_reclaim')
+                   else j.error_code
+                 end,
+                 last_error = case
+                   when j.status in ('leased', 'running')
+                     and j.attempt >= j.max_attempts
+                     then coalesce(j.last_error, 'max_attempts_exhausted_on_reclaim')
+                   else j.last_error
+                 end,
+                 updated_at = $1::timestamptz
+             from cte
+             where j.job_id = cte.job_id
+             returning j.*
            )
-           update public.atlas_work_queue_jobs j
-           set status = 'leased',
-               lease_owner = $3,
-               lease_expires_at = $4::timestamptz,
-               heartbeat_at = $1::timestamptz,
-               claimed_at = coalesce(claimed_at, $1::timestamptz),
-               started_at = coalesce(started_at, $1::timestamptz),
-               attempt = case
-                 when j.status in ('leased', 'running') then j.attempt + 1
-                 when j.status = 'retry_scheduled' then j.attempt
-                 else greatest(j.attempt, 1)
-               end,
-               updated_at = $1::timestamptz
-           from cte
-           where j.job_id = cte.job_id
-           returning j.*`,
+           select * from updated u where u.status = 'leased'`,
           [nowIso, input.limit, input.workerId, leaseExpires],
         );
         await client.query("commit");
       }
       const jobs: WorkJobRecord[] = [];
       for (const row of res.rows) {
+        // RPC/inline may still surface dead_letter side-effects on older SQL;
+        // never hand non-leased rows to the worker.
+        if (String(row.status) !== "leased") continue;
         const steps = await this.loadSteps(client, String(row.job_id));
         jobs.push(rowToJob(row as Record<string, unknown>, steps));
       }
@@ -378,7 +432,7 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
       const res = await this.pool.query(
         `update public.atlas_work_queue_jobs
          set status = $1,
-             attempt = $2,
+             attempt = least(greatest($2, 0), max_attempts + 1),
              retry_at = $3,
              available_at = coalesce($3, available_at),
              error_code = 'stuck_recovered',
