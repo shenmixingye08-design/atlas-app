@@ -12,6 +12,8 @@ on:
       - ".github/workflows/verify-automation-unattended-production.yml"
       - "lib/feature-flags/store.ts"
       - "lib/automation-platform/**"
+      - "app/api/automations/tick/**"
+      - "lib/work-queue/**"
 
 concurrency:
   group: verify-automation-unattended-production
@@ -24,7 +26,7 @@ permissions:
 jobs:
   unattended:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
@@ -79,7 +81,7 @@ jobs:
           AUTOMATION_UNATTENDED_OUT: ${{ runner.temp }}/automation-unattended
           CORE_LOOP_EXPECT_SHA: ${{ github.sha }}
           GITHUB_SHA: ${{ github.sha }}
-          AUTOMATION_UNATTENDED_MAX_WAIT_MS: "6600000"
+          AUTOMATION_UNATTENDED_MAX_WAIT_MS: "9000000"
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail

@@ -354,5 +354,12 @@ describe("P1-03 Automation V2 DB SoT", () => {
     expect(dispatch).toContain("dbClaimRun");
     expect(dispatch).not.toContain("memoryClaimRun");
     expect(tick).toContain("isAutomationV2DbSotReady");
+    // N-08 / unattended gate: V2 due path must run before legacy V1 work_queue
+    // so a work_queue throw cannot block natural scheduler V2 execution.
+    const v2Idx = tick.indexOf("processDueScheduledAutomationsV2");
+    const v1Idx = tick.indexOf("processWorkQueueTick");
+    expect(v2Idx).toBeGreaterThanOrEqual(0);
+    expect(v1Idx).toBeGreaterThan(v2Idx);
+    expect(tick).toContain("workQueueFailure");
   });
 });
