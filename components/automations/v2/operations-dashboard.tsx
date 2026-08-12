@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { AutomationOperationsSummary } from "@/lib/automation-platform/operations/summary";
 import { fetchAutomationOperationsSummary } from "@/lib/automation-platform/client";
+import { formatDateTimeInUserTimeZone } from "@/lib/datetime/display-timezone";
 import { cn } from "@/lib/design-system/cn";
 
 const TONE_CLASS: Record<
@@ -122,7 +123,9 @@ export function OperationsDashboard({
             {summary.nextRun.name}
           </Link>{" "}
           （
-          {new Date(summary.nextRun.nextRunAt).toLocaleString("ja-JP")}
+          {formatDateTimeInUserTimeZone(summary.nextRun.nextRunAt, {
+            dateStyle: "medium",
+          })}
           ）
         </p>
       ) : null}

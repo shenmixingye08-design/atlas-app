@@ -1,5 +1,6 @@
 import { ui } from "@/lib/i18n";
 import { notifyBillingUsageChanged } from "@/lib/billing/refresh-events";
+import { formatDateTimeInUserTimeZone } from "@/lib/datetime/display-timezone";
 
 import type {
   Automation,
@@ -251,11 +252,5 @@ export function formatAutomationTimestamp(iso: string | null): string {
 }
 
 export function formatAutomationDateTime(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("ja-JP", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeInUserTimeZone(iso, { fallback: "—" });
 }

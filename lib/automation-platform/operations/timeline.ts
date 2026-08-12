@@ -1,4 +1,8 @@
 import type { AutomationRun } from "@/lib/automation-platform/types";
+import {
+  DEFAULT_USER_DISPLAY_TIMEZONE,
+  formatTimeInUserTimeZone,
+} from "@/lib/datetime/display-timezone";
 import { formatRunStatus, formatStepStatus } from "./status-labels";
 
 export type TimelineEntry = {
@@ -10,10 +14,8 @@ export type TimelineEntry = {
   tone: "neutral" | "success" | "warning" | "danger" | "info";
 };
 
-function timeLabel(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "--:--";
-  return d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+function timeLabel(iso: string, timeZone = DEFAULT_USER_DISPLAY_TIMEZONE): string {
+  return formatTimeInUserTimeZone(iso, { timeZone, fallback: "--:--" });
 }
 
 function reasonLabel(reason: string): string {

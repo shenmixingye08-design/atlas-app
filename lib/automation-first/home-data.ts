@@ -4,6 +4,7 @@ import { buildRunProgressView } from "@/lib/automation-platform/operations/progr
 import type { AutomationRun } from "@/lib/automation-platform/types";
 import type { RunVisualStatus } from "@/lib/automation-first/status";
 import type { HomeAttentionItem } from "@/lib/automation-first/home-model";
+import { formatDateTimeInUserTimeZone } from "@/lib/datetime/display-timezone";
 
 export type HomeTimelineRow = {
   id: string;
@@ -224,14 +225,8 @@ export function buildWeeklyStatsFromRuns(
 }
 
 export function formatNextRunDateTime(iso: string): string {
-  const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return iso;
-  return new Intl.DateTimeFormat("ja-JP", {
-    month: "short",
-    day: "numeric",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(ms));
+  return formatDateTimeInUserTimeZone(iso, {
+    fallback: iso,
+    dateStyle: "medium",
+  });
 }

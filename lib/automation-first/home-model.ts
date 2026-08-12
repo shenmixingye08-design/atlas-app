@@ -5,6 +5,10 @@ import {
   type TodayDashboardJob,
 } from "@/lib/home/today-dashboard";
 import { mapTodayJobToVisual, type RunVisualStatus } from "@/lib/automation-first/status";
+import {
+  formatCalendarDateInUserTimeZone,
+  formatTimeInUserTimeZone,
+} from "@/lib/datetime/display-timezone";
 
 export type HomeAttentionItem = {
   id: string;
@@ -39,13 +43,7 @@ function formatTimeLabel(isoOrLabel: string | null): string {
   if (!isoOrLabel) return "—";
   // Already a display label like "09:00"
   if (/^\d{1,2}:\d{2}/.test(isoOrLabel)) return isoOrLabel.slice(0, 5);
-  const ms = Date.parse(isoOrLabel);
-  if (Number.isNaN(ms)) return isoOrLabel;
-  return new Intl.DateTimeFormat("ja-JP", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(ms));
+  return formatTimeInUserTimeZone(isoOrLabel, { fallback: isoOrLabel });
 }
 
 export function buildTodayJobsFromAutomations(
@@ -211,12 +209,7 @@ export function jobsToTimelineItems(jobs: TodayDashboardJob[]): Array<{
 }
 
 export function formatTodayDateLabel(now: Date = new Date()): string {
-  return new Intl.DateTimeFormat("ja-JP", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "short",
-  }).format(now);
+  return formatCalendarDateInUserTimeZone(now);
 }
 
 export function greetingForHour(hour: number): string {

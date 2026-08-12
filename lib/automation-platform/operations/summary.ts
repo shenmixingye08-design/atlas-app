@@ -1,5 +1,11 @@
 import type { AutomationV2 } from "@/lib/automation-platform/types/automation";
 import type { AutomationRun } from "@/lib/automation-platform/types/run";
+import {
+  DEFAULT_USER_DISPLAY_TIMEZONE,
+  endOfDayInTimeZone,
+  formatTimeInUserTimeZone,
+  startOfDayInTimeZone,
+} from "@/lib/datetime/display-timezone";
 import { buildFailureUserView } from "./failure-view";
 import { describeNeedsInput } from "./needs-input";
 import { formatRunStatus } from "./status-labels";
@@ -59,15 +65,6 @@ export type AutomationOperationsSummary = {
   generatedAt: string;
 };
 
-function startOfLocalDay(now: Date): Date {
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-}
-
-function endOfLocalDay(now: Date): Date {
-  const start = startOfLocalDay(now);
-  return new Date(start.getTime() + 24 * 60 * 60 * 1000);
-}
-
 function toneForStatus(status: AutomationRun["status"]): OperationsTodayItem["tone"] {
   if (status === "succeeded") return "success";
   if (status === "failed") return "danger";
@@ -84,21 +81,26 @@ function toneForStatus(status: AutomationRun["status"]): OperationsTodayItem["to
   return "muted";
 }
 
-function timeLabel(iso: string | null, fallback: string): string {
-  if (!iso) return fallback;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return fallback;
-  return d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+function resolveDisplayTimeZone(automations: AutomationV2[]): string {
+  for (const automation of automations) {
+    const tz = automation.trigger?.timezone?.trim();
+    if (tz) return tz;
+  }
+  return DEFAULT_USER_DISPLAY_TIMEZONE;
 }
 
 export function buildAutomationOperationsSummary(input: {
   automations: AutomationV2[];
   runs: AutomationRun[];
   now?: Date;
+  /** Override display / day-boundary timezone (default: automation or Asia/Tokyo). */
+  timeZone?: string;
 }): AutomationOperationsSummary {
   const now = input.now ?? new Date();
-  const dayStart = startOfLocalDay(now).getTime();
-  const dayEnd = endOfLocalDay(now).getTime();
+  const timeZone =
+    input.timeZone?.trim() || resolveDisplayTimeZone(input.automations);
+  const dayStart = startOfDayInTimeZone(now, timeZone).getTime();
+  const dayEnd = endOfDayInTimeZone(now, timeZone).getTime();
 
   const activeAutomations = input.automations.filter(
     (item) => item.status === "active",
@@ -226,9 +228,9 @@ export function buildAutomationOperationsSummary(input: {
 
   for (const run of todayRuns) {
     todayWork.push({
-      timeLabel: timeLabel(
+      timeLabel: formatTimeInUserTimeZone(
         run.completedAt ?? run.startedAt ?? run.scheduledFor,
-        "--:--",
+        { timeZone, fallback: "--:--" },
       ),
       title: run.automationName,
       statusLabel: formatRunStatus(run.status),
@@ -250,8 +252,13 @@ export function buildAutomationOperationsSummary(input: {
         Math.abs(item.sortAt - t) < 60_000,
     );
     if (already) continue;
+    const automationTz =
+      automation.trigger?.timezone?.trim() || timeZone;
     todayWork.push({
-      timeLabel: timeLabel(automation.nextRunAt, "--:--"),
+      timeLabel: formatTimeInUserTimeZone(automation.nextRunAt, {
+        timeZone: automationTz,
+        fallback: "--:--",
+      }),
       title: automation.name,
       statusLabel: "実行予定",
       href: `/automations?v2=${encodeURIComponent(automation.id)}`,
