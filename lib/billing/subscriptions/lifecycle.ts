@@ -8,6 +8,7 @@ import {
   resolveUserSubscription,
   upsertUserSubscription,
 } from "./service";
+import { findSubscriptionByStripeCustomerId } from "./store";
 import type { SubscriptionStatus, UserSubscriptionRecord } from "./types";
 import {
   notifyUserPaymentGraceScheduled,
@@ -17,6 +18,34 @@ import {
 import { setAutomationTaskCount } from "../usage/store";
 
 const PAYMENT_FAILURE_GRACE_DAYS = 7;
+
+/**
+ * Fail closed when a Stripe customer is already mapped to a different Clerk user.
+ * Prevents cross-user entitlement grant via metadata spoof / Dashboard mistakes.
+ */
+export class StripeCustomerOwnershipError extends Error {
+  readonly code = "stripe_customer_owned_by_other_user" as const;
+
+  constructor(
+    message = "Stripe customer already linked to another user",
+  ) {
+    super(message);
+    this.name = "StripeCustomerOwnershipError";
+  }
+}
+
+export async function assertStripeCustomerNotOwnedByOtherUser(input: {
+  userId: string;
+  stripeCustomerId: string;
+}): Promise<void> {
+  const customerId = input.stripeCustomerId?.trim();
+  if (!customerId) return;
+
+  const existing = await findSubscriptionByStripeCustomerId(customerId);
+  if (existing && existing.userId !== input.userId) {
+    throw new StripeCustomerOwnershipError();
+  }
+}
 
 export async function syncUserPlanProfile(
   userId: string,
@@ -73,6 +102,11 @@ export async function applyPaidPlanFromWebhook(input: {
   cancelAtPeriodEnd: boolean;
   stripePriceId?: string | null;
 }): Promise<UserSubscriptionRecord> {
+  await assertStripeCustomerNotOwnedByOtherUser({
+    userId: input.userId,
+    stripeCustomerId: input.stripeCustomerId,
+  });
+
   const record = await applySubscriptionFromStripe(input);
 
   // Only clear payment-failure grace when Stripe reports a healthy subscription.
