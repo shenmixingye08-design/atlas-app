@@ -1,4 +1,7 @@
 # Production Automation V2 run diagnostic via DB secrets in Actions.
+#
+# 2026-08-12: post-#295 「承認して実行」不可は deploy lag（prod=76f5524,
+# #295=cb7124c 未反映）。必ず /api/health/version の commitShaShort を先に確認。
 name: Diagnose Automation Run Production
 
 on:
