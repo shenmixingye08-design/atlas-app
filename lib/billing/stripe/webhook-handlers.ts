@@ -21,6 +21,7 @@ import {
   applyDowngradeFromWebhook,
   applyPaidPlanFromWebhook,
   schedulePaymentFailureGrace,
+  StripeCustomerOwnershipError,
 } from "../subscriptions/lifecycle";
 import type { SubscriptionStatus } from "../subscriptions/types";
 import { mapStripePlanId } from "./checkout";
@@ -79,6 +80,8 @@ export type WebhookHandleResult = {
   userId: string | null;
   planId: string | null;
   success: boolean;
+  /** When false, ack the event (no Stripe retry). Default: retry on handled failure. */
+  retryable?: boolean;
 };
 
 export type StripeWebhookEvent = {
@@ -129,6 +132,7 @@ function logWebhookResult(input: {
   message: string;
   userId?: string | null;
   planId?: string | null;
+  retryable?: boolean;
 }): WebhookHandleResult {
   recordStripeWebhookLog({
     stripeEventId: input.event.id,
@@ -181,6 +185,7 @@ function logWebhookResult(input: {
     userId: input.userId ?? null,
     planId: input.planId ?? null,
     success: input.status === "success",
+    retryable: input.retryable,
   };
 }
 
@@ -301,17 +306,31 @@ async function handleCheckoutCompleted(
     }
   }
 
-  await applyPaidPlanFromWebhook({
-    userId,
-    stripeCustomerId: String(session.customer ?? ""),
-    stripeSubscriptionId: subscriptionId ?? "",
-    planId,
-    status,
-    currentPeriodStart: periodStart,
-    currentPeriodEnd: periodEnd,
-    cancelAtPeriodEnd,
-    stripePriceId,
-  });
+  try {
+    await applyPaidPlanFromWebhook({
+      userId,
+      stripeCustomerId: String(session.customer ?? ""),
+      stripeSubscriptionId: subscriptionId ?? "",
+      planId,
+      status,
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: periodEnd,
+      cancelAtPeriodEnd,
+      stripePriceId,
+    });
+  } catch (error) {
+    if (error instanceof StripeCustomerOwnershipError) {
+      return logWebhookResult({
+        event,
+        status: "failure",
+        message: error.message,
+        userId,
+        planId,
+        retryable: false,
+      });
+    }
+    throw error;
+  }
 
   saveBillingSnapshot({
     userId,
@@ -357,17 +376,31 @@ async function handleSubscriptionUpsert(
   const status = mapSubscriptionStatus(subscription.status);
   const stripePriceId = resolvePriceIdFromSubscription(subscription);
 
-  await applyPaidPlanFromWebhook({
-    userId,
-    stripeCustomerId: String(subscription.customer),
-    stripeSubscriptionId: subscription.id,
-    planId,
-    status,
-    currentPeriodStart: period.currentPeriodStart,
-    currentPeriodEnd: period.currentPeriodEnd,
-    cancelAtPeriodEnd: period.cancelAtPeriodEnd,
-    stripePriceId,
-  });
+  try {
+    await applyPaidPlanFromWebhook({
+      userId,
+      stripeCustomerId: String(subscription.customer),
+      stripeSubscriptionId: subscription.id,
+      planId,
+      status,
+      currentPeriodStart: period.currentPeriodStart,
+      currentPeriodEnd: period.currentPeriodEnd,
+      cancelAtPeriodEnd: period.cancelAtPeriodEnd,
+      stripePriceId,
+    });
+  } catch (error) {
+    if (error instanceof StripeCustomerOwnershipError) {
+      return logWebhookResult({
+        event,
+        status: "failure",
+        message: error.message,
+        userId,
+        planId,
+        retryable: false,
+      });
+    }
+    throw error;
+  }
 
   saveBillingSnapshot({
     userId,
@@ -474,17 +507,31 @@ async function handleInvoicePaymentSucceeded(
       stripePriceId = resolvePriceIdFromSubscription(subscription);
 
       if (resolvedPlan) {
-        await applyPaidPlanFromWebhook({
-          userId,
-          stripeCustomerId,
-          stripeSubscriptionId,
-          planId: resolvedPlan,
-          status,
-          currentPeriodStart: period.currentPeriodStart,
-          currentPeriodEnd: period.currentPeriodEnd,
-          cancelAtPeriodEnd: period.cancelAtPeriodEnd,
-          stripePriceId,
-        });
+        try {
+          await applyPaidPlanFromWebhook({
+            userId,
+            stripeCustomerId,
+            stripeSubscriptionId,
+            planId: resolvedPlan,
+            status,
+            currentPeriodStart: period.currentPeriodStart,
+            currentPeriodEnd: period.currentPeriodEnd,
+            cancelAtPeriodEnd: period.cancelAtPeriodEnd,
+            stripePriceId,
+          });
+        } catch (error) {
+          if (error instanceof StripeCustomerOwnershipError) {
+            return logWebhookResult({
+              event,
+              status: "failure",
+              message: error.message,
+              userId,
+              planId: resolvedPlan,
+              retryable: false,
+            });
+          }
+          throw error;
+        }
       }
     }
   }

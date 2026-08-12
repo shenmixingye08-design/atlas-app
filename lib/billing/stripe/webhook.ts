@@ -170,17 +170,22 @@ export async function processStripeWebhookRequest(
   if (result.success) {
     await markStripeEventProcessed(event.id, event.type);
   } else if (result.handled) {
-    // Handled but unsuccessful — release so Stripe can retry safely.
-    await releaseStripeEventClaim(event.id);
+    if (result.retryable === false) {
+      // Permanent fail-closed (e.g. cross-user customer ownership) — ack, no retry storm.
+      await markStripeEventProcessed(event.id, event.type);
+    } else {
+      // Transient handled failure — release so Stripe can retry safely.
+      await releaseStripeEventClaim(event.id);
+    }
   } else {
     // Unhandled/skipped: keep claim to avoid replaying unknown noise forever.
     await markStripeEventProcessed(event.id, event.type);
   }
 
   // Failures that were handled but unsuccessful: 500 so Stripe retries.
-  // Unhandled/skipped events: 200 (ack; no retry needed).
+  // Permanent rejections (retryable=false) and unhandled/skipped: 200 ack.
   const status =
-    result.success || !result.handled
+    result.success || !result.handled || result.retryable === false
       ? 200
       : 500;
 
