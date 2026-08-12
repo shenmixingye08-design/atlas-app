@@ -83,7 +83,32 @@ function constructFromPasswordAndRef(): string | null {
   return `postgresql://postgres.${ref}:${encoded}@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres`;
 }
 
-export function resolveAtlasPostgresUrl(): {
+function isDirectishUrl(value: string): boolean {
+  // Supabase transaction pooler is :6543 — prefer session/direct (:5432) for
+  // SKIP LOCKED leases under concurrent Minute Scheduler drain fan-out.
+  if (/:6543(?:\/|$|\?)/i.test(value) || /pooler\.supabase\.com/i.test(value)) {
+    return false;
+  }
+  if (/:5432(?:\/|$|\?)/i.test(value)) return true;
+  return true;
+}
+
+function isDirectishKey(key: string): boolean {
+  return (
+    key.includes("NON_POOLING") ||
+    key === "DIRECT_URL" ||
+    key === "SUPABASE_DB_URL"
+  );
+}
+
+/**
+ * Resolve a Postgres URL.
+ * @param preferDirect When true (work-queue leases), prefer NON_POOLING / DIRECT
+ *   / :5432 over transaction pooler :6543 to avoid MaxClients stampede.
+ */
+export function resolveAtlasPostgresUrl(options?: {
+  preferDirect?: boolean;
+}): {
   connectionString: string | null;
   presentKeys: string[];
   legacyPresent: boolean;
@@ -101,7 +126,22 @@ export function resolveAtlasPostgresUrl(): {
         !(ATLAS_POSTGRES_URL_LEGACY_KEYS as readonly string[]).includes(key),
     );
 
-  let connectionString: string | null = entries[0]?.value ?? null;
+  let ordered = [...entries];
+  if (options?.preferDirect && ordered.length > 1) {
+    ordered = [...ordered].sort((a, b) => {
+      const score = (e: EnvEntry) => {
+        let s = 0;
+        if (isDirectishKey(e.key)) s += 4;
+        if (isDirectishUrl(e.value)) s += 2;
+        if (/:6543(?:\/|$|\?)/i.test(e.value)) s -= 4;
+        if (/pooler\.supabase\.com/i.test(e.value)) s -= 2;
+        return s;
+      };
+      return score(b) - score(a);
+    });
+  }
+
+  let connectionString: string | null = ordered[0]?.value ?? null;
   if (!connectionString) {
     connectionString = constructFromPasswordAndRef();
   }

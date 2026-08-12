@@ -107,12 +107,25 @@ jobs:
             "error",
             "failedStage",
             "developerCode",
+            "failureClass",
+            "errorName",
+            "pgCode",
+            "substage",
+            "retryable",
             "postgresUrlConfigured",
             "extendedPostgresUrlOnly",
             "skipped",
             "reason",
           ]
           print("tick_safe=" + json.dumps({k: d.get(k) for k in safe_keys if k in d}, ensure_ascii=False))
+          wqf = d.get("workQueueFailure") if isinstance(d.get("workQueueFailure"), dict) else None
+          if wqf is not None:
+            print("tick_work_queue_failure=" + json.dumps({
+              k: wqf.get(k) for k in (
+                "failedStage","developerCode","failureClass","errorName",
+                "pgCode","substage","retryable"
+              ) if k in wqf
+            }, ensure_ascii=False))
           # Nested safe counts only (no user identifiers).
           nr = d.get("notificationRetries") if isinstance(d.get("notificationRetries"), dict) else None
           if nr is not None:
@@ -141,17 +154,31 @@ jobs:
           FAIL_DRAIN=0
           for i in $(seq 1 "$FANOUT"); do
             (
-              D_CODE=$(curl -sS -o "/tmp/drain_${i}.json" -w "%{http_code}" -X POST \
-                -H "Authorization: Bearer ${CRON_SECRET}" \
-                -H "Content-Type: application/json" \
-                "${BASE_URL}/api/worker/drain?workerId=gha_w_${i}&limit=20" || echo "000")
-              echo "drain_${i}_http=${D_CODE}"
+              # One workflow-level retry on 503 (retryable pool blip). Fatal 500 = fail.
+              D_CODE="000"
+              for attempt in 1 2; do
+                D_CODE=$(curl -sS -o "/tmp/drain_${i}.json" -w "%{http_code}" -X POST \
+                  -H "Authorization: Bearer ${CRON_SECRET}" \
+                  -H "Content-Type: application/json" \
+                  "${BASE_URL}/api/worker/drain?workerId=gha_w_${i}&limit=20" || echo "000")
+                echo "drain_${i}_http=${D_CODE}"
+                if [ "$D_CODE" = "503" ] && [ "$attempt" = "1" ]; then
+                  echo "drain_${i}_retryable_503=1"
+                  sleep 1
+                  continue
+                fi
+                break
+              done
               python3 - <<PY
           import json
           try:
             d=json.load(open("/tmp/drain_${i}.json"))
             print("drain_${i}_safe=" + json.dumps({
-              k: d.get(k) for k in ("ok","leased","completed","failed","workerId") if k in d
+              k: d.get(k) for k in (
+                "ok","leased","completed","failed","workerId",
+                "developerCode","failureClass","errorName","pgCode",
+                "substage","retryable"
+              ) if k in d
             }, ensure_ascii=False))
           except Exception:
             print("drain_${i}_parse_error=true")

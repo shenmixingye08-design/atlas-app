@@ -19,6 +19,11 @@ export {
   drainWorkQueueHorizontal,
 } from "./worker-scale";
 export { processWorkQueueTick } from "./tick";
+export {
+  classifyWorkQueueFailure,
+  classifyTickFailure,
+  isRetryableWorkQueueFailure,
+} from "./failure-class";
 export { evaluateWorkQueueAlerts } from "./alerts";
 export { buildOccurrenceKey } from "./occurrence";
 export { decideRetry, classifyErrorCode } from "./retry";
