@@ -822,9 +822,11 @@ export class AutomationPlatformService {
     context: FeatureAccessContext,
   ): Promise<AutomationRun> {
     assertV2Enabled(context);
-    await ensureAutomationsV2Hydrated(userId);
-    await ensureAutomationRunsV2Hydrated(userId);
-    const run = memoryGetRun(runId);
+    // DB SoT is authoritative. Process memory is a cache only — after
+    // one-shot hydrate, multi-instance / concurrent transitions can leave
+    // memory.status stale (e.g. preparing/queued) while UI still shows
+    // awaiting_approval from another instance. Approve must gate on SoT.
+    const run = await getAutomationRunFromSot(runId);
     if (!run) {
       throw new AutomationPlatformError("run_not_found", {
         entity: "run",
@@ -924,8 +926,13 @@ export class AutomationPlatformService {
     });
 
     if (options?.dispatch !== false) {
-      await dispatchAutomationRuns({ runIds: [updated.id] });
-      return memoryGetRun(updated.id) ?? updated;
+      try {
+        await dispatchAutomationRuns({ runIds: [updated.id] });
+      } catch {
+        // Approval is already durable as queued. Dispatch/tick can retry;
+        // do not surface executor FSM noise as "approve not allowed".
+      }
+      return (await getAutomationRunFromSot(updated.id)) ?? updated;
     }
     return updated;
   }
