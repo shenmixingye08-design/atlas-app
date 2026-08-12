@@ -81,11 +81,7 @@ jobs:
           for _try in 1 2 3 4 5 6 7 8 9 10 11 12; do
             PREVIEW_URL="$(node scripts/ci/resolve-preview-deploy-url.mjs || true)"
             if [ -n "${PREVIEW_URL:-}" ]; then
-              echo "preview_url_host=$(python3 - <<PY
-from urllib.parse import urlparse
-print(urlparse('${PREVIEW_URL}').netloc)
-PY
-)"
+              echo "preview_url_ready=1"
               BASES+=("${PREVIEW_URL}")
               break
             fi
@@ -96,11 +92,7 @@ PY
 
           health_ok=0
           for BASE in "${BASES[@]}"; do
-            echo "diagnose_base_host=$(python3 - <<PY
-from urllib.parse import urlparse
-print(urlparse('${BASE}').netloc)
-PY
-)"
+            echo "diagnose_attempt=1"
             code=$(curl -sS -o "${DIAGNOSE_OUT}/health-diagnose.json" -w "%{http_code}" \
               -H "Authorization: Bearer ${CRON_SECRET}" \
               -H "Cache-Control: no-store" \
