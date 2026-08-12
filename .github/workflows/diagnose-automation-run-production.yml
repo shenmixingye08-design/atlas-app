@@ -71,28 +71,23 @@ jobs:
             QS="force=1"
             if [ -n "${DIAGNOSE_REQUEST_ID:-}" ]; then QS="${QS}&requestId=${DIAGNOSE_REQUEST_ID}"; fi
             if [ -n "${DIAGNOSE_DIAGNOSTIC_ID:-}" ]; then QS="${QS}&diagnosticId=${DIAGNOSE_DIAGNOSTIC_ID}"; fi
+            PHASE2=0
           else
             QS="force=1&phase2CalendarSuccess=1"
+            PHASE2=1
           fi
 
-          # Prefer Preview (new diagnose binary) before Production (may lag).
-          BASES=()
-          PREVIEW_URL=""
-          for _try in 1 2 3 4 5 6 7 8 9 10 11 12; do
-            PREVIEW_URL="$(node scripts/ci/resolve-preview-deploy-url.mjs || true)"
-            if [ -n "${PREVIEW_URL:-}" ]; then
-              echo "preview_url_ready=1"
-              BASES+=("${PREVIEW_URL}")
-              break
-            fi
-            echo "preview_wait_try=${_try}"
-            sleep 15
-          done
-          BASES+=("${ATLAS_APP_URL}")
+          # Production first (authoritative DB). Preview optional for newer binary.
+          BASES=("${ATLAS_APP_URL}")
+          PREVIEW_URL="$(node scripts/ci/resolve-preview-deploy-url.mjs || true)"
+          if [ -n "${PREVIEW_URL:-}" ]; then
+            echo "preview_url_ready=1"
+            BASES+=("${PREVIEW_URL}")
+          fi
 
           health_ok=0
           for BASE in "${BASES[@]}"; do
-            echo "diagnose_attempt=1"
+            echo "diagnose_base=${BASE}"
             code=$(curl -sS -o "${DIAGNOSE_OUT}/health-diagnose.json" -w "%{http_code}" \
               -H "Authorization: Bearer ${CRON_SECRET}" \
               -H "Cache-Control: no-store" \
@@ -105,19 +100,21 @@ jobs:
               node scripts/ci/print-phase2-diagnose-summary.mjs "${DIAGNOSE_OUT}/health-diagnose.json"
               break
             fi
-            head -c 200 "${DIAGNOSE_OUT}/health-diagnose.json" || true
+            head -c 400 "${DIAGNOSE_OUT}/health-diagnose.json" || true
             echo
           done
           if [ "${health_ok}" != "1" ]; then
             echo "health_ok=0" >> "$GITHUB_OUTPUT"
-            head -c 800 "${DIAGNOSE_OUT}/health-diagnose.json" || true
+            echo "phase2_mode=${PHASE2}" >> "$GITHUB_OUTPUT"
+            head -c 1200 "${DIAGNOSE_OUT}/health-diagnose.json" || true
           fi
 
       - name: Diagnose automation run from Production DB
-        if: steps.health_diagnose.outputs.health_ok != '1' && (github.event.inputs.request_id != '' || github.event.inputs.diagnostic_id != '')
+        if: steps.health_diagnose.outputs.health_ok != '1'
         env:
           DIAGNOSE_REQUEST_ID: ${{ github.event.inputs.request_id || '' }}
           DIAGNOSE_DIAGNOSTIC_ID: ${{ github.event.inputs.diagnostic_id || '' }}
+          PHASE2_CALENDAR_SUCCESS: ${{ (github.event.inputs.request_id == '' && github.event.inputs.diagnostic_id == '') && '1' || '' }}
           DIAGNOSE_OUT: ${{ runner.temp }}/diagnose-automation-run
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
@@ -132,10 +129,12 @@ jobs:
           set -euo pipefail
           mkdir -p "${DIAGNOSE_OUT}"
           if [ -z "${DIAGNOSE_REQUEST_ID:-}${DIAGNOSE_DIAGNOSTIC_ID:-}" ]; then
-            echo "::error::request_id or diagnostic_id required"
-            exit 2
+            export PHASE2_CALENDAR_SUCCESS=1
           fi
           node scripts/ci/diagnose-automation-run-production.mjs
+          if [ -f "${DIAGNOSE_OUT}/health-diagnose.json" ]; then
+            node scripts/ci/print-phase2-diagnose-summary.mjs "${DIAGNOSE_OUT}/health-diagnose.json" || true
+          fi
 
       - name: Upload diagnostic artifact
         if: always()

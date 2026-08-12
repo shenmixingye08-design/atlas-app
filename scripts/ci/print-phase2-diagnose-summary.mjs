@@ -30,8 +30,12 @@ process.stdout.write(
       enabledStepTypes: auto.enabledStepTypes,
       derived,
       resultSummary: run.resultSummary,
+      phase2: d.phase2 || null,
+      scanSummary: d.scanSummary || null,
+      error: d.error || null,
     },
     null,
     2,
   )}\n`,
 );
+
