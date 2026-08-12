@@ -42,6 +42,16 @@ describe("automation first rollout defaults", () => {
     expect(resolveAutomationFirstDefaultState()).toBe("on");
   });
 
+  it("defaults automation_memory_enabled on outside Vitest", async () => {
+    vi.stubEnv("VITEST", "");
+    vi.stubEnv("NODE_ENV", "production");
+    const { resetFeatureFlagStore, getFeatureFlagState } = await import(
+      "@/lib/feature-flags/store"
+    );
+    resetFeatureFlagStore();
+    expect(getFeatureFlagState("automation_memory_enabled")).toBe("on");
+  });
+
   it("honors ATLAS_AUTOMATION_FIRST_UI=off for rollback", () => {
     vi.stubEnv("ATLAS_AUTOMATION_FIRST_UI", "off");
     vi.stubEnv("VERCEL_ENV", "preview");

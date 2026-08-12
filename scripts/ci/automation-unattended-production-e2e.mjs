@@ -346,6 +346,35 @@ async function main() {
         );
       }
 
+      // Preflight feature flags (Production SoT for create gate).
+      evidence.failureStage = "feature_flags_preflight";
+      const flagsRes = await pageA.request.get(
+        `${APP_URL}/api/feature-flags/availability`,
+      );
+      const flagsBody = await flagsRes.json();
+      const flags = flagsBody?.flags || {};
+      evidence.featureFlags = {
+        automation_v2_enabled: flags.automation_v2_enabled ?? null,
+        automation_memory_enabled: flags.automation_memory_enabled ?? null,
+      };
+      console.log(
+        JSON.stringify({
+          progress: "feature_flags_preflight",
+          http: flagsRes.status(),
+          flags: evidence.featureFlags,
+        }),
+      );
+      if (flags.automation_v2_enabled !== true) {
+        throw new Error(
+          "automation_v2_enabled_false — cannot create Automation on Production",
+        );
+      }
+      if (flags.automation_memory_enabled !== true) {
+        throw new Error(
+          "automation_memory_enabled_false — Memory policy create blocked (N-05/gate requires ON)",
+        );
+      }
+
       const when = addTokyoMinutes(3);
       evidence.schedule = {
         frequency: "daily",
@@ -441,8 +470,10 @@ async function main() {
       );
       const createJson = await createRes.json();
       if (createRes.status() !== 201 && createRes.status() !== 200) {
+        const detailFlag =
+          createJson?.details?.flag || createJson?.error?.details?.flag || null;
         throw new Error(
-          `create_failed http=${createRes.status()} code=${createJson?.error?.code || createJson?.error || "unknown"}`,
+          `create_failed http=${createRes.status()} code=${createJson?.error?.code || createJson?.error || "unknown"} flag=${detailFlag || "none"} developerCode=${createJson?.developerCode || createJson?.error?.code || "none"}`,
         );
       }
       const automation = createJson.automation;
