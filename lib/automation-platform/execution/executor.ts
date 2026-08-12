@@ -234,6 +234,7 @@ export async function executeQueuedRun(input: {
         userId: run.userId,
         automationName: input.automation.name,
         runId: run.id,
+        automationId: run.automationId,
         approved: approved || !runStep.requiresApproval,
         resolvedInstruction: run.resolvedInstruction,
         memoryUsage: run.memoryUsage,

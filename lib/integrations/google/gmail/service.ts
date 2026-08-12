@@ -17,6 +17,7 @@ import {
 import {
   addLabelToGmailMessage,
   archiveGmailMessage,
+  createGmailComposeDraft,
   createGmailDraft,
   createGmailLabel,
   extractTextFromPdfBuffer,
@@ -25,6 +26,7 @@ import {
   fetchGmailMessages,
   listGmailLabels,
   moveGmailMessageToSpam,
+  sendGmailMessage,
   sendGmailReply,
   trashGmailMessage,
 } from "./api-client";
@@ -286,6 +288,10 @@ export async function sendReplyForUser(input: {
   context: FeatureAccessContext;
   messageId: string;
   draft: GmailReplyDraftContent;
+  automationId?: string | null;
+  runId?: string | null;
+  occurrenceKey?: string | null;
+  discriminator?: string | null;
 }): Promise<
   | { status: "ready"; sentMessageId: string }
   | GateFailure
@@ -311,10 +317,11 @@ export async function sendReplyForUser(input: {
       provider: "gmail",
       actionType: "send",
       destination: input.draft.to,
-      automationId: null,
-      runId: null,
-      occurrenceKey: input.messageId,
-      discriminator: `${input.messageId}|${input.draft.subject}`,
+      automationId: input.automationId ?? null,
+      runId: input.runId ?? null,
+      occurrenceKey: input.occurrenceKey ?? input.messageId,
+      discriminator:
+        input.discriminator ?? `${input.messageId}|${input.draft.subject}`,
     },
     async () => {
       const sent = await sendGmailReply({
@@ -333,6 +340,144 @@ export async function sendReplyForUser(input: {
   );
 
   return { status: "ready", sentMessageId: sideEffect.result.sentMessageId };
+}
+
+/** Compose + send a new email (Automation / non-reply path). */
+export async function sendComposeEmailForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  to: string;
+  subject: string;
+  body: string;
+  automationId?: string | null;
+  runId?: string | null;
+  occurrenceKey?: string | null;
+  discriminator?: string | null;
+}): Promise<
+  | { status: "ready"; sentMessageId: string; threadId: string | null }
+  | GateFailure
+  | { status: "validation_failed"; message: string }
+> {
+  const access = await requireGmailAccess(input);
+  if (isGateFailure(access)) return access;
+
+  const to = input.to.trim();
+  const subject = input.subject.trim();
+  const body = input.body.trim();
+  if (!to || !subject || !body) {
+    return {
+      status: "validation_failed",
+      message: "宛先・件名・本文が不足しています",
+    };
+  }
+
+  const { createHash } = await import("node:crypto");
+  const { executeIdempotentSideEffect } = await import(
+    "@/lib/side-effects/execute"
+  );
+  const contentHash = createHash("sha256")
+    .update(`${to}\n${subject}\n${body}`)
+    .digest("hex")
+    .slice(0, 24);
+
+  const sideEffect = await executeIdempotentSideEffect(
+    {
+      userId: input.userId,
+      provider: "gmail",
+      actionType: "send",
+      destination: to,
+      automationId: input.automationId ?? null,
+      runId: input.runId ?? null,
+      occurrenceKey: input.occurrenceKey ?? input.runId ?? null,
+      discriminator: input.discriminator ?? contentHash,
+    },
+    async () => {
+      const sent = await sendGmailMessage({
+        accessToken: access.accessToken,
+        to,
+        subject,
+        body,
+      });
+      return {
+        providerResourceId: sent.id,
+        result: { sentMessageId: sent.id, threadId: sent.threadId },
+        evidence: { provider: "gmail", operation: "compose_send", contentHash },
+      };
+    },
+  );
+
+  return {
+    status: "ready",
+    sentMessageId: sideEffect.result.sentMessageId,
+    threadId: sideEffect.result.threadId,
+  };
+}
+
+/** Compose draft only (no send). */
+export async function createComposeDraftForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  to: string;
+  subject: string;
+  body: string;
+  automationId?: string | null;
+  runId?: string | null;
+  occurrenceKey?: string | null;
+  discriminator?: string | null;
+}): Promise<
+  | { status: "ready"; gmailDraftId: string }
+  | GateFailure
+  | { status: "validation_failed"; message: string }
+> {
+  const access = await requireGmailAccess(input);
+  if (isGateFailure(access)) return access;
+
+  const to = input.to.trim();
+  const subject = input.subject.trim();
+  const body = input.body.trim();
+  if (!to || !subject || !body) {
+    return {
+      status: "validation_failed",
+      message: "宛先・件名・本文が不足しています",
+    };
+  }
+
+  const { createHash } = await import("node:crypto");
+  const { executeIdempotentSideEffect } = await import(
+    "@/lib/side-effects/execute"
+  );
+  const contentHash = createHash("sha256")
+    .update(`draft\n${to}\n${subject}\n${body}`)
+    .digest("hex")
+    .slice(0, 24);
+
+  const sideEffect = await executeIdempotentSideEffect(
+    {
+      userId: input.userId,
+      provider: "gmail",
+      actionType: "send",
+      destination: `draft:${to}`,
+      automationId: input.automationId ?? null,
+      runId: input.runId ?? null,
+      occurrenceKey: input.occurrenceKey ?? input.runId ?? null,
+      discriminator: input.discriminator ?? contentHash,
+    },
+    async () => {
+      const created = await createGmailComposeDraft({
+        accessToken: access.accessToken,
+        to,
+        subject,
+        body,
+      });
+      return {
+        providerResourceId: created.id,
+        result: { gmailDraftId: created.id },
+        evidence: { provider: "gmail", operation: "compose_draft", contentHash },
+      };
+    },
+  );
+
+  return { status: "ready", gmailDraftId: sideEffect.result.gmailDraftId };
 }
 
 export async function saveGmailDraftForUser(input: {

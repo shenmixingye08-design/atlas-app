@@ -192,6 +192,10 @@ export async function createCalendarEventForUser(input: {
   userId: string;
   context: FeatureAccessContext;
   event: CalendarEventInput;
+  automationId?: string | null;
+  runId?: string | null;
+  occurrenceKey?: string | null;
+  discriminator?: string | null;
 }): Promise<{ status: "ready"; event: CalendarEvent } | GateFailure> {
   const access = await requireCalendarAccess(input);
   if (isGateFailure(access)) return access;
@@ -205,14 +209,16 @@ export async function createCalendarEventForUser(input: {
       provider: "google_calendar",
       actionType: "create_event",
       destination: "primary",
-      automationId: null,
-      runId: null,
-      occurrenceKey: null,
-      discriminator: [
-        input.event.title ?? "",
-        input.event.startAt ?? "",
-        input.event.endAt ?? "",
-      ].join("|"),
+      automationId: input.automationId ?? null,
+      runId: input.runId ?? null,
+      occurrenceKey: input.occurrenceKey ?? input.runId ?? null,
+      discriminator:
+        input.discriminator ??
+        [
+          input.event.title ?? "",
+          input.event.startAt ?? "",
+          input.event.endAt ?? "",
+        ].join("|"),
     },
     async () => {
       const event = await createGoogleCalendarEvent({
@@ -222,7 +228,7 @@ export async function createCalendarEventForUser(input: {
       return {
         providerResourceId: event.id,
         result: { event },
-        evidence: { provider: "google_calendar" },
+        evidence: { provider: "google_calendar", operation: "create_event" },
       };
     },
   );

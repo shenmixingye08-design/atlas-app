@@ -261,28 +261,48 @@ describe("V2 Production fail-closed", () => {
     }
   });
 
-  it("live adapter missing fails closed (no prepared success)", async () => {
-    const result = await strictStepInvoker({
-      step: baseStep({
-        id: "g",
-        type: "gmail",
-        name: "Gmail",
-        order: 0,
-        configuration: { to: "boss@example.com" },
-        requiresApproval: true,
-      }),
-      userId: "user_fc",
-      automationName: "mail",
-      runId: "r_mail",
-      approved: true,
-    });
-    expect(result.ok).toBe(false);
-    expect(
-      ["live_adapter_missing", "automation_integration_required", "automation_feature_disabled"].includes(
-        result.errorCode ?? "",
-      ),
-    ).toBe(true);
-    expect(result.failedStage).toBe("EXTERNAL_ADAPTER_RESOLUTION");
+  it("live external without credentials fails closed (no prepared success)", async () => {
+    const prevId = process.env.GOOGLE_CLIENT_ID;
+    const prevSecret = process.env.GOOGLE_CLIENT_SECRET;
+    // Force app-credential miss so Production path cannot fake success.
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    try {
+      const result = await strictStepInvoker({
+        step: baseStep({
+          id: "g",
+          type: "gmail",
+          name: "Gmail",
+          order: 0,
+          configuration: {
+            to: "boss@example.com",
+            subject: "件名",
+            body: "本文",
+          },
+          requiresApproval: true,
+        }),
+        userId: "user_fc",
+        automationName: "mail",
+        runId: "r_mail",
+        approved: true,
+      });
+      expect(result.ok).toBe(false);
+      expect(
+        [
+          "live_adapter_missing",
+          "automation_integration_required",
+          "automation_feature_disabled",
+          "not_connected",
+          "credential_missing",
+        ].includes(result.errorCode ?? ""),
+      ).toBe(true);
+      expect(result.failedStage).toBe("EXTERNAL_ADAPTER_RESOLUTION");
+    } finally {
+      if (prevId !== undefined) process.env.GOOGLE_CLIENT_ID = prevId;
+      else delete process.env.GOOGLE_CLIENT_ID;
+      if (prevSecret !== undefined) process.env.GOOGLE_CLIENT_SECRET = prevSecret;
+      else delete process.env.GOOGLE_CLIENT_SECRET;
+    }
   });
 
   it("partially_succeeded notification is not type=completed", async () => {
