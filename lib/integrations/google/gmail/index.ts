@@ -19,8 +19,10 @@ export {
   modifyGmailMessageLabels,
   moveGmailMessageToSpam,
   normalizeGmailMessage,
+  sendGmailMessage,
   sendGmailReply,
   trashGmailMessage,
+  createGmailComposeDraft,
 } from "./api-client";
 export {
   fetchGmailMessagesClient,
@@ -55,6 +57,8 @@ export {
   spamMessageForUser,
   trashMessageForUser,
   sendReplyForUser,
+  sendComposeEmailForUser,
+  createComposeDraftForUser,
   saveGmailDraftForUser,
   listAttachmentsForUser,
   getAttachmentBytesForUser,

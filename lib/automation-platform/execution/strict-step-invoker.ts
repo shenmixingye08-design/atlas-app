@@ -20,6 +20,11 @@ import {
   getProductionStep,
   isLiveAdapterWired,
 } from "@/lib/automation-platform/execution/production-step-registry";
+import {
+  configMissingInput,
+  invokeWiredExternalAdapter,
+} from "@/lib/automation-platform/execution/adapters";
+import type { ExternalAdapterInput } from "@/lib/automation-platform/execution/adapters";
 import { getCapability } from "@/lib/automation-platform/step-registry/registry";
 import { createNotification } from "@/lib/notifications/service";
 
@@ -47,41 +52,16 @@ function liveAdapterMissing(service: string): StepInvokeResult {
   };
 }
 
-function missingInput(message: string): StepInvokeResult {
-  return {
-    ok: false,
-    summary: message,
-    artifacts: [],
-    errorCode: "automation_integration_required",
-    errorMessage: message,
-    failedStage: "EXTERNAL_INPUT",
-    retryable: false,
-    needsUserInput: true,
-  };
-}
-
 function notConnected(service: string): StepInvokeResult {
   return {
     ok: false,
     summary: `${service}連携が未接続のため実行できません`,
     artifacts: [],
-    errorCode: "automation_integration_required",
-    errorMessage: `${service} is not connected`,
+    errorCode: "not_connected",
+    errorMessage: "credential_missing",
     failedStage: "EXTERNAL_ADAPTER_RESOLUTION",
     retryable: false,
     needsUserInput: true,
-  };
-}
-
-function liveExternalDisabled(service: string): StepInvokeResult {
-  return {
-    ok: false,
-    summary: `${service}連携のライブ外部実行フラグがOFFです`,
-    artifacts: [],
-    errorCode: "automation_feature_disabled",
-    errorMessage: "AUTOMATION_E2E_LIVE_EXTERNAL is not true",
-    failedStage: "EXTERNAL_ADAPTER_RESOLUTION",
-    retryable: false,
   };
 }
 
@@ -119,6 +99,7 @@ async function invokeNotifyStep(input: {
   userId: string;
   automationName: string;
   runId: string;
+  automationId?: string | null;
 }): Promise<StepInvokeResult> {
   const title =
     (typeof input.step.configuration.title === "string" &&
@@ -140,7 +121,7 @@ async function invokeNotifyStep(input: {
         provider: "notification",
         actionType: "notify",
         destination: "in_app",
-        automationId: null,
+        automationId: input.automationId ?? null,
         runId: input.runId,
         occurrenceKey: input.runId,
         discriminator: input.step.id,
@@ -296,18 +277,23 @@ function invokeConditionStep(
   };
 }
 
-async function invokeExternalGate(
-  service: string,
-  adapterId: string,
-  configured: boolean,
-  live: boolean,
-  inputOk: StepInvokeResult | null,
-): Promise<StepInvokeResult> {
-  if (inputOk) return inputOk;
-  if (!configured) return notConnected(service);
-  if (!live) return liveExternalDisabled(service);
-  if (!isLiveAdapterWired(adapterId)) return liveAdapterMissing(service);
-  return liveAdapterMissing(service);
+async function invokeExternalProduction(input: {
+  service: string;
+  adapterId: string;
+  appConfigured: boolean;
+  adapterInput: ExternalAdapterInput;
+  inputError: StepInvokeResult | null;
+}): Promise<StepInvokeResult> {
+  if (input.inputError) return input.inputError;
+  if (!input.appConfigured) return notConnected(input.service);
+  if (!isLiveAdapterWired(input.adapterId)) {
+    return liveAdapterMissing(input.service);
+  }
+  return invokeWiredExternalAdapter({
+    adapterId: input.adapterId,
+    service: input.service,
+    adapterInput: input.adapterInput,
+  });
 }
 
 /**
@@ -346,7 +332,14 @@ export const strictStepInvoker: StepInvoker = async (input) => {
     };
   }
 
-  const live = process.env.AUTOMATION_E2E_LIVE_EXTERNAL === "true";
+  const adapterInput: ExternalAdapterInput = {
+    step,
+    userId: input.userId,
+    automationName: input.automationName,
+    automationId: input.automationId ?? null,
+    runId: input.runId,
+    approved,
+  };
 
   switch (step.type) {
     case "word_generate":
@@ -363,7 +356,13 @@ export const strictStepInvoker: StepInvoker = async (input) => {
       return invokeOcrStep(input);
 
     case "notify":
-      return invokeNotifyStep(input);
+      return invokeNotifyStep({
+        step: input.step,
+        userId: input.userId,
+        automationName: input.automationName,
+        runId: input.runId,
+        automationId: input.automationId,
+      });
 
     case "await_approval":
       return {
@@ -388,28 +387,35 @@ export const strictStepInvoker: StepInvoker = async (input) => {
         typeof step.configuration.to === "string"
           ? step.configuration.to.trim()
           : "";
-      return invokeExternalGate(
-        "Gmail",
-        "google_gmail",
-        googleAppConfigured(),
-        live,
-        !to || to === "（宛先未設定）"
-          ? missingInput("メール送信先が設定されていません")
-          : null,
-      );
+      return invokeExternalProduction({
+        service: "Gmail",
+        adapterId: "google_gmail",
+        appConfigured: googleAppConfigured(),
+        adapterInput,
+        inputError:
+          !to || to === "（宛先未設定）"
+            ? configMissingInput("メール送信先が設定されていません")
+            : null,
+      });
     }
     case "x_post": {
       const text =
         typeof step.configuration.text === "string"
           ? step.configuration.text.trim()
-          : "";
-      return invokeExternalGate(
-        "X",
-        "x",
-        xAppConfigured(),
-        live,
-        !text ? missingInput("投稿本文が設定されていません") : null,
-      );
+          : typeof step.configuration.body === "string"
+            ? step.configuration.body.trim()
+            : typeof step.configuration.content === "string"
+              ? step.configuration.content.trim()
+              : "";
+      return invokeExternalProduction({
+        service: "X",
+        adapterId: "x",
+        appConfigured: xAppConfigured(),
+        adapterInput,
+        inputError: !text
+          ? configMissingInput("投稿本文が設定されていません")
+          : null,
+      });
     }
     case "dropbox": {
       const dest =
@@ -418,32 +424,32 @@ export const strictStepInvoker: StepInvoker = async (input) => {
           : typeof step.configuration.folderPath === "string"
             ? step.configuration.folderPath.trim()
             : "";
-      return invokeExternalGate(
-        "Dropbox",
-        "dropbox",
-        dropboxAppConfigured(),
-        live,
-        !dest
-          ? missingInput("Dropboxの保存先フォルダを選択してください")
+      return invokeExternalProduction({
+        service: "Dropbox",
+        adapterId: "dropbox",
+        appConfigured: dropboxAppConfigured(),
+        adapterInput,
+        inputError: !dest
+          ? configMissingInput("Dropboxの保存先フォルダを選択してください")
           : null,
-      );
+      });
     }
     case "google_calendar":
-      return invokeExternalGate(
-        "Google Calendar",
-        "google_calendar",
-        googleAppConfigured(),
-        live,
-        null,
-      );
+      return invokeExternalProduction({
+        service: "Google Calendar",
+        adapterId: "google_calendar",
+        appConfigured: googleAppConfigured(),
+        adapterInput,
+        inputError: null,
+      });
     case "wordpress":
-      return invokeExternalGate(
-        "WordPress",
-        "wordpress",
-        wordpressAppConfigured(),
-        live,
-        null,
-      );
+      return invokeExternalProduction({
+        service: "WordPress",
+        adapterId: "wordpress",
+        appConfigured: wordpressAppConfigured(),
+        adapterInput,
+        inputError: null,
+      });
 
     default:
       return stepNotImplemented(step.type);

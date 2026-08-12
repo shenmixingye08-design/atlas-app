@@ -484,6 +484,70 @@ export async function sendGmailReply(input: {
   return { id: payload.id, threadId: payload.threadId ?? null };
 }
 
+/** Compose and send a new Gmail message (not a thread reply). */
+export async function sendGmailMessage(input: {
+  accessToken: string;
+  to: string;
+  subject: string;
+  body: string;
+}): Promise<{ id: string; threadId: string | null }> {
+  const raw = buildRfc822Reply({
+    to: input.to,
+    subject: input.subject,
+    body: input.body,
+  });
+
+  const payload = await gmailFetch<{ id?: string; threadId?: string }>(
+    input.accessToken,
+    "/users/me/messages/send",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        raw: encodeBase64Url(raw),
+      }),
+    },
+  );
+
+  if (!payload.id) {
+    throw new Error("Gmail did not return a sent message id");
+  }
+
+  return { id: payload.id, threadId: payload.threadId ?? null };
+}
+
+/** Create a new compose draft (not a reply draft). */
+export async function createGmailComposeDraft(input: {
+  accessToken: string;
+  to: string;
+  subject: string;
+  body: string;
+}): Promise<{ id: string }> {
+  const raw = buildRfc822Reply({
+    to: input.to,
+    subject: input.subject,
+    body: input.body,
+  });
+
+  const payload = await gmailFetch<{ id?: string }>(
+    input.accessToken,
+    "/users/me/drafts",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        message: {
+          raw: encodeBase64Url(raw),
+        },
+      }),
+    },
+  );
+
+  if (!payload.id) {
+    throw new Error("Gmail did not return a draft id");
+  }
+
+  return { id: payload.id };
+}
+
 export async function createGmailDraft(input: {
   accessToken: string;
   message: GmailMessage;

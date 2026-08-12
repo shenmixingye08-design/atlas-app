@@ -30,6 +30,8 @@ export type StepInvoker = (input: {
   userId: string;
   automationName: string;
   runId: string;
+  /** Durable automation id — used for side-effect idempotency. */
+  automationId?: string | null;
   approved: boolean;
   /** Optional Memory / instruction context for production step adapters. */
   resolvedInstruction?: ResolvedInstruction | null;

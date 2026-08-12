@@ -125,13 +125,17 @@ const SCHEMAS: Record<AutomationCapabilityId, readonly CapabilityFieldSchema[]> 
     { key: "to", label: "宛先", type: "text", sensitive: true, helpText: "記憶だけで自動入力しません" },
     { key: "cc", label: "CC", type: "text", sensitive: true },
     { key: "subject", label: "件名", type: "text" },
+    { key: "body", label: "本文", type: "textarea", required: true },
   ],
   x_post: [
+    { key: "text", label: "投稿本文", type: "textarea", required: true },
     { key: "includeImage", label: "画像を付ける", type: "boolean" },
     { key: "hashtags", label: "ハッシュタグ", type: "text", placeholder: "#例" },
   ],
   google_calendar: [
     { key: "eventTitle", label: "予定タイトル", type: "text", required: true },
+    { key: "startAt", label: "開始（ISO）", type: "text" },
+    { key: "endAt", label: "終了（ISO）", type: "text" },
     {
       key: "action",
       label: "操作",
@@ -144,6 +148,8 @@ const SCHEMAS: Record<AutomationCapabilityId, readonly CapabilityFieldSchema[]> 
     },
   ],
   wordpress: [
+    { key: "title", label: "記事タイトル", type: "text", required: true },
+    { key: "content", label: "本文", type: "textarea", required: true },
     {
       key: "publishMode",
       label: "公開方法",
@@ -156,6 +162,7 @@ const SCHEMAS: Record<AutomationCapabilityId, readonly CapabilityFieldSchema[]> 
   ],
   dropbox: [
     { key: "folderPath", label: "保存先フォルダ", type: "text", sensitive: true },
+    { key: "content", label: "保存する本文", type: "textarea" },
     { key: "fileNamePattern", label: "ファイル名の付け方", type: "text", placeholder: "例: 日付_タイトル" },
     {
       key: "onConflict",

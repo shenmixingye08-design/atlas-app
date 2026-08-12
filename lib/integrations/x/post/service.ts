@@ -166,7 +166,9 @@ async function executeTweetPost(input: {
   mode: XPostMode;
   context: FeatureAccessContext;
   automationId?: string | null;
+  runId?: string | null;
   scheduledFor?: string | null;
+  discriminator?: string | null;
 }): Promise<XPostResult> {
   const validation = validateTweetText(input.text);
   if (validation.errors.length > 0) {
@@ -232,9 +234,10 @@ async function executeTweetPost(input: {
         actionType: "post",
         destination: access.username ?? "x",
         automationId: input.automationId ?? null,
-        runId: null,
-        occurrenceKey: input.scheduledFor ?? null,
-        discriminator: contentHash,
+        runId: input.runId ?? null,
+        occurrenceKey:
+          input.runId ?? input.scheduledFor ?? null,
+        discriminator: input.discriminator ?? contentHash,
       },
       async () => {
         const tweet = await createTweet({
@@ -344,6 +347,9 @@ export async function postTweetNowForUser(input: {
   userId: string;
   text: string;
   context: FeatureAccessContext;
+  automationId?: string | null;
+  runId?: string | null;
+  discriminator?: string | null;
 }): Promise<XPostResult> {
   if (!isFeatureEnabled("x", input.context)) {
     return {
@@ -357,6 +363,9 @@ export async function postTweetNowForUser(input: {
     text: input.text,
     mode: "immediate",
     context: input.context,
+    automationId: input.automationId,
+    runId: input.runId,
+    discriminator: input.discriminator,
   });
 }
 

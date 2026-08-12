@@ -93,6 +93,10 @@ export async function createWordPressPostForUser(input: {
   userId: string;
   context: FeatureAccessContext;
   payload: WordPressPostPayload;
+  automationId?: string | null;
+  runId?: string | null;
+  occurrenceKey?: string | null;
+  discriminator?: string | null;
 }): Promise<WordPressPostResult> {
   if (!isFeatureEnabled("wordpress", input.context)) {
     return {
@@ -136,10 +140,10 @@ export async function createWordPressPostForUser(input: {
         provider: "wordpress",
         actionType: status === "publish" ? "publish" : "post",
         destination: ctx.auth.siteUrl ?? "wordpress",
-        automationId: null,
-        runId: null,
-        occurrenceKey: null,
-        discriminator: contentHash,
+        automationId: input.automationId ?? null,
+        runId: input.runId ?? null,
+        occurrenceKey: input.occurrenceKey ?? input.runId ?? null,
+        discriminator: input.discriminator ?? contentHash,
       },
       async () => {
         const created = await createWordPressPost(

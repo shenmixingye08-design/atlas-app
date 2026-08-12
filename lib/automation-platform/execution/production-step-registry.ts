@@ -254,8 +254,8 @@ export type ProductionStepValidationIssue = {
 };
 
 /**
- * Live adapters are not yet wired into V2 Production invoker.
- * Activation refuses enabled external steps that require them.
+ * Live adapters wired into V2 Production invoker.
+ * Activation refuses enabled external steps that require an unwired adapter.
  */
 export function isLiveAdapterWired(adapterId: string | null): boolean {
   if (!adapterId) return true;
@@ -264,6 +264,12 @@ export function isLiveAdapterWired(adapterId: string | null): boolean {
     // Internal engines (not external OAuth adapters)
     "openai_vision",
     "openai_vision_ocr",
+    // Phase 2: production external adapters (real provider APIs only)
+    "google_gmail",
+    "google_calendar",
+    "x",
+    "wordpress",
+    "dropbox",
   ]);
   return wired.has(adapterId);
 }

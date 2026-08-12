@@ -121,6 +121,10 @@ export async function uploadDropboxFileForUser(input: {
   fileName: string;
   buffer: Buffer;
   parentPath?: string | null;
+  automationId?: string | null;
+  runId?: string | null;
+  occurrenceKey?: string | null;
+  discriminator?: string | null;
 }): Promise<DropboxMutationResult> {
   const access = await resolveDropboxAccess(input);
   if (access.status !== "ready") {
@@ -146,10 +150,10 @@ export async function uploadDropboxFileForUser(input: {
       provider: "dropbox",
       actionType: "upload",
       destination: targetPath,
-      automationId: null,
-      runId: null,
-      occurrenceKey: null,
-      discriminator: contentHash,
+      automationId: input.automationId ?? null,
+      runId: input.runId ?? null,
+      occurrenceKey: input.occurrenceKey ?? input.runId ?? null,
+      discriminator: input.discriminator ?? contentHash,
     },
     async () => {
       const file = await uploadDropboxFile({
