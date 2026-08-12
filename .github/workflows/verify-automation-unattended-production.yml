@@ -10,6 +10,8 @@ on:
     paths:
       - "scripts/ci/automation-unattended-production-e2e.mjs"
       - ".github/workflows/verify-automation-unattended-production.yml"
+      - "lib/feature-flags/store.ts"
+      - "lib/automation-platform/**"
 
 concurrency:
   group: verify-automation-unattended-production

@@ -234,6 +234,7 @@ async function main() {
     memoryRetrieved: null,
     memoryApplied: null,
     memorySeeded: false,
+    featureFlags: null,
     duplicateExecution: null,
     claimedExactlyOnce: null,
     multiInstanceSafe: null,
