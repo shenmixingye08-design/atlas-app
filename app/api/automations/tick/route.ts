@@ -4,7 +4,10 @@ import {
   processScheduledXPostsFromAutomationTick,
 } from "@/lib/integrations/x/post/automation";
 import { clientSafeMessage } from "@/lib/security/client-safe-message";
-import { classifyTickFailure } from "@/lib/work-queue/tick-diagnostics";
+import {
+  classifyTickFailure,
+  type TickFailureDiagnostics,
+} from "@/lib/work-queue/tick-diagnostics";
 
 function resolveOrigin(request: Request): string {
   const host =
@@ -18,6 +21,14 @@ function resolveOrigin(request: Request): string {
   return new URL(request.url).origin;
 }
 
+type V2ScheduleSummary = {
+  due: number;
+  enqueued: number;
+  deduped: number;
+  failed: number;
+  dispatched: number;
+};
+
 /**
  * Minute-capable due tick.
  * Scheduler enqueues durable jobs; worker drains leases (step-sized).
@@ -27,6 +38,10 @@ function resolveOrigin(request: Request): string {
  * (`.github/workflows/minute-scheduler.yml`) as the production minute path.
  * `vercel.json` keeps a daily fallback; Pro can switch to minute via
  * `vercel.cron.pro.json`.
+ *
+ * N-08: V2 due schedule/dispatch is the canonical Automation path and must not
+ * be blocked when legacy V1 work_queue throws (Production evidence: natural
+ * Minute Scheduler 31559210683 → HTTP 500 work_queue_query_failed before V2).
  */
 export async function POST(request: Request): Promise<Response> {
   const gate = await authorizeAutomationTick(request);
@@ -47,130 +62,203 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
-  let failedStage: "work_queue" | "post_success_record" | "unknown" = "unknown";
+  const origin = resolveOrigin(request);
 
+  // --- N-08 canonical V2 first (isolated from V1 work_queue) ---
+  let v2Schedule: V2ScheduleSummary = {
+    due: 0,
+    enqueued: 0,
+    deduped: 0,
+    failed: 0,
+    dispatched: 0,
+  };
+  let v2Dispatch = { processed: 0 };
+  let v2PathError: string | null = null;
   try {
-    const origin = resolveOrigin(request);
+    const { processDueScheduledAutomationsV2 } = await import(
+      "@/lib/automation-platform/schedule/due-tick"
+    );
+    // V2: enqueue from DB SoT (dispatch false here; separate durable claim below).
+    const scheduled = await processDueScheduledAutomationsV2({
+      limit: 20,
+      dispatch: false,
+    });
+    v2Schedule = {
+      due: scheduled.due,
+      enqueued: scheduled.enqueued,
+      deduped: scheduled.deduped,
+      failed: scheduled.failed,
+      dispatched: scheduled.dispatched,
+    };
+    // P1-03: DB claim is multi-instance safe — dispatch in all environments
+    // when atlas_automations / atlas_automation_runs SoT is ready.
+    // Never fall back to process-local memory claim.
+    const { isAutomationV2DbSotReady } = await import(
+      "@/lib/automation-platform/repository/table-ready"
+    );
+    if (await isAutomationV2DbSotReady()) {
+      const { dispatchAutomationRuns } = await import(
+        "@/lib/automation-platform/execution/dispatch"
+      );
+      v2Dispatch = await dispatchAutomationRuns({ limit: 10 });
+      v2Schedule = { ...v2Schedule, dispatched: v2Dispatch.processed };
+    } else {
+      const { isAtlasProduction } = await import(
+        "@/lib/runtime/is-production"
+      );
+      if (isAtlasProduction()) {
+        console.error(
+          "[automation tick] P1-03: V2 DB SoT not ready — skipping dispatch (fail-closed)",
+        );
+      }
+      v2Dispatch = { processed: 0 };
+    }
+  } catch (error) {
+    v2PathError = clientSafeMessage(error, "v2_schedule_dispatch_failed");
+    console.warn("[automation tick] v2 schedule/dispatch skipped:", error);
+  }
+
+  const v2Progress =
+    v2Schedule.enqueued + v2Schedule.deduped + v2Dispatch.processed;
+
+  // --- Legacy V1 work queue (isolated; must not block V2) ---
+  let workQueue: Awaited<
+    ReturnType<typeof import("@/lib/work-queue/tick").processWorkQueueTick>
+  > | null = null;
+  let workQueueFailure: TickFailureDiagnostics | null = null;
+  try {
     const { processWorkQueueTick } = await import("@/lib/work-queue/tick");
-    failedStage = "work_queue";
-    const workQueue = await processWorkQueueTick({
+    workQueue = await processWorkQueueTick({
       requestOrigin: origin,
     });
+  } catch (error) {
+    workQueueFailure = classifyTickFailure(error, "work_queue");
+    console.error("[automation tick] work_queue failed (V2 path isolated)", {
+      failedStage: workQueueFailure.failedStage,
+      developerCode: workQueueFailure.developerCode,
+      postgresUrlConfigured: workQueueFailure.postgresUrlConfigured,
+      extendedPostgresUrlOnly: workQueueFailure.extendedPostgresUrlOnly,
+      errorName: error instanceof Error ? error.name : typeof error,
+      v2Enqueued: v2Schedule.enqueued,
+      v2Dispatched: v2Dispatch.processed,
+    });
+  }
 
-    let v2Schedule = {
-      due: 0,
-      enqueued: 0,
-      deduped: 0,
-      failed: 0,
-      dispatched: 0,
-    };
-    let v2Dispatch = { processed: 0 };
-    try {
-      const { processDueScheduledAutomationsV2 } = await import(
-        "@/lib/automation-platform/schedule/due-tick"
-      );
-      // V2: enqueue from DB SoT (dispatch false here; separate durable claim below).
-      v2Schedule = await processDueScheduledAutomationsV2({
-        limit: 20,
-        dispatch: false,
-      });
-      // P1-03: DB claim is multi-instance safe — dispatch in all environments
-      // when atlas_automations / atlas_automation_runs SoT is ready.
-      // Never fall back to process-local memory claim.
-      const { isAutomationV2DbSotReady } = await import(
-        "@/lib/automation-platform/repository/table-ready"
-      );
-      if (await isAutomationV2DbSotReady()) {
-        const { dispatchAutomationRuns } = await import(
-          "@/lib/automation-platform/execution/dispatch"
-        );
-        v2Dispatch = await dispatchAutomationRuns({ limit: 10 });
-      } else {
-        const { isAtlasProduction } = await import(
-          "@/lib/runtime/is-production"
-        );
-        if (isAtlasProduction()) {
-          console.error(
-            "[automation tick] P1-03: V2 DB SoT not ready — skipping dispatch (fail-closed)",
-          );
-        }
-        v2Dispatch = { processed: 0 };
-      }
-    } catch (error) {
-      console.warn("[automation tick] v2 schedule/dispatch skipped:", error);
-    }
-
-    // Non-critical side steps: never fail the whole minute tick (P1-07).
-    // A throw here previously returned HTTP 500 and blocked monitor recovery.
-    let scheduledXPosts: Awaited<
-      ReturnType<typeof processScheduledXPostsFromAutomationTick>
-    > = [];
-    try {
-      scheduledXPosts = await processScheduledXPostsFromAutomationTick();
-    } catch (error) {
-      console.warn("[automation tick] scheduled X posts skipped:", error);
-    }
-
-    let autoPosts: Awaited<
-      ReturnType<typeof processDueAutoPostsFromAutomationTick>
-    > = [];
-    try {
-      autoPosts = await processDueAutoPostsFromAutomationTick();
-    } catch (error) {
-      console.warn("[automation tick] auto posts skipped:", error);
-    }
-
-    let dailyReports: { processed: number } = { processed: 0 };
-    try {
-      const { dispatchDailyReportsForDueUsers } = await import(
-        "@/lib/reports/daily-dispatch"
-      );
-      const reportResults = await dispatchDailyReportsForDueUsers();
-      dailyReports = {
-        processed: reportResults.filter((row) => row.sent).length,
-      };
-    } catch (error) {
-      console.warn("[automation tick] daily reports skipped:", error);
-    }
-
-    // P1-02: drain durable notification delivery retries (not DLQ replay).
-    let notificationRetries = {
-      due: 0,
-      claimed: 0,
-      delivered: 0,
-      rescheduled: 0,
-      deadLettered: 0,
-      skipped: 0,
-      failed: 0,
-      dlqReinjected: 0,
-    };
-    try {
-      const { processDurableNotificationRetries } = await import(
-        "@/lib/notifications/retry-drain"
-      );
-      notificationRetries = await processDurableNotificationRetries({
-        limit: 20,
-      });
-    } catch (error) {
-      console.warn("[automation tick] notification retry drain skipped:", error);
-    }
-
-    failedStage = "post_success_record";
-    const { recordCronTickOutcome, recordMonitoringIncident } = await import(
-      "@/lib/owner/monitoring"
-    );
+  // V1 failed and V2 made no progress → keep fail-closed for GHA alert.
+  // When V2 already enqueued/dispatched, return HTTP 200 below with ok:false
+  // (honest) so natural scheduler can complete canonical Automations.
+  if (workQueueFailure && v2Progress === 0) {
+    const message = "Automation tick failed";
+    const { recordCronTickOutcome } = await import("@/lib/owner/monitoring");
     const { recordAutomationCronDebug } = await import(
       "@/lib/automations/execution-log"
     );
-    recordCronTickOutcome(true);
-
+    recordCronTickOutcome(
+      false,
+      `${workQueueFailure.developerCode}:${message}`,
+    );
     recordAutomationCronDebug({
-      ok: true,
-      dueCount: workQueue.schedule.due,
-      successCount: workQueue.worker.completed,
-      failureCount: workQueue.worker.failed,
+      ok: false,
+      error: `${workQueueFailure.developerCode}:${message}`,
     });
+    return Response.json(
+      {
+        error: message,
+        failedStage: workQueueFailure.failedStage,
+        developerCode: workQueueFailure.developerCode,
+        postgresUrlConfigured: workQueueFailure.postgresUrlConfigured,
+        extendedPostgresUrlOnly: workQueueFailure.extendedPostgresUrlOnly,
+        v2Schedule,
+        v2Dispatch,
+        ...(v2PathError ? { v2PathError } : {}),
+      },
+      { status: 500 },
+    );
+  }
 
+  // Non-critical side steps: never fail the whole minute tick (P1-07).
+  let scheduledXPosts: Awaited<
+    ReturnType<typeof processScheduledXPostsFromAutomationTick>
+  > = [];
+  try {
+    scheduledXPosts = await processScheduledXPostsFromAutomationTick();
+  } catch (error) {
+    console.warn("[automation tick] scheduled X posts skipped:", error);
+  }
+
+  let autoPosts: Awaited<
+    ReturnType<typeof processDueAutoPostsFromAutomationTick>
+  > = [];
+  try {
+    autoPosts = await processDueAutoPostsFromAutomationTick();
+  } catch (error) {
+    console.warn("[automation tick] auto posts skipped:", error);
+  }
+
+  let dailyReports: { processed: number } = { processed: 0 };
+  try {
+    const { dispatchDailyReportsForDueUsers } = await import(
+      "@/lib/reports/daily-dispatch"
+    );
+    const reportResults = await dispatchDailyReportsForDueUsers();
+    dailyReports = {
+      processed: reportResults.filter((row) => row.sent).length,
+    };
+  } catch (error) {
+    console.warn("[automation tick] daily reports skipped:", error);
+  }
+
+  // P1-02: drain durable notification delivery retries (not DLQ replay).
+  let notificationRetries = {
+    due: 0,
+    claimed: 0,
+    delivered: 0,
+    rescheduled: 0,
+    deadLettered: 0,
+    skipped: 0,
+    failed: 0,
+    dlqReinjected: 0,
+  };
+  try {
+    const { processDurableNotificationRetries } = await import(
+      "@/lib/notifications/retry-drain"
+    );
+    notificationRetries = await processDurableNotificationRetries({
+      limit: 20,
+    });
+  } catch (error) {
+    console.warn("[automation tick] notification retry drain skipped:", error);
+  }
+
+  const { recordCronTickOutcome, recordMonitoringIncident } = await import(
+    "@/lib/owner/monitoring"
+  );
+  const { recordAutomationCronDebug } = await import(
+    "@/lib/automations/execution-log"
+  );
+
+  const workQueueOk = workQueueFailure === null && workQueue !== null;
+  // Honest outcome: ok only when V1 work queue succeeded (N-07 no soft-success).
+  // When V1 failed but V2 progressed, HTTP 200 so GHA can drain; ok stays false.
+  const tickOk = workQueueOk;
+  recordCronTickOutcome(
+    tickOk,
+    workQueueFailure
+      ? `${workQueueFailure.developerCode}:work_queue_isolated`
+      : undefined,
+  );
+
+  recordAutomationCronDebug({
+    ok: tickOk,
+    dueCount: workQueue?.schedule.due ?? v2Schedule.due,
+    successCount: workQueue?.worker.completed ?? v2Dispatch.processed,
+    failureCount: workQueue?.worker.failed ?? v2Schedule.failed,
+    ...(workQueueFailure
+      ? { error: `${workQueueFailure.developerCode}:work_queue_isolated` }
+      : {}),
+  });
+
+  if (workQueue) {
     for (const alert of workQueue.alerts.filter((a) => a.severity === "critical")) {
       recordMonitoringIncident({
         kind: "automation_failure",
@@ -180,88 +268,73 @@ export async function POST(request: Request): Promise<Response> {
         source: "automation_tick",
       });
     }
-
-    // P1-07: external monitor cycle after tick success is durable-recorded.
-    let externalMonitor = {
-      ok: false,
-      openIncidents: 0,
-      deliveriesSent: 0,
-      resolvedThisCycle: 0,
-    };
-    try {
-      const { runExternalMonitorCycle } = await import(
-        "@/lib/external-monitor"
-      );
-      const cycle = await runExternalMonitorCycle();
-      externalMonitor = {
-        ok: cycle.ok,
-        openIncidents: cycle.openIncidents,
-        deliveriesSent: cycle.deliveriesSent,
-        resolvedThisCycle: cycle.resolvedThisCycle,
-      };
-    } catch (error) {
-      console.warn("[automation tick] external monitor skipped:", error);
-    }
-
-    return Response.json({
-      ok: true,
-      processed: workQueue.worker.completed + workQueue.worker.failed,
-      workQueue: {
-        schedule: workQueue.schedule,
-        worker: {
-          completed: workQueue.worker.completed,
-          failed: workQueue.worker.failed,
-          leased: workQueue.worker.leased,
-          // P2-03 safe counts only (no job/user ids).
-          fanOut: workQueue.worker.plan.fanOut,
-          claimLimit: workQueue.worker.plan.claimLimit,
-          backpressure: workQueue.worker.plan.backpressure,
-          workerCount: workQueue.worker.workerIds.length,
-        },
-        alertCount: workQueue.alerts.length,
-      },
-      v2Schedule,
-      v2Dispatch,
-      scheduledXPosts: {
-        processed: scheduledXPosts.length,
-      },
-      autoPosts: {
-        processedUsers: autoPosts.length,
-      },
-      dailyReports,
-      notificationRetries,
-      externalMonitor,
-    });
-  } catch (error) {
-    const message = clientSafeMessage(error, "Automation tick failed");
-    const diag = classifyTickFailure(error, failedStage);
-    console.error("[automation tick] failed", {
-      failedStage: diag.failedStage,
-      developerCode: diag.developerCode,
-      postgresUrlConfigured: diag.postgresUrlConfigured,
-      extendedPostgresUrlOnly: diag.extendedPostgresUrlOnly,
-      errorName: error instanceof Error ? error.name : typeof error,
-    });
-    const { recordCronTickOutcome } = await import("@/lib/owner/monitoring");
-    const { recordAutomationCronDebug } = await import(
-      "@/lib/automations/execution-log"
-    );
-    recordCronTickOutcome(false, `${diag.developerCode}:${message}`);
-    recordAutomationCronDebug({
-      ok: false,
-      error: `${diag.developerCode}:${message}`,
-    });
-    return Response.json(
-      {
-        error: message,
-        failedStage: diag.failedStage,
-        developerCode: diag.developerCode,
-        postgresUrlConfigured: diag.postgresUrlConfigured,
-        extendedPostgresUrlOnly: diag.extendedPostgresUrlOnly,
-      },
-      { status: 500 },
-    );
   }
+
+  // P1-07: external monitor cycle after tick path is durable-recorded.
+  let externalMonitor = {
+    ok: false,
+    openIncidents: 0,
+    deliveriesSent: 0,
+    resolvedThisCycle: 0,
+  };
+  try {
+    const { runExternalMonitorCycle } = await import(
+      "@/lib/external-monitor"
+    );
+    const cycle = await runExternalMonitorCycle();
+    externalMonitor = {
+      ok: cycle.ok,
+      openIncidents: cycle.openIncidents,
+      deliveriesSent: cycle.deliveriesSent,
+      resolvedThisCycle: cycle.resolvedThisCycle,
+    };
+  } catch (error) {
+    console.warn("[automation tick] external monitor skipped:", error);
+  }
+
+  return Response.json({
+    ok: tickOk,
+    processed:
+      (workQueue?.worker.completed ?? 0) + (workQueue?.worker.failed ?? 0),
+    ...(workQueueFailure
+      ? {
+          workQueueFailure: {
+            failedStage: workQueueFailure.failedStage,
+            developerCode: workQueueFailure.developerCode,
+            postgresUrlConfigured: workQueueFailure.postgresUrlConfigured,
+            extendedPostgresUrlOnly: workQueueFailure.extendedPostgresUrlOnly,
+          },
+        }
+      : {}),
+    workQueue: workQueue
+      ? {
+          schedule: workQueue.schedule,
+          worker: {
+            completed: workQueue.worker.completed,
+            failed: workQueue.worker.failed,
+            leased: workQueue.worker.leased,
+            // P2-03 safe counts only (no job/user ids).
+            fanOut: workQueue.worker.plan.fanOut,
+            claimLimit: workQueue.worker.plan.claimLimit,
+            backpressure: workQueue.worker.plan.backpressure,
+            workerCount: workQueue.worker.workerIds.length,
+          },
+          alertCount: workQueue.alerts.length,
+        }
+      : null,
+    v2Schedule,
+    v2Dispatch,
+    ...(v2PathError ? { v2PathError } : {}),
+    scheduledXPosts: {
+      processed: scheduledXPosts.length,
+    },
+    autoPosts: {
+      processedUsers: autoPosts.length,
+    },
+    dailyReports,
+    notificationRetries,
+    externalMonitor,
+  });
 }
 
 export async function GET(request: Request): Promise<Response> {

@@ -39,7 +39,7 @@ const OUT_DIR =
   process.env.AUTOMATION_UNATTENDED_OUT?.trim() ||
   join(process.cwd(), "tmp", "automation-unattended");
 const MAX_WAIT_MS = Number(
-  process.env.AUTOMATION_UNATTENDED_MAX_WAIT_MS || 110 * 60 * 1000,
+  process.env.AUTOMATION_UNATTENDED_MAX_WAIT_MS || 150 * 60 * 1000,
 );
 const POLL_MS = 20_000;
 const CLERK_SECRET = process.env.CLERK_SECRET_KEY?.trim() || "";
