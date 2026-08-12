@@ -444,6 +444,46 @@ export async function executeQueuedRun(input: {
     return { run, terminal: true };
   }
 
+  // Required external actions (e.g. Calendar from NL) must have provider IDs.
+  // Production evidence 2026-08-13: success without Google Calendar event.
+  if (
+    decision.runStatus === "succeeded" ||
+    decision.runStatus === "partially_succeeded"
+  ) {
+    const { assertRequiredExternalEvidence, resolveRequiredExternals } =
+      await import("@/lib/automations/required-external-fail-closed");
+    const declared = input.automation.instruction.structuredOptions
+      ?.requiredExternals;
+    const required = resolveRequiredExternals({
+      sourceText: input.automation.instruction.freeformNotes,
+      declared: Array.isArray(declared)
+        ? (declared as import("@/lib/automations/detect-external-intent").RequiredExternalAction[])
+        : null,
+    });
+    const externalGate = assertRequiredExternalEvidence({
+      required,
+      enabledStepTypes: input.automation.workflow.steps
+        .filter((step) => step.enabled)
+        .map((step) => step.type),
+      executedStepTypes: steps
+        .filter((step) => step.status === "succeeded")
+        .map((step) => step.capabilityId),
+      externalActionIds: evidence?.externalActionIds ?? [],
+    });
+    if (!externalGate.ok) {
+      run = persist({
+        ...transition(run, "failed", externalGate.code),
+        retryable: false,
+        nextRetryAt: null,
+        completionEvidence: evidence,
+        resultSummary: externalGate.reason,
+        lastErrorCode: "automation_run_failed",
+        lastErrorMessage: externalGate.reason,
+      });
+      return { run, terminal: true };
+    }
+  }
+
   const userMessage = runCompletionUserMessage(decision.productStatus);
   run = persist({
     ...transition(run, decision.runStatus, decision.reason),

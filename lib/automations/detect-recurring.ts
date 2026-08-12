@@ -4,6 +4,10 @@ import {
   syncExecutionFlowFromJobText,
   type AutomationFormState,
 } from "./form-utils";
+import {
+  extractCalendarEventTitle,
+  requiresGoogleCalendarAction,
+} from "./detect-external-intent";
 import type { CreateAutomationInput } from "./types";
 
 export type RecurringIntentDetection = {
@@ -92,6 +96,12 @@ export function inferFrequency(text: string): "daily" | "weekly" | "monthly" {
 }
 
 function inferTitle(text: string): string {
+  if (requiresGoogleCalendarAction(text)) {
+    const eventTitle = extractCalendarEventTitle(text);
+    return eventTitle
+      ? `カレンダー: ${eventTitle}`
+      : "Googleカレンダー予定作成";
+  }
   if (/x\b|twitter|ツイート|sns|投稿/i.test(text)) return "SNS投稿";
   if (/ブログ|記事/i.test(text)) return "ブログ作成";
   if (/ニュース|要約|まとめて|まとめ/i.test(text)) return "定期まとめ";

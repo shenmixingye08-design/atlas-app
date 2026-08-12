@@ -92,6 +92,25 @@ function buildAssignment(automation: AutomationV2): string {
   return stepNames ? `${base}\n\nやること: ${stepNames}` : base;
 }
 
+/**
+ * V1 executeAutomationRun cannot perform these Production adapters.
+ * If the V1 shadow stayed enabled, Minute Scheduler would orchestrate and
+ * increment successCount (production fake-success: Calendar NL 2026-08-13).
+ * Keep the shadow for list/UX only — V2 due-tick owns real execution.
+ */
+const V1_CANNOT_EXECUTE_STEP_TYPES = new Set([
+  "google_calendar",
+  "gmail",
+  "wordpress",
+  "dropbox",
+]);
+
+export function v1ShadowMustStayDisabled(automation: AutomationV2): boolean {
+  return automation.workflow.steps.some(
+    (step) => step.enabled && V1_CANNOT_EXECUTE_STEP_TYPES.has(step.type),
+  );
+}
+
 export function buildV1CreateInputFromV2(
   automation: AutomationV2,
   memoryTimezone?: string | null,
@@ -100,6 +119,8 @@ export function buildV1CreateInputFromV2(
     automation.trigger.timezone?.trim() ||
     memoryTimezone?.trim() ||
     undefined;
+
+  const disableV1Execution = v1ShadowMustStayDisabled(automation);
 
   if (automation.trigger.type === "manual") {
     // Manual-only: still register as disabled schedule placeholder so it appears in V1 list
@@ -156,7 +177,8 @@ export function buildV1CreateInputFromV2(
     destination: automation.workflow.steps.some((s) => s.type === "x_post")
       ? "x"
       : "none",
-    enabled: automation.status === "active",
+    // Calendar/Gmail/etc. must not run via V1 orchestrate (fake success).
+    enabled: automation.status === "active" && !disableV1Execution,
     userId: automation.userId,
   };
 }

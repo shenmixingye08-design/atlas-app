@@ -78,6 +78,7 @@ import { hasRecurringSlotAlreadyHandled } from "./x-recurring/idempotency";
 import { savePendingXPost } from "./x-recurring/pending-store";
 import { gateXRecurringConnection } from "./x-recurring/connection-gate";
 import { resolveFeatureContextForUser } from "@/lib/integrations/x/post/drive-backup";
+import { v1CannotSatisfyRequiredExternals } from "@/lib/automations/required-external-fail-closed";
 
 export type ExecuteAutomationOptions = {
   triggerType?: WorkflowRunTriggerType;
@@ -146,6 +147,97 @@ export async function executeAutomationRun(
   }
 
   try {
+    // Production fake-success guard (2026-08-13): Calendar NL on V1 orchestrate
+    // marked 本日成功 without creating a Google Calendar event.
+    const calendarGate = v1CannotSatisfyRequiredExternals(
+      [
+        automation.workflow.assignment,
+        automation.description,
+        automation.name,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+    if (!calendarGate.ok) {
+      const completedAt = new Date().toISOString();
+      const nextRun = computeNextRunIso(
+        automation.schedule,
+        new Date(completedAt),
+      );
+      const latest = await serverAutomationRepository.findById(automation.id);
+      const failedOrchestration = {
+        assignment: automation.workflow.assignment,
+        status: "failed" as const,
+        workflow: hydrateWorkflowState({ status: "failed", approved: false }),
+        ceo: null,
+        plannerPlan: null,
+        plannerTasks: null,
+        tasks: [],
+        executions: [],
+        deliverable: emptyDeliverable("document"),
+        reviewComments: "",
+        approved: false,
+        finalResponse: calendarGate.reason,
+        error: calendarGate.reason,
+        totalDurationMs: 0,
+      };
+      await serverWorkflowRunRepository.complete({
+        id: workflowRun.id,
+        status: "failed",
+        approved: false,
+        totalDurationMs: 0,
+        result: failedOrchestration,
+        finalResponsePreview: calendarGate.reason.slice(0, 200),
+        error: calendarGate.reason,
+        completedAt,
+      });
+      await serverAutomationRepository.update(automation.id, {
+        status: "failed",
+        lastRun: completedAt,
+        nextRun,
+        lastWorkflowRunId: workflowRun.id,
+        lastError: calendarGate.reason,
+        failureCount: (latest?.failureCount ?? automation.failureCount ?? 0) + 1,
+        runHistory: appendRunHistory(latest?.runHistory ?? automation.runHistory, {
+          id: workflowRun.id,
+          status: "failed",
+          startedAt,
+          completedAt,
+          error: calendarGate.reason,
+          triggerType,
+          scheduledAt: options.scheduledAt ?? null,
+          errorCode: calendarGate.code,
+          retryCount: 0,
+        }),
+      });
+      if (options.userId && jobId) {
+        await markJobFailed({
+          jobId,
+          userId: options.userId,
+          error: calendarGate.reason,
+          automationId: automation.id,
+          errorCode: calendarGate.code,
+        });
+      }
+      await notifyAutomationFailed(options.userId ?? automation.userId, {
+        automationId: automation.id,
+        name: automation.name,
+        error: calendarGate.reason,
+      });
+      return {
+        automationId: automation.id,
+        workflowRunId: workflowRun.id,
+        status: "failed",
+        orchestrationStatus: "failed",
+        approved: false,
+        totalDurationMs: 0,
+        finalResponsePreview: calendarGate.reason.slice(0, 200),
+        error: calendarGate.reason,
+        deliverableCount: 0,
+        errorCode: calendarGate.code,
+      };
+    }
+
     const executionFlow = normalizeExecutionFlow(automation.executionFlow);
     const flowContext = buildExecutionFlowContext(executionFlow);
     const executionMode = resolveAutomationExecutionMode(automation);
