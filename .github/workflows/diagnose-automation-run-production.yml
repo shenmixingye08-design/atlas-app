@@ -44,8 +44,8 @@ jobs:
       - name: Diagnose via Production health (CRON_SECRET)
         id: health_diagnose
         env:
-          DIAGNOSE_REQUEST_ID: ${{ github.event.inputs.request_id || '6e0a6198-af7a-4788-b305-c61dc8b35c12' }}
-          DIAGNOSE_DIAGNOSTIC_ID: ${{ github.event.inputs.diagnostic_id || 'aaef8557-500a-461f-a95a-d8df3e1905e4' }}
+          DIAGNOSE_REQUEST_ID: ${{ github.event.inputs.request_id || '' }}
+          DIAGNOSE_DIAGNOSTIC_ID: ${{ github.event.inputs.diagnostic_id || '' }}
           DIAGNOSE_OUT: ${{ runner.temp }}/diagnose-automation-run
           ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -58,9 +58,14 @@ jobs:
             echo "health_ok=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          QS="force=1"
-          if [ -n "${DIAGNOSE_REQUEST_ID:-}" ]; then QS="${QS}&requestId=${DIAGNOSE_REQUEST_ID}"; fi
-          if [ -n "${DIAGNOSE_DIAGNOSTIC_ID:-}" ]; then QS="${QS}&diagnosticId=${DIAGNOSE_DIAGNOSTIC_ID}"; fi
+          # Prefer explicit ids; otherwise scan latest Phase 2 Calendar success.
+          if [ -n "${DIAGNOSE_REQUEST_ID:-}${DIAGNOSE_DIAGNOSTIC_ID:-}" ]; then
+            QS="force=1"
+            if [ -n "${DIAGNOSE_REQUEST_ID:-}" ]; then QS="${QS}&requestId=${DIAGNOSE_REQUEST_ID}"; fi
+            if [ -n "${DIAGNOSE_DIAGNOSTIC_ID:-}" ]; then QS="${QS}&diagnosticId=${DIAGNOSE_DIAGNOSTIC_ID}"; fi
+          else
+            QS="force=1&phase2CalendarSuccess=1"
+          fi
           code=$(curl -sS -o "${DIAGNOSE_OUT}/health-diagnose.json" -w "%{http_code}" \
             -H "Authorization: Bearer ${CRON_SECRET}" \
             -H "Cache-Control: no-store" \
@@ -72,23 +77,34 @@ jobs:
             python3 - <<'PY'
           import json
           d=json.load(open("/home/runner/work/_temp/diagnose-automation-run/health-diagnose.json"))
+          run=d.get("run") or {}
+          auto=d.get("automation") or {}
+          derived=d.get("derived") or {}
           print(json.dumps({
             "ok": d.get("ok"),
-            "stoppedAt": (d.get("derived") or {}).get("stoppedAt"),
-            "hasGoogleCalendarStep": (d.get("automation") or {}).get("hasGoogleCalendarStep"),
-            "enabledStepTypes": (d.get("automation") or {}).get("enabledStepTypes"),
-            "requiredExternalsDeclared": (d.get("automation") or {}).get("requiredExternalsDeclared"),
-            "freeformNotesPreview": (d.get("automation") or {}).get("freeformNotesPreview"),
-            "lastErrorMessage": (d.get("run") or {}).get("lastErrorMessage"),
-            "runStepCapabilityIds": (d.get("run") or {}).get("runStepCapabilityIds"),
-            "externalActionIds": (d.get("run") or {}).get("externalActionIds"),
-            "source": (d.get("automation") or {}).get("source"),
-            "legacyAutomationId": (d.get("automation") or {}).get("legacyAutomationId"),
+            "lookup": d.get("lookup"),
+            "automationId": run.get("automationId") or auto.get("id"),
+            "runId": run.get("id"),
+            "occurrenceKey": run.get("scheduleOccurrenceKey"),
+            "status": run.get("status"),
+            "approvalStatus": run.get("approvalStatus"),
+            "googleCalendarStepStatus": run.get("googleCalendarStepStatus"),
+            "googleCalendarEventIds": run.get("googleCalendarEventIds"),
+            "externalActionIds": run.get("externalActionIds"),
+            "completionEvidence": run.get("completionEvidence"),
+            "transitionReasons": run.get("transitionReasons"),
+            "startedAt": run.get("startedAt"),
+            "completedAt": run.get("completedAt"),
+            "freeformNotesPreview": auto.get("freeformNotesPreview"),
+            "hasGoogleCalendarStep": auto.get("hasGoogleCalendarStep"),
+            "enabledStepTypes": auto.get("enabledStepTypes"),
+            "derived": derived,
+            "resultSummary": run.get("resultSummary"),
           }, ensure_ascii=False, indent=2))
           PY
           else
             echo "health_ok=0" >> "$GITHUB_OUTPUT"
-            head -c 500 "${DIAGNOSE_OUT}/health-diagnose.json" || true
+            head -c 800 "${DIAGNOSE_OUT}/health-diagnose.json" || true
           fi
 
       - name: Diagnose automation run from Production DB

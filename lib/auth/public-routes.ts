@@ -75,6 +75,8 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/health/deliverable-quality(.*)",
   "/api/health/work-queue(.*)",
   "/api/health/work-job-diagnose(.*)",
+  // Phase 2 final E2E: CRON Bearer must reach handler (authorizeHealthProbe inside).
+  "/api/health/automation-run-diagnose(.*)",
   "/api/health/api-contracts(.*)",
   "/api/health/content-quality-gate(.*)",
   "/api/health/worker-scale(.*)",
