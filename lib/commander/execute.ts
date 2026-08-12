@@ -29,11 +29,10 @@ import { persistNotificationsNow } from "@/lib/notifications/durable";
 import { exportDocumentsOnServer } from "@/lib/deliverables/server-document-export";
 import { logWordPipeline } from "@/lib/deliverables/pipeline-log";
 import { runLearningAnalysis } from "@/lib/learning-engine/service";
-import { detectMemorySignals } from "@/lib/work-memory/learning";
-import { createWorkMemoryCandidate } from "@/lib/work-memory/service";
 import { maybeAutoPostToXAfterCommander } from "@/lib/integrations/x/post/automation";
+import { createAutomationFromNaturalLanguage } from "@/lib/automations/create-from-natural-language.server";
+import { detectRecurringIntent } from "@/lib/automations/detect-recurring";
 
-import { isRecurringAssignment } from "./classify";
 import {
   evaluateCommanderConfirmation,
   isRememberHabitAssignment,
@@ -137,9 +136,7 @@ function buildReport(input: {
     attempts: input.attempts.length,
     retriesUsed,
     projectHint: "結果はプロジェクト履歴へ保存できます",
-    automationHint: isRecurringAssignment(input.plan.assignment)
-      ? "定期依頼のため「任せている仕事」への登録を推奨します"
-      : null,
+    automationHint: null,
     confirmationReasons: input.confirmationReasons,
   };
 }
@@ -180,7 +177,11 @@ function toRunResult(input: {
   };
 }
 
-async function executeRememberHabitRun(input: {
+/**
+ * Phase 1: recurring / habit NL → durable automation only.
+ * Fake "覚えました / 定期未開始" success is forbidden.
+ */
+async function executeCreateAutomationFromNlRun(input: {
   runId: string;
   userId: string;
   plan: CommanderPlan;
@@ -189,38 +190,69 @@ async function executeRememberHabitRun(input: {
 }): Promise<CommanderRunResult> {
   updateCommanderRun(input.runId, input.userId, { status: "running" });
 
-  const signals = detectMemorySignals({ assignment: input.plan.assignment });
-  const habitSignals = signals.filter((signal) => signal.type === "habit");
-  const toSave =
-    habitSignals.length > 0
-      ? habitSignals
-      : [
-          {
-            trigger: "explicit_save" as const,
-            type: "habit" as const,
-            title: "定期作業の習慣候補",
-            summary: input.plan.assignment.slice(0, 200),
-            structuredData: {
-              cadenceHint: "weekly",
-              scheduleNotEnabled: true,
-              note: "定期実行は未設定です。任せている仕事で確認してください。",
-            },
-            sourceType: "user_explicit" as const,
-            confidence: 0.85,
-            reason: "ユーザーが習慣として覚えるよう依頼しました",
-          },
-        ];
+  const created = await createAutomationFromNaturalLanguage({
+    userId: input.userId,
+    text: input.plan.assignment,
+  });
 
-  const candidates = toSave
-    .map((signal) => createWorkMemoryCandidate(input.userId, signal))
-    .filter((candidate): candidate is NonNullable<typeof candidate> =>
-      Boolean(candidate),
-    );
+  if (!created.ok) {
+    const failSummary = `定期の仕事を登録できませんでした。${created.message}`;
+    const failedResult: OrchestrationResult = {
+      assignment: input.plan.assignment,
+      status: "failed",
+      workflow: hydrateWorkflowState({ status: "failed", approved: false }),
+      ceo: null,
+      plannerPlan: null,
+      plannerTasks: null,
+      tasks: [],
+      executions: [],
+      deliverable: emptyDeliverable("document"),
+      reviewComments: "",
+      approved: false,
+      finalResponse: failSummary,
+      error: created.message,
+      totalDurationMs: 0,
+    };
 
-  const summary =
-    `習慣候補を ${candidates.length} 件作成しました。` +
-    `定期実行はまだ開始していません。覚えた仕事で確認・保存し、必要なら「任せている仕事」でスケジュールを設定してください。`;
+    updateCommanderRun(input.runId, input.userId, {
+      status: "failed",
+      result: failedResult,
+      attempts: [
+        {
+          attempt: 1,
+          status: "failed",
+          error: created.message,
+          durationMs: 0,
+        },
+      ],
+    });
 
+    await notifyWorkFailed(input.userId, {
+      title: "定期の仕事の登録に失敗しました",
+      message: failSummary,
+      relatedTaskId: input.runId,
+      requestId: input.runId,
+    });
+
+    return toRunResult({
+      runId: input.runId,
+      status: "failed",
+      plan: input.plan,
+      result: failedResult,
+      attempts: [
+        {
+          attempt: 1,
+          status: "failed",
+          error: created.message,
+          durationMs: 0,
+        },
+      ],
+      confirmationReasons: input.confirmationReasons,
+      externalMessages: input.externalMessages,
+    });
+  }
+
+  const summary = created.message;
   const syntheticResult: OrchestrationResult = {
     assignment: input.plan.assignment,
     status: "completed",
@@ -235,7 +267,6 @@ async function executeRememberHabitRun(input: {
     approved: true,
     finalResponse: summary,
     totalDurationMs: 0,
-    workMemoryCandidates: candidates,
   };
 
   updateCommanderRun(input.runId, input.userId, {
@@ -251,20 +282,12 @@ async function executeRememberHabitRun(input: {
     ],
   });
 
-  const habitProjectId = `commander-${input.runId}`;
-  await persistCommanderResultAsProject({
-    userId: input.userId,
-    assignment: input.plan.assignment,
-    result: syntheticResult,
-    projectId: habitProjectId,
-  });
-
   await notifyWorkCompleted(input.userId, {
-    title: "習慣候補を作成しました",
+    title: "定期の仕事を登録しました",
     message: summary,
-    actionUrl: `/projects/${encodeURIComponent(habitProjectId)}`,
-    relatedTaskId: habitProjectId,
-    deliverableId: habitProjectId,
+    actionUrl: "/automations",
+    relatedTaskId: created.automation.id,
+    deliverableId: created.automation.id,
     requestId: input.runId,
   });
 
@@ -283,7 +306,6 @@ async function executeRememberHabitRun(input: {
     ],
     confirmationReasons: input.confirmationReasons,
     externalMessages: input.externalMessages,
-    workMemoryCandidates: candidates,
   });
 }
 
@@ -300,8 +322,12 @@ async function executeStoredRun(input: {
   const plan = run.plan;
   const external = await runExternalPreflightParallel(plan);
 
-  if (isRememberHabitAssignment(plan.assignment)) {
-    return executeRememberHabitRun({
+  // Phase 1: recurring NL / habit remember → durable automation (not memory-only).
+  if (
+    detectRecurringIntent(plan.assignment).detected ||
+    isRememberHabitAssignment(plan.assignment)
+  ) {
+    return executeCreateAutomationFromNlRun({
       runId: input.runId,
       userId: input.userId,
       plan,

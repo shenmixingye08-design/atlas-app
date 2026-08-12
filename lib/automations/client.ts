@@ -79,6 +79,61 @@ export async function createAutomation(
   return response.json() as Promise<Automation>;
 }
 
+export type NaturalLanguageAutomationCreated = {
+  ok: true;
+  message: string;
+  frequency: "daily" | "weekly" | "monthly";
+  automation: {
+    id: string;
+    name: string;
+    enabled: boolean;
+    status: string;
+    schedule: Automation["schedule"];
+    nextRun: string | null;
+    timezone: string | null;
+    executionLevel: Automation["executionLevel"];
+  };
+};
+
+/**
+ * Phase 1: create durable automation from NL.
+ * Throws on failure — callers must not show fake success.
+ */
+export async function createAutomationFromNaturalLanguageText(
+  text: string,
+): Promise<NaturalLanguageAutomationCreated> {
+  const response = await fetch("/api/automations/from-natural-language", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    ok?: boolean;
+    error?: string;
+    code?: string;
+    message?: string;
+    frequency?: "daily" | "weekly" | "monthly";
+    automation?: NaturalLanguageAutomationCreated["automation"];
+  };
+
+  if (!response.ok || payload.ok !== true || !payload.automation) {
+    throw new AutomationsClientError({
+      message: payload.error ?? payload.message ?? ui.error.generic,
+      status: response.status,
+      code: payload.code ?? "nl_automation_create_failed",
+    });
+  }
+
+  notifyBillingUsageChanged();
+  return {
+    ok: true,
+    message: payload.message ?? "定期の仕事を登録しました。",
+    frequency: payload.frequency ?? "daily",
+    automation: payload.automation,
+  };
+}
+
 export async function updateAutomation(
   id: string,
   patch: UpdateAutomationInput,

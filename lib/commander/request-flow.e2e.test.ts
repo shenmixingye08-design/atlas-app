@@ -66,6 +66,29 @@ vi.mock("@/lib/commander/durable-store", () => ({
   loadCommanderRunsFromClerk: vi.fn(async () => []),
 }));
 
+vi.mock("@/lib/automations/create-from-natural-language.server", () => ({
+  createAutomationFromNaturalLanguage: vi.fn(async () => ({
+    ok: true,
+    frequency: "weekly",
+    message:
+      "定期の仕事「定期報告」を登録しました。\nスケジュール: 毎週月曜 09:00（Asia/Tokyo）\n実行範囲: approve_then_run\n次回実行: 2026-08-18T00:00:00.000Z\nMinute Scheduler の次回判定対象になります。",
+    automation: {
+      id: "auto_nl_e2e",
+      name: "定期報告",
+      enabled: true,
+      nextRun: "2026-08-18T00:00:00.000Z",
+      schedule: {
+        kind: "schedule",
+        preset: { type: "weekly", dayOfWeek: 1, hour: 9, minute: 0 },
+        timezone: "Asia/Tokyo",
+        label: "毎週月曜 09:00",
+      },
+      executionLevel: "approve_then_run",
+      status: "idle",
+    },
+  })),
+}));
+
 import { executeCommander, planCommander } from "./execute";
 import { resetCommanderRunStoreForTests } from "./run-store";
 import { evaluateCommanderConfirmation } from "./confirmation";
@@ -102,7 +125,7 @@ describe("commander e2e request flows", () => {
     expect(plan.classification.deliverableType).toBe("email");
   });
 
-  it("test3: weekly habit remember awaits confirmation then saves candidate", async () => {
+  it("test3: weekly habit remember awaits confirmation then creates durable automation", async () => {
     const assignment =
       "毎週月曜日に先週の仕事をまとめる作業として覚えてください";
     const first = await executeCommander({
@@ -112,7 +135,7 @@ describe("commander e2e request flows", () => {
     expect(first.status).toBe("awaiting_confirmation");
     expect(first.runId).toBeTruthy();
     expect(
-      first.confirmationReasons.some((reason) => reason.includes("習慣")),
+      first.confirmationReasons.some((reason) => reason.includes("習慣") || reason.includes("定期")),
     ).toBe(true);
 
     const confirmed = await executeCommander({
@@ -122,8 +145,10 @@ describe("commander e2e request flows", () => {
       confirmed: true,
     });
     expect(confirmed.status).toBe("completed");
-    expect(confirmed.result?.finalResponse).toContain("習慣候補");
-    expect(confirmed.result?.finalResponse).toContain("定期実行はまだ開始していません");
-    expect(confirmed.workMemoryCandidates?.length ?? 0).toBeGreaterThan(0);
+    expect(confirmed.result?.finalResponse).toContain("登録しました");
+    expect(confirmed.result?.finalResponse).toContain("Minute Scheduler");
+    expect(confirmed.result?.finalResponse).not.toContain(
+      "定期実行はまだ開始していません",
+    );
   });
 });
