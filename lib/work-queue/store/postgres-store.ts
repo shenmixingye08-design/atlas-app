@@ -28,9 +28,10 @@ function allowedFromStatuses(to: WorkJobStatus): WorkJobStatus[] {
 }
 
 function resolveDatabaseUrl(): string | null {
-  // Must match migration-apply env keys — legacy 4-key set caused Production
-  // tick 500 when only POSTGRES_URL_NON_POOLING / SUPABASE_POSTGRES_URL* were set.
-  return resolveAtlasPostgresUrl().connectionString;
+  // Prefer direct/session URL when multiple keys exist — transaction pooler
+  // (:6543) under concurrent GHA drain fan-out caused Production
+  // work_queue_query_failed / drain_* 500 (MaxClients stampede).
+  return resolveAtlasPostgresUrl({ preferDirect: true }).connectionString;
 }
 
 function rowToJob(row: Record<string, unknown>, steps: WorkStepRecord[]): WorkJobRecord {
@@ -126,10 +127,14 @@ export class PostgresWorkQueueStore implements WorkQueueStore {
   private schedulerLastSuccessAt: string | null = null;
 
   constructor(connectionString: string) {
+    // Serverless: keep pool tiny. Minute Scheduler fans out multiple
+    // /api/worker/drain instances — large per-instance pools exhaust Supabase.
     this.pool = new pg.Pool({
       connectionString,
-      max: 4,
-      idleTimeoutMillis: 10_000,
+      max: 2,
+      idleTimeoutMillis: 5_000,
+      connectionTimeoutMillis: 8_000,
+      allowExitOnIdle: true,
     });
   }
 

@@ -7,6 +7,11 @@ import {
   WORK_QUEUE_STUCK_MS,
   WORK_QUEUE_WORKER_BATCH,
 } from "./constants";
+import {
+  classifyWorkQueueFailure,
+  isRetryableWorkQueueFailure,
+  tagWorkQueueError,
+} from "./failure-class";
 import { buildDiagnosticId } from "./occurrence";
 import { logWorkQueue } from "./observability";
 import { evaluateWorkQueueCompletion } from "./completion-gate";
@@ -102,8 +107,58 @@ async function processLeasedJob(
   }, WORK_QUEUE_HEARTBEAT_MS);
 
   try {
-    const current = (await store.getJob(job.jobId)) ?? running;
-    const previousOutputs = mergeOutputs(current.steps);
+    return await processLeasedJobBody(job, workerId, running, started);
+  } catch (error) {
+    // Uncaught step/store errors must not 500 the whole drain fan-out.
+    const failAt = new Date().toISOString();
+    const diagnosticId = job.diagnosticId ?? buildDiagnosticId("exec");
+    try {
+      await store.updateJob(
+        job.jobId,
+        {
+          status: "retry_scheduled",
+          attempt: job.attempt + 1,
+          availableAt: new Date(Date.now() + 15_000).toISOString(),
+          retryAt: new Date(Date.now() + 15_000).toISOString(),
+          errorCode: "job_execution_uncaught",
+          failedStage: "job_execution",
+          diagnosticId,
+          firstError:
+            job.firstError ??
+            (error instanceof Error ? error.message.slice(0, 200) : "uncaught"),
+          lastError: error instanceof Error ? error.message.slice(0, 200) : "uncaught",
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          completedAt: null,
+          failedAt: failAt,
+        },
+        workerId,
+      );
+    } catch {
+      /* best-effort — lease expiry recovers stuck jobs */
+    }
+    logWorkQueue({
+      event: "JOB_FAILED",
+      jobId: job.jobId,
+      ownerId: job.ownerId,
+      errorCode: "job_execution_uncaught",
+      diagnosticId,
+    });
+    return "retried";
+  } finally {
+    clearInterval(heartbeat);
+  }
+}
+
+async function processLeasedJobBody(
+  job: WorkJobRecord,
+  workerId: string,
+  running: WorkJobRecord,
+  started: number,
+): Promise<"completed" | "failed" | "retried"> {
+  const store = getWorkQueueStore();
+  const current = (await store.getJob(job.jobId)) ?? running;
+  const previousOutputs = mergeOutputs(current.steps);
 
     for (const step of [...current.steps].sort(
       (a, b) => a.stepIndex - b.stepIndex,
@@ -384,83 +439,102 @@ async function processLeasedJob(
       durationMs: Date.now() - started,
     });
     return "completed";
-  } finally {
-    clearInterval(heartbeat);
-  }
 }
 
 export async function recoverStuckJobs(
   nowMs = Date.now(),
 ): Promise<number> {
   const store = getWorkQueueStore();
-  const stuck = await store.listStuck(nowMs, WORK_QUEUE_STUCK_MS);
+  let stuck: WorkJobRecord[];
+  try {
+    stuck = await store.listStuck(nowMs, WORK_QUEUE_STUCK_MS);
+  } catch (error) {
+    throw tagWorkQueueError(error, "recover_list_stuck");
+  }
   let recovered = 0;
   for (const job of stuck) {
-    logWorkQueue({
-      event: "STUCK_DETECTED",
-      jobId: job.jobId,
-      ownerId: job.ownerId,
-      automationId: job.automationId,
-    });
-    const diagnosticId = job.diagnosticId ?? buildDiagnosticId("stuck");
-    const attempt = job.attempt + 1;
-    const decision = decideRetry({
-      errorCode: "stuck_recovered",
-      attempt,
-      maxAttempts: job.maxAttempts,
-      nowMs,
-    });
-    const nextStatus =
-      decision.retryable && decision.retryAt
-        ? ("retry_scheduled" as const)
-        : decision.deadLetter
-          ? ("dead_letter" as const)
-          : ("failed" as const);
-
-    // P0-2: atomic reclaim only — never SELECT-then-UPDATE fallback.
-    if (!store.reclaimStuckJob) {
+    try {
       logWorkQueue({
         event: "STUCK_DETECTED",
         jobId: job.jobId,
         ownerId: job.ownerId,
-        diagnosticId,
-        errorCode: "reclaim_unavailable",
+        automationId: job.automationId,
       });
-      await store.recordRecovery(false);
-      continue;
-    }
-    const reclaimed = await store.reclaimStuckJob({
-      jobId: job.jobId,
-      nowMs,
-      stuckMs: WORK_QUEUE_STUCK_MS,
-      attempt,
-      retryAt: decision.retryAt ?? null,
-      status: nextStatus,
-      diagnosticId,
-      lastError:
-        nextStatus === "retry_scheduled"
-          ? "heartbeat timeout — scheduled for recovery"
-          : "stuck and not recoverable",
-    });
-
-    if (!reclaimed) {
-      await store.recordRecovery(false);
-      continue;
-    }
-
-    await store.recordRecovery(nextStatus === "retry_scheduled");
-    if (nextStatus === "retry_scheduled") {
-      recovered += 1;
-      logWorkQueue({
-        event: "JOB_RECOVERED",
-        jobId: job.jobId,
-        ownerId: job.ownerId,
-        diagnosticId,
+      const diagnosticId = job.diagnosticId ?? buildDiagnosticId("stuck");
+      const attempt = job.attempt + 1;
+      const decision = decideRetry({
+        errorCode: "stuck_recovered",
         attempt,
+        maxAttempts: job.maxAttempts,
+        nowMs,
       });
+      const nextStatus =
+        decision.retryable && decision.retryAt
+          ? ("retry_scheduled" as const)
+          : decision.deadLetter
+            ? ("dead_letter" as const)
+            : ("failed" as const);
+
+      // P0-2: atomic reclaim only — never SELECT-then-UPDATE fallback.
+      if (!store.reclaimStuckJob) {
+        logWorkQueue({
+          event: "STUCK_DETECTED",
+          jobId: job.jobId,
+          ownerId: job.ownerId,
+          diagnosticId,
+          errorCode: "reclaim_unavailable",
+        });
+        await store.recordRecovery(false);
+        continue;
+      }
+      const reclaimed = await store.reclaimStuckJob({
+        jobId: job.jobId,
+        nowMs,
+        stuckMs: WORK_QUEUE_STUCK_MS,
+        attempt,
+        retryAt: decision.retryAt ?? null,
+        status: nextStatus,
+        diagnosticId,
+        lastError:
+          nextStatus === "retry_scheduled"
+            ? "heartbeat timeout — scheduled for recovery"
+            : "stuck and not recoverable",
+      });
+
+      if (!reclaimed) {
+        await store.recordRecovery(false);
+        continue;
+      }
+
+      await store.recordRecovery(nextStatus === "retry_scheduled");
+      if (nextStatus === "retry_scheduled") {
+        recovered += 1;
+        logWorkQueue({
+          event: "JOB_RECOVERED",
+          jobId: job.jobId,
+          ownerId: job.ownerId,
+          diagnosticId,
+          attempt,
+        });
+      }
+    } catch (error) {
+      // Per-job reclaim races must not fail the whole drain (multi-instance).
+      console.warn("[work-queue] recoverStuckJobs: per-job reclaim skipped", {
+        jobId: job.jobId,
+        developerCode: classifyWorkQueueFailure(error, "drain").developerCode,
+      });
+      try {
+        await store.recordRecovery(false);
+      } catch {
+        /* ignore */
+      }
     }
   }
   return recovered;
+}
+
+async function sleepMs(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function drainWorkQueue(options?: {
@@ -474,11 +548,14 @@ export async function drainWorkQueue(options?: {
    * before horizontal fan-out).
    */
   skipRecover?: boolean;
+  /** Internal retries for retryable pool/connection blips (default 2). */
+  maxAttempts?: number;
 }): Promise<WorkerDrainResult> {
   const store = getWorkQueueStore();
   const workerId = options?.workerId ?? `worker_${randomUUID().slice(0, 8)}`;
   const limit = options?.limit ?? WORK_QUEUE_WORKER_BATCH;
   const leaseMs = options?.leaseMs ?? WORK_QUEUE_LEASE_MS;
+  const maxAttempts = Math.max(1, Math.min(options?.maxAttempts ?? 3, 5));
 
   if (options?.signal?.aborted) {
     return {
@@ -493,60 +570,86 @@ export async function drainWorkQueue(options?: {
     };
   }
 
-  const recovered = options?.skipRecover ? 0 : await recoverStuckJobs();
-  const leased = await store.leaseJobs({ workerId, limit, leaseMs });
-  let completed = 0;
-  let failed = 0;
-  let retried = 0;
-  const completedJobs: WorkerDrainResult["completedJobs"] = [];
-  const failedJobs: WorkerDrainResult["failedJobs"] = [];
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const recovered = options?.skipRecover ? 0 : await recoverStuckJobs();
+      const leased = await store.leaseJobs({ workerId, limit, leaseMs });
+      let completed = 0;
+      let failed = 0;
+      let retried = 0;
+      const completedJobs: WorkerDrainResult["completedJobs"] = [];
+      const failedJobs: WorkerDrainResult["failedJobs"] = [];
 
-  for (const job of leased) {
-    if (options?.signal?.aborted) {
-      // Release unused leases so another worker can reclaim after expiry.
-      break;
-    }
-    logWorkQueue({
-      event: "JOB_LEASED",
-      jobId: job.jobId,
-      runId: job.runId,
-      ownerId: job.ownerId,
-      automationId: job.automationId,
-      occurrenceKey: job.occurrenceKey,
-    });
-    const outcome = await processLeasedJob(job, workerId);
-    if (outcome === "completed") {
-      completed += 1;
-      completedJobs.push({
-        jobId: job.jobId,
-        runId: job.runId,
-        automationId: job.automationId,
-        status: "completed",
-      });
-    } else if (outcome === "retried") {
-      retried += 1;
-    } else {
-      failed += 1;
-      const latest = await store.getJob(job.jobId);
-      failedJobs.push({
-        jobId: job.jobId,
-        runId: job.runId,
-        automationId: job.automationId,
-        status:
-          latest?.status === "dead_letter" ? "dead_letter" : "failed",
-        errorCode: latest?.errorCode ?? null,
-      });
+      for (const job of leased) {
+        if (options?.signal?.aborted) {
+          // Release unused leases so another worker can reclaim after expiry.
+          break;
+        }
+        logWorkQueue({
+          event: "JOB_LEASED",
+          jobId: job.jobId,
+          runId: job.runId,
+          ownerId: job.ownerId,
+          automationId: job.automationId,
+          occurrenceKey: job.occurrenceKey,
+        });
+        const outcome = await processLeasedJob(job, workerId);
+        if (outcome === "completed") {
+          completed += 1;
+          completedJobs.push({
+            jobId: job.jobId,
+            runId: job.runId,
+            automationId: job.automationId,
+            status: "completed",
+          });
+        } else if (outcome === "retried") {
+          retried += 1;
+        } else {
+          failed += 1;
+          const latest = await store.getJob(job.jobId);
+          failedJobs.push({
+            jobId: job.jobId,
+            runId: job.runId,
+            automationId: job.automationId,
+            status:
+              latest?.status === "dead_letter" ? "dead_letter" : "failed",
+            errorCode: latest?.errorCode ?? null,
+          });
+        }
+      }
+
+      return {
+        workerId,
+        leased: leased.length,
+        completed,
+        failed,
+        retried,
+        recovered,
+        completedJobs,
+        failedJobs,
+      };
+    } catch (error) {
+      lastError = error;
+      const diag = classifyWorkQueueFailure(error, "drain");
+      if (
+        attempt < maxAttempts &&
+        isRetryableWorkQueueFailure(diag) &&
+        !options?.signal?.aborted
+      ) {
+        console.warn("[work-queue] drain retryable failure — retrying", {
+          workerId,
+          attempt,
+          developerCode: diag.developerCode,
+          errorName: diag.errorName,
+          pgCode: diag.pgCode,
+        });
+        await sleepMs(150 * attempt + Math.floor(Math.random() * 100));
+        continue;
+      }
+      throw tagWorkQueueError(error, diag.substage ?? "drain");
     }
   }
 
-  return {
-    workerId,
-    leased: leased.length,
-    completed,
-    failed,
-    retried,
-    recovered,
-    completedJobs,
-    failedJobs,
-  };
+  throw tagWorkQueueError(lastError ?? new Error("drain_failed"), "drain");
 }

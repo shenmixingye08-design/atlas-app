@@ -31,21 +31,23 @@ describe("tick diagnostics / postgres url resolution", () => {
     if (!(key in saved)) saved[key] = process.env[key];
   }
 
-  it("classifies WorkQueueStoreUnavailableError", () => {
+  it("classifies WorkQueueStoreUnavailableError as fatal", () => {
     const diag = classifyTickFailure(
       new WorkQueueStoreUnavailableError("missing url"),
       "work_queue",
     );
     expect(diag.developerCode).toBe("work_queue_store_unavailable");
     expect(diag.failedStage).toBe("work_queue");
+    expect(diag.failureClass).toBe("fatal");
   });
 
-  it("classifies schema missing", () => {
+  it("classifies schema missing as fatal", () => {
     const diag = classifyTickFailure(
       new Error('relation "atlas_work_queue_jobs" does not exist'),
       "work_queue",
     );
     expect(diag.developerCode).toBe("work_queue_schema_missing");
+    expect(diag.failureClass).toBe("fatal");
   });
 
   it("resolves POSTGRES_URL_NON_POOLING when legacy keys absent", () => {

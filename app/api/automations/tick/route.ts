@@ -6,8 +6,14 @@ import {
 import { clientSafeMessage } from "@/lib/security/client-safe-message";
 import {
   classifyTickFailure,
+  isRetryableWorkQueueFailure,
   type TickFailureDiagnostics,
 } from "@/lib/work-queue/tick-diagnostics";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+/** Minute path + side drains; GHA also fans out /api/worker/drain. */
+export const maxDuration = 300;
 
 function resolveOrigin(request: Request): string {
   const host =
@@ -136,18 +142,28 @@ export async function POST(request: Request): Promise<Response> {
     console.error("[automation tick] work_queue failed (V2 path isolated)", {
       failedStage: workQueueFailure.failedStage,
       developerCode: workQueueFailure.developerCode,
+      failureClass: workQueueFailure.failureClass,
+      errorName: workQueueFailure.errorName,
+      pgCode: workQueueFailure.pgCode,
+      substage: workQueueFailure.substage,
+      retryable: isRetryableWorkQueueFailure(workQueueFailure),
       postgresUrlConfigured: workQueueFailure.postgresUrlConfigured,
       extendedPostgresUrlOnly: workQueueFailure.extendedPostgresUrlOnly,
-      errorName: error instanceof Error ? error.name : typeof error,
       v2Enqueued: v2Schedule.enqueued,
       v2Dispatched: v2Dispatch.processed,
     });
   }
 
-  // V1 failed and V2 made no progress → keep fail-closed for GHA alert.
-  // When V2 already enqueued/dispatched, return HTTP 200 below with ok:false
-  // (honest) so natural scheduler can complete canonical Automations.
-  if (workQueueFailure && v2Progress === 0) {
+  // Fatal V1 failure + no V2 progress → HTTP 500 (GHA alert).
+  // Retryable V1 failure (pool exhaustion / DB blip): HTTP 200 + ok:false so
+  // Minute Scheduler can still run /api/worker/drain fan-out (Production
+  // evidence: tick 500 exited before drain_* and hid concurrent pool races).
+  // When V2 already progressed: always HTTP 200 + ok:false (honest, not soft-success).
+  if (
+    workQueueFailure &&
+    v2Progress === 0 &&
+    !isRetryableWorkQueueFailure(workQueueFailure)
+  ) {
     const message = "Automation tick failed";
     const { recordCronTickOutcome } = await import("@/lib/owner/monitoring");
     const { recordAutomationCronDebug } = await import(
@@ -166,8 +182,13 @@ export async function POST(request: Request): Promise<Response> {
         error: message,
         failedStage: workQueueFailure.failedStage,
         developerCode: workQueueFailure.developerCode,
+        failureClass: workQueueFailure.failureClass,
+        errorName: workQueueFailure.errorName,
+        pgCode: workQueueFailure.pgCode,
+        substage: workQueueFailure.substage,
         postgresUrlConfigured: workQueueFailure.postgresUrlConfigured,
         extendedPostgresUrlOnly: workQueueFailure.extendedPostgresUrlOnly,
+        retryable: false,
         v2Schedule,
         v2Dispatch,
         ...(v2PathError ? { v2PathError } : {}),
@@ -301,8 +322,13 @@ export async function POST(request: Request): Promise<Response> {
           workQueueFailure: {
             failedStage: workQueueFailure.failedStage,
             developerCode: workQueueFailure.developerCode,
+            failureClass: workQueueFailure.failureClass,
+            errorName: workQueueFailure.errorName,
+            pgCode: workQueueFailure.pgCode,
+            substage: workQueueFailure.substage,
             postgresUrlConfigured: workQueueFailure.postgresUrlConfigured,
             extendedPostgresUrlOnly: workQueueFailure.extendedPostgresUrlOnly,
+            retryable: isRetryableWorkQueueFailure(workQueueFailure),
           },
         }
       : {}),
