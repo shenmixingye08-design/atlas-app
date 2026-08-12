@@ -36,11 +36,20 @@ type GoogleCredentialRow = {
 };
 
 export type GooglePersistedAuth = {
-  credentials: ExternalServiceCredentialRecord;
+  /**
+   * Null when ciphertext could not be decoded (key mismatch / tamper).
+   * Connection then carries status=error — never silent "disconnected".
+   */
+  credentials: ExternalServiceCredentialRecord | null;
   connection: ExternalServiceConnection;
   /** Legacy plaintext was loaded — caller should re-persist to encrypt. */
   needsReencrypt?: boolean;
+  /** True when a DB row existed but tokens could not be decrypted. */
+  decodeFailed?: boolean;
 };
+
+export const GOOGLE_CREDENTIAL_DECODE_FAILED_MESSAGE =
+  "Google連携の認証情報を読み取れませんでした。再接続してください";
 
 export function isGoogleOAuthSupabaseConfigured(): boolean {
   return createServiceRoleClientIfConfigured() !== null;
@@ -55,6 +64,36 @@ function isConnectionStatus(
     value === "connected" ||
     value === "error"
   );
+}
+
+function buildConnectionFromRow(
+  row: GoogleCredentialRow,
+  overrides?: Partial<ExternalServiceConnection>,
+): ExternalServiceConnection {
+  const status = isConnectionStatus(row.connection_status)
+    ? row.connection_status
+    : "disconnected";
+  const scopes = row.scope
+    ? row.scope.split(/[\s,]+/).filter(Boolean)
+    : [...googleServiceDefinition.plannedScopes];
+
+  return {
+    ...createDefaultConnection(googleServiceDefinition),
+    status,
+    connectedAt: row.connected_at,
+    lastUsedAt: row.last_used_at,
+    scopes,
+    features: [...googleServiceDefinition.plannedFeatures],
+    errorMessage: row.error_message,
+    account: row.account_email
+      ? {
+          email: row.account_email,
+          name: row.account_name,
+          pictureUrl: row.account_picture_url,
+        }
+      : undefined,
+    ...overrides,
+  };
 }
 
 function rowToPersisted(row: GoogleCredentialRow): GooglePersistedAuth | null {
@@ -79,33 +118,16 @@ function rowToPersisted(row: GoogleCredentialRow): GooglePersistedAuth | null {
       "[Google OAuth] Failed to decode stored credentials (missing key, tamper, or corrupt payload)",
       error instanceof Error ? error.message : "decode_failed",
     );
-    return null;
+    // Explicit failure — never hide as plain "disconnected".
+    return {
+      credentials: null,
+      decodeFailed: true,
+      connection: buildConnectionFromRow(row, {
+        status: "error",
+        errorMessage: GOOGLE_CREDENTIAL_DECODE_FAILED_MESSAGE,
+      }),
+    };
   }
-
-  const status = isConnectionStatus(row.connection_status)
-    ? row.connection_status
-    : "disconnected";
-
-  const scopes = row.scope
-    ? row.scope.split(/[\s,]+/).filter(Boolean)
-    : [...googleServiceDefinition.plannedScopes];
-
-  const connection: ExternalServiceConnection = {
-    ...createDefaultConnection(googleServiceDefinition),
-    status,
-    connectedAt: row.connected_at,
-    lastUsedAt: row.last_used_at,
-    scopes,
-    features: [...googleServiceDefinition.plannedFeatures],
-    errorMessage: row.error_message,
-    account: row.account_email
-      ? {
-          email: row.account_email,
-          name: row.account_name,
-          pictureUrl: row.account_picture_url,
-        }
-      : undefined,
-  };
 
   return {
     credentials: {
@@ -117,7 +139,7 @@ function rowToPersisted(row: GoogleCredentialRow): GooglePersistedAuth | null {
       scope: row.scope ?? "",
       updatedAt: row.updated_at,
     },
-    connection,
+    connection: buildConnectionFromRow(row),
     needsReencrypt: decoded.needsReencrypt,
   };
 }
@@ -178,7 +200,11 @@ export async function loadGoogleAuthFromSupabase(
     }
     if (!data) return null;
     const persisted = rowToPersisted(data as GoogleCredentialRow);
-    if (persisted?.needsReencrypt && isOAuthEncryptionConfigured()) {
+    if (
+      persisted?.needsReencrypt &&
+      persisted.credentials &&
+      isOAuthEncryptionConfigured()
+    ) {
       // Lazy plaintext → ciphertext migration (idempotent).
       void persistGoogleAuthToSupabase(
         persisted.credentials,

@@ -82,7 +82,7 @@ describe("Google Drive integration", () => {
       accessToken: "access-token",
       refreshToken: "refresh-token",
       expiresAt: new Date(Date.now() + 3600_000).toISOString(),
-      scope: "drive.file",
+      scope: "https://www.googleapis.com/auth/drive",
       updatedAt: new Date().toISOString(),
     });
 
@@ -151,7 +151,7 @@ describe("Google Drive integration", () => {
       accessToken: "access-token",
       refreshToken: "refresh-token",
       expiresAt: new Date(Date.now() + 3600_000).toISOString(),
-      scope: "drive.file",
+      scope: "https://www.googleapis.com/auth/drive",
       updatedAt: new Date().toISOString(),
     });
 

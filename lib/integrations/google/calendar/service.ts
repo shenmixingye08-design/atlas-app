@@ -1,18 +1,11 @@
 import "server-only";
 
-import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
-import { featureDisabledMessage } from "@/lib/feature-flags/guards";
-import { getExternalServiceCredentials } from "@/lib/integrations/external-services/credential-store";
-import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
-import { getGoogleAccountAccessTokenResult } from "@/lib/integrations/google/token-manager";
 import {
-  GOOGLE_INSUFFICIENT_PERMISSION_MESSAGE,
-  GOOGLE_NOT_CONNECTED_MESSAGE,
-  GOOGLE_RECONNECT_REQUIRED_MESSAGE,
-  hasGoogleCapability,
-  resolveGrantedGoogleScope,
-} from "@/lib/integrations/google/scopes";
+  isGoogleAccessGateFailure,
+  requireGoogleIntegrationAccess,
+} from "@/lib/integrations/google/require-access";
+import { GOOGLE_INSUFFICIENT_PERMISSION_MESSAGE } from "@/lib/integrations/google/scopes";
 import { notifyCalendarReminder } from "@/lib/notifications/emitters";
 import { runWithAiBillingUsage } from "@/lib/billing/usage/request-context";
 
@@ -53,63 +46,15 @@ async function requireCalendarAccess(input: {
   userId: string;
   context: FeatureAccessContext;
 }): Promise<{ accessToken: string } | GateFailure> {
-  if (!isFeatureEnabled("google", input.context)) {
-    return {
-      status: "feature_disabled",
-      message: featureDisabledMessage("google"),
-    };
+  const result = await requireGoogleIntegrationAccess({
+    userId: input.userId,
+    context: input.context,
+    capability: "calendar",
+  });
+  if (isGoogleAccessGateFailure(result)) {
+    return result;
   }
-
-  const { getBillingFeatureDenial } = await import("@/lib/billing/access");
-  const denial = await getBillingFeatureDenial(
-    input.userId,
-    "google_integration",
-  );
-  if (denial) {
-    return { status: "plan_required", message: denial.reason };
-  }
-
-  const connection = getExternalServiceConnection(input.userId, "google");
-  if (connection.status === "error") {
-    return {
-      status: "needs_reconnect",
-      message: connection.errorMessage ?? GOOGLE_RECONNECT_REQUIRED_MESSAGE,
-    };
-  }
-  if (connection.status !== "connected") {
-    return {
-      status: "google_not_connected",
-      message: GOOGLE_NOT_CONNECTED_MESSAGE,
-    };
-  }
-
-  const credentials = getExternalServiceCredentials(input.userId, "google");
-  const grantedScope = resolveGrantedGoogleScope(
-    credentials?.scope,
-    connection.scopes,
-  );
-  if (!hasGoogleCapability(grantedScope, "calendar")) {
-    return {
-      status: "insufficient_permission",
-      message: GOOGLE_INSUFFICIENT_PERMISSION_MESSAGE,
-    };
-  }
-
-  const tokenResult = await getGoogleAccountAccessTokenResult(input.userId);
-  if (tokenResult.status === "refresh_failed") {
-    return {
-      status: "needs_reconnect",
-      message: tokenResult.message,
-    };
-  }
-  if (tokenResult.status !== "ready") {
-    return {
-      status: "google_not_connected",
-      message: GOOGLE_NOT_CONNECTED_MESSAGE,
-    };
-  }
-
-  return { accessToken: tokenResult.accessToken };
+  return { accessToken: result.accessToken };
 }
 
 function isGateFailure(
