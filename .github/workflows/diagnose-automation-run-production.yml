@@ -38,7 +38,58 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Diagnose via Production health (CRON_SECRET)
+        id: health_diagnose
+        env:
+          DIAGNOSE_REQUEST_ID: ${{ github.event.inputs.request_id || '6e0a6198-af7a-4788-b305-c61dc8b35c12' }}
+          DIAGNOSE_DIAGNOSTIC_ID: ${{ github.event.inputs.diagnostic_id || 'aaef8557-500a-461f-a95a-d8df3e1905e4' }}
+          DIAGNOSE_OUT: ${{ runner.temp }}/diagnose-automation-run
+          ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${DIAGNOSE_OUT}"
+          export ATLAS_APP_URL="${ATLAS_APP_URL:-https://atlasapp.jp}"
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "health_diagnose=skip_no_cron_secret"
+            echo "health_ok=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          QS="force=1"
+          if [ -n "${DIAGNOSE_REQUEST_ID:-}" ]; then QS="${QS}&requestId=${DIAGNOSE_REQUEST_ID}"; fi
+          if [ -n "${DIAGNOSE_DIAGNOSTIC_ID:-}" ]; then QS="${QS}&diagnosticId=${DIAGNOSE_DIAGNOSTIC_ID}"; fi
+          code=$(curl -sS -o "${DIAGNOSE_OUT}/health-diagnose.json" -w "%{http_code}" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Cache-Control: no-store" \
+            "${ATLAS_APP_URL}/api/health/automation-run-diagnose?${QS}" || true)
+          echo "health_http=${code}"
+          echo "health_http=${code}" >> "$GITHUB_OUTPUT"
+          if [ "${code}" = "200" ]; then
+            echo "health_ok=1" >> "$GITHUB_OUTPUT"
+            python3 - <<'PY'
+          import json
+          d=json.load(open("/home/runner/work/_temp/diagnose-automation-run/health-diagnose.json"))
+          print(json.dumps({
+            "ok": d.get("ok"),
+            "stoppedAt": (d.get("derived") or {}).get("stoppedAt"),
+            "hasGoogleCalendarStep": (d.get("automation") or {}).get("hasGoogleCalendarStep"),
+            "enabledStepTypes": (d.get("automation") or {}).get("enabledStepTypes"),
+            "requiredExternalsDeclared": (d.get("automation") or {}).get("requiredExternalsDeclared"),
+            "freeformNotesPreview": (d.get("automation") or {}).get("freeformNotesPreview"),
+            "lastErrorMessage": (d.get("run") or {}).get("lastErrorMessage"),
+            "runStepCapabilityIds": (d.get("run") or {}).get("runStepCapabilityIds"),
+            "externalActionIds": (d.get("run") or {}).get("externalActionIds"),
+            "source": (d.get("automation") or {}).get("source"),
+            "legacyAutomationId": (d.get("automation") or {}).get("legacyAutomationId"),
+          }, ensure_ascii=False, indent=2))
+          PY
+          else
+            echo "health_ok=0" >> "$GITHUB_OUTPUT"
+            head -c 500 "${DIAGNOSE_OUT}/health-diagnose.json" || true
+          fi
+
       - name: Diagnose automation run from Production DB
+        if: steps.health_diagnose.outputs.health_ok != '1'
         env:
           # Prefer workflow_dispatch inputs; push uses the known Production incident ids.
           DIAGNOSE_REQUEST_ID: ${{ github.event.inputs.request_id || '6e0a6198-af7a-4788-b305-c61dc8b35c12' }}

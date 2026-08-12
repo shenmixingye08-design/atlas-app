@@ -56,6 +56,10 @@ import type {
 } from "@/lib/automation-platform/types";
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
+import {
+  assertExternalsSatisfiedBySteps,
+  ensureRequiredExternalSteps,
+} from "@/lib/automations/ensure-external-steps";
 
 function assertV2Enabled(context: FeatureAccessContext): void {
   if (!isFeatureEnabled("automation_v2_enabled", context)) {
@@ -110,6 +114,57 @@ function assertProductionStepsActivatable(
   );
 }
 
+/**
+ * Inject missing Production external steps from instruction text before
+ * persist / enqueue. Closes the gap where wizard/create mapped draft.steps
+ * only and left requiredExternals as notes (diagnosticId aaef8557…).
+ */
+function healRequiredExternalSteps(automation: AutomationV2): {
+  automation: AutomationV2;
+  changed: boolean;
+} {
+  const ensured = ensureRequiredExternalSteps({
+    steps: automation.workflow.steps,
+    freeformNotes: automation.instruction.freeformNotes,
+    structuredOptions: automation.instruction.structuredOptions ?? {},
+  });
+  if (ensured.unsupported.length > 0) {
+    throw new AutomationPlatformError("automation_unsupported_step", {
+      reason: `必須の外部操作をProduction手順として生成できません: ${ensured.unsupported.join(",")}`,
+      unsupported: ensured.unsupported,
+    });
+  }
+  const gate = assertExternalsSatisfiedBySteps({
+    required: ensured.required,
+    steps: ensured.steps,
+  });
+  if (!gate.ok) {
+    throw new AutomationPlatformError("automation_invalid_definition", {
+      reason: gate.reason,
+      code: gate.code,
+      missing: gate.missing,
+    });
+  }
+  if (!ensured.changed) {
+    return { automation, changed: false };
+  }
+  return {
+    changed: true,
+    automation: {
+      ...automation,
+      workflow: {
+        ...automation.workflow,
+        steps: ensured.steps,
+      },
+      instruction: {
+        ...automation.instruction,
+        structuredOptions: ensured.structuredOptions,
+      },
+      updatedAt: new Date().toISOString(),
+    },
+  };
+}
+
 export class AutomationPlatformService {
   async create(
     userId: string,
@@ -128,7 +183,9 @@ export class AutomationPlatformService {
       }
     }
 
-    const record = buildAutomationFromCreateInput(userId, input);
+    const built = buildAutomationFromCreateInput(userId, input);
+    const healed = healRequiredExternalSteps(built);
+    const record = healed.automation;
     if (record.status === "active") {
       assertProductionStepsActivatable(record.workflow.steps);
     }
@@ -249,7 +306,7 @@ export class AutomationPlatformService {
           ? null
           : current.nextRunAt;
 
-    const updated: AutomationV2 = {
+    const updatedBase: AutomationV2 = {
       ...current,
       ...patch,
       instruction,
@@ -261,6 +318,8 @@ export class AutomationPlatformService {
         : current.executionPolicy,
       updatedAt: new Date().toISOString(),
     };
+    const healedUpdate = healRequiredExternalSteps(updatedBase);
+    const updated = healedUpdate.automation;
 
     if (updated.status === "active") {
       assertProductionStepsActivatable(updated.workflow.steps);
@@ -490,7 +549,7 @@ export class AutomationPlatformService {
     await ensureAutomationsV2Hydrated(input.userId);
     await ensureAutomationRunsV2Hydrated(input.userId);
 
-    const automation = assertOwner(
+    let automation = assertOwner(
       await getAutomationV2FromSot(input.automationId, input.userId),
       input.userId,
     );
@@ -506,6 +565,14 @@ export class AutomationPlatformService {
       throw new AutomationPlatformError("automation_disabled", {
         status: automation.status,
       });
+    }
+
+    // Self-heal definitions that retained Calendar NL in freeformNotes but
+    // never persisted a google_calendar Production step (aaef8557…).
+    const healedForRun = healRequiredExternalSteps(automation);
+    if (healedForRun.changed) {
+      assertProductionStepsActivatable(healedForRun.automation.workflow.steps);
+      automation = await persistAutomationV2Now(healedForRun.automation);
     }
 
     const conflicts = detectInstructionConflicts(automation.instruction);

@@ -7,6 +7,10 @@ import type {
   CreateAutomationV2Input,
 } from "@/lib/automation-platform/types";
 import { DEFAULT_AUTOMATION_PLATFORM_TIMEZONE } from "@/lib/automation-platform/schedule/timezone";
+import {
+  assertExternalsSatisfiedBySteps,
+  ensureRequiredExternalSteps,
+} from "@/lib/automations/ensure-external-steps";
 
 import { buildHumanSummary, describeSchedule } from "./schedule-copy";
 import type {
@@ -279,7 +283,30 @@ export function buildCreateInputFromWizard(
     freeformNotes = `${freeformNotes}\n（確認済み: 設定項目を優先）`.trim();
   }
 
-  const instruction = { structuredOptions, freeformNotes };
+  // Production incident aaef8557…: freeformNotes required Calendar but
+  // draft.steps stayed orchestrate-only → run fail-closed at step-missing.
+  const ensured = ensureRequiredExternalSteps({
+    steps: buildWorkflowSteps(resolved),
+    freeformNotes,
+    structuredOptions,
+    sourceText: resolved.naturalLanguageSeed || freeformNotes,
+  });
+  const externalGate = assertExternalsSatisfiedBySteps({
+    required: ensured.required,
+    steps: ensured.steps,
+  });
+  if (!externalGate.ok) {
+    errors.push({
+      code: "external_step_missing",
+      message: externalGate.reason,
+      stepId: "steps",
+    });
+  }
+
+  const instruction = {
+    structuredOptions: ensured.structuredOptions,
+    freeformNotes,
+  };
   const conflicts = detectInstructionConflicts(instruction);
   const trigger = buildTrigger(resolved);
   const nextRunAt =
@@ -294,7 +321,7 @@ export function buildCreateInputFromWizard(
     trigger,
     workflow: {
       version: 1,
-      steps: buildWorkflowSteps(resolved),
+      steps: ensured.steps,
       onFailure: { strategy: "stop", notify: true },
       timeoutPolicy: {
         workflowTimeoutMs: 900_000,

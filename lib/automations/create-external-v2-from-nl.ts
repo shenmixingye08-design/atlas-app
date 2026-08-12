@@ -11,52 +11,13 @@ import type { CreateAutomationV2Input } from "@/lib/automation-platform/types";
 import type { AutomationWorkflowStep } from "@/lib/automation-platform/types/step";
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
+import type { RequiredExternalAction } from "@/lib/automations/detect-external-intent";
 import {
-  extractCalendarEventTitle,
-  type RequiredExternalAction,
-} from "@/lib/automations/detect-external-intent";
+  buildGoogleCalendarStepFromText,
+  canWireProductionExternalStep,
+} from "@/lib/automations/ensure-external-steps";
 import type { CreateAutomationInput } from "@/lib/automations/types";
 import type { AutomationV2 } from "@/lib/automation-platform/types";
-
-function baseStep(
-  partial: Pick<AutomationWorkflowStep, "id" | "type" | "name" | "order"> &
-    Partial<AutomationWorkflowStep>,
-): AutomationWorkflowStep {
-  return {
-    id: partial.id,
-    type: partial.type,
-    name: partial.name,
-    order: partial.order,
-    inputBindings: partial.inputBindings ?? {},
-    configuration: partial.configuration ?? {},
-    requiresApproval: partial.requiresApproval ?? true,
-    retryPolicy: partial.retryPolicy ?? {
-      maxAttempts: 3,
-      backoffMs: [60_000, 300_000, 900_000],
-    },
-    timeoutMs: partial.timeoutMs ?? 120_000,
-    onSuccess: null,
-    onFailure: null,
-    enabled: partial.enabled ?? true,
-  };
-}
-
-function buildCalendarStep(sourceText: string): AutomationWorkflowStep {
-  const eventTitle =
-    extractCalendarEventTitle(sourceText)?.trim() || "MINERVOT自動化テスト";
-  return baseStep({
-    id: "google_calendar",
-    type: "google_calendar",
-    name: "Google Calendar",
-    order: 0,
-    requiresApproval: true,
-    configuration: {
-      eventTitle,
-      action: "create",
-      description: sourceText.slice(0, 200),
-    },
-  });
-}
 
 function buildExternalSteps(
   required: readonly RequiredExternalAction[],
@@ -65,7 +26,7 @@ function buildExternalSteps(
   const steps: AutomationWorkflowStep[] = [];
   for (const action of required) {
     if (action === "google_calendar") {
-      steps.push(buildCalendarStep(sourceText));
+      steps.push(buildGoogleCalendarStepFromText(sourceText, steps.length));
       continue;
     }
     // Other externals: only emit when we can wire a real Production step.
@@ -78,7 +39,7 @@ export function canCreateProductionExternalSteps(
   required: readonly RequiredExternalAction[],
 ): boolean {
   if (required.length === 0) return true;
-  return required.every((action) => action === "google_calendar");
+  return required.every((action) => canWireProductionExternalStep(action));
 }
 
 export function buildV2CreateInputFromNaturalLanguage(input: {
