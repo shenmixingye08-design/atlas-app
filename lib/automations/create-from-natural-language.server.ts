@@ -6,6 +6,7 @@ import {
 } from "@/lib/billing/access";
 import { validateAutomationFeatureAccess } from "@/lib/feature-flags/guards";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
+import { createExternalAutomationV2FromNaturalLanguage } from "@/lib/automations/create-external-v2-from-nl";
 
 import { automationService } from "./automation-service";
 import {
@@ -20,6 +21,8 @@ export type CreateFromNaturalLanguageResult =
       automation: Automation;
       message: string;
       frequency: "daily" | "weekly" | "monthly";
+      /** Present when Production external steps were created on Automation V2. */
+      automationV2Id?: string;
     }
   | {
       ok: false;
@@ -29,7 +32,167 @@ export type CreateFromNaturalLanguageResult =
     };
 
 /**
+ * Map a V2 definition into the Phase 1 Automation shape for API / Commander UX.
+ * Execution of required externals is owned by V2 — never by V1 orchestrate.
+ */
+function mapV2ToPhase1AutomationResponse(input: {
+  userId: string;
+  v2: {
+    id: string;
+    name: string;
+    description: string;
+    nextRunAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    status: string;
+  };
+  createInput: import("./types").CreateAutomationInput;
+  executionLevel: string;
+}): Automation {
+  const schedule = input.createInput.schedule;
+  return {
+    id: input.v2.id,
+    userId: input.userId,
+    name: input.v2.name,
+    description: input.v2.description,
+    schedule,
+    workflow: {
+      ...input.createInput.workflow,
+      metadata: {
+        ...(input.createInput.workflow.metadata ?? {}),
+        automationV2Id: input.v2.id,
+        source: "natural_language_external",
+        requiredExternals: ["google_calendar"],
+      },
+    },
+    timing: input.createInput.timing ?? {
+      startDate: null,
+      endCondition: { type: "never" },
+    },
+    executionLevel:
+      (input.createInput.executionLevel as Automation["executionLevel"]) ??
+      "approve_then_run",
+    executionMode: input.createInput.executionMode ?? "standard",
+    snsBatchDays: input.createInput.snsBatchDays ?? null,
+    executionFlow: input.createInput.executionFlow ?? {
+      templateId: "generic",
+      steps: [],
+    },
+    destination: "none",
+    enabled: true,
+    lastRun: null,
+    nextRun: input.v2.nextRunAt,
+    status: input.v2.status === "active" ? "idle" : "idle",
+    lastWorkflowRunId: null,
+    lastError: null,
+    successCount: 0,
+    failureCount: 0,
+    runHistory: [],
+    createdAt: input.v2.createdAt,
+    updatedAt: input.v2.updatedAt,
+  };
+}
+
+async function createExternalPath(input: {
+  userId: string;
+  text: string;
+  parsed: Extract<
+    ReturnType<typeof parseNaturalLanguageAutomation>,
+    { ok: true }
+  >;
+}): Promise<CreateFromNaturalLanguageResult> {
+  const accessContext = await resolveFeatureAccessContext();
+  const existing = await automationService.listForUser(input.userId);
+  const taskDenied = await requireBillingAutomationTask(
+    input.userId,
+    existing.length,
+  );
+  if (taskDenied) {
+    const body = (await taskDenied.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    return {
+      ok: false,
+      code: "billing_task_limit",
+      message: body.error ?? "自動化の作成上限に達しています。",
+      httpStatus: taskDenied.status,
+    };
+  }
+
+  const created = await createExternalAutomationV2FromNaturalLanguage({
+    userId: input.userId,
+    createInput: input.parsed.createInput,
+    sourceText: input.parsed.sourceText,
+    requiredExternals: input.parsed.requiredExternals,
+    context: accessContext,
+  });
+
+  if (!created.ok) {
+    return {
+      ok: false,
+      code: created.code,
+      message: created.message,
+      httpStatus: created.httpStatus,
+    };
+  }
+
+  const v2 = created.automation;
+  if (!v2.nextRunAt) {
+    return {
+      ok: false,
+      code: "next_run_missing",
+      message: "次回実行時刻が生成されていません。成功扱いにはしません。",
+      httpStatus: 500,
+    };
+  }
+
+  const hasCalendar = v2.workflow.steps.some(
+    (step) => step.enabled && step.type === "google_calendar",
+  );
+  if (!hasCalendar) {
+    return {
+      ok: false,
+      code: "external_step_missing",
+      message:
+        "Calendar手順が保存されませんでした。成功扱いにはしません。",
+      httpStatus: 500,
+    };
+  }
+
+  const automation = mapV2ToPhase1AutomationResponse({
+    userId: input.userId,
+    v2,
+    createInput: input.parsed.createInput,
+    executionLevel: "approve_then_run",
+  });
+
+  const scheduleLabel =
+    automation.schedule.kind === "schedule"
+      ? automation.schedule.label
+      : "（不明）";
+  const timezone =
+    automation.schedule.kind === "schedule"
+      ? automation.schedule.timezone
+      : "Asia/Tokyo";
+
+  return {
+    ok: true,
+    automation,
+    automationV2Id: v2.id,
+    frequency: input.parsed.frequency,
+    message: formatNaturalLanguageAutomationSuccess({
+      name: automation.name,
+      scheduleLabel,
+      nextRun: automation.nextRun,
+      executionLevel: automation.executionLevel,
+      timezone,
+    }),
+  };
+}
+
+/**
  * Fail-closed NL → durable active automation.
+ * External Calendar (etc.) → V2 Production steps only (no V1 orchestrate fake-success).
  * Success only when persisted, enabled, schedule kind=schedule, and nextRun set.
  */
 export async function createAutomationFromNaturalLanguage(input: {
@@ -44,6 +207,16 @@ export async function createAutomationFromNaturalLanguage(input: {
       message: parsed.message,
       httpStatus: 400,
     };
+  }
+
+  // Production evidence (2026-08-13): Calendar NL that only created V1 orchestrate
+  // completed as "本日成功" with zero Google Calendar events. Route externals to V2.
+  if (parsed.requiredExternals.length > 0) {
+    return createExternalPath({
+      userId: input.userId,
+      text: input.text,
+      parsed,
+    });
   }
 
   const createInput = parsed.createInput;

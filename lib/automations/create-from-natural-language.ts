@@ -1,9 +1,13 @@
 /**
- * Phase 1: Natural language → durable V1 automation create.
+ * Phase 1: Natural language → durable automation create.
  * Parse/detect is client-safe; persistence lives in .server.ts.
  */
 
 import { detectRecurringIntent } from "./detect-recurring";
+import {
+  detectRequiredExternalActions,
+  type RequiredExternalAction,
+} from "./detect-external-intent";
 import type { CreateAutomationInput } from "./types";
 
 export type NaturalLanguageAutomationParse =
@@ -12,6 +16,7 @@ export type NaturalLanguageAutomationParse =
       createInput: CreateAutomationInput;
       frequency: "daily" | "weekly" | "monthly";
       sourceText: string;
+      requiredExternals: RequiredExternalAction[];
     }
   | {
       ok: false;
@@ -60,6 +65,7 @@ export function parseNaturalLanguageAutomation(
     createInput,
     frequency: createInput.schedule.preset.type,
     sourceText: trimmed,
+    requiredExternals: detectRequiredExternalActions(trimmed),
   };
 }
 

@@ -1,4 +1,8 @@
 import { createStepFromCapability, createEmptyWizardDraft } from "./builders";
+import {
+  extractCalendarEventTitle,
+  requiresGoogleCalendarAction,
+} from "@/lib/automations/detect-external-intent";
 import type { AutomationWizardDraft } from "./types";
 
 /**
@@ -79,6 +83,15 @@ export function proposeWizardFromNaturalLanguage(
   } else if (/保存/.test(lower) && /Dropbox|ドライブ|フォルダ/.test(lower)) {
     steps.push(createStepFromCapability("dropbox"));
   }
+  if (requiresGoogleCalendarAction(lower)) {
+    const calendar = createStepFromCapability("google_calendar");
+    const eventTitle = extractCalendarEventTitle(lower);
+    calendar.configuration = {
+      action: "create",
+      ...(eventTitle ? { eventTitle } : {}),
+    };
+    steps.push(calendar);
+  }
   if (/メール|Gmail/.test(lower)) {
     const mail = createStepFromCapability("gmail");
     mail.configuration = {
@@ -93,6 +106,8 @@ export function proposeWizardFromNaturalLanguage(
     steps.push(createStepFromCapability("notify"));
   }
 
+  // Never fall back to orchestrate when a Calendar external was requested —
+  // that path caused production fake-success (2026-08-13).
   if (steps.length === 0) {
     steps.push(createStepFromCapability("orchestrate"));
   }
@@ -108,6 +123,7 @@ export function proposeWizardFromNaturalLanguage(
 }
 
 function deriveName(text: string, stepLabel: string): string {
+  if (requiresGoogleCalendarAction(text)) return "Googleカレンダー予定作成";
   if (/売上/.test(text)) return "売上まとめの自動化";
   if (/投稿/.test(text)) return "SNS投稿の自動化";
   if (/報告/.test(text)) return "報告書作成の自動化";
