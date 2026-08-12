@@ -1,0 +1,62 @@
+# Production Automation V2 run diagnostic via DB secrets in Actions.
+name: Diagnose Automation Run Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Automation run id (requestId from failure view)
+        required: false
+        type: string
+        default: ""
+      diagnostic_id:
+        description: diagnosticId from failure view
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Diagnose automation run from Production DB
+        env:
+          DIAGNOSE_REQUEST_ID: ${{ github.event.inputs.request_id }}
+          DIAGNOSE_DIAGNOSTIC_ID: ${{ github.event.inputs.diagnostic_id }}
+          DIAGNOSE_OUT: ${{ runner.temp }}/diagnose-automation-run
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${DIAGNOSE_OUT}"
+          if [ -z "${DIAGNOSE_REQUEST_ID:-}${DIAGNOSE_DIAGNOSTIC_ID:-}" ]; then
+            echo "::error::request_id or diagnostic_id required"
+            exit 2
+          fi
+          node scripts/ci/diagnose-automation-run-production.mjs
+
+      - name: Upload diagnostic artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnose-automation-run
+          path: ${{ runner.temp }}/diagnose-automation-run/
+          if-no-files-found: warn
