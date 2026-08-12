@@ -156,6 +156,9 @@ export function AutomationCreateWizard({ initialDraftId, seedText }: Props) {
   }, [seedText]);
 
   useEffect(() => {
+    // Seeded NL propose must win over a stale saved draft — overwriting with an
+    // orchestrate-only draft caused Production step-missing (aaef8557…).
+    if (seedText?.trim()) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -176,7 +179,7 @@ export function AutomationCreateWizard({ initialDraftId, seedText }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [initialDraftId]);
+  }, [initialDraftId, seedText]);
 
   const persistDraft = useCallback(
     async (next: AutomationWizardDraft) => {

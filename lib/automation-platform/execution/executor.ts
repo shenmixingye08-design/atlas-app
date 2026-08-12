@@ -154,6 +154,45 @@ export async function executeQueuedRun(input: {
     return { run, terminal: false };
   }
 
+  // Fail before orchestrate when required externals were never generated into
+  // workflow.steps (Production diagnosticId aaef8557… — step-missing after
+  // other steps had already "succeeded").
+  {
+    const {
+      assertRequiredExternalStepsPresent,
+      resolveRequiredExternals,
+    } = await import("@/lib/automations/required-external-fail-closed");
+    const declared = input.automation.instruction.structuredOptions
+      ?.requiredExternals;
+    const required = resolveRequiredExternals({
+      sourceText: input.automation.instruction.freeformNotes,
+      declared: Array.isArray(declared)
+        ? (declared as import("@/lib/automations/detect-external-intent").RequiredExternalAction[])
+        : null,
+    });
+    const preflight = assertRequiredExternalStepsPresent({
+      required,
+      enabledStepTypes: input.automation.workflow.steps
+        .filter((step) => step.enabled)
+        .map((step) => step.type),
+    });
+    if (!preflight.ok) {
+      if (run.status === "queued" || run.status === "retrying") {
+        run = persist(transition(run, "running", "claim_and_start"));
+      }
+      run = persist({
+        ...transition(run, "failed", preflight.code),
+        retryable: false,
+        nextRetryAt: null,
+        completionEvidence: null,
+        resultSummary: preflight.reason,
+        lastErrorCode: "automation_run_failed",
+        lastErrorMessage: preflight.reason,
+      });
+      return { run, terminal: true };
+    }
+  }
+
   if (run.status === "queued" || run.status === "retrying") {
     run = persist(transition(run, "running", "claim_and_start"));
   }
