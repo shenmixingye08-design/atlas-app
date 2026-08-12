@@ -88,6 +88,20 @@ describe("Scheduler Ops — drain_* 500 classification (Production evidence)", (
     expect(diag.developerCode).toMatch(/work_queue_/);
   });
 
+  it("minute scheduler always re-applies claim RPC (not only when tables missing)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const yml = readFileSync(
+      join(process.cwd(), ".github/workflows/minute-scheduler.yml"),
+      "utf8",
+    );
+    expect(yml).toContain("force=1&apply=1");
+    expect(yml).toContain("work_queue_apply_attempt=1");
+    // Must not gate apply solely on tablesOk — that left Production on uncapped RPC.
+    expect(yml).not.toMatch(/NEED_APPLY/);
+    expect(yml).toMatch(/always re-apply idempotent work-queue DDL/i);
+  });
+
   it("preferDirect ranks NON_POOLING over transaction pooler", () => {
     const saved = {
       POSTGRES_URL: process.env.POSTGRES_URL,
