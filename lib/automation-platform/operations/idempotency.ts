@@ -41,10 +41,14 @@ export function prepareStepsForSafeRetry(
     : -1;
 
   return steps.map((step, index) => {
+    // Keep status=succeeded for already-done externals. Remapping to "skipped"
+    // made evaluateRunCompletion fail-closed (required_skipped) and left safe
+    // retries unable to reach terminal succeeded after Calendar succeeded.
+    // Executor already no-ops succeeded steps; side-effect claims block dupes.
     if (shouldSkipOnRetry(step)) {
       return {
         ...step,
-        status: "skipped" as const,
+        status: "succeeded" as const,
         outputSummary:
           step.outputSummary ??
           "既に完了した外部操作のため再実行しませんでした",
@@ -92,7 +96,7 @@ export function prepareStepsForSafeRetry(
       if (shouldSkipOnRetry(step)) {
         return {
           ...step,
-          status: "skipped" as const,
+          status: "succeeded" as const,
           outputSummary:
             step.outputSummary ??
             "既に完了した外部操作のため再実行しませんでした",

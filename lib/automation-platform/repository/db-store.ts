@@ -633,6 +633,55 @@ export async function dbListDispatchableRuns(
 }
 
 /**
+ * Runs stuck in `running` past staleAfterMs (mid-step / terminal write races).
+ * Used by dispatch to finalize when all steps are already terminal.
+ */
+export async function dbListStuckRunningRuns(
+  limit = 10,
+  staleAfterMs = 2 * 60 * 1000,
+): Promise<AutomationRun[]> {
+  const cutoffIso = new Date(Date.now() - staleAfterMs).toISOString();
+  if (await shouldUseLocalStandIn()) {
+    return [...getLocalDb().runs.values()]
+      .filter(
+        (run) =>
+          run.status === "running" &&
+          Date.parse(run.updatedAt) <= Date.parse(cutoffIso),
+      )
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+      .slice(0, limit)
+      .map((run) => structuredClone(run));
+  }
+
+  const client = createServiceRoleClientIfConfigured();
+  if (!client) {
+    if (isAtlasProduction()) {
+      throw new Error("[automation-v2] DB SoT unavailable for stuck running list");
+    }
+    return [];
+  }
+
+  const { data, error } = await client
+    .from(RUNS_TABLE)
+    .select("*")
+    .eq("status", "running")
+    .lte("updated_at", cutoffIso)
+    .order("updated_at", { ascending: true })
+    .limit(limit);
+  if (error) {
+    if (isMissingError(error.message)) {
+      markAutomationV2DbSotReadyUnknown();
+      if (isAtlasProduction()) {
+        throw new Error(error.message);
+      }
+      return [];
+    }
+    throw new Error(`[automation-v2] list stuck running failed: ${error.message}`);
+  }
+  return ((data as RunRow[] | null) ?? []).map(fromRunRow);
+}
+
+/**
  * Atomic claim: only one instance wins queued/retrying → running.
  */
 export async function dbClaimRun(runId: string): Promise<AutomationRun | null> {

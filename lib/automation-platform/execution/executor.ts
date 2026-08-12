@@ -41,11 +41,11 @@ export type ExecuteRunResult = {
   terminal: boolean;
 };
 
-function persist(run: AutomationRun): AutomationRun {
+async function persist(run: AutomationRun): Promise<AutomationRun> {
   const saved = memoryUpdateRun(run);
-  // Fire-and-await sync path for executor internals; durable write is async.
-  void persistAutomationRunNow(saved);
-  return saved;
+  // Must await durable SoT writes. Fire-and-forget allowed a mid-step
+  // `running` upsert to finish after the terminal write and stick the run.
+  return persistAutomationRunNow(saved);
 }
 
 function transition(
@@ -178,9 +178,9 @@ export async function executeQueuedRun(input: {
     });
     if (!preflight.ok) {
       if (run.status === "queued" || run.status === "retrying") {
-        run = persist(transition(run, "running", "claim_and_start"));
+        run = await persist(transition(run, "running", "claim_and_start"));
       }
-      run = persist({
+      run = await persist({
         ...transition(run, "failed", preflight.code),
         retryable: false,
         nextRetryAt: null,
@@ -194,7 +194,7 @@ export async function executeQueuedRun(input: {
   }
 
   if (run.status === "queued" || run.status === "retrying") {
-    run = persist(transition(run, "running", "claim_and_start"));
+    run = await persist(transition(run, "running", "claim_and_start"));
   }
 
   const attempt: AutomationRunAttempt = {
@@ -205,7 +205,7 @@ export async function executeQueuedRun(input: {
     errorMessage: null,
     retryScheduledFor: null,
   };
-  run = persist({
+  run = await persist({
     ...run,
     attemptCount: attempt.attempt,
     attempts: [...run.attempts, attempt],
@@ -265,7 +265,7 @@ export async function executeQueuedRun(input: {
       startedAt: now,
       attemptCount: runStep.attemptCount + 1,
     };
-    run = persist({ ...run, steps: steps.map((s) => ({ ...s })) });
+    run = await persist({ ...run, steps: steps.map((s) => ({ ...s })) });
 
     try {
       let result = await invoker({
@@ -362,7 +362,7 @@ export async function executeQueuedRun(input: {
         errorCode: null,
         errorMessage: null,
       };
-      run = persist({
+      run = await persist({
         ...run,
         steps: steps.map((s) => ({ ...s })),
         artifacts: [...run.artifacts, ...result.artifacts],
@@ -416,7 +416,7 @@ export async function executeQueuedRun(input: {
   };
 
   if (needsUserInput) {
-    run = persist(transition(run, "needs_input", "step_needs_input"));
+    run = await persist(transition(run, "needs_input", "step_needs_input"));
     return { run, terminal: false };
   }
 
@@ -444,7 +444,7 @@ export async function executeQueuedRun(input: {
           : item,
       ),
     };
-    run = persist(withRetry);
+    run = await persist(withRetry);
     return { run, terminal: false };
   }
 
@@ -471,7 +471,7 @@ export async function executeQueuedRun(input: {
       decision.runStatus === "partially_succeeded") &&
     !evidence
   ) {
-    run = persist({
+    run = await persist({
       ...transition(run, "failed", "completion_evidence_missing"),
       retryable: false,
       nextRetryAt: null,
@@ -510,7 +510,7 @@ export async function executeQueuedRun(input: {
       externalActionIds: evidence?.externalActionIds ?? [],
     });
     if (!externalGate.ok) {
-      run = persist({
+      run = await persist({
         ...transition(run, "failed", externalGate.code),
         retryable: false,
         nextRetryAt: null,
@@ -524,7 +524,7 @@ export async function executeQueuedRun(input: {
   }
 
   const userMessage = runCompletionUserMessage(decision.productStatus);
-  run = persist({
+  run = await persist({
     ...transition(run, decision.runStatus, decision.reason),
     retryable: false,
     nextRetryAt: null,

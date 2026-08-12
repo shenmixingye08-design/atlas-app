@@ -385,6 +385,7 @@ async function findPhase2CalendarSuccess(
     return bHit - aHit;
   });
 
+  const claimHits: Phase2ScanHit[] = [];
   for (const claim of rankedClaims) {
     const runId = typeof claim.run_id === "string" ? claim.run_id : "";
     if (!runId) continue;
@@ -418,14 +419,7 @@ async function findPhase2CalendarSuccess(
       resultSummary,
       claimDiscriminator: claimBlob,
     });
-    // Prefer needle; accept first durable Calendar claim if no needle match exists.
-    if (!needleOk && rankedClaims.some((row) => {
-      const blob = JSON.stringify(row.result_payload ?? row.evidence ?? "");
-      return blob.includes(PHASE2_NEEDLE) || blob.includes("MINERVOT");
-    })) {
-      continue;
-    }
-    return {
+    claimHits.push({
       runRow,
       automationRow,
       via: "side_effect_claim",
@@ -433,7 +427,43 @@ async function findPhase2CalendarSuccess(
         typeof claim.provider_resource_id === "string"
           ? claim.provider_resource_id
           : null,
-    };
+    });
+    if (!needleOk) continue;
+  }
+  // Prefer terminal succeeded + needle, then any succeeded, then latest claim hit.
+  const rankHit = (hit: Phase2ScanHit): number => {
+    const status = String(hit.runRow.status ?? "");
+    const instruction = asObject(hit.automationRow?.instruction);
+    const freeform =
+      typeof instruction?.freeformNotes === "string"
+        ? instruction.freeformNotes
+        : "";
+    const name =
+      typeof hit.automationRow?.name === "string"
+        ? String(hit.automationRow.name)
+        : "";
+    const resultSummary =
+      typeof hit.runRow.result_summary === "string"
+        ? hit.runRow.result_summary
+        : "";
+    const needle = haystackMatchesPhase2Needle({
+      freeform,
+      name,
+      resultSummary,
+    })
+      ? 10
+      : 0;
+    const terminal =
+      status === "succeeded" ? 100 : status === "partially_succeeded" ? 50 : 0;
+    const evidence = asObject(asObject(hit.runRow.payload)?.completionEvidence);
+    const hasEvidence = Array.isArray(evidence?.externalActionIds)
+      ? evidence!.externalActionIds.length
+      : 0;
+    return terminal + needle + Math.min(hasEvidence, 5);
+  };
+  if (claimHits.length > 0) {
+    claimHits.sort((a, b) => rankHit(b) - rankHit(a));
+    return claimHits[0] ?? null;
   }
 
   // Path B: succeeded runs with google_calendar + external ids in payload.
