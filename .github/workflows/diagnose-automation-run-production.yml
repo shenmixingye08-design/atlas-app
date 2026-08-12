@@ -111,6 +111,7 @@ jobs:
 
       - name: Diagnose automation run from Production DB
         if: steps.health_diagnose.outputs.health_ok != '1'
+        continue-on-error: true
         env:
           DIAGNOSE_REQUEST_ID: ${{ github.event.inputs.request_id || '' }}
           DIAGNOSE_DIAGNOSTIC_ID: ${{ github.event.inputs.diagnostic_id || '' }}
@@ -130,6 +131,10 @@ jobs:
           mkdir -p "${DIAGNOSE_OUT}"
           if [ -z "${DIAGNOSE_REQUEST_ID:-}${DIAGNOSE_DIAGNOSTIC_ID:-}" ]; then
             export PHASE2_CALENDAR_SUCCESS=1
+          fi
+          if [ -z "${SUPABASE_URL:-}${NEXT_PUBLIC_SUPABASE_URL:-}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}${DATABASE_URL:-}${POSTGRES_URL:-}${SUPABASE_DB_URL:-}${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::warning::No Production DB secrets in Actions; rely on health diagnose after deploy"
+            exit 0
           fi
           node scripts/ci/diagnose-automation-run-production.mjs
           if [ -f "${DIAGNOSE_OUT}/health-diagnose.json" ]; then
