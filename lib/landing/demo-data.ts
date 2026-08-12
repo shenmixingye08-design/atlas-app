@@ -22,10 +22,11 @@ export const HERO_MOCKUP = {
     { id: "sales", icon: "📄", role: "資料担当", status: "idle" as LandingAiStatus, tasks: 0 },
     { id: "sec", icon: "📧", role: "秘書", status: "active" as LandingAiStatus, tasks: 2 },
   ],
+  // Decorative hero chips only — never imply a real user connection state.
   connections: [
-    { id: "google", name: "Google", connected: true },
-    { id: "x", name: "X", connected: true },
-    { id: "wordpress", name: "WordPress", connected: true },
+    { id: "google", name: "Google", connected: false },
+    { id: "x", name: "X", connected: false },
+    { id: "wordpress", name: "WordPress", connected: false },
   ],
   chatPlaceholder: "例）営業資料を作る / 毎日18時にXへ投稿",
 } as const;

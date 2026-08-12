@@ -82,11 +82,25 @@ const EXTERNAL_SERVICE_CAPABILITIES: Record<
   notion: { ...STUB_HIDDEN, serviceId: "notion" },
 };
 
-/** Legacy integrations registry providers that are Production-connectable. */
-const LIVE_INTEGRATION_PROVIDERS = new Set<IntegrationProviderId>([
+/**
+ * Legacy `/api/integrations` providers that may surface as connectable.
+ * Only Google Drive has a real OAuth completion path in IntegrationService.
+ * Gmail / WordPress / Slack / Discord / etc. must NOT invent connected:true
+ * via placeholder POST — real paths are external-services / settings OAuth.
+ */
+const LIVE_LEGACY_INTEGRATION_PROVIDERS = new Set<IntegrationProviderId>([
   "google_drive",
+]);
+
+/** Unimplemented legacy providers — never connectable, hidden from catalogs. */
+const PLACEHOLDER_LEGACY_INTEGRATION_PROVIDERS = new Set<IntegrationProviderId>([
+  "slack",
+  "discord",
+  "github",
+  "webhooks",
   "gmail",
   "wordpress",
+  "notion",
 ]);
 
 export function isProductionUnofferedExternalService(
@@ -94,6 +108,14 @@ export function isProductionUnofferedExternalService(
 ): serviceId is ProductionUnofferedExternalService {
   return (PRODUCTION_UNOFFERED_EXTERNAL_SERVICES as readonly string[]).includes(
     serviceId,
+  );
+}
+
+export function isPlaceholderLegacyIntegrationProvider(
+  providerId: string,
+): boolean {
+  return PLACEHOLDER_LEGACY_INTEGRATION_PROVIDERS.has(
+    providerId as IntegrationProviderId,
   );
 }
 
@@ -130,22 +152,21 @@ export function isExternalServiceAutomationAvailable(
 export function getIntegrationProviderCapability(
   providerId: IntegrationProviderId,
 ): ProductionConnectorCapability {
-  // N-04 targets Notion/YouTube. Notion is the stub in this registry.
-  if (providerId === "notion") {
-    return { ...STUB_HIDDEN, serviceId: "notion" };
-  }
-  if (LIVE_INTEGRATION_PROVIDERS.has(providerId)) {
+  if (LIVE_LEGACY_INTEGRATION_PROVIDERS.has(providerId)) {
     return { ...LIVE_EXTERNAL, serviceId: providerId };
   }
-  // Other legacy providers keep prior placeholder connect paths (out of N-04).
+  // Slack / Discord / GitHub / Webhooks / legacy Gmail & WordPress / Notion:
+  // never invent connected without real OAuth credentials.
+  if (PLACEHOLDER_LEGACY_INTEGRATION_PROVIDERS.has(providerId)) {
+    return {
+      ...STUB_HIDDEN,
+      serviceId: providerId,
+      implementation: providerId === "notion" ? "stub" : "planned",
+    };
+  }
   return {
+    ...STUB_HIDDEN,
     serviceId: providerId,
-    productionAvailable: false,
-    connectable: true,
-    automationAvailable: false,
-    readAvailable: false,
-    writeAvailable: false,
-    userVisibleInSettings: true,
     implementation: "planned",
   };
 }
@@ -159,8 +180,7 @@ export function isIntegrationProviderConnectable(
 export function isIntegrationProviderUserVisible(
   providerId: IntegrationProviderId,
 ): boolean {
-  // Hide Notion stub from user integrations catalog (N-04).
-  return providerId !== "notion";
+  return getIntegrationProviderCapability(providerId).userVisibleInSettings;
 }
 
 export function getConnectorProviderCapability(

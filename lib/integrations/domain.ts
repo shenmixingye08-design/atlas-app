@@ -10,6 +10,14 @@ import type {
 export function createIntegrationFromInput(
   input: ConnectIntegrationInput,
 ): Integration {
+  // Fail closed: never invent connected:true for unimplemented providers.
+  // Real Google Drive connections use IntegrationService.completeGoogleDriveOAuth + save().
+  if (input.provider !== "google_drive") {
+    throw new Error(
+      `この連携（${input.provider}）は現在Productionでご利用いただけません`,
+    );
+  }
+
   const provider = getIntegrationProvider(input.provider);
   const now = new Date().toISOString();
 

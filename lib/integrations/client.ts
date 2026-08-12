@@ -1,7 +1,6 @@
 import { ui } from "@/lib/i18n";
 
 import type {
-  ConnectIntegrationInput,
   Integration,
   IntegrationCatalog,
   IntegrationProviderId,
@@ -27,24 +26,13 @@ export async function connectIntegration(
     return;
   }
 
-  // Server binds userId from Clerk session — never send client identity.
-  const body: Omit<ConnectIntegrationInput, "userId"> = {
-    provider,
-    ...(name ? { name } : {}),
-  };
-
-  const response = await fetch("/api/integrations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(payload.error ?? ui.error.connectFailed);
-  }
-
-  return response.json() as Promise<Integration>;
+  // Client must not invent connected state for unimplemented providers.
+  // Slack / Discord / GitHub / Webhooks / legacy Gmail & WordPress are not
+  // connectable via this API (server also fail-closes).
+  void name;
+  throw new Error(
+    `この連携（${provider}）は現在Productionでご利用いただけません`,
+  );
 }
 
 export async function disconnectIntegration(id: string): Promise<void> {

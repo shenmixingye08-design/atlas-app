@@ -85,13 +85,26 @@ describe("P0-03 IDOR / authz boundary", () => {
   });
 
   it("User B cannot GET/DELETE User A integration by id", async () => {
+    const { serverIntegrationRepository } = await import(
+      "@/lib/integrations/repositories/server-integration-repository"
+    );
     const { integrationService } = await import(
       "@/lib/integrations/integration-service"
     );
-    const owned = await integrationService.connect({
+    // Persist a Drive row directly — placeholder Slack connect is forbidden.
+    const now = new Date().toISOString();
+    const owned = await serverIntegrationRepository.save({
+      id: "int_idor_a_drive",
       userId: "user_a",
-      provider: "slack",
-      name: "A slack",
+      provider: "google_drive",
+      name: "A drive",
+      status: "connected",
+      connected: true,
+      authType: "oauth2",
+      scopes: [],
+      lastSyncAt: now,
+      createdAt: now,
+      updatedAt: now,
     });
 
     authMock.mockResolvedValue({ userId: "user_b" });
@@ -102,7 +115,7 @@ describe("P0-03 IDOR / authz boundary", () => {
     });
     expect([401, 403, 404]).toContain(getRes.status);
     const getBody = await getRes.text();
-    expect(getBody).not.toContain("A slack");
+    expect(getBody).not.toContain("A drive");
     expect(getBody).not.toMatch(/user_a/);
 
     const delRes = await DELETE(
@@ -124,12 +137,13 @@ describe("P0-03 IDOR / authz boundary", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider: "slack",
+          provider: "google_drive",
           userId: "user_b",
         }),
       }),
     );
-    expect(response.status).toBe(403);
+    // Body userId override is ignored; Drive still requires OAuth (not placeholder).
+    expect([400, 403, 422]).toContain(response.status);
   });
 
   it("deliverable lookup denies cross-user read (Drive save ownership path)", async () => {
