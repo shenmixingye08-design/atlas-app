@@ -14,6 +14,11 @@ on:
         required: false
         type: string
         default: ""
+  push:
+    branches: [main, "cursor/**"]
+    paths:
+      - "scripts/ci/diagnose-automation-run-production.mjs"
+      - ".github/workflows/diagnose-automation-run-production.yml"
 
 permissions:
   contents: read
@@ -35,8 +40,9 @@ jobs:
 
       - name: Diagnose automation run from Production DB
         env:
-          DIAGNOSE_REQUEST_ID: ${{ github.event.inputs.request_id }}
-          DIAGNOSE_DIAGNOSTIC_ID: ${{ github.event.inputs.diagnostic_id }}
+          # Prefer workflow_dispatch inputs; push uses the known Production incident ids.
+          DIAGNOSE_REQUEST_ID: ${{ github.event.inputs.request_id || '6e0a6198-af7a-4788-b305-c61dc8b35c12' }}
+          DIAGNOSE_DIAGNOSTIC_ID: ${{ github.event.inputs.diagnostic_id || 'aaef8557-500a-461f-a95a-d8df3e1905e4' }}
           DIAGNOSE_OUT: ${{ runner.temp }}/diagnose-automation-run
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
