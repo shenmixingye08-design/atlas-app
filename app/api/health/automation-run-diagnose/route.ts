@@ -193,102 +193,298 @@ function buildBody(input: {
   };
 }
 
-async function findPhase2CalendarSuccess(
-  sb: NonNullable<ReturnType<typeof createServiceRoleClientIfConfigured>>,
-): Promise<{ runRow: JsonObject; automationRow: JsonObject | null } | null> {
-  const { data: runs, error } = await sb
-    .from("atlas_automation_runs")
-    .select("*")
-    .eq("status", "succeeded")
-    .order("completed_at", { ascending: false })
-    .limit(80);
-  if (error) {
-    throw new Error(`phase2_success_scan:${error.message.slice(0, 160)}`);
-  }
-
-  for (const row of (runs as JsonObject[] | null) ?? []) {
-    const payload = asObject(row.payload) ?? {};
-    const runSteps = Array.isArray(payload.steps)
-      ? (payload.steps as JsonObject[])
-      : [];
-    const evidence = asObject(payload.completionEvidence);
-    const externalActionIds = Array.isArray(evidence?.externalActionIds)
-      ? (evidence!.externalActionIds as unknown[]).filter(
+function extractExternalIdsFromRunPayload(payload: JsonObject): string[] {
+  const evidence = asObject(payload.completionEvidence);
+  const fromEvidence = Array.isArray(evidence?.externalActionIds)
+    ? (evidence!.externalActionIds as unknown[]).filter(
+        (id): id is string => typeof id === "string" && id.trim().length > 0,
+      )
+    : [];
+  const fromArtifacts = Array.isArray(payload.artifacts)
+    ? (payload.artifacts as JsonObject[])
+        .map((item) => item.externalId)
+        .filter(
           (id): id is string => typeof id === "string" && id.trim().length > 0,
         )
-      : [];
-    const calendarSucceeded = runSteps.some(
-      (step) =>
-        step.capabilityId === "google_calendar" && step.status === "succeeded",
-    );
-    if (!calendarSucceeded || externalActionIds.length === 0) continue;
+    : [];
+  return [...new Set([...fromEvidence, ...fromArtifacts])];
+}
 
-    const automationId = String(row.automation_id ?? "");
-    if (!automationId) continue;
-    const { data: automationRow, error: automationError } = await sb
-      .from("atlas_automations")
-      .select("*")
-      .eq("id", automationId)
-      .maybeSingle();
-    if (automationError) {
-      throw new Error(
-        `phase2_automation_lookup:${automationError.message.slice(0, 160)}`,
-      );
-    }
-    const instruction = asObject(
-      (automationRow as JsonObject | null)?.instruction,
+function runHasSucceededCalendarStep(payload: JsonObject): boolean {
+  const runSteps = Array.isArray(payload.steps)
+    ? (payload.steps as JsonObject[])
+    : [];
+  return runSteps.some(
+    (step) =>
+      (step.capabilityId === "google_calendar" ||
+        step.type === "google_calendar") &&
+      step.status === "succeeded",
+  );
+}
+
+function haystackMatchesPhase2Needle(input: {
+  freeform: string;
+  name: string;
+  resultSummary: string;
+  claimDiscriminator?: string;
+}): boolean {
+  const haystack = [
+    input.freeform,
+    input.name,
+    input.resultSummary,
+    input.claimDiscriminator ?? "",
+  ].join("\n");
+  return haystack.includes(PHASE2_NEEDLE) || haystack.includes("MINERVOT");
+}
+
+async function loadAutomationRow(
+  sb: NonNullable<ReturnType<typeof createServiceRoleClientIfConfigured>>,
+  automationId: string,
+): Promise<JsonObject | null> {
+  if (!automationId) return null;
+  const { data, error } = await sb
+    .from("atlas_automations")
+    .select("*")
+    .eq("id", automationId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(
+      `phase2_automation_lookup:${error.message.slice(0, 160)}`,
     );
+  }
+  return (data as JsonObject | null) ?? null;
+}
+
+type Phase2ScanHit = {
+  runRow: JsonObject;
+  automationRow: JsonObject | null;
+  via: "run_payload" | "side_effect_claim";
+  providerResourceId: string | null;
+};
+
+type Phase2ScanSummary = {
+  succeededRunCount: number;
+  calendarSucceededWithExternalIds: number;
+  recentRunStatusCounts: Record<string, number>;
+  sideEffectCalendarSucceededWithResourceId: number;
+  automationsMatchingNeedle: number;
+  sampleCapabilityIds: string[];
+  sampleResultSummaries: string[];
+};
+
+async function buildPhase2ScanSummary(
+  sb: NonNullable<ReturnType<typeof createServiceRoleClientIfConfigured>>,
+): Promise<Phase2ScanSummary> {
+  const { data: recentRuns } = await sb
+    .from("atlas_automation_runs")
+    .select("status,result_summary,payload")
+    .order("created_at", { ascending: false })
+    .limit(120);
+  const rows = (recentRuns as JsonObject[] | null) ?? [];
+  const recentRunStatusCounts: Record<string, number> = {};
+  let succeededRunCount = 0;
+  let calendarSucceededWithExternalIds = 0;
+  const sampleCapabilityIds: string[] = [];
+  const sampleResultSummaries: string[] = [];
+  for (const row of rows) {
+    const status = String(row.status ?? "unknown");
+    recentRunStatusCounts[status] = (recentRunStatusCounts[status] ?? 0) + 1;
+    if (status === "succeeded") succeededRunCount += 1;
+    const payload = asObject(row.payload) ?? {};
+    const steps = Array.isArray(payload.steps)
+      ? (payload.steps as JsonObject[])
+      : [];
+    for (const step of steps) {
+      const cap = String(step.capabilityId ?? step.type ?? "");
+      if (cap && sampleCapabilityIds.length < 12 && !sampleCapabilityIds.includes(cap)) {
+        sampleCapabilityIds.push(cap);
+      }
+    }
+    if (
+      runHasSucceededCalendarStep(payload) &&
+      extractExternalIdsFromRunPayload(payload).length > 0
+    ) {
+      calendarSucceededWithExternalIds += 1;
+    }
+    if (
+      typeof row.result_summary === "string" &&
+      sampleResultSummaries.length < 5
+    ) {
+      sampleResultSummaries.push(row.result_summary.slice(0, 120));
+    }
+  }
+
+  const { data: claims } = await sb
+    .from("atlas_side_effect_claims")
+    .select("id")
+    .eq("provider", "google_calendar")
+    .eq("action_type", "create_event")
+    .eq("status", "succeeded")
+    .not("provider_resource_id", "is", null)
+    .order("completed_at", { ascending: false })
+    .limit(40);
+
+  const { data: automations } = await sb
+    .from("atlas_automations")
+    .select("id,name,instruction")
+    .order("updated_at", { ascending: false })
+    .limit(80);
+  let automationsMatchingNeedle = 0;
+  for (const row of (automations as JsonObject[] | null) ?? []) {
+    const instruction = asObject(row.instruction);
+    const freeform =
+      typeof instruction?.freeformNotes === "string"
+        ? instruction.freeformNotes
+        : "";
+    const name = typeof row.name === "string" ? row.name : "";
+    if (haystackMatchesPhase2Needle({ freeform, name, resultSummary: "" })) {
+      automationsMatchingNeedle += 1;
+    }
+  }
+
+  return {
+    succeededRunCount,
+    calendarSucceededWithExternalIds,
+    recentRunStatusCounts,
+    sideEffectCalendarSucceededWithResourceId: Array.isArray(claims)
+      ? claims.length
+      : 0,
+    automationsMatchingNeedle,
+    sampleCapabilityIds,
+    sampleResultSummaries,
+  };
+}
+
+async function findPhase2CalendarSuccess(
+  sb: NonNullable<ReturnType<typeof createServiceRoleClientIfConfigured>>,
+): Promise<Phase2ScanHit | null> {
+  // Path A: durable side-effect claims (provider resource id = Calendar event id).
+  const { data: claims, error: claimError } = await sb
+    .from("atlas_side_effect_claims")
+    .select(
+      "id,run_id,automation_id,provider_resource_id,occurrence_key,status,completed_at,result_payload,evidence",
+    )
+    .eq("provider", "google_calendar")
+    .eq("action_type", "create_event")
+    .eq("status", "succeeded")
+    .not("provider_resource_id", "is", null)
+    .order("completed_at", { ascending: false })
+    .limit(40);
+  if (claimError) {
+    throw new Error(`phase2_claim_scan:${claimError.message.slice(0, 160)}`);
+  }
+
+  const claimRows = (claims as JsonObject[] | null) ?? [];
+  const rankedClaims = [...claimRows].sort((a, b) => {
+    const aPayload = JSON.stringify(a.result_payload ?? a.evidence ?? "");
+    const bPayload = JSON.stringify(b.result_payload ?? b.evidence ?? "");
+    const aHit =
+      aPayload.includes(PHASE2_NEEDLE) || aPayload.includes("MINERVOT") ? 1 : 0;
+    const bHit =
+      bPayload.includes(PHASE2_NEEDLE) || bPayload.includes("MINERVOT") ? 1 : 0;
+    return bHit - aHit;
+  });
+
+  for (const claim of rankedClaims) {
+    const runId = typeof claim.run_id === "string" ? claim.run_id : "";
+    if (!runId) continue;
+    const { data: runData, error: runError } = await sb
+      .from("atlas_automation_runs")
+      .select("*")
+      .eq("id", runId)
+      .maybeSingle();
+    if (runError) {
+      throw new Error(`phase2_claim_run:${runError.message.slice(0, 160)}`);
+    }
+    if (!runData) continue;
+    const runRow = runData as JsonObject;
+    const automationRow = await loadAutomationRow(
+      sb,
+      String(runRow.automation_id ?? claim.automation_id ?? ""),
+    );
+    const instruction = asObject(automationRow?.instruction);
     const freeform =
       typeof instruction?.freeformNotes === "string"
         ? instruction.freeformNotes
         : "";
     const name =
-      typeof (automationRow as JsonObject | null)?.name === "string"
-        ? String((automationRow as JsonObject).name)
-        : "";
+      typeof automationRow?.name === "string" ? String(automationRow.name) : "";
     const resultSummary =
-      typeof row.result_summary === "string" ? row.result_summary : "";
-    const haystack = `${freeform}\n${name}\n${resultSummary}`;
-    if (!haystack.includes(PHASE2_NEEDLE) && !haystack.includes("MINERVOT")) {
-      // Still accept calendar success with real event ids from recent Phase 2.
-      // Prefer needle match when present.
+      typeof runRow.result_summary === "string" ? runRow.result_summary : "";
+    const claimBlob = JSON.stringify(claim.result_payload ?? claim.evidence ?? "");
+    const needleOk = haystackMatchesPhase2Needle({
+      freeform,
+      name,
+      resultSummary,
+      claimDiscriminator: claimBlob,
+    });
+    // Prefer needle; accept first durable Calendar claim if no needle match exists.
+    if (!needleOk && rankedClaims.some((row) => {
+      const blob = JSON.stringify(row.result_payload ?? row.evidence ?? "");
+      return blob.includes(PHASE2_NEEDLE) || blob.includes("MINERVOT");
+    })) {
       continue;
     }
     return {
-      runRow: row,
-      automationRow: (automationRow as JsonObject | null) ?? null,
+      runRow,
+      automationRow,
+      via: "side_effect_claim",
+      providerResourceId:
+        typeof claim.provider_resource_id === "string"
+          ? claim.provider_resource_id
+          : null,
     };
   }
 
-  // Fallback: latest succeeded calendar run with event id (even if needle absent).
+  // Path B: succeeded runs with google_calendar + external ids in payload.
+  const { data: runs, error } = await sb
+    .from("atlas_automation_runs")
+    .select("*")
+    .in("status", ["succeeded", "partially_succeeded"])
+    .order("completed_at", { ascending: false })
+    .limit(120);
+  if (error) {
+    throw new Error(`phase2_success_scan:${error.message.slice(0, 160)}`);
+  }
+
+  const candidates: Phase2ScanHit[] = [];
   for (const row of (runs as JsonObject[] | null) ?? []) {
     const payload = asObject(row.payload) ?? {};
-    const runSteps = Array.isArray(payload.steps)
-      ? (payload.steps as JsonObject[])
-      : [];
-    const evidence = asObject(payload.completionEvidence);
-    const externalActionIds = Array.isArray(evidence?.externalActionIds)
-      ? (evidence!.externalActionIds as unknown[]).filter(
-          (id): id is string => typeof id === "string" && id.trim().length > 0,
-        )
-      : [];
-    const calendarSucceeded = runSteps.some(
-      (step) =>
-        step.capabilityId === "google_calendar" && step.status === "succeeded",
+    const externalActionIds = extractExternalIdsFromRunPayload(payload);
+    if (!runHasSucceededCalendarStep(payload) || externalActionIds.length === 0) {
+      continue;
+    }
+    const automationRow = await loadAutomationRow(
+      sb,
+      String(row.automation_id ?? ""),
     );
-    if (!calendarSucceeded || externalActionIds.length === 0) continue;
-    const automationId = String(row.automation_id ?? "");
-    const { data: automationRow } = await sb
-      .from("atlas_automations")
-      .select("*")
-      .eq("id", automationId)
-      .maybeSingle();
-    return {
+    const instruction = asObject(automationRow?.instruction);
+    const freeform =
+      typeof instruction?.freeformNotes === "string"
+        ? instruction.freeformNotes
+        : "";
+    const name =
+      typeof automationRow?.name === "string" ? String(automationRow.name) : "";
+    const resultSummary =
+      typeof row.result_summary === "string" ? row.result_summary : "";
+    candidates.push({
       runRow: row,
-      automationRow: (automationRow as JsonObject | null) ?? null,
-    };
+      automationRow,
+      via: "run_payload",
+      providerResourceId: externalActionIds[0] ?? null,
+    });
+    if (
+      haystackMatchesPhase2Needle({ freeform, name, resultSummary })
+    ) {
+      return {
+        runRow: row,
+        automationRow,
+        via: "run_payload",
+        providerResourceId: externalActionIds[0] ?? null,
+      };
+    }
   }
-  return null;
+  return candidates[0] ?? null;
 }
 
 /**
@@ -326,16 +522,21 @@ export async function GET(request: Request): Promise<Response> {
   let runRow: JsonObject | null = null;
   let automationRow: JsonObject | null = null;
   let lookupMode = "by_id";
+  let phase2Via: Phase2ScanHit["via"] | null = null;
+  let phase2ProviderResourceId: string | null = null;
 
   if (phase2CalendarSuccess && !requestId && !diagnosticId) {
     try {
       const found = await findPhase2CalendarSuccess(sb);
       if (!found) {
+        const scanSummary = await buildPhase2ScanSummary(sb);
         return Response.json(
           {
             ok: false,
             error: "phase2_calendar_success_not_found",
-            hint: "No succeeded run with google_calendar + externalActionIds",
+            hint:
+              "No succeeded google_calendar run/claim with provider resource id",
+            scanSummary,
           },
           { status: 404, headers: { "Cache-Control": "no-store, max-age=0" } },
         );
@@ -343,6 +544,8 @@ export async function GET(request: Request): Promise<Response> {
       runRow = found.runRow;
       automationRow = found.automationRow;
       lookupMode = "phase2CalendarSuccess";
+      phase2Via = found.via;
+      phase2ProviderResourceId = found.providerResourceId;
     } catch (error) {
       return Response.json(
         {
@@ -424,9 +627,41 @@ export async function GET(request: Request): Promise<Response> {
     automationRow,
   });
 
+  // Merge durable claim resource id when run payload evidence is thin.
+  if (
+    phase2ProviderResourceId &&
+    !body.run.googleCalendarEventIds.includes(phase2ProviderResourceId)
+  ) {
+    body.run.googleCalendarEventIds = [
+      ...body.run.googleCalendarEventIds,
+      phase2ProviderResourceId,
+    ];
+    body.run.externalActionIds = [
+      ...new Set([...body.run.externalActionIds, phase2ProviderResourceId]),
+    ];
+    body.derived.hasRealEventId = true;
+    body.derived.looksFake =
+      body.run.googleCalendarEventIds.length === 0 ||
+      body.run.googleCalendarEventIds.some((id) =>
+        /^(mock_|fake_|test_|placeholder)/i.test(id),
+      );
+    body.derived.stoppedAt = "google_calendar_event_id_present";
+  }
+
+  const responseBody = {
+    ...body,
+    phase2: phase2Via
+      ? {
+          via: phase2Via,
+          providerResourceId: phase2ProviderResourceId,
+        }
+      : null,
+  };
+
   console.info("[health/automation-run-diagnose]", {
     ok: true,
     lookupMode,
+    phase2Via,
     requestIdPrefix: String(runRow.id ?? "").slice(0, 8) || null,
     hasCalendar: body.automation?.hasGoogleCalendarStep ?? null,
     hasEventId: body.derived.hasRealEventId,
@@ -434,7 +669,7 @@ export async function GET(request: Request): Promise<Response> {
     stoppedAt: body.derived.stoppedAt,
   });
 
-  return Response.json(body, {
+  return Response.json(responseBody, {
     status: 200,
     headers: { "Cache-Control": "no-store, max-age=0" },
   });

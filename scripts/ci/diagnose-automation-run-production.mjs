@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
  * Production Automation V2 run diagnostic (redacted).
- * Looks up atlas_automation_runs by requestId (= run id) and/or diagnosticId
- * (payload.diagnosticId), then loads the parent atlas_automations definition.
+ *
+ * Modes:
+ *   DIAGNOSE_REQUEST_ID / DIAGNOSE_DIAGNOSTIC_ID — lookup one run
+ *   PHASE2_CALENDAR_SUCCESS=1 — scan latest Calendar success evidence
  *
  * Env:
- *   DIAGNOSE_REQUEST_ID (run id / requestId) and/or DIAGNOSE_DIAGNOSTIC_ID
  *   SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
  *   OR DATABASE_URL / POSTGRES_URL (psql JSON query)
  *   DIAGNOSE_OUT (output dir)
@@ -18,6 +19,8 @@ import { createClient } from "@supabase/supabase-js";
 
 const REQUEST_ID = process.env.DIAGNOSE_REQUEST_ID?.trim() || "";
 const DIAGNOSTIC_ID = process.env.DIAGNOSE_DIAGNOSTIC_ID?.trim() || "";
+const PHASE2 = process.env.PHASE2_CALENDAR_SUCCESS === "1";
+const PHASE2_NEEDLE = "MINERVOT自動化テスト";
 const OUT =
   process.env.DIAGNOSE_OUT?.trim() ||
   join(process.cwd(), "tmp", "diagnose-automation-run");
@@ -45,6 +48,40 @@ function redactId(id) {
   if (!id || typeof id !== "string") return null;
   if (id.length <= 8) return "***";
   return `${id.slice(0, 6)}…${id.slice(-4)}`;
+}
+
+function asObject(value) {
+  return value && typeof value === "object" ? value : null;
+}
+
+function extractExternalIds(payload) {
+  const evidence = asObject(payload?.completionEvidence);
+  const fromEvidence = Array.isArray(evidence?.externalActionIds)
+    ? evidence.externalActionIds.filter(
+        (id) => typeof id === "string" && id.trim().length > 0,
+      )
+    : [];
+  const fromArtifacts = Array.isArray(payload?.artifacts)
+    ? payload.artifacts
+        .map((item) => item?.externalId)
+        .filter((id) => typeof id === "string" && id.trim().length > 0)
+    : [];
+  return [...new Set([...fromEvidence, ...fromArtifacts])];
+}
+
+function hasSucceededCalendarStep(payload) {
+  const steps = Array.isArray(payload?.steps) ? payload.steps : [];
+  return steps.some(
+    (step) =>
+      (step?.capabilityId === "google_calendar" ||
+        step?.type === "google_calendar") &&
+      step?.status === "succeeded",
+  );
+}
+
+function matchesNeedle({ freeform = "", name = "", resultSummary = "", extra = "" }) {
+  const haystack = `${freeform}\n${name}\n${resultSummary}\n${extra}`;
+  return haystack.includes(PHASE2_NEEDLE) || haystack.includes("MINERVOT");
 }
 
 function summarizeAutomation(row) {
@@ -101,12 +138,22 @@ function summarizeRun(row) {
     payload.completionEvidence && typeof payload.completionEvidence === "object"
       ? payload.completionEvidence
       : null;
+  const externalActionIds = extractExternalIds(payload);
+  const statusHistory = Array.isArray(payload.statusHistory)
+    ? payload.statusHistory
+    : Array.isArray(row.status_history)
+      ? row.status_history
+      : [];
   return {
     id: row.id,
     automationId: row.automation_id ?? payload.automationId ?? null,
     userIdRedacted: redactId(row.user_id ?? payload.userId),
     status: row.status ?? payload.status ?? null,
     diagnosticId: payload.diagnosticId ?? null,
+    scheduleOccurrenceKey:
+      row.schedule_occurrence_key ?? payload.scheduleOccurrenceKey ?? null,
+    runKey: row.run_key ?? payload.runKey ?? null,
+    idempotencyKey: row.idempotency_key ?? payload.idempotencyKey ?? null,
     attemptCount: row.attempt_count ?? payload.attemptCount ?? null,
     lastErrorCode: row.last_error_code ?? payload.lastErrorCode ?? null,
     lastErrorMessage: (row.last_error_message ?? payload.lastErrorMessage ?? null)
@@ -123,13 +170,213 @@ function summarizeRun(row) {
     createdAt: row.created_at ?? payload.createdAt ?? null,
     runStepCapabilityIds: steps.map((s) => ({
       id: s?.id ?? null,
-      capabilityId: s?.capabilityId ?? null,
+      capabilityId: s?.capabilityId ?? s?.type ?? null,
       status: s?.status ?? null,
       errorCode: s?.errorCode ?? null,
+      outputSummary:
+        typeof s?.outputSummary === "string" ? s.outputSummary.slice(0, 200) : null,
     })),
-    externalActionIds: evidence?.externalActionIds ?? [],
-    providerEventIds: evidence?.providerEventIds ?? [],
+    googleCalendarStepStatus:
+      steps.find(
+        (s) =>
+          s?.capabilityId === "google_calendar" || s?.type === "google_calendar",
+      )?.status ?? null,
+    externalActionIds,
+    googleCalendarEventIds: externalActionIds,
+    completionEvidence: evidence
+      ? {
+          hasEvidence: true,
+          artifactIds: Array.isArray(evidence.artifactIds)
+            ? evidence.artifactIds.length
+            : 0,
+          externalActionIds: Array.isArray(evidence.externalActionIds)
+            ? evidence.externalActionIds.filter(
+                (id) => typeof id === "string" && id.trim(),
+              )
+            : [],
+          storageObjectIds: Array.isArray(evidence.storageObjectIds)
+            ? evidence.storageObjectIds.length
+            : 0,
+          notificationIds: Array.isArray(evidence.notificationIds)
+            ? evidence.notificationIds.length
+            : 0,
+        }
+      : { hasEvidence: false },
     approvalStatus: payload.approval?.status ?? null,
+    approvalMode: payload.approval?.mode ?? null,
+    transitionReasons: statusHistory.map((entry) => ({
+      from: entry?.previousStatus ?? null,
+      to: entry?.nextStatus ?? null,
+      reason: entry?.reason ?? null,
+    })),
+  };
+}
+
+async function loadAutomation(sb, automationId) {
+  if (!automationId) return null;
+  const { data, error } = await sb
+    .from("atlas_automations")
+    .select("*")
+    .eq("id", automationId)
+    .maybeSingle();
+  if (error) throw new Error(`automation: ${error.message}`);
+  return data;
+}
+
+async function findPhase2ViaSupabase(sb) {
+  const { data: claims, error: claimError } = await sb
+    .from("atlas_side_effect_claims")
+    .select(
+      "id,run_id,automation_id,provider_resource_id,occurrence_key,status,completed_at,result_payload,evidence",
+    )
+    .eq("provider", "google_calendar")
+    .eq("action_type", "create_event")
+    .eq("status", "succeeded")
+    .not("provider_resource_id", "is", null)
+    .order("completed_at", { ascending: false })
+    .limit(40);
+  if (claimError) throw new Error(`phase2_claim_scan: ${claimError.message}`);
+
+  const claimRows = Array.isArray(claims) ? claims : [];
+  claimRows.sort((a, b) => {
+    const aBlob = JSON.stringify(a.result_payload ?? a.evidence ?? "");
+    const bBlob = JSON.stringify(b.result_payload ?? b.evidence ?? "");
+    const aHit =
+      aBlob.includes(PHASE2_NEEDLE) || aBlob.includes("MINERVOT") ? 1 : 0;
+    const bHit =
+      bBlob.includes(PHASE2_NEEDLE) || bBlob.includes("MINERVOT") ? 1 : 0;
+    return bHit - aHit;
+  });
+
+  for (const claim of claimRows) {
+    if (!claim.run_id) continue;
+    const { data: runRow, error } = await sb
+      .from("atlas_automation_runs")
+      .select("*")
+      .eq("id", claim.run_id)
+      .maybeSingle();
+    if (error) throw new Error(`phase2_claim_run: ${error.message}`);
+    if (!runRow) continue;
+    const automationRow = await loadAutomation(
+      sb,
+      runRow.automation_id ?? claim.automation_id,
+    );
+    return {
+      runRow,
+      automationRow,
+      via: "side_effect_claim",
+      providerResourceId: claim.provider_resource_id ?? null,
+      occurrenceKeyFromClaim: claim.occurrence_key ?? null,
+    };
+  }
+
+  const { data: runs, error } = await sb
+    .from("atlas_automation_runs")
+    .select("*")
+    .in("status", ["succeeded", "partially_succeeded"])
+    .order("completed_at", { ascending: false })
+    .limit(120);
+  if (error) throw new Error(`phase2_success_scan: ${error.message}`);
+
+  const fallback = [];
+  for (const runRow of runs ?? []) {
+    const payload = asObject(runRow.payload) ?? {};
+    const ids = extractExternalIds(payload);
+    if (!hasSucceededCalendarStep(payload) || ids.length === 0) continue;
+    const automationRow = await loadAutomation(sb, runRow.automation_id);
+    const instruction = asObject(automationRow?.instruction) ?? {};
+    const hit = {
+      runRow,
+      automationRow,
+      via: "run_payload",
+      providerResourceId: ids[0] ?? null,
+      occurrenceKeyFromClaim: null,
+    };
+    if (
+      matchesNeedle({
+        freeform:
+          typeof instruction.freeformNotes === "string"
+            ? instruction.freeformNotes
+            : "",
+        name: typeof automationRow?.name === "string" ? automationRow.name : "",
+        resultSummary:
+          typeof runRow.result_summary === "string" ? runRow.result_summary : "",
+      })
+    ) {
+      return hit;
+    }
+    fallback.push(hit);
+  }
+  return fallback[0] ?? null;
+}
+
+async function buildScanSummary(sb) {
+  const { data: recentRuns } = await sb
+    .from("atlas_automation_runs")
+    .select("status,result_summary,payload")
+    .order("created_at", { ascending: false })
+    .limit(120);
+  const recentRunStatusCounts = {};
+  let succeededRunCount = 0;
+  let calendarSucceededWithExternalIds = 0;
+  const sampleCapabilityIds = [];
+  const sampleResultSummaries = [];
+  for (const row of recentRuns ?? []) {
+    const status = String(row.status ?? "unknown");
+    recentRunStatusCounts[status] = (recentRunStatusCounts[status] ?? 0) + 1;
+    if (status === "succeeded") succeededRunCount += 1;
+    const payload = asObject(row.payload) ?? {};
+    for (const step of Array.isArray(payload.steps) ? payload.steps : []) {
+      const cap = String(step?.capabilityId ?? step?.type ?? "");
+      if (cap && sampleCapabilityIds.length < 12 && !sampleCapabilityIds.includes(cap)) {
+        sampleCapabilityIds.push(cap);
+      }
+    }
+    if (hasSucceededCalendarStep(payload) && extractExternalIds(payload).length > 0) {
+      calendarSucceededWithExternalIds += 1;
+    }
+    if (typeof row.result_summary === "string" && sampleResultSummaries.length < 5) {
+      sampleResultSummaries.push(row.result_summary.slice(0, 120));
+    }
+  }
+  const { data: claims } = await sb
+    .from("atlas_side_effect_claims")
+    .select("id")
+    .eq("provider", "google_calendar")
+    .eq("action_type", "create_event")
+    .eq("status", "succeeded")
+    .not("provider_resource_id", "is", null)
+    .limit(40);
+  const { data: automations } = await sb
+    .from("atlas_automations")
+    .select("id,name,instruction")
+    .order("updated_at", { ascending: false })
+    .limit(80);
+  let automationsMatchingNeedle = 0;
+  for (const row of automations ?? []) {
+    const instruction = asObject(row.instruction) ?? {};
+    if (
+      matchesNeedle({
+        freeform:
+          typeof instruction.freeformNotes === "string"
+            ? instruction.freeformNotes
+            : "",
+        name: typeof row.name === "string" ? row.name : "",
+      })
+    ) {
+      automationsMatchingNeedle += 1;
+    }
+  }
+  return {
+    succeededRunCount,
+    calendarSucceededWithExternalIds,
+    recentRunStatusCounts,
+    sideEffectCalendarSucceededWithResourceId: Array.isArray(claims)
+      ? claims.length
+      : 0,
+    automationsMatchingNeedle,
+    sampleCapabilityIds,
+    sampleResultSummaries,
   };
 }
 
@@ -137,6 +384,31 @@ async function viaSupabase() {
   const sb = createClient(SUPABASE_URL, SERVICE, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  if (PHASE2 && !REQUEST_ID && !DIAGNOSTIC_ID) {
+    const found = await findPhase2ViaSupabase(sb);
+    if (!found) {
+      return {
+        runRow: null,
+        automationRow: null,
+        via: "supabase_phase2",
+        phase2: null,
+        scanSummary: await buildScanSummary(sb),
+      };
+    }
+    return {
+      runRow: found.runRow,
+      automationRow: found.automationRow,
+      via: "supabase_phase2",
+      phase2: {
+        via: found.via,
+        providerResourceId: found.providerResourceId,
+        occurrenceKeyFromClaim: found.occurrenceKeyFromClaim,
+      },
+      scanSummary: null,
+    };
+  }
+
   let runRow = null;
   if (REQUEST_ID) {
     const { data, error } = await sb
@@ -156,18 +428,14 @@ async function viaSupabase() {
     if (error) throw new Error(`run_by_diagnostic: ${error.message}`);
     runRow = Array.isArray(data) ? data[0] ?? null : null;
   }
-  let automationRow = null;
-  const automationId = runRow?.automation_id;
-  if (automationId) {
-    const { data, error } = await sb
-      .from("atlas_automations")
-      .select("*")
-      .eq("id", automationId)
-      .maybeSingle();
-    if (error) throw new Error(`automation: ${error.message}`);
-    automationRow = data;
-  }
-  return { runRow, automationRow, via: "supabase" };
+  const automationRow = await loadAutomation(sb, runRow?.automation_id);
+  return {
+    runRow,
+    automationRow,
+    via: "supabase",
+    phase2: null,
+    scanSummary: null,
+  };
 }
 
 function buildLookupSql() {
@@ -213,6 +481,8 @@ function viaPostgres() {
     runRow: parsed.run ?? null,
     automationRow: parsed.automation ?? null,
     via: "postgres",
+    phase2: null,
+    scanSummary: null,
   };
 }
 
@@ -238,7 +508,6 @@ async function viaManagementApi() {
   } catch {
     throw new Error(`management_api_bad_json:${text.slice(0, 200)}`);
   }
-  // Management API may return [{payload: {...}}] or [{json_build_object: ...}]
   const row = Array.isArray(parsed) ? parsed[0] : parsed;
   const payload =
     row?.payload ??
@@ -251,22 +520,26 @@ async function viaManagementApi() {
     runRow: payload.run ?? null,
     automationRow: payload.automation ?? null,
     via: "management_api",
+    phase2: null,
+    scanSummary: null,
   };
 }
 
 async function main() {
   mkdirSync(OUT, { recursive: true });
-  if (!REQUEST_ID && !DIAGNOSTIC_ID) {
-    console.error("DIAGNOSE_REQUEST_ID or DIAGNOSE_DIAGNOSTIC_ID required");
+  if (!REQUEST_ID && !DIAGNOSTIC_ID && !PHASE2) {
+    console.error(
+      "DIAGNOSE_REQUEST_ID or DIAGNOSE_DIAGNOSTIC_ID or PHASE2_CALENDAR_SUCCESS=1 required",
+    );
     process.exit(2);
   }
 
   let fetched;
   if (SUPABASE_URL && SERVICE) {
     fetched = await viaSupabase();
-  } else if (PG) {
+  } else if (PG && !PHASE2) {
     fetched = viaPostgres();
-  } else if (SUPABASE_ACCESS_TOKEN && SUPABASE_PROJECT_REF) {
+  } else if (SUPABASE_ACCESS_TOKEN && SUPABASE_PROJECT_REF && !PHASE2) {
     fetched = await viaManagementApi();
   } else {
     console.error(
@@ -275,29 +548,89 @@ async function main() {
     process.exit(3);
   }
 
+  const run = summarizeRun(fetched.runRow);
+  if (
+    fetched.phase2?.providerResourceId &&
+    run &&
+    !run.googleCalendarEventIds.includes(fetched.phase2.providerResourceId)
+  ) {
+    run.googleCalendarEventIds = [
+      ...run.googleCalendarEventIds,
+      fetched.phase2.providerResourceId,
+    ];
+    run.externalActionIds = [
+      ...new Set([...run.externalActionIds, fetched.phase2.providerResourceId]),
+    ];
+    if (run.completionEvidence?.hasEvidence) {
+      run.completionEvidence.externalActionIds = run.externalActionIds;
+    } else {
+      run.completionEvidence = {
+        hasEvidence: true,
+        artifactIds: 0,
+        externalActionIds: run.externalActionIds,
+        storageObjectIds: 0,
+        notificationIds: 0,
+      };
+    }
+  }
+  if (
+    fetched.phase2?.occurrenceKeyFromClaim &&
+    run &&
+    !run.scheduleOccurrenceKey
+  ) {
+    run.scheduleOccurrenceKey = fetched.phase2.occurrenceKeyFromClaim;
+  }
+
   const report = {
     ok: Boolean(fetched.runRow),
     via: fetched.via,
     lookup: {
       requestId: REQUEST_ID || null,
       diagnosticId: DIAGNOSTIC_ID || null,
+      mode: PHASE2 ? "phase2CalendarSuccess" : "by_id",
     },
-    run: summarizeRun(fetched.runRow),
+    run,
     automation: summarizeAutomation(fetched.automationRow),
+    phase2: fetched.phase2,
+    scanSummary: fetched.scanSummary,
     derived: {
       googleCalendarStepPresent: Boolean(
         fetched.automationRow &&
           summarizeAutomation(fetched.automationRow)?.hasGoogleCalendarStep,
       ),
+      googleCalendarExecuted: run?.googleCalendarStepStatus === "succeeded",
+      hasRealEventId: Boolean(run?.googleCalendarEventIds?.length),
+      looksFake: Boolean(
+        run?.googleCalendarEventIds?.some((id) =>
+          /^(mock_|fake_|test_|placeholder)/i.test(id),
+        ),
+      ),
+      approvalPathObserved: {
+        awaitedApproval: Boolean(
+          run?.transitionReasons?.some((item) => item.to === "awaiting_approval"),
+        ),
+        approvedToQueued: Boolean(
+          run?.transitionReasons?.some(
+            (item) =>
+              item.from === "awaiting_approval" && item.to === "queued",
+          ),
+        ),
+        claimedRunning: Boolean(
+          run?.transitionReasons?.some((item) => item.to === "running"),
+        ),
+        terminalSucceeded: run?.status === "succeeded",
+      },
       stoppedAt:
-        fetched.runRow &&
-        summarizeAutomation(fetched.automationRow)?.hasGoogleCalendarStep
-          ? "after_step_present_check_adapter_or_later"
-          : "before_google_calendar_step_or_step_missing_in_definition",
+        run?.googleCalendarEventIds?.length > 0
+          ? "google_calendar_event_id_present"
+          : fetched.automationRow &&
+              summarizeAutomation(fetched.automationRow)?.hasGoogleCalendarStep
+            ? "google_calendar_step_present"
+            : "before_google_calendar_step_or_step_missing_in_definition",
     },
   };
 
-  const outPath = join(OUT, "diagnose-automation-run.json");
+  const outPath = join(OUT, PHASE2 ? "health-diagnose.json" : "diagnose-automation-run.json");
   writeFileSync(outPath, `${JSON.stringify(report, null, 2)}\n`);
   console.log(JSON.stringify(report, null, 2));
   console.log(`wrote ${outPath}`);
