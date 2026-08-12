@@ -1,5 +1,6 @@
 import type { Automation } from "@/lib/automations/types";
 import type { RunVisualStatus } from "@/lib/automation-first/status";
+import { formatDateTimeInUserTimeZone } from "@/lib/datetime/display-timezone";
 
 export function automationToVisualStatus(automation: Automation): RunVisualStatus {
   if (!automation.enabled) return "paused";
@@ -16,14 +17,5 @@ export function automationToVisualStatus(automation: Automation): RunVisualStatu
 }
 
 export function formatRunInstant(iso: string | null): string {
-  if (!iso) return "—";
-  const ms = Date.parse(iso);
-  if (Number.isNaN(ms)) return "—";
-  return new Intl.DateTimeFormat("ja-JP", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(ms));
+  return formatDateTimeInUserTimeZone(iso, { fallback: "—" });
 }
