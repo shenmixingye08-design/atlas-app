@@ -5,6 +5,7 @@
 import "server-only";
 
 import { executeQueuedRun } from "@/lib/automation-platform/execution/executor";
+import { finalizeOrphanRunningRun } from "@/lib/automation-platform/execution/finalize-orphan-running";
 import { notifyAutomationRunEvent } from "@/lib/automation-platform/execution/notify";
 import type { StepInvoker } from "@/lib/automation-platform/execution/step-invoker";
 import { strictStepInvoker } from "@/lib/automation-platform/execution/strict-step-invoker";
@@ -14,6 +15,7 @@ import {
   dbClaimRun,
   dbGetRun,
   dbListDispatchableRuns,
+  dbListStuckRunningRuns,
 } from "@/lib/automation-platform/repository/db-store";
 import { createStatusTransition } from "@/lib/automation-platform/state-machine/transitions";
 import type { AutomationRun } from "@/lib/automation-platform/types";
@@ -68,6 +70,27 @@ export async function dispatchAutomationRuns(options?: {
     retrying: 0,
     awaiting: 0,
   };
+
+  // Heal runs stuck in running after steps already finished (persist race).
+  if (!options?.runIds?.length) {
+    const stuck = await dbListStuckRunningRuns(options?.limit ?? 10);
+    for (const orphan of stuck) {
+      try {
+        const finalized = await finalizeOrphanRunningRun(orphan);
+        if (!finalized) continue;
+        result.processed += 1;
+        if (finalized.status === "succeeded") result.succeeded += 1;
+        else if (finalized.status === "retrying") result.retrying += 1;
+        else if (finalized.status === "needs_input") result.awaiting += 1;
+        else result.failed += 1;
+      } catch (error) {
+        console.error("[automation-v2] finalize orphan running failed", {
+          runId: orphan.id,
+          message: error instanceof Error ? error.message.slice(0, 200) : "unknown",
+        });
+      }
+    }
+  }
 
   const candidates =
     options?.runIds && options.runIds.length > 0
@@ -128,14 +151,57 @@ export async function dispatchAutomationRuns(options?: {
       });
     }
 
-    // Executor expects queued/retrying — restore claimable previous for its transition
-    // We already claimed to running; pass a synthetic queued shell by resetting status
-    // only inside executor input while keeping id. Simpler: update executor to accept running.
-    const execResult = await executeQueuedRun({
-      run: withHistory,
-      automation,
-      invoker: options?.invoker ?? strictStepInvoker,
-    });
+    let execResult: Awaited<ReturnType<typeof executeQueuedRun>>;
+    try {
+      execResult = await executeQueuedRun({
+        run: withHistory,
+        automation,
+        invoker: options?.invoker ?? strictStepInvoker,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message.slice(0, 300) : "executor_threw";
+      const failed = await persistAutomationRunNow({
+        ...withHistory,
+        status: "failed",
+        lastErrorCode: "automation_run_failed",
+        lastErrorMessage: message,
+        completedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        retryable: false,
+        nextRetryAt: null,
+        resultSummary: "実行中に例外が発生したため失敗として閉じました",
+      });
+      result.processed += 1;
+      result.failed += 1;
+      await notifyAutomationRunEvent({
+        userId: automation.userId,
+        automationName: automation.name,
+        run: failed,
+        policy: automation.notificationPolicy,
+        event: "failed",
+        detail: message,
+      });
+      continue;
+    }
+
+    // Fail-closed: never leave a claimed run in running after executor returns.
+    if (execResult.run.status === "running") {
+      const finalized =
+        (await finalizeOrphanRunningRun(execResult.run)) ??
+        (await persistAutomationRunNow({
+          ...execResult.run,
+          status: "failed",
+          lastErrorCode: "automation_run_failed",
+          lastErrorMessage: "executor_returned_non_terminal_running",
+          completedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          retryable: false,
+          nextRetryAt: null,
+          resultSummary: "実行が完了状態に到達しなかったため失敗として閉じました",
+        }));
+      execResult = { run: finalized, terminal: true };
+    }
 
     result.processed += 1;
     if (execResult.run.status === "succeeded") {

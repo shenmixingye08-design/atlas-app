@@ -360,7 +360,8 @@ describe("Automation Operations", () => {
       mode: "from_failed",
       failedStepId: "drop",
     });
-    expect(prepared[0]?.status).toBe("skipped");
+    // Remains succeeded so completion gates do not treat it as required_skipped.
+    expect(prepared[0]?.status).toBe("succeeded");
     expect(prepared[1]?.status).toBe("pending");
   });
 
