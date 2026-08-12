@@ -41,8 +41,8 @@ jobs:
       - name: Diagnose via Production health (CRON_SECRET)
         id: health_diagnose
         env:
-          DIAGNOSE_REQUEST_ID: ${{ github.event.inputs.request_id || '6e0a6198-af7a-4788-b305-c61dc8b35c12' }}
-          DIAGNOSE_DIAGNOSTIC_ID: ${{ github.event.inputs.diagnostic_id || 'aaef8557-500a-461f-a95a-d8df3e1905e4' }}
+          DIAGNOSE_REQUEST_ID: ${{ github.event.inputs.request_id || '93e8885c-1328-4800-9332-3ec2aa1019ef' }}
+          DIAGNOSE_DIAGNOSTIC_ID: ${{ github.event.inputs.diagnostic_id || '892cb451-62a2-4ea2-9a72-49cab5d67d04' }}
           DIAGNOSE_OUT: ${{ runner.temp }}/diagnose-automation-run
           ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -92,8 +92,8 @@ jobs:
         if: steps.health_diagnose.outputs.health_ok != '1'
         env:
           # Prefer workflow_dispatch inputs; push uses the known Production incident ids.
-          DIAGNOSE_REQUEST_ID: ${{ github.event.inputs.request_id || '6e0a6198-af7a-4788-b305-c61dc8b35c12' }}
-          DIAGNOSE_DIAGNOSTIC_ID: ${{ github.event.inputs.diagnostic_id || 'aaef8557-500a-461f-a95a-d8df3e1905e4' }}
+          DIAGNOSE_REQUEST_ID: ${{ github.event.inputs.request_id || '93e8885c-1328-4800-9332-3ec2aa1019ef' }}
+          DIAGNOSE_DIAGNOSTIC_ID: ${{ github.event.inputs.diagnostic_id || '892cb451-62a2-4ea2-9a72-49cab5d67d04' }}
           DIAGNOSE_OUT: ${{ runner.temp }}/diagnose-automation-run
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
