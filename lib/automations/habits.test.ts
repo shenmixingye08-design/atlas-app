@@ -50,6 +50,15 @@ describe("detectRecurringIntent", () => {
     }
   });
 
+  it("detects 毎朝9時 phrasing as daily", () => {
+    const result = detectRecurringIntent("毎朝9時にニュースをまとめて");
+    expect(result.detected).toBe(true);
+    if (result.detected) {
+      expect(result.formDefaults.frequency).toBe("daily");
+      expect(result.formDefaults.hour).toBe(9);
+    }
+  });
+
   it("detects daily posting with time", () => {
     const result = detectRecurringIntent("毎日18時に投稿して");
     expect(result.detected).toBe(true);

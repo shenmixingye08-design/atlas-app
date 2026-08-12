@@ -4,6 +4,10 @@ import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
+import {
+  AutomationsClientError,
+  createAutomationFromNaturalLanguageText,
+} from "@/lib/automations/client";
 import { detectRecurringIntent } from "@/lib/automations/detect-recurring";
 import { streamChatResponse } from "@/lib/chat/stream-client";
 import type { ChatMessage } from "@/lib/chat/types";
@@ -11,7 +15,6 @@ import { ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
-import { AutomationSuggestionCard } from "@/components/automations/automation-suggestion-card";
 
 function createId(): string {
   return crypto.randomUUID();
@@ -32,9 +35,6 @@ export function ChatInterface() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [recurringSuggestion, setRecurringSuggestion] = useState<
-    ReturnType<typeof detectRecurringIntent> | null
-  >(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const searchParams = useSearchParams();
@@ -65,9 +65,6 @@ export function ChatInterface() {
     setError(null);
     setInput("");
 
-    const recurring = detectRecurringIntent(trimmed);
-    setRecurringSuggestion(recurring.detected ? recurring : null);
-
     const userMessage: ChatMessage = {
       id: createId(),
       role: "user",
@@ -88,6 +85,49 @@ export function ChatInterface() {
     abortRef.current = controller;
 
     try {
+      // Phase 1: recurring NL → durable automation (not suggestion-only).
+      const recurring = detectRecurringIntent(trimmed);
+      if (recurring.detected) {
+        try {
+          const created = await createAutomationFromNaturalLanguageText(trimmed);
+          if (!created.automation.enabled || !created.automation.nextRun) {
+            throw new AutomationsClientError({
+              message: "自動化は作成されましたが実行予定が未設定です。",
+              status: 500,
+              code: "nl_automation_incomplete",
+            });
+          }
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantId
+                ? { ...msg, content: created.message }
+                : msg,
+            ),
+          );
+          return;
+        } catch (err) {
+          const message =
+            err instanceof AutomationsClientError
+              ? err.message
+              : err instanceof Error
+                ? err.message
+                : ui.error.generic;
+          setError(message);
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantId
+                ? {
+                    ...msg,
+                    content:
+                      `定期の仕事として登録できませんでした。\n${message}\n成功扱いにはしません。`,
+                  }
+                : msg,
+            ),
+          );
+          return;
+        }
+      }
+
       await streamChatResponse({
         input: trimmed,
         signal: controller.signal,
@@ -166,16 +206,6 @@ export function ChatInterface() {
             </div>
           ))}
         </div>
-
-        {recurringSuggestion?.detected && (
-          <div className="mt-4 animate-fade-in">
-            <AutomationSuggestionCard
-              message={recurringSuggestion.suggestionMessage}
-              formDefaults={recurringSuggestion.formDefaults}
-              onDismiss={() => setRecurringSuggestion(null)}
-            />
-          </div>
-        )}
 
         <div ref={messagesEndRef} />
       </div>

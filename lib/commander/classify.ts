@@ -187,5 +187,5 @@ export function inferRequiredExternalServices(
 }
 
 export function isRecurringAssignment(assignment: string): boolean {
-  return /毎日|毎週|毎月|定期|習慣|任せ/i.test(assignment);
+  return /毎日|毎朝|毎晩|毎夕|毎週|毎月|定期|習慣|任せ/i.test(assignment);
 }

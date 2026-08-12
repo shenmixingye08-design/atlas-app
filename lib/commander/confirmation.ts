@@ -84,7 +84,7 @@ export function evaluateCommanderConfirmation(
 
   if (/覚えて|記憶して|習慣として/.test(assignment)) {
     reasons.push(
-      "習慣・記憶として保存するには確認が必要です（定期実行は自動では開始しません）",
+      "習慣・定期の仕事として登録するには確認が必要です",
     );
   }
 
@@ -102,7 +102,7 @@ export function evaluateCommanderConfirmation(
 export function isRememberHabitAssignment(assignment: string): boolean {
   return (
     /覚えて|記憶して|習慣として/.test(assignment) &&
-    (/毎週|毎日|毎月|定期|習慣|作業として/.test(assignment) ||
+    (/毎週|毎日|毎朝|毎晩|毎夕|毎月|定期|習慣|作業として/.test(assignment) ||
       /まとめる|振り返|レポート/.test(assignment))
   );
 }
