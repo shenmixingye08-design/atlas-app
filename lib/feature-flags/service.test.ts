@@ -27,7 +27,7 @@ describe("feature flag store and service", () => {
         flag.id.startsWith("automation_") ||
         flag.id.startsWith("workflow_"),
     );
-    // Vitest keeps Automation First rollout defaults off (see rollout.ts).
+    // Vitest keeps Automation First + automation_memory defaults off.
     expect(platformFlags.every((flag) => flag.state === "off")).toBe(true);
     const legacyFlags = snapshot.flags.filter(
       (flag) =>

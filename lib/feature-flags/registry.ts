@@ -76,7 +76,8 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
   {
     id: "automation_memory_enabled",
     label: "自動化メモリ連携",
-    description: "Automation ごとの Memory Scope 利用（契約のみ → 段階公開）",
+    description:
+      "Automation ごとの Memory Scope 利用（N-05 Production実証済み・既定ON）",
     category: "capability",
   },
   {

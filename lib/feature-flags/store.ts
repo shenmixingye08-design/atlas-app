@@ -12,9 +12,10 @@ const DEFAULT_STATE: FeatureFlagState = "on";
 /**
  * Platform flags that stay OFF until separately rolled out.
  * Automation First formal-home flags use `resolveAutomationFirstDefaultState()`.
+ *
+ * `automation_memory_enabled` is Production-ON (N-05 proven): see defaultStateFor.
  */
 const DEFAULT_STATE_BY_ID: Partial<Record<FeatureFlagId, FeatureFlagState>> = {
-  automation_memory_enabled: "off",
   automation_approval_enabled: "off",
   workflow_learning_enabled: "off",
   // N-01: media generation engines are not Production-ready — never default ON.
@@ -29,6 +30,14 @@ function nowIso(): string {
 function defaultStateFor(id: FeatureFlagId): FeatureFlagState {
   if (isAutomationFirstRolloutFlag(id)) {
     return resolveAutomationFirstDefaultState();
+  }
+  // Automation Memory: ON outside Vitest so Production create with
+  // memoryPolicy.enabled does not 503 (unattended gate / paid users).
+  if (id === "automation_memory_enabled") {
+    if (process.env.NODE_ENV === "test" || process.env.VITEST === "true") {
+      return "off";
+    }
+    return "on";
   }
   return DEFAULT_STATE_BY_ID[id] ?? DEFAULT_STATE;
 }
