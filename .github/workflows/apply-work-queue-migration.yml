@@ -1,6 +1,8 @@
 name: Apply Work Queue Migration (P1 tick)
 
 # Prefer Production apply=1 with CRON_SECRET (Vercel already has DATABASE_URL).
+# Always re-apply idempotent DDL so claim/reclaim RPCs stay current even when
+# tablesOk=true (Production evidence: uncapped claim RPC → drain_1 pgCode 23514).
 # Fall back to Actions DATABASE_URL / Supabase Management API when present.
 
 on:
@@ -10,6 +12,7 @@ on:
     paths:
       - "supabase/migrations/20260802_atlas_work_queue.sql"
       - "supabase/migrations/20260804_p0_2_durable_job_claim.sql"
+      - "supabase/migrations/20260812_work_queue_claim_attempt_cap.sql"
       - "lib/work-queue/migration-sql.ts"
       - "app/api/health/work-queue/**"
       - ".github/workflows/apply-work-queue-migration.yml"
@@ -46,12 +49,13 @@ jobs:
           PY
           }
 
-          if probe_ok; then
-            echo "work_queue_already_ready=true"
-            exit 0
-          fi
+          SQL_FILES=(
+            "supabase/migrations/20260802_atlas_work_queue.sql"
+            "supabase/migrations/20260804_p0_2_durable_job_claim.sql"
+            "supabase/migrations/20260812_work_queue_claim_attempt_cap.sql"
+          )
 
-          # 1) Production apply via CRON_SECRET (uses Vercel DATABASE_URL)
+          # 1) Production apply via CRON_SECRET (uses deployed ATLAS_WORK_QUEUE_MIGRATION_SQL)
           if [ -n "${CRON_SECRET:-}" ]; then
             echo "Attempting Production apply=1 with CRON_SECRET"
             APPLY_CODE=$(curl -sS -o /tmp/wq-apply.json -w "%{http_code}" \
@@ -69,19 +73,19 @@ jobs:
           except Exception as e:
             print("apply_parse", e)
           PY
-            if probe_ok; then
-              echo "work_queue_ready_via_production_apply=true"
-              exit 0
-            fi
+            case "$APPLY_CODE" in
+              200|202|204)
+                if probe_ok; then
+                  echo "work_queue_ready_via_production_apply=true"
+                  exit 0
+                fi
+                ;;
+            esac
           else
             echo "::warning::CRON_SECRET not set — cannot call Production apply=1"
           fi
 
           # 2) Direct psql from Actions secrets
-          SQL_FILES=(
-            "supabase/migrations/20260802_atlas_work_queue.sql"
-            "supabase/migrations/20260804_p0_2_durable_job_claim.sql"
-          )
           if [ -n "${DATABASE_URL:-}${POSTGRES_URL:-}${SUPABASE_DB_URL:-}" ]; then
             CONN="${DATABASE_URL:-${POSTGRES_URL:-$SUPABASE_DB_URL}}"
             sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
@@ -118,7 +122,15 @@ jobs:
             fi
           fi
 
+          # If tables already healthy but apply paths unavailable, do not fail the
+          # gate — Minute Scheduler always-apply refreshes claim RPC post-deploy.
+          if probe_ok; then
+            echo "::warning::work_queue tablesOk but claim RPC refresh may await Minute Scheduler apply"
+            echo "work_queue_tables_ok_pending_rpc_refresh=true"
+            exit 0
+          fi
+
           echo "::error::Work-queue schema still missing after apply attempts."
-          echo "::error::Owner: run Supabase SQL Editor (20260802 + 20260804) OR"
+          echo "::error::Owner: run Supabase SQL Editor (20260802 + 20260804 + 20260812) OR"
           echo "::error::curl -H \"Authorization: Bearer \$CRON_SECRET\" \"https://atlasapp.jp/api/health/work-queue?apply=1&force=1\""
           exit 1
