@@ -22,12 +22,11 @@ const deployments = await fetch(
 
 if (!Array.isArray(deployments)) process.exit(0);
 
-for (const row of deployments) {
-  if (!String(row.sha || "").startsWith(sha.slice(0, 7))) continue;
+async function firstSuccessUrl(row) {
   const stUrl = row.statuses_url;
-  if (!stUrl) continue;
+  if (!stUrl) return null;
   const statuses = await fetch(stUrl, { headers }).then((r) => r.json());
-  if (!Array.isArray(statuses)) continue;
+  if (!Array.isArray(statuses)) return null;
   for (const st of statuses) {
     const state = String(st.state || "").toLowerCase();
     const envUrl = String(st.environment_url || "");
@@ -35,8 +34,25 @@ for (const row of deployments) {
       (state === "success" || state === "inactive") &&
       envUrl.includes("vercel.app")
     ) {
-      process.stdout.write(envUrl.replace(/\/$/, ""));
-      process.exit(0);
+      return envUrl.replace(/\/$/, "");
     }
+  }
+  return null;
+}
+
+// Prefer exact SHA match, then most recent successful Preview (branch lag).
+for (const row of deployments) {
+  if (!String(row.sha || "").startsWith(sha.slice(0, 7))) continue;
+  const url = await firstSuccessUrl(row);
+  if (url) {
+    process.stdout.write(url);
+    process.exit(0);
+  }
+}
+for (const row of deployments) {
+  const url = await firstSuccessUrl(row);
+  if (url) {
+    process.stdout.write(url);
+    process.exit(0);
   }
 }
