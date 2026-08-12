@@ -35,6 +35,11 @@ const PG =
   process.env.DATABASE_URL?.trim() ||
   process.env.SUPABASE_DB_URL?.trim() ||
   "";
+const SUPABASE_ACCESS_TOKEN =
+  process.env.SUPABASE_ACCESS_TOKEN?.trim() ||
+  process.env.SUPABASE_MANAGEMENT_TOKEN?.trim() ||
+  "";
+const SUPABASE_PROJECT_REF = process.env.SUPABASE_PROJECT_REF?.trim() || "";
 
 function redactId(id) {
   if (!id || typeof id !== "string") return null;
@@ -165,8 +170,8 @@ async function viaSupabase() {
   return { runRow, automationRow, via: "supabase" };
 }
 
-function viaPostgres() {
-  const sql = `
+function buildLookupSql() {
+  return `
 WITH target AS (
   SELECT *
   FROM public.atlas_automation_runs
@@ -190,9 +195,12 @@ SELECT json_build_object(
   )
 ) AS payload;
 `;
+}
+
+function viaPostgres() {
   const result = spawnSync(
     "psql",
-    [PG, "-v", "ON_ERROR_STOP=1", "-t", "-A", "-c", sql],
+    [PG, "-v", "ON_ERROR_STOP=1", "-t", "-A", "-c", buildLookupSql()],
     { encoding: "utf8", maxBuffer: 20 * 1024 * 1024 },
   );
   if (result.status !== 0) {
@@ -208,6 +216,44 @@ SELECT json_build_object(
   };
 }
 
+async function viaManagementApi() {
+  const res = await fetch(
+    `https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/database/query`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SUPABASE_ACCESS_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query: buildLookupSql() }),
+    },
+  );
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`management_api_${res.status}:${text.slice(0, 400)}`);
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`management_api_bad_json:${text.slice(0, 200)}`);
+  }
+  // Management API may return [{payload: {...}}] or [{json_build_object: ...}]
+  const row = Array.isArray(parsed) ? parsed[0] : parsed;
+  const payload =
+    row?.payload ??
+    row?.json_build_object ??
+    (row?.run || row?.automation ? row : null);
+  if (!payload || typeof payload !== "object") {
+    throw new Error(`management_api_unexpected:${text.slice(0, 300)}`);
+  }
+  return {
+    runRow: payload.run ?? null,
+    automationRow: payload.automation ?? null,
+    via: "management_api",
+  };
+}
+
 async function main() {
   mkdirSync(OUT, { recursive: true });
   if (!REQUEST_ID && !DIAGNOSTIC_ID) {
@@ -220,8 +266,12 @@ async function main() {
     fetched = await viaSupabase();
   } else if (PG) {
     fetched = viaPostgres();
+  } else if (SUPABASE_ACCESS_TOKEN && SUPABASE_PROJECT_REF) {
+    fetched = await viaManagementApi();
   } else {
-    console.error("No SUPABASE_SERVICE_ROLE_KEY or DATABASE_URL");
+    console.error(
+      "No SUPABASE_SERVICE_ROLE_KEY / DATABASE_URL / SUPABASE_ACCESS_TOKEN+PROJECT_REF",
+    );
     process.exit(3);
   }
 
