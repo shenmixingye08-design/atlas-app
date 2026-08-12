@@ -65,15 +65,20 @@ export class IntegrationService {
   }
 
   async getCatalogForUser(userId: string): Promise<IntegrationCatalog> {
-    const { isIntegrationProviderUserVisible } = await import(
-      "@/lib/integrations/production-capability"
-    );
-    const connections = await this.repository.list({ userId });
+    const {
+      isIntegrationProviderUserVisible,
+      isIntegrationProviderConnectable,
+    } = await import("@/lib/integrations/production-capability");
+    const rawConnections = await this.repository.list({ userId });
+    // Never surface placeholder rows as connected (stale in-memory fakes).
+    const connections = rawConnections.filter((connection) => {
+      if (connection.provider === "google_drive") return true;
+      return isIntegrationProviderConnectable(connection.provider);
+    });
     const connectionByProvider = new Map(
       connections.map((connection) => [connection.provider, connection]),
     );
 
-    // N-04: hide Notion stub from user integrations catalog.
     const providers = integrationProviders
       .filter((provider) => isIntegrationProviderUserVisible(provider.id))
       .map((provider) =>
@@ -91,14 +96,17 @@ export class IntegrationService {
     return this.getCatalogForUser("__unscoped__");
   }
 
-  /** Placeholder connect for providers without real OAuth yet. */
+  /**
+   * Connect via legacy integrations API.
+   * Fail closed for unimplemented providers — never invent connected:true
+   * without a real OAuth/credential path (Google Drive uses completeGoogleDriveOAuth).
+   */
   async connect(input: ConnectIntegrationInput): Promise<Integration> {
     if (!input.userId?.trim()) {
       throw new Error("Integration.userId is required");
     }
     const { isIntegrationProviderConnectable, unsupportedExternalServiceMessage } =
       await import("@/lib/integrations/production-capability");
-    // N-04: Notion (and other unoffered providers) must never stub-connect.
     if (!isIntegrationProviderConnectable(input.provider)) {
       throw new Error(unsupportedExternalServiceMessage(input.provider));
     }
@@ -108,21 +116,8 @@ export class IntegrationService {
       );
     }
 
-    const existing = (
-      await this.repository.list({
-        userId: input.userId,
-        provider: input.provider,
-      })
-    )[0];
-    if (existing?.connected) {
-      return existing;
-    }
-
-    if (existing) {
-      await this.repository.delete(existing.id);
-    }
-
-    return this.repository.create(input);
+    // No other legacy provider has a real credential path here.
+    throw new Error(unsupportedExternalServiceMessage(input.provider));
   }
 
   async completeGoogleDriveOAuth(

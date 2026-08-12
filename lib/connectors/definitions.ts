@@ -147,11 +147,11 @@ export const connectorProviders: readonly ConnectorProviderDefinition[] = [
     icon: "S",
     description: "チャンネル通知とファイル共有。",
     permissions: ["chat:write", "files:write"],
-    defaultStatus: "available",
+    defaultStatus: "coming_soon",
     oauth: oauthStub(["chat:write", "channels:read"]),
     services: [
-      svc("messages", "Messages", "チャンネル投稿", ["chat:write"]),
-      svc("files", "Files", "ファイル共有", ["files:write"]),
+      svc("messages", "Messages", "チャンネル投稿", ["chat:write"], "coming_soon"),
+      svc("files", "Files", "ファイル共有", ["files:write"], "coming_soon"),
     ],
   },
   {
@@ -160,9 +160,11 @@ export const connectorProviders: readonly ConnectorProviderDefinition[] = [
     icon: "D",
     description: "Discord チャンネル連携。",
     permissions: ["messages.write"],
-    defaultStatus: "available",
+    defaultStatus: "coming_soon",
     oauth: oauthStub(["bot"]),
-    services: [svc("messages", "Messages", "チャンネル投稿", ["messages.write"])],
+    services: [
+      svc("messages", "Messages", "チャンネル投稿", ["messages.write"], "coming_soon"),
+    ],
   },
   {
     id: "stripe",
@@ -170,11 +172,11 @@ export const connectorProviders: readonly ConnectorProviderDefinition[] = [
     icon: "$",
     description: "決済と顧客管理。",
     permissions: ["charges.create", "customers.read"],
-    defaultStatus: "available",
+    defaultStatus: "coming_soon",
     oauth: oauthStub(),
     services: [
-      svc("payments", "Payments", "決済処理", ["charges.create"]),
-      svc("customers", "Customers", "顧客管理", ["customers.read"]),
+      svc("payments", "Payments", "決済処理", ["charges.create"], "coming_soon"),
+      svc("customers", "Customers", "顧客管理", ["customers.read"], "coming_soon"),
     ],
   },
   {
