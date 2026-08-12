@@ -190,6 +190,8 @@ begin
     raise exception 'atlas_claim_work_queue_jobs: limit must be >= 1';
   end if;
 
+  -- Reclaim of expired leases must never write attempt > max_attempts+1
+  -- (CHECK atlas_work_queue_jobs_attempt_check). Exhausted jobs → dead_letter.
   return query
   with cte as (
     select j.job_id
@@ -205,23 +207,73 @@ begin
     order by j.priority desc, j.available_at asc
     for update skip locked
     limit least(p_limit, 100)
+  ),
+  updated as (
+    update public.atlas_work_queue_jobs j
+    set status = case
+          when j.status in ('leased', 'running')
+            and j.attempt >= j.max_attempts
+            then 'dead_letter'
+          else 'leased'
+        end,
+        lease_owner = case
+          when j.status in ('leased', 'running')
+            and j.attempt >= j.max_attempts
+            then null
+          else p_worker_id
+        end,
+        lease_expires_at = case
+          when j.status in ('leased', 'running')
+            and j.attempt >= j.max_attempts
+            then null
+          else v_lease_expires
+        end,
+        heartbeat_at = case
+          when j.status in ('leased', 'running')
+            and j.attempt >= j.max_attempts
+            then j.heartbeat_at
+          else p_now
+        end,
+        claimed_at = coalesce(j.claimed_at, p_now),
+        started_at = coalesce(j.started_at, p_now),
+        attempt = least(
+          case
+            when j.status in ('leased', 'running') then j.attempt + 1
+            when j.status = 'retry_scheduled' then j.attempt
+            else greatest(j.attempt, 1)
+          end,
+          j.max_attempts + 1
+        ),
+        completed_at = case
+          when j.status in ('leased', 'running')
+            and j.attempt >= j.max_attempts
+            then p_now
+          else j.completed_at
+        end,
+        failed_at = case
+          when j.status in ('leased', 'running')
+            and j.attempt >= j.max_attempts
+            then p_now
+          else j.failed_at
+        end,
+        error_code = case
+          when j.status in ('leased', 'running')
+            and j.attempt >= j.max_attempts
+            then coalesce(j.error_code, 'max_attempts_exhausted_on_reclaim')
+          else j.error_code
+        end,
+        last_error = case
+          when j.status in ('leased', 'running')
+            and j.attempt >= j.max_attempts
+            then coalesce(j.last_error, 'max_attempts_exhausted_on_reclaim')
+          else j.last_error
+        end,
+        updated_at = p_now
+    from cte
+    where j.job_id = cte.job_id
+    returning j.*
   )
-  update public.atlas_work_queue_jobs j
-  set status = 'leased',
-      lease_owner = p_worker_id,
-      lease_expires_at = v_lease_expires,
-      heartbeat_at = p_now,
-      claimed_at = coalesce(j.claimed_at, p_now),
-      started_at = coalesce(j.started_at, p_now),
-      attempt = case
-        when j.status in ('leased', 'running') then j.attempt + 1
-        when j.status = 'retry_scheduled' then j.attempt
-        else greatest(j.attempt, 1)
-      end,
-      updated_at = p_now
-  from cte
-  where j.job_id = cte.job_id
-  returning j.*;
+  select * from updated u where u.status = 'leased';
 end;
 $$;
 
@@ -252,7 +304,7 @@ begin
 
   update public.atlas_work_queue_jobs j
   set status = p_status,
-      attempt = p_attempt,
+      attempt = least(greatest(p_attempt, 0), j.max_attempts + 1),
       retry_at = case when p_status = 'retry_scheduled' then p_retry_at else null end,
       available_at = case when p_status = 'retry_scheduled' then p_retry_at else j.available_at end,
       error_code = 'stuck_recovered',

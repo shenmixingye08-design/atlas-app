@@ -25,4 +25,25 @@ describe("work-queue migration SQL", () => {
       "atlas_claim_work_queue_jobs",
     );
   });
+
+  it("claim RPC caps attempt and dead-letters exhausted reclaims (23514 guard)", () => {
+    expect(ATLAS_WORK_QUEUE_DURABLE_CLAIM_MIGRATION_SQL).toContain(
+      "atlas_work_queue_jobs_attempt_check",
+    );
+    expect(ATLAS_WORK_QUEUE_DURABLE_CLAIM_MIGRATION_SQL).toContain(
+      "max_attempts_exhausted_on_reclaim",
+    );
+    expect(ATLAS_WORK_QUEUE_DURABLE_CLAIM_MIGRATION_SQL).toContain(
+      "least(",
+    );
+    expect(ATLAS_WORK_QUEUE_DURABLE_CLAIM_MIGRATION_SQL).toContain(
+      "dead_letter",
+    );
+    expect(ATLAS_WORK_QUEUE_DURABLE_CLAIM_MIGRATION_SQL).toContain(
+      "where u.status = 'leased'",
+    );
+    expect(ATLAS_WORK_QUEUE_DURABLE_CLAIM_MIGRATION_SQL).toContain(
+      "least(greatest(p_attempt, 0), j.max_attempts + 1)",
+    );
+  });
 });

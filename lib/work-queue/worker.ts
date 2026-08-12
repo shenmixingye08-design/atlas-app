@@ -8,6 +8,10 @@ import {
   WORK_QUEUE_WORKER_BATCH,
 } from "./constants";
 import {
+  capWorkQueueAttempt,
+  isWorkQueueAttemptExhausted,
+} from "./attempt-cap";
+import {
   classifyWorkQueueFailure,
   isRetryableWorkQueueFailure,
   tagWorkQueueError,
@@ -112,14 +116,17 @@ async function processLeasedJob(
     // Uncaught step/store errors must not 500 the whole drain fan-out.
     const failAt = new Date().toISOString();
     const diagnosticId = job.diagnosticId ?? buildDiagnosticId("exec");
+    const nextAttempt = capWorkQueueAttempt(job.attempt + 1, job.maxAttempts);
+    const exhausted = isWorkQueueAttemptExhausted(nextAttempt, job.maxAttempts);
+    const retryAt = new Date(Date.now() + 15_000).toISOString();
     try {
       await store.updateJob(
         job.jobId,
         {
-          status: "retry_scheduled",
-          attempt: job.attempt + 1,
-          availableAt: new Date(Date.now() + 15_000).toISOString(),
-          retryAt: new Date(Date.now() + 15_000).toISOString(),
+          status: exhausted ? "dead_letter" : "retry_scheduled",
+          attempt: nextAttempt,
+          availableAt: exhausted ? job.availableAt : retryAt,
+          retryAt: exhausted ? null : retryAt,
           errorCode: "job_execution_uncaught",
           failedStage: "job_execution",
           diagnosticId,
@@ -129,7 +136,7 @@ async function processLeasedJob(
           lastError: error instanceof Error ? error.message.slice(0, 200) : "uncaught",
           leaseOwner: null,
           leaseExpiresAt: null,
-          completedAt: null,
+          completedAt: exhausted ? failAt : null,
           failedAt: failAt,
         },
         workerId,
@@ -144,7 +151,7 @@ async function processLeasedJob(
       errorCode: "job_execution_uncaught",
       diagnosticId,
     });
-    return "retried";
+    return exhausted ? "failed" : "retried";
   } finally {
     clearInterval(heartbeat);
   }
@@ -321,7 +328,10 @@ async function processLeasedJobBody(
         errorCode: failedStep.errorCode,
       });
 
-      const attempt = current.attempt + 1;
+      const attempt = capWorkQueueAttempt(
+        current.attempt + 1,
+        current.maxAttempts,
+      );
       const decision = decideRetry({
         errorCode: failedStep.errorCode,
         attempt,
@@ -461,7 +471,7 @@ export async function recoverStuckJobs(
         automationId: job.automationId,
       });
       const diagnosticId = job.diagnosticId ?? buildDiagnosticId("stuck");
-      const attempt = job.attempt + 1;
+      const attempt = capWorkQueueAttempt(job.attempt + 1, job.maxAttempts);
       const decision = decideRetry({
         errorCode: "stuck_recovered",
         attempt,

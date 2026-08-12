@@ -43,6 +43,7 @@ export async function POST(request: Request): Promise<Response> {
       failureClass: diag.failureClass,
       errorName: diag.errorName,
       pgCode: diag.pgCode,
+      constraintName: diag.constraintName,
       substage: diag.substage,
       workerId: workerId ?? null,
     });
@@ -59,6 +60,7 @@ export async function POST(request: Request): Promise<Response> {
         failureClass: diag.failureClass,
         errorName: diag.errorName,
         pgCode: diag.pgCode,
+        constraintName: diag.constraintName,
         substage: diag.substage,
         postgresUrlConfigured: diag.postgresUrlConfigured,
         retryable: isRetryableWorkQueueFailure(diag),
