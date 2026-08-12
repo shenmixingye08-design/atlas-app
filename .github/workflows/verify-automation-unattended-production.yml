@@ -1,0 +1,113 @@
+# AUTOMATION UNATTENDED GATE — Production natural scheduler only.
+# Creates a safe Automation, then waits for Minute Scheduler (schedule event)
+# to fire tick. This workflow NEVER calls /api/automations/tick or /run.
+name: Verify Automation Unattended Production
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/ci/automation-unattended-production-e2e.mjs"
+      - ".github/workflows/verify-automation-unattended-production.yml"
+
+concurrency:
+  group: verify-automation-unattended-production
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  unattended:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Guard — secrets present (names only)
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY }}
+          E2E_CLERK_USER_ID: ${{ secrets.E2E_CLERK_USER_ID }}
+          E2E_CLERK_USER_B_ID: ${{ secrets.E2E_CLERK_USER_B_ID }}
+        run: |
+          set -euo pipefail
+          missing=0
+          PUBLISHABLE="${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-${CLERK_PUBLISHABLE_KEY:-}}"
+          for name in CLERK_SECRET_KEY E2E_CLERK_USER_ID E2E_CLERK_USER_B_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing GitHub Secret: ${name}"
+              missing=1
+            else
+              echo "secret_present=${name}"
+            fi
+          done
+          if [ -z "${PUBLISHABLE}" ]; then
+            echo "::error::Missing publishable Clerk key secret"
+            missing=1
+          else
+            echo "secret_present=CLERK_PUBLISHABLE_KEY_FAMILY"
+          fi
+          if [ "${missing}" = "1" ]; then
+            exit 2
+          fi
+
+      - name: Run unattended Automation Production gate
+        env:
+          ATLAS_APP_URL: ${{ secrets.ATLAS_APP_URL }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY }}
+          E2E_CLERK_USER_ID: ${{ secrets.E2E_CLERK_USER_ID }}
+          E2E_CLERK_USER_B_ID: ${{ secrets.E2E_CLERK_USER_B_ID }}
+          AUTOMATION_UNATTENDED_OUT: ${{ runner.temp }}/automation-unattended
+          CORE_LOOP_EXPECT_SHA: ${{ github.sha }}
+          GITHUB_SHA: ${{ github.sha }}
+          AUTOMATION_UNATTENDED_MAX_WAIT_MS: "6600000"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          export ATLAS_APP_URL="${ATLAS_APP_URL:-https://atlasapp.jp}"
+          if [ -z "${CLERK_PUBLISHABLE_KEY:-}" ] && [ -n "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" ]; then
+            export CLERK_PUBLISHABLE_KEY="${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}"
+          fi
+          mkdir -p "${AUTOMATION_UNATTENDED_OUT}"
+          echo "harness_ref=$(git rev-parse --short HEAD)"
+          echo "expect_sha_short=$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          echo "note=never_calls_tick_or_manual_run"
+          set +e
+          node scripts/ci/automation-unattended-production-e2e.mjs
+          code=$?
+          set -e
+          echo "e2e_exit=${code}"
+          if [ "${code}" = "2" ]; then
+            echo "::error::OWNER_SETUP_REQUIRED"
+            exit 2
+          fi
+          if [ "${code}" != "0" ]; then
+            echo "::error::AUTOMATION UNATTENDED GATE FAILED"
+            exit 1
+          fi
+          echo "automation_unattended_gate=pass"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: automation-unattended-evidence
+          path: ${{ runner.temp }}/automation-unattended/
+          if-no-files-found: warn
