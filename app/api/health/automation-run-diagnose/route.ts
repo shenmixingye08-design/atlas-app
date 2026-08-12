@@ -557,7 +557,7 @@ export async function GET(request: Request): Promise<Response> {
 
   if (phase2CalendarSuccess && !requestId && !diagnosticId) {
     try {
-      const found = await findPhase2CalendarSuccess(sb);
+      let found = await findPhase2CalendarSuccess(sb);
       if (!found) {
         const scanSummary = await buildPhase2ScanSummary(sb);
         return Response.json(
@@ -570,6 +570,41 @@ export async function GET(request: Request): Promise<Response> {
           },
           { status: 404, headers: { "Cache-Control": "no-store, max-age=0" } },
         );
+      }
+      // Heal stuck running + terminal steps before reporting (void-persist race).
+      if (String(found.runRow.status ?? "") === "running") {
+        try {
+          const { getAutomationRunFromSot } = await import(
+            "@/lib/automation-platform/durable-runs"
+          );
+          const { finalizeOrphanRunningRun } = await import(
+            "@/lib/automation-platform/execution/finalize-orphan-running"
+          );
+          const live = await getAutomationRunFromSot(String(found.runRow.id));
+          if (live) {
+            const finalized = await finalizeOrphanRunningRun(live);
+            if (finalized) {
+              const { data: refreshed } = await sb
+                .from("atlas_automation_runs")
+                .select("*")
+                .eq("id", finalized.id)
+                .maybeSingle();
+              if (refreshed) {
+                found = {
+                  ...found,
+                  runRow: refreshed as JsonObject,
+                };
+              }
+            }
+          }
+        } catch (healError) {
+          console.error("[health/automation-run-diagnose] orphan heal failed", {
+            message:
+              healError instanceof Error
+                ? healError.message.slice(0, 200)
+                : "unknown",
+          });
+        }
       }
       runRow = found.runRow;
       automationRow = found.automationRow;
