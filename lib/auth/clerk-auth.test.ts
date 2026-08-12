@@ -167,6 +167,9 @@ describe("auth route matchers", () => {
       "/api/health/work-job-diagnose(.*)",
     );
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
+      "/api/health/automation-run-diagnose(.*)",
+    );
+    expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
       "/api/health/api-contracts(.*)",
     );
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
