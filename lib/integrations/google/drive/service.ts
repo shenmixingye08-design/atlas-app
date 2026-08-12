@@ -1,11 +1,11 @@
 import "server-only";
 
 import { getStoredDeliverableForUser } from "@/lib/deliverables/store";
-import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
-import { featureDisabledMessage } from "@/lib/feature-flags/guards";
-import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
-import { getGoogleAccountAccessToken } from "@/lib/integrations/google/token-manager";
+import {
+  isGoogleAccessGateFailure,
+  requireGoogleIntegrationAccess,
+} from "@/lib/integrations/google/require-access";
 import { runWithAiBillingUsage } from "@/lib/billing/usage/request-context";
 
 import {
@@ -57,42 +57,15 @@ async function resolveGoogleDriveAccess(input: {
   userId: string;
   context: FeatureAccessContext;
 }): Promise<DriveAccess> {
-  if (!isFeatureEnabled("google", input.context)) {
-    return {
-      status: "feature_disabled",
-      message: featureDisabledMessage("google"),
-    };
+  const result = await requireGoogleIntegrationAccess({
+    userId: input.userId,
+    context: input.context,
+    capability: "drive",
+  });
+  if (isGoogleAccessGateFailure(result)) {
+    return result;
   }
-
-  const { getBillingFeatureDenial } = await import("@/lib/billing/access");
-  const denial = await getBillingFeatureDenial(
-    input.userId,
-    "google_integration",
-  );
-  if (denial) {
-    return {
-      status: "plan_required",
-      message: denial.reason,
-    };
-  }
-
-  const connection = getExternalServiceConnection(input.userId, "google");
-  if (connection.status !== "connected") {
-    return {
-      status: "google_not_connected",
-      message: "Googleを接続してください",
-    };
-  }
-
-  const accessToken = await getGoogleAccountAccessToken(input.userId);
-  if (!accessToken) {
-    return {
-      status: "google_not_connected",
-      message: "Googleを接続してください",
-    };
-  }
-
-  return { status: "ready", accessToken };
+  return { status: "ready", accessToken: result.accessToken };
 }
 
 function categoryForParent(

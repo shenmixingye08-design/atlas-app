@@ -155,8 +155,8 @@ describe("P0-02 credential persistence encryption paths", () => {
     expect(JSON.stringify(row)).not.toContain(refresh);
 
     const loaded = await loadGoogleAuthFromSupabase("user_google");
-    expect(loaded?.credentials.accessToken).toBe(access);
-    expect(loaded?.credentials.refreshToken).toBe(refresh);
+    expect(loaded?.credentials?.accessToken).toBe(access);
+    expect(loaded?.credentials?.refreshToken).toBe(refresh);
   });
 
   it("G: X persist/load encrypts", async () => {
@@ -209,8 +209,8 @@ describe("P0-02 credential persistence encryption paths", () => {
     expect(isEncryptedOAuthPayload(String(row.access_token))).toBe(true);
     expect(String(row.access_token)).not.toContain("access-new-after-refresh");
     const loaded = await loadGoogleAuthFromSupabase("user_google");
-    expect(loaded?.credentials.accessToken).toBe("access-new-after-refresh");
-    expect(loaded?.credentials.refreshToken).toBe("refresh-new-after-refresh");
+    expect(loaded?.credentials?.accessToken).toBe("access-new-after-refresh");
+    expect(loaded?.credentials?.refreshToken).toBe("refresh-new-after-refresh");
   });
 
   it("C: production persist without key fails closed", async () => {
@@ -246,7 +246,7 @@ describe("P0-02 credential persistence encryption paths", () => {
     });
 
     const loaded = await loadGoogleAuthFromSupabase("user_legacy");
-    expect(loaded?.credentials.accessToken).toBe("legacy-access-plain");
+    expect(loaded?.credentials?.accessToken).toBe("legacy-access-plain");
     expect(loaded?.needsReencrypt).toBe(true);
 
     // Allow lazy re-encrypt fire-and-forget to complete.
@@ -259,7 +259,7 @@ describe("P0-02 credential persistence encryption paths", () => {
     );
   });
 
-  it("D: tampered ciphertext cannot be used", async () => {
+  it("D: tampered ciphertext cannot be used (explicit decode failure, not silent disconnected)", async () => {
     await persistGoogleAuthToSupabase(
       creds("google", "good-access", "good-refresh"),
       connection(googleServiceDefinition),
@@ -270,7 +270,11 @@ describe("P0-02 credential persistence encryption paths", () => {
     row.access_token = parts.join(":");
 
     const loaded = await loadGoogleAuthFromSupabase("user_google");
-    expect(loaded).toBeNull();
+    expect(loaded).not.toBeNull();
+    expect(loaded?.decodeFailed).toBe(true);
+    expect(loaded?.credentials).toBeNull();
+    expect(loaded?.connection.status).toBe("error");
+    expect(loaded?.connection.errorMessage).toMatch(/再接続/);
   });
 
   it("J: API-shaped error objects do not include tokens after redact", () => {
@@ -298,6 +302,7 @@ describe("P0-02 credential persistence encryption paths", () => {
     delete process.env.ATLAS_OAUTH_CREDENTIALS_ENCRYPTION_KEY;
     delete process.env.ATLAS_OAUTH_CREDENTIALS_ENCRYPTION_KEY_V1;
 
+    // Production without key: refuse before row decode (fail-closed).
     const loaded = await loadGoogleAuthFromSupabase("user_google");
     expect(loaded).toBeNull();
   });

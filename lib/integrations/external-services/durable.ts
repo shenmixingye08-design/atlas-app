@@ -121,7 +121,11 @@ export async function ensureExternalAuthHydrated(userId: string): Promise<void> 
     );
     const googleAuth = await loadGoogleAuthFromSupabase(userId);
     if (googleAuth) {
-      saveExternalServiceCredentials(googleAuth.credentials);
+      if (googleAuth.credentials) {
+        saveExternalServiceCredentials(googleAuth.credentials);
+      }
+      // Always apply connection — including decode_failed → status=error
+      // so UI shows reconnect instead of silent 未接続.
       saveExternalServiceConnection(userId, googleAuth.connection);
       appliedDurable = true;
     }
@@ -225,6 +229,8 @@ function hydrateDurableDomain(
 
   if (Array.isArray(loaded.connections)) {
     const connections = loaded.connections.map((row) => {
+      // Prefer Supabase-backed Google connection even when decode failed
+      // (status=error) so Clerk overflow cannot overwrite with stale disconnected.
       if (googleAuth && row.serviceId === "google") return googleAuth.connection;
       if (xAuth && row.serviceId === "x") return xAuth.connection;
       if (dropboxAuth && row.serviceId === "dropbox") {

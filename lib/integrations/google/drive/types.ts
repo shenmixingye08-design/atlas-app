@@ -62,6 +62,8 @@ export type DriveFilesSnapshot = {
 export type DriveFetchStatus =
   | "ready"
   | "google_not_connected"
+  | "insufficient_permission"
+  | "needs_reconnect"
   | "feature_disabled"
   | "plan_required"
   | "unauthorized";
