@@ -77,6 +77,20 @@ jobs:
             PHASE2=1
           fi
 
+          # Drive Production dispatch so orphan `running` runs can finalize before scan.
+          if [ "${PHASE2}" = "1" ]; then
+            echo "phase2_tick_start=1"
+            tick_code=$(curl -sS -o "${DIAGNOSE_OUT}/tick.json" -w "%{http_code}" \
+              -X POST \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              -H "Cache-Control: no-store" \
+              "${ATLAS_APP_URL}/api/automations/tick" || true)
+            echo "phase2_tick_http=${tick_code}"
+            head -c 400 "${DIAGNOSE_OUT}/tick.json" || true
+            echo
+            sleep 2
+          fi
+
           # Production first (authoritative DB). Preview optional for newer binary.
           BASES=("${ATLAS_APP_URL}")
           PREVIEW_URL="$(node scripts/ci/resolve-preview-deploy-url.mjs || true)"
@@ -95,10 +109,31 @@ jobs:
             echo "health_http=${code}"
             echo "health_http=${code}" >> "$GITHUB_OUTPUT"
             if [ "${code}" = "200" ]; then
-              health_ok=1
-              echo "health_ok=1" >> "$GITHUB_OUTPUT"
-              node scripts/ci/print-phase2-diagnose-summary.mjs "${DIAGNOSE_OUT}/health-diagnose.json"
-              break
+              # If Phase 2 hit is still non-terminal, tick once more and rescan.
+              if [ "${PHASE2}" = "1" ] && command -v node >/dev/null; then
+                status="$(node -e 'const d=require(process.argv[1]); process.stdout.write(String((d.run&&d.run.status)||""))' "${DIAGNOSE_OUT}/health-diagnose.json" || true)"
+                if [ "${status}" = "running" ]; then
+                  echo "phase2_still_running_retick=1"
+                  curl -sS -o "${DIAGNOSE_OUT}/tick2.json" -w "%{http_code}" \
+                    -X POST \
+                    -H "Authorization: Bearer ${CRON_SECRET}" \
+                    -H "Cache-Control: no-store" \
+                    "${ATLAS_APP_URL}/api/automations/tick" || true
+                  echo
+                  sleep 2
+                  code=$(curl -sS -o "${DIAGNOSE_OUT}/health-diagnose.json" -w "%{http_code}" \
+                    -H "Authorization: Bearer ${CRON_SECRET}" \
+                    -H "Cache-Control: no-store" \
+                    "${BASE}/api/health/automation-run-diagnose?${QS}" || true)
+                  echo "health_http_rescan=${code}"
+                fi
+              fi
+              if [ "${code}" = "200" ]; then
+                health_ok=1
+                echo "health_ok=1" >> "$GITHUB_OUTPUT"
+                node scripts/ci/print-phase2-diagnose-summary.mjs "${DIAGNOSE_OUT}/health-diagnose.json"
+                break
+              fi
             fi
             head -c 400 "${DIAGNOSE_OUT}/health-diagnose.json" || true
             echo
