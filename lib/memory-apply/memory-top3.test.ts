@@ -42,7 +42,7 @@ import { ingestCorrectionInsightsToPersonalMemory } from "@/lib/memory-apply/cor
 import { measureMemoryApplyDelta } from "@/lib/memory-apply/instruction-reduction";
 import { applyMemoryToStepBody } from "@/lib/memory-apply/step-body";
 import { detectMemoryChannel } from "@/lib/memory-apply/channels";
-import { ingestCorrectionSignal, resolveForContext } from "@/lib/personal-memory/service";
+import { ingestCorrectionSignal } from "@/lib/personal-memory/service";
 import {
   clearAllPersonalMemoryData,
   listStoredPersonalMemories,

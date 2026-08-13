@@ -72,6 +72,16 @@ function capXLength(body: string): string {
   return sliced.trim();
 }
 
+/** X + length:short: keep the first complete clause, not a 280-char cap. */
+function shortenXPost(body: string): string {
+  const units = body
+    .split(/(?<=[。！？])|(?<=です|ます|ください)/u)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const first = units[0] ?? body.trim();
+  return first || body.trim();
+}
+
 export function applyPublishedBodyOverlay(
   base: string,
   overlay: MemoryContentOverlay,
@@ -127,7 +137,13 @@ export function applyPublishedBodyOverlay(
   }
 
   if (channel === "x_post") {
-    const capped = capXLength(body.replace(/\n{3,}/g, "\n\n").trim());
+    body = body.replace(/\n{3,}/g, "\n\n").trim();
+    if (overlay.preferShort) {
+      const shortened = shortenXPost(body);
+      if (shortened !== body) appliedKeys.push("length:short");
+      body = shortened;
+    }
+    const capped = capXLength(body);
     if (capped !== body) appliedKeys.push("length:short");
     body = capped;
   }
