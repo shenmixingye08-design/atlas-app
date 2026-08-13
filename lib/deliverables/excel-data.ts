@@ -1,10 +1,20 @@
 import { parseDeliverableContent } from "./parse-content";
+import {
+  inferColumnKind,
+  isReviewPlaceholder,
+  REVIEW_PLACEHOLDER,
+  type ExcelColumnKind,
+} from "./excel-workbook/column-types";
 
 export type ExcelSheetData = {
   name: string;
   headers: string[];
   rows: string[][];
+  /** Optional explicit types from structured JSON / vision. */
+  kinds?: ExcelColumnKind[];
 };
+
+const CONFIDENCE_REVIEW_THRESHOLD = 0.6;
 
 const TABLE_SEPARATOR_PATTERN = /^\|?[\s:-]+\|[\s|:-]+$/;
 
@@ -202,22 +212,177 @@ function buildFallbackSheet(content: string): ExcelSheetData {
   };
 }
 
+function dropEmptyColumns(sheet: ExcelSheetData): ExcelSheetData {
+  const width = Math.max(
+    sheet.headers.length,
+    ...sheet.rows.map((row) => row.length),
+    0,
+  );
+  if (width === 0) return sheet;
+  const keep: number[] = [];
+  for (let col = 0; col < width; col += 1) {
+    const header = (sheet.headers[col] ?? "").trim();
+    const hasValue = sheet.rows.some((row) => String(row[col] ?? "").trim());
+    if (header || hasValue) keep.push(col);
+  }
+  if (keep.length === 0 || keep.length === width) {
+    return {
+      ...sheet,
+      headers: normalizeRow(sheet.headers, width || 1),
+      rows: sheet.rows.map((row) => normalizeRow(row, width || 1)),
+    };
+  }
+  return {
+    ...sheet,
+    headers: keep.map((i) => sheet.headers[i] ?? ""),
+    rows: sheet.rows.map((row) => keep.map((i) => row[i] ?? "")),
+    kinds: sheet.kinds ? keep.map((i) => sheet.kinds![i] ?? "text") : undefined,
+  };
+}
+
+function parseDeclaredKind(raw: unknown): ExcelColumnKind | null {
+  const value = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (!value) return null;
+  if (/currency|money|amount|yen|jpy|usd/.test(value)) return "currency";
+  if (/percent|percentage|rate|ratio/.test(value)) return "percentage";
+  if (/^date|datetime|day/.test(value)) return "date";
+  if (/^time/.test(value)) return "time";
+  if (/number|numeric|qty|quantity|count/.test(value)) return "number";
+  if (/text|string|label/.test(value)) return "text";
+  return null;
+}
+
+function applyConfidence(
+  rows: string[][],
+  confidence: unknown,
+): string[][] {
+  if (!Array.isArray(confidence)) return rows;
+  return rows.map((row, rowIdx) => {
+    const rowConf = confidence[rowIdx];
+    return row.map((cell, colIdx) => {
+      if (isReviewPlaceholder(cell)) return REVIEW_PLACEHOLDER;
+      const cellConf = Array.isArray(rowConf) ? rowConf[colIdx] : rowConf;
+      if (typeof cellConf === "number" && cellConf < CONFIDENCE_REVIEW_THRESHOLD) {
+        return REVIEW_PLACEHOLDER;
+      }
+      return cell;
+    });
+  });
+}
+
+function extractJsonSheets(content: string): ExcelSheetData[] {
+  const fence = content.match(/```json\s*([\s\S]*?)```/i);
+  const candidate = fence?.[1]?.trim() || content.trim();
+  if (!candidate.startsWith("{") && !candidate.startsWith("[")) return [];
+  try {
+    const parsed = JSON.parse(candidate) as unknown;
+    const list = Array.isArray(parsed)
+      ? parsed
+      : parsed &&
+          typeof parsed === "object" &&
+          Array.isArray((parsed as { sheets?: unknown }).sheets)
+        ? (parsed as { sheets: unknown[] }).sheets
+        : parsed &&
+            typeof parsed === "object" &&
+            (Array.isArray((parsed as { headers?: unknown }).headers) ||
+              Array.isArray((parsed as { columns?: unknown }).columns))
+          ? [parsed]
+          : [];
+    const sheets: ExcelSheetData[] = [];
+    for (const item of list) {
+      if (!item || typeof item !== "object") continue;
+      const rec = item as {
+        name?: unknown;
+        headers?: unknown;
+        columns?: unknown;
+        types?: unknown;
+        rows?: unknown;
+        confidence?: unknown;
+      };
+      const columnsRaw = rec.columns;
+      const headerFromColumns = Array.isArray(columnsRaw)
+        ? columnsRaw.map((col) =>
+            col && typeof col === "object"
+              ? String(
+                  (col as { name?: unknown; header?: unknown }).name ??
+                    (col as { header?: unknown }).header ??
+                    "",
+                )
+              : String(col ?? ""),
+          )
+        : null;
+      const headersRaw = rec.headers ?? headerFromColumns;
+      if (!Array.isArray(headersRaw) || !Array.isArray(rec.rows)) continue;
+      const headers = headersRaw.map((h) => String(h ?? "").trim());
+      const rows: string[][] = rec.rows.map((row) => {
+        if (Array.isArray(row)) return row.map((c) => String(c ?? ""));
+        if (row && typeof row === "object") {
+          return headers.map((h) =>
+            String((row as Record<string, unknown>)[h] ?? ""),
+          );
+        }
+        return [];
+      });
+      const withConfidence = applyConfidence(rows, rec.confidence);
+      const kindsFromColumns = Array.isArray(columnsRaw)
+        ? columnsRaw.map((col) =>
+            col && typeof col === "object"
+              ? parseDeclaredKind((col as { type?: unknown }).type)
+              : null,
+          )
+        : [];
+      const kindsFromTypes = Array.isArray(rec.types)
+        ? rec.types.map((t) => parseDeclaredKind(t))
+        : [];
+      const declared =
+        kindsFromColumns.some(Boolean) || kindsFromTypes.some(Boolean)
+          ? headers.map((_, idx) => {
+              return (
+                kindsFromColumns[idx] ??
+                kindsFromTypes[idx] ??
+                inferColumnKind(
+                  headers[idx] ?? "",
+                  withConfidence.map((r) => r[idx] ?? ""),
+                )
+              );
+            })
+          : undefined;
+      sheets.push({
+        name: String(rec.name ?? "データ"),
+        headers,
+        rows: withConfidence,
+        kinds: declared,
+      });
+    }
+    return sheets;
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Build one or more worksheets from AI-generated deliverable text.
- * Prefers markdown tables, then CSV/TSV, then a structured 項目/内容 fallback.
+ * Prefers structured JSON, then markdown tables, then CSV/TSV, then 項目/内容.
  */
 export function extractExcelSheets(content: string): ExcelSheetData[] {
+  const fromJson = extractJsonSheets(content);
+  if (fromJson.length > 0) {
+    return uniquifySheetNames(fromJson.map(dropEmptyColumns));
+  }
+
   const fromTables = extractMarkdownTables(content);
   if (fromTables.length > 0) {
-    return uniquifySheetNames(fromTables);
+    return uniquifySheetNames(fromTables.map(dropEmptyColumns));
   }
 
   const csvSheet = extractCsvLikeSheet(content);
   if (csvSheet) {
-    return uniquifySheetNames([csvSheet]);
+    return uniquifySheetNames([dropEmptyColumns(csvSheet)]);
   }
 
-  return uniquifySheetNames([buildFallbackSheet(content)]);
+  return uniquifySheetNames([dropEmptyColumns(buildFallbackSheet(content))]);
 }
 
 /** Whether xlsx should be generated for this assignment/content. */

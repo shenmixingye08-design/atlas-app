@@ -4,41 +4,33 @@ import { neutralizeSpreadsheetCell } from "@/lib/security/spreadsheet-formula";
 
 import { enhanceWorkbookWithAdvancedExcel } from "../excel-advanced";
 import { extractExcelSheets } from "../excel-data";
+import {
+  currencyNumFmt,
+  dateNumFmt,
+  inferColumnKind,
+  isReviewPlaceholder,
+  NUMBER_NUM_FMT,
+  parseDate,
+  parseNumber,
+  parsePercentage,
+  parseTime,
+  PERCENT_NUM_FMT,
+  TIME_NUM_FMT,
+  type ExcelColumnKind,
+} from "../excel-workbook/column-types";
+import {
+  countIfFormula,
+  sumFormula,
+  sumIfFormula,
+  sumIfsMonthFormula,
+} from "../excel-workbook/formulas";
+import { resolveExcelIntent } from "../excel-workbook/intent";
+import {
+  applyProfessionalLayout,
+  applyTotalRowStyle,
+} from "../excel-workbook/layout";
 import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
 import { createDeliverableFile } from "./shared";
-
-const THIN_BORDER: Partial<ExcelJS.Borders> = {
-  top: { style: "thin", color: { argb: "FFB0B0B0" } },
-  left: { style: "thin", color: { argb: "FFB0B0B0" } },
-  bottom: { style: "thin", color: { argb: "FFB0B0B0" } },
-  right: { style: "thin", color: { argb: "FFB0B0B0" } },
-};
-
-/** Approximate display width for mixed Japanese / ASCII text. */
-function cellDisplayWidth(value: string): number {
-  let width = 0;
-  for (const char of value) {
-    width += char.charCodeAt(0) > 255 ? 2 : 1;
-  }
-  return width;
-}
-
-function autofitColumns(sheet: ExcelJS.Worksheet, columnCount: number): void {
-  for (let col = 1; col <= columnCount; col += 1) {
-    let max = 8;
-    const column = sheet.getColumn(col);
-    column.eachCell({ includeEmpty: true }, (cell) => {
-      const text =
-        cell.value == null
-          ? ""
-          : typeof cell.value === "string"
-            ? cell.value
-            : String(cell.value);
-      max = Math.max(max, cellDisplayWidth(text));
-    });
-    column.width = Math.min(Math.max(max + 2, 10), 60);
-  }
-}
 
 type XlsxGenerateOptions = {
   excel?: {
@@ -47,176 +39,211 @@ type XlsxGenerateOptions = {
     dateFormat?: string | null;
     decimalPlaces?: number | null;
     columnOrder?: string[];
-    /** P3-03: embed OOXML chart (default auto when aggregatable). */
     includeChart?: boolean | null;
-    /** P3-03: add ピボット集計 sheet (default auto when aggregatable). */
     includePivot?: boolean | null;
     chartTitle?: string | null;
+    /** Original user assignment — used for formula/chart intent. */
+    assignment?: string | null;
   } | null;
   companyName?: string | null;
 };
 
-type ColumnKind = "currency" | "date" | "number" | "text";
+type WrittenSheet = {
+  name: string;
+  headers: string[];
+  kinds: ExcelColumnKind[];
+  rowCount: number;
+};
 
-function currencyNumFmt(currency: string | null | undefined): string {
-  const code = (currency ?? "JPY").trim().toUpperCase();
-  if (code === "USD" || code === "$") return '"$"#,##0.00';
-  if (code === "EUR" || code === "€") return '"€"#,##0.00';
-  // Default JPY / ¥
-  return '"¥"#,##0';
-}
-
-function dateNumFmt(dateFormat: string | null | undefined): string {
-  const raw = (dateFormat ?? "yyyy-mm-dd").trim().toLowerCase();
-  if (raw.includes("yyyy/m/d") || raw === "ja-slash") return "yyyy/m/d";
-  if (raw.includes("yyyy年")) return "yyyy年m月d日";
-  if (raw.includes("mm/dd") || raw.includes("m/d/yy")) return "yyyy-mm-dd";
-  return "yyyy-mm-dd";
-}
-
-function headerSuggestsCurrency(header: string): boolean {
-  return /金額|価格|売上|単価|料金|費用|amount|price|cost|revenue|円|currency/i.test(
-    header,
-  );
-}
-
-function headerSuggestsDate(header: string): boolean {
-  return /日付|日時|年月日|date|day|期間/i.test(header);
-}
-
-function headerSuggestsNumber(header: string): boolean {
-  return /数量|個数|件数|qty|quantity|count|人数|率|%/i.test(header);
-}
-
-function looksNumeric(value: string): boolean {
-  const cleaned = value.replace(/[,，\s¥￥円$€]/g, "");
-  return /^-?\d+(\.\d+)?%?$/.test(cleaned);
-}
-
-function looksDate(value: string): boolean {
-  return (
-    /^\d{4}[/-年]\d{1,2}[/-月]\d{1,2}/.test(value.trim()) ||
-    /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(value.trim())
-  );
-}
-
-function looksCurrency(value: string): boolean {
-  return /[円¥￥$€]/.test(value) || /^-?[\d,，]+(\.\d+)?円$/.test(value.trim());
-}
-
-function inferColumnKind(
-  header: string,
-  samples: string[],
-  options?: XlsxGenerateOptions,
-): ColumnKind {
-  if (headerSuggestsCurrency(header) || options?.excel?.currency) {
-    if (
-      headerSuggestsCurrency(header) ||
-      samples.some((s) => looksCurrency(s) || looksNumeric(s))
-    ) {
-      if (headerSuggestsCurrency(header) || samples.some(looksCurrency)) {
-        return "currency";
-      }
+function typedCell(
+  raw: string,
+  kind: ExcelColumnKind,
+  decimalPlaces: number | null | undefined,
+): ExcelJS.CellValue {
+  if (isReviewPlaceholder(raw)) {
+    return neutralizeSpreadsheetCell(raw) as string;
+  }
+  if (kind === "percentage") {
+    const pct = parsePercentage(raw);
+    if (pct != null) return pct;
+  }
+  if (kind === "currency" || kind === "number") {
+    const num = parseNumber(raw);
+    if (num != null) {
+      if (decimalPlaces != null) return Number(num.toFixed(decimalPlaces));
+      return num;
     }
   }
-  if (headerSuggestsDate(header) || options?.excel?.dateFormat) {
-    if (headerSuggestsDate(header) || samples.some(looksDate)) {
-      return "date";
-    }
+  if (kind === "date") {
+    const dt = parseDate(raw);
+    if (dt) return dt;
   }
-  if (headerSuggestsNumber(header) || samples.every((s) => !s || looksNumeric(s))) {
-    if (samples.some(looksNumeric)) return "number";
+  if (kind === "time") {
+    const t = parseTime(raw);
+    if (t != null) return t;
   }
-  if (samples.filter(Boolean).every((s) => looksDate(s))) return "date";
-  if (samples.filter(Boolean).every((s) => looksCurrency(s) || looksNumeric(s))) {
-    if (samples.some(looksCurrency) || headerSuggestsCurrency(header)) {
-      return "currency";
-    }
-  }
-  return "text";
+  return neutralizeSpreadsheetCell(raw);
 }
 
-function parseNumber(raw: string, decimalPlaces: number | null | undefined): number | null {
-  const cleaned = raw.replace(/[,，\s¥￥円$€]/g, "").replace(/%$/, "");
-  if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return null;
-  const num = Number(cleaned);
-  if (!Number.isFinite(num)) return null;
-  if (decimalPlaces != null) {
-    return Number(num.toFixed(decimalPlaces));
-  }
-  return num;
-}
-
-function parseDate(raw: string): Date | null {
-  const trimmed = raw.trim();
-  const iso = trimmed.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
-  if (iso) {
-    const y = Number(iso[1]);
-    const m = Number(iso[2]);
-    const d = Number(iso[3]);
-    const dt = new Date(Date.UTC(y, m - 1, d));
-    return Number.isNaN(dt.getTime()) ? null : dt;
-  }
-  const ja = trimmed.match(/^(\d{4})年(\d{1,2})月(\d{1,2})/);
-  if (ja) {
-    const dt = new Date(
-      Date.UTC(Number(ja[1]), Number(ja[2]) - 1, Number(ja[3])),
-    );
-    return Number.isNaN(dt.getTime()) ? null : dt;
-  }
-  return null;
-}
-
-function applySheetFormatting(
-  sheet: ExcelJS.Worksheet,
-  rowCount: number,
-  columnCount: number,
+function applyNumFmt(
+  cell: ExcelJS.Cell,
+  kind: ExcelColumnKind,
   options?: XlsxGenerateOptions,
 ): void {
-  if (columnCount < 1 || rowCount < 1) return;
-
-  const header = sheet.getRow(1);
-  header.font = { bold: true, name: "Yu Gothic", size: 11, color: { argb: "FFFFFFFF" } };
-  header.fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: {
-      argb: options?.excel?.headerColorArgb ?? "FF1F4E79",
-    },
-  };
-  header.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
-
-  for (let row = 1; row <= rowCount; row += 1) {
-    const excelRow = sheet.getRow(row);
-    excelRow.font = {
-      ...(excelRow.font ?? {}),
-      name: excelRow.font?.name ?? "Yu Gothic",
-      size: excelRow.font?.size ?? 11,
-      bold: row === 1 ? true : excelRow.font?.bold,
-    };
-    for (let col = 1; col <= columnCount; col += 1) {
-      const cell = excelRow.getCell(col);
-      cell.border = THIN_BORDER;
-      cell.alignment = {
-        vertical: "middle",
-        horizontal: typeof cell.value === "number" ? "right" : "left",
-        wrapText: true,
-      };
-    }
+  const numeric =
+    typeof cell.value === "number" ||
+    cell.value instanceof Date ||
+    (typeof cell.value === "object" &&
+      cell.value != null &&
+      "formula" in cell.value);
+  if (!numeric) return;
+  if (kind === "currency") {
+    cell.numFmt = currencyNumFmt(options?.excel?.currency);
+  } else if (kind === "percentage") {
+    cell.numFmt = PERCENT_NUM_FMT;
+  } else if (kind === "number") {
+    const places = options?.excel?.decimalPlaces;
+    cell.numFmt =
+      places != null && places > 0 ? `0.${"0".repeat(places)}` : NUMBER_NUM_FMT;
+  } else if (kind === "date") {
+    cell.numFmt = dateNumFmt(options?.excel?.dateFormat);
+  } else if (kind === "time") {
+    cell.numFmt = TIME_NUM_FMT;
   }
+}
 
-  sheet.autoFilter = {
-    from: { row: 1, column: 1 },
-    to: { row: rowCount, column: columnCount },
-  };
-  sheet.views = [{ state: "frozen", ySplit: 1 }];
-  autofitColumns(sheet, columnCount);
+function columnSum(rows: string[][], colIdx: number): number {
+  let total = 0;
+  for (const row of rows) {
+    const num = parseNumber(String(row[colIdx] ?? ""));
+    if (num != null) total += num;
+  }
+  return total;
+}
+
+function addMonthlySheet(workbook: ExcelJS.Workbook, source: WrittenSheet): void {
+  if (workbook.getWorksheet("月別集計")) return;
+  const dateCol = source.kinds.findIndex((k) => k === "date");
+  const amountCol = source.kinds.findIndex(
+    (k) => k === "currency" || k === "number",
+  );
+  if (dateCol < 0 || amountCol < 0 || source.rowCount < 1) return;
+
+  const detail = workbook.getWorksheet(source.name);
+  if (!detail) return;
+  const months = new Map<string, number>();
+  for (let r = 2; r <= source.rowCount + 1; r += 1) {
+    const dateValue = detail.getRow(r).getCell(dateCol + 1).value;
+    const amountValue = detail.getRow(r).getCell(amountCol + 1).value;
+    if (!(dateValue instanceof Date) || Number.isNaN(dateValue.getTime())) {
+      continue;
+    }
+    if (typeof amountValue !== "number") continue;
+    const key = `${dateValue.getUTCFullYear()}-${String(dateValue.getUTCMonth() + 1).padStart(2, "0")}`;
+    months.set(key, (months.get(key) ?? 0) + amountValue);
+  }
+  if (months.size === 0) return;
+
+  const sheet = workbook.addWorksheet("月別集計");
+  sheet.addRow(["年月", "合計"]);
+  const sorted = [...months.keys()].sort();
+  for (const key of sorted) {
+    const [year, month] = key.split("-").map(Number);
+    const row = sheet.addRow([key, months.get(key) ?? 0]);
+    row.getCell(2).value = {
+      formula: sumIfsMonthFormula({
+        sourceSheet: source.name,
+        dateCol0: dateCol,
+        valueCol0: amountCol,
+        year: year!,
+        month: month!,
+      }),
+      result: months.get(key) ?? 0,
+    };
+    row.getCell(2).numFmt = '"¥"#,##0';
+  }
+  applyProfessionalLayout(sheet, sorted.length + 1, 2, "FF1F4E79");
+  const grand = [...months.values()].reduce((a, b) => a + b, 0);
+  const totalRow = sheet.addRow([
+    "合計",
+    {
+      formula: sumFormula(1, 2, sorted.length + 1),
+      result: grand,
+    },
+  ]);
+  totalRow.getCell(2).numFmt = '"¥"#,##0';
+  applyTotalRowStyle(sheet, totalRow.number, 2);
+}
+
+function addCategorySheet(workbook: ExcelJS.Workbook, source: WrittenSheet): void {
+  if (workbook.getWorksheet("カテゴリ別集計")) return;
+  if (workbook.getWorksheet("ピボット集計")) return;
+  const categoryCol = source.headers.findIndex((h) =>
+    /カテゴリ|分類|店名|部門|channel/i.test(h),
+  );
+  const amountCol = source.kinds.findIndex(
+    (k) => k === "currency" || k === "number",
+  );
+  if (categoryCol < 0 || amountCol < 0 || source.rowCount < 1) return;
+
+  const detail = workbook.getWorksheet(source.name);
+  if (!detail) return;
+  const totals = new Map<string, number>();
+  for (let r = 2; r <= source.rowCount + 1; r += 1) {
+    const category = String(
+      detail.getRow(r).getCell(categoryCol + 1).value ?? "",
+    ).trim();
+    const amountValue = detail.getRow(r).getCell(amountCol + 1).value;
+    if (!category || category === "合計") continue;
+    if (typeof amountValue !== "number") continue;
+    totals.set(category, (totals.get(category) ?? 0) + amountValue);
+  }
+  if (totals.size === 0) return;
+
+  const sheet = workbook.addWorksheet("カテゴリ別集計");
+  sheet.addRow(["カテゴリ", "合計", "件数"]);
+  const sorted = [...totals.keys()].sort((a, b) => a.localeCompare(b, "ja"));
+  for (const category of sorted) {
+    const excelRow = sheet.addRow([category, totals.get(category) ?? 0, 0]);
+    excelRow.getCell(2).value = {
+      formula: sumIfFormula({
+        sourceSheet: source.name,
+        criteriaCol0: categoryCol,
+        criteriaCell: `A${excelRow.number}`,
+        valueCol0: amountCol,
+      }),
+      result: totals.get(category) ?? 0,
+    };
+    excelRow.getCell(3).value = {
+      formula: countIfFormula({
+        sourceSheet: source.name,
+        criteriaCol0: categoryCol,
+        criteriaCell: `A${excelRow.number}`,
+      }),
+      result: 0,
+    };
+    excelRow.getCell(2).numFmt = '"¥"#,##0';
+  }
+  applyProfessionalLayout(sheet, sorted.length + 1, 3, "FF1F4E79");
+  const grand = [...totals.values()].reduce((a, b) => a + b, 0);
+  const totalRow = sheet.addRow([
+    "合計",
+    {
+      formula: sumFormula(1, 2, sorted.length + 1),
+      result: grand,
+    },
+    {
+      formula: sumFormula(2, 2, sorted.length + 1),
+      result: 0,
+    },
+  ]);
+  totalRow.getCell(2).numFmt = '"¥"#,##0';
+  applyTotalRowStyle(sheet, totalRow.number, 3);
 }
 
 /**
- * Excel (.xlsx) generator — builds worksheets from AI table data via exceljs.
- * P1-08: typed cells + numFmt (no currency/date sidecar text columns).
- * P3-03: ピボット集計 sheet + embedded OOXML chart (xl/charts + xl/drawings).
+ * Excel (.xlsx) generator — SoT workbook builder via exceljs.
+ * Typed cells, trusted formulas, freeze/filter, optional monthly + pivot/chart.
  */
 export class XlsxDeliverableGenerator implements DeliverableGenerator {
   readonly format = "xlsx" as const;
@@ -229,14 +256,26 @@ export class XlsxDeliverableGenerator implements DeliverableGenerator {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = options?.companyName ?? "MINERVOT";
     workbook.created = new Date();
+    if (workbook.calcProperties) {
+      workbook.calcProperties.fullCalcOnLoad = true;
+    }
 
     const sheets = extractExcelSheets(content);
-    let appliedNumFmt = false;
+    const intent = resolveExcelIntent({
+      assignment: options?.excel?.assignment ?? content.slice(0, 400),
+      sheetNames: sheets.map((s) => s.name),
+      headers: sheets.map((s) => s.headers),
+      rowCounts: sheets.map((s) => s.rows.length),
+    });
+
+    const headerColor = options?.excel?.headerColorArgb ?? "FF1F4E79";
+    const written: WrittenSheet[] = [];
 
     for (const data of sheets) {
       const sheet = workbook.addWorksheet(data.name);
       let headers = [...data.headers];
       let rows = data.rows.map((row) => [...row]);
+      let declaredKinds = data.kinds ? [...data.kinds] : undefined;
       const preferredOrder = options?.excel?.columnOrder ?? [];
       if (preferredOrder.length > 0 && headers.length > 0) {
         const indexMap = preferredOrder
@@ -248,6 +287,9 @@ export class XlsxDeliverableGenerator implements DeliverableGenerator {
         const order = [...indexMap, ...remaining];
         headers = order.map((idx) => headers[idx] ?? "");
         rows = rows.map((row) => order.map((idx) => row[idx] ?? ""));
+        if (declaredKinds) {
+          declaredKinds = order.map((idx) => declaredKinds![idx] ?? "text");
+        }
       }
       const columnCount = Math.max(
         headers.length,
@@ -257,23 +299,10 @@ export class XlsxDeliverableGenerator implements DeliverableGenerator {
       const header = [...headers];
       while (header.length < columnCount) header.push("");
 
-      const kinds: ColumnKind[] = header.map((h, colIdx) => {
+      const kinds: ExcelColumnKind[] = header.map((h, colIdx) => {
+        if (declaredKinds?.[colIdx]) return declaredKinds[colIdx]!;
         const samples = rows.map((row) => String(row[colIdx] ?? ""));
-        // Currency option alone must not force every column — only currency-like ones.
-        const scoped: XlsxGenerateOptions = {
-          ...options,
-          excel: {
-            ...options?.excel,
-            currency: headerSuggestsCurrency(h) || samples.some(looksCurrency)
-              ? options?.excel?.currency
-              : undefined,
-            dateFormat:
-              headerSuggestsDate(h) || samples.some(looksDate)
-                ? options?.excel?.dateFormat
-                : undefined,
-          },
-        };
-        return inferColumnKind(h, samples, scoped);
+        return inferColumnKind(h, samples);
       });
 
       sheet.addRow(header.map((cell) => neutralizeSpreadsheetCell(cell)));
@@ -282,58 +311,87 @@ export class XlsxDeliverableGenerator implements DeliverableGenerator {
         const cells = [...row];
         while (cells.length < columnCount) cells.push("");
         const excelRow = sheet.addRow(
-          cells.map((cell, colIdx) => {
-            const raw = String(cell ?? "");
-            const kind = kinds[colIdx] ?? "text";
-            if (kind === "currency" || kind === "number") {
-              const num = parseNumber(raw, options?.excel?.decimalPlaces);
-              if (num != null) return num;
-            }
-            if (kind === "date") {
-              const dt = parseDate(raw);
-              if (dt) return dt;
-            }
-            if (
-              options?.excel?.decimalPlaces != null &&
-              /^-?\d+(\.\d+)?$/.test(raw)
-            ) {
-              return Number(Number(raw).toFixed(options.excel.decimalPlaces));
-            }
-            return neutralizeSpreadsheetCell(raw);
-          }),
+          cells.map((cell, colIdx) =>
+            typedCell(
+              String(cell ?? ""),
+              kinds[colIdx] ?? "text",
+              options?.excel?.decimalPlaces,
+            ),
+          ),
         );
-
         for (let col = 1; col <= columnCount; col += 1) {
-          const kind = kinds[col - 1] ?? "text";
-          const cell = excelRow.getCell(col);
-          if (kind === "currency" && typeof cell.value === "number") {
-            cell.numFmt = currencyNumFmt(options?.excel?.currency);
-            appliedNumFmt = true;
-          } else if (kind === "number" && typeof cell.value === "number") {
-            const places = options?.excel?.decimalPlaces;
-            cell.numFmt =
-              places != null && places > 0
-                ? `0.${"0".repeat(places)}`
-                : "#,##0";
-            appliedNumFmt = true;
-          } else if (kind === "date" && cell.value instanceof Date) {
-            cell.numFmt = dateNumFmt(options?.excel?.dateFormat);
-            appliedNumFmt = true;
-          }
+          applyNumFmt(excelRow.getCell(col), kinds[col - 1] ?? "text", options);
         }
       }
 
-      applySheetFormatting(sheet, rows.length + 1, columnCount, options);
+      const dataRows = rows.length;
+      applyProfessionalLayout(
+        sheet,
+        Math.max(dataRows + 1, 1),
+        columnCount,
+        headerColor,
+      );
 
-      // P1-08: never write sidecar 通貨:/日付: text columns — numFmt is SoT.
-      void appliedNumFmt;
+      if (intent.formulas && dataRows >= 1) {
+        const totalValues: ExcelJS.CellValue[] = header.map((_h, colIdx) => {
+          const kind = kinds[colIdx] ?? "text";
+          if (colIdx === 0) return "合計";
+          if (kind === "currency" || kind === "number") {
+            return {
+              formula: sumFormula(colIdx, 2, dataRows + 1),
+              result: columnSum(rows, colIdx),
+            };
+          }
+          return "";
+        });
+        if (totalValues.some((v) => typeof v === "object" && v && "formula" in v)) {
+          const totalRow = sheet.addRow(totalValues);
+          for (let col = 1; col <= columnCount; col += 1) {
+            applyNumFmt(totalRow.getCell(col), kinds[col - 1] ?? "text", options);
+          }
+          applyTotalRowStyle(sheet, totalRow.number, columnCount);
+        }
+      }
+
+      written.push({
+        name: sheet.name,
+        headers: header,
+        kinds,
+        rowCount: dataRows,
+      });
     }
 
-    // P3-03: pivot summary + real embedded chart (not sheet-name theater).
+    if (intent.monthlySheet && written[0]) {
+      addMonthlySheet(workbook, written[0]);
+    }
+
+    const includeChart =
+      options?.excel?.includeChart === true
+        ? true
+        : options?.excel?.includeChart === false
+          ? false
+          : intent.chart;
+    const includePivot =
+      options?.excel?.includePivot === true
+        ? true
+        : options?.excel?.includePivot === false
+          ? false
+          : intent.categorySheet || intent.chart;
+
+    if (intent.categorySheet && !includePivot && written[0]) {
+      addCategorySheet(workbook, written[0]);
+    }
+
     const enhanced = await enhanceWorkbookWithAdvancedExcel(workbook, {
-      includeChart: options?.excel?.includeChart,
-      includePivot: options?.excel?.includePivot,
-      chartTitle: options?.excel?.chartTitle,
+      includeChart,
+      includePivot,
+      chartTitle:
+        options?.excel?.chartTitle ??
+        (intent.kind === "ledger"
+          ? "カテゴリ別支出"
+          : intent.kind === "sales"
+            ? "カテゴリ別売上"
+            : null),
     });
 
     return createDeliverableFile("xlsx", baseFileName, enhanced.buffer, false);

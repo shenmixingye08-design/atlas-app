@@ -214,6 +214,7 @@ export async function invokeDeliverableStep(input: {
                 includeChart,
                 includePivot,
                 chartTitle: stringConfig(input.step.configuration, "chartTitle") || null,
+                assignment: input.automationName,
               }
             : undefined,
         powerpoint:

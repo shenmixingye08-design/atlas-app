@@ -23,4 +23,26 @@ describe("word failure user messages", () => {
     expect(wordFailureTitle(reason)).toBe("Word生成失敗");
     expect(wordFailureUserMessage(reason).length).toBeGreaterThan(10);
   });
+
+  it("distinguishes Excel structure / workbook / corrupt / unsupported / persist", () => {
+    expect(classifyDeliverableError("excel_structure:empty_sheet")).toBe(
+      "excel_structure",
+    );
+    expect(classifyDeliverableError("excel_workbook:exceljs boom")).toBe(
+      "excel_workbook",
+    );
+    expect(classifyDeliverableError("excel_corrupt:xlsx_reopen_failed")).toBe(
+      "excel_corrupt",
+    );
+    expect(
+      classifyDeliverableError("excel_unsupported:excel_advanced_no_aggregatable_columns"),
+    ).toBe("excel_unsupported");
+    expect(wordFailureTitle("excel_corrupt:xlsx_reopen_failed")).not.toBe(
+      "Word生成失敗",
+    );
+    expect(wordFailureUserMessage("excel_structure:empty_sheet")).toMatch(/表/);
+    expect(wordFailureUserMessage("excel_corrupt:xlsx_reopen_failed")).toMatch(
+      /壊/,
+    );
+  });
 });
