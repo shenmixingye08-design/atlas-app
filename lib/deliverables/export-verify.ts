@@ -1,6 +1,7 @@
 import "server-only";
 
 import { verifyXlsxWorkbook } from "./excel-workbook/verify";
+import { verifyPptxDeck } from "./pptx-storyboard/verify";
 import { verifyPdfQuality } from "./pdf-quality";
 import type { DeliverableFormat, GeneratedDeliverableFile } from "./types";
 
@@ -42,7 +43,7 @@ export function verifyGeneratedExport(
     }
   }
 
-  if (file.format !== "pdf" && file.format !== "xlsx") {
+  if (file.format !== "pdf" && file.format !== "xlsx" && file.format !== "pptx") {
     for (const marker of [
       '"type":',
       '"content":',
@@ -85,6 +86,17 @@ export async function verifyGeneratedExportAsync(
         return `excel_workbook:${reason}`;
       }
       return `excel_workbook:${reason}`;
+    });
+    const reasons = [...base.reasons, ...mapped];
+    return { ok: reasons.length === 0, reasons };
+  }
+  if (file.format === "pptx") {
+    const pptx = await verifyPptxDeck(file.buffer);
+    const mapped = pptx.reasons.map((reason) => {
+      if (reason === "invalid_zip" || reason === "pptx_reopen_failed") {
+        return `pptx_corrupt:${reason}`;
+      }
+      return `pptx_verify:${reason}`;
     });
     const reasons = [...base.reasons, ...mapped];
     return { ok: reasons.length === 0, reasons };

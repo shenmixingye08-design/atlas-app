@@ -76,6 +76,27 @@ const EXPORT_SECTION_LABELS = new Set([
   "スライド内容",
   "調査結果",
   "メール本文",
+  "結論",
+  "KPI",
+  "数字",
+  "実績",
+  "事業",
+  "解決策",
+  "導入方法",
+  "根拠",
+  "特長",
+  "推移",
+  "内訳",
+  "データ",
+  "指標",
+  "結果",
+  "考察",
+  "まとめ",
+  "明細",
+  "ビジュアル",
+  "写真",
+  "図",
+  "図解",
 ]);
 
 function stripTaskPrefix(title: string): string {
@@ -92,7 +113,10 @@ function parseTableRow(line: string): string[] {
 }
 
 function isTableRow(line: string): boolean {
-  return line.includes("|") && !TABLE_SEPARATOR_PATTERN.test(line.trim());
+  const trimmed = line.trim();
+  // Include markdown separator rows so the collector can skip them inside
+  // the table loop. Excluding them splits one table into header-only + body.
+  return trimmed.includes("|");
 }
 
 function parseBlocks(lines: string[]): ContentBlock[] {
