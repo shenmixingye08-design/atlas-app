@@ -218,7 +218,39 @@ function orderSections(
     });
   }
 
-  return promoteKeyCards(documentType, ordered);
+  return promoteConclusionFirst(documentType, promoteKeyCards(documentType, ordered));
+}
+
+function promoteConclusionFirst(
+  documentType: DocumentType,
+  sections: DocumentSection[],
+): DocumentSection[] {
+  if (documentType === "minutes") {
+    const decisions = sections.filter((section) => section.role === "decisions");
+    const rest = sections.filter((section) => section.role !== "decisions");
+    if (decisions.length === 0) return sections;
+    const metaIndex = rest.findIndex((section) => section.role === "meta");
+    if (metaIndex >= 0) {
+      return [
+        ...rest.slice(0, metaIndex + 1),
+        ...decisions,
+        ...rest.slice(metaIndex + 1),
+      ];
+    }
+    return [...decisions, ...rest];
+  }
+
+  if (documentType !== "report" && documentType !== "research") {
+    return sections;
+  }
+
+  const front = sections.filter(
+    (section) => section.role === "summary" || section.role === "conclusion",
+  );
+  const rest = sections.filter(
+    (section) => section.role !== "summary" && section.role !== "conclusion",
+  );
+  return [...front, ...rest];
 }
 
 function resolveDesignTemplate(value?: DesignTemplateId): DesignTemplateId {
@@ -275,6 +307,13 @@ export function buildStructuredDocument(
     typeof input.includeTableOfContents === "boolean"
       ? input.includeTableOfContents
       : autoToc;
+
+  // Short documents should not insert empty pages before 結論 / 次のアクション.
+  if (estimatedPages < 4) {
+    for (const section of sections) {
+      section.pageBreakBefore = false;
+    }
+  }
 
   return {
     documentType,

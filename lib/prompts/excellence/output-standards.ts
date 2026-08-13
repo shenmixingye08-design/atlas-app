@@ -86,4 +86,20 @@ When the deliverable will become Excel (.xlsx):
 - Amounts as numbers (1200) not "¥1,200"; dates as YYYY-MM-DD; percentages as 15% or 0.15
 - Uncertain OCR/image values must be 要確認 — do not guess a final number
 - Add a totals/monthly/category table only when the user asked for 集計. Do not write calculated totals as static text when a SUM/SUMIF formula is expected — use a 合計 row label and numeric source rows
-- Multiple sheets only when meaningful (明細 / 月別集計 / カテゴリ別集計). Never Sheet2 for decoration`;
+- Multiple sheets only when meaningful (明細 / 月別集計 / カテゴリ別集計). Never Sheet2 for decoration
+
+When the deliverable will become a Word document (.docx) — not a blog post:
+- Detect the document purpose (報告書 / 提案書 / 議事録 / 手順書 / 案内文) and use matching section headings
+- Lead with 概要 or 結論 when the document is a report. Do not bury the point
+- Short paragraphs. No AI filler, no Key points / Overview / Thank you
+- Use markdown tables for comparisons. Numbered lists for procedures
+- Do not invent numbers. Do not leave Markdown markers in the body
+
+When the deliverable type is blog (WordPress article — not a Word document):
+- Write a publishable Japanese article: title, intro, logical H2s, concrete examples
+- Match structure to intent (How-to, comparison, FAQ, product, news). Do not force the same H2×5 template
+- Title must describe the article. No clickbait, no keyword stuffing
+- Provide seo.description (excerpt), tags, and optional FAQ. Do not guarantee search rankings
+- Do not invent prices, laws, statistics, or citations. Mark unknowns as 要確認
+- CTA only when the article purpose needs it
+- Do not wrap the article in English SEO chrome headings`;

@@ -424,7 +424,21 @@ function buildFooter(
         color: template.colors.mutedHex,
       }),
       new TextRun({
-        children: ["", PageNumber.CURRENT],
+        children: [PageNumber.CURRENT],
+        font: {
+          ascii: resolveFonts(template, brand).ascii,
+          eastAsia: resolveFonts(template, brand).eastAsia,
+          hAnsi: resolveFonts(template, brand).ascii,
+        },
+        size: CAPTION_SIZE,
+        color: template.colors.mutedHex,
+      }),
+      run(" / ", template, brand, {
+        size: CAPTION_SIZE,
+        color: template.colors.mutedHex,
+      }),
+      new TextRun({
+        children: [PageNumber.TOTAL_PAGES],
         font: {
           ascii: resolveFonts(template, brand).ascii,
           eastAsia: resolveFonts(template, brand).eastAsia,

@@ -28,7 +28,10 @@ const STRUCTURED_DELIVERABLE_OUTPUT = `Return ONLY valid JSON (no prose outside 
   },
   "snsPost": "string — social post copy when relevant",
   "topic": "string",
-  "audience": "string"
+  "audience": "string",
+  "cta": "string — optional next step, only when the piece needs it",
+  "excerpt": "string — blog only",
+  "slug": "string — blog only"
 }`;
 
 /** Builds the Worker task prompt for a single work item. */

@@ -5,6 +5,7 @@ import {
   isWordTemplateId,
   type WordTemplateId,
 } from "../word-templates";
+import { cleanDeliverableSource } from "./clean-content";
 import {
   documentModelSchema,
   parseDocumentModel,
@@ -12,7 +13,9 @@ import {
   type DocumentModelBlock,
   type DocumentModelParseResult,
 } from "./document-model-schema";
-import { cleanDeliverableSource } from "./clean-content";
+import { DOCUMENT_TYPE_LABELS } from "./section-templates";
+import { buildStructuredDocument } from "./structure-document";
+import type { DocumentBlock } from "./types";
 
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 
@@ -110,9 +113,65 @@ function normalizeBlocks(blocks: DocumentModelBlock[]): DocumentModelBlock[] {
   return result;
 }
 
+function mapStructuredBlock(block: DocumentBlock): DocumentModelBlock | null {
+  switch (block.type) {
+    case "paragraph": {
+      const text = sanitizeText(block.text);
+      return text ? { type: "paragraph", text } : null;
+    }
+    case "bulletList":
+    case "numberedList": {
+      const items = block.items.map(sanitizeText).filter(Boolean);
+      return items.length > 0 ? { type: block.type, items } : null;
+    }
+    case "table": {
+      const table = normalizeTable(block.headers, block.rows);
+      if (table.headers.length > 0 && table.rows.length > 0) {
+        return { type: "table", ...table };
+      }
+      return null;
+    }
+    case "callout": {
+      const text = sanitizeText(block.text);
+      return text ? { type: "notice", variant: block.variant, text } : null;
+    }
+    case "keyCard": {
+      const items = block.items.map(sanitizeText).filter(Boolean);
+      return items.length > 0 ? { type: "bulletList", items } : null;
+    }
+    case "imagePlaceholder": {
+      const dataUrl =
+        typeof block.dataUrl === "string" &&
+        /^data:image\/(png|jpeg|jpg|webp);base64,/i.test(block.dataUrl)
+          ? block.dataUrl
+          : undefined;
+      return {
+        type: "imagePlaceholder",
+        caption: sanitizeText(block.caption) || "画像",
+        ...(dataUrl ? { dataUrl } : {}),
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+function firstPlainText(blocks: DocumentBlock[]): string {
+  for (const block of blocks) {
+    if (block.type === "paragraph" && block.text.trim()) return sanitizeText(block.text);
+    if (
+      (block.type === "bulletList" || block.type === "numberedList") &&
+      block.items[0]
+    ) {
+      return sanitizeText(block.items[0]);
+    }
+  }
+  return "";
+}
+
 /**
  * Convert markdown/text (existing path) into DocumentModel.
- * Preserves backward compatibility with parseDeliverableContent.
+ * Uses structured section roles for Word — not a blog template.
  */
 export function documentModelFromMarkdown(input: {
   content: string;
@@ -134,34 +193,74 @@ export function documentModelFromMarkdown(input: {
     explicitTemplateId: input.templateId ?? null,
   });
   const template = getWordTemplate(purpose.templateId);
+  const structured = buildStructuredDocument({
+    content: cleaned,
+    assignment: input.assignment,
+    title: input.title ?? parsed.title,
+    authorLabel: input.author ?? input.companyName,
+  });
 
-  const sections = parsed.sections.map((section, index) => ({
+  const structuredSections = [...structured.sections];
+  let summary: string | undefined;
+  if (structuredSections[0]?.role === "summary") {
+    const extracted = firstPlainText(structuredSections[0].blocks);
+    if (extracted) {
+      summary = extracted;
+      structuredSections.shift();
+    }
+  }
+
+  const sections = structuredSections.map((section, index) => ({
     id: `section_${index + 1}`,
-    level: section.level,
+    level: (section.level === 1 ? 1 : 2) as 1 | 2 | 3,
     title: sanitizeText(section.title),
-    blocks: normalizeBlocks(
-      section.blocks.map((block): DocumentModelBlock => {
-        if (block.type === "table") {
-          const table = normalizeTable(block.headers, block.rows);
-          return { type: "table", ...table };
-        }
-        return block;
-      }),
-    ),
+    blocks: section.blocks
+      .map(mapStructuredBlock)
+      .filter((block): block is DocumentModelBlock => Boolean(block)),
     pageBreakBefore:
-      template.pageBreakRule === "before_h1"
-        ? section.level === 1 && index > 0
-        : template.pageBreakRule === "before_major_sections"
-          ? section.level === 1 && index > 0
-          : false,
+      cleaned.length >= 2_800 &&
+      (Boolean(section.pageBreakBefore) ||
+        (template.pageBreakRule === "before_h1" &&
+          section.level === 1 &&
+          index > 0) ||
+        (template.pageBreakRule === "before_major_sections" &&
+          section.level === 1 &&
+          index > 0)),
     keepWithNext: true,
   }));
 
+  if (
+    structured.meta.fields.length > 0 &&
+    !sections.some((section) => section.title === "会議情報")
+  ) {
+    sections.unshift({
+      id: "section_meta",
+      level: 2,
+      title: "会議情報",
+      blocks: [
+        {
+          type: "keyValue",
+          pairs: structured.meta.fields.map((field) => ({
+            label: sanitizeText(field.label),
+            value: sanitizeText(field.value) || "未記入",
+          })),
+        },
+      ],
+      pageBreakBefore: false,
+      keepWithNext: true,
+    });
+  }
+
   const explicitTitle = input.title ? sanitizeText(input.title) : "";
+  const typeLabel = DOCUMENT_TYPE_LABELS[structured.documentType];
+  const subtitle =
+    parsed.subtitle && parsed.subtitle !== typeLabel
+      ? sanitizeText(parsed.subtitle)
+      : undefined;
 
   const model: DocumentModel = {
-    title: explicitTitle || sanitizeText(parsed.title) || "文書",
-    subtitle: parsed.subtitle ? sanitizeText(parsed.subtitle) : undefined,
+    title: explicitTitle || sanitizeText(structured.title || parsed.title) || "文書",
+    subtitle,
     documentType: purpose.purpose,
     templateId: purpose.templateId,
     language: "ja",
@@ -169,16 +268,30 @@ export function documentModelFromMarkdown(input: {
     companyName: input.companyName ? sanitizeText(input.companyName) : undefined,
     recipient: input.recipient ? sanitizeText(input.recipient) : undefined,
     createdAt: input.createdAt,
-    sections,
-    summary: undefined,
+    sections: sections.filter(
+      (section) => section.title.trim() && section.blocks.length > 0,
+    ),
+    summary: summary || undefined,
     footerNote: input.footerNote ? sanitizeText(input.footerNote) : undefined,
     metadata: {
       purpose: purpose.purpose,
       purposeConfidence: purpose.confidence,
       matchedRule: purpose.matchedRule,
-      includeToc: template.includeToc || parsed.includeTableOfContents,
+      documentIntent: structured.documentType,
+      includeToc: template.includeToc || structured.includeTableOfContents,
     },
   };
+
+  if (model.sections.length === 0) {
+    model.sections = [
+      {
+        id: "section_1",
+        level: 2,
+        title: "本文",
+        blocks: [{ type: "paragraph", text: sanitizeText(cleaned) || "（本文なし）" }],
+      },
+    ];
+  }
 
   return documentModelSchema.parse(model);
 }

@@ -64,6 +64,7 @@ const PURPOSE_RULES: PurposeRule[] = [
       /導入提案/,
       /太陽光発電.*提案/,
       /提案を?(?:Word|ワード)?で/,
+      /企画書/,
     ],
   },
   {
@@ -104,6 +105,8 @@ const PURPOSE_RULES: PurposeRule[] = [
       /週次報告/,
       /実績報告/,
       /報告書にして/,
+      /社内文書/,
+      /調査レポート/,
     ],
   },
 ];

@@ -1,7 +1,8 @@
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { execFileSync } from "child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import JSZip from "jszip";
 
 const authMock = vi.fn();
 vi.mock("@clerk/nextjs/server", () => ({
@@ -67,16 +68,13 @@ describe("docx binary integrity (P0)", () => {
     expect(listing).toContain("word/_rels/");
     expect(listing).toContain("_rels/.rels");
 
-    execFileSync("unzip", ["-o", path, "-d", join(OUT, "unzipped")]);
-    expect(existsSync(join(OUT, "unzipped", "word", "document.xml"))).toBe(true);
-    expect(existsSync(join(OUT, "unzipped", "[Content_Types].xml"))).toBe(true);
-    expect(existsSync(join(OUT, "unzipped", "_rels", ".rels"))).toBe(true);
-    expect(existsSync(join(OUT, "unzipped", "word", "_rels", "document.xml.rels"))).toBe(true);
+    const zip = await JSZip.loadAsync(generated.buffer);
+    expect(zip.file("word/document.xml")).toBeTruthy();
+    expect(zip.file("[Content_Types].xml")).toBeTruthy();
+    expect(zip.file("_rels/.rels")).toBeTruthy();
+    expect(zip.file("word/_rels/document.xml.rels")).toBeTruthy();
 
-    const docXml = readFileSync(
-      join(OUT, "unzipped", "word", "document.xml"),
-      "utf8",
-    );
+    const docXml = (await zip.file("word/document.xml")?.async("string")) ?? "";
     expect(docXml).toContain("w:document");
     expect(docXml).toMatch(/日本語|本番|Word/);
   });

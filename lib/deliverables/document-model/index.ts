@@ -37,3 +37,9 @@ export {
   documentModelFromMarkdown,
   resolveDocumentModel,
 } from "./normalize-document-model";
+export { verifyDocxDocument, type DocxVerifyResult } from "./verify-docx";
+export {
+  estimateWordPipelineCost,
+  evaluateWordPlanSafety,
+  type WordCostEstimate,
+} from "./word-cost-estimate";

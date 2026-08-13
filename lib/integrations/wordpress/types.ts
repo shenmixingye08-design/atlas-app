@@ -79,6 +79,8 @@ export type WordPressPostPayload = {
   /** Remote image URL — server fetches and uploads as featured media. */
   featuredImageUrl?: string;
   featuredImageAlt?: string;
+  /** Native WP REST slug. Optional — never invent on disconnected posts. */
+  slug?: string;
 };
 
 export type WordPressPostResult = {

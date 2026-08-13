@@ -44,7 +44,16 @@ const RULES: Rule[] = [
   {
     type: "report",
     weight: 4,
-    patterns: [/報告書/, /報告資料/, /実績報告/, /結果報告/, /月次報告/, /週次報告/],
+    patterns: [
+      /報告書/,
+      /報告資料/,
+      /実績報告/,
+      /結果報告/,
+      /月次報告/,
+      /週次報告/,
+      /社内文書/,
+      /社内資料/,
+    ],
   },
   {
     type: "plan",
@@ -76,7 +85,7 @@ function scoreText(text: string, rule: Rule): number {
  * Prefers explicit Japanese document labels over generic keywords.
  */
 export function detectDocumentType(input: {
-  content: string;
+  content?: string;
   assignment?: string;
   title?: string;
 }): DocumentType {

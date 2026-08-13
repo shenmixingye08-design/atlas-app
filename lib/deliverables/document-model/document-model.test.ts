@@ -44,6 +44,14 @@ describe("cleanDeliverableSource", () => {
     expect(cleaned).not.toContain("`");
     expect(cleaned).toContain("重要な点はこれです。");
   });
+
+  it("preserves image data URL markdown for Word embed", () => {
+    const src =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const cleaned = cleanDeliverableSource(`# 現地\n\n![図1](${src})\n`);
+    expect(cleaned).toContain("![図1](");
+    expect(cleaned).toContain("data:image/png;base64,");
+  });
 });
 
 describe("buildStructuredDocument", () => {
