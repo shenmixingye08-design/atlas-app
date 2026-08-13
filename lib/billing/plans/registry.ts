@@ -142,7 +142,8 @@ export const PLAN_DEFINITIONS: readonly PlanDefinition[] = [
   {
     planId: "light",
     name: "Light",
-    description: "まずAI秘書を日常的に使いたい個人向け",
+    description:
+      "文章作成・投稿文づくりを日常的に任せたい方向け。缶コーヒー数本分の価格で、AI秘書を毎日の仕事に。",
     monthlyPriceJpy: 980,
     stripePriceId: process.env.STRIPE_PRICE_LIGHT?.trim() || null,
     limits: LIGHT_LIMITS,
@@ -188,6 +189,7 @@ export const PLAN_DEFINITIONS: readonly PlanDefinition[] = [
       "高度な自動化",
       "高品質モード",
       "優先処理",
+      "Memory",
     ],
     notes: [highlightXUrlNote(PREMIUM_LIMITS.xUrlPostsMonthly)],
   },

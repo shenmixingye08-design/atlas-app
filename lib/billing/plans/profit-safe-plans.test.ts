@@ -111,6 +111,19 @@ describe("profit-safe plan registry SoT", () => {
     expect(premium.features).toContain("priority_processing");
   });
 
+  it("shows Memory on paid plans and keeps Light copy within entitlements", () => {
+    const light = getPlanDefinition("light");
+    const standard = getPlanDefinition("standard");
+    const premium = getPlanDefinition("premium");
+
+    expect(light.highlights).toContain("Memory");
+    expect(standard.highlights).toContain("Memory");
+    expect(premium.highlights).toContain("Memory");
+    expect(light.description).toContain("文章作成・投稿文づくり");
+    expect(light.description).not.toContain("手放す");
+    expect(light.description).not.toMatch(/X自動|WordPress|Google連携/);
+  });
+
   it("keeps snsPostsMonthly aliased to xAutoPostsMonthly", () => {
     for (const plan of listPlanDefinitions()) {
       expect(plan.limits.snsPostsMonthly).toBe(plan.limits.xAutoPostsMonthly);
