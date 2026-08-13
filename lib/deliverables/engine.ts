@@ -194,7 +194,10 @@ async function generateVerifiedFile(
       ...(memoryOverlay?.excel ?? {}),
       assignment: assignment ?? null,
     },
-    powerpoint: memoryOverlay?.powerpoint ?? null,
+    powerpoint: {
+      ...(memoryOverlay?.powerpoint ?? {}),
+    },
+    assignment: assignment ?? null,
     pdf: memoryOverlay?.pdf ?? null,
   };
 

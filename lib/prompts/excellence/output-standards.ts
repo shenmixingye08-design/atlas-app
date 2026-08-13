@@ -95,6 +95,13 @@ When the deliverable will become a Word document (.docx) — not a blog post:
 - Use markdown tables for comparisons. Numbered lists for procedures
 - Do not invent numbers. Do not leave Markdown markers in the body
 
+When the deliverable will become PowerPoint (.pptx):
+- Write Japanese section headings that already contain the conclusion when possible (売上は前年比18%増加 — not 売上について)
+- Keep each section to 3–5 short bullets. Do not paste long paragraphs
+- Use markdown tables for numeric comparisons; numbered lists for processes
+- Do not use English chrome titles (Key points, Overview, Summary, Thank you)
+- Do not invent numbers. Only include figures present in the assignment or source
+
 When the deliverable type is blog (WordPress article — not a Word document):
 - Write a publishable Japanese article: title, intro, logical H2s, concrete examples
 - Match structure to intent (How-to, comparison, FAQ, product, news). Do not force the same H2×5 template

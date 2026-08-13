@@ -2,24 +2,28 @@ import "server-only";
 
 import pptxgen from "pptxgenjs";
 
-import { ui } from "@/lib/i18n";
 import { resolveEmbeddedImage } from "../embedded-image";
-import {
-  extractSummaryPoints,
-  parseDeliverableContent,
-} from "../parse-content";
-import type { ContentBlock, ParsedDeliverable, ParsedSection } from "../parse-content";
+import { parseDeliverableContent } from "../parse-content";
+import type { ParsedDeliverable } from "../parse-content";
 import {
   contentBodyOrigin,
+  paintComparison,
   paintContentHeading,
+  paintCta,
+  paintKeyNumber,
+  paintKpiCards,
+  paintProcess,
   paintSectionDivider,
   paintTitleSlide,
+  paintTwoColumn,
 } from "../pptx-templates/layouts";
 import {
   injectPptxThemeAccent,
   resolvePptxDesign,
   type ResolvedPptxDesign,
 } from "../pptx-templates";
+import { buildSlideStoryboard, type SlidePlan } from "../pptx-storyboard/storyboard";
+import type { PptxChartSpec } from "../pptx-storyboard/charts";
 import type { DeliverableGenerator, GeneratedDeliverableFile } from "../types";
 
 import { createDeliverableFile, formatGeneratedDate } from "./shared";
@@ -29,7 +33,6 @@ type PptxGenerateOptions = {
   companyName?: string | null;
   assignment?: string | null;
   title?: string | null;
-  /** Optional logo/image data URL embedded on the title slide (P1-08). */
   logoDataUrl?: string | null;
   powerpoint?: {
     brandColorHex?: string | null;
@@ -42,63 +45,26 @@ type PptxGenerateOptions = {
   } | null;
 };
 
-function chunkText(text: string, maxLength = 900): string[] {
-  if (text.length <= maxLength) return [text];
-
-  const chunks: string[] = [];
-  let remaining = text;
-
-  while (remaining.length > maxLength) {
-    const slicePoint = remaining.lastIndexOf("\n\n", maxLength);
-    const splitAt = slicePoint > 200 ? slicePoint : maxLength;
-    chunks.push(remaining.slice(0, splitAt).trim());
-    remaining = remaining.slice(splitAt).trim();
-  }
-
-  if (remaining) chunks.push(remaining);
-  return chunks;
-}
-
-function chunkBulletItems(items: string[], maxPerSlide = 6): string[][] {
-  const chunks: string[][] = [];
-  for (let i = 0; i < items.length; i += maxPerSlide) {
-    chunks.push(items.slice(i, i + maxPerSlide));
-  }
-  return chunks.length > 0 ? chunks : [[]];
-}
-
-function addBodyText(
+function addBodyBullets(
   slide: pptxgen.Slide,
-  text: string,
+  items: string[],
   design: ResolvedPptxDesign,
-  options: {
-    x?: number;
-    y?: number;
-    w?: number;
-    h?: number;
-    fontSize?: number;
-    bold?: boolean;
-    bullet?: boolean;
-    lineSpacing?: number;
-    align?: "left" | "center" | "right";
-    color?: string;
-  } = {},
 ): void {
   const origin = contentBodyOrigin(design);
-  slide.addText(text, {
-    x: options.x ?? origin.x,
-    y: options.y ?? origin.y,
-    w: options.w ?? origin.w,
-    h: options.h ?? 4.5,
-    fontSize: options.fontSize ?? design.template.bodyFontSize,
-    bold: options.bold,
-    color: options.color ?? design.colors.text,
-    align: options.align ?? "left",
-    bullet: options.bullet,
-    lineSpacing: options.lineSpacing ?? 22,
-    fontFace: design.fontFace,
-    valign: "top",
-  });
+  slide.addText(
+    items.map((item) => ({ text: item, options: { bullet: true } })),
+    {
+      x: origin.x,
+      y: origin.y,
+      w: origin.w,
+      h: 3.8,
+      fontSize: Math.max(design.template.bodyFontSize, 16),
+      color: design.colors.text,
+      fontFace: design.fontFace,
+      valign: "top",
+      paraSpaceAfter: 10,
+    },
+  );
 }
 
 function addRealTable(
@@ -123,10 +89,10 @@ function addRealTable(
     })),
     ...rows.map((row) =>
       Array.from({ length: colCount }, (_, index) => ({
-        text: row[index] || " ",
+        text: formatTableCell(row[index] || " "),
         options: {
           color: design.colors.text,
-          align: "left" as const,
+          align: looksNumeric(row[index]) ? ("right" as const) : ("left" as const),
           valign: "middle" as const,
         },
       })),
@@ -145,34 +111,79 @@ function addRealTable(
       { pt: 0.5, color: "B0B0B0" },
     ],
     fontFace: design.fontFace,
-    fontSize: 12,
+    fontSize: 13,
     color: design.colors.text,
   });
 }
 
+function looksNumeric(value: string | undefined): boolean {
+  if (!value) return false;
+  return /^-?[\d,¥￥円.%％]+$/.test(value.replace(/\s/g, ""));
+}
+
+function formatTableCell(value: string): string {
+  const trimmed = value.trim();
+  if (/^-?\d+$/.test(trimmed.replace(/,/g, ""))) {
+    const num = Number(trimmed.replace(/,/g, ""));
+    if (Number.isFinite(num)) return num.toLocaleString("ja-JP");
+  }
+  return trimmed || " ";
+}
+
+function addChart(
+  pptx: pptxgen,
+  slide: pptxgen.Slide,
+  spec: PptxChartSpec,
+  design: ResolvedPptxDesign,
+): boolean {
+  const origin = contentBodyOrigin(design);
+  // pptxgenjs 4 ChartType has bar / line / pie (no separate column type).
+  const type =
+    spec.kind === "line"
+      ? pptx.ChartType.line
+      : spec.kind === "pie"
+        ? pptx.ChartType.pie
+        : pptx.ChartType.bar;
+  try {
+    slide.addChart(type, [
+      { name: spec.title, labels: spec.categories, values: spec.values },
+    ], {
+      x: origin.x,
+      y: origin.y,
+      w: origin.w,
+      h: 3.6,
+      showValue: spec.kind !== "pie",
+      showLegend: spec.kind === "pie",
+      chartColors: [design.colors.accent, "5B8FA8", "8FAADC", "C5D9F1"],
+      chartArea: { fill: { color: "FFFFFF" } },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function addRealImage(
   slide: pptxgen.Slide,
-  block: Extract<ContentBlock, { type: "imagePlaceholder" }>,
+  image: { caption: string; dataUrl?: string },
   design: ResolvedPptxDesign,
-  y?: number,
 ): Promise<void> {
   const origin = contentBodyOrigin(design);
-  const image = await resolveEmbeddedImage({
-    dataUrl: block.dataUrl,
-    caption: block.caption,
+  const resolved = await resolveEmbeddedImage({
+    dataUrl: image.dataUrl,
+    caption: image.caption,
     marker: "P108IMG",
   });
-  const top = y ?? origin.y;
   slide.addImage({
-    data: image.pptxData,
-    x: origin.x + 0.6,
-    y: top,
-    w: Math.min(7.2, origin.w - 1.2),
-    h: 3.2,
+    data: resolved.pptxData,
+    x: origin.x + 1.4,
+    y: origin.y,
+    w: 5.6,
+    h: 2.8,
   });
-  slide.addText(block.caption, {
+  slide.addText(image.caption, {
     x: origin.x,
-    y: top + 3.3,
+    y: origin.y + 2.95,
     w: origin.w,
     h: 0.35,
     fontSize: 12,
@@ -182,131 +193,108 @@ async function addRealImage(
   });
 }
 
-function flushTextSlide(
+async function renderSlide(
   pptx: pptxgen,
-  title: string,
-  body: string,
+  plan: SlidePlan,
   design: ResolvedPptxDesign,
-  options?: { bullet?: boolean },
-): number {
-  const chunks = chunkText(body);
-  chunks.forEach((chunk, index) => {
-    const slide = pptx.addSlide();
-    paintContentHeading(
-      pptx,
-      slide,
-      index === 0 ? title : `${title} (cont.)`,
-      design,
-    );
-    addBodyText(slide, chunk || " ", design, {
-      y: contentBodyOrigin(design).y + 0.05,
-      lineSpacing: 24,
-      bullet: options?.bullet,
-    });
-  });
-  return chunks.length;
-}
-
-async function addSectionSlides(
-  pptx: pptxgen,
-  section: ParsedSection,
-  design: ResolvedPptxDesign,
-  includeDivider: boolean,
-): Promise<{ tables: number; images: number; slides: number }> {
-  let slides = 0;
-  if (includeDivider && design.template.showSectionDividers) {
-    const divider = pptx.addSlide();
-    paintSectionDivider(pptx, divider, section.title, design);
-    slides += 1;
-  }
-
+): Promise<{ tables: number; images: number }> {
+  const slide = pptx.addSlide();
   let tables = 0;
   let images = 0;
-  let pendingText: string[] = [];
 
-  const flushPending = (titleSuffix = "") => {
-    if (pendingText.length === 0) return;
-    slides += flushTextSlide(
-      pptx,
-      titleSuffix ? `${section.title}${titleSuffix}` : section.title,
-      pendingText.join("\n\n"),
-      design,
-    );
-    pendingText = [];
-  };
-
-  for (const block of section.blocks) {
-    switch (block.type) {
-      case "paragraph":
-        pendingText.push(block.text);
-        break;
-      case "bulletList": {
-        flushPending();
-        const bulletChunks = chunkBulletItems(block.items);
-        bulletChunks.forEach((items, index) => {
-          const slide = pptx.addSlide();
-          paintContentHeading(
-            pptx,
-            slide,
-            index === 0
-              ? `${section.title} — Key points`
-              : `${section.title} — Key points (cont.)`,
-            design,
-          );
-          addBodyText(slide, items.join("\n"), design, {
-            y: contentBodyOrigin(design).y + 0.1,
-            bullet: true,
-            fontSize: design.template.bodyFontSize + 1,
-            lineSpacing: 26,
-          });
-          slides += 1;
-        });
-        break;
-      }
-      case "numberedList":
-        pendingText.push(
-          ...block.items.map((item, index) => `${index + 1}. ${item}`),
-        );
-        break;
-      case "table": {
-        flushPending();
-        const slide = pptx.addSlide();
-        paintContentHeading(pptx, slide, section.title, design);
-        addRealTable(slide, block.headers, block.rows, design);
-        tables += 1;
-        slides += 1;
-        break;
-      }
-      case "imagePlaceholder": {
-        flushPending();
-        const slide = pptx.addSlide();
-        paintContentHeading(pptx, slide, section.title, design);
-        await addRealImage(slide, block, design);
-        images += 1;
-        slides += 1;
-        break;
-      }
+  if (plan.layout === "title") {
+    paintTitleSlide(pptx, slide, plan.title, plan.message, design);
+    const footer =
+      design.companyName?.trim() ||
+      `MINERVOT · ${formatGeneratedDate()}`;
+    slide.addText(footer, {
+      x: 0.6,
+      y: 4.85,
+      w: 8.8,
+      h: 0.35,
+      fontSize: 11,
+      color:
+        design.template.titleLayout === "full-bleed"
+          ? design.colors.accentLight
+          : design.colors.muted,
+      align: "center",
+      fontFace: design.fontFace,
+    });
+    if (design.logoDataUrl) {
+      const logo = await resolveEmbeddedImage({
+        dataUrl: design.logoDataUrl,
+        caption: "logo",
+      });
+      slide.addImage({
+        data: logo.pptxData,
+        x: 8.6,
+        y: 0.25,
+        w: 0.9,
+        h: 0.9,
+      });
     }
+    return { tables, images };
   }
 
-  flushPending();
-  return { tables, images, slides };
-}
+  if (plan.layout === "divider") {
+    paintSectionDivider(pptx, slide, plan.title, design);
+    return { tables, images };
+  }
 
-function shouldIncludeDividers(
-  design: ResolvedPptxDesign,
-  sectionCount: number,
-): boolean {
-  if (!design.template.showSectionDividers) return false;
-  if (design.slideCountHint == null) return true;
-  // Rough budget: title + optional agenda + sections*2 + summary + closing
-  const estimate =
-    1 +
-    (design.template.showAgenda ? 1 : 0) +
-    sectionCount * 2 +
-    1 +
-    (design.template.showClosing ? 1 : 0);
-  return estimate <= design.slideCountHint + 2;
+  if (plan.layout === "cta") {
+    paintCta(pptx, slide, plan.title, plan.message, design);
+    return { tables, images };
+  }
+
+  paintContentHeading(pptx, slide, plan.title, design);
+
+  switch (plan.layout) {
+    case "kpi_cards":
+      if (plan.kpis?.length) paintKpiCards(pptx, slide, plan.kpis, design);
+      break;
+    case "key_number":
+      if (plan.kpis?.[0]) {
+        paintKeyNumber(pptx, slide, plan.kpis[0].value, plan.kpis[0].label, design);
+      }
+      break;
+    case "two_column":
+      if (plan.columns) {
+        paintTwoColumn(pptx, slide, plan.columns.left, plan.columns.right, design);
+      }
+      break;
+    case "comparison":
+      if (plan.comparison) paintComparison(pptx, slide, plan.comparison, design);
+      break;
+    case "process":
+    case "timeline":
+      if (plan.steps?.length) {
+        paintProcess(pptx, slide, plan.steps, design, plan.layout);
+      }
+      break;
+    case "table":
+      if (plan.table) {
+        addRealTable(slide, plan.table.headers, plan.table.rows, design);
+        tables += 1;
+      }
+      break;
+    case "chart":
+      if (plan.chart) addChart(pptx, slide, plan.chart, design);
+      else if (plan.bullets?.length) addBodyBullets(slide, plan.bullets, design);
+      break;
+    case "image":
+      if (plan.image) {
+        await addRealImage(slide, plan.image, design);
+        images += 1;
+      }
+      break;
+    case "summary":
+    case "bullets":
+    default:
+      if (plan.bullets?.length) addBodyBullets(slide, plan.bullets, design);
+      break;
+  }
+
+  return { tables, images };
 }
 
 async function buildPptxBuffer(
@@ -332,115 +320,32 @@ async function buildPptxBuffer(
     companyName: options?.companyName,
   });
 
-  const pptx = new pptxgen();
-  pptx.layout = "LAYOUT_16x9";
-  pptx.author = design.companyName ?? "Atlas";
-  pptx.title = parsed.title;
-  pptx.subject = `${ui.generated.engine} · ${design.template.id}`;
-
-  const titleSlide = pptx.addSlide();
-  paintTitleSlide(pptx, titleSlide, parsed.title, parsed.subtitle, design);
-  const footerColor =
-    design.template.titleLayout === "full-bleed"
-      ? design.colors.accentLight
-      : design.colors.muted;
-  titleSlide.addText(`Generated by Atlas · ${formatGeneratedDate()}`, {
-    x: 0.6,
-    y: 4.8,
-    w: 8.8,
-    h: 0.4,
-    fontSize: 12,
-    color: footerColor,
-    align: "center",
-    fontFace: design.fontFace,
+  const { slides } = buildSlideStoryboard({
+    parsed,
+    assignment: options?.assignment ?? options?.title,
+    showAgenda: design.template.showAgenda,
+    showSectionDividers: design.template.showSectionDividers,
+    showClosing: design.template.showClosing,
+    slideCountHint: design.slideCountHint,
   });
 
-  if (design.logoDataUrl) {
-    const logo = await resolveEmbeddedImage({
-      dataUrl: design.logoDataUrl,
-      caption: "logo",
-    });
-    titleSlide.addImage({
-      data: logo.pptxData,
-      x: 8.6,
-      y: 0.25,
-      w: 0.9,
-      h: 0.9,
-    });
-  }
+  const pptx = new pptxgen();
+  pptx.layout = "LAYOUT_16x9";
+  pptx.author = design.companyName ?? "MINERVOT";
+  pptx.title = parsed.title;
+  pptx.subject = `MINERVOT · ${design.template.id}`;
 
-  const includeDividers = shouldIncludeDividers(
-    design,
-    parsed.sections.length,
-  );
-
-  if (design.template.showAgenda) {
-    const agendaSlide = pptx.addSlide();
-    paintContentHeading(pptx, agendaSlide, ui.generated.agenda, design);
-    addBodyText(
-      agendaSlide,
-      parsed.sections.map((section) => section.title).join("\n"),
-      design,
-      {
-        y: contentBodyOrigin(design).y + 0.1,
-        bullet: true,
-        fontSize: design.template.bodyFontSize + 2,
-      },
-    );
+  const titleSlide = slides[0];
+  if (!titleSlide || titleSlide.layout !== "title") {
+    throw new Error("PowerPoint生成失敗: missing_title_slide");
   }
 
   let tables = 0;
   let images = 0;
-  for (const section of parsed.sections) {
-    const stats = await addSectionSlides(
-      pptx,
-      section,
-      design,
-      includeDividers,
-    );
+  for (const plan of slides) {
+    const stats = await renderSlide(pptx, plan, design);
     tables += stats.tables;
     images += stats.images;
-  }
-
-  const summarySlide = pptx.addSlide();
-  paintContentHeading(pptx, summarySlide, ui.generated.summary, design);
-  const summaryPoints = extractSummaryPoints(parsed);
-  const summaryChunks = chunkBulletItems(summaryPoints, 5);
-  addBodyText(summarySlide, summaryChunks[0]?.join("\n") ?? " ", design, {
-    y: contentBodyOrigin(design).y + 0.1,
-    bullet: true,
-    fontSize: design.template.bodyFontSize + 2,
-    lineSpacing: 26,
-  });
-
-  if (summaryChunks.length > 1) {
-    for (let i = 1; i < summaryChunks.length; i += 1) {
-      const slide = pptx.addSlide();
-      paintContentHeading(pptx, slide, ui.generated.summaryCont, design);
-      addBodyText(slide, summaryChunks[i]!.join("\n"), design, {
-        y: contentBodyOrigin(design).y + 0.1,
-        bullet: true,
-        fontSize: design.template.bodyFontSize + 2,
-      });
-    }
-  }
-
-  if (design.template.showClosing) {
-    const closingSlide = pptx.addSlide();
-    paintSectionDivider(pptx, closingSlide, ui.generated.thankYou, design);
-    closingSlide.addText(parsed.title, {
-      x: 0.6,
-      y: 3.5,
-      w: 8.8,
-      h: 0.5,
-      fontSize: 14,
-      color:
-        design.template.titleLayout === "left-stripe"
-          ? design.colors.muted
-          : design.colors.onAccent,
-      align: "center",
-      fontFace: design.fontFace,
-    });
   }
 
   const output = await pptx.write({ outputType: "nodebuffer" });
@@ -490,7 +395,6 @@ export class PptxDeliverableGenerator implements DeliverableGenerator {
     if (!buffer?.byteLength || buffer.subarray(0, 2).toString("utf8") !== "PK") {
       throw new Error("PowerPoint生成失敗: invalid pptx zip");
     }
-    // P1-08 fail-closed: never silently drop tables/images.
     if (tables < sourceTables) {
       throw new Error("PowerPoint生成失敗: pptx_tables_omitted");
     }

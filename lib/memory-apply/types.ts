@@ -88,6 +88,7 @@ export type MemoryDeliverableOverlay = {
     templateId: string | null;
     theme: string | null;
     logoDataUrl: string | null;
+    slideCountHint: number | null;
   };
   pdf: {
     brandColorHex: string | null;

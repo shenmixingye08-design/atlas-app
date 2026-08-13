@@ -286,6 +286,17 @@ export function buildDeliverableOverlay(
         ]) ?? null,
       theme: readField(values, ["powerpoint_theme", "ppt_theme", "theme"]) ?? null,
       logoDataUrl: brand?.logoDataUrl ?? null,
+      slideCountHint: (() => {
+        const raw = readField(values, [
+          "slideCountHint",
+          "slide_count",
+          "slideCount",
+          "枚数",
+        ]);
+        if (!raw) return null;
+        const num = Number(String(raw).replace(/[^\d.]/g, ""));
+        return Number.isFinite(num) && num > 0 ? Math.round(num) : null;
+      })(),
     },
     pdf: {
       brandColorHex: brandColorHex?.replace(/^#/, "") ?? null,

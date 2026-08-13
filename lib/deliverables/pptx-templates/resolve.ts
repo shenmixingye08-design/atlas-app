@@ -87,7 +87,7 @@ export function resolvePptxDesign(
   return {
     template,
     colors,
-    fontFace: input.fontFace?.trim() || "Calibri",
+    fontFace: input.fontFace?.trim() || "Yu Gothic",
     titleAlign: input.titleAlign ?? "center",
     slideCountHint,
     logoDataUrl: input.logoDataUrl ?? null,
