@@ -88,7 +88,7 @@ function PricingSection() {
             合えば、月980円。
           </h2>
           <p className="mt-5 text-sm leading-7 text-[#75686B] sm:text-base">
-            無料で1件完成させて判断。毎日の投稿・メールを手放すなら Light。
+            無料で1件完成させて判断。文章作成・投稿文づくりを日常的に任せるなら Light。
             価格の比較は
             <a href="#price-value" className="mx-1 text-[#74172A] underline-offset-2 hover:underline">
               こちら
@@ -152,11 +152,9 @@ function PricingSection() {
                     isRecommended ? "text-[#74172A]" : "text-[#786B6E]",
                   )}
                 >
-                  {plan.planId === "light"
-                    ? "毎日の投稿・メールを手放す定番。缶コーヒー数本分の比較は上のセクション。"
-                    : plan.planId === "free"
-                      ? "無料で1件完成まで体験。クレジットカード不要。"
-                      : plan.description}
+                  {plan.planId === "free"
+                    ? "無料で1件完成まで体験。クレジットカード不要。"
+                    : plan.description}
                 </p>
 
                 <div
