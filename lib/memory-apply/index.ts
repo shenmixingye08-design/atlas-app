@@ -46,6 +46,7 @@ export { applyMemoryForRegenerate } from "./regenerate";
 export { applyMemoryForDeliverable } from "./deliverables";
 export {
   applyMemoryToStepBody,
+  overlayChatDestinationBody,
   type StepBodyMemoryApply,
 } from "./step-body";
 export { applyPublishedBodyOverlay } from "./published-body";
@@ -57,6 +58,7 @@ export { measureMemoryApplyDelta } from "./instruction-reduction";
 export {
   detectMemoryChannel,
   channelFromStepType,
+  resolveMemoryArtifactTypes,
   type MemoryArtifactChannel,
 } from "./channels";
 

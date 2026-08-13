@@ -35,6 +35,7 @@ export type MemoryApplyInput = {
   allowedScopes?: readonly PersonalMemoryScope[] | null;
   deniedScopes?: readonly PersonalMemoryScope[] | null;
   artifactTypes?: readonly string[] | null;
+  stepTypes?: readonly string[] | null;
   capabilities?: readonly string[] | null;
   /** Memory OFF for A/B comparison */
   memoryEnabled?: boolean;
@@ -65,6 +66,7 @@ export async function MemoryApply(
     allowedScopes: input.allowedScopes,
     deniedScopes: input.deniedScopes,
     artifactTypes: input.artifactTypes,
+    stepTypes: input.stepTypes,
     capabilities: input.capabilities,
     memoryEnabled: input.memoryEnabled,
   };

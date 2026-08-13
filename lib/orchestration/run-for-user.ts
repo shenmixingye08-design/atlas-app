@@ -193,6 +193,11 @@ export async function runOrchestrationForUser(
               ? input.metadata.deliverableType
               : "document",
           ],
+          stepTypes: Array.isArray(input.metadata?.stepTypes)
+            ? input.metadata.stepTypes.filter(
+                (step): step is string => typeof step === "string",
+              )
+            : undefined,
           capabilities: ["commander", "orchestration"],
         });
         for (const channel of ["orchestration", "workflow"] as const) {
@@ -216,9 +221,20 @@ export async function runOrchestrationForUser(
           };
         } else {
           // Fallback resolve if injection empty but Memory still resolved
+          const { resolveMemoryArtifactTypes } = await import(
+            "@/lib/memory-apply/channels"
+          );
           const { result: personalResolved } = await resolveForContext({
             userId: input.userId,
             notes: input.assignment,
+            artifactTypes: resolveMemoryArtifactTypes({
+              assignment: input.assignment,
+              classifierTypes: [
+                typeof input.metadata?.deliverableType === "string"
+                  ? input.metadata.deliverableType
+                  : "document",
+              ],
+            }),
           });
           if (personalResolved.injectionText) {
             personalMemoryMeta = {
@@ -233,7 +249,7 @@ export async function runOrchestrationForUser(
     }
   }
 
-  const result = sanitizeOrchestrationResultForClient(
+  let result = sanitizeOrchestrationResultForClient(
     await orchestrate({
       assignment: input.assignment,
       metadata: {
@@ -246,6 +262,49 @@ export async function runOrchestrationForUser(
       },
     }),
   );
+
+  if (input.userId && result.deliverable) {
+    try {
+      const { overlayChatDestinationBody } = await import(
+        "@/lib/memory-apply/step-body"
+      );
+      const overlaid = await overlayChatDestinationBody({
+        userId: input.userId,
+        assignment: input.assignment,
+        content: result.deliverable.content,
+        snsPost: result.deliverable.metadata.snsPost,
+        posts: result.deliverable.metadata.posts,
+        markdown: result.deliverable.markdown,
+        plainText: result.deliverable.plainText,
+        stepTypes: Array.isArray(input.metadata?.stepTypes)
+          ? input.metadata.stepTypes.filter(
+              (step): step is string => typeof step === "string",
+            )
+          : undefined,
+      });
+      if (overlaid.memoryIdsUsed.length > 0 || overlaid.appliedKeys.length > 0) {
+        result = {
+          ...result,
+          deliverable: {
+            ...result.deliverable,
+            content: overlaid.content,
+            markdown: overlaid.markdown || result.deliverable.markdown,
+            plainText: overlaid.plainText || result.deliverable.plainText,
+            metadata: {
+              ...result.deliverable.metadata,
+              snsPost: overlaid.snsPost,
+              posts:
+                overlaid.posts.length > 0
+                  ? overlaid.posts
+                  : result.deliverable.metadata.posts,
+            },
+          },
+        };
+      }
+    } catch {
+      // Fail closed: keep generated body.
+    }
+  }
 
   const workMemory =
     usedWorkMemories.length > 0

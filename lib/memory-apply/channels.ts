@@ -14,12 +14,24 @@ export const MEMORY_CHANNEL_ALIASES: Record<
   MemoryArtifactChannel,
   readonly string[]
 > = {
-  x_post: ["x_post", "sns", "twitter", "x", "tweet", "sns_post"],
+  x_post: ["x_post", "sns", "twitter", "x", "tweet", "sns_post", "social_post"],
   wordpress: ["wordpress", "blog", "wp", "wordpress_post"],
   email: ["email", "mail", "gmail"],
   word: ["word", "docx", "document", "pdf", "pptx", "xlsx"],
   artifact: ["artifact", "general", "document"],
 };
+
+/** Generic content-classifier labels — never win over destination / step type. */
+const GENERIC_CLASSIFIER_TYPES = new Set([
+  "document",
+  "artifact",
+  "general",
+  "short_document",
+  "report",
+  "proposal",
+  "presentation",
+  "research",
+]);
 
 export function expandArtifactTypes(
   types: readonly string[] | null | undefined,
@@ -51,9 +63,10 @@ export function detectMemoryChannel(text: string): {
     /今後は?\s*全部|すべて(短く|丁寧)|どの(仕事|投稿|記事)でも|毎回すべて|全体として|全部の(仕事|投稿|記事)/.test(
       trimmed,
     );
-  const x = /(?:X投稿|ツイート|Twitter|\bXは|\bXを|\bXで|x_post|sns投稿)/i.test(
-    trimmed,
-  );
+  const x =
+    /(?:X投稿|ツイート|Twitter|\bXは|\bXを|\bXで|\bXに|\bXへ|x_post|sns投稿|エックス)/i.test(
+      trimmed,
+    );
   const wordpress =
     /WordPress|ワードプレス|ブログ|WP記事|wordpress/i.test(trimmed);
   const email = /メール|email|gmail/i.test(trimmed);
@@ -107,4 +120,48 @@ export function artifactTypesForChannel(
 ): string[] {
   if (channel === "artifact") return [];
   return [channel];
+}
+
+/**
+ * Memory scope for retrieval.
+ * Explicit destination and actual workflow step types beat generic
+ * content classification (`document` / `artifact`).
+ */
+export function resolveMemoryArtifactTypes(input: {
+  assignment?: string | null;
+  stepTypes?: readonly string[] | null;
+  classifierTypes?: readonly string[] | null;
+}): string[] {
+  const destinations = new Set<MemoryArtifactChannel>();
+
+  for (const step of input.stepTypes ?? []) {
+    const channel = channelFromStepType(step);
+    if (channel !== "artifact") destinations.add(channel);
+  }
+
+  for (const raw of input.classifierTypes ?? []) {
+    const asStep = channelFromStepType(raw);
+    if (asStep !== "artifact") destinations.add(asStep);
+  }
+
+  if (input.assignment?.trim()) {
+    const detected = detectMemoryChannel(input.assignment);
+    if (detected.channel !== "artifact") {
+      destinations.add(detected.channel);
+    }
+  }
+
+  if (destinations.size > 0) {
+    return [...destinations].flatMap((channel) =>
+      artifactTypesForChannel(channel),
+    );
+  }
+
+  return [
+    ...new Set(
+      (input.classifierTypes ?? [])
+        .map((type) => type.trim().toLowerCase())
+        .filter((type) => type.length > 0 && !GENERIC_CLASSIFIER_TYPES.has(type)),
+    ),
+  ];
 }
