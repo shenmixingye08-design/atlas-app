@@ -38,6 +38,11 @@ export type ResolveMemoryInput = {
   systemDefaults?: Record<string, unknown> | null;
 };
 
+function channelCoverSuffix(memory: PersonalMemoryRecord): string {
+  if (memory.appliesTo.global) return "global";
+  return [...memory.appliesTo.artifactTypes].sort().join("|") || "local";
+}
+
 function asResolved(
   memory: PersonalMemoryRecord,
   layer: ResolvedMemoryValue["layer"],
@@ -84,16 +89,6 @@ export function resolvePersonalMemories(
     return false;
   });
 
-  // Conflict detection uses scope-filtered actives *before* dedupe,
-  // so global vs automation-specific collisions are visible.
-  const scopeFiltered = active.filter((memory) => {
-    const allowed = input.allowedScopes ? new Set(input.allowedScopes) : null;
-    const denied = new Set(input.deniedScopes ?? []);
-    if (denied.has(memory.scope)) return false;
-    if (allowed && !allowed.has(memory.scope)) return false;
-    return true;
-  });
-
   const relevant = selectRelevantMemories({
     memories: active,
     allowedScopes: input.allowedScopes,
@@ -106,7 +101,7 @@ export function resolvePersonalMemories(
 
   const instructionKeys = input.currentInstruction ?? {};
   const conflicts = detectMemoryConflicts({
-    candidates: scopeFiltered,
+    candidates: relevant,
     currentInstructionKeys: instructionKeys,
     notesText: input.notes,
   });
@@ -145,15 +140,17 @@ export function resolvePersonalMemories(
 
   // Layer 5 — memories (automation-specific already preferred in selectRelevant)
   for (const memory of relevant) {
+    // Current instruction / locked override still win for this key/scope.
     if (coveredScopes.has(memory.scope) || coveredScopes.has(memory.key)) {
       continue;
     }
+    const coverKey = `${memory.scope}:${memory.key}:${channelCoverSuffix(memory)}`;
+    if (coveredScopes.has(coverKey)) continue;
     const layer = memory.appliesTo.global
       ? "global_memory"
       : "automation_override";
     used.push(asResolved(memory, layer));
-    coveredScopes.add(memory.scope);
-    coveredScopes.add(memory.key);
+    coveredScopes.add(coverKey);
   }
 
   const policy = applyConflictPolicy({ conflicts, resolved: used });

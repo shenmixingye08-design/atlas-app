@@ -9,6 +9,7 @@ import {
   mapThrownProviderError,
 } from "@/lib/automation-platform/execution/adapters/map-provider-status";
 import { resolveAutomationFeatureContext } from "@/lib/automation-platform/execution/adapters/resolve-context";
+import { applyMemoryToStepBody } from "@/lib/memory-apply/step-body";
 import {
   createComposeDraftForUser,
   sendComposeEmailForUser,
@@ -24,7 +25,7 @@ export const invokeGmailAdapter: ExternalAdapter = async (input) => {
   const subject =
     configString(input.step.configuration, ["subject", "title"]) ||
     `【${input.automationName}】自動化からのお知らせ`;
-  const body = configString(input.step.configuration, [
+  let body = configString(input.step.configuration, [
     "body",
     "content",
     "message",
@@ -33,6 +34,15 @@ export const invokeGmailAdapter: ExternalAdapter = async (input) => {
   if (!body) {
     return configMissingInput("メール本文が設定されていません");
   }
+
+  const applied = await applyMemoryToStepBody({
+    userId: input.userId,
+    channel: "email",
+    baseline: body,
+    automationId: input.automationId,
+    assignment: subject,
+  });
+  body = applied.text || body;
 
   const mode =
     configString(input.step.configuration, ["mode"]) || "send";

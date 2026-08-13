@@ -55,6 +55,11 @@ export type MemoryContentOverlay = {
   preferShort: boolean;
   preferBullets: boolean;
   preferConclusionFirst: boolean;
+  preferNoEmoji: boolean;
+  preferHeadings: boolean;
+  preferCta: boolean;
+  preferSeo: boolean;
+  ctaText: string | null;
 };
 
 export type MemoryDeliverableOverlay = {

@@ -158,13 +158,27 @@ function sampleAutomation(memoryEnabled: boolean): AutomationV2 {
     },
     memoryPolicy: {
       enabled: memoryEnabled,
-      allowedScopes: [
-        "writing_style",
-        "preferred_templates",
-        "notification_preferences",
-        "timezone",
-      ],
-      deniedScopes: [],
+      allowedScopes: memoryEnabled
+        ? [
+            "writing_style",
+            "preferred_templates",
+            "notification_preferences",
+            "timezone",
+          ]
+        : [],
+      deniedScopes: memoryEnabled
+        ? []
+        : [
+            "writing_style",
+            "document_design",
+            "preferred_formats",
+            "preferred_templates",
+            "notification_preferences",
+            "timezone",
+            "locale",
+            "naming_conventions",
+            "recurring_work_preferences",
+          ],
       lockedOverrides: {},
     },
     legacyAutomationId: null,
@@ -368,6 +382,11 @@ describe("Memory Apply — content / deliverable overlays", () => {
       preferShort: false,
       preferBullets: false,
       preferConclusionFirst: false,
+      preferNoEmoji: false,
+      preferHeadings: false,
+      preferCta: false,
+      preferSeo: false,
+      ctaText: null,
     });
     // Body is cleaned; header may list the ban for generators/planner.
     expect(text).toContain("【禁止表現】");

@@ -198,6 +198,24 @@ export async function executeQueuedRun(input: {
     run = await persist(transition(run, "running", "claim_and_start"));
   }
 
+  // Re-resolve Memory at execution time so Scheduler later runs use latest prefs.
+  try {
+    const { applyMemoryForAutomation } = await import(
+      "@/lib/memory-apply/automation"
+    );
+    const latest = await applyMemoryForAutomation({
+      automation: input.automation,
+    });
+    run = await persist({
+      ...run,
+      resolvedInstruction: latest.resolvedInstruction,
+      memoryUsage: latest.memoryUsage,
+      memoryReferences: latest.memoryUsage.used,
+    });
+  } catch {
+    // Fail closed: keep enqueue snapshot.
+  }
+
   const attempt: AutomationRunAttempt = {
     attempt: run.attemptCount + 1,
     startedAt: new Date().toISOString(),

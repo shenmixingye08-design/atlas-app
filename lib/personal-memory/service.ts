@@ -484,17 +484,76 @@ export async function ingestCorrectionSignal(
   const evaluated = evaluateCorrectionForCandidate(signal);
   if (evaluated.action === "none" || !evaluated.input) return null;
 
-  // Avoid duplicate open candidates with same scope+key+summary
-  const existing = listStoredPersonalMemories(signal.userId).find(
-    (m) =>
-      m.status === "candidate" &&
-      m.scope === evaluated.input!.scope &&
-      m.key === evaluated.input!.key &&
-      m.summary === evaluated.input!.summary,
-  );
-  if (existing) return existing;
+  const channelKey = (evaluated.input.appliesTo?.artifactTypes ?? [])
+    .slice()
+    .sort()
+    .join("|");
+  const existing = listStoredPersonalMemories(signal.userId).find((m) => {
+    if (m.scope !== evaluated.input!.scope || m.key !== evaluated.input!.key) {
+      return false;
+    }
+    const existingKey = [...m.appliesTo.artifactTypes].sort().join("|");
+    if (existingKey !== channelKey) return false;
+    return m.status === "active" || m.status === "candidate";
+  });
 
-  return createPersonalMemory(signal.userId, evaluated.input);
+  if (existing && evaluated.action === "explicit_active") {
+    return updatePersonalMemory(signal.userId, existing.id, {
+      value: evaluated.input.value,
+      summary: evaluated.input.summary,
+      title: evaluated.input.title,
+      status: "active",
+      appliesTo: {
+        ...existing.appliesTo,
+        ...(evaluated.input.appliesTo ?? {}),
+      },
+    });
+  }
+
+  if (
+    existing &&
+    existing.status === "candidate" &&
+    evaluated.action === "candidate"
+  ) {
+    return existing;
+  }
+
+  const created = await createPersonalMemory(signal.userId, evaluated.input);
+
+  if (
+    evaluated.action === "candidate" &&
+    created.status === "candidate" &&
+    isUnambiguousPreferenceValue(evaluated.input.value)
+  ) {
+    try {
+      return await approveCandidate(signal.userId, created.id, {
+        scope:
+          (evaluated.input.appliesTo?.artifactTypes?.length ?? 0) > 0
+            ? "automation"
+            : "global",
+        automationId: signal.automationId ?? null,
+      });
+    } catch {
+      return created;
+    }
+  }
+
+  return created;
+}
+
+function isUnambiguousPreferenceValue(value: Record<string, unknown>): boolean {
+  if (value.length === "short" || value.length === "long") return true;
+  if (value.structure === "bullets" || value.structure === "headings") return true;
+  if (value.conclusion === "first") return true;
+  if (value.emoji === "none") return true;
+  if (value.headings === true || value.cta === true) return true;
+  if (
+    Array.isArray(value.forbiddenExpressions) &&
+    value.forbiddenExpressions.length > 0
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export async function resolveForContext(

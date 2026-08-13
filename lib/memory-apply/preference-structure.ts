@@ -10,6 +10,10 @@ export type WritingPreferenceStructure = {
   short: boolean;
   bullets: boolean;
   conclusionFirst: boolean;
+  noEmoji: boolean;
+  headings: boolean;
+  cta: boolean;
+  seo: boolean;
   keys: string[];
 };
 
@@ -26,6 +30,8 @@ function haystackFromValue(row: ResolvedMemoryValue): string {
     typeof row.value.length === "string" ? row.value.length : "",
     typeof row.value.structure === "string" ? row.value.structure : "",
     typeof row.value.conclusion === "string" ? row.value.conclusion : "",
+    typeof row.value.emoji === "string" ? row.value.emoji : "",
+    typeof row.value.tone === "string" ? row.value.tone : "",
   ];
   return parts.filter(Boolean).join(" ");
 }
@@ -36,6 +42,10 @@ export function detectWritingPreferenceStructure(
   let short = false;
   let bullets = false;
   let conclusionFirst = false;
+  let noEmoji = false;
+  let headings = false;
+  let cta = false;
+  let seo = false;
   const keys = new Set<string>();
 
   for (const row of values) {
@@ -43,6 +53,7 @@ export function detectWritingPreferenceStructure(
     const lengthFlag = String(row.value.length ?? "").toLowerCase();
     const structureFlag = String(row.value.structure ?? "").toLowerCase();
     const conclusionFlag = String(row.value.conclusion ?? "").toLowerCase();
+    const emojiFlag = String(row.value.emoji ?? "").toLowerCase();
 
     if (lengthFlag === "short" || SHORT_RE.test(hay)) {
       short = true;
@@ -64,12 +75,40 @@ export function detectWritingPreferenceStructure(
       conclusionFirst = true;
       keys.add("conclusion:first");
     }
+    if (
+      emojiFlag === "none" ||
+      emojiFlag === "off" ||
+      /絵文字(なし|無し|やめて)/.test(hay)
+    ) {
+      noEmoji = true;
+      keys.add("emoji:none");
+    }
+    if (
+      row.value.headings === true ||
+      structureFlag === "headings" ||
+      /見出し/.test(hay)
+    ) {
+      headings = true;
+      keys.add("structure:headings");
+    }
+    if (row.value.cta === true || /\bcta\b/i.test(hay) || /行動喚起/.test(hay)) {
+      cta = true;
+      keys.add("cta");
+    }
+    if (row.value.seo === true || /\bseo\b/i.test(hay)) {
+      seo = true;
+      keys.add("seo");
+    }
   }
 
   return {
     short,
     bullets,
     conclusionFirst,
+    noEmoji,
+    headings,
+    cta,
+    seo,
     keys: [...keys],
   };
 }
@@ -99,6 +138,7 @@ function extractConclusion(sentences: string[]): {
 export function applyWritingPreferenceStructure(
   base: string,
   prefs: WritingPreferenceStructure,
+  options?: { includeMarkers?: boolean },
 ): { text: string; appliedKeys: string[] } {
   if (!prefs.short && !prefs.bullets && !prefs.conclusionFirst) {
     return { text: base, appliedKeys: [] };
@@ -129,11 +169,15 @@ export function applyWritingPreferenceStructure(
     body = sentences.join("");
   }
 
+  const includeMarkers = options?.includeMarkers !== false;
   const parts: string[] = [];
   if (conclusion) {
     parts.push(`結論：${conclusion.replace(/^結論[は：:]\s*/, "")}`);
   }
-  if (prefs.short || prefs.bullets || prefs.conclusionFirst) {
+  if (
+    includeMarkers &&
+    (prefs.short || prefs.bullets || prefs.conclusionFirst)
+  ) {
     parts.push(
       `【好み反映】${[...new Set(appliedKeys)].join(" / ") || prefs.keys.join(" / ")}`,
     );

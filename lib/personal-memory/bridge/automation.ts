@@ -5,6 +5,7 @@
 import "server-only";
 
 import type { AutomationV2 } from "@/lib/automation-platform/types/automation";
+import { effectiveAutomationPreferenceScopes } from "@/lib/automation-platform/memory/contract";
 import type { AutomationMemoryScope } from "@/lib/automation-platform/types/memory-policy";
 import type { MemoryUsageRecord } from "@/lib/automation-platform/types/run";
 import { mapAutomationScopeToPersonal } from "@/lib/personal-memory/scopes";
@@ -41,7 +42,9 @@ export async function resolveMemoryForAutomation(input: {
   tokenEstimate: number;
 }> {
   const policy = input.automation.memoryPolicy;
-  if (!policy.enabled) {
+  const readable = effectiveAutomationPreferenceScopes(policy);
+  const hasOverrides = Object.keys(policy.lockedOverrides).length > 0;
+  if (readable.length === 0 && !hasOverrides) {
     return {
       memoryUsage: { used: [], updated: [], unusedScopes: [] },
       ledger: {
@@ -57,7 +60,7 @@ export async function resolveMemoryForAutomation(input: {
     };
   }
 
-  const allowed = policy.allowedScopes
+  const allowed = readable
     .map((scope) => mapAutomationScopeToPersonal(scope))
     .filter((scope): scope is NonNullable<typeof scope> => Boolean(scope));
   const denied = policy.deniedScopes

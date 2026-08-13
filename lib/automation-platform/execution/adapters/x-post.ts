@@ -9,6 +9,7 @@ import {
   mapThrownProviderError,
 } from "@/lib/automation-platform/execution/adapters/map-provider-status";
 import { resolveAutomationFeatureContext } from "@/lib/automation-platform/execution/adapters/resolve-context";
+import { applyMemoryToStepBody } from "@/lib/memory-apply/step-body";
 import { postTweetNowForUser } from "@/lib/integrations/x/post/service";
 
 export const invokeXPostAdapter: ExternalAdapter = async (input) => {
@@ -21,6 +22,16 @@ export const invokeXPostAdapter: ExternalAdapter = async (input) => {
   const hashtags = configString(input.step.configuration, ["hashtags"]);
   if (hashtags && text && !text.includes(hashtags)) {
     text = `${text}\n${hashtags}`;
+  }
+  if (text) {
+    const applied = await applyMemoryToStepBody({
+      userId: input.userId,
+      channel: "x_post",
+      baseline: text,
+      automationId: input.automationId,
+      assignment: input.automationName,
+    });
+    text = applied.text;
   }
   if (!text) {
     return configMissingInput("投稿本文が設定されていません");

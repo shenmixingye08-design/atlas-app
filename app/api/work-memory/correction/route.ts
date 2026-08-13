@@ -8,12 +8,18 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { before?: string; after?: string; sourceReference?: string };
+  let body: {
+    before?: string;
+    after?: string;
+    sourceReference?: string;
+    artifactType?: string;
+  };
   try {
     body = (await request.json()) as {
       before?: string;
       after?: string;
       sourceReference?: string;
+      artifactType?: string;
     };
   } catch {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
@@ -23,11 +29,26 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "before and after are required" }, { status: 400 });
   }
 
+  try {
+    const { ingestCorrectionInsightsToPersonalMemory } = await import(
+      "@/lib/memory-apply/correction-preferences"
+    );
+    await ingestCorrectionInsightsToPersonalMemory({
+      userId,
+      before: body.before,
+      after: body.after,
+      artifactType: body.artifactType ?? null,
+    });
+  } catch {
+    // Personal Memory ingest is best-effort; Work Memory candidate still records.
+  }
+
   const candidate = learnFromCorrectionDiff({
     userId,
     before: body.before,
     after: body.after,
     sourceReference: body.sourceReference,
+    artifactType: body.artifactType ?? null,
   });
 
   return Response.json({ candidateCreated: candidate != null, candidate });

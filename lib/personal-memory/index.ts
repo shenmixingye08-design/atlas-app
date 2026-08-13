@@ -22,5 +22,5 @@ export {
   wipePersonalMemoryForAccountDeletion,
 } from "./service";
 export { resolvePersonalMemories, toRunMemoryLedger } from "./resolve";
-export { evaluateCorrectionForCandidate, buildCandidatePrompt } from "./candidates";
+export { evaluateCorrectionForCandidate, inferPreferenceFromText, buildCandidatePrompt } from "./candidates";
 export { ensurePersonalMemoryHydrated } from "./durable";

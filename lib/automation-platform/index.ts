@@ -45,6 +45,7 @@ export {
 export {
   validateMemoryPolicy,
   resolveReadableMemoryScopes,
+  effectiveAutomationPreferenceScopes,
   applyMemoryWithOverrides,
 } from "./memory/contract";
 export {

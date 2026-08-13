@@ -44,6 +44,21 @@ export { resolveNotificationPreferencesWithMemory } from "./notifications";
 export { resolveSchedulerMemoryDefaults } from "./scheduler";
 export { applyMemoryForRegenerate } from "./regenerate";
 export { applyMemoryForDeliverable } from "./deliverables";
+export {
+  applyMemoryToStepBody,
+  type StepBodyMemoryApply,
+} from "./step-body";
+export { applyPublishedBodyOverlay } from "./published-body";
+export {
+  ingestCorrectionInsightsToPersonalMemory,
+  correctionInsightsToPreferenceText,
+} from "./correction-preferences";
+export { measureMemoryApplyDelta } from "./instruction-reduction";
+export {
+  detectMemoryChannel,
+  channelFromStepType,
+  type MemoryArtifactChannel,
+} from "./channels";
 
 /** Unified secretary Memory API */
 export { MemoryProvider } from "./provider";

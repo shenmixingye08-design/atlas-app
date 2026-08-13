@@ -392,6 +392,16 @@ export function learnFromOrchestrationWorkMemory(input: {
       correctionAfter,
     );
     if (correctionSignal) signals.push(correctionSignal);
+    void import("@/lib/memory-apply/correction-preferences")
+      .then(({ ingestCorrectionInsightsToPersonalMemory }) =>
+        ingestCorrectionInsightsToPersonalMemory({
+          userId: input.userId,
+          before: correctionBefore,
+          after: correctionAfter,
+          artifactType: input.deliverableType ?? null,
+        }),
+      )
+      .catch(() => undefined);
   }
 
   const created: WorkMemoryCandidate[] = [];
@@ -425,6 +435,7 @@ export function learnFromCorrectionDiff(input: {
   before: string;
   after: string;
   sourceReference?: string;
+  artifactType?: string | null;
 }): WorkMemoryCandidate | null {
   if (!isWorkMemoryEnabled(input.userId)) return null;
   const signal = buildCorrectionCandidate(input.before, input.after);
