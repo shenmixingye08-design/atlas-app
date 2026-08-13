@@ -95,6 +95,21 @@ describe("automation-first analytics", () => {
     expect(events).toHaveLength(1);
     expect(events[0]?.name).toBe("home_viewed");
   });
+
+  it("records the two home primary action events separately", () => {
+    resetAutomationFirstAnalyticsForTests();
+    trackAutomationFirstEvent("home_primary_one_time_clicked", {
+      source: "home_primary",
+    });
+    trackAutomationFirstEvent("home_primary_automation_clicked", {
+      source: "home_primary",
+    });
+    const names = listAutomationFirstEventsForTests().map((event) => event.name);
+    expect(names).toEqual([
+      "home_primary_one_time_clicked",
+      "home_primary_automation_clicked",
+    ]);
+  });
 });
 
 describe("automation-first navigation", () => {

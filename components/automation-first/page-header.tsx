@@ -46,17 +46,20 @@ export function SectionHeader({
   title,
   description,
   action,
+  heading = "h2",
 }: {
   title: string;
   description?: string;
   action?: React.ReactNode;
+  heading?: "h2" | "h3";
 }) {
+  const Heading = heading;
   return (
     <div className="mb-3 flex items-end justify-between gap-3">
       <div>
-        <h2 className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]">
+        <Heading className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]">
           {title}
-        </h2>
+        </Heading>
         {description ? (
           <p className="mt-0.5 text-[var(--text-caption)] text-[var(--text-muted)]">
             {description}

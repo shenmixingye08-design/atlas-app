@@ -4,18 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { AttentionCard } from "@/components/automation-first/attention-card";
-import { EmptyState } from "@/components/automation-first/empty-state";
 import { ErrorState } from "@/components/automation-first/error-state";
+import { HomePrimaryActions } from "@/components/automation-first/home-primary-actions";
 import { SectionHeader } from "@/components/automation-first/page-header";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
 import { Timeline } from "@/components/automation-first/timeline";
-import {
-  IconAlert,
-  IconCheck,
-  IconClock,
-  IconEmptyWork,
-  IconSpark,
-} from "@/components/ui/icons";
+import { IconClock } from "@/components/ui/icons";
 import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
 import {
   buildRunningJobsFromRuns,
@@ -46,118 +40,17 @@ import type { AutomationRun } from "@/lib/automation-platform/types";
 import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 import { useFeatureAvailability } from "@/lib/feature-flags";
-import { cn } from "@/lib/design-system/cn";
 
 export type AutomationFirstHomeProps = {
   automations: Automation[];
   projects: Project[];
 };
 
-function HeroStat({
-  label,
-  value,
-  unit,
-  live,
-  icon,
-  hint,
-}: {
-  label: string;
-  value: number;
-  unit?: string;
-  live?: boolean;
-  icon: React.ReactNode;
-  hint?: string;
-}) {
-  return (
-    <div
-      className="stat-tile animate-card-enter"
-      data-live={live ? "true" : "false"}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[length:var(--text-meta)] font-medium tracking-wide text-[var(--text-muted)]">
-          {label}
-        </p>
-        <span
-          className={cn(
-            "text-[var(--brand)]",
-            live && "opacity-100",
-            !live && "opacity-70",
-          )}
-          aria-hidden
-        >
-          {icon}
-        </span>
-      </div>
-      <div className="mt-1.5 flex items-baseline gap-1">
-        {live ? <span className="stat-dot" aria-hidden /> : null}
-        <p className="text-2xl font-semibold tabular-nums tracking-tight text-[var(--text-primary)] sm:text-[1.65rem]">
-          {value}
-        </p>
-        {unit ? (
-          <span className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
-            {unit}
-          </span>
-        ) : null}
-      </div>
-      {hint ? (
-        <p className="mt-1 text-[length:var(--text-meta)] leading-snug text-[var(--text-muted)]">
-          {hint}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 function HomeSkeleton() {
   return (
     <div className="space-y-4 animate-pulse" aria-busy aria-label="読み込み中">
-      <div className="h-8 w-40 rounded bg-[var(--surface-muted)]" />
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            className="h-[4.5rem] rounded-[var(--radius-md)] bg-[var(--surface-muted)]"
-          />
-        ))}
-      </div>
-      <div className="h-48 rounded-[var(--radius-lg)] bg-[var(--surface-muted)]" />
-    </div>
-  );
-}
-
-function CtaBlock({
-  createHref,
-  oneTimeHref,
-  primary = true,
-}: {
-  createHref: string;
-  oneTimeHref: string;
-  primary?: boolean;
-}) {
-  return (
-    <div className="flex flex-col gap-2 sm:flex-row">
-      <Link
-        href={createHref}
-        onClick={() =>
-          trackAutomationFirstEvent("primary_automation_cta_clicked", {
-            source: primary ? "home_main" : "home_side",
-          })
-        }
-        className="btn-brand"
-      >
-        新しい自動化を作る
-      </Link>
-      <Link
-        href={oneTimeHref}
-        onClick={() =>
-          trackAutomationFirstEvent("one_time_request_clicked", {
-            source: primary ? "home_main" : "home_side",
-          })
-        }
-        className="inline-flex min-h-[var(--touch-target)] items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] px-5 text-sm font-medium text-[var(--text-primary)] transition-all duration-[var(--motion-fast)] hover:bg-[var(--secondary-hover)] active:scale-[0.98]"
-      >
-        一度だけお願いする
-      </Link>
+      <div className="h-8 w-48 rounded bg-[var(--surface-muted)]" />
+      <div className="h-40 rounded-[var(--radius-lg)] bg-[var(--surface-muted)]" />
     </div>
   );
 }
@@ -168,13 +61,13 @@ function WeeklyStatsCard({ stats }: { stats: HomeWeeklyStats }) {
       aria-labelledby="af-week-heading"
       className="animate-card-enter rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5"
     >
-      <h2
+      <h3
         id="af-week-heading"
         className="text-[length:var(--text-label)] font-semibold text-[var(--text-primary)]"
       >
         今週の実績
-      </h2>
-      <dl className="mt-2.5 grid grid-cols-2 gap-2.5 text-sm">
+      </h3>
+      <dl className="mt-2.5 grid grid-cols-2 gap-2.5 text-sm sm:grid-cols-3">
         <div>
           <dt className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
             完了した仕事
@@ -195,7 +88,7 @@ function WeeklyStatsCard({ stats }: { stats: HomeWeeklyStats }) {
         </div>
         <div>
           <dt className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-            成果物
+            完成したもの
           </dt>
           <dd className="text-base font-semibold tabular-nums">
             {stats.artifactCount}
@@ -203,27 +96,39 @@ function WeeklyStatsCard({ stats }: { stats: HomeWeeklyStats }) {
         </div>
         <div>
           <dt className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-            自動実行したStep
+            自動で進めた手順
           </dt>
           <dd className="text-base font-semibold tabular-nums">
             {stats.autoStepCount}
           </dd>
         </div>
+        {stats.savedMinutes != null && stats.savedMinutes > 0 ? (
+          <div>
+            <dt className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+              任せた時間
+            </dt>
+            <dd className="flex items-baseline gap-1 text-base font-semibold tabular-nums">
+              <IconClock className="h-3.5 w-3.5 text-[var(--brand)]" />
+              {stats.savedMinutes}
+              <span className="text-[length:var(--text-caption)] font-medium text-[var(--text-muted)]">
+                分
+              </span>
+            </dd>
+          </div>
+        ) : null}
       </dl>
     </section>
   );
 }
 
-/** Display-only: prefer measured minutes, else proxy from existing skip estimate. */
-function savedMinutesDisplay(
-  weekly: HomeWeeklyStats,
-  completedToday: number,
-): number {
-  if (weekly.savedMinutes != null) return weekly.savedMinutes;
-  if (weekly.estimatedSkippedActions > 0) {
-    return weekly.estimatedSkippedActions;
-  }
-  return completedToday * 5;
+function hasMeaningfulWeeklyStats(stats: HomeWeeklyStats): boolean {
+  return (
+    stats.completedJobs > 0 ||
+    stats.artifactCount > 0 ||
+    stats.autoStepCount > 0 ||
+    (stats.successRatePercent != null && stats.completedJobs > 0) ||
+    (stats.savedMinutes != null && stats.savedMinutes > 0)
+  );
 }
 
 export function AutomationFirstHome({
@@ -388,27 +293,28 @@ export function AutomationFirstHome({
 
   const hasAutomations =
     automations.length > 0 || (opsSummary?.counts.activeAutomations ?? 0) > 0;
-  const createHref = "/automations/new";
-  const oneTimeHref = "/workspace";
-
-  const runningCount = summary.runningRuns;
-  const awaitingCount = Math.max(
-    summary.awaitingApprovalRuns + summary.needsInputRuns,
-    summary.attentionItemCount,
-  );
-  const completedToday = summary.completedRuns;
-  const savedMinutes = savedMinutesDisplay(weeklyStats, completedToday);
-
-  if (opsEnabled && opsLoading && !opsSummary && !opsError) {
-    return <HomeSkeleton />;
-  }
+  const isReturningUser =
+    hasAutomations ||
+    attention.length > 0 ||
+    timeline.length > 0 ||
+    runningJobs.length > 0 ||
+    recentCompleted.length > 0 ||
+    Boolean(nextRun) ||
+    summary.completedRuns > 0;
+  const showDashboardSkeleton =
+    automations.length > 0 &&
+    opsEnabled &&
+    opsLoading &&
+    !opsSummary &&
+    !opsError;
 
   const attentionSection =
     attention.length > 0 ? (
       <section aria-labelledby="af-attention-heading" className="space-y-2.5">
         <SectionHeader
-          title="対応が必要です"
-          description="承認・入力・失敗の復旧など、いま触る必要がある項目"
+          heading="h3"
+          title="対応が必要"
+          description="承認待ち・入力待ち・失敗・復旧が必要な仕事"
         />
         <div className="animate-stagger space-y-2">
           {attention.map((item) => (
@@ -440,12 +346,13 @@ export function AutomationFirstHome({
     timeline.length > 0 ? (
       <section aria-labelledby="af-timeline-heading" className="space-y-2.5">
         <SectionHeader
+          heading="h3"
           title="今日MINERVOTが行う仕事"
-          description="時刻・状態・現在の手順・次の操作"
+          description="実行予定・実行中・完了"
           action={
             <Link
               href="/today"
-              className="text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+              className="inline-flex min-h-[var(--touch-target)] items-center text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
             >
               すべて見る
             </Link>
@@ -468,12 +375,12 @@ export function AutomationFirstHome({
       aria-labelledby="af-next-run-heading"
       className="animate-card-enter rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5"
     >
-      <h2
+      <h3
         id="af-next-run-heading"
         className="text-[length:var(--text-label)] font-semibold text-[var(--text-primary)]"
       >
         次回実行
-      </h2>
+      </h3>
       <p className="mt-1.5 text-sm font-semibold text-[var(--text-primary)]">
         {nextRun.name}
       </p>
@@ -482,7 +389,7 @@ export function AutomationFirstHome({
       </p>
       <Link
         href={nextRun.href}
-        className="mt-2 inline-flex min-h-[40px] items-center text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+        className="mt-2 inline-flex min-h-[var(--touch-target)] items-center text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
       >
         詳細を見る
       </Link>
@@ -492,12 +399,12 @@ export function AutomationFirstHome({
       aria-labelledby="af-next-run-heading"
       className="animate-card-enter rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5"
     >
-      <h2
+      <h3
         id="af-next-run-heading"
         className="text-[length:var(--text-label)] font-semibold text-[var(--text-primary)]"
       >
         次回実行
-      </h2>
+      </h3>
       <p className="mt-1.5 text-sm font-semibold text-[var(--text-primary)]">
         {summary.nextJob.title}
       </p>
@@ -510,7 +417,7 @@ export function AutomationFirstHome({
   const recentSection =
     recentCompleted.length > 0 ? (
       <section aria-labelledby="af-completed-heading" className="space-y-2.5">
-        <SectionHeader title="最近完了した仕事" />
+        <SectionHeader heading="h3" title="最近完成したもの" />
         <ul className="animate-stagger divide-y divide-[var(--border)] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)]">
           {recentCompleted.map((item) => (
             <li
@@ -534,7 +441,7 @@ export function AutomationFirstHome({
                     source: "home_completed",
                   })
                 }
-                className="shrink-0 text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+                className="inline-flex min-h-[var(--touch-target)] shrink-0 items-center text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
               >
                 確認
               </Link>
@@ -544,78 +451,42 @@ export function AutomationFirstHome({
       </section>
     ) : null;
 
-  return (
-    <div className="automation-first-home space-y-5 pb-6 sm:space-y-6">
-      <header className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <p className="text-[length:var(--text-label)] font-semibold tracking-[0.1em] text-[var(--brand)]">
-              MINERVOT
-            </p>
-            <h1 className="mt-0.5 text-[length:var(--text-page-title)] font-semibold tracking-tight text-[var(--text-primary)] sm:text-[length:var(--text-display)]">
-              {greetingForHour(now.getHours())}
-            </h1>
-            <p className="mt-0.5 text-[length:var(--text-caption)] text-[var(--text-secondary)] sm:text-[length:var(--text-body)]">
-              {formatTodayDateLabel(now)}
-              {" — "}
-              今日、AI秘書が仕事を進めています
-            </p>
-          </div>
-        </div>
+  const dashboardHasContent = Boolean(
+    attentionSection ||
+      timelineSection ||
+      runningJobs.length > 0 ||
+      nextRunCard ||
+      recentSection ||
+      (opsSummary && hasMeaningfulWeeklyStats(weeklyStats)),
+  );
 
-        {/* Priority strip — AI稼働中 / 確認待ち / 今日完了 / 今日節約時間 */}
-        <div
-          className="animate-stagger grid grid-cols-2 gap-2 sm:grid-cols-4"
-          aria-label="今日のAI稼働状況"
-        >
-          <HeroStat
-            label="AI稼働中"
-            value={runningCount}
-            unit="件"
-            live={runningCount > 0}
-            icon={<IconSpark className="h-4 w-4" />}
-            hint={
-              runningCount > 0
-                ? "いま処理を進めています"
-                : "待機中 — 予定どおり動きます"
-            }
-          />
-          <HeroStat
-            label="確認待ち"
-            value={awaitingCount}
-            unit="件"
-            live={awaitingCount > 0}
-            icon={<IconAlert className="h-4 w-4" />}
-            hint={
-              awaitingCount > 0
-                ? "あなたの判断が必要です"
-                : "今すぐ対応する項目はありません"
-            }
-          />
-          <HeroStat
-            label="今日完了"
-            value={completedToday}
-            unit="件"
-            icon={<IconCheck className="h-4 w-4" />}
-            hint={
-              completedToday > 0
-                ? "すでに仕上げた仕事"
-                : "完了するとここに積み上がります"
-            }
-          />
-          <HeroStat
-            label="今日節約時間"
-            value={savedMinutes}
-            unit="分"
-            icon={<IconClock className="h-4 w-4" />}
-            hint={
-              savedMinutes > 0
-                ? "AIが肩代わりした時間"
-                : "動き出すと節約分が表示されます"
-            }
-          />
-        </div>
+  return (
+    <div className="automation-first-home space-y-6 pb-6 sm:space-y-8">
+      <header className="space-y-1.5">
+        <p className="text-[length:var(--text-label)] font-semibold tracking-[0.08em] text-[var(--brand)]">
+          {greetingForHour(now.getHours())}
+        </p>
+        <h1 className="text-[length:var(--text-page-title)] font-semibold tracking-tight text-[var(--text-primary)] sm:text-[length:var(--text-display)]">
+          MINERVOTに何を任せますか？
+        </h1>
+        <p className="text-[length:var(--text-caption)] text-[var(--text-secondary)] sm:text-[length:var(--text-body)]">
+          {formatTodayDateLabel(now)}
+          {" — "}
+          仕事を任せる。完成までMINERVOTが進めます。
+        </p>
       </header>
+
+      <HomePrimaryActions compact={isReturningUser} />
+
+      {!isReturningUser ? (
+        <p className="text-center text-[length:var(--text-body)] leading-[var(--leading-body)] text-[var(--text-secondary)]">
+          まず1件任せてみましょう。好みはMINERVOTが覚えて次回にも反映します。
+        </p>
+      ) : (
+        <p className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
+          好みはMINERVOTが覚えて次回にも反映します。
+        </p>
+      )}
 
       {opsError ? (
         <ErrorState
@@ -626,55 +497,22 @@ export function AutomationFirstHome({
         />
       ) : null}
 
-      <div className="space-y-5 lg:hidden">
-        {attentionSection}
-        {timelineSection}
-        <RunningStepsPanel
-          jobs={runningJobs}
-          onOpen={(id) =>
-            trackAutomationFirstEvent("run_detail_opened", {
-              id,
-              source: "home_running_mobile",
-            })
-          }
-        />
-        {!hasAutomations ? (
-          <EmptyState
-            title="最初の仕事をAIに任せましょう"
-            description="繰り返す仕事を一度設定すると、MINERVOTが予定どおり進めます。朝のメールや投稿から始めるのがおすすめです。"
-            primaryHref={createHref}
-            primaryLabel="新しい自動化を作る"
-            secondaryHref={oneTimeHref}
-            secondaryLabel="一度だけお願いする"
-            onPrimaryClick={() =>
-              trackAutomationFirstEvent("empty_state_cta_clicked", {
-                source: "home_empty",
-              })
-            }
-            className="border-[var(--border)] bg-[linear-gradient(180deg,var(--surface-elevated),var(--surface-muted))]"
-          />
-        ) : (
-          <CtaBlock createHref={createHref} oneTimeHref={oneTimeHref} />
-        )}
-        {nextRunCard}
-        {recentSection}
-        {opsSummary ? <WeeklyStatsCard stats={weeklyStats} /> : null}
-      </div>
+      {showDashboardSkeleton ? <HomeSkeleton /> : null}
 
-      <div className="hidden gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)]">
-        <div className="space-y-5">
-          {timelineSection ?? (
-            <section className="rounded-[var(--radius-lg)] border border-dashed border-[var(--border)] bg-[var(--surface-muted)] px-5 py-8 text-center">
-              <IconEmptyWork className="mx-auto text-[var(--brand)] opacity-70" />
-              <p className="mt-3 text-sm font-semibold text-[var(--text-primary)]">
-                今日のタイムラインはまだ静かです
-              </p>
-              <p className="mt-1 text-[length:var(--text-caption)] text-[var(--text-muted)]">
-                自動化を設定すると、ここに進行が表示されます。
-              </p>
-            </section>
-          )}
+      {!showDashboardSkeleton && dashboardHasContent ? (
+        <section
+          aria-labelledby="af-today-minervot-heading"
+          className="space-y-5"
+        >
+          <h2
+            id="af-today-minervot-heading"
+            className="text-[length:var(--text-section)] font-semibold tracking-tight text-[var(--text-primary)]"
+          >
+            今日のMINERVOT
+          </h2>
+          {attentionSection}
           <RunningStepsPanel
+            heading="h3"
             jobs={runningJobs}
             onOpen={(id) =>
               trackAutomationFirstEvent("run_detail_opened", {
@@ -683,45 +521,14 @@ export function AutomationFirstHome({
               })
             }
           />
-          {recentSection}
-          {!hasAutomations ? (
-            <EmptyState
-              title="最初の仕事をAIに任せましょう"
-              description="繰り返す仕事を一度設定すると、MINERVOTが予定どおり進めます。"
-              primaryHref={createHref}
-              primaryLabel="新しい自動化を作る"
-              secondaryHref={oneTimeHref}
-              secondaryLabel="一度だけお願いする"
-              onPrimaryClick={() =>
-                trackAutomationFirstEvent("empty_state_cta_clicked", {
-                  source: "home_empty",
-                })
-              }
-            />
-          ) : null}
-        </div>
-
-        <aside className="space-y-4">
-          {attentionSection}
-          <section className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5">
-            <h2 className="text-[length:var(--text-label)] font-semibold text-[var(--text-primary)]">
-              自動化を作る
-            </h2>
-            <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-              主役は自動化。単発のお願いも残せます。
-            </p>
-            <div className="mt-3">
-              <CtaBlock
-                createHref={createHref}
-                oneTimeHref={oneTimeHref}
-                primary={false}
-              />
-            </div>
-          </section>
+          {timelineSection}
           {nextRunCard}
-          {opsSummary ? <WeeklyStatsCard stats={weeklyStats} /> : null}
-        </aside>
-      </div>
+          {recentSection}
+          {opsSummary && hasMeaningfulWeeklyStats(weeklyStats) ? (
+            <WeeklyStatsCard stats={weeklyStats} />
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }
