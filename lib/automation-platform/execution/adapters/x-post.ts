@@ -33,8 +33,8 @@ export const invokeXPostAdapter: ExternalAdapter = async (input) => {
       text,
       context,
       automationId: input.automationId,
-      runId: input.runId,
-      occurrenceKey: input.occurrenceKey ?? input.runId,
+      // Prefer stable occurrence when available (safe-retry across run ids).
+      runId: input.occurrenceKey ?? input.runId,
       discriminator: input.step.id,
     });
 
