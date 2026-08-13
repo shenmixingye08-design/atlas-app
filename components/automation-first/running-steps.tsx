@@ -23,21 +23,25 @@ function markerLabel(marker: HomeRunningJob["steps"][number]["marker"]): string 
 export function RunningStepsPanel({
   jobs,
   onOpen,
+  heading = "h2",
 }: {
   jobs: HomeRunningJob[];
   onOpen?: (id: string) => void;
+  heading?: "h2" | "h3";
 }) {
   if (jobs.length === 0) return null;
+
+  const Heading = heading;
 
   return (
     <section aria-labelledby="af-running-heading" className="space-y-3">
       <div>
-        <h2
+        <Heading
           id="af-running-heading"
           className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]"
         >
           実行中の仕事
-        </h2>
+        </Heading>
         <p className="mt-1 text-[length:var(--text-caption)] text-[var(--text-muted)]">
           根拠のない進捗率は表示しません。各手順の状態だけを示します。
         </p>

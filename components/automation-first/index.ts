@@ -1,6 +1,7 @@
 export { AttentionCard } from "./attention-card";
 export { AutomationFirstBottomNav } from "./automation-first-bottom-nav";
 export { AutomationFirstHome } from "./automation-first-home";
+export { HomePrimaryActions } from "./home-primary-actions";
 export { AutomationRow } from "./automation-row";
 export { CreateSheet } from "./create-sheet";
 export { AutomationDesignSystemRoot } from "./design-system-root";

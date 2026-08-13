@@ -18,7 +18,9 @@ export type AutomationFirstEventName =
   | "navigation_used"
   | "empty_state_cta_clicked"
   | "error_recovery_started"
-  | "mobile_bottom_nav_used";
+  | "mobile_bottom_nav_used"
+  | "home_primary_one_time_clicked"
+  | "home_primary_automation_clicked";
 
 export type AutomationFirstEventPayload = Record<
   string,

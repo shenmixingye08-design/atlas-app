@@ -80,7 +80,7 @@ function nextActionForStatus(status: RunVisualStatus): string {
     case "running":
       return "進捗を見る";
     case "completed":
-      return "成果物";
+      return "確認";
     default:
       return "詳細";
   }
