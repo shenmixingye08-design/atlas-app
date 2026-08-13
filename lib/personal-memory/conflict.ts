@@ -6,6 +6,11 @@ import type {
   ResolvedMemoryValue,
 } from "@/lib/personal-memory/types";
 
+function channelConflictKey(memory: PersonalMemoryRecord): string {
+  if (memory.appliesTo.global) return "global";
+  return [...memory.appliesTo.artifactTypes].sort().join("|") || "local";
+}
+
 export function detectMemoryConflicts(input: {
   candidates: PersonalMemoryRecord[];
   currentInstructionKeys?: Record<string, unknown>;
@@ -42,8 +47,17 @@ export function detectMemoryConflicts(input: {
       });
     }
 
-    if (list.length >= 2) {
-      const sorted = [...list].sort((a, b) =>
+    const byChannel = new Map<string, PersonalMemoryRecord[]>();
+    for (const memory of list) {
+      const key = channelConflictKey(memory);
+      const rows = byChannel.get(key) ?? [];
+      rows.push(memory);
+      byChannel.set(key, rows);
+    }
+
+    for (const channelList of byChannel.values()) {
+      if (channelList.length < 2) continue;
+      const sorted = [...channelList].sort((a, b) =>
         b.updatedAt.localeCompare(a.updatedAt),
       );
       const newest = sorted[0]!;

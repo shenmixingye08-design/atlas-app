@@ -420,13 +420,20 @@ describe("Personal Memory System", () => {
       source: "user_correction",
     });
     expect(created).toBeTruthy();
-    await rejectCandidate(USER, created!.id);
-    const again = evaluateCorrectionForCandidate({
-      userId: USER,
-      text: "もっと短くして",
+    expect(created!.status).toBe("active");
+    const leftover = await createPersonalMemory(USER, {
+      kind: "user_preference",
+      scope: "color_palette",
+      key: "palette",
+      value: { text: "青系" },
+      title: "配色",
+      summary: "青系",
       source: "user_correction",
+      status: "candidate",
     });
-    expect(again.action).toBe("none");
+    await rejectCandidate(USER, leftover.id);
+    const rejected = await getPersonalMemory(USER, leftover.id);
+    expect(rejected.status).toBe("rejected");
   });
 
   it("36-37. scope filter and injection char budget", async () => {
@@ -496,13 +503,13 @@ describe("Personal Memory System", () => {
     expect(count).toBe(1);
   });
 
-  it("40. explicit '今後は' becomes explicit candidate without needing repeats", async () => {
+  it("40. explicit '今後は' becomes active without needing repeats", async () => {
     const result = evaluateCorrectionForCandidate({
       userId: USER,
       text: "今後は毎回PDFも作って",
       source: "user_explicit",
     });
-    expect(result.action).toBe("explicit_candidate");
-    expect(result.input?.status).toBe("candidate");
+    expect(result.action).toBe("explicit_active");
+    expect(result.input?.status).toBe("active");
   });
 });

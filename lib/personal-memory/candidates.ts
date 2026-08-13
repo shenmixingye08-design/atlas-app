@@ -9,12 +9,13 @@ import {
   BLOCKED_CANDIDATE_SOURCES,
   CORRECTION_REPEAT_THRESHOLD,
 } from "@/lib/personal-memory/types";
+import { detectMemoryChannel } from "@/lib/memory-apply/channels";
+import { sanitizeUserFacingMemoryText } from "@/lib/personal-memory/security";
 import {
   bumpCorrectionCounter,
   isRejectedFingerprint,
   readPersonalMemorySettings,
 } from "@/lib/personal-memory/store";
-import { sanitizeUserFacingMemoryText } from "@/lib/personal-memory/security";
 
 export function fingerprintCorrection(input: {
   text: string;
@@ -36,6 +37,8 @@ type InferredPreference = {
   summary: string;
   value: Record<string, unknown>;
   explicit: boolean;
+  global: boolean;
+  artifactTypes: string[];
 };
 
 const EXPLICIT_PATTERNS: Array<{
@@ -133,37 +136,170 @@ const CORRECTION_PATTERNS: Array<{
   { re: /PDFも|pdfも/, scope: "preferred_formats", key: "formats", title: "成果物の形式" },
 ];
 
+function withChannel(
+  inferred: Omit<InferredPreference, "global" | "artifactTypes">,
+  text: string,
+): InferredPreference {
+  const channel = detectMemoryChannel(text);
+  return {
+    ...inferred,
+    global: channel.global,
+    artifactTypes: channel.artifactTypes,
+    value: {
+      ...inferred.value,
+      channel: channel.channel,
+      global: channel.global,
+    },
+  };
+}
+
 export function inferPreferenceFromText(
   text: string,
 ): InferredPreference | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
+  const cleaned = sanitizeUserFacingMemoryText(trimmed);
+  const channel = detectMemoryChannel(trimmed);
+  const explicit =
+    /今後|毎回|いつも|これから/.test(trimmed) ||
+    (!channel.global && /して|入れて/.test(trimmed));
+
+  const formatMatch = trimmed.match(
+    /今後は?\s*(?:毎回)?\s*(PDF|pdf|Excel|Word|PowerPoint|パワポ)/i,
+  );
+  if (formatMatch && !/Xは|ブログ|WordPress/i.test(trimmed)) {
+    return withChannel(
+      {
+        scope: "preferred_formats",
+        key: "formats",
+        title: "成果物の形式",
+        summary: cleaned.slice(0, 120),
+        value: {
+          formats: [formatMatch[1]!.toLowerCase()],
+          text: `今後は${formatMatch[1]}も作成`,
+        },
+        explicit: true,
+      },
+      trimmed,
+    );
+  }
+
+  const paletteMatch = trimmed.match(/今後は?\s*(青系|赤系|緑系|モノクロ)|青系|ブルー/);
+  const writing: Record<string, unknown> = { text: cleaned };
+  let writingHit = false;
+  if (/短め|短く|簡潔|短文/.test(trimmed)) {
+    writing.length = "short";
+    writingHit = true;
+  }
+  if (/長文|長くして/.test(trimmed) && writing.length !== "short") {
+    writing.length = "long";
+    writingHit = true;
+  }
+  if (/箇条書き|ポイントで整理/.test(trimmed)) {
+    writing.structure = "bullets";
+    writingHit = true;
+  }
+  if (/見出し/.test(trimmed)) {
+    writing.headings = true;
+    writing.structure = writing.structure ?? "headings";
+    writingHit = true;
+  }
+  if (/結論を最初|結論を先|結論先|結論から/.test(trimmed)) {
+    writing.conclusion = "first";
+    writingHit = true;
+  }
+  if (/絵文字\s*(なし|無し|やめて|を使わない)|絵文字なし/.test(trimmed)) {
+    writing.emoji = "none";
+    writingHit = true;
+  }
+  if (/\bCTA\b|行動喚起|最後に(CTA|誘導)/i.test(trimmed)) {
+    writing.cta = true;
+    writingHit = true;
+  }
+  if (/\bSEO\b|検索に強い|キーワード/i.test(trimmed)) {
+    writing.seo = true;
+    writingHit = true;
+  }
+  if (/丁寧|敬語/.test(trimmed)) {
+    writing.tone = "polite";
+    writingHit = true;
+  }
+  if (/カジュアル/.test(trimmed)) {
+    writing.tone = "casual";
+    writingHit = true;
+  }
+  if (/強い煽り|煽り禁止/.test(trimmed)) {
+    writing.forbiddenExpressions = ["煽り"];
+    writingHit = true;
+  }
+  if (/この言い回しは嫌|言い回しは嫌/.test(trimmed)) {
+    writing.forbiddenExpressions = [
+      ...((writing.forbiddenExpressions as string[]) ?? []),
+      "嫌いな言い回し",
+    ];
+    writingHit = true;
+  }
+
+  if (writingHit) {
+    writing.channel = channel.channel;
+    writing.global = channel.global;
+    return {
+      scope: "writing_style",
+      key: "writing_preference",
+      title: "文章の好み",
+      summary: cleaned.slice(0, 120),
+      value: writing,
+      explicit,
+      global: channel.global,
+      artifactTypes: channel.artifactTypes,
+    };
+  }
+
+  if (paletteMatch) {
+    return withChannel(
+      {
+        scope: "color_palette",
+        key: "palette",
+        title: "配色",
+        summary: cleaned.slice(0, 120),
+        value: { palette: paletteMatch[1] ?? "青系", text: paletteMatch[0] },
+        explicit,
+      },
+      trimmed,
+    );
+  }
 
   for (const pattern of EXPLICIT_PATTERNS) {
     const match = trimmed.match(pattern.re);
     if (!match) continue;
-    return {
-      scope: pattern.scope,
-      key: pattern.key,
-      title: pattern.title,
-      summary: sanitizeUserFacingMemoryText(trimmed).slice(0, 120),
-      value: pattern.map(match, trimmed),
-      explicit: /今後|毎回|いつも|これから/.test(trimmed),
-    };
+    return withChannel(
+      {
+        scope: pattern.scope,
+        key: pattern.key,
+        title: pattern.title,
+        summary: cleaned.slice(0, 120),
+        value: pattern.map(match, trimmed),
+        explicit: /今後|毎回|いつも|これから/.test(trimmed),
+      },
+      trimmed,
+    );
   }
 
   for (const pattern of CORRECTION_PATTERNS) {
     if (!pattern.re.test(trimmed)) continue;
-    return {
-      scope: pattern.scope,
-      key: pattern.key,
-      title: pattern.title,
-      summary: sanitizeUserFacingMemoryText(trimmed).slice(0, 120),
-      value: pattern.map
-        ? pattern.map(trimmed)
-        : { text: sanitizeUserFacingMemoryText(trimmed) },
-      explicit: /今後|毎回|いつも|これから/.test(trimmed),
-    };
+    return withChannel(
+      {
+        scope: pattern.scope,
+        key: pattern.key,
+        title: pattern.title,
+        summary: cleaned.slice(0, 120),
+        value: pattern.map
+          ? pattern.map(trimmed)
+          : { text: cleaned },
+        explicit,
+      },
+      trimmed,
+    );
   }
 
   return null;
@@ -176,7 +312,12 @@ export function inferPreferenceFromText(
  */
 export function evaluateCorrectionForCandidate(
   signal: CorrectionSignal,
-): { action: "none" | "candidate" | "explicit_candidate"; input?: CreatePersonalMemoryInput; fingerprint: string; count: number } {
+): {
+  action: "none" | "candidate" | "explicit_candidate" | "explicit_active";
+  input?: CreatePersonalMemoryInput;
+  fingerprint: string;
+  count: number;
+} {
   if (
     (BLOCKED_CANDIDATE_SOURCES as readonly string[]).includes(signal.source)
   ) {
@@ -205,8 +346,13 @@ export function evaluateCorrectionForCandidate(
     return { action: "none", fingerprint: "", count: 0 };
   }
 
+  const channelTypes =
+    signal.artifactType && signal.artifactType.trim()
+      ? [signal.artifactType.trim()]
+      : inferred.artifactTypes;
+  const isGlobal = channelTypes.length === 0 && inferred.global;
   const fingerprint = fingerprintCorrection({
-    text: `${inferred.scope}:${inferred.key}:${JSON.stringify(inferred.value)}`,
+    text: `${inferred.scope}:${inferred.key}:${channelTypes.join(",")}:${String(inferred.value.length ?? "")}:${String(inferred.value.emoji ?? "")}`,
     scope: inferred.scope,
     automationId: signal.automationId,
   });
@@ -226,13 +372,13 @@ export function evaluateCorrectionForCandidate(
     ? {
         global: false,
         automationIds: [signal.automationId],
-        artifactTypes: signal.artifactType ? [signal.artifactType] : [],
+        artifactTypes: channelTypes,
         capabilities: [],
       }
     : {
-        global: true,
+        global: isGlobal,
         automationIds: [],
-        artifactTypes: signal.artifactType ? [signal.artifactType] : [],
+        artifactTypes: channelTypes,
         capabilities: [],
       };
 
@@ -251,11 +397,11 @@ export function evaluateCorrectionForCandidate(
     summary: inferred.summary,
     source: inferred.explicit ? "user_explicit" : "user_correction",
     confidence: inferred.explicit ? 0.9 : Math.min(0.85, 0.5 + count * 0.1),
-    status: "candidate",
+    status: inferred.explicit ? "active" : "candidate",
     appliesTo,
     evidence: [
       {
-        kind: "correction",
+        kind: inferred.explicit ? "user_message" : "correction",
         summary: sanitizeUserFacingMemoryText(signal.text).slice(0, 160),
         occurredAt: new Date().toISOString(),
         automationId: signal.automationId ?? null,
@@ -264,7 +410,7 @@ export function evaluateCorrectionForCandidate(
   };
 
   if (inferred.explicit) {
-    return { action: "explicit_candidate", input: base, fingerprint, count };
+    return { action: "explicit_active", input: base, fingerprint, count };
   }
 
   if (settings.explicitOnly) {

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { resolveInstruction } from "@/lib/automation-platform/instruction/conflict";
+import { effectiveAutomationPreferenceScopes } from "@/lib/automation-platform/memory/contract";
 import type { AutomationV2 } from "@/lib/automation-platform/types/automation";
 import type { ResolvedInstruction } from "@/lib/automation-platform/types/instruction";
 import type { MemoryUsageRecord } from "@/lib/automation-platform/types/run";
@@ -53,7 +54,10 @@ export async function applyMemoryForAutomation(input: {
     memoryCandidateUpdates: resolved.ledger?.memoryCandidateUpdates ?? [],
     unusedMemoryIds: resolved.ledger?.unusedMemoryIds ?? [],
   };
-  const memoryEnabled = input.automation.memoryPolicy.enabled;
+  const memoryEnabled =
+    effectiveAutomationPreferenceScopes(input.automation.memoryPolicy).length >
+      0 ||
+    Object.keys(input.automation.memoryPolicy.lockedOverrides).length > 0;
   const flat = flattenResolvedValues(ledger);
   const contentOverlay = buildContentOverlay({
     values: ledger.memoryValuesResolved,

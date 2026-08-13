@@ -151,6 +151,12 @@ export function buildContentOverlay(input: {
     preferShort: structure.short,
     preferBullets: structure.bullets,
     preferConclusionFirst: structure.conclusionFirst,
+    preferNoEmoji: structure.noEmoji,
+    preferHeadings: structure.headings,
+    preferCta: structure.cta,
+    preferSeo: structure.seo,
+    ctaText:
+      readField(values, ["ctaText", "call_to_action", "誘導文"]) ?? null,
   };
 }
 
@@ -330,6 +336,10 @@ export function applyContentOverlayToText(
     short: overlay.preferShort,
     bullets: overlay.preferBullets,
     conclusionFirst: overlay.preferConclusionFirst,
+    noEmoji: overlay.preferNoEmoji,
+    headings: overlay.preferHeadings,
+    cta: overlay.preferCta,
+    seo: overlay.preferSeo,
     keys: overlay.preferenceKeys,
   });
   body = structured.text;

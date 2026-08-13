@@ -1,5 +1,6 @@
 import {
   AUTOMATION_MEMORY_SCOPES,
+  SAFE_AUTOMATION_PREFERENCE_SCOPES,
   SENSITIVE_MEMORY_SCOPES,
   type AutomationMemoryPolicy,
   type AutomationMemoryScope,
@@ -52,6 +53,24 @@ export function resolveReadableMemoryScopes(
   if (!policy.enabled) return [];
   return policy.allowedScopes.filter(
     (scope) => !policy.deniedScopes.includes(scope),
+  );
+}
+
+/**
+ * Safe writing/format prefs for Automation body apply.
+ * Default-off policy with empty deny still receives these (legacy automations).
+ * Explicit deniedScopes remain blocked. Sensitive scopes never auto-fill.
+ */
+export function effectiveAutomationPreferenceScopes(
+  policy: AutomationMemoryPolicy,
+): AutomationMemoryScope[] {
+  const denied = new Set(policy.deniedScopes);
+  const base =
+    policy.enabled && policy.allowedScopes.length > 0
+      ? policy.allowedScopes
+      : [...SAFE_AUTOMATION_PREFERENCE_SCOPES];
+  return base.filter(
+    (scope) => !denied.has(scope) && !SENSITIVE_MEMORY_SCOPES.includes(scope),
   );
 }
 

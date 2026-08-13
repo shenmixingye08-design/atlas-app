@@ -1,9 +1,10 @@
+import { expandArtifactTypes } from "@/lib/memory-apply/channels";
+import { SCOPE_LABELS } from "@/lib/personal-memory/labels";
 import type {
   PersonalMemoryRecord,
   PersonalMemorySettings,
   ResolvedMemoryValue,
 } from "@/lib/personal-memory/types";
-import { SCOPE_LABELS } from "@/lib/personal-memory/labels";
 
 export function estimateTokens(text: string): number {
   // Rough JP/EN mix estimate
@@ -21,7 +22,7 @@ export function selectRelevantMemories(input: {
 }): PersonalMemoryRecord[] {
   const allowed = input.allowedScopes ? new Set(input.allowedScopes) : null;
   const denied = new Set(input.deniedScopes ?? []);
-  const artifacts = new Set(input.artifactTypes ?? []);
+  const artifacts = expandArtifactTypes(input.artifactTypes);
   const capabilities = new Set(input.capabilities ?? []);
 
   const filtered = input.memories.filter((memory) => {
@@ -37,12 +38,12 @@ export function selectRelevantMemories(input: {
         return false;
       }
     }
-    if (
-      memory.appliesTo.artifactTypes.length > 0 &&
-      artifacts.size > 0 &&
-      !memory.appliesTo.artifactTypes.some((t) => artifacts.has(t))
-    ) {
-      return false;
+    if (memory.appliesTo.artifactTypes.length > 0 && !memory.appliesTo.global) {
+      if (artifacts.size === 0) return false;
+      const memoryArtifacts = expandArtifactTypes(memory.appliesTo.artifactTypes);
+      if (![...memoryArtifacts].some((type) => artifacts.has(type))) {
+        return false;
+      }
     }
     if (
       memory.appliesTo.capabilities.length > 0 &&
@@ -57,7 +58,11 @@ export function selectRelevantMemories(input: {
   // Deduplicate by scope+key keeping highest confidence / newest
   const byKey = new Map<string, PersonalMemoryRecord>();
   for (const memory of filtered) {
-    const key = `${memory.scope}:${memory.key}`;
+    const key = `${memory.scope}:${memory.key}:${
+      memory.appliesTo.global
+        ? "global"
+        : [...memory.appliesTo.artifactTypes].sort().join("|") || "local"
+    }`;
     const existing = byKey.get(key);
     if (!existing) {
       byKey.set(key, memory);

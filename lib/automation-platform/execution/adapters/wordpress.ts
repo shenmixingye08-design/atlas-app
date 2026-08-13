@@ -9,11 +9,12 @@ import {
   mapThrownProviderError,
 } from "@/lib/automation-platform/execution/adapters/map-provider-status";
 import { resolveAutomationFeatureContext } from "@/lib/automation-platform/execution/adapters/resolve-context";
+import { applyMemoryToStepBody } from "@/lib/memory-apply/step-body";
 import { createWordPressPostForUser } from "@/lib/integrations/wordpress/post/service";
 
 export const invokeWordPressAdapter: ExternalAdapter = async (input) => {
   const title = configString(input.step.configuration, ["title", "eventTitle"]);
-  const content = configString(input.step.configuration, [
+  let content = configString(input.step.configuration, [
     "content",
     "body",
     "text",
@@ -22,6 +23,15 @@ export const invokeWordPressAdapter: ExternalAdapter = async (input) => {
   if (!title || !content) {
     return configMissingInput("WordPressのタイトルと本文が必要です");
   }
+
+  const applied = await applyMemoryToStepBody({
+    userId: input.userId,
+    channel: "wordpress",
+    baseline: content,
+    automationId: input.automationId,
+    assignment: `${title}\n${content}`.slice(0, 400),
+  });
+  content = applied.text || content;
 
   const publishMode =
     configString(input.step.configuration, ["publishMode", "status"]) ||

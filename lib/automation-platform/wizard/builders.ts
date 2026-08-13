@@ -49,8 +49,18 @@ export function createEmptyWizardDraft(
     notifyOnFailure: true,
     notifyOnNeedsInput: true,
     notificationChannels: ["in_app"],
-    memoryEnabled: false,
-    memoryAllowedScopes: [],
+    memoryEnabled: true,
+    memoryAllowedScopes: [
+      "writing_style",
+      "document_design",
+      "preferred_formats",
+      "preferred_templates",
+      "notification_preferences",
+      "timezone",
+      "locale",
+      "naming_conventions",
+      "recurring_work_preferences",
+    ],
     memoryDeniedScopes: [],
     memoryLockedOverrides: {},
     freeformNotes: "",
@@ -345,8 +355,34 @@ export function buildCreateInputFromWizard(
     instruction,
     memoryPolicy: {
       enabled: resolved.memoryEnabled,
-      allowedScopes: resolved.memoryAllowedScopes,
-      deniedScopes: resolved.memoryDeniedScopes,
+      allowedScopes: resolved.memoryEnabled
+        ? resolved.memoryAllowedScopes.length > 0
+          ? resolved.memoryAllowedScopes
+          : [
+              "writing_style",
+              "document_design",
+              "preferred_formats",
+              "preferred_templates",
+              "notification_preferences",
+              "timezone",
+              "locale",
+              "naming_conventions",
+              "recurring_work_preferences",
+            ]
+        : [],
+      deniedScopes: resolved.memoryEnabled
+        ? resolved.memoryDeniedScopes
+        : [
+            "writing_style",
+            "document_design",
+            "preferred_formats",
+            "preferred_templates",
+            "notification_preferences",
+            "timezone",
+            "locale",
+            "naming_conventions",
+            "recurring_work_preferences",
+          ],
       lockedOverrides: resolved.memoryLockedOverrides,
     },
     rejectOnConflict: false,

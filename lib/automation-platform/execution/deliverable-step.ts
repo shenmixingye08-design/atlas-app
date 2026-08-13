@@ -12,6 +12,7 @@ import {
   saveDeliverableFileDurable,
 } from "@/lib/deliverables/store";
 import type { DeliverableFormat } from "@/lib/deliverables/types";
+import { applyMemoryForDeliverable } from "@/lib/memory-apply/deliverables";
 import type {
   StepInvokeResult,
 } from "@/lib/automation-platform/execution/step-invoker";
@@ -118,6 +119,7 @@ export async function invokeDeliverableStep(input: {
   userId: string;
   automationName: string;
   runId: string;
+  automationId?: string | null;
 }): Promise<StepInvokeResult> {
   const formats = resolveFormats(input.step);
   if (formats.length === 0) {
@@ -140,8 +142,8 @@ export async function invokeDeliverableStep(input: {
     return invokeRegenerateDeliverableStep(input, formats[0]!);
   }
 
-  const content = resolveContent(input.step, input.automationName);
-  if (!content.trim()) {
+  const contentRaw = resolveContent(input.step, input.automationName);
+  if (!contentRaw.trim()) {
     return {
       ok: false,
       summary: "成果物の本文が空です",
@@ -151,6 +153,21 @@ export async function invokeDeliverableStep(input: {
       failedStage: "DELIVERABLE_CONTENT",
       retryable: false,
     };
+  }
+
+  let content = contentRaw;
+  try {
+    const memoryApplied = await applyMemoryForDeliverable({
+      userId: input.userId,
+      content,
+      format: formats[0] ?? "pdf",
+      assignment: input.automationName,
+    });
+    if (memoryApplied.content.trim()) {
+      content = memoryApplied.content;
+    }
+  } catch {
+    content = contentRaw;
   }
 
   const title =
