@@ -9,6 +9,7 @@ import {
   notifyWorkFailed,
 } from "@/lib/notifications/emitters";
 import { persistNotificationsNow } from "@/lib/notifications/durable";
+import { artifactCompletedCopy } from "@/lib/notifications/user-facing-copy";
 import { recordReliabilityEvent } from "@/lib/reliability";
 
 import {
@@ -82,11 +83,10 @@ async function emitWordTerminalNotification(input: {
   const requestId = `wordjob:${input.jobId}:${input.kind}`;
   try {
     if (input.kind === "completed" && input.deliverableId && input.downloadUrl) {
+      const copy = artifactCompletedCopy("word", input.fileName);
       await notifyWorkCompleted(input.userId, {
-        title: "Wordファイルの準備ができました",
-        message: input.fileName
-          ? `「${input.fileName}」を作成しました。通知から開いてダウンロードできます。`
-          : "Wordファイルを作成しました。",
+        title: copy.title,
+        message: copy.message,
         actionUrl: input.downloadUrl,
         relatedTaskId: input.deliverableId,
         deliverableId: input.deliverableId,

@@ -8,6 +8,7 @@ import { updateNotification } from "@/lib/notifications/store";
 import { schedulePersistNotifications } from "@/lib/notifications/durable";
 
 import { isSpamCategory, resolvePushEventCategory, resolvePushSeverity } from "./categories";
+import { resolvePushClickPath } from "./click-target";
 import { buildPushCopy } from "./templates";
 import { isSuppressedByQuietHours } from "./quiet-hours";
 import { sanitizePushText } from "./sanitize";
@@ -253,10 +254,7 @@ export async function dispatchWebPushNotification(input: {
       autoRecovered: input.autoRecovered,
     });
 
-    const targetUrl = resolveAbsoluteUrl(
-      input.record.actionUrl ??
-        `/results/${encodeURIComponent(input.record.notificationId)}`,
-    );
+    const targetUrl = resolveAbsoluteUrl(resolvePushClickPath(input.record));
 
     if (!isSameOriginTarget(targetUrl)) {
       console.warn("[push] blocked non-same-origin target URL");

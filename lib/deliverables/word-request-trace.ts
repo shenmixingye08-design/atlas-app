@@ -219,7 +219,7 @@ export async function runWordRequestTrace(input?: {
     audience: "user",
     userId: TRACE_USER,
     type: "completed",
-    title: "Wordファイルの準備ができました",
+    title: "Wordファイルが完成しました",
     message: "依頼トレースのWordファイルを作成しました。",
     relatedTaskId: projectId,
     actionUrl: `/projects/${encodeURIComponent(projectId)}`,

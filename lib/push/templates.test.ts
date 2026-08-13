@@ -23,6 +23,7 @@ describe("buildPushCopy", () => {
       message: "y",
       eventCategory: "final_failure",
     });
-    expect(copy.title).toBe("処理を完了できませんでした");
+    expect(copy.title).toBe("x");
+    expect(copy.body).toBe("y");
   });
 });

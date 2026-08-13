@@ -51,6 +51,81 @@ function endpointFingerprint(endpoint: string): string {
   return `ep_${hash.toString(16).padStart(8, "0")}`;
 }
 
+function isTestMemoryAllowed(): boolean {
+  return process.env.VITEST === "true" || process.env.NODE_ENV === "test";
+}
+
+type MemoryBucket = Map<string, PushSubscriptionRecord>;
+
+function getMemoryBucket(): MemoryBucket {
+  const scope = globalThis as typeof globalThis & {
+    __atlasPushSubscriptions?: MemoryBucket;
+  };
+  if (!scope.__atlasPushSubscriptions) {
+    scope.__atlasPushSubscriptions = new Map();
+  }
+  return scope.__atlasPushSubscriptions;
+}
+
+export function resetPushSubscriptionStoreForTests(): void {
+  getMemoryBucket().clear();
+}
+
+function newMemorySubscriptionId(): string {
+  return `psub_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function upsertMemorySubscription(input: {
+  userId: string;
+  endpoint: string;
+  p256dh: string;
+  authKey: string;
+  platform?: string | null;
+  browser?: string | null;
+  deviceName?: string | null;
+  userAgent?: string | null;
+}): PushSubscriptionRecord {
+  const bucket = getMemoryBucket();
+  const now = new Date().toISOString();
+  const existing = bucket.get(input.endpoint);
+  if (existing) {
+    const next: PushSubscriptionRecord = {
+      ...existing,
+      userId: input.userId,
+      p256dh: input.p256dh,
+      authKey: input.authKey,
+      platform: input.platform ?? existing.platform,
+      browser: input.browser ?? existing.browser,
+      deviceName: input.deviceName ?? existing.deviceName,
+      userAgent: input.userAgent ?? existing.userAgent,
+      failureCount: 0,
+      isActive: true,
+      updatedAt: now,
+      lastUsedAt: now,
+    };
+    bucket.set(input.endpoint, next);
+    return next;
+  }
+  const created: PushSubscriptionRecord = {
+    id: newMemorySubscriptionId(),
+    userId: input.userId,
+    endpoint: input.endpoint,
+    p256dh: input.p256dh,
+    authKey: input.authKey,
+    platform: input.platform ?? null,
+    browser: input.browser ?? null,
+    deviceName: input.deviceName ?? null,
+    userAgent: input.userAgent ?? null,
+    failureCount: 0,
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+    lastUsedAt: now,
+  };
+  bucket.set(input.endpoint, created);
+  return created;
+}
+
 export async function upsertPushSubscription(input: {
   userId: string;
   endpoint: string;
@@ -63,6 +138,9 @@ export async function upsertPushSubscription(input: {
 }): Promise<PushSubscriptionRecord | null> {
   const client = createServiceRoleClientIfConfigured();
   if (!client) {
+    if (isTestMemoryAllowed()) {
+      return upsertMemorySubscription(input);
+    }
     console.warn(
       "[push] subscription upsert skipped: Supabase service role not configured",
     );
@@ -153,7 +231,12 @@ export async function listActivePushSubscriptions(
   userId: string,
 ): Promise<PushSubscriptionRecord[]> {
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return [];
+  if (!client) {
+    if (!isTestMemoryAllowed()) return [];
+    return [...getMemoryBucket().values()].filter(
+      (row) => row.userId === userId && row.isActive,
+    );
+  }
 
   const { data, error } = await client
     .from(TABLE)
@@ -169,7 +252,12 @@ export async function listAllPushSubscriptions(
   userId: string,
 ): Promise<PushSubscriptionRecord[]> {
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return [];
+  if (!client) {
+    if (!isTestMemoryAllowed()) return [];
+    return [...getMemoryBucket().values()]
+      .filter((row) => row.userId === userId)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
 
   const { data, error } = await client
     .from(TABLE)
@@ -186,7 +274,17 @@ export async function deactivatePushSubscription(input: {
   endpoint: string;
 }): Promise<boolean> {
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return false;
+  if (!client) {
+    if (!isTestMemoryAllowed()) return false;
+    const existing = getMemoryBucket().get(input.endpoint);
+    if (!existing || existing.userId !== input.userId) return false;
+    getMemoryBucket().set(input.endpoint, {
+      ...existing,
+      isActive: false,
+      updatedAt: new Date().toISOString(),
+    });
+    return true;
+  }
 
   const { error } = await client
     .from(TABLE)
@@ -203,7 +301,21 @@ export async function setPushSubscriptionActive(input: {
   isActive: boolean;
 }): Promise<boolean> {
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return false;
+  if (!client) {
+    if (!isTestMemoryAllowed()) return false;
+    for (const [endpoint, row] of getMemoryBucket()) {
+      if (row.id === input.subscriptionId && row.userId === input.userId) {
+        getMemoryBucket().set(endpoint, {
+          ...row,
+          isActive: input.isActive,
+          failureCount: input.isActive ? 0 : row.failureCount,
+          updatedAt: new Date().toISOString(),
+        });
+        return true;
+      }
+    }
+    return false;
+  }
 
   const { error } = await client
     .from(TABLE)
@@ -223,7 +335,21 @@ export async function touchPushSubscription(input: {
   endpoint: string;
 }): Promise<void> {
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return;
+  if (!client) {
+    if (!isTestMemoryAllowed()) return;
+    const existing = getMemoryBucket().get(input.endpoint);
+    if (!existing || existing.userId !== input.userId || !existing.isActive) {
+      return;
+    }
+    const now = new Date().toISOString();
+    getMemoryBucket().set(input.endpoint, {
+      ...existing,
+      lastUsedAt: now,
+      updatedAt: now,
+      failureCount: 0,
+    });
+    return;
+  }
 
   const now = new Date().toISOString();
   await client
@@ -240,7 +366,20 @@ export async function recordPushFailure(input: {
   reason: string;
 }): Promise<void> {
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return;
+  if (!client) {
+    if (!isTestMemoryAllowed()) return;
+    const existing = getMemoryBucket().get(input.endpoint);
+    if (!existing || existing.userId !== input.userId) return;
+    const nextCount = existing.failureCount + 1;
+    const deactivate = nextCount >= 5;
+    getMemoryBucket().set(input.endpoint, {
+      ...existing,
+      failureCount: nextCount,
+      isActive: deactivate ? false : existing.isActive,
+      updatedAt: new Date().toISOString(),
+    });
+    return;
+  }
 
   const { data } = await client
     .from(TABLE)
@@ -277,7 +416,13 @@ export async function deletePushSubscription(input: {
   endpoint: string;
 }): Promise<boolean> {
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return false;
+  if (!client) {
+    if (!isTestMemoryAllowed()) return false;
+    const existing = getMemoryBucket().get(input.endpoint);
+    if (!existing || existing.userId !== input.userId) return false;
+    getMemoryBucket().delete(input.endpoint);
+    return true;
+  }
 
   const { error } = await client
     .from(TABLE)

@@ -1,16 +1,41 @@
-import type { NotificationType } from "@/lib/notifications/types";
+import type { LineNotifyEvent, NotificationType } from "@/lib/notifications/types";
 
 import type { PushEventCategory, PushSeverity } from "./types";
 import { DEFAULT_PUSH_EVENTS } from "./types";
+
+function categoryFromLineEvent(
+  lineEvent?: LineNotifyEvent | null,
+): PushEventCategory | null {
+  switch (lineEvent) {
+    case "error":
+      return "final_failure";
+    case "confirmation_request":
+      return "approval_needed";
+    case "work_completed":
+    case "automation_completed":
+    case "document_ready":
+      return "final_success";
+    case "todays_schedule":
+    case "morning_briefing":
+    case "mail_received":
+      return "daily_report";
+    default:
+      return null;
+  }
+}
 
 /** Map notification type to default push event category. */
 export function resolvePushEventCategory(input: {
   type: NotificationType;
   eventCategory?: PushEventCategory | null;
   autoRecovered?: boolean;
+  lineEvent?: LineNotifyEvent | null;
 }): PushEventCategory {
   if (input.eventCategory) return input.eventCategory;
   if (input.autoRecovered) return "auto_recovered";
+
+  const fromLine = categoryFromLineEvent(input.lineEvent);
+  if (fromLine) return fromLine;
 
   switch (input.type) {
     case "completed":
@@ -21,7 +46,9 @@ export function resolvePushEventCategory(input: {
     case "integration":
       return "final_failure";
     case "automation":
-      return "final_failure";
+      // Generic automation rows are not failures. Callers that mean failure
+      // must set lineEvent "error" or an explicit eventCategory.
+      return "internal_step";
     case "billing":
       return "connection_broken";
     case "recommendation":

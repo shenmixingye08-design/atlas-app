@@ -2,7 +2,10 @@ import "server-only";
 
 import { randomUUID } from "crypto";
 
-import { resolvePushEventCategory, resolvePushSeverity } from "@/lib/push/categories";
+import {
+  resolvePushEventCategory,
+  resolvePushSeverity,
+} from "@/lib/push/categories";
 
 import { deliverLineWithAck, deliverWebPushWithAck } from "./delivery";
 import { schedulePersistNotifications } from "./durable";
@@ -86,6 +89,10 @@ function isLineDeliveryEnabled(
   return prefs.lineEvents[lineEvent] === true;
 }
 
+function isPushChannelEnabled(prefs: NotificationPreferences): boolean {
+  return prefs.allEnabled && prefs.channels.push === true;
+}
+
 function resolveLineEvent(
   input: CreateNotificationInput,
 ): LineNotifyEvent | null {
@@ -116,6 +123,7 @@ export async function createUserNotification(
   const lineEvent = resolveLineEvent(input);
   let shouldCreateInApp = true;
   let enabledLineEvent: LineNotifyEvent | null = null;
+  let shouldAttemptPush = false;
 
   if (input.audience === "user") {
     if (!input.userId?.trim()) {
@@ -136,8 +144,9 @@ export async function createUserNotification(
     enabledLineEvent = isLineDeliveryEnabled(prefs, input.type, lineEvent)
       ? lineEvent
       : null;
+    shouldAttemptPush = isPushChannelEnabled(prefs);
 
-    if (!shouldCreateInApp && !enabledLineEvent) {
+    if (!shouldCreateInApp && !enabledLineEvent && !shouldAttemptPush) {
       return null;
     }
   }
@@ -150,9 +159,12 @@ export async function createUserNotification(
       ? `/results/${encodeURIComponent(notificationId)}`
       : (input.actionUrl ?? null);
 
-  // Prefer in-app durable row. LINE-only prefs still get a durable row first
-  // so external delivery never succeeds without SoT persistence.
-  if (!shouldCreateInApp && !(input.audience === "user" && enabledLineEvent)) {
+  // Prefer in-app durable row. LINE/push-only prefs still get a durable row
+  // first so external delivery never succeeds without SoT persistence.
+  if (
+    !shouldCreateInApp &&
+    !(input.audience === "user" && (enabledLineEvent || shouldAttemptPush))
+  ) {
     return null;
   }
 
@@ -188,6 +200,7 @@ export async function createUserNotification(
         type: input.type,
         eventCategory: input.eventCategory ?? null,
         autoRecovered: input.autoRecovered,
+        lineEvent,
       }),
     pushSentAt: null,
     pushFailedAt: null,
@@ -219,7 +232,11 @@ export async function createUserNotification(
       idempotencyKey,
       sourceType: input.type,
       sourceId,
-      channel: shouldCreateInApp ? "in_app" : "line",
+      channel: shouldCreateInApp
+        ? "in_app"
+        : enabledLineEvent
+          ? "line"
+          : "push",
       organizationId: input.organizationId ?? null,
     });
     record = inserted.record;
@@ -263,7 +280,7 @@ export async function createUserNotification(
       }
     }
 
-    if (shouldCreateInApp) {
+    if (shouldAttemptPush || shouldCreateInApp) {
       const push = await deliverWebPushWithAck({
         record,
         autoRecovered: input.autoRecovered,
@@ -364,7 +381,10 @@ export async function listUserNotifications(
 ): Promise<NotificationRecord[]> {
   if (!userId.trim()) return [];
   if (isNotificationDurableRequired()) {
-    const rows = await listDurableNotifications({ ownerId: userId });
+    const rows = await listDurableNotifications({
+      ownerId: userId,
+      inboxOnly: true,
+    });
     // Keep process cache warm for legacy readers.
     for (const row of rows) {
       if (!findNotification(row.notificationId)) appendNotification(row);

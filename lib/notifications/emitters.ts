@@ -71,6 +71,7 @@ export async function notifyAutomationFailed(
     actionUrl: automationActionUrl(input.automationId),
     automationId: input.automationId,
     lineEvent: "error",
+    eventCategory: "final_failure",
   });
 }
 
@@ -95,6 +96,7 @@ export async function notifyXPostSuccess(
       ? `/workspace/x?historyId=${encodeURIComponent(historyId)}`
       : "/workspace/x",
     requestId: historyId,
+    eventCategory: "final_success",
   });
 }
 
@@ -111,6 +113,7 @@ export async function notifyXPostFailed(userId: string, message: string) {
     relatedService: "x",
     actionUrl: "/settings/x",
     lineEvent: "error",
+    eventCategory: "final_failure",
   });
 }
 

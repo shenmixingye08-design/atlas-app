@@ -428,6 +428,8 @@ export async function listDurableNotifications(input: {
   organizationId?: string | null;
   limit?: number;
   includeDeleted?: boolean;
+  /** In-app inbox only. Push/LINE-only rows stay durable but hidden from the bell. */
+  inboxOnly?: boolean;
 }): Promise<NotificationRecord[]> {
   if (!input.ownerId.trim()) {
     throw new NotificationInboxUnavailableError(
@@ -457,6 +459,9 @@ export async function listDurableNotifications(input: {
     if (input.organizationId) {
       query = query.eq("organization_id", input.organizationId);
     }
+    if (input.inboxOnly) {
+      query = query.eq("channel", "in_app");
+    }
     const { data, error } = await query;
     if (error) {
       throw new NotificationInboxUnavailableError(
@@ -478,6 +483,7 @@ export async function listDurableNotifications(input: {
       if (input.organizationId && r.organizationId !== input.organizationId) {
         return false;
       }
+      if (input.inboxOnly && r.channel !== "in_app") return false;
       if (r.expiresAt && new Date(r.expiresAt).getTime() <= now) return false;
       return true;
     })
@@ -632,6 +638,7 @@ export async function countDurableUnread(ownerId: string): Promise<number> {
         .from("atlas_user_notifications")
         .select("notification_id", { count: "exact", head: true })
         .eq("owner_id", ownerId)
+        .eq("channel", "in_app")
         .is("deleted_at", null)
         .is("read_at", null);
       if (error) {
@@ -649,6 +656,7 @@ export async function countDurableUnread(ownerId: string): Promise<number> {
   const list = await listDurableNotifications({
     ownerId,
     limit: MAX_NOTIFICATIONS_PER_USER,
+    inboxOnly: true,
   });
   return list.filter((n) => !n.isRead).length;
 }

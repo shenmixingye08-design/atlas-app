@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isDefaultPushEventEnabled, isSpamCategory } from "@/lib/push/categories";
+import { isDefaultPushEventEnabled, isSpamCategory, resolvePushEventCategory } from "@/lib/push/categories";
 
 describe("push categories", () => {
   it("defaults final success ON", () => {
@@ -13,5 +13,20 @@ describe("push categories", () => {
 
   it("marks mid_retry as spam", () => {
     expect(isSpamCategory("mid_retry")).toBe(true);
+  });
+
+  it("does not treat generic automation type as a failure push", () => {
+    expect(
+      resolvePushEventCategory({ type: "automation" }),
+    ).toBe("internal_step");
+    expect(
+      resolvePushEventCategory({ type: "automation", lineEvent: "error" }),
+    ).toBe("final_failure");
+    expect(
+      resolvePushEventCategory({
+        type: "automation",
+        lineEvent: "automation_completed",
+      }),
+    ).toBe("final_success");
   });
 });
