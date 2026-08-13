@@ -8,6 +8,7 @@ import {
   evaluateBillingExternalIntegration,
   evaluateBillingFeature,
   evaluateBillingSnsPost,
+  evaluateBillingWordPressPublish,
   resolveBillingFeatureForAssignment,
   type BillingDenial,
 } from "./snapshot";
@@ -29,8 +30,16 @@ export async function requireBillingAiUsage(
 
 export async function requireBillingSnsPost(
   userId: string,
+  options: { text?: string; containsUrl?: boolean } = {},
 ): Promise<Response | null> {
-  const { denial } = await evaluateBillingSnsPost(userId);
+  const { denial } = await evaluateBillingSnsPost(userId, options);
+  return denial ? billingDenialResponse(denial) : null;
+}
+
+export async function requireBillingWordPressPublish(
+  userId: string,
+): Promise<Response | null> {
+  const { denial } = await evaluateBillingWordPressPublish(userId);
   return denial ? billingDenialResponse(denial) : null;
 }
 

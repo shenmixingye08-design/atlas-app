@@ -1,4 +1,4 @@
-import type { BillingFeatureId, PlanDefinition, PlanId } from "./types";
+import type { BillingFeatureId, PlanDefinition, PlanId, PlanLimits } from "./types";
 
 const FREE_FEATURES = [
   "content_writing",
@@ -36,88 +36,160 @@ const PREMIUM_FEATURES = [
   "priority_processing",
 ] as const satisfies readonly BillingFeatureId[];
 
+function withSnsAlias(
+  limits: Omit<PlanLimits, "snsPostsMonthly">,
+): PlanLimits {
+  return {
+    ...limits,
+    snsPostsMonthly: limits.xAutoPostsMonthly,
+  };
+}
+
+function highlightAi(limit: number): string {
+  return `AI利用 最大${limit}回/月`;
+}
+
+function highlightAutomation(limit: number): string {
+  return `自動化 ${limit}件`;
+}
+
+function highlightIntegrations(limit: number): string {
+  return `外部連携 ${limit}件`;
+}
+
+function highlightX(limit: number): string {
+  return `X自動投稿 月${limit}件`;
+}
+
+function highlightWordPress(limit: number): string {
+  return `WordPress 月${limit}件`;
+}
+
+function highlightXUrlNote(limit: number): string {
+  return `X投稿のうち、URLを含む投稿は月${limit}件まで`;
+}
+
+const FREE_LIMITS = withSnsAlias({
+  aiUsageMonthly: 1,
+  aiCostBudgetUsdMonthly: 0.5,
+  externalIntegrations: 0,
+  automationTasks: 0,
+  xAutoPostsMonthly: 0,
+  xUrlPostsMonthly: 0,
+  wordpressPostsMonthly: 0,
+  highQualityMode: false,
+  videoGeneration: false,
+  imageGeneration: false,
+  features: FREE_FEATURES,
+});
+
+const LIGHT_LIMITS = withSnsAlias({
+  aiUsageMonthly: 30,
+  aiCostBudgetUsdMonthly: 1.5,
+  externalIntegrations: 1,
+  automationTasks: 3,
+  xAutoPostsMonthly: 0,
+  xUrlPostsMonthly: 0,
+  wordpressPostsMonthly: 0,
+  highQualityMode: false,
+  videoGeneration: false,
+  imageGeneration: false,
+  features: LIGHT_FEATURES,
+});
+
+const STANDARD_LIMITS = withSnsAlias({
+  aiUsageMonthly: 100,
+  aiCostBudgetUsdMonthly: 5.0,
+  externalIntegrations: 3,
+  automationTasks: 10,
+  xAutoPostsMonthly: 30,
+  xUrlPostsMonthly: 10,
+  wordpressPostsMonthly: 8,
+  highQualityMode: false,
+  videoGeneration: false,
+  imageGeneration: false,
+  features: STANDARD_FEATURES,
+});
+
+const PREMIUM_LIMITS = withSnsAlias({
+  aiUsageMonthly: 300,
+  aiCostBudgetUsdMonthly: 15.0,
+  externalIntegrations: 10,
+  automationTasks: 50,
+  xAutoPostsMonthly: 150,
+  xUrlPostsMonthly: 30,
+  wordpressPostsMonthly: 30,
+  highQualityMode: true,
+  videoGeneration: false,
+  imageGeneration: false,
+  features: PREMIUM_FEATURES,
+});
+
 export const PLAN_DEFINITIONS: readonly PlanDefinition[] = [
   {
     planId: "free",
     name: "Free",
-    description: "無料体験 — 低回数利用、外部連携は制限",
+    description: "無料体験 — 1件完成までMINERVOTを体験",
     monthlyPriceJpy: 0,
     stripePriceId: process.env.STRIPE_PRICE_FREE?.trim() || null,
-    limits: {
-      aiUsageMonthly: 20,
-      externalIntegrations: 0,
-      automationTasks: 1,
-      snsPostsMonthly: 0,
-      highQualityMode: false,
-      videoGeneration: false,
-      imageGeneration: false,
-      features: FREE_FEATURES,
-    },
-    highlights: ["文章作成（低回数）", "自動化タスク 1件", "外部連携なし"],
+    limits: FREE_LIMITS,
+    highlights: [
+      "無料で1件完成まで体験",
+      highlightAutomation(FREE_LIMITS.automationTasks),
+      "外部連携なし",
+    ],
   },
   {
     planId: "light",
     name: "Light",
-    description: "毎月の投稿・文章・基本自動化を、自分で抱えなくてよくする定番",
+    description: "まずAI秘書を日常的に使いたい個人向け",
     monthlyPriceJpy: 980,
     stripePriceId: process.env.STRIPE_PRICE_LIGHT?.trim() || null,
-    limits: {
-      aiUsageMonthly: 120,
-      externalIntegrations: 1,
-      automationTasks: 3,
-      snsPostsMonthly: 30,
-      highQualityMode: false,
-      videoGeneration: false,
-      imageGeneration: false,
-      features: LIGHT_FEATURES,
-    },
-    highlights: ["文章作成", "SNS投稿補助", "自動化タスク 3件"],
+    limits: LIGHT_LIMITS,
+    highlights: [
+      highlightAi(LIGHT_LIMITS.aiUsageMonthly),
+      highlightAutomation(LIGHT_LIMITS.automationTasks),
+      highlightIntegrations(LIGHT_LIMITS.externalIntegrations),
+      "投稿文作成",
+      "Memory",
+    ],
   },
   {
     planId: "standard",
     name: "Standard",
-    description: "SNS自動投稿・ブログ・Google連携・エコモード",
+    description: "毎日の発信・繰り返し仕事をMINERVOTへ任せたい方向け",
     monthlyPriceJpy: 2980,
     stripePriceId: process.env.STRIPE_PRICE_STANDARD?.trim() || null,
-    limits: {
-      aiUsageMonthly: 400,
-      externalIntegrations: 3,
-      automationTasks: 10,
-      snsPostsMonthly: 120,
-      highQualityMode: false,
-      videoGeneration: false,
-      imageGeneration: false,
-      features: STANDARD_FEATURES,
-    },
+    limits: STANDARD_LIMITS,
     highlights: [
-      "SNS自動投稿",
-      "ブログ作成",
+      highlightAi(STANDARD_LIMITS.aiUsageMonthly),
+      highlightAutomation(STANDARD_LIMITS.automationTasks),
+      highlightIntegrations(STANDARD_LIMITS.externalIntegrations),
+      highlightX(STANDARD_LIMITS.xAutoPostsMonthly),
+      highlightWordPress(STANDARD_LIMITS.wordpressPostsMonthly),
       "Google連携",
-      "エコモード",
+      "Memory",
     ],
+    notes: [highlightXUrlNote(STANDARD_LIMITS.xUrlPostsMonthly)],
   },
   {
     planId: "premium",
     name: "Premium",
-    description: "高度な自動化・複数連携・高品質モード・優先処理",
+    description: "複数の仕事をかなりMINERVOTへ任せるヘビーユーザー向け",
     monthlyPriceJpy: 9800,
     stripePriceId: process.env.STRIPE_PRICE_PREMIUM?.trim() || null,
-    limits: {
-      aiUsageMonthly: 2000,
-      externalIntegrations: 10,
-      automationTasks: 50,
-      snsPostsMonthly: 500,
-      highQualityMode: true,
-      videoGeneration: false,
-      imageGeneration: false,
-      features: PREMIUM_FEATURES,
-    },
+    limits: PREMIUM_LIMITS,
     highlights: [
+      highlightAi(PREMIUM_LIMITS.aiUsageMonthly),
+      highlightAutomation(PREMIUM_LIMITS.automationTasks),
+      highlightIntegrations(PREMIUM_LIMITS.externalIntegrations),
+      highlightX(PREMIUM_LIMITS.xAutoPostsMonthly),
+      highlightWordPress(PREMIUM_LIMITS.wordpressPostsMonthly),
       "高度な自動化",
-      "複数外部サービス連携",
       "高品質モード",
       "優先処理",
     ],
+    notes: [highlightXUrlNote(PREMIUM_LIMITS.xUrlPostsMonthly)],
   },
 ] as const;
 
@@ -139,4 +211,9 @@ export function isPlanId(value: string): value is PlanId {
 
 export function getPaidPlans(): readonly PlanDefinition[] {
   return PLAN_DEFINITIONS.filter((plan) => plan.monthlyPriceJpy > 0);
+}
+
+/** Expected Stripe unit_amount in JPY (same as Plan Registry). */
+export function getExpectedStripeAmountJpy(planId: PlanId): number {
+  return getPlanDefinition(planId).monthlyPriceJpy;
 }

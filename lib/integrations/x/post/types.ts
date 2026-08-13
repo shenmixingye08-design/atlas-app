@@ -60,6 +60,11 @@ export type XPostResult =
       message: string;
     }
   | {
+      status: "plan_limited";
+      message: string;
+      httpStatus?: 402 | 403 | 429;
+    }
+  | {
       status: "x_not_connected";
       message: string;
       reconnectRequired?: boolean;

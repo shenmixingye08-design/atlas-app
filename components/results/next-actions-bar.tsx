@@ -99,7 +99,7 @@ export function NextActionsBar({
         setError(result.message);
         return;
       }
-      if (result.status === "feature_disabled") {
+      if (result.status === "feature_disabled" || result.status === "plan_limited") {
         setError(result.message);
         return;
       }

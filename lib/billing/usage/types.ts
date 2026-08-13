@@ -4,7 +4,12 @@ export type UsageMonthKey = string;
 
 export type UsageCounters = {
   aiRuns: number;
+  /** X auto-posts this month (total, including URL posts). */
   snsPosts: number;
+  /** X posts this month that contained an external URL. */
+  xUrlPosts: number;
+  /** WordPress publish operations this month (drafts excluded). */
+  wordpressPosts: number;
   automationTasksActive: number;
 };
 
@@ -58,11 +63,19 @@ export type AiUsageBreakdown = {
   byFeature: Record<string, AiUsagePeriodSummary>;
 };
 
+export type UsageMeter = {
+  used: number;
+  limit: number;
+  remaining: number;
+};
+
 export type UsageLimitSummary = {
   planId: PlanId;
   month: UsageMonthKey;
-  aiRuns: { used: number; limit: number; remaining: number };
-  snsPosts: { used: number; limit: number; remaining: number };
-  automationTasks: { used: number; limit: number; remaining: number };
+  aiRuns: UsageMeter;
+  snsPosts: UsageMeter;
+  xUrlPosts: UsageMeter;
+  wordpressPosts: UsageMeter;
+  automationTasks: UsageMeter;
   aiDetail: AiUsageBreakdown;
 };

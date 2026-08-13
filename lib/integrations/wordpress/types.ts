@@ -82,9 +82,19 @@ export type WordPressPostPayload = {
 };
 
 export type WordPressPostResult = {
-  status: "posted" | "draft_saved" | "updated" | "error" | "wp_not_connected" | "feature_disabled" | "auth_failure" | "validation_failed";
+  status:
+    | "posted"
+    | "draft_saved"
+    | "updated"
+    | "error"
+    | "wp_not_connected"
+    | "feature_disabled"
+    | "plan_limited"
+    | "auth_failure"
+    | "validation_failed";
   message: string;
   postId?: number;
   link?: string | null;
   postStatus?: string;
+  httpStatus?: 402 | 403 | 429;
 };

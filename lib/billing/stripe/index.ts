@@ -55,6 +55,10 @@ export {
 } from "./errors";
 export type { CheckoutErrorCode } from "./errors";
 
-export { processStripeWebhookRequest } from "./webhook";
+export { verifyStripePriceAmountsAgainstRegistry } from "./price-amount-guard";
+export type {
+  StripePriceAmountCheck,
+  StripePriceAmountReport,
+} from "./price-amount-guard";
 export { handleStripeWebhookEvent } from "./webhook-handlers";
 export type { WebhookHandleResult } from "./webhook-handlers";

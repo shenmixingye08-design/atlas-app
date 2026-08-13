@@ -3,11 +3,12 @@ import "server-only";
 import {
   canUseGoogleIntegration,
   canUseHighQualityMode,
-  checkAiUsageLimit,
+  checkAiExecutionLimit,
   checkAutomationTaskLimit,
   checkExternalIntegrationLimit,
   checkFeatureAccess,
-  checkSnsPostLimit,
+  checkWordPressPublishLimit,
+  checkXPostQuota,
 } from "./plans/policy";
 import type { BillingFeatureId, PlanCheckResult, PlanId } from "./plans/types";
 import {
@@ -18,13 +19,15 @@ import {
   enforcePaymentFailureGraceIfExpired,
   isAutomationSuspendedForUser,
 } from "./subscriptions/lifecycle";
+import { getUserAiUsageBreakdown } from "./usage/meter";
 import { getUsageSnapshot } from "./usage/store";
+import { tweetContainsExternalUrl } from "./usage/x-url";
 
 /**
  * Paid plan entitlements apply only while status is trialing or active.
  * Otherwise fall back to Free limits (existing Free policy — no new gates).
  */
-function resolveEffectivePlanId(userId: string): PlanId {
+export function resolveEffectivePlanId(userId: string): PlanId {
   const subscription = getUserSubscriptionView(userId);
   if (subscription.planId === "free") return "free";
   if (isPaidCapableStatus(subscription.status)) return subscription.planId;
@@ -70,14 +73,36 @@ export function evaluateExternalIntegrationAccess(
   );
 }
 
-export function evaluateAiUsageAccess(userId: string): PlanCheckResult {
+export function evaluateAiUsageAccess(
+  userId: string,
+  nextEstimatedCostUsd = 0,
+): PlanCheckResult {
   const usage = getUsageSnapshot(userId);
-  return checkAiUsageLimit(resolveEffectivePlanId(userId), usage);
+  const monthCostUsd = getUserAiUsageBreakdown(userId).month.estimatedCostUsd;
+  return checkAiExecutionLimit(
+    resolveEffectivePlanId(userId),
+    usage,
+    monthCostUsd,
+    nextEstimatedCostUsd,
+  );
 }
 
-export function evaluateSnsPostAccess(userId: string): PlanCheckResult {
+export function evaluateSnsPostAccess(
+  userId: string,
+  options: { text?: string; containsUrl?: boolean } = {},
+): PlanCheckResult {
   const usage = getUsageSnapshot(userId);
-  return checkSnsPostLimit(resolveEffectivePlanId(userId), usage);
+  const containsUrl =
+    options.containsUrl ??
+    (typeof options.text === "string"
+      ? tweetContainsExternalUrl(options.text)
+      : false);
+  return checkXPostQuota(resolveEffectivePlanId(userId), usage, containsUrl);
+}
+
+export function evaluateWordPressPublishAccess(userId: string): PlanCheckResult {
+  const usage = getUsageSnapshot(userId);
+  return checkWordPressPublishLimit(resolveEffectivePlanId(userId), usage);
 }
 
 export function userCanUseGoogleIntegration(userId: string): boolean {

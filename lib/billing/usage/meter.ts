@@ -4,7 +4,7 @@ import {
   estimateTokens,
   type WorkflowCostSummary,
 } from "@/lib/ai/cost-meter";
-import { decisionToModelPolicy, resolveTaskPolicy } from "@/lib/ai/policy-engine";
+import { estimateTokenCostUsd } from "@/lib/ai/model-catalog";
 import type { AiTaskType } from "@/lib/ai/model-policy";
 
 import { getPlanDefinition } from "../plans/registry";
@@ -62,15 +62,12 @@ function estimateCostUsd(input: {
   outputTokens: number;
   aiTaskType?: AiTaskType;
 }): number {
-  const policy = decisionToModelPolicy(
-    resolveTaskPolicy(input.aiTaskType ?? "chat"),
-  );
-  // Prefer policy pricing; model string is recorded separately for reporting.
-  void input.model;
-  return (
-    (input.inputTokens / 1_000_000) * policy.inputPricePerMillion +
-    (input.outputTokens / 1_000_000) * policy.outputPricePerMillion
-  );
+  void input.aiTaskType;
+  return estimateTokenCostUsd({
+    model: input.model,
+    inputTokens: input.inputTokens,
+    outputTokens: input.outputTokens,
+  });
 }
 
 export type RecordUserAiUsageInput = {

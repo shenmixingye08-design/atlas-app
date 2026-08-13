@@ -200,6 +200,18 @@ async function executeTweetPost(input: {
     };
   }
 
+  const { evaluateBillingSnsPost } = await import("@/lib/billing/access");
+  const billing = await evaluateBillingSnsPost(input.userId, {
+    text: input.text,
+  });
+  if (billing.denial) {
+    return {
+      status: "plan_limited",
+      message: billing.denial.reason,
+      httpStatus: billing.denial.status,
+    };
+  }
+
   let driveFileUrl: string | null = null;
   try {
     driveFileUrl = await savePostTextToGoogleDriveIfEnabled({
@@ -252,6 +264,17 @@ async function executeTweetPost(input: {
       },
     );
     const tweet = sideEffect.result;
+
+    if (sideEffect.executed || tweet.tweetId) {
+      const { recordXPostUsageOnce } = await import(
+        "@/lib/billing/usage/external-counters"
+      );
+      recordXPostUsageOnce({
+        userId: input.userId,
+        tweetId: tweet.tweetId,
+        text,
+      });
+    }
 
     const tweetUrl =
       access.username != null
