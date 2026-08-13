@@ -20,6 +20,7 @@ import { formatWorkMemoriesForPlanner } from "@/lib/work-memory/metadata";
 import { getMemoriesForAssignment } from "@/lib/user-memory/service";
 import { formatMemoriesForPlanner } from "@/lib/user-memory/metadata";
 import type { UserMemory } from "@/lib/user-memory/types";
+import { resolveMemoryArtifactTypes } from "@/lib/memory-apply/channels";
 import type { MemoryApplyChannel, MemoryApplyMode } from "@/lib/memory-apply/types";
 
 export type MemoryProviderRequest = {
@@ -30,6 +31,8 @@ export type MemoryProviderRequest = {
   allowedScopes?: readonly PersonalMemoryScope[] | null;
   deniedScopes?: readonly PersonalMemoryScope[] | null;
   artifactTypes?: readonly string[] | null;
+  /** Workflow step types (x_post / wordpress / …) — beat content classifiers. */
+  stepTypes?: readonly string[] | null;
   capabilities?: readonly string[] | null;
   /** When false, returns empty resolution (Memory OFF comparison baseline). */
   memoryEnabled?: boolean;
@@ -117,7 +120,11 @@ export async function MemoryProvider(
     deniedScopes: request.deniedScopes ?? undefined,
     automationId: request.automationId ?? undefined,
     notes: request.assignment ?? undefined,
-    artifactTypes: request.artifactTypes ?? undefined,
+    artifactTypes: resolveMemoryArtifactTypes({
+      assignment: request.assignment,
+      stepTypes: request.stepTypes,
+      classifierTypes: request.artifactTypes,
+    }),
     capabilities: request.capabilities ?? undefined,
   });
 

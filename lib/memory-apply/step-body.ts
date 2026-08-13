@@ -7,6 +7,7 @@ import "server-only";
 
 import {
   artifactTypesForChannel,
+  resolveMemoryArtifactTypes,
   type MemoryArtifactChannel,
 } from "@/lib/memory-apply/channels";
 import { recordMemoryApplyEvent } from "@/lib/memory-apply/metrics";
@@ -117,4 +118,92 @@ export async function applyMemoryToStepBody(input: {
       channels: [],
     };
   }
+}
+
+function destinationChannelFromAssignment(
+  assignment: string,
+  stepTypes?: readonly string[] | null,
+): MemoryArtifactChannel | null {
+  const types = resolveMemoryArtifactTypes({
+    assignment,
+    stepTypes,
+  });
+  if (types.includes("x_post") && !types.includes("wordpress")) return "x_post";
+  if (types.includes("wordpress") && !types.includes("x_post")) {
+    return "wordpress";
+  }
+  if (types.includes("email")) return "email";
+  return null;
+}
+
+/**
+ * Chat / commander: overlay generated body with destination Memory
+ * (X / WordPress) even when the content classifier said "document".
+ */
+export async function overlayChatDestinationBody(input: {
+  userId: string;
+  assignment: string;
+  content: string;
+  snsPost?: string | null;
+  posts?: readonly string[] | null;
+  markdown?: string | null;
+  plainText?: string | null;
+  stepTypes?: readonly string[] | null;
+}): Promise<{
+  channel: MemoryArtifactChannel | null;
+  content: string;
+  snsPost: string;
+  posts: string[];
+  markdown: string;
+  plainText: string;
+  memoryIdsUsed: string[];
+  appliedKeys: string[];
+}> {
+  const snsPost = input.snsPost ?? "";
+  const posts = [...(input.posts ?? [])];
+  const markdown = input.markdown ?? "";
+  const plainText = input.plainText ?? "";
+  const channel = destinationChannelFromAssignment(
+    input.assignment,
+    input.stepTypes,
+  );
+  if (!channel || !input.userId.trim()) {
+    return {
+      channel,
+      content: input.content,
+      snsPost,
+      posts,
+      markdown,
+      plainText,
+      memoryIdsUsed: [],
+      appliedKeys: [],
+    };
+  }
+
+  const source =
+    (channel === "x_post" && snsPost.trim() ? snsPost : input.content) ||
+    input.content;
+  const applied = await applyMemoryToStepBody({
+    userId: input.userId,
+    channel,
+    baseline: source,
+    assignment: input.assignment,
+  });
+
+  return {
+    channel,
+    content: applied.text || input.content,
+    snsPost: channel === "x_post" ? applied.text || snsPost : snsPost,
+    posts:
+      channel === "x_post" && posts.length > 0
+        ? posts.map(() => applied.text || source)
+        : posts,
+    markdown:
+      markdown && (channel === "wordpress" || !snsPost.trim())
+        ? applied.text || markdown
+        : markdown,
+    plainText: plainText ? applied.text || plainText : plainText,
+    memoryIdsUsed: applied.memoryIdsUsed,
+    appliedKeys: applied.appliedKeys,
+  };
 }
