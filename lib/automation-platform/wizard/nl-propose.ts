@@ -72,7 +72,11 @@ export function proposeWizardFromNaturalLanguage(
   if (/PowerPoint|パワポ|スライド/.test(lower)) {
     steps.push(createStepFromCapability("powerpoint_generate"));
   }
-  if (/Word|文書|報告書|提案書/.test(lower)) {
+  // Phase 3: 「文章を作成」 is word_generate even without explicit Word keyword.
+  if (
+    /Word|文書|報告書|提案書/.test(lower) ||
+    /文章を作成|という文章|テキストを作成|資料を作成/.test(lower)
+  ) {
     steps.push(createStepFromCapability("word_generate"));
   }
   if (/PDF/.test(lower)) {

@@ -12,7 +12,16 @@ export type ExternalAdapterInput = {
   automationName: string;
   automationId: string | null;
   runId: string;
+  /** Stable side-effect occurrence across safe-retry run ids. */
+  occurrenceKey?: string | null;
   approved: boolean;
+  priorArtifacts?: Array<{
+    id: string;
+    label: string;
+    url: string | null;
+    externalId: string | null;
+    kind?: string;
+  }>;
 };
 
 export type ExternalAdapter = (

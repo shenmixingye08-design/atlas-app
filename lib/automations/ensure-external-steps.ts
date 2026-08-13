@@ -16,6 +16,12 @@ import {
   assertRequiredExternalStepsPresent,
   resolveRequiredExternals,
 } from "@/lib/automations/required-external-fail-closed";
+import {
+  buildNotifyStepFromText,
+  buildWordGenerateStepFromText,
+  wantsPhase3GenerateStep,
+  wantsPhase3NotifyStep,
+} from "@/lib/automations/phase3-multistep-compose";
 import type { AutomationWorkflowStep } from "@/lib/automation-platform/types/step";
 
 function baseStep(
@@ -105,6 +111,14 @@ export function ensureRequiredExternalSteps(input: {
   const injected: RequiredExternalAction[] = [];
   const unsupported: RequiredExternalAction[] = [];
 
+  // Phase 3: prepend generate when NL asks and missing.
+  if (
+    wantsPhase3GenerateStep(sourceText) &&
+    !steps.some((step) => step.enabled && step.type === "word_generate")
+  ) {
+    steps.unshift(buildWordGenerateStepFromText(sourceText, 0));
+  }
+
   for (const action of required) {
     const present = steps.some(
       (step) => step.enabled && step.type === action,
@@ -122,10 +136,35 @@ export function ensureRequiredExternalSteps(input: {
     }
   }
 
+  const hasExternal = steps.some(
+    (step) =>
+      step.enabled &&
+      (step.type === "google_calendar" ||
+        step.type === "gmail" ||
+        step.type === "dropbox" ||
+        step.type === "x_post" ||
+        step.type === "wordpress"),
+  );
+  if (
+    (wantsPhase3NotifyStep(sourceText) ||
+      (wantsPhase3GenerateStep(sourceText) && hasExternal)) &&
+    !steps.some((step) => step.enabled && step.type === "notify")
+  ) {
+    const order =
+      steps.reduce((max, step) => Math.max(max, step.order), 0) + 1;
+    steps.push(buildNotifyStepFromText(sourceText, order));
+  }
+
+  // Normalize order after insertions.
+  steps.sort((a, b) => a.order - b.order);
+  for (let i = 0; i < steps.length; i += 1) {
+    steps[i] = { ...steps[i]!, order: i };
+  }
+
   // Drop lone orchestrate fallback when a real external step was injected —
   // orchestrate alone was the pre-#290 fake-success / post-#290 fail-closed shape.
   let nextSteps = steps;
-  if (injected.length > 0) {
+  if (injected.length > 0 || wantsPhase3GenerateStep(sourceText)) {
     const withoutOrphanOrchestrate = steps.filter(
       (step) => !(step.type === "orchestrate" && step.enabled),
     );
@@ -134,7 +173,10 @@ export function ensureRequiredExternalSteps(input: {
         (step) => step.enabled && step.type !== "orchestrate",
       )
     ) {
-      nextSteps = withoutOrphanOrchestrate;
+      nextSteps = withoutOrphanOrchestrate.map((step, index) => ({
+        ...step,
+        order: index,
+      }));
     }
   }
 

@@ -48,6 +48,7 @@ function mapV2ToPhase1AutomationResponse(input: {
   };
   createInput: import("./types").CreateAutomationInput;
   executionLevel: string;
+  requiredExternals?: string[];
 }): Automation {
   const schedule = input.createInput.schedule;
   return {
@@ -62,7 +63,8 @@ function mapV2ToPhase1AutomationResponse(input: {
         ...(input.createInput.workflow.metadata ?? {}),
         automationV2Id: input.v2.id,
         source: "natural_language_external",
-        requiredExternals: ["google_calendar"],
+        requiredExternals:
+          input.requiredExternals ?? ["google_calendar"],
       },
     },
     timing: input.createInput.timing ?? {
@@ -159,11 +161,47 @@ async function createExternalPath(input: {
     };
   }
 
+  // Phase 3: when NL asks for generate+notify, refuse incomplete compositions.
+  const { wantsPhase3GenerateStep, wantsPhase3NotifyStep } = await import(
+    "@/lib/automations/phase3-multistep-compose"
+  );
+  if (wantsPhase3GenerateStep(input.parsed.sourceText)) {
+    const hasGenerate = v2.workflow.steps.some(
+      (step) => step.enabled && step.type === "word_generate",
+    );
+    if (!hasGenerate) {
+      return {
+        ok: false,
+        code: "phase3_generate_step_missing",
+        message:
+          "文章生成手順が保存されませんでした。成功扱いにはしません。",
+        httpStatus: 500,
+      };
+    }
+  }
+  if (
+    wantsPhase3NotifyStep(input.parsed.sourceText) ||
+    wantsPhase3GenerateStep(input.parsed.sourceText)
+  ) {
+    const hasNotify = v2.workflow.steps.some(
+      (step) => step.enabled && step.type === "notify",
+    );
+    if (!hasNotify) {
+      return {
+        ok: false,
+        code: "phase3_notify_step_missing",
+        message: "完了通知手順が保存されませんでした。成功扱いにはしません。",
+        httpStatus: 500,
+      };
+    }
+  }
+
   const automation = mapV2ToPhase1AutomationResponse({
     userId: input.userId,
     v2,
     createInput: input.parsed.createInput,
     executionLevel: "approve_then_run",
+    requiredExternals: input.parsed.requiredExternals,
   });
 
   const scheduleLabel =

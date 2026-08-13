@@ -31,6 +31,7 @@ import {
 import { getProductionStep } from "@/lib/automation-platform/execution/production-step-registry";
 import { memoryUpdateRun } from "@/lib/automation-platform/repository/memory-store";
 import { persistAutomationRunNow } from "@/lib/automation-platform/durable-runs";
+import { classifyAutomationFailure } from "@/lib/automation-platform/execution/failure-class";
 import {
   recordAutomationMemoryFailure,
   recordAutomationMemorySuccess,
@@ -268,13 +269,17 @@ export async function executeQueuedRun(input: {
     run = await persist({ ...run, steps: steps.map((s) => ({ ...s })) });
 
     try {
+      const priorArtifacts = run.artifacts.map((item) => ({ ...item }));
       let result = await invoker({
         step: def,
         userId: run.userId,
         automationName: input.automation.name,
         runId: run.id,
         automationId: run.automationId,
+        occurrenceKey:
+          run.scheduleOccurrenceKey ?? run.runKey ?? run.id,
         approved: approved || !runStep.requiresApproval,
+        priorArtifacts,
         resolvedInstruction: run.resolvedInstruction,
         memoryUsage: run.memoryUsage,
       });
@@ -300,12 +305,19 @@ export async function executeQueuedRun(input: {
 
       if (result.needsUserInput) {
         needsUserInput = true;
+        const failure = classifyAutomationFailure({
+          errorCode: result.errorCode,
+          errorMessage: result.errorMessage,
+          failedStage: result.failedStage,
+          retryable: false,
+        });
         steps[i] = {
           ...steps[i]!,
           status: "waiting_approval",
           errorCode: result.errorCode ?? null,
           errorMessage: result.errorMessage ?? null,
           outputSummary: result.summary,
+          failureClass: failure.failureClass,
         };
         failedStepId = runStep.id;
         lastErrorCode = result.errorCode ?? "automation_approval_required";
@@ -318,6 +330,12 @@ export async function executeQueuedRun(input: {
         failedStepId = runStep.id;
         lastErrorCode = result.errorCode ?? "automation_run_failed";
         lastErrorMessage = result.errorMessage ?? result.summary;
+        const failure = classifyAutomationFailure({
+          errorCode: lastErrorCode,
+          errorMessage: lastErrorMessage,
+          failedStage: result.failedStage,
+          retryable: result.retryable,
+        });
         steps[i] = {
           ...steps[i]!,
           status: "failed",
@@ -325,6 +343,7 @@ export async function executeQueuedRun(input: {
           errorCode: lastErrorCode,
           errorMessage: lastErrorMessage,
           outputSummary: result.summary,
+          failureClass: failure.failureClass,
         };
         if (def.configuration.optional === true) {
           incompleteOptionalStepIds.push(runStep.id);
@@ -354,6 +373,13 @@ export async function executeQueuedRun(input: {
           notificationIds: [],
         });
       }
+      const stepExternalIds = [
+        ...(result.evidence?.externalActionIds ?? []),
+        ...(result.evidence?.notificationIds ?? []),
+        ...result.artifacts
+          .map((item) => item.externalId)
+          .filter((id): id is string => Boolean(id)),
+      ];
       steps[i] = {
         ...steps[i]!,
         status: "succeeded",
@@ -361,6 +387,9 @@ export async function executeQueuedRun(input: {
         outputSummary: result.summary,
         errorCode: null,
         errorMessage: null,
+        failureClass: null,
+        externalActionIds: [...new Set(stepExternalIds)],
+        outputArtifactIds: result.artifacts.map((item) => item.id),
       };
       run = await persist({
         ...run,
@@ -373,6 +402,11 @@ export async function executeQueuedRun(input: {
       failedStepId = runStep.id;
       lastErrorCode = classified.code;
       lastErrorMessage = classified.message;
+      const failure = classifyAutomationFailure({
+        errorCode: classified.code,
+        errorMessage: classified.message,
+        retryable: classified.retryable,
+      });
       steps[i] = {
         ...steps[i]!,
         status: "failed",
@@ -380,6 +414,7 @@ export async function executeQueuedRun(input: {
         errorCode: classified.code,
         errorMessage: classified.message,
         outputSummary: "手順で例外が発生しました",
+        failureClass: failure.failureClass,
       };
       if (input.automation.workflow.onFailure.strategy === "stop") {
         break;

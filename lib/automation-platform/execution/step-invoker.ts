@@ -32,7 +32,14 @@ export type StepInvoker = (input: {
   runId: string;
   /** Durable automation id — used for side-effect idempotency. */
   automationId?: string | null;
+  /**
+   * Stable occurrence key for side-effect claims across safe-retry run ids.
+   * Prefer scheduleOccurrenceKey / runKey over raw runId.
+   */
+  occurrenceKey?: string | null;
   approved: boolean;
+  /** Artifacts produced by earlier succeeded steps in this run. */
+  priorArtifacts?: AutomationRunArtifact[];
   /** Optional Memory / instruction context for production step adapters. */
   resolvedInstruction?: ResolvedInstruction | null;
   memoryUsage?: MemoryUsageRecord | null;

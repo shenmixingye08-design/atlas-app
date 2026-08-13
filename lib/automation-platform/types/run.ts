@@ -44,6 +44,12 @@ export type AutomationRunStep = {
   errorMessage: string | null;
   attemptCount: number;
   outputSummary: string | null;
+  /** Phase 3: provider resource / notification ids produced by this step. */
+  externalActionIds?: string[];
+  /** Phase 3: artifact ids produced by this step. */
+  outputArtifactIds?: string[];
+  /** Phase 3: classified failure (retryable / credential_required / …). */
+  failureClass?: string | null;
 };
 
 export type AutomationRunArtifact = {
