@@ -6,18 +6,23 @@ export type {
   VisionDetectedType,
   VisionJobStatus,
   VisionErrorCode,
+  VisionFieldConfidence,
+  VisionCellKind,
 } from "./types";
 export { VisionError, rethrowVisionError, VISION_PROMPT_VERSION } from "./types";
 export {
   classifyImagePurposeFromText,
   recommendDetailLevel,
   labelForDetectedType,
+  inferVisionUserIntent,
 } from "./classify";
 export { analyzeUserImage } from "./analyze-image";
 export { analyzeUserImageBatch } from "./analyze-batch";
 export { prepareAssignmentWithVision } from "./prepare-assignment";
 export { buildVisionEnrichedAssignment } from "./adapters/to-assignment-context";
 export { visionBatchToDeliverableContent } from "./adapters/to-artifact-source";
+export { sanitizeVisionAnalysisResult, sanitizeVisionModelPayload } from "./precision";
+export { mergeVisionBatch, groupVisionImages } from "./merge-batch";
 export { openAiVisionProvider } from "./openai-vision-provider";
 export type { VisionProvider } from "./provider";
 export { visionAnalysisResultSchema, visionModelPayloadSchema } from "./schemas";

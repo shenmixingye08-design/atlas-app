@@ -125,6 +125,9 @@ export function buildVisionEnrichedAssignment(input: {
           ? `要確認: ${image.missingFields.join("、")}`
           : null,
         image.warnings.length > 0 ? `警告: ${image.warnings.join("、")}` : null,
+        image.fieldConfidence
+          ? `項目確信度: ${JSON.stringify(image.fieldConfidence)}`
+          : null,
       ];
       return parts.filter(Boolean).join("\n");
     })

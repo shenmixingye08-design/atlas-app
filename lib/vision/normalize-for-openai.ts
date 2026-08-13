@@ -148,6 +148,41 @@ export async function normalizeImageForOpenAi(input: {
     if (hasAlpha && profile !== "compact") {
       buffer = await base.png({ compressionLevel: 9, effort: 7 }).toBuffer();
       mimeType = "image/png";
+    } else if (profile === "ocr") {
+      // Text-heavy work: avoid JPEG 4:2:0 smear. Keep PNG when possible.
+      buffer = await base.png({ compressionLevel: 6, effort: 5 }).toBuffer();
+      mimeType = "image/png";
+      if (buffer.length > settings.maxBytes) {
+        warnings.push("ocr_png_over_limit_jpeg_444");
+        const jpegPipeline = hasAlpha
+          ? sharp(input.buffer, { failOn: "none", pages: 1 })
+              .rotate()
+              .toColourspace("srgb")
+              .resize({
+                width: settings.maxEdge,
+                height: settings.maxEdge,
+                fit: "inside",
+                withoutEnlargement: true,
+              })
+              .flatten({ background: "#ffffff" })
+          : sharp(input.buffer, { failOn: "none", pages: 1 })
+              .rotate()
+              .toColourspace("srgb")
+              .resize({
+                width: settings.maxEdge,
+                height: settings.maxEdge,
+                fit: "inside",
+                withoutEnlargement: true,
+              });
+        buffer = await jpegPipeline
+          .jpeg({
+            quality: settings.jpegQuality,
+            mozjpeg: true,
+            chromaSubsampling: "4:4:4",
+          })
+          .toBuffer();
+        mimeType = "image/jpeg";
+      }
     } else {
       const jpegPipeline = hasAlpha
         ? base.flatten({ background: "#ffffff" })

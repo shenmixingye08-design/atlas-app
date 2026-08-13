@@ -13,6 +13,7 @@ import {
   buildVisionAnalyzeUserText,
 } from "@/lib/vision/prompts/analyze";
 import { parseVisionModelPayload } from "@/lib/vision/parse-model-json";
+import { sanitizeVisionAnalysisResult } from "@/lib/vision/precision";
 import {
   resolveVisionFallbackModel,
   resolveVisionModel,
@@ -867,6 +868,7 @@ export const openAiVisionProvider: VisionProvider = {
                 analysisSuccess: false,
                 jobId: input.jobId ?? null,
                 attempt,
+                retryReason: "schema_validation_not_retried",
                 errorCode:
                   error instanceof VisionError
                     ? error.code
@@ -874,10 +876,7 @@ export const openAiVisionProvider: VisionProvider = {
               },
             );
           }
-          if (error instanceof VisionError && attempt < VISION_MAX_ATTEMPTS) {
-            lastError = error;
-            continue;
-          }
+          // Schema / malformed JSON: do not re-send the same image to OpenAI.
           throw error;
         }
 
@@ -912,7 +911,7 @@ export const openAiVisionProvider: VisionProvider = {
           }
         ).usage;
 
-        const result: VisionAnalysisResult = {
+        const result: VisionAnalysisResult = sanitizeVisionAnalysisResult({
           id: `vis_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`,
           attachmentId: input.attachmentId,
           detectedType: payload.detectedType,
@@ -925,6 +924,9 @@ export const openAiVisionProvider: VisionProvider = {
             headers: table.headers ?? [],
             rows: table.rows ?? [],
             notes: table.notes ?? null,
+            columnTypes: table.columnTypes,
+            cellConfidence: table.cellConfidence,
+            mergedRegions: table.mergedRegions,
           })),
           visualElements: payload.visualElements ?? [],
           layout: payload.layout ?? null,
@@ -941,7 +943,7 @@ export const openAiVisionProvider: VisionProvider = {
           detailLevel: openAiDetail,
           createdAt: new Date().toISOString(),
           pageIndex: input.pageIndex,
-        };
+        });
 
         return {
           result,
@@ -953,6 +955,12 @@ export const openAiVisionProvider: VisionProvider = {
       } catch (error) {
         if (error instanceof VisionError) {
           lastError = error;
+          if (
+            error.code === "json_parse_failed" ||
+            error.code === "table_extract_failed"
+          ) {
+            throw error;
+          }
           const details = error.details
             ? ({
                 httpStatus:
@@ -1006,6 +1014,13 @@ export const openAiVisionProvider: VisionProvider = {
                 attempt,
                 normalizeProfile: profile,
                 fallbackNext: true,
+                retryReason: isRetryableOpenAiFailure(details)
+                  ? details.httpStatus === 429 || details.openaiErrorCode === "rate_limit_exceeded"
+                    ? "rate_limit"
+                    : details.timedOut
+                      ? "timeout"
+                      : "retryable_5xx"
+                  : "fallback_reencode_or_model",
                 errorCode: error.code,
                 openaiErrorCode: details.openaiErrorCode,
                 safeMessage: details.safeMessage,
@@ -1020,7 +1035,15 @@ export const openAiVisionProvider: VisionProvider = {
           if (attempt >= VISION_MAX_ATTEMPTS) {
             throw error;
           }
-          if (error.code === "config_missing" || error.code === "forbidden") {
+          if (
+            error.code === "config_missing" ||
+            error.code === "forbidden" ||
+            error.code === "unsupported_type" ||
+            error.code === "empty_image" ||
+            error.code === "corrupt_image" ||
+            error.code === "not_found" ||
+            error.code === "invalid_data_url"
+          ) {
             throw error;
           }
           continue;

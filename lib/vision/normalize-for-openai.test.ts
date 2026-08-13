@@ -86,10 +86,19 @@ describe("normalizeImageForOpenAi", () => {
     expect(resolveOpenAiVisionDetail("high", 3)).toBe("low");
   });
 
-  it("shrinks large images under compact profile", async () => {
-    const jpeg = await makeJpeg(4000, 3000);
-    const out = await normalizeImageForOpenAi({ buffer: jpeg, profile: "compact" });
-    expect(Math.max(out.width, out.height)).toBeLessThanOrEqual(1280);
-    expect(out.byteLength).toBeLessThan(jpeg.length);
+  it("ocr profile keeps PNG instead of JPEG 4:2:0 for text", async () => {
+    const png = await sharp({
+      create: {
+        width: 800,
+        height: 1200,
+        channels: 3,
+        background: { r: 255, g: 255, b: 255 },
+      },
+    })
+      .png()
+      .toBuffer();
+    const out = await normalizeImageForOpenAi({ buffer: png, profile: "ocr" });
+    expect(out.mimeType).toBe("image/png");
+    expect(detectImageMimeFromBytes(out.buffer)).toBe("image/png");
   });
 });

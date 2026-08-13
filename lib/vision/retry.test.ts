@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isNonRetryableOpenAiFailure,
+  isNonRetryableVisionParseFailure,
   isRetryableOpenAiFailure,
   shouldFallbackOpenAiFailure,
 } from "@/lib/vision/retry";
@@ -67,5 +68,11 @@ describe("vision retry policy", () => {
         details({ openaiErrorCode: "empty_content" }),
       ),
     ).toBe(true);
+  });
+
+  it("does not retry schema / malformed JSON", () => {
+    expect(isNonRetryableVisionParseFailure("json_parse_failed")).toBe(true);
+    expect(isNonRetryableVisionParseFailure("table_extract_failed")).toBe(true);
+    expect(isNonRetryableVisionParseFailure("timeout")).toBe(false);
   });
 });

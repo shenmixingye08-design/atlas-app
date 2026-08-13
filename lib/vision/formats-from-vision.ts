@@ -1,3 +1,4 @@
+import { inferVisionUserIntent } from "@/lib/vision/classify";
 import type { DeliverableFormat } from "@/lib/deliverables/types";
 import type { VisionBatchResult, VisionDetectedType } from "@/lib/vision/types";
 
@@ -19,6 +20,11 @@ export function formatsFromVisionBatch(
   const wantsPdf = /PDF|pdf/i.test(text);
   const wantsWord = /Word|ワード|docx/i.test(text);
   const wantsExcel = /Excel|エクセル|xlsx|家計簿/i.test(text);
+  const intent = inferVisionUserIntent(assignment);
+
+  if (intent === "document" && !wantsExcel) {
+    return wantsPdf ? ["docx", "pdf"] : ["docx"];
+  }
 
   if (
     recommended === "household_excel" ||
@@ -26,6 +32,7 @@ export function formatsFromVisionBatch(
     recommended === "table_excel" ||
     type === "receipt" ||
     type === "invoice" ||
+    type === "estimate" ||
     type === "table" ||
     type === "spreadsheet_source" ||
     (wantsExcel && !wantsWord)
@@ -65,6 +72,7 @@ export function titleFromVisionBatch(batch: VisionBatchResult): string {
   const map: Partial<Record<VisionDetectedType, string>> = {
     receipt: "家計簿（レシート）",
     invoice: "請求書データ",
+    estimate: "見積書データ",
     contract: "契約書要約",
     chart: "グラフ分析レポート",
     table: "表データ",

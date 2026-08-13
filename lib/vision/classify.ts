@@ -71,6 +71,21 @@ export function classifyImagePurposeFromText(
   return fallback;
 }
 
+/** Downstream artifact intent — does not change extracted fields. */
+export type VisionUserIntent = "spreadsheet" | "document" | "extract";
+
+export function inferVisionUserIntent(userText: string): VisionUserIntent {
+  const text = userText.trim();
+  if (/Excel|エクセル|xlsx|家計簿|表にして/i.test(text)) return "spreadsheet";
+  if (
+    /内容を説明|何が書いて|説明して|Word|ワード|docx|報告書|要約/i.test(text) &&
+    !/Excel|エクセル|家計簿/i.test(text)
+  ) {
+    return "document";
+  }
+  return "extract";
+}
+
 export function recommendDetailLevel(args: {
   detectedType: VisionDetectedType;
   userText: string;
@@ -90,6 +105,7 @@ export function recommendDetailLevel(args: {
     "business_card",
     "business_document",
     "sales_material",
+    "whiteboard",
   ];
 
   if (ecoMode && imageCount >= 4) return "low";

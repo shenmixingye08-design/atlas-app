@@ -16,6 +16,7 @@ import {
   appendVisionDiagnosticStage,
   createVisionDiagnostic,
 } from "@/lib/vision/diagnostics";
+import { sanitizeVisionAnalysisResult } from "@/lib/vision/precision";
 import { openAiVisionProvider } from "@/lib/vision/openai-vision-provider";
 import { logVisionPipeline } from "@/lib/vision/pipeline-log";
 import type { VisionProvider } from "@/lib/vision/provider";
@@ -272,7 +273,7 @@ export async function analyzeUserImage(input: {
   const started = Date.now();
 
   try {
-    const { result, model, inputTokens, outputTokens } = await provider.analyzeImage({
+    const { result: rawResult, model, inputTokens, outputTokens } = await provider.analyzeImage({
       userId: input.userId,
       attachmentId: input.attachmentId,
       imageUrl,
@@ -285,6 +286,7 @@ export async function analyzeUserImage(input: {
       jobId: input.jobId,
       diagnosticId,
     });
+    const result = sanitizeVisionAnalysisResult(rawResult);
 
     // OCR結果を Memory 辞書で補正し、次回以降のために利用する
     try {

@@ -263,4 +263,31 @@ describe("openAiVisionProvider request shape", () => {
       }),
     });
   });
+
+  it("does not re-send malformed JSON to OpenAI", async () => {
+    vi.mocked(createAtlasResponse).mockResolvedValue({
+      id: "resp_bad_json",
+      output_text: "not-json {{{",
+      status: "completed",
+      model: "gpt-5.5",
+    } as Awaited<ReturnType<typeof createAtlasResponse>>);
+
+    const jpeg = await sampleJpeg();
+    await expect(
+      openAiVisionProvider.analyzeImage({
+        userId: "user_a",
+        attachmentId: "img_1",
+        imageUrl: `data:image/jpeg;base64,${jpeg.toString("base64")}`,
+        imageBytes: jpeg,
+        userText: "解析して",
+        hintType: "general_photo",
+        detail: "high",
+        pageIndex: 0,
+        pageCount: 1,
+      }),
+    ).rejects.toMatchObject({
+      code: "json_parse_failed",
+    });
+    expect(createAtlasResponse).toHaveBeenCalledTimes(1);
+  });
 });
