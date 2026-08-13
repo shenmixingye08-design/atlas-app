@@ -8,6 +8,7 @@ import {
 import {
   listAiUsageEvents,
   replaceUsageDurableState,
+  serializeUsageClaimKeys,
   serializeUsageSnapshots,
 } from "./store";
 import type { AiUsageEvent, UsageSnapshot } from "./types";
@@ -21,6 +22,7 @@ type BillingUsageDurablePayload = {
   updatedAt: string;
   snapshots: Record<string, UsageSnapshot>;
   events: AiUsageEvent[];
+  claimKeys?: string[];
 };
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -32,6 +34,7 @@ function buildPayload(): BillingUsageDurablePayload {
     updatedAt: new Date().toISOString(),
     snapshots: serializeUsageSnapshots(),
     events: listAiUsageEvents().slice(-5000),
+    claimKeys: serializeUsageClaimKeys(),
   };
 }
 
@@ -85,6 +88,7 @@ export async function ensureBillingUsageHydrated(): Promise<void> {
     replaceUsageDurableState({
       snapshots: payload.snapshots,
       events: Array.isArray(payload.events) ? payload.events : [],
+      claimKeys: Array.isArray(payload.claimKeys) ? payload.claimKeys : [],
     });
   }
 }

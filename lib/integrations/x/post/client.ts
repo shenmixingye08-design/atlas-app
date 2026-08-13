@@ -53,6 +53,14 @@ async function parseXPostErrorResponse(
     };
   }
 
+  if (body?.status === "plan_limited") {
+    return {
+      status: "plan_limited",
+      message: body.message ?? "今月のX自動投稿上限に達しました",
+      httpStatus: response.status === 429 ? 429 : 403,
+    };
+  }
+
   if (body?.status === "validation_failed" && body.validation) {
     return {
       status: "validation_failed",

@@ -115,7 +115,7 @@ describe("AI usage metering and plan limits", () => {
     expect(denial?.reason).toContain("上限");
   });
 
-  it("allows Light users within 120 AI runs", async () => {
+  it("allows Light users within plan AI runs", async () => {
     const { recordUserAiUsage } = await import("@/lib/billing/usage/meter");
     const { evaluateBillingAiUsage } = await import("@/lib/billing/access");
     const { getPlanDefinition } = await import("@/lib/billing/plans/registry");
@@ -147,7 +147,7 @@ describe("AI usage metering and plan limits", () => {
     );
   });
 
-  it("allows Standard users within 400 AI runs", async () => {
+  it("allows Standard users within plan AI runs", async () => {
     const { recordUserAiUsage } = await import("@/lib/billing/usage/meter");
     const { evaluateBillingAiUsage } = await import("@/lib/billing/access");
     const { getPlanDefinition } = await import("@/lib/billing/plans/registry");
@@ -166,7 +166,7 @@ describe("AI usage metering and plan limits", () => {
     expect((await evaluateBillingAiUsage("user_std")).denial?.status).toBe(429);
   });
 
-  it("allows Premium users within 2000 AI runs", async () => {
+  it("allows Premium users within plan AI runs", async () => {
     const { recordUserAiUsage } = await import("@/lib/billing/usage/meter");
     const { evaluateBillingAiUsage } = await import("@/lib/billing/access");
     const { getPlanDefinition } = await import("@/lib/billing/plans/registry");

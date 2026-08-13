@@ -2,6 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+vi.mock("@/lib/auth/get-clerk-user-email", () => ({
+  getClerkUserPrimaryEmail: vi.fn(async (userId: string) => `${userId}@example.com`),
+}));
+
+vi.mock("@/lib/auth/is-atlas-owner", () => ({
+  isAtlasOwnerEmail: () => false,
+}));
+
 import { resetFeatureFlagStore, setFeatureFlagState } from "@/lib/feature-flags/store";
 import {
   resetExternalServiceCredentialStore,
@@ -84,7 +92,7 @@ function stubXApi(tweetId: string): void {
 }
 
 describe("P0-5 durable X drafts + scheduled posts", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.unstubAllEnvs();
     vi.stubEnv("ATLAS_X_POST_STORAGE", "memory_durable");
     vi.stubEnv("NODE_ENV", "test");
@@ -97,6 +105,27 @@ describe("P0-5 durable X drafts + scheduled posts", () => {
     resetXDraftPostStore();
     resetDurableXPostJobsForTests();
     resetDurableXDraftsForTests();
+    const { resetSubscriptionStore } = await import(
+      "@/lib/billing/subscriptions/store"
+    );
+    const { resetUsageStore } = await import("@/lib/billing/usage/store");
+    const { applySubscriptionFromStripe } = await import(
+      "@/lib/billing/subscriptions/service"
+    );
+    resetSubscriptionStore();
+    resetUsageStore();
+    for (const userId of [USER_A, USER_B]) {
+      await applySubscriptionFromStripe({
+        userId,
+        stripeCustomerId: `cus_${userId}`,
+        stripeSubscriptionId: `sub_${userId}`,
+        planId: "standard",
+        status: "active",
+        currentPeriodStart: new Date().toISOString(),
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
+      });
+    }
     setFeatureFlagState("x", "on");
     vi.restoreAllMocks();
   });

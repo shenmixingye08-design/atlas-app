@@ -71,7 +71,7 @@ export function mapProviderFailure(input: {
     };
   }
 
-  if (status === "plan_required") {
+  if (status === "plan_required" || status === "plan_limited") {
     return {
       ok: false,
       summary: message,

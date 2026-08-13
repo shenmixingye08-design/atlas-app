@@ -120,12 +120,27 @@ export async function createWordPressPostForUser(input: {
     return { status: "wp_not_connected", message: WP_NOT_CONNECTED_MESSAGE };
   }
 
+  const publishStatus = input.payload.status ?? "draft";
+  if (publishStatus === "publish") {
+    const { evaluateBillingWordPressPublish } = await import(
+      "@/lib/billing/access"
+    );
+    const billing = await evaluateBillingWordPressPublish(input.userId);
+    if (billing.denial) {
+      return {
+        status: "plan_limited",
+        message: billing.denial.reason,
+        httpStatus: billing.denial.status,
+      };
+    }
+  }
+
   try {
     const featuredMediaId = await resolveFeaturedMediaId(
       input.userId,
       input.payload,
     );
-    const status = input.payload.status ?? "draft";
+    const status = publishStatus;
     const { createHash } = await import("node:crypto");
     const { executeIdempotentSideEffect } = await import(
       "@/lib/side-effects/execute"
@@ -162,6 +177,16 @@ export async function createWordPressPostForUser(input: {
     );
     const created = sideEffect.result.created;
     await touchWordPressConnectionLastUsed(input.userId);
+
+    if (status === "publish" && created.id != null) {
+      const { recordWordPressPublishUsageOnce } = await import(
+        "@/lib/billing/usage/external-counters"
+      );
+      recordWordPressPublishUsageOnce({
+        userId: input.userId,
+        postId: created.id,
+      });
+    }
 
     return {
       status: status === "publish" ? "posted" : "draft_saved",
@@ -216,6 +241,21 @@ export async function updateWordPressPostForUser(input: {
     return { status: "wp_not_connected", message: WP_NOT_CONNECTED_MESSAGE };
   }
 
+  const updateStatus = input.payload.status ?? "draft";
+  if (updateStatus === "publish") {
+    const { evaluateBillingWordPressPublish } = await import(
+      "@/lib/billing/access"
+    );
+    const billing = await evaluateBillingWordPressPublish(input.userId);
+    if (billing.denial) {
+      return {
+        status: "plan_limited",
+        message: billing.denial.reason,
+        httpStatus: billing.denial.status,
+      };
+    }
+  }
+
   try {
     const featuredMediaId = await resolveFeaturedMediaId(
       input.userId,
@@ -229,12 +269,22 @@ export async function updateWordPressPostForUser(input: {
           ...input.payload,
           title,
           content,
-          status: input.payload.status ?? "draft",
+          status: updateStatus,
         },
         featuredMediaId,
       ),
     );
     await touchWordPressConnectionLastUsed(input.userId);
+
+    if (updateStatus === "publish" && updated.id != null) {
+      const { recordWordPressPublishUsageOnce } = await import(
+        "@/lib/billing/usage/external-counters"
+      );
+      recordWordPressPublishUsageOnce({
+        userId: input.userId,
+        postId: updated.id,
+      });
+    }
 
     return {
       status: "updated",

@@ -22,12 +22,29 @@ export type BillingFeatureId =
 export type PlanLimits = {
   /** Monthly AI run budget (orchestration / automation invocations). */
   aiUsageMonthly: number;
+  /**
+   * Monthly AI provider cost ceiling in USD (ledger estimatedCostUsd /
+   * provider actual when available). Fail-closed before the provider call.
+   */
+  aiCostBudgetUsdMonthly: number;
   /** Max connected external services at once. */
   externalIntegrations: number;
   /** Max active automation tasks. */
   automationTasks: number;
-  /** Monthly SNS post executions. */
+  /** Monthly X auto-posts (chat / automation / scheduler / retry). */
+  xAutoPostsMonthly: number;
+  /**
+   * Monthly X posts that include an external URL. Counted in addition to
+   * {@link xAutoPostsMonthly} (URL posts also consume the total X quota).
+   */
+  xUrlPostsMonthly: number;
+  /**
+   * @deprecated Alias of {@link xAutoPostsMonthly} for existing usage meters.
+   * Always equal to xAutoPostsMonthly — do not set independently.
+   */
   snsPostsMonthly: number;
+  /** Monthly WordPress *publish* operations (drafts do not consume). */
+  wordpressPostsMonthly: number;
   highQualityMode: boolean;
   videoGeneration: boolean;
   imageGeneration: boolean;
@@ -43,6 +60,8 @@ export type PlanDefinition = {
   stripePriceId: string | null;
   limits: PlanLimits;
   highlights: readonly string[];
+  /** Footnotes (e.g. X URL sub-quota). Not a second source of truth. */
+  notes?: readonly string[];
 };
 
 export type PlanCatalog = {

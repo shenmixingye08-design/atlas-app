@@ -21,6 +21,7 @@ import {
   evaluateExternalIntegrationAccess,
   evaluatePlanAccess,
   evaluateSnsPostAccess,
+  evaluateWordPressPublishAccess,
 } from "../policy";
 
 export const BILLING_UPGRADE_PATH = siteConfig.billingSettingsPath;
@@ -178,10 +179,11 @@ export async function evaluateBillingAiUsage(
 
 export async function evaluateBillingSnsPost(
   userId: string,
+  options: { text?: string; containsUrl?: boolean } = {},
 ): Promise<{ snapshot: BillingAccessSnapshot; denial: BillingDenial | null }> {
   const snapshot = await getBillingAccessSnapshot(userId);
   if (snapshot.isOwner) return { snapshot, denial: null };
-  const check = evaluateSnsPostAccess(userId);
+  const check = evaluateSnsPostAccess(userId, options);
   if (check.allowed) return { snapshot, denial: null };
   const needsPlan = check.reason.includes("利用できません");
   return {
@@ -192,8 +194,51 @@ export async function evaluateBillingSnsPost(
       reason: check.reason,
       currentPlan: snapshot.effectivePlanId,
       currentPlanName: snapshot.effectivePlanName,
-      requiredPlan: needsPlan ? "light" : null,
-      requiredPlanName: needsPlan ? getPlanDefinition("light").name : null,
+      requiredPlan: needsPlan ? "standard" : null,
+      requiredPlanName: needsPlan ? getPlanDefinition("standard").name : null,
+      upgradePath: BILLING_UPGRADE_PATH,
+    },
+  };
+}
+
+export async function evaluateBillingWordPressPublish(
+  userId: string,
+): Promise<{ snapshot: BillingAccessSnapshot; denial: BillingDenial | null }> {
+  const snapshot = await getBillingAccessSnapshot(userId);
+  if (snapshot.isOwner) return { snapshot, denial: null };
+
+  const feature = evaluatePlanAccess(userId, "blog_creation");
+  if (!feature.allowed) {
+    const requiredPlan = getMinimumPlanForFeature("blog_creation") ?? "standard";
+    const planName = getPlanDefinition(requiredPlan).name;
+    return {
+      snapshot,
+      denial: {
+        kind: "plan",
+        status: 403,
+        reason: `この機能は${planName}プラン以上でご利用いただけます（現在: ${snapshot.effectivePlanName}）`,
+        currentPlan: snapshot.effectivePlanId,
+        currentPlanName: snapshot.effectivePlanName,
+        requiredPlan,
+        requiredPlanName: planName,
+        upgradePath: BILLING_UPGRADE_PATH,
+      },
+    };
+  }
+
+  const check = evaluateWordPressPublishAccess(userId);
+  if (check.allowed) return { snapshot, denial: null };
+  const needsPlan = check.reason.includes("利用できません");
+  return {
+    snapshot,
+    denial: {
+      kind: needsPlan ? "plan" : "limit",
+      status: needsPlan ? 403 : 429,
+      reason: check.reason,
+      currentPlan: snapshot.effectivePlanId,
+      currentPlanName: snapshot.effectivePlanName,
+      requiredPlan: needsPlan ? "standard" : null,
+      requiredPlanName: needsPlan ? getPlanDefinition("standard").name : null,
       upgradePath: BILLING_UPGRADE_PATH,
     },
   };

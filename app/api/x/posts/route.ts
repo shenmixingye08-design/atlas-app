@@ -60,6 +60,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const context = await resolveFeatureAccessContext();
+  const text = typeof body.text === "string" ? body.text : "";
 
   const { requireBillingFeature, requireBillingSnsPost } = await import(
     "@/lib/billing/access"
@@ -73,7 +74,7 @@ export async function POST(request: Request): Promise<Response> {
         : ("sns_auto_post" as const);
     const featureDenied = await requireBillingFeature(userId, snsFeature);
     if (featureDenied) return featureDenied;
-    const snsLimitDenied = await requireBillingSnsPost(userId);
+    const snsLimitDenied = await requireBillingSnsPost(userId, { text });
     if (snsLimitDenied) return snsLimitDenied;
   }
 
@@ -81,9 +82,6 @@ export async function POST(request: Request): Promise<Response> {
     typeof body.automationId === "string" && body.automationId.trim()
       ? body.automationId.trim()
       : null;
-
-  const text =
-    typeof body.text === "string" ? body.text : "";
 
   try {
     if (mode === "draft") {
@@ -158,8 +156,10 @@ export async function POST(request: Request): Promise<Response> {
 function mapPostResult(
   result: Awaited<ReturnType<typeof postTweetNowForUser>>,
 ): Response {
-  if (result.status === "feature_disabled") {
-    return Response.json(result, { status: 403 });
+  if (result.status === "feature_disabled" || result.status === "plan_limited") {
+    return Response.json(result, {
+      status: result.status === "plan_limited" ? (result.httpStatus ?? 403) : 403,
+    });
   }
   if (result.status === "x_not_connected") {
     return Response.json(result, { status: 409 });

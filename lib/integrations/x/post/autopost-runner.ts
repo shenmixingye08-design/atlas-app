@@ -102,6 +102,19 @@ async function processSlotForUser(input: {
     return { slotKey, status: "failed", reason: "validation" };
   }
 
+  const urlQuotaDenial = (
+    await evaluateBillingSnsPost(userId, { text: generated.text })
+  ).denial;
+  if (urlQuotaDenial) {
+    await updateXAutoPostRun(runId, {
+      status: "skipped",
+      postType,
+      text: generated.text,
+      errorMessage: "投稿上限",
+    });
+    return { slotKey, status: "skipped", reason: "billing" };
+  }
+
   // Approval mode: save a draft + notify. Never posts automatically.
   if (settings.mode === "approval") {
     const draftResult = await saveXDraftForUser({

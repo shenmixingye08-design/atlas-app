@@ -25,9 +25,8 @@ describe("billing plan policy", () => {
     expect(canUseHighQualityMode("standard")).toBe(false);
   });
 
-  it("limits Free automation tasks to one", () => {
-    expect(checkAutomationTaskLimit("free", 0).allowed).toBe(true);
-    expect(checkAutomationTaskLimit("free", 1).allowed).toBe(false);
+  it("limits Free automation tasks to zero", () => {
+    expect(checkAutomationTaskLimit("free", 0).allowed).toBe(false);
   });
 
   it("allows Light SNS assist but not auto post", () => {

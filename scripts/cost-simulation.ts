@@ -3,8 +3,9 @@
  * Run: npx tsx scripts/cost-simulation.ts
  */
 
-import { resolveTaskPolicy, decisionToModelPolicy } from "../lib/ai/policy-engine";
+import { estimateTokenCostUsd } from "../lib/ai/model-catalog";
 import { estimateTokens } from "../lib/ai/cost-meter";
+import { resolveTaskPolicy } from "../lib/ai/policy-engine";
 import type { AiTaskType } from "../lib/ai/model-policy";
 
 type Scenario = {
@@ -31,12 +32,14 @@ function estimateBefore(scenario: Scenario): { calls: number; costUsd: number } 
   const revisionCalls = scenario.revision ? N + N + 1 : 0;
   const calls = baseCalls + revisionCalls;
 
-  const flagship = decisionToModelPolicy(resolveTaskPolicy("worker_deliverable"));
+  const flagship = resolveTaskPolicy("worker_deliverable");
   const avgInput = 5000;
   const avgOutput = 1500;
-  const costPerCall =
-    (avgInput / 1_000_000) * flagship.inputPricePerMillion +
-    (avgOutput / 1_000_000) * flagship.outputPricePerMillion;
+  const costPerCall = estimateTokenCostUsd({
+    model: flagship.model,
+    inputTokens: avgInput,
+    outputTokens: avgOutput,
+  });
 
   return { calls, costUsd: calls * costPerCall };
 }
@@ -52,12 +55,14 @@ function estimateAfter(scenario: Scenario): { calls: number; costUsd: number } {
     outputChars: number,
   ) => {
     calls += 1;
-    const policy = decisionToModelPolicy(resolveTaskPolicy(taskType));
+    const policy = resolveTaskPolicy(taskType);
     const inputTokens = estimateTokens("x".repeat(inputChars));
     const outputTokens = estimateTokens("x".repeat(outputChars));
-    costUsd +=
-      (inputTokens / 1_000_000) * policy.inputPricePerMillion +
-      (outputTokens / 1_000_000) * policy.outputPricePerMillion;
+    costUsd += estimateTokenCostUsd({
+      model: policy.model,
+      inputTokens,
+      outputTokens,
+    });
   };
 
   addCall("planner_unified", 2500, 1200);

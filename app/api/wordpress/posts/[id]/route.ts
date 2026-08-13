@@ -14,6 +14,8 @@ function statusCodeForResult(status: string): number {
       return 200;
     case "feature_disabled":
       return 403;
+    case "plan_limited":
+      return 403;
     case "wp_not_connected":
     case "auth_failure":
       return 409;
@@ -57,6 +59,13 @@ export async function PATCH(
   }
 
   const accessContext = await resolveFeatureAccessContext();
+  if ((payload.status ?? "draft") === "publish") {
+    const { requireBillingWordPressPublish } = await import(
+      "@/lib/billing/access"
+    );
+    const denied = await requireBillingWordPressPublish(userId);
+    if (denied) return denied;
+  }
   const result = await updateWordPressPostForUser({
     userId,
     context: accessContext,
@@ -64,5 +73,10 @@ export async function PATCH(
     payload,
   });
 
-  return Response.json(result, { status: statusCodeForResult(result.status) });
+  return Response.json(result, {
+    status:
+      result.status === "plan_limited"
+        ? (result.httpStatus ?? 403)
+        : statusCodeForResult(result.status),
+  });
 }

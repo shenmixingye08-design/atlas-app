@@ -1,5 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("server-only", () => ({}));
+
+vi.mock("@/lib/auth/get-clerk-user-email", () => ({
+  getClerkUserPrimaryEmail: vi.fn(async (userId: string) => `${userId}@example.com`),
+}));
+
+vi.mock("@/lib/auth/is-atlas-owner", () => ({
+  isAtlasOwnerEmail: () => false,
+}));
+
 import { resetExternalServiceStore } from "@/lib/integrations/external-services/store";
 import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
 import {
@@ -109,9 +119,15 @@ describe("WordPress credential encryption", () => {
 });
 
 describe("WordPress connection + posting", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetExternalServiceStore();
     resetWordPressCredentialStore();
+    const { resetSubscriptionStore } = await import(
+      "@/lib/billing/subscriptions/store"
+    );
+    const { resetUsageStore } = await import("@/lib/billing/usage/store");
+    resetSubscriptionStore();
+    resetUsageStore();
     vi.stubEnv(
       "ATLAS_WORDPRESS_CREDENTIALS_ENCRYPTION_KEY",
       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -193,6 +209,20 @@ describe("WordPress connection + posting", () => {
   });
 
   it("saves draft and updates posts for the connected user", async () => {
+    const { applySubscriptionFromStripe } = await import(
+      "@/lib/billing/subscriptions/service"
+    );
+    await applySubscriptionFromStripe({
+      userId: USER_A,
+      stripeCustomerId: "cus_user_wp_a",
+      stripeSubscriptionId: "sub_user_wp_a",
+      planId: "standard",
+      status: "active",
+      currentPeriodStart: new Date().toISOString(),
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+    });
+
     await connectWordPressAccount(USER_A, {
       siteUrl: "https://example.com",
       username: "editor",

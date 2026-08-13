@@ -188,6 +188,17 @@ function PricingSection() {
                       <span>{highlight}</span>
                     </li>
                   ))}
+                  {plan.notes?.map((note) => (
+                    <li
+                      key={note}
+                      className={cn(
+                        "text-[11px] leading-5",
+                        isRecommended ? "text-[#8A6A4A]" : "text-[#918589]",
+                      )}
+                    >
+                      {note}
+                    </li>
+                  ))}
                 </ul>
 
                 <Link href="/sign-up" className="relative mt-7 block">

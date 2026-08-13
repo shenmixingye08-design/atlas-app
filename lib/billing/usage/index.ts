@@ -15,6 +15,7 @@ export {
   getUsageMonthKey,
   getUsageSnapshot,
   incrementUsageCounter,
+  incrementUsageCounterOnce,
   listAiUsageEvents,
   resetUsageStore,
   setAutomationTaskCount,
@@ -29,8 +30,14 @@ export {
 } from "./meter";
 
 export {
+  recordWordPressPublishUsageOnce,
+  recordXPostUsageOnce,
+} from "./external-counters";
+
+export {
   getAiBillingUsageContext,
   runWithAiBillingUsage,
 } from "./request-context";
 
 export { getUserUsageLimitSummary } from "./service";
+export { tweetContainsExternalUrl } from "./x-url";

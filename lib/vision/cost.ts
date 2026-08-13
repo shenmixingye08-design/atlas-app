@@ -1,6 +1,7 @@
 import "server-only";
 
-import { decisionToModelPolicy, resolveTaskPolicy } from "@/lib/ai/policy-engine";
+import { estimateTokenCostUsd } from "@/lib/ai/model-catalog";
+import { resolveTaskPolicy } from "@/lib/ai/policy-engine";
 import { recordUserAiUsage } from "@/lib/billing/usage/meter";
 import type { VisionCostRecord, VisionDetailLevel } from "@/lib/vision/types";
 
@@ -8,11 +9,12 @@ export function estimateVisionCostUsd(input: {
   inputTokens: number;
   outputTokens: number;
 }): number {
-  const policy = decisionToModelPolicy(resolveTaskPolicy("vision_analyze"));
-  return (
-    (input.inputTokens / 1_000_000) * policy.inputPricePerMillion +
-    (input.outputTokens / 1_000_000) * policy.outputPricePerMillion
-  );
+  const policy = resolveTaskPolicy("vision_analyze");
+  return estimateTokenCostUsd({
+    model: policy.model,
+    inputTokens: input.inputTokens,
+    outputTokens: input.outputTokens,
+  });
 }
 
 /** Rough image token estimate when API usage is missing (detail-aware). */

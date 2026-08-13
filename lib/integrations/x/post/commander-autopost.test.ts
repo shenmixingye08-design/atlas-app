@@ -2,6 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+vi.mock("@/lib/auth/get-clerk-user-email", () => ({
+  getClerkUserPrimaryEmail: vi.fn(async () => "test@example.com"),
+}));
+
+vi.mock("@/lib/auth/is-atlas-owner", () => ({
+  isAtlasOwnerEmail: () => false,
+}));
+
 import { resetFeatureFlagStore, setFeatureFlagState } from "@/lib/feature-flags/store";
 import {
   resetExternalServiceCredentialStore,
@@ -83,12 +91,31 @@ describe("commander X auto-post intent + text resolution", () => {
 });
 
 describe("maybeAutoPostToXAfterCommander", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetExternalServiceStore();
     resetExternalServiceCredentialStore();
     resetExternalAuthHydration();
     resetFeatureFlagStore();
     resetXPostHistoryStore();
+    const { resetSubscriptionStore } = await import(
+      "@/lib/billing/subscriptions/store"
+    );
+    const { resetUsageStore } = await import("@/lib/billing/usage/store");
+    const { applySubscriptionFromStripe } = await import(
+      "@/lib/billing/subscriptions/service"
+    );
+    resetSubscriptionStore();
+    resetUsageStore();
+    await applySubscriptionFromStripe({
+      userId: TEST_USER_ID,
+      stripeCustomerId: `cus_${TEST_USER_ID}`,
+      stripeSubscriptionId: `sub_${TEST_USER_ID}`,
+      planId: "standard",
+      status: "active",
+      currentPeriodStart: new Date().toISOString(),
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+    });
     setFeatureFlagState("x", "on");
     vi.restoreAllMocks();
   });

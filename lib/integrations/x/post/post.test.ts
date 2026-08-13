@@ -2,6 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+vi.mock("@/lib/auth/get-clerk-user-email", () => ({
+  getClerkUserPrimaryEmail: vi.fn(async () => "test@example.com"),
+}));
+
+vi.mock("@/lib/auth/is-atlas-owner", () => ({
+  isAtlasOwnerEmail: () => false,
+}));
+
 import { resetFeatureFlagStore, setFeatureFlagState } from "@/lib/feature-flags/store";
 import {
   resetExternalServiceCredentialStore,
@@ -40,6 +48,22 @@ import { checkXConnectionForUser } from "@/lib/integrations/x/connection-status"
 
 const TEST_USER_ID = "user_x_post_test";
 const TEST_CONTEXT = { email: "test@example.com", isOwner: false, isBetaUser: true };
+
+async function activateStandardPlan(userId: string): Promise<void> {
+  const { applySubscriptionFromStripe } = await import(
+    "@/lib/billing/subscriptions/service"
+  );
+  await applySubscriptionFromStripe({
+    userId,
+    stripeCustomerId: `cus_${userId}`,
+    stripeSubscriptionId: `sub_${userId}`,
+    planId: "standard",
+    status: "active",
+    currentPeriodStart: new Date().toISOString(),
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+  });
+}
 
 function connectXAccount(): void {
   const connection = getExternalServiceConnection(TEST_USER_ID, "x");
@@ -95,7 +119,7 @@ describe("X post validation", () => {
 });
 
 describe("X post service", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetExternalServiceStore();
     resetExternalServiceCredentialStore();
     resetExternalAuthHydration();
@@ -103,6 +127,13 @@ describe("X post service", () => {
     resetXPostHistoryStore();
     resetXScheduledPostsStore();
     resetXDraftPostStore();
+    const { resetSubscriptionStore } = await import(
+      "@/lib/billing/subscriptions/store"
+    );
+    const { resetUsageStore } = await import("@/lib/billing/usage/store");
+    resetSubscriptionStore();
+    resetUsageStore();
+    await activateStandardPlan(TEST_USER_ID);
     setFeatureFlagState("x", "on");
     vi.restoreAllMocks();
   });

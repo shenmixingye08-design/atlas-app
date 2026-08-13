@@ -1,47 +1,47 @@
 import "server-only";
 
 import { getPlanDefinition } from "../plans/registry";
-import { resolveUserSubscription } from "../subscriptions/service";
+import { resolveEffectivePlanId } from "../policy";
 
 import { getUserAiUsageBreakdown } from "./meter";
 import {
   getUsageMonthKey,
   getUsageSnapshot,
 } from "./store";
-import type { UsageLimitSummary } from "./types";
+import type { UsageLimitSummary, UsageMeter } from "./types";
 
 function remaining(used: number, limit: number): number {
   return Math.max(0, limit - used);
 }
 
+function meter(used: number, limit: number): UsageMeter {
+  return {
+    used,
+    limit,
+    remaining: remaining(used, limit),
+  };
+}
+
 export function getUserUsageLimitSummary(userId: string): UsageLimitSummary {
-  const subscription = resolveUserSubscription(userId);
-  const plan = getPlanDefinition(subscription.planId);
+  const plan = getPlanDefinition(resolveEffectivePlanId(userId));
   const month = getUsageMonthKey();
   const usage = getUsageSnapshot(userId, month);
   const aiDetail = getUserAiUsageBreakdown(userId);
 
   return {
-    planId: subscription.planId,
+    planId: plan.planId,
     month,
-    aiRuns: {
-      used: usage.aiRuns,
-      limit: plan.limits.aiUsageMonthly,
-      remaining: remaining(usage.aiRuns, plan.limits.aiUsageMonthly),
-    },
-    snsPosts: {
-      used: usage.snsPosts,
-      limit: plan.limits.snsPostsMonthly,
-      remaining: remaining(usage.snsPosts, plan.limits.snsPostsMonthly),
-    },
-    automationTasks: {
-      used: usage.automationTasksActive,
-      limit: plan.limits.automationTasks,
-      remaining: remaining(
-        usage.automationTasksActive,
-        plan.limits.automationTasks,
-      ),
-    },
+    aiRuns: meter(usage.aiRuns, plan.limits.aiUsageMonthly),
+    snsPosts: meter(usage.snsPosts, plan.limits.xAutoPostsMonthly),
+    xUrlPosts: meter(usage.xUrlPosts ?? 0, plan.limits.xUrlPostsMonthly),
+    wordpressPosts: meter(
+      usage.wordpressPosts ?? 0,
+      plan.limits.wordpressPostsMonthly,
+    ),
+    automationTasks: meter(
+      usage.automationTasksActive,
+      plan.limits.automationTasks,
+    ),
     aiDetail,
   };
 }
@@ -49,6 +49,7 @@ export function getUserUsageLimitSummary(userId: string): UsageLimitSummary {
 export {
   getUsageSnapshot,
   incrementUsageCounter,
+  incrementUsageCounterOnce,
   setAutomationTaskCount,
 } from "./store";
 export { getUsageMonthKey } from "./store";
@@ -57,3 +58,4 @@ export {
   recordUserAiUsage,
   recordUserAiUsageFromTexts,
 } from "./meter";
+export { tweetContainsExternalUrl } from "./x-url";

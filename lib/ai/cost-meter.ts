@@ -1,3 +1,4 @@
+import { estimateTokenCostUsd } from "./model-catalog";
 import type { AiTaskType, ModelPolicy } from "./model-policy";
 import { decisionToModelPolicy, resolveTaskPolicy } from "./policy-engine";
 import { WORKFLOW_LIMITS, WorkflowLimitError } from "./workflow-limits";
@@ -50,11 +51,14 @@ function estimateCost(
   inputTokens: number,
   outputTokens: number,
   policy: ModelPolicy,
+  cached = false,
 ): number {
-  return (
-    (inputTokens / 1_000_000) * policy.inputPricePerMillion +
-    (outputTokens / 1_000_000) * policy.outputPricePerMillion
-  );
+  return estimateTokenCostUsd({
+    model: policy.model,
+    inputTokens,
+    outputTokens: cached ? 0 : outputTokens,
+    cached,
+  });
 }
 
 export type WorkflowCostMeter = {
@@ -97,17 +101,16 @@ export function createWorkflowCostMeter(): WorkflowCostMeter {
       estimateTokens(params.inputText) +
       estimateTokens(params.instructions ?? "");
     const outputTokens = estimateTokens(params.outputText);
+    const cached = params.cached ?? false;
 
     calls.push({
       department: params.department,
       taskType: params.taskType,
-      model: params.cached ? "cache" : policy.model,
-      estimatedInputTokens: params.cached ? 0 : inputTokens,
-      estimatedOutputTokens: params.cached ? 0 : outputTokens,
-      estimatedCostUsd: params.cached
-        ? 0
-        : estimateCost(inputTokens, outputTokens, policy),
-      cached: params.cached ?? false,
+      model: cached ? "cache" : policy.model,
+      estimatedInputTokens: cached ? 0 : inputTokens,
+      estimatedOutputTokens: cached ? 0 : outputTokens,
+      estimatedCostUsd: estimateCost(inputTokens, outputTokens, policy, cached),
+      cached,
       timestamp: new Date().toISOString(),
       policyTaskType: policy.taskType,
       policyModel: policy.model,

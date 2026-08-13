@@ -297,6 +297,10 @@ export function XPostPanel() {
         setError(result.message);
         return;
       }
+      if (result.status === "plan_limited") {
+        setError(result.message);
+        return;
+      }
       if (result.status === "validation_failed") {
         setValidation(result.validation);
         setError(result.message);
