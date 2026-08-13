@@ -86,4 +86,11 @@ When the deliverable will become Excel (.xlsx):
 - Amounts as numbers (1200) not "¥1,200"; dates as YYYY-MM-DD; percentages as 15% or 0.15
 - Uncertain OCR/image values must be 要確認 — do not guess a final number
 - Add a totals/monthly/category table only when the user asked for 集計. Do not write calculated totals as static text when a SUM/SUMIF formula is expected — use a 合計 row label and numeric source rows
-- Multiple sheets only when meaningful (明細 / 月別集計 / カテゴリ別集計). Never Sheet2 for decoration`;
+- Multiple sheets only when meaningful (明細 / 月別集計 / カテゴリ別集計). Never Sheet2 for decoration
+
+When the deliverable will become PowerPoint (.pptx):
+- Write Japanese section headings that already contain the conclusion when possible (売上は前年比18%増加 — not 売上について)
+- Keep each section to 3–5 short bullets. Do not paste long paragraphs
+- Use markdown tables for numeric comparisons; numbered lists for processes
+- Do not use English chrome titles (Key points, Overview, Summary, Thank you)
+- Do not invent numbers. Only include figures present in the assignment or source`;
