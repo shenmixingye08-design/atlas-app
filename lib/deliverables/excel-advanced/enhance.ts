@@ -4,6 +4,8 @@
 
 import type ExcelJS from "exceljs";
 
+import { sumIfFormula } from "@/lib/deliverables/excel-workbook/formulas";
+
 import {
   injectPivotChartIntoXlsx,
   inspectXlsxAdvancedParts,
@@ -62,6 +64,7 @@ function readSheetAsSource(sheet: ExcelJS.Worksheet): PivotSourceSheet | null {
         cells.push(String(raw));
       }
     }
+    if (String(cells[0] ?? "").trim() === "合計") continue;
     if (cells.some((c) => c !== "" && c != null)) {
       rows.push(cells);
     }
@@ -126,12 +129,31 @@ export async function enhanceWorkbookWithAdvancedExcel(
     const pivotSheet = workbook.addWorksheet(PIVOT_SHEET_NAME);
     pivotSheet.addRow([plan.categoryHeader || "カテゴリ", "合計"]);
     for (const row of plan.rows) {
-      pivotSheet.addRow([row.category, row.total]);
+      const excelRow = pivotSheet.addRow([row.category, row.total]);
+      excelRow.getCell(2).value = {
+        formula: sumIfFormula({
+          sourceSheet: plan.sourceSheetName,
+          criteriaCol0: plan.categoryCol,
+          criteriaCell: `A${excelRow.number}`,
+          valueCol0: plan.valueCol,
+        }),
+        result: row.total,
+      };
+      excelRow.getCell(2).numFmt = '"¥"#,##0';
     }
     lastDataRow = plan.rows.length + 1;
     const header = pivotSheet.getRow(1);
-    header.font = { bold: true, name: "Yu Gothic", size: 11 };
+    header.font = { bold: true, name: "Yu Gothic", size: 11, color: { argb: "FFFFFFFF" } };
+    header.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF1F4E79" },
+    };
     pivotSheet.views = [{ state: "frozen", ySplit: 1 }];
+    pivotSheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: lastDataRow, column: 2 },
+    };
     pivotSheet.getColumn(1).width = 18;
     pivotSheet.getColumn(2).width = 14;
     pivotAdded = true;

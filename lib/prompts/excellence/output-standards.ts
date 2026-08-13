@@ -73,9 +73,17 @@ CEO final approval standards:
 - On NEEDS_REVISION: give executive guidance that QA and Workers can execute
 - Never approve placeholder language, repetition, or "consulting speak" without substance`;
 
-export const DELIVERABLE_FORMAT_GUIDANCE = `When producing content that will become Word/PowerPoint/PDF deliverables:
+export const DELIVERABLE_FORMAT_GUIDANCE = `When producing content that will become Word/PowerPoint/PDF/Excel deliverables:
 - Use ## for major sections and ### for subsections
 - Use markdown tables for comparisons and data (| Header | Header |)
 - Use bullet lists for recommendations; numbered lists for sequential steps
 - Keep section titles concise and client-facing
-- Include an executive summary at the top when the deliverable is long`;
+- Include an executive summary at the top when the deliverable is long
+
+When the deliverable will become Excel (.xlsx):
+- Output a markdown pipe table (or JSON {headers, rows, types, confidence}) — never dump a whole table into one cell
+- Column names must be meaningful (日付, 店名, 金額). Do not invent empty/mystery columns
+- Amounts as numbers (1200) not "¥1,200"; dates as YYYY-MM-DD; percentages as 15% or 0.15
+- Uncertain OCR/image values must be 要確認 — do not guess a final number
+- Add a totals/monthly/category table only when the user asked for 集計. Do not write calculated totals as static text when a SUM/SUMIF formula is expected — use a 合計 row label and numeric source rows
+- Multiple sheets only when meaningful (明細 / 月別集計 / カテゴリ別集計). Never Sheet2 for decoration`;

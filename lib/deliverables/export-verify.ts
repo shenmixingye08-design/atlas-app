@@ -1,5 +1,6 @@
 import "server-only";
 
+import { verifyXlsxWorkbook } from "./excel-workbook/verify";
 import { verifyPdfQuality } from "./pdf-quality";
 import type { DeliverableFormat, GeneratedDeliverableFile } from "./types";
 
@@ -41,7 +42,7 @@ export function verifyGeneratedExport(
     }
   }
 
-  if (file.format !== "pdf") {
+  if (file.format !== "pdf" && file.format !== "xlsx") {
     for (const marker of [
       '"type":',
       '"content":',
@@ -71,6 +72,23 @@ export async function verifyGeneratedExportAsync(
   file: GeneratedDeliverableFile,
 ): Promise<ExportVerifyResult> {
   const base = verifyGeneratedExport(file);
+  if (file.format === "xlsx") {
+    const xlsx = await verifyXlsxWorkbook(file.buffer);
+    const mapped = xlsx.reasons.map((reason) => {
+      if (reason === "invalid_zip" || reason === "xlsx_reopen_failed") {
+        return `excel_corrupt:${reason}`;
+      }
+      if (reason === "no_worksheet" || reason === "empty_sheet") {
+        return `excel_structure:${reason}`;
+      }
+      if (reason === "formula_injection" || reason === "broken_formula_ref") {
+        return `excel_workbook:${reason}`;
+      }
+      return `excel_workbook:${reason}`;
+    });
+    const reasons = [...base.reasons, ...mapped];
+    return { ok: reasons.length === 0, reasons };
+  }
   if (file.format !== "pdf") return base;
 
   const pdf = await verifyPdfQuality(file);

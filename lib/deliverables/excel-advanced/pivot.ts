@@ -54,6 +54,14 @@ function asCategory(value: string | number | Date | null | undefined): string {
   return String(value).trim();
 }
 
+function isDateLike(value: string | number | Date | null | undefined): boolean {
+  if (value instanceof Date) return true;
+  if (typeof value === "string") {
+    return /^\d{4}[/-年]\d{1,2}/.test(value.trim());
+  }
+  return false;
+}
+
 /** Pick category (text) + value (numeric) columns from a sheet. */
 export function resolvePivotColumns(
   headers: string[],
@@ -83,8 +91,18 @@ export function resolvePivotColumns(
       idx !== valueCol &&
       rows.some((row) => asCategory(row[idx]).length > 0) &&
       rows.filter((row) => asNumber(row[idx]) == null).length >=
+        Math.ceil(rows.length * 0.5) &&
+      rows.filter((row) => isDateLike(row[idx])).length <
         Math.ceil(rows.length * 0.5),
   );
+  if (categoryCol < 0) {
+    categoryCol = headers.findIndex(
+      (_h, idx) =>
+        idx !== valueCol &&
+        rows.filter((row) => isDateLike(row[idx])).length <
+          Math.ceil(rows.length * 0.5),
+    );
+  }
   if (categoryCol < 0) {
     categoryCol = headers.findIndex((_h, idx) => idx !== valueCol);
   }
@@ -132,6 +150,7 @@ export function planPivotFromSheets(
   for (const sheet of sheets) {
     // Never re-pivot an existing pivot sheet.
     if (sheet.name === PIVOT_SHEET_NAME) continue;
+    if (/月別集計|カテゴリ別集計/.test(sheet.name)) continue;
     const built = buildPivotAggregate(sheet.headers, sheet.rows);
     if (!built) continue;
     const candidate: PivotPlan = {

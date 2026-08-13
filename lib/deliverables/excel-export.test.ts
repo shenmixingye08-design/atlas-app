@@ -42,6 +42,24 @@ describe("excel-data", () => {
     ]);
   });
 
+  it("extracts JSON sheets, drops empty columns, and maps low confidence to 要確認", () => {
+    const json = JSON.stringify({
+      headers: ["日付", "店名", "金額", ""],
+      rows: [
+        ["2026-07-01", "A店", "1200", ""],
+        ["2026-07-02", "B店", "800", ""],
+      ],
+      confidence: [
+        [0.9, 0.9, 0.9, 1],
+        [0.2, 0.9, 0.9, 1],
+      ],
+    });
+    const sheets = extractExcelSheets(json);
+    expect(sheets[0]?.headers).toEqual(["日付", "店名", "金額"]);
+    expect(sheets[0]?.rows[1]?.[0]).toBe("要確認");
+    expect(sheets[0]?.rows[1]?.[1]).toBe("B店");
+  });
+
   it("falls back to 項目/内容 when no table exists", () => {
     const sheets = extractExcelSheets("# タイトル\n\n本文です");
     expect(sheets[0]?.headers).toEqual(["項目", "内容"]);

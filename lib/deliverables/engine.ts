@@ -130,12 +130,27 @@ export type GenerateDeliverablesResult = {
   jobId?: string;
 };
 
+function prefixExcelFailureReason(reason: string): string {
+  if (/^excel_/.test(reason) || /^storage_failed:/.test(reason)) return reason;
+  if (/xlsx_reopen|invalid_zip|corrupt/.test(reason)) {
+    return `excel_corrupt:${reason}`;
+  }
+  if (/no_worksheet|empty_sheet|excel_structure/.test(reason)) {
+    return `excel_structure:${reason}`;
+  }
+  if (/unsupported|excel_advanced_no_aggregatable/.test(reason)) {
+    return `excel_unsupported:${reason}`;
+  }
+  return `excel_workbook:${reason}`;
+}
+
 async function generateVerifiedFile(
   format: GeneratedDeliverableFile["format"],
   content: string,
   baseFileName: string,
   docxOptions?: DocxGenerateOptions,
   memoryOverlay?: MemoryDeliverableOverlay | null,
+  assignment?: string,
 ): Promise<{
   file: GeneratedDeliverableFile | null;
   reasons: string[];
@@ -175,7 +190,10 @@ async function generateVerifiedFile(
       memoryOverlay?.powerpoint?.logoDataUrl ??
       docxOptions?.brand?.logoDataUrl ??
       null,
-    excel: memoryOverlay?.excel ?? null,
+    excel: {
+      ...(memoryOverlay?.excel ?? {}),
+      assignment: assignment ?? null,
+    },
     powerpoint: memoryOverlay?.powerpoint ?? null,
     pdf: memoryOverlay?.pdf ?? null,
   };
@@ -234,7 +252,11 @@ async function generateVerifiedFile(
       const message =
         error instanceof Error ? error.message : String(error ?? "unknown");
       lastReasons = [
-        format === "docx" ? `Word生成失敗: ${message}` : message,
+        format === "docx"
+          ? `Word生成失敗: ${message}`
+          : format === "xlsx"
+            ? prefixExcelFailureReason(message)
+            : message,
       ];
       recordReliabilityEvent(metric, "retry");
       recordReliabilityEvent("retry", "retry");
@@ -244,6 +266,9 @@ async function generateVerifiedFile(
   recordReliabilityEvent(metric, "failure");
   if (format === "docx" && !lastReasons.some((r) => r.includes("Word生成失敗"))) {
     lastReasons = [`Word生成失敗: ${lastReasons.join(",") || "verify_failed"}`];
+  }
+  if (format === "xlsx") {
+    lastReasons = lastReasons.map(prefixExcelFailureReason);
   }
   return {
     file: null,
@@ -578,6 +603,7 @@ export async function generateDeliverables(
         baseFileName,
         undefined,
         earlyMemoryOverlay,
+        input.assignment,
       );
       if (!file) {
         failures.push({ format, reasons });
@@ -945,6 +971,7 @@ export async function generateDeliverables(
         baseFileName,
         format === "docx" ? docxOptions : undefined,
         memoryOverlay,
+        input.assignment,
       );
 
       if (!file) {

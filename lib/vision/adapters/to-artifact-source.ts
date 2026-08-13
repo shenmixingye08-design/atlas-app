@@ -71,6 +71,44 @@ function asString(value: unknown): string {
   return String(value);
 }
 
+function cellOrReview(value: unknown, confidence: number, threshold = 0.55): string {
+  const text = asString(value).trim();
+  if (!text) return "要確認";
+  if (confidence < threshold) return "要確認";
+  return text.replace(/\|/g, "／");
+}
+
+function markdownTable(headers: string[], rows: string[][]): string {
+  return [
+    `| ${headers.join(" | ")} |`,
+    `| ${headers.map(() => "---").join(" | ")} |`,
+    ...rows.map(
+      (row) =>
+        `| ${row.map((cell) => (cell.trim() ? cell : "要確認")).join(" | ")} |`,
+    ),
+  ].join("\n");
+}
+
+function splitExtractedLines(text: string, confidence: number): string[][] {
+  const chunks: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (trimmed.length <= 120) {
+      chunks.push(trimmed);
+      continue;
+    }
+    for (let i = 0; i < trimmed.length; i += 120) {
+      chunks.push(trimmed.slice(i, i + 120));
+    }
+  }
+  return chunks.slice(0, 200).map((chunk, index) => [
+    String(index + 1),
+    cellOrReview(chunk, confidence),
+    confidence < 0.55 ? "要確認" : String(Math.round(confidence * 100)),
+  ]);
+}
+
 function buildHouseholdMarkdown(batch: VisionBatchResult): string {
   const rows: string[] = [
     "| 日付 | 分類 | 店名 | 内容 | 金額 | 支払方法 | 備考 |",
@@ -85,7 +123,7 @@ function buildHouseholdMarkdown(batch: VisionBatchResult): string {
     const items = Array.isArray(fields.items) ? fields.items : [];
     if (items.length === 0) {
       rows.push(
-        `| ${date || "要確認"} | 未分類 | ${store || "要確認"} | ${image.summary} | ${asString(fields.total) || "要確認"} | ${method || ""} | ${image.missingFields.join(" ") || ""} |`,
+        `| ${cellOrReview(date, image.confidence)} | 未分類 | ${cellOrReview(store, image.confidence)} | ${cellOrReview(image.summary, image.confidence)} | ${cellOrReview(fields.total, image.confidence)} | ${method || ""} | ${image.missingFields.join(" ") || ""} |`,
       );
       continue;
     }
@@ -95,7 +133,7 @@ function buildHouseholdMarkdown(batch: VisionBatchResult): string {
         unknown
       >;
       rows.push(
-        `| ${date || "要確認"} | ${asString(record.category) || "未分類"} | ${store || "要確認"} | ${asString(record.name) || "要確認"} | ${asString(record.amount) || "要確認"} | ${method || ""} | ${image.warnings[0] ?? ""} |`,
+        `| ${cellOrReview(date, image.confidence)} | ${asString(record.category) || "未分類"} | ${cellOrReview(store, image.confidence)} | ${cellOrReview(record.name, image.confidence)} | ${cellOrReview(record.amount, image.confidence)} | ${method || ""} | ${image.warnings[0] ?? ""} |`,
       );
     }
   }
@@ -149,40 +187,49 @@ function buildInvoiceMarkdown(batch: VisionBatchResult): string {
 function buildTableMarkdown(batch: VisionBatchResult): string {
   const table = batch.mergedTables[0] ?? batch.images[0]?.tables[0];
   if (!table) {
-    // Intentionally unstructured: quality gate must fail-closed (no fake Excel).
-    return ["# 表データ", batch.combinedSummary, "表を十分に読み取れませんでした。"].join(
-      "\n\n",
-    );
+    return [
+      "# 表データ",
+      markdownTable(
+        ["項目", "内容", "確信度"],
+        [["読み取り", "表を十分に読み取れませんでした。", "要確認"]],
+      ),
+    ].join("\n\n");
   }
-  const header = `| ${table.headers.join(" | ")} |`;
-  const sep = `| ${table.headers.map(() => "---").join(" | ")} |`;
-  const rows = table.rows.map(
-    (row) =>
-      `| ${row.map((cell) => (cell == null ? "（不明）" : String(cell))).join(" | ")} |`,
+  const confidence = batch.images[0]?.confidence ?? 0.5;
+  const rows = table.rows.map((row) =>
+    row.map((cell) =>
+      cell == null || String(cell).trim() === ""
+        ? "要確認"
+        : cellOrReview(cell, confidence),
+    ),
   );
-  return ["# 表データ", header, sep, ...rows].join("\n");
+  return ["# 表データ", markdownTable(table.headers, rows)].join("\n");
 }
 
 function buildHandwritingMarkdown(batch: VisionBatchResult): string {
-  return batch.images
-    .map((image, i) => {
-      const fields = image.fields;
-      return [
-        `# 手書きメモ ${i + 1}`,
-        "## 原文転記",
-        asString(fields.rawText) || image.extractedText || "（読めませんでした）",
-        "",
-        "## 整形版",
-        asString(fields.cleanedText) || "（整形版なし）",
-        "",
-        "## 要約",
-        asString(fields.summary) || image.summary,
-        image.missingFields.length
-          ? `\n不鮮明・要確認: ${image.missingFields.join("、")}`
-          : "",
-      ].join("\n");
-    })
-    .join("\n\n");
+  const table = batch.mergedTables[0] ?? batch.images.find((i) => i.tables[0])?.tables[0];
+  if (table) return buildTableMarkdown(batch);
+
+  const blocks: string[] = ["# 手書きメモ"];
+  for (const [index, image] of batch.images.entries()) {
+    const text =
+      asString(image.fields.rawText) ||
+      image.extractedText ||
+      asString(image.fields.cleanedText) ||
+      "";
+    const rows = splitExtractedLines(text, image.confidence);
+    if (rows.length === 0) {
+      rows.push(["1", "要確認", "要確認"]);
+    }
+    blocks.push(
+      `## メモ ${index + 1}`,
+      markdownTable(["行", "内容", "確信度"], rows),
+      image.missingFields.length
+        ? `要確認: ${image.missingFields.join("、")}`
+        : "",
+    );
+  }
+  return blocks.filter(Boolean).join("\n\n");
 }
 
 function buildBusinessCardMarkdown(batch: VisionBatchResult): string {
@@ -302,23 +349,35 @@ function buildChartMarkdown(batch: VisionBatchResult): string {
 }
 
 function buildScreenshotMarkdown(batch: VisionBatchResult): string {
-  return batch.images
-    .map((image, i) => {
-      const f = image.fields;
-      return [
-        `# 画面キャプチャ整理 ${i + 1}`,
-        `- アプリ/サイト: ${asString(f.appOrSite) || "要確認"}`,
-        `- 目的: ${asString(f.purpose) || image.summary}`,
-        `- 主要UI文言: ${asString(f.keyUiText) || image.extractedText || "要確認"}`,
-        "",
-        "## 要約",
-        image.summary,
-        "",
-        "## 抽出テキスト",
-        image.extractedText || "（なし）",
-      ].join("\n");
-    })
-    .join("\n\n");
+  const table =
+    batch.mergedTables[0] ??
+    batch.images.find((image) => image.tables[0])?.tables[0];
+  if (table) return buildTableMarkdown(batch);
+
+  const rows: string[][] = [];
+  for (const image of batch.images) {
+    const f = image.fields;
+    rows.push([
+      "アプリ/サイト",
+      cellOrReview(f.appOrSite, image.confidence),
+      String(Math.round(image.confidence * 100)),
+    ]);
+    rows.push([
+      "目的",
+      cellOrReview(f.purpose || image.summary, image.confidence),
+      String(Math.round(image.confidence * 100)),
+    ]);
+    const extracted = image.extractedText || asString(f.keyUiText);
+    for (const line of splitExtractedLines(extracted, image.confidence)) {
+      rows.push(["抽出テキスト", line[1] ?? "要確認", line[2] ?? "要確認"]);
+    }
+  }
+  if (rows.length === 0) {
+    rows.push(["読み取り", "要確認", "要確認"]);
+  }
+  return ["# 画面キャプチャ", markdownTable(["項目", "内容", "確信度"], rows)].join(
+    "\n\n",
+  );
 }
 
 function buildPhotoReportMarkdown(batch: VisionBatchResult): string {
