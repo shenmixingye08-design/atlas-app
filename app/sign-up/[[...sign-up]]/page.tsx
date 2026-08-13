@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
-import { SignUp } from "@clerk/nextjs";
 
 import { AuthShell } from "@/components/auth/auth-shell";
-import { ATLAS_APP_HOME_PATH } from "@/lib/auth/public-routes";
-import { atlasClerkAppearance } from "@/lib/clerk/appearance";
+import { SignUpPageClient } from "@/components/auth/sign-up-page-client";
 
 export const metadata: Metadata = {
   title: "今すぐ1件終わらせる",
@@ -18,14 +16,7 @@ export default function SignUpPage() {
       title="今すぐ1件終わらせる"
       subtitle="設定なし。仕事を1つ選ぶだけ。終わった瞬間に元が取れたと感じる体験から始めます。"
     >
-      <SignUp
-        appearance={atlasClerkAppearance}
-        routing="path"
-        path="/sign-up"
-        signInUrl="/sign-in"
-        forceRedirectUrl={ATLAS_APP_HOME_PATH}
-        fallbackRedirectUrl={ATLAS_APP_HOME_PATH}
-      />
+      <SignUpPageClient />
     </AuthShell>
   );
 }

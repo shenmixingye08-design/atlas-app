@@ -7,12 +7,13 @@ import { useSearchParams } from "next/navigation";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { SignInContinueNotice } from "@/components/auth/sign-in-continue-notice";
 import { SignInTicketConsumer } from "@/components/auth/sign-in-ticket-consumer";
-import { atlasClerkAppearance } from "@/lib/clerk/appearance";
+import { useThemedClerkAppearance } from "@/components/auth/use-themed-clerk-appearance";
 import { ATLAS_APP_HOME_PATH } from "@/lib/auth/public-routes";
 
 function SignInContent() {
   const searchParams = useSearchParams();
   const redirectUrl = searchParams.get("redirect_url") || ATLAS_APP_HOME_PATH;
+  const appearance = useThemedClerkAppearance();
 
   return (
     <SignInTicketConsumer>
@@ -22,7 +23,7 @@ function SignInContent() {
       >
         <SignInContinueNotice />
         <SignIn
-          appearance={atlasClerkAppearance}
+          appearance={appearance}
           routing="path"
           path="/sign-in"
           signUpUrl="/sign-up"
