@@ -814,7 +814,7 @@ async function executeStoredRun(input: {
       () =>
         notifyWorkCompleted(input.userId, {
           title: wordDeliverableId
-            ? "成果物ファイルの準備ができました"
+            ? "成果物ファイルが完成しました"
             : "お仕事が完了しました",
           message: snsPublishedTweetUrl
             ? `「${plan.classification.summary}」が完了し、Xへ投稿しました。${snsPublishedTweetUrl}`

@@ -11,6 +11,10 @@ import {
   notifyWorkFailed,
 } from "@/lib/notifications/emitters";
 import { persistNotificationsNow } from "@/lib/notifications/durable";
+import {
+  artifactCompletedCopy,
+  inferArtifactKindFromFileName,
+} from "@/lib/notifications/user-facing-copy";
 
 import type { ArtifactCompletionEvidence } from "./artifact-contract";
 import { hasVerifiedArtifactEvidence } from "./artifact-persist";
@@ -363,9 +367,16 @@ export async function exportDocumentsOnServer(input: {
     });
 
     if (input.notify !== false) {
+      const copy = artifactCompletedCopy(
+        inferArtifactKindFromFileName(primary.fileName),
+        primary.fileName,
+      );
       await notifyWorkCompleted(input.userId, {
-        title: "成果物ファイルの準備ができました",
-        message: `「${primary.fileName}」ほか ${files.length} 件を作成しました。通知から開いてダウンロードできます。`,
+        title: copy.title,
+        message:
+          files.length > 1
+            ? `お待たせいたしました。「${primary.fileName}」ほか ${files.length} 件をご用意しました。通知から開いてご確認ください。`
+            : copy.message,
         actionUrl: primary.downloadUrl,
         relatedTaskId: primary.id,
         deliverableId: primary.id,

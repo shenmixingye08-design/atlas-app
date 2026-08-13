@@ -15,6 +15,7 @@ import {
   detectPushBrowser,
   resolvePushPermissionState,
 } from "@/lib/push/browser-detect";
+import { resolvePushSettingsTruth } from "@/lib/push/settings-truth";
 import type { PushErrorCode } from "@/lib/push/errors";
 import { pushErrorMessageJa } from "@/lib/push/errors";
 import type { PushEventCategory, PushSeverity } from "@/lib/push/types";
@@ -98,6 +99,12 @@ export function PushNotificationSettings() {
     registered,
     browser.supportsPush,
   );
+  const settingsTruth = resolvePushSettingsTruth({
+    permission,
+    registered,
+    supportsPush: browser.supportsPush,
+    appPushEnabled: Boolean(prefs?.channels.push),
+  });
 
   const refreshPermission = () => {
     setBrowser(detectPushBrowser());
@@ -187,7 +194,12 @@ export function PushNotificationSettings() {
       if (!registered || permission !== "granted") {
         setFeedback({
           kind: "info",
-          text: ui.push.settingsSavedPushInactive,
+          text:
+            permission === "denied"
+              ? ui.push.mismatchAppOnDenied
+              : !browser.supportsPush
+                ? ui.push.mismatchAppOnUnsupported
+                : ui.push.settingsSavedPushInactive,
         });
       } else {
         setFeedback({ kind: "success", text: ui.push.settingsSaved });
@@ -340,11 +352,29 @@ export function PushNotificationSettings() {
       <div className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] p-4 text-sm">
         <p className="font-medium text-foreground">{ui.push.statusTitle}</p>
         <p className="mt-1 text-[var(--foreground-muted)]">
-          {permissionState === "unsupported" && ui.push.statusUnsupported}
-          {permissionState === "denied" && ui.push.statusDenied}
-          {permissionState === "granted" && ui.push.statusGranted}
-          {permissionState === "default" && ui.push.statusDefault}
-          {permissionState === "unregistered" && ui.push.statusUnregistered}
+          {settingsTruth.mismatch === "app_on_os_denied" &&
+            ui.push.mismatchAppOnDenied}
+          {settingsTruth.mismatch === "app_on_unsupported" &&
+            ui.push.mismatchAppOnUnsupported}
+          {settingsTruth.mismatch === "app_on_unasked" &&
+            ui.push.mismatchAppOnUnasked}
+          {!settingsTruth.mismatch &&
+            permissionState === "unsupported" &&
+            ui.push.statusUnsupported}
+          {!settingsTruth.mismatch &&
+            permissionState === "denied" &&
+            ui.push.statusDenied}
+          {!settingsTruth.mismatch &&
+            permissionState === "granted" &&
+            (settingsTruth.effectiveOn
+              ? ui.push.statusGranted
+              : ui.push.statusGrantedPermissionOnly)}
+          {!settingsTruth.mismatch &&
+            permissionState === "default" &&
+            ui.push.statusDefault}
+          {!settingsTruth.mismatch &&
+            permissionState === "unregistered" &&
+            ui.push.statusUnregistered}
         </p>
 
         {permissionState === "default" && (

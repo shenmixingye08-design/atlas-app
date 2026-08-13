@@ -8,21 +8,24 @@ import "server-only";
 import { createNotification } from "@/lib/notifications/service";
 import type { AutomationNotificationPolicy } from "@/lib/automation-platform/types";
 import type { AutomationRun } from "@/lib/automation-platform/types/run";
-import { runCompletionUserMessage } from "@/lib/automation-platform/execution/run-completion";
+import type { PushEventCategory } from "@/lib/push/types";
 
-export type RunNotificationEvent =
-  | "started"
-  | "awaiting_approval"
-  | "needs_input"
-  | "succeeded"
-  | "partially_succeeded"
-  | "failed"
-  | "retry_started"
-  | "retry_finished"
-  | "prepared";
+import {
+  buildAutomationRunNotifyCopy,
+  type RunNotificationEvent,
+} from "./notify-copy";
+
+export type { RunNotificationEvent };
 
 function runActionUrl(run: AutomationRun): string {
   return `/automations/runs/${encodeURIComponent(run.id)}`;
+}
+
+function policyAllowsNotify(policy: AutomationNotificationPolicy): boolean {
+  return policy.channels.some(
+    (channel) =>
+      channel === "in_app" || channel === "web_push" || channel === "line",
+  );
 }
 
 function shouldNotify(
@@ -50,64 +53,51 @@ function shouldNotify(
   }
 }
 
-type NotifyCopy = {
-  title: string;
-  message: (name: string) => string;
-  type: "automation" | "awaiting_review" | "completed" | "error";
-};
+function notificationTypeFor(
+  event: RunNotificationEvent,
+): "automation" | "awaiting_review" | "completed" | "error" {
+  switch (event) {
+    case "awaiting_approval":
+    case "needs_input":
+    case "prepared":
+    case "partially_succeeded":
+      return "awaiting_review";
+    case "succeeded":
+    case "retry_finished":
+      return "completed";
+    case "failed":
+      return "error";
+    default:
+      return "automation";
+  }
+}
 
-const COPY: Record<RunNotificationEvent, NotifyCopy> = {
-  started: {
-    title: "自動化を開始しました",
-    message: (name) => `「${name}」の実行を開始しました。`,
-    type: "automation",
-  },
-  awaiting_approval: {
-    title: "ご確認が必要な仕事がございます",
-    message: (name) => `「${name}」の実行前確認をお願いいたします。`,
-    type: "awaiting_review",
-  },
-  needs_input: {
-    title: "入力が必要な仕事がございます",
-    message: (name) => `「${name}」の続行に、追加のご入力が必要です。`,
-    type: "awaiting_review",
-  },
-  prepared: {
-    title: "準備済みです",
-    message: (name) => `「${name}」の準備が完了しました。実行はまだ完了していません。`,
-    type: "awaiting_review",
-  },
-  succeeded: {
-    title: runCompletionUserMessage("completed"),
-    message: (name) =>
-      `お待たせいたしました。「${name}」の${runCompletionUserMessage("completed")}。`,
-    type: "completed",
-  },
-  partially_succeeded: {
-    title: runCompletionUserMessage("partially_completed"),
-    message: (name) =>
-      `「${name}」は${runCompletionUserMessage("partially_completed")}。`,
-    // Must NOT use type "completed" — partial ≠ finished work.
-    type: "awaiting_review",
-  },
-  failed: {
-    title: runCompletionUserMessage("failed"),
-    message: (name) =>
-      `「${name}」の処理を${runCompletionUserMessage("failed")}。内容をご確認ください。`,
-    type: "error",
-  },
-  retry_started: {
-    title: "自動化を再試行します",
-    message: (name) => `「${name}」を再試行します。`,
-    type: "automation",
-  },
-  retry_finished: {
-    title: runCompletionUserMessage("completed"),
-    message: (name) =>
-      `「${name}」の再試行により${runCompletionUserMessage("completed")}。`,
-    type: "completed",
-  },
-};
+function eventCategoryFor(event: RunNotificationEvent): PushEventCategory {
+  switch (event) {
+    case "succeeded":
+    case "retry_finished":
+      return "final_success";
+    case "failed":
+      return "final_failure";
+    case "awaiting_approval":
+    case "needs_input":
+    case "prepared":
+    case "partially_succeeded":
+      return "approval_needed";
+    case "started":
+      return "job_start";
+    case "retry_started":
+      return "mid_retry";
+    default:
+      return "internal_step";
+  }
+}
+
+export function buildRunNotificationEventVersion(
+  event: RunNotificationEvent,
+): string {
+  return `run:${event}`;
+}
 
 export async function notifyAutomationRunEvent(input: {
   userId: string;
@@ -117,36 +107,44 @@ export async function notifyAutomationRunEvent(input: {
   event: RunNotificationEvent;
   detail?: string | null;
 }): Promise<void> {
-  if (!input.policy.channels.includes("in_app")) return;
+  if (!policyAllowsNotify(input.policy)) return;
   if (!shouldNotify(input.policy, input.event)) return;
 
-  const copy = COPY[input.event];
-  const detail = input.detail?.trim();
+  const type = notificationTypeFor(input.event);
+  const copy = buildAutomationRunNotifyCopy({
+    event: input.event,
+    automationName: input.automationName,
+    run: input.run,
+    detail: input.detail,
+  });
   try {
-    await createNotification({
-      audience: "user",
-      userId: input.userId,
-      type: copy.type,
-      title: copy.title,
-      message: detail
-        ? `${copy.message(input.automationName)} ${detail}`
-        : copy.message(input.automationName),
-      relatedTaskId: input.run.id,
-      relatedService: "atlas",
-      actionUrl: runActionUrl(input.run),
-      automationId: input.run.automationId,
-      targetType: "automation_run",
-      targetId: input.run.id,
-      requestId: input.run.id,
-      lineEvent:
-        copy.type === "awaiting_review"
-          ? "confirmation_request"
-          : copy.type === "error"
-            ? "error"
-            : copy.type === "completed"
-              ? "automation_completed"
-              : undefined,
-    });
+    await createNotification(
+      {
+        audience: "user",
+        userId: input.userId,
+        type,
+        title: copy.title,
+        message: copy.message,
+        relatedTaskId: input.run.id,
+        relatedService: "atlas",
+        actionUrl: runActionUrl(input.run),
+        automationId: input.run.automationId,
+        targetType: "automation_run",
+        targetId: input.run.id,
+        requestId: input.run.id,
+        jobName: input.automationName,
+        eventCategory: eventCategoryFor(input.event),
+        lineEvent:
+          type === "awaiting_review"
+            ? "confirmation_request"
+            : type === "error"
+              ? "error"
+              : type === "completed"
+                ? "automation_completed"
+                : undefined,
+      },
+      { eventVersion: buildRunNotificationEventVersion(input.event) },
+    );
   } catch {
     // Durable create failure must not crash the automation runner; caller may
     // still observe missing notification via inbox checks / job evidence.

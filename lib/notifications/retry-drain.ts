@@ -133,8 +133,13 @@ async function redeliverChannels(row: DurableInboxRow): Promise<{
     }
   }
 
-  // Push path for in-app / push channel notifications.
-  if (row.channel === "in_app" || row.channel === "push") {
+  // Already-acked push must not be re-sent on LINE-only retries.
+  if (
+    (row.channel === "in_app" || row.channel === "push") &&
+    row.pushSentAt
+  ) {
+    channelDelivered = true;
+  } else if (row.channel === "in_app" || row.channel === "push") {
     pushAttempted = true;
     try {
       const sideEffect = await executeIdempotentSideEffect<{
@@ -150,7 +155,7 @@ async function redeliverChannels(row: DurableInboxRow): Promise<{
           automationId: row.automationId,
           runId: row.requestId ?? row.notificationId,
           occurrenceKey: row.idempotencyKey,
-          discriminator: `${row.notificationId}:web_push:r${row.retryCount}`,
+          discriminator: `${row.notificationId}:web_push`,
         },
         async () => {
           const result = await deliverWebPushWithAck({
@@ -161,7 +166,7 @@ async function redeliverChannels(row: DurableInboxRow): Promise<{
             throw new Error(result.error ?? "web_push_failed");
           }
           return {
-            providerResourceId: `${row.notificationId}:web_push:r${row.retryCount}`,
+            providerResourceId: `${row.notificationId}:web_push`,
             result: {
               ok: true as const,
               attempts: result.attempts,
@@ -190,6 +195,16 @@ async function redeliverChannels(row: DurableInboxRow): Promise<{
 
   // Nothing to deliver (prefs/channels off) → suppressed (not delivered).
   if (!lineAttempted && !pushAttempted) {
+    if (channelDelivered) {
+      return {
+        ok: true,
+        channelDelivered: true,
+        channelSkipped: false,
+        error: null,
+        lineAttempted,
+        pushAttempted,
+      };
+    }
     return {
       ok: true,
       channelDelivered: false,

@@ -35,19 +35,21 @@ export function buildPushCopy(input: TemplateInput): {
       };
     case "final_failure":
       return {
-        title: "処理を完了できませんでした",
+        title: input.title || "処理を完了できませんでした",
         body:
           input.message ||
           (job
-            ? `「${job}」の処理を完了できませんでした。内容をご確認ください。`
-            : "処理を完了できませんでした。内容をご確認ください。"),
+            ? `「${job}」に失敗しました。内容を確認すると再実行できます。`
+            : "処理に失敗しました。内容を確認すると再実行できます。"),
       };
     case "approval_needed":
       return {
-        title: "ご確認が必要です",
+        title: input.title || "ご確認が必要です",
         body:
           input.message ||
-          (job ? `「${job}」について、ご確認をお願いいたします。` : "ご確認をお願いいたします。"),
+          (job
+            ? `「${job}」について、ご確認をお願いいたします。`
+            : "ご確認をお願いいたします。"),
       };
     case "connection_broken":
       return {

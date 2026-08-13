@@ -349,18 +349,27 @@ export const ui = {
   push: {
     settingsTitle: "スマホ通知",
     settingsDesc:
-      "自動化の完了や確認依頼を、スマホのプッシュ通知でお知らせします。アプリを開かなくても結果が届きます。",
+      "仕事の完了や確認が必要なときに通知します。アプリを開いていなくても、対応端末へお知らせします。",
     statusTitle: "通知の状態",
     statusUnsupported:
       "このブラウザはスマホ通知に対応していません。Android の Chrome など対応ブラウザで開いてください。",
-    statusDenied: "ブラウザまたは端末で通知が拒否されています",
+    statusDenied: "ブラウザまたは端末設定で通知が無効です",
     statusDeniedGuide:
       "端末の設定または Chrome のサイト設定から通知を許可してください。",
     statusGranted: "スマホ通知は有効です",
+    statusGrantedPermissionOnly:
+      "端末の通知は許可されています。アプリ側の通知設定はOFFです。",
     statusDefault: "スマホ通知はまだ許可されていません",
     statusUnregistered:
       "通知は許可されていますが、この端末の登録がまだ完了していません。",
-    permissionPrompt: "スマホ通知を受け取るには、端末の通知を許可してください",
+    mismatchAppOnDenied:
+      "通知はONですが、端末側で許可されていません。ブラウザまたは端末設定で通知を有効にしてください。",
+    mismatchAppOnUnsupported:
+      "通知設定はONですが、この端末ではスマホ通知に対応していません。",
+    mismatchAppOnUnasked:
+      "通知設定はONですが、端末の通知許可がまだです。「スマホ通知を有効にする」を押してください。",
+    permissionPrompt:
+      "仕事の完了や確認が必要なときに通知します。下のボタンを押すと、ブラウザが許可を確認します。",
     registeredDeviceHint: "この端末は登録済みです。テスト通知で届くか確認できます。",
     deniedStep1: "Chrome のメニューを開く",
     deniedStep2: "設定を開く",
