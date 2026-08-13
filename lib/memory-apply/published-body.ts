@@ -129,6 +129,10 @@ export function applyPublishedBodyOverlay(
       if (next !== body) appliedKeys.push("structure:headings");
       body = next;
     }
+    if (overlay.preferSeo) {
+      body = body.replace(/\b(Key points|Overview|Thank you)\b/gi, "");
+      appliedKeys.push("seo");
+    }
     if (overlay.preferCta) {
       const next = ensureCta(body, overlay.ctaText);
       if (next !== body) appliedKeys.push("cta");

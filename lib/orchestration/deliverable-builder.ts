@@ -19,6 +19,7 @@ import {
   normalizeEmailPayload,
 } from "./email-deliverable";
 import { parseWorkerDeliverablePayload, tryParseStoredDeliverable } from "./worker-output";
+import { applyBlogPackageToDeliverable } from "@/lib/blog-article/package";
 
 type BuildDeliverableParams = {
   assignment: string;
@@ -98,6 +99,8 @@ function buildMetadata(
     purpose: payload.purpose ?? "",
     cta: payload.cta ?? "",
     posts: payload.posts ?? [],
+    excerpt: payload.excerpt,
+    slug: payload.slug,
     sourceTaskId: taskId,
     workerCount,
   };
@@ -113,23 +116,7 @@ function composeMarkdown(deliverable: Omit<Deliverable, "markdown" | "html" | "p
 
   switch (type) {
     case "blog":
-      sections.push(
-        "## SEO",
-        `Title: ${metadata.seo.title}`,
-        `Description: ${metadata.seo.description}`,
-        metadata.seo.keywords.length > 0
-          ? `Keywords: ${metadata.seo.keywords.join(", ")}`
-          : "",
-        "",
-        "## 推奨タグ",
-        metadata.tags.join(", ") || "—",
-        "",
-        "## 記事本文",
-        content,
-      );
-      if (metadata.snsPost) {
-        sections.push("", "## SNS投稿文", metadata.snsPost);
-      }
+      sections.push(content);
       break;
     case "email":
       sections.push("## メール本文", content);
@@ -195,7 +182,9 @@ function payloadToDeliverable(
     downloads: defaultDownloads(type).map((item) => ({ ...item, ready: true })),
   };
 
-  return type === "email" ? normalizeEmailDeliverable(deliverable, assignment) : deliverable;
+  if (type === "email") return normalizeEmailDeliverable(deliverable, assignment);
+  if (type === "blog") return applyBlogPackageToDeliverable(deliverable, assignment);
+  return deliverable;
 }
 
 /** Build a structured deliverable directly from worker output — no string collapse. */
@@ -230,6 +219,8 @@ export function buildDeliverable(params: BuildDeliverableParams): Deliverable {
             subject: stored.metadata.subject,
             purpose: stored.metadata.purpose,
             cta: stored.metadata.cta,
+            excerpt: stored.metadata.excerpt,
+            slug: stored.metadata.slug,
           },
           taskId: exec.task.id,
         };
@@ -286,6 +277,9 @@ export function buildFinalResponseSummary(deliverable: Deliverable): string {
 
   if (deliverable.summary.trim()) {
     parts.push("", deliverable.summary.trim());
+  }
+  if (deliverable.type === "blog") {
+    parts.push("", "WordPressへの公開は、接続済みの場合のみ別途行います。");
   }
 
   return parts.join("\n");

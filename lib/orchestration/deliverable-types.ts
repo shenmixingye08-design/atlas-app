@@ -33,6 +33,15 @@ export type DeliverableMetadata = {
   cta?: string;
   /** Social post variants (3–5 items for social_post deliverables). */
   posts?: string[];
+  /** Blog-only WordPress-ready fields. Not used by Word documents. */
+  excerpt?: string;
+  slug?: string;
+  faq?: Array<{ question: string; answer: string }>;
+  categoryCandidates?: string[];
+  featuredImageHint?: string | null;
+  factNotes?: string[];
+  internalLinkCandidates?: string[];
+  blogIntent?: string;
   sourceTaskId: number | null;
   workerCount: number;
 };
@@ -79,6 +88,8 @@ export type WorkerDeliverablePayload = {
   purpose?: string;
   cta?: string;
   posts?: string[];
+  excerpt?: string;
+  slug?: string;
 };
 
 const EMPTY_METADATA: DeliverableMetadata = {

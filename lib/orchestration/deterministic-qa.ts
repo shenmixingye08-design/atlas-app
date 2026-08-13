@@ -74,6 +74,15 @@ export function runDeterministicQa(deliverable: Deliverable): DeterministicQaRes
     }
     if (deliverable.metadata.tags.length === 0) failedChecks.push("tags missing");
     if (!deliverable.metadata.snsPost.trim()) failedChecks.push("SNS post missing");
+    if (!deliverable.metadata.excerpt?.trim() && !deliverable.summary.trim()) {
+      failedChecks.push("excerpt missing");
+    }
+    if (/\bKey points\b|\bThank you\b/i.test(body)) {
+      failedChecks.push("english chrome in blog body");
+    }
+    if (/架空の(?:調査|統計|出典)/.test(body)) {
+      failedChecks.push("fabricated citation");
+    }
   }
 
   const accuracy = scoreCriterion(body.length > 0 && deliverable.title.length > 0);

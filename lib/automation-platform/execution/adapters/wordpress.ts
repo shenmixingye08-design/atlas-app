@@ -33,6 +33,8 @@ export const invokeWordPressAdapter: ExternalAdapter = async (input) => {
   });
   content = applied.text || content;
 
+  const excerpt = configString(input.step.configuration, ["excerpt"]);
+  const slug = configString(input.step.configuration, ["slug"]);
   const publishMode =
     configString(input.step.configuration, ["publishMode", "status"]) ||
     "draft";
@@ -43,7 +45,13 @@ export const invokeWordPressAdapter: ExternalAdapter = async (input) => {
     const result = await createWordPressPostForUser({
       userId: input.userId,
       context,
-      payload: { title, content, status },
+      payload: {
+        title,
+        content,
+        status,
+        ...(excerpt ? { excerpt } : {}),
+        ...(slug ? { slug } : {}),
+      },
       automationId: input.automationId,
       runId: input.runId,
       occurrenceKey: input.occurrenceKey ?? input.runId,

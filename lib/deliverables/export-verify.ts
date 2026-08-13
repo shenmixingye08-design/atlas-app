@@ -1,6 +1,7 @@
 import "server-only";
 
 import { verifyXlsxWorkbook } from "./excel-workbook/verify";
+import { verifyDocxDocument } from "./document-model/verify-docx";
 import { verifyPptxDeck } from "./pptx-storyboard/verify";
 import { verifyPdfQuality } from "./pdf-quality";
 import type { DeliverableFormat, GeneratedDeliverableFile } from "./types";
@@ -43,7 +44,12 @@ export function verifyGeneratedExport(
     }
   }
 
-  if (file.format !== "pdf" && file.format !== "xlsx" && file.format !== "pptx") {
+  if (
+    file.format !== "pdf" &&
+    file.format !== "xlsx" &&
+    file.format !== "docx" &&
+    file.format !== "pptx"
+  ) {
     for (const marker of [
       '"type":',
       '"content":',
@@ -73,6 +79,17 @@ export async function verifyGeneratedExportAsync(
   file: GeneratedDeliverableFile,
 ): Promise<ExportVerifyResult> {
   const base = verifyGeneratedExport(file);
+  if (file.format === "docx") {
+    const docx = await verifyDocxDocument(file.buffer);
+    const mapped = docx.reasons.map((reason) => {
+      if (reason === "invalid_zip" || reason === "docx_reopen_failed") {
+        return `word_corrupt:${reason}`;
+      }
+      return `word_verify:${reason}`;
+    });
+    const reasons = [...base.reasons, ...mapped];
+    return { ok: reasons.length === 0, reasons };
+  }
   if (file.format === "xlsx") {
     const xlsx = await verifyXlsxWorkbook(file.buffer);
     const mapped = xlsx.reasons.map((reason) => {

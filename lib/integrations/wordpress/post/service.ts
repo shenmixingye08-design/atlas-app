@@ -60,6 +60,7 @@ function buildPostBody(payload: WordPressPostPayload, featuredMediaId?: number) 
     status: payload.status ?? "draft",
   };
   if (payload.excerpt) body.excerpt = payload.excerpt;
+  if (payload.slug?.trim()) body.slug = payload.slug.trim();
   if (payload.categories?.length) body.categories = payload.categories;
   if (payload.tags?.length) body.tags = payload.tags;
   const mediaId = featuredMediaId ?? payload.featuredMediaId;
