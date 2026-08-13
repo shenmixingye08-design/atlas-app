@@ -123,6 +123,17 @@ function healRequiredExternalSteps(automation: AutomationV2): {
   automation: AutomationV2;
   changed: boolean;
 } {
+  // Phase 4: condition/event triggers use Calendar as evaluation source only.
+  // Never inject google_calendar *create* steps from watch NL.
+  if (
+    automation.trigger.type === "condition" ||
+    automation.trigger.type === "event" ||
+    automation.instruction.structuredOptions?.source ===
+      "natural_language_condition"
+  ) {
+    return { automation, changed: false };
+  }
+
   const ensured = ensureRequiredExternalSteps({
     steps: automation.workflow.steps,
     freeformNotes: automation.instruction.freeformNotes,
@@ -537,12 +548,27 @@ export class AutomationPlatformService {
   async enqueueRun(input: {
     userId: string;
     automationId: string;
-    triggerType: "manual" | "schedule";
+    triggerType: "manual" | "schedule" | "condition" | "event";
     scheduledFor?: string | null;
     clientIdempotencyKey?: string | null;
     context: FeatureAccessContext;
     /** When false, leave queued without executing (tests / deferred tick). */
     dispatch?: boolean;
+    /**
+     * Phase 4 — required for condition/event triggers.
+     * Stored in schedule_occurrence_key for DB unique dedupe.
+     */
+    occurrenceKey?: string | null;
+    conditionEvidence?: {
+      previousState: boolean | null;
+      currentState: boolean;
+      provider: string;
+      eventType: string;
+      eventId: string;
+      providerResourceId: string;
+      conditionExpression: string | null;
+      edgeReason: string;
+    } | null;
   }): Promise<{ run: AutomationRun; created: boolean }> {
     assertV2Enabled(input.context);
     await assertRateLimit(input.userId, "run");
@@ -569,10 +595,15 @@ export class AutomationPlatformService {
 
     // Self-heal definitions that retained Calendar NL in freeformNotes but
     // never persisted a google_calendar Production step (aaef8557…).
-    const healedForRun = healRequiredExternalSteps(automation);
-    if (healedForRun.changed) {
-      assertProductionStepsActivatable(healedForRun.automation.workflow.steps);
-      automation = await persistAutomationV2Now(healedForRun.automation);
+    // Phase 4 condition triggers must not invent calendar *create* steps.
+    const isConditionTrigger =
+      input.triggerType === "condition" || input.triggerType === "event";
+    if (!isConditionTrigger) {
+      const healedForRun = healRequiredExternalSteps(automation);
+      if (healedForRun.changed) {
+        assertProductionStepsActivatable(healedForRun.automation.workflow.steps);
+        automation = await persistAutomationV2Now(healedForRun.automation);
+      }
     }
 
     const conflicts = detectInstructionConflicts(automation.instruction);
@@ -582,17 +613,26 @@ export class AutomationPlatformService {
       });
     }
 
+    if (isConditionTrigger && !input.occurrenceKey?.trim()) {
+      throw new AutomationPlatformError("automation_invalid_definition", {
+        field: "occurrenceKey",
+        reason: "condition_occurrence_key_required",
+      });
+    }
+
     const scheduledFor =
       input.scheduledFor ??
       (input.triggerType === "schedule" ? automation.nextRunAt : null);
 
     const scheduleOccurrenceKey =
-      input.triggerType === "schedule" && scheduledFor
-        ? buildScheduleOccurrenceKey({
-            automationId: automation.id,
-            scheduledFor,
-          })
-        : null;
+      isConditionTrigger && input.occurrenceKey?.trim()
+        ? input.occurrenceKey.trim()
+        : input.triggerType === "schedule" && scheduledFor
+          ? buildScheduleOccurrenceKey({
+              automationId: automation.id,
+              scheduledFor,
+            })
+          : null;
 
     const nowMs = Date.now();
     const runKey = buildRunKey({
@@ -601,6 +641,7 @@ export class AutomationPlatformService {
       scheduledFor,
       manualBucket:
         input.triggerType === "manual" ? minuteBucket(nowMs) : null,
+      occurrenceKey: scheduleOccurrenceKey,
     });
 
     const idempotencyKey = buildIdempotencyKey({
@@ -651,6 +692,22 @@ export class AutomationPlatformService {
       preparation.approvalStepIds,
     );
 
+    const conditionTriggerEvidence =
+      isConditionTrigger && input.conditionEvidence && scheduleOccurrenceKey
+        ? {
+            previousState: input.conditionEvidence.previousState,
+            currentState: input.conditionEvidence.currentState,
+            provider: input.conditionEvidence.provider,
+            eventType: input.conditionEvidence.eventType,
+            eventId: input.conditionEvidence.eventId,
+            providerResourceId: input.conditionEvidence.providerResourceId,
+            conditionExpression: input.conditionEvidence.conditionExpression,
+            edgeReason: input.conditionEvidence.edgeReason,
+            occurrenceKey: scheduleOccurrenceKey,
+            triggeredAt: now,
+          }
+        : null;
+
     let run: AutomationRun = {
       id: crypto.randomUUID(),
       automationId: automation.id,
@@ -694,6 +751,7 @@ export class AutomationPlatformService {
       approvalExpiresAt,
       resultSummary: null,
       diagnosticId,
+      conditionTriggerEvidence,
       createdAt: now,
       updatedAt: now,
     };

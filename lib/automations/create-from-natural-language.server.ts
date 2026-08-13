@@ -7,6 +7,11 @@ import {
 import { validateAutomationFeatureAccess } from "@/lib/feature-flags/guards";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { createExternalAutomationV2FromNaturalLanguage } from "@/lib/automations/create-external-v2-from-nl";
+import { createConditionAutomationV2FromNaturalLanguage } from "@/lib/automations/create-condition-v2-from-nl";
+import {
+  isConditionTriggerNaturalLanguage,
+  parsePhase4ConditionNaturalLanguage,
+} from "@/lib/automations/phase4-condition-compose";
 
 import { automationService } from "./automation-service";
 import {
@@ -20,7 +25,8 @@ export type CreateFromNaturalLanguageResult =
       ok: true;
       automation: Automation;
       message: string;
-      frequency: "daily" | "weekly" | "monthly";
+      frequency: "daily" | "weekly" | "monthly" | "condition";
+      triggerKind?: "schedule" | "condition";
       /** Present when Production external steps were created on Automation V2. */
       automationV2Id?: string;
     }
@@ -228,15 +234,153 @@ async function createExternalPath(input: {
   };
 }
 
+function mapV2ConditionToPhase1AutomationResponse(input: {
+  userId: string;
+  v2: {
+    id: string;
+    name: string;
+    description: string;
+    nextRunAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    status: string;
+    trigger: {
+      type: string;
+      condition: { expression: string } | null;
+      event: {
+        source: string;
+        eventType: string;
+        filter?: Readonly<Record<string, unknown>>;
+      } | null;
+    };
+  };
+  title: string;
+  sourceText: string;
+}): Automation {
+  return {
+    id: input.v2.id,
+    userId: input.userId,
+    name: input.v2.name,
+    description: input.v2.description,
+    schedule: {
+      kind: "calendar",
+      label: `条件: カレンダー「${input.title}」検出時`,
+      config: {
+        triggerType: "condition",
+        expression: input.v2.trigger.condition?.expression ?? null,
+        provider: input.v2.trigger.event?.source ?? "google_calendar",
+        title: input.title,
+        sourceText: input.sourceText,
+      },
+    },
+    workflow: {
+      assignment: input.sourceText,
+      metadata: {
+        automationV2Id: input.v2.id,
+        source: "natural_language_condition",
+        requiredExternals: [],
+      },
+    },
+    timing: {
+      startDate: null,
+      endCondition: { type: "never" },
+    },
+    executionLevel: "full_auto",
+    executionMode: "standard",
+    snsBatchDays: null,
+    executionFlow: {
+      templateId: "generic",
+      steps: [],
+    },
+    destination: "none",
+    enabled: true,
+    lastRun: null,
+    nextRun: null,
+    status: "idle",
+    lastWorkflowRunId: null,
+    lastError: null,
+    successCount: 0,
+    failureCount: 0,
+    runHistory: [],
+    createdAt: input.v2.createdAt,
+    updatedAt: input.v2.updatedAt,
+  };
+}
+
+async function createConditionPath(input: {
+  userId: string;
+  text: string;
+}): Promise<CreateFromNaturalLanguageResult> {
+  const accessContext = await resolveFeatureAccessContext();
+  const existing = await automationService.listForUser(input.userId);
+  const taskDenied = await requireBillingAutomationTask(
+    input.userId,
+    existing.length,
+  );
+  if (taskDenied) {
+    const body = (await taskDenied.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    return {
+      ok: false,
+      code: "billing_task_limit",
+      message: body.error ?? "自動化の作成上限に達しています。",
+      httpStatus: taskDenied.status,
+    };
+  }
+
+  const created = await createConditionAutomationV2FromNaturalLanguage({
+    userId: input.userId,
+    text: input.text,
+    context: accessContext,
+  });
+  if (!created.ok) {
+    return {
+      ok: false,
+      code: created.code,
+      message: created.message,
+      httpStatus: created.httpStatus,
+    };
+  }
+
+  const parsed = parsePhase4ConditionNaturalLanguage(input.text);
+  const title = parsed.ok ? parsed.title : created.title;
+  const automation = mapV2ConditionToPhase1AutomationResponse({
+    userId: input.userId,
+    v2: created.automation,
+    title,
+    sourceText: input.text,
+  });
+
+  return {
+    ok: true,
+    automation,
+    automationV2Id: created.automation.id,
+    frequency: "condition",
+    triggerKind: "condition",
+    message: [
+      `条件の仕事「${automation.name}」を登録しました。`,
+      `トリガー: カレンダーに「${title}」が検出されたとき（false→true）`,
+      "スケジュール実行とは別経路です。Minute Scheduler が条件を評価します。",
+    ].join("\n"),
+  };
+}
+
 /**
  * Fail-closed NL → durable active automation.
  * External Calendar (etc.) → V2 Production steps only (no V1 orchestrate fake-success).
  * Success only when persisted, enabled, schedule kind=schedule, and nextRun set.
+ * Phase 4: condition/event NL is handled before schedule parsing.
  */
 export async function createAutomationFromNaturalLanguage(input: {
   userId: string;
   text: string;
 }): Promise<CreateFromNaturalLanguageResult> {
+  // Phase 4 first — never mix condition NL into Phase 1 schedule create.
+  if (isConditionTriggerNaturalLanguage(input.text)) {
+    return createConditionPath(input);
+  }
+
   const parsed = parseNaturalLanguageAutomation(input.text);
   if (!parsed.ok) {
     return {

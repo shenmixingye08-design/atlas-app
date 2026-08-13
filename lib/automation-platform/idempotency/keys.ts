@@ -19,7 +19,15 @@ export function buildRunKey(input: {
   triggerType: string;
   scheduledFor?: string | null;
   manualBucket?: string | null;
+  /** Phase 4 condition / event occurrence identity */
+  occurrenceKey?: string | null;
 }): string {
+  if (
+    (input.triggerType === "condition" || input.triggerType === "event") &&
+    input.occurrenceKey?.trim()
+  ) {
+    return input.occurrenceKey.trim();
+  }
   if (input.triggerType === "schedule" && input.scheduledFor) {
     return buildScheduleOccurrenceKey({
       automationId: input.automationId,
@@ -34,6 +42,11 @@ export function buildRunKey(input: {
     return `retry:${input.automationId}:${input.scheduledFor}`;
   }
   return `run:${input.automationId}:${input.triggerType}:${input.scheduledFor ?? "none"}`;
+}
+
+/** Alias kept for call-site clarity — stored in schedule_occurrence_key column. */
+export function buildConditionOccurrenceKeyAlias(occurrenceKey: string): string {
+  return occurrenceKey;
 }
 
 export function buildIdempotencyKey(input: {

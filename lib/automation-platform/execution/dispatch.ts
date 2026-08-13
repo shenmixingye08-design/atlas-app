@@ -7,6 +7,7 @@ import "server-only";
 import { executeQueuedRun } from "@/lib/automation-platform/execution/executor";
 import { finalizeOrphanRunningRun } from "@/lib/automation-platform/execution/finalize-orphan-running";
 import { notifyAutomationRunEvent } from "@/lib/automation-platform/execution/notify";
+import { recoverStaleRunningRun } from "@/lib/automation-platform/execution/reclaim-stale-running";
 import type { StepInvoker } from "@/lib/automation-platform/execution/step-invoker";
 import { strictStepInvoker } from "@/lib/automation-platform/execution/strict-step-invoker";
 import { getAutomationV2FromSot } from "@/lib/automation-platform/durable";
@@ -26,6 +27,8 @@ export type DispatchResult = {
   failed: number;
   retrying: number;
   awaiting: number;
+  /** Phase 5: mid-step stale runs requeued for resume */
+  reclaimed: number;
 };
 
 async function attachClaimTransition(run: AutomationRun): Promise<AutomationRun> {
@@ -69,22 +72,28 @@ export async function dispatchAutomationRuns(options?: {
     failed: 0,
     retrying: 0,
     awaiting: 0,
+    reclaimed: 0,
   };
 
-  // Heal runs stuck in running after steps already finished (persist race).
+  // Heal stuck running: terminal-step finalize OR mid-step reclaim → retrying.
+  const reclaimedIds: string[] = [];
   if (!options?.runIds?.length) {
     const stuck = await dbListStuckRunningRuns(options?.limit ?? 10);
     for (const orphan of stuck) {
       try {
-        const finalized = await finalizeOrphanRunningRun(orphan);
-        if (!finalized) continue;
-        result.processed += 1;
-        if (finalized.status === "succeeded") result.succeeded += 1;
-        else if (finalized.status === "retrying") result.retrying += 1;
-        else if (finalized.status === "needs_input") result.awaiting += 1;
-        else result.failed += 1;
+        const recovery = await recoverStaleRunningRun(orphan);
+        if (recovery.kind === "finalized") {
+          result.processed += 1;
+          if (recovery.run.status === "succeeded") result.succeeded += 1;
+          else if (recovery.run.status === "retrying") result.retrying += 1;
+          else if (recovery.run.status === "needs_input") result.awaiting += 1;
+          else result.failed += 1;
+        } else if (recovery.kind === "reclaimed") {
+          result.reclaimed += 1;
+          reclaimedIds.push(recovery.run.id);
+        }
       } catch (error) {
-        console.error("[automation-v2] finalize orphan running failed", {
+        console.error("[automation-v2] recover stale running failed", {
           runId: orphan.id,
           message: error instanceof Error ? error.message.slice(0, 200) : "unknown",
         });
@@ -92,12 +101,23 @@ export async function dispatchAutomationRuns(options?: {
     }
   }
 
-  const candidates =
+  const listed =
     options?.runIds && options.runIds.length > 0
       ? (
           await Promise.all(options.runIds.map((id) => dbGetRun(id)))
         ).filter((run): run is AutomationRun => Boolean(run))
-      : await dbListDispatchableRuns(options?.limit ?? 20);
+      : [
+          ...(await dbListDispatchableRuns(options?.limit ?? 20)),
+          ...(
+            await Promise.all(reclaimedIds.map((id) => dbGetRun(id)))
+          ).filter((run): run is AutomationRun => Boolean(run)),
+        ];
+  const seen = new Set<string>();
+  const candidates = listed.filter((run) => {
+    if (seen.has(run.id)) return false;
+    seen.add(run.id);
+    return true;
+  });
 
   for (const candidate of candidates) {
     const claimed = await dbClaimRun(candidate.id);

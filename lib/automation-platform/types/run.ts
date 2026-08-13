@@ -166,6 +166,22 @@ export type AutomationRun = {
     completedAt: string;
     evidenceVersion: number;
   } | null;
+  /**
+   * Phase 4 — why this run was triggered (condition / event edge).
+   * Durable so cold-start can answer「なぜ実行されたか」.
+   */
+  conditionTriggerEvidence?: {
+    previousState: boolean | null;
+    currentState: boolean;
+    provider: string;
+    eventType: string;
+    eventId: string;
+    providerResourceId: string;
+    conditionExpression: string | null;
+    edgeReason: string;
+    occurrenceKey: string;
+    triggeredAt: string;
+  } | null;
   /** @deprecated use memoryUsage.used */
   memoryReferences: MemoryReferenceRecord[];
 };

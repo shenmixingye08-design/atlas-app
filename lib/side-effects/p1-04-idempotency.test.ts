@@ -344,4 +344,28 @@ describe("P1-04 side-effect idempotency", () => {
     });
     expect(a).toBe(b);
   });
+
+  it("Phase 5: occurrence-stable key ignores runId", () => {
+    const a = buildSideEffectIdempotencyKey({
+      userId: "u1",
+      provider: "google_calendar",
+      actionType: "create_event",
+      destination: "primary",
+      automationId: "a1",
+      runId: "run_old",
+      occurrenceKey: "occ_shared",
+      discriminator: "google_calendar",
+    });
+    const b = buildSideEffectIdempotencyKey({
+      userId: "u1",
+      provider: "google_calendar",
+      actionType: "create_event",
+      destination: "primary",
+      automationId: "a1",
+      runId: "run_new",
+      occurrenceKey: "occ_shared",
+      discriminator: "google_calendar",
+    });
+    expect(a).toBe(b);
+  });
 });

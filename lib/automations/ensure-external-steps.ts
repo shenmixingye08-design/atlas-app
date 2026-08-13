@@ -102,9 +102,12 @@ export function ensureRequiredExternalSteps(input: {
       ) as RequiredExternalAction[])
     : null;
 
+  // Phase 4 condition NL stamps requiredExternals: [] intentionally.
+  const honorEmptyDeclared =
+    input.structuredOptions?.source === "natural_language_condition";
   const required = resolveRequiredExternals({
-    sourceText,
-    declared,
+    sourceText: honorEmptyDeclared ? "" : sourceText,
+    declared: honorEmptyDeclared ? [] : declared,
   });
 
   const steps = input.steps.map((step) => ({ ...step }));

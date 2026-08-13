@@ -319,31 +319,36 @@ describe("P0-2 durable job claim", () => {
     expect(() => getWorkQueueStore()).toThrow(/FORCE_FILE is forbidden/);
   });
 
-  it("word + work-job Production refuse Map-only claim", async () => {
-    vi.resetModules();
-    vi.stubEnv("VERCEL_ENV", "production");
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("SUPABASE_URL", "");
-    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
-    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
-    const { claimWordJob, WordJobClaimUnavailableError } = await import(
-      "@/lib/deliverables/word-job-stages"
-    );
-    await expect(
-      claimWordJob({
-        jobId: "wj1",
-        userId: "u",
-        assignment: "x",
-        sourceContent: "y",
-        baseFileName: "z",
-      }),
-    ).rejects.toBeInstanceOf(WordJobClaimUnavailableError);
+  // resetModules + heavy deliverable/work-job graphs can exceed 5s under CI load.
+  it(
+    "word + work-job Production refuse Map-only claim",
+    async () => {
+      vi.resetModules();
+      vi.stubEnv("VERCEL_ENV", "production");
+      vi.stubEnv("NODE_ENV", "production");
+      vi.stubEnv("SUPABASE_URL", "");
+      vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
+      vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+      const { claimWordJob, WordJobClaimUnavailableError } = await import(
+        "@/lib/deliverables/word-job-stages"
+      );
+      await expect(
+        claimWordJob({
+          jobId: "wj1",
+          userId: "u",
+          assignment: "x",
+          sourceContent: "y",
+          baseFileName: "z",
+        }),
+      ).rejects.toBeInstanceOf(WordJobClaimUnavailableError);
 
-    const { executeWorkJob } = await import("@/lib/work-jobs/run");
-    await expect(executeWorkJob("missing", "u")).rejects.toThrow(
-      /work_job_claim_unavailable/,
-    );
-  });
+      const { executeWorkJob } = await import("@/lib/work-jobs/run");
+      await expect(executeWorkJob("missing", "u")).rejects.toThrow(
+        /work_job_claim_unavailable/,
+      );
+    },
+    15_000,
+  );
 
   it("stuck recovery uses atomic reclaim (single success)", async () => {
     const store = resetWorkQueueStoreForTests();
