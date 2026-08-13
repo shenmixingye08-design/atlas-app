@@ -271,6 +271,7 @@ describe("Production UI approve API path Cases A–E", () => {
         failed: 0,
         retrying: 0,
         awaiting: 0,
+        reclaimed: 0,
       });
 
     try {
@@ -325,6 +326,7 @@ describe("Production UI approve API path Cases A–E", () => {
         failed: 0,
         retrying: 0,
         awaiting: 0,
+        reclaimed: 0,
       });
 
     try {
@@ -372,6 +374,7 @@ describe("Production UI approve API path Cases A–E", () => {
         failed: 0,
         retrying: 0,
         awaiting: 0,
+        reclaimed: 0,
       });
 
     try {

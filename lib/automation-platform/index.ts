@@ -72,3 +72,7 @@ export {
   buildConditionOccurrenceKey,
   decideConditionEdge,
 } from "./condition";
+export {
+  recoverStaleRunningRun,
+  reclaimStaleMidStepRun,
+} from "./execution/reclaim-stale-running";

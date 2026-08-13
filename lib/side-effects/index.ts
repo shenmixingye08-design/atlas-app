@@ -1,5 +1,6 @@
 export {
   buildSideEffectIdempotencyKey,
+  buildLegacySideEffectIdempotencyKey,
   fingerprintDestination,
 } from "./keys";
 export {

@@ -11,6 +11,7 @@ import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
 import {
+  buildLegacySideEffectIdempotencyKey,
   buildSideEffectClaimId,
   buildSideEffectIdempotencyKey,
   fingerprintDestination,
@@ -210,6 +211,70 @@ function newPendingClaim(ctx: SideEffectContext): SideEffectClaim {
   };
 }
 
+function findLocalClaimByKey(
+  userId: string,
+  idempotencyKey: string,
+): SideEffectClaim | null {
+  const db = getLocalDb();
+  const existingId = db.byUserKey.get(userKey(userId, idempotencyKey));
+  if (!existingId) return null;
+  const existing = db.claims.get(existingId);
+  if (!existing || existing.userId !== userId) return null;
+  return structuredClone(existing);
+}
+
+/**
+ * Resolve existing claim by primary (Phase 5 occurrence-stable) key, then
+ * legacy v1 key (includes runId) so in-flight Production claims still hit.
+ */
+async function findExistingClaimForContext(
+  ctx: SideEffectContext,
+  primaryKey: string,
+): Promise<SideEffectClaim | null> {
+  const legacyKey =
+    ctx.occurrenceKey?.trim()
+      ? buildLegacySideEffectIdempotencyKey(ctx)
+      : null;
+  const keys = [primaryKey, ...(legacyKey && legacyKey !== primaryKey ? [legacyKey] : [])];
+
+  if (await shouldUseLocalStandIn()) {
+    for (const key of keys) {
+      const hit = findLocalClaimByKey(ctx.userId, key);
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  const client = createServiceRoleClientIfConfigured();
+  if (!client) {
+    for (const key of keys) {
+      const hit = findLocalClaimByKey(ctx.userId, key);
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  for (const key of keys) {
+    const { data, error } = await client
+      .from(SIDE_EFFECT_TABLE)
+      .select("*")
+      .eq("user_id", ctx.userId)
+      .eq("idempotency_key", key)
+      .maybeSingle();
+    if (error && !isMissingError(error.message)) {
+      throw new Error(`[side-effects] read failed: ${error.message}`);
+    }
+    if (data) {
+      const owned = fromRow(data as ClaimRow);
+      if (owned.userId !== ctx.userId) {
+        throw new Error("[side-effects] ownership violation");
+      }
+      return owned;
+    }
+  }
+  return null;
+}
+
 export async function ensureSideEffectClaim(
   ctx: SideEffectContext,
 ): Promise<SideEffectClaim> {
@@ -218,19 +283,15 @@ export async function ensureSideEffectClaim(
   }
   const draft = newPendingClaim(ctx);
 
+  const existingHit = await findExistingClaimForContext(ctx, draft.idempotencyKey);
+  if (existingHit) return existingHit;
+
   if (await shouldUseLocalStandIn()) {
     return (
       (await withLocalClaimLock(draft.id, () => {
+        const raced = findLocalClaimByKey(draft.userId, draft.idempotencyKey);
+        if (raced) return raced;
         const db = getLocalDb();
-        const existingId = db.byUserKey.get(
-          userKey(draft.userId, draft.idempotencyKey),
-        );
-        if (existingId) {
-          const existing = db.claims.get(existingId);
-          if (existing && existing.userId === ctx.userId) {
-            return structuredClone(existing);
-          }
-        }
         db.claims.set(draft.id, structuredClone(draft));
         db.byUserKey.set(userKey(draft.userId, draft.idempotencyKey), draft.id);
         return structuredClone(draft);
@@ -249,36 +310,14 @@ export async function ensureSideEffectClaim(
     return structuredClone(draft);
   }
 
-  const { data: existing, error: readError } = await client
-    .from(SIDE_EFFECT_TABLE)
-    .select("*")
-    .eq("user_id", draft.userId)
-    .eq("idempotency_key", draft.idempotencyKey)
-    .maybeSingle();
-  if (readError && !isMissingError(readError.message)) {
-    throw new Error(`[side-effects] read failed: ${readError.message}`);
-  }
-  if (existing) {
-    const owned = fromRow(existing as ClaimRow);
-    if (owned.userId !== ctx.userId) {
-      throw new Error("[side-effects] ownership violation");
-    }
-    return owned;
-  }
-
   const { error: insertError } = await client
     .from(SIDE_EFFECT_TABLE)
     .insert(toRow(draft));
   if (!insertError) return structuredClone(draft);
 
   if (insertError.code === "23505" || /duplicate|unique/i.test(insertError.message)) {
-    const { data: raced } = await client
-      .from(SIDE_EFFECT_TABLE)
-      .select("*")
-      .eq("user_id", draft.userId)
-      .eq("idempotency_key", draft.idempotencyKey)
-      .maybeSingle();
-    if (raced) return fromRow(raced as ClaimRow);
+    const raced = await findExistingClaimForContext(ctx, draft.idempotencyKey);
+    if (raced) return raced;
   }
   if (isMissingError(insertError.message)) {
     markSideEffectIdempotencyReadyUnknown();
