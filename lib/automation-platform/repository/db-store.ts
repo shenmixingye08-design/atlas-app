@@ -334,6 +334,69 @@ export async function dbListAutomationsForUser(
   return (data as AutomationRow[] | null)?.map(fromAutomationRow) ?? [];
 }
 
+/** Cron: active condition/event automations from DB (not process memory). */
+export async function dbListActiveConditionAutomations(
+  limit = 50,
+): Promise<AutomationV2[]> {
+  if (await shouldUseLocalStandIn()) {
+    return [...getLocalDb().automations.values()]
+      .filter((item) => {
+        if (item.status !== "active") return false;
+        return (
+          item.trigger.type === "condition" || item.trigger.type === "event"
+        );
+      })
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+      .slice(0, limit)
+      .map((row) => structuredClone(row));
+  }
+
+  const client = createServiceRoleClientIfConfigured();
+  if (!client) {
+    if (isAtlasProduction()) {
+      throw new Error("[automation-v2] DB SoT unavailable for condition scan");
+    }
+    return [...getLocalDb().automations.values()]
+      .filter(
+        (item) =>
+          item.status === "active" &&
+          (item.trigger.type === "condition" || item.trigger.type === "event"),
+      )
+      .slice(0, limit)
+      .map((row) => structuredClone(row));
+  }
+
+  const { data, error } = await client
+    .from(AUTOMATIONS_TABLE)
+    .select("*")
+    .eq("status", "active")
+    .order("updated_at", { ascending: true })
+    .limit(Math.max(limit * 3, 50));
+
+  if (error) {
+    if (isMissingError(error.message)) {
+      markAutomationV2DbSotReadyUnknown();
+      if (isAtlasProduction()) {
+        throw new Error(
+          `[automation-v2] condition scan schema missing: ${error.message}`,
+        );
+      }
+      return [];
+    }
+    throw new Error(
+      `[automation-v2] condition scan failed: ${error.message}`,
+    );
+  }
+
+  return ((data as AutomationRow[] | null) ?? [])
+    .map(fromAutomationRow)
+    .filter(
+      (item) =>
+        item.trigger.type === "condition" || item.trigger.type === "event",
+    )
+    .slice(0, limit);
+}
+
 /** Cron: due active scheduled automations from DB (not process memory). */
 export async function dbListDueActiveAutomations(
   nowMs: number = Date.now(),

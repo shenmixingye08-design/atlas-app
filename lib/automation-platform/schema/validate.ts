@@ -236,11 +236,23 @@ function validateTrigger(raw: unknown): AutomationTrigger {
         field: "trigger.condition",
       });
     }
+    // Phase 4: condition may carry provider/event source for polling evaluation.
+    const event =
+      isRecord(raw.event) && typeof raw.event.source === "string"
+        ? {
+            source: raw.event.source,
+            eventType:
+              typeof raw.event.eventType === "string"
+                ? raw.event.eventType
+                : "unknown",
+            filter: isRecord(raw.event.filter) ? raw.event.filter : undefined,
+          }
+        : null;
     return {
       type: "condition",
       timezone,
       schedule: null,
-      event: null,
+      event,
       condition: {
         expression: raw.condition.expression,
         evaluatedFields: Array.isArray(raw.condition.evaluatedFields)

@@ -67,3 +67,8 @@ export { automationPlatformService } from "./service/automation-service";
 export { AutomationPlatformError } from "./errors/messages";
 export type { AutomationErrorCode } from "./errors/codes";
 export { AUTOMATION_EXECUTION_FEATURE_EVALUATION } from "./feature-evaluation-execution";
+export {
+  processConditionAutomationsV2,
+  buildConditionOccurrenceKey,
+  decideConditionEdge,
+} from "./condition";

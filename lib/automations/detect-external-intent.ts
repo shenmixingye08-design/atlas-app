@@ -46,7 +46,27 @@ export function extractCalendarEventTitle(text: string): string | null {
   return null;
 }
 
+/**
+ * Phase 4: 「カレンダーに○○が追加されたら」is a watch/condition source,
+ * not a Calendar *create* external action (Phase 2 path).
+ * Must not match Phase 2/3 「予定を登録して…完了したら通知」.
+ */
+export function isCalendarConditionWatchText(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (
+    !/(?:google\s*カレンダー|グーグル\s*カレンダー|Google\s*Calendar|カレンダー)/i.test(
+      trimmed,
+    )
+  ) {
+    return false;
+  }
+  // Only passive watch phrasing — not "登録して" / "作成して" action verbs.
+  return /(?:追加|作成|登録)されたら/.test(trimmed);
+}
+
 export function requiresGoogleCalendarAction(text: string): boolean {
+  if (isCalendarConditionWatchText(text)) return false;
   return CALENDAR_PATTERN.test(text);
 }
 

@@ -35,6 +35,16 @@ type V2ScheduleSummary = {
   dispatched: number;
 };
 
+type V2ConditionSummary = {
+  scanned: number;
+  evaluated: number;
+  edges: number;
+  enqueued: number;
+  deduped: number;
+  evaluationFailed: number;
+  dispatched: number;
+};
+
 /**
  * Minute-capable due tick.
  * Scheduler enqueues durable jobs; worker drains leases (step-sized).
@@ -78,6 +88,15 @@ export async function POST(request: Request): Promise<Response> {
     failed: 0,
     dispatched: 0,
   };
+  let v2Condition: V2ConditionSummary = {
+    scanned: 0,
+    evaluated: 0,
+    edges: 0,
+    enqueued: 0,
+    deduped: 0,
+    evaluationFailed: 0,
+    dispatched: 0,
+  };
   let v2Dispatch = { processed: 0 };
   let v2PathError: string | null = null;
   try {
@@ -96,6 +115,32 @@ export async function POST(request: Request): Promise<Response> {
       failed: scheduled.failed,
       dispatched: scheduled.dispatched,
     };
+
+    // Phase 4: condition/event evaluation (isolated from schedule due-tick).
+    try {
+      const { processConditionAutomationsV2 } = await import(
+        "@/lib/automation-platform/condition/process-condition-tick"
+      );
+      const conditioned = await processConditionAutomationsV2({
+        limit: 20,
+        dispatch: false,
+      });
+      v2Condition = {
+        scanned: conditioned.scanned,
+        evaluated: conditioned.evaluated,
+        edges: conditioned.edges,
+        enqueued: conditioned.enqueued,
+        deduped: conditioned.deduped,
+        evaluationFailed: conditioned.evaluationFailed,
+        dispatched: conditioned.dispatched,
+      };
+    } catch (conditionError) {
+      console.warn(
+        "[automation tick] v2 condition evaluate skipped:",
+        conditionError,
+      );
+    }
+
     // P1-03: DB claim is multi-instance safe — dispatch in all environments
     // when atlas_automations / atlas_automation_runs SoT is ready.
     // Never fall back to process-local memory claim.
@@ -108,6 +153,7 @@ export async function POST(request: Request): Promise<Response> {
       );
       v2Dispatch = await dispatchAutomationRuns({ limit: 10 });
       v2Schedule = { ...v2Schedule, dispatched: v2Dispatch.processed };
+      v2Condition = { ...v2Condition, dispatched: v2Dispatch.processed };
     } else {
       const { isAtlasProduction } = await import(
         "@/lib/runtime/is-production"
@@ -125,7 +171,11 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const v2Progress =
-    v2Schedule.enqueued + v2Schedule.deduped + v2Dispatch.processed;
+    v2Schedule.enqueued +
+    v2Schedule.deduped +
+    v2Condition.enqueued +
+    v2Condition.deduped +
+    v2Dispatch.processed;
 
   // --- Legacy V1 work queue (isolated; must not block V2) ---
   let workQueue: Awaited<
@@ -349,6 +399,7 @@ export async function POST(request: Request): Promise<Response> {
         }
       : null,
     v2Schedule,
+    v2Condition,
     v2Dispatch,
     ...(v2PathError ? { v2PathError } : {}),
     scheduledXPosts: {
