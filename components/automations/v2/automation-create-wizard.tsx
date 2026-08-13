@@ -19,11 +19,18 @@ import {
   createAutomationV2,
   deleteAutomationDraft,
   listAutomationDrafts,
-  loadLocalDraftPointer,
   runAutomationV2,
   saveAutomationDraft,
   saveLocalDraftPointer,
 } from "@/lib/automation-platform/client";
+import {
+  WIZARD_MISSING_DRAFT_MESSAGE,
+  bootstrapWizardDraft,
+  cleanupWizardDraftAfterCreate,
+  resolveWizardEntryIntent,
+  shouldSuppressWizardAutosave,
+  syncWizardDraftToUrl,
+} from "@/lib/automation-platform/wizard/draft-lifecycle";
 import { detectInstructionConflicts } from "@/lib/automation-platform/instruction/conflict";
 import { AUTOMATION_MEMORY_SCOPES } from "@/lib/automation-platform/types";
 import {
@@ -104,6 +111,7 @@ export function AutomationCreateWizard({ initialDraftId, seedText }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitLock, setSubmitLock] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [bootstrapped, setBootstrapped] = useState(false);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
 
@@ -148,41 +156,55 @@ export function AutomationCreateWizard({ initialDraftId, seedText }: Props) {
   }, []);
 
   useEffect(() => {
-    if (seedText?.trim()) {
-      startTransition(() => {
-        setDraft(proposeWizardFromNaturalLanguage(seedText));
-      });
-    }
-  }, [seedText]);
-
-  useEffect(() => {
-    // Seeded NL propose must win over a stale saved draft — overwriting with an
-    // orchestrate-only draft caused Production step-missing (aaef8557…).
-    if (seedText?.trim()) return;
+    const intent = resolveWizardEntryIntent({
+      draftId: initialDraftId,
+      seedText,
+    });
     let cancelled = false;
+
     void (async () => {
       try {
+        if (intent.kind === "fresh") {
+          return;
+        }
+        if (intent.kind === "seed") {
+          const result = bootstrapWizardDraft({ intent, drafts: [] });
+          if (!cancelled) {
+            startTransition(() => {
+              setDraft(result.draft);
+            });
+          }
+          return;
+        }
+
         const drafts = await listAutomationDrafts();
         if (cancelled) return;
-        const pointer = loadLocalDraftPointer();
-        const targetId = initialDraftId ?? pointer?.draftId;
-        const found = targetId
-          ? drafts.find((item) => item.draftId === targetId)
-          : drafts[0];
-        if (found) {
-          setDraft(found);
+        const result = bootstrapWizardDraft({ intent, drafts });
+        if (result.status === "resumed") {
+          setDraft(result.draft);
+          return;
         }
+        setErrorMessage(result.message ?? WIZARD_MISSING_DRAFT_MESSAGE);
+        setDraft(result.draft);
       } catch {
-        // Flag off or first visit — start fresh
+        if (intent.kind === "resume") {
+          setErrorMessage(WIZARD_MISSING_DRAFT_MESSAGE);
+        }
+      } finally {
+        if (!cancelled) setBootstrapped(true);
       }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, [initialDraftId, seedText]);
+  }, [initialDraftId, seedText, startTransition]);
 
   const persistDraft = useCallback(
     async (next: AutomationWizardDraft) => {
+      if (shouldSuppressWizardAutosave({ bootstrapped, draft: next })) {
+        return;
+      }
       try {
         const result = await saveAutomationDraft(next);
         setDraft((current) =>
@@ -195,16 +217,20 @@ export function AutomationCreateWizard({ initialDraftId, seedText }: Props) {
           currentStepId: next.currentStepId,
           updatedAt: result.savedAt,
         });
+        syncWizardDraftToUrl(result.draft.draftId);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "下書きの保存に失敗しました";
         setErrorMessage(message);
       }
     },
-    [],
+    [bootstrapped],
   );
 
   useEffect(() => {
+    if (shouldSuppressWizardAutosave({ bootstrapped, draft })) {
+      return;
+    }
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => {
       void persistDraft(draft);
@@ -212,7 +238,7 @@ export function AutomationCreateWizard({ initialDraftId, seedText }: Props) {
     return () => {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     };
-  }, [draft, persistDraft]);
+  }, [bootstrapped, draft, persistDraft]);
 
   const goToStep = (stepId: WizardStepId) => {
     setErrorMessage(null);
@@ -310,14 +336,23 @@ export function AutomationCreateWizard({ initialDraftId, seedText }: Props) {
         return;
       }
       const created = await createAutomationV2(payload.input);
-      await deleteAutomationDraft(draft.draftId).catch(() => undefined);
-      clearLocalDraftPointer();
       setDraft((current) => ({
         ...current,
         createdAutomationId: created.id,
         currentStepId: "complete",
         name: created.name,
       }));
+      await cleanupWizardDraftAfterCreate({
+        draftId: draft.draftId,
+        deleteDraft: deleteAutomationDraft,
+        clearPointer: clearLocalDraftPointer,
+        logFailure: (error) => {
+          console.error(
+            "[automation-wizard] draft cleanup failed after create",
+            { draftId: draft.draftId, automationId: created.id, error },
+          );
+        },
+      });
     } catch (error) {
       const err = error as Error & { code?: string };
       setErrorMessage(err.message || "自動化を作成できませんでした");
