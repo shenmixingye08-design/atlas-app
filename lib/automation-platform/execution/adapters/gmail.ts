@@ -54,7 +54,7 @@ export const invokeGmailAdapter: ExternalAdapter = async (input) => {
         body,
         automationId: input.automationId,
         runId: input.runId,
-        occurrenceKey: input.runId,
+        occurrenceKey: input.occurrenceKey ?? input.runId,
         discriminator: `${input.step.id}:draft`,
       });
       if (drafted.status !== "ready") {
@@ -81,7 +81,7 @@ export const invokeGmailAdapter: ExternalAdapter = async (input) => {
         draft: { messageId: replyToMessageId, to, subject, body },
         automationId: input.automationId,
         runId: input.runId,
-        occurrenceKey: input.runId,
+        occurrenceKey: input.occurrenceKey ?? input.runId,
         discriminator: `${input.step.id}:reply`,
       });
       if (replied.status !== "ready") {
@@ -108,7 +108,7 @@ export const invokeGmailAdapter: ExternalAdapter = async (input) => {
       body,
       automationId: input.automationId,
       runId: input.runId,
-      occurrenceKey: input.runId,
+      occurrenceKey: input.occurrenceKey ?? input.runId,
       discriminator: `${input.step.id}:send`,
     });
     if (sent.status !== "ready") {

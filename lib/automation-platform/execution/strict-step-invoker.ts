@@ -100,15 +100,25 @@ async function invokeNotifyStep(input: {
   automationName: string;
   runId: string;
   automationId?: string | null;
+  occurrenceKey?: string | null;
+  priorArtifacts?: Array<{ id: string; label: string; url: string | null }>;
 }): Promise<StepInvokeResult> {
   const title =
     (typeof input.step.configuration.title === "string" &&
       input.step.configuration.title.trim()) ||
     "自動化の進捗";
+  const prior =
+    (input.priorArtifacts ?? [])
+      .slice(0, 3)
+      .map((item) => item.label)
+      .filter(Boolean)
+      .join(" / ") || null;
   const message =
     (typeof input.step.configuration.message === "string" &&
       input.step.configuration.message.trim()) ||
-    `「${input.automationName}」の通知手順を実行しました。`;
+    (prior
+      ? `「${input.automationName}」が完了しました（${prior}）。`
+      : `「${input.automationName}」の通知手順を実行しました。`);
 
   const { executeIdempotentSideEffect } = await import(
     "@/lib/side-effects/execute"
@@ -123,7 +133,7 @@ async function invokeNotifyStep(input: {
         destination: "in_app",
         automationId: input.automationId ?? null,
         runId: input.runId,
-        occurrenceKey: input.runId,
+        occurrenceKey: input.occurrenceKey ?? input.runId,
         discriminator: input.step.id,
       },
       async () => {
@@ -338,7 +348,9 @@ export const strictStepInvoker: StepInvoker = async (input) => {
     automationName: input.automationName,
     automationId: input.automationId ?? null,
     runId: input.runId,
+    occurrenceKey: input.occurrenceKey ?? input.runId,
     approved,
+    priorArtifacts: input.priorArtifacts ?? [],
   };
 
   switch (step.type) {
@@ -362,9 +374,26 @@ export const strictStepInvoker: StepInvoker = async (input) => {
         automationName: input.automationName,
         runId: input.runId,
         automationId: input.automationId,
+        occurrenceKey: input.occurrenceKey ?? input.runId,
+        priorArtifacts: input.priorArtifacts ?? [],
       });
 
     case "await_approval":
+      // Phase 3: after approve/resume, `approved=true` lets the control step pass.
+      if (approved) {
+        return {
+          ok: true,
+          summary: "承認済みのため続行します",
+          artifacts: [],
+          evidence: {
+            artifactIds: [],
+            storageObjectIds: [],
+            externalActionIds: [],
+            externalUrls: [],
+            notificationIds: [],
+          },
+        };
+      }
       return {
         ok: false,
         summary: "承認待ちです",

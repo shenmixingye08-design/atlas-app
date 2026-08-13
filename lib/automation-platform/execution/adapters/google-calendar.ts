@@ -63,6 +63,14 @@ export const invokeGoogleCalendarAdapter: ExternalAdapter = async (input) => {
     "body",
     "content",
   ]);
+  const priorNotes = (input.priorArtifacts ?? [])
+    .slice(0, 3)
+    .map((item) => `- ${item.label}${item.url ? ` (${item.url})` : ""}`)
+    .join("\n");
+  const mergedDescription = [description, priorNotes ? `先行成果物:\n${priorNotes}` : ""]
+    .filter((part) => part.trim().length > 0)
+    .join("\n\n")
+    .slice(0, 2000);
   const location = configString(input.step.configuration, ["location"]);
 
   try {
@@ -74,12 +82,12 @@ export const invokeGoogleCalendarAdapter: ExternalAdapter = async (input) => {
         title,
         startAt: window.startAt,
         endAt: window.endAt,
-        description: description || null,
+        description: mergedDescription || null,
         location: location || null,
       },
       automationId: input.automationId,
       runId: input.runId,
-      occurrenceKey: input.runId,
+      occurrenceKey: input.occurrenceKey ?? input.runId,
       discriminator: input.step.id,
     });
 

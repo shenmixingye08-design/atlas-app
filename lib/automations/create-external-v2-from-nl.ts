@@ -12,10 +12,8 @@ import type { AutomationWorkflowStep } from "@/lib/automation-platform/types/ste
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import type { RequiredExternalAction } from "@/lib/automations/detect-external-intent";
-import {
-  buildGoogleCalendarStepFromText,
-  canWireProductionExternalStep,
-} from "@/lib/automations/ensure-external-steps";
+import { canWireProductionExternalStep } from "@/lib/automations/ensure-external-steps";
+import { composePhase3WorkflowSteps } from "@/lib/automations/phase3-multistep-compose";
 import type { CreateAutomationInput } from "@/lib/automations/types";
 import type { AutomationV2 } from "@/lib/automation-platform/types";
 
@@ -23,16 +21,12 @@ function buildExternalSteps(
   required: readonly RequiredExternalAction[],
   sourceText: string,
 ): AutomationWorkflowStep[] {
-  const steps: AutomationWorkflowStep[] = [];
-  for (const action of required) {
-    if (action === "google_calendar") {
-      steps.push(buildGoogleCalendarStepFromText(sourceText, steps.length));
-      continue;
-    }
-    // Other externals: only emit when we can wire a real Production step.
-    // Unknown required actions are rejected by the caller.
-  }
-  return steps;
+  // Phase 3: compose generate → external → notify when NL asks.
+  // Phase 2 calendar-only NL remains a single google_calendar step.
+  return composePhase3WorkflowSteps({
+    sourceText,
+    requiredExternals: required,
+  }).steps;
 }
 
 export function canCreateProductionExternalSteps(
@@ -140,6 +134,10 @@ export function buildV2CreateInputFromNaturalLanguage(input: {
       structuredOptions: {
         requiredExternals: [...input.requiredExternals],
         source: "natural_language",
+        phase3Composition: composePhase3WorkflowSteps({
+          sourceText: input.sourceText,
+          requiredExternals: input.requiredExternals,
+        }).composition,
       },
     },
     memoryPolicy: {

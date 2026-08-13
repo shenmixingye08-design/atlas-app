@@ -36,7 +36,7 @@ export const invokeWordPressAdapter: ExternalAdapter = async (input) => {
       payload: { title, content, status },
       automationId: input.automationId,
       runId: input.runId,
-      occurrenceKey: input.runId,
+      occurrenceKey: input.occurrenceKey ?? input.runId,
       discriminator: input.step.id,
     });
 

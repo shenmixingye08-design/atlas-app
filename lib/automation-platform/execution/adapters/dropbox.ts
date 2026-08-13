@@ -50,7 +50,7 @@ export const invokeDropboxAdapter: ExternalAdapter = async (input) => {
       parentPath: folderPath,
       automationId: input.automationId,
       runId: input.runId,
-      occurrenceKey: input.runId,
+      occurrenceKey: input.occurrenceKey ?? input.runId,
       discriminator: input.step.id,
     });
 

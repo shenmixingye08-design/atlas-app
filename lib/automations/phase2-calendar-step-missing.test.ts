@@ -141,7 +141,7 @@ describe("Phase 2 Calendar step-missing (diagnosticId aaef8557…)", () => {
       .map((s) => s.type);
     expect(types).toContain("google_calendar");
     expect(
-      built.input.instruction.structuredOptions?.requiredExternals,
+      built.input.instruction?.structuredOptions?.requiredExternals,
     ).toContain("google_calendar");
   });
 
