@@ -34,6 +34,7 @@ export const invokeXPostAdapter: ExternalAdapter = async (input) => {
       context,
       automationId: input.automationId,
       runId: input.runId,
+      occurrenceKey: input.occurrenceKey ?? input.runId,
       discriminator: input.step.id,
     });
 
