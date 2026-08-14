@@ -142,12 +142,23 @@
   /* Mobile shell — sidebar drawer + safe area */
   --sidebar-width: 15rem;
   --mobile-top-bar-height: 3.5rem;
+  /*
+   * Fixed bottom nav chrome (safe-area is applied separately on the nav
+   * and in --app-shell-pad-bottom-mobile — do not fold it in here).
+   * Measured: 1px border-t + 4px ul pt-1 + 56px min-h items = 61px.
+   * 4.25rem (68px) keeps slack for 11px labels / Android font inflation.
+   */
   --bottom-nav-height: 4.25rem;
   --home-quick-actions-height: 4.5rem;
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
-  --app-shell-pad-bottom-mobile: calc(var(--safe-area-bottom) + 1.5rem);
+  --app-shell-content-gap-bottom: 1.5rem;
+  --app-shell-pad-bottom-mobile: calc(
+    var(--bottom-nav-height) + var(--safe-area-bottom) +
+      var(--app-shell-content-gap-bottom)
+  );
   --app-shell-pad-bottom-home-mobile: calc(
-    var(--home-quick-actions-height) + var(--safe-area-bottom) + 1.5rem
+    var(--bottom-nav-height) + var(--home-quick-actions-height) +
+      var(--safe-area-bottom) + var(--app-shell-content-gap-bottom)
   );
 }
 
@@ -838,22 +849,33 @@ html[data-theme-transitioning] *::after {
   min-width: 44px;
 }
 
-/* Main content clearance above fixed bottom nav (mobile only) */
+/* Main content clearance above fixed bottom nav (mobile only).
+   This rule wins over Tailwind pb-* (same specificity, later source).
+   Must include --bottom-nav-height or the last card sits under the nav. */
 .app-shell-main {
+  padding-bottom: calc(var(--safe-area-bottom) + var(--app-shell-content-gap-bottom));
+}
+
+.app-shell-main--with-bottom-nav {
   padding-bottom: var(--app-shell-pad-bottom-mobile);
+  scroll-padding-bottom: var(--app-shell-pad-bottom-mobile);
 }
 
 .app-shell-main--home {
   padding-bottom: var(--app-shell-pad-bottom-home-mobile);
+  scroll-padding-bottom: var(--app-shell-pad-bottom-home-mobile);
 }
 
 @media (min-width: 768px) {
-  .app-shell-main {
+  .app-shell-main,
+  .app-shell-main--with-bottom-nav {
     padding-bottom: 3.5rem;
+    scroll-padding-bottom: 3.5rem;
   }
 
   .app-shell-main--home {
     padding-bottom: calc(3.5rem + var(--home-quick-actions-height));
+    scroll-padding-bottom: calc(3.5rem + var(--home-quick-actions-height));
   }
 }
 
