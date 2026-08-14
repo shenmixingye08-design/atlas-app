@@ -7,7 +7,13 @@ export type XConnectionCheckResult =
   | {
       status: "ready";
       connected: true;
+      /** OAuth token works. Not enough to post. */
       tokenValid: true;
+      /**
+       * True only when the connection can actually post
+       * (tweet.write + required scopes). Never treat connected as posting_ready.
+       */
+      postingReady: boolean;
       account: {
         username: string | null;
         name: string | null;

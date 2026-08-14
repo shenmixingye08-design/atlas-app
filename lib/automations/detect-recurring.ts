@@ -26,7 +26,7 @@ export type RecurringIntentResult =
  * 「毎朝9時に…」 was missed when only 毎日 was listed.
  */
 const RECURRING_PATTERN =
-  /毎日|毎朝|毎晩|毎夕|毎週|毎月|定期|習慣|自動で|ルーティン|定例/i;
+  /毎日|毎朝|毎晩|毎夕|毎週|毎月|平日|定期|習慣|自動で|ルーティン|定例/i;
 
 /** One-shot / today-only phrasing must NOT create automations. */
 const ONE_SHOT_PATTERN =
@@ -91,8 +91,15 @@ function extractDayOfMonth(text: string): number {
 export function inferFrequency(text: string): "daily" | "weekly" | "monthly" {
   if (/毎月|月次|月初|月初め/.test(text)) return "monthly";
   if (/毎週|週次/.test(text) || WEEKDAY_PATTERN.test(text)) return "weekly";
-  if (/毎日|日次|毎朝|毎晩|毎夕/.test(text)) return "daily";
+  if (/平日|毎日|日次|毎朝|毎晩|毎夕/.test(text)) return "daily";
   return "weekly";
+}
+
+function isXDestinationText(text: string): boolean {
+  if (/wordpress|ワードプレス|ブログ記事|カレンダー/.test(text)) return false;
+  return /(?:^|[^\w])x(?:へ|に|で|を)|twitter|ツイート|エックス|(?:sns).*(?:投稿|ポスト)|この内容を投稿|投稿して|Xを更新/i.test(
+    text,
+  );
 }
 
 function inferTitle(text: string): string {
@@ -102,7 +109,7 @@ function inferTitle(text: string): string {
       ? `カレンダー: ${eventTitle}`
       : "Googleカレンダー予定作成";
   }
-  if (/x\b|twitter|ツイート|sns|投稿/i.test(text)) return "SNS投稿";
+  if (isXDestinationText(text)) return "SNS投稿";
   if (/ブログ|記事/i.test(text)) return "ブログ作成";
   if (/ニュース|要約|まとめて|まとめ/i.test(text)) return "定期まとめ";
   if (/予定|スケジュール/i.test(text)) return "予定まとめ";
@@ -122,8 +129,8 @@ function buildDetection(text: string): RecurringIntentDetection {
   const frequency = inferFrequency(text);
   const { hour, minute } = extractHourMinute(text);
   const title = inferTitle(text);
-  const destination =
-    /x\b|twitter|ツイート|sns|投稿/i.test(text) ? ("x" as const) : ("none" as const);
+  const destination = isXDestinationText(text) ? ("x" as const) : ("none" as const);
+  const weekdays = /平日/.test(text) ? [1, 2, 3, 4, 5] : undefined;
 
   // NL auto-create must not escalate to full_auto by default (approval intact).
   // X destination keeps approve_then_run unless user later changes it.
@@ -138,6 +145,7 @@ function buildDetection(text: string): RecurringIntentDetection {
       minute,
       dayOfWeek: extractDayOfWeek(text),
       dayOfMonth: extractDayOfMonth(text),
+      weekdays,
       executionLevel: "approve_then_run",
     }),
   );
@@ -170,8 +178,7 @@ export function detectRecurringIntent(text: string): RecurringIntentResult {
 export function prefillFromAssignment(assignment: string): AutomationFormState {
   const result = detectRecurringIntent(assignment);
   if (result.detected) return result.formDefaults;
-  const destination =
-    /x\b|twitter|ツイート|sns|投稿/i.test(assignment) ? ("x" as const) : ("none" as const);
+  const destination = isXDestinationText(assignment) ? ("x" as const) : ("none" as const);
   return syncExecutionFlowFromJobText(
     defaultAutomationFormState({
       title: inferTitle(assignment),

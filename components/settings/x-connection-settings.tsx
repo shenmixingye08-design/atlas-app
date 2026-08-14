@@ -28,6 +28,7 @@ function XConnectionCard({
   service,
   busy,
   checking,
+  postingReady,
   onConnect,
   onDisconnect,
   onCheck,
@@ -37,6 +38,7 @@ function XConnectionCard({
   service: ExternalServiceView;
   busy: boolean;
   checking: boolean;
+  postingReady: boolean | null;
   onConnect: () => void;
   onDisconnect: () => void;
   onCheck: () => void;
@@ -79,7 +81,11 @@ function XConnectionCard({
                 )}
               >
                 {isConnected
-                  ? ui.xSettings.statusConnected
+                  ? postingReady === false
+                    ? ui.xSettings.statusConnectedNotPostingReady
+                    : postingReady === true
+                      ? ui.xSettings.statusPostingReady
+                      : ui.xSettings.statusConnected
                   : needsReconnect
                     ? ui.xSettings.statusError
                     : ui.externalServices.status[connection.status]}
@@ -140,7 +146,7 @@ function XConnectionCard({
               </Button>
               <Button
                 variant="secondary"
-                disabled={busy || checking}
+                disabled={busy || checking || postingReady === false}
                 onClick={onTestPost}
               >
                 {ui.xSettings.testPostButton}
@@ -179,6 +185,7 @@ export function XConnectionSettings() {
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [postingReady, setPostingReady] = useState<boolean | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -186,6 +193,18 @@ export function XConnectionSettings() {
       const xService = catalog.services.find((item) => item.serviceId === "x");
       setService(xService ?? null);
       setError(null);
+      if (xService?.connection.status === "connected") {
+        try {
+          const check = await fetchXConnectionStatusClient();
+          setPostingReady(
+            check.status === "ready" ? check.postingReady : false,
+          );
+        } catch {
+          setPostingReady(null);
+        }
+      } else {
+        setPostingReady(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : ui.error.loadFailed);
     } finally {
@@ -250,8 +269,9 @@ export function XConnectionSettings() {
     try {
       const result = await fetchXConnectionStatusClient();
       if (result.status === "ready") {
+        setPostingReady(result.postingReady);
         setSuccess(
-          result.permissionsOk
+          result.postingReady
             ? `${ui.xSettings.checkSuccess}（${ui.xSettings.checkPermissionsOk}）`
             : `${ui.xSettings.checkSuccess}（${ui.xSettings.checkPermissionsMissing}）`,
         );
@@ -318,6 +338,7 @@ export function XConnectionSettings() {
             service={service}
             busy={busy}
             checking={checking}
+            postingReady={postingReady}
             onConnect={() => void handleConnect()}
             onDisconnect={() => void handleDisconnect()}
             onCheck={() => void handleCheck()}

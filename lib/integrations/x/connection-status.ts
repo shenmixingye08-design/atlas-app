@@ -114,6 +114,7 @@ export async function checkXConnectionForUser(input: {
       status: "ready",
       connected: true,
       tokenValid: true,
+      postingReady: permissionsOk,
       account: {
         username: profile.username,
         name: profile.name ?? null,

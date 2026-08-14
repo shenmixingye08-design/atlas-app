@@ -15,7 +15,13 @@ export type AutomationTriggerKind =
   | "calendar";
 
 export type SchedulePreset =
-  | { type: "daily"; hour: number; minute: number }
+  | {
+      type: "daily";
+      hour: number;
+      minute: number;
+      /** When set (e.g. 平日 1–5), skip other weekdays. Asia/Tokyo local. */
+      weekdays?: number[];
+    }
   | { type: "weekly"; dayOfWeek: number; hour: number; minute: number }
   | { type: "monthly"; dayOfMonth: number; hour: number; minute: number };
 

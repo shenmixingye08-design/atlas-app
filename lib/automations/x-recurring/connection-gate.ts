@@ -74,7 +74,7 @@ export async function gateXRecurringConnection(input: {
     };
   }
 
-  if (check.permissionsOk === false) {
+  if (check.permissionsOk === false || check.postingReady === false) {
     return { ok: false, error: getXRecurringError("x_permission_missing") };
   }
 

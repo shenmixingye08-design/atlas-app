@@ -9,6 +9,7 @@ import {
   type RequiredExternalAction,
 } from "./detect-external-intent";
 import type { CreateAutomationInput } from "./types";
+import { buildXDestinationExecutionFlow } from "./x-recurring/destination";
 
 export type NaturalLanguageAutomationParse =
   | {
@@ -46,10 +47,19 @@ export function parseNaturalLanguageAutomation(
     };
   }
 
+  const requiredExternals = detectRequiredExternalActions(trimmed);
   const createInput: CreateAutomationInput = {
     ...detected.createInput,
     enabled: true,
     executionLevel: detected.createInput.executionLevel ?? "approve_then_run",
+    ...(requiredExternals.includes("x_post")
+      ? {
+          destination: "x" as const,
+          executionFlow: buildXDestinationExecutionFlow(
+            detected.createInput.executionLevel ?? "approve_then_run",
+          ),
+        }
+      : {}),
   };
 
   if (createInput.schedule.kind !== "schedule") {
@@ -65,8 +75,20 @@ export function parseNaturalLanguageAutomation(
     createInput,
     frequency: createInput.schedule.preset.type,
     sourceText: trimmed,
-    requiredExternals: detectRequiredExternalActions(trimmed),
+    requiredExternals,
   };
+}
+
+/**
+ * V2 external create is Calendar (etc.) only.
+ * X-only NL must stay on V1 destination=x — V2 cannot wire `x_post`
+ * (`canWireProductionExternalStep` is calendar-only) and would fail-closed
+ * after the user asked to register a recurring X post.
+ */
+export function shouldRouteNlToV2ExternalCreate(
+  requiredExternals: readonly RequiredExternalAction[],
+): boolean {
+  return requiredExternals.some((action) => action !== "x_post");
 }
 
 export function formatNaturalLanguageAutomationSuccess(input: {

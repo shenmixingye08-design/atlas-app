@@ -60,6 +60,10 @@ import type {
   XScheduledPostsResult,
 } from "./types";
 import { validateTweetText } from "./validate";
+import {
+  buildXPostDiagnostic,
+  logXPostDiagnostic,
+} from "./diagnostics";
 
 const TEST_POST_PREFIX = "【MINERVOTテスト投稿】";
 
@@ -264,8 +268,41 @@ async function executeTweetPost(input: {
       },
     );
     const tweet = sideEffect.result;
+    const tweetId = tweet?.tweetId?.trim() ?? "";
 
-    if (sideEffect.executed || tweet.tweetId) {
+    if (!tweetId) {
+      const diagnostic = buildXPostDiagnostic({
+        userId: input.userId,
+        automationId: input.automationId,
+        runId: input.runId,
+        occurrenceId: input.runId ?? input.scheduledFor,
+        failedStage: "completion_gate",
+        developerCode: "missing_tweet_id",
+        xAccountId: access.username,
+      });
+      logXPostDiagnostic(diagnostic, { mode: input.mode });
+      saveXPostHistoryRecord(
+        buildHistoryRecord({
+          userId: input.userId,
+          text: input.text,
+          mode: input.mode,
+          status: "failed",
+          errorMessage: "X API did not return a tweet id",
+          automationId: input.automationId,
+          scheduledFor: input.scheduledFor,
+          driveFileUrl,
+        }),
+      );
+      await notifyXPostFailed(input.userId, "X API did not return a tweet id", {
+        developerCode: "missing_tweet_id",
+      });
+      return {
+        status: "error",
+        message: "X API did not return a tweet id",
+      };
+    }
+
+    if (sideEffect.executed || tweetId) {
       const { recordXPostUsageOnce } = await import(
         "@/lib/billing/usage/external-counters"
       );
@@ -278,8 +315,8 @@ async function executeTweetPost(input: {
 
     const tweetUrl =
       access.username != null
-        ? buildTweetUrl(access.username, tweet.tweetId)
-        : `https://x.com/i/web/status/${tweet.tweetId}`;
+        ? buildTweetUrl(access.username, tweetId)
+        : `https://x.com/i/web/status/${tweetId}`;
 
     const history = saveXPostHistoryRecord(
       buildHistoryRecord({
@@ -287,7 +324,7 @@ async function executeTweetPost(input: {
         text: input.text,
         mode: input.mode,
         status: "success",
-        tweetId: tweet.tweetId,
+        tweetId,
         tweetUrl,
         automationId: input.automationId,
         scheduledFor: input.scheduledFor,
@@ -295,22 +332,33 @@ async function executeTweetPost(input: {
       }),
     );
 
-    // Only log "tweet created" when a real X API tweet id exists.
-    // Never use this wording for dry-run / preview paths that skip external post.
-    if (tweet.tweetId) {
-      console.info("[X Post] tweet created", {
-        mode: input.mode,
-        tweetId: tweet.tweetId,
-        tweetUrl,
-        automationId: input.automationId ?? null,
-        textChars: input.text.trim().length,
-        endpoint: "https://api.twitter.com/2/tweets",
-      });
-    }
+    console.info("[X Post] tweet created", {
+      mode: input.mode,
+      tweetId,
+      tweetUrl,
+      automationId: input.automationId ?? null,
+      textChars: input.text.trim().length,
+      endpoint: "https://api.twitter.com/2/tweets",
+    });
+    logXPostDiagnostic(
+      buildXPostDiagnostic({
+        userId: input.userId,
+        automationId: input.automationId,
+        runId: input.runId,
+        occurrenceId: input.runId ?? input.scheduledFor,
+        failedStage: null,
+        developerCode: "posted",
+        externalActionId: tweetId,
+        xAccountId: access.username,
+      }),
+      { mode: input.mode },
+    );
 
     await touchXConnectionLastUsed(input.userId);
     await notifyXPostSuccess(input.userId, input.text.trim(), {
       historyId: history.id,
+      tweetUrl,
+      postedAt: history.postedAt,
     });
 
     return { status: "ready", mode: input.mode, history };
@@ -320,6 +368,20 @@ async function executeTweetPost(input: {
         markXConnectionNeedsReconnect(input.userId, error.message);
       }
       recordXPostFailure(error.resolution.logSummary, "x_post");
+      logXPostDiagnostic(
+        buildXPostDiagnostic({
+          userId: input.userId,
+          automationId: input.automationId,
+          runId: input.runId,
+          occurrenceId: input.runId ?? input.scheduledFor,
+          failedStage: error.resolution.reconnectRequired ? "oauth" : "provider",
+          developerCode: error.resolution.reconnectRequired
+            ? "reconnect_required"
+            : "provider_error",
+          providerStatus: error.httpStatus,
+          xAccountId: access.username,
+        }),
+      );
 
       saveXPostHistoryRecord(
         buildHistoryRecord({
@@ -334,7 +396,10 @@ async function executeTweetPost(input: {
         }),
       );
 
-      await notifyXPostFailed(input.userId, error.message);
+      await notifyXPostFailed(input.userId, error.message, {
+        reconnectRequired: error.resolution.reconnectRequired,
+        providerStatus: error.httpStatus,
+      });
 
       return {
         status: "error",
@@ -360,6 +425,17 @@ async function executeTweetPost(input: {
       }),
     );
 
+    logXPostDiagnostic(
+      buildXPostDiagnostic({
+        userId: input.userId,
+        automationId: input.automationId,
+        runId: input.runId,
+        occurrenceId: input.runId ?? input.scheduledFor,
+        failedStage: "provider",
+        developerCode: "provider_error",
+        xAccountId: access.username,
+      }),
+    );
     await notifyXPostFailed(input.userId, message);
 
     return { status: "error", message };

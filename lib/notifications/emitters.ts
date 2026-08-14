@@ -75,21 +75,88 @@ export async function notifyAutomationFailed(
   });
 }
 
+function formatXPostDateTime(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function snippetForXNotification(text: string, max = 80): string {
+  const trimmed = text.trim().replace(/\s+/g, " ");
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max)}…`;
+}
+
+export function classifyXPostFailureForUser(message: string): string {
+  const raw = message.trim();
+  const haystack = raw.toLowerCase();
+  if (
+    /token|失効|再連携|再接続|unauthorized|401|revok|reconnect/.test(haystack)
+  ) {
+    return raw
+      ? `${raw} 設定画面からXを再接続してください。`
+      : "X連携のトークンが失効しています。設定画面からXを再接続してください。";
+  }
+  if (
+    /write|権限|scope|permission|tweet\.write|insufficient/.test(haystack)
+  ) {
+    return raw
+      ? `${raw} 投稿権限が不足しています。X連携をやり直してください。`
+      : "Xの投稿権限が不足しています。設定画面からXを再接続してください。";
+  }
+  if (/429|rate|上限|500|502|503|504|timeout|一時/.test(haystack)) {
+    return raw
+      ? `${raw} 一時的なX APIの障害です。しばらくしてから再度お試しください。`
+      : "一時的なX APIの障害です。しばらくしてから再度お試しください。";
+  }
+  if (/空|文字数|validation|無効|不正|payload/.test(haystack)) {
+    return raw
+      ? `${raw} 投稿内容を修正してから再度お試しください。`
+      : "投稿内容に問題があります。内容を修正してから再度お試しください。";
+  }
+  return (
+    raw ||
+    "Xへの投稿に失敗しました。内容をご確認のうえ、設定画面からX連携をご確認ください。"
+  );
+}
+
 export async function notifyXPostSuccess(
   userId: string,
   text?: string,
-  options?: { historyId?: string | null },
+  options?: {
+    historyId?: string | null;
+    tweetUrl?: string | null;
+    postedAt?: string | null;
+  },
 ) {
   const historyId = options?.historyId ?? null;
+  const snippet = text?.trim() ? snippetForXNotification(text) : null;
+  const postedAt = formatXPostDateTime(options?.postedAt);
+  const tweetUrl = options?.tweetUrl?.trim() || null;
+  const lines = [
+    text
+      ? "お待たせいたしました。Xへの投稿が完了しました。"
+      : "お待たせいたしました。投稿が完了しました。",
+  ];
+  if (snippet) lines.push(`投稿内容: ${snippet}`);
+  if (postedAt) lines.push(`実行日時: ${postedAt}`);
+  if (tweetUrl) lines.push(`X投稿URL: ${tweetUrl}`);
+
   return await createNotification({
     audience: "user",
     userId,
     type: "completed",
     title: "X自動投稿が完了しました",
     // N-07: never imply "準備" when the post itself succeeded.
-    message: text
-      ? "お待たせいたしました。Xへの投稿が完了しました。"
-      : "お待たせいたしました。投稿が完了しました。",
+    message: lines.join("\n"),
     relatedTaskId: historyId,
     relatedService: "x",
     actionUrl: historyId
@@ -100,10 +167,29 @@ export async function notifyXPostSuccess(
   });
 }
 
-export async function notifyXPostFailed(userId: string, message: string) {
-  const detail =
+export async function notifyXPostFailed(
+  userId: string,
+  message: string,
+  options?: {
+    reconnectRequired?: boolean;
+    providerStatus?: number | null;
+    developerCode?: string | null;
+  },
+) {
+  const seeded =
     message.trim() ||
-    "Xへの投稿に失敗しました。内容をご確認のうえ、設定画面からX連携をご確認ください。";
+    (options?.reconnectRequired
+      ? "トークンが失効しています"
+      : options?.providerStatus === 429
+        ? "X APIの利用上限に達しました"
+        : options?.developerCode === "missing_tweet_id"
+          ? "X API did not return a tweet id"
+          : "");
+  const classified = classifyXPostFailureForUser(seeded);
+  const detail =
+    options?.reconnectRequired && !/再接続/.test(classified)
+      ? `${classified} 設定画面からXを再接続してください。`
+      : classified;
   return await createNotification({
     audience: "user",
     userId,

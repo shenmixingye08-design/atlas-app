@@ -17,6 +17,7 @@ import { automationService } from "./automation-service";
 import {
   formatNaturalLanguageAutomationSuccess,
   parseNaturalLanguageAutomation,
+  shouldRouteNlToV2ExternalCreate,
 } from "./create-from-natural-language";
 import type { Automation } from "./types";
 
@@ -393,7 +394,8 @@ export async function createAutomationFromNaturalLanguage(input: {
 
   // Production evidence (2026-08-13): Calendar NL that only created V1 orchestrate
   // completed as "本日成功" with zero Google Calendar events. Route externals to V2.
-  if (parsed.requiredExternals.length > 0) {
+  // X-only stays on V1 destination=x SoT — V2 cannot wire x_post.
+  if (shouldRouteNlToV2ExternalCreate(parsed.requiredExternals)) {
     return createExternalPath({
       userId: input.userId,
       text: input.text,

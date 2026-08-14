@@ -6,7 +6,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { detectRecurringIntent } from "./detect-recurring";
 import {
   parseNaturalLanguageAutomation,
+  shouldRouteNlToV2ExternalCreate,
 } from "./create-from-natural-language";
+
+vi.mock("./x-recurring/connection-gate", () => ({
+  gateXRecurringConnection: vi.fn(async () => ({
+    ok: true,
+    username: "atlas_user",
+    xUserId: "xid_atlas",
+    scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
+    expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    connectedAt: new Date().toISOString(),
+  })),
+}));
 
 vi.mock("@/lib/billing/access", () => ({
   requireBillingAutomationTask: vi.fn(async () => null),
@@ -97,6 +109,34 @@ describe("Phase 1 detect / parse (Cases A–D)", () => {
     if (!parsed.ok) {
       expect(parsed.code).toBe("not_recurring");
     }
+  });
+
+  it("routes X-only NL to V1 destination=x, not V2 external create", () => {
+    const parsed = parseNaturalLanguageAutomation("毎朝8時にXへ投稿して");
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.requiredExternals).toEqual(["x_post"]);
+    expect(shouldRouteNlToV2ExternalCreate(parsed.requiredExternals)).toBe(
+      false,
+    );
+    expect(parsed.createInput.destination).toBe("x");
+    expect(parsed.createInput.schedule.kind).toBe("schedule");
+    if (parsed.createInput.schedule.kind === "schedule") {
+      expect(parsed.createInput.schedule.preset.type).toBe("daily");
+      expect(parsed.createInput.schedule.timezone).toBe("Asia/Tokyo");
+      if (parsed.createInput.schedule.preset.type === "daily") {
+        expect(parsed.createInput.schedule.preset.hour).toBe(8);
+      }
+    }
+
+    const calendar = parseNaturalLanguageAutomation(
+      "毎朝9時にGoogleカレンダーへ予定を登録して",
+    );
+    expect(calendar.ok).toBe(true);
+    if (!calendar.ok) return;
+    expect(shouldRouteNlToV2ExternalCreate(calendar.requiredExternals)).toBe(
+      true,
+    );
   });
 
   it("recognizes 毎晩 / 毎日 / 毎週月曜日", () => {
@@ -256,5 +296,22 @@ describe("Phase 1 durable create + scheduler eligibility (A–C, E)", () => {
     });
     expect(enqueued.due).toBe(1);
     expect(enqueued.enqueued + enqueued.deduped).toBeGreaterThanOrEqual(1);
+  });
+
+  it("X-only NL creates V1 destination=x (does not fail on V2 x_post)", async () => {
+    const { createAutomationFromNaturalLanguage, isSchedulerDueEligible } =
+      await import("./create-from-natural-language.server");
+    const result = await createAutomationFromNaturalLanguage({
+      userId: "user_phase1_x",
+      text: "毎朝8時にXへ投稿して",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.automation.destination).toBe("x");
+    expect(result.automation.enabled).toBe(true);
+    expect(result.automation.nextRun).toBeTruthy();
+    expect(isSchedulerDueEligible(result.automation)).toBe(true);
+    expect(result.message).toContain("登録しました");
+    expect(result.automationV2Id).toBeUndefined();
   });
 });

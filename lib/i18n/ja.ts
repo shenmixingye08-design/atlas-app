@@ -1400,6 +1400,8 @@ export const ui = {
     subtitle:
       "XアカウントをOAuth2（PKCE）で接続し、MINERVOTから投稿できる状態にします。",
     statusConnected: "接続済み",
+    statusPostingReady: "投稿可能",
+    statusConnectedNotPostingReady: "接続済み（投稿権限なし）",
     statusError: "再接続が必要",
     usernameLabel: "ユーザー名",
     lastConnectedLabel: "最終接続日時",

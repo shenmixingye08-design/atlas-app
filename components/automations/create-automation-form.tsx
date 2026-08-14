@@ -145,6 +145,7 @@ export function CreateAutomationForm({
     form.destination !== "x" ||
     (xStatus?.status === "ready" &&
       xStatus.connected &&
+      xStatus.postingReady === true &&
       xStatus.permissionsOk !== false);
 
   const xBlockMessage = (() => {
@@ -161,8 +162,11 @@ export function CreateAutomationForm({
     ) {
       return "Xとの再連携が必要です。";
     }
-    if (xStatus.status === "ready" && xStatus.permissionsOk === false) {
-      return "Xとの再連携が必要です。";
+    if (
+      xStatus.status === "ready" &&
+      (xStatus.permissionsOk === false || xStatus.postingReady === false)
+    ) {
+      return "Xは接続されていますが、投稿権限がありません。設定画面から再接続してください。";
     }
     if (xStatus.status !== "ready" || !xStatus.connected) {
       return "Xが連携されていません。外部連携画面からXを連携してください。";

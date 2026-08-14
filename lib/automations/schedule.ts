@@ -5,8 +5,13 @@ export const DEFAULT_AUTOMATION_TIMEZONE = "Asia/Tokyo";
 /** Map presets to cron strings for future external schedulers. */
 export function presetToCron(preset: SchedulePreset): string {
   switch (preset.type) {
-    case "daily":
-      return `${preset.minute} ${preset.hour} * * *`;
+    case "daily": {
+      const days =
+        preset.weekdays && preset.weekdays.length > 0
+          ? [...preset.weekdays].sort((a, b) => a - b).join(",")
+          : "*";
+      return `${preset.minute} ${preset.hour} * * ${days}`;
+    }
     case "weekly":
       return `${preset.minute} ${preset.hour} * * ${preset.dayOfWeek}`;
     case "monthly":
@@ -67,7 +72,7 @@ function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
   return asUtc - date.getTime();
 }
 
-function zonedTimeToUtc(
+export function zonedTimeToUtc(
   year: number,
   month: number,
   day: number,
@@ -80,7 +85,7 @@ function zonedTimeToUtc(
   return new Date(guess.getTime() - offset);
 }
 
-function addDays(year: number, month: number, day: number, amount: number) {
+export function addDays(year: number, month: number, day: number, amount: number) {
   const date = new Date(Date.UTC(year, month - 1, day + amount));
   return {
     year: date.getUTCFullYear(),
@@ -98,28 +103,36 @@ function computeNextFromPreset(
 
   switch (preset.type) {
     case "daily": {
-      let candidate = zonedTimeToUtc(
-        now.year,
-        now.month,
-        now.day,
-        preset.hour,
-        preset.minute,
-        timeZone,
-      );
-
-      if (candidate.getTime() <= from.getTime()) {
-        const nextDay = addDays(now.year, now.month, now.day, 1);
-        candidate = zonedTimeToUtc(
-          nextDay.year,
-          nextDay.month,
-          nextDay.day,
+      const allowed =
+        preset.weekdays && preset.weekdays.length > 0
+          ? new Set(preset.weekdays)
+          : null;
+      for (let offset = 0; offset < 14; offset += 1) {
+        const day = addDays(now.year, now.month, now.day, offset);
+        const candidate = zonedTimeToUtc(
+          day.year,
+          day.month,
+          day.day,
           preset.hour,
           preset.minute,
           timeZone,
         );
+        if (candidate.getTime() <= from.getTime()) continue;
+        if (allowed) {
+          const parts = getZonedParts(candidate, timeZone);
+          if (!allowed.has(parts.dayOfWeek)) continue;
+        }
+        return candidate;
       }
-
-      return candidate;
+      const fallback = addDays(now.year, now.month, now.day, 1);
+      return zonedTimeToUtc(
+        fallback.year,
+        fallback.month,
+        fallback.day,
+        preset.hour,
+        preset.minute,
+        timeZone,
+      );
     }
 
     case "weekly": {
