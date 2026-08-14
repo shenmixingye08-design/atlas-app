@@ -2161,12 +2161,17 @@ export const ui = {
     stripeLiveNote: "Stripe Checkoutで安全に決済します。",
     checkoutFailed:
       "決済画面を開けませんでした。時間をおいてもう一度お試しください。",
+    openingCheckout: "課金画面を開いています…",
+    openingPortal: "お支払い管理を開いています…",
+    invalidCheckoutUrl:
+      "課金画面を開けませんでした。もう一度お試しください。",
+    checkoutSignInRequired: "ログインし直してから、もう一度お試しください。",
     successTitle: "お支払いが完了しました",
     successSubtitle: "プランが更新されました。引き続きMINERVOTをご利用ください。",
     checkoutSuccessBanner: (planName: string) =>
       `${planName}プランへの変更が完了しました`,
     checkoutCancelledBanner:
-      "お支払いがキャンセルされました。プランは変更されていません。",
+      "プラン変更はキャンセルされました。現在のプランは変わっていません。",
     cancelTitle: "お支払いがキャンセルされました",
     cancelSubtitle: "プランは変更されていません。いつでも再度お試しください。",
     backToBilling: "プラン・請求に戻る",

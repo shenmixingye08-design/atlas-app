@@ -4,6 +4,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 
 import { isPlanId } from "@/lib/billing/plans";
 import { createCheckoutSession } from "@/lib/billing/stripe/checkout";
+import { getStripeRuntimeConfigStatus } from "@/lib/billing/stripe/config";
 import {
   classifyCheckoutRouteError,
   isCheckoutBlockedError,
@@ -113,9 +114,23 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
+    const configStatus = getStripeRuntimeConfigStatus();
     safeLog("info", "[billing/checkout] creating session", {
       planId,
       userFingerprint: userIdFingerprint(userId),
+      stage: "create_session",
+      authenticated: true,
+      secretKey: configStatus.secretKey,
+      publishableKey: configStatus.publishableKey,
+      webhookSecret: configStatus.webhookSecret,
+      priceStatus:
+        planId === "light" || planId === "standard" || planId === "premium"
+          ? configStatus.prices[planId]
+          : "MISSING",
+      checkoutReady:
+        planId === "light" || planId === "standard" || planId === "premium"
+          ? configStatus.checkoutReady[planId]
+          : false,
     });
 
     const user = await currentUser();
@@ -138,6 +153,8 @@ export async function POST(request: Request): Promise<Response> {
       planId,
       mode: session.mode,
       sessionId: session.sessionId,
+      sessionCreated: true,
+      hasUrl: Boolean(session.url),
     });
 
     return Response.json({
@@ -146,6 +163,21 @@ export async function POST(request: Request): Promise<Response> {
       mode: session.mode,
     });
   } catch (error) {
+    const configStatus = getStripeRuntimeConfigStatus();
+    const stripeErr =
+      error && typeof error === "object"
+        ? {
+            type:
+              "type" in error && typeof error.type === "string"
+                ? error.type
+                : null,
+            code:
+              "code" in error && typeof error.code === "string"
+                ? error.code
+                : null,
+          }
+        : { type: null, code: null };
+
     if (isCheckoutBlockedError(error)) {
       // Delegate status: already_same_plan / use_portal → 409; price_mismatch → 400
       const classified = classifyCheckoutRouteError(error);
@@ -153,9 +185,18 @@ export async function POST(request: Request): Promise<Response> {
         code: classified.code,
         status: classified.status,
         message: classified.logMessage,
+        sessionCreated: false,
+        stripeErrorType: stripeErr.type,
+        stripeErrorCode: stripeErr.code,
+        priceStatus: configStatus.prices,
       });
       return Response.json(
-        { error: classified.userMessage, code: classified.code },
+        {
+          error: classified.userMessage,
+          code: classified.code,
+          sessionCreated: false,
+          config: configStatus,
+        },
         { status: classified.status },
       );
     }
@@ -165,10 +206,21 @@ export async function POST(request: Request): Promise<Response> {
       code: classified.code,
       status: classified.status,
       message: classified.logMessage,
+      sessionCreated: false,
+      stripeErrorType: stripeErr.type,
+      stripeErrorCode: stripeErr.code,
+      secretKey: configStatus.secretKey,
+      publishableKey: configStatus.publishableKey,
+      priceStatus: configStatus.prices,
     });
     await safeRecordStripeFailure(classified.logMessage, "billing_checkout");
     return Response.json(
-      { error: classified.userMessage, code: classified.code },
+      {
+        error: classified.userMessage,
+        code: classified.code,
+        sessionCreated: false,
+        config: configStatus,
+      },
       { status: classified.status },
     );
   }

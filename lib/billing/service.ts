@@ -6,7 +6,10 @@ import { listUserBillingNotifications } from "./notifications/service";
 import { isAutomationSuspendedForUser } from "./subscriptions/lifecycle";
 import { applySubscriptionFromStripe, getUserSubscriptionView } from "./subscriptions/service";
 import { isStripeLiveMode } from "./stripe/checkout";
-import { getStripeSecretDiagnostics } from "./stripe/config";
+import {
+  getStripeRuntimeConfigStatus,
+  getStripeSecretDiagnostics,
+} from "./stripe/config";
 import { getUserUsageLimitSummary } from "./usage/service";
 import { buildUsageAwarenessView } from "./usage-awareness/view";
 import type { UserBillingSummary } from "./types";
@@ -40,6 +43,7 @@ export async function getUserBillingSummary(
     billingPortalAvailable: Boolean(subscription.stripeCustomerId),
     automationsSuspended: isAutomationSuspendedForUser(userId),
     notifications: notifications.slice(0, 5),
+    stripeConfig: getStripeRuntimeConfigStatus(),
   };
 }
 

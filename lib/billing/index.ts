@@ -41,12 +41,15 @@ export type {
 } from "./types";
 
 export {
+  CheckoutRequestError,
   fetchBillingSummary,
   fetchPlanCatalog,
   formatPlanPriceJpy,
   openBillingPortal,
   startCheckout,
 } from "./client";
+export { shouldOpenPortalForPlanChange } from "./checkout-intent";
+export { isAssignableCheckoutUrl } from "./stripe/checkout-url";
 
 export {
   BILLING_USAGE_CHANGED_EVENT,

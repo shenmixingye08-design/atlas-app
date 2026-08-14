@@ -7,11 +7,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { PlanDefinition, PlanId, UserBillingSummary } from "@/lib/billing";
 import {
+  CheckoutRequestError,
   fetchBillingSummary,
   fetchPlanCatalog,
   formatPlanPriceJpy,
   isPlanId,
   openBillingPortal,
+  shouldOpenPortalForPlanChange,
   startCheckout,
   subscribeBillingUsageChanged,
 } from "@/lib/billing";
@@ -54,11 +56,17 @@ function PlanCard({
   plan,
   currentPlanId,
   busy,
+  disabled,
+  busyLabel,
+  error,
   onSelect,
 }: {
   plan: PlanDefinition;
   currentPlanId: PlanId;
   busy: boolean;
+  disabled: boolean;
+  busyLabel: string;
+  error: string | null;
   onSelect: (planId: PlanId) => void;
 }) {
   const isCurrent = plan.planId === currentPlanId;
@@ -109,7 +117,7 @@ function PlanCard({
         </ul>
       ) : null}
 
-      <div className="mt-5">
+      <div className="mt-5 space-y-2">
         {isCurrent ? (
           <span className="inline-flex rounded-full bg-[var(--status-success-bg)] px-3 py-1 text-xs font-medium text-[var(--status-success)]">
             {ui.billing.currentPlanBadge}
@@ -118,13 +126,23 @@ function PlanCard({
           <Button
             variant="secondary"
             size="sm"
-            disabled={busy}
-            isLoading={busy}
+            className="min-h-[44px] w-full sm:w-auto"
+            disabled={disabled || busy}
+            aria-busy={busy}
             onClick={() => onSelect(plan.planId)}
           >
-            {ui.billing.selectPlan}
+            {busy ? busyLabel : ui.billing.selectPlan}
           </Button>
         )}
+        {error ? (
+          <p
+            className="text-sm text-[var(--error)]"
+            role="alert"
+            aria-live="polite"
+          >
+            {error}
+          </p>
+        ) : null}
       </div>
     </li>
   );
@@ -140,6 +158,11 @@ export function BillingSettings() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyPlanId, setBusyPlanId] = useState<PlanId | null>(null);
+  const [cardError, setCardError] = useState<{
+    planId: PlanId;
+    message: string;
+  } | null>(null);
+  const [busyKind, setBusyKind] = useState<"checkout" | "portal" | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -200,24 +223,81 @@ export function BillingSettings() {
   }, [checkoutState, checkoutPlanParam, plans, summary]);
 
   const handleCheckout = async (planId: PlanId) => {
+    if (busyPlanId) return;
     setBusyPlanId(planId);
     setError(null);
+    setCardError(null);
+
+    const usePortal = shouldOpenPortalForPlanChange({
+      currentPlanId: summary?.subscription.planId ?? "free",
+      targetPlanId: planId,
+      isPaid: Boolean(summary?.subscription.isPaid),
+    });
+    setBusyKind(usePortal ? "portal" : "checkout");
+
+    const fail = (message: string) => {
+      setCardError({ planId, message });
+      setError(message);
+      setBusyPlanId(null);
+      setBusyKind(null);
+    };
+
     try {
+      if (usePortal) {
+        const { url } = await openBillingPortal();
+        window.location.assign(url);
+        return;
+      }
+
       const { url } = await startCheckout(planId);
       window.location.assign(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : ui.billing.checkoutFailed);
-      setBusyPlanId(null);
+      if (
+        err instanceof CheckoutRequestError &&
+        err.code === "use_portal_for_plan_change"
+      ) {
+        try {
+          setBusyKind("portal");
+          const { url } = await openBillingPortal();
+          window.location.assign(url);
+          return;
+        } catch (portalErr) {
+          fail(
+            portalErr instanceof Error
+              ? portalErr.message
+              : ui.billing.checkoutFailed,
+          );
+          return;
+        }
+      }
+
+      if (err instanceof CheckoutRequestError && err.status === 401) {
+        fail(ui.billing.checkoutSignInRequired);
+        return;
+      }
+
+      fail(err instanceof Error ? err.message : ui.billing.checkoutFailed);
     }
   };
 
   const handlePortal = async () => {
+    if (busyPlanId) return;
+    setBusyPlanId(summary?.subscription.planId ?? "free");
+    setBusyKind("portal");
     setError(null);
     try {
       const { url } = await openBillingPortal();
       window.location.assign(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : ui.error.connectFailed);
+      const message =
+        err instanceof CheckoutRequestError && err.status === 401
+          ? ui.billing.checkoutSignInRequired
+          : err instanceof Error
+            ? err.message
+            : ui.error.connectFailed;
+      setError(message);
+      setBusyPlanId(null);
+      setBusyKind(null);
     }
   };
 
@@ -274,8 +354,17 @@ export function BillingSettings() {
             )}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm" onClick={() => void handlePortal()}>
-              {ui.billing.manageBilling}
+            <Button
+              variant="secondary"
+              size="sm"
+              className="min-h-[44px]"
+              disabled={busyPlanId !== null}
+              aria-busy={busyKind === "portal"}
+              onClick={() => void handlePortal()}
+            >
+              {busyKind === "portal"
+                ? ui.billing.openingPortal
+                : ui.billing.manageBilling}
             </Button>
           </div>
         </div>
@@ -336,6 +425,15 @@ export function BillingSettings() {
               plan={plan}
               currentPlanId={summary.subscription.planId}
               busy={busyPlanId === plan.planId}
+              disabled={busyPlanId !== null}
+              busyLabel={
+                busyKind === "portal"
+                  ? ui.billing.openingPortal
+                  : ui.billing.openingCheckout
+              }
+              error={
+                cardError?.planId === plan.planId ? cardError.message : null
+              }
               onSelect={(planId) => void handleCheckout(planId)}
             />
           ))}

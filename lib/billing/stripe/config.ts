@@ -199,6 +199,80 @@ export function getStripePriceIdDiagnostics(planId: PlanId): {
   };
 }
 
+export type StripeEnvPresence = "PRESENT" | "MISSING" | "INVALID";
+
+function classifyPresence(
+  value: string | null,
+  isValid: (value: string) => boolean,
+): StripeEnvPresence {
+  if (!value) return "MISSING";
+  return isValid(value) ? "PRESENT" : "INVALID";
+}
+
+/**
+ * Production-safe Stripe config status. Values are never included.
+ * INVALID = set but prefix is not a Stripe credential / Price ID.
+ */
+export function getStripeRuntimeConfigStatus(): {
+  secretKey: StripeEnvPresence;
+  publishableKey: StripeEnvPresence;
+  webhookSecret: StripeEnvPresence;
+  prices: {
+    light: StripeEnvPresence;
+    standard: StripeEnvPresence;
+    premium: StripeEnvPresence;
+  };
+  checkoutReady: {
+    light: boolean;
+    standard: boolean;
+    premium: boolean;
+  };
+} {
+  const secret = getStripeSecretKey();
+  const publishable = getStripePublishableKey();
+  const webhook = getStripeWebhookSecret();
+  const light = getStripePriceIdForPlan("light");
+  const standard = getStripePriceIdForPlan("standard");
+  const premium = getStripePriceIdForPlan("premium");
+
+  const secretKey = classifyPresence(
+    secret,
+    (value) => value.startsWith("sk_live_") || value.startsWith("sk_test_"),
+  );
+  const publishableKey = classifyPresence(
+    publishable,
+    (value) => value.startsWith("pk_live_") || value.startsWith("pk_test_"),
+  );
+  const prices = {
+    light: classifyPresence(light, (value) => value.startsWith("price_")),
+    standard: classifyPresence(standard, (value) => value.startsWith("price_")),
+    premium: classifyPresence(premium, (value) => value.startsWith("price_")),
+  };
+
+  return {
+    secretKey,
+    publishableKey,
+    webhookSecret: classifyPresence(webhook, (value) =>
+      value.startsWith("whsec_"),
+    ),
+    prices,
+    checkoutReady: {
+      light:
+        secretKey === "PRESENT" &&
+        publishableKey === "PRESENT" &&
+        prices.light === "PRESENT",
+      standard:
+        secretKey === "PRESENT" &&
+        publishableKey === "PRESENT" &&
+        prices.standard === "PRESENT",
+      premium:
+        secretKey === "PRESENT" &&
+        publishableKey === "PRESENT" &&
+        prices.premium === "PRESENT",
+    },
+  };
+}
+
 const PAID_PLAN_IDS = ["light", "standard", "premium"] as const;
 
 export function resolvePlanIdFromStripePrice(
