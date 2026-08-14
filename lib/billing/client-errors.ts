@@ -9,6 +9,14 @@ export type PlanAccessErrorPayload = {
   requiredPlan?: string | null;
   requiredPlanName?: string | null;
   upgradePath?: string;
+  used?: number;
+  limit?: number;
+  remaining?: number;
+  resetLabel?: string;
+  recommendedPlan?: string | null;
+  recommendedPlanName?: string | null;
+  recommendedLimit?: number | null;
+  otherFeaturesRemain?: string | null;
 };
 
 export function isPlanAccessErrorPayload(
@@ -22,17 +30,26 @@ export function isPlanAccessErrorPayload(
 export function formatPlanAccessErrorMessage(
   payload: PlanAccessErrorPayload,
 ): string {
-  if (payload.requiredPlanName) {
-    return (
-      payload.message ??
-      payload.reason ??
-      `この機能は${payload.requiredPlanName}プラン以上でご利用いただけます`
-    );
-  }
-  return (
+  const base =
     payload.message ??
     payload.reason ??
-    payload.error ??
-    "現在のプランではこの機能をご利用いただけません"
-  );
+    (payload.requiredPlanName
+      ? `この機能は${payload.requiredPlanName}プラン以上でご利用いただけます`
+      : (payload.error ?? "現在のプランではこの機能をご利用いただけません"));
+
+  const extras: string[] = [base];
+  if (typeof payload.used === "number" && typeof payload.limit === "number") {
+    extras.push(`現在：${payload.used} / ${payload.limit}`);
+  }
+  if (payload.resetLabel) extras.push(payload.resetLabel);
+  if (
+    payload.recommendedPlanName &&
+    typeof payload.recommendedLimit === "number"
+  ) {
+    extras.push(
+      `${payload.recommendedPlanName}なら月${payload.recommendedLimit}まで利用できます`,
+    );
+  }
+  if (payload.otherFeaturesRemain) extras.push(payload.otherFeaturesRemain);
+  return extras.join("\n");
 }

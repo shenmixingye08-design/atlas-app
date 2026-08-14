@@ -14,6 +14,25 @@ export type {
 } from "./subscriptions";
 
 export type { UsageLimitSummary, UsageSnapshot } from "./usage";
+export type {
+  UsageAwarenessView,
+  UsageItemView,
+  UsageMeterId,
+  UsageWarningLevel,
+} from "./usage-awareness";
+export {
+  USAGE_CTA_INCREASE,
+  USAGE_CTA_SEE_PLANS,
+  USAGE_METER_LABEL,
+  buildUsageAwarenessView,
+  formatPreUseHint,
+  formatRemainingCount,
+  formatUpgradeLine,
+  formatUsageFraction,
+  formatUsageHeadline,
+  offeredUsageItems,
+  shouldShowUpgradeCta,
+} from "./usage-awareness";
 
 export type {
   OwnerBillingMetrics,

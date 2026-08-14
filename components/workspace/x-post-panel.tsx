@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { UsageRemainingHint } from "@/components/billing/usage-remaining-hint";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
@@ -489,6 +490,8 @@ export function XPostPanel() {
               </label>
             )}
 
+            <UsageRemainingHint meterId="snsPosts" />
+            <UsageRemainingHint meterId="xUrlPosts" />
             <Button disabled={submitDisabled} onClick={() => void handleSubmit()}>
               {submitLabel}
             </Button>

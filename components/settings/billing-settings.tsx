@@ -20,42 +20,13 @@ import { cn } from "@/lib/design-system/cn";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LegalFooterLinks } from "@/components/legal/legal-footer-links";
+import { UsageItemCard } from "@/components/billing/usage-item-card";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
-
-function UsageMeter({
-  label,
-  used,
-  limit,
-  remaining,
-}: {
-  label: string;
-  used: number;
-  limit: number;
-  remaining: number;
-}) {
-  const percent = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between text-sm">
-        <span className="font-medium text-foreground">{label}</span>
-        <span className="text-[var(--foreground-muted)]">
-          {ui.billing.usageOf(used, limit)}
-        </span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-[var(--background-subtle)]">
-        <div
-          className="h-full rounded-full bg-[var(--accent)] transition-all"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-      <p className="text-caption text-[var(--foreground-muted)]">
-        {ui.billing.remainingTitle}: {remaining}
-      </p>
-    </div>
-  );
-}
+import {
+  USAGE_PERIOD_RIGHTS_NOTE,
+  offeredUsageItems,
+} from "@/lib/billing/usage-awareness";
 
 function AiUsagePeriodCard({
   label,
@@ -317,42 +288,18 @@ export function BillingSettings() {
 
       <section className="space-y-4">
         <h2 className="text-title text-foreground">{ui.billing.usageTitle}</h2>
-        <Card padding="lg" className="space-y-6 shadow-[var(--shadow-soft)]">
-          <UsageMeter
-            label={ui.billing.aiRuns}
-            used={summary.usage.aiRuns.used}
-            limit={summary.usage.aiRuns.limit}
-            remaining={summary.usage.aiRuns.remaining}
-          />
-          <UsageMeter
-            label={ui.billing.snsPosts}
-            used={summary.usage.snsPosts.used}
-            limit={summary.usage.snsPosts.limit}
-            remaining={summary.usage.snsPosts.remaining}
-          />
-          {summary.usage.xUrlPosts && summary.usage.xUrlPosts.limit > 0 ? (
-            <UsageMeter
-              label={ui.billing.xUrlPosts}
-              used={summary.usage.xUrlPosts.used}
-              limit={summary.usage.xUrlPosts.limit}
-              remaining={summary.usage.xUrlPosts.remaining}
-            />
-          ) : null}
-          {summary.usage.wordpressPosts &&
-          summary.usage.wordpressPosts.limit > 0 ? (
-            <UsageMeter
-              label={ui.billing.wordpressPosts}
-              used={summary.usage.wordpressPosts.used}
-              limit={summary.usage.wordpressPosts.limit}
-              remaining={summary.usage.wordpressPosts.remaining}
-            />
-          ) : null}
-          <UsageMeter
-            label={ui.billing.automationTasks}
-            used={summary.usage.automationTasks.used}
-            limit={summary.usage.automationTasks.limit}
-            remaining={summary.usage.automationTasks.remaining}
-          />
+        {summary.usageAwareness.periodRightsDiffer ? (
+          <p className="text-sm text-[var(--text-secondary)]">
+            {USAGE_PERIOD_RIGHTS_NOTE}
+          </p>
+        ) : null}
+        <p className="text-caption text-[var(--text-secondary)]">
+          {summary.usageAwareness.resetLabel}
+        </p>
+        <Card padding="lg" className="space-y-3 shadow-[var(--shadow-soft)]">
+          {offeredUsageItems(summary.usageAwareness).map((item) => (
+            <UsageItemCard key={item.id} item={item} />
+          ))}
           {summary.usage.aiDetail && (
             <div className="space-y-3 border-t border-[var(--border-subtle)] pt-6">
               <h3 className="text-sm font-semibold text-foreground">

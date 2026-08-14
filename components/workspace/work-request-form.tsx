@@ -26,6 +26,7 @@ import {
   type PreferredDeliverableFormat,
   type WorkRequestSubmitPayload,
 } from "@/lib/workspace/work-request-payload";
+import { UsageRemainingHint } from "@/components/billing/usage-remaining-hint";
 
 export type { WorkRequestSubmitPayload };
 export type { PreferredDeliverableFormat as RequestPreferredFormat };
@@ -260,6 +261,9 @@ export function WorkRequestForm({
       )}
 
       <div className="pb-[env(safe-area-inset-bottom)]">
+        <div className="mb-2">
+          <UsageRemainingHint meterId="aiRuns" />
+        </div>
         <Button
           variant="primary"
           size="lg"

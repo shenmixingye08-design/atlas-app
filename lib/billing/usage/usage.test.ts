@@ -113,6 +113,15 @@ describe("AI usage metering and plan limits", () => {
     expect(denial?.status).toBe(429);
     expect(denial?.kind).toBe("limit");
     expect(denial?.reason).toContain("上限");
+    expect(denial?.used).toBe(limit);
+    expect(denial?.limit).toBe(limit);
+    expect(denial?.remaining).toBe(0);
+    expect(denial?.resetLabel).toMatch(/リセットされます/);
+    expect(denial?.recommendedPlan).toBe("light");
+    expect(denial?.recommendedLimit).toBe(
+      getPlanDefinition("light").limits.aiUsageMonthly,
+    );
+    expect(denial?.otherFeaturesRemain).toBeNull();
   });
 
   it("allows Light users within plan AI runs", async () => {

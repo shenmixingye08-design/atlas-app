@@ -19,6 +19,7 @@ import {
   recordAutomationCreated,
 } from "@/lib/user-profile";
 import { ui } from "@/lib/i18n";
+import { UsageRemainingHint } from "@/components/billing/usage-remaining-hint";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
@@ -519,6 +520,7 @@ export function CreateAutomationForm({
         次回実行: {formatNextRunDisplay(savedNextRun ?? previewNextRun)}
       </p>
 
+      <UsageRemainingHint meterId="automationTasks" />
       <div className="flex flex-wrap gap-3">
         <Button
           variant="primary"
