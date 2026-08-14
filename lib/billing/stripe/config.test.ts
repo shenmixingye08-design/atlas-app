@@ -4,6 +4,7 @@ import {
   getStripePriceIdDiagnostics,
   getStripePriceIdForPlan,
   getStripePublishableKey,
+  getStripeRuntimeConfigStatus,
   getStripeSecretDiagnostics,
   getStripeSecretKey,
   sanitizeStripeEnvValue,
@@ -146,5 +147,48 @@ describe("getStripePriceIdForPlan sanitization", () => {
       length: "prod_notAPriceId".length,
       prefixValid: false,
     });
+  });
+});
+
+describe("getStripeRuntimeConfigStatus", () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("reports MISSING when Stripe env is empty", () => {
+    vi.stubEnv("STRIPE_SECRET_KEY", "");
+    vi.stubEnv("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", "");
+    vi.stubEnv("STRIPE_WEBHOOK_SECRET", "");
+    vi.stubEnv("STRIPE_PRICE_LIGHT", "");
+    vi.stubEnv("STRIPE_PRICE_STANDARD", "");
+    vi.stubEnv("STRIPE_PRICE_PREMIUM", "");
+    const status = getStripeRuntimeConfigStatus();
+    expect(status.secretKey).toBe("MISSING");
+    expect(status.publishableKey).toBe("MISSING");
+    expect(status.webhookSecret).toBe("MISSING");
+    expect(status.prices.light).toBe("MISSING");
+    expect(status.checkoutReady.light).toBe(false);
+    expect(JSON.stringify(status)).not.toMatch(/sk_|pk_|whsec_|price_/);
+  });
+
+  it("reports INVALID for wrong prefixes and PRESENT for valid ones", () => {
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_live_example");
+    vi.stubEnv("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", "not-a-key");
+    vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_example");
+    vi.stubEnv("STRIPE_PRICE_LIGHT", "price_light");
+    vi.stubEnv("STRIPE_PRICE_STANDARD", "prod_standard");
+    vi.stubEnv("STRIPE_PRICE_PREMIUM", "price_premium");
+    const status = getStripeRuntimeConfigStatus();
+    expect(status.secretKey).toBe("PRESENT");
+    expect(status.publishableKey).toBe("INVALID");
+    expect(status.webhookSecret).toBe("PRESENT");
+    expect(status.prices.light).toBe("PRESENT");
+    expect(status.prices.standard).toBe("INVALID");
+    expect(status.checkoutReady.light).toBe(false);
+    expect(status.checkoutReady.premium).toBe(false);
   });
 });

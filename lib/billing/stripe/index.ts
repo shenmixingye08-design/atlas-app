@@ -5,6 +5,7 @@ export {
   getStripeSecretDiagnostics,
   getStripeSecretKey,
   getStripeWebhookSecret,
+  getStripeRuntimeConfigStatus,
   getConfiguredAppUrl,
   resolveAppOrigin,
   isStripeCheckoutReadyForPlan,
@@ -18,7 +19,7 @@ export {
   STRIPE_CHECKOUT_CANCEL_PATH,
   STRIPE_CHECKOUT_SUCCESS_PATH,
 } from "./config";
-export type { StripeWebhookEventType } from "./config";
+export type { StripeEnvPresence, StripeWebhookEventType } from "./config";
 
 export { getStripeClient } from "./client";
 

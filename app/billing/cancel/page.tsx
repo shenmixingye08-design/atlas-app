@@ -11,7 +11,7 @@ export default function BillingCancelPage() {
       <Card padding="lg" className="mx-auto max-w-lg text-center shadow-[var(--shadow-soft)]">
         <h1 className="text-title text-foreground">{ui.billing.cancelTitle}</h1>
         <p className="mt-3 text-body text-[var(--foreground-muted)]">
-          {ui.billing.cancelSubtitle}
+          {ui.billing.checkoutCancelledBanner}
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Link href="/settings/billing">

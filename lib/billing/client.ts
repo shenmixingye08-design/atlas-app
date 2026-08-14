@@ -1,5 +1,6 @@
 import type { PlanDefinition, PlanId } from "./plans/types";
 import type { UserBillingSummary } from "./types";
+import { isAssignableCheckoutUrl } from "./stripe/checkout-url";
 import { ui } from "@/lib/i18n";
 
 export type {
@@ -43,32 +44,78 @@ export async function fetchPlanCatalog(): Promise<{
   return response.json() as Promise<{ plans: readonly PlanDefinition[] }>;
 }
 
-export async function startCheckout(planId: PlanId): Promise<{ url: string }> {
+export class CheckoutRequestError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+
+  constructor(message: string, status: number, code: string | null) {
+    super(message);
+    this.name = "CheckoutRequestError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+type CheckoutApiBody = {
+  error?: string;
+  code?: string;
+  url?: unknown;
+  sessionId?: unknown;
+  mode?: unknown;
+};
+
+function readCheckoutApiBody(value: unknown): CheckoutApiBody {
+  return value && typeof value === "object" ? (value as CheckoutApiBody) : {};
+}
+
+function assignableOrThrow(url: unknown, fallback: string): string {
+  if (!isAssignableCheckoutUrl(url)) {
+    throw new CheckoutRequestError(fallback, 500, "invalid_checkout_url");
+  }
+  return url;
+}
+
+export async function startCheckout(
+  planId: PlanId,
+): Promise<{ url: string; sessionId?: string; mode?: string }> {
   const response = await fetch("/api/billing/checkout", {
     method: "POST",
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ planId }),
   });
 
+  const body = readCheckoutApiBody(await response.json().catch(() => null));
+
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(body?.error ?? ui.billing.checkoutFailed);
+    throw new CheckoutRequestError(
+      body.error ?? ui.billing.checkoutFailed,
+      response.status,
+      typeof body.code === "string" ? body.code : null,
+    );
   }
 
-  return response.json() as Promise<{ url: string }>;
+  return {
+    url: assignableOrThrow(body.url, ui.billing.invalidCheckoutUrl),
+    sessionId: typeof body.sessionId === "string" ? body.sessionId : undefined,
+    mode: typeof body.mode === "string" ? body.mode : undefined,
+  };
 }
 
 export async function openBillingPortal(): Promise<{ url: string }> {
-  const response = await fetch("/api/billing/portal", { method: "POST" });
+  const response = await fetch("/api/billing/portal", {
+    method: "POST",
+    credentials: "same-origin",
+  });
+  const body = readCheckoutApiBody(await response.json().catch(() => null));
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(body?.error ?? "Billing portal failed");
+    throw new CheckoutRequestError(
+      body.error ?? "Billing portal failed",
+      response.status,
+      typeof body.code === "string" ? body.code : null,
+    );
   }
-  return response.json() as Promise<{ url: string }>;
+  return { url: assignableOrThrow(body.url, ui.billing.invalidCheckoutUrl) };
 }
 
 export function formatPlanPriceJpy(amount: number): string {
