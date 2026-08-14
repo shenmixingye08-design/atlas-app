@@ -86,7 +86,7 @@ export async function applyMemoryToAutomationCreate(input: {
 
   let memoryPref: XSocialPreference = { ...EMPTY_X_SOCIAL_PREFERENCE };
   let memoryIds: string[] = [];
-  let memoryVersions: Record<string, string> = {};
+  const memoryVersions: Record<string, string> = {};
   let retrievalMs = 0;
   let confidence: number | null = null;
   const ignored: string[] = [];

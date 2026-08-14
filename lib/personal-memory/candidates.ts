@@ -167,8 +167,14 @@ export function inferPreferenceFromText(
   const cleaned = sanitizeUserFacingMemoryText(trimmed);
   const channel = detectMemoryChannel(trimmed);
   const writeIntent = classifyMemoryWriteIntent(trimmed);
+  const channelScopedStanding =
+    channel.channel !== "artifact" &&
+    writeIntent !== "one_shot" &&
+    writeIntent !== "automation_override";
   const explicit =
-    writeIntent === "persist_global" || writeIntent === "persist_channel";
+    writeIntent === "persist_global" ||
+    writeIntent === "persist_channel" ||
+    channelScopedStanding;
 
   const formatMatch = trimmed.match(
     /今後は?\s*(?:毎回)?\s*(PDF|pdf|Excel|Word|PowerPoint|パワポ)/i,
