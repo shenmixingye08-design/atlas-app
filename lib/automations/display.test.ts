@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   clampConfirmationLevel,
+  describeAppliedPreferenceLabels,
+  formatAppliedPreferencesLine,
   resolveEntrustedJobStatus,
   resolveScheduleMethod,
   summarizeEntrustedJobs,
@@ -112,5 +114,26 @@ describe("entrusted job display helpers", () => {
       ],
     };
     expect(clampConfirmationLevel("full_auto", flow)).toBe("approve_then_run");
+  });
+
+  it("shows applied preference labels without Memory JSON", () => {
+    const automation = baseAutomation({
+      workflow: {
+        assignment: "毎朝X投稿",
+        metadata: {
+          appliedPreferenceLabels: ["短めの文章", "絵文字少なめ", "ハッシュタグ最大2個"],
+          memorySnapshot: { rawJson: { emoji: "few" } },
+        },
+      },
+    });
+    expect(describeAppliedPreferenceLabels(automation)).toEqual([
+      "短めの文章",
+      "絵文字少なめ",
+      "ハッシュタグ最大2個",
+    ]);
+    expect(formatAppliedPreferencesLine(automation)).toBe(
+      "短めの文章、絵文字少なめ、ハッシュタグ最大2個",
+    );
+    expect(formatAppliedPreferencesLine(automation)).not.toContain("{");
   });
 });

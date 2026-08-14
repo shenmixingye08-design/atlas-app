@@ -93,3 +93,32 @@ export {
   type MemoryApplyLogEntry,
 } from "./apply-log";
 export { applyMemoryForPrediction } from "./prediction";
+export {
+  applyMemoryToAutomationCreate,
+  snapshotFromAutomation,
+  appliedPreferenceLabelsFromAutomation,
+} from "./automation-create-apply";
+export {
+  buildAutomationMemorySnapshot,
+  readAutomationMemorySnapshot,
+  describeAppliedPreferencesForUser,
+  snapshotToDiagnostics,
+  approvalFromPreference,
+  EMPTY_AUTOMATION_MEMORY_SNAPSHOT,
+} from "./automation-memory-snapshot";
+export type {
+  AutomationMemorySnapshot,
+  AutomationMemoryDiagnostics,
+} from "./automation-memory-snapshot";
+export {
+  parseXSocialPreferenceFromText,
+  mergeXSocialPreference,
+  xSocialPreferenceFromResolved,
+  describeXSocialPreference,
+  memoryRowAppliesToX,
+  EMPTY_X_SOCIAL_PREFERENCE,
+  X_MEMORY_ALLOWED_SCOPES,
+  X_MEMORY_DENIED_SCOPES,
+  MEMORY_APPLY_EXTRA_LLM_CALLS,
+} from "./x-social-preference";
+export type { XSocialPreference } from "./x-social-preference";

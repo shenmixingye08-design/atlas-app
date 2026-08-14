@@ -60,7 +60,7 @@ export function detectMemoryChannel(text: string): {
 } {
   const trimmed = text.trim();
   const wantsGlobal =
-    /今後は?\s*全部|すべて(短く|丁寧)|どの(仕事|投稿|記事)でも|毎回すべて|全体として|全部の(仕事|投稿|記事)/.test(
+    /今後は?\s*全部|これから全部|すべて(短く|丁寧)|どの(仕事|投稿|記事)でも|毎回すべて|全体として|全部の(仕事|投稿|記事)/.test(
       trimmed,
     );
   const x =
@@ -71,6 +71,24 @@ export function detectMemoryChannel(text: string): {
     /WordPress|ワードプレス|ブログ|WP記事|wordpress/i.test(trimmed);
   const email = /メール|email|gmail/i.test(trimmed);
   const word = /(?:Word文書|ワード文書|\bdocx\b|資料は)/i.test(trimmed);
+  const household = /家計簿/.test(trimmed);
+  const company =
+    /会社用|社内文書|ビジネス文書|会社の(資料|文書|文体)/.test(trimmed);
+
+  if (household && !x) {
+    return {
+      channel: "artifact",
+      global: false,
+      artifactTypes: ["household"],
+    };
+  }
+  if (company && !x && !wordpress) {
+    return {
+      channel: "word",
+      global: false,
+      artifactTypes: ["word", "company"],
+    };
+  }
 
   if (wantsGlobal && !x && !wordpress && !email && !word) {
     return { channel: "artifact", global: true, artifactTypes: [] };

@@ -498,7 +498,7 @@ export async function ingestCorrectionSignal(
   });
 
   if (existing && evaluated.action === "explicit_active") {
-    return updatePersonalMemory(signal.userId, existing.id, {
+    const updated = await updatePersonalMemory(signal.userId, existing.id, {
       value: evaluated.input.value,
       summary: evaluated.input.summary,
       title: evaluated.input.title,
@@ -508,6 +508,14 @@ export async function ingestCorrectionSignal(
         ...(evaluated.input.appliesTo ?? {}),
       },
     });
+    await supersedeConflictingActiveMemories({
+      userId: signal.userId,
+      keepId: updated.id,
+      scope: updated.scope,
+      key: updated.key,
+      artifactTypes: updated.appliesTo.artifactTypes,
+    });
+    return updated;
   }
 
   if (
@@ -519,6 +527,15 @@ export async function ingestCorrectionSignal(
   }
 
   const created = await createPersonalMemory(signal.userId, evaluated.input);
+  if (evaluated.action === "explicit_active" && created.status === "active") {
+    await supersedeConflictingActiveMemories({
+      userId: signal.userId,
+      keepId: created.id,
+      scope: created.scope,
+      key: created.key,
+      artifactTypes: created.appliesTo.artifactTypes,
+    });
+  }
 
   if (
     evaluated.action === "candidate" &&
@@ -539,6 +556,39 @@ export async function ingestCorrectionSignal(
   }
 
   return created;
+}
+
+async function supersedeConflictingActiveMemories(input: {
+  userId: string;
+  keepId: string;
+  scope: PersonalMemoryRecord["scope"];
+  key: string;
+  artifactTypes: string[];
+}): Promise<void> {
+  const channelKey = [...input.artifactTypes].sort().join("|");
+  const newIsGlobal = input.artifactTypes.length === 0;
+  const rivals = listStoredPersonalMemories(input.userId).filter((row) => {
+    if (row.id === input.keepId) return false;
+    if (row.status !== "active") return false;
+    if (row.scope !== input.scope || row.key !== input.key) return false;
+    if (newIsGlobal) return true;
+    const existingKey = [...row.appliesTo.artifactTypes].sort().join("|");
+    return existingKey === channelKey;
+  });
+  for (const rival of rivals) {
+    upsertStoredPersonalMemory({
+      ...rival,
+      status: "paused",
+      rejectedReason: "superseded",
+      updatedAt: nowIso(),
+    });
+    appendPersonalMemoryAudit({
+      userId: input.userId,
+      action: "memory.update",
+      memoryId: rival.id,
+      meta: { status: "paused", reason: "superseded", keepId: input.keepId },
+    });
+  }
 }
 
 function isUnambiguousPreferenceValue(value: Record<string, unknown>): boolean {

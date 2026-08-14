@@ -30,6 +30,8 @@ export async function buildV1AutomationMemoryMetadata(input: {
   userId: string;
   assignment: string;
   automationId: string;
+  destination?: "x" | "none" | string | null;
+  automationOverrides?: Record<string, unknown> | null;
 }): Promise<V1AutomationMemoryMetadata> {
   if (!input.userId.trim()) {
     return {
@@ -42,14 +44,33 @@ export async function buildV1AutomationMemoryMetadata(input: {
 
   try {
     await ensurePersonalMemoryHydrated(input.userId);
+    const { resolveMemoryArtifactTypes } = await import(
+      "@/lib/memory-apply/channels"
+    );
+    const {
+      X_MEMORY_ALLOWED_SCOPES,
+      X_MEMORY_DENIED_SCOPES,
+    } = await import("@/lib/memory-apply/x-social-preference");
+    const artifactTypes = resolveMemoryArtifactTypes({
+      assignment: input.assignment,
+      stepTypes:
+        input.destination === "x" ||
+        /xへ|xに|ツイート|sns|投稿/i.test(input.assignment)
+          ? ["x_post"]
+          : undefined,
+    });
+    const isX = input.destination === "x" || artifactTypes.includes("x_post");
     const applied = await MemoryApply({
       userId: input.userId,
       channel: "automation",
       baseline: input.assignment,
       assignment: input.assignment,
       automationId: input.automationId,
-      artifactTypes: ["sns", "document"],
-      capabilities: ["automation", "workflow"],
+      artifactTypes: isX ? ["x_post"] : artifactTypes,
+      allowedScopes: isX ? [...X_MEMORY_ALLOWED_SCOPES] : undefined,
+      deniedScopes: isX ? [...X_MEMORY_DENIED_SCOPES] : undefined,
+      capabilities: isX ? ["x_post", "sns"] : ["automation", "workflow"],
+      automationOverrides: input.automationOverrides ?? null,
     });
     const memoryRetrieved = applied.context.memoryIdsUsed.length > 0;
     const preferenceKeys = applied.context.content?.preferenceKeys ?? [];

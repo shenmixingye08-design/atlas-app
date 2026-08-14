@@ -387,6 +387,8 @@ describe("Memory Apply — content / deliverable overlays", () => {
       preferCta: false,
       preferSeo: false,
       ctaText: null,
+      hashtagsMax: null,
+      preferFewEmoji: false,
     });
     // Body is cleaned; header may list the ban for generators/planner.
     expect(text).toContain("【禁止表現】");

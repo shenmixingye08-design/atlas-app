@@ -403,7 +403,7 @@ export async function createAutomationFromNaturalLanguage(input: {
     });
   }
 
-  const createInput = parsed.createInput;
+  let createInput = parsed.createInput;
   const accessContext = await resolveFeatureAccessContext();
   const featureError = validateAutomationFeatureAccess(
     createInput,
@@ -465,6 +465,20 @@ export async function createAutomationFromNaturalLanguage(input: {
         httpStatus: ecoDenied.status,
       };
     }
+  }
+
+  try {
+    const { applyMemoryToAutomationCreate } = await import(
+      "@/lib/memory-apply/automation-create-apply"
+    );
+    const applied = await applyMemoryToAutomationCreate({
+      userId: input.userId,
+      text: input.text,
+      createInput,
+    });
+    createInput = applied.createInput;
+  } catch {
+    // Memory unavailable — continue with automation defaults (fail-open).
   }
 
   const destination = createInput.destination === "x" ? "x" : "none";
@@ -579,6 +593,11 @@ export async function createAutomationFromNaturalLanguage(input: {
       nextRun: stored.nextRun,
       executionLevel: stored.executionLevel,
       timezone,
+      appliedPreferenceLabels: Array.isArray(
+        stored.workflow.metadata?.appliedPreferenceLabels,
+      )
+        ? (stored.workflow.metadata?.appliedPreferenceLabels as string[])
+        : undefined,
     }),
   };
 }

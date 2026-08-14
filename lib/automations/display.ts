@@ -1,4 +1,8 @@
 import {
+  describeAppliedPreferencesForUser,
+  readAutomationMemorySnapshot,
+} from "@/lib/memory-apply/automation-memory-snapshot";
+import {
   getEnabledStepLabels,
   normalizeExecutionFlow,
 } from "./execution-flow";
@@ -198,6 +202,33 @@ export function describeMaterialsAndMemory(automation: Automation): string {
   }
 
   return parts.length > 0 ? parts.join(" / ") : "仕事の記憶を参照（設定時）";
+}
+
+/** Human labels only — never dump Memory JSON. */
+export function describeAppliedPreferenceLabels(
+  automation: Automation,
+): string[] {
+  const raw = automation.workflow.metadata?.appliedPreferenceLabels;
+  if (Array.isArray(raw)) {
+    return raw.filter(
+      (row): row is string =>
+        typeof row === "string" &&
+        row.trim().length > 0 &&
+        !row.includes("{") &&
+        !row.includes("memoryId"),
+    );
+  }
+  return describeAppliedPreferencesForUser(
+    readAutomationMemorySnapshot(automation.workflow.metadata),
+  );
+}
+
+export function formatAppliedPreferencesLine(
+  automation: Automation,
+): string | null {
+  const labels = describeAppliedPreferenceLabels(automation);
+  if (labels.length === 0) return null;
+  return labels.join("、");
 }
 
 export function describeProcedure(automation: Automation): string[] {

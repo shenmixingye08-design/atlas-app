@@ -104,6 +104,16 @@ export function applyPublishedBodyOverlay(
     const stripped = stripEmojis(body);
     if (stripped !== body) appliedKeys.push("emoji:none");
     body = stripped;
+  } else if (overlay.preferFewEmoji) {
+    const matches = body.match(EMOJI_RE) ?? [];
+    if (matches.length > 1) {
+      let kept = 0;
+      body = body.replace(EMOJI_RE, (emoji) => {
+        kept += 1;
+        return kept === 1 ? emoji : "";
+      });
+      appliedKeys.push("emoji:few");
+    }
   }
 
   const structured = applyWritingPreferenceStructure(
@@ -146,6 +156,17 @@ export function applyPublishedBodyOverlay(
       const shortened = shortenXPost(body);
       if (shortened !== body) appliedKeys.push("length:short");
       body = shortened;
+    }
+    if (overlay.hashtagsMax != null) {
+      const tags = body.match(/#[^\s#]+/g) ?? [];
+      if (tags.length > overlay.hashtagsMax) {
+        let kept = 0;
+        body = body.replace(/#[^\s#]+/g, (tag) => {
+          kept += 1;
+          return kept <= overlay.hashtagsMax! ? tag : "";
+        });
+        appliedKeys.push("hashtags:max");
+      }
     }
     const capped = capXLength(body);
     if (capped !== body) appliedKeys.push("length:short");
