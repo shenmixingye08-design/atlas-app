@@ -48,7 +48,7 @@ export function AtlasAppShell({
       {/* Desktop: fixed bell + account top-right */}
       <div
         className="fixed top-0 z-[60] hidden h-14 items-center justify-end gap-2 border-b border-[var(--border-subtle)] bg-[var(--card-glass)] px-6 backdrop-blur-xl md:flex md:left-[var(--sidebar-width)] md:right-0"
-        aria-label="アカウントと通知"
+        aria-label="テーマ、通知、アカウント"
       >
         <AtlasTopActions />
       </div>

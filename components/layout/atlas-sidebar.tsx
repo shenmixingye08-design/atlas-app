@@ -288,7 +288,7 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
   return (
     <>
       {/* Mobile top bar */}
-      <header className="fixed inset-x-0 top-0 z-40 flex h-[var(--mobile-top-bar-height)] items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--card-glass)] px-3 backdrop-blur-xl md:hidden">
+      <header className="fixed inset-x-0 top-0 z-40 flex h-[var(--mobile-top-bar-height)] items-center gap-1.5 overflow-x-clip border-b border-[var(--border-subtle)] bg-[var(--card-glass)] px-3 backdrop-blur-xl md:hidden">
         <button
           type="button"
           onClick={() => setMobileOpen(true)}

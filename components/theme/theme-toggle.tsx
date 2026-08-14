@@ -18,7 +18,7 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
       type="button"
       onClick={toggleLightDark}
       className={cn(
-        "touch-target flex h-10 w-10 items-center justify-center rounded-full text-base transition-colors duration-[var(--motion-base)] hover:bg-[var(--surface-muted)] focus-ring",
+        "touch-target flex h-10 w-10 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-base transition-colors duration-[var(--motion-base)] hover:bg-[var(--surface-muted)] focus-ring",
         className,
       )}
       aria-label={isDark ? ui.theme.switchToLight : ui.theme.switchToDark}

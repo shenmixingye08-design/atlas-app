@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { LegalFooterLinks } from "@/components/legal/legal-footer-links";
 import { AtlasLandingAuth } from "@/components/layout/atlas-header-auth";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
   formatLandingPrice,
@@ -21,17 +22,17 @@ import { LandingProofSection } from "./landing-proof-section";
 
 function MinervotLogo() {
   return (
-    <span className="flex items-center gap-3">
-      <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-[#B58B4F]/25 bg-[#74172A]">
+    <span className="flex min-w-0 items-center gap-2 sm:gap-3">
+      <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#B58B4F]/25 bg-[#74172A]">
         <span className="relative text-xs font-semibold tracking-[-0.05em] text-white">
           M
         </span>
       </span>
-      <span>
-        <span className="block text-sm font-semibold tracking-[0.08em] text-[#74172A]">
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold tracking-[0.08em] text-[#74172A]">
           MINERVOT
         </span>
-        <span className="block text-[9px] font-medium tracking-[0.08em] text-[#9A8D90]">
+        <span className="hidden text-[9px] font-medium tracking-[0.08em] text-[#9A8D90] sm:block">
           仕事が終わる
         </span>
       </span>
@@ -42,15 +43,15 @@ function MinervotLogo() {
 function LandingHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-[#74172A]/8 bg-[#fffdfb]/85 backdrop-blur-2xl">
-      <div className="mx-auto flex max-w-[1240px] items-center justify-between px-4 py-3 sm:px-8">
+      <div className="mx-auto flex max-w-[1240px] items-center justify-between gap-2 overflow-x-clip px-4 py-3 sm:gap-3 sm:px-8">
         <Link
           href="/"
-          className="rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-[#74172A]/30"
+          className="min-w-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-[#74172A]/30"
         >
           <MinervotLogo />
         </Link>
 
-        <nav className="hidden items-center gap-7 md:flex">
+        <nav className="hidden items-center gap-7 md:flex" aria-label="紹介">
           <a href="#finish-story" className="text-xs font-medium text-[#6F6265] hover:text-[#74172A]">
             終わる瞬間
           </a>
@@ -63,10 +64,10 @@ function LandingHeader() {
           <a href="#pricing" className="text-xs font-medium text-[#6F6265] hover:text-[#74172A]">
             料金
           </a>
-          <AtlasLandingAuth />
         </nav>
 
-        <div className="flex items-center gap-2 md:hidden">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <ThemeToggle />
           <AtlasLandingAuth />
         </div>
       </div>
