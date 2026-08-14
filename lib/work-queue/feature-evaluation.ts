@@ -19,6 +19,10 @@
  *   - 承認後実行：waiting_approval
  *   - 同じ処理を再生成しない：成功Step保持
  * 優先度：P0
+ *
+ * 2026-08 Scheduler Reliability hardening（新機能ではない）:
+ * 既存 SoT の missed-run / minute health / diagnostics / retry 分類を強化。
+ * AI起動条件：Scheduler tick では AI を呼ばない（0）。
  */
 
 export const WORK_QUEUE_FEATURE_EVALUATION = {

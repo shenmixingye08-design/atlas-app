@@ -14,17 +14,28 @@ const RETRYABLE_CODES = new Set([
   "openai_timeout",
   "lease_lost",
   "stuck_recovered",
+  "provider_5xx",
+  "network",
 ]);
 
 const NON_RETRYABLE_CODES = new Set([
   "invalid_input",
+  "invalid_payload",
   "missing_connection",
+  "connection_not_configured",
+  "x_not_connected",
   "revoked_authorization",
+  "oauth_revoked",
+  "auth_expired",
   "insufficient_permission",
+  "scope_insufficient",
+  "insufficient_scope",
   "unsupported_operation",
   "validation_failure",
   "user_cancelled",
   "cancelled",
+  "approval_pending",
+  "permanent_4xx",
 ]);
 
 export function classifyErrorCode(errorCode: string | null | undefined): RetryClass {
@@ -33,7 +44,9 @@ export function classifyErrorCode(errorCode: string | null | undefined): RetryCl
   if (NON_RETRYABLE_CODES.has(code)) return "non_retryable";
   if (RETRYABLE_CODES.has(code)) return "retryable";
   if (code.startsWith("http_5")) return "retryable";
-  if (code.includes("timeout")) return "retryable";
+  if (code === "http_429") return "retryable";
+  if (code.startsWith("http_4")) return "non_retryable";
+  if (code.includes("timeout") || code.includes("network")) return "retryable";
   if (code.includes("temporary")) return "retryable";
   return "non_retryable";
 }

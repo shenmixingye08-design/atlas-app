@@ -396,6 +396,7 @@ export async function POST(request: Request): Promise<Response> {
             workerCount: workQueue.worker.workerIds.length,
           },
           alertCount: workQueue.alerts.length,
+          schedulerHealth: workQueue.health,
         }
       : null,
     v2Schedule,

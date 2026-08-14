@@ -14,6 +14,9 @@ export type WorkQueueLogEvent =
   | "JOB_FAILED"
   | "JOB_CANCELLED"
   | "DUPLICATE_OCCURRENCE"
+  | "OCCURRENCE_SKIPPED"
+  | "OCCURRENCE_DELAYED"
+  | "OCCURRENCE_MISSED"
   | "STUCK_DETECTED";
 
 export type WorkQueueLogFields = {

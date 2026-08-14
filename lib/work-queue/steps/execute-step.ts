@@ -369,6 +369,13 @@ export async function executeWorkStep(input: {
             errorMessage: result.error ?? "automation failed",
           };
         }
+        if (result.status === "awaiting_approval") {
+          return {
+            ok: false,
+            errorCode: "approval_pending",
+            errorMessage: "approval required before external execution",
+          };
+        }
         // Fail closed: only full completed is success — never partial.
         if (result.status !== "completed") {
           return {

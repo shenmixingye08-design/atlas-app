@@ -13,6 +13,15 @@ export {
   WorkQueueStoreUnavailableError,
 } from "./store";
 export { enqueueDueAutomations } from "./scheduler";
+export { classifyDueOccurrence } from "./missed-run";
+export {
+  evaluateSchedulerHealth,
+  buildSchedulerHealthSnapshot,
+} from "./scheduler-health";
+export { buildWorkJobDiagnostics } from "./job-diagnostics";
+export { auditSchedulerProductionConfig } from "./production-config-audit";
+export { classifySchedulerUserNotification } from "./scheduler-notification";
+export { PRODUCTION_SCHEDULER_SOT } from "./production-sot";
 export { drainWorkQueue, recoverStuckJobs } from "./worker";
 export {
   computeWorkerScalePlan,
