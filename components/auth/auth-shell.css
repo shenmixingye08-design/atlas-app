@@ -1,0 +1,43 @@
+/**
+ * Auth pages only. Pins Clerk's cardBox to the decorative frame so both
+ * share one centered column. Do not import from ClerkProvider / UserButton.
+ */
+
+.auth-shell-column {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 28rem;
+  min-width: 0;
+  margin-inline: auto;
+}
+
+.auth-card-frame {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
+.auth-card-frame .cl-rootBox,
+.auth-card-frame .cl-cardBox,
+.auth-card-frame .cl-card,
+.auth-card-frame .cl-main,
+.auth-card-frame .cl-scrollBox {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  margin-inline: auto !important;
+}
+
+.auth-card-frame .cl-socialButtons,
+.auth-card-frame .cl-socialButtonsBlockButton,
+.auth-card-frame .cl-formButtonPrimary,
+.auth-card-frame .cl-formFieldInput,
+.auth-card-frame .cl-identityPreview,
+.auth-card-frame .cl-header,
+.auth-card-frame .cl-footer,
+.auth-card-frame .cl-form {
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}

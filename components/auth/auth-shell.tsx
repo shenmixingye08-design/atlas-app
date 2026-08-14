@@ -5,6 +5,8 @@ import { LegalFooterLinks } from "@/components/legal/legal-footer-links";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { ui } from "@/lib/i18n";
 
+import "./auth-shell.css";
+
 type AuthShellProps = {
   children: React.ReactNode;
   title: string;
@@ -15,7 +17,7 @@ export function AuthShell({ children, title, subtitle }: AuthShellProps) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[var(--background)] text-[var(--text-primary)]">
       <AtlasBackground />
-      <div className="relative z-10 mx-auto flex min-h-screen max-w-md flex-col px-4 py-6 sm:px-8 sm:py-8">
+      <div className="auth-shell-column relative z-10 flex min-h-screen flex-col px-4 py-6 sm:px-8 sm:py-8">
         <div className="mb-8 flex items-center justify-between gap-3">
           <Link
             href="/"
@@ -42,7 +44,7 @@ export function AuthShell({ children, title, subtitle }: AuthShellProps) {
             </h1>
             <p className="mt-2 text-sm text-[var(--text-secondary)]">{subtitle}</p>
           </div>
-          <div className="glass-strong w-full rounded-2xl bg-[var(--card)] p-4 sm:p-6">
+          <div className="auth-card-frame glass-strong rounded-2xl bg-[var(--card)] p-4 sm:p-6">
             {children}
           </div>
           <LegalFooterLinks
