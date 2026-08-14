@@ -276,6 +276,25 @@ export function BillingSettings() {
         return;
       }
 
+      if (
+        err instanceof CheckoutRequestError &&
+        (err.code === "already_same_plan" ||
+          err.code === "subscription_sync_required")
+      ) {
+        try {
+          const billing = await fetchBillingSummary();
+          setSummary(billing);
+        } catch {
+          // Keep the previous summary if refresh fails.
+        }
+        fail(
+          err.code === "already_same_plan"
+            ? ui.billing.alreadySamePlanSynced
+            : ui.billing.subscriptionSyncing,
+        );
+        return;
+      }
+
       fail(err instanceof Error ? err.message : ui.billing.checkoutFailed);
     }
   };
@@ -322,6 +341,15 @@ export function BillingSettings() {
         </p>
       )}
 
+      {summary.subscriptionConsistency === "conflict" && (
+        <p
+          className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--background-subtle)] px-4 py-3 text-sm text-[var(--foreground-muted)]"
+          role="status"
+        >
+          {ui.billing.subscriptionSyncing}
+        </p>
+      )}
+
       {checkoutState === "cancelled" && (
         <p
           className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--background-subtle)] px-4 py-3 text-sm text-[var(--foreground-muted)]"
@@ -338,11 +366,15 @@ export function BillingSettings() {
               {ui.billing.currentPlan}
             </p>
             <h2 className="mt-1 text-2xl font-semibold text-foreground">
-              {summary.plan.name}
+              {summary.subscriptionConsistency === "conflict"
+                ? ui.billing.subscriptionSyncing
+                : summary.plan.name}
             </h2>
+            {summary.subscriptionConsistency === "conflict" ? null : (
             <p className="mt-2 text-sm text-[var(--foreground-muted)]">
               {summary.plan.description}
             </p>
+            )}
             {summary.subscription.currentPeriodEnd && (
               <p className="mt-2 text-caption text-[var(--foreground-muted)]">
                 {ui.billing.periodEnd(
@@ -358,7 +390,10 @@ export function BillingSettings() {
               variant="secondary"
               size="sm"
               className="min-h-[44px]"
-              disabled={busyPlanId !== null}
+              disabled={
+                busyPlanId !== null ||
+                summary.subscriptionConsistency === "conflict"
+              }
               aria-busy={busyKind === "portal"}
               onClick={() => void handlePortal()}
             >
@@ -425,7 +460,10 @@ export function BillingSettings() {
               plan={plan}
               currentPlanId={summary.subscription.planId}
               busy={busyPlanId === plan.planId}
-              disabled={busyPlanId !== null}
+              disabled={
+                busyPlanId !== null ||
+                summary.subscriptionConsistency === "conflict"
+              }
               busyLabel={
                 busyKind === "portal"
                   ? ui.billing.openingPortal

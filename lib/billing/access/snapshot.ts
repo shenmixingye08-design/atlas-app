@@ -8,10 +8,11 @@ import { siteConfig } from "@/lib/config/site";
 import { resolveMinimumOfferedPlanForFeature } from "../plans/offered-capabilities";
 import { getPlanDefinition, listPlanDefinitions } from "../plans/registry";
 import type { BillingFeatureId, PlanId } from "../plans/types";
-import { resolveUserSubscriptionDurable } from "../subscriptions/store";
+import { resolveUserSubscriptionAuthority } from "../subscriptions/store";
 import {
-  getUserSubscriptionView,
   isPaidCapableStatus,
+  resolveEffectivePlanIdFromRecord,
+  toUserSubscriptionView,
 } from "../subscriptions/service";
 import type { SubscriptionStatus } from "../subscriptions/types";
 import { getUsageSnapshot } from "../usage/store";
@@ -63,15 +64,10 @@ export function getMinimumPlanForFeature(
 export async function getBillingAccessSnapshot(
   userId: string,
 ): Promise<BillingAccessSnapshot> {
-  await resolveUserSubscriptionDurable(userId);
-  const view = getUserSubscriptionView(userId);
+  const authority = await resolveUserSubscriptionAuthority(userId);
+  const view = toUserSubscriptionView(authority.record);
   const email = await getClerkUserPrimaryEmail(userId);
-  const effectivePlanId =
-    view.planId === "free"
-      ? "free"
-      : isPaidCapableStatus(view.status)
-        ? view.planId
-        : "free";
+  const effectivePlanId = resolveEffectivePlanIdFromRecord(authority.record);
 
   return {
     userId,

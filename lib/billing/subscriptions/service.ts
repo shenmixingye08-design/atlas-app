@@ -51,16 +51,27 @@ export function isPaidCapableStatus(status: SubscriptionStatus): boolean {
   return status === "active" || status === "trialing";
 }
 
-export function getUserSubscriptionView(userId: string): UserSubscriptionView {
-  const record = resolveUserSubscription(userId);
+export function toUserSubscriptionView(
+  record: UserSubscriptionRecord,
+): UserSubscriptionView {
   const plan = getPlanDefinition(record.planId);
-
   return {
-    ...record,
+    ...normalizeSubscriptionRecord(record),
     planName: plan.name,
-    isPaid:
-      plan.monthlyPriceJpy > 0 && isPaidCapableStatus(record.status),
+    isPaid: plan.monthlyPriceJpy > 0 && isPaidCapableStatus(record.status),
   };
+}
+
+export function resolveEffectivePlanIdFromRecord(
+  record: UserSubscriptionRecord,
+): PlanId {
+  if (record.planId === "free") return "free";
+  if (isPaidCapableStatus(record.status)) return record.planId;
+  return "free";
+}
+
+export function getUserSubscriptionView(userId: string): UserSubscriptionView {
+  return toUserSubscriptionView(resolveUserSubscription(userId));
 }
 
 export async function upsertUserSubscription(

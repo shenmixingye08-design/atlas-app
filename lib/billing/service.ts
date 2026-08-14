@@ -4,7 +4,12 @@ import { getPlanDefinition, listPlanDefinitions } from "./plans/registry";
 import type { PlanDefinition, PlanId } from "./plans/types";
 import { listUserBillingNotifications } from "./notifications/service";
 import { isAutomationSuspendedForUser } from "./subscriptions/lifecycle";
-import { applySubscriptionFromStripe, getUserSubscriptionView } from "./subscriptions/service";
+import {
+  applySubscriptionFromStripe,
+  resolveEffectivePlanIdFromRecord,
+  toUserSubscriptionView,
+} from "./subscriptions/service";
+import { resolveUserSubscriptionAuthority } from "./subscriptions/store";
 import { isStripeLiveMode } from "./stripe/checkout";
 import {
   getStripeRuntimeConfigStatus,
@@ -14,21 +19,39 @@ import { getUserUsageLimitSummary } from "./usage/service";
 import { buildUsageAwarenessView } from "./usage-awareness/view";
 import type { UserBillingSummary } from "./types";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
+import { safeLog } from "@/lib/security/redact";
+import { createHash } from "crypto";
 
 export type { UserBillingSummary } from "./types";
 
 export async function getUserBillingSummary(
   userId: string,
 ): Promise<UserBillingSummary> {
-  const subscription = getUserSubscriptionView(userId);
-  const usage = getUserUsageLimitSummary(userId);
-  const plan = getPlanDefinition(subscription.planId);
+  const authority = await resolveUserSubscriptionAuthority(userId);
+  const record = authority.record;
+  const subscription = toUserSubscriptionView(record);
+  const effectivePlanId = resolveEffectivePlanIdFromRecord(record);
+  const usage = getUserUsageLimitSummary(userId, effectivePlanId);
+  const plan = getPlanDefinition(record.planId);
   const secretDiagnostics = getStripeSecretDiagnostics();
   const notifications = await listUserBillingNotifications(userId);
   const usageAwareness = buildUsageAwarenessView({
     usage,
     catalog: listPlanDefinitions(),
-    subscribedPlanId: subscription.planId,
+    subscribedPlanId: record.planId,
+  });
+
+  safeLog("info", "[billing/summary] snapshot", {
+    userFingerprint: createHash("sha256").update(userId).digest("hex").slice(0, 12),
+    planId: record.planId,
+    effectivePlanId,
+    status: record.status,
+    hasCustomer: Boolean(record.stripeCustomerId),
+    hasSubscription: Boolean(record.stripeSubscriptionId),
+    hasPrice: Boolean(record.stripePriceId),
+    source: authority.source,
+    consistency: authority.consistency,
+    usagePlanId: usage.planId,
   });
 
   return {
@@ -40,9 +63,11 @@ export async function getUserBillingSummary(
     secretConfigured: secretDiagnostics.secretConfigured,
     secretLength: secretDiagnostics.secretLength,
     secretPrefixValid: secretDiagnostics.secretPrefixValid,
-    billingPortalAvailable: Boolean(subscription.stripeCustomerId),
+    billingPortalAvailable: Boolean(record.stripeCustomerId),
     automationsSuspended: isAutomationSuspendedForUser(userId),
     notifications: notifications.slice(0, 5),
+    subscriptionSource: authority.source,
+    subscriptionConsistency: authority.consistency,
     stripeConfig: getStripeRuntimeConfigStatus(),
   };
 }

@@ -5,6 +5,7 @@ import {
 } from "@/lib/billing/usage/meter";
 import { listAiUsageEvents } from "@/lib/billing/usage/store";
 import { getOwnerBillingMetrics } from "@/lib/billing/analytics/owner-metrics";
+import { hydrateSubscriptionsFromSupabase } from "@/lib/billing/subscriptions/store";
 import { fetchStripeLiveMonthMetrics } from "@/lib/billing/analytics/stripe-live-metrics";
 import { fetchStripeSubscriptionLiveMetrics } from "@/lib/billing/analytics/stripe-subscription-metrics";
 import {
@@ -227,6 +228,7 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
     const periodLabel = formatOwnerMonthLabel(now);
     const monthKey = formatOwnerMonthKey(now);
     await ensureBillingUsageHydrated();
+    await hydrateSubscriptionsFromSupabase();
 
     const localBilling = getOwnerBillingMetrics(now);
     const [stripe, stripeSubs] = await Promise.all([

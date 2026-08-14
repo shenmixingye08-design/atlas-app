@@ -13,7 +13,8 @@ import {
 import type { BillingFeatureId, PlanCheckResult, PlanId } from "./plans/types";
 import {
   getUserSubscriptionView,
-  isPaidCapableStatus,
+  resolveEffectivePlanIdFromRecord,
+  resolveUserSubscription,
 } from "./subscriptions/service";
 import {
   enforcePaymentFailureGraceIfExpired,
@@ -28,10 +29,7 @@ import { tweetContainsExternalUrl } from "./usage/x-url";
  * Otherwise fall back to Free limits (existing Free policy — no new gates).
  */
 export function resolveEffectivePlanId(userId: string): PlanId {
-  const subscription = getUserSubscriptionView(userId);
-  if (subscription.planId === "free") return "free";
-  if (isPaidCapableStatus(subscription.status)) return subscription.planId;
-  return "free";
+  return resolveEffectivePlanIdFromRecord(resolveUserSubscription(userId));
 }
 
 /** Unified plan gate — use from API routes before expensive operations. */
