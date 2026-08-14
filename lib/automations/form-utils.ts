@@ -39,6 +39,8 @@ export type AutomationFormState = {
   destination: AutomationDestination;
   frequency: FrequencyOption;
   dayOfWeek: number;
+  /** When set on daily (e.g. 平日 1–5), skip other weekdays. */
+  weekdays?: number[];
   dayOfMonth: number;
   hour: number;
   minute: number;
@@ -75,6 +77,7 @@ export function defaultAutomationFormState(
     destination: "none",
     frequency: "weekly",
     dayOfWeek: 1,
+    weekdays: undefined,
     dayOfMonth: 1,
     hour: 9,
     minute: 0,
@@ -103,7 +106,9 @@ export function buildScheduleLabel(state: AutomationFormState): string {
   const time = `${String(state.hour).padStart(2, "0")}:${String(state.minute).padStart(2, "0")}`;
   switch (state.frequency) {
     case "daily":
-      return `毎日 ${time}`;
+      return isWeekdayOnlyPreset(state.weekdays)
+        ? `平日 ${time}`
+        : `毎日 ${time}`;
     case "weekly":
       return `毎週${WEEKDAY_LABELS[state.dayOfWeek]} ${time}`;
     case "weekday":
@@ -115,10 +120,21 @@ export function buildScheduleLabel(state: AutomationFormState): string {
   }
 }
 
+function isWeekdayOnlyPreset(weekdays: number[] | undefined): boolean {
+  if (!weekdays || weekdays.length !== 5) return false;
+  const set = new Set(weekdays);
+  return [1, 2, 3, 4, 5].every((day) => set.has(day));
+}
+
 export function buildSchedulePreset(state: AutomationFormState): SchedulePreset {
   switch (state.frequency) {
     case "daily":
-      return { type: "daily", hour: state.hour, minute: state.minute };
+      return {
+        type: "daily",
+        hour: state.hour,
+        minute: state.minute,
+        ...(state.weekdays?.length ? { weekdays: state.weekdays } : {}),
+      };
     case "weekly":
     case "weekday":
       return {
@@ -256,6 +272,7 @@ export function formStateFromCreateInput(
     ...base,
     frequency,
     dayOfWeek: preset.type === "weekly" ? preset.dayOfWeek : base.dayOfWeek,
+    weekdays: preset.type === "daily" ? preset.weekdays : undefined,
     dayOfMonth: preset.type === "monthly" ? preset.dayOfMonth : base.dayOfMonth,
     hour: preset.hour,
     minute: preset.minute,

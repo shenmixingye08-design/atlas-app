@@ -452,13 +452,16 @@ export async function executeAutomationRun(
                 if (postResult.status !== "ready") {
                   snsPostFailure = postResult.message;
                   snsErrorCode = mapXPostFailureCode(postResult.message);
-                } else if (postResult.history?.status !== "success") {
+                } else if (
+                  postResult.history?.status !== "success" ||
+                  !postResult.history.tweetId
+                ) {
                   snsPostFailure =
                     postResult.history?.errorMessage ??
-                    "Xへの投稿に失敗しました";
+                    "X API did not return a tweet id";
                   snsErrorCode = mapXPostFailureCode(snsPostFailure);
                 } else {
-                  xPostId = postResult.history.tweetId ?? null;
+                  xPostId = postResult.history.tweetId;
                   xPostUrl = postResult.history.tweetUrl ?? null;
                 }
               } else if (!autoPost.attempted) {
@@ -501,12 +504,16 @@ export async function executeAutomationRun(
             if (postResult.status !== "ready") {
               snsPostFailure = postResult.message;
               snsErrorCode = mapXPostFailureCode(postResult.message);
-            } else if (postResult.history?.status !== "success") {
+            } else if (
+              postResult.history?.status !== "success" ||
+              !postResult.history.tweetId
+            ) {
               snsPostFailure =
-                postResult.history?.errorMessage ?? "Xへの投稿に失敗しました";
+                postResult.history?.errorMessage ??
+                "X API did not return a tweet id";
               snsErrorCode = mapXPostFailureCode(snsPostFailure);
             } else {
-              xPostId = postResult.history.tweetId ?? null;
+              xPostId = postResult.history.tweetId;
               xPostUrl = postResult.history.tweetUrl ?? null;
             }
           }

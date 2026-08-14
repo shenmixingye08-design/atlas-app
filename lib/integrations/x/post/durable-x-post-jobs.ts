@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 
+import { XApiError } from "@/lib/integrations/x/api-error";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
 import {
@@ -761,9 +762,60 @@ export function classifyXPostError(error: unknown): {
   permanent: boolean;
   delayMs: number;
 } {
+  if (error instanceof XApiError) {
+    const status = error.httpStatus;
+    if (status === 429) {
+      return {
+        code: "rate_limit",
+        retryable: true,
+        permanent: false,
+        delayMs: 120_000,
+      };
+    }
+    if (status >= 500 && status <= 599) {
+      return {
+        code: "transient",
+        retryable: true,
+        permanent: false,
+        delayMs: 30_000,
+      };
+    }
+    if (status === 401 || error.resolution.reconnectRequired) {
+      return {
+        code: "auth_expired",
+        retryable: false,
+        permanent: true,
+        delayMs: 0,
+      };
+    }
+    if (
+      status === 403 ||
+      /insufficient|scope|tweet\.write|permission|write/.test(
+        error.message.toLowerCase(),
+      )
+    ) {
+      return {
+        code: "insufficient_scope",
+        retryable: false,
+        permanent: true,
+        delayMs: 0,
+      };
+    }
+    if (status === 400 || status === 422) {
+      return {
+        code: "invalid_content",
+        retryable: false,
+        permanent: true,
+        delayMs: 0,
+      };
+    }
+  }
+
   const message =
     error instanceof Error ? error.message.toLowerCase() : String(error);
-  if (/revok|unauthorized|401|invalid.?token|reconnect/.test(message)) {
+  if (
+    /revok|unauthorized|401|invalid.?token|reconnect|失効/.test(message)
+  ) {
     return {
       code: "auth_expired",
       retryable: false,
@@ -771,7 +823,19 @@ export function classifyXPostError(error: unknown): {
       delayMs: 0,
     };
   }
-  if (/429|rate.?limit|too many/.test(message)) {
+  if (
+    /insufficient.?scope|tweet\.write|write権限|投稿権限|missing scope/.test(
+      message,
+    )
+  ) {
+    return {
+      code: "insufficient_scope",
+      retryable: false,
+      permanent: true,
+      delayMs: 0,
+    };
+  }
+  if (/429|rate.?limit|too many|利用上限/.test(message)) {
     return {
       code: "rate_limit",
       retryable: true,
@@ -779,7 +843,11 @@ export function classifyXPostError(error: unknown): {
       delayMs: 120_000,
     };
   }
-  if (/timeout|timed.?out|network|econn|fetch failed|503|502/.test(message)) {
+  if (
+    /timeout|timed.?out|network|econn|fetch failed|503|502|500|504/.test(
+      message,
+    )
+  ) {
     return {
       code: "transient",
       retryable: true,
@@ -795,7 +863,11 @@ export function classifyXPostError(error: unknown): {
       delayMs: 0,
     };
   }
-  if (/invalid|validation|forbidden|403/.test(message)) {
+  if (
+    /invalid|validation|forbidden|403|投稿文が空|文字数|did not return a tweet id/.test(
+      message,
+    )
+  ) {
     return {
       code: "invalid_content",
       retryable: false,

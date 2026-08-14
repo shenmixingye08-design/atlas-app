@@ -461,6 +461,7 @@ describe("X post service", () => {
     expect(result.connected).toBe(true);
     expect(result.tokenValid).toBe(true);
     expect(result.permissionsOk).toBe(true);
+    expect(result.postingReady).toBe(true);
     expect(JSON.stringify(result)).not.toContain("x-access-token");
   });
 });

@@ -14,6 +14,7 @@ import type { Deliverable } from "@/lib/orchestration/deliverable-types";
 import { getSocialPostCards } from "@/lib/orchestration/deliverable-display";
 
 import { resolveFeatureContextForUser } from "./drive-backup";
+import { detectOneShotXSchedule } from "./one-shot-schedule";
 import { postTweetAutoForUser, scheduleTweetForUser } from "./service";
 import type { XPostResult } from "./types";
 
@@ -154,6 +155,17 @@ export async function maybeAutoPostToXAfterCommander(input: {
 
   const context =
     input.context ?? (await resolveFeatureContextForUser(input.userId));
+
+  const oneShot = detectOneShotXSchedule(input.assignment);
+  if (oneShot) {
+    const result = await scheduleTweetForUser({
+      userId: input.userId,
+      text,
+      scheduledFor: oneShot.scheduledFor,
+      context,
+    });
+    return { attempted: true, mode: "schedule", result };
+  }
 
   const result = await postTweetAutoForUser({
     userId: input.userId,

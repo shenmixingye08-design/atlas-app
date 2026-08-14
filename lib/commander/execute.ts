@@ -639,15 +639,27 @@ async function executeStoredRun(input: {
         deliverable: lastResult.deliverable,
         finalResponse: lastResult.finalResponse,
       });
-      if (autoPost.attempted && autoPost.mode === "publish") {
+      if (autoPost.attempted && autoPost.mode === "schedule") {
+        const postResult = autoPost.result;
+        if (postResult.status !== "ready" || !postResult.scheduled) {
+          snsPublishReason =
+            postResult.status === "ready"
+              ? "予約投稿の登録に失敗しました"
+              : postResult.message;
+        }
+      } else if (autoPost.attempted && autoPost.mode === "publish") {
         const postResult = autoPost.result;
         if (postResult.status !== "ready") {
           snsPublishReason = postResult.message;
-        } else if (postResult.history?.status !== "success") {
+        } else if (
+          postResult.history?.status !== "success" ||
+          !postResult.history.tweetId
+        ) {
           snsPublishReason =
-            postResult.history?.errorMessage ?? "Xへの投稿に失敗しました";
+            postResult.history?.errorMessage ??
+            "X API did not return a tweet id";
         } else {
-          snsPublishedTweetUrl = postResult.history?.tweetUrl ?? null;
+          snsPublishedTweetUrl = postResult.history.tweetUrl ?? null;
         }
       }
     } catch (error) {
