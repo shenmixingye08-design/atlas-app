@@ -1,5 +1,6 @@
 import type { PlanDefinition } from "./plans/types";
 import type { UserSubscriptionView } from "./subscriptions/types";
+import type { UsageAwarenessView } from "./usage-awareness/types";
 import type { UsageLimitSummary } from "./usage/types";
 import type { BillingNotificationRecord } from "./notifications/types";
 
@@ -7,6 +8,7 @@ import type { BillingNotificationRecord } from "./notifications/types";
 export type UserBillingSummary = {
   subscription: UserSubscriptionView;
   usage: UsageLimitSummary;
+  usageAwareness: UsageAwarenessView;
   plan: PlanDefinition;
   stripeLiveMode: boolean;
   /** Temporary safe diagnostics — never includes the secret itself. */

@@ -6,7 +6,7 @@ import { isAtlasBetaUserEmail } from "@/lib/feature-flags/access";
 import { siteConfig } from "@/lib/config/site";
 
 import { resolveMinimumOfferedPlanForFeature } from "../plans/offered-capabilities";
-import { getPlanDefinition } from "../plans/registry";
+import { getPlanDefinition, listPlanDefinitions } from "../plans/registry";
 import type { BillingFeatureId, PlanId } from "../plans/types";
 import { resolveUserSubscriptionDurable } from "../subscriptions/store";
 import {
@@ -15,6 +15,10 @@ import {
 } from "../subscriptions/service";
 import type { SubscriptionStatus } from "../subscriptions/types";
 import { getUsageSnapshot } from "../usage/store";
+import { getUserUsageLimitSummary } from "../usage/service";
+import { formatOtherMetersRemain } from "../usage-awareness/copy";
+import type { UsageMeterId } from "../usage-awareness/types";
+import { buildUsageAwarenessView } from "../usage-awareness/view";
 import {
   evaluateAiUsageAccess,
   evaluateAutomationTaskAccess,
@@ -96,7 +100,41 @@ export type BillingDenial = {
   requiredPlan: PlanId | null;
   requiredPlanName: string | null;
   upgradePath: string;
+  used?: number;
+  limit?: number;
+  remaining?: number;
+  resetLabel?: string;
+  recommendedPlan?: PlanId | null;
+  recommendedPlanName?: string | null;
+  recommendedLimit?: number | null;
+  otherFeaturesRemain?: string | null;
 };
+
+function attachLimitAwareness(
+  denial: BillingDenial,
+  userId: string,
+  meterId: UsageMeterId,
+): BillingDenial {
+  const usage = getUserUsageLimitSummary(userId);
+  const view = buildUsageAwarenessView({
+    usage,
+    catalog: listPlanDefinitions(),
+    subscribedPlanId: denial.currentPlan,
+  });
+  const item = view.items.find((row) => row.id === meterId);
+  if (!item) return denial;
+  return {
+    ...denial,
+    used: item.used,
+    limit: item.limit,
+    remaining: item.remaining,
+    resetLabel: item.resetLabel,
+    recommendedPlan: item.primaryUpgrade?.planId ?? null,
+    recommendedPlanName: item.primaryUpgrade?.planName ?? null,
+    recommendedLimit: item.primaryUpgrade?.nextLimit ?? null,
+    otherFeaturesRemain: formatOtherMetersRemain(view.items),
+  };
+}
 
 /**
  * Owners bypass plan gates for operations (ATLAS_OWNER_EMAILS).
@@ -164,16 +202,20 @@ export async function evaluateBillingAiUsage(
 
   return {
     snapshot,
-    denial: {
-      kind: "limit",
-      status: 429,
-      reason: check.reason,
-      currentPlan: snapshot.effectivePlanId,
-      currentPlanName: snapshot.effectivePlanName,
-      requiredPlan: null,
-      requiredPlanName: null,
-      upgradePath: BILLING_UPGRADE_PATH,
-    },
+    denial: attachLimitAwareness(
+      {
+        kind: "limit",
+        status: 429,
+        reason: check.reason,
+        currentPlan: snapshot.effectivePlanId,
+        currentPlanName: snapshot.effectivePlanName,
+        requiredPlan: null,
+        requiredPlanName: null,
+        upgradePath: BILLING_UPGRADE_PATH,
+      },
+      userId,
+      "aiRuns",
+    ),
   };
 }
 
@@ -186,18 +228,25 @@ export async function evaluateBillingSnsPost(
   const check = evaluateSnsPostAccess(userId, options);
   if (check.allowed) return { snapshot, denial: null };
   const needsPlan = check.reason.includes("利用できません");
+  const denial: BillingDenial = {
+    kind: needsPlan ? "plan" : "limit",
+    status: needsPlan ? 403 : 429,
+    reason: check.reason,
+    currentPlan: snapshot.effectivePlanId,
+    currentPlanName: snapshot.effectivePlanName,
+    requiredPlan: needsPlan ? "standard" : null,
+    requiredPlanName: needsPlan ? getPlanDefinition("standard").name : null,
+    upgradePath: BILLING_UPGRADE_PATH,
+  };
   return {
     snapshot,
-    denial: {
-      kind: needsPlan ? "plan" : "limit",
-      status: needsPlan ? 403 : 429,
-      reason: check.reason,
-      currentPlan: snapshot.effectivePlanId,
-      currentPlanName: snapshot.effectivePlanName,
-      requiredPlan: needsPlan ? "standard" : null,
-      requiredPlanName: needsPlan ? getPlanDefinition("standard").name : null,
-      upgradePath: BILLING_UPGRADE_PATH,
-    },
+    denial: needsPlan
+      ? denial
+      : attachLimitAwareness(
+          denial,
+          userId,
+          check.reason.includes("URL") ? "xUrlPosts" : "snsPosts",
+        ),
   };
 }
 
@@ -229,18 +278,21 @@ export async function evaluateBillingWordPressPublish(
   const check = evaluateWordPressPublishAccess(userId);
   if (check.allowed) return { snapshot, denial: null };
   const needsPlan = check.reason.includes("利用できません");
+  const denial: BillingDenial = {
+    kind: needsPlan ? "plan" : "limit",
+    status: needsPlan ? 403 : 429,
+    reason: check.reason,
+    currentPlan: snapshot.effectivePlanId,
+    currentPlanName: snapshot.effectivePlanName,
+    requiredPlan: needsPlan ? "standard" : null,
+    requiredPlanName: needsPlan ? getPlanDefinition("standard").name : null,
+    upgradePath: BILLING_UPGRADE_PATH,
+  };
   return {
     snapshot,
-    denial: {
-      kind: needsPlan ? "plan" : "limit",
-      status: needsPlan ? 403 : 429,
-      reason: check.reason,
-      currentPlan: snapshot.effectivePlanId,
-      currentPlanName: snapshot.effectivePlanName,
-      requiredPlan: needsPlan ? "standard" : null,
-      requiredPlanName: needsPlan ? getPlanDefinition("standard").name : null,
-      upgradePath: BILLING_UPGRADE_PATH,
-    },
+    denial: needsPlan
+      ? denial
+      : attachLimitAwareness(denial, userId, "wordpressPosts"),
   };
 }
 
@@ -252,18 +304,21 @@ export async function evaluateBillingAutomationTask(
   if (snapshot.isOwner) return { snapshot, denial: null };
   const check = await evaluateAutomationTaskAccess(userId, currentTaskCount);
   if (check.allowed) return { snapshot, denial: null };
+  const denial: BillingDenial = {
+    kind: check.reason.includes("お支払い") ? "plan" : "limit",
+    status: check.reason.includes("お支払い") ? 403 : 429,
+    reason: check.reason,
+    currentPlan: snapshot.effectivePlanId,
+    currentPlanName: snapshot.effectivePlanName,
+    requiredPlan: null,
+    requiredPlanName: null,
+    upgradePath: BILLING_UPGRADE_PATH,
+  };
   return {
     snapshot,
-    denial: {
-      kind: check.reason.includes("お支払い") ? "plan" : "limit",
-      status: check.reason.includes("お支払い") ? 403 : 429,
-      reason: check.reason,
-      currentPlan: snapshot.effectivePlanId,
-      currentPlanName: snapshot.effectivePlanName,
-      requiredPlan: null,
-      requiredPlanName: null,
-      upgradePath: BILLING_UPGRADE_PATH,
-    },
+    denial: check.reason.includes("お支払い")
+      ? denial
+      : attachLimitAwareness(denial, userId, "automationTasks"),
   };
 }
 
@@ -338,6 +393,14 @@ export function billingDenialToJson(denial: BillingDenial): Record<string, unkno
     requiredPlan: denial.requiredPlan,
     requiredPlanName: denial.requiredPlanName,
     upgradePath: denial.upgradePath,
+    used: denial.used,
+    limit: denial.limit,
+    remaining: denial.remaining,
+    resetLabel: denial.resetLabel,
+    recommendedPlan: denial.recommendedPlan,
+    recommendedPlanName: denial.recommendedPlanName,
+    recommendedLimit: denial.recommendedLimit,
+    otherFeaturesRemain: denial.otherFeaturesRemain,
   };
 }
 

@@ -3,6 +3,7 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import type { ReactNode } from "react";
 
+import { UsageThresholdWatcher } from "@/components/billing/usage-threshold-watcher";
 import { PushProvider } from "@/components/push/push-provider";
 import { ThemeProvider, useTheme } from "@/components/theme/theme-provider";
 import { getAtlasClerkAppearance } from "@/lib/clerk/appearance";
@@ -29,6 +30,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
     <ThemeProvider>
       <ThemedClerkProvider>
         <PushProvider />
+        <UsageThresholdWatcher />
         {children}
       </ThemedClerkProvider>
     </ThemeProvider>

@@ -4,6 +4,7 @@ import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+import { UsageRemainingHint } from "@/components/billing/usage-remaining-hint";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
@@ -580,6 +581,7 @@ export function WordPressConnectionSettings() {
                   </div>
                 </div>
 
+                <UsageRemainingHint meterId="wordpressPosts" />
                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <Button
                     variant="secondary"

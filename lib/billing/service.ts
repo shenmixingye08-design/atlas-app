@@ -8,6 +8,7 @@ import { applySubscriptionFromStripe, getUserSubscriptionView } from "./subscrip
 import { isStripeLiveMode } from "./stripe/checkout";
 import { getStripeSecretDiagnostics } from "./stripe/config";
 import { getUserUsageLimitSummary } from "./usage/service";
+import { buildUsageAwarenessView } from "./usage-awareness/view";
 import type { UserBillingSummary } from "./types";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 
@@ -21,10 +22,16 @@ export async function getUserBillingSummary(
   const plan = getPlanDefinition(subscription.planId);
   const secretDiagnostics = getStripeSecretDiagnostics();
   const notifications = await listUserBillingNotifications(userId);
+  const usageAwareness = buildUsageAwarenessView({
+    usage,
+    catalog: listPlanDefinitions(),
+    subscribedPlanId: subscription.planId,
+  });
 
   return {
     subscription,
     usage,
+    usageAwareness,
     plan,
     stripeLiveMode: isStripeLiveMode(),
     secretConfigured: secretDiagnostics.secretConfigured,

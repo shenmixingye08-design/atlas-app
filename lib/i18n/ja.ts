@@ -2138,7 +2138,7 @@ export const ui = {
     settingsLinkTitle: "プラン・請求",
     settingsLinkHint: "プラン変更、利用量、請求情報の管理",
     currentPlan: "現在のプラン",
-    usageTitle: "利用状況",
+    usageTitle: "今月の利用状況",
     remainingTitle: "残り回数",
     aiRuns: "AI利用",
     aiUsageDetailTitle: "AI利用の内訳",

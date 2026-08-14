@@ -1,3 +1,5 @@
+import { notifyBillingUsageChanged } from "@/lib/billing/refresh-events";
+
 import type {
   WordPressCategory,
   WordPressConnectInput,
@@ -93,6 +95,9 @@ export async function createWordPressPostClient(
   const body = await parseJson<WordPressPostResult>(response);
   if (!body) {
     return { status: "error", message: "WordPressへの投稿に失敗しました" };
+  }
+  if (body.status === "posted") {
+    notifyBillingUsageChanged();
   }
   return body;
 }
