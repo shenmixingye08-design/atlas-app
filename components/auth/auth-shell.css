@@ -1,6 +1,18 @@
 /**
- * Auth pages only. Pins Clerk's cardBox to the decorative frame so both
- * share one centered column. Do not import from ClerkProvider / UserButton.
+ * Auth pages only. Centers the live Clerk card on the decorative frame.
+ * Do not import from ClerkProvider / UserButton.
+ *
+ * Production Clerk DOM (measured):
+ *   .auth-card-frame
+ *     > .cl-rootBox.cl-signIn-root / .cl-signUp-root
+ *       > .cl-cardBox
+ *         > .cl-card
+ *         > .cl-footer
+ *
+ * Do not stretch Clerk to the frame width. Keep its natural card size and
+ * share one center axis. Clerk internals still paint a default card shadow
+ * even when appearance asks for shadow-none; that shadow is what made the
+ * inner card look shifted right after PR #321.
  */
 
 .auth-shell-column {
@@ -13,20 +25,33 @@
 
 .auth-card-frame {
   box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  justify-items: center;
   width: 100%;
   min-width: 0;
 }
 
+.auth-card-frame > * {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  margin-inline: auto;
+  justify-self: center;
+}
+
 .auth-card-frame .cl-rootBox,
 .auth-card-frame .cl-cardBox,
-.auth-card-frame .cl-card,
-.auth-card-frame .cl-main,
-.auth-card-frame .cl-scrollBox {
+.auth-card-frame .cl-card {
   box-sizing: border-box !important;
-  width: 100% !important;
+  width: auto !important;
   max-width: 100% !important;
   min-width: 0 !important;
   margin-inline: auto !important;
+  left: auto !important;
+  right: auto !important;
+  justify-self: center !important;
+  box-shadow: none !important;
 }
 
 .auth-card-frame .cl-socialButtons,
