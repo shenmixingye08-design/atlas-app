@@ -14,7 +14,7 @@ export type HandleAutomationNlResult =
   | {
       ok: true;
       message: string;
-      frequency?: "daily" | "weekly" | "monthly";
+      frequency?: "daily" | "weekly" | "monthly" | "condition";
       automation: Automation | null;
       code?: string;
     }

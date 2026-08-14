@@ -7,7 +7,7 @@ import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
 import { cn } from "@/lib/design-system/cn";
 
 export const HOME_ONE_TIME_HREF = "/workspace";
-export const HOME_AUTOMATION_HREF = "/automations/new";
+export const HOME_AUTOMATION_HREF = `/workspace?assignment=${encodeURIComponent("毎朝8時にX投稿して")}`;
 
 const ONE_TIME_EXAMPLES = [
   "Word",

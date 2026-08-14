@@ -19,7 +19,6 @@ import {
   formatFirstSuccessCopy,
   formatHistoryStatus,
   formatUserDateTime,
-  formatUserNextRun,
   resolveAutomationUserStatus,
 } from "@/lib/automations/ux";
 import { ui } from "@/lib/i18n";
