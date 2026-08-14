@@ -69,7 +69,7 @@ export function AutomationFirstBottomNav() {
       <nav
         aria-label="メインメニュー"
         className="fixed inset-x-0 bottom-0 z-[var(--z-nav)] border-t border-[var(--border)] bg-[var(--card-glass)] backdrop-blur-xl md:hidden"
-        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+        style={{ paddingBottom: "var(--safe-area-bottom)" }}
       >
         <ul className="mx-auto flex max-w-lg items-stretch justify-around px-0.5 pt-1">
           {ITEMS.map((item) => {

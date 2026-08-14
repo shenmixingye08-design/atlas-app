@@ -57,8 +57,7 @@ export function AtlasAppShell({
           className={cn(
             "app-shell-main mx-auto w-full px-4 pt-[calc(var(--mobile-top-bar-height)+1rem)] sm:px-6 md:px-10 md:pt-[calc(3.5rem+1.5rem)] animate-page",
             MAIN_WIDTH[width],
-            afNav &&
-              "pb-[calc(var(--bottom-nav-height)+var(--safe-area-bottom)+1.5rem)] md:pb-10",
+            afNav && "app-shell-main--with-bottom-nav md:pb-10",
           )}
         >
           {children}
