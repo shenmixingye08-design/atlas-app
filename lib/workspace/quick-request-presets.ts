@@ -13,6 +13,11 @@ export type QuickRequestPreset = {
  */
 export const QUICK_REQUEST_PRESETS: readonly QuickRequestPreset[] = [
   {
+    id: "x-daily-auto",
+    label: "毎朝のX投稿",
+    prompt: "毎朝8時にX投稿して",
+  },
+  {
     id: "x-post",
     label: "X投稿を作る",
     prompt:

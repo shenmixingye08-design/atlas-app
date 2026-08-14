@@ -301,8 +301,6 @@ export function CreateAutomationForm({
             <option value="daily">{ui.habits.frequencyDaily}</option>
             <option value="weekly">{ui.habits.frequencyWeekly}</option>
             <option value="monthly">{ui.habits.frequencyMonthly}</option>
-            <option value="weekday">曜日指定</option>
-            <option value="custom">カスタム</option>
           </select>
         </div>
 
@@ -338,15 +336,6 @@ export function CreateAutomationForm({
           />
         )}
 
-        {form.frequency === "custom" && (
-          <Input
-            label="カスタムCron"
-            value={form.customCron}
-            onChange={(e) => update("customCron", e.target.value)}
-            placeholder="分 時 日 月 曜日"
-          />
-        )}
-
         <Input
           label={ui.habits.fieldTime}
           type="time"
@@ -357,20 +346,6 @@ export function CreateAutomationForm({
             update("minute", minute ?? 0);
           }}
         />
-
-        <div>
-          <label className="mb-2 block text-sm text-[var(--foreground-muted)]">
-            タイムゾーン
-          </label>
-          <select
-            value={form.timezone}
-            onChange={(e) => update("timezone", e.target.value)}
-            className="h-11 w-full rounded-[var(--radius-lg)] bg-[var(--background-subtle)] px-4 text-base text-foreground focus:outline-none focus:ring-2 focus:ring-accent/25"
-          >
-            <option value="Asia/Tokyo">Asia/Tokyo</option>
-            <option value="UTC">UTC</option>
-          </select>
-        </div>
 
         <Input
           label={ui.habits.fieldStartDate}

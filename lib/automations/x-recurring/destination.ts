@@ -3,6 +3,7 @@ import {
   normalizeExecutionFlow,
   toggleExecutionFlowStep,
 } from "@/lib/automations/execution-flow";
+import { describeApprovalMethod } from "@/lib/automations/ux";
 import type {
   Automation,
   AutomationDestination,
@@ -67,16 +68,5 @@ export function shouldAwaitXPostApproval(automation: Automation): boolean {
 }
 
 export function approvalModeLabel(level: AutomationExecutionLevel): string {
-  switch (level) {
-    case "full_auto":
-      return "完全自動投稿";
-    case "approve_then_run":
-      return "投稿前に確認";
-    case "draft_save":
-      return "下書きのみ作成";
-    case "suggest_only":
-      return "作成前に確認";
-    default:
-      return level;
-  }
+  return describeApprovalMethod(level).label;
 }

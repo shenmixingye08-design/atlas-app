@@ -975,11 +975,11 @@ export const ui = {
     emptyConfigured: "自動化が設定されていません",
     futureTitle: "将来対応予定",
     futureDescription:
-      "Cron、Webhook、メール、カレンダー連携に対応できるよう、スケジュールとトリガーを拡張可能な設計にしています。",
+      "メールやカレンダーなど、繰り返しの仕事をまとめて任せられるようにしています。",
     nextExecution: "次回実行",
     nextRun: (time: string) => `次回: ${time}`,
-    disabled: "停止中",
-    futureChips: ["Cron", "Webhook", "メール", "カレンダー"] as const,
+    disabled: "一時停止中",
+    futureChips: ["メール", "カレンダー"] as const,
   },
 
   entrustedJobs: {
@@ -1009,10 +1009,10 @@ export const ui = {
     manualAlsoAvailable: "必要なときに手動実行も可能",
     comingSoon: "順次対応",
     viewDetail: "詳細を見る",
-    emptyTitle: "まだ自動化はありません",
+    emptyTitle: "繰り返しの仕事を自動化できます",
     emptyDescription:
-      "繰り返しの仕事をMINERVOTへ引き継ぐと、次回以降の負担を減らせます。",
-    emptyCta: "自動化を作成",
+      "例：「毎朝8時にX投稿して」と入力するだけで登録できます。",
+    emptyCta: "例を使って始める",
     registerHere: "自動化を作成",
     purpose: "仕事の目的",
     procedure: "実行手順",

@@ -40,10 +40,13 @@ import {
   resolveAutomationIdTarget,
 } from "@/lib/automations/canonical";
 import { fetchFeatureAvailability } from "@/lib/feature-flags/client";
+import { automationToVisualStatus } from "@/lib/automation-first/automation-status";
 import {
-  automationToVisualStatus,
-  formatRunInstant,
-} from "@/lib/automation-first/automation-status";
+  AUTOMATION_FIRST_EXAMPLE,
+  formatUserDateTime,
+  formatUserNextRun,
+  resolveAutomationUserStatus,
+} from "@/lib/automations/ux";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Button } from "@/components/ui/button";
@@ -352,12 +355,20 @@ export function AutomationsDashboard() {
     await loadAutomations();
   };
 
-  const openCreate = () => {
+  const openCreate = (example?: string) => {
     if (v2Enabled) {
-      router.push("/automations/new");
+      router.push(
+        example
+          ? `/workspace?assignment=${encodeURIComponent(example)}`
+          : "/automations/new",
+      );
       return;
     }
-    setCreateInitialState(defaultAutomationFormState());
+    setCreateInitialState(
+      example
+        ? defaultAutomationFormState(prefillFromAssignment(example))
+        : defaultAutomationFormState(),
+    );
     setShowCreate(true);
   };
 
@@ -416,9 +427,11 @@ export function AutomationsDashboard() {
       .map((item) => ({
         id: `next-${item.id}`,
         title: item.name,
-        meta: item.nextRun
-          ? `次回 ${formatRunInstant(item.nextRun)}`
-          : "次回未定",
+        meta: `次回 ${formatUserNextRun({
+          nextRun: item.nextRun,
+          enabled: item.enabled,
+          status: resolveAutomationUserStatus(item),
+        })}`,
         tone: "next" as const,
       })),
     ...automations
@@ -452,7 +465,7 @@ export function AutomationsDashboard() {
             <Button
               variant="primary"
               className="btn-brand min-h-[var(--touch-target)] shadow-[var(--shadow-cta)]"
-              onClick={openCreate}
+              onClick={() => openCreate()}
             >
               新しい自動化を作る
             </Button>
@@ -475,7 +488,7 @@ export function AutomationsDashboard() {
             <Button
               variant="primary"
               className="btn-brand min-h-[48px] shadow-[var(--shadow-cta)]"
-              onClick={openCreate}
+              onClick={() => openCreate()}
             >
               {ui.entrustedJobs.registerHere}
             </Button>
@@ -629,7 +642,7 @@ export function AutomationsDashboard() {
           ) : null}
           {automationsV2.length === 0 && orphanV1Automations.length === 0 ? (
             <p className="text-sm text-[var(--muted)]">
-              まだ自動化がありません。新しい自動化を作成してください。
+              繰り返しの仕事を自動化できます。例：「{AUTOMATION_FIRST_EXAMPLE}」
             </p>
           ) : null}
           <ul className="space-y-4">
@@ -751,17 +764,23 @@ export function AutomationsDashboard() {
               <p className="mx-auto mt-2 max-w-md text-sm text-[var(--text-secondary)]">
                 {ui.entrustedJobs.emptyDescription}
               </p>
-              <p className="mx-auto mt-2 max-w-sm text-[length:var(--text-caption)] text-[var(--text-muted)]">
-                おすすめの最初の仕事：朝のメール下書き、またはSNS投稿。
+              <p className="mx-auto mt-3 max-w-sm break-words rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-secondary)]">
+                例：「{AUTOMATION_FIRST_EXAMPLE}」
               </p>
               <div className="mt-5 flex flex-col items-center justify-center gap-3 sm:flex-row">
                 <Button
                   variant="primary"
                   className="btn-brand min-h-[48px] shadow-[var(--shadow-cta)]"
-                  onClick={openCreate}
+                  onClick={() => openCreate(AUTOMATION_FIRST_EXAMPLE)}
                 >
                   {ui.entrustedJobs.emptyCta}
                 </Button>
+                <Link
+                  href={`/workspace?assignment=${encodeURIComponent(AUTOMATION_FIRST_EXAMPLE)}`}
+                  className="inline-flex min-h-[48px] items-center justify-center px-3 text-sm font-medium text-accent"
+                >
+                  お願いするから入力
+                </Link>
               </div>
             </Card>
           ) : dashboardV2 ? (
@@ -779,8 +798,16 @@ export function AutomationsDashboard() {
                   name={automation.name}
                   description={automation.schedule.label}
                   status={automationToVisualStatus(automation)}
-                  nextRunLabel={formatRunInstant(automation.nextRun)}
-                  lastRunLabel={formatRunInstant(automation.lastRun)}
+                  nextRunLabel={formatUserNextRun({
+                    nextRun: automation.nextRun,
+                    enabled: automation.enabled,
+                    status: resolveAutomationUserStatus(automation),
+                  })}
+                  lastRunLabel={
+                    automation.lastRun
+                      ? formatUserDateTime(automation.lastRun)
+                      : "まだありません"
+                  }
                   href={`/automations?id=${encodeURIComponent(automation.id)}`}
                 />
               ))}

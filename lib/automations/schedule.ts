@@ -261,3 +261,99 @@ export function isAutomationDue(
 
   return new Date(automation.nextRun).getTime() <= now.getTime();
 }
+
+function timeLabel(hour: number, minute: number): string {
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+/** Patch an existing schedule without creating a second scheduler. */
+export function patchAutomationSchedule(
+  current: AutomationSchedule,
+  patch: {
+    hour?: number;
+    minute?: number;
+    weekdays?: number[];
+    dayOfWeek?: number;
+    frequency?: "daily" | "weekly" | "monthly" | "weekdays";
+  },
+): AutomationSchedule {
+  if (current.kind !== "schedule") {
+    return current;
+  }
+  const hour = patch.hour ?? current.preset.hour;
+  const minute = patch.minute ?? current.preset.minute;
+  if (patch.frequency === "weekly" && patch.dayOfWeek != null) {
+    const preset: SchedulePreset = {
+      type: "weekly",
+      dayOfWeek: patch.dayOfWeek,
+      hour,
+      minute,
+    };
+    return {
+      kind: "schedule",
+      preset,
+      cron: presetToCron(preset),
+      timezone: current.timezone,
+      label: `毎週${["日", "月", "火", "水", "木", "金", "土"][patch.dayOfWeek]}曜日 ${timeLabel(hour, minute)}`,
+    };
+  }
+  if (patch.frequency === "weekdays" || patch.weekdays) {
+    const weekdays = patch.weekdays ?? [1, 2, 3, 4, 5];
+    const preset: SchedulePreset = {
+      type: "daily",
+      hour,
+      minute,
+      weekdays,
+    };
+    return {
+      kind: "schedule",
+      preset,
+      cron: presetToCron(preset),
+      timezone: current.timezone,
+      label: `平日 ${timeLabel(hour, minute)}`,
+    };
+  }
+  if (patch.frequency === "monthly") {
+    const dayOfMonth =
+      current.preset.type === "monthly" ? current.preset.dayOfMonth : 1;
+    const preset: SchedulePreset = {
+      type: "monthly",
+      dayOfMonth,
+      hour,
+      minute,
+    };
+    return {
+      kind: "schedule",
+      preset,
+      cron: presetToCron(preset),
+      timezone: current.timezone,
+      label: `毎月${dayOfMonth}日 ${timeLabel(hour, minute)}`,
+    };
+  }
+  if (patch.frequency === "daily") {
+    const preset: SchedulePreset = { type: "daily", hour, minute };
+    return {
+      kind: "schedule",
+      preset,
+      cron: presetToCron(preset),
+      timezone: current.timezone,
+      label: `毎日 ${timeLabel(hour, minute)}`,
+    };
+  }
+  const preset = { ...current.preset, hour, minute };
+  const label =
+    preset.type === "daily" && preset.weekdays?.length === 5
+      ? `平日 ${timeLabel(hour, minute)}`
+      : preset.type === "weekly"
+        ? `毎週${["日", "月", "火", "水", "木", "金", "土"][preset.dayOfWeek]}曜日 ${timeLabel(hour, minute)}`
+        : preset.type === "monthly"
+          ? `毎月${preset.dayOfMonth}日 ${timeLabel(hour, minute)}`
+          : `毎日 ${timeLabel(hour, minute)}`;
+  return {
+    kind: "schedule",
+    preset,
+    cron: presetToCron(preset),
+    timezone: current.timezone,
+    label,
+  };
+}

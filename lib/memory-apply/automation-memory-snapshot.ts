@@ -79,7 +79,13 @@ export function readAutomationMemorySnapshot(
   const raw = metadata?.memorySnapshot;
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Partial<AutomationMemorySnapshot>;
-  if (!Array.isArray(row.memoryIds) && !row.appliedPreferences) return null;
+  if (
+    !Array.isArray(row.memoryIds) &&
+    !row.appliedPreferences &&
+    !row.overriddenPreferences
+  ) {
+    return null;
+  }
   return {
     ...EMPTY_AUTOMATION_MEMORY_SNAPSHOT,
     ...row,

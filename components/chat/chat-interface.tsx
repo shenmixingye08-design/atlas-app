@@ -9,6 +9,7 @@ import {
   createAutomationFromNaturalLanguageText,
 } from "@/lib/automations/client";
 import { detectRecurringIntent } from "@/lib/automations/detect-recurring";
+import { parseAutomationNlOperate } from "@/lib/automations/nl-operate";
 import { streamChatResponse } from "@/lib/chat/stream-client";
 import type { ChatMessage } from "@/lib/chat/types";
 import { ui } from "@/lib/i18n";
@@ -87,10 +88,15 @@ export function ChatInterface() {
     try {
       // Phase 1: recurring NL → durable automation (not suggestion-only).
       const recurring = detectRecurringIntent(trimmed);
-      if (recurring.detected) {
+      const operate = parseAutomationNlOperate(trimmed);
+      if (recurring.detected || operate.kind !== "none") {
         try {
           const created = await createAutomationFromNaturalLanguageText(trimmed);
-          if (!created.automation.enabled || !created.automation.nextRun) {
+          if (
+            operate.kind === "none" &&
+            created.automation &&
+            (!created.automation.enabled || !created.automation.nextRun)
+          ) {
             throw new AutomationsClientError({
               message: "自動化は作成されましたが実行予定が未設定です。",
               status: 500,

@@ -4,9 +4,10 @@ import { QUICK_REQUEST_PRESETS } from "./quick-request-presets";
 
 describe("QUICK_REQUEST_PRESETS", () => {
   it("includes the beginner templates with non-empty prompts", () => {
-    expect(QUICK_REQUEST_PRESETS).toHaveLength(6);
+    expect(QUICK_REQUEST_PRESETS).toHaveLength(7);
     const labels = QUICK_REQUEST_PRESETS.map((item) => item.label);
     expect(labels).toEqual([
+      "毎朝のX投稿",
       "X投稿を作る",
       "ブログを書く",
       "営業メール作成",

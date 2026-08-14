@@ -71,7 +71,7 @@ vi.mock("@/lib/automations/create-from-natural-language.server", () => ({
     ok: true,
     frequency: "weekly",
     message:
-      "定期の仕事「定期報告」を登録しました。\nスケジュール: 毎週月曜 09:00（Asia/Tokyo）\n実行範囲: approve_then_run\n次回実行: 2026-08-18T00:00:00.000Z\nMinute Scheduler の次回判定対象になります。",
+      "自動化しました\n毎週月曜日 09:00に先週の仕事をまとめます。\n次回：8月18日（火） 09:00\n実行方法：実行前に確認",
     automation: {
       id: "auto_nl_e2e",
       name: "定期報告",
@@ -145,8 +145,13 @@ describe("commander e2e request flows", () => {
       confirmed: true,
     });
     expect(confirmed.status).toBe("completed");
-    expect(confirmed.result?.finalResponse).toContain("登録しました");
-    expect(confirmed.result?.finalResponse).toContain("Minute Scheduler");
+    expect(confirmed.result?.finalResponse).toContain("自動化しました");
+    expect(confirmed.result?.finalResponse).toContain("次回：");
+    expect(confirmed.result?.finalResponse).not.toContain("Minute Scheduler");
+    expect(confirmed.result?.finalResponse).not.toContain("approve_then_run");
+    expect(confirmed.result?.finalResponse).not.toContain(
+      "2026-08-18T00:00:00.000Z",
+    );
     expect(confirmed.result?.finalResponse).not.toContain(
       "定期実行はまだ開始していません",
     );

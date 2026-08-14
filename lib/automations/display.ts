@@ -52,13 +52,13 @@ export const CONFIRMATION_SCOPE_OPTIONS: {
   },
   {
     level: "approve_then_run",
-    label: "投稿前に確認",
-    hint: "投稿文を用意したあと、投稿前に必ず確認します",
+    label: "実行前に確認",
+    hint: "実行する前に、内容を確認します",
   },
   {
     level: "full_auto",
-    label: "完全自動投稿",
-    hint: "指定時刻に生成し、確認なしでXへ投稿します",
+    label: "自動で実行",
+    hint: "予定の時刻に、確認なしで実行します",
   },
 ];
 
