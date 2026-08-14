@@ -60,12 +60,14 @@ export async function notifyAutomationFailed(
   input: { automationId: string; name: string; error?: string },
 ) {
   if (!userId) return null;
+  const { explainAutomationFailure } = await import("@/lib/automations/ux");
+  const failure = explainAutomationFailure(input.error);
   return await createNotification({
     audience: "user",
     userId,
     type: "automation",
-    title: "処理を完了できませんでした",
-    message: `「${input.name}」の処理を完了できませんでした。内容をご確認ください。`,
+    title: `${input.name}に失敗`,
+    message: `${failure.title}。${failure.body}`,
     relatedTaskId: input.automationId,
     relatedService: "atlas",
     actionUrl: automationActionUrl(input.automationId),
@@ -234,14 +236,14 @@ export async function notifyXRecurringPostFailed(
   },
 ) {
   if (!userId) return null;
+  const { explainAutomationFailure } = await import("@/lib/automations/ux");
+  const failure = explainAutomationFailure(input.errorMessage);
   return await createNotification({
     audience: "user",
     userId,
     type: "error",
-    title: "Xへの定期投稿に失敗しました。対応が必要です",
-    message:
-      input.errorMessage?.trim() ||
-      "Xへの定期投稿に失敗しました。外部連携と実行履歴をご確認ください。",
+    title: failure.title === "実行に失敗しました" ? "X投稿に失敗" : failure.title,
+    message: `${failure.title}。${failure.body}`,
     relatedTaskId: input.executionId,
     relatedService: "x",
     actionUrl: `/automations?id=${encodeURIComponent(input.automationId)}&executionId=${encodeURIComponent(input.executionId)}`,

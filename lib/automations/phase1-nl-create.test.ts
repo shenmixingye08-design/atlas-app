@@ -183,8 +183,10 @@ describe("Phase 1 durable create + scheduler eligibility (A–C, E)", () => {
     }
     expect(result.automation.executionLevel).toBe("approve_then_run");
     expect(isSchedulerDueEligible(result.automation)).toBe(true);
-    expect(result.message).toContain("登録しました");
+    expect(result.message).toContain("自動化しました");
+    expect(result.message).toContain("次回：");
     expect(result.message).not.toContain("まだ開始していません");
+    expect(result.message).not.toMatch(/occurrence|scheduler|cron|nextRunAt|approve_then_run/i);
   });
 
   it("Case B durable: weekly Friday", async () => {
@@ -311,7 +313,10 @@ describe("Phase 1 durable create + scheduler eligibility (A–C, E)", () => {
     expect(result.automation.enabled).toBe(true);
     expect(result.automation.nextRun).toBeTruthy();
     expect(isSchedulerDueEligible(result.automation)).toBe(true);
-    expect(result.message).toContain("登録しました");
+    expect(result.message).toContain("自動化しました");
+    expect(result.message).toContain("Xへ投稿");
+    expect(result.message).toContain("次回：");
+    expect(result.message).not.toMatch(/occurrence|scheduler|cron|nextRunAt|approve_then_run/i);
     expect(result.automationV2Id).toBeUndefined();
   });
 });

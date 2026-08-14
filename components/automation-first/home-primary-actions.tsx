@@ -7,7 +7,7 @@ import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
 import { cn } from "@/lib/design-system/cn";
 
 export const HOME_ONE_TIME_HREF = "/workspace";
-export const HOME_AUTOMATION_HREF = "/automations/new";
+export const HOME_AUTOMATION_HREF = `/workspace?assignment=${encodeURIComponent("毎朝8時にX投稿して")}`;
 
 const ONE_TIME_EXAMPLES = [
   "Word",
@@ -19,11 +19,11 @@ const ONE_TIME_EXAMPLES = [
 ] as const;
 
 const AUTOMATION_EXAMPLES = [
+  "毎朝8時にX投稿して",
   "X投稿",
   "WordPress",
   "予定作成",
   "定期資料",
-  "繰り返し仕事",
 ] as const;
 
 function ExampleChips({ items }: { items: readonly string[] }) {
@@ -144,7 +144,7 @@ export function HomePrimaryActions({ compact = false }: { compact?: boolean }) {
         href={HOME_AUTOMATION_HREF}
         titleId="home-primary-automation"
         title="繰り返し任せる"
-        description="毎日・毎週の仕事を一度設定。次回からMINERVOTが自動で実行します。"
+        description="「毎朝8時にX投稿して」と伝えるだけで登録できます。次回からMINERVOTが実行します。"
         examples={AUTOMATION_EXAMPLES}
         cta="自動化を作る"
         compact={compact}

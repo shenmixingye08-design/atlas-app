@@ -120,14 +120,14 @@ describe("MINERVOT home rendering", () => {
     }
   });
 
-  it("links one-time work to /workspace and repeating work to /automations/new", () => {
+  it("links one-time work to /workspace and repeating work to a filled request", () => {
     const html = renderHome();
     expect(HOME_ONE_TIME_HREF).toBe("/workspace");
-    expect(HOME_AUTOMATION_HREF).toBe("/automations/new");
+    expect(HOME_AUTOMATION_HREF).toContain("/workspace?assignment=");
+    expect(HOME_AUTOMATION_HREF).toContain(encodeURIComponent("毎朝8時にX投稿して"));
     expect(html).toContain(`href="${HOME_ONE_TIME_HREF}"`);
     expect(html).toContain(`href="${HOME_AUTOMATION_HREF}"`);
-    expect(html.match(/href="\/workspace"/g)?.length).toBeGreaterThan(0);
-    expect(html.match(/href="\/automations\/new"/g)?.length).toBeGreaterThan(0);
+    expect(html.match(/href="\/workspace/g)?.length).toBeGreaterThan(1);
   });
 
   it("does not dump zero stats for a new user", () => {

@@ -3,6 +3,7 @@
  * Parse/detect is client-safe; persistence lives in .server.ts.
  */
 
+import { formatUserDateTime } from "@/lib/automations/ux";
 import { detectRecurringIntent } from "./detect-recurring";
 import {
   detectRequiredExternalActions,
@@ -98,20 +99,30 @@ export function formatNaturalLanguageAutomationSuccess(input: {
   executionLevel: string;
   timezone: string;
   appliedPreferenceLabels?: readonly string[];
+  nextRunLabel?: string;
+  actionLabel?: string;
+  approvalLabel?: string;
 }): string {
-  const next =
-    input.nextRun != null
-      ? `次回実行: ${input.nextRun}`
-      : "次回実行: （未設定 — 登録に失敗した可能性があります）";
+  const looksInstant = Boolean(
+    input.nextRun && (/T/.test(input.nextRun) || /Z$/.test(input.nextRun)),
+  );
+  const next = input.nextRunLabel
+    ? `次回：${input.nextRunLabel}`
+    : looksInstant && input.nextRun
+      ? `次回：${formatUserDateTime(input.nextRun, { timeZone: input.timezone })}`
+      : input.nextRun != null
+        ? `次回：${input.nextRun}`
+        : "次回：実行待ち";
+  const action = input.actionLabel ?? input.name;
+  const approval = input.approvalLabel ?? "実行前に確認";
   const lines = [
-    `定期の仕事「${input.name}」を登録しました。`,
-    `スケジュール: ${input.scheduleLabel}（${input.timezone}）`,
-    `実行範囲: ${input.executionLevel}`,
+    "自動化しました",
+    `${input.scheduleLabel}に${action}します。`,
     next,
+    `実行方法：${approval}`,
   ];
   if (input.appliedPreferenceLabels && input.appliedPreferenceLabels.length > 0) {
-    lines.push(`あなたの好みを反映: ${input.appliedPreferenceLabels.join("、")}`);
+    lines.push(`あなたの好みを反映：${input.appliedPreferenceLabels.join("、")}`);
   }
-  lines.push("Minute Scheduler の次回判定対象になります。");
   return lines.join("\n");
 }

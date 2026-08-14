@@ -73,7 +73,7 @@ describe("x recurring destination", () => {
     expect(
       shouldAutoPublishToX(sampleAutomation({ executionLevel: "draft_save" })),
     ).toBe(false);
-    expect(approvalModeLabel("full_auto")).toBe("完全自動投稿");
+    expect(approvalModeLabel("full_auto")).toBe("自動で実行");
   });
 });
 

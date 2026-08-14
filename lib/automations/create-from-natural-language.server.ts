@@ -15,7 +15,6 @@ import {
 
 import { automationService } from "./automation-service";
 import {
-  formatNaturalLanguageAutomationSuccess,
   parseNaturalLanguageAutomation,
   shouldRouteNlToV2ExternalCreate,
 } from "./create-from-natural-language";
@@ -211,27 +210,14 @@ async function createExternalPath(input: {
     requiredExternals: input.parsed.requiredExternals,
   });
 
-  const scheduleLabel =
-    automation.schedule.kind === "schedule"
-      ? automation.schedule.label
-      : "（不明）";
-  const timezone =
-    automation.schedule.kind === "schedule"
-      ? automation.schedule.timezone
-      : "Asia/Tokyo";
+  const { formatRegistrationSuccess } = await import("@/lib/automations/ux");
 
   return {
     ok: true,
     automation,
     automationV2Id: v2.id,
     frequency: input.parsed.frequency,
-    message: formatNaturalLanguageAutomationSuccess({
-      name: automation.name,
-      scheduleLabel,
-      nextRun: automation.nextRun,
-      executionLevel: automation.executionLevel,
-      timezone,
-    }),
+    message: formatRegistrationSuccess(automation),
   };
 }
 
@@ -360,9 +346,9 @@ async function createConditionPath(input: {
     frequency: "condition",
     triggerKind: "condition",
     message: [
-      `条件の仕事「${automation.name}」を登録しました。`,
-      `トリガー: カレンダーに「${title}」が検出されたとき（false→true）`,
-      "スケジュール実行とは別経路です。Minute Scheduler が条件を評価します。",
+      `条件の仕事「${automation.name}」を自動化しました。`,
+      `カレンダーに「${title}」が見つかったときに実行します。`,
+      "実行方法：実行前に確認",
     ].join("\n"),
   };
 }
@@ -576,29 +562,13 @@ export async function createAutomationFromNaturalLanguage(input: {
     };
   }
 
-  const scheduleLabel =
-    stored.schedule.kind === "schedule" ? stored.schedule.label : "（不明）";
-  const timezone =
-    stored.schedule.kind === "schedule"
-      ? stored.schedule.timezone
-      : "Asia/Tokyo";
+  const { formatRegistrationSuccess } = await import("@/lib/automations/ux");
 
   return {
     ok: true,
     automation: stored,
     frequency: parsed.frequency,
-    message: formatNaturalLanguageAutomationSuccess({
-      name: stored.name,
-      scheduleLabel,
-      nextRun: stored.nextRun,
-      executionLevel: stored.executionLevel,
-      timezone,
-      appliedPreferenceLabels: Array.isArray(
-        stored.workflow.metadata?.appliedPreferenceLabels,
-      )
-        ? (stored.workflow.metadata?.appliedPreferenceLabels as string[])
-        : undefined,
-    }),
+    message: formatRegistrationSuccess(stored),
   };
 }
 

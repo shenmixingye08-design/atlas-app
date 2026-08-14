@@ -4,6 +4,7 @@ import { buildRunProgressView } from "@/lib/automation-platform/operations/progr
 import type { AutomationRun } from "@/lib/automation-platform/types";
 import type { RunVisualStatus } from "@/lib/automation-first/status";
 import type { HomeAttentionItem } from "@/lib/automation-first/home-model";
+import { formatUserDateTime } from "@/lib/automations/ux";
 import { formatDateTimeInUserTimeZone } from "@/lib/datetime/display-timezone";
 
 export type HomeTimelineRow = {
@@ -225,8 +226,12 @@ export function buildWeeklyStatsFromRuns(
 }
 
 export function formatNextRunDateTime(iso: string): string {
-  return formatDateTimeInUserTimeZone(iso, {
-    fallback: iso,
-    dateStyle: "medium",
-  });
+  const label = formatUserDateTime(iso);
+  if (label === "実行待ち") {
+    return formatDateTimeInUserTimeZone(iso, {
+      fallback: "—",
+      dateStyle: "medium",
+    });
+  }
+  return label;
 }

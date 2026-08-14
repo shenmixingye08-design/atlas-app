@@ -30,8 +30,9 @@ import { exportDocumentsOnServer } from "@/lib/deliverables/server-document-expo
 import { logWordPipeline } from "@/lib/deliverables/pipeline-log";
 import { runLearningAnalysis } from "@/lib/learning-engine/service";
 import { maybeAutoPostToXAfterCommander } from "@/lib/integrations/x/post/automation";
-import { createAutomationFromNaturalLanguage } from "@/lib/automations/create-from-natural-language.server";
+import { handleAutomationNaturalLanguage } from "@/lib/automations/handle-natural-language.server";
 import { detectRecurringIntent } from "@/lib/automations/detect-recurring";
+import { parseAutomationNlOperate } from "@/lib/automations/nl-operate";
 
 import {
   evaluateCommanderConfirmation,
@@ -190,7 +191,7 @@ async function executeCreateAutomationFromNlRun(input: {
 }): Promise<CommanderRunResult> {
   updateCommanderRun(input.runId, input.userId, { status: "running" });
 
-  const created = await createAutomationFromNaturalLanguage({
+  const created = await handleAutomationNaturalLanguage({
     userId: input.userId,
     text: input.plan.assignment,
   });
@@ -283,11 +284,11 @@ async function executeCreateAutomationFromNlRun(input: {
   });
 
   await notifyWorkCompleted(input.userId, {
-    title: "定期の仕事を登録しました",
+    title: created.automation ? "自動化しました" : "自動化を更新しました",
     message: summary,
     actionUrl: "/automations",
-    relatedTaskId: created.automation.id,
-    deliverableId: created.automation.id,
+    relatedTaskId: created.automation?.id ?? input.runId,
+    deliverableId: created.automation?.id ?? input.runId,
     requestId: input.runId,
   });
 
@@ -324,6 +325,7 @@ async function executeStoredRun(input: {
 
   // Phase 1: recurring NL / habit remember → durable automation (not memory-only).
   if (
+    parseAutomationNlOperate(plan.assignment).kind !== "none" ||
     detectRecurringIntent(plan.assignment).detected ||
     isRememberHabitAssignment(plan.assignment)
   ) {

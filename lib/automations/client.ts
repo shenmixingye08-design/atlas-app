@@ -93,7 +93,7 @@ export type NaturalLanguageAutomationCreated = {
     nextRun: string | null;
     timezone: string | null;
     executionLevel: Automation["executionLevel"];
-  };
+  } | null;
 };
 
 /**
@@ -118,7 +118,7 @@ export async function createAutomationFromNaturalLanguageText(
     automation?: NaturalLanguageAutomationCreated["automation"];
   };
 
-  if (!response.ok || payload.ok !== true || !payload.automation) {
+  if (!response.ok || payload.ok !== true || !payload.message) {
     throw new AutomationsClientError({
       message: payload.error ?? payload.message ?? ui.error.generic,
       status: response.status,
@@ -129,9 +129,9 @@ export async function createAutomationFromNaturalLanguageText(
   notifyBillingUsageChanged();
   return {
     ok: true,
-    message: payload.message ?? "定期の仕事を登録しました。",
+    message: payload.message,
     frequency: payload.frequency ?? "daily",
-    automation: payload.automation,
+    automation: payload.automation ?? null,
   };
 }
 

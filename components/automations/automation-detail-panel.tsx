@@ -3,24 +3,24 @@
 import { useState } from "react";
 
 import type { Automation, AutomationExecutionLevel } from "@/lib/automations/types";
+import { updateAutomation } from "@/lib/automations/client";
+import { patchAutomationSchedule } from "@/lib/automations/schedule";
 import {
-  formatAutomationDateTime,
-  updateAutomation,
-} from "@/lib/automations/client";
-import {
-  CONFIRMATION_SCOPE_OPTIONS,
-  ENTRUSTED_JOB_STATUS_LABELS,
   clampConfirmationLevel,
-  describeMaterialsAndMemory,
-  formatAppliedPreferencesLine,
   describeProcedure,
   flowHasCriticalExternalActions,
-  formatAutomationSuccessRate,
-  getConfirmationScopeLabel,
-  resolveEntrustedJobStatus,
-  resolveScheduleMethod,
 } from "@/lib/automations/display";
-import { formatNextRunDisplay } from "@/lib/automations/form-utils";
+import {
+  AUTOMATION_USER_STATUS_LABEL,
+  buildAutomationPreview,
+  describeApprovalMethod,
+  explainAutomationFailure,
+  formatDeleteConfirm,
+  formatFirstSuccessCopy,
+  formatHistoryStatus,
+  formatUserDateTime,
+  resolveAutomationUserStatus,
+} from "@/lib/automations/ux";
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
 import { Button } from "@/components/ui/button";
@@ -58,9 +58,29 @@ export function AutomationDetailPanel({
   const [assignment, setAssignment] = useState(automation.workflow.assignment);
   const [savingEdit, setSavingEdit] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [hourInput, setHourInput] = useState(() => {
+    if (automation.schedule.kind !== "schedule") return "09:00";
+    const { hour, minute } = automation.schedule.preset;
+    return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  });
+  const [frequencyInput, setFrequencyInput] = useState(() => {
+    if (automation.schedule.kind !== "schedule") return "daily";
+    const preset = automation.schedule.preset;
+    if (preset.type === "daily" && preset.weekdays?.length === 5) return "weekdays";
+    return preset.type;
+  });
+  const [weekdayInput, setWeekdayInput] = useState(() =>
+    automation.schedule.kind === "schedule" &&
+    automation.schedule.preset.type === "weekly"
+      ? String(automation.schedule.preset.dayOfWeek)
+      : "1",
+  );
+  const [lengthOverride, setLengthOverride] = useState("");
+  const [emojiOverride, setEmojiOverride] = useState("");
+  const [hashtagOverride, setHashtagOverride] = useState("");
 
-  const status = resolveEntrustedJobStatus(automation);
-  const schedule = resolveScheduleMethod(automation.schedule);
+  const status = resolveAutomationUserStatus(automation);
+  const preview = buildAutomationPreview(automation);
   const isXDestination = automation.destination === "x";
   const critical =
     !isXDestination && flowHasCriticalExternalActions(automation.executionFlow);
@@ -91,14 +111,72 @@ export function AutomationDetailPanel({
 
   const handleSaveEdit = async () => {
     if (!name.trim() || !assignment.trim()) return;
+    const [hourText, minuteText] = hourInput.split(":");
+    const hour = Number(hourText);
+    const minute = Number(minuteText ?? "0");
+    if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+      setLevelError("時刻を正しく入力してください。");
+      return;
+    }
     setSavingEdit(true);
     try {
+      const override: Record<string, string | number> = {};
+      if (lengthOverride === "short" || lengthOverride === "long") {
+        override.length = lengthOverride;
+      }
+      if (emojiOverride === "none" || emojiOverride === "few") {
+        override.emoji = emojiOverride;
+      }
+      if (hashtagOverride === "none") {
+        override.hashtags = "none";
+        override.hashtagsMax = 0;
+      } else if (hashtagOverride === "2") {
+        override.hashtags = "limited";
+        override.hashtagsMax = 2;
+      }
+      const previousSnapshot =
+        automation.workflow.metadata?.memorySnapshot &&
+        typeof automation.workflow.metadata.memorySnapshot === "object"
+          ? (automation.workflow.metadata.memorySnapshot as Record<string, unknown>)
+          : {};
       const updated = await updateAutomation(automation.id, {
         name: name.trim(),
         description: description.trim(),
+        schedule: patchAutomationSchedule(automation.schedule, {
+          hour,
+          minute: Number.isInteger(minute) ? minute : 0,
+          frequency:
+            frequencyInput === "weekdays" ||
+            frequencyInput === "daily" ||
+            frequencyInput === "weekly" ||
+            frequencyInput === "monthly"
+              ? frequencyInput
+              : undefined,
+          dayOfWeek:
+            frequencyInput === "weekly" ? Number(weekdayInput) : undefined,
+          weekdays: frequencyInput === "weekdays" ? [1, 2, 3, 4, 5] : undefined,
+        }),
         workflow: {
           ...automation.workflow,
           assignment: assignment.trim(),
+          metadata: {
+            ...(automation.workflow.metadata ?? {}),
+            ...(Object.keys(override).length > 0
+              ? {
+                  memoryOverrides: {
+                    ...((automation.workflow.metadata?.memoryOverrides as
+                      | Record<string, unknown>
+                      | undefined) ?? {}),
+                    ...override,
+                  },
+                  memorySnapshot: {
+                    ...previousSnapshot,
+                    overriddenPreferences: override,
+                    source: "automation_override",
+                  },
+                }
+              : {}),
+          },
         },
       });
       onUpdated(updated);
@@ -139,17 +217,17 @@ export function AutomationDetailPanel({
             <div className="mt-2">
               <StatusChip
                 status={
-                  status === "running"
+                  status === "waiting"
                     ? "running"
-                    : status === "completed"
-                      ? "completed"
-                      : status === "error"
-                        ? "error"
+                    : status === "failed" || status === "needs_attention"
+                      ? "error"
+                      : status === "awaiting_approval" || status === "retrying"
+                        ? "warning"
                         : status === "paused"
                           ? "waiting"
                           : "info"
                 }
-                label={ENTRUSTED_JOB_STATUS_LABELS[status]}
+                label={AUTOMATION_USER_STATUS_LABEL[status]}
               />
             </div>
           </div>
@@ -159,6 +237,30 @@ export function AutomationDetailPanel({
         </div>
 
         <div className="mt-8 space-y-7">
+          <section className="space-y-2 rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-4 py-3">
+            <h3 className="text-sm font-semibold text-foreground">自動化内容</h3>
+            <ul className="space-y-1 text-sm text-[var(--text-secondary)]">
+              <li>{preview.action}</li>
+              <li>{preview.frequency}</li>
+              <li>次回：{preview.nextRunLabel}</li>
+              <li>実行方法：{preview.approvalLabel}</li>
+              {preview.memoryLabels.length > 0 ? (
+                <li>
+                  あなたの好みを反映：{preview.memoryLabels.join("、")}
+                </li>
+              ) : null}
+              {preview.overrideLabels.map((label) => (
+                <li key={label}>{label}</li>
+              ))}
+            </ul>
+          </section>
+
+          {formatFirstSuccessCopy(automation) ? (
+            <p className="text-sm text-[var(--text-secondary)]">
+              {formatFirstSuccessCopy(automation)}
+            </p>
+          ) : null}
+
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-foreground">
               {ui.entrustedJobs.purpose}
@@ -193,47 +295,12 @@ export function AutomationDetailPanel({
             </p>
           </section>
 
-          <section className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-4 py-3">
-              <p className="text-xs text-[var(--text-muted)]">
-                {ui.entrustedJobs.materials}
-              </p>
-              <p className="mt-1 text-sm font-medium text-foreground">
-                {describeMaterialsAndMemory(automation)}
-              </p>
-            </div>
-            <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-4 py-3">
-              <p className="text-xs text-[var(--text-muted)]">
-                {ui.entrustedJobs.workMemory}
-              </p>
-              <p className="mt-1 text-sm font-medium text-foreground">
-                {ui.entrustedJobs.workMemoryHint}
-              </p>
-            </div>
-          </section>
-
-          {formatAppliedPreferencesLine(automation) ? (
-            <section className="space-y-2">
-              <h3 className="text-sm font-semibold text-foreground">
-                {ui.entrustedJobs.appliedPreferences}
-              </h3>
-              <p className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-3 text-sm text-[var(--text-secondary)]">
-                {formatAppliedPreferencesLine(automation)}
-              </p>
-            </section>
-          ) : null}
-
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-foreground">
               {ui.entrustedJobs.conditions}
             </h3>
             <p className="text-sm text-[var(--text-secondary)]">
-              {schedule.supported ? schedule.label : ui.entrustedJobs.comingSoon}
-              {" · "}
-              {ui.entrustedJobs.nextRun}:{" "}
-              {automation.enabled
-                ? formatAutomationDateTime(automation.nextRun)
-                : "—"}
+              {preview.frequency} · 次回：{preview.nextRunLabel}
             </p>
           </section>
 
@@ -247,7 +314,10 @@ export function AutomationDetailPanel({
               </p>
             )}
             <div className="space-y-2" role="radiogroup">
-              {CONFIRMATION_SCOPE_OPTIONS.map((option) => {
+              {([
+                { level: "approve_then_run" as const, ...describeApprovalMethod("approve_then_run") },
+                { level: "full_auto" as const, ...describeApprovalMethod("full_auto") },
+              ]).map((option) => {
                 const disabled =
                   savingLevel ||
                   (option.level === "full_auto" && critical);
@@ -288,7 +358,7 @@ export function AutomationDetailPanel({
             </div>
             <p className="text-xs text-[var(--text-muted)]">
               {ui.entrustedJobs.currentConfirmation}:{" "}
-              {getConfirmationScopeLabel(automation.executionLevel)}
+              {describeApprovalMethod(automation.executionLevel).label}
             </p>
             {levelError && (
               <p className="text-sm text-[var(--error)]" role="alert">
@@ -305,53 +375,19 @@ export function AutomationDetailPanel({
             <h3 className="text-sm font-semibold text-foreground">
               {ui.entrustedJobs.runHistory}
             </h3>
-            {isXDestination && (
-              <p className="text-xs text-[var(--text-secondary)]">
-                投稿先: X / 仕事ID: {automation.id}
-              </p>
-            )}
             <dl className="grid gap-2 text-sm sm:grid-cols-2">
               <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
-                <dt className="text-xs text-[var(--text-muted)]">
-                  {ui.entrustedJobs.lastRun}
-                </dt>
+                <dt className="text-xs text-[var(--text-muted)]">前回</dt>
                 <dd className="mt-1 font-medium text-foreground">
-                  {formatAutomationDateTime(automation.lastRun)}
+                  {automation.lastRun
+                    ? formatUserDateTime(automation.lastRun)
+                    : "まだありません"}
                 </dd>
               </div>
               <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
-                <dt className="text-xs text-[var(--text-muted)]">
-                  {ui.entrustedJobs.nextRun}
-                </dt>
+                <dt className="text-xs text-[var(--text-muted)]">次回</dt>
                 <dd className="mt-1 font-medium text-foreground">
-                  {automation.enabled
-                    ? formatNextRunDisplay(automation.nextRun)
-                    : "—"}
-                </dd>
-              </div>
-              <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
-                <dt className="text-xs text-[var(--text-muted)]">
-                  {ui.entrustedJobs.failureCount}
-                </dt>
-                <dd className="mt-1 font-medium text-foreground">
-                  {automation.failureCount ?? 0}
-                </dd>
-              </div>
-              <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2">
-                <dt className="text-xs text-[var(--text-muted)]">
-                  {ui.entrustedJobs.successRate}
-                </dt>
-                <dd className="mt-1 font-medium text-foreground">
-                  {formatAutomationSuccessRate(automation)}
-                </dd>
-              </div>
-              <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 sm:col-span-2">
-                <dt className="text-xs text-[var(--text-muted)]">
-                  {ui.entrustedJobs.statusLabel}
-                </dt>
-                <dd className="mt-1 font-medium text-foreground">
-                  {ENTRUSTED_JOB_STATUS_LABELS[status]}
-                  {!automation.enabled ? " / OFF" : " / ON"}
+                  {preview.nextRunLabel}
                 </dd>
               </div>
             </dl>
@@ -367,59 +403,35 @@ export function AutomationDetailPanel({
                     id={`execution-${entry.id}`}
                     className="space-y-2 rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-3 text-sm text-[var(--text-secondary)]"
                   >
-                    {entry.status === "completed" && entry.xPostUrl ? (
-                      <>
-                        <p className="font-medium text-foreground">
-                          Xへの投稿が完了しました
-                        </p>
-                        <p>投稿日時: {formatNextRunDisplay(entry.completedAt)}</p>
-                        {entry.generatedText ? (
-                          <p className="whitespace-pre-wrap">
-                            投稿内容: {entry.generatedText}
+                    {(() => {
+                      const history = formatHistoryStatus(entry);
+                      return (
+                        <>
+                          <p className="font-medium text-foreground">
+                            {formatUserDateTime(
+                              entry.completedAt || entry.startedAt,
+                            )}{" "}
+                            · {history.label}
                           </p>
-                        ) : null}
-                        <a
-                          href={entry.xPostUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-accent underline-offset-2 hover:underline"
-                        >
-                          Xで投稿を見る
-                        </a>
-                      </>
-                    ) : entry.status === "failed" ? (
-                      <>
-                        <p className="font-medium text-foreground">
-                          Xへの投稿に失敗しました
-                        </p>
-                        <p>原因: {entry.error ?? "不明なエラー"}</p>
-                        <p>
-                          対応:{" "}
-                          {entry.errorCode === "x_not_connected" ||
-                          entry.errorCode === "x_reconnect_required" ||
-                          entry.errorCode === "x_missing_access_token"
-                            ? "外部連携画面からXを再連携してください"
-                            : "実行内容と外部連携設定をご確認ください"}
-                        </p>
-                      </>
-                    ) : entry.status === "awaiting_approval" ? (
-                      <>
-                        <p className="font-medium text-foreground">
-                          投稿前の確認待ちです
-                        </p>
-                        <p>予定日時: {formatNextRunDisplay(entry.scheduledAt)}</p>
-                        {entry.generatedText ? (
-                          <p className="whitespace-pre-wrap">
-                            投稿予定文章: {entry.generatedText}
-                          </p>
-                        ) : null}
-                      </>
-                    ) : (
-                      <>
-                        {formatAutomationDateTime(entry.completedAt)} — 成功
-                        {entry.error ? `（${entry.error}）` : ""}
-                      </>
-                    )}
+                          <p>{history.detail}</p>
+                          {entry.generatedText ? (
+                            <p className="whitespace-pre-wrap">
+                              内容: {entry.generatedText}
+                            </p>
+                          ) : null}
+                          {entry.xPostUrl ? (
+                            <a
+                              href={entry.xPostUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-accent underline-offset-2 hover:underline"
+                            >
+                              投稿を見る
+                            </a>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                   </li>
                 ))
               )}
@@ -432,7 +444,17 @@ export function AutomationDetailPanel({
             </h3>
             {automation.lastError ? (
               <p className="rounded-[var(--radius-lg)] border border-[var(--status-error)]/20 bg-[var(--status-error-bg)] px-3 py-2 text-sm text-[var(--status-error)]">
-                {automation.lastError}
+                {explainAutomationFailure(
+                  automation.lastError,
+                  automation.runHistory?.[0]?.errorCode,
+                ).title}
+                。
+                {
+                  explainAutomationFailure(
+                    automation.lastError,
+                    automation.runHistory?.[0]?.errorCode,
+                  ).body
+                }
               </p>
             ) : (
               <p className="text-sm text-[var(--text-muted)]">
@@ -467,6 +489,46 @@ export function AutomationDetailPanel({
                 />
               </label>
               <label className="block space-y-1 text-sm">
+                <span className="text-[var(--text-secondary)]">時刻</span>
+                <input
+                  type="time"
+                  value={hourInput}
+                  onChange={(e) => setHourInput(e.target.value)}
+                  className="h-11 w-full rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 text-foreground"
+                />
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="text-[var(--text-secondary)]">頻度</span>
+                <select
+                  value={frequencyInput}
+                  onChange={(e) => setFrequencyInput(e.target.value)}
+                  className="h-11 w-full rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 text-foreground"
+                >
+                  <option value="daily">毎日</option>
+                  <option value="weekdays">平日</option>
+                  <option value="weekly">毎週</option>
+                  <option value="monthly">毎月</option>
+                </select>
+              </label>
+              {frequencyInput === "weekly" ? (
+                <label className="block space-y-1 text-sm">
+                  <span className="text-[var(--text-secondary)]">曜日</span>
+                  <select
+                    value={weekdayInput}
+                    onChange={(e) => setWeekdayInput(e.target.value)}
+                    className="h-11 w-full rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 text-foreground"
+                  >
+                    {["日", "月", "火", "水", "木", "金", "土"].map(
+                      (label, index) => (
+                        <option key={label} value={String(index)}>
+                          {label}曜日
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </label>
+              ) : null}
+              <label className="block space-y-1 text-sm">
                 <span className="text-[var(--text-secondary)]">
                   {ui.habits.fieldAssignment}
                 </span>
@@ -474,8 +536,47 @@ export function AutomationDetailPanel({
                   value={assignment}
                   onChange={(e) => setAssignment(e.target.value)}
                   rows={4}
-                  className="w-full rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-foreground"
+                  className="min-h-11 w-full rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-foreground"
                 />
+              </label>
+              <p className="text-xs text-[var(--text-muted)]">
+                この自動化だけ変える（覚えている好みはそのまま）
+              </p>
+              <label className="block space-y-1 text-sm">
+                <span className="text-[var(--text-secondary)]">文章</span>
+                <select
+                  value={lengthOverride}
+                  onChange={(e) => setLengthOverride(e.target.value)}
+                  className="h-11 w-full rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 text-foreground"
+                >
+                  <option value="">覚えている好みのまま</option>
+                  <option value="short">この自動化では短め</option>
+                  <option value="long">この自動化では長め</option>
+                </select>
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="text-[var(--text-secondary)]">絵文字</span>
+                <select
+                  value={emojiOverride}
+                  onChange={(e) => setEmojiOverride(e.target.value)}
+                  className="h-11 w-full rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 text-foreground"
+                >
+                  <option value="">覚えている好みのまま</option>
+                  <option value="few">この自動化では少なめ</option>
+                  <option value="none">この自動化ではなし</option>
+                </select>
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="text-[var(--text-secondary)]">ハッシュタグ</span>
+                <select
+                  value={hashtagOverride}
+                  onChange={(e) => setHashtagOverride(e.target.value)}
+                  className="h-11 w-full rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 text-foreground"
+                >
+                  <option value="">覚えている好みのまま</option>
+                  <option value="2">この自動化では最大2個</option>
+                  <option value="none">この自動化ではなし</option>
+                </select>
               </label>
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -539,7 +640,7 @@ export function AutomationDetailPanel({
             isLoading={deleting}
             onClick={() => {
               if (!onDelete) return;
-              if (!window.confirm(ui.entrustedJobs.deleteConfirm)) return;
+              if (!window.confirm(formatDeleteConfirm(automation))) return;
               setDeleting(true);
               void Promise.resolve(onDelete(automation.id)).finally(() =>
                 setDeleting(false),

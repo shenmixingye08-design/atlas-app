@@ -2,19 +2,12 @@
 
 import type { Automation } from "@/lib/automations/types";
 import {
-  formatAutomationDateTime,
-  formatAutomationTimestamp,
-} from "@/lib/automations/client";
-import {
-  ENTRUSTED_JOB_STATUS_LABELS,
-  describeMaterialsAndMemory,
-  formatAppliedPreferencesLine,
-  getConfirmationScopeLabel,
-  resolveEntrustedJobStatus,
-  resolveScheduleMethod,
-  formatAutomationSuccessRate,
-  type EntrustedJobStatus,
-} from "@/lib/automations/display";
+  AUTOMATION_USER_STATUS_LABEL,
+  buildAutomationPreview,
+  explainAutomationFailure,
+  formatFirstSuccessCopy,
+  resolveAutomationUserStatus,
+} from "@/lib/automations/ux";
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
 import { Card } from "@/components/ui/card";
@@ -27,19 +20,17 @@ type AutomationCardProps = {
   isUpdating: boolean;
 };
 
-function formatSuccessRate(automation: Automation): string {
-  return formatAutomationSuccessRate(automation);
-}
-
-function statusToChip(status: EntrustedJobStatus): StatusVariant {
+function statusToChip(
+  status: ReturnType<typeof resolveAutomationUserStatus>,
+): StatusVariant {
   switch (status) {
-    case "running":
+    case "waiting":
       return "running";
-    case "completed":
-      return "completed";
-    case "error":
+    case "failed":
+    case "needs_attention":
       return "error";
-    case "needs_review":
+    case "awaiting_approval":
+    case "retrying":
       return "warning";
     case "paused":
       return "waiting";
@@ -54,158 +45,101 @@ export function AutomationCard({
   onToggleEnabled,
   isUpdating,
 }: AutomationCardProps) {
-  const status = resolveEntrustedJobStatus(automation);
-  const schedule = resolveScheduleMethod(automation.schedule);
+  const preview = buildAutomationPreview(automation);
+  const status = resolveAutomationUserStatus(automation);
+  const firstSuccess = formatFirstSuccessCopy(automation);
+  const failure =
+    status === "failed" || status === "needs_attention"
+      ? explainAutomationFailure(
+          automation.lastError,
+          automation.runHistory?.[0]?.errorCode,
+        )
+      : null;
 
   return (
     <Card
       padding="lg"
       className={cn(
-        "border border-[var(--border-subtle)] bg-[var(--card)] transition-shadow hover:shadow-[var(--shadow-md)]",
+        "overflow-hidden border border-[var(--border-subtle)] bg-[var(--card)]",
         !automation.enabled && "opacity-80",
       )}
     >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <button
           type="button"
           onClick={() => onOpen(automation)}
-          className="min-w-0 flex-1 text-left focus-ring rounded-[var(--radius-lg)]"
+          className="min-h-[44px] min-w-0 flex-1 rounded-[var(--radius-lg)] text-left focus-ring"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-base font-semibold text-foreground">
-              {automation.name}
+            <h2 className="break-words text-base font-semibold text-foreground">
+              {preview.name}
             </h2>
             <StatusChip
               status={statusToChip(status)}
-              label={ENTRUSTED_JOB_STATUS_LABELS[status]}
+              label={AUTOMATION_USER_STATUS_LABEL[status]}
             />
           </div>
-          <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
-            {automation.description || automation.workflow.assignment}
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+            {preview.action}
           </p>
         </button>
 
-        <label className="flex min-h-[48px] shrink-0 items-center gap-3 self-start rounded-full bg-[var(--surface-muted)] px-3 py-2">
-          <span className="text-xs font-medium text-[var(--text-secondary)]">
-            {automation.enabled ? "ON" : "OFF"}
-          </span>
-          <input
-            type="checkbox"
-            className="peer sr-only"
-            checked={automation.enabled}
-            disabled={isUpdating || automation.status === "running"}
-            onChange={(event) =>
-              onToggleEnabled(automation.id, event.target.checked)
-            }
-            aria-label={
-              automation.enabled
-                ? ui.entrustedJobs.pause
-                : ui.entrustedJobs.resume
-            }
-          />
-          <span className="relative h-7 w-12 rounded-full bg-[var(--background-subtle)] transition-colors duration-[var(--motion-base)] peer-checked:bg-accent peer-disabled:opacity-50 after:absolute after:left-0.5 after:top-0.5 after:h-6 after:w-6 after:rounded-full after:bg-[var(--card)] after:shadow-[var(--shadow-sm)] after:transition-transform after:duration-[var(--motion-base)] peer-checked:after:translate-x-5" />
-        </label>
+        <button
+          type="button"
+          disabled={isUpdating || automation.status === "running"}
+          onClick={() => onToggleEnabled(automation.id, !automation.enabled)}
+          className="min-h-[44px] shrink-0 self-start rounded-full bg-[var(--surface-muted)] px-4 text-sm font-medium text-foreground focus-ring disabled:opacity-50"
+        >
+          {automation.enabled ? ui.entrustedJobs.pause : ui.entrustedJobs.resume}
+        </button>
       </div>
 
-      <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+      <dl className="mt-4 grid gap-2 text-sm">
         <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
-          <dt className="text-xs text-[var(--text-muted)]">
-            {ui.entrustedJobs.scheduleMethod}
-          </dt>
-          <dd className="mt-1 font-medium text-foreground">
-            {schedule.supported ? schedule.label : ui.entrustedJobs.comingSoon}
-            <span className="mt-0.5 block text-xs font-normal text-[var(--text-secondary)]">
-              {ui.entrustedJobs.manualAlsoAvailable}
-            </span>
-          </dd>
+          <dt className="text-xs text-[var(--text-muted)]">繰り返し</dt>
+          <dd className="mt-1 font-medium text-foreground">{preview.frequency}</dd>
         </div>
         <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
-          <dt className="text-xs text-[var(--text-muted)]">
-            {ui.entrustedJobs.nextRun}
-          </dt>
-          <dd className="mt-1 font-medium text-foreground">
-            {automation.enabled
-              ? formatAutomationDateTime(automation.nextRun)
-              : "—"}
-            {automation.enabled && automation.nextRun && (
-              <span className="ml-1 text-xs font-normal text-[var(--text-secondary)]">
-                ({formatAutomationTimestamp(automation.nextRun)})
-              </span>
-            )}
-          </dd>
+          <dt className="text-xs text-[var(--text-muted)]">次回</dt>
+          <dd className="mt-1 font-medium text-foreground">{preview.nextRunLabel}</dd>
         </div>
-        <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
-          <dt className="text-xs text-[var(--text-muted)]">
-            {ui.entrustedJobs.lastRun}
-          </dt>
-          <dd className="mt-1 font-medium text-foreground">
-            {formatAutomationDateTime(automation.lastRun)}
-          </dd>
-        </div>
-        <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
-          <dt className="text-xs text-[var(--text-muted)]">
-            {ui.entrustedJobs.statusLabel}
-          </dt>
-          <dd className="mt-1 font-medium text-foreground">
-            {ENTRUSTED_JOB_STATUS_LABELS[status]}
-            {!automation.enabled ? " / OFF" : " / ON"}
-          </dd>
-        </div>
-        <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
-          <dt className="text-xs text-[var(--text-muted)]">
-            {ui.entrustedJobs.failureCount}
-          </dt>
-          <dd className="mt-1 font-medium text-foreground">
-            {automation.failureCount ?? 0}
-          </dd>
-        </div>
-        <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
-          <dt className="text-xs text-[var(--text-muted)]">
-            {ui.entrustedJobs.successRate}
-          </dt>
-          <dd className="mt-1 font-medium text-foreground">
-            {formatSuccessRate(automation)}
-          </dd>
-        </div>
-        <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
-          <dt className="text-xs text-[var(--text-muted)]">
-            {ui.entrustedJobs.confirmationScope}
-          </dt>
-          <dd className="mt-1 font-medium text-foreground">
-            {getConfirmationScopeLabel(automation.executionLevel)}
-          </dd>
-        </div>
-        <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3 sm:col-span-2">
-          <dt className="text-xs text-[var(--text-muted)]">
-            {ui.entrustedJobs.materials}
-          </dt>
-          <dd className="mt-1 font-medium text-foreground">
-            {describeMaterialsAndMemory(automation)}
-          </dd>
-        </div>
-        {formatAppliedPreferencesLine(automation) ? (
-          <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3 sm:col-span-2">
+        {preview.memoryLabels.length > 0 ? (
+          <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
             <dt className="text-xs text-[var(--text-muted)]">
               {ui.entrustedJobs.appliedPreferences}
             </dt>
-            <dd className="mt-1 font-medium text-foreground">
-              {formatAppliedPreferencesLine(automation)}
+            <dd className="mt-1 break-words font-medium text-foreground">
+              {preview.memoryLabels.join("、")}
+            </dd>
+          </div>
+        ) : null}
+        {preview.overrideLabels.length > 0 ? (
+          <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
+            <dt className="text-xs text-[var(--text-muted)]">この自動化だけ</dt>
+            <dd className="mt-1 break-words font-medium text-foreground">
+              {preview.overrideLabels.join("、")}
             </dd>
           </div>
         ) : null}
       </dl>
 
-      {automation.lastError && automation.status === "failed" && (
-        <p className="mt-4 rounded-[var(--radius-lg)] border border-[var(--status-error)]/20 bg-[var(--status-error-bg)] px-3 py-2 text-xs text-[var(--status-error)]">
-          {automation.lastError}
+      {firstSuccess ? (
+        <p className="mt-3 rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-secondary)]">
+          {firstSuccess}
         </p>
-      )}
+      ) : null}
+
+      {failure ? (
+        <p className="mt-3 rounded-[var(--radius-lg)] border border-[var(--status-error)]/20 bg-[var(--status-error-bg)] px-3 py-2 text-sm text-[var(--status-error)]">
+          {failure.title}。{failure.body}
+        </p>
+      ) : null}
 
       <div className="mt-4">
         <button
           type="button"
           onClick={() => onOpen(automation)}
-          className="touch-target text-sm font-medium text-accent hover:underline focus-ring rounded-md"
+          className="min-h-[44px] text-sm font-medium text-accent hover:underline focus-ring rounded-md"
         >
           {ui.entrustedJobs.viewDetail}
         </button>

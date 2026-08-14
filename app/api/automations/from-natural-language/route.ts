@@ -1,4 +1,4 @@
-import { createAutomationFromNaturalLanguage } from "@/lib/automations/create-from-natural-language.server";
+import { handleAutomationNaturalLanguage } from "@/lib/automations/handle-natural-language.server";
 import { auth } from "@clerk/nextjs/server";
 
 export const runtime = "nodejs";
@@ -28,7 +28,7 @@ export async function POST(request: Request): Promise<Response> {
       ? (body as { text: string }).text
       : "";
 
-  const result = await createAutomationFromNaturalLanguage({
+  const result = await handleAutomationNaturalLanguage({
     userId,
     text,
   });
@@ -54,9 +54,9 @@ export async function POST(request: Request): Promise<Response> {
     userAgent: ctx.userAgent,
     category: "automation",
     action: "automation_create_from_nl",
-    targetId: result.automation.id,
+    targetId: result.automation?.id,
     result: "success",
-    reason: result.automation.name,
+    reason: result.automation?.name ?? result.code ?? "automation_nl",
   });
 
   return Response.json(
@@ -64,19 +64,21 @@ export async function POST(request: Request): Promise<Response> {
       ok: true,
       message: result.message,
       frequency: result.frequency,
-      automation: {
-        id: result.automation.id,
-        name: result.automation.name,
-        enabled: result.automation.enabled,
-        status: result.automation.status,
-        schedule: result.automation.schedule,
-        nextRun: result.automation.nextRun,
-        timezone:
-          result.automation.schedule.kind === "schedule"
-            ? result.automation.schedule.timezone
-            : null,
-        executionLevel: result.automation.executionLevel,
-      },
+      automation: result.automation
+        ? {
+            id: result.automation.id,
+            name: result.automation.name,
+            enabled: result.automation.enabled,
+            status: result.automation.status,
+            schedule: result.automation.schedule,
+            nextRun: result.automation.nextRun,
+            timezone:
+              result.automation.schedule.kind === "schedule"
+                ? result.automation.schedule.timezone
+                : null,
+            executionLevel: result.automation.executionLevel,
+          }
+        : null,
     },
     { status: 201 },
   );

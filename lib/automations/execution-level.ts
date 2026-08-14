@@ -28,16 +28,16 @@ export const EXECUTION_LEVEL_OPTIONS: readonly ExecutionLevelOption[] = [
   {
     level: "approve_then_run",
     icon: "👀",
-    label: "投稿前に確認",
-    shortLabel: "投稿前確認",
-    description: "投稿文を用意したあと、投稿前に必ず確認します。",
+    label: "実行前に確認",
+    shortLabel: "実行前確認",
+    description: "実行する前に、内容を確認します。",
   },
   {
     level: "full_auto",
     icon: "▶",
-    label: "完全自動投稿",
-    shortLabel: "完全自動",
-    description: "指定時刻に生成し、確認なしで投稿まで実行します。",
+    label: "自動で実行",
+    shortLabel: "自動実行",
+    description: "予定の時刻に、確認なしで実行します。",
   },
 ] as const;
 
