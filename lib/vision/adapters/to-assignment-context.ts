@@ -54,7 +54,7 @@ function artifactInstruction(
   userText: string,
 ): string {
   if (recommended === "household_excel" || type === "receipt") {
-    return "画像から抽出した家計簿データを使い、日付・分類・店名・内容・金額・支払方法・備考・合計付きのExcelを生成してください。読めない項目は空欄または要確認とし、勝手に埋めないでください。";
+    return "画像から抽出した家計簿データを使い、明細（日付・店舗・カテゴリ・商品名・数量・単価・金額・支払方法・メモ）と集計（総支出・レシート件数・カテゴリ別・店舗別・日別）のExcelを生成してください。読めない項目は空欄または要確認とし、勝手に埋めないでください。金額は数値、日付は日付型にしてください。";
   }
   if (recommended === "invoice_excel" || type === "invoice") {
     return "請求書の構造化データから明細Excel（必要ならPDF/Word要約）を生成してください。読めない項目は警告として残してください。";

@@ -1,3 +1,9 @@
+import {
+  householdBookFromVision,
+  householdBookToExcelSeed,
+  shouldBuildHouseholdBook,
+} from "@/lib/household-book";
+import type { HouseholdPreferences } from "@/lib/household-book/types";
 import type { VisionBatchResult, VisionDetectedType } from "@/lib/vision/types";
 
 /**
@@ -7,6 +13,7 @@ import type { VisionBatchResult, VisionDetectedType } from "@/lib/vision/types";
 export function visionBatchToDeliverableContent(
   batch: VisionBatchResult,
   assignment = "",
+  preferences?: HouseholdPreferences | null,
 ): string {
   const type =
     (batch.commonFields.detectedType as VisionDetectedType | undefined) ??
@@ -20,8 +27,9 @@ export function visionBatchToDeliverableContent(
     return buildExplainMarkdown(batch);
   }
 
-  if (type === "receipt" || batch.recommendedArtifactType === "household_excel") {
-    return buildHouseholdMarkdown(batch);
+  if (shouldBuildHouseholdBook(batch, assignment)) {
+    const book = householdBookFromVision(batch, { assignment, preferences });
+    return householdBookToExcelSeed(book, preferences);
   }
   if (
     type === "invoice" ||
@@ -121,47 +129,6 @@ function splitExtractedLines(text: string, confidence: number): string[][] {
     cellOrReview(chunk, confidence),
     confidence < 0.55 ? "要確認" : String(Math.round(confidence * 100)),
   ]);
-}
-
-function buildHouseholdMarkdown(batch: VisionBatchResult): string {
-  const rows: string[] = [
-    "| 日付 | 分類 | 店名 | 内容 | 金額 | 支払方法 | 備考 |",
-    "| --- | --- | --- | --- | --- | --- | --- |",
-  ];
-
-  for (const image of batch.images) {
-    const fields = image.fields;
-    const store = asString(fields.storeName);
-    const date = asString(fields.date);
-    const method = asString(fields.paymentMethod);
-    const items = Array.isArray(fields.items) ? fields.items : [];
-    if (items.length === 0) {
-      rows.push(
-        `| ${cellOrReview(date, image.confidence)} | 未分類 | ${cellOrReview(store, image.confidence)} | ${cellOrReview(image.summary, image.confidence)} | ${cellOrReview(fields.total, image.confidence)} | ${method || ""} | ${image.missingFields.join(" ") || ""} |`,
-      );
-      continue;
-    }
-    for (const item of items) {
-      const record = (item && typeof item === "object" ? item : {}) as Record<
-        string,
-        unknown
-      >;
-      rows.push(
-        `| ${cellOrReview(date, image.confidence)} | ${asString(record.category) || "未分類"} | ${cellOrReview(store, image.confidence)} | ${cellOrReview(record.name, image.confidence)} | ${cellOrReview(record.amount, image.confidence)} | ${method || ""} | ${image.warnings[0] ?? ""} |`,
-      );
-    }
-  }
-
-  return [
-    "# 家計簿",
-    "画像から抽出した家計簿データです。読めない項目は「要確認」としています。",
-    "",
-    ...rows,
-    "",
-    batch.needsInput
-      ? `## 要確認\n${batch.needsInput.fields.map((f) => `- ${f}`).join("\n")}`
-      : "",
-  ].join("\n");
 }
 
 function buildExplainMarkdown(batch: VisionBatchResult): string {

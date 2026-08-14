@@ -2,6 +2,13 @@ import "server-only";
 
 import { generateDeliverables } from "@/lib/deliverables/engine";
 import type { Deliverable } from "@/lib/deliverables/types";
+import { appendHouseholdBookToLedger } from "@/lib/household-book/append-apply";
+import {
+  householdBookFromVision,
+  isHouseholdAppendRequest,
+  shouldBuildHouseholdBook,
+} from "@/lib/household-book";
+import { loadHouseholdPreferences, proposeHouseholdMemoryCandidates } from "@/lib/household-book/memory-apply";
 import { visionBatchToDeliverableContent } from "@/lib/vision/adapters/to-artifact-source";
 import {
   formatsFromVisionBatch,
@@ -30,7 +37,14 @@ export async function completeImageWorkToDeliverables(input: {
   requestOrigin?: string;
   jobId?: string | null;
 }): Promise<VisionWorkCompletion> {
-  const seed = visionBatchToDeliverableContent(input.batch, input.assignment);
+  const preferences = shouldBuildHouseholdBook(input.batch, input.assignment)
+    ? await loadHouseholdPreferences(input.userId)
+    : null;
+  const seed = visionBatchToDeliverableContent(
+    input.batch,
+    input.assignment,
+    preferences,
+  );
   const formats = formatsFromVisionBatch(input.batch, input.assignment);
   const title = titleFromVisionBatch(input.batch);
 
@@ -81,6 +95,25 @@ export async function completeImageWorkToDeliverables(input: {
         failures: generated.failures,
       }),
     );
+  }
+
+  if (shouldBuildHouseholdBook(input.batch, input.assignment)) {
+    const book = householdBookFromVision(input.batch, {
+      assignment: input.assignment,
+      preferences,
+    });
+    if (isHouseholdAppendRequest(input.assignment) && book.appendable) {
+      try {
+        await appendHouseholdBookToLedger(input.userId, book);
+      } catch {
+        // Ledger append must never fail the Excel deliverable.
+      }
+    }
+    try {
+      await proposeHouseholdMemoryCandidates(input.userId, book);
+    } catch {
+      // Memory candidates must never fail the Excel deliverable.
+    }
   }
 
   return {

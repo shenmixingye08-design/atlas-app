@@ -1,7 +1,19 @@
 import type { VisionDetailLevel, VisionDetectedType } from "@/lib/vision/types";
 
 const TYPE_KEYWORDS: Array<{ type: VisionDetectedType; patterns: RegExp[] }> = [
-  { type: "receipt", patterns: [/レシート/, /領収書/, /家計簿/, /receipt/i] },
+  {
+    type: "receipt",
+    patterns: [
+      /レシート/,
+      /領収書/,
+      /家計簿/,
+      /receipt/i,
+      /支出に追加/,
+      /今月の支出/,
+      /買い物まとめて/,
+      /レシート整理/,
+    ],
+  },
   { type: "invoice", patterns: [/請求書/, /invoice/i, /請求明細/] },
   { type: "estimate", patterns: [/見積/, /estimate/i, /quotation/i] },
   {
@@ -76,7 +88,13 @@ export type VisionUserIntent = "spreadsheet" | "document" | "extract";
 
 export function inferVisionUserIntent(userText: string): VisionUserIntent {
   const text = userText.trim();
-  if (/Excel|エクセル|xlsx|家計簿|表にして/i.test(text)) return "spreadsheet";
+  if (
+    /Excel|エクセル|xlsx|家計簿|表にして|支出に追加|買い物まとめて|レシート整理/i.test(
+      text,
+    )
+  ) {
+    return "spreadsheet";
+  }
   if (
     /内容を説明|何が書いて|説明して|Word|ワード|docx|報告書|要約/i.test(text) &&
     !/Excel|エクセル|家計簿/i.test(text)
