@@ -2166,6 +2166,8 @@ export const ui = {
     invalidCheckoutUrl:
       "課金画面を開けませんでした。もう一度お試しください。",
     checkoutSignInRequired: "ログインし直してから、もう一度お試しください。",
+    subscriptionSyncing: "契約情報を同期しています。完了するまでプラン変更はできません。",
+    alreadySamePlanSynced: "このプランはすでにご契約中です。現在のプランを更新しました。",
     successTitle: "お支払いが完了しました",
     successSubtitle: "プランが更新されました。引き続きMINERVOTをご利用ください。",
     checkoutSuccessBanner: (planName: string) =>

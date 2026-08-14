@@ -21,10 +21,14 @@ export const CHECKOUT_PRICE_MISMATCH_MESSAGE =
 export const CHECKOUT_CONFIG_USER_ERROR_MESSAGE =
   "決済の設定が完了していません。しばらくしてから再度お試しいただくか、サポートへご連絡ください。";
 
+export const CHECKOUT_SUBSCRIPTION_SYNC_MESSAGE =
+  "契約情報を同期しています。完了するまでプラン変更はできません。";
+
 export type CheckoutErrorCode =
   | "already_same_plan"
   | "use_portal_for_plan_change"
   | "price_mismatch"
+  | "subscription_sync_required"
   | "stripe_not_configured"
   | "stripe_price_missing"
   | "stripe_unsafe_keys"
@@ -35,13 +39,15 @@ export class CheckoutBlockedError extends Error {
   readonly code:
     | "already_same_plan"
     | "use_portal_for_plan_change"
-    | "price_mismatch";
+    | "price_mismatch"
+    | "subscription_sync_required";
 
   constructor(
     code:
       | "already_same_plan"
       | "use_portal_for_plan_change"
-      | "price_mismatch",
+      | "price_mismatch"
+      | "subscription_sync_required",
     userMessage: string,
   ) {
     super(userMessage);

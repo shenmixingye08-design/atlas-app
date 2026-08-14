@@ -3,6 +3,11 @@ import type { UserSubscriptionRecord } from "./types";
 import { warnIfProductionSupabaseServiceRoleMissing } from "@/lib/persistence/production-guard";
 
 import {
+  pickAuthoritativeSubscription,
+  type SubscriptionConsistency,
+  type SubscriptionResolveSource,
+} from "./authority";
+import {
   findSubscriptionByStripeCustomerIdFromSupabase,
   isBillingSupabaseConfigured,
   listSubscriptionsFromSupabase,
@@ -40,6 +45,44 @@ function getBucket(): SubscriptionBucket {
 
 function persistBucket(bucket: SubscriptionBucket): void {
   writeSubscriptionsToDisk(bucket);
+}
+
+type AuthorityMeta = {
+  source: SubscriptionResolveSource;
+  consistency: SubscriptionConsistency;
+};
+
+function getAuthorityMetaBucket(): Map<string, AuthorityMeta> {
+  const globalScope = globalThis as typeof globalThis & {
+    __atlasBillingSubscriptionAuthority?: Map<string, AuthorityMeta>;
+  };
+  if (!globalScope.__atlasBillingSubscriptionAuthority) {
+    globalScope.__atlasBillingSubscriptionAuthority = new Map();
+  }
+  return globalScope.__atlasBillingSubscriptionAuthority;
+}
+
+function rememberAuthorityMeta(userId: string, meta: AuthorityMeta): void {
+  getAuthorityMetaBucket().set(userId, meta);
+}
+
+export function getLastSubscriptionAuthority(
+  userId: string,
+): AuthorityMeta | null {
+  return getAuthorityMetaBucket().get(userId) ?? null;
+}
+
+function cacheSubscription(record: UserSubscriptionRecord): void {
+  const bucket = getBucket();
+  bucket.set(record.userId, record);
+  persistBucket(bucket);
+}
+
+/** Process-memory write only — does not persist to Supabase/Clerk. */
+export function putSubscriptionInMemoryCache(
+  record: UserSubscriptionRecord,
+): void {
+  cacheSubscription(record);
 }
 
 export function getUserSubscription(
@@ -189,6 +232,7 @@ export function resetSubscriptionStore(): void {
   const bucket = getBucket();
   bucket.clear();
   persistBucket(bucket);
+  getAuthorityMetaBucket().clear();
 }
 
 export function countSubscriptionsByPlan(): Record<PlanId, number> {
@@ -208,40 +252,73 @@ export function countSubscriptionsByPlan(): Record<PlanId, number> {
   return counts;
 }
 
+export type SubscriptionAuthority = {
+  record: UserSubscriptionRecord;
+  source: SubscriptionResolveSource;
+  consistency: SubscriptionConsistency;
+};
+
 /**
- * Hydrate memory from durable stores (serverless-safe).
- * Order: memory → Supabase → Clerk → default.
- * Disk is only used as an already-hydrated local/dev cache via getBucket().
+ * Durable-first resolve. Process memory is a cache compared by updatedAt.
+ * Stale invented Free never beats a durable paid (or identified) row.
+ * Always re-reads Supabase/Clerk so serverless instances cannot diverge.
  */
+export async function resolveUserSubscriptionAuthority(
+  userId: string,
+): Promise<SubscriptionAuthority> {
+  const memory = getUserSubscription(userId);
+
+  // Dedicated table DDL is NOT attempted on the request hot path.
+  const fromSupabase = await loadSubscriptionFromSupabase(userId);
+  const fromClerk = fromSupabase
+    ? null
+    : await loadSubscriptionFromClerk(userId);
+  const durable = fromSupabase ?? fromClerk;
+  const durableSource = fromSupabase
+    ? "supabase"
+    : fromClerk
+      ? "clerk"
+      : undefined;
+
+  const picked = pickAuthoritativeSubscription({
+    memory,
+    durable,
+    durableSource,
+  });
+
+  if (picked.record) {
+    cacheSubscription(picked.record);
+    if (
+      fromClerk &&
+      picked.source === "clerk" &&
+      isBillingSupabaseConfigured()
+    ) {
+      void persistSubscriptionToSupabase(picked.record);
+    }
+    const result: SubscriptionAuthority = {
+      record: picked.record,
+      source: picked.source ?? durableSource ?? "memory_cache",
+      consistency: picked.consistency,
+    };
+    rememberAuthorityMeta(userId, result);
+    return result;
+  }
+
+  const invented = createDefaultSubscription(userId);
+  cacheSubscription(invented);
+  const result: SubscriptionAuthority = {
+    record: invented,
+    source: "default_free",
+    consistency: "ok",
+  };
+  rememberAuthorityMeta(userId, result);
+  return result;
+}
+
 export async function resolveUserSubscriptionDurable(
   userId: string,
 ): Promise<UserSubscriptionRecord> {
-  const cached = getUserSubscription(userId);
-  if (cached) return cached;
-
-  // Dedicated table DDL is NOT attempted on the request hot path (service role
-  // cannot create tables). loadSubscriptionFromSupabase gates on schema cache
-  // and falls back to atlas_user_state domain atlasBilling when missing.
-
-  const fromSupabase = await loadSubscriptionFromSupabase(userId);
-  if (fromSupabase) {
-    const bucket = getBucket();
-    bucket.set(userId, fromSupabase);
-    persistBucket(bucket);
-    return fromSupabase;
-  }
-
-  const fromClerk = await loadSubscriptionFromClerk(userId);
-  if (fromClerk) {
-    const bucket = getBucket();
-    bucket.set(userId, fromClerk);
-    persistBucket(bucket);
-    // Backfill Supabase when available.
-    void persistSubscriptionToSupabase(fromClerk);
-    return fromClerk;
-  }
-
-  return createDefaultSubscription(userId);
+  return (await resolveUserSubscriptionAuthority(userId)).record;
 }
 
 export async function findSubscriptionByStripeCustomerId(
@@ -250,17 +327,17 @@ export async function findSubscriptionByStripeCustomerId(
   const local = listUserSubscriptions().find(
     (record) => record.stripeCustomerId === stripeCustomerId,
   );
-  if (local) return local;
-
   const fromSupabase =
     await findSubscriptionByStripeCustomerIdFromSupabase(stripeCustomerId);
-  if (fromSupabase) {
-    const bucket = getBucket();
-    bucket.set(fromSupabase.userId, fromSupabase);
-    persistBucket(bucket);
-    return fromSupabase;
+  const picked = pickAuthoritativeSubscription({
+    memory: local ?? null,
+    durable: fromSupabase,
+    durableSource: "supabase",
+  });
+  if (picked.record) {
+    cacheSubscription(picked.record);
+    return picked.record;
   }
-
   return null;
 }
 

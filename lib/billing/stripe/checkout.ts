@@ -8,6 +8,7 @@ import { getPlanDefinition, isPlanId } from "../plans/registry";
 import type { PlanId } from "../plans/types";
 import { isPaidCapableStatus } from "../subscriptions/service";
 import {
+  resolveUserSubscriptionAuthority,
   resolveUserSubscriptionDurable,
   saveUserSubscription,
 } from "../subscriptions/store";
@@ -25,9 +26,11 @@ import {
 import {
   CHECKOUT_ALREADY_SAME_PLAN_MESSAGE,
   CHECKOUT_PRICE_MISMATCH_MESSAGE,
+  CHECKOUT_SUBSCRIPTION_SYNC_MESSAGE,
   CHECKOUT_USE_PORTAL_FOR_PLAN_CHANGE_MESSAGE,
   CheckoutBlockedError,
 } from "./errors";
+import { reconcileProjectionFromStripeCustomer } from "../subscriptions/reconcile";
 import {
   assertStripeSafeForProduction,
   usesStripeLiveSecretKey,
@@ -338,6 +341,14 @@ export async function createCheckoutSession(input: {
 }): Promise<CheckoutSessionResult> {
   assertStripeSafeForProduction();
 
+  const authority = await resolveUserSubscriptionAuthority(input.userId);
+  if (authority.consistency === "conflict") {
+    throw new CheckoutBlockedError(
+      "subscription_sync_required",
+      CHECKOUT_SUBSCRIPTION_SYNC_MESSAGE,
+    );
+  }
+
   const plan = getPlanDefinition(input.planId);
 
   if (plan.monthlyPriceJpy <= 0) {
@@ -364,6 +375,12 @@ export async function createCheckoutSession(input: {
         null,
     });
     await rememberStripeCustomerId(input.userId, customerId);
+
+    await reconcileProjectionFromStripeCustomer({
+      userId: input.userId,
+      stripe,
+      stripeCustomerId: customerId,
+    });
 
     await assertNoDuplicatePaidSubscription({
       userId: input.userId,

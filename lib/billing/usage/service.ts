@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getPlanDefinition } from "../plans/registry";
+import type { PlanId } from "../plans/types";
 import { resolveEffectivePlanId } from "../policy";
 
 import { getUserAiUsageBreakdown } from "./meter";
@@ -22,8 +23,11 @@ function meter(used: number, limit: number): UsageMeter {
   };
 }
 
-export function getUserUsageLimitSummary(userId: string): UsageLimitSummary {
-  const plan = getPlanDefinition(resolveEffectivePlanId(userId));
+export function getUserUsageLimitSummary(
+  userId: string,
+  planId?: PlanId,
+): UsageLimitSummary {
+  const plan = getPlanDefinition(planId ?? resolveEffectivePlanId(userId));
   const month = getUsageMonthKey();
   const usage = getUsageSnapshot(userId, month);
   const aiDetail = getUserAiUsageBreakdown(userId);

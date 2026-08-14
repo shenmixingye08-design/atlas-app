@@ -1,4 +1,8 @@
 import type { PlanDefinition } from "./plans/types";
+import type {
+  SubscriptionConsistency,
+  SubscriptionResolveSource,
+} from "./subscriptions/authority";
 import type { UserSubscriptionView } from "./subscriptions/types";
 import type { StripeEnvPresence } from "./stripe/config";
 import type { UsageAwarenessView } from "./usage-awareness/types";
@@ -19,6 +23,9 @@ export type UserBillingSummary = {
   billingPortalAvailable: boolean;
   automationsSuspended: boolean;
   notifications: readonly BillingNotificationRecord[];
+  /** Durable-first resolve metadata — never includes secrets. */
+  subscriptionSource: SubscriptionResolveSource;
+  subscriptionConsistency: SubscriptionConsistency;
   stripeConfig: {
     secretKey: StripeEnvPresence;
     publishableKey: StripeEnvPresence;

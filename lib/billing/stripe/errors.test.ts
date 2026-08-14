@@ -61,6 +61,16 @@ describe("classifyCheckoutRouteError", () => {
     expect(result.code).toBe("stripe_price_missing");
   });
 
+  it("maps subscription_sync_required to 409", () => {
+    const error = new CheckoutBlockedError(
+      "subscription_sync_required",
+      "契約情報を同期しています。完了するまでプラン変更はできません。",
+    );
+    const result = classifyCheckoutRouteError(error);
+    expect(result.status).toBe(409);
+    expect(result.code).toBe("subscription_sync_required");
+  });
+
   it("maps unknown failures to 500 checkout_failed", () => {
     const result = classifyCheckoutRouteError(new Error("Stripe API timeout"));
     expect(result.status).toBe(500);
