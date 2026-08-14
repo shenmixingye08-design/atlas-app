@@ -4,16 +4,30 @@ import type { VisionBatchResult, VisionDetectedType } from "@/lib/vision/types";
  * Convert vision batch into deliverable-facing content (tables / structured text).
  * Used before generateDeliverables without modifying artifact-engine cores.
  */
-export function visionBatchToDeliverableContent(batch: VisionBatchResult): string {
+export function visionBatchToDeliverableContent(
+  batch: VisionBatchResult,
+  assignment = "",
+): string {
   const type =
     (batch.commonFields.detectedType as VisionDetectedType | undefined) ??
     batch.images[0]?.detectedType ??
     "unknown";
+  const explainOnly =
+    /内容を説明|何が書いて|説明して/.test(assignment) &&
+    !/Excel|エクセル|家計簿|表にして/i.test(assignment);
+
+  if (explainOnly && type !== "table" && type !== "spreadsheet_source") {
+    return buildExplainMarkdown(batch);
+  }
 
   if (type === "receipt" || batch.recommendedArtifactType === "household_excel") {
     return buildHouseholdMarkdown(batch);
   }
-  if (type === "invoice" || batch.recommendedArtifactType === "invoice_excel") {
+  if (
+    type === "invoice" ||
+    type === "estimate" ||
+    batch.recommendedArtifactType === "invoice_excel"
+  ) {
     return buildInvoiceMarkdown(batch);
   }
   if (
@@ -150,6 +164,31 @@ function buildHouseholdMarkdown(batch: VisionBatchResult): string {
   ].join("\n");
 }
 
+function buildExplainMarkdown(batch: VisionBatchResult): string {
+  return [
+    "# 画像内容の説明",
+    batch.combinedSummary,
+    "",
+    ...batch.images.map((image, i) => {
+      const f = image.fields;
+      return [
+        `## 画像${i + 1}`,
+        `- 種類: ${image.detectedType}`,
+        `- 要約: ${image.summary}`,
+        image.extractedText ? `### 読み取った文字\n${image.extractedText}` : null,
+        Object.keys(f).length
+          ? `### 構造化データ\n${Object.entries(f)
+              .map(([key, value]) => `- ${key}: ${value == null ? "要確認" : String(value)}`)
+              .join("\n")}`
+          : null,
+        image.warnings.length ? `### 不確実な情報\n${image.warnings.map((w) => `- ${w}`).join("\n")}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }),
+  ].join("\n");
+}
+
 function buildInvoiceMarkdown(batch: VisionBatchResult): string {
   const image = batch.images[0];
   const fields = image?.fields ?? {};
@@ -157,9 +196,9 @@ function buildInvoiceMarkdown(batch: VisionBatchResult): string {
     "# 請求書データ",
     `- 請求元: ${asString(fields.issuer) || "要確認"}`,
     `- 宛先: ${asString(fields.recipient) || "要確認"}`,
-    `- 請求番号: ${asString(fields.invoiceNumber) || "要確認"}`,
+    `- 請求番号: ${asString(fields.documentNumber || fields.invoiceNumber || fields.estimateNumber) || "要確認"}`,
     `- 発行日: ${asString(fields.issueDate) || "要確認"}`,
-    `- 支払期限: ${asString(fields.dueDate) || "要確認"}`,
+    `- 支払期限/有効期限: ${asString(fields.dueDate || fields.validUntil) || "要確認"}`,
     `- 小計: ${asString(fields.subtotal) || "要確認"}`,
     `- 税: ${asString(fields.tax) || "要確認"}`,
     `- 合計: ${asString(fields.total) || "要確認"}`,
@@ -212,18 +251,20 @@ function buildHandwritingMarkdown(batch: VisionBatchResult): string {
 
   const blocks: string[] = ["# 手書きメモ"];
   for (const [index, image] of batch.images.entries()) {
-    const text =
-      asString(image.fields.rawText) ||
-      image.extractedText ||
-      asString(image.fields.cleanedText) ||
-      "";
-    const rows = splitExtractedLines(text, image.confidence);
-    if (rows.length === 0) {
-      rows.push(["1", "要確認", "要確認"]);
-    }
+    const raw =
+      asString(image.fields.rawText) || image.extractedText || "";
+    const cleaned = asString(image.fields.cleanedText);
+    const summary = asString(image.fields.summary) || image.summary;
     blocks.push(
       `## メモ ${index + 1}`,
-      markdownTable(["行", "内容", "確信度"], rows),
+      "### 原文（見えた文字）",
+      raw || "要確認",
+      "",
+      "### 整形",
+      cleaned || "要確認",
+      "",
+      "### 要約",
+      summary || "要確認",
       image.missingFields.length
         ? `要確認: ${image.missingFields.join("、")}`
         : "",
@@ -243,9 +284,11 @@ function buildBusinessCardMarkdown(batch: VisionBatchResult): string {
         `- 部署: ${asString(f.department) || "要確認"}`,
         `- 役職: ${asString(f.title) || "要確認"}`,
         `- 電話: ${asString(f.phone) || "要確認"}`,
+        `- 携帯電話: ${asString(f.mobile) || "要確認"}`,
         `- メール: ${asString(f.email) || "要確認"}`,
+        `- 郵便番号: ${asString(f.postalCode) || "要確認"}`,
         `- 住所: ${asString(f.address) || "要確認"}`,
-        `- Web: ${asString(f.website) || "要確認"}`,
+        `- Web: ${asString(f.url || f.website) || "要確認"}`,
         "",
         "※連絡先の保存はユーザー承認後のみ行います。",
       ].join("\n");
@@ -336,10 +379,15 @@ function buildChartMarkdown(batch: VisionBatchResult): string {
         `- X軸: ${asString(f.xAxis) || "要確認"}`,
         `- Y軸: ${asString(f.yAxis) || "要確認"}`,
         `- 系列: ${asString(f.series) || "要確認"}`,
+        `- 凡例: ${asString(f.legend) || "要確認"}`,
         `- 傾向: ${asString(f.trend) || "要確認"}`,
+        `- 読み取れた数値: ${asString(f.visibleValues) || "具体値は判別不可"}`,
         "",
         "## 読み取った数値",
         tableMd,
+        tableMd.includes("不明") || f.visibleValues == null
+          ? "※グラフから正確な数値を読めない場合は傾向のみです。ピクセル位置から架空の精密数値は作っていません。"
+          : "",
         "",
         "## 示唆",
         ...insights,
@@ -368,6 +416,21 @@ function buildScreenshotMarkdown(batch: VisionBatchResult): string {
       String(Math.round(image.confidence * 100)),
     ]);
     const extracted = image.extractedText || asString(f.keyUiText);
+    if (f.errorCode || f.visibleMessage) {
+      rows.push([
+        "エラー",
+        cellOrReview(
+          `${asString(f.errorCode)} ${asString(f.visibleMessage)}`.trim(),
+          image.confidence,
+        ),
+        String(Math.round(image.confidence * 100)),
+      ]);
+    }
+    rows.push([
+      "状態",
+      cellOrReview(f.state, image.confidence),
+      String(Math.round(image.confidence * 100)),
+    ]);
     for (const line of splitExtractedLines(extracted, image.confidence)) {
       rows.push(["抽出テキスト", line[1] ?? "要確認", line[2] ?? "要確認"]);
     }
@@ -390,6 +453,12 @@ function buildPhotoReportMarkdown(batch: VisionBatchResult): string {
         `## 写真${i + 1}`,
         `- 種別: ${image.detectedType}`,
         `- 要約: ${image.summary}`,
+        asString(image.fields.observed)
+          ? `- 観測: ${asString(image.fields.observed)}`
+          : null,
+        asString(image.fields.inference)
+          ? `- 推論: ${asString(image.fields.inference)}（断定ではありません）`
+          : null,
         image.visualElements.length
           ? `- 写っているもの: ${image.visualElements.join("、")}`
           : null,

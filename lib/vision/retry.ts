@@ -67,6 +67,13 @@ export function isNonRetryableOpenAiFailure(
   return false;
 }
 
+/** Malformed model JSON / schema mismatch must not be re-sent to OpenAI. */
+export function isNonRetryableVisionParseFailure(
+  code: string | null | undefined,
+): boolean {
+  return code === "json_parse_failed" || code === "table_extract_failed";
+}
+
 /** Whether a fallback attempt with re-encode / other model is warranted. */
 export function shouldFallbackOpenAiFailure(
   details: OpenAiVisionErrorDetails,

@@ -1,7 +1,12 @@
 import "server-only";
 
 import { analyzeUserImage } from "@/lib/vision/analyze-image";
-import { classifyImagePurposeFromText, recommendDetailLevel } from "@/lib/vision/classify";
+import {
+  classifyImagePurposeFromText,
+  inferVisionUserIntent,
+  recommendDetailLevel,
+} from "@/lib/vision/classify";
+import { mergeVisionBatch } from "@/lib/vision/merge-batch";
 import type { VisionProvider } from "@/lib/vision/provider";
 import {
   VisionError,
@@ -33,8 +38,10 @@ function recommendArtifactType(
   type: VisionDetectedType,
   userText: string,
 ): string | null {
+  const intent = inferVisionUserIntent(userText);
+  if (intent === "document" && type === "receipt") return "photo_report_docx";
   if (type === "receipt" || /家計簿/.test(userText)) return "household_excel";
-  if (type === "invoice") return "invoice_excel";
+  if (type === "invoice" || type === "estimate") return "invoice_excel";
   if (type === "contract" || /契約/.test(userText)) return "contract_docx";
   if (type === "chart" || /グラフ|チャート/.test(userText)) {
     return "chart_report_docx";
@@ -200,11 +207,13 @@ export async function analyzeUserImageBatch(input: {
   const allMissing = Array.from(
     new Set(images.flatMap((image) => image.missingFields)),
   );
+  const merged = mergeVisionBatch(images);
   const warnings = [
     ...images.flatMap((image) => image.warnings),
+    ...merged.warnings,
     ...failures,
   ];
-  const mergedTables = images.flatMap((image) => image.tables);
+  const mergedTables = merged.mergedTables;
   const combinedSummary = images
     .map((image, index) => `【画像${index + 1}】${image.summary}`)
     .join("\n");
@@ -224,6 +233,7 @@ export async function analyzeUserImageBatch(input: {
     images,
     combinedSummary,
     commonFields: {
+      ...merged.commonFields,
       detectedType: dominant,
       imageCount: images.length,
       ...(firstDiagnosticId ? { diagnosticId: firstDiagnosticId } : {}),

@@ -30,7 +30,7 @@ export async function completeImageWorkToDeliverables(input: {
   requestOrigin?: string;
   jobId?: string | null;
 }): Promise<VisionWorkCompletion> {
-  const seed = visionBatchToDeliverableContent(input.batch);
+  const seed = visionBatchToDeliverableContent(input.batch, input.assignment);
   const formats = formatsFromVisionBatch(input.batch, input.assignment);
   const title = titleFromVisionBatch(input.batch);
 

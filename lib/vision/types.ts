@@ -31,13 +31,36 @@ export type VisionJobStatus =
   | "completed"
   | "failed";
 
+export type VisionCellKind =
+  | "text"
+  | "number"
+  | "date"
+  | "percentage"
+  | "currency"
+  | "empty"
+  | "unknown";
+
 export type VisionTable = {
   headers: string[];
   rows: Array<Array<string | number | null>>;
   notes?: string | null;
+  /** Inferred or model-provided per-column kinds. Optional for backward compatibility. */
+  columnTypes?: VisionCellKind[];
+  /** Per-cell confidence 0–1. Optional; overall image confidence remains SoT. */
+  cellConfidence?: Array<Array<number | null>>;
+  /** Merged / multi-row header regions — do not flatten away. */
+  mergedRegions?: Array<{
+    row: number;
+    col: number;
+    rowSpan: number;
+    colSpan: number;
+  }>;
 };
 
 export type VisionFieldMap = Record<string, unknown>;
+
+/** Per-field confidence 0–1. `overall` mirrors image confidence. Backward compatible optional. */
+export type VisionFieldConfidence = Record<string, number>;
 
 export type VisionLayout = {
   hierarchy?: string | null;
@@ -77,6 +100,8 @@ export type VisionAnalysisResult = {
   missingFields: string[];
   recommendedActions: string[];
   artifactSuggestions: string[];
+  /** Optional per-field confidence; overall image `confidence` remains the primary score. */
+  fieldConfidence?: VisionFieldConfidence;
   model: string;
   detailLevel: VisionDetailLevel;
   createdAt: string;
@@ -217,4 +242,4 @@ export type VisionGatePayload = {
   vercelRequestId?: string | null;
 };
 
-export const VISION_PROMPT_VERSION = "v2-secretary-understand";
+export const VISION_PROMPT_VERSION = "v3-work-precision";

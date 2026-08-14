@@ -47,6 +47,30 @@ export const visionAnalysisResultSchema = z.object({
         headers: z.array(z.string()).default([]),
         rows: z.array(z.array(z.union([z.string(), z.number(), z.null()]))).default([]),
         notes: z.string().optional().nullable(),
+        columnTypes: z
+          .array(
+            z.enum([
+              "text",
+              "number",
+              "date",
+              "percentage",
+              "currency",
+              "empty",
+              "unknown",
+            ]),
+          )
+          .optional(),
+        cellConfidence: z.array(z.array(z.number().min(0).max(1).nullable())).optional(),
+        mergedRegions: z
+          .array(
+            z.object({
+              row: z.number(),
+              col: z.number(),
+              rowSpan: z.number(),
+              colSpan: z.number(),
+            }),
+          )
+          .optional(),
       })
     )
     .default([]),
@@ -80,6 +104,7 @@ export const visionAnalysisResultSchema = z.object({
   missingFields: z.array(z.string()).default([]),
   recommendedActions: z.array(z.string()).default([]),
   artifactSuggestions: z.array(z.string()).default([]),
+  fieldConfidence: z.record(z.string(), z.number().min(0).max(1)).optional(),
   model: z.string(),
   detailLevel: z.enum(["low", "auto", "high"]),
   createdAt: z.string(),
@@ -101,6 +126,30 @@ export const visionModelPayloadSchema = z.object({
         headers: z.array(z.string()).default([]),
         rows: z.array(z.array(z.union([z.string(), z.number(), z.null()]))).default([]),
         notes: z.string().optional().nullable(),
+        columnTypes: z
+          .array(
+            z.enum([
+              "text",
+              "number",
+              "date",
+              "percentage",
+              "currency",
+              "empty",
+              "unknown",
+            ]),
+          )
+          .optional(),
+        cellConfidence: z.array(z.array(z.number().min(0).max(1).nullable())).optional(),
+        mergedRegions: z
+          .array(
+            z.object({
+              row: z.number(),
+              col: z.number(),
+              rowSpan: z.number(),
+              colSpan: z.number(),
+            }),
+          )
+          .optional(),
       })
     )
     .catch([]),
@@ -136,6 +185,7 @@ export const visionModelPayloadSchema = z.object({
   missingFields: z.array(z.string()).catch([]),
   recommendedActions: z.array(z.string()).catch([]),
   artifactSuggestions: z.array(z.string()).catch([]),
+  fieldConfidence: z.record(z.string(), z.number().min(0).max(1)).optional(),
 });
 
 export function isVisionDetectedType(value: string): value is VisionDetectedType {

@@ -381,6 +381,7 @@ export function resolveMockLlmOutput(
       const focus = [requestMatch?.[1] ?? "", hintMatch?.[1] ?? ""].join("\n");
       const isReceipt = /レシート|家計簿|receipt/i.test(focus);
       const isInvoice = /請求書|invoice/i.test(focus);
+      const isEstimate = /見積|estimate|quotation/i.test(focus);
       const isContract = /契約書|contract|nda|秘密保持/i.test(focus);
       const isChart = /グラフ|チャート|chart/i.test(focus);
       const isTable = /表|Excel|エクセル|table|spreadsheet/i.test(focus);
@@ -389,25 +390,28 @@ export function resolveMockLlmOutput(
       const isScreenshot = /スクリーンショット|screenshot|画面キャプチャ/i.test(focus);
       const isSales = /営業|資料|改善|チラシ|sales/i.test(focus);
       const isPhoto = /写真|物件|設備|photo|general_photo/i.test(focus);
+      const isWhiteboard = /ホワイトボード|whiteboard/i.test(focus);
 
       if (isReceipt) {
         return JSON.stringify({
           detectedType: "receipt",
           confidence: 0.92,
           summary: "コンビニのレシート。合計1,280円。",
-          extractedText: "MINERVOT MART\n2026/07/25\nお茶 150\n弁当 980\n合計 1,280\n現金",
+            extractedText: "MINERVOT MART\n2026/07/25 12:03\nお茶 1 150\n弁当 1 980\n小計 1,130\n税 150\n合計 1,280\n現金 JPY",
           language: "ja",
           fields: {
             storeName: "MINERVOT MART",
             date: "2026-07-25",
             items: [
-              { name: "お茶", amount: 150, category: "飲料" },
-              { name: "弁当", amount: 980, category: "食料品" },
+              { name: "お茶", quantity: 1, unitPrice: 150, amount: 150, category: "飲料" },
+              { name: "弁当", quantity: 1, unitPrice: 980, amount: 980, category: "食料品" },
             ],
             subtotal: 1130,
             tax: 150,
             total: 1280,
             paymentMethod: "現金",
+            currency: "JPY",
+            time: "12:03",
           },
           tables: [],
           visualElements: ["店名", "合計金額"],
@@ -425,7 +429,8 @@ export function resolveMockLlmOutput(
           detectedType: "invoice",
           confidence: 0.9,
           summary: "請求書。合計110,000円。",
-          extractedText: "請求書\n株式会社サンプル\n請求番号 INV-001\n合計 110,000",
+          extractedText:
+            "請求書\n発行: 株式会社サンプル\n宛先: 株式会社テスト\n請求番号 INV-001\n発行日 2026-07-01\nコンサルティング 1 100000 100000\n小計 100,000\n税 10,000\n合計 110,000",
           language: "ja",
           fields: {
             issuer: "株式会社サンプル",
@@ -446,6 +451,37 @@ export function resolveMockLlmOutput(
           warnings: ["支払期限が読めません", "振込先が見切れています"],
           missingFields: ["dueDate", "bankDetails"],
           recommendedActions: ["不足項目を確認してExcel化"],
+          artifactSuggestions: ["invoice_excel"],
+        });
+      }
+
+      if (isEstimate) {
+        return JSON.stringify({
+          detectedType: "estimate",
+          confidence: 0.9,
+          summary: "見積書。合計220,000円。",
+          extractedText:
+            "見積書\n発行: 株式会社サンプル\n宛先: 株式会社テスト\n見積番号 EST-009\n発行日 2026-08-01\n有効期限 2026-08-31\n施工 1 200000 200000\n小計 200,000\n税 20,000\n合計 220,000",
+          language: "ja",
+          fields: {
+            issuer: "株式会社サンプル",
+            recipient: "株式会社テスト",
+            estimateNumber: "EST-009",
+            documentNumber: "EST-009",
+            issueDate: "2026-08-01",
+            validUntil: "2026-08-31",
+            lineItems: [{ name: "施工", quantity: 1, unitPrice: 200000, amount: 200000 }],
+            subtotal: 200000,
+            tax: 20000,
+            total: 220000,
+          },
+          tables: [],
+          visualElements: ["社印"],
+          layout: { hierarchy: "帳票", readability: "良好" },
+          styleSignals: null,
+          warnings: [],
+          missingFields: [],
+          recommendedActions: ["見積Excelを生成"],
           artifactSuggestions: ["invoice_excel"],
         });
       }
@@ -506,7 +542,7 @@ export function resolveMockLlmOutput(
           detectedType: "business_card",
           confidence: 0.91,
           summary: "名刺から氏名・会社・連絡先を抽出済み。",
-          extractedText: "山田太郎\n株式会社サンプル",
+          extractedText: "山田太郎\n株式会社サンプル\n営業部 主任\n03-1234-5678\n090-1111-2222\ntaro@example.com\n〒100-0001 東京都\nhttps://example.com",
           language: "ja",
           fields: {
             personName: "山田太郎",
@@ -514,8 +550,11 @@ export function resolveMockLlmOutput(
             department: "営業部",
             title: "主任",
             phone: "03-1234-5678",
+            mobile: "090-1111-2222",
             email: "taro@example.com",
+            postalCode: "100-0001",
             address: "東京都",
+            url: "https://example.com",
             website: "https://example.com",
           },
           tables: [],
@@ -608,7 +647,7 @@ export function resolveMockLlmOutput(
           detectedType: "chart",
           confidence: 0.89,
           summary: "月次売上の棒グラフ。右肩上がり。",
-          extractedText: "売上推移 1月〜6月",
+          extractedText: "売上推移 1月〜6月 上昇傾向",
           language: "ja",
           fields: {
             chartType: "棒グラフ",
@@ -616,21 +655,23 @@ export function resolveMockLlmOutput(
             xAxis: "月",
             yAxis: "売上（万円）",
             series: "売上",
+            legend: "売上",
+            visibleValues: null,
             trend: "増加傾向",
-            insights: ["6月が最高", "3月以降の伸びが大きい"],
+            insights: ["右肩上がり", "具体値は判別不可"],
           },
           tables: [
             {
               headers: ["月", "売上"],
               rows: [
-                ["1月", 120],
-                ["2月", 135],
-                ["3月", 150],
-                ["4月", 180],
-                ["5月", 210],
-                ["6月", 240],
+                ["1月", null],
+                ["2月", null],
+                ["3月", null],
+                ["4月", null],
+                ["5月", null],
+                ["6月", null],
               ],
-              notes: null,
+              notes: "具体値は判別不可",
             },
           ],
           visualElements: ["棒", "軸ラベル"],
@@ -653,7 +694,11 @@ export function resolveMockLlmOutput(
           fields: {
             appOrSite: "MINERVOT設定",
             purpose: "通知設定の確認",
-            keyUiText: "通知 ON / 保存",
+            keyUiText: ["設定", "通知 ON", "保存"],
+            state: "通知 ON",
+            actionableElements: ["通知トグル", "保存"],
+            errorCode: null,
+            visibleMessage: "設定",
           },
           tables: [],
           visualElements: ["トグル", "ボタン"],
@@ -663,6 +708,31 @@ export function resolveMockLlmOutput(
           missingFields: [],
           recommendedActions: ["画面内容を要約文書化"],
           artifactSuggestions: ["screenshot_summary_docx"],
+        });
+      }
+
+      if (isWhiteboard) {
+        return JSON.stringify({
+          detectedType: "whiteboard",
+          confidence: 0.78,
+          summary: "打合せのホワイトボード。",
+          extractedText: "Q3目標 売上 要確認",
+          language: "ja",
+          fields: {
+            rawText: "Q3目標 売上 要確認",
+            cleanedText: "Q3目標: 売上（要確認）",
+            summary: "Q3の売上目標が書かれている",
+            observed: "手書きの箇条書きが見える",
+            inference: "会議メモの可能性",
+          },
+          tables: [],
+          visualElements: ["手書き"],
+          layout: null,
+          styleSignals: null,
+          warnings: ["一部が不鮮明"],
+          missingFields: [],
+          recommendedActions: ["板書を文書化"],
+          artifactSuggestions: ["memo_text"],
         });
       }
 
@@ -676,6 +746,8 @@ export function resolveMockLlmOutput(
           fields: {
             scene: "屋内作業スペース",
             objects: ["機材", "机", "ケーブル"],
+            observed: "機材と机、ケーブルが写っている",
+            inference: "作業スペースの可能性",
           },
           tables: [],
           visualElements: ["機材", "机"],
