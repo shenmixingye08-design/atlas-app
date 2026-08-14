@@ -68,12 +68,12 @@ export function AtlasLandingAuth() {
   const appearance = getAtlasClerkAppearance(resolved);
 
   return (
-    <div className="flex items-center gap-2 sm:gap-3">
+    <div className="flex items-center gap-1 sm:gap-3">
       <Show when="signed-out">
         <SignInButton mode="redirect">
           <button
             type="button"
-            className="touch-target rounded-full px-4 py-2 text-sm text-[#75686B] transition-colors hover:text-[#74172A] focus-ring"
+            className="touch-target rounded-full px-3 py-2 text-xs text-[#75686B] transition-colors hover:text-[#74172A] focus-ring sm:px-4 sm:text-sm"
           >
             ログイン
           </button>
@@ -82,7 +82,7 @@ export function AtlasLandingAuth() {
         <SignUpButton mode="redirect">
           <button
             type="button"
-            className="touch-target rounded-full border border-[#74172A] bg-[#74172A] px-4 py-2 text-sm font-medium text-white shadow-[0_10px_28px_rgba(116,23,42,0.2)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#5F1222] hover:shadow-[0_14px_34px_rgba(116,23,42,0.28)] active:scale-[0.98] focus-ring"
+            className="touch-target hidden rounded-full border border-[#74172A] bg-[#74172A] px-3 py-2 text-xs font-medium text-white shadow-[0_10px_28px_rgba(116,23,42,0.2)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#5F1222] hover:shadow-[0_14px_34px_rgba(116,23,42,0.28)] active:scale-[0.98] focus-ring min-[400px]:inline-flex sm:px-4 sm:text-sm"
           >
             無料で始める
           </button>
@@ -92,7 +92,7 @@ export function AtlasLandingAuth() {
       <Show when="signed-in">
         <Link
           href={ATLAS_APP_HOME_PATH}
-          className="touch-target rounded-full border border-[#74172A] bg-[#74172A] px-4 py-2 text-sm font-medium text-white shadow-[0_10px_28px_rgba(116,23,42,0.2)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#5F1222] hover:shadow-[0_14px_34px_rgba(116,23,42,0.28)] active:scale-[0.98] focus-ring"
+          className="touch-target rounded-full border border-[#74172A] bg-[#74172A] px-3 py-2 text-xs font-medium text-white shadow-[0_10px_28px_rgba(116,23,42,0.2)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#5F1222] hover:shadow-[0_14px_34px_rgba(116,23,42,0.28)] active:scale-[0.98] focus-ring sm:px-4 sm:text-sm"
         >
           MINERVOTを開く
         </Link>
