@@ -19,7 +19,9 @@ export function formatsFromVisionBatch(
   const text = assignment;
   const wantsPdf = /PDF|pdf/i.test(text);
   const wantsWord = /Word|ワード|docx/i.test(text);
-  const wantsExcel = /Excel|エクセル|xlsx|家計簿/i.test(text);
+  const wantsExcel = /Excel|エクセル|xlsx|家計簿|支出に追加|買い物まとめて|レシート整理/i.test(
+    text,
+  );
   const intent = inferVisionUserIntent(assignment);
 
   if (intent === "document" && !wantsExcel) {

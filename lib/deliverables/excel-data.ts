@@ -101,7 +101,6 @@ function extractMarkdownTables(content: string): ExcelSheetData[] {
   const lines = content.replace(/\r\n/g, "\n").split("\n");
   const sheets: ExcelSheetData[] = [];
   let index = 0;
-  let tableIndex = 0;
   let lastHeading = "データ";
 
   while (index < lines.length) {
@@ -136,11 +135,10 @@ function extractMarkdownTables(content: string): ExcelSheetData[] {
         1,
       );
       sheets.push({
-        name: tableIndex === 0 ? lastHeading : `${lastHeading} (${tableIndex + 1})`,
+        name: lastHeading,
         headers: normalizeRow(headers, width),
         rows: rows.map((row) => normalizeRow(row, width)),
       });
-      tableIndex += 1;
       continue;
     }
 

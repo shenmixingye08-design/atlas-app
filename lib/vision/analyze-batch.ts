@@ -1,5 +1,6 @@
 import "server-only";
 
+import { recommendHouseholdArtifactType } from "@/lib/household-book/intent";
 import { analyzeUserImage } from "@/lib/vision/analyze-image";
 import {
   classifyImagePurposeFromText,
@@ -40,7 +41,8 @@ function recommendArtifactType(
 ): string | null {
   const intent = inferVisionUserIntent(userText);
   if (intent === "document" && type === "receipt") return "photo_report_docx";
-  if (type === "receipt" || /家計簿/.test(userText)) return "household_excel";
+  const household = recommendHouseholdArtifactType(type, userText);
+  if (household) return household;
   if (type === "invoice" || type === "estimate") return "invoice_excel";
   if (type === "contract" || /契約/.test(userText)) return "contract_docx";
   if (type === "chart" || /グラフ|チャート/.test(userText)) {

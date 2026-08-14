@@ -124,6 +124,8 @@ describe("vision adapters", () => {
     expect(md).toContain("家計簿");
     expect(md).toContain("TEST MART");
     expect(md).toContain("お茶");
+    expect(md).toContain("明細");
+    expect(md).toContain("集計");
   });
 });
 

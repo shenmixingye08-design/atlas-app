@@ -1,3 +1,4 @@
+import { isHouseholdLanguage } from "@/lib/household-book/intent";
 import type { VisionAnalysisResult, VisionBatchResult } from "@/lib/vision/types";
 
 export type VisionGateStatus =
@@ -44,6 +45,9 @@ const IMAGE_WORK_PATTERNS = [
   /レシート/,
   /領収書/,
   /家計簿/,
+  /支出に追加/,
+  /買い物まとめて/,
+  /レシート整理/,
   /請求書/,
   /名刺/,
   /手書き/,
@@ -182,20 +186,42 @@ export function evaluateVisionBatchGate(input: {
   }
 
   const isReceiptWork =
-    /レシート|家計簿|領収書/i.test(input.userText) ||
+    /レシート|家計簿|領収書|支出に追加|買い物まとめて/i.test(input.userText) ||
     images.some((image) => image.detectedType === "receipt") ||
     input.batch.recommendedArtifactType === "household_excel";
 
-  if (isReceiptWork && receiptSignalCount(mergedFields) < 2) {
+  const householdAsked = isHouseholdLanguage(input.userText);
+  const hasReceiptImage = images.some((image) => image.detectedType === "receipt");
+  if (householdAsked && !hasReceiptImage) {
     return {
       status: "needs_input",
       analysisSuccess: true,
-      message: "画像内に該当情報を確認できませんでした",
+      message: "レシートではないため、家計簿にできませんでした",
+      userCode: "needs_input",
+      requiredFields: ["receipt"],
+      missingRequiredFields: ["receipt"],
+    };
+  }
+
+  if (isReceiptWork && receiptSignalCount(mergedFields) < 2) {
+    const missing = ["storeName", "date", "total"].filter(
+      (key) => !fieldPresent(mergedFields, key),
+    );
+    const parts = [
+      missing.includes("total") ? "合計金額を読み取れませんでした" : null,
+      missing.includes("date") ? "購入日を読み取れませんでした" : null,
+      missing.includes("storeName") ? "店舗名を読み取れませんでした" : null,
+    ].filter((part): part is string => Boolean(part));
+    return {
+      status: "needs_input",
+      analysisSuccess: true,
+      message:
+        parts.length > 0
+          ? parts.join("。")
+          : "画像内に該当情報を確認できませんでした",
       userCode: "needs_input",
       requiredFields: ["storeName", "date", "total"],
-      missingRequiredFields: ["storeName", "date", "total"].filter(
-        (key) => !fieldPresent(mergedFields, key),
-      ),
+      missingRequiredFields: missing,
     };
   }
 
