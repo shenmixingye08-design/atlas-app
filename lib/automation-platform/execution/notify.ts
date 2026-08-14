@@ -46,8 +46,12 @@ function shouldNotify(
       // Partial completion needs user attention — not a success channel.
       return policy.onNeedsInput || policy.onFailure;
     case "failed":
-    case "retry_started":
       return policy.onFailure;
+    case "retry_started":
+      // Back-end retry must not page the customer.
+      return false;
+    case "delayed":
+      return policy.onFailure || policy.onSuccess;
     default:
       return false;
   }
@@ -67,6 +71,8 @@ function notificationTypeFor(
       return "completed";
     case "failed":
       return "error";
+    case "delayed":
+      return "automation";
     default:
       return "automation";
   }
@@ -88,6 +94,8 @@ function eventCategoryFor(event: RunNotificationEvent): PushEventCategory {
       return "job_start";
     case "retry_started":
       return "mid_retry";
+    case "delayed":
+      return "job_start";
     default:
       return "internal_step";
   }

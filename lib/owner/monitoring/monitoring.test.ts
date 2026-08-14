@@ -79,6 +79,21 @@ describe("owner monitoring dashboard", () => {
     expect(cron?.detail).toContain("Cron");
   });
 
+  it("marks Cron degraded after 5 minutes and down after 15 minutes", async () => {
+    const { recordCronTickSuccess } = await import("./store");
+    const now = new Date("2026-08-14T00:20:00.000Z");
+    recordCronTickSuccess("2026-08-14T00:14:00.000Z");
+    const { buildMonitorHealth } = await import("./health");
+    const degraded = buildMonitorHealth(now).find((row) => row.id === "cron");
+    expect(degraded?.level).toBe("warn");
+    expect(degraded?.detail).toContain("5分");
+
+    recordCronTickSuccess("2026-08-14T00:00:00.000Z");
+    const down = buildMonitorHealth(now).find((row) => row.id === "cron");
+    expect(down?.level).toBe("down");
+    expect(down?.detail).toContain("15分");
+  });
+
   it("records automation and commander failures into incidents + audit", async () => {
     const { recordMonitoringIncident } = await import("./incidents");
     const { listMonitoringIncidents } = await import("./store");

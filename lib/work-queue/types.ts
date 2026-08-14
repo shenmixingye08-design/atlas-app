@@ -34,6 +34,8 @@ export type WorkJobPayload = {
   triggerType?: "automation" | "manual" | "retry";
   /** When true, steps use real local artifact generation without external AI. */
   offlineArtifacts?: boolean;
+  /** Due-slot classification when the job was enqueued (never "skipped"). */
+  missedDisposition?: "due" | "delayed" | "missed";
 };
 
 export type WorkStepRecord = {

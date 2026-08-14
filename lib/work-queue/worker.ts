@@ -19,6 +19,10 @@ import {
 import { buildDiagnosticId } from "./occurrence";
 import { logWorkQueue } from "./observability";
 import { evaluateWorkQueueCompletion } from "./completion-gate";
+import {
+  buildWorkJobDiagnostics,
+  diagnosticsToLogExtra,
+} from "./job-diagnostics";
 import { decideRetry } from "./retry";
 import { getWorkQueueStore } from "./store";
 import { executeWorkStep } from "./steps/execute-step";
@@ -150,6 +154,13 @@ async function processLeasedJob(
       ownerId: job.ownerId,
       errorCode: "job_execution_uncaught",
       diagnosticId,
+      extra: diagnosticsToLogExtra(
+        buildWorkJobDiagnostics(job, {
+          workerId,
+          developerCode: "job_execution_uncaught",
+          retryReason: "uncaught",
+        }),
+      ),
     });
     return exhausted ? "failed" : "retried";
   } finally {
@@ -339,6 +350,40 @@ async function processLeasedJobBody(
       });
       const diagnosticId =
         current.diagnosticId ?? buildDiagnosticId("step");
+
+      if (failedStep.errorCode === "approval_pending") {
+        await store.updateJob(
+          job.jobId,
+          {
+            status: "waiting_approval",
+            errorCode: "approval_pending",
+            failedStage: step.stepId,
+            diagnosticId,
+            firstError: current.firstError ?? failedStep.errorMessage,
+            lastError: failedStep.errorMessage,
+            leaseOwner: null,
+            leaseExpiresAt: null,
+            resultSummary: "承認後に同じ occurrence で1回だけ実行します",
+          },
+          workerId,
+        );
+        logWorkQueue({
+          event: "JOB_FAILED",
+          jobId: job.jobId,
+          stepId: step.stepId,
+          ownerId: job.ownerId,
+          errorCode: "approval_pending",
+          diagnosticId,
+          extra: diagnosticsToLogExtra(
+            buildWorkJobDiagnostics(current, {
+              workerId,
+              developerCode: "approval_pending",
+              failedStage: step.stepId,
+            }),
+          ),
+        });
+        return "failed";
+      }
 
       if (decision.retryable && decision.retryAt) {
         await store.updateJob(

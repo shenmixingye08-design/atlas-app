@@ -1,6 +1,7 @@
 import {
   WORK_QUEUE_SCHEDULER_BATCH,
 } from "./constants";
+import { classifyDueOccurrence } from "./missed-run";
 import { buildOccurrenceKey } from "./occurrence";
 import { logWorkQueue } from "./observability";
 import { getWorkQueueStore } from "./store";
@@ -12,6 +13,9 @@ export type ScheduleEnqueueResult = {
   enqueued: number;
   deduped: number;
   advanced: number;
+  delayed: number;
+  missed: number;
+  skipped: number;
   delaysMs: number[];
 };
 
@@ -50,19 +54,43 @@ export async function enqueueDueAutomations(input: {
   let enqueued = 0;
   let deduped = 0;
   let advanced = 0;
+  let delayed = 0;
+  let missed = 0;
+  let skipped = 0;
   const delaysMs: number[] = [];
 
   for (const candidate of due) {
     const scheduledAt = new Date(candidate.nextRun!);
+    const classification = classifyDueOccurrence(scheduledAt, now);
     const occurrenceKey = buildOccurrenceKey({
       automationId: candidate.automationId,
       scheduledAt,
       timezone: candidate.timezone ?? "Asia/Tokyo",
     });
 
-    const delayMs = Math.max(0, now.getTime() - scheduledAt.getTime());
-    delaysMs.push(delayMs);
-    await store.recordScheduleDelay(delayMs);
+    delaysMs.push(classification.delayMs);
+    await store.recordScheduleDelay(classification.delayMs);
+
+    if (!classification.shouldExecute) {
+      skipped += 1;
+      logWorkQueue({
+        event: "OCCURRENCE_SKIPPED",
+        automationId: candidate.automationId,
+        occurrenceKey,
+        ownerId: candidate.ownerId,
+        extra: {
+          delayMs: classification.delayMs,
+          disposition: classification.disposition,
+        },
+      });
+      // Advance nextRun; never mark skipped as completed.
+      await input.advanceNextRun(candidate.automationId, now);
+      advanced += 1;
+      continue;
+    }
+
+    if (classification.disposition === "delayed") delayed += 1;
+    if (classification.disposition === "missed") missed += 1;
 
     const offline = Boolean(candidate.offlineArtifacts);
     const { job, created } = await store.enqueue({
@@ -77,6 +105,12 @@ export async function enqueueDueAutomations(input: {
         automationName: candidate.name,
         triggerType: "automation",
         offlineArtifacts: offline,
+        missedDisposition:
+          classification.disposition === "missed"
+            ? "missed"
+            : classification.disposition === "delayed"
+              ? "delayed"
+              : "due",
       },
       steps: defaultAutomationSteps(offline),
     });
@@ -90,6 +124,7 @@ export async function enqueueDueAutomations(input: {
         jobId: job.jobId,
         runId: job.runId,
         ownerId: candidate.ownerId,
+        extra: { disposition: classification.disposition },
       });
       logWorkQueue({
         event: "JOB_ENQUEUED",
@@ -122,6 +157,9 @@ export async function enqueueDueAutomations(input: {
     enqueued,
     deduped,
     advanced,
+    delayed,
+    missed,
+    skipped,
     delaysMs,
   };
 }

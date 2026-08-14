@@ -13,6 +13,10 @@ import { evaluateWorkQueueAlerts } from "./alerts";
 import { tagWorkQueueError } from "./failure-class";
 import { enqueueDueAutomations } from "./scheduler";
 import {
+  buildSchedulerHealthSnapshot,
+  type SchedulerHealthSnapshot,
+} from "./scheduler-health";
+import {
   drainWorkQueueHorizontal,
   type HorizontalDrainResult,
 } from "./worker-scale";
@@ -37,6 +41,7 @@ export async function processWorkQueueTick(options?: {
   /** Aggregated horizontal drain (P2-03). */
   worker: HorizontalDrainResult;
   alerts: Awaited<ReturnType<typeof evaluateWorkQueueAlerts>>;
+  health: SchedulerHealthSnapshot;
 }> {
   let ownerIds: string[];
   try {
@@ -128,7 +133,11 @@ export async function processWorkQueueTick(options?: {
 
   try {
     const alerts = await evaluateWorkQueueAlerts();
-    return { schedule, worker, alerts };
+    const health = await buildSchedulerHealthSnapshot({
+      enqueue: schedule,
+      lastTickAt: new Date().toISOString(),
+    });
+    return { schedule, worker, alerts, health };
   } catch (error) {
     throw tagWorkQueueError(error, "evaluate_alerts");
   }

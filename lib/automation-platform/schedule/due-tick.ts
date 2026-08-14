@@ -18,12 +18,14 @@ import {
   buildFeatureAccessContext,
   isFeatureEnabled,
 } from "@/lib/feature-flags/access";
+import { classifyDueOccurrence } from "@/lib/work-queue/missed-run";
 
 export type DueScheduleTickResult = {
   due: number;
   enqueued: number;
   deduped: number;
   skippedPaused: number;
+  skippedStale: number;
   failed: number;
   dispatched: number;
   firings: Array<{
@@ -58,6 +60,7 @@ export async function processDueScheduledAutomationsV2(options?: {
     enqueued: 0,
     deduped: 0,
     skippedPaused: 0,
+    skippedStale: 0,
     failed: 0,
     dispatched: 0,
     firings: [],
@@ -83,7 +86,38 @@ export async function processDueScheduledAutomationsV2(options?: {
       continue;
     }
     const scheduledAt = automation.nextRunAt!;
-    const delayMs = Math.max(0, nowMs - Date.parse(scheduledAt));
+    const classification = classifyDueOccurrence(scheduledAt, nowMs);
+    if (!classification.shouldExecute) {
+      result.skippedStale += 1;
+      const { computeNextRunIsoFromTrigger } = await import(
+        "@/lib/automation-platform/schedule/compute"
+      );
+      const next = computeNextRunIsoFromTrigger(
+        automation.trigger,
+        new Date(Math.max(nowMs, Date.parse(scheduledAt) + 1)),
+      );
+      await persistAutomationV2Now({
+        ...automation,
+        nextRunAt: next,
+        updatedAt: new Date().toISOString(),
+      });
+      appendAutomationAudit({
+        actorUserId: null,
+        action: "automation.schedule.fire",
+        automationId: automation.id,
+        runId: null,
+        outcome: "success",
+        errorCode: "automation_occurrence_skipped_stale",
+        meta: {
+          scheduledAt,
+          delayMs: classification.delayMs,
+          disposition: classification.disposition,
+          created: false,
+        },
+      });
+      continue;
+    }
+    const delayMs = classification.delayMs;
     try {
       const enqueued = await automationPlatformService.enqueueRun({
         userId: automation.userId,

@@ -7,6 +7,8 @@ import { buildSystemStatusSnapshot } from "@/lib/owner/system-status/engine";
 import { listAuditLogEntries } from "@/lib/owner/audit-log";
 import { listOwnerNotifications } from "@/lib/notifications";
 
+import { evaluateSchedulerHealth } from "@/lib/work-queue/scheduler-health";
+
 import { getMonitorTargetLabel, MONITOR_TARGET_IDS } from "./registry";
 import { getCronTickState } from "./store";
 import type {
@@ -63,11 +65,12 @@ function mapSystemStatus(
   return "ok";
 }
 
-function hoursSince(iso: string | null, now: Date): number | null {
-  if (!iso) return null;
-  const ms = now.getTime() - new Date(iso).getTime();
-  if (!Number.isFinite(ms)) return null;
-  return ms / (1000 * 60 * 60);
+function mapSchedulerHealthLevel(
+  level: "ok" | "degraded" | "down",
+): MonitorHealthLevel {
+  if (level === "down") return "down";
+  if (level === "degraded") return "warn";
+  return "ok";
 }
 
 export function buildMonitorHealth(
@@ -238,23 +241,30 @@ export function buildMonitorHealth(
     },
     cron: () => {
       const env = envServiceConfigured("vercel_cron");
-      const hoursOk = hoursSince(cron.lastSuccessAt, now);
-      const hoursFail = hoursSince(cron.lastFailureAt, now);
       let level: MonitorHealthLevel = "ok";
       let detail = "直近の tick 成功";
 
       if (env.configured === 0) {
         level = "warn";
         detail = "CRON_SECRET 未設定";
-      } else if (cron.lastFailureAt && (!cron.lastSuccessAt || (hoursFail ?? 99) < (hoursOk ?? 99))) {
-        level = "down";
-        detail = cron.lastError ?? "Cron tick 失敗";
-      } else if (!cron.lastSuccessAt) {
-        level = "warn";
-        detail = "まだ tick 実績なし";
-      } else if ((hoursOk ?? 0) > 2) {
-        level = "down";
-        detail = `最終成功から ${Math.round(hoursOk!)} 時間経過`;
+      } else {
+        const schedulerHealth = evaluateSchedulerHealth({
+          lastSuccessfulTickAt: cron.lastSuccessAt,
+          lastFailureAt: cron.lastFailureAt,
+          nowMs: now.getTime(),
+        });
+        level = mapSchedulerHealthLevel(schedulerHealth);
+        if (schedulerHealth === "down" && cron.lastError) {
+          detail = cron.lastError;
+        } else if (schedulerHealth === "down" && !cron.lastSuccessAt) {
+          detail = cron.lastError ?? "Cron tick 失敗";
+        } else if (schedulerHealth === "down") {
+          detail = "Cron が15分以上成功していません";
+        } else if (schedulerHealth === "degraded" && !cron.lastSuccessAt) {
+          detail = "まだ tick 実績なし";
+        } else if (schedulerHealth === "degraded") {
+          detail = "Cron が5分以上成功していません";
+        }
       }
 
       return {

@@ -15,7 +15,8 @@ export type RunNotificationEvent =
   | "failed"
   | "retry_started"
   | "retry_finished"
-  | "prepared";
+  | "prepared"
+  | "delayed";
 
 const CAPABILITY_COPY: Record<string, { done: string; fail: string }> = {
   x_post: {
@@ -133,6 +134,11 @@ export function buildAutomationRunNotifyCopy(input: {
       return {
         title: "自動化を再試行します",
         message: `「${name}」を再試行します。`,
+      };
+    case "delayed":
+      return {
+        title: "予定時刻を過ぎて実行します",
+        message: `「${name}」は予定時刻を過ぎたため、遅延実行します。`,
       };
     default:
       return {

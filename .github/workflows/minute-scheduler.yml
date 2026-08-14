@@ -5,6 +5,8 @@ name: Minute Scheduler
 
 on:
   schedule:
+    # GitHub Actions cron is UTC and not realtime-guaranteed.
+    # Duplicate/delayed ticks must stay idempotent via occurrenceKey claim.
     - cron: "* * * * *"
   workflow_dispatch:
 

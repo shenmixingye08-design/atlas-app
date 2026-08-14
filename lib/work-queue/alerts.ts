@@ -2,6 +2,7 @@ import {
   isScheduledCronEnabled,
   isSchedulerExplicitlyStopped,
 } from "./scheduler-gate";
+import { evaluateSchedulerHealth } from "./scheduler-health";
 import { getWorkQueueStore } from "./store";
 
 export type WorkQueueAlert = {
@@ -42,14 +43,19 @@ export async function evaluateWorkQueueAlerts(
     });
   }
 
-  if (metrics.schedulerLastSuccessAt) {
+  const health = evaluateSchedulerHealth({
+    lastSuccessfulTickAt: metrics.schedulerLastSuccessAt,
+    nowMs,
+    cronEnabled: isScheduledCronEnabled() && !isSchedulerExplicitlyStopped(),
+  });
+  if (metrics.schedulerLastSuccessAt && health !== "ok") {
     const age =
       nowMs - new Date(metrics.schedulerLastSuccessAt).getTime();
     if (age > SCHEDULER_STALE_MS) {
       alerts.push({
         code: "scheduler_stale",
-        severity: "critical",
-        message: `Scheduler has not succeeded for ${Math.round(age / 1000)}s`,
+        severity: health === "down" ? "critical" : "warning",
+        message: `Scheduler has not succeeded for ${Math.round(age / 1000)}s (${health})`,
       });
     }
   }
