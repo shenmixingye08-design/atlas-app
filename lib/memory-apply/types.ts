@@ -60,6 +60,8 @@ export type MemoryContentOverlay = {
   preferCta: boolean;
   preferSeo: boolean;
   ctaText: string | null;
+  hashtagsMax: number | null;
+  preferFewEmoji: boolean;
 };
 
 export type MemoryDeliverableOverlay = {

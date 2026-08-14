@@ -275,6 +275,15 @@ export async function executeAutomationRun(
             userId: options.userId,
             assignment,
             automationId: automation.id,
+            destination: automation.destination,
+            automationOverrides:
+              automation.workflow.metadata?.memoryOverrides &&
+              typeof automation.workflow.metadata.memoryOverrides === "object"
+                ? (automation.workflow.metadata.memoryOverrides as Record<
+                    string,
+                    unknown
+                  >)
+                : null,
           })
         : {};
 

@@ -8,6 +8,7 @@ import {
 import {
   ENTRUSTED_JOB_STATUS_LABELS,
   describeMaterialsAndMemory,
+  formatAppliedPreferencesLine,
   getConfirmationScopeLabel,
   resolveEntrustedJobStatus,
   resolveScheduleMethod,
@@ -182,6 +183,16 @@ export function AutomationCard({
             {describeMaterialsAndMemory(automation)}
           </dd>
         </div>
+        {formatAppliedPreferencesLine(automation) ? (
+          <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3 sm:col-span-2">
+            <dt className="text-xs text-[var(--text-muted)]">
+              {ui.entrustedJobs.appliedPreferences}
+            </dt>
+            <dd className="mt-1 font-medium text-foreground">
+              {formatAppliedPreferencesLine(automation)}
+            </dd>
+          </div>
+        ) : null}
       </dl>
 
       {automation.lastError && automation.status === "failed" && (

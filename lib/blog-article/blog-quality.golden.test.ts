@@ -192,6 +192,8 @@ describe("Blog golden fixtures", () => {
       preferCta: true,
       preferSeo: true,
       ctaText: "関連する案内もご確認ください。",
+      hashtagsMax: null,
+      preferFewEmoji: false,
     };
     const applied = applyPublishedBodyOverlay(PRODUCT, overlay, "wordpress");
     expect(applied.appliedKeys).toContain("cta");
@@ -327,6 +329,8 @@ describe("Blog quality score", () => {
       preferCta: true,
       preferSeo: true,
       ctaText: "関連する案内もご確認ください。",
+      hashtagsMax: null,
+      preferFewEmoji: false,
     };
     const memoryApplied = applyPublishedBodyOverlay(PRODUCT, overlay, "wordpress");
     const points = {

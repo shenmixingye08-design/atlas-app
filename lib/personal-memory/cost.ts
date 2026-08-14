@@ -45,6 +45,27 @@ export function selectRelevantMemories(input: {
         return false;
       }
     }
+    // X retrieval must not pull Word / Excel / household / company memories
+    // even when a row was marked global with leftover artifact types.
+    if (artifacts.has("x_post") || artifacts.has("sns")) {
+      const memoryArtifacts = expandArtifactTypes(memory.appliesTo.artifactTypes);
+      const xBlocked = ["word", "docx", "xlsx", "excel", "household", "company"];
+      if (
+        memoryArtifacts.size > 0 &&
+        !memoryArtifacts.has("x_post") &&
+        !memoryArtifacts.has("sns") &&
+        [...memoryArtifacts].some((type) => xBlocked.includes(type))
+      ) {
+        return false;
+      }
+      const hay = `${memory.summary} ${JSON.stringify(memory.value)}`;
+      if (
+        /家計簿|会社用|社内文書|Excel列順|列順/.test(hay) &&
+        !/x_post|sns|ツイート|\bX\b/i.test(hay)
+      ) {
+        return false;
+      }
+    }
     if (
       memory.appliesTo.capabilities.length > 0 &&
       capabilities.size > 0 &&

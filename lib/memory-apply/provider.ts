@@ -37,6 +37,8 @@ export type MemoryProviderRequest = {
   /** When false, returns empty resolution (Memory OFF comparison baseline). */
   memoryEnabled?: boolean;
   organizationId?: string | null;
+  currentInstruction?: Record<string, unknown> | null;
+  automationOverrides?: Record<string, unknown> | null;
 };
 
 export type MemoryProviderResult = {
@@ -120,6 +122,8 @@ export async function MemoryProvider(
     deniedScopes: request.deniedScopes ?? undefined,
     automationId: request.automationId ?? undefined,
     notes: request.assignment ?? undefined,
+    currentInstruction: request.currentInstruction ?? undefined,
+    automationOverrides: request.automationOverrides ?? undefined,
     artifactTypes: resolveMemoryArtifactTypes({
       assignment: request.assignment,
       stepTypes: request.stepTypes,

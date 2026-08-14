@@ -10,6 +10,11 @@ import {
   CORRECTION_REPEAT_THRESHOLD,
 } from "@/lib/personal-memory/types";
 import { detectMemoryChannel } from "@/lib/memory-apply/channels";
+import { parseXSocialPreferenceFromText } from "@/lib/memory-apply/x-social-preference";
+import {
+  classifyMemoryWriteIntent,
+  isOneShotMemoryInstruction,
+} from "@/lib/personal-memory/intent";
 import { sanitizeUserFacingMemoryText } from "@/lib/personal-memory/security";
 import {
   bumpCorrectionCounter,
@@ -158,11 +163,12 @@ export function inferPreferenceFromText(
 ): InferredPreference | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
+  if (isOneShotMemoryInstruction(trimmed)) return null;
   const cleaned = sanitizeUserFacingMemoryText(trimmed);
   const channel = detectMemoryChannel(trimmed);
+  const writeIntent = classifyMemoryWriteIntent(trimmed);
   const explicit =
-    /今後|毎回|いつも|これから/.test(trimmed) ||
-    (!channel.global && /して|入れて/.test(trimmed));
+    writeIntent === "persist_global" || writeIntent === "persist_channel";
 
   const formatMatch = trimmed.match(
     /今後は?\s*(?:毎回)?\s*(PDF|pdf|Excel|Word|PowerPoint|パワポ)/i,
@@ -208,8 +214,37 @@ export function inferPreferenceFromText(
     writing.conclusion = "first";
     writingHit = true;
   }
-  if (/絵文字\s*(なし|無し|やめて|を使わない)|絵文字なし/.test(trimmed)) {
-    writing.emoji = "none";
+  const xPref = parseXSocialPreferenceFromText(trimmed);
+  if (xPref.length) {
+    writing.length = xPref.length;
+    writingHit = true;
+  }
+  if (xPref.emoji) {
+    writing.emoji = xPref.emoji;
+    writingHit = true;
+  }
+  if (xPref.hashtagsMax != null) {
+    writing.hashtagsMax = xPref.hashtagsMax;
+    writing.hashtags = xPref.hashtags;
+    writingHit = true;
+  } else if (xPref.hashtags) {
+    writing.hashtags = xPref.hashtags;
+    writingHit = true;
+  }
+  if (xPref.promotional) {
+    writing.promotional = xPref.promotional;
+    writingHit = true;
+  }
+  if (xPref.lineBreaks) {
+    writing.lineBreaks = xPref.lineBreaks;
+    writingHit = true;
+  }
+  if (typeof xPref.cta === "boolean") {
+    writing.cta = xPref.cta;
+    writingHit = true;
+  }
+  if (xPref.tone) {
+    writing.tone = xPref.tone;
     writingHit = true;
   }
   if (/\bCTA\b|行動喚起|最後に(CTA|誘導)/i.test(trimmed)) {
@@ -240,9 +275,29 @@ export function inferPreferenceFromText(
     writingHit = true;
   }
 
+  if (xPref.approval && !writingHit) {
+    return {
+      scope: "approval_preferences",
+      key: "x_approval",
+      title: "X投稿の確認",
+      summary: cleaned.slice(0, 120),
+      value: {
+        text: cleaned,
+        approval: xPref.approval,
+        executionLevel: xPref.approval,
+        channel: channel.channel,
+        global: writeIntent === "persist_global" || channel.global,
+      },
+      explicit,
+      global: writeIntent === "persist_global" || channel.global,
+      artifactTypes: channel.artifactTypes,
+    };
+  }
+
   if (writingHit) {
+    if (xPref.approval) writing.approval = xPref.approval;
     writing.channel = channel.channel;
-    writing.global = channel.global;
+    writing.global = writeIntent === "persist_global" || channel.global;
     return {
       scope: "writing_style",
       key: "writing_preference",
@@ -250,7 +305,7 @@ export function inferPreferenceFromText(
       summary: cleaned.slice(0, 120),
       value: writing,
       explicit,
-      global: channel.global,
+      global: writeIntent === "persist_global" || channel.global,
       artifactTypes: channel.artifactTypes,
     };
   }
@@ -332,8 +387,22 @@ export function evaluateCorrectionForCandidate(
     return { action: "none", fingerprint: "", count: 0 };
   }
 
+  if (isOneShotMemoryInstruction(signal.text)) {
+    return { action: "none", fingerprint: "", count: 0 };
+  }
+
+  const writeIntentEarly = classifyMemoryWriteIntent(signal.text);
+  if (writeIntentEarly === "automation_override") {
+    return { action: "none", fingerprint: "", count: 0 };
+  }
+
   const inferred = inferPreferenceFromText(signal.text);
   if (!inferred) {
+    return { action: "none", fingerprint: "", count: 0 };
+  }
+
+  const writeIntent = classifyMemoryWriteIntent(signal.text);
+  if (writeIntent === "one_shot") {
     return { action: "none", fingerprint: "", count: 0 };
   }
 
@@ -368,15 +437,17 @@ export function evaluateCorrectionForCandidate(
     automationId: signal.automationId,
   });
 
-  const appliesTo = signal.automationId
+  const automationOnly =
+    writeIntent === "automation_override" || Boolean(signal.automationId);
+  const appliesTo = automationOnly
     ? {
         global: false,
-        automationIds: [signal.automationId],
+        automationIds: signal.automationId ? [signal.automationId] : [],
         artifactTypes: channelTypes,
         capabilities: [],
       }
     : {
-        global: isGlobal,
+        global: writeIntent === "persist_global" || isGlobal,
         automationIds: [],
         artifactTypes: channelTypes,
         capabilities: [],

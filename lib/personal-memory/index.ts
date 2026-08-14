@@ -23,4 +23,11 @@ export {
 } from "./service";
 export { resolvePersonalMemories, toRunMemoryLedger } from "./resolve";
 export { evaluateCorrectionForCandidate, inferPreferenceFromText, buildCandidatePrompt } from "./candidates";
+export {
+  classifyMemoryWriteIntent,
+  isOneShotMemoryInstruction,
+  hasPersistentMemoryIntent,
+  isAutomationOnlyOverrideIntent,
+  isGlobalMemoryUpdateIntent,
+} from "./intent";
 export { ensurePersonalMemoryHydrated } from "./durable";

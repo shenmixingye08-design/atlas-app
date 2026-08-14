@@ -1004,6 +1004,8 @@ export const ui = {
     materials: "使用する資料または記憶",
     workMemory: "使用する仕事の記憶",
     workMemoryHint: "依頼実行時に、関連する仕事の記憶を参照します",
+    appliedPreferences: "あなたの好みを反映",
+    appliedPreferencesEmpty: "この自動化向けの好みはまだありません",
     manualAlsoAvailable: "必要なときに手動実行も可能",
     comingSoon: "順次対応",
     viewDetail: "詳細を見る",

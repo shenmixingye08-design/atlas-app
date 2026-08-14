@@ -157,6 +157,14 @@ export function buildContentOverlay(input: {
     preferSeo: structure.seo,
     ctaText:
       readField(values, ["ctaText", "call_to_action", "誘導文"]) ?? null,
+    hashtagsMax: (() => {
+      for (const row of values) {
+        if (typeof row.value.hashtagsMax === "number") return row.value.hashtagsMax;
+        if (row.value.hashtags === "none") return 0;
+      }
+      return null;
+    })(),
+    preferFewEmoji: values.some((row) => row.value.emoji === "few"),
   };
 }
 

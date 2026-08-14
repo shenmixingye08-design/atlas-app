@@ -40,6 +40,8 @@ export type MemoryApplyInput = {
   /** Memory OFF for A/B comparison */
   memoryEnabled?: boolean;
   artifactIds?: string[];
+  currentInstruction?: Record<string, unknown> | null;
+  automationOverrides?: Record<string, unknown> | null;
 };
 
 export type MemoryApplyOutput = {
@@ -69,6 +71,8 @@ export async function MemoryApply(
     stepTypes: input.stepTypes,
     capabilities: input.capabilities,
     memoryEnabled: input.memoryEnabled,
+    currentInstruction: input.currentInstruction,
+    automationOverrides: input.automationOverrides,
   };
 
   const provider = await MemoryProvider(providerRequest);

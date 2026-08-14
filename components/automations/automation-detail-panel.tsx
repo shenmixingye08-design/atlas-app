@@ -12,6 +12,7 @@ import {
   ENTRUSTED_JOB_STATUS_LABELS,
   clampConfirmationLevel,
   describeMaterialsAndMemory,
+  formatAppliedPreferencesLine,
   describeProcedure,
   flowHasCriticalExternalActions,
   formatAutomationSuccessRate,
@@ -210,6 +211,17 @@ export function AutomationDetailPanel({
               </p>
             </div>
           </section>
+
+          {formatAppliedPreferencesLine(automation) ? (
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold text-foreground">
+                {ui.entrustedJobs.appliedPreferences}
+              </h3>
+              <p className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-3 py-3 text-sm text-[var(--text-secondary)]">
+                {formatAppliedPreferencesLine(automation)}
+              </p>
+            </section>
+          ) : null}
 
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-foreground">
