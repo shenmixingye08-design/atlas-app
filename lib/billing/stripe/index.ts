@@ -27,12 +27,17 @@ export {
   assertAllowedStripePriceId,
   assertNoDuplicatePaidSubscription,
   assertStripePriceMatchesPlan,
+  buildSubscriptionUpdateConfirmFlowData,
   createBillingPortalSession,
   createCheckoutSession,
   isStripeLiveMode,
   mapStripePlanId,
 } from "./checkout";
-export type { CheckoutSessionResult } from "./checkout";
+export type {
+  BillingPortalFlow,
+  BillingPortalSessionResult,
+  CheckoutSessionResult,
+} from "./checkout";
 
 export {
   assertStripeSafeForProduction,
@@ -50,6 +55,9 @@ export {
   CHECKOUT_PRICE_MISMATCH_MESSAGE,
   CHECKOUT_USE_PORTAL_FOR_PLAN_CHANGE_MESSAGE,
   CHECKOUT_USER_ERROR_MESSAGE,
+  PORTAL_INVALID_TARGET_PLAN_MESSAGE,
+  PORTAL_NO_SUBSCRIPTION_MESSAGE,
+  PORTAL_PLAN_CHANGE_FAILED_MESSAGE,
   CheckoutBlockedError,
   classifyCheckoutRouteError,
   isCheckoutBlockedError,

@@ -462,28 +462,187 @@ export async function createCheckoutSession(input: {
   };
 }
 
+const PORTAL_BLOCKING_STATUSES = new Set([
+  "active",
+  "trialing",
+  "past_due",
+  "unpaid",
+]);
+
+export type BillingPortalFlow = "portal_home" | "subscription_update_confirm";
+
+export type BillingPortalSessionResult = {
+  url: string;
+  mode: "live" | "mock";
+  flow: BillingPortalFlow;
+};
+
+/**
+ * Deep-link params for Stripe Customer Portal plan-change confirmation.
+ * Price IDs come from server SoT only — never from the client.
+ */
+export function buildSubscriptionUpdateConfirmFlowData(input: {
+  subscriptionId: string;
+  subscriptionItemId: string;
+  targetPriceId: string;
+  returnUrl: string;
+}): NonNullable<Stripe.BillingPortal.SessionCreateParams["flow_data"]> {
+  return {
+    type: "subscription_update_confirm",
+    after_completion: {
+      type: "redirect",
+      redirect: { return_url: input.returnUrl },
+    },
+    subscription_update_confirm: {
+      subscription: input.subscriptionId,
+      items: [
+        {
+          id: input.subscriptionItemId,
+          price: input.targetPriceId,
+          quantity: 1,
+        },
+      ],
+    },
+  };
+}
+
+async function retrieveLiveStripeSubscription(input: {
+  stripe: Stripe;
+  stripeCustomerId: string;
+  stripeSubscriptionId?: string | null;
+}): Promise<Stripe.Subscription> {
+  if (input.stripeSubscriptionId) {
+    try {
+      const existing = await input.stripe.subscriptions.retrieve(
+        input.stripeSubscriptionId,
+      );
+      if (PORTAL_BLOCKING_STATUSES.has(existing.status)) {
+        return existing;
+      }
+    } catch {
+      // Stale projection id — fall through to list.
+    }
+  }
+
+  const listed = await input.stripe.subscriptions.list({
+    customer: input.stripeCustomerId,
+    status: "all",
+    limit: 20,
+  });
+  const blocking = listed.data.filter((sub) =>
+    PORTAL_BLOCKING_STATUSES.has(sub.status),
+  );
+  if (blocking.length === 0) {
+    throw new Error("No active Stripe subscription to update");
+  }
+  if (input.stripeSubscriptionId) {
+    const match = blocking.find((sub) => sub.id === input.stripeSubscriptionId);
+    if (match) return match;
+  }
+  return blocking[0]!;
+}
+
+function requireSingleSubscriptionItem(
+  subscription: Stripe.Subscription,
+): Stripe.SubscriptionItem {
+  const items = subscription.items.data;
+  if (items.length !== 1 || !items[0]?.id) {
+    throw new Error(
+      "Stripe subscription does not have a single item for subscription_update_confirm",
+    );
+  }
+  return items[0];
+}
+
 /**
  * Opens Stripe Customer Portal for the authenticated user's own customer ID.
- * Card change / invoices / cancel / plan change are Portal Dashboard features —
- * the app only creates a portal session; it does not collect card data.
+ *
+ * 「お支払い管理」: no targetPlanId → portal home (cards / invoices / cancel).
+ * 「このプランに変更」: targetPlanId → subscription_update_confirm only.
+ * Never creates a Checkout session or a second subscription.
  */
 export async function createBillingPortalSession(input: {
   stripeCustomerId: string;
   origin: string;
-}): Promise<{ url: string; mode: "live" | "mock" }> {
+  targetPlanId?: PlanId;
+  stripeSubscriptionId?: string | null;
+  currentPlanId?: PlanId | null;
+}): Promise<BillingPortalSessionResult> {
   assertStripeSafeForProduction();
 
+  const targetPlanId = input.targetPlanId;
+  if (targetPlanId === "free") {
+    throw new Error("Free plan does not use portal plan change");
+  }
+  if (targetPlanId && input.currentPlanId === targetPlanId) {
+    throw new CheckoutBlockedError(
+      "already_same_plan",
+      CHECKOUT_ALREADY_SAME_PLAN_MESSAGE,
+    );
+  }
+
   const stripe = getStripeClient();
+  const origin = resolveAppOrigin(input.origin);
+  const returnUrl = `${origin}/settings/billing`;
+
+  if (targetPlanId) {
+    const targetPriceId = getStripePriceIdForPlan(targetPlanId);
+    assertCheckoutPriceConfigured(targetPlanId, targetPriceId);
+    if (!targetPriceId) {
+      throw new Error(`Stripe price is not configured for plan: ${targetPlanId}`);
+    }
+    assertAllowedStripePriceId(targetPriceId, targetPlanId);
+
+    if (!stripe) {
+      if (isAtlasProduction()) {
+        throw new Error(
+          "Stripe is not configured for production billing portal. Set STRIPE_SECRET_KEY.",
+        );
+      }
+      throw new Error("Stripe is not configured for paid plan change");
+    }
+
+    const subscription = await retrieveLiveStripeSubscription({
+      stripe,
+      stripeCustomerId: input.stripeCustomerId,
+      stripeSubscriptionId: input.stripeSubscriptionId,
+    });
+    const item = requireSingleSubscriptionItem(subscription);
+    const currentPriceId =
+      typeof item.price === "string" ? item.price : item.price?.id;
+    if (currentPriceId && currentPriceId === targetPriceId) {
+      throw new CheckoutBlockedError(
+        "already_same_plan",
+        CHECKOUT_ALREADY_SAME_PLAN_MESSAGE,
+      );
+    }
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: input.stripeCustomerId,
+      return_url: returnUrl,
+      flow_data: buildSubscriptionUpdateConfirmFlowData({
+        subscriptionId: subscription.id,
+        subscriptionItemId: item.id,
+        targetPriceId,
+        returnUrl,
+      }),
+    });
+
+    return {
+      url: session.url,
+      mode: "live",
+      flow: "subscription_update_confirm",
+    };
+  }
 
   if (stripe) {
-    const origin = resolveAppOrigin(input.origin);
     const session = await stripe.billingPortal.sessions.create({
       customer: input.stripeCustomerId,
       // Same canonical host as Checkout — avoid *.vercel.app cookie loss.
-      return_url: `${origin}/settings/billing`,
+      return_url: returnUrl,
     });
 
-    return { url: session.url, mode: "live" };
+    return { url: session.url, mode: "live", flow: "portal_home" };
   }
 
   if (isAtlasProduction()) {
@@ -495,6 +654,7 @@ export async function createBillingPortalSession(input: {
   return {
     url: `${input.origin}/settings/billing?portal=mock`,
     mode: "mock",
+    flow: "portal_home",
   };
 }
 

@@ -102,10 +102,19 @@ export async function startCheckout(
   };
 }
 
-export async function openBillingPortal(): Promise<{ url: string }> {
+export async function openBillingPortal(
+  targetPlanId?: PlanId,
+): Promise<{ url: string }> {
+  const changingPlan = Boolean(targetPlanId) && targetPlanId !== "free";
   const response = await fetch("/api/billing/portal", {
     method: "POST",
     credentials: "same-origin",
+    ...(changingPlan
+      ? {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetPlanId }),
+        }
+      : {}),
   });
   const body = readCheckoutApiBody(await response.json().catch(() => null));
   if (!response.ok) {
