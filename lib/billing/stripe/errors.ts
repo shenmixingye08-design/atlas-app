@@ -24,6 +24,16 @@ export const CHECKOUT_CONFIG_USER_ERROR_MESSAGE =
 export const CHECKOUT_SUBSCRIPTION_SYNC_MESSAGE =
   "契約情報を同期しています。完了するまでプラン変更はできません。";
 
+/** Paid → paid confirm flow could not be opened. Do not fall back to portal home. */
+export const PORTAL_PLAN_CHANGE_FAILED_MESSAGE =
+  "プラン変更の確認画面を開けませんでした。しばらくしてから再度お試しください。";
+
+export const PORTAL_NO_SUBSCRIPTION_MESSAGE =
+  "変更できるご契約が見つかりません。先にプランを選択して決済を完了してください。";
+
+export const PORTAL_INVALID_TARGET_PLAN_MESSAGE =
+  "変更先のプランを確認できませんでした。もう一度お試しください。";
+
 export type CheckoutErrorCode =
   | "already_same_plan"
   | "use_portal_for_plan_change"

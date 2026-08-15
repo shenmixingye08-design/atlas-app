@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { CheckoutRequestError, startCheckout } from "./client";
+import { CheckoutRequestError, openBillingPortal, startCheckout } from "./client";
 
 describe("startCheckout", () => {
   afterEach(() => {
@@ -85,5 +85,60 @@ describe("startCheckout", () => {
       );
       expect((error as CheckoutRequestError).status).toBe(409);
     }
+  });
+});
+
+describe("openBillingPortal", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends targetPlanId only for paid plan change", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            url: "https://billing.stripe.com/p/session/confirm",
+            flow: "subscription_update_confirm",
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const result = await openBillingPortal("standard");
+    expect(result.url).toBe("https://billing.stripe.com/p/session/confirm");
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/billing/portal",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetPlanId: "standard" }),
+      }),
+    );
+  });
+
+  it("opens generic portal home with no body for お支払い管理", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            url: "https://billing.stripe.com/p/session/home",
+            flow: "portal_home",
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const result = await openBillingPortal();
+    expect(result.url).toBe("https://billing.stripe.com/p/session/home");
+    expect(fetch).toHaveBeenCalledWith("/api/billing/portal", {
+      method: "POST",
+      credentials: "same-origin",
+    });
   });
 });

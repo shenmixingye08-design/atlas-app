@@ -244,7 +244,7 @@ export function BillingSettings() {
 
     try {
       if (usePortal) {
-        const { url } = await openBillingPortal();
+        const { url } = await openBillingPortal(planId);
         window.location.assign(url);
         return;
       }
@@ -258,7 +258,7 @@ export function BillingSettings() {
       ) {
         try {
           setBusyKind("portal");
-          const { url } = await openBillingPortal();
+          const { url } = await openBillingPortal(planId);
           window.location.assign(url);
           return;
         } catch (portalErr) {
