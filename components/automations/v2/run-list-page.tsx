@@ -64,16 +64,17 @@ export function RunListPage() {
   const rows = useMemo(() => runs ?? [], [runs]);
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-4">
+    <div className="space-y-6">
+      <Link
+        href="/automations"
+        className="inline-flex items-center gap-1 text-sm text-[var(--foreground-muted)] transition-colors hover:text-foreground focus-ring rounded"
+      >
+        ← 自動化一覧へ戻る
+      </Link>
       <PageHeader
         eyebrow="MINERVOT"
         title="実行履歴"
         description="Runの状態・成果物・診断IDを検索して復旧できます。"
-        actions={
-          <Link href="/automations" className="text-sm text-accent underline">
-            自動化一覧
-          </Link>
-        }
       />
 
       <div className="space-y-3">
