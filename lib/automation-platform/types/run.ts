@@ -91,6 +91,13 @@ export type RunPreparation = {
   generatedAt?: Timestamp | null;
   xPostContentMode?: "fixed" | "generate" | "missing";
   generateInstruction?: string | null;
+  /** Source-of-truth NL the user gave at create time. */
+  originalInstruction?: string | null;
+  resolvedGenerateInstruction?: string | null;
+  contentSource?: "fixed" | "generate" | "unresolved";
+  memoryUsed?: boolean;
+  xPostClassifyReason?: string | null;
+  needsInputReason?: string | null;
   /** Supplemental resume note — never used as the tweet body. */
   resumeNotes?: string | null;
 };

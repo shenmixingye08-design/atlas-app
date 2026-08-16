@@ -206,9 +206,29 @@ export async function executeQueuedRun(input: {
     const latest = await applyMemoryForAutomation({
       automation: input.automation,
     });
+    const previous = run.resolvedInstruction;
+    const nextResolved = latest.resolvedInstruction
+      ? {
+          ...latest.resolvedInstruction,
+          merged: {
+            ...latest.resolvedInstruction.merged,
+            ...(previous?.merged ?? {}),
+            ...latest.resolvedInstruction.merged,
+            generatedXPostText:
+              previous?.merged.generatedXPostText ??
+              latest.resolvedInstruction.merged.generatedXPostText,
+            generateInstruction:
+              previous?.merged.generateInstruction ??
+              latest.resolvedInstruction.merged.generateInstruction,
+            xPostContentMode:
+              previous?.merged.xPostContentMode ??
+              latest.resolvedInstruction.merged.xPostContentMode,
+          },
+        }
+      : previous;
     run = await persist({
       ...run,
-      resolvedInstruction: latest.resolvedInstruction,
+      resolvedInstruction: nextResolved,
       memoryUsage: latest.memoryUsage,
       memoryReferences: latest.memoryUsage.used,
     });

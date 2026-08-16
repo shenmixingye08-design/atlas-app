@@ -458,11 +458,15 @@ describe("Memory Apply — OCR", () => {
 });
 
 describe("Memory Apply — Automation", () => {
-  it("14. Memory OFF automation → resolvedInstruction null / not applied", async () => {
+  it("14. Memory OFF automation → instruction kept, Memory not applied", async () => {
     const result = await applyMemoryForAutomation({
       automation: sampleAutomation(false),
     });
-    expect(result.resolvedInstruction).toBeNull();
+    expect(result.resolvedInstruction).not.toBeNull();
+    expect(result.resolvedInstruction?.freeformNotes).toBe(
+      sampleAutomation(false).instruction.freeformNotes,
+    );
+    expect(result.resolvedInstruction?.merged.memoryInjectionText).toBe("");
     expect(result.diagnostics.applied).toBe(false);
     expect(result.diagnostics.memoryEnabled).toBe(false);
   });

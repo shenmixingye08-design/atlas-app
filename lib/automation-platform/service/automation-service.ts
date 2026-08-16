@@ -33,6 +33,11 @@ import {
   prepareRunSnapshot,
 } from "@/lib/automation-platform/execution/prepare-run";
 import { maybePrepareXPostCopyForRun } from "@/lib/automation-platform/execution/x-post-prepare";
+import {
+  readOriginalUserRequest,
+  stampXPostStepsWithInstruction,
+  stripV1AssignmentBridgeSuffix,
+} from "@/lib/automation-platform/execution/x-post-content";
 import { applyMemoryForAutomation } from "@/lib/memory-apply/automation";
 import {
   dbListRunsForAutomation,
@@ -138,11 +143,24 @@ function healRequiredExternalSteps(automation: AutomationV2): {
     return { automation, changed: false };
   }
 
+  const originalUserRequest = readOriginalUserRequest({
+    structuredOptions: automation.instruction.structuredOptions,
+    freeformNotes: automation.instruction.freeformNotes,
+    description: automation.description,
+  });
   const ensured = ensureRequiredExternalSteps({
     steps: automation.workflow.steps,
-    freeformNotes: automation.instruction.freeformNotes,
-    structuredOptions: automation.instruction.structuredOptions ?? {},
+    freeformNotes: automation.instruction.freeformNotes || originalUserRequest,
+    structuredOptions: {
+      ...(automation.instruction.structuredOptions ?? {}),
+      ...(originalUserRequest ? { originalUserRequest } : {}),
+    },
+    sourceText: originalUserRequest || automation.instruction.freeformNotes,
   });
+  ensured.steps = stampXPostStepsWithInstruction(
+    ensured.steps,
+    originalUserRequest,
+  );
   if (ensured.unsupported.length > 0) {
     throw new AutomationPlatformError("automation_unsupported_step", {
       reason: `必須の外部操作をProduction手順として生成できません: ${ensured.unsupported.join(",")}`,
@@ -160,7 +178,23 @@ function healRequiredExternalSteps(automation: AutomationV2): {
       missing: gate.missing,
     });
   }
-  if (!ensured.changed) {
+  const nextInstruction = {
+    ...automation.instruction,
+    freeformNotes:
+      automation.instruction.freeformNotes.trim() || originalUserRequest,
+    structuredOptions: ensured.structuredOptions,
+  };
+  const stepsChanged =
+    ensured.changed ||
+    JSON.stringify(ensured.steps.map((step) => step.configuration)) !==
+      JSON.stringify(
+        automation.workflow.steps.map((step) => step.configuration),
+      );
+  const instructionChanged =
+    nextInstruction.freeformNotes !== automation.instruction.freeformNotes ||
+    nextInstruction.structuredOptions.originalUserRequest !==
+      automation.instruction.structuredOptions?.originalUserRequest;
+  if (!stepsChanged && !instructionChanged) {
     return { automation, changed: false };
   }
   return {
@@ -171,10 +205,7 @@ function healRequiredExternalSteps(automation: AutomationV2): {
         ...automation.workflow,
         steps: ensured.steps,
       },
-      instruction: {
-        ...automation.instruction,
-        structuredOptions: ensured.structuredOptions,
-      },
+      instruction: nextInstruction,
       updatedAt: new Date().toISOString(),
     },
   };
@@ -612,6 +643,48 @@ export class AutomationPlatformService {
     const isConditionTrigger =
       input.triggerType === "condition" || input.triggerType === "event";
     if (!isConditionTrigger) {
+      const v1ShadowId =
+        typeof automation.instruction.structuredOptions.v1SchedulerId ===
+        "string"
+          ? automation.instruction.structuredOptions.v1SchedulerId
+          : automation.legacyAutomationId;
+      if (
+        v1ShadowId &&
+        !readOriginalUserRequest({
+          structuredOptions: automation.instruction.structuredOptions,
+          freeformNotes: automation.instruction.freeformNotes,
+          description: automation.description,
+        })
+      ) {
+        try {
+          const { automationService } = await import(
+            "@/lib/automations/automation-service"
+          );
+          const shadow = await automationService.getByIdForUser(
+            v1ShadowId,
+            input.userId,
+          );
+          const recovered = stripV1AssignmentBridgeSuffix(
+            shadow?.workflow.assignment ?? "",
+          );
+          if (recovered) {
+            automation = {
+              ...automation,
+              instruction: {
+                ...automation.instruction,
+                freeformNotes:
+                  automation.instruction.freeformNotes.trim() || recovered,
+                structuredOptions: {
+                  ...automation.instruction.structuredOptions,
+                  originalUserRequest: recovered,
+                },
+              },
+            };
+          }
+        } catch {
+          // V1 shadow is best-effort recovery only.
+        }
+      }
       const healedForRun = healRequiredExternalSteps(automation);
       if (healedForRun.changed) {
         assertProductionStepsActivatable(healedForRun.automation.workflow.steps);
@@ -854,6 +927,27 @@ export class AutomationPlatformService {
       errorCode: null,
       meta: { status: inserted.run.status, triggerType: input.triggerType },
     });
+    if (automation.workflow.steps.some((step) => step.type === "x_post")) {
+      appendAutomationAudit({
+        actorUserId: input.userId,
+        action: "automation.run.x_post_instruction",
+        automationId: automation.id,
+        runId: inserted.run.id,
+        outcome: "success",
+        errorCode: null,
+        meta: {
+          originalInstruction: preparation.originalInstruction ?? null,
+          resolvedGenerateInstruction:
+            preparation.resolvedGenerateInstruction ?? null,
+          contentSource: preparation.contentSource ?? null,
+          memoryUsed: preparation.memoryUsed ?? false,
+          generatedXPostText: preparation.generatedXPostText ?? null,
+          xPostContentMode: preparation.xPostContentMode ?? null,
+          xPostClassifyReason: preparation.xPostClassifyReason ?? null,
+          needsInputReason: preparation.needsInputReason ?? null,
+        },
+      });
+    }
 
     const shouldDispatch = input.dispatch !== false && inserted.run.status === "queued";
     if (shouldDispatch) {

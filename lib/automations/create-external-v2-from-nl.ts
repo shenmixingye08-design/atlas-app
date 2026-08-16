@@ -14,6 +14,7 @@ import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import type { RequiredExternalAction } from "@/lib/automations/detect-external-intent";
 import { canWireProductionExternalStep } from "@/lib/automations/ensure-external-steps";
 import { composePhase3WorkflowSteps } from "@/lib/automations/phase3-multistep-compose";
+import { stampXPostStepsWithInstruction } from "@/lib/automation-platform/execution/x-post-content";
 import type { CreateAutomationInput } from "@/lib/automations/types";
 import type { AutomationV2 } from "@/lib/automation-platform/types";
 
@@ -46,7 +47,10 @@ export function buildV2CreateInputFromNaturalLanguage(input: {
     return { error: "スケジュール付きの定期依頼のみ作成できます。" };
   }
 
-  const steps = buildExternalSteps(input.requiredExternals, input.sourceText);
+  const steps = stampXPostStepsWithInstruction(
+    buildExternalSteps(input.requiredExternals, input.sourceText),
+    input.sourceText,
+  );
   if (steps.length === 0) {
     return {
       error:
@@ -132,6 +136,8 @@ export function buildV2CreateInputFromNaturalLanguage(input: {
     instruction: {
       freeformNotes: input.sourceText,
       structuredOptions: {
+        originalUserRequest: input.sourceText,
+        naturalLanguageSeed: input.sourceText,
         requiredExternals: [...input.requiredExternals],
         source: "natural_language",
         phase3Composition: composePhase3WorkflowSteps({

@@ -43,20 +43,35 @@ export const invokeXPostAdapter: ExternalAdapter = async (input) => {
       : null;
   const classification = classifyXPostContent({
     configuration: input.step.configuration,
+    structuredOptions: {
+      ...(input.resolvedInstruction?.structuredOptions ?? {}),
+      ...(typeof input.resolvedInstruction?.merged.originalUserRequest ===
+      "string"
+        ? {
+            originalUserRequest:
+              input.resolvedInstruction.merged.originalUserRequest,
+          }
+        : {}),
+    },
     freeformNotes: input.freeformNotes,
+    description:
+      typeof input.resolvedInstruction?.merged.description === "string"
+        ? input.resolvedInstruction.merged.description
+        : null,
     automationName: input.automationName,
     resolvedNotes: input.resolvedInstruction?.freeformNotes,
     resumeNotes,
   });
 
   let text = "";
+  const preparedText = readPreparedXPostText({
+    generatedXPostText: input.generatedXPostText,
+    resolvedMerged: input.resolvedInstruction?.merged,
+  });
   if (classification.mode === "fixed") {
     text = classification.text;
-  } else if (classification.mode === "generate") {
-    text = readPreparedXPostText({
-      generatedXPostText: input.generatedXPostText,
-      resolvedMerged: input.resolvedInstruction?.merged,
-    });
+  } else if (classification.mode === "generate" || preparedText) {
+    text = preparedText;
     if (!text) {
       const generated = await generateXAutomationPostText({
         classification,

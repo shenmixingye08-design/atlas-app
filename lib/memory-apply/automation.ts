@@ -70,29 +70,29 @@ export async function applyMemoryForAutomation(input: {
     tokenEstimate,
   });
 
-  let resolvedInstruction: ResolvedInstruction | null = null;
-  if (memoryEnabled) {
-    resolvedInstruction = resolveInstruction({
-      instruction: input.automation.instruction,
-      memoryValues: flat,
-      automationSaved: input.automation.instruction.structuredOptions,
-    });
-    // Ensure injection is available on merged for step invokers
-    resolvedInstruction = {
-      ...resolvedInstruction,
-      merged: {
-        ...resolvedInstruction.merged,
-        memoryInjectionText: injectionText,
-        memoryIdsUsed: ledger.memoryIdsUsed,
-      },
-      freeformNotes: [
+  const baseInstruction = resolveInstruction({
+    instruction: input.automation.instruction,
+    memoryValues: memoryEnabled ? flat : {},
+    automationSaved: input.automation.instruction.structuredOptions,
+  });
+  const resolvedInstruction: ResolvedInstruction = {
+    ...baseInstruction,
+    merged: {
+      ...baseInstruction.merged,
+      description: input.automation.description,
+      originalUserRequest:
+        input.automation.instruction.structuredOptions.originalUserRequest ??
         input.automation.instruction.freeformNotes,
-        injectionText,
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
-    };
-  }
+      memoryInjectionText: memoryEnabled ? injectionText : "",
+      memoryIdsUsed: ledger.memoryIdsUsed,
+    },
+    freeformNotes: [
+      input.automation.instruction.freeformNotes,
+      memoryEnabled ? injectionText : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+  };
 
   const baseline = input.automation.instruction.freeformNotes || input.automation.name;
   const appliedText = memoryEnabled
