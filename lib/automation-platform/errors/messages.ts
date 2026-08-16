@@ -120,6 +120,12 @@ const PRESENTATIONS: Record<AutomationErrorCode, AutomationErrorPresentation> =
       diagnostic: "Illegal AutomationRun status transition.",
       httpStatus: 409,
     },
+    automation_usage_limit: {
+      code: "automation_usage_limit",
+      userMessage: "プランの利用上限に達したため、この操作は実行できません。",
+      diagnostic: "Plan usage meter (automation tasks or AI runs) exhausted.",
+      httpStatus: 429,
+    },
     automation_rate_limited: {
       code: "automation_rate_limited",
       userMessage: "操作が集中しています。しばらくしてから再度お試しください。",

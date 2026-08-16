@@ -31,7 +31,21 @@ export async function getUserBillingSummary(
   const record = authority.record;
   const subscription = toUserSubscriptionView(record);
   const effectivePlanId = resolveEffectivePlanIdFromRecord(record);
-  const usage = getUserUsageLimitSummary(userId, effectivePlanId);
+  const { ensureBillingUsageHydratedForUser } = await import(
+    "./usage/durable"
+  );
+  const hydrate = await ensureBillingUsageHydratedForUser(userId);
+  if (hydrate.available) {
+    const { syncAutomationTaskUsage } = await import(
+      "./usage/automation-count"
+    );
+    await syncAutomationTaskUsage(userId);
+  }
+  const usage = {
+    ...getUserUsageLimitSummary(userId, effectivePlanId),
+    available: hydrate.available,
+    unavailableReason: hydrate.reason,
+  };
   const plan = getPlanDefinition(record.planId);
   const secretDiagnostics = getStripeSecretDiagnostics();
   const notifications = await listUserBillingNotifications(userId);

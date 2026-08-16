@@ -108,11 +108,13 @@ function readyPost(text: string) {
 }
 
 describe("X post AI body vs missing-input", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetFeatureFlagStore();
     setFeatureFlagState("x", "on");
     postTweetNowForUserMock.mockReset();
     generateMock.mockReset();
+    const { resetUsageStore } = await import("@/lib/billing/usage/store");
+    resetUsageStore();
   });
 
   it("Test 1: generate-type empty config generates and does not ask for input", async () => {
@@ -219,6 +221,7 @@ describe("X post AI body vs missing-input", () => {
     });
 
     const automation = {
+      userId: "user_x",
       name: "副業投稿",
       instruction: {
         freeformNotes: "毎日副業について投稿内容を考えて、投稿前に確認したい",

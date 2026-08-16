@@ -19,6 +19,7 @@ export type AutomationErrorCode =
   | "automation_feature_disabled"
   | "automation_invalid_transition"
   | "automation_rate_limited"
+  | "automation_usage_limit"
   | "automation_unauthorized"
   | "run_not_found"
   | "run_permission_denied"
@@ -56,6 +57,7 @@ export const AUTOMATION_ERROR_CODES: readonly AutomationErrorCode[] = [
   "automation_feature_disabled",
   "automation_invalid_transition",
   "automation_rate_limited",
+  "automation_usage_limit",
   "automation_unauthorized",
   "run_not_found",
   "run_permission_denied",

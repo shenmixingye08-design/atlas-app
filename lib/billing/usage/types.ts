@@ -78,4 +78,7 @@ export type UsageLimitSummary = {
   wordpressPosts: UsageMeter;
   automationTasks: UsageMeter;
   aiDetail: AiUsageBreakdown;
+  /** False when the usage SoT could not be read. Never treat as used=0. */
+  available?: boolean;
+  unavailableReason?: string | null;
 };

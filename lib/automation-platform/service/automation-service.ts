@@ -180,6 +180,68 @@ function healRequiredExternalSteps(automation: AutomationV2): {
   };
 }
 
+function shouldEnforceAutomationTaskBilling(): boolean {
+  if (process.env.ATLAS_BILLING_ENFORCE_IN_TEST === "true") return true;
+  return process.env.VITEST !== "true";
+}
+
+async function assertAutomationTaskSlot(userId: string): Promise<void> {
+  if (!shouldEnforceAutomationTaskBilling()) return;
+  const { evaluateBillingAutomationTask } = await import(
+    "@/lib/billing/access/snapshot"
+  );
+  const { denial } = await evaluateBillingAutomationTask(userId, 0);
+  if (!denial) return;
+  throw new AutomationPlatformError("automation_usage_limit", {
+    reason: denial.reason,
+    used: denial.used ?? null,
+    limit: denial.limit ?? null,
+  });
+}
+
+async function syncBillingAutomationUsage(userId: string): Promise<void> {
+  const { syncAutomationTaskUsage } = await import(
+    "@/lib/billing/usage/automation-count"
+  );
+  await syncAutomationTaskUsage(userId);
+  const { persistBillingUsageForUserNow } = await import(
+    "@/lib/billing/usage/durable"
+  );
+  await persistBillingUsageForUserNow(userId);
+}
+
+async function rollbackIfOverAutomationLimit(
+  userId: string,
+  saved: AutomationV2,
+): Promise<void> {
+  if (!shouldEnforceAutomationTaskBilling()) return;
+  const { evaluateBillingAutomationTask } = await import(
+    "@/lib/billing/access/snapshot"
+  );
+  const { snapshot } = await evaluateBillingAutomationTask(userId, 0);
+  if (snapshot.isOwner) return;
+  const { countActiveAutomationTasks } = await import(
+    "@/lib/billing/usage/automation-count"
+  );
+  const { checkAutomationTaskLimit } = await import(
+    "@/lib/billing/plans/policy"
+  );
+  const count = await countActiveAutomationTasks(userId);
+  const check = checkAutomationTaskLimit(snapshot.effectivePlanId, count - 1);
+  if (check.allowed) return;
+  await persistAutomationV2Now({
+    ...saved,
+    status: "archived",
+    nextRunAt: null,
+    updatedAt: new Date().toISOString(),
+  });
+  throw new AutomationPlatformError("automation_usage_limit", {
+    reason: check.reason,
+    used: count,
+    limit: null,
+  });
+}
+
 export class AutomationPlatformService {
   async create(
     userId: string,
@@ -203,12 +265,15 @@ export class AutomationPlatformService {
     const record = healed.automation;
     if (record.status === "active") {
       assertProductionStepsActivatable(record.workflow.steps);
+      await assertAutomationTaskSlot(userId);
     }
     let saved = await persistAutomationV2Now(record);
 
     if (saved.status === "active") {
+      await rollbackIfOverAutomationLimit(userId, saved);
       saved = await this.registerWithScheduler(saved);
     }
+    await syncBillingAutomationUsage(userId);
 
     appendAutomationAudit({
       actorUserId: userId,
@@ -279,6 +344,12 @@ export class AutomationPlatformService {
     if (patch.status && patch.status !== current.status) {
       assertDefinitionTransition(current.status, patch.status);
     }
+    if (
+      patch.status === "active" &&
+      current.status !== "active"
+    ) {
+      await assertAutomationTaskSlot(userId);
+    }
 
     if (patch.memoryPolicy) {
       validateMemoryPolicy({
@@ -348,8 +419,15 @@ export class AutomationPlatformService {
     if (updated.status === "active") {
       assertProductionStepsActivatable(updated.workflow.steps);
     }
+    if (updated.status === "active" && current.status !== "active") {
+      await assertAutomationTaskSlot(userId);
+    }
 
     let saved = await persistAutomationV2Now(updated);
+
+    if (saved.status === "active" && current.status !== "active") {
+      await rollbackIfOverAutomationLimit(userId, saved);
+    }
 
     if (
       saved.status === "active" ||
@@ -358,6 +436,8 @@ export class AutomationPlatformService {
     ) {
       saved = await this.registerWithScheduler(saved);
     }
+
+    await syncBillingAutomationUsage(userId);
 
     appendAutomationAudit({
       actorUserId: userId,
@@ -703,6 +783,7 @@ export class AutomationPlatformService {
         priorApprovalsCount: priorApprovals,
       }),
       resolvedInstruction: memoryResolved.resolvedInstruction,
+      usageClaimKey: `ai:${automation.id}:${scheduleOccurrenceKey ?? runKey}`,
     });
     const preparation = prepared.preparation;
     memoryResolved.resolvedInstruction = prepared.resolvedInstruction;

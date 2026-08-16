@@ -23,11 +23,15 @@ export function UsageRemainingHint({ meterId }: UsageRemainingHintProps) {
     const load = async () => {
       try {
         const summary = await fetchBillingSummary();
+        if (summary.usage.available === false) {
+          if (!cancelled) setHint("利用状況は確認不能です");
+          return;
+        }
         const item = summary.usageAwareness.items.find((row) => row.id === meterId);
         if (cancelled || !item) return;
         setHint(formatPreUseHint(item));
       } catch {
-        if (!cancelled) setHint(null);
+        if (!cancelled) setHint("利用状況を取得できませんでした");
       }
     };
 

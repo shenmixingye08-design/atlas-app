@@ -54,4 +54,7 @@ export type UsageAwarenessView = {
   headline: UsageItemView | null;
   periodRightsDiffer: boolean;
   inconsistencies: readonly string[];
+  /** False when usage SoT could not be read. UI must not show 0. */
+  available?: boolean;
+  unavailableReason?: string | null;
 };
