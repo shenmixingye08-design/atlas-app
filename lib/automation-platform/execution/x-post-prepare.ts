@@ -69,7 +69,15 @@ export async function maybePrepareXPostCopyForRun(input: {
       (Array.isArray(input.resolvedInstruction?.merged.memoryIdsUsed) &&
         input.resolvedInstruction.merged.memoryIdsUsed.length > 0),
   );
-  const proof = {
+  const proof: Pick<
+    RunPreparation,
+    | "originalInstruction"
+    | "resolvedGenerateInstruction"
+    | "contentSource"
+    | "memoryUsed"
+    | "xPostClassifyReason"
+    | "needsInputReason"
+  > = {
     originalInstruction: originalInstruction || null,
     resolvedGenerateInstruction: classification.generateInstruction || null,
     contentSource:
