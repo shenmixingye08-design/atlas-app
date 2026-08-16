@@ -9,6 +9,10 @@ import type {
 import { DEFAULT_AUTOMATION_PLATFORM_TIMEZONE } from "@/lib/automation-platform/schedule/timezone";
 import { stampXPostStepsWithInstruction } from "@/lib/automation-platform/execution/x-post-content";
 import {
+  logXPostInstructionTrace,
+  xPostInstructionPresence,
+} from "@/lib/automation-platform/execution/x-post-instruction-trace";
+import {
   assertExternalsSatisfiedBySteps,
   ensureRequiredExternalSteps,
 } from "@/lib/automations/ensure-external-steps";
@@ -408,6 +412,17 @@ export function buildCreateInputFromWizard(
     },
     rejectOnConflict: false,
   };
+
+  const xStep = stampedSteps.find((step) => step.type === "x_post");
+  if (xStep) {
+    logXPostInstructionTrace({
+      stage: "create",
+      ...xPostInstructionPresence({
+        configuration: xStep.configuration,
+        structuredOptions: instruction.structuredOptions,
+      }),
+    });
+  }
 
   return {
     input,

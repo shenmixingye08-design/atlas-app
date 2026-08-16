@@ -28,6 +28,7 @@ import {
   evaluateRunCompletion,
   runCompletionUserMessage,
 } from "@/lib/automation-platform/execution/run-completion";
+import { logXPostInstructionTrace } from "@/lib/automation-platform/execution/x-post-instruction-trace";
 import { getProductionStep } from "@/lib/automation-platform/execution/production-step-registry";
 import { memoryUpdateRun } from "@/lib/automation-platform/repository/memory-store";
 import { persistAutomationRunNow } from "@/lib/automation-platform/durable-runs";
@@ -491,6 +492,40 @@ export async function executeQueuedRun(input: {
   };
 
   if (needsUserInput) {
+    const failedX = input.automation.workflow.steps.find(
+      (step) => step.id === failedStepId && step.type === "x_post",
+    );
+    if (failedX) {
+      logXPostInstructionTrace({
+        stage: "needs_input",
+        automationId: run.automationId,
+        runId: run.id,
+        executionId: run.id,
+        contentSource:
+          typeof failedX.configuration.contentSource === "string"
+            ? failedX.configuration.contentSource
+            : null,
+        originalUserRequestPresent: Boolean(
+          run.preparation?.originalInstruction ||
+            input.automation.instruction.structuredOptions.originalUserRequest,
+        ),
+        generateInstructionPresent: Boolean(
+          failedX.configuration.generateInstruction,
+        ),
+        resolvedGenerateInstructionPresent: Boolean(
+          run.preparation?.resolvedGenerateInstruction,
+        ),
+        configurationTextEmpty: !String(
+          failedX.configuration.text ?? "",
+        ).trim(),
+        memoryUsed: Boolean(run.preparation?.memoryUsed),
+        classifyMode: run.preparation?.xPostContentMode ?? null,
+        classifyReason: run.preparation?.xPostClassifyReason ?? null,
+        needsInputReason:
+          run.preparation?.needsInputReason ?? "step_needs_input",
+        generatedXPostTextPresent: Boolean(run.preparation?.generatedXPostText),
+      });
+    }
     run = await persist(transition(run, "needs_input", "step_needs_input"));
     return { run, terminal: false };
   }

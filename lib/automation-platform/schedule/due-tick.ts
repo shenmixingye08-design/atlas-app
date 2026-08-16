@@ -20,6 +20,11 @@ import {
 } from "@/lib/feature-flags/access";
 import { ensureFeatureFlagsHydrated } from "@/lib/feature-flags/durable";
 import { classifyDueOccurrence } from "@/lib/work-queue/missed-run";
+import {
+  findEnabledXPostStep,
+  logXPostInstructionTrace,
+  xPostInstructionPresence,
+} from "@/lib/automation-platform/execution/x-post-instruction-trace";
 
 export type DueScheduleTickResult = {
   due: number;
@@ -160,6 +165,29 @@ export async function processDueScheduledAutomationsV2(options?: {
         timezone: automation.trigger.timezone,
         created: enqueued.created,
       });
+      const dueX = findEnabledXPostStep(automation);
+      if (dueX) {
+        logXPostInstructionTrace({
+          stage: "scheduler",
+          automationId: automation.id,
+          runId: enqueued.run.id,
+          executionId: enqueued.run.id,
+          ...xPostInstructionPresence({
+            configuration: dueX.configuration,
+            structuredOptions: automation.instruction.structuredOptions,
+          }),
+          classifyMode: enqueued.run.preparation?.xPostContentMode ?? null,
+          classifyReason: enqueued.run.preparation?.xPostClassifyReason ?? null,
+          needsInputReason: enqueued.run.preparation?.needsInputReason ?? null,
+          resolvedGenerateInstructionPresent: Boolean(
+            enqueued.run.preparation?.resolvedGenerateInstruction,
+          ),
+          generatedXPostTextPresent: Boolean(
+            enqueued.run.preparation?.generatedXPostText,
+          ),
+          memoryUsed: Boolean(enqueued.run.preparation?.memoryUsed),
+        });
+      }
       appendAutomationAudit({
         actorUserId: null,
         action: "automation.schedule.fire",

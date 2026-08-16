@@ -11,10 +11,12 @@ import {
 import { resolveAutomationFeatureContext } from "@/lib/automation-platform/execution/adapters/resolve-context";
 import {
   classifyXPostContent,
+  readStoredXPostText,
   X_POST_GENERATION_FAILED_CODE,
   X_POST_GENERATION_FAILED_MESSAGE,
   X_POST_MISSING_CONTENT_MESSAGE,
 } from "@/lib/automation-platform/execution/x-post-content";
+import { logXPostInstructionTrace } from "@/lib/automation-platform/execution/x-post-instruction-trace";
 import {
   generateXAutomationPostText,
   readPreparedXPostText,
@@ -68,6 +70,40 @@ export const invokeXPostAdapter: ExternalAdapter = async (input) => {
     generatedXPostText: input.generatedXPostText,
     resolvedMerged: input.resolvedInstruction?.merged,
   });
+  const originalPresent = Boolean(
+    input.resolvedInstruction?.structuredOptions?.originalUserRequest ||
+      input.resolvedInstruction?.merged.originalUserRequest,
+  );
+  const memoryUsed = Boolean(
+    input.resolvedInstruction?.merged.memoryInjectionText,
+  );
+  logXPostInstructionTrace({
+    stage: "classify",
+    automationId: input.automationId,
+    runId: input.runId,
+    executionId: input.runId,
+    contentSource:
+      classification.mode === "generate"
+        ? "generate"
+        : classification.mode === "fixed"
+          ? "fixed"
+          : "unresolved",
+    originalUserRequestPresent: originalPresent,
+    generateInstructionPresent: Boolean(
+      input.step.configuration.generateInstruction,
+    ),
+    resolvedGenerateInstructionPresent: Boolean(
+      classification.generateInstruction,
+    ),
+    configurationTextEmpty: !readStoredXPostText(input.step.configuration),
+    memoryUsed,
+    classifyMode: classification.mode,
+    classifyReason: classification.reason,
+    needsInputReason:
+      classification.mode === "missing" ? classification.reason : null,
+    generatedXPostTextPresent: Boolean(preparedText),
+  });
+
   if (classification.mode === "fixed") {
     text = classification.text;
   } else if (classification.mode === "generate" || preparedText) {
@@ -82,12 +118,51 @@ export const invokeXPostAdapter: ExternalAdapter = async (input) => {
             ? input.resolvedInstruction.merged.memoryInjectionText
             : null,
       });
+      logXPostInstructionTrace({
+        stage: "generate",
+        automationId: input.automationId,
+        runId: input.runId,
+        executionId: input.runId,
+        contentSource: "generate",
+        originalUserRequestPresent: originalPresent,
+        generateInstructionPresent: Boolean(
+          input.step.configuration.generateInstruction,
+        ),
+        resolvedGenerateInstructionPresent: Boolean(
+          classification.generateInstruction,
+        ),
+        configurationTextEmpty: !readStoredXPostText(input.step.configuration),
+        memoryUsed,
+        classifyMode: classification.mode,
+        classifyReason: classification.reason,
+        generatedXPostTextPresent: Boolean(generated.ok),
+      });
       if (!generated.ok) {
         return generationFailedResult();
       }
       text = generated.text;
     }
   } else {
+    logXPostInstructionTrace({
+      stage: "needs_input",
+      automationId: input.automationId,
+      runId: input.runId,
+      executionId: input.runId,
+      contentSource: "unresolved",
+      originalUserRequestPresent: originalPresent,
+      generateInstructionPresent: Boolean(
+        input.step.configuration.generateInstruction,
+      ),
+      resolvedGenerateInstructionPresent: Boolean(
+        classification.generateInstruction,
+      ),
+      configurationTextEmpty: !readStoredXPostText(input.step.configuration),
+      memoryUsed,
+      classifyMode: classification.mode,
+      classifyReason: classification.reason,
+      needsInputReason: classification.reason,
+      generatedXPostTextPresent: false,
+    });
     return configMissingInput(X_POST_MISSING_CONTENT_MESSAGE);
   }
 

@@ -34,6 +34,11 @@ import {
 } from "@/lib/automation-platform/execution/prepare-run";
 import { maybePrepareXPostCopyForRun } from "@/lib/automation-platform/execution/x-post-prepare";
 import {
+  findEnabledXPostStep,
+  logXPostInstructionTrace,
+  xPostInstructionPresence,
+} from "@/lib/automation-platform/execution/x-post-instruction-trace";
+import {
   readOriginalUserRequest,
   stampXPostStepsWithInstruction,
   stripV1AssignmentBridgeSuffix,
@@ -254,6 +259,17 @@ export class AutomationPlatformService {
         schedulerRegistered: saved.status === "active",
       },
     });
+    const createdX = findEnabledXPostStep(saved);
+    if (createdX) {
+      logXPostInstructionTrace({
+        stage: "v2_persist",
+        automationId: saved.id,
+        ...xPostInstructionPresence({
+          configuration: createdX.configuration,
+          structuredOptions: saved.instruction.structuredOptions,
+        }),
+      });
+    }
 
     return saved;
   }
@@ -928,6 +944,25 @@ export class AutomationPlatformService {
       meta: { status: inserted.run.status, triggerType: input.triggerType },
     });
     if (automation.workflow.steps.some((step) => step.type === "x_post")) {
+      const xStep = findEnabledXPostStep(automation);
+      logXPostInstructionTrace({
+        stage: "execution",
+        automationId: automation.id,
+        runId: inserted.run.id,
+        executionId: inserted.run.id,
+        ...xPostInstructionPresence({
+          configuration: xStep?.configuration,
+          structuredOptions: automation.instruction.structuredOptions,
+        }),
+        resolvedGenerateInstructionPresent: Boolean(
+          preparation.resolvedGenerateInstruction,
+        ),
+        memoryUsed: Boolean(preparation.memoryUsed),
+        classifyMode: preparation.xPostContentMode ?? null,
+        classifyReason: preparation.xPostClassifyReason ?? null,
+        needsInputReason: preparation.needsInputReason ?? null,
+        generatedXPostTextPresent: Boolean(preparation.generatedXPostText),
+      });
       appendAutomationAudit({
         actorUserId: input.userId,
         action: "automation.run.x_post_instruction",

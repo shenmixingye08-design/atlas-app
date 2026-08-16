@@ -1,5 +1,10 @@
 import "server-only";
 
+import {
+  findEnabledXPostStep,
+  logXPostInstructionTrace,
+  xPostInstructionPresence,
+} from "@/lib/automation-platform/execution/x-post-instruction-trace";
 import { automationService } from "@/lib/automations/automation-service";
 import type { AutomationV2 } from "@/lib/automation-platform/types";
 import type {
@@ -212,6 +217,19 @@ export async function syncV2ToV1Scheduler(
   const input = buildV1CreateInputFromV2(automation, memoryTimezone);
   if (!input) {
     return { v1Id: null, registered: false };
+  }
+
+  const xStep = findEnabledXPostStep(automation);
+  if (xStep) {
+    logXPostInstructionTrace({
+      stage: "v1_bridge",
+      automationId: automation.id,
+      ...xPostInstructionPresence({
+        configuration: xStep.configuration,
+        structuredOptions: automation.instruction.structuredOptions,
+      }),
+      v1AssignmentPresent: Boolean(input.workflow.assignment?.trim()),
+    });
   }
 
   // If already bridged, update the V1 shadow
