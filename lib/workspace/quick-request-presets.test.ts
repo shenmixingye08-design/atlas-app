@@ -7,13 +7,13 @@ describe("QUICK_REQUEST_PRESETS", () => {
     expect(QUICK_REQUEST_PRESETS).toHaveLength(7);
     const labels = QUICK_REQUEST_PRESETS.map((item) => item.label);
     expect(labels).toEqual([
+      "今日のX投稿",
       "毎朝のX投稿",
-      "X投稿を作る",
-      "ブログを書く",
-      "営業メール作成",
+      "取引先メール",
+      "予定を登録",
+      "Excelにまとめる",
+      "毎週自動実行",
       "PowerPoint資料",
-      "議事録作成",
-      "市場調査",
     ]);
     expect(labels).not.toContain("画像生成");
     expect(labels).not.toContain("動画生成");

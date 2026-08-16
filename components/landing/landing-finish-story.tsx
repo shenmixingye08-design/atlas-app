@@ -48,7 +48,7 @@ export function LandingFinishStory() {
           依頼してから、完成するまで。
         </h2>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-[#75686B] sm:text-base">
-          成果物の一覧ではありません。1件の仕事が終わる流れです（SNS見本）。
+          面倒なX投稿を投げる → MINERVOTが進める → 自分は確認するだけ。1件の仕事が終わる流れです（SNS見本）。
         </p>
 
         <ol className="mt-10 space-y-4">

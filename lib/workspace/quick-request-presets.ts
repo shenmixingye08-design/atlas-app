@@ -13,45 +13,40 @@ export type QuickRequestPreset = {
  */
 export const QUICK_REQUEST_PRESETS: readonly QuickRequestPreset[] = [
   {
+    id: "x-post",
+    label: "今日のX投稿",
+    prompt: "今日のX投稿を3案作って",
+  },
+  {
     id: "x-daily-auto",
     label: "毎朝のX投稿",
-    prompt: "毎朝8時にX投稿して",
-  },
-  {
-    id: "x-post",
-    label: "X投稿を作る",
-    prompt:
-      "X（Twitter）向けの投稿文を3案作ってください。読者の興味を引く書き出しと、行動を促す一文を含めてください。",
-  },
-  {
-    id: "blog",
-    label: "ブログを書く",
-    prompt:
-      "ブログ記事の下書きを書いてください。見出し構成・導入・本文・まとめを含め、読みやすい文章にしてください。",
+    prompt: "毎朝9時にXへ投稿して",
   },
   {
     id: "sales-email",
-    label: "営業メール作成",
-    prompt:
-      "見込み顧客向けの営業メール文を作成してください。件名案と本文を用意し、相手の課題に寄り添いつつ次の一歩を促してください。",
+    label: "取引先メール",
+    prompt: "この内容を取引先へのメールにして",
+  },
+  {
+    id: "minutes",
+    label: "予定を登録",
+    prompt: "来週の予定をカレンダーに登録して",
+  },
+  {
+    id: "blog",
+    label: "Excelにまとめる",
+    prompt: "このデータをExcelにまとめて",
+  },
+  {
+    id: "research",
+    label: "毎週自動実行",
+    prompt: "毎週この作業を自動で実行して",
   },
   {
     id: "materials",
     label: "PowerPoint資料",
     prompt:
       "営業資料をPowerPointで作ってください。目的・課題・提案・効果・次のアクションが伝わるスライド構成にしてください。",
-  },
-  {
-    id: "minutes",
-    label: "議事録作成",
-    prompt:
-      "会議の議事録を作成してください。出席者・議題・決定事項・アクションアイテム（担当と期限）を整理してください。",
-  },
-  {
-    id: "research",
-    label: "市場調査",
-    prompt:
-      "指定テーマについて市場調査を行い、概況・競合・機会・リスク・おすすめアクションをまとめてください。",
   },
   // N-01: Do not expose an "画像生成" preset while Production image generation
   // is not an offered capability.

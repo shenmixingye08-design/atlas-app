@@ -101,10 +101,10 @@ export const ui = {
 
   home: {
     welcomeTitle: "おかえりなさい。",
-    welcomeHeadline: "専属AI秘書が今日の仕事を準備しました。",
+    welcomeHeadline: "専属AI秘書が、今日の面倒な仕事を先に進めておきました。",
     welcomeHint: "あなたが働いている間も、MINERVOTは仕事を覚えて続けます。",
     subtitle:
-      "MINERVOTはあなた専属のAI秘書です。仕事を記憶し、繰り返し作業を減らし、あなたの時間を生み出します。",
+      "MINERVOTはあなた専属のAI秘書です。X投稿、メール、予定、資料作成など、毎日の面倒な仕事を任せられます。",
     todaysAutomations: "今日の自動化",
     todaysAutomationsHint: "今日スケジュールされているAI秘書の仕事です。",
     todaysAutomationsEmpty: "今日予定の自動化はまだありません。習慣を登録して始めましょう。",
@@ -123,9 +123,9 @@ export const ui = {
 
   uploadHome: {
     brand: "MINERVOT",
-    title: "何でも送ってください。",
+    title: "面倒な作業を送ってください。",
     subtitle:
-      "画像・PDF・文章・音声を送るだけ。MINERVOTが内容を理解し、最後まで仕事を行います。",
+      "X投稿、メール、資料、予定。送るだけでMINERVOTが内容を理解し、最後まで仕事を行います。",
     dropzoneTitle: "ここにドラッグ＆ドロップ",
     dropzoneHint: "または下のボタンから送ってください",
     dropActive: "ここにドロップして送る",
@@ -137,7 +137,7 @@ export const ui = {
     voiceUnsupported: "このブラウザでは音声入力に対応していません。",
     voiceError: "音声を取得できませんでした。もう一度お試しください。",
     textLabel: "文章で伝える",
-    textPlaceholder: "例：このPDFを要約して / 今日のSNS投稿を作成して",
+    textPlaceholder: "例：今日のX投稿を3案作って / この内容を取引先へのメールにして",
     send: "送る",
     examplesTitle: "こんなものを送れます",
     flowSend: "送る",
@@ -205,7 +205,7 @@ export const ui = {
     zeroFrictionHint: "すごい操作は不要です。書いて送るだけ、あとはMINERVOTが進めます。",
     askTitle: "どの仕事を終わらせますか？",
     askPlaceholder:
-      "例）営業資料を作る / 毎日の投稿文を用意する / 議事録をまとめる",
+      "例）今日のX投稿を3案作って / この内容を取引先へのメールにして / このデータをExcelにまとめて",
     askSubmit: "お願いする",
     askHint: "難しい設定は不要。送信後、完成まで進みます。",
     firstRunPickTitle: "最初の仕事を選ぶ",
@@ -437,7 +437,7 @@ export const ui = {
       {
         title: "最初の仕事を依頼",
         body: "最初に一つだけ仕事を依頼してください。",
-        examples: ["ブログ", "SNS投稿", "資料作成", "メール返信"],
+        examples: ["X投稿", "メール", "資料作成", "定期作業"],
       },
       {
         title: "仕事を覚えます",
@@ -702,13 +702,13 @@ export const ui = {
     },
     chatTitle: "追加の指示",
     chatHint: "普段の仕事以外に、追加で任せたいことがあればこちらから。",
-    chatPlaceholder: "例）営業資料を作る / 毎日18時にXへ投稿 / ブログを書いてWordPressへ投稿",
+    chatPlaceholder: "例）今日のX投稿を3案作って / 毎朝9時にXへ投稿して / この内容を取引先へのメールにして",
     chatExamples: [
-      "営業資料を作る",
-      "毎日18時にXへ投稿",
-      "ブログを書いてWordPressへ投稿",
-      "毎朝メールを要約",
-      "Google Driveへ保存",
+      "今日のX投稿を3案作って",
+      "毎朝9時にXへ投稿して",
+      "この内容を取引先へのメールにして",
+      "来週の予定をカレンダーに登録して",
+      "このデータをExcelにまとめて",
     ] as const,
     chatWorkAction: "この内容で仕事を依頼",
     chatConsultAction: "追加で依頼",

@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { ATLAS_APP_HOME_PATH } from "@/lib/auth/public-routes";
 
 const LINES = [
-  "ChatGPTに聞いて終わる仕事、これだと完成までやってくれる。",
-  "朝のメール10分を手放せたら、月980円でも安い（見本目安）。",
+  "X投稿、メール、予定、資料作成。面倒な作業はMINERVOTに任せる。",
+  "自分は確認するだけ。朝のメール10分を手放せたら、月980円でも安い（見本目安）。",
   "登録して仕事を1つ選ぶだけ。完成したらお知らせします。",
 ] as const;
 
@@ -18,9 +18,9 @@ export function LandingCtaSection() {
       <div className="mx-auto max-w-5xl">
         <div className="overflow-hidden rounded-[34px] border border-[#B58B4F]/20 bg-white px-6 py-16 text-center sm:px-12 sm:py-20">
           <h2 className="text-3xl font-semibold tracking-[-0.04em] text-[#281A1E] sm:text-5xl">
-            「あとで」ではなく、
+            一人で回している仕事を、
             <br />
-            「今試そう」。
+            MINERVOTに任せる。
           </h2>
 
           <ul className="mx-auto mt-8 max-w-2xl space-y-3 text-left">
