@@ -135,7 +135,7 @@ export function ActivityHistoryPageContent() {
             {ui.activityHistory.emptyHint}
           </p>
           <p className="mx-auto mt-2 max-w-sm text-sm text-[var(--text-secondary)]">
-            おすすめの最初の仕事：朝のメール下書き、またはSNS投稿の自動化。
+            おすすめの最初の仕事：今日のX投稿、または毎朝のX投稿の自動化。
           </p>
           <Link href="/workspace" className="btn-brand mt-5 inline-flex">
             {ui.nav.work}

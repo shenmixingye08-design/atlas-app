@@ -2,19 +2,19 @@ export type LandingAiStatus = "active" | "idle";
 
 export const HERO_MOCKUP = {
   greeting: "おかえりなさい。",
-  headline: "MINERVOTが今日の仕事を準備しました。",
+  headline: "今日の面倒な仕事を、先に進めておきました。",
   todayJobs: [
-    { id: "1", icon: "📱", title: "X投稿（18:00）", status: "未開始" as const },
-    { id: "2", icon: "📝", title: "ブログ下書き", status: "準備中" as const },
-    { id: "3", icon: "📊", title: "週次レポート", status: "確認待ち" as const },
+    { id: "1", icon: "📱", title: "X投稿（09:00）", status: "未開始" as const },
+    { id: "2", icon: "✉️", title: "取引先メール", status: "準備中" as const },
+    { id: "3", icon: "📊", title: "週次資料", status: "確認待ち" as const },
   ],
   inProgress: [
-    { id: "p1", icon: "📱", label: "SNS投稿を作成中", progress: 72 },
-    { id: "p2", icon: "✉️", label: "メール返信を作成中", progress: 45 },
+    { id: "p1", icon: "📱", label: "X投稿を作成中", progress: 72 },
+    { id: "p2", icon: "✉️", label: "メール下書きを作成中", progress: 45 },
   ],
   completed: [
-    { id: "c1", icon: "📝", title: "ブログ記事を公開" },
-    { id: "c2", icon: "📁", title: "Driveへ資料保存" },
+    { id: "c1", icon: "📅", title: "予定をカレンダーへ登録" },
+    { id: "c2", icon: "📁", title: "Excelにまとめた資料" },
   ],
   aiEmployees: [
     { id: "sns", icon: "📱", role: "SNS担当", status: "active" as LandingAiStatus, tasks: 3 },
@@ -28,7 +28,7 @@ export const HERO_MOCKUP = {
     { id: "x", name: "X", connected: false },
     { id: "wordpress", name: "WordPress", connected: false },
   ],
-  chatPlaceholder: "例）営業資料を作る / 毎日18時にXへ投稿",
+  chatPlaceholder: "例）今日のX投稿を3案作って / 毎朝9時にXへ投稿して",
 } as const;
 
 export const LANDING_WORKFLOW_EXPERIENCE = [

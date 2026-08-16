@@ -26,17 +26,21 @@ export function LandingHeroSection() {
             MINERVOT
           </h1>
 
-          <div className="mt-7">
+          <p className="mt-5 text-xs font-semibold tracking-[0.16em] text-[#9A7137] sm:text-sm">
+            あなた専属のAI秘書
+          </p>
+
+          <div className="mt-4">
             <p className="text-[clamp(1.85rem,4vw,3.4rem)] font-medium leading-[1.12] tracking-[-0.04em] text-[#281A1E]">
-              朝のメールと投稿を、
+              一人で仕事を回す人のための
               <br />
-              自分の手から外す。
+              AI秘書。
             </p>
           </div>
 
           <p className="mx-auto mt-5 max-w-[520px] text-sm leading-7 text-[#75686B] sm:text-base sm:leading-8 lg:mx-0">
-            個人事業主・忙しい会社員向け。
-            依頼 → 作業中 → 完成通知 → 完成物。会話ではなく、仕事が終わります。
+            X投稿、メール、予定管理、資料作成。
+            毎日の面倒な仕事をMINERVOTに任せ、自分は確認するだけ。
           </p>
 
           <p className="mx-auto mt-4 max-w-[520px] text-sm font-medium leading-7 text-[#74172A] sm:text-base lg:mx-0">

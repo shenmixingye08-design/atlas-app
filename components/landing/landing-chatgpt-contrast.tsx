@@ -32,7 +32,7 @@ export function LandingChatgptContrast() {
             毎日の習慣にならない（都度チャット）
           </p>
           <p className="border-b border-[#74172A]/8 px-3 py-3 font-medium text-[#74172A]">
-            毎朝SNS・毎日メールの枠に入る
+            毎朝のX投稿・メール・資料の枠に入る
           </p>
           <p className="px-3 py-3 text-[#5A4B4F]">
             会話が資産。仕事は残る

@@ -33,7 +33,7 @@ function MinervotLogo() {
           MINERVOT
         </span>
         <span className="hidden text-[9px] font-medium tracking-[0.08em] text-[#9A8D90] sm:block">
-          仕事が終わる
+          あなた専属のAI秘書
         </span>
       </span>
     </span>
@@ -89,7 +89,7 @@ function PricingSection() {
             合えば、月980円。
           </h2>
           <p className="mt-5 text-sm leading-7 text-[#75686B] sm:text-base">
-            無料で1件完成させて判断。文章作成・投稿文づくりを日常的に任せるなら Light。
+            無料で1件完成させて判断。X投稿・メール・資料づくりを日常的に任せるなら Light。
             価格の比較は
             <a href="#price-value" className="mx-1 text-[#74172A] underline-offset-2 hover:underline">
               こちら

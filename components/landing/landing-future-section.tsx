@@ -26,7 +26,7 @@ export function LandingFutureSection() {
           朝の{manual}分を、戻す。
         </h2>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-[#75686B] sm:text-base">
-          人はWordファイルを買いません。戻ってきた時間で何をするかを買います。
+          一人で仕事を回していると、朝のメールや投稿に時間を取られます。戻ってきた時間で、本業側に入れます。
         </p>
 
         <div className="mt-10 grid gap-4 md:grid-cols-3">

@@ -24,10 +24,10 @@ export function LandingDailyHabit() {
           毎日開く理由
         </p>
         <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[#26191C] sm:text-4xl">
-          便利ではなく、生活に組み込む。
+          面倒な作業は任せて、確認するだけ。
         </h2>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-[#75686B] sm:text-base">
-          たまに使うツールは忘れます。毎朝・毎日の仕事枠に入ると、開かざるを得なくなります。
+          X投稿、繰り返し作業、メール、資料作成。毎日の面倒な仕事をMINERVOTに任せると、自分は確認するだけで進みます。使うほど、Memoryが好みや仕事のやり方を覚えます。
         </p>
 
         <ul className="mt-10 grid gap-4 sm:grid-cols-2">

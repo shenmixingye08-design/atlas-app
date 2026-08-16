@@ -2,11 +2,39 @@ import { listPlanDefinitions } from "@/lib/billing/plans/registry";
 
 export const LANDING_CAPABILITIES = [
   {
+    id: "sns",
+    icon: "📱",
+    title: "X投稿を任せる",
+    description:
+      "今日の投稿案づくりや、決まった時間のX投稿。面倒な下書きをMINERVOTに任せ、自分は確認するだけです。",
+  },
+  {
+    id: "habit",
+    icon: "🔁",
+    title: "繰り返し作業を自動化する",
+    description:
+      "毎日・毎週・毎月の決まった作業を一度任せると、あとは確認するだけで続きます。",
+  },
+  {
+    id: "email",
+    icon: "✉️",
+    title: "メールと予定を任せる",
+    description:
+      "取引先へのメール作成や、来週の予定登録。日々の事務作業をMINERVOTが進めます。",
+  },
+  {
     id: "documents",
     icon: "📄",
-    title: "資料を作る",
+    title: "資料・成果物を作る",
     description:
-      "PDF・Word・Excel・PowerPointなどの資料作成をサポートします。",
+      "Word・Excel・PDF・PowerPointなどの資料作成を任せ、自分は確認するだけです。",
+  },
+  {
+    id: "remember",
+    icon: "🧠",
+    title: "好みと仕事のやり方を覚える",
+    description:
+      "Memoryが文章の好みや仕事の進め方を学習し、次回以降の作業へ反映します。",
   },
   {
     id: "organize",
@@ -14,34 +42,6 @@ export const LANDING_CAPABILITIES = [
     title: "情報を整理する",
     description:
       "写真・PDF・資料から必要な情報を整理し、分かりやすくまとめます。",
-  },
-  {
-    id: "remember",
-    icon: "🧠",
-    title: "仕事を記憶する",
-    description:
-      "仕事の進め方や習慣を学習し、次回以降の作業へ反映します。",
-  },
-  {
-    id: "analyze",
-    icon: "📊",
-    title: "分析する",
-    description:
-      "蓄積された仕事を分析し、改善点や傾向をご報告します。",
-  },
-  {
-    id: "improve",
-    icon: "💡",
-    title: "改善を提案する",
-    description:
-      "仕事の結果をもとに、次回より効率的な進め方をご提案します。",
-  },
-  {
-    id: "habit",
-    icon: "🔁",
-    title: "習慣を支える",
-    description:
-      "毎日・毎週・毎月の繰り返し作業を継続してサポートします。",
   },
 ] as const;
 
@@ -243,20 +243,20 @@ export const LANDING_REASONS = [
 
 export const LANDING_PAIN_SOLUTIONS = [
   {
-    pain: "毎日のSNS投稿が負担になっている",
-    solution: "MINERVOTが投稿文案を毎日自動で用意。承認後に投稿まで実行します。",
+    pain: "毎日のX投稿が面倒になっている",
+    solution: "投稿案づくりや予約投稿をMINERVOTに任せ、自分は確認するだけです。",
   },
   {
-    pain: "資料・ブログ作成に何時間もかかる",
-    solution: "AI秘書が下書きから完成まで担当。あなたは最終確認だけで済みます。",
+    pain: "同じ作業を毎週くり返している",
+    solution: "繰り返し作業を一度任せれば、決まった時間に自動で進みます。",
   },
   {
-    pain: "ルーティン業務を忘れてしまう",
-    solution: "定期仕事を一度登録すれば、決まった時間に自動で動きます。",
+    pain: "メール作成と予定管理に時間を取られる",
+    solution: "取引先メールの下書きや予定登録を任せ、自分は確認するだけです。",
   },
   {
-    pain: "ツールを何個も行き来している",
-    solution: "依頼・実行・保存・投稿をMINERVOTひとつに集約。切り替えは不要です。",
+    pain: "資料作成に何時間もかかる",
+    solution: "Word・Excel・PDFなどの資料づくりを任せ、最終確認だけで済みます。",
   },
 ] as const;
 

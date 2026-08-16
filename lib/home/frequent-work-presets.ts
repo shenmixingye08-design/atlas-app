@@ -4,13 +4,13 @@ import type { QuickRequestPreset } from "@/lib/workspace/quick-request-presets";
 export const HOME_FREQUENT_WORK_PRESETS: readonly QuickRequestPreset[] = [
   {
     id: "sns",
-    label: "SNS投稿",
-    prompt: "Xに投稿する文章を作ってください",
+    label: "今日のX投稿",
+    prompt: "今日のX投稿を3案作って",
   },
   {
     id: "blog",
-    label: "ブログ作成",
-    prompt: "ブログ記事の下書きを作ってください",
+    label: "Excelにまとめる",
+    prompt: "このデータをExcelにまとめて",
   },
   {
     id: "sales",
@@ -19,13 +19,13 @@ export const HOME_FREQUENT_WORK_PRESETS: readonly QuickRequestPreset[] = [
   },
   {
     id: "email",
-    label: "メール返信",
-    prompt: "顧客へのフォローアップメール文を作ってください",
+    label: "取引先メール",
+    prompt: "この内容を取引先へのメールにして",
   },
   {
     id: "automation",
-    label: "定期仕事",
-    prompt: "毎週月曜の朝9時に、前週の成果をまとめる定期業務を登録してください",
+    label: "毎週自動実行",
+    prompt: "毎週この作業を自動で実行して",
     href: "/automations?create=1",
   },
   {
@@ -36,8 +36,8 @@ export const HOME_FREQUENT_WORK_PRESETS: readonly QuickRequestPreset[] = [
   },
   {
     id: "consult",
-    label: "追加で依頼",
-    prompt: "繰り返し作業を減らすため、まず何から任せるべきか教えてください",
+    label: "予定を登録",
+    prompt: "来週の予定をカレンダーに登録して",
     href: "/chat",
   },
 ] as const;
