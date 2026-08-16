@@ -420,6 +420,25 @@ export function BillingSettings() {
         <p className="text-caption text-[var(--text-secondary)]">
           {summary.usageAwareness.resetLabel}
         </p>
+        {summary.usage.available === false ||
+        summary.usageAwareness.available === false ? (
+          <Card padding="lg" className="space-y-3 shadow-[var(--shadow-soft)]">
+            <p className="text-sm font-medium text-foreground" role="alert">
+              {ui.billing.usageUnavailable}
+            </p>
+            <p className="text-sm text-[var(--text-secondary)]">
+              {ui.billing.usageUnavailableHint}
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="min-h-[44px]"
+              onClick={() => void load()}
+            >
+              {ui.billing.usageReload}
+            </Button>
+          </Card>
+        ) : (
         <Card padding="lg" className="space-y-3 shadow-[var(--shadow-soft)]">
           {offeredUsageItems(summary.usageAwareness).map((item) => (
             <UsageItemCard key={item.id} item={item} />
@@ -449,6 +468,7 @@ export function BillingSettings() {
             </div>
           )}
         </Card>
+        )}
       </section>
 
       <section className="space-y-4">

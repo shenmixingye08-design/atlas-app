@@ -21,6 +21,8 @@ import {
   isAutomationSuspendedForUser,
 } from "./subscriptions/lifecycle";
 import { getUserAiUsageBreakdown } from "./usage/meter";
+import { countActiveAutomationTasks } from "./usage/automation-count";
+import { pendingAiRunReservationCount } from "./usage/reservation";
 import { getUsageSnapshot } from "./usage/store";
 import { tweetContainsExternalUrl } from "./usage/x-url";
 
@@ -55,9 +57,11 @@ export async function evaluateAutomationTaskAccess(
     };
   }
 
+  void currentTaskCount;
+  const liveCount = await countActiveAutomationTasks(userId);
   return checkAutomationTaskLimit(
     resolveEffectivePlanId(userId),
-    currentTaskCount,
+    liveCount,
   );
 }
 
@@ -76,10 +80,15 @@ export function evaluateAiUsageAccess(
   nextEstimatedCostUsd = 0,
 ): PlanCheckResult {
   const usage = getUsageSnapshot(userId);
+  const prepaid = pendingAiRunReservationCount(userId);
+  const adjusted = {
+    ...usage,
+    aiRuns: Math.max(0, usage.aiRuns - prepaid),
+  };
   const monthCostUsd = getUserAiUsageBreakdown(userId).month.estimatedCostUsd;
   return checkAiExecutionLimit(
     resolveEffectivePlanId(userId),
-    usage,
+    adjusted,
     monthCostUsd,
     nextEstimatedCostUsd,
   );

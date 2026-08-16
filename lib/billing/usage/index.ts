@@ -19,11 +19,13 @@ export {
   listAiUsageEvents,
   resetUsageStore,
   setAutomationTaskCount,
+  tryConsumeAiRunQuota,
 } from "./store";
 
 export {
   getUserAiUsageBreakdown,
   recordUserAiUsage,
+  recordUserAiUsageOnce,
   recordUserAiUsageFromCostSummary,
   recordUserAiUsageFromTexts,
   summarizeAiUsageEvents,

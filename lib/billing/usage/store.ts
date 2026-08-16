@@ -4,6 +4,10 @@ import type {
   UsageMonthKey,
   UsageSnapshot,
 } from "./types";
+import { getUsageDayKey, getUsageMonthKey } from "./period";
+import { clearAiRunReservationsForTests } from "./reservation";
+
+export { getUsageDayKey, getUsageMonthKey };
 
 type UsageBucket = Map<string, UsageSnapshot>;
 
@@ -19,21 +23,6 @@ function getBucket(): UsageBucket {
 
   if (!globalScope.__atlasBillingUsageStore) {
     globalScope.__atlasBillingUsageStore = new Map();
-  }
-
-  if (!globalScope.__atlasBillingUsageHydrated) {
-    globalScope.__atlasBillingUsageHydrated = true;
-    if (
-      !(globalScope as { __atlasBillingUsageSbHydrateStarted?: boolean })
-        .__atlasBillingUsageSbHydrateStarted
-    ) {
-      (
-        globalScope as { __atlasBillingUsageSbHydrateStarted?: boolean }
-      ).__atlasBillingUsageSbHydrateStarted = true;
-      void import("./durable")
-        .then((mod) => mod.ensureBillingUsageHydrated())
-        .catch(() => undefined);
-    }
   }
 
   return globalScope.__atlasBillingUsageStore;
@@ -63,9 +52,13 @@ function getClaimBucket(): Set<string> {
 }
 
 /** Durable persist via Supabase only — no local filesystem. */
-function persistDurable(): void {
+function persistDurable(userId?: string): void {
   void import("./durable")
     .then((mod) => {
+      if (userId) {
+        void mod.persistBillingUsageForUserNow(userId);
+        return;
+      }
       mod.schedulePersistBillingUsage();
     })
     .catch(() => undefined);
@@ -127,12 +120,36 @@ export function replaceUsageDurableState(input: {
   globalScope.__atlasBillingUsageClaimKeys = new Set(input.claimKeys ?? []);
 }
 
-export function getUsageMonthKey(now: Date = new Date()): UsageMonthKey {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-}
-
-export function getUsageDayKey(now: Date = new Date()): string {
-  return `${getUsageMonthKey(now)}-${String(now.getDate()).padStart(2, "0")}`;
+/** Merge durable rows without wiping newer in-memory increments. */
+export function mergeUsageDurableState(input: {
+  snapshots: Record<string, UsageSnapshot>;
+  events: AiUsageEvent[];
+  claimKeys?: string[];
+}): void {
+  const bucket = getBucket();
+  for (const [key, snapshot] of Object.entries(input.snapshots)) {
+    if (!snapshot?.userId || !snapshot?.month) continue;
+    const normalized = normalizeUsageSnapshot(snapshot);
+    const existing = bucket.get(key);
+    if (
+      !existing ||
+      Date.parse(normalized.updatedAt) >= Date.parse(existing.updatedAt)
+    ) {
+      bucket.set(key, normalized);
+    }
+  }
+  const events = getEventBucket();
+  const seen = new Set(events.map((event) => event.id));
+  for (const event of input.events) {
+    if (event?.id && !seen.has(event.id)) {
+      events.push(event);
+      seen.add(event.id);
+    }
+  }
+  const claims = getClaimBucket();
+  for (const key of input.claimKeys ?? []) {
+    if (key) claims.add(key);
+  }
 }
 
 export function getUsageSnapshot(
@@ -147,7 +164,7 @@ export function getUsageSnapshot(
 export function saveUsageSnapshot(snapshot: UsageSnapshot): UsageSnapshot {
   const normalized = normalizeUsageSnapshot(snapshot);
   getBucket().set(usageKey(normalized.userId, normalized.month), normalized);
-  persistDurable();
+  persistDurable(normalized.userId);
   return normalized;
 }
 
@@ -160,7 +177,7 @@ export function incrementUsageCounter(
   const current = getUsageSnapshot(userId, month);
   const next: UsageSnapshot = {
     ...current,
-    [counter]: (current[counter] ?? 0) + amount,
+    [counter]: Math.max(0, (current[counter] ?? 0) + amount),
     updatedAt: new Date().toISOString(),
   };
 
@@ -192,6 +209,62 @@ export function incrementUsageCounterOnce(
   return { incremented: true, snapshot };
 }
 
+/**
+ * Same-process atomic quota consume for aiRuns.
+ * Check + claim + increment happen synchronously so two overlapping
+ * requests cannot both pass the last remaining slot.
+ */
+export function tryConsumeAiRunQuota(input: {
+  userId: string;
+  claimKey: string;
+  limit: number;
+  bypassLimit?: boolean;
+  amount?: number;
+  month?: UsageMonthKey;
+}): { allowed: boolean; incremented: boolean; snapshot: UsageSnapshot } {
+  const month = input.month ?? getUsageMonthKey();
+  const amount = Math.max(1, input.amount ?? 1);
+  const claim = input.claimKey.trim();
+  const claims = getClaimBucket();
+  const key = claim ? `${input.userId}:${month}:aiRuns:${claim}` : "";
+
+  if (key && claims.has(key)) {
+    return {
+      allowed: true,
+      incremented: false,
+      snapshot: getUsageSnapshot(input.userId, month),
+    };
+  }
+
+  const current = getUsageSnapshot(input.userId, month);
+  if (!input.bypassLimit && current.aiRuns >= input.limit) {
+    return { allowed: false, incremented: false, snapshot: current };
+  }
+
+  if (key) claims.add(key);
+  const snapshot = incrementUsageCounter(input.userId, "aiRuns", amount, month);
+  return { allowed: true, incremented: true, snapshot };
+}
+
+export function releaseAiRunQuota(input: {
+  userId: string;
+  claimKey: string;
+  amount?: number;
+  month?: UsageMonthKey;
+}): UsageSnapshot {
+  const month = input.month ?? getUsageMonthKey();
+  const claim = input.claimKey.trim();
+  if (claim) {
+    getClaimBucket().delete(`${input.userId}:${month}:aiRuns:${claim}`);
+  }
+  return incrementUsageCounter(
+    input.userId,
+    "aiRuns",
+    -Math.max(1, input.amount ?? 1),
+    month,
+  );
+}
+
 export function setAutomationTaskCount(
   userId: string,
   count: number,
@@ -211,7 +284,7 @@ export function appendAiUsageEvent(event: AiUsageEvent): AiUsageEvent {
   if (bucket.length > 5000) {
     bucket.splice(0, bucket.length - 5000);
   }
-  persistDurable();
+  persistDurable(event.userId);
   return event;
 }
 
@@ -231,5 +304,5 @@ export function resetUsageStore(): void {
     globalScope.__atlasBillingAiUsageEvents.length = 0;
   }
   globalScope.__atlasBillingUsageClaimKeys = new Set();
-  persistDurable();
+  clearAiRunReservationsForTests();
 }

@@ -91,6 +91,8 @@ export function buildUsageAwarenessView(input: {
       usage: input.usage,
       catalog: input.catalog,
     }),
+    available: input.usage.available !== false,
+    unavailableReason: input.usage.unavailableReason ?? null,
   };
 }
 

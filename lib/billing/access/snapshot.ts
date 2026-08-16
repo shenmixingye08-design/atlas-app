@@ -188,6 +188,10 @@ export async function evaluateBillingFeature(
 export async function evaluateBillingAiUsage(
   userId: string,
 ): Promise<{ snapshot: BillingAccessSnapshot; denial: BillingDenial | null }> {
+  const { ensureBillingUsageHydratedForUser } = await import(
+    "../usage/durable"
+  );
+  await ensureBillingUsageHydratedForUser(userId);
   const snapshot = await getBillingAccessSnapshot(userId);
   if (snapshot.isOwner) return { snapshot, denial: null };
 

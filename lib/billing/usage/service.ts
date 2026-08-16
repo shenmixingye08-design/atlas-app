@@ -47,6 +47,8 @@ export function getUserUsageLimitSummary(
       plan.limits.automationTasks,
     ),
     aiDetail,
+    available: true,
+    unavailableReason: null,
   };
 }
 
@@ -55,6 +57,7 @@ export {
   incrementUsageCounter,
   incrementUsageCounterOnce,
   setAutomationTaskCount,
+  tryConsumeAiRunQuota,
 } from "./store";
 export { getUsageMonthKey } from "./store";
 export {

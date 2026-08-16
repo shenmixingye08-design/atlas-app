@@ -14,12 +14,14 @@ import {
   isPaidCapableStatus,
 } from "../subscriptions/service";
 
+import { popAiRunReservation } from "./reservation";
 import {
   appendAiUsageEvent,
   getUsageDayKey,
   getUsageMonthKey,
   incrementUsageCounter,
   listAiUsageEvents,
+  tryConsumeAiRunQuota,
 } from "./store";
 import type {
   AiUsageApi,
@@ -103,7 +105,10 @@ export function recordUserAiUsage(input: RecordUserAiUsageInput): AiUsageEvent {
       aiTaskType: input.aiTaskType,
     });
 
-  incrementUsageCounter(input.userId, "aiRuns", requestCount);
+  const reserved = popAiRunReservation(input.userId);
+  if (!reserved) {
+    incrementUsageCounter(input.userId, "aiRuns", requestCount);
+  }
 
   return appendAiUsageEvent({
     id: `aiu_${crypto.randomUUID()}`,
@@ -119,6 +124,67 @@ export function recordUserAiUsage(input: RecordUserAiUsageInput): AiUsageEvent {
     totalTokens,
     estimatedCostUsd: Math.max(0, estimatedCostUsd),
   });
+}
+
+export type RecordUserAiUsageOnceResult = {
+  allowed: boolean;
+  recorded: boolean;
+  event: AiUsageEvent | null;
+};
+
+/**
+ * One user-facing AI run with idempotency. Does not increment twice for the
+ * same claimKey (retry / duplicate dispatch).
+ */
+export function recordUserAiUsageOnce(
+  input: RecordUserAiUsageInput & {
+    claimKey: string;
+    bypassLimit?: boolean;
+  },
+): RecordUserAiUsageOnceResult {
+  const requestCount = Math.max(1, input.requestCount ?? 1);
+  const planId = input.planId ?? resolveEffectivePlanId(input.userId);
+  const limit = getPlanDefinition(planId).limits.aiUsageMonthly;
+  const consumed = tryConsumeAiRunQuota({
+    userId: input.userId,
+    claimKey: input.claimKey,
+    limit,
+    bypassLimit: input.bypassLimit,
+    amount: requestCount,
+  });
+  if (!consumed.allowed) {
+    return { allowed: false, recorded: false, event: null };
+  }
+  if (!consumed.incremented) {
+    return { allowed: true, recorded: false, event: null };
+  }
+
+  const inputTokens = Math.max(0, Math.round(input.inputTokens));
+  const outputTokens = Math.max(0, Math.round(input.outputTokens));
+  const event = appendAiUsageEvent({
+    id: `aiu_${crypto.randomUUID()}`,
+    userId: input.userId,
+    planId,
+    timestamp: input.timestamp ?? new Date().toISOString(),
+    model: input.model || getPlanDefinition(planId).name,
+    api: input.api,
+    feature: input.feature,
+    requestCount,
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens,
+    estimatedCostUsd: Math.max(
+      0,
+      input.estimatedCostUsd ??
+        estimateCostUsd({
+          model: input.model,
+          inputTokens,
+          outputTokens,
+          aiTaskType: input.aiTaskType,
+        }),
+    ),
+  });
+  return { allowed: true, recorded: true, event };
 }
 
 export function recordUserAiUsageFromTexts(input: {
@@ -185,8 +251,13 @@ export function summarizeAiUsageEvents(
   };
 
   for (const event of events) {
-    const day = event.timestamp.slice(0, 10);
-    const month = event.timestamp.slice(0, 7);
+    const at = new Date(event.timestamp);
+    const day = Number.isNaN(at.getTime())
+      ? event.timestamp.slice(0, 10)
+      : getUsageDayKey(at);
+    const month = Number.isNaN(at.getTime())
+      ? event.timestamp.slice(0, 7)
+      : getUsageMonthKey(at);
     addToPeriod(breakdown.allTime, event);
     if (month === monthKey) addToPeriod(breakdown.month, event);
     if (day === todayKey) addToPeriod(breakdown.today, event);

@@ -4,7 +4,6 @@ import type {
   WorkflowRun,
   WorkflowRunTriggerType,
 } from "@/lib/memory/types/workflow-run";
-import { setAutomationTaskCount } from "@/lib/billing/usage/store";
 import { claimAutomationJob } from "@/lib/jobs/job-store";
 import { buildAutomationIdempotencyKey } from "@/lib/jobs/idempotency";
 
@@ -275,8 +274,10 @@ export class AutomationService {
   }
 
   private async syncTaskCount(userId: string): Promise<void> {
-    const enabled = await this.automations.list({ userId, enabled: true });
-    setAutomationTaskCount(userId, enabled.length);
+    const { syncAutomationTaskUsage } = await import(
+      "@/lib/billing/usage/automation-count"
+    );
+    await syncAutomationTaskUsage(userId);
   }
 }
 
