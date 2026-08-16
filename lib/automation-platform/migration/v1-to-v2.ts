@@ -166,9 +166,12 @@ function mapWorkflow(v1: AutomationV1): AutomationV2["workflow"] {
       name: "X投稿",
       order: 2,
       inputBindings: {},
-      configuration: buildXPostStepConfiguration({
-        sourceText: v1.workflow.assignment,
-      }),
+      configuration: {
+        ...buildXPostStepConfiguration({
+          sourceText: v1.workflow.assignment,
+        }),
+        originalUserRequest: v1.workflow.assignment,
+      },
       requiresApproval: true,
       retryPolicy: { maxAttempts: 3, backoffMs: [60_000, 300_000, 900_000] },
       timeoutMs: 120_000,
@@ -232,6 +235,7 @@ export function convertV1ToV2(v1: AutomationV1): {
         executionMode: v1.executionMode,
         snsBatchDays: v1.snsBatchDays,
         executionFlow: v1.executionFlow,
+        originalUserRequest: v1.workflow.assignment,
       },
       freeformNotes: v1.workflow.assignment,
     },

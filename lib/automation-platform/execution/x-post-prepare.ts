@@ -1,6 +1,9 @@
 import "server-only";
 
-import { classifyXPostContent } from "@/lib/automation-platform/execution/x-post-content";
+import {
+  classifyXPostContent,
+  readOriginalUserRequest,
+} from "@/lib/automation-platform/execution/x-post-content";
 import {
   buildGeneratedXPostApprovalSummary,
   generateXAutomationPostText,
@@ -31,18 +34,61 @@ export async function maybePrepareXPostCopyForRun(input: {
     };
   }
 
+  const structuredOptions = {
+    ...(input.automation.instruction.structuredOptions ?? {}),
+    ...(input.resolvedInstruction?.structuredOptions ?? {}),
+    ...(typeof input.resolvedInstruction?.merged.originalUserRequest ===
+    "string"
+      ? {
+          originalUserRequest:
+            input.resolvedInstruction.merged.originalUserRequest,
+        }
+      : {}),
+  };
   const classification = classifyXPostContent({
     configuration: xStep.configuration,
+    structuredOptions,
     freeformNotes: input.automation.instruction.freeformNotes,
+    description:
+      input.automation.description ||
+      (typeof input.resolvedInstruction?.merged.description === "string"
+        ? input.resolvedInstruction.merged.description
+        : null),
     automationName: input.automation.name,
     resolvedNotes: input.resolvedInstruction?.freeformNotes,
     resumeNotes: input.preparation.resumeNotes,
   });
+  const originalInstruction = readOriginalUserRequest({
+    configuration: xStep.configuration,
+    structuredOptions,
+    freeformNotes: input.automation.instruction.freeformNotes,
+    description: input.automation.description,
+  });
+  const memoryUsed = Boolean(
+    input.resolvedInstruction?.merged.memoryInjectionText ||
+      (Array.isArray(input.resolvedInstruction?.merged.memoryIdsUsed) &&
+        input.resolvedInstruction.merged.memoryIdsUsed.length > 0),
+  );
+  const proof = {
+    originalInstruction: originalInstruction || null,
+    resolvedGenerateInstruction: classification.generateInstruction || null,
+    contentSource:
+      classification.mode === "generate"
+        ? "generate"
+        : classification.mode === "fixed"
+          ? "fixed"
+          : "unresolved",
+    memoryUsed,
+    xPostClassifyReason: classification.reason,
+    needsInputReason:
+      classification.mode === "missing" ? classification.reason : null,
+  };
 
   if (classification.mode !== "generate") {
     return {
       preparation: {
         ...input.preparation,
+        ...proof,
         xPostContentMode: classification.mode,
         generateInstruction: classification.generateInstruction || null,
         generatedXPostText:
@@ -69,6 +115,7 @@ export async function maybePrepareXPostCopyForRun(input: {
     return {
       preparation: {
         ...input.preparation,
+        ...proof,
         xPostContentMode: "generate",
         generateInstruction: classification.generateInstruction || null,
         generatedXPostText: null,
@@ -93,6 +140,7 @@ export async function maybePrepareXPostCopyForRun(input: {
   return {
     preparation: {
       ...input.preparation,
+      ...proof,
       xPostContentMode: "generate",
       generateInstruction: classification.generateInstruction || null,
       generatedXPostText: generated.text,

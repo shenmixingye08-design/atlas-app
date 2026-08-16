@@ -19,7 +19,12 @@ export type XPostContentClassification = {
 };
 
 const GENERATE_PATTERN =
-  /考え(て|る)|文章を作|内容を作|文案|任せる|おまかせ|お任せ|生成|作って投稿|考えて投稿|投稿内容を|文章も|自分で文章を作って|内容は任/;
+  /考え(て|る)|文章を作|内容を作|文案|任せる|おまかせ|お任せ|生成|作って投稿|考えて投稿|投稿内容を|投稿文を|宣伝投稿|文章も|自分で文章を作って|内容は任|任せて投稿/;
+
+const GENERIC_X_POST_LABEL_PATTERN =
+  /^(SNS投稿の自動化|新しい自動化|名称未設定の自動化|投稿|X投稿)$/;
+
+const GENERIC_X_POST_DESCRIPTION_PATTERN = /自然文からの提案です/;
 
 const DEICTIC_ONLY_PATTERN =
   /^(これを|それを|あの内容を|この内容を|この投稿を|その投稿を)/;
@@ -117,51 +122,131 @@ export function extractXPostTopic(source: string): string {
     .trim();
 }
 
+export function isGenericXPostLabel(value: string | null | undefined): boolean {
+  const text = (value ?? "").trim();
+  if (!text) return true;
+  return (
+    GENERIC_X_POST_LABEL_PATTERN.test(text) ||
+    GENERIC_X_POST_DESCRIPTION_PATTERN.test(text)
+  );
+}
+
+function readTrimmedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/** Strip V1 bridge suffix so assignment can recover the original request. */
+export function stripV1AssignmentBridgeSuffix(assignment: string): string {
+  return assignment.replace(/\n\nやること:[\s\S]*$/, "").trim();
+}
+
+/**
+ * Original NL request the user gave when creating the automation.
+ * Never treat the generic wizard title as the request.
+ */
+export function readOriginalUserRequest(input: {
+  configuration?: Readonly<Record<string, unknown>> | null;
+  structuredOptions?: Readonly<Record<string, unknown>> | null;
+  freeformNotes?: string | null;
+  description?: string | null;
+  v1Assignment?: string | null;
+}): string {
+  const structured = input.structuredOptions ?? {};
+  const candidates = [
+    readTrimmedString(structured.originalUserRequest),
+    readTrimmedString(structured.originalInstruction),
+    readTrimmedString(structured.naturalLanguageSeed),
+    readTrimmedString(input.configuration?.originalUserRequest),
+    readTrimmedString(input.freeformNotes),
+    isGenericXPostLabel(input.description)
+      ? ""
+      : readTrimmedString(input.description),
+    stripV1AssignmentBridgeSuffix(readTrimmedString(input.v1Assignment)),
+  ];
+  for (const candidate of candidates) {
+    if (candidate && !isFillerXPostNote(candidate) && !isGenericXPostLabel(candidate)) {
+      return candidate;
+    }
+  }
+  return "";
+}
+
 export function collectXPostInstructionText(input: {
   configuration?: Readonly<Record<string, unknown>> | null;
+  structuredOptions?: Readonly<Record<string, unknown>> | null;
   freeformNotes?: string | null;
+  description?: string | null;
   automationName?: string | null;
   resolvedNotes?: string | null;
   resumeNotes?: string | null;
+  v1Assignment?: string | null;
+  topic?: string | null;
 }): string {
-  const storedInstruction =
-    typeof input.configuration?.generateInstruction === "string"
-      ? input.configuration.generateInstruction.trim()
-      : "";
-  const resume = input.resumeNotes?.trim() ?? "";
-  return [
-    storedInstruction,
-    input.freeformNotes?.trim() ?? "",
-    input.resolvedNotes?.trim() ?? "",
-    resume && !isFillerXPostNote(resume) ? `追加条件: ${resume}` : "",
-    input.automationName?.trim() ?? "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const storedInstruction = readTrimmedString(
+    input.configuration?.generateInstruction,
+  );
+  const original = readOriginalUserRequest(input);
+  const notes = readTrimmedString(input.freeformNotes);
+  const description = isGenericXPostLabel(input.description)
+    ? ""
+    : readTrimmedString(input.description);
+  const topic =
+    readTrimmedString(input.topic) ||
+    readTrimmedString(input.configuration?.topic);
+  const memoryNotes = readTrimmedString(input.resolvedNotes);
+  const resume = readTrimmedString(input.resumeNotes);
+  const title = isGenericXPostLabel(input.automationName)
+    ? ""
+    : readTrimmedString(input.automationName);
+
+  const unique: string[] = [];
+  const push = (value: string) => {
+    if (!value || isFillerXPostNote(value)) return;
+    if (unique.includes(value)) return;
+    unique.push(value);
+  };
+
+  push(storedInstruction);
+  push(original);
+  if (notes && notes !== original && notes !== storedInstruction) push(notes);
+  if (description && description !== original) push(description);
+  if (topic) push(`テーマ: ${topic}`);
+  if (memoryNotes && memoryNotes !== original && memoryNotes !== notes) {
+    push(memoryNotes);
+  }
+  if (resume && !isFillerXPostNote(resume)) {
+    push(`追加条件: ${resume}`);
+  }
+  push(title);
+  return unique.join("\n");
 }
 
 export function classifyXPostContent(input: {
   configuration?: Readonly<Record<string, unknown>> | null;
+  structuredOptions?: Readonly<Record<string, unknown>> | null;
   freeformNotes?: string | null;
+  description?: string | null;
   automationName?: string | null;
   resolvedNotes?: string | null;
   resumeNotes?: string | null;
+  v1Assignment?: string | null;
 }): XPostContentClassification {
   const configuration = input.configuration ?? {};
   const source = readXPostContentSource(configuration);
   const storedText = readStoredXPostText(configuration);
+  const original = readOriginalUserRequest(input);
   const instruction = collectXPostInstructionText(input);
-  const quoted = extractQuotedOrAsIsPostText(instruction);
+  const quoted = extractQuotedOrAsIsPostText(original || instruction);
   const topic =
     (typeof configuration.topic === "string" && configuration.topic.trim()) ||
-    extractXPostTopic(instruction);
+    extractXPostTopic(original || instruction);
 
-  if (source === "generate") {
+  if (source === "generate" && (instruction || topic)) {
     return {
       mode: "generate",
       text: "",
       topic,
-      generateInstruction: instruction,
+      generateInstruction: instruction || topic,
       reason: "content_source_generate",
     };
   }
@@ -206,8 +291,9 @@ export function classifyXPostContent(input: {
     };
   }
 
-  const deictic = DEICTIC_ONLY_PATTERN.test(instruction.trim());
-  if (deictic && !GENERATE_PATTERN.test(instruction) && !topic) {
+  const deicticSource = (original || instruction).split("\n")[0]?.trim() ?? "";
+  const deictic = DEICTIC_ONLY_PATTERN.test(deicticSource);
+  if (deictic && !GENERATE_PATTERN.test(original || instruction) && !topic) {
     return {
       mode: "missing",
       text: "",
@@ -269,6 +355,58 @@ export function buildXPostStepConfiguration(input: {
     };
   }
   return { contentSource: "unresolved" };
+}
+
+export function stampXPostStepsWithInstruction<
+  T extends { type: string; configuration: Record<string, unknown> },
+>(steps: readonly T[], sourceText: string): T[] {
+  const original = sourceText.trim();
+  if (!original) {
+    return steps.map((step) => ({ ...step, configuration: { ...step.configuration } }));
+  }
+  return steps.map((step) => {
+    if (step.type !== "x_post") {
+      return { ...step, configuration: { ...step.configuration } };
+    }
+    const current = step.configuration ?? {};
+    const source = readXPostContentSource(current);
+    if (source === "fixed" && readStoredXPostText(current)) {
+      return {
+        ...step,
+        configuration: {
+          ...current,
+          originalUserRequest:
+            readTrimmedString(current.originalUserRequest) || original,
+        },
+      };
+    }
+    if (source === "generate") {
+      return {
+        ...step,
+        configuration: {
+          ...current,
+          originalUserRequest:
+            readTrimmedString(current.originalUserRequest) || original,
+          generateInstruction:
+            readTrimmedString(current.generateInstruction) || original,
+        },
+      };
+    }
+    const built = buildXPostStepConfiguration({ sourceText: original });
+    return {
+      ...step,
+      configuration: {
+        ...current,
+        ...built,
+        originalUserRequest:
+          readTrimmedString(current.originalUserRequest) || original,
+        generateInstruction:
+          readTrimmedString(built.generateInstruction) ||
+          readTrimmedString(current.generateInstruction) ||
+          original,
+      },
+    };
+  });
 }
 
 export const X_POST_MISSING_CONTENT_MESSAGE = "投稿する内容が確認できません";

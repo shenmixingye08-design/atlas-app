@@ -164,7 +164,9 @@ export function prepareRunSnapshot(params: {
     if (step.type === "x_post") {
       const classified = classifyXPostContent({
         configuration: step.configuration,
+        structuredOptions: automation.instruction.structuredOptions,
         freeformNotes: automation.instruction.freeformNotes,
+        description: automation.description,
         automationName: automation.name,
       });
       if (classified.mode === "missing") {

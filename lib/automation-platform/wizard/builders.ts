@@ -7,6 +7,7 @@ import type {
   CreateAutomationV2Input,
 } from "@/lib/automation-platform/types";
 import { DEFAULT_AUTOMATION_PLATFORM_TIMEZONE } from "@/lib/automation-platform/schedule/timezone";
+import { stampXPostStepsWithInstruction } from "@/lib/automation-platform/execution/x-post-content";
 import {
   assertExternalsSatisfiedBySteps,
   ensureRequiredExternalSteps,
@@ -276,6 +277,10 @@ export function buildCreateInputFromWizard(
 ): BuiltWizardPayload {
   const resolved = applyConflictResolution(draft);
   const errors = validateWizardDraft(resolved);
+  const originalUserRequest = (
+    resolved.naturalLanguageSeed.trim() ||
+    resolved.freeformNotes.trim()
+  ).slice(0, 2000);
   const structuredOptions = {
     ...resolved.structuredExtras,
     categories: resolved.categoryIds,
@@ -286,9 +291,11 @@ export function buildCreateInputFromWizard(
     generateWord: resolved.steps.some((s) => s.type === "word_generate" && s.enabled),
     postToX: resolved.steps.some((s) => s.type === "x_post" && s.enabled),
     conflictResolution: resolved.conflictResolution,
+    originalUserRequest,
+    naturalLanguageSeed: resolved.naturalLanguageSeed.trim().slice(0, 2000),
   };
 
-  let freeformNotes = resolved.freeformNotes;
+  let freeformNotes = resolved.freeformNotes.trim() || originalUserRequest;
   if (resolved.conflictResolution === "prefer_structured") {
     freeformNotes = `${freeformNotes}\n（確認済み: 設定項目を優先）`.trim();
   }
@@ -313,8 +320,15 @@ export function buildCreateInputFromWizard(
     });
   }
 
+  const stampedSteps = stampXPostStepsWithInstruction(
+    ensured.steps,
+    originalUserRequest || freeformNotes,
+  );
   const instruction = {
-    structuredOptions: ensured.structuredOptions,
+    structuredOptions: {
+      ...ensured.structuredOptions,
+      originalUserRequest,
+    },
     freeformNotes,
   };
   const conflicts = detectInstructionConflicts(instruction);
@@ -326,12 +340,17 @@ export function buildCreateInputFromWizard(
 
   const input: CreateAutomationV2Input = {
     name: resolved.name.trim() || "名称未設定の自動化",
-    description: resolved.description.trim() || buildHumanSummary(resolved).slice(0, 240),
+    description:
+      (resolved.description.trim() &&
+      !/自然文からの提案です/.test(resolved.description)
+        ? resolved.description.trim()
+        : originalUserRequest.slice(0, 240)) ||
+      buildHumanSummary(resolved).slice(0, 240),
     status: resolved.activateOnCreate ? "active" : "draft",
     trigger,
     workflow: {
       version: 1,
-      steps: ensured.steps,
+      steps: stampedSteps,
       onFailure: { strategy: "stop", notify: true },
       timeoutPolicy: {
         workflowTimeoutMs: 900_000,

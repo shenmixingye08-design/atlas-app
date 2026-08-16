@@ -86,12 +86,18 @@ function mapPreset(automation: AutomationV2): SchedulePreset | null {
 }
 
 function buildAssignment(automation: AutomationV2): string {
+  const original =
+    typeof automation.instruction.structuredOptions.originalUserRequest ===
+    "string"
+      ? automation.instruction.structuredOptions.originalUserRequest.trim()
+      : "";
   const notes = automation.instruction.freeformNotes.trim();
   const stepNames = automation.workflow.steps
     .filter((step) => step.enabled)
     .map((step) => step.name)
     .join(" → ");
-  const base = notes || automation.description || automation.name;
+  const base =
+    original || notes || automation.description || automation.name;
   return stepNames ? `${base}\n\nやること: ${stepNames}` : base;
 }
 
