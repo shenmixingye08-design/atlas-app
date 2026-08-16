@@ -8,7 +8,7 @@ import {
 } from "@/lib/datetime/display-timezone";
 import { buildFailureUserView } from "./failure-view";
 import { describeNeedsInput } from "./needs-input";
-import { formatRunStatus } from "./status-labels";
+import { formatRunHeadline } from "./status-labels";
 
 export type OperationsAttentionItem = {
   kind:
@@ -198,7 +198,7 @@ export function buildAutomationOperationsSummary(input: {
       attention.push({
         kind: "running",
         title: run.automationName,
-        subtitle: formatRunStatus(run.status),
+        subtitle: formatRunHeadline(run),
         href: `/automations/runs/${encodeURIComponent(run.id)}`,
         at: run.updatedAt,
         runId: run.id,
@@ -233,7 +233,7 @@ export function buildAutomationOperationsSummary(input: {
         { timeZone, fallback: "--:--" },
       ),
       title: run.automationName,
-      statusLabel: formatRunStatus(run.status),
+      statusLabel: formatRunHeadline(run),
       href: `/automations/runs/${encodeURIComponent(run.id)}`,
       sortAt: Date.parse(
         run.completedAt ?? run.startedAt ?? run.scheduledFor ?? run.createdAt,

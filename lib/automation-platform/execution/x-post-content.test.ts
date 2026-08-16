@@ -98,6 +98,36 @@ describe("classifyXPostContent", () => {
     expect(result.mode).toBe("generate");
     expect(result.text).toBe("");
   });
+
+  it("contentSource=generate with empty text/instruction is still generate", () => {
+    const result = classifyXPostContent({
+      configuration: { contentSource: "generate" },
+      freeformNotes: "",
+      description: "自然文からの提案です。内容を確認・修正してください。",
+      automationName: "SNS投稿の自動化",
+    });
+    expect(result.mode).toBe("generate");
+    expect(result.text).toBe("");
+  });
+
+  it("topic-only configuration generates without a stored body", () => {
+    const result = classifyXPostContent({
+      configuration: { topic: "副業" },
+      freeformNotes: "",
+      automationName: "SNS投稿の自動化",
+    });
+    expect(result.mode).toBe("generate");
+    expect(result.topic).toBe("副業");
+  });
+
+  it("さっきの文章を投稿して with no referent is deictic missing", () => {
+    const result = classifyXPostContent({
+      configuration: {},
+      freeformNotes: "さっきの文章を投稿して",
+    });
+    expect(result.mode).toBe("missing");
+    expect(result.reason).toBe("deictic_unresolved");
+  });
 });
 
 describe("buildXPostStepConfiguration / wizard NL", () => {

@@ -31,7 +31,10 @@ import {
 import { buildRunProgressView } from "@/lib/automation-platform/operations/progress";
 import { buildAutomationOperationsSummary } from "@/lib/automation-platform/operations/summary";
 import { buildRunTimeline } from "@/lib/automation-platform/operations/timeline";
-import { formatRunStatus } from "@/lib/automation-platform/operations/status-labels";
+import {
+  formatRunHeadline,
+  formatRunStatus,
+} from "@/lib/automation-platform/operations/status-labels";
 import { resetAutomationPlatformStoreForTests } from "@/lib/automation-platform/repository/memory-store";
 import { automationPlatformService } from "@/lib/automation-platform/service/automation-service";
 import { resetAutomationRateLimitForTests } from "@/lib/automation-platform/security/rate-limit";
@@ -279,7 +282,41 @@ describe("Automation Operations", () => {
       "一部完了しました。確認が必要です",
     );
     expect(formatRunStatus("preparing")).toBe("準備済みです");
-    expect(formatRunStatus("needs_input")).toBe("確認待ちです");
+    expect(formatRunStatus("needs_input")).toBe("入力待ちです");
+  });
+
+  it("2b. auto-exec headline never says 確認待ち・手動", () => {
+    const auto = {
+      triggerType: "manual" as const,
+      approval: { mode: "run_then_notify", status: "not_required" },
+      preparation: { approvalReason: null },
+    };
+    expect(
+      formatRunHeadline({ ...auto, status: "running" }),
+    ).toBe("実行中 · 自動実行");
+    expect(
+      formatRunHeadline({ ...auto, status: "preparing" }),
+    ).toBe("実行中 · 自動実行");
+    expect(
+      formatRunHeadline({ ...auto, status: "succeeded" }),
+    ).toBe("完了 · 自動実行");
+    expect(
+      formatRunHeadline({ ...auto, status: "awaiting_approval" }),
+    ).toBe("実行中 · 自動実行");
+    expect(formatRunHeadline({ ...auto, status: "running" })).not.toContain(
+      "確認待ち",
+    );
+    expect(formatRunHeadline({ ...auto, status: "running" })).not.toContain(
+      "手動",
+    );
+    expect(
+      formatRunHeadline({
+        status: "awaiting_approval",
+        triggerType: "schedule",
+        approval: { mode: "review_before_run", status: "pending" },
+        preparation: { approvalReason: "review_before_run" },
+      }),
+    ).toContain("確認待ち");
   });
 
   it("3. builds step timeline", () => {

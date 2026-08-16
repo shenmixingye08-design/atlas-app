@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AutomationRun } from "@/lib/automation-platform/types";
 import { fetchAutomationRunsAll } from "@/lib/automation-platform/client";
 import {
-  formatRunStatus,
+  formatRunHeadline,
   TRIGGER_LABEL,
 } from "@/lib/automation-platform/operations/status-labels";
 import { PageHeader } from "@/components/automation-first/page-header";
@@ -23,7 +23,7 @@ const STATUS_FILTERS: Array<{ id: string; label: string; value: string }> = [
   },
   { id: "running", label: "実行中", value: "running,queued,retrying,preparing" },
   { id: "approval", label: "確認待ち", value: "awaiting_approval" },
-  { id: "input", label: "確認待ち", value: "needs_input" },
+  { id: "input", label: "入力待ち", value: "needs_input" },
 ];
 
 export function RunListPage() {
@@ -163,7 +163,7 @@ export function RunListPage() {
                     </p>
                   </div>
                   <span className="shrink-0 rounded-full bg-[var(--surface-muted)] px-3 py-1 text-xs">
-                    {formatRunStatus(run.status)}
+                    {formatRunHeadline(run)}
                   </span>
                 </div>
                 <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-[var(--muted)] sm:grid-cols-3">

@@ -4,6 +4,7 @@ import {
   classifyXPostContent,
   readOriginalUserRequest,
   readStoredXPostText,
+  shouldRequestXPostUserInput,
 } from "@/lib/automation-platform/execution/x-post-content";
 import { logXPostInstructionTrace } from "@/lib/automation-platform/execution/x-post-instruction-trace";
 import {
@@ -90,8 +91,9 @@ export async function maybePrepareXPostCopyForRun(input: {
           : "unresolved",
     memoryUsed,
     xPostClassifyReason: classification.reason,
-    needsInputReason:
-      classification.mode === "missing" ? classification.reason : null,
+    needsInputReason: shouldRequestXPostUserInput(classification)
+      ? classification.reason
+      : null,
   };
 
   logXPostInstructionTrace({

@@ -12,6 +12,8 @@ import { resolveAutomationFeatureContext } from "@/lib/automation-platform/execu
 import {
   classifyXPostContent,
   readStoredXPostText,
+  readXPostContentSource,
+  shouldRequestXPostUserInput,
   X_POST_GENERATION_FAILED_CODE,
   X_POST_GENERATION_FAILED_MESSAGE,
   X_POST_MISSING_CONTENT_MESSAGE,
@@ -99,14 +101,20 @@ export const invokeXPostAdapter: ExternalAdapter = async (input) => {
     memoryUsed,
     classifyMode: classification.mode,
     classifyReason: classification.reason,
-    needsInputReason:
-      classification.mode === "missing" ? classification.reason : null,
+    needsInputReason: shouldRequestXPostUserInput(classification)
+      ? classification.reason
+      : null,
     generatedXPostTextPresent: Boolean(preparedText),
   });
 
+  const source = readXPostContentSource(input.step.configuration);
   if (classification.mode === "fixed") {
     text = classification.text;
-  } else if (classification.mode === "generate" || preparedText) {
+  } else if (
+    classification.mode === "generate" ||
+    source === "generate" ||
+    preparedText
+  ) {
     text = preparedText;
     if (!text) {
       const generated = await generateXAutomationPostText({

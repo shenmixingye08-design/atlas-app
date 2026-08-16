@@ -12,7 +12,7 @@ const FILTER_OPTIONS: Array<{ id: AutomationListFilter; label: string }> = [
   { id: "active", label: "有効" },
   { id: "paused", label: "一時停止" },
   { id: "awaiting_approval", label: "確認待ち" },
-  { id: "needs_input", label: "確認待ち" },
+  { id: "needs_input", label: "入力待ち" },
   { id: "has_failure", label: "失敗あり" },
   { id: "runs_today", label: "今日実行" },
   { id: "runs_this_week", label: "今週実行" },
