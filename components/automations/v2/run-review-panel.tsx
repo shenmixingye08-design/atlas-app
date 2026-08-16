@@ -17,10 +17,10 @@ import {
 import { buildFailureUserView } from "@/lib/automation-platform/operations/failure-view";
 import { describeNeedsInput } from "@/lib/automation-platform/operations/needs-input";
 import { buildRunProgressView } from "@/lib/automation-platform/operations/progress";
+import { isGenerateTypeXPostPreparation } from "@/lib/automation-platform/execution/x-post-content";
 import {
-  formatRunStatus,
+  formatRunHeadline,
   formatStepStatus,
-  TRIGGER_LABEL,
 } from "@/lib/automation-platform/operations/status-labels";
 import { buildRunTimeline } from "@/lib/automation-platform/operations/timeline";
 import { Button } from "@/components/ui/button";
@@ -215,12 +215,17 @@ export function RunReviewPanel({
   }
 
   const preparation = run.preparation;
-  const canApprove =
-    run.status === "awaiting_approval" || run.status === "needs_input";
+  const generateTypeXPost = isGenerateTypeXPostPreparation(run.preparation);
+  const showNeedsInputForm =
+    (run.status === "needs_input" || run.needsUserInput) && !generateTypeXPost;
+  const showGenerateResume =
+    (run.status === "needs_input" || run.needsUserInput) && generateTypeXPost;
+  const canApprove = run.status === "awaiting_approval";
   const canRetry =
     run.status === "failed" ||
     run.status === "partially_succeeded" ||
-    run.status === "retrying";
+    run.status === "retrying" ||
+    showGenerateResume;
   const canCancel = ![
     "succeeded",
     "cancelled",
@@ -228,6 +233,13 @@ export function RunReviewPanel({
     "skipped",
   ].includes(run.status);
   const failedStepId = run.failedStepId;
+  const headline = formatRunHeadline(run);
+  const scheduleExtra =
+    preparation?.scheduledLabel &&
+    preparation.scheduledLabel !== "手動実行" &&
+    !headline.includes(preparation.scheduledLabel)
+      ? ` · ${preparation.scheduledLabel}`
+      : "";
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-5 px-4 pb-[calc(7.5rem+env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
@@ -237,10 +249,8 @@ export function RunReviewPanel({
           {run.automationName}
         </h1>
         <p className="text-sm text-[var(--muted)]">
-          {formatRunStatus(run.status)}
-          {" · "}
-          {TRIGGER_LABEL[run.triggerType]}
-          {preparation?.scheduledLabel ? ` · ${preparation.scheduledLabel}` : ""}
+          {headline}
+          {scheduleExtra}
         </p>
       </header>
 
@@ -257,7 +267,7 @@ export function RunReviewPanel({
         </section>
       ) : null}
 
-      {run.status === "needs_input" || run.needsUserInput ? (
+      {showGenerateResume ? (
         <section
           id="needs-input"
           className="space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4"
@@ -267,16 +277,44 @@ export function RunReviewPanel({
               `${run.lastErrorMessage ?? ""} ${run.failedStepId ?? ""}`,
             )
               ? "本文作成に失敗しました"
-              : "入力が必要です"}
+              : "本文を作成します"}
           </h2>
-          <p className="text-sm">{describeNeedsInput(run)}</p>
+          <p className="text-sm">
+            投稿本文の入力は不要です。元の依頼からMINERVOTが文章を作成します。
+          </p>
           <label className="block text-sm">
             <span className="text-[var(--muted)]">追記（任意）</span>
             <textarea
               value={inputNote}
               onChange={(event) => setInputNote(event.target.value)}
               className="mt-1 min-h-24 w-full rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-3"
-              placeholder="不足情報を入力してください"
+              placeholder="短めに、など追加の条件があれば（任意）"
+            />
+          </label>
+          <Button
+            className="min-h-12 w-full"
+            disabled={pending}
+            onClick={onResumeInput}
+          >
+            作成して投稿する
+          </Button>
+        </section>
+      ) : null}
+
+      {showNeedsInputForm ? (
+        <section
+          id="needs-input"
+          className="space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4"
+        >
+          <h2 className="text-sm font-medium">入力が必要です</h2>
+          <p className="text-sm">{describeNeedsInput(run)}</p>
+          <label className="block text-sm">
+            <span className="text-[var(--muted)]">参照する内容</span>
+            <textarea
+              value={inputNote}
+              onChange={(event) => setInputNote(event.target.value)}
+              className="mt-1 min-h-24 w-full rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-3"
+              placeholder="投稿したい文章や、参照する内容を入力してください"
             />
           </label>
           <Button

@@ -10,7 +10,7 @@ export const RUN_STATUS_LABEL: Record<AutomationRunStatus, string> = {
   queued: "実行待ち",
   running: "実行中",
   retrying: "再試行中",
-  needs_input: "確認待ちです",
+  needs_input: "入力待ちです",
   succeeded: "仕事が完了しました",
   partially_succeeded: "一部完了しました。確認が必要です",
   failed: "完了できませんでした",
@@ -58,4 +58,67 @@ export function formatRunStatus(status: AutomationRunStatus): string {
 
 export function formatStepStatus(status: RunStepStatus): string {
   return STEP_STATUS_LABEL[status];
+}
+
+export type RunHeadlineInput = {
+  status: AutomationRunStatus;
+  triggerType: "manual" | "schedule" | "event" | "condition" | "retry";
+  approval?: { mode?: string | null; status?: string | null } | null;
+  preparation?: { approvalReason?: string | null } | null;
+};
+
+export function isUnattendedAutoRun(run: RunHeadlineInput): boolean {
+  if (run.approval?.status === "not_required") return true;
+  if (
+    run.approval?.mode === "run_then_notify" &&
+    !run.preparation?.approvalReason
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Header line that matches the actual execution mode.
+ * Auto-exec never shows 「確認待ち・手動」.
+ */
+export function formatRunHeadline(run: RunHeadlineInput): string {
+  if (isUnattendedAutoRun(run)) {
+    switch (run.status) {
+      case "scheduled":
+        return "自動実行 · 実行予定";
+      case "preparing":
+      case "queued":
+      case "running":
+      case "retrying":
+        return "実行中 · 自動実行";
+      case "succeeded":
+        return "完了 · 自動実行";
+      case "awaiting_approval":
+        return "実行中 · 自動実行";
+      case "needs_input":
+        return "入力待ちです";
+      case "failed":
+        return `${formatRunStatus("failed")} · 自動実行`;
+      case "partially_succeeded":
+        return `${formatRunStatus("partially_succeeded")} · 自動実行`;
+      case "cancelled":
+      case "expired":
+      case "skipped":
+        return formatRunStatus(run.status);
+      default:
+        return `${formatRunStatus(run.status)} · 自動実行`;
+    }
+  }
+
+  if (
+    run.status === "preparing" ||
+    run.status === "queued" ||
+    run.status === "running" ||
+    run.status === "retrying"
+  ) {
+    return run.status === "preparing" ? "実行中" : formatRunStatus(run.status);
+  }
+
+  return `${formatRunStatus(run.status)} · ${TRIGGER_LABEL[run.triggerType]}`;
 }

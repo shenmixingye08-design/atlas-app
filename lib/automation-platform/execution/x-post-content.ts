@@ -19,7 +19,7 @@ export type XPostContentClassification = {
 };
 
 const GENERATE_PATTERN =
-  /考え(て|る)|文章を作|内容を作|文案|任せる|おまかせ|お任せ|生成|作って投稿|考えて投稿|投稿内容を|投稿文を|宣伝投稿|文章も|自分で文章を作って|内容は任|任せて投稿/;
+  /考え(て|る)|文章を作|内容を作|文案|任せる|おまかせ|お任せ|生成|作って投稿|考えて投稿|投稿内容を|投稿文を|投稿文も|宣伝投稿|文章も|自分で文章を作って|内容は任|任せて投稿|作って/;
 
 const GENERIC_X_POST_LABEL_PATTERN =
   /^(SNS投稿の自動化|新しい自動化|名称未設定の自動化|投稿|X投稿)$/;
@@ -27,7 +27,9 @@ const GENERIC_X_POST_LABEL_PATTERN =
 const GENERIC_X_POST_DESCRIPTION_PATTERN = /自然文からの提案です/;
 
 const DEICTIC_ONLY_PATTERN =
-  /^(これを|それを|あの内容を|この内容を|この投稿を|その投稿を)/;
+  /^(これを|それを|あの内容を|この内容を|この投稿を|その投稿を|さっきの|先ほどの文章|前の文章を)/;
+
+const UNUSABLE_TOPIC_PATTERN = /^(これ|それ|あれ|この|その|あの)$/;
 
 const QUOTED_BODY_PATTERN =
   /[『「]([^『「』」]{1,280})[』」]\s*(と|を)/;
@@ -117,9 +119,64 @@ export function extractQuotedOrAsIsPostText(source: string): string | null {
 
 export function extractXPostTopic(source: string): string {
   const match = source.match(TOPIC_PATTERN);
-  return (match?.[1] ?? "")
+  const topic = (match?.[1] ?? "")
     .replace(/^(毎日|毎朝|毎回|毎週|毎月)/, "")
     .trim();
+  if (!topic || UNUSABLE_TOPIC_PATTERN.test(topic)) return "";
+  return topic;
+}
+
+export function isUnresolvedDeicticXPostRequest(source: string): boolean {
+  const first = source.split("\n")[0]?.trim() ?? "";
+  if (!DEICTIC_ONLY_PATTERN.test(first)) return false;
+  if (GENERATE_PATTERN.test(source)) return false;
+  if (extractXPostTopic(source)) return false;
+  return true;
+}
+
+/** True when the stored request is enough for MINERVOT to write the tweet. */
+export function isAiGeneratableXPostRequest(source: string): boolean {
+  const text = source.trim();
+  if (!text || isFillerXPostNote(text) || isGenericXPostLabel(text)) {
+    return false;
+  }
+  if (isUnresolvedDeicticXPostRequest(text)) return false;
+  if (GENERATE_PATTERN.test(text)) return true;
+  if (extractXPostTopic(text)) return true;
+  return /投稿|ツイート/.test(text);
+}
+
+export function shouldRequestXPostUserInput(
+  classification: XPostContentClassification,
+): boolean {
+  return (
+    classification.mode === "missing" &&
+    classification.reason === "deictic_unresolved"
+  );
+}
+
+export function isGenerateTypeXPostPreparation(preparation: {
+  contentSource?: string | null;
+  xPostContentMode?: string | null;
+  generateInstruction?: string | null;
+  originalInstruction?: string | null;
+} | null | undefined): boolean {
+  if (!preparation) return false;
+  if (preparation.contentSource === "generate") return true;
+  if (preparation.xPostContentMode === "generate") return true;
+  if (
+    preparation.generateInstruction &&
+    isAiGeneratableXPostRequest(preparation.generateInstruction)
+  ) {
+    return true;
+  }
+  if (
+    preparation.originalInstruction &&
+    isAiGeneratableXPostRequest(preparation.originalInstruction)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export function isGenericXPostLabel(value: string | null | undefined): boolean {
@@ -234,20 +291,49 @@ export function classifyXPostContent(input: {
   const configuration = input.configuration ?? {};
   const source = readXPostContentSource(configuration);
   const storedText = readStoredXPostText(configuration);
+  const storedGenerateInstruction = readTrimmedString(
+    configuration.generateInstruction,
+  );
   const original = readOriginalUserRequest(input);
   const instruction = collectXPostInstructionText(input);
   const quoted = extractQuotedOrAsIsPostText(original || instruction);
+  const configuredTopic =
+    typeof configuration.topic === "string" ? configuration.topic.trim() : "";
   const topic =
-    (typeof configuration.topic === "string" && configuration.topic.trim()) ||
-    extractXPostTopic(original || instruction);
+    (configuredTopic && !UNUSABLE_TOPIC_PATTERN.test(configuredTopic)
+      ? configuredTopic
+      : "") || extractXPostTopic(original || instruction);
+  const generateInstruction =
+    instruction ||
+    storedGenerateInstruction ||
+    topic ||
+    (source === "generate" ? "Xへの投稿文を作成する" : "");
 
-  if (source === "generate" && (instruction || topic)) {
+  // Generate-type is never "missing". Empty configuration.text is normal.
+  if (source === "generate") {
     return {
       mode: "generate",
       text: "",
       topic,
-      generateInstruction: instruction || topic,
-      reason: "content_source_generate",
+      generateInstruction,
+      reason: instruction || topic
+        ? "content_source_generate"
+        : "content_source_generate_empty_ok",
+    };
+  }
+
+  if (
+    storedGenerateInstruction &&
+    !isFillerXPostNote(storedGenerateInstruction) &&
+    !isGenericXPostLabel(storedGenerateInstruction) &&
+    !isUnresolvedDeicticXPostRequest(storedGenerateInstruction)
+  ) {
+    return {
+      mode: "generate",
+      text: "",
+      topic,
+      generateInstruction,
+      reason: "generate_instruction_present",
     };
   }
 
@@ -291,9 +377,7 @@ export function classifyXPostContent(input: {
     };
   }
 
-  const deicticSource = (original || instruction).split("\n")[0]?.trim() ?? "";
-  const deictic = DEICTIC_ONLY_PATTERN.test(deicticSource);
-  if (deictic && !GENERATE_PATTERN.test(original || instruction) && !topic) {
+  if (isUnresolvedDeicticXPostRequest(original || instruction)) {
     return {
       mode: "missing",
       text: "",
@@ -303,15 +387,17 @@ export function classifyXPostContent(input: {
     };
   }
 
-  if (GENERATE_PATTERN.test(instruction) || (topic && /投稿|ツイート/.test(instruction))) {
+  if (isAiGeneratableXPostRequest(original || instruction) || topic) {
     return {
       mode: "generate",
       text: "",
       topic,
-      generateInstruction: instruction,
+      generateInstruction: instruction || topic,
       reason: GENERATE_PATTERN.test(instruction)
         ? "generate_verb"
-        : "topic_post",
+        : topic
+          ? "topic_available"
+          : "ai_generatable_request",
     };
   }
 

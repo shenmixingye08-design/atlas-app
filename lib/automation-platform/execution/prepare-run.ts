@@ -13,7 +13,10 @@ import { getCapability } from "@/lib/automation-platform/step-registry/registry"
 import { resolveRunApprovalRequirement } from "@/lib/automation-platform/execution/policy";
 import { isConfigHighRisk, isStepHighRisk } from "@/lib/automation-platform/execution/high-risk";
 import { getCapabilityFormSchema } from "@/lib/automation-platform/capability-schema";
-import { classifyXPostContent } from "@/lib/automation-platform/execution/x-post-content";
+import {
+  classifyXPostContent,
+  shouldRequestXPostUserInput,
+} from "@/lib/automation-platform/execution/x-post-content";
 
 export { isConfigHighRisk, isStepHighRisk };
 
@@ -169,7 +172,7 @@ export function prepareRunSnapshot(params: {
         description: automation.description,
         automationName: automation.name,
       });
-      if (classified.mode === "missing") {
+      if (shouldRequestXPostUserInput(classified)) {
         warnings.push(`${step.name}: 投稿する内容が確認できません`);
       }
       continue;
