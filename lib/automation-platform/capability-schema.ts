@@ -128,7 +128,12 @@ const SCHEMAS: Record<AutomationCapabilityId, readonly CapabilityFieldSchema[]> 
     { key: "body", label: "本文", type: "textarea", required: true },
   ],
   x_post: [
-    { key: "text", label: "投稿本文", type: "textarea", required: true },
+    {
+      key: "text",
+      label: "投稿本文",
+      type: "textarea",
+      helpText: "固定本文があるときだけ入力。文章作成を任せる場合は空のままで構いません",
+    },
     { key: "includeImage", label: "画像を付ける", type: "boolean" },
     { key: "hashtags", label: "ハッシュタグ", type: "text", placeholder: "#例" },
   ],

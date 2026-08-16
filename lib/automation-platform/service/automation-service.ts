@@ -29,6 +29,7 @@ import {
   buildRunStepsFromAutomation,
   prepareRunSnapshot,
 } from "@/lib/automation-platform/execution/prepare-run";
+import { maybePrepareXPostCopyForRun } from "@/lib/automation-platform/execution/x-post-prepare";
 import { applyMemoryForAutomation } from "@/lib/memory-apply/automation";
 import {
   dbListRunsForAutomation,
@@ -680,13 +681,19 @@ export class AutomationPlatformService {
 
     const memoryResolved = await applyMemoryForAutomation({ automation });
     const memoryUsage = memoryResolved.memoryUsage;
-    const preparation = prepareRunSnapshot({
+    const prepared = await maybePrepareXPostCopyForRun({
       automation,
-      scheduledFor,
-      memoryUsage,
-      isFirstRun: automation.lastRunAt === null,
-      priorApprovalsCount: priorApprovals,
+      preparation: prepareRunSnapshot({
+        automation,
+        scheduledFor,
+        memoryUsage,
+        isFirstRun: automation.lastRunAt === null,
+        priorApprovalsCount: priorApprovals,
+      }),
+      resolvedInstruction: memoryResolved.resolvedInstruction,
     });
+    const preparation = prepared.preparation;
+    memoryResolved.resolvedInstruction = prepared.resolvedInstruction;
     const steps = buildRunStepsFromAutomation(
       automation,
       preparation.approvalStepIds,

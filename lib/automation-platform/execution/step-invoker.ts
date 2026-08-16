@@ -43,6 +43,8 @@ export type StepInvoker = (input: {
   /** Optional Memory / instruction context for production step adapters. */
   resolvedInstruction?: ResolvedInstruction | null;
   memoryUsage?: MemoryUsageRecord | null;
+  generatedXPostText?: string | null;
+  freeformNotes?: string | null;
 }) => Promise<StepInvokeResult>;
 
 /**

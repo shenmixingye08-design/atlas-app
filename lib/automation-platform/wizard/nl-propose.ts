@@ -3,6 +3,10 @@ import {
   extractCalendarEventTitle,
   requiresGoogleCalendarAction,
 } from "@/lib/automations/detect-external-intent";
+import {
+  buildXPostStepConfiguration,
+  classifyXPostContent,
+} from "@/lib/automation-platform/execution/x-post-content";
 import type { AutomationWizardDraft } from "./types";
 
 /**
@@ -104,7 +108,9 @@ export function proposeWizardFromNaturalLanguage(
     steps.push(mail);
   }
   if (/投稿|ツイート|Xへ|Xに/.test(lower)) {
-    steps.push(createStepFromCapability("x_post"));
+    const xPost = createStepFromCapability("x_post");
+    xPost.configuration = buildXPostStepConfiguration({ sourceText: text });
+    steps.push(xPost);
   }
   if (/通知|知らせ/.test(lower)) {
     steps.push(createStepFromCapability("notify"));
@@ -152,6 +158,19 @@ export function listUnsetProposalFields(
     }
     if (step.type === "dropbox" && !step.configuration.folderPath) {
       unset.push({ field: `step:${step.id}:folder`, label: "保存先フォルダ" });
+    }
+    if (step.type === "x_post") {
+      const classified = classifyXPostContent({
+        configuration: step.configuration,
+        freeformNotes: draft.freeformNotes || draft.naturalLanguageSeed,
+        automationName: draft.name,
+      });
+      if (classified.mode === "missing") {
+        unset.push({
+          field: `step:${step.id}:text`,
+          label: "投稿する内容",
+        });
+      }
     }
   }
   return unset;

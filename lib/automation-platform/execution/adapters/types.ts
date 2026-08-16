@@ -4,6 +4,7 @@
  */
 
 import type { StepInvokeResult } from "@/lib/automation-platform/execution/step-invoker";
+import type { ResolvedInstruction } from "@/lib/automation-platform/types/instruction";
 import type { AutomationWorkflowStep } from "@/lib/automation-platform/types/step";
 
 export type ExternalAdapterInput = {
@@ -22,6 +23,9 @@ export type ExternalAdapterInput = {
     externalId: string | null;
     kind?: string;
   }>;
+  resolvedInstruction?: ResolvedInstruction | null;
+  generatedXPostText?: string | null;
+  freeformNotes?: string | null;
 };
 
 export type ExternalAdapter = (

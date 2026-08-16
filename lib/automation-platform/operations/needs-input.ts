@@ -28,6 +28,12 @@ export function describeNeedsInput(run: AutomationRun): string {
   if (/(承認|approval)/i.test(haystack)) {
     return "実行内容の確認が必要です";
   }
+  if (/(x_post_generation_failed|自動作成に失敗)/i.test(haystack)) {
+    return "投稿本文の自動作成に失敗しました。再試行できます。";
+  }
+  if (/(投稿する内容が確認できません)/i.test(haystack)) {
+    return "投稿する内容が確認できません";
+  }
   if (raw.trim().length > 0 && !/追加情報/i.test(raw)) {
     return raw.trim().slice(0, 200);
   }
