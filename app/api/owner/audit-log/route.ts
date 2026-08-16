@@ -8,11 +8,12 @@ import {
   recordAuditLogSafe,
   auditRequestContext,
 } from "@/lib/owner/audit-log";
-import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
 import { auth } from "@clerk/nextjs/server";
 
 export async function GET(request: Request): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
 
   const url = new URL(request.url);
   const query = parseAuditLogQuery(url.searchParams);
@@ -35,7 +36,8 @@ export async function GET(request: Request): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const owner = await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
   const { userId } = await auth();
   const ctx = auditRequestContext(request);
 

@@ -114,6 +114,12 @@ describe("owner dashboard real metrics", () => {
     expect(snapshot.serverCost.availability).toBe("unset");
     expect(snapshot.externalCost.availability).toBe("unset");
     expect(snapshot.apiCost.availability).toBe("empty");
+    expect(snapshot.userMetrics.paymentFailures.availability).toBe("empty");
+    expect(snapshot.userMetrics.paymentFailures.statusMessage).toMatch(
+      /Stripe Dashboard/,
+    );
+    expect(snapshot.webhook.failureCount).toBeNull();
+    expect(snapshot.webhook.statusMessage).toMatch(/Stripe Dashboard/);
   });
 
   it("uses Stripe test-mode live amounts when connected", async () => {

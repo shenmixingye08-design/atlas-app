@@ -94,36 +94,47 @@ export function BillingWebhookPanel() {
           label={ui.billingWebhook.successRate}
           value={
             snapshot.successRatePercent === null
-              ? "データなし"
+              ? ui.billingWebhook.unavailable
               : formatOwnerPercent(snapshot.successRatePercent)
           }
-          hint={ui.billingWebhook.totalEvents(snapshot.totalCount)}
+          hint={
+            snapshot.totalCount > 0
+              ? ui.billingWebhook.totalEvents(snapshot.totalCount)
+              : ui.billingWebhook.stripeDashboardHint
+          }
         />
         <MetricCard
           label={ui.billingWebhook.failureCount}
-          value={snapshot.failureCount.toLocaleString("ja-JP")}
+          value={
+            snapshot.failureCount === null
+              ? ui.billingWebhook.unavailable
+              : snapshot.failureCount.toLocaleString("ja-JP")
+          }
         />
         <MetricCard
           label={ui.billingWebhook.lastSyncedAt}
           value={
             snapshot.lastSyncedAt
               ? new Date(snapshot.lastSyncedAt).toLocaleString("ja-JP")
-              : "—"
+              : ui.billingWebhook.unavailable
           }
         />
         <MetricCard
           label={ui.billingWebhook.latestWebhook}
-          value={latest ? latest.eventType : "—"}
+          value={latest ? latest.eventType : ui.billingWebhook.unavailable}
           hint={
             latest
               ? new Date(latest.processedAt).toLocaleString("ja-JP")
-              : ui.billingWebhook.noEvents
+              : ui.billingWebhook.stripeDashboardHint
           }
         />
       </div>
 
       <Card padding="lg" className="border border-[var(--border)] bg-[var(--surface-muted)] text-foreground shadow-none">
         <h2 className="text-base font-semibold">{ui.billingWebhook.recentTitle}</h2>
+        <p className="mt-2 text-xs text-[var(--warning)]">
+          {snapshot.statusMessage ?? ui.billingWebhook.stripeDashboardHint}
+        </p>
         {snapshot.recentWebhooks.length === 0 ? (
           <p className="mt-4 text-sm text-[var(--text-secondary)]">{ui.billingWebhook.noEvents}</p>
         ) : (
@@ -206,21 +217,23 @@ export function BillingWebhookSummaryCard({
         <div>
           <dt className="text-xs text-[var(--text-secondary)]">{ui.billingWebhook.latestWebhook}</dt>
           <dd className="mt-1 text-sm font-medium">
-            {latest ? latest.eventType : "—"}
+            {latest ? latest.eventType : ui.billingWebhook.unavailable}
           </dd>
         </div>
         <div>
           <dt className="text-xs text-[var(--text-secondary)]">{ui.billingWebhook.successRate}</dt>
           <dd className="mt-1 text-sm font-medium">
             {snapshot.successRatePercent === null
-              ? "データなし"
+              ? ui.billingWebhook.unavailable
               : formatOwnerPercent(snapshot.successRatePercent)}
           </dd>
         </div>
         <div>
           <dt className="text-xs text-[var(--text-secondary)]">{ui.billingWebhook.failureCount}</dt>
           <dd className="mt-1 text-sm font-medium">
-            {snapshot.failureCount.toLocaleString("ja-JP")}
+            {snapshot.failureCount === null
+              ? ui.billingWebhook.unavailable
+              : snapshot.failureCount.toLocaleString("ja-JP")}
           </dd>
         </div>
         <div>
@@ -228,7 +241,7 @@ export function BillingWebhookSummaryCard({
           <dd className="mt-1 text-sm font-medium">
             {snapshot.lastSyncedAt
               ? new Date(snapshot.lastSyncedAt).toLocaleString("ja-JP")
-              : "—"}
+              : ui.billingWebhook.unavailable}
           </dd>
         </div>
       </dl>

@@ -97,6 +97,26 @@ export function resetBetaUserStore(): void {
   runtime.removed.clear();
 }
 
+export function replaceRuntimeBetaStore(input: {
+  added: readonly string[];
+  removed: readonly string[];
+}): void {
+  const runtime = getRuntimeStore();
+  runtime.added = new Set(input.added.map(normalizeEmail).filter(Boolean));
+  runtime.removed = new Set(input.removed.map(normalizeEmail).filter(Boolean));
+}
+
+export function snapshotRuntimeBetaStore(): {
+  added: string[];
+  removed: string[];
+} {
+  const runtime = getRuntimeStore();
+  return {
+    added: [...runtime.added],
+    removed: [...runtime.removed],
+  };
+}
+
 export function isEffectiveBetaUserEmail(
   email: string | null | undefined,
 ): boolean {

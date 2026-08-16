@@ -2,15 +2,11 @@ import { OwnerNav } from "@/components/owner/owner-nav";
 import { OwnerShell } from "@/components/owner/owner-shell";
 import { EmployeeTeamStatsPanel } from "@/components/owner/employee-team-stats-panel";
 import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
-import {
-  getEmployeeTeamStatsSnapshot,
-  seedDemoEmployeeStats,
-} from "@/lib/team-collaboration/telemetry";
+import { getEmployeeTeamStatsSnapshot } from "@/lib/team-collaboration/telemetry";
 import { ui } from "@/lib/i18n";
 
 export default async function OwnerEmployeeTeamPage() {
   await requireAtlasOwner();
-  seedDemoEmployeeStats();
   const snapshot = getEmployeeTeamStatsSnapshot();
 
   return (

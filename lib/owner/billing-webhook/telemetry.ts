@@ -42,15 +42,23 @@ export function buildStripeWebhookMonitoringSnapshot(
   const lastSyncedAt =
     logs.find((log) => log.status === "success")?.processedAt ?? null;
 
+  const availability = totalCount > 0 ? "ok" : "unavailable";
+
   return {
     latestWebhook,
     successRatePercent:
       totalCount > 0 ? Math.round((successCount / totalCount) * 100) : null,
-    failureCount,
+    failureCount: totalCount > 0 ? failureCount : null,
     totalCount,
     lastSyncedAt,
     recentWebhooks: logs.slice(0, 20),
     generatedAt: now.toISOString(),
+    availability,
+    statusMessage:
+      totalCount > 0
+        ? "この一覧は受信インスタンスの一時ログです。正式な決済状態は Stripe Dashboard で確認してください。"
+        : "Webhook集計を確認できません。正式な決済状態は Stripe Dashboard で確認してください。",
+    authoritative: false,
   };
 }
 

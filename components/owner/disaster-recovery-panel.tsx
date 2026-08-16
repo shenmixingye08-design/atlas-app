@@ -299,9 +299,10 @@ export function DisasterRecoveryPanel() {
                       size="sm"
                       variant="secondary"
                       disabled={busy}
-                      onClick={() =>
-                        void run({ action: "restore", backupId: backup.id })
-                      }
+                      onClick={() => {
+                        if (!window.confirm(ui.owner.drRestoreConfirm)) return;
+                        void run({ action: "restore", backupId: backup.id });
+                      }}
                     >
                       {ui.owner.drRestore}
                     </Button>

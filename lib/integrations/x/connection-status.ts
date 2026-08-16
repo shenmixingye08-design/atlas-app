@@ -12,6 +12,7 @@ import { ensureExternalAuthHydrated } from "../external-services/durable";
 import { getXAccountAccessTokenResult } from "./token-manager";
 import { touchXConnectionLastUsed } from "./oauth-service";
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
+import { ensureFeatureFlagsHydrated } from "@/lib/feature-flags/durable";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
 import type {
@@ -40,6 +41,7 @@ export async function checkXConnectionForUser(input: {
   userId: string;
   context: FeatureAccessContext;
 }): Promise<XConnectionCheckResult> {
+  await ensureFeatureFlagsHydrated();
   if (!isFeatureEnabled("x", input.context)) {
     return {
       status: "feature_disabled",

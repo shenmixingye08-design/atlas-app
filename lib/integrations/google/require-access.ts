@@ -13,6 +13,7 @@ import "server-only";
 
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
+import { ensureFeatureFlagsHydrated } from "@/lib/feature-flags/durable";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
 import { ensureExternalAuthHydrated } from "@/lib/integrations/external-services/durable";
 import { getExternalServiceCredentials } from "@/lib/integrations/external-services/credential-store";
@@ -62,6 +63,7 @@ export async function requireGoogleIntegrationAccess(input: {
   context: FeatureAccessContext;
   capability: GoogleCapability;
 }): Promise<GoogleAccessGateResult> {
+  await ensureFeatureFlagsHydrated();
   if (!isFeatureEnabled("google", input.context)) {
     return {
       status: "feature_disabled",

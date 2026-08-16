@@ -37,9 +37,14 @@ export type FeatureFlagRecord = {
   updatedAt: string;
 };
 
+export type FeatureFlagPersistMode = "durable" | "memory" | "blocked";
+
 export type FeatureFlagSnapshot = {
   flags: FeatureFlagRecord[];
   updatedAt: string;
+  persistMode?: FeatureFlagPersistMode;
+  mutable?: boolean;
+  hydrateFailed?: boolean;
 };
 
 /** Per-user availability — exposed to clients, not admin states. */

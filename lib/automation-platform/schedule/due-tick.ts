@@ -18,6 +18,7 @@ import {
   buildFeatureAccessContext,
   isFeatureEnabled,
 } from "@/lib/feature-flags/access";
+import { ensureFeatureFlagsHydrated } from "@/lib/feature-flags/durable";
 import { classifyDueOccurrence } from "@/lib/work-queue/missed-run";
 
 export type DueScheduleTickResult = {
@@ -66,6 +67,7 @@ export async function processDueScheduledAutomationsV2(options?: {
     firings: [],
   };
 
+  await ensureFeatureFlagsHydrated();
   if (!isFeatureEnabled("automation_v2_enabled", context)) {
     return result;
   }

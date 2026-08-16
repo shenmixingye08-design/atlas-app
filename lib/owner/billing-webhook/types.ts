@@ -15,11 +15,15 @@ export type StripeWebhookLogEntry = {
 
 export type StripeWebhookMonitoringSnapshot = {
   latestWebhook: StripeWebhookLogEntry | null;
-  /** Null when no webhook logs exist (do not invent 100%). */
+  /** Null when logs are empty or not authoritative. */
   successRatePercent: number | null;
-  failureCount: number;
+  /** Null when this process cannot confirm failures (do not show 0). */
+  failureCount: number | null;
   totalCount: number;
   lastSyncedAt: string | null;
   recentWebhooks: readonly StripeWebhookLogEntry[];
   generatedAt: string;
+  availability: "ok" | "empty" | "unavailable";
+  statusMessage: string | null;
+  authoritative: boolean;
 };

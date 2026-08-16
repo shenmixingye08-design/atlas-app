@@ -90,6 +90,16 @@ export function setFeatureFlagState(
   return record;
 }
 
+/** Hydrate from durable SoT without rewriting timestamps. */
+export function replaceFeatureFlagStates(
+  records: readonly FeatureFlagRecord[],
+): void {
+  const bucket = getBucket();
+  for (const record of records) {
+    bucket.set(record.id, { ...record });
+  }
+}
+
 export function resetFeatureFlagStore(): void {
   getBucket().clear();
   for (const id of FEATURE_FLAG_IDS) {

@@ -141,7 +141,7 @@ export type OwnerWebhookSummary = {
   successRatePercent: number | null;
   lastSyncedAt: string | null;
   totalCount: number;
-  failureCount: number;
+  failureCount: number | null;
   availability: OwnerMetricAvailability;
   statusMessage: string | null;
 };

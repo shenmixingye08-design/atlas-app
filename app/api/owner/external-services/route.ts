@@ -1,4 +1,4 @@
-import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
 import {
   getOwnerExternalServicesSnapshot,
   parseOwnerExternalServiceReconnectBody,
@@ -19,12 +19,14 @@ function resolveOrigin(request: Request): string {
 }
 
 export async function GET(): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
   return Response.json(getOwnerExternalServicesSnapshot());
 }
 
 export async function POST(request: Request): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
 
   let body: unknown;
   try {

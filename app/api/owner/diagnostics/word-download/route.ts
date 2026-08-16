@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 
-import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
 import { buildWordDiagnosticsOverview } from "@/lib/deliverables/word-diagnostics";
 import {
   getStoredDeliverableForUser,
@@ -18,7 +18,8 @@ export const dynamic = "force-dynamic";
  * Never returns cookies, tokens, API keys, or full document bodies.
  */
 export async function GET(request: Request): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
   const { userId } = await auth();
   const url = new URL(request.url);
   const deliverableId = url.searchParams.get("deliverableId")?.trim() || null;

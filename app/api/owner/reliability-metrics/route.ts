@@ -1,4 +1,4 @@
-import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
 import { listNotificationDlq } from "@/lib/notifications/dlq";
 import {
   getCircuitBreakerSnapshot,
@@ -11,7 +11,8 @@ export const dynamic = "force-dynamic";
 
 /** Owner-only: measurable success rates + 7/30/90 windows + DLQ + circuits. */
 export async function GET(): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
   const snapshot = getReliabilityMetricsSnapshot();
   const windows = await getReliabilityWindowMetrics([7, 30, 90]);
   const dlq = await listNotificationDlq(50);

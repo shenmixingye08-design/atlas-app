@@ -1,18 +1,20 @@
-import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
 import {
-  applyBetaUserPatch,
-  getBetaUserManagementSnapshot,
+  applyBetaUserPatchForOwner,
+  getBetaUserManagementSnapshotForOwner,
   parseBetaUserPatchBody,
 } from "@/lib/owner/beta-users/service";
 import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function GET(): Promise<Response> {
-  await requireAtlasOwner();
-  return Response.json(getBetaUserManagementSnapshot());
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
+  return Response.json(await getBetaUserManagementSnapshotForOwner());
 }
 
 export async function PATCH(request: Request): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
 
   let body: unknown;
   try {
@@ -27,10 +29,13 @@ export async function PATCH(request: Request): Promise<Response> {
   }
 
   try {
-    return Response.json(applyBetaUserPatch(parsed));
+    const result = await applyBetaUserPatchForOwner(parsed);
+    if ("error" in result) {
+      return Response.json({ error: result.error }, { status: result.status });
+    }
+    return Response.json(result.snapshot);
   } catch (error) {
-    const message =
-      clientSafeMessage(error, "Failed to update beta user");
+    const message = clientSafeMessage(error, "Failed to update beta user");
     return Response.json({ error: message }, { status: 400 });
   }
 }

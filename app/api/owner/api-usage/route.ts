@@ -1,4 +1,4 @@
-import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
 import {
   getApiUsageMonitoringSnapshot,
   parseApiUsageBudgetUpdate,
@@ -6,12 +6,14 @@ import {
 } from "@/lib/owner/api-usage/service";
 
 export async function GET(): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
   return Response.json(getApiUsageMonitoringSnapshot());
 }
 
 export async function PATCH(request: Request): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
 
   let body: unknown;
   try {
