@@ -3,7 +3,9 @@ import "server-only";
 import {
   classifyXPostContent,
   readOriginalUserRequest,
+  readStoredXPostText,
 } from "@/lib/automation-platform/execution/x-post-content";
+import { logXPostInstructionTrace } from "@/lib/automation-platform/execution/x-post-instruction-trace";
 import {
   buildGeneratedXPostApprovalSummary,
   generateXAutomationPostText,
@@ -92,6 +94,25 @@ export async function maybePrepareXPostCopyForRun(input: {
       classification.mode === "missing" ? classification.reason : null,
   };
 
+  logXPostInstructionTrace({
+    stage: "classify",
+    automationId: input.automation.id,
+    contentSource: proof.contentSource ?? null,
+    originalUserRequestPresent: Boolean(originalInstruction),
+    generateInstructionPresent: Boolean(
+      xStep.configuration.generateInstruction,
+    ),
+    resolvedGenerateInstructionPresent: Boolean(
+      classification.generateInstruction,
+    ),
+    configurationTextEmpty: !readStoredXPostText(xStep.configuration),
+    memoryUsed,
+    classifyMode: classification.mode,
+    classifyReason: classification.reason,
+    needsInputReason: proof.needsInputReason ?? null,
+    generatedXPostTextPresent: false,
+  });
+
   if (classification.mode !== "generate") {
     return {
       preparation: {
@@ -120,6 +141,23 @@ export async function maybePrepareXPostCopyForRun(input: {
   });
 
   if (!generated.ok) {
+    logXPostInstructionTrace({
+      stage: "generate",
+      automationId: input.automation.id,
+      contentSource: "generate",
+      originalUserRequestPresent: Boolean(originalInstruction),
+      generateInstructionPresent: Boolean(
+        xStep.configuration.generateInstruction,
+      ),
+      resolvedGenerateInstructionPresent: Boolean(
+        classification.generateInstruction,
+      ),
+      configurationTextEmpty: !readStoredXPostText(xStep.configuration),
+      memoryUsed,
+      classifyMode: classification.mode,
+      classifyReason: classification.reason,
+      generatedXPostTextPresent: false,
+    });
     return {
       preparation: {
         ...input.preparation,
@@ -132,6 +170,23 @@ export async function maybePrepareXPostCopyForRun(input: {
     };
   }
 
+  logXPostInstructionTrace({
+    stage: "generate",
+    automationId: input.automation.id,
+    contentSource: "generate",
+    originalUserRequestPresent: Boolean(originalInstruction),
+    generateInstructionPresent: Boolean(
+      xStep.configuration.generateInstruction,
+    ),
+    resolvedGenerateInstructionPresent: Boolean(
+      classification.generateInstruction,
+    ),
+    configurationTextEmpty: !readStoredXPostText(xStep.configuration),
+    memoryUsed,
+    classifyMode: classification.mode,
+    classifyReason: classification.reason,
+    generatedXPostTextPresent: true,
+  });
   const appendix = buildGeneratedXPostApprovalSummary(generated.text);
   const resolved = input.resolvedInstruction
     ? {

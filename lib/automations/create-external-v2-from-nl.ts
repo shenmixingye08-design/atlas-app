@@ -15,6 +15,10 @@ import type { RequiredExternalAction } from "@/lib/automations/detect-external-i
 import { canWireProductionExternalStep } from "@/lib/automations/ensure-external-steps";
 import { composePhase3WorkflowSteps } from "@/lib/automations/phase3-multistep-compose";
 import { stampXPostStepsWithInstruction } from "@/lib/automation-platform/execution/x-post-content";
+import {
+  logXPostInstructionTrace,
+  xPostInstructionPresence,
+} from "@/lib/automation-platform/execution/x-post-instruction-trace";
 import type { CreateAutomationInput } from "@/lib/automations/types";
 import type { AutomationV2 } from "@/lib/automation-platform/types";
 
@@ -98,6 +102,20 @@ export function buildV2CreateInputFromNaturalLanguage(input: {
             endAt: null,
             maxOccurrences: null,
           };
+
+  const xStep = steps.find((step) => step.type === "x_post");
+  if (xStep) {
+    logXPostInstructionTrace({
+      stage: "create",
+      ...xPostInstructionPresence({
+        configuration: xStep.configuration,
+        structuredOptions: {
+          originalUserRequest: input.sourceText,
+          naturalLanguageSeed: input.sourceText,
+        },
+      }),
+    });
+  }
 
   return {
     name: input.createInput.name,
