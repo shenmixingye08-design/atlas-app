@@ -36,6 +36,7 @@ export async function maybePrepareXPostCopyForRun(input: {
     freeformNotes: input.automation.instruction.freeformNotes,
     automationName: input.automation.name,
     resolvedNotes: input.resolvedInstruction?.freeformNotes,
+    resumeNotes: input.preparation.resumeNotes,
   });
 
   if (classification.mode !== "generate") {
@@ -43,6 +44,13 @@ export async function maybePrepareXPostCopyForRun(input: {
       preparation: {
         ...input.preparation,
         xPostContentMode: classification.mode,
+        generateInstruction: classification.generateInstruction || null,
+        generatedXPostText:
+          classification.mode === "fixed" ? classification.text : input.preparation.generatedXPostText,
+        generatedAt:
+          classification.mode === "fixed"
+            ? input.preparation.generatedAt ?? null
+            : input.preparation.generatedAt,
       },
       resolvedInstruction: input.resolvedInstruction,
     };
@@ -62,6 +70,7 @@ export async function maybePrepareXPostCopyForRun(input: {
       preparation: {
         ...input.preparation,
         xPostContentMode: "generate",
+        generateInstruction: classification.generateInstruction || null,
         generatedXPostText: null,
       },
       resolvedInstruction: input.resolvedInstruction,
@@ -75,6 +84,8 @@ export async function maybePrepareXPostCopyForRun(input: {
         merged: {
           ...input.resolvedInstruction.merged,
           generatedXPostText: generated.text,
+          generateInstruction: classification.generateInstruction,
+          xPostContentMode: "generate",
         },
       }
     : input.resolvedInstruction;
@@ -83,7 +94,9 @@ export async function maybePrepareXPostCopyForRun(input: {
     preparation: {
       ...input.preparation,
       xPostContentMode: "generate",
+      generateInstruction: classification.generateInstruction || null,
       generatedXPostText: generated.text,
+      generatedAt: new Date().toISOString(),
       summary: `${input.preparation.summary}\n\n${appendix}`,
     },
     resolvedInstruction: resolved,

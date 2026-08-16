@@ -32,7 +32,10 @@ export type {
   ApprovalTimeoutAction,
   AutomationExecutionPolicy,
 } from "./execution-policy";
-export { DEFAULT_EXECUTION_POLICY } from "./execution-policy";
+export {
+  DEFAULT_EXECUTION_POLICY,
+  executionPolicyFromV1Level,
+} from "./execution-policy";
 
 export type {
   NotificationChannel,

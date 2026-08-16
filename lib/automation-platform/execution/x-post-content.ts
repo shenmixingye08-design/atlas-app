@@ -31,15 +31,56 @@ const AS_IS_PATTERN = /(.+?)をそのまま/;
 
 const TOPIC_PATTERN = /([^\s、。]{1,40}?)について/;
 
+const FILLER_NOTE_PATTERN =
+  /^(特になし|とくになし|特に無い|特にない|特に無し|なし|無い|ない|特に指定なし|指定なし|任せる|おまかせ|お任せ|とくに指定なし|n\/a|none|-|ー|—)$/i;
+
+export function isFillerXPostNote(value: string | null | undefined): boolean {
+  return FILLER_NOTE_PATTERN.test((value ?? "").trim());
+}
+
 export function readStoredXPostText(
   configuration: Readonly<Record<string, unknown>> | null | undefined,
 ): string {
   if (!configuration) return "";
   for (const key of ["text", "body", "content", "message"] as const) {
     const value = configuration[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "string" && value.trim()) {
+      const text = value.trim();
+      if (isFillerXPostNote(text)) continue;
+      return text;
+    }
   }
   return "";
+}
+
+export type ResumeXPostInputKind = "empty" | "constraint" | "explicit_fixed";
+
+export function interpretResumeXPostInput(
+  inputPatch?: Record<string, unknown> | null,
+): { kind: ResumeXPostInputKind; value: string } {
+  if (!inputPatch) return { kind: "empty", value: "" };
+  const rawCandidates = [inputPatch.note, inputPatch.text, inputPatch.body];
+  const raw = rawCandidates.find(
+    (item) => typeof item === "string" && item.trim(),
+  );
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if (!value || isFillerXPostNote(value)) {
+    return { kind: "empty", value: "" };
+  }
+  const quoted = extractQuotedOrAsIsPostText(value);
+  if (quoted) {
+    return { kind: "explicit_fixed", value: quoted };
+  }
+  if (/この文章をそのまま|投稿本文は/.test(value)) {
+    const stripped = value
+      .replace(/^投稿本文は/, "")
+      .replace(/この文章をそのまま(投稿して)?/, "")
+      .trim();
+    if (stripped && !isFillerXPostNote(stripped)) {
+      return { kind: "explicit_fixed", value: stripped };
+    }
+  }
+  return { kind: "constraint", value };
 }
 
 export function readXPostContentSource(
@@ -81,15 +122,18 @@ export function collectXPostInstructionText(input: {
   freeformNotes?: string | null;
   automationName?: string | null;
   resolvedNotes?: string | null;
+  resumeNotes?: string | null;
 }): string {
   const storedInstruction =
     typeof input.configuration?.generateInstruction === "string"
       ? input.configuration.generateInstruction.trim()
       : "";
+  const resume = input.resumeNotes?.trim() ?? "";
   return [
     storedInstruction,
     input.freeformNotes?.trim() ?? "",
     input.resolvedNotes?.trim() ?? "",
+    resume && !isFillerXPostNote(resume) ? `追加条件: ${resume}` : "",
     input.automationName?.trim() ?? "",
   ]
     .filter(Boolean)
@@ -101,6 +145,7 @@ export function classifyXPostContent(input: {
   freeformNotes?: string | null;
   automationName?: string | null;
   resolvedNotes?: string | null;
+  resumeNotes?: string | null;
 }): XPostContentClassification {
   const configuration = input.configuration ?? {};
   const source = readXPostContentSource(configuration);
@@ -121,10 +166,20 @@ export function classifyXPostContent(input: {
     };
   }
 
-  if (source === "fixed" && (storedText || quoted)) {
+  if (source === "fixed" && quoted) {
     return {
       mode: "fixed",
-      text: storedText || quoted || "",
+      text: quoted,
+      topic,
+      generateInstruction: instruction,
+      reason: "content_source_fixed_quoted",
+    };
+  }
+
+  if (source === "fixed" && storedText) {
+    return {
+      mode: "fixed",
+      text: storedText,
       topic,
       generateInstruction: instruction,
       reason: "content_source_fixed",

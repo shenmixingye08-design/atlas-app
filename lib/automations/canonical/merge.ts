@@ -43,7 +43,12 @@ export function resolveAutomationIdTarget(
   id: string,
   input: { v1: readonly Automation[]; v2: readonly AutomationV2[] },
 ): { generation: "v1" | "v2"; id: string } | null {
-  const v2 = input.v2.find((row) => row.id === id);
+  const v2 = input.v2.find((row) => {
+    if (row.id === id) return true;
+    if (row.legacyAutomationId === id) return true;
+    const schedulerId = row.instruction.structuredOptions.v1SchedulerId;
+    return typeof schedulerId === "string" && schedulerId === id;
+  });
   if (v2) return { generation: "v2", id: v2.id };
   const v1 = input.v1.find((row) => row.id === id);
   if (v1) return { generation: "v1", id: v1.id };

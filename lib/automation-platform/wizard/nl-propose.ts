@@ -125,9 +125,13 @@ export function proposeWizardFromNaturalLanguage(
   draft.steps = steps;
   draft.name = deriveName(lower, steps.map((s) => s.name).join("・"));
   draft.description = "自然文からの提案です。内容を確認・修正してください。";
-  draft.executionMode = /確認|承認/.test(lower)
-    ? "review_before_run"
-    : "run_then_notify";
+  draft.executionMode = /確認なし|承認なし|即実行|自動で実行|自動実行/.test(
+    lower,
+  )
+    ? "run_then_notify"
+    : /確認|承認/.test(lower)
+      ? "review_before_run"
+      : "run_then_notify";
 
   return draft;
 }
