@@ -445,7 +445,7 @@ export function OwnerDashboard({
               <dt className="text-[var(--text-secondary)]">{ui.owner.webhookSuccessRate}</dt>
               <dd className="font-semibold">
                 {snapshot.webhook.successRatePercent === null
-                  ? ui.owner.statusEmpty
+                  ? (snapshot.webhook.statusMessage ?? ui.owner.statusUnavailable)
                   : formatOwnerPercent(snapshot.webhook.successRatePercent)}
               </dd>
             </div>
@@ -454,7 +454,7 @@ export function OwnerDashboard({
               <dd className="font-semibold">
                 {snapshot.webhook.lastSyncedAt
                   ? formatOwnerDate(snapshot.webhook.lastSyncedAt)
-                  : "—"}
+                  : ui.owner.statusUnavailable}
               </dd>
             </div>
           </dl>

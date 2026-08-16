@@ -429,7 +429,7 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
 
     const webhookSnap = buildStripeWebhookMonitoringSnapshot(now);
     const webhookAvailability: OwnerMetricAvailability =
-      webhookSnap.totalCount > 0 ? "ok" : "empty";
+      webhookSnap.availability === "ok" ? "ok" : "empty";
 
     const auditEntries = listAuditLogEntries();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -558,10 +558,13 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
         paymentFailures: countMetric({
           label: "支払い失敗数（今月）",
           value: paymentFailures,
+          availability: "empty",
           periodLabel: periodLabel,
-          dataSourceLabel: "Billing history",
-          lastUpdatedAt: subUpdatedAt,
+          dataSourceLabel: "Stripe Dashboard（Owner集計は未確定）",
+          lastUpdatedAt: null,
           stripeMode,
+          statusMessage:
+            "確認不能。支払い失敗は Stripe Dashboard で確認してください。",
         }),
       },
       aiUsage: {
@@ -591,8 +594,7 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
         totalCount: webhookSnap.totalCount,
         failureCount: webhookSnap.failureCount,
         availability: webhookAvailability,
-        statusMessage:
-          webhookAvailability === "empty" ? "データなし" : null,
+        statusMessage: webhookSnap.statusMessage,
       },
       popularFeatures,
       popularFeaturesAvailability:
@@ -669,8 +671,8 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
           connected: webhookSnap.totalCount > 0,
           note:
             webhookSnap.totalCount > 0
-              ? `成功率 ${webhookSnap.successRatePercent ?? "—"}%`
-              : "データなし",
+              ? `このインスタンスの一時ログ · 成功率 ${webhookSnap.successRatePercent ?? "—"}%`
+              : "確認不能（Stripe Dashboardで確認）",
         },
         {
           id: "server",

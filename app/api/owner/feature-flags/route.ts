@@ -1,19 +1,21 @@
 import { auth } from "@clerk/nextjs/server";
 
-import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
 import {
-  getFeatureFlagSnapshot,
+  getFeatureFlagSnapshotForOwner,
   parseFeatureFlagUpdateBody,
-  updateFeatureFlagState,
+  updateFeatureFlagStateForOwner,
 } from "@/lib/feature-flags/service";
 
 export async function GET(): Promise<Response> {
-  await requireAtlasOwner();
-  return Response.json(getFeatureFlagSnapshot());
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
+  return Response.json(await getFeatureFlagSnapshotForOwner());
 }
 
 export async function PATCH(request: Request): Promise<Response> {
-  const owner = await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
 
   let body: unknown;
   try {
@@ -27,7 +29,11 @@ export async function PATCH(request: Request): Promise<Response> {
     return Response.json({ error: parsed.error }, { status: 400 });
   }
 
-  const snapshot = updateFeatureFlagState(parsed.id, parsed.state);
+  const result = await updateFeatureFlagStateForOwner(parsed.id, parsed.state);
+  if ("error" in result) {
+    return Response.json({ error: result.error }, { status: result.status });
+  }
+
   const { userId } = await auth();
   const { recordAuditLogSafe, auditRequestContext } = await import(
     "@/lib/owner/audit-log"
@@ -44,5 +50,5 @@ export async function PATCH(request: Request): Promise<Response> {
     result: "success",
     reason: `feature flag → ${parsed.state}`,
   });
-  return Response.json(snapshot);
+  return Response.json(result.snapshot);
 }

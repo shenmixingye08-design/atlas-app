@@ -120,7 +120,7 @@ export function buildMonitorHealth(
         level = "down";
         detail = "未解決の Stripe エラー";
       } else if (
-        webhook.failureCount > 0 &&
+        (webhook.failureCount ?? 0) > 0 &&
         webhook.successRatePercent !== null &&
         webhook.successRatePercent < 90
       ) {
@@ -349,13 +349,13 @@ export function buildMonitorHealth(
         level = "down";
         detail = "Billing 未設定";
       } else if (
-        webhook.failureCount > 3 &&
+        (webhook.failureCount ?? 0) > 3 &&
         webhook.successRatePercent !== null &&
         webhook.successRatePercent < 80
       ) {
         level = "down";
         detail = "Webhook 障害多発";
-      } else if (webhook.failureCount > 0) {
+      } else if ((webhook.failureCount ?? 0) > 0) {
         level = "warn";
         detail = `失敗 ${webhook.failureCount} 件`;
       }

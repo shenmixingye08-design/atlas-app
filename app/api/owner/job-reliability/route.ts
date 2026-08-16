@@ -1,9 +1,10 @@
-import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
 import { getJobMetrics24h } from "@/lib/jobs/job-store";
 
 /** Owner-only 24h job + push reliability metrics (no user secrets). */
 export async function GET(): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
 
   const jobMetrics = await getJobMetrics24h();
 

@@ -5,25 +5,39 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Card } from "@/components/ui/card";
 import type { MaintenanceModeConfig } from "@/lib/owner/system-status/maintenance";
+
+type MaintenanceSnapshot = MaintenanceModeConfig & {
+  persistMode?: "durable" | "memory" | "blocked";
+  mutable?: boolean;
+};
 import { ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 
-async function fetchMaintenance(): Promise<MaintenanceModeConfig> {
+async function fetchMaintenance(): Promise<MaintenanceSnapshot> {
   const response = await fetch("/api/owner/maintenance", { cache: "no-store" });
   if (!response.ok) throw new Error("Failed");
-  return response.json() as Promise<MaintenanceModeConfig>;
+  return response.json() as Promise<MaintenanceSnapshot>;
 }
 
 async function patchMaintenance(
   patch: Partial<Omit<MaintenanceModeConfig, "updatedAt">>,
-): Promise<MaintenanceModeConfig> {
+): Promise<MaintenanceSnapshot> {
   const response = await fetch("/api/owner/maintenance", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
   });
-  if (!response.ok) throw new Error("Failed");
-  return response.json() as Promise<MaintenanceModeConfig>;
+  if (!response.ok) {
+    let message: string = ui.systemPages.maintenanceUpdateError;
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (payload.error) message = payload.error;
+    } catch {
+      // keep default
+    }
+    throw new Error(message);
+  }
+  return response.json() as Promise<MaintenanceSnapshot>;
 }
 
 function isoToDatetimeLocal(iso: string): string {
@@ -36,7 +50,7 @@ function isoToDatetimeLocal(iso: string): string {
 }
 
 export function MaintenanceModePanel() {
-  const [config, setConfig] = useState<MaintenanceModeConfig | null>(null);
+  const [config, setConfig] = useState<MaintenanceSnapshot | null>(null);
   const [draft, setDraft] = useState({
     message: "",
     announcement: "",
@@ -66,12 +80,19 @@ export function MaintenanceModePanel() {
   }, [load]);
 
   async function handleToggle(enabled: boolean) {
+    if (config?.mutable === false) {
+      setError(ui.systemPages.persistBlocked);
+      return;
+    }
+    if (enabled && !window.confirm(ui.systemPages.confirmEnable)) return;
     setBusy(true);
     setError(null);
     try {
       setConfig(await patchMaintenance({ enabled }));
-    } catch {
-      setError(ui.systemPages.maintenanceUpdateError);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : ui.systemPages.maintenanceUpdateError,
+      );
     } finally {
       setBusy(false);
     }
@@ -111,7 +132,7 @@ export function MaintenanceModePanel() {
           <input
             type="checkbox"
             checked={config?.enabled ?? false}
-            disabled={busy || !config}
+            disabled={busy || !config || config.mutable === false}
             onChange={(event) => void handleToggle(event.target.checked)}
             className="h-4 w-4 rounded border-[var(--border)]"
           />
@@ -167,7 +188,7 @@ export function MaintenanceModePanel() {
 
         <Button
           type="button"
-          disabled={busy}
+          disabled={busy || config?.mutable === false}
           onClick={() => void handleSaveDetails()}
         >
           {ui.systemPages.saveMaintenance}
@@ -176,6 +197,11 @@ export function MaintenanceModePanel() {
         <p className="text-xs text-[var(--text-muted)]">
           {ui.systemPages.ownerMaintenanceNote}
         </p>
+        {config?.mutable === false ? (
+          <p className="text-xs text-[var(--warning)]">
+            {ui.systemPages.persistBlocked}
+          </p>
+        ) : null}
       </div>
     </Card>
   );

@@ -1,4 +1,4 @@
-import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
 import { ensureAttachmentInfrastructure } from "@/lib/attachments/ensure-infrastructure";
 
 export const runtime = "nodejs";
@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
  * Does not run arbitrary SQL (table DDL must be applied in Supabase SQL editor).
  */
 export async function POST(): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
 
   const status = await ensureAttachmentInfrastructure({
     createBucketIfMissing: true,

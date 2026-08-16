@@ -2,10 +2,11 @@ import {
   listOwnerAccountDeletions,
   purgeDueAccountDeletions,
 } from "@/lib/account-deletion";
-import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
 
 export async function GET(): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
   const rows = await listOwnerAccountDeletions();
   return Response.json({
     rows,
@@ -14,7 +15,8 @@ export async function GET(): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
 
   let body: { action?: unknown } = {};
   try {

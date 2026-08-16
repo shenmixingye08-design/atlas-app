@@ -1,4 +1,4 @@
-import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
 import {
   createDisasterBackup,
   disasterIncidentsToCsv,
@@ -14,7 +14,8 @@ import type { DrTargetId } from "@/lib/owner/disaster-recovery/types";
 import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function GET(request: Request): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
   const url = new URL(request.url);
   const format = url.searchParams.get("format");
   const section = url.searchParams.get("section") ?? "all";
@@ -40,7 +41,8 @@ export async function GET(request: Request): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
 
   let body: {
     action?: unknown;

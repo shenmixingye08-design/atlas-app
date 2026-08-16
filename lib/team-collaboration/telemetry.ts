@@ -25,6 +25,10 @@ function getBucket(): TelemetryRecord[] {
   return scope.__atlasEmployeeTeamTelemetry;
 }
 
+export function resetEmployeeTeamTelemetryForTests(): void {
+  getGlobalScope().__atlasEmployeeTeamTelemetry = [];
+}
+
 export function recordEmployeeTeamTelemetry(result: OrchestrationResult): void {
   const bucket = getBucket();
   const timestamp = new Date().toISOString();
@@ -107,6 +111,9 @@ export function getEmployeeTeamStatsSnapshot(): EmployeeTeamStatsSnapshot {
 }
 
 export function seedDemoEmployeeStats(): void {
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
+    return;
+  }
   const bucket = getBucket();
   if (bucket.length > 0) return;
 

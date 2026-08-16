@@ -1,34 +1,38 @@
 import "server-only";
 
 import { auth } from "@clerk/nextjs/server";
-import { connection } from "next/server";
 import { redirect } from "next/navigation";
 
 import { getClerkUserPrimaryEmail } from "./get-clerk-user-email";
+import { isAtlasOwnerEmail } from "./is-atlas-owner";
 import {
-  assertOwnerEmailsConfiguredForProduction,
-  isAtlasOwnerEmail,
-} from "./is-atlas-owner";
+  ownerAccessJsonResponse,
+  resolveOwnerAccess,
+} from "./owner-access";
 
 export async function requireAtlasOwner(): Promise<{ email: string }> {
-  // Owner pages must not evaluate ATLAS_OWNER_EMAILS during prerender/build.
-  // Runtime remains fail-closed via assertOwnerEmailsConfiguredForProduction.
-  await connection();
-  assertOwnerEmailsConfiguredForProduction();
+  const decision = await resolveOwnerAccess();
 
-  const { userId } = await auth();
-
-  if (!userId) {
+  if (decision.status === "unauthenticated") {
     redirect("/sign-in");
   }
 
-  const email = await getClerkUserPrimaryEmail(userId);
-
-  if (!isAtlasOwnerEmail(email)) {
+  if (decision.status === "forbidden") {
     redirect("/");
   }
 
-  return { email: email! };
+  return { email: decision.email };
+}
+
+/** API routes: 401 / 403 JSON. Never redirect a caller into the Owner UI. */
+export async function requireAtlasOwnerApi(): Promise<
+  { ok: true; email: string } | { ok: false; response: Response }
+> {
+  const decision = await resolveOwnerAccess();
+  if (decision.status !== "ok") {
+    return { ok: false, response: ownerAccessJsonResponse(decision) };
+  }
+  return { ok: true, email: decision.email };
 }
 
 export async function checkAtlasOwner(): Promise<boolean> {

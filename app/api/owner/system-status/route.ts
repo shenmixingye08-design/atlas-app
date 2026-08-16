@@ -1,4 +1,4 @@
-import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
 import {
   applySystemStatusPatch,
   getSystemStatusSnapshot,
@@ -6,12 +6,14 @@ import {
 } from "@/lib/owner/system-status/service";
 
 export async function GET(): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
   return Response.json(getSystemStatusSnapshot());
 }
 
 export async function PATCH(request: Request): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
 
   let body: unknown;
   try {

@@ -1,11 +1,12 @@
-import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
 import {
   getAutomationCronDebugSnapshot,
   listAutomationExecutionLogs,
 } from "@/lib/automations/execution-log";
 
 export async function GET(request: Request): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
 
   const url = new URL(request.url);
   const automationId = url.searchParams.get("automationId") ?? undefined;

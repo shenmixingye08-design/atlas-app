@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
+import { ensureFeatureFlagsHydrated } from "@/lib/feature-flags/durable";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
 import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
@@ -78,6 +79,7 @@ async function resolveXPostAccess(input: {
       reconnectRequired?: boolean;
     }
 > {
+  await ensureFeatureFlagsHydrated();
   if (!isFeatureEnabled("x", input.context)) {
     return {
       status: "feature_disabled",

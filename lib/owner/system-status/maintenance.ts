@@ -44,6 +44,13 @@ export function setMaintenanceModeConfig(
   return { ...next };
 }
 
+export function replaceMaintenanceModeConfig(
+  next: MaintenanceModeConfig,
+): MaintenanceModeConfig {
+  Object.assign(getMaintenanceBucket(), next);
+  return { ...next };
+}
+
 export function resetMaintenanceModeConfig(): void {
   Object.assign(getMaintenanceBucket(), {
     ...DEFAULT_MAINTENANCE,

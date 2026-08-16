@@ -335,6 +335,8 @@ export const ui = {
     saved: "設定を保存しました",
     ownerTitle: "運営通知",
     ownerSubtitle: "Stripe・API・システムに関する運営者向けアラートです。",
+    ownerLocalCacheNotice:
+      "この通知はプロセス内の一時表示です。正式な決済状態は Stripe Dashboard で確認してください。",
     types: {
       completed: "仕事が完了",
       awaitingReview: "確認が必要",
@@ -1594,6 +1596,7 @@ export const ui = {
     statusDisconnected: "未接続",
     statusUnset: "未設定",
     statusEmpty: "データなし",
+    statusUnavailable: "確認不能",
     statusFailed: "取得失敗",
     statusIncomplete: "利益未確定",
     modeLive: "本番モード",
@@ -1743,6 +1746,7 @@ export const ui = {
     drBackupTitle: "バックアップ",
     drBackupEmpty: "バックアップはまだありません。",
     drRestore: "復元",
+    drRestoreConfirm: "このバックアップを復元します。現在の運用データが上書きされます。よろしいですか？",
     drHistoryTitle: "復旧履歴",
     drHistoryEmpty: "復旧履歴はまだありません。",
     drColAt: "日時",
@@ -1846,6 +1850,14 @@ export const ui = {
     updatedAt: (date: string) =>
       `最終更新: ${new Date(date).toLocaleString("ja-JP")}`,
     note: "ベータは ATLAS_BETA_USER_EMAILS に登録されたユーザーと運営者のみ利用できます。",
+    persistBlocked:
+      "現在この操作は本番では利用できません。永続ストア未設定のため、変更しても全インスタンスへ反映されません。",
+    persistFailed: "保存に失敗したため、変更は反映していません。",
+    confirmOff: (label: string) =>
+      `「${label}」をOFFにします。本番のユーザー機能が止まります。よろしいですか？`,
+    persistDurable: "この設定は永続保存され、再起動後も全インスタンスで共有されます。",
+    persistMemory:
+      "開発環境のプロセス内設定です。本番では永続ストアへ保存されます。",
     userDisabledSalesMaterial: "営業資料機能は現在ご利用いただけません",
   },
 
@@ -2112,7 +2124,9 @@ export const ui = {
     eyebrow: "Stripe Webhook",
     title: "Stripe Webhook監視",
     subtitle:
-      "決済Webhookの受信状況、成功率、失敗件数、最終同期日時を確認できます。",
+      "決済Webhookの受信状況を確認します。未取得と失敗0件は区別します。正式な決済状態は Stripe Dashboard が正です。",
+    unavailable: "確認不能",
+    stripeDashboardHint: "Stripe Dashboardで確認してください",
     loading: "Webhook状況を読み込み中…",
     dashboardTitle: "Stripe Webhook",
     dashboardHint: "決済後のプラン自動反映状況",
@@ -3337,6 +3351,9 @@ export const ui = {
     maintenanceUpdateError: "メンテナンス設定の更新に失敗しました。",
     ownerMaintenanceNote:
       "サービス状態の変更は /status に約15秒以内に反映されます。",
+    persistBlocked:
+      "現在この操作は本番では利用できません。永続ストア未設定のため、メンテナンス切替は無効です。",
+    confirmEnable: "メンテナンスモードを有効にします。一般ユーザーにメンテナンス画面が表示されます。よろしいですか？",
   },
 
   generated: {

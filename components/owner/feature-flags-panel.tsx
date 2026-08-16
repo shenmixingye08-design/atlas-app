@@ -46,7 +46,14 @@ async function patchFlag(
   });
 
   if (!response.ok) {
-    throw new Error("Failed to update feature flag");
+    let message: string = ui.featureFlags.persistFailed;
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (payload.error) message = payload.error;
+    } catch {
+      // keep default
+    }
+    throw new Error(message);
   }
 
   return response.json() as Promise<FeatureFlagSnapshot>;
@@ -136,12 +143,21 @@ export function FeatureFlagsPanel() {
   }, [load]);
 
   const handleChange = async (id: FeatureFlagId, state: FeatureFlagState) => {
+    if (snapshot && snapshot.mutable === false) {
+      setError(ui.featureFlags.persistBlocked);
+      return;
+    }
+    if (state === "off") {
+      const definition = FEATURE_FLAG_DEFINITIONS.find((row) => row.id === id);
+      const label = definition?.label ?? id;
+      if (!window.confirm(ui.featureFlags.confirmOff(label))) return;
+    }
     setBusyId(id);
     setError(null);
     try {
       setSnapshot(await patchFlag(id, state));
-    } catch {
-      setError(ui.error.generic);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : ui.featureFlags.persistFailed);
     } finally {
       setBusyId(null);
     }
@@ -193,7 +209,7 @@ export function FeatureFlagsPanel() {
                 description={definition.description}
                 category={definition.category}
                 state={stateById.get(definition.id) ?? "on"}
-                busy={busyId === definition.id}
+                busy={busyId === definition.id || snapshot.mutable === false}
                 onChange={handleChange}
               />
             ))}
@@ -202,6 +218,13 @@ export function FeatureFlagsPanel() {
       </Card>
 
       <p className="text-xs text-[var(--text-muted)]">{ui.featureFlags.note}</p>
+      <p className="text-xs text-[var(--warning)]">
+        {snapshot?.persistMode === "blocked" || snapshot?.mutable === false
+          ? ui.featureFlags.persistBlocked
+          : snapshot?.persistMode === "durable"
+            ? ui.featureFlags.persistDurable
+            : ui.featureFlags.persistMemory}
+      </p>
     </div>
   );
 }

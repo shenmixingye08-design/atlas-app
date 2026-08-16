@@ -1,17 +1,19 @@
-import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
+import { parseMaintenancePatchBody } from "@/lib/owner/system-status/maintenance";
 import {
-  getMaintenanceModeConfig,
-  parseMaintenancePatchBody,
-  setMaintenanceModeConfig,
-} from "@/lib/owner/system-status/maintenance";
+  getMaintenanceModeConfigForOwner,
+  updateMaintenanceModeForOwner,
+} from "@/lib/owner/system-status/maintenance-service";
 
 export async function GET(): Promise<Response> {
-  await requireAtlasOwner();
-  return Response.json(getMaintenanceModeConfig());
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
+  return Response.json(await getMaintenanceModeConfigForOwner());
 }
 
 export async function PATCH(request: Request): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
 
   let body: unknown;
   try {
@@ -25,5 +27,9 @@ export async function PATCH(request: Request): Promise<Response> {
     return Response.json({ error: parsed.error }, { status: 400 });
   }
 
-  return Response.json(setMaintenanceModeConfig(parsed));
+  const result = await updateMaintenanceModeForOwner(parsed);
+  if ("error" in result) {
+    return Response.json({ error: result.error }, { status: result.status });
+  }
+  return Response.json(result.config);
 }

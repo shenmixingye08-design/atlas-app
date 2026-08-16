@@ -5,11 +5,12 @@ import {
   healthToCsv,
   incidentsToCsv,
 } from "@/lib/owner/monitoring";
-import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
+import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
 import { auditLogsToCsv, listOwnerAuditLogs } from "@/lib/owner/audit-log";
 
 export async function GET(request: Request): Promise<Response> {
-  await requireAtlasOwner();
+  const owner = await requireAtlasOwnerApi();
+  if (!owner.ok) return owner.response;
 
   const url = new URL(request.url);
   const format = url.searchParams.get("format");
