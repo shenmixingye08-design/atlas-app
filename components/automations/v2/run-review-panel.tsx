@@ -262,7 +262,13 @@ export function RunReviewPanel({
           id="needs-input"
           className="space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4"
         >
-          <h2 className="text-sm font-medium">入力が必要です</h2>
+          <h2 className="text-sm font-medium">
+            {/自動作成に失敗|x_post_generation_failed/.test(
+              `${run.lastErrorMessage ?? ""} ${run.failedStepId ?? ""}`,
+            )
+              ? "本文作成に失敗しました"
+              : "入力が必要です"}
+          </h2>
           <p className="text-sm">{describeNeedsInput(run)}</p>
           <label className="block text-sm">
             <span className="text-[var(--muted)]">追記（任意）</span>
@@ -286,6 +292,16 @@ export function RunReviewPanel({
       {preparation && run.status === "awaiting_approval" ? (
         <section className="space-y-2">
           <h2 className="text-sm font-medium">承認内容</h2>
+          {preparation.generatedXPostText ? (
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+              <p className="text-xs text-[var(--muted)]">
+                今回MINERVOTが作成した投稿本文です。入力は不要です。内容をご確認ください。
+              </p>
+              <pre className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
+                {preparation.generatedXPostText}
+              </pre>
+            </div>
+          ) : null}
           <pre className="whitespace-pre-wrap rounded-2xl bg-[var(--surface-muted)] p-4 text-sm leading-relaxed">
             {preparation.summary}
           </pre>

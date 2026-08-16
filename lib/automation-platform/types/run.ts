@@ -86,6 +86,9 @@ export type RunPreparation = {
   timezone: string;
   scheduledLabel: string;
   preparedAt: Timestamp;
+  /** Run-scoped AI copy for generate-type X posts. Never written back to the automation. */
+  generatedXPostText?: string | null;
+  xPostContentMode?: "fixed" | "generate" | "missing";
 };
 
 export type RunApprovalRecord = {

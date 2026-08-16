@@ -10,6 +10,7 @@ import {
 } from "@/lib/automation-platform/types";
 import { memoryFindByLegacyId, memoryInsertAutomation } from "@/lib/automation-platform/repository/memory-store";
 import { DEFAULT_AUTOMATION_PLATFORM_TIMEZONE } from "@/lib/automation-platform/schedule/timezone";
+import { buildXPostStepConfiguration } from "@/lib/automation-platform/execution/x-post-content";
 
 export type MigrationMode = "dry-run" | "apply";
 
@@ -165,7 +166,9 @@ function mapWorkflow(v1: AutomationV1): AutomationV2["workflow"] {
       name: "X投稿",
       order: 2,
       inputBindings: {},
-      configuration: {},
+      configuration: buildXPostStepConfiguration({
+        sourceText: v1.workflow.assignment,
+      }),
       requiresApproval: true,
       retryPolicy: { maxAttempts: 3, backoffMs: [60_000, 300_000, 900_000] },
       timeoutMs: 120_000,

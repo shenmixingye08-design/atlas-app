@@ -13,6 +13,7 @@ import { getCapability } from "@/lib/automation-platform/step-registry/registry"
 import { resolveRunApprovalRequirement } from "@/lib/automation-platform/execution/policy";
 import { isConfigHighRisk, isStepHighRisk } from "@/lib/automation-platform/execution/high-risk";
 import { getCapabilityFormSchema } from "@/lib/automation-platform/capability-schema";
+import { classifyXPostContent } from "@/lib/automation-platform/execution/x-post-content";
 
 export { isConfigHighRisk, isStepHighRisk };
 
@@ -160,6 +161,17 @@ export function prepareRunSnapshot(params: {
 
   const warnings: string[] = [];
   for (const step of enabledSteps) {
+    if (step.type === "x_post") {
+      const classified = classifyXPostContent({
+        configuration: step.configuration,
+        freeformNotes: automation.instruction.freeformNotes,
+        automationName: automation.name,
+      });
+      if (classified.mode === "missing") {
+        warnings.push(`${step.name}: 投稿する内容が確認できません`);
+      }
+      continue;
+    }
     const schema = getCapabilityFormSchema(step.type);
     for (const field of schema.fields) {
       if (!field.required) continue;

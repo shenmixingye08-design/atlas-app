@@ -9,16 +9,68 @@ import {
   mapThrownProviderError,
 } from "@/lib/automation-platform/execution/adapters/map-provider-status";
 import { resolveAutomationFeatureContext } from "@/lib/automation-platform/execution/adapters/resolve-context";
+import {
+  classifyXPostContent,
+  X_POST_GENERATION_FAILED_CODE,
+  X_POST_GENERATION_FAILED_MESSAGE,
+  X_POST_MISSING_CONTENT_MESSAGE,
+} from "@/lib/automation-platform/execution/x-post-content";
+import {
+  generateXAutomationPostText,
+  readPreparedXPostText,
+} from "@/lib/automation-platform/execution/x-post-generate";
 import { applyMemoryToStepBody } from "@/lib/memory-apply/step-body";
 import { postTweetNowForUser } from "@/lib/integrations/x/post/service";
+import type { StepInvokeResult } from "@/lib/automation-platform/execution/step-invoker";
+
+function generationFailedResult(): StepInvokeResult {
+  return {
+    ok: false,
+    summary: X_POST_GENERATION_FAILED_MESSAGE,
+    artifacts: [],
+    errorCode: "automation_run_failed",
+    errorMessage: X_POST_GENERATION_FAILED_CODE,
+    failedStage: "CONTENT_GENERATION",
+    retryable: true,
+    needsUserInput: false,
+  };
+}
 
 export const invokeXPostAdapter: ExternalAdapter = async (input) => {
-  let text = configString(input.step.configuration, [
-    "text",
-    "body",
-    "content",
-    "message",
-  ]);
+  const classification = classifyXPostContent({
+    configuration: input.step.configuration,
+    freeformNotes: input.freeformNotes,
+    automationName: input.automationName,
+    resolvedNotes: input.resolvedInstruction?.freeformNotes,
+  });
+
+  let text = "";
+  if (classification.mode === "fixed") {
+    text = classification.text;
+  } else if (classification.mode === "generate") {
+    text = readPreparedXPostText({
+      generatedXPostText: input.generatedXPostText,
+      resolvedMerged: input.resolvedInstruction?.merged,
+    });
+    if (!text) {
+      const generated = await generateXAutomationPostText({
+        classification,
+        automationName: input.automationName,
+        memoryInjection:
+          typeof input.resolvedInstruction?.merged.memoryInjectionText ===
+          "string"
+            ? input.resolvedInstruction.merged.memoryInjectionText
+            : null,
+      });
+      if (!generated.ok) {
+        return generationFailedResult();
+      }
+      text = generated.text;
+    }
+  } else {
+    return configMissingInput(X_POST_MISSING_CONTENT_MESSAGE);
+  }
+
   const hashtags = configString(input.step.configuration, ["hashtags"]);
   if (hashtags && text && !text.includes(hashtags)) {
     text = `${text}\n${hashtags}`;
@@ -34,7 +86,10 @@ export const invokeXPostAdapter: ExternalAdapter = async (input) => {
     text = applied.text;
   }
   if (!text) {
-    return configMissingInput("投稿本文が設定されていません");
+    if (classification.mode === "generate") {
+      return generationFailedResult();
+    }
+    return configMissingInput(X_POST_MISSING_CONTENT_MESSAGE);
   }
 
   try {

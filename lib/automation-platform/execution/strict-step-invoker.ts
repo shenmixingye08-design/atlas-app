@@ -351,6 +351,9 @@ export const strictStepInvoker: StepInvoker = async (input) => {
     occurrenceKey: input.occurrenceKey ?? input.runId,
     approved,
     priorArtifacts: input.priorArtifacts ?? [],
+    resolvedInstruction: input.resolvedInstruction ?? null,
+    generatedXPostText: input.generatedXPostText ?? null,
+    freeformNotes: input.freeformNotes ?? null,
   };
 
   switch (step.type) {
@@ -428,22 +431,12 @@ export const strictStepInvoker: StepInvoker = async (input) => {
       });
     }
     case "x_post": {
-      const text =
-        typeof step.configuration.text === "string"
-          ? step.configuration.text.trim()
-          : typeof step.configuration.body === "string"
-            ? step.configuration.body.trim()
-            : typeof step.configuration.content === "string"
-              ? step.configuration.content.trim()
-              : "";
       return invokeExternalProduction({
         service: "X",
         adapterId: "x",
         appConfigured: xAppConfigured(),
         adapterInput,
-        inputError: !text
-          ? configMissingInput("投稿本文が設定されていません")
-          : null,
+        inputError: null,
       });
     }
     case "dropbox": {

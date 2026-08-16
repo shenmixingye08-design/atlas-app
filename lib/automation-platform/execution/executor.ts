@@ -300,6 +300,8 @@ export async function executeQueuedRun(input: {
         priorArtifacts,
         resolvedInstruction: run.resolvedInstruction,
         memoryUsage: run.memoryUsage,
+        generatedXPostText: run.preparation?.generatedXPostText ?? null,
+        freeformNotes: input.automation.instruction.freeformNotes,
       });
 
       const fake = rejectFakeSuccess({
