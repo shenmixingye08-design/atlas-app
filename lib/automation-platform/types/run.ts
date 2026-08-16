@@ -88,7 +88,11 @@ export type RunPreparation = {
   preparedAt: Timestamp;
   /** Run-scoped AI copy for generate-type X posts. Never written back to the automation. */
   generatedXPostText?: string | null;
+  generatedAt?: Timestamp | null;
   xPostContentMode?: "fixed" | "generate" | "missing";
+  generateInstruction?: string | null;
+  /** Supplemental resume note — never used as the tweet body. */
+  resumeNotes?: string | null;
 };
 
 export type RunApprovalRecord = {

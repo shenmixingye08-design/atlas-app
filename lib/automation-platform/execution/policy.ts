@@ -47,9 +47,22 @@ export function normalizeExecutionPolicy(
     onApprovalTimeout:
       partial?.onApprovalTimeout ?? DEFAULT_EXECUTION_POLICY.onApprovalTimeout,
     selectedStepIds: partial?.selectedStepIds ?? [],
-    // Hard safety — users cannot disable system high-risk override
+    // Hard safety — users cannot disable system high-risk override globally
     systemHighRiskOverride: true,
+    userAuthorizedUnattendedHighRisk: Boolean(
+      partial?.userAuthorizedUnattendedHighRisk,
+    ),
   };
+}
+
+/** True when this automation may post/send high-risk steps without a human gate. */
+export function isUserAuthorizedUnattendedHighRisk(
+  policy: AutomationExecutionPolicy,
+): boolean {
+  return (
+    policy.mode === "run_then_notify" &&
+    policy.userAuthorizedUnattendedHighRisk === true
+  );
 }
 
 /**
@@ -75,7 +88,12 @@ export function resolveRunApprovalRequirement(input: {
     .filter((step) => step.enabled && (step.requiresApproval || selected.has(step.id)))
     .map((step) => step.id);
 
-  // System safety cannot be bypassed
+  // Explicit per-automation auto execution (user chose 「自動で実行」).
+  if (isUserAuthorizedUnattendedHighRisk(input.policy)) {
+    return { requiresApproval: false, reason: "run_then_notify", stepIds: [] };
+  }
+
+  // System safety cannot be bypassed globally — only the flag above is per-automation.
   if (input.policy.systemHighRiskOverride && highRiskStepIds.length > 0) {
     if (
       input.policy.mode === "run_then_notify" ||

@@ -112,11 +112,29 @@ export async function GET(
   const { id } = await context.params;
   const automation = await automationService.getByIdForUser(id, userId);
 
-  if (!automation) {
-    return Response.json({ error: "Automation not found" }, { status: 404 });
+  if (automation) {
+    return Response.json(automation);
   }
 
-  return Response.json(automation);
+  const { resolveOwnedAutomationV2 } = await import(
+    "@/lib/automations/resolve-owned-automation"
+  );
+  const v2 = await resolveOwnedAutomationV2(userId, id);
+  if (!v2) {
+    return Response.json({ error: "Automation not found" }, { status: 404 });
+  }
+  return Response.json({
+    id: v2.id,
+    name: v2.name,
+    description: v2.description,
+    enabled: v2.status === "active",
+    generation: "v2",
+    executionLevel:
+      v2.executionPolicy.mode === "run_then_notify" &&
+      v2.executionPolicy.userAuthorizedUnattendedHighRisk
+        ? "full_auto"
+        : "approve_then_run",
+  });
 }
 
 export async function PATCH(
@@ -172,9 +190,54 @@ export async function PATCH(
     if (videoDenied) return videoDenied;
   }
 
-  const updated = await automationService.updateForUser(id, userId, parsed);
+  let updated = await automationService.updateForUser(id, userId, parsed);
   if (!updated) {
-    return Response.json({ error: "Automation not found" }, { status: 404 });
+    const { resolveOwnedAutomationV2, executionPolicyFromV1Level } = await import(
+      "@/lib/automations/resolve-owned-automation"
+    );
+    const v2 = await resolveOwnedAutomationV2(userId, id);
+    if (!v2) {
+      return Response.json({ error: "Automation not found" }, { status: 404 });
+    }
+    if (parsed.executionLevel) {
+      const { automationPlatformService } = await import(
+        "@/lib/automation-platform/service/automation-service"
+      );
+      const mapped = executionPolicyFromV1Level(parsed.executionLevel);
+      await automationPlatformService.update(
+        userId,
+        v2.id,
+        {
+          executionPolicy: {
+            ...v2.executionPolicy,
+            mode: mapped.mode,
+            userAuthorizedUnattendedHighRisk:
+              mapped.userAuthorizedUnattendedHighRisk,
+          },
+        },
+        accessContext,
+      );
+      updated = await automationService.getByIdForUser(
+        typeof v2.instruction.structuredOptions.v1SchedulerId === "string"
+          ? v2.instruction.structuredOptions.v1SchedulerId
+          : id,
+        userId,
+      );
+      if (!updated) {
+        updated = await automationService.getByIdForUser(id, userId);
+      }
+    }
+    if (!updated) {
+      return Response.json(
+        {
+          ok: true,
+          id: v2.id,
+          generation: "v2",
+          executionLevel: parsed.executionLevel ?? null,
+        },
+        { status: 200 },
+      );
+    }
   }
 
   const { recordAuditLogSafe, auditRequestContext } = await import(

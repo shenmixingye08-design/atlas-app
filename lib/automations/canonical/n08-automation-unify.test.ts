@@ -166,6 +166,24 @@ describe("N-08 canonical automation model", () => {
       resolveAutomationIdTarget("same-id", { v1: [v1], v2: [v2] }),
     ).toEqual({ generation: "v2", id: "same-id" });
   });
+
+  it("resolves ?id= v1 shadow / scheduler id to the v2 record", () => {
+    const v1 = baseV1({ id: "shadow-9" });
+    const v2 = baseV2({
+      id: "v2-main",
+      legacyAutomationId: "shadow-9",
+      instruction: {
+        freeformNotes: "要約",
+        structuredOptions: { v1SchedulerId: "sched-9" },
+      },
+    });
+    expect(
+      resolveAutomationIdTarget("shadow-9", { v1: [v1], v2: [v2] }),
+    ).toEqual({ generation: "v2", id: "v2-main" });
+    expect(
+      resolveAutomationIdTarget("sched-9", { v1: [v1], v2: [v2] }),
+    ).toEqual({ generation: "v2", id: "v2-main" });
+  });
 });
 
 describe("N-08 v1 soft-delete + pause/resume", () => {

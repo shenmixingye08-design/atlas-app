@@ -24,8 +24,11 @@ function mapExecutionLevel(
         step.type === "wordpress" ||
         step.type === "google_calendar"),
   );
-  // Never bridge high-risk automations into V1 full_auto.
-  if (hasHighRisk) return "approve_then_run";
+  // Never invent V1 full_auto for high-risk unless the user explicitly
+  // authorized unattended execution on this automation.
+  if (hasHighRisk && !automation.executionPolicy.userAuthorizedUnattendedHighRisk) {
+    return "approve_then_run";
+  }
 
   switch (automation.executionPolicy.mode) {
     case "run_then_notify":

@@ -1,6 +1,9 @@
 import { appendAutomationAudit } from "@/lib/automation-platform/audit/log";
 import { AutomationPlatformError } from "@/lib/automation-platform/errors/messages";
-import { resolveRunApprovalRequirement } from "@/lib/automation-platform/execution/policy";
+import {
+  normalizeExecutionPolicy,
+  resolveRunApprovalRequirement,
+} from "@/lib/automation-platform/execution/policy";
 import { validateStepsForProductionActivation } from "@/lib/automation-platform/execution/production-step-registry";
 import {
   buildIdempotencyKey,
@@ -250,7 +253,10 @@ export class AutomationPlatformService {
   ): Promise<AutomationV2> {
     assertV2Enabled(context);
     await ensureAutomationsV2Hydrated(userId);
-    return assertOwner(await getAutomationV2FromSot(id, userId), userId);
+    const { resolveOwnedAutomationV2 } = await import(
+      "@/lib/automations/resolve-owned-automation"
+    );
+    return assertOwner(await resolveOwnedAutomationV2(userId, id), userId);
   }
 
   async update(
@@ -262,8 +268,11 @@ export class AutomationPlatformService {
     assertV2Enabled(context);
     await assertRateLimit(userId, "update");
     await ensureAutomationsV2Hydrated(userId);
+    const { resolveOwnedAutomationV2 } = await import(
+      "@/lib/automations/resolve-owned-automation"
+    );
     const current = assertOwner(
-      await getAutomationV2FromSot(id, userId),
+      await resolveOwnedAutomationV2(userId, id),
       userId,
     );
 
@@ -326,7 +335,10 @@ export class AutomationPlatformService {
       trigger,
       nextRunAt: patch.nextRunAt !== undefined ? patch.nextRunAt : nextRunAt,
       executionPolicy: patch.executionPolicy
-        ? { ...patch.executionPolicy, systemHighRiskOverride: true as const }
+        ? normalizeExecutionPolicy({
+            ...current.executionPolicy,
+            ...patch.executionPolicy,
+          })
         : current.executionPolicy,
       updatedAt: new Date().toISOString(),
     };
@@ -1322,6 +1334,10 @@ export class AutomationPlatformService {
       });
     }
 
+    const { interpretResumeXPostInput } = await import(
+      "@/lib/automation-platform/execution/x-post-content"
+    );
+    const resumeInput = interpretResumeXPostInput(inputPatch);
     // Prefer continuing the same run from the waiting step (no full restart).
     const steps = run.steps.map((step) =>
       step.status === "waiting_approval" || step.status === "failed"
@@ -1337,6 +1353,54 @@ export class AutomationPlatformService {
         : step,
     );
 
+    const resumeNotes =
+      resumeInput.kind === "constraint"
+        ? resumeInput.value
+        : run.preparation?.resumeNotes ?? null;
+    let nextResolved: AutomationRun["resolvedInstruction"] = run.resolvedInstruction
+      ? {
+          ...run.resolvedInstruction,
+          merged: {
+            ...run.resolvedInstruction.merged,
+            resumeNotes,
+            ...(resumeInput.kind === "explicit_fixed"
+              ? { generatedXPostText: resumeInput.value }
+              : { generatedXPostText: null }),
+          },
+        }
+      : run.resolvedInstruction;
+
+    let nextPreparation: AutomationRun["preparation"] = run.preparation
+      ? {
+          ...run.preparation,
+          resumeNotes,
+          generatedXPostText:
+            resumeInput.kind === "explicit_fixed" ? resumeInput.value : null,
+          generatedAt:
+            resumeInput.kind === "explicit_fixed"
+              ? new Date().toISOString()
+              : null,
+          xPostContentMode:
+            resumeInput.kind === "explicit_fixed"
+              ? ("fixed" as const)
+              : run.preparation.xPostContentMode,
+          summary: inputPatch
+            ? `${run.preparation.summary}\n\n追加入力: ${JSON.stringify(inputPatch).slice(0, 300)}`
+            : run.preparation.summary,
+        }
+      : run.preparation;
+
+    if (resumeInput.kind !== "explicit_fixed" && nextPreparation) {
+      const automation = await this.get(userId, run.automationId, context);
+      const prepared = await maybePrepareXPostCopyForRun({
+        automation,
+        preparation: nextPreparation,
+        resolvedInstruction: nextResolved,
+      });
+      nextPreparation = prepared.preparation;
+      nextResolved = prepared.resolvedInstruction;
+    }
+
     const updated = this.transitionRun(
       {
         ...run,
@@ -1345,14 +1409,8 @@ export class AutomationPlatformService {
         lastErrorCode: null,
         lastErrorMessage: null,
         failedStepId: null,
-        preparation: run.preparation
-          ? {
-              ...run.preparation,
-              summary: inputPatch
-                ? `${run.preparation.summary}\n\n追加入力: ${JSON.stringify(inputPatch).slice(0, 300)}`
-                : run.preparation.summary,
-            }
-          : run.preparation,
+        resolvedInstruction: nextResolved,
+        preparation: nextPreparation,
       },
       "queued",
       { type: "user", userId },

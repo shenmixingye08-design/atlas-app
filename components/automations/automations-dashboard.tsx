@@ -924,6 +924,12 @@ export function AutomationsDashboard() {
               )
               .finally(() => setUpdatingId(null));
           }}
+          onUpdated={(updated) => {
+            setSelectedV2(updated);
+            setAutomationsV2((prev) =>
+              prev.map((item) => (item.id === updated.id ? updated : item)),
+            );
+          }}
           onArchive={() => {
             if (!confirmDelete()) return;
             setUpdatingId(selectedV2.id);

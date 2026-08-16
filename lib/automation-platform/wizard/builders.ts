@@ -344,6 +344,8 @@ export function buildCreateInputFromWizard(
       onApprovalTimeout: "cancel",
       selectedStepIds: resolved.selectedApprovalStepIds,
       systemHighRiskOverride: true,
+      userAuthorizedUnattendedHighRisk:
+        resolved.executionMode === "run_then_notify",
     },
     notificationPolicy: {
       beforeRun: resolved.notifyBeforeRun,

@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import type { AutomationRun, AutomationV2 } from "@/lib/automation-platform/types";
-import { fetchAutomationRuns } from "@/lib/automation-platform/client";
+import {
+  fetchAutomationRuns,
+  updateAutomationV2,
+} from "@/lib/automation-platform/client";
 import {
   AUTOMATION_STATUS_LABEL,
   formatRunStatus,
@@ -30,6 +33,7 @@ export function AutomationV2DetailPanel({
   onRun,
   onDuplicate,
   onArchive,
+  onUpdated,
   busy,
 }: {
   automation: AutomationV2;
@@ -39,10 +43,37 @@ export function AutomationV2DetailPanel({
   onRun: () => void;
   onDuplicate: () => void;
   onArchive: () => void;
+  onUpdated?: (automation: AutomationV2) => void;
   busy?: boolean;
 }) {
   const [runs, setRuns] = useState<AutomationRun[]>([]);
+  const [savingPolicy, setSavingPolicy] = useState(false);
+  const [policyError, setPolicyError] = useState<string | null>(null);
   const retention = retentionPolicySummary();
+  const autoSelected =
+    automation.executionPolicy.mode === "run_then_notify" &&
+    automation.executionPolicy.userAuthorizedUnattendedHighRisk === true;
+
+  const handlePolicyChange = async (auto: boolean) => {
+    setSavingPolicy(true);
+    setPolicyError(null);
+    try {
+      const updated = await updateAutomationV2(automation.id, {
+        executionPolicy: {
+          ...automation.executionPolicy,
+          mode: auto ? "run_then_notify" : "review_before_run",
+          userAuthorizedUnattendedHighRisk: auto,
+        },
+      });
+      onUpdated?.(updated);
+    } catch (err) {
+      setPolicyError(
+        err instanceof Error ? err.message : "実行方法を保存できませんでした",
+      );
+    } finally {
+      setSavingPolicy(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -165,8 +196,47 @@ export function AutomationV2DetailPanel({
             </ol>
           </section>
 
-          <section className="space-y-1 text-sm">
+          <section className="space-y-2 text-sm">
             <h3 className="font-medium">方針</h3>
+            <div className="space-y-2" role="radiogroup" aria-label="実行方法">
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-[var(--surface-muted)] px-3 py-2">
+                <input
+                  type="radio"
+                  name="v2-execution-policy"
+                  className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                  checked={!autoSelected}
+                  disabled={savingPolicy || busy}
+                  onChange={() => void handlePolicyChange(false)}
+                />
+                <span>
+                  <span className="block font-medium">実行前に確認</span>
+                  <span className="text-xs text-[var(--muted)]">
+                    MINERVOTが本文を作ったあと、承認してから投稿します
+                  </span>
+                </span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-[var(--surface-muted)] px-3 py-2">
+                <input
+                  type="radio"
+                  name="v2-execution-policy"
+                  className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                  checked={autoSelected}
+                  disabled={savingPolicy || busy}
+                  onChange={() => void handlePolicyChange(true)}
+                />
+                <span>
+                  <span className="block font-medium">自動で実行</span>
+                  <span className="text-xs text-[var(--muted)]">
+                    この自動化では確認なしで生成してXへ投稿します
+                  </span>
+                </span>
+              </label>
+            </div>
+            {policyError ? (
+              <p className="text-sm text-[var(--danger)]" role="alert">
+                {policyError}
+              </p>
+            ) : null}
             <p>実行: {POLICY_LABEL[automation.executionPolicy.mode]}</p>
             <p>
               通知: 成功

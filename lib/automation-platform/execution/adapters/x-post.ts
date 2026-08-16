@@ -37,11 +37,16 @@ function generationFailedResult(): StepInvokeResult {
 }
 
 export const invokeXPostAdapter: ExternalAdapter = async (input) => {
+  const resumeNotes =
+    typeof input.resolvedInstruction?.merged.resumeNotes === "string"
+      ? input.resolvedInstruction.merged.resumeNotes
+      : null;
   const classification = classifyXPostContent({
     configuration: input.step.configuration,
     freeformNotes: input.freeformNotes,
     automationName: input.automationName,
     resolvedNotes: input.resolvedInstruction?.freeformNotes,
+    resumeNotes,
   });
 
   let text = "";
@@ -126,12 +131,18 @@ export const invokeXPostAdapter: ExternalAdapter = async (input) => {
     }
 
     return externalSuccess({
-      summary: "Xに投稿しました",
+      summary:
+        classification.mode === "generate"
+          ? "Xに投稿しました（AI生成）"
+          : "Xに投稿しました（指定本文）",
       provider: "x",
       operation: "post",
       resourceId: tweetId,
       url: result.history?.tweetUrl ?? null,
-      label: "X post",
+      label:
+        classification.mode === "generate"
+          ? `X post (AI generate, run ${input.runId})`
+          : `X post (fixed, run ${input.runId})`,
     });
   } catch (error) {
     return mapThrownProviderError("X", error);
