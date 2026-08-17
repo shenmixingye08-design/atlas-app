@@ -26,6 +26,7 @@ import {
   selectXAutomationPostAngle,
   type XAutomationPostAngle,
 } from "@/lib/automation-platform/execution/x-post-copy-quality";
+import { applyXAutomationPostHashtags } from "@/lib/automation-platform/execution/x-post-hashtags";
 
 export type GeneratedXAutomationPost =
   | {
@@ -33,6 +34,7 @@ export type GeneratedXAutomationPost =
       text: string;
       usedFallback: boolean;
       angle?: XAutomationPostAngle;
+      hashtags?: string[];
     }
   | { ok: false; errorCode: string; errorMessage: string };
 
@@ -122,6 +124,30 @@ export function buildGenerationInput(input: {
   });
 }
 
+function finalizeGeneratedXPostText(input: {
+  text: string;
+  angle: XAutomationPostAngle;
+  topic?: string;
+  memoryInjection?: string | null;
+  recentTexts?: string[];
+  seed?: number;
+  skipAutoHashtags?: boolean;
+}): { text: string; hashtags: string[] } {
+  const applied = applyXAutomationPostHashtags({
+    text: input.text,
+    angle: input.angle,
+    topic: input.topic,
+    memoryInjection: input.memoryInjection,
+    recentTexts: input.recentTexts,
+    seed: input.seed,
+    skipAutoHashtags: input.skipAutoHashtags,
+  });
+  return {
+    text: capToTweetLength(applied.text),
+    hashtags: applied.hashtags,
+  };
+}
+
 export async function generateXAutomationPostText(input: {
   classification: XPostContentClassification;
   automationName: string;
@@ -130,16 +156,16 @@ export async function generateXAutomationPostText(input: {
   userId?: string | null;
   runId?: string | null;
   angleSeed?: number;
+  skipAutoHashtags?: boolean;
 }): Promise<GeneratedXAutomationPost> {
   const recentTexts = resolveRecentTexts(input);
-  const angle = selectXAutomationPostAngle(
-    deriveXAutomationPostAngleSeed({
-      angleSeed: input.angleSeed,
-      runId: input.runId,
-      recentTexts,
-      topic: input.classification.topic,
-    }),
-  );
+  const angleSeed = deriveXAutomationPostAngleSeed({
+    angleSeed: input.angleSeed,
+    runId: input.runId,
+    recentTexts,
+    topic: input.classification.topic,
+  });
+  const angle = selectXAutomationPostAngle(angleSeed);
   const prompt = buildGenerationInput({
     classification: input.classification,
     automationName: input.automationName,
@@ -149,16 +175,24 @@ export async function generateXAutomationPostText(input: {
   });
 
   if (isMockLlmEnabled()) {
+    const finalized = finalizeGeneratedXPostText({
+      text: buildXAutomationPostFallbackText({
+        angle,
+        topic: input.classification.topic || input.automationName,
+      }),
+      angle,
+      topic: input.classification.topic,
+      memoryInjection: input.memoryInjection,
+      recentTexts,
+      seed: angleSeed,
+      skipAutoHashtags: input.skipAutoHashtags,
+    });
     return {
       ok: true,
-      text: capToTweetLength(
-        buildXAutomationPostFallbackText({
-          angle,
-          topic: input.classification.topic || input.automationName,
-        }),
-      ),
+      text: finalized.text,
       usedFallback: true,
       angle,
+      hashtags: finalized.hashtags,
     };
   }
 
@@ -169,9 +203,7 @@ export async function generateXAutomationPostText(input: {
       aiTaskType: "worker_deliverable_light",
       maxOutputTokens: 400,
     });
-    const text = capToTweetLength(
-      extractTweetFromModelOutput(response.output_text ?? ""),
-    );
+    const text = extractTweetFromModelOutput(response.output_text ?? "");
     if (!text) {
       return {
         ok: false,
@@ -179,7 +211,22 @@ export async function generateXAutomationPostText(input: {
         errorMessage: X_POST_GENERATION_FAILED_MESSAGE,
       };
     }
-    return { ok: true, text, usedFallback: false, angle };
+    const finalized = finalizeGeneratedXPostText({
+      text,
+      angle,
+      topic: input.classification.topic,
+      memoryInjection: input.memoryInjection,
+      recentTexts,
+      seed: angleSeed,
+      skipAutoHashtags: input.skipAutoHashtags,
+    });
+    return {
+      ok: true,
+      text: finalized.text,
+      usedFallback: false,
+      angle,
+      hashtags: finalized.hashtags,
+    };
   } catch (error) {
     const detail =
       error instanceof Error ? error.message : "x_post_generation_failed";

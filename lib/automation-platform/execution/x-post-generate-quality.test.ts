@@ -19,6 +19,7 @@ import {
   isBrochureLikeXPost,
   selectXAutomationPostAngle,
 } from "@/lib/automation-platform/execution/x-post-copy-quality";
+import { extractXPostHashtags } from "@/lib/automation-platform/execution/x-post-hashtags";
 import {
   resetXPostHistoryStore,
   saveXPostHistoryRecord,
@@ -166,6 +167,37 @@ describe("generateXAutomationPostText quality", () => {
     );
   });
 
+  it("selects hashtags in the same generate call without a second AI request", async () => {
+    createAtlasResponseMock.mockResolvedValue({
+      output_text:
+        "副業の時間、投稿文を考えるだけで消える。テーマだけ決めて本文は任せる。",
+    } as never);
+
+    const withTags = await generateXAutomationPostText({
+      classification: classification(),
+      automationName: "SNS投稿の自動化",
+      angleSeed: 1,
+    });
+    const withoutTags = await generateXAutomationPostText({
+      classification: classification(),
+      automationName: "SNS投稿の自動化",
+      memoryInjection: "ハッシュタグ不要",
+      angleSeed: 1,
+    });
+
+    expect(withTags.ok).toBe(true);
+    expect(withoutTags.ok).toBe(true);
+    if (withTags.ok) {
+      expect((withTags.hashtags ?? []).length).toBeGreaterThanOrEqual(1);
+      expect((withTags.hashtags ?? []).length).toBeLessThanOrEqual(2);
+    }
+    if (withoutTags.ok) {
+      expect(withoutTags.hashtags).toEqual([]);
+      expect(withoutTags.text).not.toMatch(/#/);
+    }
+    expect(createAtlasResponseMock).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps generation failure retryable and does not invent a brochure fallback", async () => {
     createAtlasResponseMock.mockRejectedValue(new Error("llm_down"));
     const result = await generateXAutomationPostText({
@@ -200,6 +232,7 @@ describe("generateXAutomationPostText quality", () => {
     });
 
     const posts: string[] = [];
+    const tagSets: string[] = [];
     for (let seed = 0; seed < 5; seed += 1) {
       const generated = await generateXAutomationPostText({
         classification: classification(),
@@ -210,6 +243,9 @@ describe("generateXAutomationPostText quality", () => {
       expect(generated.ok).toBe(true);
       if (!generated.ok) continue;
       posts.push(generated.text);
+      const tags = generated.hashtags ?? extractXPostHashtags(generated.text);
+      expect(tags.length).toBeLessThanOrEqual(2);
+      tagSets.push(tags.join(" "));
       expect(findForbiddenXPostClaims(generated.text)).toEqual([]);
       expect(isBrochureLikeXPost(generated.text)).toBe(false);
     }
@@ -217,5 +253,6 @@ describe("generateXAutomationPostText quality", () => {
     expect(posts).toHaveLength(5);
     expect(new Set(posts).size).toBe(5);
     expect(createAtlasResponseMock).toHaveBeenCalledTimes(5);
+    expect(new Set(tagSets).size).toBeGreaterThan(1);
   });
 });
