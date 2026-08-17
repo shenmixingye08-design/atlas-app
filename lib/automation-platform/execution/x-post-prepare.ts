@@ -140,6 +140,7 @@ export async function maybePrepareXPostCopyForRun(input: {
       typeof input.resolvedInstruction?.merged.memoryInjectionText === "string"
         ? input.resolvedInstruction.merged.memoryInjectionText
         : null,
+    userId: input.automation.userId,
   });
 
   if (!generated.ok) {
