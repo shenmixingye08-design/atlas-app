@@ -18,9 +18,13 @@ export {
 export {
   requireBillingFeature,
   requireBillingAiUsage,
+  consumeBillingAiJob,
+  requireAndConsumeAiJob,
+  billingAiJobClaimKey,
   requireBillingSnsPost,
   requireBillingWordPressPublish,
   requireBillingAutomationTask,
+  requireBillingAutomationTaskLive,
   requireBillingExternalIntegration,
   requireBillingForAssignment,
   getBillingFeatureDenial,

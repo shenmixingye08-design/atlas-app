@@ -1,7 +1,12 @@
 import "server-only";
 
+import { aiJobClaimKey, consumeAiJobQuota } from "@/lib/billing/usage/ai-job";
+import { countBillableAutomations } from "@/lib/billing/usage/automation-inventory";
+
+import { aiUsageLimitReachedMessage } from "../plans/policy";
 import type { BillingFeatureId } from "../plans/types";
 import {
+  BILLING_UPGRADE_PATH,
   billingDenialResponse,
   evaluateBillingAiUsage,
   evaluateBillingAutomationTask,
@@ -9,6 +14,7 @@ import {
   evaluateBillingFeature,
   evaluateBillingSnsPost,
   evaluateBillingWordPressPublish,
+  getBillingAccessSnapshot,
   resolveBillingFeatureForAssignment,
   type BillingDenial,
 } from "./snapshot";
@@ -26,6 +32,78 @@ export async function requireBillingAiUsage(
 ): Promise<Response | null> {
   const { denial } = await evaluateBillingAiUsage(userId);
   return denial ? billingDenialResponse(denial) : null;
+}
+
+function quotaDenialFromReserve(input: {
+  used: number;
+  limit: number;
+  currentPlan: BillingDenial["currentPlan"];
+  currentPlanName: string;
+}): BillingDenial {
+  return {
+    kind: "limit",
+    status: 429,
+    reason: aiUsageLimitReachedMessage(input.limit),
+    currentPlan: input.currentPlan,
+    currentPlanName: input.currentPlanName,
+    requiredPlan: null,
+    requiredPlanName: null,
+    upgradePath: BILLING_UPGRADE_PATH,
+    used: input.used,
+    limit: input.limit,
+    remaining: Math.max(0, input.limit - input.used),
+  };
+}
+
+/**
+ * Atomic reserve immediately before any AI provider call.
+ * Same claimKey is idempotent (retry / double-tap / queue retry).
+ */
+export async function consumeBillingAiJob(
+  userId: string,
+  claimKey: string,
+): Promise<Response | null> {
+  const snapshot = await getBillingAccessSnapshot(userId);
+  if (snapshot.isOwner) return null;
+
+  const reserved = await consumeAiJobQuota({ userId, claimKey });
+  if (reserved.ok) return null;
+  if (reserved.reason === "usage_unavailable") {
+    return Response.json(
+      {
+        error: "usage_unavailable",
+        message: "利用状況を確認できないため、AI作業を開始できませんでした。",
+      },
+      { status: 503 },
+    );
+  }
+  return billingDenialResponse(
+    quotaDenialFromReserve({
+      used: reserved.used,
+      limit: reserved.limit,
+      currentPlan: snapshot.effectivePlanId,
+      currentPlanName: snapshot.effectivePlanName,
+    }),
+  );
+}
+
+export async function requireAndConsumeAiJob(
+  userId: string,
+  surface: string,
+  stableId: string,
+): Promise<Response | null> {
+  return consumeBillingAiJob(
+    userId,
+    aiJobClaimKey(surface, userId, stableId),
+  );
+}
+
+export function billingAiJobClaimKey(
+  surface: string,
+  userId: string,
+  stableId: string,
+): string {
+  return aiJobClaimKey(surface, userId, stableId);
 }
 
 export async function requireBillingSnsPost(
@@ -54,6 +132,13 @@ export async function requireBillingAutomationTask(
   return denial ? billingDenialResponse(denial) : null;
 }
 
+export async function requireBillingAutomationTaskLive(
+  userId: string,
+): Promise<Response | null> {
+  const currentTaskCount = await countBillableAutomations(userId);
+  return requireBillingAutomationTask(userId, currentTaskCount);
+}
+
 export async function requireBillingExternalIntegration(
   userId: string,
   connectedCount: number,
@@ -75,7 +160,7 @@ export async function requireBillingForAssignment(
   const feature = resolveBillingFeatureForAssignment(input);
   const featureDenied = await requireBillingFeature(userId, feature);
   if (featureDenied) return featureDenied;
-  return requireBillingAiUsage(userId);
+  return null;
 }
 
 export async function getBillingFeatureDenial(

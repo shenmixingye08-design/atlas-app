@@ -218,6 +218,31 @@ export async function executeWorkJob(
   });
 
   try {
+    const { requireAndConsumeAiJob } = await import("@/lib/billing/access");
+    const quotaDenied = await requireAndConsumeAiJob(
+      userId,
+      "work_job",
+      existing.idempotencyKey,
+    );
+    if (quotaDenied) {
+      const body = (await quotaDenied.json().catch(() => ({}))) as {
+        message?: string;
+        reason?: string;
+        error?: string;
+      };
+      return saveWorkJob({
+        ...existing,
+        status: "failed",
+        error:
+          body.reason ??
+          body.message ??
+          (typeof body.error === "string" ? body.error : null) ??
+          "今月のAI作業上限に達しました。",
+        updatedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      });
+    }
+
     const commander = await withRetry(
       async (attempt) => {
         if (attempt > 1) {

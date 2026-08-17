@@ -15,6 +15,7 @@ import {
   getStripeRuntimeConfigStatus,
   getStripeSecretDiagnostics,
 } from "./stripe/config";
+import { hydrateUserUsageMeters } from "./usage/hydrate";
 import { getUserUsageLimitSummary } from "./usage/service";
 import { buildUsageAwarenessView } from "./usage-awareness/view";
 import type { UserBillingSummary } from "./types";
@@ -31,6 +32,7 @@ export async function getUserBillingSummary(
   const record = authority.record;
   const subscription = toUserSubscriptionView(record);
   const effectivePlanId = resolveEffectivePlanIdFromRecord(record);
+  const usageLoad = await hydrateUserUsageMeters(userId);
   const usage = getUserUsageLimitSummary(userId, effectivePlanId);
   const plan = getPlanDefinition(record.planId);
   const secretDiagnostics = getStripeSecretDiagnostics();
@@ -57,6 +59,8 @@ export async function getUserBillingSummary(
   return {
     subscription,
     usage,
+    usageReady: usageLoad.ready,
+    usageError: usageLoad.error,
     usageAwareness,
     plan,
     stripeLiveMode: isStripeLiveMode(),

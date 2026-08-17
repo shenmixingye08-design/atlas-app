@@ -15,6 +15,7 @@ import {
   toUserSubscriptionView,
 } from "../subscriptions/service";
 import type { SubscriptionStatus } from "../subscriptions/types";
+import { hydrateUserUsageMeters } from "../usage/hydrate";
 import { getUsageSnapshot } from "../usage/store";
 import { getUserUsageLimitSummary } from "../usage/service";
 import { formatOtherMetersRemain } from "../usage-awareness/copy";
@@ -191,7 +192,7 @@ export async function evaluateBillingAiUsage(
   const snapshot = await getBillingAccessSnapshot(userId);
   if (snapshot.isOwner) return { snapshot, denial: null };
 
-  // Touch usage so limit uses hydrated subscription plan
+  await hydrateUserUsageMeters(userId);
   void getUsageSnapshot(userId);
   const check = evaluateAiUsageAccess(userId);
   if (check.allowed) return { snapshot, denial: null };

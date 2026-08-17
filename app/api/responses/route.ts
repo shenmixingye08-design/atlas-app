@@ -173,16 +173,19 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { requireBillingFeature, requireBillingAiUsage } = await import(
+  const { requireBillingFeature } = await import(
     "@/lib/billing/access"
   );
   const featureDenied = await requireBillingFeature(userId, "content_writing");
   if (featureDenied) return featureDenied;
-  const usageDenied = await requireBillingAiUsage(userId);
-  if (usageDenied) return usageDenied;
-
   const limited = await enforceAiRateLimit(userId);
   if (limited) return limited;
+
+  const claim =
+    request.headers.get("idempotency-key")?.trim() || crypto.randomUUID();
+  const { requireAndConsumeAiJob } = await import("@/lib/billing/access");
+  const quotaDenied = await requireAndConsumeAiJob(userId, "responses", claim);
+  if (quotaDenied) return quotaDenied;
 
   let body: RequestBody;
 

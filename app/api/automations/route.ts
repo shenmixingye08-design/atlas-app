@@ -157,8 +157,11 @@ export async function POST(request: Request): Promise<Response> {
     requireBillingFeature,
   } = await import("@/lib/billing/access");
 
-  const existing = await automationService.listForUser(userId);
-  const taskDenied = await requireBillingAutomationTask(userId, existing.length);
+  const { countBillableAutomations } = await import(
+    "@/lib/billing/usage/automation-inventory"
+  );
+  const currentTaskCount = await countBillableAutomations(userId);
+  const taskDenied = await requireBillingAutomationTask(userId, currentTaskCount);
   if (taskDenied) return taskDenied;
 
   if (parsed.executionMode === "high_quality") {

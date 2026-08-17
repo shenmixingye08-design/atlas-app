@@ -126,6 +126,12 @@ const PRESENTATIONS: Record<AutomationErrorCode, AutomationErrorPresentation> =
       diagnostic: "Rate limit exceeded for automation API.",
       httpStatus: 429,
     },
+    automation_quota_exceeded: {
+      code: "automation_quota_exceeded",
+      userMessage: "現在のプランではこれ以上自動化を作成できません。",
+      diagnostic: "Plan automation slot limit reached.",
+      httpStatus: 429,
+    },
     automation_unauthorized: {
       code: "automation_unauthorized",
       userMessage: "ログインが必要です。",
@@ -245,7 +251,10 @@ export class AutomationPlatformError extends Error {
     super(presentation.diagnostic);
     this.name = "AutomationPlatformError";
     this.code = code;
-    this.userMessage = presentation.userMessage;
+    this.userMessage =
+      typeof details?.reason === "string" && details.reason.trim()
+        ? details.reason
+        : presentation.userMessage;
     this.diagnostic = presentation.diagnostic;
     this.httpStatus = presentation.httpStatus;
     this.details = details;

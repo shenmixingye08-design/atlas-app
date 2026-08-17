@@ -82,6 +82,8 @@ export type RecordUserAiUsageInput = {
   planId?: PlanId;
   timestamp?: string;
   aiTaskType?: AiTaskType;
+  /** When true, only the cost ledger is written. Quota uses reserveAiJobQuota. */
+  skipQuota?: boolean;
 };
 
 /**
@@ -103,7 +105,9 @@ export function recordUserAiUsage(input: RecordUserAiUsageInput): AiUsageEvent {
       aiTaskType: input.aiTaskType,
     });
 
-  incrementUsageCounter(input.userId, "aiRuns", requestCount);
+  if (!input.skipQuota) {
+    incrementUsageCounter(input.userId, "aiRuns", requestCount);
+  }
 
   return appendAiUsageEvent({
     id: `aiu_${crypto.randomUUID()}`,
@@ -144,6 +148,7 @@ export function recordUserAiUsageFromTexts(input: {
     outputTokens,
     estimatedCostUsd: input.estimatedCostUsd,
     aiTaskType: input.aiTaskType,
+    skipQuota: true,
   });
 }
 
@@ -167,6 +172,7 @@ export function recordUserAiUsageFromCostSummary(input: {
     inputTokens: input.summary.estimatedInputTokens,
     outputTokens: input.summary.estimatedOutputTokens,
     estimatedCostUsd: input.summary.estimatedCostUsd,
+    skipQuota: true,
   });
 }
 
@@ -185,8 +191,13 @@ export function summarizeAiUsageEvents(
   };
 
   for (const event of events) {
-    const day = event.timestamp.slice(0, 10);
-    const month = event.timestamp.slice(0, 7);
+    const eventAt = new Date(event.timestamp);
+    const day = Number.isNaN(eventAt.getTime())
+      ? event.timestamp.slice(0, 10)
+      : getUsageDayKey(eventAt);
+    const month = Number.isNaN(eventAt.getTime())
+      ? event.timestamp.slice(0, 7)
+      : getUsageMonthKey(eventAt);
     addToPeriod(breakdown.allTime, event);
     if (month === monthKey) addToPeriod(breakdown.month, event);
     if (day === todayKey) addToPeriod(breakdown.today, event);

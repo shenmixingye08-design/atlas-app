@@ -23,8 +23,12 @@ export async function POST(request: Request): Promise<Response> {
     ) ?? "today";
   const context = await resolveFeatureAccessContext();
 
-  const { requireBillingAiUsage } = await import("@/lib/billing/access");
-  const usageDenied = await requireBillingAiUsage(userId);
+  const { requireAndConsumeAiJob } = await import("@/lib/billing/access");
+  const usageDenied = await requireAndConsumeAiJob(
+    userId,
+    "calendar_organize",
+    request.headers.get("idempotency-key")?.trim() || crypto.randomUUID(),
+  );
   if (usageDenied) return usageDenied;
 
   try {

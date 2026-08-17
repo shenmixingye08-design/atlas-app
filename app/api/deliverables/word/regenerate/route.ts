@@ -233,6 +233,15 @@ export async function POST(request: Request): Promise<Response> {
     });
     if (billingDenied) return billingDenied;
 
+    const { requireAndConsumeAiJob } = await import("@/lib/billing/access");
+    const quotaDenied = await requireAndConsumeAiJob(
+      userId,
+      "deliverables_regenerate",
+      request.headers.get("idempotency-key")?.trim() ||
+        `${group.groupId}:${versions.length}`,
+    );
+    if (quotaDenied) return quotaDenied;
+
     // Regenerate must reuse previous content + Memory overlays (never zero-from-scratch).
     const { applyMemoryForRegenerate } = await import(
       "@/lib/memory-apply/regenerate"

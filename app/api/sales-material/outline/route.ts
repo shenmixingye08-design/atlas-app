@@ -51,8 +51,12 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const { requireBillingAiUsage } = await import("@/lib/billing/access");
-  const usageDenied = await requireBillingAiUsage(userId);
+  const { requireAndConsumeAiJob } = await import("@/lib/billing/access");
+  const usageDenied = await requireAndConsumeAiJob(
+    userId,
+    "sales_material",
+    request.headers.get("idempotency-key")?.trim() || crypto.randomUUID(),
+  );
   if (usageDenied) return usageDenied;
 
   try {

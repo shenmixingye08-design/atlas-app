@@ -10,7 +10,7 @@ type RouteContext = {
 };
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ): Promise<Response> {
   const { userId } = await auth();
@@ -25,8 +25,12 @@ export async function POST(
 
   const accessContext = await resolveFeatureAccessContext();
 
-  const { requireBillingAiUsage } = await import("@/lib/billing/access");
-  const usageDenied = await requireBillingAiUsage(userId);
+  const { requireAndConsumeAiJob } = await import("@/lib/billing/access");
+  const usageDenied = await requireAndConsumeAiJob(
+    userId,
+    "gmail_reply_draft",
+    request.headers.get("idempotency-key")?.trim() || messageId,
+  );
   if (usageDenied) return usageDenied;
 
   const result = await getGmailMessageForUser({

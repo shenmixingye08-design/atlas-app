@@ -78,4 +78,6 @@ export type UsageLimitSummary = {
   wordpressPosts: UsageMeter;
   automationTasks: UsageMeter;
   aiDetail: AiUsageBreakdown;
+  /** False when durable usage could not be loaded. Never treat used=0 as real. */
+  ready?: boolean;
 };

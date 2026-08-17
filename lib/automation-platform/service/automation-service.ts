@@ -240,7 +240,19 @@ export class AutomationPlatformService {
     if (record.status === "active") {
       assertProductionStepsActivatable(record.workflow.steps);
     }
-    let saved = await persistAutomationV2Now(record);
+    const { assertAutomationCreateAllowed, releaseAutomationSlotSafe } =
+      await import("@/lib/billing/usage/automation-guard");
+    await assertAutomationCreateAllowed({
+      userId,
+      automationId: record.id,
+    });
+    let saved;
+    try {
+      saved = await persistAutomationV2Now(record);
+    } catch (error) {
+      await releaseAutomationSlotSafe(record.id);
+      throw error;
+    }
 
     if (saved.status === "active") {
       saved = await this.registerWithScheduler(saved);
@@ -325,6 +337,19 @@ export class AutomationPlatformService {
 
     if (patch.status && patch.status !== current.status) {
       assertDefinitionTransition(current.status, patch.status);
+    }
+    if (
+      current.status === "archived" &&
+      patch.status &&
+      patch.status !== "archived"
+    ) {
+      const { assertAutomationCreateAllowed } = await import(
+        "@/lib/billing/usage/automation-guard"
+      );
+      await assertAutomationCreateAllowed({
+        userId,
+        automationId: id,
+      });
     }
 
     if (patch.memoryPolicy) {
@@ -584,12 +609,17 @@ export class AutomationPlatformService {
     id: string,
     context: FeatureAccessContext,
   ): Promise<AutomationV2> {
-    return this.update(
+    const saved = await this.update(
       userId,
       id,
       { status: "archived", nextRunAt: null },
       context,
     );
+    const { releaseAutomationSlotSafe } = await import(
+      "@/lib/billing/usage/automation-guard"
+    );
+    await releaseAutomationSlotSafe(id);
+    return saved;
   }
 
   async getNextRunAt(

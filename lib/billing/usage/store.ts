@@ -4,6 +4,7 @@ import type {
   UsageMonthKey,
   UsageSnapshot,
 } from "./types";
+import { getUsageDayKey as jstDayKey, getUsageMonthKey as jstMonthKey } from "./period";
 
 type UsageBucket = Map<string, UsageSnapshot>;
 
@@ -128,11 +129,11 @@ export function replaceUsageDurableState(input: {
 }
 
 export function getUsageMonthKey(now: Date = new Date()): UsageMonthKey {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return jstMonthKey(now);
 }
 
 export function getUsageDayKey(now: Date = new Date()): string {
-  return `${getUsageMonthKey(now)}-${String(now.getDate()).padStart(2, "0")}`;
+  return jstDayKey(now);
 }
 
 export function getUsageSnapshot(

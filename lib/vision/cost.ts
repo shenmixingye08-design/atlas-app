@@ -64,6 +64,7 @@ export function recordVisionBillingUsage(input: {
       outputTokens: input.outputTokens,
       estimatedCostUsd: input.estimatedCostUsd,
       aiTaskType: "vision_analyze",
+      skipQuota: true,
     });
   } catch (error) {
     console.error("[vision] Failed to record billing usage");

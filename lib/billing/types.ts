@@ -23,6 +23,9 @@ export type UserBillingSummary = {
   billingPortalAvailable: boolean;
   automationsSuspended: boolean;
   notifications: readonly BillingNotificationRecord[];
+  /** False when usage meters could not be loaded. UI must not show 0. */
+  usageReady: boolean;
+  usageError: string | null;
   /** Durable-first resolve metadata — never includes secrets. */
   subscriptionSource: SubscriptionResolveSource;
   subscriptionConsistency: SubscriptionConsistency;

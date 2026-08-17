@@ -21,7 +21,10 @@ import {
   estimateTokenCostUsd,
 } from "@/lib/ai/model-catalog";
 import { getPlanDefinition, listPlanDefinitions } from "@/lib/billing/plans/registry";
-import { AI_USAGE_LIMIT_REACHED_MESSAGE } from "@/lib/billing/plans/policy";
+import {
+  AI_USAGE_LIMIT_REACHED_MESSAGE,
+  aiUsageLimitReachedMessage,
+} from "@/lib/billing/plans/policy";
 import { tweetContainsExternalUrl } from "@/lib/billing/usage/x-url";
 import {
   incrementUsageCounterOnce,
@@ -214,7 +217,7 @@ describe("profit-safe cost guards and posting quotas", () => {
       429,
     );
     expect((await evaluateBillingAiUsage("user_light_guard")).denial?.reason).toBe(
-      AI_USAGE_LIMIT_REACHED_MESSAGE,
+      aiUsageLimitReachedMessage(30),
     );
 
     resetUsageStore();

@@ -336,6 +336,7 @@ export async function executeAutomationRun(
           inputTokens: 0,
           outputTokens: 0,
           estimatedCostUsd: 0,
+          skipQuota: true,
         });
       }
       recordCostFromOrchestration({
