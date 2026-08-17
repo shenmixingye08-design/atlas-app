@@ -125,6 +125,8 @@ export const invokeXPostAdapter: ExternalAdapter = async (input) => {
           "string"
             ? input.resolvedInstruction.merged.memoryInjectionText
             : null,
+        userId: input.userId,
+        runId: input.runId,
       });
       logXPostInstructionTrace({
         stage: "generate",

@@ -2,6 +2,8 @@
  * Generate X post copy for generate-type automations.
  * AI is used only for the tweet body. Failures are retryable — never
  * rewritten as "please type the post yourself".
+ *
+ * Quality-only module: does not change cron, OAuth, posting, or approval.
  */
 
 import "server-only";
@@ -10,24 +12,32 @@ import { isMockLlmEnabled } from "@/lib/ai/mock-responses";
 import { wrapCompactInstructions } from "@/lib/atlas-personality";
 import { createAtlasResponse } from "@/lib/openai";
 import { capToTweetLength } from "@/lib/integrations/x/post/autopost-generator";
+import { listXPostHistory } from "@/lib/integrations/x/post/history-store";
 import {
   X_POST_GENERATION_FAILED_CODE,
   X_POST_GENERATION_FAILED_MESSAGE,
   type XPostContentClassification,
 } from "@/lib/automation-platform/execution/x-post-content";
+import {
+  buildXAutomationPostFallbackText,
+  buildXAutomationPostGenerationInput,
+  buildXAutomationPostGenerationInstructions,
+  deriveXAutomationPostAngleSeed,
+  selectXAutomationPostAngle,
+  type XAutomationPostAngle,
+} from "@/lib/automation-platform/execution/x-post-copy-quality";
 
 export type GeneratedXAutomationPost =
-  | { ok: true; text: string; usedFallback: boolean }
+  | {
+      ok: true;
+      text: string;
+      usedFallback: boolean;
+      angle?: XAutomationPostAngle;
+    }
   | { ok: false; errorCode: string; errorMessage: string };
 
-const GENERATION_INSTRUCTIONS = wrapCompactInstructions(
-  `あなたはお客様専属のAI秘書として、X（旧Twitter）に投稿する日本語の文章を1件だけ作成します。
-出力ルール:
-- 本文のみを出力する（前置き・説明・鉤括弧・コードブロックは書かない）。
-- 全体で280文字以内（日本語1文字も1文字として数える）。
-- 自然で読みやすい日本語。過度な絵文字や誇張、事実でない実績は書かない。
-- 直近の投稿と内容・言い回しが重複しないようにする。
-- ハッシュタグは指示があるときのみ1〜2個、末尾に付ける。`,
+export const GENERATION_INSTRUCTIONS = wrapCompactInstructions(
+  buildXAutomationPostGenerationInstructions(),
 );
 
 function sanitizeGeneratedText(raw: string): string {
@@ -76,33 +86,40 @@ function extractTweetFromModelOutput(raw: string): string {
   return sanitized;
 }
 
-function buildGenerationInput(input: {
+function resolveRecentTexts(input: {
+  recentTexts?: string[];
+  userId?: string | null;
+}): string[] {
+  if (input.recentTexts && input.recentTexts.length > 0) {
+    return input.recentTexts.slice(0, 8);
+  }
+  const userId = input.userId?.trim();
+  if (!userId) return [];
+  try {
+    return listXPostHistory(userId)
+      .filter((record) => record.status === "success" && record.text.trim())
+      .map((record) => record.text.trim())
+      .slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+
+export function buildGenerationInput(input: {
   classification: XPostContentClassification;
   automationName: string;
   memoryInjection?: string | null;
   recentTexts?: string[];
+  angle: XAutomationPostAngle;
 }): string {
-  const recent =
-    input.recentTexts && input.recentTexts.length > 0
-      ? input.recentTexts
-          .slice(0, 8)
-          .map((text, index) => `${index + 1}. ${text.replace(/\s+/g, " ")}`)
-          .join("\n")
-      : "（まだありません）";
-  return [
-    `自動化名: ${input.automationName || "（なし）"}`,
-    `テーマ: ${input.classification.topic || "（指定なし）"}`,
-    `お客様の依頼:`,
-    input.classification.generateInstruction || "（なし）",
-    input.memoryInjection?.trim()
-      ? `\n文体・好み（参照のみ）:\n${input.memoryInjection.trim()}`
-      : "",
-    "",
-    "直近の投稿（これらと重複しないこと）:",
-    recent,
-  ]
-    .filter((line) => line !== "")
-    .join("\n");
+  return buildXAutomationPostGenerationInput({
+    automationName: input.automationName,
+    topic: input.classification.topic,
+    generateInstruction: input.classification.generateInstruction,
+    angle: input.angle,
+    memoryInjection: input.memoryInjection,
+    recentTexts: input.recentTexts,
+  });
 }
 
 export async function generateXAutomationPostText(input: {
@@ -110,17 +127,38 @@ export async function generateXAutomationPostText(input: {
   automationName: string;
   memoryInjection?: string | null;
   recentTexts?: string[];
+  userId?: string | null;
+  runId?: string | null;
+  angleSeed?: number;
 }): Promise<GeneratedXAutomationPost> {
-  const prompt = buildGenerationInput(input);
+  const recentTexts = resolveRecentTexts(input);
+  const angle = selectXAutomationPostAngle(
+    deriveXAutomationPostAngleSeed({
+      angleSeed: input.angleSeed,
+      runId: input.runId,
+      recentTexts,
+      topic: input.classification.topic,
+    }),
+  );
+  const prompt = buildGenerationInput({
+    classification: input.classification,
+    automationName: input.automationName,
+    memoryInjection: input.memoryInjection,
+    recentTexts,
+    angle,
+  });
 
   if (isMockLlmEnabled()) {
-    const topic = input.classification.topic || input.automationName || "本日の話題";
     return {
       ok: true,
       text: capToTweetLength(
-        `${topic}について、今回の依頼に沿ってご案内します。`,
+        buildXAutomationPostFallbackText({
+          angle,
+          topic: input.classification.topic || input.automationName,
+        }),
       ),
       usedFallback: true,
+      angle,
     };
   }
 
@@ -141,7 +179,7 @@ export async function generateXAutomationPostText(input: {
         errorMessage: X_POST_GENERATION_FAILED_MESSAGE,
       };
     }
-    return { ok: true, text, usedFallback: false };
+    return { ok: true, text, usedFallback: false, angle };
   } catch (error) {
     const detail =
       error instanceof Error ? error.message : "x_post_generation_failed";
