@@ -110,10 +110,13 @@ async function createExternalPath(input: {
   >;
 }): Promise<CreateFromNaturalLanguageResult> {
   const accessContext = await resolveFeatureAccessContext();
-  const existing = await automationService.listForUser(input.userId);
+  const { countBillableAutomations } = await import(
+    "@/lib/billing/usage/automation-inventory"
+  );
+  const currentTaskCount = await countBillableAutomations(input.userId);
   const taskDenied = await requireBillingAutomationTask(
     input.userId,
-    existing.length,
+    currentTaskCount,
   );
   if (taskDenied) {
     const body = (await taskDenied.json().catch(() => ({}))) as {
@@ -299,10 +302,13 @@ async function createConditionPath(input: {
   text: string;
 }): Promise<CreateFromNaturalLanguageResult> {
   const accessContext = await resolveFeatureAccessContext();
-  const existing = await automationService.listForUser(input.userId);
+  const { countBillableAutomations } = await import(
+    "@/lib/billing/usage/automation-inventory"
+  );
+  const currentTaskCount = await countBillableAutomations(input.userId);
   const taskDenied = await requireBillingAutomationTask(
     input.userId,
-    existing.length,
+    currentTaskCount,
   );
   if (taskDenied) {
     const body = (await taskDenied.json().catch(() => ({}))) as {
@@ -404,10 +410,13 @@ export async function createAutomationFromNaturalLanguage(input: {
     };
   }
 
-  const existing = await automationService.listForUser(input.userId);
+  const { countBillableAutomations } = await import(
+    "@/lib/billing/usage/automation-inventory"
+  );
+  const currentTaskCount = await countBillableAutomations(input.userId);
   const taskDenied = await requireBillingAutomationTask(
     input.userId,
-    existing.length,
+    currentTaskCount,
   );
   if (taskDenied) {
     const body = (await taskDenied.json().catch(() => ({}))) as {

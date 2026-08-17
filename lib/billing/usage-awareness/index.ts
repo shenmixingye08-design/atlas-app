@@ -29,6 +29,11 @@ export {
 export { findUsageBillingInconsistencies } from "./consistency";
 export { buildUsageAwarenessView, buildUsageItemView, offeredUsageItems } from "./view";
 export {
+  USAGE_UNAVAILABLE_MESSAGE,
+  resolveUsageDisplay,
+} from "./load-state";
+export type { UsageDisplayState } from "./load-state";
+export {
   USAGE_THRESHOLD_STORAGE_KEY,
   readUsageThresholdMemory,
   recordUsageThresholdNotice,

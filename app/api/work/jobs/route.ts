@@ -99,6 +99,14 @@ export async function POST(request: Request): Promise<Response> {
     clientKey,
   });
 
+  const { requireAndConsumeAiJob } = await import("@/lib/billing/access");
+  const quotaDenied = await requireAndConsumeAiJob(
+    userId,
+    "work_job",
+    idempotencyKey,
+  );
+  if (quotaDenied) return quotaDenied;
+
   const existing = findWorkJobByIdempotencyKey(userId, idempotencyKey);
   if (existing) {
     const { isStaleWorkJobRunning } = await import("@/lib/work-jobs/run");

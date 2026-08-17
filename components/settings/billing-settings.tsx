@@ -421,9 +421,31 @@ export function BillingSettings() {
           {summary.usageAwareness.resetLabel}
         </p>
         <Card padding="lg" className="space-y-3 shadow-[var(--shadow-soft)]">
-          {offeredUsageItems(summary.usageAwareness).map((item) => (
-            <UsageItemCard key={item.id} item={item} />
-          ))}
+          {summary.usageReady === false ? (
+            <div className="space-y-3" role="alert">
+              <p className="text-sm text-foreground">
+                利用状況を取得できませんでした
+              </p>
+              <p className="text-caption text-[var(--text-secondary)]">
+                確認不能のため、0件としては表示していません。再読み込みしてください。
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="min-h-[44px]"
+                onClick={() => {
+                  setIsLoading(true);
+                  void load();
+                }}
+              >
+                再読み込み
+              </Button>
+            </div>
+          ) : (
+            offeredUsageItems(summary.usageAwareness).map((item) => (
+              <UsageItemCard key={item.id} item={item} />
+            ))
+          )}
           {summary.usage.aiDetail && (
             <div className="space-y-3 border-t border-[var(--border-subtle)] pt-6">
               <h3 className="text-sm font-semibold text-foreground">

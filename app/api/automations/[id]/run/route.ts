@@ -42,14 +42,19 @@ export async function POST(
 
   const origin = resolveOrigin(request);
 
-  const { requireBillingAiUsage, requireBillingFeature } = await import(
+  const { requireBillingFeature } = await import(
     "@/lib/billing/access"
   );
   if (automation.executionMode === "high_quality") {
     const hqDenied = await requireBillingFeature(userId, "high_quality_mode");
     if (hqDenied) return hqDenied;
   }
-  const usageDenied = await requireBillingAiUsage(userId);
+  const { requireAndConsumeAiJob } = await import("@/lib/billing/access");
+  const usageDenied = await requireAndConsumeAiJob(
+    userId,
+    "automation_run",
+    request.headers.get("idempotency-key")?.trim() || id,
+  );
   if (usageDenied) return usageDenied;
 
   const result = await automationService.runNow(id, {

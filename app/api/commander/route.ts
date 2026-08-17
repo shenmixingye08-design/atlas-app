@@ -110,6 +110,20 @@ export async function POST(request: Request): Promise<Response> {
 
       const limited = await enforceAiRateLimit(userId);
       if (limited) return limited;
+
+      const claim =
+        typeof parsed.metadata?.idempotencyKey === "string" &&
+        parsed.metadata.idempotencyKey.trim()
+          ? parsed.metadata.idempotencyKey.trim()
+          : request.headers.get("idempotency-key")?.trim() ||
+            crypto.randomUUID();
+      const { requireAndConsumeAiJob } = await import("@/lib/billing/access");
+      const quotaDenied = await requireAndConsumeAiJob(
+        userId,
+        "commander",
+        claim,
+      );
+      if (quotaDenied) return quotaDenied;
     }
 
     const result = await runCommanderRequest({

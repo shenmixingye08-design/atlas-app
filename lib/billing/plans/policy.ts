@@ -4,7 +4,15 @@ import type { UsageSnapshot } from "../usage/types";
 
 /** User-facing copy for both AI run and AI cost ceilings. Never leak USD. */
 export const AI_USAGE_LIMIT_REACHED_MESSAGE =
-  "今月のAI利用上限に達しました。翌月にリセットされます。";
+  "今月のAI作業上限に達しました。翌月にリセットされます。";
+
+export function aiUsageLimitReachedMessage(limit: number): string {
+  return `今月のAI作業上限${limit}回に達しました。`;
+}
+
+export function automationTaskLimitReachedMessage(limit: number): string {
+  return `現在のプランでは自動化を${limit}件まで作成できます。`;
+}
 
 export function planIncludesFeature(
   planId: PlanId,
@@ -38,7 +46,7 @@ export function checkAutomationTaskLimit(
   return {
     allowed: false,
     planId,
-    reason: `自動化タスクは${limit}件までです（${getPlanDefinition(planId).name}）`,
+    reason: automationTaskLimitReachedMessage(limit),
   };
 }
 
@@ -66,7 +74,7 @@ export function checkAiUsageLimit(
   return {
     allowed: false,
     planId,
-    reason: AI_USAGE_LIMIT_REACHED_MESSAGE,
+    reason: aiUsageLimitReachedMessage(limit),
   };
 }
 

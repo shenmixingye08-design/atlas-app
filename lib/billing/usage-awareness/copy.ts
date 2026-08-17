@@ -29,7 +29,7 @@ export function formatUsageHeadline(item: UsageItemView): string {
   const label = USAGE_METER_LABEL[item.id];
   if (item.unlimited) return `${label}は上限なしです`;
   if (item.level === "exhausted") {
-    return `今月の${label}上限に達しました`;
+    return `今月の${label}上限${item.limit}${USAGE_UNIT_LABEL[item.unit]}に達しました`;
   }
   if (item.level === "critical") {
     return `今月あと${item.remaining}${USAGE_UNIT_LABEL[item.unit]}です`;
