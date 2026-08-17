@@ -23,6 +23,10 @@ import {
   generateXAutomationPostText,
   readPreparedXPostText,
 } from "@/lib/automation-platform/execution/x-post-generate";
+import {
+  allowsFixedTextHashtagAuto,
+  applyXAutomationPostHashtags,
+} from "@/lib/automation-platform/execution/x-post-hashtags";
 import { applyMemoryToStepBody } from "@/lib/memory-apply/step-body";
 import { postTweetNowForUser } from "@/lib/integrations/x/post/service";
 import type { StepInvokeResult } from "@/lib/automation-platform/execution/step-invoker";
@@ -127,6 +131,9 @@ export const invokeXPostAdapter: ExternalAdapter = async (input) => {
             : null,
         userId: input.userId,
         runId: input.runId,
+        skipAutoHashtags: Boolean(
+          configString(input.step.configuration, ["hashtags"]),
+        ),
       });
       logXPostInstructionTrace({
         stage: "generate",
@@ -174,6 +181,24 @@ export const invokeXPostAdapter: ExternalAdapter = async (input) => {
       generatedXPostTextPresent: false,
     });
     return configMissingInput(X_POST_MISSING_CONTENT_MESSAGE);
+  }
+
+  if (
+    classification.mode === "fixed" &&
+    allowsFixedTextHashtagAuto({
+      configuration: input.step.configuration,
+      notes: input.freeformNotes,
+    })
+  ) {
+    const memoryInjection =
+      typeof input.resolvedInstruction?.merged.memoryInjectionText === "string"
+        ? input.resolvedInstruction.merged.memoryInjectionText
+        : null;
+    text = applyXAutomationPostHashtags({
+      text,
+      topic: classification.topic,
+      memoryInjection,
+    }).text;
   }
 
   const hashtags = configString(input.step.configuration, ["hashtags"]);

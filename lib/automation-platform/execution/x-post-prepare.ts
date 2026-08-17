@@ -141,6 +141,10 @@ export async function maybePrepareXPostCopyForRun(input: {
         ? input.resolvedInstruction.merged.memoryInjectionText
         : null,
     userId: input.automation.userId,
+    skipAutoHashtags: Boolean(
+      typeof xStep.configuration.hashtags === "string" &&
+        xStep.configuration.hashtags.trim(),
+    ),
   });
 
   if (!generated.ok) {
