@@ -3,6 +3,7 @@
  * Uses sample typical-manual baselines only — never invents user outcomes.
  */
 
+import { getPlanDefinition } from "@/lib/billing/plans/registry";
 import {
   PROOF_EMAIL_SAMPLE,
   PROOF_SNS_SAMPLE,
@@ -11,7 +12,12 @@ import {
 /** Reference retail price for a typical canned coffee in Japan (yen). Labeled 参考. */
 export const REFERENCE_CANNED_COFFEE_JPY = 130;
 
-export const LIGHT_PLAN_JPY = 980;
+/** Same yen amount as Plan Registry Light — never a second price source. */
+export const LIGHT_PLAN_JPY = getPlanDefinition("light").monthlyPriceJpy;
+
+export function lightPlanYenLabel(): string {
+  return `${LIGHT_PLAN_JPY.toLocaleString("ja-JP")}円`;
+}
 
 /** Weekday assumption for sample monthly math (見本定義). */
 export const SAMPLE_WORKDAYS_PER_MONTH = 20;

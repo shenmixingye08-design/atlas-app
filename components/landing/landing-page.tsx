@@ -8,6 +8,7 @@ import {
   formatLandingPrice,
   getLandingPlans,
 } from "@/lib/landing/content";
+import { lightPlanYenLabel } from "@/lib/landing/pay-reason";
 import { cn } from "@/lib/design-system/cn";
 
 import { LandingCtaSection } from "./landing-cta-section";
@@ -59,7 +60,7 @@ function LandingHeader() {
             見本
           </a>
           <a href="#price-value" className="text-xs font-medium text-[#6F6265] hover:text-[#74172A]">
-            980円
+            {lightPlanYenLabel()}
           </a>
           <a href="#pricing" className="text-xs font-medium text-[#6F6265] hover:text-[#74172A]">
             料金
@@ -86,7 +87,7 @@ function PricingSection() {
       <div className="relative mx-auto max-w-[1240px]">
         <div className="mx-auto max-w-3xl text-center">
           <h2 className="text-3xl font-semibold tracking-[-0.04em] text-[#26191C] sm:text-4xl">
-            合えば、月980円。
+            合えば、月{lightPlanYenLabel()}。
           </h2>
           <p className="mt-5 text-sm leading-7 text-[#75686B] sm:text-base">
             無料で1件完成させて判断。X投稿・メール・資料づくりを日常的に任せるなら Light。
@@ -208,7 +209,7 @@ function PricingSection() {
                     {plan.planId === "free"
                       ? "今すぐ1件終わらせる"
                       : plan.planId === "light"
-                        ? "月980円で毎日任せる"
+                        ? `月${lightPlanYenLabel()}で毎日任せる`
                         : "このプランで始める"}
                   </Button>
                 </Link>

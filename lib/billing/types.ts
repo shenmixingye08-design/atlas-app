@@ -1,4 +1,4 @@
-import type { PlanDefinition } from "./plans/types";
+import type { PlanDefinition, PlanId } from "./plans/types";
 import type {
   SubscriptionConsistency,
   SubscriptionResolveSource,
@@ -14,7 +14,11 @@ export type UserBillingSummary = {
   subscription: UserSubscriptionView;
   usage: UsageLimitSummary;
   usageAwareness: UsageAwarenessView;
+  /** Catalog row for the Stripe-stored plan (may differ from entitlements). */
   plan: PlanDefinition;
+  /** Plan used for limits and feature gates after status rules. */
+  effectivePlanId: PlanId;
+  effectivePlan: PlanDefinition;
   stripeLiveMode: boolean;
   /** Temporary safe diagnostics — never includes the secret itself. */
   secretConfigured: boolean;

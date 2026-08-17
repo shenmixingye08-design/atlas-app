@@ -5,6 +5,7 @@ import { Show } from "@clerk/nextjs";
 
 import { Button } from "@/components/ui/button";
 import { ATLAS_APP_HOME_PATH } from "@/lib/auth/public-routes";
+import { lightPlanYenLabel } from "@/lib/landing/pay-reason";
 
 import { LandingChatgptContrast } from "./landing-chatgpt-contrast";
 import { LandingHeroMockup } from "./landing-hero-mockup";
@@ -48,7 +49,7 @@ export function LandingHeroSection() {
           </p>
 
           <p className="mx-auto mt-3 max-w-[520px] text-sm leading-7 text-[#75686B] lg:mx-0">
-            依頼した仕事を進め、完成したらお知らせします。合えば月980円。
+            依頼した仕事を進め、完成したらお知らせします。合えば月{lightPlanYenLabel()}。
           </p>
 
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row lg:justify-start">
@@ -82,7 +83,7 @@ export function LandingHeroSection() {
             </a>
             {" · "}
             <a href="#price-value" className="underline-offset-2 hover:underline">
-              980円の比較を見る
+              {lightPlanYenLabel()}の比較を見る
             </a>
           </p>
 

@@ -5,12 +5,15 @@ import { Show } from "@clerk/nextjs";
 
 import { Button } from "@/components/ui/button";
 import { ATLAS_APP_HOME_PATH } from "@/lib/auth/public-routes";
+import { lightPlanYenLabel } from "@/lib/landing/pay-reason";
 
-const LINES = [
-  "X投稿、メール、予定、資料作成。面倒な作業はMINERVOTに任せる。",
-  "自分は確認するだけ。朝のメール10分を手放せたら、月980円でも安い（見本目安）。",
-  "登録して仕事を1つ選ぶだけ。完成したらお知らせします。",
-] as const;
+function ctaLines() {
+  return [
+    "X投稿、メール、予定、資料作成。面倒な作業はMINERVOTに任せる。",
+    `自分は確認するだけ。朝のメール10分を手放せたら、月${lightPlanYenLabel()}でも安い（見本目安）。`,
+    "登録して仕事を1つ選ぶだけ。完成したらお知らせします。",
+  ] as const;
+}
 
 export function LandingCtaSection() {
   return (
@@ -24,7 +27,7 @@ export function LandingCtaSection() {
           </h2>
 
           <ul className="mx-auto mt-8 max-w-2xl space-y-3 text-left">
-            {LINES.map((line) => (
+            {ctaLines().map((line) => (
               <li
                 key={line}
                 className="rounded-2xl border border-[#74172A]/8 bg-[#FFFDFB] px-4 py-3 text-sm leading-7 text-[#49373C]"
@@ -59,7 +62,7 @@ export function LandingCtaSection() {
           </div>
 
           <p className="mt-8 text-sm text-[#75686B]">
-            クレジットカード不要 · 登録後は仕事を選ぶだけ · 合えば月980円
+            クレジットカード不要 · 登録後は仕事を選ぶだけ · 合えば月{lightPlanYenLabel()}
           </p>
         </div>
       </div>

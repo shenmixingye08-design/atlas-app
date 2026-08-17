@@ -2152,6 +2152,10 @@ export const ui = {
     settingsLinkTitle: "プラン・請求",
     settingsLinkHint: "プラン変更、利用量、請求情報の管理",
     currentPlan: "現在のプラン",
+    entitlementFallbackNote: (planName: string) =>
+      `お支払い状態により、現在ご利用いただける範囲は${planName}です`,
+    cancelAtPeriodEndNote: (date: string) =>
+      `${date} まで現在のプランをご利用いただけます（解約予定）`,
     usageTitle: "今月の利用状況",
     remainingTitle: "残り回数",
     aiRuns: "AI利用",
