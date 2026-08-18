@@ -4,7 +4,6 @@ import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
 import { ensureExternalAuthHydrated } from "@/lib/integrations/external-services/durable";
-import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
 import {
   connectWordPressAccount,
   disconnectWordPressAccount,
@@ -75,28 +74,15 @@ export async function POST(request: Request): Promise<Response> {
   try {
     await ensureExternalAuthHydrated(userId);
 
-    const { requireBillingExternalIntegration } = await import(
-      "@/lib/billing/access"
+    const { billingDenialResponse } = await import("@/lib/billing/access");
+    const { evaluateExternalServiceConnectAccess } = await import(
+      "@/lib/integrations/external-services/connect-access"
     );
-    const { listExternalServiceConnections } = await import(
-      "@/lib/integrations/external-services/store"
+    const { denial } = await evaluateExternalServiceConnectAccess(
+      userId,
+      "wordpress",
     );
-
-    const connectedCount = listExternalServiceConnections(userId).filter(
-      (row) => row.status === "connected",
-    ).length;
-
-    const existing = getExternalServiceConnection(userId, "wordpress");
-    const reconnectExempt =
-      existing.status === "connected" || existing.status === "error";
-
-    if (!reconnectExempt) {
-      const limitDenied = await requireBillingExternalIntegration(
-        userId,
-        connectedCount,
-      );
-      if (limitDenied) return limitDenied;
-    }
+    if (denial) return billingDenialResponse(denial);
 
     const result = await connectWordPressAccount(userId, {
       siteUrl: body.siteUrl,

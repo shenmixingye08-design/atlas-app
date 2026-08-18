@@ -1,3 +1,5 @@
+import { isAtlasProduction } from "@/lib/runtime/is-production";
+
 /** Dropbox OAuth 2.0 configuration (server-only). */
 export const DROPBOX_OAUTH_SCOPES = [
   "account_info.read",
@@ -49,6 +51,13 @@ export function getDropboxRedirectUri(requestOrigin: string): string {
     process.env.DROPBOX_REDIRECT_URI?.trim() ||
     process.env.DROPBOX_OAUTH_REDIRECT_URI?.trim();
   if (configured) return configured;
+
+  if (isAtlasProduction()) {
+    throw new Error(
+      "DROPBOX_REDIRECT_URI (or DROPBOX_OAUTH_REDIRECT_URI) must be set in production. Do not derive redirect_uri from the request Host.",
+    );
+  }
+
   return `${requestOrigin.replace(/\/$/, "")}/api/external-services/dropbox/oauth/callback`;
 }
 

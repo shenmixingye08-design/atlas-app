@@ -45,6 +45,17 @@ export async function GET(request: Request): Promise<Response> {
       return redirectToSettings(origin, { x_error: "1" });
     }
 
+    const { evaluateExternalServiceConnectAccess } = await import(
+      "@/lib/integrations/external-services/connect-access"
+    );
+    const { denial } = await evaluateExternalServiceConnectAccess(userId, "x");
+    if (denial) {
+      return redirectToSettings(origin, {
+        x_error: "1",
+        plan: denial.kind === "limit" ? "limit" : "required",
+      });
+    }
+
     const authorizeUrl = buildXAuthorizeUrl(origin, userId);
     return Response.redirect(authorizeUrl, 302);
   } catch (error) {

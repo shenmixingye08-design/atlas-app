@@ -1,3 +1,5 @@
+import { isAtlasProduction } from "@/lib/runtime/is-production";
+
 /** X OAuth 2.0 configuration (server-only). */
 export const X_OAUTH_SCOPES = [
   "tweet.read",
@@ -40,6 +42,13 @@ export function getXRedirectUri(requestOrigin: string): string {
     process.env.X_REDIRECT_URI?.trim() ||
     process.env.X_OAUTH_REDIRECT_URI?.trim();
   if (configured) return configured;
+
+  if (isAtlasProduction()) {
+    throw new Error(
+      "X_REDIRECT_URI (or X_OAUTH_REDIRECT_URI) must be set in production. Do not derive redirect_uri from the request Host.",
+    );
+  }
+
   return `${requestOrigin.replace(/\/$/, "")}/api/external-services/x/oauth/callback`;
 }
 

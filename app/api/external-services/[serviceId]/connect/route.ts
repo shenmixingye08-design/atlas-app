@@ -63,42 +63,15 @@ export async function POST(
     await ensureExternalAuthHydrated(userId);
     const accessContext = await resolveFeatureAccessContext();
 
-    const {
-      requireBillingExternalIntegration,
-      requireBillingFeature,
-    } = await import("@/lib/billing/access");
-    const { listExternalServiceConnections } = await import(
-      "@/lib/integrations/external-services/store"
+    const { billingDenialResponse } = await import("@/lib/billing/access");
+    const { evaluateExternalServiceConnectAccess } = await import(
+      "@/lib/integrations/external-services/connect-access"
     );
-    const connectedCount = listExternalServiceConnections(userId).filter(
-      (row) => row.status === "connected",
-    ).length;
-
-    if (serviceId === "google") {
-      const googleDenied = await requireBillingFeature(
-        userId,
-        "google_integration",
-      );
-      if (googleDenied) return googleDenied;
-    }
-
-    // Reconnect for an already-connected Google/X/WordPress account does not consume a new slot.
-    const reconnectExempt =
-      (serviceId === "google" ||
-        serviceId === "x" ||
-        serviceId === "wordpress") &&
-      listExternalServiceConnections(userId).some(
-        (row) =>
-          row.serviceId === serviceId &&
-          (row.status === "connected" || row.status === "error"),
-      );
-    if (!reconnectExempt) {
-      const limitDenied = await requireBillingExternalIntegration(
-        userId,
-        connectedCount,
-      );
-      if (limitDenied) return limitDenied;
-    }
+    const { denial } = await evaluateExternalServiceConnectAccess(
+      userId,
+      serviceId,
+    );
+    if (denial) return billingDenialResponse(denial);
 
     const origin = resolveOrigin(request);
     const result = await externalServiceManager.connect(

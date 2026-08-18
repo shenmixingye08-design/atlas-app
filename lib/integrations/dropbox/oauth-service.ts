@@ -136,6 +136,29 @@ export async function disconnectDropboxAccount(
   return disconnected;
 }
 
+const DROPBOX_RECONNECT_REQUIRED_MESSAGE =
+  "Dropbox連携の有効期限が切れました。再接続してください";
+
+export function markDropboxConnectionNeedsReconnect(
+  userId: string,
+  message: string = DROPBOX_RECONNECT_REQUIRED_MESSAGE,
+): ExternalServiceConnection {
+  const current = getExternalServiceConnection(userId, "dropbox");
+  const next: ExternalServiceConnection = {
+    ...createDefaultConnection(dropboxServiceDefinition),
+    status: "error",
+    connectedAt: current.connectedAt,
+    lastUsedAt: current.lastUsedAt,
+    scopes: current.scopes,
+    features: [...dropboxServiceDefinition.plannedFeatures],
+    errorMessage: message,
+    account: current.account,
+  };
+  saveExternalServiceConnection(userId, next);
+  schedulePersistExternalAuth(userId);
+  return next;
+}
+
 export async function getDropboxAccessToken(
   userId: string,
 ): Promise<string | null> {
@@ -150,7 +173,10 @@ export async function getDropboxAccessToken(
     return credentials.accessToken;
   }
 
-  if (!credentials.refreshToken) return null;
+  if (!credentials.refreshToken) {
+    markDropboxConnectionNeedsReconnect(userId);
+    return null;
+  }
 
   try {
     const refreshed = await refreshDropboxAccessToken(credentials.refreshToken);
@@ -180,6 +206,7 @@ export async function getDropboxAccessToken(
       "[Dropbox] Token refresh failed",
       error instanceof Error ? error.message : "refresh_failed",
     );
+    markDropboxConnectionNeedsReconnect(userId);
     return null;
   }
 }
