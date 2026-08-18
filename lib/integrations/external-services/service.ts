@@ -150,6 +150,27 @@ export class ExternalServiceManager {
       };
     }
 
+    // Dropbox: always allow connect/reconnect (token expiry / consent refresh).
+    if (serviceId === "dropbox") {
+      if (!requestOrigin) {
+        throw new Error("Request origin is required for Dropbox OAuth");
+      }
+
+      markDropboxConnectionPending(userId);
+      const pending = getExternalServiceConnection(userId, "dropbox");
+      const authorizeUrl = buildDropboxAuthorizeUrl(requestOrigin, userId);
+      const isReconnect =
+        current.status === "connected" || current.status === "error";
+
+      return {
+        connection: pending,
+        message: isReconnect
+          ? "Dropbox再認証画面へ移動します"
+          : "Dropbox認証画面へ移動します",
+        authorizeUrl,
+      };
+    }
+
     // WordPress: Application Password — dedicated settings UI (no OAuth).
     if (serviceId === "wordpress") {
       if (!requestOrigin) {
@@ -168,22 +189,6 @@ export class ExternalServiceManager {
 
     if (current.status === "connected") {
       return { connection: current, message: "すでに接続済みです" };
-    }
-
-    if (serviceId === "dropbox") {
-      if (!requestOrigin) {
-        throw new Error("Request origin is required for Dropbox OAuth");
-      }
-
-      markDropboxConnectionPending(userId);
-      const pending = getExternalServiceConnection(userId, "dropbox");
-      const authorizeUrl = buildDropboxAuthorizeUrl(requestOrigin, userId);
-
-      return {
-        connection: pending,
-        message: "Dropbox認証画面へ移動します",
-        authorizeUrl,
-      };
     }
 
     const definition = getExternalServiceDefinition(serviceId);

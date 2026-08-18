@@ -59,7 +59,7 @@ async function resolveDropboxAccess(input: {
   if (!accessToken) {
     return {
       status: "dropbox_not_connected",
-      message: "Dropboxを接続してください",
+      message: "Dropbox連携の有効期限が切れました。再接続してください",
     };
   }
 

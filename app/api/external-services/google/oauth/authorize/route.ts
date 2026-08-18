@@ -45,43 +45,18 @@ export async function GET(request: Request): Promise<Response> {
       return redirectToSettings(origin, { google_error: "1" });
     }
 
-    const { requireBillingFeature, requireBillingExternalIntegration } =
-      await import("@/lib/billing/access");
-    const { listExternalServiceConnections } = await import(
-      "@/lib/integrations/external-services/store"
+    const { evaluateExternalServiceConnectAccess } = await import(
+      "@/lib/integrations/external-services/connect-access"
     );
-    // Load durable state first so the connection count / "already connected"
-    // check reflects reality on a cold instance (avoids false limit blocks).
-    const { ensureExternalAuthHydrated } = await import(
-      "@/lib/integrations/external-services/durable"
-    );
-    await ensureExternalAuthHydrated(userId);
-    const googleDenied = await requireBillingFeature(
+    const { denial } = await evaluateExternalServiceConnectAccess(
       userId,
-      "google_integration",
+      "google",
     );
-    if (googleDenied) {
+    if (denial) {
       return redirectToSettings(origin, {
         google_error: "1",
-        plan: "standard",
+        plan: denial.kind === "limit" ? "limit" : "standard",
       });
-    }
-    const connectedCount = listExternalServiceConnections(userId).filter(
-      (row) => row.status === "connected",
-    ).length;
-    const googleConnected = listExternalServiceConnections(userId).some(
-      (row) =>
-        row.serviceId === "google" &&
-        (row.status === "connected" || row.status === "error"),
-    );
-    if (!googleConnected) {
-      const limitDenied = await requireBillingExternalIntegration(
-        userId,
-        connectedCount,
-      );
-      if (limitDenied) {
-        return redirectToSettings(origin, { google_error: "1", plan: "limit" });
-      }
     }
 
     const authorizeUrl = buildGoogleAccountAuthorizeUrl(origin, userId);
