@@ -62,7 +62,7 @@ export function LandingPriceValue() {
               {minutesToHoursLabel(combinedMonth)}相当（見本）
             </p>
             <p className="mt-2 text-sm leading-7 text-[#75686B]">
-              これが「無料だから試す」ではなく「980円でも使いたい」の計算です。
+              これが「無料だから試す」ではなく「{LIGHT_PLAN_JPY.toLocaleString("ja-JP")}円でも使いたい」の計算です。
               1日あたりに割ると、缶コーヒー1本より小さい判断になります。
             </p>
           </li>
@@ -83,7 +83,7 @@ export function LandingPriceValue() {
             href="#pricing"
             className="text-sm font-medium text-[#74172A] underline-offset-2 hover:underline"
           >
-            Light（月980円）の内容を見る
+            Light（月{LIGHT_PLAN_JPY.toLocaleString("ja-JP")}円）の内容を見る
           </a>
         </div>
       </div>

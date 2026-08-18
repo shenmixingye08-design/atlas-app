@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { listBillingHistoryRecords, resetBillingHistoryStore } from "../history/store";
 import { resetBillingNotificationStore } from "../notifications/store";
@@ -22,11 +22,19 @@ function buildEvent<T extends string>(
 
 describe("stripe webhook handlers", () => {
   beforeEach(() => {
+    vi.unstubAllEnvs();
+    vi.stubEnv("STRIPE_PRICE_LIGHT", "price_light_test");
+    vi.stubEnv("STRIPE_PRICE_STANDARD", "price_standard_test");
+    vi.stubEnv("STRIPE_PRICE_PREMIUM", "price_premium_test");
     resetSubscriptionStore();
     resetBillingHistoryStore();
     resetBillingNotificationStore();
     resetStripeWebhookLogStore();
     resetProcessedStripeEvents();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("applies plan on checkout.session.completed", async () => {
@@ -191,6 +199,25 @@ describe("stripe webhook handlers", () => {
     const view = getUserSubscriptionView("user_upd_1");
     expect(view.planId).toBe("premium");
     expect(view.stripePriceId).toBe("price_premium_test");
+  });
+
+  it("charges Light Price even when metadata claims Premium", async () => {
+    const result = await handleStripeWebhookEvent(
+      buildEvent("checkout.session.completed", {
+        client_reference_id: "user_price_sot",
+        customer: "cus_price_sot",
+        subscription: "sub_price_sot",
+        metadata: {
+          userId: "user_price_sot",
+          planId: "premium",
+          priceId: "price_light_test",
+        },
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.planId).toBe("light");
+    expect(getUserSubscriptionView("user_price_sot").planId).toBe("light");
   });
 
   it("treats invoice.paid like payment succeeded", async () => {

@@ -23,6 +23,7 @@ import {
   resolveCheckoutUrls,
   resolvePlanIdFromStripePrice,
 } from "./config";
+import { resolvePaidPlanFromStripeSubscription } from "./resolve-paid-plan";
 import {
   CHECKOUT_ALREADY_SAME_PLAN_MESSAGE,
   CHECKOUT_PRICE_MISMATCH_MESSAGE,
@@ -194,11 +195,7 @@ function isBlockingSubscriptionStatus(
 function resolvePlanFromStripeSubscription(
   subscription: Stripe.Subscription,
 ): PlanId | null {
-  const metadataPlan = subscription.metadata?.planId;
-  if (metadataPlan && isPlanId(metadataPlan)) return metadataPlan;
-
-  const priceId = subscription.items.data[0]?.price?.id ?? null;
-  return resolvePlanIdFromStripePrice(priceId);
+  return resolvePaidPlanFromStripeSubscription(subscription).planId;
 }
 
 /**

@@ -23,11 +23,14 @@ import {
   schedulePaymentFailureGrace,
   StripeCustomerOwnershipError,
 } from "../subscriptions/lifecycle";
+import type { PlanId } from "../plans/types";
 import type { SubscriptionStatus } from "../subscriptions/types";
-import { mapStripePlanId } from "./checkout";
 import type { StripeWebhookEventType } from "./config";
 import { getStripeClient } from "./client";
-import { resolvePlanIdFromStripePrice } from "./config";
+import {
+  resolvePaidPlanFromStripeRefs,
+  resolvePaidPlanFromStripeSubscription,
+} from "./resolve-paid-plan";
 import { recordStripeWebhookLog } from "@/lib/owner/billing-webhook/telemetry";
 import { recordAuditLogSafe } from "@/lib/owner/audit-log";
 
@@ -118,12 +121,8 @@ function resolvePriceIdFromSubscription(
 
 function resolvePlanFromSubscription(
   subscription: Stripe.Subscription,
-): ReturnType<typeof mapStripePlanId> {
-  const metadataPlan = mapStripePlanId(subscription.metadata?.planId);
-  if (metadataPlan) return metadataPlan;
-
-  const priceId = resolvePriceIdFromSubscription(subscription);
-  return resolvePlanIdFromStripePrice(priceId);
+): PlanId | null {
+  return resolvePaidPlanFromStripeSubscription(subscription).planId;
 }
 
 function logWebhookResult(input: {
@@ -191,7 +190,7 @@ function logWebhookResult(input: {
 
 function saveBillingSnapshot(input: {
   userId: string;
-  planId: NonNullable<ReturnType<typeof mapStripePlanId>>;
+  planId: PlanId;
   status: SubscriptionStatus | "payment_failed" | "payment_succeeded" | "refunded";
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
@@ -270,17 +269,6 @@ async function handleCheckoutCompleted(
   const session = event.data.object as Stripe.Checkout.Session;
   const userId =
     session.client_reference_id ?? session.metadata?.userId ?? null;
-  const planId = mapStripePlanId(session.metadata?.planId);
-
-  if (!userId || !planId) {
-    return logWebhookResult({
-      event,
-      status: "failure",
-      message: "Missing userId or planId on checkout session",
-      userId,
-      planId,
-    });
-  }
 
   const subscriptionId =
     typeof session.subscription === "string"
@@ -304,6 +292,24 @@ async function handleCheckoutCompleted(
       stripePriceId =
         resolvePriceIdFromSubscription(subscription) ?? stripePriceId;
     }
+  }
+
+  const resolved = resolvePaidPlanFromStripeRefs({
+    priceId: stripePriceId,
+    metadataPlanId: session.metadata?.planId,
+  });
+  const planId = resolved.planId;
+
+  if (!userId || !planId) {
+    return logWebhookResult({
+      event,
+      status: "failure",
+      message: resolved.unknownPrice
+        ? "Checkout Price ID is not in the server allowlist"
+        : "Missing userId or planId on checkout session",
+      userId,
+      planId,
+    });
   }
 
   try {
@@ -360,13 +366,19 @@ async function handleSubscriptionUpsert(
 ): Promise<WebhookHandleResult> {
   const subscription = event.data.object as Stripe.Subscription;
   const userId = subscription.metadata.userId ?? null;
-  const planId = resolvePlanFromSubscription(subscription);
+  const resolved = resolvePaidPlanFromStripeSubscription(subscription);
+  const currentPlan = userId
+    ? resolveUserSubscription(userId).planId
+    : "free";
+  const planId = resolved.planId ?? (currentPlan !== "free" ? currentPlan : null);
 
   if (!userId || !planId) {
     return logWebhookResult({
       event,
       status: "failure",
-      message: "Missing userId or planId on subscription",
+      message: resolved.unknownPrice
+        ? "Subscription Price ID is not in the server allowlist"
+        : "Missing userId or planId on subscription",
       userId,
       planId,
     });

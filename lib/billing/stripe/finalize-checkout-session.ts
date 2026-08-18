@@ -2,14 +2,12 @@ import "server-only";
 
 import type Stripe from "stripe";
 
-import { mapStripePlanId } from "./checkout";
 import { getStripeClient } from "./client";
-import { resolvePlanIdFromStripePrice } from "./config";
+import { resolvePaidPlanFromStripeRefs } from "./resolve-paid-plan";
 import { applyPaidPlanFromWebhook } from "../subscriptions/lifecycle";
 import { resolveUserSubscription } from "../subscriptions/service";
 import { resolveUserSubscriptionDurable } from "../subscriptions/store";
 import type { SubscriptionStatus } from "../subscriptions/types";
-import { isPlanId } from "../plans/registry";
 import type { PlanId } from "../plans/types";
 
 function periodIso(unixSeconds: number | null | undefined): string | null {
@@ -90,12 +88,6 @@ export async function finalizeCheckoutSessionForUser(input: {
     return { planId: null, synced: false };
   }
 
-  let planId: PlanId | null =
-    mapStripePlanId(session.metadata?.planId) ??
-    (session.metadata?.planId && isPlanId(session.metadata.planId)
-      ? session.metadata.planId
-      : null);
-
   const subscriptionRef = session.subscription;
   const subscription =
     typeof subscriptionRef === "object" && subscriptionRef && "id" in subscriptionRef
@@ -104,15 +96,15 @@ export async function finalizeCheckoutSessionForUser(input: {
         ? await stripe.subscriptions.retrieve(subscriptionRef)
         : null;
 
-  if (!planId && subscription) {
-    const priceId = subscription.items.data[0]?.price?.id ?? null;
-    planId =
-      mapStripePlanId(subscription.metadata?.planId) ??
-      resolvePlanIdFromStripePrice(priceId);
-  }
+  const subscriptionPriceId = subscription?.items.data[0]?.price?.id ?? null;
+  const planId: PlanId | null = resolvePaidPlanFromStripeRefs({
+    priceId: subscriptionPriceId ?? session.metadata?.priceId ?? null,
+    metadataPlanId:
+      session.metadata?.planId ?? subscription?.metadata?.planId ?? null,
+  }).planId;
 
   if (planId && subscription) {
-    const priceId = subscription.items.data[0]?.price?.id ?? null;
+    const priceId = subscriptionPriceId;
     const legacy = subscription as Stripe.Subscription & {
       current_period_start?: number;
       current_period_end?: number;

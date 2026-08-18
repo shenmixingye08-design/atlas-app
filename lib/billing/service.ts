@@ -35,6 +35,7 @@ export async function getUserBillingSummary(
   const usageLoad = await hydrateUserUsageMeters(userId);
   const usage = getUserUsageLimitSummary(userId, effectivePlanId);
   const plan = getPlanDefinition(record.planId);
+  const effectivePlan = getPlanDefinition(effectivePlanId);
   const secretDiagnostics = getStripeSecretDiagnostics();
   const notifications = await listUserBillingNotifications(userId);
   const usageAwareness = buildUsageAwarenessView({
@@ -63,6 +64,8 @@ export async function getUserBillingSummary(
     usageError: usageLoad.error,
     usageAwareness,
     plan,
+    effectivePlanId,
+    effectivePlan,
     stripeLiveMode: isStripeLiveMode(),
     secretConfigured: secretDiagnostics.secretConfigured,
     secretLength: secretDiagnostics.secretLength,

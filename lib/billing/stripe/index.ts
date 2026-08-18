@@ -22,6 +22,14 @@ export {
 export type { StripeEnvPresence, StripeWebhookEventType } from "./config";
 
 export { getStripeClient } from "./client";
+export {
+  resolvePaidPlanFromStripeRefs,
+  resolvePaidPlanFromStripeSubscription,
+} from "./resolve-paid-plan";
+export type {
+  PaidPlanResolveResult,
+  PaidPlanResolveSource,
+} from "./resolve-paid-plan";
 
 export {
   assertAllowedStripePriceId,

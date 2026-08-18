@@ -2,9 +2,8 @@ import "server-only";
 
 import type Stripe from "stripe";
 
-import { isPlanId } from "../plans/registry";
 import type { PlanId } from "../plans/types";
-import { resolvePlanIdFromStripePrice } from "../stripe/config";
+import { resolvePaidPlanFromStripeSubscription } from "../stripe/resolve-paid-plan";
 
 import { applySubscriptionFromStripe, downgradeToFree } from "./service";
 import { resolveUserSubscriptionDurable } from "./store";
@@ -50,10 +49,7 @@ function mapSubscriptionStatus(
 export function resolvePlanFromStripeSubscription(
   subscription: Stripe.Subscription,
 ): PlanId | null {
-  const metadataPlan = subscription.metadata?.planId;
-  if (metadataPlan && isPlanId(metadataPlan)) return metadataPlan;
-  const priceId = subscription.items.data[0]?.price?.id ?? null;
-  return resolvePlanIdFromStripePrice(priceId);
+  return resolvePaidPlanFromStripeSubscription(subscription).planId;
 }
 
 function readPeriod(subscription: Stripe.Subscription): {

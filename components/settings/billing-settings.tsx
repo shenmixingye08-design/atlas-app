@@ -11,7 +11,6 @@ import {
   fetchBillingSummary,
   fetchPlanCatalog,
   formatPlanPriceJpy,
-  isPlanId,
   openBillingPortal,
   shouldOpenPortalForPlanChange,
   startCheckout,
@@ -151,7 +150,6 @@ function PlanCard({
 export function BillingSettings() {
   const searchParams = useSearchParams();
   const checkoutState = searchParams.get("checkout");
-  const checkoutPlanParam = searchParams.get("plan");
 
   const [summary, setSummary] = useState<UserBillingSummary | null>(null);
   const [plans, setPlans] = useState<readonly PlanDefinition[]>([]);
@@ -212,15 +210,9 @@ export function BillingSettings() {
 
   const checkoutSuccessMessage = useMemo(() => {
     if (checkoutState !== "success" || !summary) return null;
-    const planId =
-      checkoutPlanParam && isPlanId(checkoutPlanParam)
-        ? checkoutPlanParam
-        : summary.subscription.planId;
-    const planName =
-      plans.find((plan) => plan.planId === planId)?.name ??
-      summary.plan.name;
-    return ui.billing.checkoutSuccessBanner(planName);
-  }, [checkoutState, checkoutPlanParam, plans, summary]);
+    // Banner must follow server summary — never a client-tampered ?plan= query.
+    return ui.billing.checkoutSuccessBanner(summary.plan.name);
+  }, [checkoutState, summary]);
 
   const handleCheckout = async (planId: PlanId) => {
     if (busyPlanId) return;
@@ -375,13 +367,36 @@ export function BillingSettings() {
               {summary.plan.description}
             </p>
             )}
+            {summary.subscriptionConsistency === "conflict" ? null : (
+              <p className="mt-2 text-caption text-[var(--foreground-muted)]">
+                {summary.subscription.status === "past_due" ||
+                summary.subscription.status === "unpaid"
+                  ? ui.billing.statusPastDue
+                  : summary.subscription.cancelAtPeriodEnd
+                    ? ui.billing.statusCanceled
+                    : summary.subscription.isPaid
+                      ? ui.billing.statusActive
+                      : null}
+              </p>
+            )}
+            {summary.effectivePlanId !== summary.subscription.planId ? (
+              <p className="mt-2 text-sm text-[var(--foreground-muted)]">
+                {ui.billing.entitlementFallbackNote(summary.effectivePlan.name)}
+              </p>
+            ) : null}
             {summary.subscription.currentPeriodEnd && (
               <p className="mt-2 text-caption text-[var(--foreground-muted)]">
-                {ui.billing.periodEnd(
-                  new Intl.DateTimeFormat("ja-JP", {
-                    dateStyle: "medium",
-                  }).format(new Date(summary.subscription.currentPeriodEnd)),
-                )}
+                {summary.subscription.cancelAtPeriodEnd
+                  ? ui.billing.cancelAtPeriodEndNote(
+                      new Intl.DateTimeFormat("ja-JP", {
+                        dateStyle: "medium",
+                      }).format(new Date(summary.subscription.currentPeriodEnd)),
+                    )
+                  : ui.billing.periodEnd(
+                      new Intl.DateTimeFormat("ja-JP", {
+                        dateStyle: "medium",
+                      }).format(new Date(summary.subscription.currentPeriodEnd)),
+                    )}
               </p>
             )}
           </div>
