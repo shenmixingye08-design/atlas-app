@@ -23,10 +23,15 @@ function getBucket(): Map<string, CachedRun> {
 export function buildRequestCacheKey(
   assignment: string,
   executionMode: AutomationExecutionMode,
+  userId: string,
 ): string {
+  const owner = userId.trim();
+  if (!owner) {
+    throw new Error("Request cache key requires userId");
+  }
   const normalized = assignment.trim().toLowerCase().replace(/\s+/g, " ");
   return createHash("sha256")
-    .update(`${executionMode}:${normalized}`)
+    .update(`${owner}:${executionMode}:${normalized}`)
     .digest("hex");
 }
 

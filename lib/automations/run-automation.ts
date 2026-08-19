@@ -253,12 +253,15 @@ export async function executeAutomationRun(
       executionMode,
       snsBatchDays,
     });
-    const cacheKey = buildRequestCacheKey(assignment, executionMode);
+    const cacheOwnerId = options.userId ?? automation.userId;
+    const cacheKey = cacheOwnerId
+      ? buildRequestCacheKey(assignment, executionMode, cacheOwnerId)
+      : null;
 
     let result = null as Awaited<ReturnType<typeof orchestrate>> | null;
     let servedFromRequestCache = false;
 
-    if (shouldSkipRepeatedAiCalls(executionMode)) {
+    if (cacheKey && shouldSkipRepeatedAiCalls(executionMode)) {
       const cached = getCachedOrchestrationResult(cacheKey);
       if (cached) {
         result = cached;
@@ -313,7 +316,7 @@ export async function executeAutomationRun(
         },
       });
 
-      if (executionMode !== "high_quality") {
+      if (cacheKey && executionMode !== "high_quality") {
         setCachedOrchestrationResult(cacheKey, result, executionMode);
       }
     }

@@ -380,7 +380,7 @@ export async function getStoredDeliverableForUser(
       return hydrated;
     }
     // Integrity failed after durable load — regenerate from source once.
-    const durable = await loadDurableDeliverable(id);
+    const durable = await loadDurableDeliverable(id, userId);
     if (durable && durable.userId === userId) {
       getStoreBucket().delete(id);
       const regenerated = await regenerateFromSource(durable);
@@ -450,7 +450,7 @@ export async function recoverDeliverableBinary(
   userId: string,
 ): Promise<StoredDeliverable | null> {
   getStoreBucket().delete(id);
-  const durable = await loadDurableDeliverable(id);
+  const durable = await loadDurableDeliverable(id, userId);
   if (!durable || durable.userId !== userId) return null;
 
   // Try Storage again first
