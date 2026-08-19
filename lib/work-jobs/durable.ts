@@ -103,20 +103,29 @@ export async function loadWorkJobFromDurable(
   }
 }
 
+export type WorkJobDurableLookup =
+  | { status: "found"; job: WorkJobRecord }
+  | { status: "missing" }
+  | { status: "unavailable"; error: string };
+
 export async function loadWorkJobByIdempotencyKeyFromDurable(
   userId: string,
   idempotencyKey: string,
-): Promise<WorkJobRecord | null> {
+): Promise<WorkJobDurableLookup> {
   const key = idempotencyKey.trim();
-  if (!userId.trim() || !key) return null;
+  if (!userId.trim() || !key) return { status: "missing" };
   try {
     const payload = await loadDurableDomain<JobsPayload>(userId, DOMAIN_KEY);
     const job =
       payload?.jobs?.find(
         (row) => row.userId === userId && row.idempotencyKey === key,
       ) ?? null;
-    return job;
-  } catch {
-    return null;
+    if (job && job.userId === userId) return { status: "found", job };
+    return { status: "missing" };
+  } catch (error) {
+    return {
+      status: "unavailable",
+      error: error instanceof Error ? error.message : "durable lookup failed",
+    };
   }
 }
