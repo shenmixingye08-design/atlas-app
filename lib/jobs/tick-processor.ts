@@ -11,8 +11,6 @@ import {
   listStaleRunningJobs,
   upsertJobRecord,
 } from "@/lib/jobs/job-store";
-import { computeNextRetryAt } from "@/lib/jobs/retry-classifier";
-import { notifyAutomationCompleted } from "@/lib/notifications/emitters";
 
 export type TickReliabilityResult = {
   retriesProcessed: number;
@@ -33,16 +31,17 @@ export async function processJobReliabilityTick(
   const stale = await listStaleRunningJobs();
   for (const job of stale) {
     result.hangsDetected += 1;
-    const attemptCount = job.attemptCount + 1;
-    const willRetry = attemptCount <= job.maxAttempts;
+    // Hang = ambiguous (the first run may still have posted / generated).
+    // Auto-retry here would re-enter executeAutomationRun and can double-post.
+    // Fail closed; the user confirms before starting a new run.
     await upsertJobRecord({
       ...job,
-      status: willRetry ? "retrying" : "failed",
-      attemptCount,
+      status: "failed",
       lastErrorCode: "hang_timeout",
-      lastErrorMessage: "処理が長時間停止していたため再試行します",
-      nextRetryAt: willRetry ? computeNextRetryAt(attemptCount) : null,
-      failedAt: willRetry ? null : new Date().toISOString(),
+      lastErrorMessage:
+        "処理が長時間停止したため、自動再実行せず停止しました。結果をご確認のうえ、必要なら最初からやり直してください。",
+      nextRetryAt: null,
+      failedAt: new Date().toISOString(),
       pushStatus: "skipped",
       updatedAt: new Date().toISOString(),
     });
@@ -71,12 +70,10 @@ export async function processJobReliabilityTick(
 
     result.retriesProcessed += 1;
 
-    if (runResult?.status === "completed") {
-      notifyAutomationCompleted(job.userId, {
-        automationId: job.automationId,
-        name: automation.name,
-      });
-    } else if (runResult?.status === "failed") {
+    // executeAutomationRun already emits the final user notification.
+    // Do not send a second "completed" here — retry + success would look like
+    // two results for the same job.
+    if (runResult?.status === "failed") {
       await markJobFailed({
         jobId: job.id,
         userId: job.userId,

@@ -307,7 +307,7 @@ export function XPostPanel() {
         setError(result.message);
         return;
       }
-      if (result.status === "error") {
+      if (result.status === "error" || result.status === "unknown_outcome") {
         setError(result.message);
         await load();
         return;

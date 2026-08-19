@@ -78,6 +78,12 @@ export type XPostResult =
       status: "error";
       message: string;
       reconnectRequired?: boolean;
+    }
+  | {
+      /** Provider may have succeeded; do not auto-retry / re-post. */
+      status: "unknown_outcome";
+      message: string;
+      tweetId?: string | null;
     };
 
 export type XPostHistoryResult =

@@ -181,6 +181,12 @@ async function processLeasedJobBody(
     for (const step of [...current.steps].sort(
       (a, b) => a.stepIndex - b.stepIndex,
     )) {
+      const latestJob = (await store.getJob(job.jobId)) ?? current;
+      if (latestJob.status === "cancelled") {
+        break;
+      }
+      const liveStep =
+        latestJob.steps.find((row) => row.stepId === step.stepId) ?? step;
       if (Date.now() - started > WORK_QUEUE_MAX_EXECUTION_MS) {
         const failAt = new Date().toISOString();
         await store.updateJob(
@@ -198,25 +204,25 @@ async function processLeasedJobBody(
         );
         return "failed";
       }
-      if (step.status === "completed" || step.status === "skipped") {
-        Object.assign(previousOutputs, step.outputBindings);
+      if (liveStep.status === "completed" || liveStep.status === "skipped") {
+        Object.assign(previousOutputs, liveStep.outputBindings);
         continue;
       }
-      if (step.status === "cancelled") {
+      if (liveStep.status === "cancelled") {
         break;
       }
 
       // P0-06: reclaim of an in-flight side-effect step must not re-execute.
-      if (step.status === "running") {
-        if (hasSideEffectEvidence(step)) {
+      if (liveStep.status === "running") {
+        if (hasSideEffectEvidence(liveStep)) {
           const doneAt = new Date().toISOString();
           const completedStep: WorkStepRecord = {
-            ...step,
+            ...liveStep,
             status: "completed",
             completedAt: doneAt,
             updatedAt: doneAt,
             outputBindings: {
-              ...step.outputBindings,
+              ...liveStep.outputBindings,
               externalApplied: true,
               recoveredFromRunning: true,
             },
@@ -225,10 +231,10 @@ async function processLeasedJobBody(
           Object.assign(previousOutputs, completedStep.outputBindings);
           continue;
         }
-        if (SIDE_EFFECT_STEP_TYPES.has(step.stepType)) {
+        if (SIDE_EFFECT_STEP_TYPES.has(liveStep.stepType)) {
           const failAt = new Date().toISOString();
           const failedStep: WorkStepRecord = {
-            ...step,
+            ...liveStep,
             status: "failed",
             completedAt: failAt,
             updatedAt: failAt,
@@ -272,10 +278,10 @@ async function processLeasedJobBody(
 
       const stepStarted = new Date().toISOString();
       const runningStep: WorkStepRecord = {
-        ...step,
+        ...liveStep,
         status: "running",
-        attempt: step.attempt + 1,
-        startedAt: step.startedAt ?? stepStarted,
+        attempt: liveStep.attempt + 1,
+        startedAt: liveStep.startedAt ?? stepStarted,
         updatedAt: stepStarted,
       };
       await store.updateStep(runningStep);
@@ -288,7 +294,7 @@ async function processLeasedJobBody(
       });
 
       const result = await executeWorkStep({
-        job: current,
+        job: latestJob,
         step: runningStep,
         previousOutputs,
       });
@@ -444,6 +450,9 @@ async function processLeasedJobBody(
     }
 
     const latest = (await store.getJob(job.jobId)) ?? running;
+    if (latest.status === "cancelled") {
+      return "failed";
+    }
     const gate = evaluateWorkQueueCompletion(latest);
     const doneAt = new Date().toISOString();
     if (!gate.ok) {

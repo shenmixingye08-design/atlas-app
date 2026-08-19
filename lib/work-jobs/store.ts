@@ -136,6 +136,25 @@ export function findWorkJobByIdempotencyKey(
   return null;
 }
 
+/** Memory first, then durable domain — same key must not create a second job. */
+export async function findWorkJobByIdempotencyKeyDurable(
+  userId: string,
+  idempotencyKey: string,
+): Promise<WorkJobRecord | null> {
+  const local = findWorkJobByIdempotencyKey(userId, idempotencyKey);
+  if (local) return local;
+  const { loadWorkJobByIdempotencyKeyFromDurable } = await import("./durable");
+  const remote = await loadWorkJobByIdempotencyKeyFromDurable(
+    userId,
+    idempotencyKey,
+  );
+  if (remote && remote.userId === userId) {
+    getBucket().set(remote.id, remote);
+    return remote;
+  }
+  return null;
+}
+
 /** Build minute-bucket idempotency key to prevent double-submit of the same request. */
 export function buildWorkJobIdempotencyKey(input: {
   userId: string;

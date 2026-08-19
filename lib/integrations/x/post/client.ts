@@ -77,6 +77,15 @@ async function parseXPostErrorResponse(
     };
   }
 
+  if (body?.status === "unknown_outcome") {
+    return {
+      status: "unknown_outcome",
+      message:
+        body.message ??
+        "投稿結果を確認できません。同じ内容の再投稿は行いません。",
+    };
+  }
+
   return null;
 }
 

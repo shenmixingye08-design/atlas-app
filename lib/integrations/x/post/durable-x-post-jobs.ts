@@ -814,6 +814,18 @@ export function classifyXPostError(error: unknown): {
   const message =
     error instanceof Error ? error.message.toLowerCase() : String(error);
   if (
+    /unknown_outcome|再実行しません|再投稿は行いません|persist_after_success/.test(
+      message,
+    )
+  ) {
+    return {
+      code: "unknown_outcome",
+      retryable: false,
+      permanent: true,
+      delayMs: 0,
+    };
+  }
+  if (
     /revok|unauthorized|401|invalid.?token|reconnect|失効/.test(message)
   ) {
     return {

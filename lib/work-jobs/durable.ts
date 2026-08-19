@@ -102,3 +102,21 @@ export async function loadWorkJobFromDurable(
     return null;
   }
 }
+
+export async function loadWorkJobByIdempotencyKeyFromDurable(
+  userId: string,
+  idempotencyKey: string,
+): Promise<WorkJobRecord | null> {
+  const key = idempotencyKey.trim();
+  if (!userId.trim() || !key) return null;
+  try {
+    const payload = await loadDurableDomain<JobsPayload>(userId, DOMAIN_KEY);
+    const job =
+      payload?.jobs?.find(
+        (row) => row.userId === userId && row.idempotencyKey === key,
+      ) ?? null;
+    return job;
+  } catch {
+    return null;
+  }
+}

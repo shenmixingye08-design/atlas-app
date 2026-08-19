@@ -10,7 +10,7 @@ import { withPropagatedJobId } from "@/lib/work-jobs/job-id";
 import { executeWorkJob } from "@/lib/work-jobs/run";
 import {
   buildWorkJobIdempotencyKey,
-  findWorkJobByIdempotencyKey,
+  findWorkJobByIdempotencyKeyDurable,
   saveWorkJob,
 } from "@/lib/work-jobs/store";
 
@@ -107,7 +107,10 @@ export async function POST(request: Request): Promise<Response> {
   );
   if (quotaDenied) return quotaDenied;
 
-  const existing = findWorkJobByIdempotencyKey(userId, idempotencyKey);
+  const existing = await findWorkJobByIdempotencyKeyDurable(
+    userId,
+    idempotencyKey,
+  );
   if (existing) {
     const { isStaleWorkJobRunning } = await import("@/lib/work-jobs/run");
     const shouldRestart =

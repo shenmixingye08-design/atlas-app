@@ -227,6 +227,7 @@ describe("automation persistence and cron tick", () => {
 
     const failed = await automationService.runNow(created.id, {
       userId: "user_run",
+      skipIdempotencyClaim: true,
     });
     expect(failed?.status).toBe("failed");
 
@@ -276,7 +277,7 @@ describe("automation persistence and cron tick", () => {
     });
 
     await serverAutomationRepository.update(created.id, {
-      nextRun: "2020-01-01T00:00:00.000Z",
+      nextRun: new Date(Date.now() - 60_000).toISOString(),
       status: "idle",
     });
 
@@ -291,7 +292,7 @@ describe("automation persistence and cron tick", () => {
     expect(row?.enabled).toBe(true);
     expect(row?.successCount).toBe(1);
     expect(row?.nextRun).toBeTruthy();
-    expect(row?.nextRun).not.toBe("2020-01-01T00:00:00.000Z");
+    expect(new Date(row!.nextRun!).getTime()).toBeGreaterThan(Date.now() - 1000);
   });
 
   it("survives store reset by restoring from durable hydrate snapshot path", async () => {

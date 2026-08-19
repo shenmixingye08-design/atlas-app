@@ -15,6 +15,7 @@ import {
 } from "@/lib/integrations/x/token-manager";
 import { touchXConnectionLastUsed, markXConnectionNeedsReconnect } from "@/lib/integrations/x/oauth-service";
 import { XApiError, xWriteScopeMissingMessage } from "@/lib/integrations/x/api-error";
+import { SideEffectFailClosedError } from "@/lib/side-effects";
 import { X_RECONNECT_REQUIRED_MESSAGE } from "@/lib/integrations/x/errors";
 import { hasXWriteScope, parseXGrantedScopes } from "@/lib/integrations/x/scopes";
 import {
@@ -365,6 +366,38 @@ async function executeTweetPost(input: {
 
     return { status: "ready", mode: input.mode, history };
   } catch (error) {
+    if (error instanceof SideEffectFailClosedError) {
+      const tweetId =
+        typeof error.claim?.providerResourceId === "string"
+          ? error.claim.providerResourceId
+          : typeof error.claim?.evidence?.providerResourceId === "string"
+            ? error.claim.evidence.providerResourceId
+            : null;
+      saveXPostHistoryRecord(
+        buildHistoryRecord({
+          userId: input.userId,
+          text: input.text,
+          mode: input.mode,
+          status: "failed",
+          errorMessage:
+            "投稿結果を確認できません。同じ内容の再投稿は行いません。X上で投稿の有無をご確認ください。",
+          automationId: input.automationId,
+          scheduledFor: input.scheduledFor,
+          driveFileUrl,
+        }),
+      );
+      await notifyXPostFailed(
+        input.userId,
+        "投稿結果を確認できません。同じ内容の再投稿は行いません。X上で投稿の有無をご確認ください。",
+      );
+      return {
+        status: "unknown_outcome",
+        message:
+          "投稿結果を確認できません。同じ内容の再投稿は行いません。X上で投稿の有無をご確認ください。",
+        tweetId,
+      };
+    }
+
     if (error instanceof XApiError) {
       if (error.resolution.reconnectRequired) {
         markXConnectionNeedsReconnect(input.userId, error.message);
@@ -778,6 +811,14 @@ export async function processDueScheduledXPosts(input: {
               : "provider success but durable update failed",
         });
       }
+    } else if (result.status === "unknown_outcome") {
+      await markXPostUnknownOutcome({
+        xPostJobId: job.xPostJobId,
+        ownerId: job.ownerId,
+        workerId,
+        providerPostId: result.tweetId ?? job.providerPostId,
+        errorMessage: result.message,
+      });
     } else {
       const message =
         result.status === "validation_failed"

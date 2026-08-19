@@ -184,8 +184,12 @@ export async function executeIdempotentSideEffect<T>(
     throw new SideEffectLostRaceError(claimed);
   }
 
+  let actionCompleted = false;
+  let completedOutcome: SideEffectActionOutcome<T> | null = null;
   try {
     const outcome = await action();
+    actionCompleted = true;
+    completedOutcome = outcome;
     if (!outcome.providerResourceId?.trim()) {
       const unknown = await markSideEffectUnknownOutcome({
         claimId: claimed.id,
@@ -220,6 +224,26 @@ export async function executeIdempotentSideEffect<T>(
     if (error instanceof SideEffectLostRaceError) throw error;
 
     const classified = classifyError(error);
+    // Provider (or local action) already finished. Persist/commit failure is
+    // ambiguous — never mark `failed` or a later retry will re-send.
+    if (actionCompleted) {
+      const unknown = await markSideEffectUnknownOutcome({
+        claimId: claimed.id,
+        userId: ctx.userId,
+        errorCode: "persist_after_success_failed",
+        errorMessage: classified.message,
+        evidence: {
+          persistAfterSuccessFailed: true,
+          providerResourceId: completedOutcome?.providerResourceId ?? null,
+        },
+      }).catch(() => claimed);
+      throw new SideEffectFailClosedError(
+        "side_effect_unknown_outcome",
+        "外部処理は完了した可能性がありますが保存に失敗したため再実行しません",
+        unknown,
+      );
+    }
+
     if (isAmbiguousProviderError(error)) {
       const unknown = await markSideEffectUnknownOutcome({
         claimId: claimed.id,

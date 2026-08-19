@@ -546,6 +546,7 @@ export async function executeAutomationRun(
 
     let deliverableCount = 0;
     let storageUrl: string | null = null;
+    let deliverableFailure: string | null = null;
 
     if (
       result.status === "completed" &&
@@ -598,6 +599,10 @@ export async function executeAutomationRun(
               `[executeAutomationRun] Drive upload failed for ${automation.id}:`,
               uploadError,
             );
+            deliverableFailure =
+              uploadError instanceof Error
+                ? uploadError.message
+                : "Driveへの保存に失敗しました";
           }
         }
       } catch (deliverableError) {
@@ -605,6 +610,10 @@ export async function executeAutomationRun(
           `[executeAutomationRun] Deliverables failed for ${automation.id}:`,
           deliverableError,
         );
+        deliverableFailure =
+          deliverableError instanceof Error
+            ? deliverableError.message
+            : "成果物の生成に失敗しました";
       }
     }
 
@@ -616,22 +625,26 @@ export async function executeAutomationRun(
     // A completed orchestration whose SNS publish failed must be surfaced as a
     // failure — otherwise the user sees "投稿完了" while nothing reached X.
     // Approval-wait is a successful run that intentionally did not post yet.
+    const pipelineFailure = snsPostFailure ?? deliverableFailure;
     const effectiveStatus: "completed" | "failed" | "awaiting_approval" =
-      snsPostFailure && result.status === "completed"
+      pipelineFailure && result.status === "completed"
         ? "failed"
         : awaitingXApproval && result.status === "completed"
           ? "awaiting_approval"
           : result.status === "completed"
             ? "completed"
             : "failed";
-    const effectiveError = snsPostFailure ?? result.error ?? null;
+    const effectiveError = pipelineFailure ?? result.error ?? null;
 
     await serverWorkflowRunRepository.complete({
       id: workflowRun.id,
       status:
         effectiveStatus === "awaiting_approval" ? "completed" : effectiveStatus,
       approved:
-        effectiveStatus === "completed" && result.approved && !snsPostFailure,
+        effectiveStatus === "completed" &&
+        result.approved &&
+        !snsPostFailure &&
+        !deliverableFailure,
       totalDurationMs: result.totalDurationMs,
       result,
       finalResponsePreview: preview,
@@ -700,8 +713,12 @@ export async function executeAutomationRun(
     const flow = normalizeExecutionFlow(automation.executionFlow);
     const evidence = evaluateCompletionEvidence({
       templateId: flow.templateId,
-      orchestrationStatus: snsPostFailure ? "failed" : result.status,
-      approved: effectiveStatus === "completed" && result.approved && !snsPostFailure,
+      orchestrationStatus: pipelineFailure ? "failed" : result.status,
+      approved:
+        effectiveStatus === "completed" &&
+        result.approved &&
+        !snsPostFailure &&
+        !deliverableFailure,
       deliverableCount,
       snsPostFailure,
       tweetId: xPostId,
@@ -845,7 +862,10 @@ export async function executeAutomationRun(
             : "failed",
       orchestrationStatus: result.status,
       approved:
-        effectiveStatus === "completed" && result.approved && !snsPostFailure,
+        effectiveStatus === "completed" &&
+        result.approved &&
+        !snsPostFailure &&
+        !deliverableFailure,
       totalDurationMs: result.totalDurationMs,
       finalResponsePreview: preview,
       error: effectiveError,

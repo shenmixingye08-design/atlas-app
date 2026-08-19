@@ -17,6 +17,14 @@ vi.mock("@/lib/billing/subscriptions/lifecycle", () => ({
   isAutomationSuspendedForUser: vi.fn(() => false),
 }));
 
+vi.mock("@/lib/deliverables/engine", () => ({
+  generateDeliverables: vi.fn(async () => ({
+    deliverables: [],
+    detection: { matchedRule: null },
+    jobId: "job_gen",
+  })),
+}));
+
 vi.mock("@/lib/orchestration/orchestrator", () => ({
   orchestrate: vi.fn(async () => ({
     assignment: "test",
@@ -33,6 +41,7 @@ vi.mock("@/lib/orchestration/orchestrator", () => ({
       summary: "s",
       sections: [],
       body: "ok",
+      content: "ok",
     },
     reviewComments: "",
     approved: true,
@@ -83,6 +92,7 @@ import {
   serverAutomationRepository,
 } from "./repositories/server-automation-repository";
 import { resetAutomationsGlobalDurableForTests } from "./global-durable";
+import { resetAutomationJobStoreForTests } from "@/lib/jobs/job-store";
 import { automationService } from "./automation-service";
 import {
   recordAutomationExecutionLog,
@@ -123,6 +133,7 @@ describe("P0-6 durable automation engine", () => {
     resetDurableAutomationExecutionsForTests();
     resetAutomationExecutionLogStoreForTests();
     resetAutomationsGlobalDurableForTests();
+    resetAutomationJobStoreForTests();
     const workQueue = resetWorkQueueStoreForTests(
       `${process.cwd()}/.data/work-queue-p0-6-test.json`,
     );
@@ -587,6 +598,34 @@ describe("P0-6 durable automation engine", () => {
     expect(listB.every((r) => r.userId === USER_B)).toBe(true);
     expect(listA).toHaveLength(10);
     expect(listB).toHaveLength(10);
+  });
+
+  it("32b: manual runNow after terminal does not mint a :rerun: UUID", async () => {
+    const created = await automationService.createForUser(
+      USER_A,
+      dailyInput("manual-dedupe"),
+    );
+    const first = await automationService.runNow(created.id, { userId: USER_A });
+    const second = await automationService.runNow(created.id, { userId: USER_A });
+    expect(first?.dedupeSkipped).toBeFalsy();
+    expect(second?.dedupeSkipped).toBe(true);
+  });
+
+  it("32c: deliverable generate failure is not completed", async () => {
+    const { generateDeliverables } = await import("@/lib/deliverables/engine");
+    vi.mocked(generateDeliverables).mockRejectedValueOnce(
+      new Error("storage upload failed"),
+    );
+    const created = await automationService.createForUser(
+      USER_A,
+      dailyInput("deliverable-fail"),
+    );
+    const result = await automationService.runNow(created.id, {
+      userId: USER_A,
+      requestOrigin: "http://localhost:3000",
+    });
+    expect(result?.status).toBe("failed");
+    expect(result?.error).toMatch(/storage upload failed/);
   });
 
   it("32: runNow idempotency skip does not invent success without job", async () => {
