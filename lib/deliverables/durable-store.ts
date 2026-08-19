@@ -444,9 +444,11 @@ export async function loadDurableDeliverable(
   id: string,
   userId?: string | null,
 ): Promise<DurableDeliverableRow | null> {
+  const ownerId = userId?.trim() || null;
   const mem = getDurableMemory().get(id);
   if (mem) {
     if (mem.deletedAt) return null;
+    if (ownerId && mem.userId !== ownerId) return null;
     // Memory cache of the durable ROW is fine past binary memory TTL.
     // Only hard-hide when explicitly deleted.
     if (
@@ -462,11 +464,12 @@ export async function loadDurableDeliverable(
   try {
     const client = createServiceRoleClientIfConfigured();
     if (client) {
-      const { data, error } = await client
+      let query = client
         .from("atlas_deliverable_files")
         .select("*")
-        .eq("id", id)
-        .maybeSingle();
+        .eq("id", id);
+      if (ownerId) query = query.eq("user_id", ownerId);
+      const { data, error } = await query.maybeSingle();
       if (error) {
         console.error("[atlas_deliverable_files] select failed", error.message);
         // Fall through to Storage sidecar when the table is missing.
