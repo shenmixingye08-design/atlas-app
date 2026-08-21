@@ -99,7 +99,8 @@ export async function verifyPptxDeck(buffer: Buffer): Promise<PptxVerifyResult> 
   for (const path of slidePaths) {
     const xml = (await zip.file(path)?.async("string")) ?? "";
     const texts = extractText(xml).filter((t) => !/^P304TMPL_/.test(t));
-    const visible = texts.filter((t) => t.length > 1);
+    // 1-char Japanese titles are valid ("表", "図"). extractText already trims.
+    const visible = texts.filter((t) => t.length > 0);
     if (visible.length === 0 && !xml.includes("<a:tbl") && !xml.includes("<c:chart")) {
       reasons.push("empty_slide");
     }

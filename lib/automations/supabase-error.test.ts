@@ -25,6 +25,16 @@ describe("isSupabaseRelationMissingError", () => {
     ).toBe(true);
   });
 
+  it("detects PostgREST missing column as schema incomplete", () => {
+    expect(
+      isSupabaseRelationMissingError({
+        code: "PGRST204",
+        message:
+          "Could not find the 'deleted_at' column of 'atlas_automation_definitions' in the schema cache",
+      }),
+    ).toBe(true);
+  });
+
   it("does not treat transient network errors as schema missing", () => {
     expect(
       isSupabaseRelationMissingError({
