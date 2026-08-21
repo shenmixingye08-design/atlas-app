@@ -1,6 +1,6 @@
 import "server-only";
 
-import sharp from "sharp";
+import { loadSharp } from "@/lib/images/load-sharp";
 
 import { detectImageMimeFromBytes } from "@/lib/vision/image-magic";
 import { buildOpenAiDataUrlFromBuffer } from "@/lib/vision/validate-openai-image-payload";
@@ -55,6 +55,7 @@ export async function normalizeImageForOpenAi(input: {
   const settings = PROFILE_SETTINGS[profile];
   const warnings: string[] = [];
   const detectedInputMime = detectImageMimeFromBytes(input.buffer);
+  const sharp = await loadSharp();
 
   if (!input.buffer?.length || input.buffer.length < MIN_BYTES) {
     throw new VisionError("empty_image", "解析用画像が空です", {

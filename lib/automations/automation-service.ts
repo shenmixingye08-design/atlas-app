@@ -15,7 +15,6 @@ import type {
   CreateAutomationInput,
   UpdateAutomationInput,
 } from "./types";
-import { executeAutomationRun } from "./run-automation";
 import type { AutomationRepository } from "./repositories/types";
 import { serverAutomationRepository } from "./repositories/server-automation-repository";
 import { serverWorkflowRunRepository } from "./repositories/workflow-run-store";
@@ -209,6 +208,8 @@ export class AutomationService {
       jobId = claim.record.id;
     }
 
+    // Dynamic import keeps GET list / usage hydrate off the deliverables → sharp graph.
+    const { executeAutomationRun } = await import("./run-automation");
     const result = await executeAutomationRun(automation, {
       triggerType,
       userId,

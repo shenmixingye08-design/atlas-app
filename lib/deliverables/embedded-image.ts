@@ -3,7 +3,7 @@
  * No remote fetch — data URLs or generated PNG only.
  */
 
-import sharp from "sharp";
+import { loadSharp } from "@/lib/images/load-sharp";
 
 export const P108_PROBE_PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mNk+M9Qz0AEYBxVSF+FABJADveWkH6oAAAAAElFTkSuQmCC";
@@ -81,6 +81,7 @@ export async function materializeForOffice(
   if (image.mime !== "image/webp") {
     return image;
   }
+  const sharp = await loadSharp();
   const png = await sharp(image.buffer).png().toBuffer();
   return {
     mime: "image/png",
@@ -107,6 +108,7 @@ export async function renderCaptionPng(
   <rect width="640" height="200" fill="#F7F7F7" stroke="#CCCCCC" stroke-width="2"/>
   <text x="320" y="105" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#333333">${label}</text>
 </svg>`;
+  const sharp = await loadSharp();
   const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
   return {
     mime: "image/png",

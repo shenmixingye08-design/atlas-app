@@ -1,6 +1,6 @@
 import "server-only";
 
-import sharp from "sharp";
+import { loadSharp } from "@/lib/images/load-sharp";
 
 import { uploadUserImages } from "@/lib/attachments";
 import {
@@ -130,6 +130,7 @@ export async function runVisionUserUploadSmoke(): Promise<VisionUserUploadSmokeR
 
   let attachmentId: string | null = null;
   try {
+    const sharp = await loadSharp();
     // Receipt-like JPEG (text overlay) — closer to real user uploads than a flat square.
     const buffer = await sharp({
       create: {
