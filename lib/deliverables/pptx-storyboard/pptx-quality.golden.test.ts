@@ -195,6 +195,33 @@ describe("PowerPoint golden fixtures", () => {
     );
   });
 
+  it("accepts 1-char Japanese section titles such as 表", async () => {
+    const md = `# P06運用検証レポート
+
+## 概要
+MINERVOTは依頼から成果物まで一気通貫で完了します。
+
+## 本文
+習慣的な作業を減らし、途中停止なく成果物を届けます。
+
+## 表
+| 形式 | 拡張子 |
+| --- | --- |
+| Word | .docx |
+| Excel | .xlsx |
+| PDF | .pdf |
+| PowerPoint | .pptx |
+`;
+    const file = await gen.generate(md, "p06表", {
+      assignment: "P06運用検証 全形式成果物",
+      powerpoint: { templateId: "business" },
+    });
+    const verify = await verifyPptxDeck(file.buffer);
+    expect(verify.reasons).not.toContain("empty_slide");
+    expect(verify.ok).toBe(true);
+    expect(verify.titles.some((title) => title.includes("表"))).toBe(true);
+  });
+
   it("company intro stays compact and Japanese", async () => {
     const file = await gen.generate(COMPANY, "会社紹介", {
       assignment: "会社紹介資料を8枚で",
