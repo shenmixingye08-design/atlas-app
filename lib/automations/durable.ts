@@ -141,8 +141,6 @@ export function schedulePersistAutomations(userId: string): void {
 export async function ensureAutomationsHydrated(userId: string): Promise<void> {
   if (isAutomationsHydrated(userId)) return;
 
-  let schemaMissing = false;
-
   // P0-6: Prefer durable definition rows (survives Cold Start / process kill).
   if (isAutomationDurableRequired()) {
     try {
@@ -166,19 +164,19 @@ export async function ensureAutomationsHydrated(userId: string): Promise<void> {
         return;
       }
     } catch (error) {
-      // Schema not applied: fall through to atlas_user_state blob hydrate.
-      // Empty owner (0 jobs) must render as empty home — not a permanent error.
-      // Mutations still fail-closed until migration is applied.
+      // Schema not applied or column missing: fail-closed.
+      // Empty owner (0 jobs) is a successful [] — not this path.
       if (isAutomationSchemaMissingError(error)) {
-        schemaMissing = true;
-        console.error("[automations] P0-6: schema missing on hydrate — blob fallback", {
+        console.error("[automations] P0-6: schema missing on hydrate — fail-closed", {
+          endpoint: "/api/automations",
           userId,
           diagnosticId: error.diagnosticId,
           code: error.code,
+          table: "atlas_automation_definitions",
         });
-      } else {
         throw error;
       }
+      throw error;
     }
   }
 
@@ -208,8 +206,7 @@ export async function ensureAutomationsHydrated(userId: string): Promise<void> {
   if (normalized.length > 0) {
     await registerAutomationUserId(userId);
     // Write-through migrate blob → definition rows when durable required.
-    // Skip when schema is missing — otherwise hydrate itself bricks home.
-    if (isAutomationDurableRequired() && !schemaMissing) {
+    if (isAutomationDurableRequired()) {
       try {
         await replaceDurableAutomationsForOwner(userId, normalized);
       } catch (error) {
