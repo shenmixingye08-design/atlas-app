@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import OpenAI from "openai";
-import sharp from "sharp";
+import { loadSharp } from "@/lib/images/load-sharp";
 
 import { getHealthVersionPayload } from "@/lib/health/version-info";
 import { isOpenAIConfigured } from "@/lib/openai";
@@ -64,6 +64,7 @@ async function ensureJpegBuffer(): Promise<Buffer> {
   try {
     return loadKnownGoodJpeg();
   } catch {
+    const sharp = await loadSharp();
     return sharp({
       create: {
         width: 64,

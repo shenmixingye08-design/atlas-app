@@ -82,9 +82,12 @@ describe("home load when P0-6 schema is missing", () => {
     );
   });
 
-  it("ensureAutomationsHydrated does not throw — empty home is valid", async () => {
-    await expect(ensureAutomationsHydrated("user_home")).resolves.toBeUndefined();
-    const listed = await automationService.listForUser("user_home");
-    expect(listed).toEqual([]);
+  it("ensureAutomationsHydrated fail-closes — schema missing is not a successful []", async () => {
+    await expect(ensureAutomationsHydrated("user_home")).rejects.toBeInstanceOf(
+      AutomationSchemaMissingError,
+    );
+    await expect(automationService.listForUser("user_home")).rejects.toBeInstanceOf(
+      AutomationSchemaMissingError,
+    );
   });
 });

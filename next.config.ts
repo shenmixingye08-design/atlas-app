@@ -37,8 +37,9 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_ATLAS_DEBUG: process.env.NEXT_PUBLIC_ATLAS_DEBUG ?? "false",
   },
-  // pg is used only by reliability schema probe / migration apply on the server.
-  serverExternalPackages: ["pg"],
+  // Append to Next's default externals (already includes sharp). Keep sharp
+  // explicit so native libvips is required, not bundled into route JS.
+  serverExternalPackages: ["pg", "sharp"],
   async headers() {
     return [
       {

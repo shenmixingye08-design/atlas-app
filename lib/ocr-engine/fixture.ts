@@ -6,7 +6,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-import sharp from "sharp";
+import { loadSharp } from "@/lib/images/load-sharp";
 
 /** Distinctive tokens that must appear in OCR extract for accuracy gate. */
 export const OCR_GROUND_TRUTH_TOKENS = [
@@ -47,6 +47,7 @@ async function renderWithBundledFont(): Promise<Buffer> {
   <text x="48" y="280" font-size="44" font-family="${family}" fill="#000000">${lines[2]}</text>
   <text x="48" y="370" font-size="56" font-family="${family}" fill="#000000">${lines[3]}</text>
 </svg>`;
+  const sharp = await loadSharp();
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 

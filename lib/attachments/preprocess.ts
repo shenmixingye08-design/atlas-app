@@ -1,6 +1,6 @@
 import "server-only";
 
-import sharp from "sharp";
+import { loadSharp } from "@/lib/images/load-sharp";
 
 import type { VisionDetailLevel } from "@/lib/vision/types";
 
@@ -33,6 +33,7 @@ export async function preprocessImageBuffer(input: {
   const warnings: string[] = [];
   const detail = input.detail ?? "auto";
   const preferReadableText = Boolean(input.preferReadableText);
+  const sharp = await loadSharp();
 
   // Fresh instance for metadata — never reuse a sharp pipeline after await.
   const meta = await sharp(input.buffer, {

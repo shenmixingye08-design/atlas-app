@@ -1,3 +1,7 @@
+import {
+  buildDurableReadDiagnosticId,
+  logDurableReadFailure,
+} from "@/lib/persistence/durable-read-log";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 import { countBillableAutomations } from "./automation-inventory";
@@ -52,9 +56,23 @@ export async function hydrateUserUsageMeters(
   }
 
   if (!aiReady || !automationReady) {
+    const error = aiError ?? automationError ?? "usage_unavailable";
+    logDurableReadFailure({
+      endpoint: "/api/billing/summary",
+      userId,
+      code: error,
+      databaseCode: null,
+      table: !aiReady
+        ? "atlas_billing_usage_counters"
+        : "atlas_automation_definitions",
+      diagnosticId: buildDurableReadDiagnosticId("usage_hydrate"),
+      message: !aiReady
+        ? aiError ?? "ai_usage_unavailable"
+        : automationError ?? "automation_usage_unavailable",
+    });
     return {
       ready: false,
-      error: aiError ?? automationError ?? "usage_unavailable",
+      error,
     };
   }
   return { ready: true, error: null };

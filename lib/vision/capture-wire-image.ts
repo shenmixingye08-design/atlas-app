@@ -3,7 +3,7 @@ import "server-only";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import sharp from "sharp";
+import { loadSharp } from "@/lib/images/load-sharp";
 
 import { detectImageMimeFromBytes } from "@/lib/vision/image-magic";
 
@@ -166,6 +166,7 @@ export async function captureVisionWirePayload(input: {
 
     try {
       const fromDisk = readFileSync(imagePath);
+      const sharp = await loadSharp();
       const meta = await sharp(fromDisk, { failOn: "error" }).metadata();
       result.width = meta.width ?? null;
       result.height = meta.height ?? null;

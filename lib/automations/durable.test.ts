@@ -277,7 +277,8 @@ describe("automation persistence and cron tick", () => {
     });
 
     await serverAutomationRepository.update(created.id, {
-      nextRun: new Date(Date.now() - 60_000).toISOString(),
+      // Within MISSED_RUN_MAX_AGE (24h). 2020-01-01 is skipped, not executed.
+      nextRun: new Date(Date.now() - 5 * 60_000).toISOString(),
       status: "idle",
     });
 
@@ -292,7 +293,7 @@ describe("automation persistence and cron tick", () => {
     expect(row?.enabled).toBe(true);
     expect(row?.successCount).toBe(1);
     expect(row?.nextRun).toBeTruthy();
-    expect(new Date(row!.nextRun!).getTime()).toBeGreaterThan(Date.now() - 1000);
+    expect(Date.parse(row!.nextRun!)).toBeGreaterThan(Date.now() - 1000);
   });
 
   it("survives store reset by restoring from durable hydrate snapshot path", async () => {

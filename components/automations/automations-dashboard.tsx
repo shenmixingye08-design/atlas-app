@@ -47,6 +47,13 @@ import {
   formatUserNextRun,
   resolveAutomationUserStatus,
 } from "@/lib/automations/ux";
+import {
+  AUTOMATION_LIST_EMPTY_MESSAGE,
+  AUTOMATION_LIST_UNAVAILABLE_HINT,
+  AUTOMATION_LIST_UNAVAILABLE_TITLE,
+  shouldRenderAutomationCounts,
+  type AutomationListLoadState,
+} from "@/lib/automations/list-load-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Button } from "@/components/ui/button";
@@ -132,6 +139,8 @@ export function AutomationsDashboard() {
   const [automationsV2, setAutomationsV2] = useState<AutomationV2[]>([]);
   const [runsV2, setRunsV2] = useState<AutomationRun[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [listLoadState, setListLoadState] =
+    useState<AutomationListLoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -181,12 +190,14 @@ export function AutomationsDashboard() {
     try {
       const items = await fetchAutomations();
       setAutomations(items);
+      setListLoadState("ready");
       setSelected((current) => {
         if (!current) return null;
         return items.find((item) => item.id === current.id) ?? null;
       });
       setError(null);
     } catch (err) {
+      setListLoadState("error");
       setError(err instanceof Error ? err.message : ui.error.loadFailed);
     } finally {
       setIsLoading(false);
@@ -372,9 +383,17 @@ export function AutomationsDashboard() {
     setShowCreate(true);
   };
 
-  if (isLoading && !showCreate && automations.length === 0 && automationsV2.length === 0) {
+  if (
+    isLoading &&
+    listLoadState === "loading" &&
+    !showCreate &&
+    automations.length === 0 &&
+    automationsV2.length === 0
+  ) {
     return <LoadingState />;
   }
+
+  const showCounts = shouldRenderAutomationCounts(listLoadState);
 
   const runningCount = automations.filter((item) => item.status === "running").length;
   const timelineLanes = [
@@ -515,7 +534,33 @@ export function AutomationsDashboard() {
         </header>
       )}
 
-      {/* Compact status rail — AI is moving */}
+      {listLoadState === "error" ? (
+        <div className="space-y-3" role="alert">
+          <p className="text-sm text-foreground">
+            {AUTOMATION_LIST_UNAVAILABLE_TITLE}
+          </p>
+          <p className="text-caption text-[var(--text-secondary)]">
+            {AUTOMATION_LIST_UNAVAILABLE_HINT}
+          </p>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="min-h-[44px]"
+            onClick={() => {
+              setIsLoading(true);
+              setListLoadState("loading");
+              void loadAutomations();
+            }}
+          >
+            再読み込み
+          </Button>
+        </div>
+      ) : error ? (
+        <ErrorState message={error} />
+      ) : null}
+
+      {/* Compact status rail — only after a successful list. Failure ≠ 0件. */}
+      {showCounts ? (
       <section
         aria-label="自動化の稼働状況"
         className="animate-stagger grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
@@ -549,7 +594,9 @@ export function AutomationsDashboard() {
           </div>
         ))}
       </section>
+      ) : null}
 
+      {showCounts ? (
       <section
         aria-label="AIの動き"
         className="animate-card-enter rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5"
@@ -601,6 +648,7 @@ export function AutomationsDashboard() {
           </ol>
         )}
       </section>
+      ) : null}
 
       {showCreate && !v2Enabled ? (
         <CreateAutomationForm
@@ -613,7 +661,14 @@ export function AutomationsDashboard() {
         />
       ) : null}
 
-      {error ? <ErrorState message={error} /> : null}
+      {showCounts &&
+      automations.length === 0 &&
+      automationsV2.length === 0 &&
+      !showCreate ? (
+        <p className="text-sm text-[var(--text-secondary)]">
+          {AUTOMATION_LIST_EMPTY_MESSAGE}
+        </p>
+      ) : null}
 
       {v2Enabled && (operationsEnabled || dashboardV2) ? (
         <OperationsDashboard enabled={operationsEnabled || dashboardV2} />
