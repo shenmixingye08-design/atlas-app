@@ -49,6 +49,17 @@ function getBucket(): Bucket {
   return g.__atlasWorkJobs;
 }
 
+/** Test-only: empty this process cache without touching the unique claim index. */
+export function clearWorkJobProcessMemoryForTests(): void {
+  getBucket().clear();
+}
+
+export function hydrateWorkJobMemory(job: WorkJobRecord): WorkJobRecord {
+  const normalized = normalizeWorkJob(job);
+  getBucket().set(normalized.id, normalized);
+  return normalized;
+}
+
 function normalizeWorkJob(job: WorkJobRecord): WorkJobRecord {
   return {
     ...job,
@@ -132,6 +143,34 @@ export function findWorkJobByIdempotencyKey(
     if (job.userId === userId && job.idempotencyKey === idempotencyKey) {
       return job;
     }
+  }
+  return null;
+}
+
+/**
+ * Memory first, then durable domain.
+ * Lookup failure is not treated as missing — callers must fail closed.
+ */
+export async function findWorkJobByIdempotencyKeyDurable(
+  userId: string,
+  idempotencyKey: string,
+): Promise<WorkJobRecord | null> {
+  const local = findWorkJobByIdempotencyKey(userId, idempotencyKey);
+  if (local) return local;
+  const { loadWorkJobByIdempotencyKeyFromDurable } = await import("./durable");
+  const remote = await loadWorkJobByIdempotencyKeyFromDurable(
+    userId,
+    idempotencyKey,
+  );
+  if (remote.status === "unavailable") {
+    const { WorkJobClaimUnavailableError } = await import("./claim");
+    throw new WorkJobClaimUnavailableError(
+      remote.error ?? "work-job durable lookup unavailable",
+    );
+  }
+  if (remote.status === "found" && remote.job.userId === userId) {
+    getBucket().set(remote.job.id, remote.job);
+    return remote.job;
   }
   return null;
 }

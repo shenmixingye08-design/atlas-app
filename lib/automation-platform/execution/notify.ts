@@ -57,7 +57,7 @@ function shouldNotify(
   }
 }
 
-function notificationTypeFor(
+export function notificationTypeFor(
   event: RunNotificationEvent,
 ): "automation" | "awaiting_review" | "completed" | "error" {
   switch (event) {

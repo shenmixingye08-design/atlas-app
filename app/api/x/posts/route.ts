@@ -170,5 +170,8 @@ function mapPostResult(
   if (result.status === "error") {
     return Response.json(result, { status: 502 });
   }
+  if (result.status === "unknown_outcome") {
+    return Response.json(result, { status: 409 });
+  }
   return Response.json(result);
 }

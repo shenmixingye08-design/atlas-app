@@ -175,6 +175,8 @@ export type AutomationRunHistoryEntry = {
 };
 
 export type CreateAutomationInput = {
+  /** Server-generated id for atomic slot reserve. Never accept from the client. */
+  id?: string;
   name: string;
   description: string;
   schedule: AutomationSchedule;

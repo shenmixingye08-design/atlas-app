@@ -3,16 +3,10 @@ import { createHash } from "crypto";
 import { after } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 
-import { MAX_IMMEDIATE_RETRIES } from "@/lib/reliability";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 import { logVisionPipeline } from "@/lib/vision/pipeline-log";
-import { withPropagatedJobId } from "@/lib/work-jobs/job-id";
+import { acceptWorkJob } from "@/lib/work-jobs/accept";
 import { executeWorkJob } from "@/lib/work-jobs/run";
-import {
-  buildWorkJobIdempotencyKey,
-  findWorkJobByIdempotencyKey,
-  saveWorkJob,
-} from "@/lib/work-jobs/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,102 +87,50 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const idempotencyKey = buildWorkJobIdempotencyKey({
+  const accepted = await acceptWorkJob({
     userId,
     assignment,
     clientKey,
-  });
-
-  const { requireAndConsumeAiJob } = await import("@/lib/billing/access");
-  const quotaDenied = await requireAndConsumeAiJob(
-    userId,
-    "work_job",
-    idempotencyKey,
-  );
-  if (quotaDenied) return quotaDenied;
-
-  const existing = findWorkJobByIdempotencyKey(userId, idempotencyKey);
-  if (existing) {
-    const { isStaleWorkJobRunning } = await import("@/lib/work-jobs/run");
-    const shouldRestart =
-      existing.status === "queued" ||
-      existing.status === "failed" ||
-      (existing.status === "running" && isStaleWorkJobRunning(existing));
-    if (shouldRestart) {
+    metadata: safeMetadata,
+    startExecution: (jobId, uid) => {
       after(async () => {
         try {
-          await executeWorkJob(existing.id, userId);
+          await executeWorkJob(jobId, uid);
         } catch (error) {
           console.warn("[work-jobs]", toHumanReliabilityMessage(error));
         }
       });
-    }
-    return Response.json(
-      {
-        ok: true,
-        // 202 = acceptance only — never implies completed.
-        acceptance: "accepted",
-        jobId: existing.id,
-        status: existing.status,
-        reused: true,
-        message:
-          existing.status === "completed"
-            ? "同じ依頼は処理済みです。"
-            : "依頼を受け付けました。バックグラウンドで処理しています。",
-      },
-      { status: 202 },
-    );
-  }
+    },
+  });
 
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  try {
-    await saveWorkJob({
-      id,
-      userId,
-      assignment,
-      idempotencyKey,
-      metadata: withPropagatedJobId(safeMetadata, id),
-      status: "queued",
-      attemptCount: 0,
-      maxAttempts: MAX_IMMEDIATE_RETRIES,
-      error: null,
-      visionGate: null,
-      result: null,
-      createdAt: now,
-      updatedAt: now,
-      completedAt: null,
-    });
-  } catch {
+  if (!accepted.ok) {
+    if (accepted.response) return accepted.response;
     return Response.json(
       {
         ok: false,
         acceptance: "rejected",
-        error: "依頼の保存に失敗しました。しばらくしてからもう一度お試しください。",
+        error: accepted.error,
       },
-      { status: 503 },
+      { status: accepted.httpStatus },
     );
   }
-
-  after(async () => {
-    try {
-      await executeWorkJob(id, userId);
-    } catch (error) {
-      console.warn("[work-jobs]", toHumanReliabilityMessage(error));
-    }
-  });
 
   return Response.json(
     {
       ok: true,
       // 202 = acceptance only — AI/artifacts/Supabase complete later → status completed.
       acceptance: "accepted",
-      jobId: id,
-      status: "queued",
-      reused: false,
-      fingerprint: createHash("sha256").update(idempotencyKey).digest("hex").slice(0, 12),
+      jobId: accepted.jobId,
+      status: accepted.status,
+      reused: accepted.reused,
+      fingerprint: createHash("sha256")
+        .update(accepted.idempotencyKey)
+        .digest("hex")
+        .slice(0, 12),
       message:
-        "依頼を受け付けました。バックグラウンドで処理しています。",
+        accepted.status === "completed"
+          ? "同じ依頼は処理済みです。"
+          : "依頼を受け付けました。バックグラウンドで処理しています。",
     },
     { status: 202 },
   );

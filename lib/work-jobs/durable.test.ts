@@ -31,6 +31,7 @@ vi.mock("@/lib/persistence/durable-domain", () => ({
 
 import {
   isVercelEphemeralFs,
+  loadWorkJobByIdempotencyKeyFromDurable,
   persistWorkJob,
 } from "./durable";
 
@@ -97,5 +98,20 @@ describe("work-jobs durable", () => {
       completedAt: null,
     });
     expect(result).toBe("failed");
+  });
+
+  it("distinguishes durable lookup failure from missing", async () => {
+    loadDomain.mockResolvedValue({ jobs: [] });
+    await expect(
+      loadWorkJobByIdempotencyKeyFromDurable("user_1", "work:user_1:client:none"),
+    ).resolves.toEqual({ status: "missing" });
+
+    loadDomain.mockRejectedValue(new Error("connection timeout"));
+    await expect(
+      loadWorkJobByIdempotencyKeyFromDurable("user_1", "work:user_1:client:none"),
+    ).resolves.toEqual({
+      status: "unavailable",
+      error: "connection timeout",
+    });
   });
 });

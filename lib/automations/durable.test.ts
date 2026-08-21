@@ -227,6 +227,7 @@ describe("automation persistence and cron tick", () => {
 
     const failed = await automationService.runNow(created.id, {
       userId: "user_run",
+      skipIdempotencyClaim: true,
     });
     expect(failed?.status).toBe("failed");
 

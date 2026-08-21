@@ -321,6 +321,44 @@ describe("P1-04 side-effect idempotency", () => {
     }
   });
 
+  it("K: action success + persist fail → unknown_outcome; retry does not re-send", async () => {
+    const store = await import("@/lib/side-effects/store");
+    const persistSpy = vi
+      .spyOn(store, "markSideEffectSucceeded")
+      .mockRejectedValueOnce(new Error("insert failed after provider success"));
+
+    let calls = 0;
+    const ctx = {
+      userId: "user_a",
+      provider: "x" as const,
+      actionType: "post" as const,
+      destination: "x",
+      runId: "run_k",
+      occurrenceKey: "occ_k",
+    };
+    await expect(
+      executeIdempotentSideEffect(ctx, async () => {
+        calls += 1;
+        return { providerResourceId: "tw_posted", result: { tweetId: "tw_posted" } };
+      }),
+    ).rejects.toMatchObject({ code: "side_effect_unknown_outcome" });
+    expect(calls).toBe(1);
+    persistSpy.mockRestore();
+
+    await expect(
+      executeIdempotentSideEffect(ctx, async () => {
+        calls += 1;
+        return { providerResourceId: "tw_dup", result: { tweetId: "tw_dup" } };
+      }),
+    ).rejects.toBeInstanceOf(SideEffectFailClosedError);
+    expect(calls).toBe(1);
+    const claim = await getSideEffectClaimByKeyForUser(
+      "user_a",
+      buildSideEffectIdempotencyKey(ctx),
+    );
+    expect(claim?.status).toBe("unknown_outcome");
+  });
+
   it("stable key across retries (same logical execution)", () => {
     const a = buildSideEffectIdempotencyKey({
       userId: "u1",

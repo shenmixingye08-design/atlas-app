@@ -102,3 +102,30 @@ export async function loadWorkJobFromDurable(
     return null;
   }
 }
+
+export type WorkJobDurableLookup =
+  | { status: "found"; job: WorkJobRecord }
+  | { status: "missing" }
+  | { status: "unavailable"; error: string };
+
+export async function loadWorkJobByIdempotencyKeyFromDurable(
+  userId: string,
+  idempotencyKey: string,
+): Promise<WorkJobDurableLookup> {
+  const key = idempotencyKey.trim();
+  if (!userId.trim() || !key) return { status: "missing" };
+  try {
+    const payload = await loadDurableDomain<JobsPayload>(userId, DOMAIN_KEY);
+    const job =
+      payload?.jobs?.find(
+        (row) => row.userId === userId && row.idempotencyKey === key,
+      ) ?? null;
+    if (job && job.userId === userId) return { status: "found", job };
+    return { status: "missing" };
+  } catch (error) {
+    return {
+      status: "unavailable",
+      error: error instanceof Error ? error.message : "durable lookup failed",
+    };
+  }
+}

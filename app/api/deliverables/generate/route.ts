@@ -110,17 +110,6 @@ export async function POST(request: Request): Promise<Response> {
     return billingDenied;
   }
 
-  const { requireAndConsumeAiJob } = await import("@/lib/billing/access");
-  const quotaDenied = await requireAndConsumeAiJob(
-    userId,
-    "deliverables_generate",
-    request.headers.get("idempotency-key")?.trim() || crypto.randomUUID(),
-  );
-  if (quotaDenied) {
-    releaseWordGenerateSlot(userId);
-    return quotaDenied;
-  }
-
   if (
     typeof body.finalDeliverable !== "string" ||
     !body.finalDeliverable.trim()
@@ -175,6 +164,21 @@ export async function POST(request: Request): Promise<Response> {
       releaseWordGenerateSlot(userId);
       return Response.json({ error: `${key} must be a string` }, { status: 400 });
     }
+  }
+
+  // Consume only after the request is valid. Invalid body must not spend Usage,
+  // and a missing Idempotency-Key must not invent a new claim on 400 retries.
+  const { requireAndConsumeAiJob } = await import("@/lib/billing/access");
+  const quotaDenied = await requireAndConsumeAiJob(
+    userId,
+    "deliverables_generate",
+    request.headers.get("idempotency-key")?.trim() ||
+      request.headers.get("x-atlas-job-id")?.trim() ||
+      crypto.randomUUID(),
+  );
+  if (quotaDenied) {
+    releaseWordGenerateSlot(userId);
+    return quotaDenied;
   }
 
   try {

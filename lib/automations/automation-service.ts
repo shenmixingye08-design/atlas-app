@@ -68,14 +68,28 @@ export class AutomationService {
     input: CreateAutomationInput,
   ): Promise<Automation> {
     await ensureAutomationsHydrated(userId);
-    const automation = await this.automations.create({
-      ...input,
+    const automationId = input.id?.trim() || crypto.randomUUID();
+    const { assertAutomationCreateAllowed, releaseAutomationSlotSafe } =
+      await import("@/lib/billing/usage/automation-guard");
+    await assertAutomationCreateAllowed({
       userId,
+      automationId,
     });
-    await registerAutomationUserId(userId);
-    await this.syncTaskCount(userId);
-    await persistAutomationsNow(userId);
-    return automation;
+    try {
+      const automation = await this.automations.create({
+        ...input,
+        id: automationId,
+        userId,
+      });
+      await registerAutomationUserId(userId);
+      await this.syncTaskCount(userId);
+      await persistAutomationsNow(userId);
+      return automation;
+    } catch (error) {
+      await this.automations.delete(automationId);
+      await releaseAutomationSlotSafe(automationId);
+      throw error;
+    }
   }
 
   create(input: CreateAutomationInput): Promise<Automation> {
@@ -160,32 +174,13 @@ export class AutomationService {
         triggerType,
         scheduledAt,
       });
-      let claim = await claimAutomationJob({
+      const claim = await claimAutomationJob({
         id: crypto.randomUUID(),
         userId,
         automationId: automation.id,
         idempotencyKey,
         scheduledAt,
       });
-
-      // Manual double-submit protection should only block in-flight runs.
-      // After a terminal result, the user may intentionally run again.
-      if (
-        claim.action === "skip" &&
-        triggerType === "manual" &&
-        (claim.record.status === "completed" ||
-          claim.record.status === "partially_completed" ||
-          claim.record.status === "failed" ||
-          claim.record.status === "cancelled")
-      ) {
-        claim = await claimAutomationJob({
-          id: crypto.randomUUID(),
-          userId,
-          automationId: automation.id,
-          idempotencyKey: `${idempotencyKey}:rerun:${crypto.randomUUID()}`,
-          scheduledAt,
-        });
-      }
 
       if (claim.action === "skip") {
         const skippedCompleted =

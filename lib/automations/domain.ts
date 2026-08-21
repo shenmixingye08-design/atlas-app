@@ -189,7 +189,7 @@ export function createAutomationFromInput(input: CreateAutomationInput): Automat
   const enabled = input.enabled ?? true;
 
   return {
-    id: crypto.randomUUID(),
+    id: input.id?.trim() || crypto.randomUUID(),
     userId: input.userId ?? null,
     name: input.name.trim(),
     description: input.description.trim(),
