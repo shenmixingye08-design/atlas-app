@@ -3,7 +3,7 @@ import "server-only";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import sharp from "sharp";
+import { loadSharp } from "@/lib/images/load-sharp";
 
 import { detectImageMimeFromBytes } from "@/lib/vision/image-magic";
 import { inspectDataUrlIntegrity } from "@/lib/vision/data-url-integrity";
@@ -196,6 +196,7 @@ export async function validateOpenAiImageDataUrl(input: {
 
   let width = 0;
   let height = 0;
+  const sharp = await loadSharp();
   try {
     const meta = await sharp(buffer, { failOn: "error" }).metadata();
     width = meta.width ?? 0;
