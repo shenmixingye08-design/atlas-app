@@ -138,6 +138,8 @@ export function AutomationsDashboard() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [automationsV2, setAutomationsV2] = useState<AutomationV2[]>([]);
   const [runsV2, setRunsV2] = useState<AutomationRun[]>([]);
+  const [v2ListLoadState, setV2ListLoadState] =
+    useState<AutomationListLoadState>("loading");
   const [isLoading, setIsLoading] = useState(true);
   const [listLoadState, setListLoadState] =
     useState<AutomationListLoadState>("loading");
@@ -208,6 +210,7 @@ export function AutomationsDashboard() {
     if (!v2Enabled) {
       setAutomationsV2([]);
       setRunsV2([]);
+      setV2ListLoadState("ready");
       return;
     }
     try {
@@ -221,9 +224,9 @@ export function AutomationsDashboard() {
           setRunsV2([]);
         }
       }
+      setV2ListLoadState("ready");
     } catch {
-      // Flag race or API unavailable — keep V1 visible
-      setAutomationsV2([]);
+      setV2ListLoadState("error");
     }
   }, [v2Enabled, operationsEnabled]);
 
@@ -534,7 +537,7 @@ export function AutomationsDashboard() {
         </header>
       )}
 
-      {listLoadState === "error" ? (
+      {listLoadState === "error" || v2ListLoadState === "error" ? (
         <div className="space-y-3" role="alert">
           <p className="text-sm text-foreground">
             {AUTOMATION_LIST_UNAVAILABLE_TITLE}
@@ -549,7 +552,9 @@ export function AutomationsDashboard() {
             onClick={() => {
               setIsLoading(true);
               setListLoadState("loading");
+              if (v2Enabled) setV2ListLoadState("loading");
               void loadAutomations();
+              void loadV2();
             }}
           >
             再読み込み
@@ -695,7 +700,9 @@ export function AutomationsDashboard() {
               onQueryChange={setListQuery}
             />
           ) : null}
-          {automationsV2.length === 0 && orphanV1Automations.length === 0 ? (
+          {v2ListLoadState === "ready" &&
+          automationsV2.length === 0 &&
+          orphanV1Automations.length === 0 ? (
             <p className="text-sm text-[var(--muted)]">
               繰り返しの仕事を自動化できます。例：「{AUTOMATION_FIRST_EXAMPLE}」
             </p>

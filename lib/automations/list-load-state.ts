@@ -12,6 +12,24 @@ export const AUTOMATION_LIST_UNAVAILABLE_HINT =
   "確認不能のため、0件としては表示していません。再読み込みしてください。";
 export const AUTOMATION_LIST_EMPTY_MESSAGE = "まだ自動化はありません";
 
+export const RUN_LIST_UNAVAILABLE_TITLE = "実行履歴を取得できませんでした";
+export const RUN_LIST_UNAVAILABLE_HINT =
+  "確認不能のため、0件としては表示していません。再読み込みしてください。";
+export const RUN_LIST_EMPTY_MESSAGE = "該当する実行はありません。";
+
+export function shouldRenderRunCounts(state: AutomationListLoadState): boolean {
+  return state === "ready";
+}
+
+export function runListEmptyMessage(
+  state: AutomationListLoadState,
+  count: number,
+): string | null {
+  if (state !== "ready") return null;
+  if (count !== 0) return null;
+  return RUN_LIST_EMPTY_MESSAGE;
+}
+
 export function automationListEmptyMessage(
   state: AutomationListLoadState,
   count: number,

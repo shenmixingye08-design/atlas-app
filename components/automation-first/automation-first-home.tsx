@@ -171,7 +171,6 @@ export function AutomationFirstHome({
       .catch((error: unknown) => {
         if (cancelled) return;
         setOpsSummary(null);
-        setRuns([]);
         setOpsError(
           error instanceof Error
             ? error.message
@@ -490,7 +489,8 @@ export function AutomationFirstHome({
 
       {opsError ? (
         <ErrorState
-          description={`運用データの取得に失敗しました: ${opsError}`}
+          title="運用データを取得できませんでした"
+          description="確認不能のため、0件としては表示していません。"
           onRetry={() => {
             setOpsRequestId((value) => value + 1);
           }}

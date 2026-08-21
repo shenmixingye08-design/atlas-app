@@ -57,12 +57,21 @@ export type PublicHealthStatus = {
  */
 export function toPublicHealthResponse(
   input: Readonly<Record<string, unknown>> | null | undefined,
-  options?: { cached?: boolean },
+  options?: { cached?: boolean; status?: PublicHealthStatus["status"] },
 ): PublicHealthStatus {
+  if (options?.status === "degraded") {
+    return {
+      ok: false,
+      status: "degraded",
+      ...(options.cached != null ? { cached: options.cached } : {}),
+      checkedAt: new Date().toISOString(),
+    };
+  }
   const ok = Boolean(input && input.ok === true);
+  const status = options?.status ?? (ok ? "ok" : "unavailable");
   return {
-    ok,
-    status: ok ? "ok" : "unavailable",
+    ok: status === "ok",
+    status,
     ...(options?.cached != null ? { cached: options.cached } : {}),
     checkedAt: new Date().toISOString(),
   };

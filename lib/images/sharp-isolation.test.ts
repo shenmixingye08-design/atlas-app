@@ -9,9 +9,15 @@ import { loadSharp } from "./load-sharp";
 
 const ROOT = process.cwd();
 
-const ENTRYPOINTS = [
+const LIST_HYDRATE_ENTRYPOINTS = [
   "app/api/automations/route.ts",
   "app/api/billing/summary/route.ts",
+] as const;
+
+const FORBIDDEN_HEAVY = [
+  "lib/images/load-sharp.ts",
+  "lib/images/probe-sharp.ts",
+  "lib/health/core-readiness.ts",
 ] as const;
 
 const STATIC_FROM =
@@ -94,13 +100,29 @@ function collectStaticGraph(entry: string): { files: string[]; sharpFiles: strin
 }
 
 describe("sharp isolation from list/hydrate APIs", () => {
-  for (const entry of ENTRYPOINTS) {
-    it(`${entry} static graph does not import sharp`, () => {
+  for (const entry of LIST_HYDRATE_ENTRYPOINTS) {
+    it(`${entry} static graph does not import sharp or image runtime`, () => {
       const graph = collectStaticGraph(entry);
       expect(graph.files.length).toBeGreaterThan(5);
       expect(graph.sharpFiles, graph.sharpFiles.join(", ")).toEqual([]);
+      expect(
+        FORBIDDEN_HEAVY.filter((file) => graph.files.includes(file)),
+        `heavy modules leaked into ${entry}`,
+      ).toEqual([]);
     });
   }
+
+  it("core-readiness uses lazy probe-sharp and does not top-level import sharp", () => {
+    const route = readFileSync(
+      join(ROOT, "app/api/health/core-readiness/route.ts"),
+      "utf8",
+    );
+    expect(route).not.toMatch(/^import\s+sharp\s+from\s+["']sharp["']/m);
+    expect(route).not.toMatch(/^import\s+["']sharp["']/m);
+    const graph = collectStaticGraph("app/api/health/core-readiness/route.ts");
+    expect(graph.files).toContain("lib/images/probe-sharp.ts");
+    expect(graph.files).toContain("lib/images/load-sharp.ts");
+  });
 
   it("run-automation is not a static import of automation-service", () => {
     const source = readFileSync(

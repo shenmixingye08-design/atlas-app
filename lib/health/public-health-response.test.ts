@@ -34,6 +34,15 @@ describe("public health response sanitizer", () => {
     expect((scrubbed.nested as Record<string, unknown>).keep).toBe("yes");
   });
 
+  it("can emit degraded without looking healthy", () => {
+    const publicBody = toPublicHealthResponse(
+      { ok: false },
+      { status: "degraded" },
+    );
+    expect(publicBody.ok).toBe(false);
+    expect(publicBody.status).toBe("degraded");
+  });
+
   it("maps auth failures to 401/403", () => {
     expect(healthAuthFailedStatus(401)).toBe(401);
     expect(healthAuthFailedStatus(403)).toBe(403);

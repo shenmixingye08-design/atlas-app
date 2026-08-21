@@ -117,6 +117,9 @@ describe("auth route matchers", () => {
   it("keeps sign-in/up public via page list and clerk webhook public", () => {
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain("/api/webhooks/clerk(.*)");
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain("/api/health/version(.*)");
+    expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
+      "/api/health/core-readiness(.*)",
+    );
     // Health probes stay middleware-public for CRON Bearer, but handlers gate auth.
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
       "/api/health/word-pipeline(.*)",
