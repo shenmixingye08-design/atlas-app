@@ -33,7 +33,10 @@ import {
   NON_PRODUCTION_CAPABILITY_IDS,
   validateStepsForProductionActivation,
 } from "@/lib/automation-platform/execution/production-step-registry";
-import { notifyAutomationRunEvent } from "@/lib/automation-platform/execution/notify";
+import {
+  notificationTypeFor,
+  notifyAutomationRunEvent,
+} from "@/lib/automation-platform/execution/notify";
 import { resetAutomationPlatformStoreForTests } from "@/lib/automation-platform/repository/memory-store";
 import { resetAutomationRateLimitForTests } from "@/lib/automation-platform/security/rate-limit";
 import { automationPlatformService } from "@/lib/automation-platform/service/automation-service";
@@ -303,6 +306,12 @@ describe("V2 Production fail-closed", () => {
       if (prevSecret !== undefined) process.env.GOOGLE_CLIENT_SECRET = prevSecret;
       else delete process.env.GOOGLE_CLIENT_SECRET;
     }
+  });
+
+  it("partially_succeeded maps to awaiting_review, never completed", () => {
+    expect(notificationTypeFor("partially_succeeded")).toBe("awaiting_review");
+    expect(notificationTypeFor("partially_succeeded")).not.toBe("completed");
+    expect(notificationTypeFor("succeeded")).toBe("completed");
   });
 
   it("partially_succeeded notification is not type=completed", async () => {

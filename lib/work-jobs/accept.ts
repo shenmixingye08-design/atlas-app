@@ -36,6 +36,24 @@ export type AcceptWorkJobFailure = {
   response?: Response;
 };
 
+async function quotaFailureFromResponse(
+  denied: Response,
+): Promise<AcceptWorkJobFailure> {
+  const body = (await denied.clone().json().catch(() => ({}))) as {
+    message?: string;
+    error?: string;
+  };
+  return {
+    ok: false,
+    httpStatus: (denied.status === 429 ? 429 : 503) as 429 | 503,
+    error:
+      body.message ??
+      (typeof body.error === "string" ? body.error : null) ??
+      "今月のAI作業上限に達しました。",
+    response: denied,
+  };
+}
+
 export async function acceptWorkJob(input: {
   userId: string;
   assignment: string;
@@ -62,26 +80,12 @@ export async function acceptWorkJob(input: {
     nowMs: input.nowMs,
   });
 
-  const { requireAndConsumeAiJob } = await import("@/lib/billing/access");
-  const quotaDenied = await requireAndConsumeAiJob(
-    userId,
-    "work_job",
-    idempotencyKey,
+  const { requireBillingAiUsage, requireAndConsumeAiJob } = await import(
+    "@/lib/billing/access"
   );
-  if (quotaDenied) {
-    const body = (await quotaDenied.clone().json().catch(() => ({}))) as {
-      message?: string;
-      error?: string;
-    };
-    return {
-      ok: false,
-      httpStatus: (quotaDenied.status === 429 ? 429 : 503) as 429 | 503,
-      error:
-        body.message ??
-        (typeof body.error === "string" ? body.error : null) ??
-        "今月のAI作業上限に達しました。",
-      response: quotaDenied,
-    };
+  const precheckDenied = await requireBillingAiUsage(userId);
+  if (precheckDenied) {
+    return quotaFailureFromResponse(precheckDenied);
   }
 
   const id = randomUUID();
@@ -103,6 +107,8 @@ export async function acceptWorkJob(input: {
     completedAt: null,
   };
 
+  // Claim identity first. Usage is reserved only after a durable job exists
+  // so a Supabase/claim outage cannot increment AI Usage with no job.
   let claim;
   try {
     claim = await claimWorkJob(draft);
@@ -125,6 +131,16 @@ export async function acceptWorkJob(input: {
       httpStatus: 503,
       error: "依頼の保存に失敗しました。しばらくしてからもう一度お試しください。",
     };
+  }
+
+  const quotaDenied = await requireAndConsumeAiJob(
+    userId,
+    "work_job",
+    idempotencyKey,
+  );
+  if (quotaDenied) {
+    // Do not persist or start a runnable queued job when Usage refuses.
+    return quotaFailureFromResponse(quotaDenied);
   }
 
   hydrateWorkJobMemory(job);

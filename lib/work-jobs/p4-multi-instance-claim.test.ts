@@ -33,10 +33,12 @@ vi.mock("@/lib/auth/is-atlas-owner", () => ({
 import { applySubscriptionFromStripe } from "@/lib/billing/subscriptions/service";
 import { resetSubscriptionStore } from "@/lib/billing/subscriptions/store";
 import { consumeAiJobQuota, aiJobClaimKey } from "@/lib/billing/usage/ai-job";
+import { getUsageMonthKey } from "@/lib/billing/usage/period";
 import {
   resetAiQuotaEngineForTests,
+  seedAiRunsForTests,
 } from "@/lib/billing/usage/quota-engine";
-import { resetUsageStore } from "@/lib/billing/usage/store";
+import { getUsageSnapshot, resetUsageStore } from "@/lib/billing/usage/store";
 
 import { acceptWorkJob } from "./accept";
 import {
@@ -49,6 +51,7 @@ import { ATLAS_WORK_JOB_IDEMPOTENCY_MIGRATION_SQL } from "./migration-sql";
 import {
   clearWorkJobProcessMemoryForTests,
   findWorkJobByIdempotencyKeyDurable,
+  listWorkJobsForUser,
 } from "./store";
 import type { WorkJobRecord } from "./store";
 
@@ -333,6 +336,14 @@ describe("P4 Production multi-instance work-job claim", () => {
     expect(src).not.toMatch(/crypto\.randomUUID/);
   });
 
+  it("acceptWorkJob reserves Usage only after claimWorkJob", () => {
+    const src = readFileSync(new URL("./accept.ts", import.meta.url), "utf8");
+    const claimAt = src.indexOf("await claimWorkJob");
+    const consumeAt = src.lastIndexOf("requireAndConsumeAiJob");
+    expect(claimAt).toBeGreaterThan(0);
+    expect(consumeAt).toBeGreaterThan(claimAt);
+  });
+
   it("1. concurrent two creates → one job, one Usage, one AI", async () => {
     const userId = "user_p4_race_2";
     await seedLightPlan(userId);
@@ -510,6 +521,7 @@ describe("P4 Production multi-instance work-job claim", () => {
         "work:user_p4_lookup_fail:client:lookup-fail",
       ),
     ).toHaveLength(0);
+    expect(getUsageSnapshot(userId, getUsageMonthKey()).aiRuns).toBe(0);
   });
 
   it("4b. unique conflict + unread existing row is fail-closed", async () => {
@@ -609,5 +621,56 @@ describe("P4 Production multi-instance work-job claim", () => {
     });
     expect(usageA.ok && usageA.used).toBe(2);
     expect(usageB.ok && usageB.used).toBe(2);
+  });
+
+  it("claim failure does not increment Usage; retry after 1 minute uses a fresh key once", async () => {
+    const userId = "user_p4_usage_rollback";
+    await seedLightPlan(userId);
+    const t0 = Date.parse("2026-08-21T00:00:00.000Z");
+    const executions: string[] = [];
+    serviceRoleClient.mockReturnValue(makeUnavailableClient());
+    const failed = await acceptWorkJob({
+      userId,
+      assignment: "週報をまとめて",
+      nowMs: t0,
+      startExecution: (jobId) => executions.push(jobId),
+    });
+    expect(failed).toMatchObject({ ok: false, httpStatus: 503 });
+    expect(getUsageSnapshot(userId, getUsageMonthKey()).aiRuns).toBe(0);
+    expect(listWorkJobsForUser(userId)).toHaveLength(0);
+
+    serviceRoleClient.mockReturnValue(null);
+    const retried = await acceptWorkJob({
+      userId,
+      assignment: "週報をまとめて",
+      nowMs: t0 + 61_000,
+      startExecution: (jobId) => executions.push(jobId),
+    });
+    expect(retried.ok).toBe(true);
+    expect(executions).toHaveLength(1);
+    expect(getUsageSnapshot(userId, getUsageMonthKey()).aiRuns).toBe(1);
+  });
+
+  it("Usage limit refuses OpenAI and leaves no runnable queued job", async () => {
+    const userId = "user_p4_usage_limit";
+    await seedLightPlan(userId);
+    seedAiRunsForTests(userId, 30);
+    const executions: string[] = [];
+    const denied = await acceptWorkJob({
+      userId,
+      assignment: "上限後は作らない",
+      clientKey: "at-limit",
+      startExecution: (jobId) => executions.push(jobId),
+    });
+    expect(denied).toMatchObject({ ok: false, httpStatus: 429 });
+    expect(executions).toHaveLength(0);
+    expect(
+      listClaimedWorkJobIdsForTests(
+        userId,
+        "work:user_p4_usage_limit:client:at-limit",
+      ),
+    ).toHaveLength(0);
+    expect(listWorkJobsForUser(userId)).toHaveLength(0);
+    expect(getUsageSnapshot(userId, getUsageMonthKey()).aiRuns).toBe(30);
   });
 });
