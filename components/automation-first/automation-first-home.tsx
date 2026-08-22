@@ -11,6 +11,7 @@ import {
 } from "@/components/automation-first/entrusted-work";
 import { ErrorState } from "@/components/automation-first/error-state";
 import { HomePrimaryActions } from "@/components/automation-first/home-primary-actions";
+import { WorkCountStrip, YourWorkList } from "@/components/automation-first/your-work";
 import { SectionHeader } from "@/components/automation-first/page-header";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
 import { Timeline } from "@/components/automation-first/timeline";
@@ -56,6 +57,7 @@ import {
 } from "@/lib/product-focus/messaging";
 import { buildEntrustedWorkCards } from "@/lib/value-moat/home-entrusted";
 import { buildValueMetrics } from "@/lib/value-moat/value-metrics";
+import { toWorkAsset, workCounts } from "@/lib/work-asset/work-view";
 
 export type AutomationFirstHomeProps = {
   automations: Automation[];
@@ -310,6 +312,11 @@ export function AutomationFirstHome({
   }, [opsSummary, v1Jobs]);
 
   const nextRun = opsSummary?.nextRun ?? null;
+  const works = useMemo(
+    () => automations.map((automation) => toWorkAsset(automation)),
+    [automations],
+  );
+  const counts = useMemo(() => workCounts(works), [works]);
 
   const entrustedCards = useMemo(
     () =>
@@ -525,6 +532,7 @@ export function AutomationFirstHome({
       runningJobs.length > 0 ||
       nextRunCard ||
       recentSection ||
+      works.length > 0 ||
       entrustedCards.length > 0 ||
       valueMetrics.length > 0 ||
       (opsSummary && hasMeaningfulWeeklyStats(weeklyStats)),
@@ -573,7 +581,7 @@ export function AutomationFirstHome({
         </>
       ) : (
         <p className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
-          {MEMORY_OUTCOME}。
+          {MEMORY_OUTCOME}。普段は任せて、必要なときだけ確認。
         </p>
       )}
 
@@ -600,6 +608,16 @@ export function AutomationFirstHome({
           >
             今日のMINERVOT
           </h2>
+          <WorkCountStrip
+            entrusted={counts.entrusted}
+            completedThisWeek={
+              opsSummary && weeklyStats.completedJobs > 0
+                ? weeklyStats.completedJobs
+                : null
+            }
+            needsAttention={counts.needsAttention + attention.length}
+          />
+          <YourWorkList works={works} />
           <EntrustedWorkList cards={entrustedCards} />
           {valueMetrics.length > 0 ? (
             <MeasuredValueMetrics metrics={valueMetrics} />

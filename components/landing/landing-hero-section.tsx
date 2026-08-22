@@ -57,7 +57,7 @@ export function LandingHeroSection() {
           </p>
 
           <p className="mx-auto mt-3 max-w-[520px] text-sm leading-7 text-[#75686B] lg:mx-0">
-            終わったら通知します。合えば月{lightPlanYenLabel()}。
+            仕事を頼むたびにAIを開く必要はありません。終わったら通知します。合えば月{lightPlanYenLabel()}。
           </p>
 
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row lg:justify-start">
