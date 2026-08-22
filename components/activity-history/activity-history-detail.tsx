@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -19,7 +20,17 @@ import { projectService } from "@/lib/projects/project-service";
 import { createProject } from "@/lib/projects/domain";
 import { ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import { DelegationControl } from "@/components/work-loop/delegation-control";
+import { ExecutionReceiptCard } from "@/components/work-loop/execution-receipt-card";
 import { cn } from "@/lib/design-system/cn";
+import { createAutomation } from "@/lib/automations/client";
+import {
+  ENTRUST_FROM_SUCCESS,
+  buildExecutionReceipt,
+  buildWorkCreateInput,
+  classifyWorkKind,
+  isAutomatableKind,
+} from "@/lib/work-loop";
 
 type ActivityHistoryDetailProps = {
   item: ActivityHistoryItem;
@@ -34,6 +45,73 @@ export function ActivityHistoryDetail({
 }: ActivityHistoryDetailProps) {
   const router = useRouter();
   const transitions = item.result?.workflow.transitions ?? [];
+  const [entrusting, setEntrusting] = useState(false);
+  const [entrustError, setEntrustError] = useState<string | null>(null);
+  const kind = classifyWorkKind({
+    assignment: item.workRequest,
+    title: item.title,
+    deliverableType: item.deliverableType,
+    services: item.services,
+  });
+  const canEntrust =
+    item.status === "completed" && isAutomatableKind(kind) && !item.automationId;
+  const receipt = useMemo(
+    () =>
+      buildExecutionReceipt({
+        workName: item.title,
+        executionId: item.id,
+        completedAt: item.completedAt,
+        steps: transitions.map((row) => `${row.from}→${row.to}`),
+        artifact: item.result?.fileDeliverables?.[0]
+          ? {
+              id: item.result.fileDeliverables[0].id,
+              fileName: item.result.fileDeliverables[0].fileName,
+              format: item.result.fileDeliverables[0].format,
+              createdAt: item.result.fileDeliverables[0].generatedAt,
+              sizeBytes: item.result.fileDeliverables[0].sizeBytes,
+              downloadable: Boolean(item.result.fileDeliverables[0].downloadUrl),
+            }
+          : item.deliverableType
+            ? {
+                id: item.id,
+                fileName: item.title,
+                format: item.deliverableType,
+                downloadable: Boolean(item.deliverablePreview),
+              }
+            : null,
+      }),
+    [item, transitions],
+  );
+
+  async function handleEntrust() {
+    setEntrusting(true);
+    setEntrustError(null);
+    try {
+      const built = buildWorkCreateInput({
+        job: {
+          id: item.id,
+          userId: "local",
+          title: item.title,
+          assignment: item.workRequest,
+          completedAt: item.completedAt,
+          status: "completed",
+          deliverableFormat: item.deliverableType,
+          services: item.services,
+        },
+        schedule: { frequency: "weekly", hour: 9, minute: 0 },
+      });
+      if (!built.ok) {
+        setEntrustError(built.reason);
+        return;
+      }
+      await createAutomation(built.createInput);
+      onUpdated();
+    } catch (caught) {
+      setEntrustError(caught instanceof Error ? caught.message : "登録できませんでした");
+    } finally {
+      setEntrusting(false);
+    }
+  }
 
   function handleFavorite() {
     const key = getMetadataKey(item);
@@ -160,6 +238,11 @@ export function ActivityHistoryDetail({
             </section>
           ) : null}
 
+          <ExecutionReceiptCard receipt={receipt} />
+          {item.automationId ? (
+            <DelegationControl executionLevel="approve_then_run" />
+          ) : null}
+
           <section className="space-y-2">
             <h4 className="text-sm font-semibold">{ui.activityHistory.memorySection}</h4>
             <p className="text-sm text-[var(--text-secondary)]">
@@ -177,6 +260,20 @@ export function ActivityHistoryDetail({
           <Button type="button" size="sm" onClick={handleRerun}>
             {ui.activityHistory.actions.rerun}
           </Button>
+          {canEntrust ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={entrusting}
+              onClick={() => void handleEntrust()}
+              className="min-h-[var(--touch-target)]"
+            >
+              {ENTRUST_FROM_SUCCESS}
+            </Button>
+          ) : null}
+          {entrustError ? (
+            <p className="w-full text-sm text-[var(--danger)]">{entrustError}</p>
+          ) : null}
           <Button type="button" size="sm" variant="secondary" onClick={handleTemplate}>
             {ui.activityHistory.actions.template}
           </Button>

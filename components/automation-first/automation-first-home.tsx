@@ -9,6 +9,7 @@ import { HomePrimaryActions } from "@/components/automation-first/home-primary-a
 import { SectionHeader } from "@/components/automation-first/page-header";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
 import { Timeline } from "@/components/automation-first/timeline";
+import { EntrustProposalList } from "@/components/work-loop/entrust-proposal";
 import { IconClock } from "@/components/ui/icons";
 import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
 import {
@@ -133,6 +134,7 @@ function hasMeaningfulWeeklyStats(stats: HomeWeeklyStats): boolean {
 
 export function AutomationFirstHome({
   automations,
+  projects,
 }: AutomationFirstHomeProps) {
   const { flags } = useFeatureAvailability();
   const opsEnabled =
@@ -486,6 +488,12 @@ export function AutomationFirstHome({
           使うほど、毎回の細かい指示が減ります。
         </p>
       )}
+
+      <EntrustProposalList
+        projects={projects}
+        automations={automations}
+        userId={automations[0]?.userId ?? "local"}
+      />
 
       {opsError ? (
         <ErrorState
