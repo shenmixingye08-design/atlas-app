@@ -26,6 +26,10 @@ import {
   notifyWorkNeedsReview,
 } from "@/lib/notifications/emitters";
 import { persistNotificationsNow } from "@/lib/notifications/durable";
+import {
+  classifyNotificationPersistError,
+  logAutomationNotificationPersistence,
+} from "@/lib/notifications/persist-log";
 import { exportDocumentsOnServer } from "@/lib/deliverables/server-document-export";
 import { logWordPipeline } from "@/lib/deliverables/pipeline-log";
 import { runLearningAnalysis } from "@/lib/learning-engine/service";
@@ -844,7 +848,17 @@ async function executeStoredRun(input: {
       { runId: input.runId, userId: input.userId, kind: "completed" },
     );
     notificationCreated = true;
-    await persistNotificationsNow(input.userId).catch(() => undefined);
+    await persistNotificationsNow(input.userId).catch((error) => {
+      logAutomationNotificationPersistence({
+        success: false,
+        durationMs: 0,
+        persistenceTarget: "atlas_user_state",
+        userId: input.userId,
+        jobId: input.runId,
+        errorCode: classifyNotificationPersistError(error),
+        stage: "commander_persist_blob",
+      });
+    });
     logWordPipeline({
       stage: "NOTIFICATION_CREATED",
       userId: input.userId,
@@ -884,7 +898,17 @@ async function executeStoredRun(input: {
       { runId: input.runId, userId: input.userId, kind: "failed" },
     );
     notificationCreated = true;
-    await persistNotificationsNow(input.userId).catch(() => undefined);
+    await persistNotificationsNow(input.userId).catch((error) => {
+      logAutomationNotificationPersistence({
+        success: false,
+        durationMs: 0,
+        persistenceTarget: "atlas_user_state",
+        userId: input.userId,
+        jobId: input.runId,
+        errorCode: classifyNotificationPersistError(error),
+        stage: "commander_persist_blob",
+      });
+    });
   } else if (finalStatus === "partial") {
     if (lastResult) {
       persistedProjectId = await persistCommanderResultAsProject({

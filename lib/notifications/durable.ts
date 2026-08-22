@@ -4,6 +4,10 @@ import {
   loadDurableDomain,
   persistDurableDomain,
 } from "@/lib/persistence/durable-domain";
+import {
+  classifyNotificationPersistError,
+  logAutomationNotificationPersistence,
+} from "./persist-log";
 
 import type {
   NotificationPreferences,
@@ -61,7 +65,16 @@ export function schedulePersistNotifications(userId: string): void {
     userId,
     setTimeout(() => {
       pendingTimers.delete(userId);
-      void persistNotificationsNow(userId);
+      void persistNotificationsNow(userId).catch((error) => {
+        logAutomationNotificationPersistence({
+          success: false,
+          durationMs: 0,
+          persistenceTarget: "atlas_user_state",
+          userId,
+          errorCode: classifyNotificationPersistError(error),
+          stage: "schedule_persist_blob",
+        });
+      });
     }, 50),
   );
 }
@@ -70,13 +83,22 @@ export function schedulePersistNotifications(userId: string): void {
  * Awaitable durable write. Serverless instances can freeze the moment a route
  * returns its Response, so fire-and-forget persistence may never reach Supabase.
  */
+export class NotificationPersistenceFailedError extends Error {
+  readonly code = "notification_blob_persist_failed";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "NotificationPersistenceFailedError";
+  }
+}
+
 export async function persistNotificationsNow(userId: string): Promise<void> {
   const pending = pendingTimers.get(userId);
   if (pending) {
     clearTimeout(pending);
     pendingTimers.delete(userId);
   }
-  await persistDurableDomain(
+  const result = await persistDurableDomain(
     userId,
     NOTIFICATIONS_DOMAIN_KEY,
     snapshotNotifications(userId),
@@ -85,6 +107,11 @@ export async function persistNotificationsNow(userId: string): Promise<void> {
       forceSupabase: true,
     },
   );
+  if (result === "skipped") {
+    throw new NotificationPersistenceFailedError(
+      "[notifications] atlasNotifications blob persist skipped — Supabase is required",
+    );
+  }
 }
 
 function applyLoadedPreferences(

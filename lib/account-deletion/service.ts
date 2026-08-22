@@ -147,10 +147,18 @@ async function deleteSupabaseProjects(userId: string): Promise<void> {
 
 async function deleteClerkUser(userId: string): Promise<boolean> {
   if (!process.env.CLERK_SECRET_KEY?.trim()) return false;
-  const { isInternalHealthProbeUserId } = await import(
+  const { skipClerkRemoteForInternalProbe } = await import(
     "@/lib/health/internal-probe-user"
   );
-  if (isInternalHealthProbeUserId(userId)) return false;
+  if (
+    skipClerkRemoteForInternalProbe({
+      userId,
+      route: "account-deletion",
+      operation: "deleteUser",
+    })
+  ) {
+    return false;
+  }
   try {
     const client = await clerkClient();
     await client.users.deleteUser(userId);

@@ -407,6 +407,19 @@ export async function listTickSchemaErrors(): Promise<string[]> {
           p_now: "1970-01-01T00:00:00Z",
         }),
     },
+    {
+      name: "atlas_user_state",
+      run: () =>
+        client.from("atlas_user_state").select("user_id").limit(1),
+    },
+    {
+      name: "atlas_user_notifications",
+      run: () =>
+        client
+          .from("atlas_user_notifications")
+          .select("notification_id")
+          .limit(1),
+    },
   ];
   const errors: string[] = [];
   for (const check of checks) {

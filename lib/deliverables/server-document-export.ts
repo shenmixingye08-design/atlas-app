@@ -12,6 +12,10 @@ import {
 } from "@/lib/notifications/emitters";
 import { persistNotificationsNow } from "@/lib/notifications/durable";
 import {
+  classifyNotificationPersistError,
+  logAutomationNotificationPersistence,
+} from "@/lib/notifications/persist-log";
+import {
   artifactCompletedCopy,
   inferArtifactKindFromFileName,
 } from "@/lib/notifications/user-facing-copy";
@@ -184,7 +188,17 @@ export async function exportDocumentsOnServer(input: {
           ? `commander-${input.result.commanderRunId}`
           : null,
       });
-      await persistNotificationsNow(input.userId).catch(() => undefined);
+      await persistNotificationsNow(input.userId).catch((error) => {
+        logAutomationNotificationPersistence({
+          success: false,
+          durationMs: 0,
+          persistenceTarget: "atlas_user_state",
+          userId: input.userId,
+          jobId,
+          errorCode: classifyNotificationPersistError(error),
+          stage: "document_export_persist_blob",
+        });
+      });
     }
     return {
       attempted: true,
@@ -382,7 +396,17 @@ export async function exportDocumentsOnServer(input: {
         deliverableId: primary.id,
         requestId: `${input.requestId}:documents`,
       });
-      await persistNotificationsNow(input.userId).catch(() => undefined);
+      await persistNotificationsNow(input.userId).catch((error) => {
+        logAutomationNotificationPersistence({
+          success: false,
+          durationMs: 0,
+          persistenceTarget: "atlas_user_state",
+          userId: input.userId,
+          jobId,
+          errorCode: classifyNotificationPersistError(error),
+          stage: "document_export_persist_blob",
+        });
+      });
     }
 
     return {

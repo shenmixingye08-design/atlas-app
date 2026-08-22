@@ -31,5 +31,23 @@ describe("production automation schema ensure SQL", () => {
     expect(ATLAS_PRODUCTION_SCHEMA_ENSURE_SQL).toMatch(
       /grant execute on function public\.atlas_claim_x_post_jobs/,
     );
+    expect(ATLAS_PRODUCTION_SCHEMA_ENSURE_SQL).toMatch(
+      /create table if not exists public\.atlas_user_state/,
+    );
+    expect(ATLAS_PRODUCTION_SCHEMA_ENSURE_SQL).toMatch(
+      /create table if not exists public\.atlas_user_notifications/,
+    );
+    expect(ATLAS_PRODUCTION_SCHEMA_ENSURE_SQL).toMatch(
+      /grant all on public\.atlas_user_notifications to service_role/,
+    );
+  });
+
+  it("probes notification persistence tables on tick schema check", () => {
+    const src = readFileSync(
+      join(process.cwd(), "lib/health/production-schema-probe.ts"),
+      "utf8",
+    );
+    expect(src).toContain("atlas_user_state");
+    expect(src).toContain("atlas_user_notifications");
   });
 });

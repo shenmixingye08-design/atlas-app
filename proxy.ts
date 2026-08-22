@@ -7,6 +7,7 @@ import {
   assertOwnerEmailsConfiguredForProduction,
   isAtlasOwnerEmail,
 } from "@/lib/auth/is-atlas-owner";
+import { isClerkMiddlewareCronBypassPath } from "@/lib/auth/clerk-cron-bypass";
 import {
   ATLAS_LOGIN_CONTINUE_NOTICE,
   ATLAS_PROTECTED_PAGE_MATCHERS,
@@ -44,6 +45,12 @@ export default clerkMiddleware(async (auth, request) => {
 
   // ホームページ等の公開ページは protect しない（表示速度を優先）
   if (pathname === "/" || pathname.startsWith("/_next")) {
+    return;
+  }
+
+  // Cron Bearer must never be parsed as a Clerk JWT. Route-level
+  // authorizeAutomationTick remains fail-closed.
+  if (isClerkMiddlewareCronBypassPath(pathname)) {
     return;
   }
 
@@ -125,8 +132,10 @@ export default clerkMiddleware(async (auth, request) => {
 
 export const config = {
   matcher: [
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    "/(api|trpc)(.*)",
+    // Exclude cron drain paths so Clerk never inspects Authorization: Bearer $CRON_SECRET.
+    "/((?!_next|api/automations/tick(?:/|$)|api/worker/drain(?:/|$)|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/api/((?!automations/tick(?:/|$)|worker/drain(?:/|$)).*)",
+    "/trpc(.*)",
     "/__clerk/:path*",
   ],
 };

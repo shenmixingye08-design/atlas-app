@@ -100,6 +100,9 @@ create policy "atlas_user_notifications_deny_anon"
 comment on table public.atlas_user_notifications is
   'P0-4 Durable per-user inbox. Service role only. No global shared buffer.';
 
+revoke all on public.atlas_user_notifications from anon, authenticated;
+grant all on public.atlas_user_notifications to service_role;
+
 -- Dead letter queue for notification delivery failures.
 create table if not exists public.atlas_notification_dlq (
   id uuid primary key default gen_random_uuid(),
@@ -131,6 +134,9 @@ create policy "atlas_notification_dlq_deny_anon"
   on public.atlas_notification_dlq
   for all to anon, authenticated
   using (false) with check (false);
+
+revoke all on public.atlas_notification_dlq from anon, authenticated;
+grant all on public.atlas_notification_dlq to service_role;
 
 -- Refresh PostgREST schema cache so new tables are visible immediately.
 notify pgrst, 'reload schema';

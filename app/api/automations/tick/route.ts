@@ -1,4 +1,5 @@
 import { authorizeAutomationTick } from "@/lib/automations/tick-auth";
+import { runWithAutomationTickContext } from "@/lib/automations/tick-context";
 import { runAutomationTick } from "@/lib/automations/tick-runner";
 
 export const runtime = "nodejs";
@@ -34,7 +35,10 @@ export async function POST(request: Request): Promise<Response> {
   if (!gate.ok) {
     const { recordCronTickOutcome } = await import("@/lib/owner/monitoring");
     recordCronTickOutcome(false, gate.error);
-    return Response.json({ error: gate.error }, { status: gate.status });
+    return Response.json(
+      { error: gate.error, tickId: gate.tickId },
+      { status: gate.status },
+    );
   }
 
   const scheduledCronEnabled =
@@ -45,10 +49,18 @@ export async function POST(request: Request): Promise<Response> {
       reason: "ENABLE_SCHEDULED_CRON=false",
       processed: 0,
       results: [],
+      tickId: gate.tickId,
     });
   }
 
-  const result = await runAutomationTick({ origin: resolveOrigin(request) });
+  const result = await runWithAutomationTickContext(
+    { tickId: gate.tickId },
+    () =>
+      runAutomationTick({
+        origin: resolveOrigin(request),
+        tickId: gate.tickId,
+      }),
+  );
   return Response.json(result.body, { status: result.httpStatus });
 }
 

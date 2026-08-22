@@ -50,8 +50,9 @@ export type AutomationTickResult = {
 
 export async function runAutomationTick(input: {
   origin: string;
+  tickId?: string;
 }): Promise<AutomationTickResult> {
-  const budget = createTickBudget();
+  const budget = createTickBudget(Date.now(), { tickId: input.tickId });
   const stages: TickStageRecord[] = [];
   const canStartJob = () => budget.shouldStartMoreWork();
   let schemaErrors: string[] = [];
