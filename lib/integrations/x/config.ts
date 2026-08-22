@@ -45,7 +45,7 @@ export function getXClientSecret(): string {
 }
 
 export function isXRedirectUriConfigured(
-  env: NodeJS.ProcessEnv = process.env,
+  env: Record<string, string | undefined> = process.env,
 ): boolean {
   return Boolean(
     env.X_REDIRECT_URI?.trim() || env.X_OAUTH_REDIRECT_URI?.trim(),

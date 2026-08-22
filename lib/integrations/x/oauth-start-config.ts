@@ -29,14 +29,16 @@ export type XConnectStartClassification = {
   userMessage: string;
 };
 
+type EnvLookup = Record<string, string | undefined>;
+
 export function isVercelProductionEnv(
-  env: NodeJS.ProcessEnv = process.env,
+  env: EnvLookup = process.env,
 ): boolean {
   return env.VERCEL_ENV === "production";
 }
 
 export function inspectXOAuthEnvFlags(
-  env: NodeJS.ProcessEnv = process.env,
+  env: EnvLookup = process.env,
 ): XOAuthEnvFlags {
   return {
     xClientIdConfigured: Boolean(env.X_CLIENT_ID?.trim()),
@@ -49,7 +51,7 @@ export function inspectXOAuthEnvFlags(
 }
 
 export function probeXOAuthConnectConfig(
-  env: NodeJS.ProcessEnv = process.env,
+  env: EnvLookup = process.env,
 ): {
   flags: XOAuthEnvFlags;
   expectedRedirectUri: string;
@@ -74,7 +76,7 @@ export function probeXOAuthConnectConfig(
 }
 
 export function inspectXConnectStartReadiness(
-  env: NodeJS.ProcessEnv = process.env,
+  env: EnvLookup = process.env,
 ): {
   ready: boolean;
   developerCode: string | null;

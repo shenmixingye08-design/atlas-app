@@ -57,7 +57,7 @@ describe("X OAuth start config", () => {
       X_CLIENT_SECRET: "secret",
       X_REDIRECT_URI: EXPECTED_X_PRODUCTION_REDIRECT_URI,
       CLERK_SECRET_KEY: "sk",
-    } as NodeJS.ProcessEnv);
+    });
     expect(readiness.ready).toBe(false);
     expect(readiness.developerCode).toBe("x_client_id_missing");
     expect(JSON.stringify(readiness)).not.toContain("secret");
@@ -69,7 +69,7 @@ describe("X OAuth start config", () => {
       X_CLIENT_ID: "id",
       X_CLIENT_SECRET: "secret",
       CLERK_SECRET_KEY: "sk",
-    } as NodeJS.ProcessEnv);
+    });
     expect(probe.flags.xRedirectUriConfigured).toBe(false);
     expect(probe.usingCanonicalProductionRedirect).toBe(true);
     expect(probe.canStartAuthorize).toBe(true);
