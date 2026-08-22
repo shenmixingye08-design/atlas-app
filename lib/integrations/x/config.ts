@@ -1,5 +1,12 @@
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 
+/**
+ * Canonical Production callback — matches X Developer Console.
+ * Never derive this from the request Host.
+ */
+export const EXPECTED_X_PRODUCTION_REDIRECT_URI =
+  "https://atlasapp.jp/api/external-services/x/oauth/callback";
+
 /** X OAuth 2.0 configuration (server-only). */
 export const X_OAUTH_SCOPES = [
   "tweet.read",
@@ -37,11 +44,29 @@ export function getXClientSecret(): string {
   return value;
 }
 
+export function isXRedirectUriConfigured(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return Boolean(
+    env.X_REDIRECT_URI?.trim() || env.X_OAUTH_REDIRECT_URI?.trim(),
+  );
+}
+
 export function getXRedirectUri(requestOrigin: string): string {
   const configured =
     process.env.X_REDIRECT_URI?.trim() ||
     process.env.X_OAUTH_REDIRECT_URI?.trim();
   if (configured) return configured;
+
+  // Vercel Production only: use the confirmed atlasapp.jp callback.
+  // Do not derive redirect_uri from Host (open-redirect / app-mismatch risk).
+  if (process.env.VERCEL_ENV === "production") {
+    console.warn("[x-oauth] X_REDIRECT_URI unset; using canonical Production callback", {
+      developerCode: "x_redirect_uri_defaulted",
+      expectedRedirectHost: "atlasapp.jp",
+    });
+    return EXPECTED_X_PRODUCTION_REDIRECT_URI;
+  }
 
   if (isAtlasProduction()) {
     throw new Error(

@@ -6,6 +6,7 @@ export const ENV_SERVICE_LABELS: Record<EnvServiceId, string> = {
   stripe: "Stripe",
   supabase: "Supabase",
   google: "Google",
+  x: "X",
   dropbox: "Dropbox",
   line: "LINE",
   vercel_cron: "Vercel Cron",
@@ -230,6 +231,26 @@ export const OWNER_ENV_VAR_DEFINITIONS: readonly OwnerEnvVarDefinition[] = [
     service: "google",
     requirement: "optional",
     purpose: "Google OAuth リダイレクト URI（未設定時は自動解決）",
+  },
+  {
+    key: "X_CLIENT_ID",
+    service: "x",
+    requirement: "recommended",
+    purpose: "X OAuth クライアント ID（投稿・自動投稿）",
+  },
+  {
+    key: "X_CLIENT_SECRET",
+    service: "x",
+    requirement: "recommended",
+    purpose: "X OAuth クライアントシークレット（値は表示しない）",
+  },
+  {
+    key: "X_REDIRECT_URI",
+    service: "x",
+    requirement: "recommended",
+    purpose:
+      "X OAuth callback（未設定時の Vercel Production は atlasapp.jp 固定。Host からは作らない）",
+    aliases: ["X_OAUTH_REDIRECT_URI"],
   },
   {
     key: "DROPBOX_APP_KEY",

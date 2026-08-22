@@ -19,6 +19,26 @@ export {
   isExternalServiceId,
 } from "./registry";
 
+export function formatExternalConnectClientError(
+  body:
+    | {
+        error?: string;
+        message?: string;
+        diagnosticId?: string;
+      }
+    | null,
+): string {
+  const base =
+    body?.error?.trim() ||
+    body?.message?.trim() ||
+    "連携を開始できませんでした。自動で再試行しています。";
+  const diagnosticId = body?.diagnosticId?.trim();
+  if (diagnosticId && !base.includes(diagnosticId)) {
+    return `${base}（診断ID: ${diagnosticId}）`;
+  }
+  return base;
+}
+
 export async function fetchExternalServiceCatalog(): Promise<ExternalServiceCatalog> {
   const response = await fetch("/api/external-services", { cache: "no-store" });
   if (!response.ok) {
@@ -54,7 +74,15 @@ export async function connectExternalService(
     if (isPlanAccessErrorPayload(body)) {
       throw new Error(formatPlanAccessErrorMessage(body));
     }
-    throw new Error(body?.error ?? body?.message ?? "Failed to connect external service");
+    throw new Error(
+      formatExternalConnectClientError(
+        body as {
+          error?: string;
+          message?: string;
+          diagnosticId?: string;
+        } | null,
+      ),
+    );
   }
 
   const result = body as ExternalServiceConnectResult;

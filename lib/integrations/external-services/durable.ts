@@ -19,6 +19,7 @@ import type { GooglePersistedAuth } from "@/lib/integrations/google/credential-p
 import type { XPersistedAuth } from "@/lib/integrations/x/credential-persistence";
 import type { DropboxPersistedAuth } from "@/lib/integrations/dropbox/credential-persistence";
 import type { WordPressPersistedAuth } from "@/lib/integrations/wordpress/types";
+import { safeLog } from "@/lib/security/redact";
 
 export const EXTERNAL_AUTH_DOMAIN_KEY = "atlasExternalAuth";
 
@@ -97,6 +98,27 @@ export function schedulePersistExternalAuth(userId: string): void {
   );
 }
 
+/**
+ * Isolate one provider so a WordPress/Google/Dropbox/X load failure
+ * cannot skip the others. Missing WP encryption logs a warning and
+ * returns null today — this still guards unexpected throws.
+ */
+async function loadProviderAuthSafely<T>(
+  label: string,
+  loader: () => Promise<T | null>,
+): Promise<T | null> {
+  try {
+    return await loader();
+  } catch (error) {
+    safeLog("warn", `[external-auth] ${label} hydration skipped`, {
+      errorName: error instanceof Error ? error.name : "Error",
+      sanitizedErrorMessage:
+        error instanceof Error ? error.message : "hydration_failed",
+    });
+    return null;
+  }
+}
+
 export async function ensureExternalAuthHydrated(userId: string): Promise<void> {
   const hydratedUsers = getHydratedUsers();
   const lastHydratedAt = hydratedUsers.get(userId);
@@ -115,11 +137,12 @@ export async function ensureExternalAuthHydrated(userId: string): Promise<void> 
     );
     const { saveExternalServiceConnection } = await import("./store");
 
-    // Google tokens: prefer dedicated Supabase table (never stripped on Clerk overflow).
-    const { loadGoogleAuthFromSupabase } = await import(
-      "@/lib/integrations/google/credential-persistence"
-    );
-    const googleAuth = await loadGoogleAuthFromSupabase(userId);
+    const googleAuth = await loadProviderAuthSafely("google", async () => {
+      const { loadGoogleAuthFromSupabase } = await import(
+        "@/lib/integrations/google/credential-persistence"
+      );
+      return loadGoogleAuthFromSupabase(userId);
+    });
     if (googleAuth) {
       if (googleAuth.credentials) {
         saveExternalServiceCredentials(googleAuth.credentials);
@@ -130,45 +153,55 @@ export async function ensureExternalAuthHydrated(userId: string): Promise<void> 
       appliedDurable = true;
     }
 
-    // X tokens: same durable Supabase pattern as Google.
-    const { loadXAuthFromSupabase } = await import(
-      "@/lib/integrations/x/credential-persistence"
-    );
-    const xAuth = await loadXAuthFromSupabase(userId);
+    const xAuth = await loadProviderAuthSafely("x", async () => {
+      const { loadXAuthFromSupabase } = await import(
+        "@/lib/integrations/x/credential-persistence"
+      );
+      return loadXAuthFromSupabase(userId);
+    });
     if (xAuth) {
       saveExternalServiceCredentials(xAuth.credentials);
       saveExternalServiceConnection(userId, xAuth.connection);
       appliedDurable = true;
     }
 
-    // Dropbox tokens: encrypted dedicated Supabase table (P0-02).
-    const { loadDropboxAuthFromSupabase } = await import(
-      "@/lib/integrations/dropbox/credential-persistence"
-    );
-    const dropboxAuth = await loadDropboxAuthFromSupabase(userId);
+    const dropboxAuth = await loadProviderAuthSafely("dropbox", async () => {
+      const { loadDropboxAuthFromSupabase } = await import(
+        "@/lib/integrations/dropbox/credential-persistence"
+      );
+      return loadDropboxAuthFromSupabase(userId);
+    });
     if (dropboxAuth) {
       saveExternalServiceCredentials(dropboxAuth.credentials);
       saveExternalServiceConnection(userId, dropboxAuth.connection);
       appliedDurable = true;
     }
 
-    // WordPress Application Passwords: encrypted Supabase table (never Clerk overflow).
-    const { loadWordPressAuthFromSupabase } = await import(
-      "@/lib/integrations/wordpress/credential-persistence"
+    const wordpressAuth = await loadProviderAuthSafely(
+      "wordpress",
+      async () => {
+        const { loadWordPressAuthFromSupabase } = await import(
+          "@/lib/integrations/wordpress/credential-persistence"
+        );
+        return loadWordPressAuthFromSupabase(userId);
+      },
     );
-    const { saveWordPressCredentials } = await import(
-      "@/lib/integrations/wordpress/credential-store"
-    );
-    const wordpressAuth = await loadWordPressAuthFromSupabase(userId);
     if (wordpressAuth) {
+      const { saveWordPressCredentials } = await import(
+        "@/lib/integrations/wordpress/credential-store"
+      );
       saveWordPressCredentials(wordpressAuth.credentials);
       saveExternalServiceConnection(userId, wordpressAuth.connection);
       appliedDurable = true;
     }
 
-    const loaded = await loadDurableDomain<DurableExternalAuthState>(
-      userId,
-      EXTERNAL_AUTH_DOMAIN_KEY,
+    const loaded = await loadProviderAuthSafely(
+      "durable_domain",
+      async () =>
+        loadDurableDomain<DurableExternalAuthState>(
+          userId,
+          EXTERNAL_AUTH_DOMAIN_KEY,
+        ),
     );
     if (loaded) {
       appliedDurable = true;

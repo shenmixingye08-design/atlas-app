@@ -146,6 +146,9 @@ describe("auth route matchers", () => {
       "/api/health/wordpress-encryption(.*)",
     );
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
+      "/api/health/x-oauth-connect(.*)",
+    );
+    expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
       "/api/health/oauth-encryption(.*)",
     );
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain("/api/health/authz(.*)");
