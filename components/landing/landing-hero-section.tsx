@@ -49,6 +49,10 @@ export function LandingHeroSection() {
           </p>
 
           <p className="mx-auto mt-3 max-w-[520px] text-sm leading-7 text-[#75686B] lg:mx-0">
+            仕事を頼むたびにAIを開く必要はありません。対応業務では、仕事そのものが残ります。
+          </p>
+
+          <p className="mx-auto mt-3 max-w-[520px] text-sm leading-7 text-[#75686B] lg:mx-0">
             終わったら通知します。自分は確認するだけ。合えば月{lightPlanYenLabel()}。
           </p>
 

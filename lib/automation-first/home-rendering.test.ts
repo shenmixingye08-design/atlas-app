@@ -142,6 +142,7 @@ describe("MINERVOT home rendering", () => {
     expect(html).toContain(HOME_OTHER_WORK_CTA);
     expect(html).toContain("今日のMINERVOT");
     expect(html).toContain("対応が必要");
+    expect(html).toContain("任せている仕事");
     expect(html.indexOf("毎日のX投稿を、自動化します")).toBeLessThan(
       html.indexOf("今日のMINERVOT"),
     );

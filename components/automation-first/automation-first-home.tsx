@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AttentionCard } from "@/components/automation-first/attention-card";
 import { ErrorState } from "@/components/automation-first/error-state";
 import { HomePrimaryActions } from "@/components/automation-first/home-primary-actions";
+import { WorkCountStrip, YourWorkList } from "@/components/automation-first/your-work";
 import { SectionHeader } from "@/components/automation-first/page-header";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
 import { Timeline } from "@/components/automation-first/timeline";
@@ -40,6 +41,7 @@ import type { AutomationRun } from "@/lib/automation-platform/types";
 import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 import { useFeatureAvailability } from "@/lib/feature-flags";
+import { toWorkAsset, workCounts } from "@/lib/work-asset/work-view";
 
 export type AutomationFirstHomeProps = {
   automations: Automation[];
@@ -275,6 +277,11 @@ export function AutomationFirstHome({
   }, [opsSummary, v1Jobs]);
 
   const nextRun = opsSummary?.nextRun ?? null;
+  const works = useMemo(
+    () => automations.map((automation) => toWorkAsset(automation)),
+    [automations],
+  );
+  const counts = useMemo(() => workCounts(works), [works]);
 
   useEffect(() => {
     trackAutomationFirstEvent("home_viewed", {
@@ -456,6 +463,7 @@ export function AutomationFirstHome({
       runningJobs.length > 0 ||
       nextRunCard ||
       recentSection ||
+      works.length > 0 ||
       (opsSummary && hasMeaningfulWeeklyStats(weeklyStats)),
   );
 
@@ -483,7 +491,7 @@ export function AutomationFirstHome({
         </p>
       ) : (
         <p className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
-          使うほど、毎回の細かい指示が減ります。
+          今MINERVOTへ任せている仕事を見ます。普段は任せて、必要なときだけ確認。
         </p>
       )}
 
@@ -510,6 +518,16 @@ export function AutomationFirstHome({
           >
             今日のMINERVOT
           </h2>
+          <WorkCountStrip
+            entrusted={counts.entrusted}
+            completedThisWeek={
+              opsSummary && weeklyStats.completedJobs > 0
+                ? weeklyStats.completedJobs
+                : null
+            }
+            needsAttention={counts.needsAttention + attention.length}
+          />
+          <YourWorkList works={works} />
           {attentionSection}
           <RunningStepsPanel
             heading="h3"
