@@ -35,6 +35,69 @@ export function fingerprintCorrection(input: {
   return createHash("sha256").update(raw).digest("hex").slice(0, 24);
 }
 
+function normalizeOfficeFormat(raw: string): string {
+  const value = raw.toLowerCase();
+  if (value === "word") return "docx";
+  if (value === "excel") return "xlsx";
+  if (value === "powerpoint" || value === "パワポ") return "pptx";
+  if (value === "pdf") return "pdf";
+  return value;
+}
+
+function detectOfficeFormatHint(text: string): string | null {
+  if (/wordで|ワードで|docx|wordファイル|ワードファイル/i.test(text)) return "docx";
+  if (/excelで|エクセルで|xlsx/i.test(text)) return "xlsx";
+  if (/powerpointで|パワーポイントで|パワポで|pptx/i.test(text)) return "pptx";
+  if (/pdfで/i.test(text)) return "pdf";
+  return null;
+}
+
+function shouldPersistUnambiguousOnFirstSight(
+  signal: CorrectionSignal,
+  inferred: InferredPreference,
+): boolean {
+  if (isOneShotMemoryInstruction(signal.text)) return false;
+  const source = signal.source;
+  if (
+    source === "user_correction" ||
+    source === "user_explicit" ||
+    source === "explicit" ||
+    source === "correction"
+  ) {
+    return true;
+  }
+  if (source === "system_inference") {
+    return Boolean(
+      (Array.isArray(inferred.value.formats) && inferred.value.formats.length > 0) ||
+        (typeof inferred.value.headingCount === "number" &&
+          inferred.value.headingCount > 0) ||
+        /報告|レポート|毎週|毎日|週次|定例|社内/.test(signal.text),
+    );
+  }
+  return false;
+}
+
+export function isUnambiguousStylePreference(
+  value: Record<string, unknown>,
+): boolean {
+  if (value.length === "short" || value.length === "long") return true;
+  if (value.structure === "bullets" || value.structure === "headings") return true;
+  if (value.conclusion === "first") return true;
+  if (value.emoji === "none" || value.emoji === "few") return true;
+  if (value.headings === true || value.cta === true) return true;
+  if (typeof value.headingCount === "number" && value.headingCount > 0) return true;
+  if (typeof value.hashtagsMax === "number") return true;
+  if (value.tone === "polite" || value.tone === "casual") return true;
+  if (Array.isArray(value.formats) && value.formats.length > 0) return true;
+  if (
+    Array.isArray(value.forbiddenExpressions) &&
+    value.forbiddenExpressions.length > 0
+  ) {
+    return true;
+  }
+  return false;
+}
+
 type InferredPreference = {
   scope: PersonalMemoryScope;
   key: string;
@@ -164,7 +227,7 @@ export function inferPreferenceFromText(
   const trimmed = text.trim();
   if (!trimmed) return null;
   if (isOneShotMemoryInstruction(trimmed)) return null;
-  const cleaned = sanitizeUserFacingMemoryText(trimmed);
+  const cleaned = sanitizeUserFacingMemoryText(trimmed).slice(0, 160);
   const channel = detectMemoryChannel(trimmed);
   const writeIntent = classifyMemoryWriteIntent(trimmed);
   const channelScopedStanding =
@@ -179,7 +242,12 @@ export function inferPreferenceFromText(
   const formatMatch = trimmed.match(
     /今後は?\s*(?:毎回)?\s*(PDF|pdf|Excel|Word|PowerPoint|パワポ)/i,
   );
-  if (formatMatch && !/Xは|ブログ|WordPress/i.test(trimmed)) {
+  const writingAlsoPresent = /短|丁寧|見出し|箇条|結論|絵文字|敬語/.test(trimmed);
+  if (
+    formatMatch &&
+    !writingAlsoPresent &&
+    !/Xは|ブログ|WordPress/i.test(trimmed)
+  ) {
     return withChannel(
       {
         scope: "preferred_formats",
@@ -187,7 +255,7 @@ export function inferPreferenceFromText(
         title: "成果物の形式",
         summary: cleaned.slice(0, 120),
         value: {
-          formats: [formatMatch[1]!.toLowerCase()],
+          formats: [normalizeOfficeFormat(formatMatch[1]!)],
           text: `今後は${formatMatch[1]}も作成`,
         },
         explicit: true,
@@ -214,6 +282,18 @@ export function inferPreferenceFromText(
   if (/見出し/.test(trimmed)) {
     writing.headings = true;
     writing.structure = writing.structure ?? "headings";
+    writingHit = true;
+  }
+  const headingCountMatch = trimmed.match(/見出し\s*(?:は|を)?\s*(\d+)\s*つ/);
+  if (headingCountMatch) {
+    writing.headingCount = Number.parseInt(headingCountMatch[1]!, 10);
+    writing.headings = true;
+    writing.structure = writing.structure ?? "headings";
+    writingHit = true;
+  }
+  const formatHint = detectOfficeFormatHint(trimmed);
+  if (formatHint) {
+    writing.formats = [formatHint];
     writingHit = true;
   }
   if (/結論を最初|結論を先|結論先|結論から/.test(trimmed)) {
@@ -427,7 +507,7 @@ export function evaluateCorrectionForCandidate(
       : inferred.artifactTypes;
   const isGlobal = channelTypes.length === 0 && inferred.global;
   const fingerprint = fingerprintCorrection({
-    text: `${inferred.scope}:${inferred.key}:${channelTypes.join(",")}:${String(inferred.value.length ?? "")}:${String(inferred.value.emoji ?? "")}`,
+    text: `${inferred.scope}:${inferred.key}:${channelTypes.join(",")}:${String(inferred.value.length ?? "")}:${String(inferred.value.emoji ?? "")}:${String(inferred.value.headingCount ?? "")}:${String(Array.isArray(inferred.value.formats) ? inferred.value.formats.join(",") : "")}`,
     scope: inferred.scope,
     automationId: signal.automationId,
   });
@@ -492,6 +572,22 @@ export function evaluateCorrectionForCandidate(
 
   if (settings.explicitOnly) {
     return { action: "none", fingerprint, count };
+  }
+
+  if (
+    shouldPersistUnambiguousOnFirstSight(signal, inferred) &&
+    isUnambiguousStylePreference(inferred.value)
+  ) {
+    return {
+      action: inferred.explicit ? "explicit_active" : "candidate",
+      input: {
+        ...base,
+        status: inferred.explicit ? "active" : "candidate",
+        confidence: Math.max(base.confidence ?? 0.5, 0.82),
+      },
+      fingerprint,
+      count,
+    };
   }
 
   if (count < CORRECTION_REPEAT_THRESHOLD) {

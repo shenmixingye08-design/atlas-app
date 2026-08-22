@@ -119,11 +119,15 @@ export function applyPublishedBodyOverlay(
   const structured = applyWritingPreferenceStructure(
     body,
     {
-      short: overlay.preferShort,
+      short: overlay.preferShort && !overlay.preferLong,
       bullets: overlay.preferBullets,
       conclusionFirst: overlay.preferConclusionFirst,
       noEmoji: overlay.preferNoEmoji,
       headings: overlay.preferHeadings,
+      headingCount: overlay.preferHeadingCount,
+      polite: overlay.preferPolite,
+      long: overlay.preferLong,
+      preferredFormat: overlay.preferredFormat,
       cta: overlay.preferCta,
       seo: overlay.preferSeo,
       keys: overlay.preferenceKeys,

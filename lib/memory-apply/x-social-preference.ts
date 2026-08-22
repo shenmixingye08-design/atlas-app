@@ -82,7 +82,7 @@ export function parseXSocialPreferenceFromText(
   } else if (/絵文字\s*(多め|たくさん)/.test(text)) {
     out.emoji = "many";
   }
-  const hashCount = text.match(/ハッシュタグ\s*(?:最大)?\s*(\d+)\s*個/);
+  const hashCount = text.match(/ハッシュタグ\s*(?:は|最大)?\s*(\d+)\s*個/);
   if (hashCount) {
     out.hashtagsMax = Math.min(8, Math.max(0, Number.parseInt(hashCount[1]!, 10)));
     out.hashtags = out.hashtagsMax === 0 ? "none" : "limited";

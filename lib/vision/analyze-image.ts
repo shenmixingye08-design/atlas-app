@@ -121,16 +121,13 @@ export async function analyzeUserImage(input: {
     const visionMemory = await resolveVisionMemoryContext({
       userId: input.userId,
     });
-    if (visionMemory.hints.length > 0 || visionMemory.injectionText) {
+    if (visionMemory.hints.length > 0) {
+      // Never append last-export format or injectionText here.
+      // That would look like the user asked for Excel and override 「契約書をWordで」.
       memoryAugmentedText = [
         input.userText,
-        visionMemory.injectionText,
-        visionMemory.hints.length > 0
-          ? `【Memoryヒント】${visionMemory.hints.slice(0, 8).join(" / ")}`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
+        `【読み取り補正】${visionMemory.hints.slice(0, 8).join(" / ")}`,
+      ].join("\n");
     }
   } catch {
     memoryAugmentedText = input.userText;

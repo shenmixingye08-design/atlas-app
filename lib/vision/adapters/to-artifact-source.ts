@@ -180,8 +180,9 @@ function buildInvoiceMarkdown(batch: VisionBatchResult): string {
       string,
       unknown
     >;
+    const confidence = image?.confidence ?? 0;
     lines.push(
-      `| ${asString(record.name)} | ${asString(record.quantity)} | ${asString(record.unitPrice)} | ${asString(record.amount)} | ${asString(record.notes)} |`,
+      `| ${cellOrReview(record.name, confidence)} | ${cellOrReview(record.quantity, confidence)} | ${cellOrReview(record.unitPrice, confidence)} | ${cellOrReview(record.amount, confidence)} | ${cellOrReview(record.notes, confidence)} |`,
     );
   }
   if (batch.warnings.length > 0) {

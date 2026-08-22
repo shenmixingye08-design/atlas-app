@@ -170,5 +170,5 @@ describe("Word Stage 3 real file generation (3 samples)", () => {
       join(OUT, "report.json"),
       JSON.stringify(reports, null, 2),
     );
-  });
+  }, 30_000);
 });

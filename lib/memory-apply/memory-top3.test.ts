@@ -365,20 +365,7 @@ describe("Memory TOP3 — Case D correction learning", () => {
       after,
       artifactType: "x_post",
     });
-    expect(first).toBeNull();
-    await ingestCorrectionInsightsToPersonalMemory({
-      userId: USER_A,
-      before,
-      after,
-      artifactType: "x_post",
-    });
-    const third = await ingestCorrectionInsightsToPersonalMemory({
-      userId: USER_A,
-      before,
-      after,
-      artifactType: "x_post",
-    });
-    expect(third?.status).toBe("active");
+    expect(first?.status).toBe("active");
 
     const next = await applyMemoryToStepBody({
       userId: USER_A,

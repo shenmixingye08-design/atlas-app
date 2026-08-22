@@ -8,6 +8,7 @@ export {
   buildContentOverlay,
   buildDeliverableOverlay,
   applyContentOverlayToText,
+  applyContentOverlayToDeliverableBody,
 } from "./overlays";
 export {
   recordMemoryApplyEvent,
@@ -33,6 +34,7 @@ export {
 export {
   createVisionStyleMemoryCandidates,
   resolveVisionMemoryContext,
+  visionAnalyzeSafeHints,
 } from "./vision";
 export {
   applyOcrCorrections,
@@ -54,7 +56,21 @@ export {
   ingestCorrectionInsightsToPersonalMemory,
   correctionInsightsToPreferenceText,
 } from "./correction-preferences";
-export { measureMemoryApplyDelta } from "./instruction-reduction";
+export {
+  measureMemoryApplyDelta,
+  stripKnownPreferencesFromInstruction,
+  detectInstructionPreferenceItems,
+  parseExplicitOverrideFromText,
+  buildPreferenceAppliedNotice,
+  preferenceApplicationRate,
+  savedPreferenceKeysFromValues,
+} from "./instruction-reduction";
+export {
+  detectWritingPreferenceStructure,
+  applyWritingPreferenceStructure,
+  applyHeadingCount,
+  buildExplicitWritingPreferenceValue,
+} from "./preference-structure";
 export {
   detectMemoryChannel,
   channelFromStepType,

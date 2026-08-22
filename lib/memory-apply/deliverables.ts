@@ -4,10 +4,15 @@ import { getWordCompanyBrand } from "@/lib/deliverables/company-brand";
 import type { DeliverableFormat } from "@/lib/deliverables/types";
 import { resolveForContext } from "@/lib/personal-memory/service";
 import {
-  applyContentOverlayToText,
+  applyContentOverlayToDeliverableBody,
   buildContentOverlay,
   buildDeliverableOverlay,
 } from "@/lib/memory-apply/overlays";
+import {
+  buildPreferenceAppliedNotice,
+  describePreferenceLabels,
+  parseExplicitOverrideFromText,
+} from "@/lib/memory-apply/instruction-reduction";
 import { recordMemoryApplyEvent } from "@/lib/memory-apply/metrics";
 import {
   compareMemoryQuality,
@@ -44,6 +49,7 @@ export type DeliverableMemoryApply = {
   memoryRetrieved: boolean;
   memoryApplied: boolean;
   appliedPreferenceKeys: string[];
+  preferenceNotice: string | null;
 };
 
 /**
@@ -81,6 +87,24 @@ export async function applyMemoryForDeliverable(input: {
     values: ledger.memoryValuesResolved,
     injectionText: result.injectionText,
   });
+  const explicit = parseExplicitOverrideFromText(input.assignment ?? "");
+  if (explicit.length === "long") {
+    contentOverlay.preferShort = false;
+    contentOverlay.preferLong = true;
+    contentOverlay.preferenceKeys = contentOverlay.preferenceKeys.filter(
+      (key) => key !== "length:short",
+    );
+    if (!contentOverlay.preferenceKeys.includes("length:long")) {
+      contentOverlay.preferenceKeys.push("length:long");
+    }
+  } else if (explicit.length === "short") {
+    contentOverlay.preferShort = true;
+    contentOverlay.preferLong = false;
+  }
+  if (explicit.headingCount && explicit.headingCount > 0) {
+    contentOverlay.preferHeadingCount = explicit.headingCount;
+    contentOverlay.preferHeadings = true;
+  }
   const overlay = buildDeliverableOverlay({
     userId: input.userId,
     values: ledger.memoryValuesResolved,
@@ -89,16 +113,22 @@ export async function applyMemoryForDeliverable(input: {
     brandFallback,
   });
 
-  const next = applyContentOverlayToText(input.content, contentOverlay);
+  const bodyApplied = applyContentOverlayToDeliverableBody(
+    input.content,
+    contentOverlay,
+  );
+  const next = bodyApplied.text;
   const flat: Record<string, unknown> = {};
   for (const row of ledger.memoryValuesResolved) Object.assign(flat, row.value);
 
   const channel = channelForFormat(input.format);
   const memoryRetrieved = ledger.memoryIdsUsed.length > 0;
   const preferenceApplied =
-    contentOverlay.preferenceKeys.length > 0 && next !== input.content.trim();
-  const applied =
-    memoryRetrieved || Boolean(overlay.brand) || preferenceApplied;
+    bodyApplied.appliedKeys.length > 0 && next !== input.content.trim();
+  const applied = memoryRetrieved || Boolean(overlay.brand) || preferenceApplied;
+  const appliedPreferenceKeys = bodyApplied.appliedKeys.length
+    ? bodyApplied.appliedKeys
+    : contentOverlay.preferenceKeys;
   const quality = compareMemoryQuality({
     before: input.content,
     after: next,
@@ -112,9 +142,9 @@ export async function applyMemoryForDeliverable(input: {
     memoryMode: applied ? "on" : "off",
     applied,
     memoryRetrieved,
-    memoryApplied: applied && next !== input.content.trim(),
+    memoryApplied: preferenceApplied,
     memorySource: memoryRetrieved ? "atlasPersonalMemory" : "none",
-    appliedPreferenceKeys: contentOverlay.preferenceKeys,
+    appliedPreferenceKeys,
     memoryIdsUsed: ledger.memoryIdsUsed,
     scopesUsed: overlay.scopesUsed,
     improvementRate: quality.improvementRate,
@@ -133,7 +163,12 @@ export async function applyMemoryForDeliverable(input: {
     applied,
     channel,
     memoryRetrieved,
-    memoryApplied: applied && next !== input.content.trim(),
-    appliedPreferenceKeys: contentOverlay.preferenceKeys,
+    memoryApplied: preferenceApplied,
+    appliedPreferenceKeys: [...new Set(appliedPreferenceKeys)],
+    preferenceNotice: preferenceApplied
+      ? buildPreferenceAppliedNotice(
+          describePreferenceLabels(appliedPreferenceKeys),
+        )
+      : null,
   };
 }

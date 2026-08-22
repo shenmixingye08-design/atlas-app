@@ -57,6 +57,10 @@ export type MemoryContentOverlay = {
   preferConclusionFirst: boolean;
   preferNoEmoji: boolean;
   preferHeadings: boolean;
+  preferHeadingCount: number | null;
+  preferPolite: boolean;
+  preferLong: boolean;
+  preferredFormat: "docx" | "xlsx" | "pptx" | "pdf" | null;
   preferCta: boolean;
   preferSeo: boolean;
   ctaText: string | null;

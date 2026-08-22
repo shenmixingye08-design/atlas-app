@@ -121,9 +121,9 @@ export function buildContentOverlay(input: {
   const visionHints = values
     .filter(
       (v) =>
-        v.key.startsWith("vision_") ||
-        v.scope === "document_design" ||
-        v.scope === "preferred_formats",
+        (v.key.startsWith("vision_") || v.scope === "document_design") &&
+        v.scope !== "preferred_formats" &&
+        v.key !== "last_export",
     )
     .map((v) => v.summary)
     .filter(Boolean);
@@ -153,6 +153,10 @@ export function buildContentOverlay(input: {
     preferConclusionFirst: structure.conclusionFirst,
     preferNoEmoji: structure.noEmoji,
     preferHeadings: structure.headings,
+    preferHeadingCount: structure.headingCount,
+    preferPolite: structure.polite,
+    preferLong: structure.long,
+    preferredFormat: structure.preferredFormat,
     preferCta: structure.cta,
     preferSeo: structure.seo,
     ctaText:
@@ -352,11 +356,15 @@ export function applyContentOverlayToText(
   }
 
   const structured = applyWritingPreferenceStructure(body, {
-    short: overlay.preferShort,
+    short: overlay.preferShort && !overlay.preferLong,
     bullets: overlay.preferBullets,
     conclusionFirst: overlay.preferConclusionFirst,
     noEmoji: overlay.preferNoEmoji,
     headings: overlay.preferHeadings,
+    headingCount: overlay.preferHeadingCount,
+    polite: overlay.preferPolite,
+    long: overlay.preferLong,
+    preferredFormat: overlay.preferredFormat,
     cta: overlay.preferCta,
     seo: overlay.preferSeo,
     keys: overlay.preferenceKeys,
@@ -366,4 +374,68 @@ export function applyContentOverlayToText(
   const header = parts.length > 0 ? `${parts.join("\n")}\n\n` : "";
   const signature = overlay.signature ? `\n\n${overlay.signature}` : "";
   return `${header}${body}${signature}`.trim();
+}
+
+/**
+ * File-safe apply: mutate the body only.
+ * Prompt chrome (【文体】 / 【適用する好み】) must never enter Word/PDF/Excel.
+ */
+export function applyContentOverlayToDeliverableBody(
+  base: string,
+  overlay: MemoryContentOverlay,
+): { text: string; appliedKeys: string[] } {
+  let body = (base ?? "").trim();
+  if (!body) return { text: "", appliedKeys: [] };
+
+  const appliedKeys: string[] = [];
+  for (const forbidden of overlay.forbiddenExpressions) {
+    if (!forbidden) continue;
+    if (body.includes(forbidden)) {
+      body = body.split(forbidden).join("");
+      appliedKeys.push("forbidden");
+    }
+  }
+
+  const structured = applyWritingPreferenceStructure(
+    body,
+    {
+      short: overlay.preferShort && !overlay.preferLong,
+      bullets: overlay.preferBullets,
+      conclusionFirst: overlay.preferConclusionFirst,
+      noEmoji: overlay.preferNoEmoji,
+      headings: overlay.preferHeadings,
+      headingCount: overlay.preferHeadingCount,
+      polite: overlay.preferPolite,
+      long: overlay.preferLong,
+      preferredFormat: overlay.preferredFormat,
+      cta: overlay.preferCta,
+      seo: overlay.preferSeo,
+      keys: overlay.preferenceKeys,
+    },
+    { includeMarkers: false },
+  );
+  body = structured.text;
+  appliedKeys.push(...structured.appliedKeys);
+
+  if (/【好み反映】|【適用する好み】|【文体】/.test(body)) {
+    body = body
+      .replace(/【好み反映】[^\n]*/g, "")
+      .replace(/【適用する好み】[^\n]*/g, "")
+      .replace(/【文体】[^\n]*/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  if (overlay.signature && !body.includes(overlay.signature)) {
+    body = `${body}\n\n${overlay.signature}`;
+    appliedKeys.push("signature");
+  }
+  for (const line of overlay.contactLines.slice(0, 3)) {
+    if (line && !body.includes(line)) {
+      body = `${body}\n\n${line}`;
+      appliedKeys.push("contact");
+    }
+  }
+
+  return { text: body, appliedKeys: [...new Set(appliedKeys)] };
 }

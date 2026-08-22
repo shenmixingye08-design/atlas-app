@@ -319,25 +319,27 @@ describe("Personal Memory System", () => {
     expect(ledger.memoryCandidateUpdates.length).toBeGreaterThan(0);
   });
 
-  it("26-27. one correction does not learn; three does", async () => {
+  it("26-27. unambiguous style correction persists on first sight; one-shot does not", async () => {
     const first = evaluateCorrectionForCandidate({
       userId: USER,
       text: "もっと短くして",
       source: "user_correction",
     });
-    expect(first.action).toBe("none");
-    evaluateCorrectionForCandidate({
+    expect(first.action).toBe("candidate");
+    expect(first.input?.value.length).toBe("short");
+    const persisted = await ingestCorrectionSignal({
       userId: USER,
       text: "もっと短くして",
       source: "user_correction",
     });
-    const third = evaluateCorrectionForCandidate({
+    expect(persisted?.status).toBe("active");
+
+    const oneShot = evaluateCorrectionForCandidate({
       userId: USER,
-      text: "もっと短くして",
+      text: "今日だけ短くして",
       source: "user_correction",
     });
-    expect(third.action).toBe("candidate");
-    expect(third.input?.status).toBe("candidate");
+    expect(oneShot.action).toBe("none");
   });
 
   it("28. external content never becomes candidate", async () => {
@@ -398,16 +400,6 @@ describe("Personal Memory System", () => {
   });
 
   it("33-35. candidate notify batch / reject prevents re-propose", async () => {
-    evaluateCorrectionForCandidate({
-      userId: USER,
-      text: "もっと短くして",
-      source: "user_correction",
-    });
-    evaluateCorrectionForCandidate({
-      userId: USER,
-      text: "もっと短くして",
-      source: "user_correction",
-    });
     const ready = evaluateCorrectionForCandidate({
       userId: USER,
       text: "もっと短くして",

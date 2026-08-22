@@ -24,6 +24,13 @@ import {
 } from "@/lib/memory-apply/quality-diff";
 import type { MemoryApplyChannel, MemoryQualityDiff } from "@/lib/memory-apply/types";
 import type { PersonalMemoryScope } from "@/lib/personal-memory/types";
+import {
+  buildPreferenceAppliedNotice,
+  describePreferenceLabels,
+  parseExplicitOverrideFromText,
+  stripKnownPreferencesFromInstruction,
+  type StripKnownPreferencesResult,
+} from "@/lib/memory-apply/instruction-reduction";
 
 export type MemoryApplyInput = {
   userId: string;
@@ -50,6 +57,9 @@ export type MemoryApplyOutput = {
   surface: SurfaceContextBundle;
   quality: MemoryQualityDiff;
   logId: string;
+  instructionReduction: StripKnownPreferencesResult;
+  preferenceNotice: string | null;
+  appliedPreferenceKeys: string[];
 };
 
 /**
@@ -81,12 +91,36 @@ export async function MemoryApply(
     channel: input.channel,
     provider,
   });
+  const override = parseExplicitOverrideFromText(input.baseline);
+  if (override.length === "long") {
+    context.content.preferShort = false;
+    context.content.preferLong = true;
+  }
+  if (override.headingCount) {
+    context.content.preferHeadingCount = override.headingCount;
+    context.content.preferHeadings = true;
+  }
+  const instructionReduction =
+    context.mode === "on"
+      ? stripKnownPreferencesFromInstruction({
+          instruction: input.baseline,
+          values: provider.personalValues,
+        })
+      : {
+          text: input.baseline,
+          strippedKeys: [],
+          restatedItemsBefore: [],
+          restatedItemsAfter: [],
+          overrideKeys: [],
+        };
+  const reducedBaseline =
+    context.mode === "on" ? instructionReduction.text : input.baseline;
   const prompt = PromptBuilder({
-    baseline: input.baseline,
+    baseline: reducedBaseline,
     context,
   });
   const surface = ContextBuilder({
-    baseline: input.baseline,
+    baseline: reducedBaseline,
     context,
   });
 
@@ -116,11 +150,24 @@ export async function MemoryApply(
     quality,
   });
 
+  const appliedPreferenceKeys = [
+    ...context.content.preferenceKeys,
+    ...instructionReduction.strippedKeys,
+  ];
+  const actuallyApplied =
+    context.mode === "on" &&
+    (prompt.withMemory !== prompt.baseline ||
+      instructionReduction.strippedKeys.length > 0 ||
+      context.content.preferenceKeys.length > 0);
+
   recordMemoryApplyEvent({
     userId: input.userId,
     channel: input.channel,
     memoryMode: context.mode,
-    applied: context.mode === "on" && context.memoryIdsUsed.length > 0,
+    applied: actuallyApplied,
+    memoryRetrieved: context.memoryIdsUsed.length > 0,
+    memoryApplied: actuallyApplied,
+    appliedPreferenceKeys,
     memoryIdsUsed: context.memoryIdsUsed,
     scopesUsed: context.scopesUsed,
     improvementRate: quality.improvementRate,
@@ -133,6 +180,13 @@ export async function MemoryApply(
     surface,
     quality,
     logId: log.id,
+    instructionReduction,
+    preferenceNotice: actuallyApplied
+      ? buildPreferenceAppliedNotice(
+          describePreferenceLabels(appliedPreferenceKeys),
+        )
+      : null,
+    appliedPreferenceKeys: [...new Set(appliedPreferenceKeys)],
   };
 }
 

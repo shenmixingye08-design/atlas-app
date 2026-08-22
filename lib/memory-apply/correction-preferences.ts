@@ -30,7 +30,10 @@ export function correctionInsightsToPreferenceText(
   if (insights.structureHints.some((hint) => /減らす/.test(hint))) {
     parts.push("もっと短くして");
   }
-  if (/^#{1,3}\s/m.test(after) || /見出し/.test(after)) {
+  const headingCount = (after.match(/^#{1,3}\s+/gm) ?? []).length;
+  if (headingCount > 0) {
+    parts.push(`見出し${headingCount}つ`);
+  } else if (/見出し/.test(after)) {
     parts.push("見出しを入れて");
   }
   if (/詳しくは|お問い合わせ|こちらから|今すぐ/.test(after)) {
@@ -52,7 +55,9 @@ export function correctionInsightsToPreferenceText(
 }
 
 export function isUnambiguousCorrectionPreference(text: string): boolean {
-  return /短く|短め|簡潔|箇条書き|結論を|絵文字|見出し|CTA|丁寧|嫌/.test(text);
+  return /短く|短め|簡潔|箇条書き|結論を|絵文字|見出し|CTA|丁寧|嫌|Word|ワード|ハッシュタグ/.test(
+    text,
+  );
 }
 
 export async function ingestCorrectionInsightsToPersonalMemory(input: {

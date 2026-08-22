@@ -6,7 +6,9 @@ export type XlsxVerifyReason =
   | "no_worksheet"
   | "empty_sheet"
   | "formula_injection"
-  | "broken_formula_ref";
+  | "broken_formula_ref"
+  | "missing_autofilter"
+  | "missing_freeze_pane";
 
 export type XlsxVerifyResult = {
   ok: boolean;
@@ -66,6 +68,12 @@ export async function verifyXlsxWorkbook(buffer: Buffer): Promise<XlsxVerifyResu
     }
     if (sheet.autoFilter) hasFilter = true;
     if (sheet.views?.some((v) => v.state === "frozen")) hasFreeze = true;
+    if (sheet.rowCount > 2 && sheet.columnCount >= 2) {
+      if (!sheet.autoFilter) reasons.push("missing_autofilter");
+      if (!sheet.views?.some((v) => v.state === "frozen")) {
+        reasons.push("missing_freeze_pane");
+      }
+    }
 
     sheet.eachRow((row) => {
       row.eachCell((cell) => {

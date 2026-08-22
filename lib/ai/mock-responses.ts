@@ -455,6 +455,80 @@ export function resolveMockLlmOutput(
         });
       }
 
+      // Specific document kinds win over leftover "Excel" / 「表」 format memory.
+      if (isContract) {
+        return JSON.stringify({
+          detectedType: "contract",
+          confidence: 0.9,
+          summary: "業務委託契約書。報酬と秘密保持条項あり。",
+          extractedText:
+            "業務委託契約書\n甲: 株式会社サンプル\n乙: 株式会社テスト\n契約日 2026-04-01\n報酬 月額300,000円",
+          language: "ja",
+          fields: {
+            parties: "甲:株式会社サンプル / 乙:株式会社テスト",
+            effectiveDate: "2026-04-01",
+            expiryDate: "2027-03-31",
+            amounts: "月額300,000円",
+            governingLaw: "日本法",
+            keyClauses: [
+              "業務内容は別紙のとおり",
+              "秘密情報を第三者に開示しない",
+              "契約期間は1年、自動更新",
+            ],
+          },
+          tables: [],
+          visualElements: ["契印欄"],
+          layout: { hierarchy: "契約書", readability: "良好" },
+          styleSignals: null,
+          warnings: [],
+          missingFields: [],
+          recommendedActions: ["契約書要約Wordを生成"],
+          artifactSuggestions: ["contract_docx"],
+        });
+      }
+
+      if (isChart) {
+        return JSON.stringify({
+          detectedType: "chart",
+          confidence: 0.89,
+          summary: "月次売上の棒グラフ。右肩上がり。",
+          extractedText: "売上推移 1月〜6月 上昇傾向",
+          language: "ja",
+          fields: {
+            chartType: "棒グラフ",
+            title: "月次売上推移",
+            xAxis: "月",
+            yAxis: "売上（万円）",
+            series: "売上",
+            legend: "売上",
+            visibleValues: null,
+            trend: "増加傾向",
+            insights: ["右肩上がり", "具体値は判別不可"],
+          },
+          tables: [
+            {
+              headers: ["月", "売上"],
+              rows: [
+                ["1月", null],
+                ["2月", null],
+                ["3月", null],
+                ["4月", null],
+                ["5月", null],
+                ["6月", null],
+              ],
+              notes: "具体値は判別不可",
+            },
+          ],
+          visualElements: ["棒", "軸ラベル"],
+          layout: null,
+          styleSignals: null,
+          warnings: [],
+          missingFields: [],
+          recommendedActions: ["グラフ分析レポートを生成"],
+          artifactSuggestions: ["chart_report_docx"],
+        });
+      }
+
       if (isEstimate) {
         return JSON.stringify({
           detectedType: "estimate",
@@ -608,79 +682,6 @@ export function resolveMockLlmOutput(
           missingFields: ["contactInfo"],
           recommendedActions: ["改善版資料を生成", "CTAと連絡先を強化"],
           artifactSuggestions: ["improved_sales_doc"],
-        });
-      }
-
-      if (isContract) {
-        return JSON.stringify({
-          detectedType: "contract",
-          confidence: 0.9,
-          summary: "業務委託契約書。報酬と秘密保持条項あり。",
-          extractedText:
-            "業務委託契約書\n甲: 株式会社サンプル\n乙: 株式会社テスト\n契約日 2026-04-01\n報酬 月額300,000円",
-          language: "ja",
-          fields: {
-            parties: "甲:株式会社サンプル / 乙:株式会社テスト",
-            effectiveDate: "2026-04-01",
-            expiryDate: "2027-03-31",
-            amounts: "月額300,000円",
-            governingLaw: "日本法",
-            keyClauses: [
-              "業務内容は別紙のとおり",
-              "秘密情報を第三者に開示しない",
-              "契約期間は1年、自動更新",
-            ],
-          },
-          tables: [],
-          visualElements: ["契印欄"],
-          layout: { hierarchy: "契約書", readability: "良好" },
-          styleSignals: null,
-          warnings: [],
-          missingFields: [],
-          recommendedActions: ["契約書要約Wordを生成"],
-          artifactSuggestions: ["contract_docx"],
-        });
-      }
-
-      if (isChart) {
-        return JSON.stringify({
-          detectedType: "chart",
-          confidence: 0.89,
-          summary: "月次売上の棒グラフ。右肩上がり。",
-          extractedText: "売上推移 1月〜6月 上昇傾向",
-          language: "ja",
-          fields: {
-            chartType: "棒グラフ",
-            title: "月次売上推移",
-            xAxis: "月",
-            yAxis: "売上（万円）",
-            series: "売上",
-            legend: "売上",
-            visibleValues: null,
-            trend: "増加傾向",
-            insights: ["右肩上がり", "具体値は判別不可"],
-          },
-          tables: [
-            {
-              headers: ["月", "売上"],
-              rows: [
-                ["1月", null],
-                ["2月", null],
-                ["3月", null],
-                ["4月", null],
-                ["5月", null],
-                ["6月", null],
-              ],
-              notes: "具体値は判別不可",
-            },
-          ],
-          visualElements: ["棒", "軸ラベル"],
-          layout: null,
-          styleSignals: null,
-          warnings: [],
-          missingFields: [],
-          recommendedActions: ["グラフ分析レポートを生成"],
-          artifactSuggestions: ["chart_report_docx"],
         });
       }
 
