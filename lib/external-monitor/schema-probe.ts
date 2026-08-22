@@ -50,7 +50,7 @@ async function tableOk(table: string): Promise<boolean> {
 function tickWired(): boolean {
   try {
     const src = readFileSync(
-      join(process.cwd(), "app/api/automations/tick/route.ts"),
+      join(process.cwd(), "lib/automations/tick-runner.ts"),
       "utf8",
     );
     return (

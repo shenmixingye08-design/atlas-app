@@ -1,12 +1,17 @@
 "use client";
 
+import { PRODUCT_FINISHING_HEADLINE } from "@/lib/product-focus/messaging";
+
 /**
- * Strong "this is a different category" contrast.
- * Not "answers better" — "your job is still yours" vs "job ends".
+ * Contrast without attacking a specific company.
+ * Claims stay inside implemented auto-exec: set once → run → notify.
  */
 export function LandingChatgptContrast() {
   return (
     <div className="mt-10 w-full max-w-[570px] space-y-3 lg:mx-0 mx-auto">
+      <p className="text-left text-sm font-semibold tracking-[-0.02em] text-[#281A1E]">
+        {PRODUCT_FINISHING_HEADLINE}
+      </p>
       <div
         className="overflow-hidden rounded-[20px] border border-[#74172A]/15 bg-white text-left"
         aria-label="一般的なAIとMINERVOTの違い"
@@ -17,35 +22,27 @@ export function LandingChatgptContrast() {
         </div>
         <div className="grid grid-cols-2 text-sm">
           <p className="border-b border-[#74172A]/8 px-3 py-3 text-[#5A4B4F]">
-            毎回説明
+            毎回「文章を作って」
           </p>
           <p className="border-b border-[#74172A]/8 px-3 py-3 font-medium text-[#74172A]">
-            一度教える
+            一度設定
           </p>
           <p className="border-b border-[#74172A]/8 px-3 py-3 text-[#5A4B4F]">
-            生成
+            コピー
           </p>
           <p className="border-b border-[#74172A]/8 px-3 py-3 font-medium text-[#74172A]">
-            覚える
-          </p>
-          <p className="border-b border-[#74172A]/8 px-3 py-3 text-[#5A4B4F]">
-            人がコピー
-          </p>
-          <p className="border-b border-[#74172A]/8 px-3 py-3 font-medium text-[#74172A]">
-            次から再利用
+            次から自動実行
           </p>
           <p className="px-3 py-3 text-[#5A4B4F]">
-            人が実行
+            投稿は自分
           </p>
           <p className="px-3 py-3 font-medium text-[#74172A]">
-            対応業務では実行まで
+            完了通知
           </p>
         </div>
       </div>
       <p className="text-left text-xs leading-5 text-[#75686B]">
-        見た瞬間の結論：チャットAIの上位互換ではありません。
-        <span className="font-semibold text-[#74172A]">仕事完了の別カテゴリ</span>
-        です。
+        質問に答えるAIではなく、毎日のX投稿を設定どおり終わらせる秘書です。
       </p>
     </div>
   );

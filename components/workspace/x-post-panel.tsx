@@ -232,7 +232,9 @@ export function XPostPanel() {
     setIsConnecting(true);
     setError(null);
     try {
-      await connectExternalService("x");
+      await connectExternalService("x", {
+        returnTo: "/workspace/x?onboarding=1",
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : ui.xSettings.connectError);
       setIsConnecting(false);

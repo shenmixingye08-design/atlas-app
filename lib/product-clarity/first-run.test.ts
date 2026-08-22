@@ -51,7 +51,7 @@ describe("first-run clarity gates", () => {
       },
       leadEmployee: "MINERVOT",
       saveLocation: "MINERVOT",
-      nextIntegration: { label: "X", href: "/settings/x" },
+      nextIntegration: { label: "X", href: "/workspace/x" },
       usedRealOrchestration: false,
     });
     expect(isClarityFirstRun()).toBe(false);

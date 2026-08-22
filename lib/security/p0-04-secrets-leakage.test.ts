@@ -224,4 +224,28 @@ describe("P0-04 secrets / token / PII leakage", () => {
     ).toBe(false);
     expect(assertNoSecretMaterial('{"ok":true,"status":"ok"}')).toBe(true);
   });
+
+  it("recursively redacts nested metadata.token and api_key= values", () => {
+    const redacted = redactSecrets({
+      jobId: "job_keep",
+      diagnosticId: "diag_keep",
+      stage: "v2_dispatch",
+      durationMs: 42,
+      metadata: {
+        token: "raw-token",
+        nested: { apiKey: "supersecret-apikey" },
+      },
+      note: "api_key=supersecret",
+      url: "https://example.com/callback?token=raw-token&api_key=supersecret&jobId=job_keep",
+    }) as Record<string, unknown>;
+    const json = JSON.stringify(redacted);
+    expect(json).not.toContain("raw-token");
+    expect(json).not.toContain("supersecret");
+    expect(json).not.toContain("supersecret-apikey");
+    expect(redacted.jobId).toBe("job_keep");
+    expect(redacted.diagnosticId).toBe("diag_keep");
+    expect(redacted.stage).toBe("v2_dispatch");
+    expect(redacted.durationMs).toBe(42);
+    expect(assertNoSecretMaterial(json)).toBe(true);
+  });
 });

@@ -31,7 +31,7 @@ export function getSiteOrigin(): string {
 }
 
 export const MINERVOT_DEFAULT_TITLE =
-  "MINERVOT | あなたの仕事を覚えて、次から終わらせるAI秘書";
+  "MINERVOT | 毎日のX投稿、一度頼んだら次からMINERVOTに任せる";
 
 export const MINERVOT_DEFAULT_DESCRIPTION =
   `あなたの仕事を覚えて、次から終わらせるAI秘書。毎日のX投稿も、いつもの報告書も、一度やり方を教えれば次から細かい説明を減らせます。対応業務では実行・保存まで。合えば月${lightPlanYenLabel()}。`;

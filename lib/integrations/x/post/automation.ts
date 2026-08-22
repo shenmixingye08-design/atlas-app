@@ -176,13 +176,20 @@ export async function maybeAutoPostToXAfterCommander(input: {
   return { attempted: true, mode: "publish", result };
 }
 
-export async function processScheduledXPostsFromAutomationTick(): Promise<
+export async function processScheduledXPostsFromAutomationTick(options?: {
+  limit?: number;
+  signal?: AbortSignal;
+  canStartJob?: () => boolean;
+}): Promise<
   Array<{ scheduledId: string; status: string }>
 > {
   const { processDueScheduledXPosts } = await import("./service");
 
   const processed = await processDueScheduledXPosts({
     resolveContext: resolveFeatureContextForUser,
+    limit: options?.limit,
+    signal: options?.signal,
+    canStartJob: options?.canStartJob,
   });
 
   return processed.map((item) => ({
@@ -196,13 +203,20 @@ export async function processScheduledXPostsFromAutomationTick(): Promise<
  * Selects users with auto-post enabled and processes their due slots. The whole
  * schedule/idempotency layer is normal code; AI is used only for the copy.
  */
-export async function processDueAutoPostsFromAutomationTick(): Promise<
+export async function processDueAutoPostsFromAutomationTick(options?: {
+  limitUsers?: number;
+  signal?: AbortSignal;
+  canStartJob?: () => boolean;
+}): Promise<
   Array<{ userId: string; posted: number; drafted: number; skipped: number; failed: number }>
 > {
   const { processDueAutoPosts } = await import("./autopost-runner");
 
   const outcomes = await processDueAutoPosts({
     resolveContext: resolveFeatureContextForUser,
+    limitUsers: options?.limitUsers,
+    signal: options?.signal,
+    canStartJob: options?.canStartJob,
   });
 
   return outcomes.map((outcome) => {

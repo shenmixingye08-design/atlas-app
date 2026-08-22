@@ -96,6 +96,7 @@ export class ExternalServiceManager {
     serviceId: ExternalServiceId,
     requestOrigin?: string,
     context?: FeatureAccessContext,
+    options?: { returnTo?: string },
   ): Promise<ExternalServiceConnectResult> {
     // Always fail-closed for unoffered connectors (even without feature context).
     if (!isExternalServiceConnectable(serviceId)) {
@@ -137,7 +138,9 @@ export class ExternalServiceManager {
 
       markXConnectionPending(userId);
       const pending = getExternalServiceConnection(userId, "x");
-      const authorizeUrl = buildXAuthorizeUrl(requestOrigin, userId);
+      const authorizeUrl = buildXAuthorizeUrl(requestOrigin, userId, {
+        returnTo: options?.returnTo,
+      });
       const isReconnect =
         current.status === "connected" || current.status === "error";
 

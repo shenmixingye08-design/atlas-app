@@ -178,6 +178,7 @@ function structuralWiring(): {
     "lib/memory-apply/v1-automation-bridge.ts",
     "lib/memory-apply/automation.ts",
     "app/api/automations/tick/route.ts",
+    "lib/automations/tick-runner.ts",
   ];
   for (const rel of required) {
     if (!existsSync(join(process.cwd(), rel))) {
@@ -209,7 +210,7 @@ function structuralWiring(): {
   );
   const memoryV2Ok = /applyMemoryForAutomation/.test(v2Service);
 
-  const tick = readRoot("app/api/automations/tick/route.ts");
+  const tick = `${readRoot("app/api/automations/tick/route.ts")}\n${readRoot("lib/automations/tick-runner.ts")}`;
   const schedulerCompatibleOk =
     /processWorkQueueTick/.test(tick) &&
     /processDueScheduledAutomationsV2/.test(tick);
@@ -284,8 +285,10 @@ export async function probeN08AutomationUnifyProduction(): Promise<N08Automation
       AutomationStoreUnavailableError,
     } = await import("@/lib/automations/durable-automation-definitions");
 
-    const ownerA = `n08_probe_a_${randomUUID().slice(0, 8)}`;
-    const ownerB = `n08_probe_b_${randomUUID().slice(0, 8)}`;
+    const { createN08ProbeOwnerIds } = await import(
+      "@/lib/health/internal-probe-user"
+    );
+    const { ownerA, ownerB } = createN08ProbeOwnerIds();
     const v1CreateInput = {
       name: "N08 probe automation",
       description: "canonical unify probe",

@@ -45,11 +45,16 @@ import type { AutomationRun } from "@/lib/automation-platform/types";
 import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 import { useFeatureAvailability } from "@/lib/feature-flags";
-import { buildEntrustedWorkCards } from "@/lib/value-moat/home-entrusted";
+import { fetchXAutoPostStatusClient } from "@/lib/integrations/x/post/autopost-client";
 import {
-  HOME_NEW_USER_HEADLINE,
-  HOME_RETURNING_HEADLINE,
-} from "@/lib/value-moat/messaging";
+  countSuccessfulFinishedWorkThisMonth,
+  formatFinishedWorkThisMonthLine,
+} from "@/lib/product-focus/finished-work";
+import {
+  HOME_X_AUTOMATION_SUPPORT,
+  MEMORY_OUTCOME,
+} from "@/lib/product-focus/messaging";
+import { buildEntrustedWorkCards } from "@/lib/value-moat/home-entrusted";
 import { buildValueMetrics } from "@/lib/value-moat/value-metrics";
 
 export type AutomationFirstHomeProps = {
@@ -144,6 +149,7 @@ function hasMeaningfulWeeklyStats(stats: HomeWeeklyStats): boolean {
 
 export function AutomationFirstHome({
   automations,
+  projects,
 }: AutomationFirstHomeProps) {
   const { flags } = useFeatureAvailability();
   const opsEnabled =
@@ -159,6 +165,7 @@ export function AutomationFirstHome({
   );
   const [runs, setRuns] = useState<AutomationRun[]>([]);
   const [opsRequestId, setOpsRequestId] = useState(0);
+  const [xPostedThisMonth, setXPostedThisMonth] = useState<number | null>(null);
 
   useEffect(() => {
     if (!opsEnabled) return;
@@ -196,6 +203,23 @@ export function AutomationFirstHome({
       cancelled = true;
     };
   }, [opsEnabled, opsRequestId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchXAutoPostStatusClient()
+      .then((result) => {
+        if (cancelled) return;
+        if (result.status === "ready") {
+          setXPostedThisMonth(result.postedThisMonth);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setXPostedThisMonth(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const v1Jobs = useMemo(
     () => buildTodayJobsFromAutomations(automations, now),
@@ -513,27 +537,43 @@ export function AutomationFirstHome({
           {greetingForHour(now.getHours())}
         </p>
         <h1 className="text-[length:var(--text-page-title)] font-semibold tracking-tight text-[var(--text-primary)] sm:text-[length:var(--text-display)]">
-          {isReturningUser ? HOME_RETURNING_HEADLINE : HOME_NEW_USER_HEADLINE}
+          毎日のX投稿を、一度頼んだら次から任せます
         </h1>
         <p className="text-[length:var(--text-caption)] text-[var(--text-secondary)] sm:text-[length:var(--text-body)]">
           {formatTodayDateLabel(now)}
           {" — "}
-          毎日のX投稿から始められます。一度頼めば、あとは確認するだけ。
+          {HOME_X_AUTOMATION_SUPPORT}
         </p>
       </header>
 
       <HomePrimaryActions compact={isReturningUser} />
 
+      {(() => {
+        const finishedLine = formatFinishedWorkThisMonthLine(
+          countSuccessfulFinishedWorkThisMonth({
+            projects,
+            automations,
+            xAutoPostsPostedThisMonth: xPostedThisMonth ?? 0,
+            now,
+          }),
+        );
+        return finishedLine ? (
+          <p className="text-center text-[length:var(--text-caption)] text-[var(--text-muted)]">
+            {finishedLine}
+          </p>
+        ) : null;
+      })()}
+
       {!isReturningUser ? (
         <>
           <NewUserValueSteps />
           <p className="text-center text-[length:var(--text-body)] leading-[var(--leading-body)] text-[var(--text-secondary)]">
-            まずX投稿を自動化してみましょう。使うほど、毎回の細かい指示が減ります。
+            まず毎日のX投稿を任せてみましょう。{MEMORY_OUTCOME}。
           </p>
         </>
       ) : (
         <p className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
-          続きを優先します。使うほど、毎回の細かい指示が減ります。
+          {MEMORY_OUTCOME}。
         </p>
       )}
 

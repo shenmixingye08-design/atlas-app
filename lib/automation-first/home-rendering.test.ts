@@ -38,10 +38,6 @@ import {
   HOME_OTHER_WORK_CTA,
   HOME_X_AUTOMATION_CTA,
 } from "@/lib/product-focus/messaging";
-import {
-  HOME_NEW_USER_HEADLINE,
-  HOME_RETURNING_HEADLINE,
-} from "@/lib/value-moat/messaging";
 
 const FORBIDDEN_HOME_COPY = [
   "AIオーケストラ",
@@ -108,11 +104,11 @@ describe("MINERVOT home rendering", () => {
   it("leads with one X automation CTA and keeps other work secondary", () => {
     const html = renderHome();
     expect(html).toContain("automation-first-home");
-    expect(html).toContain(HOME_NEW_USER_HEADLINE);
+    expect(html).toContain("毎日のX投稿を、一度頼んだら次から任せます");
     expect(html).toContain(HOME_X_AUTOMATION_CTA);
     expect(html).toContain(HOME_OTHER_WORK_CTA);
-    expect(html).toContain("まずX投稿を自動化してみましょう");
-    expect(html).toContain("使うほど、毎回の細かい指示が減ります");
+    expect(html).toContain("まず毎日のX投稿を任せてみましょう");
+    expect(html).toContain("使うほど、毎回の細かい指示が減る");
     expect(html).toContain("一度頼む");
     expect(html).toContain("好みを覚える");
     expect(html).not.toContain("今すぐ1件任せる");
@@ -148,9 +144,8 @@ describe("MINERVOT home rendering", () => {
     expect(html).toContain(HOME_OTHER_WORK_CTA);
     expect(html).toContain("今日のMINERVOT");
     expect(html).toContain("対応が必要");
-    expect(html).toContain(HOME_RETURNING_HEADLINE);
     expect(html).toContain("MINERVOTに任せた仕事");
-    expect(html.indexOf(HOME_RETURNING_HEADLINE)).toBeLessThan(
+    expect(html.indexOf("毎日のX投稿を、一度頼んだら次から任せます")).toBeLessThan(
       html.indexOf("今日のMINERVOT"),
     );
     expect(html.indexOf(HOME_X_AUTOMATION_CTA)).toBeLessThan(

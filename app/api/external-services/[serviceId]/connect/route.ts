@@ -74,11 +74,22 @@ export async function POST(
     if (denial) return billingDenialResponse(denial);
 
     const origin = resolveOrigin(request);
+    let returnTo: string | undefined;
+    try {
+      const json = (await request.json()) as { returnTo?: unknown } | null;
+      if (typeof json?.returnTo === "string") {
+        returnTo = json.returnTo;
+      }
+    } catch {
+      // Empty body is valid — settings page still returns to /settings/x.
+    }
+
     const result = await externalServiceManager.connect(
       userId,
       serviceId,
       origin,
       accessContext,
+      returnTo ? { returnTo } : undefined,
     );
 
     if (result.connection.status === "connected") {
