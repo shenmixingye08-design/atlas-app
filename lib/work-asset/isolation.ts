@@ -7,7 +7,7 @@ export type IsolatedRecord<T> = {
   value: T;
 };
 
-export function partitionByUser<T extends { userId: string }>(
+export function partitionByUser<T extends { userId: string | null }>(
   rows: readonly T[],
   userId: string,
 ): T[] {

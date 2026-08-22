@@ -47,7 +47,7 @@ export function resolveWorkRule<K extends keyof WorkRuleSet>(input: {
       return { key: input.key, value: input.defaultValue, layer };
     }
     const value = input[layer === "task_type" ? "taskType" : layer];
-    if (value !== undefined && value !== null && value !== "") {
+    if (value !== undefined && value !== null) {
       return { key: input.key, value, layer };
     }
   }
