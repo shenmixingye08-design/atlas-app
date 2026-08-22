@@ -129,6 +129,34 @@ describe("durable-domain", () => {
     vi.unstubAllEnvs();
   });
 
+  it("does not treat atlasNotifications skip as Clerk success", async () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    upsertSb.mockResolvedValue(false);
+    const result = await persistDurableDomain(
+      "user_1",
+      "atlasNotifications",
+      { notifications: [], preferences: {} },
+      { compact: (p) => p, forceSupabase: true },
+    );
+    expect(result).toBe("skipped");
+    expect(persistClerk).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
+  });
+
+  it("skips Clerk cleanup for n07 probe users while still writing Supabase", async () => {
+    upsertSb.mockResolvedValue(true);
+    const result = await persistDurableDomain(
+      "n07_user_a_deadbeef",
+      "atlasNotifications",
+      { notifications: [], preferences: {} },
+      { compact: (p) => p, forceSupabase: true },
+    );
+    expect(result).toBe("supabase");
+    expect(loadClerk).not.toHaveBeenCalled();
+    expect(clearClerk).not.toHaveBeenCalled();
+    expect(upsertSb).toHaveBeenCalled();
+  });
+
   it("loads Supabase payload for supabase-only domains without Clerk", async () => {
     const row = {
       payload: {

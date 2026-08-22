@@ -18,9 +18,14 @@ describe("authorizeHealthProbe", () => {
   });
 
   it("delegates to cron/owner tick auth", async () => {
-    vi.mocked(authorizeAutomationTick).mockResolvedValue({ ok: true });
+    vi.mocked(authorizeAutomationTick).mockResolvedValue({
+      ok: true,
+      tickId: "tick_test",
+      authMethod: "bearer_cron_secret",
+      callerType: "unknown",
+    });
     const req = new Request("https://atlasapp.jp/api/health/vision");
-    await expect(authorizeHealthProbe(req)).resolves.toEqual({ ok: true });
+    await expect(authorizeHealthProbe(req)).resolves.toMatchObject({ ok: true });
   });
 
   it("returns 401 JSON without internal error detail for anonymous callers", async () => {
@@ -28,6 +33,10 @@ describe("authorizeHealthProbe", () => {
       ok: false,
       status: 503,
       error: "CRON_SECRET is not configured",
+      tickId: "tick_test",
+      authMethod: "none",
+      callerType: "external",
+      rejectionReason: "cron_secret_unconfigured",
     });
     const gate = await authorizeHealthProbe(
       new Request("https://atlasapp.jp/api/health/vision"),

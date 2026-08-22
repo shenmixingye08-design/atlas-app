@@ -9,6 +9,10 @@ import {
   isNotificationDurableRequired,
   resolveNotificationStorageBackend,
 } from "./notification-backend";
+import {
+  classifyNotificationPersistError,
+  logAutomationNotificationPersistence,
+} from "./persist-log";
 import { MAX_NOTIFICATIONS_PER_USER } from "./store";
 import type { NotificationRecord, NotificationType } from "./types";
 
@@ -374,7 +378,23 @@ export async function insertDurableNotification(
   });
 
   if (backend === "supabase") {
+    const startedAt = Date.now();
     const result = await insertSupabase(row);
+    logAutomationNotificationPersistence({
+      success: result.ok,
+      durationMs: Date.now() - startedAt,
+      persistenceTarget: "atlas_user_notifications",
+      notificationId: row.notificationId,
+      userId: row.ownerId,
+      errorCode: result.ok
+        ? null
+        : classifyNotificationPersistError(result.error),
+      stage: result.ok
+        ? result.created
+          ? "inbox_insert"
+          : "inbox_upsert_duplicate"
+        : "inbox_insert",
+    });
     if (!result.ok) {
       throw new NotificationInboxUnavailableError(
         `[notifications] P0-4: durable insert failed — memory fallback disabled (${result.error})`,

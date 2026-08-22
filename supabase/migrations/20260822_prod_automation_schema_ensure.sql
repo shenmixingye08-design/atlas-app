@@ -1,6 +1,7 @@
 -- Production schema ensure for objects that have been missing from PostgREST
 -- schema cache (PGRST205): atlas_deliverable_files, atlas_automation_jobs,
--- atlas_x_autopost_settings, atlas_claim_x_post_jobs.
+-- atlas_x_autopost_settings, atlas_claim_x_post_jobs, atlas_user_state,
+-- atlas_user_notifications.
 --
 -- Additive / idempotent only. Safe to re-run.
 -- Does NOT drop tables, wipe rows, or reset credentials/jobs/posts.
@@ -411,6 +412,116 @@ revoke all on function public.atlas_claim_x_post_jobs(text, integer, integer, ti
   from public, anon, authenticated;
 grant execute on function public.atlas_claim_x_post_jobs(text, integer, integer, timestamptz)
   to service_role;
+
+-- ---------------------------------------------------------------------------
+-- atlas_user_state (20260711) — blob SoT including atlasNotifications
+-- ---------------------------------------------------------------------------
+create table if not exists public.atlas_user_state (
+  user_id text not null,
+  domain text not null,
+  payload jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, domain)
+);
+
+alter table public.atlas_user_state enable row level security;
+drop policy if exists "atlas_user_state_all" on public.atlas_user_state;
+drop policy if exists "atlas_user_state_deny_anon" on public.atlas_user_state;
+create policy "atlas_user_state_deny_anon"
+  on public.atlas_user_state
+  for all to anon, authenticated
+  using (false) with check (false);
+revoke all on public.atlas_user_state from anon, authenticated;
+grant all on public.atlas_user_state to service_role;
+
+-- ---------------------------------------------------------------------------
+-- atlas_user_notifications + atlas_notification_dlq
+-- ---------------------------------------------------------------------------
+create table if not exists public.atlas_user_notifications (
+  notification_id text primary key,
+  owner_id text not null,
+  organization_id text,
+  audience text not null default 'user',
+  source_type text,
+  source_id text,
+  event_type text not null,
+  channel text not null default 'in_app',
+  title text not null,
+  body text not null,
+  severity text,
+  status text not null default 'pending',
+  read_at timestamptz,
+  delivered_at timestamptz,
+  failed_at timestamptz,
+  retry_count integer not null default 0,
+  next_retry_at timestamptz,
+  max_retries integer not null default 5,
+  idempotency_key text not null,
+  diagnostic_id text,
+  metadata jsonb not null default '{}'::jsonb,
+  related_task_id text,
+  related_service text,
+  action_url text,
+  target_type text,
+  target_id text,
+  workflow_run_id text,
+  deliverable_id text,
+  request_id text,
+  automation_id text,
+  line_event text,
+  event_category text,
+  push_sent_at timestamptz,
+  push_failed_at timestamptz,
+  push_failure_reason text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  expires_at timestamptz,
+  deleted_at timestamptz
+);
+
+create unique index if not exists atlas_user_notifications_idempotency_uidx
+  on public.atlas_user_notifications (owner_id, idempotency_key)
+  where deleted_at is null;
+
+create index if not exists atlas_user_notifications_owner_created_idx
+  on public.atlas_user_notifications (owner_id, created_at desc)
+  where deleted_at is null;
+
+alter table public.atlas_user_notifications enable row level security;
+drop policy if exists "atlas_user_notifications_deny_anon"
+  on public.atlas_user_notifications;
+create policy "atlas_user_notifications_deny_anon"
+  on public.atlas_user_notifications
+  for all to anon, authenticated
+  using (false) with check (false);
+revoke all on public.atlas_user_notifications from anon, authenticated;
+grant all on public.atlas_user_notifications to service_role;
+
+create table if not exists public.atlas_notification_dlq (
+  id uuid primary key default gen_random_uuid(),
+  notification_id text not null,
+  user_id text not null,
+  channel text not null,
+  title text not null,
+  message text not null,
+  attempt_count integer not null default 0,
+  last_error text,
+  payload jsonb not null default '{}'::jsonb,
+  status text not null default 'dead'
+    check (status in ('pending_retry', 'dead', 'resolved')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.atlas_notification_dlq enable row level security;
+drop policy if exists "atlas_notification_dlq_deny_anon"
+  on public.atlas_notification_dlq;
+create policy "atlas_notification_dlq_deny_anon"
+  on public.atlas_notification_dlq
+  for all to anon, authenticated
+  using (false) with check (false);
+revoke all on public.atlas_notification_dlq from anon, authenticated;
+grant all on public.atlas_notification_dlq to service_role;
 
 -- Refresh PostgREST schema cache so tables/RPC are visible immediately.
 notify pgrst, 'reload schema';

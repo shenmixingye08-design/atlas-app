@@ -1,6 +1,7 @@
 import "server-only";
 
-import { isInternalHealthProbeUserId } from "@/lib/health/internal-probe-user";
+import { skipClerkRemoteForInternalProbe } from "@/lib/health/internal-probe-user";
+import { logAutomationNotificationPersistence } from "@/lib/notifications/persist-log";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 import {
@@ -95,7 +96,13 @@ export function resetClerkPointerCacheForTests(): void {
 export async function clearHeavyClerkDurableDomains(
   userId: string,
 ): Promise<{ migrated: string[]; cleared: string[] }> {
-  if (isInternalHealthProbeUserId(userId)) {
+  if (
+    skipClerkRemoteForInternalProbe({
+      userId,
+      route: "durable-domain",
+      operation: "clearHeavyClerkKeys",
+    })
+  ) {
     return { migrated: [], cleared: [] };
   }
   if (clearedUsersCache().has(userId)) {
@@ -204,13 +211,25 @@ export async function persistDurableDomain<T>(
     // Shrink private_metadata once — migrate then null keys. No pointer rewrite.
     await clearHeavyClerkDurableDomains(userId);
 
+    const startedAt = Date.now();
     const supabaseOk = await upsertSupabaseUserState(userId, domainKey, full);
+    if (domainKey === "atlasNotifications") {
+      logAutomationNotificationPersistence({
+        success: supabaseOk,
+        durationMs: Date.now() - startedAt,
+        persistenceTarget: "atlas_user_state",
+        userId,
+        notificationId: null,
+        errorCode: supabaseOk ? null : "persist_failed",
+        stage: "durable_domain_blob",
+      });
+    }
     if (!supabaseOk) {
       if (isAtlasProduction()) {
         warnIfProductionSupabaseServiceRoleMissing(`${domainKey} supabase-only`);
         console.error(
           `[persistence] Supabase-only persist failed for ${domainKey} ` +
-            `(user=${userId}). Refusing any Clerk payload fallback.`,
+            `(userRef). Refusing any Clerk payload fallback.`,
         );
       }
       return "skipped";

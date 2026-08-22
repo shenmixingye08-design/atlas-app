@@ -2,7 +2,7 @@ import "server-only";
 
 import { clerkClient } from "@clerk/nextjs/server";
 
-import { isInternalHealthProbeUserId } from "@/lib/health/internal-probe-user";
+import { skipClerkRemoteForInternalProbe } from "@/lib/health/internal-probe-user";
 
 import {
   bumpPersistenceCounter,
@@ -16,7 +16,15 @@ export async function loadClerkPrivateMetadataKey<T>(
   key: string,
 ): Promise<T | null> {
   if (!process.env.CLERK_SECRET_KEY?.trim()) return null;
-  if (isInternalHealthProbeUserId(userId)) return null;
+  if (
+    skipClerkRemoteForInternalProbe({
+      userId,
+      route: "clerk-private-metadata",
+      operation: "getUser",
+    })
+  ) {
+    return null;
+  }
 
   return withPersistenceTimeout<T | null>(async () => {
     try {
@@ -42,7 +50,15 @@ export async function persistClerkPrivateMetadataKey(
   value: unknown,
 ): Promise<boolean> {
   if (!process.env.CLERK_SECRET_KEY?.trim()) return false;
-  if (isInternalHealthProbeUserId(userId)) return false;
+  if (
+    skipClerkRemoteForInternalProbe({
+      userId,
+      route: "clerk-private-metadata",
+      operation: "updateUserMetadata",
+    })
+  ) {
+    return false;
+  }
 
   return withPersistenceTimeout(async () => {
     try {
@@ -95,7 +111,15 @@ export async function clearClerkPrivateMetadataKeys(
   keys: readonly string[],
 ): Promise<boolean> {
   if (!process.env.CLERK_SECRET_KEY?.trim() || keys.length === 0) return false;
-  if (isInternalHealthProbeUserId(userId)) return false;
+  if (
+    skipClerkRemoteForInternalProbe({
+      userId,
+      route: "clerk-private-metadata",
+      operation: "clearUserMetadata",
+    })
+  ) {
+    return false;
+  }
 
   try {
     bumpPersistenceCounter("clerkClearKeys");

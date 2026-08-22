@@ -14,41 +14,88 @@ type UserStateRow = {
   updated_at: string;
 };
 
+export type SupabaseUserStateWriteResult = {
+  ok: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+};
+
+function classifyUserStateError(message: string | null): string {
+  const msg = message ?? "";
+  if (/schema cache|PGRST205|Could not find the table/i.test(msg)) {
+    return "schema_cache_missing";
+  }
+  if (/42501|permission denied|RLS/i.test(msg)) return "permission_denied";
+  if (/23505|duplicate/i.test(msg)) return "duplicate_key";
+  if (/timeout|ETIMEDOUT|abort/i.test(msg)) return "timeout";
+  if (/service.?role|not configured/i.test(msg)) return "service_role_missing";
+  return "persist_failed";
+}
+
 /** Full payload upsert via service role (RLS denies anon). */
 export async function upsertSupabaseUserState(
   userId: string,
   domain: string,
   payload: unknown,
 ): Promise<boolean> {
+  const result = await upsertSupabaseUserStateDetailed(userId, domain, payload);
+  return result.ok;
+}
+
+export async function upsertSupabaseUserStateDetailed(
+  userId: string,
+  domain: string,
+  payload: unknown,
+): Promise<SupabaseUserStateWriteResult> {
   const client = createServiceRoleClientIfConfigured();
   if (!client) {
     warnIfProductionSupabaseServiceRoleMissing(`atlas_user_state:${domain}`);
-    return false;
+    return {
+      ok: false,
+      errorCode: "service_role_missing",
+      errorMessage: "supabase_service_role_not_configured",
+    };
   }
 
-  return withPersistenceTimeout(async () => {
-    try {
-      const row: UserStateRow = {
-        user_id: userId,
-        domain,
-        payload,
-        updated_at: new Date().toISOString(),
-      };
-      const { error } = await client.from(ATLAS_USER_STATE_TABLE).upsert(row);
-      if (error) {
-        console.warn(
-          `[persistence] Supabase user_state upsert failed (${domain}):`,
-          error.message,
-        );
-        return false;
+  return withPersistenceTimeout<SupabaseUserStateWriteResult>(
+    async () => {
+      try {
+        const row: UserStateRow = {
+          user_id: userId,
+          domain,
+          payload,
+          updated_at: new Date().toISOString(),
+        };
+        const { error } = await client.from(ATLAS_USER_STATE_TABLE).upsert(row);
+        if (error) {
+          console.warn(
+            `[persistence] Supabase user_state upsert failed (${domain}):`,
+            error.message,
+          );
+          return {
+            ok: false,
+            errorCode: classifyUserStateError(error.message),
+            errorMessage: error.message,
+          };
+        }
+        bumpPersistenceCounter("supabaseUserStateUpsert");
+        return { ok: true, errorCode: null, errorMessage: null };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[persistence] Supabase user_state skipped (${domain}):`, error);
+        return {
+          ok: false,
+          errorCode: classifyUserStateError(message),
+          errorMessage: message,
+        };
       }
-      bumpPersistenceCounter("supabaseUserStateUpsert");
-      return true;
-    } catch (error) {
-      console.warn(`[persistence] Supabase user_state skipped (${domain}):`, error);
-      return false;
-    }
-  }, false);
+    },
+    {
+      ok: false,
+      errorCode: "timeout",
+      errorMessage: "persistence_timeout",
+    },
+  );
 }
 
 /** List user ids that have a durable domain row (for cron fan-out). */

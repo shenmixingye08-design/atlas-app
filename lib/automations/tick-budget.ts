@@ -123,8 +123,11 @@ export function resolveTickSoftDeadlineMs(
   );
 }
 
-export function createTickBudget(nowMs = Date.now()): TickBudget {
-  const tickId = `tick_${randomUUID()}`;
+export function createTickBudget(
+  nowMs = Date.now(),
+  options?: { tickId?: string },
+): TickBudget {
+  const tickId = options?.tickId?.trim() || `tick_${randomUUID()}`;
   const softDeadlineMs = resolveTickSoftDeadlineMs();
   const hardAbortMs = Math.min(
     softDeadlineMs + DEFAULT_TICK_HARD_ABORT_BUFFER_MS,
