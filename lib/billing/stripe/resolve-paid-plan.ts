@@ -24,7 +24,7 @@ function mapPaidPlanId(value: string | null | undefined): PlanId | null {
  *
  * 1. Allowlisted Stripe Price ID wins — even if metadata.planId conflicts.
  * 2. Unknown Price ID is fail-closed (do not trust metadata to grant a plan).
- * 3. Metadata is used only when Stripe did not attach a Price ID.
+ * 3. metadata.planId alone never grants a paid plan.
  */
 export function resolvePaidPlanFromStripeRefs(input: {
   priceId?: string | null;
@@ -52,19 +52,10 @@ export function resolvePaidPlanFromStripeRefs(input: {
     };
   }
 
-  if (fromMeta) {
-    return {
-      planId: fromMeta,
-      source: "metadata",
-      conflict: false,
-      unknownPrice: false,
-    };
-  }
-
   return {
     planId: null,
     source: "none",
-    conflict: false,
+    conflict: Boolean(fromMeta),
     unknownPrice: false,
   };
 }

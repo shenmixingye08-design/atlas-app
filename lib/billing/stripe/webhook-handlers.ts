@@ -12,7 +12,10 @@ import {
   notifyBillingPaymentSucceeded,
   notifyOwnerStripeWebhookFailed,
 } from "@/lib/notifications/emitters";
-import { resolveUserSubscription } from "../subscriptions/service";
+import {
+  isPaidCapableStatus,
+  resolveUserSubscription,
+} from "../subscriptions/service";
 import {
   findSubscriptionByStripeCustomerId,
   listUserSubscriptions,
@@ -90,10 +93,40 @@ export type WebhookHandleResult = {
 export type StripeWebhookEvent = {
   id: string;
   type: StripeWebhookEventType | string;
+  /** Stripe unix-seconds created. Used to ignore stale out-of-order events. */
+  created?: number;
   data: {
     object: unknown;
   };
 };
+
+/**
+ * Event-clock stamps written from Stripe `created` always end with `.000Z`.
+ * Legacy wall-clock `planProfileSyncedAt` values keep millisecond noise and
+ * must not cause a newer live event to be dropped.
+ */
+export function isStaleStripeEvent(
+  eventCreated: number | undefined,
+  lastSyncedAt: string | null | undefined,
+): boolean {
+  if (!eventCreated || !lastSyncedAt) return false;
+  if (!lastSyncedAt.endsWith(".000Z")) return false;
+  const lastMs = Date.parse(lastSyncedAt);
+  if (Number.isNaN(lastMs)) return false;
+  return eventCreated * 1000 < lastMs;
+}
+
+function isLivePaidSubscription(record: {
+  planId: string;
+  status: SubscriptionStatus;
+  stripeSubscriptionId: string | null;
+}): boolean {
+  return (
+    Boolean(record.stripeSubscriptionId) &&
+    record.planId !== "free" &&
+    isPaidCapableStatus(record.status)
+  );
+}
 
 function periodIso(unixSeconds: number | null | undefined): string | null {
   if (!unixSeconds) return null;
@@ -299,6 +332,22 @@ async function handleCheckoutCompleted(
     metadataPlanId: session.metadata?.planId,
   });
   const planId = resolved.planId;
+  const current = userId ? resolveUserSubscription(userId) : null;
+  if (
+    current &&
+    isLivePaidSubscription(current) &&
+    subscriptionId &&
+    current.stripeSubscriptionId !== subscriptionId &&
+    isStaleStripeEvent(event.created, current.planProfileSyncedAt)
+  ) {
+    return logWebhookResult({
+      event,
+      status: "success",
+      message: "Ignored stale checkout for a previous subscription",
+      userId,
+      planId: current.planId,
+    });
+  }
 
   if (!userId || !planId) {
     return logWebhookResult({
@@ -323,6 +372,7 @@ async function handleCheckoutCompleted(
       currentPeriodEnd: periodEnd,
       cancelAtPeriodEnd,
       stripePriceId,
+      stripeEventCreated: event.created,
     });
   } catch (error) {
     if (error instanceof StripeCustomerOwnershipError) {
@@ -371,6 +421,29 @@ async function handleSubscriptionUpsert(
     ? resolveUserSubscription(userId).planId
     : "free";
   const planId = resolved.planId ?? (currentPlan !== "free" ? currentPlan : null);
+  const current = userId ? resolveUserSubscription(userId) : null;
+  if (
+    current &&
+    isLivePaidSubscription(current) &&
+    current.stripeSubscriptionId !== subscription.id
+  ) {
+    return logWebhookResult({
+      event,
+      status: "success",
+      message: "Ignored subscription event for a previous subscription",
+      userId,
+      planId: current.planId,
+    });
+  }
+  if (current && isStaleStripeEvent(event.created, current.planProfileSyncedAt)) {
+    return logWebhookResult({
+      event,
+      status: "success",
+      message: "Ignored stale subscription event",
+      userId,
+      planId: current.planId,
+    });
+  }
 
   if (!userId || !planId) {
     return logWebhookResult({
@@ -399,6 +472,7 @@ async function handleSubscriptionUpsert(
       currentPeriodEnd: period.currentPeriodEnd,
       cancelAtPeriodEnd: period.cancelAtPeriodEnd,
       stripePriceId,
+      stripeEventCreated: event.created,
     });
   } catch (error) {
     if (error instanceof StripeCustomerOwnershipError) {
@@ -449,6 +523,20 @@ async function handleSubscriptionDeleted(
       event,
       status: "failure",
       message: "Missing userId on deleted subscription",
+    });
+  }
+
+  const current = resolveUserSubscription(userId);
+  if (
+    current.stripeSubscriptionId &&
+    current.stripeSubscriptionId !== subscription.id
+  ) {
+    return logWebhookResult({
+      event,
+      status: "success",
+      message: "Ignored deleted event for a previous subscription",
+      userId,
+      planId: current.planId,
     });
   }
 
@@ -530,6 +618,7 @@ async function handleInvoicePaymentSucceeded(
             currentPeriodEnd: period.currentPeriodEnd,
             cancelAtPeriodEnd: period.cancelAtPeriodEnd,
             stripePriceId,
+            stripeEventCreated: event.created,
           });
         } catch (error) {
           if (error instanceof StripeCustomerOwnershipError) {

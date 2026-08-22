@@ -43,7 +43,11 @@ describe("stripe webhook handlers", () => {
         client_reference_id: "user_checkout_1",
         customer: "cus_123",
         subscription: "sub_456",
-        metadata: { userId: "user_checkout_1", planId: "standard" },
+        metadata: {
+          userId: "user_checkout_1",
+          planId: "standard",
+          priceId: "price_standard_test",
+        },
       }),
     );
 
