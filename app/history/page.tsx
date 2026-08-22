@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function HistoryPage() {
   return (
-    <AtlasAppShell active="history" width="default">
+    <AtlasAppShell active="artifacts" width="default">
       <Suspense fallback={<LoadingState message={ui.activityHistory.loading} />}>
         <ActivityHistoryPageContent />
       </Suspense>
