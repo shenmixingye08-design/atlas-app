@@ -539,6 +539,8 @@ export async function orchestrate(
         channel: "orchestration",
         memoryMode: personalMemory ? "on" : "off",
         applied: Boolean(personalMemory),
+        memoryRetrieved: Boolean(personalMemory),
+        memoryApplied: Boolean(personalMemory),
         success: true,
         improvementRate: personalMemory ? 0.5 : 0,
       });
@@ -721,7 +723,9 @@ export async function orchestrate(
           deliverableType,
           planSummary,
           researchSummary: resolvedResearchSummary,
-          workerKnowledge: retrieval.workerContext ?? null,
+          workerKnowledge: [retrieval.workerContext, personalMemory]
+            .filter(Boolean)
+            .join("\n\n") || null,
         }),
         metadata,
         workerAssignments[0]?.employeeId ?? "development-senior-dev",

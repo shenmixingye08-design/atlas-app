@@ -253,6 +253,51 @@ function promoteConclusionFirst(
   return [...front, ...rest];
 }
 
+function splitUndifferentiatedBody(
+  sections: DocumentSection[],
+  cleaned: string,
+): DocumentSection[] {
+  if (sections.length !== 1) return sections;
+  if (cleaned.replace(/\s+/g, "").length < 200) return sections;
+  const only = sections[0]!;
+  if (only.blocks.length < 2 && only.blocks[0]?.type === "table") return sections;
+  const titles = ["背景", "課題", "実施方法"] as const;
+  const chunks: DocumentBlock[][] = [[], [], []];
+  if (only.blocks.length >= 3) {
+    const size = Math.ceil(only.blocks.length / 3);
+    for (let i = 0; i < only.blocks.length; i += 1) {
+      chunks[Math.min(2, Math.floor(i / size))]!.push(only.blocks[i]!);
+    }
+  } else {
+    const texts = only.blocks.flatMap((block) => {
+      if (block.type === "paragraph") {
+        return block.text.split(/(?<=。)/).map((s) => s.trim()).filter(Boolean);
+      }
+      return [] as string[];
+    });
+    if (texts.length < 3) return sections;
+    const size = Math.ceil(texts.length / 3);
+    for (let i = 0; i < texts.length; i += 1) {
+      chunks[Math.min(2, Math.floor(i / size))]!.push({
+        type: "paragraph",
+        text: texts[i]!,
+      });
+    }
+    for (const block of only.blocks) {
+      if (block.type !== "paragraph") chunks[1]!.push(block);
+    }
+  }
+  const roles = ["background", "issues", "method"] as const;
+  return chunks
+    .map((blocks, index) => ({
+      role: roles[index]!,
+      title: titles[index]!,
+      level: 2 as const,
+      blocks,
+    }))
+    .filter((section) => section.blocks.length > 0);
+}
+
 function resolveDesignTemplate(value?: DesignTemplateId): DesignTemplateId {
   if (
     value === "standard" ||
@@ -283,7 +328,10 @@ export function buildStructuredDocument(
   });
   const parsed = parseDeliverableContent(cleaned);
   const title = (input.title?.trim() || parsed.title).trim();
-  const sections = orderSections(documentType, parsed.sections);
+  const sections = splitUndifferentiatedBody(
+    orderSections(documentType, parsed.sections),
+    cleaned,
+  );
   const metaFields = extractMetaFields(documentType, cleaned, parsed.sections);
   const designTemplate = resolveDesignTemplate(input.designTemplate);
   const maxTableCols = Math.max(0, ...sections.map((section) => countTableWidth(section.blocks)));

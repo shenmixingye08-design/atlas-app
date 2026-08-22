@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import {
   evaluateCorrectionForCandidate,
   fingerprintCorrection,
+  isUnambiguousStylePreference,
 } from "@/lib/personal-memory/candidates";
 import {
   ensurePersonalMemoryHydrated,
@@ -592,18 +593,7 @@ async function supersedeConflictingActiveMemories(input: {
 }
 
 function isUnambiguousPreferenceValue(value: Record<string, unknown>): boolean {
-  if (value.length === "short" || value.length === "long") return true;
-  if (value.structure === "bullets" || value.structure === "headings") return true;
-  if (value.conclusion === "first") return true;
-  if (value.emoji === "none") return true;
-  if (value.headings === true || value.cta === true) return true;
-  if (
-    Array.isArray(value.forbiddenExpressions) &&
-    value.forbiddenExpressions.length > 0
-  ) {
-    return true;
-  }
-  return false;
+  return isUnambiguousStylePreference(value);
 }
 
 export async function resolveForContext(

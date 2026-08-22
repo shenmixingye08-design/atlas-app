@@ -18,7 +18,8 @@ export type ContentQualityIssue =
   /** P2-02 format-specific */
   | "xlsx_insufficient_structure"
   | "pptx_insufficient_structure"
-  | "pdf_insufficient_body";
+  | "pdf_insufficient_body"
+  | "leaked_undefined";
 
 export type ContentQualityResult =
   | { ok: true; text: string }
@@ -196,6 +197,9 @@ function collectCommonIssues(text: string): ContentQualityIssue[] {
   }
 
   if (!hasRequiredLanguage(text)) issues.push("no_body_language");
+  if (/(^|[^A-Za-z])undefined([^A-Za-z]|$)/.test(text)) {
+    issues.push("leaked_undefined");
+  }
   return issues;
 }
 
@@ -267,8 +271,11 @@ function hasSlideStructure(text: string): boolean {
 
 function hasPdfBody(text: string): boolean {
   const body = stripMarkdownNoise(text);
-  // Slightly stricter than bare min chars: PDF must carry real paragraphs.
-  return body.length >= WORD_CONTENT_MIN_CHARS && body.split(/\s+/).length >= 12;
+  if (body.length < WORD_CONTENT_MIN_CHARS) return false;
+  const spaceTokens = body.split(/\s+/).filter(Boolean).length;
+  const sentences = (body.match(/[。．！？]/g) ?? []).length;
+  if (spaceTokens >= 12 || sentences >= 3) return true;
+  return /[\u3040-\u9fff]/.test(body) && body.length >= WORD_CONTENT_MIN_CHARS;
 }
 
 /**

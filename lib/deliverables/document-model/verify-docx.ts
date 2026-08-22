@@ -9,7 +9,11 @@ export type DocxVerifyReason =
   | "missing_content_types"
   | "empty_body"
   | "english_chrome"
-  | "memory_instruction_leak";
+  | "memory_instruction_leak"
+  | "word_no_headings"
+  | "placeholder_leak"
+  | "undefined_leak"
+  | "markdown_leak";
 
 export type DocxVerifyResult = {
   ok: boolean;
@@ -91,6 +95,19 @@ export async function verifyDocxDocument(buffer: Buffer): Promise<DocxVerifyResu
   }
   if (/【好み反映】|【適用する好み】|【文体】/.test(text)) {
     reasons.push("memory_instruction_leak");
+  }
+  const compact = text.replace(/\s+/g, "");
+  if (paragraphCount >= 6 && compact.length >= 200 && headingCount === 0) {
+    reasons.push("word_no_headings");
+  }
+  if (/\[TODO\]|\[PLACEHOLDER\]|\{\{[^{}]+\}\}|lorem ipsum/i.test(text)) {
+    reasons.push("placeholder_leak");
+  }
+  if (/(^|[^A-Za-z])undefined([^A-Za-z]|$)|(^|[^A-Za-z])null([^A-Za-z]|$)/.test(text)) {
+    reasons.push("undefined_leak");
+  }
+  if (/\*\*[^*]+\*\*|```|^\s*#+\s/m.test(text) && /[#*`]{2,}/.test(text)) {
+    reasons.push("markdown_leak");
   }
 
   const footerXml = await Promise.all(

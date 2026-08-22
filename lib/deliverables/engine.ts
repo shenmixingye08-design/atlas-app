@@ -48,6 +48,11 @@ import { applyMemoryForDeliverable } from "@/lib/memory-apply/deliverables";
 import type { MemoryDeliverableOverlay } from "@/lib/memory-apply/types";
 import { recordMemoryApplyEvent } from "@/lib/memory-apply/metrics";
 import {
+  rememberSuccessfulDeliverableFormat,
+  resolveRememberedDeliverableFormats,
+} from "@/lib/memory-apply/remembered-formats";
+import { assignmentHasExplicitFormat } from "@/lib/deliverables/remembered-formats";
+import {
   addDeliverableVersion,
   buildVersionedDisplayName,
   buildVersionedInternalFileName,
@@ -128,6 +133,7 @@ export type GenerateDeliverablesResult = {
   detection: ReturnType<typeof detectDeliverableFormats>;
   failures: Array<{ format: string; reasons: string[] }>;
   jobId?: string;
+  preferenceNotice?: string | null;
 };
 
 function prefixExcelFailureReason(reason: string): string {
@@ -478,11 +484,20 @@ export async function generateDeliverables(
 
   // Resolve formats before claiming — only Word jobs enter the stage machine.
   let safeContent = exportGuard.text;
-  const detection = resolveGenerationFormats(
+  let detection = resolveGenerationFormats(
     input.assignment,
     input.formats,
     safeContent,
   );
+  if (!input.formats?.length && !assignmentHasExplicitFormat(input.assignment)) {
+    const remembered = await resolveRememberedDeliverableFormats(options.userId);
+    if (remembered.length > 0) {
+      detection = {
+        ...resolveGenerationFormats(input.assignment, remembered, safeContent),
+        matchedRule: "remembered_preference",
+      };
+    }
+  }
   const formats = detection.formats;
   const needsWord = formats.includes("docx");
 
@@ -546,6 +561,7 @@ export async function generateDeliverables(
     }
 
     let earlyMemoryOverlay: MemoryDeliverableOverlay | null = null;
+    let preferenceNotice: string | null = null;
     try {
       const earlyMemory = await applyMemoryForDeliverable({
         userId: options.userId,
@@ -554,7 +570,8 @@ export async function generateDeliverables(
         assignment: input.assignment,
       });
       earlyMemoryOverlay = earlyMemory.overlay;
-      if (earlyMemory.applied) safeContent = earlyMemory.content;
+      if (earlyMemory.memoryApplied) safeContent = earlyMemory.content;
+      preferenceNotice = earlyMemory.preferenceNotice;
       // Re-validate after memory overlay — overlays must not reintroduce garbage.
       const afterMemory = validateDeliverableSourceContent(safeContent, formats);
       if (!afterMemory.ok) {
@@ -628,10 +645,32 @@ export async function generateDeliverables(
         });
         continue;
       }
+      const reloaded = await verifyGeneratedExportAsync({
+        format: stored.format,
+        fileName: stored.fileName,
+        mimeType: stored.mimeType,
+        buffer: stored.buffer,
+        isPlaceholder: stored.isPlaceholder,
+      });
+      if (!reloaded.ok) {
+        failures.push({
+          format,
+          reasons: [
+            `reloaded_quality:${reloaded.reasons.join(",")}`,
+            "保存後のファイル検証に失敗しました。",
+          ],
+        });
+        continue;
+      }
+      await rememberSuccessfulDeliverableFormat({
+        userId: options.userId,
+        format,
+        assignment: input.assignment,
+      });
       deliverables.push(toDeliverableMetadata(stored, requestOrigin));
     }
     recordWordMetric("total_ms", Date.now() - startedAt);
-    return { deliverables, detection, failures, jobId };
+    return { deliverables, detection, failures, jobId, preferenceNotice };
   }
 
   // Claim job lease (prevents duplicate generation for the same jobId).
@@ -809,6 +848,7 @@ export async function generateDeliverables(
     // Memory apply before artifact generation (Personal Memory → overlays).
     let memoryOverlay: MemoryDeliverableOverlay | null = null;
     let memoryAppliedContent: string | null = null;
+    let preferenceNotice: string | null = null;
     try {
       const primaryFormat = formats.includes("docx")
         ? "docx"
@@ -820,7 +860,8 @@ export async function generateDeliverables(
         assignment: input.assignment,
       });
       memoryOverlay = memoryApplied.overlay;
-      if (memoryApplied.applied) {
+      preferenceNotice = memoryApplied.preferenceNotice;
+      if (memoryApplied.memoryApplied) {
         memoryAppliedContent = memoryApplied.content;
         safeContent = memoryApplied.content;
       }
@@ -1244,6 +1285,28 @@ export async function generateDeliverables(
         recordWordMetric("success");
       }
 
+      const reloaded = await verifyGeneratedExportAsync({
+        format: stored.format,
+        fileName: stored.fileName,
+        mimeType: stored.mimeType,
+        buffer: stored.buffer,
+        isPlaceholder: stored.isPlaceholder,
+      });
+      if (!reloaded.ok) {
+        failures.push({
+          format,
+          reasons: [
+            `reloaded_quality:${reloaded.reasons.join(",")}`,
+            "保存後のファイル検証に失敗しました。",
+          ],
+        });
+        continue;
+      }
+      await rememberSuccessfulDeliverableFormat({
+        userId: options.userId,
+        format,
+        assignment: input.assignment,
+      });
       deliverables.push(toDeliverableMetadata(stored, requestOrigin));
     }
 
@@ -1284,6 +1347,7 @@ export async function generateDeliverables(
       detection,
       failures,
       jobId,
+      preferenceNotice,
     };
   } catch (error) {
     const message =

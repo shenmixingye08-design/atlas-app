@@ -755,6 +755,7 @@ export const ui = {
     workerDeliverableFailed: "成果物をうまく作れませんでした。もう一度お試しください。",
     workerNotExecuted: "作業を開始できませんでした。もう一度お試しください。",
     deliverableNeedsReview: "要確認 — 成果物の内容を確認してください",
+    preferenceAppliedHint: "前回の好みを反映しました",
     copy: "コピー",
     copied: "コピーしました",
     saveMarkdown: "Markdownで保存",

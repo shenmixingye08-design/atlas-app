@@ -8,6 +8,7 @@ export {
   buildContentOverlay,
   buildDeliverableOverlay,
   applyContentOverlayToText,
+  applyContentOverlayToDeliverableBody,
 } from "./overlays";
 export {
   recordMemoryApplyEvent,
@@ -54,7 +55,22 @@ export {
   ingestCorrectionInsightsToPersonalMemory,
   correctionInsightsToPreferenceText,
 } from "./correction-preferences";
-export { measureMemoryApplyDelta } from "./instruction-reduction";
+export {
+  measureMemoryApplyDelta,
+  stripKnownPreferencesFromInstruction,
+  detectInstructionPreferenceItems,
+  parseExplicitOverrideFromText,
+  buildPreferenceAppliedNotice,
+  preferenceApplicationRate,
+  savedPreferenceKeysFromValues,
+} from "./instruction-reduction";
+export {
+  detectWritingPreferenceStructure,
+  applyWritingPreferenceStructure,
+  applyHeadingCount,
+  buildExplicitWritingPreferenceValue,
+} from "./preference-structure";
+export { applyContentOverlayToDeliverableBody } from "./overlays";
 export {
   detectMemoryChannel,
   channelFromStepType,
