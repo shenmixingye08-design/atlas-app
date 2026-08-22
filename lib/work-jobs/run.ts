@@ -233,6 +233,21 @@ export async function executeWorkJob(
       return saveWorkJob({
         ...existing,
         status: "failed",
+        metadata: {
+          ...metadataWithJobId,
+          failureDiagnostic: {
+            jobId,
+            diagnosticId: `diag_${jobId}`,
+            failedStage: "quota",
+            developerCode: "ai_quota_denied",
+            failureClass: "quota",
+            safeMessage:
+              body.reason ??
+              body.message ??
+              (typeof body.error === "string" ? body.error : null) ??
+              "今月のAI作業上限に達しました。",
+          },
+        },
         error:
           body.reason ??
           body.message ??
@@ -318,7 +333,7 @@ export async function executeWorkJob(
           commander.visionGate.cause ??
           commander.visionGate.message,
         jobId,
-        diagnosticId: commander.visionGate.diagnosticId ?? null,
+        diagnosticId: commander.visionGate.diagnosticId ?? `diag_${jobId}`,
         userId,
         stage: commander.visionGate.failedStage ?? "vision_response",
         severity: "error",
@@ -336,7 +351,7 @@ export async function executeWorkJob(
           openaiErrorMessage: visionOpenAi?.message ?? null,
           openaiErrorBody: visionOpenAi?.rawErrorBody ?? null,
           tracking: {
-            diagnosticId: commander.visionGate.diagnosticId ?? null,
+            diagnosticId: commander.visionGate.diagnosticId ?? `diag_${jobId}`,
             supabaseDomain: "atlasVisionDiagnostics",
             vercelRequestId: commander.visionGate.vercelRequestId ?? null,
             openaiRequestId: visionOpenAi?.requestId ?? null,
@@ -351,7 +366,7 @@ export async function executeWorkJob(
           ...mergedMetadata,
           failureDiagnostic: {
             jobId,
-            diagnosticId: commander.visionGate.diagnosticId ?? null,
+            diagnosticId: commander.visionGate.diagnosticId ?? `diag_${jobId}`,
             failedStage: commander.visionGate.failedStage ?? null,
             developerCode: commander.visionGate.developerCode ?? null,
             cause: commander.visionGate.cause ?? null,
@@ -431,7 +446,7 @@ export async function executeWorkJob(
               commander.visionGate?.diagnosticId ??
               (typeof mergedMetadata.visionDiagnosticId === "string"
                 ? mergedMetadata.visionDiagnosticId
-                : null),
+                : `diag_${jobId}`),
             failedStage,
             developerCode: commander.visionGate?.developerCode ?? null,
             safeMessage,
@@ -460,7 +475,7 @@ export async function executeWorkJob(
         diagnosticId:
           typeof mergedMetadata.visionDiagnosticId === "string"
             ? mergedMetadata.visionDiagnosticId
-            : null,
+            : `diag_${jobId}`,
         userId,
         stage: "completion_gate",
         severity: "error",
@@ -489,8 +504,13 @@ export async function executeWorkJob(
           ...mergedMetadata,
           failureDiagnostic: {
             jobId,
+            diagnosticId:
+              typeof mergedMetadata.visionDiagnosticId === "string"
+                ? mergedMetadata.visionDiagnosticId
+                : `diag_${jobId}`,
             failedStage: "completion_gate",
             developerCode: "completion_gate_failed",
+            failureClass: "completion_gate",
             safeMessage: toHumanReliabilityMessage(gate.error),
           },
         },
@@ -529,7 +549,7 @@ export async function executeWorkJob(
   } catch (error) {
     const raw =
       error instanceof Error ? error.message : String(error ?? "unknown");
-    const isTimeout = /timeout|ETIMEDOUT|aborted/i.test(raw);
+    const isTimeout = /timeout|timed[\s_-]?out|ETIMEDOUT|aborted/i.test(raw);
     const message =
       error instanceof Error && error.message === "work_job_durable_persist_failed"
         ? toHumanReliabilityMessage(error)
@@ -570,7 +590,7 @@ export async function executeWorkJob(
     // P06: do not delete any partial deliverables already saved for this job.
     // Persist failureDiagnostic so GET /api/work/jobs/:id and E2E can see stage/code
     // (user-facing error stays soft-retry; raw cause stays in developer-log / diagnostic).
-    const failureClass = /timeout|ETIMEDOUT|aborted/i.test(raw)
+    const failureClass = /timeout|timed[\s_-]?out|ETIMEDOUT|aborted/i.test(raw)
       ? "timeout"
       : /work_job_claim_unavailable|service.?role|supabase/i.test(raw)
         ? "persistence"
