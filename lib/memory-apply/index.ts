@@ -34,6 +34,7 @@ export {
 export {
   createVisionStyleMemoryCandidates,
   resolveVisionMemoryContext,
+  visionAnalyzeSafeHints,
 } from "./vision";
 export {
   applyOcrCorrections,

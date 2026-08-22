@@ -14,6 +14,14 @@ describe("vision classify", () => {
     expect(classifyImagePurposeFromText("この表をExcelにして")).toBe("table");
     expect(classifyImagePurposeFromText("この営業資料を改善して")).toBe("sales_material");
     expect(classifyImagePurposeFromText("手書きメモを文字にして")).toBe("handwritten_note");
+    expect(
+      classifyImagePurposeFromText("この契約書を要約してWordにしてください"),
+    ).toBe("contract");
+    expect(
+      classifyImagePurposeFromText(
+        "このグラフを分析してレポートをWordで作成してください",
+      ),
+    ).toBe("chart");
   });
 
   it("recommends high detail for receipts and low for many eco photos", () => {

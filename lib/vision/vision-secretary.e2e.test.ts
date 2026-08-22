@@ -14,6 +14,7 @@ import { getStoredDeliverableForUser } from "@/lib/deliverables/store";
 import { resetDeliverableMemoryStoreForTests } from "@/lib/deliverables/store";
 import { resetDurableDeliverableStoreForTests } from "@/lib/deliverables/durable-store";
 import { resetWordJobsForTests } from "@/lib/deliverables/word-job-stages";
+import { clearAllPersonalMemoryData } from "@/lib/personal-memory/store";
 import { prepareAssignmentWithVision } from "@/lib/vision/prepare-assignment";
 import { analyzeUserImageBatch } from "@/lib/vision/analyze-batch";
 import { openAiVisionProvider } from "@/lib/vision/openai-vision-provider";
@@ -142,6 +143,8 @@ describe("vision secretary E2E — image understand → deliverable", () => {
     resetWordJobsForTests();
     resetDeliverableMemoryStoreForTests();
     resetDurableDeliverableStoreForTests();
+    clearAllPersonalMemoryData("user_vision_e2e");
+    clearAllPersonalMemoryData("user_vision_multi");
   });
 
   afterEach(() => {

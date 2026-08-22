@@ -102,8 +102,18 @@ export async function createVisionStyleMemoryCandidates(input: {
   return { candidateIds };
 }
 
+const FORMAT_HINT_NOISE =
+  /今後は|last_export|preferred_formats|成果物形式|\b(excel|xlsx|docx|pptx|powerpoint)\b|エクセル/i;
+
+/** Hints that help OCR/reading without hijacking image-type detection. */
+export function visionAnalyzeSafeHints(hints: readonly string[]): string[] {
+  return hints.filter((hint) => hint.trim() && !FORMAT_HINT_NOISE.test(hint));
+}
+
 /**
- * Resolve prior Vision/OCR format memory before analysis.
+ * Resolve prior Vision/OCR reading memory before analysis.
+ * Last-export format is intentionally excluded — this request's
+ * 「Wordにして」「契約書」 must classify the image, not yesterday's Excel.
  */
 export async function resolveVisionMemoryContext(input: {
   userId: string;
@@ -117,26 +127,29 @@ export async function resolveVisionMemoryContext(input: {
     allowedScopes: [
       "writing_style",
       "document_design",
-      "preferred_formats",
       "contact_info",
       "work_content_style",
     ],
     capabilities: ["vision", "ocr"],
   });
   const overlay = buildContentOverlay({
-    values: ledger.memoryValuesResolved,
+    values: ledger.memoryValuesResolved.filter(
+      (row) => row.scope !== "preferred_formats" && row.key !== "last_export",
+    ),
     injectionText: result.injectionText,
   });
-  const hints = [
-    ...overlay.visionHints,
+  const hints = visionAnalyzeSafeHints([
+    ...overlay.visionHints.filter(
+      (hint) => !overlay.preferredFormat || hint !== overlay.preferredFormat,
+    ),
     ...overlay.contactLines.slice(0, 5),
     ...(overlay.writingStyle ? [overlay.writingStyle] : []),
-  ];
+  ]);
 
   recordMemoryApplyEvent({
     userId: input.userId,
     channel: "vision",
-    memoryMode: result.injectionText ? "on" : "off",
+    memoryMode: hints.length > 0 ? "on" : "off",
     applied: ledger.memoryIdsUsed.length > 0,
     memoryIdsUsed: ledger.memoryIdsUsed,
     scopesUsed: [...new Set(ledger.memoryValuesResolved.map((v) => v.scope))],
@@ -144,7 +157,7 @@ export async function resolveVisionMemoryContext(input: {
   });
 
   return {
-    injectionText: result.injectionText,
+    injectionText: "",
     hints,
     memoryIdsUsed: ledger.memoryIdsUsed,
   };

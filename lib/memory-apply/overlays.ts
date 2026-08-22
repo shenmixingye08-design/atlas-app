@@ -121,9 +121,9 @@ export function buildContentOverlay(input: {
   const visionHints = values
     .filter(
       (v) =>
-        v.key.startsWith("vision_") ||
-        v.scope === "document_design" ||
-        v.scope === "preferred_formats",
+        (v.key.startsWith("vision_") || v.scope === "document_design") &&
+        v.scope !== "preferred_formats" &&
+        v.key !== "last_export",
     )
     .map((v) => v.summary)
     .filter(Boolean);
