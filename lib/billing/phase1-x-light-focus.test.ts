@@ -262,9 +262,9 @@ describe("Phase 1 X Light product focus", () => {
       join(process.cwd(), "components/landing/landing-page.tsx"),
       "utf8",
     );
-    expect(hero).toContain(PRODUCT_HERO_PROMISE.split("、")[0]);
-    expect(hero).toContain("一度頼めばあとは確認するだけ");
-    expect(hero).toContain(PRODUCT_DEFINITION);
+    expect(hero).toContain("PRODUCT_HERO_PROMISE");
+    expect(hero).toContain("PRODUCT_DEFINITION");
+    expect(PRODUCT_HERO_PROMISE).toContain("一度頼んだら次からMINERVOTに任せる");
     expect(home).toContain("HOME_X_AUTOMATION_CTA");
     expect(home).toContain("HOME_OTHER_WORK_CTA");
     expect(HOME_AUTOMATION_HREF).toBe(HOME_X_AUTOMATION_HREF);

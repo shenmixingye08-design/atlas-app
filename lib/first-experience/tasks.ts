@@ -39,7 +39,7 @@ export const FIRST_EXPERIENCE_TASKS: readonly FirstExperienceTaskDefinition[] = 
       { icon: "📱", role: "MINERVOT", status: "投稿文を作成中" },
       ...BASE_EMPLOYEE_TAIL,
     ],
-    nextIntegration: { label: "X連携しましょう", href: "/settings/x" },
+    nextIntegration: { label: "X連携しましょう", href: "/workspace/x" },
     onboardingTaskId: "sns",
   },
   {

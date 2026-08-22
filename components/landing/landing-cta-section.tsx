@@ -6,10 +6,14 @@ import { Show } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { ATLAS_APP_HOME_PATH } from "@/lib/auth/public-routes";
 import { lightPlanYenLabel } from "@/lib/landing/pay-reason";
+import {
+  LP_PRIMARY_CTA,
+  PRODUCT_HERO_PROMISE,
+} from "@/lib/product-focus/messaging";
 
 function ctaLines() {
   return [
-    "毎日のX投稿を、一度頼めばあとは確認するだけ。",
+    `${PRODUCT_HERO_PROMISE}。`,
     `原稿作成から投稿まで自動実行。終わったら通知。合えば月${lightPlanYenLabel()}。`,
     "登録して「毎朝10時に投稿して」と頼むだけです。",
   ] as const;
@@ -44,7 +48,7 @@ export function LandingCtaSection() {
                   size="lg"
                   className="min-w-[240px] rounded-full bg-[#74172A] px-8 py-6 text-white hover:bg-[#5F1222]"
                 >
-                  今すぐ1件終わらせる
+                  {LP_PRIMARY_CTA}
                 </Button>
               </Link>
             </Show>

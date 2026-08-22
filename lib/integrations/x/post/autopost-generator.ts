@@ -16,6 +16,8 @@ export type GeneratedAutoPost = {
   text: string;
   postType: XAutoPostType;
   usedFallback: boolean;
+  memoryApplied?: boolean;
+  memoryFailed?: boolean;
 };
 
 /** Deterministically pick a post type so flavors rotate over time. */
@@ -53,6 +55,8 @@ function buildGenerationInput(input: {
   settings: XAutoPostSettings;
   postType: XAutoPostType;
   recentTexts: string[];
+  memoryGuidance?: string[];
+  hashtagsMax?: number | null;
 }): string {
   const { settings, postType, recentTexts } = input;
   const themes =
@@ -64,6 +68,15 @@ function buildGenerationInput(input: {
           .map((text, index) => `${index + 1}. ${text.replace(/\s+/g, " ")}`)
           .join("\n")
       : "（まだありません）";
+  const hashtagLine = settings.includeHashtags
+    ? input.hashtagsMax != null
+      ? `最大${input.hashtagsMax}個付ける`
+      : "1〜2個付ける"
+    : "付けない";
+  const memory =
+    input.memoryGuidance && input.memoryGuidance.length > 0
+      ? ["", "前回の好み（今回の明示指示が優先）:", ...input.memoryGuidance]
+      : [];
 
   return [
     `投稿の目的: ${settings.purpose || "（指定なし）"}`,
@@ -71,7 +84,8 @@ function buildGenerationInput(input: {
     `読み手: ${settings.audience || "（指定なし）"}`,
     `トーン: ${settings.tone || "（指定なし）"}`,
     `投稿タイプ: ${X_AUTOPOST_TYPE_LABELS[postType]} — ${POST_TYPE_GUIDANCE[postType]}`,
-    `ハッシュタグ: ${settings.includeHashtags ? "1〜2個付ける" : "付けない"}`,
+    `ハッシュタグ: ${hashtagLine}`,
+    ...memory,
     "",
     "直近の投稿（これらと重複しないこと）:",
     recent,
@@ -190,6 +204,10 @@ export async function generateAutoPostText(input: {
   postType: XAutoPostType;
   recentTexts: string[];
   slotKey: string;
+  memoryGuidance?: string[];
+  hashtagsMax?: number | null;
+  memoryApplied?: boolean;
+  memoryFailed?: boolean;
 }): Promise<GeneratedAutoPost> {
   const fallback = () =>
     buildFallbackAutoPost({
@@ -198,8 +216,18 @@ export async function generateAutoPostText(input: {
       slotKey: input.slotKey,
     });
 
+  const memoryMeta = {
+    memoryApplied: input.memoryApplied === true,
+    memoryFailed: input.memoryFailed === true,
+  };
+
   if (isMockLlmEnabled()) {
-    return { text: fallback(), postType: input.postType, usedFallback: true };
+    return {
+      text: fallback(),
+      postType: input.postType,
+      usedFallback: true,
+      ...memoryMeta,
+    };
   }
 
   try {
@@ -214,14 +242,24 @@ export async function generateAutoPostText(input: {
       sanitizeGeneratedText(response.output_text ?? ""),
     );
     if (!text) {
-      return { text: fallback(), postType: input.postType, usedFallback: true };
+      return {
+        text: fallback(),
+        postType: input.postType,
+        usedFallback: true,
+        ...memoryMeta,
+      };
     }
-    return { text, postType: input.postType, usedFallback: false };
+    return { text, postType: input.postType, usedFallback: false, ...memoryMeta };
   } catch (error) {
     console.warn("[X AutoPost] copy generation failed");
     if (error instanceof Error) {
       console.warn("[X AutoPost] generation detail:", error.message);
     }
-    return { text: fallback(), postType: input.postType, usedFallback: true };
+    return {
+      text: fallback(),
+      postType: input.postType,
+      usedFallback: true,
+      ...memoryMeta,
+    };
   }
 }

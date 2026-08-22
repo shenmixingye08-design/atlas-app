@@ -28,7 +28,7 @@ export default function OpenGraphImage() {
           あなた専属のAI秘書
         </div>
         <div style={{ marginTop: 24, fontSize: 28, color: "#6e6e73", lineHeight: 1.4, maxWidth: 900 }}>
-          毎日のX投稿を、一度頼めばあとは確認するだけ。
+          毎日のX投稿、一度頼んだら次からMINERVOTに任せる。
         </div>
       </div>
     ),

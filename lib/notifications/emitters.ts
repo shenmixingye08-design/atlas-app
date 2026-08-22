@@ -104,15 +104,15 @@ export function classifyXPostFailureForUser(message: string): string {
     /token|失効|再連携|再接続|unauthorized|401|revok|reconnect/.test(haystack)
   ) {
     return raw
-      ? `${raw} 設定画面からXを再接続してください。`
-      : "X連携のトークンが失効しています。設定画面からXを再接続してください。";
+      ? `${raw} X投稿画面から再接続してください。`
+      : "X連携のトークンが失効しています。X投稿画面から再接続してください。";
   }
   if (
     /write|権限|scope|permission|tweet\.write|insufficient/.test(haystack)
   ) {
     return raw
       ? `${raw} 投稿権限が不足しています。X連携をやり直してください。`
-      : "Xの投稿権限が不足しています。設定画面からXを再接続してください。";
+      : "Xの投稿権限が不足しています。X投稿画面から再連携してください。";
   }
   if (/429|rate|上限|500|502|503|504|timeout|一時/.test(haystack)) {
     return raw
@@ -126,7 +126,7 @@ export function classifyXPostFailureForUser(message: string): string {
   }
   return (
     raw ||
-    "Xへの投稿に失敗しました。内容をご確認のうえ、設定画面からX連携をご確認ください。"
+    "Xへの投稿に失敗しました。内容をご確認のうえ、X投稿画面から連携をご確認ください。"
   );
 }
 
@@ -190,7 +190,7 @@ export async function notifyXPostFailed(
   const classified = classifyXPostFailureForUser(seeded);
   const detail =
     options?.reconnectRequired && !/再接続/.test(classified)
-      ? `${classified} 設定画面からXを再接続してください。`
+      ? `${classified} この画面からXを再連携してください。`
       : classified;
   return await createNotification({
     audience: "user",
@@ -199,7 +199,7 @@ export async function notifyXPostFailed(
     title: "Xへの投稿に失敗しました",
     message: detail,
     relatedService: "x",
-    actionUrl: "/settings/x",
+    actionUrl: "/workspace/x",
     lineEvent: "error",
     eventCategory: "final_failure",
   });

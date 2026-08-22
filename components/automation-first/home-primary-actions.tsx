@@ -10,6 +10,7 @@ import {
   HOME_OTHER_WORK_HREF,
   HOME_X_AUTOMATION_CTA,
   HOME_X_AUTOMATION_HREF,
+  HOME_X_AUTOMATION_SUPPORT,
 } from "@/lib/product-focus/messaging";
 
 export const HOME_ONE_TIME_HREF = HOME_OTHER_WORK_HREF;
@@ -64,7 +65,7 @@ export function HomePrimaryActions({ compact = false }: { compact?: boolean }) {
             compact && "line-clamp-2",
           )}
         >
-          「毎朝10時に投稿して」と一度頼む。あとは原稿作成と投稿をMINERVOTが進めます。
+          {HOME_X_AUTOMATION_SUPPORT}
         </p>
         <span className={cn("btn-brand mt-5 w-full", "pointer-events-none")}>
           {HOME_X_AUTOMATION_CTA}

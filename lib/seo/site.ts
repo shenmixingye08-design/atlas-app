@@ -31,7 +31,7 @@ export function getSiteOrigin(): string {
 }
 
 export const MINERVOT_DEFAULT_TITLE =
-  "MINERVOT | 毎日のX投稿を、一度頼めばあとは確認するだけ";
+  "MINERVOT | 毎日のX投稿、一度頼んだら次からMINERVOTに任せる";
 
 export const MINERVOT_DEFAULT_DESCRIPTION =
   `一度頼んだ仕事を、次から自動で終わらせるAI秘書。毎朝のX投稿を一度頼むと、原稿作成から投稿まで自動実行し、終わったらお知らせします。合えば月${lightPlanYenLabel()}。`;
