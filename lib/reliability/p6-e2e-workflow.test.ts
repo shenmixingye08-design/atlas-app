@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
@@ -23,8 +23,7 @@ vi.mock("@/lib/runtime/is-production", () => ({
 
 const requireAndConsumeAiJob = vi.fn(async () => null as Response | null);
 vi.mock("@/lib/billing/access", () => ({
-  requireAndConsumeAiJob: (...args: unknown[]) =>
-    requireAndConsumeAiJob(...args),
+  requireAndConsumeAiJob: () => requireAndConsumeAiJob(),
 }));
 
 const runCommanderRequest = vi.fn();
