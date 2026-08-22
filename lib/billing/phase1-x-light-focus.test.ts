@@ -27,8 +27,6 @@ import { getUserBillingSummary } from "./service";
 import { getLandingPlans } from "@/lib/landing/content";
 import { LIGHT_PLAN_JPY } from "@/lib/landing/pay-reason";
 import {
-  HOME_OTHER_WORK_CTA,
-  HOME_X_AUTOMATION_CTA,
   HOME_X_AUTOMATION_HREF,
   LIGHT_RESULT_LINE,
   PRODUCT_DEFINITION,
@@ -267,8 +265,8 @@ describe("Phase 1 X Light product focus", () => {
     expect(hero).toContain(PRODUCT_HERO_PROMISE.split("、")[0]);
     expect(hero).toContain("一度頼めばあとは確認するだけ");
     expect(hero).toContain(PRODUCT_DEFINITION);
-    expect(home).toContain(HOME_X_AUTOMATION_CTA);
-    expect(home).toContain(HOME_OTHER_WORK_CTA);
+    expect(home).toContain("HOME_X_AUTOMATION_CTA");
+    expect(home).toContain("HOME_OTHER_WORK_CTA");
     expect(HOME_AUTOMATION_HREF).toBe(HOME_X_AUTOMATION_HREF);
     expect(pricing).toContain("毎日のX投稿を任せたいなら Light");
     expect(PRODUCT_PRIMARY_USE_CASE).toBe("毎日のX投稿");

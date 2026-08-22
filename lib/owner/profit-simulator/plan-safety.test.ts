@@ -17,12 +17,14 @@ describe("plan profit-safety envelope", () => {
     expect(INFRA_RESERVE_RATE).toBe(0.1);
   });
 
-  it("computes Light worst-case variable cost ~¥290 with positive CM", () => {
+  it("computes Light worst-case variable cost ~¥366 with positive CM", () => {
     const row = simulatePlanProfitSafety("light");
     expect(row.aiCostJpy).toBe(255);
-    expect(row.xCostUsd).toBe(0);
+    expect(row.xNormalPosts).toBe(30);
+    expect(row.xUrlPosts).toBe(0);
+    expect(row.xCostUsd).toBeCloseTo(30 * X_COST_USD.normalCreate);
     expect(row.stripeFeeJpy).toBe(35);
-    expect(row.maxDirectVariableCostJpy).toBe(290);
+    expect(row.maxDirectVariableCostJpy).toBe(366);
     expect(row.contributionMarginJpy).toBeGreaterThan(0);
   });
 

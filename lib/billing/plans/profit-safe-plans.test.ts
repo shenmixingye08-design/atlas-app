@@ -443,7 +443,7 @@ describe("profit-safety simulator", () => {
     const rows = simulatePaidPlanProfitSafety();
     const byId = Object.fromEntries(rows.map((row) => [row.planId, row]));
 
-    expect(byId.light.maxDirectVariableCostJpy).toBe(290);
+    expect(byId.light.maxDirectVariableCostJpy).toBe(366);
     expect(byId.standard.maxDirectVariableCostJpy).toBe(1348);
     expect(byId.premium.maxDirectVariableCostJpy).toBe(4229);
 

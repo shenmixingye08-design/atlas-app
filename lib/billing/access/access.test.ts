@@ -193,6 +193,9 @@ describe("billing access enforcement", () => {
     await setPlan("user_ext_free", "free");
     expect(
       (await evaluateBillingExternalIntegration("user_ext_free", 0)).denial,
+    ).toBeNull();
+    expect(
+      (await evaluateBillingExternalIntegration("user_ext_free", 1)).denial,
     ).not.toBeNull();
 
     await setPlan("user_ext_light", "light");
