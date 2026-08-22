@@ -31,5 +31,11 @@ describe("production automation schema ensure SQL", () => {
     expect(ATLAS_PRODUCTION_SCHEMA_ENSURE_SQL).toMatch(
       /grant execute on function public\.atlas_claim_x_post_jobs/,
     );
+    expect(ATLAS_PRODUCTION_SCHEMA_ENSURE_SQL).toMatch(
+      /atlas_deliverable_files_storage_status_check/,
+    );
+    expect(ATLAS_PRODUCTION_SCHEMA_ENSURE_SQL).toMatch(
+      /atlas_deliverable_files_size_nonneg/,
+    );
   });
 });

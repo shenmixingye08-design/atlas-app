@@ -13,6 +13,10 @@ import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role
 import { getHealthVersionPayload } from "@/lib/health/version-info";
 
 import { ATLAS_PRODUCTION_SCHEMA_ENSURE_SQL } from "./production-schema-migration-sql";
+import {
+  buildSchemaCompatibilityReport,
+  type SchemaCompatibilityReport,
+} from "./schema-compatibility";
 
 export const PRODUCTION_SCHEMA_PROBE_USER_ID = "__atlas_prod_schema_probe__";
 
@@ -33,6 +37,7 @@ export type ProductionSchemaProbe = {
   xAutopostSettings: ProductionSchemaObjectResult;
   claimXPostJobs: ProductionSchemaObjectResult;
   schemaErrors: string[];
+  compatibility: SchemaCompatibilityReport;
   appliedViaPostgres: boolean;
   appliedViaManagementApi: boolean;
   error: string | null;
@@ -318,6 +323,17 @@ export async function probeProductionAutomationSchema(options?: {
     xAutopostSettings: emptyObject("atlas_x_autopost_settings", error),
     claimXPostJobs: emptyObject("atlas_claim_x_post_jobs", error),
     schemaErrors: [error],
+    compatibility: buildSchemaCompatibilityReport({
+      deliverableFilesError: error,
+      automationJobsError: error,
+      xAutopostSettingsError: error,
+      claimXPostJobsError: error,
+      deliverableFilesOk: false,
+      automationJobsOk: false,
+      xAutopostSettingsOk: false,
+      claimXPostJobsOk: false,
+      serviceConfigured: false,
+    }),
     appliedViaPostgres: false,
     appliedViaManagementApi: false,
     error,
@@ -332,22 +348,36 @@ export async function probeProductionAutomationSchema(options?: {
 
   let appliedViaPostgres = false;
   let appliedViaManagementApi = false;
-  if (options?.apply) {
+
+  const runObjects = async () =>
+    Promise.all([
+      probeDeliverableFiles(client),
+      probeAutomationJobs(client),
+      probeXAutopostSettings(client),
+      probeClaimXPostJobs(client),
+    ]);
+
+  let [deliverableFiles, automationJobs, xAutopostSettings, claimXPostJobs] =
+    await runObjects();
+  const missingBeforeApply = ![
+    deliverableFiles,
+    automationJobs,
+    xAutopostSettings,
+    claimXPostJobs,
+  ].every(objectOk);
+
+  // Self-heal when objects are missing. Explicit apply=1 always re-runs
+  // idempotent ensure SQL (same pattern as work-queue / notification-retry).
+  if (options?.apply || missingBeforeApply) {
     const applied = await applyMigrationSql({
       sql: ATLAS_PRODUCTION_SCHEMA_ENSURE_SQL,
       migrationName: "20260822_prod_automation_schema_ensure",
     });
     appliedViaPostgres = applied.appliedViaPostgres;
     appliedViaManagementApi = applied.appliedViaManagementApi;
+    [deliverableFiles, automationJobs, xAutopostSettings, claimXPostJobs] =
+      await runObjects();
   }
-
-  const [deliverableFiles, automationJobs, xAutopostSettings, claimXPostJobs] =
-    await Promise.all([
-      probeDeliverableFiles(client),
-      probeAutomationJobs(client),
-      probeXAutopostSettings(client),
-      probeClaimXPostJobs(client),
-    ]);
 
   const objects = [
     deliverableFiles,
@@ -360,6 +390,17 @@ export async function probeProductionAutomationSchema(options?: {
     .map((row) => `${row.name}:${row.error ?? "probe_failed"}`);
 
   const ok = objects.every(objectOk);
+  const compatibility = buildSchemaCompatibilityReport({
+    deliverableFilesError: deliverableFiles.error,
+    automationJobsError: automationJobs.error,
+    xAutopostSettingsError: xAutopostSettings.error,
+    claimXPostJobsError: claimXPostJobs.error,
+    deliverableFilesOk: objectOk(deliverableFiles),
+    automationJobsOk: objectOk(automationJobs),
+    xAutopostSettingsOk: objectOk(xAutopostSettings),
+    claimXPostJobsOk: objectOk(claimXPostJobs),
+    serviceConfigured: true,
+  });
   return {
     ok,
     deliverableFiles,
@@ -367,6 +408,7 @@ export async function probeProductionAutomationSchema(options?: {
     xAutopostSettings,
     claimXPostJobs,
     schemaErrors,
+    compatibility,
     appliedViaPostgres,
     appliedViaManagementApi,
     error: ok ? null : schemaErrors.join("; "),
@@ -422,4 +464,28 @@ export async function listTickSchemaErrors(): Promise<string[]> {
     }
   }
   return errors;
+}
+
+/**
+ * Apply ensure SQL only when a required object is missing from PostgREST.
+ * Tick uses this so Production can self-heal without blocking every minute
+ * once tables exist. Does not mutate user rows.
+ */
+export async function ensureProductionAutomationSchemaIfMissing(): Promise<{
+  schemaErrors: string[];
+  applied: boolean;
+}> {
+  const before = await listTickSchemaErrors();
+  if (before.length === 0) {
+    return { schemaErrors: before, applied: false };
+  }
+  const applied = await applyMigrationSql({
+    sql: ATLAS_PRODUCTION_SCHEMA_ENSURE_SQL,
+    migrationName: "20260822_prod_automation_schema_ensure",
+  });
+  const after = await listTickSchemaErrors();
+  return {
+    schemaErrors: after,
+    applied: applied.appliedViaPostgres || applied.appliedViaManagementApi,
+  };
 }

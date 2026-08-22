@@ -68,10 +68,11 @@ export async function runAutomationTick(input: {
       stage: "schema_probe",
       skipIfDeadline: false,
       run: async () => {
-        const { listTickSchemaErrors } = await import(
+        const { ensureProductionAutomationSchemaIfMissing } = await import(
           "@/lib/health/production-schema-probe"
         );
-        return listTickSchemaErrors();
+        const ensured = await ensureProductionAutomationSchemaIfMissing();
+        return ensured.schemaErrors;
       },
     });
     stages.push(schemaStage.record);

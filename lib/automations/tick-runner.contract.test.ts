@@ -24,7 +24,7 @@ describe("automation tick route contract", () => {
       "utf8",
     );
     expect(budget).toContain("AUTOMATION_TICK_SUMMARY");
-    expect(runner).toContain("listTickSchemaErrors");
+    expect(runner).toContain("ensureProductionAutomationSchemaIfMissing");
     expect(runner).toContain("deferredJobs");
   });
 });
