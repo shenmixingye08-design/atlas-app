@@ -158,7 +158,9 @@ export function EntrustProposalList({
   userId: string;
   onCreated?: () => void;
 }) {
-  const [tick, setTick] = useState(0);
+  const [dismissedKeys, setDismissedKeys] = useState(() =>
+    listDismissedKeys(userId),
+  );
   const proposals = useMemo(() => {
     const jobs = projects
       .map((project) => projectToSuccessfulJob(project, userId))
@@ -167,9 +169,9 @@ export function EntrustProposalList({
       userId,
       jobs,
       existingFingerprints: existingFingerprints(automations),
-      dismissedKeys: listDismissedKeys(userId),
+      dismissedKeys,
     });
-  }, [projects, automations, userId, tick]);
+  }, [projects, automations, userId, dismissedKeys]);
 
   if (proposals.length === 0) return null;
 
@@ -190,7 +192,7 @@ export function EntrustProposalList({
             key={proposal.fingerprint}
             proposal={proposal}
             userId={userId}
-            onDismissed={() => setTick((value) => value + 1)}
+            onDismissed={() => setDismissedKeys(listDismissedKeys(userId))}
             onCreated={onCreated}
           />
         ))}

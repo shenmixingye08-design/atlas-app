@@ -44,7 +44,10 @@ export function ActivityHistoryDetail({
   onUpdated,
 }: ActivityHistoryDetailProps) {
   const router = useRouter();
-  const transitions = item.result?.workflow.transitions ?? [];
+  const transitions = useMemo(
+    () => item.result?.workflow.transitions ?? [],
+    [item.result?.workflow.transitions],
+  );
   const [entrusting, setEntrusting] = useState(false);
   const [entrustError, setEntrustError] = useState<string | null>(null);
   const kind = classifyWorkKind({

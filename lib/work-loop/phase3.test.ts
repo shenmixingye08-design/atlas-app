@@ -30,7 +30,6 @@ import {
   shouldAskApprovalEveryRun,
   shouldProposeAutomation,
   simulateManyUsers,
-  resetDismissStoreForTests,
   snapshotDismissState,
   workNeedsReinstruction,
   type SuccessfulJob,
@@ -254,6 +253,10 @@ describe("TEST 12 User isolation", () => {
         "user_b",
       ).map((row) => row.id),
     ).toEqual(["p2"]);
+    expect(simulateManyUsers({ userCount: 1000, worksPerUser: 3 })).toEqual({
+      leaked: 0,
+      total: 3000,
+    });
   });
 });
 
