@@ -44,6 +44,23 @@ describe("X OAuth start config", () => {
     expect(serialized).not.toContain("sk_clerk_super_secret");
   });
 
+  it("fail-closes when X_CLIENT_SECRET is missing", () => {
+    const readiness = inspectXConnectStartReadiness({
+      VERCEL_ENV: "production",
+      X_CLIENT_ID: "id",
+      X_CLIENT_SECRET: "",
+      X_REDIRECT_URI: EXPECTED_X_PRODUCTION_REDIRECT_URI,
+      CLERK_SECRET_KEY: "sk",
+    });
+    expect(readiness.ready).toBe(false);
+    expect(readiness.developerCode).toBe("x_client_secret_missing");
+    expect(
+      classifyXConnectStartError(
+        new Error("X_CLIENT_SECRET is not configured. Add it to .env.local to connect X."),
+      ).developerCode,
+    ).toBe("x_client_secret_missing");
+  });
+
   it("classifies missing X_CLIENT_ID as 503 without leaking the env value", () => {
     const classified = classifyXConnectStartError(
       new Error("X_CLIENT_ID is not configured. Add it to .env.local to connect X."),

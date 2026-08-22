@@ -64,6 +64,7 @@ export function probeXOAuthConnectConfig(
     isVercelProductionEnv(env) && !flags.xRedirectUriConfigured;
   const canStartAuthorize =
     flags.xClientIdConfigured &&
+    flags.xClientSecretConfigured &&
     (flags.xRedirectUriConfigured || usingCanonicalProductionRedirect) &&
     flags.oauthStateSecretConfigured;
   return {
@@ -88,6 +89,14 @@ export function inspectXConnectStartReadiness(
     return {
       ready: false,
       developerCode: "x_client_id_missing",
+      userMessage: X_CONNECT_USER_CONFIG_MESSAGE,
+      flags,
+    };
+  }
+  if (!flags.xClientSecretConfigured) {
+    return {
+      ready: false,
+      developerCode: "x_client_secret_missing",
       userMessage: X_CONNECT_USER_CONFIG_MESSAGE,
       flags,
     };
@@ -123,6 +132,13 @@ export function classifyXConnectStartError(
   if (/X_CLIENT_ID/.test(message)) {
     return {
       developerCode: "x_client_id_missing",
+      httpStatus: 503,
+      userMessage: X_CONNECT_USER_CONFIG_MESSAGE,
+    };
+  }
+  if (/X_CLIENT_SECRET/.test(message)) {
+    return {
+      developerCode: "x_client_secret_missing",
       httpStatus: 503,
       userMessage: X_CONNECT_USER_CONFIG_MESSAGE,
     };
