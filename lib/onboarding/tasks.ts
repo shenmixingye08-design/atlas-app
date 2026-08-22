@@ -25,7 +25,7 @@ export const ONBOARDING_TASKS: readonly OnboardingTaskDefinition[] = [
     presetId: "sns",
     recommendedServices: ["x"],
     automationHint: "SNS自動投稿",
-    settingsHref: "/settings/x",
+    settingsHref: "/workspace/x",
   },
   {
     id: "blog",

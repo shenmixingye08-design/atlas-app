@@ -184,6 +184,11 @@ export type OrchestrationResult = {
   knowledge?: KnowledgeUsedResult;
   /** Work Memory applied during this run (optional). */
   workMemory?: import("@/lib/work-memory/types").WorkMemoryUsedContext;
+  /**
+   * Set only when Personal Memory actually changed this run.
+   * UI must not infer this from assignment wording.
+   */
+  preferenceNotice?: string | null;
   /** Memory candidates created after this run (optional). */
   workMemoryCandidates?: import("@/lib/work-memory/types").WorkMemoryCandidate[];
   /** Dev/debug cost breakdown (non-production only). */

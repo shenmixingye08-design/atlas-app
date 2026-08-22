@@ -388,7 +388,9 @@ describe("CASE 17 Mobile", () => {
     expect(home).toContain("一時停止");
     expect(home).toContain("再開");
     expect(firstHome).toContain("your-work");
-    expect(firstHome).toContain("任せている仕事");
+    expect(firstHome).toContain("YourWorkList");
+    expect(home).toContain("YOUR_WORK_HEADING");
+    expect(home).toContain("任せている仕事");
   });
 });
 

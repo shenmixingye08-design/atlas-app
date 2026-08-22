@@ -135,6 +135,8 @@ export type PersistDurableResult = {
   durable: boolean;
   storageStatus: DeliverableStorageStatus;
   storageError: string | null;
+  /** True when atlas_deliverable_files is missing — sidecar is emergency-only. */
+  schemaMissing?: boolean;
   row: DurableDeliverableRow;
 };
 
@@ -394,8 +396,8 @@ export async function persistDurableDeliverable(
       if (!dbError) dbError = `sidecar_meta_failed:${sidecar.error}`;
       else dbError = `${dbError}; sidecar_meta_failed:${sidecar.error}`;
     } else {
-      console.warn(
-        "[atlas_deliverable_files] durable via Storage sidecar (DB unavailable)",
+      console.error(
+        "[atlas_deliverable_files] schema_missing:atlas_deliverable_files — Storage sidecar is emergency-only",
         { id: next.id, tableMissing },
       );
     }
@@ -436,6 +438,7 @@ export async function persistDurableDeliverable(
     durable,
     storageStatus: next.storageStatus,
     storageError: resolvedError,
+    schemaMissing: tableMissing,
     row: next,
   };
 }

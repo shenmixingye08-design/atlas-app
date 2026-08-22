@@ -151,7 +151,7 @@ export function resolveCategoryAvailability(
     if (missing?.requiredConnector) {
       const href =
         missing.requiredConnector === "x"
-          ? "/settings/x"
+          ? "/workspace/x"
           : missing.requiredConnector === "wordpress"
             ? "/settings/wordpress"
             : "/connections";

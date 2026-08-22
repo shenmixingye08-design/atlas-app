@@ -26,6 +26,25 @@ export class AutomationJobClaimUnavailableError extends Error {
   }
 }
 
+export class AutomationJobSchemaMissingError extends Error {
+  readonly code = "automation_job_schema_missing";
+  readonly failureClass = "schema_missing";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "AutomationJobSchemaMissingError";
+  }
+}
+
+function isAutomationJobsSchemaMissing(message: string | undefined): boolean {
+  return Boolean(
+    message &&
+      /schema cache|does not exist|Could not find the table|PGRST205/i.test(
+        message,
+      ),
+  );
+}
+
 function assertDurableJobClientOrThrow(
   client: ReturnType<typeof createServiceRoleClientIfConfigured>,
 ): asserts client is NonNullable<typeof client> {
@@ -272,7 +291,15 @@ export async function claimAutomationJob(input: {
           return resolveClaim(rowToRecord(existingRow as DbRow));
         }
       }
-      console.warn("[jobs] claim insert failed:", error.message);
+      console.error("[jobs] claim insert failed:", error.message, {
+        code: error.code ?? null,
+        failureClass: isAutomationJobsSchemaMissing(error.message)
+          ? "schema_missing"
+          : "claim_failed",
+      });
+      if (isAutomationJobsSchemaMissing(error.message)) {
+        throw new AutomationJobSchemaMissingError(error.message);
+      }
       throw new Error(error.message);
     }
 

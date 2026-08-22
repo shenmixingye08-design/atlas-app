@@ -7,6 +7,7 @@ import {
 } from "@/lib/automations/global-durable";
 import { serverAutomationRepository } from "@/lib/automations/repositories/server-automation-repository";
 import { computeNextRunIso } from "@/lib/automations/schedule";
+import { isInternalHealthProbeUserId } from "@/lib/health/internal-probe-user";
 import { isAutomationSuspendedForUser } from "@/lib/billing/subscriptions/lifecycle";
 
 import { evaluateWorkQueueAlerts } from "./alerts";
@@ -36,6 +37,8 @@ export async function processWorkQueueTick(options?: {
   workerId?: string;
   /** Override horizontal fan-out (tests / ops). Default: 1 (GHA supplies scale). */
   workerFanOut?: number;
+  signal?: AbortSignal;
+  canStartJob?: () => boolean;
 }): Promise<{
   schedule: Awaited<ReturnType<typeof enqueueDueAutomations>>;
   /** Aggregated horizontal drain (P2-03). */
@@ -57,6 +60,8 @@ export async function processWorkQueueTick(options?: {
   const candidates = [];
   try {
     for (const userId of memoryOwners) {
+      if (options?.signal?.aborted) break;
+      if (isInternalHealthProbeUserId(userId)) continue;
       await ensureAutomationsHydrated(userId);
       if (isAutomationSuspendedForUser(userId)) continue;
       const enabled = await serverAutomationRepository.list({
@@ -114,6 +119,8 @@ export async function processWorkQueueTick(options?: {
       claimLimit: options?.workerLimit,
       fanOut: options?.workerFanOut ?? 1,
       workerIdPrefix: options?.workerId ?? undefined,
+      signal: options?.signal,
+      canStartJob: options?.canStartJob,
     });
   } catch (error) {
     throw tagWorkQueueError(error, "drain_horizontal");

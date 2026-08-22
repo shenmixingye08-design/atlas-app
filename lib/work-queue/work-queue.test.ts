@@ -664,6 +664,65 @@ describe("work-queue fail-closed completion", () => {
     expect(drain.leased).toBe(0);
     expect(drain.completed).toBe(0);
   });
+
+  it("stops starting jobs when the tick canStartJob budget is exhausted", async () => {
+    for (let i = 0; i < 4; i += 1) {
+      await store.enqueue({
+        ownerId: "budget_user",
+        automationId: `auto_budget_${i}`,
+        occurrenceKey: `occ:budget:${i}`,
+        payload: {
+          kind: "benchmark",
+          offlineArtifacts: true,
+          assignment: `budget ${i}`,
+        },
+        steps: [{ stepId: "generate", stepType: "generate_deliverable" }],
+      });
+    }
+    let checks = 0;
+    const drain = await drainWorkQueue({
+      workerId: "budget_w",
+      limit: 4,
+      canStartJob: () => {
+        checks += 1;
+        return checks <= 2;
+      },
+    });
+    expect(drain.completed).toBeLessThanOrEqual(1);
+    expect(drain.completed + drain.failed + drain.retried).toBeLessThan(4);
+    const leftover = await store.metrics();
+    expect(leftover.queued + leftover.leased + leftover.running).toBeGreaterThan(0);
+  });
+
+  it("transitions JOB_LEASED through JOB_COMPLETED and does not double-run", async () => {
+    const occ = buildOccurrenceKey({
+      automationId: "auto_states",
+      scheduledAt: new Date("2026-08-01T08:00:00.000Z"),
+      timezone: "UTC",
+    });
+    const { job } = await store.enqueue({
+      ownerId: "user_states",
+      automationId: "auto_states",
+      occurrenceKey: occ,
+      payload: {
+        kind: "benchmark",
+        offlineArtifacts: true,
+        assignment: "state machine",
+      },
+      steps: [{ stepId: "generate", stepType: "generate_deliverable" }],
+    });
+    const first = await drainWorkQueue({ workerId: "state_w", limit: 1 });
+    expect(first.leased).toBe(1);
+    expect(first.completed).toBe(1);
+    const done = await store.getJob(job.jobId);
+    expect(done?.status).toBe("completed");
+    expect(done?.steps[0]?.status).toBe("completed");
+    const second = await drainWorkQueue({ workerId: "state_w2", limit: 1 });
+    expect(second.leased).toBe(0);
+    expect(second.completed).toBe(0);
+    const still = await store.getJob(job.jobId);
+    expect(still?.status).toBe("completed");
+  });
 });
 
 describe("scheduler 100 fires", () => {

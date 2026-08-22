@@ -93,24 +93,32 @@ export async function rememberSuccessfulDeliverableFormat(input: {
         summary: label,
         status: "active",
       });
-      return;
+    } else {
+      await createPersonalMemory(input.userId, {
+        kind: "work_preference",
+        scope: "preferred_formats",
+        key: "last_export",
+        title: "前回の成果物形式",
+        summary: label,
+        value,
+        source: "user_explicit",
+        status: "active",
+        confidence: 0.8,
+        appliesTo: {
+          global: true,
+          automationIds: [],
+          artifactTypes: [input.format],
+          capabilities: [],
+        },
+      });
     }
-    await createPersonalMemory(input.userId, {
-      kind: "work_preference",
-      scope: "preferred_formats",
-      key: "last_export",
-      title: "前回の成果物形式",
-      summary: label,
-      value,
-      source: "user_explicit",
-      status: "active",
-      confidence: 0.8,
-      appliesTo: {
-        global: true,
-        automationIds: [],
-        artifactTypes: [input.format],
-        capabilities: [],
-      },
+    const { rememberSuccessfulWorkShape } = await import(
+      "@/lib/value-moat/remember-structure"
+    );
+    await rememberSuccessfulWorkShape({
+      userId: input.userId,
+      format: input.format,
+      assignment: input.assignment,
     });
   } catch {
     // Fail soft — format memory must never break generation.

@@ -20,6 +20,10 @@ import { createProject } from "@/lib/projects/domain";
 import { ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/design-system/cn";
+import {
+  buildHistoryRerunHref,
+  planHistoryRerun,
+} from "@/lib/value-moat/rerun";
 
 type ActivityHistoryDetailProps = {
   item: ActivityHistoryItem;
@@ -78,7 +82,14 @@ export function ActivityHistoryDetail({
   }
 
   function handleRerun() {
-    router.push(`/workspace?assignment=${encodeURIComponent(item.workRequest)}`);
+    const plan = planHistoryRerun({
+      previousJobId: item.id,
+      workRequest: item.workRequest,
+      title: item.title,
+      format: item.deliverableType,
+      status: item.status === "failed" ? "failed" : "completed",
+    });
+    router.push(buildHistoryRerunHref(plan));
   }
 
   return (
@@ -173,9 +184,25 @@ export function ActivityHistoryDetail({
           </section>
         </div>
 
-        <div className="flex flex-wrap gap-2 border-t border-[var(--border-subtle)] px-5 py-4">
-          <Button type="button" size="sm" onClick={handleRerun}>
+        <div className="flex flex-wrap gap-2 border-t border-[var(--border-subtle)] px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleRerun}
+            className="min-h-[var(--touch-target)]"
+            data-testid="history-rerun"
+          >
             {ui.activityHistory.actions.rerun}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={handleRerun}
+            className="min-h-[var(--touch-target)]"
+            data-testid="history-rerun-same"
+          >
+            {ui.activityHistory.actions.rerunSame}
           </Button>
           <Button type="button" size="sm" variant="secondary" onClick={handleTemplate}>
             {ui.activityHistory.actions.template}

@@ -11,6 +11,7 @@ import {
 import {
   buildPreferenceAppliedNotice,
   describePreferenceLabels,
+  detectInstructionPreferenceItems,
   parseExplicitOverrideFromText,
 } from "@/lib/memory-apply/instruction-reduction";
 import { recordMemoryApplyEvent } from "@/lib/memory-apply/metrics";
@@ -123,12 +124,39 @@ export async function applyMemoryForDeliverable(input: {
 
   const channel = channelForFormat(input.format);
   const memoryRetrieved = ledger.memoryIdsUsed.length > 0;
+  const formatKey =
+    input.format === "docx"
+      ? "format:docx"
+      : input.format === "xlsx"
+        ? "format:xlsx"
+        : input.format === "pptx"
+          ? "format:pptx"
+          : input.format === "pdf"
+            ? "format:pdf"
+            : null;
+  const restated = detectInstructionPreferenceItems(input.assignment ?? "");
+  const overlayHasFormat =
+    formatKey != null && contentOverlay.preferenceKeys.includes(formatKey);
+  const memoryFormatKeys =
+    overlayHasFormat && formatKey && !restated.includes(formatKey)
+      ? [formatKey]
+      : [];
+  const memoryToneKeys = contentOverlay.preferenceKeys.filter(
+    (key) => key.startsWith("tone:") && !restated.includes(key),
+  );
+  const appliedPreferenceKeys = [
+    ...new Set([
+      ...bodyApplied.appliedKeys,
+      ...memoryFormatKeys,
+      ...memoryToneKeys,
+    ]),
+  ];
   const preferenceApplied =
-    bodyApplied.appliedKeys.length > 0 && next !== input.content.trim();
+    appliedPreferenceKeys.length > 0 &&
+    (next !== input.content.trim() ||
+      memoryFormatKeys.length > 0 ||
+      memoryToneKeys.length > 0);
   const applied = memoryRetrieved || Boolean(overlay.brand) || preferenceApplied;
-  const appliedPreferenceKeys = bodyApplied.appliedKeys.length
-    ? bodyApplied.appliedKeys
-    : contentOverlay.preferenceKeys;
   const quality = compareMemoryQuality({
     before: input.content,
     after: next,
