@@ -11,7 +11,7 @@ import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
 import { withPropagatedJobId } from "./job-id";
-import { isStaleWorkJobRunning, isWorkJobTerminal } from "./staleness";
+import { isStaleWorkJobRunning } from "./staleness";
 import {
   getWorkJob,
   getWorkJobDurable,
