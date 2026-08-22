@@ -15,6 +15,7 @@ import { WorkCountStrip, YourWorkList } from "@/components/automation-first/your
 import { SectionHeader } from "@/components/automation-first/page-header";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
 import { Timeline } from "@/components/automation-first/timeline";
+import { EntrustProposalList } from "@/components/work-loop/entrust-proposal";
 import { IconClock } from "@/components/ui/icons";
 import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
 import {
@@ -584,6 +585,12 @@ export function AutomationFirstHome({
           {MEMORY_OUTCOME}。普段は任せて、必要なときだけ確認。
         </p>
       )}
+
+      <EntrustProposalList
+        projects={projects}
+        automations={automations}
+        userId={automations[0]?.userId ?? "local"}
+      />
 
       {opsError ? (
         <ErrorState
