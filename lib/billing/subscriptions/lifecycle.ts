@@ -101,6 +101,7 @@ export async function applyPaidPlanFromWebhook(input: {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   stripePriceId?: string | null;
+  stripeEventCreated?: number;
 }): Promise<UserSubscriptionRecord> {
   await assertStripeCustomerNotOwnedByOtherUser({
     userId: input.userId,
@@ -117,6 +118,11 @@ export async function applyPaidPlanFromWebhook(input: {
   }
 
   await syncUserPlanProfile(input.userId, input.planId);
+  if (input.stripeEventCreated) {
+    return upsertUserSubscription(input.userId, {
+      planProfileSyncedAt: new Date(input.stripeEventCreated * 1000).toISOString(),
+    });
+  }
   return record;
 }
 

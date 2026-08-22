@@ -122,7 +122,11 @@ describe("Billing Production regression", () => {
           client_reference_id: "user_dup",
           customer: "cus_dup",
           subscription: "sub_dup",
-          metadata: { userId: "user_dup", planId: "light" },
+          metadata: {
+            userId: "user_dup",
+            planId: "light",
+            priceId: "price_light_live_allowlist",
+          },
         },
         eventId,
       ),
@@ -172,6 +176,7 @@ describe("Billing Production regression", () => {
         metadata: {
           userId: "user_b_attacker",
           planId: "light",
+          priceId: "price_light_live_allowlist",
         },
       }),
     );

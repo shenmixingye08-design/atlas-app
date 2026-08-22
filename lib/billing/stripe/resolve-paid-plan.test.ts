@@ -39,14 +39,15 @@ describe("resolvePaidPlanFromStripeRefs", () => {
     });
   });
 
-  it("uses metadata only when Stripe attached no Price ID", () => {
+  it("never grants a paid plan from metadata.planId alone", () => {
     const resolved = resolvePaidPlanFromStripeRefs({
       priceId: null,
-      metadataPlanId: "standard",
+      metadataPlanId: "premium",
     });
     expect(resolved).toMatchObject({
-      planId: "standard",
-      source: "metadata",
+      planId: null,
+      source: "none",
+      conflict: true,
       unknownPrice: false,
     });
   });
