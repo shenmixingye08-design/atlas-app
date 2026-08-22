@@ -1,4 +1,5 @@
 import type { Automation } from "@/lib/automations/types";
+import { classifyWorkException } from "@/lib/work-asset/exceptions";
 import {
   automationToDashboardJob,
   sortAutomationJobs,
@@ -62,13 +63,19 @@ export function buildHomeAttentionItems(
 
   for (const automation of automations) {
     if (automation.status === "failed") {
+      const exception = classifyWorkException({
+        errorText: automation.lastError,
+        alreadyPosted: Boolean(
+          automation.runHistory.some((row) => row.xPostId && row.status === "completed"),
+        ),
+      });
       items.push({
         id: `failed:${automation.id}`,
-        kind: "failed",
-        title: `${automation.name} が失敗しました`,
-        description: "内容を確認して、必要なら再実行できます。",
-        href: `/automations?id=${encodeURIComponent(automation.id)}`,
-        actionLabel: "確認する",
+        kind: exception.kind === "x_disconnected" ? "reconnect" : "failed",
+        title: exception.title,
+        description: exception.body,
+        href: exception.cta.href,
+        actionLabel: exception.cta.label,
       });
     }
 

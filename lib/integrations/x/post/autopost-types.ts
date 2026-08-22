@@ -67,14 +67,30 @@ export type XAutoPostRun = {
   updatedAt: string;
 };
 
+export type XAutoPostQuotaView = {
+  used: number;
+  limit: number;
+  remaining: number;
+};
+
+export type XAutoPostMemoryView = {
+  applied: boolean;
+  labels: string[];
+  memoryFailed: boolean;
+};
+
 export type XAutoPostStatusResult =
   | {
       status: "ready";
       settings: XAutoPostSettings;
       connected: boolean;
+      connectionStatus: "disconnected" | "pending" | "connected" | "error";
       accountUsername: string | null;
       nextScheduledFor: string | null;
       recentRuns: XAutoPostRun[];
+      postedThisMonth: number;
+      quota: XAutoPostQuotaView | null;
+      memory: XAutoPostMemoryView;
     }
   | {
       status: "feature_disabled";
@@ -159,7 +175,7 @@ export const X_AUTOPOST_TYPE_ORDER: XAutoPostType[] = [
 ];
 
 export function formatXAutoPostMode(mode: XAutoPostMode): string {
-  return mode === "full_auto" ? "完全自動" : "承認制";
+  return mode === "full_auto" ? "自動投稿" : "投稿前に確認";
 }
 
 export function formatXAutoPostFrequency(frequency: XAutoPostFrequency): string {
@@ -184,7 +200,7 @@ export function createDefaultXAutoPostSettings(
     tone: X_AUTOPOST_TONE_PRESETS[0],
     frequency: "daily_1",
     daysOfWeek: [],
-    postTimes: ["09:00"],
+    postTimes: ["10:00"],
     timezone: "Asia/Tokyo",
     includeHashtags: false,
     createdAt: now,

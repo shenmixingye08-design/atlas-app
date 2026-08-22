@@ -10,6 +10,8 @@ type SignedOAuthPayload = {
   exp: number;
   nonce: string;
   codeVerifier?: string;
+  /** Already-sanitized relative path. Never an absolute URL. */
+  returnTo?: string;
 };
 
 function resolveOAuthStateSecret(): string {
@@ -68,7 +70,7 @@ function safeEqual(a: string, b: string): boolean {
  */
 export function createSignedOAuthState(
   subject: string,
-  options?: { codeVerifier?: string },
+  options?: { codeVerifier?: string; returnTo?: string },
 ): string {
   const secret = resolveOAuthStateSecret();
   if (!secret) {
@@ -84,6 +86,7 @@ export function createSignedOAuthState(
     exp: now + STATE_TTL_MS,
     nonce: randomUUID(),
     ...(options?.codeVerifier ? { codeVerifier: options.codeVerifier } : {}),
+    ...(options?.returnTo ? { returnTo: options.returnTo } : {}),
   };
 
   const body = base64UrlEncode(JSON.stringify(payload));
@@ -93,6 +96,7 @@ export function createSignedOAuthState(
 export function consumeSignedOAuthState(state: string): {
   subject: string;
   codeVerifier?: string;
+  returnTo?: string;
 } | null {
   const secret = resolveOAuthStateSecret();
   if (!secret || !state.includes(".")) return null;
@@ -111,6 +115,9 @@ export function consumeSignedOAuthState(state: string): {
       subject: payload.sub,
       ...(payload.codeVerifier
         ? { codeVerifier: payload.codeVerifier }
+        : {}),
+      ...(typeof payload.returnTo === "string" && payload.returnTo.startsWith("/")
+        ? { returnTo: payload.returnTo }
         : {}),
     };
   } catch {

@@ -22,18 +22,18 @@ function requireFile(rel, hint) {
 }
 
 const tick = requireFile(
-  "app/api/automations/tick/route.ts",
+  "lib/automations/tick-runner.ts",
   "tick must call external monitor",
 );
 if (tick) {
   if (!tick.includes("runExternalMonitorCycle")) {
     violations.push(
-      "app/api/automations/tick/route.ts: must call runExternalMonitorCycle",
+      "lib/automations/tick-runner.ts: must call runExternalMonitorCycle",
     );
   }
   if (!tick.includes("externalMonitor")) {
     violations.push(
-      "app/api/automations/tick/route.ts: must expose externalMonitor in response",
+      "lib/automations/tick-runner.ts: must expose externalMonitor in response",
     );
   }
 }

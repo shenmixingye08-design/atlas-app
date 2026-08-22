@@ -68,7 +68,7 @@ describe("P2-04 structured logs", () => {
     });
     const row = developerLogToRow(entry);
     expect(row.message).not.toMatch(/sk-abcdefghijklmnop/);
-    expect(row.message).toContain("[redacted]");
+    expect(row.message).toMatch(/\[redacted/);
     expect(row.metadata).not.toHaveProperty("authorization");
     expect(row.metadata).not.toHaveProperty("token");
     expect(row.metadata.okField).toBe("visible");

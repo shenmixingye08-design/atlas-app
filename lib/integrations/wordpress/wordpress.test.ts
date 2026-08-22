@@ -15,6 +15,7 @@ import { getExternalServiceConnection } from "@/lib/integrations/external-servic
 import {
   normalizeApplicationPassword,
   normalizeWordPressSiteUrl,
+  requireWordPressEncryptionKey,
 } from "@/lib/integrations/wordpress/config";
 import {
   decryptWordPressSecret,
@@ -107,6 +108,13 @@ describe("WordPress credential encryption", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it("refuses to invent a production default key", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("ATLAS_WORDPRESS_CREDENTIALS_ENCRYPTION_KEY", "");
+    expect(() => requireWordPressEncryptionKey()).toThrow(/暗号化キー/);
   });
 
   it("round-trips secrets without leaking plaintext in ciphertext", () => {

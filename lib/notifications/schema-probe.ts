@@ -38,7 +38,7 @@ export type NotificationRetrySchemaProbe = {
 function tickWiredFromSource(): boolean {
   try {
     const src = readFileSync(
-      join(process.cwd(), "app/api/automations/tick/route.ts"),
+      join(process.cwd(), "lib/automations/tick-runner.ts"),
       "utf8",
     );
     return (

@@ -33,10 +33,13 @@ export type XUserProfile = {
 export function buildXAuthorizeUrl(
   requestOrigin: string,
   userId: string,
+  options?: { returnTo?: string },
 ): string {
   const codeVerifier = generatePkceCodeVerifier();
   const codeChallenge = generatePkceCodeChallenge(codeVerifier);
-  const state = createXOAuthState(userId, codeVerifier);
+  const state = createXOAuthState(userId, codeVerifier, {
+    returnTo: options?.returnTo,
+  });
 
   const params = new URLSearchParams({
     response_type: "code",

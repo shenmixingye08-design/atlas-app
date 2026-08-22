@@ -11,8 +11,15 @@ import {
   saveXAutoPostSettings,
   type XAutoPostSettingsPatch,
 } from "@/lib/integrations/x/post/autopost-settings-store";
+import { applyMemoryToDedicatedAutoPost, rememberDedicatedAutoPostSettings } from "@/lib/integrations/x/post/autopost-memory";
+import { countPostedAutoPostsThisMonth } from "@/lib/integrations/x/post/autopost-lifecycle";
 import { listXAutoPostRuns } from "@/lib/integrations/x/post/autopost-runs-store";
-import type { XAutoPostStatusResult } from "@/lib/integrations/x/post/autopost-types";
+import type {
+  XAutoPostMemoryView,
+  XAutoPostQuotaView,
+  XAutoPostStatusResult,
+} from "@/lib/integrations/x/post/autopost-types";
+import { getUserUsageLimitSummary } from "@/lib/billing/usage/service";
 
 type RequestBody = {
   enabled?: unknown;
@@ -30,6 +37,7 @@ type RequestBody = {
 
 async function resolveConnection(userId: string): Promise<{
   connected: boolean;
+  connectionStatus: "disconnected" | "pending" | "connected" | "error";
   username: string | null;
 }> {
   try {
@@ -39,9 +47,23 @@ async function resolveConnection(userId: string): Promise<{
       connection.account?.username ??
       connection.account?.email?.replace(/^@/, "") ??
       null;
-    return { connected: connection.status === "connected", username };
+    const connectionStatus =
+      connection.status === "connected" ||
+      connection.status === "pending" ||
+      connection.status === "error"
+        ? connection.status
+        : "disconnected";
+    return {
+      connected: connection.status === "connected",
+      connectionStatus,
+      username,
+    };
   } catch {
-    return { connected: false, username: null };
+    return {
+      connected: false,
+      connectionStatus: "disconnected",
+      username: null,
+    };
   }
 }
 
@@ -66,16 +88,51 @@ export async function GET(): Promise<Response> {
   const [settings, connection, recentRuns] = await Promise.all([
     loadXAutoPostSettings(userId),
     resolveConnection(userId),
-    listXAutoPostRuns(userId, 20),
+    listXAutoPostRuns(userId, 50),
   ]);
+
+  let memory: XAutoPostMemoryView = {
+    applied: false,
+    labels: [],
+    memoryFailed: false,
+  };
+  try {
+    const applied = await applyMemoryToDedicatedAutoPost({
+      userId,
+      settings,
+    });
+    memory = {
+      applied: applied.applied,
+      labels: applied.labels,
+      memoryFailed: applied.memoryFailed,
+    };
+  } catch {
+    memory = { applied: false, labels: [], memoryFailed: true };
+  }
+
+  let quota: XAutoPostQuotaView | null = null;
+  try {
+    const usage = getUserUsageLimitSummary(userId);
+    quota = {
+      used: usage.snsPosts.used,
+      limit: usage.snsPosts.limit,
+      remaining: usage.snsPosts.remaining,
+    };
+  } catch {
+    quota = null;
+  }
 
   const body: XAutoPostStatusResult = {
     status: "ready",
     settings,
     connected: connection.connected,
+    connectionStatus: connection.connectionStatus,
     accountUsername: connection.username,
     nextScheduledFor: computeNextScheduledFor(settings),
     recentRuns,
+    postedThisMonth: countPostedAutoPostsThisMonth(recentRuns),
+    quota,
+    memory,
   };
   return Response.json(body);
 }
@@ -139,6 +196,7 @@ export async function PUT(request: Request): Promise<Response> {
   }
 
   const settings = await saveXAutoPostSettings(userId, patch);
+  void rememberDedicatedAutoPostSettings({ userId, settings });
 
   return Response.json({
     status: "ready",

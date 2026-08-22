@@ -149,6 +149,7 @@ export async function runOrchestrationForUser(
       : null;
 
   let personalMemoryMeta: Record<string, unknown> | null = null;
+  let preferenceNotice: string | null = null;
   if (input.userId) {
     try {
       const { resolveForContext } = await import(
@@ -200,6 +201,7 @@ export async function runOrchestrationForUser(
             : undefined,
           capabilities: ["commander", "orchestration"],
         });
+        preferenceNotice = applied.preferenceNotice;
         for (const channel of ["orchestration", "workflow"] as const) {
           recordMemoryApplyEvent({
             userId: input.userId,
@@ -262,6 +264,9 @@ export async function runOrchestrationForUser(
       },
     }),
   );
+  if (preferenceNotice) {
+    result = { ...result, preferenceNotice };
+  }
 
   if (input.userId && result.deliverable) {
     try {

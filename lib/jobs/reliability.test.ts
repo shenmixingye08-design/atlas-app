@@ -68,6 +68,14 @@ describe("retry classifier", () => {
       "non_retryable",
     );
   });
+
+  it("does not treat a missing automation jobs table as a transient external blip", () => {
+    expect(
+      classifyRetryError(
+        new Error("Could not find the table 'public.atlas_automation_jobs' in the schema cache"),
+      ),
+    ).toBe("non_retryable");
+  });
 });
 
 describe("completion evidence", () => {

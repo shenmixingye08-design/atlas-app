@@ -13,15 +13,15 @@ function read(rel) {
   return readFileSync(join(ROOT, rel), "utf8");
 }
 
-const tick = read("app/api/automations/tick/route.ts");
+const tick = read("lib/automations/tick-runner.ts");
 if (!/processDurableNotificationRetries/.test(tick)) {
   violations.push(
-    "app/api/automations/tick/route.ts: must call processDurableNotificationRetries",
+    "lib/automations/tick-runner.ts: must call processDurableNotificationRetries",
   );
 }
 if (!/notificationRetries/.test(tick)) {
   violations.push(
-    "app/api/automations/tick/route.ts: must expose notificationRetries in response",
+    "lib/automations/tick-runner.ts: must expose notificationRetries in response",
   );
 }
 

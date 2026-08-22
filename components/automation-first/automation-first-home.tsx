@@ -4,8 +4,14 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { AttentionCard } from "@/components/automation-first/attention-card";
+import {
+  EntrustedWorkList,
+  MeasuredValueMetrics,
+  NewUserValueSteps,
+} from "@/components/automation-first/entrusted-work";
 import { ErrorState } from "@/components/automation-first/error-state";
 import { HomePrimaryActions } from "@/components/automation-first/home-primary-actions";
+import { WorkCountStrip, YourWorkList } from "@/components/automation-first/your-work";
 import { SectionHeader } from "@/components/automation-first/page-header";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
 import { Timeline } from "@/components/automation-first/timeline";
@@ -41,6 +47,18 @@ import type { AutomationRun } from "@/lib/automation-platform/types";
 import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 import { useFeatureAvailability } from "@/lib/feature-flags";
+import { fetchXAutoPostStatusClient } from "@/lib/integrations/x/post/autopost-client";
+import {
+  countSuccessfulFinishedWorkThisMonth,
+  formatFinishedWorkThisMonthLine,
+} from "@/lib/product-focus/finished-work";
+import {
+  HOME_X_AUTOMATION_SUPPORT,
+  MEMORY_OUTCOME,
+} from "@/lib/product-focus/messaging";
+import { buildEntrustedWorkCards } from "@/lib/value-moat/home-entrusted";
+import { buildValueMetrics } from "@/lib/value-moat/value-metrics";
+import { toWorkAsset, workCounts } from "@/lib/work-asset/work-view";
 
 export type AutomationFirstHomeProps = {
   automations: Automation[];
@@ -150,6 +168,7 @@ export function AutomationFirstHome({
   );
   const [runs, setRuns] = useState<AutomationRun[]>([]);
   const [opsRequestId, setOpsRequestId] = useState(0);
+  const [xPostedThisMonth, setXPostedThisMonth] = useState<number | null>(null);
 
   useEffect(() => {
     if (!opsEnabled) return;
@@ -187,6 +206,23 @@ export function AutomationFirstHome({
       cancelled = true;
     };
   }, [opsEnabled, opsRequestId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchXAutoPostStatusClient()
+      .then((result) => {
+        if (cancelled) return;
+        if (result.status === "ready") {
+          setXPostedThisMonth(result.postedThisMonth);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setXPostedThisMonth(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const v1Jobs = useMemo(
     () => buildTodayJobsFromAutomations(automations, now),
@@ -277,6 +313,45 @@ export function AutomationFirstHome({
   }, [opsSummary, v1Jobs]);
 
   const nextRun = opsSummary?.nextRun ?? null;
+  const works = useMemo(
+    () => automations.map((automation) => toWorkAsset(automation)),
+    [automations],
+  );
+  const counts = useMemo(() => workCounts(works), [works]);
+
+  const entrustedCards = useMemo(
+    () =>
+      buildEntrustedWorkCards({
+        automations: automations.map((automation) => ({
+          id: automation.id,
+          name: automation.name,
+          enabled: automation.enabled,
+          nextRun: automation.nextRun,
+          scheduleLabel:
+            automation.schedule && "label" in automation.schedule
+              ? automation.schedule.label
+              : null,
+        })),
+        recentCompleted: recentCompleted.map((item) => ({
+          id: item.id,
+          title: item.title,
+          completedAt: item.meta || null,
+          href: item.href,
+        })),
+      }),
+    [automations, recentCompleted],
+  );
+
+  const valueMetrics = useMemo(
+    () =>
+      opsSummary
+        ? buildValueMetrics({
+            completedThisMonth: weeklyStats.completedJobs,
+            autoRunsThisMonth: weeklyStats.autoStepCount,
+          })
+        : [],
+    [opsSummary, weeklyStats.autoStepCount, weeklyStats.completedJobs],
+  );
 
   useEffect(() => {
     trackAutomationFirstEvent("home_viewed", {
@@ -458,6 +533,9 @@ export function AutomationFirstHome({
       runningJobs.length > 0 ||
       nextRunCard ||
       recentSection ||
+      works.length > 0 ||
+      entrustedCards.length > 0 ||
+      valueMetrics.length > 0 ||
       (opsSummary && hasMeaningfulWeeklyStats(weeklyStats)),
   );
 
@@ -468,24 +546,43 @@ export function AutomationFirstHome({
           {greetingForHour(now.getHours())}
         </p>
         <h1 className="text-[length:var(--text-page-title)] font-semibold tracking-tight text-[var(--text-primary)] sm:text-[length:var(--text-display)]">
-          毎日のX投稿を、自動化します
+          毎日のX投稿を、一度頼んだら次から任せます
         </h1>
         <p className="text-[length:var(--text-caption)] text-[var(--text-secondary)] sm:text-[length:var(--text-body)]">
           {formatTodayDateLabel(now)}
           {" — "}
-          一度頼めば、あとは確認するだけ。
+          {HOME_X_AUTOMATION_SUPPORT}
         </p>
       </header>
 
       <HomePrimaryActions compact={isReturningUser} />
 
+      {(() => {
+        const finishedLine = formatFinishedWorkThisMonthLine(
+          countSuccessfulFinishedWorkThisMonth({
+            projects,
+            automations,
+            xAutoPostsPostedThisMonth: xPostedThisMonth ?? 0,
+            now,
+          }),
+        );
+        return finishedLine ? (
+          <p className="text-center text-[length:var(--text-caption)] text-[var(--text-muted)]">
+            {finishedLine}
+          </p>
+        ) : null;
+      })()}
+
       {!isReturningUser ? (
-        <p className="text-center text-[length:var(--text-body)] leading-[var(--leading-body)] text-[var(--text-secondary)]">
-          まずX投稿を自動化してみましょう。使うほど、毎回の細かい指示が減ります。
-        </p>
+        <>
+          <NewUserValueSteps />
+          <p className="text-center text-[length:var(--text-body)] leading-[var(--leading-body)] text-[var(--text-secondary)]">
+            まず毎日のX投稿を任せてみましょう。{MEMORY_OUTCOME}。
+          </p>
+        </>
       ) : (
         <p className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
-          使うほど、毎回の細かい指示が減ります。
+          {MEMORY_OUTCOME}。普段は任せて、必要なときだけ確認。
         </p>
       )}
 
@@ -518,6 +615,20 @@ export function AutomationFirstHome({
           >
             今日のMINERVOT
           </h2>
+          <WorkCountStrip
+            entrusted={counts.entrusted}
+            completedThisWeek={
+              opsSummary && weeklyStats.completedJobs > 0
+                ? weeklyStats.completedJobs
+                : null
+            }
+            needsAttention={counts.needsAttention + attention.length}
+          />
+          <YourWorkList works={works} />
+          <EntrustedWorkList cards={entrustedCards} />
+          {valueMetrics.length > 0 ? (
+            <MeasuredValueMetrics metrics={valueMetrics} />
+          ) : null}
           {attentionSection}
           <RunningStepsPanel
             heading="h3"

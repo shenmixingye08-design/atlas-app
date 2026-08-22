@@ -4,6 +4,10 @@ import {
   markXConnectionNeedsReconnect,
 } from "@/lib/integrations/x/oauth-service";
 import { X_OAUTH_USER_ERROR } from "@/lib/integrations/x/errors";
+import {
+  resolveXOAuthReturnPath,
+  withXOAuthResultParams,
+} from "@/lib/integrations/x/oauth-return-to";
 import { recordXAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
 import { notifyIntegrationError } from "@/lib/notifications/emitters";
 import { clientSafeMessage } from "@/lib/security/client-safe-message";
@@ -20,15 +24,13 @@ function resolveOrigin(request: Request): string {
   return new URL(request.url).origin;
 }
 
-function redirectToSettings(
+function redirectAfterXOauth(
   origin: string,
+  returnTo: string | undefined,
   params: Record<string, string>,
 ): Response {
-  const url = new URL("/settings/x", origin);
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, value);
-  }
-  return Response.redirect(url.toString(), 302);
+  const path = withXOAuthResultParams(resolveXOAuthReturnPath(returnTo), params);
+  return Response.redirect(new URL(path, origin).toString(), 302);
 }
 
 function markXConnectionError(userId: string, message: string): void {
@@ -47,20 +49,17 @@ export async function GET(request: Request): Promise<Response> {
   const state = url.searchParams.get("state");
   const oauthError = url.searchParams.get("error");
 
+  const statePayload = state ? consumeXOAuthState(state) : null;
+
   if (oauthError) {
-    return redirectToSettings(origin, { x_error: "1" });
+    return redirectAfterXOauth(origin, statePayload?.returnTo, { x_error: "1" });
   }
 
-  if (!code || !state) {
-    return redirectToSettings(origin, { x_error: "1" });
+  if (!code || !statePayload) {
+    return redirectAfterXOauth(origin, statePayload?.returnTo, { x_error: "1" });
   }
 
-  const statePayload = consumeXOAuthState(state);
-  if (!statePayload) {
-    return redirectToSettings(origin, { x_error: "1" });
-  }
-
-  const { userId, codeVerifier } = statePayload;
+  const { userId, codeVerifier, returnTo } = statePayload;
 
   try {
     const connection = await completeXAccountOAuth(
@@ -70,7 +69,7 @@ export async function GET(request: Request): Promise<Response> {
       origin,
     );
 
-    return redirectToSettings(origin, {
+    return redirectAfterXOauth(origin, returnTo, {
       connected: connection.serviceId,
       username: connection.account?.username ?? connection.account?.email ?? "",
     });
@@ -79,6 +78,6 @@ export async function GET(request: Request): Promise<Response> {
     // Never log tokens / auth codes — message only.
     console.error("[X OAuth callback]", message);
     markXConnectionError(userId, message);
-    return redirectToSettings(origin, { x_error: "1" });
+    return redirectAfterXOauth(origin, returnTo, { x_error: "1" });
   }
 }

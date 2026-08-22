@@ -5,6 +5,8 @@ import type {
 } from "./autopost-types";
 
 export type {
+  XAutoPostMemoryView,
+  XAutoPostQuotaView,
   XAutoPostRun,
   XAutoPostSettings,
   XAutoPostStatusResult,
@@ -56,6 +58,16 @@ export async function fetchXAutoPostStatusClient(): Promise<XAutoPostStatusResul
     );
   }
 
+  if (body && "status" in body && body.status === "ready") {
+    return {
+      ...body,
+      connectionStatus: body.connectionStatus ?? (body.connected ? "connected" : "disconnected"),
+      postedThisMonth: body.postedThisMonth ?? 0,
+      quota: body.quota ?? null,
+      memory: body.memory ?? { applied: false, labels: [], memoryFailed: false },
+    };
+  }
+
   return body as XAutoPostStatusResult;
 }
 
@@ -92,6 +104,65 @@ export function formatXAutoPostDateTime(iso: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+export async function runXAutoPostTrialClient(input: {
+  confirm: boolean;
+  overrideText?: string;
+}): Promise<{
+  status: "posted" | "drafted" | "failed" | "skipped" | "error";
+  text?: string;
+  message?: string;
+  reason?: string;
+  memoryApplied?: boolean;
+  memoryFailed?: boolean;
+  alreadyDone?: boolean;
+  nextScheduledFor?: string | null;
+}> {
+  const response = await fetch("/api/x/autopost/trial", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const body = (await response.json().catch(() => null)) as {
+    status?: string;
+    text?: string;
+    message?: string;
+    reason?: string;
+    memoryApplied?: boolean;
+    memoryFailed?: boolean;
+    alreadyDone?: boolean;
+    nextScheduledFor?: string | null;
+  } | null;
+
+  if (!response.ok || !body) {
+    return {
+      status: body?.status === "skipped" ? "skipped" : "failed",
+      message:
+        body?.message ??
+        (response.status === 403
+          ? "今月の利用上限に達しました"
+          : "実行に失敗しました"),
+      reason: body?.reason,
+      memoryApplied: body?.memoryApplied === true,
+      memoryFailed: body?.memoryFailed === true,
+      nextScheduledFor: body?.nextScheduledFor ?? null,
+    };
+  }
+
+  return {
+    status:
+      body.status === "posted" || body.status === "drafted"
+        ? body.status
+        : "failed",
+    text: body.text,
+    message: body.message,
+    reason: body.reason,
+    memoryApplied: body.memoryApplied === true,
+    memoryFailed: body.memoryFailed === true,
+    alreadyDone: body.alreadyDone === true,
+    nextScheduledFor: body.nextScheduledFor ?? null,
+  };
 }
 
 export function formatXAutoPostRunStatus(run: XAutoPostRun): string {
