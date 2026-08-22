@@ -64,6 +64,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/health/billing-schema(.*)",
   "/api/health/production-schema(.*)",
   "/api/health/wordpress-encryption(.*)",
+  "/api/health/x-oauth-connect(.*)",
   "/api/health/oauth-encryption(.*)",
   "/api/health/authz(.*)",
   "/api/health/secrets-leakage(.*)",

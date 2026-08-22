@@ -4,6 +4,7 @@ export type EnvServiceId =
   | "stripe"
   | "supabase"
   | "google"
+  | "x"
   | "dropbox"
   | "line"
   | "vercel_cron"

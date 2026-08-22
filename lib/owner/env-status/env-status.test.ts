@@ -37,4 +37,20 @@ describe("owner env status", () => {
     expect(openai?.configured).toBe(true);
     expect(openai?.serviceLabel).toBe("OpenAI");
   });
+
+  it("lists X OAuth keys as configured flags only", () => {
+    vi.stubEnv("X_CLIENT_SECRET", "super-x-secret-value");
+    vi.stubEnv("X_CLIENT_ID", "x-client-id-test");
+    const snapshot = buildOwnerEnvStatusSnapshot();
+    const secret = snapshot.variables.find((row) => row.key === "X_CLIENT_SECRET");
+    const clientId = snapshot.variables.find((row) => row.key === "X_CLIENT_ID");
+    const redirect = snapshot.variables.find((row) => row.key === "X_REDIRECT_URI");
+    expect(secret?.configured).toBe(true);
+    expect(secret?.displayValue).toBe("******");
+    expect(secret?.serviceLabel).toBe("X");
+    expect(clientId?.configured).toBe(true);
+    expect(redirect?.configured).toBe(false);
+    expect(JSON.stringify(snapshot)).not.toContain("super-x-secret-value");
+    expect(JSON.stringify(snapshot)).not.toContain("x-client-id-test");
+  });
 });

@@ -17,5 +17,6 @@ export {
   connectExternalService,
   disconnectExternalService,
   fetchExternalServiceCatalog,
+  formatExternalConnectClientError,
   formatExternalServiceTimestamp,
 } from "./client";

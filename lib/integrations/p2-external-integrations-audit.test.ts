@@ -258,11 +258,13 @@ describe("P2 external integration audit (regular users)", () => {
     });
   });
 
-  it("requires production X and Dropbox redirect URIs (no Host derivation)", () => {
+  it("uses canonical atlasapp.jp X redirect on Vercel Production when unset (never Host)", () => {
     vi.stubEnv("VERCEL_ENV", "production");
-    expect(() =>
-      getXRedirectUri("https://evil.example"),
-    ).toThrow(/X_REDIRECT_URI/);
+    vi.stubEnv("X_REDIRECT_URI", "");
+    vi.stubEnv("X_OAUTH_REDIRECT_URI", "");
+    expect(getXRedirectUri("https://evil.example")).toBe(
+      "https://atlasapp.jp/api/external-services/x/oauth/callback",
+    );
     expect(() =>
       getDropboxRedirectUri("https://evil.example"),
     ).toThrow(/DROPBOX_REDIRECT_URI/);
@@ -278,6 +280,16 @@ describe("P2 external integration audit (regular users)", () => {
     expect(getDropboxRedirectUri("https://evil.example")).toBe(
       "https://atlasapp.jp/api/external-services/dropbox/oauth/callback",
     );
+  });
+
+  it("still requires X redirect env on Preview (NODE_ENV production is not enough)", () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("X_REDIRECT_URI", "");
+    vi.stubEnv("X_OAUTH_REDIRECT_URI", "");
+    expect(() =>
+      getXRedirectUri("https://evil.example"),
+    ).toThrow(/X_REDIRECT_URI/);
   });
 
   it("allows Dropbox reconnect from the manager and never returns tokens", async () => {

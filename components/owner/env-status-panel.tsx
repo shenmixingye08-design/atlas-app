@@ -65,6 +65,7 @@ function groupByService(
     "stripe",
     "supabase",
     "google",
+    "x",
     "dropbox",
     "line",
     "vercel_cron",
