@@ -264,6 +264,7 @@ describe("Phase 1 X Light product focus", () => {
     );
     expect(hero).toContain("PRODUCT_HERO_PROMISE");
     expect(hero).toContain("PRODUCT_DEFINITION");
+    expect(PRODUCT_DEFINITION).toContain("次から自動で終わらせる");
     expect(PRODUCT_HERO_PROMISE).toContain("一度頼んだら次からMINERVOTに任せる");
     expect(home).toContain("HOME_X_AUTOMATION_CTA");
     expect(home).toContain("HOME_OTHER_WORK_CTA");
