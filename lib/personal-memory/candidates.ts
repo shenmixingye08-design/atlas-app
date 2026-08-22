@@ -583,7 +583,7 @@ export function evaluateCorrectionForCandidate(
       input: {
         ...base,
         status: inferred.explicit ? "active" : "candidate",
-        confidence: Math.max(base.confidence, 0.82),
+        confidence: Math.max(base.confidence ?? 0.5, 0.82),
       },
       fingerprint,
       count,

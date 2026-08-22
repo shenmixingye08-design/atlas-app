@@ -104,7 +104,7 @@ function stubXAutomation(userId: string): AutomationV2 {
     },
     createdAt: now,
     updatedAt: now,
-  } as AutomationV2;
+  } as unknown as AutomationV2;
 }
 
 describe("Phase 2 Memory instruction reduction", () => {
@@ -144,10 +144,11 @@ describe("Phase 2 Memory instruction reduction", () => {
           memoryId: saved!.id,
           scope: saved!.scope,
           key: saved!.key,
+          title: saved!.title,
           summary: saved!.summary,
           value: saved!.value,
-          appliesTo: saved!.appliesTo,
-          confidence: saved!.confidence,
+          source: saved!.source,
+          layer: "global_memory",
           sensitivity: "normal",
         },
       ],

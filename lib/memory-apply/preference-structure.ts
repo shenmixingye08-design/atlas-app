@@ -233,7 +233,7 @@ export function applyHeadingCount(
   const titles =
     options?.titles && options.titles.length >= target
       ? options.titles.slice(0, target)
-      : defaultHeadingTitles(target, cleaned);
+      : defaultHeadingTitles(target);
   const bucketSize = Math.max(1, Math.ceil(units.length / target));
   const sections: string[] = [];
   for (let i = 0; i < target; i += 1) {
@@ -245,7 +245,7 @@ export function applyHeadingCount(
   return { text: sections.join("\n\n").trim(), applied: true };
 }
 
-function defaultHeadingTitles(count: number, sample: string): string[] {
+function defaultHeadingTitles(count: number): string[] {
   if (count === 3) {
     return ["背景", "課題", "実施方法"];
   }

@@ -200,11 +200,11 @@ export function savedPreferenceKeysFromValues(
       }
       if (normalized === "pdf") keys.add("format:pdf");
     }
-    for (const type of row.appliesTo?.artifactTypes ?? []) {
-      if (type === "docx" || type === "word") keys.add("format:docx");
-      if (type === "xlsx" || type === "excel") keys.add("format:xlsx");
-      if (type === "pptx") keys.add("format:pptx");
-      if (type === "pdf") keys.add("format:pdf");
+    if (row.scope === "preferred_formats") {
+      if (/docx|word|ワード/i.test(hay)) keys.add("format:docx");
+      if (/xlsx|excel|エクセル/i.test(hay)) keys.add("format:xlsx");
+      if (/pptx|powerpoint|パワポ/i.test(hay)) keys.add("format:pptx");
+      if (/pdf/i.test(hay)) keys.add("format:pdf");
     }
   }
   return [...keys];
