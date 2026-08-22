@@ -576,6 +576,7 @@ export async function executeWorkJob(
       errorMessage: message,
       message,
       jobId,
+      diagnosticId: `diag_${jobId}`,
       userId,
       stage: isTimeout ? "timeout" : "work_job",
       severity: "error",
