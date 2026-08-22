@@ -134,7 +134,7 @@ describe("automation create wizard domain", () => {
     const result = resolveCategoryAvailability(allFlagsOn, new Set());
     const sns = result.find((item) => item.category.id === "sns");
     expect(sns?.available).toBe(false);
-    expect(sns?.connectHref).toBe("/settings/x");
+    expect(sns?.connectHref).toBe("/workspace/x");
   });
 
   it("17-19. stores structuredOptions/freeformNotes and detects conflicts", () => {

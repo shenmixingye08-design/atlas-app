@@ -104,11 +104,11 @@ describe("MINERVOT home rendering", () => {
   it("leads with one X automation CTA and keeps other work secondary", () => {
     const html = renderHome();
     expect(html).toContain("automation-first-home");
-    expect(html).toContain("毎日のX投稿を、自動化します");
+    expect(html).toContain("毎日のX投稿を、一度頼んだら次から任せます");
     expect(html).toContain(HOME_X_AUTOMATION_CTA);
     expect(html).toContain(HOME_OTHER_WORK_CTA);
-    expect(html).toContain("まずX投稿を自動化してみましょう");
-    expect(html).toContain("使うほど、毎回の細かい指示が減ります");
+    expect(html).toContain("まず毎日のX投稿を任せてみましょう");
+    expect(html).toContain("使うほど、毎回の細かい指示が減る");
     expect(html).not.toContain("今すぐ1件任せる");
     expect(html).not.toContain("繰り返し任せる");
     expect(html.indexOf(HOME_X_AUTOMATION_CTA)).toBeLessThan(
@@ -142,7 +142,7 @@ describe("MINERVOT home rendering", () => {
     expect(html).toContain(HOME_OTHER_WORK_CTA);
     expect(html).toContain("今日のMINERVOT");
     expect(html).toContain("対応が必要");
-    expect(html.indexOf("毎日のX投稿を、自動化します")).toBeLessThan(
+    expect(html.indexOf("毎日のX投稿を、一度頼んだら次から任せます")).toBeLessThan(
       html.indexOf("今日のMINERVOT"),
     );
     expect(html.indexOf(HOME_X_AUTOMATION_CTA)).toBeLessThan(

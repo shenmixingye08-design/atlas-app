@@ -4,6 +4,7 @@ import { evaluateBillingFeature, evaluateBillingSnsPost } from "@/lib/billing/ac
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { notifyXAutoPostDrafted, notifyXPostFailed } from "@/lib/notifications/emitters";
 
+import { applyMemoryToDedicatedAutoPost } from "./autopost-memory";
 import {
   generateAutoPostText,
   isTooSimilar,
@@ -72,11 +73,19 @@ async function processSlotForUser(input: {
   }
 
   const postType = selectPostType(input.seed);
-  const generated = await generateAutoPostText({
+  const memory = await applyMemoryToDedicatedAutoPost({
+    userId,
     settings,
+  });
+  const generated = await generateAutoPostText({
+    settings: memory.settings,
     postType,
     recentTexts: input.recentTexts,
     slotKey,
+    memoryGuidance: memory.guidance,
+    hashtagsMax: memory.preference.hashtagsMax,
+    memoryApplied: memory.applied,
+    memoryFailed: memory.memoryFailed,
   });
 
   // Skip near-duplicate content instead of regenerating (cost rule: no

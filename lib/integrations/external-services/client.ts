@@ -29,9 +29,16 @@ export async function fetchExternalServiceCatalog(): Promise<ExternalServiceCata
 
 export async function connectExternalService(
   serviceId: ExternalServiceId,
+  options?: { returnTo?: string },
 ): Promise<ExternalServiceConnectResult> {
   const response = await fetch(`/api/external-services/${serviceId}/connect`, {
     method: "POST",
+    ...(options?.returnTo
+      ? {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ returnTo: options.returnTo }),
+        }
+      : {}),
   });
   const body = (await response.json().catch(() => null)) as
     | (ExternalServiceConnectResult & {

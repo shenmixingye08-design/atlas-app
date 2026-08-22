@@ -35,7 +35,7 @@ describe("SignIn / SignUp Clerk theme wiring", () => {
     expect(page).toContain("SignUpPageClient");
     expect(page).not.toContain("atlasClerkAppearance");
     expect(page).not.toContain("from \"@clerk/nextjs\"");
-    expect(page).toContain("今すぐ1件終わらせる");
+    expect(page).toContain("無料で1回試す");
   });
 
   it("reuses ThemeProvider instead of a second theme store", () => {

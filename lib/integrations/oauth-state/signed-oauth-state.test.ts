@@ -31,6 +31,18 @@ describe("signed oauth state", () => {
     });
   });
 
+  it("round-trips sanitized returnTo without changing CSRF rules", () => {
+    const state = createSignedOAuthState("user_abc", {
+      codeVerifier: "verifier-123",
+      returnTo: "/workspace/x?onboarding=1",
+    });
+    expect(consumeSignedOAuthState(state)).toEqual({
+      subject: "user_abc",
+      codeVerifier: "verifier-123",
+      returnTo: "/workspace/x?onboarding=1",
+    });
+  });
+
   it("rejects tampered state", () => {
     const state = createSignedOAuthState("user_abc");
     const [body] = state.split(".");

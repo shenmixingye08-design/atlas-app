@@ -4,6 +4,10 @@ import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import { buildXAuthorizeUrl } from "@/lib/integrations/x/oauth";
 import { X_OAUTH_USER_ERROR } from "@/lib/integrations/x/errors";
+import {
+  resolveXOAuthReturnPath,
+  withXOAuthResultParams,
+} from "@/lib/integrations/x/oauth-return-to";
 import { recordXAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
 import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
@@ -19,30 +23,29 @@ function resolveOrigin(request: Request): string {
   return new URL(request.url).origin;
 }
 
-function redirectToSettings(
+function redirectAfterXOauth(
   origin: string,
+  returnTo: string | undefined,
   params: Record<string, string>,
 ): Response {
-  const url = new URL("/settings/x", origin);
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, value);
-  }
-  return Response.redirect(url.toString(), 302);
+  const path = withXOAuthResultParams(resolveXOAuthReturnPath(returnTo), params);
+  return Response.redirect(new URL(path, origin).toString(), 302);
 }
 
 export async function GET(request: Request): Promise<Response> {
   const origin = resolveOrigin(request);
+  const requestedReturnTo = new URL(request.url).searchParams.get("returnTo") ?? undefined;
 
   const { userId } = await auth();
   if (!userId) {
-    return redirectToSettings(origin, { x_error: "1" });
+    return redirectAfterXOauth(origin, requestedReturnTo, { x_error: "1" });
   }
 
   try {
     const context = await resolveFeatureAccessContext();
     if (!isFeatureEnabled("x", context)) {
       recordXAuthFailure("X feature flag disabled", "x_oauth_authorize");
-      return redirectToSettings(origin, { x_error: "1" });
+      return redirectAfterXOauth(origin, requestedReturnTo, { x_error: "1" });
     }
 
     const { evaluateExternalServiceConnectAccess } = await import(
@@ -50,17 +53,19 @@ export async function GET(request: Request): Promise<Response> {
     );
     const { denial } = await evaluateExternalServiceConnectAccess(userId, "x");
     if (denial) {
-      return redirectToSettings(origin, {
+      return redirectAfterXOauth(origin, requestedReturnTo, {
         x_error: "1",
         plan: denial.kind === "limit" ? "limit" : "required",
       });
     }
 
-    const authorizeUrl = buildXAuthorizeUrl(origin, userId);
+    const authorizeUrl = buildXAuthorizeUrl(origin, userId, {
+      returnTo: requestedReturnTo,
+    });
     return Response.redirect(authorizeUrl, 302);
   } catch (error) {
     const message = clientSafeMessage(error, X_OAUTH_USER_ERROR);
     recordXAuthFailure(message, "x_oauth_authorize");
-    return redirectToSettings(origin, { x_error: "1" });
+    return redirectAfterXOauth(origin, requestedReturnTo, { x_error: "1" });
   }
 }
