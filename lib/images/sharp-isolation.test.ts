@@ -148,4 +148,18 @@ describe("loadSharp on linux runtime", () => {
     expect(meta.format).toBe("png");
     expect(meta.width).toBe(8);
   });
+
+  it("encodes baseline JPEG through libvips", async () => {
+    const sharp = await loadSharp();
+    const jpeg = await sharp({
+      create: { width: 16, height: 12, channels: 3, background: "#334455" },
+    })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    const meta = await sharp(jpeg).metadata();
+    expect(meta.format).toBe("jpeg");
+    expect(jpeg.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))).toBe(
+      true,
+    );
+  });
 });

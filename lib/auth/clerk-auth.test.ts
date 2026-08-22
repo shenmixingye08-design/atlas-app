@@ -120,6 +120,9 @@ describe("auth route matchers", () => {
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
       "/api/health/core-readiness(.*)",
     );
+    expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
+      "/api/health/sharp-runtime(.*)",
+    );
     // Health probes stay middleware-public for CRON Bearer, but handlers gate auth.
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
       "/api/health/word-pipeline(.*)",
