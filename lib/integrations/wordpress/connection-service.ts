@@ -14,6 +14,11 @@ import {
   normalizeWordPressSiteUrl,
 } from "./config";
 import {
+  invalidateExternalAuthHydration,
+  schedulePersistExternalAuth,
+} from "../external-services/durable";
+import { reloadWordPressAuthFromDurable } from "./auth-reload";
+import {
   deleteWordPressAuthFromSupabase,
   isWordPressSupabaseConfigured,
   persistWordPressAuthToSupabase,
@@ -199,6 +204,8 @@ export async function disconnectWordPressAccount(
     account: undefined,
   };
   saveExternalServiceConnection(userId, disconnected);
+  invalidateExternalAuthHydration(userId);
+  schedulePersistExternalAuth(userId);
   return disconnected;
 }
 
@@ -248,4 +255,17 @@ export function getWordPressAuthContext(userId: string): {
     username: credentials.username,
     applicationPassword: credentials.applicationPassword,
   };
+}
+
+/** Durable reload then in-memory context — safe after reconnect on another isolate. */
+export async function resolveWordPressAuthContext(userId: string): Promise<{
+  siteUrl: string;
+  username: string;
+  applicationPassword: string;
+} | null> {
+  const durable = await reloadWordPressAuthFromDurable(userId);
+  if (durable?.credentials.userId === userId) {
+    return getWordPressAuthContext(userId);
+  }
+  return getWordPressAuthContext(userId);
 }

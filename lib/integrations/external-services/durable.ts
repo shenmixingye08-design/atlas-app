@@ -68,6 +68,17 @@ export function resetExternalAuthHydration(): void {
   getHydratedUsers().clear();
 }
 
+/**
+ * Drop this user's hydration TTL on the current isolate after
+ * disconnect / reconnect so the next read is not skipped.
+ * Other isolates still need per-use durable reload (see auth-reload).
+ */
+export function invalidateExternalAuthHydration(userId: string): void {
+  const trimmed = userId.trim();
+  if (!trimmed) return;
+  getHydratedUsers().delete(trimmed);
+}
+
 function compactAuth(): DurableExternalAuthState {
   return {
     credentials: [],

@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { toHumanReliabilityMessage } from "@/lib/reliability/human-errors";
 import {
   executeWorkJob,
+  isStaleWorkJobQueued,
   isStaleWorkJobRunning,
 } from "@/lib/work-jobs/run";
 import { getWorkJobDurable } from "@/lib/work-jobs/store";
@@ -36,8 +37,11 @@ export async function GET(
     );
   }
 
-  // Stale running must not stay 処理中 — reclaim on poll.
-  if (job.status === "running" && isStaleWorkJobRunning(job)) {
+  // Stale running / never-started queued must not stay 処理中 — reclaim on poll.
+  if (
+    (job.status === "running" && isStaleWorkJobRunning(job)) ||
+    isStaleWorkJobQueued(job)
+  ) {
     after(async () => {
       try {
         await executeWorkJob(id, userId);

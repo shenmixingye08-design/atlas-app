@@ -4,6 +4,7 @@ import { extractTextFromPdfBuffer } from "@/lib/documents/extract-pdf-text";
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
+import { ensureExternalAuthHydrated } from "@/lib/integrations/external-services/durable";
 import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
 import { runWithAiBillingUsage } from "@/lib/billing/usage/request-context";
 
@@ -46,6 +47,9 @@ async function resolveDropboxAccess(input: {
       message: featureDisabledMessage("dropbox"),
     };
   }
+
+  // CRITICAL: hydrate before reading connection status (cold-start safe).
+  await ensureExternalAuthHydrated(input.userId);
 
   const connection = getExternalServiceConnection(input.userId, "dropbox");
   if (connection.status !== "connected") {
