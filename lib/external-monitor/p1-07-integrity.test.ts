@@ -73,7 +73,7 @@ describe("P1-07 external monitor integrity", () => {
     expect(thresholds).toContain("EXTERNAL_MONITOR_THRESHOLDS");
     expect(thresholds).toContain("cooldownMsBySeverity");
 
-    const tick = readSrc("app/api/automations/tick/route.ts");
+    const tick = readSrc("lib/automations/tick-runner.ts");
     expect(tick).toContain("runExternalMonitorCycle");
     expect(tick).toContain("externalMonitor");
 

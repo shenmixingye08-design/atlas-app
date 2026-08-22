@@ -9,13 +9,18 @@ import "server-only";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 import { getSupabaseServiceRoleEnv } from "@/lib/supabase/env";
 
+import {
+  isSensitiveLogKey,
+  redactSecrets as redactStructuredValue,
+} from "@/lib/security/redact";
+
 import { ATLAS_STRUCTURED_LOGS_MIGRATION_SQL } from "./structured-logs-migration-sql";
 import type { DeveloperErrorLog } from "./developer-log";
 
 const TABLE = "atlas_structured_logs";
 
-const SENSITIVE_KEY =
-  /^(authorization|cookie|token|password|secret|api[_-]?key|private[_-]?key|content_base64|image(_data|_base64)?|data_url|raw_image)$/i;
+const BINARY_OMIT_KEY =
+  /^(content_base64|image(_data|_base64)?|data_url|raw_image)$/i;
 
 /** Supabase/GoTrue clock skew right after cold start / deploy. */
 export function isTransientJwtClockError(message: string | null | undefined): boolean {
@@ -69,13 +74,8 @@ function projectRefFromUrl(url: string | null | undefined): string | null {
 
 export function redactSecrets(value: string | null | undefined): string | null {
   if (value == null) return null;
-  return value
-    .replace(/sk-[a-zA-Z0-9-_]+/g, "[redacted]")
-    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "[redacted]")
-    .replace(
-      /(api[_-]?key|token|secret|password)\s*[:=]\s*["']?[^"'\\s]+/gi,
-      "$1=[redacted]",
-    );
+  const redacted = redactStructuredValue(value);
+  return typeof redacted === "string" ? redacted : "[redacted]";
 }
 
 export function sanitizeStructuredMetadata(
@@ -84,7 +84,7 @@ export function sanitizeStructuredMetadata(
   if (!metadata) return {};
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(metadata)) {
-    if (SENSITIVE_KEY.test(key)) continue;
+    if (isSensitiveLogKey(key) || BINARY_OMIT_KEY.test(key)) continue;
     if (typeof value === "string") {
       if (/^data:image\//i.test(value) || value.length > 2000) {
         out[key] = `[omitted:${Math.min(value.length, 999999)}chars]`;
@@ -105,7 +105,7 @@ export function sanitizeStructuredMetadata(
       out[key] = value.slice(0, 20).map((item) =>
         typeof item === "string"
           ? (redactSecrets(item.slice(0, 200)) ?? item.slice(0, 200))
-          : item,
+          : redactStructuredValue(item),
       );
       continue;
     }

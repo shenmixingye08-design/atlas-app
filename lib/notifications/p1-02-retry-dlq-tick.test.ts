@@ -278,7 +278,7 @@ describe("P1-02 notification retry/DLQ → automation tick", () => {
 
   it("7: automation tick route wires processDurableNotificationRetries", () => {
     const src = readFileSync(
-      join(process.cwd(), "app/api/automations/tick/route.ts"),
+      join(process.cwd(), "lib/automations/tick-runner.ts"),
       "utf8",
     );
     expect(src).toContain("processDurableNotificationRetries");

@@ -607,6 +607,8 @@ export async function drainWorkQueue(options?: {
   leaseMs?: number;
   /** Graceful shutdown — stop leasing new work when aborted. */
   signal?: AbortSignal;
+  /** Soft deadline — do not start another leased job. */
+  canStartJob?: () => boolean;
   /**
    * P2-03: when true, skip stuck recovery (caller already recovered once
    * before horizontal fan-out).
@@ -621,7 +623,7 @@ export async function drainWorkQueue(options?: {
   const leaseMs = options?.leaseMs ?? WORK_QUEUE_LEASE_MS;
   const maxAttempts = Math.max(1, Math.min(options?.maxAttempts ?? 3, 5));
 
-  if (options?.signal?.aborted) {
+  if (options?.signal?.aborted || options?.canStartJob?.() === false) {
     return {
       workerId,
       leased: 0,
@@ -646,8 +648,8 @@ export async function drainWorkQueue(options?: {
       const failedJobs: WorkerDrainResult["failedJobs"] = [];
 
       for (const job of leased) {
-        if (options?.signal?.aborted) {
-          // Release unused leases so another worker can reclaim after expiry.
+        if (options?.signal?.aborted || options?.canStartJob?.() === false) {
+          // Unused leases expire and are reclaimed — do not start mid-deadline.
           break;
         }
         logWorkQueue({

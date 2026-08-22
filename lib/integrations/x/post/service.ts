@@ -690,6 +690,8 @@ export async function processDueScheduledXPosts(input: {
   resolveContext: (userId: string) => Promise<FeatureAccessContext>;
   workerId?: string;
   limit?: number;
+  signal?: AbortSignal;
+  canStartJob?: () => boolean;
 }): Promise<Array<{ scheduledId: string; result: XPostResult }>> {
   const workerId =
     input.workerId?.trim() || `x_sched_${randomUUID().slice(0, 10)}`;
@@ -700,6 +702,9 @@ export async function processDueScheduledXPosts(input: {
   const results: Array<{ scheduledId: string; result: XPostResult }> = [];
 
   for (const job of claimed) {
+    if (input.signal?.aborted || input.canStartJob?.() === false) {
+      break;
+    }
     // Move claimed → posting under owner+worker guard
     try {
       await transitionDurableXPostJob({

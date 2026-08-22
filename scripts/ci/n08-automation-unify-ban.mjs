@@ -113,7 +113,7 @@ if (!/applyMemoryForAutomation/.test(v2Service)) {
   violations.push("v2 service: applyMemoryForAutomation must remain");
 }
 
-const tick = read("app/api/automations/tick/route.ts");
+const tick = read("lib/automations/tick-runner.ts");
 if (!/processWorkQueueTick/.test(tick) || !/processDueScheduledAutomationsV2/.test(tick)) {
   violations.push("tick: must keep v1 work-queue + v2 due processing");
 }

@@ -349,7 +349,7 @@ describe("P1-03 Automation V2 DB SoT", () => {
       "lib/automation-platform/execution/dispatch.ts",
       "utf8",
     );
-    const tick = await fs.readFile("app/api/automations/tick/route.ts", "utf8");
+    const tick = await fs.readFile("lib/automations/tick-runner.ts", "utf8");
     expect(due).toContain("dbListDueActiveAutomations");
     expect(dispatch).toContain("dbClaimRun");
     expect(dispatch).not.toContain("memoryClaimRun");

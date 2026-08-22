@@ -254,7 +254,7 @@ describe("P0-06 reliability / billing / recovery", () => {
   it("production tick uses DB SoT dispatch (never memoryClaimRun fallback)", async () => {
     const fs = await import("node:fs/promises");
     const src = await fs.readFile(
-      "app/api/automations/tick/route.ts",
+      "lib/automations/tick-runner.ts",
       "utf8",
     );
     expect(src).toContain("isAutomationV2DbSotReady");

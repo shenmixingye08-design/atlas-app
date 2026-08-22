@@ -94,7 +94,7 @@ export async function GET(request: Request): Promise<Response> {
       xClient.includes("createTweetOnce(input)");
 
     const tick = await fs.readFile(
-      path.join(root, "app/api/automations/tick/route.ts"),
+      path.join(root, "lib/automations/tick-runner.ts"),
       "utf8",
     );
     v2ProdDispatchDisabled =
