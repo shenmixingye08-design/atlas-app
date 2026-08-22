@@ -70,7 +70,6 @@ export {
   applyHeadingCount,
   buildExplicitWritingPreferenceValue,
 } from "./preference-structure";
-export { applyContentOverlayToDeliverableBody } from "./overlays";
 export {
   detectMemoryChannel,
   channelFromStepType,
