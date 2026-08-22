@@ -12,12 +12,16 @@ import {
   ensureExternalAuthHydrated,
   schedulePersistExternalAuth,
 } from "../external-services/durable";
+import { isAtlasProduction } from "@/lib/runtime/is-production";
+import { safeLog } from "@/lib/security/redact";
 
+import { reloadXAuthFromDurable } from "./auth-reload";
 import { persistXAuthToSupabase } from "./credential-persistence";
 import { X_RECONNECT_REQUIRED_MESSAGE } from "./errors";
 import { refreshXAccessToken } from "./oauth";
 import { markXConnectionNeedsReconnect } from "./oauth-service";
 import { parseXGrantedScopes } from "./scopes";
+import { fingerprintSecret } from "./token-fingerprint";
 
 export type XAccessTokenResult =
   | { status: "ready"; accessToken: string }
@@ -29,7 +33,27 @@ export async function getXAccountAccessTokenResult(
   userId: string,
 ): Promise<XAccessTokenResult> {
   await ensureExternalAuthHydrated(userId);
-  const credentials = getExternalServiceCredentials(userId, "x");
+  const memoryBefore = getExternalServiceCredentials(userId, "x");
+  const memoryAccessTokenFingerprint = fingerprintSecret(
+    memoryBefore?.accessToken,
+  );
+  const durable = await reloadXAuthFromDurable(userId);
+  const credentials =
+    durable?.credentials ?? getExternalServiceCredentials(userId, "x");
+  const loadedForPostFingerprint = fingerprintSecret(credentials?.accessToken);
+  safeLog("info", "[X OAuth] credential selection fingerprints", {
+    memoryAccessTokenFingerprint,
+    loadedForPostFingerprint,
+    staleCache: Boolean(
+      memoryAccessTokenFingerprint &&
+        loadedForPostFingerprint &&
+        memoryAccessTokenFingerprint !== loadedForPostFingerprint,
+    ),
+    durableReloadApplied: Boolean(durable),
+    refreshPresent: Boolean(credentials?.refreshToken),
+    expiresAt: credentials?.expiresAt ?? null,
+    grantedScopes: credentials?.scope ?? null,
+  });
   if (!credentials?.refreshToken) return { status: "missing" };
 
   const expiresAtMs = new Date(credentials.expiresAt).getTime();
@@ -88,7 +112,13 @@ export async function getXAccountAccessTokenResult(
       saveExternalServiceConnection(userId, healthyConnection);
     }
 
-    void persistXAuthToSupabase(nextCredentials, healthyConnection);
+    const persistOk = await persistXAuthToSupabase(
+      nextCredentials,
+      healthyConnection,
+    );
+    if (!persistOk && isAtlasProduction()) {
+      console.warn("[X Account] Refreshed token persist failed");
+    }
     schedulePersistExternalAuth(userId);
 
     return { status: "ready", accessToken: refreshed.access_token };

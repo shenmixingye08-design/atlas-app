@@ -38,7 +38,7 @@ function omitSecrets(
   if (!extra) return undefined;
   const safe: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(extra)) {
-    if (SECRET_KEY_PATTERN.test(key)) continue;
+    if (SECRET_KEY_PATTERN.test(key) && !/fingerprint$/i.test(key)) continue;
     if (typeof value === "string" && /bearer\s+[a-z0-9._-]+/i.test(value)) {
       continue;
     }
