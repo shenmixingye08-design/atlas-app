@@ -235,11 +235,18 @@ export async function runDueAutoPostsForUser(input: {
 export async function processDueAutoPosts(input: {
   resolveContext: (userId: string) => Promise<FeatureAccessContext>;
   now?: Date;
+  limitUsers?: number;
+  signal?: AbortSignal;
+  canStartJob?: () => boolean;
 }): Promise<AutoPostUserOutcome[]> {
   const enabled = await listEnabledXAutoPostSettings();
   const outcomes: AutoPostUserOutcome[] = [];
+  const limitUsers = Math.max(0, input.limitUsers ?? enabled.length);
 
-  for (const settings of enabled) {
+  for (const settings of enabled.slice(0, limitUsers)) {
+    if (input.signal?.aborted || input.canStartJob?.() === false) {
+      break;
+    }
     try {
       const context = await input.resolveContext(settings.userId);
       const outcome = await runDueAutoPostsForUser({

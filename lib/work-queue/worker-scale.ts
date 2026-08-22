@@ -126,6 +126,7 @@ export async function drainWorkQueueHorizontal(options?: {
   claimLimit?: number;
   leaseMs?: number;
   signal?: AbortSignal;
+  canStartJob?: () => boolean;
   /** When true, skip metrics read and use overrides / defaults only. */
   skipMetrics?: boolean;
 }): Promise<HorizontalDrainResult> {
@@ -174,6 +175,7 @@ export async function drainWorkQueueHorizontal(options?: {
         limit: plan.claimLimit,
         leaseMs: options?.leaseMs,
         signal: options?.signal,
+        canStartJob: options?.canStartJob,
         skipRecover: true,
       }),
     ),

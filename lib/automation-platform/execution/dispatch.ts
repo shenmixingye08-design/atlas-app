@@ -29,6 +29,8 @@ export type DispatchResult = {
   awaiting: number;
   /** Phase 5: mid-step stale runs requeued for resume */
   reclaimed: number;
+  /** Due runs left unclaimed because the tick deadline was reached. */
+  deferred: number;
 };
 
 async function attachClaimTransition(run: AutomationRun): Promise<AutomationRun> {
@@ -65,6 +67,8 @@ export async function dispatchAutomationRuns(options?: {
   limit?: number;
   invoker?: StepInvoker;
   runIds?: string[];
+  signal?: AbortSignal;
+  canStartJob?: () => boolean;
 }): Promise<DispatchResult> {
   const result: DispatchResult = {
     processed: 0,
@@ -73,11 +77,16 @@ export async function dispatchAutomationRuns(options?: {
     retrying: 0,
     awaiting: 0,
     reclaimed: 0,
+    deferred: 0,
   };
+
+  const canStart = () =>
+    !options?.signal?.aborted &&
+    (options?.canStartJob ? options.canStartJob() : true);
 
   // Heal stuck running: terminal-step finalize OR mid-step reclaim → retrying.
   const reclaimedIds: string[] = [];
-  if (!options?.runIds?.length) {
+  if (!options?.runIds?.length && canStart()) {
     const stuck = await dbListStuckRunningRuns(options?.limit ?? 10);
     for (const orphan of stuck) {
       try {
@@ -120,6 +129,10 @@ export async function dispatchAutomationRuns(options?: {
   });
 
   for (const candidate of candidates) {
+    if (!canStart()) {
+      result.deferred += 1;
+      continue;
+    }
     const claimed = await dbClaimRun(candidate.id);
     if (!claimed) continue;
 
