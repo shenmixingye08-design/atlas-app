@@ -160,7 +160,7 @@ function seedDurable(userId: string, accessToken: string) {
 }
 
 function stubXTweetApi(tweetId: string): ReturnType<typeof vi.fn> {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("oauth2/token")) {
       return new Response(
