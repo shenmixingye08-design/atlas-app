@@ -108,8 +108,18 @@ export function assertImageMagicMatchesDeclaration(input: {
     return { mime: detected };
   }
   if (detected !== declared) {
-    // Prefer detected real type only when declared was wrong but still an image allowlist type.
-    // Fail closed: never accept executable/script disguised via fake MIME.
+    // Signature wins when the bytes are a real allowlisted image.
+    // Fail closed for non-images (exe/html/unknown) even if the browser said JPEG.
+    const allowlisted = new Set([
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/heic",
+      "image/gif",
+    ]);
+    if (allowlisted.has(detected)) {
+      return { mime: detected };
+    }
     throw new Error(
       `mime_mismatch declared=${declared} detected=${detected}`,
     );

@@ -32,7 +32,7 @@ export function userMessageForVisionFailure(input: {
     /image could not be processed|invalid image/i.test(openaiMessage)
   ) {
     if (input.failedStage === "preprocess") {
-      return "画像形式を変換できませんでした。JPEGまたはPNGで送り直してください。";
+      return "この画像を読み込めませんでした。元画像が破損している可能性があります。";
     }
     return "画像の形式を確認できませんでした。JPEGまたはPNGで送り直してください。";
   }
@@ -84,7 +84,7 @@ export function userMessageForVisionFailure(input: {
   }
 
   if (input.failedStage === "preprocess") {
-    return "画像形式を変換できませんでした。JPEGまたはPNGで送り直してください。";
+    return "画像の前処理に失敗しました。もう一度お試しください。";
   }
 
   if (input.failedStage === "vision_response" || input.code === "openai_failed") {

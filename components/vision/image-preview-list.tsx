@@ -11,6 +11,8 @@ export type ImagePreviewItem = {
   status: "pending" | "uploading" | "uploaded" | "failed";
   progress: number;
   error?: string;
+  developerCode?: string;
+  diagnosticId?: string;
 };
 
 type ImagePreviewListProps = {
@@ -56,6 +58,36 @@ export function ImagePreviewList({
             <p className="text-[11px] text-[var(--text-secondary)]">{item.sizeLabel}</p>
             {item.error && (
               <p className="text-[11px] text-red-600">{item.error}</p>
+            )}
+            {(item.developerCode || item.diagnosticId) && (
+              <div className="flex flex-wrap items-center gap-1">
+                <p className="break-all text-[10px] text-[var(--text-secondary)]">
+                  {[item.developerCode, item.diagnosticId]
+                    .filter(Boolean)
+                    .join(" / ")}
+                </p>
+                {item.diagnosticId && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-1 text-[10px]"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(
+                        [
+                          item.developerCode,
+                          item.diagnosticId,
+                          item.error,
+                        ]
+                          .filter(Boolean)
+                          .join(" "),
+                      );
+                    }}
+                  >
+                    詳細をコピー
+                  </Button>
+                )}
+              </div>
             )}
             <div className="flex gap-1">
               <Button
