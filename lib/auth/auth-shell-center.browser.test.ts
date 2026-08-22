@@ -148,15 +148,19 @@ describe("AuthShell live bounding-box centering", () => {
   beforeAll(async () => {
     const args = ["--no-sandbox", "--disable-dev-shm-usage"];
     try {
-      browser = await chromium.launch({ channel: "chrome", args });
+      browser = await chromium.launch({
+        channel: "chrome",
+        args,
+        timeout: 8_000,
+      });
     } catch {
-      browser = await chromium.launch({ args });
+      browser = await chromium.launch({ args, timeout: 20_000 });
     }
-  });
+  }, 45_000);
 
   afterAll(async () => {
     await browser?.close();
-  });
+  }, 15_000);
 
   for (const theme of ["light", "dark"] as const) {
     it(`centers Clerk in the frame for ${theme} at required viewports`, async () => {
