@@ -60,6 +60,55 @@ alter table public.atlas_deliverable_files add column if not exists context_vers
 alter table public.atlas_deliverable_files add column if not exists completion_evidence_id text;
 alter table public.atlas_deliverable_files add column if not exists orphan_cleanup_status text;
 
+-- App-expected constraints (20260804). Additive / idempotent.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'atlas_deliverable_files_storage_status_check'
+  ) then
+    alter table public.atlas_deliverable_files
+      add constraint atlas_deliverable_files_storage_status_check
+      check (storage_status in (
+        'pending',
+        'stored',
+        'failed',
+        'regenerated',
+        'missing',
+        'legacy_base64',
+        'orphan_storage',
+        'verified',
+        'deleted'
+      ));
+  end if;
+end $$;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'atlas_deliverable_files'
+      and column_name = 'user_id'
+      and is_nullable = 'YES'
+  ) then
+    alter table public.atlas_deliverable_files
+      alter column user_id set not null;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'atlas_deliverable_files_size_nonneg'
+  ) then
+    alter table public.atlas_deliverable_files
+      add constraint atlas_deliverable_files_size_nonneg
+      check (size_bytes is null or size_bytes >= 0);
+  end if;
+end $$;
+
 create index if not exists atlas_deliverable_files_user_expires_idx
   on public.atlas_deliverable_files (user_id, expires_at desc);
 create index if not exists atlas_deliverable_files_expires_idx

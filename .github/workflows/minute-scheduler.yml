@@ -91,6 +91,40 @@ jobs:
               exit 1
               ;;
           esac
+          # Self-heal Production automation schema (atlas_deliverable_files and
+          # siblings). Idempotent CREATE IF NOT EXISTS. Do not block tick on 503
+          # so tick can retry ensure in-process after PostgREST cache reload.
+          echo "production_schema_apply_attempt=1"
+          SCHEMA_APPLY_CODE=$(curl -sS -o /tmp/schema-apply.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE_URL}/api/health/production-schema?force=1&apply=1" || echo "000")
+          echo "production_schema_apply_http=${SCHEMA_APPLY_CODE}"
+          python3 - <<'PY'
+          import json
+          try:
+            d=json.load(open("/tmp/schema-apply.json"))
+            print("production_schema_apply_safe=" + json.dumps({
+              k: d.get(k) for k in (
+                "ok","deliverableFilesOk","automationJobsOk","xAutopostSettingsOk",
+                "claimXPostJobsOk","schemaErrorCount","dbSchemaCompatibility",
+                "deliverableFilesCompatibility","automationJobsCompatibility",
+                "xAutopostSettingsCompatibility","claimXPostJobsCompatibility",
+                "commitShaShort"
+              ) if k in d
+            }, ensure_ascii=False))
+          except Exception:
+            print("production_schema_apply_parse_error=true")
+          PY
+          case "$SCHEMA_APPLY_CODE" in
+            200|202|204) ;;
+            401|403)
+              echo "::error::production-schema apply unauthorized"
+              exit 1
+              ;;
+            *)
+              echo "::warning::production-schema apply HTTP ${SCHEMA_APPLY_CODE} — tick will retry ensure"
+              ;;
+          esac
           # P0-04: never dump full tick JSON (may contain userIds / job metadata).
           # Safe diagnostics only: ok / processed / developerCode / failedStage / postgres flags.
           HTTP_CODE=$(curl -sS -o /tmp/tick.json -w "%{http_code}" -X POST \

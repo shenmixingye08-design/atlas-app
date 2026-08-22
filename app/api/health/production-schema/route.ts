@@ -5,6 +5,7 @@ import {
 import { toPublicHealthResponse } from "@/lib/health/public-health-response";
 import { getHealthVersionPayload } from "@/lib/health/version-info";
 import { probeProductionAutomationSchema } from "@/lib/health/production-schema-probe";
+import { toPublicSchemaCompatibility } from "@/lib/health/schema-compatibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,8 +13,9 @@ export const maxDuration = 60;
 
 /**
  * Production automation schema readiness.
- * Read-only (default): public boolean flags only.
- * apply=1: CRON_SECRET / owner only — applies idempotent ensure SQL.
+ * Public GET: boolean flags + compatibility enums. If objects are missing,
+ * the server applies idempotent ensure SQL (no user-row writes).
+ * apply=1: CRON_SECRET / owner only — always re-runs ensure SQL.
  */
 
 let lastRunAtMs = 0;
@@ -33,6 +35,7 @@ function buildSafeBody(
       result.xAutopostSettings.selectOk && result.xAutopostSettings.upsertOk,
     claimXPostJobsOk: result.claimXPostJobs.rpcOk === true,
     schemaErrorCount: result.schemaErrors.length,
+    ...toPublicSchemaCompatibility(result.compatibility),
     commitShaShort: version.commitShaShort,
     environment: version.environment,
   };
@@ -75,6 +78,7 @@ export async function GET(request: Request): Promise<Response> {
     xAutopostSettingsOk: body.xAutopostSettingsOk,
     claimXPostJobsOk: body.claimXPostJobsOk,
     schemaErrorCount: result.schemaErrors.length,
+    dbSchemaCompatibility: result.compatibility.status,
     applyRequested: apply,
     appliedViaPostgres: result.appliedViaPostgres,
     appliedViaManagementApi: result.appliedViaManagementApi,
