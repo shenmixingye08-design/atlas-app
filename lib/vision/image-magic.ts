@@ -66,7 +66,16 @@ export function assertMimeMatchesBytes(
     return { ok: true, detected };
   }
   if (detected !== normalizedDeclared) {
-    // Allow declaring jpeg when bytes are jpeg after HEIC conversion path.
+    const allowlisted = new Set([
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/heic",
+      "image/gif",
+    ]);
+    if (allowlisted.has(detected)) {
+      return { ok: true, detected };
+    }
     return {
       ok: false,
       detected,

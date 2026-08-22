@@ -111,6 +111,7 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     const preferReadableText = form.get("preferReadableText") === "true";
+    const forceReprocess = form.get("forceReprocess") === "true";
     const jobIdRaw = form.get("jobId");
     const jobId =
       typeof jobIdRaw === "string" && jobIdRaw.trim() ? jobIdRaw.trim() : null;
@@ -124,6 +125,8 @@ export async function POST(request: Request): Promise<Response> {
       preferReadableText,
       jobId,
       retentionPolicy,
+      forceReprocess,
+      diagnosticId: traceId,
     });
 
     const attachments = results.map((result) => ({
@@ -168,7 +171,15 @@ export async function POST(request: Request): Promise<Response> {
 
     if (error instanceof ImageValidationError) {
       return Response.json(
-        { error: error.message, code: error.code, stage: "validation" },
+        {
+          error: error.message,
+          code: error.code,
+          stage: "validation",
+          failedStage: "preprocess",
+          developerCode: error.code,
+          diagnosticId: traceId,
+          traceId,
+        },
         { status: 400 },
       );
     }
@@ -179,13 +190,19 @@ export async function POST(request: Request): Promise<Response> {
         error.code === "table_missing" ||
         error.code === "bucket_missing"
           ? 503
-          : 500;
+          : error.code === "image_corrupt"
+            ? 400
+            : 500;
       return Response.json(
         {
           error: error.message,
           code: error.code,
           stage: error.stage,
           providerCode: error.providerCode ?? null,
+          failedStage: error.failedStage ?? "preprocess",
+          developerCode: error.developerCode ?? error.code,
+          diagnosticId: error.diagnosticId ?? traceId,
+          traceId,
         },
         { status },
       );

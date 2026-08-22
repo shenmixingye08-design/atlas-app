@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ImagePreviewList } from "@/components/vision/image-preview-list";
 import {
   filterImageFiles,
+  ClientImageUploadError,
   uploadImagesToAtlas,
   type UploadedAttachmentClient,
 } from "@/lib/attachments/client-upload";
@@ -30,6 +31,8 @@ export type LocalImageDraft = {
   status: "pending" | "uploading" | "uploaded" | "failed";
   progress: number;
   error?: string;
+  developerCode?: string;
+  diagnosticId?: string;
   uploaded?: UploadedAttachmentClient;
 };
 
@@ -73,7 +76,7 @@ export function ImageAttachmentPicker({
   }, [value]);
 
   const addFiles = useCallback(
-    (list: FileList | File[]) => {
+    (list: FileList | File[], options?: { forceReprocess?: boolean }) => {
       if (disabled) return;
       const selected = Array.from(list);
       const images = filterImageFiles(selected);
@@ -118,6 +121,7 @@ export function ImageAttachmentPicker({
             const result = await uploadImagesToAtlas([draft.file], {
               preferReadableText,
               traceId,
+              forceReprocess: Boolean(options?.forceReprocess),
             });
             const uploaded = result.attachments[0];
             if (!uploaded?.id) {
@@ -145,6 +149,8 @@ export function ImageAttachmentPicker({
               error instanceof Error
                 ? error.message
                 : "画像のアップロードに失敗しました";
+            const uploadError =
+              error instanceof ClientImageUploadError ? error : null;
             // Surface server diagnostics for infra failures (table/bucket/config).
             if (
               message.includes("table_missing") ||
@@ -179,6 +185,8 @@ export function ImageAttachmentPicker({
                     status: "failed" as const,
                     progress: 0,
                     error: message,
+                    developerCode: uploadError?.developerCode ?? undefined,
+                    diagnosticId: uploadError?.diagnosticId ?? undefined,
                   }
                 : item,
             );
@@ -207,8 +215,11 @@ export function ImageAttachmentPicker({
   const retry = (localId: string) => {
     const target = value.find((item) => item.localId === localId);
     if (!target) return;
-    addFiles([target.file]);
-    onChange(value.filter((item) => item.localId !== localId));
+    if (target.previewUrl) URL.revokeObjectURL(target.previewUrl);
+    const remaining = value.filter((item) => item.localId !== localId);
+    valueRef.current = remaining;
+    onChange(remaining);
+    addFiles([target.file], { forceReprocess: true });
   };
 
   const uploadedCount = getUploadedAttachmentIds(value).length;
@@ -295,6 +306,8 @@ export function ImageAttachmentPicker({
           status: item.status,
           progress: item.progress,
           error: item.error,
+          developerCode: item.developerCode,
+          diagnosticId: item.diagnosticId,
         }))}
         onRemove={remove}
         onRetry={retry}

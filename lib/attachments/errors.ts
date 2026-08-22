@@ -11,6 +11,7 @@ export type AttachmentErrorCode =
   | "storage_upload_failed"
   | "metadata_insert_failed"
   | "preprocess_failed"
+  | "image_corrupt"
   | "read_failed"
   | "upload_failed";
 
@@ -26,7 +27,9 @@ const USER_MESSAGES: Record<AttachmentErrorCode, string> = {
   storage_upload_failed: "画像の Storage 保存に失敗しました。もう一度お試しください。",
   metadata_insert_failed:
     "画像メタデータの保存に失敗しました。テーブル/RLS設定を確認してください。",
-  preprocess_failed: "画像の変換に失敗しました。別のJPEG/PNGでお試しください。",
+  preprocess_failed: "画像の前処理に失敗しました。もう一度お試しください。",
+  image_corrupt:
+    "この画像を読み込めませんでした。元画像が破損している可能性があります。",
   read_failed: "画像の読み込みに失敗しました。",
   upload_failed: "画像のアップロードに失敗しました",
 };
@@ -36,15 +39,26 @@ export class AttachmentStorageError extends Error {
   readonly stage: string;
   readonly providerCode?: string;
   readonly providerMessage?: string;
+  readonly diagnosticId?: string;
+  readonly developerCode?: string;
+  readonly failedStage?: string;
 
   constructor(input: {
     code: AttachmentErrorCode;
     stage: string;
     providerCode?: string;
     providerMessage?: string;
+    diagnosticId?: string;
+    developerCode?: string;
+    failedStage?: string;
+    userMessage?: string;
     cause?: unknown;
   }) {
-    super(USER_MESSAGES[input.code] ?? USER_MESSAGES.upload_failed);
+    super(
+      input.userMessage ??
+        USER_MESSAGES[input.code] ??
+        USER_MESSAGES.upload_failed,
+    );
     this.name = "AttachmentStorageError";
     this.code = input.code;
     this.stage = input.stage;
@@ -52,6 +66,9 @@ export class AttachmentStorageError extends Error {
     this.providerMessage = input.providerMessage
       ? sanitizeProviderMessage(input.providerMessage)
       : undefined;
+    this.diagnosticId = input.diagnosticId;
+    this.developerCode = input.developerCode;
+    this.failedStage = input.failedStage;
     if (input.cause !== undefined) {
       (this as Error & { cause?: unknown }).cause = input.cause;
     }
@@ -63,6 +80,9 @@ export class AttachmentStorageError extends Error {
       code: this.code,
       stage: this.stage,
       providerCode: this.providerCode ?? null,
+      diagnosticId: this.diagnosticId ?? null,
+      developerCode: this.developerCode ?? null,
+      failedStage: this.failedStage ?? null,
     };
   }
 }
@@ -146,6 +166,9 @@ export function logAttachmentError(
       stage: context.stage,
       code: error.code,
       errorStage: error.stage,
+      failedStage: error.failedStage ?? null,
+      developerCode: error.developerCode ?? null,
+      diagnosticId: error.diagnosticId ?? null,
       providerCode: error.providerCode ?? null,
       providerMessage: error.providerMessage ?? null,
       userIdPresent: Boolean(context.userId),

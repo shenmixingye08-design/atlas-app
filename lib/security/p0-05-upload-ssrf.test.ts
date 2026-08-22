@@ -274,6 +274,18 @@ describe("P0-05 upload / SSRF / ownership attack suite", () => {
     expect(mime).toBe("image/jpeg");
   });
 
+  it("valid PNG declared as JPEG is accepted as PNG", () => {
+    const png = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+    ]);
+    const mime = assertImageMagicMatchesDeclaration({
+      declaredMime: "image/jpeg",
+      fileName: "photo.jpg",
+      buffer: png,
+    }).mime;
+    expect(mime).toBe("image/png");
+  });
+
   it("P0-02 ciphertext still maintained", () => {
     const pair = encodeOAuthTokenPairForStorage({
       accessToken: "ya29.access",

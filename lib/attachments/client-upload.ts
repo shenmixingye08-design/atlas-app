@@ -24,6 +24,34 @@ export type UploadImagesResult = {
   traceId: string;
 };
 
+export class ClientImageUploadError extends Error {
+  readonly code: string;
+  readonly stage: string | null;
+  readonly failedStage: string | null;
+  readonly developerCode: string | null;
+  readonly diagnosticId: string | null;
+  readonly traceId: string | null;
+
+  constructor(input: {
+    message: string;
+    code?: string | null;
+    stage?: string | null;
+    failedStage?: string | null;
+    developerCode?: string | null;
+    diagnosticId?: string | null;
+    traceId?: string | null;
+  }) {
+    super(input.message);
+    this.name = "ClientImageUploadError";
+    this.code = input.code || "upload_failed";
+    this.stage = input.stage ?? null;
+    this.failedStage = input.failedStage ?? null;
+    this.developerCode = input.developerCode ?? null;
+    this.diagnosticId = input.diagnosticId ?? null;
+    this.traceId = input.traceId ?? null;
+  }
+}
+
 function isImageFile(file: File): boolean {
   const type = file.type.toLowerCase();
   if (type.startsWith("image/")) return true;
@@ -39,6 +67,7 @@ export async function uploadImagesToAtlas(
   files: File[],
   options?: {
     preferReadableText?: boolean;
+    forceReprocess?: boolean;
     signal?: AbortSignal;
     traceId?: string;
   },
@@ -62,6 +91,9 @@ export async function uploadImagesToAtlas(
   }
   if (options?.preferReadableText) {
     form.append("preferReadableText", "true");
+  }
+  if (options?.forceReprocess) {
+    form.append("forceReprocess", "true");
   }
 
   const formEntries = form.getAll("files");
@@ -99,6 +131,9 @@ export async function uploadImagesToAtlas(
     error?: string;
     code?: string;
     stage?: string;
+    failedStage?: string;
+    developerCode?: string | null;
+    diagnosticId?: string | null;
     providerCode?: string | null;
     attachments?: UploadedAttachmentClient[];
     warnings?: string[];
@@ -123,9 +158,16 @@ export async function uploadImagesToAtlas(
   });
 
   if (!response.ok) {
-    const detail = [payload.code, payload.stage].filter(Boolean).join("@");
     const base = payload.error || "画像のアップロードに失敗しました";
-    throw new Error(detail ? `${base}（${detail}）` : base);
+    throw new ClientImageUploadError({
+      message: base,
+      code: payload.code,
+      stage: payload.stage,
+      failedStage: payload.failedStage ?? payload.stage,
+      developerCode: payload.developerCode ?? payload.code,
+      diagnosticId: payload.diagnosticId ?? payload.traceId ?? traceId,
+      traceId: payload.traceId ?? traceId,
+    });
   }
 
   return {

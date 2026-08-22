@@ -161,7 +161,7 @@ describe("vision analyze integration (mock LLM)", () => {
         mimeType: "text/plain",
         buffer: Buffer.from("hello"),
       }),
-    ).rejects.toThrow(/対応形式/);
+    ).rejects.toThrow(/対応形式|画像形式を確認できませんでした/);
   });
 
   it("reuses analysis via content hash cache", async () => {

@@ -2,7 +2,11 @@ import { readFileSync } from "fs";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { filterImageFiles, uploadImagesToAtlas } from "@/lib/attachments/client-upload";
+import {
+  ClientImageUploadError,
+  filterImageFiles,
+  uploadImagesToAtlas,
+} from "@/lib/attachments/client-upload";
 import { filterDocumentFiles, uploadDocumentsToAtlas } from "@/lib/attachments/documents/client-upload";
 import {
   assertDocumentBatchLimits,
@@ -210,5 +214,40 @@ describe("attachment client flow", () => {
     expect(work).toContain("buildWorkRequestSubmitPayload");
     expect(home).toContain("buildWorkRequestSubmitPayload");
     expect(home).toContain("stashPendingWorkRequestSubmit");
+  });
+
+  it("surfaces preprocess diagnosticId without treating it as AI failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            error: "この画像を読み込めませんでした。元画像が破損している可能性があります。",
+            code: "image_corrupt",
+            stage: "preprocess.sharp",
+            failedStage: "preprocess",
+            developerCode: "image_corrupt",
+            diagnosticId: "idiag_copy_me",
+            traceId: "vtr_copy",
+          }),
+          { status: 400 },
+        ),
+      ),
+    );
+    await expect(
+      uploadImagesToAtlas([makeFile("broken.jpg", "image/jpeg")]),
+    ).rejects.toMatchObject({
+      name: "ClientImageUploadError",
+      code: "image_corrupt",
+      failedStage: "preprocess",
+      developerCode: "image_corrupt",
+      diagnosticId: "idiag_copy_me",
+    });
+    await expect(
+      uploadImagesToAtlas([makeFile("broken.jpg", "image/jpeg")]),
+    ).rejects.not.toMatchObject({
+      message: expect.stringContaining("AI解析"),
+    });
+    expect(ClientImageUploadError).toBeTruthy();
   });
 });

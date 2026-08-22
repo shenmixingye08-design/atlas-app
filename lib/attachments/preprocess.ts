@@ -1,7 +1,9 @@
 import "server-only";
 
-import { loadSharp } from "@/lib/images/load-sharp";
-
+import {
+  normalizeRasterImage,
+  type RasterDiagnostic,
+} from "@/lib/images/normalize-raster";
 import type { VisionDetailLevel } from "@/lib/vision/types";
 
 export type PreprocessResult = {
@@ -12,6 +14,7 @@ export type PreprocessResult = {
   originalWidth: number;
   originalHeight: number;
   warnings: string[];
+  diagnostic: RasterDiagnostic;
 };
 
 function maxEdgeForDetail(detail: VisionDetailLevel, preferReadableText: boolean): number {
@@ -21,85 +24,52 @@ function maxEdgeForDetail(detail: VisionDetailLevel, preferReadableText: boolean
 }
 
 /**
- * EXIF rotate, resize, compress — keep text readable for receipts/tables.
- * Upload-time normalization; OpenAI send path re-normalizes again via
- * `normalizeImageForOpenAi` (sRGB / magic-byte verify / profiles).
+ * EXIF rotate, sRGB, resize, compress — keep text readable for receipts/tables.
+ * Uses lazy `loadSharp` via normalizeRasterImage. Never eager-import sharp.
  */
 export async function preprocessImageBuffer(input: {
   buffer: Buffer;
   detail?: VisionDetailLevel;
   preferReadableText?: boolean;
+  diagnosticId?: string | null;
 }): Promise<PreprocessResult> {
-  const warnings: string[] = [];
   const detail = input.detail ?? "auto";
   const preferReadableText = Boolean(input.preferReadableText);
-  const sharp = await loadSharp();
-
-  // Fresh instance for metadata — never reuse a sharp pipeline after await.
-  const meta = await sharp(input.buffer, {
-    failOn: "none",
-    pages: 1,
-  }).metadata();
-  const originalWidth = meta.width ?? 0;
-  const originalHeight = meta.height ?? 0;
-
-  if (!originalWidth || !originalHeight) {
-    throw new Error("画像を読み取れませんでした（破損の可能性があります）");
-  }
-
   const maxEdge = maxEdgeForDetail(detail, preferReadableText);
-  // Prefer JPEG for photos; keep PNG when alpha likely matters.
-  const hasAlpha = Boolean(meta.hasAlpha);
-  let buffer: Buffer;
-  let mimeType: PreprocessResult["mimeType"];
+  const normalized = await normalizeRasterImage({
+    buffer: input.buffer,
+    maxEdge,
+    jpegQuality: preferReadableText ? 88 : 82,
+    preferAlphaPng: true,
+    diagnosticId: input.diagnosticId,
+  });
 
-  // Fresh encode pipeline (EXIF rotate + sRGB + resize).
-  const encode = sharp(input.buffer, { failOn: "none", pages: 1 })
-    .rotate()
-    .toColourspace("srgb")
-    .resize({
-      width: maxEdge,
-      height: maxEdge,
-      fit: "inside",
-      withoutEnlargement: true,
-    });
+  let buffer = normalized.buffer;
+  let mimeType: PreprocessResult["mimeType"] = normalized.mimeType;
+  const warnings = [...normalized.warnings];
 
-  if (hasAlpha) {
-    buffer = await encode.png({ compressionLevel: 8 }).toBuffer();
-    mimeType = "image/png";
-  } else if (preferReadableText) {
-    buffer = await encode.jpeg({ quality: 88, mozjpeg: true }).toBuffer();
-    mimeType = "image/jpeg";
-  } else {
-    buffer = await encode.jpeg({ quality: 82, mozjpeg: true }).toBuffer();
-    mimeType = "image/jpeg";
-  }
-
-  // Cap upload-processed size so Storage stays lean (OpenAI path re-encodes).
   if (buffer.length > 4 * 1024 * 1024) {
     warnings.push("解析用画像が大きめです。送信前に再圧縮します");
-    buffer = await sharp(buffer, { failOn: "none" })
-      .resize({
-        width: 1600,
-        height: 1600,
-        fit: "inside",
-        withoutEnlargement: true,
-      })
-      .jpeg({ quality: 75, mozjpeg: true })
-      .toBuffer();
-    mimeType = "image/jpeg";
+    const compact = await normalizeRasterImage({
+      buffer,
+      maxEdge: 1600,
+      jpegQuality: 75,
+      preferAlphaPng: false,
+      diagnosticId: normalized.diagnostic.diagnosticId,
+    });
+    buffer = compact.buffer;
+    mimeType = compact.mimeType;
   }
-
-  const outMeta = await sharp(buffer).metadata();
 
   return {
     buffer,
     mimeType,
-    width: outMeta.width ?? originalWidth,
-    height: outMeta.height ?? originalHeight,
-    originalWidth,
-    originalHeight,
+    width: normalized.width,
+    height: normalized.height,
+    originalWidth: normalized.originalWidth,
+    originalHeight: normalized.originalHeight,
     warnings,
+    diagnostic: normalized.diagnostic,
   };
 }
 
@@ -116,6 +86,5 @@ export function toDataUrl(mimeType: string, buffer: Buffer): string {
   }
   const normalized =
     mimeType.toLowerCase() === "image/jpg" ? "image/jpeg" : mimeType.toLowerCase();
-  // Binary → base64 only. Do NOT use buffer.toString("utf8").
   return `data:${normalized};base64,${buffer.toString("base64")}`;
 }
