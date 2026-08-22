@@ -6,6 +6,7 @@ import { resolveUserSubscriptionDurable } from "@/lib/billing/subscriptions/stor
 import {
   buildDurableReadDiagnosticId,
   logDurableReadFailure,
+  readUnknownSupabaseError,
 } from "@/lib/persistence/durable-read-log";
 import { toPublicErrorResponse } from "@/lib/security/public-error";
 
@@ -42,14 +43,17 @@ export async function GET(): Promise<Response> {
       },
     });
   } catch (error) {
+    const parsed = readUnknownSupabaseError(error);
     logDurableReadFailure({
       endpoint: "/api/billing/summary",
       userId,
       code: "billing_summary_unavailable",
-      databaseCode: null,
+      databaseCode: parsed.code,
       table: "atlas_billing_usage_counters",
       diagnosticId,
-      message: error instanceof Error ? error.message : "unknown",
+      failureStage: "durable_summary",
+      subsystem: "billing",
+      message: parsed.message,
     });
     return toPublicErrorResponse(error, {
       status: 503,

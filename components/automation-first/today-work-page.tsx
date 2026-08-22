@@ -52,6 +52,7 @@ export function TodayWorkPage({
   );
   const [runs, setRuns] = useState<AutomationRun[]>([]);
   const [opsError, setOpsError] = useState<string | null>(null);
+  const [opsRequestId, setOpsRequestId] = useState(0);
 
   const load = useCallback(() => {
     if (initialAutomations) {
@@ -92,7 +93,7 @@ export function TodayWorkPage({
     let cancelled = false;
     void Promise.all([
       fetchAutomationOperationsSummary(),
-      fetchAutomationRunsAll({ sort: "newest" }).catch(() => [] as AutomationRun[]),
+      fetchAutomationRunsAll({ sort: "newest" }),
     ])
       .then(([summary, nextRuns]) => {
         if (cancelled) return;
@@ -107,7 +108,7 @@ export function TodayWorkPage({
     return () => {
       cancelled = true;
     };
-  }, [opsEnabled, initialAutomations]);
+  }, [opsEnabled, initialAutomations, opsRequestId]);
 
   const jobs = useMemo(
     () => (automations ? buildTodayJobsFromAutomations(automations) : []),
@@ -159,11 +160,13 @@ export function TodayWorkPage({
 
       {opsError ? (
         <ErrorState
-          description={`運用データの取得に失敗しました: ${opsError}`}
+          title="運用データを取得できませんでした"
+          description="確認不能のため、0件としては表示していません。"
+          onRetry={() => setOpsRequestId((value) => value + 1)}
         />
       ) : null}
 
-      {timeline.length === 0 ? (
+      {timeline.length === 0 && !opsError ? (
         <EmptyState
           title="今日の予定はまだありません"
           description="自動化を作成すると、ここに今日の流れが表示されます。"

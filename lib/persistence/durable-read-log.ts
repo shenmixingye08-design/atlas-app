@@ -1,4 +1,7 @@
-import { safeLog } from "@/lib/security/redact";
+import {
+  logProductionApiError,
+  type ProductionErrorSubsystem,
+} from "@/lib/reliability/production-error-log";
 
 export type DurableReadFailureLog = {
   endpoint: string;
@@ -9,6 +12,8 @@ export type DurableReadFailureLog = {
   rpc?: string | null;
   diagnosticId: string;
   message?: string;
+  subsystem?: ProductionErrorSubsystem;
+  failureStage?: string;
 };
 
 export function buildDurableReadDiagnosticId(scope: string): string {
@@ -41,14 +46,26 @@ export function readUnknownSupabaseError(error: unknown): {
  * Never include secrets / raw env / service-role material.
  */
 export function logDurableReadFailure(input: DurableReadFailureLog): void {
-  safeLog("error", `[${input.endpoint}] durable read failed`, {
+  logProductionApiError({
     endpoint: input.endpoint,
-    userId: input.userId,
     code: input.code,
-    databaseCode: input.databaseCode,
-    table: input.table,
-    rpc: input.rpc ?? null,
     diagnosticId: input.diagnosticId,
+    failureStage: input.failureStage ?? "durable_read",
+    subsystem: input.subsystem ?? inferSubsystem(input.endpoint, input.table),
+    databaseCode: input.databaseCode,
+    userId: input.userId,
     message: input.message ?? null,
   });
+}
+
+function inferSubsystem(
+  endpoint: string,
+  table: string,
+): ProductionErrorSubsystem {
+  if (endpoint.includes("billing") || table.includes("billing")) return "billing";
+  if (endpoint.includes("automation") || table.includes("automation")) {
+    return "automations";
+  }
+  if (endpoint.includes("work") || table.includes("work_job")) return "work_jobs";
+  return "unknown";
 }

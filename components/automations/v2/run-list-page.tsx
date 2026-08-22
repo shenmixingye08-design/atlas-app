@@ -11,6 +11,13 @@ import {
 } from "@/lib/automation-platform/operations/status-labels";
 import { PageHeader } from "@/components/automation-first/page-header";
 import { LoadingState } from "@/components/ui/loading-state";
+import {
+  RUN_LIST_EMPTY_MESSAGE,
+  RUN_LIST_UNAVAILABLE_HINT,
+  RUN_LIST_UNAVAILABLE_TITLE,
+  runListEmptyMessage,
+  type AutomationListLoadState,
+} from "@/lib/automations/list-load-state";
 
 const STATUS_FILTERS: Array<{ id: string; label: string; value: string }> = [
   { id: "all", label: "すべて", value: "" },
@@ -28,6 +35,8 @@ const STATUS_FILTERS: Array<{ id: string; label: string; value: string }> = [
 
 export function RunListPage() {
   const [runs, setRuns] = useState<AutomationRun[] | null>(null);
+  const [loadState, setLoadState] =
+    useState<AutomationListLoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
@@ -46,13 +55,13 @@ export function RunListPage() {
     })
       .then((items) => {
         setRuns(items);
+        setLoadState("ready");
         setError(null);
       })
-      .catch((err: unknown) => {
-        setError(
-          err instanceof Error ? err.message : "実行履歴を読み込めませんでした",
-        );
-        setRuns([]);
+      .catch(() => {
+        setError(RUN_LIST_UNAVAILABLE_TITLE);
+        setLoadState("error");
+        setRuns(null);
       });
   }, [query, status, hasRetry, hasArtifacts, hasExternal]);
 
@@ -128,11 +137,29 @@ export function RunListPage() {
         </div>
       </div>
 
-      {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
-      {runs === null ? <LoadingState message="実行履歴を読み込んでいます…" /> : null}
+      {loadState === "error" ? (
+        <div className="space-y-3" role="alert">
+          <p className="text-sm text-[var(--danger)]">{error}</p>
+          <p className="text-sm text-[var(--muted)]">{RUN_LIST_UNAVAILABLE_HINT}</p>
+          <button
+            type="button"
+            className="min-h-10 rounded-full bg-[var(--surface-muted)] px-4 text-sm"
+            onClick={() => {
+              setLoadState("loading");
+              setError(null);
+              load();
+            }}
+          >
+            再読み込み
+          </button>
+        </div>
+      ) : null}
+      {runs === null && loadState !== "error" ? (
+        <LoadingState message="実行履歴を読み込んでいます…" />
+      ) : null}
 
-      {runs && rows.length === 0 ? (
-        <p className="text-sm text-[var(--muted)]">該当する実行はありません。</p>
+      {runListEmptyMessage(loadState, rows.length) ? (
+        <p className="text-sm text-[var(--muted)]">{RUN_LIST_EMPTY_MESSAGE}</p>
       ) : null}
 
       <ul className="space-y-3">

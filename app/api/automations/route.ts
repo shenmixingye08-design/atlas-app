@@ -6,6 +6,7 @@ import {
 } from "@/lib/automations/durable-automation-definitions";
 import { buildAutomationDiagnosticId } from "@/lib/automations/supabase-error";
 import { readUnknownSupabaseError } from "@/lib/persistence/durable-read-log";
+import { logProductionApiError } from "@/lib/reliability/production-error-log";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { validateAutomationFeatureAccess } from "@/lib/feature-flags/guards";
 import { auth } from "@clerk/nextjs/server";
@@ -87,13 +88,17 @@ function automationsStoreFailureResponse(error: unknown, userId: string): Respon
         : "automation_list_failed";
 
   const parsed = readUnknownSupabaseError(error);
-  console.error("[api/automations] GET list failed", {
+  logProductionApiError({
     endpoint: "/api/automations",
     diagnosticId,
     code,
     userId,
     databaseCode: parsed.code,
-    table: "atlas_automation_definitions",
+    failureStage:
+      error instanceof AutomationSchemaMissingError
+        ? "schema_missing"
+        : "durable_list",
+    subsystem: "automations",
     message: clientSafeMessage(error, "unknown"),
   });
 

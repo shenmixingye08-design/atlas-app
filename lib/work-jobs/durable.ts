@@ -6,6 +6,8 @@ import {
 } from "@/lib/persistence/durable-domain";
 import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
 
+import { logProductionApiError } from "@/lib/reliability/production-error-log";
+
 import type { WorkJobRecord } from "./store";
 
 const DOMAIN_KEY = "atlasWorkJobs";
@@ -62,20 +64,28 @@ export async function persistWorkJob(
       },
     );
     if (result !== "supabase") {
-      console.error("[work-jobs] durable supabase persist failed", {
-        jobId: job.id,
+      logProductionApiError({
+        endpoint: "work-jobs/persist",
+        code: "work_job_persist_failed",
+        diagnosticId: `p5_work_job_${job.id}`,
+        failureStage: "durable_persist",
+        subsystem: "work_jobs",
         userId: job.userId,
-        result,
+        message: String(result),
       });
       return "failed";
     }
     bumpPersistenceCounter("workJobPersist");
     return "supabase";
   } catch (error) {
-    console.error("[work-jobs] durable supabase persist threw", {
-      jobId: job.id,
+    logProductionApiError({
+      endpoint: "work-jobs/persist",
+      code: "work_job_persist_threw",
+      diagnosticId: `p5_work_job_${job.id}`,
+      failureStage: "durable_persist",
+      subsystem: "work_jobs",
       userId: job.userId,
-      error: error instanceof Error ? error.message : String(error),
+      message: error instanceof Error ? error.message : "unknown",
     });
     return "failed";
   }

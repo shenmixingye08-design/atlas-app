@@ -7,6 +7,8 @@
  * Process memory is a local cache only (not SoT across restart / multi-instance).
  */
 
+import { redactSecrets } from "@/lib/security/redact";
+
 import {
   classifyFailure,
   failureClassCause,
@@ -290,30 +292,34 @@ export function recordDeveloperError(
   }
 
   // Always emit structured console output so production logs are investigable.
-  console.error("[minervot-developer-error]", {
-    id: entry.id,
-    correlationId: entry.correlationId,
-    vercelRequestId: entry.vercelRequestId,
-    diagnosticId: entry.diagnosticId,
-    failureClass: entry.failureClass,
-    message: entry.message,
-    cause: entry.cause,
-    reproduction: entry.reproduction,
-    fixContent: entry.fixContent,
-    userId: entry.userId,
-    jobId: entry.jobId,
-    workflowId: entry.workflowId,
-    commanderRunId: entry.commanderRunId,
-    step: entry.step,
-    attempt: entry.attempt,
-    maxAttempts: entry.maxAttempts,
-    durationMs: entry.durationMs,
-    apiStatus: entry.apiStatus,
-    apiResponseSummary: entry.apiResponseSummary,
-    stackTrace: entry.stackTrace,
-    processLog: entry.processLog,
-    metadata: entry.metadata ?? null,
-  });
+  // Redact before console — persist path already sanitizes separately.
+  console.error(
+    "[minervot-developer-error]",
+    redactSecrets({
+      id: entry.id,
+      correlationId: entry.correlationId,
+      vercelRequestId: entry.vercelRequestId,
+      diagnosticId: entry.diagnosticId,
+      failureClass: entry.failureClass,
+      message: entry.message,
+      cause: entry.cause,
+      reproduction: entry.reproduction,
+      fixContent: entry.fixContent,
+      userId: entry.userId ? "present" : null,
+      jobId: entry.jobId,
+      workflowId: entry.workflowId,
+      commanderRunId: entry.commanderRunId,
+      step: entry.step,
+      attempt: entry.attempt,
+      maxAttempts: entry.maxAttempts,
+      durationMs: entry.durationMs,
+      apiStatus: entry.apiStatus,
+      apiResponseSummary: entry.apiResponseSummary,
+      stackTrace: entry.stackTrace,
+      processLog: entry.processLog,
+      metadata: entry.metadata ?? null,
+    }),
+  );
 
   const pending = enqueueDurablePersist(entry);
   if (input.awaitDurable) {
