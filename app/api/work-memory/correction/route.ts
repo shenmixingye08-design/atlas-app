@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { ensureWorkMemoryHydrated } from "@/lib/work-memory/durable";
 import { learnFromCorrectionDiff } from "@/lib/work-memory/service";
 
 export async function POST(request: Request): Promise<Response> {
@@ -24,6 +25,8 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
+  await ensureWorkMemoryHydrated(userId);
 
   if (!body.before?.trim() || !body.after?.trim()) {
     return Response.json({ error: "before and after are required" }, { status: 400 });

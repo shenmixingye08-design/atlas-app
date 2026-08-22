@@ -122,6 +122,18 @@ export async function updateWorkMemorySettingsClient(
   return response.json() as Promise<WorkMemorySettings>;
 }
 
+export function formatWorkMemoryCandidateActionError(
+  body: { error?: string; diagnosticId?: string } | null,
+  fallback: string,
+): string {
+  const base = body?.error?.trim() || fallback;
+  const diagnosticId = body?.diagnosticId?.trim();
+  if (diagnosticId && !base.includes(diagnosticId)) {
+    return `${base}（診断ID: ${diagnosticId}）`;
+  }
+  return base;
+}
+
 export async function confirmWorkMemoryCandidateClient(
   candidateId: string,
 ): Promise<WorkMemoryRecord> {
@@ -129,8 +141,22 @@ export async function confirmWorkMemoryCandidateClient(
     `/api/work-memory/candidates/${encodeURIComponent(candidateId)}/confirm`,
     { method: "POST" },
   );
-  if (!response.ok) throw new Error("Failed to confirm candidate");
-  const payload = (await response.json()) as { memory: WorkMemoryRecord };
+  const payload = (await response.json().catch(() => null)) as {
+    memory?: WorkMemoryRecord;
+    error?: string;
+    diagnosticId?: string;
+  } | null;
+  if (!response.ok) {
+    throw new Error(
+      formatWorkMemoryCandidateActionError(
+        payload,
+        "記憶を保存できませんでした。",
+      ),
+    );
+  }
+  if (!payload?.memory) {
+    throw new Error("記憶を保存できませんでした。");
+  }
   return payload.memory;
 }
 
@@ -141,7 +167,18 @@ export async function rejectWorkMemoryCandidateClient(
     `/api/work-memory/candidates/${encodeURIComponent(candidateId)}/reject`,
     { method: "POST" },
   );
-  if (!response.ok) throw new Error("Failed to reject candidate");
+  const payload = (await response.json().catch(() => null)) as {
+    error?: string;
+    diagnosticId?: string;
+  } | null;
+  if (!response.ok) {
+    throw new Error(
+      formatWorkMemoryCandidateActionError(
+        payload,
+        "候補を削除できませんでした。",
+      ),
+    );
+  }
 }
 
 export async function previewWorkMemoriesClient(

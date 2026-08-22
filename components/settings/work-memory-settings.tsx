@@ -341,6 +341,13 @@ export function WorkMemorySettings() {
   const [editing, setEditing] = useState<EditState | null>(null);
   const [selected, setSelected] = useState<WorkMemoryRecord | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [pendingCandidateId, setPendingCandidateId] = useState<string | null>(
+    null,
+  );
+  const [pendingCandidateAction, setPendingCandidateAction] = useState<
+    "confirm" | "reject" | null
+  >(null);
+  const [copiedDiagnosticId, setCopiedDiagnosticId] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput.trim()), 250);
@@ -449,13 +456,52 @@ export function WorkMemorySettings() {
   };
 
   const handleConfirmCandidate = async (candidateId: string) => {
-    await confirmWorkMemoryCandidateClient(candidateId);
-    await reload();
+    if (pendingCandidateId) return;
+    setPendingCandidateId(candidateId);
+    setPendingCandidateAction("confirm");
+    setError(null);
+    try {
+      await confirmWorkMemoryCandidateClient(candidateId);
+      await reload();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : ui.workMemory.confirmCandidateError,
+      );
+    } finally {
+      setPendingCandidateId(null);
+      setPendingCandidateAction(null);
+    }
   };
 
   const handleRejectCandidate = async (candidateId: string) => {
-    await rejectWorkMemoryCandidateClient(candidateId);
-    await reload();
+    if (pendingCandidateId) return;
+    setPendingCandidateId(candidateId);
+    setPendingCandidateAction("reject");
+    setError(null);
+    try {
+      await rejectWorkMemoryCandidateClient(candidateId);
+      await reload();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : ui.workMemory.rejectCandidateError,
+      );
+    } finally {
+      setPendingCandidateId(null);
+      setPendingCandidateAction(null);
+    }
+  };
+
+  const handleCopyDiagnosticId = async () => {
+    if (!error) return;
+    const match = error.match(/診断ID:\s*([^\s）)]+)/);
+    if (!match?.[1] || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(match[1]);
+      setCopiedDiagnosticId(true);
+      window.setTimeout(() => setCopiedDiagnosticId(false), 2000);
+    } catch {
+      setCopiedDiagnosticId(false);
+    }
   };
 
   const handleReset = async (all: boolean) => {
@@ -487,8 +533,26 @@ export function WorkMemorySettings() {
   const memories = data?.memories ?? [];
   const candidates = data?.candidates ?? [];
 
+  const diagnosticIdInError = error?.match(/診断ID:\s*([^\s）)]+)/)?.[1] ?? null;
+
   return (
     <div className="space-y-10 sm:space-y-12">
+      {error && data ? (
+        <div className="space-y-2">
+          <ErrorState message={error} />
+          {diagnosticIdInError ? (
+            <button
+              type="button"
+              className="text-xs text-accent underline-offset-2 hover:underline"
+              onClick={() => void handleCopyDiagnosticId()}
+            >
+              {copiedDiagnosticId
+                ? ui.workMemory.diagnosticIdCopied
+                : ui.workMemory.copyDiagnosticId}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <header className="space-y-3">
           <p className="text-caption text-accent">{ui.brand}</p>
@@ -623,20 +687,28 @@ export function WorkMemorySettings() {
                     <Button
                       variant="primary"
                       size="sm"
+                      disabled={pendingCandidateId === candidate.candidateId}
                       onClick={() =>
                         void handleConfirmCandidate(candidate.candidateId)
                       }
                     >
-                      {ui.workMemory.confirmCandidate}
+                      {pendingCandidateId === candidate.candidateId &&
+                      pendingCandidateAction === "confirm"
+                        ? ui.workMemory.confirmCandidateBusy
+                        : ui.workMemory.confirmCandidate}
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
+                      disabled={pendingCandidateId === candidate.candidateId}
                       onClick={() =>
                         void handleRejectCandidate(candidate.candidateId)
                       }
                     >
-                      {ui.workMemory.rejectCandidate}
+                      {pendingCandidateId === candidate.candidateId &&
+                      pendingCandidateAction === "reject"
+                        ? ui.workMemory.rejectCandidateBusy
+                        : ui.workMemory.rejectCandidate}
                     </Button>
                   </div>
                 </Card>

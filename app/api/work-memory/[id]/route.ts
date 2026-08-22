@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { ensureWorkMemoryHydrated } from "@/lib/work-memory/durable";
 import {
   deleteWorkMemory,
   getWorkMemory,
@@ -19,6 +20,7 @@ export async function GET(
   }
 
   const { id } = await context.params;
+  await ensureWorkMemoryHydrated(userId);
   const memory = getWorkMemory(userId, id);
   if (!memory) {
     return Response.json({ error: "Not found" }, { status: 404 });
@@ -37,6 +39,7 @@ export async function PATCH(
   }
 
   const { id } = await context.params;
+  await ensureWorkMemoryHydrated(userId);
 
   let body: UpdateWorkMemoryInput;
   try {
@@ -63,6 +66,7 @@ export async function DELETE(
   }
 
   const { id } = await context.params;
+  await ensureWorkMemoryHydrated(userId);
   const deleted = deleteWorkMemory(userId, id);
   if (!deleted) {
     return Response.json({ error: "Not found" }, { status: 404 });

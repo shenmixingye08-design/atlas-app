@@ -1,5 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { buildProductionDiagnosticId } from "@/lib/reliability/production-error-log";
+import { safeLog } from "@/lib/security/redact";
+import { ensureWorkMemoryHydrated } from "@/lib/work-memory/durable";
 import { confirmWorkMemoryCandidate } from "@/lib/work-memory/service";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -8,16 +11,53 @@ export async function POST(
   _request: Request,
   context: RouteContext,
 ): Promise<Response> {
-  const { userId } = await auth();
-  if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const diagnosticId = buildProductionDiagnosticId("wmcconfirm");
+  let failedStage = "auth";
 
-  const { id } = await context.params;
-  const memory = confirmWorkMemoryCandidate(userId, id);
-  if (!memory) {
-    return Response.json({ error: "Not found" }, { status: 404 });
-  }
+  try {
+    const { userId } = await auth();
+    if (!userId) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  return Response.json({ memory });
+    failedStage = "params";
+    const { id } = await context.params;
+
+    failedStage = "hydration";
+    await ensureWorkMemoryHydrated(userId);
+
+    failedStage = "confirm";
+    const memory = await confirmWorkMemoryCandidate(userId, id);
+    if (!memory) {
+      safeLog("warn", "[work-memory] confirm candidate not found", {
+        diagnosticId,
+        failedStage,
+        candidateIdPresent: Boolean(id),
+      });
+      return Response.json(
+        {
+          error: "確認待ちの記憶が見つかりませんでした。",
+          diagnosticId,
+          failedStage,
+        },
+        { status: 404 },
+      );
+    }
+
+    return Response.json({ memory, diagnosticId });
+  } catch (error) {
+    safeLog("error", "[work-memory] confirm failed", {
+      diagnosticId,
+      failedStage,
+      errorName: error instanceof Error ? error.name : "Error",
+    });
+    return Response.json(
+      {
+        error: "記憶を保存できませんでした。",
+        diagnosticId,
+        failedStage,
+      },
+      { status: 500 },
+    );
+  }
 }

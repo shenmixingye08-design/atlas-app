@@ -40,6 +40,29 @@ export function markWorkMemoryHydrated(userId: string): void {
   getHydratedUsers().add(userId);
 }
 
+export function clearWorkMemoryHydrated(userId: string): void {
+  getHydratedUsers().delete(userId);
+}
+
+/** Test helper — drop one user's in-memory buckets (new serverless isolate). */
+export function evictWorkMemoryRuntimeForUser(userId: string): void {
+  getGlobalScope().__atlasWorkMemoryStore?.delete(userId);
+  getGlobalScope().__atlasWorkMemoryCandidatesStore?.delete(userId);
+  getGlobalScope().__atlasWorkMemorySettingsStore?.delete(userId);
+  getGlobalScope().__atlasWorkMemoryRequestHistoryStore?.delete(userId);
+  clearWorkMemoryHydrated(userId);
+}
+
+/** Test helper — wipe all in-memory work-memory state. */
+export function resetWorkMemoryRuntimeForTests(): void {
+  const scope = getGlobalScope();
+  scope.__atlasWorkMemoryStore?.clear();
+  scope.__atlasWorkMemoryCandidatesStore?.clear();
+  scope.__atlasWorkMemorySettingsStore?.clear();
+  scope.__atlasWorkMemoryRequestHistoryStore?.clear();
+  scope.__atlasWorkMemoryHydratedUsers?.clear();
+}
+
 function getMemoryBucket(userId: string): MemoryBucket {
   const scope = getGlobalScope();
   if (!scope.__atlasWorkMemoryStore) {
