@@ -487,11 +487,13 @@ describe("P6-06 billing tier matrix", () => {
       }) as const;
     expect(checkAiUsageLimit("free", usage(1)).allowed).toBe(false);
     expect(checkAiUsageLimit("light", usage(29)).allowed).toBe(true);
-    expect(checkAutomationTaskLimit("free", 0).allowed).toBe(false);
+    expect(checkAutomationTaskLimit("free", 0).allowed).toBe(true);
+    expect(checkAutomationTaskLimit("free", 1).allowed).toBe(false);
     expect(checkAutomationTaskLimit("light", 2).allowed).toBe(true);
-    expect(checkExternalIntegrationLimit("free", 0).allowed).toBe(false);
+    expect(checkExternalIntegrationLimit("free", 0).allowed).toBe(true);
+    expect(checkExternalIntegrationLimit("free", 1).allowed).toBe(false);
     expect(checkExternalIntegrationLimit("standard", 2).allowed).toBe(true);
-    expect(checkFeatureAccess("free", "sns_auto_post").allowed).toBe(false);
+    expect(checkFeatureAccess("free", "sns_auto_post").allowed).toBe(true);
     expect(checkFeatureAccess("standard", "sns_auto_post").allowed).toBe(true);
     expect(checkFeatureAccess("free", "google_integration").allowed).toBe(false);
     expect(checkFeatureAccess("standard", "google_integration").allowed).toBe(

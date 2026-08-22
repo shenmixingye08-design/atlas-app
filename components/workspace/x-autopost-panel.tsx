@@ -29,6 +29,11 @@ import type {
   XAutoPostFrequency,
   XAutoPostMode,
 } from "@/lib/integrations/x/post/autopost-types";
+import { isClarityFirstRun } from "@/lib/product-clarity/first-run";
+import {
+  DEFAULT_X_POST_TIME,
+  FIRST_RUN_SAVED_NOTICE,
+} from "@/lib/product-focus/messaging";
 
 const FIELD_CLASS =
   "h-11 w-full rounded-[var(--radius-lg)] bg-[var(--surface-muted)] px-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent/30";
@@ -56,7 +61,7 @@ function toFormState(settings: XAutoPostSettings): FormState {
     tone: settings.tone,
     frequency: settings.frequency,
     daysOfWeek: settings.daysOfWeek,
-    postTimes: settings.postTimes.length > 0 ? settings.postTimes : ["09:00"],
+    postTimes: settings.postTimes.length > 0 ? settings.postTimes : [DEFAULT_X_POST_TIME],
     includeHashtags: settings.includeHashtags,
   };
 }
@@ -96,6 +101,7 @@ export function XAutoPostPanel() {
 
   const [form, setForm] = useState<FormState | null>(null);
   const [themeDraft, setThemeDraft] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -135,6 +141,8 @@ export function XAutoPostPanel() {
   );
 
   const lastResult = recentRuns[0] ?? null;
+  const firstRun = isClarityFirstRun();
+  const slimFirstRun = firstRun && !showAdvanced;
 
   const update = useCallback((patch: Partial<FormState>) => {
     setForm((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -202,7 +210,9 @@ export function XAutoPostPanel() {
       });
       setForm(toFormState(result.settings));
       setNextScheduledFor(result.nextScheduledFor);
-      setNotice("設定を保存しました");
+      setNotice(
+        payload.enabled ? FIRST_RUN_SAVED_NOTICE : "設定を保存しました",
+      );
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存に失敗しました");
@@ -239,10 +249,10 @@ export function XAutoPostPanel() {
   return (
     <div className="space-y-8">
       <header className="space-y-3">
-        <h1 className="text-display text-foreground">X自動投稿</h1>
+        <h1 className="text-display text-foreground">X投稿の自動化</h1>
         <p className="text-body max-w-2xl text-[var(--foreground-muted)]">
-          目的やテーマ、トーンを一度だけご設定いただければ、以降はMINERVOTが投稿文を作成し、
-          ご指定の時間に自動で投稿いたします。会話ではなく、お客様の時間を生み出すための機能です。
+          テーマと時間を一度決めると、あとは原稿作成と投稿をMINERVOTが進めます。
+          自分は確認するだけです。
         </p>
       </header>
 
@@ -336,8 +346,11 @@ export function XAutoPostPanel() {
 
       {/* 3. Frequency & times + 4. mode */}
       <Card padding="md" className="space-y-6">
-        <h2 className="text-lg font-semibold text-foreground">投稿の頻度と時間</h2>
+        <h2 className="text-lg font-semibold text-foreground">
+          {slimFirstRun ? "投稿の時間" : "投稿の頻度と時間"}
+        </h2>
 
+        {!slimFirstRun ? (
         <div className="grid gap-6 sm:grid-cols-2">
           <label className="block space-y-2 text-sm">
             <span className="font-medium text-foreground">頻度</span>
@@ -370,8 +383,9 @@ export function XAutoPostPanel() {
             </select>
           </label>
         </div>
+        ) : null}
 
-        {frequencyOption.needsDays && (
+        {!slimFirstRun && frequencyOption.needsDays && (
           <div className="space-y-2">
             <span className="text-sm font-medium text-foreground">投稿する曜日</span>
             <div className="flex flex-wrap gap-2">
@@ -419,7 +433,7 @@ export function XAutoPostPanel() {
               </div>
             ))}
           </div>
-          {form.postTimes.length < 3 && (
+          {!slimFirstRun && form.postTimes.length < 3 && (
             <Button variant="secondary" size="sm" onClick={handleAddTime}>
               時間を追加
             </Button>
@@ -433,9 +447,10 @@ export function XAutoPostPanel() {
       {/* 5. Theme / purpose / tone settings */}
       <Card padding="md" className="space-y-6">
         <h2 className="text-lg font-semibold text-foreground">
-          投稿内容の設定
+          {slimFirstRun ? "投稿テーマ" : "投稿内容の設定"}
         </h2>
 
+        {!slimFirstRun ? (
         <div className="grid gap-6 sm:grid-cols-2">
           <label className="block space-y-2 text-sm">
             <span className="font-medium text-foreground">目的</span>
@@ -496,10 +511,11 @@ export function XAutoPostPanel() {
             </span>
           </label>
         </div>
+        ) : null}
 
         <div className="space-y-2">
           <span className="text-sm font-medium text-foreground">
-            テーマ（複数登録できます）
+            {slimFirstRun ? "テーマ" : "テーマ（複数登録できます）"}
           </span>
           <div className="flex flex-wrap gap-2">
             <input
@@ -540,20 +556,51 @@ export function XAutoPostPanel() {
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="text-sm text-[var(--foreground-muted)]">
-            現在の頻度：{formatXAutoPostFrequency(form.frequency)}
+            {slimFirstRun
+              ? "毎日、選んだ時間に自動で実行します。"
+              : `現在の頻度：${formatXAutoPostFrequency(form.frequency)}`}
           </p>
-          <Button onClick={() => void persist()} isLoading={isSaving}>
-            設定を保存する
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {firstRun ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAdvanced((value) => !value)}
+              >
+                {showAdvanced ? "かんたん設定に戻す" : "高度な設定"}
+              </Button>
+            ) : null}
+            <Button
+              onClick={() =>
+                void persist(
+                  slimFirstRun
+                    ? {
+                        enabled: true,
+                        frequency: "daily_1",
+                        themes:
+                          form.themes.length > 0
+                            ? form.themes
+                            : themeDraft.trim()
+                              ? [themeDraft.trim()]
+                              : form.themes,
+                      }
+                    : undefined,
+                )
+              }
+              isLoading={isSaving}
+            >
+              {slimFirstRun ? "保存して毎日実行する" : "設定を保存する"}
+            </Button>
+          </div>
         </div>
       </Card>
 
       {/* 6. Recent auto-post history */}
       <section className="space-y-4">
         <h2 className="text-lg font-semibold text-foreground">
-          自動投稿の履歴
+          履歴
         </h2>
         {recentRuns.length === 0 ? (
           <p className="text-sm text-[var(--foreground-muted)]">

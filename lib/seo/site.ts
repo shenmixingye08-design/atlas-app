@@ -31,7 +31,7 @@ export function getSiteOrigin(): string {
 }
 
 export const MINERVOT_DEFAULT_TITLE =
-  "MINERVOT | 一人で仕事を回す人のためのAI秘書";
+  "MINERVOT | 毎日のX投稿を、一度頼めばあとは確認するだけ";
 
 export const MINERVOT_DEFAULT_DESCRIPTION =
-  `あなた専属のAI秘書。X投稿、メール、予定管理、資料作成など、毎日の面倒な仕事を任せて、自分は確認するだけ。依頼した仕事を進め、完成したらお知らせします。合えば月${lightPlanYenLabel()}。`;
+  `一度頼んだ仕事を、次から自動で終わらせるAI秘書。毎朝のX投稿を一度頼むと、原稿作成から投稿まで自動実行し、終わったらお知らせします。合えば月${lightPlanYenLabel()}。`;

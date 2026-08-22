@@ -43,7 +43,7 @@ export function LandingPriceValue() {
             <p className="mt-2 text-sm leading-7 text-[#75686B]">
               月{LIGHT_PLAN_JPY.toLocaleString("ja-JP")}円 ÷ 缶コーヒー約
               {REFERENCE_CANNED_COFFEE_JPY}円（参考換算）。
-              毎日のメール作成を手放す対価として見る。
+              毎日のX投稿を任せる対価として見る。
             </p>
           </li>
           <li className="rounded-[20px] border border-[#74172A]/10 bg-[#FFFDFB] p-5">

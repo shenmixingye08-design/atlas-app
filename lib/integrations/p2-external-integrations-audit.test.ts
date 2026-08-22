@@ -178,11 +178,15 @@ describe("P2 external integration audit (regular users)", () => {
     ).toBeNull();
   });
 
-  it("blocks Free X connect and Light Google connect", async () => {
+  it("allows one Free X connect and blocks Light Google connect", async () => {
     await setPlan("user_free_x", "free");
     expect(
-      (await evaluateExternalServiceConnectAccess("user_free_x", "x")).denial
-        ?.status,
+      (await evaluateExternalServiceConnectAccess("user_free_x", "x")).denial,
+    ).toBeNull();
+    seedConnected("user_free_x", "x", "fx");
+    expect(
+      (await evaluateExternalServiceConnectAccess("user_free_x", "dropbox"))
+        .denial?.status,
     ).toBe(403);
 
     await setPlan("user_light_g", "light");

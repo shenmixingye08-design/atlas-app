@@ -54,16 +54,17 @@ describe("profit-safe plan registry SoT", () => {
     expect(blob).not.toContain("無制限");
   });
 
-  it("matches Free experience: 1 AI completion, no automations or paid posting", () => {
+  it("matches Free experience: 1 AI completion plus one X finish loop", () => {
     const free = getPlanDefinition("free").limits;
     expect(free.aiUsageMonthly).toBe(1);
-    expect(free.automationTasks).toBe(0);
-    expect(free.externalIntegrations).toBe(0);
-    expect(free.xAutoPostsMonthly).toBe(0);
+    expect(free.automationTasks).toBe(1);
+    expect(free.externalIntegrations).toBe(1);
+    expect(free.xAutoPostsMonthly).toBe(1);
     expect(free.xUrlPostsMonthly).toBe(0);
     expect(free.wordpressPostsMonthly).toBe(0);
-    expect(free.snsPostsMonthly).toBe(0);
-    expect(getPlanDefinition("free").highlights.some((item) => item.includes("1件完成"))).toBe(
+    expect(free.snsPostsMonthly).toBe(1);
+    expect(free.features).toContain("sns_auto_post");
+    expect(getPlanDefinition("free").highlights.some((item) => item.includes("各1回まで体験"))).toBe(
       true,
     );
   });
@@ -75,13 +76,13 @@ describe("profit-safe plan registry SoT", () => {
       aiCostBudgetUsdMonthly: 1.5,
       externalIntegrations: 1,
       automationTasks: 3,
-      xAutoPostsMonthly: 0,
+      xAutoPostsMonthly: 30,
       xUrlPostsMonthly: 0,
       wordpressPostsMonthly: 0,
       highQualityMode: false,
     });
     expect(light.features).toContain("sns_assist");
-    expect(light.features).not.toContain("sns_auto_post");
+    expect(light.features).toContain("sns_auto_post");
     expect(light.features).not.toContain("blog_creation");
 
     const standard = getPlanDefinition("standard").limits;
@@ -114,17 +115,19 @@ describe("profit-safe plan registry SoT", () => {
     expect(premium.features).toContain("priority_processing");
   });
 
-  it("shows Memory on paid plans and keeps Light copy within entitlements", () => {
+  it("shows Memory as an outcome and keeps Light copy result-first", () => {
     const light = getPlanDefinition("light");
     const standard = getPlanDefinition("standard");
     const premium = getPlanDefinition("premium");
 
-    expect(light.highlights).toContain("Memory");
-    expect(standard.highlights).toContain("Memory");
-    expect(premium.highlights).toContain("Memory");
-    expect(light.description).toContain("文章作成・投稿文づくり");
+    expect(light.highlights).toContain("使うほど、毎回の細かい指示が減る");
+    expect(standard.highlights).toContain("使うほど、毎回の細かい指示が減る");
+    expect(premium.highlights).toContain("使うほど、毎回の細かい指示が減る");
+    expect(light.description).toBe("毎日のX投稿を任せたい人向け");
     expect(light.description).not.toContain("手放す");
-    expect(light.description).not.toMatch(/X自動|WordPress|Google連携/);
+    expect(standard.description).toContain("複数の仕事をまとめて自動化");
+    expect(premium.description).toContain("ヘビーユーザー");
+    expect(light.highlights.some((item) => item.includes("X自動投稿 月30件"))).toBe(true);
   });
 
   it("keeps snsPostsMonthly aliased to xAutoPostsMonthly", () => {
@@ -198,7 +201,7 @@ describe("profit-safe cost guards and posting quotas", () => {
     });
   }
 
-  it("Light: AI 30 allowed, 31st blocked, cost $1.50 blocked, X and WP blocked", async () => {
+  it("Light: AI 30 allowed, 31st blocked, cost $1.50 blocked, URL X and WP blocked", async () => {
     const { evaluateBillingAiUsage, evaluateBillingSnsPost, evaluateBillingWordPressPublish } =
       await import("@/lib/billing/access");
     await setPlan("user_light_guard", "light");
@@ -237,8 +240,12 @@ describe("profit-safe cost guards and posting quotas", () => {
     expect(costDenial?.reason).not.toContain("$");
 
     expect(
-      (await evaluateBillingSnsPost("user_light_guard", { text: "hello" })).denial
-        ?.requiredPlan,
+      (await evaluateBillingSnsPost("user_light_guard", { text: "hello" })).denial,
+    ).toBeNull();
+    expect(
+      (await evaluateBillingSnsPost("user_light_guard", {
+        text: "see https://example.com",
+      })).denial?.requiredPlan,
     ).toBe("standard");
     expect(
       (await evaluateBillingWordPressPublish("user_light_guard")).denial?.requiredPlan,
@@ -396,12 +403,14 @@ describe("profit-safe cost guards and posting quotas", () => {
     expect((await evaluateBillingFeature("user_down", "sns_auto_post")).denial).toBeNull();
 
     await setPlan("user_down", "light");
+    expect((await evaluateBillingFeature("user_down", "sns_auto_post")).denial).toBeNull();
     expect(
-      (await evaluateBillingSnsPost("user_down", { text: "still scheduled" })).denial
-        ?.requiredPlan,
-    ).toBe("standard");
+      (await evaluateBillingSnsPost("user_down", { text: "still scheduled" })).denial,
+    ).toBeNull();
     expect(
-      (await evaluateBillingFeature("user_down", "sns_auto_post")).denial?.requiredPlan,
+      (await evaluateBillingSnsPost("user_down", {
+        text: "see https://example.com",
+      })).denial?.requiredPlan,
     ).toBe("standard");
   });
 
@@ -409,12 +418,14 @@ describe("profit-safe cost guards and posting quotas", () => {
     const { evaluateBillingFeature, evaluateBillingSnsPost, evaluateBillingWordPressPublish } =
       await import("@/lib/billing/access");
     await setPlan("user_cancel", "standard", "canceled");
-    expect(
-      (await evaluateBillingFeature("user_cancel", "sns_auto_post")).denial,
-    ).not.toBeNull();
+    expect((await evaluateBillingFeature("user_cancel", "sns_auto_post")).denial).toBeNull();
     expect(
       (await evaluateBillingSnsPost("user_cancel", { text: "hello" })).denial,
-    ).not.toBeNull();
+    ).toBeNull();
+    incrementUsageCounterOnce("user_cancel", "snsPosts", "free-trial-x");
+    expect(
+      (await evaluateBillingSnsPost("user_cancel", { text: "second" })).denial?.status,
+    ).toBe(429);
     expect((await evaluateBillingWordPressPublish("user_cancel")).denial).not.toBeNull();
     expect(getUserUsageLimitSummary("user_cancel").planId).toBe("free");
   });

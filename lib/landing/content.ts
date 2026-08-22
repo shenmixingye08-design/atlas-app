@@ -32,9 +32,9 @@ export const LANDING_CAPABILITIES = [
   {
     id: "remember",
     icon: "🧠",
-    title: "好みと仕事のやり方を覚える",
+    title: "使うほど、毎回の細かい指示が減る",
     description:
-      "Memoryが文章の好みや仕事の進め方を学習し、次回以降の作業へ反映します。",
+      "前回の文体・長さ・投稿傾向を覚えて、次回から自動で反映します。",
   },
   {
     id: "organize",
@@ -107,8 +107,8 @@ export type LandingExampleStatus = "available" | "partial" | "upcoming";
 
 export const LANDING_EXAMPLE_STATUS_LABEL: Record<LandingExampleStatus, string> = {
   available: "利用できます",
-  partial: "一部対応",
-  upcoming: "順次対応",
+  partial: "β",
+  upcoming: "近日対応",
 };
 
 /**
@@ -119,9 +119,18 @@ export const LANDING_EXAMPLE_STATUS_LABEL: Record<LandingExampleStatus, string> 
  */
 export const LANDING_REQUEST_EXAMPLES = [
   {
+    id: "x-daily",
+    icon: "📱",
+    title: "毎日のX投稿",
+    input: "投稿テーマと時間",
+    request: "毎朝10時に投稿して",
+    result: "原稿作成からXへの投稿まで自動実行し、終わったらお知らせします。",
+    status: "available" as const satisfies LandingExampleStatus,
+  },
+  {
     id: "receipt",
     icon: "🧾",
-    title: "レシートの写真",
+    title: "レシートの写真（近日対応）",
     input: "レシートの写真",
     request: "今月の家計簿へ追加してください",
     result: "支出内容を読み取り、分類して記録します。",
@@ -266,7 +275,7 @@ export const LANDING_AI_TEAM = [
     icon: "📱",
     role: "SNS担当",
     description: "毎日の投稿文案を作成し、スケジュールに合わせて配信します。",
-    examples: ["X投稿", "Instagram文案", "週次まとめ投稿"],
+    examples: ["X投稿", "毎朝の自動投稿", "週次まとめ投稿"],
   },
   {
     id: "blog",

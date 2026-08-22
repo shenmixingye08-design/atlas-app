@@ -29,3 +29,10 @@ export function shouldShowAdvancedRequestControls(
 ): boolean {
   return !isClarityFirstRun(profile);
 }
+
+/** First-run X setup: theme + time only. Advanced settings come later. */
+export function shouldShowXAutopostAdvancedControls(
+  profile: UserWorkProfile = loadUserWorkProfile(),
+): boolean {
+  return !isClarityFirstRun(profile);
+}

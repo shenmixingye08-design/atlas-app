@@ -104,7 +104,7 @@ export const ui = {
     welcomeHeadline: "専属AI秘書が、今日の面倒な仕事を先に進めておきました。",
     welcomeHint: "あなたが働いている間も、MINERVOTは仕事を覚えて続けます。",
     subtitle:
-      "MINERVOTはあなた専属のAI秘書です。X投稿、メール、予定、資料作成など、毎日の面倒な仕事を任せられます。",
+      "一度頼んだ仕事を、次から自動で終わらせるAI秘書です。最初の仕事は、毎日のX投稿です。",
     todaysAutomations: "今日の自動化",
     todaysAutomationsHint: "今日スケジュールされているAI秘書の仕事です。",
     todaysAutomationsEmpty: "今日予定の自動化はまだありません。習慣を登録して始めましょう。",
@@ -150,7 +150,7 @@ export const ui = {
     chooseHint: "念のため確認させてください。選ぶとすぐに作業を始めます。",
     otherFile: "別のファイルを送る",
     examples: [
-      { emoji: "📸", label: "レシート", arrow: "家計簿へ登録" },
+      { emoji: "📸", label: "レシート（近日対応）", arrow: "家計簿へ登録" },
       { emoji: "📄", label: "契約書", arrow: "要約・期限抽出" },
       { emoji: "💳", label: "名刺", arrow: "連絡先へ登録" },
       { emoji: "📊", label: "会議資料", arrow: "要約・PowerPoint作成" },
