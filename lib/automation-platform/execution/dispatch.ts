@@ -30,7 +30,7 @@ export type DispatchResult = {
   /** Phase 5: mid-step stale runs requeued for resume */
   reclaimed: number;
   /** Due runs left unclaimed because the tick deadline was reached. */
-  deferred: number;
+  deferred?: number;
 };
 
 async function attachClaimTransition(run: AutomationRun): Promise<AutomationRun> {
@@ -130,7 +130,7 @@ export async function dispatchAutomationRuns(options?: {
 
   for (const candidate of candidates) {
     if (!canStart()) {
-      result.deferred += 1;
+      result.deferred = (result.deferred ?? 0) + 1;
       continue;
     }
     const claimed = await dbClaimRun(candidate.id);

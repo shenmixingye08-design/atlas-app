@@ -333,7 +333,10 @@ export async function probeProductionAutomationSchema(options?: {
   let appliedViaPostgres = false;
   let appliedViaManagementApi = false;
   if (options?.apply) {
-    const applied = await applyMigrationSql(ATLAS_PRODUCTION_SCHEMA_ENSURE_SQL);
+    const applied = await applyMigrationSql({
+      sql: ATLAS_PRODUCTION_SCHEMA_ENSURE_SQL,
+      migrationName: "20260822_prod_automation_schema_ensure",
+    });
     appliedViaPostgres = applied.appliedViaPostgres;
     appliedViaManagementApi = applied.appliedViaManagementApi;
   }
@@ -376,7 +379,10 @@ export async function probeProductionAutomationSchema(options?: {
 export async function listTickSchemaErrors(): Promise<string[]> {
   const client = createServiceRoleClientIfConfigured();
   if (!client) return ["supabase_service_role_not_configured"];
-  const checks: Array<{ name: string; run: () => Promise<{ error?: { message?: string } | null }> }> = [
+  const checks: Array<{
+    name: string;
+    run: () => PromiseLike<{ error?: { message?: string } | null }>;
+  }> = [
     {
       name: "atlas_deliverable_files",
       run: () =>

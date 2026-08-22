@@ -55,7 +55,7 @@ function inspectRawKey(raw: string | undefined): {
  * Inspect configuration only. Does not decrypt credentials or emit the key.
  */
 export function probeWordPressEncryptionConfig(
-  env: NodeJS.ProcessEnv = process.env,
+  env: Record<string, string | undefined> = process.env,
 ): WordPressEncryptionConfigProbe {
   const raw = env[WORDPRESS_ENCRYPTION_KEY_ENV]?.trim();
   const inspected = inspectRawKey(raw);

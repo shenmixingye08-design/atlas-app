@@ -111,7 +111,7 @@ export type TickBudget = {
 };
 
 export function resolveTickSoftDeadlineMs(
-  env: NodeJS.ProcessEnv = process.env,
+  env: Record<string, string | undefined> = process.env,
 ): number {
   const raw = env.ATLAS_AUTOMATION_TICK_SOFT_DEADLINE_MS?.trim();
   if (!raw) return DEFAULT_TICK_SOFT_DEADLINE_MS;
@@ -247,7 +247,7 @@ export async function runTickStage<T>(input: {
     const timeout =
       error instanceof Error &&
       /timed?\s*out|timeout|abort/i.test(error.message);
-    const record = logTickStage({
+    logTickStage({
       tickId: input.budget.tickId,
       stage: input.stage,
       durationMs: Date.now() - started,
