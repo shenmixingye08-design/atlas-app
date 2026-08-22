@@ -55,6 +55,18 @@ export type AiUsagePeriodSummary = {
   estimatedCostUsd: number;
 };
 
+export type MonthlyAiAggregate = {
+  userId: string;
+  month: UsageMonthKey;
+  model: string;
+  feature: string;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  updatedAt: string;
+};
+
 export type AiUsageBreakdown = {
   today: AiUsagePeriodSummary;
   month: AiUsagePeriodSummary;

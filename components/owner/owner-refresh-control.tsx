@@ -37,12 +37,13 @@ export function OwnerRefreshControl() {
   return (
     <div className="flex flex-wrap items-center justify-end gap-3 text-xs text-[var(--text-muted)]">
       <span>
-        最終更新:{" "}
+        画面更新:{" "}
         {lastRefreshedAt.toLocaleTimeString("ja-JP", {
           hour: "2-digit",
           minute: "2-digit",
           second: "2-digit",
         })}
+        （データ最終同期ではありません）
       </span>
       <label className="inline-flex items-center gap-1.5">
         <input

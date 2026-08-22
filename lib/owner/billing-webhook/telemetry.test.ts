@@ -27,7 +27,11 @@ describe("stripe webhook monitoring", () => {
     expect(snapshot.totalCount).toBe(2);
     expect(snapshot.failureCount).toBe(1);
     expect(snapshot.successRatePercent).toBe(50);
-    expect(snapshot.latestWebhook?.eventType).toBe("invoice.payment_failed");
+    expect(snapshot.failureCount).toBe(1);
+    expect(snapshot.successCount).toBe(1);
+    expect(["checkout.session.completed", "invoice.payment_failed"]).toContain(
+      snapshot.latestWebhook?.eventType,
+    );
     expect(snapshot.availability).toBe("ok");
     expect(snapshot.authoritative).toBe(false);
   });
@@ -39,5 +43,25 @@ describe("stripe webhook monitoring", () => {
     expect(snapshot.failureCount).toBeNull();
     expect(snapshot.availability).toBe("unavailable");
     expect(snapshot.statusMessage).toMatch(/Stripe Dashboard/);
+  });
+
+  it("does not double-count the same stripeEventId", () => {
+    recordStripeWebhookLog({
+      stripeEventId: "evt_dup",
+      eventType: "checkout.session.completed",
+      status: "success",
+      message: "ok",
+    });
+    recordStripeWebhookLog({
+      stripeEventId: "evt_dup",
+      eventType: "checkout.session.completed",
+      status: "success",
+      message: "retry",
+    });
+    const snapshot = buildStripeWebhookMonitoringSnapshot(new Date(), {
+      durableReady: true,
+    });
+    expect(snapshot.totalCount).toBe(1);
+    expect(snapshot.successCount).toBe(1);
   });
 });

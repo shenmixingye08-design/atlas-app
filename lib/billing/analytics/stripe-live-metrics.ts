@@ -5,18 +5,20 @@ import { getStripeSecretKey, isStripeConfigured } from "../stripe/config";
 
 import type { OwnerStripeMode } from "@/lib/owner/types";
 
+import { paginateStripeList } from "./stripe-paginate";
+
 export type StripeLiveMonthMetrics = {
   connected: boolean;
   mode: OwnerStripeMode | null;
-  availability: "ok" | "disconnected" | "failed";
+  availability: "ok" | "disconnected" | "failed" | "incomplete";
   statusMessage: string | null;
   updateFailed: boolean;
   fetchedAt: string | null;
   /** Gross paid invoice amount this calendar month (minor units → major). */
-  grossRevenue: number;
-  refunds: number;
-  fees: number;
-  netRevenue: number;
+  grossRevenue: number | null;
+  refunds: number | null;
+  fees: number | null;
+  netRevenue: number | null;
   currency: string;
   upcomingPayoutAmount: number | null;
   upcomingPayoutAt: string | null;
@@ -40,31 +42,73 @@ function monthWindowUnix(now: Date): { gte: number; lt: number } {
 }
 
 function fromMinor(amount: number, currency: string): number {
-  // Zero-decimal currencies are rare for ATLAS (JPY is zero-decimal).
   if (currency.toLowerCase() === "jpy") return amount;
   return amount / 100;
 }
 
+type StripeListClient = {
+  invoices: {
+    list: (params: Record<string, unknown>) => Promise<{
+      data: Array<{
+        id: string;
+        currency?: string;
+        amount_paid?: number;
+      }>;
+      has_more: boolean;
+    }>;
+  };
+  refunds: {
+    list: (params: Record<string, unknown>) => Promise<{
+      data: Array<{
+        id: string;
+        currency?: string;
+        amount?: number;
+        status?: string;
+      }>;
+      has_more: boolean;
+    }>;
+  };
+  balanceTransactions: {
+    list: (params: Record<string, unknown>) => Promise<{
+      data: Array<{ id: string; currency?: string; fee?: number }>;
+      has_more: boolean;
+    }>;
+  };
+  payouts: {
+    list: (params: Record<string, unknown>) => Promise<{
+      data: Array<{
+        amount: number;
+        currency: string;
+        arrival_date: number;
+        status: string;
+      }>;
+    }>;
+  };
+};
+
 /**
  * Pull month-to-date Stripe cash metrics from the configured secret key.
- * Never invents amounts — disconnected / failed leave numeric fields at 0 with availability set.
+ * Never invents amounts — disconnected / failed / incomplete leave numeric fields null.
  */
 export async function fetchStripeLiveMonthMetrics(
   now: Date = new Date(),
+  clientOverride?: StripeListClient | null,
 ): Promise<StripeLiveMonthMetrics> {
   const secret = getStripeSecretKey();
   const mode = resolveStripeMode(secret);
-  const empty = (partial: Partial<StripeLiveMonthMetrics>): StripeLiveMonthMetrics => ({
+  const empty = (
+    partial: Partial<StripeLiveMonthMetrics>,
+  ): StripeLiveMonthMetrics => ({
     connected: false,
     mode,
     availability: "disconnected",
     statusMessage: "Stripe未接続",
     updateFailed: false,
     fetchedAt: null,
-    grossRevenue: 0,
-    refunds: 0,
-    fees: 0,
-    netRevenue: 0,
+    grossRevenue: null,
+    refunds: null,
+    fees: null,
+    netRevenue: null,
     currency: "jpy",
     upcomingPayoutAmount: null,
     upcomingPayoutAt: null,
@@ -72,13 +116,13 @@ export async function fetchStripeLiveMonthMetrics(
     ...partial,
   });
 
-  if (!isStripeConfigured()) {
+  if (!clientOverride && !isStripeConfigured()) {
     return empty({
       statusMessage: "本番キーとWebhook設定が必要です",
     });
   }
 
-  const stripe = getStripeClient();
+  const stripe = clientOverride ?? (getStripeClient() as StripeListClient | null);
   if (!stripe) {
     return empty({
       statusMessage: "Stripe未接続",
@@ -89,59 +133,53 @@ export async function fetchStripeLiveMonthMetrics(
   const fetchedAt = now.toISOString();
 
   try {
-    let grossRevenue = 0;
     let currency = "jpy";
-    let startingAfter: string | undefined;
 
-    for (let page = 0; page < 10; page += 1) {
-      const invoices = await stripe.invoices.list({
+    const invoices = await paginateStripeList((startingAfter) =>
+      stripe.invoices.list({
         status: "paid",
         created: { gte, lt },
         limit: 100,
         starting_after: startingAfter,
-      });
+      }),
+    );
 
-      for (const invoice of invoices.data) {
-        currency = invoice.currency || currency;
-        grossRevenue += fromMinor(invoice.amount_paid ?? 0, invoice.currency);
-      }
-
-      if (!invoices.has_more || invoices.data.length === 0) break;
-      startingAfter = invoices.data[invoices.data.length - 1]?.id;
+    let grossRevenue = 0;
+    for (const invoice of invoices.items) {
+      currency = invoice.currency || currency;
+      grossRevenue += fromMinor(invoice.amount_paid ?? 0, invoice.currency ?? currency);
     }
 
+    const refundPage = await paginateStripeList((startingAfter) =>
+      stripe.refunds.list({
+        created: { gte, lt },
+        limit: 100,
+        starting_after: startingAfter,
+      }),
+    );
     let refunds = 0;
-    startingAfter = undefined;
-    for (let page = 0; page < 10; page += 1) {
-      const list = await stripe.refunds.list({
-        created: { gte, lt },
-        limit: 100,
-        starting_after: startingAfter,
-      });
-      for (const refund of list.data) {
-        if (refund.status === "failed" || refund.status === "canceled") continue;
-        currency = refund.currency || currency;
-        refunds += fromMinor(refund.amount ?? 0, refund.currency);
-      }
-      if (!list.has_more || list.data.length === 0) break;
-      startingAfter = list.data[list.data.length - 1]?.id;
+    for (const refund of refundPage.items) {
+      if (refund.status === "failed" || refund.status === "canceled") continue;
+      currency = refund.currency || currency;
+      refunds += fromMinor(refund.amount ?? 0, refund.currency ?? currency);
     }
 
-    let fees = 0;
-    startingAfter = undefined;
-    for (let page = 0; page < 10; page += 1) {
-      const list = await stripe.balanceTransactions.list({
+    const feePage = await paginateStripeList((startingAfter) =>
+      stripe.balanceTransactions.list({
         created: { gte, lt },
         limit: 100,
         starting_after: startingAfter,
-      });
-      for (const tx of list.data) {
-        currency = tx.currency || currency;
-        fees += fromMinor(Math.abs(tx.fee ?? 0), tx.currency);
-      }
-      if (!list.has_more || list.data.length === 0) break;
-      startingAfter = list.data[list.data.length - 1]?.id;
+      }),
+    );
+    let fees = 0;
+    for (const tx of feePage.items) {
+      currency = tx.currency || currency;
+      fees += fromMinor(Math.abs(tx.fee ?? 0), tx.currency ?? currency);
     }
+
+    const incomplete =
+      !invoices.complete || !refundPage.complete || !feePage.complete;
+    const incompleteReason = invoices.reason ?? refundPage.reason ?? feePage.reason;
 
     let upcomingPayoutAmount: number | null = null;
     let upcomingPayoutAt: string | null = null;
@@ -169,6 +207,29 @@ export async function fetchStripeLiveMonthMetrics(
     }
 
     const netRevenue = Math.max(0, grossRevenue - refunds - fees);
+
+    if (incomplete) {
+      return {
+        connected: true,
+        mode,
+        availability: "incomplete",
+        statusMessage:
+          incompleteReason === "safety_guard" || incompleteReason === "repeated_cursor"
+            ? "Stripe集計が上限に達したため未完了"
+            : "Stripe集計が上限に達したため未完了",
+        updateFailed: false,
+        fetchedAt,
+        grossRevenue: null,
+        refunds: null,
+        fees: null,
+        netRevenue: null,
+        currency,
+        upcomingPayoutAmount:
+          upcomingPayoutAmount === null ? null : roundMoney(upcomingPayoutAmount),
+        upcomingPayoutAt,
+        upcomingPayoutStatus,
+      };
+    }
 
     return {
       connected: true,

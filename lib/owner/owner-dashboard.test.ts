@@ -27,9 +27,30 @@ vi.mock("@/lib/billing/analytics/stripe-subscription-metrics", () => {
       statusMessage: "Stripe未接続",
       fetchedAt: null,
       metrics: null,
-      cancelScheduledCount: 0,
-      paymentFailureCount: 0,
+      cancelScheduledCount: null,
+      paymentFailureCount: null,
     }),
+  };
+});
+
+vi.mock("@/lib/owner/registered-users", () => ({
+  fetchRegisteredUserCount: async () => ({
+    source: "clerk" as const,
+    availability: "disconnected" as const,
+    total: null,
+    fetchedAt: null,
+    statusMessage: "Clerk未接続（登録ユーザー数を取得できません）",
+  }),
+}));
+
+vi.mock("@/lib/billing/analytics/last-known-good", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/billing/analytics/last-known-good")
+  >("@/lib/billing/analytics/last-known-good");
+  return {
+    ...actual,
+    loadOwnerLastKnownGood: vi.fn().mockResolvedValue(null),
+    persistOwnerLastKnownGood: vi.fn().mockResolvedValue(false),
   };
 });
 
@@ -106,8 +127,12 @@ describe("owner dashboard real metrics", () => {
     expect(snapshot.revenue.amountJpy).toBeNull();
     expect(snapshot.revenue.amountUsd).toBeNull();
     expect(snapshot.revenue.statusMessage).toContain("Stripe");
-    expect(snapshot.users.paid).toBe(0);
-    expect(snapshot.billing.mrrJpy).toBe(0);
+    expect(snapshot.users.paid).toBeNull();
+    expect(snapshot.users.free).toBeNull();
+    expect(snapshot.users.total).toBeNull();
+    expect(snapshot.userMetrics.paid.availability).toBe("disconnected");
+    expect(snapshot.userMetrics.paid.value).toBeNull();
+    expect(snapshot.userMetrics.paid.statusMessage).not.toMatch(/^0$/);
     expect(snapshot.popularFeatures).toEqual([]);
     expect(snapshot.highCostUsers).toEqual([]);
     expect(snapshot.profit.availability).toBe("incomplete");

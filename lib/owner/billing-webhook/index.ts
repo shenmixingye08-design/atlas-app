@@ -1,4 +1,8 @@
-export { getStripeWebhookMonitoringSnapshot, recordStripeWebhookLog } from "./service";
+export {
+  getHydratedStripeWebhookMonitoringSnapshot,
+  getStripeWebhookMonitoringSnapshot,
+  recordStripeWebhookLog,
+} from "./service";
 export type {
   StripeWebhookLogEntry,
   StripeWebhookLogStatus,

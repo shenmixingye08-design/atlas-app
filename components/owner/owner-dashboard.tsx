@@ -17,7 +17,7 @@ import { cn } from "@/lib/design-system/cn";
 import { Card } from "@/components/ui/card";
 import Link from "next/link";
 
-function availabilityLabel(availability: OwnerMetricAvailability | "incomplete"): string {
+function availabilityLabel(availability: OwnerMetricAvailability): string {
   switch (availability) {
     case "disconnected":
       return ui.owner.statusDisconnected;
@@ -27,30 +27,51 @@ function availabilityLabel(availability: OwnerMetricAvailability | "incomplete")
       return ui.owner.statusEmpty;
     case "failed":
       return ui.owner.statusFailed;
+    case "unavailable":
+      return ui.owner.statusUnavailable;
     case "incomplete":
       return ui.owner.statusIncomplete;
+    case "stale":
+      return ui.owner.statusStale;
     default:
       return ui.owner.statusOk;
   }
 }
 
 function formatMoneyMetric(metric: OwnerCurrencyMetric): string {
-  // Never render demo/estimated amounts. Only real ok values (including $0).
   if (metric.isEstimated) {
     return availabilityLabel("empty");
   }
-  if (metric.availability !== "ok") {
-    return metric.statusMessage ?? availabilityLabel(metric.availability);
+  if (metric.availability === "ok") {
+    if (metric.amountJpy !== null) return formatOwnerJpy(metric.amountJpy);
+    if (metric.amountUsd !== null) return formatOwnerUsd(metric.amountUsd, true);
+    return availabilityLabel("empty");
   }
-  if (metric.amountJpy !== null) return formatOwnerJpy(metric.amountJpy);
-  if (metric.amountUsd !== null) return formatOwnerUsd(metric.amountUsd, true);
-  return availabilityLabel("empty");
+  if (metric.availability === "stale" || metric.isLastKnownGood) {
+    const prior =
+      metric.lastKnownAmountJpy !== null
+        ? formatOwnerJpy(metric.lastKnownAmountJpy)
+        : metric.lastKnownAmountUsd !== null
+          ? formatOwnerUsd(metric.lastKnownAmountUsd, true)
+          : null;
+    if (prior) return ui.owner.lastKnownValue(prior);
+  }
+  return metric.statusMessage ?? availabilityLabel(metric.availability);
 }
 
 function formatProfitMetric(metric: OwnerProfitMetric): string {
   if (metric.availability === "ok") {
     if (metric.amountJpy !== null) return formatOwnerJpy(metric.amountJpy);
     if (metric.amountUsd !== null) return formatOwnerUsd(metric.amountUsd, true);
+  }
+  if (metric.availability === "stale" || metric.isLastKnownGood) {
+    const prior =
+      metric.lastKnownAmountJpy !== null
+        ? formatOwnerJpy(metric.lastKnownAmountJpy)
+        : metric.lastKnownAmountUsd !== null
+          ? formatOwnerUsd(metric.lastKnownAmountUsd, true)
+          : null;
+    if (prior) return ui.owner.lastKnownValue(prior);
   }
   return metric.statusMessage ?? availabilityLabel(metric.availability);
 }
@@ -117,7 +138,11 @@ function CountCard({ metric }: { metric: OwnerCountMetric }) {
   const value =
     metric.availability === "ok" && metric.value !== null
       ? metric.value.toLocaleString("ja-JP")
-      : (metric.statusMessage ?? availabilityLabel(metric.availability));
+      : metric.availability === "stale" || metric.isLastKnownGood
+        ? metric.lastKnownValue !== null
+          ? ui.owner.lastKnownValue(metric.lastKnownValue.toLocaleString("ja-JP"))
+          : (metric.statusMessage ?? availabilityLabel(metric.availability))
+        : (metric.statusMessage ?? availabilityLabel(metric.availability));
   return (
     <MetricCard
       label={metric.label}
@@ -194,7 +219,10 @@ export function OwnerDashboard({
         </p>
         <p className="text-xs text-[var(--text-muted)]">
           {modeBadge} · provider:{snapshot.metricsProvider} ·{" "}
-          {ui.owner.generatedAt(formatOwnerDate(snapshot.generatedAt))}
+          {ui.owner.screenRefreshed(formatOwnerDate(snapshot.screenRefreshedAt ?? snapshot.generatedAt))}
+          {snapshot.revenue.lastUpdatedAt
+            ? ` · ${ui.owner.sourceLastSync("Stripe", formatOwnerDate(snapshot.revenue.lastUpdatedAt))}`
+            : ""}
         </p>
       </header>
 
@@ -296,7 +324,12 @@ export function OwnerDashboard({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <CountCard metric={snapshot.userMetrics.total} />
         <CountCard metric={snapshot.userMetrics.paid} />
+        <CountCard metric={snapshot.userMetrics.free} />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <CountCard metric={snapshot.userMetrics.cancelScheduled} />
         <CountCard metric={snapshot.userMetrics.paymentFailures} />
       </div>
@@ -307,19 +340,29 @@ export function OwnerDashboard({
             <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] p-4">
               <dt className="text-xs text-[var(--text-secondary)]">{ui.owner.paidUsers}</dt>
               <dd className="mt-1 text-2xl font-semibold">
-                {snapshot.users.paid.toLocaleString("ja-JP")}
+                {snapshot.userMetrics.paid.availability === "ok" &&
+                snapshot.users.paid !== null
+                  ? snapshot.users.paid.toLocaleString("ja-JP")
+                  : (snapshot.userMetrics.paid.statusMessage ??
+                    availabilityLabel(snapshot.userMetrics.paid.availability))}
               </dd>
             </div>
             <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] p-4">
               <dt className="text-xs text-[var(--text-secondary)]">{ui.owner.freeUsers}</dt>
               <dd className="mt-1 text-2xl font-semibold">
-                {snapshot.users.free.toLocaleString("ja-JP")}
+                {snapshot.userMetrics.free.availability === "ok" &&
+                snapshot.users.free !== null
+                  ? snapshot.users.free.toLocaleString("ja-JP")
+                  : (snapshot.userMetrics.free.statusMessage ??
+                    availabilityLabel(snapshot.userMetrics.free.availability))}
               </dd>
             </div>
             <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] p-4">
               <dt className="text-xs text-[var(--text-secondary)]">{ui.owner.churnedUsers}</dt>
               <dd className="mt-1 text-2xl font-semibold">
-                {snapshot.users.churned.toLocaleString("ja-JP")}
+                {snapshot.users.churned !== null
+                  ? snapshot.users.churned.toLocaleString("ja-JP")
+                  : availabilityLabel(snapshot.userMetrics.paid.availability)}
               </dd>
             </div>
           </dl>
@@ -463,7 +506,10 @@ export function OwnerDashboard({
 
       <SectionCard title={ui.owner.mrrTitle}>
         <p className="text-3xl font-semibold text-[var(--success)]">
-          {formatOwnerJpy(snapshot.billing.mrrJpy)}
+          {snapshot.userMetrics.paid.availability === "ok"
+            ? formatOwnerJpy(snapshot.billing.mrrJpy)
+            : (snapshot.userMetrics.paid.statusMessage ??
+              availabilityLabel(snapshot.userMetrics.paid.availability))}
         </p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">
           {ui.owner.mrrHint}
