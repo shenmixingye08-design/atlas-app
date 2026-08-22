@@ -69,6 +69,18 @@ describe("Sharp / libvips native packaging contract", () => {
     expect(load).toContain('await import("sharp")');
   });
 
+  it("built NFT for image routes includes libvips-cpp.so when .next exists", () => {
+    const nft = join(
+      ROOT,
+      ".next/server/app/api/attachments/images/route.js.nft.json",
+    );
+    if (!existsSync(nft)) return;
+    const files = (
+      JSON.parse(readFileSync(nft, "utf8")) as { files: string[] }
+    ).files;
+    expect(files.some((file) => file.includes(LIBVIPS_SONAME))).toBe(true);
+  });
+
   it("libvips soname matches the installed linux-x64 package when present", () => {
     const versionsPath = join(
       ROOT,

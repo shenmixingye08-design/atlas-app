@@ -1,8 +1,7 @@
 import "server-only";
 
 import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 import { loadSharp } from "./load-sharp";
 import { LIBVIPS_SONAME } from "./sharp-native-trace";
@@ -31,13 +30,6 @@ function libvipsSoPresent(): boolean {
       LIBVIPS_SONAME,
     ),
   ];
-  try {
-    const req = createRequire(import.meta.url);
-    const pkg = req.resolve("@img/sharp-libvips-linux-x64/package.json");
-    candidates.unshift(join(dirname(pkg), "lib", LIBVIPS_SONAME));
-  } catch {
-    /* package may be absent on non-linux hosts */
-  }
   return candidates.some((path) => existsSync(path));
 }
 
