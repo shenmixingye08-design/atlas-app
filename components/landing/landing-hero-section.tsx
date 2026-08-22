@@ -33,23 +33,23 @@ export function LandingHeroSection() {
 
           <div className="mt-4">
             <p className="text-[clamp(1.85rem,4vw,3.4rem)] font-medium leading-[1.12] tracking-[-0.04em] text-[#281A1E]">
-              一人で仕事を回す人のための
+              毎日のX投稿を、
               <br />
-              AI秘書。
+              一度頼めばあとは確認するだけ。
             </p>
           </div>
 
           <p className="mx-auto mt-5 max-w-[520px] text-sm leading-7 text-[#75686B] sm:text-base sm:leading-8 lg:mx-0">
-            X投稿、メール、予定管理、資料作成。
-            毎日の面倒な仕事をMINERVOTに任せ、自分は確認するだけ。
+            「毎朝10時に投稿して」と一度頼む。
+            あとは原稿作成からXへの投稿まで、MINERVOTが自動で実行します。
           </p>
 
           <p className="mx-auto mt-4 max-w-[520px] text-sm font-medium leading-7 text-[#74172A] sm:text-base lg:mx-0">
-            チャットAIの上位互換ではありません。仕事完了の別カテゴリです。
+            一度頼んだ仕事を、次から自動で終わらせるAI秘書です。
           </p>
 
           <p className="mx-auto mt-3 max-w-[520px] text-sm leading-7 text-[#75686B] lg:mx-0">
-            依頼した仕事を進め、完成したらお知らせします。合えば月{lightPlanYenLabel()}。
+            終わったら通知します。自分は確認するだけ。合えば月{lightPlanYenLabel()}。
           </p>
 
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row lg:justify-start">

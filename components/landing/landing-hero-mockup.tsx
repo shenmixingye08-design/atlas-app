@@ -37,7 +37,7 @@ export function LandingHeroMockup() {
               仕事が終わる瞬間
             </p>
             <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#2C1C20] sm:text-2xl">
-              完成通知が来て、文面が残る。
+              毎朝の投稿が終わって、確認するだけ。
             </h2>
           </div>
 

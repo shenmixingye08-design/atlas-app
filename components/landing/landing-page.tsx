@@ -90,7 +90,7 @@ function PricingSection() {
             合えば、月{lightPlanYenLabel()}。
           </h2>
           <p className="mt-5 text-sm leading-7 text-[#75686B] sm:text-base">
-            無料で1件完成させて判断。X投稿・メール・資料づくりを日常的に任せるなら Light。
+            無料でX投稿の完成体験を1回。毎日のX投稿を任せたいなら Light。
             価格の比較は
             <a href="#price-value" className="mx-1 text-[#74172A] underline-offset-2 hover:underline">
               こちら
@@ -154,9 +154,7 @@ function PricingSection() {
                     isRecommended ? "text-[#74172A]" : "text-[#786B6E]",
                   )}
                 >
-                  {plan.planId === "free"
-                    ? "無料で1件完成まで体験。クレジットカード不要。"
-                    : plan.description}
+                  {plan.description}
                 </p>
 
                 <div
@@ -207,7 +205,7 @@ function PricingSection() {
                     className="min-h-11 w-full rounded-full bg-[#74172A] text-xs font-semibold text-white hover:bg-[#5D1020]"
                   >
                     {plan.planId === "free"
-                      ? "今すぐ1件終わらせる"
+                      ? "X投稿を1回体験する"
                       : plan.planId === "light"
                         ? `月${lightPlanYenLabel()}で毎日任せる`
                         : "このプランで始める"}

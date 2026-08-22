@@ -121,7 +121,7 @@ describe("AI usage metering and plan limits", () => {
     expect(denial?.recommendedLimit).toBe(
       getPlanDefinition("light").limits.aiUsageMonthly,
     );
-    expect(denial?.otherFeaturesRemain).toBeNull();
+    expect(denial?.otherFeaturesRemain).toContain("X自動投稿");
   });
 
   it("allows Light users within plan AI runs", async () => {

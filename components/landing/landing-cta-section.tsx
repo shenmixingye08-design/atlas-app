@@ -9,9 +9,9 @@ import { lightPlanYenLabel } from "@/lib/landing/pay-reason";
 
 function ctaLines() {
   return [
-    "X投稿、メール、予定、資料作成。面倒な作業はMINERVOTに任せる。",
-    `自分は確認するだけ。朝のメール10分を手放せたら、月${lightPlanYenLabel()}でも安い（見本目安）。`,
-    "登録して仕事を1つ選ぶだけ。完成したらお知らせします。",
+    "毎日のX投稿を、一度頼めばあとは確認するだけ。",
+    `原稿作成から投稿まで自動実行。終わったら通知。合えば月${lightPlanYenLabel()}。`,
+    "登録して「毎朝10時に投稿して」と頼むだけです。",
   ] as const;
 }
 
@@ -21,7 +21,7 @@ export function LandingCtaSection() {
       <div className="mx-auto max-w-5xl">
         <div className="overflow-hidden rounded-[34px] border border-[#B58B4F]/20 bg-white px-6 py-16 text-center sm:px-12 sm:py-20">
           <h2 className="text-3xl font-semibold tracking-[-0.04em] text-[#281A1E] sm:text-5xl">
-            一人で回している仕事を、
+            毎日のX投稿を、
             <br />
             MINERVOTに任せる。
           </h2>

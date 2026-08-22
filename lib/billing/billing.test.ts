@@ -25,13 +25,14 @@ describe("billing plan policy", () => {
     expect(canUseHighQualityMode("standard")).toBe(false);
   });
 
-  it("limits Free automation tasks to zero", () => {
-    expect(checkAutomationTaskLimit("free", 0).allowed).toBe(false);
+  it("limits Free automation tasks to one trial", () => {
+    expect(checkAutomationTaskLimit("free", 0).allowed).toBe(true);
+    expect(checkAutomationTaskLimit("free", 1).allowed).toBe(false);
   });
 
-  it("allows Light SNS assist but not auto post", () => {
+  it("allows Light SNS assist and auto post", () => {
     expect(checkFeatureAccess("light", "sns_assist").allowed).toBe(true);
-    expect(checkFeatureAccess("light", "sns_auto_post").allowed).toBe(false);
+    expect(checkFeatureAccess("light", "sns_auto_post").allowed).toBe(true);
   });
 });
 

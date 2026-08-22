@@ -8,7 +8,7 @@ describe("QUICK_REQUEST_PRESETS", () => {
     const labels = QUICK_REQUEST_PRESETS.map((item) => item.label);
     expect(labels).toEqual([
       "今日のX投稿",
-      "毎朝のX投稿",
+      "X投稿を自動化する",
       "取引先メール",
       "予定を登録",
       "Excelにまとめる",

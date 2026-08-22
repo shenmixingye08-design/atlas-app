@@ -2,153 +2,28 @@
 
 import Link from "next/link";
 
-import { IconReuse, IconSpark } from "@/components/ui/icons";
+import { IconReuse } from "@/components/ui/icons";
 import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
 import { cn } from "@/lib/design-system/cn";
+import {
+  HOME_OTHER_WORK_CTA,
+  HOME_OTHER_WORK_HREF,
+  HOME_X_AUTOMATION_CTA,
+  HOME_X_AUTOMATION_HREF,
+} from "@/lib/product-focus/messaging";
 
-export const HOME_ONE_TIME_HREF = "/workspace";
-export const HOME_AUTOMATION_HREF = `/workspace?assignment=${encodeURIComponent("毎朝8時にX投稿して")}`;
-
-const ONE_TIME_EXAMPLES = [
-  "Word",
-  "Excel",
-  "PDF",
-  "PowerPoint",
-  "文章",
-  "画像から作成",
-] as const;
-
-const AUTOMATION_EXAMPLES = [
-  "毎朝8時にX投稿して",
-  "X投稿",
-  "WordPress",
-  "予定作成",
-  "定期資料",
-] as const;
-
-function ExampleChips({ items }: { items: readonly string[] }) {
-  return (
-    <ul className="mt-3 flex flex-wrap gap-1.5">
-      {items.map((item) => (
-        <li
-          key={item}
-          className="rounded-full bg-[var(--surface-muted)] px-2.5 py-1 text-[length:var(--text-meta)] text-[var(--text-secondary)]"
-        >
-          {item}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function PrimaryActionCard({
-  href,
-  titleId,
-  title,
-  description,
-  examples,
-  cta,
-  icon,
-  compact,
-  onClick,
-}: {
-  href: string;
-  titleId: string;
-  title: string;
-  description: string;
-  examples: readonly string[];
-  cta: string;
-  icon: React.ReactNode;
-  compact: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <Link
-      href={href}
-      onClick={onClick}
-      aria-labelledby={titleId}
-      className={cn(
-        "group flex h-full min-h-[var(--touch-target)] flex-col rounded-[var(--radius-2xl)] border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[var(--shadow-md)] transition-colors duration-[var(--motion-fast)]",
-        "hover:border-[color-mix(in_srgb,var(--brand)_28%,var(--border))] hover:shadow-[var(--shadow-lg)]",
-        "focus-ring",
-        compact ? "p-4 sm:p-5" : "p-5 sm:p-6",
-      )}
-    >
-      <div
-        className={cn(
-          "flex items-center justify-center rounded-2xl bg-[var(--brand-muted)] text-[var(--brand)]",
-          compact ? "h-10 w-10" : "h-12 w-12",
-        )}
-        aria-hidden
-      >
-        {icon}
-      </div>
-      <h2
-        id={titleId}
-        className={cn(
-          "mt-4 font-semibold tracking-tight text-[var(--text-primary)]",
-          compact
-            ? "text-lg sm:text-xl"
-            : "text-xl sm:text-2xl",
-        )}
-      >
-        {title}
-      </h2>
-      <p
-        className={cn(
-          "mt-2 text-[length:var(--text-body)] leading-[var(--leading-body)] text-[var(--text-secondary)]",
-          compact && "line-clamp-2",
-        )}
-      >
-        {description}
-      </p>
-      <ExampleChips items={examples} />
-      <span
-        className={cn(
-          "btn-brand mt-5 w-full",
-          "pointer-events-none",
-        )}
-      >
-        {cta}
-      </span>
-    </Link>
-  );
-}
+export const HOME_ONE_TIME_HREF = HOME_OTHER_WORK_HREF;
+export const HOME_AUTOMATION_HREF = HOME_X_AUTOMATION_HREF;
 
 export function HomePrimaryActions({ compact = false }: { compact?: boolean }) {
   return (
     <section
       data-testid="home-primary-actions"
       aria-label="MINERVOTに任せる方法"
-      className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4"
+      className="grid grid-cols-1 gap-3"
     >
-      <PrimaryActionCard
-        href={HOME_ONE_TIME_HREF}
-        titleId="home-primary-one-time"
-        title="今すぐ1件任せる"
-        description="必要な仕事を1つ依頼。Word・Excel・PDF・PowerPoint・文章作成などをMINERVOTが完成まで進めます。"
-        examples={ONE_TIME_EXAMPLES}
-        cta="今すぐお願いする"
-        compact={compact}
-        icon={<IconSpark className={compact ? "h-5 w-5" : "h-6 w-6"} />}
-        onClick={() => {
-          trackAutomationFirstEvent("one_time_request_clicked", {
-            source: "home_primary",
-          });
-          trackAutomationFirstEvent("home_primary_one_time_clicked", {
-            source: "home_primary",
-          });
-        }}
-      />
-      <PrimaryActionCard
-        href={HOME_AUTOMATION_HREF}
-        titleId="home-primary-automation"
-        title="繰り返し任せる"
-        description="「毎朝8時にX投稿して」と伝えるだけで登録できます。次回からMINERVOTが実行します。"
-        examples={AUTOMATION_EXAMPLES}
-        cta="自動化を作る"
-        compact={compact}
-        icon={<IconReuse className={compact ? "h-5 w-5" : "h-6 w-6"} />}
+      <Link
+        href={HOME_X_AUTOMATION_HREF}
         onClick={() => {
           trackAutomationFirstEvent("primary_automation_cta_clicked", {
             source: "home_primary",
@@ -157,7 +32,59 @@ export function HomePrimaryActions({ compact = false }: { compact?: boolean }) {
             source: "home_primary",
           });
         }}
-      />
+        aria-labelledby="home-primary-x-automation"
+        className={cn(
+          "group flex h-full min-h-[var(--touch-target)] flex-col rounded-[var(--radius-2xl)] border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[var(--shadow-md)] transition-colors duration-[var(--motion-fast)]",
+          "hover:border-[color-mix(in_srgb,var(--brand)_28%,var(--border))] hover:shadow-[var(--shadow-lg)]",
+          "focus-ring",
+          compact ? "p-4 sm:p-5" : "p-5 sm:p-6",
+        )}
+      >
+        <div
+          className={cn(
+            "flex items-center justify-center rounded-2xl bg-[var(--brand-muted)] text-[var(--brand)]",
+            compact ? "h-10 w-10" : "h-12 w-12",
+          )}
+          aria-hidden
+        >
+          <IconReuse className={compact ? "h-5 w-5" : "h-6 w-6"} />
+        </div>
+        <h2
+          id="home-primary-x-automation"
+          className={cn(
+            "mt-4 font-semibold tracking-tight text-[var(--text-primary)]",
+            compact ? "text-lg sm:text-xl" : "text-xl sm:text-2xl",
+          )}
+        >
+          {HOME_X_AUTOMATION_CTA}
+        </h2>
+        <p
+          className={cn(
+            "mt-2 text-[length:var(--text-body)] leading-[var(--leading-body)] text-[var(--text-secondary)]",
+            compact && "line-clamp-2",
+          )}
+        >
+          「毎朝10時に投稿して」と一度頼む。あとは原稿作成と投稿をMINERVOTが進めます。
+        </p>
+        <span className={cn("btn-brand mt-5 w-full", "pointer-events-none")}>
+          {HOME_X_AUTOMATION_CTA}
+        </span>
+      </Link>
+
+      <Link
+        href={HOME_OTHER_WORK_HREF}
+        onClick={() => {
+          trackAutomationFirstEvent("one_time_request_clicked", {
+            source: "home_secondary",
+          });
+          trackAutomationFirstEvent("home_primary_one_time_clicked", {
+            source: "home_secondary",
+          });
+        }}
+        className="inline-flex min-h-[var(--touch-target)] items-center justify-center text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+      >
+        {HOME_OTHER_WORK_CTA}
+      </Link>
     </section>
   );
 }

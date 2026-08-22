@@ -4,14 +4,14 @@ import { Button } from "@/components/ui/button";
 import {
   PAY_REASON_DISCLAIMER,
 } from "@/lib/landing/pay-reason";
-import { PROOF_EMAIL_SAMPLE } from "@/lib/landing/proof-samples";
+import { PROOF_SNS_SAMPLE } from "@/lib/landing/proof-samples";
 
 /**
  * People buy the future, not the file.
  * Uses sample typical-manual minutes only.
  */
 export function LandingFutureSection() {
-  const manual = PROOF_EMAIL_SAMPLE.typicalManualMinutes;
+  const manual = PROOF_SNS_SAMPLE.typicalManualMinutes;
 
   return (
     <section
@@ -26,7 +26,7 @@ export function LandingFutureSection() {
           朝の{manual}分を、戻す。
         </h2>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-[#75686B] sm:text-base">
-          一人で仕事を回していると、朝のメールや投稿に時間を取られます。戻ってきた時間で、本業側に入れます。
+          一人で仕事を回していると、毎朝のX投稿に時間を取られます。一度頼むと、戻ってきた時間で本業側に入れます。
         </p>
 
         <div className="mt-10 grid gap-4 md:grid-cols-3">
@@ -35,10 +35,10 @@ export function LandingFutureSection() {
               BEFORE
             </p>
             <p className="mt-3 text-lg font-semibold text-[#281A1E]">
-              朝、メール作成に約{manual}分
+              朝、X投稿に約{manual}分
             </p>
             <p className="mt-3 text-sm leading-7 text-[#75686B]">
-              件名・挨拶・次の一手を毎回ゼロから書く（手作業の目安・見本定義）。
+              テーマ探し・文面づくり・投稿を毎回ゼロから行う（手作業の目安・見本定義）。
             </p>
           </div>
           <div className="rounded-[20px] border border-[#74172A]/20 bg-[#FFFDFB] p-5">

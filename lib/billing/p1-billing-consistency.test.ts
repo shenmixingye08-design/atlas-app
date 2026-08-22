@@ -138,7 +138,7 @@ describe("P1 billing consistency (regular users)", () => {
     expect(light.limits.aiUsageMonthly).toBe(30);
     expect(light.limits.automationTasks).toBe(3);
     expect(light.limits.externalIntegrations).toBe(1);
-    expect(light.limits.xAutoPostsMonthly).toBe(0);
+    expect(light.limits.xAutoPostsMonthly).toBe(30);
     expect(LIGHT_PLAN_JPY).toBe(light.monthlyPriceJpy);
 
     const landing = getLandingPlans();
@@ -225,7 +225,9 @@ describe("P1 billing consistency (regular users)", () => {
     expect(summary.usage.aiRuns.limit).toBe(30);
     expect(summary.usage.automationTasks.limit).toBe(3);
     const autoPost = await evaluateBillingFeature(userId, "sns_auto_post");
-    expect(autoPost.denial?.status).toBe(403);
+    expect(autoPost.denial).toBeNull();
+    const google = await evaluateBillingFeature(userId, "google_integration");
+    expect(google.denial?.status).toBe(403);
   });
 
   it("E: cancel_at_period_end keeps current entitlement while active", async () => {
@@ -273,8 +275,11 @@ describe("P1 billing consistency (regular users)", () => {
     expect(summary.effectivePlanId).toBe("free");
     expect(summary.subscription.isPaid).toBe(false);
     expect(
-      (await evaluateBillingFeature(userId, "sns_assist")).denial?.status,
+      (await evaluateBillingFeature(userId, "google_integration")).denial?.status,
     ).toBe(403);
+    expect(
+      (await evaluateBillingFeature(userId, "sns_auto_post")).denial,
+    ).toBeNull();
   });
 
   it("G: resubscribe reuses the same customer and restores entitlement", async () => {
@@ -334,8 +339,11 @@ describe("P1 billing consistency (regular users)", () => {
     expect(summary.usage.planId).toBe("free");
     expect(summary.usage.aiRuns.limit).toBe(1);
     expect(
-      (await evaluateBillingFeature(userId, "sns_assist")).denial?.status,
+      (await evaluateBillingFeature(userId, "google_integration")).denial?.status,
     ).toBe(403);
+    expect(
+      (await evaluateBillingFeature(userId, "sns_auto_post")).denial,
+    ).toBeNull();
   });
 
   it("I: duplicate webhook claim does not reset usage or duplicate history", async () => {
@@ -382,7 +390,7 @@ describe("P1 billing consistency (regular users)", () => {
     expect(summary.subscription.planId).toBe("free");
     expect(summary.effectivePlanId).toBe("free");
     expect(
-      (await evaluateBillingFeature(userId, "sns_assist")).denial?.status,
+      (await evaluateBillingFeature(userId, "google_integration")).denial?.status,
     ).toBe(403);
   });
 
@@ -401,8 +409,8 @@ describe("P1 billing consistency (regular users)", () => {
     await checkoutPaid({ userId, planId: "light" });
 
     expect(
-      (await evaluateBillingFeature(userId, "sns_auto_post")).denial?.status,
-    ).toBe(403);
+      (await evaluateBillingFeature(userId, "sns_auto_post")).denial,
+    ).toBeNull();
     expect(
       (await evaluateBillingFeature(userId, "google_integration")).denial
         ?.status,

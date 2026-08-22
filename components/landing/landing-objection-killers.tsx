@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 const OBJECTIONS = [
   {
     fear: "難しそう",
-    kill: "覚える操作はありません。仕事を1つ選んで送るだけです。",
+    kill: "覚える操作はありません。「毎朝10時に投稿して」と一度頼むだけです。",
   },
   {
     fear: "時間かかりそう",

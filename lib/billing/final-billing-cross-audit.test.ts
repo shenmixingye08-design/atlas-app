@@ -54,16 +54,16 @@ const EXPECTED = {
   free: {
     yen: 0,
     ai: 1,
-    automations: 0,
-    integrations: 0,
-    paidFeatures: [] as const,
+    automations: 1,
+    integrations: 1,
+    paidFeatures: ["sns_assist", "sns_auto_post"] as const,
   },
   light: {
     yen: 980,
     ai: 30,
     automations: 3,
     integrations: 1,
-    paidFeatures: ["sns_assist"] as const,
+    paidFeatures: ["sns_assist", "sns_auto_post"] as const,
   },
   standard: {
     yen: 2980,
@@ -178,9 +178,13 @@ describe("FINAL billing cross audit", () => {
 
       if (planId === "free") {
         expect(resolvePlanIdFromStripePrice(PRICE.light)).toBe("light");
-        expect(checkFeatureAccess("free", "sns_assist").allowed).toBe(false);
-        expect(checkAutomationTaskLimit("free", 0).allowed).toBe(false);
-        expect(checkExternalIntegrationLimit("free", 0).allowed).toBe(false);
+        expect(checkFeatureAccess("free", "sns_assist").allowed).toBe(true);
+        expect(checkFeatureAccess("free", "sns_auto_post").allowed).toBe(true);
+        expect(checkFeatureAccess("free", "google_integration").allowed).toBe(false);
+        expect(checkAutomationTaskLimit("free", 0).allowed).toBe(true);
+        expect(checkAutomationTaskLimit("free", 1).allowed).toBe(false);
+        expect(checkExternalIntegrationLimit("free", 0).allowed).toBe(true);
+        expect(checkExternalIntegrationLimit("free", 1).allowed).toBe(false);
       } else {
         expect(resolvePlanIdFromStripePrice(PRICE[planId])).toBe(planId);
       }
@@ -199,8 +203,9 @@ describe("FINAL billing cross audit", () => {
         expect(summary.effectivePlanId).toBe("free");
         expect(summary.plan.monthlyPriceJpy).toBe(0);
         expect(summary.usage.aiRuns.limit).toBe(1);
+        expect((await evaluateBillingFeature(userId, "sns_assist")).denial).toBeNull();
         expect(
-          (await evaluateBillingFeature(userId, "sns_assist")).denial?.status,
+          (await evaluateBillingFeature(userId, "google_integration")).denial?.status,
         ).toBe(403);
       } else {
         await checkoutPaid({ userId, planId });

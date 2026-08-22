@@ -19,8 +19,9 @@ export const QUICK_REQUEST_PRESETS: readonly QuickRequestPreset[] = [
   },
   {
     id: "x-daily-auto",
-    label: "毎朝のX投稿",
-    prompt: "毎朝9時にXへ投稿して",
+    label: "X投稿を自動化する",
+    prompt: "毎朝10時にXへ投稿して",
+    href: "/workspace/x",
   },
   {
     id: "sales-email",

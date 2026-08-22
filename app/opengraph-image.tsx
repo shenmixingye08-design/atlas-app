@@ -28,7 +28,7 @@ export default function OpenGraphImage() {
           あなた専属のAI秘書
         </div>
         <div style={{ marginTop: 24, fontSize: 28, color: "#6e6e73", lineHeight: 1.4, maxWidth: 900 }}>
-          一人で仕事を回す人のためのAI秘書。X投稿、メール、予定、資料作成を任せて、確認するだけ。
+          毎日のX投稿を、一度頼めばあとは確認するだけ。
         </div>
       </div>
     ),

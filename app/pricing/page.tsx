@@ -5,7 +5,7 @@ import { lightPlanYenLabel } from "@/lib/landing/pay-reason";
 
 export const metadata: Metadata = {
   title: `料金 | 月${lightPlanYenLabel()}から`,
-  description: `無料で1件完成まで体験。毎月の投稿・メール・資料を自分で抱え続けないなら、Light（月${lightPlanYenLabel()}）から。`,
+  description: `毎日のX投稿を、一度頼めばあとは確認するだけ。無料で1回体験。毎日任せるなら Light（月${lightPlanYenLabel()}）。`,
 };
 
 /** 公開用ショートカット。本体はホームページの料金セクション。 */

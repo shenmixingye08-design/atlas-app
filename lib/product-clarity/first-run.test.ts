@@ -7,6 +7,7 @@ import { resetUserWorkProfile } from "@/lib/user-profile";
 import {
   isClarityFirstRun,
   shouldShowDeliverableFormatPicker,
+  shouldShowXAutopostAdvancedControls,
 } from "./first-run";
 
 const storage = new Map<string, string>();
@@ -28,6 +29,7 @@ describe("first-run clarity gates", () => {
   it("treats brand-new users as first-run", () => {
     expect(isClarityFirstRun()).toBe(true);
     expect(shouldShowDeliverableFormatPicker()).toBe(false);
+    expect(shouldShowXAutopostAdvancedControls()).toBe(false);
   });
 
   it("keeps advanced controls hidden until first experience completes", () => {

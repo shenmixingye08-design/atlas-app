@@ -6,19 +6,19 @@ import { Button } from "@/components/ui/button";
 
 const STEPS = [
   {
-    id: "pick",
-    title: "仕事を選ぶ",
-    body: "X投稿・繰り返し作業・メール・資料など、最初の1つだけ。",
+    id: "ask",
+    title: "一度頼む",
+    body: "「毎朝10時に投稿して」と伝える。テーマと時間だけ。",
   },
   {
-    id: "request",
-    title: "1回依頼",
-    body: "面倒な作業を投げる。形式やメニューは後から。",
+    id: "run",
+    title: "毎日自動実行",
+    body: "原稿作成からXへの投稿まで、MINERVOTが進めます。",
   },
   {
     id: "done",
     title: "確認するだけ",
-    body: "MINERVOTが進め、終わった仕事が手元に残る。",
+    body: "終わったら通知。自分は結果を見るだけです。",
   },
 ] as const;
 

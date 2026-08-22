@@ -73,14 +73,17 @@ describe("billing access enforcement", () => {
     expect(denial?.reason).toContain("Standard");
   });
 
-  it("allows light sns_assist but not sns_auto_post", async () => {
+  it("allows light sns_assist and sns_auto_post but not Google", async () => {
     const { evaluateBillingFeature } = await import("@/lib/billing/access");
     await setPlan("user_light", "light");
     expect(
       (await evaluateBillingFeature("user_light", "sns_assist")).denial,
     ).toBeNull();
     expect(
-      (await evaluateBillingFeature("user_light", "sns_auto_post")).denial
+      (await evaluateBillingFeature("user_light", "sns_auto_post")).denial,
+    ).toBeNull();
+    expect(
+      (await evaluateBillingFeature("user_light", "google_integration")).denial
         ?.requiredPlan,
     ).toBe("standard");
   });
@@ -190,6 +193,9 @@ describe("billing access enforcement", () => {
     await setPlan("user_ext_free", "free");
     expect(
       (await evaluateBillingExternalIntegration("user_ext_free", 0)).denial,
+    ).toBeNull();
+    expect(
+      (await evaluateBillingExternalIntegration("user_ext_free", 1)).denial,
     ).not.toBeNull();
 
     await setPlan("user_ext_light", "light");

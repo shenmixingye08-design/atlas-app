@@ -34,6 +34,10 @@ import {
   HOME_ONE_TIME_HREF,
 } from "@/components/automation-first/home-primary-actions";
 import type { Automation } from "@/lib/automations/types";
+import {
+  HOME_OTHER_WORK_CTA,
+  HOME_X_AUTOMATION_CTA,
+} from "@/lib/product-focus/messaging";
 
 const FORBIDDEN_HOME_COPY = [
   "AIオーケストラ",
@@ -47,6 +51,8 @@ const FORBIDDEN_HOME_COPY = [
   "新しい自動化を作る",
   "一度だけお願いする",
   "AI稼働中",
+  "orchestra",
+  "agent",
 ];
 
 function sampleAutomation(): Automation {
@@ -95,39 +101,31 @@ function renderHome(automations: Automation[] = []) {
 }
 
 describe("MINERVOT home rendering", () => {
-  it("leads with the two equal primary actions and user-purpose copy", () => {
+  it("leads with one X automation CTA and keeps other work secondary", () => {
     const html = renderHome();
     expect(html).toContain("automation-first-home");
-    expect(html).toContain("MINERVOTに何を任せますか？");
-    expect(html).toContain("今すぐ1件任せる");
-    expect(html).toContain("繰り返し任せる");
-    expect(html).toContain("今すぐお願いする");
-    expect(html).toContain("自動化を作る");
-    expect(html).toContain("まず1件任せてみましょう");
-    expect(html).toContain("好みはMINERVOTが覚えて次回にも反映します");
-    expect(html).toContain("Word");
-    expect(html).toContain("Excel");
-    expect(html).toContain("X投稿");
-    expect(html).toContain("WordPress");
-    const oneTimeIndex = html.indexOf("今すぐ1件任せる");
-    const repeatIndex = html.indexOf("繰り返し任せる");
-    const todayIndex = html.indexOf("今日のMINERVOT");
-    expect(oneTimeIndex).toBeGreaterThan(0);
-    expect(repeatIndex).toBeGreaterThan(oneTimeIndex);
-    expect(todayIndex).toBe(-1);
+    expect(html).toContain("毎日のX投稿を、自動化します");
+    expect(html).toContain(HOME_X_AUTOMATION_CTA);
+    expect(html).toContain(HOME_OTHER_WORK_CTA);
+    expect(html).toContain("まずX投稿を自動化してみましょう");
+    expect(html).toContain("使うほど、毎回の細かい指示が減ります");
+    expect(html).not.toContain("今すぐ1件任せる");
+    expect(html).not.toContain("繰り返し任せる");
+    expect(html.indexOf(HOME_X_AUTOMATION_CTA)).toBeLessThan(
+      html.indexOf(HOME_OTHER_WORK_CTA),
+    );
+    expect(html).not.toContain("今日のMINERVOT");
     for (const term of FORBIDDEN_HOME_COPY) {
       expect(html).not.toContain(term);
     }
   });
 
-  it("links one-time work to /workspace and repeating work to a filled request", () => {
+  it("links the primary action to /workspace/x and other work to /workspace", () => {
     const html = renderHome();
     expect(HOME_ONE_TIME_HREF).toBe("/workspace");
-    expect(HOME_AUTOMATION_HREF).toContain("/workspace?assignment=");
-    expect(HOME_AUTOMATION_HREF).toContain(encodeURIComponent("毎朝8時にX投稿して"));
-    expect(html).toContain(`href="${HOME_ONE_TIME_HREF}"`);
+    expect(HOME_AUTOMATION_HREF).toBe("/workspace/x");
     expect(html).toContain(`href="${HOME_AUTOMATION_HREF}"`);
-    expect(html.match(/href="\/workspace/g)?.length).toBeGreaterThan(1);
+    expect(html).toContain(`href="${HOME_ONE_TIME_HREF}"`);
   });
 
   it("does not dump zero stats for a new user", () => {
@@ -138,29 +136,28 @@ describe("MINERVOT home rendering", () => {
     expect(html).not.toContain("data-live");
   });
 
-  it("keeps primary actions for returning users and strengthens today's work", () => {
+  it("keeps the X CTA for returning users and strengthens today's work", () => {
     const html = renderHome([sampleAutomation()]);
-    expect(html).toContain("今すぐ1件任せる");
-    expect(html).toContain("繰り返し任せる");
+    expect(html).toContain(HOME_X_AUTOMATION_CTA);
+    expect(html).toContain(HOME_OTHER_WORK_CTA);
     expect(html).toContain("今日のMINERVOT");
     expect(html).toContain("対応が必要");
-    expect(html.indexOf("MINERVOTに何を任せますか？")).toBeLessThan(
+    expect(html.indexOf("毎日のX投稿を、自動化します")).toBeLessThan(
       html.indexOf("今日のMINERVOT"),
     );
-    expect(html.indexOf("今すぐ1件任せる")).toBeLessThan(
+    expect(html.indexOf(HOME_X_AUTOMATION_CTA)).toBeLessThan(
       html.indexOf("今日のMINERVOT"),
     );
   });
 });
 
 describe("MINERVOT home mobile layout regression", () => {
-  it("stacks the two cards on small screens and keeps tap-sized CTAs", () => {
+  it("keeps a single primary CTA and tap-sized secondary link", () => {
     const html = renderHome();
     expect(html).toContain("grid-cols-1");
-    expect(html).toContain("md:grid-cols-2");
+    expect(html).not.toContain("md:grid-cols-2");
     expect(html).toContain("btn-brand");
     expect(html).toContain("min-h-[var(--touch-target)]");
-    expect(html).toContain("flex-wrap");
     expect(html).not.toContain("overflow-x-scroll");
     expect(html).not.toContain("lg:hidden");
     expect(html).not.toContain("hidden gap-6 lg:grid");

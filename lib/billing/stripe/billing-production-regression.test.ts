@@ -191,7 +191,7 @@ describe("Billing Production regression", () => {
 
     const { denial } = await evaluateBillingFeature(
       "user_b_attacker",
-      "sns_assist",
+      "google_integration",
     );
     expect(denial?.status).toBe(403);
   });
@@ -225,7 +225,10 @@ describe("Billing Production regression", () => {
     expect(view.isPaid).toBe(false);
     expect(view.automationsSuspended).toBe(true);
 
-    const { denial } = await evaluateBillingFeature("user_cancel", "sns_assist");
+    const { denial } = await evaluateBillingFeature(
+      "user_cancel",
+      "google_integration",
+    );
     expect(denial?.status).toBe(403);
   });
 

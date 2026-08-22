@@ -466,12 +466,12 @@ export function AutomationFirstHome({
           {greetingForHour(now.getHours())}
         </p>
         <h1 className="text-[length:var(--text-page-title)] font-semibold tracking-tight text-[var(--text-primary)] sm:text-[length:var(--text-display)]">
-          MINERVOTに何を任せますか？
+          毎日のX投稿を、自動化します
         </h1>
         <p className="text-[length:var(--text-caption)] text-[var(--text-secondary)] sm:text-[length:var(--text-body)]">
           {formatTodayDateLabel(now)}
           {" — "}
-          仕事を任せる。完成までMINERVOTが進めます。
+          一度頼めば、あとは確認するだけ。
         </p>
       </header>
 
@@ -479,11 +479,11 @@ export function AutomationFirstHome({
 
       {!isReturningUser ? (
         <p className="text-center text-[length:var(--text-body)] leading-[var(--leading-body)] text-[var(--text-secondary)]">
-          まず1件任せてみましょう。好みはMINERVOTが覚えて次回にも反映します。
+          まずX投稿を自動化してみましょう。使うほど、毎回の細かい指示が減ります。
         </p>
       ) : (
         <p className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
-          好みはMINERVOTが覚えて次回にも反映します。
+          使うほど、毎回の細かい指示が減ります。
         </p>
       )}
 

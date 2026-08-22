@@ -48,7 +48,7 @@ export function LandingFinishStory() {
           依頼してから、完成するまで。
         </h2>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-[#75686B] sm:text-base">
-          面倒なX投稿を投げる → MINERVOTが進める → 自分は確認するだけ。1件の仕事が終わる流れです（SNS見本）。
+          「毎朝10時に投稿して」と一度頼む → 毎日の原稿作成と投稿を自動実行 → 終わったら通知。自分は確認するだけです。
         </p>
 
         <ol className="mt-10 space-y-4">
