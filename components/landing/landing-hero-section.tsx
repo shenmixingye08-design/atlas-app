@@ -33,19 +33,16 @@ export function LandingHeroSection() {
 
           <div className="mt-4">
             <p className="text-[clamp(1.85rem,4vw,3.4rem)] font-medium leading-[1.12] tracking-[-0.04em] text-[#281A1E]">
-              毎日のX投稿を、
-              <br />
-              一度頼めばあとは確認するだけ。
+              あなたの仕事を覚えて、次から終わらせるAI秘書。
             </p>
           </div>
 
           <p className="mx-auto mt-5 max-w-[520px] text-sm leading-7 text-[#75686B] sm:text-base sm:leading-8 lg:mx-0">
-            「毎朝10時に投稿して」と一度頼む。
-            あとは原稿作成からXへの投稿まで、MINERVOTが自動で実行します。
+            毎日のX投稿も、いつもの報告書も、一度やり方を教えれば次から細かい説明を減らせます。
           </p>
 
           <p className="mx-auto mt-4 max-w-[520px] text-sm font-medium leading-7 text-[#74172A] sm:text-base lg:mx-0">
-            一度頼んだ仕事を、次から自動で終わらせるAI秘書です。
+            一度頼めばあとは確認するだけ。対応している仕事では、実行・保存まで終わらせます。
           </p>
 
           <p className="mx-auto mt-3 max-w-[520px] text-sm leading-7 text-[#75686B] lg:mx-0">

@@ -9,36 +9,36 @@ export function LandingChatgptContrast() {
     <div className="mt-10 w-full max-w-[570px] space-y-3 lg:mx-0 mx-auto">
       <div
         className="overflow-hidden rounded-[20px] border border-[#74172A]/15 bg-white text-left"
-        aria-label="ChatGPT・Claude・GeminiとMINERVOTは別物"
+        aria-label="一般的なAIとMINERVOTの違い"
       >
         <div className="grid grid-cols-2 border-b border-[#74172A]/10 text-[11px] font-semibold tracking-[0.08em]">
-          <p className="bg-[#F5F1F0] px-3 py-2 text-[#8B7E81]">ChatGPT / Claude / Gemini</p>
+          <p className="bg-[#F5F1F0] px-3 py-2 text-[#8B7E81]">一般的なAI</p>
           <p className="bg-[#FFF8EB] px-3 py-2 text-[#9A7137]">MINERVOT</p>
         </div>
         <div className="grid grid-cols-2 text-sm">
           <p className="border-b border-[#74172A]/8 px-3 py-3 text-[#5A4B4F]">
-            質問に答える
+            毎回説明
           </p>
           <p className="border-b border-[#74172A]/8 px-3 py-3 font-medium text-[#74172A]">
-            仕事を終わらせる
+            一度教える
           </p>
           <p className="border-b border-[#74172A]/8 px-3 py-3 text-[#5A4B4F]">
-            下書きは出る。送信・体裁・仕上げは自分
+            生成
           </p>
           <p className="border-b border-[#74172A]/8 px-3 py-3 font-medium text-[#74172A]">
-            完成した内容が手元に残る
+            覚える
           </p>
           <p className="border-b border-[#74172A]/8 px-3 py-3 text-[#5A4B4F]">
-            毎日の習慣にならない（都度チャット）
+            人がコピー
           </p>
           <p className="border-b border-[#74172A]/8 px-3 py-3 font-medium text-[#74172A]">
-            毎朝のX投稿が、確認するだけで進む
+            次から再利用
           </p>
           <p className="px-3 py-3 text-[#5A4B4F]">
-            会話が資産。仕事は残る
+            人が実行
           </p>
           <p className="px-3 py-3 font-medium text-[#74172A]">
-            終わった仕事が資産になる
+            対応業務では実行まで
           </p>
         </div>
       </div>

@@ -4,12 +4,12 @@
  */
 
 export const PRODUCT_DEFINITION =
-  "一度頼んだ仕事を、次から自動で終わらせるAI秘書";
+  "あなたの仕事を覚えて、次から終わらせるAI秘書。";
 
 export const PRODUCT_PRIMARY_USE_CASE = "毎日のX投稿";
 
 export const PRODUCT_HERO_PROMISE =
-  "毎日のX投稿を、一度頼めばあとは確認するだけ";
+  "毎日のX投稿も、いつもの報告書も、一度やり方を教えれば次から細かい説明を減らせます。";
 
 export const LIGHT_RESULT_LINE = "毎日のX投稿を任せたい人向け";
 
@@ -26,7 +26,7 @@ export const MEMORY_OUTCOME = "使うほど、毎回の細かい指示が減る"
 
 export const FIRST_RUN_SAVED_NOTICE = "これで毎日自動で実行します";
 
-export const HOME_X_AUTOMATION_CTA = "X投稿を自動化する";
+export const HOME_X_AUTOMATION_CTA = "最初の仕事を任せる";
 
 export const HOME_OTHER_WORK_CTA = "その他の仕事を頼む";
 

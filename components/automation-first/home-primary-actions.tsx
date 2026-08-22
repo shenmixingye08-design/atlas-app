@@ -64,7 +64,7 @@ export function HomePrimaryActions({ compact = false }: { compact?: boolean }) {
             compact && "line-clamp-2",
           )}
         >
-          「毎朝10時に投稿して」と一度頼む。あとは原稿作成と投稿をMINERVOTが進めます。
+          毎日のX投稿から始められます。一度設定すれば、次回から同じ指示は不要です。
         </p>
         <span className={cn("btn-brand mt-5 w-full", "pointer-events-none")}>
           {HOME_X_AUTOMATION_CTA}

@@ -4,6 +4,11 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { AttentionCard } from "@/components/automation-first/attention-card";
+import {
+  EntrustedWorkList,
+  MeasuredValueMetrics,
+  NewUserValueSteps,
+} from "@/components/automation-first/entrusted-work";
 import { ErrorState } from "@/components/automation-first/error-state";
 import { HomePrimaryActions } from "@/components/automation-first/home-primary-actions";
 import { SectionHeader } from "@/components/automation-first/page-header";
@@ -40,6 +45,12 @@ import type { AutomationRun } from "@/lib/automation-platform/types";
 import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 import { useFeatureAvailability } from "@/lib/feature-flags";
+import { buildEntrustedWorkCards } from "@/lib/value-moat/home-entrusted";
+import {
+  HOME_NEW_USER_HEADLINE,
+  HOME_RETURNING_HEADLINE,
+} from "@/lib/value-moat/messaging";
+import { buildValueMetrics } from "@/lib/value-moat/value-metrics";
 
 export type AutomationFirstHomeProps = {
   automations: Automation[];
@@ -276,6 +287,40 @@ export function AutomationFirstHome({
 
   const nextRun = opsSummary?.nextRun ?? null;
 
+  const entrustedCards = useMemo(
+    () =>
+      buildEntrustedWorkCards({
+        automations: automations.map((automation) => ({
+          id: automation.id,
+          name: automation.name,
+          enabled: automation.enabled,
+          nextRun: automation.nextRun,
+          scheduleLabel:
+            automation.schedule && "label" in automation.schedule
+              ? automation.schedule.label
+              : null,
+        })),
+        recentCompleted: recentCompleted.map((item) => ({
+          id: item.id,
+          title: item.title,
+          completedAt: item.meta || null,
+          href: item.href,
+        })),
+      }),
+    [automations, recentCompleted],
+  );
+
+  const valueMetrics = useMemo(
+    () =>
+      opsSummary
+        ? buildValueMetrics({
+            completedThisMonth: weeklyStats.completedJobs,
+            autoRunsThisMonth: weeklyStats.autoStepCount,
+          })
+        : [],
+    [opsSummary, weeklyStats.autoStepCount, weeklyStats.completedJobs],
+  );
+
   useEffect(() => {
     trackAutomationFirstEvent("home_viewed", {
       automations: automations.length,
@@ -456,6 +501,8 @@ export function AutomationFirstHome({
       runningJobs.length > 0 ||
       nextRunCard ||
       recentSection ||
+      entrustedCards.length > 0 ||
+      valueMetrics.length > 0 ||
       (opsSummary && hasMeaningfulWeeklyStats(weeklyStats)),
   );
 
@@ -466,24 +513,27 @@ export function AutomationFirstHome({
           {greetingForHour(now.getHours())}
         </p>
         <h1 className="text-[length:var(--text-page-title)] font-semibold tracking-tight text-[var(--text-primary)] sm:text-[length:var(--text-display)]">
-          毎日のX投稿を、自動化します
+          {isReturningUser ? HOME_RETURNING_HEADLINE : HOME_NEW_USER_HEADLINE}
         </h1>
         <p className="text-[length:var(--text-caption)] text-[var(--text-secondary)] sm:text-[length:var(--text-body)]">
           {formatTodayDateLabel(now)}
           {" — "}
-          一度頼めば、あとは確認するだけ。
+          毎日のX投稿から始められます。一度頼めば、あとは確認するだけ。
         </p>
       </header>
 
       <HomePrimaryActions compact={isReturningUser} />
 
       {!isReturningUser ? (
-        <p className="text-center text-[length:var(--text-body)] leading-[var(--leading-body)] text-[var(--text-secondary)]">
-          まずX投稿を自動化してみましょう。使うほど、毎回の細かい指示が減ります。
-        </p>
+        <>
+          <NewUserValueSteps />
+          <p className="text-center text-[length:var(--text-body)] leading-[var(--leading-body)] text-[var(--text-secondary)]">
+            まずX投稿を自動化してみましょう。使うほど、毎回の細かい指示が減ります。
+          </p>
+        </>
       ) : (
         <p className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
-          使うほど、毎回の細かい指示が減ります。
+          続きを優先します。使うほど、毎回の細かい指示が減ります。
         </p>
       )}
 
@@ -510,6 +560,10 @@ export function AutomationFirstHome({
           >
             今日のMINERVOT
           </h2>
+          <EntrustedWorkList cards={entrustedCards} />
+          {valueMetrics.length > 0 ? (
+            <MeasuredValueMetrics metrics={valueMetrics} />
+          ) : null}
           {attentionSection}
           <RunningStepsPanel
             heading="h3"

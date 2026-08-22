@@ -585,11 +585,12 @@ export function FinalOutput({
         <h2 id="output-heading" className="text-title text-foreground">
           {heading ?? ui.work.deliverableTitle}
         </h2>
-        {/今週分|同じように|また作って|前回と同じ|いつもの/.test(
-          result.assignment,
-        ) || result.workMemory ? (
-          <p className="mt-1 text-caption text-[var(--text-secondary)]">
-            {ui.work.preferenceAppliedHint}
+        {result.preferenceNotice ? (
+          <p
+            className="mt-1 text-caption text-[var(--text-secondary)]"
+            data-testid="preference-applied-notice"
+          >
+            {result.preferenceNotice}
           </p>
         ) : null}
         {!result.approved && (
