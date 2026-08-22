@@ -15,8 +15,8 @@ import {
   uploadWordPressMediaFromUrl,
 } from "../api-client";
 import {
-  getWordPressAuthContext,
   markWordPressAuthFailure,
+  resolveWordPressAuthContext,
   touchWordPressConnectionLastUsed,
 } from "../connection-service";
 import {
@@ -30,8 +30,9 @@ import type {
   WordPressTag,
 } from "../types";
 
-function requireAuth(userId: string) {
-  const auth = getWordPressAuthContext(userId);
+async function requireAuth(userId: string) {
+  await ensureExternalAuthHydrated(userId);
+  const auth = await resolveWordPressAuthContext(userId);
   const connection = getExternalServiceConnection(userId, "wordpress");
   if (!auth || connection.status === "disconnected") {
     return null;
@@ -79,7 +80,7 @@ async function resolveFeaturedMediaId(
   }
   if (!payload.featuredImageUrl?.trim()) return undefined;
 
-  const ctx = requireAuth(userId);
+  const ctx = await requireAuth(userId);
   if (!ctx) return undefined;
 
   const media = await uploadWordPressMediaFromUrl({
@@ -115,8 +116,7 @@ export async function createWordPressPostForUser(input: {
     };
   }
 
-  await ensureExternalAuthHydrated(input.userId);
-  const ctx = requireAuth(input.userId);
+  const ctx = await requireAuth(input.userId);
   if (!ctx) {
     return { status: "wp_not_connected", message: WP_NOT_CONNECTED_MESSAGE };
   }
@@ -236,8 +236,7 @@ export async function updateWordPressPostForUser(input: {
     };
   }
 
-  await ensureExternalAuthHydrated(input.userId);
-  const ctx = requireAuth(input.userId);
+  const ctx = await requireAuth(input.userId);
   if (!ctx) {
     return { status: "wp_not_connected", message: WP_NOT_CONNECTED_MESSAGE };
   }
@@ -316,8 +315,7 @@ export async function fetchWordPressCategoriesForUser(input: {
     };
   }
 
-  await ensureExternalAuthHydrated(input.userId);
-  const ctx = requireAuth(input.userId);
+  const ctx = await requireAuth(input.userId);
   if (!ctx) {
     return { status: "wp_not_connected", message: WP_NOT_CONNECTED_MESSAGE };
   }
@@ -355,8 +353,7 @@ export async function fetchWordPressTagsForUser(input: {
     };
   }
 
-  await ensureExternalAuthHydrated(input.userId);
-  const ctx = requireAuth(input.userId);
+  const ctx = await requireAuth(input.userId);
   if (!ctx) {
     return { status: "wp_not_connected", message: WP_NOT_CONNECTED_MESSAGE };
   }

@@ -46,6 +46,8 @@ export async function preprocessImageBuffer(input: {
 
   let buffer = normalized.buffer;
   let mimeType: PreprocessResult["mimeType"] = normalized.mimeType;
+  let width = normalized.width;
+  let height = normalized.height;
   const warnings = [...normalized.warnings];
 
   if (buffer.length > 4 * 1024 * 1024) {
@@ -59,13 +61,15 @@ export async function preprocessImageBuffer(input: {
     });
     buffer = compact.buffer;
     mimeType = compact.mimeType;
+    width = compact.width;
+    height = compact.height;
   }
 
   return {
     buffer,
     mimeType,
-    width: normalized.width,
-    height: normalized.height,
+    width,
+    height,
     originalWidth: normalized.originalWidth,
     originalHeight: normalized.originalHeight,
     warnings,

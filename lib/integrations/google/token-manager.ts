@@ -13,6 +13,7 @@ import {
   schedulePersistExternalAuth,
 } from "../external-services/durable";
 
+import { reloadGoogleAuthFromDurable } from "./auth-reload";
 import { persistGoogleAuthToSupabase } from "./credential-persistence";
 import { refreshGoogleAccountAccessToken } from "./oauth";
 import { markGoogleConnectionNeedsReconnect } from "./oauth-service";
@@ -28,7 +29,9 @@ export async function getGoogleAccountAccessTokenResult(
   userId: string,
 ): Promise<GoogleAccessTokenResult> {
   await ensureExternalAuthHydrated(userId);
-  const credentials = getExternalServiceCredentials(userId, "google");
+  const durable = await reloadGoogleAuthFromDurable(userId);
+  const credentials =
+    durable?.credentials ?? getExternalServiceCredentials(userId, "google");
   if (!credentials?.refreshToken) return { status: "missing" };
 
   const expiresAtMs = new Date(credentials.expiresAt).getTime();

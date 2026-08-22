@@ -73,6 +73,18 @@ describe("word content quality gate", () => {
     expect(calls).toBe(2);
   });
 
+  it("rejects long-form Japanese cut mid-sentence without a terminator", () => {
+    const body = `本日の営業活動について報告します。顧客訪問と提案内容を整理しました。
+訪問先は株式会社サンプルです。課題は業務効率の改善で、提案は自動化の導入です。
+次のアクションとして見積書を送付し、関係者と共有します。
+この段落はトークン上限で途中終了したため句点がなく本文が切れています`;
+    const result = validateWordSourceContent(body);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues).toContain("truncated");
+    }
+  });
+
   it("maps retry strategies by attempt", () => {
     expect(contentRetryStrategyForAttempt(1)).toBe("same_model");
     expect(contentRetryStrategyForAttempt(2)).toBe("simplified_prompt");

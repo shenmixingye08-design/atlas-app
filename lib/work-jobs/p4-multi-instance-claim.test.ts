@@ -673,4 +673,33 @@ describe("P4 Production multi-instance work-job claim", () => {
     expect(listWorkJobsForUser(userId)).toHaveLength(0);
     expect(getUsageSnapshot(userId, getUsageMonthKey()).aiRuns).toBe(30);
   });
+
+  it("stale queued reuse reclaims execution without creating a second job", async () => {
+    const userId = "user_p4_stale_queued";
+    await seedLightPlan(userId);
+    const executions: string[] = [];
+    const first = await acceptWorkJob({
+      userId,
+      assignment: "滞留した依頼を再開",
+      clientKey: "stale-queued",
+      startExecution: (jobId) => executions.push(jobId),
+    });
+    expect(first.ok).toBe(true);
+    expect(executions).toHaveLength(1);
+
+    const second = await acceptWorkJob({
+      userId,
+      assignment: "滞留した依頼を再開",
+      clientKey: "stale-queued",
+      nowMs: Date.now() + 20_000,
+      startExecution: (jobId) => executions.push(jobId),
+    });
+    expect(second.ok).toBe(true);
+    if (first.ok && second.ok) {
+      expect(second.jobId).toBe(first.jobId);
+      expect(second.reused).toBe(true);
+    }
+    expect(executions).toHaveLength(2);
+    expect(executions[0]).toBe(executions[1]);
+  });
 });

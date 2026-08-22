@@ -48,6 +48,8 @@ describe("Sharp / libvips native packaging contract", () => {
       ...SHARP_NATIVE_TRACE_GLOBS,
     ]);
     expect(SHARP_NATIVE_TRACE_ROUTES).toContain("/api/health/sharp-runtime");
+    expect(SHARP_NATIVE_TRACE_ROUTES).toContain("/api/work/jobs");
+    expect(SHARP_NATIVE_TRACE_ROUTES).toContain("/api/commander");
     expect(SHARP_NATIVE_TRACE_GLOBS.some((glob) => glob.includes("libvips-linux-x64"))).toBe(
       true,
     );

@@ -13,6 +13,7 @@ import {
   claimWorkJob,
   WorkJobClaimUnavailableError,
 } from "./claim";
+import { isStaleWorkJobQueued, isWorkJobTerminal } from "./staleness";
 import {
   buildWorkJobIdempotencyKey,
   hydrateWorkJobMemory,
@@ -146,6 +147,32 @@ export async function acceptWorkJob(input: {
   hydrateWorkJobMemory(job);
 
   if (claim.action === "created") {
+    try {
+      await saveWorkJob({
+        ...job,
+        metadata: withPropagatedJobId(
+          {
+            ...(input.metadata ?? {}),
+            ...(job.metadata ?? {}),
+          },
+          job.id,
+        ),
+      });
+    } catch {
+      return {
+        ok: false,
+        httpStatus: 503,
+        error:
+          "依頼の保存に失敗しました。しばらくしてからもう一度お試しください。",
+      };
+    }
+    input.startExecution?.(job.id, userId);
+  } else if (
+    !isWorkJobTerminal(job.status) &&
+    isStaleWorkJobQueued(job, input.nowMs ?? Date.now())
+  ) {
+    // Parallel create losers stay silent. A queued job that never started
+    // (after() killed / first persist raced) is reclaimed here.
     try {
       await saveWorkJob({
         ...job,

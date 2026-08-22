@@ -3,6 +3,7 @@ import "server-only";
 import { getClerkUserPrimaryEmail } from "@/lib/auth/get-clerk-user-email";
 import { buildFeatureAccessContext, isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
+import { ensureExternalAuthHydrated } from "@/lib/integrations/external-services/durable";
 import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
 import {
   createDriveFile,
@@ -27,6 +28,8 @@ export async function savePostTextToGoogleDriveIfEnabled(input: {
   if (!isFeatureEnabled("google", input.context)) {
     return null;
   }
+
+  await ensureExternalAuthHydrated(input.userId);
 
   const connection = getExternalServiceConnection(input.userId, "google");
   if (connection.status !== "connected") {

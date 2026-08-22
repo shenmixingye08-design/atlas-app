@@ -26,6 +26,7 @@ import {
 } from "./oauth";
 import {
   ensureExternalAuthHydrated,
+  invalidateExternalAuthHydration,
   schedulePersistExternalAuth,
 } from "../external-services/durable";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
@@ -140,6 +141,7 @@ export async function disconnectGoogleAccount(
   };
 
   saveExternalServiceConnection(userId, disconnected);
+  invalidateExternalAuthHydration(userId);
   schedulePersistExternalAuth(userId);
   return disconnected;
 }

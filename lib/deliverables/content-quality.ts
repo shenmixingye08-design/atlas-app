@@ -123,8 +123,11 @@ function looksTruncated(text: string): boolean {
   if (trimmed.length < WORD_CONTENT_MIN_CHARS) return false;
   if (/(\.\.\.|…|［続き］|（続く）)\s*$/.test(trimmed)) return true;
   const last = trimmed.slice(-1);
-  if (!/[。．.！？!?\n」』）)\]]$/.test(last) && trimmed.length < 400) {
+  const hasTerminator = /[。．.！？!?\n」』）)\]]$/.test(last);
+  if (!hasTerminator) {
     if (/[はがをにでと]$/.test(trimmed)) return true;
+    // Long-form mid-sentence cut (token limit) — do not accept as completed.
+    if (/(です|ます|でした|ました|である|だ)$/.test(trimmed)) return true;
   }
   const fences = (trimmed.match(/```/g) ?? []).length;
   if (fences % 2 === 1) return true;

@@ -11,36 +11,22 @@ import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
 import { withPropagatedJobId } from "./job-id";
+import { isStaleWorkJobRunning, isWorkJobTerminal } from "./staleness";
 import {
   getWorkJob,
+  getWorkJobDurable,
   saveWorkJob,
   touchWorkJob,
   type WorkJobRecord,
 } from "./store";
 
-/**
- * Just over route maxDuration (300s). If a serverless after() is killed,
- * the job stays `running` with an old updatedAt — reclaim after this window.
- */
-export const WORK_JOB_STALE_RUNNING_MS = 310_000;
-
-export function isStaleWorkJobRunning(
-  job: WorkJobRecord,
-  nowMs = Date.now(),
-): boolean {
-  if (job.status !== "running") return false;
-  const updatedMs = new Date(job.updatedAt).getTime();
-  if (Number.isNaN(updatedMs)) return true;
-  return nowMs - updatedMs > WORK_JOB_STALE_RUNNING_MS;
-}
-
-export function isWorkJobTerminal(status: WorkJobRecord["status"]): boolean {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "awaiting_confirmation"
-  );
-}
+export {
+  isStaleWorkJobQueued,
+  isStaleWorkJobRunning,
+  isWorkJobTerminal,
+  WORK_JOB_STALE_QUEUED_MS,
+  WORK_JOB_STALE_RUNNING_MS,
+} from "./staleness";
 
 function readAttachmentIds(
   metadata: Readonly<Record<string, unknown>> | null | undefined,
@@ -172,7 +158,7 @@ export async function executeWorkJob(
     );
   }
 
-  const existing = getWorkJob(jobId, userId);
+  const existing = await getWorkJobDurable(jobId, userId);
   if (!existing) {
     throw new Error("job_not_found");
   }
@@ -593,11 +579,13 @@ export async function executeWorkJob(
     // (user-facing error stays soft-retry; raw cause stays in developer-log / diagnostic).
     const failureClass = /timeout|timed[\s_-]?out|ETIMEDOUT|aborted/i.test(raw)
       ? "timeout"
-      : /work_job_claim_unavailable|service.?role|supabase/i.test(raw)
-        ? "persistence"
-        : /openai|rate.?limit|429/i.test(raw)
-          ? "external_ai"
-          : "work_job_exception";
+      : /output_token_limit|incomplete.*max_output_tokens|AI応答が上限/i.test(raw)
+        ? "output_token_limit"
+        : /work_job_claim_unavailable|service.?role|supabase/i.test(raw)
+          ? "persistence"
+          : /openai|rate.?limit|429/i.test(raw)
+            ? "external_ai"
+            : "work_job_exception";
     try {
       return await saveWorkJob({
         ...existing,

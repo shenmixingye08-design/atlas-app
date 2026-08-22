@@ -14,8 +14,10 @@ import type { ExternalServiceConnection } from "../external-services/types";
 import { createDefaultConnection } from "../external-services/registry";
 import {
   ensureExternalAuthHydrated,
+  invalidateExternalAuthHydration,
   schedulePersistExternalAuth,
 } from "../external-services/durable";
+import { reloadDropboxAuthFromDurable } from "./auth-reload";
 import { safeOAuthLog } from "@/lib/integrations/oauth-crypto";
 
 import { DROPBOX_OAUTH_SCOPES } from "./config";
@@ -132,6 +134,7 @@ export async function disconnectDropboxAccount(
 
   saveExternalServiceConnection(userId, disconnected);
   await deleteDropboxAuthFromSupabase(userId);
+  invalidateExternalAuthHydration(userId);
   schedulePersistExternalAuth(userId);
   return disconnected;
 }
@@ -163,7 +166,9 @@ export async function getDropboxAccessToken(
   userId: string,
 ): Promise<string | null> {
   await ensureExternalAuthHydrated(userId);
-  const credentials = getExternalServiceCredentials(userId, "dropbox");
+  const durable = await reloadDropboxAuthFromDurable(userId);
+  const credentials =
+    durable?.credentials ?? getExternalServiceCredentials(userId, "dropbox");
   if (!credentials) return null;
 
   const expiresAtMs = new Date(credentials.expiresAt).getTime();

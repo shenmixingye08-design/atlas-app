@@ -6,6 +6,7 @@ import {
   ensureWorkMemoryHydrated,
   persistWorkMemoryNow,
   schedulePersistWorkMemory,
+  WorkMemoryHydrationError,
 } from "./durable";
 import {
   appendStoredCandidate,
@@ -341,7 +342,10 @@ export async function confirmWorkMemoryCandidate(
   userId: string,
   candidateId: string,
 ): Promise<WorkMemoryRecord | null> {
-  await ensureWorkMemoryHydrated(userId);
+  const hydrated = await ensureWorkMemoryHydrated(userId);
+  if (!hydrated.ok) {
+    throw new WorkMemoryHydrationError();
+  }
 
   const already = findMemoryConfirmedFromCandidate(userId, candidateId);
   if (already) {
@@ -401,7 +405,10 @@ export async function rejectWorkMemoryCandidate(
   userId: string,
   candidateId: string,
 ): Promise<boolean> {
-  await ensureWorkMemoryHydrated(userId);
+  const hydrated = await ensureWorkMemoryHydrated(userId);
+  if (!hydrated.ok) {
+    throw new WorkMemoryHydrationError();
+  }
   const candidate = findStoredCandidate(userId, candidateId);
   if (!candidate || candidate.userId !== userId) return false;
   const removed = deleteStoredCandidate(userId, candidateId);
