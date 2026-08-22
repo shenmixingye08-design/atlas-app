@@ -53,7 +53,7 @@ export function LandingHeroSection() {
           </p>
 
           <p className="mx-auto mt-4 max-w-[520px] text-sm font-medium leading-7 text-[#74172A] sm:text-base lg:mx-0">
-            {PRODUCT_DEFINITION}です。
+            {PRODUCT_DEFINITION}です。あなたの仕事を覚えて、次から終わらせるAI秘書。
           </p>
 
           <p className="mx-auto mt-3 max-w-[520px] text-sm leading-7 text-[#75686B] lg:mx-0">

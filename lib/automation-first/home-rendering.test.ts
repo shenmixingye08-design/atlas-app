@@ -109,6 +109,8 @@ describe("MINERVOT home rendering", () => {
     expect(html).toContain(HOME_OTHER_WORK_CTA);
     expect(html).toContain("まず毎日のX投稿を任せてみましょう");
     expect(html).toContain("使うほど、毎回の細かい指示が減る");
+    expect(html).toContain("一度頼む");
+    expect(html).toContain("好みを覚える");
     expect(html).not.toContain("今すぐ1件任せる");
     expect(html).not.toContain("繰り返し任せる");
     expect(html.indexOf(HOME_X_AUTOMATION_CTA)).toBeLessThan(
@@ -142,6 +144,7 @@ describe("MINERVOT home rendering", () => {
     expect(html).toContain(HOME_OTHER_WORK_CTA);
     expect(html).toContain("今日のMINERVOT");
     expect(html).toContain("対応が必要");
+    expect(html).toContain("MINERVOTに任せた仕事");
     expect(html.indexOf("毎日のX投稿を、一度頼んだら次から任せます")).toBeLessThan(
       html.indexOf("今日のMINERVOT"),
     );

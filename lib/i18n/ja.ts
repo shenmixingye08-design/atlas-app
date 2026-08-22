@@ -104,7 +104,7 @@ export const ui = {
     welcomeHeadline: "専属AI秘書が、今日の面倒な仕事を先に進めておきました。",
     welcomeHint: "あなたが働いている間も、MINERVOTは仕事を覚えて続けます。",
     subtitle:
-      "一度頼んだ仕事を、次から自動で終わらせるAI秘書です。最初の仕事は、毎日のX投稿です。",
+      "あなたの仕事を覚えて、次から終わらせるAI秘書です。一度直せば、次から同じ説明を減らせます。",
     todaysAutomations: "今日の自動化",
     todaysAutomationsHint: "今日スケジュールされているAI秘書の仕事です。",
     todaysAutomationsEmpty: "今日予定の自動化はまだありません。習慣を登録して始めましょう。",
@@ -3210,7 +3210,8 @@ export const ui = {
     executionLog: "実行ログ",
     memorySection: "Memory",
     actions: {
-      rerun: "もう一度実行",
+      rerun: "もう一度",
+      rerunSame: "同じ設定で実行",
       template: "テンプレート化",
       duplicate: "複製",
       delete: "削除",

@@ -4,6 +4,11 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { AttentionCard } from "@/components/automation-first/attention-card";
+import {
+  EntrustedWorkList,
+  MeasuredValueMetrics,
+  NewUserValueSteps,
+} from "@/components/automation-first/entrusted-work";
 import { ErrorState } from "@/components/automation-first/error-state";
 import { HomePrimaryActions } from "@/components/automation-first/home-primary-actions";
 import { SectionHeader } from "@/components/automation-first/page-header";
@@ -49,6 +54,8 @@ import {
   HOME_X_AUTOMATION_SUPPORT,
   MEMORY_OUTCOME,
 } from "@/lib/product-focus/messaging";
+import { buildEntrustedWorkCards } from "@/lib/value-moat/home-entrusted";
+import { buildValueMetrics } from "@/lib/value-moat/value-metrics";
 
 export type AutomationFirstHomeProps = {
   automations: Automation[];
@@ -304,6 +311,40 @@ export function AutomationFirstHome({
 
   const nextRun = opsSummary?.nextRun ?? null;
 
+  const entrustedCards = useMemo(
+    () =>
+      buildEntrustedWorkCards({
+        automations: automations.map((automation) => ({
+          id: automation.id,
+          name: automation.name,
+          enabled: automation.enabled,
+          nextRun: automation.nextRun,
+          scheduleLabel:
+            automation.schedule && "label" in automation.schedule
+              ? automation.schedule.label
+              : null,
+        })),
+        recentCompleted: recentCompleted.map((item) => ({
+          id: item.id,
+          title: item.title,
+          completedAt: item.meta || null,
+          href: item.href,
+        })),
+      }),
+    [automations, recentCompleted],
+  );
+
+  const valueMetrics = useMemo(
+    () =>
+      opsSummary
+        ? buildValueMetrics({
+            completedThisMonth: weeklyStats.completedJobs,
+            autoRunsThisMonth: weeklyStats.autoStepCount,
+          })
+        : [],
+    [opsSummary, weeklyStats.autoStepCount, weeklyStats.completedJobs],
+  );
+
   useEffect(() => {
     trackAutomationFirstEvent("home_viewed", {
       automations: automations.length,
@@ -484,6 +525,8 @@ export function AutomationFirstHome({
       runningJobs.length > 0 ||
       nextRunCard ||
       recentSection ||
+      entrustedCards.length > 0 ||
+      valueMetrics.length > 0 ||
       (opsSummary && hasMeaningfulWeeklyStats(weeklyStats)),
   );
 
@@ -522,9 +565,12 @@ export function AutomationFirstHome({
       })()}
 
       {!isReturningUser ? (
-        <p className="text-center text-[length:var(--text-body)] leading-[var(--leading-body)] text-[var(--text-secondary)]">
-          まず毎日のX投稿を任せてみましょう。{MEMORY_OUTCOME}。
-        </p>
+        <>
+          <NewUserValueSteps />
+          <p className="text-center text-[length:var(--text-body)] leading-[var(--leading-body)] text-[var(--text-secondary)]">
+            まず毎日のX投稿を任せてみましょう。{MEMORY_OUTCOME}。
+          </p>
+        </>
       ) : (
         <p className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
           {MEMORY_OUTCOME}。
@@ -554,6 +600,10 @@ export function AutomationFirstHome({
           >
             今日のMINERVOT
           </h2>
+          <EntrustedWorkList cards={entrustedCards} />
+          {valueMetrics.length > 0 ? (
+            <MeasuredValueMetrics metrics={valueMetrics} />
+          ) : null}
           {attentionSection}
           <RunningStepsPanel
             heading="h3"
