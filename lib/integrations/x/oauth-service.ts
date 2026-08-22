@@ -16,9 +16,12 @@ import {
   schedulePersistExternalAuth,
 } from "../external-services/durable";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
+import { safeLog } from "@/lib/security/redact";
 
+import { reloadXAuthFromDurable } from "./auth-reload";
 import { X_OAUTH_SCOPES } from "./config";
 import { parseXGrantedScopes } from "./scopes";
+import { fingerprintSecret } from "./token-fingerprint";
 import {
   deleteXAuthFromSupabase,
   persistXAuthToSupabase,
@@ -99,6 +102,26 @@ export async function completeXAccountOAuth(
 
   saveExternalServiceConnection(userId, connection);
   await persistXAuthDurable(userId, connection);
+
+  const callbackAccessTokenFingerprint = fingerprintSecret(token.access_token);
+  const reloaded = await reloadXAuthFromDurable(userId);
+  const persistedAccessTokenFingerprint = fingerprintSecret(
+    reloaded?.credentials.accessToken,
+  );
+  safeLog("info", "[X OAuth] callback persist fingerprints", {
+    callbackAccessTokenFingerprint,
+    persistedAccessTokenFingerprint,
+    fingerprintsMatch:
+      Boolean(callbackAccessTokenFingerprint) &&
+      callbackAccessTokenFingerprint === persistedAccessTokenFingerprint,
+    refreshPresent: Boolean(token.refresh_token),
+    grantedScopes,
+    expiresAt,
+    xAccountId: profile.username,
+    providerUserIdPresent: Boolean(profile.id),
+    durableReloadApplied: Boolean(reloaded),
+  });
+
   return connection;
 }
 

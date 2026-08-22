@@ -67,6 +67,10 @@ function normalizeKey(key: string): string {
 export function isSensitiveLogKey(key: string): boolean {
   const normalized = normalizeKey(key);
   if (SAFE_DEBUG_KEYS.has(normalized)) return false;
+  // SHA-256 token fingerprints are comparison ids, not secrets.
+  if (normalized.endsWith("fingerprint") || normalized.endsWith("_fp")) {
+    return false;
+  }
   if (SENSITIVE_KEY_EXACT.test(normalized)) return true;
   if (SENSITIVE_KEY_EMBEDDED.test(normalized)) return true;
   return false;

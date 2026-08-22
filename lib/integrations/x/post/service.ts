@@ -9,6 +9,7 @@ import { ensureExternalAuthHydrated } from "@/lib/integrations/external-services
 import {
   getExternalServiceCredentials,
 } from "@/lib/integrations/external-services/credential-store";
+import { reloadXAuthFromDurable } from "@/lib/integrations/x/auth-reload";
 import {
   getXAccountAccessToken,
   getXAccountAccessTokenResult,
@@ -93,6 +94,9 @@ async function resolveXPostAccess(input: {
   // hydration would wrongly report "x_not_connected" and short-circuit a user
   // who actually has valid tokens persisted in Supabase.
   await ensureExternalAuthHydrated(input.userId);
+  // Always replace X memory from durable so a 60s hydration TTL cannot
+  // keep a pre-reconnect token after OAuth completed on another isolate.
+  await reloadXAuthFromDurable(input.userId);
 
   const connection = getExternalServiceConnection(input.userId, "x");
   if (connection.status !== "connected") {
