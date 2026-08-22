@@ -10,7 +10,9 @@ import {
   replaceUsageDurableState,
   serializeUsageClaimKeys,
   serializeUsageSnapshots,
+  serializeMonthlyAiAggregates,
 } from "./store";
+import type { MonthlyAiAggregateRow } from "./monthly-aggregate";
 import type { AiUsageEvent, UsageSnapshot } from "./types";
 
 /** Global billing usage ledger in atlas_user_state (service role only). */
@@ -23,6 +25,7 @@ type BillingUsageDurablePayload = {
   snapshots: Record<string, UsageSnapshot>;
   events: AiUsageEvent[];
   claimKeys?: string[];
+  monthlyAggregates?: Record<string, MonthlyAiAggregateRow>;
 };
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -35,6 +38,7 @@ function buildPayload(): BillingUsageDurablePayload {
     snapshots: serializeUsageSnapshots(),
     events: listAiUsageEvents().slice(-5000),
     claimKeys: serializeUsageClaimKeys(),
+    monthlyAggregates: serializeMonthlyAiAggregates(),
   };
 }
 
@@ -89,6 +93,7 @@ export async function ensureBillingUsageHydrated(): Promise<void> {
       snapshots: payload.snapshots,
       events: Array.isArray(payload.events) ? payload.events : [],
       claimKeys: Array.isArray(payload.claimKeys) ? payload.claimKeys : [],
+      monthlyAggregates: payload.monthlyAggregates,
     });
   }
 }

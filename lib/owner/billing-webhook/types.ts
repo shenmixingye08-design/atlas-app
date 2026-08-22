@@ -11,6 +11,8 @@ export type StripeWebhookLogEntry = {
   planId: string | null;
   message: string;
   processedAt: string;
+  diagnosticId: string | null;
+  failureCode: string | null;
 };
 
 export type StripeWebhookMonitoringSnapshot = {
@@ -19,11 +21,15 @@ export type StripeWebhookMonitoringSnapshot = {
   successRatePercent: number | null;
   /** Null when this process cannot confirm failures (do not show 0). */
   failureCount: number | null;
+  successCount: number | null;
   totalCount: number;
   lastSyncedAt: string | null;
   recentWebhooks: readonly StripeWebhookLogEntry[];
   generatedAt: string;
-  availability: "ok" | "empty" | "unavailable";
+  availability: "ok" | "empty" | "unavailable" | "failed" | "stale";
   statusMessage: string | null;
+  /** Always false — webhook telemetry is monitoring, not billing SoT. */
   authoritative: boolean;
+  durable: boolean;
+  lastKnownAt: string | null;
 };

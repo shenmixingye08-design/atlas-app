@@ -10,40 +10,63 @@ import {
 } from "../stripe/config";
 
 import type { OwnerBillingMetrics } from "./types";
+import { paginateStripeList } from "./stripe-paginate";
 
 export type StripeSubscriptionLiveMetrics = {
   connected: boolean;
-  availability: "ok" | "disconnected" | "failed";
+  availability: "ok" | "disconnected" | "failed" | "incomplete";
   statusMessage: string | null;
   fetchedAt: string | null;
   metrics: OwnerBillingMetrics | null;
-  cancelScheduledCount: number;
-  paymentFailureCount: number;
+  cancelScheduledCount: number | null;
+  paymentFailureCount: number | null;
+};
+
+type StripeSubscriptionClient = {
+  subscriptions: {
+    list: (params: Record<string, unknown>) => Promise<{
+      data: Array<{
+        id: string;
+        status: string;
+        cancel_at_period_end?: boolean;
+        items: {
+          data: Array<{
+            price?: { id?: string } | string;
+          }>;
+        };
+      }>;
+      has_more: boolean;
+    }>;
+  };
 };
 
 /**
  * Live paid-subscription counts from Stripe (survives serverless cold starts).
  * Does not invent demo numbers when disconnected.
+ * Free users are NOT inferred from unmapped Stripe subscriptions.
  */
-export async function fetchStripeSubscriptionLiveMetrics(): Promise<StripeSubscriptionLiveMetrics> {
+export async function fetchStripeSubscriptionLiveMetrics(
+  clientOverride?: StripeSubscriptionClient | null,
+): Promise<StripeSubscriptionLiveMetrics> {
   const baseDisconnected = (): StripeSubscriptionLiveMetrics => ({
     connected: false,
     availability: "disconnected",
     statusMessage: "Stripe未接続",
     fetchedAt: null,
     metrics: null,
-    cancelScheduledCount: 0,
-    paymentFailureCount: 0,
+    cancelScheduledCount: null,
+    paymentFailureCount: null,
   });
 
-  if (!isStripeConfigured()) {
+  if (!clientOverride && !isStripeConfigured()) {
     return {
       ...baseDisconnected(),
       statusMessage: "本番キーとWebhook設定が必要です",
     };
   }
 
-  const stripe = getStripeClient();
+  const stripe =
+    clientOverride ?? (getStripeClient() as StripeSubscriptionClient | null);
   if (!stripe) return baseDisconnected();
 
   const fetchedAt = new Date().toISOString();
@@ -55,63 +78,69 @@ export async function fetchStripeSubscriptionLiveMetrics(): Promise<StripeSubscr
       premium: 0,
     };
     let cancelScheduledCount = 0;
-    let freeSubscribers = 0;
+    let unmappedActive = 0;
     let churnedSubscribers = 0;
-    let startingAfter: string | undefined;
 
-    for (let page = 0; page < 20; page += 1) {
-      const list = await stripe.subscriptions.list({
+    const pages = await paginateStripeList((startingAfter) =>
+      stripe.subscriptions.list({
         status: "all",
         limit: 100,
         starting_after: startingAfter,
         expand: ["data.items.data.price"],
-      });
+      }),
+    );
 
-      for (const sub of list.data) {
-        const priceId =
-          sub.items.data[0]?.price && typeof sub.items.data[0].price === "object"
-            ? sub.items.data[0].price.id
-            : typeof sub.items.data[0]?.price === "string"
-              ? sub.items.data[0].price
-              : null;
-        const planId =
-          resolvePlanIdFromStripePrice(priceId) ??
-          (["light", "standard", "premium"] as const).find(
-            (id) => getStripePriceIdForPlan(id) === priceId,
-          ) ??
-          null;
+    for (const sub of pages.items) {
+      const priceId =
+        sub.items.data[0]?.price && typeof sub.items.data[0].price === "object"
+          ? sub.items.data[0].price.id ?? null
+          : typeof sub.items.data[0]?.price === "string"
+            ? sub.items.data[0].price
+            : null;
+      const planId =
+        resolvePlanIdFromStripePrice(priceId) ??
+        (["light", "standard", "premium"] as const).find(
+          (id) => getStripePriceIdForPlan(id) === priceId,
+        ) ??
+        null;
 
-        if (sub.status === "canceled") {
-          churnedSubscribers += 1;
-          continue;
-        }
-
-        if (sub.status === "incomplete" || sub.status === "incomplete_expired") {
-          continue;
-        }
-
-        if (!planId) {
-          // Unmapped price — count as free/unknown only when active-like
-          if (sub.status === "active" || sub.status === "trialing") {
-            freeSubscribers += 1;
-          }
-          continue;
-        }
-
-        if (
-          (sub.status === "active" || sub.status === "trialing") &&
-          planId &&
-          planId !== "free"
-        ) {
-          counts[planId] += 1;
-          if (sub.cancel_at_period_end) {
-            cancelScheduledCount += 1;
-          }
-        }
+      if (sub.status === "canceled") {
+        churnedSubscribers += 1;
+        continue;
       }
 
-      if (!list.has_more || list.data.length === 0) break;
-      startingAfter = list.data[list.data.length - 1]?.id;
+      if (sub.status === "incomplete" || sub.status === "incomplete_expired") {
+        continue;
+      }
+
+      if (!planId) {
+        if (sub.status === "active" || sub.status === "trialing") {
+          unmappedActive += 1;
+        }
+        continue;
+      }
+
+      if (
+        (sub.status === "active" || sub.status === "trialing") &&
+        planId !== "free"
+      ) {
+        counts[planId] += 1;
+        if (sub.cancel_at_period_end) {
+          cancelScheduledCount += 1;
+        }
+      }
+    }
+
+    if (!pages.complete) {
+      return {
+        connected: true,
+        availability: "incomplete",
+        statusMessage: "Stripe集計が上限に達したため未完了",
+        fetchedAt,
+        metrics: null,
+        cancelScheduledCount: null,
+        paymentFailureCount: null,
+      };
     }
 
     const planBreakdown = (["light", "standard", "premium"] as const).map(
@@ -137,15 +166,18 @@ export async function fetchStripeSubscriptionLiveMetrics(): Promise<StripeSubscr
     return {
       connected: true,
       availability: "ok",
-      statusMessage: null,
+      statusMessage:
+        unmappedActive > 0
+          ? `allowlist外のactive/trialingが${unmappedActive}件あります（Paidには含めていません）`
+          : null,
       fetchedAt,
       cancelScheduledCount,
-      paymentFailureCount: 0,
+      paymentFailureCount: null,
       metrics: {
         monthlyRevenueJpy: mrrJpy,
         mrrJpy,
         paidSubscribers,
-        freeSubscribers,
+        freeSubscribers: 0,
         churnedSubscribers,
         planBreakdown,
         stripeConnected: true,
@@ -158,8 +190,8 @@ export async function fetchStripeSubscriptionLiveMetrics(): Promise<StripeSubscr
       statusMessage: "取得失敗",
       fetchedAt,
       metrics: null,
-      cancelScheduledCount: 0,
-      paymentFailureCount: 0,
+      cancelScheduledCount: null,
+      paymentFailureCount: null,
     };
   }
 }

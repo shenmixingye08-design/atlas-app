@@ -5,7 +5,7 @@ import { OwnerRefreshControl } from "@/components/owner/owner-refresh-control";
 import { OwnerShell } from "@/components/owner/owner-shell";
 import { requireAtlasOwner } from "@/lib/auth/require-atlas-owner";
 import { getApiUsageMonitoringSnapshot } from "@/lib/owner/api-usage/service";
-import { getStripeWebhookMonitoringSnapshot } from "@/lib/owner/billing-webhook/service";
+import { getHydratedStripeWebhookMonitoringSnapshot } from "@/lib/owner/billing-webhook/service";
 import { getOwnerDashboardSnapshot } from "@/lib/owner/service";
 
 // Always render fresh so the manual/auto refresh reflects the latest live
@@ -16,7 +16,7 @@ export default async function OwnerPage() {
   await requireAtlasOwner();
   const snapshot = await getOwnerDashboardSnapshot();
   const apiUsage = getApiUsageMonitoringSnapshot();
-  const billingWebhook = getStripeWebhookMonitoringSnapshot();
+  const billingWebhook = await getHydratedStripeWebhookMonitoringSnapshot();
 
   return (
     <OwnerShell>

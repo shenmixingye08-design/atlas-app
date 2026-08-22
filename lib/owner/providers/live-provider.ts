@@ -1,20 +1,31 @@
 import "server-only";
 
-import {
-  summarizeAiUsageEvents,
-} from "@/lib/billing/usage/meter";
 import { listAiUsageEvents } from "@/lib/billing/usage/store";
 import { getOwnerBillingMetrics } from "@/lib/billing/analytics/owner-metrics";
 import { hydrateSubscriptionsFromSupabase } from "@/lib/billing/subscriptions/store";
 import { fetchStripeLiveMonthMetrics } from "@/lib/billing/analytics/stripe-live-metrics";
 import { fetchStripeSubscriptionLiveMetrics } from "@/lib/billing/analytics/stripe-subscription-metrics";
 import {
+  loadOwnerLastKnownGood,
+  mergeOwnerLastKnownGood,
+  persistOwnerLastKnownGood,
+} from "@/lib/billing/analytics/last-known-good";
+import {
+  loadMonthlyAiAggregatesFromDurable,
+  summarizeMonthlyAiAggregates,
+} from "@/lib/billing/usage/monthly-aggregate";
+import { getUsageMonthKey } from "@/lib/billing/usage/period";
+import {
   MODEL_PRICING_TABLE_UPDATED_AT,
   MODEL_PRICING_TABLE_VERSION,
 } from "@/lib/ai/model-catalog";
 import { getMonthlyCostSavingsSummary } from "@/lib/cost-optimization/cost-savings-tracker";
 import { listAuditLogEntries } from "@/lib/owner/audit-log";
-import { buildStripeWebhookMonitoringSnapshot } from "@/lib/owner/billing-webhook/telemetry";
+import {
+  buildStripeWebhookMonitoringSnapshot,
+  ensureWebhookTelemetryHydrated,
+} from "@/lib/owner/billing-webhook/telemetry";
+import { fetchRegisteredUserCount } from "@/lib/owner/registered-users";
 import { listApiUsageRecords } from "@/lib/owner/api-usage/store";
 import { listPopularityUsageEvents } from "@/lib/owner/popularity-ranking/store";
 import { buildPopularityRankingSnapshot } from "@/lib/owner/popularity-ranking/engine";
@@ -52,16 +63,24 @@ function moneyMetric(input: {
   stripeMode: OwnerStripeMode | null;
   statusMessage: string | null;
   updateFailed?: boolean;
+  lastKnownAmount?: number | null;
+  lastKnownAt?: string | null;
+  isLastKnownGood?: boolean;
 }): OwnerCurrencyMetric {
   const isJpy = input.currency.toLowerCase() === "jpy";
   const amount = input.availability === "ok" ? input.amount : null;
+  const lastKnown = input.lastKnownAmount ?? null;
   return {
     label: input.label,
     amountUsd: amount === null ? null : isJpy ? null : amount,
     amountJpy: amount === null ? null : isJpy ? Math.round(amount) : null,
+    lastKnownAmountUsd: lastKnown === null ? null : isJpy ? null : lastKnown,
+    lastKnownAmountJpy: lastKnown === null ? null : isJpy ? Math.round(lastKnown) : null,
+    lastKnownAt: input.lastKnownAt ?? null,
     source: input.source,
     availability: input.availability,
     isEstimated: false,
+    isLastKnownGood: input.isLastKnownGood ?? false,
     periodLabel: input.periodLabel,
     dataSourceLabel: input.dataSourceLabel,
     lastUpdatedAt: input.lastUpdatedAt,
@@ -73,18 +92,25 @@ function moneyMetric(input: {
 
 function countMetric(input: {
   label: string;
-  value: number;
+  value: number | null;
   availability?: OwnerMetricAvailability;
   periodLabel: string;
   dataSourceLabel: string;
   lastUpdatedAt: string | null;
   stripeMode: OwnerStripeMode | null;
   statusMessage?: string | null;
+  lastKnownValue?: number | null;
+  lastKnownAt?: string | null;
+  isLastKnownGood?: boolean;
 }): OwnerCountMetric {
+  const availability = input.availability ?? "ok";
   return {
     label: input.label,
-    value: input.value,
-    availability: input.availability ?? "ok",
+    value: availability === "ok" ? input.value : null,
+    lastKnownValue: input.lastKnownValue ?? null,
+    lastKnownAt: input.lastKnownAt ?? null,
+    isLastKnownGood: input.isLastKnownGood ?? false,
+    availability,
     periodLabel: input.periodLabel,
     dataSourceLabel: input.dataSourceLabel,
     lastUpdatedAt: input.lastUpdatedAt,
@@ -167,6 +193,10 @@ function buildProfit(input: {
       availability: "incomplete",
       amountUsd: null,
       amountJpy: null,
+      lastKnownAmountUsd: null,
+      lastKnownAmountJpy: null,
+      lastKnownAt: null,
+      isLastKnownGood: false,
       provisionalDeltaUsd,
       provisionalDeltaJpy,
       statusMessage: "一部費用未取得のため利益未確定",
@@ -186,6 +216,10 @@ function buildProfit(input: {
       availability: "incomplete",
       amountUsd: null,
       amountJpy: null,
+      lastKnownAmountUsd: null,
+      lastKnownAmountJpy: null,
+      lastKnownAt: null,
+      isLastKnownGood: false,
       provisionalDeltaJpy: Math.round(netMajor),
       provisionalDeltaUsd: null,
       statusMessage:
@@ -209,6 +243,10 @@ function buildProfit(input: {
     availability: "ok",
     amountUsd: profitUsd,
     amountJpy: null,
+    lastKnownAmountUsd: null,
+    lastKnownAmountJpy: null,
+    lastKnownAt: null,
+    isLastKnownGood: false,
     provisionalDeltaUsd: null,
     provisionalDeltaJpy: null,
     statusMessage: null,
@@ -227,29 +265,20 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
   async getDashboardSnapshot(now = new Date()): Promise<OwnerDashboardSnapshot> {
     const periodLabel = formatOwnerMonthLabel(now);
     const monthKey = formatOwnerMonthKey(now);
+    const usageMonth = getUsageMonthKey(now);
     await ensureBillingUsageHydrated();
     await hydrateSubscriptionsFromSupabase();
 
     const localBilling = getOwnerBillingMetrics(now);
-    const [stripe, stripeSubs] = await Promise.all([
-      fetchStripeLiveMonthMetrics(now),
-      fetchStripeSubscriptionLiveMetrics(),
-    ]);
-
-    const billing =
-      stripeSubs.availability === "ok" && stripeSubs.metrics
-        ? {
-            ...stripeSubs.metrics,
-            // Keep local payment-failure count when Stripe list has none
-            // (webhook history is still the source for failures).
-          }
-        : localBilling;
-
-    const cancelScheduled =
-      stripeSubs.availability === "ok"
-        ? stripeSubs.cancelScheduledCount
-        : localBilling.cancelScheduledCount;
-    const paymentFailures = localBilling.paymentFailureCount;
+    const lastKnown = await loadOwnerLastKnownGood();
+    const [stripe, stripeSubs, registered, aiDurable, webhookDurableReady] =
+      await Promise.all([
+        fetchStripeLiveMonthMetrics(now),
+        fetchStripeSubscriptionLiveMetrics(),
+        fetchRegisteredUserCount(),
+        loadMonthlyAiAggregatesFromDurable(usageMonth),
+        ensureWebhookTelemetryHydrated(),
+      ]);
 
     const stripeMode = stripe.mode ?? localBilling.stripeMode;
     const modeText = modeLabel(stripeMode);
@@ -260,75 +289,130 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
     const stripeAvailability: OwnerMetricAvailability =
       stripe.availability === "ok"
         ? "ok"
-        : stripe.availability === "failed"
-          ? "failed"
-          : "disconnected";
+        : stripe.availability === "incomplete"
+          ? "incomplete"
+          : stripe.availability === "failed"
+            ? lastKnown?.stripeMonth
+              ? "stale"
+              : "failed"
+            : lastKnown?.stripeMonth
+              ? "stale"
+              : "disconnected";
 
+    const stripeIsCurrent = stripeAvailability === "ok";
+    const stripeLkg = lastKnown?.stripeMonth;
     const stripeStatus =
       stripeAvailability === "ok"
         ? null
-        : stripe.statusMessage ??
-          (stripeAvailability === "failed" ? "取得失敗" : "Stripe未接続");
+        : stripeAvailability === "incomplete"
+          ? stripe.statusMessage ?? "Stripe集計が上限に達したため未完了"
+          : stripeAvailability === "stale"
+            ? `前回値（最終成功同期 ${stripeLkg?.fetchedAt ?? "不明"}）。現在値ではありません`
+            : stripe.statusMessage ??
+              (stripe.availability === "failed" ? "取得失敗" : "Stripe未接続");
+
+    const billing =
+      stripeSubs.availability === "ok" && stripeSubs.metrics
+        ? stripeSubs.metrics
+        : lastKnown?.stripeSubs
+          ? {
+              monthlyRevenueJpy: lastKnown.stripeSubs.mrrJpy,
+              mrrJpy: lastKnown.stripeSubs.mrrJpy,
+              paidSubscribers: lastKnown.stripeSubs.paidSubscribers,
+              freeSubscribers: 0,
+              churnedSubscribers: lastKnown.stripeSubs.churnedSubscribers,
+              planBreakdown: lastKnown.stripeSubs.planBreakdown.map((row) => ({
+                planId: row.planId as "light" | "standard" | "premium",
+                planName: row.planName,
+                monthlyPriceJpy: row.monthlyPriceJpy,
+                activeSubscribers: row.activeSubscribers,
+                mrrJpy: row.mrrJpy,
+              })),
+              stripeConnected: true,
+            }
+          : {
+              ...localBilling,
+              paidSubscribers: 0,
+              freeSubscribers: 0,
+            };
 
     const revenue = moneyMetric({
       label: "今月売上",
-      amount: stripe.grossRevenue,
+      amount: stripeIsCurrent ? stripe.grossRevenue : null,
       currency: stripe.currency,
       availability: stripeAvailability,
       source: "stripe",
       periodLabel: periodWithMode,
       dataSourceLabel: stripeSourceLabel,
-      lastUpdatedAt: stripe.fetchedAt,
+      lastUpdatedAt: stripeIsCurrent ? stripe.fetchedAt : stripeLkg?.fetchedAt ?? null,
       stripeMode,
       statusMessage: stripeStatus,
-      updateFailed: stripe.updateFailed,
+      updateFailed: stripe.updateFailed || stripeAvailability === "stale",
+      lastKnownAmount: stripeLkg?.grossRevenue ?? null,
+      lastKnownAt: stripeLkg?.fetchedAt ?? null,
+      isLastKnownGood: stripeAvailability === "stale",
     });
 
     const refunds = moneyMetric({
       label: "返金額",
-      amount: stripe.refunds,
+      amount: stripeIsCurrent ? stripe.refunds : null,
       currency: stripe.currency,
       availability: stripeAvailability,
       source: "stripe",
       periodLabel: periodWithMode,
       dataSourceLabel: stripeSourceLabel,
-      lastUpdatedAt: stripe.fetchedAt,
+      lastUpdatedAt: stripeIsCurrent ? stripe.fetchedAt : stripeLkg?.fetchedAt ?? null,
       stripeMode,
       statusMessage: stripeStatus,
-      updateFailed: stripe.updateFailed,
+      updateFailed: stripe.updateFailed || stripeAvailability === "stale",
+      lastKnownAmount: stripeLkg?.refunds ?? null,
+      lastKnownAt: stripeLkg?.fetchedAt ?? null,
+      isLastKnownGood: stripeAvailability === "stale",
     });
 
     const stripeFees = moneyMetric({
       label: "Stripe手数料",
-      amount: stripe.fees,
+      amount: stripeIsCurrent ? stripe.fees : null,
       currency: stripe.currency,
       availability: stripeAvailability,
       source: "stripe",
       periodLabel: periodWithMode,
       dataSourceLabel: stripeSourceLabel,
-      lastUpdatedAt: stripe.fetchedAt,
+      lastUpdatedAt: stripeIsCurrent ? stripe.fetchedAt : stripeLkg?.fetchedAt ?? null,
       stripeMode,
       statusMessage: stripeStatus,
-      updateFailed: stripe.updateFailed,
+      updateFailed: stripe.updateFailed || stripeAvailability === "stale",
+      lastKnownAmount: stripeLkg?.fees ?? null,
+      lastKnownAt: stripeLkg?.fetchedAt ?? null,
+      isLastKnownGood: stripeAvailability === "stale",
     });
 
     const netRevenue = moneyMetric({
       label: "純売上",
-      amount: stripe.netRevenue,
+      amount: stripeIsCurrent ? stripe.netRevenue : null,
       currency: stripe.currency,
       availability: stripeAvailability,
       source: "stripe",
       periodLabel: periodWithMode,
       dataSourceLabel: "売上 − 返金 − Stripe手数料",
-      lastUpdatedAt: stripe.fetchedAt,
+      lastUpdatedAt: stripeIsCurrent ? stripe.fetchedAt : stripeLkg?.fetchedAt ?? null,
       stripeMode,
       statusMessage: stripeStatus,
-      updateFailed: stripe.updateFailed,
+      updateFailed: stripe.updateFailed || stripeAvailability === "stale",
+      lastKnownAmount: stripeLkg?.netRevenue ?? null,
+      lastKnownAt: stripeLkg?.fetchedAt ?? null,
+      isLastKnownGood: stripeAvailability === "stale",
     });
 
     const aiEvents = listAiUsageEvents();
-    const aiBreakdown = summarizeAiUsageEvents(aiEvents, now);
-    const monthAi = aiBreakdown.month;
+    const memoryMonth = summarizeMonthlyAiAggregates(usageMonth);
+    const monthAi = aiDurable.ready && aiDurable.summary
+      ? aiDurable.summary
+      : memoryMonth;
+    const aiFromAggregate =
+      monthAi.requests > 0 ||
+      monthAi.estimatedCostUsd > 0 ||
+      (aiDurable.ready && aiDurable.rows.length > 0);
     const apiUsageOpenAiUsd = listApiUsageRecords()
       .filter(
         (row) =>
@@ -338,57 +422,93 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
     const recordedOpenAiUsd =
       monthAi.estimatedCostUsd > 0
         ? monthAi.estimatedCostUsd
-        : apiUsageOpenAiUsd;
-    const hasAiData = aiEvents.length > 0 || apiUsageOpenAiUsd > 0;
+        : aiFromAggregate
+          ? 0
+          : apiUsageOpenAiUsd;
+    const hasAiData = aiFromAggregate || apiUsageOpenAiUsd > 0;
     const latestAiAt =
-      aiEvents.length > 0
+      aiDurable.rows.reduce(
+        (latest, row) => (row.updatedAt > latest ? row.updatedAt : latest),
+        "",
+      ) ||
+      (aiEvents.length > 0
         ? aiEvents.reduce(
             (latest, event) =>
               event.timestamp > latest ? event.timestamp : latest,
             aiEvents[0]!.timestamp,
           )
-        : null;
+        : null);
 
     const apiCost: OwnerCurrencyMetric = hasAiData
       ? {
           label: "今月OpenAI原価",
           amountUsd: Math.round(recordedOpenAiUsd * 100) / 100,
           amountJpy: null,
+          lastKnownAmountUsd: lastKnown?.aiMonthly?.recordedCostUsd ?? null,
+          lastKnownAmountJpy: null,
+          lastKnownAt: lastKnown?.aiMonthly?.fetchedAt ?? null,
           source: "ai_usage",
           availability: "ok",
           isEstimated: false,
+          isLastKnownGood: false,
           periodLabel: periodLabel,
-          dataSourceLabel:
-            monthAi.estimatedCostUsd > 0
-              ? `AI利用台帳 × 料金表 ${MODEL_PRICING_TABLE_VERSION}`
-              : "Owner API usage 台帳（OpenAI）",
-          lastUpdatedAt: latestAiAt,
+          dataSourceLabel: aiDurable.ready
+            ? `月次原価集計（イベント削除後も保持）× 料金表 ${MODEL_PRICING_TABLE_VERSION}`
+            : `月次原価集計（プロセス内）× 料金表 ${MODEL_PRICING_TABLE_VERSION}`,
+          lastUpdatedAt: latestAiAt || new Date().toISOString(),
           stripeMode: null,
           statusMessage: null,
           updateFailed: false,
         }
-      : {
-          label: "今月OpenAI原価",
-          amountUsd: null,
-          amountJpy: null,
-          source: "ai_usage",
-          availability: "empty",
-          isEstimated: false,
-          periodLabel: periodLabel,
-          dataSourceLabel: "recordUserAiUsage / Supabase atlasBillingUsage",
-          lastUpdatedAt: null,
-          stripeMode: null,
-          statusMessage: "利用データなし",
-          updateFailed: false,
-        };
+      : lastKnown?.aiMonthly && lastKnown.aiMonthly.month === usageMonth
+        ? {
+            label: "今月OpenAI原価",
+            amountUsd: null,
+            amountJpy: null,
+            lastKnownAmountUsd: lastKnown.aiMonthly.recordedCostUsd,
+            lastKnownAmountJpy: null,
+            lastKnownAt: lastKnown.aiMonthly.fetchedAt,
+            source: "ai_usage",
+            availability: "stale",
+            isEstimated: false,
+            isLastKnownGood: true,
+            periodLabel: periodLabel,
+            dataSourceLabel: "前回取得値（月次原価集計）",
+            lastUpdatedAt: lastKnown.aiMonthly.fetchedAt,
+            stripeMode: null,
+            statusMessage: `前回値（最終成功同期 ${lastKnown.aiMonthly.fetchedAt}）。現在値ではありません`,
+            updateFailed: true,
+          }
+        : {
+            label: "今月OpenAI原価",
+            amountUsd: null,
+            amountJpy: null,
+            lastKnownAmountUsd: null,
+            lastKnownAmountJpy: null,
+            lastKnownAt: null,
+            source: "ai_usage",
+            availability: "empty",
+            isEstimated: false,
+            isLastKnownGood: false,
+            periodLabel: periodLabel,
+            dataSourceLabel: "atlas_billing_ai_monthly / 月次原価集計",
+            lastUpdatedAt: null,
+            stripeMode: null,
+            statusMessage: "利用データなし",
+            updateFailed: false,
+          };
 
     const serverCost: OwnerCurrencyMetric = {
       label: "サーバー費用",
       amountUsd: null,
       amountJpy: null,
+      lastKnownAmountUsd: null,
+      lastKnownAmountJpy: null,
+      lastKnownAt: null,
       source: "server",
       availability: "unset",
       isEstimated: false,
+      isLastKnownGood: false,
       periodLabel: periodLabel,
       dataSourceLabel: "Vercel / インフラ Billing API",
       lastUpdatedAt: null,
@@ -401,9 +521,13 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
       label: "その他外部サービス費用",
       amountUsd: null,
       amountJpy: null,
+      lastKnownAmountUsd: null,
+      lastKnownAmountJpy: null,
+      lastKnownAt: null,
       source: "external_api",
       availability: "unset",
       isEstimated: false,
+      isLastKnownGood: false,
       periodLabel: periodLabel,
       dataSourceLabel: "Supabase / Clerk / LINE / Google / Dropbox",
       lastUpdatedAt: null,
@@ -415,21 +539,93 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
     const profit = buildProfit({
       periodLabel: periodWithMode,
       stripeMode,
-      lastUpdatedAt: stripe.fetchedAt ?? latestAiAt,
+      lastUpdatedAt: stripeIsCurrent
+        ? stripe.fetchedAt
+        : stripeLkg?.fetchedAt ?? latestAiAt,
       netRevenueUsd: netRevenue.amountUsd,
       netRevenueJpy: netRevenue.amountJpy,
       currency: stripe.currency,
       apiCostUsd: apiCost.amountUsd,
-      stripeFeesMajor: stripeAvailability === "ok" ? stripe.fees : null,
-      refundsMajor: stripeAvailability === "ok" ? stripe.refunds : null,
+      stripeFeesMajor: stripeIsCurrent ? stripe.fees : null,
+      refundsMajor: stripeIsCurrent ? stripe.refunds : null,
       serverCostUsd: null,
       externalCostUsd: null,
       netAlreadySubtractsFeesAndRefunds: true,
     });
 
-    const webhookSnap = buildStripeWebhookMonitoringSnapshot(now);
+    const webhookSnap = buildStripeWebhookMonitoringSnapshot(now, {
+      durableReady: webhookDurableReady,
+    });
     const webhookAvailability: OwnerMetricAvailability =
-      webhookSnap.availability === "ok" ? "ok" : "empty";
+      webhookSnap.availability === "ok"
+        ? "ok"
+        : webhookSnap.availability === "empty"
+          ? "empty"
+          : webhookSnap.availability === "stale"
+            ? "stale"
+            : webhookSnap.availability === "failed"
+              ? "failed"
+              : "unavailable";
+
+    const paidAvailability: OwnerMetricAvailability =
+      stripeSubs.availability === "ok"
+        ? "ok"
+        : stripeSubs.availability === "incomplete"
+          ? "incomplete"
+          : stripeSubs.availability === "failed"
+            ? lastKnown?.stripeSubs
+              ? "stale"
+              : "failed"
+            : lastKnown?.stripeSubs
+              ? "stale"
+              : "disconnected";
+    const paidIsCurrent = paidAvailability === "ok";
+    const paidValue = paidIsCurrent
+      ? stripeSubs.metrics?.paidSubscribers ?? 0
+      : null;
+    const paidLastKnown = lastKnown?.stripeSubs?.paidSubscribers ?? null;
+
+    const totalAvailability: OwnerMetricAvailability =
+      registered.availability === "ok"
+        ? "ok"
+        : registered.availability === "failed"
+          ? lastKnown?.registeredUsers
+            ? "stale"
+            : "failed"
+          : lastKnown?.registeredUsers
+            ? "stale"
+            : "disconnected";
+    const totalIsCurrent = totalAvailability === "ok";
+    const totalValue = totalIsCurrent ? registered.total : null;
+    const totalLastKnown = lastKnown?.registeredUsers?.total ?? null;
+
+    let freeAvailability: OwnerMetricAvailability = "unavailable";
+    let freeValue: number | null = null;
+    let freeStatus: string | null = "登録数または有料数が未取得のため算出不能";
+    if (totalIsCurrent && paidIsCurrent && totalValue !== null && paidValue !== null) {
+      freeAvailability = "ok";
+      freeValue = Math.max(0, totalValue - paidValue);
+      freeStatus = null;
+    } else if (totalAvailability === "stale" || paidAvailability === "stale") {
+      freeAvailability = "stale";
+      freeStatus = "前回値から算出していません。現在値ではありません";
+    } else if (paidAvailability === "incomplete") {
+      freeAvailability = "incomplete";
+      freeStatus = "Stripe集計が上限に達したため未完了";
+    } else if (paidAvailability === "failed" || totalAvailability === "failed") {
+      freeAvailability = "failed";
+      freeStatus = "取得失敗（Free=0として扱いません）";
+    } else if (
+      paidAvailability === "disconnected" ||
+      totalAvailability === "disconnected"
+    ) {
+      freeAvailability = "disconnected";
+      freeStatus = "登録ユーザーまたはStripe未接続のため算出不能";
+    }
+
+    const cancelScheduled =
+      paidIsCurrent ? stripeSubs.cancelScheduledCount : null;
+    const paymentFailures = localBilling.paymentFailureCount;
 
     const auditEntries = listAuditLogEntries();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -500,8 +696,68 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
     const hasEco = ecoSummary.ecoRunCount > 0 || ecoSummary.actualCostUsd > 0;
 
     const generatedAt = now.toISOString();
-    const subUpdatedAt =
-      listAiUsageEvents().length > 0 ? generatedAt : generatedAt;
+
+    if (stripeIsCurrent && stripe.grossRevenue !== null) {
+      void persistOwnerLastKnownGood(
+        mergeOwnerLastKnownGood(lastKnown, {
+          updatedAt: generatedAt,
+          stripeMonth: {
+            fetchedAt: stripe.fetchedAt ?? generatedAt,
+            mode: stripe.mode,
+            currency: stripe.currency,
+            grossRevenue: stripe.grossRevenue,
+            refunds: stripe.refunds ?? 0,
+            fees: stripe.fees ?? 0,
+            netRevenue: stripe.netRevenue ?? 0,
+            upcomingPayoutAmount: stripe.upcomingPayoutAmount,
+            upcomingPayoutAt: stripe.upcomingPayoutAt,
+            upcomingPayoutStatus: stripe.upcomingPayoutStatus,
+          },
+        }),
+      );
+    }
+    if (paidIsCurrent && stripeSubs.metrics) {
+      void persistOwnerLastKnownGood(
+        mergeOwnerLastKnownGood(lastKnown, {
+          updatedAt: generatedAt,
+          stripeSubs: {
+            fetchedAt: stripeSubs.fetchedAt ?? generatedAt,
+            paidSubscribers: stripeSubs.metrics.paidSubscribers,
+            cancelScheduledCount: stripeSubs.cancelScheduledCount ?? 0,
+            churnedSubscribers: stripeSubs.metrics.churnedSubscribers,
+            planBreakdown: stripeSubs.metrics.planBreakdown,
+            mrrJpy: stripeSubs.metrics.mrrJpy,
+          },
+        }),
+      );
+    }
+    if (totalIsCurrent && registered.total !== null) {
+      void persistOwnerLastKnownGood(
+        mergeOwnerLastKnownGood(lastKnown, {
+          updatedAt: generatedAt,
+          registeredUsers: {
+            fetchedAt: registered.fetchedAt ?? generatedAt,
+            total: registered.total,
+          },
+        }),
+      );
+    }
+    if (hasAiData) {
+      void persistOwnerLastKnownGood(
+        mergeOwnerLastKnownGood(lastKnown, {
+          updatedAt: generatedAt,
+          aiMonthly: {
+            fetchedAt: latestAiAt || generatedAt,
+            month: usageMonth,
+            requests: monthAi.requests,
+            inputTokens: monthAi.inputTokens,
+            outputTokens: monthAi.outputTokens,
+            totalTokens: monthAi.totalTokens,
+            recordedCostUsd: Math.round(recordedOpenAiUsd * 100) / 100,
+          },
+        }),
+      );
+    }
 
     return {
       metricsProvider: "live",
@@ -520,40 +776,95 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
       profit,
       estimatedProfit: profit,
       users: {
-        paid: billing.paidSubscribers,
-        free: billing.freeSubscribers,
-        churned: billing.churnedSubscribers,
+        total: totalValue,
+        paid: paidValue,
+        free: freeValue,
+        churned: paidIsCurrent
+          ? stripeSubs.metrics?.churnedSubscribers ?? 0
+          : null,
         cancelScheduled,
-        paymentFailures,
+        paymentFailures: null,
       },
       userMetrics: {
-        paid: countMetric({
-          label: "有料契約者数",
-          value: billing.paidSubscribers,
+        total: countMetric({
+          label: "登録ユーザー数",
+          value: totalValue,
+          availability: totalAvailability,
           periodLabel: periodLabel,
-          dataSourceLabel:
-            stripeSubs.availability === "ok"
-              ? "Stripe Subscriptions API"
-              : "Subscription store（Webhook同期）",
-          lastUpdatedAt: stripeSubs.fetchedAt ?? subUpdatedAt,
+          dataSourceLabel: "Clerk Backend API（登録の正）",
+          lastUpdatedAt: totalIsCurrent
+            ? registered.fetchedAt
+            : lastKnown?.registeredUsers?.fetchedAt ?? null,
+          stripeMode: null,
+          statusMessage:
+            totalAvailability === "ok"
+              ? null
+              : totalAvailability === "stale"
+                ? `前回値（最終成功同期 ${lastKnown?.registeredUsers?.fetchedAt ?? "不明"}）。現在値ではありません`
+                : registered.statusMessage ?? "登録ユーザー数を取得できません",
+          lastKnownValue: totalLastKnown,
+          lastKnownAt: lastKnown?.registeredUsers?.fetchedAt ?? null,
+          isLastKnownGood: totalAvailability === "stale",
+        }),
+        paid: countMetric({
+          label: "有料ユーザー数",
+          value: paidValue,
+          availability: paidAvailability,
+          periodLabel: periodLabel,
+          dataSourceLabel: "Stripe Subscriptions（allowlist Price・active/trialing）",
+          lastUpdatedAt: paidIsCurrent
+            ? stripeSubs.fetchedAt
+            : lastKnown?.stripeSubs?.fetchedAt ?? null,
           stripeMode,
           statusMessage:
-            stripeSubs.availability === "failed"
-              ? "取得失敗"
-              : stripeSubs.availability === "disconnected"
-                ? "Stripe未接続（ローカル契約ストア）"
-                : null,
+            paidAvailability === "ok"
+              ? stripeSubs.statusMessage
+              : paidAvailability === "stale"
+                ? `前回値（最終成功同期 ${lastKnown?.stripeSubs?.fetchedAt ?? "不明"}）。現在値ではありません`
+                : paidAvailability === "incomplete"
+                  ? "Stripe集計が上限に達したため未完了"
+                  : stripeSubs.statusMessage ?? "有料ユーザー数を取得できません",
+          lastKnownValue: paidLastKnown,
+          lastKnownAt: lastKnown?.stripeSubs?.fetchedAt ?? null,
+          isLastKnownGood: paidAvailability === "stale",
+        }),
+        free: countMetric({
+          label: "Freeユーザー数",
+          value: freeValue,
+          availability: freeAvailability,
+          periodLabel: periodLabel,
+          dataSourceLabel: "登録ユーザー数 − 有料ユーザー数",
+          lastUpdatedAt:
+            totalIsCurrent && paidIsCurrent
+              ? registered.fetchedAt ?? stripeSubs.fetchedAt
+              : null,
+          stripeMode,
+          statusMessage: freeStatus,
         }),
         cancelScheduled: countMetric({
           label: "解約予定数",
           value: cancelScheduled,
+          availability: paidIsCurrent
+            ? "ok"
+            : paidAvailability === "stale"
+              ? "stale"
+              : paidAvailability,
           periodLabel: periodLabel,
           dataSourceLabel:
             stripeSubs.availability === "ok"
               ? "Stripe cancel_at_period_end"
               : "cancelAtPeriodEnd",
-          lastUpdatedAt: stripeSubs.fetchedAt ?? subUpdatedAt,
+          lastUpdatedAt: paidIsCurrent
+            ? stripeSubs.fetchedAt
+            : lastKnown?.stripeSubs?.fetchedAt ?? null,
           stripeMode,
+          lastKnownValue: lastKnown?.stripeSubs?.cancelScheduledCount ?? null,
+          lastKnownAt: lastKnown?.stripeSubs?.fetchedAt ?? null,
+          isLastKnownGood: paidAvailability === "stale",
+          statusMessage:
+            paidIsCurrent
+              ? null
+              : "有料契約の取得に依存するため、未取得時は人数を0にしません",
         }),
         paymentFailures: countMetric({
           label: "支払い失敗数（今月）",
@@ -567,6 +878,7 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
             "確認不能。支払い失敗は Stripe Dashboard で確認してください。",
         }),
       },
+      screenRefreshedAt: generatedAt,
       aiUsage: {
         availability: hasAiData ? "ok" : "empty",
         statusMessage: hasAiData ? null : "利用データなし",
@@ -585,8 +897,8 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
         aiRequests: hasAiData ? monthAi.requests : aiRequestsFromAudit,
         automationRuns,
         commanderRuns,
-        lastUpdatedAt: hasRunData ? generatedAt : null,
-        dataSourceLabel: "AI利用台帳 / 監査ログ",
+        lastUpdatedAt: hasAiData ? latestAiAt : hasRunData ? generatedAt : null,
+        dataSourceLabel: "月次原価集計 / 監査ログ",
       },
       webhook: {
         successRatePercent: webhookSnap.successRatePercent,
@@ -631,7 +943,9 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
               ? "データなし"
               : null,
         stripeMode,
-        lastUpdatedAt: stripe.fetchedAt,
+        lastUpdatedAt: stripeIsCurrent
+          ? stripe.fetchedAt
+          : stripeLkg?.fetchedAt ?? null,
       },
       billing,
       dataSources: [
@@ -667,12 +981,13 @@ export const liveOwnerMetricsProvider: OwnerMetricsProvider = {
         },
         {
           id: "webhook_log",
-          label: "Stripe Webhookログ",
-          connected: webhookSnap.totalCount > 0,
+          label: "Webhook監視（決済状態の正ではない）",
+          connected: webhookSnap.durable && webhookSnap.totalCount > 0,
           note:
-            webhookSnap.totalCount > 0
-              ? `このインスタンスの一時ログ · 成功率 ${webhookSnap.successRatePercent ?? "—"}%`
-              : "確認不能（Stripe Dashboardで確認）",
+            webhookSnap.availability === "ok"
+              ? `永続監視ログ · 成功率 ${webhookSnap.successRatePercent ?? "—"}%`
+              : webhookSnap.statusMessage ??
+                "Webhook監視を確認できません。正式な決済状態は Stripe Dashboard が正です。",
         },
         {
           id: "server",

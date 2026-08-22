@@ -1,8 +1,8 @@
 import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
-import { getStripeWebhookMonitoringSnapshot } from "@/lib/owner/billing-webhook/service";
+import { getHydratedStripeWebhookMonitoringSnapshot } from "@/lib/owner/billing-webhook/service";
 
 export async function GET(): Promise<Response> {
   const owner = await requireAtlasOwnerApi();
   if (!owner.ok) return owner.response;
-  return Response.json(getStripeWebhookMonitoringSnapshot());
+  return Response.json(await getHydratedStripeWebhookMonitoringSnapshot());
 }

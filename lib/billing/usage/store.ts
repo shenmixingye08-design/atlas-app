@@ -4,6 +4,14 @@ import type {
   UsageMonthKey,
   UsageSnapshot,
 } from "./types";
+import {
+  incrementMonthlyAiAggregateFromEvent,
+  resetMonthlyAiAggregates,
+  replaceMonthlyAiAggregates,
+  schedulePersistMonthlyAiAggregate,
+  serializeMonthlyAiAggregates,
+  type MonthlyAiAggregateRow,
+} from "./monthly-aggregate";
 import { getUsageDayKey as jstDayKey, getUsageMonthKey as jstMonthKey } from "./period";
 
 type UsageBucket = Map<string, UsageSnapshot>;
@@ -112,6 +120,7 @@ export function replaceUsageDurableState(input: {
   snapshots: Record<string, UsageSnapshot>;
   events: AiUsageEvent[];
   claimKeys?: string[];
+  monthlyAggregates?: Record<string, MonthlyAiAggregateRow>;
 }): void {
   const bucket = getBucket();
   bucket.clear();
@@ -126,7 +135,12 @@ export function replaceUsageDurableState(input: {
   };
   globalScope.__atlasBillingAiUsageEvents = input.events.slice(-5000);
   globalScope.__atlasBillingUsageClaimKeys = new Set(input.claimKeys ?? []);
+  if (input.monthlyAggregates) {
+    replaceMonthlyAiAggregates(input.monthlyAggregates);
+  }
 }
+
+export { serializeMonthlyAiAggregates };
 
 export function getUsageMonthKey(now: Date = new Date()): UsageMonthKey {
   return jstMonthKey(now);
@@ -212,6 +226,17 @@ export function appendAiUsageEvent(event: AiUsageEvent): AiUsageEvent {
   if (bucket.length > 5000) {
     bucket.splice(0, bucket.length - 5000);
   }
+  const aggregate = incrementMonthlyAiAggregateFromEvent(event);
+  schedulePersistMonthlyAiAggregate({
+    userId: aggregate.userId,
+    month: aggregate.month,
+    model: aggregate.model,
+    feature: aggregate.feature,
+    requests: event.requestCount,
+    inputTokens: event.inputTokens,
+    outputTokens: event.outputTokens,
+    costUsd: event.estimatedCostUsd,
+  });
   persistDurable();
   return event;
 }
@@ -232,5 +257,6 @@ export function resetUsageStore(): void {
     globalScope.__atlasBillingAiUsageEvents.length = 0;
   }
   globalScope.__atlasBillingUsageClaimKeys = new Set();
+  resetMonthlyAiAggregates();
   persistDurable();
 }

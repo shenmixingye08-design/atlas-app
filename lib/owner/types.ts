@@ -9,7 +9,10 @@ export type OwnerMetricAvailability =
   | "disconnected"
   | "unset"
   | "empty"
-  | "failed";
+  | "failed"
+  | "unavailable"
+  | "incomplete"
+  | "stale";
 
 export type OwnerStripeMode = "live" | "test";
 
@@ -28,11 +31,17 @@ export type OwnerCurrencyMetric = {
   /** Present only when availability === "ok" (including legitimate zero). */
   amountUsd: number | null;
   amountJpy: number | null;
+  /** Prior successful amount — never presented as the current value. */
+  lastKnownAmountUsd: number | null;
+  lastKnownAmountJpy: number | null;
+  lastKnownAt: string | null;
   label: string;
   source: OwnerDataSourceId;
   availability: OwnerMetricAvailability;
   /** Always false — estimated / demo values are not allowed. */
   isEstimated: false;
+  /** True when amounts are last-known-good, not the current fetch. */
+  isLastKnownGood: boolean;
   periodLabel: string;
   dataSourceLabel: string;
   lastUpdatedAt: string | null;
@@ -44,10 +53,14 @@ export type OwnerCurrencyMetric = {
 
 export type OwnerProfitMetric = {
   label: string;
-  availability: OwnerMetricAvailability | "incomplete";
+  availability: OwnerMetricAvailability;
   /** Definite profit when every required cost input is available. */
   amountUsd: number | null;
   amountJpy: number | null;
+  lastKnownAmountUsd: number | null;
+  lastKnownAmountJpy: number | null;
+  lastKnownAt: string | null;
+  isLastKnownGood: boolean;
   /** Partial (revenue − known costs) when some costs are missing. */
   provisionalDeltaUsd: number | null;
   provisionalDeltaJpy: number | null;
@@ -63,6 +76,9 @@ export type OwnerProfitMetric = {
 export type OwnerCountMetric = {
   label: string;
   value: number | null;
+  lastKnownValue: number | null;
+  lastKnownAt: string | null;
+  isLastKnownGood: boolean;
   availability: OwnerMetricAvailability;
   periodLabel: string;
   dataSourceLabel: string;
@@ -79,11 +95,13 @@ export type OwnerDataSourceStatus = {
 };
 
 export type OwnerUserCounts = {
-  paid: number;
-  free: number;
-  churned: number;
-  cancelScheduled: number;
-  paymentFailures: number;
+  /** Registered MINERVOT users. Null when the registry cannot be read. */
+  total: number | null;
+  paid: number | null;
+  free: number | null;
+  churned: number | null;
+  cancelScheduled: number | null;
+  paymentFailures: number | null;
 };
 
 export type OwnerPopularFeature = {
@@ -167,10 +185,14 @@ export type OwnerDashboardSnapshot = {
   estimatedProfit: OwnerProfitMetric;
   users: OwnerUserCounts;
   userMetrics: {
+    total: OwnerCountMetric;
     paid: OwnerCountMetric;
+    free: OwnerCountMetric;
     cancelScheduled: OwnerCountMetric;
     paymentFailures: OwnerCountMetric;
   };
+  /** Screen render time — never treat as a data-source sync time. */
+  screenRefreshedAt: string;
   aiUsage: OwnerAiUsageSummary;
   runCounts: OwnerRunCounts;
   webhook: OwnerWebhookSummary;
