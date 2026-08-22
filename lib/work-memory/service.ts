@@ -2,7 +2,11 @@ import "server-only";
 
 import { randomUUID } from "crypto";
 
-import { schedulePersistWorkMemory } from "./durable";
+import {
+  ensureWorkMemoryHydrated,
+  persistWorkMemoryNow,
+  schedulePersistWorkMemory,
+} from "./durable";
 import {
   appendStoredCandidate,
   appendStoredWorkMemory,
@@ -312,40 +316,96 @@ export function createWorkMemoryCandidate(
   return createCandidateFromSignal(userId, signal, sourceReference);
 }
 
-export function confirmWorkMemoryCandidate(
+export const CONFIRMED_FROM_CANDIDATE_KEY = "confirmedFromCandidateId";
+
+const confirmInFlight = new Set<string>();
+
+function confirmLockKey(userId: string, candidateId: string): string {
+  return `${userId}:${candidateId}`;
+}
+
+export function findMemoryConfirmedFromCandidate(
   userId: string,
   candidateId: string,
 ): WorkMemoryRecord | null {
-  const candidate = findStoredCandidate(userId, candidateId);
-  if (!candidate || candidate.userId !== userId) return null;
-
-  const memory = createWorkMemory(userId, {
-    type: candidate.type,
-    title: candidate.title,
-    summary: candidate.summary,
-    structuredData: candidate.structuredData,
-    sourceType: candidate.sourceType,
-    sourceReference: candidate.sourceReference,
-    tags: candidate.tags,
-    confidence: Math.max(candidate.confidence, 0.75),
-    isUserConfirmed: true,
-  });
-
-  if (memory) {
-    deleteStoredCandidate(userId, candidateId);
-    schedulePersistWorkMemory(userId);
-  }
-  return memory;
+  return (
+    listStoredWorkMemories(userId).find(
+      (memory) =>
+        memory.userId === userId &&
+        memory.structuredData?.[CONFIRMED_FROM_CANDIDATE_KEY] === candidateId,
+    ) ?? null
+  );
 }
 
-export function rejectWorkMemoryCandidate(
+export async function confirmWorkMemoryCandidate(
   userId: string,
   candidateId: string,
-): boolean {
+): Promise<WorkMemoryRecord | null> {
+  await ensureWorkMemoryHydrated(userId);
+
+  const already = findMemoryConfirmedFromCandidate(userId, candidateId);
+  if (already) {
+    deleteStoredCandidate(userId, candidateId);
+    return already;
+  }
+
+  const lock = confirmLockKey(userId, candidateId);
+  if (confirmInFlight.has(lock)) {
+    return findMemoryConfirmedFromCandidate(userId, candidateId);
+  }
+  confirmInFlight.add(lock);
+
+  try {
+    const replay = findMemoryConfirmedFromCandidate(userId, candidateId);
+    if (replay) {
+      deleteStoredCandidate(userId, candidateId);
+      return replay;
+    }
+
+    const candidate = findStoredCandidate(userId, candidateId);
+    if (!candidate || candidate.userId !== userId) return null;
+
+    const claimed = deleteStoredCandidate(userId, candidateId);
+    if (!claimed) {
+      return findMemoryConfirmedFromCandidate(userId, candidateId);
+    }
+
+    const memory = createWorkMemory(userId, {
+      type: candidate.type,
+      title: candidate.title,
+      summary: candidate.summary,
+      structuredData: {
+        ...candidate.structuredData,
+        [CONFIRMED_FROM_CANDIDATE_KEY]: candidateId,
+      },
+      sourceType: candidate.sourceType,
+      sourceReference: candidate.sourceReference,
+      tags: candidate.tags,
+      confidence: Math.max(candidate.confidence, 0.75),
+      isUserConfirmed: true,
+    });
+
+    if (!memory) {
+      appendStoredCandidate(userId, candidate);
+      return null;
+    }
+
+    await persistWorkMemoryNow(userId);
+    return memory;
+  } finally {
+    confirmInFlight.delete(lock);
+  }
+}
+
+export async function rejectWorkMemoryCandidate(
+  userId: string,
+  candidateId: string,
+): Promise<boolean> {
+  await ensureWorkMemoryHydrated(userId);
   const candidate = findStoredCandidate(userId, candidateId);
   if (!candidate || candidate.userId !== userId) return false;
   const removed = deleteStoredCandidate(userId, candidateId);
-  if (removed) schedulePersistWorkMemory(userId);
+  if (removed) await persistWorkMemoryNow(userId);
   return removed;
 }
 

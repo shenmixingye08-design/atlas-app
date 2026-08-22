@@ -40,6 +40,7 @@ export {
   fetchWorkMemorySettings,
   updateWorkMemorySettingsClient,
   confirmWorkMemoryCandidateClient,
+  formatWorkMemoryCandidateActionError,
   rejectWorkMemoryCandidateClient,
   previewWorkMemoriesClient,
   submitCorrectionLearningClient,

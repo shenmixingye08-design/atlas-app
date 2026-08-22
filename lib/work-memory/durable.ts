@@ -81,28 +81,58 @@ export function schedulePersistWorkMemory(userId: string): void {
   );
 }
 
-export async function ensureWorkMemoryHydrated(userId: string): Promise<void> {
-  if (isWorkMemoryHydrated(userId)) return;
-  markWorkMemoryHydrated(userId);
-
-  if (listStoredWorkMemories(userId).length > 0) return;
-
-  const loaded = await loadDurableDomain<DurableWorkMemoryState>(
+export async function persistWorkMemoryNow(userId: string): Promise<void> {
+  bumpPersistenceCounter("workMemoryPersist");
+  await persistDurableDomain(
     userId,
     WORK_MEMORY_DOMAIN_KEY,
+    snapshotWorkMemory(userId),
+    { compact: compactWorkMemory, forceSupabase: true },
   );
-  if (!loaded) return;
+}
 
-  if (Array.isArray(loaded.memories)) {
-    replaceStoredWorkMemories(userId, loaded.memories);
-  }
-  if (Array.isArray(loaded.candidates)) {
-    replaceStoredCandidates(userId, loaded.candidates);
-  }
-  if (loaded.settings) {
-    writeWorkMemorySettings(userId, loaded.settings);
-  }
-  if (Array.isArray(loaded.requestHistory)) {
-    replaceRequestHistory(userId, loaded.requestHistory);
+export async function ensureWorkMemoryHydrated(userId: string): Promise<void> {
+  if (isWorkMemoryHydrated(userId)) return;
+
+  try {
+    const loaded = await loadDurableDomain<DurableWorkMemoryState>(
+      userId,
+      WORK_MEMORY_DOMAIN_KEY,
+    );
+    if (!loaded) {
+      markWorkMemoryHydrated(userId);
+      return;
+    }
+
+    if (
+      Array.isArray(loaded.memories) &&
+      listStoredWorkMemories(userId).length === 0
+    ) {
+      replaceStoredWorkMemories(
+        userId,
+        loaded.memories.filter((row) => row.userId === userId),
+      );
+    }
+    if (
+      Array.isArray(loaded.candidates) &&
+      listStoredCandidates(userId).length === 0
+    ) {
+      replaceStoredCandidates(
+        userId,
+        loaded.candidates.filter((row) => row.userId === userId),
+      );
+    }
+    if (loaded.settings) {
+      writeWorkMemorySettings(userId, loaded.settings);
+    }
+    if (Array.isArray(loaded.requestHistory)) {
+      replaceRequestHistory(userId, loaded.requestHistory);
+    }
+    markWorkMemoryHydrated(userId);
+  } catch (error) {
+    console.warn(
+      "[work-memory] Hydration failed:",
+      error instanceof Error ? error.message : "hydration_failed",
+    );
   }
 }

@@ -125,7 +125,7 @@ describe("work memory", () => {
     expect(list.candidates.length + list.memories.length).toBeGreaterThan(0);
   });
 
-  it("confirms candidate into memory", () => {
+  it("confirms candidate into memory", async () => {
     const user = "user_work_memory_confirm";
     resetWorkMemories(user);
 
@@ -141,7 +141,10 @@ describe("work memory", () => {
     });
     expect(candidate).not.toBeNull();
 
-    const confirmed = confirmWorkMemoryCandidate(user, candidate!.candidateId);
+    const confirmed = await confirmWorkMemoryCandidate(
+      user,
+      candidate!.candidateId,
+    );
     expect(confirmed?.isUserConfirmed).toBe(true);
     expect(listWorkMemories(user).candidates.length).toBe(0);
   });

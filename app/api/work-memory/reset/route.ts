@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { ensureWorkMemoryHydrated } from "@/lib/work-memory/durable";
 import { resetWorkMemories } from "@/lib/work-memory/service";
 import type { WorkMemoryResetInput } from "@/lib/work-memory/types";
 import { WORK_MEMORY_TYPES } from "@/lib/work-memory/types";
@@ -9,6 +10,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  await ensureWorkMemoryHydrated(userId);
 
   let body: WorkMemoryResetInput = {};
   try {

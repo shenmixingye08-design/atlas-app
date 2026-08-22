@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { ensureWorkMemoryHydrated } from "@/lib/work-memory/durable";
 import {
   getWorkMemorySettings,
   setWorkMemoryEnabled,
@@ -11,6 +12,7 @@ export async function GET(): Promise<Response> {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  await ensureWorkMemoryHydrated(userId);
   return Response.json(getWorkMemorySettings(userId));
 }
 
@@ -26,6 +28,8 @@ export async function PATCH(request: Request): Promise<Response> {
   } catch {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
+  await ensureWorkMemoryHydrated(userId);
 
   if (typeof body.enabled !== "boolean") {
     return Response.json({ error: "enabled must be a boolean" }, { status: 400 });

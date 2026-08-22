@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { ensureWorkMemoryHydrated } from "@/lib/work-memory/durable";
 import { previewWorkMemoriesForAssignment } from "@/lib/work-memory/service";
 
 export async function GET(request: Request): Promise<Response> {
@@ -7,6 +8,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  await ensureWorkMemoryHydrated(userId);
 
   const url = new URL(request.url);
   const assignment = url.searchParams.get("assignment")?.trim();

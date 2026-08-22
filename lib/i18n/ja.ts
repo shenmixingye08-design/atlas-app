@@ -2385,7 +2385,15 @@ export const ui = {
     candidatesHint:
       "AI秘書が新しく覚えようとしている内容です。保存する前にご確認ください。",
     confirmCandidate: "確認して記憶する",
+    confirmCandidateBusy: "記憶しています…",
     rejectCandidate: "保存しない",
+    rejectCandidateBusy: "取り消しています…",
+    confirmCandidateError: "記憶を保存できませんでした。",
+    rejectCandidateError: "候補を削除できませんでした。",
+    candidateNotFound: "確認待ちの記憶が見つかりませんでした。",
+    diagnosticIdLabel: "診断ID",
+    copyDiagnosticId: "診断IDをコピー",
+    diagnosticIdCopied: "診断IDをコピーしました",
     confirmPrompt:
       "今後も同じ形式で進められるよう、こちらの内容を記憶してもよろしいでしょうか。",
     detailTitle: "記憶の詳細",
