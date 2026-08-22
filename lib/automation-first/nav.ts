@@ -49,13 +49,15 @@ export function resolveAutomationFirstSidebarActive(
   pathname: string,
   explicit?: AtlasNavPage,
 ): AtlasNavPage | null {
-  if (explicit) return explicit;
-  if (pathname.startsWith("/today")) return "today";
+  // Pathname wins for 実行履歴 vs 成果物 so a stale explicit="history"
+  // on /history cannot highlight 実行履歴 again.
   if (pathname.startsWith("/automations/runs")) return "history";
-  if (pathname.startsWith("/automations")) return "automations";
   if (pathname.startsWith("/history") || pathname.startsWith("/results")) {
     return "artifacts";
   }
+  if (explicit) return explicit;
+  if (pathname.startsWith("/today")) return "today";
+  if (pathname.startsWith("/automations")) return "automations";
   if (pathname.startsWith("/notifications")) return "notifications";
   if (
     pathname.startsWith("/connections") ||
