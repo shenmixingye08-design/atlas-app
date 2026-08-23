@@ -30,6 +30,14 @@ export type UserBillingSummary = {
   /** False when usage meters could not be loaded. UI must not show 0. */
   usageReady: boolean;
   usageError: string | null;
+  usageAvailable: boolean;
+  usageSource: "durable" | "unavailable";
+  errorCode:
+    | "usage_unavailable"
+    | "usage_increment_failed"
+    | "usage_rpc_missing"
+    | "user_required"
+    | null;
   /** Durable-first resolve metadata — never includes secrets. */
   subscriptionSource: SubscriptionResolveSource;
   subscriptionConsistency: SubscriptionConsistency;

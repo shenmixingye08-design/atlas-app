@@ -10,9 +10,18 @@ import { getUsageMonthKey } from "./period";
 import { reconcileCurrentMonthUsageFromEvidence } from "./reconcile";
 import { setAutomationTaskCount } from "./store";
 
+export type UsageHydrateErrorCode =
+  | "usage_unavailable"
+  | "usage_increment_failed"
+  | "usage_rpc_missing"
+  | "user_required"
+  | null;
+
 export type UsageHydrateResult = {
   ready: boolean;
   error: string | null;
+  errorCode: UsageHydrateErrorCode;
+  source: "durable" | "unavailable";
 };
 
 const inflight = new Map<string, Promise<UsageHydrateResult>>();
@@ -33,7 +42,12 @@ export function hydrateUserUsageMeters(
   userId: string,
 ): Promise<UsageHydrateResult> {
   if (!userId.trim()) {
-    return Promise.resolve({ ready: false, error: "user_required" });
+    return Promise.resolve({
+      ready: false,
+      error: "user_required",
+      errorCode: "user_required",
+      source: "unavailable",
+    });
   }
   const month = getUsageMonthKey();
   const key = hydrateKey(userId, month);
@@ -53,11 +67,13 @@ async function runHydrate(
 ): Promise<UsageHydrateResult> {
   let usageReady = !isAtlasProduction();
   let usageError: string | null = null;
+  let errorCode: UsageHydrateErrorCode = null;
   try {
     const loaded = await loadDurableUsageCounters(userId, month);
     usageReady = loaded.ready;
     if (!loaded.ready) {
       usageError = loaded.error ?? "usage_unavailable";
+      errorCode = "usage_unavailable";
     } else {
       const reconciled = await reconcileCurrentMonthUsageFromEvidence(
         userId,
@@ -65,18 +81,21 @@ async function runHydrate(
       );
       if (!reconciled.ready && isAtlasProduction()) {
         usageReady = false;
-        usageError = "usage_unavailable";
+        usageError = reconciled.error ?? "usage_increment_failed";
+        errorCode = reconciled.errorCode ?? "usage_increment_failed";
       } else {
         const refreshed = await loadDurableUsageCounters(userId, month);
         usageReady = refreshed.ready;
         if (!refreshed.ready) {
           usageError = refreshed.error ?? "usage_unavailable";
+          errorCode = "usage_unavailable";
         }
       }
     }
   } catch (error) {
     usageReady = false;
     usageError = error instanceof Error ? error.message : "usage_unavailable";
+    errorCode = "usage_unavailable";
   }
 
   let automationReady = true;
@@ -108,7 +127,14 @@ async function runHydrate(
     return {
       ready: false,
       error,
+      errorCode: errorCode ?? "usage_unavailable",
+      source: "unavailable",
     };
   }
-  return { ready: true, error: null };
+  return {
+    ready: true,
+    error: null,
+    errorCode: null,
+    source: "durable",
+  };
 }
