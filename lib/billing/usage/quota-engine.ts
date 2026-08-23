@@ -3,17 +3,15 @@
  * Memory is a cache; Supabase RPC is Production SoT when configured.
  */
 
-import {
-  buildDurableReadDiagnosticId,
-  logDurableReadFailure,
-  readUnknownSupabaseError,
-} from "@/lib/persistence/durable-read-log";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
-import { isSupabaseRelationMissingError } from "@/lib/automations/supabase-error";
 
 import { getUsageMonthKey } from "./period";
 import { asUntypedSupabase } from "./untyped-supabase";
+import {
+  incrementDurableUsageOnce,
+  loadDurableUsageCounters,
+} from "./durable-counters";
 import {
   getUsageSnapshot,
   incrementUsageCounter,
@@ -182,6 +180,8 @@ export async function reserveAiJobQuota(input: {
   limit: number;
   amount?: number;
   month?: string;
+  /** Owner: increment meter without refusing at the plan cap. */
+  bypassLimit?: boolean;
 }): Promise<AiQuotaReserveResult> {
   const month = input.month ?? getUsageMonthKey();
   const amount = Math.max(1, input.amount ?? 1);
@@ -197,6 +197,32 @@ export async function reserveAiJobQuota(input: {
   }
 
   return withUserLock(input.userId, async () => {
+    if (input.bypassLimit) {
+      const incremented = await incrementDurableUsageOnce({
+        userId: input.userId,
+        month,
+        claimKey,
+        meter: "ai_runs",
+        amount,
+      });
+      if (!incremented.ready && isAtlasProduction()) {
+        return {
+          ok: false,
+          used: incremented.used,
+          limit: input.limit,
+          reason: "usage_unavailable",
+          source: incremented.source,
+        };
+      }
+      return {
+        ok: true,
+        used: incremented.used,
+        limit: input.limit,
+        idempotent: !incremented.incremented,
+        source: incremented.source,
+      };
+    }
+
     const durable = await reserveInSupabase({
       userId: input.userId,
       month,
@@ -228,58 +254,8 @@ export async function loadDurableAiRuns(
   userId: string,
   month: string = getUsageMonthKey(),
 ): Promise<{ used: number; ready: boolean }> {
-  const client = createServiceRoleClientIfConfigured();
-  if (!client) {
-    if (isAtlasProduction()) {
-      logDurableReadFailure({
-        endpoint: "/api/billing/summary",
-        userId,
-        code: "supabase_service_role_not_configured",
-        databaseCode: null,
-        table: "atlas_billing_usage_counters",
-        diagnosticId: buildDurableReadDiagnosticId("usage_env"),
-        message: "service_role_missing",
-      });
-    }
-    return {
-      used: getUsageSnapshot(userId, month).aiRuns,
-      ready: !isAtlasProduction(),
-    };
-  }
-  const { data, error } = await asUntypedSupabase(client)
-    .from("atlas_billing_usage_counters")
-    .select("ai_runs")
-    .eq("user_id", userId)
-    .eq("month_key", month)
-    .maybeSingle();
-  if (error) {
-    const parsed = readUnknownSupabaseError(error);
-    logDurableReadFailure({
-      endpoint: "/api/billing/summary",
-      userId,
-      code: isSupabaseRelationMissingError({
-        code: parsed.code ?? undefined,
-        message: parsed.message,
-      })
-        ? "usage_schema_missing"
-        : "usage_read_failed",
-      databaseCode: parsed.code,
-      table: "atlas_billing_usage_counters",
-      diagnosticId: buildDurableReadDiagnosticId("usage_counters"),
-      message: parsed.message,
-    });
-    return { used: 0, ready: false };
-  }
-  const used = typeof data?.ai_runs === "number" ? data.ai_runs : 0;
-  const current = getUsageSnapshot(userId, month);
-  if (used !== current.aiRuns) {
-    saveUsageSnapshot({
-      ...current,
-      aiRuns: Math.max(used, current.aiRuns),
-      updatedAt: new Date().toISOString(),
-    });
-  }
-  return { used: Math.max(used, current.aiRuns), ready: true };
+  const loaded = await loadDurableUsageCounters(userId, month);
+  return { used: loaded.counters.aiRuns, ready: loaded.ready };
 }
 
 export function resetAiQuotaEngineForTests(): void {

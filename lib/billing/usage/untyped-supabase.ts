@@ -5,24 +5,23 @@ export type UntypedSupabase = {
     fn: string,
     args?: Record<string, unknown>,
   ) => Promise<{ data: unknown; error: { message?: string } | null }>;
-  from: (table: string) => {
-    select: (cols: string) => {
-      eq: (
-        col: string,
-        val: string,
-      ) => {
-        eq: (
-          col: string,
-          val: string,
-        ) => {
-          maybeSingle: () => Promise<{
-            data: Record<string, unknown> | null;
-            error: unknown;
-          }>;
-        };
-      };
-    };
-  };
+  from: (table: string) => UntypedFrom;
+};
+
+type UntypedFilter = {
+  eq: (col: string, val: string) => UntypedFilter;
+  maybeSingle: () => Promise<{
+    data: Record<string, unknown> | null;
+    error: unknown;
+  }>;
+  then: (
+    resolve: (value: { data: unknown; error: unknown }) => unknown,
+    reject?: (reason: unknown) => unknown,
+  ) => Promise<unknown>;
+};
+
+type UntypedFrom = {
+  select: (cols: string) => UntypedFilter;
 };
 
 export function asUntypedSupabase(client: object): UntypedSupabase {

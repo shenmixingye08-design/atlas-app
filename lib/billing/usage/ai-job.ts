@@ -18,21 +18,14 @@ export async function consumeAiJobQuota(input: {
   claimKey: string;
 }): Promise<AiQuotaReserveResult> {
   const email = await getClerkUserPrimaryEmail(input.userId);
-  if (isAtlasOwnerEmail(email)) {
-    return {
-      ok: true,
-      used: 0,
-      limit: Number.POSITIVE_INFINITY,
-      idempotent: true,
-      source: "memory",
-    };
-  }
+  const owner = isAtlasOwnerEmail(email);
   const planId = resolveEffectivePlanId(input.userId);
   const limit = getPlanDefinition(planId).limits.aiUsageMonthly;
   return reserveAiJobQuota({
     userId: input.userId,
     claimKey: input.claimKey,
     limit,
+    bypassLimit: owner,
   });
 }
 

@@ -44,6 +44,8 @@ import { automationPlatformService } from "@/lib/automation-platform/service/aut
 import { buildFeatureAccessContext } from "@/lib/feature-flags/access";
 import { resetFeatureFlagStore, setFeatureFlagState } from "@/lib/feature-flags/store";
 import { resetSideEffectStoreForTests } from "@/lib/side-effects/store";
+import { resetUsageStore } from "@/lib/billing/usage/store";
+import { resetAiQuotaEngineForTests } from "@/lib/billing/usage/quota-engine";
 import {
   buildSideEffectIdempotencyKey,
   buildLegacySideEffectIdempotencyKey,
@@ -255,6 +257,8 @@ describe("Phase 5 durability A–G", () => {
     resetAutomationV2DbStoreForTests();
     resetAutomationPlatformStoreForTests();
     resetSideEffectStoreForTests();
+    resetUsageStore();
+    resetAiQuotaEngineForTests();
     calendarCreateCalls = 0;
     createCalendarMock.mockReset();
     createNotificationMock.mockReset();

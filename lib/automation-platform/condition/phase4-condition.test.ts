@@ -56,6 +56,8 @@ import { buildFeatureAccessContext } from "@/lib/feature-flags/access";
 import { resetFeatureFlagStore, setFeatureFlagState } from "@/lib/feature-flags/store";
 import { resetSideEffectStoreForTests } from "@/lib/side-effects/store";
 import { resetAutomationAuditLogForTests } from "@/lib/automation-platform/audit/log";
+import { resetUsageStore } from "@/lib/billing/usage/store";
+import { resetAiQuotaEngineForTests } from "@/lib/billing/usage/quota-engine";
 
 const PHASE4_NL =
   "Googleカレンダーに『Phase4トリガーテスト』という予定が追加されたら、通知する";
@@ -163,6 +165,8 @@ describe("Phase 4 condition runtime E2E", () => {
     resetAutomationV2DbStoreForTests();
     resetAutomationTriggerStateStoreForTests();
     resetSideEffectStoreForTests();
+    resetUsageStore();
+    resetAiQuotaEngineForTests();
     resetAutomationAuditLogForTests();
     createNotificationMock.mockReset();
     createNotificationMock.mockResolvedValue({

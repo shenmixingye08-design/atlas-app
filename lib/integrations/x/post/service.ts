@@ -333,7 +333,7 @@ async function executeTweetPost(input: {
       const { recordXPostUsageOnce } = await import(
         "@/lib/billing/usage/external-counters"
       );
-      recordXPostUsageOnce({
+      await recordXPostUsageOnce({
         userId: input.userId,
         tweetId: tweet.tweetId,
         text,

@@ -30,6 +30,7 @@ type BillingUsageDurablePayload = {
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let hydrated = false;
+let hydratePromise: Promise<void> | null = null;
 
 function buildPayload(): BillingUsageDurablePayload {
   return {
@@ -71,31 +72,39 @@ export function schedulePersistBillingUsage(): void {
 
 export async function ensureBillingUsageHydrated(): Promise<void> {
   if (hydrated) return;
-  hydrated = true;
+  if (hydratePromise) return hydratePromise;
 
-  const loaded = await loadSupabaseUserState<{
-    payload?: BillingUsageDurablePayload;
-  }>(BILLING_USAGE_GLOBAL_USER_ID, BILLING_USAGE_DOMAIN_KEY);
+  hydratePromise = (async () => {
+    try {
+      const loaded = await loadSupabaseUserState<{
+        payload?: BillingUsageDurablePayload;
+      }>(BILLING_USAGE_GLOBAL_USER_ID, BILLING_USAGE_DOMAIN_KEY);
 
-  const root = loaded?.payload as
-    | { payload?: BillingUsageDurablePayload }
-    | BillingUsageDurablePayload
-    | undefined;
-  const payload =
-    root && "payload" in root && root.payload && "snapshots" in root.payload
-      ? root.payload
-      : root && "snapshots" in (root as object)
-        ? (root as BillingUsageDurablePayload)
-        : null;
+      const root = loaded?.payload as
+        | { payload?: BillingUsageDurablePayload }
+        | BillingUsageDurablePayload
+        | undefined;
+      const payload =
+        root && "payload" in root && root.payload && "snapshots" in root.payload
+          ? root.payload
+          : root && "snapshots" in (root as object)
+            ? (root as BillingUsageDurablePayload)
+            : null;
 
-  if (payload?.snapshots) {
-    replaceUsageDurableState({
-      snapshots: payload.snapshots,
-      events: Array.isArray(payload.events) ? payload.events : [],
-      claimKeys: Array.isArray(payload.claimKeys) ? payload.claimKeys : [],
-      monthlyAggregates: payload.monthlyAggregates,
-    });
-  }
+      if (payload?.snapshots) {
+        replaceUsageDurableState({
+          snapshots: payload.snapshots,
+          events: Array.isArray(payload.events) ? payload.events : [],
+          claimKeys: Array.isArray(payload.claimKeys) ? payload.claimKeys : [],
+          monthlyAggregates: payload.monthlyAggregates,
+        });
+      }
+    } finally {
+      hydrated = true;
+    }
+  })();
+
+  return hydratePromise;
 }
 
 export function resetBillingUsageDurableForTests(): void {
@@ -104,4 +113,5 @@ export function resetBillingUsageDurableForTests(): void {
     persistTimer = null;
   }
   hydrated = false;
+  hydratePromise = null;
 }

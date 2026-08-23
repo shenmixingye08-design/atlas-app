@@ -115,7 +115,10 @@ export function serializeUsageClaimKeys(): string[] {
   return [...getClaimBucket()];
 }
 
-/** Replace in-memory usage from durable hydrate. */
+/**
+ * Restore legacy blob events / claims / aggregates.
+ * The four DB SoT meters must not be overwritten by a stale global blob.
+ */
 export function replaceUsageDurableState(input: {
   snapshots: Record<string, UsageSnapshot>;
   events: AiUsageEvent[];
@@ -123,11 +126,48 @@ export function replaceUsageDurableState(input: {
   monthlyAggregates?: Record<string, MonthlyAiAggregateRow>;
 }): void {
   const bucket = getBucket();
+  const preservedMeters = new Map<
+    string,
+    Pick<
+      UsageSnapshot,
+      "aiRuns" | "snsPosts" | "xUrlPosts" | "wordpressPosts"
+    >
+  >();
+  for (const [key, snapshot] of bucket.entries()) {
+    preservedMeters.set(key, {
+      aiRuns: snapshot.aiRuns,
+      snsPosts: snapshot.snsPosts,
+      xUrlPosts: snapshot.xUrlPosts,
+      wordpressPosts: snapshot.wordpressPosts,
+    });
+  }
   bucket.clear();
   for (const [key, snapshot] of Object.entries(input.snapshots)) {
     if (snapshot?.userId && snapshot?.month) {
-      bucket.set(key, normalizeUsageSnapshot(snapshot));
+      const keep = preservedMeters.get(key);
+      bucket.set(
+        key,
+        normalizeUsageSnapshot({
+          ...snapshot,
+          ...(keep ?? {}),
+        }),
+      );
     }
+  }
+  for (const [key, keep] of preservedMeters.entries()) {
+    if (bucket.has(key)) continue;
+    const sep = key.lastIndexOf(":");
+    if (sep <= 0) continue;
+    const userId = key.slice(0, sep);
+    const month = key.slice(sep + 1);
+    if (!userId || !month) continue;
+    bucket.set(
+      key,
+      normalizeUsageSnapshot({
+        ...emptySnapshot(userId, month),
+        ...keep,
+      }),
+    );
   }
   const globalScope = globalThis as typeof globalThis & {
     __atlasBillingAiUsageEvents?: AiUsageEvent[];

@@ -381,7 +381,8 @@ describe("P0 usage metering — regular Light user", () => {
       claimKey: "owner-extra",
     });
     expect(reserved.ok).toBe(true);
-    expect(reserved.limit).toBe(Number.POSITIVE_INFINITY);
+    expect(reserved.used).toBe(31);
+    expect(await usageFraction(ownerId)).toMatchObject({ ai: "31 / 30" });
   });
 
   it("JST calendar month is the usage period", () => {
