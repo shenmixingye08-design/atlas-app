@@ -2,10 +2,12 @@ import { auth } from "@clerk/nextjs/server";
 
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { isDriveCategoryId } from "@/lib/integrations/google/drive/categories";
+import {
+  respondGoogleDriveCaught,
+  respondGoogleDriveResult,
+} from "@/lib/integrations/google/drive/http";
 import { uploadFileToGoogleDriveForUser } from "@/lib/integrations/google/drive/service";
 import type { DriveCategoryId } from "@/lib/integrations/google/drive/types";
-import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
-import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function POST(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -71,21 +73,12 @@ export async function POST(request: Request): Promise<Response> {
       category,
     });
 
-    if (result.status !== "ready") {
-      const statusCode =
-        result.status === "feature_disabled"
-          ? 403
-          : result.status === "not_found"
-            ? 404
-            : 409;
-      return Response.json(result, { status: statusCode });
-    }
-
-    return Response.json(result);
+    return respondGoogleDriveResult(result);
   } catch (error) {
-    const message =
-      clientSafeMessage(error, "Failed to upload to Drive");
-    recordGoogleAuthFailure(message, "google_drive_upload");
-    return Response.json({ status: "error", message }, { status: 500 });
+    return respondGoogleDriveCaught(
+      error,
+      "Google Driveへのアップロードに失敗しました",
+      "google_drive_upload",
+    );
   }
 }

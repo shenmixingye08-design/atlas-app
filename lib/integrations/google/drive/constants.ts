@@ -2,7 +2,11 @@ export const DRIVE_API_BASE = "https://www.googleapis.com/drive/v3";
 
 export const DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files";
 
-export const ATLAS_DRIVE_ROOT = "ATLAS";
+/** Current MINERVOT workspace root on the user's Drive. */
+export const ATLAS_DRIVE_ROOT = "MINERVOT";
+
+/** Pre-rebrand folder name — reuse if present, never create a second root. */
+export const ATLAS_DRIVE_LEGACY_ROOT = "ATLAS";
 
 export const DRIVE_LIST_MAX_RESULTS = 50;
 

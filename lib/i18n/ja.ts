@@ -1316,7 +1316,7 @@ export const ui = {
     backToRoot: "フォルダ一覧に戻る",
     foldersTitle: "フォルダ",
     openFile: "Driveで開く",
-    openRootFolder: "ATLASフォルダを開く",
+    openRootFolder: "MINERVOTフォルダを開く",
     saveTitle: "成果物をDriveへ保存",
     saveHint:
       "仕事画面で生成された成果物IDを指定して保存します。PDF / Word / PowerPoint / Markdown / テキストに対応。",

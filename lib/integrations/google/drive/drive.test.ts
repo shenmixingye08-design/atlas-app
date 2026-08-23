@@ -103,6 +103,16 @@ describe("Google Drive integration", () => {
         });
       }
 
+      if (url.includes("/drive/v3/files/") && !url.includes("q=") && !url.includes("/upload/")) {
+        const id = url.split("/files/")[1]?.split("?")[0];
+        return Response.json({
+          id,
+          name: "folder",
+          mimeType: "application/vnd.google-apps.folder",
+          trashed: false,
+        });
+      }
+
       if (url.includes("/files?q=")) {
         return Response.json({
           files: [
@@ -197,6 +207,16 @@ describe("Google Drive integration", () => {
 
       if (url.includes("/files?fields=id,name,webViewLink")) {
         return Response.json({ id: "cat-folder", name: "その他" });
+      }
+
+      if (url.includes("/drive/v3/files/") && !url.includes("q=") && !url.includes("/upload/")) {
+        const id = url.split("/files/")[1]?.split("?")[0];
+        return Response.json({
+          id,
+          name: "folder",
+          mimeType: "application/vnd.google-apps.folder",
+          trashed: false,
+        });
       }
 
       if (url.includes("/files?q=")) {

@@ -2,11 +2,13 @@ import { auth } from "@clerk/nextjs/server";
 
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { isDriveCategoryId } from "@/lib/integrations/google/drive/categories";
+import {
+  respondGoogleDriveCaught,
+  respondGoogleDriveResult,
+} from "@/lib/integrations/google/drive/http";
 import { saveDeliverableToGoogleDriveForUser } from "@/lib/integrations/google/drive/service";
 import type { DriveCategoryId } from "@/lib/integrations/google/drive/types";
-import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
 import { notifyDriveSaveComplete } from "@/lib/notifications/emitters";
-import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type RequestBody = {
   deliverableId?: unknown;
@@ -62,26 +64,16 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     if (result.status !== "ready") {
-      const statusCode =
-        result.status === "feature_disabled"
-          ? 403
-          : result.status === "google_not_connected"
-            ? 409
-            : result.status === "unsupported_format"
-              ? 415
-              : result.status === "not_found"
-                ? 404
-                : 500;
-      return Response.json(result, { status: statusCode });
+      return respondGoogleDriveResult(result);
     }
 
     notifyDriveSaveComplete(userId, result.file?.name);
-
-    return Response.json(result);
+    return respondGoogleDriveResult(result);
   } catch (error) {
-    const message =
-      clientSafeMessage(error, "Failed to save to Google Drive");
-    recordGoogleAuthFailure(message, "google_drive_save");
-    return Response.json({ status: "error", message }, { status: 500 });
+    return respondGoogleDriveCaught(
+      error,
+      "Google Driveへの保存に失敗しました",
+      "google_drive_save",
+    );
   }
 }

@@ -1,9 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
 
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
+import {
+  respondGoogleDriveCaught,
+  respondGoogleDriveResult,
+} from "@/lib/integrations/google/drive/http";
 import { deleteGoogleDriveFileForUser } from "@/lib/integrations/google/drive/service";
-import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
-import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 export async function POST(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -34,16 +36,12 @@ export async function POST(request: Request): Promise<Response> {
       fileId: body.fileId.trim(),
     });
 
-    if (result.status !== "ready") {
-      const statusCode = result.status === "feature_disabled" ? 403 : 409;
-      return Response.json(result, { status: statusCode });
-    }
-
-    return Response.json(result);
+    return respondGoogleDriveResult(result);
   } catch (error) {
-    const message =
-      clientSafeMessage(error, "Failed to delete Drive file");
-    recordGoogleAuthFailure(message, "google_drive_delete");
-    return Response.json({ status: "error", message }, { status: 500 });
+    return respondGoogleDriveCaught(
+      error,
+      "Google Driveファイルの削除に失敗しました",
+      "google_drive_delete",
+    );
   }
 }

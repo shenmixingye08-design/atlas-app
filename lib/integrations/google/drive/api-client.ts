@@ -3,6 +3,7 @@ import "server-only";
 import { fetchWithTimeout } from "@/lib/http/fetch-with-timeout";
 
 import {
+  ATLAS_DRIVE_LEGACY_ROOT,
   ATLAS_DRIVE_ROOT,
   buildDriveFileUrl,
   buildDriveFolderUrl,
@@ -15,6 +16,13 @@ import {
   sanitizeDriveFileName,
 } from "./constants";
 import {
+  GoogleDriveApiError,
+  logGoogleDriveDiagnostic,
+  parseGoogleDriveErrorBody,
+  type DriveFailedStage,
+} from "./errors";
+import {
+  deleteStoredDriveFolders,
   getStoredDriveFolders,
   saveStoredDriveFolders,
 } from "./folder-store";
@@ -45,11 +53,35 @@ type DriveListResponse = {
 const FILE_FIELDS =
   "id,name,mimeType,modifiedTime,viewedByMeTime,size,webViewLink,webContentLink,parents";
 
+function throwDriveApiError(input: {
+  httpStatus: number;
+  payload: unknown;
+  failedStage: DriveFailedStage;
+  endpointKind: string;
+}): never {
+  const parsed = parseGoogleDriveErrorBody(input.payload);
+  const error = new GoogleDriveApiError({
+    httpStatus: input.httpStatus,
+    failedStage: input.failedStage,
+    googleReason: parsed.reason,
+    endpointKind: input.endpointKind,
+    message: parsed.message ?? undefined,
+  });
+  logGoogleDriveDiagnostic(error);
+  throw error;
+}
+
 async function driveFetchJson<T>(
   accessToken: string,
   path: string,
   init: RequestInit = {},
+  context: {
+    failedStage?: DriveFailedStage;
+    endpointKind?: string;
+  } = {},
 ): Promise<T> {
+  const failedStage = context.failedStage ?? "provider";
+  const endpointKind = context.endpointKind ?? path.split("?")[0] ?? "drive";
   const response = await fetchWithTimeout(`${DRIVE_API_BASE}${path}`, {
     ...init,
     headers: {
@@ -63,10 +95,17 @@ async function driveFetchJson<T>(
     return {} as T;
   }
 
-  const payload = (await response.json()) as T & { error?: { message?: string } };
+  const payload = (await response.json().catch(() => ({}))) as T & {
+    error?: { message?: string };
+  };
 
   if (!response.ok) {
-    throw new Error(payload.error?.message ?? "Google Drive API request failed");
+    throwDriveApiError({
+      httpStatus: response.status,
+      payload,
+      failedStage,
+      endpointKind,
+    });
   }
 
   return payload;
@@ -75,6 +114,10 @@ async function driveFetchJson<T>(
 async function driveFetchBinary(
   accessToken: string,
   path: string,
+  context: {
+    failedStage?: DriveFailedStage;
+    endpointKind?: string;
+  } = {},
 ): Promise<{ buffer: Buffer; contentType: string | null }> {
   const response = await fetchWithTimeout(`${DRIVE_API_BASE}${path}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -82,10 +125,13 @@ async function driveFetchBinary(
   });
 
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as {
-      error?: { message?: string };
-    } | null;
-    throw new Error(payload?.error?.message ?? "Google Drive download failed");
+    const payload = await response.json().catch(() => ({}));
+    throwDriveApiError({
+      httpStatus: response.status,
+      payload,
+      failedStage: context.failedStage ?? "file_download",
+      endpointKind: context.endpointKind ?? "files.get",
+    });
   }
 
   const arrayBuffer = await response.arrayBuffer();
@@ -102,18 +148,21 @@ function escapeDriveQuery(value: string): string {
 async function findFolderByName(
   accessToken: string,
   name: string,
-  parentId?: string,
+  parentId: string | undefined,
+  failedStage: DriveFailedStage,
 ): Promise<DriveApiFile | null> {
   const parentClause = parentId
     ? ` and '${escapeDriveQuery(parentId)}' in parents`
-    : "";
+    : " and 'root' in parents";
   const query = encodeURIComponent(
     `name='${escapeDriveQuery(name)}' and mimeType='${GOOGLE_APPS_MIME.folder}' and trashed=false${parentClause}`,
   );
 
   const result = await driveFetchJson<DriveListResponse>(
     accessToken,
-    `/files?q=${query}&fields=files(id,name,webViewLink)&spaces=drive`,
+    `/files?q=${query}&fields=files(id,name,webViewLink)&spaces=drive&pageSize=1`,
+    {},
+    { failedStage, endpointKind: "files.list" },
   );
 
   return result.files?.[0] ?? null;
@@ -122,7 +171,8 @@ async function findFolderByName(
 async function createFolder(
   accessToken: string,
   name: string,
-  parentId?: string,
+  parentId: string | undefined,
+  failedStage: DriveFailedStage,
 ): Promise<DriveApiFile> {
   const metadata: Record<string, unknown> = {
     name,
@@ -138,46 +188,133 @@ async function createFolder(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(metadata),
     },
+    { failedStage, endpointKind: "files.create" },
   );
 }
 
 async function findOrCreateFolder(
   accessToken: string,
   name: string,
-  parentId?: string,
+  parentId: string | undefined,
+  stages: { search: DriveFailedStage; create: DriveFailedStage },
 ): Promise<DriveApiFile> {
-  const existing = await findFolderByName(accessToken, name, parentId);
+  const existing = await findFolderByName(
+    accessToken,
+    name,
+    parentId,
+    stages.search,
+  );
   if (existing?.id) return existing;
-  return createFolder(accessToken, name, parentId);
+  return createFolder(accessToken, name, parentId, stages.create);
+}
+
+async function resolveUsableFolderId(
+  accessToken: string,
+  folderId: string,
+): Promise<string | null> {
+  try {
+    const file = await driveFetchJson<{
+      id?: string;
+      mimeType?: string;
+      trashed?: boolean;
+    }>(
+      accessToken,
+      `/files/${encodeURIComponent(folderId)}?fields=id,mimeType,trashed`,
+      {},
+      { failedStage: "folder_cache_validate", endpointKind: "files.get" },
+    );
+    if (!file.id || file.trashed) return null;
+    if (file.mimeType && file.mimeType !== GOOGLE_APPS_MIME.folder) return null;
+    return file.id;
+  } catch (error) {
+    if (error instanceof GoogleDriveApiError && error.httpStatus === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function layoutFromIds(
+  rootFolderId: string,
+  categories: Record<DriveCategoryId, string>,
+  ensuredAt: string,
+): DriveFolderLayout {
+  return {
+    rootFolderId,
+    rootFolderUrl: buildDriveFolderUrl(rootFolderId),
+    categories: Object.fromEntries(
+      (Object.keys(DRIVE_CATEGORY_FOLDERS) as DriveCategoryId[]).map((id) => [
+        id,
+        {
+          folderId: categories[id],
+          folderUrl: buildDriveFolderUrl(categories[id]),
+          label: DRIVE_CATEGORY_FOLDERS[id],
+        },
+      ]),
+    ) as DriveFolderLayout["categories"],
+    ensuredAt,
+  };
 }
 
 export async function ensureAtlasDriveFolders(input: {
   accessToken: string;
   userId: string;
+  recreate?: boolean;
 }): Promise<DriveFolderLayout> {
-  const cached = getStoredDriveFolders(input.userId);
-  if (cached) {
-    const categories = Object.fromEntries(
-      (Object.keys(DRIVE_CATEGORY_FOLDERS) as DriveCategoryId[]).map((id) => [
-        id,
-        {
-          folderId: cached.categories[id],
-          folderUrl: buildDriveFolderUrl(cached.categories[id]),
-          label: DRIVE_CATEGORY_FOLDERS[id],
-        },
-      ]),
-    ) as DriveFolderLayout["categories"];
-
-    return {
-      rootFolderId: cached.rootFolderId,
-      rootFolderUrl: buildDriveFolderUrl(cached.rootFolderId),
-      categories,
-      ensuredAt: cached.ensuredAt,
-    };
+  if (input.recreate) {
+    deleteStoredDriveFolders(input.userId);
   }
 
-  const root = await findOrCreateFolder(input.accessToken, ATLAS_DRIVE_ROOT);
-  if (!root.id) throw new Error("Failed to create ATLAS root folder");
+  const cached = getStoredDriveFolders(input.userId);
+  if (cached && !input.recreate) {
+    const rootId = await resolveUsableFolderId(
+      input.accessToken,
+      cached.rootFolderId,
+    );
+    const categoryIds = rootId
+      ? await Promise.all(
+          (Object.keys(DRIVE_CATEGORY_FOLDERS) as DriveCategoryId[]).map(
+            async (id) =>
+              resolveUsableFolderId(input.accessToken, cached.categories[id]),
+          ),
+        )
+      : [];
+    if (rootId && categoryIds.every(Boolean)) {
+      return layoutFromIds(rootId, cached.categories, cached.ensuredAt);
+    }
+    deleteStoredDriveFolders(input.userId);
+  }
+
+  const existingMinervot = await findFolderByName(
+    input.accessToken,
+    ATLAS_DRIVE_ROOT,
+    undefined,
+    "folder_search_root",
+  );
+  const existingLegacy =
+    existingMinervot ??
+    (await findFolderByName(
+      input.accessToken,
+      ATLAS_DRIVE_LEGACY_ROOT,
+      undefined,
+      "folder_search_root",
+    ));
+  const root = existingLegacy?.id
+    ? existingLegacy
+    : await createFolder(
+        input.accessToken,
+        ATLAS_DRIVE_ROOT,
+        undefined,
+        "folder_create_root",
+      );
+  if (!root.id) {
+    throw new GoogleDriveApiError({
+      httpStatus: 502,
+      failedStage: "folder_create_root",
+      endpointKind: "files.create",
+      message: "MINERVOTフォルダを作成できませんでした",
+    });
+  }
 
   const categories: Record<DriveCategoryId, string> = {
     sales_material: "",
@@ -194,9 +331,18 @@ export async function ensureAtlasDriveFolders(input: {
       input.accessToken,
       DRIVE_CATEGORY_FOLDERS[categoryId],
       root.id,
+      {
+        search: "folder_search_category",
+        create: "folder_create_category",
+      },
     );
     if (!folder.id) {
-      throw new Error(`Failed to create folder: ${DRIVE_CATEGORY_FOLDERS[categoryId]}`);
+      throw new GoogleDriveApiError({
+        httpStatus: 502,
+        failedStage: "folder_create_category",
+        endpointKind: "files.create",
+        message: `フォルダを作成できませんでした: ${DRIVE_CATEGORY_FOLDERS[categoryId]}`,
+      });
     }
     categories[categoryId] = folder.id;
   }
@@ -209,21 +355,7 @@ export async function ensureAtlasDriveFolders(input: {
     ensuredAt,
   });
 
-  return {
-    rootFolderId: root.id,
-    rootFolderUrl: buildDriveFolderUrl(root.id),
-    categories: Object.fromEntries(
-      (Object.keys(categories) as DriveCategoryId[]).map((id) => [
-        id,
-        {
-          folderId: categories[id],
-          folderUrl: buildDriveFolderUrl(categories[id]),
-          label: DRIVE_CATEGORY_FOLDERS[id],
-        },
-      ]),
-    ) as DriveFolderLayout["categories"],
-    ensuredAt,
-  };
+  return layoutFromIds(root.id, categories, ensuredAt);
 }
 
 function resolveCategoryFromParents(
@@ -292,6 +424,8 @@ export async function listDriveFiles(input: {
   const result = await driveFetchJson<DriveListResponse>(
     input.accessToken,
     `/files?q=${q}&orderBy=modifiedTime desc&pageSize=${DRIVE_LIST_MAX_RESULTS}&fields=files(${FILE_FIELDS})`,
+    {},
+    { failedStage: "file_list", endpointKind: "files.list" },
   );
 
   return (result.files ?? [])
@@ -310,6 +444,8 @@ export async function listDriveFolders(input: {
   const result = await driveFetchJson<DriveListResponse>(
     input.accessToken,
     `/files?q=${q}&orderBy=name&pageSize=${DRIVE_LIST_MAX_RESULTS}&fields=files(id,name,mimeType,modifiedTime,webViewLink,parents)`,
+    {},
+    { failedStage: "folder_list", endpointKind: "files.list" },
   );
 
   return (result.files ?? [])
@@ -333,6 +469,8 @@ export async function listDriveChildren(input: {
   const result = await driveFetchJson<DriveListResponse>(
     input.accessToken,
     `/files?q=${q}&orderBy=folder,modifiedTime desc&pageSize=${DRIVE_LIST_MAX_RESULTS}&fields=files(${FILE_FIELDS})`,
+    {},
+    { failedStage: "file_list", endpointKind: "files.list" },
   );
 
   const files: DriveFileItem[] = [];
@@ -371,6 +509,8 @@ export async function searchDriveFiles(input: {
   const result = await driveFetchJson<DriveListResponse>(
     input.accessToken,
     `/files?q=${q}&orderBy=modifiedTime desc&pageSize=${DRIVE_LIST_MAX_RESULTS}&fields=files(${FILE_FIELDS})`,
+    {},
+    { failedStage: "file_search", endpointKind: "files.list" },
   );
 
   return (result.files ?? [])
@@ -396,6 +536,8 @@ export async function listRecentDriveFiles(input: {
   const result = await driveFetchJson<DriveListResponse>(
     input.accessToken,
     `/files?q=${q}&orderBy=viewedByMeTime desc&pageSize=${pageSize}&fields=files(${FILE_FIELDS})`,
+    {},
+    { failedStage: "file_list", endpointKind: "files.list" },
   );
 
   return (result.files ?? [])
@@ -416,6 +558,8 @@ export async function getDriveFile(input: {
   const file = await driveFetchJson<DriveApiFile>(
     input.accessToken,
     `/files/${encodeURIComponent(input.fileId)}?fields=${FILE_FIELDS}`,
+    {},
+    { failedStage: "file_get", endpointKind: "files.get" },
   );
 
   return normalizeDriveFile(file, input.category ?? "other");
@@ -457,12 +601,17 @@ async function uploadMultipart(input: {
     60_000,
   );
 
-  const payload = (await response.json()) as DriveApiFile & {
+  const payload = (await response.json().catch(() => ({}))) as DriveApiFile & {
     error?: { message?: string };
   };
 
   if (!response.ok) {
-    throw new Error(payload.error?.message ?? "Google Drive upload failed");
+    throwDriveApiError({
+      httpStatus: response.status,
+      payload,
+      failedStage: "file_upload",
+      endpointKind: "files.upload",
+    });
   }
 
   return payload;
@@ -630,6 +779,8 @@ export async function moveDriveFile(input: {
   const current = await driveFetchJson<DriveApiFile>(
     input.accessToken,
     `/files/${encodeURIComponent(input.fileId)}?fields=id,parents`,
+    {},
+    { failedStage: "file_move", endpointKind: "files.get" },
   );
   const previousParents = (current.parents ?? []).join(",");
 
@@ -637,6 +788,7 @@ export async function moveDriveFile(input: {
     input.accessToken,
     `/files/${encodeURIComponent(input.fileId)}?addParents=${encodeURIComponent(input.destinationFolderId)}&removeParents=${encodeURIComponent(previousParents)}&fields=${FILE_FIELDS}`,
     { method: "PATCH", headers: { "Content-Type": "application/json" }, body: "{}" },
+    { failedStage: "file_move", endpointKind: "files.update" },
   );
 
   const normalized = normalizeDriveFile(moved, input.category ?? "other");
@@ -667,6 +819,7 @@ export async function copyDriveFile(input: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     },
+    { failedStage: "file_copy", endpointKind: "files.copy" },
   );
 
   const normalized = normalizeDriveFile(copied, input.category ?? "other");
@@ -686,6 +839,7 @@ export async function trashDriveFile(input: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ trashed: true }),
     },
+    { failedStage: "file_delete", endpointKind: "files.update" },
   );
 }
 
@@ -697,5 +851,6 @@ export async function deleteDriveFilePermanently(input: {
     input.accessToken,
     `/files/${encodeURIComponent(input.fileId)}`,
     { method: "DELETE" },
+    { failedStage: "file_delete", endpointKind: "files.delete" },
   );
 }

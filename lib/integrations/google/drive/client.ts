@@ -13,29 +13,44 @@ import type {
 export { DRIVE_CATEGORY_FOLDERS } from "./constants";
 export type { DriveCategoryId, DriveFileItem } from "./types";
 
+const KNOWN_DRIVE_FAILURE_STATUSES = new Set([
+  "google_not_connected",
+  "needs_reconnect",
+  "insufficient_permission",
+  "feature_disabled",
+  "plan_required",
+  "durable_unavailable",
+  "rate_limited",
+  "provider_error",
+  "not_found",
+  "unauthorized",
+]);
+
 async function parseDriveErrorResponse(
   response: Response,
 ): Promise<DriveFilesResult | null> {
   const body = (await response.json().catch(() => null)) as {
     message?: string;
     status?: string;
+    diagnosticId?: string;
+    failedStage?: string;
   } | null;
 
-  if (body?.status === "google_not_connected") {
+  if (body?.status && KNOWN_DRIVE_FAILURE_STATUSES.has(body.status)) {
     return {
-      status: "google_not_connected",
-      message: body.message ?? "Googleを接続してください",
+      status: body.status as Exclude<DriveFilesResult["status"], "ready">,
+      message: body.message ?? "Google Driveの処理に失敗しました",
+      diagnosticId: body.diagnosticId,
+      failedStage: body.failedStage,
     };
   }
 
-  if (body?.status === "feature_disabled") {
-    return {
-      status: "feature_disabled",
-      message: body.message ?? "Google連携は現在ご利用いただけません",
-    };
-  }
-
-  return null;
+  return body?.message
+    ? {
+        status: "provider_error",
+        message: body.message,
+      }
+    : null;
 }
 
 export async function fetchGoogleDriveFilesClient(input: {
@@ -55,10 +70,7 @@ export async function fetchGoogleDriveFilesClient(input: {
   if (!response.ok) {
     const known = await parseDriveErrorResponse(response);
     if (known) return known;
-    const body = (await response.json().catch(() => null)) as {
-      message?: string;
-    } | null;
-    throw new Error(body?.message ?? "Failed to load Google Drive files");
+    throw new Error("Google Driveファイルの読み込みに失敗しました");
   }
 
   return response.json() as Promise<DriveFilesResult>;
@@ -78,10 +90,7 @@ export async function searchGoogleDriveClient(input: {
   if (!response.ok) {
     const known = await parseDriveErrorResponse(response);
     if (known) return known;
-    const body = (await response.json().catch(() => null)) as {
-      message?: string;
-    } | null;
-    throw new Error(body?.message ?? "Failed to search Google Drive");
+    throw new Error("Google Driveの検索に失敗しました");
   }
 
   return response.json() as Promise<DriveFilesResult>;
@@ -104,10 +113,7 @@ export async function fetchRecentGoogleDriveFilesClient(input?: {
   if (!response.ok) {
     const known = await parseDriveErrorResponse(response);
     if (known) return known;
-    const body = (await response.json().catch(() => null)) as {
-      message?: string;
-    } | null;
-    throw new Error(body?.message ?? "Failed to load recent Drive files");
+    throw new Error("最近のDriveファイルの読み込みに失敗しました");
   }
 
   return response.json();
@@ -135,10 +141,7 @@ export async function fetchGoogleDriveFoldersClient(input?: {
   if (!response.ok) {
     const known = await parseDriveErrorResponse(response);
     if (known) return known;
-    const body = (await response.json().catch(() => null)) as {
-      message?: string;
-    } | null;
-    throw new Error(body?.message ?? "Failed to load Drive folders");
+    throw new Error("Driveフォルダの読み込みに失敗しました");
   }
 
   return response.json();
