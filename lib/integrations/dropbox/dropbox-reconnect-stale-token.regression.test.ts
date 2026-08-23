@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 const durableByUser = vi.hoisted(() => new Map<string, unknown>());
+const durableReadFailed = vi.hoisted(() => new Set<string>());
 
 vi.mock("@/lib/integrations/dropbox/credential-persistence", async () => {
   const actual = await vi.importActual<
@@ -14,6 +15,18 @@ vi.mock("@/lib/integrations/dropbox/credential-persistence", async () => {
   >("@/lib/integrations/dropbox/credential-persistence");
   return {
     ...actual,
+    readDropboxAuthFromDurable: vi.fn(async (userId: string) => {
+      if (durableReadFailed.has(userId)) {
+        return {
+          status: "unavailable" as const,
+          developerCode: "durable_read_failed" as const,
+          reason: "timeout",
+        };
+      }
+      const row = durableByUser.get(userId);
+      if (!row) return { status: "missing" as const };
+      return { status: "found" as const, value: row };
+    }),
     loadDropboxAuthFromSupabase: vi.fn(async (userId: string) => {
       return durableByUser.get(userId) ?? null;
     }),
@@ -33,7 +46,13 @@ import {
 } from "@/lib/integrations/external-services/store";
 import { createDefaultConnection } from "@/lib/integrations/external-services/registry";
 import { dropboxServiceDefinition } from "@/lib/integrations/dropbox/definition";
-import { getDropboxAccessToken } from "@/lib/integrations/dropbox/oauth-service";
+import {
+  getDropboxAccessToken,
+  getDropboxAccessTokenResult,
+} from "@/lib/integrations/dropbox/oauth-service";
+import { getDropboxFilesForUser } from "@/lib/integrations/dropbox/service";
+import { buildFeatureAccessContext } from "@/lib/feature-flags/access";
+import { resetFeatureFlagStore, setFeatureFlagState } from "@/lib/feature-flags/store";
 
 const USER_A = "user_dbx_stale_a";
 const USER_B = "user_dbx_stale_b";
@@ -70,13 +89,17 @@ function connectedDropbox(userId: string, accessToken: string) {
 describe("Dropbox reconnect stale token (permanent)", () => {
   beforeEach(() => {
     durableByUser.clear();
+    durableReadFailed.clear();
     resetExternalServiceStore();
     resetExternalServiceCredentialStore();
     resetExternalAuthHydration();
+    resetFeatureFlagStore();
+    setFeatureFlagState("dropbox", "on");
   });
 
   afterEach(() => {
     durableByUser.clear();
+    durableReadFailed.clear();
     resetExternalServiceStore();
     resetExternalServiceCredentialStore();
     resetExternalAuthHydration();
@@ -101,5 +124,43 @@ describe("Dropbox reconnect stale token (permanent)", () => {
     const token = await getDropboxAccessToken(USER_A);
     expect(token).toBe("a-dbx");
     expect(token).not.toBe("b-dbx");
+  });
+
+  it("CASE C: disconnect on another isolate does not use stale Dropbox token", async () => {
+    const stale = connectedDropbox(USER_A, "stale-dbx");
+    saveExternalServiceCredentials(stale.credentials);
+    saveExternalServiceConnection(USER_A, stale.connection);
+    durableByUser.set(USER_A, stale);
+    durableByUser.delete(USER_A);
+
+    const token = await getDropboxAccessToken(USER_A);
+    expect(token).toBeNull();
+    expect(getExternalServiceCredentials(USER_A, "dropbox")).toBeNull();
+
+    const files = await getDropboxFilesForUser({
+      userId: USER_A,
+      context: buildFeatureAccessContext(null),
+    });
+    expect(files.status).toBe("dropbox_not_connected");
+  });
+
+  it("CASE D: durable read failure is not dropbox_not_connected", async () => {
+    const stale = connectedDropbox(USER_A, "stale-dbx");
+    saveExternalServiceCredentials(stale.credentials);
+    saveExternalServiceConnection(USER_A, stale.connection);
+    durableByUser.set(USER_A, stale);
+    durableReadFailed.add(USER_A);
+
+    const result = await getDropboxAccessTokenResult(USER_A);
+    expect(result.status).toBe("unavailable");
+    expect(getExternalServiceCredentials(USER_A, "dropbox")?.accessToken).toBe(
+      "stale-dbx",
+    );
+
+    const files = await getDropboxFilesForUser({
+      userId: USER_A,
+      context: buildFeatureAccessContext(null),
+    });
+    expect(files.status).toBe("durable_unavailable");
   });
 });

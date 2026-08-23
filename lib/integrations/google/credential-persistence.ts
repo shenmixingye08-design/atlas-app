@@ -1,5 +1,10 @@
 import "server-only";
 
+import type { DurableCredentialRead } from "@/lib/integrations/durable-credential-read";
+import {
+  durableReadFailed,
+  durableReadWhenClientMissing,
+} from "@/lib/integrations/durable-credential-read";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 import { warnIfProductionSupabaseServiceRoleMissing } from "@/lib/persistence/production-guard";
@@ -170,18 +175,25 @@ function toRow(
   };
 }
 
-/** Load Google OAuth credentials + connection metadata for one user. */
-export async function loadGoogleAuthFromSupabase(
+type GoogleDurableQuery =
+  | { kind: "no_client" }
+  | { kind: "encryption_missing" }
+  | { kind: "error"; message: string }
+  | { kind: "empty" }
+  | { kind: "unreadable" }
+  | { kind: "row"; persisted: GooglePersistedAuth };
+
+async function queryGoogleAuthFromDurable(
   userId: string,
-): Promise<GooglePersistedAuth | null> {
+): Promise<GoogleDurableQuery> {
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return null;
+  if (!client) return { kind: "no_client" };
 
   if (!isOAuthEncryptionConfigured() && isAtlasProduction()) {
     console.error(
       "[Google OAuth] Production refuse credential load without ATLAS_OAUTH_CREDENTIALS_ENCRYPTION_KEY",
     );
-    return null;
+    return { kind: "encryption_missing" };
   }
 
   try {
@@ -196,12 +208,13 @@ export async function loadGoogleAuthFromSupabase(
         "[Google OAuth] Supabase credential load failed:",
         error.message,
       );
-      return null;
+      return { kind: "error", message: error.message ?? "query_failed" };
     }
-    if (!data) return null;
+    if (!data) return { kind: "empty" };
     const persisted = rowToPersisted(data as GoogleCredentialRow);
+    if (!persisted) return { kind: "unreadable" };
     if (
-      persisted?.needsReencrypt &&
+      persisted.needsReencrypt &&
       persisted.credentials &&
       isOAuthEncryptionConfigured()
     ) {
@@ -211,15 +224,51 @@ export async function loadGoogleAuthFromSupabase(
         persisted.connection,
       );
     }
-    return persisted;
+    return { kind: "row", persisted };
   } catch (error) {
     safeOAuthLog(
       "warn",
       "[Google OAuth] Supabase credential load skipped",
       error instanceof Error ? error.message : "load_failed",
     );
-    return null;
+    return {
+      kind: "error",
+      message: error instanceof Error ? error.message : "load_failed",
+    };
   }
+}
+
+/** Production SoT read. Distinguishes confirmed-missing from read failure. */
+export async function readGoogleAuthFromDurable(
+  userId: string,
+): Promise<DurableCredentialRead<GooglePersistedAuth>> {
+  const query = await queryGoogleAuthFromDurable(userId);
+  switch (query.kind) {
+    case "no_client":
+      return durableReadWhenClientMissing();
+    case "encryption_missing":
+      return durableReadFailed("encryption_not_configured");
+    case "error":
+      return durableReadFailed(query.message);
+    case "empty":
+      return { status: "missing" };
+    case "unreadable":
+      return durableReadFailed("row_unreadable");
+    case "row":
+      if (query.persisted.decodeFailed || !query.persisted.credentials) {
+        return durableReadFailed("row_unreadable");
+      }
+      return { status: "found", value: query.persisted };
+  }
+}
+
+/** Load Google OAuth credentials + connection metadata for one user. */
+export async function loadGoogleAuthFromSupabase(
+  userId: string,
+): Promise<GooglePersistedAuth | null> {
+  const query = await queryGoogleAuthFromDurable(userId);
+  if (query.kind === "row") return query.persisted;
+  return null;
 }
 
 /**

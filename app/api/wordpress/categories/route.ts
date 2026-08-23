@@ -24,5 +24,8 @@ export async function GET(): Promise<Response> {
   if (result.status === "wp_not_connected" || result.status === "auth_failure") {
     return Response.json(result, { status: 409 });
   }
+  if (result.status === "durable_unavailable") {
+    return Response.json(result, { status: 503 });
+  }
   return Response.json(result, { status: 502 });
 }

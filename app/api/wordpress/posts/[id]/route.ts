@@ -21,6 +21,8 @@ function statusCodeForResult(status: string): number {
       return 409;
     case "validation_failed":
       return 400;
+    case "durable_unavailable":
+      return 503;
     default:
       return 502;
   }

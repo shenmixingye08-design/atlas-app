@@ -5,7 +5,6 @@ import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
 
 import { ensureExternalAuthHydrated } from "../../external-services/durable";
-import { getExternalServiceConnection } from "../../external-services/store";
 import {
   WordPressApiError,
   createWordPressPost,
@@ -30,14 +29,46 @@ import type {
   WordPressTag,
 } from "../types";
 
-async function requireAuth(userId: string) {
-  await ensureExternalAuthHydrated(userId);
-  const auth = await resolveWordPressAuthContext(userId);
-  const connection = getExternalServiceConnection(userId, "wordpress");
-  if (!auth || connection.status === "disconnected") {
-    return null;
+type WordPressAuthGate =
+  | {
+      status: "ready";
+      auth: {
+        siteUrl: string;
+        username: string;
+        applicationPassword: string;
+      };
+    }
+  | { status: "not_connected" }
+  | {
+      status: "unavailable";
+      developerCode: "durable_read_failed";
+      message: string;
+    };
+
+function authGateFailure(
+  ctx: Exclude<WordPressAuthGate, { status: "ready" }>,
+): WordPressPostResult {
+  if (ctx.status === "unavailable") {
+    return {
+      status: "durable_unavailable",
+      message: ctx.message,
+      developerCode: ctx.developerCode,
+      httpStatus: 503,
+    };
   }
-  return { auth, connection };
+  return { status: "wp_not_connected", message: WP_NOT_CONNECTED_MESSAGE };
+}
+
+async function requireAuth(userId: string): Promise<WordPressAuthGate> {
+  await ensureExternalAuthHydrated(userId);
+  const resolved = await resolveWordPressAuthContext(userId);
+  if (resolved.status === "unavailable") {
+    return resolved;
+  }
+  if (resolved.status !== "ready") {
+    return { status: "not_connected" };
+  }
+  return { status: "ready", auth: resolved.auth };
 }
 
 function mapAuthError(error: unknown): WordPressPostResult {
@@ -81,7 +112,7 @@ async function resolveFeaturedMediaId(
   if (!payload.featuredImageUrl?.trim()) return undefined;
 
   const ctx = await requireAuth(userId);
-  if (!ctx) return undefined;
+  if (ctx.status !== "ready") return undefined;
 
   const media = await uploadWordPressMediaFromUrl({
     auth: ctx.auth,
@@ -117,8 +148,8 @@ export async function createWordPressPostForUser(input: {
   }
 
   const ctx = await requireAuth(input.userId);
-  if (!ctx) {
-    return { status: "wp_not_connected", message: WP_NOT_CONNECTED_MESSAGE };
+  if (ctx.status !== "ready") {
+    return authGateFailure(ctx);
   }
 
   const publishStatus = input.payload.status ?? "draft";
@@ -237,8 +268,8 @@ export async function updateWordPressPostForUser(input: {
   }
 
   const ctx = await requireAuth(input.userId);
-  if (!ctx) {
-    return { status: "wp_not_connected", message: WP_NOT_CONNECTED_MESSAGE };
+  if (ctx.status !== "ready") {
+    return authGateFailure(ctx);
   }
 
   const updateStatus = input.payload.status ?? "draft";
@@ -301,12 +332,36 @@ export async function updateWordPressPostForUser(input: {
   }
 }
 
+type WordPressTaxonomyFailure = {
+  status:
+    | "error"
+    | "wp_not_connected"
+    | "durable_unavailable"
+    | "feature_disabled"
+    | "auth_failure";
+  message: string;
+  developerCode?: string;
+};
+
+function taxonomyAuthFailure(
+  ctx: Exclude<WordPressAuthGate, { status: "ready" }>,
+): WordPressTaxonomyFailure {
+  if (ctx.status === "unavailable") {
+    return {
+      status: "durable_unavailable",
+      message: ctx.message,
+      developerCode: ctx.developerCode,
+    };
+  }
+  return { status: "wp_not_connected", message: WP_NOT_CONNECTED_MESSAGE };
+}
+
 export async function fetchWordPressCategoriesForUser(input: {
   userId: string;
   context: FeatureAccessContext;
 }): Promise<
   | { status: "ok"; categories: WordPressCategory[] }
-  | { status: "error" | "wp_not_connected" | "feature_disabled" | "auth_failure"; message: string }
+  | WordPressTaxonomyFailure
 > {
   if (!isFeatureEnabled("wordpress", input.context)) {
     return {
@@ -316,8 +371,8 @@ export async function fetchWordPressCategoriesForUser(input: {
   }
 
   const ctx = await requireAuth(input.userId);
-  if (!ctx) {
-    return { status: "wp_not_connected", message: WP_NOT_CONNECTED_MESSAGE };
+  if (ctx.status !== "ready") {
+    return taxonomyAuthFailure(ctx);
   }
 
   try {
@@ -342,10 +397,7 @@ export async function fetchWordPressCategoriesForUser(input: {
 export async function fetchWordPressTagsForUser(input: {
   userId: string;
   context: FeatureAccessContext;
-}): Promise<
-  | { status: "ok"; tags: WordPressTag[] }
-  | { status: "error" | "wp_not_connected" | "feature_disabled" | "auth_failure"; message: string }
-> {
+}): Promise<{ status: "ok"; tags: WordPressTag[] } | WordPressTaxonomyFailure> {
   if (!isFeatureEnabled("wordpress", input.context)) {
     return {
       status: "feature_disabled",
@@ -354,8 +406,8 @@ export async function fetchWordPressTagsForUser(input: {
   }
 
   const ctx = await requireAuth(input.userId);
-  if (!ctx) {
-    return { status: "wp_not_connected", message: WP_NOT_CONNECTED_MESSAGE };
+  if (ctx.status !== "ready") {
+    return taxonomyAuthFailure(ctx);
   }
 
   try {
@@ -371,6 +423,59 @@ export async function fetchWordPressTagsForUser(input: {
       status: "error",
       message:
         error instanceof Error ? error.message : "タグの取得に失敗しました",
+    };
+  }
+}
+
+export async function uploadWordPressMediaForUser(input: {
+  userId: string;
+  context: FeatureAccessContext;
+  imageUrl: string;
+  altText?: string;
+  filename?: string;
+}): Promise<
+  | { status: "ok"; media: { id: number; sourceUrl: string; altText: string } }
+  | WordPressTaxonomyFailure
+> {
+  if (!isFeatureEnabled("wordpress", input.context)) {
+    return {
+      status: "feature_disabled",
+      message: featureDisabledMessage("wordpress"),
+    };
+  }
+
+  const ctx = await requireAuth(input.userId);
+  if (ctx.status !== "ready") {
+    return taxonomyAuthFailure(ctx);
+  }
+
+  try {
+    const media = await uploadWordPressMediaFromUrl({
+      auth: ctx.auth,
+      imageUrl: input.imageUrl,
+      altText: input.altText,
+      filename: input.filename,
+    });
+    await touchWordPressConnectionLastUsed(input.userId);
+    return {
+      status: "ok",
+      media: {
+        id: media.id,
+        sourceUrl: media.sourceUrl,
+        altText: media.altText,
+      },
+    };
+  } catch (error) {
+    if (error instanceof WordPressApiError && error.isAuthFailure) {
+      await markWordPressAuthFailure(input.userId);
+      return { status: "auth_failure", message: WP_AUTH_FAILURE_MESSAGE };
+    }
+    return {
+      status: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "メディアのアップロードに失敗しました",
     };
   }
 }

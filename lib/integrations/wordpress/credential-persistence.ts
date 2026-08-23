@@ -1,5 +1,10 @@
 import "server-only";
 
+import type { DurableCredentialRead } from "@/lib/integrations/durable-credential-read";
+import {
+  durableReadFailed,
+  durableReadWhenClientMissing,
+} from "@/lib/integrations/durable-credential-read";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 
@@ -119,16 +124,27 @@ function toRow(
   };
 }
 
-export async function loadWordPressAuthFromSupabase(
+/**
+ * Production SoT read. Distinguishes confirmed-missing from read failure.
+ * Decrypt/unreadable rows are unavailable — not silent disconnect.
+ */
+export async function readWordPressAuthFromDurable(
   userId: string,
-): Promise<WordPressPersistedAuth | null> {
+): Promise<DurableCredentialRead<WordPressPersistedAuth>> {
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return null;
+  if (!client) {
+    if (isAtlasProduction()) {
+      console.error(
+        "[WordPress] Production refuse credential load without SUPABASE_SERVICE_ROLE_KEY",
+      );
+    }
+    return durableReadWhenClientMissing();
+  }
   if (!isWordPressEncryptionConfigured() && isAtlasProduction()) {
     console.error(
       "[WordPress] Production refuse credential load without ATLAS_WORDPRESS_CREDENTIALS_ENCRYPTION_KEY",
     );
-    return null;
+    return durableReadFailed("encryption_not_configured");
   }
 
   try {
@@ -143,17 +159,30 @@ export async function loadWordPressAuthFromSupabase(
         "[WordPress] Supabase credential load failed:",
         error.message,
       );
-      return null;
+      return durableReadFailed(error.message ?? "query_failed");
     }
-    if (!data) return null;
-    return rowToPersisted(data as WordPressCredentialRow);
+    if (!data) return { status: "missing" };
+    const persisted = rowToPersisted(data as WordPressCredentialRow);
+    if (!persisted) {
+      return durableReadFailed("row_unreadable");
+    }
+    return { status: "found", value: persisted };
   } catch (error) {
     console.warn("[WordPress] Supabase credential load skipped");
     if (error instanceof Error) {
       console.warn("[WordPress] Load detail:", error.message);
     }
-    return null;
+    return durableReadFailed(
+      error instanceof Error ? error.message : "load_failed",
+    );
   }
+}
+
+export async function loadWordPressAuthFromSupabase(
+  userId: string,
+): Promise<WordPressPersistedAuth | null> {
+  const read = await readWordPressAuthFromDurable(userId);
+  return read.status === "found" ? read.value : null;
 }
 
 export async function persistWordPressAuthToSupabase(

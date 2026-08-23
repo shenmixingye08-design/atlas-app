@@ -30,7 +30,8 @@ export type DropboxFetchStatus =
   | "ready"
   | "dropbox_not_connected"
   | "feature_disabled"
-  | "unauthorized";
+  | "unauthorized"
+  | "durable_unavailable";
 
 export type DropboxFilesResult =
   | { status: "ready"; snapshot: DropboxFilesSnapshot }

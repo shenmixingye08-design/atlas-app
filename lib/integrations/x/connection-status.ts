@@ -71,6 +71,20 @@ export async function checkXConnectionForUser(input: {
   }
 
   const tokenResult = await getXAccountAccessTokenResult(input.userId);
+  if (tokenResult.status === "unavailable") {
+    return {
+      status: "error",
+      connected: false,
+      message: tokenResult.message,
+    };
+  }
+  if (tokenResult.status === "missing") {
+    return {
+      status: "disconnected",
+      connected: false,
+      message: "Xを接続してください",
+    };
+  }
   if (tokenResult.status !== "ready") {
     return {
       status: "reconnect_required",

@@ -20,7 +20,7 @@ import {
   searchDropboxFiles,
   uploadDropboxFile,
 } from "./api-client";
-import { getDropboxAccessToken } from "./oauth-service";
+import { getDropboxAccessTokenResult } from "./oauth-service";
 import type {
   DropboxAiSummary,
   DropboxFileItem,
@@ -51,23 +51,25 @@ async function resolveDropboxAccess(input: {
   // CRITICAL: hydrate before reading connection status (cold-start safe).
   await ensureExternalAuthHydrated(input.userId);
 
-  const connection = getExternalServiceConnection(input.userId, "dropbox");
-  if (connection.status !== "connected") {
+  const token = await getDropboxAccessTokenResult(input.userId);
+  if (token.status === "unavailable") {
+    return {
+      status: "durable_unavailable",
+      message: token.message,
+    };
+  }
+  if (token.status !== "ready") {
+    const connection = getExternalServiceConnection(input.userId, "dropbox");
     return {
       status: "dropbox_not_connected",
-      message: "Dropboxを接続してください",
+      message:
+        connection.status === "error"
+          ? "Dropbox連携の有効期限が切れました。再接続してください"
+          : "Dropboxを接続してください",
     };
   }
 
-  const accessToken = await getDropboxAccessToken(input.userId);
-  if (!accessToken) {
-    return {
-      status: "dropbox_not_connected",
-      message: "Dropbox連携の有効期限が切れました。再接続してください",
-    };
-  }
-
-  return { status: "ready", accessToken };
+  return { status: "ready", accessToken: token.accessToken };
 }
 
 export async function getDropboxFilesForUser(input: {

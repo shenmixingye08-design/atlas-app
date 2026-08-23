@@ -20,6 +20,12 @@ import { getExternalServiceCredentials } from "@/lib/integrations/external-servi
 import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
 
 import {
+  DURABLE_READ_FAILED_CODE,
+  DURABLE_READ_FAILED_USER_MESSAGE,
+} from "@/lib/integrations/durable-credential-read";
+
+import { reloadGoogleAuthFromDurable } from "./auth-reload";
+import {
   getGoogleAccountAccessTokenResult,
   type GoogleAccessTokenResult,
 } from "./token-manager";
@@ -38,8 +44,10 @@ export type GoogleAccessGateFailure = {
     | "plan_required"
     | "google_not_connected"
     | "needs_reconnect"
-    | "insufficient_permission";
+    | "insufficient_permission"
+    | "durable_unavailable";
   message: string;
+  developerCode?: typeof DURABLE_READ_FAILED_CODE;
 };
 
 export type GoogleAccessGateOk = { accessToken: string };
@@ -82,6 +90,14 @@ export async function requireGoogleIntegrationAccess(input: {
 
   // CRITICAL: hydrate before reading connection status (cold-start safe).
   await ensureExternalAuthHydrated(input.userId);
+  const reload = await reloadGoogleAuthFromDurable(input.userId);
+  if (reload.status === "unavailable") {
+    return {
+      status: "durable_unavailable",
+      message: DURABLE_READ_FAILED_USER_MESSAGE,
+      developerCode: reload.developerCode,
+    };
+  }
 
   const connection = getExternalServiceConnection(input.userId, "google");
   if (connection.status === "error") {
@@ -118,6 +134,13 @@ export async function requireGoogleIntegrationAccess(input: {
 
   const tokenResult: GoogleAccessTokenResult =
     await getGoogleAccountAccessTokenResult(input.userId);
+  if (tokenResult.status === "unavailable") {
+    return {
+      status: "durable_unavailable",
+      message: tokenResult.message,
+      developerCode: tokenResult.developerCode,
+    };
+  }
   if (tokenResult.status === "refresh_failed") {
     return {
       status: "needs_reconnect",

@@ -1,5 +1,7 @@
 /** User-facing Japanese messages — never include credentials. */
 export const WP_NOT_CONNECTED_MESSAGE = "WordPressを接続してください";
+export const WP_DURABLE_READ_FAILED_MESSAGE =
+  "WordPress認証情報の確認に失敗しました。しばらくしてからもう一度お試しください";
 export const WP_RECONNECT_REQUIRED_MESSAGE =
   "WordPress連携の再接続が必要です。アプリケーションパスワードを確認してください";
 export const WP_AUTH_FAILURE_MESSAGE =

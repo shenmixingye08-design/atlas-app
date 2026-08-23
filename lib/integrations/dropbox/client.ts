@@ -24,6 +24,13 @@ async function parseDropboxError(
     };
   }
 
+  if (body?.status === "durable_unavailable") {
+    return {
+      status: "durable_unavailable",
+      message: body.message ?? "連携情報の確認に失敗しました。しばらくしてからもう一度お試しください",
+    };
+  }
+
   if (body?.status === "feature_disabled") {
     return {
       status: "feature_disabled",

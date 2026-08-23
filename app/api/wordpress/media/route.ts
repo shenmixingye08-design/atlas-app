@@ -1,22 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
-import { isFeatureEnabled } from "@/lib/feature-flags/access";
-import { featureDisabledMessage } from "@/lib/feature-flags/guards";
-import { ensureExternalAuthHydrated } from "@/lib/integrations/external-services/durable";
-import {
-  WordPressApiError,
-  uploadWordPressMediaFromUrl,
-} from "@/lib/integrations/wordpress/api-client";
-import {
-  getWordPressAuthContext,
-  markWordPressAuthFailure,
-  touchWordPressConnectionLastUsed,
-} from "@/lib/integrations/wordpress/connection-service";
-import {
-  WP_AUTH_FAILURE_MESSAGE,
-  WP_NOT_CONNECTED_MESSAGE,
-} from "@/lib/integrations/wordpress/errors";
+import { uploadWordPressMediaForUser } from "@/lib/integrations/wordpress/post/service";
 
 /** Upload a remote image as WordPress media (for featured image). */
 export async function POST(request: Request): Promise<Response> {
@@ -29,15 +14,6 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const context = await resolveFeatureAccessContext();
-  if (!isFeatureEnabled("wordpress", context)) {
-    return Response.json(
-      {
-        status: "feature_disabled",
-        message: featureDisabledMessage("wordpress"),
-      },
-      { status: 403 },
-    );
-  }
 
   let body: { imageUrl?: string; altText?: string; filename?: string };
   try {
@@ -63,48 +39,25 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  await ensureExternalAuthHydrated(userId);
-  const authCtx = getWordPressAuthContext(userId);
-  if (!authCtx) {
-    return Response.json(
-      { status: "wp_not_connected", message: WP_NOT_CONNECTED_MESSAGE },
-      { status: 409 },
-    );
-  }
+  const result = await uploadWordPressMediaForUser({
+    userId,
+    context,
+    imageUrl: body.imageUrl.trim(),
+    altText: body.altText,
+    filename: body.filename,
+  });
 
-  try {
-    const media = await uploadWordPressMediaFromUrl({
-      auth: authCtx,
-      imageUrl: body.imageUrl.trim(),
-      altText: body.altText,
-      filename: body.filename,
-    });
-    await touchWordPressConnectionLastUsed(userId);
-    return Response.json({
-      status: "ok",
-      media: {
-        id: media.id,
-        sourceUrl: media.sourceUrl,
-        altText: media.altText,
-      },
-    });
-  } catch (error) {
-    if (error instanceof WordPressApiError && error.isAuthFailure) {
-      await markWordPressAuthFailure(userId);
-      return Response.json(
-        { status: "auth_failure", message: WP_AUTH_FAILURE_MESSAGE },
-        { status: 409 },
-      );
-    }
-    return Response.json(
-      {
-        status: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "メディアのアップロードに失敗しました",
-      },
-      { status: 502 },
-    );
+  if (result.status === "ok") {
+    return Response.json(result);
   }
+  if (result.status === "feature_disabled") {
+    return Response.json(result, { status: 403 });
+  }
+  if (result.status === "wp_not_connected" || result.status === "auth_failure") {
+    return Response.json(result, { status: 409 });
+  }
+  if (result.status === "durable_unavailable") {
+    return Response.json(result, { status: 503 });
+  }
+  return Response.json(result, { status: 502 });
 }
