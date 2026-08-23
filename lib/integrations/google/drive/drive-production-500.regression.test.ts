@@ -313,8 +313,8 @@ describe("Google Drive production 500 regression", () => {
       context: CTX,
     });
     expect(result.status).toBe("insufficient_permission");
-    expect(result.message).not.toMatch(/access token|refresh token|Bearer /i);
     if (result.status !== "ready") {
+      expect(result.message).not.toMatch(/access token|refresh token|Bearer /i);
       expect(result.failedStage).toBeTruthy();
       expect(result.diagnosticId).toBeTruthy();
     }

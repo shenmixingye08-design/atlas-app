@@ -194,7 +194,7 @@ export async function getGoogleDriveFilesForUser(input: {
     });
 
     return {
-      status: "ready",
+      status: "ready" as const,
       snapshot: {
         category,
         categoryLabel: getDriveCategoryLabel(category),
@@ -284,7 +284,7 @@ export async function searchGoogleDriveForUser(input: {
   return {
     status: "ready" as const,
     snapshot: {
-      category: "all",
+      category: "all" as const,
       categoryLabel: getDriveCategoryLabel("all"),
       query: input.query.trim(),
       parentId: input.parentId ?? null,
@@ -761,7 +761,7 @@ export async function ensureGoogleDriveFoldersForUser(input: {
   return {
     status: "ready" as const,
     snapshot: {
-      category: "all",
+      category: "all" as const,
       categoryLabel: getDriveCategoryLabel("all"),
       query: null,
       parentId: null,

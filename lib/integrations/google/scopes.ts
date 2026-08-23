@@ -22,12 +22,6 @@ export const DRIVE_WRITE_SCOPES = [DRIVE_FULL_SCOPE, DRIVE_FILE_SCOPE] as const;
 
 export type GoogleCapability = "gmail" | "calendar" | "drive";
 
-const CAPABILITY_SCOPES: Record<GoogleCapability, readonly string[]> = {
-  gmail: GMAIL_REQUIRED_SCOPES,
-  calendar: CALENDAR_REQUIRED_SCOPES,
-  drive: DRIVE_REQUIRED_SCOPES,
-};
-
 export function parseGoogleScopeString(
   scope: string | null | undefined,
 ): Set<string> {
@@ -83,7 +77,8 @@ export function hasGoogleCapability(
     return DRIVE_WRITE_SCOPES.some((scope) => granted.has(scope));
   }
 
-  return CAPABILITY_SCOPES[capability].every((scope) => granted.has(scope));
+  const _exhaustive: never = capability;
+  return _exhaustive;
 }
 
 /**
