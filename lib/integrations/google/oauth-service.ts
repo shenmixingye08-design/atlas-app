@@ -13,7 +13,6 @@ import type { ExternalServiceConnection } from "../external-services/types";
 import { createDefaultConnection } from "../external-services/registry";
 import { googleServiceDefinition } from "./definition";
 
-import { GOOGLE_ACCOUNT_SCOPES } from "./config";
 import {
   deleteGoogleAuthFromSupabase,
   persistGoogleAuthToSupabase,
@@ -85,7 +84,7 @@ export async function completeGoogleAccountOAuth(
     lastUsedAt: null,
     scopes: token.scope
       ? token.scope.split(/[\s,]+/).filter(Boolean)
-      : [...GOOGLE_ACCOUNT_SCOPES],
+      : [],
     features: [...googleServiceDefinition.plannedFeatures],
     errorMessage: null,
     account: {

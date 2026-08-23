@@ -502,7 +502,9 @@ export function GoogleDrivePanel({ embedded = false }: { embedded?: boolean }) {
             プランを確認する
           </Link>
         </Card>
-      ) : result?.status === "google_not_connected" ? (
+      ) : result?.status === "google_not_connected" ||
+        result?.status === "needs_reconnect" ||
+        result?.status === "insufficient_permission" ? (
         <Card padding="md" className="text-center">
           <div className="mx-auto max-w-md space-y-4">
             <p className="text-body text-foreground">{result.message}</p>
@@ -518,6 +520,10 @@ export function GoogleDrivePanel({ embedded = false }: { embedded?: boolean }) {
               </Link>
             </div>
           </div>
+        </Card>
+      ) : result && result.status !== "ready" ? (
+        <Card padding="sm">
+          <p className="text-sm text-[var(--foreground-muted)]">{result.message}</p>
         </Card>
       ) : result?.status === "ready" ? (
         <div className="space-y-6">

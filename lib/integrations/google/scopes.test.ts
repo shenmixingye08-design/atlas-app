@@ -4,6 +4,7 @@ import {
   getMissingGoogleScopes,
   hasGoogleCapability,
   parseGoogleScopeString,
+  resolveGrantedGoogleScope,
 } from "@/lib/integrations/google/scopes";
 
 describe("Google OAuth scopes", () => {
@@ -49,5 +50,32 @@ describe("Google OAuth scopes", () => {
         "https://www.googleapis.com/auth/gmail.modify",
       ]),
     ).toEqual(["https://www.googleapis.com/auth/gmail.modify"]);
+  });
+
+  it("does not invent Drive permission from planned account scopes", () => {
+    expect(resolveGrantedGoogleScope(undefined)).toBe("");
+    expect(resolveGrantedGoogleScope("")).toBe("");
+    expect(
+      resolveGrantedGoogleScope(
+        undefined,
+        ["https://www.googleapis.com/auth/calendar.events"],
+      ),
+    ).toBe("https://www.googleapis.com/auth/calendar.events");
+    expect(
+      hasGoogleCapability(resolveGrantedGoogleScope(undefined), "drive"),
+    ).toBe(false);
+  });
+
+  it("accepts full Drive or drive.file for drive capability", () => {
+    expect(
+      hasGoogleCapability("https://www.googleapis.com/auth/drive", "drive"),
+    ).toBe(true);
+    expect(
+      hasGoogleCapability(
+        "https://www.googleapis.com/auth/drive.file",
+        "drive",
+      ),
+    ).toBe(true);
+    expect(hasGoogleCapability("email profile", "drive")).toBe(false);
   });
 });

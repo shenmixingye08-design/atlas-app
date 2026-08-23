@@ -34,9 +34,10 @@ export type GoogleAccessTokenResult =
       message: string;
     };
 
-/** Returns a valid access token, refreshing when expired. */
+/** Returns a valid access token, refreshing when expired or forceRefresh. */
 export async function getGoogleAccountAccessTokenResult(
   userId: string,
+  options: { forceRefresh?: boolean } = {},
 ): Promise<GoogleAccessTokenResult> {
   await ensureExternalAuthHydrated(userId);
   const durable = await reloadGoogleAuthFromDurable(userId);
@@ -60,6 +61,7 @@ export async function getGoogleAccountAccessTokenResult(
   const bufferMs = 60_000;
 
   if (
+    !options.forceRefresh &&
     Number.isFinite(expiresAtMs) &&
     Date.now() < expiresAtMs - bufferMs &&
     credentials.accessToken
@@ -110,7 +112,7 @@ export async function getGoogleAccountAccessTokenResult(
       saveExternalServiceConnection(userId, healthyConnection);
     }
 
-    void persistGoogleAuthToSupabase(nextCredentials, healthyConnection);
+    await persistGoogleAuthToSupabase(nextCredentials, healthyConnection);
     schedulePersistExternalAuth(userId);
 
     return { status: "ready", accessToken: refreshed.access_token };

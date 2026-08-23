@@ -2,6 +2,10 @@ import { auth } from "@clerk/nextjs/server";
 
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { isDriveCategoryId } from "@/lib/integrations/google/drive/categories";
+import {
+  respondGoogleDriveCaught,
+  respondGoogleDriveResult,
+} from "@/lib/integrations/google/drive/http";
 import { getGoogleDriveFileForUser } from "@/lib/integrations/google/drive/service";
 import type { DriveCategoryId } from "@/lib/integrations/google/drive/types";
 
@@ -29,24 +33,19 @@ export async function GET(
       : undefined;
 
   const accessContext = await resolveFeatureAccessContext();
-  const result = await getGoogleDriveFileForUser({
-    userId,
-    fileId,
-    context: accessContext,
-    category,
-  });
-
-  if (result.status !== "ready") {
-    const statusCode =
-      result.status === "feature_disabled"
-        ? 403
-        : result.status === "google_not_connected"
-          ? 409
-          : result.status === "not_found"
-            ? 404
-            : 500;
-    return Response.json(result, { status: statusCode });
+  try {
+    const result = await getGoogleDriveFileForUser({
+      userId,
+      fileId,
+      context: accessContext,
+      category,
+    });
+    return respondGoogleDriveResult(result);
+  } catch (error) {
+    return respondGoogleDriveCaught(
+      error,
+      "Google Driveファイルの取得に失敗しました",
+      "google_drive_file",
+    );
   }
-
-  return Response.json(result);
 }

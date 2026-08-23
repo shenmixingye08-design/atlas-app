@@ -1,7 +1,5 @@
 import "server-only";
 
-import { GOOGLE_ACCOUNT_SCOPES } from "./config";
-
 /** Scopes required for Gmail read/modify flows. */
 export const GMAIL_REQUIRED_SCOPES = [
   "https://www.googleapis.com/auth/gmail.modify",
@@ -14,17 +12,15 @@ export const CALENDAR_REQUIRED_SCOPES = [
 ] as const;
 
 /** Scopes required for Drive file access. */
-export const DRIVE_REQUIRED_SCOPES = [
-  "https://www.googleapis.com/auth/drive",
-] as const;
+export const DRIVE_FULL_SCOPE = "https://www.googleapis.com/auth/drive";
+export const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+
+/** Current OAuth requests full Drive; older durable rows may still have drive.file. */
+export const DRIVE_REQUIRED_SCOPES = [DRIVE_FULL_SCOPE] as const;
+
+export const DRIVE_WRITE_SCOPES = [DRIVE_FULL_SCOPE, DRIVE_FILE_SCOPE] as const;
 
 export type GoogleCapability = "gmail" | "calendar" | "drive";
-
-const CAPABILITY_SCOPES: Record<GoogleCapability, readonly string[]> = {
-  gmail: GMAIL_REQUIRED_SCOPES,
-  calendar: CALENDAR_REQUIRED_SCOPES,
-  drive: DRIVE_REQUIRED_SCOPES,
-};
 
 export function parseGoogleScopeString(
   scope: string | null | undefined,
@@ -77,17 +73,26 @@ export function hasGoogleCapability(
     );
   }
 
-  return CAPABILITY_SCOPES[capability].every((scope) => granted.has(scope));
+  if (capability === "drive") {
+    return DRIVE_WRITE_SCOPES.some((scope) => granted.has(scope));
+  }
+
+  const _exhaustive: never = capability;
+  return _exhaustive;
 }
 
-/** Prefer stored OAuth scope string; fall back to planned account scopes. */
+/**
+ * Granted scopes come only from the stored OAuth token (or connection.scopes
+ * written from that token). Never invent Drive/Gmail/Calendar permission from
+ * the planned GOOGLE_ACCOUNT_SCOPES list.
+ */
 export function resolveGrantedGoogleScope(
   storedScope: string | null | undefined,
   connectionScopes?: readonly string[],
 ): string {
   if (storedScope?.trim()) return storedScope;
   if (connectionScopes?.length) return connectionScopes.join(" ");
-  return GOOGLE_ACCOUNT_SCOPES.join(" ");
+  return "";
 }
 
 export const GOOGLE_INSUFFICIENT_PERMISSION_MESSAGE =

@@ -67,11 +67,21 @@ export type DriveFetchStatus =
   | "feature_disabled"
   | "plan_required"
   | "unauthorized"
-  | "durable_unavailable";
+  | "durable_unavailable"
+  | "not_found"
+  | "rate_limited"
+  | "provider_error";
+
+export type DriveFailureFields = {
+  status: Exclude<DriveFetchStatus, "ready">;
+  message: string;
+  diagnosticId?: string;
+  failedStage?: string;
+};
 
 export type DriveFilesResult =
   | { status: "ready"; snapshot: DriveFilesSnapshot }
-  | { status: Exclude<DriveFetchStatus, "ready">; message: string };
+  | DriveFailureFields;
 
 export type DriveSaveResult =
   | {

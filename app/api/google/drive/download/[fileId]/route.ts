@@ -1,9 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
 
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
+import {
+  respondGoogleDriveCaught,
+  respondGoogleDriveResult,
+} from "@/lib/integrations/google/drive/http";
 import { downloadGoogleDriveFileForUser } from "@/lib/integrations/google/drive/service";
-import { recordGoogleAuthFailure } from "@/lib/owner/error-monitoring/telemetry";
-import { clientSafeMessage } from "@/lib/security/client-safe-message";
 
 type Params = { params: Promise<{ fileId: string }> };
 
@@ -30,13 +32,7 @@ export async function GET(
     });
 
     if (result.status !== "ready") {
-      const statusCode =
-        result.status === "feature_disabled"
-          ? 403
-          : result.status === "not_found"
-            ? 404
-            : 409;
-      return Response.json(result, { status: statusCode });
+      return respondGoogleDriveResult(result);
     }
 
     return new Response(new Uint8Array(result.buffer), {
@@ -48,9 +44,10 @@ export async function GET(
       },
     });
   } catch (error) {
-    const message =
-      clientSafeMessage(error, "Failed to download Drive file");
-    recordGoogleAuthFailure(message, "google_drive_download");
-    return Response.json({ status: "error", message }, { status: 500 });
+    return respondGoogleDriveCaught(
+      error,
+      "Google Driveファイルのダウンロードに失敗しました",
+      "google_drive_download",
+    );
   }
 }
