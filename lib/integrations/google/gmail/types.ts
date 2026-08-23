@@ -46,7 +46,8 @@ export type GmailFetchStatus =
   | "needs_reconnect"
   | "feature_disabled"
   | "plan_required"
-  | "unauthorized";
+  | "unauthorized"
+  | "durable_unavailable";
 
 export type GmailMessagesResult =
   | {

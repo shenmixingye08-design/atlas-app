@@ -1,5 +1,10 @@
 import "server-only";
 
+import type { DurableCredentialRead } from "@/lib/integrations/durable-credential-read";
+import {
+  durableReadFailed,
+  durableReadWhenClientMissing,
+} from "@/lib/integrations/durable-credential-read";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 import {
@@ -150,17 +155,25 @@ function toRow(
   };
 }
 
-export async function loadDropboxAuthFromSupabase(
+type DropboxDurableQuery =
+  | { kind: "no_client" }
+  | { kind: "encryption_missing" }
+  | { kind: "error"; message: string }
+  | { kind: "empty" }
+  | { kind: "unreadable" }
+  | { kind: "row"; persisted: DropboxPersistedAuth };
+
+async function queryDropboxAuthFromDurable(
   userId: string,
-): Promise<DropboxPersistedAuth | null> {
+): Promise<DropboxDurableQuery> {
   const client = createServiceRoleClientIfConfigured();
-  if (!client) return null;
+  if (!client) return { kind: "no_client" };
 
   if (!isOAuthEncryptionConfigured() && isAtlasProduction()) {
     console.error(
       "[Dropbox OAuth] Production refuse credential load without ATLAS_OAUTH_CREDENTIALS_ENCRYPTION_KEY",
     );
-    return null;
+    return { kind: "encryption_missing" };
   }
 
   try {
@@ -175,25 +188,57 @@ export async function loadDropboxAuthFromSupabase(
         "[Dropbox OAuth] Supabase credential load failed:",
         error.message,
       );
-      return null;
+      return { kind: "error", message: error.message ?? "query_failed" };
     }
-    if (!data) return null;
+    if (!data) return { kind: "empty" };
     const persisted = rowToPersisted(data as DropboxCredentialRow);
-    if (persisted?.needsReencrypt && isOAuthEncryptionConfigured()) {
+    if (!persisted) return { kind: "unreadable" };
+    if (persisted.needsReencrypt && isOAuthEncryptionConfigured()) {
       void persistDropboxAuthToSupabase(
         persisted.credentials,
         persisted.connection,
       );
     }
-    return persisted;
+    return { kind: "row", persisted };
   } catch (error) {
     safeOAuthLog(
       "warn",
       "[Dropbox OAuth] Supabase credential load skipped",
       error instanceof Error ? error.message : "load_failed",
     );
-    return null;
+    return {
+      kind: "error",
+      message: error instanceof Error ? error.message : "load_failed",
+    };
   }
+}
+
+/** Production SoT read. Distinguishes confirmed-missing from read failure. */
+export async function readDropboxAuthFromDurable(
+  userId: string,
+): Promise<DurableCredentialRead<DropboxPersistedAuth>> {
+  const query = await queryDropboxAuthFromDurable(userId);
+  switch (query.kind) {
+    case "no_client":
+      return durableReadWhenClientMissing();
+    case "encryption_missing":
+      return durableReadFailed("encryption_not_configured");
+    case "error":
+      return durableReadFailed(query.message);
+    case "empty":
+      return { status: "missing" };
+    case "unreadable":
+      return durableReadFailed("row_unreadable");
+    case "row":
+      return { status: "found", value: query.persisted };
+  }
+}
+
+export async function loadDropboxAuthFromSupabase(
+  userId: string,
+): Promise<DropboxPersistedAuth | null> {
+  const read = await readDropboxAuthFromDurable(userId);
+  return read.status === "found" ? read.value : null;
 }
 
 export async function persistDropboxAuthToSupabase(

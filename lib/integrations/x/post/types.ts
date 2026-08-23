@@ -78,6 +78,7 @@ export type XPostResult =
       status: "error";
       message: string;
       reconnectRequired?: boolean;
+      developerCode?: string;
     }
   | {
       /** Provider may have succeeded; do not auto-retry / re-post. */

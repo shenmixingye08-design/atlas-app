@@ -14,6 +14,14 @@ import {
   normalizeWordPressSiteUrl,
 } from "./config";
 import {
+  invalidateExternalAuthHydration,
+  schedulePersistExternalAuth,
+} from "../external-services/durable";
+import {
+  buildDisconnectedWordPressConnection,
+  reloadWordPressAuthFromDurable,
+} from "./auth-reload";
+import {
   deleteWordPressAuthFromSupabase,
   isWordPressSupabaseConfigured,
   persistWordPressAuthToSupabase,
@@ -27,6 +35,7 @@ import { wordpressServiceDefinition } from "./definition";
 import {
   WP_AUTH_FAILURE_MESSAGE,
   WP_CONNECTION_ERROR_MESSAGE,
+  WP_DURABLE_READ_FAILED_MESSAGE,
   WP_INVALID_SITE_URL_MESSAGE,
   WP_MISSING_FIELDS_MESSAGE,
 } from "./errors";
@@ -188,17 +197,10 @@ export async function disconnectWordPressAccount(
   deleteWordPressCredentials(userId);
   await deleteWordPressAuthFromSupabase(userId);
 
-  const disconnected: ExternalServiceConnection = {
-    ...createDefaultConnection(wordpressServiceDefinition),
-    status: "disconnected",
-    connectedAt: null,
-    lastUsedAt: null,
-    scopes: [],
-    features: [...wordpressServiceDefinition.plannedFeatures],
-    errorMessage: null,
-    account: undefined,
-  };
+  const disconnected = buildDisconnectedWordPressConnection();
   saveExternalServiceConnection(userId, disconnected);
+  invalidateExternalAuthHydration(userId);
+  schedulePersistExternalAuth(userId);
   return disconnected;
 }
 
@@ -248,4 +250,48 @@ export function getWordPressAuthContext(userId: string): {
     username: credentials.username,
     applicationPassword: credentials.applicationPassword,
   };
+}
+
+export type WordPressAuthContext = {
+  siteUrl: string;
+  username: string;
+  applicationPassword: string;
+};
+
+export type ResolvedWordPressAuth =
+  | { status: "ready"; auth: WordPressAuthContext }
+  | { status: "not_connected" }
+  | {
+      status: "unavailable";
+      developerCode: "durable_read_failed";
+      message: string;
+    };
+
+/**
+ * Durable SoT. Confirmed-missing clears isolate memory.
+ * Read failure is unavailable — never a silent memory fallback.
+ */
+export async function resolveWordPressAuthContext(
+  userId: string,
+): Promise<ResolvedWordPressAuth> {
+  const reload = await reloadWordPressAuthFromDurable(userId);
+  if (reload.status === "unavailable") {
+    return {
+      status: "unavailable",
+      developerCode: reload.developerCode,
+      message: WP_DURABLE_READ_FAILED_MESSAGE,
+    };
+  }
+  if (reload.status === "missing") {
+    return { status: "not_connected" };
+  }
+
+  const auth = getWordPressAuthContext(userId);
+  if (!auth) return { status: "not_connected" };
+
+  const connection = getExternalServiceConnection(userId, "wordpress");
+  if (connection.status === "disconnected") {
+    return { status: "not_connected" };
+  }
+  return { status: "ready", auth };
 }

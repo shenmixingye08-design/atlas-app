@@ -13,6 +13,12 @@ import {
   schedulePersistExternalAuth,
 } from "../external-services/durable";
 
+import {
+  DURABLE_READ_FAILED_CODE,
+  DURABLE_READ_FAILED_USER_MESSAGE,
+} from "@/lib/integrations/durable-credential-read";
+
+import { reloadGoogleAuthFromDurable } from "./auth-reload";
 import { persistGoogleAuthToSupabase } from "./credential-persistence";
 import { refreshGoogleAccountAccessToken } from "./oauth";
 import { markGoogleConnectionNeedsReconnect } from "./oauth-service";
@@ -21,14 +27,33 @@ import { GOOGLE_RECONNECT_REQUIRED_MESSAGE } from "./scopes";
 export type GoogleAccessTokenResult =
   | { status: "ready"; accessToken: string }
   | { status: "missing" }
-  | { status: "refresh_failed"; message: string };
+  | { status: "refresh_failed"; message: string }
+  | {
+      status: "unavailable";
+      developerCode: typeof DURABLE_READ_FAILED_CODE;
+      message: string;
+    };
 
 /** Returns a valid access token, refreshing when expired. */
 export async function getGoogleAccountAccessTokenResult(
   userId: string,
 ): Promise<GoogleAccessTokenResult> {
   await ensureExternalAuthHydrated(userId);
-  const credentials = getExternalServiceCredentials(userId, "google");
+  const durable = await reloadGoogleAuthFromDurable(userId);
+  if (durable.status === "unavailable") {
+    return {
+      status: "unavailable",
+      developerCode: durable.developerCode,
+      message: DURABLE_READ_FAILED_USER_MESSAGE,
+    };
+  }
+  if (durable.status === "missing") {
+    return { status: "missing" };
+  }
+  const credentials =
+    durable.status === "found"
+      ? durable.value.credentials
+      : getExternalServiceCredentials(userId, "google");
   if (!credentials?.refreshToken) return { status: "missing" };
 
   const expiresAtMs = new Date(credentials.expiresAt).getTime();

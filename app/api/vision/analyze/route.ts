@@ -13,6 +13,7 @@ import { userMessageForVisionFailure } from "@/lib/vision/user-error";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 type Body = {
   attachmentIds?: unknown;

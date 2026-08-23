@@ -9,6 +9,10 @@ import { ensureExternalAuthHydrated } from "@/lib/integrations/external-services
 import {
   getExternalServiceCredentials,
 } from "@/lib/integrations/external-services/credential-store";
+import {
+  DURABLE_READ_FAILED_CODE,
+  DURABLE_READ_FAILED_USER_MESSAGE,
+} from "@/lib/integrations/durable-credential-read";
 import { reloadXAuthFromDurable } from "@/lib/integrations/x/auth-reload";
 import {
   getXAccountAccessToken,
@@ -79,6 +83,7 @@ async function resolveXPostAccess(input: {
       status: Exclude<XPostResult["status"], "ready" | "validation_failed">;
       message: string;
       reconnectRequired?: boolean;
+      developerCode?: string;
     }
 > {
   await ensureFeatureFlagsHydrated();
@@ -96,7 +101,14 @@ async function resolveXPostAccess(input: {
   await ensureExternalAuthHydrated(input.userId);
   // Always replace X memory from durable so a 60s hydration TTL cannot
   // keep a pre-reconnect token after OAuth completed on another isolate.
-  await reloadXAuthFromDurable(input.userId);
+  const reload = await reloadXAuthFromDurable(input.userId);
+  if (reload.status === "unavailable") {
+    return {
+      status: "error",
+      message: DURABLE_READ_FAILED_USER_MESSAGE,
+      developerCode: DURABLE_READ_FAILED_CODE,
+    };
+  }
 
   const connection = getExternalServiceConnection(input.userId, "x");
   if (connection.status !== "connected") {
@@ -110,6 +122,13 @@ async function resolveXPostAccess(input: {
   }
 
   const tokenResult = await getXAccountAccessTokenResult(input.userId);
+  if (tokenResult.status === "unavailable") {
+    return {
+      status: "error",
+      message: tokenResult.message,
+      developerCode: tokenResult.developerCode,
+    };
+  }
   if (tokenResult.status !== "ready") {
     recordXAuthFailure("X access token unavailable", "x_post");
     return {
@@ -208,6 +227,7 @@ async function executeTweetPost(input: {
       status: access.status,
       message: access.message,
       reconnectRequired: access.reconnectRequired,
+      developerCode: access.developerCode,
     };
   }
 
@@ -645,6 +665,7 @@ export async function scheduleTweetForUser(input: {
       status: access.status,
       message: access.message,
       reconnectRequired: access.reconnectRequired,
+      developerCode: access.developerCode,
     };
   }
 

@@ -15,6 +15,11 @@ import {
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { safeLog } from "@/lib/security/redact";
 
+import {
+  DURABLE_READ_FAILED_CODE,
+  DURABLE_READ_FAILED_USER_MESSAGE,
+} from "@/lib/integrations/durable-credential-read";
+
 import { reloadXAuthFromDurable } from "./auth-reload";
 import { persistXAuthToSupabase } from "./credential-persistence";
 import { X_RECONNECT_REQUIRED_MESSAGE } from "./errors";
@@ -26,7 +31,12 @@ import { fingerprintSecret } from "./token-fingerprint";
 export type XAccessTokenResult =
   | { status: "ready"; accessToken: string }
   | { status: "missing" }
-  | { status: "refresh_failed"; message: string };
+  | { status: "refresh_failed"; message: string }
+  | {
+      status: "unavailable";
+      developerCode: typeof DURABLE_READ_FAILED_CODE;
+      message: string;
+    };
 
 /** Returns a valid access token, refreshing when expired. */
 export async function getXAccountAccessTokenResult(
@@ -38,8 +48,20 @@ export async function getXAccountAccessTokenResult(
     memoryBefore?.accessToken,
   );
   const durable = await reloadXAuthFromDurable(userId);
+  if (durable.status === "unavailable") {
+    return {
+      status: "unavailable",
+      developerCode: durable.developerCode,
+      message: DURABLE_READ_FAILED_USER_MESSAGE,
+    };
+  }
+  if (durable.status === "missing") {
+    return { status: "missing" };
+  }
   const credentials =
-    durable?.credentials ?? getExternalServiceCredentials(userId, "x");
+    durable.status === "found"
+      ? durable.value.credentials
+      : getExternalServiceCredentials(userId, "x");
   const loadedForPostFingerprint = fingerprintSecret(credentials?.accessToken);
   safeLog("info", "[X OAuth] credential selection fingerprints", {
     memoryAccessTokenFingerprint,
@@ -49,7 +71,7 @@ export async function getXAccountAccessTokenResult(
         loadedForPostFingerprint &&
         memoryAccessTokenFingerprint !== loadedForPostFingerprint,
     ),
-    durableReloadApplied: Boolean(durable),
+    durableReloadApplied: durable.status === "found",
     refreshPresent: Boolean(credentials?.refreshToken),
     expiresAt: credentials?.expiresAt ?? null,
     grantedScopes: credentials?.scope ?? null,

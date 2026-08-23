@@ -73,9 +73,32 @@ export async function runAgent(
 
   const outputText = response.output_text ?? "";
   const status = response.status ?? "unknown";
+  const incompleteReason =
+    (response as { incomplete_details?: { reason?: string } | null })
+      .incomplete_details?.reason ?? null;
 
   // Empty / incomplete Responses must not collapse into a generic
   // "成果物をうまく作れませんでした" with no developer signal.
+  if (status === "incomplete" || incompleteReason === "max_output_tokens") {
+    const detail = [
+      `agent=${agent.id}`,
+      `aiTaskType=${input.aiTaskType ?? "unknown"}`,
+      `status=${status}`,
+      `incompleteReason=${incompleteReason ?? "unknown"}`,
+      `developerCode=output_token_limit`,
+    ].join(" ");
+    console.error("[agents.runner] incomplete OpenAI output", {
+      agentId: agent.id,
+      aiTaskType: input.aiTaskType ?? null,
+      status,
+      incompleteReason,
+      responseId: response.id ?? null,
+    });
+    throw new Error(
+      `AI応答が上限で途中終了しました（${detail}）。字数を分けて依頼するか、もう一度お試しください。`,
+    );
+  }
+
   if (!outputText.trim()) {
     const detail = [
       `agent=${agent.id}`,

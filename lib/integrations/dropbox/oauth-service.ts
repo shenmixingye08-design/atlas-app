@@ -14,8 +14,14 @@ import type { ExternalServiceConnection } from "../external-services/types";
 import { createDefaultConnection } from "../external-services/registry";
 import {
   ensureExternalAuthHydrated,
+  invalidateExternalAuthHydration,
   schedulePersistExternalAuth,
 } from "../external-services/durable";
+import {
+  DURABLE_READ_FAILED_CODE,
+  DURABLE_READ_FAILED_USER_MESSAGE,
+} from "@/lib/integrations/durable-credential-read";
+import { reloadDropboxAuthFromDurable } from "./auth-reload";
 import { safeOAuthLog } from "@/lib/integrations/oauth-crypto";
 
 import { DROPBOX_OAUTH_SCOPES } from "./config";
@@ -132,6 +138,7 @@ export async function disconnectDropboxAccount(
 
   saveExternalServiceConnection(userId, disconnected);
   await deleteDropboxAuthFromSupabase(userId);
+  invalidateExternalAuthHydration(userId);
   schedulePersistExternalAuth(userId);
   return disconnected;
 }
@@ -159,23 +166,46 @@ export function markDropboxConnectionNeedsReconnect(
   return next;
 }
 
-export async function getDropboxAccessToken(
+export type DropboxAccessTokenResult =
+  | { status: "ready"; accessToken: string }
+  | { status: "missing" }
+  | {
+      status: "unavailable";
+      developerCode: typeof DURABLE_READ_FAILED_CODE;
+      message: string;
+    };
+
+export async function getDropboxAccessTokenResult(
   userId: string,
-): Promise<string | null> {
+): Promise<DropboxAccessTokenResult> {
   await ensureExternalAuthHydrated(userId);
-  const credentials = getExternalServiceCredentials(userId, "dropbox");
-  if (!credentials) return null;
+  const durable = await reloadDropboxAuthFromDurable(userId);
+  if (durable.status === "unavailable") {
+    return {
+      status: "unavailable",
+      developerCode: durable.developerCode,
+      message: DURABLE_READ_FAILED_USER_MESSAGE,
+    };
+  }
+  if (durable.status === "missing") {
+    return { status: "missing" };
+  }
+  const credentials =
+    durable.status === "found"
+      ? durable.value.credentials
+      : getExternalServiceCredentials(userId, "dropbox");
+  if (!credentials) return { status: "missing" };
 
   const expiresAtMs = new Date(credentials.expiresAt).getTime();
   const bufferMs = 60_000;
 
   if (Date.now() < expiresAtMs - bufferMs) {
-    return credentials.accessToken;
+    return { status: "ready", accessToken: credentials.accessToken };
   }
 
   if (!credentials.refreshToken) {
     markDropboxConnectionNeedsReconnect(userId);
-    return null;
+    return { status: "missing" };
   }
 
   try {
@@ -199,7 +229,7 @@ export async function getDropboxAccessToken(
     void persistDropboxAuthToSupabase(nextCredentials, connection);
     schedulePersistExternalAuth(userId);
 
-    return refreshed.access_token;
+    return { status: "ready", accessToken: refreshed.access_token };
   } catch (error) {
     safeOAuthLog(
       "warn",
@@ -207,6 +237,13 @@ export async function getDropboxAccessToken(
       error instanceof Error ? error.message : "refresh_failed",
     );
     markDropboxConnectionNeedsReconnect(userId);
-    return null;
+    return { status: "missing" };
   }
+}
+
+export async function getDropboxAccessToken(
+  userId: string,
+): Promise<string | null> {
+  const result = await getDropboxAccessTokenResult(userId);
+  return result.status === "ready" ? result.accessToken : null;
 }

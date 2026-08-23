@@ -4,6 +4,7 @@ import { extractTextFromPdfBuffer } from "@/lib/documents/extract-pdf-text";
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
+import { ensureExternalAuthHydrated } from "@/lib/integrations/external-services/durable";
 import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
 import { runWithAiBillingUsage } from "@/lib/billing/usage/request-context";
 
@@ -19,7 +20,7 @@ import {
   searchDropboxFiles,
   uploadDropboxFile,
 } from "./api-client";
-import { getDropboxAccessToken } from "./oauth-service";
+import { getDropboxAccessTokenResult } from "./oauth-service";
 import type {
   DropboxAiSummary,
   DropboxFileItem,
@@ -47,23 +48,28 @@ async function resolveDropboxAccess(input: {
     };
   }
 
-  const connection = getExternalServiceConnection(input.userId, "dropbox");
-  if (connection.status !== "connected") {
+  // CRITICAL: hydrate before reading connection status (cold-start safe).
+  await ensureExternalAuthHydrated(input.userId);
+
+  const token = await getDropboxAccessTokenResult(input.userId);
+  if (token.status === "unavailable") {
+    return {
+      status: "durable_unavailable",
+      message: token.message,
+    };
+  }
+  if (token.status !== "ready") {
+    const connection = getExternalServiceConnection(input.userId, "dropbox");
     return {
       status: "dropbox_not_connected",
-      message: "Dropboxを接続してください",
+      message:
+        connection.status === "error"
+          ? "Dropbox連携の有効期限が切れました。再接続してください"
+          : "Dropboxを接続してください",
     };
   }
 
-  const accessToken = await getDropboxAccessToken(input.userId);
-  if (!accessToken) {
-    return {
-      status: "dropbox_not_connected",
-      message: "Dropbox連携の有効期限が切れました。再接続してください",
-    };
-  }
-
-  return { status: "ready", accessToken };
+  return { status: "ready", accessToken: token.accessToken };
 }
 
 export async function getDropboxFilesForUser(input: {

@@ -28,6 +28,7 @@ vi.mock("@/lib/auth/is-atlas-owner", () => ({
 }));
 
 const durableByUser = vi.hoisted(() => new Map<string, unknown>());
+const durableReadFailed = vi.hoisted(() => new Set<string>());
 
 vi.mock("@/lib/integrations/x/credential-persistence", async () => {
   const actual = await vi.importActual<
@@ -35,6 +36,18 @@ vi.mock("@/lib/integrations/x/credential-persistence", async () => {
   >("@/lib/integrations/x/credential-persistence");
   return {
     ...actual,
+    readXAuthFromDurable: vi.fn(async (userId: string) => {
+      if (durableReadFailed.has(userId)) {
+        return {
+          status: "unavailable" as const,
+          developerCode: "durable_read_failed" as const,
+          reason: "timeout",
+        };
+      }
+      const row = durableByUser.get(userId);
+      if (!row) return { status: "missing" as const };
+      return { status: "found" as const, value: row };
+    }),
     loadXAuthFromSupabase: vi.fn(async (userId: string) => {
       const row = durableByUser.get(userId);
       return row ?? null;
@@ -211,6 +224,7 @@ function bearerUsed(fetchMock: ReturnType<typeof vi.fn>): string[] {
 describe("X reconnect stale token (permanent)", () => {
   beforeEach(async () => {
     durableByUser.clear();
+    durableReadFailed.clear();
     resetExternalServiceStore();
     resetExternalServiceCredentialStore();
     resetExternalAuthHydration();
@@ -236,6 +250,7 @@ describe("X reconnect stale token (permanent)", () => {
 
   afterEach(() => {
     durableByUser.clear();
+    durableReadFailed.clear();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -454,5 +469,42 @@ describe("X reconnect stale token (permanent)", () => {
     const bearers = bearerUsed(fetchMock);
     expect(bearers.every((token) => token === "shared-latest-access")).toBe(true);
     expect(bearers).not.toContain("old-stale-access");
+  });
+
+  it("CASE I: disconnect on another isolate does not tweet with stale token", async () => {
+    seedMemory(USER_A, "old-stale-access");
+    seedDurable(USER_A, "old-stale-access");
+    durableByUser.delete(USER_A);
+    const fetchMock = stubXTweetApi("1983333333333333");
+
+    const posted = await postTweetNowForUser({
+      userId: USER_A,
+      text: "切断後の投稿です",
+      context: CTX,
+    });
+    expect(posted.status).toBe("x_not_connected");
+    expect(countTweetCreates(fetchMock)).toBe(0);
+    expect(getExternalServiceCredentials(USER_A, "x")).toBeNull();
+  });
+
+  it("CASE J: durable read failure is not x_not_connected and does not tweet", async () => {
+    seedMemory(USER_A, "old-stale-access");
+    seedDurable(USER_A, "old-stale-access");
+    durableReadFailed.add(USER_A);
+    const fetchMock = stubXTweetApi("1984444444444444");
+
+    const posted = await postTweetNowForUser({
+      userId: USER_A,
+      text: "障害時の投稿です",
+      context: CTX,
+    });
+    expect(posted.status).toBe("error");
+    if (posted.status === "error") {
+      expect(posted.developerCode).toBe("durable_read_failed");
+    }
+    expect(countTweetCreates(fetchMock)).toBe(0);
+    expect(getExternalServiceCredentials(USER_A, "x")?.accessToken).toBe(
+      "old-stale-access",
+    );
   });
 });

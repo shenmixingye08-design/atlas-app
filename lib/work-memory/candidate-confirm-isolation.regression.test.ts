@@ -243,4 +243,17 @@ describe("work memory candidate confirm isolation (permanent)", () => {
     ).toHaveLength(1);
     expect(reloaded.candidates).toHaveLength(0);
   });
+
+  it("CASE I: hydration failure is not a silent 404", async () => {
+    const { loadDurableDomain } = await import("@/lib/persistence/durable-domain");
+    vi.mocked(loadDurableDomain).mockRejectedValueOnce(new Error("supabase timeout"));
+    evictWorkMemoryRuntimeForUser(USER_A);
+
+    const { confirmWorkMemoryCandidate } = await import("./service");
+    const { WorkMemoryHydrationError } = await import("./durable");
+    await expect(
+      confirmWorkMemoryCandidate(USER_A, "cand_missing_after_outage"),
+    ).rejects.toBeInstanceOf(WorkMemoryHydrationError);
+  });
 });
+

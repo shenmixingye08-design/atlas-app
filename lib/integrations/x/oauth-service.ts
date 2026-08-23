@@ -106,7 +106,9 @@ export async function completeXAccountOAuth(
   const callbackAccessTokenFingerprint = fingerprintSecret(token.access_token);
   const reloaded = await reloadXAuthFromDurable(userId);
   const persistedAccessTokenFingerprint = fingerprintSecret(
-    reloaded?.credentials.accessToken,
+    reloaded.status === "found"
+      ? reloaded.value.credentials.accessToken
+      : undefined,
   );
   safeLog("info", "[X OAuth] callback persist fingerprints", {
     callbackAccessTokenFingerprint,
@@ -119,7 +121,7 @@ export async function completeXAccountOAuth(
     expiresAt,
     xAccountId: profile.username,
     providerUserIdPresent: Boolean(profile.id),
-    durableReloadApplied: Boolean(reloaded),
+    durableReloadApplied: reloaded.status === "found",
   });
 
   return connection;

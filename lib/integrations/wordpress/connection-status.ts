@@ -11,13 +11,14 @@ import {
 } from "../external-services/store";
 import { WordPressApiError, fetchWordPressCurrentUser } from "./api-client";
 import {
-  getWordPressAuthContext,
   markWordPressAuthFailure,
+  resolveWordPressAuthContext,
   touchWordPressConnectionLastUsed,
 } from "./connection-service";
 import {
   WP_AUTH_FAILURE_MESSAGE,
   WP_CONNECTION_ERROR_MESSAGE,
+  WP_DURABLE_READ_FAILED_MESSAGE,
   WP_NOT_CONNECTED_MESSAGE,
   WP_RECONNECT_REQUIRED_MESSAGE,
 } from "./errors";
@@ -39,6 +40,24 @@ export async function checkWordPressConnectionForUser(input: {
   }
 
   await ensureExternalAuthHydrated(input.userId);
+  const resolved = await resolveWordPressAuthContext(input.userId);
+  if (resolved.status === "unavailable") {
+    return {
+      status: "durable_unavailable",
+      connected: false,
+      message: resolved.message,
+      errorMessage: WP_DURABLE_READ_FAILED_MESSAGE,
+    };
+  }
+  if (resolved.status === "not_connected") {
+    return {
+      status: "disconnected",
+      connected: false,
+      message: WP_NOT_CONNECTED_MESSAGE,
+    };
+  }
+
+  const auth = resolved.auth;
   const connection = getExternalServiceConnection(input.userId, "wordpress");
 
   if (connection.status === "disconnected" || connection.status === "pending") {
@@ -49,7 +68,6 @@ export async function checkWordPressConnectionForUser(input: {
     };
   }
 
-  const auth = getWordPressAuthContext(input.userId);
   if (!auth) {
     return {
       status: "reconnect_required",

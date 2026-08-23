@@ -2,7 +2,10 @@ import { auth } from "@clerk/nextjs/server";
 
 import { buildProductionDiagnosticId } from "@/lib/reliability/production-error-log";
 import { safeLog } from "@/lib/security/redact";
-import { ensureWorkMemoryHydrated } from "@/lib/work-memory/durable";
+import {
+  ensureWorkMemoryHydrated,
+  WorkMemoryHydrationError,
+} from "@/lib/work-memory/durable";
 import { rejectWorkMemoryCandidate } from "@/lib/work-memory/service";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -24,7 +27,19 @@ export async function POST(
     const { id } = await context.params;
 
     failedStage = "hydration";
-    await ensureWorkMemoryHydrated(userId);
+    const hydrated = await ensureWorkMemoryHydrated(userId);
+    if (!hydrated.ok) {
+      return Response.json(
+        {
+          error:
+            "記憶の読み込みに失敗しました。しばらくしてからもう一度お試しください。",
+          diagnosticId,
+          failedStage,
+          developerCode: hydrated.developerCode,
+        },
+        { status: 503 },
+      );
+    }
 
     failedStage = "reject";
     const rejected = await rejectWorkMemoryCandidate(userId, id);
@@ -46,6 +61,18 @@ export async function POST(
 
     return Response.json({ ok: true, diagnosticId });
   } catch (error) {
+    if (error instanceof WorkMemoryHydrationError) {
+      return Response.json(
+        {
+          error:
+            "記憶の読み込みに失敗しました。しばらくしてからもう一度お試しください。",
+          diagnosticId,
+          failedStage: "hydration",
+          developerCode: error.developerCode,
+        },
+        { status: 503 },
+      );
+    }
     safeLog("error", "[work-memory] reject failed", {
       diagnosticId,
       failedStage,

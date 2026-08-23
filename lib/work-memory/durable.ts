@@ -91,8 +91,23 @@ export async function persistWorkMemoryNow(userId: string): Promise<void> {
   );
 }
 
-export async function ensureWorkMemoryHydrated(userId: string): Promise<void> {
-  if (isWorkMemoryHydrated(userId)) return;
+export type WorkMemoryHydrationResult =
+  | { ok: true }
+  | { ok: false; developerCode: "hydration_failed" };
+
+export class WorkMemoryHydrationError extends Error {
+  readonly developerCode = "hydration_failed" as const;
+
+  constructor(message = "Work Memoryの読み込みに失敗しました") {
+    super(message);
+    this.name = "WorkMemoryHydrationError";
+  }
+}
+
+export async function ensureWorkMemoryHydrated(
+  userId: string,
+): Promise<WorkMemoryHydrationResult> {
+  if (isWorkMemoryHydrated(userId)) return { ok: true };
 
   try {
     const loaded = await loadDurableDomain<DurableWorkMemoryState>(
@@ -101,7 +116,7 @@ export async function ensureWorkMemoryHydrated(userId: string): Promise<void> {
     );
     if (!loaded) {
       markWorkMemoryHydrated(userId);
-      return;
+      return { ok: true };
     }
 
     if (
@@ -129,10 +144,12 @@ export async function ensureWorkMemoryHydrated(userId: string): Promise<void> {
       replaceRequestHistory(userId, loaded.requestHistory);
     }
     markWorkMemoryHydrated(userId);
+    return { ok: true };
   } catch (error) {
     console.warn(
       "[work-memory] Hydration failed:",
       error instanceof Error ? error.message : "hydration_failed",
     );
+    return { ok: false, developerCode: "hydration_failed" };
   }
 }

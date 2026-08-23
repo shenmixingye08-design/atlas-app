@@ -40,6 +40,14 @@ export const SHARP_NATIVE_TRACE_ROUTES = [
   "/api/receipt/**",
   "/api/deliverables/*",
   "/api/deliverables/**",
+  // Primary user path: home upload → POST /api/work/jobs → commander + vision.
+  // #361 traced attachment/vision routes only; vision re-normalizes on the job lambda.
+  "/api/work/jobs",
+  "/api/work/jobs/*",
+  "/api/work/jobs/**",
+  "/api/commander",
+  "/api/commander/*",
+  "/api/commander/**",
 ] as const;
 
 export function sharpNativeTraceIncludes(): Record<string, string[]> {

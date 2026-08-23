@@ -9,36 +9,39 @@ import {
 import { saveExternalServiceConnection } from "@/lib/integrations/external-services/store";
 import { createDefaultConnection } from "@/lib/integrations/external-services/registry";
 
-import { readXAuthFromDurable, type XPersistedAuth } from "./credential-persistence";
-import { xServiceDefinition } from "./definition";
+import {
+  readDropboxAuthFromDurable,
+  type DropboxPersistedAuth,
+} from "./credential-persistence";
+import { dropboxServiceDefinition } from "./definition";
 
-export type XAuthReload = DurableCredentialRead<XPersistedAuth>;
+export type DropboxAuthReload = DurableCredentialRead<DropboxPersistedAuth>;
 
-export function buildDisconnectedXConnection() {
+export function buildDisconnectedDropboxConnection() {
   return {
-    ...createDefaultConnection(xServiceDefinition),
+    ...createDefaultConnection(dropboxServiceDefinition),
     status: "disconnected" as const,
     connectedAt: null,
     lastUsedAt: null,
     scopes: [],
-    features: [...xServiceDefinition.plannedFeatures],
+    features: [...dropboxServiceDefinition.plannedFeatures],
     errorMessage: null,
     account: undefined,
   };
 }
 
 /**
- * Reload this user's X credentials from durable storage.
+ * Reload this user's Dropbox credentials from durable storage.
  *
- * - found: overwrite only the X in-memory slot
+ * - found: overwrite only the Dropbox in-memory slot
  * - missing: confirmed no row → clear stale isolate memory, mark disconnected
  * - unavailable: read failed → do not clear and do not use memory
  * - not_configured: local/test without Supabase → leave memory alone
  */
-export async function reloadXAuthFromDurable(
+export async function reloadDropboxAuthFromDurable(
   userId: string,
-): Promise<XAuthReload> {
-  const read = await readXAuthFromDurable(userId);
+): Promise<DropboxAuthReload> {
+  const read = await readDropboxAuthFromDurable(userId);
   if (read.status === "found") {
     if (read.value.credentials.userId !== userId) {
       return durableReadFailed("owner_mismatch");
@@ -48,8 +51,8 @@ export async function reloadXAuthFromDurable(
     return read;
   }
   if (read.status === "missing") {
-    deleteExternalServiceCredentials(userId, "x");
-    saveExternalServiceConnection(userId, buildDisconnectedXConnection());
+    deleteExternalServiceCredentials(userId, "dropbox");
+    saveExternalServiceConnection(userId, buildDisconnectedDropboxConnection());
     return read;
   }
   return read;
