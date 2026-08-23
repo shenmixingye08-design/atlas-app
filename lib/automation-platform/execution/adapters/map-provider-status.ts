@@ -11,6 +11,10 @@ const NOT_CONNECTED = new Set([
 ]);
 
 const RECONNECT = new Set(["needs_reconnect", "auth_failure"]);
+const CONFIGURATION_ERROR = new Set([
+  "configuration_error",
+  "missing_encryption_key",
+]);
 
 export function configMissingInput(message: string): StepInvokeResult {
   return {
@@ -40,6 +44,19 @@ export function mapProviderFailure(input: {
       artifacts: [],
       errorCode: "not_connected",
       errorMessage: "credential_missing",
+      failedStage: "EXTERNAL_ADAPTER_RESOLUTION",
+      retryable: false,
+      needsUserInput: true,
+    };
+  }
+
+  if (CONFIGURATION_ERROR.has(status) || /encryption.?key|configuration_error/i.test(status)) {
+    return {
+      ok: false,
+      summary: `${input.service}の設定エラーのため実行できません`,
+      artifacts: [],
+      errorCode: "automation_integration_required",
+      errorMessage: "configuration_error",
       failedStage: "EXTERNAL_ADAPTER_RESOLUTION",
       retryable: false,
       needsUserInput: true,

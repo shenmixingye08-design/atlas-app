@@ -27,6 +27,8 @@ import { buildXAuthorizeUrl } from "../x/oauth";
 import { disconnectXAccount } from "../x/oauth-service";
 import { markXConnectionPending } from "../x/pending";
 import { disconnectWordPressAccount } from "../wordpress/connection-service";
+import { isWordPressProductionEncryptionMissing } from "../wordpress/config";
+import { WP_MISSING_ENCRYPTION_KEY_MESSAGE } from "../wordpress/errors";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import {
   featureDisabledMessage,
@@ -50,18 +52,35 @@ export class ExternalServiceManager {
     );
 
     // N-04: hide Production-unoffered stubs (Notion / YouTube) from settings UI.
+    const wordpressConfigMissing = isWordPressProductionEncryptionMissing();
     const services = externalServiceDefinitions
       .filter((definition) => isExternalServiceUserVisible(definition.serviceId))
-      .map((definition) => ({
-        ...mergeExternalServiceView(
-          definition,
-          connectionById.get(definition.serviceId) ?? null,
-        ),
-        featureEnabled: isExternalServiceFeatureEnabled(
-          definition.serviceId,
-          context,
-        ),
-      }));
+      .map((definition) => {
+        const view = {
+          ...mergeExternalServiceView(
+            definition,
+            connectionById.get(definition.serviceId) ?? null,
+          ),
+          featureEnabled: isExternalServiceFeatureEnabled(
+            definition.serviceId,
+            context,
+          ),
+        };
+        if (
+          definition.serviceId === "wordpress" &&
+          wordpressConfigMissing
+        ) {
+          return {
+            ...view,
+            connection: {
+              ...view.connection,
+              status: "configuration_error" as const,
+              errorMessage: WP_MISSING_ENCRYPTION_KEY_MESSAGE,
+            },
+          };
+        }
+        return view;
+      });
 
     return { services };
   }

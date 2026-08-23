@@ -28,7 +28,8 @@ export type WordPressConnectionStatus =
   | "error"
   | "feature_disabled"
   | "reconnect_required"
-  | "durable_unavailable";
+  | "durable_unavailable"
+  | "configuration_error";
 
 export type WordPressConnectionCheckResult = {
   status: WordPressConnectionStatus;
@@ -92,6 +93,7 @@ export type WordPressPostResult = {
     | "error"
     | "wp_not_connected"
     | "durable_unavailable"
+    | "configuration_error"
     | "feature_disabled"
     | "plan_limited"
     | "auth_failure"

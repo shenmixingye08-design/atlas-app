@@ -54,7 +54,10 @@ function statusClass(service: ExternalServiceView): string {
   if (connection.status === "error") {
     return "bg-[var(--status-error-bg)] text-[var(--status-error)] ring-[var(--status-error)]/30";
   }
-  if (connection.status === "pending") {
+  if (
+    connection.status === "pending" ||
+    connection.status === "configuration_error"
+  ) {
     return "bg-[var(--status-warning-bg)] text-[var(--status-warning)] ring-[var(--status-warning)]/30";
   }
   return "bg-[var(--status-neutral-bg)] text-[var(--status-neutral)] ring-[var(--status-neutral)]/25";

@@ -306,9 +306,15 @@ export async function probeN04StubExposureProduction(): Promise<N04StubExposureP
     const ownerB = `n04_b_${randomUUID().slice(0, 8)}`;
     const catalogA = externalServiceManager.getCatalog(ownerA, access);
     const catalogB = externalServiceManager.getCatalog(ownerB, access);
+    const freshCatalogStatusOk = (
+      service: (typeof catalogA.services)[number],
+    ) =>
+      service.connection.status === "disconnected" ||
+      (service.serviceId === "wordpress" &&
+        service.connection.status === "configuration_error");
     const crossUserIsolatedOk =
-      catalogA.services.every((s) => s.connection.status === "disconnected") &&
-      catalogB.services.every((s) => s.connection.status === "disconnected") &&
+      catalogA.services.every(freshCatalogStatusOk) &&
+      catalogB.services.every(freshCatalogStatusOk) &&
       liveStillPresent;
 
     const secretsSample = unsupportedExternalServiceMessage("notion");

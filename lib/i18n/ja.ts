@@ -1134,6 +1134,7 @@ export const ui = {
       pending: "接続準備中",
       connected: "接続済み",
       error: "確認が必要",
+      configuration_error: "設定エラー",
     },
   },
 

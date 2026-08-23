@@ -15,7 +15,8 @@ export type ExternalServiceStatus =
   | "disconnected"
   | "pending"
   | "connected"
-  | "error";
+  | "error"
+  | "configuration_error";
 
 /** Public profile returned after OAuth — no tokens. */
 export type ExternalServiceAccountProfile = {

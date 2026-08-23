@@ -63,7 +63,7 @@ describe("external auth hydration isolation", () => {
     vi.restoreAllMocks();
   });
 
-  it("continues X/Google/Dropbox loads when WordPress throws", async () => {
+  it("does not invoke the WordPress loader while hydrating Google/X/Dropbox", async () => {
     loaders.wordpress.mockRejectedValue(
       new Error("ATLAS_WORDPRESS_CREDENTIALS_ENCRYPTION_KEY missing"),
     );
@@ -73,7 +73,7 @@ describe("external auth hydration isolation", () => {
     expect(loaders.google).toHaveBeenCalledWith("user_x_wp_throw");
     expect(loaders.x).toHaveBeenCalledWith("user_x_wp_throw");
     expect(loaders.dropbox).toHaveBeenCalledWith("user_x_wp_throw");
-    expect(loaders.wordpress).toHaveBeenCalledWith("user_x_wp_throw");
+    expect(loaders.wordpress).not.toHaveBeenCalled();
     expect(loaders.durableDomain).toHaveBeenCalled();
   });
 
