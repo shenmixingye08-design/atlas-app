@@ -140,6 +140,9 @@ describe("auth route matchers", () => {
       "/api/health/billing-schema(.*)",
     );
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
+      "/api/health/billing-usage-rpc(.*)",
+    );
+    expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
       "/api/health/production-schema(.*)",
     );
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain(

@@ -121,8 +121,12 @@ async function loadSucceededSideEffects(
 export async function reconcileCurrentMonthUsageFromEvidence(
   userId: string,
   month: string = getUsageMonthKey(),
-): Promise<{ ready: boolean }> {
-  if (!userId.trim()) return { ready: false };
+): Promise<{
+  ready: boolean;
+  error?: string;
+  errorCode?: "usage_increment_failed" | "usage_rpc_missing";
+}> {
+  if (!userId.trim()) return { ready: false, error: "user_required" };
 
   const rows = await loadSucceededSideEffects(userId, month);
   const seenX = new Set<string>();
@@ -138,7 +142,13 @@ export async function reconcileCurrentMonthUsageFromEvidence(
         meter: "sns_posts",
         claimKey: `x:${row.resourceId}`,
       });
-      if (isAtlasProduction() && !sns.ready) return { ready: false };
+      if (isAtlasProduction() && !sns.ready) {
+        return {
+          ready: false,
+          error: "usage_increment_failed",
+          errorCode: "usage_increment_failed",
+        };
+      }
       if (row.text && tweetContainsExternalUrl(row.text)) {
         const url = await incrementDurableUsageOnce({
           userId,
@@ -146,7 +156,13 @@ export async function reconcileCurrentMonthUsageFromEvidence(
           meter: "x_url_posts",
           claimKey: `xurl:${row.resourceId}`,
         });
-        if (isAtlasProduction() && !url.ready) return { ready: false };
+        if (isAtlasProduction() && !url.ready) {
+          return {
+            ready: false,
+            error: "usage_increment_failed",
+            errorCode: "usage_increment_failed",
+          };
+        }
       }
     }
     if (row.provider === "wordpress") {
@@ -158,13 +174,23 @@ export async function reconcileCurrentMonthUsageFromEvidence(
         meter: "wordpress_posts",
         claimKey: `wp:${row.resourceId}`,
       });
-      if (isAtlasProduction() && !wp.ready) return { ready: false };
+      if (isAtlasProduction() && !wp.ready) {
+        return {
+          ready: false,
+          error: "usage_increment_failed",
+          errorCode: "usage_increment_failed",
+        };
+      }
     }
   }
 
   const ai = await syncAiRunsFromClaims(userId, month);
   if (isAtlasProduction() && !ai.ready && createServiceRoleClientIfConfigured()) {
-    return { ready: false };
+    return {
+      ready: false,
+      error: "usage_increment_failed",
+      errorCode: "usage_increment_failed",
+    };
   }
   return { ready: true };
 }

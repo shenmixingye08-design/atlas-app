@@ -504,4 +504,45 @@ describe("Billing usage meter isolation (permanent)", () => {
     const second = await summary(USER);
     expect(second.usage.snsPosts.used).toBe(1);
   });
+
+  it("concurrent same tweetId does not double-count", async () => {
+    const [a, b] = await Promise.all([
+      recordXPostUsageOnce({
+        userId: USER,
+        tweetId: "tw_race",
+        text: "ok",
+      }),
+      recordXPostUsageOnce({
+        userId: USER,
+        tweetId: "tw_race",
+        text: "ok",
+      }),
+    ]);
+    expect(Number(a.snsIncremented) + Number(b.snsIncremented)).toBe(1);
+    expect((await summary(USER)).usage.snsPosts.used).toBe(1);
+  });
+
+  it("different claim / meter / month / user stay independent", async () => {
+    await recordXPostUsageOnce({
+      userId: USER,
+      tweetId: "tw_a",
+      text: "ok",
+    });
+    await recordXPostUsageOnce({
+      userId: USER,
+      tweetId: "tw_b",
+      text: "ok",
+    });
+    await recordWordPressPublishUsageOnce({ userId: USER, postId: 9 });
+    const other = "user_meter_other";
+    await setLight(other);
+    await recordXPostUsageOnce({
+      userId: other,
+      tweetId: "tw_other",
+      text: "ok",
+    });
+    expect((await summary(USER)).usage.snsPosts.used).toBe(2);
+    expect((await summary(USER)).usage.wordpressPosts.used).toBe(1);
+    expect((await summary(other)).usage.snsPosts.used).toBe(1);
+  });
 });

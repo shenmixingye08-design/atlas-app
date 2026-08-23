@@ -12,6 +12,14 @@ import { isAtlasProduction } from "@/lib/runtime/is-production";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
 import { isSupabaseRelationMissingError } from "@/lib/automations/supabase-error";
 
+import {
+  ATLAS_INCREMENT_USAGE_RPC_NAME,
+  buildIncrementUsageRpcArgs,
+} from "./increment-once-sql";
+import {
+  ensureBillingUsageIncrementRpc,
+  isMissingUsageIncrementRpc,
+} from "./increment-rpc-probe";
 import { getUsageMonthKey } from "./period";
 import {
   getUsageSnapshot,
@@ -200,16 +208,26 @@ export async function incrementDurableUsageOnce(input: {
 
   const client = createServiceRoleClientIfConfigured();
   if (client) {
-    const { data, error } = await asUntypedSupabase(client).rpc(
-      "atlas_increment_usage_counter_once",
-      {
-        p_user_id: input.userId,
-        p_month_key: month,
-        p_claim_key: claimKey,
-        p_meter: input.meter,
-        p_amount: amount,
-      },
+    const args = buildIncrementUsageRpcArgs({
+      userId: input.userId,
+      monthKey: month,
+      claimKey,
+      meter: input.meter,
+      amount,
+    });
+    let { data, error } = await asUntypedSupabase(client).rpc(
+      ATLAS_INCREMENT_USAGE_RPC_NAME,
+      args,
     );
+    if (error && isMissingUsageIncrementRpc(error)) {
+      const ensured = await ensureBillingUsageIncrementRpc();
+      if (ensured.ok) {
+        ({ data, error } = await asUntypedSupabase(client).rpc(
+          ATLAS_INCREMENT_USAGE_RPC_NAME,
+          args,
+        ));
+      }
+    }
     const row = !error ? asIncrementRow(data) : null;
     if (row) {
       const used = asCount(row.used);
@@ -234,7 +252,9 @@ export async function incrementDurableUsageOnce(input: {
       logDurableReadFailure({
         endpoint: "/api/billing/usage",
         userId: input.userId,
-        code: "usage_increment_failed",
+        code: isMissingUsageIncrementRpc(error)
+          ? "usage_rpc_missing"
+          : "usage_increment_failed",
         databaseCode: parsed.code,
         table: "atlas_billing_usage_counters",
         diagnosticId: buildDurableReadDiagnosticId("usage_increment"),
@@ -285,13 +305,25 @@ export async function syncAiRunsFromClaims(
       ready: !isAtlasProduction(),
     };
   }
-  const { data, error } = await asUntypedSupabase(client).rpc(
+  let { data, error } = await asUntypedSupabase(client).rpc(
     "atlas_sync_ai_runs_from_claims",
     {
       p_user_id: userId,
       p_month_key: month,
     },
   );
+  if (error && isMissingUsageIncrementRpc(error)) {
+    const ensured = await ensureBillingUsageIncrementRpc();
+    if (ensured.ok) {
+      ({ data, error } = await asUntypedSupabase(client).rpc(
+        "atlas_sync_ai_runs_from_claims",
+        {
+          p_user_id: userId,
+          p_month_key: month,
+        },
+      ));
+    }
+  }
   if (error || !data || typeof data !== "object") {
     return { used: 0, ready: false };
   }

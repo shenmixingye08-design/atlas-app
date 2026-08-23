@@ -44,7 +44,12 @@ describe("hydrateUserUsageMeters fail-closed", () => {
     });
     vi.mocked(countBillableAutomations).mockResolvedValue(2);
     const result = await hydrateUserUsageMeters("user_ok");
-    expect(result).toEqual({ ready: true, error: null });
+    expect(result).toEqual({
+      ready: true,
+      error: null,
+      errorCode: null,
+      source: "durable",
+    });
   });
 
   it("does not become ready when usage counters fail", async () => {
