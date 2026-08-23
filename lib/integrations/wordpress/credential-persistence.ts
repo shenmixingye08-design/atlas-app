@@ -16,6 +16,7 @@ import {
 } from "./crypto";
 import { wordpressServiceDefinition } from "./definition";
 import { isWordPressEncryptionConfigured } from "./config";
+import { logWordPressConfigurationError } from "./configuration-log";
 import type { WordPressCredentialRecord, WordPressPersistedAuth } from "./types";
 
 const TABLE = "atlas_wordpress_credentials" as const;
@@ -131,6 +132,14 @@ function toRow(
 export async function readWordPressAuthFromDurable(
   userId: string,
 ): Promise<DurableCredentialRead<WordPressPersistedAuth>> {
+  if (!isWordPressEncryptionConfigured() && isAtlasProduction()) {
+    logWordPressConfigurationError({
+      code: "missing_encryption_key",
+      operation: "credential_load",
+    });
+    return durableReadFailed("encryption_not_configured");
+  }
+
   const client = createServiceRoleClientIfConfigured();
   if (!client) {
     if (isAtlasProduction()) {
@@ -139,12 +148,6 @@ export async function readWordPressAuthFromDurable(
       );
     }
     return durableReadWhenClientMissing();
-  }
-  if (!isWordPressEncryptionConfigured() && isAtlasProduction()) {
-    console.error(
-      "[WordPress] Production refuse credential load without ATLAS_WORDPRESS_CREDENTIALS_ENCRYPTION_KEY",
-    );
-    return durableReadFailed("encryption_not_configured");
   }
 
   try {
@@ -201,9 +204,10 @@ export async function persistWordPressAuthToSupabase(
 
   if (!isWordPressEncryptionConfigured()) {
     if (isAtlasProduction()) {
-      console.error(
-        "[WordPress] Production refuse credential persist without ATLAS_WORDPRESS_CREDENTIALS_ENCRYPTION_KEY",
-      );
+      logWordPressConfigurationError({
+        code: "missing_encryption_key",
+        operation: "credential_persist",
+      });
       return false;
     }
   }

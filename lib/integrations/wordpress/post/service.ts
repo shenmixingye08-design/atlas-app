@@ -4,7 +4,6 @@ import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
 
-import { ensureExternalAuthHydrated } from "../../external-services/durable";
 import {
   WordPressApiError,
   createWordPressPost,
@@ -43,11 +42,24 @@ type WordPressAuthGate =
       status: "unavailable";
       developerCode: "durable_read_failed";
       message: string;
+    }
+  | {
+      status: "configuration_error";
+      developerCode: "missing_encryption_key";
+      message: string;
     };
 
 function authGateFailure(
   ctx: Exclude<WordPressAuthGate, { status: "ready" }>,
 ): WordPressPostResult {
+  if (ctx.status === "configuration_error") {
+    return {
+      status: "configuration_error",
+      message: ctx.message,
+      developerCode: ctx.developerCode,
+      httpStatus: 503,
+    };
+  }
   if (ctx.status === "unavailable") {
     return {
       status: "durable_unavailable",
@@ -60,9 +72,8 @@ function authGateFailure(
 }
 
 async function requireAuth(userId: string): Promise<WordPressAuthGate> {
-  await ensureExternalAuthHydrated(userId);
   const resolved = await resolveWordPressAuthContext(userId);
-  if (resolved.status === "unavailable") {
+  if (resolved.status === "unavailable" || resolved.status === "configuration_error") {
     return resolved;
   }
   if (resolved.status !== "ready") {
@@ -337,6 +348,7 @@ type WordPressTaxonomyFailure = {
     | "error"
     | "wp_not_connected"
     | "durable_unavailable"
+    | "configuration_error"
     | "feature_disabled"
     | "auth_failure";
   message: string;
@@ -346,6 +358,13 @@ type WordPressTaxonomyFailure = {
 function taxonomyAuthFailure(
   ctx: Exclude<WordPressAuthGate, { status: "ready" }>,
 ): WordPressTaxonomyFailure {
+  if (ctx.status === "configuration_error") {
+    return {
+      status: "configuration_error",
+      message: ctx.message,
+      developerCode: ctx.developerCode,
+    };
+  }
   if (ctx.status === "unavailable") {
     return {
       status: "durable_unavailable",

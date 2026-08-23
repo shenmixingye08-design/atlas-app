@@ -110,9 +110,21 @@ export function schedulePersistExternalAuth(userId: string): void {
 }
 
 /**
- * Isolate one provider so a WordPress/Google/Dropbox/X load failure
- * cannot skip the others. Missing WP encryption logs a warning and
- * returns null today — this still guards unexpected throws.
+ * WordPress credentials are a separate failure domain.
+ * Call only from WordPress operations — never from Google / X / LINE / billing.
+ */
+export async function ensureWordPressAuthHydrated(
+  userId: string,
+): Promise<void> {
+  const { reloadWordPressAuthFromDurable } = await import(
+    "@/lib/integrations/wordpress/auth-reload"
+  );
+  await reloadWordPressAuthFromDurable(userId);
+}
+
+/**
+ * Isolate one provider so a Google/Dropbox/X load failure
+ * cannot skip the others. WordPress is not loaded here.
  */
 async function loadProviderAuthSafely<T>(
   label: string,
@@ -188,24 +200,6 @@ export async function ensureExternalAuthHydrated(userId: string): Promise<void> 
       appliedDurable = true;
     }
 
-    const wordpressAuth = await loadProviderAuthSafely(
-      "wordpress",
-      async () => {
-        const { loadWordPressAuthFromSupabase } = await import(
-          "@/lib/integrations/wordpress/credential-persistence"
-        );
-        return loadWordPressAuthFromSupabase(userId);
-      },
-    );
-    if (wordpressAuth) {
-      const { saveWordPressCredentials } = await import(
-        "@/lib/integrations/wordpress/credential-store"
-      );
-      saveWordPressCredentials(wordpressAuth.credentials);
-      saveExternalServiceConnection(userId, wordpressAuth.connection);
-      appliedDurable = true;
-    }
-
     const loaded = await loadProviderAuthSafely(
       "durable_domain",
       async () =>
@@ -220,7 +214,7 @@ export async function ensureExternalAuthHydrated(userId: string): Promise<void> 
         googleAuth,
         xAuth,
         dropboxAuth,
-        wordpressAuth,
+        wordpressAuth: null,
       });
     }
   } catch (error) {

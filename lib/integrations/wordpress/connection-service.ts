@@ -10,6 +10,7 @@ import type { ExternalServiceConnection } from "../external-services/types";
 import { createDefaultConnection } from "../external-services/registry";
 import { WordPressApiError, fetchWordPressCurrentUser } from "./api-client";
 import {
+  isWordPressProductionEncryptionMissing,
   normalizeApplicationPassword,
   normalizeWordPressSiteUrl,
 } from "./config";
@@ -37,6 +38,7 @@ import {
   WP_CONNECTION_ERROR_MESSAGE,
   WP_DURABLE_READ_FAILED_MESSAGE,
   WP_INVALID_SITE_URL_MESSAGE,
+  WP_MISSING_ENCRYPTION_KEY_MESSAGE,
   WP_MISSING_FIELDS_MESSAGE,
 } from "./errors";
 import type { WordPressConnectInput, WordPressCredentialRecord } from "./types";
@@ -118,6 +120,9 @@ export async function connectWordPressAccount(
   userId: string,
   input: WordPressConnectInput,
 ): Promise<{ connection: ExternalServiceConnection; message: string }> {
+  if (isWordPressProductionEncryptionMissing()) {
+    throw new Error(WP_MISSING_ENCRYPTION_KEY_MESSAGE);
+  }
   const validated = validateConnectInput(input);
   const previous = getExternalServiceConnection(userId, "wordpress");
   const isReconnect =
@@ -265,17 +270,30 @@ export type ResolvedWordPressAuth =
       status: "unavailable";
       developerCode: "durable_read_failed";
       message: string;
+    }
+  | {
+      status: "configuration_error";
+      developerCode: "missing_encryption_key";
+      message: string;
     };
 
 /**
  * Durable SoT. Confirmed-missing clears isolate memory.
  * Read failure is unavailable — never a silent memory fallback.
+ * Missing encryption key is configuration_error — not a transient read failure.
  */
 export async function resolveWordPressAuthContext(
   userId: string,
 ): Promise<ResolvedWordPressAuth> {
   const reload = await reloadWordPressAuthFromDurable(userId);
   if (reload.status === "unavailable") {
+    if (reload.reason === "encryption_not_configured") {
+      return {
+        status: "configuration_error",
+        developerCode: "missing_encryption_key",
+        message: WP_MISSING_ENCRYPTION_KEY_MESSAGE,
+      };
+    }
     return {
       status: "unavailable",
       developerCode: reload.developerCode,

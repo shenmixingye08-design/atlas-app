@@ -166,6 +166,7 @@ describe("X connect isolation regression (permanent)", () => {
     expect(loaders.x).toHaveBeenCalledWith("user_case_b");
     expect(loaders.google).toHaveBeenCalled();
     expect(loaders.dropbox).toHaveBeenCalled();
+    expect(loaders.wordpress).not.toHaveBeenCalled();
     expect(body.developerCode).toBeUndefined();
   });
 

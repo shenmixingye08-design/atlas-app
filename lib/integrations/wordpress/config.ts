@@ -33,6 +33,11 @@ export function isWordPressEncryptionConfigured(): boolean {
   return getWordPressEncryptionKeyBytes() !== null;
 }
 
+/** Production + missing/invalid key. Does not log and does not load credentials. */
+export function isWordPressProductionEncryptionMissing(): boolean {
+  return isAtlasProduction() && !isWordPressEncryptionConfigured();
+}
+
 /** Throws in production when encryption key is missing; returns null in non-prod. */
 export function requireWordPressEncryptionKey(): Buffer {
   const key = getWordPressEncryptionKeyBytes();

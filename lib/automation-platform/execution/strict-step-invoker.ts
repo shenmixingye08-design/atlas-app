@@ -24,6 +24,8 @@ import {
   configMissingInput,
   invokeWiredExternalAdapter,
 } from "@/lib/automation-platform/execution/adapters";
+import { mapProviderFailure } from "@/lib/automation-platform/execution/adapters/map-provider-status";
+import { WP_MISSING_ENCRYPTION_KEY_MESSAGE } from "@/lib/integrations/wordpress/errors";
 import type { ExternalAdapterInput } from "@/lib/automation-platform/execution/adapters";
 import { getCapability } from "@/lib/automation-platform/step-registry/registry";
 import { createNotification } from "@/lib/notifications/service";
@@ -465,10 +467,17 @@ export const strictStepInvoker: StepInvoker = async (input) => {
         inputError: null,
       });
     case "wordpress":
+      if (!wordpressAppConfigured()) {
+        return mapProviderFailure({
+          service: "WordPress",
+          status: "configuration_error",
+          message: WP_MISSING_ENCRYPTION_KEY_MESSAGE,
+        });
+      }
       return invokeExternalProduction({
         service: "WordPress",
         adapterId: "wordpress",
-        appConfigured: wordpressAppConfigured(),
+        appConfigured: true,
         adapterInput,
         inputError: null,
       });

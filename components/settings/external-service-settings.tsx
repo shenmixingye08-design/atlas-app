@@ -28,6 +28,7 @@ const STATUS_LABELS: Record<ExternalServiceStatus, string> = {
   pending: ui.externalServices.status.pending,
   connected: ui.externalServices.status.connected,
   error: ui.externalServices.status.error,
+  configuration_error: ui.externalServices.status.configuration_error,
 };
 
 const STATUS_CLASSES: Record<ExternalServiceStatus, string> = {
@@ -37,6 +38,8 @@ const STATUS_CLASSES: Record<ExternalServiceStatus, string> = {
     "bg-[var(--status-warning-bg)] text-[var(--status-warning)] ring-[var(--status-warning)]/30",
   connected:
     "bg-[var(--status-success-bg)] text-[var(--status-success)] ring-[var(--status-success)]/30",
+  configuration_error:
+    "bg-[var(--status-warning-bg)] text-[var(--status-warning)] ring-[var(--status-warning)]/30",
   error:
     "bg-[var(--status-error-bg)] text-[var(--status-error)] ring-[var(--status-error)]/30",
 };

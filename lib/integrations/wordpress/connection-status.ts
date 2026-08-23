@@ -4,7 +4,6 @@ import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
 
-import { ensureExternalAuthHydrated } from "../external-services/durable";
 import {
   getExternalServiceConnection,
   saveExternalServiceConnection,
@@ -19,6 +18,7 @@ import {
   WP_AUTH_FAILURE_MESSAGE,
   WP_CONNECTION_ERROR_MESSAGE,
   WP_DURABLE_READ_FAILED_MESSAGE,
+  WP_MISSING_ENCRYPTION_KEY_MESSAGE,
   WP_NOT_CONNECTED_MESSAGE,
   WP_RECONNECT_REQUIRED_MESSAGE,
 } from "./errors";
@@ -39,8 +39,15 @@ export async function checkWordPressConnectionForUser(input: {
     };
   }
 
-  await ensureExternalAuthHydrated(input.userId);
   const resolved = await resolveWordPressAuthContext(input.userId);
+  if (resolved.status === "configuration_error") {
+    return {
+      status: "configuration_error",
+      connected: false,
+      message: resolved.message,
+      errorMessage: WP_MISSING_ENCRYPTION_KEY_MESSAGE,
+    };
+  }
   if (resolved.status === "unavailable") {
     return {
       status: "durable_unavailable",

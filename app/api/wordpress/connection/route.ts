@@ -39,8 +39,15 @@ export async function GET(): Promise<Response> {
   ) {
     return Response.json(result, { status: 409 });
   }
-  if (result.status === "error") {
-    return Response.json(result, { status: 502 });
+  if (
+    result.status === "error" ||
+    result.status === "durable_unavailable" ||
+    result.status === "configuration_error"
+  ) {
+    return Response.json(
+      result,
+      { status: result.status === "configuration_error" ? 503 : 502 },
+    );
   }
 
   return Response.json(result);

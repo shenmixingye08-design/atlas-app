@@ -56,7 +56,10 @@ export async function POST(request: Request): Promise<Response> {
   if (result.status === "wp_not_connected" || result.status === "auth_failure") {
     return Response.json(result, { status: 409 });
   }
-  if (result.status === "durable_unavailable") {
+  if (
+    result.status === "durable_unavailable" ||
+    result.status === "configuration_error"
+  ) {
     return Response.json(result, { status: 503 });
   }
   return Response.json(result, { status: 502 });
