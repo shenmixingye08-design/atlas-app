@@ -225,7 +225,7 @@ export async function createWordPressPostForUser(input: {
       const { recordWordPressPublishUsageOnce } = await import(
         "@/lib/billing/usage/external-counters"
       );
-      recordWordPressPublishUsageOnce({
+      await recordWordPressPublishUsageOnce({
         userId: input.userId,
         postId: created.id,
       });
@@ -322,7 +322,7 @@ export async function updateWordPressPostForUser(input: {
       const { recordWordPressPublishUsageOnce } = await import(
         "@/lib/billing/usage/external-counters"
       );
-      recordWordPressPublishUsageOnce({
+      await recordWordPressPublishUsageOnce({
         userId: input.userId,
         postId: updated.id,
       });

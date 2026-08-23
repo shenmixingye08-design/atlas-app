@@ -64,10 +64,11 @@ export async function consumeBillingAiJob(
   claimKey: string,
 ): Promise<Response | null> {
   const snapshot = await getBillingAccessSnapshot(userId);
-  if (snapshot.isOwner) return null;
-
   const reserved = await consumeAiJobQuota({ userId, claimKey });
   if (reserved.ok) return null;
+  if (snapshot.isOwner && reserved.reason !== "usage_unavailable") {
+    return null;
+  }
   if (reserved.reason === "usage_unavailable") {
     return Response.json(
       {

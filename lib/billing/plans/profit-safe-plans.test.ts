@@ -372,13 +372,13 @@ describe("profit-safe cost guards and posting quotas", () => {
     );
   });
 
-  it("does not double-count X or WordPress usage on retry of the same provider id", () => {
-    recordXPostUsageOnce({
+  it("does not double-count X or WordPress usage on retry of the same provider id", async () => {
+    await recordXPostUsageOnce({
       userId: "user_retry",
       tweetId: "tw_1",
       text: "hello https://example.com",
     });
-    recordXPostUsageOnce({
+    await recordXPostUsageOnce({
       userId: "user_retry",
       tweetId: "tw_1",
       text: "hello https://example.com",
@@ -386,8 +386,8 @@ describe("profit-safe cost guards and posting quotas", () => {
     const xOnce = incrementUsageCounterOnce("user_retry", "snsPosts", "x:tw_1");
     expect(xOnce.incremented).toBe(false);
 
-    recordWordPressPublishUsageOnce({ userId: "user_retry", postId: 99 });
-    recordWordPressPublishUsageOnce({ userId: "user_retry", postId: 99 });
+    await recordWordPressPublishUsageOnce({ userId: "user_retry", postId: 99 });
+    await recordWordPressPublishUsageOnce({ userId: "user_retry", postId: 99 });
 
     const summary = getUserUsageLimitSummary("user_retry");
     expect(summary.snsPosts.used).toBe(1);

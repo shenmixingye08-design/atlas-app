@@ -199,6 +199,37 @@ export async function executeQueuedRun(input: {
     run = await persist(transition(run, "running", "claim_and_start"));
   }
 
+  const {
+    automationUsesAiGeneration,
+    consumeAutomationAiOccurrenceOnce,
+  } = await import("@/lib/billing/usage/automation-ai");
+  if (
+    run.scheduleOccurrenceKey &&
+    automationUsesAiGeneration(
+      input.automation.workflow.steps
+        .filter((step) => step.enabled)
+        .map((step) => step.type),
+    )
+  ) {
+    const quota = await consumeAutomationAiOccurrenceOnce({
+      userId: run.userId,
+      occurrenceKey: run.scheduleOccurrenceKey,
+    });
+    if (!quota.ok) {
+      const message = quota.message;
+      run = await persist({
+        ...transition(run, "failed", "ai_quota_denied"),
+        retryable: false,
+        nextRetryAt: null,
+        completionEvidence: null,
+        resultSummary: message,
+        lastErrorCode: "automation_permission_denied",
+        lastErrorMessage: message,
+      });
+      return { run, terminal: true };
+    }
+  }
+
   // Re-resolve Memory at execution time so Scheduler later runs use latest prefs.
   try {
     const { applyMemoryForAutomation } = await import(

@@ -34,6 +34,8 @@ import { prepareStepsForSafeRetry } from "@/lib/automation-platform/operations/i
 import { proposeWizardFromNaturalLanguage } from "@/lib/automation-platform/wizard/nl-propose";
 import { resetFeatureFlagStore, setFeatureFlagState } from "@/lib/feature-flags/store";
 import { resetSideEffectStoreForTests } from "@/lib/side-effects/store";
+import { resetUsageStore } from "@/lib/billing/usage/store";
+import { resetAiQuotaEngineForTests } from "@/lib/billing/usage/quota-engine";
 import type { AutomationV2 } from "@/lib/automation-platform/types/automation";
 import type { AutomationRun } from "@/lib/automation-platform/types/run";
 
@@ -355,6 +357,8 @@ function withAppEnv(run: () => Promise<void>): Promise<void> {
 describe("Phase 3 E2E generate → calendar → notify", () => {
   beforeEach(() => {
     resetSideEffectStoreForTests();
+    resetUsageStore();
+    resetAiQuotaEngineForTests();
     resetFeatureFlagStore();
     setFeatureFlagState("automation_v2_enabled", "on");
     setFeatureFlagState("google", "on");

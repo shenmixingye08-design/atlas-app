@@ -1,32 +1,33 @@
-import { incrementUsageCounterOnce } from "./store";
+import { incrementDurableUsageOnce } from "./durable-counters";
 import { tweetContainsExternalUrl } from "./x-url";
 
 /**
  * Count a successful X post once per provider tweet id (retry-safe).
  * URL posts consume both the total X counter and the URL sub-quota.
  */
-export function recordXPostUsageOnce(input: {
+export async function recordXPostUsageOnce(input: {
   userId: string;
   tweetId: string;
   text: string;
-}): { snsIncremented: boolean; urlIncremented: boolean } {
+}): Promise<{ snsIncremented: boolean; urlIncremented: boolean }> {
   const tweetId = input.tweetId.trim();
   if (!tweetId) {
     return { snsIncremented: false, urlIncremented: false };
   }
 
-  const sns = incrementUsageCounterOnce(
-    input.userId,
-    "snsPosts",
-    `x:${tweetId}`,
-  );
+  const sns = await incrementDurableUsageOnce({
+    userId: input.userId,
+    meter: "sns_posts",
+    claimKey: `x:${tweetId}`,
+  });
   let urlIncremented = false;
   if (tweetContainsExternalUrl(input.text)) {
-    urlIncremented = incrementUsageCounterOnce(
-      input.userId,
-      "xUrlPosts",
-      `xurl:${tweetId}`,
-    ).incremented;
+    const url = await incrementDurableUsageOnce({
+      userId: input.userId,
+      meter: "x_url_posts",
+      claimKey: `xurl:${tweetId}`,
+    });
+    urlIncremented = url.incremented;
   }
 
   return {
@@ -36,15 +37,16 @@ export function recordXPostUsageOnce(input: {
 }
 
 /** Count a successful WordPress publish once per provider post id. */
-export function recordWordPressPublishUsageOnce(input: {
+export async function recordWordPressPublishUsageOnce(input: {
   userId: string;
   postId: string | number;
-}): { incremented: boolean } {
+}): Promise<{ incremented: boolean }> {
   const postId = String(input.postId).trim();
   if (!postId) return { incremented: false };
-  return incrementUsageCounterOnce(
-    input.userId,
-    "wordpressPosts",
-    `wp:${postId}`,
-  );
+  const result = await incrementDurableUsageOnce({
+    userId: input.userId,
+    meter: "wordpress_posts",
+    claimKey: `wp:${postId}`,
+  });
+  return { incremented: result.incremented };
 }

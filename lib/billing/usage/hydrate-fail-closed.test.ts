@@ -2,8 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-vi.mock("./quota-engine", () => ({
-  loadDurableAiRuns: vi.fn(),
+vi.mock("./durable-counters", () => ({
+  loadDurableUsageCounters: vi.fn(),
+}));
+
+vi.mock("./reconcile", () => ({
+  reconcileCurrentMonthUsageFromEvidence: vi.fn(async () => ({ ready: true })),
 }));
 
 vi.mock("./automation-inventory", () => ({
@@ -11,14 +15,15 @@ vi.mock("./automation-inventory", () => ({
 }));
 
 import { countBillableAutomations } from "./automation-inventory";
-import { hydrateUserUsageMeters } from "./hydrate";
-import { loadDurableAiRuns } from "./quota-engine";
+import { loadDurableUsageCounters } from "./durable-counters";
+import { hydrateUserUsageMeters, resetUsageHydrateInflightForTests } from "./hydrate";
 import { resetUsageStore } from "./store";
 
 describe("hydrateUserUsageMeters fail-closed", () => {
   beforeEach(() => {
     resetUsageStore();
-    vi.mocked(loadDurableAiRuns).mockReset();
+    resetUsageHydrateInflightForTests();
+    vi.mocked(loadDurableUsageCounters).mockReset();
     vi.mocked(countBillableAutomations).mockReset();
   });
 
@@ -26,15 +31,33 @@ describe("hydrateUserUsageMeters fail-closed", () => {
     vi.clearAllMocks();
   });
 
-  it("is ready only when AI runs and automation inventory both succeed", async () => {
-    vi.mocked(loadDurableAiRuns).mockResolvedValue({ used: 4, ready: true });
+  it("is ready only when usage counters and automation inventory both succeed", async () => {
+    vi.mocked(loadDurableUsageCounters).mockResolvedValue({
+      counters: {
+        aiRuns: 4,
+        snsPosts: 0,
+        xUrlPosts: 0,
+        wordpressPosts: 0,
+      },
+      ready: true,
+      error: null,
+    });
     vi.mocked(countBillableAutomations).mockResolvedValue(2);
     const result = await hydrateUserUsageMeters("user_ok");
     expect(result).toEqual({ ready: true, error: null });
   });
 
   it("does not become ready when usage counters fail", async () => {
-    vi.mocked(loadDurableAiRuns).mockResolvedValue({ used: 0, ready: false });
+    vi.mocked(loadDurableUsageCounters).mockResolvedValue({
+      counters: {
+        aiRuns: 0,
+        snsPosts: 0,
+        xUrlPosts: 0,
+        wordpressPosts: 0,
+      },
+      ready: false,
+      error: "usage_unavailable",
+    });
     vi.mocked(countBillableAutomations).mockResolvedValue(2);
     const result = await hydrateUserUsageMeters("user_usage_down");
     expect(result.ready).toBe(false);
@@ -42,7 +65,16 @@ describe("hydrateUserUsageMeters fail-closed", () => {
   });
 
   it("does not become ready when automation inventory throws", async () => {
-    vi.mocked(loadDurableAiRuns).mockResolvedValue({ used: 4, ready: true });
+    vi.mocked(loadDurableUsageCounters).mockResolvedValue({
+      counters: {
+        aiRuns: 4,
+        snsPosts: 0,
+        xUrlPosts: 0,
+        wordpressPosts: 0,
+      },
+      ready: true,
+      error: null,
+    });
     vi.mocked(countBillableAutomations).mockRejectedValue(
       new Error("automation store down"),
     );

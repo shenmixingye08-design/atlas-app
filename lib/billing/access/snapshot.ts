@@ -222,6 +222,7 @@ export async function evaluateBillingSnsPost(
 ): Promise<{ snapshot: BillingAccessSnapshot; denial: BillingDenial | null }> {
   const snapshot = await getBillingAccessSnapshot(userId);
   if (snapshot.isOwner) return { snapshot, denial: null };
+  await hydrateUserUsageMeters(userId);
   const check = evaluateSnsPostAccess(userId, options);
   if (check.allowed) return { snapshot, denial: null };
   const needsPlan = check.reason.includes("利用できません");
@@ -253,6 +254,7 @@ export async function evaluateBillingWordPressPublish(
   const snapshot = await getBillingAccessSnapshot(userId);
   if (snapshot.isOwner) return { snapshot, denial: null };
 
+  await hydrateUserUsageMeters(userId);
   const feature = evaluatePlanAccess(userId, "blog_creation");
   if (!feature.allowed) {
     const requiredPlan = getMinimumPlanForFeature("blog_creation") ?? "standard";
