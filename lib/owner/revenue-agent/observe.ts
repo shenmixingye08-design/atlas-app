@@ -183,6 +183,12 @@ export async function observeStripeRevenueEvent(input: {
         sessionId: session.id,
       });
     });
+    observeRevenueSafe(async () => {
+      const { recordDiagnosisPaidIfBound } = await import(
+        "@/lib/growth/acquisition/service"
+      );
+      await recordDiagnosisPaidIfBound(userId);
+    });
     return;
   }
 

@@ -24,6 +24,7 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
   const [visible, setVisible] = useState(false);
   const [pain, setPain] = useState<PainChoice | null>(null);
   const [usecase, setUsecase] = useState<FirstUsecaseId | null>(null);
+  const [fromDiagnosis, setFromDiagnosis] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -33,6 +34,25 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "onboarding_started" }),
     }).catch(() => undefined);
+    void fetch("/api/growth/attribution/bind", {
+      method: "POST",
+      credentials: "same-origin",
+    })
+      .catch(() => undefined)
+      .then(() =>
+        fetch("/api/growth/diagnosis", { cache: "no-store", credentials: "same-origin" }),
+      )
+      .then(async (response) => {
+        if (!response?.ok) return;
+        const body = (await response.json()) as {
+          session?: { result?: { pain?: PainChoice; firstJob?: FirstUsecaseId } | null };
+        };
+        const result = body.session?.result;
+        if (result?.pain) setPain(result.pain);
+        if (result?.firstJob) setUsecase(result.firstJob);
+        if (result?.pain && result.firstJob) setFromDiagnosis(true);
+      })
+      .catch(() => undefined);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -115,6 +135,14 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
             ))}
           </ol>
 
+          {fromDiagnosis ? (
+            <p className="mt-8 text-center text-sm">
+              無料診断の結果を引き継ぎました。同じ質問は繰り返しません。
+            </p>
+          ) : null}
+
+          {fromDiagnosis ? null : (
+          <>
           <fieldset className="mt-8 space-y-2">
             <legend className="text-sm font-medium text-foreground">
               何を減らしたいですか（1問）
@@ -160,6 +188,8 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
               ))}
             </fieldset>
           ) : null}
+          </>
+          )}
 
           <div className="mt-8">
             <Button
