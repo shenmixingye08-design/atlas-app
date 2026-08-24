@@ -143,11 +143,12 @@ export async function observeStripeRevenueEvent(input: {
   userId: string | null;
   object: unknown;
 }): Promise<void> {
-  if (!input.userId) return;
+  const userId = input.userId;
+  if (!userId) return;
   await ensureRevenueAgentHydrated();
-  const link = attributedContentForUser(listVisitorUserLinks(), input.userId);
+  const link = attributedContentForUser(listVisitorUserLinks(), userId);
   const common = {
-    userId: input.userId,
+    userId,
     campaignId: link?.attributedCampaignId ?? null,
     contentId: link?.attributedContentId ?? null,
     source: link?.source ?? null,
@@ -167,11 +168,20 @@ export async function observeStripeRevenueEvent(input: {
     recordRevenueEvent({
       ...common,
       eventName: "subscription_started",
-      dedupeKey: subscriptionStartedDedupeKey(input.userId, subscriptionId),
+      dedupeKey: subscriptionStartedDedupeKey(userId, subscriptionId),
       metadata: {
         ...common.metadata,
         subscriptionId,
       },
+    });
+    observeRevenueSafe(async () => {
+      const { handleRevenueMaxAction } = await import(
+        "@/lib/growth/revenue-max/service"
+      );
+      await handleRevenueMaxAction(userId, {
+        action: "checkout_completed",
+        sessionId: session.id,
+      });
     });
     return;
   }
@@ -181,7 +191,7 @@ export async function observeStripeRevenueEvent(input: {
     recordRevenueEvent({
       ...common,
       eventName: "subscription_started",
-      dedupeKey: subscriptionStartedDedupeKey(input.userId, subscription.id),
+      dedupeKey: subscriptionStartedDedupeKey(userId, subscription.id),
       metadata: {
         ...common.metadata,
         subscriptionId: subscription.id,
@@ -214,11 +224,20 @@ export async function observeStripeRevenueEvent(input: {
     recordRevenueEvent({
       ...common,
       eventName: "subscription_canceled",
-      dedupeKey: subscriptionCanceledDedupeKey(input.userId, subscription.id),
+      dedupeKey: subscriptionCanceledDedupeKey(userId, subscription.id),
       metadata: {
         ...common.metadata,
         subscriptionId: subscription.id,
       },
+    });
+    observeRevenueSafe(async () => {
+      const { handleRevenueMaxAction } = await import(
+        "@/lib/growth/revenue-max/service"
+      );
+      await handleRevenueMaxAction(userId, {
+        action: "cancellation_completed",
+        subscriptionId: subscription.id,
+      });
     });
     return;
   }

@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import { UsageThresholdWatcher } from "@/components/billing/usage-threshold-watcher";
 import { AttributionBinder } from "@/components/growth/attribution-binder";
+import { RevenueMaxBanners } from "@/components/growth/revenue-max-banners";
 import { GrowthVisitCapture } from "@/components/growth/visit-capture";
 import { PushProvider } from "@/components/push/push-provider";
 import { ThemeProvider, useTheme } from "@/components/theme/theme-provider";
@@ -35,6 +36,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
         <UsageThresholdWatcher />
         <GrowthVisitCapture />
         <AttributionBinder />
+        <RevenueMaxBanners />
         {children}
       </ThemedClerkProvider>
     </ThemeProvider>

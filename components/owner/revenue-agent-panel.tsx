@@ -47,6 +47,8 @@ export function RevenueAgentPanel() {
   const [goalsDraft, setGoalsDraft] = useState<RevenueGoals | null>(null);
   const [adSpendDraft, setAdSpendDraft] = useState("");
   const [range, setRange] = useState<RevenueFunnelRange>("30d");
+  const [tab, setTab] = useState<"funnel" | "improve">("funnel");
+  const [improve, setImprove] = useState<Record<string, unknown> | null>(null);
 
   const applyItemDraft = (item: RevenueContent) => {
     setDraft({
@@ -68,12 +70,20 @@ export function RevenueAgentPanel() {
     setSnapshot(next);
     setGoalsDraft(next.goals);
     setAdSpendDraft(next.adSpendYen == null ? "" : String(next.adSpendYen));
+    if (tab === "improve") {
+      const improveRes = await fetch("/api/owner/revenue-agent/improve", {
+        cache: "no-store",
+      });
+      if (improveRes.ok) {
+        setImprove((await improveRes.json()) as Record<string, unknown>);
+      }
+    }
     const currentId = selectedIdRef.current;
     if (currentId) {
       const current = next.items.find((item) => item.id === currentId);
       if (current) applyItemDraft(current);
     }
-  }, [range]);
+  }, [range, tab]);
 
   useEffect(() => {
     return scheduleMountWork(() => {
@@ -115,8 +125,137 @@ export function RevenueAgentPanel() {
           生成物は承認キューに入ります。存在しない実績は作りません。
           未取得は 0 ではなく「—」です。
         </p>
+        <div className="flex gap-2">
+          <Button
+            variant={tab === "funnel" ? "primary" : "secondary"}
+            onClick={() => setTab("funnel")}
+          >
+            帰属ファネル
+          </Button>
+          <Button
+            variant={tab === "improve" ? "primary" : "secondary"}
+            onClick={() => setTab("improve")}
+          >
+            収益改善
+          </Button>
+        </div>
       </header>
 
+      {tab === "improve" ? (
+        <Card className="space-y-3 p-4">
+          <h2 className="text-lg font-semibold">収益改善</h2>
+          <p className="text-xs text-[var(--text-muted)]">
+            契約MRRはサブスクリプション記録×プラン定義月額です。入金済売上とは別です。LTVは推定しません。
+          </p>
+          {improve ? (
+            <div className="grid gap-2 md:grid-cols-3 text-sm">
+              <p>入金済売上: {displayYen(improve.cashRevenueYen as number | null)}</p>
+              <p>契約MRR: {displayYen(improve.contractedMrrYen as number | null)}</p>
+              <p>新規MRR: {displayYen(improve.newMrrYen as number | null)}</p>
+              <p>解約MRR: {displayYen(improve.churnMrrYen as number | null)}</p>
+              <p>Expansion MRR: {displayYen(improve.expansionMrrYen as number | null)}</p>
+              <p>Contraction MRR: {displayYen(improve.contractionMrrYen as number | null)}</p>
+              <p>純増MRR: {displayYen(improve.netMrrYen as number | null)}</p>
+              <p>無料→有料: {displayRate(improve.freeToPaidRate as number | null)}</p>
+              <p>初回成功率: {displayRate(improve.firstSuccessRate as number | null)}</p>
+              <p>D7継続: {displayRate(improve.d7Retention as number | null)}</p>
+              <p>D30継続: {displayRate(improve.d30Retention as number | null)}</p>
+              <p>有料解約率: {displayRate(improve.paidCancelRate as number | null)}</p>
+              <p>ARPU: {displayYen(improve.arpuYen as number | null)}</p>
+              <p>LTV: {String(improve.ltvLabel ?? "データ不足")}</p>
+              <p>Checkout失敗: {displayMeasured(improve.checkoutFailed as number | null)}</p>
+              <p>paid_at_risk: {displayMeasured(improve.paidAtRisk as number | null)}</p>
+              <p>最大離脱: {typeof improve.dropOff === "string" ? improve.dropOff : "—"}</p>
+            </div>
+          ) : (
+            <p className="text-sm">読み込み中…</p>
+          )}
+          {Array.isArray(improve?.suggestions)
+            ? (improve.suggestions as Array<Record<string, string>>).map((row) => (
+                <div key={row.id} className="rounded-md border border-[var(--border)] p-3 text-sm">
+                  <p>離脱: {row.dropOff}</p>
+                  <p>期間: {row.period}</p>
+                  <p>実測: {row.measured}</p>
+                  <p>推奨: {row.change}</p>
+                  <p>検証: {row.howToVerify}</p>
+                  <p>監視: {row.watch}</p>
+                  <p>戻す条件: {row.revert}</p>
+                  <div className="mt-2 flex gap-2">
+                    <Button
+                      variant="secondary"
+                      onClick={() =>
+                        void run("承認を記録できませんでした", async () => {
+                          const response = await fetch(
+                            "/api/owner/revenue-agent/improve",
+                            {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                decision: "approved",
+                                id: row.id,
+                              }),
+                            },
+                          );
+                          if (!response.ok) throw new Error(await readError(response));
+                        })
+                      }
+                    >
+                      承認（料金は変えない）
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() =>
+                        void run("却下を記録できませんでした", async () => {
+                          const response = await fetch(
+                            "/api/owner/revenue-agent/improve",
+                            {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                decision: "rejected",
+                                id: row.id,
+                              }),
+                            },
+                          );
+                          if (!response.ok) throw new Error(await readError(response));
+                        })
+                      }
+                    >
+                      却下
+                    </Button>
+                  </div>
+                </div>
+              ))
+            : null}
+          {snapshot.contentRows.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border)] text-[var(--text-muted)]">
+                    <th className="py-2 pr-3">投稿</th>
+                    <th className="py-2 pr-3">入金済売上</th>
+                    <th className="py-2">有料契約</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {snapshot.contentRows.map((row) => (
+                    <tr key={row.contentId} className="border-b border-[var(--border)] last:border-0">
+                      <td className="py-2 pr-3">{row.title}</td>
+                      <td className="py-2 pr-3">{displayYen(row.cashRevenueYen)}</td>
+                      <td className="py-2">{displayMeasured(row.paidContracts)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--text-muted)]">投稿別入金売上: 未取得</p>
+          )}
+        </Card>
+      ) : null}
+
+      {tab === "funnel" ? (
+      <>
       <Card className="space-y-3 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">実測ファネル</h2>
@@ -805,6 +944,8 @@ export function RevenueAgentPanel() {
           </ul>
         )}
       </Card>
+      </>
+      ) : null}
     </div>
   );
 }

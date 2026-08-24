@@ -2,8 +2,11 @@ import type { PlanId } from "@/lib/billing/plans/types";
 
 export type CancellationReasonId =
   | "price"
-  | "not_used"
   | "too_difficult"
+  | "missing_feature"
+  | "not_working"
+  | "not_used"
+  | "temporary"
   | "other";
 
 export type CancellationReasonDefinition = {

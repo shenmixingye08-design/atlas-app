@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
+import { cancelAlternatives } from "@/lib/growth/revenue-max/cancel-options";
+import { CANCELLATION_REASON_DEFINITIONS } from "@/lib/owner/cancellation-analysis/registry";
 
 async function fetchDeletionStatus(): Promise<AccountDeletionRecord | null> {
   const response = await fetch("/api/account/deletion", { cache: "no-store" });
@@ -80,10 +82,34 @@ export function AccountSettings() {
     });
   }, [load]);
 
+  const [cancelReason, setCancelReason] = useState<string>("");
+  const [cancelNote, setCancelNote] = useState("");
+
   const handlePortal = async () => {
     setBusy(true);
     setError(null);
     try {
+      void fetch("/api/growth/revenue-max", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancellation_started" }),
+      }).catch(() => undefined);
+      if (cancelReason) {
+        await fetch("/api/billing/cancellation-reason", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reasonId: cancelReason }),
+        });
+        void fetch("/api/growth/revenue-max", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "cancellation_reason_selected",
+            reasonId: cancelReason,
+            note: cancelNote.slice(0, 200),
+          }),
+        }).catch(() => undefined);
+      }
       const { url } = await openBillingPortal();
       window.location.assign(url);
     } catch (err) {
@@ -151,6 +177,43 @@ export function AccountSettings() {
             {summary?.plan.name ?? "—"}
           </span>
         </p>
+        <fieldset className="space-y-2 text-sm">
+          <legend>解約理由（任意・1つ）</legend>
+          {CANCELLATION_REASON_DEFINITIONS.map((reason) => (
+            <label key={reason.id} className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="cancel-reason"
+                checked={cancelReason === reason.id}
+                onChange={() => setCancelReason(reason.id)}
+              />
+              {reason.label}
+            </label>
+          ))}
+          <textarea
+            className="mt-1 w-full rounded-md border border-[var(--border)] px-3 py-2"
+            rows={2}
+            placeholder="任意の補足（個人情報は書かない）"
+            value={cancelNote}
+            onChange={(event) => setCancelNote(event.target.value)}
+          />
+        </fieldset>
+        <ul className="space-y-1 text-sm">
+          {cancelAlternatives({
+            planId: summary?.plan.planId ?? "free",
+            reasonId: cancelReason || null,
+          }).map((option) =>
+            option.href ? (
+              <li key={option.id}>
+                <Link href={option.href} className="underline">
+                  {option.label}
+                </Link>
+              </li>
+            ) : (
+              <li key={option.id}>{option.label}</li>
+            ),
+          )}
+        </ul>
         <div className="flex flex-wrap gap-2">
           <Link
             href="/settings/billing"

@@ -430,6 +430,25 @@ export async function createCheckoutSession(input: {
         livemode: typeof session.livemode === "boolean" ? session.livemode : null,
       }),
     );
+    observeRevenueSafe(async () => {
+      const { ensureRevenueMaxHydrated, persistRevenueMax } = await import(
+        "@/lib/growth/revenue-max/durable"
+      );
+      const { recordUserEvent } = await import("@/lib/growth/revenue-max/record");
+      await ensureRevenueMaxHydrated(input.userId);
+      recordUserEvent({
+        userId: input.userId,
+        eventName: "checkout_started",
+        dedupeKey: `checkout_started:${input.userId}:${session.id}`,
+        metadata: { sessionId: session.id },
+        patch: {
+          checkoutSessionId: session.id,
+          checkoutStartedAt: new Date().toISOString(),
+          checkoutOutcome: "started",
+        },
+      });
+      await persistRevenueMax(input.userId);
+    });
 
     return {
       sessionId: session.id,
