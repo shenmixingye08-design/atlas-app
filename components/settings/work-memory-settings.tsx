@@ -1,7 +1,8 @@
 "use client";
 import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   WORK_MEMORY_TYPES,
@@ -25,8 +26,7 @@ import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ErrorState } from "@/components/ui/error-state";
-import { Input } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { LoadingState } from "@/components/ui/loading-state";
 
 type EditState = {
@@ -35,6 +35,131 @@ type EditState = {
   title: string;
   summary: string;
 };
+
+const selectClassName =
+  "minervot-form-control min-h-[44px] w-full rounded-[var(--radius-lg)] border border-[var(--form-control-border,var(--border))] bg-[var(--form-control-bg,var(--surface-muted))] px-4 text-base text-[var(--form-control-text,var(--text-primary))] focus:border-[var(--form-control-focus,var(--accent))] focus:outline-none focus:ring-2 focus:ring-[var(--form-control-focus,var(--accent))]/25";
+
+function chipClassName(active: boolean): string {
+  return cn(
+    "min-h-[44px] min-w-[44px] rounded-full px-4 text-sm transition-colors focus-ring",
+    active
+      ? "bg-accent text-[var(--accent-foreground,#fff)]"
+      : "bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:text-foreground",
+  );
+}
+
+function MemoryActionError({
+  message,
+  onRetry,
+  diagnosticId,
+  onCopyDiagnostic,
+  copied,
+}: {
+  message: string;
+  onRetry: () => void;
+  diagnosticId?: string | null;
+  onCopyDiagnostic?: () => void;
+  copied?: boolean;
+}) {
+  return (
+    <div
+      className="space-y-3 rounded-[var(--radius-xl)] border border-[var(--error)]/20 bg-[var(--error-bg)] px-4 py-3"
+      role="alert"
+    >
+      <p className="text-sm text-[var(--error)]">{message}</p>
+      <div className="flex flex-col gap-2 min-[390px]:flex-row">
+        <Button
+          size="sm"
+          variant="secondary"
+          className="w-full min-[390px]:w-auto"
+          onClick={onRetry}
+        >
+          再読み込みして再試行
+        </Button>
+        {diagnosticId && onCopyDiagnostic ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="w-full min-[390px]:w-auto"
+            onClick={onCopyDiagnostic}
+          >
+            {copied
+              ? ui.workMemory.diagnosticIdCopied
+              : ui.workMemory.copyDiagnosticId}
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ConfirmActionDialog({
+  title,
+  body,
+  confirmLabel,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    dialogRef.current?.querySelector("button")?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 p-4 sm:items-center"
+      role="presentation"
+      onClick={onCancel}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="work-memory-confirm-title"
+        className="w-full max-w-sm rounded-[var(--radius-2xl)] bg-[var(--card)] p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[var(--shadow-lg)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h2
+          id="work-memory-confirm-title"
+          className="text-sm font-semibold text-foreground"
+        >
+          {title}
+        </h2>
+        <p className="mt-2 text-sm text-[var(--text-secondary)]">{body}</p>
+        <div className="mt-4 flex flex-col gap-2 min-[390px]:flex-row">
+          <Button
+            size="sm"
+            variant="danger"
+            className="w-full min-[390px]:w-auto"
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="w-full min-[390px]:w-auto"
+            onClick={onCancel}
+          >
+            {ui.workMemory.cancel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return ui.workMemory.lastUsedNever;
@@ -164,11 +289,11 @@ function MemoryCard({
               ? ui.workMemory.confirmed
               : ui.workMemory.unconfirmed}
           </span>
-          <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+          <label className="flex min-h-[44px] min-w-[44px] items-center gap-2 text-xs text-[var(--text-secondary)]">
             <span>{ui.workMemory.automationOn}</span>
             <input
               type="checkbox"
-              className="h-4 w-4 accent-[var(--accent)]"
+              className="h-5 w-5 accent-[var(--accent)]"
               checked={memory.isActive}
               onChange={(event) =>
                 onToggleAutomation(memory, event.target.checked)
@@ -203,8 +328,17 @@ function DetailPanel({
 }) {
   const history = buildRevisionHistory(memory);
 
+  useEffect(() => {
+    document.getElementById("work-memory-detail-close")?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, memory.id]);
+
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
+    <div className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center">
       <button
         type="button"
         className="absolute inset-0 bg-black/30 backdrop-blur-[2px] animate-fade-in"
@@ -213,7 +347,7 @@ function DetailPanel({
       />
       <Card
         padding="lg"
-        className="relative z-10 max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)] animate-fade-up sm:mx-4 sm:rounded-[var(--radius-2xl)]"
+        className="relative z-10 max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] pb-[max(1.75rem,env(safe-area-inset-bottom))] shadow-[var(--shadow-lg)] animate-fade-up sm:mx-4 sm:rounded-[var(--radius-2xl)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="work-memory-detail-title"
@@ -231,7 +365,13 @@ function DetailPanel({
               {getWorkMemoryTypeLabel(memory.type)}
             </p>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button
+            id="work-memory-detail-close"
+            variant="ghost"
+            size="sm"
+            className="w-full min-[390px]:w-auto"
+            onClick={onClose}
+          >
             {ui.workMemory.close}
           </Button>
         </div>
@@ -252,7 +392,6 @@ function DetailPanel({
             </h3>
             <p className="text-sm text-[var(--text-secondary)]">
               {getWorkMemorySourceLabel(memory.sourceType)}
-              {memory.sourceReference ? `（${memory.sourceReference}）` : ""}
             </p>
           </section>
 
@@ -300,29 +439,41 @@ function DetailPanel({
           </section>
         </div>
 
-        <div className="mt-8 flex flex-wrap gap-2 border-t border-[var(--border-subtle)] pt-5">
+        <div className="mt-8 flex flex-col gap-2 border-t border-[var(--border-subtle)] pt-5 min-[390px]:flex-row min-[390px]:flex-wrap">
           {!memory.isUserConfirmed && (
             <Button
               variant="primary"
               size="sm"
+              className="w-full min-[390px]:w-auto"
               onClick={() => onConfirm(memory)}
             >
               {ui.workMemory.confirm}
             </Button>
           )}
-          <Button variant="secondary" size="sm" onClick={() => onEdit(memory)}>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="w-full min-[390px]:w-auto"
+            onClick={() => onEdit(memory)}
+          >
             {ui.workMemory.edit}
           </Button>
           <Button
             variant="secondary"
             size="sm"
+            className="w-full min-[390px]:w-auto"
             onClick={() => onToggleAutomation(memory, !memory.isActive)}
           >
             {memory.isActive
               ? ui.workMemory.automationOff
               : ui.workMemory.automationOn}
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => onDelete(memory.id)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full min-[390px]:w-auto"
+            onClick={() => onDelete(memory.id)}
+          >
             {ui.workMemory.delete}
           </Button>
         </div>
@@ -348,6 +499,13 @@ export function WorkMemorySettings() {
     "confirm" | "reject" | null
   >(null);
   const [copiedDiagnosticId, setCopiedDiagnosticId] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<
+    | { kind: "delete"; id: string }
+    | { kind: "deactivate"; memory: WorkMemoryRecord }
+    | { kind: "reset-all" }
+    | { kind: "reset-type"; type: WorkMemoryType }
+    | null
+  >(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput.trim()), 250);
@@ -422,20 +580,46 @@ export function WorkMemorySettings() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm(ui.workMemory.deleteConfirm)) return;
-    await deleteWorkMemoryClient(id);
+  const handleDelete = (id: string) => {
     setSelected(null);
-    await reload();
+    setConfirmDialog({ kind: "delete", id });
   };
 
   const handleToggleAutomation = async (
     memory: WorkMemoryRecord,
     next: boolean,
   ) => {
-    if (!next && !window.confirm(ui.workMemory.deactivateConfirm)) return;
+    if (!next) {
+      setConfirmDialog({ kind: "deactivate", memory });
+      return;
+    }
     await updateWorkMemoryClient(memory.id, { isActive: next });
     await reload();
+  };
+
+  const runConfirmedAction = async () => {
+    if (!confirmDialog) return;
+    try {
+      if (confirmDialog.kind === "delete") {
+        await deleteWorkMemoryClient(confirmDialog.id);
+        setSelected(null);
+      } else if (confirmDialog.kind === "deactivate") {
+        await updateWorkMemoryClient(confirmDialog.memory.id, {
+          isActive: false,
+        });
+      } else if (confirmDialog.kind === "reset-all") {
+        await resetWorkMemoriesClient({ all: true });
+        setSelected(null);
+      } else {
+        await resetWorkMemoriesClient({ type: confirmDialog.type });
+        setSelected(null);
+      }
+      setConfirmDialog(null);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : ui.workMemory.saveError);
+      setConfirmDialog(null);
+    }
   };
 
   const handleConfirmMemory = async (memory: WorkMemoryRecord) => {
@@ -504,22 +688,14 @@ export function WorkMemorySettings() {
     }
   };
 
-  const handleReset = async (all: boolean) => {
+  const handleReset = (all: boolean) => {
     if (all) {
-      if (!window.confirm(ui.workMemory.resetAllConfirm)) return;
-      await resetWorkMemoriesClient({ all: true });
-    } else if (typeFilter !== "all") {
-      if (
-        !window.confirm(
-          ui.workMemory.resetTypeConfirm(getWorkMemoryTypeLabel(typeFilter)),
-        )
-      ) {
-        return;
-      }
-      await resetWorkMemoriesClient({ type: typeFilter });
+      setConfirmDialog({ kind: "reset-all" });
+      return;
     }
-    setSelected(null);
-    await reload();
+    if (typeFilter !== "all") {
+      setConfirmDialog({ kind: "reset-type", type: typeFilter });
+    }
   };
 
   if (loading && !data) {
@@ -527,7 +703,11 @@ export function WorkMemorySettings() {
   }
 
   if (error && !data) {
-    return <ErrorState message={error} />;
+    return (
+      <div className="space-y-4 px-4 py-6 pb-[max(6rem,env(safe-area-inset-bottom))]">
+        <MemoryActionError message={error} onRetry={() => void reload()} />
+      </div>
+    );
   }
 
   const memories = data?.memories ?? [];
@@ -535,36 +715,70 @@ export function WorkMemorySettings() {
 
   const diagnosticIdInError = error?.match(/診断ID:\s*([^\s）)]+)/)?.[1] ?? null;
 
+  const confirmCopy =
+    confirmDialog?.kind === "delete"
+      ? {
+          title: ui.workMemory.deleteConfirm,
+          body: "削除した内容は、次回の作成に使われなくなります。",
+          confirmLabel: ui.workMemory.delete,
+        }
+      : confirmDialog?.kind === "deactivate"
+        ? {
+            title: ui.workMemory.deactivateConfirm,
+            body: "自動化をオフにしても、記憶自体は残ります。",
+            confirmLabel: ui.workMemory.automationOff,
+          }
+        : confirmDialog?.kind === "reset-all"
+          ? {
+              title: ui.workMemory.resetAllConfirm,
+              body: "削除した内容は、次回の作成に使われなくなります。",
+              confirmLabel: ui.workMemory.resetAll,
+            }
+          : confirmDialog?.kind === "reset-type"
+            ? {
+                title: ui.workMemory.resetTypeConfirm(
+                  getWorkMemoryTypeLabel(confirmDialog.type),
+                ),
+                body: "削除した内容は、次回の作成に使われなくなります。",
+                confirmLabel: ui.workMemory.resetType(
+                  getWorkMemoryTypeLabel(confirmDialog.type),
+                ),
+              }
+            : null;
+
   return (
-    <div className="space-y-10 sm:space-y-12">
+    <div className="mx-auto w-full min-w-0 space-y-10 pb-[max(6rem,env(safe-area-inset-bottom))] sm:space-y-12">
       {error && data ? (
-        <div className="space-y-2">
-          <ErrorState message={error} />
-          {diagnosticIdInError ? (
-            <button
-              type="button"
-              className="text-xs text-accent underline-offset-2 hover:underline"
-              onClick={() => void handleCopyDiagnosticId()}
-            >
-              {copiedDiagnosticId
-                ? ui.workMemory.diagnosticIdCopied
-                : ui.workMemory.copyDiagnosticId}
-            </button>
-          ) : null}
-        </div>
+        <MemoryActionError
+          message={error}
+          onRetry={() => void reload()}
+          diagnosticId={diagnosticIdInError}
+          onCopyDiagnostic={() => void handleCopyDiagnosticId()}
+          copied={copiedDiagnosticId}
+        />
       ) : null}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-4 min-[390px]:flex-row min-[390px]:items-start min-[390px]:justify-between">
         <header className="space-y-3">
           <p className="text-caption text-accent">{ui.brand}</p>
           <h1 className="text-display text-foreground">{ui.workMemory.pageTitle}</h1>
           <p className="text-body max-w-2xl text-[var(--text-secondary)]">
             {ui.workMemory.pageSubtitle}
           </p>
+          <p className="text-caption text-[var(--text-muted)]">
+            文体や保存先の好みは{" "}
+            <Link
+              href="/settings/memory"
+              className="text-accent underline underline-offset-2"
+            >
+              MINERVOTが記憶していること
+            </Link>
+            でも管理できます。
+          </p>
         </header>
         <Button
           variant="primary"
           size="lg"
-          className="shrink-0 self-start"
+          className="w-full shrink-0 min-[390px]:w-auto"
           onClick={() =>
             setEditing({ type: "workflow", title: "", summary: "" })
           }
@@ -574,10 +788,10 @@ export function WorkMemorySettings() {
       </div>
 
       <Card padding="lg" className="border-[var(--border-subtle)] bg-[var(--card)]">
-        <label className="flex items-start gap-3">
+        <label className="flex min-h-[44px] items-start gap-3">
           <input
             type="checkbox"
-            className="mt-1 h-4 w-4 accent-[var(--accent)]"
+            className="mt-1 h-5 w-5 accent-[var(--accent)]"
             checked={data?.settings.enabled ?? true}
             disabled={savingSettings}
             onChange={(e) => void handleToggleEnabled(e.target.checked)}
@@ -597,59 +811,6 @@ export function WorkMemorySettings() {
           </p>
         )}
       </Card>
-
-      <section className="space-y-4">
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-foreground">
-            {ui.workMemory.searchLabel}
-          </h2>
-          <p className="text-sm text-[var(--text-secondary)]">
-            {ui.workMemory.typeFilterLabel}
-          </p>
-        </div>
-
-        <Input
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder={ui.workMemory.searchPlaceholder}
-          className="max-w-xl"
-          aria-label={ui.workMemory.searchLabel}
-        />
-
-        <div
-          className="flex flex-wrap gap-2"
-          role="group"
-          aria-label={ui.workMemory.typeFilterLabel}
-        >
-          <button
-            type="button"
-            onClick={() => setTypeFilter("all")}
-            className={cn(
-              "rounded-full px-4 py-2 text-sm transition-colors focus-ring",
-              typeFilter === "all"
-                ? "bg-accent text-white"
-                : "bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:text-foreground",
-            )}
-          >
-            {ui.workMemory.allTypes}
-          </button>
-          {WORK_MEMORY_TYPES.map((type) => (
-            <button
-              key={type}
-              type="button"
-              onClick={() => setTypeFilter(type)}
-              className={cn(
-                "rounded-full px-4 py-2 text-sm transition-colors focus-ring",
-                typeFilter === type
-                  ? "bg-accent text-white"
-                  : "bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:text-foreground",
-              )}
-            >
-              {getWorkMemoryTypeLabel(type)}
-            </button>
-          ))}
-        </div>
-      </section>
 
       {candidates.length > 0 && (
         <section className="space-y-4 animate-fade-up">
@@ -683,10 +844,11 @@ export function WorkMemorySettings() {
                   <p className="mt-2 text-xs text-[var(--text-secondary)]">
                     {ui.workMemory.confirmPrompt}
                   </p>
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="mt-4 flex flex-col gap-2 min-[390px]:flex-row min-[390px]:flex-wrap">
                     <Button
                       variant="primary"
                       size="sm"
+                      className="w-full min-[390px]:w-auto"
                       disabled={pendingCandidateId === candidate.candidateId}
                       onClick={() =>
                         void handleConfirmCandidate(candidate.candidateId)
@@ -700,6 +862,7 @@ export function WorkMemorySettings() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      className="w-full min-[390px]:w-auto"
                       disabled={pendingCandidateId === candidate.candidateId}
                       onClick={() =>
                         void handleRejectCandidate(candidate.candidateId)
@@ -717,6 +880,49 @@ export function WorkMemorySettings() {
           </ul>
         </section>
       )}
+
+      <section className="space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold text-foreground">
+            {ui.workMemory.searchLabel}
+          </h2>
+          <p className="text-sm text-[var(--text-secondary)]">
+            {ui.workMemory.typeFilterLabel}
+          </p>
+        </div>
+
+        <Input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder={ui.workMemory.searchPlaceholder}
+          className="max-w-xl"
+          aria-label={ui.workMemory.searchLabel}
+        />
+
+        <div
+          className="flex flex-wrap gap-2"
+          role="group"
+          aria-label={ui.workMemory.typeFilterLabel}
+        >
+          <button
+            type="button"
+            onClick={() => setTypeFilter("all")}
+            className={chipClassName(typeFilter === "all")}
+          >
+            {ui.workMemory.allTypes}
+          </button>
+          {WORK_MEMORY_TYPES.map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setTypeFilter(type)}
+              className={chipClassName(typeFilter === type)}
+            >
+              {getWorkMemoryTypeLabel(type)}
+            </button>
+          ))}
+        </div>
+      </section>
 
       {editing && (
         <Card
@@ -738,7 +944,7 @@ export function WorkMemorySettings() {
                   type: e.target.value as WorkMemoryType,
                 })
               }
-              className="w-full rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5 text-foreground"
+              className={selectClassName}
             >
               {WORK_MEMORY_TYPES.map((type) => (
                 <option key={type} value={type}>
@@ -758,29 +964,30 @@ export function WorkMemorySettings() {
               }
             />
           </label>
-          <label className="block space-y-1 text-sm">
-            <span className="text-[var(--text-secondary)]">
-              {ui.workMemory.summaryLabel}
-            </span>
-            <textarea
-              value={editing.summary}
-              onChange={(e) =>
-                setEditing({ ...editing, summary: e.target.value })
-              }
-              rows={5}
-              className="w-full rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5 text-sm text-foreground"
-            />
-          </label>
-          <div className="flex gap-2">
+          <Textarea
+            label={ui.workMemory.summaryLabel}
+            value={editing.summary}
+            onChange={(e) =>
+              setEditing({ ...editing, summary: e.target.value })
+            }
+            rows={5}
+          />
+          <div className="flex flex-col gap-2 min-[390px]:flex-row">
             <Button
               variant="primary"
               size="sm"
+              className="w-full min-[390px]:w-auto"
               onClick={() => void handleSave()}
               disabled={!editing.title.trim() || !editing.summary.trim()}
             >
               {ui.workMemory.save}
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full min-[390px]:w-auto"
+              onClick={() => setEditing(null)}
+            >
               {ui.workMemory.cancel}
             </Button>
           </div>
@@ -844,17 +1051,23 @@ export function WorkMemorySettings() {
         <p className="text-caption text-[var(--text-secondary)]">
           {ui.workMemory.resetHint}
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-2 min-[390px]:flex-row min-[390px]:flex-wrap">
           {typeFilter !== "all" && (
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => void handleReset(false)}
+              className="w-full min-[390px]:w-auto"
+              onClick={() => handleReset(false)}
             >
               {ui.workMemory.resetType(getWorkMemoryTypeLabel(typeFilter))}
             </Button>
           )}
-          <Button variant="ghost" size="sm" onClick={() => void handleReset(true)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full min-[390px]:w-auto"
+            onClick={() => handleReset(true)}
+          >
             {ui.workMemory.resetAll}
           </Button>
         </div>
@@ -881,11 +1094,15 @@ export function WorkMemorySettings() {
         />
       )}
 
-      {error && data && (
-        <p className="text-sm text-[var(--error)]" role="alert">
-          {error}
-        </p>
-      )}
+      {confirmDialog && confirmCopy ? (
+        <ConfirmActionDialog
+          title={confirmCopy.title}
+          body={confirmCopy.body}
+          confirmLabel={confirmCopy.confirmLabel}
+          onConfirm={() => void runConfirmedAction()}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      ) : null}
     </div>
   );
 }
