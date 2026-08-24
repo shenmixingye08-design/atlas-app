@@ -9,9 +9,19 @@ import {
 } from "@/lib/personal-memory/candidates";
 import {
   ensurePersonalMemoryHydrated,
+  persistPersonalMemoryNow,
+  PersonalMemoryHydrationError,
   schedulePersistPersonalMemory,
   wipePersonalMemoryDurable,
 } from "@/lib/personal-memory/durable";
+import { personalMemoryError } from "@/lib/personal-memory/errors";
+import {
+  measureEditDiff,
+  preferenceTextFromEditDiff,
+  shouldProposeEditCandidate,
+} from "@/lib/personal-memory/edit-diff";
+import { containsSensitiveFacts } from "@/lib/personal-memory/sensitive-facts";
+import { recordMemoryQualityEvent } from "@/lib/memory-apply/quality-metrics";
 import { kindForScope } from "@/lib/personal-memory/scopes";
 import {
   assertNoSecretsInValue,
@@ -29,6 +39,7 @@ import {
   clearAllPersonalMemoryData,
   deleteStoredPersonalMemory,
   findStoredPersonalMemory,
+  getCorrectionCount,
   listStoredPersonalMemories,
   markRejectedFingerprint,
   readPersonalMemorySettings,
@@ -47,6 +58,9 @@ import type {
 import {
   DEFAULT_PERSONAL_MEMORY_SETTINGS,
   MAX_CANDIDATES_PER_USER,
+  MAX_MEMORY_SUMMARY_CHARS,
+  MAX_MEMORY_TITLE_CHARS,
+  MAX_MEMORY_VALUE_CHARS,
   MAX_PERSONAL_MEMORIES_PER_USER,
 } from "@/lib/personal-memory/types";
 import { appendPersonalMemoryAudit } from "@/lib/personal-memory/audit";
@@ -60,14 +74,36 @@ function clampConfidence(value: number | undefined): number {
   return Math.min(1, Math.max(0.1, value));
 }
 
+async function hydrateOrThrow(userId: string): Promise<void> {
+  const hydrated = await ensurePersonalMemoryHydrated(userId);
+  if (hydrated && hydrated.ok === false) {
+    throw new PersonalMemoryHydrationError();
+  }
+}
+
+async function persistNow(userId: string): Promise<void> {
+  if (typeof persistPersonalMemoryNow === "function") {
+    await persistPersonalMemoryNow(userId);
+    return;
+  }
+  schedulePersistPersonalMemory(userId);
+}
+
 function assertOwner(
   record: PersonalMemoryRecord | null,
   userId: string,
 ): PersonalMemoryRecord {
   if (!record || record.userId !== userId) {
-    throw new Error("MEMORY_NOT_FOUND");
+    throw personalMemoryError("MEMORY_NOT_FOUND");
   }
   return record;
+}
+
+function assertValueSize(value: Record<string, unknown>): void {
+  const serialized = JSON.stringify(value);
+  if (serialized.length > MAX_MEMORY_VALUE_CHARS) {
+    throw personalMemoryError("PAYLOAD_TOO_LARGE");
+  }
 }
 
 function trimBuckets(userId: string): void {
@@ -92,7 +128,7 @@ function trimBuckets(userId: string): void {
 export async function getPersonalMemorySettings(
   userId: string,
 ): Promise<PersonalMemorySettings> {
-  await ensurePersonalMemoryHydrated(userId);
+  await hydrateOrThrow(userId);
   return readPersonalMemorySettings(userId);
 }
 
@@ -103,7 +139,7 @@ export async function updatePersonalMemorySettings(
     onDisable?: "keep" | "wipe";
   },
 ): Promise<PersonalMemorySettings> {
-  await ensurePersonalMemoryHydrated(userId);
+  await hydrateOrThrow(userId);
   const current = readPersonalMemorySettings(userId);
   const next = writePersonalMemorySettings(userId, {
     ...current,
@@ -129,7 +165,7 @@ export async function listPersonalMemories(
   userId: string,
   filter?: { status?: MemoryStatus | "all" },
 ): Promise<PersonalMemoryRecord[]> {
-  await ensurePersonalMemoryHydrated(userId);
+  await hydrateOrThrow(userId);
   const settings = readPersonalMemorySettings(userId);
   const now = Date.now();
   let rows = listStoredPersonalMemories(userId).map((row) => {
@@ -171,7 +207,7 @@ export async function getPersonalMemory(
   userId: string,
   id: string,
 ): Promise<PersonalMemoryRecord> {
-  await ensurePersonalMemoryHydrated(userId);
+  await hydrateOrThrow(userId);
   return assertOwner(findStoredPersonalMemory(userId, id), userId);
 }
 
@@ -179,14 +215,15 @@ export async function createPersonalMemory(
   userId: string,
   input: CreatePersonalMemoryInput,
 ): Promise<PersonalMemoryRecord> {
-  await ensurePersonalMemoryHydrated(userId);
+  await hydrateOrThrow(userId);
   const settings = readPersonalMemorySettings(userId);
 
   if (!settings.enabled && input.status !== "candidate") {
-    throw new Error("MEMORY_DISABLED");
+    throw personalMemoryError("MEMORY_DISABLED");
   }
 
   assertNoSecretsInValue(input.value);
+  assertValueSize(input.value);
   const sensitivity =
     input.sensitivity ?? resolveSensitivity(input.scope, input.value);
 
@@ -194,7 +231,7 @@ export async function createPersonalMemory(
     settings.blockSensitiveStorage &&
     (sensitivity === "sensitive" || sensitivity === "restricted")
   ) {
-    throw new Error("SENSITIVE_STORAGE_BLOCKED");
+    throw personalMemoryError("SENSITIVE_STORAGE_BLOCKED");
   }
 
   // Inferences must never start as active
@@ -206,17 +243,23 @@ export async function createPersonalMemory(
     input.source === "approved_inference" ||
     input.source === "automation_result";
   if (isInference && requestedStatus === "active" && input.source !== "approved_inference") {
-    throw new Error("INFERENCE_CANNOT_AUTO_ACTIVATE");
+    throw personalMemoryError("INFERENCE_CANNOT_AUTO_ACTIVATE");
   }
   if (input.source === "external_content") {
-    throw new Error("EXTERNAL_CONTENT_BLOCKED");
+    throw personalMemoryError("EXTERNAL_CONTENT_BLOCKED");
   }
 
   const status: MemoryStatus =
     input.source === "explicit" || input.source === "user_explicit"
       ? requestedStatus === "candidate"
         ? "candidate"
-        : "active"
+        : requestedStatus === "superseded" ||
+            requestedStatus === "deleted" ||
+            requestedStatus === "paused" ||
+            requestedStatus === "rejected" ||
+            requestedStatus === "expired"
+          ? requestedStatus
+          : "active"
       : requestedStatus === "active" && input.source === "approved_inference"
         ? "active"
         : "candidate";
@@ -227,6 +270,25 @@ export async function createPersonalMemory(
       : computeExpiresAt(input.retention ?? settings.defaultRetention);
 
   const now = nowIso();
+  const idempotencyKey =
+    input.idempotencyKey ??
+    fingerprintCorrection({
+      text: `${input.scope}:${input.key}:${JSON.stringify(input.value)}`,
+      scope: input.scope,
+      automationId: input.appliesTo?.automationIds?.[0] ?? null,
+    });
+  if (status === "candidate") {
+    const duplicate = listStoredPersonalMemories(userId).find(
+      (row) =>
+        row.status === "candidate" &&
+        (row.idempotencyKey === idempotencyKey ||
+          (row.scope === input.scope &&
+            row.key === input.key &&
+            JSON.stringify(row.value) === JSON.stringify(input.value))),
+    );
+    if (duplicate) return duplicate;
+  }
+
   const record: PersonalMemoryRecord = {
     id: randomUUID(),
     userId,
@@ -234,8 +296,11 @@ export async function createPersonalMemory(
     scope: input.scope,
     key: input.key,
     value: input.value,
-    title: sanitizeUserFacingMemoryText(input.title).slice(0, 120),
-    summary: sanitizeUserFacingMemoryText(input.summary).slice(0, 400),
+    title: sanitizeUserFacingMemoryText(input.title).slice(0, MAX_MEMORY_TITLE_CHARS),
+    summary: sanitizeUserFacingMemoryText(input.summary).slice(
+      0,
+      MAX_MEMORY_SUMMARY_CHARS,
+    ),
     source: input.source,
     confidence: clampConfidence(input.confidence),
     status,
@@ -259,11 +324,20 @@ export async function createPersonalMemory(
     expiresAt,
     rejectedReason: null,
     deletedAt: null,
+    candidateReason: input.candidateReason ?? null,
+    confirmedAt: status === "active" ? now : null,
+    beforeValue: input.beforeValue ?? null,
+    afterValue: input.afterValue ?? null,
+    sourceJobId: input.sourceJobId ?? null,
+    sourceBatchId: input.sourceBatchId ?? null,
+    sourceItemId: input.sourceItemId ?? null,
+    idempotencyKey,
+    preferenceLayer: input.preferenceLayer ?? null,
   };
 
   upsertStoredPersonalMemory(record);
   trimBuckets(userId);
-  schedulePersistPersonalMemory(userId);
+  await persistNow(userId);
   appendPersonalMemoryAudit({
     userId,
     action: "memory.create",
@@ -278,9 +352,12 @@ export async function updatePersonalMemory(
   id: string,
   patch: UpdatePersonalMemoryInput,
 ): Promise<PersonalMemoryRecord> {
-  await ensurePersonalMemoryHydrated(userId);
+  await hydrateOrThrow(userId);
   const current = assertOwner(findStoredPersonalMemory(userId, id), userId);
-  if (patch.value) assertNoSecretsInValue(patch.value);
+  if (patch.value) {
+    assertNoSecretsInValue(patch.value);
+    assertValueSize(patch.value);
+  }
 
   const next: PersonalMemoryRecord = {
     ...current,
@@ -294,7 +371,7 @@ export async function updatePersonalMemory(
     updatedAt: nowIso(),
   };
   upsertStoredPersonalMemory(next);
-  schedulePersistPersonalMemory(userId);
+  await persistNow(userId);
   appendPersonalMemoryAudit({
     userId,
     action: "memory.update",
@@ -321,10 +398,10 @@ export async function deletePersonalMemory(
   userId: string,
   id: string,
 ): Promise<void> {
-  await ensurePersonalMemoryHydrated(userId);
+  await hydrateOrThrow(userId);
   assertOwner(findStoredPersonalMemory(userId, id), userId);
   softDeleteMemory(userId, id);
-  schedulePersistPersonalMemory(userId);
+  await persistNow(userId);
   appendPersonalMemoryAudit({
     userId,
     action: "memory.delete",
@@ -334,12 +411,12 @@ export async function deletePersonalMemory(
 }
 
 export async function deleteAllPersonalMemories(userId: string): Promise<number> {
-  await ensurePersonalMemoryHydrated(userId);
+  await hydrateOrThrow(userId);
   const rows = listStoredPersonalMemories(userId);
   for (const row of rows) {
     softDeleteMemory(userId, row.id);
   }
-  schedulePersistPersonalMemory(userId);
+  await persistNow(userId);
   appendPersonalMemoryAudit({
     userId,
     action: "memory.delete_all",
@@ -371,10 +448,27 @@ export async function approveCandidate(
     automationId?: string | null;
   },
 ): Promise<PersonalMemoryRecord> {
-  await ensurePersonalMemoryHydrated(userId);
+  await hydrateOrThrow(userId);
   const current = assertOwner(findStoredPersonalMemory(userId, id), userId);
+  if (current.status === "active") {
+    return current;
+  }
+  if (current.status === "expired" || isExpired(current.expiresAt)) {
+    if (current.status === "candidate") {
+      upsertStoredPersonalMemory({
+        ...current,
+        status: "expired",
+        updatedAt: nowIso(),
+      });
+      await persistNow(userId);
+    }
+    throw personalMemoryError("CANDIDATE_EXPIRED");
+  }
+  if (current.status === "superseded") {
+    throw personalMemoryError("CANDIDATE_SUPERSEDED");
+  }
   if (current.status !== "candidate") {
-    throw new Error("NOT_A_CANDIDATE");
+    throw personalMemoryError("NOT_A_CANDIDATE");
   }
 
   const scopeMode = options?.scope ?? "global";
@@ -396,15 +490,24 @@ export async function approveCandidate(
     appliesTo,
     expiresAt:
       scopeMode === "once" ? computeExpiresAt("once") : current.expiresAt,
+    confirmedAt: nowIso(),
     updatedAt: nowIso(),
   };
   upsertStoredPersonalMemory(approved);
-  schedulePersistPersonalMemory(userId);
+  await persistNow(userId);
   appendPersonalMemoryAudit({
     userId,
     action: "candidate.approve",
     memoryId: id,
     meta: { scope: scopeMode },
+  });
+  recordMemoryQualityEvent({
+    userId,
+    type: "candidate_confirmed",
+    channel: "personal_memory",
+    jobId: current.sourceJobId,
+    batchId: current.sourceBatchId,
+    itemId: current.sourceItemId,
   });
   return approved;
 }
@@ -414,10 +517,19 @@ export async function rejectCandidate(
   id: string,
   reason?: string,
 ): Promise<PersonalMemoryRecord> {
-  await ensurePersonalMemoryHydrated(userId);
+  await hydrateOrThrow(userId);
   const current = assertOwner(findStoredPersonalMemory(userId, id), userId);
+  if (current.status === "rejected") {
+    return current;
+  }
+  if (current.status === "expired" || isExpired(current.expiresAt)) {
+    throw personalMemoryError("CANDIDATE_EXPIRED");
+  }
+  if (current.status === "superseded") {
+    throw personalMemoryError("CANDIDATE_SUPERSEDED");
+  }
   if (current.status !== "candidate") {
-    throw new Error("NOT_A_CANDIDATE");
+    throw personalMemoryError("NOT_A_CANDIDATE");
   }
   const fingerprint = fingerprintCorrection({
     text: `${current.scope}:${current.key}:${JSON.stringify(current.value)}`,
@@ -432,18 +544,26 @@ export async function rejectCandidate(
     updatedAt: nowIso(),
   };
   upsertStoredPersonalMemory(rejected);
-  schedulePersistPersonalMemory(userId);
+  await persistNow(userId);
   appendPersonalMemoryAudit({
     userId,
     action: "candidate.reject",
     memoryId: id,
     meta: {},
   });
+  recordMemoryQualityEvent({
+    userId,
+    type: "candidate_rejected",
+    channel: "personal_memory",
+    jobId: current.sourceJobId,
+    batchId: current.sourceBatchId,
+    itemId: current.sourceItemId,
+  });
   return rejected;
 }
 
 export async function pauseAllPersonalMemories(userId: string): Promise<number> {
-  await ensurePersonalMemoryHydrated(userId);
+  await hydrateOrThrow(userId);
   const rows = listStoredPersonalMemories(userId).filter((m) => m.status === "active");
   for (const row of rows) {
     upsertStoredPersonalMemory({
@@ -461,7 +581,7 @@ export async function exportPersonalMemories(userId: string): Promise<{
   settings: PersonalMemorySettings;
   memories: PersonalMemoryRecord[];
 }> {
-  await ensurePersonalMemoryHydrated(userId);
+  await hydrateOrThrow(userId);
   const memories = listStoredPersonalMemories(userId).filter(
     (m) => m.status !== "deleted",
   );
@@ -481,7 +601,7 @@ export async function exportPersonalMemories(userId: string): Promise<{
 export async function ingestCorrectionSignal(
   signal: CorrectionSignal,
 ): Promise<PersonalMemoryRecord | null> {
-  await ensurePersonalMemoryHydrated(signal.userId);
+  await hydrateOrThrow(signal.userId);
   const evaluated = evaluateCorrectionForCandidate(signal);
   if (evaluated.action === "none" || !evaluated.input) return null;
 
@@ -538,7 +658,15 @@ export async function ingestCorrectionSignal(
     });
   }
 
+  const sensitive =
+    containsSensitiveFacts(signal.text) ||
+    containsSensitiveFacts(JSON.stringify(evaluated.input.value));
+  if (sensitive && created.status === "active") {
+    return updatePersonalMemory(signal.userId, created.id, { status: "candidate" });
+  }
+
   if (
+    !sensitive &&
     evaluated.action === "candidate" &&
     created.status === "candidate" &&
     isUnambiguousPreferenceValue(evaluated.input.value)
@@ -579,7 +707,7 @@ async function supersedeConflictingActiveMemories(input: {
   for (const rival of rivals) {
     upsertStoredPersonalMemory({
       ...rival,
-      status: "paused",
+      status: "superseded",
       rejectedReason: "superseded",
       updatedAt: nowIso(),
     });
@@ -587,7 +715,7 @@ async function supersedeConflictingActiveMemories(input: {
       userId: input.userId,
       action: "memory.update",
       memoryId: rival.id,
-      meta: { status: "paused", reason: "superseded", keepId: input.keepId },
+      meta: { status: "superseded", reason: "superseded", keepId: input.keepId },
     });
   }
 }
@@ -596,12 +724,94 @@ function isUnambiguousPreferenceValue(value: Record<string, unknown>): boolean {
   return isUnambiguousStylePreference(value);
 }
 
+export async function ingestEditDiffAsCandidate(input: {
+  userId: string;
+  before: string;
+  after: string;
+  artifactType?: string | null;
+  automationId?: string | null;
+  jobId?: string | null;
+  batchId?: string | null;
+  itemId?: string | null;
+  reason?: string;
+}): Promise<PersonalMemoryRecord | null> {
+  await hydrateOrThrow(input.userId);
+  const metrics = measureEditDiff(input.before, input.after);
+  recordMemoryQualityEvent({
+    userId: input.userId,
+    type: "generation_edited",
+    channel: input.artifactType ?? "artifact",
+    jobId: input.jobId,
+    batchId: input.batchId,
+    itemId: input.itemId,
+    diffRate: metrics.diffRate,
+    editChars: metrics.addedChars + metrics.deletedChars,
+  });
+
+  const preferenceText = preferenceTextFromEditDiff(metrics);
+  if (!preferenceText && !metrics.requiresExplicitConfirm) return null;
+
+  const fingerprint = fingerprintCorrection({
+    text: `edit:${preferenceText || "sensitive_fact"}:${input.artifactType ?? ""}`,
+    scope: "writing_style",
+    automationId: input.automationId,
+  });
+  const repeatCount = getCorrectionCount(input.userId, fingerprint) + 1;
+  const proposal = shouldProposeEditCandidate({ metrics, repeatCount });
+  if (!proposal.propose && !metrics.requiresExplicitConfirm) {
+    return ingestCorrectionSignal({
+      userId: input.userId,
+      text: preferenceText || "修正を記録",
+      before: input.before,
+      after: input.after,
+      artifactType: input.artifactType ?? null,
+      automationId: input.automationId ?? null,
+      source: "user_correction",
+    });
+  }
+
+  const text = metrics.requiresExplicitConfirm
+    ? `${preferenceText || "事実の追記"}。確認するまで確定しません。`
+    : preferenceText;
+
+  return ingestCorrectionSignal({
+    userId: input.userId,
+    text,
+    before: input.before,
+    after: input.after,
+    artifactType: input.artifactType ?? null,
+    automationId: input.automationId ?? null,
+    source: "user_correction",
+  }).then((created) => {
+    if (!created) return null;
+    if (!metrics.requiresExplicitConfirm && created.status === "active") {
+      return created;
+    }
+    if (created.status === "active" && metrics.requiresExplicitConfirm) {
+      return updatePersonalMemory(input.userId, created.id, {
+        status: "candidate",
+        candidateReason: input.reason ?? "edit_diff_sensitive_fact",
+        beforeValue: { text: input.before.slice(0, 400) },
+        afterValue: { text: input.after.slice(0, 400) },
+      });
+    }
+    return updatePersonalMemory(input.userId, created.id, {
+      candidateReason: input.reason ?? "edit_diff",
+      beforeValue: { text: input.before.slice(0, 400) },
+      afterValue: { text: input.after.slice(0, 400) },
+      sourceJobId: input.jobId ?? null,
+      sourceBatchId: input.batchId ?? null,
+      sourceItemId: input.itemId ?? null,
+    });
+  });
+}
+
 export async function resolveForContext(
   input: Omit<ResolveMemoryInput, "settings" | "memories"> & {
     userId: string;
   },
 ): Promise<{ result: ReturnType<typeof resolvePersonalMemories>; ledger: RunMemoryLedger }> {
-  await ensurePersonalMemoryHydrated(input.userId);
+  await hydrateOrThrow(input.userId);
   const settings = readPersonalMemorySettings(input.userId);
   const memories = listStoredPersonalMemories(input.userId);
   const result = resolvePersonalMemories({
@@ -632,7 +842,7 @@ export async function resolveForContext(
 export async function wipePersonalMemoryForAccountDeletion(
   userId: string,
 ): Promise<void> {
-  await ensurePersonalMemoryHydrated(userId);
+  await hydrateOrThrow(userId);
   clearAllPersonalMemoryData(userId);
   wipePersonalMemoryDurable(userId);
   writePersonalMemorySettings(userId, DEFAULT_PERSONAL_MEMORY_SETTINGS);

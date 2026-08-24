@@ -304,7 +304,7 @@ function createCandidateFromSignal(
     reason: signal.reason,
     createdAt: nowIso(),
   });
-  schedulePersistWorkMemory(userId);
+  void persistWorkMemoryNow(userId);
   return candidate;
 }
 

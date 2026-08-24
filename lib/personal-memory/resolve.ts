@@ -138,17 +138,45 @@ export function resolvePersonalMemories(
     coveredScopes.add(scope);
   }
 
-  // Layer 5 — memories (automation-specific already preferred in selectRelevant)
-  for (const memory of relevant) {
-    // Current instruction / locked override still win for this key/scope.
-    if (coveredScopes.has(memory.scope) || coveredScopes.has(memory.key)) {
+  const ranked = [...relevant].sort((a, b) => {
+    const score = (row: typeof a) =>
+      (row.appliesTo.automationIds.length > 0 ? 4 : 0) +
+      (row.appliesTo.artifactTypes.includes("x_post") ? 3 : 0) +
+      (row.appliesTo.artifactTypes.length > 0 && !row.appliesTo.global ? 2 : 0) +
+      (row.appliesTo.global ? 0 : 1);
+    return score(b) - score(a) || b.updatedAt.localeCompare(a.updatedAt);
+  });
+
+  // Layer 5 — memories (automation / channel / global). Forbidden always unions.
+  for (const memory of ranked) {
+    const coverKey = `${memory.scope}:${memory.key}:${channelCoverSuffix(memory)}`;
+    const forbidden = [
+      ...((memory.value.forbiddenWords as unknown[]) ?? []),
+      ...((memory.value.forbiddenExpressions as unknown[]) ?? []),
+      ...((memory.value.forbiddenFacts as unknown[]) ?? []),
+    ].filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+
+    if (coveredScopes.has(memory.scope) || coveredScopes.has(memory.key) || coveredScopes.has(coverKey)) {
+      if (forbidden.length > 0) {
+        const host = used.find((row) => row.scope === memory.scope) ?? overrides.find((row) => row.scope === memory.scope);
+        if (host) {
+          const current = [
+            ...((host.value.forbiddenWords as string[]) ?? []),
+            ...((host.value.forbiddenExpressions as string[]) ?? []),
+          ];
+          host.value = {
+            ...host.value,
+            forbiddenWords: [...new Set([...current, ...forbidden])],
+          };
+        }
+      }
       continue;
     }
-    const coverKey = `${memory.scope}:${memory.key}:${channelCoverSuffix(memory)}`;
-    if (coveredScopes.has(coverKey)) continue;
-    const layer = memory.appliesTo.global
-      ? "global_memory"
-      : "automation_override";
+    const layer = memory.appliesTo.automationIds.length > 0
+      ? "automation_override"
+      : memory.appliesTo.global
+        ? "global_memory"
+        : "automation_override";
     used.push(asResolved(memory, layer));
     coveredScopes.add(coverKey);
   }

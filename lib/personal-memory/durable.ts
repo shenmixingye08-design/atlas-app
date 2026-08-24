@@ -49,6 +49,19 @@ export function resetPersonalMemoryDurableForTests(): void {
   getHydrated().clear();
 }
 
+export type PersonalMemoryHydrationResult =
+  | { ok: true }
+  | { ok: false; developerCode: "hydration_failed" };
+
+export class PersonalMemoryHydrationError extends Error {
+  readonly developerCode = "hydration_failed" as const;
+
+  constructor(message = "記憶の読み込みに失敗しました") {
+    super(message);
+    this.name = "PersonalMemoryHydrationError";
+  }
+}
+
 function snapshot(userId: string): DurablePersonalMemoryState {
   const g = globalThis as typeof globalThis & {
     __atlasPersonalMemoryStore?: {
@@ -129,47 +142,62 @@ export async function persistPersonalMemoryNow(
 
 export async function ensurePersonalMemoryHydrated(
   userId: string,
-): Promise<void> {
-  if (!userId.trim()) return;
+): Promise<PersonalMemoryHydrationResult> {
+  if (!userId.trim()) return { ok: true };
   const hydrated = getHydrated();
-  if (hydrated.has(userId)) return;
-  hydrated.add(userId);
+  if (hydrated.has(userId)) return { ok: true };
 
-  if (listStoredPersonalMemories(userId).length > 0) return;
+  try {
+    if (listStoredPersonalMemories(userId).length === 0) {
+      const loaded = await loadDurableDomain<DurablePersonalMemoryState>(
+        userId,
+        PERSONAL_MEMORY_DOMAIN_KEY,
+      );
+      if (loaded) {
+        if (loaded.settings) {
+          writePersonalMemorySettings(userId, {
+            ...DEFAULT_PERSONAL_MEMORY_SETTINGS,
+            ...loaded.settings,
+          });
+        }
+        if (Array.isArray(loaded.memories)) {
+          replaceStoredPersonalMemories(
+            userId,
+            loaded.memories.filter((m) => m?.userId === userId),
+          );
+        }
 
-  const loaded = await loadDurableDomain<DurablePersonalMemoryState>(
-    userId,
-    PERSONAL_MEMORY_DOMAIN_KEY,
-  );
-  if (!loaded) return;
+        const store = (
+          globalThis as typeof globalThis & {
+            __atlasPersonalMemoryStore?: {
+              correctionCounters: Map<
+                string,
+                DurablePersonalMemoryState["correctionCounters"]
+              >;
+              rejectedFingerprints: Map<string, Set<string>>;
+            };
+          }
+        ).__atlasPersonalMemoryStore;
 
-  if (loaded.settings) {
-    writePersonalMemorySettings(userId, {
-      ...DEFAULT_PERSONAL_MEMORY_SETTINGS,
-      ...loaded.settings,
-    });
-  }
-  if (Array.isArray(loaded.memories)) {
-    replaceStoredPersonalMemories(
-      userId,
-      loaded.memories.filter((m) => m?.userId === userId),
-    );
-  }
-
-  const store = (
-    globalThis as typeof globalThis & {
-      __atlasPersonalMemoryStore?: {
-        correctionCounters: Map<string, DurablePersonalMemoryState["correctionCounters"]>;
-        rejectedFingerprints: Map<string, Set<string>>;
-      };
+        if (store && Array.isArray(loaded.correctionCounters)) {
+          store.correctionCounters.set(userId, loaded.correctionCounters);
+        }
+        if (store && Array.isArray(loaded.rejectedFingerprints)) {
+          store.rejectedFingerprints.set(
+            userId,
+            new Set(loaded.rejectedFingerprints),
+          );
+        }
+      }
     }
-  ).__atlasPersonalMemoryStore;
-
-  if (store && Array.isArray(loaded.correctionCounters)) {
-    store.correctionCounters.set(userId, loaded.correctionCounters);
-  }
-  if (store && Array.isArray(loaded.rejectedFingerprints)) {
-    store.rejectedFingerprints.set(userId, new Set(loaded.rejectedFingerprints));
+    hydrated.add(userId);
+    return { ok: true };
+  } catch (error) {
+    console.warn(
+      "[personal-memory] Hydration failed:",
+      error instanceof Error ? error.message : "hydration_failed",
+    );
+    return { ok: false, developerCode: "hydration_failed" };
   }
 }
 

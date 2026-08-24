@@ -8,6 +8,7 @@ vi.mock("@/lib/persistence/durable-domain", () => ({
 vi.mock("@/lib/personal-memory/durable", () => ({
   ensurePersonalMemoryHydrated: vi.fn(async () => undefined),
   schedulePersistPersonalMemory: vi.fn(),
+  persistPersonalMemoryNow: vi.fn(async () => "skipped"),
   wipePersonalMemoryDurable: vi.fn(),
 }));
 
