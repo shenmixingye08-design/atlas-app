@@ -23,7 +23,11 @@ const isPublicApi = createRouteMatcher([...ATLAS_PUBLIC_API_MATCHERS]);
 const isApiRoute = createRouteMatcher(["/api(.*)"]);
 
 /** Owner dashboard and owner APIs — ATLAS operators only. */
-const isOwnerRoute = createRouteMatcher(["/owner(.*)", "/api/owner(.*)"]);
+const isOwnerRoute = createRouteMatcher([
+  "/owner(.*)",
+  "/api/owner(.*)",
+  "/admin/revenue-agent(.*)",
+]);
 
 function productionConfigErrorResponse(
   request: Request,

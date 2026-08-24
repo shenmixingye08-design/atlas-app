@@ -232,6 +232,7 @@ describe("auth route matchers", () => {
       "/api/health/n03-powerpoint-product-surface(.*)",
     );
     expect(ATLAS_PROTECTED_PAGE_MATCHERS).toContain("/owner(.*)");
+    expect(ATLAS_PROTECTED_PAGE_MATCHERS).toContain("/admin/revenue-agent(.*)");
     expect(ATLAS_PROTECTED_PAGE_MATCHERS).toContain("/projects(.*)");
     expect(ATLAS_APP_HOME_PATH).toBe("/projects");
   });

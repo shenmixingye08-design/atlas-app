@@ -1672,6 +1672,7 @@ export const ui = {
     navErrorMonitoring: "エラー監視",
     navPopularityRanking: "人気ランキング",
     navCostRanking: "コストランキング",
+    navRevenueAgent: "収益エージェントβ",
     navCancellationAnalysis: "解約分析",
     navAccountDeletions: "削除予定ユーザー",
     navAuditLog: "監査ログ",
