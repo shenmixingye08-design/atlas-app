@@ -177,6 +177,8 @@ export async function GET(
   }
 
   markDeliverableDownloaded(stored.id, userId);
+  const { observeFirstArtifactDownloaded } = await import("@/lib/activation/observe");
+  observeFirstArtifactDownloaded(userId, stored.id);
   recordReliabilityEvent("deliverable_download", "success");
   recordReliabilityEvent("deliverable_generate", "success");
   recordWordMetric("download_success");

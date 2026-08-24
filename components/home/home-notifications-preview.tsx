@@ -8,6 +8,7 @@ import { fetchNotifications } from "@/lib/notifications/client";
 import type { NotificationRecord } from "@/lib/notifications/types";
 import { ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import { ActivationEmptyState } from "@/components/onboarding/activation-empty-state";
 
 export function HomeNotificationsPreview() {
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
@@ -39,9 +40,7 @@ export function HomeNotificationsPreview() {
   }
 
   if (notifications.length === 0) {
-    return (
-      <p className="text-sm text-[var(--text-secondary)]">{ui.notifications.empty}</p>
-    );
+    return <ActivationEmptyState surface="notifications" />;
   }
 
   return (

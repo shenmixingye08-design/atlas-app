@@ -17,6 +17,8 @@ const ALLOWED_QUERY_KEYS = new Set([
   "plan",
   "historyId",
   "trial",
+  "reason",
+  "resume",
 ]);
 
 const SAFE_QUERY_VALUE = /^[\w.@-]{0,80}$/;

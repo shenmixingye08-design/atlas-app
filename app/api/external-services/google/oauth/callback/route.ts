@@ -63,7 +63,11 @@ export async function GET(request: Request): Promise<Response> {
   const oauthError = url.searchParams.get("error");
 
   if (oauthError) {
-    return redirectToSettings(origin, { google_error: "1" });
+    const { classifyOAuthFailure } = await import("@/lib/activation/oauth-errors");
+    return redirectToSettings(origin, {
+      google_error: "1",
+      reason: classifyOAuthFailure({ providerError: oauthError }),
+    });
   }
 
   if (!code || !state) {
@@ -97,6 +101,9 @@ export async function GET(request: Request): Promise<Response> {
       reason: "Google OAuth connected",
     });
 
+    const { observeIntegration } = await import("@/lib/activation/observe");
+    observeIntegration(userId, "google", "connected");
+
     return redirectToSettings(origin, {
       connected: connection.serviceId,
       account: connection.account?.email ?? connection.serviceName,
@@ -125,6 +132,19 @@ export async function GET(request: Request): Promise<Response> {
       result: "failure",
       reason: message,
     });
+    const { observeIntegration } = await import("@/lib/activation/observe");
+    const { classifyOAuthFailure } = await import("@/lib/activation/oauth-errors");
+    observeIntegration(
+      userId,
+      "google",
+      "failed",
+      classifyOAuthFailure({
+        hasCode: true,
+        hasState: true,
+        tokenSaved: false,
+        callbackException: true,
+      }),
+    );
     return redirectToSettings(origin, { google_error: "1" });
   }
 }

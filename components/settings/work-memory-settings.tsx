@@ -28,6 +28,7 @@ import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/ui/loading-state";
+import { ActivationEmptyState } from "@/components/onboarding/activation-empty-state";
 
 type EditState = {
   id?: string;
@@ -793,11 +794,13 @@ export function WorkMemorySettings() {
             padding="lg"
             className="border border-dashed border-[var(--border-subtle)] bg-[var(--surface-muted)]/40 text-center"
           >
-            <p className="text-sm text-[var(--text-secondary)]">
-              {search || typeFilter !== "all"
-                ? ui.workMemory.emptyFiltered
-                : ui.workMemory.empty}
-            </p>
+            {search || typeFilter !== "all" ? (
+              <p className="text-sm text-[var(--text-secondary)]">
+                {ui.workMemory.emptyFiltered}
+              </p>
+            ) : (
+              <ActivationEmptyState surface="memory" />
+            )}
           </Card>
         ) : (
           <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

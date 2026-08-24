@@ -152,6 +152,9 @@ export async function GET(
     return Response.json({ status: "error", code }, { status: 200 });
   }
 
+  const { observeFirstResultViewed } = await import("@/lib/activation/observe");
+  observeFirstResultViewed(userId, notificationId, decision.targetId);
+
   return Response.json({
     status: "deliverable",
     targetType: decision.targetType,

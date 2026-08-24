@@ -52,11 +52,23 @@ export async function GET(request: Request): Promise<Response> {
   const statePayload = state ? consumeXOAuthState(state) : null;
 
   if (oauthError) {
-    return redirectAfterXOauth(origin, statePayload?.returnTo, { x_error: "1" });
+    const { classifyOAuthFailure } = await import("@/lib/activation/oauth-errors");
+    const reason = classifyOAuthFailure({ providerError: oauthError, hasCode: Boolean(code), hasState: Boolean(statePayload) });
+    if (statePayload?.userId) {
+      const { observeIntegration } = await import("@/lib/activation/observe");
+      observeIntegration(statePayload.userId, "x", "failed", reason);
+    }
+    return redirectAfterXOauth(origin, statePayload?.returnTo, { x_error: "1", reason });
   }
 
   if (!code || !statePayload) {
-    return redirectAfterXOauth(origin, statePayload?.returnTo, { x_error: "1" });
+    const { classifyOAuthFailure } = await import("@/lib/activation/oauth-errors");
+    const reason = classifyOAuthFailure({ hasCode: Boolean(code), hasState: Boolean(statePayload) });
+    if (statePayload?.userId) {
+      const { observeIntegration } = await import("@/lib/activation/observe");
+      observeIntegration(statePayload.userId, "x", "failed", reason);
+    }
+    return redirectAfterXOauth(origin, statePayload?.returnTo, { x_error: "1", reason });
   }
 
   const { userId, codeVerifier, returnTo } = statePayload;
@@ -69,6 +81,9 @@ export async function GET(request: Request): Promise<Response> {
       origin,
     );
 
+    const { observeIntegration } = await import("@/lib/activation/observe");
+    observeIntegration(userId, "x", "connected");
+
     return redirectAfterXOauth(origin, returnTo, {
       connected: connection.serviceId,
       username: connection.account?.username ?? connection.account?.email ?? "",
@@ -78,6 +93,15 @@ export async function GET(request: Request): Promise<Response> {
     // Never log tokens / auth codes — message only.
     console.error("[X OAuth callback]", message);
     markXConnectionError(userId, message);
-    return redirectAfterXOauth(origin, returnTo, { x_error: "1" });
+    const { classifyOAuthFailure } = await import("@/lib/activation/oauth-errors");
+    const { observeIntegration } = await import("@/lib/activation/observe");
+    const reason = classifyOAuthFailure({
+      hasCode: true,
+      hasState: true,
+      tokenSaved: false,
+      callbackException: true,
+    });
+    observeIntegration(userId, "x", "failed", reason);
+    return redirectAfterXOauth(origin, returnTo, { x_error: "1", reason });
   }
 }

@@ -16,6 +16,7 @@ import { Card } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ActivationEmptyState } from "@/components/onboarding/activation-empty-state";
 
 type DashboardProjectsProps = {
   projects: Project[];
@@ -51,13 +52,15 @@ export function DashboardProjects({
 
       {projects.length === 0 ? (
         <Card variant="elevated">
-          <EmptyState
-            icon="📁"
-            title={ui.project.empty}
-            description={
-              searchQuery ? ui.project.searchPlaceholder : ui.project.emptyHint
-            }
-          />
+          {searchQuery ? (
+            <EmptyState
+              icon="📁"
+              title={ui.project.empty}
+              description={ui.project.searchPlaceholder}
+            />
+          ) : (
+            <ActivationEmptyState surface="requests" />
+          )}
         </Card>
       ) : (
         <div className="grid gap-5 lg:grid-cols-2">

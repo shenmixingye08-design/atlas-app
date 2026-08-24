@@ -29,7 +29,8 @@ type OwnerNavProps = {
     | "reliability"
     | "scheduler"
     | "wordDownloadDiagnostics"
-    | "memoryApply";
+    | "memoryApply"
+    | "activationFunnel";
 };
 const LINKS = [
   { id: "dashboard" as const, href: "/owner", label: ui.owner.navDashboard },
@@ -117,6 +118,11 @@ const LINKS = [
     id: "memoryApply" as const,
     href: "/owner/memory-apply",
     label: "Memory Apply",
+  },
+  {
+    id: "activationFunnel" as const,
+    href: "/owner/activation-funnel",
+    label: "Activation Funnel",
   },
   {
     id: "wordDownloadDiagnostics" as const,

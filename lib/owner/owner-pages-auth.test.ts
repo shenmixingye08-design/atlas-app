@@ -22,6 +22,8 @@ describe("Owner API server guards", () => {
     const webhook = readFileSync("app/api/owner/billing-webhook/route.ts", "utf8");
     expect(dashboard).toContain("requireAtlasOwnerApi");
     expect(webhook).toContain("requireAtlasOwnerApi");
+    const funnel = readFileSync("app/api/owner/activation-funnel/route.ts", "utf8");
+    expect(funnel).toContain("requireAtlasOwnerApi");
   });
 });
 

@@ -4,6 +4,7 @@ import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 import { ui } from "@/lib/i18n";
 
+import { ActivationHomeBanner } from "@/components/onboarding/activation-home-banner";
 import { HomeChatBar } from "./home-chat-bar";
 import { HomeGreetingHeader } from "./home-greeting-header";
 
@@ -35,6 +36,8 @@ export function SecretaryHomeDashboard({
           {ui.secretaryHome.zeroFrictionHint}
         </p>
       </header>
+
+      <ActivationHomeBanner />
 
       <div>
         <HomeChatBar />

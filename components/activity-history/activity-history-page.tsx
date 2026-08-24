@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { ActivityHistoryCard } from "@/components/activity-history/activity-history-card";
 import { ActivityHistoryDetail } from "@/components/activity-history/activity-history-detail";
 import { ActivityHistoryFiltersBar } from "@/components/activity-history/activity-history-filters";
-import { IconEmptyWork } from "@/components/ui/icons";
+import { ActivationEmptyState } from "@/components/onboarding/activation-empty-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import type { ActivityHistoryItem } from "@/lib/activity-history";
 import { useActivityHistory } from "@/lib/activity-history/use-activity-history";
@@ -124,22 +124,8 @@ export function ActivityHistoryPageContent() {
       {!isReady ? (
         <LoadingState message={ui.activityHistory.loading} />
       ) : filteredItems.length === 0 ? (
-        <div className="animate-card-enter rounded-[var(--radius-lg)] border border-dashed border-[var(--border-subtle)] bg-[linear-gradient(180deg,var(--surface-elevated),var(--surface-muted))] px-5 py-10 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--brand-muted)] text-[var(--brand)]">
-            <IconEmptyWork className="h-7 w-7" />
-          </div>
-          <p className="mt-4 text-lg font-medium text-foreground">
-            {ui.activityHistory.empty}
-          </p>
-          <p className="mt-2 text-sm text-[var(--foreground-muted)]">
-            {ui.activityHistory.emptyHint}
-          </p>
-          <p className="mx-auto mt-2 max-w-sm text-sm text-[var(--text-secondary)]">
-            おすすめの最初の仕事：X投稿を自動化する。
-          </p>
-          <Link href="/workspace" className="btn-brand mt-5 inline-flex">
-            {ui.nav.work}
-          </Link>
+        <div className="animate-card-enter rounded-[var(--radius-lg)] border border-dashed border-[var(--border-subtle)] bg-[linear-gradient(180deg,var(--surface-elevated),var(--surface-muted))] px-5 py-10">
+          <ActivationEmptyState surface="deliverables" className="mx-auto max-w-md text-center" />
         </div>
       ) : (
         <div className="activity-history-timeline animate-stagger relative space-y-2.5 pl-0 sm:pl-5">

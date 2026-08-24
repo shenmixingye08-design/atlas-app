@@ -11,6 +11,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 
 import { ConnectorProviderCard } from "./connector-provider-card";
+import { ActivationEmptyState } from "@/components/onboarding/activation-empty-state";
 
 export function ConnectorsDashboard() {
   const [providers, setProviders] = useState<ConnectorProviderView[]>([]);
@@ -53,9 +54,7 @@ export function ConnectorsDashboard() {
       {error && <ErrorState message={error} />}
 
       {providers.length === 0 ? (
-        <p className="text-sm text-[var(--foreground-muted)]">
-          {ui.connectors.empty}
-        </p>
+        <ActivationEmptyState surface="integrations" />
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">
           {providers.map((provider) => (

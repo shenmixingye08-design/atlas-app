@@ -189,6 +189,9 @@ export async function createCalendarEventForUser(input: {
     );
   }
 
+  void import("@/lib/activation/observe").then(({ observeCalendarLiveSuccess }) => {
+    observeCalendarLiveSuccess(input.userId, event.id);
+  });
   return { status: "ready", event };
 }
 

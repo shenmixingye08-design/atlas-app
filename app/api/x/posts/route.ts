@@ -95,7 +95,7 @@ export async function POST(request: Request): Promise<Response> {
         draftId,
         context,
       });
-      return mapPostResult(result);
+      return mapPostResult(userId, result);
     }
 
     if (mode === "test") {
@@ -104,7 +104,7 @@ export async function POST(request: Request): Promise<Response> {
         text: text.trim() || undefined,
         context,
       });
-      return mapPostResult(result);
+      return mapPostResult(userId, result);
     }
 
     if (mode === "scheduled") {
@@ -126,7 +126,7 @@ export async function POST(request: Request): Promise<Response> {
         automationId,
       });
 
-      return mapPostResult(result);
+      return mapPostResult(userId, result);
     }
 
     if (mode === "auto") {
@@ -136,7 +136,7 @@ export async function POST(request: Request): Promise<Response> {
         context,
         automationId,
       });
-      return mapPostResult(result);
+      return mapPostResult(userId, result);
     }
 
     const result = await postTweetNowForUser({
@@ -144,7 +144,7 @@ export async function POST(request: Request): Promise<Response> {
       text,
       context,
     });
-    return mapPostResult(result);
+    return mapPostResult(userId, result);
   } catch (error) {
     const message =
       clientSafeMessage(error, "Failed to post to X");
@@ -153,7 +153,20 @@ export async function POST(request: Request): Promise<Response> {
   }
 }
 
+function observeReadyXPost(
+  userId: string,
+  result: Awaited<ReturnType<typeof postTweetNowForUser>>,
+): void {
+  if (result.status !== "ready") return;
+  void import("@/lib/activation/observe").then((mod) => {
+    if (result.draft?.id) mod.observeXDraftCreated(userId, result.draft.id);
+    if (result.scheduled?.id) mod.observeXScheduled(userId, result.scheduled.id);
+    if (result.history?.id) mod.observeXPublished(userId, result.history.id);
+  });
+}
+
 function mapPostResult(
+  userId: string,
   result: Awaited<ReturnType<typeof postTweetNowForUser>>,
 ): Response {
   if (result.status === "feature_disabled" || result.status === "plan_limited") {
@@ -173,5 +186,6 @@ function mapPostResult(
   if (result.status === "unknown_outcome") {
     return Response.json(result, { status: 409 });
   }
+  observeReadyXPost(userId, result);
   return Response.json(result);
 }
