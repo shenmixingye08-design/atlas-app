@@ -44,6 +44,8 @@ export default async function BillingSuccessPage({ searchParams }: PageProps) {
       action: "checkout_completed",
       sessionId: "mock",
     });
+    const { recordDiagnosisPaidIfBound } = await import("@/lib/growth/acquisition/service");
+    await recordDiagnosisPaidIfBound(userId);
     redirect(`${BILLING_SETTINGS_PATH}?checkout=success&plan=${planParam}`);
   }
 
@@ -57,6 +59,8 @@ export default async function BillingSuccessPage({ searchParams }: PageProps) {
         action: "checkout_completed",
         sessionId,
       });
+      const { recordDiagnosisPaidIfBound } = await import("@/lib/growth/acquisition/service");
+      await recordDiagnosisPaidIfBound(userId);
       redirect(
         `${BILLING_SETTINGS_PATH}?checkout=success&plan=${result.planId}`,
       );

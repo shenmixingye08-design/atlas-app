@@ -20,6 +20,8 @@ export const ATLAS_PUBLIC_PAGE_PATHS = [
   "/404",
   "/500",
   "/solutions",
+  "/tools",
+  "/use-cases",
 ] as const;
 
 /** ログイン必須のアプリ画面 */
@@ -113,6 +115,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/line/webhook(.*)",
   "/api/webhooks/clerk(.*)",
   "/api/growth/events(.*)",
+  "/api/growth/diagnosis(.*)",
 ] as const;
 
 /** ログイン後の既定遷移先 */

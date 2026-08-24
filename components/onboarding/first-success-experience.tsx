@@ -33,6 +33,41 @@ type FirstSuccessExperienceProps = {
   onDefer: () => void;
 };
 
+function ReferralInvite() {
+  const [url, setUrl] = useState<string | null>(null);
+  const [reward, setReward] = useState("未設定");
+  const [error, setError] = useState<string | null>(null);
+
+  async function issue() {
+    setError(null);
+    const response = await fetch("/api/growth/referral", { method: "POST" });
+    const body = (await response.json()) as { url?: string; reward?: string; error?: string };
+    if (!response.ok) {
+      setError(body.error ?? "紹介リンクを発行できませんでした");
+      return;
+    }
+    setUrl(body.url ?? null);
+    if (body.reward) setReward(body.reward);
+  }
+
+  return (
+    <div className="mt-5 rounded-[var(--radius-xl)] border border-[var(--border-subtle)] p-4 text-sm">
+      <p className="font-medium">紹介リンク</p>
+      <p className="mt-1 text-xs text-[var(--foreground-muted)]">
+        初回成功後に、明示操作で発行します。特典は{reward}。個人情報はURLに含めません。
+      </p>
+      {url ? (
+        <p className="mt-2 break-all text-xs">{url}</p>
+      ) : (
+        <Button variant="secondary" size="sm" className="mt-3" onClick={() => void issue()}>
+          紹介リンクを発行する
+        </Button>
+      )}
+      {error ? <p className="mt-2 text-xs text-[var(--error)]">{error}</p> : null}
+    </div>
+  );
+}
+
 function ProgressBlocks({ filled, total }: { filled: number; total: number }) {
   return (
     <div className="flex gap-1" aria-label={ui.firstExperience.progressLabel(filled, total)}>
@@ -155,6 +190,11 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
           if (body.snapshot?.remainingAi) setRemainingAi(body.snapshot.remainingAi);
         })
         .catch(() => undefined);
+      void fetch("/api/growth/diagnosis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "first_value" }),
+      }).catch(() => undefined);
     } catch {
       const message = "初回依頼の実行に失敗しました。同じ内容でもう一度試せます。";
       setFailMessage(message);
@@ -441,6 +481,8 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
               </div>
               <span className="text-sm text-accent">→</span>
             </Link>
+
+            <ReferralInvite />
 
             <Button variant="primary" size="lg" className="mt-6 w-full" onClick={onComplete}>
               {ui.firstExperience.goHome}

@@ -125,6 +125,11 @@ export function RevenueAgentPanel() {
           生成物は承認キューに入ります。存在しない実績は作りません。
           未取得は 0 ではなく「—」です。
         </p>
+        <p className="text-sm">
+          <a className="underline" href="/owner/acquisition">
+            集客エンジン（診断・台帳・カレンダー）
+          </a>
+        </p>
         <div className="flex gap-2">
           <Button
             variant={tab === "funnel" ? "primary" : "secondary"}

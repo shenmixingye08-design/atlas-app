@@ -8,7 +8,11 @@ export const REVENUE_UTM_SOURCE_X = "x";
 export const REVENUE_UTM_MEDIUM_SOCIAL = "social";
 
 /** リポジトリ内に実在する無料登録 / LP 導線だけを許可する。 */
-export const ALLOWED_GROWTH_PATHS = ["/", "/sign-up"] as const;
+export const ALLOWED_GROWTH_PATHS = [
+  "/",
+  "/sign-up",
+  "/tools/automation-diagnosis",
+] as const;
 export type AllowedGrowthPath = (typeof ALLOWED_GROWTH_PATHS)[number];
 
 export const DEFAULT_GROWTH_PATH: AllowedGrowthPath = "/sign-up";
