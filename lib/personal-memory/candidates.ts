@@ -16,6 +16,7 @@ import {
   isOneShotMemoryInstruction,
 } from "@/lib/personal-memory/intent";
 import { sanitizeUserFacingMemoryText } from "@/lib/personal-memory/security";
+import { containsSensitiveFacts } from "@/lib/personal-memory/sensitive-facts";
 import {
   bumpCorrectionCounter,
   isRejectedFingerprint,
@@ -349,6 +350,65 @@ export function inferPreferenceFromText(
     writing.tone = "casual";
     writingHit = true;
   }
+  const firstPerson = trimmed.match(/一人称は?「([^」]+)」|一人称を?([私僕俺わたし])/);
+  if (firstPerson) {
+    writing.firstPerson = firstPerson[1] ?? firstPerson[2];
+    writingHit = true;
+  }
+  const ending = trimmed.match(/語尾は?「([^」]+)」/);
+  if (ending) {
+    writing.sentenceEnding = ending[1];
+    writingHit = true;
+  }
+  if (/専門用語(なし|少なめ|控えて)/.test(trimmed)) {
+    writing.jargon = "none";
+    writingHit = true;
+  }
+  if (/冒頭は(結論|挨拶|質問)/.test(trimmed)) {
+    writing.opening = trimmed.match(/冒頭は(結論|挨拶|質問)/)?.[1] ?? "結論";
+    writingHit = true;
+  }
+  if (/URLは(末尾|本文|なし)/.test(trimmed)) {
+    const pos = trimmed.match(/URLは(末尾|本文|なし)/)?.[1];
+    writing.urlPosition = pos === "末尾" ? "end" : pos === "なし" ? "none" : "inline";
+    writingHit = true;
+  }
+  if (/タイトル(なし|無し)/.test(trimmed)) {
+    writing.title = false;
+    writingHit = true;
+  } else if (/タイトル(あり|を付ける)/.test(trimmed)) {
+    writing.title = true;
+    writingHit = true;
+  }
+  const avoidTheme = trimmed.match(/避けるテーマは?「([^」]+)」|(.+)は書かないで/);
+  if (avoidTheme) {
+    writing.avoidedThemes = [sanitizeUserFacingMemoryText(avoidTheme[1] ?? avoidTheme[2] ?? "")];
+    writingHit = true;
+  }
+  const mustInclude = trimmed.match(/必ず「([^」]+)」を(入れて|含めて)/);
+  if (mustInclude) {
+    writing.requiredPhrases = [mustInclude[1]];
+    writingHit = true;
+  }
+  if (/対象読者は(.+)/.test(trimmed)) {
+    writing.audience = sanitizeUserFacingMemoryText(
+      trimmed.match(/対象読者は(.+)/)?.[1] ?? "",
+    ).slice(0, 80);
+    writingHit = true;
+  }
+  if (/毎週|毎日|毎月/.test(trimmed) && /実行|投稿|自動化/.test(trimmed)) {
+    writing.frequency = /毎日/.test(trimmed)
+      ? "daily"
+      : /毎月/.test(trimmed)
+        ? "monthly"
+        : "weekly";
+    writingHit = true;
+  }
+  const weekdays = trimmed.match(/曜日は(.+?)(?:。|$)/);
+  if (weekdays) {
+    writing.weekdays = weekdays[1]!.split(/[、,\s]/).filter(Boolean).slice(0, 7);
+    writingHit = true;
+  }
   if (/強い煽り|煽り禁止/.test(trimmed)) {
     writing.forbiddenExpressions = ["煽り"];
     writingHit = true;
@@ -484,6 +544,28 @@ export function evaluateCorrectionForCandidate(
 
   const inferred = inferPreferenceFromText(signal.text);
   if (!inferred) {
+    if (containsSensitiveFacts(signal.text) && /覚えて|記憶|今後/.test(signal.text)) {
+      return {
+        action: "candidate",
+        input: {
+          kind: "user_preference",
+          scope: "work_content_style",
+          key: "sensitive_fact",
+          value: { text: sanitizeUserFacingMemoryText(signal.text).slice(0, 160) },
+          title: "確認が必要な事実",
+          summary: "確認するまで記憶しません",
+          source: "user_correction",
+          status: "candidate",
+          confidence: 0.45,
+          candidateReason: "sensitive_fact_requires_confirm",
+        },
+        fingerprint: fingerprintCorrection({
+          text: signal.text,
+          automationId: signal.automationId,
+        }),
+        count: 1,
+      };
+    }
     return { action: "none", fingerprint: "", count: 0 };
   }
 
@@ -565,6 +647,21 @@ export function evaluateCorrectionForCandidate(
       },
     ],
   };
+
+  if (containsSensitiveFacts(signal.text) || containsSensitiveFacts(JSON.stringify(inferred.value))) {
+    return {
+      action: "candidate",
+      input: {
+        ...base,
+        status: "candidate",
+        source: "user_correction",
+        candidateReason: "sensitive_fact_requires_confirm",
+        confidence: Math.min(base.confidence ?? 0.6, 0.6),
+      },
+      fingerprint,
+      count,
+    };
+  }
 
   if (inferred.explicit) {
     return { action: "explicit_active", input: base, fingerprint, count };

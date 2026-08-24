@@ -1,5 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { ingestEditDiffAsCandidate } from "@/lib/personal-memory/service";
+import { persistWorkMemoryNow } from "@/lib/work-memory/durable";
 import { ensureWorkMemoryHydrated } from "@/lib/work-memory/durable";
 import { learnFromCorrectionDiff } from "@/lib/work-memory/service";
 
@@ -33,14 +35,12 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const { ingestCorrectionInsightsToPersonalMemory } = await import(
-      "@/lib/memory-apply/correction-preferences"
-    );
-    await ingestCorrectionInsightsToPersonalMemory({
+    await ingestEditDiffAsCandidate({
       userId,
       before: body.before,
       after: body.after,
       artifactType: body.artifactType ?? null,
+      reason: "user_edit_diff",
     });
   } catch {
     // Personal Memory ingest is best-effort; Work Memory candidate still records.
@@ -53,6 +53,7 @@ export async function POST(request: Request): Promise<Response> {
     sourceReference: body.sourceReference,
     artifactType: body.artifactType ?? null,
   });
+  await persistWorkMemoryNow(userId);
 
   return Response.json({ candidateCreated: candidate != null, candidate });
 }

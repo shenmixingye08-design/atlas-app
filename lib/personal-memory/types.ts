@@ -107,7 +107,26 @@ export type MemoryStatus =
   | "rejected"
   | "expired"
   | "deleted"
-  | "paused";
+  | "paused"
+  | "superseded";
+
+/** Candidate lifecycle shown to users / APIs (maps onto MemoryStatus). */
+export type MemoryCandidateStatus =
+  | "pending"
+  | "confirmed"
+  | "rejected"
+  | "expired"
+  | "superseded";
+
+/** Apply layers — never mix silently. Higher wins except forbidden. */
+export type MemoryPreferenceLayer =
+  | "explicit_instruction"
+  | "automation_job"
+  | "channel"
+  | "x_post"
+  | "artifact_format"
+  | "user_global"
+  | "system_default";
 
 export type MemorySensitivity = "normal" | "sensitive" | "restricted";
 
@@ -152,6 +171,16 @@ export type PersonalMemoryRecord = {
   rejectedReason: string | null;
   /** Soft-delete timestamp */
   deletedAt: Timestamp | null;
+  /** Why this candidate was proposed */
+  candidateReason?: string | null;
+  confirmedAt?: Timestamp | null;
+  beforeValue?: Record<string, unknown> | null;
+  afterValue?: Record<string, unknown> | null;
+  sourceJobId?: string | null;
+  sourceBatchId?: string | null;
+  sourceItemId?: string | null;
+  idempotencyKey?: string | null;
+  preferenceLayer?: MemoryPreferenceLayer | null;
 };
 
 export type MemoryRetentionPolicy =
@@ -210,6 +239,14 @@ export type CreatePersonalMemoryInput = {
   evidence?: MemoryEvidence[];
   expiresAt?: Timestamp | null;
   retention?: MemoryRetentionPolicy;
+  candidateReason?: string | null;
+  beforeValue?: Record<string, unknown> | null;
+  afterValue?: Record<string, unknown> | null;
+  sourceJobId?: string | null;
+  sourceBatchId?: string | null;
+  sourceItemId?: string | null;
+  idempotencyKey?: string | null;
+  preferenceLayer?: MemoryPreferenceLayer | null;
 };
 
 export type UpdatePersonalMemoryInput = Partial<
@@ -224,6 +261,13 @@ export type UpdatePersonalMemoryInput = Partial<
     | "expiresAt"
     | "sensitivity"
     | "rejectedReason"
+    | "candidateReason"
+    | "beforeValue"
+    | "afterValue"
+    | "sourceJobId"
+    | "sourceBatchId"
+    | "sourceItemId"
+    | "preferenceLayer"
   >
 >;
 
@@ -304,6 +348,21 @@ export type CorrectionSignal = {
 export const MAX_PERSONAL_MEMORIES_PER_USER = 300;
 export const MAX_CANDIDATES_PER_USER = 50;
 export const CORRECTION_REPEAT_THRESHOLD = 3;
+export const MAX_MEMORY_VALUE_CHARS = 4_000;
+export const MAX_MEMORY_TITLE_CHARS = 120;
+export const MAX_MEMORY_SUMMARY_CHARS = 400;
+export const MEMORY_CATALOG_VERSION = 1;
+
+export function candidateStatusFromMemory(
+  status: MemoryStatus,
+): MemoryCandidateStatus | null {
+  if (status === "candidate") return "pending";
+  if (status === "active") return "confirmed";
+  if (status === "rejected") return "rejected";
+  if (status === "expired") return "expired";
+  if (status === "superseded") return "superseded";
+  return null;
+}
 
 export const SENSITIVE_SCOPES: readonly PersonalMemoryScope[] = [
   "default_recipients",
@@ -323,4 +382,8 @@ export const RESTRICTED_VALUE_KEYS = [
   "secret",
   "oauth",
   "authorization",
+  "cookie",
+  "cookies",
+  "sessionToken",
+  "privateKey",
 ] as const;

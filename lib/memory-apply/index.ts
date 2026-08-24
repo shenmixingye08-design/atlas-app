@@ -108,6 +108,22 @@ export {
   MEMORY_APPLY_LOG_DOMAIN_KEY,
   type MemoryApplyLogEntry,
 } from "./apply-log";
+export { resolveGenerationMemory } from "./resolve-preference";
+export type {
+  GenerationMemoryChannel,
+  GenerationMemoryResolution,
+} from "./resolve-preference";
+export {
+  recordMemoryQualityEvent,
+  getMemoryQualityIndicators,
+  hydrateMemoryQuality,
+  resetMemoryQualityMetricsForTests,
+  MEMORY_QUALITY_DOMAIN_KEY,
+} from "./quality-metrics";
+export type {
+  MemoryQualityEvent,
+  MemoryQualityIndicators,
+} from "./quality-metrics";
 export { applyMemoryForPrediction } from "./prediction";
 export {
   applyMemoryToAutomationCreate,

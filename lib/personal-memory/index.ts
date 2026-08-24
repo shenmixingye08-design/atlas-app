@@ -15,6 +15,7 @@ export {
   updatePersonalMemorySettings,
   exportPersonalMemories,
   ingestCorrectionSignal,
+  ingestEditDiffAsCandidate,
   resolveForContext,
   pausePersonalMemory,
   activatePersonalMemory,
@@ -35,4 +36,23 @@ export {
   isAutomationOnlyOverrideIntent,
   isGlobalMemoryUpdateIntent,
 } from "./intent";
-export { ensurePersonalMemoryHydrated } from "./durable";
+export {
+  ensurePersonalMemoryHydrated,
+  persistPersonalMemoryNow,
+  PersonalMemoryHydrationError,
+} from "./durable";
+export {
+  measureEditDiff,
+  preferenceTextFromEditDiff,
+  shouldProposeEditCandidate,
+} from "./edit-diff";
+export {
+  detectSensitiveFacts,
+  containsSensitiveFacts,
+} from "./sensitive-facts";
+export {
+  mergeStructuredPreferences,
+  readStructuredPreferences,
+  describeStructuredPreferences,
+  EMPTY_STRUCTURED_PREFERENCES,
+} from "./preference-catalog";

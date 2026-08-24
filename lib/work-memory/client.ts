@@ -147,11 +147,22 @@ export async function confirmWorkMemoryCandidateClient(
     diagnosticId?: string;
   } | null;
   if (!response.ok) {
+    const retry =
+      response.status === 404
+        ? "画面を再読み込みしてから、もう一度「確認して記憶する」を押してください。"
+        : response.status >= 500
+          ? "数秒待ってから、もう一度お試しください。"
+          : "";
     throw new Error(
-      formatWorkMemoryCandidateActionError(
-        payload,
-        "記憶を保存できませんでした。",
-      ),
+      [
+        formatWorkMemoryCandidateActionError(
+          payload,
+          "記憶を保存できませんでした。",
+        ),
+        retry,
+      ]
+        .filter(Boolean)
+        .join(" "),
     );
   }
   if (!payload?.memory) {
@@ -172,11 +183,22 @@ export async function rejectWorkMemoryCandidateClient(
     diagnosticId?: string;
   } | null;
   if (!response.ok) {
+    const retry =
+      response.status === 404
+        ? "画面を再読み込みしてから、もう一度お試しください。"
+        : response.status >= 500
+          ? "数秒待ってから、もう一度お試しください。"
+          : "";
     throw new Error(
-      formatWorkMemoryCandidateActionError(
-        payload,
-        "候補を削除できませんでした。",
-      ),
+      [
+        formatWorkMemoryCandidateActionError(
+          payload,
+          "候補を削除できませんでした。",
+        ),
+        retry,
+      ]
+        .filter(Boolean)
+        .join(" "),
     );
   }
 }

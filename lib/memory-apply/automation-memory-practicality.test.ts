@@ -253,12 +253,14 @@ describe("STEP 7 / 10 override vs global", () => {
     expect(updated?.status).toBe("active");
     expect(updated?.value.emoji).toBe("none");
     const active = await listPersonalMemories(USER, { status: "active" });
-    const paused = (await listPersonalMemories(USER)).filter(
-      (row) => row.status === "paused" && row.rejectedReason === "superseded",
+    const superseded = (await listPersonalMemories(USER)).filter(
+      (row) =>
+        (row.status === "superseded" || row.status === "paused") &&
+        row.rejectedReason === "superseded",
     );
     expect(active.some((row) => row.value.emoji === "none")).toBe(true);
     expect(active.some((row) => row.value.emoji === "few")).toBe(false);
-    expect(paused.length).toBeGreaterThan(0);
+    expect(superseded.length).toBeGreaterThan(0);
   });
 
   it("ケース6: Memory 短文 vs Automation 長文 → Automation 設定優先", () => {

@@ -6,12 +6,38 @@ import type {
   UpdatePersonalMemoryInput,
 } from "@/lib/personal-memory/types";
 
+function formatMemoryActionError(
+  payload: { error?: string; retryHint?: string; diagnosticId?: string } | null,
+  fallback: string,
+  status: number,
+): string {
+  const base = payload?.error?.trim() || fallback;
+  const retry =
+    payload?.retryHint?.trim() ||
+    (status === 404
+      ? "画面を再読み込みしてから、もう一度お試しください。"
+      : status >= 500
+        ? "数秒待ってから、もう一度お試しください。"
+        : "");
+  const diagnosticId = payload?.diagnosticId?.trim();
+  const withRetry = retry && !base.includes(retry) ? `${base} ${retry}` : base;
+  if (diagnosticId && !withRetry.includes(diagnosticId)) {
+    return `${withRetry}（診断ID: ${diagnosticId}）`;
+  }
+  return withRetry;
+}
+
 async function parseJson<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as T & { error?: string };
+  const payload = (await response.json().catch(() => null)) as
+    | (T & { error?: string; retryHint?: string; diagnosticId?: string })
+    | null;
   if (!response.ok) {
     throw new Error(
-      typeof payload.error === "string" ? payload.error : "記憶の操作に失敗しました",
+      formatMemoryActionError(payload, "記憶の操作に失敗しました", response.status),
     );
+  }
+  if (!payload) {
+    throw new Error("記憶の操作に失敗しました");
   }
   return payload;
 }

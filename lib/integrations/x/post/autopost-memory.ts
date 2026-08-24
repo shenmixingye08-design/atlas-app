@@ -6,17 +6,15 @@
 
 import "server-only";
 
+import { resolveGenerationMemory } from "@/lib/memory-apply/resolve-preference";
 import {
   EMPTY_X_SOCIAL_PREFERENCE,
-  X_MEMORY_ALLOWED_SCOPES,
-  X_MEMORY_DENIED_SCOPES,
   describeXSocialPreference,
   mergeXSocialPreference,
   parseXSocialPreferenceFromText,
-  xSocialPreferenceFromResolved,
   type XSocialPreference,
 } from "@/lib/memory-apply/x-social-preference";
-import { ingestCorrectionSignal, resolveForContext } from "@/lib/personal-memory/service";
+import { ingestCorrectionSignal } from "@/lib/personal-memory/service";
 
 import type { XAutoPostSettings } from "./autopost-types";
 
@@ -34,20 +32,6 @@ function definedKeys(pref: Partial<XSocialPreference>): string[] {
   return Object.entries(pref)
     .filter(([, value]) => value !== undefined && value !== null)
     .map(([key]) => key);
-}
-
-function memoryContributed(
-  memory: XSocialPreference,
-  explicit: Partial<XSocialPreference>,
-): boolean {
-  for (const key of definedKeys(memory)) {
-    const memoryValue = memory[key as keyof XSocialPreference];
-    const explicitValue = explicit[key as keyof XSocialPreference];
-    if (memoryValue != null && (explicitValue === undefined || explicitValue === null)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 export function settingsToExplicitPreference(
@@ -133,17 +117,20 @@ export async function applyMemoryToDedicatedAutoPost(input: {
 
   let memoryPref: XSocialPreference = { ...EMPTY_X_SOCIAL_PREFERENCE };
   let memoryFailed = false;
+  let resolvedApplied = false;
 
   try {
-    const { result } = await resolveForContext({
+    const resolved = await resolveGenerationMemory({
       userId: input.userId,
-      allowedScopes: [...X_MEMORY_ALLOWED_SCOPES],
-      deniedScopes: [...X_MEMORY_DENIED_SCOPES],
+      channel: "x_post",
       artifactTypes: ["x_post"],
-      capabilities: ["x_post", "sns"],
       currentInstruction: explicit as Record<string, unknown>,
     });
-    memoryPref = xSocialPreferenceFromResolved(result.used);
+    memoryFailed = resolved.memoryFailed;
+    memoryPref = resolved.memoryFailed
+      ? { ...EMPTY_X_SOCIAL_PREFERENCE }
+      : resolved.xPreference;
+    resolvedApplied = resolved.applied && !resolved.memoryFailed;
   } catch {
     memoryFailed = true;
     memoryPref = { ...EMPTY_X_SOCIAL_PREFERENCE };
@@ -153,8 +140,7 @@ export async function applyMemoryToDedicatedAutoPost(input: {
     memory: memoryPref,
     explicit,
   });
-  const applied =
-    !memoryFailed && memoryContributed(memoryPref, explicit);
+  const applied = !memoryFailed && resolvedApplied;
   const labels = applied ? describeXSocialPreference(memoryPref) : [];
 
   return {

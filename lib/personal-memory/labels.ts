@@ -53,6 +53,7 @@ export const STATUS_LABELS: Record<MemoryStatus, string> = {
   expired: "有効期限切れ",
   deleted: "削除済み",
   paused: "使用停止",
+  superseded: "置き換え済み",
 };
 
 export const SOURCE_LABELS: Record<MemorySource, string> = {
