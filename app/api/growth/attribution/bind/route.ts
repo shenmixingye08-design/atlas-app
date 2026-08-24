@@ -35,6 +35,8 @@ export async function POST(): Promise<Response> {
   const sessionId = readDiagnosisSessionId(cookieStore.get(DIAGNOSIS_COOKIE)?.value);
   const { bindDiagnosisToUser } = await import("@/lib/growth/acquisition/service");
   const diagnosis = await bindDiagnosisToUser({ userId, visitorId, sessionId });
+  const { bindOfferToUser } = await import("@/lib/growth/first-revenue/service");
+  await bindOfferToUser({ userId, visitorId });
 
   return Response.json({
     ok: true,

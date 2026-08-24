@@ -116,6 +116,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/webhooks/clerk(.*)",
   "/api/growth/events(.*)",
   "/api/growth/diagnosis(.*)",
+  "/api/growth/first-revenue(.*)",
 ] as const;
 
 /** ログイン後の既定遷移先 */

@@ -161,6 +161,11 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
         usecase: selectedTask === "sns" ? "sns" : "document",
       }),
     }).catch(() => undefined);
+    void fetch("/api/growth/first-revenue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "first_use_started" }),
+    }).catch(() => undefined);
 
     try {
       const experienceResult = await runFirstExperienceTask(
@@ -195,6 +200,11 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "first_value" }),
       }).catch(() => undefined);
+      void fetch("/api/growth/first-revenue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "first_use_succeeded" }),
+      }).catch(() => undefined);
     } catch {
       const message = "初回依頼の実行に失敗しました。同じ内容でもう一度試せます。";
       setFailMessage(message);
@@ -206,6 +216,11 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
           action: "first_request_failed",
           message,
         }),
+      }).catch(() => undefined);
+      void fetch("/api/growth/first-revenue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "first_use_failed" }),
       }).catch(() => undefined);
     } finally {
       setRunning(false);
@@ -480,6 +495,23 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
                 </p>
               </div>
               <span className="text-sm text-accent">→</span>
+            </Link>
+
+            <Link
+              href="/settings/billing"
+              className="mt-5 block rounded-[var(--radius-xl)] border border-[var(--border-subtle)] p-4 text-sm"
+              onClick={() => {
+                void fetch("/api/growth/first-revenue", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "upgrade_viewed" }),
+                }).catch(() => undefined);
+              }}
+            >
+              <p className="font-medium">毎日続ける場合のおすすめ</p>
+              <p className="mt-1 text-xs text-[var(--foreground-muted)]">
+                Light 980円（税込）。X自動投稿は月30件。価格は既存プランのままです。他プランは料金表で確認できます。
+              </p>
             </Link>
 
             <ReferralInvite />
