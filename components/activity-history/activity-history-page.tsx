@@ -137,9 +137,17 @@ export function ActivityHistoryPageContent() {
           <p className="mx-auto mt-2 max-w-sm text-sm text-[var(--text-secondary)]">
             おすすめの最初の仕事：X投稿を自動化する。
           </p>
-          <Link href="/workspace" className="btn-brand mt-5 inline-flex">
-            {ui.nav.work}
-          </Link>
+          <div className="mt-5 flex flex-col items-center gap-2">
+            <Link href="/workspace" className="btn-brand inline-flex min-h-[44px] items-center">
+              {ui.nav.work}
+            </Link>
+            <Link
+              href="/workspace?mode=batch"
+              className="inline-flex min-h-[44px] items-center text-sm text-accent"
+            >
+              成果物をまとめて作る
+            </Link>
+          </div>
         </div>
       ) : (
         <div className="activity-history-timeline animate-stagger relative space-y-2.5 pl-0 sm:pl-5">

@@ -17,6 +17,12 @@ export function HomeNewWorkButton() {
           {ui.actions.registerNewWork}
         </Button>
       </Link>
+      <Link
+        href="/workspace?mode=batch"
+        className="mt-3 inline-flex min-h-[44px] w-full items-center justify-center text-sm text-accent focus-ring"
+      >
+        成果物をまとめて作る
+      </Link>
     </section>
   );
 }

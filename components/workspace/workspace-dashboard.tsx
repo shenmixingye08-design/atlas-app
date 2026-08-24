@@ -40,6 +40,7 @@ import {
   type WorkRequestSubmitPayload,
 } from "@/lib/workspace/work-request-payload";
 
+import { DeliverableBatchWizard } from "./deliverable-batch-wizard";
 import { FinalOutput } from "./final-output";
 import { WorkRequestForm } from "./work-request-form";
 import { WorkflowResults } from "./workflow-results";
@@ -463,14 +464,16 @@ export function WorkspaceDashboard() {
         </section>
       )}
 
-      {showForm && (
+      {showForm && searchParams.get("mode") === "batch" ? (
+        <DeliverableBatchWizard />
+      ) : showForm ? (
         <WorkRequestForm
           value={assignment}
           onChange={setAssignment}
           onSubmit={(payload) => void handleSubmit(payload)}
           isLoading={isLoading}
         />
-      )}
+      ) : null}
 
       {pendingCommander && !isLoading && (
         <Card padding="lg" className="space-y-4 border-accent/20 bg-accent/5">
