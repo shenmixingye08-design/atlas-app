@@ -33,7 +33,7 @@ export function AtlasHeaderAuth({ variant = "landing" }: AtlasHeaderAuthProps) {
               "touch-target rounded-full px-3 py-1.5 text-xs transition-colors duration-200 focus-ring sm:px-4 sm:py-2 sm:text-sm",
               isShell
                 ? "text-[var(--text-secondary)] hover:bg-[var(--accent-muted)] hover:text-[var(--accent)]"
-                : "text-[#75686B] hover:text-[#74172A]",
+                : "text-[var(--text-secondary)] hover:text-[var(--primary)]",
             )}
           >
             ログイン
@@ -44,10 +44,10 @@ export function AtlasHeaderAuth({ variant = "landing" }: AtlasHeaderAuthProps) {
           <button
             type="button"
             className={cn(
-              "touch-target rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-300 focus-ring sm:px-4 sm:py-2 sm:text-sm",
+              "touch-target rounded-full px-3 py-1.5 text-xs font-medium transition-[transform,opacity,border-color,box-shadow] duration-[var(--motion-normal)] focus-ring sm:px-4 sm:py-2 sm:text-sm",
               isShell
                 ? "hidden border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)] shadow-[var(--shadow-sm)] hover:bg-[var(--accent-hover)] sm:inline-flex"
-                : "hidden border border-[#74172A] bg-[#74172A] text-white shadow-[0_10px_28px_rgba(116,23,42,0.2)] hover:-translate-y-0.5 hover:bg-[#5F1222] hover:shadow-[0_14px_34px_rgba(116,23,42,0.28)] active:scale-[0.98] sm:inline-flex",
+                : "hidden border border-[var(--primary)] bg-[var(--primary)] text-white shadow-[var(--shadow-subtle)] [@media(hover:hover)]:hover:-translate-y-px hover:bg-[var(--primary-hover)]  active:scale-[0.98] sm:inline-flex",
             )}
           >
             新規登録
@@ -73,7 +73,7 @@ export function AtlasLandingAuth() {
         <SignInButton mode="redirect">
           <button
             type="button"
-            className="touch-target rounded-full px-3 py-2 text-xs text-[#75686B] transition-colors hover:text-[#74172A] focus-ring sm:px-4 sm:text-sm"
+            className="touch-target rounded-full px-3 py-2 text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--primary)] focus-ring sm:px-4 sm:text-sm"
           >
             ログイン
           </button>
@@ -82,7 +82,7 @@ export function AtlasLandingAuth() {
         <SignUpButton mode="redirect">
           <button
             type="button"
-            className="touch-target hidden rounded-full border border-[#74172A] bg-[#74172A] px-3 py-2 text-xs font-medium text-white shadow-[0_10px_28px_rgba(116,23,42,0.2)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#5F1222] hover:shadow-[0_14px_34px_rgba(116,23,42,0.28)] active:scale-[0.98] focus-ring min-[400px]:inline-flex sm:px-4 sm:text-sm"
+            className="touch-target hidden rounded-[var(--radius-large)] border border-[var(--primary)] bg-[var(--primary)] px-3 py-2 text-xs font-medium text-white shadow-[var(--shadow-subtle)] transition-[transform,opacity,border-color,box-shadow] duration-[var(--motion-normal)] [@media(hover:hover)]:hover:-translate-y-px hover:bg-[var(--primary-hover)]  active:scale-[0.98] focus-ring min-[400px]:inline-flex sm:px-4 sm:text-sm"
           >
             無料で始める
           </button>
@@ -92,7 +92,7 @@ export function AtlasLandingAuth() {
       <Show when="signed-in">
         <Link
           href={ATLAS_APP_HOME_PATH}
-          className="touch-target rounded-full border border-[#74172A] bg-[#74172A] px-3 py-2 text-xs font-medium text-white shadow-[0_10px_28px_rgba(116,23,42,0.2)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#5F1222] hover:shadow-[0_14px_34px_rgba(116,23,42,0.28)] active:scale-[0.98] focus-ring sm:px-4 sm:text-sm"
+          className="touch-target rounded-[var(--radius-large)] border border-[var(--primary)] bg-[var(--primary)] px-3 py-2 text-xs font-medium text-white shadow-[var(--shadow-subtle)] transition-[transform,opacity,border-color,box-shadow] duration-[var(--motion-normal)] [@media(hover:hover)]:hover:-translate-y-px hover:bg-[var(--primary-hover)]  active:scale-[0.98] focus-ring sm:px-4 sm:text-sm"
         >
           MINERVOTを開く
         </Link>

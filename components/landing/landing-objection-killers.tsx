@@ -28,13 +28,13 @@ export function LandingObjectionKillers() {
   return (
     <section
       id="objections"
-      className="border-t border-[#74172A]/8 bg-[#FAF6F5] px-4 py-16 sm:px-8 sm:py-24"
+      className="border-t border-[var(--primary)]/8 bg-[var(--surface-muted)] px-4 py-16 sm:px-8 sm:py-24"
     >
       <div className="mx-auto max-w-[980px]">
-        <p className="text-xs font-semibold tracking-[0.16em] text-[#9A7137]">
+        <p className="text-xs font-semibold tracking-[0.16em] text-[var(--accent-gold)]">
           使わない理由を消す
         </p>
-        <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[#26191C] sm:text-4xl">
+        <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[var(--text-primary)] sm:text-4xl">
           「あとで」になる理由を、先に潰す。
         </h2>
 
@@ -42,23 +42,23 @@ export function LandingObjectionKillers() {
           {OBJECTIONS.map((item) => (
             <li
               key={item.fear}
-              className="grid gap-2 rounded-[20px] border border-[#74172A]/10 bg-white p-5 sm:grid-cols-[160px_1fr] sm:gap-6"
+              className="grid gap-2 rounded-[20px] border border-[var(--primary)]/10 bg-white p-5 sm:grid-cols-[160px_1fr] sm:gap-6"
             >
-              <p className="text-sm font-semibold text-[#9A8D90]">
+              <p className="text-sm font-semibold text-[var(--text-tertiary)]">
                 「{item.fear}」
               </p>
-              <p className="text-sm leading-7 text-[#281A1E]">{item.kill}</p>
+              <p className="text-sm leading-7 text-[var(--text-primary)]">{item.kill}</p>
             </li>
           ))}
         </ul>
 
-        <p className="mt-6 text-sm text-[#75686B]">
+        <p className="mt-6 text-sm text-[var(--text-secondary)]">
           証拠は
-          <a href="#proof" className="mx-1 font-medium text-[#74172A] underline-offset-2 hover:underline">
+          <a href="#proof" className="mx-1 font-medium text-[var(--primary)] underline-offset-2 hover:underline">
             完成見本
           </a>
           、流れは
-          <a href="#finish-story" className="mx-1 font-medium text-[#74172A] underline-offset-2 hover:underline">
+          <a href="#finish-story" className="mx-1 font-medium text-[var(--primary)] underline-offset-2 hover:underline">
             仕事が終わる瞬間
           </a>
           を見てください。
@@ -68,7 +68,7 @@ export function LandingObjectionKillers() {
           <Link href="/sign-up">
             <Button
               size="lg"
-              className="min-h-13 rounded-full bg-[#74172A] px-7 text-sm font-semibold text-white hover:bg-[#5D1020]"
+              className="min-h-13 rounded-[var(--radius-large)] bg-[var(--primary)] px-7 text-sm font-semibold text-white hover:bg-[var(--primary-hover)]"
             >
               不安が消えたら、今すぐ1件
             </Button>

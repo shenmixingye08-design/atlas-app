@@ -84,12 +84,14 @@ describe("getAtlasClerkAppearance", () => {
     expect(contrastRatio(colorInputText, colorInputBackground)).toBeGreaterThan(
       7,
     );
-    expect(light.elements.socialButtonsBlockButton).toContain("bg-[#faf6f5]");
+    expect(light.elements.socialButtonsBlockButton).toContain("bg-[#f4eee8]");
     expect(light.elements.socialButtonsBlockButtonText).toContain(
-      "text-[#281a1e]",
+      "text-[#2a211c]",
     );
-    expect(light.elements.formButtonPrimary).toContain("bg-[#74172a]");
+    expect(light.elements.formButtonPrimary).toContain("bg-[#b54438]");
     expect(light.elements.formButtonPrimary).toContain("text-[#ffffff]");
+    expect(light.variables.colorSuccess).toBe("#2f6a4d");
+    expect(light.variables.colorPrimary).toBe("#b54438");
   });
 
   it("keeps dark mode dark with light readable text, inputs, and Google button", () => {
@@ -112,7 +114,7 @@ describe("getAtlasClerkAppearance", () => {
     );
     expect(dark.elements.formFieldInput).toContain("bg-[#1c2028]");
     expect(dark.elements.formFieldInput).toContain("text-[#ffffff]");
-    expect(dark.elements.formButtonPrimary).toContain("bg-[#c48a96]");
+    expect(dark.elements.formButtonPrimary).toContain("bg-[#e89a8c]");
   });
 
   it("does not mix Clerk variables with MINERVOT CSS variables in elements", () => {

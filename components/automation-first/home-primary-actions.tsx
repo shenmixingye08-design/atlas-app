@@ -35,8 +35,8 @@ export function HomePrimaryActions({ compact = false }: { compact?: boolean }) {
         }}
         aria-labelledby="home-primary-x-automation"
         className={cn(
-          "motion-press-card group flex h-full min-h-[var(--touch-target)] flex-col rounded-[var(--radius-2xl)] border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[var(--shadow-md)] transition-colors duration-[var(--motion-fast)]",
-          "hover:border-[color-mix(in_srgb,var(--brand)_28%,var(--border))] hover:shadow-[var(--shadow-lg)]",
+          "motion-press-card group flex h-full min-h-[var(--touch-target)] flex-col rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] shadow-[var(--shadow-subtle)] transition-[border-color,box-shadow] duration-[var(--motion-fast)]",
+          "[@media(hover:hover)_and_(pointer:fine)]:hover:border-[var(--border-strong)] [@media(hover:hover)_and_(pointer:fine)]:hover:shadow-[var(--shadow-floating)]",
           "focus-ring",
           compact ? "p-4 sm:p-5" : "p-5 sm:p-6",
         )}

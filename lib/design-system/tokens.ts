@@ -1,55 +1,67 @@
 /**
- * MINERVOT Design Tokens — LP-aligned wine · off-white · light gray
+ * MINERVOT Design Tokens — Warm Minimal
  * Runtime values live in app/globals.css (`:root` / themes / `.minervot-lux`).
- * Prefer CSS variables in UI; keep these in sync for typed references.
+ * Prefer CSS variables in UI; keep these hex fallbacks in sync.
  */
 
 export const COLORS = {
-  background: "#fffdfb",
-  surface: "#fffdfb",
-  surfaceMuted: "#faf6f5",
+  background: "#fffaf6",
+  surface: "#fffaf6",
+  surfaceRaised: "#ffffff",
+  surfaceMuted: "#f4eee8",
   card: "#ffffff",
-  cardGlass: "rgba(255, 253, 251, 0.9)",
+  cardGlass: "rgba(255, 250, 246, 0.94)",
 
-  textPrimary: "#281a1e",
-  textSecondary: "#75686b",
-  textMuted: "#9a8d90",
+  textPrimary: "#2a211c",
+  textSecondary: "#534840",
+  textTertiary: "#6a5f57",
+  textMuted: "#6a5f57",
 
-  border: "rgba(40, 26, 30, 0.08)",
-  borderStrong: "rgba(40, 26, 30, 0.14)",
-  borderFocus: "rgba(116, 23, 42, 0.45)",
+  border: "rgba(42, 33, 28, 0.08)",
+  borderStrong: "rgba(42, 33, 28, 0.16)",
+  borderFocus: "rgba(181, 68, 56, 0.48)",
 
-  accent: "#74172a",
-  accentHover: "#5d1020",
-  accentMuted: "rgba(116, 23, 42, 0.1)",
+  primary: "#b54438",
+  primaryHover: "#97392f",
+  primaryPressed: "#7e3028",
+  accent: "#b54438",
+  accentHover: "#97392f",
+  accentMuted: "rgba(181, 68, 56, 0.12)",
+  accentGold: "#b0894a",
 
-  /** Brand — wine red (matches LP) */
-  brand: "#74172a",
-  brandHover: "#5d1020",
-  brandMuted: "rgba(116, 23, 42, 0.1)",
-  brandForeground: "#ffffff",
+  brand: "#b54438",
+  brandHover: "#97392f",
+  brandMuted: "rgba(181, 68, 56, 0.12)",
+  brandForeground: "#fffaf6",
 
-  success: "#5f1222",
-  successBg: "rgba(116, 23, 42, 0.08)",
-  warning: "#75686b",
-  warningBg: "rgba(117, 104, 107, 0.12)",
-  error: "#c40014",
-  errorBg: "rgba(196, 0, 20, 0.06)",
-  info: "#74172a",
-  infoBg: "rgba(116, 23, 42, 0.08)",
+  success: "#2f6a4d",
+  successBg: "rgba(47, 106, 77, 0.1)",
+  warning: "#9a6b1f",
+  warningBg: "rgba(154, 107, 31, 0.12)",
+  error: "#c4332e",
+  errorBg: "rgba(196, 51, 46, 0.1)",
+  info: "#3d5a73",
+  infoBg: "rgba(61, 90, 115, 0.1)",
 
-  secondaryHover: "#f5f1f0",
+  focusRing: "rgba(181, 68, 56, 0.48)",
+  overlay: "rgba(42, 33, 28, 0.36)",
+  secondaryHover: "#efe8e2",
 } as const;
 
 export const TYPOGRAPHY = {
   display: "clamp(1.75rem, 2vw + 1rem, 2.25rem)",
+  heading1: "1.5rem",
+  heading2: "1.125rem",
+  heading3: "1rem",
   pageTitle: "1.5rem",
   section: "1.125rem",
   cardTitle: "1rem",
   body: "0.9375rem",
+  bodySmall: "0.875rem",
   label: "0.8125rem",
   caption: "0.75rem",
-  meta: "0.6875rem",
+  number: "0.9375rem",
+  meta: "0.75rem",
   leadingBody: 1.65,
 } as const;
 
@@ -70,97 +82,85 @@ export const Z_INDEX = {
 } as const;
 
 export const COLORS_DARK = {
-  background: "#141014",
-  surface: "#141014",
-  surfaceMuted: "#241e21",
-  card: "#1c1719",
-  cardGlass: "rgba(20, 16, 20, 0.9)",
+  background: "#1c1714",
+  surface: "#1c1714",
+  surfaceRaised: "#26201c",
+  surfaceMuted: "#2c2622",
+  card: "#26201c",
+  cardGlass: "rgba(38, 32, 28, 0.9)",
 
-  textPrimary: "#faf6f5",
-  textSecondary: "#c9bdbf",
-  textMuted: "#9a8d90",
+  textPrimary: "#f7f1eb",
+  textSecondary: "#c9bfb6",
+  textTertiary: "#a89d94",
+  textMuted: "#a89d94",
 
-  border: "rgba(255, 255, 255, 0.1)",
-  borderStrong: "rgba(255, 255, 255, 0.16)",
-  borderFocus: "rgba(196, 138, 150, 0.5)",
+  border: "rgba(247, 241, 235, 0.1)",
+  borderStrong: "rgba(247, 241, 235, 0.16)",
+  borderFocus: "rgba(232, 154, 140, 0.5)",
 
-  accent: "#c48a96",
-  accentHover: "#d4a3ad",
-  accentMuted: "rgba(196, 138, 150, 0.18)",
+  primary: "#e89a8c",
+  accent: "#e89a8c",
+  accentHover: "#f0b4a8",
+  accentMuted: "rgba(232, 154, 140, 0.18)",
 
-  success: "#c48a96",
-  successBg: "rgba(196, 138, 150, 0.14)",
-  warning: "#c9bdbf",
-  warningBg: "rgba(201, 189, 191, 0.14)",
-  error: "#ff6b7a",
-  errorBg: "rgba(255, 107, 122, 0.12)",
+  success: "#7dba98",
+  successBg: "rgba(125, 186, 152, 0.14)",
+  warning: "#e2b56a",
+  warningBg: "rgba(226, 181, 106, 0.14)",
+  error: "#f08a84",
+  errorBg: "rgba(240, 138, 132, 0.14)",
 
-  secondaryHover: "#2a2226",
+  secondaryHover: "#332c28",
 } as const;
 
-/**
- * MINERVOT App Shell — LP wine palette (post-login).
- * Runtime values live in `.minervot-lux` (app/globals.css).
- */
 export const COLORS_LUX = {
-  background: "#fffdfb",
-  surface: "#fffdfb",
-  surfaceElevated: "#ffffff",
-  surfaceMuted: "#faf6f5",
-  card: "#ffffff",
-  cardGlass: "rgba(255, 253, 251, 0.92)",
-
-  textPrimary: "#281a1e",
-  textSecondary: "#75686b",
-  textMuted: "#9a8d90",
-
-  border: "rgba(40, 26, 30, 0.08)",
-  borderStrong: "rgba(40, 26, 30, 0.14)",
-  borderFocus: "rgba(116, 23, 42, 0.45)",
-
-  accent: "#74172a",
-  accentHover: "#5d1020",
-  accentMuted: "rgba(116, 23, 42, 0.1)",
-  accentForeground: "#ffffff",
-
-  accentRed: "#74172a",
-  accentRedStrong: "#5d1020",
-
-  success: "#5f1222",
-  successBg: "rgba(116, 23, 42, 0.08)",
-  warning: "#75686b",
-  warningBg: "rgba(117, 104, 107, 0.12)",
-  error: "#c40014",
-  errorBg: "rgba(196, 0, 20, 0.06)",
-
-  secondaryHover: "#f5f1f0",
+  ...COLORS,
+  surfaceElevated: COLORS.surfaceRaised,
+  accentForeground: COLORS.brandForeground,
+  accentRed: COLORS.primary,
+  accentRedStrong: COLORS.primaryHover,
 } as const;
 
-/** Alias — warm light is now the same LP wine shell */
 export const COLORS_LUX_WARM = COLORS_LUX;
 
-/** @deprecated Use COLORS — kept for backward compatibility */
 export const ATLAS_PHILOSOPHY = {
   accent: COLORS.accent,
   background: COLORS.background,
   surface: COLORS.surfaceMuted,
   text: COLORS.textPrimary,
-  motionMs: { fast: 140, base: 220, slow: 260 },
+  motionMs: { fast: 140, base: 200, slow: 280 },
 } as const;
 
 export const MOTION = {
+  instant: "80ms",
   fast: "140ms cubic-bezier(0.25, 0.1, 0.25, 1)",
-  base: "220ms cubic-bezier(0.25, 0.1, 0.25, 1)",
-  slow: "260ms cubic-bezier(0.25, 0.1, 0.25, 1)",
+  normal: "200ms cubic-bezier(0.25, 0.1, 0.25, 1)",
+  slow: "280ms cubic-bezier(0.25, 0.1, 0.25, 1)",
+  easingStandard: "cubic-bezier(0.25, 0.1, 0.25, 1)",
+  easingEmphasized: "cubic-bezier(0.32, 0.72, 0, 1)",
+  springSoft: "280ms cubic-bezier(0.22, 1, 0.36, 1)",
+  springSnappy: "180ms cubic-bezier(0.22, 1, 0.36, 1)",
+  base: "200ms cubic-bezier(0.25, 0.1, 0.25, 1)",
 } as const;
 
 export const RADIUS = {
+  small: "8px",
+  medium: "12px",
+  large: "16px",
+  card: "20px",
+  modal: "24px",
+  full: "9999px",
   sm: "8px",
   md: "12px",
   lg: "16px",
   xl: "20px",
   "2xl": "24px",
-  full: "9999px",
+} as const;
+
+export const SHADOW = {
+  subtle: "0 1px 2px rgba(42, 33, 28, 0.04)",
+  floating: "0 8px 24px rgba(42, 33, 28, 0.06)",
+  modal: "0 16px 40px rgba(42, 33, 28, 0.1)",
 } as const;
 
 export const SPACING = {

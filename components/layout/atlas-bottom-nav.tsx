@@ -39,7 +39,7 @@ export function AtlasBottomNav() {
   return (
     <nav
       aria-label={ui.nav.menu}
-      className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border-subtle)] bg-[var(--card-glass)] backdrop-blur-xl md:hidden"
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border-subtle)] bg-[var(--surface-raised)] md:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       <ul className="relative mx-auto flex max-w-lg items-stretch justify-around px-0.5 pt-1">
@@ -60,7 +60,7 @@ export function AtlasBottomNav() {
                   aria-current={isActive ? "page" : undefined}
                 >
                   <span
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-lg leading-none text-[var(--accent-foreground)] shadow-[var(--shadow-glow)]"
+                    className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-large)] bg-[var(--primary)] text-lg leading-none text-[var(--accent-foreground)]"
                     aria-hidden
                   >
                     {item.icon}

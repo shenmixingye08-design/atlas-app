@@ -25,10 +25,10 @@ describe("motion tokens", () => {
     expect(MOTION_SCALE.tap).toBeLessThanOrEqual(0.985);
     expect(MOTION_SCALE.tapCard).toBeGreaterThanOrEqual(0.97);
     expect(MOTION_SCALE.tapCard).toBeLessThanOrEqual(0.985);
-    expect(MOTION_Y.page).toBeGreaterThanOrEqual(8);
-    expect(MOTION_Y.page).toBeLessThanOrEqual(12);
-    expect(MOTION_Y.card).toBeGreaterThanOrEqual(8);
-    expect(MOTION_Y.card).toBeLessThanOrEqual(12);
+    expect(MOTION_Y.page).toBeGreaterThanOrEqual(4);
+    expect(MOTION_Y.page).toBeLessThanOrEqual(8);
+    expect(MOTION_Y.card).toBeGreaterThanOrEqual(6);
+    expect(MOTION_Y.card).toBeLessThanOrEqual(10);
   });
 
   it("caps list stagger and uses a damped spring", () => {

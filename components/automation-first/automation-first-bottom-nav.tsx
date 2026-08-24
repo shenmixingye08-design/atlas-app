@@ -69,7 +69,7 @@ export function AutomationFirstBottomNav() {
     <>
       <nav
         aria-label="メインメニュー"
-        className="fixed inset-x-0 bottom-0 z-[var(--z-nav)] border-t border-[var(--border)] bg-[var(--card-glass)] backdrop-blur-xl md:hidden"
+        className="fixed inset-x-0 bottom-0 z-[var(--z-nav)] border-t border-[var(--border-subtle)] bg-[var(--surface-raised)] md:hidden"
         style={{ paddingBottom: "var(--safe-area-bottom)" }}
       >
         <ul className="relative mx-auto flex max-w-lg items-stretch justify-around px-0.5 pt-1">
@@ -95,7 +95,7 @@ export function AutomationFirstBottomNav() {
                     className="motion-press flex min-h-[56px] w-full flex-col items-center justify-center gap-1 px-0.5 text-[11px] font-medium leading-tight focus-ring"
                   >
                     <span
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--brand)] text-[var(--brand-foreground)] shadow-[var(--shadow-cta)]"
+                      className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-large)] bg-[var(--primary)] text-[var(--accent-foreground)] shadow-[var(--shadow-subtle)]"
                       aria-hidden
                     >
                       <BottomIcon id={item.id} className="h-5 w-5" />

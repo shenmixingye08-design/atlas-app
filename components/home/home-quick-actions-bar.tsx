@@ -35,7 +35,7 @@ export function HomeQuickActionsBar() {
       <nav
         aria-label={ui.homeUx.quickActionsLabel}
         className={cn(
-          "pointer-events-auto mx-auto w-full max-w-lg border-t border-[var(--border)] bg-[var(--card)]/95 px-3 py-2 shadow-[var(--shadow-md)] backdrop-blur-xl",
+          "pointer-events-auto mx-auto w-full max-w-lg border-t border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3 py-2 shadow-[var(--shadow-subtle)]",
           "md:max-w-xl md:rounded-[var(--radius-xl)] md:border md:px-4 md:py-3",
         )}
       >

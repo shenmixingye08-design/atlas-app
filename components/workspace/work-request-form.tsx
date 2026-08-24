@@ -149,7 +149,7 @@ export function WorkRequestForm({
                   });
                 }}
                 className={cn(
-                  "touch-target rounded-full border px-4 py-2 text-sm font-medium transition-all focus-ring",
+                  "touch-target rounded-[var(--radius-large)] border px-4 py-2 text-sm font-medium transition-[transform,opacity,border-color,background-color] duration-[var(--motion-fast)] focus-ring",
                   selected
                     ? "border-accent bg-accent/10 text-foreground"
                     : "border-[var(--border-subtle)] bg-[var(--card)] text-foreground hover:border-accent/40",
@@ -270,7 +270,7 @@ export function WorkRequestForm({
           onClick={handleSubmit}
           disabled={!canSubmit}
           isLoading={isLoading || uploading}
-          className="h-14 w-full rounded-full text-base sm:h-16 sm:text-lg"
+          className="h-14 w-full rounded-[var(--radius-large)] text-base sm:h-16 sm:text-lg"
         >
           {uploading ? "アップロード中…" : ui.secretaryHome.askSubmit}
         </Button>

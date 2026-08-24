@@ -38,16 +38,16 @@ export function LandingFinishStory() {
   return (
     <section
       id="finish-story"
-      className="border-t border-[#74172A]/8 bg-white px-4 py-16 sm:px-8 sm:py-24"
+      className="border-t border-[var(--primary)]/8 bg-white px-4 py-16 sm:px-8 sm:py-24"
     >
       <div className="mx-auto max-w-[980px]">
-        <p className="text-xs font-semibold tracking-[0.16em] text-[#9A7137]">
+        <p className="text-xs font-semibold tracking-[0.16em] text-[var(--accent-gold)]">
           仕事が終わる瞬間
         </p>
-        <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[#26191C] sm:text-4xl">
+        <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[var(--text-primary)] sm:text-4xl">
           依頼してから、完成するまで。
         </h2>
-        <p className="mt-4 max-w-2xl text-sm leading-7 text-[#75686B] sm:text-base">
+        <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--text-secondary)] sm:text-base">
           「毎朝10時に投稿して」と一度頼む → 毎日の原稿作成と投稿を自動実行 → 終わったら通知。自分は確認するだけです。
         </p>
 
@@ -55,24 +55,24 @@ export function LandingFinishStory() {
           {STEPS.map((step) => (
             <li
               key={step.id}
-              className="rounded-[20px] border border-[#74172A]/10 bg-[#FFFDFB] p-5 sm:p-6"
+              className="rounded-[20px] border border-[var(--primary)]/10 bg-[var(--background)] p-5 sm:p-6"
             >
-              <p className="text-[11px] font-semibold tracking-[0.14em] text-[#9A7137]">
+              <p className="text-[11px] font-semibold tracking-[0.14em] text-[var(--accent-gold)]">
                 {step.label}
               </p>
-              <h3 className="mt-2 text-lg font-semibold text-[#281A1E]">
+              <h3 className="mt-2 text-lg font-semibold text-[var(--text-primary)]">
                 {step.title}
               </h3>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#5A4B4F]">
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[var(--text-secondary)]">
                 {step.body}
               </p>
             </li>
           ))}
         </ol>
 
-        <p className="mt-4 text-xs text-[#9A8D90]">
+        <p className="mt-4 text-xs text-[var(--text-tertiary)]">
           ※本文は見本です。実ファイルは
-          <a href="#proof" className="mx-1 text-[#74172A] underline-offset-2 hover:underline">
+          <a href="#proof" className="mx-1 text-[var(--primary)] underline-offset-2 hover:underline">
             完成見本
           </a>
           から確認できます。
@@ -82,7 +82,7 @@ export function LandingFinishStory() {
           <Link href="/sign-up">
             <Button
               size="lg"
-              className="min-h-13 rounded-full bg-[#74172A] px-7 text-sm font-semibold text-white hover:bg-[#5D1020]"
+              className="min-h-13 rounded-[var(--radius-large)] bg-[var(--primary)] px-7 text-sm font-semibold text-white hover:bg-[var(--primary-hover)]"
             >
               今すぐ同じ流れで1件終わらせる
             </Button>
