@@ -30,7 +30,6 @@ import {
 import {
   defaultBatchConnectionChecker,
   scheduleApprovedBatchItems,
-  X_BATCH_UNAPPROVED_BLOCK_MESSAGE,
   type BatchConnectionChecker,
 } from "./batch-publish";
 import {

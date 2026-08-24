@@ -40,9 +40,24 @@ const OWNER = "user_batch_owner";
 const OTHER = "user_batch_other";
 const CONTEXT = { email: "owner@example.com", isOwner: false, isBetaUser: true };
 
+const DISTINCT_COPY = [
+  "課題を一つに絞ると、今日の仕事は前に進みます。",
+  "小さな見直しが、翌日の準備を楽にします。",
+  "いま一番整えたい点はどこでしょうか。",
+  "続けることが力になります。無理のない範囲で。",
+  "相談は短くまとめてから始めると迷いが減ります。",
+  "振り返りは3行で十分です。次の一手が見えます。",
+  "役立つ範囲だけ共有します。誇張はしません。",
+  "完璧より継続です。今日は一つだけ片付けましょう。",
+  "手順を紙に書くと、抜け漏れが減ります。",
+  "朝のうちに優先順位を決めると午後が楽です。",
+  "終わった仕事は残さず記録しておくと安心です。",
+  "次の依頼は、前回の型を再利用できます。",
+];
+
 function uniqueGenerator(): BatchCopyGenerator {
   return async ({ item, batch }) => ({
-    text: `${batch.theme || "仕事"}の視点${item.sequence}。今日は一つだけ整えます。`,
+    text: DISTINCT_COPY[(item.sequence - 1) % DISTINCT_COPY.length]!,
     angle: `切り口${item.sequence}`,
     theme: batch.theme,
     hashtags: [],
@@ -51,10 +66,11 @@ function uniqueGenerator(): BatchCopyGenerator {
 }
 
 function duplicateThenUniqueGenerator(): BatchCopyGenerator {
-  let dupes = 0;
+  const seen = new Map<number, number>();
   return async ({ item, batch }) => {
-    if (item.sequence <= 2 && dupes < 2) {
-      dupes += 1;
+    const attempt = (seen.get(item.sequence) ?? 0) + 1;
+    seen.set(item.sequence, attempt);
+    if (item.sequence <= 2 && attempt === 1) {
       return {
         text: "同じ文章を繰り返すテスト投稿です。",
         angle: "重複",
@@ -64,7 +80,7 @@ function duplicateThenUniqueGenerator(): BatchCopyGenerator {
       };
     }
     return {
-      text: `別案${item.sequence}-${dupes}。読み手の負担を減らす話です。`,
+      text: `再生成${item.sequence}回目${attempt}: ${DISTINCT_COPY[(item.sequence + attempt * 5) % DISTINCT_COPY.length]}`,
       angle: `切り口${item.sequence}`,
       theme: batch.theme,
       hashtags: [],

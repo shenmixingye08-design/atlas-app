@@ -179,7 +179,10 @@ export function XPostBatchPanel() {
 
   const onItemPatch = async (
     itemId: string,
-    patch: Parameters<typeof patchXPostBatchItemClient>[0],
+    patch: Omit<
+      Parameters<typeof patchXPostBatchItemClient>[0],
+      "batchId" | "itemId"
+    >,
   ) => {
     if (!active) return;
     setBusy(true);
@@ -507,7 +510,7 @@ export function XPostBatchPanel() {
           <div className="space-y-4">
             {active.items.map((item) => (
               <BatchItemCard
-                key={item.id}
+                key={`${item.id}:${item.updatedAt}`}
                 item={item}
                 timeZone={active.batch.timezone}
                 selected={selected.includes(item.id)}
@@ -555,9 +558,6 @@ function BatchItemCard(input: {
   onSchedule: (iso: string) => void;
 }) {
   const [text, setText] = useState(input.item.text);
-  useEffect(() => {
-    setText(input.item.text);
-  }, [input.item.text]);
 
   const localValue = input.item.scheduledFor
     ? toDateTimeLocal(input.item.scheduledFor, input.timeZone)

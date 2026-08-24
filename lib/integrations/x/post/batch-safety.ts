@@ -57,7 +57,7 @@ export function applyHashtagPolicy(input: {
   theme: string;
 }): string {
   const policy = input.policy.trim();
-  let text = input.text.trim();
+  const text = input.text.trim();
   const existing = extractHashtags(text);
 
   if (/付けない|なし|不要|禁止/.test(policy)) {

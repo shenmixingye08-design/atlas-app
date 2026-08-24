@@ -197,8 +197,7 @@ export async function generateBatchCopies(input: {
     const seen: string[] = [...(input.recentTexts ?? [])];
     for (const item of nextItems) {
       if (!item.text.trim() || item.status === "failed") continue;
-      const others = seen.filter((text) => text !== item.text);
-      if (isTooSimilar(item.text, others, X_POST_BATCH_SIMILARITY_THRESHOLD)) {
+      if (isTooSimilar(item.text, seen, X_POST_BATCH_SIMILARITY_THRESHOLD)) {
         duplicates.push(item);
       } else {
         seen.push(item.text);
