@@ -41,6 +41,7 @@ export const ATLAS_PROTECTED_PAGE_MATCHERS = [
   "/reports(.*)",
   "/billing(.*)",
   "/owner(.*)",
+  "/admin/revenue-agent(.*)",
   "/teach-work(.*)",
   "/learned-jobs(.*)",
 ] as const;

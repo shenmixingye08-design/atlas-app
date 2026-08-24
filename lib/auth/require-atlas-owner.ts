@@ -1,7 +1,7 @@
 import "server-only";
 
 import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { getClerkUserPrimaryEmail } from "./get-clerk-user-email";
 import { isAtlasOwnerEmail } from "./is-atlas-owner";
@@ -21,6 +21,15 @@ export async function requireAtlasOwner(): Promise<{ email: string }> {
     redirect("/");
   }
 
+  return { email: decision.email };
+}
+
+/** Pages that must not reveal an admin surface to non-owners. */
+export async function requireAtlasOwnerOrNotFound(): Promise<{ email: string }> {
+  const decision = await resolveOwnerAccess();
+  if (decision.status !== "ok") {
+    notFound();
+  }
   return { email: decision.email };
 }
 
