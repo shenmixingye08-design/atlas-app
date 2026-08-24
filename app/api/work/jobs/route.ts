@@ -115,6 +115,9 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  const { observeFirstRequestSubmitted } = await import("@/lib/activation/observe");
+  observeFirstRequestSubmitted(userId, accepted.jobId);
+
   return Response.json(
     {
       ok: true,

@@ -32,6 +32,7 @@ import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ActivationEmptyState } from "@/components/onboarding/activation-empty-state";
 
 const FILTERS: { id: NoticeFilter; label: string }[] = [
   { id: "all", label: ui.notifications.filterAll },
@@ -246,13 +247,8 @@ export function NotificationList({
 
   if (notifications.length === 0) {
     return (
-      <div className={cn("px-4 py-10 text-center", !compact && "py-16")}>
-        <p className="text-base font-medium text-foreground">
-          {ui.notifications.emptyTitle}
-        </p>
-        <p className="mt-2 text-sm text-[var(--text-secondary)]">
-          {ui.notifications.emptyDescription}
-        </p>
+      <div className={cn("px-4 py-10", !compact && "py-16")}>
+        <ActivationEmptyState surface="notifications" className="mx-auto max-w-md text-center" />
       </div>
     );
   }

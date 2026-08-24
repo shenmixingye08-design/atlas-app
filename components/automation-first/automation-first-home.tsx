@@ -10,6 +10,7 @@ import {
   NewUserValueSteps,
 } from "@/components/automation-first/entrusted-work";
 import { ErrorState } from "@/components/automation-first/error-state";
+import { ActivationHomeBanner } from "@/components/onboarding/activation-home-banner";
 import { HomePrimaryActions } from "@/components/automation-first/home-primary-actions";
 import { WorkCountStrip, YourWorkList } from "@/components/automation-first/your-work";
 import { SectionHeader } from "@/components/automation-first/page-header";
@@ -554,6 +555,8 @@ export function AutomationFirstHome({
           {HOME_X_AUTOMATION_SUPPORT}
         </p>
       </header>
+
+      <ActivationHomeBanner />
 
       <HomePrimaryActions compact={isReturningUser} />
 

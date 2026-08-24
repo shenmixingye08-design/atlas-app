@@ -11,8 +11,12 @@ import {
 } from "@/lib/automations/client";
 import type { Automation } from "@/lib/automations/types";
 import { normalizeAutomations, normalizeProjects } from "@/lib/compatibility";
-import { shouldShowFirstExperience } from "@/lib/first-experience";
-import { shouldShowWelcomeWizard } from "@/lib/onboarding";
+import { getOnboardingState, shouldShowWelcomeWizard } from "@/lib/onboarding";
+import {
+  fetchActivationView,
+  patchActivationProgress,
+} from "@/lib/activation/client";
+import { ActivationOnboarding } from "@/components/onboarding/activation-onboarding";
 import { useProjects } from "@/lib/projects/use-projects";
 import { ui } from "@/lib/i18n";
 import { useFeatureAvailability } from "@/lib/feature-flags";
@@ -23,7 +27,6 @@ import {
 } from "@/components/home/home-dashboard-error-boundary";
 import { SecretaryHomeDashboard } from "@/components/home/secretary-home-dashboard";
 import { FirstSuccessExperience } from "@/components/onboarding/first-success-experience";
-import { WelcomeWizard } from "@/components/onboarding/welcome-wizard";
 
 export function ProjectsDashboard() {
   const searchParams = useSearchParams();
@@ -76,12 +79,38 @@ export function ProjectsDashboard() {
   }, []);
 
   const refreshExperienceState = useCallback(() => {
-    const forceWelcome = searchParams.get("welcome") === "1";
+    const forceWelcome =
+      searchParams.get("welcome") === "1" ||
+      searchParams.get("onboarding") === "1";
     const forceExperience = searchParams.get("experience") === "1";
-    setShowWizard(forceWelcome || shouldShowWelcomeWizard());
-    setShowFirstExperience(
-      !forceWelcome && (forceExperience || shouldShowFirstExperience()),
-    );
+    const localOnboarding = getOnboardingState();
+    const localExisting =
+      localOnboarding.completedOnboarding ||
+      (!localOnboarding.showOnboarding && !shouldShowWelcomeWizard());
+
+    void fetchActivationView()
+      .then((view) => {
+        if (view.progress.legacyUser || view.progress.phase === "completed") {
+          setShowWizard(forceWelcome);
+          setShowFirstExperience(forceExperience);
+          return;
+        }
+        if (localExisting && view.shouldShowOnboarding) {
+          void patchActivationProgress({
+            phase: "completed",
+            checklistHidden: true,
+          });
+          setShowWizard(forceWelcome);
+          setShowFirstExperience(forceExperience);
+          return;
+        }
+        setShowWizard(forceWelcome || view.shouldShowOnboarding);
+        setShowFirstExperience(forceExperience);
+      })
+      .catch(() => {
+        setShowWizard(forceWelcome || (!localExisting && shouldShowWelcomeWizard()));
+        setShowFirstExperience(forceExperience);
+      });
   }, [searchParams]);
 
   useEffect(() => {
@@ -92,8 +121,7 @@ export function ProjectsDashboard() {
 
   const handleWizardComplete = useCallback(() => {
     setShowWizard(false);
-    // Clarity path: after the one-screen welcome, always start first completion.
-    setShowFirstExperience(true);
+    setShowFirstExperience(false);
   }, []);
 
   const handleFirstExperienceComplete = useCallback(() => {
@@ -129,7 +157,12 @@ export function ProjectsDashboard() {
 
   return (
     <HomeDashboardErrorBoundary>
-      {showWizard && <WelcomeWizard onComplete={handleWizardComplete} />}
+      {showWizard && (
+        <ActivationOnboarding
+          onComplete={handleWizardComplete}
+          onSkip={handleFirstExperienceDefer}
+        />
+      )}
       {showFirstExperience && !showWizard && (
         <FirstSuccessExperience
           onComplete={handleFirstExperienceComplete}

@@ -22,7 +22,7 @@ export async function notifyAutomationCompleted(
   input: { automationId: string; name: string; templateId?: string },
 ) {
   if (!userId) return null;
-  return await createNotification({
+  const recorded = await createNotification({
     audience: "user",
     userId,
     type: "completed",
@@ -34,6 +34,10 @@ export async function notifyAutomationCompleted(
     automationId: input.automationId,
     lineEvent: "automation_completed",
   });
+  void import("@/lib/activation/observe").then(({ observeAutomationRunSucceeded }) => {
+    observeAutomationRunSucceeded(userId, input.automationId);
+  });
+  return recorded;
 }
 
 export async function notifyAutomationAwaitingReview(
@@ -504,7 +508,7 @@ export async function notifyWorkCompleted(
     ? `お待たせいたしました。${input.message}`
     : "お待たせいたしました。ご依頼の内容が完了しました。";
 
-  return await upsertWorkNotificationByRequestId({
+  const recorded = await upsertWorkNotificationByRequestId({
     userId,
     requestId: input.requestId ?? input.workflowRunId ?? deliverableId,
     build: () =>
@@ -537,6 +541,13 @@ export async function notifyWorkCompleted(
       isRead: false,
     }),
   });
+  void import("@/lib/activation/observe").then(({ observeFirstRequestCompleted }) => {
+    observeFirstRequestCompleted(userId, {
+      requestId: input.requestId,
+      deliverableId,
+    });
+  });
+  return recorded;
 }
 
 /** N-07: PARTIAL work — never type "completed". */

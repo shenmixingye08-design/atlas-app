@@ -169,9 +169,9 @@ export function TodayWorkPage({
       {timeline.length === 0 && !opsError ? (
         <EmptyState
           title="今日の予定はまだありません"
-          description="自動化を作成すると、ここに今日の流れが表示されます。"
-          primaryHref="/automations/new"
-          primaryLabel="新しい自動化を作る"
+          description="毎週や毎日の仕事を1件保存すると、ここに今日の流れが出ます。"
+          primaryHref="/automations?create=1"
+          primaryLabel="自動化を1件作る"
           secondaryHref="/workspace"
           secondaryLabel="一度だけお願いする"
           onPrimaryClick={() =>

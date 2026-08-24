@@ -157,6 +157,9 @@ export async function POST(request: Request): Promise<Response> {
       hasUrl: Boolean(session.url),
     });
 
+    const { observeCheckoutStarted } = await import("@/lib/activation/observe");
+    observeCheckoutStarted(userId, planId);
+
     return Response.json({
       url: session.url,
       sessionId: session.sessionId,

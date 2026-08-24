@@ -32,6 +32,7 @@ import type {
   XScheduledPost,
 } from "@/lib/integrations/x/post";
 import { ui } from "@/lib/i18n";
+import { ActivationEmptyState } from "@/components/onboarding/activation-empty-state";
 
 const MODE_TABS: { id: XPostMode; label: string }[] = [
   { id: "immediate", label: ui.xPost.modeImmediate },
@@ -513,9 +514,7 @@ export function XPostPanel() {
               {ui.xPost.draftsTitle}
             </h2>
             {drafts.length === 0 ? (
-              <p className="text-sm text-[var(--foreground-muted)]">
-                {ui.xPost.draftsEmpty}
-              </p>
+              <ActivationEmptyState surface="x_posts" />
             ) : (
               <ul className="space-y-3">
                 {drafts.map((draft) => (

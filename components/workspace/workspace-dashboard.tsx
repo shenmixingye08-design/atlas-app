@@ -41,6 +41,7 @@ import {
 } from "@/lib/workspace/work-request-payload";
 
 import { FinalOutput } from "./final-output";
+import { QUICK_REQUEST_PRESETS } from "@/lib/workspace/quick-request-presets";
 import { WorkRequestForm } from "./work-request-form";
 import { WorkflowResults } from "./workflow-results";
 import {
@@ -109,9 +110,13 @@ export function WorkspaceDashboard() {
 
   useEffect(() => {
     const prefill = searchParams.get("assignment");
+    const presetId = searchParams.get("preset");
     const timer = window.setTimeout(() => {
       if (prefill?.trim()) {
         setAssignment(prefill);
+      } else if (presetId) {
+        const preset = QUICK_REQUEST_PRESETS.find((item) => item.id === presetId);
+        if (preset && !preset.href) setAssignment(preset.prompt);
       }
       setTaughtWorkflowHint(searchParams.get("taught") === "1");
     }, 0);

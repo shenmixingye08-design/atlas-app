@@ -59,6 +59,9 @@ export async function GET(request: Request): Promise<Response> {
       });
     }
 
+    const { observeIntegration } = await import("@/lib/activation/observe");
+    observeIntegration(userId, "x", "started");
+
     const authorizeUrl = buildXAuthorizeUrl(origin, userId, {
       returnTo: requestedReturnTo,
     });

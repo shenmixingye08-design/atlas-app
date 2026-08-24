@@ -130,6 +130,9 @@ export async function finalizeCheckoutSessionForUser(input: {
     await resolveUserSubscriptionDurable(input.userId);
     const current = resolveUserSubscription(input.userId);
     if (planId && current.planId === planId) {
+      void import("@/lib/activation/observe").then(({ observeSubscriptionActivated }) => {
+        observeSubscriptionActivated(input.userId, planId);
+      });
       return { planId, synced: true };
     }
     if (!planId && current.planId !== "free") {

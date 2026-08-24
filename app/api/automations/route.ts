@@ -234,6 +234,8 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const automation = await automationService.createForUser(userId, parsed);
+  const { observeAutomationCreated } = await import("@/lib/activation/observe");
+  observeAutomationCreated(userId, automation.id);
   const { recordAuditLogSafe, auditRequestContext } = await import(
     "@/lib/owner/audit-log"
   );

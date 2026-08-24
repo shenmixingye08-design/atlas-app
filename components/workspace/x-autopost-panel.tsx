@@ -1,12 +1,13 @@
 "use client";
 import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { IntegrationExplainer } from "@/components/onboarding/integration-explainer";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { connectExternalService } from "@/lib/integrations/external-services";
@@ -40,6 +41,7 @@ import type {
   XAutoPostMode,
 } from "@/lib/integrations/x/post/autopost-types";
 import { isClarityFirstRun } from "@/lib/product-clarity/first-run";
+import { fetchActivationView } from "@/lib/activation/client";
 import {
   DEFAULT_X_POST_TIME,
   FIRST_RUN_SAVED_NOTICE,
@@ -154,9 +156,11 @@ export function XAutoPostPanel() {
   const [form, setForm] = useState<FormState | null>(null);
   const [themeDraft, setThemeDraft] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const restoredDraftRef = useRef(false);
 
   const oauthConnected = searchParams.get("connected") === "x";
   const oauthError = searchParams.get("x_error") === "1";
+  const oauthReason = searchParams.get("reason");
   const onboarding = searchParams.get("onboarding") === "1";
   const oauthUsername = searchParams.get("username");
   const displayConnected = connected || oauthConnected;
@@ -204,6 +208,33 @@ export function XAutoPostPanel() {
     });
   }, [load]);
 
+  useEffect(() => {
+    if (!onboarding || !form || restoredDraftRef.current) return;
+    restoredDraftRef.current = true;
+    void fetchActivationView()
+      .then((view) => {
+        const theme = view.progress.draftInputs.theme?.trim();
+        const hour = view.progress.draftInputs.hour?.trim();
+        if (!theme && !hour) return;
+        setForm((current) => {
+          if (!current) return current;
+          const hasTheme = current.themes.some((item) => item.trim());
+          return {
+            ...current,
+            purpose: hasTheme ? current.purpose : theme || current.purpose,
+            themes: hasTheme ? current.themes : theme ? [theme] : current.themes,
+            postTimes:
+              current.postTimes[0] && current.postTimes[0] !== DEFAULT_X_POST_TIME
+                ? current.postTimes
+                : hour
+                  ? [`${hour.padStart(2, "0")}:00`]
+                  : current.postTimes,
+          };
+        });
+      })
+      .catch(() => undefined);
+  }, [onboarding, form]);
+
   const frequencyOption = useMemo(
     () =>
       X_AUTOPOST_FREQUENCY_OPTIONS.find(
@@ -225,10 +256,6 @@ export function XAutoPostPanel() {
   const oauthNotice = oauthConnected
     ? "X連携が完了しました。テーマと時刻を設定してください。"
     : null;
-  const oauthErrorMessage = oauthError
-    ? "X連携が完了しませんでした。この画面からもう一度連携できます。"
-    : null;
-
   const lifecycle = resolveXAutoPostLifecycle({
     connectionStatus: displayConnectionStatus,
     connecting: isConnecting,
@@ -433,8 +460,9 @@ export function XAutoPostPanel() {
         </p>
       </header>
 
-      {(error || oauthErrorMessage) && (
-        <ErrorState message={error ?? oauthErrorMessage ?? ""} />
+      {error ? <ErrorState message={error} /> : null}
+      {(onboarding || oauthError) && (
+        <IntegrationExplainer service="x" failureReason={oauthReason} />
       )}
       {(notice || oauthNotice) && (
         <p className="rounded-[var(--radius-lg)] bg-[var(--status-success-bg)] px-4 py-3 text-sm text-[var(--status-success)]">
