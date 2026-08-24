@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 
 import {
@@ -28,26 +28,42 @@ import type {
   PersonalMemoryScope,
 } from "@/lib/personal-memory/types";
 import { PERSONAL_MEMORY_SCOPES } from "@/lib/personal-memory/types";
+import { cn } from "@/lib/design-system/cn";
 import { Button } from "@/components/ui/button";
-import { ErrorState } from "@/components/ui/error-state";
+import { Card } from "@/components/ui/card";
+import { Input, Textarea } from "@/components/ui/input";
 import { LoadingState } from "@/components/ui/loading-state";
 
 type Tab = "active" | "candidate" | "paused" | "rejected" | "expired" | "superseded" | "deleted";
 
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: "candidate", label: "確認待ち" },
+  { id: "active", label: "使用中" },
+  { id: "paused", label: "停止中" },
+  { id: "superseded", label: "置き換え済み" },
+  { id: "rejected", label: "記憶しない" },
+  { id: "expired", label: "期限切れ" },
+  { id: "deleted", label: "削除済み" },
+];
+
 function layerLabel(memory: PersonalMemoryRecord): string {
-  if (memory.appliesTo.automationIds.length > 0) return "自動化専用";
-  if (memory.appliesTo.artifactTypes.includes("x_post")) return "X投稿専用";
+  if (memory.appliesTo.automationIds.length > 0) return "この自動化だけ";
+  if (memory.appliesTo.artifactTypes.includes("x_post")) return "X投稿";
   if (memory.appliesTo.artifactTypes.length > 0 && !memory.appliesTo.global) {
-    return "チャンネル専用";
+    return "この種類の仕事";
   }
-  if (memory.scope === "preferred_formats") return "成果物形式";
-  return "ユーザー共通";
+  if (memory.scope === "preferred_formats") return "資料の形式";
+  return "いつも";
 }
+
+const selectClassName =
+  "minervot-form-control min-h-[44px] w-full rounded-[var(--radius-lg)] border border-[var(--form-control-border,var(--border))] bg-[var(--form-control-bg,var(--surface-muted))] px-4 text-base text-[var(--form-control-text,var(--text-primary))] focus:border-[var(--form-control-focus,var(--accent))] focus:outline-none focus:ring-2 focus:ring-[var(--form-control-focus,var(--accent))]/25";
 
 export function PersonalMemorySettingsPanel() {
   const [memories, setMemories] = useState<PersonalMemoryRecord[]>([]);
   const [settings, setSettings] = useState<PersonalMemorySettings | null>(null);
-  const [tab, setTab] = useState<Tab>("active");
+  const [tab, setTab] = useState<Tab>("candidate");
+  const [tabReady, setTabReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [title, setTitle] = useState("");
@@ -59,11 +75,15 @@ export function PersonalMemorySettingsPanel() {
   const [editTitle, setEditTitle] = useState("");
   const [editSummary, setEditSummary] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<PersonalMemoryRecord | null>(null);
+  const [wipeAll, setWipeAll] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const tabListRef = useRef<HTMLDivElement>(null);
 
   const reload = useCallback(async () => {
     const payload = await fetchPersonalMemories("all");
     setMemories(payload.memories);
     setSettings(payload.settings);
+    setError(null);
   }, []);
 
   useEffect(() => {
@@ -73,6 +93,11 @@ export function PersonalMemorySettingsPanel() {
         if (cancelled) return;
         setMemories(payload.memories);
         setSettings(payload.settings);
+        if (!tabReady) {
+          const hasCandidates = payload.memories.some((row) => row.status === "candidate");
+          setTab(hasCandidates ? "candidate" : "active");
+          setTabReady(true);
+        }
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message);
@@ -80,7 +105,29 @@ export function PersonalMemorySettingsPanel() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tabReady]);
+
+  useEffect(() => {
+    if (!deleteTarget && !wipeAll) return;
+    const node = dialogRef.current?.querySelector("button");
+    node?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setDeleteTarget(null);
+        setWipeAll(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [deleteTarget, wipeAll]);
+
+  const counts = useMemo(() => {
+    const next = Object.fromEntries(TABS.map((item) => [item.id, 0])) as Record<Tab, number>;
+    for (const memory of memories) {
+      if (next[memory.status] !== undefined) next[memory.status] += 1;
+    }
+    return next;
+  }, [memories]);
 
   const conflicts = useMemo(
     () =>
@@ -140,6 +187,7 @@ export function PersonalMemorySettingsPanel() {
         });
         setTitle("");
         setSummary("");
+        setTab("active");
         await reload();
       } catch (err) {
         setError(err instanceof Error ? err.message : "保存に失敗しました");
@@ -159,10 +207,24 @@ export function PersonalMemorySettingsPanel() {
     });
   };
 
+  const moveTab = (delta: number) => {
+    const index = TABS.findIndex((item) => item.id === tab);
+    const next = TABS[(index + delta + TABS.length) % TABS.length];
+    if (!next) return;
+    setTab(next.id);
+    requestAnimationFrame(() => {
+      tabListRef.current
+        ?.querySelector<HTMLElement>(`#memory-tab-${next.id}`)
+        ?.focus();
+    });
+  };
+
   if (error && !settings) {
     return (
       <div className="space-y-3 p-4">
-        <ErrorState message={error} />
+        <p className="text-sm text-[var(--error)]" role="alert">
+          {error}
+        </p>
         <Button onClick={() => void reload()}>再読み込み</Button>
       </div>
     );
@@ -170,137 +232,143 @@ export function PersonalMemorySettingsPanel() {
   if (!settings) return <LoadingState />;
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-6 pb-[max(6rem,env(safe-area-inset-bottom))]">
+    <div
+      className="mx-auto flex w-full min-w-0 max-w-2xl flex-col gap-6 pb-[max(6rem,env(safe-area-inset-bottom))]"
+      aria-busy={pending || undefined}
+    >
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          MINERVOTが記憶していること
-        </h1>
-        <p className="text-sm text-[var(--text-secondary)]">
+        <p className="text-caption text-accent">記憶</p>
+        <h1 className="text-display text-foreground">MINERVOTが記憶していること</h1>
+        <p className="text-body text-[var(--text-secondary)]">
           仕事の好みを安全に覚え、次回の入力と修正を減らします。勝手には保存しません。
         </p>
-        <p className="text-xs text-[var(--text-muted)]">
-          仕事の手順・テンプレの詳細は{" "}
-          <Link href="/settings/work-memory" className="text-accent underline">
+        <p className="text-caption text-[var(--text-muted)]">
+          仕事の手順や型は{" "}
+          <Link href="/settings/work-memory" className="text-accent underline underline-offset-2">
             仕事の記憶
           </Link>
           でも管理できます。
         </p>
       </header>
 
-      <section className="space-y-3 rounded-2xl bg-[var(--surface-muted)] p-4">
-        <div className="flex items-center justify-between gap-3">
+      {error ? (
+        <div className="space-y-2" role="alert">
+          <p className="text-sm text-[var(--error)]">{error}</p>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="w-full min-[390px]:w-auto"
+            onClick={() => void reload()}
+          >
+            再読み込みして再試行
+          </Button>
+        </div>
+      ) : null}
+
+      <Card padding="md" className="space-y-3 border border-[var(--border-subtle)]">
+        <div className="flex flex-col gap-3 min-[390px]:flex-row min-[390px]:items-center min-[390px]:justify-between">
           <div>
-            <p className="font-medium">記憶機能</p>
-            <p className="text-xs text-[var(--text-secondary)]">
-              OFFにすると新規保存と利用を止めます
+            <p className="font-medium text-foreground">記憶機能</p>
+            <p className="text-caption text-[var(--text-secondary)]">
+              オフにすると、新しい保存と利用を止めます
             </p>
           </div>
           <Button
             size="sm"
             variant={settings.enabled ? "secondary" : "primary"}
             disabled={pending}
+            className="w-full min-[390px]:w-auto"
             onClick={() => onToggleEnabled(!settings.enabled)}
+            aria-pressed={settings.enabled}
           >
-            {settings.enabled ? "ON（停止する）" : "OFF（再開する）"}
+            {settings.enabled ? "オン（停止する）" : "オフ（再開する）"}
           </Button>
         </div>
-        <label className="flex min-h-[44px] items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={settings.explicitOnly}
-            onChange={(e) =>
-              startTransition(async () => {
-                setSettings(
-                  await updatePersonalMemorySettingsClient({
-                    explicitOnly: e.target.checked,
-                  }),
-                );
-              })
-            }
-          />
-          明示した内容だけ記憶する
-        </label>
-        <label className="flex min-h-[44px] items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={settings.proposeFromCorrections}
-            onChange={(e) =>
-              startTransition(async () => {
-                setSettings(
-                  await updatePersonalMemorySettingsClient({
-                    proposeFromCorrections: e.target.checked,
-                  }),
-                );
-              })
-            }
-          />
-          修正から候補を提案する
-        </label>
-        <label className="flex min-h-[44px] items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={settings.blockSensitiveStorage}
-            onChange={(e) =>
-              startTransition(async () => {
-                setSettings(
-                  await updatePersonalMemorySettingsClient({
-                    blockSensitiveStorage: e.target.checked,
-                  }),
-                );
-              })
-            }
-          />
-          送信先・保存先などの大切な情報は保存しない
-        </label>
-      </section>
+        {(
+          [
+            ["explicitOnly", "明示した内容だけ記憶する", settings.explicitOnly],
+            ["proposeFromCorrections", "修正から候補を提案する", settings.proposeFromCorrections],
+            [
+              "blockSensitiveStorage",
+              "送信先・保存先などの大切な情報は保存しない",
+              settings.blockSensitiveStorage,
+            ],
+          ] as const
+        ).map(([key, label, checked]) => (
+          <label
+            key={key}
+            className="flex min-h-[44px] items-center gap-3 text-sm text-foreground"
+          >
+            <input
+              type="checkbox"
+              className="h-5 w-5 accent-[var(--accent)]"
+              checked={checked}
+              onChange={(event) =>
+                startTransition(async () => {
+                  setSettings(
+                    await updatePersonalMemorySettingsClient({
+                      [key]: event.target.checked,
+                    }),
+                  );
+                })
+              }
+            />
+            {label}
+          </label>
+        ))}
+      </Card>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium">明示して覚える</h2>
-        <select
-          className="min-h-[44px] w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
-          value={scope}
-          onChange={(e) => setScope(e.target.value as PersonalMemoryScope)}
-        >
-          {Object.entries(SCOPE_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-        <input
-          className="min-h-[44px] w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
-          placeholder="タイトル（例: 文体）"
+      <Card padding="md" className="space-y-3 border border-[var(--border-subtle)]">
+        <h2 className="text-section font-semibold text-foreground">明示して覚える</h2>
+        <label className="block space-y-1.5 text-sm">
+          <span className="text-[var(--text-secondary)]">種類</span>
+          <select
+            className={selectClassName}
+            value={scope}
+            onChange={(event) => setScope(event.target.value as PersonalMemoryScope)}
+          >
+            {Object.entries(SCOPE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Input
+          label="タイトル"
+          placeholder="例: 文体"
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(event) => setTitle(event.target.value)}
         />
-        <textarea
-          className="min-h-24 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
-          placeholder="内容（例: 短く丁寧に書く）"
+        <Textarea
+          label="内容"
+          placeholder="例: 短く丁寧に書く"
           value={summary}
-          onChange={(e) => setSummary(e.target.value)}
+          onChange={(event) => setSummary(event.target.value)}
         />
-        <Button disabled={pending || !settings.enabled} onClick={onCreate}>
+        <Button
+          disabled={pending || !settings.enabled}
+          className="w-full min-[390px]:w-auto"
+          onClick={onCreate}
+        >
           記憶する
         </Button>
-      </section>
+      </Card>
 
-      <section className="space-y-3">
-        <label className="block space-y-1 text-sm">
-          <span>検索</span>
-          <input
-            className="min-h-[44px] w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
-            placeholder="タイトル・内容・スコープで検索"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </label>
-        <label className="block space-y-1 text-sm">
-          <span>スコープ</span>
+      <section className="space-y-3" aria-label="記憶の絞り込み">
+        <Input
+          label="検索"
+          placeholder="タイトル・内容・種類で探す"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <label className="block space-y-1.5 text-sm">
+          <span className="text-[var(--text-secondary)]">種類で絞る</span>
           <select
-            className="min-h-[44px] w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
+            className={selectClassName}
             value={scopeFilter}
-            onChange={(e) =>
-              setScopeFilter(e.target.value as PersonalMemoryScope | "all")
+            onChange={(event) =>
+              setScopeFilter(event.target.value as PersonalMemoryScope | "all")
             }
           >
             <option value="all">すべて</option>
@@ -314,241 +382,276 @@ export function PersonalMemorySettingsPanel() {
       </section>
 
       {conflicts.length > 0 ? (
-        <section className="space-y-2 rounded-2xl border border-[var(--border)] p-4">
-          <h2 className="text-sm font-medium">競合している記憶</h2>
+        <Card
+          padding="md"
+          className="space-y-2 border border-[var(--border-subtle)]"
+          role="region"
+          aria-labelledby="memory-conflicts-heading"
+        >
+          <h2 id="memory-conflicts-heading" className="text-section font-semibold">
+            確認が必要な記憶
+          </h2>
           <ul className="space-y-2 text-sm text-[var(--text-secondary)]">
             {conflicts.slice(0, 5).map((conflict) => (
               <li key={conflict.id}>{conflict.message}</li>
             ))}
           </ul>
-          <p className="text-xs text-[var(--text-muted)]">
-            矛盾が自動で解けない場合は、不要な記憶を無効化または削除してください。
+          <p className="text-caption text-[var(--text-muted)]">
+            矛盾がある場合は、使わない方を停止または削除してください。
           </p>
-        </section>
+        </Card>
       ) : null}
 
-      <section className="space-y-3">
-        <div className="flex flex-wrap gap-2">
-          {(
-            [
-              ["active", "使用中"],
-              ["candidate", "候補"],
-              ["paused", "使用停止"],
-              ["rejected", "拒否済み"],
-              ["expired", "期限切れ"],
-              ["superseded", "置き換え済み"],
-              ["deleted", "削除済み"],
-            ] as const
-          ).map(([id, label]) => (
+      <section className="space-y-3" aria-labelledby="memory-list-heading">
+        <h2 id="memory-list-heading" className="sr-only">
+          記憶の一覧
+        </h2>
+        <div
+          ref={tabListRef}
+          role="tablist"
+          aria-label="記憶の状態"
+          className="-mx-1 flex flex-wrap gap-2 overflow-x-auto px-1 pb-1"
+          onKeyDown={(event) => {
+            if (event.key === "ArrowRight") {
+              event.preventDefault();
+              moveTab(1);
+            }
+            if (event.key === "ArrowLeft") {
+              event.preventDefault();
+              moveTab(-1);
+            }
+          }}
+        >
+          {TABS.map((item) => (
             <button
-              key={id}
+              key={item.id}
               type="button"
-              onClick={() => setTab(id)}
-              className={`min-h-[44px] min-w-[44px] rounded-full px-4 text-xs ${
-                tab === id
-                  ? "bg-accent text-[var(--accent-foreground)]"
-                  : "bg-[var(--surface-muted)]"
-              }`}
+              role="tab"
+              id={`memory-tab-${item.id}`}
+              aria-selected={tab === item.id}
+              aria-controls={`memory-panel-${item.id}`}
+              tabIndex={tab === item.id ? 0 : -1}
+              onClick={() => setTab(item.id)}
+              className={cn(
+                "min-h-[44px] min-w-[44px] rounded-full px-4 text-sm focus-ring",
+                tab === item.id
+                  ? "bg-accent text-[var(--accent-foreground,#fff)]"
+                  : "bg-[var(--surface-muted)] text-[var(--text-secondary)]",
+              )}
             >
-              {label}
+              {item.label}
+              {counts[item.id] > 0 ? ` ${counts[item.id]}` : ""}
             </button>
           ))}
         </div>
 
-        <ul className="space-y-3">
+        <ul
+          id={`memory-panel-${tab}`}
+          role="tabpanel"
+          aria-labelledby={`memory-tab-${tab}`}
+          className="space-y-3"
+        >
           {filtered.length === 0 ? (
             <li className="text-sm text-[var(--text-secondary)]">該当する記憶はありません</li>
           ) : (
             filtered.map((memory) => (
-              <li
-                key={memory.id}
-                className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4"
-              >
-                <div className="flex flex-wrap items-center gap-2 text-[10px] text-[var(--text-secondary)]">
-                  <span>{KIND_LABELS[memory.kind]}</span>
-                  <span>{SCOPE_LABELS[memory.scope]}</span>
-                  <span>{layerLabel(memory)}</span>
-                  <span>{SOURCE_LABELS[memory.source]}</span>
-                  <span>{STATUS_LABELS[memory.status]}</span>
-                </div>
-                {editingId === memory.id ? (
-                  <div className="mt-3 space-y-2">
-                    <input
-                      className="min-h-[44px] w-full rounded-xl border border-[var(--border)] px-3 text-sm"
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                    />
-                    <textarea
-                      className="min-h-20 w-full rounded-xl border border-[var(--border)] px-3 py-2 text-sm"
-                      value={editSummary}
-                      onChange={(e) => setEditSummary(e.target.value)}
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        disabled={pending}
-                        onClick={() =>
-                          runAction(async () => {
-                            await updatePersonalMemoryClient(memory.id, {
-                              title: editTitle.trim(),
-                              summary: editSummary.trim(),
-                              value: { ...memory.value, text: editSummary.trim() },
-                            });
-                            setEditingId(null);
-                          })
-                        }
-                      >
-                        保存
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setEditingId(null)}
-                      >
-                        キャンセル
-                      </Button>
-                    </div>
+              <li key={memory.id}>
+                <Card padding="md" className="border border-[var(--border-subtle)]">
+                  <div className="flex flex-wrap gap-2 text-caption text-[var(--text-secondary)]">
+                    <span>{SCOPE_LABELS[memory.scope]}</span>
+                    <span>{layerLabel(memory)}</span>
+                    <span>{SOURCE_LABELS[memory.source]}</span>
+                    <span>{STATUS_LABELS[memory.status]}</span>
                   </div>
-                ) : (
-                  <>
-                    <p className="mt-2 text-sm font-semibold">{memory.title}</p>
-                    <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                      {memory.summary}
-                    </p>
-                  </>
-                )}
-                <p className="mt-2 text-xs text-[var(--text-muted)]">
-                  最終適用:{" "}
-                  {memory.lastUsedAt
-                    ? new Date(memory.lastUsedAt).toLocaleString("ja-JP")
-                    : "未使用"}
-                  {memory.confirmedAt
-                    ? ` · 確認 ${new Date(memory.confirmedAt).toLocaleString("ja-JP")}`
-                    : ""}
-                  {memory.expiresAt
-                    ? ` · 期限 ${new Date(memory.expiresAt).toLocaleDateString("ja-JP")}`
-                    : ""}
-                </p>
-                {memory.evidence[0] ? (
-                  <p className="mt-1 text-xs text-[var(--text-muted)]">
-                    根拠: {memory.evidence[0].summary}
-                    {memory.sourceJobId ? ` · job ${memory.sourceJobId}` : ""}
-                    {memory.sourceBatchId ? ` · batch ${memory.sourceBatchId}` : ""}
-                  </p>
-                ) : null}
-                {memory.candidateReason ? (
-                  <p className="mt-1 text-xs text-[var(--text-muted)]">
-                    作成理由: {memory.candidateReason}
-                  </p>
-                ) : null}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {memory.status === "candidate" ? (
+                  {editingId === memory.id ? (
+                    <div className="mt-3 space-y-3">
+                      <Input
+                        label="タイトル"
+                        value={editTitle}
+                        onChange={(event) => setEditTitle(event.target.value)}
+                      />
+                      <Textarea
+                        label="内容"
+                        value={editSummary}
+                        onChange={(event) => setEditSummary(event.target.value)}
+                      />
+                      <div className="flex flex-col gap-2 min-[390px]:flex-row">
+                        <Button
+                          size="sm"
+                          disabled={pending}
+                          className="w-full min-[390px]:w-auto"
+                          onClick={() =>
+                            runAction(async () => {
+                              await updatePersonalMemoryClient(memory.id, {
+                                title: editTitle.trim(),
+                                summary: editSummary.trim(),
+                                value: { ...memory.value, text: editSummary.trim() },
+                              });
+                              setEditingId(null);
+                            })
+                          }
+                        >
+                          保存
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="w-full min-[390px]:w-auto"
+                          onClick={() => setEditingId(null)}
+                        >
+                          キャンセル
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
                     <>
-                      <Button
-                        size="sm"
-                        disabled={pending}
-                        onClick={() =>
-                          runAction(async () => {
-                            await approvePersonalMemoryCandidate(memory.id, "global");
-                          })
-                        }
-                      >
-                        確認して記憶する
-                      </Button>
+                      <h3 className="mt-2 text-card-title font-semibold text-foreground">
+                        {memory.title}
+                      </h3>
+                      <p className="mt-1 text-sm leading-relaxed text-[var(--text-secondary)]">
+                        {memory.summary}
+                      </p>
+                    </>
+                  )}
+                  <p className="mt-2 text-caption text-[var(--text-muted)]">
+                    最後に使った日:{" "}
+                    {memory.lastUsedAt
+                      ? new Date(memory.lastUsedAt).toLocaleString("ja-JP")
+                      : "まだ使っていません"}
+                    {memory.confirmedAt
+                      ? ` · 確認 ${new Date(memory.confirmedAt).toLocaleString("ja-JP")}`
+                      : ""}
+                    {memory.expiresAt
+                      ? ` · 期限 ${new Date(memory.expiresAt).toLocaleDateString("ja-JP")}`
+                      : ""}
+                  </p>
+                  {memory.evidence[0] ? (
+                    <p className="mt-1 text-caption text-[var(--text-muted)]">
+                      根拠: {memory.evidence[0].summary}
+                    </p>
+                  ) : null}
+                  {memory.candidateReason ? (
+                    <p className="mt-1 text-caption text-[var(--text-muted)]">
+                      提案理由: {memory.candidateReason}
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex flex-col gap-2 min-[390px]:flex-row min-[390px]:flex-wrap">
+                    {memory.status === "candidate" ? (
+                      <>
+                        <Button
+                          size="sm"
+                          disabled={pending}
+                          className="w-full min-[390px]:w-auto"
+                          onClick={() =>
+                            runAction(async () => {
+                              await approvePersonalMemoryCandidate(memory.id, "global");
+                            })
+                          }
+                        >
+                          確認して記憶する
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={pending}
+                          className="w-full min-[390px]:w-auto"
+                          onClick={() =>
+                            runAction(async () => {
+                              await approvePersonalMemoryCandidate(memory.id, "automation");
+                            })
+                          }
+                        >
+                          この自動化だけ
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={pending}
+                          className="w-full min-[390px]:w-auto"
+                          onClick={() =>
+                            runAction(async () => {
+                              await rejectPersonalMemoryCandidate(memory.id);
+                            })
+                          }
+                        >
+                          記憶しない
+                        </Button>
+                      </>
+                    ) : null}
+                    {memory.status === "active" ? (
                       <Button
                         size="sm"
                         variant="secondary"
                         disabled={pending}
+                        className="w-full min-[390px]:w-auto"
                         onClick={() =>
                           runAction(async () => {
-                            await approvePersonalMemoryCandidate(memory.id, "automation");
+                            await updatePersonalMemoryClient(memory.id, {
+                              status: "paused",
+                            });
                           })
                         }
                       >
-                        この自動化だけ
+                        使わない
                       </Button>
+                    ) : null}
+                    {memory.status === "paused" || memory.status === "superseded" ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={pending}
+                        className="w-full min-[390px]:w-auto"
+                        onClick={() =>
+                          runAction(async () => {
+                            await updatePersonalMemoryClient(memory.id, {
+                              status: "active",
+                            });
+                          })
+                        }
+                      >
+                        使う
+                      </Button>
+                    ) : null}
+                    {memory.status !== "deleted" && memory.status !== "candidate" ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={pending}
+                        className="w-full min-[390px]:w-auto"
+                        onClick={() => {
+                          setEditingId(memory.id);
+                          setEditTitle(memory.title);
+                          setEditSummary(memory.summary);
+                        }}
+                      >
+                        編集
+                      </Button>
+                    ) : null}
+                    {memory.status !== "deleted" ? (
                       <Button
                         size="sm"
                         variant="ghost"
                         disabled={pending}
-                        onClick={() =>
-                          runAction(async () => {
-                            await rejectPersonalMemoryCandidate(memory.id);
-                          })
-                        }
+                        className="w-full min-[390px]:w-auto"
+                        onClick={() => setDeleteTarget(memory)}
                       >
-                        記憶しない
+                        削除
                       </Button>
-                    </>
-                  ) : null}
-                  {memory.status === "active" ? (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={pending}
-                      onClick={() =>
-                        runAction(async () => {
-                          await updatePersonalMemoryClient(memory.id, {
-                            status: "paused",
-                          });
-                        })
-                      }
-                    >
-                      無効化
-                    </Button>
-                  ) : null}
-                  {memory.status === "paused" || memory.status === "superseded" ? (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={pending}
-                      onClick={() =>
-                        runAction(async () => {
-                          await updatePersonalMemoryClient(memory.id, {
-                            status: "active",
-                          });
-                        })
-                      }
-                    >
-                      有効化
-                    </Button>
-                  ) : null}
-                  {memory.status !== "deleted" && memory.status !== "candidate" ? (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={pending}
-                      onClick={() => {
-                        setEditingId(memory.id);
-                        setEditTitle(memory.title);
-                        setEditSummary(memory.summary);
-                      }}
-                    >
-                      編集
-                    </Button>
-                  ) : null}
-                  {memory.status !== "deleted" ? (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={pending}
-                      onClick={() => setDeleteTarget(memory)}
-                    >
-                      削除
-                    </Button>
-                  ) : null}
-                </div>
+                    ) : null}
+                  </div>
+                </Card>
               </li>
             ))
           )}
         </ul>
       </section>
 
-      <section className="flex flex-wrap gap-2">
+      <section className="flex flex-col gap-2 min-[390px]:flex-row min-[390px]:flex-wrap" aria-label="整理">
         <Button
           size="sm"
           variant="secondary"
           disabled={pending}
+          className="w-full min-[390px]:w-auto"
           onClick={() =>
             startTransition(async () => {
               const data = await exportPersonalMemoriesClient();
@@ -558,60 +661,78 @@ export function PersonalMemorySettingsPanel() {
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
               a.href = url;
-              a.download = "atlas-personal-memory.json";
+              a.download = "minervot-memory.json";
               a.click();
               URL.revokeObjectURL(url);
             })
           }
         >
-          エクスポート
+          書き出す
         </Button>
         <Button
           size="sm"
           variant="secondary"
           disabled={pending}
+          className="w-full min-[390px]:w-auto"
           onClick={() =>
             runAction(async () => {
               await pauseAllPersonalMemoriesClient();
             })
           }
         >
-          古い記憶を整理（一括停止）
+          古い記憶を整理
         </Button>
         <Button
           size="sm"
           variant="danger"
           disabled={pending}
-          onClick={() =>
-            startTransition(async () => {
-              if (!window.confirm("すべての記憶を削除します。よろしいですか？")) {
-                return;
-              }
-              await deleteAllPersonalMemoriesClient();
-              await reload();
-            })
-          }
+          className="w-full min-[390px]:w-auto"
+          onClick={() => setWipeAll(true)}
         >
-          全削除
+          すべて削除
         </Button>
       </section>
 
-      {deleteTarget ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-          <div className="w-full max-w-sm rounded-2xl bg-[var(--surface)] p-5">
-            <p className="text-sm font-medium">この記憶を削除しますか？</p>
+      {deleteTarget || wipeAll ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          role="presentation"
+          onClick={() => {
+            setDeleteTarget(null);
+            setWipeAll(false);
+          }}
+        >
+          <div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="memory-delete-title"
+            className="w-full max-w-sm rounded-[var(--radius-2xl)] bg-[var(--card)] p-5 shadow-[var(--shadow-lg)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="memory-delete-title" className="text-sm font-semibold text-foreground">
+              {wipeAll ? "すべての記憶を削除しますか？" : "この記憶を削除しますか？"}
+            </h2>
             <p className="mt-2 text-sm text-[var(--text-secondary)]">
-              「{deleteTarget.title}」は次回の生成に使われなくなります。
+              {wipeAll
+                ? "削除した内容は、次回の作成に使われなくなります。"
+                : `「${deleteTarget?.title}」は次回の作成に使われなくなります。`}
             </p>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-col gap-2 min-[390px]:flex-row">
               <Button
                 size="sm"
                 variant="danger"
                 disabled={pending}
+                className="w-full min-[390px]:w-auto"
                 onClick={() =>
                   runAction(async () => {
-                    await deletePersonalMemoryClient(deleteTarget.id);
+                    if (wipeAll) {
+                      await deleteAllPersonalMemoriesClient();
+                    } else if (deleteTarget) {
+                      await deletePersonalMemoryClient(deleteTarget.id);
+                    }
                     setDeleteTarget(null);
+                    setWipeAll(false);
                   })
                 }
               >
@@ -620,7 +741,11 @@ export function PersonalMemorySettingsPanel() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => setDeleteTarget(null)}
+                className="w-full min-[390px]:w-auto"
+                onClick={() => {
+                  setDeleteTarget(null);
+                  setWipeAll(false);
+                }}
               >
                 キャンセル
               </Button>
@@ -629,14 +754,6 @@ export function PersonalMemorySettingsPanel() {
         </div>
       ) : null}
 
-      {error ? (
-        <div className="space-y-2">
-          <p className="text-sm text-[var(--danger,#9b2c2c)]">{error}</p>
-          <Button size="sm" variant="secondary" onClick={() => void reload()}>
-            再読み込みして再試行
-          </Button>
-        </div>
-      ) : null}
     </div>
   );
 }
