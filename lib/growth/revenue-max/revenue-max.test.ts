@@ -86,7 +86,8 @@ describe("revenue maximize", () => {
   });
 
   it("keeps first-job options to implemented Free paths", () => {
-    expect(FIRST_USECASES.every((row) => row.id !== "blog")).toBe(true);
+    const ids: string[] = FIRST_USECASES.map((row) => row.id);
+    expect(ids.includes("blog")).toBe(false);
     expect(FIRST_USECASES.every((row) => !row.label.includes("PowerPoint"))).toBe(true);
     expect(usecasesForPain("sns_posting").map((row) => row.id)).toEqual(["sns"]);
   });
