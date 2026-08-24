@@ -21,13 +21,15 @@ type PageRevealProps = {
  */
 export function PageReveal({ children, className }: PageRevealProps) {
   const reduce = useReducedMotion();
+  // null = not hydrated yet. Only travel after we know motion is allowed.
+  const allowTravel = reduce === false;
 
   return (
     <motion.div
       className={cn("min-w-0", className)}
-      initial={reduce ? false : { y: MOTION_Y.page }}
+      initial={allowTravel ? { y: MOTION_Y.page } : false}
       animate={{ y: 0 }}
-      transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.page}
+      transition={allowTravel ? MOTION_TRANSITION.page : MOTION_REDUCED}
     >
       {children}
     </motion.div>
