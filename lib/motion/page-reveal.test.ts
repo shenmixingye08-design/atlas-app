@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const src = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "page-reveal.tsx"),
+  join(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../components/motion/page-reveal.tsx",
+  ),
   "utf8",
 );
 
