@@ -173,6 +173,15 @@ export async function observeStripeRevenueEvent(input: {
         subscriptionId,
       },
     });
+    observeRevenueSafe(async () => {
+      const { handleRevenueMaxAction } = await import(
+        "@/lib/growth/revenue-max/service"
+      );
+      await handleRevenueMaxAction(input.userId, {
+        action: "checkout_completed",
+        sessionId: session.id,
+      });
+    });
     return;
   }
 
@@ -219,6 +228,15 @@ export async function observeStripeRevenueEvent(input: {
         ...common.metadata,
         subscriptionId: subscription.id,
       },
+    });
+    observeRevenueSafe(async () => {
+      const { handleRevenueMaxAction } = await import(
+        "@/lib/growth/revenue-max/service"
+      );
+      await handleRevenueMaxAction(input.userId, {
+        action: "cancellation_completed",
+        subscriptionId: subscription.id,
+      });
     });
     return;
   }

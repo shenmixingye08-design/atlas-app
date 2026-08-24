@@ -24,7 +24,9 @@ import {
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 
-type ExperienceStep = "select" | "running" | "complete";
+type ExperienceStep = "select" | "running" | "complete" | "failed";
+
+const HONEST_FIRST_TASKS = new Set<FirstExperienceTaskId>(["sns", "sales_material"]);
 
 type FirstSuccessExperienceProps = {
   onComplete: () => void;
@@ -52,10 +54,12 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
   const [visible, setVisible] = useState(false);
   // Pre-select recommended job so first completion is one tap (no effect setState).
   const [selectedTask, setSelectedTask] = useState<FirstExperienceTaskId | null>(
-    () =>
-      getRecommendedFirstExperienceTaskId(
+    () => {
+      const recommended = getRecommendedFirstExperienceTaskId(
         getOnboardingState().preferredTasks,
-      ),
+      );
+      return HONEST_FIRST_TASKS.has(recommended) ? recommended : "sns";
+    },
   );
   const [customText, setCustomText] = useState("");
   const [progressFilled, setProgressFilled] = useState(0);
@@ -64,9 +68,23 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
   const [running, setRunning] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
 
+  const [failMessage, setFailMessage] = useState<string | null>(null);
+  const [remainingAi, setRemainingAi] = useState<{
+    used: number;
+    limit: number;
+    remaining: number;
+  } | null>(null);
+
   const preferred = getOnboardingState().preferredTasks;
-  const recommendedId = getRecommendedFirstExperienceTaskId(preferred);
-  const clarityTasks = useMemo(() => getFirstRunClarityTasks(), []);
+  const recommendedId = HONEST_FIRST_TASKS.has(
+    getRecommendedFirstExperienceTaskId(preferred),
+  )
+    ? getRecommendedFirstExperienceTaskId(preferred)
+    : "sns";
+  const clarityTasks = useMemo(
+    () => getFirstRunClarityTasks().filter((task) => HONEST_FIRST_TASKS.has(task.id)),
+    [],
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => setVisible(true), 50);
@@ -100,6 +118,15 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
     setProgressFilled(0);
     setEmployeeStep(null);
 
+    void fetch("/api/growth/revenue-max", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "first_request_started",
+        usecase: selectedTask === "sns" ? "sns" : "document",
+      }),
+    }).catch(() => undefined);
+
     try {
       const experienceResult = await runFirstExperienceTask(
         selectedTask,
@@ -112,21 +139,34 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
       completeFirstExperience(experienceResult);
       setResult(experienceResult);
       setStep("complete");
+      void fetch("/api/growth/revenue-max", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "first_request_succeeded",
+          summary: experienceResult.deliverable.title,
+        }),
+      })
+        .then(async (response) => {
+          if (!response.ok) return;
+          const body = (await response.json()) as {
+            snapshot?: { remainingAi?: { used: number; limit: number; remaining: number } | null };
+          };
+          if (body.snapshot?.remainingAi) setRemainingAi(body.snapshot.remainingAi);
+        })
+        .catch(() => undefined);
     } catch {
-      const fallback = getFirstExperienceTask(selectedTask, customText);
-      const experienceResult = {
-        taskId: selectedTask,
-        jobCategory: fallback.jobCategory,
-        durationSec: 45,
-        deliverable: fallback.deliverable,
-        leadEmployee: fallback.leadEmployee,
-        saveLocation: fallback.saveLocation,
-        nextIntegration: fallback.nextIntegration,
-        usedRealOrchestration: false,
-      };
-      completeFirstExperience(experienceResult);
-      setResult(experienceResult);
-      setStep("complete");
+      const message = "初回依頼の実行に失敗しました。同じ内容でもう一度試せます。";
+      setFailMessage(message);
+      setStep("failed");
+      void fetch("/api/growth/revenue-max", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "first_request_failed",
+          message,
+        }),
+      }).catch(() => undefined);
     } finally {
       setRunning(false);
     }
@@ -272,13 +312,44 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
           </div>
         )}
 
-        {step === "complete" && result && timeSaved && (
+        {step === "failed" && (
+          <div className="px-6 py-8 sm:px-10 sm:py-10">
+            <h2 className="text-xl font-semibold text-foreground">初回の仕事が完了しませんでした</h2>
+            <p className="mt-3 text-sm text-[var(--foreground-muted)]">
+              {failMessage ?? "原因を特定できませんでした。"}
+            </p>
+            <p className="mt-2 text-sm text-[var(--foreground-muted)]">
+              同じ依頼をもう一度試すか、内容を変えてやり直せます。ホームへ戻ると続きが分からなくなるので、ここで再試行してください。
+            </p>
+            <Button
+              variant="primary"
+              size="lg"
+              className="mt-6 w-full"
+              onClick={() => void handleRun()}
+            >
+              もう一度試す
+            </Button>
+            <Button
+              variant="secondary"
+              size="lg"
+              className="mt-3 w-full"
+              onClick={() => setStep("select")}
+            >
+              内容を変える
+            </Button>
+            <Link href="/contact" className="mt-4 block text-center text-sm underline">
+              サポートへ連絡
+            </Link>
+          </div>
+        )}
+
+        {step === "complete" && result && (
           <div className="px-6 py-8 sm:px-10 sm:py-10">
             <h2 className="text-xl font-semibold text-foreground">
               {ui.firstExperience.completeTitle}
             </h2>
 
-            {timeSaved.savedMinutes != null && timeSaved.savedMinutes > 0 ? (
+            {timeSaved?.savedMinutes != null && timeSaved.savedMinutes > 0 ? (
               <div className="mt-4 rounded-[var(--radius-xl)] border border-accent/25 bg-[var(--accent-muted)] px-4 py-4">
                 <p className="text-base font-semibold text-foreground">
                   {ui.firstExperience.savedWorkValue(
@@ -317,7 +388,7 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
                   {ui.firstExperience.measuredDurationLabel}
                 </dt>
                 <dd className="mt-1 font-semibold text-foreground">
-                  {formatMeasuredDuration(timeSaved.measuredSec)}
+                  {timeSaved ? formatMeasuredDuration(timeSaved.measuredSec) : "—"}
                 </dd>
               </div>
               <div className="rounded-[var(--radius-lg)] bg-[var(--card)]/60 px-3 py-3">
@@ -325,7 +396,7 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
                   {ui.firstExperience.typicalManualLabel}
                 </dt>
                 <dd className="mt-1 font-semibold text-foreground">
-                  {timeSaved.typicalManualMinutes != null
+                  {timeSaved?.typicalManualMinutes != null
                     ? `${timeSaved.typicalManualMinutes}分`
                     : "—"}
                 </dd>
@@ -337,6 +408,24 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
                 <dd className="mt-1 font-semibold text-foreground">{result.saveLocation}</dd>
               </div>
             </dl>
+
+            <p className="mt-4 text-sm text-foreground">
+              今回できたこと: {result.deliverable.title}
+              {result.usedRealOrchestration ? "" : "（見本の下書きです。本番の依頼とは分けて表示しています）"}
+            </p>
+            <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+              次に自動化できること: 同じ依頼を自動化に残す、または X 連携後に投稿を任せる
+            </p>
+            {remainingAi ? (
+              <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+                無料プランの今月のAI利用: 残り {remainingAi.remaining} / {remainingAi.limit}
+                （使用 {remainingAi.used}）
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+                無料プランの残り利用量: 未取得
+              </p>
+            )}
 
             <Link
               href={result.nextIntegration.href}

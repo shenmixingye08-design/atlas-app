@@ -221,6 +221,14 @@ export async function markJobCompleted(input: {
   ) {
     observeRevenueSafe(() => observeFirstJobCompleted(input.userId));
   }
+  if (nextStatus === "completed") {
+    observeRevenueSafe(async () => {
+      const { touchRevenueMaxValue } = await import(
+        "@/lib/growth/revenue-max/value-touch"
+      );
+      await touchRevenueMaxValue(input.userId, input.resultSummary ?? null);
+    });
+  }
   return record;
 }
 

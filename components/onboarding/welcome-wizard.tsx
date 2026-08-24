@@ -4,6 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { completeOnboarding } from "@/lib/onboarding";
+import {
+  PAIN_CHOICES,
+  usecasesForPain,
+  type FirstUsecaseId,
+  type PainChoice,
+} from "@/lib/growth/revenue-max/usecases";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 
@@ -16,10 +22,17 @@ type WelcomeWizardProps = {
  */
 export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
   const [visible, setVisible] = useState(false);
+  const [pain, setPain] = useState<PainChoice | null>(null);
+  const [usecase, setUsecase] = useState<FirstUsecaseId | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setVisible(true), 50);
+    void fetch("/api/growth/revenue-max", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "onboarding_started" }),
+    }).catch(() => undefined);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -39,12 +52,23 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
   }, []);
 
   const finish = useCallback(() => {
+    if (!pain || !usecase) return;
     completeOnboarding({
-      preferredTasks: [],
+      preferredTasks:
+        usecase === "sns" ? ["sns"] : usecase === "document" ? ["sales_material"] : [],
       entryMode: "guide",
     });
+    void fetch("/api/growth/revenue-max", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "first_usecase_selected",
+        pain,
+        usecase,
+      }),
+    }).catch(() => undefined);
     onComplete();
-  }, [onComplete]);
+  }, [onComplete, pain, usecase]);
 
   return (
     <div
@@ -91,11 +115,58 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
             ))}
           </ol>
 
+          <fieldset className="mt-8 space-y-2">
+            <legend className="text-sm font-medium text-foreground">
+              何を減らしたいですか（1問）
+            </legend>
+            {PAIN_CHOICES.map((choice) => (
+              <label key={choice.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="pain"
+                  checked={pain === choice.id}
+                  onChange={() => {
+                    setPain(choice.id);
+                    const next = usecasesForPain(choice.id)[0];
+                    if (next) setUsecase(next.id);
+                  }}
+                />
+                {choice.label}
+              </label>
+            ))}
+          </fieldset>
+
+          {pain ? (
+            <fieldset className="mt-6 space-y-2">
+              <legend className="text-sm font-medium text-foreground">
+                最初に試す仕事（2問目）
+              </legend>
+              {usecasesForPain(pain).map((choice) => (
+                <label key={choice.id} className="flex flex-col gap-0.5 text-sm">
+                  <span className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="usecase"
+                      checked={usecase === choice.id}
+                      onChange={() => setUsecase(choice.id)}
+                    />
+                    {choice.label}
+                  </span>
+                  <span className="pl-6 text-xs text-[var(--foreground-muted)]">
+                    {choice.note}
+                    {choice.sampleOnly ? " · 見本で試せます" : ""}
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          ) : null}
+
           <div className="mt-8">
             <Button
               variant="primary"
               size="lg"
               className="w-full"
+              disabled={!pain || !usecase}
               onClick={finish}
             >
               {ui.onboarding.clarityCta}
