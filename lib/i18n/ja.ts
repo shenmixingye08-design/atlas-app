@@ -2421,7 +2421,7 @@ export const ui = {
     usedBanner: "過去の仕事の進め方を反映しています。",
     usedDetails: "使用した記憶",
     skipForRequest: "今回は過去の記憶を使わない",
-    empty: "まだ仕事の記憶がありません。右上から追加できます。",
+    empty: "まだ仕事の記憶がありません。「＋仕事を追加」から覚えさせられます。",
     emptyFiltered: "条件に一致する記憶がありません。",
     reasonLabel: "保存理由",
   },
