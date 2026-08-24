@@ -125,6 +125,14 @@ export async function observeCheckoutStarted(input: {
       livemode: input.livemode,
     },
   });
+  observeRevenueSafe(async () => {
+    const { recordOfferEvent } = await import("@/lib/growth/first-revenue/service");
+    await recordOfferEvent({
+      eventName: "checkout_started",
+      userId: input.userId,
+      livemode: input.livemode,
+    });
+  });
 }
 
 function yenFromStripeAmount(
@@ -189,6 +197,14 @@ export async function observeStripeRevenueEvent(input: {
       );
       await recordDiagnosisPaidIfBound(userId);
     });
+    observeRevenueSafe(async () => {
+      const { recordOfferEvent } = await import("@/lib/growth/first-revenue/service");
+      await recordOfferEvent({
+        eventName: "checkout_completed",
+        userId,
+        livemode: input.livemode,
+      });
+    });
     return;
   }
 
@@ -221,6 +237,15 @@ export async function observeStripeRevenueEvent(input: {
         amountYen: yenFromStripeAmount(invoice.amount_paid, invoice.currency),
         currency: invoice.currency ?? null,
       },
+    });
+    observeRevenueSafe(async () => {
+      const { recordOfferEvent } = await import("@/lib/growth/first-revenue/service");
+      await recordOfferEvent({
+        eventName: "invoice_paid",
+        userId,
+        livemode: input.livemode,
+        amountYen: yenFromStripeAmount(invoice.amount_paid, invoice.currency),
+      });
     });
     return;
   }

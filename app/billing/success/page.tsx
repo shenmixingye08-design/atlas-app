@@ -46,6 +46,12 @@ export default async function BillingSuccessPage({ searchParams }: PageProps) {
     });
     const { recordDiagnosisPaidIfBound } = await import("@/lib/growth/acquisition/service");
     await recordDiagnosisPaidIfBound(userId);
+    const { recordOfferEvent } = await import("@/lib/growth/first-revenue/service");
+    await recordOfferEvent({
+      eventName: "checkout_completed",
+      userId,
+      livemode: false,
+    });
     redirect(`${BILLING_SETTINGS_PATH}?checkout=success&plan=${planParam}`);
   }
 

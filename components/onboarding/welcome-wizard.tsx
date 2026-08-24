@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,9 @@ type WelcomeWizardProps = {
  */
 export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
   const [visible, setVisible] = useState(false);
+  const searchParams = useSearchParams();
+  const fromOffer =
+    searchParams.get("offer") === "sns" || searchParams.get("firstJob") === "sns";
   const [pain, setPain] = useState<PainChoice | null>(null);
   const [usecase, setUsecase] = useState<FirstUsecaseId | null>(null);
   const [fromDiagnosis, setFromDiagnosis] = useState(false);
@@ -71,11 +75,18 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
     dialogRef.current?.focus();
   }, []);
 
+  const selectedPain = fromOffer ? "sns_posting" : pain;
+  const selectedUsecase = fromOffer ? "sns" : usecase;
+
   const finish = useCallback(() => {
-    if (!pain || !usecase) return;
+    if (!selectedPain || !selectedUsecase) return;
     completeOnboarding({
       preferredTasks:
-        usecase === "sns" ? ["sns"] : usecase === "document" ? ["sales_material"] : [],
+        selectedUsecase === "sns"
+          ? ["sns"]
+          : selectedUsecase === "document"
+            ? ["sales_material"]
+            : [],
       entryMode: "guide",
     });
     void fetch("/api/growth/revenue-max", {
@@ -83,12 +94,12 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "first_usecase_selected",
-        pain,
-        usecase,
+        pain: selectedPain,
+        usecase: selectedUsecase,
       }),
     }).catch(() => undefined);
     onComplete();
-  }, [onComplete, pain, usecase]);
+  }, [onComplete, selectedPain, selectedUsecase]);
 
   return (
     <div
@@ -135,13 +146,15 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
             ))}
           </ol>
 
-          {fromDiagnosis ? (
+          {fromDiagnosis || fromOffer ? (
             <p className="mt-8 text-center text-sm">
-              無料診断の結果を引き継ぎました。同じ質問は繰り返しません。
+              {fromOffer
+                ? "X投稿案から始めます。同じ質問は繰り返しません。"
+                : "無料診断の結果を引き継ぎました。同じ質問は繰り返しません。"}
             </p>
           ) : null}
 
-          {fromDiagnosis ? null : (
+          {fromDiagnosis || fromOffer ? null : (
           <>
           <fieldset className="mt-8 space-y-2">
             <legend className="text-sm font-medium text-foreground">
@@ -196,7 +209,7 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
               variant="primary"
               size="lg"
               className="w-full"
-              disabled={!pain || !usecase}
+              disabled={!selectedPain || !selectedUsecase}
               onClick={finish}
             >
               {ui.onboarding.clarityCta}

@@ -12,6 +12,7 @@ export const ALLOWED_GROWTH_PATHS = [
   "/",
   "/sign-up",
   "/tools/automation-diagnosis",
+  "/use-cases/first-offer",
 ] as const;
 export type AllowedGrowthPath = (typeof ALLOWED_GROWTH_PATHS)[number];
 

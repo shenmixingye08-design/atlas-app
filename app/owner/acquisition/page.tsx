@@ -1,4 +1,5 @@
 import { AcquisitionPanel } from "@/components/owner/acquisition-panel";
+import { FirstRevenuePanel } from "@/components/owner/first-revenue-panel";
 import { OwnerNav } from "@/components/owner/owner-nav";
 import { OwnerShell } from "@/components/owner/owner-shell";
 import { requireAtlasOwnerOrNotFound } from "@/lib/auth/require-atlas-owner";
@@ -12,6 +13,7 @@ export default async function OwnerAcquisitionPage() {
     <OwnerShell>
       <div className="space-y-8">
         <OwnerNav active="revenueAgent" />
+        <FirstRevenuePanel />
         <AcquisitionPanel />
       </div>
     </OwnerShell>
