@@ -5,14 +5,26 @@ import {
   upsertSupabaseUserState,
 } from "@/lib/persistence/supabase-user-state";
 
+import type { RevenueVisitor, VisitorUserLink } from "./attribution";
+import type { RevenueAgentEvent } from "./events";
 import {
+  getAdSpendUpdatedAt,
+  getAdSpendYen,
   getLastGeneratedOn,
   getRevenueGoals,
   listGenerationCosts,
+  listRevenueEvents,
   listRevenueItems,
+  listRevenueVisitors,
+  listVisitorUserLinks,
   replaceRevenueAgentState,
 } from "./store";
-import type { GenerationCostRecord, RevenueContent, RevenueGoals } from "./types";
+import type {
+  GenerationCostRecord,
+  MeasuredNumber,
+  RevenueContent,
+  RevenueGoals,
+} from "./types";
 
 export const REVENUE_AGENT_USER_ID = "__atlas_revenue_agent__";
 export const REVENUE_AGENT_DOMAIN_KEY = "atlasRevenueAgent";
@@ -24,6 +36,11 @@ type DurablePayload = {
   items: RevenueContent[];
   costs: GenerationCostRecord[];
   lastGeneratedOn: string | null;
+  events?: RevenueAgentEvent[];
+  visitors?: RevenueVisitor[];
+  visitorUserLinks?: VisitorUserLink[];
+  adSpendYen?: MeasuredNumber;
+  adSpendUpdatedAt?: string | null;
 };
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -37,6 +54,11 @@ function buildPayload(): DurablePayload {
     items: listRevenueItems(),
     costs: listGenerationCosts(),
     lastGeneratedOn: getLastGeneratedOn(),
+    events: listRevenueEvents(),
+    visitors: listRevenueVisitors(),
+    visitorUserLinks: listVisitorUserLinks(),
+    adSpendYen: getAdSpendYen(),
+    adSpendUpdatedAt: getAdSpendUpdatedAt(),
   };
 }
 
@@ -90,6 +112,11 @@ export async function ensureRevenueAgentHydrated(): Promise<void> {
     items: payload.items ?? [],
     costs: payload.costs ?? [],
     lastGeneratedOn: payload.lastGeneratedOn ?? null,
+    events: payload.events ?? [],
+    visitors: payload.visitors ?? [],
+    visitorUserLinks: payload.visitorUserLinks ?? [],
+    adSpendYen: payload.adSpendYen ?? null,
+    adSpendUpdatedAt: payload.adSpendUpdatedAt ?? null,
   });
 }
 

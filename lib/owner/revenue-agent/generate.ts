@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 import { estimateTokens } from "@/lib/ai/cost-meter";
+import { getPlanDefinition } from "@/lib/billing/plans/registry";
+import { lightPlanYenLabel } from "@/lib/landing/pay-reason";
 
 import { assertPublishableCopy, findForbiddenClaim } from "./claims";
+import { DEFAULT_GROWTH_PATH, REVENUE_AGENT_CAMPAIGN_ID } from "./constants";
 import {
   emptyMetrics,
   MAX_PUBLISH_ATTEMPTS,
-  REVENUE_AGENT_CAMPAIGN,
   unknownMetricSources,
 } from "./defaults";
 import { isDuplicateOfAny } from "./duplicate";
@@ -21,7 +23,10 @@ import type {
   RevenuePlatform,
   RevenueVideoPlan,
 } from "./types";
-import { buildRevenueUtmUrl } from "./utm";
+import {
+  buildRevenueTrackingUrl,
+  buildRevenueUtmUrl,
+} from "./utm";
 
 const KINDS: RevenueContentKind[] = [
   "pain_point",
@@ -85,11 +90,19 @@ function makeItem(input: {
   body: string;
   cta: string;
   reason: string;
+  painPoint: string;
+  intent: string;
+  featureExample: string;
+  assumedTarget?: string;
   goals: RevenueGoals;
   generationId: string;
   generationMode: "ai" | "template";
   now: Date;
 }): RevenueContent {
+  const claimHit = findForbiddenClaim(
+    [input.title, input.hook, input.body, input.cta, input.reason].join("\n"),
+    input.goals,
+  );
   assertPublishableCopy(
     [input.title, input.hook, input.body, input.cta, input.reason],
     input.goals,
@@ -102,28 +115,42 @@ function makeItem(input: {
     input.platform === "youtube_shorts"
       ? videoPlan(input.title, input.hook, input.cta)
       : null;
+  const utmUrl = buildRevenueUtmUrl({
+    lpUrl: input.goals.lpUrl || DEFAULT_GROWTH_PATH,
+    platform: input.platform,
+    kind: input.kind,
+    contentId: id,
+    campaignId: REVENUE_AGENT_CAMPAIGN_ID,
+  });
+  const trackingUrl = buildRevenueTrackingUrl({ contentId: id });
 
   return {
     id,
-    campaign: REVENUE_AGENT_CAMPAIGN,
+    campaign: REVENUE_AGENT_CAMPAIGN_ID,
+    campaignId: REVENUE_AGENT_CAMPAIGN_ID,
+    contentId: id,
     status: input.goals.requireApproval ? "pending_approval" : "draft",
     kind: input.kind,
     platform: input.platform,
     title: input.title,
     hook: input.hook,
-    body: `${input.body.trim()}\n\n${input.cta}`.trim(),
+    body: `${input.body.trim()}\n\n${input.cta}\n${trackingUrl}`.trim(),
     cta: input.cta,
     recommendedPlatform: input.platform,
-    assumedTarget: input.goals.targetAudience,
-    desiredAction: "LP訪問または無料登録",
+    assumedTarget: input.assumedTarget?.trim() || input.goals.targetAudience,
+    painPoint: input.painPoint,
+    intent: input.intent,
+    featureExample: input.featureExample,
+    signupPath: DEFAULT_GROWTH_PATH,
+    desiredAction: "無料登録",
     reason: input.reason,
+    claimCheck: {
+      ok: !claimHit,
+      hits: claimHit ? [claimHit] : [],
+    },
     video,
-    utmUrl: buildRevenueUtmUrl({
-      lpUrl: input.goals.lpUrl,
-      platform: input.platform,
-      kind: input.kind,
-      contentId: id,
-    }),
+    utmUrl,
+    trackingUrl,
     scheduledAt: null,
     publishedAt: null,
     postUrl: null,
@@ -132,6 +159,8 @@ function makeItem(input: {
     attemptCount: 0,
     maxAttempts: MAX_PUBLISH_ATTEMPTS,
     lastError: null,
+    failedStage: null,
+    retryable: false,
     metrics: emptyMetrics(),
     metricSource: unknownMetricSources(),
     generationMode: input.generationMode,
@@ -150,15 +179,28 @@ export function buildTemplateBatch(input: {
   const now = input.now ?? new Date();
   const cta = input.goals.cta;
   const platform: RevenuePlatform = input.goals.platforms[0] ?? "x";
+  const lightPrice = lightPlanYenLabel();
+  const lightPlan = getPlanDefinition("light");
+  const freePlan = getPlanDefinition("free");
+  const featureX =
+    lightPlan.limits.features.includes("sns_assist") &&
+    lightPlan.limits.features.includes("sns_auto_post");
+  const featureWriting = lightPlan.limits.features.includes("content_writing");
   const drafts: Array<Omit<Parameters<typeof makeItem>[0], "goals" | "generationId" | "generationMode" | "now">> = [
     {
       kind: "pain_point",
       platform,
-      title: "毎日同じ作業が残る理由",
-      hook: "毎日同じ資料作りが残っていませんか。",
-      body: "副業や個人事業では、毎回ゼロから依頼文を書く時間が積み上がります。MINERVOTは仕事の進め方を覚え、次から秘書側で進めます。数字の実績はここでは述べません。",
+      title: "毎週同じ作業が残る理由",
+      hook: "毎週・毎月、同じ作業を自分で繰り返していませんか。",
+      body: `副業や個人事業では、X投稿・資料作成・予定の確認が毎週残ります。MINERVOTは仕事の進め方を覚え、次から秘書側で進めます。${freePlan.monthlyPriceJpy === 0 ? "無料で試してから判断できます。" : ""}価格の実績人数は書きません。`,
       cta,
       reason: "悩み起点で、習慣作業の負担に寄せるため",
+      painPoint: "毎週・毎月の繰り返し作業が自分の時間を削っている",
+      intent: "無料登録へつなぎ、繰り返し作業を秘書へ渡す第一歩を示す",
+      featureExample: featureWriting
+        ? "資料作成や依頼文を、一度やり方を伝えたあと秘書に任せる"
+        : "覚えた仕事を次から秘書側で進める",
+      assumedTarget: "副業者・個人事業主",
     },
     {
       kind: "practical_knowhow",
@@ -168,15 +210,25 @@ export function buildTemplateBatch(input: {
       body: "例：相手・期限・欲しい形を先に書く。MINERVOTへ頼むときも同じです。効果人数は未計測なので書きません。",
       cta,
       reason: "すぐ使える手順を1つに絞るため",
+      painPoint: "毎回ゼロから依頼内容を書き直している",
+      intent: "一度の依頼で次回から任せられる形を見せ、無料登録へつなぐ",
+      featureExample: "相手・期限・欲しい形を先に書いて依頼する",
+      assumedTarget: "副業者・個人事業主",
     },
     {
       kind: "minervot_use_case",
       platform,
       title: "X投稿を一度頼んで任せる",
       hook: "毎日のX投稿を、毎回チャットから始めなくてよい、という使い方です。",
-      body: "MINERVOTは投稿文面の作成から、接続済みなら投稿までを仕事として受けます。利用者の声や売上は作らず、できる範囲だけ書きます。",
+      body: `${featureX ? "MINERVOTは投稿文面の作成から、接続済みなら投稿までを仕事として受けます。" : "MINERVOTは投稿文面の作成を仕事として受けます。"}合えば月${lightPrice}から。利用者の声や売上は作らず、できる範囲だけ書きます。`,
       cta,
       reason: "プロダクトの具体的な利用例を1つ示すため",
+      painPoint: "毎日のX投稿を自分で一から考えている",
+      intent: "実在するX投稿支援を示し、無料登録へつなぐ",
+      featureExample: featureX
+        ? "X投稿文の作成と、接続済みなら投稿までを依頼する"
+        : "X投稿文の作成を依頼する",
+      assumedTarget: "副業者・個人事業主",
     },
     {
       kind: "developer_experience",
@@ -186,15 +238,23 @@ export function buildTemplateBatch(input: {
       body: "一般の導入社数や収益額は公表しません。自分たちの定型作業を減らすために、記憶と承認の流れを先に置いています。",
       cta,
       reason: "開発者体験に限り、架空の顧客事例を使わないため",
+      painPoint: "自分でも毎週残る作業を、先に秘書へ渡していない",
+      intent: "運営自身の使い方に限り、無料登録の判断材料にする",
+      featureExample: "承認してから実行する流れで、定型作業を秘書に渡す",
+      assumedTarget: "副業者・個人事業主",
     },
     {
       kind: "comparison_before_after",
       platform,
       title: "毎回チャット vs 一度頼んで任せる",
       hook: "毎回プロンプトを書き直す時間と、一度頼んで次回から任せる時間は違います。",
-      body: "前後の差は「毎回の入力が残るか」です。何分短縮できたかの数値は未計測なので出しません。",
+      body: `前後の差は「毎回の入力が残るか」です。何分短縮できたかの数値は未計測なので出しません。無料で試せます。合えば月${lightPrice}から。`,
       cta,
       reason: "比較を時間の残り方に限定するため",
+      painPoint: "毎回同じ説明をチャットに書き直している",
+      intent: "一度頼んで任せる形を示し、無料登録へつなぐ",
+      featureExample: "スケジュールや資料の決まり切った依頼を、次回から秘書側で進める",
+      assumedTarget: "副業者・個人事業主",
     },
     {
       kind: "short_video",
@@ -205,9 +265,15 @@ export function buildTemplateBatch(input: {
           : "x",
       title: "30秒：依頼を一度で渡す",
       hook: "同じ作業を、また明日やっていませんか。",
-      body: "15〜45秒。悩み→手順1つ→MINERVOTのLPまたは無料登録。効果数値は入れません。",
+      body: `15〜45秒。悩み→手順1つ→MINERVOTの無料登録。効果数値は入れません。合えば月${lightPrice}から。`,
       cta,
       reason: "短尺用にカットとテロップを先に渡すため",
+      painPoint: "同じ作業を翌日も自分でやっている",
+      intent: "短尺で無料登録へつなぐ",
+      featureExample: featureX
+        ? "X投稿や資料作成を一度頼んで任せる"
+        : "資料作成を一度頼んで任せる",
+      assumedTarget: "副業者・個人事業主",
     },
   ];
 
@@ -245,6 +311,10 @@ type AiDraft = {
   body?: string;
   cta?: string;
   reason?: string;
+  painPoint?: string;
+  intent?: string;
+  featureExample?: string;
+  assumedTarget?: string;
 };
 
 function parseAiDrafts(raw: string): AiDraft[] {
@@ -310,22 +380,26 @@ export async function generateRevenueBatch(input: {
   const policy = resolveTaskPolicy("chat");
   const instructions = [
     "MINERVOT運営の集客企画をJSON配列だけで返す。",
-    "最低3件、最大6件。各件は kind, platform, title, hook, body, cta, reason。",
+    "最低3件、最大6件。各件は kind, platform, title, hook, body, cta, reason, painPoint, intent, featureExample, assumedTarget。",
     `kind は ${KINDS.join(", ")}。`,
-    "存在しない利用者の声・売上・導入社数・効果数値を書いてはならない。",
+    "対象は副業者・個人事業主。無料登録 (/sign-up) へつなぐ。",
+    "実在機能だけを書く: X投稿支援、資料作成、スケジュール、自動化。画像・動画生成は書かない。",
+    `価格は月${lightPlanYenLabel()}から、と無料で試せる、以外の金額を作らない。`,
+    "存在しない利用者の声・売上・導入社数・効果数値・推定クリックを書いてはならない。",
     "誇大広告と『確実に稼げる』系は禁止。",
-    "過去投稿の丸写し禁止。",
+    "過去投稿の丸写し禁止。与えられた実測以外の成果を補完しない。",
     insightHintsForPrompt(input.insights),
   ].join("\n");
 
   const prompt = [
-    `目的: 副業者・個人事業主へMINERVOTを認知させ、LP訪問と無料登録を増やす`,
+    `目的: 副業者・個人事業主へMINERVOTを認知させ、無料登録 (/sign-up) を増やす`,
     `ターゲット: ${input.goals.targetAudience}`,
     `トーン: ${input.goals.brandTone}`,
     `CTA: ${input.goals.cta}`,
     `投稿先: ${input.goals.platforms.join(",")}`,
     `禁止: ${input.goals.bannedPhrases.join(" / ")}`,
-    `LP: ${input.goals.lpUrl}`,
+    `登録導線: ${DEFAULT_GROWTH_PATH}`,
+    `確認済み価格: Light 月${lightPlanYenLabel()} / Free は月額0円で試せる`,
     `モード: ${input.mode}`,
     `含める種類: ${KINDS.map(kindLabel).join("、")}`,
   ].join("\n");
@@ -366,6 +440,10 @@ export async function generateRevenueBatch(input: {
     const body = String(draft.body ?? "").trim();
     const cta = String(draft.cta ?? input.goals.cta).trim();
     const reason = String(draft.reason ?? "").trim();
+    const painPoint = String(draft.painPoint ?? "").trim();
+    const intent = String(draft.intent ?? "").trim();
+    const featureExample = String(draft.featureExample ?? "").trim();
+    const assumedTarget = String(draft.assumedTarget ?? "").trim();
     if (!title || !hook || !body) continue;
     if (findForbiddenClaim(`${title}\n${hook}\n${body}\n${cta}`, input.goals)) {
       continue;
@@ -380,6 +458,11 @@ export async function generateRevenueBatch(input: {
         body,
         cta,
         reason: reason || `${kindLabel(kind)}として、承認前の企画に残すため`,
+        painPoint: painPoint || "毎週・毎月の繰り返し作業が残っている",
+        intent: intent || "無料登録へつなぐ",
+        featureExample:
+          featureExample || "X投稿・資料作成・スケジュールを秘書へ依頼する",
+        assumedTarget: assumedTarget || "副業者・個人事業主",
         goals: input.goals,
         generationId,
         generationMode: "ai",

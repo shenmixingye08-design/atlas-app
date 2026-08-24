@@ -6,23 +6,29 @@ import { recordOpenAiUsageFromCostSummary } from "@/lib/owner/api-usage/telemetr
 import { getExternalServiceConnection } from "@/lib/integrations/external-services/store";
 import { ensureExternalAuthHydrated } from "@/lib/integrations/external-services/durable";
 
-import { assertPublishableCopy } from "./claims";
+import { assertPublishableCopy, findForbiddenClaim } from "./claims";
 import { defaultRevenueGoals, emptyMetrics, unknownMetricSources } from "./defaults";
 import {
   ensureRevenueAgentHydrated,
   schedulePersistRevenueAgent,
 } from "./durable";
 import { generateRevenueBatch, tokyoDateKey } from "./generate";
-import { buildRevenueInsights } from "./insights";
+import { REVENUE_AGENT_CAMPAIGN_ID } from "./constants";
+import { buildContentRows, buildFunnelTotals } from "./funnel";
+import { buildRecommendations, buildRevenueInsights } from "./learning";
+import { recordContentLifecycle } from "./observe";
 import { publishRevenueItemToX } from "./publish";
 import { canPublishNow } from "./publish-policy";
 import {
   addGenerationCost,
+  getAdSpendYen,
   getLastGeneratedOn,
   getRevenueGoals,
   getRevenueItem,
   listGenerationCosts,
+  listRevenueEvents,
   listRevenueItems,
+  setAdSpendYen,
   setLastGeneratedOn,
   setRevenueGoals,
   upsertRevenueItem,
@@ -32,13 +38,14 @@ import type {
   RevenueAgentSnapshot,
   RevenueAgentStatus,
   RevenueContent,
+  RevenueFunnelRange,
   RevenueGoals,
   RevenueMetricKey,
   RevenueMetrics,
   RevenueXConnectionView,
 } from "./types";
 import { REVENUE_AGENT_STATUSES } from "./types";
-import { buildRevenueUtmUrl } from "./utm";
+import { buildRevenueTrackingUrl, buildRevenueUtmUrl } from "./utm";
 
 async function xConnectionView(userId: string): Promise<RevenueXConnectionView> {
   try {
@@ -60,19 +67,41 @@ async function xConnectionView(userId: string): Promise<RevenueXConnectionView> 
   }
 }
 
+export function parseFunnelRange(value: unknown): RevenueFunnelRange {
+  if (value === "7d" || value === "30d" || value === "all") return value;
+  return "30d";
+}
+
 export async function getRevenueAgentSnapshot(
   userId: string,
+  range: RevenueFunnelRange = "30d",
 ): Promise<RevenueAgentSnapshot> {
   await ensureRevenueAgentHydrated();
   const items = listRevenueItems();
+  const events = listRevenueEvents();
+  const costs = listGenerationCosts();
+  const adSpendYen = getAdSpendYen();
+  const contentRows = buildContentRows({ items, events, costs, range });
+  const insights = buildRevenueInsights(items, events, range);
+  insights.recommendations = buildRecommendations(contentRows);
   return {
     goals: getRevenueGoals(),
     items,
-    costs: listGenerationCosts(),
-    insights: buildRevenueInsights(items),
+    costs,
+    insights,
     xConnection: await xConnectionView(userId),
     lastGeneratedOn: getLastGeneratedOn(),
     generatedAt: new Date().toISOString(),
+    range,
+    funnel: buildFunnelTotals({
+      items,
+      events,
+      costs,
+      adSpendYen,
+      range,
+    }),
+    contentRows,
+    adSpendYen,
   };
 }
 
@@ -141,7 +170,7 @@ export async function generateRevenuePlans(input: {
 
   const goals = getRevenueGoals();
   const items = listRevenueItems();
-  const insights = buildRevenueInsights(items);
+  const insights = buildRevenueInsights(items, listRevenueEvents());
   const batch = await generateRevenueBatch({
     goals,
     insights,
@@ -151,6 +180,10 @@ export async function generateRevenuePlans(input: {
 
   for (const item of batch.items) {
     upsertRevenueItem(item);
+    recordContentLifecycle("content_created", item.contentId, {
+      campaignId: item.campaignId,
+      source: item.platform,
+    });
   }
   if (batch.cost) {
     addGenerationCost(batch.cost);
@@ -200,6 +233,8 @@ export async function editRevenueItem(
     throw new Error("公開済みの本文は編集できません");
   }
   const goals = getRevenueGoals();
+  const editedFromApproved =
+    current.status === "approved" || current.status === "scheduled";
   const next = touch({
     ...current,
     title: patch.title?.trim() || current.title,
@@ -208,14 +243,25 @@ export async function editRevenueItem(
     cta: patch.cta?.trim() || current.cta,
     scheduledAt:
       patch.scheduledAt === undefined ? current.scheduledAt : patch.scheduledAt,
+    status: editedFromApproved ? "pending_approval" : current.status,
   });
   assertPublishableCopy([next.title, next.hook, next.body, next.cta], goals);
+  const claimHit = findForbiddenClaim(
+    [next.title, next.hook, next.body, next.cta].join("\n"),
+    goals,
+  );
+  next.claimCheck = {
+    ok: !claimHit,
+    hits: claimHit ? [claimHit] : [],
+  };
   next.utmUrl = buildRevenueUtmUrl({
     lpUrl: goals.lpUrl,
     platform: next.platform,
     kind: next.kind,
-    contentId: next.id,
+    contentId: next.contentId,
+    campaignId: next.campaignId || REVENUE_AGENT_CAMPAIGN_ID,
   });
+  next.trackingUrl = buildRevenueTrackingUrl({ contentId: next.contentId });
   upsertRevenueItem(next);
   schedulePersistRevenueAgent();
   return next;
@@ -280,8 +326,22 @@ export async function transitionRevenueItem(
       action === "schedule" ? extra?.scheduledAt ?? null : current.scheduledAt,
     publishedAt: action === "mark_published" ? now : current.publishedAt,
     lastError: action === "retry" ? null : current.lastError,
+    failedStage: action === "retry" ? null : current.failedStage,
+    retryable: action === "retry" ? true : current.retryable,
   });
   upsertRevenueItem(next);
+  if (action === "approve") {
+    recordContentLifecycle("content_approved", next.contentId, {
+      campaignId: next.campaignId,
+      source: next.platform,
+    });
+  }
+  if (action === "mark_published") {
+    recordContentLifecycle("content_published", next.contentId, {
+      campaignId: next.campaignId,
+      source: next.platform,
+    });
+  }
   schedulePersistRevenueAgent();
   return next;
 }
@@ -322,6 +382,12 @@ export async function publishRevenueItem(
     userId,
   });
   upsertRevenueItem(published);
+  if (published.status === "published" && published.xTweetId) {
+    recordContentLifecycle("content_published", published.contentId, {
+      campaignId: published.campaignId,
+      source: published.platform,
+    });
+  }
   schedulePersistRevenueAgent();
   return published;
 }
@@ -398,6 +464,18 @@ export async function regenerateRevenueItem(id: string): Promise<RevenueContent>
       id: `cost_${randomUUID()}`,
     });
   }
+  schedulePersistRevenueAgent();
+  return next;
+}
+
+export async function updateAdSpendYen(
+  amountYen: number | null,
+): Promise<number | null> {
+  await ensureRevenueAgentHydrated();
+  if (amountYen !== null && (!Number.isFinite(amountYen) || amountYen < 0)) {
+    throw new Error("広告費は 0 以上の数値か、未取得の null です");
+  }
+  const next = setAdSpendYen(amountYen);
   schedulePersistRevenueAgent();
   return next;
 }

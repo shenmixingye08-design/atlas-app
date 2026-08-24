@@ -5,9 +5,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  displayMeasured,
+  displayRate,
+  displayUsd,
+  displayYen,
+} from "@/lib/owner/revenue-agent/display";
 import type {
   RevenueAgentSnapshot,
   RevenueContent,
+  RevenueFunnelRange,
   RevenueGoals,
 } from "@/lib/owner/revenue-agent/types";
 
@@ -24,6 +31,12 @@ function metricLabel(value: number | null): string {
   return value == null ? "未取得" : String(value);
 }
 
+const RANGE_LABEL: Record<RevenueFunnelRange, string> = {
+  "7d": "7日",
+  "30d": "30日",
+  all: "全期間",
+};
+
 export function RevenueAgentPanel() {
   const [snapshot, setSnapshot] = useState<RevenueAgentSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +45,8 @@ export function RevenueAgentPanel() {
   const selectedIdRef = useRef<string | null>(null);
   const [draft, setDraft] = useState<Partial<RevenueContent>>({});
   const [goalsDraft, setGoalsDraft] = useState<RevenueGoals | null>(null);
+  const [adSpendDraft, setAdSpendDraft] = useState("");
+  const [range, setRange] = useState<RevenueFunnelRange>("30d");
 
   const applyItemDraft = (item: RevenueContent) => {
     setDraft({
@@ -44,17 +59,21 @@ export function RevenueAgentPanel() {
   };
 
   const load = useCallback(async () => {
-    const response = await fetch("/api/owner/revenue-agent", { cache: "no-store" });
+    const response = await fetch(
+      `/api/owner/revenue-agent?range=${range}`,
+      { cache: "no-store" },
+    );
     if (!response.ok) throw new Error(await readError(response));
     const next = (await response.json()) as RevenueAgentSnapshot;
     setSnapshot(next);
     setGoalsDraft(next.goals);
+    setAdSpendDraft(next.adSpendYen == null ? "" : String(next.adSpendYen));
     const currentId = selectedIdRef.current;
     if (currentId) {
       const current = next.items.find((item) => item.id === currentId);
       if (current) applyItemDraft(current);
     }
-  }, []);
+  }, [range]);
 
   useEffect(() => {
     return scheduleMountWork(() => {
@@ -94,8 +113,82 @@ export function RevenueAgentPanel() {
         <p className="text-body max-w-3xl text-[var(--text-secondary)]">
           副業者・個人事業主へMINERVOTを認知させ、LP訪問・無料登録・有料登録を増やすための内部機能です。
           生成物は承認キューに入ります。存在しない実績は作りません。
+          未取得は 0 ではなく「—」です。
         </p>
       </header>
+
+      <Card className="space-y-3 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">実測ファネル</h2>
+          <div className="flex gap-2">
+            {(["7d", "30d", "all"] as const).map((value) => (
+              <Button
+                key={value}
+                variant={range === value ? "primary" : "secondary"}
+                disabled={busy}
+                onClick={() => {
+                  setRange(value);
+                }}
+              >
+                {RANGE_LABEL[value]}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <p className="text-xs text-[var(--text-muted)]">
+          入金済売上は Stripe の invoice.paid のみ。プラン表示価格からは推定しません。
+        </p>
+        <div className="grid gap-2 md:grid-cols-3 text-sm">
+          <p>公開投稿数: {displayMeasured(snapshot.funnel.publishedPosts)}</p>
+          <p>クリック数: {displayMeasured(snapshot.funnel.clicks)}</p>
+          <p>ユニーク訪問数: {displayMeasured(snapshot.funnel.uniqueVisits)}</p>
+          <p>無料登録数: {displayMeasured(snapshot.funnel.signups)}</p>
+          <p>初回依頼成功: {displayMeasured(snapshot.funnel.firstJobs)}</p>
+          <p>初回自動化成功: {displayMeasured(snapshot.funnel.firstAutomations)}</p>
+          <p>Checkout開始: {displayMeasured(snapshot.funnel.checkoutStarted)}</p>
+          <p>有料契約数: {displayMeasured(snapshot.funnel.paidContracts)}</p>
+          <p>入金済売上: {displayYen(snapshot.funnel.cashRevenueYen)}</p>
+          <p>CTR: {displayRate(snapshot.funnel.ctr)}</p>
+          <p>クリック→登録率: {displayRate(snapshot.funnel.clickToSignupRate)}</p>
+          <p>登録→初回成功率: {displayRate(snapshot.funnel.signupToFirstSuccessRate)}</p>
+          <p>登録→有料化率: {displayRate(snapshot.funnel.signupToPaidRate)}</p>
+          <p>投稿1件あたり登録: {displayMeasured(snapshot.funnel.signupsPerPost)}</p>
+          <p>投稿1件あたり入金: {displayYen(snapshot.funnel.cashPerPostYen)}</p>
+          <p>OpenAI実測/算定: {displayUsd(snapshot.funnel.openaiCostUsd)}</p>
+          <p>広告費（手動）: {displayYen(snapshot.funnel.adSpendYen)}</p>
+          <p>有料獲得単価: {displayYen(snapshot.funnel.paidAcquisitionCostYen)}</p>
+          <p>ROAS: {displayMeasured(snapshot.funnel.roas)}</p>
+          <p>返金（別指標）: {displayYen(snapshot.funnel.refundsYen)}</p>
+        </div>
+        <label className="block text-sm">
+          手動広告費（円・空欄=未取得）
+          <input
+            className="mt-1 w-full max-w-xs rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2"
+            value={adSpendDraft}
+            onChange={(event) => setAdSpendDraft(event.target.value)}
+          />
+        </label>
+        <Button
+          variant="secondary"
+          disabled={busy}
+          onClick={() =>
+            void run("広告費を保存できませんでした", async () => {
+              const raw = adSpendDraft.trim();
+              const response = await fetch("/api/owner/revenue-agent", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  ...goalsDraft,
+                  adSpendYen: raw === "" ? null : Number(raw),
+                }),
+              });
+              if (!response.ok) throw new Error(await readError(response));
+            })
+          }
+        >
+          広告費を保存
+        </Button>
+      </Card>
 
       {error ? (
         <p className="rounded-lg bg-[var(--error-bg)] px-3 py-2 text-sm text-[var(--error)]">
@@ -272,7 +365,7 @@ export function RevenueAgentPanel() {
       </Card>
 
       <Card className="space-y-3 p-4">
-        <h2 className="text-lg font-semibold">学習（暫定）</h2>
+        <h2 className="text-lg font-semibold">学習（実測のみ）</h2>
         <p className="text-sm text-[var(--text-secondary)]">
           {snapshot.insights.disclaimer}
         </p>
@@ -285,6 +378,80 @@ export function RevenueAgentPanel() {
           <li>有料転換率: {metricLabel(snapshot.insights.paidConversionRate)}</li>
           <li>投稿1本あたり売上: {metricLabel(snapshot.insights.revenuePerPostYen)}</li>
         </ul>
+        {snapshot.insights.recommendations.length > 0 ? (
+          <ul className="space-y-2 text-sm">
+            {snapshot.insights.recommendations.map((row) => (
+              <li key={row.contentId} className="rounded-md border border-[var(--border)] p-3">
+                <p className="font-medium">
+                  {row.title} · {row.verdict === "hold" ? "判断保留" : row.verdict}
+                </p>
+                <p>{row.reason}</p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  入金 {displayYen(row.measured.revenueYen)} / 契約{" "}
+                  {displayMeasured(row.measured.paidContracts)} / 初回成功{" "}
+                  {displayMeasured(row.measured.firstSuccesses)} / 登録{" "}
+                  {displayMeasured(row.measured.signups)} / クリック{" "}
+                  {displayMeasured(row.measured.uniqueClicks)}
+                </p>
+                {row.dataGap ? <p>データギャップ: {row.dataGap}</p> : null}
+                <p>次に試す軸: {row.nextCtaOrAxis}</p>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </Card>
+
+      <Card className="space-y-3 p-4">
+        <h2 className="text-lg font-semibold">コンテンツ別実績</h2>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-[var(--border)] text-[var(--text-muted)]">
+                <th className="py-2 pr-3">投稿日</th>
+                <th className="py-2 pr-3">テーマ</th>
+                <th className="py-2 pr-3">CTA</th>
+                <th className="py-2 pr-3">状態</th>
+                <th className="py-2 pr-3">X URL</th>
+                <th className="py-2 pr-3">クリック</th>
+                <th className="py-2 pr-3">登録</th>
+                <th className="py-2 pr-3">初回成功</th>
+                <th className="py-2 pr-3">有料契約</th>
+                <th className="py-2 pr-3">入金済売上</th>
+                <th className="py-2 pr-3">AIコスト</th>
+                <th className="py-2">判定</th>
+              </tr>
+            </thead>
+            <tbody>
+              {snapshot.contentRows.map((row) => (
+                <tr key={row.contentId} className="border-b border-[var(--border)] last:border-0">
+                  <td className="py-2 pr-3">{row.publishedAt?.slice(0, 10) ?? "—"}</td>
+                  <td className="py-2 pr-3">{row.title}</td>
+                  <td className="py-2 pr-3">{row.cta}</td>
+                  <td className="py-2 pr-3">{row.status}</td>
+                  <td className="py-2 pr-3">
+                    {row.postUrl ? (
+                      <a className="underline" href={row.postUrl} target="_blank" rel="noreferrer">
+                        投稿
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="py-2 pr-3">{displayMeasured(row.clicks)}</td>
+                  <td className="py-2 pr-3">{displayMeasured(row.signups)}</td>
+                  <td className="py-2 pr-3">{displayMeasured(row.firstSuccesses)}</td>
+                  <td className="py-2 pr-3">{displayMeasured(row.paidContracts)}</td>
+                  <td className="py-2 pr-3">{displayYen(row.cashRevenueYen)}</td>
+                  <td className="py-2 pr-3">{displayUsd(row.aiCostUsd)}</td>
+                  <td className="py-2">{row.verdictLabel}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {snapshot.contentRows.length === 0 ? (
+          <p className="text-sm text-[var(--text-muted)]">まだコンテンツがありません。</p>
+        ) : null}
       </Card>
 
       <Card className="space-y-3 p-4">
@@ -330,7 +497,15 @@ export function RevenueAgentPanel() {
         <Card className="space-y-3 p-4">
           <h2 className="text-lg font-semibold">企画の確認</h2>
           <p className="text-xs text-[var(--text-muted)]">
-            {selected.id} · {selected.generationMode} · 理由: {selected.reason}
+            {selected.contentId} · campaign {selected.campaignId} · {selected.generationMode}
+          </p>
+          <p className="text-sm">想定対象者: {selected.assumedTarget}</p>
+          <p className="text-sm">具体的な悩み: {selected.painPoint || "—"}</p>
+          <p className="text-sm">投稿の狙い: {selected.intent || selected.reason}</p>
+          <p className="text-sm">利用例: {selected.featureExample || "—"}</p>
+          <p className="text-sm">登録導線: {selected.signupPath}</p>
+          <p className="text-sm">
+            禁止表現: {selected.claimCheck.ok ? "問題なし" : selected.claimCheck.hits.join(" / ")}
           </p>
           <label className="block text-sm">
             タイトル
@@ -358,7 +533,7 @@ export function RevenueAgentPanel() {
             />
           </label>
           <p className="text-xs text-[var(--text-muted)]">
-            投稿先 {selected.platform} · UTM {selected.utmUrl}
+            投稿先 {selected.platform} · 追跡 {selected.trackingUrl} · UTM {selected.utmUrl}
           </p>
           {selected.video ? (
             <div className="space-y-2 rounded-md border border-[var(--border)] p-3 text-sm">
@@ -557,7 +732,11 @@ export function RevenueAgentPanel() {
             </Button>
           </div>
           {selected.lastError ? (
-            <p className="text-sm text-[var(--error)]">{selected.lastError}</p>
+            <p className="text-sm text-[var(--error)]">
+              {selected.lastError}
+              {selected.failedStage ? `（段階: ${selected.failedStage}）` : ""}
+              {selected.retryable ? " · 再試行できます" : " · このままでは再試行しません"}
+            </p>
           ) : null}
           {selected.postUrl ? (
             <p className="text-sm">

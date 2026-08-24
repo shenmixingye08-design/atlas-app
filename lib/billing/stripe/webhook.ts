@@ -7,6 +7,10 @@ import { getStripeWebhookSecret } from "./config";
 import { assertStripeWebhookSafeForProduction } from "./production-guard";
 import { handleStripeWebhookEvent } from "./webhook-handlers";
 import {
+  observeRevenueSafe,
+  observeStripeRevenueEvent,
+} from "@/lib/owner/revenue-agent/observe";
+import {
   claimStripeEventForProcessing,
   hasProcessedStripeEvent,
   markStripeEventProcessed,
@@ -188,6 +192,22 @@ export async function processStripeWebhookRequest(
     result.success || !result.handled || result.retryable === false
       ? 200
       : 500;
+
+  if (result.success) {
+    const livemode =
+      typeof (event as { livemode?: boolean }).livemode === "boolean"
+        ? (event as { livemode: boolean }).livemode
+        : null;
+    observeRevenueSafe(() =>
+      observeStripeRevenueEvent({
+        eventId: event.id,
+        eventType: event.type,
+        livemode,
+        userId: result.userId,
+        object: event.data.object,
+      }),
+    );
+  }
 
   logWebhookOutcome({
     eventId: event.id,

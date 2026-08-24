@@ -37,6 +37,10 @@ import {
   usesStripeLiveSecretKey,
 } from "./production-guard";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
+import {
+  observeCheckoutStarted,
+  observeRevenueSafe,
+} from "@/lib/owner/revenue-agent/observe";
 
 export type CheckoutSessionResult = {
   sessionId: string;
@@ -418,6 +422,14 @@ export async function createCheckoutSession(input: {
     if (!session.url) {
       throw new Error("Stripe did not return a checkout URL");
     }
+
+    observeRevenueSafe(() =>
+      observeCheckoutStarted({
+        userId: input.userId,
+        sessionId: session.id,
+        livemode: typeof session.livemode === "boolean" ? session.livemode : null,
+      }),
+    );
 
     return {
       sessionId: session.id,

@@ -1,6 +1,7 @@
+import { DEFAULT_GROWTH_PATH } from "./constants";
 import type { RevenueGoals, RevenueMetrics } from "./types";
 
-export const REVENUE_AGENT_CAMPAIGN = "minervot_solo_acquisition_beta";
+export { REVENUE_AGENT_CAMPAIGN } from "./constants";
 
 export const DEFAULT_BANNED_PHRASES = [
   "確実に稼げる",
@@ -50,7 +51,7 @@ export function defaultRevenueGoals(now = new Date()): RevenueGoals {
   return {
     periodStart: start.toISOString().slice(0, 10),
     periodEnd: end.toISOString().slice(0, 10),
-    lpUrl: "https://minervot.com/",
+    lpUrl: DEFAULT_GROWTH_PATH,
     targetAudience: "定型業務に時間を取られる副業者・個人事業主",
     dailyPostTarget: 1,
     platforms: ["x"],
@@ -58,7 +59,7 @@ export function defaultRevenueGoals(now = new Date()): RevenueGoals {
     bannedPhrases: [...DEFAULT_BANNED_PHRASES],
     brandTone:
       "丁寧で落ち着いた一流秘書。誇張せず、時間を生み出す話に限定する。",
-    cta: "MINERVOTのLPまたは無料登録",
+    cta: "無料登録して、繰り返し作業を秘書に渡す",
     monthlySignupGoal: null,
     monthlyRevenueGoalYen: null,
   };

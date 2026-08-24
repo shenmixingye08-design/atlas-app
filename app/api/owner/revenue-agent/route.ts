@@ -4,20 +4,23 @@ import { requireAtlasOwnerApi } from "@/lib/auth/require-atlas-owner";
 import { auditRequestContext, recordAuditLogSafe } from "@/lib/owner/audit-log";
 import {
   getRevenueAgentSnapshot,
+  parseFunnelRange,
   parseGoalsPatch,
+  updateAdSpendYen,
   updateRevenueGoals,
 } from "@/lib/owner/revenue-agent";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
   const owner = await requireAtlasOwnerApi();
   if (!owner.ok) return owner.response;
   const { userId } = await auth();
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return Response.json(await getRevenueAgentSnapshot(userId));
+  const range = parseFunnelRange(new URL(request.url).searchParams.get("range"));
+  return Response.json(await getRevenueAgentSnapshot(userId, range));
 }
 
 export async function PATCH(request: Request): Promise<Response> {
@@ -34,6 +37,17 @@ export async function PATCH(request: Request): Promise<Response> {
   const parsed = parseGoalsPatch(body);
   if ("error" in parsed) {
     return Response.json({ error: parsed.error }, { status: 400 });
+  }
+
+  const raw = body as Record<string, unknown>;
+  if (raw.adSpendYen === null || typeof raw.adSpendYen === "number") {
+    try {
+      await updateAdSpendYen(raw.adSpendYen === null ? null : raw.adSpendYen);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "広告費を保存できません";
+      return Response.json({ error: message }, { status: 400 });
+    }
   }
 
   const goals = await updateRevenueGoals(parsed);

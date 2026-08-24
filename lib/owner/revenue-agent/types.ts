@@ -68,9 +68,18 @@ export type RevenueMetricKey = keyof RevenueMetrics;
 
 export type RevenueMetricSource = "auto" | "manual" | "unknown";
 
+export type RevenueClaimCheck = {
+  ok: boolean;
+  hits: string[];
+};
+
+export type RevenueLearningVerdict = "continue" | "improve" | "stop" | "hold";
+
 export type RevenueContent = {
   id: string;
   campaign: string;
+  campaignId: string;
+  contentId: string;
   status: RevenueAgentStatus;
   kind: RevenueContentKind;
   platform: RevenuePlatform;
@@ -80,10 +89,16 @@ export type RevenueContent = {
   cta: string;
   recommendedPlatform: RevenuePlatform;
   assumedTarget: string;
+  painPoint: string;
+  intent: string;
+  featureExample: string;
+  signupPath: string;
   desiredAction: string;
   reason: string;
+  claimCheck: RevenueClaimCheck;
   video: RevenueVideoPlan | null;
   utmUrl: string;
+  trackingUrl: string;
   scheduledAt: string | null;
   publishedAt: string | null;
   postUrl: string | null;
@@ -92,6 +107,8 @@ export type RevenueContent = {
   attemptCount: number;
   maxAttempts: number;
   lastError: string | null;
+  failedStage: string | null;
+  retryable: boolean;
   metrics: RevenueMetrics;
   metricSource: Record<RevenueMetricKey, RevenueMetricSource>;
   generationMode: "ai" | "template";
@@ -123,6 +140,23 @@ export type RankedPostInsight = {
   note: string;
 };
 
+export type RevenueLearningRecommendation = {
+  contentId: string;
+  title: string;
+  verdict: RevenueLearningVerdict;
+  reason: string;
+  measured: {
+    revenueYen: MeasuredNumber;
+    paidContracts: MeasuredNumber;
+    firstSuccesses: MeasuredNumber;
+    signups: MeasuredNumber;
+    uniqueClicks: MeasuredNumber;
+    engagement: MeasuredNumber;
+  };
+  dataGap: string | null;
+  nextCtaOrAxis: string;
+};
+
 export type RevenueInsights = {
   confidence: InsightConfidence;
   sampleSize: number;
@@ -136,11 +170,54 @@ export type RevenueInsights = {
   paidConversionRate: number | null;
   revenuePerPostYen: number | null;
   disclaimer: string;
+  recommendations: RevenueLearningRecommendation[];
 };
 
 export type RevenueXConnectionView = {
   connected: boolean;
   message: string;
+};
+
+export type RevenueFunnelRange = "7d" | "30d" | "all";
+
+export type RevenueFunnelTotals = {
+  publishedPosts: MeasuredNumber;
+  clicks: MeasuredNumber;
+  uniqueVisits: MeasuredNumber;
+  signups: MeasuredNumber;
+  firstJobs: MeasuredNumber;
+  firstAutomations: MeasuredNumber;
+  checkoutStarted: MeasuredNumber;
+  paidContracts: MeasuredNumber;
+  cashRevenueYen: MeasuredNumber;
+  refundsYen: MeasuredNumber;
+  ctr: MeasuredNumber;
+  clickToSignupRate: MeasuredNumber;
+  signupToFirstSuccessRate: MeasuredNumber;
+  signupToPaidRate: MeasuredNumber;
+  signupsPerPost: MeasuredNumber;
+  cashPerPostYen: MeasuredNumber;
+  openaiCostUsd: MeasuredNumber;
+  adSpendYen: MeasuredNumber;
+  paidAcquisitionCostYen: MeasuredNumber;
+  roas: MeasuredNumber;
+};
+
+export type RevenueContentRow = {
+  contentId: string;
+  publishedAt: string | null;
+  title: string;
+  cta: string;
+  status: RevenueAgentStatus;
+  postUrl: string | null;
+  clicks: MeasuredNumber;
+  signups: MeasuredNumber;
+  firstSuccesses: MeasuredNumber;
+  paidContracts: MeasuredNumber;
+  cashRevenueYen: MeasuredNumber;
+  aiCostUsd: MeasuredNumber;
+  verdict: RevenueLearningVerdict;
+  verdictLabel: string;
 };
 
 export type RevenueAgentSnapshot = {
@@ -151,6 +228,10 @@ export type RevenueAgentSnapshot = {
   xConnection: RevenueXConnectionView;
   lastGeneratedOn: string | null;
   generatedAt: string;
+  range: RevenueFunnelRange;
+  funnel: RevenueFunnelTotals;
+  contentRows: RevenueContentRow[];
+  adSpendYen: MeasuredNumber;
 };
 
 export type GenerateMode = "daily" | "force";
