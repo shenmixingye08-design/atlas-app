@@ -20,7 +20,6 @@ import {
 import { resolveLifecycleState } from "./lifecycle";
 import { buildMeasuredValueView, previousUsageMonthKey } from "./measured";
 import {
-  applyFirstFail,
   applyFirstRequest,
   applyFirstSuccess,
   applyOnboardingStarted,
