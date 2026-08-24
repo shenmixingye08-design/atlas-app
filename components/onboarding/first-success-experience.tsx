@@ -150,8 +150,8 @@ export function FirstSuccessExperience({ onComplete, onDefer }: FirstSuccessExpe
         aria-labelledby="first-experience-title"
         tabIndex={-1}
         className={cn(
-          "landing-glass max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] shadow-[var(--shadow-lg)] transition-all duration-500 ease-out outline-none",
-          visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+          "landing-glass max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] shadow-[var(--shadow-lg)] transition-[opacity,transform] duration-[var(--motion-modal)] ease-out outline-none",
+          visible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
         )}
       >
         {step === "select" && (

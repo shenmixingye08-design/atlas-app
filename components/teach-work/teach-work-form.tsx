@@ -73,7 +73,7 @@ export function TeachWorkForm() {
   };
 
   return (
-    <div className="space-y-8 animate-fade-up">
+    <div className="space-y-8">
       <header className="space-y-2">
         <p className="text-sm font-medium text-accent">AI秘書</p>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">

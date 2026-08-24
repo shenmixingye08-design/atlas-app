@@ -21,7 +21,7 @@ export function OpsProgressStatus({
       role="status"
       aria-live="polite"
       className={cn(
-        "rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 py-3",
+        "animate-status-in rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 py-3",
         className,
       )}
     >

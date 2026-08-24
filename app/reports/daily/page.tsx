@@ -16,7 +16,7 @@ export default async function DailyReportPage() {
 
   return (
     <AtlasAppShell active="settings" width="default">
-      <div className="space-y-6 animate-fade-up">
+      <div className="space-y-6">
         <header className="space-y-2">
           <p className="text-caption">{ui.brand}</p>
           <h1 className="text-display text-foreground">{formatDailyReportTitle()}</h1>

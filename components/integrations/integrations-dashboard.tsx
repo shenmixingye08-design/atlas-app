@@ -84,7 +84,7 @@ export function IntegrationsDashboard() {
   if (isLoading) return <LoadingState />;
 
   return (
-    <div className="space-y-12 animate-fade-up">
+    <div className="space-y-12">
       <header className="space-y-3">
         <h1 className="text-display text-foreground">{ui.integrations.title}</h1>
         <p className="text-body">{ui.integrations.subtitle}</p>

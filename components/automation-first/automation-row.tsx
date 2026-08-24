@@ -30,7 +30,7 @@ export function AutomationRow({
       href={href}
       data-automation-id={id}
       className={cn(
-        "grid grid-cols-1 gap-2 border-b border-[var(--border)] px-3 py-3 transition-colors hover:bg-[var(--surface-muted)] sm:grid-cols-[minmax(0,1.4fr)_auto_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-4",
+        "grid grid-cols-1 gap-2 border-b border-[var(--border)] px-3 py-3 transition-colors hover:bg-[var(--surface-muted)] active:bg-[var(--surface-muted)] sm:grid-cols-[minmax(0,1.4fr)_auto_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-4",
         "min-h-[var(--touch-target)]",
         className,
       )}

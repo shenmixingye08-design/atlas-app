@@ -9,7 +9,7 @@ export function Skeleton({ className, variant = "rectangular" }: SkeletonProps) 
   return (
     <div
       className={cn(
-        "skeleton",
+        "skeleton animate-shimmer",
         variant === "text" && "h-4 w-full",
         variant === "circular" && "h-10 w-10 rounded-full",
         variant === "rectangular" && "h-24 w-full",

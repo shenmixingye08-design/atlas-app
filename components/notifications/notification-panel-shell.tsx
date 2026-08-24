@@ -37,7 +37,7 @@ export function NotificationPanelShell({
       aria-label={ui.notifications.title}
       data-testid="notification-panel"
       className={cn(
-        "z-[70] flex flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)]",
+        "z-[70] flex flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)] animate-fade-in",
         inline
           ? "relative w-full max-h-[70vh]"
           : cn(

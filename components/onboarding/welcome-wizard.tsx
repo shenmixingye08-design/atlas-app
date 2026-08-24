@@ -58,8 +58,8 @@ export function WelcomeWizard({ onComplete }: WelcomeWizardProps) {
         aria-labelledby="welcome-wizard-title"
         tabIndex={-1}
         className={cn(
-          "relative w-full max-w-xl overflow-hidden rounded-[28px] border border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)] outline-none",
-          visible ? "opacity-100" : "opacity-0",
+          "relative w-full max-w-xl overflow-hidden rounded-[28px] border border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)] outline-none transition-[opacity,transform] duration-[var(--motion-modal)] ease-out",
+          visible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
         )}
       >
         <div className="px-6 pb-8 pt-12 sm:px-12 sm:pb-10 sm:pt-14">

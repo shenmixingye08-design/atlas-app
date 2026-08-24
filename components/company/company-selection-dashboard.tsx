@@ -83,7 +83,7 @@ export function CompanySelectionDashboard() {
   }
 
   return (
-    <div className="space-y-12 animate-fade-up">
+    <div className="space-y-12">
       <header className="space-y-3">
         <h1 className="text-display text-foreground">{ui.company.title}</h1>
         <p className="text-body max-w-2xl">{ui.company.subtitle}</p>

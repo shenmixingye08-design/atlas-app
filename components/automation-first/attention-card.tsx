@@ -123,7 +123,7 @@ export function AttentionCard({
               href={href}
               onClick={onOpen}
               className={cn(
-                "inline-flex min-h-[var(--touch-target)] items-center rounded-[var(--radius-md)] px-4 text-sm font-semibold",
+                "motion-press inline-flex min-h-[var(--touch-target)] items-center rounded-[var(--radius-md)] px-4 text-sm font-semibold",
                 kind === "failed"
                   ? "bg-[var(--status-failed)] text-white"
                   : "bg-[var(--brand)] text-[var(--brand-foreground)]",

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 import { CreateSheet } from "@/components/automation-first/create-sheet";
+import { BottomNavIndicator } from "@/components/motion/nav-indicator";
 import {
   IconArtifact,
   IconAutomation,
@@ -71,13 +72,18 @@ export function AutomationFirstBottomNav() {
         className="fixed inset-x-0 bottom-0 z-[var(--z-nav)] border-t border-[var(--border)] bg-[var(--card-glass)] backdrop-blur-xl md:hidden"
         style={{ paddingBottom: "var(--safe-area-bottom)" }}
       >
-        <ul className="mx-auto flex max-w-lg items-stretch justify-around px-0.5 pt-1">
+        <ul className="relative mx-auto flex max-w-lg items-stretch justify-around px-0.5 pt-1">
+          <BottomNavIndicator
+            index={ITEMS.findIndex((item) => item.id === active)}
+            count={ITEMS.length}
+            hidden={!active || active === "create"}
+          />
           {ITEMS.map((item) => {
             const isActive = active === item.id;
 
             if (item.primary) {
               return (
-                <li key={item.id} className="flex-1">
+                <li key={item.id} className="relative z-10 flex-1">
                   <button
                     type="button"
                     onClick={() => {
@@ -86,10 +92,10 @@ export function AutomationFirstBottomNav() {
                         id: "create",
                       });
                     }}
-                    className="flex min-h-[56px] w-full flex-col items-center justify-center gap-1 px-0.5 text-[11px] font-medium leading-tight focus-ring"
+                    className="motion-press flex min-h-[56px] w-full flex-col items-center justify-center gap-1 px-0.5 text-[11px] font-medium leading-tight focus-ring"
                   >
                     <span
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--brand)] text-[var(--brand-foreground)] shadow-[var(--shadow-cta)] transition-transform duration-[var(--motion-fast)] active:scale-95"
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--brand)] text-[var(--brand-foreground)] shadow-[var(--shadow-cta)]"
                       aria-hidden
                     >
                       <BottomIcon id={item.id} className="h-5 w-5" />
@@ -101,7 +107,7 @@ export function AutomationFirstBottomNav() {
             }
 
             return (
-              <li key={item.id} className="flex-1">
+              <li key={item.id} className="relative z-10 flex-1">
                 <Link
                   href={item.href ?? "/projects"}
                   onClick={() =>
@@ -110,14 +116,20 @@ export function AutomationFirstBottomNav() {
                     })
                   }
                   className={cn(
-                    "flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-[var(--radius-md)] px-0.5 text-[11px] font-medium leading-tight transition-colors focus-ring",
+                    "flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-[var(--radius-md)] px-0.5 text-[11px] font-medium leading-tight transition-[color,opacity] duration-[var(--motion-fast)] focus-ring",
                     isActive
                       ? "text-[var(--brand)]"
                       : "text-[var(--text-muted)] hover:text-[var(--text-primary)]",
                   )}
                   aria-current={isActive ? "page" : undefined}
                 >
-                  <span aria-hidden>
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "transition-transform duration-[var(--motion-fast)]",
+                      isActive && "scale-[1.06]",
+                    )}
+                  >
                     <BottomIcon id={item.id} className="h-5 w-5" />
                   </span>
                   <span>{item.label}</span>

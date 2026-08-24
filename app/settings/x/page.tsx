@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 export default function XSettingsPage() {
   return (
     <AtlasAppShell active="settings" width="default">
-      <div className="space-y-8 animate-fade-in">
+      <div className="space-y-8">
         <header className="space-y-3">
           <p className="text-caption">{ui.brand}</p>
           <h1 className="text-display text-foreground">{ui.xSettings.title}</h1>

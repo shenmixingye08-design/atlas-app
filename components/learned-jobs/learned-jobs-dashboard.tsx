@@ -131,7 +131,7 @@ export function LearnedJobsDashboard() {
   if (loading) return <LoadingState />;
 
   return (
-    <div className="space-y-8 animate-fade-up">
+    <div className="space-y-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-2">
           <p className="text-sm font-medium text-accent">AI秘書</p>

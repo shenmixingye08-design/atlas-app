@@ -44,12 +44,12 @@ export function ProgressBar({
         {indeterminate ? (
           <div
             className={cn("h-full w-1/3 rounded-full bg-accent/40", SIZE[size])}
-            style={{ animation: "progress-indeterminate 1.5s ease-in-out infinite" }}
+            style={{ animation: "progress-indeterminate 1.8s ease-in-out infinite" }}
           />
         ) : (
           <div
-            className="h-full rounded-full bg-accent transition-all duration-[var(--motion-slow)]"
-            style={{ width: `${pct}%` }}
+            className="h-full w-full origin-left rounded-full bg-accent transition-transform duration-[var(--motion-slow)]"
+            style={{ transform: `scaleX(${pct / 100})` }}
           />
         )}
       </div>

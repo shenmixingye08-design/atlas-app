@@ -307,7 +307,7 @@ export function CommanderDashboard() {
   }
 
   return (
-    <div className="space-y-8 animate-fade-up">
+    <div className="space-y-8">
       <header className="space-y-3">
         <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent">
           {ui.commander.eyebrow}
