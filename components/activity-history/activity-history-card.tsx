@@ -33,7 +33,7 @@ const STATUS_CLASS: Record<string, string> = {
 };
 
 const CARD_CLASS =
-  "activity-history-card w-full rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface)] p-3 text-left shadow-[var(--shadow-sm)] transition-all duration-[var(--motion-fast)] sm:p-3.5";
+  "activity-history-card motion-press-card w-full rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface)] p-3 text-left shadow-[var(--shadow-sm)] transition-[border-color,box-shadow,background-color] duration-[var(--motion-fast)] sm:p-3.5";
 
 export function ActivityHistoryCard({
   item,

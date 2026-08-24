@@ -145,13 +145,13 @@ export const ATLAS_PHILOSOPHY = {
   background: COLORS.background,
   surface: COLORS.surfaceMuted,
   text: COLORS.textPrimary,
-  motionMs: { fast: 150, base: 200, slow: 250 },
+  motionMs: { fast: 140, base: 220, slow: 260 },
 } as const;
 
 export const MOTION = {
-  fast: "150ms cubic-bezier(0.25, 0.1, 0.25, 1)",
-  base: "200ms cubic-bezier(0.25, 0.1, 0.25, 1)",
-  slow: "250ms cubic-bezier(0.25, 0.1, 0.25, 1)",
+  fast: "140ms cubic-bezier(0.25, 0.1, 0.25, 1)",
+  base: "220ms cubic-bezier(0.25, 0.1, 0.25, 1)",
+  slow: "260ms cubic-bezier(0.25, 0.1, 0.25, 1)",
 } as const;
 
 export const RADIUS = {

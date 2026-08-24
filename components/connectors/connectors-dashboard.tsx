@@ -41,7 +41,7 @@ export function ConnectorsDashboard() {
   if (isLoading) return <LoadingState />;
 
   return (
-    <div className="space-y-10 animate-fade-in">
+    <div className="space-y-10">
       <header className="space-y-2">
         <h1 className="text-display text-foreground">{ui.connectors.title}</h1>
         <p className="text-body text-[var(--foreground-muted)]">

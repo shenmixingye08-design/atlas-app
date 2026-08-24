@@ -38,7 +38,7 @@ export function NotificationInbox() {
 
   if (!enabled) {
     return (
-      <div className="space-y-8 animate-fade-up">
+      <div className="space-y-8">
         <header className="space-y-3">
           <p className="text-caption text-accent">{ui.brand}</p>
           <h1 className="text-display text-foreground">{ui.notifications.title}</h1>
@@ -52,7 +52,7 @@ export function NotificationInbox() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-up">
+    <div className="space-y-6">
       <PageHeader
         eyebrow="MINERVOT"
         title="通知"

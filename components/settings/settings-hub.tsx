@@ -173,7 +173,7 @@ export function SettingsHub({
   }
 
   return (
-    <div className="space-y-8 animate-fade-up">
+    <div className="space-y-8">
       <PageHeader
         eyebrow="MINERVOT"
         title="設定"
@@ -193,7 +193,7 @@ export function SettingsHub({
                 <li key={`${group.id}:${link.href}:${link.title}`}>
                   <Link
                     href={link.href}
-                    className="flex min-h-[var(--touch-target)] flex-col justify-center px-4 py-3 transition-colors hover:bg-[var(--surface-muted)]"
+                    className="flex min-h-[var(--touch-target)] flex-col justify-center px-4 py-3 transition-colors hover:bg-[var(--surface-muted)] active:bg-[var(--surface-muted)]"
                   >
                     <span className="font-medium text-[var(--text-primary)]">
                       {link.title}

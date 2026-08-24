@@ -67,9 +67,9 @@ export type AutomationFirstHomeProps = {
 
 function HomeSkeleton() {
   return (
-    <div className="space-y-4 animate-pulse" aria-busy aria-label="読み込み中">
-      <div className="h-8 w-48 rounded bg-[var(--surface-muted)]" />
-      <div className="h-40 rounded-[var(--radius-lg)] bg-[var(--surface-muted)]" />
+    <div className="min-h-[12rem] space-y-4" aria-busy aria-label="読み込み中">
+      <div className="h-8 w-48 animate-shimmer rounded bg-[var(--surface-muted)]" />
+      <div className="h-40 animate-shimmer rounded-[var(--radius-lg)] bg-[var(--surface-muted)]" />
     </div>
   );
 }

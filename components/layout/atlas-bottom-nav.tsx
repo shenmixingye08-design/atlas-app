@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { BottomNavIndicator } from "@/components/motion/nav-indicator";
 import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 import {
@@ -41,16 +42,21 @@ export function AtlasBottomNav() {
       className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border-subtle)] bg-[var(--card-glass)] backdrop-blur-xl md:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
-      <ul className="mx-auto flex max-w-lg items-stretch justify-around px-0.5 pt-1">
+      <ul className="relative mx-auto flex max-w-lg items-stretch justify-around px-0.5 pt-1">
+        <BottomNavIndicator
+          index={NAV_ITEMS.findIndex((item) => item.id === active)}
+          count={NAV_ITEMS.length}
+          hidden={!active || active === "request"}
+        />
         {NAV_ITEMS.map((item) => {
           const isActive = active === item.id;
 
           if (item.primary) {
             return (
-              <li key={item.id} className="flex-1">
+              <li key={item.id} className="relative z-10 flex-1">
                 <Link
                   href={item.href}
-                  className="touch-target flex min-h-[56px] flex-col items-center justify-center gap-1 px-0.5 text-[11px] font-medium leading-tight focus-ring"
+                  className="motion-press touch-target flex min-h-[56px] flex-col items-center justify-center gap-1 px-0.5 text-[11px] font-medium leading-tight focus-ring"
                   aria-current={isActive ? "page" : undefined}
                 >
                   <span
@@ -68,18 +74,24 @@ export function AtlasBottomNav() {
           }
 
           return (
-            <li key={item.id} className="flex-1">
+            <li key={item.id} className="relative z-10 flex-1">
               <Link
                 href={item.href}
                 className={cn(
-                  "touch-target flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-[var(--radius-md)] px-0.5 text-[11px] font-medium leading-tight transition-colors focus-ring",
+                  "touch-target flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-[var(--radius-md)] px-0.5 text-[11px] font-medium leading-tight transition-[color,opacity] duration-[var(--motion-fast)] focus-ring",
                   isActive
                     ? "text-accent"
                     : "text-[var(--foreground-muted)] hover:text-foreground",
                 )}
                 aria-current={isActive ? "page" : undefined}
               >
-                <span className="text-lg leading-none" aria-hidden>
+                <span
+                  className={cn(
+                    "text-lg leading-none transition-transform duration-[var(--motion-fast)]",
+                    isActive && "scale-[1.06]",
+                  )}
+                  aria-hidden
+                >
                   {item.icon}
                 </span>
                 <span className="max-w-full text-center">{item.label}</span>

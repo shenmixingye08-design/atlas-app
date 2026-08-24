@@ -25,7 +25,7 @@ export function Card({
         "rounded-[var(--radius-2xl)] bg-[var(--card)]",
         (variant === "default" || variant === "elevated") && "shadow-[var(--shadow-md)]",
         variant === "interactive" &&
-          "cursor-pointer shadow-[var(--shadow-md)] transition-all duration-[var(--motion-base)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-lg)] active:translate-y-0 active:shadow-[var(--shadow-md)]",
+          "motion-press-card cursor-pointer shadow-[var(--shadow-md)] hover:shadow-[var(--shadow-lg)]",
         PADDING[padding],
         className,
       )}

@@ -23,7 +23,7 @@ export function SecretaryHomeDashboard({
 }: SecretaryHomeDashboardProps) {
   return (
     <div className="home-dashboard mx-auto flex min-h-[60vh] w-full max-w-2xl flex-col justify-center space-y-6 pb-10 pt-6 sm:space-y-8 sm:pb-14 sm:pt-10">
-      <header className="animate-card-enter space-y-2 text-center sm:space-y-3">
+      <header className="space-y-2 text-center sm:space-y-3">
         <p className="text-[length:var(--text-label)] font-semibold tracking-[0.1em] text-[var(--brand)]">
           MINERVOT
         </p>
@@ -36,7 +36,7 @@ export function SecretaryHomeDashboard({
         </p>
       </header>
 
-      <div className="animate-card-enter">
+      <div>
         <HomeChatBar />
       </div>
     </div>

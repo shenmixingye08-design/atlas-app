@@ -41,7 +41,7 @@ export function ConnectionsDashboard() {
   if (isLoading) return <LoadingState />;
 
   return (
-    <div className="space-y-12 animate-fade-in">
+    <div className="space-y-12">
       <header className="space-y-3">
         <h1 className="text-display text-foreground">{ui.connections.title}</h1>
         <p className="max-w-2xl text-body text-[var(--foreground-muted)]">

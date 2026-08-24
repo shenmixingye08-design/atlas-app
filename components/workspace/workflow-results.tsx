@@ -82,8 +82,8 @@ export function WorkflowResults({
           aria-label={current?.label ?? "進捗"}
         >
           <div
-            className="h-full rounded-full bg-accent transition-all duration-500"
-            style={{ width: `${Math.round((filled / total) * 100)}%` }}
+            className="h-full w-full origin-left rounded-full bg-accent transition-transform duration-[var(--motion-slow)]"
+            style={{ transform: `scaleX(${filled / total})` }}
           />
         </div>
 
@@ -97,7 +97,14 @@ export function WorkflowResults({
                 index === runningIndex && "bg-accent/5 font-medium text-foreground",
               )}
             >
-              <span aria-hidden className="w-5 text-center">
+              <span
+                aria-hidden
+                className={cn(
+                  "w-5 text-center",
+                  index < runningIndex && "animate-check-in",
+                  index === runningIndex && "animate-soft-pulse",
+                )}
+              >
                 {index < runningIndex ? "✓" : index === runningIndex ? "●" : "○"}
               </span>
               <span>{phase.label}</span>

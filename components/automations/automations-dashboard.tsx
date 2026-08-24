@@ -477,7 +477,7 @@ export function AutomationsDashboard() {
   ].slice(0, 6);
 
   return (
-    <div className="space-y-5 sm:space-y-6 animate-fade-up pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+    <div className="space-y-5 sm:space-y-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
       {dashboardV2 ? (
         <PageHeader
           eyebrow={ui.brand}

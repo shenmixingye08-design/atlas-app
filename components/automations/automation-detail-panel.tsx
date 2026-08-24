@@ -1,6 +1,13 @@
 "use client";
 
+import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
+
+import {
+  MOTION_REDUCED,
+  MOTION_TRANSITION,
+  MOTION_Y,
+} from "@/lib/motion/tokens";
 
 import type { Automation, AutomationExecutionLevel } from "@/lib/automations/types";
 import { updateAutomation } from "@/lib/automations/client";
@@ -79,6 +86,7 @@ export function AutomationDetailPanel({
   const [emojiOverride, setEmojiOverride] = useState("");
   const [hashtagOverride, setHashtagOverride] = useState("");
 
+  const reduce = useReducedMotion();
   const status = resolveAutomationUserStatus(automation);
   const preview = buildAutomationPreview(automation);
   const isXDestination = automation.destination === "x";
@@ -191,16 +199,27 @@ export function AutomationDetailPanel({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
+    <motion.div
+      className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.backdrop}
+    >
       <button
         type="button"
         className="absolute inset-0 bg-black/30 backdrop-blur-[2px]"
         aria-label={ui.actions.close}
         onClick={onClose}
       />
+      <motion.div
+        className="relative z-10 w-full max-w-2xl sm:mx-4"
+        initial={reduce ? { opacity: 0 } : { opacity: 0, y: MOTION_Y.modal }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.modal}
+      >
       <Card
         padding="lg"
-        className="relative z-10 max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)] sm:mx-4 sm:rounded-[var(--radius-2xl)]"
+        className="max-h-[92dvh] w-full overflow-y-auto rounded-t-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)] sm:rounded-[var(--radius-2xl)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="entrusted-job-detail-title"
@@ -651,6 +670,7 @@ export function AutomationDetailPanel({
           </Button>
         </div>
       </Card>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

@@ -1,7 +1,14 @@
 "use client";
 
+import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+
+import {
+  MOTION_REDUCED,
+  MOTION_TRANSITION,
+  MOTION_Y,
+} from "@/lib/motion/tokens";
 
 import type { AutomationRun, AutomationV2 } from "@/lib/automation-platform/types";
 import {
@@ -111,15 +118,24 @@ export function AutomationV2DetailPanel({
     (run) =>
       run.status === "failed" || run.status === "partially_succeeded",
   );
+  const reduce = useReducedMotion();
 
   return (
-    <div
+    <motion.div
       className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-label={`${automation.name}の詳細`}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.backdrop}
     >
-      <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-[var(--surface)] sm:rounded-3xl">
+      <motion.div
+        className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-[var(--surface)] sm:rounded-3xl"
+        initial={reduce ? { opacity: 0 } : { opacity: 0, y: MOTION_Y.modal }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.modal}
+      >
         <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-4">
           <div className="min-w-0">
             <p className="text-xs text-[var(--muted)]">自動化の詳細</p>
@@ -365,7 +381,7 @@ export function AutomationV2DetailPanel({
             </Link>
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

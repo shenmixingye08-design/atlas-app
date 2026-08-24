@@ -61,7 +61,7 @@ export function MarketplaceDashboard() {
   if (isLoading) return <LoadingState />;
 
   return (
-    <div className="space-y-16 animate-fade-up">
+    <div className="space-y-16">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-3">
           <h1 className="text-display text-foreground">{ui.marketplace.title}</h1>
