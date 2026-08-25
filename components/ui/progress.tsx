@@ -48,7 +48,7 @@ export function ProgressBar({
           />
         ) : (
           <div
-            className="h-full w-full origin-left rounded-full bg-accent transition-transform duration-[var(--motion-slow)]"
+            className="motion-progress-fill h-full w-full origin-left rounded-full bg-accent"
             style={{ transform: `scaleX(${pct / 100})` }}
           />
         )}

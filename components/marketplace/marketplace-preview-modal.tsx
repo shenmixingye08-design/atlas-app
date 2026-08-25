@@ -1,16 +1,10 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
-
 import type { WorkflowPackageView } from "@/lib/workflow-marketplace/types";
 import { getDepartmentLabel, getTemplateDisplayName, ui } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  MOTION_REDUCED,
-  MOTION_TRANSITION,
-  MOTION_Y,
-} from "@/lib/motion/tokens";
+import { ModalBackdrop, ModalChrome } from "@/components/motion/modal-chrome";
 
 type MarketplacePreviewModalProps = {
   pkg: WorkflowPackageView | null;
@@ -25,30 +19,31 @@ export function MarketplacePreviewModal({
   onInstall,
   isBusy,
 }: MarketplacePreviewModalProps) {
-  const reduce = useReducedMotion();
-
   if (!pkg) return null;
 
   const displayName = getTemplateDisplayName(pkg.templateId, pkg.name);
 
   return (
-    <motion.div
-      className="fixed inset-0 z-[100] flex items-end justify-center bg-black/30 p-4 backdrop-blur-sm sm:items-center"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="marketplace-preview-title"
-      onClick={onClose}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.backdrop}
+    <ModalBackdrop
+      open
+      className="fixed inset-0 z-[100] flex items-end justify-center bg-black/30 p-4 sm:items-center"
     >
-      <motion.div
-        className="w-full max-w-2xl"
-        initial={reduce ? { opacity: 0 } : { opacity: 0, y: MOTION_Y.modal }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.modal}
-        onClick={(event) => event.stopPropagation()}
+      <button
+        type="button"
+        className="absolute inset-0"
+        aria-label={ui.actions.close}
+        onClick={onClose}
+      />
+      <ModalChrome
+        open
+        placement="center"
+        className="relative z-10 w-full max-w-2xl"
       >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="marketplace-preview-title"
+        >
       <Card
         padding="lg"
         className="max-h-[85vh] w-full overflow-y-auto"
@@ -197,7 +192,8 @@ export function MarketplacePreviewModal({
           </Button>
         </div>
       </Card>
-      </motion.div>
-    </motion.div>
+        </div>
+      </ModalChrome>
+    </ModalBackdrop>
   );
 }

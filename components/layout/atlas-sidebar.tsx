@@ -323,19 +323,22 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
       </aside>
 
       {/* Mobile drawer overlay */}
-      {mobileOpen && (
-        <button
-          type="button"
-          className="fixed inset-0 z-40 bg-[var(--overlay)] animate-fade-in md:hidden"
-          aria-label={ui.nav.closeSidebar}
-          onClick={closeMobile}
-        />
-      )}
+      <button
+        type="button"
+        className={cn(
+          "fixed inset-0 z-40 bg-[var(--overlay)] transition-opacity duration-[var(--motion-slow)] md:hidden",
+          mobileOpen ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+        aria-label={ui.nav.closeSidebar}
+        aria-hidden={!mobileOpen}
+        tabIndex={mobileOpen ? 0 : -1}
+        onClick={closeMobile}
+      />
 
       {/* Mobile drawer */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-[min(85vw,var(--sidebar-width))] border-r border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)] transition-transform duration-[var(--motion-base)] md:hidden",
+          "fixed inset-y-0 left-0 z-50 w-[min(85vw,var(--sidebar-width))] border-r border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)] transition-transform duration-[var(--motion-slow)] md:hidden",
           mobileOpen ? "translate-x-0" : "-translate-x-full pointer-events-none",
         )}
         aria-label={ui.nav.menu}

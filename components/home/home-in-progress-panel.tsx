@@ -9,6 +9,8 @@ import {
   isActiveJob,
   partitionProjectsForToday,
 } from "@/lib/home/today-dashboard";
+import { MotionList, MotionListItem } from "@/components/motion/list-item";
+import { ProgressBar } from "@/components/ui/progress";
 import type { Project } from "@/lib/projects/types";
 import { ui } from "@/lib/i18n";
 
@@ -48,10 +50,11 @@ export function HomeInProgressPanel({
       <h2 id="in-progress-heading" className="text-xl font-semibold text-foreground">
         {ui.todayDashboard.sections.inProgress}
       </h2>
-      <ul className="space-y-4">
-        {activeJobs.map((job) => (
-          <li
+      <MotionList className="space-y-4">
+        {activeJobs.map((job, index) => (
+          <MotionListItem
             key={job.id}
+            index={index}
             className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-4 shadow-[var(--shadow-sm)] sm:p-6"
           >
             <div className="space-y-4">
@@ -63,16 +66,15 @@ export function HomeInProgressPanel({
                   {job.activityLabel ?? job.title}
                 </p>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-[var(--background-subtle)]">
-                <div
-                  className="h-full rounded-full bg-accent transition-all duration-500"
-                  style={{ width: `${job.progress ?? 45}%` }}
-                />
-              </div>
+              {typeof job.progress === "number" ? (
+                <ProgressBar value={job.progress} size="md" />
+              ) : (
+                <ProgressBar value={0} size="md" indeterminate />
+              )}
             </div>
-          </li>
+          </MotionListItem>
         ))}
-      </ul>
+      </MotionList>
     </section>
   );
 }

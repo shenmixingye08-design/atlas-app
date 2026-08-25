@@ -1,15 +1,10 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import {
-  MOTION_REDUCED,
-  MOTION_TRANSITION,
-  MOTION_Y,
-} from "@/lib/motion/tokens";
+import { ModalBackdrop, ModalChrome } from "@/components/motion/modal-chrome";
 
 import {
   formatDuration,
@@ -45,12 +40,14 @@ import {
 
 type ActivityHistoryDetailProps = {
   item: ActivityHistoryItem;
+  open?: boolean;
   onClose: () => void;
   onUpdated: () => void;
 };
 
 export function ActivityHistoryDetail({
   item,
+  open = true,
   onClose,
   onUpdated,
 }: ActivityHistoryDetailProps) {
@@ -67,7 +64,6 @@ export function ActivityHistoryDetail({
     deliverableType: item.deliverableType,
     services: item.services,
   });
-  const reduce = useReducedMotion();
   const canEntrust =
     item.status === "completed" && isAutomatableKind(kind) && !item.automationId;
   const receipt = useMemo(
@@ -182,23 +178,28 @@ export function ActivityHistoryDetail({
   }
 
   return (
-    <motion.div
+    <ModalBackdrop
+      open={open}
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.backdrop}
     >
-      <motion.div
+      <button
+        type="button"
+        className="absolute inset-0"
+        aria-label={ui.actions.close}
+        onClick={onClose}
+      />
+      <ModalChrome
+        open={open}
+        placement="sheet"
         className={cn(
-          "activity-history-detail flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-[var(--surface)] shadow-[var(--shadow-lg)] sm:rounded-3xl",
+          "activity-history-detail relative z-10 flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-[var(--surface)] shadow-[var(--shadow-lg)] sm:rounded-3xl",
         )}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="activity-history-detail-title"
-        initial={reduce ? { opacity: 0 } : { opacity: 0, y: MOTION_Y.modal }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.modal}
       >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="activity-history-detail-title"
+        >
         <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-5 py-4">
           <h2 id="activity-history-detail-title" className="text-lg font-semibold">
             {ui.activityHistory.detailTitle}
@@ -206,7 +207,7 @@ export function ActivityHistoryDetail({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full px-3 py-1 text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+            className="touch-target min-h-[44px] min-w-[44px] rounded-full px-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] focus-ring"
           >
             {ui.actions.close}
           </button>
@@ -345,7 +346,8 @@ export function ActivityHistoryDetail({
             </Button>
           )}
         </div>
-      </motion.div>
-    </motion.div>
+        </div>
+      </ModalChrome>
+    </ModalBackdrop>
   );
 }

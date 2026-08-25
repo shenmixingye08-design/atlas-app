@@ -1,14 +1,9 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import {
-  MOTION_REDUCED,
-  MOTION_TRANSITION,
-  MOTION_Y,
-} from "@/lib/motion/tokens";
+import { ModalBackdrop, ModalChrome } from "@/components/motion/modal-chrome";
 
 import type { AutomationRun, AutomationV2 } from "@/lib/automation-platform/types";
 import {
@@ -34,6 +29,7 @@ const POLICY_LABEL: Record<AutomationV2["executionPolicy"]["mode"], string> = {
 
 export function AutomationV2DetailPanel({
   automation,
+  open = true,
   onClose,
   onPause,
   onResume,
@@ -44,6 +40,7 @@ export function AutomationV2DetailPanel({
   busy,
 }: {
   automation: AutomationV2;
+  open?: boolean;
   onClose: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -118,24 +115,27 @@ export function AutomationV2DetailPanel({
     (run) =>
       run.status === "failed" || run.status === "partially_succeeded",
   );
-  const reduce = useReducedMotion();
-
   return (
-    <motion.div
+    <ModalBackdrop
+      open={open}
       className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${automation.name}の詳細`}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.backdrop}
     >
-      <motion.div
-        className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-[var(--surface)] sm:rounded-3xl"
-        initial={reduce ? { opacity: 0 } : { opacity: 0, y: MOTION_Y.modal }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.modal}
+      <button
+        type="button"
+        className="absolute inset-0"
+        aria-label="閉じる"
+        onClick={onClose}
+      />
+      <ModalChrome
+        open={open}
+        placement="sheet"
+        className="relative z-10 flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-[var(--surface)] sm:rounded-3xl"
       >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${automation.name}の詳細`}
+        >
         <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-4">
           <div className="min-w-0">
             <p className="text-xs text-[var(--muted)]">自動化の詳細</p>
@@ -381,7 +381,8 @@ export function AutomationV2DetailPanel({
             </Link>
           </div>
         </div>
-      </motion.div>
-    </motion.div>
+        </div>
+      </ModalChrome>
+    </ModalBackdrop>
   );
 }

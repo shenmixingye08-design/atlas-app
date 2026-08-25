@@ -80,8 +80,8 @@ export function WizardShell({
             aria-label="作成の進捗"
           >
             <div
-              className="h-full rounded-full bg-[var(--brand,var(--accent))] transition-[width] duration-300 motion-reduce:transition-none"
-              style={{ width: `${Math.round(progress * 100)}%` }}
+              className="motion-progress-fill h-full w-full origin-left rounded-full bg-[var(--brand,var(--accent))]"
+              style={{ transform: `scaleX(${Math.min(1, Math.max(0, progress))})` }}
             />
           </div>
           <p className="mt-2 text-xs text-[var(--text-secondary)]">

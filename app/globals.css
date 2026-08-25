@@ -155,7 +155,7 @@
   --motion-normal: 200ms var(--easing-standard);
   --motion-slow: 280ms var(--easing-standard);
   --motion-base: var(--motion-normal);
-  --motion-page: 200ms var(--easing-standard);
+  --motion-page: 240ms var(--easing-standard);
   --motion-modal: var(--spring-soft);
   --theme-transition: 200ms var(--easing-standard);
 
@@ -586,6 +586,23 @@ html[data-theme-transitioning] *::after {
 
 .animate-status-in {
   animation: status-in 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+
+.motion-status {
+  transition:
+    background-color var(--motion-base),
+    color var(--motion-base),
+    border-color var(--motion-fast),
+    box-shadow var(--motion-fast);
+}
+
+.motion-progress-fill {
+  transform-origin: left center;
+  transition: transform var(--motion-slow);
+}
+
+.motion-content-in {
+  animation: fade-in var(--motion-base) both;
 }
 
 .animate-check-in {

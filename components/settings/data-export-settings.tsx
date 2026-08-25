@@ -261,8 +261,10 @@ export function DataExportSettings() {
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]">
                 <div
-                  className="h-full rounded-full bg-[var(--accent)] transition-all duration-300"
-                  style={{ width: `${Math.max(progress, 4)}%` }}
+                  className="motion-progress-fill h-full w-full origin-left rounded-full bg-[var(--accent)]"
+                  style={{
+                    transform: `scaleX(${Math.min(1, Math.max(0, progress / 100))})`,
+                  }}
                 />
               </div>
             </div>

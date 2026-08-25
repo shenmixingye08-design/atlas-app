@@ -11,6 +11,8 @@ import { prefillFromAssignment } from "@/lib/automations/detect-recurring";
 import { defaultAutomationFormState } from "@/lib/automations/form-utils";
 import { summarizeEntrustedJobs } from "@/lib/automations/display";
 import { ui } from "@/lib/i18n";
+import { useDeferredPresence } from "@/lib/motion/deferred-presence";
+import { MotionList, MotionListItem } from "@/components/motion/list-item";
 import {
   deleteAutomation,
   fetchAutomations,
@@ -150,6 +152,8 @@ export function AutomationsDashboard() {
   const [createInitialState, setCreateInitialState] = useState(initialForm);
   const [selected, setSelected] = useState<Automation | null>(null);
   const [selectedV2, setSelectedV2] = useState<AutomationV2 | null>(null);
+  const v1Detail = useDeferredPresence(selected);
+  const v2Detail = useDeferredPresence(selectedV2);
   const [listFilter, setListFilter] = useState<AutomationListFilter>("all");
   const [listSort, setListSort] = useState<AutomationListSort>("next_run");
   const [listQuery, setListQuery] = useState("");
@@ -875,25 +879,26 @@ export function AutomationsDashboard() {
               ))}
             </div>
           ) : (
-            <ul className="space-y-4">
-              {automations.map((automation) => (
-                <li key={automation.id}>
+            <MotionList className="space-y-4">
+              {automations.map((automation, index) => (
+                <MotionListItem key={automation.id} index={index}>
                   <AutomationCard
                     automation={automation}
                     onOpen={openV1Detail}
                     onToggleEnabled={(id, enabled) => void handleToggle(id, enabled)}
                     isUpdating={updatingId === automation.id}
                   />
-                </li>
+                </MotionListItem>
               ))}
-            </ul>
+            </MotionList>
           )}
         </section>
       ) : null}
 
-      {selected ? (
+      {v1Detail.item ? (
         <AutomationDetailPanel
-          automation={selected}
+          automation={v1Detail.item}
+          open={v1Detail.open}
           onClose={closeV1Detail}
           onUpdated={(updated) => {
             setAutomations((prev) =>
@@ -915,21 +920,25 @@ export function AutomationsDashboard() {
               setUpdatingId(null);
             }
           }}
-          isRunning={runningId === selected.id}
-          isUpdating={updatingId === selected.id}
+          isRunning={runningId === v1Detail.item.id}
+          isUpdating={updatingId === v1Detail.item.id}
         />
       ) : null}
 
-      {selectedV2 ? (
+      {v2Detail.item ? (
         <AutomationV2DetailPanel
-          automation={selectedV2}
+          automation={v2Detail.item}
+          open={v2Detail.open}
           busy={
-            updatingId === selectedV2.id || runningId === selectedV2.id
+            updatingId === v2Detail.item.id || runningId === v2Detail.item.id
           }
           onClose={closeV2Detail}
           onPause={() => {
-            setUpdatingId(selectedV2.id);
-            void pauseAutomationV2(selectedV2.id)
+            const item = v2Detail.item;
+            if (!item) return;
+            const id = item.id;
+            setUpdatingId(id);
+            void pauseAutomationV2(id)
               .then(async () => {
                 await loadV2();
                 setSelectedV2((current) =>
@@ -946,8 +955,11 @@ export function AutomationsDashboard() {
               .finally(() => setUpdatingId(null));
           }}
           onResume={() => {
-            setUpdatingId(selectedV2.id);
-            void resumeAutomationV2(selectedV2.id)
+            const item = v2Detail.item;
+            if (!item) return;
+            const id = item.id;
+            setUpdatingId(id);
+            void resumeAutomationV2(id)
               .then(async (updated) => {
                 await loadV2();
                 setSelectedV2(updated);
@@ -960,8 +972,11 @@ export function AutomationsDashboard() {
               .finally(() => setUpdatingId(null));
           }}
           onRun={() => {
-            setRunningId(selectedV2.id);
-            void runAutomationV2(selectedV2.id)
+            const item = v2Detail.item;
+            if (!item) return;
+            const id = item.id;
+            setRunningId(id);
+            void runAutomationV2(id)
               .then((result) => {
                 void loadV2();
                 router.push(
@@ -976,8 +991,11 @@ export function AutomationsDashboard() {
               .finally(() => setRunningId(null));
           }}
           onDuplicate={() => {
-            setUpdatingId(selectedV2.id);
-            void duplicateAutomationV2(selectedV2.id)
+            const item = v2Detail.item;
+            if (!item) return;
+            const id = item.id;
+            setUpdatingId(id);
+            void duplicateAutomationV2(id)
               .then(loadV2)
               .catch((err: unknown) =>
                 setError(
@@ -994,8 +1012,11 @@ export function AutomationsDashboard() {
           }}
           onArchive={() => {
             if (!confirmDelete()) return;
-            setUpdatingId(selectedV2.id);
-            void archiveAutomationV2(selectedV2.id)
+            const item = v2Detail.item;
+            if (!item) return;
+            const id = item.id;
+            setUpdatingId(id);
+            void archiveAutomationV2(id)
               .then(async () => {
                 await loadV2();
                 closeV2Detail();

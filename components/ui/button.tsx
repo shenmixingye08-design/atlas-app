@@ -49,7 +49,21 @@ export function Button({
       {...props}
       aria-busy={isLoading || undefined}
     >
-      {isLoading ? "…" : children}
+      <span
+        className={
+          isLoading
+            ? "inline-flex items-center gap-2 opacity-80 transition-opacity duration-[var(--motion-fast)]"
+            : "inline-flex items-center gap-2 transition-opacity duration-[var(--motion-fast)]"
+        }
+      >
+        {isLoading ? (
+          <span
+            className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent"
+            aria-hidden
+          />
+        ) : null}
+        {children}
+      </span>
     </button>
   );
 }

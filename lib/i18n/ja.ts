@@ -764,6 +764,7 @@ export const ui = {
     driveSandboxSaved: "保存しました",
     preparingFiles: "ファイルをお渡しする準備をしています…",
     downloadingFile: "ダウンロードしています…",
+    downloadComplete: "ダウンロードが完了しました",
     downloadFailed: "ダウンロードできませんでした。もう一度お試しください。",
     viewDetails: "詳細を見る",
     hideDetails: "詳細を閉じる",

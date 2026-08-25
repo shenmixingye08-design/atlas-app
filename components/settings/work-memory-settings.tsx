@@ -1,7 +1,10 @@
 "use client";
 import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { ModalBackdrop, ModalChrome } from "@/components/motion/modal-chrome";
+import { useDeferredPresence } from "@/lib/motion/deferred-presence";
 
 import {
   WORK_MEMORY_TYPES,
@@ -81,8 +84,8 @@ function UnderstandingBar({ value }: { value: number }) {
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-muted)]">
         <div
-          className="h-full rounded-full bg-accent transition-all duration-[var(--motion-base)]"
-          style={{ width: `${percent}%` }}
+          className="motion-progress-fill h-full w-full origin-left rounded-full bg-accent"
+          style={{ transform: `scaleX(${Math.min(1, Math.max(0, percent / 100))})` }}
         />
       </div>
     </div>
@@ -111,7 +114,7 @@ function MemoryCard({
           }
         }}
         className={cn(
-          "group flex h-full w-full cursor-pointer flex-col rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 text-left shadow-[var(--shadow-sm)] transition-all duration-[var(--motion-base)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] focus-ring animate-fade-up",
+          "group flex h-full w-full cursor-pointer flex-col rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 text-left shadow-[var(--shadow-sm)] transition-[border-color,box-shadow,opacity] duration-[var(--motion-base)] [@media(hover:hover)_and_(pointer:fine)]:hover:shadow-[var(--shadow-md)] focus-ring motion-content-in",
           !memory.isActive && "opacity-70",
         )}
       >
@@ -188,6 +191,7 @@ function MemoryCard({
 
 function DetailPanel({
   memory,
+  open = true,
   onClose,
   onEdit,
   onDelete,
@@ -195,6 +199,7 @@ function DetailPanel({
   onToggleAutomation,
 }: {
   memory: WorkMemoryRecord;
+  open?: boolean;
   onClose: () => void;
   onEdit: (memory: WorkMemoryRecord) => void;
   onDelete: (id: string) => void;
@@ -204,16 +209,24 @@ function DetailPanel({
   const history = buildRevisionHistory(memory);
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
+    <ModalBackdrop
+      open={open}
+      className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center"
+    >
       <button
         type="button"
-        className="absolute inset-0 bg-black/30 backdrop-blur-[2px] animate-fade-in"
+        className="absolute inset-0 bg-black/30"
         aria-label={ui.workMemory.close}
         onClick={onClose}
       />
+      <ModalChrome
+        open={open}
+        placement="sheet"
+        className="relative z-10 w-full max-w-lg sm:mx-4"
+      >
       <Card
         padding="lg"
-        className="relative z-10 max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)] animate-fade-up sm:mx-4 sm:rounded-[var(--radius-2xl)]"
+        className="max-h-[90dvh] w-full overflow-y-auto rounded-t-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)] sm:rounded-[var(--radius-2xl)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="work-memory-detail-title"
@@ -327,7 +340,8 @@ function DetailPanel({
           </Button>
         </div>
       </Card>
-    </div>
+      </ModalChrome>
+    </ModalBackdrop>
   );
 }
 
@@ -340,6 +354,8 @@ export function WorkMemorySettings() {
   const [typeFilter, setTypeFilter] = useState<WorkMemoryType | "all">("all");
   const [editing, setEditing] = useState<EditState | null>(null);
   const [selected, setSelected] = useState<WorkMemoryRecord | null>(null);
+  const detail = useDeferredPresence(selected);
+  const hasLoadedRef = useRef(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [pendingCandidateId, setPendingCandidateId] = useState<string | null>(
     null,
@@ -355,11 +371,12 @@ export function WorkMemorySettings() {
   }, [searchInput]);
 
   const reload = useCallback(async () => {
-    setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
     setError(null);
     try {
       const next = await fetchWorkMemories({ query: search, type: typeFilter });
       setData(next);
+      hasLoadedRef.current = true;
       setSelected((current) => {
         if (!current) return null;
         return next.memories.find((item) => item.id === current.id) ?? null;
@@ -860,9 +877,10 @@ export function WorkMemorySettings() {
         </div>
       </section>
 
-      {selected && (
+      {detail.item && (
         <DetailPanel
-          memory={selected}
+          memory={detail.item}
+          open={detail.open}
           onClose={() => setSelected(null)}
           onEdit={(memory) => {
             setSelected(null);

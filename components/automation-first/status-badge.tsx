@@ -20,7 +20,7 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        "inline-flex min-h-6 items-center rounded-full px-2.5 text-[length:var(--text-caption)] font-medium",
+        "motion-status inline-flex min-h-6 items-center rounded-full px-2.5 text-[length:var(--text-caption)] font-medium",
         statusBadgeClass(status),
         className,
       )}
