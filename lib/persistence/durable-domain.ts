@@ -1,6 +1,6 @@
 import "server-only";
 
-import { isInternalHealthProbeUserId } from "@/lib/health/internal-probe-user";
+import { isInternalProbeIdentity } from "@/lib/health/internal-probe-user";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 import {
@@ -95,7 +95,7 @@ export function resetClerkPointerCacheForTests(): void {
 export async function clearHeavyClerkDurableDomains(
   userId: string,
 ): Promise<{ migrated: string[]; cleared: string[] }> {
-  if (isInternalHealthProbeUserId(userId)) {
+  if (isInternalProbeIdentity(userId)) {
     return { migrated: [], cleared: [] };
   }
   if (clearedUsersCache().has(userId)) {

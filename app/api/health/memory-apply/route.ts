@@ -60,6 +60,13 @@ export async function GET(request: Request): Promise<Response> {
     commitShaShort: result.commitShaShort,
     environment: result.environment,
     correlationId: result.correlationId,
+    probeId: result.probeId ?? result.correlationId,
+    totalDurationMs: result.totalDurationMs ?? null,
+    iterations: result.iterations ?? 1,
+    clerkCalls: result.clerkCalls ?? 0,
+    dbCalls: result.dbCalls ?? 0,
+    retries: result.retries ?? 0,
+    deadlineReached: result.deadlineReached ?? false,
   };
   lastSafeBody = body;
 

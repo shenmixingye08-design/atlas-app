@@ -149,4 +149,30 @@ describe("durable-domain", () => {
     expect(loaded).toEqual({ blob: "full" });
     expect(loadClerk).not.toHaveBeenCalled();
   });
+
+  it("skips Clerk heavy-key cleanup for N-05 memory probe identities", async () => {
+    upsertSb.mockResolvedValue(true);
+    const result = await persistDurableDomain(
+      "user_n05_mem_a_test123",
+      "atlasPersonalMemory",
+      { memories: [] },
+      { forceSupabase: true, compact: (p) => p },
+    );
+    expect(result).toBe("supabase");
+    expect(loadClerk).not.toHaveBeenCalled();
+    expect(clearClerk).not.toHaveBeenCalled();
+    expect(persistClerk).not.toHaveBeenCalled();
+  });
+
+  it("still clears leftover Clerk keys for real users on supabase-only persist", async () => {
+    upsertSb.mockResolvedValue(true);
+    const result = await persistDurableDomain(
+      "user_2abcRealClerkId",
+      "atlasPersonalMemory",
+      { memories: [] },
+      { forceSupabase: true, compact: (p) => p },
+    );
+    expect(result).toBe("supabase");
+    expect(clearClerk).toHaveBeenCalled();
+  });
 });

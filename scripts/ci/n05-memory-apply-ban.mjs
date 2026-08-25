@@ -79,6 +79,29 @@ if (/recordMemoryApplyEvent\(\s*\{\s*userId:\s*"system"/.test(health)) {
 if (!/probeMemoryApplyProduction/.test(health)) {
   violations.push("health/memory-apply: must call probeMemoryApplyProduction");
 }
+if (!/clerkCalls/.test(health)) {
+  violations.push("health/memory-apply: must expose clerkCalls");
+}
+
+const probeIds = read("lib/health/internal-probe-user.ts");
+if (!/user_n05_mem_/.test(probeIds)) {
+  violations.push("internal-probe-user.ts: must classify user_n05_mem_ identities");
+}
+if (!/createN05MemoryProbeUserIds/.test(probeIds)) {
+  violations.push("internal-probe-user.ts: must generate N-05 probe ids");
+}
+if (!/createN05MemoryProbeUserIds/.test(probe)) {
+  violations.push("memory-apply-production-probe.ts: must use createN05MemoryProbeUserIds");
+}
+if (!/MEMORY_APPLY_HEALTH_SUMMARY/.test(probe)) {
+  violations.push("memory-apply-production-probe.ts: must emit MEMORY_APPLY_HEALTH_SUMMARY");
+}
+if (!/MEMORY_APPLY_HEALTH_SOFT_DEADLINE_MS/.test(probe)) {
+  violations.push("memory-apply-production-probe.ts: must define a soft deadline");
+}
+if (!/shouldRetryMemoryApplyHealth/.test(probe)) {
+  violations.push("memory-apply-production-probe.ts: must bound retries");
+}
 
 const v1 = read("lib/automations/run-automation.ts");
 if (!/buildV1AutomationMemoryMetadata|v1-automation-bridge/.test(v1)) {
