@@ -24,39 +24,39 @@ export function LandingHeroSection() {
   const [first, second] = PRODUCT_HERO_PROMISE.split("、");
 
   return (
-    <section className="relative isolate overflow-hidden bg-[#FFFDFB] px-4 pb-16 pt-14 sm:px-8 sm:pb-24 sm:pt-20 lg:min-h-[780px] lg:pb-28 lg:pt-24">
+    <section className="relative isolate overflow-hidden bg-[var(--background)] px-4 pb-16 pt-14 sm:px-8 sm:pb-24 sm:pt-20 lg:min-h-[780px] lg:pb-28 lg:pt-24">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 -z-30 bg-[linear-gradient(180deg,#FFFDFB_0%,#FAF6F5_52%,#FFFFFF_100%)]"
+        className="pointer-events-none absolute inset-0 -z-30 bg-[linear-gradient(180deg,var(--background)_0%,var(--surface-muted)_52%,#FFFFFF_100%)]"
       />
 
       <div className="mx-auto grid max-w-[1240px] items-center gap-12 lg:grid-cols-[0.92fr_1.08fr] lg:gap-16 xl:gap-20">
         <div className="relative z-10 text-center lg:text-left">
-          <h1 className="text-[clamp(3.2rem,7vw,6.5rem)] font-semibold leading-[0.9] tracking-[-0.065em] text-[#74172A]">
+          <h1 className="text-[clamp(3.2rem,7vw,6.5rem)] font-semibold leading-[0.9] tracking-[-0.065em] text-[var(--primary)]">
             MINERVOT
           </h1>
 
-          <p className="mt-5 text-xs font-semibold tracking-[0.16em] text-[#9A7137] sm:text-sm">
+          <p className="mt-5 text-xs font-semibold tracking-[0.16em] text-[var(--accent-gold)] sm:text-sm">
             あなた専属のAI秘書
           </p>
 
           <div className="mt-4">
-            <p className="text-[clamp(1.85rem,4vw,3.4rem)] font-medium leading-[1.12] tracking-[-0.04em] text-[#281A1E]">
+            <p className="text-[clamp(1.85rem,4vw,3.4rem)] font-medium leading-[1.12] tracking-[-0.04em] text-[var(--text-primary)]">
               {first}、
               <br />
               {second}。
             </p>
           </div>
 
-          <p className="mx-auto mt-5 max-w-[520px] text-sm leading-7 text-[#75686B] sm:text-base sm:leading-8 lg:mx-0">
+          <p className="mx-auto mt-5 max-w-[520px] text-sm leading-7 text-[var(--text-secondary)] sm:text-base sm:leading-8 lg:mx-0">
             {PRODUCT_HERO_DESCRIPTION}
           </p>
 
-          <p className="mx-auto mt-4 max-w-[520px] text-sm font-medium leading-7 text-[#74172A] sm:text-base lg:mx-0">
+          <p className="mx-auto mt-4 max-w-[520px] text-sm font-medium leading-7 text-[var(--primary)] sm:text-base lg:mx-0">
             {PRODUCT_DEFINITION}です。あなたの仕事を覚えて、次から終わらせるAI秘書。
           </p>
 
-          <p className="mx-auto mt-3 max-w-[520px] text-sm leading-7 text-[#75686B] lg:mx-0">
+          <p className="mx-auto mt-3 max-w-[520px] text-sm leading-7 text-[var(--text-secondary)] lg:mx-0">
             仕事を頼むたびにAIを開く必要はありません。終わったら通知します。合えば月{lightPlanYenLabel()}。
           </p>
 
@@ -65,7 +65,7 @@ export function LandingHeroSection() {
               <Link href="/sign-up" className="w-full sm:w-auto">
                 <Button
                   size="lg"
-                  className="min-h-13 w-full min-w-[260px] rounded-full border border-[#74172A] bg-[#74172A] px-7 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(116,23,42,0.22)] sm:w-auto"
+                  className="min-h-13 w-full min-w-[260px] rounded-[var(--radius-large)] border border-[var(--primary)] bg-[var(--primary)] px-7 text-sm font-semibold text-white shadow-[var(--shadow-cta)] sm:w-auto"
                 >
                   {LP_PRIMARY_CTA}
                 </Button>
@@ -76,7 +76,7 @@ export function LandingHeroSection() {
               <Link href={ATLAS_APP_HOME_PATH} className="w-full sm:w-auto">
                 <Button
                   size="lg"
-                  className="min-h-13 w-full min-w-[260px] rounded-full border border-[#74172A] bg-[#74172A] px-7 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(116,23,42,0.22)] sm:w-auto"
+                  className="min-h-13 w-full min-w-[260px] rounded-[var(--radius-large)] border border-[var(--primary)] bg-[var(--primary)] px-7 text-sm font-semibold text-white shadow-[var(--shadow-cta)] sm:w-auto"
                 >
                   毎日のX投稿を任せる
                 </Button>
@@ -84,7 +84,7 @@ export function LandingHeroSection() {
             </Show>
           </div>
 
-          <p className="mx-auto mt-3 text-xs text-[#9A8D90] lg:mx-0">
+          <p className="mx-auto mt-3 text-xs text-[var(--text-tertiary)] lg:mx-0">
             {FREE_TRIAL_NOTE}
             {" · "}
             クレジットカード不要 ·{" "}

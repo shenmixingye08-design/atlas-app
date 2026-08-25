@@ -17,7 +17,7 @@ const CSS = readFileSync(
  * the padded decorative frame after PR #321.
  */
 function fixtureHtml(theme: "light" | "dark"): string {
-  const pageBg = theme === "dark" ? "#0f1218" : "#fffdfb";
+  const pageBg = theme === "dark" ? "#1c1714" : "#fffaf6";
   const frameBg = theme === "dark" ? "#171a21" : "#ffffff";
   return `<!doctype html>
 <html data-theme="${theme}">

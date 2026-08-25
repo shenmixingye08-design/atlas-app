@@ -28,7 +28,7 @@ export const MOTION_SCALE = {
 } as const;
 
 export const MOTION_Y = {
-  page: 10,
+  page: 6,
   card: 8,
   modal: 16,
 } as const;

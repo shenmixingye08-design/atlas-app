@@ -17,6 +17,9 @@ export function Input({
   ...props
 }: InputProps) {
   const inputId = id ?? label?.replace(/\s+/g, "-").toLowerCase();
+  const hintId = hint && inputId ? `${inputId}-hint` : undefined;
+  const errorId = error && inputId ? `${inputId}-error` : undefined;
+  const describedBy = [errorId, hintId].filter(Boolean).join(" ") || undefined;
 
   return (
     <div className="w-full">
@@ -33,11 +36,16 @@ export function Input({
           className,
         )}
         aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy}
         {...props}
       />
-      {hint && !error && <p className="mt-2 text-caption">{hint}</p>}
+      {hint && !error && (
+        <p id={hintId} className="mt-2 text-caption">
+          {hint}
+        </p>
+      )}
       {error && (
-        <p className="mt-2 text-sm text-[var(--status-error)]" role="alert">
+        <p id={errorId} className="mt-2 text-sm text-[var(--status-error)]" role="alert">
           {error}
         </p>
       )}
@@ -54,6 +62,9 @@ type TextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
   function Textarea({ label, hint, error, className, id, ...props }, ref) {
   const inputId = id ?? label?.replace(/\s+/g, "-").toLowerCase();
+  const hintId = hint && inputId ? `${inputId}-hint` : undefined;
+  const errorId = error && inputId ? `${inputId}-error` : undefined;
+  const describedBy = [errorId, hintId].filter(Boolean).join(" ") || undefined;
 
   return (
     <div className="w-full">
@@ -71,11 +82,16 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           className,
         )}
         aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy}
         {...props}
       />
-      {hint && !error && <p className="mt-2 text-caption">{hint}</p>}
+      {hint && !error && (
+        <p id={hintId} className="mt-2 text-caption">
+          {hint}
+        </p>
+      )}
       {error && (
-        <p className="mt-2 text-sm text-[var(--status-error)]" role="alert">
+        <p id={errorId} className="mt-2 text-sm text-[var(--status-error)]" role="alert">
           {error}
         </p>
       )}

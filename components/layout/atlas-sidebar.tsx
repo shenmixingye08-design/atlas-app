@@ -288,7 +288,7 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
   return (
     <>
       {/* Mobile top bar */}
-      <header className="fixed inset-x-0 top-0 z-40 flex h-[var(--mobile-top-bar-height)] items-center gap-1.5 overflow-x-clip border-b border-[var(--border-subtle)] bg-[var(--card-glass)] px-3 backdrop-blur-xl md:hidden">
+      <header className="fixed inset-x-0 top-0 z-40 flex h-[var(--mobile-top-bar-height)] items-center gap-1.5 overflow-x-clip border-b border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3 md:hidden">
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
@@ -311,7 +311,7 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
 
       {/* Desktop sidebar */}
       <aside
-        className="fixed inset-y-0 left-0 z-30 hidden w-[var(--sidebar-width)] border-r border-[var(--border-subtle)] bg-[var(--card-glass)] backdrop-blur-xl md:flex md:flex-col"
+        className="fixed inset-y-0 left-0 z-30 hidden w-[var(--sidebar-width)] border-r border-[var(--border-subtle)] bg-[var(--surface-raised)] md:flex md:flex-col"
         aria-label={ui.nav.menu}
       >
         <SidebarPanel
@@ -326,7 +326,7 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
       {mobileOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px] animate-fade-in md:hidden"
+          className="fixed inset-0 z-40 bg-[var(--overlay)] animate-fade-in md:hidden"
           aria-label={ui.nav.closeSidebar}
           onClick={closeMobile}
         />

@@ -47,7 +47,7 @@ export function AtlasHeader({ active }: AtlasHeaderProps) {
   const isMoreActive = MORE_NAV.some((item) => item.id === active);
 
   return (
-    <header className="sticky top-0 z-50 bg-[var(--card-glass)] backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-[var(--border-subtle)] bg-[var(--surface-raised)]">
       <div className="mx-auto flex max-w-6xl w-full items-center justify-between px-4 py-3 sm:px-6 sm:py-4 md:px-10 md:py-5">
         <Link
           href="/projects"

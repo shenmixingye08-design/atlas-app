@@ -22,10 +22,11 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-[var(--radius-2xl)] bg-[var(--card)]",
-        (variant === "default" || variant === "elevated") && "shadow-[var(--shadow-md)]",
+        "rounded-[var(--radius-card)] bg-[var(--surface-raised)]",
+        variant === "default" && "border border-[var(--border-subtle)]",
+        variant === "elevated" && "shadow-[var(--shadow-subtle)]",
         variant === "interactive" &&
-          "motion-press-card cursor-pointer shadow-[var(--shadow-md)] hover:shadow-[var(--shadow-lg)]",
+          "motion-press-card cursor-pointer border border-[var(--border-subtle)] [@media(hover:hover)_and_(pointer:fine)]:hover:shadow-[var(--shadow-floating)]",
         PADDING[padding],
         className,
       )}

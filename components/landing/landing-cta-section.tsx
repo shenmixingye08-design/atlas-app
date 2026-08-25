@@ -21,10 +21,10 @@ function ctaLines() {
 
 export function LandingCtaSection() {
   return (
-    <section className="border-t border-[#74172A]/8 bg-[#FAF6F5] px-4 py-20 sm:px-8 sm:py-28">
+    <section className="border-t border-[var(--primary)]/8 bg-[var(--surface-muted)] px-4 py-20 sm:px-8 sm:py-28">
       <div className="mx-auto max-w-5xl">
-        <div className="overflow-hidden rounded-[34px] border border-[#B58B4F]/20 bg-white px-6 py-16 text-center sm:px-12 sm:py-20">
-          <h2 className="text-3xl font-semibold tracking-[-0.04em] text-[#281A1E] sm:text-5xl">
+        <div className="overflow-hidden rounded-[34px] border border-[var(--accent-gold)]/20 bg-white px-6 py-16 text-center sm:px-12 sm:py-20">
+          <h2 className="text-3xl font-semibold tracking-[-0.04em] text-[var(--text-primary)] sm:text-5xl">
             毎日のX投稿を、
             <br />
             MINERVOTに任せる。
@@ -34,7 +34,7 @@ export function LandingCtaSection() {
             {ctaLines().map((line) => (
               <li
                 key={line}
-                className="rounded-2xl border border-[#74172A]/8 bg-[#FFFDFB] px-4 py-3 text-sm leading-7 text-[#49373C]"
+                className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)] px-4 py-3 text-sm leading-7 text-[var(--text-primary)]"
               >
                 「{line}」
               </li>
@@ -46,7 +46,7 @@ export function LandingCtaSection() {
               <Link href="/sign-up">
                 <Button
                   size="lg"
-                  className="min-w-[240px] rounded-full bg-[#74172A] px-8 py-6 text-white hover:bg-[#5F1222]"
+                  className="min-w-[240px] rounded-[var(--radius-large)] bg-[var(--primary)] px-8 py-6 text-white hover:bg-[var(--primary-hover)]"
                 >
                   {LP_PRIMARY_CTA}
                 </Button>
@@ -57,7 +57,7 @@ export function LandingCtaSection() {
               <Link href={ATLAS_APP_HOME_PATH}>
                 <Button
                   size="lg"
-                  className="min-w-[240px] rounded-full bg-[#74172A] px-8 py-6 text-white hover:bg-[#5F1222]"
+                  className="min-w-[240px] rounded-[var(--radius-large)] bg-[var(--primary)] px-8 py-6 text-white hover:bg-[var(--primary-hover)]"
                 >
                   今すぐ仕事を終わらせる
                 </Button>
@@ -65,7 +65,7 @@ export function LandingCtaSection() {
             </Show>
           </div>
 
-          <p className="mt-8 text-sm text-[#75686B]">
+          <p className="mt-8 text-sm text-[var(--text-secondary)]">
             クレジットカード不要 · 登録後は仕事を選ぶだけ · 合えば月{lightPlanYenLabel()}
           </p>
         </div>

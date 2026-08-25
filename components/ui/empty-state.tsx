@@ -18,7 +18,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "animate-card-enter flex flex-col items-center justify-center rounded-[var(--radius-2xl)] bg-[linear-gradient(180deg,var(--surface-elevated),var(--surface-muted))] px-5 py-10 text-center",
+        "animate-card-enter flex flex-col items-center justify-center rounded-[var(--radius-card)] bg-[var(--surface-muted)] px-5 py-10 text-center",
         className,
       )}
     >
