@@ -69,6 +69,15 @@ describe("logged-in motion contracts", () => {
     expect(notices).toContain("MotionList");
   });
 
+  it("keeps the mobile menu button above the always-mounted drawer overlay", () => {
+    const sidebar = src("components/layout/atlas-sidebar.tsx");
+    expect(sidebar).toContain('aria-label={ui.nav.openSidebar}');
+    expect(sidebar).toContain("z-[55]");
+    expect(sidebar).toContain("top-[var(--mobile-top-bar-height)]");
+    expect(sidebar).toContain("pointer-events-none");
+    expect(sidebar).toContain("inert");
+  });
+
   it("keeps reduced-motion and 44px tap targets on motion primitives", () => {
     const css = src("app/globals.css");
     const segmented = src("components/motion/segmented.tsx");
