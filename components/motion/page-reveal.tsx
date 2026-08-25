@@ -15,16 +15,21 @@ type PageRevealProps = {
  * Enter animation for the main content area.
  * Transform does not affect layout, so this does not cause CLS.
  * Re-renders of the same mounted instance do not replay the animation.
+ *
+ * Do not start at opacity 0. SSR and a skipped/failed Motion run would
+ * otherwise leave the page unreadable. Travel on Y only.
  */
 export function PageReveal({ children, className }: PageRevealProps) {
   const reduce = useReducedMotion();
+  // null = not hydrated yet. Only travel after we know motion is allowed.
+  const allowTravel = reduce === false;
 
   return (
     <motion.div
       className={cn("min-w-0", className)}
-      initial={reduce ? { opacity: 1 } : { opacity: 0, y: MOTION_Y.page }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.page}
+      initial={allowTravel ? { y: MOTION_Y.page } : false}
+      animate={{ y: 0 }}
+      transition={allowTravel ? MOTION_TRANSITION.page : MOTION_REDUCED}
     >
       {children}
     </motion.div>
