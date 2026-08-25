@@ -96,11 +96,19 @@ export function HomeStartNowCta({
               {ui.homeUx.startNowEmpty}
             </p>
           </div>
-          <Link href="/workspace" className="w-full sm:w-auto">
-            <Button variant="primary" size="lg" className="w-full">
-              {ui.homeUx.addWork}
-            </Button>
-          </Link>
+          <div className="flex w-full flex-col gap-2 sm:w-auto">
+            <Link href="/workspace" className="w-full sm:w-auto">
+              <Button variant="primary" size="lg" className="w-full">
+                {ui.homeUx.addWork}
+              </Button>
+            </Link>
+            <Link
+              href="/workspace?mode=batch"
+              className="inline-flex min-h-[44px] items-center justify-center text-sm text-accent"
+            >
+              成果物をまとめて作る
+            </Link>
+          </div>
         </div>
       )}
     </section>

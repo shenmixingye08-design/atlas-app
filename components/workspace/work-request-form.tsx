@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -127,6 +128,17 @@ export function WorkRequestForm({
         <p className="text-body mx-auto max-w-xl text-[var(--text-secondary)]">
           {ui.secretaryHome.zeroFrictionHint}
         </p>
+        <div className="flex justify-center gap-2" role="tablist" aria-label="作成方法">
+          <span className="inline-flex min-h-[44px] items-center rounded-full bg-accent px-4 text-sm font-medium text-[var(--accent-foreground,#fff)]">
+            1件作成
+          </span>
+          <Link
+            href="/workspace?mode=batch"
+            className="inline-flex min-h-[44px] items-center rounded-full border border-[var(--border-subtle)] px-4 text-sm focus-ring"
+          >
+            まとめて作成
+          </Link>
+        </div>
       </header>
 
       <section className="space-y-3" aria-label={ui.work.templatesLabel}>
