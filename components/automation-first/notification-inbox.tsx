@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 
 import { NotificationList } from "@/components/notifications/notification-list";
 import { PageHeader } from "@/components/automation-first/page-header";
-import { cn } from "@/lib/design-system/cn";
+import { SegmentedControl } from "@/components/motion/segmented";
 import { useFeatureAvailability } from "@/lib/feature-flags";
 import type { NoticeFilter } from "@/lib/notifications/display";
 import { ui } from "@/lib/i18n";
@@ -58,29 +58,13 @@ export function NotificationInbox() {
         title="通知"
         description="対応が必要な確認から、完了・情報まで分けて確認できます。"
       />
-      <div
-        role="tablist"
-        aria-label="通知の種類"
-        className="flex flex-wrap gap-2"
-      >
-        {TABS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === item.id}
-            onClick={() => setTab(item.id)}
-            className={cn(
-              "inline-flex min-h-[var(--touch-target)] items-center rounded-[var(--radius-md)] px-4 text-sm font-medium",
-              tab === item.id
-                ? "bg-[var(--brand)] text-[var(--brand-foreground)]"
-                : "border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--text-secondary)]",
-            )}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        options={TABS}
+        value={tab}
+        onChange={setTab}
+        ariaLabel="通知の種類"
+        variant="brand"
+      />
       <NotificationList key={filter} initialFilter={filter} />
     </div>
   );

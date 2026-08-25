@@ -1,15 +1,10 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useId, useRef } from "react";
 
+import { ModalBackdrop, ModalChrome } from "@/components/motion/modal-chrome";
 import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
-import {
-  MOTION_REDUCED,
-  MOTION_TRANSITION,
-  MOTION_Y,
-} from "@/lib/motion/tokens";
 
 export type CreateSheetProps = {
   open: boolean;
@@ -19,7 +14,6 @@ export type CreateSheetProps = {
 export function CreateSheet({ open, onClose }: CreateSheetProps) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
-  const reduce = useReducedMotion();
 
   useEffect(() => {
     if (!open) return;
@@ -32,31 +26,26 @@ export function CreateSheet({ open, onClose }: CreateSheetProps) {
   }, [open, onClose]);
 
   return (
-    <AnimatePresence>
-      {open ? (
-    <motion.div
-      key="create-sheet"
+    <ModalBackdrop
+      open={open}
       className="fixed inset-0 z-[var(--z-modal)] md:hidden"
-      role="dialog"
-      aria-modal
-      aria-labelledby={titleId}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.backdrop}
     >
+      <div
+        className="fixed inset-0 z-[var(--z-modal)] md:hidden"
+        role="dialog"
+        aria-modal
+        aria-labelledby={titleId}
+      >
       <button
         type="button"
         className="absolute inset-0 bg-black/40"
         aria-label="閉じる"
         onClick={onClose}
       />
-      <motion.div
+      <ModalChrome
+        open={open}
+        placement="sheet"
         className="absolute inset-x-0 bottom-0 rounded-t-[var(--radius-xl)] border border-[var(--border)] bg-[var(--surface-elevated)] p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[var(--shadow-lg)]"
-        initial={reduce ? { opacity: 0 } : { opacity: 0, y: MOTION_Y.modal }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={reduce ? { opacity: 0 } : { opacity: 0, y: MOTION_Y.modal }}
-        transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.modal}
       >
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[var(--border-strong)]" aria-hidden />
         <h2 id={titleId} className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]">
@@ -100,9 +89,8 @@ export function CreateSheet({ open, onClose }: CreateSheetProps) {
         >
           閉じる
         </button>
-      </motion.div>
-    </motion.div>
-      ) : null}
-    </AnimatePresence>
+      </ModalChrome>
+      </div>
+    </ModalBackdrop>
   );
 }

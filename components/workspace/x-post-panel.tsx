@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { UsageRemainingHint } from "@/components/billing/usage-remaining-hint";
+import { MotionList, MotionListItem } from "@/components/motion/list-item";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
@@ -55,12 +56,14 @@ function ValidationSummary({ validation }: { validation: XPostValidationSummary 
 function HistoryCard({
   record,
   onViewResult,
+  index,
 }: {
   record: XPostHistoryRecord;
   onViewResult: (id: string) => void;
+  index?: number;
 }) {
   return (
-    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]">
+    <MotionListItem index={index} className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="space-y-1">
           <p className="text-sm text-[var(--foreground-muted)]">
@@ -100,7 +103,7 @@ function HistoryCard({
       {record.errorMessage && (
         <p className="mt-2 text-sm text-[var(--status-error)]">{record.errorMessage}</p>
       )}
-    </li>
+    </MotionListItem>
   );
 }
 
@@ -108,13 +111,15 @@ function DraftCard({
   draft,
   onUse,
   onDelete,
+  index,
 }: {
   draft: XDraftPost;
   onUse: (draft: XDraftPost) => void;
   onDelete: (id: string) => void;
+  index?: number;
 }) {
   return (
-    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]">
+    <MotionListItem index={index} className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]">
       <p className="text-sm text-[var(--foreground-muted)]">
         {formatXPostedAt(draft.updatedAt)}
       </p>
@@ -127,13 +132,19 @@ function DraftCard({
           {ui.xPost.deleteDraft}
         </Button>
       </div>
-    </li>
+    </MotionListItem>
   );
 }
 
-function ScheduledCard({ post }: { post: XScheduledPost }) {
+function ScheduledCard({
+  post,
+  index,
+}: {
+  post: XScheduledPost;
+  index?: number;
+}) {
   return (
-    <li className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]">
+    <MotionListItem index={index} className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]">
       <p className="text-sm text-[var(--foreground-muted)]">
         {ui.xPost.scheduledForLabel}: {formatXPostedAt(post.scheduledFor)}
       </p>
@@ -141,7 +152,7 @@ function ScheduledCard({ post }: { post: XScheduledPost }) {
       {post.errorMessage && (
         <p className="mt-2 text-sm text-[var(--status-error)]">{post.errorMessage}</p>
       )}
-    </li>
+    </MotionListItem>
   );
 }
 
@@ -517,16 +528,17 @@ export function XPostPanel() {
                 {ui.xPost.draftsEmpty}
               </p>
             ) : (
-              <ul className="space-y-3">
-                {drafts.map((draft) => (
+              <MotionList className="space-y-3">
+                {drafts.map((draft, index) => (
                   <DraftCard
                     key={draft.id}
+                    index={index}
                     draft={draft}
                     onUse={handleUseDraft}
                     onDelete={(id) => void handleDeleteDraft(id)}
                   />
                 ))}
-              </ul>
+              </MotionList>
             )}
           </section>
 
@@ -539,11 +551,11 @@ export function XPostPanel() {
                 {ui.xPost.scheduledEmpty}
               </p>
             ) : (
-              <ul className="space-y-3">
-                {scheduled.map((post) => (
-                  <ScheduledCard key={post.id} post={post} />
+              <MotionList className="space-y-3">
+                {scheduled.map((post, index) => (
+                  <ScheduledCard key={post.id} index={index} post={post} />
                 ))}
-              </ul>
+              </MotionList>
             )}
           </section>
 
@@ -556,15 +568,16 @@ export function XPostPanel() {
                 {ui.xPost.historyEmpty}
               </p>
             ) : (
-              <ul className="space-y-3">
-                {history.map((record) => (
+              <MotionList className="space-y-3">
+                {history.map((record, index) => (
                   <HistoryCard
                     key={record.id}
+                    index={index}
                     record={record}
                     onViewResult={(id) => void handleViewResult(id)}
                   />
                 ))}
-              </ul>
+              </MotionList>
             )}
           </section>
         </>

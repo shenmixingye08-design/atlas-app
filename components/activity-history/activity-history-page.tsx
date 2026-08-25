@@ -8,11 +8,14 @@ import { useEffect, useState } from "react";
 import { ActivityHistoryCard } from "@/components/activity-history/activity-history-card";
 import { ActivityHistoryDetail } from "@/components/activity-history/activity-history-detail";
 import { ActivityHistoryFiltersBar } from "@/components/activity-history/activity-history-filters";
+import { ContentSwap } from "@/components/motion/content-swap";
+import { MotionList, MotionListItem } from "@/components/motion/list-item";
 import { IconEmptyWork } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
 import type { ActivityHistoryItem } from "@/lib/activity-history";
 import { useActivityHistory } from "@/lib/activity-history/use-activity-history";
 import { ui } from "@/lib/i18n";
+import { useDeferredPresence } from "@/lib/motion/deferred-presence";
 
 function downloadDeliverableText(item: ActivityHistoryItem) {
   const body =
@@ -63,6 +66,7 @@ export function ActivityHistoryPageContent() {
   const [deepLinkMiss, setDeepLinkMiss] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const selected = selectedId ? getItem(selectedId) : null;
+  const detail = useDeferredPresence(selected);
 
   useEffect(() => {
     return scheduleMountWork(() => {
@@ -121,10 +125,12 @@ export function ActivityHistoryPageContent() {
         onChange={setFilters}
       />
 
-      {!isReady ? (
-        <LoadingState message={ui.activityHistory.loading} />
-      ) : filteredItems.length === 0 ? (
-        <div className="animate-card-enter rounded-[var(--radius-lg)] border border-dashed border-[var(--border-subtle)] bg-[linear-gradient(180deg,var(--surface-elevated),var(--surface-muted))] px-5 py-10 text-center">
+      <ContentSwap
+        ready={isReady}
+        pending={<LoadingState message={ui.activityHistory.loading} />}
+      >
+      {filteredItems.length === 0 ? (
+        <div className="motion-content-in rounded-[var(--radius-lg)] border border-dashed border-[var(--border-subtle)] bg-[linear-gradient(180deg,var(--surface-elevated),var(--surface-muted))] px-5 py-10 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--brand-muted)] text-[var(--brand)]">
             <IconEmptyWork className="h-7 w-7" />
           </div>
@@ -142,13 +148,14 @@ export function ActivityHistoryPageContent() {
           </Link>
         </div>
       ) : (
-        <div className="activity-history-timeline animate-stagger relative space-y-2.5 pl-0 sm:pl-5">
+        <div className="activity-history-timeline relative pl-0 sm:pl-5">
           <div
             aria-hidden
             className="absolute bottom-0 left-1.5 top-0 hidden w-px bg-[var(--border-subtle)] sm:block"
           />
-          {filteredItems.map((item) => (
-            <div key={item.id} className="relative">
+        <MotionList as="div" className="space-y-2.5">
+          {filteredItems.map((item, index) => (
+            <MotionListItem key={item.id} as="div" index={index} className="relative">
               <span
                 aria-hidden
                 className="absolute -left-[1.15rem] top-5 hidden h-2 w-2 rounded-full bg-[var(--accent)] sm:block"
@@ -169,14 +176,17 @@ export function ActivityHistoryPageContent() {
                   downloadDeliverableText(next);
                 }}
               />
-            </div>
+            </MotionListItem>
           ))}
+        </MotionList>
         </div>
       )}
+      </ContentSwap>
 
-      {selected ? (
+      {detail.item ? (
         <ActivityHistoryDetail
-          item={selected}
+          item={detail.item}
+          open={detail.open}
           onClose={() => setSelectedId(null)}
           onUpdated={() => {
             reload();

@@ -6,10 +6,12 @@ import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
 import type { Deliverable } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { ui } from "@/lib/i18n";
+import { MotionList, MotionListItem } from "@/components/motion/list-item";
 import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
+import { SuccessState } from "@/components/ui/success-state";
 
 type DeliverablesPanelProps = {
   deliverables: Deliverable[];
@@ -23,9 +25,12 @@ const WORD_RULES = new Set(["excel", "contract", "blog", "minutes", "report"]);
 function DeliverableDownloadButton({ item }: { item: Deliverable }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadDone, setDownloadDone] = useState(false);
 
   const handleDownload = async () => {
+    if (isDownloading) return;
     setDownloadError(null);
+    setDownloadDone(false);
     setIsDownloading(true);
     try {
       await downloadDeliverableFile({
@@ -34,6 +39,7 @@ function DeliverableDownloadButton({ item }: { item: Deliverable }) {
         mimeType: item.mimeType,
         format: item.format,
       });
+      setDownloadDone(true);
     } catch (error) {
       setDownloadError(
         error instanceof Error ? error.message : ui.work.downloadFailed,
@@ -50,10 +56,14 @@ function DeliverableDownloadButton({ item }: { item: Deliverable }) {
         size="lg"
         className="w-full"
         disabled={isDownloading}
+        isLoading={isDownloading}
         onClick={() => void handleDownload()}
       >
         {isDownloading ? ui.work.downloadingFile : ui.actions.download}
       </Button>
+      {downloadDone ? (
+        <SuccessState message={ui.work.downloadComplete} />
+      ) : null}
       {downloadError ? <ErrorState message={downloadError} /> : null}
     </div>
   );
@@ -87,9 +97,10 @@ export function DeliverablesPanel({
 
       {error && <ErrorState message={error} />}
 
-      <div className="space-y-6">
-        {deliverables.map((item) => (
-          <Card key={item.id} padding="lg">
+      <MotionList as="div" className="space-y-6">
+        {deliverables.map((item, index) => (
+          <MotionListItem key={item.id} as="div" index={index}>
+          <Card padding="lg">
             <div className="rounded-[var(--radius-xl)] bg-[var(--background-subtle)] px-6 py-12 text-center">
               <p className="text-sm text-[var(--foreground-muted)]">
                 {DELIVERABLE_FORMAT_LABELS[item.format]}
@@ -101,8 +112,9 @@ export function DeliverablesPanel({
 
             <DeliverableDownloadButton item={item} />
           </Card>
+          </MotionListItem>
         ))}
-      </div>
+      </MotionList>
     </section>
   );
 }

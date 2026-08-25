@@ -288,7 +288,7 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
   return (
     <>
       {/* Mobile top bar */}
-      <header className="fixed inset-x-0 top-0 z-40 flex h-[var(--mobile-top-bar-height)] items-center gap-1.5 overflow-x-clip border-b border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3 md:hidden">
+      <header className="fixed inset-x-0 top-0 z-[55] flex h-[var(--mobile-top-bar-height)] items-center gap-1.5 overflow-x-clip border-b border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3 md:hidden">
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
@@ -323,19 +323,24 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
       </aside>
 
       {/* Mobile drawer overlay */}
-      {mobileOpen && (
-        <button
-          type="button"
-          className="fixed inset-0 z-40 bg-[var(--overlay)] animate-fade-in md:hidden"
-          aria-label={ui.nav.closeSidebar}
-          onClick={closeMobile}
-        />
-      )}
+      <button
+        type="button"
+        className={cn(
+          "fixed inset-x-0 bottom-0 z-40 bg-[var(--overlay)] transition-opacity duration-[var(--motion-slow)] md:hidden",
+          "top-[var(--mobile-top-bar-height)]",
+          mobileOpen ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+        aria-label={ui.nav.closeSidebar}
+        aria-hidden={!mobileOpen}
+        tabIndex={mobileOpen ? 0 : -1}
+        inert={mobileOpen ? undefined : true}
+        onClick={closeMobile}
+      />
 
       {/* Mobile drawer */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-[min(85vw,var(--sidebar-width))] border-r border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)] transition-transform duration-[var(--motion-base)] md:hidden",
+          "fixed inset-y-0 left-0 z-50 w-[min(85vw,var(--sidebar-width))] border-r border-[var(--border-subtle)] bg-[var(--card)] shadow-[var(--shadow-lg)] transition-transform duration-[var(--motion-slow)] md:hidden",
           mobileOpen ? "translate-x-0" : "-translate-x-full pointer-events-none",
         )}
         aria-label={ui.nav.menu}

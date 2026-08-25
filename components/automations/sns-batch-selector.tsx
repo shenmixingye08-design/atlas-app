@@ -27,7 +27,7 @@ export function SnsBatchSelector({
         <button
           type="button"
           onClick={() => onChange(null)}
-          className={`rounded-full px-4 py-2 text-sm font-medium ring-1 transition-colors ${
+          className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-medium ring-1 transition-[background-color,color,box-shadow] duration-[var(--motion-fast)] ${
             value === null
               ? "bg-accent text-white ring-accent"
               : "bg-[var(--card)] text-foreground ring-[var(--border-subtle)] hover:ring-accent/30"
@@ -40,7 +40,7 @@ export function SnsBatchSelector({
             key={option.days}
             type="button"
             onClick={() => onChange(option.days)}
-            className={`rounded-full px-4 py-2 text-sm font-medium ring-1 transition-colors ${
+            className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-medium ring-1 transition-[background-color,color,box-shadow] duration-[var(--motion-fast)] ${
               value === option.days
                 ? "bg-accent text-white ring-accent"
                 : "bg-[var(--card)] text-foreground ring-[var(--border-subtle)] hover:ring-accent/30"

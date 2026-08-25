@@ -251,7 +251,7 @@ export function AccountSettings() {
     </Card>
 
     {showPurgeDialog && (
-      <Card padding="lg" className="space-y-4 border border-[var(--status-error)]/30 shadow-[var(--shadow-soft)]">
+      <Card padding="lg" className="motion-content-in space-y-4 border border-[var(--status-error)]/30 shadow-[var(--shadow-soft)]">
         <h3 className="text-base font-semibold text-foreground">
           {ui.accountManagement.purgeDialogTitle}
         </h3>

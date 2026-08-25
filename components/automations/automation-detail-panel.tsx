@@ -1,13 +1,8 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
-import {
-  MOTION_REDUCED,
-  MOTION_TRANSITION,
-  MOTION_Y,
-} from "@/lib/motion/tokens";
+import { ModalBackdrop, ModalChrome } from "@/components/motion/modal-chrome";
 
 import type { Automation, AutomationExecutionLevel } from "@/lib/automations/types";
 import { updateAutomation } from "@/lib/automations/client";
@@ -38,6 +33,7 @@ import { PendingXApprovalPanel } from "./pending-x-approval-panel";
 
 type AutomationDetailPanelProps = {
   automation: Automation;
+  open?: boolean;
   onClose: () => void;
   onUpdated: (automation: Automation) => void;
   onRunNow: (id: string) => void;
@@ -49,6 +45,7 @@ type AutomationDetailPanelProps = {
 
 export function AutomationDetailPanel({
   automation,
+  open = true,
   onClose,
   onUpdated,
   onRunNow,
@@ -86,7 +83,6 @@ export function AutomationDetailPanel({
   const [emojiOverride, setEmojiOverride] = useState("");
   const [hashtagOverride, setHashtagOverride] = useState("");
 
-  const reduce = useReducedMotion();
   const status = resolveAutomationUserStatus(automation);
   const preview = buildAutomationPreview(automation);
   const isXDestination = automation.destination === "x";
@@ -199,23 +195,20 @@ export function AutomationDetailPanel({
   };
 
   return (
-    <motion.div
+    <ModalBackdrop
+      open={open}
       className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.backdrop}
     >
       <button
         type="button"
-        className="absolute inset-0 bg-black/30 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/30"
         aria-label={ui.actions.close}
         onClick={onClose}
       />
-      <motion.div
+      <ModalChrome
+        open={open}
+        placement="sheet"
         className="relative z-10 w-full max-w-2xl sm:mx-4"
-        initial={reduce ? { opacity: 0 } : { opacity: 0, y: MOTION_Y.modal }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.modal}
       >
       <Card
         padding="lg"
@@ -670,7 +663,7 @@ export function AutomationDetailPanel({
           </Button>
         </div>
       </Card>
-      </motion.div>
-    </motion.div>
+      </ModalChrome>
+    </ModalBackdrop>
   );
 }

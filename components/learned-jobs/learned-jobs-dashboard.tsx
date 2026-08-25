@@ -2,7 +2,7 @@
 import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -37,9 +37,10 @@ export function LearnedJobsDashboard() {
   const [editTitle, setEditTitle] = useState("");
   const [editSummary, setEditSummary] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const hasLoadedRef = useRef(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
     setError(null);
     try {
       const response = await fetchWorkMemories({ type: "template" });
@@ -50,9 +51,10 @@ export function LearnedJobsDashboard() {
         return bTime - aTime;
       });
       setItems(sorted);
+      hasLoadedRef.current = true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "読み込みに失敗しました。");
-      setItems([]);
+      if (!hasLoadedRef.current) setItems([]);
     } finally {
       setLoading(false);
     }

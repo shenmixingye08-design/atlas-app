@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { MotionList, MotionListItem } from "@/components/motion/list-item";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { formatNextRunDisplay } from "@/lib/automations/form-utils";
@@ -101,9 +102,9 @@ export function PendingXApprovalPanel({
           {error}
         </p>
       )}
-      <ul className="space-y-4">
-        {items.map((item) => (
-          <li key={item.id} className="space-y-3">
+      <MotionList className="space-y-4">
+        {items.map((item, index) => (
+          <MotionListItem key={item.id} index={index} className="space-y-3">
             <p className="text-xs text-[var(--text-secondary)]">
               予定日時: {formatNextRunDisplay(item.scheduledAt)}
             </p>
@@ -176,9 +177,9 @@ export function PendingXApprovalPanel({
                 </>
               )}
             </div>
-          </li>
+          </MotionListItem>
         ))}
-      </ul>
+      </MotionList>
     </section>
   );
 }

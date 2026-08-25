@@ -1,7 +1,7 @@
 "use client";
 import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createUserMemoryClient,
@@ -114,12 +114,14 @@ export function MemorySettings() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<MemoryCategory | "all">("all");
   const [editing, setEditing] = useState<EditState | null>(null);
+  const hasLoadedRef = useRef(false);
 
   const reload = useCallback(async () => {
-    setLoading(true);
     setError(null);
+    if (!hasLoadedRef.current) setLoading(true);
     try {
       setData(await fetchUserMemories());
+      hasLoadedRef.current = true;
     } catch (err) {
       setError(err instanceof Error ? err.message : ui.memory.loadError);
     } finally {

@@ -2,7 +2,7 @@
 import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchNotifications } from "@/lib/notifications/client";
 import type { NotificationRecord } from "@/lib/notifications/types";
@@ -13,16 +13,20 @@ export function HomeNotificationsPreview() {
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const hasLoadedRef = useRef(false);
 
   const reload = useCallback(async () => {
-    setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
     try {
       const data = await fetchNotifications();
       setNotifications(data.notifications.slice(0, 5));
       setUnreadCount(data.unreadCount);
+      hasLoadedRef.current = true;
     } catch {
-      setNotifications([]);
-      setUnreadCount(0);
+      if (!hasLoadedRef.current) {
+        setNotifications([]);
+        setUnreadCount(0);
+      }
     } finally {
       setLoading(false);
     }

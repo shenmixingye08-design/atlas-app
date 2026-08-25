@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   deleteNotification,
@@ -30,6 +30,8 @@ import {
 } from "@/lib/notifications/display";
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
+import { MotionList, MotionListItem } from "@/components/motion/list-item";
+import { SegmentedControl } from "@/components/motion/segmented";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
@@ -58,12 +60,14 @@ type NotificationListProps = {
 function NoticeCard({
   item,
   compact,
+  index,
   onMarkRead,
   onDelete,
   onNavigate,
 }: {
   item: NotificationRecord;
   compact?: boolean;
+  index?: number;
   onMarkRead: (id: string) => void;
   onDelete: (id: string) => void;
   onNavigate?: () => void;
@@ -76,11 +80,11 @@ function NoticeCard({
   const actionUrl = resolveNoticeActionUrl(item);
 
   return (
-    <li>
+    <MotionListItem index={index}>
       <Card
         padding={compact ? "md" : "lg"}
         className={cn(
-          "border transition-colors",
+          "border transition-[border-color,background-color] duration-[var(--motion-base)]",
           item.isRead
             ? "border-[var(--border-subtle)] bg-[var(--card)]"
             : "border-accent/20 bg-[var(--accent-muted)]/30",
@@ -159,7 +163,7 @@ function NoticeCard({
           )}
         </div>
       </Card>
-    </li>
+    </MotionListItem>
   );
 }
 
@@ -177,13 +181,15 @@ export function NotificationList({
   );
   const [loading, setLoading] = useState(!isFixture);
   const [filter, setFilter] = useState<NoticeFilter>(initialFilter);
+  const hasLoadedRef = useRef(isFixture);
 
   const reload = useCallback(async () => {
     if (isFixture) return;
-    setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
     try {
       const data = await fetchNotifications();
       setNotifications(data.notifications);
+      hasLoadedRef.current = true;
       onUpdate?.();
     } finally {
       setLoading(false);
@@ -261,29 +267,13 @@ export function NotificationList({
     <div className="space-y-4">
       {!compact && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div
-            className="flex flex-wrap gap-2"
-            role="tablist"
-            aria-label={ui.notifications.filterLabel}
-          >
-            {FILTERS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                role="tab"
-                aria-selected={filter === item.id}
-                onClick={() => setFilter(item.id)}
-                className={cn(
-                  "min-h-[44px] rounded-full px-4 py-2 text-sm font-medium transition-colors focus-ring",
-                  filter === item.id
-                    ? "bg-accent text-white"
-                    : "bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:text-foreground",
-                )}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            options={FILTERS}
+            value={filter}
+            onChange={setFilter}
+            ariaLabel={ui.notifications.filterLabel}
+            variant="brand"
+          />
           <Button
             variant="secondary"
             size="sm"
@@ -300,18 +290,19 @@ export function NotificationList({
           {ui.notifications.emptyFiltered}
         </p>
       ) : (
-        <ul className={cn("space-y-3", compact ? "px-3" : "")}>
-          {visible.map((item) => (
+        <MotionList className={cn("space-y-3", compact ? "px-3" : "")}>
+          {visible.map((item, index) => (
             <NoticeCard
               key={item.notificationId}
               item={item}
+              index={index}
               compact={compact}
               onMarkRead={(id) => void handleMarkRead(id)}
               onDelete={(id) => void handleDelete(id)}
               onNavigate={onNavigate}
             />
           ))}
-        </ul>
+        </MotionList>
       )}
     </div>
   );

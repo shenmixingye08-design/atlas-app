@@ -84,8 +84,14 @@ export function ActivityHistoryFiltersBar({
         />
       </button>
 
-      {open ? (
-        <div className="animate-fade-in space-y-3 border-t border-[var(--border-subtle)] px-3.5 py-3">
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-[var(--motion-base)]",
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+      >
+        <div className="overflow-hidden">
+        <div className="space-y-3 border-t border-[var(--border-subtle)] px-3.5 py-3">
           <Input
             value={filters.keyword}
             onChange={(event) =>
@@ -176,7 +182,8 @@ export function ActivityHistoryFiltersBar({
             </label>
           </div>
         </div>
-      ) : null}
+        </div>
+      </div>
     </div>
   );
 }

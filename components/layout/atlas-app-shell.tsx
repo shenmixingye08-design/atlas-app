@@ -10,6 +10,7 @@ import { PageReveal } from "@/components/motion/page-reveal";
 import { cn } from "@/lib/design-system/cn";
 import { useFeatureAvailability } from "@/lib/feature-flags";
 import type { AtlasNavPage } from "@/lib/layout/nav-types";
+import { usePathScrollRestoration } from "@/lib/motion/scroll-restoration";
 
 import { AtlasSidebar } from "./atlas-sidebar";
 import { AtlasTopActions } from "./atlas-top-actions";
@@ -33,6 +34,7 @@ export function AtlasAppShell({
   width = "default",
 }: AtlasAppShellProps) {
   const pathname = usePathname() ?? "";
+  usePathScrollRestoration();
   const { flags } = useFeatureAvailability();
   const isAutomationFirstPreview = pathname.startsWith(
     "/dev/automation-first-preview",

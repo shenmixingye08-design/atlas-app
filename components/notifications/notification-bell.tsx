@@ -8,6 +8,9 @@ import { subscribeNotificationsChanged } from "@/lib/notifications/refresh-event
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
 
+import { CountBadge } from "@/components/motion/count-badge";
+import { ModalChrome } from "@/components/motion/modal-chrome";
+
 import { NotificationList } from "./notification-list";
 import { NotificationPanelShell } from "./notification-panel-shell";
 
@@ -74,15 +77,10 @@ export function NotificationBell() {
           aria-expanded={open}
         >
           <span aria-hidden>🔔</span>
-          {unreadCount > 0 && (
-            <span
-              className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent ring-2 ring-[var(--card)]"
-              aria-hidden
-            />
-          )}
+          <CountBadge count={unreadCount} dot />
         </button>
 
-        {open && (
+        <ModalChrome open={open} placement="center">
           <NotificationPanelShell onClose={() => setOpen(false)}>
             <NotificationList
               compact
@@ -91,7 +89,7 @@ export function NotificationBell() {
               onNavigate={() => setOpen(false)}
             />
           </NotificationPanelShell>
-        )}
+        </ModalChrome>
       </div>
     </Show>
   );
