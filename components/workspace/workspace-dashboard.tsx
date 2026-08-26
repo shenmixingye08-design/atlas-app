@@ -129,7 +129,6 @@ export function WorkspaceDashboard() {
       }, 0);
       return () => window.clearTimeout(resetTimer);
     }
-    setFormHold(true);
     const releaseForm = window.setTimeout(() => {
       setFormHold(false);
     }, 420);
@@ -172,6 +171,7 @@ export function WorkspaceDashboard() {
     setWorkMemoryCandidateCount(0);
     setPendingCommander(null);
     setIsLoading(true);
+    setFormHold(true);
     setBackgroundAccepted(false);
     setLoadingStepIndex(0);
     setLoadingPhases(buildLoadingPhases(0));
@@ -310,6 +310,7 @@ export function WorkspaceDashboard() {
       pendingCommander.plan.assignment || assignment.trim();
     setPendingCommander(null);
     setIsLoading(true);
+    setFormHold(true);
     setError(null);
     try {
       const orchestrationResult = await confirmWorkRequest(runId, undefined, {

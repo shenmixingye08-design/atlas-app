@@ -59,7 +59,7 @@ export function WorkRequestForm({
   const [showAttach, setShowAttach] = useState(false);
   const [showFormat, setShowFormat] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [phase, setPhase] = useState<SubmitPhase>("idle");
+  const [accepted, setAccepted] = useState(false);
   const advancedUnlocked = shouldShowAdvancedRequestControls();
   const formatUnlocked = shouldShowDeliverableFormatPicker();
 
@@ -70,13 +70,13 @@ export function WorkRequestForm({
   }, [searchParams]);
 
   useEffect(() => {
-    if (!isLoading) {
-      setPhase("idle");
-      return;
-    }
-    setPhase("processing");
-    const accepted = window.setTimeout(() => setPhase("accepted"), 180);
-    return () => window.clearTimeout(accepted);
+    if (!isLoading) return;
+    const start = window.setTimeout(() => setAccepted(false), 0);
+    const done = window.setTimeout(() => setAccepted(true), 180);
+    return () => {
+      window.clearTimeout(start);
+      window.clearTimeout(done);
+    };
   }, [isLoading]);
 
   const uploading = imageDrafts.some(
@@ -84,6 +84,11 @@ export function WorkRequestForm({
   );
   const uploadedIds = getUploadedAttachmentIds(imageDrafts);
   const failedImages = imageDrafts.filter((d) => d.status === "failed");
+  const phase: SubmitPhase = uploading || isLoading
+    ? accepted
+      ? "accepted"
+      : "processing"
+    : "idle";
 
   const handleSubmit = () => {
     const trimmed = value.trim();

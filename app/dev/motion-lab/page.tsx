@@ -41,7 +41,7 @@ function MotionLabBody() {
   const [sheet, setSheet] = useState(false);
   const [phase, setPhase] = useState<SubmitPhase>("idle");
   const [completeId, setCompleteId] = useState("lab-complete-1");
-  const [introKey, setIntroKey] = useState(MOTION_PLAY_KEYS.homeIntro);
+  const [introKey, setIntroKey] = useState<string>(MOTION_PLAY_KEYS.homeIntro);
 
   const items = useMemo(
     () =>
