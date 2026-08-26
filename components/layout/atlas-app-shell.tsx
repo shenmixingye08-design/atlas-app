@@ -1,11 +1,12 @@
 "use client";
 
-import { MotionConfig } from "motion/react";
 import { usePathname } from "next/navigation";
 
 import { AtlasBackground } from "@/components/atlas-background";
 import { AutomationDesignSystemRoot } from "@/components/automation-first/design-system-root";
 import { AutomationFirstBottomNav } from "@/components/automation-first/automation-first-bottom-nav";
+import { AppViewTransition } from "@/components/motion/app-view-transition";
+import { MotionProvider } from "@/components/motion/motion-provider";
 import { PageReveal } from "@/components/motion/page-reveal";
 import { cn } from "@/lib/design-system/cn";
 import { useFeatureAvailability } from "@/lib/feature-flags";
@@ -46,14 +47,14 @@ export function AtlasAppShell({
     flags.automation_first_navigation_enabled === true;
 
   return (
-    <MotionConfig reducedMotion="user">
+    <MotionProvider>
       <div className="minervot-lux relative min-h-screen bg-[var(--background)] text-foreground">
         <AutomationDesignSystemRoot />
         <AtlasBackground />
         <AtlasSidebar active={active} />
         {/* Desktop: fixed bell + account top-right */}
         <div
-          className="fixed top-0 z-[60] hidden h-14 items-center justify-end gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface-raised)] px-6 md:flex md:left-[var(--sidebar-width)] md:right-0"
+          className="atlas-top-chrome fixed top-0 z-[60] hidden h-14 items-center justify-end gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface-raised)] px-6 md:flex md:left-[var(--sidebar-width)] md:right-0"
           aria-label="テーマ、通知、アカウント"
         >
           <AtlasTopActions />
@@ -66,13 +67,15 @@ export function AtlasAppShell({
               afNav && "app-shell-main--with-bottom-nav md:pb-10",
             )}
           >
-            <PageReveal>{children}</PageReveal>
+            <AppViewTransition>
+              <PageReveal>{children}</PageReveal>
+            </AppViewTransition>
           </main>
         </div>
         {/* Bottom nav only when Automation First navigation flag is on (rollback = previous shell). */}
         {afNav ? <AutomationFirstBottomNav /> : null}
       </div>
-    </MotionConfig>
+    </MotionProvider>
   );
 }
 

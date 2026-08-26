@@ -10,6 +10,7 @@ import {
   partitionProjectsForToday,
 } from "@/lib/home/today-dashboard";
 import { MotionList, MotionListItem } from "@/components/motion/list-item";
+import { StatusMorph } from "@/components/motion/status-morph";
 import { ProgressBar } from "@/components/ui/progress";
 import type { Project } from "@/lib/projects/types";
 import { ui } from "@/lib/i18n";
@@ -62,9 +63,10 @@ export function HomeInProgressPanel({
                 <span className="text-xl" aria-hidden>
                   {job.icon}
                 </span>
-                <p className="truncate text-base font-medium text-foreground">
+                <p className="min-w-0 flex-1 truncate text-base font-medium text-foreground">
                   {job.activityLabel ?? job.title}
                 </p>
+                <StatusMorph status="running" />
               </div>
               {typeof job.progress === "number" ? (
                 <ProgressBar value={job.progress} size="md" />

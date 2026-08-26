@@ -157,6 +157,7 @@
   --motion-base: var(--motion-normal);
   --motion-page: 240ms var(--easing-standard);
   --motion-modal: var(--spring-soft);
+  --motion-complete: 580ms var(--easing-standard);
   --theme-transition: 200ms var(--easing-standard);
 
   /* Content width — aligned header + main */
@@ -676,6 +677,128 @@ html[data-theme-transitioning] *::after {
 .skeleton {
   background: var(--background-subtle);
   border-radius: var(--radius-md);
+}
+
+/* ── Logged-in signature motion ── */
+.motion-expand {
+  transition: grid-template-rows var(--motion-base);
+}
+.motion-expand--closed {
+  grid-template-rows: 0fr;
+}
+.motion-expand--open {
+  grid-template-rows: 1fr;
+}
+.motion-expand-inner {
+  transition: opacity var(--motion-base);
+}
+
+.motion-focus-frame {
+  transition:
+    box-shadow var(--motion-base),
+    border-color var(--motion-fast);
+}
+.motion-focus-frame--active {
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--accent) 28%, transparent);
+}
+
+.motion-complete-ring {
+  transform-origin: center;
+  animation: motion-complete-ring var(--motion-complete) both;
+}
+.motion-complete-check {
+  stroke-dasharray: 28;
+  stroke-dashoffset: 28;
+  animation: motion-complete-check var(--motion-complete) both;
+}
+.motion-complete-bloom::after {
+  content: "";
+  position: absolute;
+  inset: -18px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--success) 22%, transparent) 0%,
+    transparent 70%
+  );
+  opacity: 0;
+  transform: scale(0.72);
+  animation: motion-complete-bloom var(--motion-complete) both;
+  pointer-events: none;
+}
+.motion-complete-spark {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: color-mix(in oklch, var(--accent-gold) 80%, white);
+  opacity: 0;
+  animation: motion-complete-spark var(--motion-complete) both;
+}
+.motion-complete-spark--1 { top: 2px; left: 18px; animation-delay: 80ms; }
+.motion-complete-spark--2 { top: 20px; right: 0; animation-delay: 140ms; }
+.motion-complete-spark--3 { bottom: 4px; left: 6px; animation-delay: 200ms; }
+.motion-complete-spark--4 { top: 8px; right: 10px; animation-delay: 240ms; }
+
+@keyframes motion-complete-ring {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes motion-complete-check {
+  from { stroke-dashoffset: 28; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes motion-complete-bloom {
+  0% { opacity: 0; transform: scale(0.72); }
+  40% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.18); }
+}
+@keyframes motion-complete-spark {
+  0% { opacity: 0; transform: translateY(4px) scale(0.4); }
+  35% { opacity: 1; transform: translateY(-6px) scale(1); }
+  100% { opacity: 0; transform: translateY(-12px) scale(0.3); }
+}
+
+.motion-submit-processing {
+  border-radius: 9999px;
+}
+
+.atlas-top-chrome {
+  view-transition-name: atlas-top-chrome;
+}
+.atlas-sidebar-chrome {
+  view-transition-name: atlas-sidebar-chrome;
+}
+.atlas-bottom-nav {
+  view-transition-name: atlas-bottom-nav;
+}
+
+::view-transition-old(.minervot-page) {
+  animation: fade-up-out var(--motion-page) both;
+}
+::view-transition-new(.minervot-page) {
+  animation: fade-up var(--motion-page) both;
+}
+
+@keyframes fade-up-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-4px); }
+}
+
+html.motion-lite .motion-complete-bloom::after,
+html.motion-lite .motion-complete-spark,
+html.motion-lite .animate-shimmer,
+html.motion-lite .animate-soft-pulse,
+html.motion-lite .animate-landing-float,
+html.motion-lite .landing-step-glow {
+  animation: none !important;
+}
+html.motion-lite .animate-shimmer {
+  background: var(--background-subtle);
+}
+html.motion-lite ::view-transition-old(.minervot-page),
+html.motion-lite ::view-transition-new(.minervot-page) {
+  animation-duration: 80ms;
 }
 
 .focus-ring:focus-visible {

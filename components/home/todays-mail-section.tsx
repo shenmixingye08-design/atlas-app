@@ -97,7 +97,7 @@ export function TodaysMailSection() {
             <li key={message.id}>
               <Link
                 href="/workspace/mail"
-                className="flex flex-col gap-1 rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card)] px-5 py-4 shadow-[var(--shadow-sm)] transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)]"
+                className="flex flex-col gap-1 rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card)] px-5 py-4 shadow-[var(--shadow-sm)] transition-[transform,box-shadow] duration-[var(--motion-fast)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)]"
               >
                 <div className="flex items-start justify-between gap-3">
                   <p className="truncate text-sm font-medium text-foreground">

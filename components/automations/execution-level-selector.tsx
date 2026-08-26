@@ -55,7 +55,7 @@ export function ExecutionLevelSelector({
           return (
             <label
               key={option.level}
-              className={`relative flex cursor-pointer gap-3 rounded-[var(--radius-xl)] border-2 px-4 py-4 transition-all ${
+              className={`relative flex cursor-pointer gap-3 rounded-[var(--radius-xl)] border-2 px-4 py-4 transition-[border-color,background-color,box-shadow] duration-[var(--motion-fast)] ${
                 isSelected
                   ? "border-accent bg-accent/5 shadow-[var(--shadow-sm)]"
                   : "border-[var(--border-subtle)] bg-[var(--card)] hover:border-accent/30"

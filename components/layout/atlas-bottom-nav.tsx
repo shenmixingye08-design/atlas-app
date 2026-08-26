@@ -39,7 +39,7 @@ export function AtlasBottomNav() {
   return (
     <nav
       aria-label={ui.nav.menu}
-      className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border-subtle)] bg-[var(--surface-raised)] md:hidden"
+      className="atlas-bottom-nav fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border-subtle)] bg-[var(--surface-raised)] md:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       <ul className="relative mx-auto flex max-w-lg items-stretch justify-around px-0.5 pt-1">

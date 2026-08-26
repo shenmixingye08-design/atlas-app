@@ -2,21 +2,24 @@
 
 import Link from "next/link";
 
+import { StatusMorph, type MotionJobStatus } from "@/components/motion/status-morph";
 import type { HomeRunningJob } from "@/lib/automation-first/home-data";
 import { cn } from "@/lib/design-system/cn";
 
-function markerLabel(marker: HomeRunningJob["steps"][number]["marker"]): string {
+function markerStatus(
+  marker: HomeRunningJob["steps"][number]["marker"],
+): { status: MotionJobStatus; label: string } {
   switch (marker) {
     case "done":
-      return "完了";
+      return { status: "completed", label: "完了" };
     case "active":
-      return "実行中";
+      return { status: "running", label: "実行中" };
     case "failed":
-      return "失敗";
+      return { status: "failed", label: "失敗" };
     case "retrying":
-      return "再試行中";
+      return { status: "needs_attention", label: "再試行中" };
     default:
-      return "待機";
+      return { status: "queued", label: "待機" };
   }
 }
 
@@ -87,18 +90,10 @@ export function RunningStepsPanel({
                   >
                     {step.name}
                   </span>
-                  <span
-                    className={cn(
-                      "shrink-0 text-[length:var(--text-caption)]",
-                      step.marker === "done" && "text-[var(--status-completed)]",
-                      step.marker === "active" && "text-[var(--status-running)]",
-                      step.marker === "failed" && "text-[var(--status-failed)]",
-                      step.marker === "waiting" && "text-[var(--text-muted)]",
-                      step.marker === "retrying" && "text-[var(--status-warning)]",
-                    )}
-                  >
-                    {markerLabel(step.marker)}
-                  </span>
+                  <StatusMorph
+                    status={markerStatus(step.marker).status}
+                    label={markerStatus(step.marker).label}
+                  />
                 </li>
               ))}
             </ol>

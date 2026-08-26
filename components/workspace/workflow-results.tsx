@@ -4,6 +4,7 @@ import { cn } from "@/lib/design-system/cn";
 import { ui } from "@/lib/i18n";
 import type { OrchestrationResult } from "@/lib/orchestration/types";
 import type { WorkflowPhaseState } from "@/lib/workspace/types";
+import { StatusMorph, mapPhaseToMotionStatus } from "@/components/motion/status-morph";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { OpsProgressStatus } from "@/components/ui/ops-progress-status";
@@ -82,7 +83,7 @@ export function WorkflowResults({
           aria-label={current?.label ?? "進捗"}
         >
           <div
-            className="h-full w-full origin-left rounded-full bg-accent transition-transform duration-[var(--motion-slow)]"
+            className="motion-progress-fill h-full w-full origin-left rounded-full bg-accent"
             style={{ transform: `scaleX(${filled / total})` }}
           />
         </div>
@@ -93,21 +94,19 @@ export function WorkflowResults({
               key={phase.id}
               className={cn(
                 "flex items-center gap-3 rounded-2xl px-3 py-2",
-                index < runningIndex && "text-[var(--status-success)]",
                 index === runningIndex && "bg-accent/5 font-medium text-foreground",
               )}
             >
-              <span
-                aria-hidden
-                className={cn(
-                  "w-5 text-center",
-                  index < runningIndex && "animate-check-in",
-                  index === runningIndex && "animate-soft-pulse",
+              <StatusMorph
+                status={mapPhaseToMotionStatus(
+                  index < runningIndex
+                    ? "done"
+                    : index === runningIndex
+                      ? "running"
+                      : "queued",
                 )}
-              >
-                {index < runningIndex ? "✓" : index === runningIndex ? "●" : "○"}
-              </span>
-              <span>{phase.label}</span>
+                label={phase.label}
+              />
             </li>
           ))}
         </ol>

@@ -288,7 +288,7 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
   return (
     <>
       {/* Mobile top bar */}
-      <header className="fixed inset-x-0 top-0 z-[55] flex h-[var(--mobile-top-bar-height)] items-center gap-1.5 overflow-x-clip border-b border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3 md:hidden">
+      <header className="atlas-top-chrome fixed inset-x-0 top-0 z-[55] flex h-[var(--mobile-top-bar-height)] items-center gap-1.5 overflow-x-clip border-b border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3 md:hidden">
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
@@ -311,7 +311,7 @@ export function AtlasSidebar({ active: activeProp }: AtlasSidebarProps) {
 
       {/* Desktop sidebar */}
       <aside
-        className="fixed inset-y-0 left-0 z-30 hidden w-[var(--sidebar-width)] border-r border-[var(--border-subtle)] bg-[var(--surface-raised)] md:flex md:flex-col"
+        className="atlas-sidebar-chrome fixed inset-y-0 left-0 z-30 hidden w-[var(--sidebar-width)] border-r border-[var(--border-subtle)] bg-[var(--surface-raised)] md:flex md:flex-col"
         aria-label={ui.nav.menu}
       >
         <SidebarPanel

@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { AnimatedNumber } from "@/components/motion/animated-number";
+import { RevealStagger } from "@/components/motion/reveal-stagger";
+import { MOTION_PLAY_KEYS } from "@/lib/motion/tokens";
 import { EmptyState } from "@/components/automation-first/empty-state";
 import { ErrorState } from "@/components/automation-first/error-state";
 import { PageHeader } from "@/components/automation-first/page-header";
@@ -151,7 +154,7 @@ export function TodayWorkPage({
   }
 
   return (
-    <div className="space-y-6 pb-8">
+    <RevealStagger playKey={MOTION_PLAY_KEYS.todayIntro} className="space-y-6 pb-8">
       <PageHeader
         eyebrow={formatTodayDateLabel()}
         title="今日の仕事"
@@ -212,25 +215,25 @@ export function TodayWorkPage({
                   <div>
                     <dt className="text-[var(--text-muted)]">実行中</dt>
                     <dd className="text-lg font-semibold">
-                      {opsSummary.counts.running}
+                      <AnimatedNumber value={opsSummary.counts.running} />
                     </dd>
                   </div>
                   <div>
                     <dt className="text-[var(--text-muted)]">承認待ち</dt>
                     <dd className="text-lg font-semibold">
-                      {opsSummary.counts.awaitingApproval}
+                      <AnimatedNumber value={opsSummary.counts.awaitingApproval} />
                     </dd>
                   </div>
                   <div>
                     <dt className="text-[var(--text-muted)]">入力待ち</dt>
                     <dd className="text-lg font-semibold">
-                      {opsSummary.counts.needsInput}
+                      <AnimatedNumber value={opsSummary.counts.needsInput} />
                     </dd>
                   </div>
                   <div>
                     <dt className="text-[var(--text-muted)]">本日失敗</dt>
                     <dd className="text-lg font-semibold">
-                      {opsSummary.counts.failedToday}
+                      <AnimatedNumber value={opsSummary.counts.failedToday} />
                     </dd>
                   </div>
                 </dl>
@@ -249,6 +252,6 @@ export function TodayWorkPage({
           </aside>
         </div>
       )}
-    </div>
+    </RevealStagger>
   );
 }

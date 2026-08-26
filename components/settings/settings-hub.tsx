@@ -3,7 +3,9 @@
 import Link from "next/link";
 
 import { PageHeader } from "@/components/automation-first/page-header";
+import { RevealStagger } from "@/components/motion/reveal-stagger";
 import { useFeatureAvailability } from "@/lib/feature-flags";
+import { MOTION_PLAY_KEYS } from "@/lib/motion/tokens";
 
 type SettingsLink = {
   href: string;
@@ -173,7 +175,7 @@ export function SettingsHub({
   }
 
   return (
-    <div className="space-y-8">
+    <RevealStagger playKey={MOTION_PLAY_KEYS.settingsIntro} className="space-y-8">
       <PageHeader
         eyebrow="MINERVOT"
         title="設定"
@@ -193,7 +195,7 @@ export function SettingsHub({
                 <li key={`${group.id}:${link.href}:${link.title}`}>
                   <Link
                     href={link.href}
-                    className="flex min-h-[var(--touch-target)] flex-col justify-center px-4 py-3 transition-colors hover:bg-[var(--surface-muted)] active:bg-[var(--surface-muted)]"
+                    className="motion-press flex min-h-[var(--touch-target)] flex-col justify-center px-4 py-3 transition-colors hover:bg-[var(--surface-muted)] active:bg-[var(--surface-muted)]"
                   >
                     <span className="font-medium text-[var(--text-primary)]">
                       {link.title}
@@ -214,6 +216,6 @@ export function SettingsHub({
         </summary>
         <div className="mt-4">{legacy}</div>
       </details>
-    </div>
+    </RevealStagger>
   );
 }

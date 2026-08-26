@@ -102,7 +102,7 @@ export function WorkflowTimeline({ stages, className }: WorkflowTimelineProps) {
             >
               <article
                 className={cn(
-                  "ml-0 flex gap-4 rounded-[var(--radius-xl)] border p-4 transition-all duration-[var(--motion-base)] sm:gap-5 sm:p-5",
+                  "ml-0 flex gap-4 rounded-[var(--radius-xl)] border p-4 transition-[border-color,box-shadow,background-color] duration-[var(--motion-base)] sm:gap-5 sm:p-5",
                   isActive
                     ? "border-accent/30 bg-accent/5 shadow-[var(--shadow-glow)]"
                     : stage.status === "completed"

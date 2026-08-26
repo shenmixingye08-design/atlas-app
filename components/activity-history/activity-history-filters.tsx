@@ -9,6 +9,7 @@ import {
   type ActivityHistoryItem,
 } from "@/lib/activity-history";
 import { ui } from "@/lib/i18n";
+import { ExpandPanel } from "@/components/motion/expand-panel";
 import { Input } from "@/components/ui/input";
 import { IconChevron, IconSearch } from "@/components/ui/icons";
 import { cn } from "@/lib/design-system/cn";
@@ -84,13 +85,7 @@ export function ActivityHistoryFiltersBar({
         />
       </button>
 
-      <div
-        className={cn(
-          "grid transition-[grid-template-rows] duration-[var(--motion-base)]",
-          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-        )}
-      >
-        <div className="overflow-hidden">
+      <ExpandPanel open={open}>
         <div className="space-y-3 border-t border-[var(--border-subtle)] px-3.5 py-3">
           <Input
             value={filters.keyword}
@@ -182,8 +177,7 @@ export function ActivityHistoryFiltersBar({
             </label>
           </div>
         </div>
-        </div>
-      </div>
+      </ExpandPanel>
     </div>
   );
 }

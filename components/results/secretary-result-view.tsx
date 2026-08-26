@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { CompletionMoment } from "@/components/motion/completion-moment";
 import { NextActionsBar } from "@/components/results/next-actions-bar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -95,6 +96,7 @@ export function SecretaryResultView({
   const timeSaved = useMemo(() => buildProjectTimeSaved(project), [project]);
 
   return (
+    <CompletionMoment id={project.id} liveMessage={ui.secretaryResult.allDone}>
     <div className="mx-auto max-w-3xl space-y-8">
       <div className="space-y-4">
         <Link
@@ -188,5 +190,6 @@ export function SecretaryResultView({
         </div>
       )}
     </div>
+    </CompletionMoment>
   );
 }

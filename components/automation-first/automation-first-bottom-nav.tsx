@@ -69,7 +69,7 @@ export function AutomationFirstBottomNav() {
     <>
       <nav
         aria-label="メインメニュー"
-        className="fixed inset-x-0 bottom-0 z-[var(--z-nav)] border-t border-[var(--border-subtle)] bg-[var(--surface-raised)] md:hidden"
+        className="atlas-bottom-nav fixed inset-x-0 bottom-0 z-[var(--z-nav)] border-t border-[var(--border-subtle)] bg-[var(--surface-raised)] md:hidden"
         style={{ paddingBottom: "var(--safe-area-bottom)" }}
       >
         <ul className="relative mx-auto flex max-w-lg items-stretch justify-around px-0.5 pt-1">

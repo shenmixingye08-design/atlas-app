@@ -10,6 +10,7 @@ import {
 } from "@/lib/automations/ux";
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
+import { MotionSwitch } from "@/components/motion/motion-switch";
 import { Card } from "@/components/ui/card";
 import { StatusChip, type StatusVariant } from "@/components/ui/status-chip";
 
@@ -84,14 +85,14 @@ export function AutomationCard({
           </p>
         </button>
 
-        <button
-          type="button"
-          disabled={isUpdating || automation.status === "running"}
-          onClick={() => onToggleEnabled(automation.id, !automation.enabled)}
-          className="min-h-[44px] shrink-0 self-start rounded-full bg-[var(--surface-muted)] px-4 text-sm font-medium text-foreground focus-ring disabled:opacity-50"
-        >
-          {automation.enabled ? ui.entrustedJobs.pause : ui.entrustedJobs.resume}
-        </button>
+        <MotionSwitch
+          checked={automation.enabled}
+          pending={isUpdating}
+          disabled={automation.status === "running"}
+          onToggle={() => onToggleEnabled(automation.id, !automation.enabled)}
+          label={automation.enabled ? ui.entrustedJobs.pause : ui.entrustedJobs.resume}
+          className="shrink-0 self-start"
+        />
       </div>
 
       <dl className="mt-4 grid gap-2 text-sm">
