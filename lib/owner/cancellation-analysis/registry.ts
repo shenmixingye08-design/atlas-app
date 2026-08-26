@@ -5,9 +5,12 @@ import type {
 
 export const CANCELLATION_REASON_DEFINITIONS: readonly CancellationReasonDefinition[] =
   [
-    { id: "price", label: "価格" },
-    { id: "not_used", label: "使わなかった" },
-    { id: "too_difficult", label: "難しかった" },
+    { id: "price", label: "価格が高い" },
+    { id: "too_difficult", label: "使い方が分からない" },
+    { id: "missing_feature", label: "必要な機能がない" },
+    { id: "not_working", label: "正常に動かなかった" },
+    { id: "not_used", label: "利用頻度が少ない" },
+    { id: "temporary", label: "一時的に不要" },
     { id: "other", label: "その他" },
   ] as const;
 

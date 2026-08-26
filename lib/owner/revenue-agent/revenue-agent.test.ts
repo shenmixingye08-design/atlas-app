@@ -17,7 +17,9 @@ function sampleItem(partial: Partial<RevenueContent> = {}): RevenueContent {
   const now = new Date().toISOString();
   return {
     id: partial.id ?? "ra_1",
-    campaign: "minervot_solo_acquisition_beta",
+    campaign: "minervot_owner_growth",
+    campaignId: "minervot_owner_growth",
+    contentId: partial.contentId ?? partial.id ?? "ra_1",
     status: "approved",
     kind: "pain_point",
     platform: "x",
@@ -27,10 +29,16 @@ function sampleItem(partial: Partial<RevenueContent> = {}): RevenueContent {
     cta: "cta",
     recommendedPlatform: "x",
     assumedTarget: goals.targetAudience,
-    desiredAction: "LP",
+    painPoint: "毎週の繰り返し作業",
+    intent: "無料登録",
+    featureExample: "X投稿を依頼する",
+    signupPath: "/sign-up",
+    desiredAction: "無料登録",
     reason: "reason",
+    claimCheck: { ok: true, hits: [] },
     video: null,
-    utmUrl: "https://minervot.com/",
+    utmUrl: "https://example.test/sign-up",
+    trackingUrl: "/r/ra_1",
     scheduledAt: null,
     publishedAt: null,
     postUrl: null,
@@ -39,6 +47,8 @@ function sampleItem(partial: Partial<RevenueContent> = {}): RevenueContent {
     attemptCount: 0,
     maxAttempts: 3,
     lastError: null,
+    failedStage: null,
+    retryable: false,
     metrics: emptyMetrics(),
     metricSource: {
       impressions: "unknown",
@@ -104,26 +114,50 @@ describe("template generation", () => {
       expect(findForbiddenClaim(bodies[i]!, goals)).toBeNull();
       expect(items[i]!.metrics.impressions).toBeNull();
       expect(items[i]!.status).toBe("pending_approval");
+      expect(items[i]!.campaignId).toBe("minervot_owner_growth");
+      expect(items[i]!.contentId).toBe(items[i]!.id);
+      expect(items[i]!.signupPath).toBe("/sign-up");
+      expect(items[i]!.utmUrl).toContain("contentId=");
+      expect(items[i]!.featureExample.length).toBeGreaterThan(0);
+      expect(items[i]!.claimCheck.ok).toBe(true);
     }
+    const ids = new Set(items.map((item) => item.contentId));
+    expect(ids.size).toBe(items.length);
   });
 });
 
 describe("utm and publish policy", () => {
-  it("builds campaign UTMs", () => {
+  it("builds campaign UTMs with campaignId and contentId", () => {
     const url = buildRevenueUtmUrl({
-      lpUrl: "https://minervot.com/pricing",
+      lpUrl: "/sign-up",
       platform: "x",
       kind: "pain_point",
       contentId: "ra_abc",
+      origin: "https://example.test",
     });
+    expect(url).toContain("https://example.test/sign-up");
     expect(url).toContain("utm_source=x");
     expect(url).toContain("utm_medium=social");
-    expect(url).toContain("utm_campaign=minervot_solo_acquisition_beta");
+    expect(url).toContain("utm_campaign=minervot_owner_growth");
     expect(url).toContain("utm_content=ra_abc");
+    expect(url).toContain("campaignId=minervot_owner_growth");
+    expect(url).toContain("contentId=ra_abc");
+  });
+
+  it("does not invent a non-existent destination path", () => {
+    const url = buildRevenueUtmUrl({
+      lpUrl: "https://unknown.example/made-up-landing",
+      platform: "x",
+      kind: "pain_point",
+      contentId: "ra_abc",
+      origin: "https://example.test",
+    });
+    expect(url.startsWith("https://example.test/sign-up")).toBe(true);
   });
 
   it("publishes only approved or due scheduled items", () => {
     expect(canPublishNow(sampleItem({ status: "pending_approval" }))).toBe(false);
+    expect(canPublishNow(sampleItem({ status: "rejected" }))).toBe(false);
     expect(canPublishNow(sampleItem({ status: "approved" }))).toBe(true);
     expect(
       canPublishNow(
@@ -147,7 +181,7 @@ describe("insights honesty", () => {
     ]);
     expect(insights.confidence).toBe("insufficient");
     expect(insights.lpVisitRate).toBeNull();
-    expect(insights.disclaimer).toContain("サンプル不足");
+    expect(insights.disclaimer).toContain("データ不足");
     expect(insights.topPosts).toHaveLength(0);
   });
 
@@ -167,7 +201,7 @@ describe("insights honesty", () => {
       }),
     ]);
     expect(insights.confidence).toBe("insufficient");
-    expect(insights.topPosts[0]?.id).toBe("a");
-    expect(insights.bottomPosts[0]?.id).toBe("b");
+    expect(insights.topPosts).toHaveLength(0);
+    expect(insights.disclaimer).toContain("判断保留");
   });
 });

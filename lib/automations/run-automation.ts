@@ -78,6 +78,10 @@ import { hasRecurringSlotAlreadyHandled } from "./x-recurring/idempotency";
 import { savePendingXPost } from "./x-recurring/pending-store";
 import { gateXRecurringConnection } from "./x-recurring/connection-gate";
 import { resolveFeatureContextForUser } from "@/lib/integrations/x/post/drive-backup";
+import {
+  observeFirstAutomationCompleted,
+  observeRevenueSafe,
+} from "@/lib/owner/revenue-agent/observe";
 import { v1CannotSatisfyRequiredExternals } from "@/lib/automations/required-external-fail-closed";
 
 export type ExecuteAutomationOptions = {
@@ -656,6 +660,12 @@ export async function executeAutomationRun(
     const succeeded = effectiveStatus === "completed";
     const awaiting = effectiveStatus === "awaiting_approval";
     const latest = await serverAutomationRepository.findById(automation.id);
+    if (succeeded) {
+      const ownerId = options.userId ?? automation.userId;
+      if (ownerId) {
+        observeRevenueSafe(() => observeFirstAutomationCompleted(ownerId));
+      }
+    }
 
     await serverAutomationRepository.update(automation.id, {
       status: succeeded || awaiting ? "success" : "failed",

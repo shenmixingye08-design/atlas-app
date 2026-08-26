@@ -22,7 +22,7 @@ describe("cancellation analysis engine", () => {
 
     expect(snapshot.canceledCount).toBe(0);
     expect(snapshot.churnRatePercent).toBeNull();
-    expect(snapshot.reasons).toHaveLength(4);
+    expect(snapshot.reasons).toHaveLength(7);
     expect(snapshot.reasons.every((row) => row.count === 0)).toBe(true);
     expect(snapshot.isEstimated).toBe(false);
   });

@@ -112,6 +112,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/integrations/oauth/google-drive/callback(.*)",
   "/api/line/webhook(.*)",
   "/api/webhooks/clerk(.*)",
+  "/api/growth/events(.*)",
 ] as const;
 
 /** ログイン後の既定遷移先 */

@@ -22,6 +22,8 @@ export async function publishRevenueItemToX(input: {
     return {
       ...item,
       lastError: "X以外は自動投稿しません。手動投稿済みに変更してください。",
+      failedStage: "platform",
+      retryable: false,
       updatedAt: now,
     };
   }
@@ -30,6 +32,8 @@ export async function publishRevenueItemToX(input: {
     return {
       ...item,
       lastError: "承認済み、または投稿時刻を過ぎた予約だけ実行できます。",
+      failedStage: "approval",
+      retryable: item.status === "scheduled" || item.status === "approved",
       updatedAt: now,
     };
   }
@@ -51,6 +55,8 @@ export async function publishRevenueItemToX(input: {
       ...item,
       status: "failed",
       lastError: result.message,
+      failedStage: "x_not_connected",
+      retryable: true,
       updatedAt: now,
     };
   }
@@ -64,6 +70,8 @@ export async function publishRevenueItemToX(input: {
       ...item,
       status: failed === "failed" ? "failed" : item.status,
       lastError: message,
+      failedStage: "x_api",
+      retryable: item.attemptCount < item.maxAttempts,
       updatedAt: now,
     };
   }
@@ -79,6 +87,8 @@ export async function publishRevenueItemToX(input: {
       ...item,
       status: "failed",
       lastError: reason,
+      failedStage: "missing_tweet_id",
+      retryable: true,
       updatedAt: now,
     };
   }
@@ -90,6 +100,8 @@ export async function publishRevenueItemToX(input: {
     xTweetId: tweetId,
     postUrl: tweetUrl ?? `https://x.com/i/web/status/${tweetId}`,
     lastError: null,
+    failedStage: null,
+    retryable: false,
     updatedAt: now,
   };
 }

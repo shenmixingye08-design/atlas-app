@@ -27,6 +27,10 @@ import { decideRetry } from "./retry";
 import { getWorkQueueStore } from "./store";
 import { executeWorkStep } from "./steps/execute-step";
 import type { WorkJobRecord, WorkStepRecord } from "./types";
+import {
+  observeFirstJobCompleted,
+  observeRevenueSafe,
+} from "@/lib/owner/revenue-agent/observe";
 
 export type WorkerDrainResult = {
   workerId: string;
@@ -502,6 +506,9 @@ async function processLeasedJobBody(
       ownerId: job.ownerId,
       durationMs: Date.now() - started,
     });
+    if (job.ownerId && !job.automationId) {
+      observeRevenueSafe(() => observeFirstJobCompleted(job.ownerId));
+    }
     return "completed";
 }
 

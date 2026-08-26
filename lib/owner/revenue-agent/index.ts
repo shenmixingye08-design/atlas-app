@@ -1,8 +1,9 @@
 export { REVENUE_AGENT_FEATURE_NAME } from "./feature-evaluation";
 export { defaultRevenueGoals, DEFAULT_BANNED_PHRASES } from "./defaults";
+export { REVENUE_AGENT_CAMPAIGN_ID, REVENUE_AGENT_CAMPAIGN } from "./constants";
 export { findForbiddenClaim } from "./claims";
 export { jaccardSimilarity, isDuplicateOfAny } from "./duplicate";
-export { buildRevenueUtmUrl } from "./utm";
+export { buildRevenueUtmUrl, buildRevenueTrackingUrl } from "./utm";
 export { buildRevenueInsights, scorePublishedItem } from "./insights";
 export { tokyoDateKey, buildTemplateBatch } from "./generate";
 export { canPublishNow } from "./publish-policy";
@@ -10,6 +11,7 @@ export {
   getRevenueAgentSnapshot,
   updateRevenueGoals,
   parseGoalsPatch,
+  parseFunnelRange,
   generateRevenuePlans,
   editRevenueItem,
   transitionRevenueItem,
@@ -17,6 +19,7 @@ export {
   publishDueScheduled,
   updateRevenueMetrics,
   regenerateRevenueItem,
+  updateAdSpendYen,
 } from "./service";
 export type {
   RevenueAgentSnapshot,

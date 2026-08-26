@@ -20,8 +20,13 @@ describe("Owner API server guards", () => {
   it("keeps requireAtlasOwnerApi on Owner dashboard and webhook APIs", () => {
     const dashboard = readFileSync("app/api/owner/dashboard/route.ts", "utf8");
     const webhook = readFileSync("app/api/owner/billing-webhook/route.ts", "utf8");
+    const improve = readFileSync(
+      "app/api/owner/revenue-agent/improve/route.ts",
+      "utf8",
+    );
     expect(dashboard).toContain("requireAtlasOwnerApi");
     expect(webhook).toContain("requireAtlasOwnerApi");
+    expect(improve).toContain("requireAtlasOwnerApi");
   });
 });
 

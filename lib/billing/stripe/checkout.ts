@@ -37,6 +37,10 @@ import {
   usesStripeLiveSecretKey,
 } from "./production-guard";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
+import {
+  observeCheckoutStarted,
+  observeRevenueSafe,
+} from "@/lib/owner/revenue-agent/observe";
 
 export type CheckoutSessionResult = {
   sessionId: string;
@@ -418,6 +422,33 @@ export async function createCheckoutSession(input: {
     if (!session.url) {
       throw new Error("Stripe did not return a checkout URL");
     }
+
+    observeRevenueSafe(() =>
+      observeCheckoutStarted({
+        userId: input.userId,
+        sessionId: session.id,
+        livemode: typeof session.livemode === "boolean" ? session.livemode : null,
+      }),
+    );
+    observeRevenueSafe(async () => {
+      const { ensureRevenueMaxHydrated, persistRevenueMax } = await import(
+        "@/lib/growth/revenue-max/durable"
+      );
+      const { recordUserEvent } = await import("@/lib/growth/revenue-max/record");
+      await ensureRevenueMaxHydrated(input.userId);
+      recordUserEvent({
+        userId: input.userId,
+        eventName: "checkout_started",
+        dedupeKey: `checkout_started:${input.userId}:${session.id}`,
+        metadata: { sessionId: session.id },
+        patch: {
+          checkoutSessionId: session.id,
+          checkoutStartedAt: new Date().toISOString(),
+          checkoutOutcome: "started",
+        },
+      });
+      await persistRevenueMax(input.userId);
+    });
 
     return {
       sessionId: session.id,

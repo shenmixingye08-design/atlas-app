@@ -14,6 +14,10 @@ import {
 } from "./job-store";
 import { buildStepEvidence } from "./step-labels";
 import type { JobPushStatus, JobRecord, JobStatus } from "./types";
+import {
+  observeFirstJobCompleted,
+  observeRevenueSafe,
+} from "@/lib/owner/revenue-agent/observe";
 
 export type { JobStatus, JobPushStatus, JobRecord } from "./types";
 export { JOB_HANG_TIMEOUT_MS, listDueRetries } from "./job-store";
@@ -180,7 +184,7 @@ export async function markJobCompleted(input: {
         : input.status === "failed"
           ? "failed"
           : "failed";
-  return persistJobRecord({
+  const record = await persistJobRecord({
     id: input.jobId,
     userId: input.userId,
     automationId: existing?.automationId ?? null,
@@ -211,6 +215,21 @@ export async function markJobCompleted(input: {
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   });
+  if (
+    nextStatus === "completed" &&
+    (existing?.jobType ?? "automation") !== "automation"
+  ) {
+    observeRevenueSafe(() => observeFirstJobCompleted(input.userId));
+  }
+  if (nextStatus === "completed") {
+    observeRevenueSafe(async () => {
+      const { touchRevenueMaxValue } = await import(
+        "@/lib/growth/revenue-max/value-touch"
+      );
+      await touchRevenueMaxValue(input.userId, input.resultSummary ?? null);
+    });
+  }
+  return record;
 }
 
 export async function setJobPushStatus(

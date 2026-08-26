@@ -5,6 +5,7 @@ import { completeMockCheckout } from "@/lib/billing/service";
 import { isPlanId } from "@/lib/billing/plans";
 import { BILLING_SETTINGS_PATH } from "@/lib/billing/stripe/config";
 import { finalizeCheckoutSessionForUser } from "@/lib/billing/stripe/finalize-checkout-session";
+import { handleRevenueMaxAction } from "@/lib/growth/revenue-max/service";
 import { isAtlasProduction } from "@/lib/runtime/is-production";
 
 type PageProps = {
@@ -39,6 +40,10 @@ export default async function BillingSuccessPage({ searchParams }: PageProps) {
     !isAtlasProduction()
   ) {
     await completeMockCheckout(userId, planParam);
+    await handleRevenueMaxAction(userId, {
+      action: "checkout_completed",
+      sessionId: "mock",
+    });
     redirect(`${BILLING_SETTINGS_PATH}?checkout=success&plan=${planParam}`);
   }
 
@@ -48,6 +53,10 @@ export default async function BillingSuccessPage({ searchParams }: PageProps) {
       sessionId,
     });
     if (result.planId) {
+      await handleRevenueMaxAction(userId, {
+        action: "checkout_completed",
+        sessionId,
+      });
       redirect(
         `${BILLING_SETTINGS_PATH}?checkout=success&plan=${result.planId}`,
       );
