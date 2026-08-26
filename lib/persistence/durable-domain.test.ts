@@ -129,6 +129,22 @@ describe("durable-domain", () => {
     vi.unstubAllEnvs();
   });
 
+  it("writes Supabase before Clerk cleanup and still succeeds if cleanup fails", async () => {
+    upsertSb.mockResolvedValue(true);
+    clearClerk.mockRejectedValue(new Error("clerk_timeout"));
+    const result = await persistDurableDomain(
+      "user_1",
+      "atlasNotifications",
+      { notifications: [], preferences: {} },
+      { forceSupabase: true, compact: (p) => p },
+    );
+    expect(result).toBe("supabase");
+    expect(upsertSb).toHaveBeenCalled();
+    expect(upsertSb.mock.invocationCallOrder[0]).toBeLessThan(
+      (clearClerk.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY) + 1,
+    );
+  });
+
   it("loads Supabase payload for supabase-only domains without Clerk", async () => {
     const row = {
       payload: {

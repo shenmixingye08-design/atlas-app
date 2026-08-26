@@ -23,6 +23,26 @@ describe("Clerk remote ops skip internal health probe users", () => {
     vi.unstubAllEnvs();
   });
 
+  it("does not call Clerk get/update for memory and n07 probe owners", async () => {
+    const { loadClerkPrivateMetadataKey, persistClerkPrivateMetadataKey } =
+      await import("./clerk-private-metadata");
+    const { createN05MemoryProbeOwnerIds, createN07ProbeOwnerIds } = await import(
+      "@/lib/health/internal-probe-user"
+    );
+    const memory = createN05MemoryProbeOwnerIds();
+    const n07 = createN07ProbeOwnerIds();
+    await expect(
+      loadClerkPrivateMetadataKey(memory.ownerA, "atlasPersonalMemory"),
+    ).resolves.toBeNull();
+    await expect(
+      persistClerkPrivateMetadataKey(n07.ownerA, "atlasNotifications", {
+        ok: true,
+      }),
+    ).resolves.toBe(false);
+    expect(getUser).not.toHaveBeenCalled();
+    expect(updateUserMetadata).not.toHaveBeenCalled();
+  });
+
   it("does not call Clerk get/update for generated n08 probe owners", async () => {
     const { loadClerkPrivateMetadataKey, persistClerkPrivateMetadataKey, clearClerkPrivateMetadataKeys } =
       await import("./clerk-private-metadata");

@@ -201,9 +201,8 @@ export async function persistDurableDomain<T>(
     options.forceSupabase === true || isSupabaseOnlyDomain(domainKey);
 
   if (supabaseOnly) {
-    // Shrink private_metadata once — migrate then null keys. No pointer rewrite.
-    await clearHeavyClerkDurableDomains(userId);
-
+    // Write Supabase first. Clerk leftover cleanup must never block or fail
+    // the durable persist (17 sequential getUser calls were starving upserts).
     const supabaseOk = await upsertSupabaseUserState(userId, domainKey, full);
     if (!supabaseOk) {
       if (isAtlasProduction()) {
@@ -214,6 +213,9 @@ export async function persistDurableDomain<T>(
         );
       }
       return "skipped";
+    }
+    if (!isInternalHealthProbeUserId(userId)) {
+      await clearHeavyClerkDurableDomains(userId).catch(() => undefined);
     }
     return "supabase";
   }

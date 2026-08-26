@@ -4,6 +4,10 @@
  */
 
 import {
+  hashOpaqueKey,
+  logBillingUsagePersistenceSummary,
+} from "@/lib/health/probe-observability";
+import {
   buildDurableReadDiagnosticId,
   logDurableReadFailure,
   readUnknownSupabaseError,
@@ -192,11 +196,21 @@ export async function incrementDurableUsageOnce(input: {
   amount?: number;
   month?: string;
 }): Promise<DurableIncrementResult> {
+  const started = Date.now();
   const month = input.month ?? getUsageMonthKey();
   const claimKey = input.claimKey.trim();
   const amount = Math.max(1, input.amount ?? 1);
   const counter = METER_TO_COUNTER[input.meter];
+  const claimKeyHash = hashOpaqueKey(claimKey || "empty");
   if (!input.userId.trim() || !claimKey) {
+    logBillingUsagePersistenceSummary({
+      claimKeyHash,
+      meter: input.meter,
+      persisted: false,
+      deduplicated: false,
+      durationMs: Date.now() - started,
+      errorCode: "usage_invalid_claim",
+    });
     return {
       ok: false,
       incremented: false,
@@ -231,6 +245,7 @@ export async function incrementDurableUsageOnce(input: {
     const row = !error ? asIncrementRow(data) : null;
     if (row) {
       const used = asCount(row.used);
+      const incremented = Boolean(row.incremented) && !row.idempotent;
       const current = getUsageSnapshot(input.userId, month);
       saveUsageSnapshot({
         ...current,
@@ -239,9 +254,17 @@ export async function incrementDurableUsageOnce(input: {
         [counter]: used,
         updatedAt: new Date().toISOString(),
       });
+      logBillingUsagePersistenceSummary({
+        claimKeyHash,
+        meter: input.meter,
+        persisted: Boolean(row.ok),
+        deduplicated: Boolean(row.idempotent) || !incremented,
+        durationMs: Date.now() - started,
+        errorCode: row.ok ? null : "usage_increment_failed",
+      });
       return {
         ok: Boolean(row.ok),
-        incremented: Boolean(row.incremented) && !row.idempotent,
+        incremented,
         used,
         ready: true,
         source: "durable",
@@ -249,16 +272,25 @@ export async function incrementDurableUsageOnce(input: {
     }
     if (isAtlasProduction()) {
       const parsed = readUnknownSupabaseError(error);
+      const errorCode = isMissingUsageIncrementRpc(error)
+        ? "usage_rpc_missing"
+        : "usage_increment_failed";
       logDurableReadFailure({
         endpoint: "/api/billing/usage",
         userId: input.userId,
-        code: isMissingUsageIncrementRpc(error)
-          ? "usage_rpc_missing"
-          : "usage_increment_failed",
+        code: errorCode,
         databaseCode: parsed.code,
         table: "atlas_billing_usage_counters",
         diagnosticId: buildDurableReadDiagnosticId("usage_increment"),
         message: parsed.message,
+      });
+      logBillingUsagePersistenceSummary({
+        claimKeyHash,
+        meter: input.meter,
+        persisted: false,
+        deduplicated: false,
+        durationMs: Date.now() - started,
+        errorCode,
       });
       return {
         ok: false,
@@ -269,6 +301,14 @@ export async function incrementDurableUsageOnce(input: {
       };
     }
   } else if (isAtlasProduction()) {
+    logBillingUsagePersistenceSummary({
+      claimKeyHash,
+      meter: input.meter,
+      persisted: false,
+      deduplicated: false,
+      durationMs: Date.now() - started,
+      errorCode: "usage_unavailable",
+    });
     return {
       ok: false,
       incremented: false,
@@ -285,6 +325,14 @@ export async function incrementDurableUsageOnce(input: {
     amount,
     month,
   );
+  logBillingUsagePersistenceSummary({
+    claimKeyHash,
+    meter: input.meter,
+    persisted: true,
+    deduplicated: !once.incremented,
+    durationMs: Date.now() - started,
+    errorCode: null,
+  });
   return {
     ok: true,
     incremented: once.incremented,
