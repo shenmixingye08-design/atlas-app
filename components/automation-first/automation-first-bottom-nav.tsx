@@ -71,7 +71,7 @@ export function AutomationFirstBottomNav() {
         className="atlas-bottom-nav fixed inset-x-0 bottom-0 z-[var(--z-nav)] border-t border-[var(--border-subtle)] bg-[var(--surface-raised)] md:hidden"
         style={{ paddingBottom: "var(--safe-area-bottom)" }}
       >
-        <BottomNavGroup className="relative mx-auto flex max-w-lg items-stretch justify-around px-0.5 pt-1">
+        <BottomNavGroup className="relative mx-auto flex min-h-[56px] max-w-lg items-stretch justify-around px-0.5 pt-1">
           {ITEMS.map((item) => {
             const isActive = active === item.id;
 
