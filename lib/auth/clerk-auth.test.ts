@@ -223,6 +223,9 @@ describe("auth route matchers", () => {
       "/api/health/n08-automation-unify(.*)",
     );
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
+      "/api/health/db-schema-compatibility(.*)",
+    );
+    expect(ATLAS_PUBLIC_API_MATCHERS).toContain(
       "/api/health/n07-soft-success(.*)",
     );
     expect(ATLAS_PUBLIC_API_MATCHERS).toContain(

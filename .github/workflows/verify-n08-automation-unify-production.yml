@@ -57,7 +57,7 @@ jobs:
               READY=1
               break
             fi
-            sleep 15
+            sleep 30
           done
           if [ -z "${READY}" ]; then
             echo "::error::Production N-08 automation unify not ready. Soft-success forbidden."

@@ -199,10 +199,17 @@ export function getUsageSnapshot(
   return emptySnapshot(userId, month);
 }
 
-export function saveUsageSnapshot(snapshot: UsageSnapshot): UsageSnapshot {
+export function saveUsageSnapshot(
+  snapshot: UsageSnapshot,
+  options?: { persistBlob?: boolean },
+): UsageSnapshot {
   const normalized = normalizeUsageSnapshot(snapshot);
   getBucket().set(usageKey(normalized.userId, normalized.month), normalized);
-  persistDurable();
+  // Production SoT is atlas_increment_usage_counter_once / counters table.
+  // The atlas_user_state blob is a process cache, not durable usage.
+  if (options?.persistBlob === true) {
+    persistDurable();
+  }
   return normalized;
 }
 
@@ -219,7 +226,7 @@ export function incrementUsageCounter(
     updatedAt: new Date().toISOString(),
   };
 
-  return saveUsageSnapshot(next);
+  return saveUsageSnapshot(next, { persistBlob: true });
 }
 
 /**

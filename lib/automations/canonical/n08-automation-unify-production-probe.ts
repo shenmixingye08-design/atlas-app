@@ -9,10 +9,19 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
+import {
+  logAutomationProbeSlotSummary,
+  logHealthProbeSummary,
+} from "@/lib/health/probe-observability";
 import { getHealthVersionPayload } from "@/lib/health/version-info";
 import { buildAutomationIdempotencyKey } from "@/lib/jobs/idempotency";
 import { claimAutomationJob } from "@/lib/jobs/job-store";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
+import {
+  cleanupN08ProbeOwners,
+  countN08ProbeSlots,
+  sweepN08ProbeOrphans,
+} from "@/lib/automations/canonical/n08-probe-cleanup";
 
 import {
   CANONICAL_STATUS_LABEL,
@@ -250,21 +259,33 @@ function structuralWiring(): {
 }
 
 export async function probeN08AutomationUnifyProduction(): Promise<N08AutomationUnifyProbeResult> {
+  const started = Date.now();
   const correlationId = `n08_${randomUUID().slice(0, 8)}`;
   const { commitShaShort, environment } = versionBits();
+  const createdAutomationIds: string[] = [];
+  let ownerA = "";
+  let ownerB = "";
+  let slotCountBefore = 0;
+  let automationCreated = 0;
+  let cleanup: Awaited<ReturnType<typeof cleanupN08ProbeOwners>> | null = null;
+  let outcome: N08AutomationUnifyProbeResult | null = null;
 
   try {
+    await sweepN08ProbeOrphans();
+    slotCountBefore = await countN08ProbeSlots();
     const hidden = scanUserFacingHidden();
     if (!hidden.ok) {
-      return baseFail(hidden.error ?? "user_facing_scan_failed", {
+      outcome = baseFail(hidden.error ?? "user_facing_scan_failed", {
         userFacingV1V2HiddenOk: false,
         correlationId,
       });
+      return outcome;
     }
 
     const wiring = structuralWiring();
     if (wiring.error) {
-      return baseFail(wiring.error, { correlationId });
+      outcome = baseFail(wiring.error, { correlationId });
+      return outcome;
     }
 
     // ---- Canonical model + CRUD ----
@@ -288,7 +309,7 @@ export async function probeN08AutomationUnifyProduction(): Promise<N08Automation
     const { createN08ProbeOwnerIds } = await import(
       "@/lib/health/internal-probe-user"
     );
-    const { ownerA, ownerB } = createN08ProbeOwnerIds();
+    ({ ownerA, ownerB } = createN08ProbeOwnerIds());
     const v1CreateInput = {
       name: "N08 probe automation",
       description: "canonical unify probe",
@@ -320,6 +341,8 @@ export async function probeN08AutomationUnifyProduction(): Promise<N08Automation
       created = await serverAutomationRepository.create(v1CreateInput);
       markAutomationsHydrated(ownerA);
     }
+    createdAutomationIds.push(created.id);
+    automationCreated += 1;
 
     const listed = v1Durable
       ? await automationService.listForUser(ownerA)
@@ -423,6 +446,8 @@ export async function probeN08AutomationUnifyProduction(): Promise<N08Automation
       },
       ownerContext,
     );
+    createdAutomationIds.push(createdV2.id);
+    automationCreated += 1;
     // Link to legacy row for canonical dedupe (read-time adapter).
     const savedV2 = await persistAutomationV2Now({
       ...createdV2,
@@ -680,11 +705,51 @@ export async function probeN08AutomationUnifyProduction(): Promise<N08Automation
     if (!result.ok) {
       result.error = `flags_false:${failed.join(",")}`;
     }
-    return result;
+    outcome = result;
+    return outcome;
   } catch (error) {
-    return baseFail(
+    outcome = baseFail(
       error instanceof Error ? error.message : "n08_probe_failed",
       { correlationId, commitShaShort, environment },
     );
+    return outcome;
+  } finally {
+    cleanup = await cleanupN08ProbeOwners({
+      ownerIds: [ownerA, ownerB].filter(Boolean),
+      automationIds: createdAutomationIds,
+    }).catch(() => ({
+      automationDeleted: 0,
+      slotsReleased: 0,
+      orphanDetected: 0,
+      cleanupSuccess: false,
+    }));
+    const slotCountAfter = await countN08ProbeSlots().catch(() => -1);
+    const leaked =
+      slotCountAfter < 0 ? true : slotCountAfter !== slotCountBefore;
+    if (outcome && leaked) {
+      outcome.ok = false;
+      outcome.error = outcome.error
+        ? `${outcome.error}|probe_slot_leak`
+        : "probe_slot_leak";
+    }
+    logAutomationProbeSlotSummary({
+      slotCountBefore,
+      slotCountAfter: slotCountAfter < 0 ? slotCountBefore : slotCountAfter,
+      automationCreated,
+      automationDeleted: cleanup.automationDeleted,
+      orphanDetected: cleanup.orphanDetected,
+    });
+    logHealthProbeSummary({
+      route: "/api/health/n08-automation-unify",
+      probeId: correlationId,
+      durationMs: Date.now() - started,
+      externalCalls: 0,
+      dbWrites: automationCreated,
+      cleanupSuccess: cleanup.cleanupSuccess && !leaked,
+      sideEffectsRemaining: leaked
+        ? Math.max(0, slotCountAfter - slotCountBefore)
+        : 0,
+      result: cleanup.cleanupSuccess && !leaked ? "ok" : "error",
+    });
   }
 }

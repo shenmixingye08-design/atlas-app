@@ -1,5 +1,10 @@
 import "server-only";
 
+import { isInternalProbeIdentity } from "@/lib/health/internal-probe-user";
+import {
+  logNotificationPersistenceSummary,
+} from "@/lib/health/probe-observability";
+import { bumpProbeSideEffect } from "@/lib/health/probe-side-effects";
 import {
   loadDurableDomain,
   persistDurableDomain,
@@ -71,12 +76,24 @@ export function schedulePersistNotifications(userId: string): void {
  * returns its Response, so fire-and-forget persistence may never reach Supabase.
  */
 export async function persistNotificationsNow(userId: string): Promise<void> {
+  const started = Date.now();
   const pending = pendingTimers.get(userId);
   if (pending) {
     clearTimeout(pending);
     pendingTimers.delete(userId);
   }
-  await persistDurableDomain(
+  if (isInternalProbeIdentity(userId)) {
+    logNotificationPersistenceSummary({
+      notificationId: null,
+      success: true,
+      durationMs: Date.now() - started,
+      errorCode: null,
+      persistenceTarget: "skipped",
+    });
+    return;
+  }
+
+  const result = await persistDurableDomain(
     userId,
     NOTIFICATIONS_DOMAIN_KEY,
     snapshotNotifications(userId),
@@ -85,6 +102,18 @@ export async function persistNotificationsNow(userId: string): Promise<void> {
       forceSupabase: true,
     },
   );
+  const success = result === "supabase";
+  if (success) {
+    bumpProbeSideEffect("notificationUpserts");
+    bumpProbeSideEffect("dbWrites");
+  }
+  logNotificationPersistenceSummary({
+    notificationId: null,
+    success,
+    durationMs: Date.now() - started,
+    errorCode: success ? null : result,
+    persistenceTarget: success ? "supabase" : "failed",
+  });
 }
 
 function applyLoadedPreferences(

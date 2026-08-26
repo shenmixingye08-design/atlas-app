@@ -380,8 +380,10 @@ export async function probeN07SoftSuccessProduction(): Promise<N07SoftSuccessPro
 
     // ---- Notification idempotency + isolation ----
     // Avoid resetting global store in Production — use unique users.
-    const ownerA = `n07_user_a_${randomUUID().slice(0, 8)}`;
-    const ownerB = `n07_user_b_${randomUUID().slice(0, 8)}`;
+    const { createN07ProbeOwnerIds } = await import(
+      "@/lib/health/internal-probe-user"
+    );
+    const { ownerA, ownerB } = createN07ProbeOwnerIds();
     const requestId = `n07_req_${randomUUID().slice(0, 8)}`;
 
     if (environment !== "production") {

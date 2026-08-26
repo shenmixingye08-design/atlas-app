@@ -35,6 +35,8 @@ import { resetMemoryApplyMetricsForTests } from "@/lib/memory-apply/metrics";
 import type { AutomationV2 } from "@/lib/automation-platform/types/automation";
 import type { ResolvedMemoryValue } from "@/lib/personal-memory/types";
 
+import { isInternalProbeIdentity } from "@/lib/health/internal-probe-user";
+
 const USER = "user_n05_unit";
 
 function sampleAutomation(userId: string): AutomationV2 {
@@ -269,6 +271,11 @@ describe("N-05 memory apply production honesty", () => {
       assignment: "削除後",
     });
     expect(afterDelete.memoryIdsUsed).not.toContain(saved.id);
+  });
+
+  it("classifies user_n05_mem_* as an internal probe identity", () => {
+    expect(isInternalProbeIdentity("user_n05_mem_a_abcd1234")).toBe(true);
+    expect(isInternalProbeIdentity(USER)).toBe(false);
   });
 
   it("N-01/N-02 regression: media overclaim and 60s SLA stay absent", () => {

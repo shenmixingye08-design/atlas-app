@@ -24,6 +24,7 @@ import {
 } from "./durable-inbox";
 import { isNotificationDurableRequired } from "./notification-backend";
 import { bumpPersistenceCounter } from "@/lib/persistence/call-counters";
+import { bumpProbeSideEffect } from "@/lib/health/probe-side-effects";
 import {
   appendNotification,
   deleteNotification,
@@ -250,6 +251,7 @@ export async function createUserNotification(
   }
 
   bumpPersistenceCounter("notificationCreate");
+  bumpProbeSideEffect("notificationInserts");
   // Legacy blob snapshot kept for prefs; row SoT is durable-inbox.
   if (input.userId) schedulePersistNotifications(input.userId);
 

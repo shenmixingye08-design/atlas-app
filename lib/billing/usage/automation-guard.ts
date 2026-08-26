@@ -7,6 +7,7 @@ import { getPlanDefinition } from "@/lib/billing/plans/registry";
 import { resolveEffectivePlanId } from "@/lib/billing/policy";
 import { resolveUserSubscription } from "@/lib/billing/subscriptions/service";
 import { AutomationPlatformError } from "@/lib/automation-platform/errors/messages";
+import { isInternalProbeIdentity } from "@/lib/health/internal-probe-user";
 
 import {
   evaluateBillingAutomationTask,
@@ -40,6 +41,9 @@ export async function assertAutomationCreateAllowed(input: {
   userId: string;
   automationId: string;
 }): Promise<void> {
+  // Internal probes are not customers. Skipping quota here does not relax
+  // real-user plan limits — probe ids never share a Clerk / Stripe identity.
+  if (isInternalProbeIdentity(input.userId)) return;
   if (skipQuotaForLegacyVitest(input.userId)) return;
   const snapshot = await getBillingAccessSnapshot(input.userId);
   if (snapshot.isOwner) return;

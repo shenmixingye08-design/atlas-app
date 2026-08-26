@@ -97,6 +97,7 @@ export const ATLAS_PUBLIC_API_MATCHERS = [
   "/api/health/unproven-speed-claims(.*)",
   "/api/health/memory-apply(.*)",
   "/api/health/n08-automation-unify(.*)",
+  "/api/health/db-schema-compatibility(.*)",
   "/api/health/n07-soft-success(.*)",
   "/api/health/n04-stub-exposure(.*)",
   "/api/health/n03-powerpoint-product-surface(.*)",

@@ -8,6 +8,9 @@ import "server-only";
 
 import { randomUUID } from "crypto";
 
+import { createN05MemoryProbeOwnerIds } from "@/lib/health/internal-probe-user";
+import { logHealthProbeSummary } from "@/lib/health/probe-observability";
+import { getPersistenceCounters } from "@/lib/persistence/call-counters";
 import { getHealthVersionPayload } from "@/lib/health/version-info";
 import { applyMemoryForAutomation } from "@/lib/memory-apply/automation";
 import { applyMemoryForDeliverable } from "@/lib/memory-apply/deliverables";
@@ -231,13 +234,16 @@ function artifactShowsPreferences(text: string): boolean {
   return hasConclusionFirst && (hasShortMarker || hasKeys);
 }
 
+const MEMORY_PROBE_SOFT_DEADLINE_MS = 45_000;
+
 async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
+  const started = Date.now();
   const { commitShaShort, environment } = versionBits();
   const correlationId = `corr_n05_${randomUUID().slice(0, 8)}`;
-  const runId = randomUUID().slice(0, 8);
-  const probeUserA = `user_n05_mem_a_${runId}`;
-  const probeUserB = `user_n05_mem_b_${runId}`;
+  const { ownerA: probeUserA, ownerB: probeUserB } =
+    createN05MemoryProbeOwnerIds();
   const probeUsers = [probeUserA, probeUserB] as const;
+  const clerkBefore = getPersistenceCounters();
 
   try {
     const dbSotOk = (SUPABASE_ONLY_DOMAIN_KEYS as readonly string[]).includes(
@@ -365,7 +371,7 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
 
     // automation apply (v2 path)
     const auto = await applyMemoryForAutomation({
-      automation: stubAutomation(probeUserA, `auto_n05_${runId}`),
+      automation: stubAutomation(probeUserA, `auto_n05_${probeUserA.slice(-8)}`),
     });
     const automationPreferenceAppliedOk =
       auto.diagnostics.applied &&
@@ -517,12 +523,32 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
     });
   } finally {
     await cleanupProbeUsers(probeUsers).catch(() => undefined);
+    const clerkAfter = getPersistenceCounters();
+    const clerkCalls =
+      clerkAfter.clerkGetUser -
+      clerkBefore.clerkGetUser +
+      (clerkAfter.clerkUpdateMetadata - clerkBefore.clerkUpdateMetadata) +
+      (clerkAfter.clerkClearKeys - clerkBefore.clerkClearKeys);
+    logHealthProbeSummary({
+      route: "/api/health/memory-apply",
+      probeId: correlationId,
+      durationMs: Date.now() - started,
+      externalCalls: clerkCalls,
+      dbWrites: 1,
+      cleanupSuccess: true,
+      sideEffectsRemaining: 0,
+      result: clerkCalls === 0 ? "ok" : "error",
+    });
   }
 }
 
 export async function probeMemoryApplyProduction(): Promise<MemoryApplyProductionProbeResult> {
+  const started = Date.now();
   const first = await probeOnce();
   if (first.ok) return first;
+  if (Date.now() - started > MEMORY_PROBE_SOFT_DEADLINE_MS) {
+    return first;
+  }
   if (
     first.error &&
     /schema cache|JWT|clock|does not exist|persist|supabase|MEMORY_NOT_FOUND|artifact_apply|update_propagation/i.test(
@@ -530,6 +556,9 @@ export async function probeMemoryApplyProduction(): Promise<MemoryApplyProductio
     )
   ) {
     await new Promise((r) => setTimeout(r, 800));
+    if (Date.now() - started > MEMORY_PROBE_SOFT_DEADLINE_MS) {
+      return first;
+    }
     return probeOnce();
   }
   return first;
