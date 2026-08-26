@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const persistDurableDomain = vi.fn(async () => "supabase");
+const persistDurableDomain = vi.hoisted(() =>
+  vi.fn(async () => "supabase" as const),
+);
 
 vi.mock("@/lib/persistence/durable-domain", () => ({
-  persistDurableDomain: (...args: unknown[]) => persistDurableDomain(...args),
+  persistDurableDomain,
   loadDurableDomain: vi.fn(async () => null),
 }));
 
@@ -25,7 +27,11 @@ describe("notification persist skips internal probe identities", () => {
 
   it("writes supabase for real users", async () => {
     await persistNotificationsNow("user_real_notify");
-    expect(persistDurableDomain).toHaveBeenCalled();
-    expect(persistDurableDomain.mock.calls[0]?.[1]).toBe("atlasNotifications");
+    expect(persistDurableDomain).toHaveBeenCalledWith(
+      "user_real_notify",
+      "atlasNotifications",
+      expect.any(Object),
+      expect.objectContaining({ forceSupabase: true }),
+    );
   });
 });

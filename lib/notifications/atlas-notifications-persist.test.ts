@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const upsertSb = vi.fn(async () => true);
-const loadSb = vi.fn(async () => null);
+const { upsertSb, loadSb } = vi.hoisted(() => ({
+  upsertSb: vi.fn(async () => true),
+  loadSb: vi.fn(
+    async (): Promise<{ payload: unknown; updatedAt: string } | null> => null,
+  ),
+}));
 
 vi.mock("@/lib/persistence/supabase-user-state", () => ({
-  upsertSupabaseUserState: (...args: unknown[]) => upsertSb(...args),
-  loadSupabaseUserState: (...args: unknown[]) => loadSb(...args),
+  upsertSupabaseUserState: upsertSb,
+  loadSupabaseUserState: loadSb,
 }));
 
 vi.mock("@/lib/persistence/clerk-private-metadata", () => ({

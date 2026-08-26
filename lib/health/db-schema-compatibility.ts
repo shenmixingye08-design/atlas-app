@@ -106,7 +106,7 @@ async function probeTable(
   name: keyof typeof TABLE_COLUMNS,
 ): Promise<DbSchemaObjectReport> {
   const requiredColumns = TABLE_COLUMNS[name];
-  const { error } = await asUntypedSupabase(client)
+  const { error } = await client
     .from(name)
     .select(requiredColumns.join(", "))
     .limit(1);
@@ -154,7 +154,7 @@ async function probeRpc(
     return {
       name,
       kind: "rpc",
-      status: statusFromError(error.message),
+      status: statusFromError(error.message ?? null),
       requiredColumns: [],
       callable: false,
     };
@@ -181,7 +181,7 @@ async function probeRpc(
     return {
       name,
       kind: "rpc",
-      status: statusFromError(error.message),
+      status: statusFromError(error.message ?? null),
       requiredColumns: [],
       callable: false,
     };
@@ -189,7 +189,7 @@ async function probeRpc(
 
   // atlas_claim_x_post_jobs mutates Production jobs — never invoke it.
   // Read-only proof: the underlying table is selectable by service_role.
-  const { error } = await untyped
+  const { error } = await client
     .from("atlas_x_post_jobs")
     .select("x_post_job_id")
     .limit(1);
@@ -205,7 +205,7 @@ async function probeRpc(
   return {
     name,
     kind: "rpc",
-    status: statusFromError(error.message),
+    status: statusFromError(error.message ?? null),
     requiredColumns: [],
     callable: false,
   };

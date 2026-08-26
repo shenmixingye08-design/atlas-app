@@ -6,14 +6,13 @@ const persistNotificationsNow = vi.fn(async () => undefined);
 const createUserNotification = vi.fn();
 
 vi.mock("@/lib/notifications/durable", () => ({
-  persistNotificationsNow: (...args: unknown[]) =>
-    persistNotificationsNow(...args),
+  persistNotificationsNow,
   ensureNotificationsHydrated: vi.fn(async () => undefined),
   schedulePersistNotifications: vi.fn(),
 }));
 
 vi.mock("@/lib/notifications/service", () => ({
-  createUserNotification: (...args: unknown[]) => createUserNotification(...args),
+  createUserNotification,
 }));
 
 vi.mock("@/lib/feature-flags/resolve-context", () => ({

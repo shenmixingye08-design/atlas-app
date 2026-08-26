@@ -6,8 +6,18 @@ vi.mock("@/lib/supabase/service-role", () => ({
   createServiceRoleClientIfConfigured: () => null,
 }));
 
+vi.mock("./automation-inventory", () => ({
+  countBillableAutomations: vi.fn(async (userId: string) =>
+    userId.startsWith("user_real") ? 1 : 0,
+  ),
+  listBillableAutomationIds: vi.fn(async (userId: string) =>
+    userId.startsWith("user_real") ? ["auto_real_1"] : [],
+  ),
+}));
+
 import { AutomationPlatformError } from "@/lib/automation-platform/errors/messages";
 import { createN08ProbeOwnerIds } from "@/lib/health/internal-probe-user";
+import { applySubscriptionFromStripe } from "@/lib/billing/subscriptions/service";
 import { resetSubscriptionStore } from "@/lib/billing/subscriptions/store";
 
 import { assertAutomationCreateAllowed } from "./automation-guard";
@@ -17,7 +27,6 @@ describe("automation slot guard for internal probes", () => {
   beforeEach(() => {
     resetSubscriptionStore();
     resetAutomationSlotsForTests();
-    vi.stubEnv("VITEST", "false");
   });
 
   it("does not consume or deny plan quota for probe identities", async () => {
@@ -37,10 +46,15 @@ describe("automation slot guard for internal probes", () => {
   });
 
   it("still enforces Free plan slot limit for real users", async () => {
-    vi.stubEnv("VITEST", "false");
-    await assertAutomationCreateAllowed({
+    await applySubscriptionFromStripe({
       userId: "user_real_customer_slot",
-      automationId: "auto_real_1",
+      stripeCustomerId: "cus_real_slot",
+      stripeSubscriptionId: "sub_real_slot",
+      planId: "free",
+      status: "active",
+      currentPeriodStart: new Date().toISOString(),
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
     });
     await expect(
       assertAutomationCreateAllowed({
