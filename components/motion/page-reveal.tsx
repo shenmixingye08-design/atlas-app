@@ -5,6 +5,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 
 import { cn } from "@/lib/design-system/cn";
 import { MOTION_MS, MOTION_Y } from "@/lib/motion/tokens";
+import { supportsViewTransition } from "@/lib/motion/view-transition";
 
 type PageRevealProps = {
   children: ReactNode;
@@ -54,6 +55,9 @@ export function PageReveal({ children, className }: PageRevealProps) {
       });
       return () => fade.cancel();
     }
+
+    // Official View Transitions already cover the route change.
+    if (supportsViewTransition()) return;
 
     const replay = node.animate(
       [

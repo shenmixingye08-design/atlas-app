@@ -10,6 +10,8 @@ export const MOTION_MS = {
   modal: 280,
   backdrop: 200,
   stagger: 45,
+  number: 200,
+  complete: 580,
 } as const;
 
 export const MOTION_EASE_OUT = [0.25, 0.1, 0.25, 1] as const;
@@ -31,6 +33,7 @@ export const MOTION_Y = {
   page: 6,
   card: 8,
   modal: 16,
+  complete: 10,
 } as const;
 
 /** First N list items may stagger; the rest appear immediately. */
@@ -44,6 +47,15 @@ export const MOTION_TRANSITION = {
   modal: MOTION_SPRING_SOFT,
   nav: { duration: MOTION_MS.base / 1000, ease: MOTION_EASE_OUT },
   progress: { duration: 0.26, ease: MOTION_EASE_OUT },
+  number: { duration: MOTION_MS.number / 1000, ease: MOTION_EASE_OUT },
+  complete: { duration: MOTION_MS.complete / 1000, ease: MOTION_EASE_OUT },
+} as const;
+
+export const MOTION_PLAY_KEYS = {
+  homeIntro: "atlas.motion.home-intro",
+  todayIntro: "atlas.motion.today-intro",
+  settingsIntro: "atlas.motion.settings-intro",
+  completePrefix: "atlas.motion.complete:",
 } as const;
 
 export const MOTION_REDUCED = {

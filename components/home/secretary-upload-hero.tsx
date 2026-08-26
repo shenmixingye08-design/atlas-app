@@ -336,7 +336,7 @@ export function SecretaryUploadHero() {
         {phase === "idle" || phase === "understanding" ? (
           <div
             className={cn(
-              "rounded-[28px] border-2 border-dashed bg-[var(--card)] px-6 py-12 text-center shadow-[var(--shadow-lg)] transition-all duration-300 sm:px-12 sm:py-16",
+              "rounded-[28px] border-2 border-dashed bg-[var(--card)] px-6 py-12 text-center shadow-[var(--shadow-lg)] transition-[border-color,box-shadow,background-color] duration-[var(--motion-base)] sm:px-12 sm:py-16",
               dragging
                 ? "lux-dropzone-active scale-[1.01]"
                 : "border-[var(--border-subtle)]",
@@ -461,7 +461,7 @@ export function SecretaryUploadHero() {
                   key={intent.id}
                   type="button"
                   onClick={() => chooseIntent(intent)}
-                  className="flex w-full items-center gap-3 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--background-subtle)]/50 px-5 py-4 text-left transition-all hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-[var(--shadow-sm)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+                  className="flex w-full items-center gap-3 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--background-subtle)]/50 px-5 py-4 text-left transition-[transform,border-color,box-shadow] duration-[var(--motion-fast)] hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-[var(--shadow-sm)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
                 >
                   <span className="text-2xl" aria-hidden>
                     {intent.emoji}

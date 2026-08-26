@@ -15,6 +15,7 @@ import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
+import { DownloadFeedback } from "@/components/motion/download-feedback";
 import { WordPreviewPanel } from "@/components/deliverables/word-preview-panel";
 import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
 import { WordRevisionPanel } from "@/components/deliverables/word-revision-panel";
@@ -114,6 +115,7 @@ function FormatDownloadButton({
   const file = findGeneratedFile(deliverables, format);
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
   const shortLabel = formatDownloadLabel(format);
 
   // Do not render disabled mystery buttons for formats that were never generated.
@@ -134,7 +136,9 @@ function FormatDownloadButton({
   }
 
   const handleDownload = async () => {
+    if (isDownloading) return;
     setError(null);
+    setDone(false);
     setIsDownloading(true);
     try {
       await downloadDeliverableFile({
@@ -143,6 +147,7 @@ function FormatDownloadButton({
         mimeType: file.mimeType,
         format: file.format,
       });
+      setDone(true);
     } catch (downloadError) {
       setError(
         downloadError instanceof Error
@@ -165,9 +170,11 @@ function FormatDownloadButton({
       >
         {isDownloading ? ui.work.downloadingFile : shortLabel}
       </Button>
-      {error ? (
-        <span className="max-w-full break-words text-xs text-[var(--error)]">{error}</span>
-      ) : null}
+      <DownloadFeedback
+        done={done}
+        error={error}
+        doneMessage={ui.work.downloadComplete}
+      />
     </span>
   );
 }

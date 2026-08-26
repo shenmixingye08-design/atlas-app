@@ -4,6 +4,9 @@ import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { FocusRecede } from "@/components/motion/focus-frame";
+import { MotionList, MotionListItem } from "@/components/motion/list-item";
+import { SubmitMorph } from "@/components/motion/submit-morph";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/design-system/cn";
 import { uploadImagesToAtlas } from "@/lib/attachments/client-upload";
@@ -56,6 +59,8 @@ export function SecretaryChatComposer() {
   const [listening, setListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceHint, setVoiceHint] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const dragDepthRef = useRef(0);
@@ -85,6 +90,8 @@ export function SecretaryChatComposer() {
   const submit = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed && files.length === 0) return;
+    if (submitting) return;
+    setSubmitting(true);
 
     const traceId = newVisionTraceId();
     let attachmentIds: string[] = [];
@@ -112,6 +119,7 @@ export function SecretaryChatComposer() {
             dropReason: "composer_upload_returned_no_ids",
           });
           setVoiceHint("画像のアップロードに失敗しました。もう一度お試しください。");
+          setSubmitting(false);
           return;
         }
       } catch (error) {
@@ -129,6 +137,7 @@ export function SecretaryChatComposer() {
             ? error.message
             : "画像のアップロードに失敗しました。",
         );
+        setSubmitting(false);
         return;
       }
     }
@@ -141,7 +150,7 @@ export function SecretaryChatComposer() {
     });
     stashPendingWorkRequestSubmit(payload);
     router.push("/workspace?autostart=1");
-  }, [files, router, text]);
+  }, [files, router, submitting, text]);
 
   const toggleVoice = useCallback(() => {
     const Ctor = getSpeechRecognitionCtor();
@@ -214,12 +223,14 @@ export function SecretaryChatComposer() {
     >
       <div
         className={cn(
-          "rounded-[28px] border bg-[var(--card)] p-5 shadow-[var(--shadow-md)] transition-all duration-300 sm:p-7",
+          "rounded-[28px] border bg-[var(--card)] p-5 shadow-[var(--shadow-md)] transition-[border-color,box-shadow,background-color] duration-[var(--motion-base)] sm:p-7",
           dragging
             ? "border-accent bg-accent/[0.04] ring-2 ring-accent/20"
             : "border-[var(--border-subtle)]",
+          focused && "motion-focus-frame--active",
         )}
       >
+        <FocusRecede focused={focused}>
         <div className="flex items-start gap-3 sm:gap-4">
           <div
             className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--background-subtle)] text-accent sm:h-12 sm:w-12"
@@ -249,6 +260,7 @@ export function SecretaryChatComposer() {
             </p>
           </div>
         </div>
+        </FocusRecede>
 
         <label className="sr-only" htmlFor="secretary-chat-input">
           AI秘書への依頼
@@ -260,6 +272,9 @@ export function SecretaryChatComposer() {
           rows={4}
           placeholder="例：今日のX投稿を3案作って / この内容を取引先へのメールにして"
           className="mt-5 w-full resize-none rounded-[20px] border border-[var(--border-subtle)] bg-[var(--background-subtle)]/60 px-4 py-4 text-base leading-relaxed text-foreground outline-none transition-colors placeholder:text-[var(--foreground-muted)] focus:border-accent/40 focus:bg-[var(--card)] focus:ring-2 focus:ring-accent/15 sm:min-h-[140px] sm:px-5 sm:text-[17px]"
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          disabled={submitting}
           onKeyDown={(event) => {
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
               event.preventDefault();
@@ -269,10 +284,11 @@ export function SecretaryChatComposer() {
         />
 
         {files.length > 0 && (
-          <ul className="mt-3 flex flex-wrap gap-2">
-            {files.map((item) => (
-              <li
+          <MotionList className="mt-3 flex flex-wrap gap-2">
+            {files.map((item, index) => (
+              <MotionListItem
                 key={item.id}
+                index={index}
                 className="inline-flex max-w-full items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--background-subtle)] px-3 py-1.5 text-xs text-foreground"
               >
                 <span className="truncate">{item.file.name}</span>
@@ -284,9 +300,9 @@ export function SecretaryChatComposer() {
                 >
                   ×
                 </button>
-              </li>
+              </MotionListItem>
             ))}
-          </ul>
+          </MotionList>
         )}
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -305,6 +321,7 @@ export function SecretaryChatComposer() {
               variant="secondary"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
+              disabled={submitting}
               className="rounded-full"
             >
               資料を追加
@@ -323,15 +340,14 @@ export function SecretaryChatComposer() {
               ここにドラッグ＆ドロップもできます
             </p>
           </div>
-          <Button
-            variant="primary"
-            size="lg"
-            onClick={submit}
+          <SubmitMorph
+            phase={submitting ? "processing" : "idle"}
+            onClick={() => void submit()}
             disabled={!text.trim() && files.length === 0}
-            className="w-full sm:w-auto"
+            className="w-full sm:w-auto sm:min-w-[12rem]"
           >
             AI秘書へ依頼する
-          </Button>
+          </SubmitMorph>
         </div>
 
         {(dragging || voiceHint) && (

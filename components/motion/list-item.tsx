@@ -3,6 +3,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
 
+import { useMotionLite } from "@/components/motion/motion-provider";
 import { cn } from "@/lib/design-system/cn";
 import {
   MOTION_MS,
@@ -48,6 +49,7 @@ export function MotionListItem({
   as = "li",
 }: MotionListItemProps) {
   const reduce = useReducedMotion();
+  const lite = useMotionLite();
   const delay =
     typeof index === "number" && index >= 0 && index < MOTION_STAGGER_CAP
       ? (index * MOTION_MS.stagger) / 1000
@@ -56,7 +58,7 @@ export function MotionListItem({
 
   return (
     <Comp
-      layout={reduce ? false : "position"}
+      layout={reduce || lite ? false : "position"}
       className={cn(className)}
       initial={reduce ? { opacity: 0 } : { opacity: 0, y: MOTION_Y.card }}
       animate={{ opacity: 1, y: 0 }}

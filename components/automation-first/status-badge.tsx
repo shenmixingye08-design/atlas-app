@@ -1,9 +1,27 @@
-import { cn } from "@/lib/design-system/cn";
+import { StatusMorph, type MotionJobStatus } from "@/components/motion/status-morph";
 import {
   RUN_STATUS_LABEL,
-  statusBadgeClass,
   type RunVisualStatus,
 } from "@/lib/automation-first/status";
+
+function toMotionStatus(status: RunVisualStatus): MotionJobStatus {
+  switch (status) {
+    case "running":
+      return "running";
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    case "pending_approval":
+    case "needs_input":
+    case "partial":
+      return "needs_attention";
+    case "paused":
+      return "paused";
+    default:
+      return "queued";
+  }
+}
 
 export type { RunVisualStatus };
 
@@ -18,14 +36,10 @@ export function StatusBadge({
   className?: string;
 }) {
   return (
-    <span
-      className={cn(
-        "motion-status inline-flex min-h-6 items-center rounded-full px-2.5 text-[length:var(--text-caption)] font-medium",
-        statusBadgeClass(status),
-        className,
-      )}
-    >
-      {label?.trim() || RUN_STATUS_LABEL[status]}
-    </span>
+    <StatusMorph
+      status={toMotionStatus(status)}
+      label={label?.trim() || RUN_STATUS_LABEL[status]}
+      className={className}
+    />
   );
 }

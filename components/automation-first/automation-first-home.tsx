@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+import { AnimatedNumber } from "@/components/motion/animated-number";
+import { ContentSwap } from "@/components/motion/content-swap";
+import { RevealStagger } from "@/components/motion/reveal-stagger";
+import { MOTION_PLAY_KEYS } from "@/lib/motion/tokens";
 import { AttentionCard } from "@/components/automation-first/attention-card";
 import {
   EntrustedWorkList,
@@ -92,7 +96,7 @@ function WeeklyStatsCard({ stats }: { stats: HomeWeeklyStats }) {
             完了した仕事
           </dt>
           <dd className="text-base font-semibold tabular-nums">
-            {stats.completedJobs}
+            <AnimatedNumber value={stats.completedJobs} />
           </dd>
         </div>
         <div>
@@ -100,9 +104,11 @@ function WeeklyStatsCard({ stats }: { stats: HomeWeeklyStats }) {
             成功率
           </dt>
           <dd className="text-base font-semibold tabular-nums">
-            {stats.successRatePercent == null
-              ? "—"
-              : `${stats.successRatePercent}%`}
+            {stats.successRatePercent == null ? (
+              "—"
+            ) : (
+              <AnimatedNumber value={stats.successRatePercent} suffix="%" />
+            )}
           </dd>
         </div>
         <div>
@@ -110,7 +116,7 @@ function WeeklyStatsCard({ stats }: { stats: HomeWeeklyStats }) {
             完成したもの
           </dt>
           <dd className="text-base font-semibold tabular-nums">
-            {stats.artifactCount}
+            <AnimatedNumber value={stats.artifactCount} />
           </dd>
         </div>
         <div>
@@ -118,7 +124,7 @@ function WeeklyStatsCard({ stats }: { stats: HomeWeeklyStats }) {
             自動で進めた手順
           </dt>
           <dd className="text-base font-semibold tabular-nums">
-            {stats.autoStepCount}
+            <AnimatedNumber value={stats.autoStepCount} />
           </dd>
         </div>
         {stats.savedMinutes != null && stats.savedMinutes > 0 ? (
@@ -128,7 +134,7 @@ function WeeklyStatsCard({ stats }: { stats: HomeWeeklyStats }) {
             </dt>
             <dd className="flex items-baseline gap-1 text-base font-semibold tabular-nums">
               <IconClock className="h-3.5 w-3.5 text-[var(--brand)]" />
-              {stats.savedMinutes}
+              <AnimatedNumber value={stats.savedMinutes} />
               <span className="text-[length:var(--text-caption)] font-medium text-[var(--text-muted)]">
                 分
               </span>
@@ -540,7 +546,10 @@ export function AutomationFirstHome({
   );
 
   return (
-    <div className="automation-first-home space-y-6 pb-6 sm:space-y-8">
+    <RevealStagger
+      playKey={MOTION_PLAY_KEYS.homeIntro}
+      className="automation-first-home space-y-6 pb-6 sm:space-y-8"
+    >
       <header className="space-y-1.5">
         <p className="text-[length:var(--text-label)] font-semibold tracking-[0.08em] text-[var(--brand)]">
           {greetingForHour(now.getHours())}
@@ -602,9 +611,8 @@ export function AutomationFirstHome({
         />
       ) : null}
 
-      {showDashboardSkeleton ? <HomeSkeleton /> : null}
-
-      {!showDashboardSkeleton && dashboardHasContent ? (
+      <ContentSwap ready={!showDashboardSkeleton} pending={<HomeSkeleton />}>
+      {dashboardHasContent ? (
         <section
           aria-labelledby="af-today-minervot-heading"
           className="space-y-5"
@@ -648,6 +656,7 @@ export function AutomationFirstHome({
           ) : null}
         </section>
       ) : null}
-    </div>
+      </ContentSwap>
+    </RevealStagger>
   );
 }

@@ -40,6 +40,8 @@ import {
   type WorkRequestSubmitPayload,
 } from "@/lib/workspace/work-request-payload";
 
+import { CompletionMoment } from "@/components/motion/completion-moment";
+
 import { FinalOutput } from "./final-output";
 import { WorkRequestForm } from "./work-request-form";
 import { WorkflowResults } from "./workflow-results";
@@ -590,7 +592,14 @@ export function WorkspaceDashboard() {
       )}
 
       {result && !isLoading && (
-        <section className="space-y-6 animate-fade-up">
+        <CompletionMoment
+          id={
+            result.commanderRunId ??
+            `ws:${result.assignment}:${result.totalDurationMs}`
+          }
+          liveMessage={ui.secretaryResult.allDone}
+        >
+        <section className="space-y-6">
           <header className="space-y-2 text-center">
             <p className="text-sm font-medium text-accent">MINERVOT</p>
             <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
@@ -616,6 +625,7 @@ export function WorkspaceDashboard() {
             </Button>
           </div>
         </section>
+        </CompletionMoment>
       )}
     </div>
   );

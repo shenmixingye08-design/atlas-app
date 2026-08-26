@@ -90,4 +90,64 @@ describe("logged-in motion contracts", () => {
     expect(button).toContain("aria-busy");
     expect(button).toContain("isLoading");
   });
+
+  it("uses official View Transitions without remounting the page tree", () => {
+    const config = src("next.config.ts");
+    const shell = src("components/layout/atlas-app-shell.tsx");
+    const vt = src("components/motion/app-view-transition.tsx");
+    const reveal = src("components/motion/page-reveal.tsx");
+    expect(config).toContain("viewTransition: true");
+    expect(shell).toContain("AppViewTransition");
+    expect(shell).toContain("MotionProvider");
+    expect(shell).not.toContain("<AppViewTransition key=");
+    expect(vt).toContain("ViewTransition");
+    expect(reveal).toContain("supportsViewTransition");
+  });
+
+  it("defines a once-only completion moment with live region and stroke check", () => {
+    const moment = src("components/motion/completion-moment.tsx");
+    const workspace = src("components/workspace/workspace-dashboard.tsx");
+    const result = src("components/results/secretary-result-view.tsx");
+    expect(moment).toContain("aria-live");
+    expect(moment).toContain("motion-complete-check");
+    expect(moment).toContain("consumeCompletionMotion");
+    expect(moment).not.toContain("confetti");
+    expect(workspace).toContain("CompletionMoment");
+    expect(result).toContain("CompletionMoment");
+  });
+
+  it("staggers home intro once and crossfades skeleton without remounting lists", () => {
+    const home = src("components/automation-first/automation-first-home.tsx");
+    const secretary = src("components/home/secretary-home-dashboard.tsx");
+    expect(home).toContain("RevealStagger");
+    expect(home).toContain("ContentSwap");
+    expect(home).toContain("AnimatedNumber");
+    expect(secretary).toContain("RevealStagger");
+    expect(home).toContain("MOTION_PLAY_KEYS.homeIntro");
+  });
+
+  it("morphs submit into processing without a premature success state", () => {
+    const submit = src("components/motion/submit-morph.tsx");
+    const form = src("components/workspace/work-request-form.tsx");
+    const composer = src("components/home/secretary-chat-composer.tsx");
+    expect(submit).toContain('phase === "processing"');
+    expect(submit).not.toContain('"completed"');
+    expect(submit).not.toContain("isSuccess");
+    expect(form).toContain("SubmitMorph");
+    expect(form).toContain("handleSubmit");
+    expect(composer).toContain("if (submitting) return");
+    expect(composer).toContain("SubmitMorph");
+  });
+
+  it("keeps android-lite and no transition-all on the request path", () => {
+    const css = src("app/globals.css");
+    const lite = src("lib/motion/android-lite.ts");
+    const composer = src("components/home/secretary-chat-composer.tsx");
+    const form = src("components/workspace/work-request-form.tsx");
+    expect(css).toContain("html.motion-lite");
+    expect(css).toContain("motion-complete-check");
+    expect(lite).toContain("detectMotionLite");
+    expect(composer).not.toContain("transition-all");
+    expect(form).not.toContain("transition-all");
+  });
 });

@@ -27,7 +27,7 @@ export function MetricCard({ metric, className, style }: MetricCardProps) {
       padding="md"
       style={style}
       className={cn(
-        "group animate-fade-up transition-all duration-[var(--motion-base)] hover:-translate-y-0.5 hover:border-[var(--border-strong)] hover:shadow-lg",
+        "group animate-fade-up transition-[transform,border-color,box-shadow] duration-[var(--motion-base)] hover:-translate-y-0.5 hover:border-[var(--border-strong)] hover:shadow-lg",
         className,
       )}
     >

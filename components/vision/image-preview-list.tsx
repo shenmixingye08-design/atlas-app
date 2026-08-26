@@ -1,5 +1,6 @@
 "use client";
 
+import { MotionList, MotionListItem } from "@/components/motion/list-item";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/design-system/cn";
 
@@ -29,10 +30,11 @@ export function ImagePreviewList({
   if (items.length === 0) return null;
 
   return (
-    <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-      {items.map((item) => (
-        <li
+    <MotionList className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+      {items.map((item, index) => (
+        <MotionListItem
           key={item.id}
+          index={index}
           className="overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)]"
         >
           <div className="relative aspect-square bg-black/5">
@@ -43,8 +45,14 @@ export function ImagePreviewList({
               className="h-full w-full object-cover"
             />
             {item.status === "uploading" && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/35 text-xs text-white">
-                アップロード中 {item.progress}%
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/35 text-xs text-white">
+                <span>アップロード中 {item.progress}%</span>
+                <span className="h-1 w-2/3 overflow-hidden rounded-full bg-white/30">
+                  <span
+                    className="motion-progress-fill block h-full w-full origin-left bg-white"
+                    style={{ transform: `scaleX(${Math.min(1, Math.max(0, item.progress / 100))})` }}
+                  />
+                </span>
               </div>
             )}
             {item.status === "failed" && (
@@ -112,8 +120,8 @@ export function ImagePreviewList({
               )}
             </div>
           </div>
-        </li>
+        </MotionListItem>
       ))}
-    </ul>
+    </MotionList>
   );
 }

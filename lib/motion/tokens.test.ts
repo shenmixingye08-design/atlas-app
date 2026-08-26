@@ -18,6 +18,10 @@ describe("motion tokens", () => {
     expect(MOTION_MS.page).toBeLessThanOrEqual(320);
     expect(MOTION_MS.modal).toBeGreaterThanOrEqual(200);
     expect(MOTION_MS.modal).toBeLessThanOrEqual(320);
+    expect(MOTION_MS.complete).toBeGreaterThanOrEqual(500);
+    expect(MOTION_MS.complete).toBeLessThanOrEqual(700);
+    expect(MOTION_MS.number).toBeGreaterThanOrEqual(160);
+    expect(MOTION_MS.number).toBeLessThanOrEqual(220);
   });
 
   it("keeps tap scale and enter travel conservative", () => {

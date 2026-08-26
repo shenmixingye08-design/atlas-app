@@ -37,7 +37,7 @@ export function StageCard({
   return (
     <article
       className={cn(
-        "rounded-[var(--radius-xl)] border p-4 transition-all duration-[var(--motion-base)] sm:p-5 animate-status-in",
+        "rounded-[var(--radius-xl)] border p-4 transition-[border-color,box-shadow,background-color] duration-[var(--motion-base)] sm:p-5 animate-status-in",
         isActive
           ? "border-accent/30 bg-accent/5"
           : status === "completed"

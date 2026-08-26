@@ -4,6 +4,9 @@ import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 import { ui } from "@/lib/i18n";
 
+import { RevealStagger } from "@/components/motion/reveal-stagger";
+import { MOTION_PLAY_KEYS } from "@/lib/motion/tokens";
+
 import { HomeChatBar } from "./home-chat-bar";
 import { HomeGreetingHeader } from "./home-greeting-header";
 
@@ -22,7 +25,10 @@ export function SecretaryHomeDashboard({
   projects,
 }: SecretaryHomeDashboardProps) {
   return (
-    <div className="home-dashboard mx-auto flex min-h-[60vh] w-full max-w-2xl flex-col justify-center space-y-6 pb-10 pt-6 sm:space-y-8 sm:pb-14 sm:pt-10">
+    <RevealStagger
+      playKey={MOTION_PLAY_KEYS.homeIntro}
+      className="home-dashboard mx-auto flex min-h-[60vh] w-full max-w-2xl flex-col justify-center space-y-6 pb-10 pt-6 sm:space-y-8 sm:pb-14 sm:pt-10"
+    >
       <header className="space-y-2 text-center sm:space-y-3">
         <p className="text-[length:var(--text-label)] font-semibold tracking-[0.1em] text-[var(--brand)]">
           MINERVOT
@@ -39,6 +45,6 @@ export function SecretaryHomeDashboard({
       <div>
         <HomeChatBar />
       </div>
-    </div>
+    </RevealStagger>
   );
 }

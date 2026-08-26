@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
+import { FocusRecede } from "@/components/motion/focus-frame";
+import { SubmitMorph } from "@/components/motion/submit-morph";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
 import {
@@ -57,6 +58,7 @@ export function WorkRequestForm({
     useState<PreferredDeliverableFormat>("auto");
   const [showAttach, setShowAttach] = useState(false);
   const [showFormat, setShowFormat] = useState(false);
+  const [focused, setFocused] = useState(false);
   const advancedUnlocked = shouldShowAdvancedRequestControls();
   const formatUnlocked = shouldShowDeliverableFormatPicker();
 
@@ -121,6 +123,7 @@ export function WorkRequestForm({
 
   return (
     <div className="mx-auto max-w-2xl space-y-8 overflow-x-hidden sm:space-y-10">
+      <FocusRecede focused={focused}>
       <header className="space-y-3 text-center">
         <p className="text-sm font-medium text-accent">{ui.brand}</p>
         <h1 className="text-display text-foreground">{ui.secretaryHome.askTitle}</h1>
@@ -128,7 +131,9 @@ export function WorkRequestForm({
           {ui.secretaryHome.zeroFrictionHint}
         </p>
       </header>
+      </FocusRecede>
 
+      <FocusRecede focused={focused}>
       <section className="space-y-3" aria-label={ui.work.templatesLabel}>
         <div className="flex flex-wrap justify-center gap-2">
           {QUICK_REQUEST_PRESETS.slice(0, 4).map((preset) => {
@@ -161,14 +166,23 @@ export function WorkRequestForm({
           })}
         </div>
       </section>
+      </FocusRecede>
 
-      <Card padding="lg" className="space-y-4 bg-[var(--card)] shadow-[var(--shadow-md)]">
+      <Card
+        padding="lg"
+        className={cn(
+          "space-y-4 bg-[var(--card)] shadow-[var(--shadow-md)] motion-focus-frame",
+          focused && "motion-focus-frame--active",
+        )}
+      >
         <Textarea
           ref={textareaRef}
           id="work-request"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={handleKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           placeholder={ui.secretaryHome.askPlaceholder}
           rows={7}
           disabled={isLoading}
@@ -264,16 +278,14 @@ export function WorkRequestForm({
         <div className="mb-2">
           <UsageRemainingHint meterId="aiRuns" />
         </div>
-        <Button
-          variant="primary"
-          size="lg"
+        <SubmitMorph
+          phase={isLoading || uploading ? "processing" : "idle"}
           onClick={handleSubmit}
           disabled={!canSubmit}
-          isLoading={isLoading || uploading}
-          className="h-14 w-full rounded-[var(--radius-large)] text-base sm:h-16 sm:text-lg"
+          processingLabel={uploading ? "アップロード中…" : ui.secretaryHome.askSubmit}
         >
-          {uploading ? "アップロード中…" : ui.secretaryHome.askSubmit}
-        </Button>
+          {ui.secretaryHome.askSubmit}
+        </SubmitMorph>
         <p className="mt-3 text-center text-sm text-[var(--text-secondary)]">
           {ui.secretaryHome.askHint}
         </p>

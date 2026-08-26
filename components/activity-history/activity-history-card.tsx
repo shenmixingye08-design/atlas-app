@@ -7,6 +7,7 @@ import {
 } from "@/lib/activity-history";
 import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/design-system/cn";
+import { StatusMorph, type MotionJobStatus } from "@/components/motion/status-morph";
 import {
   IconDownload,
   IconReuse,
@@ -24,13 +25,13 @@ type ActivityHistoryCardProps = {
   variant?: "interactive" | "static";
 };
 
-const STATUS_CLASS: Record<string, string> = {
-  completed: "bg-[var(--success-bg)] text-[var(--success)]",
-  running: "bg-[var(--accent-muted)] text-[var(--accent)]",
-  review: "bg-[var(--warning-bg)] text-[var(--warning)]",
-  pending: "bg-[var(--status-neutral-bg)] text-[var(--text-muted)]",
-  failed: "bg-[var(--error-bg)] text-[var(--error)]",
-};
+function historyStatus(status: string): MotionJobStatus {
+  if (status === "completed") return "completed";
+  if (status === "running") return "running";
+  if (status === "failed") return "failed";
+  if (status === "review") return "needs_attention";
+  return "queued";
+}
 
 const CARD_CLASS =
   "activity-history-card motion-press-card w-full rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface)] p-3 text-left shadow-[var(--shadow-sm)] transition-[border-color,box-shadow,background-color] duration-[var(--motion-fast)] sm:p-3.5";
@@ -101,14 +102,10 @@ export function ActivityHistoryCard({
                 ★
               </span>
             ) : null}
-            <span
-              className={cn(
-                "rounded-full px-2 py-0.5 text-[length:var(--text-meta)] font-medium",
-                STATUS_CLASS[item.status] ?? STATUS_CLASS.review,
-              )}
-            >
-              {statusLabel}
-            </span>
+            <StatusMorph
+              status={historyStatus(item.status)}
+              label={statusLabel}
+            />
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             <span>{new Date(item.completedAt).toLocaleString("ja-JP")}</span>

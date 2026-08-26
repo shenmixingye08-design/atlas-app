@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { AnimatedNumber } from "@/components/motion/animated-number";
+import { MotionList, MotionListItem } from "@/components/motion/list-item";
 import { SectionHeader } from "@/components/automation-first/page-header";
 import { runAutomationNow, setAutomationEnabled } from "@/lib/automations/client";
 import { YOUR_WORK_HEADING } from "@/lib/work-asset/messaging";
@@ -57,9 +59,9 @@ export function YourWorkList({
         title={YOUR_WORK_HEADING}
         description="これからもMINERVOTに任せる仕事。履歴とは別です"
       />
-      <ul className="divide-y divide-[var(--border)] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)]">
-        {works.map((work) => (
-          <li key={work.id} className="space-y-2 px-3.5 py-3">
+      <MotionList className="divide-y divide-[var(--border)] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)]">
+        {works.map((work, index) => (
+          <MotionListItem key={work.id} index={index} className="space-y-2 px-3.5 py-3">
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-[var(--text-primary)]">
                 {work.name}
@@ -100,9 +102,9 @@ export function YourWorkList({
                 </button>
               ) : null}
             </div>
-          </li>
+          </MotionListItem>
         ))}
-      </ul>
+      </MotionList>
     </section>
   );
 }
@@ -133,7 +135,9 @@ export function WorkCountStrip({
           <dt className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
             {item.label}
           </dt>
-          <dd className="text-base font-semibold tabular-nums">{item.count}件</dd>
+          <dd className="text-base font-semibold tabular-nums">
+            <AnimatedNumber value={item.count} suffix="件" />
+          </dd>
         </div>
       ))}
     </dl>

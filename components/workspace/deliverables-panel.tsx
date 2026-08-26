@@ -8,10 +8,10 @@ import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { ui } from "@/lib/i18n";
 import { MotionList, MotionListItem } from "@/components/motion/list-item";
 import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
+import { DownloadFeedback } from "@/components/motion/download-feedback";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
-import { SuccessState } from "@/components/ui/success-state";
 
 type DeliverablesPanelProps = {
   deliverables: Deliverable[];
@@ -61,10 +61,11 @@ function DeliverableDownloadButton({ item }: { item: Deliverable }) {
       >
         {isDownloading ? ui.work.downloadingFile : ui.actions.download}
       </Button>
-      {downloadDone ? (
-        <SuccessState message={ui.work.downloadComplete} />
-      ) : null}
-      {downloadError ? <ErrorState message={downloadError} /> : null}
+      <DownloadFeedback
+        done={downloadDone}
+        error={downloadError}
+        doneMessage={ui.work.downloadComplete}
+      />
     </div>
   );
 }

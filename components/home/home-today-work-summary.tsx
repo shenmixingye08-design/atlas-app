@@ -67,7 +67,7 @@ export function HomeTodayWorkSummary({
           const body = (
             <div
               className={cn(
-                "flex h-full flex-col justify-between rounded-[24px] border bg-[var(--card)] px-5 py-5 shadow-[var(--shadow-sm)] transition-all sm:px-6 sm:py-6",
+                "flex h-full flex-col justify-between rounded-[24px] border bg-[var(--card)] px-5 py-5 shadow-[var(--shadow-sm)] transition-[border-color,box-shadow,transform] duration-[var(--motion-fast)] sm:px-6 sm:py-6",
                 card.accent && value > 0
                   ? "border-accent/25 shadow-[var(--shadow-md)]"
                   : "border-[var(--border-subtle)]",
