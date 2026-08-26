@@ -10,7 +10,10 @@ vi.mock("@clerk/nextjs/server", () => ({
   }),
 }));
 
-import { createN08ProbeOwnerIds } from "@/lib/health/internal-probe-user";
+import {
+  createN05MemoryProbeUserIds,
+  createN08ProbeOwnerIds,
+} from "@/lib/health/internal-probe-user";
 
 describe("Clerk remote ops skip internal health probe users", () => {
   beforeEach(() => {
@@ -33,6 +36,21 @@ describe("Clerk remote ops skip internal health probe users", () => {
     ).resolves.toBe(false);
     await expect(
       clearClerkPrivateMetadataKeys(ownerA, ["atlasAutomations"]),
+    ).resolves.toBe(false);
+    expect(getUser).not.toHaveBeenCalled();
+    expect(updateUserMetadata).not.toHaveBeenCalled();
+  });
+
+  it("does not call Clerk get/update/delete for N-05 memory probe identities", async () => {
+    const { loadClerkPrivateMetadataKey, persistClerkPrivateMetadataKey, clearClerkPrivateMetadataKeys } =
+      await import("./clerk-private-metadata");
+    const { probeUserA } = createN05MemoryProbeUserIds("test123");
+    await expect(loadClerkPrivateMetadataKey(probeUserA, "atlasPersonalMemory")).resolves.toBeNull();
+    await expect(
+      persistClerkPrivateMetadataKey(probeUserA, "atlasPersonalMemory", { ok: true }),
+    ).resolves.toBe(false);
+    await expect(
+      clearClerkPrivateMetadataKeys(probeUserA, ["atlasPersonalMemory"]),
     ).resolves.toBe(false);
     expect(getUser).not.toHaveBeenCalled();
     expect(updateUserMetadata).not.toHaveBeenCalled();

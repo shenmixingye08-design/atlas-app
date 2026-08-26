@@ -8,10 +8,12 @@ import "server-only";
 
 import { randomUUID } from "crypto";
 
+import { createN05MemoryProbeUserIds } from "@/lib/health/internal-probe-user";
 import { getHealthVersionPayload } from "@/lib/health/version-info";
 import { applyMemoryForAutomation } from "@/lib/memory-apply/automation";
 import { applyMemoryForDeliverable } from "@/lib/memory-apply/deliverables";
 import { buildExplicitWritingPreferenceValue } from "@/lib/memory-apply/preference-structure";
+import { getPersistenceCounters } from "@/lib/persistence/call-counters";
 import { SUPABASE_ONLY_DOMAIN_KEYS } from "@/lib/persistence/durable-domain";
 import { loadDurableDomain } from "@/lib/persistence/durable-domain";
 import { createServiceRoleClientIfConfigured } from "@/lib/supabase/service-role";
@@ -56,7 +58,52 @@ export type MemoryApplyProductionProbeResult = {
   commitShaShort: string;
   environment: string;
   correlationId: string;
+  probeId?: string;
+  totalDurationMs?: number;
+  iterations?: number;
+  clerkCalls?: number;
+  dbCalls?: number;
+  retries?: number;
+  deadlineReached?: boolean;
+  memoryWrites?: number;
+  memoryReads?: number;
 };
+
+/** Stay well under Vercel `maxDuration = 60`. */
+export const MEMORY_APPLY_HEALTH_SOFT_DEADLINE_MS = 40_000;
+export const MEMORY_APPLY_HEALTH_CLEANUP_BUDGET_MS = 2_000;
+export const MEMORY_APPLY_HEALTH_MAX_ATTEMPTS = 2;
+
+export type MemoryApplyProbeOptions = {
+  softDeadlineMs?: number;
+  maxAttempts?: number;
+};
+
+export function shouldRetryMemoryApplyHealth(error: string | null): boolean {
+  if (!error) return false;
+  if (
+    /404|429|Too Many Requests|timed out|timeout|deadline_reached|supabase_service_role_not_configured/i.test(
+      error,
+    )
+  ) {
+    return false;
+  }
+  return /schema cache|JWT|clock|does not exist|persist|supabase|MEMORY_NOT_FOUND|artifact_apply|update_propagation/i.test(
+    error,
+  );
+}
+
+export function nextMemoryApplyHealthAttemptAllowed(args: {
+  attemptsUsed: number;
+  maxAttempts: number;
+  startedAtMs: number;
+  softDeadlineMs: number;
+  nowMs: number;
+}): boolean {
+  if (args.attemptsUsed >= args.maxAttempts) return false;
+  if (args.nowMs >= args.startedAtMs + args.softDeadlineMs) return false;
+  return true;
+}
 
 const PREFERENCE_TEXT =
   "今後、文章は短め・箇条書き中心・結論を最初にしてください";
@@ -105,6 +152,8 @@ function baseFail(
     commitShaShort,
     environment,
     correlationId: `corr_n05_${randomUUID().slice(0, 8)}`,
+    clerkCalls: 0,
+    deadlineReached: extra?.deadlineReached ?? false,
     ...extra,
   };
 }
@@ -139,6 +188,22 @@ async function cleanupProbeUsers(userIds: readonly string[]): Promise<void> {
   }
   for (const userId of userIds) {
     evictPersonalMemoryCacheForUser(userId);
+  }
+}
+
+async function cleanupProbeUsersBounded(
+  userIds: readonly string[],
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      cleanupProbeUsers(userIds),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, MEMORY_APPLY_HEALTH_CLEANUP_BUDGET_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -231,15 +296,40 @@ function artifactShowsPreferences(text: string): boolean {
   return hasConclusionFirst && (hasShortMarker || hasKeys);
 }
 
-async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
+async function probeOnce(args: {
+  deadlineAtMs: number;
+}): Promise<MemoryApplyProductionProbeResult> {
   const { commitShaShort, environment } = versionBits();
   const correlationId = `corr_n05_${randomUUID().slice(0, 8)}`;
-  const runId = randomUUID().slice(0, 8);
-  const probeUserA = `user_n05_mem_a_${runId}`;
-  const probeUserB = `user_n05_mem_b_${runId}`;
+  const { probeUserA, probeUserB, runId } = createN05MemoryProbeUserIds();
   const probeUsers = [probeUserA, probeUserB] as const;
+  const stageDurations: Array<{ name: string; durationMs: number }> = [];
+
+  const remainingMs = () => args.deadlineAtMs - Date.now();
+  const deadlineReached = () => remainingMs() <= 0;
+
+  async function stage<T>(name: string, work: () => Promise<T>): Promise<T> {
+    if (deadlineReached()) {
+      throw new Error("deadline_reached");
+    }
+    const started = Date.now();
+    try {
+      return await work();
+    } finally {
+      stageDurations.push({ name, durationMs: Date.now() - started });
+    }
+  }
 
   try {
+    if (deadlineReached()) {
+      return baseFail("deadline_reached", {
+        correlationId,
+        deadlineReached: true,
+        failClosedOk: true,
+        dbSotOk: true,
+      });
+    }
+
     const dbSotOk = (SUPABASE_ONLY_DOMAIN_KEYS as readonly string[]).includes(
       PERSONAL_MEMORY_DOMAIN_KEY,
     );
@@ -258,7 +348,7 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
       });
     }
 
-    await cleanupProbeUsers(probeUsers);
+    await stage("cleanup_initial", () => cleanupProbeUsersBounded(probeUsers));
     resetPersonalMemoryDurableForTests();
 
     // fail-closed: empty userId must not throw cross-user data
@@ -283,7 +373,9 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
       confidence: 0.95,
       appliesTo: { global: true, automationIds: [], artifactTypes: [], capabilities: [] },
     });
-    const persistA = await persistPersonalMemoryNow(probeUserA);
+    const persistA = await stage("persist_a", () =>
+      persistPersonalMemoryNow(probeUserA),
+    );
     const memorySaved = persistA === "supabase" && Boolean(saved.id);
 
     // User B different preference (must never leak to A)
@@ -299,7 +391,9 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
       confidence: 0.9,
       appliesTo: { global: true, automationIds: [], artifactTypes: [], capabilities: [] },
     });
-    const persistB = await persistPersonalMemoryNow(probeUserB);
+    const persistB = await stage("persist_b", () =>
+      persistPersonalMemoryNow(probeUserB),
+    );
     if (persistB !== "supabase") {
       return baseFail(`persist_b_${persistB}`, {
         dbSotOk: true,
@@ -316,11 +410,13 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
       listStoredPersonalMemories(probeUserA).length === 0 &&
       listStoredPersonalMemories(probeUserB).length === 0;
 
-    await ensurePersonalMemoryHydrated(probeUserA);
-    await ensurePersonalMemoryHydrated(probeUserB);
-    const durableA = await loadDurableDomain<DurablePersonalMemoryState>(
-      probeUserA,
-      PERSONAL_MEMORY_DOMAIN_KEY,
+    await stage("hydrate_a", () => ensurePersonalMemoryHydrated(probeUserA));
+    await stage("hydrate_b", () => ensurePersonalMemoryHydrated(probeUserB));
+    const durableA = await stage("load_durable_a", () =>
+      loadDurableDomain<DurablePersonalMemoryState>(
+        probeUserA,
+        PERSONAL_MEMORY_DOMAIN_KEY,
+      ),
     );
     const hydratedA = listStoredPersonalMemories(probeUserA).filter(
       (m) => m.status === "active",
@@ -345,14 +441,16 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
     const saveRetrieveOk = memorySaved && memoryRetrieved;
 
     // artifact apply
-    const artifact = await applyMemoryForDeliverable({
-      userId: probeUserA,
-      content: ARTIFACT_BASELINE,
-      format: "docx",
-      assignment: job2Assignment,
-    });
+    const artifact = await stage("apply_artifact", () =>
+      applyMemoryForDeliverable({
+        userId: probeUserA,
+        content: ARTIFACT_BASELINE,
+        format: "docx",
+        assignment: job2Assignment,
+      }),
+    );
     // Drain any fire-and-forget persist from resolve/apply before mutating Memory.
-    await persistPersonalMemoryNow(probeUserA);
+    await stage("persist_after_apply", () => persistPersonalMemoryNow(probeUserA));
     const artifactKeysOk =
       artifact.appliedPreferenceKeys.includes("length:short") &&
       artifact.appliedPreferenceKeys.includes("structure:bullets") &&
@@ -364,9 +462,11 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
       artifactShowsPreferences(artifact.content);
 
     // automation apply (v2 path)
-    const auto = await applyMemoryForAutomation({
-      automation: stubAutomation(probeUserA, `auto_n05_${runId}`),
-    });
+    const auto = await stage("apply_automation", () =>
+      applyMemoryForAutomation({
+        automation: stubAutomation(probeUserA, `auto_n05_${runId}`),
+      }),
+    );
     const automationPreferenceAppliedOk =
       auto.diagnostics.applied &&
       auto.ledger.memoryIdsUsed.includes(saved.id) &&
@@ -400,16 +500,24 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
         // conclusion removed on purpose
       },
     });
-    const persistUpdated = await persistPersonalMemoryNow(probeUserA);
+    const persistUpdated = await stage("persist_updated", () =>
+      persistPersonalMemoryNow(probeUserA),
+    );
     evictPersonalMemoryCacheForUser(probeUserA);
-    await ensurePersonalMemoryHydrated(probeUserA);
-    const afterUpdate = await applyMemoryForDeliverable({
-      userId: probeUserA,
-      content: ARTIFACT_BASELINE,
-      format: "docx",
-      assignment: "更新後の別依頼",
-    });
-    await persistPersonalMemoryNow(probeUserA);
+    await stage("hydrate_after_update", () =>
+      ensurePersonalMemoryHydrated(probeUserA),
+    );
+    const afterUpdate = await stage("apply_after_update", () =>
+      applyMemoryForDeliverable({
+        userId: probeUserA,
+        content: ARTIFACT_BASELINE,
+        format: "docx",
+        assignment: "更新後の別依頼",
+      }),
+    );
+    await stage("persist_after_update_apply", () =>
+      persistPersonalMemoryNow(probeUserA),
+    );
     const updatePropagationOk =
       persistUpdated === "supabase" &&
       updated.summary.includes("更新") &&
@@ -419,15 +527,21 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
 
     // delete propagation
     await deletePersonalMemory(probeUserA, saved.id);
-    const persistDeleted = await persistPersonalMemoryNow(probeUserA);
+    const persistDeleted = await stage("persist_deleted", () =>
+      persistPersonalMemoryNow(probeUserA),
+    );
     evictPersonalMemoryCacheForUser(probeUserA);
-    await ensurePersonalMemoryHydrated(probeUserA);
-    const afterDelete = await applyMemoryForDeliverable({
-      userId: probeUserA,
-      content: ARTIFACT_BASELINE,
-      format: "docx",
-      assignment: "削除後の別依頼",
-    });
+    await stage("hydrate_after_delete", () =>
+      ensurePersonalMemoryHydrated(probeUserA),
+    );
+    const afterDelete = await stage("apply_after_delete", () =>
+      applyMemoryForDeliverable({
+        userId: probeUserA,
+        content: ARTIFACT_BASELINE,
+        format: "docx",
+        assignment: "削除後の別依頼",
+      }),
+    );
     const deletePropagationOk =
       persistDeleted === "supabase" &&
       !afterDelete.memoryIdsUsed.includes(saved.id) &&
@@ -510,27 +624,116 @@ async function probeOnce(): Promise<MemoryApplyProductionProbeResult> {
       commitShaShort,
       environment,
       correlationId,
+      probeId: correlationId,
+      deadlineReached: false,
     };
   } catch (error) {
-    return baseFail(error instanceof Error ? error.message : String(error), {
+    const message = error instanceof Error ? error.message : String(error);
+    return baseFail(message, {
       correlationId,
+      probeId: correlationId,
+      deadlineReached: message === "deadline_reached",
     });
   } finally {
-    await cleanupProbeUsers(probeUsers).catch(() => undefined);
+    await cleanupProbeUsersBounded(probeUsers).catch(() => undefined);
+    if (stageDurations.length > 0) {
+      console.info("[health/memory-apply] stages", {
+        correlationId,
+        stages: stageDurations,
+      });
+    }
   }
 }
 
-export async function probeMemoryApplyProduction(): Promise<MemoryApplyProductionProbeResult> {
-  const first = await probeOnce();
-  if (first.ok) return first;
+function clerkCallCountDelta(
+  before: ReturnType<typeof getPersistenceCounters>,
+  after: ReturnType<typeof getPersistenceCounters>,
+): number {
+  return (
+    after.clerkGetUser -
+    before.clerkGetUser +
+    (after.clerkUpdateMetadata - before.clerkUpdateMetadata) +
+    (after.clerkClearKeys - before.clerkClearKeys)
+  );
+}
+
+export async function probeMemoryApplyProduction(
+  options: MemoryApplyProbeOptions = {},
+): Promise<MemoryApplyProductionProbeResult> {
+  const startedAtMs = Date.now();
+  const softDeadlineMs =
+    options.softDeadlineMs ?? MEMORY_APPLY_HEALTH_SOFT_DEADLINE_MS;
+  const maxAttempts = options.maxAttempts ?? MEMORY_APPLY_HEALTH_MAX_ATTEMPTS;
+  const deadlineAtMs = startedAtMs + softDeadlineMs;
+  const countersBefore = getPersistenceCounters();
+
+  let iterations = 0;
+  let retries = 0;
+  let last = await probeOnce({ deadlineAtMs });
+  iterations += 1;
+
   if (
-    first.error &&
-    /schema cache|JWT|clock|does not exist|persist|supabase|MEMORY_NOT_FOUND|artifact_apply|update_propagation/i.test(
-      first.error,
-    )
+    !last.ok &&
+    shouldRetryMemoryApplyHealth(last.error) &&
+    nextMemoryApplyHealthAttemptAllowed({
+      attemptsUsed: iterations,
+      maxAttempts,
+      startedAtMs,
+      softDeadlineMs,
+      nowMs: Date.now() + 800,
+    })
   ) {
     await new Promise((r) => setTimeout(r, 800));
-    return probeOnce();
+    if (
+      nextMemoryApplyHealthAttemptAllowed({
+        attemptsUsed: iterations,
+        maxAttempts,
+        startedAtMs,
+        softDeadlineMs,
+        nowMs: Date.now(),
+      })
+    ) {
+      last = await probeOnce({ deadlineAtMs });
+      iterations += 1;
+      retries += 1;
+    }
   }
-  return first;
+
+  const countersAfter = getPersistenceCounters();
+  const clerkCalls = clerkCallCountDelta(countersBefore, countersAfter);
+  const dbCalls =
+    countersAfter.supabaseUserStateUpsert -
+    countersBefore.supabaseUserStateUpsert +
+    (countersAfter.supabaseUserStateLoad - countersBefore.supabaseUserStateLoad);
+  const totalDurationMs = Date.now() - startedAtMs;
+  const deadlineReached =
+    Boolean(last.deadlineReached) || Date.now() >= deadlineAtMs;
+
+  const summarized: MemoryApplyProductionProbeResult = {
+    ...last,
+    probeId: last.correlationId,
+    totalDurationMs,
+    iterations,
+    clerkCalls,
+    dbCalls,
+    retries,
+    deadlineReached,
+    memoryWrites: iterations,
+    memoryReads: iterations,
+  };
+
+  console.info("MEMORY_APPLY_HEALTH_SUMMARY", {
+    probeId: summarized.correlationId,
+    totalDurationMs,
+    iterations,
+    memoryWrites: summarized.memoryWrites,
+    memoryReads: summarized.memoryReads,
+    clerkCalls,
+    dbCalls,
+    retries,
+    deadlineReached,
+    result: summarized.ok ? "ok" : "unavailable",
+  });
+
+  return summarized;
 }
