@@ -1,5 +1,6 @@
 "use client";
 
+import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
 import type { WorkCategoryId } from "@/lib/home/monthly-achievements";
@@ -10,9 +11,9 @@ import {
 } from "@/lib/activity-history";
 import { ui } from "@/lib/i18n";
 import { ExpandPanel } from "@/components/motion/expand-panel";
+import { MOTION_REDUCED, MOTION_TRANSITION } from "@/lib/motion/tokens";
 import { Input } from "@/components/ui/input";
 import { IconChevron, IconSearch } from "@/components/ui/icons";
-import { cn } from "@/lib/design-system/cn";
 
 type ActivityHistoryFiltersBarProps = {
   filters: ActivityHistoryFilters;
@@ -59,9 +60,14 @@ export function ActivityHistoryFiltersBar({
   const employees = collectEmployeeOptions(items);
   const active = hasActiveFilters(filters);
   const [open, setOpen] = useState(defaultOpen || active);
+  const reduce = useReducedMotion();
 
   return (
-    <div className="activity-history-filters rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]">
+    <motion.div
+      layout={reduce ? false : true}
+      transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.base}
+      className="activity-history-filters rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-muted)]"
+    >
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -77,12 +83,13 @@ export function ActivityHistoryFiltersBar({
             適用中
           </span>
         ) : null}
-        <IconChevron
-          className={cn(
-            "h-4 w-4 text-[var(--text-muted)] transition-transform duration-[var(--motion-fast)]",
-            open && "rotate-180",
-          )}
-        />
+        <motion.span
+          animate={{ rotate: open ? 180 : 0 }}
+          transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.base}
+          className="inline-flex"
+        >
+          <IconChevron className="h-4 w-4 text-[var(--text-muted)]" />
+        </motion.span>
       </button>
 
       <ExpandPanel open={open}>
@@ -178,6 +185,6 @@ export function ActivityHistoryFiltersBar({
           </div>
         </div>
       </ExpandPanel>
-    </div>
+    </motion.div>
   );
 }

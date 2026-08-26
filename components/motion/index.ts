@@ -1,6 +1,6 @@
 export { AnimatedNumber } from "./animated-number";
 export { AppViewTransition } from "./app-view-transition";
-export { CompletionMoment } from "./completion-moment";
+export { CompletionActions, CompletionMoment } from "./completion-moment";
 export { ContentSwap } from "./content-swap";
 export { CountBadge } from "./count-badge";
 export { DownloadFeedback } from "./download-feedback";
@@ -10,7 +10,7 @@ export { MotionList, MotionListItem } from "./list-item";
 export { ModalBackdrop, ModalChrome } from "./modal-chrome";
 export { MotionProvider, useMotionLite, useMotionProfile } from "./motion-provider";
 export { MotionSwitch } from "./motion-switch";
-export { BottomNavIndicator } from "./nav-indicator";
+export { BottomNavGroup, BottomNavIndicator, BottomNavTab } from "./nav-indicator";
 export { PageReveal } from "./page-reveal";
 export { Pressable } from "./pressable";
 export { RevealSection, RevealStagger } from "./reveal-stagger";

@@ -4,8 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, type ReactNode } from "react";
 
 import { cn } from "@/lib/design-system/cn";
-import { MOTION_MS, MOTION_Y } from "@/lib/motion/tokens";
-import { supportsViewTransition } from "@/lib/motion/view-transition";
+import { MOTION_MS, MOTION_SCALE, pageTravelY } from "@/lib/motion/tokens";
 
 type PageRevealProps = {
   children: ReactNode;
@@ -13,9 +12,9 @@ type PageRevealProps = {
 };
 
 /**
- * Short fade + 4–8px rise on first paint and on route change.
- * Animates the wrapper only — children are not remounted, so form drafts
- * and client state survive in-page updates.
+ * Visible fade + rise + slight scale on first paint and every route change.
+ * Always replays even when View Transitions exist — Android Chrome VT is
+ * often an invisible crossfade. Children are not remounted.
  */
 export function PageReveal({ children, className }: PageRevealProps) {
   const pathname = usePathname() ?? "";
@@ -30,24 +29,8 @@ export function PageReveal({ children, className }: PageRevealProps) {
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    if (first.current) {
-      first.current = false;
-      if (reduce) return;
-      const intro = node.animate(
-        [
-          { opacity: 0, transform: `translateY(${MOTION_Y.page}px)` },
-          { opacity: 1, transform: "translateY(0)" },
-        ],
-        {
-          duration: MOTION_MS.page,
-          easing: "cubic-bezier(0.25, 0.1, 0.25, 1)",
-          fill: "both",
-        },
-      );
-      return () => intro.cancel();
-    }
-
     if (reduce) {
+      first.current = false;
       const fade = node.animate([{ opacity: 0.96 }, { opacity: 1 }], {
         duration: 80,
         easing: "linear",
@@ -56,13 +39,19 @@ export function PageReveal({ children, className }: PageRevealProps) {
       return () => fade.cancel();
     }
 
-    // Official View Transitions already cover the route change.
-    if (supportsViewTransition()) return;
+    const lite = document.documentElement.classList.contains("motion-lite");
+    const y = pageTravelY(lite);
+    const fromScale = MOTION_SCALE.page;
+    const replay = !first.current;
+    first.current = false;
 
-    const replay = node.animate(
+    const intro = node.animate(
       [
-        { opacity: 0.92, transform: `translateY(${MOTION_Y.page}px)` },
-        { opacity: 1, transform: "translateY(0)" },
+        {
+          opacity: replay ? 0.08 : 0,
+          transform: `translateY(${y}px) scale(${fromScale})`,
+        },
+        { opacity: 1, transform: "translateY(0) scale(1)" },
       ],
       {
         duration: MOTION_MS.page,
@@ -70,7 +59,7 @@ export function PageReveal({ children, className }: PageRevealProps) {
         fill: "both",
       },
     );
-    return () => replay.cancel();
+    return () => intro.cancel();
   }, [pathname]);
 
   return (

@@ -566,6 +566,7 @@ export function AutomationFirstHome({
 
       <HomePrimaryActions compact={isReturningUser} />
 
+      <div className="space-y-6 sm:space-y-8">
       {(() => {
         const finishedLine = formatFinishedWorkThisMonthLine(
           countSuccessfulFinishedWorkThisMonth({
@@ -657,6 +658,7 @@ export function AutomationFirstHome({
         </section>
       ) : null}
       </ContentSwap>
+      </div>
     </RevealStagger>
   );
 }

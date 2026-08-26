@@ -1,11 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 import { CreateSheet } from "@/components/automation-first/create-sheet";
-import { BottomNavIndicator } from "@/components/motion/nav-indicator";
+import { BottomNavGroup, BottomNavTab } from "@/components/motion/nav-indicator";
 import {
   IconArtifact,
   IconAutomation,
@@ -72,72 +71,42 @@ export function AutomationFirstBottomNav() {
         className="atlas-bottom-nav fixed inset-x-0 bottom-0 z-[var(--z-nav)] border-t border-[var(--border-subtle)] bg-[var(--surface-raised)] md:hidden"
         style={{ paddingBottom: "var(--safe-area-bottom)" }}
       >
-        <ul className="relative mx-auto flex max-w-lg items-stretch justify-around px-0.5 pt-1">
-          <BottomNavIndicator
-            index={ITEMS.findIndex((item) => item.id === active)}
-            count={ITEMS.length}
-            hidden={!active || active === "create"}
-          />
+        <BottomNavGroup className="relative mx-auto flex max-w-lg items-stretch justify-around px-0.5 pt-1">
           {ITEMS.map((item) => {
             const isActive = active === item.id;
 
-            if (item.primary) {
-              return (
-                <li key={item.id} className="relative z-10 flex-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSheetOpen(true);
-                      trackAutomationFirstEvent("mobile_bottom_nav_used", {
-                        id: "create",
-                      });
-                    }}
-                    className="motion-press flex min-h-[56px] w-full flex-col items-center justify-center gap-1 px-0.5 text-[11px] font-medium leading-tight focus-ring"
-                  >
-                    <span
-                      className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-large)] bg-[var(--primary)] text-[var(--accent-foreground)] shadow-[var(--shadow-subtle)]"
-                      aria-hidden
-                    >
-                      <BottomIcon id={item.id} className="h-5 w-5" />
-                    </span>
-                    <span className="text-[var(--brand)]">{item.label}</span>
-                  </button>
-                </li>
-              );
-            }
-
             return (
-              <li key={item.id} className="relative z-10 flex-1">
-                <Link
-                  href={item.href ?? "/projects"}
-                  onClick={() =>
+              <BottomNavTab
+                key={item.id}
+                href={item.primary ? undefined : (item.href ?? "/projects")}
+                label={item.label}
+                icon={<BottomIcon id={item.id} className="h-5 w-5" />}
+                active={isActive}
+                pillId="af-bottom-nav-pill"
+                primary={item.primary}
+                onClick={() => {
+                  if (item.primary) {
+                    setSheetOpen(true);
                     trackAutomationFirstEvent("mobile_bottom_nav_used", {
-                      id: item.id,
-                    })
+                      id: "create",
+                    });
+                    return;
                   }
-                  className={cn(
-                    "flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-[var(--radius-md)] px-0.5 text-[11px] font-medium leading-tight transition-[color,opacity] duration-[var(--motion-fast)] focus-ring",
-                    isActive
+                  trackAutomationFirstEvent("mobile_bottom_nav_used", {
+                    id: item.id,
+                  });
+                }}
+                className={cn(
+                  item.primary
+                    ? "text-[var(--brand)]"
+                    : isActive
                       ? "text-[var(--brand)]"
                       : "text-[var(--text-muted)] hover:text-[var(--text-primary)]",
-                  )}
-                  aria-current={isActive ? "page" : undefined}
-                >
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "transition-transform duration-[var(--motion-fast)]",
-                      isActive && "scale-[1.06]",
-                    )}
-                  >
-                    <BottomIcon id={item.id} className="h-5 w-5" />
-                  </span>
-                  <span>{item.label}</span>
-                </Link>
-              </li>
+                )}
+              />
             );
           })}
-        </ul>
+        </BottomNavGroup>
       </nav>
       <CreateSheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
     </>

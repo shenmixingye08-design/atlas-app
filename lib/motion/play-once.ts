@@ -24,6 +24,29 @@ function storageSet(storage: Storage | null, key: string, value: string) {
   }
 }
 
+function storageRemove(storage: Storage | null, key: string) {
+  if (!storage) return;
+  try {
+    storage.removeItem(key);
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+function storageKeys(storage: Storage | null): string[] {
+  if (!storage) return [];
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < storage.length; i += 1) {
+      const key = storage.key(i);
+      if (key) keys.push(key);
+    }
+    return keys;
+  } catch {
+    return [];
+  }
+}
+
 function session(): Storage | null {
   if (typeof window === "undefined") return null;
   try {
@@ -74,4 +97,34 @@ export function consumeCompletionMotion(id: string): boolean {
   if (!id || hasPlayedCompletion(id)) return false;
   markCompletionPlayed(id);
   return true;
+}
+
+export function resetSessionMotion(key?: string) {
+  const store = session();
+  if (key) {
+    storageRemove(store, key);
+    return;
+  }
+  for (const item of storageKeys(store)) {
+    if (item.startsWith("atlas.motion.")) storageRemove(store, item);
+  }
+}
+
+export function resetCompletionMotion(id?: string) {
+  const store = local();
+  if (id) {
+    storageRemove(store, completionMotionKey(id));
+    return;
+  }
+  for (const item of storageKeys(store)) {
+    if (item.startsWith(MOTION_PLAY_KEYS.completePrefix)) {
+      storageRemove(store, item);
+    }
+  }
+}
+
+/** QA helper: replay session intros and completion ceremonies. */
+export function resetMotionPlayState() {
+  resetSessionMotion();
+  resetCompletionMotion();
 }

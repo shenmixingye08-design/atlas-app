@@ -5,6 +5,8 @@ import {
   consumeSessionMotion,
   hasPlayedCompletion,
   hasPlayedSessionMotion,
+  resetMotionPlayState,
+  resetSessionMotion,
 } from "@/lib/motion/play-once";
 import { MOTION_PLAY_KEYS } from "@/lib/motion/tokens";
 
@@ -56,5 +58,16 @@ describe("motion play-once", () => {
 
   it("does not play completion without an id", () => {
     expect(consumeCompletionMotion("")).toBe(false);
+  });
+
+  it("resets session and completion play state for QA replay", () => {
+    expect(consumeSessionMotion(MOTION_PLAY_KEYS.homeIntro)).toBe(true);
+    expect(consumeCompletionMotion("job-1")).toBe(true);
+    resetSessionMotion(MOTION_PLAY_KEYS.homeIntro);
+    expect(hasPlayedSessionMotion(MOTION_PLAY_KEYS.homeIntro)).toBe(false);
+    resetMotionPlayState();
+    expect(hasPlayedCompletion("job-1")).toBe(false);
+    expect(consumeSessionMotion(MOTION_PLAY_KEYS.homeIntro)).toBe(true);
+    expect(consumeCompletionMotion("job-1")).toBe(true);
   });
 });

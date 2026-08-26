@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-import { CompletionMoment } from "@/components/motion/completion-moment";
+import { CompletionActions, CompletionMoment } from "@/components/motion/completion-moment";
 import { NextActionsBar } from "@/components/results/next-actions-bar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -174,7 +174,7 @@ export function SecretaryResultView({
 
           {regenerateError && <ErrorState message={regenerateError} />}
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+          <CompletionActions className="flex flex-col gap-3 sm:flex-row sm:justify-center">
             <Button
               variant="secondary"
               size="lg"
@@ -186,7 +186,7 @@ export function SecretaryResultView({
                 ? ui.secretaryResult.regenerating
                 : "もう一度作り直す"}
             </Button>
-          </div>
+          </CompletionActions>
         </div>
       )}
     </div>

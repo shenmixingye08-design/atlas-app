@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 import { ui } from "@/lib/i18n";
@@ -45,6 +47,40 @@ export function SecretaryHomeDashboard({
       <div>
         <HomeChatBar />
       </div>
+
+      <SecretaryRecentWork projects={projects} />
     </RevealStagger>
+  );
+}
+
+function SecretaryRecentWork({ projects }: { projects: Project[] }) {
+  const recent = [...projects]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 3);
+  if (recent.length === 0) return null;
+
+  return (
+    <section className="space-y-3" aria-labelledby="secretary-recent-work">
+      <h2
+        id="secretary-recent-work"
+        className="text-title text-foreground"
+      >
+        {ui.activityHistory.recentTitle}
+      </h2>
+      <ul className="space-y-2">
+        {recent.map((project) => (
+          <li key={project.id}>
+            <Link
+              href={`/projects/${project.id}`}
+              className="motion-press-card block rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--card)] px-4 py-3 text-left"
+            >
+              <p className="truncate text-sm font-medium text-foreground">
+                {project.title || project.workRequest}
+              </p>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

@@ -1,40 +1,44 @@
 /**
- * Lightweight motion profile for 360–390px Android and constrained devices.
- * Visual language stays the same; bloom blur, sparkles, and list layout
- * animation are dropped.
+ * Lite is a decoration profile, never a Reduced Motion substitute.
+ *
+ * Do not treat Android User-Agent, typical phone widths, or 4-core / 4GB
+ * devices as lite. Reduced Motion is read separately by MotionProvider.
+ * Lite may drop blur, huge shadows, spark count, and sheen — core
+ * translate + scale stay on.
  */
+
+export type MotionMode = "full" | "lite" | "reduced";
 
 export function detectMotionLite(): boolean {
   if (typeof window === "undefined") return false;
-
-  try {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return true;
-    }
-    if (window.matchMedia("(prefers-reduced-transparency: reduce)").matches) {
-      return true;
-    }
-  } catch {
-    /* matchMedia can throw in odd webviews */
-  }
 
   const nav = navigator as Navigator & {
     connection?: { saveData?: boolean; effectiveType?: string };
     deviceMemory?: number;
   };
+
   if (nav.connection?.saveData) return true;
   const type = nav.connection?.effectiveType;
   if (type === "2g" || type === "slow-2g") return true;
 
-  const narrow = window.innerWidth > 0 && window.innerWidth <= 390;
-  const lowCores =
-    typeof nav.hardwareConcurrency === "number" &&
-    nav.hardwareConcurrency > 0 &&
-    nav.hardwareConcurrency <= 4;
-  const lowMemory =
-    typeof nav.deviceMemory === "number" && nav.deviceMemory > 0 && nav.deviceMemory <= 4;
+  const cores = nav.hardwareConcurrency;
+  const memory = nav.deviceMemory;
+  const extremelyLowCores =
+    typeof cores === "number" && cores > 0 && cores <= 2;
+  const extremelyLowMemory =
+    typeof memory === "number" && memory > 0 && memory <= 2;
 
-  return narrow && (lowCores || lowMemory);
+  return extremelyLowCores && extremelyLowMemory;
+}
+
+export function resolveMotionMode(
+  lite: boolean,
+  reduce: boolean,
+): MotionMode {
+  if (reduce) return "reduced";
+  if (lite) return "lite";
+  return "full";
 }
 
 export const MOTION_LITE_CLASS = "motion-lite";
+export const MOTION_MODE_ATTR = "data-motion-mode";

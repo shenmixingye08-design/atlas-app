@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { FocusRecede } from "@/components/motion/focus-frame";
 import { MotionList, MotionListItem } from "@/components/motion/list-item";
-import { SubmitMorph } from "@/components/motion/submit-morph";
+import { SubmitMorph, type SubmitPhase } from "@/components/motion/submit-morph";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/design-system/cn";
 import { uploadImagesToAtlas } from "@/lib/attachments/client-upload";
@@ -61,6 +61,7 @@ export function SecretaryChatComposer() {
   const [voiceHint, setVoiceHint] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [phase, setPhase] = useState<SubmitPhase>("idle");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const dragDepthRef = useRef(0);
@@ -92,6 +93,7 @@ export function SecretaryChatComposer() {
     if (!trimmed && files.length === 0) return;
     if (submitting) return;
     setSubmitting(true);
+    setPhase("processing");
 
     const traceId = newVisionTraceId();
     let attachmentIds: string[] = [];
@@ -120,6 +122,7 @@ export function SecretaryChatComposer() {
           });
           setVoiceHint("画像のアップロードに失敗しました。もう一度お試しください。");
           setSubmitting(false);
+          setPhase("idle");
           return;
         }
       } catch (error) {
@@ -138,6 +141,7 @@ export function SecretaryChatComposer() {
             : "画像のアップロードに失敗しました。",
         );
         setSubmitting(false);
+        setPhase("idle");
         return;
       }
     }
@@ -149,7 +153,10 @@ export function SecretaryChatComposer() {
       preferredFormat: "auto",
     });
     stashPendingWorkRequestSubmit(payload);
-    router.push("/workspace?autostart=1");
+    setPhase("accepted");
+    window.setTimeout(() => {
+      router.push("/workspace?autostart=1");
+    }, 240);
   }, [files, router, submitting, text]);
 
   const toggleVoice = useCallback(() => {
@@ -341,7 +348,7 @@ export function SecretaryChatComposer() {
             </p>
           </div>
           <SubmitMorph
-            phase={submitting ? "processing" : "idle"}
+            phase={phase}
             onClick={() => void submit()}
             disabled={!text.trim() && files.length === 0}
             className="w-full sm:w-auto sm:min-w-[12rem]"

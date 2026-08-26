@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { FocusRecede } from "@/components/motion/focus-frame";
-import { SubmitMorph } from "@/components/motion/submit-morph";
+import { SubmitMorph, type SubmitPhase } from "@/components/motion/submit-morph";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
 import {
@@ -59,6 +59,7 @@ export function WorkRequestForm({
   const [showAttach, setShowAttach] = useState(false);
   const [showFormat, setShowFormat] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [phase, setPhase] = useState<SubmitPhase>("idle");
   const advancedUnlocked = shouldShowAdvancedRequestControls();
   const formatUnlocked = shouldShowDeliverableFormatPicker();
 
@@ -67,6 +68,16 @@ export function WorkRequestForm({
       requestAnimationFrame(() => textareaRef.current?.focus());
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setPhase("idle");
+      return;
+    }
+    setPhase("processing");
+    const accepted = window.setTimeout(() => setPhase("accepted"), 180);
+    return () => window.clearTimeout(accepted);
+  }, [isLoading]);
 
   const uploading = imageDrafts.some(
     (d) => d.status === "pending" || d.status === "uploading",
@@ -279,7 +290,7 @@ export function WorkRequestForm({
           <UsageRemainingHint meterId="aiRuns" />
         </div>
         <SubmitMorph
-          phase={isLoading || uploading ? "processing" : "idle"}
+          phase={uploading ? "processing" : phase}
           onClick={handleSubmit}
           disabled={!canSubmit}
           processingLabel={uploading ? "アップロード中…" : ui.secretaryHome.askSubmit}

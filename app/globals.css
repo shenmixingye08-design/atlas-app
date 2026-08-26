@@ -155,9 +155,9 @@
   --motion-normal: 200ms var(--easing-standard);
   --motion-slow: 280ms var(--easing-standard);
   --motion-base: var(--motion-normal);
-  --motion-page: 240ms var(--easing-standard);
+  --motion-page: 280ms var(--easing-standard);
   --motion-modal: var(--spring-soft);
-  --motion-complete: 580ms var(--easing-standard);
+  --motion-complete: 960ms var(--easing-standard);
   --theme-transition: 200ms var(--easing-standard);
 
   /* Content width — aligned header + main */
@@ -510,8 +510,8 @@ html[data-theme-transitioning] *::after {
 
 /* Animations — fade and soft scale only */
 @keyframes fade-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(16px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes fade-in {
@@ -557,19 +557,21 @@ html[data-theme-transitioning] *::after {
 }
 
 .motion-press {
-  transition: transform var(--motion-fast);
+  transition: transform var(--spring-snappy);
 }
 
 .motion-press:active {
-  transform: scale(0.978);
+  transform: scale(0.96);
+  transition-duration: 80ms;
 }
 
 .motion-press-card {
-  transition: transform var(--motion-fast), box-shadow var(--motion-base);
+  transition: transform var(--spring-snappy), box-shadow var(--motion-base);
 }
 
 .motion-press-card:active {
-  transform: scale(0.985);
+  transform: scale(0.97);
+  transition-duration: 80ms;
 }
 
 .motion-press:disabled:active,
@@ -681,7 +683,7 @@ html[data-theme-transitioning] *::after {
 
 /* ── Logged-in signature motion ── */
 .motion-expand {
-  transition: grid-template-rows var(--motion-base);
+  transition: grid-template-rows var(--motion-slow);
 }
 .motion-expand--closed {
   grid-template-rows: 0fr;
@@ -690,7 +692,7 @@ html[data-theme-transitioning] *::after {
   grid-template-rows: 1fr;
 }
 .motion-expand-inner {
-  transition: opacity var(--motion-base);
+  transition: opacity var(--motion-slow);
 }
 
 .motion-focus-frame {
@@ -704,26 +706,27 @@ html[data-theme-transitioning] *::after {
 
 .motion-complete-ring {
   transform-origin: center;
-  animation: motion-complete-ring var(--motion-complete) both;
+  animation: motion-complete-ring 320ms var(--easing-standard) both;
 }
 .motion-complete-check {
   stroke-dasharray: 28;
   stroke-dashoffset: 28;
-  animation: motion-complete-check var(--motion-complete) both;
+  animation: motion-complete-check 420ms 140ms var(--easing-standard) both;
 }
 .motion-complete-bloom::after {
   content: "";
   position: absolute;
-  inset: -18px;
+  inset: -22px;
   border-radius: 9999px;
+  border: 2px solid color-mix(in oklch, var(--success) 42%, transparent);
   background: radial-gradient(
     circle,
-    color-mix(in oklch, var(--success) 22%, transparent) 0%,
-    transparent 70%
+    color-mix(in oklch, var(--success) 18%, transparent) 0%,
+    transparent 72%
   );
   opacity: 0;
-  transform: scale(0.72);
-  animation: motion-complete-bloom var(--motion-complete) both;
+  transform: scale(0.55);
+  animation: motion-complete-bloom 520ms var(--easing-standard) both;
   pointer-events: none;
 }
 .motion-complete-spark {
@@ -733,15 +736,19 @@ html[data-theme-transitioning] *::after {
   border-radius: 9999px;
   background: color-mix(in oklch, var(--accent-gold) 80%, white);
   opacity: 0;
-  animation: motion-complete-spark var(--motion-complete) both;
+  animation: motion-complete-spark 480ms var(--easing-standard) both;
 }
-.motion-complete-spark--1 { top: 2px; left: 18px; animation-delay: 80ms; }
-.motion-complete-spark--2 { top: 20px; right: 0; animation-delay: 140ms; }
-.motion-complete-spark--3 { bottom: 4px; left: 6px; animation-delay: 200ms; }
-.motion-complete-spark--4 { top: 8px; right: 10px; animation-delay: 240ms; }
+.motion-complete-spark--1 { top: 0; left: 20px; animation-delay: 220ms; }
+.motion-complete-spark--2 { top: 18px; right: -2px; animation-delay: 260ms; }
+.motion-complete-spark--3 { bottom: 2px; left: 4px; animation-delay: 300ms; }
+.motion-complete-spark--4 { top: 6px; right: 8px; animation-delay: 340ms; }
+.motion-complete-spark--5 { top: 28px; left: -2px; animation-delay: 280ms; }
+.motion-complete-spark--6 { bottom: 8px; right: 4px; animation-delay: 360ms; }
+.motion-complete-spark--7 { top: -2px; right: 18px; animation-delay: 240ms; }
+.motion-complete-spark--8 { bottom: -2px; left: 18px; animation-delay: 380ms; }
 
 @keyframes motion-complete-ring {
-  from { opacity: 0; transform: scale(0.92); }
+  from { opacity: 0; transform: scale(0.86); }
   to { opacity: 1; transform: scale(1); }
 }
 @keyframes motion-complete-check {
@@ -749,14 +756,43 @@ html[data-theme-transitioning] *::after {
   to { stroke-dashoffset: 0; }
 }
 @keyframes motion-complete-bloom {
-  0% { opacity: 0; transform: scale(0.72); }
-  40% { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.18); }
+  0% { opacity: 0; transform: scale(0.55); }
+  35% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.42); }
 }
 @keyframes motion-complete-spark {
-  0% { opacity: 0; transform: translateY(4px) scale(0.4); }
-  35% { opacity: 1; transform: translateY(-6px) scale(1); }
-  100% { opacity: 0; transform: translateY(-12px) scale(0.3); }
+  0% { opacity: 0; transform: translateY(6px) scale(0.4); }
+  35% { opacity: 1; transform: translateY(-8px) scale(1); }
+  100% { opacity: 0; transform: translateY(-18px) scale(0.3); }
+}
+
+.motion-complete-sheen {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  z-index: 2;
+}
+.motion-complete-sheen::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -45%;
+  width: 38%;
+  height: 100%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    color-mix(in oklch, var(--accent-gold) 34%, transparent) 50%,
+    transparent 100%
+  );
+  animation: motion-complete-sheen 360ms 720ms var(--easing-standard) both;
+}
+@keyframes motion-complete-sheen {
+  from { transform: translateX(0); opacity: 0; }
+  20% { opacity: 1; }
+  to { transform: translateX(280%); opacity: 0; }
 }
 
 .motion-submit-processing {
@@ -781,24 +817,38 @@ html[data-theme-transitioning] *::after {
 }
 
 @keyframes fade-up-out {
-  from { opacity: 1; transform: translateY(0); }
-  to { opacity: 0; transform: translateY(-4px); }
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-10px) scale(0.99); }
 }
 
 html.motion-lite .motion-complete-bloom::after,
 html.motion-lite .motion-complete-spark,
+html.motion-lite .motion-complete-sheen,
 html.motion-lite .animate-shimmer,
 html.motion-lite .animate-soft-pulse,
 html.motion-lite .animate-landing-float,
 html.motion-lite .landing-step-glow {
   animation: none !important;
 }
+html.motion-lite .motion-complete-bloom::after,
+html.motion-lite .motion-complete-spark,
+html.motion-lite .motion-complete-sheen {
+  display: none;
+}
 html.motion-lite .animate-shimmer {
   background: var(--background-subtle);
 }
+html.motion-lite .motion-modal-backdrop {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 html.motion-lite ::view-transition-old(.minervot-page),
 html.motion-lite ::view-transition-new(.minervot-page) {
-  animation-duration: 80ms;
+  animation-duration: var(--motion-page);
+}
+
+.motion-submit-accepted {
+  border-radius: var(--radius-large);
 }
 
 .focus-ring:focus-visible {

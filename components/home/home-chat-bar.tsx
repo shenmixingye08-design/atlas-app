@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { ui } from "@/lib/i18n";
-import { Button } from "@/components/ui/button";
+import { SubmitMorph, type SubmitPhase } from "@/components/motion/submit-morph";
 import { Textarea } from "@/components/ui/input";
 import {
   getUploadedAttachmentIds,
@@ -40,6 +40,7 @@ export function HomeChatBar() {
   const [error, setError] = useState<string | null>(null);
   const [showAttach, setShowAttach] = useState(false);
   const [showFormat, setShowFormat] = useState(false);
+  const [phase, setPhase] = useState<SubmitPhase>("idle");
 
   const advancedUnlocked = shouldShowAdvancedRequestControls();
   const formatUnlocked = shouldShowDeliverableFormatPicker();
@@ -52,7 +53,7 @@ export function HomeChatBar() {
 
   const submitToWork = () => {
     const trimmed = input.trim();
-    if (!trimmed || uploading) return;
+    if (!trimmed || uploading || phase !== "idle") return;
 
     if (failedImages.length > 0) {
       setError("アップロードに失敗した画像があります。削除するか再試行してください。");
@@ -86,7 +87,13 @@ export function HomeChatBar() {
     }
 
     setError(null);
-    router.push("/workspace?autostart=1");
+    setPhase("processing");
+    window.setTimeout(() => {
+      setPhase("accepted");
+      window.setTimeout(() => {
+        router.push("/workspace?autostart=1");
+      }, 240);
+    }, 160);
   };
 
   return (
@@ -179,16 +186,15 @@ export function HomeChatBar() {
         )}
 
         <div className="mt-5 pb-[env(safe-area-inset-bottom)]">
-          <Button
-            variant="primary"
-            size="lg"
-            className="h-14 w-full rounded-full text-base sm:h-16 sm:text-lg"
+          <SubmitMorph
+            phase={uploading ? "processing" : phase}
             onClick={submitToWork}
-            disabled={!input.trim() || uploading || failedImages.length > 0}
-            isLoading={uploading}
+            disabled={!input.trim() || failedImages.length > 0}
+            processingLabel={uploading ? "アップロード中…" : ui.secretaryHome.askSubmit}
+            className="rounded-full"
           >
-            {uploading ? "アップロード中…" : ui.secretaryHome.askSubmit}
-          </Button>
+            {ui.secretaryHome.askSubmit}
+          </SubmitMorph>
           <p className="mt-3 text-center text-sm text-[var(--foreground-muted)]">
             {ui.secretaryHome.askHint}
           </p>

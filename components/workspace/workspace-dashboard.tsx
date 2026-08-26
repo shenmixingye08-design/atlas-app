@@ -77,6 +77,7 @@ export function WorkspaceDashboard() {
   const [, setWorkMemoryCandidateCount] = useState(0);
   const [taughtWorkflowHint, setTaughtWorkflowHint] = useState(false);
   const [backgroundAccepted, setBackgroundAccepted] = useState(false);
+  const [formHold, setFormHold] = useState(false);
   const [pendingCommander, setPendingCommander] =
     useState<CommanderRunResult | null>(null);
 
@@ -124,9 +125,14 @@ export function WorkspaceDashboard() {
     if (!isLoading) {
       const resetTimer = window.setTimeout(() => {
         setBackgroundAccepted(false);
+        setFormHold(false);
       }, 0);
       return () => window.clearTimeout(resetTimer);
     }
+    setFormHold(true);
+    const releaseForm = window.setTimeout(() => {
+      setFormHold(false);
+    }, 420);
     const acceptedTimer = window.setTimeout(() => {
       setBackgroundAccepted(true);
     }, 3_000);
@@ -137,6 +143,7 @@ export function WorkspaceDashboard() {
     }, LOADING_STEP_INTERVAL_MS);
     return () => {
       window.clearTimeout(acceptedTimer);
+      window.clearTimeout(releaseForm);
       clearInterval(interval);
     };
   }, [isLoading, loadingPhases.length]);
@@ -448,7 +455,7 @@ export function WorkspaceDashboard() {
   };
 
   const showForm =
-    !isLoading &&
+    (!isLoading || formHold) &&
     !result &&
     !salesWizardAssignment &&
     !outlineOnlyText &&

@@ -24,11 +24,11 @@ describe("logged-in motion contracts", () => {
     expect(shell).not.toContain("<PageReveal key=");
   });
 
-  it("keeps page travel in the 4–8px / 120–240ms band", () => {
-    expect(MOTION_Y.page).toBeGreaterThanOrEqual(4);
-    expect(MOTION_Y.page).toBeLessThanOrEqual(8);
-    expect(MOTION_MS.page).toBeGreaterThanOrEqual(120);
-    expect(MOTION_MS.page).toBeLessThanOrEqual(240);
+  it("keeps page travel in the 14–18px / 240–320ms band", () => {
+    expect(MOTION_Y.page).toBeGreaterThanOrEqual(14);
+    expect(MOTION_Y.page).toBeLessThanOrEqual(18);
+    expect(MOTION_MS.page).toBeGreaterThanOrEqual(240);
+    expect(MOTION_MS.page).toBeLessThanOrEqual(320);
     expect(MOTION_MS.modal).toBeGreaterThanOrEqual(220);
     expect(MOTION_MS.modal).toBeLessThanOrEqual(320);
   });
@@ -101,7 +101,9 @@ describe("logged-in motion contracts", () => {
     expect(shell).toContain("MotionProvider");
     expect(shell).not.toContain("<AppViewTransition key=");
     expect(vt).toContain("ViewTransition");
-    expect(reveal).toContain("supportsViewTransition");
+    expect(reveal).toContain("translateY");
+    expect(reveal).toContain("scale");
+    expect(reveal).not.toContain("supportsViewTransition");
   });
 
   it("defines a once-only completion moment with live region and stroke check", () => {
@@ -110,8 +112,10 @@ describe("logged-in motion contracts", () => {
     const result = src("components/results/secretary-result-view.tsx");
     expect(moment).toContain("aria-live");
     expect(moment).toContain("motion-complete-check");
+    expect(moment).toContain("motion-complete-sheen");
     expect(moment).toContain("consumeCompletionMotion");
     expect(moment).not.toContain("confetti");
+    expect(moment).not.toContain("if (!id || reduce || lite)");
     expect(workspace).toContain("CompletionMoment");
     expect(result).toContain("CompletionMoment");
   });
@@ -126,11 +130,12 @@ describe("logged-in motion contracts", () => {
     expect(home).toContain("MOTION_PLAY_KEYS.homeIntro");
   });
 
-  it("morphs submit into processing without a premature success state", () => {
+  it("morphs submit into processing then accepted without a fake job finish", () => {
     const submit = src("components/motion/submit-morph.tsx");
     const form = src("components/workspace/work-request-form.tsx");
     const composer = src("components/home/secretary-chat-composer.tsx");
     expect(submit).toContain('phase === "processing"');
+    expect(submit).toContain('phase === "accepted"');
     expect(submit).not.toContain('"completed"');
     expect(submit).not.toContain("isSuccess");
     expect(form).toContain("SubmitMorph");
@@ -144,9 +149,19 @@ describe("logged-in motion contracts", () => {
     const lite = src("lib/motion/android-lite.ts");
     const composer = src("components/home/secretary-chat-composer.tsx");
     const form = src("components/workspace/work-request-form.tsx");
+    const nav = src("components/motion/nav-indicator.tsx");
+    const provider = src("components/motion/motion-provider.tsx");
     expect(css).toContain("html.motion-lite");
     expect(css).toContain("motion-complete-check");
+    expect(css).toContain("motion-complete-sheen");
     expect(lite).toContain("detectMotionLite");
+    expect(lite).not.toContain("prefers-reduced-motion");
+    expect(lite).not.toContain("navigator.userAgent");
+    expect(lite).not.toContain("innerWidth");
+    expect(nav).toContain("layoutId");
+    expect(lite).toContain("data-motion-mode");
+    expect(provider).toContain("MOTION_MODE_ATTR");
+    expect(provider).toContain("__MINERVOT_RESET_MOTION__");
     expect(composer).not.toContain("transition-all");
     expect(form).not.toContain("transition-all");
   });

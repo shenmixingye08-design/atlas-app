@@ -1,5 +1,6 @@
 "use client";
 
+import { motion, useReducedMotion } from "motion/react";
 import {
   useCallback,
   useId,
@@ -7,7 +8,9 @@ import {
   type ReactNode,
 } from "react";
 
+import { ExpandPanel } from "@/components/motion/expand-panel";
 import { cn } from "@/lib/design-system/cn";
+import { MOTION_REDUCED, MOTION_TRANSITION } from "@/lib/motion/tokens";
 
 const STORAGE_PREFIX = "atlas-home-collapse:";
 
@@ -42,6 +45,7 @@ export function HomeCollapsibleSection({
   className,
 }: HomeCollapsibleSectionProps) {
   const headingId = useId();
+  const reduce = useReducedMotion();
   const storageKey = `${STORAGE_PREFIX}${id}`;
   const [open, setOpen] = useState(() =>
     readStoredOpenState(storageKey, defaultOpen),
@@ -60,7 +64,9 @@ export function HomeCollapsibleSection({
   }, [storageKey]);
 
   return (
-    <section
+    <motion.section
+      layout={reduce ? false : true}
+      transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.base}
       className={cn(
         "overflow-hidden rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--card)] shadow-[var(--shadow-sm)]",
         className,
@@ -86,27 +92,19 @@ export function HomeCollapsibleSection({
             <p className="mt-0.5 text-sm text-[var(--text-secondary)]">{subtitle}</p>
           )}
         </div>
-        <span
-          className={cn(
-            "shrink-0 text-sm text-[var(--text-muted)] transition-transform duration-[var(--motion-base)]",
-            open && "rotate-180",
-          )}
+        <motion.span
+          className="shrink-0 text-sm text-[var(--text-muted)]"
           aria-hidden
+          animate={{ rotate: open ? 180 : 0 }}
+          transition={reduce ? MOTION_REDUCED : MOTION_TRANSITION.base}
         >
           ▼
-        </span>
+        </motion.span>
       </button>
 
-      <div
-        className={cn(
-          "grid transition-[grid-template-rows] duration-[var(--motion-base)]",
-          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-        )}
-      >
-        <div className="overflow-hidden">
-          <div className="border-t border-[var(--border)] px-5 py-5">{children}</div>
-        </div>
-      </div>
-    </section>
+      <ExpandPanel open={open}>
+        <div className="border-t border-[var(--border)] px-5 py-5">{children}</div>
+      </ExpandPanel>
+    </motion.section>
   );
 }

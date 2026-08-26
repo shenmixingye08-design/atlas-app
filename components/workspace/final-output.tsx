@@ -15,6 +15,7 @@ import { downloadDeliverableFile } from "@/lib/deliverables/download-client";
 import type { Deliverable as GeneratedFile } from "@/lib/deliverables/types";
 import { DELIVERABLE_FORMAT_LABELS } from "@/lib/deliverables/types";
 import { isAtlasClientDebugEnabled } from "@/lib/debug/atlas-debug";
+import { CompletionActions } from "@/components/motion/completion-moment";
 import { DownloadFeedback } from "@/components/motion/download-feedback";
 import { WordPreviewPanel } from "@/components/deliverables/word-preview-panel";
 import { WordProgressStatus } from "@/components/deliverables/word-progress-status";
@@ -618,7 +619,7 @@ export function FinalOutput({
           </div>
         )}
 
-        <div className="mt-6 flex flex-wrap gap-3">
+        <CompletionActions className="mt-6 flex flex-wrap gap-3">
           <Button
             variant="secondary"
             size="sm"
@@ -657,7 +658,7 @@ export function FinalOutput({
           >
             {driveSaved ? ui.work.driveSaved : ui.work.saveToDrive}
           </Button>
-        </div>
+        </CompletionActions>
 
         {driveSaved && (
           <p className="mt-4 text-sm text-[var(--foreground-muted)] animate-fade-in">

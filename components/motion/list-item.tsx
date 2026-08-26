@@ -3,11 +3,11 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
 
-import { useMotionLite } from "@/components/motion/motion-provider";
 import { cn } from "@/lib/design-system/cn";
 import {
   MOTION_MS,
   MOTION_REDUCED,
+  MOTION_SCALE,
   MOTION_STAGGER_CAP,
   MOTION_TRANSITION,
   MOTION_Y,
@@ -21,7 +21,7 @@ type MotionListProps = {
 
 /**
  * Presence root for list add/remove. Keep first paint quiet (`initial={false}`)
- * so it does not stack with PageReveal.
+ * so it does not stack with PageReveal or re-animate the whole list.
  */
 export function MotionList({
   children,
@@ -49,7 +49,6 @@ export function MotionListItem({
   as = "li",
 }: MotionListItemProps) {
   const reduce = useReducedMotion();
-  const lite = useMotionLite();
   const delay =
     typeof index === "number" && index >= 0 && index < MOTION_STAGGER_CAP
       ? (index * MOTION_MS.stagger) / 1000
@@ -58,11 +57,19 @@ export function MotionListItem({
 
   return (
     <Comp
-      layout={reduce || lite ? false : "position"}
+      layout={reduce ? false : "position"}
       className={cn(className)}
-      initial={reduce ? { opacity: 0 } : { opacity: 0, y: MOTION_Y.card }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={reduce ? { opacity: 0 } : { opacity: 0, y: -4 }}
+      initial={
+        reduce
+          ? { opacity: 0 }
+          : { opacity: 0, y: MOTION_Y.card, scale: MOTION_SCALE.card }
+      }
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={
+        reduce
+          ? { opacity: 0 }
+          : { opacity: 0, scale: MOTION_SCALE.cardExit }
+      }
       transition={
         reduce
           ? MOTION_REDUCED

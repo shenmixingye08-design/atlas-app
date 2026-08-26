@@ -16,9 +16,11 @@ import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import {
   MOTION_MS,
   MOTION_REDUCED,
+  MOTION_SCALE,
   MOTION_STAGGER_CAP,
   MOTION_TRANSITION,
   MOTION_Y,
+  pageTravelY,
 } from "@/lib/motion/tokens";
 
 type RevealStaggerProps = {
@@ -28,8 +30,9 @@ type RevealStaggerProps = {
 };
 
 /**
- * First-visit staggered rise for header → action → recent work.
- * Replays are skipped via sessionStorage so returning home stays quiet.
+ * Session-once staggered rise for header → action → recent work.
+ * Replays when the browser session is new. Lite still moves; only
+ * Reduced Motion skips the intro.
  */
 export function RevealStagger({
   children,
@@ -37,16 +40,15 @@ export function RevealStagger({
   className,
 }: RevealStaggerProps) {
   const reduce = useReducedMotion();
-  const lite = useMotionLite();
   const [play, setPlay] = useState(false);
   const items = useMemo(() => Children.toArray(children), [children]);
 
   useEffect(() => {
-    if (reduce || lite) return;
+    if (reduce) return;
     return scheduleMountWork(() => {
       setPlay(consumeSessionMotion(playKey));
     });
-  }, [playKey, reduce, lite]);
+  }, [playKey, reduce]);
 
   return (
     <div className={cn("min-w-0", className)}>
@@ -68,6 +70,7 @@ function RevealItem({
   index: number;
   play: boolean;
 }) {
+  const lite = useMotionLite();
   const delay =
     play && index < MOTION_STAGGER_CAP
       ? (index * MOTION_MS.stagger) / 1000
@@ -80,8 +83,12 @@ function RevealItem({
   return (
     <motion.div
       className="min-w-0"
-      initial={{ opacity: 0, y: MOTION_Y.page }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{
+        opacity: 0,
+        y: lite ? pageTravelY(true) : MOTION_Y.home,
+        scale: MOTION_SCALE.home,
+      }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ ...MOTION_TRANSITION.page, delay }}
     >
       {children}
@@ -102,14 +109,19 @@ export function RevealSection({
   delayIndex = 0,
 }: RevealSectionProps) {
   const reduce = useReducedMotion();
+  const lite = useMotionLite();
   if (reduce) {
     return <div className={className}>{children}</div>;
   }
   return (
     <motion.div
       className={className}
-      initial={{ opacity: 0, y: MOTION_Y.page }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{
+        opacity: 0,
+        y: lite ? pageTravelY(true) : MOTION_Y.home,
+        scale: MOTION_SCALE.home,
+      }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{
         ...MOTION_TRANSITION.page,
         delay: (Math.min(delayIndex, MOTION_STAGGER_CAP) * MOTION_MS.stagger) / 1000,
