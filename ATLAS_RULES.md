@@ -1,9 +1,13 @@
 # ATLAS 開発ルール
 
-> **最優先ドキュメント** — 新しいチャット・別担当者は、まず本ファイルを読んでから開発してください。  
-> 他ドキュメントと矛盾する場合は、**本ファイルを正**とします。
+> **ルール優先順位:**  
+> 1. [`MINERVOT_CONSTITUTION.md`](./MINERVOT_CONSTITUTION.md) — **最上位・絶対（Phase0 開発憲法）**  
+> 2. **本ファイル** — 口調・用語・進行の詳細  
+> 3. `AGENTS.md` / 個別 docs  
+> 憲法と矛盾する場合は、**憲法を正**とします。  
+> 憲法以外で矛盾する場合は、本ファイルを正とします。
 
-関連: `README.md` / `AGENTS.md` / `docs/atlas-personality.md` / `docs/work-memory.md` / `docs/learning-engine.md`
+関連: `MINERVOT_CONSTITUTION.md` / `README.md` / `AGENTS.md` / `docs/atlas-personality.md` / `docs/work-memory.md` / `docs/learning-engine.md`
 
 ## 1. ブランド定義
 
@@ -252,19 +256,16 @@ NOの場合は、ATLASの核に不要な可能性があるため、実装を見�
 ・AIの学習精度を測定せず「90%」「完璧」などと表示しない
 ・未実装機能を実装済みのように見せない
 
-## 16. 現在の優先順位
+## 16. 現在の優先順位（憲法フェーズに従う）
 
-以下の順番を維持してください。
+憲法の Phase 順を維持してください。飛び越し禁止。
 
-1. ATLAS_RULES.mdの完成
-2. ホームページのAI秘書ブランドへの更新
-3. 誰でも使えることの説明
-4. ATLASができる仕事の見せ方
-5. 写真・PDF・ファイル入力の強化
-6. Work Memoryの実利用強化
-7. Learning Engineと30日分析
-8. クレジット制と料金画面
-9. 外部公開
-10. 公開前テスト
+1. **Phase1** — ホーム画面の極限シンプル化
+2. **Phase2** — 画像→文書の成功率・速度・品質改善
+3. **Phase3** — 実ユーザー5名テスト
+4. **Phase4** — 50名実証
+5. **Phase5** — KPI判定（`docs/development/minervot-ceo-launch-gates.md`）
+6. **Phase6** — 正式公開
 
+Phase 内の細部や口調・記憶基盤の整備は、憲法原則1–10に反しない範囲でのみ行う。  
 順番を変更する場合は、ユーザーの明示的な指示を受けてください。
