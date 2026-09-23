@@ -47,8 +47,10 @@ export function SectionHeader({
   description,
   action,
   heading = "h2",
+  id,
 }: {
   title: string;
+  id?: string;
   description?: string;
   action?: React.ReactNode;
   heading?: "h2" | "h3";
@@ -57,7 +59,9 @@ export function SectionHeader({
   return (
     <div className="mb-3 flex items-end justify-between gap-3">
       <div>
-        <Heading className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]">
+        <Heading
+          id={id}
+          className="scroll-mt-24 text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]">
           {title}
         </Heading>
         {description ? (

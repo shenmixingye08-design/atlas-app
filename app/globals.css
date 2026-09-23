@@ -872,6 +872,106 @@ html.motion-lite ::view-transition-new(.minervot-page) {
   50% { box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 16%, transparent); }
 }
 
+/* ─── Home AI core — motion mirrors real work state only ─── */
+.home-core {
+  --core-tone: var(--primary);
+  --core-speed: 6s;
+}
+.home-core[data-state="running"],
+.home-core[data-state="checking"] { --core-speed: 2.6s; }
+.home-core[data-state="attention"] {
+  --core-tone: color-mix(in oklch, var(--warning) 55%, var(--accent-gold));
+  --core-speed: 2.2s;
+}
+.home-core[data-state="scheduled"] { --core-tone: var(--accent-gold); }
+
+.home-core-orb {
+  position: relative;
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+.home-core-orb__core {
+  position: relative;
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle at 35% 30%,
+    color-mix(in oklch, var(--core-tone) 40%, white) 0%,
+    var(--core-tone) 58%,
+    color-mix(in oklch, var(--core-tone) 90%, black) 100%
+  );
+  box-shadow: 0 0 10px color-mix(in oklch, var(--core-tone) 45%, transparent);
+  transition: background var(--motion-slow), box-shadow var(--motion-slow);
+}
+.home-core-orb__halo {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--core-tone) 34%, transparent) 0%,
+    transparent 70%
+  );
+  animation: home-core-breathe var(--core-speed) ease-in-out infinite;
+  will-change: transform, opacity;
+}
+.home-core-orb__ring {
+  position: absolute;
+  inset: 2px;
+  border-radius: 9999px;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    color-mix(in oklch, var(--core-tone) 70%, transparent) 70deg,
+    transparent 140deg
+  );
+  -webkit-mask: radial-gradient(circle, transparent 58%, #000 60%);
+  mask: radial-gradient(circle, transparent 58%, #000 60%);
+  opacity: 0;
+  transition: opacity var(--motion-slow);
+}
+.home-core[data-state="running"] .home-core-orb__ring,
+.home-core[data-state="checking"] .home-core-orb__ring {
+  opacity: 1;
+  animation: home-core-orbit 1.6s linear infinite;
+}
+.home-core-text {
+  animation: fade-up var(--motion-base) both;
+}
+.home-core-chevron {
+  font-size: 1.25rem;
+  line-height: 1;
+  transition: transform var(--motion-fast);
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-core:hover .home-core-chevron { transform: translateX(2px); }
+}
+
+@keyframes home-core-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(0.86); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+@keyframes home-core-orbit {
+  to { transform: rotate(360deg); }
+}
+
+html.motion-lite .home-core-orb__halo,
+html.motion-lite .home-core-orb__ring {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-core-orb__halo,
+  .home-core-orb__ring,
+  .home-core-text {
+    animation: none !important;
+  }
+}
+
 /* Premium micro-interactions for post-login UI */
 @keyframes card-enter {
   from { opacity: 0; transform: translateY(6px); }

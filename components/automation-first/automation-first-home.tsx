@@ -15,6 +15,7 @@ import {
 } from "@/components/automation-first/entrusted-work";
 import { ErrorState } from "@/components/automation-first/error-state";
 import { HomePrimaryActions } from "@/components/automation-first/home-primary-actions";
+import { HomeStatusCore } from "@/components/automation-first/home-status-core";
 import { WorkCountStrip, YourWorkList } from "@/components/automation-first/your-work";
 import { SectionHeader } from "@/components/automation-first/page-header";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
@@ -31,6 +32,7 @@ import {
   type HomeTimelineRow,
   type HomeWeeklyStats,
 } from "@/lib/automation-first/home-data";
+import { deriveHomeCoreState } from "@/lib/automation-first/home-core-state";
 import {
   applyOpsSummaryToHomeSummary,
   buildHomeAttentionItems,
@@ -395,6 +397,7 @@ export function AutomationFirstHome({
       <section aria-labelledby="af-attention-heading" className="space-y-2.5">
         <SectionHeader
           heading="h3"
+          id="af-attention-heading"
           title="対応が必要"
           description="承認待ち・入力待ち・失敗・復旧が必要な仕事"
         />
@@ -429,6 +432,7 @@ export function AutomationFirstHome({
       <section aria-labelledby="af-timeline-heading" className="space-y-2.5">
         <SectionHeader
           heading="h3"
+          id="af-timeline-heading"
           title="今日MINERVOTが行う仕事"
           description="実行予定・実行中・完了"
           action={
@@ -499,7 +503,7 @@ export function AutomationFirstHome({
   const recentSection =
     recentCompleted.length > 0 ? (
       <section aria-labelledby="af-completed-heading" className="space-y-2.5">
-        <SectionHeader heading="h3" title="最近完成したもの" />
+        <SectionHeader heading="h3" id="af-completed-heading" title="最近完成したもの" />
         <ul className="animate-stagger divide-y divide-[var(--border)] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)]">
           {recentCompleted.map((item) => (
             <li
@@ -533,6 +537,42 @@ export function AutomationFirstHome({
       </section>
     ) : null;
 
+  const coreState = useMemo(
+    () =>
+      deriveHomeCoreState({
+        checking: opsEnabled && opsLoading && !opsSummary && !opsError,
+        attentionCount: attention.length,
+        runningCount: runningJobs.length,
+        runningTitle: runningJobs[0]?.title ?? null,
+        nextRun: nextRun
+          ? {
+              name: nextRun.name,
+              whenLabel: formatNextRunDateTime(nextRun.nextRunAt),
+            }
+          : summary.nextJob
+            ? {
+                name: summary.nextJob.title,
+                whenLabel:
+                  summary.nextJob.scheduledTime ??
+                  summary.nextJob.scheduleLabel ??
+                  null,
+              }
+            : null,
+        entrustedCount: counts.entrusted,
+      }),
+    [
+      opsEnabled,
+      opsLoading,
+      opsSummary,
+      opsError,
+      attention.length,
+      runningJobs,
+      nextRun,
+      summary.nextJob,
+      counts.entrusted,
+    ],
+  );
+
   const dashboardHasContent = Boolean(
     attentionSection ||
       timelineSection ||
@@ -563,6 +603,10 @@ export function AutomationFirstHome({
           {HOME_X_AUTOMATION_SUPPORT}
         </p>
       </header>
+
+      {isReturningUser || coreState.kind === "checking" ? (
+        <HomeStatusCore state={coreState} />
+      ) : null}
 
       <HomePrimaryActions compact={isReturningUser} />
 
