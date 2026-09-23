@@ -243,7 +243,7 @@ export function RunReviewPanel({
     run.artifacts.length > 0;
   const artifactsSection = (
     <section id="artifacts" className="space-y-2">
-      <h2 className="text-sm font-medium">成果物</h2>
+      <h2 className="ui-section-title text-base">成果物</h2>
       {run.artifacts.length === 0 ? (
         <p className="text-sm text-[var(--muted)]">まだありません</p>
       ) : (
@@ -257,7 +257,7 @@ export function RunReviewPanel({
               <li
                 key={artifact.id}
                 id={`artifact-${artifact.id}`}
-                className="scroll-mt-24 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-3 text-sm transition-shadow duration-[var(--motion-base)] target:border-[var(--border-focus)] target:shadow-[0_0_0_3px_var(--brand-muted)]"
+                className="ui-card scroll-mt-24 px-4 py-3.5 text-sm transition-shadow duration-[var(--motion-base)] target:border-[var(--border-focus)] target:shadow-[0_0_0_3px_var(--brand-muted)]"
               >
                 <p className="font-medium break-words">{artifact.label}</p>
                 <p className="text-xs text-[var(--muted)]">
@@ -299,9 +299,9 @@ export function RunReviewPanel({
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-5 pb-8">
-      <header className="space-y-1">
-        <p className="text-xs text-[var(--muted)]">実行の詳細</p>
-        <h1 className="text-xl font-semibold tracking-tight">
+      <header className="space-y-1.5">
+        <p className="ui-eyebrow">実行の詳細</p>
+        <h1 className="text-[length:var(--text-page-title)] font-semibold leading-tight tracking-tight text-[var(--text-primary)]">
           {run.automationName}
         </h1>
         <p className="text-sm text-[var(--muted)]">
@@ -315,9 +315,9 @@ export function RunReviewPanel({
       {run.status === "partially_succeeded" && failureView ? (
         <section
           id="failure"
-          className="rounded-2xl border border-[var(--warning,#b45309)]/30 bg-[var(--surface-muted)] p-4 text-sm"
+          className="ui-card ui-card-pad border-[color-mix(in_oklch,var(--warning)_35%,transparent)] bg-[var(--warning-bg)] text-sm"
         >
-          <h2 className="font-medium">一部成功</h2>
+          <h2 className="ui-section-title text-base">一部成功</h2>
           <p className="mt-2">{failureView.headline}</p>
           <p className="mt-2 text-[var(--muted)]">
             成功した成果物はダウンロードできます。失敗した手順だけ安全に再実行できます。
@@ -328,9 +328,9 @@ export function RunReviewPanel({
       {showGenerateResume ? (
         <section
           id="needs-input"
-          className="space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4"
+          className="ui-card ui-card-pad space-y-3"
         >
-          <h2 className="text-sm font-medium">
+          <h2 className="ui-section-title text-base">
             {/自動作成に失敗|x_post_generation_failed/.test(
               `${run.lastErrorMessage ?? ""} ${run.failedStepId ?? ""}`,
             )
@@ -362,9 +362,9 @@ export function RunReviewPanel({
       {showNeedsInputForm ? (
         <section
           id="needs-input"
-          className="space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4"
+          className="ui-card ui-card-pad space-y-3"
         >
-          <h2 className="text-sm font-medium">入力が必要です</h2>
+          <h2 className="ui-section-title text-base">入力が必要です</h2>
           <p className="text-sm">{describeNeedsInput(run)}</p>
           <label className="block text-sm">
             <span className="text-[var(--muted)]">参照する内容</span>
@@ -387,9 +387,9 @@ export function RunReviewPanel({
 
       {preparation && run.status === "awaiting_approval" ? (
         <section className="space-y-2">
-          <h2 className="text-sm font-medium">承認内容</h2>
+          <h2 className="ui-section-title text-base">承認内容</h2>
           {preparation.generatedXPostText ? (
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+            <div className="ui-card ui-card-pad">
               <p className="text-xs text-[var(--muted)]">
                 今回MINERVOTが作成した投稿本文です。入力は不要です。内容をご確認ください。
               </p>
@@ -398,7 +398,7 @@ export function RunReviewPanel({
               </pre>
             </div>
           ) : null}
-          <pre className="whitespace-pre-wrap rounded-2xl bg-[var(--surface-muted)] p-4 text-sm leading-relaxed">
+          <pre className="ui-card ui-card-pad whitespace-pre-wrap text-sm leading-relaxed">
             {preparation.summary}
           </pre>
           <ul className="space-y-1 text-sm text-[var(--muted)]">
@@ -430,8 +430,8 @@ export function RunReviewPanel({
         </section>
       ) : preparation ? (
         <section className="space-y-2">
-          <h2 className="text-sm font-medium">今回やること</h2>
-          <pre className="whitespace-pre-wrap rounded-2xl bg-[var(--surface-muted)] p-4 text-sm leading-relaxed">
+          <h2 className="ui-section-title text-base">今回やること</h2>
+          <pre className="ui-card ui-card-pad whitespace-pre-wrap text-sm leading-relaxed">
             {preparation.summary}
           </pre>
         </section>
@@ -439,7 +439,7 @@ export function RunReviewPanel({
 
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-medium">進捗</h2>
+          <h2 className="ui-section-title text-base">進捗</h2>
           <p className="text-xs text-[var(--muted)]">
             最終更新{" "}
             {new Date(progress.lastUpdatedAt).toLocaleTimeString("ja-JP", {
@@ -462,10 +462,10 @@ export function RunReviewPanel({
               key={item.id}
               id={item.id === failedStepId ? "failed-step" : undefined}
               className={cn(
-                "flex items-start gap-3 rounded-2xl px-3 py-3 text-sm",
+                "flex items-start gap-3 rounded-[var(--radius-lg)] border px-4 py-3 text-sm",
                 item.marker === "failed"
-                  ? "bg-[var(--danger)]/10"
-                  : "bg-[var(--surface-muted)]",
+                  ? "border-[color-mix(in_oklch,var(--danger)_30%,transparent)] bg-[var(--error-bg)]"
+                  : "border-[var(--border)] bg-[var(--surface-raised)]",
               )}
             >
               <span className="mt-0.5 w-10 shrink-0 text-center text-xs">
@@ -481,7 +481,7 @@ export function RunReviewPanel({
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-sm font-medium">タイムライン</h2>
+        <h2 className="ui-section-title text-base">タイムライン</h2>
         <ol className="space-y-3 border-l border-[var(--border)] pl-4">
           {timeline.map((entry) => (
             <li key={entry.id} className="relative text-sm">
@@ -501,12 +501,12 @@ export function RunReviewPanel({
 {artifactsFirst ? null : artifactsSection}
 
       <section className="space-y-2 text-sm">
-        <h2 className="text-sm font-medium">手順の詳細</h2>
+        <h2 className="ui-section-title text-base">手順の詳細</h2>
         <ul className="space-y-2">
           {run.steps.map((step) => (
             <li
               key={step.id}
-              className="rounded-2xl bg-[var(--surface-muted)] px-3 py-3"
+              className="ui-card px-4 py-3"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -563,9 +563,9 @@ export function RunReviewPanel({
       {failureView && run.status !== "needs_input" ? (
         <section
           id="failure"
-          className="space-y-2 rounded-2xl bg-[var(--surface-muted)] p-4 text-sm"
+          className="ui-card ui-card-pad space-y-2 text-sm"
         >
-          <h2 className="font-medium">失敗の説明</h2>
+          <h2 className="ui-section-title text-base">失敗の説明</h2>
           <p>{failureView.headline}</p>
           <ul className="space-y-1 text-[var(--muted)]">
             <li>失敗した手順: {failureView.failedStepName ?? "不明"}</li>
@@ -603,7 +603,7 @@ export function RunReviewPanel({
           </ul>
           <button
             type="button"
-            className="text-sm text-accent underline"
+            className="ui-link"
             onClick={() => setShowTechnical((value) => !value)}
           >
             {showTechnical ? "技術診断を隠す" : "技術診断を表示"}

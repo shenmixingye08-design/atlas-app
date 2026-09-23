@@ -35,12 +35,12 @@ function CompactPrimaryActions() {
     <section
       data-testid="home-primary-actions"
       aria-label="MINERVOTに任せる方法"
-      className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-center"
+      className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
     >
       <Link
         href={HOME_X_AUTOMATION_HREF}
         onClick={() => trackPrimary("home_primary_compact")}
-        className="motion-press-card focus-ring group flex min-h-[var(--touch-target)] items-center gap-3 rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3.5 py-2.5 shadow-[var(--shadow-subtle)] transition-[border-color,box-shadow] duration-[var(--motion-fast)] [@media(hover:hover)_and_(pointer:fine)]:hover:border-[var(--border-strong)]"
+        className="motion-press-card ui-card ui-card-interactive focus-ring group flex min-w-0 min-h-[3.75rem] items-center gap-3 px-4 py-3"
       >
         <span
           aria-hidden
@@ -56,17 +56,14 @@ function CompactPrimaryActions() {
             {HOME_X_AUTOMATION_SUPPORT}
           </span>
         </span>
-        <span
-          aria-hidden
-          className="shrink-0 text-lg leading-none text-[var(--text-muted)] transition-transform duration-[var(--motion-fast)] [@media(hover:hover)_and_(pointer:fine)]:group-hover:translate-x-0.5"
-        >
+        <span aria-hidden className="ui-chevron">
           ›
         </span>
       </Link>
       <Link
         href={HOME_OTHER_WORK_HREF}
         onClick={() => trackOneTime("home_secondary_compact")}
-        className="inline-flex min-h-[var(--touch-target)] items-center justify-center px-2 text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+        className="whitespace-nowrap inline-flex min-h-[var(--touch-target)] items-center justify-center px-2 text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
       >
         {HOME_OTHER_WORK_CTA}
       </Link>

@@ -50,7 +50,7 @@ export function RecentDeliverables({ items }: { items: RecentDeliverableItem[] }
         action={
           <Link
             href="/history"
-            className="inline-flex min-h-[var(--touch-target)] items-center text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+            className="ui-link"
           >
             すべて見る
           </Link>
@@ -63,7 +63,7 @@ export function RecentDeliverables({ items }: { items: RecentDeliverableItem[] }
           return (
             <li
               key={item.id}
-              className="motion-press-card group relative flex items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-3 transition-[border-color,box-shadow] duration-[var(--motion-fast)] [@media(hover:hover)_and_(pointer:fine)]:hover:border-[var(--border-strong)] [@media(hover:hover)_and_(pointer:fine)]:hover:shadow-[var(--shadow-subtle)]"
+              className="motion-press-card ui-card ui-card-interactive group relative flex items-center gap-3 p-3.5"
             >
               <span
                 aria-hidden
@@ -106,10 +106,7 @@ export function RecentDeliverables({ items }: { items: RecentDeliverableItem[] }
                   )}
                 </a>
               ) : (
-                <span
-                  aria-hidden
-                  className="shrink-0 text-lg leading-none text-[var(--text-muted)] transition-transform duration-[var(--motion-fast)] [@media(hover:hover)_and_(pointer:fine)]:group-hover:translate-x-0.5"
-                >
+                <span aria-hidden className="ui-chevron">
                   ›
                 </span>
               )}

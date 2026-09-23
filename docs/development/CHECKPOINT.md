@@ -1,5 +1,29 @@
 # CHECKPOINT（最新が先頭）
 
+## 2026-09-23 #6 — デザイン統一（UIキット）
+
+### 方針
+最も完成度が高かった `/today`（カード＋ステータスチップ＋メイン/サイドの2カラム）を基準に、ログイン後画面を1つのデザイン言語に統一。
+
+### 今回変更したもの
+- `app/globals.css`: `@layer components` に UI キットを追加（カード・リスト行・シェブロン・アイコンタイル・見出し・リンク・チップボタン）。レイヤー内なので Tailwind ユーティリティで上書き可能。
+- `components/ui/card.tsx`（113ファイルが使用）/ `panel.tsx`: キットに統一（角丸16px・細枠・微影・ホバーで浮く）。
+- `PageHeader` / `SectionHeader`: 見出し階層を統一。**バグ修正**: SectionHeader の説明文が `text-[var(--text-caption)]`（サイズでなく色扱い）で見出しより大きく表示されていた。
+- ホーム: デスクトップでメイン（要対応・実行中・成果物・今日の予定・任せている仕事）＋サイド（件数・次回実行・任せた仕事・実績）の2カラム。AIコアと主要CTAを横並び。次回実行を1行カード化。新規ユーザーの3ステップを番号タイル付きカードに。
+- 設定: グループごとにアイコン、行にシェブロンとホバー、デスクトップ2カラム。
+- `/today` サイド・実行詳細（`run-review-panel.tsx`）もキットに移行。
+
+### テスト
+- 全体 vitest: 2779 passed / 3 failed（poppler 不在の PDF 3件のみ、既知）。CI ban n02/n03/n07/p1-09 pass。
+- 画面: ホーム（PC/スマホ/ダーク）・今日・設定・成果物・通知・LP を確認。before/after は `verification-screenshots/design-unify/`。
+
+### 次に最も価値が高い改善
+1. 認証が必要な画面（`/automations`, `/workspace/x`, `/connections`）を Vercel Preview でキットに寄せる。
+2. `components/automations/automations-dashboard.tsx` 内の独自カード表現をキット化。
+3. PR 作成（ユーザー指示待ち）。
+
+---
+
 ## 2026-09-23 #5 — 実行詳細ページ＋新規ユーザーの「生きている」感
 
 ### 今回変更したもの

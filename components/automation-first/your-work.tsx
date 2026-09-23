@@ -89,14 +89,25 @@ export function YourWorkList({
         title={YOUR_WORK_HEADING}
         description="これからもMINERVOTに任せる仕事。履歴とは別です"
       />
-      <MotionList className="divide-y divide-[var(--border)] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)]">
+      <MotionList className="ui-card ui-list">
         {works.map((work, index) => (
-          <MotionListItem key={work.id} index={index} className="space-y-2 px-3.5 py-3">
+          <MotionListItem key={work.id} index={index} className="space-y-2.5 px-4 py-3.5">
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-[var(--text-primary)]">
                 {work.name}
               </p>
-              <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[length:var(--text-caption)] text-[var(--text-muted)]">
+                <span
+                  aria-hidden
+                  className={cn(
+                    "inline-block h-1.5 w-1.5 rounded-full",
+                    work.lifecycle === "active" && "bg-[var(--success)]",
+                    work.lifecycle === "paused" && "bg-[var(--text-muted)]",
+                    (work.lifecycle === "needs_attention" || work.lifecycle === "failed") &&
+                      "bg-[var(--warning)]",
+                    work.lifecycle === "completed" && "bg-[var(--info)]",
+                  )}
+                />
                 {LIFECYCLE_LABEL[work.lifecycle]}
                 {work.nextRunAt ? ` · 次回 ${formatWorkTime(work.nextRunAt)}` : ""}
                 {work.lastSuccessAt && !work.nextRunAt
@@ -107,7 +118,7 @@ export function YourWorkList({
             <div className="flex flex-wrap gap-2">
               <Link
                 href={work.href}
-                className="inline-flex min-h-[var(--touch-target)] items-center rounded-full border border-[var(--border)] px-3 text-sm font-semibold text-[var(--text-primary)]"
+                className="ui-chip-btn min-h-[var(--touch-target)]"
               >
                 詳細
               </Link>
@@ -117,7 +128,7 @@ export function YourWorkList({
                   disabled={pending?.id === work.id}
                   aria-busy={pending?.id === work.id && pending.action === "run"}
                   onClick={() => void runNow(work)}
-                  className="motion-press inline-flex min-h-[var(--touch-target)] items-center gap-1.5 rounded-full border border-[var(--border)] px-3 text-sm font-semibold text-[var(--text-primary)] disabled:opacity-60"
+                  className="motion-press ui-chip-btn min-h-[var(--touch-target)]"
                 >
                   {pending?.id === work.id && pending.action === "run" ? (
                     <>
@@ -137,7 +148,7 @@ export function YourWorkList({
                   type="button"
                   disabled={pending?.id === work.id}
                   onClick={() => void pauseOrResume(work)}
-                  className="motion-press disabled:opacity-60 inline-flex min-h-[var(--touch-target)] items-center rounded-full border border-[var(--border)] px-3 text-sm font-semibold text-[var(--brand)]"
+                  className="motion-press ui-chip-btn ui-chip-btn--brand min-h-[var(--touch-target)]"
                 >
                   {work.lifecycle === "paused" ? "再開" : "一時停止"}
                 </button>
@@ -182,14 +193,14 @@ export function WorkCountStrip({
   return (
     <dl
       data-testid="work-count-strip"
-      className="flex divide-x divide-[var(--border)] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] py-2.5"
+      className="ui-card flex divide-x divide-[var(--border)] py-3"
     >
       {items.map((item) => (
         <div key={item.label} className="flex min-w-0 flex-1 flex-col-reverse px-3 text-center">
           <dt className="truncate text-[length:var(--text-meta)] text-[var(--text-muted)]">
             {item.label}
           </dt>
-          <dd className="text-lg font-semibold tabular-nums text-[var(--text-primary)]">
+          <dd className="text-xl font-semibold tracking-tight tabular-nums text-[var(--text-primary)]">
             <AnimatedNumber value={item.count} suffix="件" />
           </dd>
         </div>

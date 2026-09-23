@@ -16,17 +16,17 @@ export function Panel({
 }: PanelProps) {
   return (
     <section
-      className={cn("glass-strong rounded-[var(--radius-2xl)] p-5 sm:p-6", className)}
+      className={cn("ui-card p-5 sm:p-6", className)}
       {...props}
     >
       {(title || action) && (
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             {title && (
-              <h2 className="text-title text-foreground">{title}</h2>
+              <h2 className="ui-section-title">{title}</h2>
             )}
             {description && (
-              <p className="mt-1 text-caption">{description}</p>
+              <p className="ui-section-desc">{description}</p>
             )}
           </div>
           {action}

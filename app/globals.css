@@ -876,6 +876,126 @@ html.motion-lite ::view-transition-new(.minervot-page) {
   50% { box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 16%, transparent); }
 }
 
+/* ─── MINERVOT UI kit — the one card / section / row language for
+   logged-in screens (modelled on /today). Prefer these over ad-hoc
+   border/radius/shadow combinations. ─── */
+@layer components {
+  .ui-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-subtle);
+  }
+  .ui-card-pad { padding: 1rem; }
+  @media (min-width: 640px) { .ui-card-pad { padding: 1.125rem 1.25rem; } }
+
+  .ui-card-interactive {
+    transition:
+      border-color var(--motion-fast),
+      box-shadow var(--motion-fast),
+      transform var(--motion-fast);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .ui-card-interactive:hover {
+      border-color: var(--border-strong);
+      box-shadow: var(--shadow-md);
+      transform: translateY(-1px);
+    }
+  }
+
+  .ui-list > * + * { border-top: 1px solid var(--border); }
+  .ui-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 3.5rem;
+    padding: 0.75rem 1rem;
+  }
+  .ui-row-link {
+    transition: background-color var(--motion-fast);
+  }
+  .ui-list > .ui-row-link:first-child,
+  .ui-list > :first-child > .ui-row-link { border-top-left-radius: inherit; border-top-right-radius: inherit; }
+  .ui-list > .ui-row-link:last-child,
+  .ui-list > :last-child > .ui-row-link { border-bottom-left-radius: inherit; border-bottom-right-radius: inherit; }
+  @media (hover: hover) and (pointer: fine) {
+    .ui-row-link:hover { background: var(--surface-muted); }
+  }
+  .ui-chevron {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 1.125rem;
+    line-height: 1;
+    transition: transform var(--motion-fast);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .ui-row-link:hover .ui-chevron,
+    .ui-card-interactive:hover .ui-chevron { transform: translateX(2px); }
+  }
+
+  .ui-icon-tile {
+    display: inline-flex;
+    width: 2.25rem;
+    height: 2.25rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.75rem;
+    background: var(--brand-muted);
+    color: var(--brand);
+  }
+
+  .ui-eyebrow {
+    font-size: var(--text-label);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--brand);
+  }
+  .ui-section-title {
+    font-size: var(--text-section);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+  }
+  .ui-section-desc {
+    margin-top: 0.125rem;
+    font-size: var(--text-caption);
+    line-height: 1.5;
+    color: var(--text-muted);
+  }
+  .ui-link {
+    display: inline-flex;
+    min-height: var(--touch-target);
+    align-items: center;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--brand);
+    text-underline-offset: 2px;
+  }
+  .ui-link:hover { text-decoration: underline; }
+
+  /* Secondary action pill (tap-sized, quiet). */
+  .ui-chip-btn {
+    display: inline-flex;
+    min-height: var(--touch-target);
+    align-items: center;
+    gap: 0.375rem;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    background: var(--surface-raised);
+    padding: 0 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    transition: border-color var(--motion-fast), background-color var(--motion-fast);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .ui-chip-btn:hover { border-color: var(--border-strong); background: var(--surface-muted); }
+  }
+  .ui-chip-btn:disabled { opacity: 0.6; }
+  .ui-chip-btn--brand { color: var(--brand); }
+}
+
 /* ─── Home AI core — motion mirrors real work state only ─── */
 .home-core {
   --core-tone: var(--primary);
@@ -973,14 +1093,6 @@ html[data-theme="dark"] .home-core-orb__check {
 }
 .home-core-text {
   animation: fade-up var(--motion-base) both;
-}
-.home-core-chevron {
-  font-size: 1.25rem;
-  line-height: 1;
-  transition: transform var(--motion-fast);
-}
-@media (hover: hover) and (pointer: fine) {
-  .home-core:hover .home-core-chevron { transform: translateX(2px); }
 }
 
 @keyframes home-core-breathe {

@@ -7,9 +7,9 @@ export function PageHeader({
   actions,
   className,
 }: {
-  eyebrow?: string;
-  title: string;
-  description?: string;
+  eyebrow?: React.ReactNode;
+  title: React.ReactNode;
+  description?: React.ReactNode;
   actions?: React.ReactNode;
   className?: string;
 }) {
@@ -20,17 +20,15 @@ export function PageHeader({
         className,
       )}
     >
-      <div className="min-w-0 space-y-1">
+      <div className="min-w-0 space-y-1.5">
         {eyebrow ? (
-          <p className="text-[var(--text-caption)] text-[var(--text-muted)]">
-            {eyebrow}
-          </p>
+          <p className="ui-eyebrow flex items-center gap-1.5">{eyebrow}</p>
         ) : null}
-        <h1 className="text-[length:var(--text-page-title)] font-semibold tracking-tight text-[var(--text-primary)]">
+        <h1 className="text-[length:var(--text-page-title)] font-semibold leading-tight tracking-tight text-[var(--text-primary)] sm:text-[1.75rem]">
           {title}
         </h1>
         {description ? (
-          <p className="max-w-2xl text-[length:var(--text-body)] leading-[var(--leading-body)] text-[var(--text-secondary)]">
+          <p className="max-w-2xl text-[length:var(--text-label)] leading-relaxed text-[var(--text-secondary)] sm:text-[length:var(--text-body)]">
             {description}
           </p>
         ) : null}
@@ -58,19 +56,13 @@ export function SectionHeader({
   const Heading = heading;
   return (
     <div className="mb-3 flex items-end justify-between gap-3">
-      <div>
-        <Heading
-          id={id}
-          className="scroll-mt-24 text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]">
+      <div className="min-w-0">
+        <Heading id={id} className="ui-section-title scroll-mt-24">
           {title}
         </Heading>
-        {description ? (
-          <p className="mt-0.5 text-[var(--text-caption)] text-[var(--text-muted)]">
-            {description}
-          </p>
-        ) : null}
+        {description ? <p className="ui-section-desc">{description}</p> : null}
       </div>
-      {action}
+      {action ? <div className="shrink-0">{action}</div> : null}
     </div>
   );
 }

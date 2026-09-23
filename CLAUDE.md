@@ -22,6 +22,7 @@
 - ホームのデータ整形: `lib/automation-first/home-model.ts`, `home-data.ts`, `home-core-state.ts`。
 - LP（未ログイン `/`）: `components/landing/landing-page.tsx`。
 - デザイントークン/アニメ: `app/globals.css`（:root トークン, `html[data-theme=dark]`, `html.motion-lite`, reduced-motion）、`lib/motion/tokens.ts`。
+- **UIキット（デザイン統一の基準）**: `app/globals.css` の `@layer components` 内 `.ui-card` / `.ui-card-pad` / `.ui-card-interactive` / `.ui-list` + `.ui-row` / `.ui-row-link` / `.ui-chevron` / `.ui-icon-tile` / `.ui-eyebrow` / `.ui-section-title` / `.ui-section-desc` / `.ui-link` / `.ui-chip-btn`。`components/ui/card.tsx`（113ファイルで使用）と `Panel` もこれを使う。新規UIは独自の border/radius/shadow を書かずにこれを使う。見出しは `components/automation-first/page-header.tsx` の `PageHeader` / `SectionHeader`。
 - 表示確認用サンドボックス: `/dev/automation-first-preview`（非本番・`ATLAS_DEV_PREVIEW_OPEN=1` で開放、フィクスチャ付き）。
 
 ## 認証 / API / DB / 課金 / デプロイ

@@ -252,33 +252,33 @@ export function TodayWorkPage({
             />
           </div>
           <aside className="mt-6 space-y-4 lg:mt-0">
-            <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-              <h2 className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]">
+            <div className="ui-card ui-card-pad">
+              <h2 className="ui-section-title">
                 今日の状況
               </h2>
               {opsSummary ? (
                 <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <dt className="text-[var(--text-muted)]">実行中</dt>
-                    <dd className="text-lg font-semibold">
+                    <dd className="text-xl font-semibold tracking-tight tabular-nums">
                       <AnimatedNumber value={opsSummary.counts.running} />
                     </dd>
                   </div>
                   <div>
                     <dt className="text-[var(--text-muted)]">承認待ち</dt>
-                    <dd className="text-lg font-semibold">
+                    <dd className="text-xl font-semibold tracking-tight tabular-nums">
                       <AnimatedNumber value={opsSummary.counts.awaitingApproval} />
                     </dd>
                   </div>
                   <div>
                     <dt className="text-[var(--text-muted)]">入力待ち</dt>
-                    <dd className="text-lg font-semibold">
+                    <dd className="text-xl font-semibold tracking-tight tabular-nums">
                       <AnimatedNumber value={opsSummary.counts.needsInput} />
                     </dd>
                   </div>
                   <div>
                     <dt className="text-[var(--text-muted)]">本日失敗</dt>
-                    <dd className="text-lg font-semibold">
+                    <dd className="text-xl font-semibold tracking-tight tabular-nums">
                       <AnimatedNumber value={opsSummary.counts.failedToday} />
                     </dd>
                   </div>
@@ -290,7 +290,7 @@ export function TodayWorkPage({
               )}
               <Link
                 href="/automations"
-                className="mt-4 inline-flex min-h-[var(--touch-target)] items-center text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+                className="ui-link mt-2"
               >
                 自動化一覧へ
               </Link>

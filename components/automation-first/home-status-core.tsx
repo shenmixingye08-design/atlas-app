@@ -67,10 +67,7 @@ export function HomeStatusCore({ state }: { state: HomeCoreState }) {
         ) : null}
       </span>
       {state.href ? (
-        <span
-          aria-hidden
-          className="home-core-chevron shrink-0 text-[var(--text-muted)]"
-        >
+        <span aria-hidden className="ui-chevron">
           ›
         </span>
       ) : null}
@@ -78,9 +75,8 @@ export function HomeStatusCore({ state }: { state: HomeCoreState }) {
   );
 
   const className = cn(
-    "home-core group flex min-h-[var(--touch-target)] items-center gap-3 rounded-[var(--radius-2xl)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3.5 py-2.5 shadow-[var(--shadow-subtle)]",
-    state.href &&
-      "motion-press-card focus-ring transition-[border-color,box-shadow] duration-[var(--motion-fast)] [@media(hover:hover)_and_(pointer:fine)]:hover:border-[var(--border-strong)]",
+    "home-core ui-card group flex min-h-[3.75rem] items-center gap-3 px-4 py-3",
+    state.href && "motion-press-card ui-card-interactive focus-ring",
   );
 
   return (

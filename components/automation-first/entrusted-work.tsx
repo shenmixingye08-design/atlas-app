@@ -11,17 +11,27 @@ export function NewUserValueSteps() {
   return (
     <ol
       data-testid="new-user-value-steps"
-      className="grid grid-cols-1 gap-2.5"
+      className="grid grid-cols-1 gap-2.5 sm:grid-cols-3"
     >
       {NEW_USER_VALUE_STEPS.map((step, index) => (
         <li
           key={step.id}
-          className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] px-3.5 py-3"
+          className="ui-card flex items-start gap-3 px-4 py-3.5 sm:flex-col sm:gap-2"
         >
-          <p className="text-[length:var(--text-meta)] font-semibold text-[var(--brand)]">
-            {index + 1}. {step.title}
-          </p>
-          <p className="mt-0.5 text-sm text-[var(--text-secondary)]">{step.body}</p>
+          <span
+            aria-hidden
+            className="ui-icon-tile h-7 w-7 rounded-lg text-[length:var(--text-label)] font-bold"
+          >
+            {index + 1}
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-[var(--text-primary)]">
+              {step.title}
+            </span>
+            <span className="mt-0.5 block text-[length:var(--text-caption)] leading-relaxed text-[var(--text-secondary)]">
+              {step.body}
+            </span>
+          </span>
         </li>
       ))}
     </ol>
@@ -41,25 +51,25 @@ export function EntrustedWorkList({ cards }: { cards: EntrustedWorkCard[] }) {
         title="MINERVOTに任せた仕事"
         description="実データのみ。デモ履歴は出しません"
       />
-      <ul className="divide-y divide-[var(--border)] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)]">
+      <ul className="ui-card ui-list">
         {cards.map((card) => (
-          <li
-            key={card.id}
-            className="flex items-center justify-between gap-3 px-3.5 py-2.5"
-          >
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-[var(--text-primary)]">
-                {card.title}
-              </p>
-              <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                {card.detail}
-              </p>
-            </div>
+          <li key={card.id}>
             <Link
               href={card.href}
-              className="inline-flex min-h-[var(--touch-target)] shrink-0 items-center text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+              className="ui-row ui-row-link focus-ring min-h-[var(--touch-target)]"
             >
-              続きをやる
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-[var(--text-primary)]">
+                  {card.title}
+                </span>
+                <span className="block text-[length:var(--text-caption)] text-[var(--text-muted)]">
+                  {card.detail}
+                </span>
+              </span>
+              <span className="shrink-0 text-[length:var(--text-label)] font-semibold text-[var(--brand)]">
+                続きをやる
+              </span>
+              <span aria-hidden className="ui-chevron">›</span>
             </Link>
           </li>
         ))}
@@ -74,7 +84,7 @@ export function MeasuredValueMetrics({ metrics }: { metrics: ValueMetric[] }) {
     <section
       aria-labelledby="af-value-metrics-heading"
       data-testid="value-metrics"
-      className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5"
+      className="ui-card ui-card-pad"
     >
       <h3
         id="af-value-metrics-heading"
@@ -82,7 +92,7 @@ export function MeasuredValueMetrics({ metrics }: { metrics: ValueMetric[] }) {
       >
         計測できた実績
       </h3>
-      <dl className="mt-2.5 grid grid-cols-2 gap-2.5 text-sm sm:grid-cols-4">
+      <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
         {metrics.map((metric) => (
           <div key={metric.id}>
             <dt className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
