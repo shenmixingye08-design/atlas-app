@@ -28,3 +28,14 @@ export const ARTIFACT_TYPE_LABEL: Record<ArtifactFileType, string> = {
   pptx: "PowerPoint",
   other: "成果物",
 };
+
+/** User-facing label for AutomationRunArtifact.kind (never show raw enum). */
+export const ARTIFACT_KIND_LABEL: Record<
+  "deliverable" | "external" | "draft" | "file",
+  string
+> = {
+  deliverable: "成果物",
+  external: "外部サービスへの反映",
+  draft: "下書き",
+  file: "ファイル",
+};

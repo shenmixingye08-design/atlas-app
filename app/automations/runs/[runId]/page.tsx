@@ -3,6 +3,8 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
 import { RunReviewPanel } from "@/components/automations/v2/run-review-panel";
+import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
+import { LoadingState } from "@/components/ui/loading-state";
 import { automationPlatformService } from "@/lib/automation-platform/service/automation-service";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
@@ -29,10 +31,10 @@ export default async function AutomationRunPage({ params }: PageProps) {
   }
 
   return (
-    <main className="min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
-      <Suspense fallback={<p className="p-4 text-sm">読み込み中…</p>}>
+    <AtlasAppShell active="automations" width="narrow">
+      <Suspense fallback={<LoadingState message="実行の詳細を読み込んでいます…" />}>
         <RunReviewPanel runId={runId} initialRun={initialRun} />
       </Suspense>
-    </main>
+    </AtlasAppShell>
   );
 }

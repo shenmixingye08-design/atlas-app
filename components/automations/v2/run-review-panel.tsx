@@ -4,6 +4,11 @@ import { scheduleMountWork } from "@/lib/react/schedule-mount-work";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 
+import {
+  ARTIFACT_KIND_LABEL,
+  ARTIFACT_TYPE_LABEL,
+  artifactFileTypeFromLabel,
+} from "@/lib/automation-first/artifact-type";
 import type { AutomationRun } from "@/lib/automation-platform/types";
 import {
   approveAutomationRun,
@@ -233,6 +238,57 @@ export function RunReviewPanel({
     "skipped",
   ].includes(run.status);
   const failedStepId = run.failedStepId;
+  const artifactsFirst =
+    (run.status === "succeeded" || run.status === "partially_succeeded") &&
+    run.artifacts.length > 0;
+  const artifactsSection = (
+    <section id="artifacts" className="space-y-2">
+      <h2 className="text-sm font-medium">成果物</h2>
+      {run.artifacts.length === 0 ? (
+        <p className="text-sm text-[var(--muted)]">まだありません</p>
+      ) : (
+        <ul className="space-y-2">
+          {run.artifacts.map((artifact) => {
+            const fileType = artifactFileTypeFromLabel(artifact.label);
+            const external = Boolean(
+              artifact.url && /^https?:\/\//i.test(artifact.url),
+            );
+            return (
+              <li
+                key={artifact.id}
+                id={`artifact-${artifact.id}`}
+                className="scroll-mt-24 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-3 text-sm transition-shadow duration-[var(--motion-base)] target:border-[var(--border-focus)] target:shadow-[0_0_0_3px_var(--brand-muted)]"
+              >
+                <p className="font-medium break-words">{artifact.label}</p>
+                <p className="text-xs text-[var(--muted)]">
+                  {fileType === "other"
+                    ? ARTIFACT_KIND_LABEL[artifact.kind]
+                    : ARTIFACT_TYPE_LABEL[fileType]}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {artifact.url ? (
+                    <a
+                      href={artifact.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-brand min-h-[var(--touch-target)]"
+                    >
+                      {external ? "開く" : "開く / ダウンロード"}
+                    </a>
+                  ) : (
+                    <span className="text-xs text-[var(--muted)]">
+                      保存先リンクはまだありません
+                    </span>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+
   const headline = formatRunHeadline(run);
   const scheduleExtra =
     preparation?.scheduledLabel &&
@@ -242,7 +298,7 @@ export function RunReviewPanel({
       : "";
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col gap-5 px-4 pb-[calc(7.5rem+env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
+    <div className="mx-auto flex w-full max-w-lg flex-col gap-5 pb-8">
       <header className="space-y-1">
         <p className="text-xs text-[var(--muted)]">実行の詳細</p>
         <h1 className="text-xl font-semibold tracking-tight">
@@ -253,6 +309,8 @@ export function RunReviewPanel({
           {scheduleExtra}
         </p>
       </header>
+
+      {artifactsFirst ? artifactsSection : null}
 
       {run.status === "partially_succeeded" && failureView ? (
         <section
@@ -440,43 +498,7 @@ export function RunReviewPanel({
         </ol>
       </section>
 
-      <section id="artifacts" className="space-y-2">
-        <h2 className="text-sm font-medium">成果物</h2>
-        {run.artifacts.length === 0 ? (
-          <p className="text-sm text-[var(--muted)]">まだありません</p>
-        ) : (
-          <ul className="space-y-2">
-            {run.artifacts.map((artifact) => (
-              <li
-                key={artifact.id}
-                id={`artifact-${artifact.id}`}
-                className="rounded-2xl bg-[var(--surface-muted)] px-3 py-3 text-sm"
-              >
-                <p className="font-medium">{artifact.label}</p>
-                <p className="text-xs text-[var(--muted)]">{artifact.kind}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {artifact.url ? (
-                    <>
-                      <a
-                        href={artifact.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-accent underline"
-                      >
-                        開く / ダウンロード
-                      </a>
-                    </>
-                  ) : (
-                    <span className="text-xs text-[var(--muted)]">
-                      保存先リンクはまだありません
-                    </span>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+{artifactsFirst ? null : artifactsSection}
 
       <section className="space-y-2 text-sm">
         <h2 className="text-sm font-medium">手順の詳細</h2>

@@ -21,6 +21,8 @@
   --text-secondary: oklch(40% 0.02 40);
   --text-tertiary: oklch(46% 0.016 40);
   --text-muted: var(--text-tertiary);
+  /* Legacy alias used by run/automation v2 screens as text-[var(--muted)] */
+  --muted: var(--text-muted);
 
   /* Legacy aliases — keep for existing components */
   --foreground: var(--text-primary);
