@@ -641,8 +641,7 @@ export function AutomationFirstHome({
         </h1>
         <p className="text-[length:var(--text-caption)] text-[var(--text-secondary)] sm:text-[length:var(--text-body)]">
           {formatTodayDateLabel(now)}
-          {" — "}
-          {HOME_X_AUTOMATION_SUPPORT}
+          {isReturningUser ? null : ` — ${HOME_X_AUTOMATION_SUPPORT}`}
         </p>
       </header>
 
