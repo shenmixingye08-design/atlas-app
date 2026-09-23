@@ -192,10 +192,12 @@
 
 /* Automation First design system — calm brand accent for app shell */
 html.automation-design-system {
+  /* --accent-muted / --accent-foreground are NOT re-aliased here:
+     :root defines --brand-muted/--brand-foreground from them, so aliasing
+     back creates a var() cycle (both become invalid → invisible tints,
+     dark CTA text). */
   --accent: var(--brand);
   --accent-hover: var(--brand-hover);
-  --accent-muted: var(--brand-muted);
-  --accent-foreground: var(--brand-foreground);
   --border-focus: color-mix(in srgb, var(--brand) 55%, transparent);
 }
 
