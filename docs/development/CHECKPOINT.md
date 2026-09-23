@@ -1,5 +1,30 @@
 # CHECKPOINT（最新が先頭）
 
+## 2026-09-23 #5 — 実行詳細ページ＋新規ユーザーの「生きている」感
+
+### 今回変更したもの
+1. **実行詳細 `/automations/runs/[runId]`**（ホームの成果物カードの遷移先）: アプリシェル外でナビが無かった → `AtlasAppShell` で包む。完了済み run では成果物を最上部に。種別を日本語表示（raw の `deliverable`/`external` を出さない、`ARTIFACT_KIND_LABEL`）、開くボタンを `.btn-brand` 化、`#artifact-*` の対象をハイライト。
+2. **未定義トークン `--muted` を定義**（`text-[var(--muted)]` が58箇所で無効 → 薄字にならず本文色になっていた）。
+3. **新規ユーザー**: 挨拶の横に小さな待機オーブ（`HomeCoreBadge`）。リピーターは従来どおり AIコアのカード。
+- テスト: `lib/automation-first/run-review-rendering.test.ts`（成果物の位置・日本語ラベル）を追加。
+
+### テスト
+- tsc / eslint OK、`lib/automation-platform lib/design-system lib/automation-first` 311件+ OK、CI ban n03/n04/n07/p1-09 pass。
+- 実行詳細は認証必須のためブラウザ確認不可 → サーバーレンダリングのテストで確認。
+
+### 未検証（実認証・X連携が必要）
+- `/workspace/x`（新規ユーザーの主要導線、`x-autopost-panel.tsx` 1000行）。実環境の Preview で最初の1件完了までを確認したい。
+
+### 次に最も価値が高い改善
+1. Vercel Preview（実認証）で `/workspace/x` → 初回完了 → ホームで AIコア完了表示、までの通し確認。
+2. `run-review-panel.tsx` の他セクション（タイムライン・手順）の視覚整理（`rounded-2xl bg-[var(--surface-muted)]` の平板なリスト）。
+3. PR 作成（ユーザーの指示待ち）。
+
+### 触るファイル
+`components/automations/v2/run-review-panel.tsx`, `components/workspace/x-autopost-panel.tsx`
+
+---
+
 ## 2026-09-23 #4 — 連続サイクル（壊れ修正中心）
 
 ### 今回変更したもの（コミット順）

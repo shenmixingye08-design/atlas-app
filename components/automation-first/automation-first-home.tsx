@@ -15,7 +15,10 @@ import {
 } from "@/components/automation-first/entrusted-work";
 import { ErrorState } from "@/components/automation-first/error-state";
 import { HomePrimaryActions } from "@/components/automation-first/home-primary-actions";
-import { HomeStatusCore } from "@/components/automation-first/home-status-core";
+import {
+  HomeCoreBadge,
+  HomeStatusCore,
+} from "@/components/automation-first/home-status-core";
 import { WorkCountStrip, YourWorkList } from "@/components/automation-first/your-work";
 import { SectionHeader } from "@/components/automation-first/page-header";
 import { RecentDeliverables } from "@/components/automation-first/recent-deliverables";
@@ -576,6 +579,11 @@ export function AutomationFirstHome({
     ],
   );
 
+  const showCore =
+    isReturningUser ||
+    coreState.kind === "checking" ||
+    coreState.kind === "completed";
+
   const dashboardHasContent = Boolean(
     attentionSection ||
       timelineSection ||
@@ -594,7 +602,8 @@ export function AutomationFirstHome({
       className="automation-first-home space-y-6 pb-6 sm:space-y-8"
     >
       <header className="space-y-1.5">
-        <p className="text-[length:var(--text-label)] font-semibold tracking-[0.08em] text-[var(--brand)]">
+        <p className="flex items-center gap-1.5 text-[length:var(--text-label)] font-semibold tracking-[0.08em] text-[var(--brand)]">
+          {showCore ? null : <HomeCoreBadge />}
           {greetingForHour(now.getHours())}
         </p>
         <h1 className="text-[length:var(--text-page-title)] font-semibold tracking-tight text-[var(--text-primary)] sm:text-[length:var(--text-display)]">
@@ -606,9 +615,7 @@ export function AutomationFirstHome({
         </p>
       </header>
 
-      {isReturningUser ||
-      coreState.kind === "checking" ||
-      coreState.kind === "completed" ? (
+      {showCore ? (
         <HomeStatusCore state={coreState} />
       ) : null}
 

@@ -959,6 +959,18 @@ html.motion-lite ::view-transition-new(.minervot-page) {
 html[data-theme="dark"] .home-core-orb__check {
   color: var(--background);
 }
+.home-core--inline {
+  display: inline-flex;
+  vertical-align: middle;
+}
+.home-core--inline .home-core-orb {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+.home-core--inline .home-core-orb__core {
+  width: 0.5rem;
+  height: 0.5rem;
+}
 .home-core-text {
   animation: fade-up var(--motion-base) both;
 }
