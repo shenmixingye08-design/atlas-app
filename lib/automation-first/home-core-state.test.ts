@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveHomeCoreState } from "./home-core-state";
+import type { AutomationRun } from "@/lib/automation-platform/types";
+
+import {
+  activeRunIds,
+  deriveHomeCoreState,
+  findNewlyCompletedRun,
+} from "./home-core-state";
+
+function run(id: string, status: AutomationRun["status"], artifacts: AutomationRun["artifacts"] = []) {
+  return { id, status, automationName: `job ${id}`, artifacts } as unknown as AutomationRun;
+}
 
 const base = {
   checking: false,
@@ -49,5 +59,43 @@ describe("deriveHomeCoreState", () => {
     const empty = deriveHomeCoreState(base);
     expect(empty.kind).toBe("idle");
     expect(empty.label).not.toMatch(/\d/);
+  });
+});
+
+describe("live completion detection", () => {
+  const artifact = {
+    id: "a1",
+    kind: "deliverable" as const,
+    label: "週次レポート.xlsx",
+    url: null,
+    externalId: null,
+    createdAt: "2026-09-23T00:00:00.000Z",
+  };
+
+  it("tracks only active runs", () => {
+    expect([...activeRunIds([run("1", "running"), run("2", "succeeded"), run("3", "queued")])]).toEqual([
+      "1",
+      "3",
+    ]);
+  });
+
+  it("detects a previously active run that succeeded", () => {
+    const done = findNewlyCompletedRun(new Set(["1"]), [run("1", "succeeded", [artifact])]);
+    expect(done).toEqual({
+      runId: "1",
+      title: "job 1",
+      artifactLabel: "週次レポート.xlsx",
+      href: "/automations/runs/1#artifact-a1",
+    });
+    expect(deriveHomeCoreState({ ...base, attentionCount: 1, justCompleted: done }).kind).toBe(
+      "completed",
+    );
+  });
+
+  it("never celebrates partial success, failure or unseen runs", () => {
+    expect(findNewlyCompletedRun(new Set(["1"]), [run("1", "partially_succeeded")])).toBeNull();
+    expect(findNewlyCompletedRun(new Set(["1"]), [run("1", "failed")])).toBeNull();
+    expect(findNewlyCompletedRun(new Set(), [run("1", "succeeded")])).toBeNull();
+    expect(findNewlyCompletedRun(new Set(["2"]), [run("1", "succeeded")])).toBeNull();
   });
 });

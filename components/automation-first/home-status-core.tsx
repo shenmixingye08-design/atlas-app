@@ -13,10 +13,29 @@ import { cn } from "@/lib/design-system/cn";
 export function HomeStatusCore({ state }: { state: HomeCoreState }) {
   const body = (
     <>
-      <span className="home-core-orb" aria-hidden>
+      <span
+        className={cn(
+          "home-core-orb",
+          state.kind === "completed" && "motion-complete-bloom",
+        )}
+        aria-hidden
+      >
         <span className="home-core-orb__halo" />
         <span className="home-core-orb__ring" />
         <span className="home-core-orb__core" />
+        {state.kind === "completed" ? (
+          <svg viewBox="0 0 24 24" className="home-core-orb__check">
+            <path
+              d="M7.5 12.4 10.6 15.5 16.5 9"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="motion-complete-check"
+            />
+          </svg>
+        ) : null}
       </span>
       <span
         key={`${state.kind}:${state.label}`}

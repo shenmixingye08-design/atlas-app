@@ -3,7 +3,10 @@
  * Never invent progress: every state maps to counts the home already loaded.
  */
 
+import type { AutomationRun } from "@/lib/automation-platform/types";
+
 export type HomeCoreStateKind =
+  | "completed"
   | "checking"
   | "attention"
   | "running"
@@ -20,7 +23,59 @@ export type HomeCoreState = {
   href: string | null;
 };
 
+/** A run observed as running earlier in this session that has now succeeded. */
+export type HomeCompletedRun = {
+  runId: string;
+  title: string;
+  artifactLabel: string | null;
+  href: string;
+};
+
+/** Poll interval while work is running (only then; never when idle). */
+export const HOME_LIVE_REFRESH_MS = 20_000;
+/** How long the completion moment stays on the core. */
+export const HOME_COMPLETED_HOLD_MS = 6_000;
+
+const ACTIVE_RUN_STATUSES = new Set<AutomationRun["status"]>([
+  "running",
+  "queued",
+  "retrying",
+  "preparing",
+]);
+
+export function activeRunIds(runs: readonly AutomationRun[]): Set<string> {
+  return new Set(
+    runs.filter((run) => ACTIVE_RUN_STATUSES.has(run.status)).map((run) => run.id),
+  );
+}
+
+/**
+ * Only a run we saw active before and that is now fully `succeeded` counts.
+ * Partial success / failure never celebrates (attention covers those).
+ */
+export function findNewlyCompletedRun(
+  previouslyActive: ReadonlySet<string>,
+  runs: readonly AutomationRun[],
+): HomeCompletedRun | null {
+  if (previouslyActive.size === 0) return null;
+  const run = runs.find(
+    (item) => previouslyActive.has(item.id) && item.status === "succeeded",
+  );
+  if (!run) return null;
+  const artifact = run.artifacts[0] ?? null;
+  return {
+    runId: run.id,
+    title: run.automationName,
+    artifactLabel: artifact?.label ?? null,
+    href: `/automations/runs/${encodeURIComponent(run.id)}${
+      artifact ? `#artifact-${encodeURIComponent(artifact.id)}` : ""
+    }`,
+  };
+}
+
 export type HomeCoreStateInput = {
+  /** Set briefly after a run finishes while the home is open. */
+  justCompleted?: HomeCompletedRun | null;
   /** Ops data is still loading and nothing is known yet. */
   checking: boolean;
   attentionCount: number;
@@ -32,6 +87,14 @@ export type HomeCoreStateInput = {
 };
 
 export function deriveHomeCoreState(input: HomeCoreStateInput): HomeCoreState {
+  if (input.justCompleted) {
+    return {
+      kind: "completed",
+      label: `「${input.justCompleted.title}」が完成しました`,
+      detail: input.justCompleted.artifactLabel ?? "結果を確認できます",
+      href: input.justCompleted.href,
+    };
+  }
   if (input.checking) {
     return {
       kind: "checking",

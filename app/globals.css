@@ -884,6 +884,7 @@ html.motion-lite ::view-transition-new(.minervot-page) {
   --core-speed: 2.2s;
 }
 .home-core[data-state="scheduled"] { --core-tone: var(--accent-gold); }
+.home-core[data-state="completed"] { --core-tone: var(--success); --core-speed: 3s; }
 
 .home-core-orb {
   position: relative;
@@ -939,6 +940,20 @@ html.motion-lite ::view-transition-new(.minervot-page) {
 .home-core[data-state="checking"] .home-core-orb__ring {
   opacity: 1;
   animation: home-core-orbit 1.6s linear infinite;
+}
+.home-core[data-state="completed"] .home-core-orb__core {
+  width: 1.5rem;
+  height: 1.5rem;
+  animation: motion-complete-ring var(--motion-complete) both;
+}
+.home-core-orb__check {
+  position: absolute;
+  width: 1.5rem;
+  height: 1.5rem;
+  color: oklch(99% 0.005 70);
+}
+html[data-theme="dark"] .home-core-orb__check {
+  color: var(--background);
 }
 .home-core-text {
   animation: fade-up var(--motion-base) both;

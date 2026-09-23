@@ -1,5 +1,34 @@
 # CHECKPOINT（最新が先頭）
 
+## 2026-09-23 #3 — ホームのライブ更新＋完了モーション
+
+### 今回変更したもの
+- `lib/automation-first/home-core-state.ts`(+test): `activeRunIds` / `findNewlyCompletedRun`（このセッションで実行中を観測した run が **succeeded** になった時のみ。partial/failed は祝わない）と `completed` 状態を追加。
+- `automation-first-home.tsx`: 実行中の run がある間だけ、タブ表示中のみ 20 秒ごとに運用データを静かに再取得（タブ復帰時は即時）。完了を検知したら AIコアを6秒間「『◯◯』が完成しました」＋成果物名に切り替え、タップで成果物へ。再取得失敗時は直前のデータを保持（初回ロードのエラー表示は従来通り）。実行中が無ければポーリングしない。
+- `home-status-core.tsx` / `globals.css`: completed 表示（緑のコア拡大＋チェック描画＋既存 `motion-complete-bloom`）。reduced-motion ではチェックが即表示。
+- `lib/automation-first/analytics.ts`: `home_run_completed_live` イベント。
+
+### 改善理由
+ホームを開いたまま仕事が終わっても画面が変わらず、「AIが仕事を進めて完成させた」瞬間が伝わらなかった。実データで完了を検知し、その瞬間を見せる。
+
+### コスト
+AI 呼び出しなし。追加は既存 API の再取得のみで、実行中かつタブ表示中に限定（20秒間隔）。
+
+### テスト / 確認
+- tsc / eslint OK、vitest 68件 OK、CI ban n02/n07/p1-09 pass。
+- Playwright で API をモックし「実行中 → 完了 → 6秒後に通常状態へ戻る」「実行中が無くなるとポーリング停止」を確認。成果物カードも同時に出現。ライト/ダークでスクショ（`verification-screenshots/home-core/live-*.png`）。
+- 注意: dev サーバーは CSS をキャッシュすることがある。見た目がおかしい時は `.next` を消して再起動。
+
+### 次に最も価値が高い改善
+1. `WorkCountStrip` と AIコアの情報重複の整理（ホーム上部をさらに簡潔に）。
+2. `/today` の実行中表示にも同じライブ更新を適用（`today-work-page.tsx`）。
+3. 旧ホーム `secretary-home-dashboard.tsx` の利用有無確認。
+
+### 触るファイル
+`components/automation-first/automation-first-home.tsx`, `components/automation-first/your-work.tsx`, `components/automation-first/today-work-page.tsx`
+
+---
+
 ## 2026-09-23 #2 — ホームの優先順整理＋成果物カード
 
 ### 今回変更したもの
