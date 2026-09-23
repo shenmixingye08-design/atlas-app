@@ -1,5 +1,30 @@
 # CHECKPOINT（最新が先頭）
 
+## 2026-09-23 #4 — 連続サイクル（壊れ修正中心）
+
+### 今回変更したもの（コミット順）
+1. **ホームの「今すぐ実行／一時停止／再開」が何も更新しない不具合を修正**（`your-work.tsx`, `projects-dashboard.tsx`）: `onChanged` 未接続・エラー握りつぶしだった。再読込を接続し、実行中表示と結果（完了＋成果物件数／承認待ち／失敗）をその場に表示（`lib/automation-first/run-now-feedback.ts`+test）。次回・前回の時刻が生の ISO 文字列で出ていたのを整形。件数帯を1行に。
+2. **リピーター向けに主要CTAを1行化**（`home-primary-actions.tsx`）: 実データがファーストビューに入るように。新規ユーザーは従来の大カード。ヘッダーの重複説明文もリピーターでは省略。
+3. **`/today` にもライブ更新**: ホームのロジックを `lib/automation-first/use-live-ops-refresh.ts` に共通化し、`/today` でも実行中のみ静かに再取得＋完了モーション。
+4. **CSS 変数の循環参照を修正**（`app/globals.css`）: `html.automation-design-system` で `--accent-muted`/`--accent-foreground` を `--brand-*` に再エイリアスしており循環 → フラグON時に全ての `--brand-muted` 背景が消え、`.btn-brand` の文字が濃色になっていた（ログイン後全画面に影響）。循環検出テスト `lib/design-system/css-var-cycles.test.ts` を追加。
+
+### テスト
+- 全体 vitest: 2777 passed / 3 failed（PDF 3件は poppler 不在の環境要因。base コミットでも同じ失敗を確認）。
+- CI ban n02/n07/p1-09 pass。Playwright で実行ボタンの成功・失敗表示、ライブ完了、新規ユーザーCTAの配色を確認。
+
+### 判断メモ
+- 旧ホーム `secretary-home-dashboard.tsx` は `automation_first_home_enabled` が OFF の時のフォールバックとして残す（本番フラグ値が不明なため削除しない）。
+
+### 次に最も価値が高い改善
+1. 新規ユーザーのファーストビューに「AIが待機している」感覚（AIコア idle を軽く表示）＋最初の1件までの導線確認（`/workspace/x`）。
+2. `/automations/runs/[id]` の成果物表示（ホームのカードから遷移する先）の完成度確認。
+3. 他画面の `.btn-brand` / `--brand-muted` 利用箇所を目視確認（今回の CSS 修正の恩恵確認）。
+
+### 触るファイル
+`components/automation-first/automation-first-home.tsx`, `app/automations/runs/`, `components/workspace/x-autopost-panel.tsx`
+
+---
+
 ## 2026-09-23 #3 — ホームのライブ更新＋完了モーション
 
 ### 今回変更したもの

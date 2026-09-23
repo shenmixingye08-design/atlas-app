@@ -37,7 +37,10 @@
   → Playwright は `executablePath:"/opt/pw-browsers/chromium", args:["--no-proxy-server"]`、cookie `__clerk_db_jwt=dvb_dummy` を付与し `*.clerk.accounts.dev` を abort すると `/dev/automation-first-preview` が描画できる。
 
 ## 既知の問題
-- `lib/work-asset/phase2.test.ts` "pauses schedule…runNow" が main でも 5s タイムアウト（既存）。
+- `lib/work-asset/phase2.test.ts` "pauses schedule…runNow" が main でも 5s タイムアウト（既存）。（単体実行時。全体実行では通ることがある）
+- `lib/deliverables/pdf-quality.test.ts` / `pdf-table-p1-01.test.ts` の3件は poppler-utils（`pdftotext`/`pdftoppm`）が無い環境で失敗。コード不具合ではない。
+- dev サーバーが古い CSS を配信することがある → `.next` を削除して再起動。
+- CSS 変数の循環参照は `lib/design-system/css-var-cycles.test.ts` で検出（`html.automation-design-system` で `--accent-*` を `--brand-*` に再エイリアスしないこと）。
 
 ## 変更禁止 / 要注意
 - AGENTS.md「変更しないコア」（Planner, Deliverable, Automation/Workflow本体, エコモード, User Profile, Proactive Suggestions, 今日のダッシュボードコア）。
