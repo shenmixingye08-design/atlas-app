@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AnimatedNumber } from "@/components/motion/animated-number";
 import { ContentSwap } from "@/components/motion/content-swap";
@@ -35,12 +35,10 @@ import {
 } from "@/lib/automation-first/home-data";
 import {
   HOME_COMPLETED_HOLD_MS,
-  HOME_LIVE_REFRESH_MS,
-  activeRunIds,
   deriveHomeCoreState,
-  findNewlyCompletedRun,
   type HomeCompletedRun,
 } from "@/lib/automation-first/home-core-state";
+import { useLiveOpsRefresh } from "@/lib/automation-first/use-live-ops-refresh";
 import {
   applyOpsSummaryToHomeSummary,
   buildHomeAttentionItems,
@@ -188,9 +186,7 @@ export function AutomationFirstHome({
   const [runs, setRuns] = useState<AutomationRun[]>([]);
   const [opsRequestId, setOpsRequestId] = useState(0);
   const [xPostedThisMonth, setXPostedThisMonth] = useState<number | null>(null);
-  const [opsLiveTick, setOpsLiveTick] = useState(0);
   const [justCompleted, setJustCompleted] = useState<HomeCompletedRun | null>(null);
-  const lastRunsRef = useRef<AutomationRun[]>([]);
 
   useEffect(() => {
     if (!opsEnabled) return;
@@ -209,7 +205,6 @@ export function AutomationFirstHome({
         if (cancelled) return;
         setOpsSummary(summary);
         setRuns(nextRuns);
-        lastRunsRef.current = nextRuns;
         setOpsError(null);
       })
       .catch((error: unknown) => {
@@ -230,54 +225,20 @@ export function AutomationFirstHome({
     };
   }, [opsEnabled, opsRequestId]);
 
-  // Silent refresh while work is running: keeps last known data on failure
-  // (the initial load above still surfaces errors), detects real completion.
-  useEffect(() => {
-    if (!opsEnabled || opsLiveTick === 0) return;
-    let cancelled = false;
-    void Promise.all([
-      fetchAutomationOperationsSummary(),
-      fetchAutomationRunsAll({ sort: "newest" }),
-    ])
-      .then(([summary, nextRuns]) => {
-        if (cancelled) return;
-        const completed = findNewlyCompletedRun(
-          activeRunIds(lastRunsRef.current),
-          nextRuns,
-        );
-        lastRunsRef.current = nextRuns;
-        setOpsSummary(summary);
-        setRuns(nextRuns);
-        if (completed) {
-          setJustCompleted(completed);
-          trackAutomationFirstEvent("home_run_completed_live", {
-            id: completed.runId,
-          });
-        }
-      })
-      .catch(() => {
-        // Next tick retries; stale data is never presented as new success.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [opsEnabled, opsLiveTick]);
-
-  const hasActiveRuns = activeRunIds(runs).size > 0;
-  useEffect(() => {
-    if (!opsEnabled || !hasActiveRuns) return;
-    const tick = () => {
-      if (document.visibilityState === "visible") {
-        setOpsLiveTick((value) => value + 1);
+  const { refreshNow: refreshOpsNow } = useLiveOpsRefresh({
+    enabled: opsEnabled,
+    runs,
+    onUpdate: ({ summary, runs: nextRuns, completed }) => {
+      setOpsSummary(summary);
+      setRuns(nextRuns);
+      if (completed) {
+        setJustCompleted(completed);
+        trackAutomationFirstEvent("home_run_completed_live", {
+          id: completed.runId,
+        });
       }
-    };
-    const timer = window.setInterval(tick, HOME_LIVE_REFRESH_MS);
-    document.addEventListener("visibilitychange", tick);
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", tick);
-    };
-  }, [opsEnabled, hasActiveRuns]);
+    },
+  });
 
   useEffect(() => {
     if (!justCompleted) return;
@@ -737,7 +698,7 @@ export function AutomationFirstHome({
             works={works}
             onChanged={() => {
               onAutomationsChanged?.();
-              setOpsLiveTick((value) => value + 1);
+              refreshOpsNow();
             }}
           />
           <EntrustedWorkList cards={entrustedCards} />

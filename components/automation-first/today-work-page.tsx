@@ -9,9 +9,16 @@ import { MOTION_PLAY_KEYS } from "@/lib/motion/tokens";
 import { EmptyState } from "@/components/automation-first/empty-state";
 import { ErrorState } from "@/components/automation-first/error-state";
 import { PageHeader } from "@/components/automation-first/page-header";
+import { HomeStatusCore } from "@/components/automation-first/home-status-core";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
 import { Timeline } from "@/components/automation-first/timeline";
 import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
+import {
+  HOME_COMPLETED_HOLD_MS,
+  deriveHomeCoreState,
+  type HomeCompletedRun,
+} from "@/lib/automation-first/home-core-state";
+import { useLiveOpsRefresh } from "@/lib/automation-first/use-live-ops-refresh";
 import {
   buildRunningJobsFromRuns,
   mapOpsTodayWorkToTimeline,
@@ -56,6 +63,33 @@ export function TodayWorkPage({
   const [runs, setRuns] = useState<AutomationRun[]>([]);
   const [opsError, setOpsError] = useState<string | null>(null);
   const [opsRequestId, setOpsRequestId] = useState(0);
+  const [justCompleted, setJustCompleted] = useState<HomeCompletedRun | null>(null);
+
+  useLiveOpsRefresh({
+    enabled: opsEnabled && !initialAutomations,
+    runs,
+    onUpdate: ({ summary, runs: nextRuns, completed }) => {
+      setOpsSummary(summary);
+      setRuns(nextRuns);
+      setOpsError(null);
+      if (completed) {
+        setJustCompleted(completed);
+        trackAutomationFirstEvent("home_run_completed_live", {
+          id: completed.runId,
+          source: "today_page",
+        });
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (!justCompleted) return;
+    const timer = window.setTimeout(
+      () => setJustCompleted(null),
+      HOME_COMPLETED_HOLD_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [justCompleted]);
 
   const load = useCallback(() => {
     if (initialAutomations) {
@@ -160,6 +194,18 @@ export function TodayWorkPage({
         title="今日の仕事"
         description="時系列で予定・実行中・確認待ち・完了を確認できます。"
       />
+
+      {justCompleted ? (
+        <HomeStatusCore
+          state={deriveHomeCoreState({
+            justCompleted,
+            checking: false,
+            attentionCount: 0,
+            runningCount: 0,
+            entrustedCount: 0,
+          })}
+        />
+      ) : null}
 
       {opsError ? (
         <ErrorState
