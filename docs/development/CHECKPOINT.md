@@ -1,5 +1,20 @@
 # CHECKPOINT（最新が先頭）
 
+## 2026-09-23 #7 — 自動化画面（/automations）をUIキットへ
+
+- 開発プレビュー `/dev/automation-first-preview` に「自動化」ビューを追加（プレビュー内だけ fetch をフィクスチャに差し替え、実画面の `AutomationsDashboard` を描画）。認証なしで確認可能に。
+- `automation-card.tsx`: 「繰り返し/次回」の灰色ボックス積み上げ → 区切り線付きの2列メタ情報。詳細リンクをキット化。
+- `v2/operations-dashboard.tsx`: 7枚の件数タイル → 1枚のカードに横並び（0件は薄字）。対応が必要／本日のタイムラインを `ui-list` 行に。最近の成果物はホームと同じ `RecentDeliverables` を再利用。
+- `automations-dashboard.tsx`: 運用ダッシュボード表示時は重複していた5枚の状態レールを非表示（同じ件数を運用データ側で表示）。「AIが動いている流れ」・見出し・リンクをキット化。`.stat-tile` もキットと同じ角丸・影に。
+- テスト: 関連 481件 pass、CI ban n07/n08/p1-09 pass。before/after: `verification-screenshots/design-unify/*automations*`。
+
+### 次
+1. `/workspace/x`（X投稿、1000行）と `/connections` をプレビュー経由でキット化。
+2. 自動化カード下部の余白が大きい（原因未確認）。
+3. PR 作成（ユーザー指示待ち）。
+
+---
+
 ## 2026-09-23 #6 — デザイン統一（UIキット）
 
 ### 方針

@@ -1182,9 +1182,10 @@ html.motion-lite .home-core-orb__ring {
 
 .stat-tile {
   border: 1px solid var(--border);
-  background: var(--surface-elevated);
-  border-radius: var(--radius-md);
-  padding: 0.65rem 0.75rem;
+  background: var(--surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-subtle);
+  padding: 0.75rem 0.875rem;
   transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
 .stat-tile[data-live="true"] {
