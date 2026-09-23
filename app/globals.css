@@ -308,7 +308,7 @@ html[data-theme="light-warm"] {
   color-scheme: light;
   --accent-red: var(--primary);
   --accent-red-strong: var(--primary-hover);
-  --form-control-bg: var(--surface-raised);
+  --form-control-bg: var(--surface-muted); /* tinted well: visible inside cards even without a border */
   --form-control-surface: var(--surface-muted);
   --form-control-text: var(--text-primary);
   --form-control-muted: var(--text-tertiary);

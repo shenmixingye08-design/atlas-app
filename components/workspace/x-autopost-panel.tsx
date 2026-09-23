@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/automation-first/page-header";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -425,13 +426,16 @@ export function XAutoPostPanel() {
 
   return (
     <div className="space-y-8">
-      <header className="space-y-3">
-        <h1 className="text-display text-foreground">毎日のX投稿</h1>
-        <p className="text-body max-w-2xl text-[var(--foreground-muted)]">
-          テーマと時間を一度決めると、次回から原稿作成〜投稿までMINERVOTが進めます。
-          同じ指示を毎日入力する必要はありません。
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="自動投稿"
+        title="毎日のX投稿"
+        description={
+          <>
+            テーマと時間を一度決めると、次回から原稿作成〜投稿までMINERVOTが進めます。
+            同じ指示を毎日入力する必要はありません。
+          </>
+        }
+      />
 
       {(error || oauthErrorMessage) && (
         <ErrorState message={error ?? oauthErrorMessage ?? ""} />
@@ -444,7 +448,7 @@ export function XAutoPostPanel() {
 
       {showConnectGate ? (
         <Card padding="md" className="space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">
+          <h2 className="ui-section-title">
             まずXを連携してください
           </h2>
           <p className="text-sm text-[var(--foreground-muted)]">
@@ -468,7 +472,7 @@ export function XAutoPostPanel() {
 
       {justSaved && displayConnected ? (
         <Card padding="md" className="space-y-4" data-testid="x-autopost-saved">
-          <h2 className="text-lg font-semibold text-foreground">
+          <h2 className="ui-section-title">
             毎日のX投稿を設定しました
           </h2>
           <div className="rounded-[var(--radius-lg)] bg-[var(--surface-muted)] p-4">
@@ -518,7 +522,7 @@ export function XAutoPostPanel() {
 
       {trialResult ? (
         <Card padding="md" className="space-y-3" data-testid="x-autopost-trial-result">
-          <h2 className="text-lg font-semibold text-foreground">
+          <h2 className="ui-section-title">
             {trialResult.status === "posted"
               ? "今日のX投稿を完了しました"
               : "今日の原稿を作成しました"}
@@ -546,7 +550,7 @@ export function XAutoPostPanel() {
 
       {lifecycle === "failed" && lastResult ? (
         <Card padding="md" className="space-y-3">
-          <h2 className="text-lg font-semibold text-foreground">
+          <h2 className="ui-section-title">
             前回の実行を完了できませんでした
           </h2>
           <p className="text-sm text-[var(--status-error)]">
@@ -576,7 +580,7 @@ export function XAutoPostPanel() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-3">
-                  <h2 className="text-lg font-semibold text-foreground">
+                  <h2 className="ui-section-title">
                     自動投稿の状態
                   </h2>
                   <Badge variant={form.enabled ? "success" : "default"}>
@@ -638,7 +642,7 @@ export function XAutoPostPanel() {
           </Card>
 
           <Card padding="md" className="space-y-6">
-            <h2 className="text-lg font-semibold text-foreground">投稿方法</h2>
+            <h2 className="ui-section-title">投稿方法</h2>
             <div className="grid gap-3 sm:grid-cols-2">
               <button
                 type="button"
@@ -646,10 +650,11 @@ export function XAutoPostPanel() {
                   setModeChosen(true);
                   update({ mode: "full_auto" });
                 }}
+                aria-pressed={modeChosen && form.mode === "full_auto"}
                 className={
                   modeChosen && form.mode === "full_auto"
-                    ? "min-h-[88px] rounded-[var(--radius-xl)] border-2 border-accent bg-[var(--brand-muted)] p-4 text-left"
-                    : "min-h-[88px] rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--card)] p-4 text-left"
+                    ? "min-h-[88px] rounded-[var(--radius-lg)] border-2 border-accent bg-[var(--brand-muted)] p-4 text-left focus-ring"
+                    : "ui-card ui-card-interactive min-h-[88px] p-4 text-left focus-ring"
                 }
               >
                 <p className="font-semibold text-foreground">自動投稿</p>
@@ -663,10 +668,11 @@ export function XAutoPostPanel() {
                   setModeChosen(true);
                   update({ mode: "approval" });
                 }}
+                aria-pressed={modeChosen && form.mode === "approval"}
                 className={
                   modeChosen && form.mode === "approval"
-                    ? "min-h-[88px] rounded-[var(--radius-xl)] border-2 border-accent bg-[var(--brand-muted)] p-4 text-left"
-                    : "min-h-[88px] rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--card)] p-4 text-left"
+                    ? "min-h-[88px] rounded-[var(--radius-lg)] border-2 border-accent bg-[var(--brand-muted)] p-4 text-left focus-ring"
+                    : "ui-card ui-card-interactive min-h-[88px] p-4 text-left focus-ring"
                 }
               >
                 <p className="font-semibold text-foreground">投稿前に確認</p>
@@ -681,7 +687,7 @@ export function XAutoPostPanel() {
           </Card>
 
           <Card padding="md" className="space-y-6">
-            <h2 className="text-lg font-semibold text-foreground">
+            <h2 className="ui-section-title">
               {slimFirstRun ? "投稿の時間" : "投稿の頻度と時間"}
             </h2>
 
@@ -767,7 +773,7 @@ export function XAutoPostPanel() {
           </Card>
 
           <Card padding="md" className="space-y-6">
-            <h2 className="text-lg font-semibold text-foreground">
+            <h2 className="ui-section-title">
               {slimFirstRun ? "投稿テーマ" : "投稿内容の設定"}
             </h2>
 
@@ -929,7 +935,7 @@ export function XAutoPostPanel() {
 
       {trialConfirmOpen ? (
         <Card padding="md" className="space-y-4" data-testid="x-trial-confirm">
-          <h2 className="text-lg font-semibold text-foreground">
+          <h2 className="ui-section-title">
             {form.mode === "full_auto" ? X_TRIAL_CONFIRM_POST : "今すぐ原稿を作成します"}
           </h2>
           <p className="text-sm text-[var(--foreground-muted)]">
@@ -966,9 +972,9 @@ export function XAutoPostPanel() {
       ) : null}
 
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-foreground">履歴</h2>
+        <h2 className="ui-section-title">履歴</h2>
         {recentRuns.length === 0 ? (
-          <p className="text-sm text-[var(--foreground-muted)]">
+          <p className="ui-card ui-card-pad text-sm text-[var(--text-muted)]">
             自動投稿の履歴はまだありません。
           </p>
         ) : (
@@ -976,7 +982,7 @@ export function XAutoPostPanel() {
             {recentRuns.map((run) => (
               <li
                 key={run.id}
-                className="rounded-[var(--radius-xl)] border border-[var(--border-subtle)] bg-[var(--card)] p-5 shadow-[var(--shadow-sm)]"
+                className="ui-card ui-card-pad"
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="space-y-1">

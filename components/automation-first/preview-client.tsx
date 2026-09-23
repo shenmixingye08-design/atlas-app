@@ -6,12 +6,14 @@ import { AutomationFirstHome } from "@/components/automation-first/automation-fi
 import { TodayWorkPage } from "@/components/automation-first/today-work-page";
 import { AutomationsDashboard } from "@/components/automations/automations-dashboard";
 import { SettingsHub } from "@/components/settings/settings-hub";
+import { XAutoPostPanel } from "@/components/workspace/x-autopost-panel";
+import { XManualPostSection } from "@/components/workspace/x-manual-post-section";
 import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
 import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 import { cn } from "@/lib/design-system/cn";
 
-type View = "home" | "today" | "settings" | "empty" | "automations";
+type View = "home" | "today" | "settings" | "empty" | "automations" | "x";
 
 export function AutomationFirstPreviewClient({
   automations,
@@ -64,6 +66,7 @@ export function AutomationFirstPreviewClient({
             ["today", "今日の仕事"],
             ["settings", "設定ハブ"],
             ["automations", "自動化"],
+            ["x", "X投稿"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -101,6 +104,14 @@ export function AutomationFirstPreviewClient({
       {view === "automations" && fetchShimReady ? (
         <Suspense fallback={null}>
           <AutomationsDashboard />
+        </Suspense>
+      ) : null}
+      {view === "x" ? (
+        <Suspense fallback={null}>
+          <div className="space-y-8">
+            <XAutoPostPanel />
+            <XManualPostSection />
+          </div>
         </Suspense>
       ) : null}
       {view === "settings" ? (

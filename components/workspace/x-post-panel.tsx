@@ -398,9 +398,7 @@ export function XPostPanel() {
   return (
     <div className="space-y-8">
       <header className="space-y-3">
-        <h2 className="text-xl font-semibold text-foreground">
-          必要なときだけ使う手動投稿
-        </h2>
+        <h2 className="ui-section-title">必要なときだけ使う手動投稿</h2>
         <p className="text-body max-w-2xl text-[var(--foreground-muted)]">
           自動投稿とは別に、その場で投稿したいときにご利用いただける手動の投稿欄です。
           今すぐ投稿・予約投稿・下書き・テスト投稿に対応しています。
@@ -450,7 +448,7 @@ export function XPostPanel() {
 
           <Card padding="md" className="space-y-5">
             <div>
-              <h2 className="text-lg font-semibold text-foreground">
+              <h2 className="ui-section-title">
                 {ui.xPost.composeTitle}
               </h2>
               <p className="mt-1 text-sm text-[var(--foreground-muted)]">
@@ -511,7 +509,7 @@ export function XPostPanel() {
           </Card>
 
           <Card padding="md" className="space-y-3">
-            <h2 className="text-lg font-semibold text-foreground">
+            <h2 className="ui-section-title">
               {ui.xPost.automationTitle}
             </h2>
             <p className="text-sm text-[var(--foreground-muted)]">
@@ -519,12 +517,12 @@ export function XPostPanel() {
             </p>
           </Card>
 
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-foreground">
+          <section className="space-y-3">
+            <h2 className="ui-section-title">
               {ui.xPost.draftsTitle}
             </h2>
             {drafts.length === 0 ? (
-              <p className="text-sm text-[var(--foreground-muted)]">
+              <p className="ui-card ui-card-pad text-sm text-[var(--text-muted)]">
                 {ui.xPost.draftsEmpty}
               </p>
             ) : (
@@ -542,12 +540,12 @@ export function XPostPanel() {
             )}
           </section>
 
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-foreground">
+          <section className="space-y-3">
+            <h2 className="ui-section-title">
               {ui.xPost.scheduledTitle}
             </h2>
             {scheduled.length === 0 ? (
-              <p className="text-sm text-[var(--foreground-muted)]">
+              <p className="ui-card ui-card-pad text-sm text-[var(--text-muted)]">
                 {ui.xPost.scheduledEmpty}
               </p>
             ) : (
@@ -559,12 +557,12 @@ export function XPostPanel() {
             )}
           </section>
 
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-foreground">
+          <section className="space-y-3">
+            <h2 className="ui-section-title">
               {ui.xPost.historyTitle}
             </h2>
             {history.length === 0 ? (
-              <p className="text-sm text-[var(--foreground-muted)]">
+              <p className="ui-card ui-card-pad text-sm text-[var(--text-muted)]">
                 {ui.xPost.historyEmpty}
               </p>
             ) : (

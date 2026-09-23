@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
 import { LoadingState } from "@/components/ui/loading-state";
 import { XAutoPostPanel } from "@/components/workspace/x-autopost-panel";
-import { XPostPanel } from "@/components/workspace/x-post-panel";
+import { XManualPostSection } from "@/components/workspace/x-manual-post-section";
 import { ui } from "@/lib/i18n";
 
 export const metadata: Metadata = {
@@ -16,11 +16,9 @@ export default function WorkspaceXPage() {
   return (
     <AtlasAppShell active="x-autopost" width="default">
       <Suspense fallback={<LoadingState />}>
-        <div className="space-y-14">
+        <div className="space-y-8">
           <XAutoPostPanel />
-          <div className="border-t border-[var(--border-subtle)] pt-10">
-            <XPostPanel />
-          </div>
+          <XManualPostSection />
         </div>
       </Suspense>
     </AtlasAppShell>

@@ -1,5 +1,20 @@
 # CHECKPOINT（最新が先頭）
 
+## 2026-09-23 #8 — X投稿画面・連携導線・入力欄
+
+- **「連携」メニューの行き先**: `/connections`・`/integrations` が設定トップへ飛ぶだけだった → `/settings#settings-integrations`（外部連携グループ）へ。設定ハブは描画後にハッシュ位置へスクロール。
+- **`/workspace/x`**（新規ユーザーの主導線）: 共通 `PageHeader`、見出しをキット化、空の一覧をカード化。手動投稿（作成欄＋下書き/予約/履歴）を折りたたみ `XManualPostSection` に移し、未連携時は「Xを連携して続ける」が唯一の主操作に。投稿方法カードにホバーと `aria-pressed`（未選択のままなのは意図的＝明示選択）。
+- **入力欄が見えない不具合（ライトテーマ全体）**: `.minervot-lux` の `--form-control-bg` がカードと同色の `--surface-raised` で、枠線なしの入力欄が背景に溶けていた → `--surface-muted`（淡い色の入力枠）に。
+- 開発プレビューに「X投稿」ビュー追加（`/api/x/autopost` を Playwright でモックすると未連携/連携済みを確認可能）。
+- テスト: 関連 338件 pass。before/after: `verification-screenshots/design-unify/*x*`。
+
+### 次
+1. 実行履歴 `/automations/runs`（`run-list-page.tsx`）・通知・成果物詳細のキット確認。
+2. 自動化カード下部の余白。
+3. PR 作成（ユーザー指示待ち）。
+
+---
+
 ## 2026-09-23 #7 — 自動化画面（/automations）をUIキットへ
 
 - 開発プレビュー `/dev/automation-first-preview` に「自動化」ビューを追加（プレビュー内だけ fetch をフィクスチャに差し替え、実画面の `AutomationsDashboard` を描画）。認証なしで確認可能に。

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 
 import { PageHeader } from "@/components/automation-first/page-header";
 import { RevealStagger } from "@/components/motion/reveal-stagger";
@@ -191,6 +192,15 @@ export function SettingsHub({
       (flags.automation_design_system_enabled === true ||
         flags.automation_first_home_enabled === true));
 
+  // Hub renders after flags load, so the browser's own #hash jump can miss
+  // (e.g. 連携 → /settings#settings-integrations). Scroll once it exists.
+  useEffect(() => {
+    if (!hubEnabled) return;
+    const id = window.location.hash.slice(1);
+    if (!id.startsWith("settings-")) return;
+    document.getElementById(id)?.scrollIntoView({ block: "start" });
+  }, [hubEnabled]);
+
   if (!hubEnabled) {
     return <>{legacy}</>;
   }
@@ -211,7 +221,7 @@ export function SettingsHub({
                 <span className="ui-icon-tile h-8 w-8 rounded-[0.625rem]" aria-hidden>
                   <Icon className="h-4 w-4" />
                 </span>
-                <h2 id={`settings-${group.id}`} className="ui-section-title">
+                <h2 id={`settings-${group.id}`} className="ui-section-title scroll-mt-24">
                   {group.title}
                 </h2>
               </div>
