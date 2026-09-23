@@ -147,7 +147,11 @@ export function ProjectsDashboard() {
           />
         </div>
       ) : automationFirstHome ? (
-        <AutomationFirstHome automations={automations} projects={projects} />
+        <AutomationFirstHome
+          automations={automations}
+          projects={projects}
+          onAutomationsChanged={reloadAutomations}
+        />
       ) : (
         <SecretaryHomeDashboard automations={automations} projects={projects} />
       )}

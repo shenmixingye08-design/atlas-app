@@ -6,9 +6,21 @@ import { useState } from "react";
 import { AnimatedNumber } from "@/components/motion/animated-number";
 import { MotionList, MotionListItem } from "@/components/motion/list-item";
 import { SectionHeader } from "@/components/automation-first/page-header";
+import {
+  describeActionError,
+  describeRunNowResult,
+  type WorkActionFeedback,
+} from "@/lib/automation-first/run-now-feedback";
 import { runAutomationNow, setAutomationEnabled } from "@/lib/automations/client";
+import { formatNextRunDateTime } from "@/lib/automation-first/home-data";
+import { cn } from "@/lib/design-system/cn";
 import { YOUR_WORK_HEADING } from "@/lib/work-asset/messaging";
 import type { WorkAsset } from "@/lib/work-asset/work-view";
+
+/** ISO timestamps → user-facing label; non-ISO labels pass through. */
+function formatWorkTime(value: string): string {
+  return Number.isNaN(Date.parse(value)) ? value : formatNextRunDateTime(value);
+}
 
 const LIFECYCLE_LABEL: Record<WorkAsset["lifecycle"], string> = {
   active: "稼働中",
@@ -25,26 +37,44 @@ export function YourWorkList({
   works: WorkAsset[];
   onChanged?: () => void;
 }) {
-  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ id: string; action: "run" | "toggle" } | null>(
+    null,
+  );
+  const [feedback, setFeedback] = useState<
+    (WorkActionFeedback & { id: string }) | null
+  >(null);
   if (works.length === 0) return null;
 
   async function pauseOrResume(work: WorkAsset) {
-    setPendingId(work.id);
+    const resume = work.lifecycle === "paused";
+    setPending({ id: work.id, action: "toggle" });
+    setFeedback(null);
     try {
-      await setAutomationEnabled(work.id, work.lifecycle === "paused");
+      await setAutomationEnabled(work.id, resume);
+      setFeedback({
+        id: work.id,
+        tone: "success",
+        message: resume ? "再開しました" : "一時停止しました",
+      });
       onChanged?.();
+    } catch (error) {
+      setFeedback({ id: work.id, ...describeActionError(error, "更新できませんでした") });
     } finally {
-      setPendingId(null);
+      setPending(null);
     }
   }
 
   async function runNow(work: WorkAsset) {
-    setPendingId(work.id);
+    setPending({ id: work.id, action: "run" });
+    setFeedback(null);
     try {
-      await runAutomationNow(work.id);
+      const result = await runAutomationNow(work.id);
+      setFeedback({ id: work.id, ...describeRunNowResult(result) });
       onChanged?.();
+    } catch (error) {
+      setFeedback({ id: work.id, ...describeActionError(error, "実行できませんでした") });
     } finally {
-      setPendingId(null);
+      setPending(null);
     }
   }
 
@@ -68,9 +98,9 @@ export function YourWorkList({
               </p>
               <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 {LIFECYCLE_LABEL[work.lifecycle]}
-                {work.nextRunAt ? ` · 次回 ${work.nextRunAt}` : ""}
+                {work.nextRunAt ? ` · 次回 ${formatWorkTime(work.nextRunAt)}` : ""}
                 {work.lastSuccessAt && !work.nextRunAt
-                  ? ` · 前回 ${work.lastSuccessAt}`
+                  ? ` · 前回 ${formatWorkTime(work.lastSuccessAt)}`
                   : ""}
               </p>
             </div>
@@ -84,24 +114,48 @@ export function YourWorkList({
               {work.lifecycle === "active" ? (
                 <button
                   type="button"
-                  disabled={pendingId === work.id}
+                  disabled={pending?.id === work.id}
+                  aria-busy={pending?.id === work.id && pending.action === "run"}
                   onClick={() => void runNow(work)}
-                  className="inline-flex min-h-[var(--touch-target)] items-center rounded-full border border-[var(--border)] px-3 text-sm font-semibold text-[var(--text-primary)]"
+                  className="motion-press inline-flex min-h-[var(--touch-target)] items-center gap-1.5 rounded-full border border-[var(--border)] px-3 text-sm font-semibold text-[var(--text-primary)] disabled:opacity-60"
                 >
-                  今すぐ実行
+                  {pending?.id === work.id && pending.action === "run" ? (
+                    <>
+                      <span
+                        aria-hidden
+                        className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
+                      />
+                      実行中…
+                    </>
+                  ) : (
+                    "今すぐ実行"
+                  )}
                 </button>
               ) : null}
               {work.lifecycle === "active" || work.lifecycle === "paused" ? (
                 <button
                   type="button"
-                  disabled={pendingId === work.id}
+                  disabled={pending?.id === work.id}
                   onClick={() => void pauseOrResume(work)}
-                  className="inline-flex min-h-[var(--touch-target)] items-center rounded-full border border-[var(--border)] px-3 text-sm font-semibold text-[var(--brand)]"
+                  className="motion-press disabled:opacity-60 inline-flex min-h-[var(--touch-target)] items-center rounded-full border border-[var(--border)] px-3 text-sm font-semibold text-[var(--brand)]"
                 >
                   {work.lifecycle === "paused" ? "再開" : "一時停止"}
                 </button>
               ) : null}
             </div>
+            {feedback?.id === work.id ? (
+              <p
+                role="status"
+                className={cn(
+                  "animate-card-enter text-[length:var(--text-meta)] font-medium",
+                  feedback.tone === "success" && "text-[var(--success)]",
+                  feedback.tone === "warning" && "text-[var(--warning)]",
+                  feedback.tone === "error" && "text-[var(--danger)]",
+                )}
+              >
+                {feedback.message}
+              </p>
+            ) : null}
           </MotionListItem>
         ))}
       </MotionList>
@@ -119,7 +173,7 @@ export function WorkCountStrip({
   needsAttention: number;
 }) {
   const items: { label: string; count: number }[] = [];
-  if (entrusted > 0) items.push({ label: "MINERVOTに任せている仕事", count: entrusted });
+  if (entrusted > 0) items.push({ label: "任せている仕事", count: entrusted });
   if (completedThisWeek != null && completedThisWeek > 0) {
     items.push({ label: "今週自動完了", count: completedThisWeek });
   }
@@ -128,14 +182,14 @@ export function WorkCountStrip({
   return (
     <dl
       data-testid="work-count-strip"
-      className="grid grid-cols-1 gap-2 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5 sm:grid-cols-3"
+      className="flex divide-x divide-[var(--border)] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] py-2.5"
     >
       {items.map((item) => (
-        <div key={item.label}>
-          <dt className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+        <div key={item.label} className="flex min-w-0 flex-1 flex-col-reverse px-3 text-center">
+          <dt className="truncate text-[length:var(--text-meta)] text-[var(--text-muted)]">
             {item.label}
           </dt>
-          <dd className="text-base font-semibold tabular-nums">
+          <dd className="text-lg font-semibold tabular-nums text-[var(--text-primary)]">
             <AnimatedNumber value={item.count} suffix="件" />
           </dd>
         </div>

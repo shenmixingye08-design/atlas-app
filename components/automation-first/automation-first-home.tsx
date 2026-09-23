@@ -77,6 +77,8 @@ import { toWorkAsset, workCounts } from "@/lib/work-asset/work-view";
 export type AutomationFirstHomeProps = {
   automations: Automation[];
   projects: Project[];
+  /** Reload automations after a pause / resume / run-now from the home. */
+  onAutomationsChanged?: () => void;
 };
 
 function HomeSkeleton() {
@@ -169,6 +171,7 @@ function hasMeaningfulWeeklyStats(stats: HomeWeeklyStats): boolean {
 export function AutomationFirstHome({
   automations,
   projects,
+  onAutomationsChanged,
 }: AutomationFirstHomeProps) {
   const { flags } = useFeatureAvailability();
   const opsEnabled =
@@ -731,7 +734,13 @@ export function AutomationFirstHome({
           {recentSection}
           {timelineSection}
           {nextRunCard}
-          <YourWorkList works={works} />
+          <YourWorkList
+            works={works}
+            onChanged={() => {
+              onAutomationsChanged?.();
+              setOpsLiveTick((value) => value + 1);
+            }}
+          />
           <EntrustedWorkList cards={entrustedCards} />
           {valueMetrics.length > 0 ? (
             <MeasuredValueMetrics metrics={valueMetrics} />
