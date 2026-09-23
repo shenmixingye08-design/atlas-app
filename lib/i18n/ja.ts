@@ -521,7 +521,7 @@ export const ui = {
     measuredDurationLabel: "実測の完了時間",
     typicalManualLabel: "手作業の目安",
     savedWorkLabel: "削減できた仕事時間",
-    savedWorkValue: (amount: string) => `あと${amount}の仕事を削減しました`,
+    savedWorkValue: (amount: string) => `約${amount}の作業を削減しました`,
     savedWorkHint: "手作業の目安と、今回の実測完了時間の差です（見本定義との比較）。",
     noSavedEstimate:
       "完了時間は実測値です。手作業との差は、同種の仕事が続くと表示できます。",
@@ -1541,7 +1541,7 @@ export const ui = {
     charCount: (count: number, max: number) => `${count} / ${max} 文字`,
     allDone: "すべて完了しました。内容をご確認ください。",
     measuredDuration: (duration: string) => `MINERVOTの完了時間（実測）: ${duration}`,
-    savedWork: (amount: string) => `あと${amount}の仕事を削減しました`,
+    savedWork: (amount: string) => `約${amount}の作業を削減しました`,
     savedWorkHint: "手作業の目安と、今回の実測完了時間の差です。",
     // Outcome summary (results-first completion UI)
     workDoneHeading: "今回やった仕事",
