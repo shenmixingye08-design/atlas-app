@@ -29,9 +29,11 @@ import {
   IconArtifact,
   IconAutomation,
   IconBell,
+  IconChevron,
   IconHome,
   IconLink,
   IconList,
+  IconMore,
   IconSettings,
   IconToday,
 } from "@/components/ui/icons";
@@ -127,19 +129,16 @@ function MoreSection({
         )}
         aria-expanded={moreExpanded}
       >
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center text-base leading-none" aria-hidden>
-          📌
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden>
+          <IconMore className="h-[1.15rem] w-[1.15rem]" />
         </span>
         <span className="flex-1 truncate text-left">{ui.nav.more}</span>
-        <span
+        <IconChevron
           className={cn(
-            "text-xs text-[var(--text-muted)] transition-transform duration-[var(--motion-fast)]",
+            "h-4 w-4 text-[var(--text-muted)] transition-transform duration-[var(--motion-fast)]",
             moreExpanded && "rotate-180",
           )}
-          aria-hidden
-        >
-          ▾
-        </span>
+        />
       </button>
 
       {moreExpanded && (
