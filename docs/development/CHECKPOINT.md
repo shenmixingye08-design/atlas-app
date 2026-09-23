@@ -1,5 +1,30 @@
 # CHECKPOINT（最新が先頭）
 
+## 2026-09-23 #2 — ホームの優先順整理＋成果物カード
+
+### 今回変更したもの
+- `automation-first-home.tsx`: 「今日のMINERVOT」の並びを **要対応 → 実行中 → 最近完成したもの → 今日の予定 → 次回実行 → 任せている仕事 → 指標/週次統計** に変更（行動が必要なもの・成果が先、統計は後）。
+- `components/automation-first/recent-deliverables.tsx`（新規）: 最近完成したものをカード化。ファイル種別バッジ（XLSX/DOCX/PDF/PPTX）、カード全体で詳細へ、`url` がある場合は直接開くボタン（外部URLはリンクアイコン＋新規タブ）。PC 2列 / スマホ 1列。「すべて見る」→ `/history`。
+- `lib/automation-first/artifact-type.ts`(+test): ラベルの拡張子から種別判定（API変更なし）。
+
+### 改善理由
+強み「成果物まで完成させる」がホーム下部のテキストリストに埋もれていた。完成物を上位に・視覚的に出し、1タップで開けるようにした。
+
+### テスト / 確認
+- tsc / eslint OK、`vitest lib/automation-first ...` 77件 OK、CI ban n02/n03/n07/p1-09 pass。
+- `/dev/automation-first-preview` で ops API を Playwright でモックし、スマホ/PC/ダークを確認（`verification-screenshots/home-core/deliverables-*.png`）。見出し順も DOM で確認。
+- 撮影後の微修正（「その他」バッジ背景・外部リンクアイコン）は型/テストのみ確認、再撮影なし。
+
+### 次に最も価値が高い改善
+1. 実行中→完了を検知した時の完了モーション（`components/motion/completion-moment.tsx` 再利用、AIコアと連動）。
+2. `WorkCountStrip` と AIコアの情報重複の整理。
+3. 旧ホーム `secretary-home-dashboard.tsx` の利用有無を確認し、不要なら整理候補に。
+
+### 触るファイル
+`components/automation-first/automation-first-home.tsx`, `home-status-core.tsx`, `lib/automation-first/home-core-state.ts`, `components/motion/completion-moment.tsx`
+
+---
+
 ## 2026-09-23 — ホーム「AIコア」ステータス
 
 ### MINERVOT の強み（現状コードから）

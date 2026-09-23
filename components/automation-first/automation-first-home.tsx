@@ -18,6 +18,7 @@ import { HomePrimaryActions } from "@/components/automation-first/home-primary-a
 import { HomeStatusCore } from "@/components/automation-first/home-status-core";
 import { WorkCountStrip, YourWorkList } from "@/components/automation-first/your-work";
 import { SectionHeader } from "@/components/automation-first/page-header";
+import { RecentDeliverables } from "@/components/automation-first/recent-deliverables";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
 import { Timeline } from "@/components/automation-first/timeline";
 import { EntrustProposalList } from "@/components/work-loop/entrust-proposal";
@@ -306,6 +307,7 @@ export function AutomationFirstHome({
         detail: artifact.label,
         href: artifact.href,
         meta: formatNextRunDateTime(artifact.createdAt),
+        url: artifact.url,
       }));
     }
     return v1Jobs
@@ -501,41 +503,7 @@ export function AutomationFirstHome({
   ) : null;
 
   const recentSection =
-    recentCompleted.length > 0 ? (
-      <section aria-labelledby="af-completed-heading" className="space-y-2.5">
-        <SectionHeader heading="h3" id="af-completed-heading" title="最近完成したもの" />
-        <ul className="animate-stagger divide-y divide-[var(--border)] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)]">
-          {recentCompleted.map((item) => (
-            <li
-              key={item.id}
-              className="flex items-center justify-between gap-3 px-3.5 py-2.5"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-[var(--text-primary)]">
-                  {item.title}
-                </p>
-                <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  {item.detail}
-                  {item.meta ? ` · ${item.meta}` : ""}
-                </p>
-              </div>
-              <Link
-                href={item.href}
-                onClick={() =>
-                  trackAutomationFirstEvent("artifact_opened", {
-                    id: item.id,
-                    source: "home_completed",
-                  })
-                }
-                className="inline-flex min-h-[var(--touch-target)] shrink-0 items-center text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
-              >
-                確認
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
-    ) : null;
+    recentCompleted.length > 0 ? <RecentDeliverables items={recentCompleted} /> : null;
 
   const coreState = useMemo(
     () =>
@@ -676,11 +644,6 @@ export function AutomationFirstHome({
             }
             needsAttention={counts.needsAttention + attention.length}
           />
-          <YourWorkList works={works} />
-          <EntrustedWorkList cards={entrustedCards} />
-          {valueMetrics.length > 0 ? (
-            <MeasuredValueMetrics metrics={valueMetrics} />
-          ) : null}
           {attentionSection}
           <RunningStepsPanel
             heading="h3"
@@ -692,9 +655,14 @@ export function AutomationFirstHome({
               })
             }
           />
+          {recentSection}
           {timelineSection}
           {nextRunCard}
-          {recentSection}
+          <YourWorkList works={works} />
+          <EntrustedWorkList cards={entrustedCards} />
+          {valueMetrics.length > 0 ? (
+            <MeasuredValueMetrics metrics={valueMetrics} />
+          ) : null}
           {opsSummary && hasMeaningfulWeeklyStats(weeklyStats) ? (
             <WeeklyStatsCard stats={weeklyStats} />
           ) : null}
