@@ -11,6 +11,7 @@ import {
   IconAutomation,
   IconPlus,
   IconSettings,
+  IconHome,
   IconToday,
 } from "@/components/ui/icons";
 import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
@@ -27,7 +28,7 @@ const ITEMS: Array<{
   label: string;
   primary?: boolean;
 }> = [
-  { id: "today", href: "/today", label: "今日" },
+  { id: "today", href: "/projects", label: "ホーム" },
   { id: "automation", href: "/automations", label: "自動化" },
   { id: "create", label: "追加", primary: true },
   { id: "artifacts", href: "/history", label: "成果物" },
@@ -43,7 +44,7 @@ function BottomIcon({
 }) {
   switch (id) {
     case "today":
-      return <IconToday className={className} />;
+      return <IconHome className={className} />;
     case "automation":
       return <IconAutomation className={className} />;
     case "create":

@@ -60,13 +60,13 @@ describe("app shell bottom inset vs fixed bottom nav", () => {
     }
   });
 
-  it("does not change bottom nav items or order", () => {
-    expect(nav).toContain('label: "今日"');
+  it("keeps the bottom nav items and order", () => {
+    expect(nav).toContain('label: "ホーム"');
     expect(nav).toContain('label: "自動化"');
     expect(nav).toContain('label: "追加"');
     expect(nav).toContain('label: "成果物"');
     expect(nav).toContain('label: "設定"');
     const labels = [...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
-    expect(labels).toEqual(["今日", "自動化", "追加", "成果物", "設定"]);
+    expect(labels).toEqual(["ホーム", "自動化", "追加", "成果物", "設定"]);
   });
 });

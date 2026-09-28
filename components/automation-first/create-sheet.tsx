@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
+
 import { useEffect, useId, useRef } from "react";
 
 import { ModalBackdrop, ModalChrome } from "@/components/motion/modal-chrome";
 import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
+import {
+  HOME_X_AUTOMATION_CTA,
+  HOME_X_AUTOMATION_HREF,
+} from "@/lib/product-focus/messaging";
 
 export type CreateSheetProps = {
   open: boolean;
@@ -54,6 +59,20 @@ export function CreateSheet({ open, onClose }: CreateSheetProps) {
         <ul className="mt-4 space-y-2">
           <li>
             <Link
+              href={HOME_X_AUTOMATION_HREF}
+              onClick={() => {
+                trackAutomationFirstEvent("primary_automation_cta_clicked", {
+                  source: "create_sheet_x",
+                });
+                onClose();
+              }}
+              className="motion-press flex min-h-[var(--touch-target)] items-center rounded-[var(--radius-md)] bg-[var(--brand)] px-4 text-sm font-semibold text-[var(--brand-foreground)]"
+            >
+              {HOME_X_AUTOMATION_CTA}
+            </Link>
+          </li>
+          <li>
+            <Link
               href="/automations/new"
               onClick={() => {
                 trackAutomationFirstEvent("primary_automation_cta_clicked", {
@@ -61,9 +80,9 @@ export function CreateSheet({ open, onClose }: CreateSheetProps) {
                 });
                 onClose();
               }}
-              className="motion-press flex min-h-[var(--touch-target)] items-center rounded-[var(--radius-md)] bg-[var(--brand)] px-4 text-sm font-semibold text-[var(--brand-foreground)]"
+              className="motion-press flex min-h-[var(--touch-target)] items-center rounded-[var(--radius-md)] border border-[var(--border)] px-4 text-sm font-medium text-[var(--text-primary)]"
             >
-              新しい自動化を作る
+              ほかの仕事を自動化する
             </Link>
           </li>
           <li>

@@ -168,7 +168,7 @@ describe("Warm Minimal UI contracts", () => {
     const afNav = src("components/automation-first/automation-first-bottom-nav.tsx");
     const homeActions = src("components/automation-first/home-primary-actions.tsx");
     const request = src("components/workspace/work-request-form.tsx");
-    expect(afNav).toContain('href: "/today"');
+    expect(afNav).toContain('href: "/projects"');
     expect(afNav).toContain('href: "/history"');
     expect(afNav).toContain('href: "/automations"');
     expect(afNav).toContain('href: "/settings"');

@@ -34,6 +34,7 @@ import {
   IconLink,
   IconList,
   IconMore,
+  IconReuse,
   IconSettings,
   IconToday,
 } from "@/components/ui/icons";
@@ -67,6 +68,8 @@ function SidebarIcon({ id }: { id: AtlasNavPage }) {
       return <IconSettings className={className} />;
     case "workspace":
       return <IconList className={className} />;
+    case "x-autopost":
+      return <IconReuse className={className} />;
     default:
       return <IconHome className={className} />;
   }
@@ -221,7 +224,13 @@ function SidebarPanel({
         <div className="my-4 border-t border-[var(--border-subtle)]" />
 
         <MoreSection
-          groups={SIDEBAR_MORE_GROUPS}
+          groups={SIDEBAR_MORE_GROUPS.map((group) => ({
+            ...group,
+            // Items promoted to the primary nav are not repeated under 「その他」.
+            items: group.items.filter(
+              (item) => !primaryNav.some((primary) => primary.id === item.id),
+            ),
+          })).filter((group) => group.items.length > 0)}
           active={active}
           moreExpanded={moreExpanded}
           onToggleMore={onToggleMore}

@@ -4,12 +4,12 @@ import type { SidebarNavItem } from "@/lib/layout/sidebar-items";
 /** Automation First PC sidebar — automation before one-shot ask. */
 export const AUTOMATION_FIRST_SIDEBAR_PRIMARY: SidebarNavItem[] = [
   { id: "projects", href: "/projects", label: "ホーム", icon: "⌂" },
-  { id: "today", href: "/today", label: "今日の仕事", icon: "◎" },
+  // The product we sell: keep it one click away, never under 「その他」.
+  { id: "x-autopost", href: "/workspace/x", label: "毎日のX投稿", icon: "𝕏" },
   { id: "automations", href: "/automations", label: "自動化", icon: "↻" },
   { id: "history", href: "/automations/runs", label: "実行履歴", icon: "☰" },
   { id: "artifacts", href: "/history", label: "成果物", icon: "◇" },
   { id: "notifications", href: "/notifications", label: "通知", icon: "◉" },
-  { id: "integrations", href: "/connections", label: "連携", icon: "⧉" },
   { id: "settings", href: "/settings", label: "設定", icon: "⚙" },
 ];
 
@@ -68,6 +68,7 @@ export function resolveAutomationFirstSidebarActive(
   }
   if (pathname.startsWith("/settings")) return "settings";
   if (pathname.startsWith("/projects")) return "projects";
+  if (pathname.startsWith("/workspace/x")) return "x-autopost";
   if (pathname.startsWith("/workspace")) return "workspace";
   return null;
 }

@@ -117,8 +117,10 @@ describe("automation-first navigation", () => {
     const labels = AUTOMATION_FIRST_SIDEBAR_PRIMARY.map((i) => i.label);
     expect(labels.indexOf("自動化")).toBeLessThan(labels.indexOf("設定"));
     expect(labels[0]).toBe("ホーム");
-    expect(labels).toContain("今日の仕事");
-    expect(labels).toContain("連携");
+    expect(labels[1]).toBe("毎日のX投稿");
     expect(labels).toContain("実行履歴");
+    // Reachable elsewhere (home → すべて見る, 設定 → 外部連携); not top-level.
+    expect(labels).not.toContain("今日の仕事");
+    expect(labels).not.toContain("連携");
   });
 });
