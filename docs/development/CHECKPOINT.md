@@ -1,5 +1,30 @@
 # CHECKPOINT（最新が先頭）
 
+## 2026-09-28 #10 — 削る・X投稿に集中・連携前の見本
+
+### 方針（ユーザー指示「消す部分は消す／売れるアプリに」）
+入口の約束（LP・ホーム）どおり **「毎日のX投稿を任せる」を主商品**に集中。料金・プラン・本番設定は変更していない（要確認事項）。
+
+### 今回変更したもの
+1. **未使用コード削除**: どのページ・API・proxy・CIスクリプトからも到達しない 259ファイル（約2.3万行）と、それだけを対象にしたテストを削除（旧ホーム部品38、ダッシュボード、marketplace/connectors/chat の旧コンソール、artifact-engine、旧memoryリポジトリ、未使用barrel等）。残したテストが使う補助ファイルと `lib/development`（AGENTS.md が参照）は残す。判定スクリプト: 開発セッションの scratchpad `reach.py`（import グラフ＋文字列パス参照）。
+2. **vitest の testTimeout を15秒に**: 自動化サービス全体を初回 dynamic import するスイートが既定5秒でタイムアウトしていた（base でも再現）。
+3. **ナビ**: サイドバー＝ホーム / **毎日のX投稿** / 自動化 / 実行履歴 / 成果物 / 通知 / 設定（今日の仕事はホームから、連携は設定から）。「その他」から昇格項目を除外。スマホ下部の1番目を「今日」→「ホーム」に。「＋」シートの先頭を X 投稿に。X専用アイコン `IconX`。
+4. **連携前の見本**（`/workspace/x` 未連携時）: テーマ入力 → 自動投稿と同じ生成で見本1件（投稿しない・保存しない・SNS枠を消費しない・1日3回まで）→ 直後に「この調子で毎日任せる（Xを連携）」。API `app/api/x/autopost/sample`、`lib/integrations/x/post/autopost-sample.ts`(+test)、UI `components/workspace/x-sample-preview.tsx`、評価 `docs/development/feature-evaluation-x-sample-before-connect.md`。計測イベント `x_sample_generated` / `x_sample_connect_clicked`。
+
+### テスト
+- tsc / eslint / 全 `ci:*` pass、全体 vitest（PDF 3件の既知環境要因のみ失敗）、`next build` 成功。
+
+### 要ユーザー判断（未実施）
+- 主導線から外れたまま残る機能（`/company` `/mihon` `/learned-jobs` `/solutions` `/reports` `/workspace` の一般依頼）：ナビには出ていない。削除するかは利用実績次第。
+- 機能フラグOFF時の旧ホーム・旧ナビ（本番フラグ値の確認後に削除可）。
+- 料金・プラン（980円）の見直し：課金変更は要確認。
+
+### 次
+1. 見本→連携の転換率を `x_sample_*` イベントで計測。
+2. PR 作成（ユーザー指示待ち）。
+
+---
+
 ## 2026-09-23 #9 — 実行履歴・結果画面の文言
 
 - **実行履歴 `/automations/runs`**（`run-list-page.tsx`）: 開発者向けの表示（Run / retry / Step / Memory / diagnosticId 列）をお客様向けの日本語に。状態は色付きの短いチップ（完了・確認待ち・完了できず・実行中…）、指標は該当するものだけ1行（「94秒 · 成果物 1件 · 好みを反映」）、診断IDは小さくサポート用に残す。検索欄・フィルタをキット化（`aria-pressed`）。開発プレビューに「実行履歴」ビュー追加（`/api/automation-platform/runs` は Playwright でモック）。

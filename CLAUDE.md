@@ -23,6 +23,7 @@
 - LP（未ログイン `/`）: `components/landing/landing-page.tsx`。
 - デザイントークン/アニメ: `app/globals.css`（:root トークン, `html[data-theme=dark]`, `html.motion-lite`, reduced-motion）、`lib/motion/tokens.ts`。
 - **UIキット（デザイン統一の基準）**: `app/globals.css` の `@layer components` 内 `.ui-card` / `.ui-card-pad` / `.ui-card-interactive` / `.ui-list` + `.ui-row` / `.ui-row-link` / `.ui-chevron` / `.ui-icon-tile` / `.ui-eyebrow` / `.ui-section-title` / `.ui-section-desc` / `.ui-link` / `.ui-chip-btn`。`components/ui/card.tsx`（113ファイルで使用）と `Panel` もこれを使う。新規UIは独自の border/radius/shadow を書かずにこれを使う。見出しは `components/automation-first/page-header.tsx` の `PageHeader` / `SectionHeader`。
+- **主商品は「毎日のX投稿」**（`/workspace/x`）。ナビ最上位に置く。連携前の見本 API `app/api/x/autopost/sample`（投稿しない・1日3回）。
 - 表示確認用サンドボックス: `/dev/automation-first-preview`（非本番・`ATLAS_DEV_PREVIEW_OPEN=1` で開放、フィクスチャ付き）。
 
 ## 認証 / API / DB / 課金 / デプロイ
@@ -38,7 +39,7 @@
   → Playwright は `executablePath:"/opt/pw-browsers/chromium", args:["--no-proxy-server"]`、cookie `__clerk_db_jwt=dvb_dummy` を付与し `*.clerk.accounts.dev` を abort すると `/dev/automation-first-preview` が描画できる。
 
 ## 既知の問題
-- `lib/work-asset/phase2.test.ts` "pauses schedule…runNow" が main でも 5s タイムアウト（既存）。（単体実行時。全体実行では通ることがある）
+- vitest `testTimeout` は 15秒（自動化サービスの初回 import が重いスイートがあるため）。
 - `lib/deliverables/pdf-quality.test.ts` / `pdf-table-p1-01.test.ts` の3件は poppler-utils（`pdftotext`/`pdftoppm`）が無い環境で失敗。コード不具合ではない。
 - dev サーバーが古い CSS を配信することがある → `.next` を削除して再起動。
 - CSS 変数の循環参照は `lib/design-system/css-var-cycles.test.ts` で検出（`html.automation-design-system` で `--accent-*` を `--brand-*` に再エイリアスしないこと）。
