@@ -193,6 +193,16 @@ export function IconSearch(props: IconProps) {
   );
 }
 
+export function IconX(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      {/* X (formerly Twitter) mark: thick band + thin stroke, not a close "×". */}
+      <path d="M4.5 4.5h4l11 15h-4z" />
+      <path d="M19.5 4.5 13.6 11M10.4 13 4.5 19.5" />
+    </IconBase>
+  );
+}
+
 export function IconMore(props: IconProps) {
   return (
     <IconBase {...props}>

@@ -34,9 +34,9 @@ import {
   IconLink,
   IconList,
   IconMore,
-  IconReuse,
   IconSettings,
   IconToday,
+  IconX,
 } from "@/components/ui/icons";
 
 import { AtlasTopActions } from "./atlas-top-actions";
@@ -69,7 +69,7 @@ function SidebarIcon({ id }: { id: AtlasNavPage }) {
     case "workspace":
       return <IconList className={className} />;
     case "x-autopost":
-      return <IconReuse className={className} />;
+      return <IconX className={className} />;
     default:
       return <IconHome className={className} />;
   }

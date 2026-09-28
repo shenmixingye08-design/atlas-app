@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/automation-first/page-header";
+import { XSamplePreview } from "@/components/workspace/x-sample-preview";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -467,6 +468,12 @@ export function XAutoPostPanel() {
           >
             {lifecycle === "connecting" ? "X連携中…" : X_OAUTH_CONTINUE_CTA}
           </Button>
+          <div className="border-t border-[var(--border)] pt-4">
+            <XSamplePreview
+              onConnect={() => void handleConnect()}
+              connecting={isConnecting}
+            />
+          </div>
         </Card>
       ) : null}
 
