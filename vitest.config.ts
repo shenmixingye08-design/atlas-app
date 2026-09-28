@@ -4,6 +4,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
+    // Some suites dynamically import the whole automation service on first
+    // use; that cold module load alone can exceed the 5s default.
+    testTimeout: 15_000,
     include: ["lib/**/*.test.ts"],
     // Heavy measured gates — run via npm run test:reliability-1000
     exclude: [

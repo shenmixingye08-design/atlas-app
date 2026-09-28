@@ -1,40 +1,40 @@
 {
   "label": "sample",
   "disclaimer": "以下はすべて見本です。作成時間は見本生成時の実測値です。削減時間は手作業の目安（見本定義）と実測作成時間の差であり、特定ユーザーの実績ではありません。",
-  "measuredAt": "2026-09-23T12:34:28.432Z",
+  "measuredAt": "2026-09-28T19:08:53.235Z",
   "entries": [
     {
       "id": "docx-weekly-report",
       "kind": "docx",
       "fileName": "weekly-report.docx",
       "href": "/samples/weekly-report.docx",
-      "bytes": 10656,
-      "creationMs": 112,
+      "bytes": 10655,
+      "creationMs": 96,
       "generator": "DocxDeliverableGenerator",
       "creationSec": 0.1,
-      "measuredAt": "2026-09-23T12:34:28.432Z"
+      "measuredAt": "2026-09-28T19:08:53.235Z"
     },
     {
       "id": "xlsx-cost-table",
       "kind": "xlsx",
       "fileName": "cost-table.xlsx",
       "href": "/samples/cost-table.xlsx",
-      "bytes": 7212,
-      "creationMs": 47,
+      "bytes": 7213,
+      "creationMs": 72,
       "generator": "XlsxDeliverableGenerator",
       "creationSec": 0.1,
-      "measuredAt": "2026-09-23T12:34:28.432Z"
+      "measuredAt": "2026-09-28T19:08:53.235Z"
     },
     {
       "id": "pptx-sales-deck",
       "kind": "pptx",
       "fileName": "sales-deck.pptx",
       "href": "/samples/sales-deck.pptx",
-      "bytes": 43527,
-      "creationMs": 79,
+      "bytes": 43530,
+      "creationMs": 69,
       "generator": "PptxDeliverableGenerator",
       "creationSec": 0.1,
-      "measuredAt": "2026-09-23T12:34:28.432Z"
+      "measuredAt": "2026-09-28T19:08:53.235Z"
     },
     {
       "id": "pdf-proposal-outline",
@@ -42,10 +42,10 @@
       "fileName": "proposal-outline.pdf",
       "href": "/samples/proposal-outline.pdf",
       "bytes": 140860,
-      "creationMs": 392,
+      "creationMs": 485,
       "generator": "PdfDeliverableGenerator",
-      "creationSec": 0.4,
-      "measuredAt": "2026-09-23T12:34:28.432Z"
+      "creationSec": 0.5,
+      "measuredAt": "2026-09-28T19:08:53.235Z"
     },
     {
       "id": "sns-solar",
@@ -53,10 +53,10 @@
       "fileName": "sns-post.txt",
       "href": "/samples/sns-post.txt",
       "bytes": 328,
-      "creationMs": 174,
+      "creationMs": 233,
       "generator": "PdfDeliverableGenerator",
       "creationSec": 0.2,
-      "measuredAt": "2026-09-23T12:34:28.432Z"
+      "measuredAt": "2026-09-28T19:08:53.235Z"
     },
     {
       "id": "email-followup",
@@ -64,10 +64,10 @@
       "fileName": "email-draft.txt",
       "href": "/samples/email-draft.txt",
       "bytes": 320,
-      "creationMs": 181,
+      "creationMs": 154,
       "generator": "PdfDeliverableGenerator",
       "creationSec": 0.2,
-      "measuredAt": "2026-09-23T12:34:28.432Z"
+      "measuredAt": "2026-09-28T19:08:53.235Z"
     }
   ]
 }
