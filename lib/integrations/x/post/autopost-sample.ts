@@ -1,12 +1,28 @@
 import type { XAutoPostSettings } from "./autopost-types";
 
-/** Pre-connect sample: never posts; limited per user per day (cost control). */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Hard cost cap: generation attempts per user per day (failures included). */
+export const X_SAMPLE_ATTEMPT_LIMIT = {
+  bucket: "x-sample-attempt",
+  max: 6,
+  windowMs: DAY_MS,
+  minIntervalMs: 2_000,
+} as const;
+
+/** User-facing allowance: successful samples per user per day. */
 export const X_SAMPLE_RATE_LIMIT = {
   bucket: "x-sample",
   max: 3,
-  windowMs: 24 * 60 * 60 * 1000,
-  minIntervalMs: 2_000,
+  windowMs: DAY_MS,
 } as const;
+
+/**
+ * Samples decide whether someone connects X, so they use the strong tier and
+ * the most substantive post type (a concrete tip), never a random one-liner.
+ */
+export const X_SAMPLE_AI_TASK_TYPE = "worker_deliverable" as const;
+export const X_SAMPLE_POST_TYPE = "knowhow" as const;
 
 export const X_SAMPLE_THEME_MAX = 60;
 
@@ -35,7 +51,7 @@ export function buildSampleSettings(
     userId,
     enabled: false,
     mode: "approval",
-    purpose: "日常・活動報告",
+    purpose: "有益情報の発信",
     themes: [input.theme],
     audience: input.audience ?? "",
     tone: "",

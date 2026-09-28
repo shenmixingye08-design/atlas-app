@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  X_SAMPLE_ATTEMPT_LIMIT,
+  X_SAMPLE_POST_TYPE,
   X_SAMPLE_RATE_LIMIT,
   buildSampleSettings,
   parseXSampleInput,
@@ -24,8 +26,14 @@ describe("X pre-connect sample", () => {
     expect(settings.themes).toEqual(["副業"]);
   });
 
-  it("caps samples per user per day", () => {
+  it("caps samples per user per day, with a hard attempt ceiling", () => {
     expect(X_SAMPLE_RATE_LIMIT.max).toBeLessThanOrEqual(3);
     expect(X_SAMPLE_RATE_LIMIT.windowMs).toBe(24 * 60 * 60 * 1000);
+    expect(X_SAMPLE_ATTEMPT_LIMIT.max).toBeLessThanOrEqual(6);
+    expect(X_SAMPLE_ATTEMPT_LIMIT.max).toBeGreaterThan(X_SAMPLE_RATE_LIMIT.max);
+  });
+
+  it("uses the substantive tip format for the first impression", () => {
+    expect(X_SAMPLE_POST_TYPE).toBe("knowhow");
   });
 });

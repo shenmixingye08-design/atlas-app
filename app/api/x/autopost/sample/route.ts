@@ -4,11 +4,11 @@ import { consumeDistributedRateLimit } from "@/lib/http/rate-limit";
 import { isFeatureEnabled } from "@/lib/feature-flags/access";
 import { featureDisabledMessage } from "@/lib/feature-flags/guards";
 import { resolveFeatureAccessContext } from "@/lib/feature-flags/resolve-context";
+import { generateAutoPostText } from "@/lib/integrations/x/post/autopost-generator";
 import {
-  generateAutoPostText,
-  selectPostType,
-} from "@/lib/integrations/x/post/autopost-generator";
-import {
+  X_SAMPLE_AI_TASK_TYPE,
+  X_SAMPLE_ATTEMPT_LIMIT,
+  X_SAMPLE_POST_TYPE,
   X_SAMPLE_RATE_LIMIT,
   buildSampleSettings,
   parseXSampleInput,
@@ -17,7 +17,8 @@ import {
 /**
  * Pre-connect sample post. Generates text only — never posts to X, never
  * persists settings, does not count toward the monthly SNS quota.
- * Cost: one light generation, max 3 per user per day.
+ * Cost: one strong-tier generation (max 400 output tokens); at most 6
+ * attempts and 3 shown samples per user per day. Fallback text is never shown.
  */
 export async function POST(request: Request): Promise<Response> {
   const { userId } = await auth();
@@ -44,6 +45,40 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  // Hard cost ceiling first (counts failures too).
+  const attempt = await consumeDistributedRateLimit(
+    `x-sample-attempt:${userId}`,
+    X_SAMPLE_ATTEMPT_LIMIT,
+  );
+  if (!attempt.allowed) {
+    return Response.json(
+      {
+        status: "rate_limited",
+        message: "今日は見本をこれ以上作れません。Xを連携すると毎日自動で作成されます。",
+      },
+      { status: 429 },
+    );
+  }
+
+  const generated = await generateAutoPostText({
+    settings: buildSampleSettings(userId, input),
+    postType: X_SAMPLE_POST_TYPE,
+    recentTexts: [],
+    slotKey: `sample:${Date.now()}`,
+    aiTaskType: X_SAMPLE_AI_TASK_TYPE,
+  });
+
+  // Never present the deterministic fallback template as a quality sample.
+  if (generated.usedFallback) {
+    return Response.json(
+      {
+        status: "error",
+        message: "うまく作れませんでした。もう一度お試しください（回数には数えません）。",
+      },
+      { status: 503 },
+    );
+  }
+
   const limit = await consumeDistributedRateLimit(
     `x-sample:${userId}`,
     X_SAMPLE_RATE_LIMIT,
@@ -58,17 +93,10 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const generated = await generateAutoPostText({
-    settings: buildSampleSettings(userId, input),
-    postType: selectPostType(Date.now()),
-    recentTexts: [],
-    slotKey: `sample:${Date.now()}`,
-  });
-
   return Response.json({
     status: "ready",
     text: generated.text,
-    usedFallback: generated.usedFallback,
+    usedFallback: false,
     remaining: limit.remaining,
   });
 }

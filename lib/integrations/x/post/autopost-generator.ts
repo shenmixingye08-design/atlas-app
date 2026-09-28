@@ -3,6 +3,7 @@ import "server-only";
 import { isMockLlmEnabled } from "@/lib/ai/mock-responses";
 import { createAtlasResponse } from "@/lib/openai";
 import { wrapCompactInstructions } from "@/lib/atlas-personality";
+import type { AiTaskType } from "@/lib/ai/model-policy";
 
 import { X_TWEET_MAX_CHARS } from "./validate";
 import {
@@ -208,6 +209,8 @@ export async function generateAutoPostText(input: {
   hashtagsMax?: number | null;
   memoryApplied?: boolean;
   memoryFailed?: boolean;
+  /** Defaults to the cheap tier used by the daily automation. */
+  aiTaskType?: AiTaskType;
 }): Promise<GeneratedAutoPost> {
   const fallback = () =>
     buildFallbackAutoPost({
@@ -234,7 +237,7 @@ export async function generateAutoPostText(input: {
     const response = await createAtlasResponse({
       input: buildGenerationInput(input),
       instructions: GENERATION_INSTRUCTIONS,
-      aiTaskType: "worker_deliverable_light",
+      aiTaskType: input.aiTaskType ?? "worker_deliverable_light",
       maxOutputTokens: 400,
     });
 

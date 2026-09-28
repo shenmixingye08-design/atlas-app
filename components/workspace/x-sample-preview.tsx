@@ -18,6 +18,7 @@ export function XSamplePreview({
   connecting?: boolean;
 }) {
   const [theme, setTheme] = useState("");
+  const [audience, setAudience] = useState("");
   const [loading, setLoading] = useState(false);
   const [sample, setSample] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -27,7 +28,10 @@ export function XSamplePreview({
     setLoading(true);
     setMessage(null);
     try {
-      const result = await fetchXSampleClient({ theme: theme.trim() });
+      const result = await fetchXSampleClient({
+        theme: theme.trim(),
+        audience: audience.trim() || undefined,
+      });
       if (result.status === "ready") {
         setSample(result.text);
         trackAutomationFirstEvent("x_sample_generated", {
@@ -54,29 +58,45 @@ export function XSamplePreview({
         </p>
       </div>
       <form
-        className="flex flex-col gap-2 sm:flex-row"
+        className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]"
         onSubmit={(event) => {
           event.preventDefault();
           void makeSample();
         }}
       >
-        <label className="sr-only" htmlFor="x-sample-theme">
-          投稿テーマ
+        <label className="block min-w-0">
+          <span className="mb-1 block text-[length:var(--text-meta)] font-semibold text-[var(--text-secondary)]">
+            業種・テーマ
+          </span>
+          <input
+            id="x-sample-theme"
+            value={theme}
+            maxLength={60}
+            required
+            onChange={(event) => setTheme(event.target.value)}
+            placeholder="例：美容室の集客、副業、筋トレ"
+            className="min-h-[44px] w-full rounded-[var(--radius-lg)] border border-[var(--border)] px-4 text-sm focus:border-[var(--border-focus)] focus:outline-none"
+          />
         </label>
-        <input
-          id="x-sample-theme"
-          value={theme}
-          maxLength={60}
-          onChange={(event) => setTheme(event.target.value)}
-          placeholder="例：美容室の集客、副業、筋トレ"
-          className="min-h-[44px] flex-1 rounded-[var(--radius-lg)] border border-[var(--border)] px-4 text-sm focus:border-[var(--border-focus)] focus:outline-none"
-        />
+        <label className="block min-w-0">
+          <span className="mb-1 block text-[length:var(--text-meta)] font-semibold text-[var(--text-secondary)]">
+            誰に届けたい？（任意）
+          </span>
+          <input
+            id="x-sample-audience"
+            value={audience}
+            maxLength={60}
+            onChange={(event) => setAudience(event.target.value)}
+            placeholder="例：30代の働く女性"
+            className="min-h-[44px] w-full rounded-[var(--radius-lg)] border border-[var(--border)] px-4 text-sm focus:border-[var(--border-focus)] focus:outline-none"
+          />
+        </label>
         <Button
           type="submit"
           variant="secondary"
           isLoading={loading}
           disabled={!theme.trim()}
-          className="min-h-[44px] sm:w-auto"
+          className="min-h-[44px] self-end sm:w-auto"
         >
           {sample ? "別の見本" : "見本をつくる"}
         </Button>
