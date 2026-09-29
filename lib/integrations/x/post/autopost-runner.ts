@@ -2,7 +2,11 @@ import "server-only";
 
 import { evaluateBillingFeature, evaluateBillingSnsPost } from "@/lib/billing/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
-import { notifyXAutoPostDrafted, notifyXPostFailed } from "@/lib/notifications/emitters";
+import {
+  notifyXAutoPostDrafted,
+  notifyXAutoPostHeldForReview,
+  notifyXPostFailed,
+} from "@/lib/notifications/emitters";
 
 import { applyMemoryToDedicatedAutoPost } from "./autopost-memory";
 import {
@@ -125,7 +129,10 @@ async function processSlotForUser(input: {
   }
 
   // Approval mode: save a draft + notify. Never posts automatically.
-  if (settings.mode === "approval") {
+  // Never publish template fallback copy automatically: hold it as a draft
+  // for review even in full-auto mode.
+  const holdForReview = settings.mode !== "approval" && generated.usedFallback;
+  if (settings.mode === "approval" || holdForReview) {
     const draftResult = await saveXDraftForUser({
       userId,
       text: generated.text,
@@ -146,7 +153,8 @@ async function processSlotForUser(input: {
       postType,
       text: generated.text,
     });
-    notifyXAutoPostDrafted(userId);
+    if (holdForReview) notifyXAutoPostHeldForReview(userId);
+    else notifyXAutoPostDrafted(userId);
     return { slotKey, status: "drafted", text: generated.text };
   }
 

@@ -267,6 +267,21 @@ export async function notifyXAutoPostDrafted(userId: string) {
   });
 }
 
+/** Full-auto post held back because the copy fell back to a template. */
+export async function notifyXAutoPostHeldForReview(userId: string) {
+  return await createNotification({
+    audience: "user",
+    userId,
+    type: "awaiting_review",
+    title: "自動投稿を止めて下書きに保存しました",
+    message:
+      "今回は本文をうまく作成できなかったため、Xへは投稿せず下書きに保存しました。内容をご確認のうえ、必要なら編集して投稿してください。",
+    relatedService: "x",
+    actionUrl: "/workspace/x",
+    lineEvent: "confirmation_request",
+  });
+}
+
 export async function notifyDriveSaveComplete(userId: string, fileName?: string) {
   return await createNotification({
     audience: "user",
