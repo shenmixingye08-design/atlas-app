@@ -146,6 +146,9 @@ describe("audit log", () => {
   it("searches by user, category, result, and period", async () => {
     const { recordAuditLog } = await import("./record");
     const { listOwnerAuditLogs } = await import("./service");
+    // Relative to now: fixed dates silently fall outside the 90-day retention.
+    const daysAgo = (days: number) =>
+      new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
     await recordAuditLog({
       userId: "user_a",
@@ -153,7 +156,7 @@ describe("audit log", () => {
       category: "auth",
       action: "login",
       result: "success",
-      at: "2026-07-01T00:00:00.000Z",
+      at: daysAgo(20),
     });
     await recordAuditLog({
       userId: "user_b",
@@ -161,7 +164,7 @@ describe("audit log", () => {
       category: "billing",
       action: "stripe_payment",
       result: "failure",
-      at: "2026-07-10T00:00:00.000Z",
+      at: daysAgo(10),
     });
 
     const byUser = await listOwnerAuditLogs({ userId: "user_a" });
@@ -175,8 +178,8 @@ describe("audit log", () => {
     expect(byResult.total).toBe(1);
 
     const byPeriod = await listOwnerAuditLogs({
-      from: "2026-07-05T00:00:00.000Z",
-      to: "2026-07-11T00:00:00.000Z",
+      from: daysAgo(15),
+      to: daysAgo(5),
     });
     expect(byPeriod.total).toBe(1);
     expect(byPeriod.entries[0]?.userId).toBe("user_b");
