@@ -5,14 +5,18 @@ const postTweet = vi.fn();
 const saveDraft = vi.fn();
 const notifyDrafted = vi.fn();
 const notifyHeld = vi.fn();
+const notifyLimit = vi.fn();
+const billingDenial = { value: null as string | null };
+const recentRuns = { value: [] as unknown[] };
 
 vi.mock("@/lib/billing/access", () => ({
   evaluateBillingFeature: async () => ({ denial: null }),
-  evaluateBillingSnsPost: async () => ({ denial: null }),
+  evaluateBillingSnsPost: async () => ({ denial: billingDenial.value }),
 }));
 vi.mock("@/lib/notifications/emitters", () => ({
   notifyXAutoPostDrafted: (...a: unknown[]) => notifyDrafted(...a),
   notifyXAutoPostHeldForReview: (...a: unknown[]) => notifyHeld(...a),
+  notifyXAutoPostLimitReached: (...a: unknown[]) => notifyLimit(...a),
   notifyXPostFailed: vi.fn(),
 }));
 vi.mock("./autopost-memory", () => ({
@@ -38,7 +42,7 @@ vi.mock("./autopost-settings-store", () => ({
 }));
 vi.mock("./autopost-runs-store", () => ({
   claimXAutoPostSlot: async () => ({ claimed: true, run: { id: "run1" } }),
-  listXAutoPostRuns: async () => [],
+  listXAutoPostRuns: async () => recentRuns.value,
   updateXAutoPostRun: async () => undefined,
 }));
 vi.mock("./service", () => ({
@@ -73,6 +77,9 @@ describe("full-auto X post with fallback copy", () => {
     saveDraft.mockReset();
     notifyDrafted.mockReset();
     notifyHeld.mockReset();
+    notifyLimit.mockReset();
+    billingDenial.value = null;
+    recentRuns.value = [];
     saveDraft.mockResolvedValue({ status: "ready" });
     postTweet.mockResolvedValue({ status: "ready", history: { status: "success", tweetId: "1" } });
   });
@@ -100,5 +107,39 @@ describe("full-auto X post with fallback copy", () => {
     expect(saveDraft).toHaveBeenCalledTimes(1);
     expect(notifyDrafted).toHaveBeenCalledWith("u1");
     expect(notifyHeld).not.toHaveBeenCalled();
+  });
+});
+
+describe("plan limit reached on a scheduled X post", () => {
+  const now = new Date("2026-09-29T10:00:00.000Z");
+
+  beforeEach(() => {
+    generate.mockReset();
+    notifyLimit.mockReset();
+    billingDenial.value = "limit";
+    recentRuns.value = [];
+  });
+
+  it("skips without AI spend and tells the user once this month", async () => {
+    const out = await runDueAutoPostsForUser({ settings: settings("full_auto"), context: {} as never, now });
+    expect(out.slots[0]!.reason).toBe("billing");
+    expect(generate).not.toHaveBeenCalled();
+    expect(notifyLimit).toHaveBeenCalledWith("u1");
+  });
+
+  it("does not repeat the notice when this month already had a limit skip", async () => {
+    recentRuns.value = [
+      { status: "skipped", errorMessage: "投稿上限", createdAt: "2026-09-20T10:00:00.000Z", text: null },
+    ];
+    await runDueAutoPostsForUser({ settings: settings("full_auto"), context: {} as never, now });
+    expect(notifyLimit).not.toHaveBeenCalled();
+  });
+
+  it("notifies again in a new month", async () => {
+    recentRuns.value = [
+      { status: "skipped", errorMessage: "投稿上限", createdAt: "2026-08-20T10:00:00.000Z", text: null },
+    ];
+    await runDueAutoPostsForUser({ settings: settings("full_auto"), context: {} as never, now });
+    expect(notifyLimit).toHaveBeenCalledTimes(1);
   });
 });

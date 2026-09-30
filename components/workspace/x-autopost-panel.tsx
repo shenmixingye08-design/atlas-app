@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/automation-first/page-header";
 import { XSamplePreview } from "@/components/workspace/x-sample-preview";
+import { XUpgradePrompt } from "@/components/workspace/x-upgrade-prompt";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -424,6 +425,12 @@ export function XAutoPostPanel() {
 
   const showConnectGate = lifecycle === "disconnected" || lifecycle === "connecting";
   const remaining = quotaLabel(quota);
+  // The failure card already shows the upgrade prompt for a limit failure.
+  const lastResultIsLimit = Boolean(
+    lifecycle === "failed" &&
+      lastResult &&
+      /上限|quota|プラン/i.test(lastResult.errorMessage ?? ""),
+  );
 
   return (
     <div className="space-y-8">
@@ -568,7 +575,7 @@ export function XAutoPostPanel() {
               Xを再連携する
             </Button>
           ) : /上限|quota|プラン/i.test(lastResult.errorMessage ?? "") ? (
-            <p className="text-sm text-foreground">今月の利用上限に達しました</p>
+            <XUpgradePrompt source="x_last_run_limit" />
           ) : (
             <Button
               className="min-h-[44px]"
@@ -583,6 +590,9 @@ export function XAutoPostPanel() {
 
       {!showConnectGate ? (
         <>
+          {quota && quota.limit > 0 && quota.remaining <= 0 && !lastResultIsLimit ? (
+            <XUpgradePrompt source="x_quota_exhausted" />
+          ) : null}
           <Card padding="md" className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="space-y-1">

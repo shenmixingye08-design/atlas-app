@@ -5,6 +5,7 @@ import type { FeatureAccessContext } from "@/lib/feature-flags/types";
 import {
   notifyXAutoPostDrafted,
   notifyXAutoPostHeldForReview,
+  notifyXAutoPostLimitReached,
   notifyXPostFailed,
 } from "@/lib/notifications/emitters";
 
@@ -199,6 +200,16 @@ async function processSlotForUser(input: {
 }
 
 /** Run all due slots for a single user. */
+const LIMIT_SKIP_MESSAGES = new Set(["投稿上限", "プラン制限"]);
+
+function tokyoMonthKey(iso: string | Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+  }).format(typeof iso === "string" ? new Date(iso) : iso);
+}
+
 export async function runDueAutoPostsForUser(input: {
   settings: XAutoPostSettings;
   context: FeatureAccessContext;
@@ -240,6 +251,19 @@ export async function runDueAutoPostsForUser(input: {
       recentTexts.unshift(outcome.text);
     }
     index += 1;
+  }
+
+  // Tell the user once per month that posts stopped at the plan limit —
+  // the moment they have seen the value and would want to continue.
+  if (slots.some((slot) => slot.reason === "billing")) {
+    const month = tokyoMonthKey(now);
+    const alreadyTold = recentRuns.some(
+      (run) =>
+        run.status === "skipped" &&
+        LIMIT_SKIP_MESSAGES.has(run.errorMessage ?? "") &&
+        tokyoMonthKey(run.createdAt) === month,
+    );
+    if (!alreadyTold) notifyXAutoPostLimitReached(settings.userId);
   }
 
   return { userId: settings.userId, slots };

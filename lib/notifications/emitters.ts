@@ -267,6 +267,20 @@ export async function notifyXAutoPostDrafted(userId: string) {
   });
 }
 
+/** Scheduled X post stopped by the plan's monthly allowance (sent once a month). */
+export async function notifyXAutoPostLimitReached(userId: string) {
+  return await createNotification({
+    audience: "user",
+    userId,
+    type: "billing",
+    title: "今月のX投稿回数を使い切りました",
+    message:
+      "今月の自動投稿は上限に達したため、次の投稿は止まっています。毎日続けるには、プランをご確認ください。",
+    relatedService: "x",
+    actionUrl: "/settings/billing",
+  });
+}
+
 /** Full-auto post held back because the copy fell back to a template. */
 export async function notifyXAutoPostHeldForReview(userId: string) {
   return await createNotification({
