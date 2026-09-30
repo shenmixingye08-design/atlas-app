@@ -21,6 +21,8 @@
   --text-secondary: oklch(40% 0.02 40);
   --text-tertiary: oklch(46% 0.016 40);
   --text-muted: var(--text-tertiary);
+  /* Legacy alias used by run/automation v2 screens as text-[var(--muted)] */
+  --muted: var(--text-muted);
 
   /* Legacy aliases — keep for existing components */
   --foreground: var(--text-primary);
@@ -192,10 +194,12 @@
 
 /* Automation First design system — calm brand accent for app shell */
 html.automation-design-system {
+  /* --accent-muted / --accent-foreground are NOT re-aliased here:
+     :root defines --brand-muted/--brand-foreground from them, so aliasing
+     back creates a var() cycle (both become invalid → invisible tints,
+     dark CTA text). */
   --accent: var(--brand);
   --accent-hover: var(--brand-hover);
-  --accent-muted: var(--brand-muted);
-  --accent-foreground: var(--brand-foreground);
   --border-focus: color-mix(in srgb, var(--brand) 55%, transparent);
 }
 
@@ -304,7 +308,7 @@ html[data-theme="light-warm"] {
   color-scheme: light;
   --accent-red: var(--primary);
   --accent-red-strong: var(--primary-hover);
-  --form-control-bg: var(--surface-raised);
+  --form-control-bg: var(--surface-muted); /* tinted well: visible inside cards even without a border */
   --form-control-surface: var(--surface-muted);
   --form-control-text: var(--text-primary);
   --form-control-muted: var(--text-tertiary);
@@ -872,6 +876,245 @@ html.motion-lite ::view-transition-new(.minervot-page) {
   50% { box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 16%, transparent); }
 }
 
+/* ─── MINERVOT UI kit — the one card / section / row language for
+   logged-in screens (modelled on /today). Prefer these over ad-hoc
+   border/radius/shadow combinations. ─── */
+@layer components {
+  .ui-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-subtle);
+  }
+  .ui-card-pad { padding: 1rem; }
+  @media (min-width: 640px) { .ui-card-pad { padding: 1.125rem 1.25rem; } }
+
+  .ui-card-interactive {
+    transition:
+      border-color var(--motion-fast),
+      box-shadow var(--motion-fast),
+      transform var(--motion-fast);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .ui-card-interactive:hover {
+      border-color: var(--border-strong);
+      box-shadow: var(--shadow-md);
+      transform: translateY(-1px);
+    }
+  }
+
+  .ui-list > * + * { border-top: 1px solid var(--border); }
+  .ui-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 3.5rem;
+    padding: 0.75rem 1rem;
+  }
+  .ui-row-link {
+    transition: background-color var(--motion-fast);
+  }
+  .ui-list > .ui-row-link:first-child,
+  .ui-list > :first-child > .ui-row-link { border-top-left-radius: inherit; border-top-right-radius: inherit; }
+  .ui-list > .ui-row-link:last-child,
+  .ui-list > :last-child > .ui-row-link { border-bottom-left-radius: inherit; border-bottom-right-radius: inherit; }
+  @media (hover: hover) and (pointer: fine) {
+    .ui-row-link:hover { background: var(--surface-muted); }
+  }
+  .ui-chevron {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 1.125rem;
+    line-height: 1;
+    transition: transform var(--motion-fast);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .ui-row-link:hover .ui-chevron,
+    .ui-card-interactive:hover .ui-chevron { transform: translateX(2px); }
+  }
+
+  .ui-icon-tile {
+    display: inline-flex;
+    width: 2.25rem;
+    height: 2.25rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.75rem;
+    background: var(--brand-muted);
+    color: var(--brand);
+  }
+
+  .ui-eyebrow {
+    font-size: var(--text-label);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--brand);
+  }
+  .ui-section-title {
+    font-size: var(--text-section);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+  }
+  .ui-section-desc {
+    margin-top: 0.125rem;
+    font-size: var(--text-caption);
+    line-height: 1.5;
+    color: var(--text-muted);
+  }
+  .ui-link {
+    display: inline-flex;
+    min-height: var(--touch-target);
+    align-items: center;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--brand);
+    text-underline-offset: 2px;
+  }
+  .ui-link:hover { text-decoration: underline; }
+
+  /* Secondary action pill (tap-sized, quiet). */
+  .ui-chip-btn {
+    display: inline-flex;
+    min-height: var(--touch-target);
+    align-items: center;
+    gap: 0.375rem;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    background: var(--surface-raised);
+    padding: 0 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    transition: border-color var(--motion-fast), background-color var(--motion-fast);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .ui-chip-btn:hover { border-color: var(--border-strong); background: var(--surface-muted); }
+  }
+  .ui-chip-btn:disabled { opacity: 0.6; }
+  .ui-chip-btn--brand { color: var(--brand); }
+}
+
+/* ─── Home AI core — motion mirrors real work state only ─── */
+.home-core {
+  --core-tone: var(--primary);
+  --core-speed: 6s;
+}
+.home-core[data-state="running"],
+.home-core[data-state="checking"] { --core-speed: 2.6s; }
+.home-core[data-state="attention"] {
+  --core-tone: color-mix(in oklch, var(--warning) 55%, var(--accent-gold));
+  --core-speed: 2.2s;
+}
+.home-core[data-state="scheduled"] { --core-tone: var(--accent-gold); }
+.home-core[data-state="completed"] { --core-tone: var(--success); --core-speed: 3s; }
+
+.home-core-orb {
+  position: relative;
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+.home-core-orb__core {
+  position: relative;
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle at 35% 30%,
+    color-mix(in oklch, var(--core-tone) 40%, white) 0%,
+    var(--core-tone) 58%,
+    color-mix(in oklch, var(--core-tone) 90%, black) 100%
+  );
+  box-shadow: 0 0 10px color-mix(in oklch, var(--core-tone) 45%, transparent);
+  transition: background var(--motion-slow), box-shadow var(--motion-slow);
+}
+.home-core-orb__halo {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--core-tone) 34%, transparent) 0%,
+    transparent 70%
+  );
+  animation: home-core-breathe var(--core-speed) ease-in-out infinite;
+  will-change: transform, opacity;
+}
+.home-core-orb__ring {
+  position: absolute;
+  inset: 2px;
+  border-radius: 9999px;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    color-mix(in oklch, var(--core-tone) 70%, transparent) 70deg,
+    transparent 140deg
+  );
+  -webkit-mask: radial-gradient(circle, transparent 58%, #000 60%);
+  mask: radial-gradient(circle, transparent 58%, #000 60%);
+  opacity: 0;
+  transition: opacity var(--motion-slow);
+}
+.home-core[data-state="running"] .home-core-orb__ring,
+.home-core[data-state="checking"] .home-core-orb__ring {
+  opacity: 1;
+  animation: home-core-orbit 1.6s linear infinite;
+}
+.home-core[data-state="completed"] .home-core-orb__core {
+  width: 1.5rem;
+  height: 1.5rem;
+  animation: motion-complete-ring var(--motion-complete) both;
+}
+.home-core-orb__check {
+  position: absolute;
+  width: 1.5rem;
+  height: 1.5rem;
+  color: oklch(99% 0.005 70);
+}
+html[data-theme="dark"] .home-core-orb__check {
+  color: var(--background);
+}
+.home-core--inline {
+  display: inline-flex;
+  vertical-align: middle;
+}
+.home-core--inline .home-core-orb {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+.home-core--inline .home-core-orb__core {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+.home-core-text {
+  animation: fade-up var(--motion-base) both;
+}
+
+@keyframes home-core-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(0.86); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+@keyframes home-core-orbit {
+  to { transform: rotate(360deg); }
+}
+
+html.motion-lite .home-core-orb__halo,
+html.motion-lite .home-core-orb__ring {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-core-orb__halo,
+  .home-core-orb__ring,
+  .home-core-text {
+    animation: none !important;
+  }
+}
+
 /* Premium micro-interactions for post-login UI */
 @keyframes card-enter {
   from { opacity: 0; transform: translateY(6px); }
@@ -939,9 +1182,10 @@ html.motion-lite ::view-transition-new(.minervot-page) {
 
 .stat-tile {
   border: 1px solid var(--border);
-  background: var(--surface-elevated);
-  border-radius: var(--radius-md);
-  padding: 0.65rem 0.75rem;
+  background: var(--surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-subtle);
+  padding: 0.75rem 0.875rem;
   transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
 .stat-tile[data-live="true"] {

@@ -519,10 +519,7 @@ export function AutomationsDashboard() {
               {ui.entrustedJobs.registerHere}
             </Button>
             {v2Enabled ? (
-              <Link
-                href="/automations/new"
-                className="text-sm text-accent underline"
-              >
+              <Link href="/automations/new" className="ui-link">
                 下書きから続ける
               </Link>
             ) : (
@@ -568,8 +565,9 @@ export function AutomationsDashboard() {
         <ErrorState message={error} />
       ) : null}
 
-      {/* Compact status rail — only after a successful list. Failure ≠ 0件. */}
-      {showCounts ? (
+      {/* Compact status rail — only after a successful list. Failure ≠ 0件.
+          Hidden when the operations dashboard (same counts, SoT) is shown. */}
+      {showCounts && !(v2Enabled && (operationsEnabled || dashboardV2)) ? (
       <section
         aria-label="自動化の稼働状況"
         className="animate-stagger grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
@@ -608,16 +606,11 @@ export function AutomationsDashboard() {
       {showCounts ? (
       <section
         aria-label="AIの動き"
-        className="animate-card-enter rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5"
+        className="animate-card-enter ui-card ui-card-pad"
       >
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-            AIが動いている流れ
-          </h2>
-          <Link
-            href="/automations/runs"
-            className="text-[length:var(--text-caption)] font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
-          >
+          <h2 className="ui-section-title text-base">AIが動いている流れ</h2>
+          <Link href="/automations/runs" className="ui-link">
             実行履歴
           </Link>
         </div>
@@ -686,11 +679,8 @@ export function AutomationsDashboard() {
       {v2Enabled ? (
         <section className="space-y-4">
           <div className="flex items-end justify-between gap-3">
-            <h2 className="text-title">{ui.entrustedJobs.title}</h2>
-            <Link
-              href="/automations/runs"
-              className="text-sm text-accent underline"
-            >
+            <h2 className="ui-section-title">{ui.entrustedJobs.title}</h2>
+            <Link href="/automations/runs" className="ui-link">
               実行履歴
             </Link>
           </div>

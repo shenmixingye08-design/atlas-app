@@ -1,16 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 
 import { AutomationFirstHome } from "@/components/automation-first/automation-first-home";
 import { TodayWorkPage } from "@/components/automation-first/today-work-page";
+import { AutomationsDashboard } from "@/components/automations/automations-dashboard";
+import { RunListPage } from "@/components/automations/v2/run-list-page";
 import { SettingsHub } from "@/components/settings/settings-hub";
+import { XAutoPostPanel } from "@/components/workspace/x-autopost-panel";
+import { XManualPostSection } from "@/components/workspace/x-manual-post-section";
 import { AtlasAppShell } from "@/components/layout/atlas-app-shell";
 import type { Automation } from "@/lib/automations/types";
 import type { Project } from "@/lib/projects/types";
 import { cn } from "@/lib/design-system/cn";
 
-type View = "home" | "today" | "settings" | "empty";
+type View = "home" | "today" | "settings" | "empty" | "automations" | "x" | "runs";
 
 export function AutomationFirstPreviewClient({
   automations,
@@ -30,6 +34,29 @@ export function AutomationFirstPreviewClient({
     };
   }, [theme]);
 
+  // DEV sandbox only: serve fixture automations to the real dashboard.
+  const [fetchShimReady, setFetchShimReady] = useState(false);
+  useEffect(() => {
+    if (view !== "automations") return;
+    const original = window.fetch;
+    window.fetch = (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const path = new URL(url, window.location.origin).pathname;
+      if (path === "/api/automations") {
+        return Promise.resolve(Response.json(automations));
+      }
+      if (path === "/api/automation-platform/runs") {
+        return Promise.resolve(Response.json({ runs: [] }));
+      }
+      return original(input, init);
+    };
+    queueMicrotask(() => setFetchShimReady(true));
+    return () => {
+      window.fetch = original;
+      setFetchShimReady(false);
+    };
+  }, [view, automations]);
+
   return (
     <AtlasAppShell active="projects" width="wide">
       <div className="mb-6 flex flex-wrap gap-2 border-b border-[var(--border)] pb-4">
@@ -39,6 +66,9 @@ export function AutomationFirstPreviewClient({
             ["empty", "ホーム（0件）"],
             ["today", "今日の仕事"],
             ["settings", "設定ハブ"],
+            ["automations", "自動化"],
+            ["x", "X投稿"],
+            ["runs", "実行履歴"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -72,6 +102,24 @@ export function AutomationFirstPreviewClient({
       ) : null}
       {view === "today" ? (
         <TodayWorkPage initialAutomations={automations} />
+      ) : null}
+      {view === "automations" && fetchShimReady ? (
+        <Suspense fallback={null}>
+          <AutomationsDashboard />
+        </Suspense>
+      ) : null}
+      {view === "runs" ? (
+        <Suspense fallback={null}>
+          <RunListPage />
+        </Suspense>
+      ) : null}
+      {view === "x" ? (
+        <Suspense fallback={null}>
+          <div className="space-y-8">
+            <XAutoPostPanel />
+            <XManualPostSection />
+          </div>
+        </Suspense>
       ) : null}
       {view === "settings" ? (
         <SettingsHub

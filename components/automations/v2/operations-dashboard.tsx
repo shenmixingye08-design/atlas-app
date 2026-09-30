@@ -7,6 +7,9 @@ import type { AutomationOperationsSummary } from "@/lib/automation-platform/oper
 import { fetchAutomationOperationsSummary } from "@/lib/automation-platform/client";
 import { formatDateTimeInUserTimeZone } from "@/lib/datetime/display-timezone";
 import { cn } from "@/lib/design-system/cn";
+import { RecentDeliverables } from "@/components/automation-first/recent-deliverables";
+import { SectionHeader } from "@/components/automation-first/page-header";
+import { formatNextRunDateTime } from "@/lib/automation-first/home-data";
 
 const TONE_CLASS: Record<
   AutomationOperationsSummary["todayWork"][number]["tone"],
@@ -54,7 +57,7 @@ export function OperationsDashboard({
 
   if (error && !summary) {
     return (
-      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+      <section className="ui-card ui-card-pad">
         <p className="text-sm text-[var(--danger)]">{error}</p>
         <button
           type="button"
@@ -69,7 +72,7 @@ export function OperationsDashboard({
 
   if (!summary) {
     return (
-      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 text-sm text-[var(--muted)]">
+      <section className="ui-card ui-card-pad text-sm text-[var(--muted)]">
         運用状況を準備しています…
       </section>
     );
@@ -87,39 +90,38 @@ export function OperationsDashboard({
 
   return (
     <section className="space-y-5">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <h2 className="text-title">今日AIが行う仕事</h2>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            次に確認・承認・復旧が必要なことを先に示します。
-          </p>
-        </div>
-        <Link
-          href="/automations/runs"
-          className="shrink-0 text-sm text-accent underline"
-        >
-          実行履歴
-        </Link>
-      </div>
+      <SectionHeader
+        title="今日AIが行う仕事"
+        description="次に確認・承認・復旧が必要なことを先に示します。"
+        action={
+          <Link href="/automations/runs" className="ui-link">
+            実行履歴
+          </Link>
+        }
+      />
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+      <dl className="ui-card grid grid-cols-4 gap-y-3 px-2 py-3 lg:grid-cols-7">
         {cards.map((card) => (
-          <div
-            key={card.label}
-            className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--card)] px-3 py-3 text-center"
-          >
-            <p className="text-[11px] text-[var(--text-muted)]">{card.label}</p>
-            <p className="mt-1 text-xl font-semibold tabular-nums">
+          <div key={card.label} className="min-w-0 px-1 text-center">
+            <dt className="truncate text-[length:var(--text-meta)] text-[var(--text-muted)]">
+              {card.label}
+            </dt>
+            <dd
+              className={cn(
+                "text-lg font-semibold tabular-nums tracking-tight",
+                card.value === 0 && "text-[var(--text-muted)]",
+              )}
+            >
               {card.value}
-            </p>
+            </dd>
           </div>
         ))}
-      </div>
+      </dl>
 
       {summary.nextRun ? (
         <p className="text-sm text-[var(--text-secondary)]">
           次の実行:{" "}
-          <Link href={summary.nextRun.href} className="font-medium text-accent">
+          <Link href={summary.nextRun.href} className="font-semibold text-[var(--brand)] hover:underline">
             {summary.nextRun.name}
           </Link>{" "}
           （
@@ -130,36 +132,54 @@ export function OperationsDashboard({
         </p>
       ) : null}
 
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-        <h3 className="text-sm font-medium">本日のタイムライン</h3>
+      {summary.attention.length > 0 ? (
+        <div>
+          <SectionHeader heading="h3" title="対応が必要" />
+          <ul className="ui-card ui-list">
+            {summary.attention.slice(0, 8).map((item) => (
+              <li key={`${item.kind}-${item.href}`}>
+                <Link href={item.href} className="ui-row ui-row-link focus-ring">
+                  <span
+                    aria-hidden
+                    className="h-2 w-2 shrink-0 rounded-full bg-[var(--warning)]"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold text-sm">{item.title}</span>
+                    <span className="block text-[length:var(--text-caption)] text-[var(--text-secondary)]">
+                      {item.subtitle}
+                    </span>
+                  </span>
+                  <span aria-hidden className="ui-chevron">›</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div>
+        <SectionHeader heading="h3" title="本日のタイムライン" />
         {summary.todayWork.length === 0 ? (
-          <p className="mt-3 text-sm text-[var(--muted)]">
+          <p className="ui-card ui-card-pad text-sm text-[var(--muted)]">
             本日の予定・実行はまだありません。
           </p>
         ) : (
-          <ul className="mt-3 space-y-2">
+          <ul className="ui-card ui-list">
             {summary.todayWork.slice(0, 12).map((item, index) => (
               <li key={`${item.href}-${index}`}>
-                <Link
-                  href={item.href}
-                  className="flex items-start gap-3 rounded-xl px-2 py-2 hover:bg-[var(--surface-muted)]"
-                >
-                  <span className="w-12 shrink-0 tabular-nums text-sm text-[var(--muted)]">
+                <Link href={item.href} className="ui-row ui-row-link focus-ring">
+                  <span className="w-12 shrink-0 text-sm font-semibold tabular-nums text-[var(--text-secondary)]">
                     {item.timeLabel}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">
+                    <span className="block truncate text-sm font-semibold">
                       {item.title}
                     </span>
-                    <span
-                      className={cn(
-                        "text-xs",
-                        TONE_CLASS[item.tone],
-                      )}
-                    >
+                    <span className={cn("text-xs", TONE_CLASS[item.tone])}>
                       {item.statusLabel}
                     </span>
                   </span>
+                  <span aria-hidden className="ui-chevron">›</span>
                 </Link>
               </li>
             ))}
@@ -167,52 +187,16 @@ export function OperationsDashboard({
         )}
       </div>
 
-      {summary.attention.length > 0 ? (
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-          <h3 className="text-sm font-medium">対応が必要</h3>
-          <ul className="mt-3 space-y-2">
-            {summary.attention.slice(0, 8).map((item) => (
-              <li key={`${item.kind}-${item.href}`}>
-                <Link
-                  href={item.href}
-                  className="block rounded-xl bg-[var(--surface-muted)] px-3 py-3"
-                >
-                  <p className="font-medium">{item.title}</p>
-                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                    {item.subtitle}
-                  </p>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {summary.recentArtifacts.length > 0 ? (
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-          <h3 className="text-sm font-medium">最近完成した成果物</h3>
-          <ul className="mt-3 space-y-2">
-            {summary.recentArtifacts.map((artifact) => (
-              <li key={artifact.id}>
-                <Link
-                  href={artifact.href}
-                  className="flex items-center justify-between gap-3 rounded-xl px-2 py-2 hover:bg-[var(--surface-muted)]"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">
-                      {artifact.label}
-                    </span>
-                    <span className="text-xs text-[var(--muted)]">
-                      {artifact.automationName}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-xs text-accent">開く</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <RecentDeliverables
+        items={summary.recentArtifacts.map((artifact) => ({
+          id: artifact.id,
+          title: artifact.automationName,
+          detail: artifact.label,
+          href: artifact.href,
+          meta: formatNextRunDateTime(artifact.createdAt),
+          url: artifact.url,
+        }))}
+      />
     </section>
   );
 }

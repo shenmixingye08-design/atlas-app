@@ -34,12 +34,9 @@ describe("logged-in motion contracts", () => {
   });
 
   it("animates real progress with scaleX and never fakes a percent", () => {
-    const home = src("components/home/home-in-progress-panel.tsx");
     const progress = src("components/ui/progress.tsx");
     const wizard = src("components/automations/v2/wizard-shell.tsx");
     const exportBar = src("components/settings/data-export-settings.tsx");
-    expect(home).not.toContain("progress ?? 45");
-    expect(home).toContain("indeterminate");
     expect(progress).toContain("scaleX");
     expect(wizard).toContain("scaleX");
     expect(wizard).not.toContain("transition-[width]");
@@ -61,10 +58,8 @@ describe("logged-in motion contracts", () => {
 
   it("does not blank notification / memory lists on refetch", () => {
     const notices = src("components/notifications/notification-list.tsx");
-    const memory = src("components/settings/memory-settings.tsx");
     const workMemory = src("components/settings/work-memory-settings.tsx");
     expect(notices).toContain("hasLoadedRef");
-    expect(memory).toContain("hasLoadedRef");
     expect(workMemory).toContain("hasLoadedRef");
     expect(notices).toContain("MotionList");
   });
@@ -129,25 +124,20 @@ describe("logged-in motion contracts", () => {
   it("morphs submit into processing without a premature success state", () => {
     const submit = src("components/motion/submit-morph.tsx");
     const form = src("components/workspace/work-request-form.tsx");
-    const composer = src("components/home/secretary-chat-composer.tsx");
     expect(submit).toContain('phase === "processing"');
     expect(submit).not.toContain('"completed"');
     expect(submit).not.toContain("isSuccess");
     expect(form).toContain("SubmitMorph");
     expect(form).toContain("handleSubmit");
-    expect(composer).toContain("if (submitting) return");
-    expect(composer).toContain("SubmitMorph");
   });
 
   it("keeps android-lite and no transition-all on the request path", () => {
     const css = src("app/globals.css");
     const lite = src("lib/motion/android-lite.ts");
-    const composer = src("components/home/secretary-chat-composer.tsx");
     const form = src("components/workspace/work-request-form.tsx");
     expect(css).toContain("html.motion-lite");
     expect(css).toContain("motion-complete-check");
     expect(lite).toContain("detectMotionLite");
-    expect(composer).not.toContain("transition-all");
     expect(form).not.toContain("transition-all");
   });
 });

@@ -22,11 +22,11 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-[var(--radius-card)] bg-[var(--surface-raised)]",
-        variant === "default" && "border border-[var(--border-subtle)]",
-        variant === "elevated" && "shadow-[var(--shadow-subtle)]",
+        // Shared UI kit (globals.css @layer components): one card language
+        // across logged-in screens. Utilities in className still override.
+        "ui-card",
         variant === "interactive" &&
-          "motion-press-card cursor-pointer border border-[var(--border-subtle)] [@media(hover:hover)_and_(pointer:fine)]:hover:shadow-[var(--shadow-floating)]",
+          "ui-card-interactive motion-press-card cursor-pointer",
         PADDING[padding],
         className,
       )}

@@ -267,6 +267,35 @@ export async function notifyXAutoPostDrafted(userId: string) {
   });
 }
 
+/** Scheduled X post stopped by the plan's monthly allowance (sent once a month). */
+export async function notifyXAutoPostLimitReached(userId: string) {
+  return await createNotification({
+    audience: "user",
+    userId,
+    type: "billing",
+    title: "今月のX投稿回数を使い切りました",
+    message:
+      "今月の自動投稿は上限に達したため、次の投稿は止まっています。毎日続けるには、プランをご確認ください。",
+    relatedService: "x",
+    actionUrl: "/settings/billing",
+  });
+}
+
+/** Full-auto post held back because the copy fell back to a template. */
+export async function notifyXAutoPostHeldForReview(userId: string) {
+  return await createNotification({
+    audience: "user",
+    userId,
+    type: "awaiting_review",
+    title: "自動投稿を止めて下書きに保存しました",
+    message:
+      "今回は本文をうまく作成できなかったため、Xへは投稿せず下書きに保存しました。内容をご確認のうえ、必要なら編集して投稿してください。",
+    relatedService: "x",
+    actionUrl: "/workspace/x",
+    lineEvent: "confirmation_request",
+  });
+}
+
 export async function notifyDriveSaveComplete(userId: string, fileName?: string) {
   return await createNotification({
     audience: "user",

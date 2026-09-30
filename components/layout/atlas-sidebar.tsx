@@ -29,11 +29,14 @@ import {
   IconArtifact,
   IconAutomation,
   IconBell,
+  IconChevron,
   IconHome,
   IconLink,
   IconList,
+  IconMore,
   IconSettings,
   IconToday,
+  IconX,
 } from "@/components/ui/icons";
 
 import { AtlasTopActions } from "./atlas-top-actions";
@@ -65,6 +68,8 @@ function SidebarIcon({ id }: { id: AtlasNavPage }) {
       return <IconSettings className={className} />;
     case "workspace":
       return <IconList className={className} />;
+    case "x-autopost":
+      return <IconX className={className} />;
     default:
       return <IconHome className={className} />;
   }
@@ -127,19 +132,16 @@ function MoreSection({
         )}
         aria-expanded={moreExpanded}
       >
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center text-base leading-none" aria-hidden>
-          📌
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden>
+          <IconMore className="h-[1.15rem] w-[1.15rem]" />
         </span>
         <span className="flex-1 truncate text-left">{ui.nav.more}</span>
-        <span
+        <IconChevron
           className={cn(
-            "text-xs text-[var(--text-muted)] transition-transform duration-[var(--motion-fast)]",
+            "h-4 w-4 text-[var(--text-muted)] transition-transform duration-[var(--motion-fast)]",
             moreExpanded && "rotate-180",
           )}
-          aria-hidden
-        >
-          ▾
-        </span>
+        />
       </button>
 
       {moreExpanded && (
@@ -222,7 +224,13 @@ function SidebarPanel({
         <div className="my-4 border-t border-[var(--border-subtle)]" />
 
         <MoreSection
-          groups={SIDEBAR_MORE_GROUPS}
+          groups={SIDEBAR_MORE_GROUPS.map((group) => ({
+            ...group,
+            // Items promoted to the primary nav are not repeated under 「その他」.
+            items: group.items.filter(
+              (item) => !primaryNav.some((primary) => primary.id === item.id),
+            ),
+          })).filter((group) => group.items.length > 0)}
           active={active}
           moreExpanded={moreExpanded}
           onToggleMore={onToggleMore}

@@ -15,8 +15,13 @@ import {
 } from "@/components/automation-first/entrusted-work";
 import { ErrorState } from "@/components/automation-first/error-state";
 import { HomePrimaryActions } from "@/components/automation-first/home-primary-actions";
+import {
+  HomeCoreBadge,
+  HomeStatusCore,
+} from "@/components/automation-first/home-status-core";
 import { WorkCountStrip, YourWorkList } from "@/components/automation-first/your-work";
-import { SectionHeader } from "@/components/automation-first/page-header";
+import { PageHeader, SectionHeader } from "@/components/automation-first/page-header";
+import { RecentDeliverables } from "@/components/automation-first/recent-deliverables";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
 import { Timeline } from "@/components/automation-first/timeline";
 import { EntrustProposalList } from "@/components/work-loop/entrust-proposal";
@@ -31,6 +36,12 @@ import {
   type HomeTimelineRow,
   type HomeWeeklyStats,
 } from "@/lib/automation-first/home-data";
+import {
+  HOME_COMPLETED_HOLD_MS,
+  deriveHomeCoreState,
+  type HomeCompletedRun,
+} from "@/lib/automation-first/home-core-state";
+import { useLiveOpsRefresh } from "@/lib/automation-first/use-live-ops-refresh";
 import {
   applyOpsSummaryToHomeSummary,
   buildHomeAttentionItems,
@@ -67,6 +78,8 @@ import { toWorkAsset, workCounts } from "@/lib/work-asset/work-view";
 export type AutomationFirstHomeProps = {
   automations: Automation[];
   projects: Project[];
+  /** Reload automations after a pause / resume / run-now from the home. */
+  onAutomationsChanged?: () => void;
 };
 
 function HomeSkeleton() {
@@ -82,7 +95,7 @@ function WeeklyStatsCard({ stats }: { stats: HomeWeeklyStats }) {
   return (
     <section
       aria-labelledby="af-week-heading"
-      className="animate-card-enter rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5"
+      className="animate-card-enter ui-card ui-card-pad"
     >
       <h3
         id="af-week-heading"
@@ -90,7 +103,7 @@ function WeeklyStatsCard({ stats }: { stats: HomeWeeklyStats }) {
       >
         今週の実績
       </h3>
-      <dl className="mt-2.5 grid grid-cols-2 gap-2.5 text-sm sm:grid-cols-3">
+      <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
         <div>
           <dt className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
             完了した仕事
@@ -159,6 +172,7 @@ function hasMeaningfulWeeklyStats(stats: HomeWeeklyStats): boolean {
 export function AutomationFirstHome({
   automations,
   projects,
+  onAutomationsChanged,
 }: AutomationFirstHomeProps) {
   const { flags } = useFeatureAvailability();
   const opsEnabled =
@@ -175,6 +189,7 @@ export function AutomationFirstHome({
   const [runs, setRuns] = useState<AutomationRun[]>([]);
   const [opsRequestId, setOpsRequestId] = useState(0);
   const [xPostedThisMonth, setXPostedThisMonth] = useState<number | null>(null);
+  const [justCompleted, setJustCompleted] = useState<HomeCompletedRun | null>(null);
 
   useEffect(() => {
     if (!opsEnabled) return;
@@ -212,6 +227,30 @@ export function AutomationFirstHome({
       cancelled = true;
     };
   }, [opsEnabled, opsRequestId]);
+
+  const { refreshNow: refreshOpsNow } = useLiveOpsRefresh({
+    enabled: opsEnabled,
+    runs,
+    onUpdate: ({ summary, runs: nextRuns, completed }) => {
+      setOpsSummary(summary);
+      setRuns(nextRuns);
+      if (completed) {
+        setJustCompleted(completed);
+        trackAutomationFirstEvent("home_run_completed_live", {
+          id: completed.runId,
+        });
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (!justCompleted) return;
+    const timer = window.setTimeout(
+      () => setJustCompleted(null),
+      HOME_COMPLETED_HOLD_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [justCompleted]);
 
   useEffect(() => {
     let cancelled = false;
@@ -304,6 +343,7 @@ export function AutomationFirstHome({
         detail: artifact.label,
         href: artifact.href,
         meta: formatNextRunDateTime(artifact.createdAt),
+        url: artifact.url,
       }));
     }
     return v1Jobs
@@ -395,6 +435,7 @@ export function AutomationFirstHome({
       <section aria-labelledby="af-attention-heading" className="space-y-2.5">
         <SectionHeader
           heading="h3"
+          id="af-attention-heading"
           title="対応が必要"
           description="承認待ち・入力待ち・失敗・復旧が必要な仕事"
         />
@@ -429,6 +470,7 @@ export function AutomationFirstHome({
       <section aria-labelledby="af-timeline-heading" className="space-y-2.5">
         <SectionHeader
           heading="h3"
+          id="af-timeline-heading"
           title="今日MINERVOTが行う仕事"
           description="実行予定・実行中・完了"
           action={
@@ -452,86 +494,104 @@ export function AutomationFirstHome({
       </section>
     ) : null;
 
-  const nextRunCard = nextRun ? (
-    <section
-      aria-labelledby="af-next-run-heading"
-      className="animate-card-enter rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5"
-    >
-      <h3
-        id="af-next-run-heading"
-        className="text-[length:var(--text-label)] font-semibold text-[var(--text-primary)]"
-      >
-        次回実行
-      </h3>
-      <p className="mt-1.5 text-sm font-semibold text-[var(--text-primary)]">
-        {nextRun.name}
-      </p>
-      <p className="mt-0.5 text-[length:var(--text-caption)] text-[var(--text-secondary)]">
-        {formatNextRunDateTime(nextRun.nextRunAt)}
-      </p>
-      <Link
-        href={nextRun.href}
-        className="mt-2 inline-flex min-h-[var(--touch-target)] items-center text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
-      >
-        詳細を見る
-      </Link>
-    </section>
-  ) : summary.nextJob ? (
-    <section
-      aria-labelledby="af-next-run-heading"
-      className="animate-card-enter rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5"
-    >
-      <h3
-        id="af-next-run-heading"
-        className="text-[length:var(--text-label)] font-semibold text-[var(--text-primary)]"
-      >
-        次回実行
-      </h3>
-      <p className="mt-1.5 text-sm font-semibold text-[var(--text-primary)]">
-        {summary.nextJob.title}
-      </p>
-      <p className="mt-0.5 text-[length:var(--text-caption)] text-[var(--text-secondary)]">
-        {summary.nextJob.scheduledTime ?? summary.nextJob.scheduleLabel ?? "—"}
-      </p>
+  const nextRunInfo = nextRun
+    ? {
+        name: nextRun.name,
+        when: formatNextRunDateTime(nextRun.nextRunAt),
+        href: nextRun.href as string | null,
+      }
+    : summary.nextJob
+      ? {
+          name: summary.nextJob.title,
+          when:
+            summary.nextJob.scheduledTime ?? summary.nextJob.scheduleLabel ?? "—",
+          href: summary.nextJob.href ?? null,
+        }
+      : null;
+
+  const nextRunBody = nextRunInfo ? (
+    <>
+      <span className="ui-icon-tile" aria-hidden>
+        <IconClock className="h-[18px] w-[18px]" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span
+          id="af-next-run-heading"
+          className="block text-[length:var(--text-meta)] font-semibold text-[var(--text-muted)]"
+        >
+          次回実行
+        </span>
+        <span className="block truncate text-sm font-semibold text-[var(--text-primary)]">
+          {nextRunInfo.name}
+        </span>
+        <span className="block text-[length:var(--text-caption)] text-[var(--text-secondary)]">
+          {nextRunInfo.when}
+        </span>
+      </span>
+      {nextRunInfo.href ? <span aria-hidden className="ui-chevron">›</span> : null}
+    </>
+  ) : null;
+
+  const nextRunCard = nextRunInfo ? (
+    <section aria-labelledby="af-next-run-heading" className="animate-card-enter">
+      {nextRunInfo.href ? (
+        <Link
+          href={nextRunInfo.href}
+          className="ui-card ui-card-interactive ui-row focus-ring"
+        >
+          {nextRunBody}
+        </Link>
+      ) : (
+        <div className="ui-card ui-row">{nextRunBody}</div>
+      )}
     </section>
   ) : null;
 
   const recentSection =
-    recentCompleted.length > 0 ? (
-      <section aria-labelledby="af-completed-heading" className="space-y-2.5">
-        <SectionHeader heading="h3" title="最近完成したもの" />
-        <ul className="animate-stagger divide-y divide-[var(--border)] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)]">
-          {recentCompleted.map((item) => (
-            <li
-              key={item.id}
-              className="flex items-center justify-between gap-3 px-3.5 py-2.5"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-[var(--text-primary)]">
-                  {item.title}
-                </p>
-                <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  {item.detail}
-                  {item.meta ? ` · ${item.meta}` : ""}
-                </p>
-              </div>
-              <Link
-                href={item.href}
-                onClick={() =>
-                  trackAutomationFirstEvent("artifact_opened", {
-                    id: item.id,
-                    source: "home_completed",
-                  })
-                }
-                className="inline-flex min-h-[var(--touch-target)] shrink-0 items-center text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
-              >
-                確認
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
-    ) : null;
+    recentCompleted.length > 0 ? <RecentDeliverables items={recentCompleted} /> : null;
+
+  const coreState = useMemo(
+    () =>
+      deriveHomeCoreState({
+        justCompleted,
+        checking: opsEnabled && opsLoading && !opsSummary && !opsError,
+        attentionCount: attention.length,
+        runningCount: runningJobs.length,
+        runningTitle: runningJobs[0]?.title ?? null,
+        nextRun: nextRun
+          ? {
+              name: nextRun.name,
+              whenLabel: formatNextRunDateTime(nextRun.nextRunAt),
+            }
+          : summary.nextJob
+            ? {
+                name: summary.nextJob.title,
+                whenLabel:
+                  summary.nextJob.scheduledTime ??
+                  summary.nextJob.scheduleLabel ??
+                  null,
+              }
+            : null,
+        entrustedCount: counts.entrusted,
+      }),
+    [
+      justCompleted,
+      opsEnabled,
+      opsLoading,
+      opsSummary,
+      opsError,
+      attention.length,
+      runningJobs,
+      nextRun,
+      summary.nextJob,
+      counts.entrusted,
+    ],
+  );
+
+  const showCore =
+    isReturningUser ||
+    coreState.kind === "checking" ||
+    coreState.kind === "completed";
 
   const dashboardHasContent = Boolean(
     attentionSection ||
@@ -545,42 +605,46 @@ export function AutomationFirstHome({
       (opsSummary && hasMeaningfulWeeklyStats(weeklyStats)),
   );
 
+  const finishedLine = formatFinishedWorkThisMonthLine(
+    countSuccessfulFinishedWorkThisMonth({
+      projects,
+      automations,
+      xAutoPostsPostedThisMonth: xPostedThisMonth ?? 0,
+      now,
+    }),
+  );
+
   return (
     <RevealStagger
       playKey={MOTION_PLAY_KEYS.homeIntro}
       className="automation-first-home space-y-6 pb-6 sm:space-y-8"
     >
-      <header className="space-y-1.5">
-        <p className="text-[length:var(--text-label)] font-semibold tracking-[0.08em] text-[var(--brand)]">
-          {greetingForHour(now.getHours())}
-        </p>
-        <h1 className="text-[length:var(--text-page-title)] font-semibold tracking-tight text-[var(--text-primary)] sm:text-[length:var(--text-display)]">
-          毎日のX投稿を、一度頼んだら次から任せます
-        </h1>
-        <p className="text-[length:var(--text-caption)] text-[var(--text-secondary)] sm:text-[length:var(--text-body)]">
-          {formatTodayDateLabel(now)}
-          {" — "}
-          {HOME_X_AUTOMATION_SUPPORT}
-        </p>
-      </header>
+      <PageHeader
+        eyebrow={
+          <>
+            {showCore ? null : <HomeCoreBadge />}
+            {greetingForHour(now.getHours())}
+          </>
+        }
+        title="毎日のX投稿を、一度頼んだら次から任せます"
+        description={
+          <>
+            {formatTodayDateLabel(now)}
+            {isReturningUser ? null : ` — ${HOME_X_AUTOMATION_SUPPORT}`}
+          </>
+        }
+      />
 
-      <HomePrimaryActions compact={isReturningUser} />
-
-      {(() => {
-        const finishedLine = formatFinishedWorkThisMonthLine(
-          countSuccessfulFinishedWorkThisMonth({
-            projects,
-            automations,
-            xAutoPostsPostedThisMonth: xPostedThisMonth ?? 0,
-            now,
-          }),
-        );
-        return finishedLine ? (
-          <p className="text-center text-[length:var(--text-caption)] text-[var(--text-muted)]">
-            {finishedLine}
-          </p>
-        ) : null;
-      })()}
+      <div
+        className={
+          showCore
+            ? "grid grid-cols-1 gap-3 lg:grid-cols-2 lg:items-start [&>*]:min-w-0"
+            : "space-y-3"
+        }
+      >
+        {showCore ? <HomeStatusCore state={coreState} /> : null}
+        <HomePrimaryActions compact={isReturningUser} />
+      </div>
 
       {!isReturningUser ? (
         <>
@@ -591,9 +655,15 @@ export function AutomationFirstHome({
         </>
       ) : (
         <p className="text-[length:var(--text-caption)] text-[var(--text-muted)]">
+          {finishedLine ? `${finishedLine} · ` : ""}
           {MEMORY_OUTCOME}。普段は任せて、必要なときだけ確認。
         </p>
       )}
+      {!isReturningUser && finishedLine ? (
+        <p className="text-center text-[length:var(--text-caption)] text-[var(--text-muted)]">
+          {finishedLine}
+        </p>
+      ) : null}
 
       <EntrustProposalList
         projects={projects}
@@ -613,47 +683,53 @@ export function AutomationFirstHome({
 
       <ContentSwap ready={!showDashboardSkeleton} pending={<HomeSkeleton />}>
       {dashboardHasContent ? (
-        <section
-          aria-labelledby="af-today-minervot-heading"
-          className="space-y-5"
-        >
-          <h2
-            id="af-today-minervot-heading"
-            className="text-[length:var(--text-section)] font-semibold tracking-tight text-[var(--text-primary)]"
-          >
+        <section aria-labelledby="af-today-minervot-heading" className="space-y-4">
+          <h2 id="af-today-minervot-heading" className="ui-section-title">
             今日のMINERVOT
           </h2>
-          <WorkCountStrip
-            entrusted={counts.entrusted}
-            completedThisWeek={
-              opsSummary && weeklyStats.completedJobs > 0
-                ? weeklyStats.completedJobs
-                : null
-            }
-            needsAttention={counts.needsAttention + attention.length}
-          />
-          <YourWorkList works={works} />
-          <EntrustedWorkList cards={entrustedCards} />
-          {valueMetrics.length > 0 ? (
-            <MeasuredValueMetrics metrics={valueMetrics} />
-          ) : null}
-          {attentionSection}
-          <RunningStepsPanel
-            heading="h3"
-            jobs={runningJobs}
-            onOpen={(id) =>
-              trackAutomationFirstEvent("run_detail_opened", {
-                id,
-                source: "home_running",
-              })
-            }
-          />
-          {timelineSection}
-          {nextRunCard}
-          {recentSection}
-          {opsSummary && hasMeaningfulWeeklyStats(weeklyStats) ? (
-            <WeeklyStatsCard stats={weeklyStats} />
-          ) : null}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-8 xl:grid-cols-[minmax(0,1fr)_22rem]">
+            <div className="min-w-0 space-y-6">
+              {attentionSection}
+              <RunningStepsPanel
+                heading="h3"
+                jobs={runningJobs}
+                onOpen={(id) =>
+                  trackAutomationFirstEvent("run_detail_opened", {
+                    id,
+                    source: "home_running",
+                  })
+                }
+              />
+              {recentSection}
+              {timelineSection}
+              <YourWorkList
+                works={works}
+                onChanged={() => {
+                  onAutomationsChanged?.();
+                  refreshOpsNow();
+                }}
+              />
+            </div>
+            <aside className="min-w-0 space-y-6" aria-label="任せている仕事の状況">
+              <WorkCountStrip
+                entrusted={counts.entrusted}
+                completedThisWeek={
+                  opsSummary && weeklyStats.completedJobs > 0
+                    ? weeklyStats.completedJobs
+                    : null
+                }
+                needsAttention={counts.needsAttention + attention.length}
+              />
+              {nextRunCard}
+              <EntrustedWorkList cards={entrustedCards} />
+              {valueMetrics.length > 0 ? (
+                <MeasuredValueMetrics metrics={valueMetrics} />
+              ) : null}
+              {opsSummary && hasMeaningfulWeeklyStats(weeklyStats) ? (
+                <WeeklyStatsCard stats={weeklyStats} />
+              ) : null}
+            </aside>
+          </div>
         </section>
       ) : null}
       </ContentSwap>

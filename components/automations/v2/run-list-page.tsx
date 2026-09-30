@@ -10,6 +10,7 @@ import {
   TRIGGER_LABEL,
 } from "@/lib/automation-platform/operations/status-labels";
 import { PageHeader } from "@/components/automation-first/page-header";
+import { cn } from "@/lib/design-system/cn";
 import { LoadingState } from "@/components/ui/loading-state";
 import {
   RUN_LIST_EMPTY_MESSAGE,
@@ -22,7 +23,7 @@ import {
 const STATUS_FILTERS: Array<{ id: string; label: string; value: string }> = [
   { id: "all", label: "すべて", value: "" },
   { id: "succeeded", label: "完了", value: "succeeded" },
-  { id: "failed", label: "完了不可", value: "failed" },
+  { id: "failed", label: "完了できず", value: "failed" },
   {
     id: "partial",
     label: "一部完了",
@@ -32,6 +33,53 @@ const STATUS_FILTERS: Array<{ id: string; label: string; value: string }> = [
   { id: "approval", label: "確認待ち", value: "awaiting_approval" },
   { id: "input", label: "入力待ち", value: "needs_input" },
 ];
+
+type RunTone = "success" | "warning" | "danger" | "active" | "neutral";
+
+const RUN_TONE: Record<RunTone, string> = {
+  success: "bg-[var(--success-bg)] text-[var(--success)]",
+  warning: "bg-[var(--warning-bg)] text-[var(--warning)]",
+  danger: "bg-[var(--error-bg)] text-[var(--danger)]",
+  active: "bg-[var(--brand-muted)] text-[var(--brand)]",
+  neutral: "bg-[var(--surface-muted)] text-[var(--text-secondary)]",
+};
+
+const RUN_SHORT_LABEL: Partial<Record<AutomationRun["status"], string>> = {
+  succeeded: "完了",
+  partially_succeeded: "一部完了",
+  failed: "完了できず",
+  awaiting_approval: "確認待ち",
+  needs_input: "入力待ち",
+  running: "実行中",
+  queued: "実行待ち",
+  preparing: "準備中",
+  retrying: "再試行中",
+  scheduled: "予定",
+  cancelled: "取り消し",
+  skipped: "スキップ",
+  expired: "期限切れ",
+};
+
+function runTone(status: AutomationRun["status"]): RunTone {
+  switch (status) {
+    case "succeeded":
+      return "success";
+    case "partially_succeeded":
+    case "awaiting_approval":
+    case "needs_input":
+      return "warning";
+    case "failed":
+    case "expired":
+      return "danger";
+    case "running":
+    case "queued":
+    case "preparing":
+    case "retrying":
+      return "active";
+    default:
+      return "neutral";
+  }
+}
 
 export function RunListPage() {
   const [runs, setRuns] = useState<AutomationRun[] | null>(null);
@@ -76,22 +124,23 @@ export function RunListPage() {
     <div className="space-y-6">
       <Link
         href="/automations"
-        className="inline-flex items-center gap-1 text-sm text-[var(--foreground-muted)] transition-colors hover:text-foreground focus-ring rounded"
+        className="ui-link gap-1 rounded text-[var(--text-secondary)] focus-ring"
       >
         ← 自動化一覧へ戻る
       </Link>
       <PageHeader
         eyebrow="MINERVOT"
         title="実行履歴"
-        description="Runの状態・成果物・診断IDを検索して復旧できます。"
+        description="MINERVOTが実行した仕事の結果と成果物を確認できます。うまくいかなかった仕事は、ここから直せます。"
       />
 
       <div className="space-y-3">
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="自動化名・Run ID・diagnosticId・成果物・手順"
-          className="min-h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 text-sm"
+          placeholder="自動化名・成果物・手順・診断IDで検索"
+          aria-label="実行履歴を検索"
+          className="min-h-12 w-full rounded-[var(--radius-lg)] border border-[var(--border)] px-4 text-sm focus:border-[var(--border-focus)] focus:outline-none"
         />
         <div className="flex gap-2 overflow-x-auto pb-1">
           {STATUS_FILTERS.map((filter) => (
@@ -99,24 +148,25 @@ export function RunListPage() {
               key={filter.id}
               type="button"
               onClick={() => setStatus(filter.value)}
+              aria-pressed={status === filter.value}
               className={
                 status === filter.value
-                  ? "min-h-10 shrink-0 rounded-full bg-accent px-3 text-sm text-white"
-                  : "min-h-10 shrink-0 rounded-full bg-[var(--surface-muted)] px-3 text-sm"
+                  ? "ui-chip-btn shrink-0 min-h-10 border-transparent bg-[var(--brand)] text-[var(--brand-foreground)]"
+                  : "ui-chip-btn shrink-0 min-h-10"
               }
             >
               {filter.label}
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap gap-3 text-sm">
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-[var(--text-secondary)]">
           <label className="inline-flex items-center gap-2">
             <input
               type="checkbox"
               checked={hasRetry}
               onChange={(event) => setHasRetry(event.target.checked)}
             />
-            retryあり
+            再試行あり
           </label>
           <label className="inline-flex items-center gap-2">
             <input
@@ -132,7 +182,7 @@ export function RunListPage() {
               checked={hasExternal}
               onChange={(event) => setHasExternal(event.target.checked)}
             />
-            外部実行あり
+            外部サービスへの反映あり
           </label>
         </div>
       </div>
@@ -143,7 +193,7 @@ export function RunListPage() {
           <p className="text-sm text-[var(--muted)]">{RUN_LIST_UNAVAILABLE_HINT}</p>
           <button
             type="button"
-            className="min-h-10 rounded-full bg-[var(--surface-muted)] px-4 text-sm"
+            className="ui-chip-btn"
             onClick={() => {
               setLoadState("loading");
               setError(null);
@@ -159,85 +209,72 @@ export function RunListPage() {
       ) : null}
 
       {runListEmptyMessage(loadState, rows.length) ? (
-        <p className="text-sm text-[var(--muted)]">{RUN_LIST_EMPTY_MESSAGE}</p>
+        <p className="ui-card ui-card-pad text-sm text-[var(--muted)]">{RUN_LIST_EMPTY_MESSAGE}</p>
       ) : null}
 
-      <ul className="space-y-3">
+      <ul className="space-y-2.5">
         {rows.map((run) => {
-          const succeededSteps = run.steps.filter(
-            (step) => step.status === "succeeded",
-          ).length;
           const failedSteps = run.steps.filter(
             (step) => step.status === "failed",
           ).length;
+          const retries = Math.max(0, run.attemptCount - 1);
+          const approvalPending =
+            run.approval?.status === "pending" || run.status === "awaiting_approval";
+          const meta = [
+            run.durationMs != null
+              ? `${Math.max(1, Math.round(run.durationMs / 1000))}秒`
+              : null,
+            run.artifacts.length > 0 ? `成果物 ${run.artifacts.length}件` : null,
+            failedSteps > 0 ? `失敗した手順 ${failedSteps}` : null,
+            retries > 0 ? `再試行 ${retries}回` : null,
+            approvalPending && run.status !== "awaiting_approval"
+              ? "確認待ち"
+              : run.approval?.status === "approved"
+                ? "確認済み"
+                : null,
+            run.memoryUsage.used.length > 0 ? "好みを反映" : null,
+          ].filter(Boolean);
           return (
             <li key={run.id}>
               <Link
                 href={`/automations/runs/${encodeURIComponent(run.id)}`}
-                className="block rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4"
+                className="ui-card ui-card-interactive block px-4 py-3.5 focus-ring"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate font-semibold">
+                    <p className="truncate text-sm font-semibold text-[var(--text-primary)]">
                       {run.automationName}
                     </p>
-                    <p className="mt-1 text-sm text-[var(--muted)]">
+                    <p className="mt-0.5 text-[length:var(--text-caption)] text-[var(--text-muted)]">
                       {new Date(
                         run.completedAt ?? run.startedAt ?? run.createdAt,
-                      ).toLocaleString("ja-JP")}
+                      ).toLocaleString("ja-JP", {
+                        month: "numeric",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                       {" · "}
                       {TRIGGER_LABEL[run.triggerType]}
                     </p>
                   </div>
-                  <span className="shrink-0 rounded-full bg-[var(--surface-muted)] px-3 py-1 text-xs">
-                    {formatRunHeadline(run)}
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full px-2.5 py-1 text-[length:var(--text-meta)] font-semibold",
+                      RUN_TONE[runTone(run.status)],
+                    )}
+                  >
+                    {RUN_SHORT_LABEL[run.status] ?? formatRunHeadline(run)}
                   </span>
                 </div>
-                <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-[var(--muted)] sm:grid-cols-3">
-                  <div>
-                    <dt>実行時間</dt>
-                    <dd>
-                      {run.durationMs != null
-                        ? `${Math.round(run.durationMs / 1000)}秒`
-                        : "—"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>成功 / 失敗 Step</dt>
-                    <dd>
-                      {succeededSteps} / {failedSteps}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>retry</dt>
-                    <dd>{Math.max(0, run.attemptCount - 1)}</dd>
-                  </div>
-                  <div>
-                    <dt>成果物</dt>
-                    <dd>{run.artifacts.length}</dd>
-                  </div>
-                  <div>
-                    <dt>承認</dt>
-                    <dd>
-                      {run.approval?.status === "pending" ||
-                      run.status === "awaiting_approval"
-                        ? "あり"
-                        : run.approval?.status === "approved"
-                          ? "済み"
-                          : "なし"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Memory</dt>
-                    <dd>
-                      {run.memoryUsage.used.length > 0 ? "利用" : "なし"}
-                    </dd>
-                  </div>
-                  <div className="col-span-2 sm:col-span-3">
-                    <dt>diagnosticId</dt>
-                    <dd className="break-all">{run.diagnosticId}</dd>
-                  </div>
-                </dl>
+                {meta.length > 0 ? (
+                  <p className="mt-2 text-[length:var(--text-caption)] text-[var(--text-secondary)]">
+                    {meta.join(" · ")}
+                  </p>
+                ) : null}
+                <p className="mt-1.5 break-all text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                  診断ID {run.diagnosticId}
+                </p>
               </Link>
             </li>
           );

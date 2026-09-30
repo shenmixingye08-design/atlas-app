@@ -5,6 +5,10 @@
 
 export type AutomationFirstEventName =
   | "home_viewed"
+  | "home_run_completed_live"
+  | "x_sample_generated"
+  | "x_sample_connect_clicked"
+  | "x_upgrade_clicked"
   | "primary_automation_cta_clicked"
   | "one_time_request_clicked"
   | "automation_template_selected"

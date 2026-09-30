@@ -59,11 +59,8 @@ export function AutomationCard({
 
   return (
     <Card
-      padding="lg"
-      className={cn(
-        "overflow-hidden border border-[var(--border-subtle)] bg-[var(--card)]",
-        !automation.enabled && "opacity-80",
-      )}
+      padding="md"
+      className={cn("overflow-hidden", !automation.enabled && "opacity-80")}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <button
@@ -95,29 +92,29 @@ export function AutomationCard({
         />
       </div>
 
-      <dl className="mt-4 grid gap-2 text-sm">
-        <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
-          <dt className="text-xs text-[var(--text-muted)]">繰り返し</dt>
-          <dd className="mt-1 font-medium text-foreground">{preview.frequency}</dd>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-[var(--border)] pt-3 text-sm">
+        <div className="min-w-0">
+          <dt className="text-[length:var(--text-meta)] text-[var(--text-muted)]">繰り返し</dt>
+          <dd className="truncate font-medium text-foreground">{preview.frequency}</dd>
         </div>
-        <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
-          <dt className="text-xs text-[var(--text-muted)]">次回</dt>
-          <dd className="mt-1 font-medium text-foreground">{preview.nextRunLabel}</dd>
+        <div className="min-w-0">
+          <dt className="text-[length:var(--text-meta)] text-[var(--text-muted)]">次回</dt>
+          <dd className="truncate font-medium text-foreground">{preview.nextRunLabel}</dd>
         </div>
         {preview.memoryLabels.length > 0 ? (
-          <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
-            <dt className="text-xs text-[var(--text-muted)]">
+          <div className="col-span-2 min-w-0">
+            <dt className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
               {ui.entrustedJobs.appliedPreferences}
             </dt>
-            <dd className="mt-1 break-words font-medium text-foreground">
+            <dd className="break-words font-medium text-foreground">
               {preview.memoryLabels.join("、")}
             </dd>
           </div>
         ) : null}
         {preview.overrideLabels.length > 0 ? (
-          <div className="rounded-[var(--radius-xl)] bg-[var(--surface-muted)] px-3 py-3">
-            <dt className="text-xs text-[var(--text-muted)]">この自動化だけ</dt>
-            <dd className="mt-1 break-words font-medium text-foreground">
+          <div className="col-span-2 min-w-0">
+            <dt className="text-[length:var(--text-meta)] text-[var(--text-muted)]">この自動化だけ</dt>
+            <dd className="break-words font-medium text-foreground">
               {preview.overrideLabels.join("、")}
             </dd>
           </div>
@@ -136,13 +133,14 @@ export function AutomationCard({
         </p>
       ) : null}
 
-      <div className="mt-4">
+      <div className="mt-1">
         <button
           type="button"
           onClick={() => onOpen(automation)}
-          className="min-h-[44px] text-sm font-medium text-accent hover:underline focus-ring rounded-md"
+          className="ui-link min-h-[44px] gap-1 rounded-md focus-ring"
         >
           {ui.entrustedJobs.viewDetail}
+          <span aria-hidden className="ui-chevron text-[var(--brand)]">›</span>
         </button>
       </div>
     </Card>

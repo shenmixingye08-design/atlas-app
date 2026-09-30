@@ -9,9 +9,16 @@ import { MOTION_PLAY_KEYS } from "@/lib/motion/tokens";
 import { EmptyState } from "@/components/automation-first/empty-state";
 import { ErrorState } from "@/components/automation-first/error-state";
 import { PageHeader } from "@/components/automation-first/page-header";
+import { HomeStatusCore } from "@/components/automation-first/home-status-core";
 import { RunningStepsPanel } from "@/components/automation-first/running-steps";
 import { Timeline } from "@/components/automation-first/timeline";
 import { trackAutomationFirstEvent } from "@/lib/automation-first/analytics";
+import {
+  HOME_COMPLETED_HOLD_MS,
+  deriveHomeCoreState,
+  type HomeCompletedRun,
+} from "@/lib/automation-first/home-core-state";
+import { useLiveOpsRefresh } from "@/lib/automation-first/use-live-ops-refresh";
 import {
   buildRunningJobsFromRuns,
   mapOpsTodayWorkToTimeline,
@@ -56,6 +63,33 @@ export function TodayWorkPage({
   const [runs, setRuns] = useState<AutomationRun[]>([]);
   const [opsError, setOpsError] = useState<string | null>(null);
   const [opsRequestId, setOpsRequestId] = useState(0);
+  const [justCompleted, setJustCompleted] = useState<HomeCompletedRun | null>(null);
+
+  useLiveOpsRefresh({
+    enabled: opsEnabled && !initialAutomations,
+    runs,
+    onUpdate: ({ summary, runs: nextRuns, completed }) => {
+      setOpsSummary(summary);
+      setRuns(nextRuns);
+      setOpsError(null);
+      if (completed) {
+        setJustCompleted(completed);
+        trackAutomationFirstEvent("home_run_completed_live", {
+          id: completed.runId,
+          source: "today_page",
+        });
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (!justCompleted) return;
+    const timer = window.setTimeout(
+      () => setJustCompleted(null),
+      HOME_COMPLETED_HOLD_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [justCompleted]);
 
   const load = useCallback(() => {
     if (initialAutomations) {
@@ -161,6 +195,18 @@ export function TodayWorkPage({
         description="時系列で予定・実行中・確認待ち・完了を確認できます。"
       />
 
+      {justCompleted ? (
+        <HomeStatusCore
+          state={deriveHomeCoreState({
+            justCompleted,
+            checking: false,
+            attentionCount: 0,
+            runningCount: 0,
+            entrustedCount: 0,
+          })}
+        />
+      ) : null}
+
       {opsError ? (
         <ErrorState
           title="運用データを取得できませんでした"
@@ -206,33 +252,33 @@ export function TodayWorkPage({
             />
           </div>
           <aside className="mt-6 space-y-4 lg:mt-0">
-            <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-              <h2 className="text-[length:var(--text-section)] font-semibold text-[var(--text-primary)]">
+            <div className="ui-card ui-card-pad">
+              <h2 className="ui-section-title">
                 今日の状況
               </h2>
               {opsSummary ? (
                 <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <dt className="text-[var(--text-muted)]">実行中</dt>
-                    <dd className="text-lg font-semibold">
+                    <dd className="text-xl font-semibold tracking-tight tabular-nums">
                       <AnimatedNumber value={opsSummary.counts.running} />
                     </dd>
                   </div>
                   <div>
                     <dt className="text-[var(--text-muted)]">承認待ち</dt>
-                    <dd className="text-lg font-semibold">
+                    <dd className="text-xl font-semibold tracking-tight tabular-nums">
                       <AnimatedNumber value={opsSummary.counts.awaitingApproval} />
                     </dd>
                   </div>
                   <div>
                     <dt className="text-[var(--text-muted)]">入力待ち</dt>
-                    <dd className="text-lg font-semibold">
+                    <dd className="text-xl font-semibold tracking-tight tabular-nums">
                       <AnimatedNumber value={opsSummary.counts.needsInput} />
                     </dd>
                   </div>
                   <div>
                     <dt className="text-[var(--text-muted)]">本日失敗</dt>
-                    <dd className="text-lg font-semibold">
+                    <dd className="text-xl font-semibold tracking-tight tabular-nums">
                       <AnimatedNumber value={opsSummary.counts.failedToday} />
                     </dd>
                   </div>
@@ -244,7 +290,7 @@ export function TodayWorkPage({
               )}
               <Link
                 href="/automations"
-                className="mt-4 inline-flex min-h-[var(--touch-target)] items-center text-sm font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+                className="ui-link mt-2"
               >
                 自動化一覧へ
               </Link>

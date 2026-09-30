@@ -11,7 +11,11 @@ import {
   evaluateBillingSnsPost,
 } from "@/lib/billing/access";
 import type { FeatureAccessContext } from "@/lib/feature-flags/types";
-import { notifyXAutoPostDrafted, notifyXPostFailed } from "@/lib/notifications/emitters";
+import {
+  notifyXAutoPostDrafted,
+  notifyXAutoPostHeldForReview,
+  notifyXPostFailed,
+} from "@/lib/notifications/emitters";
 
 import { applyMemoryToDedicatedAutoPost } from "./autopost-memory";
 import { generateAutoPostText, selectPostType } from "./autopost-generator";
@@ -198,7 +202,10 @@ export async function runImmediateAutoPostTrial(input: {
     };
   }
 
-  if (input.settings.mode === "approval") {
+  // Never publish template fallback copy automatically: hold it as a draft
+  // for review even in full-auto mode.
+  const holdForReview = input.settings.mode !== "approval" && generated.usedFallback;
+  if (input.settings.mode === "approval" || holdForReview) {
     const draftResult = await saveXDraftForUser({
       userId: input.userId,
       text: generated.text,
@@ -226,7 +233,8 @@ export async function runImmediateAutoPostTrial(input: {
       postType: generated.postType,
       text: generated.text,
     });
-    notifyXAutoPostDrafted(input.userId);
+    if (holdForReview) notifyXAutoPostHeldForReview(input.userId);
+    else notifyXAutoPostDrafted(input.userId);
     const runs = await listXAutoPostRuns(input.userId, 5);
     return {
       status: "drafted",

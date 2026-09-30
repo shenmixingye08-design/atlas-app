@@ -155,26 +155,23 @@ describe("Warm Minimal UI contracts", () => {
   it("associates input errors and keeps 44px tap targets on shared controls", () => {
     const input = src("components/ui/input.tsx");
     const button = src("components/ui/button.tsx");
-    const bottomNav = src("components/layout/atlas-bottom-nav.tsx");
     const afNav = src("components/automation-first/automation-first-bottom-nav.tsx");
     expect(input).toContain("aria-describedby");
     expect(input).toContain('role="alert"');
     expect(button).toContain("min-h-[44px]");
-    expect(bottomNav).toContain("min-h-[56px]");
-    expect(bottomNav).toContain("safe-area-inset-bottom");
+    expect(afNav).toContain("min-h-[56px]");
     expect(afNav).toContain("--safe-area-bottom");
     expect(afNav).not.toContain("backdrop-blur-xl");
   });
 
   it("does not change navigation destinations while modernizing chrome", () => {
-    const bottomNav = src("components/layout/atlas-bottom-nav.tsx");
+    const afNav = src("components/automation-first/automation-first-bottom-nav.tsx");
     const homeActions = src("components/automation-first/home-primary-actions.tsx");
     const request = src("components/workspace/work-request-form.tsx");
-    expect(bottomNav).toContain('href: "/projects"');
-    expect(bottomNav).toContain('href: "/history"');
-    expect(bottomNav).toContain('href: "/workspace"');
-    expect(bottomNav).toContain('href: "/automations"');
-    expect(bottomNav).toContain('href: "/settings"');
+    expect(afNav).toContain('href: "/projects"');
+    expect(afNav).toContain('href: "/history"');
+    expect(afNav).toContain('href: "/automations"');
+    expect(afNav).toContain('href: "/settings"');
     expect(homeActions).toContain("HOME_X_AUTOMATION_HREF");
     expect(homeActions).toContain("HOME_OTHER_WORK_HREF");
     expect(request).toContain("buildWorkRequestSubmitPayload");

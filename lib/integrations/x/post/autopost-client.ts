@@ -181,3 +181,22 @@ export function formatXAutoPostRunStatus(run: XAutoPostRun): string {
       return run.status;
   }
 }
+
+export type XSampleResult =
+  | { status: "ready"; text: string; usedFallback: boolean; remaining: number }
+  | { status: "error" | "rate_limited" | "feature_disabled"; message: string };
+
+/** Pre-connect sample (never posts). */
+export async function fetchXSampleClient(input: {
+  theme: string;
+  audience?: string;
+}): Promise<XSampleResult> {
+  const response = await fetch("/api/x/autopost/sample", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const body = (await response.json().catch(() => null)) as XSampleResult | null;
+  if (body && "status" in body) return body;
+  return { status: "error", message: "見本を作成できませんでした。" };
+}
